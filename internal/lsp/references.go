@@ -17,6 +17,8 @@ import (
 	"time"
 	"unicode/utf16"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/sarumaj/depphunter-cli/internal/graph"
 )
 
@@ -272,57 +274,45 @@ func runServer(ctx context.Context, srv Server, argv []string, opts Options, pat
 	}
 
 	// The first request also waits for the server to load the workspace.
-	var wg sync.WaitGroup
-	work := make(chan query)
+	var g errgroup.Group
+	g.SetLimit(opts.Parallel)
 	var firstErr error
 	var errOnce sync.Once
-	for range opts.Parallel {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for q := range work {
-				var locs []struct {
-					URI   string `json:"uri"`
-					Range struct {
-						Start struct{ Line int } `json:"start"`
-					} `json:"range"`
-				}
-				err := c.call(ctx, "textDocument/references", map[string]any{
-					"textDocument": map[string]string{"uri": fileURI(filepath.Join(opts.Root, q.file))},
-					"position":     map[string]int{"line": q.sym.line - 1, "character": q.col},
-					"context":      map[string]bool{"includeDeclaration": false},
-				}, &locs)
-				if err != nil {
-					if ctx.Err() != nil {
-						return
-					}
+	sent := 0
+	for _, q := range queries {
+		if ctx.Err() != nil {
+			break
+		}
+		sent++
+		g.Go(func() error {
+			var locs []struct {
+				URI   string `json:"uri"`
+				Range struct {
+					Start struct{ Line int } `json:"start"`
+				} `json:"range"`
+			}
+			err := c.call(ctx, "textDocument/references", map[string]any{
+				"textDocument": map[string]string{"uri": fileURI(filepath.Join(opts.Root, q.file))},
+				"position":     map[string]int{"line": q.sym.line - 1, "character": q.col},
+				"context":      map[string]bool{"includeDeclaration": false},
+			}, &locs)
+			if err != nil {
+				if ctx.Err() == nil {
 					errOnce.Do(func() { firstErr = err })
-					continue
 				}
-				for _, l := range locs {
-					rel, ok := relPath(opts.Root, l.URI)
-					if !ok {
-						continue
-					}
+				return nil
+			}
+			for _, l := range locs {
+				if rel, ok := relPath(opts.Root, l.URI); ok {
 					if f := files[rel]; f != nil {
 						add(f.enclosing(l.Range.Start.Line+1), q.sym.id)
 					}
 				}
 			}
-		}()
+			return nil
+		})
 	}
-	sent := 0
-feed:
-	for _, q := range queries {
-		select {
-		case work <- q:
-			sent++
-		case <-ctx.Done():
-			break feed
-		}
-	}
-	close(work)
-	wg.Wait()
+	g.Wait()
 	if ctx.Err() != nil {
 		return sent, ctx.Err()
 	}

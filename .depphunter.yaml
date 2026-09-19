@@ -1,0 +1,6 @@
+ui:
+  theme: auto
+  color_by: language
+  height_scale: sqrt
+  show_std: false
+  expand_depth: 13

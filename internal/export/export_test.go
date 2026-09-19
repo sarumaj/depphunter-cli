@@ -4,6 +4,9 @@ import (
 	"bytes"
 	"encoding/json"
 	"encoding/xml"
+	"reflect"
+	"regexp"
+	"sort"
 	"strings"
 	"testing"
 
@@ -82,27 +85,29 @@ func TestDOT(t *testing.T) {
 		t.Fatal(err)
 	}
 	out := buf.String()
-	for _, want := range []string{
-		`digraph "odd \"repo\"" {`,
-		`subgraph "cluster_d:pkg" {`,
-		`subgraph "cluster_e:go" {`,
-		`"d:pkg" [label="pkg/", shape=folder];`,
-		`"p:go:x.io/y" [label="x.io/y\nv1.0.0", shape=component];`,
-		`style="rounded,dashed"`,
-		`"f:main.go" -> "p:go:x.io/y";`,
-	} {
-		if !strings.Contains(out, want) {
-			t.Errorf("missing %s in\n%s", want, out)
+	// Node ids are generated; compare edges by label.
+	labels := map[string]string{}
+	for _, m := range regexp.MustCompile(`(n\d+)\[[^\]]*label="((?:[^"\\]|\\.)*)"`).FindAllStringSubmatch(out, -1) {
+		labels[m[1]] = m[2]
+	}
+	var edges []string
+	for _, m := range regexp.MustCompile(`(n\d+)->(n\d+)`).FindAllStringSubmatch(out, -1) {
+		edges = append(edges, labels[m[1]]+" -> "+labels[m[2]])
+	}
+	sort.Strings(edges)
+	want := []string{`a.go -> x.io/<z>`, `main.go -> pkg/`, `main.go -> x.io/y\nv1.0.0`}
+	if !reflect.DeepEqual(edges, want) {
+		t.Errorf("edges %q, want %q", edges, want)
+	}
+	for _, s := range []string{`label="odd \"repo\""`, `label="Go modules"`, `label="pkg/"`, `shape="folder"`, `style="rounded,dashed"`} {
+		if !strings.Contains(out, s) {
+			t.Errorf("missing %s in\n%s", s, out)
 		}
 	}
-	if strings.Contains(out, "README.md") {
-		t.Error("files without edges should be omitted")
-	}
-	if strings.Contains(out, "go-std") {
-		t.Error("standard-library packages should be omitted")
-	}
-	if strings.Count(out, "{") != strings.Count(out, "}") {
-		t.Error("unbalanced braces")
+	for _, s := range []string{"README.md", "fmt"} {
+		if strings.Contains(out, s) {
+			t.Errorf("%s should be omitted (no edges / standard library)", s)
+		}
 	}
 }
 
@@ -123,7 +128,7 @@ func TestReferencesInExports(t *testing.T) {
 	if !strings.Contains(gml.String(), `<data key="edgeKind">reference</data>`) {
 		t.Error("GraphML should carry reference edges")
 	}
-	if strings.Contains(dot.String(), "s:main.go#main") {
+	if strings.Contains(dot.String(), `label="main"`) {
 		t.Error("DOT should leave symbol references out")
 	}
 }

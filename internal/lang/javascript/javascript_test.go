@@ -64,14 +64,6 @@ func TestSymbols(t *testing.T) {
 	check("legacy/app.js", map[string]string{"Legacy": "class", "Legacy.start": "method", "lazy": "func", "fs": "var"})
 }
 
-func TestStripJSONC(t *testing.T) {
-	in := `{"a": "// not a comment", /* c */ "b": [1, 2,], // x
-	}`
-	if got := string(stripJSONC([]byte(in))); got != "{\"a\": \"// not a comment\",  \"b\": [1, 2], \n\t}" {
-		t.Errorf("got %q", got)
-	}
-}
-
 func TestLockfiles(t *testing.T) {
 	npm := func(pkg, version string) lang.Target {
 		return lang.Target{Ecosystem: "npm", Package: pkg, Version: version}

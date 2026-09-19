@@ -17,8 +17,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/cli/browser"
+
 	"github.com/sarumaj/depphunter-cli/internal/analyze"
-	"github.com/sarumaj/depphunter-cli/internal/browser"
 	"github.com/sarumaj/depphunter-cli/internal/cache"
 	"github.com/sarumaj/depphunter-cli/internal/config"
 	"github.com/sarumaj/depphunter-cli/internal/editor"
@@ -205,52 +206,25 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts analyze.
 		httpSrv.Shutdown(shutdown)
 	}()
 
-	// The map is served at once; the history follows when git has been read. histMu
-	// serialises reads so a watch-mode refresh cannot overtake the first one.
-	var histMu sync.Mutex
+	// The map is served at once; history and references follow in the background and,
+	// in watch mode, are refreshed after changes.
 	histHead, histRead := "", false
-	refreshHistory := func(g *graph.Graph) {
-		histMu.Lock()
-		defer histMu.Unlock()
+	historyRun := newLatest(func(g *graph.Graph) {
 		head, _ := history.Head(ctx, cfg.Root) // "" without commits
 		if histRead && head == histHead {
 			return
 		}
 		histHead, histRead = head, true
 		srv.SetHistory(loadHistory(ctx, cfg, cacheDir, g))
-	}
+	})
+	referencesRun := newLatest(func(g *graph.Graph) {
+		srv.SetReferences(loadReferences(ctx, cfg, cacheDir, g))
+	})
 	if cfg.History {
-		go refreshHistory(g)
-	}
-
-	// References follow the history; in watch mode they are recomputed after changes,
-	// one run at a time, the latest graph winning.
-	var refsMu sync.Mutex
-	var refsNext *graph.Graph
-	refreshReferences := func(g *graph.Graph) {
-		refsMu.Lock()
-		running := refsNext != nil
-		refsNext = g
-		refsMu.Unlock()
-		if running {
-			return // the running loop picks up the newest graph
-		}
-		for {
-			refsMu.Lock()
-			g := refsNext
-			refsMu.Unlock()
-			srv.SetReferences(loadReferences(ctx, cfg, cacheDir, g))
-			refsMu.Lock()
-			if refsNext == g {
-				refsNext = nil
-				refsMu.Unlock()
-				return
-			}
-			refsMu.Unlock()
-		}
+		go historyRun.Run(g)
 	}
 	if cfg.LSP {
-		go refreshReferences(g)
+		go referencesRun.Run(g)
 	}
 
 	if cfg.Watch {
@@ -278,17 +252,17 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts analyze.
 				log.Printf("updated: %d files re-parsed in %s", st.Parsed, time.Since(start).Round(time.Millisecond))
 			}
 			if cfg.History {
-				refreshHistory(ng) // a commit moved HEAD
+				go historyRun.Run(ng) // a commit moves HEAD
 			}
 			if cfg.LSP && changed {
-				go refreshReferences(ng)
+				go referencesRun.Run(ng)
 			}
 		})
 	}
 
 	log.Printf("serving at %s (Ctrl+C to stop)", url)
 	if cfg.Open {
-		if err := browser.Open(url); err != nil {
+		if err := browser.OpenURL(url); err != nil {
 			log.Printf("could not open browser: %v", err)
 		}
 	}
@@ -307,4 +281,34 @@ func watchDirs(root string, g *graph.Graph) []string {
 		}
 	}
 	return dirs
+}
+
+// latest runs fn one call at a time with the newest value it was given: values that
+// arrive during a run are coalesced into a single follow-up run.
+type latest[T any] struct {
+	fn      func(T)
+	mu      sync.Mutex
+	running bool
+	next    *T
+}
+
+func newLatest[T any](fn func(T)) *latest[T] { return &latest[T]{fn: fn} }
+
+func (l *latest[T]) Run(v T) {
+	l.mu.Lock()
+	l.next = &v
+	if l.running {
+		l.mu.Unlock()
+		return // the running loop picks v up
+	}
+	l.running = true
+	for l.next != nil {
+		v := *l.next
+		l.next = nil
+		l.mu.Unlock()
+		l.fn(v)
+		l.mu.Lock()
+	}
+	l.running = false
+	l.mu.Unlock()
 }

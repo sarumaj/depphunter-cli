@@ -13,7 +13,8 @@ import (
 	"runtime"
 	"sort"
 	"strings"
-	"sync"
+
+	"golang.org/x/sync/errgroup"
 )
 
 // File is a project file with paths relative to the project root, always slash-separated.
@@ -55,25 +56,15 @@ func Scan(ctx context.Context, root string, opts Options) ([]*File, error) {
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
 
-	var wg sync.WaitGroup
-	work := make(chan *File)
-	for range runtime.NumCPU() {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for f := range work {
-				measure(f, opts.MaxFileSize)
-			}
-		}()
-	}
+	var g errgroup.Group
+	g.SetLimit(runtime.NumCPU())
 	for _, f := range files {
-		select {
-		case work <- f:
-		case <-ctx.Done():
+		if ctx.Err() != nil {
+			break
 		}
+		g.Go(func() error { measure(f, opts.MaxFileSize); return nil })
 	}
-	close(work)
-	wg.Wait()
+	g.Wait()
 	return files, ctx.Err()
 }
 

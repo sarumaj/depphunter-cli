@@ -9,6 +9,8 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+
+	"github.com/kballard/go-shellquote"
 )
 
 // known maps GUI editor binaries to templates. Terminal editors (vim, nano, helix…)
@@ -51,13 +53,13 @@ func Detect(getenv func(string) string, lookPath func(string) (string, error)) s
 	return ""
 }
 
-// Command expands template for file (absolute) and line. Arguments are split like a
-// shell would split plain words and quoted strings, but no shell is involved, so file
-// names cannot inject commands.
+// Command expands template for file (absolute) and line. The template is split with
+// POSIX shell quoting rules (so quote Windows paths that contain backslashes), but no
+// shell runs it: file names cannot inject commands.
 func Command(template, file string, line int) (*exec.Cmd, error) {
-	args, err := split(template)
+	args, err := shellquote.Split(template)
 	if err != nil {
-		return nil, err
+		return nil, fmt.Errorf("editor template %q: %w", template, err)
 	}
 	if len(args) == 0 || !strings.Contains(template, "{file}") {
 		return nil, errors.New("editor template must name a program and contain {file}")
@@ -67,37 +69,4 @@ func Command(template, file string, line int) (*exec.Cmd, error) {
 		args[i] = r.Replace(args[i])
 	}
 	return exec.Command(args[0], args[1:]...), nil
-}
-
-func split(s string) ([]string, error) {
-	var args []string
-	var cur strings.Builder
-	inArg := false
-	var quote rune
-	for _, r := range s {
-		switch {
-		case quote != 0 && r == quote:
-			quote = 0
-		case quote != 0:
-			cur.WriteRune(r)
-		case r == '"' || r == '\'':
-			quote, inArg = r, true
-		case r == ' ' || r == '\t':
-			if inArg {
-				args = append(args, cur.String())
-				cur.Reset()
-				inArg = false
-			}
-		default:
-			cur.WriteRune(r)
-			inArg = true
-		}
-	}
-	if quote != 0 {
-		return nil, fmt.Errorf("unterminated quote in editor template %q", s)
-	}
-	if inArg {
-		args = append(args, cur.String())
-	}
-	return args, nil
 }

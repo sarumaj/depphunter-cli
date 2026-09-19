@@ -7,6 +7,8 @@ import (
 	"runtime"
 	"sync"
 
+	"golang.org/x/sync/errgroup"
+
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
@@ -45,33 +47,26 @@ func (s *SymbolSet) List() []Symbol { return s.list }
 func ForEachFile(ctx context.Context, files []*scan.File, fn func(f *scan.File, src []byte) *FileResult) map[string]*FileResult {
 	results := make(map[string]*FileResult, len(files))
 	var mu sync.Mutex
-	var wg sync.WaitGroup
-	work := make(chan *scan.File)
-	for range runtime.NumCPU() {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for f := range work {
-				src, err := os.ReadFile(f.Abs)
-				if err != nil || !Parseable(f, src) {
-					continue
-				}
-				if res := fn(f, src); res != nil {
-					mu.Lock()
-					results[f.Path] = res
-					mu.Unlock()
-				}
-			}
-		}()
-	}
+	var g errgroup.Group
+	g.SetLimit(runtime.NumCPU())
 	for _, f := range files {
-		select {
-		case work <- f:
-		case <-ctx.Done():
+		if ctx.Err() != nil {
+			break
 		}
+		g.Go(func() error {
+			src, err := os.ReadFile(f.Abs)
+			if err != nil || !Parseable(f, src) {
+				return nil
+			}
+			if res := fn(f, src); res != nil {
+				mu.Lock()
+				results[f.Path] = res
+				mu.Unlock()
+			}
+			return nil
+		})
 	}
-	close(work)
-	wg.Wait()
+	g.Wait()
 	return results
 }
 
