@@ -20,27 +20,13 @@ jobs:
       - name: Test
         run: go test -race ./...
       - name: Build
-        env:
-          VERSION: ${{ github.ref_name }}
+        # Every target in scripts/dist.sh: Linux (amd64, arm64, armv7, 386, riscv64),
+        # macOS (amd64, arm64), Windows (amd64, arm64, 386), FreeBSD (amd64, arm64).
+        run: scripts/dist.sh "${{ github.ref_name }}"
+      - name: Smoke test
         run: |
-          mkdir dist
-          # Pure Go: every target cross-compiles from one runner.
-          for target in linux/amd64 linux/arm64 darwin/amd64 darwin/arm64 windows/amd64 windows/arm64; do
-            goos=${target%/*} goarch=${target#*/}
-            name="depphunter_${VERSION#v}_${goos}_${goarch}"
-            ext=""; [ "$goos" = windows ] && ext=.exe
-            mkdir "dist/$name"
-            CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch go build -trimpath \
-              -ldflags "-s -w -X main.version=$VERSION" -o "dist/$name/depphunter$ext" ./cmd/depphunter
-            cp README.md LICENSE "dist/$name/"
-            if [ "$goos" = windows ]; then
-              (cd dist && zip -qr "$name.zip" "$name")
-            else
-              tar -C dist -czf "dist/$name.tar.gz" "$name"
-            fi
-            rm -r "dist/$name"
-          done
-          (cd dist && sha256sum * > checksums.txt)
+          tar -xzf dist/depphunter_*_linux_amd64.tar.gz -C "$RUNNER_TEMP"
+          "$RUNNER_TEMP"/depphunter_*_linux_amd64/depphunter --version | grep -F "${{ github.ref_name }}"
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
