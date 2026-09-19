@@ -1,6 +1,6 @@
 // Package cache keeps plugin extractions keyed by file content, so unchanged files are
 // never parsed twice: across runs (persisted under the user cache directory) and
-// across re-analyzes in watch mode. A nil *Cache is valid and caches nothing.
+// across re-analysis runs in watch mode. A nil *Cache is valid and caches nothing.
 package cache
 
 import (
