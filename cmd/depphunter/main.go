@@ -23,9 +23,13 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/export"
 	"github.com/sarumaj/depphunter-cli/internal/graph"
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/csharp"
 	"github.com/sarumaj/depphunter-cli/internal/lang/golang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/java"
 	"github.com/sarumaj/depphunter-cli/internal/lang/javascript"
+	"github.com/sarumaj/depphunter-cli/internal/lang/powershell"
 	"github.com/sarumaj/depphunter-cli/internal/lang/python"
+	"github.com/sarumaj/depphunter-cli/internal/lang/rust"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 	"github.com/sarumaj/depphunter-cli/internal/server"
 	"github.com/sarumaj/depphunter-cli/internal/watch"
@@ -63,9 +67,12 @@ func run() error {
 		}
 	}
 	opts := analyze.Options{
-		Scan:    scan.Options{Exclude: cfg.Exclude, MaxFileSize: cfg.MaxFileSize},
-		Plugins: []lang.Plugin{golang.Plugin{}, javascript.Plugin{}, python.Plugin{}},
-		Cache:   c,
+		Scan: scan.Options{Exclude: cfg.Exclude, MaxFileSize: cfg.MaxFileSize},
+		Plugins: []lang.Plugin{
+			golang.Plugin{}, javascript.Plugin{}, python.Plugin{}, rust.Plugin{}, java.Plugin{},
+			csharp.Plugin{}, powershell.Plugin{},
+		},
+		Cache: c,
 	}
 	g, err := analyse(ctx, cfg.Root, opts, c)
 	if err != nil {
@@ -73,7 +80,7 @@ func run() error {
 	}
 
 	if cfg.Export != "" {
-		return writeExport(g, cfg.Export, cfg.Output)
+		return writeExport(g, cfg, cfg.Export, cfg.Output)
 	}
 	return serve(ctx, cfg, g, opts, c)
 }
@@ -92,7 +99,7 @@ func analyse(ctx context.Context, root string, opts analyze.Options, c *cache.Ca
 	return g, nil
 }
 
-func writeExport(g *graph.Graph, format, output string) error {
+func writeExport(g *graph.Graph, cfg config.Config, format, output string) error {
 	var w io.Writer = os.Stdout
 	if output != "" {
 		f, err := os.Create(output)
@@ -101,6 +108,9 @@ func writeExport(g *graph.Graph, format, output string) error {
 		}
 		defer f.Close()
 		w = f
+	}
+	if format == "html" {
+		return web.WriteStatic(w, g, cfg.UI, cfg.Root)
 	}
 	return export.Write(w, g, format)
 }

@@ -105,14 +105,34 @@ func (g *Grammar) Matches(src []byte, visit func(Match)) error {
 // EnclosingName returns the "name" field of the nearest ancestor whose type is one
 // of types, e.g. the class of a method.
 func (c Capture) EnclosingName(types ...string) string {
+	return c.EnclosingField("name", types...)
+}
+
+// EnclosingField returns the text of field on the nearest ancestor whose type is one
+// of types, e.g. the "type" of the Rust impl block around a method.
+func (c Capture) EnclosingField(field string, types ...string) string {
 	for n := c.node.Parent(); n != nil; n = n.Parent() {
 		t := n.Type(c.g.lang)
 		for _, want := range types {
 			if t == want {
-				if name := n.ChildByFieldName("name", c.g.lang); name != nil {
-					return name.Text(c.src)
+				if f := n.ChildByFieldName(field, c.g.lang); f != nil {
+					return f.Text(c.src)
 				}
 				return ""
+			}
+		}
+	}
+	return ""
+}
+
+// EnclosingText returns the source text of the nearest ancestor whose type is one of
+// types, for grammars whose nodes lack a "name" field (e.g. PowerShell classes).
+func (c Capture) EnclosingText(types ...string) string {
+	for n := c.node.Parent(); n != nil; n = n.Parent() {
+		t := n.Type(c.g.lang)
+		for _, want := range types {
+			if t == want {
+				return n.Text(c.src)
 			}
 		}
 	}

@@ -25,6 +25,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/editor"
 	"github.com/sarumaj/depphunter-cli/internal/export"
 	"github.com/sarumaj/depphunter-cli/internal/graph"
+	"github.com/sarumaj/depphunter-cli/web"
 )
 
 const (
@@ -41,7 +42,7 @@ type Server struct {
 	root   string
 	assets fs.FS
 	editor string // command template; "" disables /api/open
-	ui     []byte // /api/config body
+	cfg    config.Config
 	// allowedHosts is nil when listening on a non-loopback address.
 	allowedHosts map[string]bool
 
@@ -66,18 +67,10 @@ func New(cfg config.Config, g *graph.Graph, assets fs.FS) (*Server, error) {
 		return nil, err
 	}
 	s := &Server{
-		token: hex.EncodeToString(tok), root: cfg.Root, assets: assets, editor: cfg.Editor,
+		token: hex.EncodeToString(tok), root: cfg.Root, assets: assets, editor: cfg.Editor, cfg: cfg,
 		subs: map[chan []byte]struct{}{}, done: make(chan struct{}),
 	}
 	var err error
-	if s.ui, err = json.Marshal(struct {
-		config.UI
-		Editor bool   `json:"editor"`
-		Root   string `json:"root"`
-		Watch  bool   `json:"watch"`
-	}{cfg.UI, cfg.Editor != "", cfg.Root, cfg.Watch}); err != nil {
-		return nil, err
-	}
 	if s.snap, err = newSnapshot(g, 1); err != nil {
 		return nil, err
 	}
@@ -195,6 +188,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/events", s.handleEvents)
 	mux.HandleFunc("GET /api/export", s.handleExport)
 	mux.HandleFunc("POST /api/open", s.handleOpen)
+	mux.HandleFunc("POST /api/settings", s.handleSettings)
 	mux.Handle("GET /", http.FileServerFS(s.assets))
 	return s.guard(mux)
 }
@@ -252,8 +246,38 @@ func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleConfig(w http.ResponseWriter, _ *http.Request) {
+	s.mu.RLock()
+	cfg := s.cfg
+	s.mu.RUnlock()
 	w.Header().Set("Content-Type", "application/json")
-	w.Write(s.ui)
+	json.NewEncoder(w).Encode(struct {
+		config.UI
+		Editor     bool   `json:"editor"`
+		Root       string `json:"root"`
+		Watch      bool   `json:"watch"`
+		ConfigFile string `json:"configFile"`
+	}{cfg.UI, s.editor != "", cfg.Root, cfg.Watch, filepath.Base(cfg.ConfigFile)})
+}
+
+// handleSettings saves the browser's view settings into the project config file.
+func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
+	var ui config.UI
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&ui); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	if err := ui.Validate(); err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	if err := config.SaveUI(s.cfg.ConfigFile, ui); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	s.cfg.UI = ui
+	w.WriteHeader(http.StatusNoContent)
 }
 
 // handleFile serves the source of a file that is part of the graph, and nothing else.
@@ -325,6 +349,21 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	format := r.URL.Query().Get("format")
+	if format == "html" {
+		sn := s.current()
+		s.mu.RLock()
+		ui := s.cfg.UI
+		s.mu.RUnlock()
+		var buf bytes.Buffer
+		if err := web.WriteStatic(&buf, sn.g, ui, s.root); err != nil {
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "text/html; charset=utf-8")
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", sn.g.Root+".html"))
+		w.Write(buf.Bytes())
+		return
+	}
 	ct, ok := export.ContentTypes[format]
 	if !ok {
 		http.Error(w, "format must be one of "+strings.Join(export.Formats, ", "), http.StatusBadRequest)

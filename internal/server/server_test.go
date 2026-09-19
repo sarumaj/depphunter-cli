@@ -212,3 +212,45 @@ func TestOpenInEditor(t *testing.T) {
 	}
 	t.Error("editor command did not run")
 }
+
+func TestSaveSettings(t *testing.T) {
+	file := filepath.Join(t.TempDir(), config.ProjectFile)
+	_, url, base := start(t, func(c *config.Config) { c.ConfigFile = file })
+	c := login(t, url)
+	post := func(body string, header bool) int {
+		req, _ := http.NewRequest(http.MethodPost, base+"/api/settings", strings.NewReader(body))
+		if header {
+			req.Header.Set(requestHeader, "1")
+		}
+		res, err := c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res.StatusCode
+	}
+	good := `{"theme":"dark","colorBy":"size","heightScale":"log","expandDepth":2,"hideLanguages":["Go"]}`
+	if code := post(good, false); code != http.StatusForbidden {
+		t.Errorf("without CSRF header: %d", code)
+	}
+	if code := post(`{"theme":"neon","colorBy":"size","heightScale":"log"}`, true); code != http.StatusBadRequest {
+		t.Errorf("invalid theme: %d", code)
+	}
+	if code := post(good, true); code != http.StatusNoContent {
+		t.Fatalf("save: %d", code)
+	}
+	if data, err := os.ReadFile(file); err != nil || !strings.Contains(string(data), "height_scale: log") {
+		t.Errorf("config file: %v\n%s", err, data)
+	}
+	if code, body := get(t, c, base+"/api/config", nil); code != 200 || !strings.Contains(body, `"heightScale":"log"`) {
+		t.Errorf("config after save: %d %s", code, body)
+	}
+}
+
+func TestStaticExportDownload(t *testing.T) {
+	_, url, base := start(t)
+	c := login(t, url)
+	if code, body := get(t, c, base+"/api/export?format=html", nil); code != 200 || !strings.Contains(body, `id="depphunter-data"`) {
+		t.Errorf("html export: %d %.100s", code, body)
+	}
+}

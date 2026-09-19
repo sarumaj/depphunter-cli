@@ -1,0 +1,233 @@
+package rust
+
+import (
+	"path"
+	"sort"
+	"strings"
+
+	"github.com/BurntSushi/toml"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/scan"
+)
+
+var stdCrates = map[string]bool{"std": true, "core": true, "alloc": true, "proc_macro": true, "test": true}
+
+// dep is one Cargo dependency as the code names it (dashes become underscores).
+type dep struct {
+	pkg     string // package name on crates.io (differs from the key when renamed)
+	version string
+	path    string // project-relative directory of a path dependency
+}
+
+type crate struct {
+	dir  string // directory holding Cargo.toml
+	deps map[string]dep
+}
+
+type resolver struct {
+	files   map[string]bool
+	crates  []*crate          // deepest first, so a file finds its own crate
+	members map[string]string // normalised package name -> crate dir (workspace / path crates)
+	locked  map[string]string // package -> version from Cargo.lock
+}
+
+func norm(name string) string { return strings.ReplaceAll(name, "-", "_") }
+
+func newResolver(all []*scan.File) *resolver {
+	r := &resolver{files: map[string]bool{}, members: map[string]string{}, locked: map[string]string{}}
+	workspaceDeps := map[string]dep{}
+	type manifest struct {
+		f   *scan.File
+		doc map[string]any
+	}
+	var manifests []manifest
+	for _, f := range all {
+		r.files[f.Path] = true
+		switch path.Base(f.Path) {
+		case "Cargo.toml":
+			var doc map[string]any
+			if _, err := toml.DecodeFile(f.Abs, &doc); err == nil {
+				manifests = append(manifests, manifest{f, doc})
+				if ws, ok := doc["workspace"].(map[string]any); ok {
+					for k, v := range table(ws["dependencies"]) {
+						workspaceDeps[norm(k)] = parseDep(k, v, path.Dir(f.Path))
+					}
+				}
+			}
+		case "Cargo.lock":
+			var lock struct {
+				Package []struct{ Name, Version string }
+			}
+			if _, err := toml.DecodeFile(f.Abs, &lock); err == nil {
+				for _, p := range lock.Package {
+					r.locked[p.Name] = p.Version
+				}
+			}
+		}
+	}
+	for _, m := range manifests {
+		dir := path.Dir(m.f.Path)
+		c := &crate{dir: dir, deps: map[string]dep{}}
+		if pkg, ok := m.doc["package"].(map[string]any); ok {
+			if name, ok := pkg["name"].(string); ok {
+				r.members[norm(name)] = dir
+			}
+		}
+		add := func(t map[string]any) {
+			for k, v := range t {
+				d := parseDep(k, v, dir)
+				if w, ok := v.(map[string]any); ok && w["workspace"] == true {
+					if wd, ok := workspaceDeps[norm(k)]; ok {
+						d = wd
+					}
+				}
+				c.deps[norm(k)] = d
+			}
+		}
+		for _, key := range []string{"dependencies", "dev-dependencies", "build-dependencies"} {
+			add(table(m.doc[key]))
+		}
+		for _, t := range table(m.doc["target"]) { // [target.'cfg(...)'.dependencies]
+			for _, key := range []string{"dependencies", "dev-dependencies", "build-dependencies"} {
+				add(table(table(t)[key]))
+			}
+		}
+		r.crates = append(r.crates, c)
+	}
+	sort.Slice(r.crates, func(i, j int) bool { return len(r.crates[i].dir) > len(r.crates[j].dir) })
+	return r
+}
+
+func table(v any) map[string]any {
+	t, _ := v.(map[string]any)
+	return t
+}
+
+func parseDep(key string, v any, dir string) dep {
+	d := dep{pkg: key}
+	switch v := v.(type) {
+	case string:
+		d.version = v
+	case map[string]any:
+		if s, ok := v["version"].(string); ok {
+			d.version = s
+		}
+		if s, ok := v["package"].(string); ok {
+			d.pkg = s
+		}
+		if s, ok := v["path"].(string); ok {
+			d.path = path.Clean(path.Join(dir, s))
+		}
+	}
+	return d
+}
+
+func (r *resolver) crateOf(file string) *crate {
+	for _, c := range r.crates {
+		if c.dir == "." || strings.HasPrefix(file, c.dir+"/") {
+			return c
+		}
+	}
+	return nil
+}
+
+// moduleDir is where a file's child modules live: src/lib.rs and a/mod.rs own their
+// directory, a/b.rs owns a/b/.
+func moduleDir(file string) string {
+	switch base := path.Base(file); base {
+	case "lib.rs", "main.rs", "mod.rs":
+		return path.Dir(file)
+	default:
+		return path.Join(path.Dir(file), strings.TrimSuffix(base, ".rs"))
+	}
+}
+
+func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
+	segs := strings.Split(imp.Module, "::")
+	c := r.crateOf(file)
+	switch first := segs[0]; {
+	case first == "crate":
+		if c != nil {
+			t, _ := r.probe(path.Join(c.dir, "src"), segs[1:])
+			return t
+		}
+		return lang.Target{}
+	case first == "self":
+		t, _ := r.probe(moduleDir(file), segs[1:])
+		return t
+	case first == "super":
+		dir := moduleDir(file)
+		for len(segs) > 0 && segs[0] == "super" {
+			dir, segs = path.Dir(dir), segs[1:]
+		}
+		t, _ := r.probe(dir, segs)
+		return t
+	case stdCrates[first]:
+		return lang.Target{Ecosystem: ecoStd, Package: first}
+	}
+	// Edition 2018 paths may name a module of the current file directly.
+	if t, ok := r.probe(moduleDir(file), segs[:1]); ok {
+		if t2, ok := r.probe(moduleDir(file), segs); ok {
+			return t2
+		}
+		return t
+	}
+	// Crates are lower case by convention; `use Enum::*` names a local item.
+	if first := segs[0]; first != "" && first[0] >= 'A' && first[0] <= 'Z' {
+		return lang.Target{}
+	}
+	name := norm(segs[0])
+	if c != nil {
+		if d, ok := c.deps[name]; ok {
+			if d.path != "" {
+				return r.local(d.path, segs[1:])
+			}
+			if dir, ok := r.members[norm(d.pkg)]; ok {
+				return r.local(dir, segs[1:])
+			}
+			v := d.version
+			if exact := r.locked[d.pkg]; exact != "" {
+				v = exact
+			}
+			return lang.Target{Ecosystem: ecoCrates, Package: d.pkg, Version: v}
+		}
+	}
+	if dir, ok := r.members[name]; ok {
+		return r.local(dir, segs[1:])
+	}
+	return lang.Target{Ecosystem: ecoCrates, Package: segs[0], Unresolved: true}
+}
+
+// local resolves a path inside another project crate, falling back to the crate itself.
+func (r *resolver) local(crateDir string, segs []string) lang.Target {
+	if t, ok := r.probe(path.Join(crateDir, "src"), segs); ok && len(segs) > 0 {
+		return t
+	}
+	return lang.Target{Local: crateDir}
+}
+
+// probe finds the module file for the longest prefix of segs under dir; with no
+// segments it returns the crate or module root file.
+func (r *resolver) probe(dir string, segs []string) (lang.Target, bool) {
+	if len(segs) == 0 {
+		for _, root := range []string{"lib.rs", "main.rs", "mod.rs"} {
+			if p := path.Join(dir, root); r.files[p] {
+				return lang.Target{Local: p}, true
+			}
+		}
+		if r.files[dir+".rs"] { // 2018 layout: a.rs owns a/
+			return lang.Target{Local: dir + ".rs"}, true
+		}
+		return lang.Target{}, false
+	}
+	for n := len(segs); n > 0; n-- {
+		p := path.Join(append([]string{dir}, segs[:n]...)...)
+		for _, cand := range []string{p + ".rs", path.Join(p, "mod.rs")} {
+			if r.files[cand] {
+				return lang.Target{Local: cand}, true
+			}
+		}
+	}
+	return lang.Target{}, false
+}

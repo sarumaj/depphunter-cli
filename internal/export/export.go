@@ -4,10 +4,13 @@ package export
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
 	"io"
+	"os"
+	"path/filepath"
 	"sort"
 	"strconv"
 	"strings"
@@ -15,6 +18,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/graph"
 )
 
+// Formats lists what Write produces; "html" (the static page) is written by package web.
 var Formats = []string{"json", "graphml", "dot"}
 
 // ContentType and extension per format, for downloads.
@@ -227,4 +231,28 @@ func writeDOT(w io.Writer, g *graph.Graph) error {
 func quote(s string) string {
 	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`)
 	return `"` + r.Replace(s) + `"`
+}
+
+// Sources reads the text of the graph's files for a static export. Files over perFile
+// bytes and binary files are skipped; reading stops once total bytes are collected.
+func Sources(root string, g *graph.Graph, perFile, total int64) map[string]string {
+	out := map[string]string{}
+	var used int64
+	for _, n := range g.Nodes {
+		if n.Kind != graph.KindFile {
+			continue
+		}
+		abs := filepath.Join(root, filepath.FromSlash(n.Path))
+		st, err := os.Stat(abs)
+		if err != nil || st.Size() > perFile || used+st.Size() > total {
+			continue
+		}
+		data, err := os.ReadFile(abs)
+		if err != nil || bytes.IndexByte(data, 0) >= 0 {
+			continue
+		}
+		out[n.Path] = string(data)
+		used += int64(len(data))
+	}
+	return out
 }
