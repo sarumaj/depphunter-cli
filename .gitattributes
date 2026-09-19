@@ -1,11 +1,10 @@
 # Check text out with LF everywhere: fixtures and golden outputs are byte-exact, and
 # Windows checkouts would otherwise convert them to CRLF.
 * text=auto eol=lf
-*.png binary
-*.gz binary
 *.png filter=lfs diff=lfs merge=lfs -text
-*.glb filter=lfs diff=lfs merge=lfs -text
+*.gz binary
 *.mp4 filter=lfs diff=lfs merge=lfs -text
-*.gz filter=lfs diff=lfs merge=lfs -text
 *.webm filter=lfs diff=lfs merge=lfs -text
 *.webp filter=lfs diff=lfs merge=lfs -text
+*.glb filter=lfs diff=lfs merge=lfs -text
+*.gz filter=lfs diff=lfs merge=lfs -text
