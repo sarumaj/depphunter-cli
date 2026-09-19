@@ -38,3 +38,13 @@ export async function saveSettings(ui) {
   });
   if (!res.ok) throw new Error((await res.text()).trim());
 }
+
+/** The git history, 'pending' while the server reads it, or null without one. */
+export async function fetchHistory() {
+  if (STATIC) return STATIC.history || null;
+  const res = await fetch('api/history');
+  if (res.status === 202) return 'pending';
+  if (res.status === 204) return null;
+  if (!res.ok) throw new Error(`api/history: ${res.status} ${await res.text()}`);
+  return res.json();
+}

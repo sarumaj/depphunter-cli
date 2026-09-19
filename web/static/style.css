@@ -24,6 +24,7 @@
   --terrace-a: #efeee9;
   --terrace-b: #dddbd3;
   --district: #bdbab0;
+  --no-data: #d9d7d0;   /* history modes: no commits in range */
   --pkg: #8f8b80;
   --pkg-unresolved: #c9c6bc;
   /* edges use ink, not hues, so they never impersonate a language */
@@ -46,7 +47,7 @@
     --seq-1: #184f95; --seq-2: #1c5cab; --seq-3: #256abf; --seq-4: #2a78d6;
     --seq-5: #3987e5; --seq-6: #6da7ec; --seq-7: #9ec5f4;
     --water: #11171b; --land: #3b3934; --terrace-a: #2a2a28; --terrace-b: #34332f;
-    --district: #55534d; --pkg: #7c786e; --pkg-unresolved: #4a4843;
+    --district: #55534d; --no-data: #3a3935; --pkg: #7c786e; --pkg-unresolved: #4a4843;
     --edge-out: #ffffff; --edge-in: #898781; --dim: #45443f;
     --hl-keyword: #e87ba4; --hl-string: #5ccf9e; --hl-comment: #898781; --hl-number: #f0b24a;
     --hl-title: #86b6ef; --hl-type: #b3a9f2;
@@ -62,7 +63,7 @@
   --seq-1: #184f95; --seq-2: #1c5cab; --seq-3: #256abf; --seq-4: #2a78d6;
   --seq-5: #3987e5; --seq-6: #6da7ec; --seq-7: #9ec5f4;
   --water: #11171b; --land: #3b3934; --terrace-a: #2a2a28; --terrace-b: #34332f;
-  --district: #55534d; --pkg: #7c786e; --pkg-unresolved: #4a4843;
+  --district: #55534d; --no-data: #3a3935; --pkg: #7c786e; --pkg-unresolved: #4a4843;
   --edge-out: #ffffff; --edge-in: #898781; --dim: #45443f;
   --hl-keyword: #e87ba4; --hl-string: #5ccf9e; --hl-comment: #898781; --hl-number: #f0b24a;
   --hl-title: #86b6ef; --hl-type: #b3a9f2;
@@ -115,7 +116,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, #map:focus-visi
 
 .search { position: relative; }
 .search input, .popover input[type=text] {
-  width: 300px;
+  width: 240px;
   background: var(--page);
   border: 1px solid var(--border);
   border-radius: 6px;
@@ -228,6 +229,10 @@ main { position: relative; flex: 1; min-height: 0; }
 #legend .edge-key span { display: flex; align-items: center; gap: 6px; }
 #legend .line { width: 18px; height: 3px; border-radius: 2px; }
 #legend p { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
+#legend .no-data { display: flex; align-items: center; gap: 6px; margin-top: 6px; color: var(--text-2); font-size: 12px; }
+#legend .since { display: flex; align-items: center; gap: 8px; margin-top: 8px; color: var(--text-2); font-size: 12px; }
+#legend .since input { flex: 1; accent-color: var(--accent); }
+#legend .hint { margin-top: 2px; }
 
 #status {
   position: absolute; right: 16px; bottom: 16px;
@@ -267,6 +272,9 @@ main { position: relative; flex: 1; min-height: 0; }
 .p-list li:hover { background: var(--grid); }
 .p-list .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .p-list .meta { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
+.p-list.authors li { cursor: default; }
+.p-list .share { flex: 0 0 90px; height: 6px; border-radius: 3px; background: var(--grid); overflow: hidden; }
+.p-list .share i { display: block; height: 100%; background: var(--seq-4); border-radius: 3px; }
 .bar { display: flex; height: 10px; gap: 2px; border-radius: 4px; overflow: hidden; }
 .bar-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; color: var(--text-2); font-size: 12px; }
 .bar-legend span { display: flex; align-items: center; gap: 5px; }
