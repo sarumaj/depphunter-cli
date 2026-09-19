@@ -1,0 +1,10 @@
+[project]
+name = "app"
+dependencies = ["requests>=2.31", "PyYAML==6.0.1", "numpy"]
+
+[dependency-groups]
+dev = ["pytest>=8", { include-group = "lint" }]
+
+[tool.poetry.dependencies]
+python = "^3.11"
+beautifulsoup4 = { version = "^4.12", extras = ["lxml"] }

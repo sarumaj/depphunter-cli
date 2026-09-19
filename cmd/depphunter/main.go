@@ -17,6 +17,8 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/config"
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/golang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/javascript"
+	"github.com/sarumaj/depphunter-cli/internal/lang/python"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 	"github.com/sarumaj/depphunter-cli/internal/server"
 	"github.com/sarumaj/depphunter-cli/web"
@@ -47,7 +49,7 @@ func run() error {
 	start := time.Now()
 	g, err := analyze.Run(ctx, cfg.Root, analyze.Options{
 		Scan:    scan.Options{Exclude: cfg.Exclude, MaxFileSize: cfg.MaxFileSize},
-		Plugins: []lang.Plugin{golang.Plugin{}},
+		Plugins: []lang.Plugin{golang.Plugin{}, javascript.Plugin{}, python.Plugin{}},
 	})
 	if err != nil {
 		return err

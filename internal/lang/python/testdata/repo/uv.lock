@@ -1,0 +1,9 @@
+version = 1
+
+[[package]]
+name = "numpy"
+version = "1.26.4"
+
+[[package]]
+name = "certifi"
+version = "2024.2.2"

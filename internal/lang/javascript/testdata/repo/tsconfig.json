@@ -1,0 +1,8 @@
+{
+  // comments and trailing commas are allowed in tsconfig
+  "extends": "./tsconfig.base",
+  "compilerOptions": {
+    /* resolved relative to the inherited baseUrl */
+    "paths": { "@app/*": ["src/*"], },
+  },
+}
