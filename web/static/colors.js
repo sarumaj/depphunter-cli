@@ -1,4 +1,4 @@
-// color roles. Every value is read from CSS custom properties (style.css), so the
+// Color roles. Every value is read from CSS custom properties (style.css), so the
 // light and dark themes are each chosen deliberately, not derived by inversion.
 
 const SLOTS = 7; // categorical slots for languages; the rest fold into "Other"

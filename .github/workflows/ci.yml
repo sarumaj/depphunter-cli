@@ -21,10 +21,12 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         go: [stable]
         include:
-          # The oldest supported Go. GOTOOLCHAIN=local makes the build fail instead of
-          # silently downloading a newer toolchain when go.mod starts to require one.
+          # The oldest supported Go: exactly the version go.mod states, so go.mod
+          # cannot claim less than the code and its dependencies need.
+          # GOTOOLCHAIN=local makes the build fail instead of silently downloading
+          # a newer toolchain.
           - os: ubuntu-latest
-            go: "1.22.x"
+            go: oldest
     runs-on: ${{ matrix.os }}
     env:
       GOTOOLCHAIN: local
@@ -32,7 +34,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          go-version: ${{ matrix.go }}
+          go-version: ${{ matrix.go != 'oldest' && matrix.go || '' }}
+          go-version-file: ${{ matrix.go == 'oldest' && 'go.mod' || '' }}
       - name: Build
         run: go build ./...
       - name: Install gopls
@@ -54,8 +57,8 @@ jobs:
       - uses: actions/checkout@v4
       - uses: actions/setup-go@v5
         with:
-          # staticcheck 2024.1 reads Go 1.22 export data; keep both in step.
-          go-version: "1.22.x"
+          # staticcheck must be built with a Go at least as new as go.mod's.
+          go-version-file: go.mod
       - name: gofmt
         run: |
           # testdata holds deliberately broken sources.
@@ -70,7 +73,7 @@ jobs:
       - name: go vet
         run: go vet ./...
       - name: staticcheck
-        run: go run honnef.co/go/tools/cmd/staticcheck@2024.1.1 ./...
+        run: go run honnef.co/go/tools/cmd/staticcheck@2026.2.1 ./...
       - uses: actions/setup-node@v4
         with:
           node-version: 20

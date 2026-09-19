@@ -19,7 +19,7 @@
       <button id="filters-btn" aria-expanded="false" aria-controls="filters">Filters <span id="filter-count" class="count" hidden></span></button>
       <div id="filters" class="popover" hidden>
         <section>
-          <h4>Languages <span class="actions"><a id="langs-all" class="link">all</a> · <a id="langs-none" class="link">none</a></span></h4>
+          <h4>Languages <span class="actions"><button id="langs-all" class="link" type="button">all</button> · <button id="langs-none" class="link" type="button">none</button></span></h4>
           <ul id="lang-list" class="checks"></ul>
         </section>
         <section>
@@ -34,11 +34,11 @@
       </div>
     </div>
     <div class="group" role="group" aria-label="Expansion">
-      <button id="collapse-level" title="Collapse one level (-)">−</button>
+      <button id="collapse-level" title="Collapse one level (-)" aria-label="Collapse one level">−</button>
       <span class="hint" id="depth-label">depth</span>
-      <button id="expand-level" title="Expand one level (+)">+</button>
+      <button id="expand-level" title="Expand one level (+)" aria-label="Expand one level">+</button>
     </div>
-    <label class="group">color
+    <label class="group">Color
       <select id="color-by">
         <option value="language">Language</option>
         <option value="size">Size</option>
@@ -66,8 +66,8 @@
     </label>
     <div class="spacer"></div>
     <div class="group" role="group" aria-label="View">
-      <button id="rotate-left" title="Rotate left (Q)">⟲</button>
-      <button id="rotate-right" title="Rotate right (E)">⟳</button>
+      <button id="rotate-left" title="Rotate left (Q)" aria-label="Rotate left">⟲</button>
+      <button id="rotate-right" title="Rotate right (E)" aria-label="Rotate right">⟳</button>
       <button id="fit" title="Fit to screen (F)">Fit</button>
       <button id="walk" title="Walk the map in first person (V)" aria-pressed="false">Walk</button>
       <button id="save-settings">Save settings</button>
@@ -81,7 +81,7 @@
           <a data-server href="api/export?format=html" download>HTML <span class="hint">self-contained map to share</span></a>
         </div>
       </div>
-      <button id="help-btn" title="Keyboard & mouse (?)">?</button>
+      <button id="help-btn" title="Keyboard & mouse (?)" aria-label="Keyboard and mouse help">?</button>
     </div>
   </header>
 
@@ -91,17 +91,18 @@
     <div id="walk-hud" hidden>
       <div class="crosshair"></div>
       <div class="w-bar">
-        <div><b class="w-mode">walking</b> · newspapers delivered <b class="w-papers">0</b> · planet radius <b class="w-radius"></b></div>
-        <div class="w-keys"><kbd>W A S D</kbd> move · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump · <kbd>F</kbd> fly
-          · <kbd>Click</kbd>/<kbd>Q</kbd> throw · <kbd>E</kbd> expand · <kbd>Enter</kbd> select · <kbd>Wheel</kbd> curvature</div>
+        <div><b class="w-mode">walking</b> · modules tagged <b class="w-tagged">0</b> · planet radius <b class="w-radius"></b></div>
+        <div class="w-keys"><kbd>W A S D</kbd>/<kbd>arrows</kbd> move · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump · <kbd>F</kbd> fly (<kbd>W</kbd> goes where you look, <kbd>Space</kbd>/<kbd>C</kbd> up/down)
+          · <kbd>Click</kbd> fire · hold <kbd>Right</kbd> scope · <kbd>Enter</kbd> details · <kbd>Wheel</kbd> zoom · <kbd>+</kbd> <kbd>-</kbd> curvature · <kbd>V</kbd> back to the map</div>
         <div class="w-hint hint"></div>
+        <div class="w-flash" role="status"></div>
       </div>
     </div>
-    <div id="tooltip" role="status" hidden></div>
+    <div id="tooltip" hidden></div>
     <section id="legend" aria-label="Legend"></section>
-    <div id="status"><span id="live" class="live" role="status" hidden></span><span id="status-text">Analyzing…</span></div>
+    <div id="status"><span id="live" class="live" role="status" hidden></span><span id="status-text" role="status" aria-live="polite">Analyzing…</span></div>
     <aside id="panel" hidden>
-      <button id="panel-close" class="close" title="Close (Esc)">×</button>
+      <button id="panel-close" class="close" title="Close (Esc)" aria-label="Close details">×</button>
       <div id="panel-body"></div>
     </aside>
     <dialog id="help">
@@ -118,23 +119,24 @@
         <tr><th>F</th><td>Fit to screen</td></tr>
         <tr><th>+ / −</th><td>Expand / collapse one level everywhere</td></tr>
         <tr><th>/</th><td>Search</td></tr>
-        <tr><th>O</th><td>Open selected file in your editor</td></tr>
+        <tr data-server><th>O</th><td>Open selected file in your editor</td></tr>
         <tr><th>P</th><td>Save the map as a PNG image</td></tr>
         <tr><th>Legend click</th><td>Hide / show a language</td></tr>
         <tr><th>Esc</th><td>Clear selection</td></tr>
       </table>
       <h2>Walk mode (V)</h2>
       <table>
-        <tr><th>Click the map</th><td>Look with the mouse (Esc frees it); or drag to look</td></tr>
+        <tr><th>Mouse</th><td>Look around: the pointer is captured at the reticle (Esc frees it, a click on the map captures it again; or drag to look)</td></tr>
         <tr><th>W A S D / arrows</th><td>Move / turn</td></tr>
         <tr><th>Shift</th><td>Run</td></tr>
-        <tr><th>Space</th><td>Jump (flying: rise)</td></tr>
-        <tr><th>F</th><td>Fly on / off (C sinks)</td></tr>
-        <tr><th>Click / Q</th><td>Throw a newspaper; the building it hits is selected</td></tr>
-        <tr><th>Enter</th><td>Select what the crosshair is on</td></tr>
-        <tr><th>E / right-click</th><td>Expand / collapse what the crosshair is on</td></tr>
-        <tr><th>Wheel / [ ]</th><td>Planet size (curvature)</td></tr>
-        <tr><th>V / Esc</th><td>Back to the map</td></tr>
+        <tr><th>Space</th><td>Jump (flying: straight up)</td></tr>
+        <tr><th>F</th><td>Fly on / off. Flying, W / S move where you look (look down and press W to dive); Space / C go straight up / down</td></tr>
+        <tr><th>Click</th><td>Fire a tracking dart: the module it hits is tagged, selected and its dependencies light up</td></tr>
+        <tr><th>Hold right button</th><td>Look through the scope (zoom)</td></tr>
+        <tr><th>Enter</th><td>Show the details of what the reticle is on (dependencies, source). The mouse is freed for reading; click the map to walk on. <kbd>O</kbd> opens the file in your editor.</td></tr>
+        <tr><th>Wheel</th><td>Zoom in / out</td></tr>
+        <tr><th>+ −</th><td>Planet size (curvature); <kbd>[</kbd> <kbd>]</kbd> do the same</td></tr>
+        <tr><th>V</th><td>Back to the map (Esc frees the mouse first, then leaves)</td></tr>
       </table>
       <p class="hint">Height encodes lines of code. Directories collapse into districts whose footprint grows with the number of files.</p>
       <form method="dialog"><button>Close</button></form>
