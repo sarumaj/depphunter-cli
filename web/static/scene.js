@@ -6,7 +6,8 @@
 // `curve` uniforms, and a vertex shader wraps world positions around the sphere.
 // Large flat boxes (land, terraces, districts) are drawn from a tessellated copy in
 // walk mode so their tops follow the curve instead of cutting through it as chords.
-// city.js dresses walk mode up as a city: sky, water, facades, streets and props.
+// city.js dresses both views up as a city (facades, streets, props); walk mode adds
+// sky and water.
 
 import * as THREE from './vendor/three.module.min.js';
 import { OrbitControls } from './vendor/OrbitControls.js';
@@ -58,11 +59,16 @@ export class MapScene {
     this.material = this.bendable(new THREE.MeshBasicMaterial({ vertexColors: true }), true);
     this.mesh = null;
     this.ground = null; // tessellated large boxes, shown in walk mode
-    this.props = null;  // trees and lamps, shown in walk mode
+    this.props = null;  // trees, bushes, lamps and ramps
     this.planet = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 48), waterMaterial(this.curve));
     this.sky = makeSky(this.curve);
     this.planet.visible = this.sky.visible = false;
-    this.scene.add(this.planet, this.sky);
+    // The isometric map's sea: a flat plane at the islands' feet, far larger than any
+    // view of the map can show (sized by setLimits); walk mode has the planet instead.
+    this.sea = new THREE.Mesh(new THREE.PlaneGeometry(1, 1).rotateX(-Math.PI / 2), waterMaterial(this.curve));
+    this.sea.position.y = SEA_LEVEL;
+    this.sea.renderOrder = -1;
+    this.scene.add(this.planet, this.sky, this.sea);
     this.edgeGroup = new THREE.Group();
     this.scene.add(this.edgeGroup);
     this.outline = null;
@@ -106,8 +112,12 @@ export class MapScene {
    */
   setBackground(colors) {
     this.colors = colors;
+    // The street and lawn shading's reference colors (city.js tint).
+    if (colors.ground) this.roads.uGroundRef.value.set(colors.ground);
+    if (colors.land) this.roads.uLandRef.value.set(colors.land);
     this.scene.background = new THREE.Color(this.walking ? colors.sky : colors.water);
     this.planet.material.color.set(colors.sea);
+    this.sea.material.color.set(colors.sea);
     this.sky.material.uniforms.uTop.value.set(colors.skyTop);
     this.sky.material.uniforms.uHorizon.value.set(colors.sky);
     const night = new THREE.Color(colors.skyTop).getHSL({}).l < 0.15;
@@ -148,8 +158,11 @@ export class MapScene {
     this.controls.enabled = !on;
     this.scene.fog = on ? new THREE.Fog(this.colors.sky, 30, 160) : null;
     this.planet.visible = this.sky.visible = on;
+    this.sea.visible = !on;
+    if (on && this.groundColors) this.setColors(...this.groundColors); // deferred while off
     this.setBackground(this.colors);
     this.showGround();
+    if (this.outlined) this.setOutline(...this.outlined);
   }
 
   setRadius(r) {
@@ -179,6 +192,7 @@ export class MapScene {
     this.boxes = boxes;
     const geo = this.unitBox.clone();
     geo.setAttribute('aKind', new THREE.InstancedBufferAttribute(Float32Array.from(boxes, kindCode), 1));
+    geo.setAttribute('aFade', new THREE.InstancedBufferAttribute(new Float32Array(boxes.length), 1));
     const mesh = new THREE.InstancedMesh(geo, this.material, boxes.length);
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
     boxes.forEach((b, i) => {
@@ -196,10 +210,17 @@ export class MapScene {
     this.scene.add(this.ground);
     if (this.props) {
       this.scene.remove(this.props);
-      for (const m of this.props.children) m.dispose();
+      // Each layout gets its own prop materials and ramp geometry; the instanced
+      // plants and lamps share their geometry across layouts (city.js), so only their
+      // instance buffers go.
+      for (const m of this.props.children) {
+        m.material.dispose();
+        if (m.isInstancedMesh) m.dispose();
+        else m.geometry.dispose();
+      }
     }
     this.props = makeProps(boxes, m => this.bendable(m));
-    this.roadsFor = null; // built when walk mode shows them
+    setRoads(this.roads, boxes); // both views draw the streets
     if (this.colors) setNight(this.props, this.curve.uNight.value > 0);
     this.scene.add(this.props);
     this.setColors(colors);
@@ -222,6 +243,8 @@ export class MapScene {
     }
     if (!boxes.length) { minX = minZ = -1; maxX = maxZ = 1; }
     this.limits = { minX, maxX, minZ, maxZ, maxY };
+    this.sea.position.set((minX + maxX) / 2, SEA_LEVEL, (minZ + maxZ) / 2);
+    this.sea.scale.setScalar(SEA_SIZE * Math.max(50, maxX - minX, maxZ - minZ));
     this.updateMinZoom();
     this.clampView();
   }
@@ -256,11 +279,7 @@ export class MapScene {
   // shrunk to nothing; the isometric map shows the instances only.
   showGround() {
     if (!this.mesh) return;
-    if (this.walking && this.roadsFor !== this.boxes) {
-      setRoads(this.roads, this.boxes);
-      this.roadsFor = this.boxes;
-    }
-    this.ground.visible = this.props.visible = this.walking;
+    this.ground.visible = this.walking;
     this.mesh.frustumCulled = !this.walking;
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
     this.boxes.forEach((b, i) => {
@@ -272,17 +291,32 @@ export class MapScene {
     this.requestRender();
   }
 
-  setColors(colors) {
+  /**
+   * colors: CSS colors, one per box. faded: optional flags, one per box: faded boxes
+   * (dimmed by a selection or filter) drop their facade and roof detail and show
+   * their plain color, so what is in focus stands out.
+   */
+  setColors(colors, faded = []) {
     const c = new THREE.Color();
     colors.forEach((col, i) => this.mesh.setColorAt(i, c.set(col)));
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
-    // The ground's vertex colors are its face shade times its box's color.
+    const fade = this.mesh.geometry.getAttribute('aFade');
+    for (let i = 0; i < fade.count; i++) fade.setX(i, faded[i] ? 1 : 0);
+    fade.needsUpdate = true;
+    // The ground's vertex colors are its face shade times its box's color. It is only
+    // drawn while walking, so outside walk mode the (much larger) buffer is left for
+    // setWalking to refresh.
+    this.groundColors = [colors, faded];
+    if (!this.walking) return this.requestRender();
     const g = this.ground.geometry, shade = g.getAttribute('shade'), box = g.getAttribute('box'), col = g.getAttribute('color');
+    const gFade = g.getAttribute('aFade');
     for (let v = 0; v < box.count; v++) {
       c.set(colors[box.getX(v)]).multiplyScalar(shade.getX(v));
       col.setXYZ(v, c.r, c.g, c.b);
+      gFade.setX(v, faded[box.getX(v)] ? 1 : 0);
     }
     col.needsUpdate = true;
+    gFade.needsUpdate = true;
     this.requestRender();
   }
 
@@ -303,10 +337,13 @@ export class MapScene {
       this.outline.geometry.dispose();
       this.outline = null;
     }
+    this.outlined = [box, color];
     if (box) {
+      // The map shows the selection through whatever hides it; in walk mode, where
+      // big blocks surround the walker, only the visible edges.
       const geo = outlineGeometry(box.w + 0.08, box.h + 0.08, box.d + 0.08);
-      this.outline = new THREE.LineSegments(geo, this.bendable(new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true })));
-      this.outline.position.set(box.x, box.y + box.h / 2, box.z);
+      this.outline = new THREE.LineSegments(geo, this.bendable(new THREE.LineBasicMaterial({ color, depthTest: this.walking, transparent: true })));
+      this.outline.position.set(box.x, box.y - 0.04, box.z); // the geometry's base is at y=0
       this.outline.renderOrder = 10;
       this.outline.frustumCulled = false;
       this.scene.add(this.outline);
@@ -451,6 +488,10 @@ export class MapScene {
 }
 
 const WATER_DEPTH = 0.45;
+// The isometric sea: just above the land boxes' base (layout LAND_H below the
+// mainland), so shores meet the water without a sliver of box bottom, and this many
+// map sizes across.
+const SEA_LEVEL = -WATER_DEPTH + 0.03, SEA_SIZE = 40;
 // Zooming out stops when the map fills this share of the view; panning stops when
 // the view's centre is this far beyond the map (a share of its size, plus a minimum).
 const MIN_ZOOM_SHARE = 0.35, PAN_MARGIN = 0.25, PAN_MARGIN_MIN = 6;
@@ -552,6 +593,7 @@ function tessellate(boxes) {
   geo.setAttribute('aKind', new THREE.Float32BufferAttribute(kind, 1));
   geo.setAttribute('aBoxCenter', new THREE.Float32BufferAttribute(center, 3));
   geo.setAttribute('aBoxSize', new THREE.Float32BufferAttribute(size, 3));
+  geo.setAttribute('aFade', new THREE.Float32BufferAttribute(new Float32Array(pos.length / 3), 1));
   geo.setIndex(index);
   return geo;
 }

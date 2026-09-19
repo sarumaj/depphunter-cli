@@ -1,8 +1,9 @@
-// The city look of walk mode, all procedural (no image assets): a sky dome, rippling
-// water, and shader "textures" for the boxes - building facades and roofs, a street
-// network on every terrace, stairs between terrace levels, grassy shores - plus
-// trees and street lamps. The isometric map is untouched: every effect is gated on
-// uBend.
+// The city look, all procedural (no image assets): shader "textures" for the boxes -
+// building facades and roofs, a street network on every terrace, stairs between
+// terrace levels, grassy shores - plus trees, bushes, street lamps and ramps, on the
+// isometric map and in walk mode alike; walk mode adds a sky dome and rippling water.
+// The textures are unlit and antialiased by pixel footprint, so detail fades out
+// when zoomed out rather than flickering.
 //
 // Streets are the free space of a terrace top: everything not covered by a child
 // (building, district, nested terrace, symbol plot). So they connect by
@@ -12,8 +13,10 @@
 // cell in a lookup texture, see setRoads): close to one is sidewalk, halfway between
 // two facing ones is the centre line, and where facing obstacles end is a crossing.
 //
-// colors stay data first: facades and roofs are modulated from the box's own
-// color (language, size, history, dimming, hover), never replaced.
+// Colors stay data first: facades and roofs are modulated from the box's own
+// color (language, size, history, dimming, hover), never replaced. Streets and lawns
+// have colors of their own, tinted by how far the box's color is from its kind's
+// usual one (uGroundRef, uLandRef): nesting levels, hover and flashes still show.
 
 import * as THREE from './vendor/three.module.min.js';
 
@@ -58,6 +61,7 @@ float fbm(vec2 p) {
 /** Vertex declarations for city materials (before main). */
 export const CITY_VERT_HEAD = `
 attribute float aKind;
+attribute float aFade;     // 1: dimmed, drawn plain (MapScene.setColors)
 attribute vec3 aBoxCenter; // base centre, for non-instanced boxes
 attribute vec3 aBoxSize;
 varying vec3 vLP;          // position relative to the box's base centre, world units
@@ -65,6 +69,7 @@ varying vec3 vObjN;
 // Per box. Flat: interpolation noise in a seed, run through a hash, speckles windows.
 flat varying vec3 vSize;
 flat varying float vKind;
+flat varying float vFade;
 flat varying vec2 vSeed;
 `;
 
@@ -81,6 +86,7 @@ export const CITY_VERT_BODY = `
 #endif
   vObjN = normal;
   vKind = aKind;
+  vFade = aFade;
 `;
 
 /** Fragment declarations: surface functions, all in linear color. */
@@ -91,7 +97,12 @@ varying vec3 vLP;
 varying vec3 vObjN;
 flat varying vec3 vSize;
 flat varying float vKind;
+flat varying float vFade;
 flat varying vec2 vSeed;
+
+const float FADE = 0.72; // how far a dimmed box is blended towards its plain color
+
+vec3 cityTexture(vec3 base);
 
 // 1 where t lies in [lo, hi], with edges softened over w (antialiasing).
 float band(float t, float lo, float hi, float w) {
@@ -107,10 +118,15 @@ vec3 paving(vec3 base, vec2 p) {
   return mix(c, c * 0.72, joint) * dark(0.42);
 }
 
+// A lawn: one green with gentle, large variation and a few drier patches, and blades
+// up close. Bushes and trees are real geometry (makeProps), not painted on.
 vec3 grass(vec3 base, vec2 p) {
-  vec3 g = mix(vec3(0.07, 0.16, 0.035), vec3(0.16, 0.28, 0.06), vnoise(p * 2.5));
-  g *= 0.8 + 0.4 * vnoise(p * 22.0);
-  return mix(g, base, 0.12) * dark(0.35);
+  vec2 w = fwidth(p * 60.0);
+  float far = smoothstep(0.3, 1.0, max(w.x, w.y));
+  vec3 g = vec3(0.12, 0.24, 0.05) * (0.9 + 0.12 * vnoise(p * 0.6) + 0.06 * vnoise(p * 3.1));
+  g = mix(g, vec3(0.2, 0.28, 0.08), 0.3 * smoothstep(0.6, 0.85, vnoise(p * 1.7 + 4.0)));
+  g *= 0.85 + 0.3 * mix(vnoise(p * 60.0), 0.5, far);
+  return mix(g, base, 0.08) * dark(0.35);
 }
 
 vec3 asphalt(vec2 p) {
@@ -130,19 +146,26 @@ uniform highp sampler2D uRoadIdx;
 uniform highp sampler2D uRoadRects;
 uniform vec4 uRoadGrid; // grid origin x, z; cells per unit; width of uRoadRects
 uniform float uRoadOn;
+uniform vec3 uGroundRef; // a terrace's usual color (the palette's), and land's
+uniform vec3 uLandRef;
+
+// How a box's color differs from its kind's usual one, as a multiplier.
+vec3 tint(vec3 base, vec3 ref) { return clamp(base / max(ref, vec3(0.02)), 0.4, 2.2); }
 
 const float SIDEWALK = 0.065;
 const float CARRIAGE = 0.42; // farther from every obstacle than this is a park, not a street
 
-// A pocket park where the packing left a hole: lawn, shrubs, and gravel paths.
+// A pocket park where the packing left a hole: a mown lawn crossed by gravel paths
+// (PARK_PATHS apart; makeProps keeps its bushes and trees off them).
 vec3 park(vec3 base, vec2 p) {
   vec3 c = grass(base, p);
-  float shrub = smoothstep(0.62, 0.7, fbm(p * 1.7 + 9.0));
-  c = mix(c, vec3(0.03, 0.09, 0.02) * (0.7 + 0.6 * vnoise(p * 30.0)) * dark(0.35), shrub);
+  vec2 m = p / 0.35, mw = fwidth(m) + 1e-4;
+  c *= 1.0 + 0.05 * (band(fract(m.x), 0.0, 0.5, mw.x) * 2.0 - 1.0) * (1.0 - smoothstep(0.3, 0.6, mw.x)); // mowing stripes
   vec2 t = p / 2.2, w = fwidth(t) + 1e-4;
   float path = max(band(fract(t.x), 0.47, 0.53, w.x), band(fract(t.y), 0.47, 0.53, w.y));
   vec3 gravel = vec3(0.42, 0.38, 0.3) * (0.85 + 0.3 * vnoise(p * 50.0)) * dark(0.4);
-  return mix(c, gravel, path * (1.0 - shrub));
+  c = mix(c, c * 0.8, max(band(fract(t.x), 0.455, 0.545, w.x), band(fract(t.y), 0.455, 0.545, w.y))); // worn edges
+  return mix(c, gravel, path);
 }
 
 // The top of a terrace: streets between its children. lp: position from the base
@@ -222,7 +245,7 @@ vec3 streets(vec3 base, vec3 lp, vec3 sz) {
       c = mix(c, vec3(0.78, 0.6, 0.12), dash * (1.0 - lid) * near);
     }
   }
-  c = mix(c, base, 0.08) * dark(0.5); // the block keeps its tint, and hover shows
+  c *= dark(0.5);
   // Sidewalk along every obstacle and edge, and around parks, behind pale curb stones.
   vec3 curb = vec3(0.5, 0.5, 0.48) * dark(0.45);
   vec3 walk = paving(base, p);
@@ -231,12 +254,15 @@ vec3 streets(vec3 base, vec3 lp, vec3 sz) {
   float edge = CARRIAGE + SIDEWALK;
   c = mix(c, paving(base, p), band(d1, CARRIAGE, edge, w));
   c = mix(c, curb, band(d1, CARRIAGE, CARRIAGE + 0.014, w));
-  return mix(c, park(base, p), smoothstep(edge - w, edge + w, d1));
+  c = mix(c, park(base, p), smoothstep(edge - w, edge + w, d1));
+  return c * tint(base, uGroundRef); // nesting levels alternate, hover shows
 }
 
-// Terrace sides carry a staircase in the middle of each long side: the walker steps
-// up anyway, the stairs show where the levels connect.
+// Terrace sides carry a staircase near one end of each long side (the other end is
+// where rampsFor puts a ramp): the walker steps up anyway, stairs and ramps show
+// where the levels connect.
 vec3 stairs(vec3 c, float u, float faceW, float v, float h) {
+  u -= faceW * 0.5 - 0.34;
   if (faceW < 1.5 || abs(u) > 0.16) return c;
   float wv = fwidth(v) + 1e-4, wu = fwidth(u) + 1e-4;
   float f = fract(v / (h / 4.0));
@@ -346,15 +372,23 @@ vec3 retaining(vec3 base, vec2 p, float mixBase) {
   return mix(c * 0.6, c, mix(stone, 0.85, far)) * dark(0.45);
 }
 
+// Dimmed boxes (a selection or the legend) keep their facades and roofs, only much
+// fainter, so the focus stands out without the city losing its texture.
 vec3 cityColor(vec3 base) {
+  vec3 c = cityTexture(base);
+  return vFade > 0.5 ? mix(c, base, FADE) : c;
+}
+
+vec3 cityTexture(vec3 base) {
   vec3 n = normalize(vObjN);
   float k = floor(vKind + 0.5);
+
   vec3 lp = vLP, sz = vSize;
   if (n.y > 0.5) {
     float ex = sz.x * 0.5 - abs(lp.x), ez = sz.z * 0.5 - abs(lp.z);
     float e = min(ex, ez);
     vec2 p = lp.xz + vSeed;
-    if (k < 0.5) return grass(base, p);
+    if (k < 0.5) return grass(base, p) * tint(base, uLandRef);
     if (k < 1.5) return streets(base, lp, sz);
     if (k > 5.5) return paving(base, p);
     return roof(base, lp, sz, e);
@@ -373,7 +407,7 @@ vec3 cityColor(vec3 base) {
 `;
 
 export const CITY_FRAG_BODY = `
-if (uBend > 0.5) diffuseColor.rgb = cityColor(diffuseColor.rgb);
+diffuseColor.rgb = cityColor(diffuseColor.rgb);
 `;
 
 // ------------------------------------------------------------------ street lookup
@@ -389,6 +423,7 @@ export function roadUniforms() {
   return {
     uRoadIdx: { value: null }, uRoadRects: { value: null },
     uRoadGrid: { value: new THREE.Vector4() }, uRoadOn: { value: 0 },
+    uGroundRef: { value: new THREE.Color(1, 1, 1) }, uLandRef: { value: new THREE.Color(1, 1, 1) },
   };
 }
 
@@ -503,7 +538,10 @@ export function makeSky(uniforms) {
   return sky;
 }
 
-/** Patches the planet's material with slow ripples. */
+/**
+ * Water with slow ripples: the planet's surface in walk mode, the sea around the
+ * isometric map. Ripples fade to their mean where a pixel covers several of them.
+ */
 export function waterMaterial(uniforms) {
   const mat = new THREE.MeshBasicMaterial();
   mat.onBeforeCompile = shader => {
@@ -513,6 +551,8 @@ export function waterMaterial(uniforms) {
     shader.fragmentShader = NOISE_GLSL + 'uniform float uTime, uNight;\nvarying vec3 vW;\n' + shader.fragmentShader.replace('#include <color_fragment>', `
       #include <color_fragment>
       float r = 0.5 * vnoise(vW.xz * 1.6 + vec2(uTime * 0.35, uTime * 0.2)) + 0.5 * vnoise(vW.xz * 4.5 - uTime * 0.3);
+      vec2 fw = fwidth(vW.xz * 4.5);
+      r = mix(r, 0.5, smoothstep(0.3, 1.0, max(fw.x, fw.y)));
       diffuseColor.rgb *= 0.8 + 0.4 * r;
       diffuseColor.rgb += smoothstep(0.8, 0.95, r) * mix(0.1, 0.03, uNight);`);
   };
@@ -522,26 +562,351 @@ export function waterMaterial(uniforms) {
 
 // ------------------------------------------------------------------ props
 
-// Lamps stand on the sidewalk along each terrace's edge (the street shader's SIDEWALK).
-const TREE_SPACING = 1.1, LAMP_SPACING = 1.6, LAMP_INSET = 0.035, SHORE_INSET = 0.6;
+// ------------------------------------------------------------------ blocks and ramps
+
+/** Terraces (city blocks, not a file's symbol plot) with the boxes standing on them. */
+function blocks(boxes) {
+  const byNode = new Map();
+  for (const b of boxes) if (b.kind === 'terrace' && b.node.kind !== 'file') byNode.set(b.node.id, b);
+  const kids = new Map([...byNode.values()].map(t => [t, []]));
+  for (const b of boxes) {
+    if (b.kind === 'land') continue;
+    const t = b.node.parentNode && byNode.get(b.node.parentNode.id);
+    if (t) kids.get(t).push(b);
+  }
+  return kids;
+}
+
+// A ramp runs along one side of a nested terrace, in the street beside it, from the
+// street's level at one corner up to the terrace's top: RAMP_W wide, at most RAMP_MAX
+// long, the last RAMP_LANDING of it level. From the landing a driveway, DRIVE deep,
+// crosses the terrace's sidewalk into its ring road; at the foot an apron, APRON
+// long, replaces the street's curb. The far end leaves room for the stairs (the
+// stairs shader).
+const RAMP_W = 0.2, RAMP_MAX = 2.4, RAMP_MIN_SIDE = 1.7, RAMP_START = 0.1, RAMP_CLEAR = 0.1;
+const RAMP_LANDING = 0.35, DRIVE = 0.14, APRON = RAMP_START + 0.07;
+
+const rampCache = new WeakMap();
 
 /**
- * Trees along every shore and lamps along every terrace's edge, as instanced meshes
- * that bend like the map. Returns a Group; lamps' heads glow at night (setNight).
+ * The ramps of a layout: for every nested terrace, one on the side with the most room
+ * beside it. Each ramp: {origin: [x, z] (low end, at the wall), u: direction up the
+ * ramp, n: away from the wall, len, rise (the sloped part's length), y0, y1 (low and
+ * high surface), x0, z0, x1, z1 (footprint), drive (the driveway's footprint on the
+ * terrace)}. Cached per boxes array: scene and walker share it.
+ */
+export function rampsFor(boxes) {
+  if (rampCache.has(boxes)) return rampCache.get(boxes);
+  const ramps = [];
+  for (const [t, kids] of blocks(boxes)) {
+    const tx0 = t.x - t.w / 2, tx1 = t.x + t.w / 2, tz0 = t.z - t.d / 2, tz1 = t.z + t.d / 2;
+    for (const c of kids) {
+      if (c.kind !== 'terrace' || c.node.kind === 'file') continue;
+      let best = null;
+      for (const side of sides(c)) {
+        if (side.len < RAMP_MIN_SIDE) continue;
+        const len = Math.min(RAMP_MAX, side.len - 0.8);
+        const a = -side.len / 2 + RAMP_START;
+        const origin = [side.mid[0] + side.u[0] * a, side.mid[1] + side.u[1] * a];
+        const far = [origin[0] + side.u[0] * len + side.n[0] * RAMP_W, origin[1] + side.u[1] * len + side.n[1] * RAMP_W];
+        const r = {
+          x0: Math.min(origin[0], far[0]), x1: Math.max(origin[0], far[0]),
+          z0: Math.min(origin[1], far[1]), z1: Math.max(origin[1], far[1]),
+        };
+        let clear = Math.min(r.x0 - tx0, tx1 - r.x1, r.z0 - tz0, tz1 - r.z1);
+        for (const k of kids) if (k !== c) clear = Math.min(clear, rectDist(r, k));
+        if (clear >= RAMP_CLEAR && (!best || clear > best.clear)) {
+          best = { ...r, clear, origin, u: side.u, n: side.n, len, rise: len - RAMP_LANDING, y0: t.y + t.h, y1: c.y + c.h };
+          const d0 = [origin[0] + side.u[0] * best.rise, origin[1] + side.u[1] * best.rise];
+          const d1 = [origin[0] + side.u[0] * len - side.n[0] * DRIVE, origin[1] + side.u[1] * len - side.n[1] * DRIVE];
+          best.drive = { x0: Math.min(d0[0], d1[0]), x1: Math.max(d0[0], d1[0]), z0: Math.min(d0[1], d1[1]), z1: Math.max(d0[1], d1[1]) };
+        }
+      }
+      if (best) ramps.push(best);
+    }
+  }
+  rampCache.set(boxes, ramps);
+  return ramps;
+}
+
+/** The ramp surface's height at (x, z), or -Infinity off the ramp. */
+export function rampHeight(r, x, z) {
+  if (x < r.x0 || x > r.x1 || z < r.z0 || z > r.z1) return -Infinity;
+  const s = ((x - r.origin[0]) * r.u[0] + (z - r.origin[1]) * r.u[1]) / r.rise;
+  return r.y0 + (r.y1 - r.y0) * Math.min(1, Math.max(0, s));
+}
+
+// A box's four sides: outward normal n, direction u of increasing position along the
+// face as the shaders measure it (cityColor's u), the side's centre and length.
+function sides(b) {
+  const hw = b.w / 2, hd = b.d / 2;
+  return [
+    { n: [1, 0], u: [0, 1], mid: [b.x + hw, b.z], len: b.d },
+    { n: [-1, 0], u: [0, -1], mid: [b.x - hw, b.z], len: b.d },
+    { n: [0, 1], u: [-1, 0], mid: [b.x, b.z + hd], len: b.w },
+    { n: [0, -1], u: [1, 0], mid: [b.x, b.z - hd], len: b.w },
+  ];
+}
+
+// Distance between two footprints ({x0, z0, x1, z1} or a box), 0 when they overlap.
+function rectDist(a, b) {
+  const bx0 = b.x0 ?? b.x - b.w / 2, bx1 = b.x1 ?? b.x + b.w / 2, bz0 = b.z0 ?? b.z - b.d / 2, bz1 = b.z1 ?? b.z + b.d / 2;
+  return Math.hypot(Math.max(0, a.x0 - bx1, bx0 - a.x1), Math.max(0, a.z0 - bz1, bz0 - a.z1));
+}
+
+// ------------------------------------------------------------------ bridges
+
+// Islands are separated from the mainland by water, which a walker cannot cross, so
+// every island is linked by a bridge: a deck DECK_W wide, arched by DECK_RISE, with
+// railings and piers. The links form a spanning tree rooted at the mainland, each
+// island joined to the nearest shore already reachable, so every island can be walked
+// to. Shores (the land boxes) all have their tops at the same height.
+const DECK_W = 0.8, DECK_RISE = 0.25, DECK_T = 0.06, RAIL_H = 0.14, PIER_EVERY = 1.8, DECK_OVERLAP = 0.25;
+
+const bridgeCache = new WeakMap();
+
+/**
+ * The bridges of a layout: {a, b: the two shores, axis: 'x'|'z' (the span's
+ * direction), across: the deck's centre on the other axis, from, to: the span's ends
+ * along the axis, y: the shores' level}. Cached per boxes array, like rampsFor.
+ */
+export function bridgesFor(boxes) {
+  if (bridgeCache.has(boxes)) return bridgeCache.get(boxes);
+  const lands = boxes.filter(b => b.kind === 'land');
+  const bridges = [];
+  if (lands.length > 1) {
+    // The mainland is the largest shore; islands join the nearest shore already linked.
+    const linked = [lands.reduce((a, b) => (a.w * a.d >= b.w * b.d ? a : b))];
+    const rest = lands.filter(l => l !== linked[0]);
+    while (rest.length) {
+      let best = null;
+      for (const a of linked) {
+        for (const b of rest) {
+          const d = rectDist(rect(a), b);
+          if (!best || d < best.d) best = { a, b, d };
+        }
+      }
+      const span = bridgeBetween(best.a, best.b);
+      if (span) bridges.push(span);
+      linked.push(best.b);
+      rest.splice(rest.indexOf(best.b), 1);
+    }
+  }
+  bridgeCache.set(boxes, bridges);
+  return bridges;
+}
+
+/** The deck's height at (x, z), or -Infinity beside the bridge. */
+export function bridgeHeight(r, x, z) {
+  const along = r.axis === 'x' ? x : z, across = r.axis === 'x' ? z : x;
+  if (along < r.from || along > r.to || Math.abs(across - r.across) > DECK_W / 2) return -Infinity;
+  const t = (along - r.from) / Math.max(1e-6, r.to - r.from);
+  return r.y + DECK_RISE * Math.sin(Math.PI * t);
+}
+
+// The span between two shores: across the smaller gap, centred on the stretch where
+// they face each other (or on the nearer end when they only overlap diagonally).
+function bridgeBetween(a, b) {
+  const ra = rect(a), rb = rect(b);
+  const gapX = Math.max(rb.x0 - ra.x1, ra.x0 - rb.x1), gapZ = Math.max(rb.z0 - ra.z1, ra.z0 - rb.z1);
+  const axis = gapX > gapZ ? 'x' : 'z';
+  const [g0, g1] = axis === 'x' ? [ra.x1, rb.x0] : [ra.z1, rb.z0];
+  const forward = axis === 'x' ? ra.x1 <= rb.x0 : ra.z1 <= rb.z0;
+  const from = forward ? g0 : (axis === 'x' ? rb.x1 : rb.z1);
+  const to = forward ? g1 : (axis === 'x' ? ra.x0 : ra.z0);
+  if (to - from < 0.2) return null; // touching shores need no bridge
+  const [lo, hi] = axis === 'x'
+    ? [Math.max(ra.z0, rb.z0), Math.min(ra.z1, rb.z1)]
+    : [Math.max(ra.x0, rb.x0), Math.min(ra.x1, rb.x1)];
+  const across = lo < hi
+    ? (lo + hi) / 2
+    : clampTo(axis === 'x' ? [ra.z0, ra.z1] : [ra.x0, ra.x1], axis === 'x' ? (rb.z0 + rb.z1) / 2 : (rb.x0 + rb.x1) / 2);
+  return { a, b, axis, across, from: from - DECK_OVERLAP, to: to + DECK_OVERLAP, y: a.y + a.h };
+}
+
+const rect = b => ({ x0: b.x - b.w / 2, x1: b.x + b.w / 2, z0: b.z - b.d / 2, z1: b.z + b.d / 2 });
+const clampTo = ([lo, hi], v) => Math.min(hi - DECK_W, Math.max(lo + DECK_W, v));
+
+// Bridge geometry: the arched deck (split along its length so it bends with the
+// planet), its sides and railings, and a pier every PIER_EVERY down to the water.
+// aRamp, as for ramps: across and along in world units, 3 on the deck (a road with a
+// centre line), 0 on everything else.
+function bridgeGeometry(bridges) {
+  const pos = [], ramp = [], shade = [], index = [];
+  const quad = (a, b, c, d, ra, rb, rc, rd, k) => {
+    const i = pos.length / 3;
+    pos.push(...a, ...b, ...c, ...d);
+    ramp.push(...ra, ...rb, ...rc, ...rd);
+    for (let j = 0; j < 4; j++) shade.push(k, k, k);
+    index.push(i, i + 1, i + 2, i, i + 2, i + 3);
+  };
+  const box = (cx, cz, y0, y1, w, d, k) => {
+    for (const [sx, sz] of [[1, 0], [-1, 0], [0, 1], [0, -1]]) {
+      const hw = w / 2, hd = d / 2;
+      const p = (dx, dz, y) => [cx + dx, y, cz + dz];
+      const [ax, az, bx, bz] = sx ? [sx * hw, -hd, sx * hw, hd] : [-hw, sz * hd, hw, sz * hd];
+      quad(p(ax, az, y0), p(bx, bz, y0), p(bx, bz, y1), p(ax, az, y1),
+        [0, 0, 0], [w + d, 0, 0], [w + d, y1 - y0, 0], [0, y1 - y0, 0], k);
+    }
+  };
+  for (const r of bridges) {
+    const len = r.to - r.from;
+    const at = (t, off, dy) => {
+      const along = r.from + len * t, y = r.y + DECK_RISE * Math.sin(Math.PI * t) + dy;
+      return r.axis === 'x' ? [along, y, r.across + off] : [r.across + off, y, along];
+    };
+    const n = Math.max(3, Math.ceil(len / 0.5));
+    for (let i = 0; i < n; i++) {
+      const t0 = i / n, t1 = (i + 1) / n, a0 = len * t0, a1 = len * t1;
+      const hw = DECK_W / 2;
+      quad(at(t0, -hw, 0), at(t1, -hw, 0), at(t1, hw, 0), at(t0, hw, 0),
+        [0, a0, 3], [0, a1, 3], [DECK_W, a1, 3], [DECK_W, a0, 3], 1);          // deck
+      for (const side of [-1, 1]) {
+        quad(at(t0, side * hw, -DECK_T), at(t1, side * hw, -DECK_T), at(t1, side * hw, 0), at(t0, side * hw, 0),
+          [a0, 0, 0], [a1, 0, 0], [a1, DECK_T, 0], [a0, DECK_T, 0], 0.62);     // the deck's edge
+        quad(at(t0, side * hw, 0), at(t1, side * hw, 0), at(t1, side * hw, RAIL_H), at(t0, side * hw, RAIL_H),
+          [a0, 0, 0], [a1, 0, 0], [a1, RAIL_H, 0], [a0, RAIL_H, 0], 0.9);      // railing
+      }
+    }
+    for (let t = PIER_EVERY / 2; t < len; t += PIER_EVERY) {
+      const [x, y, z] = at(t / len, 0, -DECK_T);
+      box(x, z, r.y - 0.45, y, 0.18, 0.18, 0.7);
+    }
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('aRamp', new THREE.Float32BufferAttribute(ramp, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(shade, 3));
+  geo.setIndex(index);
+  return geo;
+}
+
+// Ramp geometry: the roadway (split along its length so it bends with the planet),
+// its outer wall with a parapet, the wall and barrier at its high end, the driveway
+// onto the terrace and the apron at its foot. aRamp: across and along the roadway in
+// world units, and 1 on the sloped roadway (markings), 2 on plain asphalt, 0 on walls.
+function rampGeometry(ramps) {
+  const pos = [], ramp = [], shade = [], index = [];
+  const quad = (a, b, c, d, ra, rb, rc, rd, k) => {
+    const i = pos.length / 3;
+    pos.push(...a, ...b, ...c, ...d);
+    ramp.push(...ra, ...rb, ...rc, ...rd);
+    for (let j = 0; j < 4; j++) shade.push(k, k, k);
+    index.push(i, i + 1, i + 2, i, i + 2, i + 3);
+  };
+  const LIFT = 0.004, PARAPET = 0.035;
+  for (const r of ramps) {
+    const at = (s, w, y) => [r.origin[0] + r.u[0] * s + r.n[0] * w, y, r.origin[1] + r.u[1] * s + r.n[1] * w];
+    const y = s => r.y0 + (r.y1 - r.y0) * Math.min(1, s / r.rise) + LIFT;
+    const n = Math.max(2, Math.ceil(r.rise / 0.25));
+    const cuts = [...Array.from({ length: n + 1 }, (_, i) => r.rise * i / n), r.len];
+    for (let i = 0; i + 1 < cuts.length; i++) {
+      const s0 = cuts[i], s1 = cuts[i + 1], k = s0 < r.rise ? 1 : 2;
+      quad(at(s0, 0, y(s0)), at(s1, 0, y(s1)), at(s1, RAMP_W, y(s1)), at(s0, RAMP_W, y(s0)),
+        [0, s0, k], [0, s1, k], [RAMP_W, s1, k], [RAMP_W, s0, k], 1);
+      // Outer wall, up to the parapet's top, and the parapet's top.
+      quad(at(s0, RAMP_W, r.y0), at(s1, RAMP_W, r.y0), at(s1, RAMP_W, y(s1) + PARAPET), at(s0, RAMP_W, y(s0) + PARAPET),
+        [s0, 0, 0], [s1, 0, 0], [s1, y(s1) + PARAPET - r.y0, 0], [s0, y(s0) + PARAPET - r.y0, 0], 0.68);
+      quad(at(s0, RAMP_W - 0.02, y(s0) + PARAPET), at(s1, RAMP_W - 0.02, y(s1) + PARAPET), at(s1, RAMP_W, y(s1) + PARAPET), at(s0, RAMP_W, y(s0) + PARAPET),
+        [s0, 0, 0], [s1, 0, 0], [s1, 0.02, 0], [s0, 0.02, 0], 0.95);
+      quad(at(s0, RAMP_W - 0.02, y(s0)), at(s1, RAMP_W - 0.02, y(s1)), at(s1, RAMP_W - 0.02, y(s1) + PARAPET), at(s0, RAMP_W - 0.02, y(s0) + PARAPET),
+        [s0, 0, 0], [s1, 0, 0], [s1, PARAPET, 0], [s0, PARAPET, 0], 0.8);
+    }
+    // The high end: its wall down to the street, and a barrier: traffic turns onto
+    // the terrace here.
+    quad(at(r.len, 0, r.y0), at(r.len, RAMP_W, r.y0), at(r.len, RAMP_W, y(r.len) + PARAPET), at(r.len, 0, y(r.len) + PARAPET),
+      [0, 0, 0], [RAMP_W, 0, 0], [RAMP_W, r.y1 - r.y0 + PARAPET, 0], [0, r.y1 - r.y0 + PARAPET, 0], 0.75);
+    // Driveway across the terrace's sidewalk, and the apron over the street's curb.
+    quad(at(r.rise, -DRIVE, y(r.len)), at(r.len, -DRIVE, y(r.len)), at(r.len, 0, y(r.len)), at(r.rise, 0, y(r.len)),
+      [-DRIVE, r.rise, 2], [-DRIVE, r.len, 2], [0, r.len, 2], [0, r.rise, 2], 1);
+    quad(at(-APRON, 0, r.y0 + LIFT), at(0, 0, r.y0 + LIFT), at(0, RAMP_W, r.y0 + LIFT), at(-APRON, RAMP_W, r.y0 + LIFT),
+      [0, -APRON, 2], [0, 0, 2], [RAMP_W, 0, 2], [RAMP_W, -APRON, 2], 1);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('aRamp', new THREE.Float32BufferAttribute(ramp, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(shade, 3));
+  geo.setIndex(index);
+  return geo;
+}
+
+// The ramps' look on top of a bendable material: asphalt with edge lines and chevrons
+// pointing uphill, concrete walls.
+function rampMaterial(bendable) {
+  const mat = bendable(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
+  const bend = mat.onBeforeCompile;
+  mat.onBeforeCompile = (shader, renderer) => {
+    bend(shader, renderer);
+    shader.vertexShader = 'attribute vec3 aRamp;\nvarying vec3 vRamp;\n' +
+      shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvRamp = aRamp;');
+    shader.fragmentShader = NOISE_GLSL + `
+      varying vec3 vRamp;
+      float band(float t, float lo, float hi, float w) { return smoothstep(lo - w, lo + w, t) - smoothstep(hi - w, hi + w, t); }
+    ` + shader.fragmentShader.replace('#include <color_fragment>', `
+      #include <color_fragment>
+      vec2 q = vRamp.xy;
+      vec3 c;
+      if (vRamp.z > 2.5) {
+        // A bridge deck: asphalt with a dashed centre line and edge lines.
+        float w = fwidth(q.x) + 1e-4, wa = fwidth(q.y) + 1e-4;
+        c = vec3(0.045, 0.047, 0.052) * (0.8 + 0.4 * vnoise(q * 24.0));
+        c = mix(c, vec3(0.7), band(q.x, 0.03, 0.05, w) + band(q.x, ${DECK_W - 0.05}, ${DECK_W - 0.03}, w));
+        c = mix(c, vec3(0.78, 0.6, 0.12), band(fract(q.y / 0.5), 0.0, 0.5, wa / 0.5) * band(q.x, ${DECK_W / 2 - 0.012}, ${DECK_W / 2 + 0.012}, w));
+      } else if (vRamp.z > 1.5) {
+        c = vec3(0.04, 0.042, 0.047) * (0.8 + 0.4 * vnoise(q * 30.0));
+      } else if (vRamp.z > 0.5) {
+        float w = fwidth(q.x) + 1e-4;
+        c = vec3(0.04, 0.042, 0.047) * (0.8 + 0.4 * vnoise(q * 30.0));
+        c = mix(c, vec3(0.75), band(q.x, 0.012, 0.022, w) + band(q.x, ${RAMP_W - 0.042}, ${RAMP_W - 0.032}, w));
+        float ch = fract((q.y + abs(q.x - ${RAMP_W / 2}) * 0.8) / 0.55); // tips uphill
+        c = mix(c, vec3(0.85, 0.85, 0.8), band(ch, 0.0, 0.1, fwidth(ch) + 1e-4) * step(abs(q.x - ${RAMP_W / 2}), ${RAMP_W / 4}));
+      } else {
+        c = vec3(0.5, 0.49, 0.47) * (0.85 + 0.3 * vnoise(q * vec2(20.0, 40.0)));
+      }
+      diffuseColor.rgb *= c * 2.2;`);
+  };
+  mat.customProgramCacheKey = () => 'bend-ramp';
+  return mat;
+}
+
+// ------------------------------------------------------------------ props
+
+// Lamps stand on the sidewalk along each terrace's edge (the street shader's SIDEWALK).
+const TREE_SPACING = 1.1, LAMP_SPACING = 1.6, LAMP_INSET = 0.035, SHORE_INSET = 0.6;
+// Parks: planted where the street shader draws lawn (farther than CARRIAGE + SIDEWALK
+// from every obstacle, with a margin), off the gravel paths every PARK_PATHS.
+const PARK_CLEAR = 0.72, PARK_PATHS = 2.2, PATH_CLEAR = 0.16, MAX_PARK_SAMPLES = 60000;
+
+/**
+ * Trees and bushes along every shore and in parks, lamps along every terrace's edge,
+ * and the ramps, as meshes that bend like the map. Returns a Group; lamps' heads glow
+ * at night (setNight).
  */
 export function makeProps(boxes, bendable) {
-  const trees = [], lamps = [];
+  const trees = [], bushes = [], lamps = [];
+  const ramps = rampsFor(boxes), bridges = bridgesFor(boxes);
+  const inDrive = (x, z) => ramps.some(r => r.drive && x > r.drive.x0 - 0.2 && x < r.drive.x1 + 0.2 && z > r.drive.z0 - 0.2 && z < r.drive.z1 + 0.2);
+  const tree = (x, z, y, r) => trees.push({ x, z, y, r, s: 0.7 + 0.6 * r, kind: Math.floor(rand(z * 3.1, x) * 3) });
+  const bush = (x, z, y, r) => bushes.push({ x, z, y, r, s: 0.7 + 0.7 * r });
   for (const b of boxes) {
     const top = b.y + b.h;
     if (b.kind === 'land') {
-      around(b, SHORE_INSET, TREE_SPACING, (x, z, i) => {
+      around(b, SHORE_INSET, TREE_SPACING, (x, z) => {
         const r = rand(x, z);
-        if (r > 0.2) trees.push({ x: x + (rand(z, x) - 0.5) * 0.3, z: z + (r - 0.5) * 0.3, y: top, s: 0.7 + 0.6 * r, r });
+        if (r > 0.2) tree(x + (rand(z, x) - 0.5) * 0.3, z + (r - 0.5) * 0.3, top, r);
       });
+      for (const inset of [0.28, 0.98]) {
+        around(b, inset, 0.42, (x, z) => {
+          const r = rand(x + inset, z);
+          if (r > 0.45) bush(x + (rand(z, x + 1) - 0.5) * 0.12, z + (r - 0.5) * 0.12, top, r);
+        });
+      }
     } else if (b.kind === 'terrace' && b.node.kind !== 'file' && Math.min(b.w, b.d) > 2 * LAMP_INSET + 0.2) {
-      around(b, LAMP_INSET, LAMP_SPACING, (x, z) => lamps.push({ x, z, y: top }));
+      around(b, LAMP_INSET, LAMP_SPACING, (x, z) => inDrive(x, z) || lamps.push({ x, z, y: top }));
     }
   }
+  plantParks(boxes, tree, bush);
+
   const group = new THREE.Group();
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
   const c = new THREE.Color();
@@ -557,13 +922,69 @@ export function makeProps(boxes, bendable) {
     group.add(mesh);
     return mesh;
   };
-  const treeAt = (it, m) => m.compose(p.set(it.x, it.y, it.z), q.setFromAxisAngle(UP, it.r * 6.28), s.setScalar(it.s));
+  const plantAt = (it, m) => m.compose(p.set(it.x, it.y, it.z), q.setFromAxisAngle(UP, it.r * 6.28), s.setScalar(it.s));
   const lampAt = (it, m) => m.compose(p.set(it.x, it.y, it.z), q.identity(), s.setScalar(1));
-  add(TRUNK, '#5a4030', trees, treeAt);
-  add(CROWN, '#ffffff', trees, treeAt, (it, c) => c.setHSL(0.24 + it.r * 0.08, 0.55, 0.22 + it.r * 0.1));
+  const leaves = hue => (it, c) => c.setHSL(hue + it.r * 0.07, 0.5 + 0.2 * it.r, 0.2 + it.r * 0.1);
+  TREES.forEach((t, kind) => {
+    const these = trees.filter(it => it.kind === kind);
+    add(t.trunk, '#5a4030', these, plantAt);
+    add(t.crown, '#ffffff', these, plantAt, leaves(t.hue));
+  });
+  add(BUSH, '#ffffff', bushes, plantAt, leaves(0.25));
   add(POLE, '#3a3d42', lamps, lampAt);
   group.userData.heads = add(HEAD, '#8a8d92', lamps, lampAt);
+  for (const geo of [ramps.length && rampGeometry(ramps), bridges.length && bridgeGeometry(bridges)]) {
+    if (!geo) continue;
+    const mesh = new THREE.Mesh(geo, rampMaterial(bendable));
+    mesh.frustumCulled = false;
+    mesh.userData.day = '#ffffff';
+    group.add(mesh);
+  }
   return group;
+}
+
+// Samples each block's lawn (the park the street shader draws) on a jittered grid
+// and plants trees and bushes there.
+function plantParks(boxes, tree, bush) {
+  const all = blocks(boxes);
+  const area = [...all.keys()].reduce((a, t) => a + t.w * t.d, 0);
+  const step = Math.max(0.6, Math.sqrt(area / MAX_PARK_SAMPLES));
+  const offPath = v => Math.abs(((v / PARK_PATHS) % 1 + 1) % 1 - 0.5) * PARK_PATHS > PATH_CLEAR;
+  for (const [t, kids] of all) {
+    const top = t.y + t.h;
+    const x0 = t.x - t.w / 2 + PARK_CLEAR, x1 = t.x + t.w / 2 - PARK_CLEAR;
+    const z0 = t.z - t.d / 2 + PARK_CLEAR, z1 = t.z + t.d / 2 - PARK_CLEAR;
+    if (x1 <= x0 || z1 <= z0) continue;
+    // Kids by grid cell, for the distance test.
+    const cell = 1.5, grid = new Map();
+    for (const k of kids) {
+      for (let i = Math.floor((k.x - k.w / 2) / cell); i <= Math.floor((k.x + k.w / 2) / cell); i++) {
+        for (let j = Math.floor((k.z - k.d / 2) / cell); j <= Math.floor((k.z + k.d / 2) / cell); j++) {
+          const key = i + ',' + j;
+          if (!grid.has(key)) grid.set(key, []);
+          grid.get(key).push(k);
+        }
+      }
+    }
+    const clear = (x, z) => {
+      const i = Math.floor(x / cell), j = Math.floor(z / cell);
+      for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
+        for (const k of grid.get(i + di + ',' + (j + dj)) || []) {
+          if (rectDist({ x0: x, x1: x, z0: z, z1: z }, k) < PARK_CLEAR) return false;
+        }
+      }
+      return true;
+    };
+    for (let z = z0; z <= z1; z += step) {
+      for (let x = x0; x <= x1; x += step) {
+        const px = x + (rand(x, z) - 0.5) * step * 0.8, pz = z + (rand(z, x) - 0.5) * step * 0.8;
+        if (px < x0 || px > x1 || pz < z0 || pz > z1 || !offPath(px) || !offPath(pz) || !clear(px, pz)) continue;
+        const r = rand(px * 1.7, pz * 2.3);
+        if (r < 0.16) tree(px, pz, top, r / 0.16);
+        else if (r < 0.5) bush(px, pz, top, (r - 0.16) / 0.34);
+      }
+    }
+  }
 }
 
 /** Day or night for the props: lamp heads glow, foliage darkens. */
@@ -593,19 +1014,54 @@ function rand(x, z) {
   return v - Math.floor(v);
 }
 
-// Geometries with vertex colors as fixed shading: lighter facing up.
-function shaded(geo) {
+// Geometries with vertex colors as fixed shading: lighter facing up and towards the
+// light, darker towards the base (self-shadowing), with a little per-vertex jitter so
+// foliage does not look faceted.
+function shaded(geo, jitter = 0) {
   geo = geo.index ? geo.toNonIndexed() : geo;
   geo.computeVertexNormals();
-  const n = geo.getAttribute('normal'), col = [];
+  geo.computeBoundingBox();
+  const { min, max } = geo.boundingBox;
+  const n = geo.getAttribute('normal'), pos = geo.getAttribute('position'), col = [];
   for (let i = 0; i < n.count; i++) {
-    const k = 0.55 + 0.45 * Math.max(0, n.getY(i)) + 0.1 * n.getX(i);
+    const up = (pos.getY(i) - min.y) / Math.max(1e-6, max.y - min.y);
+    const k = (0.5 + 0.4 * Math.max(0, n.getY(i)) + 0.12 * n.getX(i) - 0.06 * n.getZ(i)) * (0.72 + 0.28 * up)
+      * (1 + jitter * (rand(pos.getX(i) * 7.1, pos.getZ(i) * 5.3 + pos.getY(i)) - 0.5));
     col.push(k, k, k);
   }
   geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
   return geo;
 }
-const TRUNK = shaded(new THREE.CylinderGeometry(0.03, 0.045, 0.28, 5).translate(0, 0.14, 0));
-const CROWN = shaded(new THREE.IcosahedronGeometry(0.2, 0).scale(1, 1.25, 1).translate(0, 0.45, 0));
+
+// One non-indexed geometry from several (position and color only, as shaded makes them).
+function merge(geos) {
+  const out = new THREE.BufferGeometry();
+  for (const name of ['position', 'color']) {
+    const parts = geos.map(g => g.getAttribute(name).array);
+    const all = new Float32Array(parts.reduce((a, p) => a + p.length, 0));
+    let o = 0;
+    for (const p of parts) { all.set(p, o); o += p.length; }
+    out.setAttribute(name, new THREE.BufferAttribute(all, 3));
+  }
+  return out;
+}
+
+const blob = (r, x, y, z, sy = 1) => shaded(new THREE.IcosahedronGeometry(r, 1).scale(1, sy, 1).translate(x, y, z), 0.25);
+const trunk = (h, r) => shaded(new THREE.CylinderGeometry(r * 0.7, r, h, 6).translate(0, h / 2, 0));
+
+// Tree species: a broadleaf with a crown of several blobs, a conifer of stacked cones,
+// and a slender poplar. hue: their foliage's base hue.
+const TREES = [
+  {
+    trunk: trunk(0.3, 0.04), hue: 0.24,
+    crown: merge([blob(0.19, 0, 0.47, 0), blob(0.14, 0.12, 0.4, 0.05), blob(0.14, -0.1, 0.42, -0.07), blob(0.12, 0.02, 0.6, -0.04)]),
+  },
+  {
+    trunk: trunk(0.14, 0.035), hue: 0.3,
+    crown: merge([0, 1, 2].map(i => shaded(new THREE.ConeGeometry(0.2 - i * 0.05, 0.3, 8).translate(0, 0.25 + i * 0.16, 0), 0.2))),
+  },
+  { trunk: trunk(0.2, 0.03), hue: 0.21, crown: merge([blob(0.12, 0, 0.5, 0, 2.6)]) },
+];
+const BUSH = merge([blob(0.085, 0, 0.055, 0, 0.8), blob(0.065, 0.07, 0.04, 0.03, 0.8), blob(0.06, -0.06, 0.04, -0.04, 0.8)]);
 const POLE = shaded(new THREE.CylinderGeometry(0.012, 0.018, 0.6, 5).translate(0, 0.3, 0));
 const HEAD = shaded(new THREE.BoxGeometry(0.07, 0.025, 0.05).translate(0, 0.61, 0));

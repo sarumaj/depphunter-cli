@@ -331,9 +331,10 @@ keeps the overlay.
 - **Walk mode** (`V`): a first-person view of the same layout, bent onto a small
   planet whose radius the wheel or `[` `]` changes. `WASD`/arrows move and turn,
   `Shift` runs, `Space` jumps, `F` toggles flying (`C` sinks); collisions and
-  ledges (up to half a storey) are computed on the flat layout. Newspapers
-  (click or `Q`) select the building they hit, `Enter` selects the aimed box,
-  `E`/right click expands or collapses it. The city look (sky, water, facades,
+  ledges (up to half a storey) are computed on the flat layout. Darts (click or
+  `Q`; newspapers before M10) select the building they hit, `Enter` selects the
+  aimed box,
+  `E` expands or collapses it. The city look (sky, water, facades,
   roads, trees, lamps) is procedural shaders modulating the data colors, never
   replacing them; the isometric view is unchanged.
 - License: BSD 3-Clause; vendored web libraries keep theirs (MIT, BSD 3-Clause,
@@ -403,22 +404,132 @@ behind, and walking between buildings follows connected, marked streets.
   `exclude` globs from files, `DEPPHUNTER_EXCLUDE` and `--exclude` add up; the
   project config cannot set `editor`.
 - Dependency updates: Renovate (`renovate.json`, recommended preset, non-major
-  updates grouped) opens pull requests; the Go 1.22 CI job rejects an update
-  that needs a newer Go.
+  updates grouped) opens pull requests; the oldest-Go CI job (the version in
+  `go.mod`) rejects an update that needs a newer Go.
 
 > **Decisions (M9):** the project file is read into a map and merged with
 > `MergeConfigMap` after its `editor` key is dropped, rather than overriding the
 > editor afterwards, so the environment and flags still win over the user's
 > file. Viper's own environment binding replaces the hand-written parser; each
 > variable is bound by name to keep the established short names (`THEME`, not
-> `UI_THEME`). Viper v1.20 is the newest release that builds on Go 1.22;
-> mapstructure is raised to v2.4.0 for GO-2025-3787 and GO-2025-3900. Single-dash
+> `UI_THEME`). Mapstructure is at least v2.4.0, for GO-2025-3787 and
+> GO-2025-3900. Single-dash
 > long flags (`-addr`), which the standard `flag` package accepted, are no
 > longer valid.
+>
+> The dependency refresh after M9 (viper 1.21, `golang.org/x/*` of 2026) needs
+> Go 1.26 or newer, so Go 1.22 support ended; `go.mod` states Go 1.27.1. CI's
+> oldest-Go job and the lint job read the version from `go.mod`, and
+> staticcheck moved to 2026.2.1, which must be built with a Go at least as new
+> as the code's.
 
 *Accepted when* every flag, file key and environment variable keeps its effect
 and precedence (the config tests), and `--help`, `--version` and exports work
 from the command (the command tests).
+
+### M10 - The dependency hunt
+
+- Theme: the walker hunts dependencies. Tracking darts (click or `Q`) fly a
+  shallow arc to the aimed point, or ahead under gravity when nothing is aimed
+  at, pointing along their path. A hit tags the module: it is selected (its
+  dependency trails light up), counted once in the HUD ("modules tagged"), and
+  marked by an orange beacon (a beam and a diamond above it) for the session.
+  The crosshair is a scope reticle.
+- Ramps connect street levels: every nested terrace gets one ramp along the
+  side with the most room, in the street beside it, from that street up to the
+  terrace's top (at most 2.4 units, starting at a corner). The walker's height
+  follows the ramp; its roadway has edge lines and uphill chevrons, its outer
+  side a parapet. The top RAMP_LANDING (0.35) is level and closed by a barrier;
+  from it a driveway crosses the terrace's sidewalk into its ring road (no lamp
+  stands there), and at the foot an apron replaces the street's curb, so both
+  ends join the carriageways. Stairs sit at the other end of each terrace side.
+- Vegetation is geometry, not texture: bushes (clusters of blobs) along shores
+  and in parks, three tree species (broadleaf, conifer, poplar) with per-vertex
+  shading darker towards the base, colors varied per plant. Lawns are one green
+  with gentle variation and mowing stripes in parks; the dark blotches are gone.
+  Parks are sampled where the street shader draws lawn, off the gravel paths
+  (at most 60,000 samples per map).
+- Walk-mode interaction, first-person-shooter style: entering walk mode
+  captures the pointer at the reticle (pointer lock; `Esc` frees it, a click on
+  the map captures it again); holding the right button looks through a scope
+  (field of view 70° to 22°, eased, with look sensitivity scaled to match). The
+  right button no longer expands or collapses: collapsing a directory folds its
+  buildings into a district block, which looked like buildings vanishing; that
+  stays on `E`. The first pointer movement after locking and implausible jumps
+  (250 px or more) are ignored; the shore and the block
+  underfoot are never aimed at (no tint, tooltip, selection or collapse); on
+  foot, water stops the walker; fog thins with altitude; the key list folds
+  away after the first moves; jumping to a directory stands the walker on its
+  block instead of beside it.
+- The selection outline sits on its box (it floated half a box too high since
+  M7); in walk mode it is hidden behind nearer geometry.
+
+> **Decisions (M10):** ramps run along a terrace's side rather than across the
+> street: streets are 0.35-0.55 units wide, and climbing a 0.28-unit terrace in
+> that distance would be a wall, not a road. Ramps are computed once per layout
+> (`rampsFor`, cached per boxes array) and shared by the renderer and the
+> walker's collisions.
+
+- The city look is not walk-mode only: the isometric map draws the same facades,
+  roofs, streets, lawns, trees, bushes, lamps and ramps (walk mode adds sky,
+  water and the planet's curve). Detail fades by pixel footprint when zoomed
+  out. Data colors still read: street and lawn shading is tinted by the ratio
+  of a box's color to its kind's usual one (so nesting levels, hover and
+  flashes show), and boxes dimmed by a selection or the legend are drawn plain,
+  without windows (a per-box fade flag next to the color). The space around the
+  islands is sea: a water plane just above the land's base, 40 map sizes
+  across (more than zooming out or panning can reveal), with walk mode's ripple
+  shader, which fades ripples to their mean where they get smaller than a
+  pixel.
+- Walk-mode controls follow first-person-shooter habits: the mouse looks, the
+  left button fires, the right one scopes, the wheel zooms (30° to 90°, the
+  scope 22°), `[` `]` set the planet's curvature, `E` opens or closes what the
+  reticle is on. Expanding and collapsing is not offered in walk mode at all
+  (it rebuilds the whole city around the walker); `E`, `Q` and `Enter` are
+  swallowed so the map's own shortcuts do not fire under a walker. The help
+  dialog and the search free the pointer; closing them captures it again where
+  the browser allows it. What a dart tagged is reported in the HUD, which a
+  walker can read, not in the status corner.
+- Curvature is bound by the character typed (`+`, `-`, or `[`, `]`), not by the
+  key's place on the board: on a German keyboard the key at `BracketRight`
+  types `+`, which made `+` curve the planet while `-` still changed the map's
+  depth.
+- A relayout (a depth change, a filter, a live update) keeps the walker in
+  place: they are put back at the same distance from the same edge of the block
+  they stand on, stepping aside if a building now occupies it.
+- Every island is reachable on foot: bridges span the water from the mainland
+  outwards, one per island, forming a spanning tree over the shores (each
+  island joins the nearest shore already reachable). A bridge is an arched deck
+  0.8 wide with railings, piers every 1.8 and a marked carriageway; the
+  walker's height follows the arch.
+- Flying follows the view: `W`/`S` move along the direction looked at (look
+  down and press `W` to dive), `A`/`D` strafe level, `Space`/`C` add straight up
+  and down. On foot, movement stays level.
+- `Enter` shows the details (dependencies, source) of what the reticle is on and
+  frees the pointer for reading; a click on the map, or closing the panel,
+  captures it again. The panel never opens by itself while walking: it covers
+  the reticle and cannot be reached with the pointer locked.
+- Walk mode reads its buttons from mouse events, not pointer events: pressing a
+  second button while one is held fires `pointermove`, not `pointerdown`, so
+  firing while scoped never arrived.
+- Browsing stays responsive on large repositories: search is debounced (120 ms),
+  labels are laid out a few times a second while walking rather than every
+  frame, the walk-mode ground buffer is only recolored while walking, and darts
+  in flight are dropped when a relayout invalidates their targets.
+- A live update keeps the side panel where the reader left it instead of
+  scrolling back to the top.
+- Dependency lists, breadcrumbs, the legend and the filter shortcuts are
+  reachable and operable by keyboard (`Tab`, `Enter`/`Space`), and focusing a
+  legend entry isolates its language like hovering does.
+- The HTML export from the browser carries the view on screen (`ui` query
+  parameter, validated server-side); the CLI's `--export html` keeps using the
+  configured view.
+- When depphunter stops, the page gives up reconnecting after four attempts and
+  says so (clicking retries), instead of an endless stream of failed requests.
+
+*Accepted when* a walker can drive up every nested block by its ramp from one
+street onto the other without crossing a curb, a dart tags what the reticle is
+on, and the right button only zooms.
 
 ### Known limits
 

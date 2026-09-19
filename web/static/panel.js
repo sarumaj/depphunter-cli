@@ -31,7 +31,9 @@ export class Panel {
     this.node = null;
   }
 
-  show(node) {
+  /** keepScroll: stay where the reader was (a live update re-showing the same node). */
+  show(node, keepScroll = false) {
+    const top = keepScroll && this.node?.id === node.id ? this.body.scrollTop : 0;
     this.node = node;
     this.root.hidden = false;
     this.root.parentElement.classList.add('panel-open');
@@ -47,7 +49,17 @@ export class Panel {
       ...this.dependencies(node),
       this.history(node),
     ].filter(Boolean));
-    if (node.kind === 'file' || node.kind === 'symbol') this.source(node, seq);
+    this.body.scrollTop = top;
+    if (node.kind === 'file' || node.kind === 'symbol') this.source(node, seq, top);
+  }
+
+  /** A list row or breadcrumb: clickable, and reachable by keyboard. */
+  item(tag, attrs, ...children) {
+    const go = attrs.onclick;
+    return h(tag, {
+      ...attrs, tabindex: '0', role: 'button',
+      onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } },
+    }, ...children);
   }
 
   openButton(node) {
@@ -58,7 +70,7 @@ export class Panel {
   }
 
   crumbs(node) {
-    const parts = ancestors(node).map(a => h('a', { onclick: () => this.onSelect(a) }, a.name));
+    const parts = ancestors(node).map(a => this.item('a', { onclick: () => this.onSelect(a) }, a.name));
     const out = [];
     parts.forEach((p, i) => { if (i) out.push(' / '); out.push(p); });
     return h('div', { class: 'crumbs' }, out);
@@ -119,7 +131,7 @@ export class Panel {
     const list = (title, hint, groups) => h('div', { class: 'p-section' },
       h('h4', {}, h('span', { class: 'swatch', style: `background:${hint}` }), title, h('span', { class: 'n' }, fmt.format(groups.length))),
       groups.length
-        ? h('ul', { class: 'p-list' }, groups.map(g => h('li', { onclick: () => this.onSelect(g.node), title: g.node.path || g.node.name },
+        ? h('ul', { class: 'p-list' }, groups.map(g => this.item('li', { onclick: () => this.onSelect(g.node), title: g.node.path || g.node.name },
             h('span', { class: 'swatch', style: `background:${swatchOf(g.node)}` }),
             h('span', { class: 'name' }, g.node.kind === 'symbol' ? g.node.name : g.node.path || g.node.name),
             h('span', { class: 'meta' }, g.node.kind === 'package' ? g.node.parentNode.name
@@ -168,7 +180,7 @@ export class Panel {
     );
   }
 
-  async source(node, seq) {
+  async source(node, seq, keepTop = 0) {
     const file = node.kind === 'symbol' ? node.parentNode : node;
     const pre = h('pre', { class: 'code' }, h('span', { class: 'ln' }, 'Loading…'));
     this.body.append(h('div', { class: 'p-section' }, h('h4', {}, 'Source'), pre));
@@ -194,10 +206,11 @@ export class Panel {
     if (outline.length) {
       pre.parentElement.before(h('div', { class: 'p-section' },
         h('h4', {}, 'Symbols ', h('span', { class: 'n' }, fmt.format(outline.length))),
-        h('ul', { class: 'p-list' }, outline.map(s => h('li', { onclick: () => this.onSelect(s) },
+        h('ul', { class: 'p-list' }, outline.map(s => this.item('li', { onclick: () => this.onSelect(s) },
           h('span', { class: 'name' }, s.name), h('span', { class: 'meta' }, s.symbolKind), h('span', { class: 'meta' }, `:${s.line}`))))));
     }
-    if (node.kind === 'symbol') this.gotoLine(pre, node.line);
+    if (keepTop) this.body.scrollTop = keepTop; // a live update: stay where the reader was
+    else if (node.kind === 'symbol') this.gotoLine(pre, node.line);
   }
 
   gotoLine(pre, line) {
