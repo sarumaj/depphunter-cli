@@ -58,6 +58,7 @@
         "incrementality",
         "inlines",
         "inotify",
+        "ints",
         "ipmo",
         "jackson",
         "javax",
@@ -131,6 +132,7 @@
         "Tsvg",
         "unflatten",
         "vnoise",
+        "vulncheck",
         "WASD",
         "wazero",
         "webstorm"
