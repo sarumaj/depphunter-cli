@@ -37,6 +37,9 @@ Rules:
 
 - Positions come from the hierarchy (stable, learnable), never from a force
   simulation.
+- Islands ring the mainland, the most imported ecosystem nearest; a ring fills
+  its least-full side first, and a new ring starts outside the previous one when
+  no side has room (M7).
 - Edges are **never all drawn by default**. They appear for the focused node; a
   collapsed node shows the aggregate of its descendants' edges with counts.
 - Every colour encodes exactly one thing, has a legend, and is never the only
@@ -134,6 +137,7 @@ extension, lines counted) but carry no edges.
 - Colour-by: language (categorical), size or git history (sequential). Height
   scale: linear / sqrt / log.
 - Light and dark themes (auto by OS, overridable).
+- Walk mode: the same map in first person, on foot or flying (M7).
 
 ### Outputs
 
@@ -142,11 +146,16 @@ extension, lines counted) but carry no edges.
   the browser (M3).
 - Graph export: JSON, DOT, GraphML (M3).
 - Static self-contained HTML export (M4).
+- PNG image of the map as shown (M7).
 
 ## 6. Non-functional requirements
 
-- **Distribution:** single static binary for Linux, macOS, Windows; frontend
-  embedded; no Node.js or network access at runtime.
+- **Distribution:** single static binary for Linux, macOS, Windows and FreeBSD
+  (see M7 for the architectures); frontend embedded; no Node.js or network
+  access at runtime.
+- **Licensing:** BSD 3-Clause; vendored and linked libraries must carry
+  permissive licenses compatible with it, and their notices ship with the
+  source and the release archives.
 - **Security:** bind to `127.0.0.1` by default; random per-run token exchanged
   for a cookie; reject requests with a foreign `Host` header (DNS rebinding);
   serve only files that are part of the analyzed graph.
@@ -302,6 +311,47 @@ keeps the overlay.
 > Go: govulncheck found 35 reachable standard-library issues when built with Go
 > 1.22.2 and none with the current release, while `go.mod` keeps 1.22 as the
 > oldest supported version.
+
+### M7 — Libraries, sharing and walk mode
+
+- Replace hand-rolled code with established libraries where one exists:
+  `cli/browser` (open the browser), `emicklei/dot` (DOT export),
+  `kballard/go-shellquote` (editor command templates), `sourcegraph/jsonrpc2`
+  (LSP transport), `tidwall/jsonc` (`tsconfig`/`jsconfig` with comments),
+  `golang.org/x/sync/errgroup` (bounded parallel parsing and scanning). In the
+  UI: `potpack` (terrace packing) and `fzf-for-js` (fuzzy search).
+- Map labels (`labels.js`): region names and, for a selection, the names at both
+  ends of its arcs, placed greedily by priority without overlaps.
+- **Export → PNG image** (`P`): the map as shown, labels included, at the
+  screen's resolution; works in the static HTML export too.
+- Toolbar menus (Filters, Export) open above the side panel and tooltip.
+- Islands ring the mainland (see §2), so large dependency sets no longer produce
+  one long row north of it.
+- **Walk mode** (`V`): a first-person view of the same layout, bent onto a small
+  planet whose radius the wheel or `[` `]` changes. `WASD`/arrows move and turn,
+  `Shift` runs, `Space` jumps, `F` toggles flying (`C` sinks); collisions and
+  ledges (up to half a storey) are computed on the flat layout. Newspapers
+  (click or `Q`) select the building they hit, `Enter` selects the aimed box,
+  `E`/right click expands or collapses it. The city look (sky, water, facades,
+  roads, trees, lamps) is procedural shaders modulating the data colours, never
+  replacing them; the isometric view is unchanged.
+- License: BSD 3-Clause; vendored web libraries keep theirs (MIT, BSD 3-Clause,
+  ISC) and are listed in `web/static/vendor/README.md`.
+- Releases: `scripts/dist.sh` cross-compiles archives with checksums for
+  Linux (amd64, arm64, armv7, 386, riscv64), macOS (amd64, arm64), Windows
+  (amd64, arm64, 386) and FreeBSD (amd64, arm64), each with README, LICENSE and
+  the vendored libraries' licenses. CI builds every target on each push, keeps
+  the archives as workflow artifacts and runs the tests as 32-bit (386).
+
+> **Decisions (M7):** a library replaces local code only when it is small, pure
+> Go, permissively licensed and maintained; its behaviour is pinned by the
+> existing tests (export, editor, LSP and resolver tests). The walker lives in
+> flat layout coordinates and only the renderer bends the world, so picking,
+> collisions and the isometric view share one layout.
+
+*Accepted when* the release workflow publishes archives for every listed target,
+walking the map selects and expands buildings like clicking does, and the PNG
+export matches the view.
 
 ### Known limits
 
