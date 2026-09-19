@@ -1,0 +1,6 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <RootNamespace>MyApp.Core</RootNamespace>
+    <AssemblyName>Core</AssemblyName>
+  </PropertyGroup>
+</Project>

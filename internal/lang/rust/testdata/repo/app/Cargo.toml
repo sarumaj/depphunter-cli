@@ -1,0 +1,9 @@
+[package]
+name = "app"
+version = "0.1.0"
+
+[dependencies]
+serde = { workspace = true }
+tokio = { version = "1", features = ["full"] }
+core-lib = { path = "../core-lib" }
+json = { package = "serde_json", version = "1" }

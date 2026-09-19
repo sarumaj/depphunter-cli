@@ -23,7 +23,7 @@ type Symbol struct {
 type RawImport struct {
 	Spec   string // as shown to users, e.g. "from .models import User"
 	Module string // what resolution looks up: import path, specifier, dotted module
-	Name   string // Python "from Module import Name"; empty otherwise
+	Name   string // plugin-specific qualifier, e.g. Python's "from Module import Name"
 	Line   int
 }
 

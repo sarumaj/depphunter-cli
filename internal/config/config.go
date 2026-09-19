@@ -24,10 +24,33 @@ type UI struct {
 	HeightScale string `yaml:"height_scale" json:"heightScale"` // linear | sqrt | log
 	ShowStd     bool   `yaml:"show_std" json:"showStd"`
 	ExpandDepth int    `yaml:"expand_depth" json:"expandDepth"` // 0 = auto, -1 = everything
+	// Filters, as the browser's Filters panel sets them.
+	HideLanguages []string `yaml:"hide_languages,omitempty" json:"hideLanguages"`
+	HideIslands   []string `yaml:"hide_islands,omitempty" json:"hideIslands"` // ecosystem ids, e.g. "npm"
+	PathFilter    string   `yaml:"path_filter,omitempty" json:"pathFilter"`
+}
+
+// Validate reports settings outside their allowed values.
+func (u UI) Validate() error {
+	return errors.Join(
+		oneOf("theme", u.Theme, "auto", "light", "dark"),
+		oneOf("color-by", u.ColorBy, "language", "size"),
+		oneOf("height-scale", u.HeightScale, "linear", "sqrt", "log"),
+	)
+}
+
+func oneOf(name, v string, allowed ...string) error {
+	for _, a := range allowed {
+		if v == a {
+			return nil
+		}
+	}
+	return fmt.Errorf("invalid %s %q (want one of %s)", name, v, strings.Join(allowed, ", "))
 }
 
 type Config struct {
 	Root        string   `yaml:"-"`
+	ConfigFile  string   `yaml:"-"` // where the browser's "Save view" writes
 	Addr        string   `yaml:"addr"`
 	Open        bool     `yaml:"open"`
 	Exclude     []string `yaml:"exclude"`
@@ -118,9 +141,11 @@ func Load(args []string, getenv func(string) string, userDir string, usage io.Wr
 	// choose the program /api/open executes: editor stays as the user configured it.
 	userEditor := cfg.Editor
 	if *flagConfig != "" {
+		cfg.ConfigFile, _ = filepath.Abs(*flagConfig)
 		err = mergeFile(&cfg, *flagConfig, true)
 	} else {
-		err = mergeFile(&cfg, filepath.Join(root, ProjectFile), false)
+		cfg.ConfigFile = filepath.Join(root, ProjectFile)
+		err = mergeFile(&cfg, cfg.ConfigFile, false)
 		cfg.Editor = userEditor
 	}
 	if err != nil {
@@ -213,23 +238,13 @@ func mergeEnv(cfg *Config, getenv func(string) string) error {
 }
 
 func (c Config) validate() error {
-	oneOf := func(name, v string, allowed ...string) error {
-		for _, a := range allowed {
-			if v == a {
-				return nil
-			}
-		}
-		return fmt.Errorf("invalid %s %q (want one of %s)", name, v, strings.Join(allowed, ", "))
-	}
 	return errors.Join(
-		oneOf("theme", c.UI.Theme, "auto", "light", "dark"),
-		oneOf("color-by", c.UI.ColorBy, "language", "size"),
-		oneOf("height-scale", c.UI.HeightScale, "linear", "sqrt", "log"),
+		c.UI.Validate(),
 		func() error {
 			if c.Export == "" {
 				return nil
 			}
-			return oneOf("export", c.Export, "json", "graphml", "dot")
+			return oneOf("export", c.Export, "json", "graphml", "dot", "html")
 		}(),
 		func() error {
 			if c.Output != "" && c.Export == "" {
