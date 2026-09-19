@@ -3,6 +3,7 @@ import { layout } from './layout.js';
 import { MapScene } from './scene.js';
 import { readPalette, languageColors, sequential } from './colors.js';
 import { Panel } from './panel.js';
+import { computeVisibility, searchIndex, search } from './filter.js';
 
 const $ = id => document.getElementById(id);
 const fmt = new Intl.NumberFormat();
@@ -18,21 +19,26 @@ const state = {
   legendLang: undefined, // language isolated by hovering the legend; null = "Other"
   colorBy: 'language',
   heightScale: 'sqrt',
-  showStd: false,
+  filters: { hiddenLangs: new Set(), hiddenEcos: new Set(), path: '' },
+  vis: null, // computeVisibility() result for the current filters
   theme: 'auto',
 };
 
-let model, L, pal, langs, scene, panel, maxDepth = 0;
+let model, L, pal, langs, scene, panel, searchItems, defaultHiddenEcos, maxDepth = 0;
 let focus = null;  // {lit: Set<box>, arcs}
 let labels = [];   // label candidates for the current layout/selection
 
 async function main() {
   const [graph, cfg] = await Promise.all([getJSON('api/graph'), getJSON('api/config')]);
   Object.assign(state, {
-    colorBy: cfg.colorBy, heightScale: cfg.heightScale, showStd: cfg.showStd, theme: cfg.theme,
+    colorBy: cfg.colorBy, heightScale: cfg.heightScale, theme: cfg.theme,
   });
 
   model = buildModel(graph);
+  searchItems = searchIndex(model);
+  for (const e of model.ecosystems) if (e.std && !cfg.showStd) state.filters.hiddenEcos.add(e.id);
+  defaultHiddenEcos = new Set(state.filters.hiddenEcos);
+  state.vis = computeVisibility(model, state.filters);
   document.title = `${model.root.name} · depphunter`;
   $('repo-name').textContent = model.root.name;
   for (const n of model.byId.values()) {
@@ -49,13 +55,68 @@ async function main() {
     onSelect: n => reveal(n),
   });
 
-  bindControls();
   applyTheme();
+  bindControls();
   relayout();
   scene.fit(L.bounds);
 
-  const files = graph.nodes.filter(n => n.kind === 'file').length;
-  $('status').textContent = `${fmt.format(files)} files · ${fmt.format(model.root.totalLoc)} lines · ${fmt.format(graph.edges.length)} imports`;
+  updateStatus();
+}
+
+function updateStatus() {
+  const files = model.graph.nodes.filter(n => n.kind === 'file').length;
+  const hidden = state.vis.hiddenFiles ? ` · ${fmt.format(state.vis.hiddenFiles)} hidden by filters` : '';
+  $('status').textContent = `${fmt.format(files)} files · ${fmt.format(model.root.totalLoc)} lines · ${fmt.format(model.graph.edges.length)} imports${hidden}`;
+}
+
+// ---------------------------------------------------------------- filters
+
+function applyFilters() {
+  state.vis = computeVisibility(model, state.filters);
+  if (state.selected && !state.vis.visible(state.selected)) select(null);
+  // Count changes from the defaults, so std-lib islands hidden at start do not show up as filters.
+  const ecoChanges = model.ecosystems.filter(e => state.filters.hiddenEcos.has(e.id) !== defaultHiddenEcos.has(e.id)).length;
+  const active = state.filters.hiddenLangs.size + ecoChanges + (state.filters.path.trim() ? 1 : 0);
+  $('filter-count').hidden = !active;
+  $('filter-count').textContent = active;
+  relayout();
+  drawLegend();
+  updateStatus();
+}
+
+// Languages folded into the legend's "Other" entry.
+function otherLangs() {
+  const inLegend = new Set(langs.legend().filter(e => e.lang).map(e => e.lang));
+  return ['', ...model.languages.map(l => l.lang).filter(l => !inLegend.has(l))];
+}
+
+function setLangsHidden(list, hide) {
+  for (const l of list) hide ? state.filters.hiddenLangs.add(l) : state.filters.hiddenLangs.delete(l);
+}
+
+// Make a node visible again by lifting the filters that hide it.
+function unhide(n) {
+  if (state.vis.visible(n)) return false;
+  for (let p = n; p; p = p.parentNode) {
+    if (p.kind === 'file') state.filters.hiddenLangs.delete(p.lang || '');
+    if (p.kind === 'ecosystem') state.filters.hiddenEcos.delete(p.id);
+  }
+  state.vis = computeVisibility(model, state.filters);
+  if (!state.vis.visible(n)) state.filters.path = $('path-filter').value = '';
+  drawFilters();
+  applyFilters();
+  return true;
+}
+
+function drawFilters() {
+  const counts = new Map();
+  for (const n of model.byId.values()) if (n.kind === 'file') counts.set(n.lang || '', (counts.get(n.lang || '') || 0) + 1);
+  const check = (id, label, checked, meta, swatch) => `<li><label><input type="checkbox" data-id="${escapeAttr(id)}" ${checked ? 'checked' : ''}>
+    ${swatch ? `<span class="swatch" style="background:${swatch}"></span>` : ''}${escapeHTML(label)}<span class="meta">${meta}</span></label></li>`;
+  $('lang-list').innerHTML = [...counts.entries()].sort((a, b) => b[1] - a[1])
+    .map(([l, c]) => check(l, l || 'unknown', !state.filters.hiddenLangs.has(l), fmt.format(c), langs.of(l))).join('');
+  $('eco-list').innerHTML = model.ecosystems
+    .map(e => check(e.id, e.name, !state.filters.hiddenEcos.has(e.id), fmt.format(e.children.length), null)).join('');
 }
 
 async function getJSON(url) {
@@ -116,11 +177,7 @@ function reveal(n) {
       changed = true;
     }
   }
-  if (n.kind === 'package' && n.parentNode.std && !state.showStd) {
-    state.showStd = true;
-    $('show-std').checked = true;
-    changed = true;
-  }
+  if (unhide(n)) changed = true;
   state.selected = n;
   if (changed) relayout();
   select(n);
@@ -185,8 +242,12 @@ function refreshFocus() {
       a.count++;
       agg.set(key, a);
     };
-    for (const e of out) add(selBox, rep(model.byId.get(e.to)), pal.edgeOut);
-    for (const e of inc) add(rep(model.byId.get(e.from)), selBox, pal.edgeIn);
+    const shown = id => {
+      const n = model.byId.get(id);
+      return state.vis.visible(n) ? rep(n) : null;
+    };
+    for (const e of out) add(selBox, shown(e.to), pal.edgeOut);
+    for (const e of inc) add(shown(e.from), selBox, pal.edgeIn);
     const arcs = [...agg.values()].sort((a, b) => b.count - a.count).slice(0, MAX_ARCS);
     const lit = new Set([selBox]);
     for (const a of arcs) { lit.add(a.from); lit.add(a.to); }
@@ -289,7 +350,8 @@ function drawLegend() {
   const parts = [];
   if (state.colorBy === 'language') {
     parts.push('<h3>Language</h3><ul>' + langs.legend().map(e =>
-      `<li data-lang="${e.lang === null ? '' : escapeAttr(e.lang)}" data-other="${e.lang === null}"><span class="swatch" style="background:${e.color}"></span>${escapeHTML(e.label)}</li>`).join('') + '</ul>');
+      `<li data-lang="${e.lang === null ? '' : escapeAttr(e.lang)}" data-other="${e.lang === null}" class="${isOff(e) ? 'off' : ''}"
+         title="Click to ${isOff(e) ? 'show' : 'hide'}"><span class="swatch" style="background:${e.color}"></span>${escapeHTML(e.label)}</li>`).join('') + '</ul>');
   } else {
     parts.push(`<h3>File size</h3><div class="ramp" style="background:linear-gradient(90deg,${pal.seq.join(',')})"></div>
       <div class="ramp-labels"><span>0</span><span>${fmt.format(maxLoc)} lines</span></div>`);
@@ -304,7 +366,18 @@ function drawLegend() {
   for (const li of el.querySelectorAll('li[data-lang]')) {
     li.addEventListener('mouseenter', () => { state.legendLang = li.dataset.other === 'true' ? null : li.dataset.lang; recolor(); });
     li.addEventListener('mouseleave', () => { state.legendLang = undefined; recolor(); });
+    li.addEventListener('click', () => {
+      const list = li.dataset.other === 'true' ? otherLangs() : [li.dataset.lang];
+      setLangsHidden(list, !li.classList.contains('off'));
+      state.legendLang = undefined;
+      drawFilters();
+      applyFilters();
+    });
   }
+}
+
+function isOff(entry) {
+  return entry.lang === null ? otherLangs().every(l => state.filters.hiddenLangs.has(l)) : state.filters.hiddenLangs.has(entry.lang);
 }
 
 function showTooltip(i, x, y) {
@@ -341,6 +414,7 @@ function applyTheme() {
   if (L) { scene.setOutline(focus?.selBox, pal.select); refreshFocus(); }
   if (state.selected) panel.show(state.selected); // swatches in the panel
   drawLegend();
+  drawFilters();
 }
 
 function bindControls() {
@@ -396,9 +470,8 @@ function bindControls() {
   bindSelect('color-by', 'colorBy', () => { recolor(); drawLegend(); });
   bindSelect('height-scale', 'heightScale', () => { relayout(); drawLegend(); });
   bindSelect('theme', 'theme', applyTheme);
-  const std = $('show-std');
-  std.checked = state.showStd;
-  std.onchange = () => { state.showStd = std.checked; relayout(); };
+  bindFilters();
+  bindSearch();
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => state.theme === 'auto' && applyTheme());
 
   window.addEventListener('keydown', e => {
@@ -412,11 +485,77 @@ function bindControls() {
       case '+': case '=': setLevel(state.level + 1); break;
       case '-': case '_': setLevel(state.level - 1); break;
       case '?': $('help').showModal(); break;
+      case '/': $('search').focus(); break;
       case 'Enter': if (sel) { toggle(sel); select(sel); } break;
       case 'Backspace': if (sel?.parentNode) reveal(sel.parentNode); break;
       default: return;
     }
     e.preventDefault();
+  });
+}
+
+function bindFilters() {
+  const btn = $('filters-btn'), pop = $('filters');
+  const setOpen = open => { pop.hidden = !open; btn.setAttribute('aria-expanded', open); };
+  btn.onclick = () => setOpen(pop.hidden);
+  document.addEventListener('pointerdown', e => { if (!e.target.closest('.filters')) setOpen(false); });
+  pop.addEventListener('keydown', e => { if (e.key === 'Escape') { setOpen(false); btn.focus(); } });
+
+  const onCheck = (listId, set) => $(listId).addEventListener('change', e => {
+    const id = e.target.dataset.id;
+    if (e.target.checked) set().delete(id); else set().add(id);
+    applyFilters();
+  });
+  onCheck('lang-list', () => state.filters.hiddenLangs);
+  onCheck('eco-list', () => state.filters.hiddenEcos);
+  $('langs-all').onclick = () => { state.filters.hiddenLangs.clear(); drawFilters(); applyFilters(); };
+  $('langs-none').onclick = () => { setLangsHidden(['', ...model.languages.map(l => l.lang)], true); drawFilters(); applyFilters(); };
+
+  let timer = 0;
+  $('path-filter').addEventListener('input', e => {
+    clearTimeout(timer);
+    timer = setTimeout(() => { state.filters.path = e.target.value; applyFilters(); }, 250);
+  });
+  drawFilters();
+}
+
+function bindSearch() {
+  const input = $('search'), list = $('search-results');
+  let results = [], active = 0;
+  const close = () => { list.hidden = true; input.setAttribute('aria-expanded', 'false'); };
+  const choose = r => { close(); input.blur(); reveal(r.node); };
+  const kindLabel = { file: 'file', dir: 'dir', symbol: 'symbol', package: 'package' };
+  const render = () => {
+    if (!input.value.trim()) return close();
+    list.innerHTML = results.length
+      ? results.map((r, i) => `<li role="option" id="sr-${i}" aria-selected="${i === active}" data-i="${i}">
+          ${r.node.kind === 'file' ? `<span class="swatch" style="background:${langs.of(r.node.lang)}"></span>` : ''}
+          <span class="name">${escapeHTML(r.name)}</span><span class="ctx">${escapeHTML(r.context)}</span>
+          <span class="badge">${r.node.symbolKind || kindLabel[r.node.kind]}</span></li>`).join('')
+      : '<li class="empty">No matches among visible nodes</li>';
+    list.hidden = false;
+    input.setAttribute('aria-expanded', 'true');
+    input.setAttribute('aria-activedescendant', results.length ? `sr-${active}` : '');
+  };
+  input.addEventListener('input', () => { results = search(searchItems, input.value, state.vis.visible); active = 0; render(); });
+  input.addEventListener('focus', () => input.value.trim() && render());
+  input.addEventListener('blur', () => setTimeout(close, 150));
+  input.addEventListener('keydown', e => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      if (results.length) active = (active + (e.key === 'ArrowDown' ? 1 : results.length - 1)) % results.length;
+      render();
+    } else if (e.key === 'Enter' && results[active]) {
+      choose(results[active]);
+    } else if (e.key === 'Escape') {
+      input.value = '';
+      close();
+      input.blur();
+    } else return;
+    e.preventDefault();
+  });
+  list.addEventListener('pointerdown', e => {
+    const li = e.target.closest('li[data-i]');
+    if (li) { e.preventDefault(); choose(results[+li.dataset.i]); }
   });
 }
 
