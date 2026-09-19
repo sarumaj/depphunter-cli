@@ -114,7 +114,8 @@ extension, lines counted) but carry no edges.
   browser.
 - Precedence: flags > environment (`DEPPHUNTER_*`) > project config
   (`.depphunter.yaml`) > user config
-  (`$XDG_CONFIG_HOME/depphunter/config.yaml`) > defaults.
+  (`$XDG_CONFIG_HOME/depphunter/config.yaml`) > defaults, resolved with viper
+  behind a cobra command (M9).
 - Respect `.gitignore` (via `git ls-files` when available; built-in ignore list
   otherwise) plus user `exclude` globs.
 - UI settings apply live; a **Save** action writes them back to the project
@@ -383,6 +384,41 @@ export matches the view.
 
 *Accepted when* panning, zooming, walking and flying cannot leave the map
 behind, and walking between buildings follows connected, marked streets.
+
+### M9 — Command line on cobra and viper
+
+- The command is a `cobra.Command` (`cmd/depphunter`): POSIX flags via pflag
+  (`--flag value`, `--flag=value`, `-o` as the short form of `--output`),
+  generated `--help` with a description and examples, `-v`/`--version`, at most
+  one path argument. Errors are printed once, without the usage text.
+- `internal/config` declares the flags (`RegisterFlags`) and resolves settings
+  with viper, keeping the precedence of §5: defaults, user config, project
+  config (or `--config`), environment, flags. Files are merged key by key, so a
+  project config overrides single `ui:` keys of the user config.
+- Every scalar setting but `ui.path_filter` has an environment variable
+  (`DEPPHUNTER_` + upper-case key, `ui.` dropped): new are `MAX_FILE_SIZE`,
+  `EXPAND_DEPTH`, `HISTORY_COMMITS` and `LSP_TIMEOUT`. Invalid values fail
+  with an error.
+- Unchanged: `--no-open`/`--no-cache`/`--no-history` turn their settings off;
+  `exclude` globs from files, `DEPPHUNTER_EXCLUDE` and `--exclude` add up; the
+  project config cannot set `editor`.
+- Dependency updates: Renovate (`renovate.json`, recommended preset, non-major
+  updates grouped) opens pull requests; the Go 1.22 CI job rejects an update
+  that needs a newer Go.
+
+> **Decisions (M9):** the project file is read into a map and merged with
+> `MergeConfigMap` after its `editor` key is dropped, rather than overriding the
+> editor afterwards, so the environment and flags still win over the user's
+> file. Viper's own environment binding replaces the hand-written parser; each
+> variable is bound by name to keep the established short names (`THEME`, not
+> `UI_THEME`). Viper v1.20 is the newest release that builds on Go 1.22;
+> mapstructure is raised to v2.4.0 for GO-2025-3787 and GO-2025-3900. Single-dash
+> long flags (`-addr`), which the standard `flag` package accepted, are no
+> longer valid.
+
+*Accepted when* every flag, file key and environment variable keeps its effect
+and precedence (the config tests), and `--help`, `--version` and exports work
+from the command (the command tests).
 
 ### Known limits
 
