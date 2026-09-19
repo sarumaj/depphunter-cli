@@ -1,50 +1,21 @@
 package powershell
 
 import (
-	"context"
-	"reflect"
 	"testing"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
-	"github.com/sarumaj/depphunter-cli/internal/scan"
+	"github.com/sarumaj/depphunter-cli/internal/lang/langtest"
 )
 
 // testdata/repo: a module with a manifest (RequiredModules, RootModule, NestedModules,
 // ScriptsToProcess) and a script using every other way of pulling in code.
 func analyse(t *testing.T) map[string]*lang.FileResult {
 	t.Helper()
-	const root = "testdata/repo"
-	files, err := scan.Scan(context.Background(), root, scan.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	res, err := lang.Analyze(context.Background(), Plugin{}, root, files)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return res
-}
-
-func check(t *testing.T, res *lang.FileResult, want map[string]lang.Target) {
-	t.Helper()
-	got := map[string]lang.Target{}
-	for _, im := range res.Imports {
-		got[im.Spec] = im.Target
-	}
-	for spec, w := range want {
-		if g, ok := got[spec]; !ok {
-			t.Errorf("%s: not captured (got %v)", spec, got)
-		} else if g != w {
-			t.Errorf("%s: got %+v, want %+v", spec, g, w)
-		}
-	}
-	if len(got) != len(want) {
-		t.Errorf("got %d imports, want %d: %v", len(got), len(want), got)
-	}
+	return langtest.Analyze(t, Plugin{}, "testdata/repo")
 }
 
 func TestScript(t *testing.T) {
-	check(t, analyse(t)["scripts/deploy.ps1"], map[string]lang.Target{
+	langtest.CheckImports(t, analyse(t)["scripts/deploy.ps1"], map[string]lang.Target{
 		"#Requires -Modules Az.Storage":             {Ecosystem: "psgallery", Package: "Az.Storage"},
 		"#Requires -Modules Az.Resources":           {Ecosystem: "psgallery", Package: "Az.Resources", Version: "6.1.0"},
 		"using module ../tools/Tools/Tools.psm1":    {Local: "tools/Tools/Tools.psm1"},
@@ -62,7 +33,7 @@ func TestScript(t *testing.T) {
 }
 
 func TestManifest(t *testing.T) {
-	check(t, analyse(t)["tools/Tools/Tools.psd1"], map[string]lang.Target{
+	langtest.CheckImports(t, analyse(t)["tools/Tools/Tools.psd1"], map[string]lang.Target{
 		"RequiredModules: PSReadLine":        {Ecosystem: "powershell", Package: "PSReadLine"},
 		"RequiredModules: Pester":            {Ecosystem: "psgallery", Package: "Pester", Version: "5.3.0"},
 		"RequiredModules: Az.Accounts":       {Ecosystem: "psgallery", Package: "Az.Accounts"},
@@ -73,12 +44,5 @@ func TestManifest(t *testing.T) {
 }
 
 func TestSymbols(t *testing.T) {
-	got := map[string]string{}
-	for _, s := range analyse(t)["scripts/deploy.ps1"].Symbols {
-		got[s.Name] = s.Kind
-	}
-	want := map[string]string{"Deploy-App": "func", "Deployer": "class", "Deployer.Run": "method"}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("got %v, want %v", got, want)
-	}
+	langtest.CheckSymbols(t, analyse(t)["scripts/deploy.ps1"], map[string]string{"Deploy-App": "func", "Deployer": "class", "Deployer.Run": "method"})
 }

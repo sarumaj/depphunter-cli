@@ -1,37 +1,22 @@
 package java
 
 import (
-	"context"
-	"reflect"
 	"testing"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
-	"github.com/sarumaj/depphunter-cli/internal/scan"
+	"github.com/sarumaj/depphunter-cli/internal/lang/langtest"
 )
 
 // testdata/repo: a Maven module (properties, dependencyManagement) and a Gradle module
 // with a version catalog.
 func analyse(t *testing.T) map[string]*lang.FileResult {
 	t.Helper()
-	const root = "testdata/repo"
-	files, err := scan.Scan(context.Background(), root, scan.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	res, err := lang.Analyze(context.Background(), Plugin{}, root, files)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return res
+	return langtest.Analyze(t, Plugin{}, "testdata/repo")
 }
 
 func TestResolution(t *testing.T) {
 	res := analyse(t)["src/main/java/com/example/app/App.java"]
-	got := map[string]lang.Target{}
-	for _, im := range res.Imports {
-		got[im.Spec] = im.Target
-	}
-	want := map[string]lang.Target{
+	langtest.CheckImports(t, res, map[string]lang.Target{
 		"import java.util.List":                                       {Ecosystem: "jdk", Package: "java.util"},
 		"import javax.swing.JFrame":                                   {Ecosystem: "jdk", Package: "javax.swing"},
 		"import javax.servlet.http.HttpServlet":                       {Ecosystem: "maven", Package: "javax.servlet.http", Unresolved: true},
@@ -47,29 +32,12 @@ func TestResolution(t *testing.T) {
 		"import com.google.common.collect.Lists": {Ecosystem: "maven", Package: "com.google.guava", Version: "33.0.0-jre"},
 		"import org.junit.Test":                  {Ecosystem: "maven", Package: "junit", Version: "4.13.2"},
 		"import org.acme.net.Client":             {Local: "lib/src/main/java/org/acme/net/Client.java"},
-	}
-	for spec, w := range want {
-		if g, ok := got[spec]; !ok {
-			t.Errorf("%s: not captured", spec)
-		} else if g != w {
-			t.Errorf("%s: got %+v, want %+v", spec, g, w)
-		}
-	}
-	if len(got) != len(want) {
-		t.Errorf("got %d imports, want %d: %v", len(got), len(want), got)
-	}
+	})
 }
 
 func TestSymbols(t *testing.T) {
-	got := map[string]string{}
-	for _, s := range analyse(t)["src/main/java/com/example/app/App.java"].Symbols {
-		got[s.Name] = s.Kind
-	}
-	want := map[string]string{
+	langtest.CheckSymbols(t, analyse(t)["src/main/java/com/example/app/App.java"], map[string]string{
 		"App": "class", "App.main": "method", "App.helper": "method", "Service": "interface",
 		"Mode": "enum", "Mode.weight": "method", "Point": "record",
-	}
-	if !reflect.DeepEqual(got, want) {
-		t.Errorf("got %v, want %v", got, want)
-	}
+	})
 }

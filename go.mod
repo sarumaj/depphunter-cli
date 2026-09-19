@@ -1,12 +1,12 @@
 module github.com/sarumaj/depphunter-cli
 
-go 1.27.1
+go 1.22.2
 
 require (
 	github.com/BurntSushi/toml v1.4.0
 	github.com/fsnotify/fsnotify v1.9.0
 	github.com/odvcencio/gotreesitter v0.53.0
-	golang.org/x/mod v0.41.0
+	golang.org/x/mod v0.20.0
 	gopkg.in/yaml.v3 v3.0.1
 )
 

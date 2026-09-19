@@ -125,20 +125,6 @@ func (c Capture) EnclosingField(field string, types ...string) string {
 	return ""
 }
 
-// EnclosingText returns the source text of the nearest ancestor whose type is one of
-// types, for grammars whose nodes lack a "name" field (e.g. PowerShell classes).
-func (c Capture) EnclosingText(types ...string) string {
-	for n := c.node.Parent(); n != nil; n = n.Parent() {
-		t := n.Type(c.g.lang)
-		for _, want := range types {
-			if t == want {
-				return n.Text(c.src)
-			}
-		}
-	}
-	return ""
-}
-
 // SiblingFieldType returns the node type of field on the capture's parent, e.g. the
 // kind of value a variable declarator is initialised with.
 func (c Capture) SiblingFieldType(field string) string {

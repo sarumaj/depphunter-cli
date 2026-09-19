@@ -98,3 +98,18 @@ func TestProjectConfigCannotChooseEditor(t *testing.T) {
 		t.Errorf("project config set editor to %q", cfg.Editor)
 	}
 }
+
+func TestHistorySettings(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, ProjectFile), "history_commits: 500\nui:\n  color_by: churn\n")
+	cfg, err := Load([]string{root}, func(k string) string { return map[string]string{"DEPPHUNTER_HISTORY": "false"}[k] }, "", io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.History || cfg.HistoryCommits != 500 || cfg.UI.ColorBy != "churn" {
+		t.Errorf("unexpected config: %+v", cfg)
+	}
+	if _, err := Load([]string{"--history-commits", "0", root}, func(string) string { return "" }, "", io.Discard); err == nil {
+		t.Error("history-commits 0 accepted")
+	}
+}

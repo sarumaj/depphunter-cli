@@ -1,44 +1,21 @@
 package javascript
 
 import (
-	"context"
 	"testing"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
-	"github.com/sarumaj/depphunter-cli/internal/scan"
+	"github.com/sarumaj/depphunter-cli/internal/lang/langtest"
 )
 
 // testdata/repo: a TypeScript app with tsconfig paths (inherited baseUrl, JSONC),
 // a workspace package, a lockfile, and a CommonJS corner.
 func analyse(t *testing.T) map[string]*lang.FileResult {
 	t.Helper()
-	const root = "testdata/repo"
-	files, err := scan.Scan(context.Background(), root, scan.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	res, err := lang.Analyze(context.Background(), Plugin{}, root, files)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return res
-}
-
-func imports(t *testing.T, res *lang.FileResult) map[string]lang.Target {
-	t.Helper()
-	if res == nil {
-		t.Fatal("file not analysed")
-	}
-	out := map[string]lang.Target{}
-	for _, im := range res.Imports {
-		out[im.Spec] = im.Target
-	}
-	return out
+	return langtest.Analyze(t, Plugin{}, "testdata/repo")
 }
 
 func TestTypeScriptResolution(t *testing.T) {
-	got := imports(t, analyse(t)["src/index.ts"])
-	want := map[string]lang.Target{
+	langtest.CheckImports(t, analyse(t)["src/index.ts"], map[string]lang.Target{
 		"./util.js":        {Local: "src/util.ts"},
 		"./util":           {Local: "src/util.ts"},
 		"./components":     {Local: "src/components/index.tsx"},
@@ -52,22 +29,11 @@ func TestTypeScriptResolution(t *testing.T) {
 		"./styles.css":     {Local: "src/styles.css"},
 		"../outside":       {},
 		"~/alias":          {},
-	}
-	for spec, w := range want {
-		g, ok := got[spec]
-		if !ok {
-			t.Errorf("%s: not captured", spec)
-		} else if g != w {
-			t.Errorf("%s: got %+v, want %+v", spec, g, w)
-		}
-	}
-	if len(got) != len(want) {
-		t.Errorf("got %d imports, want %d: %v", len(got), len(want), got)
-	}
+	})
 }
 
 func TestCommonJSAndDynamicImports(t *testing.T) {
-	got := imports(t, analyse(t)["legacy/app.js"])
+	got := langtest.Imports(t, analyse(t)["legacy/app.js"])
 	if got["fs"] != (lang.Target{Ecosystem: "node", Package: "fs"}) {
 		t.Errorf("require('fs'): %+v", got["fs"])
 	}

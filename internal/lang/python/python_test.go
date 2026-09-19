@@ -1,36 +1,22 @@
 package python
 
 import (
-	"context"
 	"testing"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
-	"github.com/sarumaj/depphunter-cli/internal/scan"
+	"github.com/sarumaj/depphunter-cli/internal/lang/langtest"
 )
 
 // testdata/repo: a src-layout package declared in pyproject.toml (PEP 621, dependency
 // groups and Poetry tables), pinned by uv.lock, plus a requirements file and scripts.
 func analyse(t *testing.T) map[string]*lang.FileResult {
 	t.Helper()
-	const root = "testdata/repo"
-	files, err := scan.Scan(context.Background(), root, scan.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	res, err := lang.Analyze(context.Background(), Plugin{}, root, files)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return res
+	return langtest.Analyze(t, Plugin{}, "testdata/repo")
 }
 
 func TestImportResolution(t *testing.T) {
 	res := analyse(t)
-	got := map[string]lang.Target{}
-	for _, im := range res["src/app/main.py"].Imports {
-		got[im.Spec] = im.Target
-	}
-	want := map[string]lang.Target{
+	langtest.CheckImports(t, res["src/app/main.py"], map[string]lang.Target{
 		"from __future__ import annotations": {Ecosystem: "python-std", Package: "__future__"},
 		"os":                                 {Ecosystem: "python-std", Package: "os"},
 		"os.path":                            {Ecosystem: "python-std", Package: "os"},
@@ -50,18 +36,7 @@ func TestImportResolution(t *testing.T) {
 		"from ..outside import x":            {},
 		"from app.helpers import thing":      {Local: "src/app/helpers.py"},
 		"from app.models import *":           {Local: "src/app/models"},
-	}
-	for spec, w := range want {
-		g, ok := got[spec]
-		if !ok {
-			t.Errorf("%s: not captured", spec)
-		} else if g != w {
-			t.Errorf("%s: got %+v, want %+v", spec, g, w)
-		}
-	}
-	if len(got) != len(want) {
-		t.Errorf("got %d imports, want %d: %v", len(got), len(want), got)
-	}
+	})
 }
 
 func TestScriptDirectoryImports(t *testing.T) {

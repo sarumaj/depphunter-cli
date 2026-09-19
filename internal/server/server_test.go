@@ -16,6 +16,7 @@ import (
 
 	"github.com/sarumaj/depphunter-cli/internal/config"
 	"github.com/sarumaj/depphunter-cli/internal/graph"
+	"github.com/sarumaj/depphunter-cli/internal/history"
 )
 
 func start(t *testing.T, mods ...func(*config.Config)) (*Server, string, string) {
@@ -252,5 +253,50 @@ func TestStaticExportDownload(t *testing.T) {
 	c := login(t, url)
 	if code, body := get(t, c, base+"/api/export?format=html", nil); code != 200 || !strings.Contains(body, `id="depphunter-data"`) {
 		t.Errorf("html export: %d %.100s", code, body)
+	}
+}
+
+func TestHistoryLifecycle(t *testing.T) {
+	s, url, base := start(t, func(c *config.Config) { c.History = true })
+	c := login(t, url)
+	if code, _ := get(t, c, base+"/api/history", nil); code != http.StatusAccepted {
+		t.Errorf("while reading: %d, want 202", code)
+	}
+
+	res, err := c.Get(base + "/api/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	events := make(chan string, 4)
+	go func() {
+		sc := bufio.NewScanner(res.Body)
+		for sc.Scan() {
+			if line := sc.Text(); strings.HasPrefix(line, "event: ") {
+				events <- strings.TrimPrefix(line, "event: ")
+			}
+		}
+	}()
+	<-events // hello
+
+	h := &history.History{Head: "abc", Commits: 1, Authors: []string{"Ann"},
+		Files: map[string][]history.Change{"a.go": {{1000, 0, 2, 0, 0}}}}
+	if err := s.SetHistory(h); err != nil {
+		t.Fatal(err)
+	}
+	select {
+	case e := <-events:
+		if e != "history" {
+			t.Errorf("event %q, want history", e)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("no history event")
+	}
+	if code, body := get(t, c, base+"/api/history", nil); code != 200 || !strings.Contains(body, `"a.go":[[1000,0,2,0,0]]`) {
+		t.Errorf("history: %d %s", code, body)
+	}
+	s.SetHistory(nil)
+	if code, _ := get(t, c, base+"/api/history", nil); code != http.StatusNoContent {
+		t.Errorf("without history: %d, want 204", code)
 	}
 }

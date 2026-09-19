@@ -20,7 +20,7 @@ const ProjectFile = ".depphunter.yaml"
 // UI holds the initial state of settings the user can also change in the browser.
 type UI struct {
 	Theme       string `yaml:"theme" json:"theme"`              // auto | light | dark
-	ColorBy     string `yaml:"color_by" json:"colorBy"`         // language | size
+	ColorBy     string `yaml:"color_by" json:"colorBy"`         // language | size | commits | churn | age | authors
 	HeightScale string `yaml:"height_scale" json:"heightScale"` // linear | sqrt | log
 	ShowStd     bool   `yaml:"show_std" json:"showStd"`
 	ExpandDepth int    `yaml:"expand_depth" json:"expandDepth"` // 0 = auto, -1 = everything
@@ -34,7 +34,7 @@ type UI struct {
 func (u UI) Validate() error {
 	return errors.Join(
 		oneOf("theme", u.Theme, "auto", "light", "dark"),
-		oneOf("color-by", u.ColorBy, "language", "size"),
+		oneOf("color-by", u.ColorBy, "language", "size", "commits", "churn", "age", "authors"),
 		oneOf("height-scale", u.HeightScale, "linear", "sqrt", "log"),
 	)
 }
@@ -57,6 +57,9 @@ type Config struct {
 	MaxFileSize int64    `yaml:"max_file_size"`
 	Watch       bool     `yaml:"watch"`
 	Cache       bool     `yaml:"cache"`
+	// History reads git history (up to HistoryCommits commits) for the history overlay.
+	History        bool `yaml:"history"`
+	HistoryCommits int  `yaml:"history_commits"`
 	// Editor is a command template such as "code -g {file}:{line}"; empty = auto-detect.
 	Editor string `yaml:"editor"`
 	UI     UI     `yaml:"ui"`
@@ -68,11 +71,13 @@ type Config struct {
 
 func Default() Config {
 	return Config{
-		Addr:        "127.0.0.1:0",
-		Open:        true,
-		Cache:       true,
-		MaxFileSize: 2 << 20,
-		UI:          UI{Theme: "auto", ColorBy: "language", HeightScale: "sqrt"},
+		Addr:           "127.0.0.1:0",
+		Open:           true,
+		Cache:          true,
+		History:        true,
+		HistoryCommits: 10000,
+		MaxFileSize:    2 << 20,
+		UI:             UI{Theme: "auto", ColorBy: "language", HeightScale: "sqrt"},
 	}
 }
 
@@ -96,12 +101,14 @@ func Load(args []string, getenv func(string) string, userDir string, usage io.Wr
 		flagNoOpen  = fs.Bool("no-open", false, "do not open the browser")
 		flagMaxSize = fs.Int64("max-file-size", cfg.MaxFileSize, "files larger than this many bytes are not read")
 		flagTheme   = fs.String("theme", cfg.UI.Theme, "colour theme: auto, light, dark")
-		flagColorBy = fs.String("color-by", cfg.UI.ColorBy, "building colour: language, size")
+		flagColorBy = fs.String("color-by", cfg.UI.ColorBy, "building colour: language, size, commits, churn, age, authors")
 		flagHeight  = fs.String("height-scale", cfg.UI.HeightScale, "building height scale: linear, sqrt, log")
 		flagShowStd = fs.Bool("show-std", cfg.UI.ShowStd, "show standard-library islands")
 		flagDepth   = fs.Int("expand-depth", cfg.UI.ExpandDepth, "initially expanded directory depth (0 = auto, -1 = all)")
 		flagWatch   = fs.Bool("watch", false, "re-analyse on file changes and update the browser live")
 		flagNoCache = fs.Bool("no-cache", false, "do not read or write the analysis cache")
+		flagNoHist  = fs.Bool("no-history", false, "do not read git history")
+		flagHistN   = fs.Int("history-commits", cfg.HistoryCommits, "read at most this many commits of git history")
 		flagEditor  = fs.String("editor", "", `editor command template, e.g. "code -g {file}:{line}" (default: auto-detect)`)
 		flagExport  = fs.String("export", "", "write the graph as json, graphml or dot and exit instead of serving")
 		flagOutput  = fs.String("o", "", "output file for --export (default: stdout)")
@@ -179,6 +186,10 @@ func Load(args []string, getenv func(string) string, userDir string, usage io.Wr
 			cfg.Watch = *flagWatch
 		case "no-cache":
 			cfg.Cache = !*flagNoCache
+		case "no-history":
+			cfg.History = !*flagNoHist
+		case "history-commits":
+			cfg.HistoryCommits = *flagHistN
 		case "editor":
 			cfg.Editor = *flagEditor
 		case "export":
@@ -229,7 +240,7 @@ func mergeEnv(cfg *Config, getenv func(string) string) error {
 	if v := getenv("DEPPHUNTER_EXCLUDE"); v != "" {
 		cfg.Exclude = append(cfg.Exclude, strings.Split(v, ",")...)
 	}
-	for key, dst := range map[string]*bool{"OPEN": &cfg.Open, "WATCH": &cfg.Watch, "CACHE": &cfg.Cache} {
+	for key, dst := range map[string]*bool{"OPEN": &cfg.Open, "WATCH": &cfg.Watch, "CACHE": &cfg.Cache, "HISTORY": &cfg.History} {
 		if err := boolean(key, dst); err != nil {
 			return err
 		}
@@ -240,6 +251,12 @@ func mergeEnv(cfg *Config, getenv func(string) string) error {
 func (c Config) validate() error {
 	return errors.Join(
 		c.UI.Validate(),
+		func() error {
+			if c.HistoryCommits < 1 {
+				return errors.New("history-commits must be at least 1")
+			}
+			return nil
+		}(),
 		func() error {
 			if c.Export == "" {
 				return nil
