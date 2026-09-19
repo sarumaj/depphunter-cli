@@ -1,8 +1,16 @@
 // three.js rendering of a layout: one InstancedMesh for every box, tubes for edges.
 // Renders on demand only; nothing animates unless the camera or the state changes.
+//
+// Walk mode (walk.js) views the same scene through a perspective camera and bends the
+// flat map onto a small planet centred under the walker: every material shares the
+// `curve` uniforms, and a vertex shader wraps world positions around the sphere.
+// Large flat boxes (land, terraces, districts) are drawn from a tessellated copy in
+// walk mode so their tops follow the curve instead of cutting through it as chords.
+// city.js dresses walk mode up as a city: sky, water, facades, streets and props.
 
 import * as THREE from './vendor/three.module.min.js';
 import { OrbitControls } from './vendor/OrbitControls.js';
+import { kindCode, CITY_VERT_HEAD, CITY_VERT_BODY, CITY_FRAG_HEAD, CITY_FRAG_BODY, makeSky, waterMaterial, makeProps, setNight } from './city.js';
 
 const ISO_POLAR = Math.acos(1 / Math.sqrt(3)); // true isometric elevation (35.26°)
 
@@ -16,7 +24,15 @@ export class MapScene {
     this.scene = new THREE.Scene();
     this.camera = new THREE.OrthographicCamera(-1, 1, 1, -1, -2000, 4000);
     this.camera.zoom = 20;
-
+    this.walkCamera = new THREE.PerspectiveCamera(70, 1, 0.02, 3000);
+    this.walkCamera.rotation.order = 'YXZ';
+    this.walking = false;
+    // center: the walker's position on the flat map; radius: the planet's; night:
+    // the dark theme's city; time: seconds, for clouds and water.
+    this.curve = {
+      uCenter: { value: new THREE.Vector3() }, uRadius: { value: 40 }, uBend: { value: 0 },
+      uNight: { value: 0 }, uTime: { value: 0 },
+    };
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = false;
@@ -33,8 +49,14 @@ export class MapScene {
     this.unitBox = shadedBox();
     // Unlit: the top face shows exactly the encoded colour; fixed per-face shading
     // (vertex colours, multiplied with the instance colour) gives the 3D form.
-    this.material = new THREE.MeshBasicMaterial({ vertexColors: true });
+    this.material = this.bendable(new THREE.MeshBasicMaterial({ vertexColors: true }), true);
     this.mesh = null;
+    this.ground = null; // tessellated large boxes, shown in walk mode
+    this.props = null;  // trees and lamps, shown in walk mode
+    this.planet = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 48), waterMaterial(this.curve));
+    this.sky = makeSky(this.curve);
+    this.planet.visible = this.sky.visible = false;
+    this.scene.add(this.planet, this.sky);
     this.edgeGroup = new THREE.Group();
     this.scene.add(this.edgeGroup);
     this.outline = null;
@@ -51,6 +73,8 @@ export class MapScene {
     this.renderer.setSize(w, h, false);
     Object.assign(this.camera, { left: -w / 2, right: w / 2, top: h / 2, bottom: -h / 2 });
     this.camera.updateProjectionMatrix();
+    this.walkCamera.aspect = w / Math.max(1, h);
+    this.walkCamera.updateProjectionMatrix();
     this.requestRender();
   }
 
@@ -59,24 +83,95 @@ export class MapScene {
     this.pending = true;
     requestAnimationFrame(() => {
       this.pending = false;
-      this.renderer.render(this.scene, this.camera);
+      this.renderNow();
       this.onRender?.();
     });
   }
 
-  setBackground(color) {
-    this.scene.background = new THREE.Color(color);
+  /** The camera in use: isometric, or the walker's eyes. */
+  get view() {
+    return this.walking ? this.walkCamera : this.camera;
+  }
+
+  /**
+   * colors: {water, sky, skyTop, sea}: the map's background, and walk mode's horizon,
+   * zenith and sea. A dark zenith makes walk mode a night city.
+   */
+  setBackground(colors) {
+    this.colors = colors;
+    this.scene.background = new THREE.Color(this.walking ? colors.sky : colors.water);
+    this.planet.material.color.set(colors.sea);
+    this.sky.material.uniforms.uTop.value.set(colors.skyTop);
+    this.sky.material.uniforms.uHorizon.value.set(colors.sky);
+    const night = new THREE.Color(colors.skyTop).getHSL({}).l < 0.15;
+    this.curve.uNight.value = night ? 1 : 0;
+    if (this.props) setNight(this.props, night);
+    if (this.walking) this.scene.fog.color.set(colors.sky);
     this.requestRender();
+  }
+
+  /**
+   * Patches a material to bend its vertices onto the planet while walking; city
+   * materials (the boxes) also get walk mode's facades and streets.
+   */
+  bendable(material, city = false) {
+    material.onBeforeCompile = shader => {
+      Object.assign(shader.uniforms, this.curve);
+      let body = BENT_PROJECT_VERTEX;
+      if (city) {
+        body += CITY_VERT_BODY;
+        shader.fragmentShader = CITY_FRAG_HEAD + shader.fragmentShader
+          .replace('#include <color_fragment>', '#include <color_fragment>\n' + CITY_FRAG_BODY);
+      }
+      shader.vertexShader = BEND_GLSL + (city ? CITY_VERT_HEAD : '') + shader.vertexShader.replace('#include <project_vertex>', body);
+    };
+    material.customProgramCacheKey = () => (city ? 'bend-city' : 'bend');
+    return material;
+  }
+
+  /**
+   * Switches between the isometric map and walk mode. radius: the planet's; the
+   * walker's camera and centre are set with setWalker.
+   */
+  setWalking(on, radius) {
+    this.walking = on;
+    this.curve.uBend.value = on ? 1 : 0;
+    if (radius) this.setRadius(radius);
+    this.controls.enabled = !on;
+    this.scene.fog = on ? new THREE.Fog(this.colors.sky, 30, 160) : null;
+    this.planet.visible = this.sky.visible = on;
+    this.setBackground(this.colors);
+    this.showGround();
+  }
+
+  setRadius(r) {
+    this.curve.uRadius.value = r;
+    // The water surface sits at the bottom of the land boxes (layout LAND_H).
+    this.planet.scale.setScalar(r - WATER_DEPTH);
+  }
+
+  /** Places the walker: flat-map feet position, eye height, yaw and pitch (radians). */
+  setWalker(x, feet, z, eye, yaw, pitch) {
+    this.curve.uTime.value = performance.now() / 1000;
+    this.sky.position.set(x, feet + eye, z);
+    this.curve.uCenter.value.set(x, 0, z);
+    this.planet.position.set(x, -this.curve.uRadius.value, z);
+    this.walkCamera.position.set(x, feet + eye, z);
+    this.walkCamera.rotation.set(pitch, yaw, 0);
+    this.walkCamera.updateMatrixWorld();
   }
 
   /** Replace all boxes. colors: array of CSS colours, one per box. */
   setBoxes(boxes, colors) {
     if (this.mesh) {
       this.scene.remove(this.mesh);
+      this.mesh.geometry.dispose();
       this.mesh.dispose();
     }
     this.boxes = boxes;
-    const mesh = new THREE.InstancedMesh(this.unitBox, this.material, boxes.length);
+    const geo = this.unitBox.clone();
+    geo.setAttribute('aKind', new THREE.InstancedBufferAttribute(Float32Array.from(boxes, kindCode), 1));
+    const mesh = new THREE.InstancedMesh(geo, this.material, boxes.length);
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
     boxes.forEach((b, i) => {
       m.compose(p.set(b.x, b.y, b.z), q, s.set(b.w, Math.max(b.h, 0.01), b.d));
@@ -84,8 +179,38 @@ export class MapScene {
     });
     mesh.computeBoundingSphere();
     this.mesh = mesh;
+    if (this.ground) {
+      this.scene.remove(this.ground);
+      this.ground.geometry.dispose();
+    }
+    this.ground = new THREE.Mesh(tessellate(boxes.filter(isLarge)), this.material);
+    this.ground.frustumCulled = false; // bent vertices leave the flat bounding sphere
+    this.scene.add(this.ground);
+    if (this.props) {
+      this.scene.remove(this.props);
+      for (const m of this.props.children) m.dispose();
+    }
+    this.props = makeProps(boxes, m => this.bendable(m));
+    if (this.colors) setNight(this.props, this.curve.uNight.value > 0);
+    this.scene.add(this.props);
     this.setColors(colors);
     this.scene.add(mesh);
+    this.showGround();
+  }
+
+  // In walk mode the tessellated ground replaces the large instances, which are
+  // shrunk to nothing; the isometric map shows the instances only.
+  showGround() {
+    if (!this.mesh) return;
+    this.ground.visible = this.props.visible = this.walking;
+    this.mesh.frustumCulled = !this.walking;
+    const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
+    this.boxes.forEach((b, i) => {
+      if (!isLarge(b)) return;
+      const k = this.walking ? 0 : 1;
+      this.mesh.setMatrixAt(i, m.compose(p.set(b.x, b.y, b.z), q, s.set(b.w * k, Math.max(b.h, 0.01) * k, b.d * k)));
+    });
+    this.mesh.instanceMatrix.needsUpdate = true;
     this.requestRender();
   }
 
@@ -93,12 +218,20 @@ export class MapScene {
     const c = new THREE.Color();
     colors.forEach((col, i) => this.mesh.setColorAt(i, c.set(col)));
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+    // The ground's vertex colours are its face shade times its box's colour.
+    const g = this.ground.geometry, shade = g.getAttribute('shade'), box = g.getAttribute('box'), col = g.getAttribute('color');
+    for (let v = 0; v < box.count; v++) {
+      c.set(colors[box.getX(v)]).multiplyScalar(shade.getX(v));
+      col.setXYZ(v, c.r, c.g, c.b);
+    }
+    col.needsUpdate = true;
     this.requestRender();
   }
 
   /** Box index under a client-space point, or -1. */
   pick(clientX, clientY) {
     if (!this.mesh) return -1;
+    if (this.walking) return -1; // walk.js aims along the bent view instead
     const r = this.renderer.domElement.getBoundingClientRect();
     const ndc = new THREE.Vector2(((clientX - r.left) / r.width) * 2 - 1, -((clientY - r.top) / r.height) * 2 + 1);
     this.raycaster.setFromCamera(ndc, this.camera);
@@ -113,10 +246,11 @@ export class MapScene {
       this.outline = null;
     }
     if (box) {
-      const geo = new THREE.EdgesGeometry(new THREE.BoxGeometry(box.w + 0.08, box.h + 0.08, box.d + 0.08));
-      this.outline = new THREE.LineSegments(geo, new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true }));
+      const geo = outlineGeometry(box.w + 0.08, box.h + 0.08, box.d + 0.08);
+      this.outline = new THREE.LineSegments(geo, this.bendable(new THREE.LineBasicMaterial({ color, depthTest: false, transparent: true })));
       this.outline.position.set(box.x, box.y + box.h / 2, box.z);
       this.outline.renderOrder = 10;
+      this.outline.frustumCulled = false;
       this.scene.add(this.outline);
     }
     this.requestRender();
@@ -128,7 +262,7 @@ export class MapScene {
     this.edgeGroup.clear();
     const mats = new Map();
     const mat = color => {
-      if (!mats.has(color)) mats.set(color, new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 }));
+      if (!mats.has(color)) mats.set(color, this.bendable(new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.9 })));
       return mats.get(color);
     };
     for (const a of arcs) {
@@ -139,12 +273,15 @@ export class MapScene {
       mid.y = Math.max(p0.y, p2.y) + 1.5 + dist * 0.3;
       const curve = new THREE.QuadraticBezierCurve3(p0, mid, p2);
       const r = 0.05 + 0.035 * Math.log2(1 + a.count);
-      this.edgeGroup.add(new THREE.Mesh(new THREE.TubeGeometry(curve, 32, r, 5, false), mat(a.color)));
+      const tube = new THREE.Mesh(new THREE.TubeGeometry(curve, 32, r, 5, false), mat(a.color));
+      tube.frustumCulled = false; // bounds are flat; walk mode draws the tube bent
+      this.edgeGroup.add(tube);
 
       const head = new THREE.Mesh(new THREE.ConeGeometry(r * 3, r * 7, 8), mat(a.color));
       const tangent = curve.getTangent(0.97);
       head.position.copy(curve.getPoint(0.97));
       head.quaternion.setFromUnitVectors(new THREE.Vector3(0, 1, 0), tangent);
+      head.frustumCulled = false;
       this.edgeGroup.add(head);
     }
     this.requestRender();
@@ -205,17 +342,169 @@ export class MapScene {
    * the drawing buffer is not preserved between frames.
    */
   renderNow() {
-    this.renderer.render(this.scene, this.camera);
+    this.renderer.render(this.scene, this.view);
     return this.renderer.domElement;
   }
 
   /** World -> CSS pixel position within the container; null when behind the camera. */
   project(x, y, z) {
-    const v = new THREE.Vector3(x, y, z).project(this.camera);
+    const v = new THREE.Vector3(x, y, z);
+    if (this.walking) {
+      this.bend(v);
+      // Behind the walker, or beyond the horizon (below the water surface).
+      if (v.clone().applyMatrix4(this.walkCamera.matrixWorldInverse).z > -this.walkCamera.near) return null;
+      const c = this.planet.position, eye = this.walkCamera.position;
+      if (occludedBySphere(eye, v, c, this.planet.scale.x)) return null;
+    }
+    v.project(this.view);
     if (v.z > 1 || v.z < -1) return null;
     const { clientWidth: w, clientHeight: h } = this.container;
     return { x: (v.x + 1) / 2 * w, y: (1 - v.y) / 2 * h };
   }
+
+  /**
+   * Flat-map point -> where walk mode draws it (in place). Mirrors BEND_GLSL: the point
+   * keeps its height above the surface and its distance along it from the centre.
+   */
+  bend(v) {
+    const c = this.curve.uCenter.value, R = this.curve.uRadius.value;
+    const dx = v.x - c.x, dz = v.z - c.z, r = Math.hypot(dx, dz);
+    if (r < 1e-6) return v;
+    const th = Math.min(r / R, Math.PI), rr = R + v.y;
+    return v.set(c.x + dx / r * rr * Math.sin(th), rr * Math.cos(th) - R, c.z + dz / r * rr * Math.sin(th));
+  }
+
+  /** Inverse of bend: a point in walk-mode space -> the flat-map point it shows (in place). */
+  unbend(v) {
+    const c = this.curve.uCenter.value, R = this.curve.uRadius.value;
+    const dx = v.x - c.x, dy = v.y + R, dz = v.z - c.z;
+    const horiz = Math.hypot(dx, dz);
+    const h = Math.hypot(horiz, dy) - R;
+    if (horiz < 1e-9) return v.set(c.x, h, c.z);
+    const r = Math.atan2(horiz, dy) * R;
+    return v.set(c.x + dx / horiz * r, h, c.z + dz / horiz * r);
+  }
+}
+
+const WATER_DEPTH = 0.45;
+
+// Wraps a world position around a sphere of radius uRadius touching the flat map at
+// uCenter: distance along the surface and height above it are preserved, so vertical
+// edges stay straight (radial) and flat faces curve with the planet.
+const BEND_GLSL = `
+uniform vec3 uCenter;
+uniform float uRadius;
+uniform float uBend;
+vec3 bendWorld(vec3 p) {
+  vec2 d = p.xz - uCenter.xz;
+  float r = length(d);
+  if (uBend < 0.5 || r < 1e-5) return p;
+  float th = min(r / uRadius, 3.14159265);
+  float rr = uRadius + p.y;
+  vec2 o = d / r * rr * sin(th);
+  return vec3(uCenter.x + o.x, rr * cos(th) - uRadius, uCenter.z + o.y);
+}
+`;
+
+// three.js's project_vertex chunk with the bend between model and view transforms.
+const BENT_PROJECT_VERTEX = `
+vec4 mvPosition = vec4(transformed, 1.0);
+#ifdef USE_INSTANCING
+  mvPosition = instanceMatrix * mvPosition;
+#endif
+mvPosition = modelMatrix * mvPosition;
+mvPosition.xyz = bendWorld(mvPosition.xyz);
+mvPosition = viewMatrix * mvPosition;
+gl_Position = projectionMatrix * mvPosition;
+`;
+
+// Whether the segment eye->p passes through the sphere (centre c, radius r).
+function occludedBySphere(eye, p, c, r) {
+  const d = p.clone().sub(eye), len = d.length();
+  d.divideScalar(len);
+  const oc = eye.clone().sub(c);
+  const b = oc.dot(d), disc = b * b - (oc.lengthSq() - r * r);
+  if (disc < 0) return false;
+  const t = -b - Math.sqrt(disc);
+  return t > 0 && t < len - 0.01;
+}
+
+const isLarge = b => Math.max(b.w, b.d) > 1.5;
+
+// Face brightness, as in shadedBox: top, +x, -x, +z, -z.
+const SHADE = { top: 1, px: 0.62, nx: 0.62, pz: 0.78, nz: 0.78 };
+
+/**
+ * One geometry for many boxes, their tops gridded and their sides split along the
+ * length (heights need no split: the bend keeps verticals straight). Bottoms are
+ * left out; they face the planet. Attributes: position, normal, color (set by
+ * setColors), shade (face brightness), box (the box index), and for city.js aKind,
+ * aBoxCenter (base centre) and aBoxSize.
+ */
+function tessellate(boxes) {
+  const area = boxes.reduce((a, b) => a + b.w * b.d, 0);
+  const cell = Math.max(0.75, Math.sqrt(area / 150000)); // bounds the vertex count
+  const pos = [], shade = [], box = [], index = [], normal = [], kind = [], center = [], size = [];
+  let cur;
+  const quadGrid = (i, s, n, nu, nv, at) => {
+    const base = pos.length / 3;
+    for (let v = 0; v <= nv; v++) for (let u = 0; u <= nu; u++) {
+      pos.push(...at(u / nu, v / nv));
+      shade.push(s);
+      box.push(i);
+      normal.push(...n);
+      kind.push(kindCode(cur));
+      center.push(cur.x, cur.y, cur.z);
+      size.push(cur.w, Math.max(cur.h, 0.01), cur.d);
+    }
+    for (let v = 0; v < nv; v++) for (let u = 0; u < nu; u++) {
+      const a = base + v * (nu + 1) + u, b = a + 1, c = a + nu + 1, d = c + 1;
+      index.push(a, c, b, b, c, d);
+    }
+  };
+  for (const b of boxes) {
+    const x0 = b.x - b.w / 2, x1 = b.x + b.w / 2, z0 = b.z - b.d / 2, z1 = b.z + b.d / 2;
+    const y0 = b.y, y1 = b.y + Math.max(b.h, 0.01);
+    const nx = Math.max(1, Math.ceil(b.w / cell)), nz = Math.max(1, Math.ceil(b.d / cell));
+    const i = b.i;
+    cur = b;
+    quadGrid(i, SHADE.top, [0, 1, 0], nx, nz, (u, v) => [x0 + u * b.w, y1, z0 + v * b.d]);
+    quadGrid(i, SHADE.pz, [0, 0, 1], nx, 1, (u, v) => [x0 + u * b.w, y1 - v * (y1 - y0), z1]);
+    quadGrid(i, SHADE.nz, [0, 0, -1], nx, 1, (u, v) => [x1 - u * b.w, y1 - v * (y1 - y0), z0]);
+    quadGrid(i, SHADE.px, [1, 0, 0], nz, 1, (u, v) => [x1, y1 - v * (y1 - y0), z1 - u * b.d]);
+    quadGrid(i, SHADE.nx, [-1, 0, 0], nz, 1, (u, v) => [x0, y1 - v * (y1 - y0), z0 + u * b.d]);
+  }
+  const geo = new THREE.BufferGeometry();
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(pos.length), 3));
+  geo.setAttribute('shade', new THREE.Float32BufferAttribute(shade, 1));
+  geo.setAttribute('box', new THREE.Float32BufferAttribute(box, 1));
+  geo.setAttribute('normal', new THREE.Float32BufferAttribute(normal, 3));
+  geo.setAttribute('aKind', new THREE.Float32BufferAttribute(kind, 1));
+  geo.setAttribute('aBoxCenter', new THREE.Float32BufferAttribute(center, 3));
+  geo.setAttribute('aBoxSize', new THREE.Float32BufferAttribute(size, 3));
+  geo.setIndex(index);
+  return geo;
+}
+
+// A box's 12 edges as line segments, split into short pieces so they bend with the
+// planet in walk mode. Base at y=0, centred on x and z like the boxes.
+function outlineGeometry(w, h, d) {
+  const pts = [];
+  const edge = (a, b) => {
+    const n = Math.max(1, Math.ceil(Math.hypot(b[0] - a[0], b[2] - a[2]) / 0.75));
+    for (let k = 0; k < n; k++) {
+      const t0 = k / n, t1 = (k + 1) / n;
+      for (const t of [t0, t1]) pts.push(a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t, a[2] + (b[2] - a[2]) * t);
+    }
+  };
+  const x = w / 2, z = d / 2;
+  for (const y of [0, h]) {
+    edge([-x, y, -z], [x, y, -z]); edge([x, y, -z], [x, y, z]);
+    edge([x, y, z], [-x, y, z]); edge([-x, y, z], [-x, y, -z]);
+  }
+  for (const [sx, sz] of [[-1, -1], [1, -1], [1, 1], [-1, 1]]) edge([sx * x, 0, sz * z], [sx * x, h, sz * z]);
+  return new THREE.BufferGeometry().setAttribute('position', new THREE.Float32BufferAttribute(pts, 3));
 }
 
 // Unit box with its base at y=0 and a brightness per face: top 1, sides as if lit from

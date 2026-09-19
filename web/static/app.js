@@ -7,6 +7,7 @@ import { computeVisibility, searchIndex, search } from './filter.js';
 import { STATIC, fetchGraph, fetchConfig, fetchLazy, saveSettings } from './data.js';
 import { MODES, isHistoryMode, computeMetrics, historyT, timeRange, ago, formatDate } from './history.js';
 import { Labels } from './labels.js';
+import { Walker } from './walk.js';
 import { $, fmt, escapeHTML } from './dom.js';
 import { Color } from './vendor/three.module.min.js';
 
@@ -40,6 +41,8 @@ let flashTimer = 0;
 let metricsCache = null; // computeMetrics() for the current model, history and since
 let focus = null;  // {lit: Set<box>, arcs}
 let labels;       // Labels layer over the map
+let walker;       // first-person walk mode
+let aimX = 0;     // where the walk-mode tooltip was last placed
 
 async function main() {
   const [{ graph, version }, cfg] = await Promise.all([fetchGraph(), fetchConfig()]);
@@ -58,6 +61,28 @@ async function main() {
   scene = new MapScene($('map'));
   labels = new Labels($('labels'), scene);
   scene.onRender = () => labels.draw();
+  walker = new Walker(scene, $('walk-hud'), {
+    onAim: (i, x, y) => {
+      if (i !== state.hovered) {
+        state.hovered = i;
+        recolor();
+      } else if (x === aimX) return; // the crosshair moves when the panel resizes the map
+      aimX = x;
+      showTooltip(i, x, y);
+    },
+    onHit: box => {
+      select(box.node);
+      updateStatus(`delivered to ${box.node.name}`);
+    },
+    onSelect: box => select(box.node),
+    onToggle: box => {
+      const n = box.node;
+      toggle(n);
+      select(n.kind === 'symbol' && !state.expanded.has(n.parentNode.id) ? n.parentNode : n);
+    },
+    onExit: () => setWalking(false),
+    onRender: () => labels.draw(),
+  });
   panel = new Panel($('panel'), $('panel-body'), {
     model,
     colorOf: lang => langs.of(lang),
@@ -424,7 +449,22 @@ function reveal(n) {
   if (changed) relayout();
   select(n);
   const b = rep(n);
-  if (b) scene.centerOn(b.x, b.y + b.h / 2, b.z);
+  if (b && walker.active) walker.teleport(b);
+  else if (b) scene.centerOn(b.x, b.y + b.h / 2, b.z);
+}
+
+// Walk mode: the map seen in first person on a small planet (walk.js).
+function setWalking(on) {
+  if (on && !walker.active) {
+    showTooltip(-1);
+    walker.enter(state.selected && rep(state.selected), rep(model.root), L.bounds);
+  } else if (!on && walker.active) {
+    walker.exit(); // calls back here once it has left
+    return;
+  }
+  $('walk').setAttribute('aria-pressed', on);
+  $('map').parentElement.classList.toggle('walking', on);
+  if (!on) scene.requestRender();
 }
 
 // ---------------------------------------------------------------- drawing
@@ -432,6 +472,7 @@ function reveal(n) {
 function relayout() {
   L = layout(model, state);
   scene.setBoxes(L.boxes, baseColors());
+  walker.setBoxes(L.boxes);
   refreshFocus();
 }
 
@@ -660,7 +701,7 @@ function applyTheme() {
   else document.documentElement.dataset.theme = state.theme;
   pal = readPalette();
   langs = languageColors(model, pal, slots);
-  scene.setBackground(pal.water);
+  scene.setBackground({ water: pal.water, sky: pal.sky, skyTop: pal.skyTop, sea: pal.sea });
   if (L) { scene.setOutline(focus?.selBox, pal.select); refreshFocus(); }
   if (state.selected) panel.show(state.selected); // swatches in the panel
   drawLegend();
@@ -671,7 +712,8 @@ function bindControls() {
   const map = $('map');
   let down = null, hoverFrame = 0, lastMove = null;
 
-  map.addEventListener('pointerdown', e => { down = { x: e.clientX, y: e.clientY, button: e.button }; map.classList.add('grabbing'); });
+  // Walk mode handles the pointer itself (walk.js).
+  map.addEventListener('pointerdown', e => { if (walker.active) return; down = { x: e.clientX, y: e.clientY, button: e.button }; map.classList.add('grabbing'); });
   window.addEventListener('pointerup', e => {
     map.classList.remove('grabbing');
     if (!down) return;
@@ -683,6 +725,7 @@ function bindControls() {
     down = null;
   });
   map.addEventListener('dblclick', e => {
+    if (walker.active) return;
     const i = scene.pick(e.clientX, e.clientY);
     if (i >= 0) {
       const n = L.boxes[i].node;
@@ -692,7 +735,7 @@ function bindControls() {
   });
   map.addEventListener('pointermove', e => {
     lastMove = e;
-    if (hoverFrame || (down && e.buttons)) return;
+    if (walker.active || hoverFrame || (down && e.buttons)) return;
     hoverFrame = requestAnimationFrame(() => {
       hoverFrame = 0;
       const i = scene.pick(lastMove.clientX, lastMove.clientY);
@@ -701,12 +744,13 @@ function bindControls() {
       showTooltip(i, lastMove.clientX, lastMove.clientY);
     });
   });
-  map.addEventListener('pointerleave', () => { state.hovered = -1; showTooltip(-1); recolor(); });
+  map.addEventListener('pointerleave', () => { if (walker.active) return; state.hovered = -1; showTooltip(-1); recolor(); });
   map.addEventListener('contextmenu', e => e.preventDefault());
 
   $('expand-level').onclick = () => setLevel(state.level + 1);
   $('collapse-level').onclick = () => setLevel(state.level - 1);
   $('fit').onclick = () => scene.fit(L.bounds);
+  $('walk').onclick = () => setWalking(!walker.active);
   $('rotate-left').onclick = () => scene.setIso(scene.quarter - 1);
   $('rotate-right').onclick = () => scene.setIso(scene.quarter + 1);
   $('help-btn').onclick = () => $('help').showModal();
@@ -737,7 +781,7 @@ function bindControls() {
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => state.theme === 'auto' && applyTheme());
 
   window.addEventListener('keydown', e => {
-    if (e.target.closest('input, select, textarea, dialog') || e.ctrlKey || e.metaKey || e.altKey) return;
+    if (e.target.closest('input, select, textarea, dialog') || e.ctrlKey || e.metaKey || e.altKey || walker.owns(e)) return;
     const sel = state.selected;
     switch (e.key) {
       case 'Escape': select(null); break;
@@ -746,8 +790,9 @@ function bindControls() {
       case 'e': case 'E': scene.setIso(scene.quarter + 1); break;
       case '+': case '=': setLevel(state.level + 1); break;
       case '-': case '_': setLevel(state.level - 1); break;
-      case '?': $('help').showModal(); break;
-      case '/': $('search').focus(); break;
+      case '?': document.exitPointerLock?.(); $('help').showModal(); break;
+      case '/': document.exitPointerLock?.(); $('search').focus(); break;
+      case 'v': case 'V': setWalking(true); break;
       case 'p': case 'P': saveScreenshot(); break;
       case 'o': case 'O': {
         const f = sel?.kind === 'symbol' ? sel.parentNode : sel;

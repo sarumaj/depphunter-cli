@@ -11,6 +11,10 @@ Browse any code base as an interactive isometric archipelago in your browser.
 - **Click** anything to see what it depends on and what uses it;
   **double-click** to expand or collapse directories and files (files expand
   into their symbols).
+- **Walk** (`V`) the map in first person on a tiny planet: `WASD` to move, the
+  mouse to look, `Space` to jump, `F` to fly. Throw newspapers (click or `Q`) at
+  buildings to select them, `E` to expand what you aim at, and the mouse wheel to
+  change the planet's curvature.
 
 Everything runs locally: one binary, no network access, no Node.js.
 

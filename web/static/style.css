@@ -20,6 +20,8 @@
   --seq-5: #256abf; --seq-6: #184f95; --seq-7: #0d366b;
 
   --water: #e3e9ec;
+  /* walk mode: horizon, zenith, sea; a dark zenith makes it a night city */
+  --sky: #d3e4f0; --sky-top: #4a8fd0; --sea: #3f7896;
   --land: #d6d1c3;
   --terrace-a: #efeee9;
   --terrace-b: #dddbd3;
@@ -46,7 +48,7 @@
     --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-other: #6d6b66;
     --seq-1: #184f95; --seq-2: #1c5cab; --seq-3: #256abf; --seq-4: #2a78d6;
     --seq-5: #3987e5; --seq-6: #6da7ec; --seq-7: #9ec5f4;
-    --water: #11171b; --land: #3b3934; --terrace-a: #2a2a28; --terrace-b: #34332f;
+    --water: #11171b; --sky: #1b2738; --sky-top: #03060d; --sea: #0b1a26; --land: #3b3934; --terrace-a: #2a2a28; --terrace-b: #34332f;
     --district: #55534d; --no-data: #3a3935; --pkg: #7c786e; --pkg-unresolved: #4a4843;
     --edge-out: #ffffff; --edge-in: #898781; --dim: #45443f;
     --hl-keyword: #e87ba4; --hl-string: #5ccf9e; --hl-comment: #898781; --hl-number: #f0b24a;
@@ -62,7 +64,7 @@
   --series-5: #d55181; --series-6: #008300; --series-7: #9085e9; --series-other: #6d6b66;
   --seq-1: #184f95; --seq-2: #1c5cab; --seq-3: #256abf; --seq-4: #2a78d6;
   --seq-5: #3987e5; --seq-6: #6da7ec; --seq-7: #9ec5f4;
-  --water: #11171b; --land: #3b3934; --terrace-a: #2a2a28; --terrace-b: #34332f;
+  --water: #11171b; --sky: #1b2738; --sky-top: #03060d; --sea: #0b1a26; --land: #3b3934; --terrace-a: #2a2a28; --terrace-b: #34332f;
   --district: #55534d; --no-data: #3a3935; --pkg: #7c786e; --pkg-unresolved: #4a4843;
   --edge-out: #ffffff; --edge-in: #898781; --dim: #45443f;
   --hl-keyword: #e87ba4; --hl-string: #5ccf9e; --hl-comment: #898781; --hl-number: #f0b24a;
@@ -171,11 +173,33 @@ main { position: relative; flex: 1; min-height: 0; }
 #map { position: absolute; inset: 0; outline: none; }
 /* Keep the map visible beside the panel on wide screens. */
 @media (min-width: 1100px) {
-  main.panel-open #map, main.panel-open #labels { right: 584px; }
+  main.panel-open #map, main.panel-open #labels, main.panel-open #walk-hud { right: 584px; }
 }
 #map canvas { display: block; width: 100%; height: 100%; }
 #map.grabbing { cursor: grabbing; }
 #map.hovering { cursor: pointer; }
+
+/* Walk mode: a crosshair and a status bar over the map. */
+#walk-hud { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+#walk-hud .crosshair {
+  position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; transform: translate(-50%, -50%);
+  background:
+    linear-gradient(var(--text), var(--text)) center / 2px 100% no-repeat,
+    linear-gradient(var(--text), var(--text)) center / 100% 2px no-repeat;
+  opacity: 0.7;
+}
+#walk-hud .w-bar {
+  position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
+  max-width: calc(100% - 32px);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow);
+  padding: 6px 12px; text-align: center; color: var(--text-2);
+}
+#walk-hud .w-bar b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+#walk-hud .w-keys { font-size: 12px; margin-top: 2px; }
+#walk-hud kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--border); border-radius: 3px; padding: 0 3px; background: var(--page); }
+main.walking #legend { display: none; }
+#walk[aria-pressed=true] { background: var(--accent); color: #fff; border-color: var(--accent); }
 
 #labels { position: absolute; inset: 0; pointer-events: none; overflow: hidden; }
 .label {
