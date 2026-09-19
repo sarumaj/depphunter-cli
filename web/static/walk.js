@@ -7,7 +7,7 @@
 // of the session. A second dart in an already tagged building opens its details.
 
 import * as THREE from './vendor/three.module.min.js';
-import { rampsFor, rampHeight, bridgesFor, bridgeHeight } from './city.js';
+import { rampsFor, rampHeight, bridgesFor, bridgeHeight, bridgeBounds } from './city.js';
 
 // A building is one unit wide and its storeys 0.3 high (city.js): the walker is
 // about a storey and a half tall.
@@ -68,6 +68,7 @@ export class Walker {
     this.beacons = new THREE.Group();
     this.ramps = [];
     this.bridges = [];
+    this.decks = new Map(); // ramps and bridge decks, by grid cell (indexDecks)
     this.aim = { i: -1, point: null };
     this.p = { x: 0, z: 0, feet: 0, vy: 0, yaw: 0, pitch: 0, ground: true, fly: false };
     this.radius = 40;
@@ -92,6 +93,7 @@ export class Walker {
     this.limits = boxes.length ? lim : null;
     this.ramps = rampsFor(boxes);
     this.bridges = bridgesFor(boxes);
+    this.indexDecks();
     // Darts in flight aim at boxes of the old layout: let them go.
     for (const dart of this.darts) this.scene.scene.remove(dart.mesh);
     this.darts = [];
@@ -112,6 +114,23 @@ export class Walker {
       this.p.feet = Math.max(this.p.feet, this.height(this.p.x, this.p.z));
       this.setRadius(this.radius);
     }
+  }
+
+  // Ramps and bridge decks into the same spatial grid as the boxes: height() is called
+  // several times a frame, at five points each, and a large map has a ramp per block.
+  indexDecks() {
+    this.decks = new Map();
+    const put = (r, at) => {
+      for (let x = Math.floor(r.x0 / CELL); x <= Math.floor(r.x1 / CELL); x++) {
+        for (let z = Math.floor(r.z0 / CELL); z <= Math.floor(r.z1 / CELL); z++) {
+          const k = x + ',' + z;
+          if (!this.decks.has(k)) this.decks.set(k, []);
+          this.decks.get(k).push(at);
+        }
+      }
+    };
+    for (const r of this.ramps) put(r, (x, z) => rampHeight(r, x, z));
+    for (const b of this.bridges) put(bridgeBounds(b), (x, z) => bridgeHeight(b, x, z));
   }
 
   /** Starts walking in front of `box`, or on the south road of `block`. bounds sizes the planet. */
@@ -459,10 +478,12 @@ export class Walker {
    */
   height(x, z) {
     let top = WATER;
-    for (const [dx, dz] of [[0, 0], [BODY, BODY], [BODY, -BODY], [-BODY, BODY], [-BODY, -BODY]]) {
-      for (const b of this.at(x + dx, z + dz)) top = Math.max(top, b.y + b.h);
-      for (const r of this.ramps) top = Math.max(top, rampHeight(r, x + dx, z + dz));
-      for (const r of this.bridges) top = Math.max(top, bridgeHeight(r, x + dx, z + dz));
+    for (const [dx, dz] of PROBES) {
+      const px = x + dx, pz = z + dz;
+      for (const b of this.at(px, pz)) top = Math.max(top, b.y + b.h);
+      for (const at of this.decks.get(Math.floor(px / CELL) + ',' + Math.floor(pz / CELL)) || []) {
+        top = Math.max(top, at(px, pz));
+      }
     }
     return top;
   }
@@ -607,6 +628,9 @@ export class Walker {
 }
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+// The walker's footprint, sampled at its centre and four corners (height).
+const PROBES = [[0, 0], [BODY, BODY], [BODY, -BODY], [-BODY, BODY], [-BODY, -BODY]];
 
 const DART_SPEED = 30;
 const FORWARD = new THREE.Vector3(0, 0, 1); // the dart geometry's nose
