@@ -10,13 +10,13 @@ import (
 
 // testdata/repo: a Cargo workspace with a workspace dependency, a renamed dependency,
 // a path dependency, Cargo.lock pins and mod.rs / crate:: / super:: module paths.
-func analyse(t *testing.T) map[string]*lang.FileResult {
+func analyze(t *testing.T) map[string]*lang.FileResult {
 	t.Helper()
 	return langtest.Analyze(t, Plugin{}, "testdata/repo")
 }
 
 func TestResolution(t *testing.T) {
-	res := analyse(t)
+	res := analyze(t)
 	langtest.CheckImports(t, res["app/src/main.rs"], map[string]lang.Target{
 		"use std::collections::HashMap":  {Ecosystem: "rust-std", Package: "std"},
 		"use crate::net":                 {Local: "app/src/net/mod.rs"},
@@ -42,7 +42,7 @@ func TestResolution(t *testing.T) {
 }
 
 func TestSymbols(t *testing.T) {
-	langtest.CheckSymbols(t, analyse(t)["app/src/main.rs"], map[string]string{"main": "func", "App": "struct", "App.run": "method"})
+	langtest.CheckSymbols(t, analyze(t)["app/src/main.rs"], map[string]string{"main": "func", "App": "struct", "App.run": "method"})
 }
 
 func TestExpandUse(t *testing.T) {

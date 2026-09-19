@@ -16,12 +16,14 @@ import (
 var builtins = map[string]bool{}
 
 func init() {
+	// cSpell: disable
 	for _, m := range strings.Fields(`assert async_hooks buffer child_process cluster console constants crypto
 		dgram diagnostics_channel dns domain events fs http http2 https inspector module net os path
 		perf_hooks process punycode querystring readline repl stream string_decoder sys timers tls
 		trace_events tty url util v8 vm wasi worker_threads zlib`) {
 		builtins[m] = true
 	}
+	// cSpell: enable
 }
 
 // Extensions tried, in order, for extension-less specifiers (TypeScript's order first).
@@ -145,13 +147,13 @@ func (r *resolver) resolve(spec, from string) lang.Target {
 	if builtins[pkg] {
 		return lang.Target{Ecosystem: ecoNode, Package: pkg}
 	}
-	if pdir, ok := r.byName[pkg]; ok {
+	if packageDir, ok := r.byName[pkg]; ok {
 		if sub != "" {
-			if t, ok := r.probe(path.Join(pdir, sub)); ok {
+			if t, ok := r.probe(path.Join(packageDir, sub)); ok {
 				return t
 			}
 		}
-		return lang.Target{Local: pdir}
+		return lang.Target{Local: packageDir}
 	}
 	// Bundler aliases and package.json "imports" we cannot see: not an npm package.
 	if strings.HasPrefix(spec, "~") || strings.HasPrefix(spec, "#") || strings.HasPrefix(spec, "@/") {

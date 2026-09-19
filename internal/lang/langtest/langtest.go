@@ -29,7 +29,7 @@ func Analyze(t *testing.T, p lang.Plugin, root string) map[string]*lang.FileResu
 func Imports(t *testing.T, res *lang.FileResult) map[string]lang.Target {
 	t.Helper()
 	if res == nil {
-		t.Fatal("file not analysed")
+		t.Fatal("file not analyzed")
 	}
 	out := map[string]lang.Target{}
 	for _, im := range res.Imports {
@@ -60,7 +60,7 @@ func CheckImports(t *testing.T, res *lang.FileResult, want map[string]lang.Targe
 func Symbols(t *testing.T, res *lang.FileResult) map[string]string {
 	t.Helper()
 	if res == nil {
-		t.Fatal("file not analysed")
+		t.Fatal("file not analyzed")
 	}
 	out := map[string]string{}
 	for _, s := range res.Symbols {

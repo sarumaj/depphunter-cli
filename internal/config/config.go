@@ -95,12 +95,12 @@ func RegisterFlags(fs *pflag.FlagSet) {
 	fs.Bool("no-open", false, "do not open the browser")
 	fs.StringArray("exclude", nil, "glob of paths to skip; repeatable")
 	fs.Int64("max-file-size", d.MaxFileSize, "files larger than this many bytes are not read")
-	fs.String("theme", d.UI.Theme, "colour theme: auto, light, dark")
-	fs.String("color-by", d.UI.ColorBy, "building colour: language, size, commits, churn, age, authors")
+	fs.String("theme", d.UI.Theme, "color theme: auto, light, dark")
+	fs.String("color-by", d.UI.ColorBy, "building color: language, size, commits, churn, age, authors")
 	fs.String("height-scale", d.UI.HeightScale, "building height scale: linear, sqrt, log")
 	fs.Bool("show-std", d.UI.ShowStd, "show standard-library islands")
 	fs.Int("expand-depth", d.UI.ExpandDepth, "initially expanded directory depth (0 = auto, -1 = all)")
-	fs.Bool("watch", false, "re-analyse on file changes and update the browser live")
+	fs.Bool("watch", false, "re-analyze on file changes and update the browser live")
 	fs.Bool("no-cache", false, "do not read or write the analysis cache")
 	fs.Bool("no-history", false, "do not read git history")
 	fs.Int("history-commits", d.HistoryCommits, "read at most this many commits of git history")
@@ -147,7 +147,7 @@ func Load(fs *pflag.FlagSet, args []string, userDir string) (Config, error) {
 	if err != nil {
 		return cfg, err
 	}
-	// Walking a symlinked root would yield nothing; analyse the directory it points to.
+	// Walking a symlinked root would yield nothing; analyze the directory it points to.
 	if resolved, err := filepath.EvalSymlinks(root); err == nil {
 		root = resolved
 	}

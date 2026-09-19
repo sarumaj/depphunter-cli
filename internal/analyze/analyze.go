@@ -83,13 +83,13 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 		if err := ctx.Err(); err != nil {
 			return nil, stats, err
 		}
-		ecos := map[string]lang.Ecosystem{}
+		ecosystems := map[string]lang.Ecosystem{}
 		for _, e := range p.Ecosystems() {
-			ecos[e.ID] = e
+			ecosystems[e.ID] = e
 		}
 		for _, f := range claimed {
 			if res := results[f.Path]; res != nil {
-				b.fileResult(f.Path, res, ecos)
+				b.fileResult(f.Path, res, ecosystems)
 			}
 		}
 	}
@@ -122,13 +122,13 @@ func (b *builder) dir(p string) string {
 	return id
 }
 
-func (b *builder) fileResult(file string, res *lang.FileResult, ecos map[string]lang.Ecosystem) {
+func (b *builder) fileResult(file string, res *lang.FileResult, ecosystems map[string]lang.Ecosystem) {
 	fid := graph.FileID(file)
 	for _, s := range res.Symbols {
 		b.add(&graph.Node{ID: graph.SymbolID(file, s.Name), Kind: graph.KindSymbol, Name: s.Name, SymbolKind: s.Kind, Line: s.Line, Parent: fid})
 	}
 	for _, im := range res.Imports {
-		to := b.target(im.Target, ecos)
+		to := b.target(im.Target, ecosystems)
 		if to == "" || to == fid {
 			continue
 		}
@@ -141,7 +141,7 @@ func (b *builder) fileResult(file string, res *lang.FileResult, ecos map[string]
 	}
 }
 
-func (b *builder) target(t lang.Target, ecos map[string]lang.Ecosystem) string {
+func (b *builder) target(t lang.Target, ecosystems map[string]lang.Ecosystem) string {
 	if t.Local != "" {
 		if b.files[t.Local] {
 			return graph.FileID(t.Local)
@@ -154,7 +154,7 @@ func (b *builder) target(t lang.Target, ecos map[string]lang.Ecosystem) string {
 	if t.Ecosystem == "" || t.Package == "" {
 		return ""
 	}
-	eco := ecos[t.Ecosystem]
+	eco := ecosystems[t.Ecosystem]
 	name := eco.Name
 	if name == "" {
 		name = t.Ecosystem

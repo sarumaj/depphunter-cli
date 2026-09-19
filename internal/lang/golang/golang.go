@@ -1,4 +1,4 @@
-// Package golang analyses Go sources with the standard library parser and resolves
+// Package golang analyzes Go sources with the standard library parser and resolves
 // imports against every go.mod found in the project.
 package golang
 

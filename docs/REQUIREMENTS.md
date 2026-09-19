@@ -1,4 +1,4 @@
-# depphunter — Requirements
+# depphunter - Requirements
 
 `depphunter` is a CLI that analyzes the project in the current directory and
 opens an interactive, isometric "archipelago" map of its code base in the
@@ -15,7 +15,7 @@ default web browser.
 
 ### Non-goals (for now)
 
-- Precise symbol-level (call-graph) references — deferred to an optional LSP
+- Precise symbol-level (call-graph) references - deferred to an optional LSP
   layer.
 - Editing code, refactoring, or running builds.
 - Hosting the view for remote users (the server is local-only by design).
@@ -42,7 +42,7 @@ Rules:
   no side has room (M7).
 - Edges are **never all drawn by default**. They appear for the focused node; a
   collapsed node shows the aggregate of its descendants' edges with counts.
-- Every colour encodes exactly one thing, has a legend, and is never the only
+- Every color encodes exactly one thing, has a legend, and is never the only
   channel (tooltip, labels and side panel repeat the information).
 
 ## 3. Graph data model
@@ -82,7 +82,7 @@ Each ecosystem is a plugin that:
 2. Extracts, per file: imports (raw specifier + line) and top-level symbols
    (name, kind, line).
 3. Resolves each import to a local path (file or directory), a standard-library
-   package, or an external package — using the ecosystem's manifests and
+   package, or an external package - using the ecosystem's manifests and
    lockfiles (`go.mod`, `package.json`, `pyproject.toml`, `Cargo.toml`,
    `pom.xml`, `*.csproj`, …).
 4. Declares the ecosystems it can emit (id + display name).
@@ -110,7 +110,7 @@ extension, lines counted) but carry no edges.
 
 ### CLI & configuration
 
-- `depphunter [path]` — analyze `path` (default: current directory), serve, open
+- `depphunter [path]` - analyze `path` (default: current directory), serve, open
   browser.
 - Precedence: flags > environment (`DEPPHUNTER_*`) > project config
   (`.depphunter.yaml`) > user config
@@ -128,14 +128,14 @@ extension, lines counted) but carry no edges.
 - Collapse / expand at every level: directory → file → symbol. Expand/collapse
   all to a depth.
 - Hover tooltip with name, path, language, size.
-- Select → focus: dim everything except the node and its neighbourhood; draw its
-  incoming and outgoing edges in distinct colours with counts.
+- Select → focus: dim everything except the node and its neighborhood; draw its
+  incoming and outgoing edges in distinct colors with counts.
 - Side panel: syntax-highlighted source, symbol outline, lists of dependencies
   and dependents (each clickable); aggregate stats for directories and packages.
 - Open in editor at the right line: a server-side command template (configured
   or detected), falling back to the `vscode://` URL handler (M3).
 - Fuzzy search and filters by language, path glob, ecosystem (M2).
-- Colour-by: language (categorical), size or git history (sequential). Height
+- color-by: language (categorical), size or git history (sequential). Height
   scale: linear / sqrt / log.
 - Light and dark themes (auto by OS, overridable).
 - Walk mode: the same map in first person, on foot or flying (M7).
@@ -163,12 +163,12 @@ extension, lines counted) but carry no edges.
 - **Performance:** ~10k files render and navigate at 60 fps (instanced
   rendering); cold analysis < 5 s for 10k files; warm runs near-instant through
   a content-hash cache (M3).
-- **Accessibility:** colour-blind-safe categorical palette, information never
-  colour-only, keyboard shortcuts for navigation.
+- **Accessibility:** color-blind-safe categorical palette, information never
+  color-only, keyboard shortcuts for navigation.
 
 ## 7. Milestones & acceptance criteria
 
-### M1 — Walking skeleton
+### M1 - Walking skeleton
 
 - Go plugin: imports via `go/parser`, symbols, multi-module `go.mod` resolution;
   std-lib and external modules become package nodes.
@@ -176,7 +176,7 @@ extension, lines counted) but carry no edges.
 - Local server with token + host check; `/api/graph`, `/api/file`,
   `/api/config`.
 - Archipelago view: collapse/expand dirs and files, hover, select/focus with
-  edges, side panel with highlighted source and dependency lists, colour-by and
+  edges, side panel with highlighted source and dependency lists, color-by and
   height-scale switches, theme support.
 - Config precedence implemented and tested.
 
@@ -184,7 +184,7 @@ extension, lines counted) but carry no edges.
 selecting `internal/lang/golang` shows its edges to `go/parser` (std-lib island)
 and its dependents.
 
-### M2 — Pluggable languages
+### M2 - Pluggable languages
 
 - Pure-Go tree-sitter runtime; plugins for JS/TS and Python.
 - JS/TS: relative paths (incl. `.js` → `.ts`, `index.*`), `tsconfig`/`jsconfig`
@@ -205,22 +205,22 @@ and its dependents.
 
 *Accepted when* a mixed Go/TS/Python repository shows npm, PyPI and Go islands
 with versions from lockfiles, and hiding a language removes its buildings and
-the islands only it used, without recolouring the remaining languages.
+the islands only it used, without recoloring the remaining languages.
 
-### M3 — Outputs & incrementality
+### M3 - Outputs & incrementality
 
 - Plugins split into `Extract` (content only, cached by SHA-256 of the content,
   plugin version and file extension) and a per-run `Resolver` (manifests,
   layout), so cached runs still resolve against the current manifests.
-- Watch mode (`fsnotify`) on the analysed directories only; debounced
+- Watch mode (`fsnotify`) on the analyzed directories only; debounced
   re-analysis; the browser receives updates through **Server-Sent Events** and
-  keeps expansion, selection, filters and language colours, highlighting changed
+  keeps expansion, selection, filters and language colors, highlighting changed
   files.
 - JSON / GraphML / DOT export from the CLI (`--export`) and the UI.
 - Open in editor via `POST /api/open` (cookie + `X-Depphunter-Request` header;
   files must be in the graph; arguments are never passed through a shell).
 
-> **Decisions (M3):** SSE instead of WebSocket — updates flow one way, SSE needs
+> **Decisions (M3):** SSE instead of WebSocket - updates flow one way, SSE needs
 > no dependency and reconnects by itself. The project config may not set
 > `editor`, since a cloned repository could otherwise choose the command
 > depphunter executes.
@@ -229,7 +229,7 @@ the islands only it used, without recolouring the remaining languages.
 mode updates the open map within a second without losing the view state, and the
 DOT export renders in Graphviz.
 
-### M4 — Breadth
+### M4 - Breadth
 
 - Rust (tree-sitter): `use` trees expanded to paths; module files via `crate::`,
   `self::`, `super::` and `mod x;`; workspace, path, renamed and
@@ -258,11 +258,11 @@ DOT export renders in Graphviz.
 > real projects: ripgrep 0 unresolved crates; gson 8 unresolved imports
 > (generated and test-only code); Serilog 1; Pester 0.
 
-*Accepted when* ripgrep, gson, Serilog and Pester analyse with (almost) no
+*Accepted when* ripgrep, gson, Serilog and Pester analyze with (almost) no
 unresolved dependencies, saved settings survive a reload, and the HTML export
 opens from `file://`.
 
-### M5 — Git history overlay
+### M5 - Git history overlay
 
 - `internal/history`: one `git log --numstat --no-merges --no-renames --relative
   -- .` pass (newest `history_commits`, default 10,000) into per-file changes
@@ -271,23 +271,23 @@ opens from `file://`.
 - Read in the background after the map is served (`/api/history`: 202 while
   reading, 204 without history); an SSE `history` event reports it, and in watch
   mode the git directory is watched so a commit refreshes it.
-- UI colour modes Commits, Lines changed, Last change and Authors, computed in
+- UI color modes Commits, Lines changed, Last change and Authors, computed in
   the browser from the raw changes, so the **Since** slider needs no requests;
   districts use per-file means like size mode; "no commits in range" has its own
-  neutral colour. Tooltip and side panel show the figures and top authors.
+  neutral color. Tooltip and side panel show the figures and top authors.
 - The HTML export embeds the history.
 
 > **Decisions (M5):** raw changes are sent instead of server-side aggregates so
 > any time range can be evaluated instantly; the payload stays small (ripgrep:
 > 2,223 commits read in 0.6 s). `--relative` alone still lists commits outside
-> the analysed directory, so the pathspec `-- .` restricts them. Renames are not
+> the analyzed directory, so the pathspec `-- .` restricts them. Renames are not
 > followed (`--follow` works for single files only).
 
 *Accepted when* ripgrep's 2,000+ commits load while the map is already usable,
-the four modes and the slider recolour without requests, and the HTML export
+the four modes and the slider recolor without requests, and the HTML export
 keeps the overlay.
 
-### M6 — Symbol references and hardening
+### M6 - Symbol references and hardening
 
 - `--lsp`: a JSON-RPC client (`internal/lsp`) drives installed language servers
   (gopls, typescript-language-server, pyright/basedpyright/pylsp, rust-analyzer,
@@ -313,7 +313,7 @@ keeps the overlay.
 > 1.22.2 and none with the current release, while `go.mod` keeps 1.22 as the
 > oldest supported version.
 
-### M7 — Libraries, sharing and walk mode
+### M7 - Libraries, sharing and walk mode
 
 - Replace hand-rolled code with established libraries where one exists:
   `cli/browser` (open the browser), `emicklei/dot` (DOT export),
@@ -334,7 +334,7 @@ keeps the overlay.
   ledges (up to half a storey) are computed on the flat layout. Newspapers
   (click or `Q`) select the building they hit, `Enter` selects the aimed box,
   `E`/right click expands or collapses it. The city look (sky, water, facades,
-  roads, trees, lamps) is procedural shaders modulating the data colours, never
+  roads, trees, lamps) is procedural shaders modulating the data colors, never
   replacing them; the isometric view is unchanged.
 - License: BSD 3-Clause; vendored web libraries keep theirs (MIT, BSD 3-Clause,
   ISC) and are listed in `web/static/vendor/README.md`.
@@ -345,7 +345,7 @@ keeps the overlay.
   the archives as workflow artifacts and runs the tests as 32-bit (386).
 
 > **Decisions (M7):** a library replaces local code only when it is small, pure
-> Go, permissively licensed and maintained; its behaviour is pinned by the
+> Go, permissively licensed and maintained; its behavior is pinned by the
 > existing tests (export, editor, LSP and resolver tests). The walker lives in
 > flat layout coordinates and only the renderer bends the world, so picking,
 > collisions and the isometric view share one layout.
@@ -354,7 +354,7 @@ keeps the overlay.
 walking the map selects and expands buildings like clicking does, and the PNG
 export matches the view.
 
-### M8 — A walkable city
+### M8 - A walkable city
 
 - The view stays with the map. The isometric camera's target is clamped to the
   map's bounds plus a quarter of its size (at least 6 units), and zooming out
@@ -369,8 +369,8 @@ export matches the view.
   crossings where the facing obstacles end; free space farther than a street's
   width from any obstacle becomes a park with paths. Terrace sides carry stairs.
   Lamps stand on the sidewalk along each terrace edge.
-- Facades pick a style per building — brick with framed windows and sills,
-  concrete panels, or a glass curtain wall for tall buildings — with a door on
+- Facades pick a style per building - brick with framed windows and sills,
+  concrete panels, or a glass curtain wall for tall buildings - with a door on
   the ground floor; roofs are gravel with a plant room and air-conditioning
   units or rows of solar panels; asphalt has grain, patches and cracks.
 
@@ -385,7 +385,7 @@ export matches the view.
 *Accepted when* panning, zooming, walking and flying cannot leave the map
 behind, and walking between buildings follows connected, marked streets.
 
-### M9 — Command line on cobra and viper
+### M9 - Command line on cobra and viper
 
 - The command is a `cobra.Command` (`cmd/depphunter`): POSIX flags via pflag
   (`--flag value`, `--flag=value`, `-o` as the short form of `--output`),

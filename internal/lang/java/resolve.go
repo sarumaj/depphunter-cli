@@ -87,23 +87,23 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 	spec := imp.Module
 	wildcard := strings.HasSuffix(spec, ".*")
 	spec = strings.TrimSuffix(spec, ".*")
-	segs := strings.Split(spec, ".")
+	segments := strings.Split(spec, ".")
 	for _, p := range jdkPrefixes {
 		if strings.HasPrefix(spec+".", p) || strings.HasPrefix(spec, p) {
-			return lang.Target{Ecosystem: ecoJDK, Package: strings.Join(segs[:min(2, len(segs))], ".")}
+			return lang.Target{Ecosystem: ecoJDK, Package: strings.Join(segments[:min(2, len(segments))], ".")}
 		}
 	}
 	// The longest prefix naming a project class (static imports add member names).
-	for n := len(segs); n >= 1; n-- {
-		rel := strings.Join(segs[:n], "/") + ".java"
-		for _, p := range r.byName[segs[n-1]+".java"] {
+	for n := len(segments); n >= 1; n-- {
+		rel := strings.Join(segments[:n], "/") + ".java"
+		for _, p := range r.byName[segments[n-1]+".java"] {
 			if p == rel || strings.HasSuffix(p, "/"+rel) {
 				return lang.Target{Local: p}
 			}
 		}
 	}
 	if wildcard {
-		rel := strings.Join(segs, "/")
+		rel := strings.Join(segments, "/")
 		for _, d := range r.dirs {
 			if d == rel || strings.HasSuffix(d, "/"+rel) {
 				return lang.Target{Local: d}
@@ -118,17 +118,17 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 	if g, ok := r.group(spec); ok {
 		return lang.Target{Ecosystem: ecoMaven, Package: g, Version: r.groups[g]}
 	}
-	return lang.Target{Ecosystem: ecoMaven, Package: strings.Join(segs[:max(1, min(3, len(segs)-1))], "."), Unresolved: true}
+	return lang.Target{Ecosystem: ecoMaven, Package: strings.Join(segments[:max(1, min(3, len(segments)-1))], "."), Unresolved: true}
 }
 
 // group finds the declared groupId an import belongs to: the longest groupId that is a
 // package prefix, else the one sharing the most leading segments (at least three, or
-// all of a shorter groupId) — com.fasterxml.jackson.databind comes from the group
-// com.fasterxml.jackson.core — else a group whose artifactId or last segment names
+// all of a shorter groupId) - com.fasterxml.jackson.databind comes from the group
+// com.fasterxml.jackson.core - else a group whose artifactId or last segment names
 // the import's first package segment (okhttp3.* from com.squareup.okhttp3).
 func (r *resolver) group(spec string) (string, bool) {
 	best, bestScore := "", 0
-	segs := strings.Split(spec, ".")
+	segments := strings.Split(spec, ".")
 	for g := range r.groups {
 		gs := strings.Split(g, ".")
 		score := 0
@@ -136,7 +136,7 @@ func (r *resolver) group(spec string) (string, bool) {
 			score = 100 + len(gs)
 		} else {
 			common := 0
-			for common < len(gs) && common < len(segs) && gs[common] == segs[common] {
+			for common < len(gs) && common < len(segments) && gs[common] == segments[common] {
 				common++
 			}
 			if common >= min(3, len(gs)) {
@@ -155,7 +155,7 @@ func (r *resolver) group(spec string) (string, bool) {
 			return g, true
 		}
 	}
-	for _, s := range segs[:min(2, len(segs))] { // okhttp3.*, org.junit.*
+	for _, s := range segments[:min(2, len(segments))] { // okhttp3.*, org.junit.*
 		if g, ok := r.alias[s]; ok {
 			return g, true
 		}

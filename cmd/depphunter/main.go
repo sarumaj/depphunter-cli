@@ -20,7 +20,7 @@ import (
 	"github.com/cli/browser"
 	"github.com/spf13/cobra"
 
-	"github.com/sarumaj/depphunter-cli/internal/analyze"
+	anal "github.com/sarumaj/depphunter-cli/internal/analyze"
 	"github.com/sarumaj/depphunter-cli/internal/cache"
 	"github.com/sarumaj/depphunter-cli/internal/config"
 	"github.com/sarumaj/depphunter-cli/internal/editor"
@@ -104,7 +104,7 @@ func run(ctx context.Context, cfg config.Config) error {
 			c = cache.Open(cacheDir, cfg.Root)
 		}
 	}
-	opts := analyze.Options{
+	opts := anal.Options{
 		Scan: scan.Options{Exclude: cfg.Exclude, MaxFileSize: cfg.MaxFileSize},
 		Plugins: []lang.Plugin{
 			golang.Plugin{}, javascript.Plugin{}, python.Plugin{}, rust.Plugin{}, java.Plugin{},
@@ -112,7 +112,7 @@ func run(ctx context.Context, cfg config.Config) error {
 		},
 		Cache: c,
 	}
-	g, err := analyse(ctx, cfg.Root, opts, c)
+	g, err := analyze(ctx, cfg.Root, opts, c)
 	if err != nil {
 		return err
 	}
@@ -163,13 +163,13 @@ func loadHistory(ctx context.Context, cfg config.Config, cacheDir string, g *gra
 	return h.Only(files)
 }
 
-func analyse(ctx context.Context, root string, opts analyze.Options, c *cache.Cache) (*graph.Graph, error) {
+func analyze(ctx context.Context, root string, opts anal.Options, c *cache.Cache) (*graph.Graph, error) {
 	start := time.Now()
-	g, st, err := analyze.Run(ctx, root, opts)
+	g, st, err := anal.Run(ctx, root, opts)
 	if err != nil {
 		return nil, err
 	}
-	log.Printf("analysed %s: %d files (%d parsed, %d cached), %d nodes, %d edges in %s",
+	log.Printf("analyzed %s: %d files (%d parsed, %d cached), %d nodes, %d edges in %s",
 		root, st.Files, st.Parsed, st.Cached, len(g.Nodes), len(g.Edges), time.Since(start).Round(time.Millisecond))
 	if err := c.Save(); err != nil {
 		log.Printf("cache not saved: %v", err)
@@ -211,7 +211,7 @@ func writeExport(g *graph.Graph, cfg config.Config, extra map[string]any, format
 	return export.Write(w, g, format)
 }
 
-func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts analyze.Options, c *cache.Cache, cacheDir string) error {
+func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Options, c *cache.Cache, cacheDir string) error {
 	if cfg.Editor == "" {
 		cfg.Editor = editor.Detect(os.Getenv, exec.LookPath)
 	}
@@ -262,7 +262,7 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts analyze.
 		w.Sync(append(watchDirs(cfg.Root, g), gitDirs...))
 		go w.Run(ctx, 300*time.Millisecond, func() {
 			start := time.Now()
-			ng, st, err := analyze.Run(ctx, cfg.Root, opts)
+			ng, st, err := anal.Run(ctx, cfg.Root, opts)
 			if err != nil {
 				if ctx.Err() == nil {
 					log.Printf("re-analysis failed: %v", err)
@@ -298,7 +298,7 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts analyze.
 	return nil
 }
 
-// watchDirs lists the directories holding analysed files: ignored trees are not watched.
+// watchDirs lists the directories holding analyzed files: ignored trees are not watched.
 func watchDirs(root string, g *graph.Graph) []string {
 	var dirs []string
 	for _, n := range g.Nodes {
