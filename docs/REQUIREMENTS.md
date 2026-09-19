@@ -235,7 +235,7 @@ DOT export renders in Graphviz.
 - Static HTML export (`--export html`, Export menu): one file, ES modules as
   `data:` URLs behind an import map, graph + view settings + source text (256 KB
   per file, 24 MB total).
-- **Save view**: `POST /api/settings` writes the `ui:` section (including
+- **Save settings**: `POST /api/settings` writes the `ui:` section (including
   filters) of the project config via `yaml.Node`, preserving other keys and
   comments.
 
@@ -249,7 +249,7 @@ DOT export renders in Graphviz.
 > (generated and test-only code); Serilog 1; Pester 0.
 
 *Accepted when* ripgrep, gson, Serilog and Pester analyse with (almost) no
-unresolved dependencies, a saved view survives a reload, and the HTML export
+unresolved dependencies, saved settings survive a reload, and the HTML export
 opens from `file://`.
 
 ### M5 — Git history overlay

@@ -6,11 +6,11 @@ import { Panel } from './panel.js';
 import { computeVisibility, searchIndex, search } from './filter.js';
 import { STATIC, fetchGraph, fetchConfig, fetchLazy, saveSettings } from './data.js';
 import { MODES, isHistoryMode, computeMetrics, historyT, timeRange, ago, formatDate } from './history.js';
+import { Labels } from './labels.js';
+import { $, fmt, escapeHTML } from './dom.js';
+import { Color } from './vendor/three.module.min.js';
 
-const $ = id => document.getElementById(id);
-const fmt = new Intl.NumberFormat();
 const MAX_ARCS = 400;
-const MAX_LABELS = 160;
 const AUTO_ITEMS = 600;
 
 const state = {
@@ -39,7 +39,7 @@ let graphVersion = 0;   // server graph version currently shown
 let flashTimer = 0;
 let metricsCache = null; // computeMetrics() for the current model, history and since
 let focus = null;  // {lit: Set<box>, arcs}
-let labels = [];   // label candidates for the current layout/selection
+let labels;       // Labels layer over the map
 
 async function main() {
   const [{ graph, version }, cfg] = await Promise.all([fetchGraph(), fetchConfig()]);
@@ -56,7 +56,8 @@ async function main() {
   setLevel(cfg.expandDepth < 0 ? maxDepth : cfg.expandDepth || autoLevel(), false);
 
   scene = new MapScene($('map'));
-  scene.onRender = drawLabels;
+  labels = new Labels($('labels'), scene);
+  scene.onRender = () => labels.draw();
   panel = new Panel($('panel'), $('panel-body'), {
     model,
     colorOf: lang => langs.of(lang),
@@ -142,9 +143,9 @@ function colorMode() {
   return isHistoryMode(state.colorBy) && !state.history ? 'language' : state.colorBy;
 }
 
-// saveView stores the current view — colours, heights, theme, depth and filters — in
-// the project config through the server.
-async function saveView() {
+// saveViewSettings stores the view settings — colours, heights, theme, depth and
+// filters — in the project config through the server.
+async function saveViewSettings() {
   const hiddenIslands = [...state.filters.hiddenEcos].map(id => id.replace(/^e:/, ''));
   const stdIslands = model.ecosystems.filter(e => e.std);
   try {
@@ -159,7 +160,7 @@ async function saveView() {
       hideIslands: hiddenIslands.filter(id => !stdIslands.some(e => e.id === 'e:' + id)),
       pathFilter: state.filters.path,
     });
-    updateStatus(`view saved to ${config.configFile}`);
+    updateStatus(`settings saved to ${config.configFile}`);
   } catch (err) {
     updateStatus(`could not save: ${err.message}`);
   }
@@ -244,6 +245,44 @@ function setLive(on) {
   el.title = on ? 'Watching the file system; the map updates as files change' : 'Lost connection to depphunter';
 }
 
+// ---------------------------------------------------------------- screenshot
+
+// saveScreenshot downloads the map as shown, labels included, at the screen's
+// resolution.
+function saveScreenshot() {
+  const map = scene.renderNow();
+  const dpr = map.width / map.clientWidth;
+  const out = document.createElement('canvas');
+  out.width = map.width;
+  out.height = map.height;
+  const ctx = out.getContext('2d');
+  ctx.drawImage(map, 0, 0);
+  ctx.scale(dpr, dpr);
+  const origin = map.getBoundingClientRect();
+  for (const el of labels.visible()) {
+    const r = el.getBoundingClientRect();
+    const css = getComputedStyle(el);
+    const x = r.left - origin.left, y = r.top - origin.top;
+    ctx.fillStyle = css.backgroundColor;
+    ctx.strokeStyle = css.borderTopColor;
+    ctx.beginPath();
+    ctx.roundRect(x, y, r.width, r.height, 4);
+    ctx.fill();
+    ctx.stroke();
+    ctx.fillStyle = css.color;
+    ctx.font = `${css.fontWeight} ${css.fontSize} ${css.fontFamily}`;
+    ctx.textBaseline = 'middle';
+    ctx.fillText(el.textContent, x + parseFloat(css.paddingLeft) + 1, y + r.height / 2);
+  }
+  out.toBlob(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${model.root.name}.png`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  }, 'image/png');
+}
+
 // ---------------------------------------------------------------- editor
 
 async function openFile(path, line = 1) {
@@ -320,7 +359,7 @@ function unhide(n) {
 function drawFilters() {
   const counts = new Map();
   for (const n of model.byId.values()) if (n.kind === 'file') counts.set(n.lang || '', (counts.get(n.lang || '') || 0) + 1);
-  const check = (id, label, checked, meta, swatch) => `<li><label><input type="checkbox" data-id="${escapeAttr(id)}" ${checked ? 'checked' : ''}>
+  const check = (id, label, checked, meta, swatch) => `<li><label><input type="checkbox" data-id="${escapeHTML(id)}" ${checked ? 'checked' : ''}>
     ${swatch ? `<span class="swatch" style="background:${swatch}"></span>` : ''}${escapeHTML(label)}<span class="meta">${meta}</span></label></li>`;
   $('lang-list').innerHTML = [...counts.entries()].sort((a, b) => b[1] - a[1])
     .map(([l, c]) => check(l, l || 'unknown', !state.filters.hiddenLangs.has(l), fmt.format(c), langs.of(l))).join('');
@@ -465,7 +504,7 @@ function refreshFocus() {
   scene.setArcs(focus ? focus.arcs : []);
   scene.setOutline(focus ? focus.selBox : null, pal.select);
   recolor();
-  collectLabels();
+  labels.set(L.boxes, focus, state.selected);
 }
 
 function recolor() {
@@ -487,71 +526,7 @@ function recolor() {
   scene.setColors(colors);
 }
 
-function mix(a, b, t) {
-  const pa = parseInt(a.slice(1), 16), pb = parseInt(b.slice(1), 16);
-  const ch = s => Math.round(((pa >> s) & 255) * (1 - t) + ((pb >> s) & 255) * t);
-  return '#' + ((ch(16) << 16) | (ch(8) << 8) | ch(0)).toString(16).padStart(6, '0');
-}
-
-// ---------------------------------------------------------------- labels
-
-function collectLabels() {
-  labels = [];
-  for (const b of L.boxes) {
-    const n = b.node;
-    if (b.kind === 'land' && n.kind === 'ecosystem') labels.push({ b, text: n.name, cls: 'island', prio: 0 });
-    else if (b.kind === 'terrace' && n.kind === 'dir') labels.push({ b, text: n.name + '/', cls: '', prio: 1 + n.depth });
-    else if (b.kind === 'district') labels.push({ b, text: n.name + '/', cls: 'secondary', prio: 2 + n.depth });
-  }
-  if (focus) {
-    for (const a of focus.arcs) {
-      for (const b of [a.from, a.to]) {
-        if (b.kind === 'building' || b.kind === 'package' || b.kind === 'symbol') labels.push({ b, text: b.node.name, cls: '', prio: -1 });
-      }
-    }
-    labels.push({ b: focus.selBox, text: state.selected.name, cls: 'island', prio: -2 });
-  }
-  labels.sort((a, b) => a.prio - b.prio);
-  scene.requestRender();
-}
-
-const labelPool = [];
-function drawLabels() {
-  const root = $('labels');
-  const placed = [];
-  let used = 0;
-  const seen = new Set();
-  for (const l of labels) {
-    if (used >= MAX_LABELS) break;
-    const key = l.b.node.id + l.cls;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    const b = l.b, top = b.y + b.h;
-    const corners = [[-1, -1], [1, -1], [-1, 1], [1, 1]].map(([sx, sz]) => scene.project(b.x + sx * b.w / 2, top, b.z + sz * b.d / 2));
-    if (corners.some(c => !c)) continue;
-    const xs = corners.map(c => c.x);
-    const spread = Math.max(...xs) - Math.min(...xs);
-    const width = l.text.length * 6.6 + 14;
-    // Region labels need their region to be big enough on screen to be worth naming.
-    if (l.prio > 0 && spread < Math.min(width, 90)) continue;
-    // Anchor at the top-most corner on screen, i.e. the back edge of the region.
-    const anchor = (l.prio > 0 && b.kind !== 'district') ? corners.reduce((a, c) => c.y < a.y ? c : a) : scene.project(b.x, top, b.z);
-    const rect = { x: anchor.x - width / 2, y: anchor.y - 20, w: width, h: 18 };
-    if (rect.x > root.clientWidth || rect.y > root.clientHeight || rect.x + rect.w < 0 || rect.y + rect.h < 0) continue;
-    if (placed.some(p => p.x < rect.x + rect.w && rect.x < p.x + p.w && p.y < rect.y + rect.h && rect.y < p.y + p.h)) continue;
-    placed.push(rect);
-
-    let el = labelPool[used];
-    if (!el) { el = document.createElement('div'); labelPool.push(el); root.append(el); }
-    el.className = 'label ' + l.cls;
-    el.textContent = l.text;
-    el.style.left = anchor.x + 'px';
-    el.style.top = (anchor.y - 2) + 'px';
-    el.hidden = false;
-    used++;
-  }
-  for (let i = used; i < labelPool.length; i++) labelPool[i].hidden = true;
-}
+const mix = (a, b, t) => '#' + new Color(a).lerp(new Color(b), t).getHexString();
 
 // ---------------------------------------------------------------- legend & tooltip
 
@@ -563,7 +538,7 @@ function drawLegend() {
     parts.push(historyLegend(mode));
   } else if (mode === 'language') {
     parts.push('<h3>Language</h3><ul>' + langs.legend().map(e =>
-      `<li data-lang="${e.lang === null ? '' : escapeAttr(e.lang)}" data-other="${e.lang === null}" class="${isOff(e) ? 'off' : ''}"
+      `<li data-lang="${e.lang === null ? '' : escapeHTML(e.lang)}" data-other="${e.lang === null}" class="${isOff(e) ? 'off' : ''}"
          title="Click to ${isOff(e) ? 'show' : 'hide'}"><span class="swatch" style="background:${e.color}"></span>${escapeHTML(e.label)}</li>`).join('') + '</ul>');
   } else {
     parts.push(`<h3>File size</h3><div class="ramp" style="background:linear-gradient(90deg,${pal.seq.join(',')})"></div>
@@ -677,8 +652,6 @@ function showTooltip(i, x, y) {
   tip.style.top = ty + 'px';
 }
 
-function escapeHTML(s) { return s.replace(/[&<>"]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c])); }
-function escapeAttr(s) { return escapeHTML(s); }
 
 // ---------------------------------------------------------------- input
 
@@ -753,12 +726,14 @@ function bindControls() {
   $('path-filter').value = state.filters.path;
   updateFilterBadge();
   if (STATIC) {
-    // A static export has no server: nothing to save, export or open.
-    for (const id of ['save-view', 'export-btn']) $(id).hidden = true;
+    // A static export has no server: nothing to save or open, and only the image to export.
+    $('save-settings').hidden = true;
+    for (const a of document.querySelectorAll('#export [data-server]')) a.hidden = true;
   } else {
-    $('save-view').onclick = saveView;
-    $('save-view').title = `Save colour, height, theme, depth and filters to ${config.configFile}`;
+    $('save-settings').onclick = saveViewSettings;
+    $('save-settings').title = `Save colour, height, theme, depth and filters to ${config.configFile}`;
   }
+  $('screenshot').onclick = saveScreenshot;
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => state.theme === 'auto' && applyTheme());
 
   window.addEventListener('keydown', e => {
@@ -773,6 +748,7 @@ function bindControls() {
       case '-': case '_': setLevel(state.level - 1); break;
       case '?': $('help').showModal(); break;
       case '/': $('search').focus(); break;
+      case 'p': case 'P': saveScreenshot(); break;
       case 'o': case 'O': {
         const f = sel?.kind === 'symbol' ? sel.parentNode : sel;
         if (f?.kind === 'file') openFile(f.path, sel.line || 1);
@@ -856,7 +832,7 @@ function bindExport() {
   const setOpen = open => { pop.hidden = !open; btn.setAttribute('aria-expanded', open); };
   btn.onclick = () => setOpen(pop.hidden);
   document.addEventListener('pointerdown', e => { if (!e.target.closest('.export')) setOpen(false); });
-  pop.addEventListener('click', e => { if (e.target.closest('a')) setOpen(false); });
+  pop.addEventListener('click', e => { if (e.target.closest('a, button')) setOpen(false); });
 }
 
 main().catch(err => {

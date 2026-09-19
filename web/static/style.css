@@ -102,7 +102,10 @@ button:focus-visible, select:focus-visible, input:focus-visible, #map:focus-visi
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   flex-wrap: wrap;
-  z-index: 3;
+  /* The toolbar is a flex item, so z-index makes it a stacking context: it must sit
+     above the side panel (5) and tooltip (6) for its menus to show over them. */
+  position: relative;
+  z-index: 30;
 }
 .brand { display: flex; align-items: center; gap: 8px; font-weight: 600; }
 .logo {
@@ -142,8 +145,8 @@ button:focus-visible, select:focus-visible, input:focus-visible, #map:focus-visi
 .filters, .export { position: relative; }
 .export .popover { left: auto; right: 0; width: 280px; }
 .menu { padding: 4px; }
-.menu a { display: flex; justify-content: space-between; gap: 12px; padding: 6px 10px; border-radius: 5px; color: var(--text); text-decoration: none; }
-.menu a:hover, .menu a:focus-visible { background: var(--grid); }
+.menu a, .menu button { display: flex; width: 100%; border: none; background: none; text-align: left; font: inherit; cursor: pointer; justify-content: space-between; gap: 12px; padding: 6px 10px; border-radius: 5px; color: var(--text); text-decoration: none; }
+.menu a:hover, .menu a:focus-visible, .menu button:hover, .menu button:focus-visible { background: var(--grid); }
 .p-actions { display: flex; gap: 8px; }
 .live { margin-right: 8px; color: var(--text-2); }
 .live::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; background: #0ca30c; vertical-align: 1px; }
