@@ -32,13 +32,22 @@ type Config struct {
 	Open        bool     `yaml:"open"`
 	Exclude     []string `yaml:"exclude"`
 	MaxFileSize int64    `yaml:"max_file_size"`
-	UI          UI       `yaml:"ui"`
+	Watch       bool     `yaml:"watch"`
+	Cache       bool     `yaml:"cache"`
+	// Editor is a command template such as "code -g {file}:{line}"; empty = auto-detect.
+	Editor string `yaml:"editor"`
+	UI     UI     `yaml:"ui"`
+
+	// Export and Output are one-shot actions, so they only come from flags.
+	Export string `yaml:"-"`
+	Output string `yaml:"-"`
 }
 
 func Default() Config {
 	return Config{
 		Addr:        "127.0.0.1:0",
 		Open:        true,
+		Cache:       true,
 		MaxFileSize: 2 << 20,
 		UI:          UI{Theme: "auto", ColorBy: "language", HeightScale: "sqrt"},
 	}
@@ -68,6 +77,11 @@ func Load(args []string, getenv func(string) string, userDir string, usage io.Wr
 		flagHeight  = fs.String("height-scale", cfg.UI.HeightScale, "building height scale: linear, sqrt, log")
 		flagShowStd = fs.Bool("show-std", cfg.UI.ShowStd, "show standard-library islands")
 		flagDepth   = fs.Int("expand-depth", cfg.UI.ExpandDepth, "initially expanded directory depth (0 = auto, -1 = all)")
+		flagWatch   = fs.Bool("watch", false, "re-analyse on file changes and update the browser live")
+		flagNoCache = fs.Bool("no-cache", false, "do not read or write the analysis cache")
+		flagEditor  = fs.String("editor", "", `editor command template, e.g. "code -g {file}:{line}" (default: auto-detect)`)
+		flagExport  = fs.String("export", "", "write the graph as json, graphml or dot and exit instead of serving")
+		flagOutput  = fs.String("o", "", "output file for --export (default: stdout)")
 		flagExclude stringList
 	)
 	fs.Var(&flagExclude, "exclude", "glob of paths to skip; repeatable")
@@ -100,10 +114,14 @@ func Load(args []string, getenv func(string) string, userDir string, usage io.Wr
 			return cfg, err
 		}
 	}
+	// The project config comes with the (possibly untrusted) repository, so it may not
+	// choose the program /api/open executes: editor stays as the user configured it.
+	userEditor := cfg.Editor
 	if *flagConfig != "" {
 		err = mergeFile(&cfg, *flagConfig, true)
 	} else {
 		err = mergeFile(&cfg, filepath.Join(root, ProjectFile), false)
+		cfg.Editor = userEditor
 	}
 	if err != nil {
 		return cfg, err
@@ -132,6 +150,16 @@ func Load(args []string, getenv func(string) string, userDir string, usage io.Wr
 			cfg.UI.ExpandDepth = *flagDepth
 		case "exclude":
 			cfg.Exclude = append(cfg.Exclude, flagExclude...)
+		case "watch":
+			cfg.Watch = *flagWatch
+		case "no-cache":
+			cfg.Cache = !*flagNoCache
+		case "editor":
+			cfg.Editor = *flagEditor
+		case "export":
+			cfg.Export = *flagExport
+		case "o":
+			cfg.Output = *flagOutput
 		}
 	})
 	return cfg, cfg.validate()
@@ -172,11 +200,14 @@ func mergeEnv(cfg *Config, getenv func(string) string) error {
 	str("THEME", &cfg.UI.Theme)
 	str("COLOR_BY", &cfg.UI.ColorBy)
 	str("HEIGHT_SCALE", &cfg.UI.HeightScale)
+	str("EDITOR", &cfg.Editor)
 	if v := getenv("DEPPHUNTER_EXCLUDE"); v != "" {
 		cfg.Exclude = append(cfg.Exclude, strings.Split(v, ",")...)
 	}
-	if err := boolean("OPEN", &cfg.Open); err != nil {
-		return err
+	for key, dst := range map[string]*bool{"OPEN": &cfg.Open, "WATCH": &cfg.Watch, "CACHE": &cfg.Cache} {
+		if err := boolean(key, dst); err != nil {
+			return err
+		}
 	}
 	return boolean("SHOW_STD", &cfg.UI.ShowStd)
 }
@@ -194,6 +225,18 @@ func (c Config) validate() error {
 		oneOf("theme", c.UI.Theme, "auto", "light", "dark"),
 		oneOf("color-by", c.UI.ColorBy, "language", "size"),
 		oneOf("height-scale", c.UI.HeightScale, "linear", "sqrt", "log"),
+		func() error {
+			if c.Export == "" {
+				return nil
+			}
+			return oneOf("export", c.Export, "json", "graphml", "dot")
+		}(),
+		func() error {
+			if c.Output != "" && c.Export == "" {
+				return errors.New("-o requires --export")
+			}
+			return nil
+		}(),
 	)
 }
 

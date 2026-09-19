@@ -3,7 +3,6 @@
 package golang
 
 import (
-	"context"
 	"go/ast"
 	"go/parser"
 	"go/token"
@@ -43,19 +42,27 @@ type module struct {
 	replaces map[string]string // module path -> local directory (relative to project root)
 }
 
-func (p Plugin) Analyze(ctx context.Context, root string, all, claimed []*scan.File) (map[string]*lang.FileResult, error) {
+func (Plugin) Version() int { return 1 }
+
+func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 	mods, err := loadModules(all)
 	if err != nil {
 		return nil, err
 	}
-	pkgDirs := map[string]bool{}
-	for _, f := range claimed {
-		pkgDirs[path.Dir(f.Path)] = true
+	r := &resolver{mods: mods, pkgDirs: map[string]bool{}}
+	for _, f := range lang.Claimed(Plugin{}, all) {
+		r.pkgDirs[path.Dir(f.Path)] = true
 	}
+	return r, nil
+}
 
-	return lang.ForEachFile(ctx, claimed, func(f *scan.File, src []byte) *lang.FileResult {
-		return analyzeFile(f, src, owner(mods, f.Path), mods, pkgDirs)
-	}), ctx.Err()
+type resolver struct {
+	mods    []*module
+	pkgDirs map[string]bool // directories holding Go files, i.e. local packages
+}
+
+func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
+	return resolve(imp.Module, owner(r.mods, file), r.mods, r.pkgDirs)
 }
 
 func loadModules(all []*scan.File) ([]*module, error) {
@@ -97,27 +104,22 @@ func owner(mods []*module, file string) *module {
 	return nil
 }
 
-func analyzeFile(f *scan.File, src []byte, own *module, mods []*module, pkgDirs map[string]bool) *lang.FileResult {
-	res := &lang.FileResult{}
+func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 	fset := token.NewFileSet()
 	// On syntax errors the parser still returns a partial AST, which is good enough for a map.
 	af, _ := parser.ParseFile(fset, f.Path, src, parser.SkipObjectResolution)
 	if af == nil {
-		return res
+		return &lang.Extraction{}, nil
 	}
+	ex := &lang.Extraction{Symbols: symbols(fset, af)}
 	for _, spec := range af.Imports {
 		ip := strings.Trim(spec.Path.Value, "`\"")
 		if ip == "C" {
 			continue // cgo pseudo-package
 		}
-		res.Imports = append(res.Imports, lang.Import{
-			Spec:   ip,
-			Line:   fset.Position(spec.Pos()).Line,
-			Target: resolve(ip, own, mods, pkgDirs),
-		})
+		ex.Imports = append(ex.Imports, lang.RawImport{Spec: ip, Module: ip, Line: fset.Position(spec.Pos()).Line})
 	}
-	res.Symbols = symbols(fset, af)
-	return res
+	return ex, nil
 }
 
 func resolve(ip string, own *module, mods []*module, pkgDirs map[string]bool) lang.Target {

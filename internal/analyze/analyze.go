@@ -6,8 +6,11 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
+	"sync"
+	"sync/atomic"
 	"time"
 
+	"github.com/sarumaj/depphunter-cli/internal/cache"
 	"github.com/sarumaj/depphunter-cli/internal/graph"
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
@@ -16,13 +19,25 @@ import (
 type Options struct {
 	Scan    scan.Options
 	Plugins []lang.Plugin
+	Cache   *cache.Cache // nil disables caching
 }
 
-func Run(ctx context.Context, root string, opts Options) (*graph.Graph, error) {
+// Stats describes one run: how many files were parsed and how many came from the cache.
+type Stats struct {
+	Files, Parsed, Cached int
+	ParsedFiles           []string // paths whose contents were (re-)parsed
+}
+
+func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, error) {
+	var stats Stats
 	files, err := scan.Scan(ctx, root, opts.Scan)
 	if err != nil {
-		return nil, fmt.Errorf("scanning %s: %w", root, err)
+		return nil, stats, fmt.Errorf("scanning %s: %w", root, err)
 	}
+	stats.Files = len(files)
+	opts.Cache.BeginRun()
+	var parsed, cached atomic.Int64
+	var mu sync.Mutex
 
 	b := &builder{
 		g:     &graph.Graph{Root: filepath.Base(root), GeneratedAt: time.Now().UTC(), Edges: []*graph.Edge{}},
@@ -40,18 +55,33 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, error) {
 	}
 
 	for _, p := range opts.Plugins {
-		var claimed []*scan.File
-		for _, f := range files {
-			if p.Claims(f) {
-				claimed = append(claimed, f)
-			}
-		}
+		claimed := lang.Claimed(p, files)
 		if len(claimed) == 0 {
 			continue
 		}
-		results, err := p.Analyze(ctx, root, files, claimed)
+		r, err := p.Resolver(root, files)
 		if err != nil {
-			return nil, fmt.Errorf("%s plugin: %w", p.Name(), err)
+			return nil, stats, fmt.Errorf("%s plugin: %w", p.Name(), err)
+		}
+		results := lang.ForEachFile(ctx, claimed, func(f *scan.File, src []byte) *lang.FileResult {
+			key := cache.Key(p.Name(), p.Version(), f.Path, src)
+			if ex, ok := opts.Cache.Get(key); ok {
+				cached.Add(1)
+				return lang.Apply(r, f.Path, ex)
+			}
+			parsed.Add(1)
+			mu.Lock()
+			stats.ParsedFiles = append(stats.ParsedFiles, f.Path)
+			mu.Unlock()
+			ex, err := p.Extract(f, src)
+			if err != nil {
+				return nil
+			}
+			opts.Cache.Put(key, ex)
+			return lang.Apply(r, f.Path, ex)
+		})
+		if err := ctx.Err(); err != nil {
+			return nil, stats, err
 		}
 		ecos := map[string]lang.Ecosystem{}
 		for _, e := range p.Ecosystems() {
@@ -63,7 +93,8 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, error) {
 			}
 		}
 	}
-	return b.g, nil
+	stats.Parsed, stats.Cached = int(parsed.Load()), int(cached.Load())
+	return b.g, stats, nil
 }
 
 type builder struct {

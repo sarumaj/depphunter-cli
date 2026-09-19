@@ -17,13 +17,7 @@ func analyse(t *testing.T) map[string]*lang.FileResult {
 	if err != nil {
 		t.Fatal(err)
 	}
-	var claimed []*scan.File
-	for _, f := range files {
-		if (Plugin{}).Claims(f) {
-			claimed = append(claimed, f)
-		}
-	}
-	res, err := Plugin{}.Analyze(context.Background(), root, files, claimed)
+	res, err := lang.Analyze(context.Background(), Plugin{}, root, files)
 	if err != nil {
 		t.Fatal(err)
 	}

@@ -118,6 +118,11 @@ func newResolver(all, claimed []*scan.File) *resolver {
 	return r
 }
 
+// Resolve handles both "import a.b" (Name empty) and "from m import n".
+func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
+	return r.resolveFrom(imp.Module, imp.Name, file)
+}
+
 // resolve handles "import a.b.c".
 func (r *resolver) resolve(dotted, file string) lang.Target {
 	parts := strings.Split(dotted, ".")

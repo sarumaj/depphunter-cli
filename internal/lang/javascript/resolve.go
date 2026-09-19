@@ -94,6 +94,10 @@ func newResolver(all []*scan.File) *resolver {
 	return r
 }
 
+func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
+	return r.resolve(imp.Module, file)
+}
+
 func (r *resolver) resolve(spec, from string) lang.Target {
 	dir := path.Dir(from)
 	switch {
