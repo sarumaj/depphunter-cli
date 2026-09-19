@@ -24,6 +24,13 @@ Download an archive for your platform from the
 [releases](https://github.com/sarumaj/depphunter-cli/releases) (checksums in
 `checksums.txt`), or build it with Go 1.22 or newer:
 
+| OS      | Architectures                         | Archive   |
+|---------|---------------------------------------|-----------|
+| Linux   | amd64, arm64, armv7, 386, riscv64     | `.tar.gz` |
+| macOS   | amd64 (Intel), arm64 (Apple silicon)  | `.tar.gz` |
+| Windows | amd64, arm64, 386                     | `.zip`    |
+| FreeBSD | amd64, arm64                          | `.tar.gz` |
+
 ```sh
 go install github.com/sarumaj/depphunter-cli/cmd/depphunter@latest
 ```
@@ -181,6 +188,21 @@ hands the file to VS Code's `vscode://` URL handler.
 | `P`                       | save the map as a PNG image              |
 | Legend click              | hide / show a language                   |
 | `Esc`                     | clear selection                          |
+| `V`                       | walk mode                                |
+
+In walk mode:
+
+|                        |                                                    |
+|------------------------|----------------------------------------------------|
+| Click the map          | look with the mouse (`Esc` frees it), or drag      |
+| `W` `A` `S` `D`/arrows | move / turn; `Shift` runs                          |
+| `Space`                | jump (flying: rise)                                |
+| `F`                    | fly on / off (`C` sinks)                           |
+| Click / `Q`            | throw a newspaper: the building it hits is selected |
+| `Enter`                | select what the crosshair is on                    |
+| `E` / right click      | expand / collapse what the crosshair is on         |
+| Wheel / `[` `]`        | planet size (curvature)                            |
+| `V` / `Esc`            | back to the map                                    |
 
 ## Security
 
@@ -210,6 +232,78 @@ Files in other languages appear on the map without dependency edges. Parsing
 uses a pure-Go tree-sitter runtime (C# and PowerShell use small built-in
 scanners instead), so the binary still cross-compiles without a C toolchain.
 
+## How it works
+
+```text
+ scan ──► extract (per file, parallel, cached) ──► resolve ──► graph ──► server ──► browser
+  │         tree-sitter / go/parser / scanners      manifests,    JSON     HTTP+SSE    three.js
+  └ git ls-files or built-in ignores                lockfiles                        map / walk
+        background, after the map is shown:  git history · LSP references ──► SSE ──► overlay
+```
+
+1. **Scan** (`internal/scan`) lists the project's files through `git ls-files`
+   (so `.gitignore` applies) or a built-in ignore list, applies `exclude`
+   globs, and measures language (by extension) and lines of code.
+2. **Extract** (`internal/lang/*`): every language plugin claims files and
+   extracts imports and top-level symbols from the content alone. Files are
+   parsed in parallel; results are cached by the SHA-256 of the content, the
+   plugin version and the extension (`internal/cache`), so a second run only
+   parses what changed.
+3. **Resolve**: a per-run resolver of each plugin reads the manifests and
+   lockfiles (`go.mod`, `package.json`, `pyproject.toml`, `Cargo.toml`,
+   `pom.xml`, `*.csproj`, …) and turns every import into a local file or
+   directory, a standard-library package or an external package with version.
+4. **Graph** (`internal/analyze`, `internal/graph`): directories, files,
+   symbols, ecosystems and packages become nodes, imports become edges; the
+   document is what the UI, the exports and the cache exchange.
+5. **Serve** (`internal/server`): a loopback HTTP server with a per-run token
+   serves the embedded UI (`web/static`) and the graph (`/api/graph`), file
+   source (`/api/file`), exports, "open in editor" and "save settings".
+   Server-Sent Events (`/api/events`) push new graphs in `--watch` mode
+   (`internal/watch`) and announce the git history (`internal/history`) and
+   LSP references (`internal/lsp`), which are read in the background once the
+   map is up.
+6. **Render** (browser, plain ES modules, no build step): `model.js` builds a
+   navigable tree with aggregates, `layout.js` computes the archipelago from
+   the hierarchy and expansion state (never a force simulation, so the same
+   repository always gives the same map), `scene.js` draws every box in one
+   instanced three.js mesh and edges as arcs, `labels.js` places labels,
+   `filter.js` and `history.js` compute filters, search and history colours
+   locally, and `walk.js`/`city.js` add the first-person view.
+
+The HTML export (`--export html`) inlines the same modules as `data:` URLs with
+the graph, settings, history and source text, so the page needs neither
+depphunter nor a network.
+
+### Built with
+
+Go libraries (all pure Go, so every target cross-compiles with
+`CGO_ENABLED=0`):
+
+| Library | Used for |
+|---|---|
+| [odvcencio/gotreesitter](https://github.com/odvcencio/gotreesitter) | tree-sitter runtime and grammars for JS/TS, Python, Rust and Java |
+| [golang.org/x/mod](https://pkg.go.dev/golang.org/x/mod) | parsing `go.mod` |
+| [BurntSushi/toml](https://github.com/BurntSushi/toml) | `pyproject.toml`, `Cargo.toml`, Gradle version catalogs, TOML lockfiles |
+| [gopkg.in/yaml.v3](https://pkg.go.dev/gopkg.in/yaml.v3) | config files (comment-preserving save), `pnpm-lock.yaml` |
+| [tidwall/jsonc](https://github.com/tidwall/jsonc) | `tsconfig.json` / `jsconfig.json` with comments |
+| [fsnotify/fsnotify](https://github.com/fsnotify/fsnotify) | `--watch` |
+| [sourcegraph/jsonrpc2](https://github.com/sourcegraph/jsonrpc2) | talking to language servers (`--lsp`) |
+| [golang.org/x/sync](https://pkg.go.dev/golang.org/x/sync) | bounded parallel scanning, parsing and LSP requests |
+| [emicklei/dot](https://github.com/emicklei/dot) | DOT export |
+| [kballard/go-shellquote](https://github.com/kballard/go-shellquote) | splitting editor command templates without a shell |
+| [cli/browser](https://github.com/cli/browser) | opening the default browser |
+
+Go itself provides `go/parser` for Go sources, `net/http` for the server and
+`embed` for the UI. The browser UI vendors, in
+[web/static/vendor](web/static/vendor/README.md):
+[three.js](https://threejs.org) (WebGL rendering, orbit controls),
+[highlight.js](https://highlightjs.org) (source highlighting),
+[potpack](https://github.com/mapbox/potpack) (packing terraces) and
+[fzf-for-js](https://github.com/ajitid/fzf-for-js) (fuzzy search). External
+tools are optional: `git` for file listing and history, language servers for
+`--lsp`.
+
 ## Development
 
 ```sh
@@ -222,7 +316,18 @@ the current Go and on Go 1.22 with `GOTOOLCHAIN=local`, so a `go.mod` that
 starts to need a newer Go fails the build. It also checks formatting, `go mod
 tidy`, vet, staticcheck, govulncheck, JavaScript syntax and Markdown. Pushing a
 `v*` tag runs `.github/workflows/release.yml`, which tests and then publishes
-stripped binaries for Linux, macOS and Windows (amd64 and arm64).
+stripped binaries for every platform in the [Install](#install) table.
+
+Both workflows build the archives with `scripts/dist.sh`, which also works
+locally (it needs `zip`):
+
+```sh
+scripts/dist.sh v1.2.3                     # every target into dist/
+TARGETS="linux/amd64 darwin/arm64" scripts/dist.sh
+```
+
+CI builds all targets on every push, keeps the archives for 14 days as workflow
+artifacts, and runs the tests as 32-bit (`GOARCH=386`).
 
 The milestones and design decisions are in
 [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
