@@ -78,7 +78,9 @@ jobs:
         with:
           node-version: 20
       - name: JavaScript syntax
-        run: for f in web/static/*.js web/static/vendor/*.js; do node --check "$f"; done
+        # Our own modules only: the vendored libraries are shipped as their authors
+        # built them (see web/static/vendor/README.md).
+        run: for f in web/static/*.js; do node --check "$f"; done
       - name: markdownlint
         run: npx --yes markdownlint-cli@0.41.0 '**/*.md' --ignore '**/testdata/**' --ignore node_modules
 
