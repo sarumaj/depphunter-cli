@@ -6,7 +6,7 @@
   --surface: #fcfcfb;
   --text: #0b0b0b;
   --text-2: #52514e;
-  --muted: #898781;
+  --muted: #6e6c66;
   --grid: #e1e0d9;
   --border: rgba(11, 11, 11, 0.10);
   --shadow: 0 4px 18px rgba(11, 11, 11, 0.10);
@@ -153,6 +153,8 @@ button:focus-visible, select:focus-visible, input:focus-visible, #map:focus-visi
 .live { margin-right: 8px; color: var(--text-2); }
 .live::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; background: #0ca30c; vertical-align: 1px; }
 .live.off::before { background: #fab219; }
+.live.stopped { cursor: pointer; }
+.live.stopped::before { background: #c0392b; }
 .count { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 9px; background: var(--accent); color: #fff; font-size: 11px; text-align: center; }
 .popover { padding: 12px 14px; width: 320px; max-height: 70vh; overflow: auto; }
 .popover section + section { margin-top: 12px; }
@@ -172,7 +174,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, #map:focus-visi
 main { position: relative; flex: 1; min-height: 0; }
 #map { position: absolute; inset: 0; outline: none; }
 /* Keep the map visible beside the panel on wide screens. */
-@media (min-width: 1100px) {
+@media (min-width: 900px) {
   main.panel-open #map, main.panel-open #labels, main.panel-open #walk-hud { right: 584px; }
 }
 #map canvas { display: block; width: 100%; height: 100%; }
@@ -181,12 +183,17 @@ main { position: relative; flex: 1; min-height: 0; }
 
 /* Walk mode: a crosshair and a status bar over the map. */
 #walk-hud { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+/* A scope reticle: a ring with four ticks and a dot, open in the middle. */
 #walk-hud .crosshair {
-  position: absolute; left: 50%; top: 50%; width: 18px; height: 18px; transform: translate(-50%, -50%);
+  position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; transform: translate(-50%, -50%);
+  border: 1.5px solid var(--text); border-radius: 50%;
   background:
-    linear-gradient(var(--text), var(--text)) center / 2px 100% no-repeat,
-    linear-gradient(var(--text), var(--text)) center / 100% 2px no-repeat;
-  opacity: 0.7;
+    radial-gradient(circle, var(--text) 0 1.5px, transparent 2px),
+    linear-gradient(var(--text), var(--text)) top / 1.5px 8px no-repeat,
+    linear-gradient(var(--text), var(--text)) bottom / 1.5px 8px no-repeat,
+    linear-gradient(var(--text), var(--text)) left / 8px 1.5px no-repeat,
+    linear-gradient(var(--text), var(--text)) right / 8px 1.5px no-repeat;
+  opacity: 0.75;
 }
 #walk-hud .w-bar {
   position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
@@ -197,6 +204,14 @@ main { position: relative; flex: 1; min-height: 0; }
 }
 #walk-hud .w-bar b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 #walk-hud .w-keys { font-size: 12px; margin-top: 2px; }
+/* What just happened, under the HUD bar. */
+#walk-hud .w-flash:not(:empty) {
+  margin-top: 4px; padding: 3px 8px; border-radius: 6px;
+  background: color-mix(in srgb, var(--select) 20%, transparent); color: var(--text);
+}
+#walk-hud.compact .w-keys { display: none; } /* folded away once the walker gets going */
+#walk-hud .crosshair { transition: width 0.12s, height 0.12s; }
+#walk-hud.scoped .crosshair { width: 64px; height: 64px; } /* looking through the scope */
 #walk-hud kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--border); border-radius: 3px; padding: 0 3px; background: var(--page); }
 main.walking #legend { display: none; }
 #walk[aria-pressed=true] { background: var(--accent); color: #fff; border-color: var(--accent); }
@@ -265,7 +280,7 @@ main.walking #legend { display: none; }
 #legend .hint { margin-top: 2px; }
 
 #status {
-  position: absolute; right: 16px; bottom: 16px;
+  position: absolute; right: 16px; bottom: 16px; z-index: 6; /* above the side panel */
   color: var(--muted); font-size: 12px;
   background: color-mix(in srgb, var(--surface) 80%, transparent);
   padding: 2px 8px; border-radius: 4px;
@@ -309,6 +324,7 @@ main.walking #legend { display: none; }
 .bar-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; color: var(--text-2); font-size: 12px; }
 .bar-legend span { display: flex; align-items: center; gap: 5px; }
 .empty { color: var(--muted); font-style: italic; }
+.link, button.link { border: 0; background: none; font: inherit; padding: 0; }
 .link { color: var(--accent); cursor: pointer; }
 .link:hover { text-decoration: underline; }
 .p-section .hint { margin-top: 6px; }

@@ -5,18 +5,24 @@
 Browse any code base as an interactive isometric archipelago in your browser.
 
 - **Mainland** = your repository. Directories are terraces, files are buildings
-  (height = lines of code, color = language).
+  (height = lines of code, color = language). The map is drawn as a city:
+  facades with windows, streets with sidewalks and crossings between buildings,
+  ramps between levels, parks with trees, all in a rippling sea; when a
+  selection dims the rest, dimmed buildings turn plain so the focus stands
+  out.
 - **Islands** = external ecosystems (Go modules, the standard library, …) with
   one building per dependency.
 - **Click** anything to see what it depends on and what uses it;
   **double-click** to expand or collapse directories and files (files expand
   into their symbols).
-- **Walk** (`V`) the map in first person on a tiny planet: `WASD` to move, the
-  mouse to look, `Space` to jump, `F` to fly. Throw newspapers (click or `Q`) at
-  buildings to select them, `E` to expand what you aim at, and the mouse wheel to
-  change the planet's curvature. Terraces become city blocks: the space between
+- **Hunt** dependencies on foot (`V`): walk the map in first person on a tiny
+  planet, `WASD` to move, the mouse to look, `Space` to jump, `F` to fly. Fire
+  tracking darts (click) at buildings: a hit tags the module, lights up its
+  dependency trails and plants a beacon over it. Hold the right button for the
+  scope, the mouse wheel zooms. Terraces become city blocks: the space between
   buildings is a connected street network with sidewalks, lane markings and
-  crossings, stairs lead between levels, and empty lots are parks.
+  crossings, ramps and stairs lead between levels, empty lots are parks with
+  trees and bushes, and bridges cross the water to every island.
 
 Everything runs locally: one binary, no network access, no Node.js.
 
@@ -24,7 +30,7 @@ Everything runs locally: one binary, no network access, no Node.js.
 
 Download an archive for your platform from the
 [releases](https://github.com/sarumaj/depphunter-cli/releases) (checksums in
-`checksums.txt`), or build it with Go 1.22 or newer:
+`checksums.txt`), or build it with Go 1.27.1 or newer:
 
 | OS      | Architectures                        | Archive   |
 |---------|--------------------------------------|-----------|
@@ -106,8 +112,8 @@ depth and filters into the `ui:` section of `.depphunter.yaml` (or the
 ## Watch mode and cache
 
 Parsing results are cached per file content under the user cache directory
-(`~/.cache/depphunter` on Linux), so a second run only parses files that changed
-- the CPython standard library goes from 1.2 s to 20 ms. With `--watch`,
+(`~/.cache/depphunter` on Linux), so a second run only parses files that
+changed: the CPython standard library goes from 1.2 s to 20 ms. With `--watch`,
 depphunter watches the directories it analyzed, re-analyzes after changes settle
 (300 ms), and pushes the new map to the browser, which keeps your expansion,
 selection and filters and briefly highlights the files that changed.
@@ -121,7 +127,7 @@ selection and filters and briefly highlights the files that changed.
 | `json`    | the full graph document the UI uses (nodes, symbols, edges)                                                                                                                    |
 | `graphml` | the full graph with all attributes, for Gephi, yEd or NetworkX                                                                                                                 |
 | `dot`     | the dependency graph for Graphviz: files, package directories and external packages, clustered per directory; standard-library packages and files without imports are left out |
-| `html`    | the interactive map as one file that opens without depphunter or a network: UI, graph, current view settings and source text (files up to 256 KB, 24 MB in total)              |
+| `html`    | the interactive map as one file that opens without depphunter or a network: UI, graph, source text (files up to 256 KB, 24 MB in total) and the view you are looking at — colors, height, theme, depth and filters (the CLI's `--export html` uses the configured view)     |
 
 **Export → PNG image** (or `P`) saves the map as shown, labels included, at your
 screen's resolution; it also works in an exported HTML page.
@@ -206,15 +212,23 @@ In walk mode:
 
 |                        |                                                     |
 |------------------------|-----------------------------------------------------|
-| Click the map          | look with the mouse (`Esc` frees it), or drag       |
+| Mouse                  | look; captured at the reticle (`Esc` frees it, a click on the map captures it again), or drag |
 | `W` `A` `S` `D`/arrows | move / turn; `Shift` runs                           |
-| `Space`                | jump (flying: rise)                                 |
-| `F`                    | fly on / off (`C` sinks)                            |
-| Click / `Q`            | throw a newspaper: the building it hits is selected |
-| `Enter`                | select what the crosshair is on                     |
-| `E` / right click      | expand / collapse what the crosshair is on          |
-| Wheel / `[` `]`        | planet size (curvature)                             |
+| `Space`                | jump (flying: straight up)                          |
+| `F`                    | fly on / off; flying, `W`/`S` move where you look (look down and press `W` to dive), `C` goes straight down |
+| Click                  | fire a tracking dart: the module it hits is tagged  |
+| Hold right button      | look through the scope                              |
+| `Enter`                | details of what the reticle is on (frees the mouse; click the map to walk on) |
+| Wheel                  | zoom in / out                                       |
+| `+` `-` (or `[` `]`)   | planet size (curvature)                             |
 | `V` / `Esc`            | back to the map                                     |
+
+On foot, the shore stops you, but every island can be reached over a bridge;
+flying, you can go 3 units out over the water. The ground you stand on is never
+a target, so aiming at the street does not select it. Expanding and collapsing
+is left to the map view: it rebuilds the whole city, which is disorienting from
+street level. The key list folds away once you start moving; `?`
+shows all controls.
 
 ## Security
 
@@ -393,12 +407,13 @@ tools are optional: `git` for file listing and history, language servers for
 
 ```sh
 go test -race ./...
-go run honnef.co/go/tools/cmd/staticcheck@2024.1.1 ./...
+go run honnef.co/go/tools/cmd/staticcheck@2026.2.1 ./...
 ```
 
 CI (`.github/workflows/ci.yml`) builds and tests on Linux, macOS and Windows, on
-the current Go and on Go 1.22 with `GOTOOLCHAIN=local`, so a `go.mod` that
-starts to need a newer Go fails the build. It also checks formatting, `go mod
+the current Go and on exactly the Go that `go.mod` states, with
+`GOTOOLCHAIN=local`, so a `go.mod` that claims less than the code needs fails
+the build. It also checks formatting, `go mod
 tidy`, vet, staticcheck, govulncheck, JavaScript syntax and Markdown. Pushing a
 `v*` tag runs `.github/workflows/release.yml`, which tests and then publishes
 stripped binaries for every platform in the [Install](#install) table.
@@ -414,8 +429,8 @@ TARGETS="linux/amd64 darwin/arm64" scripts/dist.sh
 CI builds all targets on every push, keeps the archives for 14 days as workflow
 artifacts, and runs the tests as 32-bit (`GOARCH=386`). Renovate
 (`renovate.json`) opens grouped pull requests for non-major dependency updates;
-the Go 1.22 job fails those that need a newer Go (viper 1.21 and later do, so
-viper stays on 1.20).
+one that needs a newer Go than `go.mod` states fails the oldest-Go job until
+`go.mod` is raised with it.
 
 The milestones and design decisions are in
 [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).

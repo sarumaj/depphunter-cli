@@ -457,6 +457,16 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		s.mu.RLock()
 		ui := s.cfg.UI
 		s.mu.RUnlock()
+		// The browser sends the view it is showing, so the exported page opens like
+		// the map on screen instead of like the config file.
+		if q := r.URL.Query().Get("ui"); q != "" {
+			var from config.UI
+			if err := json.Unmarshal([]byte(q), &from); err != nil || from.Validate() != nil {
+				http.Error(w, "invalid ui settings", http.StatusBadRequest)
+				return
+			}
+			ui = from
+		}
 		var buf bytes.Buffer
 		if err := web.WriteStatic(&buf, sn.g, ui, s.root, map[string]any{
 			"history": s.Lazy("history"), "references": s.Lazy("references"),
