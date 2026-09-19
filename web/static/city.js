@@ -696,6 +696,14 @@ export function bridgesFor(boxes) {
   return bridges;
 }
 
+/** A bridge deck's footprint, for indexing it like a box. */
+export function bridgeBounds(r) {
+  const half = DECK_W / 2;
+  return r.axis === 'x'
+    ? { x0: r.from, x1: r.to, z0: r.across - half, z1: r.across + half }
+    : { x0: r.across - half, x1: r.across + half, z0: r.from, z1: r.to };
+}
+
 /** The deck's height at (x, z), or -Infinity beside the bridge. */
 export function bridgeHeight(r, x, z) {
   const along = r.axis === 'x' ? x : z, across = r.axis === 'x' ? z : x;

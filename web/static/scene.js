@@ -184,6 +184,9 @@ export class MapScene {
 
   /** Replace all boxes. colors: array of CSS colors, one per box. */
   setBoxes(boxes, colors) {
+    // New buffers: nothing of the old colors survives for setColors to compare against.
+    this.shown = null;
+    this.groundPainted = false;
     if (this.mesh) {
       this.scene.remove(this.mesh);
       this.mesh.geometry.dispose();
@@ -295,29 +298,76 @@ export class MapScene {
    * colors: CSS colors, one per box. faded: optional flags, one per box: faded boxes
    * (dimmed by a selection or filter) drop their facade and roof detail and show
    * their plain color, so what is in focus stands out.
+   *
+   * Only boxes whose color or fade changed are written. Pointing at a building
+   * recolors two boxes, and repainting the ground's hundreds of thousands of vertex
+   * colors for that took longer than a frame; the callers hand over fresh arrays
+   * every time and do not keep them, so the last ones serve as the comparison.
    */
   setColors(colors, faded = []) {
-    const c = new THREE.Color();
-    colors.forEach((col, i) => this.mesh.setColorAt(i, c.set(col)));
-    if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
-    const fade = this.mesh.geometry.getAttribute('aFade');
-    for (let i = 0; i < fade.count; i++) fade.setX(i, faded[i] ? 1 : 0);
-    fade.needsUpdate = true;
+    parsed.clear();
+    const was = this.shown, wasFaded = this.shownFade;
+    const changed = [];
+    for (let i = 0; i < colors.length; i++) {
+      if (!was || colors[i] !== was[i] || !faded[i] !== !wasFaded[i]) changed.push(i);
+    }
+    this.shown = colors;
+    this.shownFade = faded;
+    if (changed.length) {
+      const fade = this.mesh.geometry.getAttribute('aFade');
+      for (const i of changed) {
+        this.mesh.setColorAt(i, parseColor(colors[i]));
+        fade.setX(i, faded[i] ? 1 : 0);
+      }
+      if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
+      fade.needsUpdate = true;
+    }
     // The ground's vertex colors are its face shade times its box's color. It is only
     // drawn while walking, so outside walk mode the (much larger) buffer is left for
     // setWalking to refresh.
     this.groundColors = [colors, faded];
-    if (!this.walking) return this.requestRender();
-    const g = this.ground.geometry, shade = g.getAttribute('shade'), box = g.getAttribute('box'), col = g.getAttribute('color');
-    const gFade = g.getAttribute('aFade');
-    for (let v = 0; v < box.count; v++) {
-      c.set(colors[box.getX(v)]).multiplyScalar(shade.getX(v));
-      col.setXYZ(v, c.r, c.g, c.b);
-      gFade.setX(v, faded[box.getX(v)] ? 1 : 0);
+    if (this.walking) {
+      this.paintGround(colors, faded, this.groundPainted ? changed : null);
+      this.groundPainted = true;
+    } else {
+      this.groundPainted = false;
+    }
+    this.requestRender();
+  }
+
+  /** Paints the ground's vertex colors, for the given box indexes or for all of them. */
+  paintGround(colors, faded, only) {
+    const g = this.ground.geometry, ranges = g.userData.ranges;
+    const shade = g.getAttribute('shade'), box = g.getAttribute('box');
+    const col = g.getAttribute('color'), gFade = g.getAttribute('aFade');
+    const c = new THREE.Color();
+    const paint = (from, to) => {
+      for (let v = from; v < to; v++) {
+        const i = box.getX(v);
+        c.copy(parseColor(colors[i])).multiplyScalar(shade.getX(v));
+        col.setXYZ(v, c.r, c.g, c.b);
+        gFade.setX(v, faded[i] ? 1 : 0);
+      }
+    };
+    if (only) {
+      let any = false;
+      for (const i of only) {
+        const r = ranges.get(i);
+        if (!r) continue; // a box too small to be part of the ground
+        paint(r[0], r[1]);
+        col.addUpdateRange(r[0] * 3, (r[1] - r[0]) * 3);
+        gFade.addUpdateRange(r[0], r[1] - r[0]);
+        any = true;
+      }
+      if (!any) return; // nothing the ground shows changed: no upload at all
+    } else {
+      paint(0, box.count);
+      // No ranges: the whole buffer goes to the GPU.
+      col.clearUpdateRanges();
+      gFade.clearUpdateRanges();
     }
     col.needsUpdate = true;
     gFade.needsUpdate = true;
-    this.requestRender();
   }
 
   /** Box index under a client-space point, or -1. */
@@ -447,13 +497,17 @@ export class MapScene {
     return this.renderer.domElement;
   }
 
-  /** World -> CSS pixel position within the container; null when behind the camera. */
+  /**
+   * World -> CSS pixel position within the container; null when behind the camera.
+   * Labels call this four times per box on every frame, so it borrows scratch
+   * vectors instead of allocating.
+   */
   project(x, y, z) {
-    const v = new THREE.Vector3(x, y, z);
+    const v = _p.set(x, y, z);
     if (this.walking) {
       this.bend(v);
       // Behind the walker, or beyond the horizon (below the water surface).
-      if (v.clone().applyMatrix4(this.walkCamera.matrixWorldInverse).z > -this.walkCamera.near) return null;
+      if (_q.copy(v).applyMatrix4(this.walkCamera.matrixWorldInverse).z > -this.walkCamera.near) return null;
       const c = this.planet.position, eye = this.walkCamera.position;
       if (occludedBySphere(eye, v, c, this.planet.scale.x)) return null;
     }
@@ -498,6 +552,16 @@ const MIN_ZOOM_SHARE = 0.35, PAN_MARGIN = 0.25, PAN_MARGIN_MIN = 6;
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
+// Colors arrive as CSS strings, one per box, and every ground vertex reads its box's
+// again; parsing one takes long enough to be worth doing once per color. setColors
+// empties the cache on entry, so it never outlives a single pass.
+const parsed = new Map();
+function parseColor(css) {
+  let c = parsed.get(css);
+  if (!c) parsed.set(css, c = new THREE.Color(css));
+  return c;
+}
+
 // Wraps a world position around a sphere of radius uRadius touching the flat map at
 // uCenter: distance along the surface and height above it are preserved, so vertical
 // edges stay straight (radial) and flat faces curve with the planet.
@@ -528,11 +592,14 @@ mvPosition = viewMatrix * mvPosition;
 gl_Position = projectionMatrix * mvPosition;
 `;
 
+// Scratch vectors for project and occludedBySphere, which run per label per frame.
+const _p = new THREE.Vector3(), _q = new THREE.Vector3(), _d = new THREE.Vector3(), _oc = new THREE.Vector3();
+
 // Whether the segment eye->p passes through the sphere (centre c, radius r).
 function occludedBySphere(eye, p, c, r) {
-  const d = p.clone().sub(eye), len = d.length();
+  const d = _d.subVectors(p, eye), len = d.length();
   d.divideScalar(len);
-  const oc = eye.clone().sub(c);
+  const oc = _oc.subVectors(eye, c);
   const b = oc.dot(d), disc = b * b - (oc.lengthSq() - r * r);
   if (disc < 0) return false;
   const t = -b - Math.sqrt(disc);
@@ -549,7 +616,8 @@ const SHADE = { top: 1, px: 0.62, nx: 0.62, pz: 0.78, nz: 0.78 };
  * length (heights need no split: the bend keeps verticals straight). Bottoms are
  * left out; they face the planet. Attributes: position, normal, color (set by
  * setColors), shade (face brightness), box (the box index), and for city.js aKind,
- * aBoxCenter (base centre) and aBoxSize.
+ * aBoxCenter (base centre) and aBoxSize. userData.ranges maps a box index to its
+ * vertex range, so one box can be repainted without walking the whole buffer.
  */
 function tessellate(boxes) {
   const area = boxes.reduce((a, b) => a + b.w * b.d, 0);
@@ -572,7 +640,9 @@ function tessellate(boxes) {
       index.push(a, c, b, b, c, d);
     }
   };
+  const ranges = new Map();
   for (const b of boxes) {
+    const start = pos.length / 3;
     const x0 = b.x - b.w / 2, x1 = b.x + b.w / 2, z0 = b.z - b.d / 2, z1 = b.z + b.d / 2;
     const y0 = b.y, y1 = b.y + Math.max(b.h, 0.01);
     const nx = Math.max(1, Math.ceil(b.w / cell)), nz = Math.max(1, Math.ceil(b.d / cell));
@@ -583,6 +653,7 @@ function tessellate(boxes) {
     quadGrid(i, SHADE.nz, [0, 0, -1], nx, 1, (u, v) => [x1 - u * b.w, y1 - v * (y1 - y0), z0]);
     quadGrid(i, SHADE.px, [1, 0, 0], nz, 1, (u, v) => [x1, y1 - v * (y1 - y0), z1 - u * b.d]);
     quadGrid(i, SHADE.nx, [-1, 0, 0], nz, 1, (u, v) => [x0, y1 - v * (y1 - y0), z0 + u * b.d]);
+    ranges.set(i, [start, pos.length / 3]);
   }
   const geo = new THREE.BufferGeometry();
   geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
@@ -595,6 +666,7 @@ function tessellate(boxes) {
   geo.setAttribute('aBoxSize', new THREE.Float32BufferAttribute(size, 3));
   geo.setAttribute('aFade', new THREE.Float32BufferAttribute(new Float32Array(pos.length / 3), 1));
   geo.setIndex(index);
+  geo.userData.ranges = ranges;
   return geo;
 }
 

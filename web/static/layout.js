@@ -26,7 +26,7 @@ export const SCALES = {
 export function layout(model, state) {
   const { visible, counts } = state.vis;
   const scale = SCALES[state.heightScale] || SCALES.sqrt;
-  const maxLoc = fileLocs(model.root).reduce((a, b) => Math.max(a, b), 1);
+  const maxLoc = maxFileLoc(model.root);
   const height = loc => 0.2 + scale(Math.min(1, (loc || 0) / maxLoc)) * MAX_H;
   const maxImporters = model.ecosystems.flatMap(e => e.children).reduce((a, p) => Math.max(a, p.importers), 1);
   const pkgHeight = n => 0.3 + scale(n.importers / maxImporters) * MAX_H * 0.5;
@@ -189,10 +189,11 @@ function symbolHeight(sym) {
   }
 }
 
-function fileLocs(n, out = []) {
-  if (n.kind === 'file') out.push(n.loc || 0);
-  for (const c of n.children) if (c.kind === 'dir' || c.kind === 'file') fileLocs(c, out);
-  return out;
+// The largest file in the tree, for the height scale; every relayout asks again.
+function maxFileLoc(n, max = 1) {
+  if (n.kind === 'file') return Math.max(max, n.loc || 0);
+  for (const c of n.children) if (c.kind === 'dir' || c.kind === 'file') max = maxFileLoc(c, max);
+  return max;
 }
 
 // Packs a terrace's children into a near-square area with potpack. Each box carries

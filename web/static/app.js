@@ -33,7 +33,7 @@ const state = {
   theme: 'auto',
 };
 
-let model, L, pal, langs, scene, panel, searchItems, defaultHiddenEcosystems, maxDepth = 0;
+let model, L, pal, langs, scene, panel, searchItems, defaultHiddenEcosystems, maxDepth = 0, fileCount = 0;
 let config = {};        // /api/config
 let slots = [];         // languages holding categorical color slots (colors.assignSlots)
 let graphVersion = 0;   // server graph version currently shown
@@ -61,9 +61,11 @@ async function main() {
   scene = new MapScene($('map'));
   labels = new Labels($('labels'), scene);
   // Walk mode renders continuously; labels are laid out greedily over all boxes, so
-  // they are redrawn a few times a second rather than on every frame.
+  // they are redrawn a few times a second rather than on every frame. The walker
+  // draws its own frames, so its hook must go through the same throttle as the map's
+  // renderer - drawing from it directly meant a layout per frame.
   let labelsAt = 0;
-  scene.onRender = () => {
+  const drawLabels = () => {
     if (walker?.active) {
       const now = performance.now();
       if (now - labelsAt < 90) return;
@@ -71,6 +73,7 @@ async function main() {
     }
     labels.draw();
   };
+  scene.onRender = drawLabels;
   walker = new Walker(scene, $('walk-hud'), {
     onAim: (i, x, y) => {
       if (i !== state.hovered) {
@@ -99,7 +102,7 @@ async function main() {
       walker.flash(`Details of ${n.name} - click the map to keep walking`);
     },
     onExit: () => setWalking(false),
-    onRender: () => labels.draw(),
+    onRender: drawLabels,
   });
   panel = new Panel($('panel'), $('panel-body'), {
     model,
@@ -226,9 +229,10 @@ function setModel(graph, version) {
   if (panel) panel.model = model;
   maxDepth = 0;
   maxLoc = 1;
+  fileCount = 0;
   for (const n of model.byId.values()) {
     if (n.kind === 'dir') maxDepth = Math.max(maxDepth, n.depth + 1);
-    if (n.kind === 'file') maxLoc = Math.max(maxLoc, n.loc || 0);
+    if (n.kind === 'file') { maxLoc = Math.max(maxLoc, n.loc || 0); fileCount++; }
   }
   for (const e of model.ecosystems) {
     if (e.std && !config.showStd && !prev?.byId.has(e.id)) {
@@ -365,14 +369,13 @@ async function openFile(path, line = 1) {
 }
 
 function updateStatus(note = '') {
-  const files = model.graph.nodes.filter(n => n.kind === 'file').length;
   const hidden = state.vis.hiddenFiles ? ` · ${fmt.format(state.vis.hiddenFiles)} hidden by filters` : '';
   const refs = state.referencesStatus === 'ready'
     ? ` · ${fmt.format(state.references.edges.length)} references${state.references.partial ? ' (partial)' : ''}`
     : state.referencesStatus === 'loading' ? ' · finding references…' : '';
   const hist = state.history ? ` · ${fmt.format(state.history.commits)} commits${state.history.truncated ? '+' : ''}` :
     state.historyStatus === 'loading' && config.history !== false ? ' · reading git history…' : '';
-  $('status-text').textContent = `${fmt.format(files)} files · ${fmt.format(model.root.totalLoc)} lines · ${fmt.format(model.graph.edges.length)} imports${hidden}${hist}${refs}` +
+  $('status-text').textContent = `${fmt.format(fileCount)} files · ${fmt.format(model.root.totalLoc)} lines · ${fmt.format(model.graph.edges.length)} imports${hidden}${hist}${refs}` +
     (note ? ` · ${note}` : '');
 }
 
