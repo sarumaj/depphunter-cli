@@ -32,7 +32,7 @@ jobs:
       GOTOOLCHAIN: local
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: ${{ matrix.go != 'oldest' && matrix.go || '' }}
           go-version-file: ${{ matrix.go == 'oldest' && 'go.mod' || '' }}
@@ -55,7 +55,7 @@ jobs:
       GOTOOLCHAIN: local
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           # staticcheck must be built with a Go at least as new as go.mod's.
           go-version-file: go.mod
@@ -88,7 +88,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           # Release binaries are built with the current Go; scan what users run.
           go-version: stable
@@ -102,7 +102,7 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
-      - uses: actions/setup-go@v5
+      - uses: actions/setup-go@v7
         with:
           go-version: stable
       - name: Test on 32-bit
