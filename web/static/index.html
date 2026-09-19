@@ -63,12 +63,14 @@
       <button id="rotate-left" title="Rotate left (Q)">⟲</button>
       <button id="rotate-right" title="Rotate right (E)">⟳</button>
       <button id="fit" title="Fit to screen (F)">Fit</button>
+      <button id="save-view">Save view</button>
       <div class="export">
         <button id="export-btn" aria-expanded="false" aria-controls="export">Export</button>
         <div id="export" class="popover menu" hidden>
           <a href="api/export?format=json" download>JSON <span class="hint">graph document</span></a>
           <a href="api/export?format=graphml" download>GraphML <span class="hint">Gephi, yEd, NetworkX</span></a>
           <a href="api/export?format=dot" download>DOT <span class="hint">Graphviz dependency graph</span></a>
+          <a href="api/export?format=html" download>HTML <span class="hint">self-contained map to share</span></a>
         </div>
       </div>
       <button id="help-btn" title="Keyboard & mouse (?)">?</button>

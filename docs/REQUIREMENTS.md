@@ -84,8 +84,8 @@ Parsing uses tree-sitter through [gotreesitter](https://github.com/odvcencio/got
 a pure-Go runtime that loads the upstream grammars' parse tables (no cgo, no WASM). Only
 the grammars a plugin imports are linked in. Plugins reach the runtime through
 `internal/lang/treesitter`, so it can be swapped for a WASM/`wazero` build in one place.
-A plugin may use a native parser instead when one exists in the Go standard library
-(Go itself uses `go/parser`).
+A plugin may use another parser when that is more reliable or faster: Go uses
+`go/parser`; C# and PowerShell use small statement scanners (see M4).
 
 > **Decision (M2):** the original plan was tree-sitter compiled to WASM and run by `wazero`.
 > A spike showed gotreesitter meets the same constraint (pure Go, cross-compiles) without
@@ -207,7 +207,31 @@ renders in Graphviz.
 
 ### M4 — Breadth
 
-- Rust, Java, C# plugins; static HTML export; save UI settings to config.
+- Rust (tree-sitter): `use` trees expanded to paths; module files via `crate::`, `self::`,
+  `super::` and `mod x;`; workspace, path, renamed and workspace-inherited dependencies;
+  `Cargo.lock` versions.
+- Java (tree-sitter): classes by package-path suffix under any source root; JDK split from
+  non-JDK `javax`; Maven (properties, dependencyManagement), Gradle, version catalogs;
+  groupId matching by prefix, shared segments, artifact aliases and known mismatches.
+- C# (scanner): MSBuild root namespace + folder convention; `PackageReference`,
+  `Directory.Packages.props`; case-insensitive package ids.
+- PowerShell (scanner): `using module`, `Import-Module`, dot-sourcing, `&`, `$PSScriptRoot`,
+  `#Requires -Modules`, module manifests; built-in module list.
+- Static HTML export (`--export html`, Export menu): one file, ES modules as `data:` URLs
+  behind an import map, graph + view settings + source text (256 KB per file, 24 MB total).
+- **Save view**: `POST /api/settings` writes the `ui:` section (including filters) of the
+  project config via `yaml.Node`, preserving other keys and comments.
+
+> **Decisions (M4):** tree-sitter was dropped for two grammars after measuring them.
+> The pure-Go C# grammar needed 24 s for Serilog's 216 files (8 s for one 59 KB file);
+> the PowerShell grammar turns `Import-Module -Name A, B` into an error node that
+> swallows the following lines. Both languages' dependencies and declarations are
+> statement-level, so scanners that understand comments, strings, here-strings and
+> braces replace them (Serilog: 20 ms). Results on real projects: ripgrep 0 unresolved
+> crates; gson 8 unresolved imports (generated and test-only code); Serilog 1; Pester 0.
+
+*Accepted when* ripgrep, gson, Serilog and Pester analyse with (almost) no unresolved
+dependencies, a saved view survives a reload, and the HTML export opens from `file://`.
 
 ### Later
 

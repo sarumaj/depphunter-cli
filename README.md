@@ -25,6 +25,7 @@ depphunter ~/src/app  # analyse another directory
 depphunter --no-open --addr 127.0.0.1:8080
 depphunter --watch    # keep the map in sync while you edit
 depphunter --export dot -o deps.dot   # write the graph and exit
+depphunter --export html -o map.html  # a self-contained map to share
 ```
 
 | Flag              | Default                   |                                                  |
@@ -42,7 +43,7 @@ depphunter --export dot -o deps.dot   # write the graph and exit
 | `--watch`         | `false`                   | re-analyse on file changes, update the browser live |
 | `--no-cache`      |                           | neither read nor write the analysis cache        |
 | `--editor`        | auto-detected             | editor command template, e.g. `"code -g {file}:{line}"` |
-| `--export`        |                           | write the graph as `json`, `graphml` or `dot` and exit |
+| `--export`        |                           | write `json`, `graphml`, `dot` or `html` and exit |
 | `-o`              | stdout                    | output file for `--export`                       |
 
 Settings are resolved from, in increasing precedence: built-in defaults, the user
@@ -60,7 +61,14 @@ ui:
   height_scale: sqrt
   show_std: false
   expand_depth: 0
+  hide_languages: [Markdown]      # filters, as the Filters panel sets them
+  hide_islands: [npm]
+  path_filter: "!**/testdata/**"
 ```
+
+The browser's **Save view** button writes the current colour, height, theme, depth and
+filters into the `ui:` section of `.depphunter.yaml` (or the `--config` file), keeping
+the file's other keys and comments.
 
 ## Watch mode and cache
 
@@ -80,6 +88,9 @@ highlights the files that changed.
 | `json` | the full graph document the UI uses (nodes, symbols, edges) |
 | `graphml` | the full graph with all attributes, for Gephi, yEd or NetworkX |
 | `dot` | the dependency graph for Graphviz: files, package directories and external packages, clustered per directory; standard-library packages and files without imports are left out |
+| `html` | the interactive map as one file that opens without depphunter or a network: UI, graph, current view settings and source text (files up to 256 KB, 24 MB in total) |
+
+The HTML export contains your source code; share it like you would share the repository.
 
 Dependency graphs are shallow, so Graphviz draws them long and thin; for big ones,
 `unflatten -l 3 -c 5 deps.dot | dot -Tsvg -o deps.svg` spreads them out.
@@ -121,11 +132,20 @@ project are rejected.
 | Go | every `go.mod` (multi-module, local `replace`) | Go modules, Go standard library |
 | JavaScript / TypeScript | relative paths, `tsconfig`/`jsconfig` `paths`, workspaces, `package.json` + `package-lock.json` | npm, Node.js built-ins |
 | Python | relative imports, `src/` layouts, requirements files, `pyproject.toml`, `Pipfile`, `poetry.lock`/`uv.lock`/`pdm.lock`/`Pipfile.lock` | PyPI, Python standard library |
+| Rust | the module tree (`crate::`, `self::`, `super::`, `mod x;`), workspace and path crates, `Cargo.toml` (renamed and workspace dependencies) + `Cargo.lock` | crates.io, Rust standard library |
+| Java | source files by package path (any source root), `pom.xml` (properties, dependency management), Gradle scripts and version catalogs | Maven, Java standard library |
+| C# | namespaces to project folders (`RootNamespace` + folder), `PackageReference`, `Directory.Packages.props` | NuGet, .NET base library |
+| PowerShell | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`) | PowerShell Gallery, built-in modules |
+
+Java imports name packages, not artifacts, so they are matched to Maven groupIds by
+prefix, shared leading segments, artifact names and a short table of well-known
+mismatches (Guava, JUnit 4, Lombok, …); what cannot be matched is shown as unresolved.
 
 Files in other languages appear on the map without dependency edges. Parsing uses a
-pure-Go tree-sitter runtime, so the binary still cross-compiles without a C toolchain.
+pure-Go tree-sitter runtime (C# and PowerShell use small built-in scanners instead), so
+the binary still cross-compiles without a C toolchain.
 
 ## Status
 
-Milestones 1–3 of [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) are done. Rust, Java and
-C#, a static HTML export and saving UI settings follow.
+Milestones 1–4 of [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) are done. Next: a git
+history overlay and symbol-level references.
