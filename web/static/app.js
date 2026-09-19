@@ -82,14 +82,15 @@ async function main() {
     },
     onHit: (box, tagged) => {
       select(box.node);
-      walker.flash(`Tagged ${box.node.name} - ${tagged} tagged so far; its dependency trails are lit`);
+      walker.flash(`Tagged ${box.node.name} - ${tagged} tagged so far; its dependency trails are lit. Hit it again for its details`);
     },
-    // Enter: read about what the reticle is on. The panel needs the pointer, so it
-    // is freed; a click on the map (or closing the panel) captures it again.
+    // A second dart in a tagged building, or Enter: read about what the reticle is
+    // on. The panel needs the pointer, so it is freed; a click on the map (or
+    // closing the panel) captures it again.
     onInspect: box => {
       const n = box ? box.node : state.selected;
       if (!n) {
-        walker.flash('Aim at a building and press Enter to see its details');
+        walker.flash('Tag a building with a dart, then hit it again (or press Enter) to see its details');
         return;
       }
       select(n);
