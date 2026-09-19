@@ -218,3 +218,9 @@ stripped binaries for Linux, macOS and Windows (amd64 and arm64).
 
 The milestones and design decisions are in
 [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
+
+## License
+
+[BSD 3-Clause](LICENSE) © 2026 Dawid Ciepiela. The embedded three.js (MIT) and
+highlight.js (BSD 3-Clause) keep their own licenses; see
+[web/static/vendor](web/static/vendor/README.md).
