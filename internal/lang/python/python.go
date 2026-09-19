@@ -1,4 +1,4 @@
-// Package python analyses Python with tree-sitter. Imports resolve to project modules
+// Package python analyzes Python with tree-sitter. Imports resolve to project modules
 // (relative imports, the importing file's directory, the project root, src/ layouts
 // and every directory holding a pyproject.toml, setup.py or setup.cfg), to the
 // standard library, or to distributions declared in requirements files, pyproject.toml
@@ -68,7 +68,7 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 
 func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 	ex := &lang.Extraction{}
-	var syms lang.SymbolSet
+	var symbols lang.SymbolSet
 	err := grammar.Matches(src, func(m treesitter.Match) {
 		if mod, ok := m.Get("from.module"); ok {
 			name, _ := m.Get("from.name")
@@ -82,13 +82,13 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 			case c.Name == "import":
 				ex.Imports = append(ex.Imports, lang.RawImport{Spec: c.Text, Module: c.Text, Line: c.Line})
 			case c.Name == "def.method":
-				syms.Add(c.EnclosingName("class_definition")+"."+c.Text, "method", c.Line)
+				symbols.Add(c.EnclosingName("class_definition")+"."+c.Text, "method", c.Line)
 			case strings.HasPrefix(c.Name, "def."):
-				syms.Add(c.Text, strings.TrimPrefix(c.Name, "def."), c.Line)
+				symbols.Add(c.Text, strings.TrimPrefix(c.Name, "def."), c.Line)
 			}
 		}
 	})
-	ex.Symbols = syms.List()
+	ex.Symbols = symbols.List()
 	return ex, err
 }
 

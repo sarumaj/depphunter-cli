@@ -1,4 +1,4 @@
-// Package powershell analyses PowerShell scripts (.ps1), modules (.psm1) and module
+// Package powershell analyzes PowerShell scripts (.ps1), modules (.psm1) and module
 // manifests (.psd1). Dependencies are `using module`, Import-Module, dot-sourced and
 // &-invoked scripts, `#Requires -Modules`, and a manifest's RequiredModules,
 // RootModule, NestedModules and ScriptsToProcess.
@@ -66,13 +66,13 @@ var keywords = map[string]bool{"if": true, "elseif": true, "foreach": true, "for
 
 func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 	ex := &lang.Extraction{}
-	var syms lang.SymbolSet
+	var symbols lang.SymbolSet
 	add := func(spec, module, how string, line int) {
 		if module != "" {
 			ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: module, Name: how, Line: line})
 		}
 	}
-	stmts, comments := scanStatements(string(src))
+	statements, comments := scanStatements(string(src))
 	for _, c := range comments {
 		if m := requiresMod.FindStringSubmatch(c.text); m != nil {
 			for _, mod := range moduleSpecs(m[1]) {
@@ -80,18 +80,18 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 			}
 		}
 	}
-	for _, st := range stmts {
+	for _, st := range statements {
 		for _, r := range commandRefs(st.text) {
 			add(r.spec, r.module, r.how, st.line)
 		}
 		switch {
 		case funcDef.MatchString(st.text):
-			syms.Add(funcDef.FindStringSubmatch(st.text)[1], "func", st.line)
+			symbols.Add(funcDef.FindStringSubmatch(st.text)[1], "func", st.line)
 		case classDef.MatchString(st.text):
-			syms.Add(classDef.FindStringSubmatch(st.text)[1], "class", st.line)
+			symbols.Add(classDef.FindStringSubmatch(st.text)[1], "class", st.line)
 		case st.class != "":
 			if m := methodDef.FindStringSubmatch(st.text); m != nil && !keywords[strings.ToLower(m[1])] {
-				syms.Add(st.class+"."+m[1], "method", st.line)
+				symbols.Add(st.class+"."+m[1], "method", st.line)
 			}
 		}
 	}
@@ -112,7 +112,7 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 			}
 		}
 	}
-	ex.Symbols = syms.List()
+	ex.Symbols = symbols.List()
 	return ex, nil
 }
 

@@ -79,7 +79,7 @@ export class Panel {
         return h('div', { class: 'stats' }, stat(n.symbolKind, 'kind'), stat(`line ${n.line}`, 'defined at'));
       case 'package':
         return h('div', { class: 'stats' },
-          stat(n.version || '—', 'version'), stat(fmt.format(n.importers), 'importing files'),
+          stat(n.version || '-', 'version'), stat(fmt.format(n.importers), 'importing files'),
           stat(n.parentNode?.name || '', 'ecosystem'));
       case 'ecosystem':
         return h('div', { class: 'stats' }, stat(fmt.format(n.children.length), 'packages'));
@@ -136,7 +136,7 @@ export class Panel {
     const pkg = n.kind === 'file' && n.parentNode;
     const pkgUsers = pkg ? (this.model.edgesTo.get(pkg.id) || []).length : 0;
     if (pkgUsers) {
-      usedBy.append(h('div', { class: 'hint' }, `Its package is imported ${pkgUsers}× — `,
+      usedBy.append(h('div', { class: 'hint' }, `Its package is imported ${pkgUsers}× - `,
         h('a', { class: 'link', onclick: () => this.onSelect(pkg) }, `select ${pkg.path}/`)));
     }
     return [list('Depends on', 'var(--edge-out)', group(out, 'to')), usedBy];
@@ -210,7 +210,7 @@ export class Panel {
 
 
 // hljs spans may cross newlines (block comments, template strings); re-open them per
-// line so every line is a self-contained, correctly coloured fragment.
+// line so every line is a self-contained, correctly colored fragment.
 function splitHighlighted(html) {
   const out = [];
   let open = [];

@@ -1,4 +1,4 @@
-// Where the UI gets its data: the local server, or — in a static export — the JSON
+// Where the UI gets its data: the local server, or - in a static export - the JSON
 // embedded in the page by web.WriteStatic.
 
 const embedded = document.getElementById('depphunter-data');

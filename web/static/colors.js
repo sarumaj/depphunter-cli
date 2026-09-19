@@ -1,4 +1,4 @@
-// Colour roles. Every value is read from CSS custom properties (style.css), so the
+// color roles. Every value is read from CSS custom properties (style.css), so the
 // light and dark themes are each chosen deliberately, not derived by inversion.
 
 const SLOTS = 7; // categorical slots for languages; the rest fold into "Other"
@@ -30,7 +30,7 @@ export function readPalette() {
 
 // assignSlots gives the largest languages the categorical slots and keeps earlier
 // assignments (prev) while those languages exist, so live updates never repaint a
-// language: colour follows the language, not its rank.
+// language: color follows the language, not its rank.
 export function assignSlots(model, prev = []) {
   const present = new Set(model.languages.map(l => l.lang));
   const slots = Array.from({ length: SLOTS }, (_, i) => (present.has(prev[i]) ? prev[i] : null));

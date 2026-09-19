@@ -67,8 +67,8 @@ function push(map, k, v) {
   if (a) a.push(v); else map.set(k, [v]);
 }
 
-// Languages ordered by lines of code; the order decides categorical colour slots once
-// per repository, so a language keeps its colour regardless of later filtering.
+// Languages ordered by lines of code; the order decides categorical color slots once
+// per repository, so a language keeps its color regardless of later filtering.
 function rankLanguages(root) {
   return [...root.langLoc.entries()]
     .filter(([l]) => l)

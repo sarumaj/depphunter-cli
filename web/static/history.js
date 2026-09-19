@@ -74,7 +74,7 @@ export function computeMetrics(model, hist, since) {
 }
 
 /**
- * Colour position t in [0, 1] for a node in a history mode, or null when it has no
+ * color position t in [0, 1] for a node in a history mode, or null when it has no
  * history in range. Directories (districts) use per-file means for counts, like
  * size mode, so they share the files' scale.
  */

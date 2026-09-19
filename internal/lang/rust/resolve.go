@@ -28,7 +28,7 @@ type crate struct {
 type resolver struct {
 	files   map[string]bool
 	crates  []*crate          // deepest first, so a file finds its own crate
-	members map[string]string // normalised package name -> crate dir (workspace / path crates)
+	members map[string]string // normalized package name -> crate dir (workspace / path crates)
 	locked  map[string]string // package -> version from Cargo.lock
 }
 
@@ -144,47 +144,47 @@ func moduleDir(file string) string {
 }
 
 func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	segs := strings.Split(imp.Module, "::")
+	segments := strings.Split(imp.Module, "::")
 	c := r.crateOf(file)
-	switch first := segs[0]; {
+	switch first := segments[0]; {
 	case first == "crate":
 		if c != nil {
-			t, _ := r.probe(path.Join(c.dir, "src"), segs[1:])
+			t, _ := r.probe(path.Join(c.dir, "src"), segments[1:])
 			return t
 		}
 		return lang.Target{}
 	case first == "self":
-		t, _ := r.probe(moduleDir(file), segs[1:])
+		t, _ := r.probe(moduleDir(file), segments[1:])
 		return t
 	case first == "super":
 		dir := moduleDir(file)
-		for len(segs) > 0 && segs[0] == "super" {
-			dir, segs = path.Dir(dir), segs[1:]
+		for len(segments) > 0 && segments[0] == "super" {
+			dir, segments = path.Dir(dir), segments[1:]
 		}
-		t, _ := r.probe(dir, segs)
+		t, _ := r.probe(dir, segments)
 		return t
 	case stdCrates[first]:
 		return lang.Target{Ecosystem: ecoStd, Package: first}
 	}
 	// Edition 2018 paths may name a module of the current file directly.
-	if t, ok := r.probe(moduleDir(file), segs[:1]); ok {
-		if t2, ok := r.probe(moduleDir(file), segs); ok {
+	if t, ok := r.probe(moduleDir(file), segments[:1]); ok {
+		if t2, ok := r.probe(moduleDir(file), segments); ok {
 			return t2
 		}
 		return t
 	}
 	// Crates are lower case by convention; `use Enum::*` names a local item.
-	if first := segs[0]; first != "" && first[0] >= 'A' && first[0] <= 'Z' {
+	if first := segments[0]; first != "" && first[0] >= 'A' && first[0] <= 'Z' {
 		return lang.Target{}
 	}
-	name := norm(segs[0])
+	name := norm(segments[0])
 	if c != nil {
 		if d, ok := c.deps[name]; ok {
 			if d.path != "" {
-				return r.local(d.path, segs[1:])
+				return r.local(d.path, segments[1:])
 			}
 			if dir, ok := r.members[norm(d.pkg)]; ok {
-				return r.local(dir, segs[1:])
+				return r.local(dir, segments[1:])
 			}
 			v := d.version
 			if exact := r.locked[d.pkg]; exact != "" {
@@ -194,23 +194,23 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 		}
 	}
 	if dir, ok := r.members[name]; ok {
-		return r.local(dir, segs[1:])
+		return r.local(dir, segments[1:])
 	}
-	return lang.Target{Ecosystem: ecoCrates, Package: segs[0], Unresolved: true}
+	return lang.Target{Ecosystem: ecoCrates, Package: segments[0], Unresolved: true}
 }
 
 // local resolves a path inside another project crate, falling back to the crate itself.
-func (r *resolver) local(crateDir string, segs []string) lang.Target {
-	if t, ok := r.probe(path.Join(crateDir, "src"), segs); ok && len(segs) > 0 {
+func (r *resolver) local(crateDir string, segments []string) lang.Target {
+	if t, ok := r.probe(path.Join(crateDir, "src"), segments); ok && len(segments) > 0 {
 		return t
 	}
 	return lang.Target{Local: crateDir}
 }
 
-// probe finds the module file for the longest prefix of segs under dir; with no
+// probe finds the module file for the longest prefix of segments under dir; with no
 // segments it returns the crate or module root file.
-func (r *resolver) probe(dir string, segs []string) (lang.Target, bool) {
-	if len(segs) == 0 {
+func (r *resolver) probe(dir string, segments []string) (lang.Target, bool) {
+	if len(segments) == 0 {
 		for _, root := range []string{"lib.rs", "main.rs", "mod.rs"} {
 			if p := path.Join(dir, root); r.files[p] {
 				return lang.Target{Local: p}, true
@@ -221,11 +221,11 @@ func (r *resolver) probe(dir string, segs []string) (lang.Target, bool) {
 		}
 		return lang.Target{}, false
 	}
-	for n := len(segs); n > 0; n-- {
-		p := path.Join(append([]string{dir}, segs[:n]...)...)
-		for _, cand := range []string{p + ".rs", path.Join(p, "mod.rs")} {
-			if r.files[cand] {
-				return lang.Target{Local: cand}, true
+	for n := len(segments); n > 0; n-- {
+		p := path.Join(append([]string{dir}, segments[:n]...)...)
+		for _, candidate := range []string{p + ".rs", path.Join(p, "mod.rs")} {
+			if r.files[candidate] {
+				return lang.Target{Local: candidate}, true
 			}
 		}
 	}

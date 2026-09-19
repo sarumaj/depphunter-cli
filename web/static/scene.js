@@ -53,8 +53,8 @@ export class MapScene {
     });
 
     this.unitBox = shadedBox();
-    // Unlit: the top face shows exactly the encoded colour; fixed per-face shading
-    // (vertex colours, multiplied with the instance colour) gives the 3D form.
+    // Unlit: the top face shows exactly the encoded color; fixed per-face shading
+    // (vertex colors, multiplied with the instance color) gives the 3D form.
     this.material = this.bendable(new THREE.MeshBasicMaterial({ vertexColors: true }), true);
     this.mesh = null;
     this.ground = null; // tessellated large boxes, shown in walk mode
@@ -169,7 +169,7 @@ export class MapScene {
     this.walkCamera.updateMatrixWorld();
   }
 
-  /** Replace all boxes. colors: array of CSS colours, one per box. */
+  /** Replace all boxes. colors: array of CSS colors, one per box. */
   setBoxes(boxes, colors) {
     if (this.mesh) {
       this.scene.remove(this.mesh);
@@ -276,7 +276,7 @@ export class MapScene {
     const c = new THREE.Color();
     colors.forEach((col, i) => this.mesh.setColorAt(i, c.set(col)));
     if (this.mesh.instanceColor) this.mesh.instanceColor.needsUpdate = true;
-    // The ground's vertex colours are its face shade times its box's colour.
+    // The ground's vertex colors are its face shade times its box's color.
     const g = this.ground.geometry, shade = g.getAttribute('shade'), box = g.getAttribute('box'), col = g.getAttribute('color');
     for (let v = 0; v < box.count; v++) {
       c.set(colors[box.getX(v)]).multiplyScalar(shade.getX(v));
@@ -314,7 +314,7 @@ export class MapScene {
     this.requestRender();
   }
 
-  /** arcs: [{from: box, to: box, color, count}] — drawn as raised curves with an arrow head at the target. */
+  /** arcs: [{from: box, to: box, color, count}] - drawn as raised curves with an arrow head at the target. */
   setArcs(arcs) {
     for (const c of this.edgeGroup.children) c.geometry.dispose();
     this.edgeGroup.clear();
@@ -442,11 +442,11 @@ export class MapScene {
   unbend(v) {
     const c = this.curve.uCenter.value, R = this.curve.uRadius.value;
     const dx = v.x - c.x, dy = v.y + R, dz = v.z - c.z;
-    const horiz = Math.hypot(dx, dz);
-    const h = Math.hypot(horiz, dy) - R;
-    if (horiz < 1e-9) return v.set(c.x, h, c.z);
-    const r = Math.atan2(horiz, dy) * R;
-    return v.set(c.x + dx / horiz * r, h, c.z + dz / horiz * r);
+    const horizontal = Math.hypot(dx, dz);
+    const h = Math.hypot(horizontal, dy) - R;
+    if (horizontal < 1e-9) return v.set(c.x, h, c.z);
+    const r = Math.atan2(horizontal, dy) * R;
+    return v.set(c.x + dx / horizontal * r, h, c.z + dz / horizontal * r);
   }
 }
 
