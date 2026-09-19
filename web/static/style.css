@@ -138,7 +138,15 @@ button:focus-visible, select:focus-visible, input:focus-visible, #map:focus-visi
 #search-results .name { font-weight: 500; white-space: nowrap; }
 #search-results .ctx { color: var(--muted); font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; min-width: 0; }
 #search-results .empty { padding: 6px 8px; }
-.filters { position: relative; }
+.filters, .export { position: relative; }
+.export .popover { left: auto; right: 0; width: 280px; }
+.menu { padding: 4px; }
+.menu a { display: flex; justify-content: space-between; gap: 12px; padding: 6px 10px; border-radius: 5px; color: var(--text); text-decoration: none; }
+.menu a:hover, .menu a:focus-visible { background: var(--grid); }
+.p-actions { display: flex; gap: 8px; }
+.live { margin-right: 8px; color: var(--text-2); }
+.live::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; background: #0ca30c; vertical-align: 1px; }
+.live.off::before { background: #fab219; }
 .count { display: inline-block; min-width: 18px; padding: 0 5px; margin-left: 4px; border-radius: 9px; background: var(--accent); color: #fff; font-size: 11px; text-align: center; }
 .popover { padding: 12px 14px; width: 320px; max-height: 70vh; overflow: auto; }
 .popover section + section { margin-top: 12px; }

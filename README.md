@@ -23,6 +23,8 @@ go install github.com/sarumaj/depphunter-cli/cmd/depphunter@latest
 depphunter            # analyse the current directory and open the browser
 depphunter ~/src/app  # analyse another directory
 depphunter --no-open --addr 127.0.0.1:8080
+depphunter --watch    # keep the map in sync while you edit
+depphunter --export dot -o deps.dot   # write the graph and exit
 ```
 
 | Flag              | Default                   |                                                  |
@@ -37,11 +39,18 @@ depphunter --no-open --addr 127.0.0.1:8080
 | `--height-scale`  | `sqrt`                    | `linear`, `sqrt`, `log`                          |
 | `--show-std`      | `false`                   | show standard-library islands                    |
 | `--expand-depth`  | `0`                       | initially expanded depth; `0` = auto, `-1` = all |
+| `--watch`         | `false`                   | re-analyse on file changes, update the browser live |
+| `--no-cache`      |                           | neither read nor write the analysis cache        |
+| `--editor`        | auto-detected             | editor command template, e.g. `"code -g {file}:{line}"` |
+| `--export`        |                           | write the graph as `json`, `graphml` or `dot` and exit |
+| `-o`              | stdout                    | output file for `--export`                       |
 
 Settings are resolved from, in increasing precedence: built-in defaults, the user
 config (`$XDG_CONFIG_HOME/depphunter/config.yaml`, or the OS equivalent), the project
 config `.depphunter.yaml`, `DEPPHUNTER_*` environment variables (`ADDR`, `OPEN`,
-`EXCLUDE`, `THEME`, `COLOR_BY`, `HEIGHT_SCALE`, `SHOW_STD`), and flags.
+`EXCLUDE`, `THEME`, `COLOR_BY`, `HEIGHT_SCALE`, `SHOW_STD`, `WATCH`, `CACHE`, `EDITOR`),
+and flags. The project config cannot set `editor`: it arrives with the repository, and
+the editor is a command depphunter runs.
 
 ```yaml
 # .depphunter.yaml
@@ -52,6 +61,36 @@ ui:
   show_std: false
   expand_depth: 0
 ```
+
+## Watch mode and cache
+
+Parsing results are cached per file content under the user cache directory
+(`~/.cache/depphunter` on Linux), so a second run only parses files that changed — the
+CPython standard library goes from 1.2 s to 20 ms. With `--watch`, depphunter watches the
+directories it analysed, re-analyses after changes settle (300 ms), and pushes the new
+map to the browser, which keeps your expansion, selection and filters and briefly
+highlights the files that changed.
+
+## Exports
+
+`--export` (or the **Export** menu in the browser) writes:
+
+| Format | Contents |
+|---|---|
+| `json` | the full graph document the UI uses (nodes, symbols, edges) |
+| `graphml` | the full graph with all attributes, for Gephi, yEd or NetworkX |
+| `dot` | the dependency graph for Graphviz: files, package directories and external packages, clustered per directory; standard-library packages and files without imports are left out |
+
+Dependency graphs are shallow, so Graphviz draws them long and thin; for big ones,
+`unflatten -l 3 -c 5 deps.dot | dot -Tsvg -o deps.svg` spreads them out.
+
+## Opening files in your editor
+
+The side panel's **Open in editor** button (or `O`) opens the selected file at the
+selected symbol's line. depphunter uses `--editor` / `DEPPHUNTER_EDITOR` / the user config,
+or detects a GUI editor from `$VISUAL`, `$EDITOR` or `PATH` (VS Code, Cursor, Zed, Sublime
+Text, JetBrains IDEs, …). Without one, the button hands the file to VS Code's `vscode://`
+URL handler.
 
 ## Keyboard & mouse
 
@@ -64,6 +103,7 @@ ui:
 | `F`                       | fit to screen                            |
 | `+` `−`                   | expand / collapse one level everywhere   |
 | `/`                       | search files, symbols and packages       |
+| `O`                       | open the selected file in your editor    |
 | Legend click              | hide / show a language                   |
 | `Esc`                     | clear selection                          |
 
@@ -87,5 +127,5 @@ pure-Go tree-sitter runtime, so the binary still cross-compiles without a C tool
 
 ## Status
 
-Milestones 1–2 of [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) are done. Watch mode,
-exports and more languages follow.
+Milestones 1–3 of [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) are done. Rust, Java and
+C#, a static HTML export and saving UI settings follow.

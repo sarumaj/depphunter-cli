@@ -27,8 +27,8 @@ function h(tag, attrs = {}, ...children) {
 }
 
 export class Panel {
-  constructor(root, body, { model, colorOf, onSelect }) {
-    Object.assign(this, { root, body, model, colorOf, onSelect });
+  constructor(root, body, { model, colorOf, onSelect, onOpen, openLabel }) {
+    Object.assign(this, { root, body, model, colorOf, onSelect, onOpen, openLabel });
     this.seq = 0;
   }
 
@@ -48,11 +48,19 @@ export class Panel {
       h('h2', { class: 'p-title' }, node.kind === 'file' ? h('span', { class: 'swatch', style: `background:${this.colorOf(node.lang)}` }) : null,
         node.name, h('span', { class: 'badge' }, node.symbolKind || node.kind),
         node.unresolved ? h('span', { class: 'badge warn', title: 'Not found in any manifest' }, '⚠ unresolved') : null),
+      this.openButton(node),
       this.stats(node),
       node.kind === 'dir' ? this.languageMix(node) : null,
       ...this.dependencies(node),
     ].filter(Boolean));
     if (node.kind === 'file' || node.kind === 'symbol') this.source(node, seq);
+  }
+
+  openButton(node) {
+    const file = node.kind === 'symbol' ? node.parentNode : node;
+    if (file.kind !== 'file') return null;
+    return h('div', { class: 'p-actions' },
+      h('button', { onclick: () => this.onOpen(file.path, node.line || 1), title: `${this.openLabel} (O)` }, this.openLabel + ' ↗'));
   }
 
   crumbs(node) {
