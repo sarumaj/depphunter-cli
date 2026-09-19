@@ -12,6 +12,7 @@ import (
 	"os/exec"
 	"os/signal"
 	"path/filepath"
+	"strings"
 	"sync"
 	"syscall"
 	"time"
@@ -32,20 +33,26 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang/powershell"
 	"github.com/sarumaj/depphunter-cli/internal/lang/python"
 	"github.com/sarumaj/depphunter-cli/internal/lang/rust"
+	"github.com/sarumaj/depphunter-cli/internal/lsp"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 	"github.com/sarumaj/depphunter-cli/internal/server"
 	"github.com/sarumaj/depphunter-cli/internal/watch"
 	"github.com/sarumaj/depphunter-cli/web"
 )
 
+// version is set at release builds: -ldflags "-X main.version=v1.2.3".
+var version = "dev"
+
 func main() {
 	log.SetFlags(0)
 	log.SetPrefix("depphunter: ")
-	if err := run(); err != nil {
-		if !errors.Is(err, config.ErrHelp) {
-			log.Println(err)
-			os.Exit(1)
-		}
+	switch err := run(); {
+	case err == nil, errors.Is(err, config.ErrHelp):
+	case errors.Is(err, config.ErrVersion):
+		fmt.Println("depphunter", version)
+	default:
+		log.Println(err)
+		os.Exit(1)
 	}
 }
 
@@ -84,11 +91,19 @@ func run() error {
 	}
 
 	if cfg.Export != "" {
-		var hist *history.History
+		extra := map[string]any{}
+		refs := loadReferences(ctx, cfg, cacheDir, g)
 		if cfg.Export == "html" {
-			hist = loadHistory(ctx, cfg, cacheDir, g)
+			if h := loadHistory(ctx, cfg, cacheDir, g); h != nil {
+				extra["history"] = h
+			}
+			if refs != nil {
+				extra["references"] = refs
+			}
+		} else if refs != nil {
+			g = export.WithEdges(g, refs.Edges)
 		}
-		return writeExport(g, cfg, hist, cfg.Export, cfg.Output)
+		return writeExport(g, cfg, extra, cfg.Export, cfg.Output)
 	}
 	return serve(ctx, cfg, g, opts, c, cacheDir)
 }
@@ -135,7 +150,25 @@ func analyse(ctx context.Context, root string, opts analyze.Options, c *cache.Ca
 	return g, nil
 }
 
-func writeExport(g *graph.Graph, cfg config.Config, hist *history.History, format, output string) error {
+// loadReferences asks the installed language servers for symbol references; nil when
+// disabled or when no server could answer.
+func loadReferences(ctx context.Context, cfg config.Config, cacheDir string, g *graph.Graph) *server.References {
+	if !cfg.LSP {
+		return nil
+	}
+	start := time.Now()
+	r, err := lsp.Cached(ctx, cacheDir, g, lsp.Options{Root: cfg.Root, Timeout: cfg.LSPTimeout, Logf: log.Printf})
+	if r == nil || len(r.Servers) == 0 && len(r.Edges) == 0 {
+		if err != nil && ctx.Err() == nil {
+			log.Printf("references unavailable: %v", err)
+		}
+		return nil
+	}
+	log.Printf("references: %d from %s in %s", len(r.Edges), strings.Join(r.Servers, ", "), time.Since(start).Round(time.Millisecond))
+	return &server.References{Edges: r.Edges, Servers: r.Servers, Partial: r.Partial}
+}
+
+func writeExport(g *graph.Graph, cfg config.Config, extra map[string]any, format, output string) error {
 	var w io.Writer = os.Stdout
 	if output != "" {
 		f, err := os.Create(output)
@@ -146,7 +179,7 @@ func writeExport(g *graph.Graph, cfg config.Config, hist *history.History, forma
 		w = f
 	}
 	if format == "html" {
-		return web.WriteStatic(w, g, cfg.UI, cfg.Root, hist)
+		return web.WriteStatic(w, g, cfg.UI, cfg.Root, extra)
 	}
 	return export.Write(w, g, format)
 }
@@ -175,19 +208,49 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts analyze.
 	// The map is served at once; the history follows when git has been read. histMu
 	// serialises reads so a watch-mode refresh cannot overtake the first one.
 	var histMu sync.Mutex
-	histHead := ""
+	histHead, histRead := "", false
 	refreshHistory := func(g *graph.Graph) {
 		histMu.Lock()
 		defer histMu.Unlock()
-		head, _ := history.Head(ctx, cfg.Root)
-		if head == histHead {
+		head, _ := history.Head(ctx, cfg.Root) // "" without commits
+		if histRead && head == histHead {
 			return
 		}
-		histHead = head
+		histHead, histRead = head, true
 		srv.SetHistory(loadHistory(ctx, cfg, cacheDir, g))
 	}
 	if cfg.History {
 		go refreshHistory(g)
+	}
+
+	// References follow the history; in watch mode they are recomputed after changes,
+	// one run at a time, the latest graph winning.
+	var refsMu sync.Mutex
+	var refsNext *graph.Graph
+	refreshReferences := func(g *graph.Graph) {
+		refsMu.Lock()
+		running := refsNext != nil
+		refsNext = g
+		refsMu.Unlock()
+		if running {
+			return // the running loop picks up the newest graph
+		}
+		for {
+			refsMu.Lock()
+			g := refsNext
+			refsMu.Unlock()
+			srv.SetReferences(loadReferences(ctx, cfg, cacheDir, g))
+			refsMu.Lock()
+			if refsNext == g {
+				refsNext = nil
+				refsMu.Unlock()
+				return
+			}
+			refsMu.Unlock()
+		}
+	}
+	if cfg.LSP {
+		go refreshReferences(g)
 	}
 
 	if cfg.Watch {
@@ -208,13 +271,17 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts analyze.
 			}
 			c.Save()
 			w.Sync(append(watchDirs(cfg.Root, ng), gitDirs...))
-			if changed, err := srv.Update(ng, st.ParsedFiles); err != nil {
+			changed, err := srv.Update(ng, st.ParsedFiles)
+			if err != nil {
 				log.Printf("update failed: %v", err)
 			} else if changed {
 				log.Printf("updated: %d files re-parsed in %s", st.Parsed, time.Since(start).Round(time.Millisecond))
 			}
 			if cfg.History {
 				refreshHistory(ng) // a commit moved HEAD
+			}
+			if cfg.LSP && changed {
+				go refreshReferences(ng)
 			}
 		})
 	}

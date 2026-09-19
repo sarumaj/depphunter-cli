@@ -16,7 +16,12 @@ const (
 
 type EdgeKind string
 
-const EdgeImport EdgeKind = "import"
+const (
+	EdgeImport EdgeKind = "import"
+	// EdgeReference links a symbol (or file) to a definition it uses, found by a
+	// language server.
+	EdgeReference EdgeKind = "reference"
+)
 
 type Node struct {
 	ID         string   `json:"id"`

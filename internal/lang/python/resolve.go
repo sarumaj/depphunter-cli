@@ -83,8 +83,12 @@ func newResolver(all, claimed []*scan.File) *resolver {
 		case base == "pyproject.toml":
 			roots[dir] = true
 			r.readPyproject(f.Abs)
-		case base == "setup.py" || base == "setup.cfg":
+		case base == "setup.cfg":
 			roots[dir] = true
+			r.readSetupCfg(f.Abs)
+		case base == "setup.py":
+			roots[dir] = true
+			r.readSetupPy(f.Abs)
 		case base == "Pipfile":
 			r.readPipfile(f.Abs)
 		case base == "poetry.lock" || base == "uv.lock" || base == "pdm.lock" || base == "Pipfile.lock":
@@ -303,6 +307,64 @@ func (r *resolver) readPyproject(abs string) {
 	r.addTable(doc.Tool.Poetry.DevDependencies)
 	for _, g := range doc.Tool.Poetry.Group {
 		r.addTable(g.Dependencies)
+	}
+}
+
+// readSetupCfg reads [options] install_requires and [options.extras_require] from a
+// setuptools setup.cfg (INI with indented continuation lines).
+func (r *resolver) readSetupCfg(abs string) {
+	data, err := os.ReadFile(abs)
+	if err != nil {
+		return
+	}
+	section, key := "", ""
+	for _, line := range strings.Split(string(data), "\n") {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case trimmed == "" || strings.HasPrefix(trimmed, "#") || strings.HasPrefix(trimmed, ";"):
+			continue
+		case strings.HasPrefix(trimmed, "[") && strings.HasSuffix(trimmed, "]"):
+			section, key = strings.ToLower(strings.Trim(trimmed, "[]")), ""
+			continue
+		case line[0] != ' ' && line[0] != '\t': // "key = value" starts a new key
+			k, v, _ := strings.Cut(trimmed, "=")
+			key, trimmed = strings.TrimSpace(k), strings.TrimSpace(v)
+		}
+		if (section == "options" && key == "install_requires") || section == "options.extras_require" {
+			if trimmed != "" {
+				r.addRequirement(trimmed)
+			}
+		}
+	}
+}
+
+var (
+	setupList   = regexp.MustCompile(`(?s)install_requires\s*=\s*\[(.*?)\]`)
+	setupExtras = regexp.MustCompile(`(?s)extras_require\s*=\s*\{(.*?)\}`)
+	extrasList  = regexp.MustCompile(`(?s)\[(.*?)\]`)
+	pyString    = regexp.MustCompile(`["']([^"']+)["']`)
+)
+
+// readSetupPy reads literal install_requires / extras_require lists from setup.py;
+// requirements computed at run time cannot be seen without executing it.
+func (r *resolver) readSetupPy(abs string) {
+	data, err := os.ReadFile(abs)
+	if err != nil {
+		return
+	}
+	var lists []string
+	if m := setupList.FindSubmatch(data); m != nil {
+		lists = append(lists, string(m[1]))
+	}
+	if m := setupExtras.FindSubmatch(data); m != nil {
+		for _, l := range extrasList.FindAllSubmatch(m[1], -1) { // values only, not the dict's keys
+			lists = append(lists, string(l[1]))
+		}
+	}
+	for _, l := range lists {
+		for _, s := range pyString.FindAllStringSubmatch(l, -1) {
+			r.addRequirement(s[1])
+		}
 	}
 }
 

@@ -11,6 +11,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"time"
 
 	"gopkg.in/yaml.v3"
 )
@@ -60,6 +61,9 @@ type Config struct {
 	// History reads git history (up to HistoryCommits commits) for the history overlay.
 	History        bool `yaml:"history"`
 	HistoryCommits int  `yaml:"history_commits"`
+	// LSP asks installed language servers for symbol-level references (slow, opt-in).
+	LSP        bool          `yaml:"lsp"`
+	LSPTimeout time.Duration `yaml:"lsp_timeout"`
 	// Editor is a command template such as "code -g {file}:{line}"; empty = auto-detect.
 	Editor string `yaml:"editor"`
 	UI     UI     `yaml:"ui"`
@@ -76,6 +80,7 @@ func Default() Config {
 		Cache:          true,
 		History:        true,
 		HistoryCommits: 10000,
+		LSPTimeout:     5 * time.Minute,
 		MaxFileSize:    2 << 20,
 		UI:             UI{Theme: "auto", ColorBy: "language", HeightScale: "sqrt"},
 	}
@@ -83,6 +88,9 @@ func Default() Config {
 
 // ErrHelp is returned when -h was requested; usage has already been printed.
 var ErrHelp = flag.ErrHelp
+
+// ErrVersion is returned when --version was requested.
+var ErrVersion = errors.New("version requested")
 
 // Load builds the configuration. getenv and userDir are injected for testability;
 // userDir is the directory holding the user-level config (e.g. ~/.config/depphunter).
@@ -109,14 +117,20 @@ func Load(args []string, getenv func(string) string, userDir string, usage io.Wr
 		flagNoCache = fs.Bool("no-cache", false, "do not read or write the analysis cache")
 		flagNoHist  = fs.Bool("no-history", false, "do not read git history")
 		flagHistN   = fs.Int("history-commits", cfg.HistoryCommits, "read at most this many commits of git history")
+		flagLSP     = fs.Bool("lsp", false, "find symbol references with installed language servers (gopls, …)")
+		flagLSPTime = fs.Duration("lsp-timeout", cfg.LSPTimeout, "time budget for language servers")
 		flagEditor  = fs.String("editor", "", `editor command template, e.g. "code -g {file}:{line}" (default: auto-detect)`)
 		flagExport  = fs.String("export", "", "write the graph as json, graphml or dot and exit instead of serving")
 		flagOutput  = fs.String("o", "", "output file for --export (default: stdout)")
+		flagVersion = fs.Bool("version", false, "print the version and exit")
 		flagExclude stringList
 	)
 	fs.Var(&flagExclude, "exclude", "glob of paths to skip; repeatable")
 	if err := fs.Parse(args); err != nil {
 		return cfg, err
+	}
+	if *flagVersion {
+		return cfg, ErrVersion
 	}
 	if fs.NArg() > 1 {
 		return cfg, fmt.Errorf("expected at most one path, got %d", fs.NArg())
@@ -190,6 +204,10 @@ func Load(args []string, getenv func(string) string, userDir string, usage io.Wr
 			cfg.History = !*flagNoHist
 		case "history-commits":
 			cfg.HistoryCommits = *flagHistN
+		case "lsp":
+			cfg.LSP = *flagLSP
+		case "lsp-timeout":
+			cfg.LSPTimeout = *flagLSPTime
 		case "editor":
 			cfg.Editor = *flagEditor
 		case "export":
@@ -240,7 +258,7 @@ func mergeEnv(cfg *Config, getenv func(string) string) error {
 	if v := getenv("DEPPHUNTER_EXCLUDE"); v != "" {
 		cfg.Exclude = append(cfg.Exclude, strings.Split(v, ",")...)
 	}
-	for key, dst := range map[string]*bool{"OPEN": &cfg.Open, "WATCH": &cfg.Watch, "CACHE": &cfg.Cache, "HISTORY": &cfg.History} {
+	for key, dst := range map[string]*bool{"OPEN": &cfg.Open, "WATCH": &cfg.Watch, "CACHE": &cfg.Cache, "HISTORY": &cfg.History, "LSP": &cfg.LSP} {
 		if err := boolean(key, dst); err != nil {
 			return err
 		}

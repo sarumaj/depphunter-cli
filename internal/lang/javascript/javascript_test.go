@@ -71,3 +71,24 @@ func TestStripJSONC(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestLockfiles(t *testing.T) {
+	npm := func(pkg, version string) lang.Target {
+		return lang.Target{Ecosystem: "npm", Package: pkg, Version: version}
+	}
+	for _, c := range []struct {
+		root, file string
+		want       map[string]lang.Target
+	}{
+		// left-pad is locked twice; the range package.json declares picks 1.3.0.
+		{"testdata/yarn-classic", "index.js", map[string]lang.Target{"lodash": npm("lodash", "4.17.21"), "left-pad": npm("left-pad", "1.3.0")}},
+		{"testdata/yarn-berry", "index.js", map[string]lang.Target{"react": npm("react", "18.2.0")}},
+		{"testdata/pnpm", "index.js", map[string]lang.Target{"react": npm("react", "18.3.1")}},
+		// Per-importer versions; the peer-dependency suffix is dropped.
+		{"testdata/pnpm", "packages/ui/index.js", map[string]lang.Target{"react-dom/client": npm("react-dom", "18.3.1")}},
+	} {
+		t.Run(c.root+"/"+c.file, func(t *testing.T) {
+			langtest.CheckImports(t, langtest.Analyze(t, Plugin{}, c.root)[c.file], c.want)
+		})
+	}
+}

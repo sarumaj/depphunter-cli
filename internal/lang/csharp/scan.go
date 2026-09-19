@@ -114,55 +114,13 @@ func scanStatements(src string) []stmt {
 				i++
 			}
 			i--
-		case r == '"' || ((r == '@' || r == '$') && (at(i+1) == '"' || (at(i+1) == '@' || at(i+1) == '$') && at(i+2) == '"')):
+		case isLiteralStart(rs, i):
 			// Skip the literal, keeping a placeholder so statements stay well-formed.
-			verbatim := false
-			for rs[i] != '"' {
-				verbatim = verbatim || rs[i] == '@'
-				i++
-			}
-			quotes := 0
-			for at(i+quotes) == '"' {
-				quotes++
-			}
-			if quotes >= 3 { // raw string literal: ends with the same run of quotes
-				i += quotes
-				for i < len(rs) && !strings.HasPrefix(string(rs[i:min(i+quotes, len(rs))]), strings.Repeat(`"`, quotes)) {
-					if rs[i] == '\n' {
-						line++
-					}
-					i++
-				}
-				i += quotes - 1
-			} else if quotes == 2 && !verbatim { // empty string ""
-				i++
-			} else {
-				for i++; i < len(rs); i++ {
-					c := rs[i]
-					if c == '\n' {
-						line++
-					}
-					if c == '\\' && !verbatim {
-						i++
-						continue
-					}
-					if c == '"' {
-						if verbatim && at(i+1) == '"' {
-							i++
-							continue
-						}
-						break
-					}
-				}
-			}
+			i = skipLiteral(rs, i, &line)
 			write('"')
 			write('"')
 		case r == '\'':
-			for i++; i < len(rs) && rs[i] != '\''; i++ {
-				if rs[i] == '\\' {
-					i++
-				}
-			}
+			i = skipChar(rs, i)
 			write('\'')
 			write('\'')
 		case r == '(':
@@ -191,4 +149,90 @@ func scanStatements(src string) []stmt {
 	}
 	emit(false)
 	return out
+}
+
+// isLiteralStart reports whether a string literal starts at i: "…", @"…", $"…",
+// $@"…", @$"…", or a raw literal with $ prefixes ($$"""…""").
+func isLiteralStart(rs []rune, i int) bool {
+	for ; i < len(rs) && (rs[i] == '@' || rs[i] == '$'); i++ {
+	}
+	return i < len(rs) && rs[i] == '"'
+}
+
+// skipLiteral returns the index of the last rune of the string literal starting at i,
+// counting newlines into line. Interpolation holes are walked, so strings, chars and
+// braces inside them ($"{(ok ? "}" : "{")}") cannot end the literal early.
+func skipLiteral(rs []rune, i int, line *int) int {
+	at := func(j int) rune {
+		if j < len(rs) {
+			return rs[j]
+		}
+		return 0
+	}
+	verbatim, interp := false, false
+	for ; rs[i] != '"'; i++ {
+		verbatim = verbatim || rs[i] == '@'
+		interp = interp || rs[i] == '$'
+	}
+	quotes := 0
+	for at(i+quotes) == '"' {
+		quotes++
+	}
+	if quotes >= 3 { // raw literal: ends at the same run of quotes
+		run := strings.Repeat(`"`, quotes)
+		for i += quotes; i < len(rs) && !strings.HasPrefix(string(rs[i:min(i+quotes, len(rs))]), run); i++ {
+			if rs[i] == '\n' {
+				*line++
+			}
+		}
+		return min(i+quotes-1, len(rs)-1)
+	}
+	if quotes == 2 && !verbatim { // ""
+		return i + 1
+	}
+	for i++; i < len(rs); i++ {
+		switch c := rs[i]; {
+		case c == '\n':
+			*line++
+		case c == '\\' && !verbatim:
+			i++
+		case c == '"':
+			if verbatim && at(i+1) == '"' { // "" escapes a quote in verbatim strings
+				i++
+				continue
+			}
+			return i
+		case interp && c == '{':
+			if at(i+1) == '{' { // {{ is a literal brace
+				i++
+				continue
+			}
+			for depth := 1; depth > 0 && i+1 < len(rs); {
+				i++
+				switch d := rs[i]; {
+				case isLiteralStart(rs, i):
+					i = skipLiteral(rs, i, line)
+				case d == '\'':
+					i = skipChar(rs, i)
+				case d == '{':
+					depth++
+				case d == '}':
+					depth--
+				case d == '\n':
+					*line++
+				}
+			}
+		}
+	}
+	return len(rs) - 1
+}
+
+// skipChar returns the index of the closing quote of the char literal at i.
+func skipChar(rs []rune, i int) int {
+	for i++; i < len(rs) && rs[i] != '\''; i++ {
+		if rs[i] == '\\' {
+			i++
+		}
+	}
+	return min(i, len(rs)-1)
 }

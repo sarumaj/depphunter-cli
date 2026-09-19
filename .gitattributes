@@ -1,0 +1,5 @@
+# Check text out with LF everywhere: fixtures and golden outputs are byte-exact, and
+# Windows checkouts would otherwise convert them to CRLF.
+* text=auto eol=lf
+*.png binary
+*.gz binary

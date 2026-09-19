@@ -6,6 +6,8 @@ import (
 	"path"
 	"strings"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
@@ -56,6 +58,7 @@ func newResolver(all []*scan.File) *resolver {
 			r.dirs[d] = true
 		}
 	}
+	yarn := map[string]map[string]string{} // yarn.lock dir -> "name@range" -> version
 	for _, f := range all {
 		dir := path.Dir(f.Path)
 		switch path.Base(f.Path) {
@@ -78,7 +81,28 @@ func newResolver(all []*scan.File) *resolver {
 				r.byName[pj.Name] = dir
 			}
 		case "package-lock.json":
-			r.locks[dir] = readLock(f.Abs)
+			r.addLock(dir, readLock(f.Abs))
+		case "yarn.lock":
+			yarn[dir] = readYarnLock(f.Abs)
+		case "pnpm-lock.yaml":
+			for importer, versions := range readPnpmLock(f.Abs) {
+				r.addLock(path.Join(dir, importer), versions)
+			}
+		}
+	}
+	// yarn.lock keys are "name@range": pin each declared range of the packages below.
+	for lockDir, descriptors := range yarn {
+		for pkgDir, deps := range r.deps {
+			if lockDir != "." && pkgDir != lockDir && !strings.HasPrefix(pkgDir, lockDir+"/") {
+				continue
+			}
+			pinned := map[string]string{}
+			for name, rng := range deps {
+				if v := yarnVersion(descriptors, name, rng); v != "" {
+					pinned[name] = v
+				}
+			}
+			r.addLock(pkgDir, pinned)
 		}
 	}
 	// tsconfig.json wins over jsconfig.json in the same directory.
@@ -311,6 +335,122 @@ func readJSON(abs string, v any) error {
 		return err
 	}
 	return json.Unmarshal(data, v)
+}
+
+func (r *resolver) addLock(dir string, versions map[string]string) {
+	if len(versions) == 0 {
+		return
+	}
+	if r.locks[dir] == nil {
+		r.locks[dir] = map[string]string{}
+	}
+	for k, v := range versions {
+		if _, ok := r.locks[dir][k]; !ok {
+			r.locks[dir][k] = v
+		}
+	}
+}
+
+// readYarnLock maps "name@range" descriptors to versions. Both the classic format
+// (`"a@^1", a@^1.2:` / `  version "1.2.3"`) and Berry's YAML (`"a@npm:^1":` /
+// `  version: 1.2.3`) are line-oriented enough to read the same way.
+func readYarnLock(abs string) map[string]string {
+	out := map[string]string{}
+	data, err := os.ReadFile(abs)
+	if err != nil {
+		return out
+	}
+	var keys []string
+	for _, line := range strings.Split(string(data), "\n") {
+		switch {
+		case line == "" || strings.HasPrefix(line, "#"):
+		case !strings.HasPrefix(line, " ") && strings.HasSuffix(line, ":"):
+			keys = keys[:0]
+			for _, k := range strings.Split(strings.TrimSuffix(line, ":"), ",") {
+				keys = append(keys, strings.Trim(strings.TrimSpace(k), `"`))
+			}
+		case strings.HasPrefix(line, "  version"):
+			v := strings.Trim(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "version")), `:" `)
+			for _, k := range keys {
+				out[k] = v
+			}
+			keys = keys[:0]
+		}
+	}
+	return out
+}
+
+// yarnVersion finds the locked version of name for the declared range.
+func yarnVersion(descriptors map[string]string, name, rng string) string {
+	for _, key := range []string{name + "@" + rng, name + "@npm:" + rng} {
+		if v, ok := descriptors[key]; ok {
+			return v
+		}
+	}
+	// The range is written differently: accept a version only when it is unique.
+	found := ""
+	for key, v := range descriptors {
+		if i := strings.LastIndex(key, "@"); i > 0 && key[:i] == name {
+			if found != "" && found != v {
+				return ""
+			}
+			found = v
+		}
+	}
+	return found
+}
+
+// pnpmDeps maps names to "1.2.3" (lockfile v5) or {specifier, version} (v6+).
+type pnpmDeps struct {
+	Dependencies         map[string]any `yaml:"dependencies"`
+	DevDependencies      map[string]any `yaml:"devDependencies"`
+	OptionalDependencies map[string]any `yaml:"optionalDependencies"`
+}
+
+type pnpmLock struct {
+	pnpmDeps  `yaml:",inline"`    // v5 lists the root's dependencies at the top level
+	Importers map[string]pnpmDeps `yaml:"importers"`
+}
+
+// readPnpmLock returns versions per importer (a directory relative to the lockfile,
+// "." for the root) from pnpm-lock.yaml v5–v9.
+func readPnpmLock(abs string) map[string]map[string]string {
+	out := map[string]map[string]string{}
+	data, err := os.ReadFile(abs)
+	if err != nil {
+		return out
+	}
+	var lock pnpmLock
+	if yaml.Unmarshal(data, &lock) != nil {
+		return out
+	}
+	collect := func(sec pnpmDeps) map[string]string {
+		m := map[string]string{}
+		for _, d := range []map[string]any{sec.OptionalDependencies, sec.DevDependencies, sec.Dependencies} {
+			for name, v := range d {
+				var version string
+				switch v := v.(type) {
+				case string:
+					version = v
+				case map[string]any:
+					version, _ = v["version"].(string)
+				}
+				// "1.2.3(react@18.2.0)" carries peer-dependency context; "link:../x" is local.
+				version, _, _ = strings.Cut(version, "(")
+				if version != "" && !strings.HasPrefix(version, "link:") {
+					m[name] = version
+				}
+			}
+		}
+		return m
+	}
+	if len(lock.Importers) == 0 {
+		out["."] = collect(lock.pnpmDeps)
+	}
+	for importer, sec := range lock.Importers {
+		out[path.Clean(importer)] = collect(sec)
+	}
+	return out
 }
 
 // readLock returns top-level package versions from package-lock.json (v1–v3).

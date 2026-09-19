@@ -27,6 +27,16 @@ var (
 	Extensions   = map[string]string{"json": ".json", "graphml": ".graphml", "dot": ".dot"}
 )
 
+// WithEdges returns a copy of g that also holds extra edges (e.g. symbol references).
+func WithEdges(g *graph.Graph, extra []*graph.Edge) *graph.Graph {
+	if len(extra) == 0 {
+		return g
+	}
+	c := *g
+	c.Edges = append(append([]*graph.Edge{}, g.Edges...), extra...)
+	return &c
+}
+
 func Write(w io.Writer, g *graph.Graph, format string) error {
 	switch format {
 	case "json":
@@ -161,7 +171,8 @@ func writeDOT(w io.Writer, g *graph.Graph) error {
 	var edges []*graph.Edge
 	used := map[string]bool{}
 	for _, e := range g.Edges {
-		if byID[e.From] == nil || byID[e.To] == nil || isStd(e.To) {
+		// Symbol references would swamp a file-level drawing: DOT shows imports only.
+		if e.Kind != graph.EdgeImport || byID[e.From] == nil || byID[e.To] == nil || isStd(e.To) {
 			continue
 		}
 		edges = append(edges, e)
