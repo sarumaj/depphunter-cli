@@ -4,6 +4,7 @@ import { MapScene } from './scene.js';
 import { readPalette, languageColors, assignSlots, sequential } from './colors.js';
 import { Panel } from './panel.js';
 import { computeVisibility, searchIndex, search } from './filter.js';
+import { STATIC, fetchGraph, fetchConfig, saveSettings } from './data.js';
 
 const $ = id => document.getElementById(id);
 const fmt = new Intl.NumberFormat();
@@ -33,9 +34,13 @@ let focus = null;  // {lit: Set<box>, arcs}
 let labels = [];   // label candidates for the current layout/selection
 
 async function main() {
-  const [{ graph, version }, cfg] = await Promise.all([fetchGraph(), getJSON('api/config')]);
+  const [{ graph, version }, cfg] = await Promise.all([fetchGraph(), fetchConfig()]);
   config = cfg;
   Object.assign(state, { colorBy: cfg.colorBy, heightScale: cfg.heightScale, theme: cfg.theme });
+  // Saved filters (config ui.hide_languages / hide_islands / path_filter).
+  for (const l of cfg.hideLanguages || []) state.filters.hiddenLangs.add(l);
+  for (const e of cfg.hideIslands || []) state.filters.hiddenEcos.add('e:' + e);
+  state.filters.path = cfg.pathFilter || '';
   defaultHiddenEcos = new Set();
   setModel(graph, version);
   document.title = `${model.root.name} · depphunter`;
@@ -49,7 +54,7 @@ async function main() {
     colorOf: lang => langs.of(lang),
     onSelect: n => reveal(n),
     onOpen: openFile,
-    openLabel: cfg.editor ? 'Open in editor' : 'Open in VS Code',
+    openLabel: cfg.static ? null : cfg.editor ? 'Open in editor' : 'Open in VS Code',
   });
 
   applyTheme();
@@ -60,10 +65,27 @@ async function main() {
   if (cfg.watch) connectEvents();
 }
 
-async function fetchGraph() {
-  const res = await fetch('api/graph');
-  if (!res.ok) throw new Error(`api/graph: ${res.status} ${await res.text()}`);
-  return { graph: await res.json(), version: +res.headers.get('X-Graph-Version') || 0 };
+// saveView stores the current view — colours, heights, theme, depth and filters — in
+// the project config through the server.
+async function saveView() {
+  const hiddenIslands = [...state.filters.hiddenEcos].map(id => id.replace(/^e:/, ''));
+  const stdIslands = model.ecosystems.filter(e => e.std);
+  try {
+    await saveSettings({
+      theme: state.theme,
+      colorBy: state.colorBy,
+      heightScale: state.heightScale,
+      expandDepth: state.level,
+      showStd: stdIslands.length > 0 && stdIslands.every(e => !state.filters.hiddenEcos.has(e.id)),
+      hideLanguages: [...state.filters.hiddenLangs],
+      // Standard-library islands follow showStd; save only the other hidden islands.
+      hideIslands: hiddenIslands.filter(id => !stdIslands.some(e => e.id === 'e:' + id)),
+      pathFilter: state.filters.path,
+    });
+    updateStatus(`view saved to ${config.configFile}`);
+  } catch (err) {
+    updateStatus(`could not save: ${err.message}`);
+  }
 }
 
 // setModel installs a graph, carrying over what the user chose on the previous one:
@@ -171,14 +193,19 @@ function updateStatus(note = '') {
 function applyFilters() {
   state.vis = computeVisibility(model, state.filters);
   if (state.selected && !state.vis.visible(state.selected)) select(null);
-  // Count changes from the defaults, so std-lib islands hidden at start do not show up as filters.
+  updateFilterBadge();
+  relayout();
+  drawLegend();
+  updateStatus();
+}
+
+// The badge counts filters beyond the defaults, so std-lib islands hidden at start do
+// not show up as filters.
+function updateFilterBadge() {
   const ecoChanges = model.ecosystems.filter(e => state.filters.hiddenEcos.has(e.id) !== defaultHiddenEcos.has(e.id)).length;
   const active = state.filters.hiddenLangs.size + ecoChanges + (state.filters.path.trim() ? 1 : 0);
   $('filter-count').hidden = !active;
   $('filter-count').textContent = active;
-  relayout();
-  drawLegend();
-  updateStatus();
 }
 
 // Languages folded into the legend's "Other" entry.
@@ -214,12 +241,6 @@ function drawFilters() {
     .map(([l, c]) => check(l, l || 'unknown', !state.filters.hiddenLangs.has(l), fmt.format(c), langs.of(l))).join('');
   $('eco-list').innerHTML = model.ecosystems
     .map(e => check(e.id, e.name, !state.filters.hiddenEcos.has(e.id), fmt.format(e.children.length), null)).join('');
-}
-
-async function getJSON(url) {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`${url}: ${res.status} ${await res.text()}`);
-  return res.json();
 }
 
 // ---------------------------------------------------------------- state changes
@@ -571,6 +592,15 @@ function bindControls() {
   bindFilters();
   bindSearch();
   bindExport();
+  $('path-filter').value = state.filters.path;
+  updateFilterBadge();
+  if (STATIC) {
+    // A static export has no server: nothing to save, export or open.
+    for (const id of ['save-view', 'export-btn']) $(id).hidden = true;
+  } else {
+    $('save-view').onclick = saveView;
+    $('save-view').title = `Save colour, height, theme, depth and filters to ${config.configFile}`;
+  }
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => state.theme === 'auto' && applyTheme());
 
   window.addEventListener('keydown', e => {

@@ -1,14 +1,18 @@
 // Side panel describing the selected node: stats, dependencies, dependents, source.
 
 import hljs from './vendor/highlight.min.js';
+import powershell from './vendor/highlight-powershell.min.js';
+
+hljs.registerLanguage('powershell', powershell);
 import { ancestors, boundaryEdges } from './model.js';
+import { fetchSource } from './data.js';
 
 const HLJS = {
   Go: 'go', JavaScript: 'javascript', TypeScript: 'typescript', Python: 'python', Rust: 'rust',
   Java: 'java', Kotlin: 'kotlin', 'C#': 'csharp', C: 'c', 'C++': 'cpp', Ruby: 'ruby', PHP: 'php',
   Shell: 'bash', YAML: 'yaml', JSON: 'json', Markdown: 'markdown', HTML: 'xml', XML: 'xml', CSS: 'css',
   SQL: 'sql', Swift: 'swift', Lua: 'lua', Make: 'makefile', Perl: 'perl', R: 'r', Scala: 'scala',
-  'Objective-C': 'objectivec', TOML: 'ini', GraphQL: 'graphql', Docker: 'dockerfile',
+  'Objective-C': 'objectivec', TOML: 'ini', GraphQL: 'graphql', Docker: 'dockerfile', PowerShell: 'powershell',
 };
 const MAX_HIGHLIGHT = 300_000; // bytes; larger files are shown as plain text
 
@@ -58,7 +62,7 @@ export class Panel {
 
   openButton(node) {
     const file = node.kind === 'symbol' ? node.parentNode : node;
-    if (file.kind !== 'file') return null;
+    if (file.kind !== 'file' || !this.openLabel) return null;
     return h('div', { class: 'p-actions' },
       h('button', { onclick: () => this.onOpen(file.path, node.line || 1), title: `${this.openLabel} (O)` }, this.openLabel + ' ↗'));
   }
@@ -147,10 +151,9 @@ export class Panel {
     this.body.append(h('div', { class: 'p-section' }, h('h4', {}, 'Source'), pre));
     let text;
     try {
-      const res = await fetch(`api/file?path=${encodeURIComponent(file.path)}`);
-      text = res.ok ? await res.text() : `(${res.status} ${await res.text()})`;
+      text = await fetchSource(file.path);
     } catch (e) {
-      text = `(failed to load: ${e.message})`;
+      text = `(${e.message})`;
     }
     if (seq !== this.seq) return; // selection changed meanwhile
 
