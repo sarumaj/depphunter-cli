@@ -11,6 +11,9 @@ export function readPalette() {
     other: v('--series-other'),
     seq: Array.from({ length: 7 }, (_, i) => v(`--seq-${i + 1}`)), // near-surface -> strong
     water: v('--water'),
+    sky: v('--sky'),        // walk mode: horizon, zenith and sea
+    skyTop: v('--sky-top'),
+    sea: v('--sea'),
     land: v('--land'),
     terraceA: v('--terrace-a'),
     terraceB: v('--terrace-b'),
