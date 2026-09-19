@@ -75,3 +75,23 @@ namespace Outer
 		t.Errorf("RunAsync on line %d, want 24", lines["Widget.RunAsync"])
 	}
 }
+
+func TestInterpolatedStrings(t *testing.T) {
+	src := "class A\n{\n" +
+		"    string a = $\"{(ok ? \"x;{\" : \"b\")} {{not a hole}} {d:yyyy-MM-dd} {'{'}\";\n" +
+		"    string b = $@\"C:\\{name}\\\"\"x\"\" {(y ? \"}\" : \"{\")}\";\n" +
+		"    string c = $$\"\"\"{{x}} \"quoted\" \"\"\";\n" +
+		"    public void AfterStrings() { }\n" +
+		"}\n"
+	ex, err := Plugin{}.Extract(&scan.File{Path: "a.cs"}, []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]int{}
+	for _, s := range ex.Symbols {
+		got[s.Name] = s.Line
+	}
+	if want := map[string]int{"A": 1, "A.AfterStrings": 6}; !reflect.DeepEqual(got, want) {
+		t.Errorf("got %v, want %v", got, want)
+	}
+}

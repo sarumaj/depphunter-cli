@@ -55,15 +55,15 @@ func GitDirs(ctx context.Context, root string) []string {
 }
 
 // Collect reads at most maxCommits non-merge commits reachable from HEAD. Paths are
-// relative to root (which may be a subdirectory of the repository) and renames are
-// not followed, so a renamed file's history starts at the rename.
+// relative to root (which may be a subdirectory of the repository). Renames are
+// followed: changes made under an old name are filed under the file's current path.
 func Collect(ctx context.Context, root string, maxCommits int) (*History, error) {
 	head, err := Head(ctx, root)
 	if err != nil {
 		return nil, err
 	}
 	// \x1e starts a commit header; \x1f separates its fields.
-	cmd := exec.CommandContext(ctx, "git", "-C", root, "log", "--no-merges", "--no-renames", "--relative",
+	cmd := exec.CommandContext(ctx, "git", "-C", root, "log", "--no-merges", "-M", "--relative",
 		"--numstat", "--format=%x1e%at%x1f%aN%x1f%aE", "-n", strconv.Itoa(maxCommits+1), "HEAD",
 		"--", ".") // only commits touching root; --relative alone still lists the others
 	stdout, err := cmd.StdoutPipe()
@@ -78,6 +78,15 @@ func Collect(ctx context.Context, root string, maxCommits int) (*History, error)
 
 	h := &History{Head: head, Files: map[string][]Change{}}
 	authors := map[string]int{} // lower-case e-mail (or name) -> index
+	// renamed maps an older path to the path it has at HEAD. The log runs newest
+	// first, so a rename is seen before the changes made under the old name.
+	renamed := map[string]string{}
+	current := func(p string) string {
+		if c, ok := renamed[p]; ok {
+			return c
+		}
+		return p
+	}
 	var when, author int64
 	sc := bufio.NewScanner(stdout)
 	sc.Buffer(make([]byte, 64<<10), 16<<20)
@@ -114,7 +123,11 @@ func Collect(ctx context.Context, root string, maxCommits int) (*History, error)
 		}
 		added, _ := strconv.ParseInt(parts[0], 10, 64)
 		deleted, _ := strconv.ParseInt(parts[1], 10, 64)
-		path := filepath.ToSlash(unquote(parts[2]))
+		oldPath, newPath := renamePaths(unquote(parts[2]))
+		path := current(filepath.ToSlash(newPath))
+		if oldPath != "" {
+			renamed[filepath.ToSlash(oldPath)] = path
+		}
 		h.Files[path] = append(h.Files[path], Change{when, author, added, deleted, int64(h.Commits - 1)})
 	}
 	if err := sc.Err(); err != nil {
@@ -134,6 +147,27 @@ func Collect(ctx context.Context, root string, maxCommits int) (*History, error)
 		return nil, fmt.Errorf("git log: %v: %s", err, strings.TrimSpace(stderr.String()))
 	}
 	return h, nil
+}
+
+// renamePaths splits a numstat rename, "old => new" or "dir/{old => new}/file",
+// into its paths; old is "" for a plain path.
+func renamePaths(p string) (old, new string) {
+	if !strings.Contains(p, " => ") {
+		return "", p
+	}
+	open, close := strings.Index(p, "{"), strings.LastIndex(p, "}")
+	if open < 0 || close < open {
+		o, n, _ := strings.Cut(p, " => ")
+		return o, n
+	}
+	prefix, suffix := p[:open], p[close+1:]
+	o, n, _ := strings.Cut(p[open+1:close], " => ")
+	// "{ => sub}" leaves an empty side, hence path.Clean on "dir//file".
+	return cleanPath(prefix + o + suffix), cleanPath(prefix + n + suffix)
+}
+
+func cleanPath(p string) string {
+	return strings.TrimPrefix(filepath.ToSlash(filepath.Clean(p)), "./")
 }
 
 // unquote decodes git's C-style quoting of unusual paths ("a\tb.go").

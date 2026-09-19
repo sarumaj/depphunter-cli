@@ -111,3 +111,19 @@ func TestUnknownFormat(t *testing.T) {
 		t.Error("expected an error")
 	}
 }
+
+func TestReferencesInExports(t *testing.T) {
+	g := WithEdges(sample(), []*graph.Edge{{From: "s:main.go#main", To: "f:pkg/a.go", Kind: graph.EdgeReference}})
+	if len(sample().Edges) != 4 || len(g.Edges) != 5 {
+		t.Fatalf("WithEdges must copy: %d edges", len(g.Edges))
+	}
+	var gml, dot bytes.Buffer
+	Write(&gml, g, "graphml")
+	Write(&dot, g, "dot")
+	if !strings.Contains(gml.String(), `<data key="edgeKind">reference</data>`) {
+		t.Error("GraphML should carry reference edges")
+	}
+	if strings.Contains(dot.String(), "s:main.go#main") {
+		t.Error("DOT should leave symbol references out")
+	}
+}

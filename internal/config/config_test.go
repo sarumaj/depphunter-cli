@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"testing"
+	"time"
 )
 
 func write(t *testing.T, path, content string) {
@@ -111,5 +112,17 @@ func TestHistorySettings(t *testing.T) {
 	}
 	if _, err := Load([]string{"--history-commits", "0", root}, func(string) string { return "" }, "", io.Discard); err == nil {
 		t.Error("history-commits 0 accepted")
+	}
+}
+
+func TestLSPSettings(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, ProjectFile), "lsp: true\nlsp_timeout: 90s\n")
+	cfg, err := Load([]string{root}, func(string) string { return "" }, "", io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.LSP || cfg.LSPTimeout != 90*time.Second {
+		t.Errorf("unexpected config: lsp %v timeout %v", cfg.LSP, cfg.LSPTimeout)
 	}
 }

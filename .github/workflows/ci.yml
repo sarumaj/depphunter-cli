@@ -1,0 +1,91 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  test:
+    name: test (${{ matrix.os }}, Go ${{ matrix.go }})
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        go: [stable]
+        include:
+          # The oldest supported Go. GOTOOLCHAIN=local makes the build fail instead of
+          # silently downloading a newer toolchain when go.mod starts to require one.
+          - os: ubuntu-latest
+            go: "1.22.x"
+    runs-on: ${{ matrix.os }}
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: ${{ matrix.go }}
+      - name: Build
+        run: go build ./...
+      - name: Install gopls
+        # Lets the language-server test run (it skips without gopls). Current gopls
+        # needs a newer Go than the oldest one supported, so only here.
+        if: matrix.os == 'ubuntu-latest' && matrix.go == 'stable'
+        run: go install golang.org/x/tools/gopls@latest
+      - name: Test
+        shell: bash
+        # The race detector needs cgo, which the Windows runner's toolchain lacks.
+        run: |
+          if [ "$RUNNER_OS" = Windows ]; then go test ./...; else go test -race ./...; fi
+
+  lint:
+    runs-on: ubuntu-latest
+    env:
+      GOTOOLCHAIN: local
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          # staticcheck 2024.1 reads Go 1.22 export data; keep both in step.
+          go-version: "1.22.x"
+      - name: gofmt
+        run: |
+          # testdata holds deliberately broken sources.
+          unformatted=$(git ls-files '*.go' ':!:**/testdata/**' | xargs gofmt -l)
+          if [ -n "$unformatted" ]; then
+            echo "::error::not gofmt-formatted:"; echo "$unformatted"; exit 1
+          fi
+      - name: go mod tidy
+        run: |
+          go mod tidy
+          git diff --exit-code go.mod go.sum
+      - name: go vet
+        run: go vet ./...
+      - name: staticcheck
+        run: go run honnef.co/go/tools/cmd/staticcheck@2024.1.1 ./...
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+      - name: JavaScript syntax
+        run: for f in web/static/*.js web/static/vendor/*.js; do node --check "$f"; done
+      - name: markdownlint
+        run: npx --yes markdownlint-cli@0.41.0 '**/*.md' --ignore '**/testdata/**' --ignore node_modules
+
+  vulncheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          # Release binaries are built with the current Go; scan what users run.
+          go-version: stable
+      - name: govulncheck
+        run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...

@@ -49,7 +49,7 @@ type Server struct {
 
 	mu   sync.RWMutex
 	snap *snapshot
-	hist historyState
+	lazy map[string]*lazyData // "history", "references": computed after startup
 	subs map[chan event]struct{}
 	done chan struct{}
 }
@@ -59,10 +59,10 @@ type event struct {
 	data []byte
 }
 
-// historyState is the git history as served: pending while it is being read.
-type historyState struct {
+// lazyData is a dataset computed in the background after the map is served.
+type lazyData struct {
 	pending bool
-	h       *history.History // nil when unavailable
+	value   any // nil when unavailable
 	gz      []byte
 }
 
@@ -83,7 +83,10 @@ func New(cfg config.Config, g *graph.Graph, assets fs.FS) (*Server, error) {
 	s := &Server{
 		token: hex.EncodeToString(tok), root: cfg.Root, assets: assets, editor: cfg.Editor, cfg: cfg,
 		subs: map[chan event]struct{}{}, done: make(chan struct{}),
-		hist: historyState{pending: cfg.History},
+		lazy: map[string]*lazyData{
+			"history":    {pending: cfg.History},
+			"references": {pending: cfg.LSP},
+		},
 	}
 	var err error
 	if s.snap, err = newSnapshot(g, 1); err != nil {
@@ -173,51 +176,78 @@ func (s *Server) broadcast(ev event) {
 
 // SetHistory publishes the git history (nil: none available) and notifies browsers.
 func (s *Server) SetHistory(h *history.History) error {
-	st := historyState{h: h}
-	if h != nil {
+	if h == nil {
+		return s.setLazy("history", nil)
+	}
+	return s.setLazy("history", h)
+}
+
+// SetReferences publishes symbol references (nil: none available).
+func (s *Server) SetReferences(r *References) error {
+	if r == nil {
+		return s.setLazy("references", nil)
+	}
+	return s.setLazy("references", r)
+}
+
+// References is the /api/references document.
+type References struct {
+	Edges   []*graph.Edge `json:"edges"`
+	Servers []string      `json:"servers"`
+	Partial bool          `json:"partial"`
+}
+
+func (s *Server) setLazy(name string, v any) error {
+	d := &lazyData{value: v}
+	if v != nil {
 		var buf bytes.Buffer
 		zw := gzip.NewWriter(&buf)
-		if err := json.NewEncoder(zw).Encode(h); err != nil {
+		if err := json.NewEncoder(zw).Encode(v); err != nil {
 			return err
 		}
 		if err := zw.Close(); err != nil {
 			return err
 		}
-		st.gz = buf.Bytes()
+		d.gz = buf.Bytes()
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	s.hist = st
-	head := ""
-	if h != nil {
-		head = h.Head
-	}
-	msg, _ := json.Marshal(map[string]string{"head": head})
-	s.broadcast(event{"history", msg})
+	s.lazy[name] = d
+	s.broadcast(event{name, []byte(fmt.Sprintf(`{"available":%t}`, v != nil))})
 	return nil
 }
 
-// handleHistory serves the git history: 202 while it is read, 204 without one.
-func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
+// Lazy returns a background dataset for exports; nil while pending or unavailable.
+func (s *Server) Lazy(name string) any {
 	s.mu.RLock()
-	st := s.hist
-	s.mu.RUnlock()
-	w.Header().Set("Cache-Control", "no-store")
-	switch {
-	case st.pending:
-		w.WriteHeader(http.StatusAccepted)
-	case st.h == nil:
-		w.WriteHeader(http.StatusNoContent)
-	default:
-		w.Header().Set("Content-Type", "application/json")
-		w.Header().Set("Content-Encoding", "gzip")
-		w.Header().Set("Vary", "Accept-Encoding")
-		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
-			w.Header().Del("Content-Encoding")
-			json.NewEncoder(w).Encode(st.h)
-			return
+	defer s.mu.RUnlock()
+	if d := s.lazy[name]; d != nil {
+		return d.value
+	}
+	return nil
+}
+
+// handleLazy serves a background dataset: 202 while it is computed, 204 without one.
+func (s *Server) handleLazy(name string) http.HandlerFunc {
+	return func(w http.ResponseWriter, r *http.Request) {
+		s.mu.RLock()
+		d := *s.lazy[name]
+		s.mu.RUnlock()
+		w.Header().Set("Cache-Control", "no-store")
+		switch {
+		case d.pending:
+			w.WriteHeader(http.StatusAccepted)
+		case d.value == nil:
+			w.WriteHeader(http.StatusNoContent)
+		case !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip"):
+			w.Header().Set("Content-Type", "application/json")
+			json.NewEncoder(w).Encode(d.value)
+		default:
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Content-Encoding", "gzip")
+			w.Header().Set("Vary", "Accept-Encoding")
+			w.Write(d.gz)
 		}
-		w.Write(st.gz)
 	}
 }
 
@@ -256,7 +286,8 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/config", s.handleConfig)
 	mux.HandleFunc("GET /api/file", s.handleFile)
 	mux.HandleFunc("GET /api/events", s.handleEvents)
-	mux.HandleFunc("GET /api/history", s.handleHistory)
+	mux.HandleFunc("GET /api/history", s.handleLazy("history"))
+	mux.HandleFunc("GET /api/references", s.handleLazy("references"))
 	mux.HandleFunc("GET /api/export", s.handleExport)
 	mux.HandleFunc("POST /api/open", s.handleOpen)
 	mux.HandleFunc("POST /api/settings", s.handleSettings)
@@ -327,7 +358,8 @@ func (s *Server) handleConfig(w http.ResponseWriter, _ *http.Request) {
 		Root       string `json:"root"`
 		Watch      bool   `json:"watch"`
 		ConfigFile string `json:"configFile"`
-	}{cfg.UI, s.editor != "", cfg.Root, cfg.Watch, filepath.Base(cfg.ConfigFile)})
+		LSP        bool   `json:"lsp"`
+	}{cfg.UI, s.editor != "", cfg.Root, cfg.Watch, filepath.Base(cfg.ConfigFile), cfg.LSP})
 }
 
 // handleSettings saves the browser's view settings into the project config file.
@@ -423,10 +455,12 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	if format == "html" {
 		sn := s.current()
 		s.mu.RLock()
-		ui, hist := s.cfg.UI, s.hist.h
+		ui := s.cfg.UI
 		s.mu.RUnlock()
 		var buf bytes.Buffer
-		if err := web.WriteStatic(&buf, sn.g, ui, s.root, hist); err != nil {
+		if err := web.WriteStatic(&buf, sn.g, ui, s.root, map[string]any{
+			"history": s.Lazy("history"), "references": s.Lazy("references"),
+		}); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
@@ -441,8 +475,12 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	sn := s.current()
+	g := sn.g
+	if refs, ok := s.Lazy("references").(*References); ok && refs != nil {
+		g = export.WithEdges(g, refs.Edges)
+	}
 	var buf bytes.Buffer
-	if err := export.Write(&buf, sn.g, format); err != nil {
+	if err := export.Write(&buf, g, format); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

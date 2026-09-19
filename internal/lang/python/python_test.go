@@ -66,3 +66,19 @@ func TestSymbols(t *testing.T) {
 		}
 	}
 }
+
+func TestSetuptoolsManifests(t *testing.T) {
+	pypi := func(pkg, version string) lang.Target {
+		return lang.Target{Ecosystem: "pypi", Package: pkg, Version: version}
+	}
+	langtest.CheckImports(t, langtest.Analyze(t, Plugin{}, "testdata/setuptools")["pkg/app.py"], map[string]lang.Target{
+		"requests": pypi("requests", ">=2.31"), // setup.cfg, trailing comment dropped
+		"click":    pypi("click", ""),
+		"pytest":   pypi("pytest", ">=8"),  // setup.cfg extras
+		"rich":     pypi("rich", "13.7.0"), // setup.py
+		"attr":     pypi("attrs", ""),
+		"sphinx":   pypi("sphinx", ">=7"), // setup.py extras
+		"ruff":     pypi("ruff", ""),
+		"numpy":    {Ecosystem: "pypi", Package: "numpy", Unresolved: true},
+	})
+}
