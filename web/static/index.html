@@ -63,6 +63,14 @@
       <button id="rotate-left" title="Rotate left (Q)">⟲</button>
       <button id="rotate-right" title="Rotate right (E)">⟳</button>
       <button id="fit" title="Fit to screen (F)">Fit</button>
+      <div class="export">
+        <button id="export-btn" aria-expanded="false" aria-controls="export">Export</button>
+        <div id="export" class="popover menu" hidden>
+          <a href="api/export?format=json" download>JSON <span class="hint">graph document</span></a>
+          <a href="api/export?format=graphml" download>GraphML <span class="hint">Gephi, yEd, NetworkX</span></a>
+          <a href="api/export?format=dot" download>DOT <span class="hint">Graphviz dependency graph</span></a>
+        </div>
+      </div>
       <button id="help-btn" title="Keyboard & mouse (?)">?</button>
     </div>
   </header>
@@ -72,7 +80,7 @@
     <div id="labels" aria-hidden="true"></div>
     <div id="tooltip" role="status" hidden></div>
     <section id="legend" aria-label="Legend"></section>
-    <div id="status">Analysing…</div>
+    <div id="status"><span id="live" class="live" role="status" hidden></span><span id="status-text">Analysing…</span></div>
     <aside id="panel" hidden>
       <button id="panel-close" class="close" title="Close (Esc)">×</button>
       <div id="panel-body"></div>
@@ -91,6 +99,7 @@
         <tr><th>F</th><td>Fit to screen</td></tr>
         <tr><th>+ / −</th><td>Expand / collapse one level everywhere</td></tr>
         <tr><th>/</th><td>Search</td></tr>
+        <tr><th>O</th><td>Open selected file in your editor</td></tr>
         <tr><th>Legend click</th><td>Hide / show a language</td></tr>
         <tr><th>Esc</th><td>Clear selection</td></tr>
       </table>

@@ -121,7 +121,8 @@ extension, lines counted) but carry no edges.
   incoming and outgoing edges in distinct colours with counts.
 - Side panel: syntax-highlighted source, symbol outline, lists of dependencies and
   dependents (each clickable); aggregate stats for directories and packages.
-- Open in editor (`$EDITOR`, `vscode://`, `jetbrains://`) at the right line (M3).
+- Open in editor at the right line: a server-side command template (configured or
+  detected), falling back to the `vscode://` URL handler (M3).
 - Fuzzy search and filters by language, path glob, ecosystem (M2).
 - Colour-by: language (categorical) or size (sequential). Height scale: linear
   / sqrt / log.
@@ -130,8 +131,8 @@ extension, lines counted) but carry no edges.
 ### Outputs
 
 - Serve the interactive view (default).
-- Watch mode: file-system watcher, incremental re-analysis, updates pushed over
-  WebSocket (M3).
+- Watch mode: file-system watcher, incremental re-analysis, updates pushed to the
+  browser (M3).
 - Graph export: JSON, DOT, GraphML (M3).
 - Static self-contained HTML export (M4).
 
@@ -186,8 +187,23 @@ it used, without recolouring the remaining languages.
 
 ### M3 — Outputs & incrementality
 
-- Content-hash analysis cache; watch mode with WebSocket updates.
-- JSON / DOT / GraphML export; open-in-editor.
+- Plugins split into `Extract` (content only, cached by SHA-256 of the content, plugin
+  version and file extension) and a per-run `Resolver` (manifests, layout), so cached
+  runs still resolve against the current manifests.
+- Watch mode (`fsnotify`) on the analysed directories only; debounced re-analysis; the
+  browser receives updates through **Server-Sent Events** and keeps expansion, selection,
+  filters and language colours, highlighting changed files.
+- JSON / GraphML / DOT export from the CLI (`--export`) and the UI.
+- Open in editor via `POST /api/open` (cookie + `X-Depphunter-Request` header; files must
+  be in the graph; arguments are never passed through a shell).
+
+> **Decisions (M3):** SSE instead of WebSocket — updates flow one way, SSE needs no
+> dependency and reconnects by itself. The project config may not set `editor`, since a
+> cloned repository could otherwise choose the command depphunter executes.
+
+*Accepted when* a warm run parses no unchanged file, editing a file in `--watch` mode
+updates the open map within a second without losing the view state, and the DOT export
+renders in Graphviz.
 
 ### M4 — Breadth
 

@@ -24,17 +24,30 @@ export function readPalette() {
   };
 }
 
-// Stable language -> colour mapping for one repository (see model.rankLanguages).
-export function languageColors(model, pal) {
+// assignSlots gives the largest languages the categorical slots and keeps earlier
+// assignments (prev) while those languages exist, so live updates never repaint a
+// language: colour follows the language, not its rank.
+export function assignSlots(model, prev = []) {
+  const present = new Set(model.languages.map(l => l.lang));
+  const slots = Array.from({ length: SLOTS }, (_, i) => (present.has(prev[i]) ? prev[i] : null));
+  for (const { lang } of model.languages) {
+    const free = slots.indexOf(null);
+    if (free < 0) break;
+    if (!slots.includes(lang)) slots[free] = lang;
+  }
+  return slots;
+}
+
+export function languageColors(model, pal, slots) {
   const map = new Map();
-  model.languages.forEach(({ lang }, i) => map.set(lang, i < SLOTS ? pal.series[i] : pal.other));
+  slots.forEach((lang, i) => lang && map.set(lang, pal.series[i]));
   return {
     of: lang => map.get(lang) || pal.other,
     legend: () => {
-      const top = model.languages.slice(0, SLOTS).map(l => ({ label: l.lang, color: map.get(l.lang), lang: l.lang }));
-      const rest = model.languages.slice(SLOTS);
-      if (rest.length || model.root.langLoc.has('')) top.push({ label: 'Other', color: pal.other, lang: null });
-      return top;
+      const entries = slots.map((lang, i) => lang && { label: lang, color: pal.series[i], lang }).filter(Boolean);
+      const other = model.languages.some(l => !map.has(l.lang)) || model.root.langLoc.has('');
+      if (other) entries.push({ label: 'Other', color: pal.other, lang: null });
+      return entries;
     },
   };
 }

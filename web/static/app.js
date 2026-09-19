@@ -1,7 +1,7 @@
 import { buildModel, boundaryEdges, isWithin } from './model.js';
 import { layout } from './layout.js';
 import { MapScene } from './scene.js';
-import { readPalette, languageColors, sequential } from './colors.js';
+import { readPalette, languageColors, assignSlots, sequential } from './colors.js';
 import { Panel } from './panel.js';
 import { computeVisibility, searchIndex, search } from './filter.js';
 
@@ -25,26 +25,21 @@ const state = {
 };
 
 let model, L, pal, langs, scene, panel, searchItems, defaultHiddenEcos, maxDepth = 0;
+let config = {};        // /api/config
+let slots = [];         // languages holding categorical colour slots (colors.assignSlots)
+let graphVersion = 0;   // server graph version currently shown
+let flashTimer = 0;
 let focus = null;  // {lit: Set<box>, arcs}
 let labels = [];   // label candidates for the current layout/selection
 
 async function main() {
-  const [graph, cfg] = await Promise.all([getJSON('api/graph'), getJSON('api/config')]);
-  Object.assign(state, {
-    colorBy: cfg.colorBy, heightScale: cfg.heightScale, theme: cfg.theme,
-  });
-
-  model = buildModel(graph);
-  searchItems = searchIndex(model);
-  for (const e of model.ecosystems) if (e.std && !cfg.showStd) state.filters.hiddenEcos.add(e.id);
-  defaultHiddenEcos = new Set(state.filters.hiddenEcos);
-  state.vis = computeVisibility(model, state.filters);
+  const [{ graph, version }, cfg] = await Promise.all([fetchGraph(), getJSON('api/config')]);
+  config = cfg;
+  Object.assign(state, { colorBy: cfg.colorBy, heightScale: cfg.heightScale, theme: cfg.theme });
+  defaultHiddenEcos = new Set();
+  setModel(graph, version);
   document.title = `${model.root.name} · depphunter`;
   $('repo-name').textContent = model.root.name;
-  for (const n of model.byId.values()) {
-    if (n.kind === 'dir') maxDepth = Math.max(maxDepth, n.depth + 1);
-    if (n.kind === 'file') maxLoc = Math.max(maxLoc, n.loc || 0);
-  }
   setLevel(cfg.expandDepth < 0 ? maxDepth : cfg.expandDepth || autoLevel(), false);
 
   scene = new MapScene($('map'));
@@ -53,20 +48,122 @@ async function main() {
     model,
     colorOf: lang => langs.of(lang),
     onSelect: n => reveal(n),
+    onOpen: openFile,
+    openLabel: cfg.editor ? 'Open in editor' : 'Open in VS Code',
   });
 
   applyTheme();
   bindControls();
   relayout();
   scene.fit(L.bounds);
-
   updateStatus();
+  if (cfg.watch) connectEvents();
 }
 
-function updateStatus() {
+async function fetchGraph() {
+  const res = await fetch('api/graph');
+  if (!res.ok) throw new Error(`api/graph: ${res.status} ${await res.text()}`);
+  return { graph: await res.json(), version: +res.headers.get('X-Graph-Version') || 0 };
+}
+
+// setModel installs a graph, carrying over what the user chose on the previous one:
+// expanded directories, selection, filters and language colours.
+function setModel(graph, version) {
+  const prev = model;
+  model = buildModel(graph);
+  graphVersion = version;
+  searchItems = searchIndex(model);
+  slots = assignSlots(model, slots);
+  if (panel) panel.model = model;
+  maxDepth = 0;
+  maxLoc = 1;
+  for (const n of model.byId.values()) {
+    if (n.kind === 'dir') maxDepth = Math.max(maxDepth, n.depth + 1);
+    if (n.kind === 'file') maxLoc = Math.max(maxLoc, n.loc || 0);
+  }
+  for (const e of model.ecosystems) {
+    if (e.std && !config.showStd && !prev?.byId.has(e.id)) {
+      state.filters.hiddenEcos.add(e.id);
+      defaultHiddenEcos.add(e.id);
+    }
+  }
+  if (prev) {
+    for (const n of model.byId.values()) {
+      if (n.kind === 'dir' && !prev.byId.has(n.id) && n.depth < state.level) state.expanded.add(n.id);
+    }
+    state.selected = state.selected ? model.byId.get(state.selected.id) || null : null;
+  }
+  state.vis = computeVisibility(model, state.filters);
+}
+
+// ---------------------------------------------------------------- live updates
+
+let reloadChain = Promise.resolve();
+
+function connectEvents() {
+  const es = new EventSource('api/events');
+  es.onopen = () => setLive(true);
+  es.onerror = () => setLive(false);
+  // After a reconnect the server may be ahead of us.
+  es.addEventListener('hello', e => {
+    if (JSON.parse(e.data).version !== graphVersion) queueReload([]);
+  });
+  es.addEventListener('graph', e => queueReload(JSON.parse(e.data).changed || []));
+}
+
+function queueReload(changed) {
+  reloadChain = reloadChain.then(() => reload(changed)).catch(err => {
+    console.error(err);
+    updateStatus(`update failed: ${err.message}`);
+  });
+}
+
+async function reload(changed) {
+  const { graph, version } = await fetchGraph();
+  if (version === graphVersion) return;
+  setModel(graph, version);
+  langs = languageColors(model, pal, slots);
+  state.flash = new Set(changed.map(p => 'f:' + p));
+  drawFilters();
+  drawLegend();
+  relayout();
+  if (state.selected) panel.show(state.selected); else panel.close();
+  const time = new Date().toLocaleTimeString();
+  updateStatus(changed.length ? `updated ${time} · ${fmt.format(changed.length)} changed (highlighted)` : `updated ${time}`);
+  clearTimeout(flashTimer);
+  flashTimer = setTimeout(() => { state.flash = null; recolor(); }, 3000);
+}
+
+function setLive(on) {
+  const el = $('live');
+  el.hidden = false;
+  el.classList.toggle('off', !on);
+  el.textContent = on ? 'live' : 'reconnecting…';
+  el.title = on ? 'Watching the file system; the map updates as files change' : 'Lost connection to depphunter';
+}
+
+// ---------------------------------------------------------------- editor
+
+async function openFile(path, line = 1) {
+  if (!config.editor) {
+    // No server-side editor: hand the file to VS Code through its URL handler.
+    const abs = config.root.replace(/\\/g, '/') + '/' + path;
+    location.href = `vscode://file${abs.startsWith('/') ? '' : '/'}${encodeURI(abs)}:${line}`;
+    return;
+  }
+  const res = await fetch('api/open', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'X-Depphunter-Request': '1' },
+    body: JSON.stringify({ path, line }),
+  });
+  if (!res.ok) updateStatus(`could not open editor: ${(await res.text()).trim()}`);
+}
+
+function updateStatus(note = '') {
   const files = model.graph.nodes.filter(n => n.kind === 'file').length;
   const hidden = state.vis.hiddenFiles ? ` · ${fmt.format(state.vis.hiddenFiles)} hidden by filters` : '';
-  $('status').textContent = `${fmt.format(files)} files · ${fmt.format(model.root.totalLoc)} lines · ${fmt.format(model.graph.edges.length)} imports${hidden}`;
+  $('status-text').textContent = `${fmt.format(files)} files · ${fmt.format(model.root.totalLoc)} lines · ${fmt.format(model.graph.edges.length)} imports${hidden}` +
+    (note ? ` · ${note}` : '');
 }
 
 // ---------------------------------------------------------------- filters
@@ -271,6 +368,7 @@ function recolor() {
       const isOther = langs.of(lang) === pal.other;
       if (state.legendLang === null ? !isOther : lang !== state.legendLang) c = pal.dim;
     }
+    if (state.flash && (state.flash.has(b.node.id) || (b.kind === 'symbol' && state.flash.has(b.node.parentNode.id)))) c = mix(c, pal.select, 0.5);
     if (i === state.hovered) c = mix(c, pal.select, 0.25);
     return c;
   });
@@ -409,7 +507,7 @@ function applyTheme() {
   if (state.theme === 'auto') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = state.theme;
   pal = readPalette();
-  langs = languageColors(model, pal);
+  langs = languageColors(model, pal, slots);
   scene.setBackground(pal.water);
   if (L) { scene.setOutline(focus?.selBox, pal.select); refreshFocus(); }
   if (state.selected) panel.show(state.selected); // swatches in the panel
@@ -472,6 +570,7 @@ function bindControls() {
   bindSelect('theme', 'theme', applyTheme);
   bindFilters();
   bindSearch();
+  bindExport();
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => state.theme === 'auto' && applyTheme());
 
   window.addEventListener('keydown', e => {
@@ -486,6 +585,11 @@ function bindControls() {
       case '-': case '_': setLevel(state.level - 1); break;
       case '?': $('help').showModal(); break;
       case '/': $('search').focus(); break;
+      case 'o': case 'O': {
+        const f = sel?.kind === 'symbol' ? sel.parentNode : sel;
+        if (f?.kind === 'file') openFile(f.path, sel.line || 1);
+        break;
+      }
       case 'Enter': if (sel) { toggle(sel); select(sel); } break;
       case 'Backspace': if (sel?.parentNode) reveal(sel.parentNode); break;
       default: return;
@@ -559,7 +663,15 @@ function bindSearch() {
   });
 }
 
+function bindExport() {
+  const btn = $('export-btn'), pop = $('export');
+  const setOpen = open => { pop.hidden = !open; btn.setAttribute('aria-expanded', open); };
+  btn.onclick = () => setOpen(pop.hidden);
+  document.addEventListener('pointerdown', e => { if (!e.target.closest('.export')) setOpen(false); });
+  pop.addEventListener('click', e => { if (e.target.closest('a')) setOpen(false); });
+}
+
 main().catch(err => {
-  $('status').textContent = `Failed to load: ${err.message}`;
+  $('status-text').textContent = `Failed to load: ${err.message}`;
   console.error(err);
 });
