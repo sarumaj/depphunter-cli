@@ -4,7 +4,7 @@
 //
 // The dependency hunt: fire tracking darts at buildings. A hit tags the module: it is
 // selected, so its dependency trails light up, and a beacon marks it for the rest
-// of the session.
+// of the session. A second dart in an already tagged building opens its details.
 
 import * as THREE from './vendor/three.module.min.js';
 import { rampsFor, rampHeight, bridgesFor, bridgeHeight } from './city.js';
@@ -49,7 +49,8 @@ export class Walker {
    * hooks: {
    *   onAim(i, x, y)   box index under the crosshair (-1: none) and its client position
    *   onHit(box, n)    a dart tagged a box; n: modules tagged so far
-   *   onInspect(box)   Enter: show the box's details (null: nothing aimed at)
+   *   onInspect(box)   show the box's details: a dart in a tagged building, or
+   *                    Enter (null: nothing aimed at)
    *   onExit()         the walker left walk mode (V, Esc)
    *   onRender()       after every frame (labels)
    * }
@@ -561,7 +562,13 @@ export class Walker {
     }
   }
 
+  // The hunt takes two shots: the first dart tags the module, a second one into the
+  // same building asks what it is - the details, without letting go of the trigger.
   tag(box) {
+    if (this.tagged.has(box.node.id)) {
+      this.hooks.onInspect(box);
+      return;
+    }
     this.tagged.add(box.node.id);
     this.drawBeacons();
     this.drawHud();
@@ -594,7 +601,7 @@ export class Walker {
     this.hud.querySelector('.w-tagged').textContent = this.tagged.size;
     this.hud.querySelector('.w-radius').textContent = Math.round(this.radius);
     this.hud.querySelector('.w-hint').textContent = locked
-      ? 'Click: fire a tracking dart · hold right: scope · V: back to the map · Esc: free the mouse · ?: all controls'
+      ? 'Click: tag a building, hit it again for details · hold right: scope · V: back to the map · Esc: free the mouse · ?: all controls'
       : 'Click the map to capture the mouse, or drag to look · V / Esc: back to the map · ?: all controls';
   }
 }
