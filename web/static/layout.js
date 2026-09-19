@@ -1,7 +1,7 @@
 import potpack from './vendor/potpack.js';
 
 // Archipelago layout: the repository is a mainland of nested terraces, each external
-// ecosystem an island north of it. Positions derive only from the hierarchy and the
+// ecosystem an island in rings around it. Positions derive only from the hierarchy and the
 // expansion state, so the same repository always produces the same map.
 
 const FILE = 1.0;        // building footprint
@@ -102,18 +102,16 @@ export function layout(model, state) {
   land(0, 0, main.w, main.d, model.root);
   place(model.root, 0, 0, 0);
 
-  // Islands, left to right along the north shore, largest first.
+  // Islands ring the mainland, the most imported nearest.
   const islands = model.ecosystems
     .filter(e => visible(e) && e.children.length)
-    .map(e => ({ e, s: measure(e) }))
-    .sort((a, b) => b.s.w * b.s.d - a.s.w * a.s.d);
-  let x = 0;
-  for (const { e, s } of islands) {
-    const z0 = -ISLAND_GAP - 2 * LAND_MARGIN - s.d;
-    land(x, z0, s.w, s.d, e);
-    place(e, x, z0, 0);
-    x += s.w + 2 * LAND_MARGIN + ISLAND_GAP;
-  }
+    .map(e => ({ e, s: measure(e), uses: e.children.reduce((a, p) => a + (p.importers || 0), 0) }))
+    .sort((a, b) => b.uses - a.uses || a.e.name.localeCompare(b.e.name));
+  const shore = { x0: -LAND_MARGIN, z0: -LAND_MARGIN, x1: main.w + LAND_MARGIN, z1: main.d + LAND_MARGIN };
+  ringIslands(islands, shore, (it, ox, oz) => {
+    land(ox + LAND_MARGIN, oz + LAND_MARGIN, it.s.w, it.s.d, it.e);
+    place(it.e, ox + LAND_MARGIN, oz + LAND_MARGIN, 0);
+  });
 
   // Land sits under a terrace of the same node; the terrace is the node's representative.
   const byNode = new Map();
@@ -122,6 +120,65 @@ export function layout(model, state) {
     if (b.kind !== 'land') byNode.set(b.node.id, b);
   });
   return { boxes, byNode, bounds: bounds(boxes) };
+}
+
+/**
+ * Places islands (in order) in rings around a rectangle: each goes to the side of the
+ * current ring whose row would be least full, rows are centred on their side and
+ * touch the ring's shore across the gap. When no side has room, the next ring starts
+ * outside everything placed so far. Rows on the east and west stay within their
+ * side's length, so they never reach the corners; only a northern or southern row
+ * may outgrow its side, for an island wider than the whole side.
+ * put(item, x0, z0) receives the island's outer corner, land margin included.
+ */
+function ringIslands(items, rect, put) {
+  const G = ISLAND_GAP;
+  let r = { ...rect };
+  let pending = items;
+  while (pending.length) {
+    const sides = ['n', 'e', 's', 'w'].map(side => {
+      const ns = side === 'n' || side === 's';
+      return { side, ns, cap: ns ? r.x1 - r.x0 : r.z1 - r.z0, used: 0, depth: 0, row: [] };
+    });
+    const rest = [];
+    for (const it of pending) {
+      const fw = it.s.w + 2 * LAND_MARGIN, fd = it.s.d + 2 * LAND_MARGIN;
+      let best = null;
+      for (const sd of sides) {
+        const along = sd.ns ? fw : fd, away = sd.ns ? fd : fw;
+        const len = sd.used + (sd.used ? G : 0) + along;
+        if (len > sd.cap && (sd.used || !sd.ns)) continue;
+        const fill = len / sd.cap;
+        if (!best || fill < best.fill) best = { sd, along, away, len, fill };
+      }
+      if (!best) { rest.push(it); continue; }
+      best.sd.row.push({ it, along: best.along, away: best.away });
+      best.sd.used = best.len;
+      best.sd.depth = Math.max(best.sd.depth, best.away);
+    }
+    if (rest.length === pending.length) { // nothing fits even an empty ring: cannot happen, but never loop
+      rest.forEach(it => put(it, r.x1 + G, r.z0));
+      return;
+    }
+    const next = { ...r };
+    for (const sd of sides) {
+      if (!sd.row.length) continue;
+      let t = (sd.ns ? (r.x0 + r.x1) : (r.z0 + r.z1)) / 2 - sd.used / 2;
+      for (const { it, along, away } of sd.row) {
+        let x, z;
+        if (sd.side === 'n') { x = t; z = r.z0 - G - away; }
+        else if (sd.side === 's') { x = t; z = r.z1 + G; }
+        else if (sd.side === 'e') { x = r.x1 + G; z = t; }
+        else { x = r.x0 - G - away; z = t; }
+        put(it, x, z);
+        next.x0 = Math.min(next.x0, x); next.z0 = Math.min(next.z0, z);
+        next.x1 = Math.max(next.x1, x + (sd.ns ? along : away)); next.z1 = Math.max(next.z1, z + (sd.ns ? away : along));
+        t += along + G;
+      }
+    }
+    r = next;
+    pending = rest;
+  }
 }
 
 function symbolHeight(sym) {
