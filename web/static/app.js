@@ -60,7 +60,17 @@ async function main() {
 
   scene = new MapScene($('map'));
   labels = new Labels($('labels'), scene);
-  scene.onRender = () => labels.draw();
+  // Walk mode renders continuously; labels are laid out greedily over all boxes, so
+  // they are redrawn a few times a second rather than on every frame.
+  let labelsAt = 0;
+  scene.onRender = () => {
+    if (walker?.active) {
+      const now = performance.now();
+      if (now - labelsAt < 90) return;
+      labelsAt = now;
+    }
+    labels.draw();
+  };
   walker = new Walker(scene, $('walk-hud'), {
     onAim: (i, x, y) => {
       if (i !== state.hovered) {
@@ -70,15 +80,22 @@ async function main() {
       aimX = x;
       showTooltip(i, x, y);
     },
-    onHit: box => {
+    onHit: (box, tagged) => {
       select(box.node);
-      updateStatus(`delivered to ${box.node.name}`);
+      walker.flash(`Tagged ${box.node.name} - ${tagged} tagged so far; its dependency trails are lit`);
     },
-    onSelect: box => select(box.node),
-    onToggle: box => {
-      const n = box.node;
-      toggle(n);
-      select(n.kind === 'symbol' && !state.expanded.has(n.parentNode.id) ? n.parentNode : n);
+    // Enter: read about what the reticle is on. The panel needs the pointer, so it
+    // is freed; a click on the map (or closing the panel) captures it again.
+    onInspect: box => {
+      const n = box ? box.node : state.selected;
+      if (!n) {
+        walker.flash('Aim at a building and press Enter to see its details');
+        return;
+      }
+      select(n);
+      panel.show(n);
+      document.exitPointerLock?.();
+      walker.flash(`Details of ${n.name} - click the map to keep walking`);
     },
     onExit: () => setWalking(false),
     onRender: () => labels.draw(),
@@ -168,23 +185,28 @@ function colorMode() {
   return isHistoryMode(state.colorBy) && !state.history ? 'language' : state.colorBy;
 }
 
-// saveViewSettings stores the view settings - colors, heights, theme, depth and
-// filters - in the project config through the server.
-async function saveViewSettings() {
+// The view as the settings format describes it: colors, heights, theme, depth and
+// filters. Saved to the project config, and sent with an HTML export so the exported
+// page opens looking like the map on screen.
+function viewSettings() {
   const hiddenIslands = [...state.filters.hiddenEcosystems].map(id => id.replace(/^e:/, ''));
   const stdIslands = model.ecosystems.filter(e => e.std);
+  return {
+    theme: state.theme,
+    colorBy: state.colorBy,
+    heightScale: state.heightScale,
+    expandDepth: state.level,
+    showStd: stdIslands.length > 0 && stdIslands.every(e => !state.filters.hiddenEcosystems.has(e.id)),
+    hideLanguages: [...state.filters.hiddenLangs],
+    // Standard-library islands follow showStd; save only the other hidden islands.
+    hideIslands: hiddenIslands.filter(id => !stdIslands.some(e => e.id === 'e:' + id)),
+    pathFilter: state.filters.path,
+  };
+}
+
+async function saveViewSettings() {
   try {
-    await saveSettings({
-      theme: state.theme,
-      colorBy: state.colorBy,
-      heightScale: state.heightScale,
-      expandDepth: state.level,
-      showStd: stdIslands.length > 0 && stdIslands.every(e => !state.filters.hiddenEcosystems.has(e.id)),
-      hideLanguages: [...state.filters.hiddenLangs],
-      // Standard-library islands follow showStd; save only the other hidden islands.
-      hideIslands: hiddenIslands.filter(id => !stdIslands.some(e => e.id === 'e:' + id)),
-      pathFilter: state.filters.path,
-    });
+    await saveSettings(viewSettings());
     updateStatus(`settings saved to ${config.configFile}`);
   } catch (err) {
     updateStatus(`could not save: ${err.message}`);
@@ -226,10 +248,21 @@ function setModel(graph, version) {
 
 let reloadChain = Promise.resolve();
 
+// How many failed reconnects before giving up: the browser retries an EventSource by
+// itself, and once depphunter has stopped (Ctrl+C, or a crash) that is an endless
+// stream of console errors instead of an answer.
+const MAX_RECONNECTS = 4;
+let events = null, reconnects = 0;
+
 function connectEvents() {
-  const es = new EventSource('api/events');
-  es.onopen = () => setLive(true);
-  es.onerror = () => setLive(false);
+  events?.close();
+  const es = events = new EventSource('api/events');
+  es.onopen = () => { reconnects = 0; setLive('live'); };
+  es.onerror = () => {
+    if (++reconnects <= MAX_RECONNECTS) return setLive('reconnecting');
+    es.close();
+    setLive('stopped');
+  };
   // After a reconnect the server may be ahead of us.
   es.addEventListener('hello', e => {
     if (JSON.parse(e.data).version !== graphVersion) queueReload([]);
@@ -255,19 +288,24 @@ async function reload(changed) {
   drawFilters();
   drawLegend();
   relayout();
-  if (state.selected) panel.show(state.selected); else panel.close();
+  if (state.selected) panel.show(state.selected, true); else panel.close();
   const time = new Date().toLocaleTimeString();
   updateStatus(changed.length ? `updated ${time} · ${fmt.format(changed.length)} changed (highlighted)` : `updated ${time}`);
   clearTimeout(flashTimer);
   flashTimer = setTimeout(() => { state.flash = null; recolor(); }, 3000);
 }
 
-function setLive(on) {
+/** state: 'live' | 'reconnecting' | 'stopped'; stopped can be clicked to try again. */
+function setLive(state) {
   const el = $('live');
   el.hidden = false;
-  el.classList.toggle('off', !on);
-  el.textContent = on ? 'live' : 'reconnecting…';
-  el.title = on ? 'Watching the file system; the map updates as files change' : 'Lost connection to depphunter';
+  el.classList.toggle('off', state !== 'live');
+  el.classList.toggle('stopped', state === 'stopped');
+  el.textContent = { live: 'live', reconnecting: 'reconnecting…', stopped: 'depphunter stopped' }[state];
+  el.title = state === 'live'
+    ? 'Watching the file system; the map updates as files change'
+    : state === 'reconnecting' ? 'Lost connection to depphunter' : 'depphunter is no longer running - click to try again';
+  el.onclick = state === 'stopped' ? () => { reconnects = 0; setLive('reconnecting'); connectEvents(); } : null;
 }
 
 // ---------------------------------------------------------------- screenshot
@@ -397,7 +435,7 @@ function drawFilters() {
 function setLevel(level, redraw = true) {
   state.level = Math.max(1, Math.min(maxDepth, level));
   state.expanded = new Set([...model.byId.values()].filter(n => n.kind === 'dir' && n.depth < state.level).map(n => n.id));
-  $('depth-label').textContent = `depth ${state.level}/${maxDepth}`;
+  $('depth-label').textContent = `depth ${state.level}/${Math.max(1, maxDepth)}`;
   if (redraw) relayout();
 }
 
@@ -416,10 +454,20 @@ function autoLevel() {
   return level;
 }
 
+/** What toggling `n` would do: 'open', 'close', or '' when there is nothing to open. */
+function toggles(n) {
+  if (n.kind === 'symbol') n = n.parentNode;
+  if (n.kind === 'file' && !n.children.length) return '';
+  if (n.kind !== 'dir' && n.kind !== 'file') return '';
+  return state.expanded.has(n.id) ? 'close' : 'open';
+}
+
 function toggle(n) {
   if (n.kind === 'symbol') n = n.parentNode;
-  if (n.kind === 'file' && !n.children.length) return;
-  if (n.kind !== 'dir' && n.kind !== 'file') return;
+  if (!toggles(n)) {
+    updateStatus(`${n.name} has nothing to open`);
+    return;
+  }
   if (state.expanded.has(n.id)) {
     state.expanded.delete(n.id);
     if (state.selected && state.selected !== n && isWithin(state.selected, n)) state.selected = n;
@@ -431,7 +479,10 @@ function toggle(n) {
 
 function select(n) {
   state.selected = n;
-  if (n) panel.show(n); else panel.close();
+  // The panel would cover the reticle and cannot be reached with the pointer locked,
+  // so a walker's selection only opens it once they are back on the map.
+  if (n && !walker.active) panel.show(n);
+  else if (!n) panel.close();
   refreshFocus();
 }
 
@@ -464,15 +515,28 @@ function setWalking(on) {
   }
   $('walk').setAttribute('aria-pressed', on);
   $('map').parentElement.classList.toggle('walking', on);
+  // The map view must never keep the pointer captured: the cursor would be invisible.
+  if (!on && document.pointerLockElement) document.exitPointerLock();
+  if (on) panel.close();
+  else if (state.selected) panel.show(state.selected);
   if (!on) scene.requestRender();
 }
 
 // ---------------------------------------------------------------- drawing
 
+// A relayout moves everything; in walk mode the walker is kept next to the block they
+// stand on, so a depth change or a live update does not teleport them.
 function relayout() {
+  const anchor = walker.active ? walker.anchorFor() : null;
+  // Box indexes change: whatever was hovered or described is gone.
+  state.hovered = -1;
+  aimX = NaN;
+  showTooltip(-1);
   L = layout(model, state);
   scene.setBoxes(L.boxes, baseColors());
   walker.setBoxes(L.boxes);
+  const to = anchor && rep(anchor.node);
+  if (to) walker.reanchor(anchor, to);
   refreshFocus();
 }
 
@@ -512,7 +576,7 @@ function baseColors() {
 }
 
 let maxLoc = 1;
-// color-by-size uses a square-root scale so mid-sized files stay distinguishable.
+// Color-by-size uses a square-root scale so mid-sized files stay distinguishable.
 function sizeT(loc) {
   return Math.sqrt(Math.min(1, (loc || 0) / maxLoc));
 }
@@ -551,6 +615,7 @@ function refreshFocus() {
 function recolor() {
   const base = baseColors();
   const sel = state.selected;
+  const faded = [];
   const colors = L.boxes.map((b, i) => {
     let c = base[i];
     const structural = b.kind === 'land' || b.kind === 'terrace';
@@ -560,11 +625,12 @@ function recolor() {
       const isOther = langs.of(lang) === pal.other;
       if (state.legendLang === null ? !isOther : lang !== state.legendLang) c = pal.dim;
     }
+    faded[i] = c === pal.dim;
     if (state.flash && (state.flash.has(b.node.id) || (b.kind === 'symbol' && state.flash.has(b.node.parentNode.id)))) c = mix(c, pal.select, 0.5);
     if (i === state.hovered) c = mix(c, pal.select, 0.25);
     return c;
   });
-  scene.setColors(colors);
+  scene.setColors(colors, faded);
 }
 
 const mix = (a, b, t) => '#' + new Color(a).lerp(new Color(b), t).getHexString();
@@ -573,6 +639,7 @@ const mix = (a, b, t) => '#' + new Color(a).lerp(new Color(b), t).getHexString()
 
 function drawLegend() {
   const el = $('legend');
+  state.legendLang = undefined; // the <li> under the pointer is replaced: no mouseleave follows
   const parts = [];
   const mode = colorMode();
   if (isHistoryMode(mode)) {
@@ -580,6 +647,7 @@ function drawLegend() {
   } else if (mode === 'language') {
     parts.push('<h3>Language</h3><ul>' + langs.legend().map(e =>
       `<li data-lang="${e.lang === null ? '' : escapeHTML(e.lang)}" data-other="${e.lang === null}" class="${isOff(e) ? 'off' : ''}"
+         tabindex="0" role="button" aria-pressed="${!isOff(e)}"
          title="Click to ${isOff(e) ? 'show' : 'hide'}"><span class="swatch" style="background:${e.color}"></span>${escapeHTML(e.label)}</li>`).join('') + '</ul>');
   } else {
     parts.push(`<h3>File size</h3><div class="ramp" style="background:linear-gradient(90deg,${pal.seq.join(',')})"></div>
@@ -602,15 +670,22 @@ function drawLegend() {
   }
 
   for (const li of el.querySelectorAll('li[data-lang]')) {
-    li.addEventListener('mouseenter', () => { state.legendLang = li.dataset.other === 'true' ? null : li.dataset.lang; recolor(); });
-    li.addEventListener('mouseleave', () => { state.legendLang = undefined; recolor(); });
-    li.addEventListener('click', () => {
+    // Hovering or focusing an entry isolates that language; clicking or pressing
+    // Enter/Space hides and shows it.
+    const isolate = on => { state.legendLang = on ? (li.dataset.other === 'true' ? null : li.dataset.lang) : undefined; recolor(); };
+    li.addEventListener('mouseenter', () => isolate(true));
+    li.addEventListener('mouseleave', () => isolate(false));
+    li.addEventListener('focus', () => isolate(true));
+    li.addEventListener('blur', () => isolate(false));
+    const toggleLang = () => {
       const list = li.dataset.other === 'true' ? otherLangs() : [li.dataset.lang];
       setLangsHidden(list, !li.classList.contains('off'));
       state.legendLang = undefined;
       drawFilters();
       applyFilters();
-    });
+    };
+    li.addEventListener('click', toggleLang);
+    li.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleLang(); } });
   }
 }
 
@@ -687,8 +762,12 @@ function showTooltip(i, x, y) {
   tip.innerHTML = html;
   tip.hidden = false;
   const r = tip.parentElement.getBoundingClientRect();
-  const tx = Math.min(x - r.left + 14, r.width - tip.offsetWidth - 8);
-  const ty = Math.min(y - r.top + 14, r.height - tip.offsetHeight - 8);
+  // Beside the pointer, or below the reticle while walking; flipped to the other
+  // side when it would not fit, so it never covers what it describes.
+  const gap = walker.active ? 46 : 14;
+  const fit = (v, size, max) => (v + gap + size <= max ? v + gap : Math.max(8, Math.min(v - gap - size, max - size - 8)));
+  const tx = fit(x - r.left, tip.offsetWidth, r.width);
+  const ty = fit(y - r.top, tip.offsetHeight, r.height);
   tip.style.left = tx + 'px';
   tip.style.top = ty + 'px';
 }
@@ -701,7 +780,7 @@ function applyTheme() {
   else document.documentElement.dataset.theme = state.theme;
   pal = readPalette();
   langs = languageColors(model, pal, slots);
-  scene.setBackground({ water: pal.water, sky: pal.sky, skyTop: pal.skyTop, sea: pal.sea });
+  scene.setBackground({ water: pal.water, sky: pal.sky, skyTop: pal.skyTop, sea: pal.sea, ground: pal.terraceA, land: pal.land });
   if (L) { scene.setOutline(focus?.selBox, pal.select); refreshFocus(); }
   if (state.selected) panel.show(state.selected); // swatches in the panel
   drawLegend();
@@ -713,7 +792,12 @@ function bindControls() {
   let down = null, hoverFrame = 0, lastMove = null;
 
   // Walk mode handles the pointer itself (walk.js).
-  map.addEventListener('pointerdown', e => { if (walker.active) return; down = { x: e.clientX, y: e.clientY, button: e.button }; map.classList.add('grabbing'); });
+  map.addEventListener('pointerdown', e => {
+    if (walker.active) return;
+    down = { x: e.clientX, y: e.clientY, button: e.button };
+    map.classList.add('grabbing');
+    showTooltip(-1); // it would hang over the map for the whole pan
+  });
   window.addEventListener('pointerup', e => {
     map.classList.remove('grabbing');
     if (!down) return;
@@ -744,7 +828,14 @@ function bindControls() {
       showTooltip(i, lastMove.clientX, lastMove.clientY);
     });
   });
-  map.addEventListener('pointerleave', () => { if (walker.active) return; state.hovered = -1; showTooltip(-1); recolor(); });
+  map.addEventListener('pointerleave', () => {
+    if (walker.active) return;
+    cancelAnimationFrame(hoverFrame); // else it re-shows the tooltip after the pointer left
+    hoverFrame = 0;
+    state.hovered = -1;
+    showTooltip(-1);
+    recolor();
+  });
   map.addEventListener('contextmenu', e => e.preventDefault());
 
   $('expand-level').onclick = () => setLevel(state.level + 1);
@@ -754,7 +845,14 @@ function bindControls() {
   $('rotate-left').onclick = () => scene.setIso(scene.quarter - 1);
   $('rotate-right').onclick = () => scene.setIso(scene.quarter + 1);
   $('help-btn').onclick = () => $('help').showModal();
-  $('panel-close').onclick = () => select(null);
+  // Help frees the pointer; closing it captures it again for a walker (a click on
+  // Close allows that; Esc does not, then the HUD asks for a click on the map).
+  $('help').addEventListener('close', () => walker.active && walker.lockPointer());
+  $('panel-close').onclick = () => {
+    select(null);
+    $('map').focus();
+    if (walker.active) walker.lockPointer(); // straight back to the reticle
+  };
 
   const bindSelect = (id, key, after) => {
     const el = $(id);
@@ -772,7 +870,7 @@ function bindControls() {
   if (STATIC) {
     // A static export has no server: nothing to save or open, and only the image to export.
     $('save-settings').hidden = true;
-    for (const a of document.querySelectorAll('#export [data-server]')) a.hidden = true;
+    for (const a of document.querySelectorAll('[data-server]')) a.hidden = true;
   } else {
     $('save-settings').onclick = saveViewSettings;
     $('save-settings').title = `Save color, height, theme, depth and filters to ${config.configFile}`;
@@ -784,7 +882,10 @@ function bindControls() {
     if (e.target.closest('input, select, textarea, dialog') || e.ctrlKey || e.metaKey || e.altKey || walker.owns(e)) return;
     const sel = state.selected;
     switch (e.key) {
-      case 'Escape': select(null); break;
+      case 'Escape':
+        if (document.pointerLockElement) document.exitPointerLock(); // a stray capture
+        select(null);
+        break;
       case 'f': case 'F': scene.fit(L.bounds); break;
       case 'q': case 'Q': scene.setIso(scene.quarter - 1); break;
       case 'e': case 'E': scene.setIso(scene.quarter + 1); break;
@@ -795,6 +896,7 @@ function bindControls() {
       case 'v': case 'V': setWalking(true); break;
       case 'p': case 'P': saveScreenshot(); break;
       case 'o': case 'O': {
+        if (STATIC) break; // no server, no editor
         const f = sel?.kind === 'symbol' ? sel.parentNode : sel;
         if (f?.kind === 'file') openFile(f.path, sel.line || 1);
         break;
@@ -812,7 +914,9 @@ function bindFilters() {
   const setOpen = open => { pop.hidden = !open; btn.setAttribute('aria-expanded', open); };
   btn.onclick = () => setOpen(pop.hidden);
   document.addEventListener('pointerdown', e => { if (!e.target.closest('.filters')) setOpen(false); });
-  pop.addEventListener('keydown', e => { if (e.key === 'Escape') { setOpen(false); btn.focus(); } });
+  btn.parentElement.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !pop.hidden) { e.stopPropagation(); setOpen(false); btn.focus(); }
+  });
 
   const onCheck = (listId, set) => $(listId).addEventListener('change', e => {
     const id = e.target.dataset.id;
@@ -836,7 +940,12 @@ function bindSearch() {
   const input = $('search'), list = $('search-results');
   let results = [], active = 0;
   const close = () => { list.hidden = true; input.setAttribute('aria-expanded', 'false'); };
-  const choose = r => { close(); input.blur(); reveal(r.node); };
+  const choose = r => {
+    close();
+    input.blur();
+    reveal(r.node);
+    if (walker.active) walker.lockPointer(); // back to the reticle after a search
+  };
   const kindLabel = { file: 'file', dir: 'dir', symbol: 'symbol', package: 'package' };
   const render = () => {
     if (!input.value.trim()) return close();
@@ -850,7 +959,12 @@ function bindSearch() {
     input.setAttribute('aria-expanded', 'true');
     input.setAttribute('aria-activedescendant', results.length ? `sr-${active}` : '');
   };
-  input.addEventListener('input', () => { results = search(searchItems, input.value, state.vis.visible); active = 0; render(); });
+  // Debounced: the index can hold 100k entries, and every keystroke would rank them.
+  let typing = 0;
+  input.addEventListener('input', () => {
+    clearTimeout(typing);
+    typing = setTimeout(() => { results = search(searchItems, input.value, state.vis.visible); active = 0; render(); }, 120);
+  });
   input.addEventListener('focus', () => input.value.trim() && render());
   input.addEventListener('blur', () => setTimeout(close, 150));
   input.addEventListener('keydown', e => {
@@ -876,7 +990,17 @@ function bindExport() {
   const btn = $('export-btn'), pop = $('export');
   const setOpen = open => { pop.hidden = !open; btn.setAttribute('aria-expanded', open); };
   btn.onclick = () => setOpen(pop.hidden);
+  // The HTML export carries the current view, not whatever the config file holds.
+  pop.querySelector('a[href*="format=html"]')?.addEventListener('pointerdown', e => {
+    const url = new URL(e.target.closest('a').href, location.href);
+    url.searchParams.set('ui', JSON.stringify(viewSettings()));
+    e.target.closest('a').href = url.pathname + url.search;
+  });
   document.addEventListener('pointerdown', e => { if (!e.target.closest('.export')) setOpen(false); });
+  // On the group, not the popover: the button keeps the focus while the menu is open.
+  btn.parentElement.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !pop.hidden) { e.stopPropagation(); setOpen(false); btn.focus(); }
+  });
   pop.addEventListener('click', e => { if (e.target.closest('a, button')) setOpen(false); });
 }
 
