@@ -1,0 +1,60 @@
+# Binaries
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+
+# Build artifacts
+.canopy/
+/tmp/
+/nul
+/scannertest
+/ts2go
+/tsquery
+/parity_report
+/benchgate
+cgo_harness/real_corpus_bench_report
+
+# Local benchmark run data
+cgo_harness/bench/runs/
+
+# Logs
+*.log
+*.prof
+
+# Benchmark outputs
+/docs/performance/
+cgo_harness/reports/
+harness_out/
+parity_out/
+
+# Golden artifacts corpus
+.golden/
+
+# Generated real-corpus artifacts
+cgo_harness/corpus_real/
+cgo_harness/grammar_seed/
+.parity_seed/
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Worktrees
+.worktrees/
+
+# Private working notes
+.claude/
+.codex/
+docs/blog-outlines/
+docs/plans/
+docs/superpowers/
