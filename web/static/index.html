@@ -69,14 +69,15 @@
       <button id="rotate-left" title="Rotate left (Q)">⟲</button>
       <button id="rotate-right" title="Rotate right (E)">⟳</button>
       <button id="fit" title="Fit to screen (F)">Fit</button>
-      <button id="save-view">Save view</button>
+      <button id="save-settings">Save settings</button>
       <div class="export">
         <button id="export-btn" aria-expanded="false" aria-controls="export">Export</button>
         <div id="export" class="popover menu" hidden>
-          <a href="api/export?format=json" download>JSON <span class="hint">graph document</span></a>
-          <a href="api/export?format=graphml" download>GraphML <span class="hint">Gephi, yEd, NetworkX</span></a>
-          <a href="api/export?format=dot" download>DOT <span class="hint">Graphviz dependency graph</span></a>
-          <a href="api/export?format=html" download>HTML <span class="hint">self-contained map to share</span></a>
+          <button id="screenshot" type="button">PNG image <span class="hint">the map as shown (P)</span></button>
+          <a data-server href="api/export?format=json" download>JSON <span class="hint">graph document</span></a>
+          <a data-server href="api/export?format=graphml" download>GraphML <span class="hint">Gephi, yEd, NetworkX</span></a>
+          <a data-server href="api/export?format=dot" download>DOT <span class="hint">Graphviz dependency graph</span></a>
+          <a data-server href="api/export?format=html" download>HTML <span class="hint">self-contained map to share</span></a>
         </div>
       </div>
       <button id="help-btn" title="Keyboard & mouse (?)">?</button>
@@ -108,6 +109,7 @@
         <tr><th>+ / −</th><td>Expand / collapse one level everywhere</td></tr>
         <tr><th>/</th><td>Search</td></tr>
         <tr><th>O</th><td>Open selected file in your editor</td></tr>
+        <tr><th>P</th><td>Save the map as a PNG image</td></tr>
         <tr><th>Legend click</th><td>Hide / show a language</td></tr>
         <tr><th>Esc</th><td>Clear selection</td></tr>
       </table>

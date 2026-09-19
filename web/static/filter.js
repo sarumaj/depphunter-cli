@@ -1,5 +1,7 @@
 // Filters decide what exists on the map; search finds nodes among what is visible.
 
+import { Fzf, byLengthAsc } from './vendor/fzf.es.js';
+
 /**
  * filters: {hiddenLangs: Set<string>, hiddenEcos: Set<string>, path: string}
  * `path` is a comma-separated glob list; plain patterns include, "!pattern" excludes.
@@ -79,6 +81,11 @@ export function globMatcher(glob) {
 
 // ---------------------------------------------------------------- fuzzy search
 
+/**
+ * A fuzzy finder (fzf's algorithm, via fzf-for-js) over files, directories, symbols
+ * and packages. Each entry is matched as "name path", so a query can name a symbol,
+ * a file or a directory.
+ */
 export function searchIndex(model) {
   const items = [];
   for (const n of model.byId.values()) {
@@ -89,46 +96,22 @@ export function searchIndex(model) {
       case 'package': items.push({ node: n, name: n.name, context: n.parentNode.name }); break;
     }
   }
-  for (const it of items) { it.lname = it.name.toLowerCase(); it.lcontext = it.context.toLowerCase(); }
-  return items;
+  return new Fzf(items, {
+    selector: it => (it.node.kind === 'file' || it.node.kind === 'dir' ? it.context : `${it.name} ${it.context}`),
+    tiebreakers: [byLengthAsc],
+    // v1 is linear-time; the default v2 is slower on the 100k+ entries of big repositories.
+    fuzzy: items.length > 50_000 ? 'v1' : 'v2',
+  });
 }
 
-/** Best `limit` matches for query among items passing `visible`. */
-export function search(items, query, visible, limit = 12) {
-  const q = query.trim().toLowerCase();
-  if (!q) return [];
+/** The best `limit` matches for query among entries passing `visible`. */
+export function search(finder, query, visible, limit = 12) {
   const out = [];
-  for (const it of items) {
-    // A match on the name beats a match on the path; kinds break ties (files first).
-    let s = fuzzy(q, it.lname, it.name);
-    if (s !== null) s += 40;
-    else if ((s = fuzzy(q, it.lcontext, it.context)) === null) continue;
-    s += { file: 3, dir: 2, symbol: 1, package: 0 }[it.node.kind];
-    if (out.length === limit && s <= out[limit - 1].score) continue;
-    if (!visible(it.node)) continue;
-    out.push({ ...it, score: s });
-    out.sort((a, b) => b.score - a.score || a.context.length - b.context.length);
-    if (out.length > limit) out.pop();
+  if (!query.trim()) return out;
+  for (const r of finder.find(query.trim())) {
+    if (!visible(r.item.node)) continue;
+    out.push(r.item);
+    if (out.length === limit) break;
   }
   return out;
-}
-
-// Subsequence match scored like common fuzzy finders: consecutive runs and matches at
-// word boundaries (after / . _ - or a lower→upper case change) earn bonuses, gaps cost.
-// Returns null when q is not a subsequence.
-function fuzzy(q, lower, orig) {
-  let score = 0, ti = 0, prev = -2;
-  for (let qi = 0; qi < q.length; qi++) {
-    const ch = q[qi];
-    const idx = lower.indexOf(ch, ti);
-    if (idx < 0) return null;
-    const before = orig[idx - 1];
-    const boundary = idx === 0 || '/._- '.includes(before) ||
-      (before && before === before.toLowerCase() && orig[idx] !== orig[idx].toLowerCase());
-    score += 1 + (idx === prev + 1 ? 5 : 0) + (boundary ? 8 : 0) - Math.min(3, idx - ti);
-    prev = idx;
-    ti = idx + 1;
-  }
-  if (lower.startsWith(q)) score += 15;
-  return score - lower.length * 0.05;
 }

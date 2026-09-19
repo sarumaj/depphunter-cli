@@ -7,6 +7,7 @@ hljs.registerLanguage('powershell', powershell);
 import { ancestors, boundaryEdges } from './model.js';
 import { fetchSource } from './data.js';
 import { ago, formatDate } from './history.js';
+import { fmt, h, escapeHTML } from './dom.js';
 
 const HLJS = {
   Go: 'go', JavaScript: 'javascript', TypeScript: 'typescript', Python: 'python', Rust: 'rust',
@@ -17,19 +18,6 @@ const HLJS = {
 };
 const MAX_HIGHLIGHT = 300_000; // bytes; larger files are shown as plain text
 
-const fmt = new Intl.NumberFormat();
-
-function h(tag, attrs = {}, ...children) {
-  const el = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
-    if (k === 'class') el.className = v;
-    else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
-    else if (k === 'style') el.style.cssText = v;
-    else el.setAttribute(k, v);
-  }
-  for (const c of children.flat()) if (c != null && c !== false) el.append(c);
-  return el;
-}
 
 export class Panel {
   constructor(root, body, { model, colorOf, onSelect, onOpen, openLabel, historyOf, linkKind }) {
@@ -220,9 +208,6 @@ export class Panel {
   }
 }
 
-function escapeHTML(s) {
-  return s.replace(/[&<>]/g, c => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;' }[c]));
-}
 
 // hljs spans may cross newlines (block comments, template strings); re-open them per
 // line so every line is a self-contained, correctly coloured fragment.

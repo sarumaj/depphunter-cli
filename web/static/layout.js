@@ -1,3 +1,5 @@
+import potpack from './vendor/potpack.js';
+
 // Archipelago layout: the repository is a mainland of nested terraces, each external
 // ecosystem an island north of it. Positions derive only from the hierarchy and the
 // expansion state, so the same repository always produces the same map.
@@ -136,70 +138,18 @@ function fileLocs(n, out = []) {
   return out;
 }
 
-// Packs a terrace's children with a skyline (bottom-left) packer. Directories go
-// first, deepest footprint first, then files in name order, so small buildings fill
-// the gaps beside large districts. Several widths are tried; the most compact,
-// most square result wins.
+// Packs a terrace's children into a near-square area with potpack. Each box carries
+// its gap; positions are offset by the terrace padding. potpack's sort is stable and
+// children arrive in name order, so the same tree always packs the same way.
 function shelf(items) {
-  items.sort((a, b) => {
-    const da = a.n.kind === 'file' ? 0 : 1, db = b.n.kind === 'file' ? 0 : 1;
-    if (da !== db) return db - da;
-    return da ? (b.d - a.d) || (b.w - a.w) || a.n.name.localeCompare(b.n.name) : 0;
-  });
   if (!items.length) return { w: FILE + 2 * PAD, d: FILE + 2 * PAD };
-
-  const area = items.reduce((a, it) => a + (it.w + GAP) * (it.d + GAP), 0);
-  const widths = [...items].map(it => it.w + GAP).sort((a, b) => b - a);
-  const base = Math.max(widths[0], Math.sqrt(area));
-  const candidates = new Set([base, base * 1.15, base * 1.3, base * 1.6]);
-  if (widths.length > 1) candidates.add(Math.max(base, widths[0] + widths[1])); // room beside the largest
-
-  let best = null;
-  for (const W of candidates) {
-    const r = skyline(items, W);
-    const score = r.w * r.d * (1 + 0.25 * Math.abs(Math.log(r.w / r.d)));
-    if (!best || score < best.score) best = { ...r, W, score };
+  const boxes = items.map(it => ({ w: it.w + GAP, h: it.d + GAP, it }));
+  const { w, h } = potpack(boxes);
+  for (const b of boxes) {
+    b.it.x = PAD + b.x;
+    b.it.z = PAD + b.y;
   }
-  skyline(items, best.W); // re-run to write the winning positions into items
-  return { w: best.w + 2 * PAD, d: best.d + 2 * PAD };
-}
-
-function skyline(items, W) {
-  let segs = [{ x: 0, w: W, y: 0 }]; // contiguous segments covering [0, W)
-  let maxX = 0, maxY = 0;
-  for (const it of items) {
-    const w = it.w + GAP, d = it.d + GAP;
-    let pos = null;
-    for (let i = 0; i < segs.length; i++) {
-      const x = segs[i].x;
-      if (x + w > W + 1e-6 && x > 0) break;
-      let y = 0;
-      for (let j = i, covered = 0; j < segs.length && covered < w - 1e-6; covered += segs[j].w, j++) y = Math.max(y, segs[j].y);
-      if (!pos || y < pos.y - 1e-6) pos = { x, y };
-    }
-    it.x = PAD + pos.x;
-    it.z = PAD + pos.y;
-    maxX = Math.max(maxX, pos.x + it.w);
-    maxY = Math.max(maxY, pos.y + it.d);
-
-    // Raise the skyline over [pos.x, pos.x + w).
-    const next = [];
-    const end = pos.x + w;
-    for (const sg of segs) {
-      const sEnd = sg.x + sg.w;
-      if (sEnd <= pos.x + 1e-9 || sg.x >= end - 1e-9) { next.push(sg); continue; }
-      if (sg.x < pos.x) next.push({ x: sg.x, w: pos.x - sg.x, y: sg.y });
-      if (!next.some(n => n.new)) next.push({ x: pos.x, w, y: pos.y + d, new: true });
-      if (sEnd > end) next.push({ x: end, w: sEnd - end, y: sg.y });
-    }
-    segs = [];
-    for (const sg of next) {
-      delete sg.new;
-      const last = segs[segs.length - 1];
-      if (last && Math.abs(last.y - sg.y) < 1e-9) last.w += sg.w; else segs.push(sg);
-    }
-  }
-  return { w: Math.max(maxX, FILE), d: Math.max(maxY, FILE) };
+  return { w: Math.max(w - GAP, FILE) + 2 * PAD, d: Math.max(h - GAP, FILE) + 2 * PAD };
 }
 
 function bounds(boxes) {

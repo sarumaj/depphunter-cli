@@ -200,6 +200,15 @@ export class MapScene {
     this.requestRender();
   }
 
+  /**
+   * Renders at once and returns the canvas. Read it before yielding to the browser:
+   * the drawing buffer is not preserved between frames.
+   */
+  renderNow() {
+    this.renderer.render(this.scene, this.camera);
+    return this.renderer.domElement;
+  }
+
   /** World -> CSS pixel position within the container; null when behind the camera. */
   project(x, y, z) {
     const v = new THREE.Vector3(x, y, z).project(this.camera);

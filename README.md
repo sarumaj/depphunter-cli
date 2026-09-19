@@ -80,7 +80,7 @@ ui:
   path_filter: "!**/testdata/**"
 ```
 
-The browser's **Save view** button writes the current colour, height, theme,
+The browser's **Save settings** button writes the current colour, height, theme,
 depth and filters into the `ui:` section of `.depphunter.yaml` (or the
 `--config` file), keeping the file's other keys and comments.
 
@@ -103,6 +103,9 @@ selection and filters and briefly highlights the files that changed.
 | `graphml` | the full graph with all attributes, for Gephi, yEd or NetworkX                                                                                                                 |
 | `dot`     | the dependency graph for Graphviz: files, package directories and external packages, clustered per directory; standard-library packages and files without imports are left out |
 | `html`    | the interactive map as one file that opens without depphunter or a network: UI, graph, current view settings and source text (files up to 256 KB, 24 MB in total)              |
+
+**Export → PNG image** (or `P`) saves the map as shown, labels included, at your
+screen's resolution; it also works in an exported HTML page.
 
 The HTML export contains your source code and, when the git history was read,
 commit authors' names; share it like you would share the repository.
@@ -171,6 +174,7 @@ hands the file to VS Code's `vscode://` URL handler.
 | `+` `−`                   | expand / collapse one level everywhere   |
 | `/`                       | search files, symbols and packages       |
 | `O`                       | open the selected file in your editor    |
+| `P`                       | save the map as a PNG image              |
 | Legend click              | hide / show a language                   |
 | `Esc`                     | clear selection                          |
 
@@ -221,6 +225,7 @@ The milestones and design decisions are in
 
 ## License
 
-[BSD 3-Clause](LICENSE) © 2026 Dawid Ciepiela. The embedded three.js (MIT) and
-highlight.js (BSD 3-Clause) keep their own licenses; see
+[BSD 3-Clause](LICENSE) © 2026 Dawid Ciepiela. The embedded three.js (MIT),
+highlight.js (BSD 3-Clause), potpack (ISC) and fzf-for-js (BSD 3-Clause) keep
+their own licenses; see
 [web/static/vendor](web/static/vendor/README.md).
