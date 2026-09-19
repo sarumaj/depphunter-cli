@@ -1,0 +1,79 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>depphunter</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16'%3E%3Cpath d='M8 1 15 5 8 9 1 5z' fill='%232a78d6'/%3E%3Cpath d='M1 5v6l7 4V9z' fill='%23256abf'/%3E%3Cpath d='M15 5v6l-7 4V9z' fill='%231c5cab'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="toolbar">
+    <div class="brand"><span class="logo" aria-hidden="true"></span><span id="repo-name">depphunter</span></div>
+    <div class="group" role="group" aria-label="Expansion">
+      <button id="collapse-level" title="Collapse one level (-)">−</button>
+      <span class="hint" id="depth-label">depth</span>
+      <button id="expand-level" title="Expand one level (+)">+</button>
+    </div>
+    <label class="group">Colour
+      <select id="color-by">
+        <option value="language">Language</option>
+        <option value="size">Size</option>
+      </select>
+    </label>
+    <label class="group">Height
+      <select id="height-scale">
+        <option value="sqrt">√ lines</option>
+        <option value="linear">Lines</option>
+        <option value="log">log lines</option>
+      </select>
+    </label>
+    <label class="group check"><input type="checkbox" id="show-std"> Std-lib islands</label>
+    <label class="group">Theme
+      <select id="theme">
+        <option value="auto">Auto</option>
+        <option value="light">Light</option>
+        <option value="dark">Dark</option>
+      </select>
+    </label>
+    <div class="spacer"></div>
+    <div class="group" role="group" aria-label="View">
+      <button id="rotate-left" title="Rotate left (Q)">⟲</button>
+      <button id="rotate-right" title="Rotate right (E)">⟳</button>
+      <button id="fit" title="Fit to screen (F)">Fit</button>
+      <button id="help-btn" title="Keyboard & mouse (?)">?</button>
+    </div>
+  </header>
+
+  <main>
+    <div id="map" tabindex="0" aria-label="Code base map"></div>
+    <div id="labels" aria-hidden="true"></div>
+    <div id="tooltip" role="status" hidden></div>
+    <section id="legend" aria-label="Legend"></section>
+    <div id="status">Analysing…</div>
+    <aside id="panel" hidden>
+      <button id="panel-close" class="close" title="Close (Esc)">×</button>
+      <div id="panel-body"></div>
+    </aside>
+    <dialog id="help">
+      <h2>Navigating the map</h2>
+      <table>
+        <tr><th>Drag</th><td>Pan</td></tr>
+        <tr><th>Right-drag</th><td>Orbit</td></tr>
+        <tr><th>Wheel</th><td>Zoom at cursor</td></tr>
+        <tr><th>Click</th><td>Select &amp; show dependencies</td></tr>
+        <tr><th>Double-click</th><td>Expand / collapse directory or file</td></tr>
+        <tr><th>Enter</th><td>Expand / collapse selection</td></tr>
+        <tr><th>Backspace</th><td>Select parent</td></tr>
+        <tr><th>Q / E</th><td>Rotate 90°</td></tr>
+        <tr><th>F</th><td>Fit to screen</td></tr>
+        <tr><th>+ / −</th><td>Expand / collapse one level everywhere</td></tr>
+        <tr><th>Esc</th><td>Clear selection</td></tr>
+      </table>
+      <p class="hint">Height encodes lines of code. Directories collapse into districts whose footprint grows with the number of files.</p>
+      <form method="dialog"><button>Close</button></form>
+    </dialog>
+  </main>
+  <script type="module" src="app.js"></script>
+</body>
+</html>
