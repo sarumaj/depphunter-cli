@@ -14,6 +14,7 @@ import (
 var builtin = map[string]bool{}
 
 func init() {
+	// cSpell: disable
 	for _, m := range strings.Fields(`microsoft.powershell.archive microsoft.powershell.core
 		microsoft.powershell.diagnostics microsoft.powershell.host microsoft.powershell.management
 		microsoft.powershell.security microsoft.powershell.utility microsoft.powershell.localaccounts
@@ -24,6 +25,7 @@ func init() {
 		bitstransfer hyper-v servermanager windowsupdate printmanagement`) {
 		builtin[m] = true
 	}
+	// cSpell: enable
 }
 
 type resolver struct {
@@ -122,9 +124,9 @@ func (r *resolver) localPath(ref, file string) (lang.Target, bool) {
 	}
 	p = path.Clean(p)
 	base := path.Base(p)
-	for _, cand := range []string{p, p + ".psd1", p + ".psm1", p + ".ps1", path.Join(p, base+".psd1"), path.Join(p, base+".psm1")} {
-		if r.files[cand] {
-			return lang.Target{Local: cand}, true
+	for _, candidate := range []string{p, p + ".psd1", p + ".psm1", p + ".ps1", path.Join(p, base+".psd1"), path.Join(p, base+".psm1")} {
+		if r.files[candidate] {
+			return lang.Target{Local: candidate}, true
 		}
 	}
 	return lang.Target{}, false

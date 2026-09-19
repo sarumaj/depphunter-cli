@@ -1,4 +1,4 @@
-// Package javascript analyses JavaScript and TypeScript with tree-sitter and resolves
+// Package javascript analyzes JavaScript and TypeScript with tree-sitter and resolves
 // imports through relative paths, tsconfig/jsconfig "paths", workspace packages,
 // package.json dependencies and package-lock.json versions.
 package javascript
@@ -96,7 +96,7 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 
 func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 	ex := &lang.Extraction{}
-	var syms lang.SymbolSet
+	var symbols lang.SymbolSet
 	err := grammarFor(f.Path).Matches(src, func(m treesitter.Match) {
 		for _, c := range m {
 			switch {
@@ -104,19 +104,19 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 				ex.Imports = append(ex.Imports, lang.RawImport{Spec: c.Text, Module: c.Text, Line: c.Line})
 			case c.Name == "def.method":
 				class := c.EnclosingName("class_declaration", "abstract_class_declaration", "class")
-				syms.Add(class+"."+c.Text, "method", c.Line)
+				symbols.Add(class+"."+c.Text, "method", c.Line)
 			case c.Name == "def.var":
 				kind := "var"
 				switch c.SiblingFieldType("value") {
 				case "arrow_function", "function_expression", "function", "generator_function":
 					kind = "func"
 				}
-				syms.Add(c.Text, kind, c.Line)
+				symbols.Add(c.Text, kind, c.Line)
 			case strings.HasPrefix(c.Name, "def."):
-				syms.Add(c.Text, strings.TrimPrefix(c.Name, "def."), c.Line)
+				symbols.Add(c.Text, strings.TrimPrefix(c.Name, "def."), c.Line)
 			}
 		}
 	})
-	ex.Symbols = syms.List()
+	ex.Symbols = symbols.List()
 	return ex, err
 }

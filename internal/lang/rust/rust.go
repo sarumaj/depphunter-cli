@@ -1,4 +1,4 @@
-// Package rust analyses Rust with tree-sitter. `use` paths resolve through the module
+// Package rust analyzes Rust with tree-sitter. `use` paths resolve through the module
 // tree (crate::, self::, super::, `mod x;` files), workspace and path dependencies,
 // the standard crates, and crates.io dependencies from Cargo.toml pinned by Cargo.lock.
 package rust

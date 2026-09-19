@@ -22,9 +22,9 @@ type block struct {
 // skipping comments, string and here-string contents, and joining lines continued with
 // a backtick, a trailing pipe or comma, or an open parenthesis.
 type scanner struct {
-	stmts    []stmt
-	comments []comment
-	clean    strings.Builder // source without comments, newlines kept
+	statements []stmt
+	comments   []comment
+	clean      strings.Builder // source without comments, newlines kept
 
 	cur     strings.Builder
 	started bool // cur holds a non-space character
@@ -49,7 +49,7 @@ func (s *scanner) emit() {
 	if m := classDef.FindStringSubmatch(text); m != nil {
 		s.pending = m[1]
 	}
-	s.stmts = append(s.stmts, st)
+	s.statements = append(s.statements, st)
 }
 
 func (s *scanner) write(r rune) {
@@ -72,7 +72,7 @@ func (s *scanner) inHash() bool {
 func scanStatements(src string) ([]stmt, []comment) {
 	s := &scanner{line: 1}
 	s.run(src)
-	return s.stmts, s.comments
+	return s.statements, s.comments
 }
 
 func stripComments(src string) string {

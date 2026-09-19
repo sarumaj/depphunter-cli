@@ -9,13 +9,13 @@ import (
 
 // testdata/repo: a module with a manifest (RequiredModules, RootModule, NestedModules,
 // ScriptsToProcess) and a script using every other way of pulling in code.
-func analyse(t *testing.T) map[string]*lang.FileResult {
+func analyze(t *testing.T) map[string]*lang.FileResult {
 	t.Helper()
 	return langtest.Analyze(t, Plugin{}, "testdata/repo")
 }
 
 func TestScript(t *testing.T) {
-	langtest.CheckImports(t, analyse(t)["scripts/deploy.ps1"], map[string]lang.Target{
+	langtest.CheckImports(t, analyze(t)["scripts/deploy.ps1"], map[string]lang.Target{
 		"#Requires -Modules Az.Storage":             {Ecosystem: "psgallery", Package: "Az.Storage"},
 		"#Requires -Modules Az.Resources":           {Ecosystem: "psgallery", Package: "Az.Resources", Version: "6.1.0"},
 		"using module ../tools/Tools/Tools.psm1":    {Local: "tools/Tools/Tools.psm1"},
@@ -33,7 +33,7 @@ func TestScript(t *testing.T) {
 }
 
 func TestManifest(t *testing.T) {
-	langtest.CheckImports(t, analyse(t)["tools/Tools/Tools.psd1"], map[string]lang.Target{
+	langtest.CheckImports(t, analyze(t)["tools/Tools/Tools.psd1"], map[string]lang.Target{
 		"RequiredModules: PSReadLine":        {Ecosystem: "powershell", Package: "PSReadLine"},
 		"RequiredModules: Pester":            {Ecosystem: "psgallery", Package: "Pester", Version: "5.3.0"},
 		"RequiredModules: Az.Accounts":       {Ecosystem: "psgallery", Package: "Az.Accounts"},
@@ -44,5 +44,5 @@ func TestManifest(t *testing.T) {
 }
 
 func TestSymbols(t *testing.T) {
-	langtest.CheckSymbols(t, analyse(t)["scripts/deploy.ps1"], map[string]string{"Deploy-App": "func", "Deployer": "class", "Deployer.Run": "method"})
+	langtest.CheckSymbols(t, analyze(t)["scripts/deploy.ps1"], map[string]string{"Deploy-App": "func", "Deployer": "class", "Deployer.Run": "method"})
 }

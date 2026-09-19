@@ -1,4 +1,4 @@
-// Package java analyses Java with tree-sitter. Imports resolve to project sources by
+// Package java analyzes Java with tree-sitter. Imports resolve to project sources by
 // package path (any source root: src/main/java, src, …), to the JDK, or to Maven /
 // Gradle dependencies matched by groupId, since Java imports name packages, not
 // artifacts.
@@ -52,7 +52,7 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 
 func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 	ex := &lang.Extraction{}
-	var syms lang.SymbolSet
+	var symbols lang.SymbolSet
 	err := grammar.Matches(src, func(m treesitter.Match) {
 		for _, c := range m {
 			switch {
@@ -69,12 +69,12 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 				ex.Imports = append(ex.Imports, imp)
 			case c.Name == "def.method":
 				owner := c.EnclosingName("class_declaration", "enum_declaration", "record_declaration")
-				syms.Add(owner+"."+c.Text, "method", c.Line)
+				symbols.Add(owner+"."+c.Text, "method", c.Line)
 			case strings.HasPrefix(c.Name, "def."):
-				syms.Add(c.Text, strings.TrimPrefix(c.Name, "def."), c.Line)
+				symbols.Add(c.Text, strings.TrimPrefix(c.Name, "def."), c.Line)
 			}
 		}
 	})
-	ex.Symbols = syms.List()
+	ex.Symbols = symbols.List()
 	return ex, err
 }

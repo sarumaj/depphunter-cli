@@ -9,13 +9,13 @@ import (
 
 // testdata/repo: a src-layout package declared in pyproject.toml (PEP 621, dependency
 // groups and Poetry tables), pinned by uv.lock, plus a requirements file and scripts.
-func analyse(t *testing.T) map[string]*lang.FileResult {
+func analyze(t *testing.T) map[string]*lang.FileResult {
 	t.Helper()
 	return langtest.Analyze(t, Plugin{}, "testdata/repo")
 }
 
 func TestImportResolution(t *testing.T) {
-	res := analyse(t)
+	res := analyze(t)
 	langtest.CheckImports(t, res["src/app/main.py"], map[string]lang.Target{
 		"from __future__ import annotations": {Ecosystem: "python-std", Package: "__future__"},
 		"os":                                 {Ecosystem: "python-std", Package: "os"},
@@ -41,7 +41,7 @@ func TestImportResolution(t *testing.T) {
 
 func TestScriptDirectoryImports(t *testing.T) {
 	got := map[string]lang.Target{}
-	for _, im := range analyse(t)["scripts/tool.py"].Imports {
+	for _, im := range analyze(t)["scripts/tool.py"].Imports {
 		got[im.Spec] = im.Target
 	}
 	if got["sibling"] != (lang.Target{Local: "scripts/sibling.py"}) {
@@ -54,7 +54,7 @@ func TestScriptDirectoryImports(t *testing.T) {
 
 func TestSymbols(t *testing.T) {
 	got := map[string]string{}
-	for _, s := range analyse(t)["src/app/main.py"].Symbols {
+	for _, s := range analyze(t)["src/app/main.py"].Symbols {
 		got[s.Name] = s.Kind
 	}
 	for name, kind := range map[string]string{

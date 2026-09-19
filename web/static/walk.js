@@ -1,6 +1,6 @@
 // Walk mode: explore the map on foot, in first person, on a small planet. The walker
-// lives on the flat map (layout coordinates) — collisions, heights and newspapers are
-// all computed there — and MapScene bends what is drawn around the walker's feet.
+// lives on the flat map (layout coordinates) - collisions, heights and newspapers are
+// all computed there - and MapScene bends what is drawn around the walker's feet.
 //
 // Paperboy rules: throw newspapers at buildings to select them.
 

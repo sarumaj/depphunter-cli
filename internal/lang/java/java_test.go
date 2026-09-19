@@ -9,13 +9,14 @@ import (
 
 // testdata/repo: a Maven module (properties, dependencyManagement) and a Gradle module
 // with a version catalog.
-func analyse(t *testing.T) map[string]*lang.FileResult {
+func analyze(t *testing.T) map[string]*lang.FileResult {
 	t.Helper()
 	return langtest.Analyze(t, Plugin{}, "testdata/repo")
 }
 
 func TestResolution(t *testing.T) {
-	res := analyse(t)["src/main/java/com/example/app/App.java"]
+	// cSpell: disable
+	res := analyze(t)["src/main/java/com/example/app/App.java"]
 	langtest.CheckImports(t, res, map[string]lang.Target{
 		"import java.util.List":                                       {Ecosystem: "jdk", Package: "java.util"},
 		"import javax.swing.JFrame":                                   {Ecosystem: "jdk", Package: "javax.swing"},
@@ -33,10 +34,11 @@ func TestResolution(t *testing.T) {
 		"import org.junit.Test":                  {Ecosystem: "maven", Package: "junit", Version: "4.13.2"},
 		"import org.acme.net.Client":             {Local: "lib/src/main/java/org/acme/net/Client.java"},
 	})
+	// cSpell: enable
 }
 
 func TestSymbols(t *testing.T) {
-	langtest.CheckSymbols(t, analyse(t)["src/main/java/com/example/app/App.java"], map[string]string{
+	langtest.CheckSymbols(t, analyze(t)["src/main/java/com/example/app/App.java"], map[string]string{
 		"App": "class", "App.main": "method", "App.helper": "method", "Service": "interface",
 		"Mode": "enum", "Mode.weight": "method", "Point": "record",
 	})

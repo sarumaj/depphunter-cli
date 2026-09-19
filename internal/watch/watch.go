@@ -1,6 +1,6 @@
-// Package watch reports file-system changes in the analysed directories.
+// Package watch reports file-system changes in the analyzed directories.
 //
-// Only directories that contain analysed files are watched, so ignored trees
+// Only directories that contain analyzed files are watched, so ignored trees
 // (node_modules, build output, .git) cost nothing. The set is re-synced after every
 // analysis; a new directory is picked up because its creation is an event in its
 // (watched) parent, which triggers the re-analysis that lists its files.

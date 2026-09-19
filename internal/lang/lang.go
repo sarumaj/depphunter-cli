@@ -71,7 +71,7 @@ type Plugin interface {
 	// Version must change whenever Extract's output for the same input changes,
 	// so cached extractions from older builds are not reused.
 	Version() int
-	// Claims reports whether the plugin analyses this file.
+	// Claims reports whether the plugin analyzes this file.
 	Claims(f *scan.File) bool
 	Ecosystems() []Ecosystem
 	// Extract must depend only on src and the file's extension.
@@ -89,7 +89,7 @@ func Apply(r Resolver, file string, ex *Extraction) *FileResult {
 	return res
 }
 
-// Claimed returns the files p analyses.
+// Claimed returns the files p analyzes.
 func Claimed(p Plugin, all []*scan.File) []*scan.File {
 	var out []*scan.File
 	for _, f := range all {

@@ -72,7 +72,7 @@ func (m Match) Get(name string) (string, bool) {
 
 // Matches parses src and runs the grammar's query. The tree is released before
 // returning, so captures only keep their text, line and the ability to inspect
-// their ancestors via the methods below — which must be called inside visit.
+// their ancestors via the methods below - which must be called inside visit.
 func (g *Grammar) Matches(src []byte, visit func(Match)) error {
 	p := g.parsers.Get().(*ts.Parser)
 	defer g.parsers.Put(p)
@@ -126,7 +126,7 @@ func (c Capture) EnclosingField(field string, types ...string) string {
 }
 
 // SiblingFieldType returns the node type of field on the capture's parent, e.g. the
-// kind of value a variable declarator is initialised with.
+// kind of value a variable declarator is initialized with.
 func (c Capture) SiblingFieldType(field string) string {
 	if p := c.node.Parent(); p != nil {
 		if f := p.ChildByFieldName(field, c.g.lang); f != nil {

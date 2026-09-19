@@ -1,19 +1,19 @@
 // The city look of walk mode, all procedural (no image assets): a sky dome, rippling
-// water, and shader "textures" for the boxes — building facades and roofs, a street
-// network on every terrace, stairs between terrace levels, grassy shores — plus
+// water, and shader "textures" for the boxes - building facades and roofs, a street
+// network on every terrace, stairs between terrace levels, grassy shores - plus
 // trees and street lamps. The isometric map is untouched: every effect is gated on
 // uBend.
 //
 // Streets are the free space of a terrace top: everything not covered by a child
 // (building, district, nested terrace, symbol plot). So they connect by
-// construction — the gaps between buildings are side streets, the padding along a
+// construction - the gaps between buildings are side streets, the padding along a
 // terrace's edge its ring road. The shader measures, per fragment, the distance to
 // the nearest obstacles (the terrace's own edges and the footprints listed for its
 // cell in a lookup texture, see setRoads): close to one is sidewalk, halfway between
 // two facing ones is the centre line, and where facing obstacles end is a crossing.
 //
-// Colours stay data first: facades and roofs are modulated from the box's own
-// colour (language, size, history, dimming, hover), never replaced.
+// colors stay data first: facades and roofs are modulated from the box's own
+// color (language, size, history, dimming, hover), never replaced.
 
 import * as THREE from './vendor/three.module.min.js';
 
@@ -83,7 +83,7 @@ export const CITY_VERT_BODY = `
   vKind = aKind;
 `;
 
-/** Fragment declarations: surface functions, all in linear colour. */
+/** Fragment declarations: surface functions, all in linear color. */
 export const CITY_FRAG_HEAD = NOISE_GLSL + `
 uniform float uBend;
 uniform float uNight;
@@ -363,7 +363,7 @@ vec3 cityColor(vec3 base) {
   bool sideX = abs(n.x) > 0.5;
   float u = sideX ? lp.z * sign(n.x) : -lp.x * sign(n.z);
   float faceW = sideX ? sz.z : sz.x;
-  // Keep the per-face shade the flat colours carry.
+  // Keep the per-face shade the flat colors carry.
   float shade = sideX ? 0.62 : 0.78;
   if (k < 0.5) return retaining(vec3(0.3, 0.24, 0.16), vec2(u, lp.y), 0.0) * shade / 0.7;
   if (k > 5.5) return retaining(base, vec2(u, lp.y), 0.35);
@@ -593,7 +593,7 @@ function rand(x, z) {
   return v - Math.floor(v);
 }
 
-// Geometries with vertex colours as fixed shading: lighter facing up.
+// Geometries with vertex colors as fixed shading: lighter facing up.
 function shaded(geo) {
   geo = geo.index ? geo.toNonIndexed() : geo;
   geo.computeVertexNormals();

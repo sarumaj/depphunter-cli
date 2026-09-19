@@ -8,9 +8,9 @@ import (
 )
 
 func TestStatementLines(t *testing.T) {
-	stmts, _ := scanStatements("function A {\n    Import-Module X\n}\n\n  Import-Module Y; Import-Module Z\n")
+	statements, _ := scanStatements("function A {\n    Import-Module X\n}\n\n  Import-Module Y; Import-Module Z\n")
 	lines := map[string]int{}
-	for _, s := range stmts {
+	for _, s := range statements {
 		lines[s.text] = s.line
 	}
 	want := map[string]int{"function A": 1, "Import-Module X": 2, "Import-Module Y": 5, "Import-Module Z": 5}
@@ -29,11 +29,11 @@ func extract(t *testing.T, name, src string) ([]string, map[string]string) {
 	for _, im := range ex.Imports {
 		mods = append(mods, im.Module)
 	}
-	syms := map[string]string{}
+	symbols := map[string]string{}
 	for _, s := range ex.Symbols {
-		syms[s.Name] = s.Kind
+		symbols[s.Name] = s.Kind
 	}
-	return mods, syms
+	return mods, symbols
 }
 
 func TestScannerIgnoresNonCode(t *testing.T) {
@@ -51,13 +51,13 @@ func TestScannerIgnoresNonCode(t *testing.T) {
 func TestScannerClasses(t *testing.T) {
 	src := "class Shape {\n  [double] Area() { if ($true) { return 0 } }\n  static [Shape] New() { return $null }\n  hidden [void] reset() {}\n  [int] $Sides = @{ a = 1 }.a\n}\n" +
 		"function script:Get-Shape { param($n) }\nfilter Only-Big { $_ }\n"
-	_, syms := extract(t, "x.ps1", src)
+	_, symbols := extract(t, "x.ps1", src)
 	want := map[string]string{
 		"Shape": "class", "Shape.Area": "method", "Shape.New": "method", "Shape.reset": "method",
 		"Get-Shape": "func", "Only-Big": "func",
 	}
-	if !reflect.DeepEqual(syms, want) {
-		t.Errorf("got %v, want %v", syms, want)
+	if !reflect.DeepEqual(symbols, want) {
+		t.Errorf("got %v, want %v", symbols, want)
 	}
 }
 

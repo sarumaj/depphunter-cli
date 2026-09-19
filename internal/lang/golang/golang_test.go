@@ -9,16 +9,16 @@ import (
 
 // testdata/repo holds two modules: app (requires cobra, replaces lib with ../lib) and
 // lib, plus a file outside any module with a syntax error.
-func analyse(t *testing.T) map[string]*lang.FileResult {
+func analyze(t *testing.T) map[string]*lang.FileResult {
 	t.Helper()
 	return langtest.Analyze(t, Plugin{}, "testdata/repo")
 }
 
 func TestImportResolution(t *testing.T) {
-	res := analyse(t)
+	res := analyze(t)
 	main := res["app/main.go"]
 	if main == nil {
-		t.Fatal("app/main.go not analysed")
+		t.Fatal("app/main.go not analyzed")
 	}
 	langtest.CheckImports(t, main, map[string]lang.Target{
 		"fmt":                           {Ecosystem: "go-std", Package: "fmt"},
@@ -31,13 +31,13 @@ func TestImportResolution(t *testing.T) {
 }
 
 func TestCgoPseudoPackageIgnored(t *testing.T) {
-	if n := len(analyse(t)["lib/sub/sub.go"].Imports); n != 0 {
+	if n := len(analyze(t)["lib/sub/sub.go"].Imports); n != 0 {
 		t.Errorf(`import "C" should be skipped, got %d imports`, n)
 	}
 }
 
 func TestBrokenFileStillResolves(t *testing.T) {
-	r := analyse(t)["tools/broken.go"]
+	r := analyze(t)["tools/broken.go"]
 	if r == nil || len(r.Imports) != 1 || r.Imports[0].Target.Local != "app/internal/util" {
 		t.Errorf("partial parse should keep imports, got %+v", r)
 	}
@@ -45,7 +45,7 @@ func TestBrokenFileStillResolves(t *testing.T) {
 
 func TestSymbols(t *testing.T) {
 	got := map[string]string{}
-	for _, s := range analyse(t)["app/main.go"].Symbols {
+	for _, s := range analyze(t)["app/main.go"].Symbols {
 		got[s.Name] = s.Kind
 	}
 	for name, kind := range map[string]string{

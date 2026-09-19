@@ -17,6 +17,7 @@ import (
 var stdlib = map[string]bool{"__future__": true, "_thread": true}
 
 func init() {
+	// cSpell: disable
 	for _, m := range strings.Fields(`abc aifc argparse array ast asyncio atexit audioop base64 bdb
 		binascii bisect builtins bz2 cProfile calendar cgi cgitb chunk cmath cmd code codecs codeop
 		collections colorsys compileall concurrent configparser contextlib contextvars copy copyreg crypt
@@ -36,11 +37,13 @@ func init() {
 		weakref webbrowser winreg winsound wsgiref xdrlib xml xmlrpc zipapp zipfile zipimport zlib zoneinfo`) {
 		stdlib[m] = true
 	}
+	// cSpell: enable
 }
 
 // importAliases maps import names to the distribution that provides them, for the
 // well-known cases where the two differ.
 var importAliases = map[string]string{
+	// cSpell: disable
 	"yaml": "PyYAML", "PIL": "Pillow", "sklearn": "scikit-learn", "skimage": "scikit-image",
 	"bs4": "beautifulsoup4", "cv2": "opencv-python", "dateutil": "python-dateutil",
 	"dotenv": "python-dotenv", "jwt": "PyJWT", "attr": "attrs", "MySQLdb": "mysqlclient",
@@ -50,6 +53,7 @@ var importAliases = map[string]string{
 	"websocket": "websocket-client", "win32api": "pywin32", "gi": "PyGObject", "wx": "wxPython",
 	"fitz": "PyMuPDF", "google.protobuf": "protobuf", "telegram": "python-telegram-bot",
 	"psycopg2": "psycopg2-binary", "Levenshtein": "python-Levenshtein", "faiss": "faiss-cpu",
+	// cSpell: enable
 }
 
 // dist is a distribution declared in a manifest or pinned in a lockfile. Lockfile-only
@@ -60,14 +64,14 @@ type dist struct {
 }
 
 type resolver struct {
-	files  map[string]bool
-	pyDirs map[string]bool // directories containing Python files at any depth
-	roots  []string        // import roots, most specific first, "." last
-	dists  map[string]*dist
+	files   map[string]bool
+	pyDirs  map[string]bool // directories containing Python files at any depth
+	roots   []string        // import roots, most specific first, "." last
+	distMap map[string]*dist
 }
 
 func newResolver(all, claimed []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, pyDirs: map[string]bool{}, dists: map[string]*dist{}}
+	r := &resolver{files: map[string]bool{}, pyDirs: map[string]bool{}, distMap: map[string]*dist{}}
 	for _, f := range claimed {
 		r.files[f.Path] = true
 		for d := path.Dir(f.Path); d != "." && !r.pyDirs[d]; d = path.Dir(d) {
@@ -192,9 +196,9 @@ func (r *resolver) longest(root string, parts []string) (lang.Target, bool) {
 // probe maps a module path under root to a module file or a package directory.
 func (r *resolver) probe(root string, parts []string) (lang.Target, bool) {
 	p := path.Join(append([]string{root}, parts...)...)
-	for _, cand := range []string{p + ".py", p + ".pyi"} {
-		if r.files[cand] {
-			return lang.Target{Local: cand}, true
+	for _, candidate := range []string{p + ".py", p + ".pyi"} {
+		if r.files[candidate] {
+			return lang.Target{Local: candidate}, true
 		}
 	}
 	if r.pyDirs[p] {
@@ -215,7 +219,7 @@ func (r *resolver) distribution(parts []string) lang.Target {
 		candidates = append([]string{a}, candidates...)
 	}
 	for _, c := range candidates {
-		if d := r.dists[normalize(c)]; d != nil {
+		if d := r.distMap[normalize(c)]; d != nil {
 			return lang.Target{Ecosystem: ecoPyPI, Package: d.name, Version: d.version}
 		}
 	}
@@ -224,7 +228,7 @@ func (r *resolver) distribution(parts []string) lang.Target {
 
 var separators = regexp.MustCompile(`[-_.]+`)
 
-// normalize applies PEP 503 name normalisation.
+// normalize applies PEP 503 name normalization.
 func normalize(name string) string {
 	return strings.ToLower(separators.ReplaceAllString(name, "-"))
 }
@@ -248,10 +252,10 @@ func (r *resolver) addDist(name, version string) {
 	}
 	version = strings.TrimSpace(strings.TrimPrefix(version, "=="))
 	key := normalize(name)
-	d := r.dists[key]
+	d := r.distMap[key]
 	if d == nil {
 		d = &dist{name: name}
-		r.dists[key] = d
+		r.distMap[key] = d
 	}
 	if version != "" && version != "*" {
 		d.version = version
@@ -401,9 +405,9 @@ func (r *resolver) readLock(f *scan.File) {
 			return
 		}
 		for _, section := range []string{"default", "develop"} {
-			var pkgs map[string]struct{ Version string }
-			if json.Unmarshal(doc[section], &pkgs) == nil {
-				for name, p := range pkgs {
+			var packages map[string]struct{ Version string }
+			if json.Unmarshal(doc[section], &packages) == nil {
+				for name, p := range packages {
 					r.addDist(name, p.Version)
 				}
 			}

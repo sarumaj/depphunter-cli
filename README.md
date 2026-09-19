@@ -5,7 +5,7 @@
 Browse any code base as an interactive isometric archipelago in your browser.
 
 - **Mainland** = your repository. Directories are terraces, files are buildings
-  (height = lines of code, colour = language).
+  (height = lines of code, color = language).
 - **Islands** = external ecosystems (Go modules, the standard library, …) with
   one building per dependency.
 - **Click** anything to see what it depends on and what uses it;
@@ -26,12 +26,12 @@ Download an archive for your platform from the
 [releases](https://github.com/sarumaj/depphunter-cli/releases) (checksums in
 `checksums.txt`), or build it with Go 1.22 or newer:
 
-| OS      | Architectures                         | Archive   |
-|---------|---------------------------------------|-----------|
-| Linux   | amd64, arm64, armv7, 386, riscv64     | `.tar.gz` |
-| macOS   | amd64 (Intel), arm64 (Apple silicon)  | `.tar.gz` |
-| Windows | amd64, arm64, 386                     | `.zip`    |
-| FreeBSD | amd64, arm64                          | `.tar.gz` |
+| OS      | Architectures                        | Archive   |
+|---------|--------------------------------------|-----------|
+| Linux   | amd64, arm64, armv7, 386, riscv64    | `.tar.gz` |
+| macOS   | amd64 (Intel), arm64 (Apple silicon) | `.tar.gz` |
+| Windows | amd64, arm64, 386                    | `.zip`    |
+| FreeBSD | amd64, arm64                         | `.tar.gz` |
 
 ```sh
 go install github.com/sarumaj/depphunter-cli/cmd/depphunter@latest
@@ -40,37 +40,37 @@ go install github.com/sarumaj/depphunter-cli/cmd/depphunter@latest
 ## Usage
 
 ```sh
-depphunter            # analyse the current directory and open the browser
-depphunter ~/src/app  # analyse another directory
+depphunter            # analyze the current directory and open the browser
+depphunter ~/src/app  # analyze another directory
 depphunter --no-open --addr 127.0.0.1:8080
 depphunter --watch    # keep the map in sync while you edit
 depphunter --export dot -o deps.dot   # write the graph and exit
 depphunter --export html -o map.html  # a self-contained map to share
 ```
 
-| Flag              | Default                   |                                                         |
-|-------------------|---------------------------|---------------------------------------------------------|
-| `--addr`          | `127.0.0.1:0`             | listen address; port 0 picks a free port                |
-| `--no-open`       |                           | print the URL instead of opening the browser            |
-| `--exclude`       |                           | glob of paths to skip (repeatable)                      |
-| `--max-file-size` | `2097152`                 | larger files are listed but not read                    |
-| `--config`        | `<path>/.depphunter.yaml` | config file to use                                      |
-| `--theme`         | `auto`                    | `auto`, `light`, `dark`                                 |
-| `--color-by`      | `language`                | `language`, `size`, `commits`, `churn`, `age`, `authors` |
-| `--height-scale`  | `sqrt`                    | `linear`, `sqrt`, `log`                                 |
-| `--show-std`      | `false`                   | show standard-library islands                           |
-| `--expand-depth`  | `0`                       | initially expanded depth; `0` = auto, `-1` = all        |
-| `--watch`         | `false`                   | re-analyse on file changes, update the browser live     |
-| `--no-cache`      |                           | neither read nor write the analysis cache               |
-| `--no-history` | | do not read git history |
-| `--history-commits` | `10000` | read at most this many commits |
-| `--lsp` | | find symbol references with installed language servers |
-| `--lsp-timeout` | `5m` | time budget for language servers |
-| `-v`, `--version` | | print the version and exit |
-| `-h`, `--help` | | list the flags with their defaults |
-| `--editor`        | auto-detected             | editor command template, e.g. `"code -g {file}:{line}"` |
-| `--export`        |                           | write `json`, `graphml`, `dot` or `html` and exit       |
-| `-o`, `--output`  | stdout                    | output file for `--export`                              |
+| Flag                | Default                   |                                                          |
+|---------------------|---------------------------|----------------------------------------------------------|
+| `--addr`            | `127.0.0.1:0`             | listen address; port 0 picks a free port                 |
+| `--no-open`         |                           | print the URL instead of opening the browser             |
+| `--exclude`         |                           | glob of paths to skip (repeatable)                       |
+| `--max-file-size`   | `2097152`                 | larger files are listed but not read                     |
+| `--config`          | `<path>/.depphunter.yaml` | config file to use                                       |
+| `--theme`           | `auto`                    | `auto`, `light`, `dark`                                  |
+| `--color-by`        | `language`                | `language`, `size`, `commits`, `churn`, `age`, `authors` |
+| `--height-scale`    | `sqrt`                    | `linear`, `sqrt`, `log`                                  |
+| `--show-std`        | `false`                   | show standard-library islands                            |
+| `--expand-depth`    | `0`                       | initially expanded depth; `0` = auto, `-1` = all         |
+| `--watch`           | `false`                   | re-analyze on file changes, update the browser live      |
+| `--no-cache`        |                           | neither read nor write the analysis cache                |
+| `--no-history`      |                           | do not read git history                                  |
+| `--history-commits` | `10000`                   | read at most this many commits                           |
+| `--lsp`             |                           | find symbol references with installed language servers   |
+| `--lsp-timeout`     | `5m`                      | time budget for language servers                         |
+| `-v`, `--version`   |                           | print the version and exit                               |
+| `-h`, `--help`      |                           | list the flags with their defaults                       |
+| `--editor`          | auto-detected             | editor command template, e.g. `"code -g {file}:{line}"`  |
+| `--export`          |                           | write `json`, `graphml`, `dot` or `html` and exit        |
+| `-o`, `--output`    | stdout                    | output file for `--export`                               |
 
 Long flags take two dashes (`--addr`, not `-addr`); a flag's value may follow
 after a space or `=`.
@@ -99,7 +99,7 @@ ui:
   path_filter: "!**/testdata/**"
 ```
 
-The browser's **Save settings** button writes the current colour, height, theme,
+The browser's **Save settings** button writes the current color, height, theme,
 depth and filters into the `ui:` section of `.depphunter.yaml` (or the
 `--config` file), keeping the file's other keys and comments.
 
@@ -107,8 +107,8 @@ depth and filters into the `ui:` section of `.depphunter.yaml` (or the
 
 Parsing results are cached per file content under the user cache directory
 (`~/.cache/depphunter` on Linux), so a second run only parses files that changed
-— the CPython standard library goes from 1.2 s to 20 ms. With `--watch`,
-depphunter watches the directories it analysed, re-analyses after changes settle
+- the CPython standard library goes from 1.2 s to 20 ms. With `--watch`,
+depphunter watches the directories it analyzed, re-analyzes after changes settle
 (300 ms), and pushes the new map to the browser, which keeps your expansion,
 selection and filters and briefly highlights the files that changed.
 
@@ -134,19 +134,19 @@ ones, `unflatten -l 3 -c 5 deps.dot | dot -Tsvg -o deps.svg` spreads them out.
 
 ## Git history
 
-In a git work tree, depphunter reads the history of the analysed files (the
+In a git work tree, depphunter reads the history of the analyzed files (the
 newest 10,000 non-merge commits by default; `--history-commits` changes the
 limit, `--no-history` turns it off) in the background once the map is shown, and
-caches it per commit. The **Colour** menu then offers:
+caches it per commit. The **color** menu then offers:
 
-| Mode | Colour shows |
-|---|---|
-| Commits | commits per file (per-file mean for collapsed directories) |
-| Lines changed | lines added plus deleted |
-| Last change | how recently a file changed, recent is strong |
-| Authors | distinct authors |
+| Mode          | color shows                                                |
+|---------------|------------------------------------------------------------|
+| Commits       | commits per file (per-file mean for collapsed directories) |
+| Lines changed | lines added plus deleted                                   |
+| Last change   | how recently a file changed, recent is strong              |
+| Authors       | distinct authors                                           |
 
-Files without commits in range get a separate neutral colour. The **Since**
+Files without commits in range get a separate neutral color. The **Since**
 slider in the legend limits commits, lines changed and authors to a time range;
 tooltips and the side panel show the same figures, the panel also the top
 authors. Renamed files keep the history of their old names. With `--watch`, a
@@ -158,14 +158,14 @@ Imports show which files depend on which; with `--lsp`, depphunter also asks
 language servers which symbols use which. It uses the servers it finds on `PATH`
 (and `go install` locations for gopls):
 
-| Language | Server |
-|---|---|
-| Go | `gopls` |
-| JavaScript / TypeScript | `typescript-language-server` |
-| Python | `pyright-langserver`, `basedpyright-langserver` or `pylsp` |
-| Rust | `rust-analyzer` |
-| Java | `jdtls` |
-| C# | `csharp-ls` |
+| Language                | Server                                                     |
+|-------------------------|------------------------------------------------------------|
+| Go                      | `gopls`                                                    |
+| JavaScript / TypeScript | `typescript-language-server`                               |
+| Python                  | `pyright-langserver`, `basedpyright-langserver` or `pylsp` |
+| Rust                    | `rust-analyzer`                                            |
+| Java                    | `jdtls`                                                    |
+| C#                      | `csharp-ls`                                                |
 
 The servers run in the background after the map is shown (gopls needs about 7 s
 for this repository), within `--lsp-timeout`; results are cached until the code
@@ -204,32 +204,32 @@ mode you can go 3 units out over the water and 12 above the tallest building.
 
 In walk mode:
 
-|                        |                                                    |
-|------------------------|----------------------------------------------------|
-| Click the map          | look with the mouse (`Esc` frees it), or drag      |
-| `W` `A` `S` `D`/arrows | move / turn; `Shift` runs                          |
-| `Space`                | jump (flying: rise)                                |
-| `F`                    | fly on / off (`C` sinks)                           |
+|                        |                                                     |
+|------------------------|-----------------------------------------------------|
+| Click the map          | look with the mouse (`Esc` frees it), or drag       |
+| `W` `A` `S` `D`/arrows | move / turn; `Shift` runs                           |
+| `Space`                | jump (flying: rise)                                 |
+| `F`                    | fly on / off (`C` sinks)                            |
 | Click / `Q`            | throw a newspaper: the building it hits is selected |
-| `Enter`                | select what the crosshair is on                    |
-| `E` / right click      | expand / collapse what the crosshair is on         |
-| Wheel / `[` `]`        | planet size (curvature)                            |
-| `V` / `Esc`            | back to the map                                    |
+| `Enter`                | select what the crosshair is on                     |
+| `E` / right click      | expand / collapse what the crosshair is on          |
+| Wheel / `[` `]`        | planet size (curvature)                             |
+| `V` / `Esc`            | back to the map                                     |
 
 ## Security
 
 The server binds to loopback by default and prints a URL containing a random
 token, which the browser exchanges for a cookie. Requests without it, requests
 with a foreign `Host` header (DNS rebinding), and requests for files that are
-not part of the analysed project are rejected.
+not part of the analyzed project are rejected.
 
 ## Languages
 
 | Ecosystem               | Imports resolved through                                                                                                                                                          | Islands                              |
 |-------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------|
 | Go                      | every `go.mod` (multi-module, local `replace`)                                                                                                                                    | Go modules, Go standard library      |
-| JavaScript / TypeScript | relative paths, `tsconfig`/`jsconfig` `paths`, workspaces, `package.json` + `package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`                                                                                   | npm, Node.js built-ins               |
-| Python                  | relative imports, `src/` layouts, requirements files, `setup.cfg`, literal `setup.py` lists, `pyproject.toml`, `Pipfile`, `poetry.lock`/`uv.lock`/`pdm.lock`/`Pipfile.lock`                                              | PyPI, Python standard library        |
+| JavaScript / TypeScript | relative paths, `tsconfig`/`jsconfig` `paths`, workspaces, `package.json` + `package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`                                                  | npm, Node.js built-ins               |
+| Python                  | relative imports, `src/` layouts, requirements files, `setup.cfg`, literal `setup.py` lists, `pyproject.toml`, `Pipfile`, `poetry.lock`/`uv.lock`/`pdm.lock`/`Pipfile.lock`       | PyPI, Python standard library        |
 | Rust                    | the module tree (`crate::`, `self::`, `super::`, `mod x;`), workspace and path crates, `Cargo.toml` (renamed and workspace dependencies) + `Cargo.lock`                           | crates.io, Rust standard library     |
 | Java                    | source files by package path (any source root), `pom.xml` (properties, dependency management), Gradle scripts and version catalogs                                                | Maven, Java standard library         |
 | C#                      | namespaces to project folders (`RootNamespace` + folder), `PackageReference`, `Directory.Packages.props`                                                                          | NuGet, .NET base library             |
@@ -246,11 +246,82 @@ scanners instead), so the binary still cross-compiles without a C toolchain.
 
 ## How it works
 
-```text
- scan ──► extract (per file, parallel, cached) ──► resolve ──► graph ──► server ──► browser
-  │         tree-sitter / go/parser / scanners      manifests,    JSON     HTTP+SSE    three.js
-  └ git ls-files or built-in ignores                lockfiles                        map / walk
-        background, after the map is shown:  git history · LSP references ──► SSE ──► overlay
+```mermaid
+flowchart TB
+    SCAN["scan"]
+    SCAN_A["git ls-files"]
+    SCAN_B["built-in ignores"]
+
+    EXTRACT["extract"]
+    EXTRACT_A["tree-sitter"]
+    EXTRACT_B["go/parser"]
+    EXTRACT_C["scanners"]
+    EXTRACT_D["per file · cached"]
+
+    RESOLVE["resolve"]
+    RESOLVE_A["manifests"]
+    RESOLVE_B["lockfiles"]
+
+    GRAPH["graph"]
+    GRAPH_A["JSON"]
+
+    SERVER["server"]
+    SERVER_A["HTTP + SSE"]
+
+    BROWSER["browser"]
+    BROWSER_A["three.js"]
+    BROWSER_B["map / walk"]
+
+    SCAN_A --> SCAN
+    SCAN_B --> SCAN
+
+    SCAN --> EXTRACT
+
+    EXTRACT_A --> EXTRACT
+    EXTRACT_B --> EXTRACT
+    EXTRACT_C --> EXTRACT
+    EXTRACT_D --> EXTRACT
+
+    EXTRACT --> RESOLVE
+
+    RESOLVE_A --> RESOLVE
+    RESOLVE_B --> RESOLVE
+
+    RESOLVE --> GRAPH
+
+    GRAPH_A --> GRAPH
+
+    GRAPH --> SERVER
+
+    SERVER_A --> SERVER
+
+    SERVER --> BROWSER
+
+    BROWSER_A --> BROWSER
+    BROWSER_B --> BROWSER
+
+    subgraph BG["background - after map is shown"]
+        direction LR
+        HISTORY["git history"]
+        LSP["LSP references"]
+        SSE["SSE"]
+        OVERLAY["overlay"]
+
+        HISTORY --> SSE
+        LSP --> SSE
+        SSE --> OVERLAY
+    end
+
+    SERVER -.->|"async feed"| BG
+    BG -.->|"pushes to"| BROWSER
+
+    classDef pipeline fill:#1e293b,stroke:#38bdf8,stroke-width:2px,color:#e2e8f0
+    classDef detail   fill:#0f2233,stroke:#38bdf8,stroke-width:1px,color:#94a3b8
+    classDef bg       fill:#0f172a,stroke:#818cf8,stroke-width:1.5px,color:#c7d2fe
+
+    class SCAN,EXTRACT,RESOLVE,GRAPH,SERVER,BROWSER pipeline
+    class SCAN_A,SCAN_B,EXTRACT_A,EXTRACT_B,EXTRACT_C,EXTRACT_D,RESOLVE_A,RESOLVE_B,GRAPH_A,SERVER_A,BROWSER_A,BROWSER_B detail
+    class HISTORY,LSP,SSE,OVERLAY bg
 ```
 
 1. **Scan** (`internal/scan`) lists the project's files through `git ls-files`
@@ -280,7 +351,7 @@ scanners instead), so the binary still cross-compiles without a C toolchain.
    the hierarchy and expansion state (never a force simulation, so the same
    repository always gives the same map), `scene.js` draws every box in one
    instanced three.js mesh and edges as arcs, `labels.js` places labels,
-   `filter.js` and `history.js` compute filters, search and history colours
+   `filter.js` and `history.js` compute filters, search and history colors
    locally, and `walk.js`/`city.js` add the first-person view.
 
 The HTML export (`--export html`) inlines the same modules as `data:` URLs with
@@ -292,21 +363,21 @@ depphunter nor a network.
 Go libraries (all pure Go, so every target cross-compiles with
 `CGO_ENABLED=0`):
 
-| Library | Used for |
-|---|---|
-| [odvcencio/gotreesitter](https://github.com/odvcencio/gotreesitter) | tree-sitter runtime and grammars for JS/TS, Python, Rust and Java |
-| [golang.org/x/mod](https://pkg.go.dev/golang.org/x/mod) | parsing `go.mod` |
-| [BurntSushi/toml](https://github.com/BurntSushi/toml) | `pyproject.toml`, `Cargo.toml`, Gradle version catalogs, TOML lockfiles |
-| [gopkg.in/yaml.v3](https://pkg.go.dev/gopkg.in/yaml.v3) | config files (comment-preserving save), `pnpm-lock.yaml` |
-| [tidwall/jsonc](https://github.com/tidwall/jsonc) | `tsconfig.json` / `jsconfig.json` with comments |
-| [fsnotify/fsnotify](https://github.com/fsnotify/fsnotify) | `--watch` |
-| [sourcegraph/jsonrpc2](https://github.com/sourcegraph/jsonrpc2) | talking to language servers (`--lsp`) |
-| [golang.org/x/sync](https://pkg.go.dev/golang.org/x/sync) | bounded parallel scanning, parsing and LSP requests |
-| [emicklei/dot](https://github.com/emicklei/dot) | DOT export |
-| [kballard/go-shellquote](https://github.com/kballard/go-shellquote) | splitting editor command templates without a shell |
-| [cli/browser](https://github.com/cli/browser) | opening the default browser |
-| [spf13/cobra](https://github.com/spf13/cobra) | the command line: flags, help, version |
-| [spf13/viper](https://github.com/spf13/viper) | layering defaults, config files, environment and flags |
+| Library                                                             | Used for                                                                |
+|---------------------------------------------------------------------|-------------------------------------------------------------------------|
+| [odvcencio/gotreesitter](https://github.com/odvcencio/gotreesitter) | tree-sitter runtime and grammars for JS/TS, Python, Rust and Java       |
+| [golang.org/x/mod](https://pkg.go.dev/golang.org/x/mod)             | parsing `go.mod`                                                        |
+| [BurntSushi/toml](https://github.com/BurntSushi/toml)               | `pyproject.toml`, `Cargo.toml`, Gradle version catalogs, TOML lockfiles |
+| [gopkg.in/yaml.v3](https://pkg.go.dev/gopkg.in/yaml.v3)             | config files (comment-preserving save), `pnpm-lock.yaml`                |
+| [tidwall/jsonc](https://github.com/tidwall/jsonc)                   | `tsconfig.json` / `jsconfig.json` with comments                         |
+| [fsnotify/fsnotify](https://github.com/fsnotify/fsnotify)           | `--watch`                                                               |
+| [sourcegraph/jsonrpc2](https://github.com/sourcegraph/jsonrpc2)     | talking to language servers (`--lsp`)                                   |
+| [golang.org/x/sync](https://pkg.go.dev/golang.org/x/sync)           | bounded parallel scanning, parsing and LSP requests                     |
+| [emicklei/dot](https://github.com/emicklei/dot)                     | DOT export                                                              |
+| [kballard/go-shellquote](https://github.com/kballard/go-shellquote) | splitting editor command templates without a shell                      |
+| [cli/browser](https://github.com/cli/browser)                       | opening the default browser                                             |
+| [spf13/cobra](https://github.com/spf13/cobra)                       | the command line: flags, help, version                                  |
+| [spf13/viper](https://github.com/spf13/viper)                       | layering defaults, config files, environment and flags                  |
 
 Go itself provides `go/parser` for Go sources, `net/http` for the server and
 `embed` for the UI. The browser UI vendors, in

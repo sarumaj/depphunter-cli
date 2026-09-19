@@ -1,4 +1,4 @@
-// Package server exposes the analysed graph and the embedded UI on a local HTTP port.
+// Package server exposes the analyzed graph and the embedded UI on a local HTTP port.
 package server
 
 import (

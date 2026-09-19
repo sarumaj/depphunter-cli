@@ -9,13 +9,13 @@ import (
 
 // testdata/repo: a TypeScript app with tsconfig paths (inherited baseUrl, JSONC),
 // a workspace package, a lockfile, and a CommonJS corner.
-func analyse(t *testing.T) map[string]*lang.FileResult {
+func analyze(t *testing.T) map[string]*lang.FileResult {
 	t.Helper()
 	return langtest.Analyze(t, Plugin{}, "testdata/repo")
 }
 
 func TestTypeScriptResolution(t *testing.T) {
-	langtest.CheckImports(t, analyse(t)["src/index.ts"], map[string]lang.Target{
+	langtest.CheckImports(t, analyze(t)["src/index.ts"], map[string]lang.Target{
 		"./util.js":        {Local: "src/util.ts"},
 		"./util":           {Local: "src/util.ts"},
 		"./components":     {Local: "src/components/index.tsx"},
@@ -33,7 +33,7 @@ func TestTypeScriptResolution(t *testing.T) {
 }
 
 func TestCommonJSAndDynamicImports(t *testing.T) {
-	got := langtest.Imports(t, analyse(t)["legacy/app.js"])
+	got := langtest.Imports(t, analyze(t)["legacy/app.js"])
 	if got["fs"] != (lang.Target{Ecosystem: "node", Package: "fs"}) {
 		t.Errorf("require('fs'): %+v", got["fs"])
 	}
@@ -43,7 +43,7 @@ func TestCommonJSAndDynamicImports(t *testing.T) {
 }
 
 func TestSymbols(t *testing.T) {
-	res := analyse(t)
+	res := analyze(t)
 	check := func(file string, want map[string]string) {
 		t.Helper()
 		got := map[string]string{}

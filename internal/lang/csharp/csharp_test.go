@@ -9,13 +9,13 @@ import (
 
 // testdata/repo: two projects (one with an explicit RootNamespace), central package
 // management and a PackageReference with a <Version> element.
-func analyse(t *testing.T) map[string]*lang.FileResult {
+func analyze(t *testing.T) map[string]*lang.FileResult {
 	t.Helper()
 	return langtest.Analyze(t, Plugin{}, "testdata/repo")
 }
 
 func TestResolution(t *testing.T) {
-	langtest.CheckImports(t, analyse(t)["src/MyApp.Web/Program.cs"], map[string]lang.Target{
+	langtest.CheckImports(t, analyze(t)["src/MyApp.Web/Program.cs"], map[string]lang.Target{
 		"using System":                       {Ecosystem: "dotnet", Package: "System"},
 		"using System.Collections.Generic":   {Ecosystem: "dotnet", Package: "System.Collections"},
 		"using static System.Math":           {Ecosystem: "dotnet", Package: "System.Math"},
@@ -32,7 +32,7 @@ func TestResolution(t *testing.T) {
 }
 
 func TestSymbols(t *testing.T) {
-	langtest.CheckSymbols(t, analyse(t)["src/MyApp.Web/Program.cs"], map[string]string{
+	langtest.CheckSymbols(t, analyze(t)["src/MyApp.Web/Program.cs"], map[string]string{
 		"Program": "class", "Program.Main": "method", "IService": "interface", "Person": "record",
 		"Pt": "struct", "Mode": "enum", "Handler": "delegate",
 	})

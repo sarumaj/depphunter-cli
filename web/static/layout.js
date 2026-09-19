@@ -42,10 +42,10 @@ export function layout(model, state) {
     if (n.kind === 'package') {
       s = { w: FILE, d: FILE };
     } else if (n.kind === 'file') {
-      const syms = symbols(n);
-      if (expanded(n) && syms.length) {
-        const cols = Math.ceil(Math.sqrt(syms.length));
-        const rows = Math.ceil(syms.length / cols);
+      const symbols_ = symbols(n);
+      if (expanded(n) && symbols_.length) {
+        const cols = Math.ceil(Math.sqrt(symbols_.length));
+        const rows = Math.ceil(symbols_.length / cols);
         s = { w: cols * (SYM + SYM_GAP) - SYM_GAP + 2 * SYM_GAP, d: rows * (SYM + SYM_GAP) + SYM_GAP, cols };
       } else {
         s = { w: FILE, d: FILE };

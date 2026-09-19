@@ -2,6 +2,7 @@
   // comments and trailing commas are allowed in tsconfig
   "extends": "./tsconfig.base",
   "compilerOptions": {
+    "ignoreDeprecations": "6.0",
     /* resolved relative to the inherited baseUrl */
     "paths": { "@app/*": ["src/*"], },
   },

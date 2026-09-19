@@ -22,7 +22,7 @@ const state = {
   legendLang: undefined, // language isolated by hovering the legend; null = "Other"
   colorBy: 'language',
   heightScale: 'sqrt',
-  filters: { hiddenLangs: new Set(), hiddenEcos: new Set(), path: '' },
+  filters: { hiddenLangs: new Set(), hiddenEcosystems: new Set(), path: '' },
   vis: null, // computeVisibility() result for the current filters
   history: null,          // git history (internal/history.History), when loaded
   historyStatus: 'loading', // loading | ready | none
@@ -33,9 +33,9 @@ const state = {
   theme: 'auto',
 };
 
-let model, L, pal, langs, scene, panel, searchItems, defaultHiddenEcos, maxDepth = 0;
+let model, L, pal, langs, scene, panel, searchItems, defaultHiddenEcosystems, maxDepth = 0;
 let config = {};        // /api/config
-let slots = [];         // languages holding categorical colour slots (colors.assignSlots)
+let slots = [];         // languages holding categorical color slots (colors.assignSlots)
 let graphVersion = 0;   // server graph version currently shown
 let flashTimer = 0;
 let metricsCache = null; // computeMetrics() for the current model, history and since
@@ -50,9 +50,9 @@ async function main() {
   Object.assign(state, { colorBy: cfg.colorBy, heightScale: cfg.heightScale, theme: cfg.theme });
   // Saved filters (config ui.hide_languages / hide_islands / path_filter).
   for (const l of cfg.hideLanguages || []) state.filters.hiddenLangs.add(l);
-  for (const e of cfg.hideIslands || []) state.filters.hiddenEcos.add('e:' + e);
+  for (const e of cfg.hideIslands || []) state.filters.hiddenEcosystems.add('e:' + e);
   state.filters.path = cfg.pathFilter || '';
-  defaultHiddenEcos = new Set();
+  defaultHiddenEcosystems = new Set();
   setModel(graph, version);
   document.title = `${model.root.name} · depphunter`;
   $('repo-name').textContent = model.root.name;
@@ -163,15 +163,15 @@ function metrics() {
   return metricsCache;
 }
 
-/** The colour mode in effect: history modes fall back to language until loaded. */
+/** The color mode in effect: history modes fall back to language until loaded. */
 function colorMode() {
   return isHistoryMode(state.colorBy) && !state.history ? 'language' : state.colorBy;
 }
 
-// saveViewSettings stores the view settings — colours, heights, theme, depth and
-// filters — in the project config through the server.
+// saveViewSettings stores the view settings - colors, heights, theme, depth and
+// filters - in the project config through the server.
 async function saveViewSettings() {
-  const hiddenIslands = [...state.filters.hiddenEcos].map(id => id.replace(/^e:/, ''));
+  const hiddenIslands = [...state.filters.hiddenEcosystems].map(id => id.replace(/^e:/, ''));
   const stdIslands = model.ecosystems.filter(e => e.std);
   try {
     await saveSettings({
@@ -179,7 +179,7 @@ async function saveViewSettings() {
       colorBy: state.colorBy,
       heightScale: state.heightScale,
       expandDepth: state.level,
-      showStd: stdIslands.length > 0 && stdIslands.every(e => !state.filters.hiddenEcos.has(e.id)),
+      showStd: stdIslands.length > 0 && stdIslands.every(e => !state.filters.hiddenEcosystems.has(e.id)),
       hideLanguages: [...state.filters.hiddenLangs],
       // Standard-library islands follow showStd; save only the other hidden islands.
       hideIslands: hiddenIslands.filter(id => !stdIslands.some(e => e.id === 'e:' + id)),
@@ -192,7 +192,7 @@ async function saveViewSettings() {
 }
 
 // setModel installs a graph, carrying over what the user chose on the previous one:
-// expanded directories, selection, filters and language colours.
+// expanded directories, selection, filters and language colors.
 function setModel(graph, version) {
   const prev = model;
   model = buildModel(graph);
@@ -209,8 +209,8 @@ function setModel(graph, version) {
   }
   for (const e of model.ecosystems) {
     if (e.std && !config.showStd && !prev?.byId.has(e.id)) {
-      state.filters.hiddenEcos.add(e.id);
-      defaultHiddenEcos.add(e.id);
+      state.filters.hiddenEcosystems.add(e.id);
+      defaultHiddenEcosystems.add(e.id);
     }
   }
   if (prev) {
@@ -351,7 +351,7 @@ function applyFilters() {
 // The badge counts filters beyond the defaults, so std-lib islands hidden at start do
 // not show up as filters.
 function updateFilterBadge() {
-  const ecoChanges = model.ecosystems.filter(e => state.filters.hiddenEcos.has(e.id) !== defaultHiddenEcos.has(e.id)).length;
+  const ecoChanges = model.ecosystems.filter(e => state.filters.hiddenEcosystems.has(e.id) !== defaultHiddenEcosystems.has(e.id)).length;
   const active = state.filters.hiddenLangs.size + ecoChanges + (state.filters.path.trim() ? 1 : 0);
   $('filter-count').hidden = !active;
   $('filter-count').textContent = active;
@@ -372,7 +372,7 @@ function unhide(n) {
   if (state.vis.visible(n)) return false;
   for (let p = n; p; p = p.parentNode) {
     if (p.kind === 'file') state.filters.hiddenLangs.delete(p.lang || '');
-    if (p.kind === 'ecosystem') state.filters.hiddenEcos.delete(p.id);
+    if (p.kind === 'ecosystem') state.filters.hiddenEcosystems.delete(p.id);
   }
   state.vis = computeVisibility(model, state.filters);
   if (!state.vis.visible(n)) state.filters.path = $('path-filter').value = '';
@@ -389,7 +389,7 @@ function drawFilters() {
   $('lang-list').innerHTML = [...counts.entries()].sort((a, b) => b[1] - a[1])
     .map(([l, c]) => check(l, l || 'unknown', !state.filters.hiddenLangs.has(l), fmt.format(c), langs.of(l))).join('');
   $('eco-list').innerHTML = model.ecosystems
-    .map(e => check(e.id, e.name, !state.filters.hiddenEcos.has(e.id), fmt.format(e.children.length), null)).join('');
+    .map(e => check(e.id, e.name, !state.filters.hiddenEcosystems.has(e.id), fmt.format(e.children.length), null)).join('');
 }
 
 // ---------------------------------------------------------------- state changes
@@ -512,7 +512,7 @@ function baseColors() {
 }
 
 let maxLoc = 1;
-// Colour-by-size uses a square-root scale so mid-sized files stay distinguishable.
+// color-by-size uses a square-root scale so mid-sized files stay distinguishable.
 function sizeT(loc) {
   return Math.sqrt(Math.min(1, (loc || 0) / maxLoc));
 }
@@ -647,7 +647,7 @@ function historyLegend(mode) {
     <div class="hint" id="since-label">${escapeHTML(formatDate(state.since))} · ${fmt.format(total)} commits to current files${state.history.truncated ? ' (history truncated)' : ''}</div>`;
 }
 
-// The since slider recolours live while dragging and redraws the legend on release.
+// The since slider recolors live while dragging and redraws the legend on release.
 function bindSinceSlider() {
   const slider = $('since');
   if (!slider) return;
@@ -775,7 +775,7 @@ function bindControls() {
     for (const a of document.querySelectorAll('#export [data-server]')) a.hidden = true;
   } else {
     $('save-settings').onclick = saveViewSettings;
-    $('save-settings').title = `Save colour, height, theme, depth and filters to ${config.configFile}`;
+    $('save-settings').title = `Save color, height, theme, depth and filters to ${config.configFile}`;
   }
   $('screenshot').onclick = saveScreenshot;
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => state.theme === 'auto' && applyTheme());
@@ -820,7 +820,7 @@ function bindFilters() {
     applyFilters();
   });
   onCheck('lang-list', () => state.filters.hiddenLangs);
-  onCheck('eco-list', () => state.filters.hiddenEcos);
+  onCheck('eco-list', () => state.filters.hiddenEcosystems);
   $('langs-all').onclick = () => { state.filters.hiddenLangs.clear(); drawFilters(); applyFilters(); };
   $('langs-none').onclick = () => { setLangsHidden(['', ...model.languages.map(l => l.lang)], true); drawFilters(); applyFilters(); };
 

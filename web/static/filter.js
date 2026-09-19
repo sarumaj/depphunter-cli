@@ -3,7 +3,7 @@
 import { Fzf, byLengthAsc } from './vendor/fzf.es.js';
 
 /**
- * filters: {hiddenLangs: Set<string>, hiddenEcos: Set<string>, path: string}
+ * filters: {hiddenLangs: Set<string>, hiddenEcosystems: Set<string>, path: string}
  * `path` is a comma-separated glob list; plain patterns include, "!pattern" excludes.
  * Returns {visible(node), counts: Map<dirId, {fileCount, totalLoc}>, hiddenFiles}.
  */
@@ -45,9 +45,9 @@ export function computeVisibility(model, filters) {
     let left = 0;
     for (const p of e.children) {
       const used = (model.edgesTo.get(p.id) || []).some(edge => visible(model.byId.get(edge.from)));
-      if (filters.hiddenEcos.has(e.id) || !used) hidden.add(p.id); else left++;
+      if (filters.hiddenEcosystems.has(e.id) || !used) hidden.add(p.id); else left++;
     }
-    if (filters.hiddenEcos.has(e.id) || !left) hidden.add(e.id);
+    if (filters.hiddenEcosystems.has(e.id) || !left) hidden.add(e.id);
   }
   return { visible, counts, hiddenFiles };
 }

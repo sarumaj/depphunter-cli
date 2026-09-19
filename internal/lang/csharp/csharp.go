@@ -1,4 +1,4 @@
-// Package csharp analyses C#. `using` directives name namespaces, which resolve to
+// Package csharp analyzes C#. `using` directives name namespaces, which resolve to
 // project folders by the MSBuild convention (root namespace + folder path), to NuGet
 // packages from PackageReference / Directory.Packages.props (longest package id that
 // prefixes the namespace, case-insensitively), or to the .NET base library.
