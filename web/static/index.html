@@ -10,6 +10,29 @@
 <body>
   <header class="toolbar">
     <div class="brand"><span class="logo" aria-hidden="true"></span><span id="repo-name">depphunter</span></div>
+    <div class="search">
+      <input id="search" type="search" placeholder="Search files, symbols, packages…  /" autocomplete="off" spellcheck="false"
+             role="combobox" aria-expanded="false" aria-controls="search-results" aria-label="Search">
+      <ul id="search-results" role="listbox" hidden></ul>
+    </div>
+    <div class="filters">
+      <button id="filters-btn" aria-expanded="false" aria-controls="filters">Filters <span id="filter-count" class="count" hidden></span></button>
+      <div id="filters" class="popover" hidden>
+        <section>
+          <h4>Languages <span class="actions"><a id="langs-all" class="link">all</a> · <a id="langs-none" class="link">none</a></span></h4>
+          <ul id="lang-list" class="checks"></ul>
+        </section>
+        <section>
+          <h4>Islands</h4>
+          <ul id="eco-list" class="checks"></ul>
+        </section>
+        <section>
+          <h4>Paths</h4>
+          <input id="path-filter" type="text" placeholder="src/**, !**/testdata/**, !*.test.ts" spellcheck="false">
+          <p class="hint">Comma-separated globs. Plain globs keep matching files; <code>!glob</code> hides them.</p>
+        </section>
+      </div>
+    </div>
     <div class="group" role="group" aria-label="Expansion">
       <button id="collapse-level" title="Collapse one level (-)">−</button>
       <span class="hint" id="depth-label">depth</span>
@@ -28,7 +51,6 @@
         <option value="log">log lines</option>
       </select>
     </label>
-    <label class="group check"><input type="checkbox" id="show-std"> Std-lib islands</label>
     <label class="group">Theme
       <select id="theme">
         <option value="auto">Auto</option>
@@ -68,6 +90,8 @@
         <tr><th>Q / E</th><td>Rotate 90°</td></tr>
         <tr><th>F</th><td>Fit to screen</td></tr>
         <tr><th>+ / −</th><td>Expand / collapse one level everywhere</td></tr>
+        <tr><th>/</th><td>Search</td></tr>
+        <tr><th>Legend click</th><td>Hide / show a language</td></tr>
         <tr><th>Esc</th><td>Clear selection</td></tr>
       </table>
       <p class="hint">Height encodes lines of code. Directories collapse into districts whose footprint grows with the number of files.</p>

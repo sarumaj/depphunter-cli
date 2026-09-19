@@ -18,9 +18,11 @@ export const SCALES = {
 
 /**
  * @returns {{boxes: Box[], byNode: Map<string, Box>, bounds}}
+ * Heights use the unfiltered maximum so filtering never rescales what stays visible.
  * Box: {node, kind: 'land'|'terrace'|'district'|'building'|'symbol'|'package', x, z (centre), y, w, d, h}
  */
 export function layout(model, state) {
+  const { visible, counts } = state.vis;
   const scale = SCALES[state.heightScale] || SCALES.sqrt;
   const maxLoc = fileLocs(model.root).reduce((a, b) => Math.max(a, b), 1);
   const height = loc => 0.2 + scale(Math.min(1, (loc || 0) / maxLoc)) * MAX_H;
@@ -47,10 +49,10 @@ export function layout(model, state) {
         s = { w: FILE, d: FILE };
       }
     } else if (n.kind === 'dir' && !expanded(n)) {
-      const side = Math.max(1.4, Math.sqrt(n.fileCount) * (FILE + GAP) * 0.75);
+      const side = Math.max(1.4, Math.sqrt(counts.get(n.id).fileCount) * (FILE + GAP) * 0.75);
       s = { w: side, d: side };
     } else { // expanded dir or ecosystem
-      const items = n.children.filter(c => c.kind !== 'symbol').map(c => ({ n: c, ...measure(c) }));
+      const items = n.children.filter(c => c.kind !== 'symbol' && visible(c)).map(c => ({ n: c, ...measure(c) }));
       s = { ...shelf(items), items };
     }
     sizes.set(n.id, s);
@@ -82,7 +84,8 @@ export function layout(model, state) {
       return;
     }
     if (n.kind === 'dir' && !expanded(n)) {
-      boxes.push({ node: n, kind: 'district', x: cx, z: cz, y, w: s.w, d: s.d, h: height(n.totalLoc / Math.max(1, n.fileCount)) });
+      const c = counts.get(n.id);
+      boxes.push({ node: n, kind: 'district', x: cx, z: cz, y, w: s.w, d: s.d, h: height(c.totalLoc / Math.max(1, c.fileCount)) });
       return;
     }
     boxes.push({ node: n, kind: 'terrace', x: cx, z: cz, y, w: s.w, d: s.d, h: TERRACE });
@@ -99,8 +102,7 @@ export function layout(model, state) {
 
   // Islands, left to right along the north shore, largest first.
   const islands = model.ecosystems
-    .filter(e => state.showStd || !e.std)
-    .filter(e => e.children.length)
+    .filter(e => visible(e) && e.children.length)
     .map(e => ({ e, s: measure(e) }))
     .sort((a, b) => b.s.w * b.s.d - a.s.w * a.s.d);
   let x = 0;
@@ -134,20 +136,70 @@ function fileLocs(n, out = []) {
   return out;
 }
 
-// Shelf packing: rows of items, target width ~ sqrt(total area) for a squarish terrace.
+// Packs a terrace's children with a skyline (bottom-left) packer. Directories go
+// first, deepest footprint first, then files in name order, so small buildings fill
+// the gaps beside large districts. Several widths are tried; the most compact,
+// most square result wins.
 function shelf(items) {
+  items.sort((a, b) => {
+    const da = a.n.kind === 'file' ? 0 : 1, db = b.n.kind === 'file' ? 0 : 1;
+    if (da !== db) return db - da;
+    return da ? (b.d - a.d) || (b.w - a.w) || a.n.name.localeCompare(b.n.name) : 0;
+  });
+  if (!items.length) return { w: FILE + 2 * PAD, d: FILE + 2 * PAD };
+
   const area = items.reduce((a, it) => a + (it.w + GAP) * (it.d + GAP), 0);
-  const target = Math.max(...items.map(it => it.w), Math.sqrt(area) * 1.15, FILE);
-  let x = 0, z = 0, rowD = 0, maxW = 0;
-  for (const it of items) {
-    if (x > 0 && x + it.w > target) { z += rowD + GAP; x = 0; rowD = 0; }
-    it.x = PAD + x;
-    it.z = PAD + z;
-    x += it.w + GAP;
-    rowD = Math.max(rowD, it.d);
-    maxW = Math.max(maxW, x - GAP);
+  const widths = [...items].map(it => it.w + GAP).sort((a, b) => b - a);
+  const base = Math.max(widths[0], Math.sqrt(area));
+  const candidates = new Set([base, base * 1.15, base * 1.3, base * 1.6]);
+  if (widths.length > 1) candidates.add(Math.max(base, widths[0] + widths[1])); // room beside the largest
+
+  let best = null;
+  for (const W of candidates) {
+    const r = skyline(items, W);
+    const score = r.w * r.d * (1 + 0.25 * Math.abs(Math.log(r.w / r.d)));
+    if (!best || score < best.score) best = { ...r, W, score };
   }
-  return { w: Math.max(maxW, FILE) + 2 * PAD, d: (items.length ? z + rowD : FILE) + 2 * PAD };
+  skyline(items, best.W); // re-run to write the winning positions into items
+  return { w: best.w + 2 * PAD, d: best.d + 2 * PAD };
+}
+
+function skyline(items, W) {
+  let segs = [{ x: 0, w: W, y: 0 }]; // contiguous segments covering [0, W)
+  let maxX = 0, maxY = 0;
+  for (const it of items) {
+    const w = it.w + GAP, d = it.d + GAP;
+    let pos = null;
+    for (let i = 0; i < segs.length; i++) {
+      const x = segs[i].x;
+      if (x + w > W + 1e-6 && x > 0) break;
+      let y = 0;
+      for (let j = i, covered = 0; j < segs.length && covered < w - 1e-6; covered += segs[j].w, j++) y = Math.max(y, segs[j].y);
+      if (!pos || y < pos.y - 1e-6) pos = { x, y };
+    }
+    it.x = PAD + pos.x;
+    it.z = PAD + pos.y;
+    maxX = Math.max(maxX, pos.x + it.w);
+    maxY = Math.max(maxY, pos.y + it.d);
+
+    // Raise the skyline over [pos.x, pos.x + w).
+    const next = [];
+    const end = pos.x + w;
+    for (const sg of segs) {
+      const sEnd = sg.x + sg.w;
+      if (sEnd <= pos.x + 1e-9 || sg.x >= end - 1e-9) { next.push(sg); continue; }
+      if (sg.x < pos.x) next.push({ x: sg.x, w: pos.x - sg.x, y: sg.y });
+      if (!next.some(n => n.new)) next.push({ x: pos.x, w, y: pos.y + d, new: true });
+      if (sEnd > end) next.push({ x: end, w: sEnd - end, y: sg.y });
+    }
+    segs = [];
+    for (const sg of next) {
+      delete sg.new;
+      const last = segs[segs.length - 1];
+      if (last && Math.abs(last.y - sg.y) < 1e-9) last.w += sg.w; else segs.push(sg);
+    }
+  }
+  return { w: Math.max(maxX, FILE), d: Math.max(maxY, FILE) };
 }
 
 function bounds(boxes) {
