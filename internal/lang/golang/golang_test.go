@@ -1,27 +1,17 @@
 package golang
 
 import (
-	"context"
 	"testing"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
-	"github.com/sarumaj/depphunter-cli/internal/scan"
+	"github.com/sarumaj/depphunter-cli/internal/lang/langtest"
 )
 
 // testdata/repo holds two modules: app (requires cobra, replaces lib with ../lib) and
 // lib, plus a file outside any module with a syntax error.
 func analyse(t *testing.T) map[string]*lang.FileResult {
 	t.Helper()
-	const root = "testdata/repo"
-	files, err := scan.Scan(context.Background(), root, scan.Options{})
-	if err != nil {
-		t.Fatal(err)
-	}
-	res, err := lang.Analyze(context.Background(), Plugin{}, root, files)
-	if err != nil {
-		t.Fatal(err)
-	}
-	return res
+	return langtest.Analyze(t, Plugin{}, "testdata/repo")
 }
 
 func TestImportResolution(t *testing.T) {
@@ -30,26 +20,14 @@ func TestImportResolution(t *testing.T) {
 	if main == nil {
 		t.Fatal("app/main.go not analysed")
 	}
-	got := map[string]lang.Target{}
-	for _, im := range main.Imports {
-		got[im.Spec] = im.Target
-	}
-	want := map[string]lang.Target{
+	langtest.CheckImports(t, main, map[string]lang.Target{
 		"fmt":                           {Ecosystem: "go-std", Package: "fmt"},
 		"net/http":                      {Ecosystem: "go-std", Package: "net/http"},
 		"example.com/app/internal/util": {Local: "app/internal/util"},
 		"example.com/lib/sub":           {Local: "lib/sub"},
 		"github.com/spf13/cobra/doc":    {Ecosystem: "go", Package: "github.com/spf13/cobra", Version: "v1.8.0"},
 		"github.com/undeclared/thing":   {Ecosystem: "go", Package: "github.com/undeclared/thing", Unresolved: true},
-	}
-	for spec, w := range want {
-		if got[spec] != w {
-			t.Errorf("%s: got %+v, want %+v", spec, got[spec], w)
-		}
-	}
-	if len(got) != len(want) {
-		t.Errorf("got %d imports, want %d: %+v", len(got), len(want), got)
-	}
+	})
 }
 
 func TestCgoPseudoPackageIgnored(t *testing.T) {

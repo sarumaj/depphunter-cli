@@ -25,6 +25,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/editor"
 	"github.com/sarumaj/depphunter-cli/internal/export"
 	"github.com/sarumaj/depphunter-cli/internal/graph"
+	"github.com/sarumaj/depphunter-cli/internal/history"
 	"github.com/sarumaj/depphunter-cli/web"
 )
 
@@ -48,8 +49,21 @@ type Server struct {
 
 	mu   sync.RWMutex
 	snap *snapshot
-	subs map[chan []byte]struct{}
+	hist historyState
+	subs map[chan event]struct{}
 	done chan struct{}
+}
+
+type event struct {
+	name string
+	data []byte
+}
+
+// historyState is the git history as served: pending while it is being read.
+type historyState struct {
+	pending bool
+	h       *history.History // nil when unavailable
+	gz      []byte
 }
 
 // snapshot is one immutable analysis result with its encodings.
@@ -68,7 +82,8 @@ func New(cfg config.Config, g *graph.Graph, assets fs.FS) (*Server, error) {
 	}
 	s := &Server{
 		token: hex.EncodeToString(tok), root: cfg.Root, assets: assets, editor: cfg.Editor, cfg: cfg,
-		subs: map[chan []byte]struct{}{}, done: make(chan struct{}),
+		subs: map[chan event]struct{}{}, done: make(chan struct{}),
+		hist: historyState{pending: cfg.History},
 	}
 	var err error
 	if s.snap, err = newSnapshot(g, 1); err != nil {
@@ -142,13 +157,68 @@ func (s *Server) Update(g *graph.Graph, touched []string) (bool, error) {
 	}{sn.version, paths})
 
 	s.snap = sn
+	s.broadcast(event{"graph", msg})
+	return true, nil
+}
+
+// broadcast sends ev to every event stream; callers hold s.mu.
+func (s *Server) broadcast(ev event) {
 	for ch := range s.subs {
 		select {
-		case ch <- msg:
-		default: // a slow client still refetches the latest graph on its next event
+		case ch <- ev:
+		default: // a slow client still refetches the latest state on its next event
 		}
 	}
-	return true, nil
+}
+
+// SetHistory publishes the git history (nil: none available) and notifies browsers.
+func (s *Server) SetHistory(h *history.History) error {
+	st := historyState{h: h}
+	if h != nil {
+		var buf bytes.Buffer
+		zw := gzip.NewWriter(&buf)
+		if err := json.NewEncoder(zw).Encode(h); err != nil {
+			return err
+		}
+		if err := zw.Close(); err != nil {
+			return err
+		}
+		st.gz = buf.Bytes()
+	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.hist = st
+	head := ""
+	if h != nil {
+		head = h.Head
+	}
+	msg, _ := json.Marshal(map[string]string{"head": head})
+	s.broadcast(event{"history", msg})
+	return nil
+}
+
+// handleHistory serves the git history: 202 while it is read, 204 without one.
+func (s *Server) handleHistory(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	st := s.hist
+	s.mu.RUnlock()
+	w.Header().Set("Cache-Control", "no-store")
+	switch {
+	case st.pending:
+		w.WriteHeader(http.StatusAccepted)
+	case st.h == nil:
+		w.WriteHeader(http.StatusNoContent)
+	default:
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Content-Encoding", "gzip")
+		w.Header().Set("Vary", "Accept-Encoding")
+		if !strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+			w.Header().Del("Content-Encoding")
+			json.NewEncoder(w).Encode(st.h)
+			return
+		}
+		w.Write(st.gz)
+	}
 }
 
 // Close ends event streams so an HTTP server shutdown does not wait for them.
@@ -186,6 +256,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/config", s.handleConfig)
 	mux.HandleFunc("GET /api/file", s.handleFile)
 	mux.HandleFunc("GET /api/events", s.handleEvents)
+	mux.HandleFunc("GET /api/history", s.handleHistory)
 	mux.HandleFunc("GET /api/export", s.handleExport)
 	mux.HandleFunc("POST /api/open", s.handleOpen)
 	mux.HandleFunc("POST /api/settings", s.handleSettings)
@@ -314,7 +385,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
-	ch := make(chan []byte, 8)
+	ch := make(chan event, 8)
 	s.mu.Lock()
 	s.subs[ch] = struct{}{}
 	version := s.snap.version
@@ -334,8 +405,8 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	defer tick.Stop()
 	for {
 		select {
-		case msg := <-ch:
-			fmt.Fprintf(w, "event: graph\ndata: %s\n\n", msg)
+		case ev := <-ch:
+			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.name, ev.data)
 		case <-tick.C:
 			fmt.Fprint(w, ": ping\n\n")
 		case <-r.Context().Done():
@@ -352,10 +423,10 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	if format == "html" {
 		sn := s.current()
 		s.mu.RLock()
-		ui := s.cfg.UI
+		ui, hist := s.cfg.UI, s.hist.h
 		s.mu.RUnlock()
 		var buf bytes.Buffer
-		if err := web.WriteStatic(&buf, sn.g, ui, s.root); err != nil {
+		if err := web.WriteStatic(&buf, sn.g, ui, s.root, hist); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
