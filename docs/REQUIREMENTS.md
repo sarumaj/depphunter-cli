@@ -332,8 +332,8 @@ keeps the overlay.
   planet whose radius the wheel or `[` `]` changes. `WASD`/arrows move and turn,
   `Shift` runs, `Space` jumps, `F` toggles flying (`C` sinks); collisions and
   ledges (up to half a storey) are computed on the flat layout. Darts (click or
-  `Q`; newspapers before M10) select the building they hit, `Enter` selects the
-  aimed box,
+  `Q`; newspapers before M10) select the building they hit, a second dart in a
+  tagged building (or `Enter`) shows its details,
   `E` expands or collapses it. The city look (sky, water, facades,
   roads, trees, lamps) is procedural shaders modulating the data colors, never
   replacing them; the isometric view is unchanged.
@@ -505,9 +505,11 @@ from the command (the command tests).
 - Flying follows the view: `W`/`S` move along the direction looked at (look
   down and press `W` to dive), `A`/`D` strafe level, `Space`/`C` add straight up
   and down. On foot, movement stays level.
-- `Enter` shows the details (dependencies, source) of what the reticle is on and
-  frees the pointer for reading; a click on the map, or closing the panel,
-  captures it again. The panel never opens by itself while walking: it covers
+- The hunt takes two shots: the first dart tags a building, a second dart into a
+  building already tagged shows its details (dependencies, source), which is
+  where a shooter's hands already are; `Enter` does the same for the aimed box.
+  Either frees the pointer for reading; a click on the map, or closing the
+  panel, captures it again. The panel never opens by itself while walking: it covers
   the reticle and cannot be reached with the pointer locked.
 - Walk mode reads its buttons from mouse events, not pointer events: pressing a
   second button while one is held fires `pointermove`, not `pointerdown`, so
