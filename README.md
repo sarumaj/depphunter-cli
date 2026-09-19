@@ -2,6 +2,17 @@
 
 [![CI](https://github.com/sarumaj/depphunter-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/sarumaj/depphunter-cli/actions/workflows/ci.yml)
 
+> **Note:** This codebase was developed with the assistance of AI tools
+> (Claude, by Anthropic). All code is reviewed and tested before being merged.
+
+|                   Initial view                    |                   Dependency trace                    |
+|:-------------------------------------------------:|:-----------------------------------------------------:|
+| ![Initial view](docs/screenshots/screenshot1.png) | ![Dependency trace](docs/screenshots/screenshot2.png) |
+|                   **Walk mode**                   |                    **Night mode**                     |
+|  ![Walk mode](docs/screenshots/screenshot3.png)   |    ![Night mode](docs/screenshots/screenshot4.png)    |
+|                  **Flight mode**                  |                                                       |
+| ![Flight mode](docs/screenshots/screenshot5.png)  |                                                       |
+
 Browse any code base as an interactive isometric archipelago in your browser.
 
 - **Mainland** = your repository. Directories are terraces, files are buildings
@@ -122,12 +133,12 @@ selection and filters and briefly highlights the files that changed.
 
 `--export` (or the **Export** menu in the browser) writes:
 
-| Format    | Contents                                                                                                                                                                       |
-|-----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `json`    | the full graph document the UI uses (nodes, symbols, edges)                                                                                                                    |
-| `graphml` | the full graph with all attributes, for Gephi, yEd or NetworkX                                                                                                                 |
-| `dot`     | the dependency graph for Graphviz: files, package directories and external packages, clustered per directory; standard-library packages and files without imports are left out |
-| `html`    | the interactive map as one file that opens without depphunter or a network: UI, graph, source text (files up to 256 KB, 24 MB in total) and the view you are looking at — colors, height, theme, depth and filters (the CLI's `--export html` uses the configured view)     |
+| Format    | Contents                                                                                                                                                                                                                                                                |
+|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `json`    | the full graph document the UI uses (nodes, symbols, edges)                                                                                                                                                                                                             |
+| `graphml` | the full graph with all attributes, for Gephi, yEd or NetworkX                                                                                                                                                                                                          |
+| `dot`     | the dependency graph for Graphviz: files, package directories and external packages, clustered per directory; standard-library packages and files without imports are left out                                                                                          |
+| `html`    | the interactive map as one file that opens without depphunter or a network: UI, graph, source text (files up to 256 KB, 24 MB in total) and the view you are looking at — colors, height, theme, depth and filters (the CLI's `--export html` uses the configured view) |
 
 **Export → PNG image** (or `P`) saves the map as shown, labels included, at your
 screen's resolution; it also works in an exported HTML page.
@@ -210,18 +221,18 @@ mode you can go 3 units out over the water and 12 above the tallest building.
 
 In walk mode:
 
-|                        |                                                     |
-|------------------------|-----------------------------------------------------|
-| Mouse                  | look; captured at the reticle (`Esc` frees it, a click on the map captures it again), or drag |
-| `W` `A` `S` `D`/arrows | move / turn; `Shift` runs                           |
-| `Space`                | jump (flying: straight up)                          |
+|                        |                                                                                                             |
+|------------------------|-------------------------------------------------------------------------------------------------------------|
+| Mouse                  | look; captured at the reticle (`Esc` frees it, a click on the map captures it again), or drag               |
+| `W` `A` `S` `D`/arrows | move / turn; `Shift` runs                                                                                   |
+| `Space`                | jump (flying: straight up)                                                                                  |
 | `F`                    | fly on / off; flying, `W`/`S` move where you look (look down and press `W` to dive), `C` goes straight down |
-| Click                  | fire a tracking dart: the module it hits is tagged  |
-| Hold right button      | look through the scope                              |
-| `Enter`                | details of what the reticle is on (frees the mouse; click the map to walk on) |
-| Wheel                  | zoom in / out                                       |
-| `+` `-` (or `[` `]`)   | planet size (curvature)                             |
-| `V` / `Esc`            | back to the map                                     |
+| Click                  | fire a tracking dart: the module it hits is tagged; a second dart in a tagged building opens its details    |
+| Hold right button      | look through the scope                                                                                      |
+| `Enter`                | details of what the reticle is on, like a second dart (frees the mouse; click the map to walk on)           |
+| Wheel                  | zoom in / out                                                                                               |
+| `+` `-` (or `[` `]`)   | planet size (curvature)                                                                                     |
+| `V` / `Esc`            | back to the map                                                                                             |
 
 On foot, the shore stops you, but every island can be reached over a bridge;
 flying, you can go 3 units out over the water. The ground you stand on is never
