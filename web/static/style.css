@@ -226,6 +226,9 @@ main { position: relative; flex: 1; min-height: 0; }
 #legend .ramp { height: 10px; border-radius: 3px; }
 #legend .ramp-labels { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
 #legend .edge-key { display: flex; gap: 14px; }
+#legend .link-kind { display: inline-flex; margin-bottom: 6px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
+#legend .link-kind button { border: none; border-radius: 0; padding: 2px 10px; font-size: 12px; }
+#legend .link-kind button[aria-pressed=true] { background: var(--accent); color: #fff; }
 #legend .edge-key span { display: flex; align-items: center; gap: 6px; }
 #legend .line { width: 18px; height: 3px; border-radius: 2px; }
 #legend p { margin: 6px 0 0; color: var(--muted); font-size: 11px; }

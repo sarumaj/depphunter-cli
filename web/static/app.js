@@ -1,10 +1,10 @@
-import { buildModel, boundaryEdges, isWithin } from './model.js';
+import { buildModel, boundaryEdges, isWithin, setReferences } from './model.js';
 import { layout } from './layout.js';
 import { MapScene } from './scene.js';
 import { readPalette, languageColors, assignSlots, sequential } from './colors.js';
 import { Panel } from './panel.js';
 import { computeVisibility, searchIndex, search } from './filter.js';
-import { STATIC, fetchGraph, fetchConfig, fetchHistory, saveSettings } from './data.js';
+import { STATIC, fetchGraph, fetchConfig, fetchLazy, saveSettings } from './data.js';
 import { MODES, isHistoryMode, computeMetrics, historyT, timeRange, ago, formatDate } from './history.js';
 
 const $ = id => document.getElementById(id);
@@ -26,6 +26,9 @@ const state = {
   history: null,          // git history (internal/history.History), when loaded
   historyStatus: 'loading', // loading | ready | none
   since: 0,               // history modes count changes at or after this unix time
+  references: null,       // symbol references from language servers ({edges, servers, partial})
+  referencesStatus: 'off', // off | loading | ready | none
+  linkKind: 'import',     // edges drawn and listed for the selection: import | reference
   theme: 'auto',
 };
 
@@ -59,6 +62,7 @@ async function main() {
     colorOf: lang => langs.of(lang),
     onSelect: n => reveal(n),
     onOpen: openFile,
+    linkKind: () => state.linkKind,
     historyOf: node => {
       const hm = metrics();
       return hm && { metric: hm.byId.get(node.id), since: state.since, authors: state.history.authors };
@@ -72,23 +76,40 @@ async function main() {
   scene.fit(L.bounds);
   updateStatus();
   if (cfg.watch) connectEvents();
-  loadHistory();
+  loadLazy('history', setHistory);
+  if (cfg.lsp || STATIC?.references) {
+    state.referencesStatus = 'loading';
+    loadLazy('references', applyReferences);
+  }
 }
 
-// ---------------------------------------------------------------- git history
-
-async function loadHistory() {
+// loadLazy fetches a dataset the server computes after startup, polling while it is
+// still being computed, and hands the result (or null) to apply.
+async function loadLazy(name, apply) {
   for (;;) {
-    let h = null;
+    let v = null;
     try {
-      h = await fetchHistory();
+      v = await fetchLazy(name);
     } catch (err) {
       console.error(err);
     }
-    if (h !== 'pending') return setHistory(h);
-    await new Promise(r => setTimeout(r, 1000)); // the server is still reading git
+    if (v !== 'pending') return apply(v);
+    await new Promise(r => setTimeout(r, 1000));
   }
 }
+
+function applyReferences(r) {
+  state.references = r;
+  state.referencesStatus = r ? 'ready' : 'none';
+  setReferences(model, r?.edges);
+  if (!r) state.linkKind = 'import';
+  refreshFocus();
+  drawLegend();
+  updateStatus();
+  if (state.selected) panel.show(state.selected);
+}
+
+// ---------------------------------------------------------------- git history
 
 function setHistory(h) {
   state.history = h;
@@ -152,6 +173,7 @@ function setModel(graph, version) {
   graphVersion = version;
   searchItems = searchIndex(model);
   slots = assignSlots(model, slots);
+  setReferences(model, state.references?.edges);
   if (panel) panel.model = model;
   maxDepth = 0;
   maxLoc = 1;
@@ -187,7 +209,8 @@ function connectEvents() {
     if (JSON.parse(e.data).version !== graphVersion) queueReload([]);
   });
   es.addEventListener('graph', e => queueReload(JSON.parse(e.data).changed || []));
-  es.addEventListener('history', () => loadHistory());
+  es.addEventListener('history', () => loadLazy('history', setHistory));
+  es.addEventListener('references', () => loadLazy('references', applyReferences));
 }
 
 function queueReload(changed) {
@@ -241,9 +264,12 @@ async function openFile(path, line = 1) {
 function updateStatus(note = '') {
   const files = model.graph.nodes.filter(n => n.kind === 'file').length;
   const hidden = state.vis.hiddenFiles ? ` · ${fmt.format(state.vis.hiddenFiles)} hidden by filters` : '';
+  const refs = state.referencesStatus === 'ready'
+    ? ` · ${fmt.format(state.references.edges.length)} references${state.references.partial ? ' (partial)' : ''}`
+    : state.referencesStatus === 'loading' ? ' · finding references…' : '';
   const hist = state.history ? ` · ${fmt.format(state.history.commits)} commits${state.history.truncated ? '+' : ''}` :
     state.historyStatus === 'loading' && config.history !== false ? ' · reading git history…' : '';
-  $('status-text').textContent = `${fmt.format(files)} files · ${fmt.format(model.root.totalLoc)} lines · ${fmt.format(model.graph.edges.length)} imports${hidden}${hist}` +
+  $('status-text').textContent = `${fmt.format(files)} files · ${fmt.format(model.root.totalLoc)} lines · ${fmt.format(model.graph.edges.length)} imports${hidden}${hist}${refs}` +
     (note ? ` · ${note}` : '');
 }
 
@@ -416,7 +442,7 @@ function refreshFocus() {
   const selBox = sel && rep(sel);
   focus = null;
   if (sel && selBox) {
-    const { out, in: inc } = boundaryEdges(model, sel);
+    const { out, in: inc } = boundaryEdges(model, sel, state.linkKind);
     const agg = new Map();
     const add = (from, to, color) => {
       if (!from || !to || from === to) return;
@@ -543,13 +569,21 @@ function drawLegend() {
     parts.push(`<h3>File size</h3><div class="ramp" style="background:linear-gradient(90deg,${pal.seq.join(',')})"></div>
       <div class="ramp-labels"><span>0</span><span>${fmt.format(maxLoc)} lines</span></div>`);
   }
-  parts.push(`<h3>Selection</h3><div class="edge-key">
+  parts.push('<h3>Selection</h3>' + linkKindControl() + `<div class="edge-key">
       <span><i class="line" style="background:${pal.edgeOut}"></i>depends on</span>
       <span><i class="line" style="background:${pal.edgeIn}"></i>used by</span></div>`);
   const scaleName = { sqrt: '√ lines of code', linear: 'lines of code', log: 'log lines of code' }[state.heightScale];
   parts.push(`<p>Height: ${scaleName}. Grey blocks are collapsed directories; islands are external dependencies.</p>`);
   el.innerHTML = parts.join('');
   bindSinceSlider();
+  for (const b of el.querySelectorAll('.link-kind button')) {
+    b.addEventListener('click', () => {
+      state.linkKind = b.dataset.kind;
+      refreshFocus();
+      drawLegend();
+      if (state.selected) panel.show(state.selected);
+    });
+  }
 
   for (const li of el.querySelectorAll('li[data-lang]')) {
     li.addEventListener('mouseenter', () => { state.legendLang = li.dataset.other === 'true' ? null : li.dataset.lang; recolor(); });
@@ -566,6 +600,15 @@ function drawLegend() {
 
 function isOff(entry) {
   return entry.lang === null ? otherLangs().every(l => state.filters.hiddenLangs.has(l)) : state.filters.hiddenLangs.has(entry.lang);
+}
+
+// The Imports / References switch, once language servers have answered.
+function linkKindControl() {
+  if (state.referencesStatus === 'loading') return '<p class="hint">finding symbol references…</p>';
+  if (state.referencesStatus !== 'ready') return '';
+  const button = (kind, label) =>
+    `<button data-kind="${kind}" aria-pressed="${state.linkKind === kind}">${label}</button>`;
+  return `<div class="link-kind" role="group" aria-label="Edges">${button('import', 'Imports')}${button('reference', 'References')}</div>`;
 }
 
 function historyLegend(mode) {

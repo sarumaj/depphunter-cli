@@ -32,8 +32,8 @@ function h(tag, attrs = {}, ...children) {
 }
 
 export class Panel {
-  constructor(root, body, { model, colorOf, onSelect, onOpen, openLabel, historyOf }) {
-    Object.assign(this, { root, body, model, colorOf, onSelect, onOpen, openLabel, historyOf });
+  constructor(root, body, { model, colorOf, onSelect, onOpen, openLabel, historyOf, linkKind }) {
+    Object.assign(this, { root, body, model, colorOf, onSelect, onOpen, openLabel, historyOf, linkKind });
     this.seq = 0;
   }
 
@@ -115,8 +115,9 @@ export class Panel {
   }
 
   dependencies(n) {
-    if (n.kind === 'symbol' || n.kind === 'ecosystem') return [];
-    const { out, in: inc } = boundaryEdges(this.model, n);
+    const refs = this.linkKind() === 'reference';
+    if (n.kind === 'ecosystem' || (n.kind === 'symbol' && !refs)) return [];
+    const { out, in: inc } = boundaryEdges(this.model, n, this.linkKind());
     const group = (edges, key) => {
       const m = new Map();
       for (const e of edges) {
@@ -131,12 +132,18 @@ export class Panel {
       h('h4', {}, h('span', { class: 'swatch', style: `background:${hint}` }), title, h('span', { class: 'n' }, fmt.format(groups.length))),
       groups.length
         ? h('ul', { class: 'p-list' }, groups.map(g => h('li', { onclick: () => this.onSelect(g.node), title: g.node.path || g.node.name },
-            h('span', { class: 'swatch', style: `background:${g.node.kind === 'file' ? this.colorOf(g.node.lang) : 'var(--pkg)'}` }),
-            h('span', { class: 'name' }, g.node.path || g.node.name),
-            h('span', { class: 'meta' }, g.node.kind === 'package' ? g.node.parentNode.name : g.node.kind),
+            h('span', { class: 'swatch', style: `background:${swatchOf(g.node)}` }),
+            h('span', { class: 'name' }, g.node.kind === 'symbol' ? g.node.name : g.node.path || g.node.name),
+            h('span', { class: 'meta' }, g.node.kind === 'package' ? g.node.parentNode.name
+              : g.node.kind === 'symbol' ? g.node.parentNode.path : g.node.kind),
             g.count > 1 ? h('span', { class: 'meta' }, `×${g.count}`) : null)))
         : h('div', { class: 'empty' }, 'None'));
+    const swatchOf = node => {
+      const file = node.kind === 'symbol' ? node.parentNode : node;
+      return file.kind === 'file' ? this.colorOf(file.lang) : 'var(--pkg)';
+    };
     const usedBy = list('Used by', 'var(--edge-in)', group(inc, 'from'));
+    if (refs) return [list('Uses', 'var(--edge-out)', group(out, 'to')), usedBy];
     // Some ecosystems (Go) import directories, not files: point at the package instead.
     const pkg = n.kind === 'file' && n.parentNode;
     const pkgUsers = pkg ? (this.model.edgesTo.get(pkg.id) || []).length : 0;
