@@ -516,8 +516,16 @@ from the command (the command tests).
   firing while scoped never arrived.
 - Browsing stays responsive on large repositories: search is debounced (120 ms),
   labels are laid out a few times a second while walking rather than every
-  frame, the walk-mode ground buffer is only recolored while walking, and darts
-  in flight are dropped when a relayout invalidates their targets.
+  frame (both the map's renderer and the walker's own frames go through that
+  throttle), the walk-mode ground buffer is only recolored while walking, and
+  darts in flight are dropped when a relayout invalidates their targets.
+- Recoloring writes only the boxes whose color or fade changed, and repaints
+  just those boxes' vertex ranges of the walk-mode ground, whose buffer holds
+  hundreds of thousands of values: pointing at a building must not cost a frame.
+  Colors are CSS strings, parsed once per color per pass rather than once per
+  box and vertex.
+- The walker's ground height comes from a spatial grid of boxes, ramps and
+  bridge decks, not from scanning every ramp of the map five times per step.
 - A live update keeps the side panel where the reader left it instead of
   scrolling back to the top.
 - Dependency lists, breadcrumbs, the legend and the filter shortcuts are
