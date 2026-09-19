@@ -6,6 +6,7 @@ import powershell from './vendor/highlight-powershell.min.js';
 hljs.registerLanguage('powershell', powershell);
 import { ancestors, boundaryEdges } from './model.js';
 import { fetchSource } from './data.js';
+import { ago, formatDate } from './history.js';
 
 const HLJS = {
   Go: 'go', JavaScript: 'javascript', TypeScript: 'typescript', Python: 'python', Rust: 'rust',
@@ -31,8 +32,8 @@ function h(tag, attrs = {}, ...children) {
 }
 
 export class Panel {
-  constructor(root, body, { model, colorOf, onSelect, onOpen, openLabel }) {
-    Object.assign(this, { root, body, model, colorOf, onSelect, onOpen, openLabel });
+  constructor(root, body, { model, colorOf, onSelect, onOpen, openLabel, historyOf }) {
+    Object.assign(this, { root, body, model, colorOf, onSelect, onOpen, openLabel, historyOf });
     this.seq = 0;
   }
 
@@ -56,6 +57,7 @@ export class Panel {
       this.stats(node),
       node.kind === 'dir' ? this.languageMix(node) : null,
       ...this.dependencies(node),
+      this.history(node),
     ].filter(Boolean));
     if (node.kind === 'file' || node.kind === 'symbol') this.source(node, seq);
   }
@@ -143,6 +145,32 @@ export class Panel {
         h('a', { class: 'link', onclick: () => this.onSelect(pkg) }, `select ${pkg.path}/`)));
     }
     return [list('Depends on', 'var(--edge-out)', group(out, 'to')), usedBy];
+  }
+
+  // Git history of a file or directory in the selected range, with top authors.
+  history(n) {
+    if (n.kind !== 'file' && n.kind !== 'dir') return null;
+    const hist = this.historyOf(n);
+    if (!hist) return null;
+    const title = h('h4', {}, 'Git history ', h('span', { class: 'n' }, `since ${formatDate(hist.since)}`));
+    const m = hist.metric;
+    if (!m) return h('div', { class: 'p-section' }, title, h('div', { class: 'empty' }, 'Not committed'));
+    const stat = (v, k) => h('div', { class: 'stat' }, h('div', { class: 'v' }, v), h('div', { class: 'k' }, k));
+    const top = [...m.authors.entries()].sort((a, b) => b[1] - a[1]);
+    const most = top.length ? top[0][1] : 1;
+    const others = top.slice(5).reduce((a, [, c]) => a + c, 0);
+    return h('div', { class: 'p-section' }, title,
+      h('div', { class: 'stats' },
+        stat(fmt.format(m.commits), 'commits'), stat(fmt.format(m.churn), 'lines changed'),
+        stat(ago(m.last), 'last change'), stat(fmt.format(m.authors.size), 'authors')),
+      top.length ? h('ul', { class: 'p-list authors' }, top.slice(0, 5).map(([a, c]) =>
+        h('li', { title: `${hist.authors[a]}: ${c} commits` },
+          h('span', { class: 'name' }, hist.authors[a]),
+          h('span', { class: 'share' }, h('i', { style: `width:${Math.round(c / most * 100)}%` })),
+          h('span', { class: 'meta' }, fmt.format(c)))),
+        others ? h('li', {}, h('span', { class: 'name meta' }, `${top.length - 5} more`), h('span', { class: 'meta' }, fmt.format(others))) : null)
+        : h('div', { class: 'empty' }, 'No commits in range'),
+    );
   }
 
   async source(node, seq) {

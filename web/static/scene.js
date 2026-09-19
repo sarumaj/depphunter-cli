@@ -207,10 +207,6 @@ export class MapScene {
     const { clientWidth: w, clientHeight: h } = this.container;
     return { x: (v.x + 1) / 2 * w, y: (1 - v.y) / 2 * h };
   }
-
-  pixelsPerUnit() {
-    return this.camera.zoom;
-  }
 }
 
 // Unit box with its base at y=0 and a brightness per face: top 1, sides as if lit from

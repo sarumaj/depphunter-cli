@@ -14,6 +14,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/config"
 	"github.com/sarumaj/depphunter-cli/internal/export"
 	"github.com/sarumaj/depphunter-cli/internal/graph"
+	"github.com/sarumaj/depphunter-cli/internal/history"
 )
 
 // Limits for source text embedded in a static page.
@@ -29,7 +30,8 @@ var relativeImport = regexp.MustCompile(`((?:from|import)\s*\(?\s*)(['"])\./(?:v
 // server: every ES module is inlined as a data: URL behind an import map (relative
 // imports are rewritten to the map's names), the stylesheet is inlined, and the graph,
 // UI settings and source texts (within size limits) are embedded as JSON.
-func WriteStatic(w io.Writer, g *graph.Graph, ui config.UI, root string) error {
+// hist may be nil when the project has no git history.
+func WriteStatic(w io.Writer, g *graph.Graph, ui config.UI, root string, hist *history.History) error {
 	assets := Assets()
 	index, err := fs.ReadFile(assets, "index.html")
 	if err != nil {
@@ -68,6 +70,7 @@ func WriteStatic(w io.Writer, g *graph.Graph, ui config.UI, root string) error {
 			Static bool `json:"static"`
 		}{ui, true},
 		"sources": export.Sources(root, g, staticPerFile, staticTotal),
+		"history": hist,
 	})
 	if err != nil {
 		return err

@@ -25,7 +25,7 @@ func TestWriteStatic(t *testing.T) {
 		{ID: "f:bin.dat", Kind: graph.KindFile, Path: "bin.dat"},
 	}}
 	var buf bytes.Buffer
-	if err := WriteStatic(&buf, g, config.Default().UI, root); err != nil {
+	if err := WriteStatic(&buf, g, config.Default().UI, root, nil); err != nil {
 		t.Fatal(err)
 	}
 	page := buf.String()

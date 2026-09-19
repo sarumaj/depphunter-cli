@@ -15,6 +15,7 @@ export function readPalette() {
     terraceA: v('--terrace-a'),
     terraceB: v('--terrace-b'),
     district: v('--district'),
+    noData: v('--no-data'),
     pkg: v('--pkg'),
     pkgUnresolved: v('--pkg-unresolved'),
     edgeOut: v('--edge-out'),

@@ -4,7 +4,8 @@ import { MapScene } from './scene.js';
 import { readPalette, languageColors, assignSlots, sequential } from './colors.js';
 import { Panel } from './panel.js';
 import { computeVisibility, searchIndex, search } from './filter.js';
-import { STATIC, fetchGraph, fetchConfig, saveSettings } from './data.js';
+import { STATIC, fetchGraph, fetchConfig, fetchHistory, saveSettings } from './data.js';
+import { MODES, isHistoryMode, computeMetrics, historyT, timeRange, ago, formatDate } from './history.js';
 
 const $ = id => document.getElementById(id);
 const fmt = new Intl.NumberFormat();
@@ -22,6 +23,9 @@ const state = {
   heightScale: 'sqrt',
   filters: { hiddenLangs: new Set(), hiddenEcos: new Set(), path: '' },
   vis: null, // computeVisibility() result for the current filters
+  history: null,          // git history (internal/history.History), when loaded
+  historyStatus: 'loading', // loading | ready | none
+  since: 0,               // history modes count changes at or after this unix time
   theme: 'auto',
 };
 
@@ -30,6 +34,7 @@ let config = {};        // /api/config
 let slots = [];         // languages holding categorical colour slots (colors.assignSlots)
 let graphVersion = 0;   // server graph version currently shown
 let flashTimer = 0;
+let metricsCache = null; // computeMetrics() for the current model, history and since
 let focus = null;  // {lit: Set<box>, arcs}
 let labels = [];   // label candidates for the current layout/selection
 
@@ -54,6 +59,10 @@ async function main() {
     colorOf: lang => langs.of(lang),
     onSelect: n => reveal(n),
     onOpen: openFile,
+    historyOf: node => {
+      const hm = metrics();
+      return hm && { metric: hm.byId.get(node.id), since: state.since, authors: state.history.authors };
+    },
     openLabel: cfg.static ? null : cfg.editor ? 'Open in editor' : 'Open in VS Code',
   });
 
@@ -63,6 +72,53 @@ async function main() {
   scene.fit(L.bounds);
   updateStatus();
   if (cfg.watch) connectEvents();
+  loadHistory();
+}
+
+// ---------------------------------------------------------------- git history
+
+async function loadHistory() {
+  for (;;) {
+    let h = null;
+    try {
+      h = await fetchHistory();
+    } catch (err) {
+      console.error(err);
+    }
+    if (h !== 'pending') return setHistory(h);
+    await new Promise(r => setTimeout(r, 1000)); // the server is still reading git
+  }
+}
+
+function setHistory(h) {
+  state.history = h;
+  state.historyStatus = h ? 'ready' : 'none';
+  const range = h && timeRange(h);
+  if (range && !(state.since >= range.from && state.since <= range.to)) state.since = range.from;
+  metricsCache = null;
+  const group = $('history-modes');
+  group.hidden = !h;
+  group.label = h ? 'Git history' : 'Git history (loading…)';
+  for (const o of group.querySelectorAll('option')) o.disabled = !h;
+  if (!h && isHistoryMode(state.colorBy)) $('color-by').value = state.colorBy = 'language';
+  recolor();
+  drawLegend();
+  updateStatus();
+  if (state.selected) panel.show(state.selected);
+}
+
+/** Metrics for the current model and range, or null without history. */
+function metrics() {
+  if (!state.history) return null;
+  if (!metricsCache || metricsCache.model !== model || metricsCache.since !== state.since) {
+    metricsCache = { ...computeMetrics(model, state.history, state.since), model, since: state.since };
+  }
+  return metricsCache;
+}
+
+/** The colour mode in effect: history modes fall back to language until loaded. */
+function colorMode() {
+  return isHistoryMode(state.colorBy) && !state.history ? 'language' : state.colorBy;
 }
 
 // saveView stores the current view — colours, heights, theme, depth and filters — in
@@ -131,6 +187,7 @@ function connectEvents() {
     if (JSON.parse(e.data).version !== graphVersion) queueReload([]);
   });
   es.addEventListener('graph', e => queueReload(JSON.parse(e.data).changed || []));
+  es.addEventListener('history', () => loadHistory());
 }
 
 function queueReload(changed) {
@@ -184,7 +241,9 @@ async function openFile(path, line = 1) {
 function updateStatus(note = '') {
   const files = model.graph.nodes.filter(n => n.kind === 'file').length;
   const hidden = state.vis.hiddenFiles ? ` · ${fmt.format(state.vis.hiddenFiles)} hidden by filters` : '';
-  $('status-text').textContent = `${fmt.format(files)} files · ${fmt.format(model.root.totalLoc)} lines · ${fmt.format(model.graph.edges.length)} imports${hidden}` +
+  const hist = state.history ? ` · ${fmt.format(state.history.commits)} commits${state.history.truncated ? '+' : ''}` :
+    state.historyStatus === 'loading' && config.history !== false ? ' · reading git history…' : '';
+  $('status-text').textContent = `${fmt.format(files)} files · ${fmt.format(model.root.totalLoc)} lines · ${fmt.format(model.graph.edges.length)} imports${hidden}${hist}` +
     (note ? ` · ${note}` : '');
 }
 
@@ -321,8 +380,14 @@ function rep(n) {
 }
 
 function baseColors() {
+  const mode = colorMode();
+  const hm = isHistoryMode(mode) && metrics();
   return L.boxes.map(b => {
     const n = b.node;
+    if (hm && (b.kind === 'district' || b.kind === 'building' || b.kind === 'symbol')) {
+      const t = historyT(mode, b.kind === 'symbol' ? n.parentNode : n, hm);
+      return t === null ? pal.noData : sequential(pal, t);
+    }
     switch (b.kind) {
       case 'land': return pal.land;
       case 'terrace': return n.kind === 'file' ? pal.terraceB : (n.depth % 2 ? pal.terraceB : pal.terraceA);
@@ -467,7 +532,10 @@ function drawLabels() {
 function drawLegend() {
   const el = $('legend');
   const parts = [];
-  if (state.colorBy === 'language') {
+  const mode = colorMode();
+  if (isHistoryMode(mode)) {
+    parts.push(historyLegend(mode));
+  } else if (mode === 'language') {
     parts.push('<h3>Language</h3><ul>' + langs.legend().map(e =>
       `<li data-lang="${e.lang === null ? '' : escapeAttr(e.lang)}" data-other="${e.lang === null}" class="${isOff(e) ? 'off' : ''}"
          title="Click to ${isOff(e) ? 'show' : 'hide'}"><span class="swatch" style="background:${e.color}"></span>${escapeHTML(e.label)}</li>`).join('') + '</ul>');
@@ -481,6 +549,7 @@ function drawLegend() {
   const scaleName = { sqrt: '√ lines of code', linear: 'lines of code', log: 'log lines of code' }[state.heightScale];
   parts.push(`<p>Height: ${scaleName}. Grey blocks are collapsed directories; islands are external dependencies.</p>`);
   el.innerHTML = parts.join('');
+  bindSinceSlider();
 
   for (const li of el.querySelectorAll('li[data-lang]')) {
     li.addEventListener('mouseenter', () => { state.legendLang = li.dataset.other === 'true' ? null : li.dataset.lang; recolor(); });
@@ -499,6 +568,44 @@ function isOff(entry) {
   return entry.lang === null ? otherLangs().every(l => state.filters.hiddenLangs.has(l)) : state.filters.hiddenLangs.has(entry.lang);
 }
 
+function historyLegend(mode) {
+  const hm = metrics();
+  const { from, to } = hm.range;
+  const ramp = `<div class="ramp" style="background:linear-gradient(90deg,${pal.seq.join(',')})"></div>`;
+  const noData = text => `<div class="no-data"><span class="swatch" style="background:${pal.noData}"></span>${text}</div>`;
+  if (mode === 'age') {
+    return `<h3>Last change</h3>${ramp}
+      <div class="ramp-labels"><span>${escapeHTML(ago(from))}</span><span>${escapeHTML(ago(to))}</span></div>
+      ${noData('not committed')}`;
+  }
+  const unit = { commits: 'commits', churn: 'lines', authors: 'authors' }[mode];
+  const total = hm.byId.get(model.root.id)?.commits || 0;
+  return `<h3>${MODES[mode].title} per file</h3>${ramp}
+    <div class="ramp-labels"><span>0</span><span>${fmt.format(hm.max[mode])} ${unit}</span></div>
+    ${noData('no commits in range')}
+    <label class="since">Since <input type="range" id="since" min="${from}" max="${to}" step="86400" value="${state.since}"
+      aria-describedby="since-label"></label>
+    <div class="hint" id="since-label">${escapeHTML(formatDate(state.since))} · ${fmt.format(total)} commits to current files${state.history.truncated ? ' (history truncated)' : ''}</div>`;
+}
+
+// The since slider recolours live while dragging and redraws the legend on release.
+function bindSinceSlider() {
+  const slider = $('since');
+  if (!slider) return;
+  let frame = 0;
+  slider.addEventListener('input', () => {
+    state.since = +slider.value;
+    $('since-label').textContent = formatDate(state.since);
+    cancelAnimationFrame(frame);
+    frame = requestAnimationFrame(recolor);
+  });
+  slider.addEventListener('change', () => {
+    drawLegend();
+    if (state.selected) panel.show(state.selected);
+    $('since').focus();
+  });
+}
+
 function showTooltip(i, x, y) {
   const tip = $('tooltip');
   if (i < 0) { tip.hidden = true; return; }
@@ -510,6 +617,14 @@ function showTooltip(i, x, y) {
   else if (n.kind === 'symbol') html += row(n.symbolKind, `line ${n.line}`);
   else if (n.kind === 'package') html += row('Ecosystem', n.parentNode.name) + (n.version ? row('Version', n.version) : '') + row('Imported by', `${n.importers} files`) + (n.unresolved ? row('⚠', 'not declared in a manifest') : '');
   else if (n.kind === 'ecosystem') html += row('Packages', n.children.length);
+  const hm = (n.kind === 'file' || n.kind === 'dir') && metrics();
+  if (hm) {
+    const m = hm.byId.get(n.id);
+    html += m
+      ? row(`Commits since ${formatDate(state.since)}`, fmt.format(m.commits)) + row('Lines changed', fmt.format(m.churn)) +
+        row('Last change', ago(m.last)) + row('Authors', m.authors.size)
+      : row('Git history', 'not committed');
+  }
   tip.innerHTML = html;
   tip.hidden = false;
   const r = tip.parentElement.getBoundingClientRect();
