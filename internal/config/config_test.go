@@ -10,6 +10,18 @@ import (
 	"github.com/spf13/pflag"
 )
 
+// resolve is what Load makes of a path: it follows symlinks and expands short names,
+// so a temporary directory comes back as /private/var/... on macOS and with the long
+// user name on Windows.
+func resolve(t *testing.T, p string) string {
+	t.Helper()
+	r, err := filepath.EvalSymlinks(p)
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r
+}
+
 // load parses args like the command does and loads the configuration; env is set
 // for the duration of the test.
 func load(t *testing.T, args []string, env map[string]string, userDir string) (Config, error) {
@@ -48,7 +60,7 @@ func TestPrecedence(t *testing.T) {
 		{"theme (project beats user)", cfg.UI.Theme, "light"},
 		{"color_by (user beats default)", cfg.UI.ColorBy, "size"},
 		{"height_scale (flag beats user)", cfg.UI.HeightScale, "linear"},
-		{"root", cfg.Root, root},
+		{"root", cfg.Root, resolve(t, root)},
 	}
 	for _, c := range checks {
 		if c.got != c.want {
@@ -174,7 +186,7 @@ func TestSymlinkedRootAndPaths(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	want, _ := filepath.EvalSymlinks(dir)
+	want := resolve(t, dir)
 	if cfg.Root != want || cfg.ConfigFile != filepath.Join(want, ProjectFile) {
 		t.Errorf("root %q config %q, want %q", cfg.Root, cfg.ConfigFile, want)
 	}

@@ -36,7 +36,7 @@ func TestSaveUIPreservesTheRest(t *testing.T) {
 	if cfg.UI.Theme != "light" || cfg.UI.ExpandDepth != 3 || len(cfg.UI.HideLanguages) != 1 || len(cfg.Exclude) != 1 {
 		t.Errorf("round trip: %+v", cfg)
 	}
-	if cfg.ConfigFile != file {
+	if cfg.ConfigFile != filepath.Join(resolve(t, root), ProjectFile) {
 		t.Errorf("ConfigFile = %q", cfg.ConfigFile)
 	}
 }

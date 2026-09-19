@@ -3,5 +3,9 @@
   "extends": [
     "config:recommended",
     "group:allNonMajor"
+  ],
+  "ignorePaths": [
+    "**/testdata/**",
+    "web/static/vendor/**"
   ]
 }
