@@ -3,7 +3,6 @@
 package export
 
 import (
-	"bufio"
 	"bytes"
 	"encoding/json"
 	"encoding/xml"
@@ -14,6 +13,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/emicklei/dot"
 
 	"github.com/sarumaj/depphunter-cli/internal/graph"
 )
@@ -196,52 +197,54 @@ func writeDOT(w io.Writer, g *graph.Graph) error {
 	}
 	sort.Strings(keys)
 
-	bw := bufio.NewWriter(w)
-	fmt.Fprintf(bw, "digraph %s {\n", quote(g.Root))
-	bw.WriteString("  graph [rankdir=LR, newrank=true, fontname=\"Helvetica\", fontsize=11, color=\"#c3c2b7\"];\n")
-	bw.WriteString("  node [shape=box, style=\"rounded,filled\", fillcolor=\"#f0efec\", color=\"#c3c2b7\", fontname=\"Helvetica\", fontsize=10];\n")
-	bw.WriteString("  edge [color=\"#898781\", arrowsize=0.6];\n")
+	d := dot.NewGraph(dot.Directed)
+	d.Attr("label", g.Root)
+	d.Attr("rankdir", "LR")
+	d.Attr("newrank", "true")
+	d.Attr("fontname", "Helvetica")
+	d.Attr("fontsize", "11")
+	d.Attr("color", "#c3c2b7")
+	d.NodeInitializer(func(n dot.Node) {
+		n.Attr("shape", "box").Attr("style", "rounded,filled").Attr("fillcolor", "#f0efec").
+			Attr("color", "#c3c2b7").Attr("fontname", "Helvetica").Attr("fontsize", "10")
+	})
+	d.EdgeInitializer(func(e dot.Edge) { e.Attr("color", "#898781").Attr("arrowsize", "0.6") })
+
+	nodes := map[string]dot.Node{}
 	for _, key := range keys {
-		c := byID[key]
-		label, extra := key, ""
-		if c != nil && c.Kind == graph.KindDir {
-			label = c.Path + "/"
+		sub := d.Subgraph(key, dot.ClusterOption{})
+		if c := byID[key]; c != nil && c.Kind == graph.KindDir {
+			sub.Attr("label", c.Path+"/")
 		} else if c != nil {
-			label, extra = c.Name, " style=filled; fillcolor=\"#e3e9ec\";"
+			sub.Attr("label", c.Name)
+			sub.Attr("style", "filled")
+			sub.Attr("fillcolor", "#e3e9ec")
 		}
-		fmt.Fprintf(bw, "  subgraph %s {\n    label=%s;%s\n", quote("cluster_"+key), quote(label), extra)
 		members := clusters[key]
 		sort.Slice(members, func(i, j int) bool { return members[i].ID < members[j].ID })
 		for _, n := range members {
+			node := sub.Node(n.ID).Label(n.Name)
 			switch n.Kind {
 			case graph.KindDir:
-				fmt.Fprintf(bw, "    %s [label=%s, shape=folder];\n", quote(n.ID), quote(n.Path+"/"))
+				node.Label(n.Path+"/").Attr("shape", "folder")
 			case graph.KindPackage:
 				label := n.Name
 				if n.Version != "" {
 					label += "\n" + n.Version
 				}
-				style := ""
+				node.Label(label).Attr("shape", "component")
 				if n.Unresolved {
-					style = ", style=\"rounded,dashed\""
+					node.Attr("style", "rounded,dashed")
 				}
-				fmt.Fprintf(bw, "    %s [label=%s, shape=component%s];\n", quote(n.ID), quote(label), style)
-			default:
-				fmt.Fprintf(bw, "    %s [label=%s];\n", quote(n.ID), quote(n.Name))
 			}
+			nodes[n.ID] = node
 		}
-		bw.WriteString("  }\n")
 	}
 	for _, e := range edges {
-		fmt.Fprintf(bw, "  %s -> %s;\n", quote(e.From), quote(e.To))
+		d.Edge(nodes[e.From], nodes[e.To])
 	}
-	bw.WriteString("}\n")
-	return bw.Flush()
-}
-
-func quote(s string) string {
-	r := strings.NewReplacer(`\`, `\\`, `"`, `\"`, "\n", `\n`)
-	return `"` + r.Replace(s) + `"`
+	_, err := io.WriteString(w, d.String())
+	return err
 }
 
 // Sources reads the text of the graph's files for a static export. Files over perFile
