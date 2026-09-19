@@ -1,5 +1,7 @@
 # depphunter
 
+[![CI](https://github.com/sarumaj/depphunter-cli/actions/workflows/ci.yml/badge.svg)](https://github.com/sarumaj/depphunter-cli/actions/workflows/ci.yml)
+
 Browse any code base as an interactive isometric archipelago in your browser.
 
 - **Mainland** = your repository. Directories are terraces, files are buildings
@@ -13,6 +15,10 @@ Browse any code base as an interactive isometric archipelago in your browser.
 Everything runs locally: one binary, no network access, no Node.js.
 
 ## Install
+
+Download an archive for your platform from the
+[releases](https://github.com/sarumaj/depphunter-cli/releases) (checksums in
+`checksums.txt`), or build it with Go 1.22 or newer:
 
 ```sh
 go install github.com/sarumaj/depphunter-cli/cmd/depphunter@latest
@@ -45,6 +51,9 @@ depphunter --export html -o map.html  # a self-contained map to share
 | `--no-cache`      |                           | neither read nor write the analysis cache               |
 | `--no-history` | | do not read git history |
 | `--history-commits` | `10000` | read at most this many commits |
+| `--lsp` | | find symbol references with installed language servers |
+| `--lsp-timeout` | `5m` | time budget for language servers |
+| `--version` | | print the version and exit |
 | `--editor`        | auto-detected             | editor command template, e.g. `"code -g {file}:{line}"` |
 | `--export`        |                           | write `json`, `graphml`, `dot` or `html` and exit       |
 | `-o`              | stdout                    | output file for `--export`                              |
@@ -53,9 +62,9 @@ Settings are resolved from, in increasing precedence: built-in defaults, the
 user config (`$XDG_CONFIG_HOME/depphunter/config.yaml`, or the OS equivalent),
 the project config `.depphunter.yaml`, `DEPPHUNTER_*` environment variables
 (`ADDR`, `OPEN`, `EXCLUDE`, `THEME`, `COLOR_BY`, `HEIGHT_SCALE`, `SHOW_STD`,
-`WATCH`, `CACHE`, `EDITOR`, `HISTORY`), and flags. The project config cannot set
-`editor`: it arrives with the repository, and the editor is a command depphunter
-runs.
+`WATCH`, `CACHE`, `EDITOR`, `HISTORY`, `LSP`), and flags. The project config
+cannot set `editor`: it arrives with the repository, and the editor is a command
+depphunter runs.
 
 ```yaml
 # .depphunter.yaml
@@ -118,8 +127,29 @@ caches it per commit. The **Colour** menu then offers:
 Files without commits in range get a separate neutral colour. The **Since**
 slider in the legend limits commits, lines changed and authors to a time range;
 tooltips and the side panel show the same figures, the panel also the top
-authors. Renames are not followed, so a renamed file's history starts at the
-rename. With `--watch`, a new commit updates the overlay.
+authors. Renamed files keep the history of their old names. With `--watch`, a
+new commit updates the overlay.
+
+## Symbol references
+
+Imports show which files depend on which; with `--lsp`, depphunter also asks
+language servers which symbols use which. It uses the servers it finds on `PATH`
+(and `go install` locations for gopls):
+
+| Language | Server |
+|---|---|
+| Go | `gopls` |
+| JavaScript / TypeScript | `typescript-language-server` |
+| Python | `pyright-langserver`, `basedpyright-langserver` or `pylsp` |
+| Rust | `rust-analyzer` |
+| Java | `jdtls` |
+| C# | `csharp-ls` |
+
+The servers run in the background after the map is shown (gopls needs about 7 s
+for this repository), within `--lsp-timeout`; results are cached until the code
+changes. The legend's **Imports / References** switch then changes what
+selection arcs and the side panel show: for a function, what it uses and what
+uses it. JSON and GraphML exports include the reference edges.
 
 ## Opening files in your editor
 
@@ -156,8 +186,8 @@ not part of the analysed project are rejected.
 | Ecosystem               | Imports resolved through                                                                                                                                                          | Islands                              |
 |-------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------|
 | Go                      | every `go.mod` (multi-module, local `replace`)                                                                                                                                    | Go modules, Go standard library      |
-| JavaScript / TypeScript | relative paths, `tsconfig`/`jsconfig` `paths`, workspaces, `package.json` + `package-lock.json`                                                                                   | npm, Node.js built-ins               |
-| Python                  | relative imports, `src/` layouts, requirements files, `pyproject.toml`, `Pipfile`, `poetry.lock`/`uv.lock`/`pdm.lock`/`Pipfile.lock`                                              | PyPI, Python standard library        |
+| JavaScript / TypeScript | relative paths, `tsconfig`/`jsconfig` `paths`, workspaces, `package.json` + `package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`                                                                                   | npm, Node.js built-ins               |
+| Python                  | relative imports, `src/` layouts, requirements files, `setup.cfg`, literal `setup.py` lists, `pyproject.toml`, `Pipfile`, `poetry.lock`/`uv.lock`/`pdm.lock`/`Pipfile.lock`                                              | PyPI, Python standard library        |
 | Rust                    | the module tree (`crate::`, `self::`, `super::`, `mod x;`), workspace and path crates, `Cargo.toml` (renamed and workspace dependencies) + `Cargo.lock`                           | crates.io, Rust standard library     |
 | Java                    | source files by package path (any source root), `pom.xml` (properties, dependency management), Gradle scripts and version catalogs                                                | Maven, Java standard library         |
 | C#                      | namespaces to project folders (`RootNamespace` + folder), `PackageReference`, `Directory.Packages.props`                                                                          | NuGet, .NET base library             |
@@ -172,7 +202,19 @@ Files in other languages appear on the map without dependency edges. Parsing
 uses a pure-Go tree-sitter runtime (C# and PowerShell use small built-in
 scanners instead), so the binary still cross-compiles without a C toolchain.
 
-## Status
+## Development
 
-Milestones 1–5 of [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) are done. Next:
-symbol-level references.
+```sh
+go test -race ./...
+go run honnef.co/go/tools/cmd/staticcheck@2024.1.1 ./...
+```
+
+CI (`.github/workflows/ci.yml`) builds and tests on Linux, macOS and Windows, on
+the current Go and on Go 1.22 with `GOTOOLCHAIN=local`, so a `go.mod` that
+starts to need a newer Go fails the build. It also checks formatting, `go mod
+tidy`, vet, staticcheck, govulncheck, JavaScript syntax and Markdown. Pushing a
+`v*` tag runs `.github/workflows/release.yml`, which tests and then publishes
+stripped binaries for Linux, macOS and Windows (amd64 and arm64).
+
+The milestones and design decisions are in
+[docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).

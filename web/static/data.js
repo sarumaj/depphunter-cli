@@ -39,12 +39,15 @@ export async function saveSettings(ui) {
   if (!res.ok) throw new Error((await res.text()).trim());
 }
 
-/** The git history, 'pending' while the server reads it, or null without one. */
-export async function fetchHistory() {
-  if (STATIC) return STATIC.history || null;
-  const res = await fetch('api/history');
+/**
+ * A dataset the server computes after startup ("history", "references"): its value,
+ * 'pending' while it is computed, or null when there is none.
+ */
+export async function fetchLazy(name) {
+  if (STATIC) return STATIC[name] || null;
+  const res = await fetch(`api/${name}`);
   if (res.status === 202) return 'pending';
   if (res.status === 204) return null;
-  if (!res.ok) throw new Error(`api/history: ${res.status} ${await res.text()}`);
+  if (!res.ok) throw new Error(`api/${name}: ${res.status} ${await res.text()}`);
   return res.json();
 }

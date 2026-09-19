@@ -47,7 +47,19 @@ export function buildModel(graph) {
     if (t.kind === 'package') t.importers++;
   }
 
-  return { graph, byId, root, ecosystems, edgesFrom, edgesTo, languages: rankLanguages(root) };
+  return { graph, byId, root, ecosystems, edgesFrom, edgesTo, refsFrom: new Map(), refsTo: new Map(), languages: rankLanguages(root) };
+}
+
+// setReferences indexes symbol-level reference edges (from language servers) apart
+// from imports, so the two kinds are shown and counted separately.
+export function setReferences(model, edges) {
+  model.refsFrom = new Map();
+  model.refsTo = new Map();
+  for (const e of edges || []) {
+    if (!model.byId.has(e.from) || !model.byId.has(e.to)) continue;
+    push(model.refsFrom, e.from, e);
+    push(model.refsTo, e.to, e);
+  }
 }
 
 function push(map, k, v) {
@@ -75,12 +87,15 @@ export function ancestors(n) {
   return out;
 }
 
-// Edges crossing the boundary of `sel`'s subtree, as {out, in} lists of raw edges.
-export function boundaryEdges(model, sel) {
+// Edges of a kind ('import' or 'reference') crossing the boundary of `sel`'s subtree,
+// as {out, in} lists of raw edges.
+export function boundaryEdges(model, sel, kind = 'import') {
+  const from = kind === 'reference' ? model.refsFrom : model.edgesFrom;
+  const to = kind === 'reference' ? model.refsTo : model.edgesTo;
   const out = [], inc = [];
   const visit = n => {
-    for (const e of model.edgesFrom.get(n.id) || []) if (!isWithin(model.byId.get(e.to), sel)) out.push(e);
-    for (const e of model.edgesTo.get(n.id) || []) if (!isWithin(model.byId.get(e.from), sel)) inc.push(e);
+    for (const e of from.get(n.id) || []) if (!isWithin(model.byId.get(e.to), sel)) out.push(e);
+    for (const e of to.get(n.id) || []) if (!isWithin(model.byId.get(e.from), sel)) inc.push(e);
     for (const c of n.children) visit(c);
   };
   visit(sel);

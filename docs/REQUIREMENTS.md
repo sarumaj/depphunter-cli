@@ -277,6 +277,35 @@ opens from `file://`.
 the four modes and the slider recolour without requests, and the HTML export
 keeps the overlay.
 
-### Later
+### M6 — Symbol references and hardening
 
-- Symbol-level references via LSP.
+- `--lsp`: a JSON-RPC client (`internal/lsp`) drives installed language servers
+  (gopls, typescript-language-server, pyright/basedpyright/pylsp, rust-analyzer,
+  jdtls, csharp-ls). For each definition it asks `textDocument/references`; each
+  hit is credited to the innermost enclosing definition, using
+  `textDocument/documentSymbol` extents, or to the file for top-level code.
+  Edges of kind `reference` are served like the history (`/api/references`),
+  cached by the graph's content and the installed servers, and shown through an
+  Imports / References switch.
+- Git history follows renames (`-M`).
+- Lockfiles: `yarn.lock` (classic and Berry, disambiguated by the declared
+  range), `pnpm-lock.yaml` (per importer); Python `setup.cfg` and literal
+  `setup.py` lists.
+- The C# scanner walks interpolation holes of `$"…"` strings.
+- CI on Linux, macOS and Windows, pinned to Go 1.22 with `GOTOOLCHAIN=local`;
+  lint (gofmt, tidy, vet, staticcheck, markdownlint) and govulncheck; tagged
+  releases build stripped binaries with the current Go.
+
+> **Decisions (M6):** references are opt-in because they start external servers
+> and take seconds to minutes (gopls: 533 definitions in 7.5 s here). Positions
+> are sent in UTF-16 columns, the LSP default. Release builds use the current
+> Go: govulncheck found 35 reachable standard-library issues when built with Go
+> 1.22.2 and none with the current release, while `go.mod` keeps 1.22 as the
+> oldest supported version.
+
+### Known limits
+
+- Java imports name packages, not artifacts, so Maven dependencies are matched
+  by heuristics; unmatched imports are shown as unresolved.
+- Servers that index slowly (rust-analyzer, jdtls) may answer before indexing
+  finishes and return fewer references within the time budget.
