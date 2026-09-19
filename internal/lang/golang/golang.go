@@ -4,16 +4,13 @@ package golang
 
 import (
 	"context"
-	"fmt"
 	"go/ast"
 	"go/parser"
 	"go/token"
 	"os"
 	"path"
-	"runtime"
 	"sort"
 	"strings"
-	"sync"
 
 	"golang.org/x/mod/modfile"
 
@@ -56,31 +53,9 @@ func (p Plugin) Analyze(ctx context.Context, root string, all, claimed []*scan.F
 		pkgDirs[path.Dir(f.Path)] = true
 	}
 
-	results := make(map[string]*lang.FileResult, len(claimed))
-	var mu sync.Mutex
-	var wg sync.WaitGroup
-	work := make(chan *scan.File)
-	for range runtime.NumCPU() {
-		wg.Add(1)
-		go func() {
-			defer wg.Done()
-			for f := range work {
-				res := analyzeFile(f, owner(mods, f.Path), mods, pkgDirs)
-				mu.Lock()
-				results[f.Path] = res
-				mu.Unlock()
-			}
-		}()
-	}
-	for _, f := range claimed {
-		select {
-		case work <- f:
-		case <-ctx.Done():
-		}
-	}
-	close(work)
-	wg.Wait()
-	return results, ctx.Err()
+	return lang.ForEachFile(ctx, claimed, func(f *scan.File, src []byte) *lang.FileResult {
+		return analyzeFile(f, src, owner(mods, f.Path), mods, pkgDirs)
+	}), ctx.Err()
 }
 
 func loadModules(all []*scan.File) ([]*module, error) {
@@ -122,11 +97,11 @@ func owner(mods []*module, file string) *module {
 	return nil
 }
 
-func analyzeFile(f *scan.File, own *module, mods []*module, pkgDirs map[string]bool) *lang.FileResult {
+func analyzeFile(f *scan.File, src []byte, own *module, mods []*module, pkgDirs map[string]bool) *lang.FileResult {
 	res := &lang.FileResult{}
 	fset := token.NewFileSet()
 	// On syntax errors the parser still returns a partial AST, which is good enough for a map.
-	af, _ := parser.ParseFile(fset, f.Abs, nil, parser.SkipObjectResolution)
+	af, _ := parser.ParseFile(fset, f.Path, src, parser.SkipObjectResolution)
 	if af == nil {
 		return res
 	}
@@ -191,19 +166,8 @@ func within(ip, mod string) (string, bool) {
 }
 
 func symbols(fset *token.FileSet, af *ast.File) []lang.Symbol {
-	var out []lang.Symbol
-	seen := map[string]bool{}
-	add := func(name, kind string, pos token.Pos) {
-		if name == "_" {
-			return
-		}
-		line := fset.Position(pos).Line
-		if seen[name] { // e.g. several init functions
-			name = fmt.Sprintf("%s@%d", name, line)
-		}
-		seen[name] = true
-		out = append(out, lang.Symbol{Name: name, Kind: kind, Line: line})
-	}
+	var set lang.SymbolSet
+	add := func(name, kind string, pos token.Pos) { set.Add(name, kind, fset.Position(pos).Line) }
 	for _, decl := range af.Decls {
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
@@ -229,7 +193,7 @@ func symbols(fset *token.FileSet, af *ast.File) []lang.Symbol {
 			}
 		}
 	}
-	return out
+	return set.List()
 }
 
 func recvName(e ast.Expr) string {

@@ -1,0 +1,6 @@
+{
+  "name": "root",
+  "workspaces": ["packages/*"],
+  "dependencies": { "react": "^18.2.0" },
+  "devDependencies": { "@scope/tool": "^1.0.0" }
+}
