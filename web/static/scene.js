@@ -10,7 +10,7 @@
 
 import * as THREE from './vendor/three.module.min.js';
 import { OrbitControls } from './vendor/OrbitControls.js';
-import { kindCode, CITY_VERT_HEAD, CITY_VERT_BODY, CITY_FRAG_HEAD, CITY_FRAG_BODY, makeSky, waterMaterial, makeProps, setNight } from './city.js';
+import { kindCode, CITY_VERT_HEAD, CITY_VERT_BODY, CITY_FRAG_HEAD, CITY_FRAG_BODY, makeSky, waterMaterial, makeProps, setNight, roadUniforms, setRoads } from './city.js';
 
 const ISO_POLAR = Math.acos(1 / Math.sqrt(3)); // true isometric elevation (35.26°)
 
@@ -33,6 +33,7 @@ export class MapScene {
       uCenter: { value: new THREE.Vector3() }, uRadius: { value: 40 }, uBend: { value: 0 },
       uNight: { value: 0 }, uTime: { value: 0 },
     };
+    this.roads = roadUniforms(); // the street network of walk mode (city.js)
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = false;
@@ -44,7 +45,12 @@ export class MapScene {
     this.controls.minZoom = 0.5;
     this.controls.maxZoom = 400;
     this.controls.zoomToCursor = true;
-    this.controls.addEventListener('change', () => this.requestRender());
+    // Pan and zoom stay near the map (setLimits): the view can never be lost in the void.
+    this.limits = null;
+    this.controls.addEventListener('change', () => {
+      this.clampView();
+      this.requestRender();
+    });
 
     this.unitBox = shadedBox();
     // Unlit: the top face shows exactly the encoded colour; fixed per-face shading
@@ -73,6 +79,7 @@ export class MapScene {
     this.renderer.setSize(w, h, false);
     Object.assign(this.camera, { left: -w / 2, right: w / 2, top: h / 2, bottom: -h / 2 });
     this.camera.updateProjectionMatrix();
+    this.updateMinZoom();
     this.walkCamera.aspect = w / Math.max(1, h);
     this.walkCamera.updateProjectionMatrix();
     this.requestRender();
@@ -119,6 +126,7 @@ export class MapScene {
       Object.assign(shader.uniforms, this.curve);
       let body = BENT_PROJECT_VERTEX;
       if (city) {
+        Object.assign(shader.uniforms, this.roads);
         body += CITY_VERT_BODY;
         shader.fragmentShader = CITY_FRAG_HEAD + shader.fragmentShader
           .replace('#include <color_fragment>', '#include <color_fragment>\n' + CITY_FRAG_BODY);
@@ -191,17 +199,67 @@ export class MapScene {
       for (const m of this.props.children) m.dispose();
     }
     this.props = makeProps(boxes, m => this.bendable(m));
+    this.roadsFor = null; // built when walk mode shows them
     if (this.colors) setNight(this.props, this.curve.uNight.value > 0);
     this.scene.add(this.props);
     this.setColors(colors);
     this.scene.add(mesh);
     this.showGround();
+    this.setLimits(boxes);
+  }
+
+  /**
+   * Bounds the isometric view to the map: the point the camera looks at stays within
+   * the map plus a margin, and zooming out stops when the whole map is a fraction of
+   * the screen.
+   */
+  setLimits(boxes) {
+    let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity, maxY = 0;
+    for (const b of boxes) {
+      minX = Math.min(minX, b.x - b.w / 2); maxX = Math.max(maxX, b.x + b.w / 2);
+      minZ = Math.min(minZ, b.z - b.d / 2); maxZ = Math.max(maxZ, b.z + b.d / 2);
+      maxY = Math.max(maxY, b.y + b.h);
+    }
+    if (!boxes.length) { minX = minZ = -1; maxX = maxZ = 1; }
+    this.limits = { minX, maxX, minZ, maxZ, maxY };
+    this.updateMinZoom();
+    this.clampView();
+  }
+
+  updateMinZoom() {
+    if (!this.limits) return;
+    this.controls.minZoom = this.fitZoom(this.limits) * MIN_ZOOM_SHARE;
+    if (this.camera.zoom < this.controls.minZoom) {
+      this.camera.zoom = this.controls.minZoom;
+      this.camera.updateProjectionMatrix();
+    }
+  }
+
+  clampView() {
+    const b = this.limits;
+    if (!b || this.walking) return;
+    const m = PAN_MARGIN_MIN + PAN_MARGIN * Math.max(b.maxX - b.minX, b.maxZ - b.minZ);
+    const t = this.controls.target;
+    const d = new THREE.Vector3(
+      clamp(t.x, b.minX - m, b.maxX + m) - t.x,
+      clamp(t.y, -1, b.maxY) - t.y,
+      clamp(t.z, b.minZ - m, b.maxZ + m) - t.z,
+    );
+    if (d.lengthSq() === 0) return;
+    // Moving both keeps the view direction, so the controls' next update agrees.
+    t.add(d);
+    this.camera.position.add(d);
+    this.camera.updateMatrixWorld();
   }
 
   // In walk mode the tessellated ground replaces the large instances, which are
   // shrunk to nothing; the isometric map shows the instances only.
   showGround() {
     if (!this.mesh) return;
+    if (this.walking && this.roadsFor !== this.boxes) {
+      setRoads(this.roads, this.boxes);
+      this.roadsFor = this.boxes;
+    }
     this.ground.visible = this.props.visible = this.walking;
     this.mesh.frustumCulled = !this.walking;
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
@@ -313,6 +371,15 @@ export class MapScene {
     this.camera.lookAt(center);
     this.camera.updateMatrixWorld();
 
+    this.camera.zoom = clamp(this.fitZoom(b) * margin, this.controls.minZoom, this.controls.maxZoom);
+    this.camera.updateProjectionMatrix();
+    this.controls.update();
+    this.requestRender();
+  }
+
+  /** The zoom at which a world-space box exactly fills the view, as currently oriented. */
+  fitZoom(b) {
+    this.camera.updateMatrixWorld();
     const inv = this.camera.matrixWorldInverse;
     let minX = Infinity, maxX = -Infinity, minY = Infinity, maxY = -Infinity;
     for (const x of [b.minX, b.maxX]) for (const y of [0, b.maxY]) for (const z of [b.minZ, b.maxZ]) {
@@ -321,10 +388,7 @@ export class MapScene {
       minY = Math.min(minY, v.y); maxY = Math.max(maxY, v.y);
     }
     const { clientWidth: w, clientHeight: h } = this.container;
-    this.camera.zoom = Math.min(w / (maxX - minX), h / (maxY - minY)) * margin;
-    this.camera.updateProjectionMatrix();
-    this.controls.update();
-    this.requestRender();
+    return Math.min(w / Math.max(1e-6, maxX - minX), h / Math.max(1e-6, maxY - minY));
   }
 
   /** Pan (keeping zoom) so a world point is centred. */
@@ -387,6 +451,11 @@ export class MapScene {
 }
 
 const WATER_DEPTH = 0.45;
+// Zooming out stops when the map fills this share of the view; panning stops when
+// the view's centre is this far beyond the map (a share of its size, plus a minimum).
+const MIN_ZOOM_SHARE = 0.35, PAN_MARGIN = 0.25, PAN_MARGIN_MIN = 6;
+
+const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 // Wraps a world position around a sphere of radius uRadius touching the flat map at
 // uCenter: distance along the surface and height above it are preserved, so vertical

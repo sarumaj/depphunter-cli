@@ -14,7 +14,9 @@ Browse any code base as an interactive isometric archipelago in your browser.
 - **Walk** (`V`) the map in first person on a tiny planet: `WASD` to move, the
   mouse to look, `Space` to jump, `F` to fly. Throw newspapers (click or `Q`) at
   buildings to select them, `E` to expand what you aim at, and the mouse wheel to
-  change the planet's curvature.
+  change the planet's curvature. Terraces become city blocks: the space between
+  buildings is a connected street network with sidewalks, lane markings and
+  crossings, stairs lead between levels, and empty lots are parks.
 
 Everything runs locally: one binary, no network access, no Node.js.
 
@@ -174,6 +176,10 @@ Code, Cursor, Zed, Sublime Text, JetBrains IDEs, …). Without one, the button
 hands the file to VS Code's `vscode://` URL handler.
 
 ## Keyboard & mouse
+
+Panning stops once the centre of the view is a quarter of the map's size beyond
+its edge, and zooming out once the map covers about a third of the view; in walk
+mode you can go 3 units out over the water and 12 above the tallest building.
 
 |                           |                                          |
 |---------------------------|------------------------------------------|

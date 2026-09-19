@@ -19,6 +19,9 @@ const CELL = 2;             // spatial grid for box lookups
 const LOOK = 0.0022;        // radians per pixel of mouse movement
 const TURN = 2.2;           // radians per second with the arrow keys
 const MIN_R = 6, MAX_R = 2000;
+// How far the walker may leave the map: over the water beyond the outermost shore,
+// and above its tallest building when flying.
+const SHORE_MARGIN = 3, SKY_MARGIN = 12;
 
 // Keys the walker owns while active, by KeyboardEvent.code; the map's own shortcuts
 // for these letters are suspended.
@@ -63,6 +66,13 @@ export class Walker {
   setBoxes(boxes) {
     this.boxes = boxes;
     this.grid.clear();
+    const lim = { minX: Infinity, maxX: -Infinity, minZ: Infinity, maxZ: -Infinity, maxY: 0 };
+    for (const b of boxes) {
+      lim.minX = Math.min(lim.minX, b.x - b.w / 2); lim.maxX = Math.max(lim.maxX, b.x + b.w / 2);
+      lim.minZ = Math.min(lim.minZ, b.z - b.d / 2); lim.maxZ = Math.max(lim.maxZ, b.z + b.d / 2);
+      lim.maxY = Math.max(lim.maxY, b.y + b.h);
+    }
+    this.limits = boxes.length ? lim : null;
     for (const b of boxes) {
       const x0 = Math.floor((b.x - b.w / 2) / CELL), x1 = Math.floor((b.x + b.w / 2) / CELL);
       const z0 = Math.floor((b.z - b.d / 2) / CELL), z1 = Math.floor((b.z + b.d / 2) / CELL);
@@ -72,14 +82,19 @@ export class Walker {
         this.grid.get(k).push(b);
       }
     }
-    // A relayout can put a building where the walker stands: climb onto it.
-    if (this.active) this.p.feet = Math.max(this.p.feet, this.height(this.p.x, this.p.z));
+    // A relayout can put a building where the walker stands, or shrink the map away
+    // from under them.
+    if (this.active) {
+      this.confine();
+      this.p.feet = Math.max(this.p.feet, this.height(this.p.x, this.p.z));
+      this.setRadius(this.radius);
+    }
   }
 
   /** Starts walking in front of `box`, or on the south road of `block`. bounds sizes the planet. */
   enter(box, block, bounds) {
     const diag = Math.hypot(bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ);
-    this.radius = clamp(diag * 0.6, 15, 600);
+    this.radius = clamp(diag * 0.6, 15, Math.min(600, this.maxRadius()));
     this.active = true;
     this.hud.hidden = false;
     this.scene.setWalking(true, this.radius);
@@ -189,8 +204,15 @@ export class Walker {
     this.p.pitch = clamp(this.p.pitch - dy * LOOK, -1.5, 1.5);
   }
 
+  // The planet can grow until the map looks flat, not beyond.
+  maxRadius() {
+    const l = this.limits;
+    if (!l) return MAX_R;
+    return clamp(3 * Math.hypot(l.maxX - l.minX, l.maxZ - l.minZ), 60, MAX_R);
+  }
+
   setRadius(r) {
-    this.radius = clamp(r, MIN_R, MAX_R);
+    this.radius = clamp(r, MIN_R, this.maxRadius());
     this.scene.setRadius(this.radius);
     this.setFog();
     this.drawHud();
@@ -240,10 +262,13 @@ export class Walker {
     const nz = p.z + mz * speed * dt;
     if (this.height(p.x, nz) <= climb) p.z = nz;
 
+    this.confine();
+
     const floor = this.height(p.x, p.z);
     if (p.fly) {
       const up = (k.has('Space') ? 1 : 0) - (k.has('KeyC') ? 1 : 0);
-      p.feet = Math.max(floor, p.feet + up * speed * 0.6 * dt);
+      const ceiling = (this.limits?.maxY ?? 0) + SKY_MARGIN;
+      p.feet = Math.max(floor, Math.min(ceiling, p.feet + up * speed * 0.6 * dt));
       p.vy = 0;
       p.ground = p.feet <= floor;
       return;
@@ -256,6 +281,14 @@ export class Walker {
       p.feet = floor;
       p.vy = 0;
     }
+  }
+
+  /** Keeps the walker over the map or the water just off its shores. */
+  confine() {
+    const l = this.limits, p = this.p;
+    if (!l) return;
+    p.x = clamp(p.x, l.minX - SHORE_MARGIN, l.maxX + SHORE_MARGIN);
+    p.z = clamp(p.z, l.minZ - SHORE_MARGIN, l.maxZ + SHORE_MARGIN);
   }
 
   /** Top of the solid column under a body at (x, z): the highest box it overlaps. */
