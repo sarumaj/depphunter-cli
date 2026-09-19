@@ -4,7 +4,6 @@
 package javascript
 
 import (
-	"context"
 	"path"
 	"strings"
 
@@ -89,21 +88,20 @@ func (Plugin) Ecosystems() []lang.Ecosystem {
 	}
 }
 
-func (Plugin) Analyze(ctx context.Context, root string, all, claimed []*scan.File) (map[string]*lang.FileResult, error) {
-	r := newResolver(all)
-	return lang.ForEachFile(ctx, claimed, func(f *scan.File, src []byte) *lang.FileResult {
-		return analyzeFile(f, src, r)
-	}), ctx.Err()
+func (Plugin) Version() int { return 1 }
+
+func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
+	return newResolver(all), nil
 }
 
-func analyzeFile(f *scan.File, src []byte, r *resolver) *lang.FileResult {
-	res := &lang.FileResult{}
+func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+	ex := &lang.Extraction{}
 	var syms lang.SymbolSet
 	err := grammarFor(f.Path).Matches(src, func(m treesitter.Match) {
 		for _, c := range m {
 			switch {
 			case c.Name == "import":
-				res.Imports = append(res.Imports, lang.Import{Spec: c.Text, Line: c.Line, Target: r.resolve(c.Text, f.Path)})
+				ex.Imports = append(ex.Imports, lang.RawImport{Spec: c.Text, Module: c.Text, Line: c.Line})
 			case c.Name == "def.method":
 				class := c.EnclosingName("class_declaration", "abstract_class_declaration", "class")
 				syms.Add(class+"."+c.Text, "method", c.Line)
@@ -119,9 +117,6 @@ func analyzeFile(f *scan.File, src []byte, r *resolver) *lang.FileResult {
 			}
 		}
 	})
-	if err != nil {
-		return nil
-	}
-	res.Symbols = syms.List()
-	return res
+	ex.Symbols = syms.List()
+	return ex, err
 }

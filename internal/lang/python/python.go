@@ -6,7 +6,6 @@
 package python
 
 import (
-	"context"
 	"strings"
 
 	"github.com/odvcencio/gotreesitter/grammars/python"
@@ -61,28 +60,27 @@ func (Plugin) Ecosystems() []lang.Ecosystem {
 	}
 }
 
-func (Plugin) Analyze(ctx context.Context, root string, all, claimed []*scan.File) (map[string]*lang.FileResult, error) {
-	r := newResolver(all, claimed)
-	return lang.ForEachFile(ctx, claimed, func(f *scan.File, src []byte) *lang.FileResult {
-		return analyzeFile(f, src, r)
-	}), ctx.Err()
+func (Plugin) Version() int { return 1 }
+
+func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
+	return newResolver(all, lang.Claimed(Plugin{}, all)), nil
 }
 
-func analyzeFile(f *scan.File, src []byte, r *resolver) *lang.FileResult {
-	res := &lang.FileResult{}
+func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+	ex := &lang.Extraction{}
 	var syms lang.SymbolSet
 	err := grammar.Matches(src, func(m treesitter.Match) {
 		if mod, ok := m.Get("from.module"); ok {
 			name, _ := m.Get("from.name")
-			res.Imports = append(res.Imports, lang.Import{Spec: fromSpec(mod, name), Line: m[0].Line, Target: r.resolveFrom(mod, name, f.Path)})
+			ex.Imports = append(ex.Imports, lang.RawImport{Spec: fromSpec(mod, name), Module: mod, Name: name, Line: m[0].Line})
 			return
 		}
 		for _, c := range m {
 			switch {
 			case c.Name == "future":
-				res.Imports = append(res.Imports, lang.Import{Spec: c.Text, Line: c.Line, Target: lang.Target{Ecosystem: ecoStd, Package: "__future__"}})
+				ex.Imports = append(ex.Imports, lang.RawImport{Spec: c.Text, Module: "__future__", Line: c.Line})
 			case c.Name == "import":
-				res.Imports = append(res.Imports, lang.Import{Spec: c.Text, Line: c.Line, Target: r.resolve(c.Text, f.Path)})
+				ex.Imports = append(ex.Imports, lang.RawImport{Spec: c.Text, Module: c.Text, Line: c.Line})
 			case c.Name == "def.method":
 				syms.Add(c.EnclosingName("class_definition")+"."+c.Text, "method", c.Line)
 			case strings.HasPrefix(c.Name, "def."):
@@ -90,11 +88,8 @@ func analyzeFile(f *scan.File, src []byte, r *resolver) *lang.FileResult {
 			}
 		}
 	})
-	if err != nil {
-		return nil
-	}
-	res.Symbols = syms.List()
-	return res
+	ex.Symbols = syms.List()
+	return ex, err
 }
 
 func fromSpec(mod, name string) string {
