@@ -66,16 +66,22 @@ depphunter --export html -o map.html  # a self-contained map to share
 | `--history-commits` | `10000` | read at most this many commits |
 | `--lsp` | | find symbol references with installed language servers |
 | `--lsp-timeout` | `5m` | time budget for language servers |
-| `--version` | | print the version and exit |
+| `-v`, `--version` | | print the version and exit |
+| `-h`, `--help` | | list the flags with their defaults |
 | `--editor`        | auto-detected             | editor command template, e.g. `"code -g {file}:{line}"` |
 | `--export`        |                           | write `json`, `graphml`, `dot` or `html` and exit       |
-| `-o`              | stdout                    | output file for `--export`                              |
+| `-o`, `--output`  | stdout                    | output file for `--export`                              |
+
+Long flags take two dashes (`--addr`, not `-addr`); a flag's value may follow
+after a space or `=`.
 
 Settings are resolved from, in increasing precedence: built-in defaults, the
 user config (`$XDG_CONFIG_HOME/depphunter/config.yaml`, or the OS equivalent),
 the project config `.depphunter.yaml`, `DEPPHUNTER_*` environment variables
-(`ADDR`, `OPEN`, `EXCLUDE`, `THEME`, `COLOR_BY`, `HEIGHT_SCALE`, `SHOW_STD`,
-`WATCH`, `CACHE`, `EDITOR`, `HISTORY`, `LSP`), and flags. The project config
+(`ADDR`, `OPEN`, `EXCLUDE`, `MAX_FILE_SIZE`, `THEME`, `COLOR_BY`,
+`HEIGHT_SCALE`, `SHOW_STD`, `EXPAND_DEPTH`, `WATCH`, `CACHE`, `EDITOR`,
+`HISTORY`, `HISTORY_COMMITS`, `LSP`, `LSP_TIMEOUT`), and flags. Exclude globs
+add up across all sources instead of replacing each other. The project config
 cannot set `editor`: it arrives with the repository, and the editor is a command
 depphunter runs.
 
@@ -299,6 +305,8 @@ Go libraries (all pure Go, so every target cross-compiles with
 | [emicklei/dot](https://github.com/emicklei/dot) | DOT export |
 | [kballard/go-shellquote](https://github.com/kballard/go-shellquote) | splitting editor command templates without a shell |
 | [cli/browser](https://github.com/cli/browser) | opening the default browser |
+| [spf13/cobra](https://github.com/spf13/cobra) | the command line: flags, help, version |
+| [spf13/viper](https://github.com/spf13/viper) | layering defaults, config files, environment and flags |
 
 Go itself provides `go/parser` for Go sources, `net/http` for the server and
 `embed` for the UI. The browser UI vendors, in
@@ -333,7 +341,10 @@ TARGETS="linux/amd64 darwin/arm64" scripts/dist.sh
 ```
 
 CI builds all targets on every push, keeps the archives for 14 days as workflow
-artifacts, and runs the tests as 32-bit (`GOARCH=386`).
+artifacts, and runs the tests as 32-bit (`GOARCH=386`). Renovate
+(`renovate.json`) opens grouped pull requests for non-major dependency updates;
+the Go 1.22 job fails those that need a newer Go (viper 1.21 and later do, so
+viper stays on 1.20).
 
 The milestones and design decisions are in
 [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).

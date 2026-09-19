@@ -1,7 +1,6 @@
 package config
 
 import (
-	"io"
 	"os"
 	"path/filepath"
 	"strings"
@@ -30,7 +29,7 @@ func TestSaveUIPreservesTheRest(t *testing.T) {
 		t.Errorf("cleared filter still saved:\n%s", out)
 	}
 
-	cfg, err := Load([]string{root}, func(string) string { return "" }, "", io.Discard)
+	cfg, err := load(t, []string{root}, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}

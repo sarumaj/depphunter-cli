@@ -1,18 +1,19 @@
 // Package config resolves settings from, in increasing precedence: defaults, the user
 // config file, the project config file, DEPPHUNTER_* environment variables, and flags.
+// Flags are pflag (the cobra command registers them with RegisterFlags); files,
+// environment and flags are layered with viper.
 package config
 
 import (
 	"errors"
-	"flag"
 	"fmt"
-	"io"
 	"os"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"time"
 
+	"github.com/spf13/pflag"
+	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
 )
 
@@ -20,15 +21,15 @@ const ProjectFile = ".depphunter.yaml"
 
 // UI holds the initial state of settings the user can also change in the browser.
 type UI struct {
-	Theme       string `yaml:"theme" json:"theme"`              // auto | light | dark
-	ColorBy     string `yaml:"color_by" json:"colorBy"`         // language | size | commits | churn | age | authors
-	HeightScale string `yaml:"height_scale" json:"heightScale"` // linear | sqrt | log
-	ShowStd     bool   `yaml:"show_std" json:"showStd"`
-	ExpandDepth int    `yaml:"expand_depth" json:"expandDepth"` // 0 = auto, -1 = everything
+	Theme       string `yaml:"theme" mapstructure:"theme" json:"theme"`                     // auto | light | dark
+	ColorBy     string `yaml:"color_by" mapstructure:"color_by" json:"colorBy"`             // language | size | commits | churn | age | authors
+	HeightScale string `yaml:"height_scale" mapstructure:"height_scale" json:"heightScale"` // linear | sqrt | log
+	ShowStd     bool   `yaml:"show_std" mapstructure:"show_std" json:"showStd"`
+	ExpandDepth int    `yaml:"expand_depth" mapstructure:"expand_depth" json:"expandDepth"` // 0 = auto, -1 = everything
 	// Filters, as the browser's Filters panel sets them.
-	HideLanguages []string `yaml:"hide_languages,omitempty" json:"hideLanguages"`
-	HideIslands   []string `yaml:"hide_islands,omitempty" json:"hideIslands"` // ecosystem ids, e.g. "npm"
-	PathFilter    string   `yaml:"path_filter,omitempty" json:"pathFilter"`
+	HideLanguages []string `yaml:"hide_languages,omitempty" mapstructure:"hide_languages" json:"hideLanguages"`
+	HideIslands   []string `yaml:"hide_islands,omitempty" mapstructure:"hide_islands" json:"hideIslands"` // ecosystem ids, e.g. "npm"
+	PathFilter    string   `yaml:"path_filter,omitempty" mapstructure:"path_filter" json:"pathFilter"`
 }
 
 // Validate reports settings outside their allowed values.
@@ -50,27 +51,27 @@ func oneOf(name, v string, allowed ...string) error {
 }
 
 type Config struct {
-	Root        string   `yaml:"-"`
-	ConfigFile  string   `yaml:"-"` // where the browser's "Save view" writes
-	Addr        string   `yaml:"addr"`
-	Open        bool     `yaml:"open"`
-	Exclude     []string `yaml:"exclude"`
-	MaxFileSize int64    `yaml:"max_file_size"`
-	Watch       bool     `yaml:"watch"`
-	Cache       bool     `yaml:"cache"`
+	Root        string   `yaml:"-" mapstructure:"-"`
+	ConfigFile  string   `yaml:"-" mapstructure:"-"` // where the browser's "Save settings" writes
+	Addr        string   `yaml:"addr" mapstructure:"addr"`
+	Open        bool     `yaml:"open" mapstructure:"open"`
+	Exclude     []string `yaml:"exclude" mapstructure:"exclude"`
+	MaxFileSize int64    `yaml:"max_file_size" mapstructure:"max_file_size"`
+	Watch       bool     `yaml:"watch" mapstructure:"watch"`
+	Cache       bool     `yaml:"cache" mapstructure:"cache"`
 	// History reads git history (up to HistoryCommits commits) for the history overlay.
-	History        bool `yaml:"history"`
-	HistoryCommits int  `yaml:"history_commits"`
+	History        bool `yaml:"history" mapstructure:"history"`
+	HistoryCommits int  `yaml:"history_commits" mapstructure:"history_commits"`
 	// LSP asks installed language servers for symbol-level references (slow, opt-in).
-	LSP        bool          `yaml:"lsp"`
-	LSPTimeout time.Duration `yaml:"lsp_timeout"`
+	LSP        bool          `yaml:"lsp" mapstructure:"lsp"`
+	LSPTimeout time.Duration `yaml:"lsp_timeout" mapstructure:"lsp_timeout"`
 	// Editor is a command template such as "code -g {file}:{line}"; empty = auto-detect.
-	Editor string `yaml:"editor"`
-	UI     UI     `yaml:"ui"`
+	Editor string `yaml:"editor" mapstructure:"editor"`
+	UI     UI     `yaml:"ui" mapstructure:"ui"`
 
 	// Export and Output are one-shot actions, so they only come from flags.
-	Export string `yaml:"-"`
-	Output string `yaml:"-"`
+	Export string `yaml:"-" mapstructure:"-"`
+	Output string `yaml:"-" mapstructure:"-"`
 }
 
 func Default() Config {
@@ -86,59 +87,61 @@ func Default() Config {
 	}
 }
 
-// ErrHelp is returned when -h was requested; usage has already been printed.
-var ErrHelp = flag.ErrHelp
+// RegisterFlags declares the command-line flags on fs. Load reads them back.
+func RegisterFlags(fs *pflag.FlagSet) {
+	d := Default()
+	fs.String("config", "", "config file to use instead of <path>/"+ProjectFile)
+	fs.String("addr", d.Addr, "listen address (port 0 picks a free port)")
+	fs.Bool("no-open", false, "do not open the browser")
+	fs.StringArray("exclude", nil, "glob of paths to skip; repeatable")
+	fs.Int64("max-file-size", d.MaxFileSize, "files larger than this many bytes are not read")
+	fs.String("theme", d.UI.Theme, "colour theme: auto, light, dark")
+	fs.String("color-by", d.UI.ColorBy, "building colour: language, size, commits, churn, age, authors")
+	fs.String("height-scale", d.UI.HeightScale, "building height scale: linear, sqrt, log")
+	fs.Bool("show-std", d.UI.ShowStd, "show standard-library islands")
+	fs.Int("expand-depth", d.UI.ExpandDepth, "initially expanded directory depth (0 = auto, -1 = all)")
+	fs.Bool("watch", false, "re-analyse on file changes and update the browser live")
+	fs.Bool("no-cache", false, "do not read or write the analysis cache")
+	fs.Bool("no-history", false, "do not read git history")
+	fs.Int("history-commits", d.HistoryCommits, "read at most this many commits of git history")
+	fs.Bool("lsp", false, "find symbol references with installed language servers (gopls, …)")
+	fs.Duration("lsp-timeout", d.LSPTimeout, "time budget for language servers")
+	fs.String("editor", "", `editor command template, e.g. "code -g {file}:{line}" (default: auto-detect)`)
+	fs.String("export", "", "write the graph as json, graphml, dot or html and exit instead of serving")
+	fs.StringP("output", "o", "", "output file for --export (default: stdout)")
+}
 
-// ErrVersion is returned when --version was requested.
-var ErrVersion = errors.New("version requested")
+// Settings a flag sets directly, by flag name.
+var flagKeys = map[string]string{
+	"addr": "addr", "max-file-size": "max_file_size", "watch": "watch",
+	"history-commits": "history_commits", "lsp": "lsp", "lsp-timeout": "lsp_timeout", "editor": "editor",
+	"theme": "ui.theme", "color-by": "ui.color_by", "height-scale": "ui.height_scale",
+	"show-std": "ui.show_std", "expand-depth": "ui.expand_depth",
+}
 
-// Load builds the configuration. getenv and userDir are injected for testability;
-// userDir is the directory holding the user-level config (e.g. ~/.config/depphunter).
-func Load(args []string, getenv func(string) string, userDir string, usage io.Writer) (Config, error) {
+// Settings a --no-* flag turns off.
+var negatedFlags = map[string]string{"no-open": "open", "no-cache": "cache", "no-history": "history"}
+
+// Environment variables (after the DEPPHUNTER_ prefix), by setting. EXCLUDE is
+// handled apart: it adds to the configured globs instead of replacing them.
+var envKeys = map[string]string{
+	"addr": "ADDR", "open": "OPEN", "max_file_size": "MAX_FILE_SIZE", "watch": "WATCH", "cache": "CACHE",
+	"history": "HISTORY", "history_commits": "HISTORY_COMMITS", "lsp": "LSP", "lsp_timeout": "LSP_TIMEOUT",
+	"editor": "EDITOR", "ui.theme": "THEME", "ui.color_by": "COLOR_BY", "ui.height_scale": "HEIGHT_SCALE",
+	"ui.show_std": "SHOW_STD", "ui.expand_depth": "EXPAND_DEPTH",
+}
+
+// Load builds the configuration from the parsed flags fs (see RegisterFlags), the
+// positional args (at most one path), the environment, and the config files.
+// userDir holds the user-level config (e.g. ~/.config/depphunter); "" skips it.
+func Load(fs *pflag.FlagSet, args []string, userDir string) (Config, error) {
 	cfg := Default()
-
-	fs := flag.NewFlagSet("depphunter", flag.ContinueOnError)
-	fs.SetOutput(usage)
-	fs.Usage = func() {
-		fmt.Fprintf(usage, "Usage: depphunter [flags] [path]\n\nOpens an interactive map of the code base at path (default: current directory).\n\nFlags:\n")
-		fs.PrintDefaults()
+	if len(args) > 1 {
+		return cfg, fmt.Errorf("expected at most one path, got %d", len(args))
 	}
-	var (
-		flagConfig  = fs.String("config", "", "config file to use instead of <path>/"+ProjectFile)
-		flagAddr    = fs.String("addr", cfg.Addr, "listen address (port 0 picks a free port)")
-		flagNoOpen  = fs.Bool("no-open", false, "do not open the browser")
-		flagMaxSize = fs.Int64("max-file-size", cfg.MaxFileSize, "files larger than this many bytes are not read")
-		flagTheme   = fs.String("theme", cfg.UI.Theme, "colour theme: auto, light, dark")
-		flagColorBy = fs.String("color-by", cfg.UI.ColorBy, "building colour: language, size, commits, churn, age, authors")
-		flagHeight  = fs.String("height-scale", cfg.UI.HeightScale, "building height scale: linear, sqrt, log")
-		flagShowStd = fs.Bool("show-std", cfg.UI.ShowStd, "show standard-library islands")
-		flagDepth   = fs.Int("expand-depth", cfg.UI.ExpandDepth, "initially expanded directory depth (0 = auto, -1 = all)")
-		flagWatch   = fs.Bool("watch", false, "re-analyse on file changes and update the browser live")
-		flagNoCache = fs.Bool("no-cache", false, "do not read or write the analysis cache")
-		flagNoHist  = fs.Bool("no-history", false, "do not read git history")
-		flagHistN   = fs.Int("history-commits", cfg.HistoryCommits, "read at most this many commits of git history")
-		flagLSP     = fs.Bool("lsp", false, "find symbol references with installed language servers (gopls, …)")
-		flagLSPTime = fs.Duration("lsp-timeout", cfg.LSPTimeout, "time budget for language servers")
-		flagEditor  = fs.String("editor", "", `editor command template, e.g. "code -g {file}:{line}" (default: auto-detect)`)
-		flagExport  = fs.String("export", "", "write the graph as json, graphml or dot and exit instead of serving")
-		flagOutput  = fs.String("o", "", "output file for --export (default: stdout)")
-		flagVersion = fs.Bool("version", false, "print the version and exit")
-		flagExclude stringList
-	)
-	fs.Var(&flagExclude, "exclude", "glob of paths to skip; repeatable")
-	if err := fs.Parse(args); err != nil {
-		return cfg, err
-	}
-	if *flagVersion {
-		return cfg, ErrVersion
-	}
-	if fs.NArg() > 1 {
-		return cfg, fmt.Errorf("expected at most one path, got %d", fs.NArg())
-	}
-
 	root := "."
-	if fs.NArg() == 1 {
-		root = fs.Arg(0)
+	if len(args) == 1 {
+		root = args[0]
 	}
 	root, err := filepath.Abs(root)
 	if err != nil {
@@ -151,76 +154,78 @@ func Load(args []string, getenv func(string) string, userDir string, usage io.Wr
 	if st, err := os.Stat(root); err != nil || !st.IsDir() {
 		return cfg, fmt.Errorf("%s is not a directory", root)
 	}
-	cfg.Root = root
 
+	v := viper.New()
+	setDefaults(v, cfg)
 	if userDir != "" {
-		if err := mergeFile(&cfg, filepath.Join(userDir, "config.yaml"), false); err != nil {
+		if err := mergeFile(v, filepath.Join(userDir, "config.yaml"), false, true); err != nil {
 			return cfg, err
 		}
 	}
 	// The project config comes with the (possibly untrusted) repository, so it may not
-	// choose the program /api/open executes: editor stays as the user configured it.
-	userEditor := cfg.Editor
-	if *flagConfig != "" {
-		cfg.ConfigFile, _ = filepath.Abs(*flagConfig)
-		err = mergeFile(&cfg, *flagConfig, true)
+	// choose the program /api/open executes: its editor key is dropped. A file named
+	// with --config is the user's own choice.
+	configFile, _ := fs.GetString("config")
+	if configFile != "" {
+		if configFile, err = filepath.Abs(configFile); err != nil {
+			return cfg, err
+		}
+		err = mergeFile(v, configFile, true, true)
 	} else {
-		cfg.ConfigFile = filepath.Join(root, ProjectFile)
-		err = mergeFile(&cfg, cfg.ConfigFile, false)
-		cfg.Editor = userEditor
+		configFile = filepath.Join(root, ProjectFile)
+		err = mergeFile(v, configFile, false, false)
 	}
 	if err != nil {
 		return cfg, err
 	}
-	if err := mergeEnv(&cfg, getenv); err != nil {
+	for key, name := range envKeys {
+		if err := v.BindEnv(key, "DEPPHUNTER_"+name); err != nil {
+			return cfg, err
+		}
+	}
+	for name, key := range flagKeys {
+		if err := v.BindPFlag(key, fs.Lookup(name)); err != nil {
+			return cfg, err
+		}
+	}
+	for name, key := range negatedFlags {
+		if fs.Changed(name) {
+			off, _ := fs.GetBool(name)
+			v.Set(key, !off)
+		}
+	}
+	if err := v.Unmarshal(&cfg); err != nil {
 		return cfg, err
 	}
 
-	fs.Visit(func(f *flag.Flag) {
-		switch f.Name {
-		case "addr":
-			cfg.Addr = *flagAddr
-		case "no-open":
-			cfg.Open = !*flagNoOpen
-		case "max-file-size":
-			cfg.MaxFileSize = *flagMaxSize
-		case "theme":
-			cfg.UI.Theme = *flagTheme
-		case "color-by":
-			cfg.UI.ColorBy = *flagColorBy
-		case "height-scale":
-			cfg.UI.HeightScale = *flagHeight
-		case "show-std":
-			cfg.UI.ShowStd = *flagShowStd
-		case "expand-depth":
-			cfg.UI.ExpandDepth = *flagDepth
-		case "exclude":
-			cfg.Exclude = append(cfg.Exclude, flagExclude...)
-		case "watch":
-			cfg.Watch = *flagWatch
-		case "no-cache":
-			cfg.Cache = !*flagNoCache
-		case "no-history":
-			cfg.History = !*flagNoHist
-		case "history-commits":
-			cfg.HistoryCommits = *flagHistN
-		case "lsp":
-			cfg.LSP = *flagLSP
-		case "lsp-timeout":
-			cfg.LSPTimeout = *flagLSPTime
-		case "editor":
-			cfg.Editor = *flagEditor
-		case "export":
-			cfg.Export = *flagExport
-		case "o":
-			cfg.Output = *flagOutput
-		}
-	})
+	cfg.Root, cfg.ConfigFile = root, configFile
+	if e := os.Getenv("DEPPHUNTER_EXCLUDE"); e != "" {
+		cfg.Exclude = append(cfg.Exclude, strings.Split(e, ",")...)
+	}
+	flagExclude, _ := fs.GetStringArray("exclude")
+	cfg.Exclude = append(cfg.Exclude, flagExclude...)
+	cfg.Export, _ = fs.GetString("export")
+	cfg.Output, _ = fs.GetString("output")
 	return cfg, cfg.validate()
 }
 
-// mergeFile overlays the YAML file onto cfg; keys absent from the file keep their value.
-func mergeFile(cfg *Config, name string, required bool) error {
+// setDefaults makes every setting known to viper, so environment variables and
+// Unmarshal see it even when no file mentions it.
+func setDefaults(v *viper.Viper, d Config) {
+	for key, val := range map[string]any{
+		"addr": d.Addr, "open": d.Open, "exclude": d.Exclude, "max_file_size": d.MaxFileSize,
+		"watch": d.Watch, "cache": d.Cache, "history": d.History, "history_commits": d.HistoryCommits,
+		"lsp": d.LSP, "lsp_timeout": d.LSPTimeout, "editor": d.Editor,
+		"ui.theme": d.UI.Theme, "ui.color_by": d.UI.ColorBy, "ui.height_scale": d.UI.HeightScale,
+		"ui.show_std": d.UI.ShowStd, "ui.expand_depth": d.UI.ExpandDepth,
+		"ui.hide_languages": d.UI.HideLanguages, "ui.hide_islands": d.UI.HideIslands, "ui.path_filter": d.UI.PathFilter,
+	} {
+		v.SetDefault(key, val)
+	}
+}
+
+// mergeFile overlays the YAML file onto v; keys absent from the file keep their value.
+func mergeFile(v *viper.Viper, name string, required, allowEditor bool) error {
 	data, err := os.ReadFile(name)
 	if errors.Is(err, os.ErrNotExist) && !required {
 		return nil
@@ -228,42 +233,14 @@ func mergeFile(cfg *Config, name string, required bool) error {
 	if err != nil {
 		return err
 	}
-	if err := yaml.Unmarshal(data, cfg); err != nil {
+	var m map[string]any
+	if err := yaml.Unmarshal(data, &m); err != nil {
 		return fmt.Errorf("%s: %w", name, err)
 	}
-	return nil
-}
-
-func mergeEnv(cfg *Config, getenv func(string) string) error {
-	str := func(key string, dst *string) {
-		if v := getenv("DEPPHUNTER_" + key); v != "" {
-			*dst = v
-		}
+	if !allowEditor {
+		delete(m, "editor")
 	}
-	boolean := func(key string, dst *bool) error {
-		if v := getenv("DEPPHUNTER_" + key); v != "" {
-			b, err := strconv.ParseBool(v)
-			if err != nil {
-				return fmt.Errorf("DEPPHUNTER_%s: %w", key, err)
-			}
-			*dst = b
-		}
-		return nil
-	}
-	str("ADDR", &cfg.Addr)
-	str("THEME", &cfg.UI.Theme)
-	str("COLOR_BY", &cfg.UI.ColorBy)
-	str("HEIGHT_SCALE", &cfg.UI.HeightScale)
-	str("EDITOR", &cfg.Editor)
-	if v := getenv("DEPPHUNTER_EXCLUDE"); v != "" {
-		cfg.Exclude = append(cfg.Exclude, strings.Split(v, ",")...)
-	}
-	for key, dst := range map[string]*bool{"OPEN": &cfg.Open, "WATCH": &cfg.Watch, "CACHE": &cfg.Cache, "HISTORY": &cfg.History, "LSP": &cfg.LSP} {
-		if err := boolean(key, dst); err != nil {
-			return err
-		}
-	}
-	return boolean("SHOW_STD", &cfg.UI.ShowStd)
+	return v.MergeConfigMap(m)
 }
 
 func (c Config) validate() error {
@@ -289,8 +266,3 @@ func (c Config) validate() error {
 		}(),
 	)
 }
-
-type stringList []string
-
-func (s *stringList) String() string     { return strings.Join(*s, ",") }
-func (s *stringList) Set(v string) error { *s = append(*s, v); return nil }

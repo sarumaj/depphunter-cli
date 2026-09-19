@@ -18,6 +18,7 @@ import (
 	"time"
 
 	"github.com/cli/browser"
+	"github.com/spf13/cobra"
 
 	"github.com/sarumaj/depphunter-cli/internal/analyze"
 	"github.com/sarumaj/depphunter-cli/internal/cache"
@@ -47,29 +48,54 @@ var version = "dev"
 func main() {
 	log.SetFlags(0)
 	log.SetPrefix("depphunter: ")
-	switch err := run(); {
-	case err == nil, errors.Is(err, config.ErrHelp):
-	case errors.Is(err, config.ErrVersion):
-		fmt.Println("depphunter", version)
-	default:
+	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
+	err := newCommand().ExecuteContext(ctx)
+	stop()
+	if err != nil {
 		log.Println(err)
 		os.Exit(1)
 	}
 }
 
-func run() error {
-	userDir := ""
-	if d, err := os.UserConfigDir(); err == nil {
-		userDir = filepath.Join(d, "depphunter")
-	}
-	cfg, err := config.Load(os.Args[1:], os.Getenv, userDir, os.Stderr)
-	if err != nil {
-		return err
-	}
+// newCommand is the depphunter command: flags are declared by the config package,
+// which layers them over the config files and environment (viper).
+func newCommand() *cobra.Command {
+	cmd := &cobra.Command{
+		Use:   "depphunter [path]",
+		Short: "Browse a code base as an interactive isometric map",
+		Long: `Opens an interactive map of the code base at path (default: the current
+directory) in the browser, or writes the dependency graph with --export.
 
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
-	defer stop()
+Settings come from, in increasing precedence: defaults, the user config
+(<user config dir>/depphunter/config.yaml), the project config
+(<path>/` + config.ProjectFile + ` or --config), DEPPHUNTER_* environment
+variables, and flags.`,
+		Example: `  depphunter                          # the current directory
+  depphunter ~/src/app --watch        # keep the map in sync while you edit
+  depphunter --export html -o map.html`,
+		Args:          cobra.MaximumNArgs(1),
+		Version:       version,
+		SilenceUsage:  true, // errors are about the input, not the syntax
+		SilenceErrors: true, // main logs them
+		RunE: func(cmd *cobra.Command, args []string) error {
+			userDir := ""
+			if d, err := os.UserConfigDir(); err == nil {
+				userDir = filepath.Join(d, "depphunter")
+			}
+			cfg, err := config.Load(cmd.Flags(), args, userDir)
+			if err != nil {
+				return err
+			}
+			return run(cmd.Context(), cfg)
+		},
+	}
+	cmd.SetVersionTemplate("depphunter {{.Version}}\n")
+	cmd.Flags().SortFlags = false
+	config.RegisterFlags(cmd.Flags())
+	return cmd
+}
 
+func run(ctx context.Context, cfg config.Config) error {
 	var c *cache.Cache
 	cacheDir := "" // also holds git histories; "" disables caching
 	if cfg.Cache {

