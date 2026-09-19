@@ -1,7 +1,16 @@
 // The city look of walk mode, all procedural (no image assets): a sky dome, rippling
-// water, and shader "textures" for the boxes — building facades with windows and
-// roofs, terraces as city blocks ringed by roads, grassy shores — plus trees and
-// street lamps. The isometric map is untouched: every effect is gated on uBend.
+// water, and shader "textures" for the boxes — building facades and roofs, a street
+// network on every terrace, stairs between terrace levels, grassy shores — plus
+// trees and street lamps. The isometric map is untouched: every effect is gated on
+// uBend.
+//
+// Streets are the free space of a terrace top: everything not covered by a child
+// (building, district, nested terrace, symbol plot). So they connect by
+// construction — the gaps between buildings are side streets, the padding along a
+// terrace's edge its ring road. The shader measures, per fragment, the distance to
+// the nearest obstacles (the terrace's own edges and the footprints listed for its
+// cell in a lookup texture, see setRoads): close to one is sidewalk, halfway between
+// two facing ones is the centre line, and where facing obstacles end is a crossing.
 //
 // Colours stay data first: facades and roofs are modulated from the box's own
 // colour (language, size, history, dimming, hover), never replaced.
@@ -104,33 +113,175 @@ vec3 grass(vec3 base, vec2 p) {
   return mix(g, base, 0.12) * dark(0.35);
 }
 
-// A terrace top is a city block: a ring road with a dashed centre line between two
-// curbs, and paved sidewalk inside where the buildings stand.
-vec3 street(vec3 base, float e, float along, vec2 p) {
-  float w = fwidth(e) + 1e-4, wa = fwidth(along) + 1e-4;
-  vec3 c = vec3(0.028, 0.03, 0.034) * (0.75 + 0.5 * vnoise(p * 28.0));
-  float dash = band(fract(along / 0.34), 0.08, 0.6, wa / 0.34) * band(e, 0.262, 0.288, w);
-  c = mix(c, vec3(0.75, 0.55, 0.1), dash * (1.0 - smoothstep(0.015, 0.05, w)));
-  c = mix(c, vec3(0.4, 0.4, 0.38), 1.0 - smoothstep(0.05 - w, 0.05 + w, e));
-  c = mix(c, base, 0.1); // the block keeps its tint, and hover shows
-  c *= dark(0.5);
-  return mix(c, paving(base, p), smoothstep(0.47 - w, 0.47 + w, e));
+vec3 asphalt(vec2 p) {
+  vec2 w = fwidth(p * 40.0);
+  float far = smoothstep(0.3, 1.0, max(w.x, w.y));
+  float grain = mix(0.55 * vnoise(p * 40.0) + 0.45 * vnoise(p * 9.0), 0.5, far);
+  vec3 c = vec3(0.034, 0.036, 0.041) * (0.75 + 0.5 * grain);
+  c *= 1.0 - 0.2 * smoothstep(0.6, 0.64, fbm(p * 0.8 + 3.7));                 // repaired patches
+  float crack = 1.0 - smoothstep(0.0, 0.012, abs(fbm(p * 2.6) - 0.5));
+  c *= 1.0 - 0.4 * crack * (1.0 - far) * smoothstep(0.45, 0.6, vnoise(p * 1.3)); // cracks, here and there
+  return c;
 }
 
+// A cell's obstacles: the nearest footprints around it (up to 8, as indices into
+// uRoadRects), written by setRoads.
+uniform highp sampler2D uRoadIdx;
+uniform highp sampler2D uRoadRects;
+uniform vec4 uRoadGrid; // grid origin x, z; cells per unit; width of uRoadRects
+uniform float uRoadOn;
+
+const float SIDEWALK = 0.065;
+const float CARRIAGE = 0.42; // farther from every obstacle than this is a park, not a street
+
+// A pocket park where the packing left a hole: lawn, shrubs, and gravel paths.
+vec3 park(vec3 base, vec2 p) {
+  vec3 c = grass(base, p);
+  float shrub = smoothstep(0.62, 0.7, fbm(p * 1.7 + 9.0));
+  c = mix(c, vec3(0.03, 0.09, 0.02) * (0.7 + 0.6 * vnoise(p * 30.0)) * dark(0.35), shrub);
+  vec2 t = p / 2.2, w = fwidth(t) + 1e-4;
+  float path = max(band(fract(t.x), 0.47, 0.53, w.x), band(fract(t.y), 0.47, 0.53, w.y));
+  vec3 gravel = vec3(0.42, 0.38, 0.3) * (0.85 + 0.3 * vnoise(p * 50.0)) * dark(0.4);
+  return mix(c, gravel, path * (1.0 - shrub));
+}
+
+// The top of a terrace: streets between its children. lp: position from the base
+// centre, sz: the terrace's size.
+vec3 streets(vec3 base, vec3 lp, vec3 sz) {
+  vec2 p = vSeed + lp.xz; // world position
+  vec2 h = sz.xz * 0.5;
+  // Candidates: distance to the obstacle, direction from it to p, and the obstacle's
+  // extent along the street it borders.
+  float d[12]; vec2 n[12]; vec2 ext[12];
+  for (int j = 0; j < 12; j++) { d[j] = 1e9; n[j] = vec2(0.0); ext[j] = vec2(0.0); }
+  d[0] = lp.x + h.x; n[0] = vec2(1.0, 0.0);  ext[0] = vSeed.y + vec2(-h.y, h.y);
+  d[1] = h.x - lp.x; n[1] = vec2(-1.0, 0.0); ext[1] = ext[0];
+  d[2] = lp.z + h.y; n[2] = vec2(0.0, 1.0);  ext[2] = vSeed.x + vec2(-h.x, h.x);
+  d[3] = h.y - lp.z; n[3] = vec2(0.0, -1.0); ext[3] = ext[2];
+  if (uRoadOn > 0.5) {
+    ivec2 size = textureSize(uRoadIdx, 0);
+    ivec2 cell = clamp(ivec2(floor((p - uRoadGrid.xy) * uRoadGrid.z)), ivec2(0), ivec2(size.x / 2 - 1, size.y - 1));
+    int rw = int(uRoadGrid.w);
+    for (int t = 0; t < 2; t++) {
+      vec4 ids = texelFetch(uRoadIdx, ivec2(cell.x * 2 + t, cell.y), 0);
+      for (int k = 0; k < 4; k++) {
+        if (ids[k] < 0.0) continue;
+        int i = int(ids[k] + 0.5);
+        vec4 r = texelFetch(uRoadRects, ivec2(i % rw, i / rw), 0);
+        vec2 v = p - clamp(p, r.xy, r.zw);
+        float dist = length(v);
+        if (dist < 1e-4) continue; // inside: the terrace itself, or one it stands on
+        int j = 4 + t * 4 + k;
+        d[j] = dist;
+        n[j] = v / dist;
+        ext[j] = abs(n[j].x) > abs(n[j].y) ? r.yw : r.xz;
+      }
+    }
+  }
+  int a = 0;
+  for (int j = 1; j < 12; j++) if (d[j] < d[a]) a = j;
+  float d1 = d[a];
+  vec2 n1 = n[a];
+  // The nearest obstacle facing it across the street, if the street is straight here.
+  int b = -1;
+  float d2 = 1e9;
+  for (int j = 0; j < 12; j++) if (dot(n[j], n1) < -0.95 && d[j] < d2) { d2 = d[j]; b = j; }
+
+  float w = fwidth(d1) + 1e-4;
+  vec3 c = asphalt(p);
+  if (b >= 0 && d1 + d2 > 2.0 * CARRIAGE) b = -1; // a park between: two streets, not one
+  if (b < 0 && d1 < CARRIAGE) {
+    // A street along a park: the dashed line on its middle.
+    float along = abs(n1.x) < 0.5 ? p.x : p.y, wa = fwidth(along) + 1e-4;
+    float mid = (SIDEWALK + CARRIAGE) * 0.5;
+    float dash = band(fract(along / 0.3), 0.0, 0.5, wa / 0.3) * band(d1, mid - 0.008, mid + 0.008, w);
+    c = mix(c, vec3(0.78, 0.6, 0.12), dash * (1.0 - smoothstep(0.02, 0.06, wa)));
+  }
+  if (b >= 0) {
+    float width = d1 + d2, s = (d2 - d1) * 0.5; // s: distance from the centre line
+    bool xRoad = abs(n1.x) < 0.5;               // the street runs along x
+    float along = xRoad ? p.x : p.y, across = xRoad ? p.y : p.x;
+    vec2 e = vec2(max(ext[a].x, ext[b].x), min(ext[a].y, ext[b].y)); // where both sides face each other
+    float fromEnd = min(along - e.x, e.y - along);
+    float wa = fwidth(along) + 1e-4, ws = fwidth(s) + 1e-4;
+    float near = 1.0 - smoothstep(0.02, 0.06, wa);
+    // Wheel tracks, one pair per lane.
+    c *= 1.0 - 0.14 * band(abs(s), width * 0.22 - 0.025, width * 0.22 + 0.025, ws) * step(0.3, width);
+    float zebra = 0.0;
+    if (e.y - e.x > 1.6 && fromEnd > 0.03 && fromEnd < 0.15 && d1 > SIDEWALK + 0.01) {
+      zebra = band(fract(across / 0.05), 0.0, 0.5, fwidth(across) / 0.05) * near;
+      c = mix(c, vec3(0.62, 0.62, 0.6), zebra);
+    }
+    if (width > 0.28 && fromEnd > 0.2) {
+      // A manhole every few metres on the centre line, the dashed line between them.
+      float m = length(vec2(s, (fract(along / 2.7 + 0.5) - 0.5) * 2.7));
+      float lid = 1.0 - smoothstep(0.042 - w, 0.042 + w, m);
+      c = mix(c, vec3(0.05, 0.05, 0.055) * (0.8 + 0.4 * band(fract(p.x * 40.0), 0.0, 0.5, 0.2)), lid * near);
+      c = mix(c, vec3(0.1), band(m, 0.036, 0.042, w) * near);
+      float dash = band(fract(along / 0.3), 0.0, 0.5, wa / 0.3) * (1.0 - smoothstep(0.008 - ws, 0.008 + ws, s));
+      c = mix(c, vec3(0.78, 0.6, 0.12), dash * (1.0 - lid) * near);
+    }
+  }
+  c = mix(c, base, 0.08) * dark(0.5); // the block keeps its tint, and hover shows
+  // Sidewalk along every obstacle and edge, and around parks, behind pale curb stones.
+  vec3 curb = vec3(0.5, 0.5, 0.48) * dark(0.45);
+  vec3 walk = paving(base, p);
+  walk = mix(walk, curb, band(d1, SIDEWALK - 0.014, SIDEWALK, w));
+  c = mix(walk, c, smoothstep(SIDEWALK - w, SIDEWALK + w, d1));
+  float edge = CARRIAGE + SIDEWALK;
+  c = mix(c, paving(base, p), band(d1, CARRIAGE, edge, w));
+  c = mix(c, curb, band(d1, CARRIAGE, CARRIAGE + 0.014, w));
+  return mix(c, park(base, p), smoothstep(edge - w, edge + w, d1));
+}
+
+// Terrace sides carry a staircase in the middle of each long side: the walker steps
+// up anyway, the stairs show where the levels connect.
+vec3 stairs(vec3 c, float u, float faceW, float v, float h) {
+  if (faceW < 1.5 || abs(u) > 0.16) return c;
+  float wv = fwidth(v) + 1e-4, wu = fwidth(u) + 1e-4;
+  float f = fract(v / (h / 4.0));
+  vec3 tread = mix(vec3(0.42, 0.41, 0.39), vec3(0.58, 0.57, 0.55), smoothstep(0.7, 0.8, f)) * dark(0.45);
+  tread *= 1.0 - 0.3 * band(f, 0.0, 0.08, wv * 4.0 / h);
+  return mix(tread, vec3(0.2) * dark(0.5), band(abs(u), 0.13, 0.16, wu)); // stringers
+}
+
+// A flat roof: gravel, a parapet, and per building either a plant room with a couple
+// of air-conditioning units or rows of solar panels.
 vec3 roof(vec3 base, vec3 lp, vec3 sz, float e) {
   float w = fwidth(e) + 1e-4;
-  vec3 c = base * 0.8 * (0.9 + 0.2 * vnoise(lp.xz * 16.0 + vSeed));
+  vec2 gw = fwidth(lp.xz * 60.0);
+  float gravel = mix(vnoise(lp.xz * 60.0 + vSeed), 0.5, smoothstep(0.4, 1.0, max(gw.x, gw.y)));
+  vec3 c = base * 0.8 * (0.9 + 0.2 * vnoise(lp.xz * 16.0 + vSeed)) * (0.9 + 0.2 * gravel);
   c = mix(c, base * 1.08, 1.0 - smoothstep(0.035 - w, 0.035 + w, e)); // parapet
+  float style = hash12(vSeed * 0.37 + 11.0);
+  if (style > 0.6 && min(sz.x, sz.z) > 0.6) {
+    // Solar panels in rows, inside the parapet.
+    vec2 t = lp.xz / vec2(0.1, 0.16);
+    vec2 tw = fwidth(t) + 1e-4;
+    float panel = band(fract(t.x), 0.08, 0.92, tw.x) * band(fract(t.y), 0.1, 0.75, tw.y) * smoothstep(0.08 - w, 0.08 + w, e);
+    vec3 cell = mix(vec3(0.05, 0.08, 0.16), vec3(0.12, 0.18, 0.3), band(fract(t.x * 3.0), 0.45, 0.55, tw.x * 3.0));
+    c = mix(c, cell * dark(0.4), panel * (1.0 - 0.5 * smoothstep(0.3, 0.6, max(tw.x, tw.y))));
+    return c * dark(0.55);
+  }
   vec2 at = (vec2(hash12(vSeed), hash12(vSeed + 5.3)) - 0.5) * sz.xz * 0.35;
   vec2 q = abs(lp.xz - at);
   float s = min(sz.x, sz.z) * 0.15;
   float unit = 1.0 - smoothstep(s - w, s + w, max(q.x, q.y)); // a rooftop plant room
   c = mix(c, vec3(0.3, 0.31, 0.33), unit * 0.85);
+  for (int i = 0; i < 2; i++) {
+    vec2 ac = (vec2(hash12(vSeed + float(i) * 7.1), hash12(vSeed + float(i) * 3.3 + 1.0)) - 0.5) * sz.xz * 0.6;
+    vec2 qa = abs(lp.xz - ac);
+    float box = 1.0 - smoothstep(0.045 - w, 0.045 + w, max(qa.x, qa.y));
+    float fan = 1.0 - smoothstep(0.025 - w, 0.025 + w, length(lp.xz - ac));
+    c = mix(c, mix(vec3(0.55, 0.56, 0.57), vec3(0.12), fan), box * (1.0 - unit));
+  }
   return c * dark(0.55);
 }
 
-// A facade: whole window bays across the face, 0.3-unit storeys, a shopfront on the
-// ground floor and a cornice on top. Lit windows glow, more of them at night.
+// A facade: whole window bays across the face, 0.3-unit storeys, a shopfront with one
+// door on the ground floor and a cornice on top. Each building picks a style: brick
+// with framed windows, concrete panels, or (tall ones) a glass curtain wall. Lit
+// windows glow, more of them at night.
 vec3 facade(vec3 base, float u, float faceW, float v, float h, vec2 seed) {
   float bays = max(1.0, floor(faceW / 0.24));
   vec2 cell = vec2((u + faceW * 0.5) / (faceW / bays), v / 0.3);
@@ -139,18 +290,48 @@ vec3 facade(vec3 base, float u, float faceW, float v, float h, vec2 seed) {
   float id = hash12(floor(cell) + seed * 1.37);
   float ground = 1.0 - step(1.0, cell.y);
   float top = step(h - 0.07, v);
-  float win = band(f.x, 0.2, 0.8, w.x) * band(f.y, 0.3, 0.82, w.y) * (1.0 - ground) * (1.0 - top);
-  float shop = band(f.x, 0.06, 0.94, w.x) * band(f.y, 0.08, 0.72, w.y) * ground * (1.0 - top);
+  float style = hash12(vSeed * 0.37 + 11.0);
+  bool tower = h > 2.4 && style > 0.45;
+  bool brick = !tower && style < 0.5;
+
+  vec3 wall = base * (0.92 + 0.12 * vnoise(vec2(u, v) * 26.0));
+  if (brick) {
+    vec2 bt = vec2(u, v) / vec2(0.06, 0.025);
+    bt.x += 0.5 * mod(floor(bt.y), 2.0);
+    vec2 bw = fwidth(bt) + 1e-4;
+    float bfar = smoothstep(0.3, 0.6, max(bw.x, bw.y));
+    float mortar = 1.0 - band(fract(bt.x), 0.06, 0.94, bw.x) * band(fract(bt.y), 0.12, 0.88, bw.y);
+    wall *= 0.9 + 0.2 * mix(hash12(floor(bt) + seed), 0.5, bfar);
+    wall = mix(wall, wall * 1.3 + 0.015, mortar * (1.0 - bfar) * 0.6);
+  } else if (!tower) {
+    wall *= 1.0 - 0.12 * (band(f.x, 0.0, 0.025, w.x) + band(f.x, 0.975, 1.0, w.x)) * (1.0 - far); // panel joints
+  }
+  wall *= dark(0.5);
+  wall = mix(wall, wall * 1.2, top);
+  wall *= 1.0 - 0.18 * band(f.y, 0.94, 1.0, w.y) * (1.0 - far); // floor lines
+
+  float upper = (1.0 - ground) * (1.0 - top);
+  float win = tower
+    ? band(f.x, 0.04, 0.96, w.x) * band(f.y, 0.14, 0.94, w.y) * upper
+    : band(f.x, 0.2, 0.8, w.x) * band(f.y, 0.3, 0.82, w.y) * upper;
+  float frame = tower ? 0.0 : band(f.x, 0.16, 0.84, w.x) * band(f.y, 0.26, 0.86, w.y) * upper * (1.0 - win);
+  float sill = tower ? 0.0 : band(f.x, 0.14, 0.86, w.x) * band(f.y, 0.2, 0.26, w.y) * upper;
+  float doorBay = floor(hash12(seed + 2.0) * bays);
+  float isDoor = 1.0 - step(0.5, abs(floor(cell.x) - doorBay));
+  float door = band(f.x, 0.28, 0.72, w.x) * band(f.y, 0.0, 0.72, w.y) * ground * isDoor;
+  float shop = band(f.x, 0.06, 0.94, w.x) * band(f.y, 0.08, 0.72, w.y) * ground * (1.0 - top) * (1.0 - isDoor);
+
   float litShare = mix(0.1, 0.55, uNight);
   float lit = step(1.0 - litShare, id);
   vec3 glass = mix(vec3(0.16, 0.22, 0.3), vec3(0.01, 0.014, 0.02), uNight) * (0.7 + 0.6 * hash12(floor(cell) + seed));
+  if (tower) glass = mix(glass, mix(vec3(0.3, 0.42, 0.55), vec3(0.02, 0.03, 0.05), uNight), clamp(v / h, 0.0, 1.0) * 0.6); // the sky, reflected
   vec3 warm = vec3(1.0, 0.7, 0.32) * (0.55 + 0.45 * id);
-  vec3 wall = base * (0.92 + 0.12 * vnoise(vec2(u, v) * 26.0)) * dark(0.5);
-  wall = mix(wall, wall * 1.2, top);
-  wall *= 1.0 - 0.18 * band(f.y, 0.94, 1.0, w.y) * (1.0 - far); // floor lines
-  vec3 c = mix(wall, mix(glass, warm, lit), win);
+  vec3 c = mix(wall, wall * 0.55, frame);
+  c = mix(c, wall * 1.35 + 0.02 * dark(0.5), sill);
+  c = mix(c, mix(glass, warm, lit), win);
   c = mix(c, mix(glass * 1.4, warm, uNight * 0.8), shop);
-  vec3 avg = mix(wall, mix(glass, warm, litShare), mix(0.3, 0.45, uNight));
+  c = mix(c, mix(vec3(0.16, 0.1, 0.06) * dark(0.5), warm * 0.8, uNight * 0.6), door);
+  vec3 avg = mix(wall, mix(glass, warm, litShare), mix(tower ? 0.6 : 0.3, 0.45, uNight));
   return mix(c, avg, far);
 }
 
@@ -174,7 +355,7 @@ vec3 cityColor(vec3 base) {
     float e = min(ex, ez);
     vec2 p = lp.xz + vSeed;
     if (k < 0.5) return grass(base, p);
-    if (k < 1.5) return street(base, e, ex < ez ? lp.z : lp.x, p);
+    if (k < 1.5) return streets(base, lp, sz);
     if (k > 5.5) return paving(base, p);
     return roof(base, lp, sz, e);
   }
@@ -185,7 +366,8 @@ vec3 cityColor(vec3 base) {
   // Keep the per-face shade the flat colours carry.
   float shade = sideX ? 0.62 : 0.78;
   if (k < 0.5) return retaining(vec3(0.3, 0.24, 0.16), vec2(u, lp.y), 0.0) * shade / 0.7;
-  if (k < 1.5 || k > 5.5) return retaining(base, vec2(u, lp.y), 0.35);
+  if (k > 5.5) return retaining(base, vec2(u, lp.y), 0.35);
+  if (k < 1.5) return stairs(retaining(base, vec2(u, lp.y), 0.35), u, faceW, lp.y, sz.y);
   return facade(base, u, faceW, lp.y, sz.y, vSeed + n.xz * 3.1);
 }
 `;
@@ -193,6 +375,88 @@ vec3 cityColor(vec3 base) {
 export const CITY_FRAG_BODY = `
 if (uBend > 0.5) diffuseColor.rgb = cityColor(diffuseColor.rgb);
 `;
+
+// ------------------------------------------------------------------ street lookup
+
+// Street shading needs, per fragment, the obstacles near it. A grid over the map
+// lists for each cell the ROAD_SLOTS footprints nearest to it (within ROAD_REACH,
+// wider than the widest street's half), so the shader never loops over all boxes.
+const ROAD_CELL = 0.5, ROAD_REACH = 0.9, ROAD_SLOTS = 8, RECT_TEX_W = 1024;
+const MAX_ROAD_CELLS = 1 << 20, MAX_ROAD_TEX = 4096; // memory and texture-size bounds
+
+/** Uniforms the street shader reads; setRoads fills them. */
+export function roadUniforms() {
+  return {
+    uRoadIdx: { value: null }, uRoadRects: { value: null },
+    uRoadGrid: { value: new THREE.Vector4() }, uRoadOn: { value: 0 },
+  };
+}
+
+/**
+ * Builds the street lookup for a layout: every box but land is an obstacle for the
+ * terrace it stands on. A fragment ignores footprints it lies inside (its own
+ * terrace and those below it), so one grid serves all terrace levels.
+ */
+export function setRoads(u, boxes) {
+  for (const k of ['uRoadIdx', 'uRoadRects']) {
+    u[k].value?.dispose();
+    u[k].value = null;
+  }
+  u.uRoadOn.value = 0;
+  const obs = boxes.filter(b => b.kind !== 'land');
+  if (!obs.length) return;
+  let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity;
+  for (const b of obs) {
+    minX = Math.min(minX, b.x - b.w / 2); maxX = Math.max(maxX, b.x + b.w / 2);
+    minZ = Math.min(minZ, b.z - b.d / 2); maxZ = Math.max(maxZ, b.z + b.d / 2);
+  }
+  // Huge maps get coarser cells; more obstacles then share a cell's slots.
+  const per = Math.min(1 / ROAD_CELL, Math.sqrt(MAX_ROAD_CELLS / Math.max(1, (maxX - minX) * (maxZ - minZ))),
+    MAX_ROAD_TEX / 2 / Math.max(1, maxX - minX), MAX_ROAD_TEX / Math.max(1, maxZ - minZ));
+  const W = Math.ceil((maxX - minX) * per) + 1, H = Math.ceil((maxZ - minZ) * per) + 1;
+  const dist = new Float32Array(W * H * ROAD_SLOTS).fill(Infinity);
+  const ids = new Float32Array(W * H * ROAD_SLOTS).fill(-1); // doubles as the texture: 2 RGBA texels per cell
+  const rects = new Float32Array(Math.ceil(obs.length / RECT_TEX_W) * RECT_TEX_W * 4);
+  const cellOf = (v, min, n) => Math.min(n - 1, Math.max(0, Math.floor((v - min) * per)));
+
+  obs.forEach((b, id) => {
+    const x0 = b.x - b.w / 2, x1 = b.x + b.w / 2, z0 = b.z - b.d / 2, z1 = b.z + b.d / 2;
+    rects.set([x0, z0, x1, z1], id * 4);
+    const i0 = cellOf(x0 - ROAD_REACH, minX, W), i1 = cellOf(x1 + ROAD_REACH, minX, W);
+    const j0 = cellOf(z0 - ROAD_REACH, minZ, H), j1 = cellOf(z1 + ROAD_REACH, minZ, H);
+    const inL = cellOf(x0, minX, W) + 1, inR = cellOf(x1, minX, W) - 1; // cells wholly inside, by column
+    for (let j = j0; j <= j1; j++) {
+      const cz0 = minZ + j / per, cz1 = cz0 + 1 / per;
+      const rowInside = cz0 >= z0 && cz1 <= z1;
+      for (let i = i0; i <= i1; i++) {
+        // A cell inside the footprint never shows a surface the footprint borders.
+        if (rowInside && i >= inL && i <= inR) { i = inR; continue; }
+        const cx0 = minX + i / per, cx1 = cx0 + 1 / per;
+        const d = Math.hypot(Math.max(0, x0 - cx1, cx0 - x1), Math.max(0, z0 - cz1, cz0 - z1));
+        if (d > ROAD_REACH) continue;
+        const base = (j * W + i) * ROAD_SLOTS;
+        let worst = base;
+        for (let k = base + 1; k < base + ROAD_SLOTS; k++) if (dist[k] > dist[worst]) worst = k;
+        if (d < dist[worst]) {
+          dist[worst] = d;
+          ids[worst] = id;
+        }
+      }
+    }
+  });
+
+  const tex = (data, w, h) => {
+    const t = new THREE.DataTexture(data, w, h, THREE.RGBAFormat, THREE.FloatType);
+    t.minFilter = t.magFilter = THREE.NearestFilter;
+    t.generateMipmaps = false;
+    t.needsUpdate = true;
+    return t;
+  };
+  u.uRoadIdx.value = tex(ids, W * 2, H);
+  u.uRoadRects.value = tex(rects, RECT_TEX_W, rects.length / 4 / RECT_TEX_W);
+  u.uRoadGrid.value.set(minX, minZ, per, RECT_TEX_W);
+  u.uRoadOn.value = 1;
+}
 
 // ------------------------------------------------------------------ sky and water
 
@@ -258,10 +522,11 @@ export function waterMaterial(uniforms) {
 
 // ------------------------------------------------------------------ props
 
-const TREE_SPACING = 1.1, LAMP_SPACING = 1.6, LAMP_INSET = 0.5, SHORE_INSET = 0.6;
+// Lamps stand on the sidewalk along each terrace's edge (the street shader's SIDEWALK).
+const TREE_SPACING = 1.1, LAMP_SPACING = 1.6, LAMP_INSET = 0.035, SHORE_INSET = 0.6;
 
 /**
- * Trees along every shore and lamps along every block's road, as instanced meshes
+ * Trees along every shore and lamps along every terrace's edge, as instanced meshes
  * that bend like the map. Returns a Group; lamps' heads glow at night (setNight).
  */
 export function makeProps(boxes, bendable) {

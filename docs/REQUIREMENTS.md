@@ -353,6 +353,37 @@ keeps the overlay.
 walking the map selects and expands buildings like clicking does, and the PNG
 export matches the view.
 
+### M8 — A walkable city
+
+- The view stays with the map. The isometric camera's target is clamped to the
+  map's bounds plus a quarter of its size (at least 6 units), and zooming out
+  stops when the map fills 35% of the view. The walker stays within 3 units of
+  the outermost shore, flies at most 12 units above the tallest box, and the
+  planet radius is capped at three times the map's diagonal.
+- Streets are the free space of each terrace top, so they connect by
+  construction: side streets in the gaps between children, a ring road along
+  the terrace edge. Every obstacle (child footprint, terrace edge) gets a
+  sidewalk with a curb; a straight street between two facing obstacles gets a
+  dashed centre line, wheel tracks and manholes; long streets get zebra
+  crossings where the facing obstacles end; free space farther than a street's
+  width from any obstacle becomes a park with paths. Terrace sides carry stairs.
+  Lamps stand on the sidewalk along each terrace edge.
+- Facades pick a style per building — brick with framed windows and sills,
+  concrete panels, or a glass curtain wall for tall buildings — with a door on
+  the ground floor; roofs are gravel with a plant room and air-conditioning
+  units or rows of solar panels; asphalt has grain, patches and cracks.
+
+> **Decisions (M8):** street shading needs the nearest obstacles per fragment.
+> A lookup grid (0.5-unit cells, coarser on huge maps, at most 2^20 cells) lists
+> the 8 footprints nearest to each cell in a float texture, beside a texture of
+> all footprints; the shader measures exact distances to those and to its own
+> terrace's edges. Footprints a fragment lies inside (its own terrace, those
+> below it) are skipped, so one 2D grid serves every terrace level. The grid is
+> built only when walk mode is shown, and rebuilt after a relayout.
+
+*Accepted when* panning, zooming, walking and flying cannot leave the map
+behind, and walking between buildings follows connected, marked streets.
+
 ### Known limits
 
 - Java imports name packages, not artifacts, so Maven dependencies are matched
