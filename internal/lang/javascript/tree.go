@@ -149,23 +149,25 @@ func (t *tree) addPnpmTree(abs string) {
 	}
 }
 
-// pnpmKey splits "/lodash@4.17.21" or "react-dom@18.3.1(react@18.3.1)" into name and
-// version. The parenthesised part is peer-dependency context, not the version.
+// pnpmKey splits a package key into name and version. Version 6 onwards writes
+// "/lodash@4.17.21" and "react-dom@18.3.1(react@18.3.1)", where the parenthesised
+// part is peer-dependency context; version 5 wrote "/lodash/4.17.21" and
+// "/@scope/pkg/1.2.3", where the last segment is the version.
 func pnpmKey(key string) (name, version string) {
 	key = strings.TrimPrefix(key, "/")
 	if i := strings.Index(key, "("); i >= 0 {
 		key = key[:i]
 	}
-	i := strings.LastIndex(key, "@")
-	if i <= 0 { // a scope's "@" is at index 0 and is not the separator
-		return key, ""
+	if i := strings.LastIndex(key, "@"); i > 0 { // a scope's "@" is at index 0
+		return key[:i], key[i+1:]
 	}
-	name, version = key[:i], key[i+1:]
-	if strings.Contains(version, "/") { // "/@scope/pkg/1.2.3" of the oldest lock files
-		return key, ""
+	if i := strings.LastIndex(key, "/"); i > 0 && startsWithDigit(key[i+1:]) {
+		return key[:i], key[i+1:]
 	}
-	return name, version
+	return key, ""
 }
+
+func startsWithDigit(s string) bool { return s != "" && s[0] >= '0' && s[0] <= '9' }
 
 // addYarnTree reads the dependency edges of a classic yarn.lock, whose entries name
 // their resolved version and then the ranges they in turn require.
@@ -177,30 +179,34 @@ func (t *tree) addYarnTree(abs string) {
 	var names []string
 	inDeps := false
 	for _, line := range strings.Split(string(data), "\n") {
+		trimmed := strings.TrimSpace(line)
+		fields := strings.Fields(trimmed)
 		switch {
-		case strings.TrimSpace(line) == "" || strings.HasPrefix(line, "#"):
-		case !strings.HasPrefix(line, " "):
-			inDeps = false
-			names = names[:0]
-			for _, k := range strings.Split(strings.TrimSuffix(strings.TrimSpace(line), ":"), ",") {
+		case len(fields) == 0 || strings.HasPrefix(trimmed, "#"):
+		case !strings.HasPrefix(line, " "): // the descriptors of a new entry
+			inDeps, names = false, names[:0]
+			for _, k := range strings.Split(strings.TrimSuffix(trimmed, ":"), ",") {
 				if n := yarnEntryName(strings.Trim(strings.TrimSpace(k), `"`)); n != "" {
 					names = append(names, n)
 				}
 			}
-		case strings.HasPrefix(strings.TrimSpace(line), "version"):
-			v := strings.Trim(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "version")), `:" `)
-			for _, n := range names {
-				t.locked[n] = v
+		// A dependency block is indented one level deeper than the entry's own keys,
+		// which is the only thing telling "version-guard" apart from "version".
+		case strings.HasPrefix(line, "    "):
+			if inDeps {
+				for _, n := range names {
+					t.add(n, strings.Trim(fields[0], `"`))
+				}
 			}
-		case strings.TrimSpace(line) == "dependencies:" || strings.TrimSpace(line) == "optionalDependencies:":
+		case trimmed == "dependencies:" || trimmed == "optionalDependencies:":
 			inDeps = true
-		case inDeps && strings.HasPrefix(line, "    "):
-			dep := strings.Trim(strings.Fields(strings.TrimSpace(line))[0], `"`)
-			for _, n := range names {
-				t.add(n, dep)
-			}
 		default:
 			inDeps = false
+			if k, v := yarnField(line); k == "version" && v != "" {
+				for _, n := range names {
+					t.locked[n] = v
+				}
+			}
 		}
 	}
 }

@@ -380,15 +380,28 @@ func readYarnLock(abs string) map[string]string {
 			for _, k := range strings.Split(strings.TrimSuffix(line, ":"), ",") {
 				keys = append(keys, strings.Trim(strings.TrimSpace(k), `"`))
 			}
-		case strings.HasPrefix(line, "  version"):
-			v := strings.Trim(strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(line), "version")), `:" `)
-			for _, k := range keys {
-				out[k] = v
+		// The key has to be "version" itself: a dependency named version-guard, one
+		// level deeper inside the entry, starts with the same letters.
+		case !strings.HasPrefix(line, "    "):
+			if k, v := yarnField(line); k == "version" && v != "" {
+				for _, key := range keys {
+					out[key] = v
+				}
+				keys = keys[:0]
 			}
-			keys = keys[:0]
 		}
 	}
 	return out
+}
+
+// yarnField reads one "key value" line of a yarn.lock. The classic format writes
+// `version "1.2.3"`, Berry writes `version: 1.2.3`; both may quote the value.
+func yarnField(line string) (key, value string) {
+	fields := strings.Fields(line)
+	if len(fields) < 2 {
+		return "", ""
+	}
+	return strings.TrimSuffix(fields[0], ":"), strings.Trim(fields[1], `"`)
 }
 
 // yarnVersion finds the locked version of name for the declared range.

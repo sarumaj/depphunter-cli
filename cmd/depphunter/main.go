@@ -128,9 +128,14 @@ func run(ctx context.Context, cfg config.Config) error {
 	opts.Indexes = func(files []*scan.File) anal.Indexes { return indexes.Discover(files) }
 	if cfg.Online {
 		// The configuration is filled while the scan runs; the client only reads it
-		// afterwards, when the walk starts asking about packages.
-		opts.Registry = index.NewClient(indexes.Config(), filepath.Join(cacheDir, "index"),
-			indexCacheTTL, indexTimeout, home)
+		// afterwards, when the walk starts asking about packages. Without a cache
+		// directory (--no-cache) the answers are kept for this run only, rather than
+		// written to a relative path inside the analysed project.
+		store := ""
+		if cacheDir != "" {
+			store = filepath.Join(cacheDir, "index")
+		}
+		opts.Registry = index.NewClient(indexes.Config(), store, indexCacheTTL, indexTimeout, home)
 	}
 	g, err := analyze(ctx, cfg.Root, opts, c)
 	if err != nil {
@@ -329,19 +334,23 @@ func serveInTerminal(ctx context.Context, cfg config.Config, srv *server.Server,
 	ln net.Listener, url string) error {
 
 	served := make(chan error, 1)
+	stopped := make(chan struct{})
 	go func() {
 		err := httpSrv.Serve(ln)
 		if errors.Is(err, http.ErrServerClosed) {
 			err = nil
 		}
 		served <- err
+		close(stopped)
 	}()
 	defer func() {
 		srv.Close()
 		shutdown, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
 		httpSrv.Shutdown(shutdown)
-		<-served
+		// Wait for the server to be down, not for its error: the select below may
+		// have taken that already, and receiving it twice would wait for ever.
+		<-stopped
 	}()
 
 	out := log.Writer()

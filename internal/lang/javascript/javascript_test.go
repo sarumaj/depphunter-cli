@@ -1,6 +1,8 @@
 package javascript
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
@@ -123,5 +125,50 @@ func TestLockTree(t *testing.T) {
 	// Another ecosystem's packages are not this resolver's business.
 	if n := len(tr.Dependencies(lang.Target{Ecosystem: "pypi", Package: "react"})); n != 0 {
 		t.Errorf("answered for %d pypi dependencies", n)
+	}
+}
+
+// TestYarnEntryKeys checks the two places a classic yarn.lock is read: a dependency
+// whose name begins with "version" must not be mistaken for the entry's own version,
+// which is only told apart by how deep it is indented.
+func TestYarnEntryKeys(t *testing.T) {
+	lock := "lodash@^4.17.0:\n  version \"4.17.21\"\n  resolved \"https://registry.npmjs.org/lodash\"\n" +
+		"  dependencies:\n    version-guard \"^1.1.1\"\n    js-tokens \"^4\"\n"
+	dir := t.TempDir()
+	path := filepath.Join(dir, "yarn.lock")
+	if err := os.WriteFile(path, []byte(lock), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	if got := readYarnLock(path)["lodash@^4.17.0"]; got != "4.17.21" {
+		t.Errorf("locked version %q, want 4.17.21", got)
+	}
+	tr := newTree()
+	tr.addYarnTree(path)
+	if got := tr.locked["lodash"]; got != "4.17.21" {
+		t.Errorf("tree version %q, want 4.17.21", got)
+	}
+	for _, dep := range []string{"version-guard", "js-tokens"} {
+		if !tr.deps["lodash"][dep] {
+			t.Errorf("%s is not among lodash's dependencies: %v", dep, tr.deps["lodash"])
+		}
+	}
+}
+
+// TestPnpmKeys covers both spellings: version 5 put the version after a slash,
+// version 6 and later after an @, with peer context in parentheses.
+func TestPnpmKeys(t *testing.T) {
+	for _, c := range []struct{ key, name, version string }{
+		{"/lodash/4.17.21", "lodash", "4.17.21"},
+		{"/@scope/pkg/1.2.3", "@scope/pkg", "1.2.3"},
+		{"/lodash@4.17.21", "lodash", "4.17.21"},
+		{"/@scope/pkg@1.2.3", "@scope/pkg", "1.2.3"},
+		{"react-dom@18.3.1(react@18.3.1)", "react-dom", "18.3.1"},
+		// A path that names no version is a name.
+		{"/@scope/pkg", "@scope/pkg", ""},
+	} {
+		name, version := pnpmKey(c.key)
+		if name != c.name || version != c.version {
+			t.Errorf("%s: got %q %q, want %q %q", c.key, name, version, c.name, c.version)
+		}
 	}
 }
