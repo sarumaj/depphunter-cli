@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"path"
 	"path/filepath"
+	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -20,6 +21,9 @@ type Options struct {
 	Scan    scan.Options
 	Plugins []lang.Plugin
 	Cache   *cache.Cache // nil disables caching
+	// ResolveDepth is how many levels of an external package's own dependencies to
+	// add, from the project's lock files: 0 none, -1 as far as they reach.
+	ResolveDepth int
 }
 
 // Stats describes one run: how many files were parsed and how many came from the cache.
@@ -40,10 +44,11 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 	var mu sync.Mutex
 
 	b := &builder{
-		g:     &graph.Graph{Root: filepath.Base(root), GeneratedAt: time.Now().UTC(), Edges: []*graph.Edge{}},
-		nodes: map[string]*graph.Node{},
-		edges: map[[2]string]bool{},
-		files: map[string]bool{},
+		g:        &graph.Graph{Root: filepath.Base(root), GeneratedAt: time.Now().UTC(), Edges: []*graph.Edge{}},
+		nodes:    map[string]*graph.Node{},
+		edges:    map[[2]string]bool{},
+		files:    map[string]bool{},
+		packages: map[string]lang.Target{},
 	}
 	b.add(&graph.Node{ID: graph.DirID("."), Kind: graph.KindDir, Name: b.g.Root, Path: "."})
 	for _, f := range files {
@@ -92,6 +97,11 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 				b.fileResult(f.Path, res, ecosystems)
 			}
 		}
+		// Only now, with every direct package of this plugin on the graph, is there
+		// something to walk out from.
+		if tr, ok := r.(lang.Transitive); ok && opts.ResolveDepth != 0 {
+			b.expand(tr, ecosystems, opts.ResolveDepth)
+		}
 	}
 	stats.Parsed, stats.Cached = int(parsed.Load()), int(cached.Load())
 	return b.g, stats, nil
@@ -102,6 +112,50 @@ type builder struct {
 	nodes map[string]*graph.Node
 	edges map[[2]string]bool
 	files map[string]bool
+	// packages remembers what each package node was built from, so the transitive
+	// walk can ask a resolver about it again.
+	packages map[string]lang.Target
+}
+
+// expand walks out from the packages already on the graph, adding what the project's
+// lock files say they depend on. depth counts levels past the direct dependencies;
+// -1 walks until nothing new appears.
+func (b *builder) expand(tr lang.Transitive, ecosystems map[string]lang.Ecosystem, depth int) {
+	type step struct {
+		id    string
+		level int
+	}
+	var queue []step
+	for id, t := range b.packages {
+		if _, ok := ecosystems[t.Ecosystem]; ok {
+			queue = append(queue, step{id, 0})
+		}
+	}
+	// A stable order keeps the graph (and the tests reading it) the same run to run.
+	sort.Slice(queue, func(i, j int) bool { return queue[i].id < queue[j].id })
+
+	seen := map[string]bool{}
+	for i := 0; i < len(queue); i++ {
+		cur := queue[i]
+		if depth >= 0 && cur.level >= depth {
+			continue
+		}
+		for _, dep := range tr.Dependencies(b.packages[cur.id]) {
+			_, known := b.nodes[graph.PackageID(dep.Ecosystem, dep.Package)]
+			id := b.target(dep, ecosystems)
+			if id == "" || id == cur.id {
+				continue
+			}
+			if !known {
+				b.nodes[id].Transitive = true
+			}
+			b.edge(cur.id, id, graph.EdgeDepends, 0)
+			if !seen[id] {
+				seen[id] = true
+				queue = append(queue, step{id, cur.level + 1})
+			}
+		}
+	}
 }
 
 func (b *builder) add(n *graph.Node) *graph.Node {
@@ -132,13 +186,18 @@ func (b *builder) fileResult(file string, res *lang.FileResult, ecosystems map[s
 		if to == "" || to == fid {
 			continue
 		}
-		key := [2]string{fid, to}
-		if b.edges[key] {
-			continue
-		}
-		b.edges[key] = true
-		b.g.Edges = append(b.g.Edges, &graph.Edge{From: fid, To: to, Kind: graph.EdgeImport, Line: im.Line})
+		b.edge(fid, to, graph.EdgeImport, im.Line)
 	}
+}
+
+// edge adds one edge, at most once per pair.
+func (b *builder) edge(from, to string, kind graph.EdgeKind, line int) {
+	key := [2]string{from, to}
+	if b.edges[key] {
+		return
+	}
+	b.edges[key] = true
+	b.g.Edges = append(b.g.Edges, &graph.Edge{From: from, To: to, Kind: kind, Line: line})
 }
 
 func (b *builder) target(t lang.Target, ecosystems map[string]lang.Ecosystem) string {
@@ -161,6 +220,9 @@ func (b *builder) target(t lang.Target, ecosystems map[string]lang.Ecosystem) st
 	}
 	eid := b.add(&graph.Node{ID: graph.EcosystemID(t.Ecosystem), Kind: graph.KindEcosystem, Name: name, Std: eco.Std}).ID
 	n := b.add(&graph.Node{ID: graph.PackageID(t.Ecosystem, t.Package), Kind: graph.KindPackage, Name: t.Package, Parent: eid, Unresolved: t.Unresolved})
+	if _, ok := b.packages[n.ID]; !ok {
+		b.packages[n.ID] = t
+	}
 	if n.Version == "" {
 		n.Version = t.Version
 	}

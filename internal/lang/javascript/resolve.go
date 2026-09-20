@@ -36,6 +36,7 @@ type resolver struct {
 	locks   map[string]map[string]string // package-lock.json dir -> package -> exact version
 	byName  map[string]string            // workspace package name -> its directory
 	configs map[string]*tsconfig         // directory -> effective tsconfig/jsconfig
+	tree    *tree                        // what the lock files say the packages need
 }
 
 type tsconfig struct {
@@ -52,6 +53,7 @@ func newResolver(all []*scan.File) *resolver {
 	r := &resolver{
 		files: map[string]bool{}, dirs: map[string]bool{}, deps: map[string]map[string]string{},
 		locks: map[string]map[string]string{}, byName: map[string]string{}, configs: map[string]*tsconfig{},
+		tree: newTree(),
 	}
 	byPath := map[string]*scan.File{}
 	for _, f := range all {
@@ -85,12 +87,15 @@ func newResolver(all []*scan.File) *resolver {
 			}
 		case "package-lock.json":
 			r.addLock(dir, readLock(f.Abs))
+			r.tree.addPackageLockTree(f.Abs)
 		case "yarn.lock":
 			yarn[dir] = readYarnLock(f.Abs)
+			r.tree.addYarnTree(f.Abs)
 		case "pnpm-lock.yaml":
 			for importer, versions := range readPnpmLock(f.Abs) {
 				r.addLock(path.Join(dir, importer), versions)
 			}
+			r.tree.addPnpmTree(f.Abs)
 		}
 	}
 	// yarn.lock keys are "name@range": pin each declared range of the packages below.

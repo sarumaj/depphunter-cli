@@ -87,3 +87,37 @@ func TestLockfiles(t *testing.T) {
 		})
 	}
 }
+
+// TestLockTree checks what the lock file says the packages themselves need: this is
+// what --resolve-depth walks, and it must come out of the file alone.
+func TestLockTree(t *testing.T) {
+	r, err := (Plugin{}).Resolver("testdata/repo", langtest.Files(t, "testdata/repo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, ok := r.(lang.Transitive)
+	if !ok {
+		t.Fatal("the resolver cannot answer for transitive dependencies")
+	}
+	deps := func(pkg string) map[string]lang.Target {
+		out := map[string]lang.Target{}
+		for _, d := range tr.Dependencies(lang.Target{Ecosystem: "npm", Package: pkg}) {
+			out[d.Package] = d
+		}
+		return out
+	}
+	react := deps("react")
+	if got, ok := react["loose-envify"]; !ok || got.Version != "1.4.0" || !got.Pinned {
+		t.Errorf("react depends on %+v, want loose-envify 1.4.0 pinned", react)
+	}
+	if next := deps("loose-envify"); next["js-tokens"].Version != "4.0.0" {
+		t.Errorf("loose-envify depends on %+v, want js-tokens 4.0.0", next)
+	}
+	if n := len(deps("js-tokens")); n != 0 {
+		t.Errorf("js-tokens has %d dependencies, want none", n)
+	}
+	// Another ecosystem's packages are not this resolver's business.
+	if n := len(tr.Dependencies(lang.Target{Ecosystem: "pypi", Package: "react"})); n != 0 {
+		t.Errorf("answered for %d pypi dependencies", n)
+	}
+}

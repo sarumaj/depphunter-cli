@@ -27,15 +27,32 @@ type crate struct {
 
 type resolver struct {
 	files   map[string]bool
-	crates  []*crate          // deepest first, so a file finds its own crate
-	members map[string]string // normalized package name -> crate dir (workspace / path crates)
-	locked  map[string]string // package -> version from Cargo.lock
+	crates  []*crate            // deepest first, so a file finds its own crate
+	members map[string]string   // normalized package name -> crate dir (workspace / path crates)
+	locked  map[string]string   // package -> version from Cargo.lock
+	tree    map[string][]string // package -> the crates it depends on, from Cargo.lock
+}
+
+// Dependencies implements lang.Transitive: Cargo.lock resolves the whole crate graph,
+// so the answer needs nothing but the file the project already carries.
+func (r *resolver) Dependencies(t lang.Target) []lang.Target {
+	if t.Ecosystem != ecoCrates {
+		return nil
+	}
+	var out []lang.Target
+	for _, dep := range r.tree[t.Package] {
+		version := r.locked[dep]
+		out = append(out, lang.Target{
+			Ecosystem: ecoCrates, Package: dep, Version: version, Pinned: version != "",
+		})
+	}
+	return out
 }
 
 func norm(name string) string { return strings.ReplaceAll(name, "-", "_") }
 
 func newResolver(all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, members: map[string]string{}, locked: map[string]string{}}
+	r := &resolver{files: map[string]bool{}, members: map[string]string{}, locked: map[string]string{}, tree: map[string][]string{}}
 	workspaceDeps := map[string]dep{}
 	type manifest struct {
 		f   *scan.File
@@ -57,11 +74,21 @@ func newResolver(all []*scan.File) *resolver {
 			}
 		case "Cargo.lock":
 			var lock struct {
-				Package []struct{ Name, Version string }
+				Package []struct {
+					Name, Version string
+					// Each entry lists what that crate needs, as "name" or
+					// "name version": the transitive graph, already resolved.
+					Dependencies []string
+				}
 			}
 			if _, err := toml.DecodeFile(f.Abs, &lock); err == nil {
 				for _, p := range lock.Package {
 					r.locked[p.Name] = p.Version
+					for _, d := range p.Dependencies {
+						if name, _, _ := strings.Cut(d, " "); name != "" && name != p.Name {
+							r.tree[p.Name] = append(r.tree[p.Name], name)
+						}
+					}
 				}
 			}
 		}

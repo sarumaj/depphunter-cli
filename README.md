@@ -66,32 +66,33 @@ depphunter --export dot -o deps.dot   # write the graph and exit
 depphunter --export html -o map.html  # a self-contained map to share
 ```
 
-| Flag                  | Default                   |                                                          |
-|-----------------------|---------------------------|----------------------------------------------------------|
-| `--addr`              | `127.0.0.1:0`             | listen address; port 0 picks a free port                 |
-| `--no-open`           |                           | print the URL instead of opening the browser             |
-| `--exclude`           |                           | glob of paths to skip (repeatable)                       |
-| `--max-file-size`     | `2097152`                 | larger files are listed but not read                     |
-| `--config`            | `<path>/.depphunter.yaml` | config file to use                                       |
-| `--theme`             | `auto`                    | `auto`, `light`, `dark`                                  |
-| `--color-by`          | `language`                | `language`, `size`, `commits`, `churn`, `age`, `authors` |
-| `--height-scale`      | `sqrt`                    | `linear`, `sqrt`, `log`                                  |
-| `--show-std`          | `false`                   | show standard-library islands                            |
-| `--expand-depth`      | `0`                       | initially expanded depth; `0` = auto, `-1` = all         |
-| `--watch`             | `false`                   | re-analyze on file changes, update the browser live      |
-| `--no-cache`          |                           | neither read nor write the analysis cache                |
-| `--no-history`        |                           | do not read git history                                  |
-| `--history-commits`   | `10000`                   | read at most this many commits                           |
-| `--lsp`               |                           | find symbol references with installed language servers   |
-| `--lsp-timeout`       | `5m`                      | time budget for language servers                         |
-| `-v`, `--version`     |                           | print the version and exit                               |
-| `-h`, `--help`        |                           | list the flags with their defaults                       |
-| `--editor`            | auto-detected             | editor command template, e.g. `"code -g {file}:{line}"`  |
-| `--terminal`          | `false`                   | draw the map in the terminal instead of a browser window |
-| `--terminal-browser`  | first Chromium found      | browser binary the terminal view drives                  |
-| `--terminal-graphics` | `auto`                    | `auto`, `kitty`, `iterm`, `sixel`, `blocks`              |
-| `--export`            |                           | write `json`, `graphml`, `dot` or `html` and exit        |
-| `-o`, `--output`      | stdout                    | output file for `--export`                               |
+| Flag                  | Default                   |                                                                     |
+|-----------------------|---------------------------|---------------------------------------------------------------------|
+| `--addr`              | `127.0.0.1:0`             | listen address; port 0 picks a free port                            |
+| `--no-open`           |                           | print the URL instead of opening the browser                        |
+| `--exclude`           |                           | glob of paths to skip (repeatable)                                  |
+| `--max-file-size`     | `2097152`                 | larger files are listed but not read                                |
+| `--config`            | `<path>/.depphunter.yaml` | config file to use                                                  |
+| `--theme`             | `auto`                    | `auto`, `light`, `dark`                                             |
+| `--color-by`          | `language`                | `language`, `size`, `commits`, `churn`, `age`, `authors`            |
+| `--height-scale`      | `sqrt`                    | `linear`, `sqrt`, `log`                                             |
+| `--show-std`          | `false`                   | show standard-library islands                                       |
+| `--expand-depth`      | `0`                       | initially expanded depth; `0` = auto, `-1` = all                    |
+| `--watch`             | `false`                   | re-analyze on file changes, update the browser live                 |
+| `--no-cache`          |                           | neither read nor write the analysis cache                           |
+| `--no-history`        |                           | do not read git history                                             |
+| `--history-commits`   | `10000`                   | read at most this many commits                                      |
+| `--resolve-depth`     | `0`                       | levels of dependencies-of-dependencies from lock files (`-1` = all) |
+| `--lsp`               |                           | find symbol references with installed language servers              |
+| `--lsp-timeout`       | `5m`                      | time budget for language servers                                    |
+| `-v`, `--version`     |                           | print the version and exit                                          |
+| `-h`, `--help`        |                           | list the flags with their defaults                                  |
+| `--editor`            | auto-detected             | editor command template, e.g. `"code -g {file}:{line}"`             |
+| `--terminal`          | `false`                   | draw the map in the terminal instead of a browser window            |
+| `--terminal-browser`  | first Chromium found      | browser binary the terminal view drives                             |
+| `--terminal-graphics` | `auto`                    | `auto`, `kitty`, `iterm`, `sixel`, `blocks`                         |
+| `--export`            |                           | write `json`, `graphml`, `dot` or `html` and exit                   |
+| `-o`, `--output`      | stdout                    | output file for `--export`                                          |
 
 Long flags take two dashes (`--addr`, not `-addr`); a flag's value may follow
 after a space or `=`.
@@ -101,7 +102,7 @@ user config (`$XDG_CONFIG_HOME/depphunter/config.yaml`, or the OS equivalent),
 the project config `.depphunter.yaml`, `DEPPHUNTER_*` environment variables
 (`ADDR`, `OPEN`, `EXCLUDE`, `MAX_FILE_SIZE`, `THEME`, `COLOR_BY`,
 `HEIGHT_SCALE`, `SHOW_STD`, `EXPAND_DEPTH`, `WATCH`, `CACHE`, `EDITOR`,
-`HISTORY`, `HISTORY_COMMITS`, `LSP`, `LSP_TIMEOUT`, `TERMINAL`,
+`HISTORY`, `HISTORY_COMMITS`, `RESOLVE_DEPTH`, `LSP`, `LSP_TIMEOUT`, `TERMINAL`,
 `TERMINAL_BROWSER`, `TERMINAL_GRAPHICS`), and flags. Exclude globs
 add up across all sources instead of replacing each other. The project config
 cannot set `editor` or `terminal_browser`: they arrive with the repository, and
@@ -275,6 +276,31 @@ shows both - `4.3.1`, requested as `^4.2.0`.
 | PowerShell Gallery | `RequiredVersion`                                                    | `ModuleVersion`, which is a minimum                         |
 
 The JSON and GraphML exports carry `requested` and `floating` per package.
+
+## Dependencies of dependencies
+
+`--resolve-depth` walks past what your code imports into what those packages
+themselves pull in: `1` adds one level, `2` two, `-1` as far as the answer
+reaches. The answer comes from the lock files the repository already carries -
+nothing is fetched, and depphunter stays offline.
+
+| Lock file                            | gives                                            |
+|--------------------------------------|--------------------------------------------------|
+| `package-lock.json` (v1-v3)          | every installed package and what it requires     |
+| `pnpm-lock.yaml` (v5-v9)             | `packages:` and, since v9, `snapshots:`          |
+| `yarn.lock` (classic)                | each entry's resolved version and `dependencies` |
+| `Cargo.lock`                         | `dependencies` per crate                         |
+| `uv.lock`, `poetry.lock`, `pdm.lock` | each distribution's own requirements             |
+
+Packages that arrive this way are marked **transitive** - no file here imports
+them - and the edges between packages are `depends`, apart from the `import`
+edges that start at a file, so "imported by N files" keeps meaning what it says.
+Two versions of one package are one building, as they always were, so an edge
+between packages is an edge between names.
+
+Ecosystems whose lock files carry no edges (`Pipfile.lock`), or that keep the
+graph outside the repository (Go modules, Maven, NuGet, PowerShell Gallery),
+add nothing here yet - reaching those needs an index, which is the next step.
 
 ## Symbol references
 

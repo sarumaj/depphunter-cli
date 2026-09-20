@@ -25,6 +25,16 @@ func Analyze(t *testing.T, p lang.Plugin, root string) map[string]*lang.FileResu
 	return res
 }
 
+// Files scans a fixture project, for tests that build a resolver directly.
+func Files(t *testing.T, root string) []*scan.File {
+	t.Helper()
+	files, err := scan.Scan(context.Background(), root, scan.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	return files
+}
+
 // Imports maps each import's spec to its target.
 func Imports(t *testing.T, res *lang.FileResult) map[string]lang.Target {
 	t.Helper()
