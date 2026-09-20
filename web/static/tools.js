@@ -91,6 +91,7 @@ function armed(g, { hold, grip, restGrip = 0.75 }, build, mirror = 1) {
   g.add(holder);
   g.userData.hands.push(holder);
   g.userData.restGrip = restGrip;
+  holder.userData.restGrip = restGrip;
   fillHand(holder, mirror, restGrip);
   if (build) {
     const tool = new THREE.Group();
@@ -100,6 +101,24 @@ function armed(g, { hold, grip, restGrip = 0.75 }, build, mirror = 1) {
     holder.add(tool);
     return tool;
   }
+  return holder;
+}
+
+/**
+ * The other way round: a hand laid on a tool that is already in the frame, rather
+ * than a tool laid in a hand. `at` is the point the fist closes around, `along` the
+ * shaft through it and `back` the way the arm leaves - all in the tool's own frame,
+ * which is where anyone looking at the model would measure them. It is what a tool
+ * held in both hands needs, because only one hand can be the one holding it.
+ */
+function grasps(g, tool, { at, along, back, close = 0.75 }, mirror = 1) {
+  const holder = new THREE.Group();
+  holder.position.set(...at);
+  aimHand(holder, along, back);
+  tool.add(holder);
+  g.userData.hands.push(holder);
+  holder.userData.restGrip = close;
+  fillHand(holder, mirror, close);
   return holder;
 }
 
@@ -117,11 +136,17 @@ function aimHand(holder, along, back) {
   holder.quaternion.setFromRotationMatrix(new THREE.Matrix4().makeBasis(x, y, z));
 }
 
+// Where a held shaft runs through the model: down the palm, under the knuckles. The
+// hand is offset by it so that an anchor's origin is the middle of the fist rather
+// than the wrist, which is what `hold` and `grip` are both written against.
+const FIST = new THREE.Vector3(0, -0.028, 0.102);
+
 // Puts the model into an anchor, now or as soon as it has loaded.
 function fillHand(holder, mirror, restGrip) {
   const put = () => {
     const h = handModel(mirror, skinMaterial());
     if (!h) return;
+    h.position.set(-FIST.x * mirror, -FIST.y, -FIST.z);
     holder.add(h);
     holder.userData.hand = h;
     holder.traverse(o => { o.frustumCulled = false; o.renderOrder = 10; });
@@ -136,8 +161,8 @@ function fillHand(holder, mirror, restGrip) {
  * gesture takes it the rest of the way.
  */
 function grip(vm, amount) {
-  const rest = vm.userData.restGrip ?? 0.75;
   for (const holder of vm.userData.hands || []) {
+    const rest = holder.userData.restGrip ?? vm.userData.restGrip ?? 0.75;
     closeHand(holder.userData.hand, rest + amount * (1 - rest));
   }
 }
@@ -199,7 +224,7 @@ const rod = {
   reticle: 'bobber',
   // The blank goes up, the arm back out of the bottom of the frame.
   hold: { x: 0.2, y: -0.28, z: -0.52, along: [-0.05, 1, 0.3], back: [0.4, -0.3, 1] },
-  grip: { x: 0, y: 0, z: 0.055, rx: 0, ry: 0, rz: -Math.PI / 2 },
+  grip: { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: -Math.PI / 2 },
   viewmodel() {
     return viewmodel(g => {
       const rod = armed(g, this, tool => { tool.name = 'rod'; });
@@ -293,7 +318,7 @@ const net = {
   hint: 'Click: net a building, net it twice for details',
   reticle: 'hoop',
   hold: { x: 0.2, y: -0.28, z: -0.52, along: [0.08, 1, 0.32], back: [0.4, -0.3, 1] },
-  grip: { x: 0, y: -0.04, z: 0.055, rx: 0, ry: 0, rz: -Math.PI / 2 },
+  grip: { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: -Math.PI / 2 },
   viewmodel() {
     return viewmodel(g => {
       const net = armed(g, this, tool => { tool.name = 'net'; });
@@ -371,18 +396,19 @@ const camera = {
   noun: 'photographed',
   hint: 'Click: photograph a building, twice for details',
   reticle: 'frame',
-  // Both hands are on the body, one at each end, and the arms go out to the bottom
-  // corners rather than straight up, which would read as reaching for it.
-  hold: { x: 0.125, y: -0.2, z: -0.52, along: [1, 0.25, 0.1], back: [0.95, -0.5, 0.75] },
-  left: { x: -0.105, y: -0.2, z: -0.54, along: [-1, 0.25, 0.1], back: [-0.95, -0.5, 0.75] },
-  grip: { x: -0.085, y: -0.015, z: 0.06, rx: 0, ry: 0.72, rz: 0.06 },
-  restGrip: 0.62,
+  // A camera is the one tool here held in both hands, so it is placed first and the
+  // hands are laid on it: the right one round the body's own grip, the left cupped
+  // under the lens, which is how a camera is actually held.
+  body: { x: 0.0, y: -0.09, z: -0.12, rx: 0.05, ry: -0.18, rz: 0.03 },
+  right: { at: [0.158, -0.025, 0.015], along: [0.08, 1, 0], back: [0.62, -0.75, 0.75], close: 0.86 },
+  left: { at: [-0.055, -0.085, -0.125], along: [0, 0.12, -1], back: [-0.55, -0.95, 0.5], close: 0.34 },
   viewmodel() {
     return viewmodel(g => {
-      // The right hand is on the camera's own grip; the left comes up under the lens,
-      // which is how a camera is actually held. The body rides with the right hand.
-      const cam = armed(g, this, tool => { tool.name = 'cam'; });
-      armed(g, { hold: camera.left, grip: null, restGrip: 0.62 }, null, -1);
+      const cam = new THREE.Group();
+      cam.name = 'cam';
+      cam.position.set(this.body.x, this.body.y, this.body.z);
+      cam.rotation.set(this.body.rx, this.body.ry, this.body.rz);
+      g.add(cam);
 
       const body = part(new THREE.BoxGeometry(0.27, 0.165, 0.11), '#2c3138');
       cam.add(body);
@@ -418,6 +444,9 @@ const camera = {
       const flash = part(new THREE.BoxGeometry(0.05, 0.016, 0.02).translate(-0.02, 0.13, 0.0), '#e8eef6');
       flash.name = 'flash';
       cam.add(flash);
+
+      grasps(g, cam, this.right);
+      grasps(g, cam, this.left, -1);
     });
   },
   // The camera is lifted to the eye, the shutter pressed, and the body kicks back.
@@ -446,7 +475,7 @@ const bubbles = {
   hint: 'Click: send a bubble at a building, twice for details',
   reticle: 'soft',
   hold: { x: 0.2, y: -0.28, z: -0.52, along: [0.05, 1, 0.32], back: [0.4, -0.3, 1] },
-  grip: { x: 0, y: -0.03, z: 0.055, rx: 0, ry: 0, rz: -Math.PI / 2 },
+  grip: { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: -Math.PI / 2 },
   viewmodel() {
     return viewmodel(g => {
       const wand = armed(g, this, tool => { tool.name = 'wand'; });
@@ -516,56 +545,62 @@ const dart = {
   // dark blob, and half the point of it is that it looks like something.
   // The pistol grip hangs down out of the fist, so the shaft through it points up.
   hold: { x: 0.19, y: -0.24, z: -0.5, along: [0.05, 1, 0.1], back: [0.45, -0.3, 1] },
-  grip: { x: 0, y: -0.05, z: 0.055, rx: 0, ry: 0.55, rz: -Math.PI / 2 },
+  grip: { x: 0, y: 0, z: 0, rx: 3.9, ry: 0, rz: -Math.PI / 2 },
+  restGrip: 0.88,
   viewmodel() {
     return viewmodel(g => {
       const gun = armed(g, this, tool => { tool.name = 'gun'; });
+      // The launcher is modelled about its barrel, the way one would be drawn; this
+      // hangs the whole thing off the pistol grip, which is the part a fist closes on.
+      const frame = new THREE.Group();
+      frame.position.set(0, 0.045, -0.01);
+      gun.add(frame);
 
       const body = part(new THREE.BoxGeometry(0.078, 0.078, 0.2).translate(0, 0.05, -0.12), '#4d5761');
-      gun.add(body);
+      frame.add(body);
       const barrel = rodPart(0.028, 0.032, 0.3, '#39424c');
       barrel.rotation.x = Math.PI / 2;
       barrel.position.set(0, 0.05, -0.3);
-      gun.add(barrel);
+      frame.add(barrel);
       const muzzle = rodPart(0.036, 0.034, 0.04, '#23292f');
       muzzle.rotation.x = Math.PI / 2;
       muzzle.position.set(0, 0.05, -0.44);
-      gun.add(muzzle);
+      frame.add(muzzle);
       // A charged air cylinder along the barrel, on the side that faces the view.
       const tank = rodPart(0.024, 0.024, 0.18, '#4c8ab2');
       tank.rotation.x = Math.PI / 2;
       tank.position.set(-0.042, 0.03, -0.2);
-      gun.add(tank);
+      frame.add(tank);
       const valve = rodPart(0.014, 0.014, 0.03, '#b9bec6');
       valve.rotation.x = Math.PI / 2;
       valve.position.set(-0.042, 0.03, -0.3);
-      gun.add(valve);
+      frame.add(valve);
       // The grip, running down through the fist.
-      gun.add(part(new THREE.BoxGeometry(0.052, 0.14, 0.05).translate(0, -0.045, 0.01), '#262b31'));
-      gun.add(part(new THREE.BoxGeometry(0.02, 0.035, 0.012).translate(0, 0.015, -0.055), '#15181b')); // the trigger guard
+      frame.add(part(new THREE.BoxGeometry(0.052, 0.14, 0.05).translate(0, -0.045, 0.01), '#262b31'));
+      frame.add(part(new THREE.BoxGeometry(0.02, 0.035, 0.012).translate(0, 0.015, -0.055), '#15181b')); // the trigger guard
       // The scope, on two mounts.
       const scope = rodPart(0.022, 0.022, 0.19, '#2f353c');
       scope.rotation.x = Math.PI / 2;
       scope.position.set(0, 0.115, -0.2);
-      gun.add(scope);
+      frame.add(scope);
       const bell = rodPart(0.03, 0.026, 0.045, '#2f353c');
       bell.rotation.x = Math.PI / 2;
       bell.position.set(0, 0.115, -0.31);
-      gun.add(bell);
+      frame.add(bell);
       const lens = part(new THREE.CircleGeometry(0.026, 14), '#7fb8ff');
       lens.position.set(0, 0.115, -0.333);
-      gun.add(lens);
+      frame.add(lens);
       for (const z of [-0.14, -0.26]) {
-        gun.add(part(new THREE.BoxGeometry(0.016, 0.04, 0.018).translate(0, 0.085, z), '#2b3138'));
+        frame.add(part(new THREE.BoxGeometry(0.016, 0.04, 0.018).translate(0, 0.085, z), '#2b3138'));
       }
       // A magazine of darts, one of them showing.
       const mag = part(new THREE.BoxGeometry(0.05, 0.05, 0.05).translate(0, 0.095, -0.08), '#39424c');
-      gun.add(mag);
+      frame.add(mag);
       const loaded = rodPart(0.008, 0.008, 0.06, '#ff8a1f');
       loaded.rotation.x = Math.PI / 2;
       loaded.position.set(0, 0.095, -0.125);
       loaded.name = 'loaded';
-      gun.add(loaded);
+      frame.add(loaded);
     });
   },
   // Recoil: the whole thing drives back and the muzzle rises, then settles.

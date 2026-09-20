@@ -21,5 +21,9 @@ instead of the bare specifier `three` (and each other by file name), because the
 Content-Security-Policy forbids the inline import map a bare specifier would
 need.
 
-`../hand.glb` is not vendored: it is generated from `tools/hand.py`, which is
-the source for it.
+`../hand.glb` is built by `tools/hand.py` from the `generic-hand` model in
+`@webxr-input-profiles/assets@1.0.20`
+(`dist/profiles/generic-hand/right.glb`), which is MIT licensed - Copyright (c)
+2019 Amazon, `webxr-input-profiles.LICENSE`. The script re-orients and rescales
+the model, adds the forearm it has no use for and rebuilds its rig; the hand
+itself is theirs.
