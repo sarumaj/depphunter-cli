@@ -24,8 +24,8 @@ const MAX_HIGHLIGHT = 300_000; // bytes; larger files are shown as plain text
 
 
 export class Panel {
-  constructor(root, body, { model, colorOf, onSelect, onOpen, openLabel, historyOf, linkKind, onClose, findingsOf }) {
-    Object.assign(this, { root, body, model, colorOf, onSelect, onOpen, openLabel, historyOf, linkKind, onClose, findingsOf });
+  constructor(root, body, { model, colorOf, onSelect, onOpen, openLabel, historyOf, linkKind, onClose, findingsOf, caught, onCatch }) {
+    Object.assign(this, { root, body, model, colorOf, onSelect, onOpen, openLabel, historyOf, linkKind, onClose, findingsOf, caught, onCatch });
     this.seq = 0;
     // Which branches of the dependency trees are open, by direction and path, so a
     // live update redraws the panel without closing what the reader opened.
@@ -70,6 +70,14 @@ export class Panel {
     if (node.kind === 'file' || node.kind === 'symbol') this.source(node, seq, top);
   }
 
+  /**
+   * Brings the findings into view, for a reader who arrived by pointing at a pin
+   * rather than by selecting the building - what they asked for is further down.
+   */
+  revealFindings() {
+    this.body.querySelector('.f-section')?.scrollIntoView({ block: 'nearest' });
+  }
+
   /** A list row or breadcrumb: clickable, and reachable by keyboard. */
   item(tag, attrs, ...children) {
     const go = attrs.onclick;
@@ -93,6 +101,11 @@ export class Panel {
   // What the scanners said about this node. A finding opens in place: the summary is
   // the row, the description and the advisory link are behind it, which keeps a file
   // with forty lint complaints readable.
+  //
+  // What lies below a collapsed directory opens too. On the streets a bug is caught
+  // where it stands, so the walker never has to ask for it; from above, the marker
+  // over a district is red for something several levels down, and a reader who
+  // cannot reach it from here cannot reach it at all.
   findings(node) {
     const res = this.findingsOf?.(node);
     if (!res) return null;
@@ -100,10 +113,35 @@ export class Panel {
     const below = (res.rollup?.count || 0) - own.length;
     if (!own.length && below <= 0) return null;
     const ul = h('ul', { class: 'p-list findings' }, own.map(f => this.findingRow(f)));
-    return h('div', { class: 'p-section' },
-      h('h4', {}, 'Findings ', h('span', { class: 'n' }, fmt.format(own.length))),
+    // The count is everything the section can reach, not just what is listed at once:
+    // over a district the listed part is usually none of it.
+    return h('div', { class: 'p-section f-section' },
+      h('h4', {}, 'Findings ', h('span', { class: 'n' }, fmt.format(own.length + Math.max(0, below)))),
       own.length ? ul : null,
-      below > 0 ? h('div', { class: 'hint' }, `${fmt.format(below)} more below this one`) : null);
+      below > 0 ? this.deeper(node, own, below) : null);
+  }
+
+  /**
+   * The findings below this node, behind a button. They are built on the first press
+   * rather than with the panel: a directory near the root carries every finding in
+   * the repository, and nobody asked for that list by selecting it.
+   */
+  deeper(node, own, below) {
+    const rest = h('ul', { class: 'p-list findings', hidden: true });
+    const label = () => (rest.hidden ? `Show the ${fmt.format(below)} below this one` : 'Hide them again');
+    const button = h('button', {
+      class: 'more', type: 'button',
+      onclick: () => {
+        if (!rest.children.length) {
+          const here = new Set(own.map(f => f.id));
+          const under = this.findingsOf?.(node)?.under || [];
+          rest.replaceChildren(...under.filter(f => !here.has(f.id)).map(f => this.findingRow(f)));
+        }
+        rest.hidden = !rest.hidden;
+        button.textContent = label();
+      },
+    }, label());
+    return h('div', {}, button, rest);
   }
 
   findingRow(f) {
@@ -122,7 +160,7 @@ export class Panel {
       class: `finding sev-${f.severity}`,
       onclick: () => { detail.hidden = !detail.hidden; },
       title: `${f.severity} · ${f.source}`,
-    }, h('i', { class: 'sev-dot' }), body);
+    }, h('i', { class: 'sev-dot' }), body, this.catchButton(f));
     row.dataset.finding = f.id;
     if (this.focus === f.id) {
       detail.hidden = false;
@@ -131,6 +169,32 @@ export class Panel {
       queueMicrotask(() => row.scrollIntoView({ block: 'center' }));
     }
     return row;
+  }
+
+  /**
+   * Takes a finding without having to walk up to its bug. Catching one in the street
+   * is the same act - it goes in the backpack and stays there until the scanners stop
+   * reporting it - and the two views share the one backpack, so a bug taken here is
+   * gone from the street as well.
+   */
+  catchButton(f) {
+    if (!this.onCatch) return null;
+    const has = () => !!this.caught?.(f.id);
+    const button = h('button', {
+      class: 'catch', type: 'button',
+      onclick: e => {
+        e.stopPropagation(); // the row itself opens the detail
+        this.onCatch(f, has());
+        draw();
+      },
+    });
+    const draw = () => {
+      button.classList.toggle('kept', has());
+      button.textContent = has() ? '✓' : '+';
+      button.title = has() ? 'In the backpack - press to take it out' : 'Put it in the backpack';
+    };
+    draw();
+    return button;
   }
 
   openButton(node) {

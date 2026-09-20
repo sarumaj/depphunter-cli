@@ -61,9 +61,15 @@ export class Bugs {
    * The findings already caught, which stay caught. The backpack is what remembers
    * them - across a relayout, a depth change and a reload - so it says which they are
    * and this follows.
+   *
+   * It follows while the bugs are out there, too: taking a finding from the panel in
+   * the map view is the same catch as netting it in the street, and putting one back
+   * puts its bug back on its lap.
    */
   keepCaught(ids) {
     this.caught = new Set(ids);
+    for (const bug of this.bugs) bug.caught = this.caught.has(bug.f.id);
+    this.dirty = true;
   }
 
   /**
