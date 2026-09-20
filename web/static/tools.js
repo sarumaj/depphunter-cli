@@ -26,24 +26,32 @@ const LIGHT = new THREE.Vector3(-0.38, 0.84, 0.39).normalize();
 
 /**
  * shade bakes that light into a geometry's vertex colors. It wraps around the whole
- * object (no hard terminator), because low-poly geometry with a sharp light on it
- * reads as facets rather than as form.
+ * object (no hard terminator), because geometry with a sharp light on it reads as
+ * facets rather than as form. warm reddens the vertices towards the far end of the
+ * shape: skin carries more blood at the knuckles and fingertips than at the wrist,
+ * and that gradient is most of what makes a hand look like flesh rather than plastic.
  */
-function shade(geo, ambient = 0.5, gain = 0.66) {
-  const n = geo.attributes.normal;
+function shade(geo, { ambient = 0.5, gain = 0.66, warm = 0 } = {}) {
+  const n = geo.attributes.normal, pos = geo.attributes.position;
+  geo.computeBoundingBox();
+  const { min, max } = geo.boundingBox;
+  const span = Math.max(1e-6, max.z - min.z);
   const c = new Float32Array(n.count * 3);
   for (let i = 0; i < n.count; i++) {
     const d = n.getX(i) * LIGHT.x + n.getY(i) * LIGHT.y + n.getZ(i) * LIGHT.z;
     const s = ambient + gain * Math.pow(0.5 + 0.5 * d, 1.35);
-    c[i * 3] = c[i * 3 + 1] = c[i * 3 + 2] = s;
+    const t = warm * (pos.getZ(i) - min.z) / span;
+    c[i * 3] = s * (1 + 0.22 * t);
+    c[i * 3 + 1] = s * (1 - 0.06 * t);
+    c[i * 3 + 2] = s * (1 - 0.16 * t);
   }
   geo.setAttribute('color', new THREE.Float32BufferAttribute(c, 3));
   return geo;
 }
 
 /** One shaded part. opts go to the material (transparency, opacity, side). */
-function part(geo, color, opts) {
-  return new THREE.Mesh(shade(geo), new THREE.MeshBasicMaterial({ color, vertexColors: true, ...opts }));
+function part(geo, color, opts, shading) {
+  return new THREE.Mesh(shade(geo, shading), new THREE.MeshBasicMaterial({ color, vertexColors: true, ...opts }));
 }
 
 // A tube between two points, for rod blanks, handles and strap runs.
@@ -51,89 +59,249 @@ function rodPart(r0, r1, len, color) {
   return part(new THREE.CylinderGeometry(r0, r1, len, 10), color);
 }
 
+/**
+ * limb builds a smooth tube through a list of elliptical cross-sections along z,
+ * each {z, rx, ry} and optionally offset by {x, y}. It is what every part of an arm
+ * is: a forearm is one that swells and flattens towards the wrist, a finger three
+ * short ones that taper, a palm a wide flat one. Both ends are closed and the normals
+ * are averaged, so shade's light runs around it without a seam.
+ */
+function limb(sections, seg = 14) {
+  const pos = [], idx = [];
+  for (const s of sections) {
+    for (let i = 0; i < seg; i++) {
+      const a = (i / seg) * Math.PI * 2;
+      pos.push((s.x || 0) + Math.cos(a) * s.rx, (s.y || 0) + Math.sin(a) * s.ry, s.z);
+    }
+  }
+  for (let r = 0; r < sections.length - 1; r++) {
+    for (let i = 0; i < seg; i++) {
+      const a = r * seg + i, b = r * seg + (i + 1) % seg;
+      idx.push(a, b, a + seg, b, b + seg, a + seg);
+    }
+  }
+  const first = sections[0], last = sections[sections.length - 1];
+  const capA = pos.length / 3;
+  pos.push(first.x || 0, first.y || 0, first.z);
+  const capB = capA + 1;
+  pos.push(last.x || 0, last.y || 0, last.z);
+  const tail = (sections.length - 1) * seg;
+  for (let i = 0; i < seg; i++) {
+    idx.push(capA, i, (i + 1) % seg);
+    idx.push(capB, tail + (i + 1) % seg, tail + i);
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setIndex(idx);
+  g.computeVertexNormals();
+  return g;
+}
+
+/** A soft pad - the heel of a thumb, the ball of a palm - as a squashed sphere. */
+const pad = (rx, ry, rz, x, y, z) =>
+  new THREE.SphereGeometry(1, 12, 8).scale(rx, ry, rz).translate(x, y, z);
+
 // ------------------------------------------------------------------ the hand
 
+// A finger's three bones, as fractions of its length, and how thick it is at each
+// joint. Real fingers taper and their joints bulge; a tube that does neither is a
+// sausage, which is what the hand looked like before.
+const PHALANX = [0.42, 0.33, 0.25];
+
 /**
- * A first-person hand: a palm with a knuckle ridge, four fingers of two segments each
- * curled over the grip, a two-segment thumb across them, and a wrist that runs back
- * into a sleeve, so the arm does not end in nothing. The finger groups are named, so a
- * gesture can flex them.
+ * One finger: three tapering segments on nested joints, each joint carrying its rest
+ * angle so a grip can close the whole chain, and a nail on the last one.
+ */
+function finger(len, girth, curl) {
+  const root = new THREE.Group();
+  let host = root, z = 0;
+  for (let j = 0; j < 3; j++) {
+    const seg = len * PHALANX[j];
+    const r0 = girth * (1 - j * 0.1), r1 = girth * (1 - (j + 1) * 0.12);
+    const bone = new THREE.Group();
+    bone.position.z = z;
+    bone.rotation.x = curl[j];
+    bone.userData.rest = curl[j];
+    bone.userData.joint = j;
+    // The knuckle at the near end, then the shaft, tapering.
+    bone.add(part(limb([
+      { z: -r0 * 0.5, rx: r0 * 0.88, ry: r0 * 0.92 },
+      { z: 0, rx: r0 * 1.05, ry: r0 * 1.08 },
+      { z: seg * 0.45, rx: (r0 + r1) * 0.5, ry: (r0 + r1) * 0.52 },
+      { z: seg, rx: r1, ry: r1 * 1.04 },
+    ], 12), SKIN, undefined, { warm: 1 }));
+    if (j === 2) {
+      // The tip is rounded, and carries a nail.
+      bone.add(part(new THREE.SphereGeometry(r1, 12, 8).scale(1, 1.04, 1.1).translate(0, 0, seg), SKIN,
+        undefined, { warm: 1 }));
+      bone.add(part(pad(r1 * 0.62, r1 * 0.3, seg * 0.42, 0, r1 * 0.75, seg * 0.62), '#e6c3ad'));
+    }
+    host.add(bone);
+    host = bone;
+    z = seg;
+  }
+  return root;
+}
+
+// Where the hand ends and the arm begins.
+const WRIST = new THREE.Vector3(0, 0, -0.05);
+
+/**
+ * The forearm and the sleeve over it: a flattened wrist swelling into the belly of the
+ * arm, then a rolled cuff. It falls away to the side as it goes back, so it leaves the
+ * frame at the corner the way an arm attached to the viewer does, instead of receding
+ * to a point in the middle of the view.
+ */
+function arm(mirror = 1) {
+  const g = new THREE.Group();
+  const back = (t, f) => ({ z: -t * 0.5, x: mirror * t * t * 0.34, y: -t * t * 0.78, ...f });
+  g.add(part(limb([
+    { z: 0.06, rx: 0.042, ry: 0.032 },
+    back(0.0, { rx: 0.040, ry: 0.031 }),
+    back(0.16, { rx: 0.048, ry: 0.040 }),
+    back(0.34, { rx: 0.062, ry: 0.054 }),
+    back(0.56, { rx: 0.071, ry: 0.064 }),
+    back(0.8, { rx: 0.069, ry: 0.063 }),
+  ]), SKIN, undefined, { warm: 0.35 }));
+  g.add(part(limb([
+    back(0.3, { rx: 0.076, ry: 0.069 }),
+    back(0.38, { rx: 0.083, ry: 0.076 }),
+    back(0.7, { rx: 0.088, ry: 0.082 }),
+    back(1.1, { rx: 0.086, ry: 0.081 }),
+    back(1.6, { rx: 0.083, ry: 0.079 }), // far enough back that its end is never in frame
+  ]), SLEEVE));
+  const at = back(0.31, {});
+  const cuff = part(new THREE.TorusGeometry(0.08, 0.017, 8, 18), SLEEVE_DARK);
+  cuff.position.set(at.x, at.y, at.z);
+  cuff.rotation.set(0.95, mirror * -0.35, 0);
+  g.add(cuff);
+  return g;
+}
+
+/**
+ * A first-person hand: a palm with the pads at its thumb and its edge, four fingers of
+ * three bones, and an opposed thumb of two. The joint groups carry their rest angles,
+ * so a gesture can close the hand around whatever it holds.
  */
 function hand(mirror = 1) {
   const g = new THREE.Group();
 
-  const palm = part(new THREE.BoxGeometry(0.094, 0.048, 0.12), SKIN);
-  palm.position.z = 0.005;
-  g.add(palm);
-  // The heel of the hand, a little narrower and in shadow under the palm.
-  g.add(part(new THREE.BoxGeometry(0.082, 0.044, 0.055).translate(0, -0.004, -0.072), SKIN_DARK));
-  // The knuckles: a ridge across the front of the palm, which is what makes a fist
-  // read as a fist rather than as a block.
-  g.add(part(new THREE.SphereGeometry(0.03, 10, 6).scale(1.5, 0.72, 0.78).translate(0, 0.016, 0.052), SKIN));
+  // The palm: wide across the knuckles, narrow and thin at the wrist, with the ball
+  // of the thumb on one side and the heel of the hand on the other.
+  g.add(part(limb([
+    { z: -0.055, rx: 0.040, ry: 0.030 },
+    { z: -0.01, rx: 0.048, ry: 0.027 },
+    { z: 0.03, rx: 0.052, ry: 0.024 },
+    { z: 0.062, rx: 0.050, ry: 0.022 },
+  ]), SKIN, undefined, { warm: 0.6 }));
+  g.add(part(pad(0.022, 0.02, 0.042, mirror * 0.032, -0.004, 0.0), SKIN, undefined, { warm: 0.5 }));
+  g.add(part(pad(0.016, 0.017, 0.038, -mirror * 0.036, -0.004, 0.005), SKIN_DARK));
+  // The knuckles, a ridge of four across the front of the palm.
+  for (let i = 0; i < 4; i++) {
+    g.add(part(pad(0.0125, 0.011, 0.014, (i - 1.5) * 0.0235 * mirror, 0.008, 0.058), SKIN, undefined, { warm: 1 }));
+  }
 
   const fingers = new THREE.Group();
-  fingers.position.set(0, 0.006, 0.055);
+  fingers.position.set(0, 0.002, 0.058);
   for (let i = 0; i < 4; i++) {
-    const f = new THREE.Group();
-    // The middle fingers are the longest; the little finger sits lowest.
-    const len = 0.046 - Math.abs(i - 1.35) * 0.005;
-    f.position.set((i - 1.5) * 0.0235 * mirror, -Math.abs(i - 1.3) * 0.003, 0);
-    f.add(part(new THREE.BoxGeometry(0.02, 0.022, len).translate(0, 0, len * 0.5), SKIN));
-    const tip = new THREE.Group();
-    tip.position.z = len;
-    tip.rotation.x = 1.6;
-    tip.add(part(new THREE.BoxGeometry(0.019, 0.021, len * 0.62).translate(0, 0, len * 0.31), SKIN_DARK));
-    f.add(tip);
-    f.rotation.x = -1.28 - i * 0.05;
-    f.userData.rest = f.rotation.x;
+    // Index to little: shorter, thinner, and set a little lower along the knuckle arc.
+    const len = 0.082 - Math.abs(i - 1.3) * 0.006 - (i === 3 ? 0.008 : 0);
+    const f = finger(len, 0.0115 - i * 0.0006, [-1.2 - i * 0.05, 1.05, 0.7]);
+    f.position.set((i - 1.5) * 0.0235 * mirror, -Math.abs(i - 1.35) * 0.0035, 0);
+    f.rotation.y = mirror * (i - 1.5) * 0.045; // they fan out a little
     fingers.add(f);
   }
   fingers.name = 'fingers';
   g.add(fingers);
 
+  // The thumb sits lower and across, opposed to the fingers, and has two bones.
   const thumb = new THREE.Group();
-  thumb.position.set(mirror * 0.044, 0.012, 0.022);
-  thumb.rotation.set(-0.95, 0, mirror * 0.6);
-  thumb.add(part(new THREE.BoxGeometry(0.024, 0.024, 0.042).translate(0, 0, 0.021), SKIN));
-  const thumbTip = new THREE.Group();
-  thumbTip.position.z = 0.042;
-  thumbTip.rotation.x = 0.75;
-  thumbTip.add(part(new THREE.BoxGeometry(0.022, 0.022, 0.034).translate(0, 0, 0.017), SKIN_DARK));
-  thumb.add(thumbTip);
+  thumb.position.set(mirror * 0.042, -0.004, 0.005);
+  thumb.rotation.set(-0.5, mirror * -0.35, mirror * 0.95);
+  const base = new THREE.Group();
+  base.rotation.x = -0.35;
+  Object.assign(base.userData, { rest: -0.35, joint: 0, give: 0.55 });
+  base.add(part(limb([
+    { z: -0.008, rx: 0.016, ry: 0.017 },
+    { z: 0.022, rx: 0.0155, ry: 0.0165 },
+    { z: 0.046, rx: 0.0145, ry: 0.0155 },
+  ], 12), SKIN, undefined, { warm: 0.8 }));
+  const tip = new THREE.Group();
+  tip.position.z = 0.046;
+  tip.rotation.x = 0.62;
+  Object.assign(tip.userData, { rest: 0.62, joint: 1, give: 0.7 });
+  tip.add(part(limb([
+    { z: -0.006, rx: 0.0145, ry: 0.0152 },
+    { z: 0.018, rx: 0.0135, ry: 0.014 },
+    { z: 0.034, rx: 0.0115, ry: 0.012 },
+  ], 12), SKIN, undefined, { warm: 1 }));
+  tip.add(part(new THREE.SphereGeometry(0.0115, 12, 8).scale(1, 1.05, 1.15).translate(0, 0, 0.034), SKIN,
+    undefined, { warm: 1 }));
+  tip.add(part(pad(0.008, 0.004, 0.015, 0, 0.009, 0.022), '#e6c3ad'));
+  base.add(tip);
+  thumb.add(base);
   thumb.name = 'thumb';
   g.add(thumb);
-
-  // Wrist, sleeve and a cuff band where the two meet.
-  const wrist = rodPart(0.036, 0.042, 0.06, SKIN_DARK);
-  wrist.rotation.x = Math.PI / 2;
-  wrist.position.z = -0.095;
-  g.add(wrist);
-  const sleeve = rodPart(0.05, 0.058, 0.16, SLEEVE);
-  sleeve.rotation.x = Math.PI / 2;
-  sleeve.position.z = -0.2;
-  g.add(sleeve);
-  const cuff = rodPart(0.053, 0.053, 0.03, SLEEVE_DARK);
-  cuff.rotation.x = Math.PI / 2;
-  cuff.position.z = -0.128;
-  g.add(cuff);
   return g;
 }
 
-// Where a shaft passes through the fist, in the hand's own coordinates: the tools put
-// their grips here, so the hand holds them rather than floating beside them.
-export const GRIP = { x: 0, y: 0.015, z: 0.025 };
+// The hole through a closed fist, in the hand's own coordinates: between the palm and
+// the curled fingertips. A tool's shaft has to pass through exactly here, or the hand
+// is holding air next to it.
+const FIST = new THREE.Vector3(0, 0.002, 0.05);
 
-/** Curls the fingers of every hand towards a fist: 0 at rest, 1 gripping hard. */
+/**
+ * Puts a hand on a tool, gripping it. Every tool that is held by a shaft builds it
+ * along its own +y, so the hand is turned a quarter turn about z - which points its
+ * fingers' curl axis along the shaft - and slid until the fist's hole is at `y` on it.
+ * The hand becomes part of the tool, so the two move together however it is swung.
+ */
+function gripHand(tool, y, mirror = 1) {
+  const h = hand(mirror);
+  h.rotation.set(0, 0, mirror * Math.PI / 2);
+  const hole = FIST.clone().applyEuler(h.rotation);
+  h.position.set(-hole.x, y - hole.y, -hole.z);
+  tool.add(h);
+  attachArm(h, mirror, tool);
+  return h;
+}
+
+/**
+ * Hangs an arm off a hand's wrist. The arm follows the hand, because it is the same
+ * arm - but it is counter-rotated by however the hand is turned, so that at rest it
+ * falls away towards the corner of the frame whatever angle the tool is held at. A
+ * launcher held across the view must not take the shoulder with it.
+ */
+function attachArm(h, mirror, tool) {
+  const a = arm(mirror);
+  a.position.copy(WRIST);
+  h.updateMatrix();
+  const m = h.matrix.clone();
+  if (tool) {
+    tool.updateMatrix();
+    m.premultiply(tool.matrix);
+  }
+  a.quaternion.setFromRotationMatrix(m).invert();
+  h.add(a);
+  return a;
+}
+
+// How far each joint gives when the hand closes: the knuckle least, the middle most.
+// A hand that bent every joint equally would close like a claw.
+const JOINT_GIVE = [0.22, 0.4, 0.3];
+
+/** Curls every joint of every finger towards a fist: 0 at rest, 1 gripping hard. */
 function grip(vm, amount) {
-  vm.traverse(o => {
-    if (o.name !== 'fingers') return;
-    for (const f of o.children) f.rotation.x = f.userData.rest - amount * 0.3;
+  vm.traverse(j => {
+    const { rest, joint, give = 1 } = j.userData;
+    if (rest === undefined) return;
+    j.rotation.x = rest - amount * JOINT_GIVE[joint] * give;
   });
 }
 
 // ------------------------------------------------------------------ the viewmodel
 
-const REST = { x: 0.26, y: -0.24, z: -0.55, rx: 0.1, ry: -0.25, rz: 0 };
+const REST = { x: 0.235, y: -0.2, z: -0.55, rx: 0.1, ry: -0.25, rz: 0 };
 
 // viewmodel places a hand and its tool where a first-person view expects them: low
 // and to the right, angled towards the middle of the screen.
@@ -204,14 +372,13 @@ const rod = {
   reticle: 'bobber',
   viewmodel() {
     return viewmodel(g => {
-      g.add(hand());
-      // The rod, on a pivot in the fist, so the grip runs through the hand and the
-      // whole thing swings from there.
+      // The rod, on a pivot where the hand grips it, so the two swing together.
       const rod = new THREE.Group();
-      rod.position.set(GRIP.x, GRIP.y, GRIP.z);
+      rod.position.set(0, 0.02, 0.03);
       rod.rotation.set(-1.2, 0, 0.22);
       rod.name = 'rod';
       g.add(rod);
+      gripHand(rod, -0.02);
 
       const cork = rodPart(0.022, 0.024, 0.2, '#c69a63');
       cork.position.y = -0.03;
@@ -303,12 +470,12 @@ const net = {
   reticle: 'hoop',
   viewmodel() {
     return viewmodel(g => {
-      g.add(hand());
       const net = new THREE.Group();
-      net.position.set(GRIP.x, GRIP.y, GRIP.z);
+      net.position.set(0, 0.02, 0.03);
       net.rotation.set(-1.28, 0, 0.18);
       net.name = 'net';
       g.add(net);
+      gripHand(net, -0.03);
 
       const shaft = rodPart(0.014, 0.018, 0.62, '#c8a26a');
       shaft.position.y = 0.17;
@@ -391,11 +558,13 @@ const camera = {
       right.position.set(0.1, 0.095, -0.115);
       right.rotation.set(0.25, -0.85, -0.4);
       g.add(right);
+      attachArm(right, 1);
       const left = hand(-1);
       left.position.set(-0.15, 0.03, -0.31);
       left.rotation.set(0.3, 1.0, 0.5);
       left.name = 'left';
       g.add(left);
+      attachArm(left, -1);
 
       const cam = new THREE.Group();
       cam.position.set(-0.04, 0.12, -0.19);
@@ -465,12 +634,12 @@ const bubbles = {
   reticle: 'soft',
   viewmodel() {
     return viewmodel(g => {
-      g.add(hand());
       const wand = new THREE.Group();
-      wand.position.set(GRIP.x, GRIP.y, GRIP.z);
+      wand.position.set(0, 0.02, 0.03);
       wand.rotation.set(-1.28, 0, 0.15);
       wand.name = 'wand';
       g.add(wand);
+      gripHand(wand, -0.03);
 
       const cap = rodPart(0.03, 0.028, 0.17, '#2f7fb8'); // the bottle cap it screws into
       cap.position.y = -0.03;
@@ -535,14 +704,14 @@ const dart = {
   reticle: 'scope',
   viewmodel() {
     return viewmodel(g => {
-      g.add(hand());
       const gun = new THREE.Group();
       // Held across the view rather than pointed down it: a launcher seen end-on is a
       // dark blob, and half the point of it is that it looks like something.
-      gun.position.set(GRIP.x - 0.035, GRIP.y - 0.015, GRIP.z + 0.01);
+      gun.position.set(-0.03, 0.035, 0.04);
       gun.rotation.set(-0.06, 0.62, 0.07);
       gun.name = 'gun';
       g.add(gun);
+      gripHand(gun, -0.045); // the fist is round the pistol grip, under the receiver
 
       const body = part(new THREE.BoxGeometry(0.078, 0.078, 0.2).translate(0, 0.05, -0.12), '#4d5761');
       gun.add(body);

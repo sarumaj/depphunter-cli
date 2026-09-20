@@ -128,6 +128,7 @@
         "pointermove",
         "potpack",
         "pqxf",
+        "premultiply",
         "prio",
         "projectlombok",
         "projectreactor",
