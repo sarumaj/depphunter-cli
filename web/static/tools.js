@@ -94,11 +94,17 @@ function armed(g, { hold, grip, restGrip = 0.75 }, build, mirror = 1) {
   holder.userData.restGrip = restGrip;
   fillHand(holder, mirror, restGrip);
   if (build) {
+    // Two groups, not one: the outer holds the tool where the fist has it, and the
+    // inner is what a gesture turns. A gesture writes absolute angles - it is easier
+    // to read a swing written that way - and with one group those angles landed on
+    // top of the grip and the tool never came back upright after a shot.
+    const gripped = new THREE.Group();
+    gripped.position.set(grip.x, grip.y, grip.z);
+    gripped.rotation.set(grip.rx, grip.ry, grip.rz);
+    holder.add(gripped);
     const tool = new THREE.Group();
-    tool.position.set(grip.x, grip.y, grip.z);
-    tool.rotation.set(grip.rx, grip.ry, grip.rz);
+    gripped.add(tool);
     build(tool);
-    holder.add(tool);
     return tool;
   }
   return holder;
@@ -297,8 +303,8 @@ const rod = {
   pose(vm, u) {
     const k = swing(u);
     const rod = vm.getObjectByName('rod');
-    rod.rotation.x = -1.15 + k * 1.15;
-    rod.rotation.z = 0.25 - k * 0.12;
+    rod.rotation.x = k * 1.15;
+    rod.rotation.z = -k * 0.12;
     vm.rotation.x = REST.rx - k * 0.22;
     vm.rotation.z = REST.rz + k * 0.1;
     vm.position.z = REST.z + Math.max(0, k) * 0.05;
@@ -380,7 +386,7 @@ const net = {
     vm.rotation.x = REST.rx - k * 0.1;
     vm.position.x = REST.x - k * 0.24;
     vm.position.y = vm.userData.restY + Math.max(0, k) * 0.05;
-    net.rotation.z = 0.2 + k * 0.35;
+    net.rotation.z = k * 0.35;
     head.rotation.z = -k * 0.45; // the bag lags behind the hoop
     grip(vm, Math.abs(k) * 0.8);
   },
@@ -534,7 +540,7 @@ const bubbles = {
     vm.rotation.y = REST.ry + Math.sin(u * Math.PI * 2) * 0.22;
     vm.rotation.z = REST.rz - k * 0.3;
     vm.position.y = vm.userData.restY + Math.sin(u * Math.PI) * 0.05;
-    wand.rotation.z = 0.15 + Math.sin(u * Math.PI * 2) * 0.25;
+    wand.rotation.z = Math.sin(u * Math.PI * 2) * 0.25;
     ring.scale.setScalar(1 + Math.max(0, k) * 0.2);
     film.scale.setScalar(1 + Math.max(0, k) * 0.2);
     film.material.opacity = 0.3 * (1 - Math.sin(clamp01(u) * Math.PI)); // it thins, lets go, and re-forms
