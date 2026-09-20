@@ -6,14 +6,17 @@
 // `curve` uniforms, and a vertex shader wraps world positions around the sphere.
 // Large flat boxes (land, terraces, districts) are drawn from a tessellated copy in
 // walk mode so their tops follow the curve instead of cutting through it as chords.
-// city.js dresses both views up as a city (facades, streets, props); walk mode adds
-// sky and water.
+// city.js dresses both views up - as a city, a circuit board or a galaxy (setStyle);
+// walk mode adds sky and water.
 
 import * as THREE from './vendor/three.module.min.js';
 import { OrbitControls } from './vendor/OrbitControls.js';
 import { kindCode, CITY_VERT_HEAD, CITY_VERT_BODY, CITY_FRAG_HEAD, CITY_FRAG_BODY, makeSky, waterMaterial, makeProps, setNight, roadUniforms, setRoads } from './city.js';
 
 const ISO_POLAR = Math.acos(1 / Math.sqrt(3)); // true isometric elevation (35.26°)
+
+// The styles, as the shaders number them (city.js cityTexture).
+const STYLE_CODES = { city: 0, circuit: 1, galaxy: 2 };
 
 export class MapScene {
   constructor(container) {
@@ -32,8 +35,9 @@ export class MapScene {
     // the dark theme's city; time: seconds, for clouds and water.
     this.curve = {
       uCenter: { value: new THREE.Vector3() }, uRadius: { value: 40 }, uBend: { value: 0 },
-      uNight: { value: 0 }, uTime: { value: 0 },
+      uNight: { value: 0 }, uTime: { value: 0 }, uStyle: { value: 0 },
     };
+    this.style = 'city'; // what the same geometry is dressed as (city.js)
     this.roads = roadUniforms(); // the street network of walk mode (city.js)
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -128,6 +132,19 @@ export class MapScene {
   }
 
   /**
+   * What the map is dressed as: 'city', 'circuit' or 'galaxy' (city.js). The geometry
+   * does not change - only the shaders' style uniform and the props standing on it - so
+   * switching costs one prop rebuild and nothing else.
+   */
+  setStyle(id) {
+    if (this.style === id) return;
+    this.style = id;
+    this.curve.uStyle.value = STYLE_CODES[id] ?? 0;
+    if (this.boxes) this.setBoxes(this.boxes, this.boxColors);
+    this.requestRender();
+  }
+
+  /**
    * Patches a material to bend its vertices onto the planet while walking; city
    * materials (the boxes) also get walk mode's facades and streets.
    */
@@ -193,6 +210,7 @@ export class MapScene {
       this.mesh.dispose();
     }
     this.boxes = boxes;
+    this.boxColors = colors; // kept so a style change can rebuild without the caller
     const geo = this.unitBox.clone();
     geo.setAttribute('aKind', new THREE.InstancedBufferAttribute(Float32Array.from(boxes, kindCode), 1));
     geo.setAttribute('aFade', new THREE.InstancedBufferAttribute(new Float32Array(boxes.length), 1));
@@ -222,7 +240,7 @@ export class MapScene {
         else m.geometry.dispose();
       }
     }
-    this.props = makeProps(boxes, m => this.bendable(m));
+    this.props = makeProps(boxes, m => this.bendable(m), this.style);
     setRoads(this.roads, boxes); // both views draw the streets
     if (this.colors) setNight(this.props, this.curve.uNight.value > 0);
     this.scene.add(this.props);

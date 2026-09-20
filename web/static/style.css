@@ -80,6 +80,23 @@
   --hl-title: #86b6ef; --hl-type: #b3a9f2;
 }
 
+/* The styles (web/static/city.js): what the map is dressed as. Only the environment
+   changes - the ground, the water, the sky - because the colors that carry data are
+   still the language and history palettes above. These come after both themes, so a
+   style wins over the theme's ground and sky whichever theme is in force. */
+:root[data-style="circuit"] {
+  --water: #d5d9dd;
+  --land: #6d5d28; --terrace-a: #17281c; --terrace-b: #112017; --district: #0d1a12;
+  --sky: #737e88; --sky-top: #2b333c; --sea: #20262c;
+  --pkg: #3a4048; --pkg-unresolved: #555b62; --pkg-floating: #8a6a2e;
+}
+:root[data-style="galaxy"] {
+  --water: #0a0812;
+  --land: #221a35; --terrace-a: #15112a; --terrace-b: #100d21; --district: #0a0818;
+  --sky: #140f28; --sky-top: #05030f; --sea: #08060f;
+  --pkg: #4a4266; --pkg-unresolved: #2e2a42; --pkg-floating: #7a5ea8;
+}
+
 * { box-sizing: border-box; }
 [hidden] { display: none !important; }
 html, body { margin: 0; height: 100%; }
@@ -213,6 +230,23 @@ main { position: relative; flex: 1; min-height: 0; }
 }
 #walk-hud .w-bar b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 #walk-hud .w-keys { font-size: 12px; margin-top: 2px; }
+/* The bug tracker: a top-down sweep of the streets around the walker, so a finding
+   somewhere across the map can be walked to rather than stumbled on. */
+#walk-hud .w-radar {
+  position: absolute; left: 14px; bottom: 14px; pointer-events: none;
+  display: flex; flex-direction: column; align-items: center; gap: 3px;
+}
+#walk-hud .w-radar canvas {
+  width: 150px; height: 150px; display: block;
+  border-radius: 50%; box-shadow: var(--shadow);
+}
+#walk-hud .w-nearest {
+  font-size: 11px; color: var(--text); background: color-mix(in srgb, var(--surface) 88%, transparent);
+  border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; white-space: nowrap;
+  max-width: 340px; overflow: hidden; text-overflow: ellipsis;
+}
+#walk-hud .w-nearest:empty { display: none; }
+
 /* What the crosshair is on, when it is a bug. */
 #walk-hud .w-target:not([hidden]) {
   margin-top: 2px; font-size: 12px; color: var(--text);

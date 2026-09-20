@@ -230,17 +230,21 @@ func TestSaveSettings(t *testing.T) {
 		res.Body.Close()
 		return res.StatusCode
 	}
-	good := `{"theme":"dark","colorBy":"size","heightScale":"log","expandDepth":2,"hideLanguages":["Go"]}`
+	good := `{"theme":"dark","style":"galaxy","colorBy":"size","heightScale":"log","expandDepth":2,"hideLanguages":["Go"]}`
 	if code := post(good, false); code != http.StatusForbidden {
 		t.Errorf("without CSRF header: %d", code)
 	}
 	if code := post(`{"theme":"neon","colorBy":"size","heightScale":"log"}`, true); code != http.StatusBadRequest {
 		t.Errorf("invalid theme: %d", code)
 	}
+	if code := post(`{"theme":"dark","style":"swamp","colorBy":"size","heightScale":"log"}`, true); code != http.StatusBadRequest {
+		t.Errorf("invalid style: %d", code)
+	}
 	if code := post(good, true); code != http.StatusNoContent {
 		t.Fatalf("save: %d", code)
 	}
-	if data, err := os.ReadFile(file); err != nil || !strings.Contains(string(data), "height_scale: log") {
+	if data, err := os.ReadFile(file); err != nil || !strings.Contains(string(data), "height_scale: log") ||
+		!strings.Contains(string(data), "style: galaxy") {
 		t.Errorf("config file: %v\n%s", err, data)
 	}
 	if code, body := get(t, c, base+"/api/config", nil); code != 200 || !strings.Contains(body, `"heightScale":"log"`) {

@@ -1,11 +1,19 @@
-// The city look, all procedural (no image assets): shader "textures" for the boxes -
-// building facades and roofs, a street network on every terrace, stairs between
-// terrace levels, grassy shores - plus trees, bushes, street lamps and ramps, on the
-// isometric map and in walk mode alike; walk mode adds a sky dome and rippling water.
+// The look of the map, all procedural (no image assets): shader "textures" for the
+// boxes, plus props, on the isometric map and in walk mode alike; walk mode adds a sky
+// dome and rippling water.
+//
+// Three styles dress the same geometry (uStyle, set by MapScene.setStyle). A city:
+// facades and roofs, a street network on every terrace, grassy shores, trees and
+// lamps. A circuit board: chip packages, copper traces down every street, solder mask,
+// capacitors and LEDs. A galaxy: crystal spires, glowing conduits, dust and beacons.
+// The three share all their geometry and all their measurements - only the paint
+// differs - so a style is a look, not a second renderer.
+//
 // The textures are unlit and antialiased by pixel footprint, so detail fades out
 // when zoomed out rather than flickering.
 //
-// Streets are the free space of a terrace top: everything not covered by a child
+// Streets - traces on a board, conduits in a galaxy - are the free space of a terrace
+// top: everything not covered by a child
 // (building, district, nested terrace, symbol plot). So they connect by
 // construction - the gaps between buildings are side streets, the padding along a
 // terrace's edge its ring road. The shader measures, per fragment, the distance to
@@ -93,6 +101,7 @@ export const CITY_VERT_BODY = `
 export const CITY_FRAG_HEAD = NOISE_GLSL + `
 uniform float uBend;
 uniform float uNight;
+uniform float uStyle; // 0 city, 1 circuit board, 2 galaxy
 varying vec3 vLP;
 varying vec3 vObjN;
 flat varying vec3 vSize;
@@ -168,9 +177,19 @@ vec3 park(vec3 base, vec2 p) {
   return mix(c, gravel, path);
 }
 
-// The top of a terrace: streets between its children. lp: position from the base
-// centre, sz: the terrace's size.
-vec3 streets(vec3 base, vec3 lp, vec3 sz) {
+// What the free space of a terrace top looks like, measured once and painted by
+// whichever style is in force: the nearest obstacle, the one facing it across the
+// street, and where the two stop facing each other.
+struct Road {
+  vec2 p;      // world position
+  float d1;    // distance to the nearest obstacle
+  vec2 n1;     // the direction away from it
+  float d2;    // to the obstacle facing it across the street; 1e9 when none does
+  vec2 ends;   // along the street, where both sides face each other
+  bool xRoad;  // the street runs along x
+};
+
+Road roadField(vec3 lp, vec3 sz) {
   vec2 p = vSeed + lp.xz; // world position
   vec2 h = sz.xz * 0.5;
   // Candidates: distance to the obstacle, direction from it to p, and the obstacle's
@@ -203,28 +222,49 @@ vec3 streets(vec3 base, vec3 lp, vec3 sz) {
   }
   int a = 0;
   for (int j = 1; j < 12; j++) if (d[j] < d[a]) a = j;
-  float d1 = d[a];
-  vec2 n1 = n[a];
   // The nearest obstacle facing it across the street, if the street is straight here.
   int b = -1;
   float d2 = 1e9;
-  for (int j = 0; j < 12; j++) if (dot(n[j], n1) < -0.95 && d[j] < d2) { d2 = d[j]; b = j; }
+  for (int j = 0; j < 12; j++) if (dot(n[j], n[a]) < -0.95 && d[j] < d2) { d2 = d[j]; b = j; }
+
+  Road r;
+  r.p = p;
+  r.d1 = d[a];
+  r.n1 = n[a];
+  r.xRoad = abs(n[a].x) < 0.5;
+  r.d2 = 1e9;
+  r.ends = vec2(0.0);
+  // A park between two obstacles is two streets, not one.
+  if (b >= 0 && d[a] + d2 <= 2.0 * CARRIAGE) {
+    r.d2 = d2;
+    r.ends = vec2(max(ext[a].x, ext[b].x), min(ext[a].y, ext[b].y));
+  }
+  return r;
+}
+
+// The top of a terrace as a city: asphalt between the buildings, sidewalks, crossings
+// and pocket parks.
+vec3 streets(vec3 base, vec3 lp, vec3 sz) {
+  Road r = roadField(lp, sz);
+  vec2 p = r.p;
+  float d1 = r.d1, d2 = r.d2;
+  vec2 n1 = r.n1;
+  bool facing = d2 < 1e8;
 
   float w = fwidth(d1) + 1e-4;
   vec3 c = asphalt(p);
-  if (b >= 0 && d1 + d2 > 2.0 * CARRIAGE) b = -1; // a park between: two streets, not one
-  if (b < 0 && d1 < CARRIAGE) {
+  if (!facing && d1 < CARRIAGE) {
     // A street along a park: the dashed line on its middle.
     float along = abs(n1.x) < 0.5 ? p.x : p.y, wa = fwidth(along) + 1e-4;
     float mid = (SIDEWALK + CARRIAGE) * 0.5;
     float dash = band(fract(along / 0.3), 0.0, 0.5, wa / 0.3) * band(d1, mid - 0.008, mid + 0.008, w);
     c = mix(c, vec3(0.78, 0.6, 0.12), dash * (1.0 - smoothstep(0.02, 0.06, wa)));
   }
-  if (b >= 0) {
+  if (facing) {
     float width = d1 + d2, s = (d2 - d1) * 0.5; // s: distance from the centre line
-    bool xRoad = abs(n1.x) < 0.5;               // the street runs along x
+    bool xRoad = r.xRoad;                       // the street runs along x
     float along = xRoad ? p.x : p.y, across = xRoad ? p.y : p.x;
-    vec2 e = vec2(max(ext[a].x, ext[b].x), min(ext[a].y, ext[b].y)); // where both sides face each other
+    vec2 e = r.ends; // where both sides face each other
     float fromEnd = min(along - e.x, e.y - along);
     float wa = fwidth(along) + 1e-4, ws = fwidth(s) + 1e-4;
     float near = 1.0 - smoothstep(0.02, 0.06, wa);
@@ -256,6 +296,187 @@ vec3 streets(vec3 base, vec3 lp, vec3 sz) {
   c = mix(c, curb, band(d1, CARRIAGE, CARRIAGE + 0.014, w));
   c = mix(c, park(base, p), smoothstep(edge - w, edge + w, d1));
   return c * tint(base, uGroundRef); // nesting levels alternate, hover shows
+}
+
+// ------------------------------------------------------------------ circuit board
+
+// The board styles: a part sits at PAD from the copper that feeds it, which is the
+// same measurement the city uses for its sidewalk.
+const float PAD = 0.03;
+const vec3 GLOW = vec3(0.25, 0.8, 0.95); // the galaxy's light, before it is tinted
+
+// Solder mask over woven glass, which is what gives a board its colour up close and
+// its flat green from across the room.
+vec3 solderMask(vec3 base, vec2 p) {
+  vec2 t = p * 190.0, w = fwidth(t);
+  float weave = mix(0.5 + 0.5 * sin(t.x) * sin(t.y), 0.5, smoothstep(0.4, 1.2, max(w.x, w.y)));
+  vec3 c = vec3(0.018, 0.08, 0.045) * (0.8 + 0.4 * weave);
+  return mix(c, base * 0.3, 0.16) * dark(0.55);
+}
+
+// Bare substrate: the board's own fibreglass, where no mask was printed.
+vec3 substrate(vec3 base, vec2 p) {
+  vec2 t = p * 130.0, w = fwidth(t);
+  float weave = mix(0.5 + 0.5 * sin(t.x) * sin(t.y), 0.5, smoothstep(0.4, 1.2, max(w.x, w.y)));
+  vec3 c = vec3(0.3, 0.26, 0.12) * (0.78 + 0.44 * weave);
+  return mix(c, base, 0.1) * dark(0.5);
+}
+
+// The top of a terrace as a board: a hatched ground pour over the open copper, traces
+// down the middle of every street with vias along them, and round every part a ring of
+// solder pads inside a silkscreen outline.
+vec3 traces(vec3 base, vec3 lp, vec3 sz) {
+  Road r = roadField(lp, sz);
+  vec2 p = r.p;
+  float w = fwidth(r.d1) + 1e-4;
+  vec3 mask = solderMask(base, p);
+  vec3 copper = vec3(0.46, 0.27, 0.1) * (0.88 + 0.24 * vnoise(p * 70.0)) * dark(0.55);
+  vec3 tin = vec3(0.68, 0.7, 0.75) * (0.86 + 0.28 * vnoise(p * 90.0)) * dark(0.5);
+  vec3 silk = vec3(0.85, 0.87, 0.9) * dark(0.5);
+
+  vec3 c = mask;
+  vec2 ht = vec2((p.x + p.y) / 0.085);
+  float hatch = band(fract(ht.x), 0.0, 0.6, fwidth(ht.x));
+  c = mix(c, mix(mask, copper * 0.6, 0.45 + 0.55 * hatch), smoothstep(PAD + 0.02, PAD + 0.1, r.d1) * 0.7);
+
+  if (r.d2 < 1e8) {
+    float width = r.d1 + r.d2, s = (r.d2 - r.d1) * 0.5; // s: from the centre line
+    float ws = fwidth(s) + 1e-4;
+    // Several traces side by side, as many as the street is wide enough for.
+    float lanes = clamp(floor(width / 0.1), 1.0, 5.0);
+    float pitch = width / (lanes + 1.0);
+    float t = abs(mod(s + width * 0.5 + pitch * 0.5, pitch) - pitch * 0.5);
+    c = mix(c, copper, (1.0 - smoothstep(0.011 - ws, 0.011 + ws, t)) * step(0.06, width));
+    // Vias down the centre of the street, every so often.
+    float along = r.xRoad ? p.x : p.y;
+    float m = length(vec2(s, (fract(along / 1.1 + 0.5) - 0.5) * 1.1));
+    float via = step(0.2, width) * (1.0 - smoothstep(0.03, 0.03 + w * 2.0, m));
+    c = mix(c, tin, via);
+    c = mix(c, vec3(0.03, 0.035, 0.045), via * (1.0 - smoothstep(0.013, 0.013 + w * 2.0, m)));
+  }
+  // The footprint of the part: pads against it, a silkscreen outline around them.
+  c = mix(c, tin, band(r.d1, 0.0, PAD, w));
+  c = mix(c, silk, band(r.d1, PAD + 0.012, PAD + 0.024, w));
+  return c * tint(base, uGroundRef);
+}
+
+// A chip package: black epoxy with a parting line and a row of tin pins along the foot
+// of every face. A tall part is a heatsink instead, finned from top to bottom.
+vec3 chipFace(vec3 base, float u, float faceW, float v, float h, vec2 seed) {
+  float wv = fwidth(v) + 1e-4, wu = fwidth(u) + 1e-4;
+  if (h > 2.2) {
+    vec3 metal = mix(vec3(0.38, 0.4, 0.43), base * 0.7, 0.3);
+    vec2 ft = vec2(u / 0.055), fw = fwidth(ft);
+    float fin = band(fract(ft.x), 0.1, 0.9, fw.x);
+    vec3 c = metal * mix(0.62, 1.12, fin) * (0.92 + 0.16 * vnoise(vec2(u, v) * 30.0));
+    c = mix(c, metal * 0.5, band(v, 0.0, 0.1, wv)); // the base it is bolted to
+    return c * dark(0.5);
+  }
+  vec3 epoxy = mix(vec3(0.05, 0.052, 0.06), base * 0.35, 0.14) * (0.9 + 0.2 * vnoise(vec2(u, v) * 45.0));
+  vec3 c = epoxy * dark(0.55);
+  c = mix(c, epoxy * 1.9, band(v, h * 0.5 - 0.005, h * 0.5 + 0.005, wv)); // the mould parting line
+  float pinH = min(0.08, h * 0.32);
+  float pins = band(fract(u / 0.05), 0.18, 0.82, wu / 0.05) * band(v, 0.0, pinH, wv);
+  vec3 tin = vec3(0.7, 0.72, 0.76) * (0.85 + 0.3 * vnoise(vec2(u, v) * 110.0)) * dark(0.5);
+  c = mix(c, tin, pins * (1.0 - smoothstep(0.25, 0.7, wu / 0.05)));
+  // A silkscreen part number, two bars of it, on the upper half of the body.
+  vec2 lt = vec2(u / 0.028, (v - h * 0.62) / 0.05);
+  vec2 lw = fwidth(lt) + 1e-4;
+  float label = band(fract(lt.x), 0.15, 0.7, lw.x) * band(lt.y, 0.0, 0.55, lw.y)
+    * step(0.35, hash12(floor(vec2(lt.x, lt.y * 2.0)) + seed)) * step(h * 0.62, v) * step(v, h * 0.62 + 0.05);
+  c = mix(c, vec3(0.8, 0.82, 0.85) * dark(0.5), label * (1.0 - smoothstep(0.3, 0.8, lw.x)));
+  return c;
+}
+
+// The top of a package: matte epoxy, a bevel, the pin-1 dimple and a printed code.
+vec3 chipTop(vec3 base, vec3 lp, vec3 sz, float e) {
+  float w = fwidth(e) + 1e-4;
+  vec3 c = mix(vec3(0.055, 0.057, 0.065), base * 0.32, 0.14) * (0.92 + 0.16 * vnoise(lp.xz * 45.0 + vSeed));
+  c = mix(c, c * 1.7, 1.0 - smoothstep(0.022 - w, 0.022 + w, e));
+  vec2 at = -sz.xz * 0.5 + vec2(min(0.1, sz.x * 0.25), min(0.1, sz.z * 0.25));
+  c = mix(c, c * 0.4, 1.0 - smoothstep(0.028 - w, 0.028 + w, length(lp.xz - at)));
+  vec2 lt = lp.xz / vec2(0.03, 0.07);
+  vec2 lw = fwidth(lt) + 1e-4;
+  float code = band(fract(lt.x), 0.15, 0.72, lw.x) * band(fract(lt.y), 0.3, 0.62, lw.y)
+    * step(0.4, hash12(floor(lt) + vSeed)) * step(0.045, e);
+  c = mix(c, vec3(0.78, 0.8, 0.84), code * (1.0 - smoothstep(0.3, 0.8, max(lw.x, lw.y))));
+  return c * dark(0.55);
+}
+
+// The edge of the board: its layers, copper between prepreg, with the mask on top.
+vec3 boardEdge(vec3 base, vec2 p) {
+  float t = p.y / 0.05, w = fwidth(t) + 1e-4;
+  vec3 c = vec3(0.28, 0.24, 0.11) * (0.85 + 0.3 * vnoise(p * 60.0));
+  c = mix(c, vec3(0.46, 0.28, 0.11), band(fract(t), 0.0, 0.16, w));
+  c = mix(c, vec3(0.018, 0.08, 0.045), step(0.94, fract(t * 0.25)));
+  return mix(c, base * 0.35, 0.16) * dark(0.5);
+}
+
+// ------------------------------------------------------------------ galaxy
+
+// The deck of a platform out in the dark: dust, a drift of stars, and the light of
+// whatever runs underneath it.
+vec3 dust(vec3 base, vec2 p) {
+  vec3 c = vec3(0.028, 0.026, 0.058) * (0.7 + 0.6 * vnoise(p * 7.0));
+  c += vec3(0.19, 0.07, 0.3) * smoothstep(0.42, 0.95, fbm(p * 0.4));
+  vec2 sw = fwidth(p * 190.0);
+  float star = step(0.9965, hash12(floor(p * 190.0)));
+  c += star * (1.0 - smoothstep(0.4, 1.0, max(sw.x, sw.y))) * vec3(0.75, 0.8, 1.0) * 0.9;
+  return mix(c, base * 0.35, 0.1);
+}
+
+// The top of a terrace as a platform: plating, with a lit conduit down the middle of
+// every gap and light along every edge.
+vec3 conduits(vec3 base, vec3 lp, vec3 sz) {
+  Road r = roadField(lp, sz);
+  vec2 p = r.p;
+  float w = fwidth(r.d1) + 1e-4;
+  vec3 c = vec3(0.022, 0.02, 0.05) * (0.75 + 0.5 * vnoise(p * 11.0));
+  c += vec3(0.1, 0.04, 0.2) * smoothstep(0.5, 0.95, fbm(p * 0.6));
+  vec2 pt = p / 0.5, pw = fwidth(pt) + 1e-4;
+  float seam = max(band(fract(pt.x), 0.0, 0.02, pw.x), band(fract(pt.y), 0.0, 0.02, pw.y));
+  c += vec3(0.04, 0.05, 0.08) * seam; // plating seams
+  if (r.d2 < 1e8) {
+    float s = (r.d2 - r.d1) * 0.5, ws = fwidth(s) + 1e-4;
+    float core = 1.0 - smoothstep(0.013 - ws, 0.013 + ws, abs(s));
+    c += GLOW * (core * 0.9 + exp(-abs(s) * 22.0) * 0.35);
+  }
+  c += GLOW * 0.7 * band(r.d1, 0.0, 0.022, w); // every platform is rimmed with light
+  return c * tint(base, uGroundRef);
+}
+
+// A spire: faceted, dark at the foot and lit towards the tip, with strata of light
+// across it and a scatter of windows that read as stars.
+vec3 crystalFace(vec3 base, float u, float faceW, float v, float h, vec2 seed) {
+  float t = clamp(v / max(h, 1e-3), 0.0, 1.0);
+  vec3 c = mix(base * 0.14, base * 0.62, t);
+  float facet = floor(u / 0.2);
+  c *= 0.8 + 0.34 * hash12(vec2(facet, floor(v / 0.9)) + seed);
+  float bandT = v / 0.45;
+  c += GLOW * band(fract(bandT), 0.0, 0.07, fwidth(bandT)) * 0.45;
+  vec2 cell = vec2(u / 0.11, v / 0.15);
+  vec2 cw = fwidth(cell) + 1e-4;
+  float id = hash12(floor(cell) + seed);
+  float win = band(fract(cell.x), 0.25, 0.75, cw.x) * band(fract(cell.y), 0.3, 0.7, cw.y);
+  c += win * step(mix(0.93, 0.82, uNight), id) * vec3(0.85, 0.92, 1.0) * 0.9;
+  c += GLOW * 0.55 * smoothstep(0.82, 1.0, t); // the tip glows
+  return c;
+}
+
+vec3 crystalTop(vec3 base, vec3 lp, vec3 sz, float e) {
+  float w = fwidth(e) + 1e-4;
+  vec3 c = base * 0.45 + GLOW * 0.1;
+  c += GLOW * 0.7 * (1.0 - smoothstep(0.035 - w, 0.035 + w, e));
+  c *= 0.9 + 0.2 * vnoise(lp.xz * 22.0 + vSeed);
+  return c;
+}
+
+// The side of a platform: rock with the same light running through it in veins.
+vec3 crystalWall(vec3 base, vec2 p) {
+  vec3 c = base * 0.16 * (0.75 + 0.5 * vnoise(p * 13.0));
+  float vein = 1.0 - smoothstep(0.0, 0.022, abs(fbm(p * 2.4) - 0.5));
+  c += GLOW * vein * 0.4;
+  return c;
 }
 
 // Terrace sides carry a staircase near one end of each long side (the other end is
@@ -379,19 +600,32 @@ vec3 cityColor(vec3 base) {
   return vFade > 0.5 ? mix(c, base, FADE) : c;
 }
 
+// Which surface a fragment is on is the same question in every style - a shore, the
+// top of a terrace, a symbol plot, a roof, a wall, a facade - so the styles differ only
+// in which painter answers it.
 vec3 cityTexture(vec3 base) {
   vec3 n = normalize(vObjN);
   float k = floor(vKind + 0.5);
+  bool circuit = uStyle > 0.5 && uStyle < 1.5;
+  bool galaxy = uStyle > 1.5;
 
   vec3 lp = vLP, sz = vSize;
   if (n.y > 0.5) {
     float ex = sz.x * 0.5 - abs(lp.x), ez = sz.z * 0.5 - abs(lp.z);
     float e = min(ex, ez);
     vec2 p = lp.xz + vSeed;
-    if (k < 0.5) return grass(base, p) * tint(base, uLandRef);
-    if (k < 1.5) return streets(base, lp, sz);
-    if (k > 5.5) return paving(base, p);
-    return roof(base, lp, sz, e);
+    if (k < 0.5) {
+      if (circuit) return substrate(base, p) * tint(base, uLandRef);
+      if (galaxy) return dust(base, p) * tint(base, uLandRef);
+      return grass(base, p) * tint(base, uLandRef);
+    }
+    if (k < 1.5) return circuit ? traces(base, lp, sz) : galaxy ? conduits(base, lp, sz) : streets(base, lp, sz);
+    if (k > 5.5) {
+      if (circuit) return solderMask(base, p) * tint(base, uGroundRef);
+      if (galaxy) return dust(base, p) * tint(base, uGroundRef);
+      return paving(base, p);
+    }
+    return circuit ? chipTop(base, lp, sz, e) : galaxy ? crystalTop(base, lp, sz, e) : roof(base, lp, sz, e);
   }
   if (n.y < -0.5) return base;
   bool sideX = abs(n.x) > 0.5;
@@ -399,10 +633,22 @@ vec3 cityTexture(vec3 base) {
   float faceW = sideX ? sz.z : sz.x;
   // Keep the per-face shade the flat colors carry.
   float shade = sideX ? 0.62 : 0.78;
-  if (k < 0.5) return retaining(vec3(0.3, 0.24, 0.16), vec2(u, lp.y), 0.0) * shade / 0.7;
-  if (k > 5.5) return retaining(base, vec2(u, lp.y), 0.35);
-  if (k < 1.5) return stairs(retaining(base, vec2(u, lp.y), 0.35), u, faceW, lp.y, sz.y);
-  return facade(base, u, faceW, lp.y, sz.y, vSeed + n.xz * 3.1);
+  vec2 wall = vec2(u, lp.y);
+  if (k < 0.5) {
+    if (circuit) return boardEdge(vec3(0.3, 0.24, 0.16), wall) * shade / 0.7;
+    if (galaxy) return crystalWall(vec3(0.42, 0.36, 0.6), wall) * shade / 0.7;
+    return retaining(vec3(0.3, 0.24, 0.16), wall, 0.0) * shade / 0.7;
+  }
+  if (k > 5.5) return circuit ? boardEdge(base, wall) : galaxy ? crystalWall(base, wall) : retaining(base, wall, 0.35);
+  if (k < 1.5) {
+    if (circuit) return boardEdge(base, wall);
+    if (galaxy) return crystalWall(base, wall);
+    return stairs(retaining(base, wall, 0.35), u, faceW, lp.y, sz.y);
+  }
+  vec2 seed = vSeed + n.xz * 3.1;
+  if (circuit) return chipFace(base, u, faceW, lp.y, sz.y, seed);
+  if (galaxy) return crystalFace(base, u, faceW, lp.y, sz.y, seed);
+  return facade(base, u, faceW, lp.y, sz.y, seed);
 }
 `;
 
@@ -510,11 +756,37 @@ export function makeSky(uniforms) {
       }`,
     fragmentShader: NOISE_GLSL + `
       uniform vec3 uTop, uHorizon;
-      uniform float uNight, uTime;
+      uniform float uNight, uTime, uStyle;
       varying vec3 vDir;
+
+      // Deep space: no weather and no sun, two nebulae drifting behind a field of
+      // stars, with a few brighter ones in front of it.
+      vec3 space(vec3 d) {
+        vec3 col = mix(vec3(0.022, 0.018, 0.055), vec3(0.008, 0.008, 0.028), pow(max(d.y, 0.0), 0.6));
+        col += vec3(0.2, 0.06, 0.32) * smoothstep(0.38, 0.95, fbm(d.xz * 1.7 + d.y * 3.0 + uTime * 0.004));
+        col += vec3(0.05, 0.2, 0.27) * smoothstep(0.52, 0.96, fbm(d.zx * 1.15 + 21.0));
+        vec3 cell = floor(d * 560.0);
+        col += step(0.9972, hash13(cell)) * (0.35 + 0.65 * hash13(cell + 3.0)) * vec3(0.85, 0.9, 1.0);
+        vec3 near = floor(d * 120.0);
+        col += step(0.9968, hash13(near + 9.0)) * vec3(0.75, 0.82, 1.0) * 1.3;
+        return col;
+      }
+
       void main() {
         vec3 d = normalize(vDir);
         float up = max(d.y, 0.0);
+        if (uStyle > 1.5) {
+          gl_FragColor = vec4(space(d), 1.0);
+          #include <colorspace_fragment>
+          return;
+        }
+        if (uStyle > 0.5) {
+          // A workbench: even, dim light from everywhere, nothing overhead to look at.
+          vec3 lab = mix(uHorizon, uTop, pow(up, 0.8)) * (0.95 + 0.05 * vnoise(d.xz * 5.0));
+          gl_FragColor = vec4(lab, 1.0);
+          #include <colorspace_fragment>
+          return;
+        }
         vec3 col = mix(uHorizon, uTop, pow(up, 0.5));
         if (d.y > 0.0) {
           vec2 p = d.xz / (d.y + 0.12) * 1.4 + vec2(uTime * 0.012, uTime * 0.004);
@@ -548,13 +820,31 @@ export function waterMaterial(uniforms) {
     Object.assign(shader.uniforms, uniforms);
     shader.vertexShader = 'varying vec3 vW;\n' + shader.vertexShader.replace('#include <project_vertex>',
       '#include <project_vertex>\nvW = (modelMatrix * vec4(position, 1.0)).xyz;');
-    shader.fragmentShader = NOISE_GLSL + 'uniform float uTime, uNight;\nvarying vec3 vW;\n' + shader.fragmentShader.replace('#include <color_fragment>', `
+    shader.fragmentShader = NOISE_GLSL + 'uniform float uTime, uNight, uStyle;\nvarying vec3 vW;\n' + shader.fragmentShader.replace('#include <color_fragment>', `
       #include <color_fragment>
-      float r = 0.5 * vnoise(vW.xz * 1.6 + vec2(uTime * 0.35, uTime * 0.2)) + 0.5 * vnoise(vW.xz * 4.5 - uTime * 0.3);
-      vec2 fw = fwidth(vW.xz * 4.5);
-      r = mix(r, 0.5, smoothstep(0.3, 1.0, max(fw.x, fw.y)));
-      diffuseColor.rgb *= 0.8 + 0.4 * r;
-      diffuseColor.rgb += smoothstep(0.8, 0.95, r) * mix(0.1, 0.03, uNight);`);
+      if (uStyle > 1.5) {
+        // Between the platforms there is no sea, only more of the sky.
+        vec3 cell = vec3(floor(vW.xz * 30.0), 0.0);
+        vec2 sw = fwidth(vW.xz * 30.0);
+        float near = 1.0 - smoothstep(0.4, 1.0, max(sw.x, sw.y));
+        diffuseColor.rgb *= 0.55 + 0.7 * vnoise(vW.xz * 0.45);
+        diffuseColor.rgb += vec3(0.13, 0.045, 0.22) * smoothstep(0.55, 0.98, fbm(vW.xz * 0.5));
+        diffuseColor.rgb += step(0.9955, hash13(cell)) * near * vec3(0.7, 0.78, 1.0) * 0.9;
+      } else if (uStyle > 0.5) {
+        // Around the board there is only the bench it lies on: flat, and still.
+        vec2 t = vW.xz / 0.9;
+        vec2 tw = fwidth(t) + 1e-4;
+        float grid = max(1.0 - smoothstep(0.012 - tw.x, 0.012 + tw.x, abs(fract(t.x) - 0.5)),
+                         1.0 - smoothstep(0.012 - tw.y, 0.012 + tw.y, abs(fract(t.y) - 0.5)));
+        diffuseColor.rgb *= 0.9 + 0.2 * vnoise(vW.xz * 8.0);
+        diffuseColor.rgb *= 1.0 + 0.5 * grid * (1.0 - smoothstep(0.02, 0.08, max(tw.x, tw.y)));
+      } else {
+        float r = 0.5 * vnoise(vW.xz * 1.6 + vec2(uTime * 0.35, uTime * 0.2)) + 0.5 * vnoise(vW.xz * 4.5 - uTime * 0.3);
+        vec2 fw = fwidth(vW.xz * 4.5);
+        r = mix(r, 0.5, smoothstep(0.3, 1.0, max(fw.x, fw.y)));
+        diffuseColor.rgb *= 0.8 + 0.4 * r;
+        diffuseColor.rgb += smoothstep(0.8, 0.95, r) * mix(0.1, 0.03, uNight);
+      }`);
   };
   mat.customProgramCacheKey = () => 'water';
   return mat;
@@ -838,8 +1128,9 @@ function rampGeometry(ramps) {
   return geo;
 }
 
-// The ramps' look on top of a bendable material: asphalt with edge lines and chevrons
-// pointing uphill, concrete walls.
+// The ramps' and bridges' look on top of a bendable material: asphalt with edge lines
+// and chevrons pointing uphill, concrete walls - or, in the other styles, a copper
+// track between the parts, or a lit gangway between the platforms.
 function rampMaterial(bendable) {
   const mat = bendable(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
   const bend = mat.onBeforeCompile;
@@ -848,13 +1139,28 @@ function rampMaterial(bendable) {
     shader.vertexShader = 'attribute vec3 aRamp;\nvarying vec3 vRamp;\n' +
       shader.vertexShader.replace('#include <begin_vertex>', '#include <begin_vertex>\nvRamp = aRamp;');
     shader.fragmentShader = NOISE_GLSL + `
+      uniform float uStyle;
       varying vec3 vRamp;
       float band(float t, float lo, float hi, float w) { return smoothstep(lo - w, lo + w, t) - smoothstep(hi - w, hi + w, t); }
     ` + shader.fragmentShader.replace('#include <color_fragment>', `
       #include <color_fragment>
       vec2 q = vRamp.xy;
       vec3 c;
-      if (vRamp.z > 2.5) {
+      if (uStyle > 0.5) {
+        // A track across the board, or a lit gangway out in the dark: the same deck,
+        // with an edge and a line down the middle, in the style's own materials.
+        float w = fwidth(q.x) + 1e-4;
+        float wide = vRamp.z > 2.5 ? ${DECK_W} : ${RAMP_W};
+        float mid = 1.0 - smoothstep(0.012 - w, 0.012 + w, abs(q.x - wide * 0.5));
+        float edge = band(q.x, 0.0, 0.022, w) + band(q.x, wide - 0.022, wide, w);
+        if (uStyle > 1.5) {
+          c = vec3(0.05, 0.045, 0.1) * (0.8 + 0.4 * vnoise(q * 26.0));
+          c += vec3(0.25, 0.8, 0.95) * (mid * 0.9 + edge * 0.5);
+        } else {
+          c = vec3(0.05, 0.16, 0.09) * (0.85 + 0.3 * vnoise(q * 26.0));
+          c = mix(c, vec3(0.5, 0.3, 0.11), mid + edge * 0.8);
+        }
+      } else if (vRamp.z > 2.5) {
         // A bridge deck: asphalt with a dashed centre line and edge lines.
         float w = fwidth(q.x) + 1e-4, wa = fwidth(q.y) + 1e-4;
         c = vec3(0.045, 0.047, 0.052) * (0.8 + 0.4 * vnoise(q * 24.0));
@@ -886,11 +1192,15 @@ const TREE_SPACING = 1.1, LAMP_SPACING = 1.6, LAMP_INSET = 0.035, SHORE_INSET = 
 const PARK_CLEAR = 0.72, PARK_PATHS = 2.2, PATH_CLEAR = 0.16, MAX_PARK_SAMPLES = 60000;
 
 /**
- * Trees and bushes along every shore and in parks, lamps along every terrace's edge,
- * and the ramps, as meshes that bend like the map. Returns a Group; lamps' heads glow
+ * What stands on the map: along every shore and in every park a tall prop and a low
+ * one, along every terrace's edge a light, and the ramps and bridges - as meshes that
+ * bend like the map. What those props are is the style's business (PROPS): trees,
+ * bushes and street lamps in a city; capacitors, resistors and LEDs on a board;
+ * crystals, glowing rubble and beacons in a galaxy. Returns a Group; the lights glow
  * at night (setNight).
  */
-export function makeProps(boxes, bendable) {
+export function makeProps(boxes, bendable, style = 'city') {
+  const set = PROPS[style] || PROPS.city;
   const trees = [], bushes = [], lamps = [];
   const ramps = rampsFor(boxes), bridges = bridgesFor(boxes);
   const inDrive = (x, z) => ramps.some(r => r.drive && x > r.drive.x0 - 0.2 && x < r.drive.x1 + 0.2 && z > r.drive.z0 - 0.2 && z < r.drive.z1 + 0.2);
@@ -932,15 +1242,15 @@ export function makeProps(boxes, bendable) {
   };
   const plantAt = (it, m) => m.compose(p.set(it.x, it.y, it.z), q.setFromAxisAngle(UP, it.r * 6.28), s.setScalar(it.s));
   const lampAt = (it, m) => m.compose(p.set(it.x, it.y, it.z), q.identity(), s.setScalar(1));
-  const leaves = hue => (it, c) => c.setHSL(hue + it.r * 0.07, 0.5 + 0.2 * it.r, 0.2 + it.r * 0.1);
-  TREES.forEach((t, kind) => {
+  set.species.forEach((t, kind) => {
     const these = trees.filter(it => it.kind === kind);
-    add(t.trunk, '#5a4030', these, plantAt);
-    add(t.crown, '#ffffff', these, plantAt, leaves(t.hue));
+    add(t.stem, set.stem, these, plantAt);
+    add(t.head, '#ffffff', these, plantAt, set.tint(t.hue));
   });
-  add(BUSH, '#ffffff', bushes, plantAt, leaves(0.25));
-  add(POLE, '#3a3d42', lamps, lampAt);
-  group.userData.heads = add(HEAD, '#8a8d92', lamps, lampAt);
+  add(set.low, '#ffffff', bushes, plantAt, set.tint(set.lowHue));
+  add(set.pole, set.poleColor, lamps, lampAt);
+  group.userData.heads = add(set.lampHead, set.headColor, lamps, lampAt);
+  group.userData.night = set.headNight;
   for (const geo of [ramps.length && rampGeometry(ramps), bridges.length && bridgeGeometry(bridges)]) {
     if (!geo) continue;
     const mesh = new THREE.Mesh(geo, rampMaterial(bendable));
@@ -995,10 +1305,10 @@ function plantParks(boxes, tree, bush) {
   }
 }
 
-/** Day or night for the props: lamp heads glow, foliage darkens. */
+/** Day or night for the props: the lights come on, everything else darkens. */
 export function setNight(group, night) {
   for (const mesh of group.children) {
-    if (mesh === group.userData.heads && night) mesh.material.color.set('#ffd28a');
+    if (mesh === group.userData.heads && night) mesh.material.color.set(group.userData.night);
     else mesh.material.color.set(mesh.userData.day).multiplyScalar(night ? 0.4 : 1);
   }
 }
@@ -1073,3 +1383,96 @@ const TREES = [
 const BUSH = merge([blob(0.085, 0, 0.055, 0, 0.8), blob(0.065, 0.07, 0.04, 0.03, 0.8), blob(0.06, -0.06, 0.04, -0.04, 0.8)]);
 const POLE = shaded(new THREE.CylinderGeometry(0.012, 0.018, 0.6, 5).translate(0, 0.3, 0));
 const HEAD = shaded(new THREE.BoxGeometry(0.07, 0.025, 0.05).translate(0, 0.61, 0));
+
+// ------------------------------------------------------------------ the other styles' props
+
+const cyl = (r0, r1, h, y, seg = 10) => shaded(new THREE.CylinderGeometry(r0, r1, h, seg).translate(0, y + h / 2, 0));
+const legs = (h, dx) => merge([
+  shaded(new THREE.CylinderGeometry(0.008, 0.008, h, 5).translate(dx, h / 2, 0)),
+  shaded(new THREE.CylinderGeometry(0.008, 0.008, h, 5).translate(-dx, h / 2, 0)),
+]);
+
+// Parts soldered to the board. A through-hole electrolytic capacitor with its vent
+// cross and polarity stripe, a small transistor in a TO-92 case, and a wound inductor.
+const PARTS = [
+  {
+    hue: 0.62, // the dark blue a capacitor's sleeve usually is
+    stem: legs(0.1, 0.022),
+    head: merge([
+      cyl(0.085, 0.085, 0.38, 0.1),
+      shaded(new THREE.CylinderGeometry(0.087, 0.087, 0.02, 12).translate(0, 0.475, 0)),  // the crimp
+      shaded(new THREE.BoxGeometry(0.03, 0.004, 0.17).translate(0, 0.487, 0)),            // the vent cross
+      shaded(new THREE.BoxGeometry(0.17, 0.004, 0.03).translate(0, 0.487, 0)),
+    ]),
+  },
+  {
+    hue: 0.0,
+    stem: legs(0.08, 0.016),
+    head: merge([
+      shaded(new THREE.CylinderGeometry(0.075, 0.075, 0.16, 12, 1, false, -Math.PI / 2, Math.PI).translate(0, 0.16, 0)),
+      shaded(new THREE.BoxGeometry(0.15, 0.16, 0.03).translate(0, 0.16, 0.012)),
+    ]),
+  },
+  {
+    hue: 0.09,
+    stem: legs(0.07, 0.03),
+    head: merge([
+      cyl(0.06, 0.06, 0.24, 0.07, 8),
+      ...[0, 1, 2, 3].map(i => shaded(new THREE.TorusGeometry(0.065, 0.014, 5, 10).rotateX(Math.PI / 2).translate(0, 0.11 + i * 0.055, 0))),
+    ]),
+  },
+];
+// A surface-mount resistor: a body with tin ends, lying on its pads.
+const SMD = merge([
+  shaded(new THREE.BoxGeometry(0.13, 0.05, 0.07).translate(0, 0.025, 0)),
+  shaded(new THREE.BoxGeometry(0.03, 0.052, 0.072).translate(0.055, 0.026, 0)),
+  shaded(new THREE.BoxGeometry(0.03, 0.052, 0.072).translate(-0.055, 0.026, 0)),
+]);
+const LED_LEGS = merge([
+  shaded(new THREE.CylinderGeometry(0.009, 0.009, 0.42, 5).translate(0.016, 0.21, 0)),
+  shaded(new THREE.CylinderGeometry(0.009, 0.009, 0.36, 5).translate(-0.016, 0.18, 0)),
+]);
+const LED = merge([
+  shaded(new THREE.CylinderGeometry(0.038, 0.042, 0.08, 10).translate(0, 0.46, 0)),
+  shaded(new THREE.SphereGeometry(0.038, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, 0.54, 0)),
+]);
+
+// What grows out in the dark: spires of crystal, and rubble that still glows.
+const shard = (r, h, x, y, z, tilt = 0) => shaded(
+  new THREE.ConeGeometry(r, h, 5).rotateZ(tilt).translate(x, y + h / 2, z), 0.15);
+const CRYSTALS = [
+  { hue: 0.72, stem: shard(0.06, 0.1, 0, 0, 0), head: merge([shard(0.09, 0.62, 0, 0.04, 0), shard(0.05, 0.3, 0.08, 0.02, 0.05, 0.3)]) },
+  {
+    hue: 0.52, stem: shard(0.07, 0.08, 0, 0, 0),
+    head: merge([shard(0.07, 0.34, 0.06, 0.02, 0.02, 0.35), shard(0.06, 0.44, -0.05, 0.02, -0.03, -0.28), shard(0.05, 0.26, 0.01, 0.02, -0.08, 0.12)]),
+  },
+  { hue: 0.85, stem: shard(0.09, 0.07, 0, 0, 0), head: merge([shard(0.13, 0.28, 0, 0.03, 0)]) },
+];
+const RUBBLE = merge([blob(0.07, 0, 0.045, 0, 0.7), blob(0.05, 0.06, 0.03, 0.02, 0.7), blob(0.045, -0.05, 0.03, -0.04, 0.7)]);
+const BEACON_STEM = shaded(new THREE.CylinderGeometry(0.008, 0.016, 0.44, 5).translate(0, 0.22, 0));
+const BEACON = merge([
+  shaded(new THREE.IcosahedronGeometry(0.055, 1).translate(0, 0.52, 0)),
+  shaded(new THREE.TorusGeometry(0.075, 0.006, 5, 14).rotateX(Math.PI / 2).translate(0, 0.52, 0)),
+]);
+
+// Each style's props, in the same four roles: a tall one for shores and parks, a low
+// one beside it, and a light with its stem for the terrace edges.
+const PROPS = {
+  city: {
+    species: TREES, stem: '#5a4030', low: BUSH, lowHue: 0.25,
+    pole: POLE, poleColor: '#3a3d42', lampHead: HEAD, headColor: '#8a8d92', headNight: '#ffd28a',
+    tint: hue => (it, c) => c.setHSL(hue + it.r * 0.07, 0.5 + 0.2 * it.r, 0.2 + it.r * 0.1),
+  },
+  circuit: {
+    species: PARTS, stem: '#b9bec6', low: SMD, lowHue: 0.09,
+    pole: LED_LEGS, poleColor: '#b9bec6', lampHead: LED, headColor: '#c94a3a', headNight: '#ff6a52',
+    // Parts are made in a handful of colours, not a spectrum: a little jitter around
+    // the one the part type is usually sold in.
+    tint: hue => (it, c) => c.setHSL(hue + (it.r - 0.5) * 0.04, hue < 0.05 ? 0.05 : 0.55, 0.12 + it.r * 0.12),
+  },
+  galaxy: {
+    species: CRYSTALS, stem: '#2b2540', low: RUBBLE, lowHue: 0.68,
+    pole: BEACON_STEM, poleColor: '#2b2540', lampHead: BEACON, headColor: '#4fd0e8', headNight: '#9df0ff',
+    tint: hue => (it, c) => c.setHSL(hue + it.r * 0.12, 0.6 + 0.25 * it.r, 0.3 + it.r * 0.22),
+  },
+};

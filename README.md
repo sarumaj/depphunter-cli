@@ -34,7 +34,8 @@ Browse any code base as an interactive isometric archipelago in your browser.
   bubble wand, or the tracking dart. Each swings its own way and brings its own
   aim helper. Hold the right button for the scope, the mouse wheel zooms.
   Bugs walk the streets - one per finding a scanner reported - and catching one
-  with any tool opens what was said about it.
+  with any tool opens what was said about it; a tracker in the corner sweeps the
+  map around you so you can see which way to walk to the next one.
   Terraces become city blocks: the space between buildings is a connected street
   network with sidewalks, lane markings and
   crossings, ramps and stairs lead between levels, empty lots are parks with
@@ -82,6 +83,7 @@ depphunter --export html -o map.html  # a self-contained map to share
 | `--theme`           | `auto`                    | `auto`, `light`, `dark`                                             |
 | `--color-by`        | `language`                | `language`, `size`, `commits`, `churn`, `age`, `authors`            |
 | `--height-scale`    | `sqrt`                    | `linear`, `sqrt`, `log`                                             |
+| `--style`           | `city`                    | what the map is dressed as: `city`, `circuit`, `galaxy`             |
 | `--show-std`        | `false`                   | show standard-library islands                                       |
 | `--expand-depth`    | `0`                       | initially expanded depth; `0` = auto, `-1` = all                    |
 | `--watch`           | `false`                   | re-analyze on file changes, update the browser live                 |
@@ -344,6 +346,28 @@ come out on the streets: every finding is a **bug** patrolling the building it
 belongs to, colored by severity, and catching one with whatever tool is in your
 hands - the butterfly net was made for this - opens what it was carrying. The
 HUD counts how many are left.
+
+A repository is bigger than it looks from inside it, so the corner of the walk
+HUD carries a **tracker**: a sweep centred on you and turning with you, with a
+dot per bug in its severity's color, a ring per module you have already tagged,
+and an arrow on the rim for anything beyond its range. Its range follows the
+hunt - it fits whatever is still out there - and under it is how far the nearest
+bug is and what it is carrying.
+
+## Styles
+
+The same map, dressed three ways (`--style`, or the **Style** menu):
+
+| Style     | What it is                                                                                                                                                                                                                                               |
+|-----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `city`    | Buildings with facades and roofs, streets with crossings and parks, shores with trees, bridges between the islands                                                                                                                                       |
+| `circuit` | A printed circuit board: chip packages with rows of pins, heatsinks where the buildings are tall, copper traces down every street with vias along them, solder pads and silkscreen around every part, capacitors and LEDs where the trees and lamps were |
+| `galaxy`  | Platforms out in the dark: crystal spires with strata of light and windows like stars, glowing conduits between them, dust and nebulae instead of sea and sky                                                                                            |
+
+Only the environment changes. The colors that carry data - the language
+palette, the history overlays, hover and selection - are the same in all three,
+so a style is a look and never a different reading of the code. Nothing else
+changes either: the same layout, the same streets, the same walk.
 
 ## Symbol references
 

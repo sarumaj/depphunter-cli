@@ -305,3 +305,30 @@ func TestProjectConfigFindingsStayInsideTheRepository(t *testing.T) {
 		t.Errorf("a file the user named lost entries: %v", trusted.Findings)
 	}
 }
+
+func TestStyleSettings(t *testing.T) {
+	root := t.TempDir()
+	cfg, err := load(t, []string{root}, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.UI.Style != "city" {
+		t.Errorf("default style %q, want city", cfg.UI.Style)
+	}
+	for _, style := range []string{"city", "circuit", "galaxy"} {
+		cfg, err := load(t, []string{"--style", style, root}, nil, "")
+		if err != nil {
+			t.Fatalf("--style %s: %v", style, err)
+		}
+		if cfg.UI.Style != style {
+			t.Errorf("--style %s reached the configuration as %q", style, cfg.UI.Style)
+		}
+	}
+	if _, err := load(t, []string{"--style", "swamp", root}, nil, ""); err == nil {
+		t.Error("an unknown style was accepted")
+	}
+	// The browser may leave it out; the default takes over rather than failing.
+	if err := (UI{Theme: "auto", ColorBy: "language", HeightScale: "sqrt"}).Validate(); err != nil {
+		t.Errorf("an unset style was rejected: %v", err)
+	}
+}

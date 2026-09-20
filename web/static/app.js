@@ -35,6 +35,7 @@ const state = {
   findingsStatus: 'off',  // off | loading | ready | none
   linkKind: 'import',     // edges drawn and listed for the selection: import | reference
   theme: 'auto',
+  style: 'city',          // what the map is dressed as: city | circuit | galaxy
   tool: '',               // what walk mode holds; empty leaves tools.js its default
 };
 
@@ -53,7 +54,10 @@ let aimX = 0;     // where the walk-mode tooltip was last placed
 async function main() {
   const [{ graph, version }, cfg] = await Promise.all([fetchGraph(), fetchConfig()]);
   config = cfg;
-  Object.assign(state, { colorBy: cfg.colorBy, heightScale: cfg.heightScale, theme: cfg.theme, tool: cfg.tool || '' });
+  Object.assign(state, {
+    colorBy: cfg.colorBy, heightScale: cfg.heightScale, theme: cfg.theme,
+    style: cfg.style || 'city', tool: cfg.tool || '',
+  });
   // Saved filters (config ui.hide_languages / hide_islands / path_filter).
   for (const l of cfg.hideLanguages || []) state.filters.hiddenLangs.add(l);
   for (const e of cfg.hideIslands || []) state.filters.hiddenEcosystems.add('e:' + e);
@@ -146,6 +150,7 @@ async function main() {
     findingsOf: node => state.findings && { own: state.findings.own(node.id), rollup: state.findings.rollup(node.id) },
   });
 
+  applyStyle(false);
   applyTheme();
   bindControls();
   relayout();
@@ -247,6 +252,7 @@ function viewSettings() {
   const stdIslands = model.ecosystems.filter(e => e.std);
   return {
     theme: state.theme,
+    style: state.style,
     colorBy: state.colorBy,
     heightScale: state.heightScale,
     expandDepth: state.level,
@@ -841,6 +847,22 @@ function showTooltip(i, x, y) {
 
 // ---------------------------------------------------------------- input
 
+/**
+ * What the map is dressed as. The style picks the environment's colors out of the
+ * stylesheet (the ground, the water, the sky) and tells the scene which painter to
+ * use; the colors that carry data are the language and history palettes, which do
+ * not change with it. redraw is false only while the map is first being built.
+ */
+function applyStyle(redraw = true) {
+  if (state.style === 'city') delete document.documentElement.dataset.style;
+  else document.documentElement.dataset.style = state.style;
+  scene.setStyle(state.style);
+  if (redraw) {
+    applyTheme(); // re-reads the palette, and with it the ground, water and sky
+    recolor();
+  }
+}
+
 function applyTheme() {
   if (state.theme === 'auto') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = state.theme;
@@ -929,6 +951,7 @@ function bindControls() {
   bindSelect('color-by', 'colorBy', () => { recolor(); drawLegend(); });
   bindSelect('height-scale', 'heightScale', () => { relayout(); drawLegend(); });
   bindSelect('theme', 'theme', applyTheme);
+  bindSelect('style', 'style', applyStyle);
   bindFilters();
   bindSearch();
   bindExport();
