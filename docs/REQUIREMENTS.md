@@ -637,6 +637,53 @@ the direct dependencies' own, a repository whose .npmrc names an index this
 machine does not know has every npm package marked, and a dependency cycle can
 be opened down to its repeat and no further.
 
+### M13 - Findings, and the bugs that carry them
+
+- depphunter runs no scanner. Reports the user names with `--findings` (a
+  repeatable flag taking globs) are read and placed on the map: govulncheck's
+  JSON stream, npm audit (7+ and the older advisory table), Trivy
+  (vulnerabilities, misconfigurations and secret hits), osv-scanner,
+  golangci-lint and eslint. The format is recognized from the report's own
+  shape, not from its file name, since pipelines name them anything.
+- With `--online`, the OSV database is asked about every external package the
+  map pins to a version, for the ecosystems it covers (Go, npm, PyPI,
+  crates.io, Maven, NuGet, GitHub Actions). One batched query covers the whole
+  dependency tree and only the advisories it matched are fetched; answers are
+  cached for six hours. A floating package is not asked about: it resolves to
+  something else on the next install. Nothing leaves the machine without
+  `--online`, and `--no-vulns` turns reports and database off together.
+- A report is not a fatal input: one that will not parse, or a database that
+  will not answer, marks the set partial and leaves the rest of the map
+  standing. A path a report gives is made relative to the repository, and one
+  that points outside it loses its path rather than its finding - the finding
+  is still about a package.
+- Severity is one scale (critical, high, medium, low, info) taken from the
+  advisory's CVSS v3 vector where there is one, because the word a distribution
+  chose often disagrees with it. A linter's "error" is capped at medium: it is
+  not the same news as a critical advisory, and the streets would otherwise
+  fill with bugs that mean a missing comment.
+- A finding is placed where it belongs: a vulnerability on the package it
+  affects, a linter's complaint on the file it is about, and both where a
+  scanner could say which file reaches the vulnerable code. A directory carries
+  the worst of everything below it, as a badge beside its name. The findings are
+  a background dataset like history and references (`/api/findings`), computed
+  after the map is served and refreshed by `--watch`.
+- The side panel lists them worst first, each row opening in place for the
+  description, the fixed version and the advisory link.
+- In walk mode every finding is a bug patrolling the building it belongs to,
+  colored by its severity, and the crosshair names the one it is on. Catching
+  one with whatever tool is in your hands opens what it was carrying, exactly
+  as a second hit on a building opens its details; a thrown projectile follows
+  a bug that walks on while it flies, and catches any bug it passes through.
+  The HUD counts what is left. A finding whose building is not drawn (a
+  collapsed directory) puts its bug on the nearest one that is.
+
+*Accepted when* a report from each supported tool is recognized without being
+named, a Trivy finding whose CVSS vector disagrees with its severity word takes
+the vector's, a repository with no reports and no `--online` asks nothing and
+shows nothing, and catching a bug in walk mode opens the same finding the side
+panel lists for its building.
+
 ### Known limits
 
 - Java imports name packages, not artifacts, so Maven dependencies are matched

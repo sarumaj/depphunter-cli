@@ -1,0 +1,17 @@
+{
+  "advisories": {
+    "1065064": {
+      "id": 1065064,
+      "module_name": "minimist",
+      "severity": "critical",
+      "title": "Prototype Pollution in minimist",
+      "overview": "Affected versions of minimist are vulnerable to prototype pollution.",
+      "url": "https://npmjs.com/advisories/1065064",
+      "cves": ["CVE-2021-44906"],
+      "vulnerable_versions": "<1.2.6",
+      "patched_versions": ">=1.2.6",
+      "findings": [{ "version": "1.2.0", "paths": ["minimist"] }]
+    }
+  },
+  "metadata": { "vulnerabilities": { "critical": 1 } }
+}

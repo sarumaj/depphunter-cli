@@ -1,0 +1,28 @@
+{
+  "results": [
+    {
+      "source": { "path": "/repo/go.mod", "type": "lockfile" },
+      "packages": [
+        {
+          "package": { "name": "github.com/example/lib", "version": "1.0.0", "ecosystem": "Go" },
+          "vulnerabilities": [
+            {
+              "id": "GHSA-1234-5678-90ab",
+              "summary": "Denial of service in example/lib",
+              "details": "A crafted input loops for ever.",
+              "aliases": ["CVE-2024-11111"],
+              "severity": [{ "type": "CVSS_V3", "score": "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:L" }],
+              "affected": [
+                {
+                  "package": { "ecosystem": "Go", "name": "github.com/example/lib" },
+                  "ranges": [{ "type": "SEMVER", "events": [{ "introduced": "0" }, { "fixed": "1.1.0" }] }]
+                }
+              ],
+              "references": [{ "type": "ADVISORY", "url": "https://github.com/advisories/GHSA-1234-5678-90ab" }]
+            }
+          ]
+        }
+      ]
+    }
+  ]
+}

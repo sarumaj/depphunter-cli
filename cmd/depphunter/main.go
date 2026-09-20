@@ -25,6 +25,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/config"
 	"github.com/sarumaj/depphunter-cli/internal/editor"
 	"github.com/sarumaj/depphunter-cli/internal/export"
+	"github.com/sarumaj/depphunter-cli/internal/findings"
 	"github.com/sarumaj/depphunter-cli/internal/graph"
 	"github.com/sarumaj/depphunter-cli/internal/history"
 	"github.com/sarumaj/depphunter-cli/internal/index"
@@ -48,6 +49,10 @@ import (
 const (
 	indexCacheTTL = 24 * time.Hour
 	indexTimeout  = 30 * time.Second
+	// Advisories are published against versions that are already released, so what the
+	// database said yesterday is almost always still true - but not for long enough to
+	// keep for a week.
+	findingsCacheTTL = 6 * time.Hour
 )
 
 // version is set at release builds: -ldflags "-X main.version=v1.2.3".
@@ -80,6 +85,7 @@ Settings come from, in increasing precedence: defaults, the user config
 variables, and flags.`,
 		Example: `  depphunter                          # the current directory
   depphunter ~/src/app --watch        # keep the map in sync while you edit
+  depphunter --findings trivy.json    # put what a scanner reported on the map
   depphunter --export html -o map.html`,
 		Args:          cobra.MaximumNArgs(1),
 		Version:       version,
@@ -150,6 +156,9 @@ func run(ctx context.Context, cfg config.Config) error {
 			if refs != nil {
 				extra["references"] = refs
 			}
+			if f := loadFindings(ctx, cfg, cacheDir, g); !f.Empty() {
+				extra["findings"] = f
+			}
 		} else if refs != nil {
 			g = export.WithEdges(g, refs.Edges)
 		}
@@ -218,6 +227,57 @@ func loadReferences(ctx context.Context, cfg config.Config, cacheDir string, g *
 	return &server.References{Edges: r.Edges, Servers: r.Servers, Partial: r.Partial}
 }
 
+// loadFindings reads the scanner reports the user named and, with --online, asks the
+// OSV database about every external package the map pins to a version. nil when
+// nothing was asked for or nothing was found.
+func loadFindings(ctx context.Context, cfg config.Config, cacheDir string, g *graph.Graph) *findings.Set {
+	if !cfg.FindingsEnabled() {
+		return nil
+	}
+	start := time.Now()
+	opts := findings.Options{Root: cfg.Root, Reports: cfg.Findings, Logf: log.Printf}
+	if cfg.Online {
+		store := ""
+		if cacheDir != "" {
+			store = filepath.Join(cacheDir, "osv")
+		}
+		opts.OSV = findings.NewOSV(store, findingsCacheTTL, indexTimeout)
+		opts.Packages = pinned(g)
+	}
+	set := findings.Collect(ctx, opts)
+	if set.Empty() {
+		if set.Partial && ctx.Err() == nil {
+			log.Print("findings: nothing could be read")
+		}
+		return nil
+	}
+	note := ""
+	if set.Partial {
+		note = " (incomplete)"
+	}
+	log.Printf("findings: %d from %s%s in %s", len(set.Findings), strings.Join(set.Sources, ", "), note,
+		time.Since(start).Round(time.Millisecond))
+	return set
+}
+
+// pinned is every external package the map fixes to one version: the only ones a
+// vulnerability database can answer about, since a floating range resolves to
+// something else on the next install.
+func pinned(g *graph.Graph) []findings.Package {
+	var out []findings.Package
+	for _, n := range g.Nodes {
+		if n.Kind != graph.KindPackage || n.Version == "" || n.Floating {
+			continue
+		}
+		eco := n.Parent
+		if i := strings.LastIndex(eco, ":"); i >= 0 {
+			eco = eco[i+1:]
+		}
+		out = append(out, findings.Package{Ecosystem: eco, Name: n.Name, Version: n.Version})
+	}
+	return out
+}
+
 func writeExport(g *graph.Graph, cfg config.Config, extra map[string]any, format, output string) error {
 	var w io.Writer = os.Stdout
 	if output != "" {
@@ -269,11 +329,17 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 	referencesRun := newLatest(func(g *graph.Graph) {
 		srv.SetReferences(loadReferences(ctx, cfg, cacheDir, g))
 	})
+	findingsRun := newLatest(func(g *graph.Graph) {
+		srv.SetFindings(loadFindings(ctx, cfg, cacheDir, g))
+	})
 	if cfg.History {
 		go historyRun.Run(g)
 	}
 	if cfg.LSP {
 		go referencesRun.Run(g)
+	}
+	if cfg.FindingsEnabled() {
+		go findingsRun.Run(g)
 	}
 
 	if cfg.Watch {
@@ -305,6 +371,9 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 			}
 			if cfg.LSP && changed {
 				go referencesRun.Run(ng)
+			}
+			if cfg.FindingsEnabled() && changed {
+				go findingsRun.Run(ng) // a new dependency, or a report written again
 			}
 		})
 	}

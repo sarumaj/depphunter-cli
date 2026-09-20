@@ -8,6 +8,8 @@ import { STATIC, fetchGraph, fetchConfig, fetchLazy, saveSettings } from './data
 import { MODES, isHistoryMode, computeMetrics, historyT, timeRange, ago, formatDate } from './history.js';
 import { Labels } from './labels.js';
 import { Walker } from './walk.js';
+import { Bugs } from './bugs.js';
+import { indexFindings } from './findings.js';
 import { $, fmt, escapeHTML } from './dom.js';
 import { Color } from './vendor/three.module.min.js';
 
@@ -29,6 +31,8 @@ const state = {
   since: 0,               // history modes count changes at or after this unix time
   references: null,       // symbol references from language servers ({edges, servers, partial})
   referencesStatus: 'off', // off | loading | ready | none
+  findings: null,         // what the scanners said, indexed onto the model (findings.js)
+  findingsStatus: 'off',  // off | loading | ready | none
   linkKind: 'import',     // edges drawn and listed for the selection: import | reference
   theme: 'auto',
   tool: '',               // what walk mode holds; empty leaves tools.js its default
@@ -43,6 +47,7 @@ let metricsCache = null; // computeMetrics() for the current model, history and 
 let focus = null;  // {lit: Set<box>, arcs}
 let labels;       // Labels layer over the map
 let walker;       // first-person walk mode
+let bugs;         // the findings walking the streets in walk mode
 let aimX = 0;     // where the walk-mode tooltip was last placed
 
 async function main() {
@@ -111,6 +116,20 @@ async function main() {
     onTool: id => { state.tool = id; },
     onRender: drawLabels,
   });
+  bugs = new Bugs(scene, {
+    // A caught bug reads itself out: the building it belongs to is selected and its
+    // finding opened, exactly as a second shot into a building would.
+    onCatch: (f, node) => {
+      select(node);
+      panel.show(node, false, f.id);
+      document.exitPointerLock?.();
+      walker.setFrozen(true);
+      walker.drawHud();
+      const { caught, total } = bugs.counts;
+      walker.flash(`${f.severity}: ${f.title} - ${caught} of ${total} bugs caught. Click the map to keep walking`);
+    },
+  });
+  walker.setBugs(bugs);
   panel = new Panel($('panel'), $('panel-body'), {
     model,
     colorOf: lang => langs.of(lang),
@@ -124,6 +143,7 @@ async function main() {
     openLabel: cfg.static ? null : cfg.editor ? 'Open in editor' : 'Open in VS Code',
     // Closing the details gives the pointer back, so walk mode may move again.
     onClose: () => walker.setFrozen(false),
+    findingsOf: node => state.findings && { own: state.findings.own(node.id), rollup: state.findings.rollup(node.id) },
   });
 
   applyTheme();
@@ -136,6 +156,10 @@ async function main() {
   if (cfg.lsp || STATIC?.references) {
     state.referencesStatus = 'loading';
     loadLazy('references', applyReferences);
+  }
+  if (cfg.findings || STATIC?.findings) {
+    state.findingsStatus = 'loading';
+    loadLazy('findings', applyFindings);
   }
 }
 
@@ -163,6 +187,23 @@ function applyReferences(r) {
   drawLegend();
   updateStatus();
   if (state.selected) panel.show(state.selected);
+}
+
+// applyFindings places what the scanners reported on the model, sends its bugs out to
+// walk the streets, and redraws whatever was already on screen.
+function applyFindings(set) {
+  state.findings = set ? indexFindings(set, model) : null;
+  state.findingsStatus = set ? 'ready' : 'none';
+  placeBugs();
+  updateStatus();
+  if (state.selected) panel.show(state.selected, true);
+}
+
+// placeBugs re-spawns the bugs for the current layout. Boxes change with every depth
+// change and every live update, and a bug stands beside its building.
+function placeBugs() {
+  bugs.place(state.findings, L.boxes);
+  if (walker.active) walker.drawHud();
 }
 
 // ---------------------------------------------------------------- git history
@@ -285,6 +326,7 @@ function connectEvents() {
   es.addEventListener('graph', e => queueReload(JSON.parse(e.data).changed || []));
   es.addEventListener('history', () => loadLazy('history', setHistory));
   es.addEventListener('references', () => loadLazy('references', applyReferences));
+  es.addEventListener('findings', () => loadLazy('findings', applyFindings));
 }
 
 function queueReload(changed) {
@@ -299,6 +341,11 @@ async function reload(changed) {
   if (version === graphVersion) return;
   setModel(graph, version);
   langs = languageColors(model, pal, slots);
+  // The findings are indexed onto the model, and this is a new one.
+  if (state.findings) {
+    const { all, sources, partial } = state.findings;
+    state.findings = indexFindings({ findings: all, sources, partial }, model);
+  }
   state.flash = new Set(changed.map(p => 'f:' + p));
   drawFilters();
   drawLegend();
@@ -385,7 +432,10 @@ function updateStatus(note = '') {
     : state.referencesStatus === 'loading' ? ' · finding references…' : '';
   const hist = state.history ? ` · ${fmt.format(state.history.commits)} commits${state.history.truncated ? '+' : ''}` :
     state.historyStatus === 'loading' && config.history !== false ? ' · reading git history…' : '';
-  $('status-text').textContent = `${fmt.format(fileCount)} files · ${fmt.format(model.root.totalLoc)} lines · ${fmt.format(model.graph.edges.length)} imports${hidden}${hist}${refs}` +
+  const found = state.findings
+    ? ` · ${fmt.format(state.findings.all.length)} findings${state.findings.partial ? ' (partial)' : ''}`
+    : state.findingsStatus === 'loading' ? ' · reading scanner reports…' : '';
+  $('status-text').textContent = `${fmt.format(fileCount)} files · ${fmt.format(model.root.totalLoc)} lines · ${fmt.format(model.graph.edges.length)} imports${hidden}${hist}${refs}${found}` +
     (note ? ` · ${note}` : '');
 }
 
@@ -549,6 +599,7 @@ function relayout() {
   L = layout(model, state);
   scene.setBoxes(L.boxes, baseColors());
   walker.setBoxes(L.boxes);
+  if (bugs) placeBugs();
   const to = anchor && rep(anchor.node);
   if (to) walker.reanchor(anchor, to);
   refreshFocus();
@@ -797,6 +848,7 @@ function applyTheme() {
   langs = languageColors(model, pal, slots);
   scene.setBackground({ water: pal.water, sky: pal.sky, skyTop: pal.skyTop, sea: pal.sea, ground: pal.terraceA, land: pal.land });
   if (L) { scene.setOutline(focus?.selBox, pal.select); refreshFocus(); }
+  if (bugs && L) placeBugs(); // the bugs' colors come from the stylesheet too
   if (state.selected) panel.show(state.selected); // swatches in the panel
   drawLegend();
   drawFilters();

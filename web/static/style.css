@@ -30,6 +30,10 @@
   --pkg: #8f8b80;
   --pkg-unresolved: #c9c6bc;
   --pkg-floating: #c59a4a;
+
+  /* Findings: how serious a scanner said it is (also the color of its bug). */
+  --sev-critical: #c4283b; --sev-high: #d9622b; --sev-medium: #b58100;
+  --sev-low: #2a78d6; --sev-info: #6e6c66; --sev-unknown: #a9a7a0;
   /* edges use ink, not hues, so they never impersonate a language */
   --edge-out: #0b0b0b;
   --edge-in: #898781;
@@ -51,6 +55,8 @@
     --seq-5: #3987e5; --seq-6: #6da7ec; --seq-7: #9ec5f4;
     --water: #11171b; --sky: #1b2738; --sky-top: #03060d; --sea: #0b1a26; --land: #3b3934; --terrace-a: #2a2a28; --terrace-b: #34332f;
     --district: #55534d; --no-data: #3a3935; --pkg: #7c786e; --pkg-unresolved: #4a4843; --pkg-floating: #a07a2e;
+    --sev-critical: #f2555f; --sev-high: #f0842f; --sev-medium: #e0b422;
+    --sev-low: #6da7ec; --sev-info: #898781; --sev-unknown: #6d6b66;
     --edge-out: #ffffff; --edge-in: #898781; --dim: #45443f;
     --hl-keyword: #e87ba4; --hl-string: #5ccf9e; --hl-comment: #898781; --hl-number: #f0b24a;
     --hl-title: #86b6ef; --hl-type: #b3a9f2;
@@ -67,6 +73,8 @@
   --seq-5: #3987e5; --seq-6: #6da7ec; --seq-7: #9ec5f4;
   --water: #11171b; --sky: #1b2738; --sky-top: #03060d; --sea: #0b1a26; --land: #3b3934; --terrace-a: #2a2a28; --terrace-b: #34332f;
   --district: #55534d; --no-data: #3a3935; --pkg: #7c786e; --pkg-unresolved: #4a4843; --pkg-floating: #a07a2e;
+  --sev-critical: #f2555f; --sev-high: #f0842f; --sev-medium: #e0b422;
+  --sev-low: #6da7ec; --sev-info: #898781; --sev-unknown: #6d6b66;
   --edge-out: #ffffff; --edge-in: #898781; --dim: #45443f;
   --hl-keyword: #e87ba4; --hl-string: #5ccf9e; --hl-comment: #898781; --hl-number: #f0b24a;
   --hl-title: #86b6ef; --hl-type: #b3a9f2;
@@ -205,6 +213,11 @@ main { position: relative; flex: 1; min-height: 0; }
 }
 #walk-hud .w-bar b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 #walk-hud .w-keys { font-size: 12px; margin-top: 2px; }
+/* What the crosshair is on, when it is a bug. */
+#walk-hud .w-target:not([hidden]) {
+  margin-top: 2px; font-size: 12px; color: var(--text);
+}
+#walk-hud .w-target .sev-dot { display: inline-block; margin: 0 6px 0 0; vertical-align: baseline; }
 /* What just happened, under the HUD bar. */
 #walk-hud .w-flash:not(:empty) {
   margin-top: 4px; padding: 3px 8px; border-radius: 6px;
@@ -365,6 +378,25 @@ main.walking #legend { display: none; }
 .tree-row .twisty:hover { color: var(--text); }
 .p-list .share { flex: 0 0 90px; height: 6px; border-radius: 3px; background: var(--grid); overflow: hidden; }
 .p-list .share i { display: block; height: 100%; background: var(--seq-4); border-radius: 3px; }
+/* Findings: a severity dot, a one-line summary, and the advisory behind it. */
+.sev-critical { --sev: var(--sev-critical); }
+.sev-high { --sev: var(--sev-high); }
+.sev-medium { --sev: var(--sev-medium); }
+.sev-low { --sev: var(--sev-low); }
+.sev-info { --sev: var(--sev-info); }
+.sev-unknown { --sev: var(--sev-unknown); }
+.badge.sev { color: var(--sev); border-color: var(--sev); text-transform: capitalize; }
+.p-list.findings { max-height: 320px; }
+.p-list.findings li { align-items: flex-start; padding: 6px 8px; }
+.p-list.findings li.hit { background: var(--grid); }
+.sev-dot { flex: 0 0 8px; width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--sev, var(--muted)); }
+.f-body { flex: 1; min-width: 0; }
+.f-head { display: flex; gap: 8px; align-items: baseline; }
+.f-head .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.f-detail { margin-top: 6px; color: var(--text-2); font-size: 12px; }
+.f-detail p { margin: 0 0 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
+.f-detail p:last-child { margin-bottom: 0; }
+
 .bar { display: flex; height: 10px; gap: 2px; border-radius: 4px; overflow: hidden; }
 .bar-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; color: var(--text-2); font-size: 12px; }
 .bar-legend span { display: flex; align-items: center; gap: 5px; }
