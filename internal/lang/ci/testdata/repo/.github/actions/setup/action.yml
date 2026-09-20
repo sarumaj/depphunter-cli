@@ -1,0 +1,11 @@
+name: Setup
+description: Shared setup steps
+runs:
+  using: composite
+  steps:
+    - uses: actions/cache@0c907a75c2c80ebcb7f088228285e798b750cf8f # v4.2.1
+      with:
+        path: ~/.cache
+        key: setup-${{ runner.os }}
+    - run: echo ready
+      shell: bash

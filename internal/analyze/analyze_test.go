@@ -130,13 +130,15 @@ func (r fakeResolver) Resolve(file string, imp lang.RawImport) lang.Target {
 func TestPackageVersions(t *testing.T) {
 	root := t.TempDir()
 	writeProject(t, root, map[string]string{
-		"a.fake": "pinned\nfloating\nboth\nunknown\n",
+		"a.fake": "pinned\nfloating\nboth\nunknown\nmoving\n",
 	})
 	p := fakePlugin{targets: map[string]lang.Target{
 		"pinned":   {Ecosystem: "fake-eco", Package: "pinned", Version: "1.2.3", Requested: "^1.2.0", Pinned: true},
 		"floating": {Ecosystem: "fake-eco", Package: "floating", Version: "^2.0.0"},
 		"both":     {Ecosystem: "fake-eco", Package: "both", Version: "3.0.0", Pinned: true},
 		"unknown":  {Ecosystem: "fake-eco", Package: "unknown"},
+		// A reference with no version that still moves: a served template, a URL.
+		"moving": {Ecosystem: "fake-eco", Package: "moving", Floating: true},
 	}}
 	g, _, err := Run(context.Background(), root, Options{Plugins: []lang.Plugin{p}})
 	if err != nil {
@@ -155,6 +157,7 @@ func TestPackageVersions(t *testing.T) {
 		{"both", "3.0.0", "", false},
 		// Nothing is known about it, which is not the same as knowing it floats.
 		{"unknown", "", "", false},
+		{"moving", "", "", true},
 	} {
 		n := byID[graph.PackageID("fake-eco", c.pkg)]
 		if n == nil {

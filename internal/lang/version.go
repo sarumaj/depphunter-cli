@@ -33,6 +33,13 @@ func Pinned(spec string) bool {
 	return exact(s)
 }
 
+// Commit reports whether ref is a full git commit, the only git reference that cannot
+// be moved: a tag points wherever its owner last pushed it.
+func Commit(ref string) bool {
+	ref = strings.TrimSpace(ref)
+	return isHex(ref, 40) || isHex(ref, 64) // SHA-1 today, SHA-256 where it is enabled
+}
+
 // PinnedSemver is Pinned for the ecosystems where a shortened version is itself a
 // range: npm reads "1.2" as 1.2.x, so only a complete "1.2.3" pins.
 func PinnedSemver(spec string) bool {

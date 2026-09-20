@@ -47,6 +47,10 @@ type Target struct {
 	// specifier or a digest - rather than one that moves when it is next installed
 	// (see Pinned in version.go).
 	Pinned bool
+	// Floating marks a dependency that moves although it names no version at all: a
+	// GitLab template served by the instance, a remote include, an unversioned
+	// reference. Without it such a target would read as "nothing known".
+	Floating bool
 	// Unresolved means the package's owning module is unknown (missing from manifests).
 	Unresolved bool
 }
