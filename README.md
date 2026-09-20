@@ -224,6 +224,36 @@ tooltips and the side panel show the same figures, the panel also the top
 authors. Renamed files keep the history of their old names. With `--watch`, a
 new commit updates the overlay.
 
+## CI pipelines
+
+The code that runs with your repository's secrets is a dependency too, and it is
+declared nowhere a package manager looks. depphunter reads it from the pipeline
+files themselves - `.github/workflows/*.yml`, `action.yml`, `.gitlab-ci.yml`,
+`*.gitlab-ci.yml` and `.gitlab/**` - and puts it on the map beside the packages:
+
+- **GitHub Actions**: each step's `uses:`, reusable workflows (`jobs.<id>.uses`),
+  and a composite action's own steps. A `./path` resolves to the `action.yml` or
+  workflow inside this repository, so a local action's own dependencies chain on.
+- **GitLab CI**: every `include:` form - `local`, `project` (with `ref` and
+  `file`), `template`, `remote` and `component` - plus the includes a bridge job
+  triggers.
+- **Container images**: `container:`, `services:`, `docker://…` and a Docker
+  action's `runs.image` on GitHub; `image:`, `services:` and `default:` on
+  GitLab, per job and pipeline-wide.
+
+Jobs become the symbols of their file, so a pipeline expands into its jobs the
+way a source file expands into its functions.
+
+Pinning is stricter here than in a package ecosystem, because a reference that
+can be rewritten is not a pin: **only a commit or a digest counts**.
+`actions/checkout@v4` floats - the tag can be moved to other code - and so does
+`nginx:1.25.3`, since a tag is republished whenever its owner likes. The
+hardening convention of pinning to a commit and naming the version in a comment
+is read as both: `actions/setup-go@3041bf5… # v5.0.1` shows the commit as the
+version and `v5.0.1` as what was requested. A GitLab template or a remote
+include names no version at all and still changes under you, so it is floating
+as well.
+
 ## Versions and pinning
 
 Every external package carries the version the project resolves it to, and
@@ -234,15 +264,15 @@ dependency nothing pins is drawn in amber, badged **⚠ floating** in the side
 panel, and marked in its tooltip; where a lock file resolved a range, the panel
 shows both - `4.3.1`, requested as `^4.2.0`.
 
-| Ecosystem           | pinned by                                     | floats on                                            |
-|---------------------|-----------------------------------------------|------------------------------------------------------|
-| Go modules          | the version in `go.mod`, which the build picks | a require without a version                          |
-| npm                 | `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, an exact `1.2.3` | any range - including `1.2`, which means 1.2.x |
-| crates.io           | `Cargo.lock`                                  | the manifest alone: `"1.2.3"` there means `^1.2.3`   |
-| PyPI                | `poetry.lock`, `uv.lock`, `pdm.lock`, `Pipfile.lock`, `==1.2.3` | `>=`, `~=`, `^`, or no version at all |
-| Maven               | a plain version, `[1.2.3]`                    | ranges, `LATEST`, `RELEASE`, `-SNAPSHOT`, unexpanded `${…}` |
-| NuGet               | an exact version, `[1.2.3]`                   | wildcards (`2.*`) and ranges                         |
-| PowerShell Gallery  | `RequiredVersion`                             | `ModuleVersion`, which is a minimum                  |
+| Ecosystem          | pinned by                                                            | floats on                                                   |
+|--------------------|----------------------------------------------------------------------|-------------------------------------------------------------|
+| Go modules         | the version in `go.mod`, which the build picks                       | a require without a version                                 |
+| npm                | `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, an exact `1.2.3` | any range - including `1.2`, which means 1.2.x              |
+| crates.io          | `Cargo.lock`                                                         | the manifest alone: `"1.2.3"` there means `^1.2.3`          |
+| PyPI               | `poetry.lock`, `uv.lock`, `pdm.lock`, `Pipfile.lock`, `==1.2.3`      | `>=`, `~=`, `^`, or no version at all                       |
+| Maven              | a plain version, `[1.2.3]`                                           | ranges, `LATEST`, `RELEASE`, `-SNAPSHOT`, unexpanded `${…}` |
+| NuGet              | an exact version, `[1.2.3]`                                          | wildcards (`2.*`) and ranges                                |
+| PowerShell Gallery | `RequiredVersion`                                                    | `ModuleVersion`, which is a minimum                         |
 
 The JSON and GraphML exports carry `requested` and `floating` per package.
 
@@ -330,15 +360,16 @@ not part of the analyzed project are rejected.
 
 ## Languages
 
-| Ecosystem               | Imports resolved through                                                                                                                                                          | Islands                              |
-|-------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------|
-| Go                      | every `go.mod` (multi-module, local `replace`)                                                                                                                                    | Go modules, Go standard library      |
-| JavaScript / TypeScript | relative paths, `tsconfig`/`jsconfig` `paths`, workspaces, `package.json` + `package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`                                                  | npm, Node.js built-ins               |
-| Python                  | relative imports, `src/` layouts, requirements files, `setup.cfg`, literal `setup.py` lists, `pyproject.toml`, `Pipfile`, `poetry.lock`/`uv.lock`/`pdm.lock`/`Pipfile.lock`       | PyPI, Python standard library        |
-| Rust                    | the module tree (`crate::`, `self::`, `super::`, `mod x;`), workspace and path crates, `Cargo.toml` (renamed and workspace dependencies) + `Cargo.lock`                           | crates.io, Rust standard library     |
-| Java                    | source files by package path (any source root), `pom.xml` (properties, dependency management), Gradle scripts and version catalogs                                                | Maven, Java standard library         |
-| C#                      | namespaces to project folders (`RootNamespace` + folder), `PackageReference`, `Directory.Packages.props`                                                                          | NuGet, .NET base library             |
-| PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`) | PowerShell Gallery, built-in modules |
+| Ecosystem               | Imports resolved through                                                                                                                                                          | Islands                                     |
+|-------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------|
+| Go                      | every `go.mod` (multi-module, local `replace`)                                                                                                                                    | Go modules, Go standard library             |
+| JavaScript / TypeScript | relative paths, `tsconfig`/`jsconfig` `paths`, workspaces, `package.json` + `package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`                                                  | npm, Node.js built-ins                      |
+| Python                  | relative imports, `src/` layouts, requirements files, `setup.cfg`, literal `setup.py` lists, `pyproject.toml`, `Pipfile`, `poetry.lock`/`uv.lock`/`pdm.lock`/`Pipfile.lock`       | PyPI, Python standard library               |
+| Rust                    | the module tree (`crate::`, `self::`, `super::`, `mod x;`), workspace and path crates, `Cargo.toml` (renamed and workspace dependencies) + `Cargo.lock`                           | crates.io, Rust standard library            |
+| Java                    | source files by package path (any source root), `pom.xml` (properties, dependency management), Gradle scripts and version catalogs                                                | Maven, Java standard library                |
+| C#                      | namespaces to project folders (`RootNamespace` + folder), `PackageReference`, `Directory.Packages.props`                                                                          | NuGet, .NET base library                    |
+| PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`) | PowerShell Gallery, built-in modules        |
+| CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)      | GitHub Actions, GitLab CI, Container images |
 
 Java imports name packages, not artifacts, so they are matched to Maven groupIds
 by prefix, shared leading segments, artifact names and a short table of

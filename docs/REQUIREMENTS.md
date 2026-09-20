@@ -559,9 +559,9 @@ on, and the right button only zooms.
   profile and SwiftShader, which is what gives WebGL without a GPU.
 - Frames arrive as a screencast and are painted with the terminal's own
   graphics: the kitty protocol (raw pixels, zlib-compressed), the iTerm2 inline
-  image (the browser's JPEG forwarded untouched), sixel (a fixed 6x6x6 colour
+  image (the browser's JPEG forwarded untouched), sixel (a fixed 6x6x6 color
   cube with an ordered dither, run-length encoded), or half blocks with 24-bit
-  colour, which need no protocol at all. `--terminal-graphics` chooses;
+  color, which need no protocol at all. `--terminal-graphics` chooses;
   `auto` reads the environment, asks the terminal (a kitty query followed by the
   device attributes request) and falls back to half blocks, as it does inside
   tmux and screen.
@@ -581,7 +581,7 @@ on, and the right button only zooms.
 > **Decisions (M11):** a text browser was never an option - the map is one WebGL
 > canvas with no DOM underneath - so the choice was between shipping a second,
 > poorer renderer and carrying a real one's pixels to the terminal. The pixels
-> won: one map, one set of behaviours, and every terminal gets the same map its
+> won: one map, one set of behaviors, and every terminal gets the same map its
 > browser would draw. The cost is a dependency on an installed Chromium, which
 > is why the view is opt-in and says so when it finds none.
 
@@ -605,8 +605,26 @@ the side panel, a double click expands a directory, `V` enters walk mode and
   and ranges; PowerShell's `RequiredVersion` names one version where
   `ModuleVersion` is only a minimum.
 
+- Continuous integration is a dependency source of its own: GitHub workflows and
+  composite actions (`uses:` per step, reusable workflows, `container:`,
+  `services:`, `docker://`, `runs.image`), GitLab pipelines (`include:` as
+  `local`, `project`, `template`, `remote` and `component`, and the includes a
+  bridge job triggers), and the container images either platform runs, in the
+  three islands GitHub Actions, GitLab CI and Container images. A `./path`
+  resolves to the file inside this repository, so a local action chains on to
+  its own dependencies; jobs become their file's symbols.
+- Pinning is stricter for a CI reference than for a package: only an immutable
+  one counts, which means a commit or an OCI digest. A tag can be moved and an
+  image tag republished, so `@v4` and `:1.25.3` float; a template, a remote
+  include and an unversioned reference float although they name no version at
+  all, which the target carries as its own flag rather than an invented version.
+  Where a commit is documented by the version in a trailing comment - the
+  hardening convention - that version is kept as what was requested.
+
 *Accepted when* a repository whose dependencies are locked shows no floating
-packages, and removing its lock file makes every one of them floating.
+packages, removing its lock file makes every one of them floating, and a
+workflow pinned to tags shows every action floating until the tags are replaced
+by commits.
 
 ### Known limits
 

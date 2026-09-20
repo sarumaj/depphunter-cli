@@ -29,6 +29,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/graph"
 	"github.com/sarumaj/depphunter-cli/internal/history"
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/ci"
 	"github.com/sarumaj/depphunter-cli/internal/lang/csharp"
 	"github.com/sarumaj/depphunter-cli/internal/lang/golang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/java"
@@ -110,7 +111,7 @@ func run(ctx context.Context, cfg config.Config) error {
 		Scan: scan.Options{Exclude: cfg.Exclude, MaxFileSize: cfg.MaxFileSize},
 		Plugins: []lang.Plugin{
 			golang.Plugin{}, javascript.Plugin{}, python.Plugin{}, rust.Plugin{}, java.Plugin{},
-			csharp.Plugin{}, powershell.Plugin{},
+			csharp.Plugin{}, powershell.Plugin{}, ci.Plugin{},
 		},
 		Cache: c,
 	}

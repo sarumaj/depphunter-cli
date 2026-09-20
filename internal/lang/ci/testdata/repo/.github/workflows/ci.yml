@@ -1,0 +1,23 @@
+name: CI
+on: [push]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    container:
+      image: golang:1.27-alpine
+    services:
+      postgres:
+        image: postgres:16@sha256:aa11bb22cc33dd44ee55ff66aa11bb22cc33dd44ee55ff66aa11bb22cc33dd44
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@3041bf56c941b39c61721a86cd11f3bb1338122a # v5.0.1
+      - uses: ./.github/actions/setup
+      - uses: docker://alpine:3.19
+      - run: go test ./...
+
+  release:
+    uses: octo-org/shared/.github/workflows/release.yml@a1b2c3d4e5f6a7b8c9d0e1f2a3b4c5d6e7f8a9b0
+
+  build:
+    uses: ./.github/workflows/build.yml

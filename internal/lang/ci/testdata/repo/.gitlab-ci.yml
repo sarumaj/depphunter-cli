@@ -1,0 +1,27 @@
+stages: [build, test]
+
+include:
+  - local: /.gitlab/ci/build.yml
+  - project: infra/pipelines
+    ref: 9f8e7d6c5b4a39281706f5e4d3c2b1a09f8e7d6c
+    file: /templates/deploy.yml
+  - template: Security/SAST.gitlab-ci.yml
+  - remote: https://example.com/ci/shared.yml?v=2
+  - component: gitlab.com/components/sonar/scan@1.4.0
+
+image: node:20
+
+default:
+  services:
+    - name: redis:7.2
+      alias: cache
+
+unit:
+  stage: test
+  image:
+    name: python:3.12-slim
+  script: [pytest]
+
+.hidden-template:
+  image: busybox:latest
+  script: [true]
