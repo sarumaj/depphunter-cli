@@ -759,6 +759,22 @@ export class Walker {
 
   // ------------------------------------------------------------------ darts
 
+  /**
+   * Where what the tool throws leaves it, in flat-map coordinates: the rod's tip, the
+   * net's hoop, the wand's ring, the launcher's muzzle (tools.js marks the spot).
+   * Null before the hand has loaded, and the walker's eye then stands in for it.
+   *
+   * The viewmodel hangs off the walk camera, which is at the walker's eye in those
+   * same coordinates, so this needs no conversion - only an up-to-date matrix, since
+   * a shot is fired between frames.
+   */
+  muzzle() {
+    const m = this.viewmodel?.getObjectByName('muzzle');
+    if (!m) return null;
+    m.updateWorldMatrix(true, false);
+    return m.getWorldPosition(new THREE.Vector3());
+  }
+
   // Using the tool on an aimed box sends whatever it throws along a shallow arc to
   // the aimed point, and it always arrives; used on nothing it flies ahead under
   // gravity until it hits something or falls into the water. A tool that throws
@@ -777,7 +793,7 @@ export class Walker {
       else if (target) this.tag(target);
       return;
     }
-    const start = new THREE.Vector3(p.x, p.feet + EYE - 0.08, p.z);
+    const start = this.muzzle() || new THREE.Vector3(p.x, p.feet + EYE - 0.08, p.z);
     const mesh = tool.projectile();
     mesh.position.copy(start);
     this.scene.scene.add(mesh);
@@ -1011,9 +1027,9 @@ export class Walker {
       }
       if (m.userData.spin) m.rotation.z += m.userData.spin * dt;
       if (m.userData.wobble) m.scale.set(1 + Math.sin(dart.t * 9) * 0.07, 1 - Math.sin(dart.t * 9) * 0.07, 1);
-      if (dart.line) { // keep the line between the walker's hand and what was cast
-        const hand = new THREE.Vector3(this.p.x, this.p.feet + EYE - 0.05, this.p.z);
-        dart.line.geometry.setFromPoints([hand, m.position.clone()]);
+      if (dart.line) { // keep the line between the rod's tip and what was cast
+        const tip = this.muzzle() || new THREE.Vector3(this.p.x, this.p.feet + EYE - 0.05, this.p.z);
+        dart.line.geometry.setFromPoints([tip, m.position.clone()]);
       }
     }
     for (const dart of done) {

@@ -32,6 +32,52 @@ function part(geo, color, opts) {
   }));
 }
 
+// The butterfly net's mouth and how deep its bag hangs.
+const HOOP = 0.145, BAG = 0.34;
+
+/**
+ * How wide the bag is at a depth: the hoop's width at the mouth, drawn in to a point
+ * at the bottom, with the belly a hanging net has in the middle of it.
+ */
+const bagAt = (t, r) => r * Math.cos(t * Math.PI / 2) ** 0.7 * (1 + 0.14 * Math.sin(t * Math.PI));
+
+/**
+ * A net bag on a hoop: a haze of a surface with the strands and rings that make it
+ * drawn over the top.
+ *
+ * Netting is mostly holes, and what the eye reads is the mesh rather than the cloth -
+ * so a smooth translucent cone, which is what this was, reads as a plastic bag. The
+ * other way to do it is a texture with holes in it, and there are no textures on this
+ * map; lines are what is left, and they are what netting is anyway.
+ */
+function bagOf(parent, r, depth) {
+  const rings = [];
+  for (let i = 0; i <= 10; i++) {
+    const t = i / 10;
+    rings.push(new THREE.Vector2(Math.max(0.0015, bagAt(t, r)), t * depth));
+  }
+  const cloth = part(new THREE.LatheGeometry(rings, 18), '#eef3f8',
+    { transparent: true, opacity: 0.14, side: THREE.DoubleSide, depthWrite: false });
+  parent.add(cloth);
+
+  const at = (t, a) => [Math.cos(a) * bagAt(t, r), t * depth, Math.sin(a) * bagAt(t, r)];
+  const p = [];
+  for (let s = 0; s < 14; s++) { // down the bag
+    const a = (s / 14) * Math.PI * 2;
+    for (let i = 0; i < 6; i++) p.push(...at(i / 6, a), ...at((i + 1) / 6, a));
+  }
+  for (const t of [0.22, 0.45, 0.68]) { // and round it
+    for (let i = 0; i < 18; i++) {
+      p.push(...at(t, (i / 18) * Math.PI * 2), ...at(t, ((i + 1) / 18) * Math.PI * 2));
+    }
+  }
+  const mesh = new THREE.BufferGeometry();
+  mesh.setAttribute('position', new THREE.Float32BufferAttribute(p, 3));
+  parent.add(new THREE.LineSegments(mesh,
+    new THREE.LineBasicMaterial({ color: '#f4f7fb', transparent: true, opacity: 0.8 })));
+  return cloth;
+}
+
 // A tube between two points, for rod blanks, handles and strap runs.
 function rodPart(r0, r1, len, color) {
   return part(new THREE.CylinderGeometry(r0, r1, len, 12), color);
@@ -184,6 +230,20 @@ function grip(vm, amount, press = 0) {
 }
 
 /**
+ * Marks where what a tool throws leaves it: the rod's tip, the net's hoop, the wand's
+ * ring, the launcher's muzzle. walk.js reads its world position when it fires, so a
+ * bobber starts at the end of the rod rather than at the walker's eye - which is what
+ * made a cast look like it came from nowhere.
+ */
+function muzzle(parent, x, y, z) {
+  const m = new THREE.Object3D();
+  m.name = 'muzzle';
+  m.position.set(x, y, z);
+  parent.add(m);
+  return m;
+}
+
+/**
  * Lays the first hand's index finger on a trigger: 0 is straight along it, 1 pressed.
  * A fist closed evenly round a camera or a launcher has nothing to fire it with.
  */
@@ -273,6 +333,7 @@ const rod = {
       const tip = part(new THREE.SphereGeometry(0.006, 8, 6), '#d8dee6');
       tip.position.y = 0.83;
       rod.add(tip);
+      muzzle(rod, 0, 0.85, 0);
       // Line guides down the blank: small rings, smaller towards the tip.
       for (const [y, r] of [[0.18, 0.022], [0.36, 0.018], [0.54, 0.015], [0.7, 0.012], [0.81, 0.01]]) {
         const guide = part(new THREE.TorusGeometry(r, 0.0025, 5, 12), '#9aa4b0');
@@ -363,23 +424,13 @@ const net = {
       head.rotation.x = -0.25;
       head.name = 'head';
       net.add(head);
-      const hoop = part(new THREE.TorusGeometry(0.135, 0.0075, 6, 22), '#d8dee6');
-      hoop.position.y = 0.12;
+      const hoop = part(new THREE.TorusGeometry(HOOP, 0.006, 6, 24), '#dfe4ea');
       hoop.rotation.x = Math.PI / 2;
       head.add(hoop);
-      // The bag, with two stiffening rings so it is not one smooth cone.
-      const bag = part(new THREE.ConeGeometry(0.132, 0.24, 16, 1, true), '#eef3f8',
-        { transparent: true, opacity: 0.42, side: THREE.DoubleSide });
-      bag.position.y = 0.24;
-      bag.rotation.x = Math.PI;
-      head.add(bag);
-      for (const [y, r] of [[0.19, 0.105], [0.145, 0.07]]) {
-        const ring = part(new THREE.TorusGeometry(r, 0.0035, 5, 16), '#dfe6ee',
-          { transparent: true, opacity: 0.55 });
-        ring.position.y = y;
-        ring.rotation.x = Math.PI / 2;
-        head.add(ring);
-      }
+      // The collar that binds the hoop to the shaft.
+      head.add(part(new THREE.BoxGeometry(0.028, 0.055, 0.015).translate(0, -0.028, 0), '#aab2bb'));
+      muzzle(head, 0, 0, 0);
+      bagOf(head, HOOP, BAG);
     });
   },
   // A wind-up away from the view, then a sweep across it, the head trailing the hand.
@@ -398,15 +449,13 @@ const net = {
   },
   projectile() {
     const g = new THREE.Group();
-    g.add(part(new THREE.TorusGeometry(0.16, 0.012, 6, 20), '#d8dee6'));
-    const bag = part(new THREE.ConeGeometry(0.155, 0.28, 14, 1, true), '#eef3f8',
-      { transparent: true, opacity: 0.38, side: THREE.DoubleSide });
-    bag.position.z = -0.14;
-    bag.rotation.x = Math.PI / 2;
-    g.add(bag);
-    const ring = part(new THREE.TorusGeometry(0.085, 0.005, 5, 14), '#dfe6ee', { transparent: true, opacity: 0.5 });
-    ring.position.z = -0.13;
-    g.add(ring);
+    const mouth = new THREE.Group();
+    mouth.rotation.x = -Math.PI / 2; // the bag streams behind the hoop as it flies
+    g.add(mouth);
+    const hoop = part(new THREE.TorusGeometry(0.16, 0.009, 6, 22), '#dfe4ea');
+    hoop.rotation.x = Math.PI / 2;
+    mouth.add(hoop);
+    bagOf(mouth, 0.16, 0.34);
     g.userData.spin = 6;
     return g;
   },
@@ -535,6 +584,7 @@ const bubbles = {
       film.rotation.x = Math.PI / 2;
       film.name = 'film';
       head.add(film);
+      muzzle(head, 0, 0, 0);
     });
   },
   // A slow wave through the ring, the film bulging as the air goes through it.
@@ -574,11 +624,14 @@ const dart = {
   noun: 'tagged',
   hint: 'Click: tag a building, hit it again for details',
   reticle: 'scope',
-  // Held across the view rather than pointed down it: a launcher seen end-on is a
-  // dark blob, and half the point of it is that it looks like something.
   // The pistol grip hangs down out of the fist, so the shaft through it points up.
   hold: { x: 0.19, y: -0.24, z: -0.5, along: [0.05, 1, 0.1], back: [0.45, -0.3, 1] },
-  grip: { x: 0, y: 0, z: 0, rx: 3.9, ry: 0, rz: -Math.PI / 2 },
+  // Pointed down the view, a few degrees off it. Held square across the frame - which
+  // is what this was - the barrel aimed sixteen degrees wide of the reticle and the
+  // dart left it sideways; end-on it would be a dark blob instead. These are the
+  // angles that put the barrel eleven degrees off the aim with the scope on top,
+  // solved from the pose rather than guessed at, so the flank still reads.
+  grip: { x: 0, y: 0, z: 0, rx: -3.124, ry: 0.117, rz: -1.599 },
   restGrip: 0.88,
   viewmodel() {
     return viewmodel(g => {
@@ -595,10 +648,11 @@ const dart = {
       barrel.rotation.x = Math.PI / 2;
       barrel.position.set(0, 0.05, -0.3);
       frame.add(barrel);
-      const muzzle = rodPart(0.036, 0.034, 0.04, '#23292f');
-      muzzle.rotation.x = Math.PI / 2;
-      muzzle.position.set(0, 0.05, -0.44);
-      frame.add(muzzle);
+      const nozzle = rodPart(0.036, 0.034, 0.04, '#23292f');
+      nozzle.rotation.x = Math.PI / 2;
+      nozzle.position.set(0, 0.05, -0.44);
+      frame.add(nozzle);
+      muzzle(frame, 0, 0.05, -0.47);
       // A charged air cylinder along the barrel, on the side that faces the view.
       const tank = rodPart(0.024, 0.024, 0.18, '#4c8ab2');
       tank.rotation.x = Math.PI / 2;
