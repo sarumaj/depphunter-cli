@@ -11,8 +11,10 @@ import { Walker } from './walk.js';
 import { loadHands } from './hands.js';
 import { loadPlants } from './props.js';
 import { Bugs } from './bugs.js';
+import { Pins } from './pins.js';
+import { Backpack } from './backpack.js';
 import { indexFindings } from './findings.js';
-import { $, fmt, escapeHTML } from './dom.js';
+import { $, h, fmt, escapeHTML } from './dom.js';
 import { Color } from './vendor/three.module.min.js';
 
 const MAX_ARCS = 400;
@@ -51,6 +53,8 @@ let focus = null;  // {lit: Set<box>, arcs}
 let labels;       // Labels layer over the map
 let walker;       // first-person walk mode
 let bugs;         // the findings walking the streets in walk mode
+let pins;         // the same findings, as markers over the map
+let pack;         // what has been caught (backpack.js)
 let aimX = 0;     // where the walk-mode tooltip was last placed
 
 async function main() {
@@ -85,7 +89,7 @@ async function main() {
     }
     labels.draw();
   };
-  scene.onRender = drawLabels;
+  scene.onRender = () => { drawLabels(); pins?.follow(); };
   walker = new Walker(scene, $('walk-hud'), {
     onAim: (i, x, y) => {
       if (i !== state.hovered) {
@@ -122,17 +126,21 @@ async function main() {
     onTool: id => { state.tool = id; },
     onRender: drawLabels,
   });
+  pins = new Pins(scene);
+  pack = new Backpack(model.root.name, drawPack);
   bugs = new Bugs(scene, {
     // A caught bug reads itself out: the building it belongs to is selected and its
-    // finding opened, exactly as a second shot into a building would.
+    // finding opened, exactly as a second shot into a building would. It also goes
+    // into the backpack, which is where it can be found again afterwards.
     onCatch: (f, node) => {
+      pack.add(f, node);
       select(node);
       panel.show(node, false, f.id);
       document.exitPointerLock?.();
       walker.setFrozen(true);
       walker.drawHud();
       const { caught, total } = bugs.counts;
-      walker.flash(`${f.severity}: ${f.title} - ${caught} of ${total} bugs caught. Click the map to keep walking`);
+      walker.flash(`${f.severity}: ${f.title} - ${caught} of ${total} caught, and in the backpack. Click the map to keep walking`);
     },
   });
   walker.setBugs(bugs);
@@ -157,6 +165,7 @@ async function main() {
   loadHands(); // the walker's hands, fetched while the map is still being looked at
   loadPlants().then(got => got && scene.redress()); // and what grows on the map
   bindControls();
+  drawPack();
   relayout();
   scene.fit(L.bounds);
   updateStatus();
@@ -203,6 +212,9 @@ function applyReferences(r) {
 function applyFindings(set) {
   state.findings = set ? indexFindings(set, model) : null;
   state.findingsStatus = set ? 'ready' : 'none';
+  // Every live update is a chance for something in the backpack to have been fixed.
+  pack.reconcile(state.findings);
+  drawPack();
   placeBugs();
   updateStatus();
   if (state.selected) panel.show(state.selected, true);
@@ -211,8 +223,70 @@ function applyFindings(set) {
 // placeBugs re-spawns the bugs for the current layout. Boxes change with every depth
 // change and every live update, and a bug stands beside its building.
 function placeBugs() {
+  // Whatever is in the backpack was caught already and stays caught across a relayout,
+  // a reload, or a depth change.
+  bugs.keepCaught(pack.ids);
   bugs.place(state.findings, L.boxes);
+  pins.place(state.findings, L.boxes);
+  pins.show(!walker.active && !!state.findings);
   if (walker.active) walker.drawHud();
+}
+
+// ---------------------------------------------------------------- the backpack
+
+// drawPack redraws the list and the toolbar button. The button only exists when there
+// is something to put in it: a map read without --findings has no bugs to catch.
+function drawPack() {
+  const { total, open, fixed } = pack.counts;
+  const btn = $('pack-btn'), count = $('pack-count');
+  btn.hidden = !(total || state.findings);
+  count.hidden = !total;
+  count.textContent = total;
+  $('pack-summary').textContent = total
+    ? `${open} still open${fixed ? `, ${fixed} fixed since` : ''}`
+    : '';
+  $('pack-empty-note').hidden = total > 0;
+  $('pack-clear-fixed').hidden = !fixed;
+  $('pack-empty').hidden = !total;
+  const list = $('pack-list');
+  list.replaceChildren(...pack.items.map(it => packRow(it)));
+}
+
+function packRow(it) {
+  const drop = h('button', {
+    class: 'drop', type: 'button', title: 'Take it out of the backpack',
+    onclick: e => { e.stopPropagation(); pack.remove(it.id); },
+  }, '×');
+  return h('li', {
+    class: `${it.fixed ? 'fixed ' : ''}sev-${it.severity}`,
+    title: it.fixed ? 'Gone from the latest scan' : it.title,
+    onclick: () => openCaught(it),
+  },
+    h('span', { class: 'sev-dot' }),
+    h('span', { class: 'body' },
+      h('span', { class: 't' }, it.title),
+      h('span', { class: 'w' }, it.where + (it.line ? `:${it.line}` : ''))),
+    h('span', { class: 'state' }, it.fixed ? 'fixed' : it.severity),
+    drop);
+}
+
+// Opening one goes back to where it was caught: the building is revealed and selected
+// and the finding opened in the panel, if the scanners still report it.
+function openCaught(it) {
+  const node = model.byId.get(it.nodeId);
+  if (!node) {
+    updateStatus(it.fixed ? 'fixed, and no longer on the map' : 'no longer on the map');
+    return;
+  }
+  setWalking(false);
+  reveal(node);
+  panel.show(node, false, it.fixed ? undefined : it.id);
+}
+
+function setPackOpen(on) {
+  $('pack').hidden = !on;
+  $('pack-btn').setAttribute('aria-expanded', on);
+  if (on) drawPack();
 }
 
 // ---------------------------------------------------------------- git history
@@ -589,6 +663,9 @@ function setWalking(on) {
   }
   $('walk').setAttribute('aria-pressed', on);
   $('map').parentElement.classList.toggle('walking', on);
+  // The pins are how findings show on the map; in the street they are bugs instead.
+  pins.show(!on && !!state.findings);
+  if (on) setPackOpen(false);
   // The map view must never keep the pointer captured: the cursor would be invisible.
   if (!on && document.pointerLockElement) document.exitPointerLock();
   if (on) panel.close();
@@ -935,6 +1012,10 @@ function bindControls() {
   $('collapse-level').onclick = () => setLevel(state.level - 1);
   $('fit').onclick = () => scene.fit(L.bounds);
   $('walk').onclick = () => setWalking(!walker.active);
+  $('pack-btn').onclick = () => setPackOpen($('pack').hidden);
+  $('pack-close').onclick = () => setPackOpen(false);
+  $('pack-clear-fixed').onclick = () => pack.clear(true);
+  $('pack-empty').onclick = () => pack.clear();
   $('rotate-left').onclick = () => scene.setIso(scene.quarter - 1);
   $('rotate-right').onclick = () => scene.setIso(scene.quarter + 1);
   $('help-btn').onclick = () => $('help').showModal();
@@ -978,7 +1059,11 @@ function bindControls() {
     switch (e.key) {
       case 'Escape':
         if (document.pointerLockElement) document.exitPointerLock(); // a stray capture
+        if (!$('pack').hidden) { setPackOpen(false); break; }
         select(null);
+        break;
+      case 'b': case 'B':
+        if (!$('pack-btn').hidden) setPackOpen($('pack').hidden);
         break;
       case 'f': case 'F': scene.fit(L.bounds); break;
       case 'q': case 'Q': scene.setIso(scene.quarter - 1); break;
