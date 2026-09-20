@@ -10,10 +10,12 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"runtime"
 	"strings"
 	"testing"
+	"time"
 )
 
 // publisher stands in for Chrome for Testing: the versions document and the archive
@@ -197,5 +199,84 @@ func TestPlatformName(t *testing.T) {
 		if err == nil {
 			t.Errorf("got %q for a platform with no build", name)
 		}
+	}
+}
+
+// fakeInstall lays out a browser the way download leaves one behind.
+func fakeInstall(t *testing.T, dir, version string) string {
+	t.Helper()
+	platform, err := platformName()
+	if err != nil {
+		t.Skipf("no published build for %s", runtime.GOOS)
+	}
+	name := downloadName
+	if runtime.GOOS == "windows" {
+		name += ".exe"
+	}
+	inside := filepath.Join(dir, downloadName+"-"+platform+"-"+version, downloadName+"-"+platform)
+	if err := os.MkdirAll(inside, 0o755); err != nil {
+		t.Fatal(err)
+	}
+	bin := filepath.Join(inside, name)
+	if err := os.WriteFile(bin, []byte("#!/bin/sh\nexit 0\n"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	return bin
+}
+
+func TestDownloadedFindsAnEarlierRunsBrowser(t *testing.T) {
+	dir := t.TempDir()
+	if _, ok := downloaded(dir); ok {
+		t.Fatal("found a browser in an empty directory")
+	}
+	older := fakeInstall(t, dir, "120.0.1.1")
+	if err := os.Chtimes(filepath.Dir(filepath.Dir(older)), time.Now().Add(-time.Hour), time.Now().Add(-time.Hour)); err != nil {
+		t.Fatal(err)
+	}
+	newer := fakeInstall(t, dir, "131.0.6778.85")
+
+	got, ok := downloaded(dir)
+	if !ok {
+		t.Fatal("a downloaded browser was not found")
+	}
+	if got != newer {
+		t.Errorf("got %s, want the newest install %s", got, newer)
+	}
+}
+
+func TestADownloadedBrowserIsNotAskedForAgain(t *testing.T) {
+	// The question is only about a browser that is not there; put nothing on PATH so
+	// this machine's own browsers cannot answer it.
+	t.Setenv("PATH", t.TempDir())
+	if _, err := findBrowser(exec.LookPath, os.Stat); err == nil {
+		t.Skip("a browser is installed outside PATH on this machine")
+	}
+	dir := t.TempDir()
+	bin := fakeInstall(t, dir, "131.0.6778.85")
+
+	asked := false
+	got, err := browserFor(context.Background(), Options{}, dir, func() bool {
+		asked = true
+		return false
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got != bin {
+		t.Errorf("got %s, want the downloaded browser %s", got, bin)
+	}
+	if asked {
+		t.Error("asked to download a browser that was already on disk")
+	}
+}
+
+func TestWithoutABrowserTheErrorSaysWhatToDo(t *testing.T) {
+	t.Setenv("PATH", t.TempDir())
+	if _, err := findBrowser(exec.LookPath, os.Stat); err == nil {
+		t.Skip("a browser is installed outside PATH on this machine")
+	}
+	_, err := browserFor(context.Background(), Options{}, t.TempDir(), func() bool { return false })
+	if err == nil || !strings.Contains(err.Error(), "--terminal-download") {
+		t.Errorf("error %v does not say how to get a browser", err)
 	}
 }

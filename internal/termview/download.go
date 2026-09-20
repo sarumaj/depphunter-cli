@@ -13,6 +13,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"sort"
 	"strings"
 	"time"
 )
@@ -57,6 +58,44 @@ type versionsDoc struct {
 			URL      string `json:"url"`
 		} `json:"downloads"`
 	} `json:"channels"`
+}
+
+// downloaded finds a browser an earlier run fetched, newest first. Without this the
+// view would ask to download one it already has: an installed browser is what
+// findBrowser looks for, and a downloaded one is not installed anywhere it looks.
+func downloaded(dir string) (string, bool) {
+	platform, err := platformName()
+	if err != nil {
+		return "", false
+	}
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return "", false
+	}
+	prefix := downloadName + "-" + platform + "-"
+	type install struct {
+		path string
+		at   time.Time
+	}
+	var found []install
+	for _, e := range entries {
+		if !e.IsDir() || !strings.HasPrefix(e.Name(), prefix) {
+			continue
+		}
+		info, err := e.Info()
+		if err != nil {
+			continue
+		}
+		found = append(found, install{filepath.Join(dir, e.Name()), info.ModTime()})
+	}
+	// The newest is the one a download would have produced.
+	sort.Slice(found, func(i, j int) bool { return found[i].at.After(found[j].at) })
+	for _, in := range found {
+		if bin, err := binaryIn(in.path); err == nil {
+			return bin, true
+		}
+	}
+	return "", false
 }
 
 // browserDir is where downloaded browsers live: beside the analysis cache, so one

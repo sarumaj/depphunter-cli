@@ -23,8 +23,8 @@ const MAX_HIGHLIGHT = 300_000; // bytes; larger files are shown as plain text
 
 
 export class Panel {
-  constructor(root, body, { model, colorOf, onSelect, onOpen, openLabel, historyOf, linkKind }) {
-    Object.assign(this, { root, body, model, colorOf, onSelect, onOpen, openLabel, historyOf, linkKind });
+  constructor(root, body, { model, colorOf, onSelect, onOpen, openLabel, historyOf, linkKind, onClose }) {
+    Object.assign(this, { root, body, model, colorOf, onSelect, onOpen, openLabel, historyOf, linkKind, onClose });
     this.seq = 0;
     // Which branches of the dependency trees are open, by direction and path, so a
     // live update redraws the panel without closing what the reader opened.
@@ -35,6 +35,7 @@ export class Panel {
     this.root.hidden = true;
     this.root.parentElement.classList.remove('panel-open');
     this.node = null;
+    this.onClose?.();
   }
 
   /** keepScroll: stay where the reader was (a live update re-showing the same node). */
@@ -126,9 +127,9 @@ export class Panel {
     );
   }
 
-  // neighbours are what a node depends on ('out') or what depends on it ('in'),
+  // neighbors are what a node depends on ('out') or what depends on it ('in'),
   // grouped per node so a file importing the same package twice is one row.
-  neighbours(node, dir) {
+  neighbors(node, dir) {
     const { out, in: inc } = boundaryEdges(this.model, node, this.linkKind());
     const edges = dir === 'out' ? out : inc;
     const key = dir === 'out' ? 'to' : 'from';
@@ -147,7 +148,7 @@ export class Panel {
   // pinned and transitive packages are on the map. Nothing is fetched - the edges are
   // in the model - so opening a row costs only layout.
   tree(title, hint, root, dir) {
-    const groups = this.neighbours(root, dir);
+    const groups = this.neighbors(root, dir);
     const ul = h('ul', { class: 'p-list tree' });
     this.insertRows(ul, null, groups, dir, [root.id], 0);
     return h('div', { class: 'p-section' },
@@ -190,7 +191,7 @@ export class Panel {
     // A package that depends on something that depends back on it would open for
     // ever: the repeat is shown and left closed.
     const cyclic = ancestors.includes(node.id);
-    const children = cyclic ? [] : this.neighbours(node, dir);
+    const children = cyclic ? [] : this.neighbors(node, dir);
     const twisty = children.length
       ? h('button', { class: 'twisty', 'aria-label': `Show what ${node.name} ${dir === 'out' ? 'depends on' : 'is used by'}` }, '▸')
       : h('span', { class: 'twisty leaf' }, cyclic ? '↻' : '');

@@ -61,29 +61,88 @@ func TestResolutionsFollowTheProtocol(t *testing.T) {
 			t.Errorf("%s: %dx%d, want 640x480", r.name(), w, h)
 		}
 	}
-	// …half blocks in two pixels per character cell.
-	if w, h := (blocksRenderer{}).resolution(g); w != 80 || h != 48 {
-		t.Errorf("blocks: %dx%d, want 80x48", w, h)
+	// …a quadrant carries four pixels per cell, a half block two.
+	if w, h := (blocksRenderer{}).resolution(g); w != 160 || h != 48 {
+		t.Errorf("blocks: %dx%d, want 160x48", w, h)
+	}
+	if w, h := (blocksRenderer{half: true}).resolution(g); w != 80 || h != 48 {
+		t.Errorf("halfblocks: %dx%d, want 80x48", w, h)
 	}
 }
 
-func TestBlocksRendererPaintsPixelPairs(t *testing.T) {
+// drawCell renders a single character cell from four pixels and returns what was
+// written, so the glyph and its two colors can be read back.
+func drawCell(t *testing.T, r blocksRenderer, pixels [4]color.RGBA) string {
+	t.Helper()
 	img := image.NewRGBA(image.Rect(0, 0, 2, 2))
-	img.Set(0, 0, color.RGBA{R: 255, A: 255})
-	img.Set(1, 0, color.RGBA{G: 255, A: 255})
-	img.Set(0, 1, color.RGBA{B: 255, A: 255})
-	img.Set(1, 1, color.RGBA{R: 255, G: 255, B: 255, A: 255})
-
+	img.Set(0, 0, pixels[0])
+	img.Set(1, 0, pixels[1])
+	img.Set(0, 1, pixels[2])
+	img.Set(1, 1, pixels[3])
 	var buf bytes.Buffer
 	w := bufio.NewWriter(&buf)
-	// One row of cells, two pixels tall, so the picture is used as it is.
-	if err := (blocksRenderer{}).draw(w, &frame{img: img}, geometry{cols: 2, rows: 2}); err != nil {
+	// One cell: two rows of pixels, and as many columns as the renderer takes.
+	cols := 1
+	if r.half {
+		cols = 2
+	}
+	if err := r.draw(w, &frame{img: img}, geometry{cols: cols, rows: 2}); err != nil {
 		t.Fatal(err)
 	}
 	w.Flush()
-	out := buf.String()
-	if n := strings.Count(out, "▀"); n != 2 {
-		t.Errorf("%d half blocks, want 2", n)
+	return buf.String()
+}
+
+func TestQuadrantsKeepTheEdgeInACell(t *testing.T) {
+	white := color.RGBA{R: 255, G: 255, B: 255, A: 255}
+	black := color.RGBA{A: 255}
+	for _, c := range []struct {
+		name   string
+		pixels [4]color.RGBA
+		glyph  string
+	}{
+		// Only the bright corners are drawn in the foreground, so the glyph says
+		// which of the four pixels they were.
+		{"upper left", [4]color.RGBA{white, black, black, black}, "\u2598"},
+		{"lower right", [4]color.RGBA{black, black, black, white}, "\u2597"},
+		{"left half", [4]color.RGBA{white, black, white, black}, "\u258c"},
+		{"diagonal", [4]color.RGBA{black, white, white, black}, "\u259e"},
+		{"upper half", [4]color.RGBA{white, white, black, black}, "\u2580"},
+		// Four pixels of one color have no edge to keep.
+		{"flat", [4]color.RGBA{white, white, white, white}, "\u2588"},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			out := drawCell(t, blocksRenderer{}, c.pixels)
+			if !strings.Contains(out, c.glyph) {
+				t.Errorf("got %q, want the glyph %q", out, c.glyph)
+			}
+			if c.name != "flat" {
+				if !strings.Contains(out, "\x1b[38;2;255;255;255m") || !strings.Contains(out, "\x1b[48;2;0;0;0m") {
+					t.Errorf("got %q, want white on black", out)
+				}
+			}
+		})
+	}
+}
+
+func TestQuadrantsAverageWithinEachHalf(t *testing.T) {
+	// Two bright pixels and two dark ones: each side is drawn in its own average
+	// rather than one color for the whole cell.
+	out := drawCell(t, blocksRenderer{}, [4]color.RGBA{
+		{R: 200, G: 200, B: 200, A: 255}, {R: 220, G: 220, B: 220, A: 255},
+		{R: 20, G: 20, B: 20, A: 255}, {R: 40, G: 40, B: 40, A: 255},
+	})
+	if !strings.Contains(out, "\x1b[38;2;210;210;210m") || !strings.Contains(out, "\x1b[48;2;30;30;30m") {
+		t.Errorf("got %q, want the mean of each half", out)
+	}
+}
+
+func TestHalfBlocksPaintPixelPairs(t *testing.T) {
+	out := drawCell(t, blocksRenderer{half: true}, [4]color.RGBA{
+		{R: 255, A: 255}, {G: 255, A: 255}, {B: 255, A: 255}, {R: 255, G: 255, B: 255, A: 255},
+	})
+	if n := strings.Count(out, "\u2580"); n != 2 {
+		t.Errorf("%d half blocks, want one per column: %q", n, out)
 	}
 	for _, want := range []string{"\x1b[38;2;255;0;0m", "\x1b[48;2;0;0;255m", "\x1b[38;2;0;255;0m"} {
 		if !strings.Contains(out, want) {

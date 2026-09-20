@@ -130,7 +130,7 @@ func run(ctx context.Context, cfg config.Config) error {
 		// The configuration is filled while the scan runs; the client only reads it
 		// afterwards, when the walk starts asking about packages. Without a cache
 		// directory (--no-cache) the answers are kept for this run only, rather than
-		// written to a relative path inside the analysed project.
+		// written to a relative path inside the analyzed project.
 		store := ""
 		if cacheDir != "" {
 			store = filepath.Join(cacheDir, "index")

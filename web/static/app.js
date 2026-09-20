@@ -99,6 +99,8 @@ async function main() {
       select(n);
       panel.show(n);
       document.exitPointerLock?.();
+      // The panel has the pointer now; hold the view still until it is given back.
+      walker.setFrozen(true);
       walker.flash(`Details of ${n.name} - click the map to keep walking`);
     },
     onExit: () => setWalking(false),
@@ -115,6 +117,8 @@ async function main() {
       return hm && { metric: hm.byId.get(node.id), since: state.since, authors: state.history.authors };
     },
     openLabel: cfg.static ? null : cfg.editor ? 'Open in editor' : 'Open in VS Code',
+    // Closing the details gives the pointer back, so walk mode may move again.
+    onClose: () => walker.setFrozen(false),
   });
 
   applyTheme();

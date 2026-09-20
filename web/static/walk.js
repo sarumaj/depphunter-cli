@@ -70,6 +70,10 @@ export class Walker {
     this.bridges = [];
     this.decks = new Map(); // ramps and bridge decks, by grid cell (indexDecks)
     this.aim = { i: -1, point: null };
+    // Frozen: the details panel has the pointer, so the view holds still. Otherwise
+    // the freed cursor and the reticle in the centre both steer the same scene, and
+    // reading about a building means fighting it.
+    this.frozen = false;
     this.p = { x: 0, z: 0, feet: 0, vy: 0, yaw: 0, pitch: 0, ground: true, fly: false };
     this.radius = 40;
     this.fov = FOV;
@@ -208,10 +212,26 @@ export class Walker {
     p.pitch = clamp(Math.atan2(box.y + box.h / 2 - (s.h + EYE), dist), -0.6, 0.9);
   }
 
+  /**
+   * Hold the view still while something else has the pointer (the details panel), or
+   * let it go again. Frozen, the walker does not move, look, aim or fire; the scene
+   * keeps rendering, so what is being read about stays on screen.
+   */
+  setFrozen(on) {
+    if (this.frozen === on || (!this.active && on)) return;
+    this.frozen = on;
+    if (on) {
+      this.keys.clear(); // a key held when the panel opened must not walk on
+      this.setScoped(false);
+    }
+    this.drawHud();
+  }
+
   // Locking is asynchronous: a lock asked for just before leaving would be granted
   // afterwards and hide the cursor over the map, with nothing listening to it.
   lockPointer() {
     if (!this.active) return;
+    this.setFrozen(false); // taking the pointer back is how you walk on
     const done = this.scene.renderer.domElement.requestPointerLock?.();
     done?.then?.(() => this.active || document.exitPointerLock(), () => {});
   }
@@ -242,6 +262,15 @@ export class Walker {
       e.preventDefault();
       e.stopImmediatePropagation();
       if (e.repeat) return;
+      if (this.frozen) {
+        // Reading: Esc and V still work, Enter goes back to walking, nothing moves.
+        switch (e.code) {
+          case 'KeyV': this.exit(); break;
+          case 'Escape':
+          case 'Enter': this.setFrozen(false); this.lockPointer(); break;
+        }
+        return;
+      }
       this.keys.add(e.code);
       if (BIGGER.has(e.key)) this.setRadius(this.radius * 1.25);
       else if (SMALLER.has(e.key)) this.setRadius(this.radius / 1.25);
@@ -298,7 +327,7 @@ export class Walker {
     });
     window.addEventListener('blur', () => this.setScoped(false));
     canvas.addEventListener('wheel', e => {
-      if (!this.active) return;
+      if (!this.active || this.frozen) return;
       e.preventDefault();
       this.fov = clamp(this.fov * Math.exp(e.deltaY * 0.001), MIN_FOV, MAX_FOV); // zoom
     }, { passive: false });
@@ -310,6 +339,7 @@ export class Walker {
   }
 
   look(dx, dy) {
+    if (this.frozen) return;
     const k = LOOK * this.scene.walkCamera.fov / FOV; // steadier through the scope
     this.p.yaw -= dx * k;
     this.p.pitch = clamp(this.p.pitch - dy * k, -1.5, 1.5);
@@ -349,7 +379,7 @@ export class Walker {
       this.zoom(dt);
       this.updateDarts(dt);
       this.scene.setWalker(this.p.x, this.p.feet, this.p.z, EYE, this.p.yaw, this.p.pitch);
-      this.updateAim();
+      if (!this.frozen) this.updateAim();
       this.scene.renderNow();
       this.hooks.onRender();
       this.loop();
@@ -365,6 +395,7 @@ export class Walker {
   }
 
   step(dt) {
+    if (this.frozen) return;
     const k = this.keys, p = this.p;
     const turn = (k.has('ArrowLeft') ? 1 : 0) - (k.has('ArrowRight') ? 1 : 0);
     p.yaw += turn * TURN * dt;
@@ -538,6 +569,7 @@ export class Walker {
   // hits; fired at nothing it flies ahead under gravity until it hits something or
   // falls into the water.
   fire() {
+    if (this.frozen) return;
     const p = this.p;
     const start = new THREE.Vector3(p.x, p.feet + EYE - 0.08, p.z);
     const mesh = dartMesh(this.scene);
@@ -618,12 +650,15 @@ export class Walker {
 
   drawHud() {
     const locked = document.pointerLockElement === this.scene.renderer.domElement;
-    this.hud.querySelector('.w-mode').textContent = this.p.fly ? 'flying' : 'walking';
+    this.hud.querySelector('.w-mode').textContent =
+      this.frozen ? 'reading' : this.p.fly ? 'flying' : 'walking';
     this.hud.querySelector('.w-tagged').textContent = this.tagged.size;
     this.hud.querySelector('.w-radius').textContent = Math.round(this.radius);
-    this.hud.querySelector('.w-hint').textContent = locked
-      ? 'Click: tag a building, hit it again for details · hold right: scope · V: back to the map · Esc: free the mouse · ?: all controls'
-      : 'Click the map to capture the mouse, or drag to look · V / Esc: back to the map · ?: all controls';
+    this.hud.querySelector('.w-hint').textContent = this.frozen
+      ? 'The view is held still while you read · Enter or a click on the map: walk on · Esc: close · V: back to the map'
+      : locked
+        ? 'Click: tag a building, hit it again for details · hold right: scope · V: back to the map · Esc: free the mouse · ?: all controls'
+        : 'Click the map to capture the mouse, or drag to look · V / Esc: back to the map · ?: all controls';
   }
 }
 

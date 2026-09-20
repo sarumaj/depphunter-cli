@@ -158,22 +158,54 @@ func (itermRenderer) draw(w *bufio.Writer, f *frame, g geometry) error {
 	return nil
 }
 
-// blocksRenderer needs no graphics protocol at all: every cell is drawn as a half
-// block whose foreground is the upper pixel and background the lower one. It is the
-// fallback, and the only renderer that works over plain SSH into any terminal.
-type blocksRenderer struct{}
+// blocksRenderer needs no graphics protocol at all, only 24-bit color and the Block
+// Elements of Unicode. Each character cell carries four pixels - one per quadrant -
+// drawn with the glyph whose filled corners match, in the two colors a cell can
+// hold. That is twice the width and twice the height of a half block, which is what
+// this map needs: streets, labels and island edges survive the fallback far better.
+type blocksRenderer struct {
+	// half draws one pixel above another instead, in exactly the cell's two colors.
+	// Quadrant glyphs are rarer in old fonts, and four pixels in a cell have to be
+	// forced into two colors; this is the way out when either shows.
+	half bool
+}
 
-func (blocksRenderer) name() string { return "blocks" }
+func (r blocksRenderer) name() string {
+	if r.half {
+		return "halfblocks"
+	}
+	return "blocks"
+}
 
-func (blocksRenderer) resolution(g geometry) (int, int) { return g.cols, g.mapRows() * 2 }
+func (r blocksRenderer) resolution(g geometry) (int, int) {
+	if r.half {
+		return g.cols, g.mapRows() * 2
+	}
+	return g.cols * 2, g.mapRows() * 2
+}
 
-func (blocksRenderer) draw(w *bufio.Writer, f *frame, g geometry) error {
+// quadrants are the glyphs for the sixteen ways four corners can be filled, indexed
+// by the bits upper-left, upper-right, lower-left, lower-right.
+var quadrants = [16]rune{
+	' ', '\u2598', '\u259d', '\u2580', '\u2596', '\u258c', '\u259e', '\u259b',
+	'\u2597', '\u259a', '\u2590', '\u259c', '\u2584', '\u2599', '\u259f', '\u2588',
+}
+
+func (r blocksRenderer) draw(w *bufio.Writer, f *frame, g geometry) error {
 	img, err := f.image()
 	if err != nil {
 		return err
 	}
-	img = fit(img, g.cols, g.mapRows()*2)
+	width, height := r.resolution(g)
+	img = fit(img, width, height)
 	b := img.Bounds()
+	step := 2 // pixels per cell across; a half block covers one
+	if r.half {
+		step = 1
+	}
+	at := func(x, y int) color.RGBA {
+		return rgba(img.At(b.Min.X+min(x, b.Dx()-1), b.Min.Y+min(y, b.Dy()-1)))
+	}
 	var last struct {
 		fg, bg color.RGBA
 		set    bool
@@ -183,24 +215,67 @@ func (blocksRenderer) draw(w *bufio.Writer, f *frame, g geometry) error {
 			w.WriteString("\r\n")
 		}
 		last.set = false
-		for x := 0; x < b.Dx(); x++ {
-			top := rgba(img.At(b.Min.X+x, b.Min.Y+y))
-			bottom := top
-			if y+1 < b.Dy() {
-				bottom = rgba(img.At(b.Min.X+x, b.Min.Y+y+1))
+		for x := 0; x < b.Dx(); x += step {
+			var fg, bg color.RGBA
+			var glyph rune
+			if r.half {
+				fg, bg, glyph = at(x, y), at(x, y+1), '\u2580'
+			} else {
+				fg, bg, glyph = quadrant(at(x, y), at(x+1, y), at(x, y+1), at(x+1, y+1))
 			}
-			if !last.set || last.fg != top {
-				fmt.Fprintf(w, "\x1b[38;2;%d;%d;%dm", top.R, top.G, top.B)
+			if !last.set || last.fg != fg {
+				fmt.Fprintf(w, "\x1b[38;2;%d;%d;%dm", fg.R, fg.G, fg.B)
 			}
-			if !last.set || last.bg != bottom {
-				fmt.Fprintf(w, "\x1b[48;2;%d;%d;%dm", bottom.R, bottom.G, bottom.B)
+			if !last.set || last.bg != bg {
+				fmt.Fprintf(w, "\x1b[48;2;%d;%d;%dm", bg.R, bg.G, bg.B)
 			}
-			last.fg, last.bg, last.set = top, bottom, true
-			w.WriteString("▀") // upper half block
+			last.fg, last.bg, last.set = fg, bg, true
+			w.WriteRune(glyph)
 		}
 		w.WriteString("\x1b[0m")
 	}
 	return nil
+}
+
+// quadrant picks the glyph and the two colors for one cell of four pixels: those
+// brighter than the cell's mean are drawn in the foreground, the rest in the
+// background, and each color is the average of the pixels it stands for. Splitting
+// on brightness keeps an edge - a street against grass, a label against a facade -
+// where averaging all four would smear it.
+func quadrant(ul, ur, ll, lr color.RGBA) (fg, bg color.RGBA, glyph rune) {
+	pixels := [4]color.RGBA{ul, ur, ll, lr}
+	mean := 0
+	for _, p := range pixels {
+		mean += luma(p)
+	}
+	mean /= len(pixels)
+
+	bits := 0
+	var light, dark []color.RGBA
+	for i, p := range pixels {
+		if luma(p) > mean {
+			bits |= 1 << i
+			light = append(light, p)
+		} else {
+			dark = append(dark, p)
+		}
+	}
+	if len(light) == 0 { // a flat cell: one color, and no edge to keep
+		return pixels[0], pixels[0], '\u2588'
+	}
+	return average(light), average(dark), quadrants[bits]
+}
+
+// luma weights the channels the way the eye does.
+func luma(c color.RGBA) int { return (int(c.R)*299 + int(c.G)*587 + int(c.B)*114) / 1000 }
+
+func average(cs []color.RGBA) color.RGBA {
+	var r, g, b int
+	for _, c := range cs {
+		r, g, b = r+int(c.R), g+int(c.G), b+int(c.B)
+	}
+	n := len(cs)
+	return color.RGBA{R: uint8(r / n), G: uint8(g / n), B: uint8(b / n), A: 0xff}
 }
 
 func rgba(c color.Color) color.RGBA {
@@ -241,6 +316,8 @@ func newRenderer(proto string) renderer {
 		return itermRenderer{}
 	case "sixel":
 		return sixelRenderer{}
+	case "halfblocks":
+		return blocksRenderer{half: true}
 	default:
 		return blocksRenderer{}
 	}
