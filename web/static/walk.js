@@ -43,6 +43,8 @@ const RADAR_MIN = 12, RADAR_MAX = 400, RADAR_MS = 85, RADAR_SIZE = 150;
 // Degrees: the default view, the wheel's zoom range, and the view through the scope
 // (right button).
 const FOV = 70, MIN_FOV = 30, MAX_FOV = 90, SCOPE_FOV = 22;
+// How far in the held tool sits, as a fraction of where it is modelled. See showTool.
+const VIEW_NEAR = 0.5;
 const SWING = 0.45;         // seconds a tool takes to swing and settle
 // How far the walker may leave the map: over the water beyond the outermost shore,
 // and above its tallest building when flying.
@@ -94,7 +96,8 @@ export class Walker {
     // reading about a building means fighting it.
     this.frozen = false;
     this.tool = toolFor(hooks.tool?.() || DEFAULT_TOOL);
-    this.viewmodel = null;      // the hand and its tool, parented to the walk camera
+    this.viewmodel = null;      // the hand and its tool
+    this.held = null;           // what holds them in front of the walk camera
     this.swing = -1;            // seconds into the current gesture, -1 when idle
     this.pace = 0;              // how hard the walker is moving, for the tool's sway
     this.p = { x: 0, z: 0, feet: 0, vy: 0, yaw: 0, pitch: 0, ground: true, fly: false };
@@ -260,14 +263,22 @@ export class Walker {
     this.scene.walkCamera.add(this.lights);
     this.viewmodel = this.tool.viewmodel();
     this.viewmodel.userData.restY = this.viewmodel.position.y;
-    this.scene.walkCamera.add(this.viewmodel);
+    // Held near the lens rather than out in the street. A viewmodel is drawn in the
+    // same pass as the map, so at arm's length it is half a metre off the ground and
+    // the pavement is drawn straight through it; brought in and scaled down by the
+    // same amount, the picture is identical and nothing can reach it.
+    this.held = new THREE.Group();
+    this.held.scale.setScalar(VIEW_NEAR);
+    this.held.add(this.viewmodel);
+    this.scene.walkCamera.add(this.held);
     this.hud.dataset.tool = this.tool.id;
   }
 
   hideTool() {
     if (this.lights) this.scene.walkCamera.remove(this.lights);
-    if (this.viewmodel) {
-      this.scene.walkCamera.remove(this.viewmodel);
+    if (this.held) {
+      this.scene.walkCamera.remove(this.held);
+      this.held = null;
       this.viewmodel = null;
     }
     this.scene.scene.remove(this.scene.walkCamera);
