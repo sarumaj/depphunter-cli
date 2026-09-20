@@ -63,6 +63,29 @@ float fbm(vec2 p) {
   for (int i = 0; i < 5; i++) { s += a * vnoise(p); p = p * 2.03 + 17.1; a *= 0.5; }
   return s;
 }
+/**
+ * A star on a plane: the plane is cut into cells and a few of them hold one at their
+ * centre. What it is worth, round and falling off from there, or nothing.
+ *
+ * Filling the cell instead - which is how the deck, the void and the sky were all
+ * drawn - gives a grid of squares that grow and shrink with the angle the surface is
+ * seen at. A star that has shrunk below a pixel is widened to a pixel here and dimmed
+ * by exactly as much as it was widened, so a field of them fades out into the
+ * distance instead of flickering. The derivative is taken before anything branches on
+ * the cell, because a derivative asked for inside a branch is not defined.
+ */
+float starDot(vec2 q, float rarity, float size) {
+  float px = length(fwidth(q));
+  vec2 cell = floor(q);
+  if (hash12(cell + 5.0) < rarity) return 0.0;
+  // How much the widening costs it, worked out before the width is capped: a star
+  // seen from far enough away has to go out altogether, or a field of them reaching
+  // into the distance ends as an even carpet of speckle.
+  float fade = (size * size) / max(size * size, px * px);
+  float w = min(max(size, px), 0.3);
+  float r = length(fract(q) - 0.5);
+  return exp(-(r * r) / (w * w)) * fade * (0.25 + 0.75 * hash12(cell + 3.0));
+}
 `;
 
 // ------------------------------------------------------------------ box shaders
@@ -312,6 +335,12 @@ vec3 solderMask(vec3 base, vec2 p) {
   vec2 t = p * 190.0, w = fwidth(t);
   float weave = mix(0.5 + 0.5 * sin(t.x) * sin(t.y), 0.5, smoothstep(0.4, 1.2, max(w.x, w.y)));
   vec3 c = vec3(0.018, 0.08, 0.045) * (0.8 + 0.4 * weave);
+  // Mask is sprayed, not painted: it pools and thins across a board, and the copper
+  // under it shows through where it is thin. Without this an empty stretch of board
+  // is one dead green, which is what a large one mostly is.
+  float pool = fbm(p * 2.2);
+  c *= 0.86 + 0.28 * pool;
+  c += vec3(0.022, 0.014, 0.004) * smoothstep(0.7, 0.96, pool);
   return mix(c, base * 0.3, 0.16) * dark(0.55);
 }
 
@@ -336,8 +365,12 @@ vec3 traces(vec3 base, vec3 lp, vec3 sz) {
   vec3 silk = vec3(0.85, 0.87, 0.9) * dark(0.5);
 
   vec3 c = mask;
+  // The ground pour, hatched. Once a pixel spans more than a line of it the hatch is
+  // taken to its mean: left alone it beats against the pixel grid and a board seen
+  // at a shallow angle is covered in moire.
   vec2 ht = vec2((p.x + p.y) / 0.085);
-  float hatch = band(fract(ht.x), 0.0, 0.6, fwidth(ht.x));
+  float hw = fwidth(ht.x);
+  float hatch = mix(band(fract(ht.x), 0.0, 0.6, hw), 0.6, smoothstep(0.35, 1.1, hw));
   c = mix(c, mix(mask, copper * 0.6, 0.45 + 0.55 * hatch), smoothstep(PAD + 0.02, PAD + 0.1, r.d1) * 0.7);
 
   if (r.d2 < 1e8) {
@@ -420,9 +453,8 @@ vec3 boardEdge(vec3 base, vec2 p) {
 vec3 dust(vec3 base, vec2 p) {
   vec3 c = vec3(0.028, 0.026, 0.058) * (0.7 + 0.6 * vnoise(p * 7.0));
   c += vec3(0.19, 0.07, 0.3) * smoothstep(0.42, 0.95, fbm(p * 0.4));
-  vec2 sw = fwidth(p * 190.0);
-  float star = step(0.9965, hash12(floor(p * 190.0)));
-  c += star * (1.0 - smoothstep(0.4, 1.0, max(sw.x, sw.y))) * vec3(0.75, 0.8, 1.0) * 0.9;
+  c += vec3(0.75, 0.8, 1.0) * starDot(p * 55.0, 0.965, 0.16) * 0.9;
+  c += vec3(1.0, 0.88, 0.7) * starDot(p * 17.0 + 5.0, 0.99, 0.12) * 1.3;
   return mix(c, base * 0.35, 0.1);
 }
 
@@ -768,16 +800,104 @@ export function makeSky(uniforms) {
       uniform float uNight, uTime, uStyle;
       varying vec3 vDir;
 
-      // Deep space: no weather and no sun, two nebulae drifting behind a field of
-      // stars, with a few brighter ones in front of it.
+      // The plane of the galaxy: a great circle the band of light lies along.
+      const vec3 GALACTIC = vec3(0.4, 0.31, -0.86);
+
+      /**
+       * One layer of stars. The directions are cut into cells and a cell either holds
+       * a star at its centre or holds nothing; what was drawn before was the cell
+       * itself, which is why the sky was a grid of white squares. Only a few cells in
+       * a hundred are lit, so their lattice never reads, and the distance is measured
+       * across the line of sight rather than through it, which keeps a star a round
+       * dot however the cube grid happens to cross the sphere.
+       *
+       * Colour runs from cool blue through white to amber, because a sky of identical
+       * white dots reads as dirt on the screen.
+       *
+       * A star smaller than a pixel would flicker as the view turned, so one that far
+       * away is widened to a pixel and dimmed by as much as it was widened: it fades
+       * out instead of sparkling. fwidth is taken before anything branches, because a
+       * derivative asked for inside a branch is not defined.
+       */
+      vec3 stars(vec3 d, float scale, float rarity, float size, float glow) {
+        float px = length(fwidth(d)) * scale * 0.8;
+        vec3 q = d * scale;
+        vec3 cell = floor(q);
+        float pick = hash13(cell + 5.0);
+        if (pick < rarity) return vec3(0.0);
+        vec3 off = fract(q) - 0.5;
+        off -= d * dot(off, d); // only the part across the view
+        float r = length(off);
+        // Never wider than a third of a cell: past that the cut at the cell's edge is
+        // what shows, which is the grid of squares this was drawn to get rid of. What
+        // the widening costs is worked out first, so a capped star still goes out.
+        float fade = (size * size) / max(size * size, px * px);
+        float w = min(max(size, px), 0.3);
+        float core = exp(-(r * r) / (w * w)) * fade;
+        float mag = 0.2 + 0.8 * hash13(cell + 3.0);
+        // Cooler or warmer than white, either way; a few are decidedly amber.
+        float temp = hash13(cell + 29.0);
+        vec3 tint = mix(vec3(0.62, 0.74, 1.0), vec3(1.0, 0.84, 0.6), smoothstep(0.35, 0.9, temp));
+        tint = mix(vec3(0.95, 0.97, 1.0), tint, 0.8);
+        // Slow, per-star, and small: a night sky is not a string of fairy lights.
+        float twinkle = 0.9 + 0.1 * sin(uTime * (0.5 + mag) + pick * 39.0);
+        return tint * mag * twinkle * (core + glow * exp(-r * r * 70.0) * mag);
+      }
+
+      /**
+       * Noise over a direction rather than over a plane. Projecting the sky onto one
+       * plane pinches everything to a smear at the pole, which is what the nebulae
+       * used to do directly overhead; this takes all three projections and weighs
+       * each by how square-on the direction is to it, so the structure is the same
+       * size wherever it is looked at. Three octaves, not five: at the size of a
+       * nebula the last two are below a pixel.
+       */
+      float skyFbm(vec3 d, float s, float seed) {
+        vec3 w = abs(d);
+        w /= w.x + w.y + w.z;
+        float v = 0.0;
+        vec2 a = d.zy * s + seed, b = d.xz * s + seed + 19.0, c = d.xy * s + seed + 43.0;
+        float amp = 0.5;
+        for (int i = 0; i < 3; i++) {
+          v += amp * (w.x * vnoise(a) + w.y * vnoise(b) + w.z * vnoise(c));
+          a = a * 2.03 + 17.1; b = b * 2.03 + 17.1; c = c * 2.03 + 17.1;
+          amp *= 0.5;
+        }
+        return v / 0.875; // the three octaves sum to less than one
+      }
+
+      // Deep space: the band of the galaxy with the dark lanes across it, two nebulae
+      // drifting behind that, and three layers of stars - dense and faint, sparse and
+      // bright, and a few near enough to have a halo around them.
       vec3 space(vec3 d) {
-        vec3 col = mix(vec3(0.022, 0.018, 0.055), vec3(0.008, 0.008, 0.028), pow(max(d.y, 0.0), 0.6));
-        col += vec3(0.2, 0.06, 0.32) * smoothstep(0.38, 0.95, fbm(d.xz * 1.7 + d.y * 3.0 + uTime * 0.004));
-        col += vec3(0.05, 0.2, 0.27) * smoothstep(0.52, 0.96, fbm(d.zx * 1.15 + 21.0));
-        vec3 cell = floor(d * 560.0);
-        col += step(0.9972, hash13(cell)) * (0.35 + 0.65 * hash13(cell + 3.0)) * vec3(0.85, 0.9, 1.0);
-        vec3 near = floor(d * 120.0);
-        col += step(0.9968, hash13(near + 9.0)) * vec3(0.75, 0.82, 1.0) * 1.3;
+        vec3 col = mix(vec3(0.02, 0.017, 0.05), vec3(0.006, 0.006, 0.022), pow(max(d.y, 0.0), 0.6));
+
+        // The band. Away from its plane there is almost nothing; along it, the light
+        // of everything too far off to be a star, broken by the dust that crosses it.
+        float band = dot(d, normalize(GALACTIC));
+        float along = exp(-band * band * 14.0);
+        col += vec3(0.16, 0.15, 0.25) * along * (0.35 + 1.05 * smoothstep(0.3, 0.88, skyFbm(d, 2.6, 0.0)));
+        col *= 1.0 - 0.6 * along * smoothstep(0.44, 0.9, skyFbm(d, 5.5, 31.0));
+
+        // Two nebulae, drifting. They are patches of colour, not a wash: spread over
+        // the whole dome they only lift the black to a flat mauve and take the depth
+        // out of everything in front of them.
+        //
+        // One field of noise serves both, the second reading it upside down: where
+        // the purple is thickest the teal is absent, which is what two clouds at
+        // different distances look like anyway, and the sky is drawn over every
+        // pixel on the screen every frame - it is not the place to ask for noise
+        // twice to say the same thing.
+        float neb = skyFbm(d, 2.4, uTime * 0.01);
+        col += vec3(0.24, 0.07, 0.36) * smoothstep(0.55, 0.88, neb) * (0.5 + 0.5 * neb);
+        col += vec3(0.05, 0.19, 0.25) * smoothstep(0.58, 0.82, 1.0 - neb);
+
+        // The scales are chosen so a cell is several pixels across at a normal field
+        // of view: finer than that and every star is smaller than a pixel, which is
+        // how the dense layer ended up a dim grey haze with wedges cut out of it.
+        col += stars(d, 85.0, 0.87, 0.17, 0.0) * (0.5 + 1.0 * along);
+        col += stars(d, 38.0, 0.955, 0.13, 0.0) * 1.5;
+        col += stars(d, 15.0, 0.982, 0.075, 0.25) * 2.2;
         return col;
       }
 
@@ -832,27 +952,57 @@ export function waterMaterial(uniforms) {
     shader.fragmentShader = NOISE_GLSL + 'uniform float uTime, uNight, uStyle;\nvarying vec3 vW;\n' + shader.fragmentShader.replace('#include <color_fragment>', `
       #include <color_fragment>
       if (uStyle > 1.5) {
-        // Between the platforms there is no sea, only more of the sky.
-        vec3 cell = vec3(floor(vW.xz * 30.0), 0.0);
-        vec2 sw = fwidth(vW.xz * 30.0);
-        float near = 1.0 - smoothstep(0.4, 1.0, max(sw.x, sw.y));
-        diffuseColor.rgb *= 0.55 + 0.7 * vnoise(vW.xz * 0.45);
-        diffuseColor.rgb += vec3(0.13, 0.045, 0.22) * smoothstep(0.55, 0.98, fbm(vW.xz * 0.5));
-        diffuseColor.rgb += step(0.9955, hash13(cell)) * near * vec3(0.7, 0.78, 1.0) * 0.9;
+        // Between the platforms there is no sea, only more of the same sky seen the
+        // other way: a drift of dust with something deeper burning through it, and
+        // stars at three densities so it has a distance to it rather than being an
+        // even speckle laid on a flat colour.
+        float deep = fbm(vW.xz * 0.06);
+        diffuseColor.rgb *= 0.45 + 0.45 * vnoise(vW.xz * 0.12);
+        diffuseColor.rgb += vec3(0.13, 0.04, 0.22) * smoothstep(0.55, 0.92, deep) * (0.4 + 0.6 * deep);
+        diffuseColor.rgb += vec3(0.025, 0.1, 0.15) * smoothstep(0.62, 0.96, fbm(vW.zx * 0.1 + 23.0));
+        diffuseColor.rgb += vec3(0.72, 0.78, 1.0) * starDot(vW.xz * 34.0, 0.955, 0.16) * 0.8;
+        diffuseColor.rgb += vec3(0.86, 0.9, 1.0) * starDot(vW.xz * 11.0, 0.985, 0.13) * 1.6;
+        diffuseColor.rgb += vec3(1.0, 0.86, 0.66) * starDot(vW.zx * 4.5 + 7.0, 0.992, 0.1) * 2.0;
       } else if (uStyle > 0.5) {
-        // Around the board there is only the bench it lies on: flat, and still.
+        // Around the board there is only the bench it lies on: an anodised plate,
+        // brushed along one axis, with the cutting grid scribed across it. The brush
+        // is what the flat grey was missing - a bench with nothing on it but a grid
+        // reads as graph paper.
         vec2 t = vW.xz / 0.9;
         vec2 tw = fwidth(t) + 1e-4;
         float grid = max(1.0 - smoothstep(0.012 - tw.x, 0.012 + tw.x, abs(fract(t.x) - 0.5)),
                          1.0 - smoothstep(0.012 - tw.y, 0.012 + tw.y, abs(fract(t.y) - 0.5)));
-        diffuseColor.rgb *= 0.9 + 0.2 * vnoise(vW.xz * 8.0);
+        float brush = vnoise(vec2(vW.x * 160.0, vW.z * 2.5)) + 0.5 * vnoise(vec2(vW.x * 420.0, vW.z * 1.3));
+        float bw = fwidth(vW.x * 160.0);
+        brush = mix(brush, 0.75, smoothstep(0.35, 1.2, bw)); // to its mean when minified
+        diffuseColor.rgb *= 0.9 + 0.13 * (brush - 0.75) + 0.12 * vnoise(vW.xz * 8.0);
+        // Anodising is never quite even: broad, very slight clouding over the brush.
+        diffuseColor.rgb *= 0.96 + 0.08 * fbm(vW.xz * 0.35);
         diffuseColor.rgb *= 1.0 + 0.5 * grid * (1.0 - smoothstep(0.02, 0.08, max(tw.x, tw.y)));
       } else {
-        float r = 0.5 * vnoise(vW.xz * 1.6 + vec2(uTime * 0.35, uTime * 0.2)) + 0.5 * vnoise(vW.xz * 4.5 - uTime * 0.3);
-        vec2 fw = fwidth(vW.xz * 4.5);
-        r = mix(r, 0.5, smoothstep(0.3, 1.0, max(fw.x, fw.y)));
-        diffuseColor.rgb *= 0.8 + 0.4 * r;
-        diffuseColor.rgb += smoothstep(0.8, 0.95, r) * mix(0.1, 0.03, uNight);
+        // Open water: a long swell with wind chop riding on it, the crests catching
+        // the sky and a little of it showing through where the water is thin. Two
+        // octaves travelling at different speeds and angles is what stops it reading
+        // as one sheet of noise sliding sideways.
+        vec2 w = vW.xz;
+        float swell = vnoise(w * 0.7 + vec2(uTime * 0.09, uTime * 0.05))
+          + 0.6 * vnoise(w * 1.6 + vec2(uTime * 0.31, -uTime * 0.14));
+        float chop = vnoise(w * 4.5 - vec2(uTime * 0.28, uTime * 0.36))
+          + 0.5 * vnoise(w * 9.5 + vec2(-uTime * 0.5, uTime * 0.22));
+        vec2 fw = fwidth(w * 9.5);
+        // A pixel covering many ripples sees their mean; the swell survives longer
+        // than the chop does, which is what distance does to water.
+        chop = mix(chop / 1.5, 0.5, smoothstep(0.25, 1.0, max(fw.x, fw.y)));
+        swell = mix(swell / 1.6, 0.5, smoothstep(0.35, 1.4, max(fw.x, fw.y) * 0.2));
+        float r = mix(swell, chop, 0.45);
+        diffuseColor.rgb *= 0.76 + 0.46 * r;
+        // The crests break rather than glow: a fine sparkle that lives only on the
+        // top of a wave. A broad white wash over the peaks, which is what was here,
+        // reads as fog lying on the water.
+        float sparkle = vnoise(w * 24.0 - vec2(uTime * 0.7, uTime * 0.45));
+        sparkle = mix(sparkle, 0.5, smoothstep(0.3, 1.0, fwidth(w.x * 24.0)));
+        diffuseColor.rgb += smoothstep(0.64, 0.86, r) * smoothstep(0.54, 0.86, sparkle)
+          * mix(0.34, 0.1, uNight);
       }`);
   };
   mat.customProgramCacheKey = () => 'water';
