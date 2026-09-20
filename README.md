@@ -28,11 +28,12 @@ Browse any code base as an interactive isometric archipelago in your browser.
   into their symbols).
 - **Hunt** dependencies on foot (`V`): walk the map in first person on a tiny
   planet, `WASD` to move, the mouse to look, `Space` to jump, `F` to fly. You
-  hold a tool - a fishing rod by default - drawn in your hands, and using it
-  (click) on a building tags the module, lights up its dependency trails and
-  plants a beacon over it. `T` takes out another: a butterfly net, a camera, a
-  bubble wand, or the tracking dart. Each swings its own way and brings its own
-  aim helper. Hold the right button for the scope, the mouse wheel zooms.
+  hold a tool - a fishing rod by default - drawn in your hands, on the end of an
+  arm, and using it (click) on a building tags the module, lights up its
+  dependency trails and plants a beacon over it. `T` takes out another: a
+  butterfly net, a camera, a bubble wand, or the tracking dart. Each swings its
+  own way and brings its own aim helper. Hold the right button for the scope,
+  the mouse wheel zooms.
   Bugs walk the streets - one per finding a scanner reported - and catching one
   with any tool opens what was said about it; a tracker in the corner sweeps the
   map around you so you can see which way to walk to the next one.
