@@ -83,6 +83,7 @@ depphunter --export html -o map.html  # a self-contained map to share
 | `--no-history`        |                           | do not read git history                                             |
 | `--history-commits`   | `10000`                   | read at most this many commits                                      |
 | `--resolve-depth`     | `0`                       | levels of dependencies-of-dependencies from lock files (`-1` = all) |
+| `--online`            | `false`                   | ask package indexes for what the project's files do not record      |
 | `--lsp`               |                           | find symbol references with installed language servers              |
 | `--lsp-timeout`       | `5m`                      | time budget for language servers                                    |
 | `-v`, `--version`     |                           | print the version and exit                                          |
@@ -91,6 +92,7 @@ depphunter --export html -o map.html  # a self-contained map to share
 | `--terminal`          | `false`                   | draw the map in the terminal instead of a browser window            |
 | `--terminal-browser`  | first Chromium found      | browser binary the terminal view drives                             |
 | `--terminal-graphics` | `auto`                    | `auto`, `kitty`, `iterm`, `sixel`, `blocks`                         |
+| `--terminal-download` | `false`                   | fetch a browser when none is installed                              |
 | `--export`            |                           | write `json`, `graphml`, `dot` or `html` and exit                   |
 | `-o`, `--output`      | stdout                    | output file for `--export`                                          |
 
@@ -102,8 +104,9 @@ user config (`$XDG_CONFIG_HOME/depphunter/config.yaml`, or the OS equivalent),
 the project config `.depphunter.yaml`, `DEPPHUNTER_*` environment variables
 (`ADDR`, `OPEN`, `EXCLUDE`, `MAX_FILE_SIZE`, `THEME`, `COLOR_BY`,
 `HEIGHT_SCALE`, `SHOW_STD`, `EXPAND_DEPTH`, `WATCH`, `CACHE`, `EDITOR`,
-`HISTORY`, `HISTORY_COMMITS`, `RESOLVE_DEPTH`, `LSP`, `LSP_TIMEOUT`, `TERMINAL`,
-`TERMINAL_BROWSER`, `TERMINAL_GRAPHICS`), and flags. Exclude globs
+`HISTORY`, `HISTORY_COMMITS`, `RESOLVE_DEPTH`, `ONLINE`, `LSP`, `LSP_TIMEOUT`, `TERMINAL`,
+`TERMINAL_BROWSER`, `TERMINAL_DOWNLOAD`, `TERMINAL_BROWSER_SHA256`,
+`TERMINAL_GRAPHICS`), and flags. Exclude globs
 add up across all sources instead of replacing each other. The project config
 cannot set `editor` or `terminal_browser`: they arrive with the repository, and
 both name a command depphunter runs.
@@ -175,6 +178,20 @@ The page is laid out at a usable size whatever the terminal's resolution and the
 browser scales the frames down to it, so the toolbar stays where it belongs. The
 view is not available on Windows, whose console offers neither the raw input nor
 the pixels it needs; run depphunter without `--terminal` there.
+
+**When there is no browser**, depphunter can fetch one, the way a browser
+automation toolkit does. It asks first: with a terminal to ask at, you get a
+yes/no question; in a script, where nobody can answer, it prints what to pass
+instead. `--terminal-download` (or `DEPPHUNTER_TERMINAL_DOWNLOAD=true`) answers
+it ahead of time. What arrives is the Chrome for Testing **headless shell** -
+about 90 MB rather than the full browser's 170 - unpacked into
+`~/.cache/depphunter/browsers/chrome-headless-shell-<platform>-<version>/`,
+where the version in the name keeps a new download from overwriting a browser in
+use. Chrome for Testing publishes no checksums, so depphunter prints the SHA-256
+of what it fetched; pin it with `DEPPHUNTER_TERMINAL_BROWSER_SHA256` and a
+download that does not match is refused. Linux on arm and the 32-bit targets have
+no published build - there the flag says so instead of fetching something that
+will not run.
 
 **How fast it is** depends on the browser, not on the terminal. Where the
 headless browser finds a GPU, frames arrive as quickly as the terminal takes
@@ -298,9 +315,48 @@ edges that start at a file, so "imported by N files" keeps meaning what it says.
 Two versions of one package are one building, as they always were, so an edge
 between packages is an edge between names.
 
-Ecosystems whose lock files carry no edges (`Pipfile.lock`), or that keep the
-graph outside the repository (Go modules, Maven, NuGet, PowerShell Gallery),
-add nothing here yet - reaching those needs an index, which is the next step.
+Ecosystems whose lock files carry no edges (`Pipfile.lock`) add nothing here;
+those that keep the graph outside the repository (Go modules, and Maven, NuGet
+and the PowerShell Gallery for now) need `--online`, below.
+
+The side panel reads them as a **tree**: every row under *Depends on* and *Used
+by* opens into what that node depends on in turn, and so on down. Nothing is
+fetched - the edges are already in the map - so a row opens instantly, `▸`/`▾`
+or the arrow keys open and close it, and what you opened stays open when a
+`--watch` update redraws the panel. A package that depends on something that
+depends back on it is shown once more with `↻` and left closed, because lock
+files do contain cycles and a tree that followed one would never end.
+
+## Package indexes
+
+Every external package says where it comes from. depphunter reads the index
+configuration your machine has and the one the repository carries - `.npmrc`
+(including `@scope:registry`), `.yarnrc.yml`, `pip.conf` and a requirements
+file's `--index-url`, Poetry and uv sources in `pyproject.toml`, `NuGet.config`,
+a pom's `<repositories>`, `~/.m2/settings.xml` mirrors, `.cargo/config.toml`,
+and `GOPROXY` - and the side panel names the index each package resolves from.
+A container image needs no configuration: `ghcr.io/org/app` says it already.
+
+The two are not treated alike. An index **your** machine names is trusted; one
+that appears only in the repository is recorded and marked **⚠ index**, because
+a repository that points your package manager at an index nobody here configured
+is the shape a dependency-confusion attack takes. Nothing is ever fetched from
+such an index.
+
+`--online` lets depphunter ask the trusted indexes about dependencies the
+repository does not record - which is how `--resolve-depth` reaches the
+ecosystems whose graph lives outside the repo:
+
+| Ecosystem | asked for                           | answer                           |
+|-----------|-------------------------------------|----------------------------------|
+| Go        | `<proxy>/<module>/@v/<version>.mod` | that module's own requires       |
+| npm       | `<registry>/<package>/<version>`    | its `dependencies`               |
+| PyPI      | `<host>/pypi/<name>/<version>/json` | `requires_dist`, extras excluded |
+
+Lock files still come first: an index is asked only where the repository is
+silent. Answers are cached for a day under the cache directory, credentials come
+from your own `~/.npmrc` tokens and `~/.netrc` and are sent only to the host they
+were written for, and Maven, NuGet and container registries are not asked yet.
 
 ## Symbol references
 
@@ -342,6 +398,7 @@ mode you can go 3 units out over the water and 12 above the tallest building.
 | Drag / right-drag / wheel | pan / orbit / zoom                       |
 | Click / double-click      | select / expand–collapse                 |
 | `Enter`, `Backspace`      | expand–collapse selection, select parent |
+| `→` `←` in the panel      | open / close a dependency row            |
 | `Q` `E`                   | rotate 90°                               |
 | `F`                       | fit to screen                            |
 | `+` `−`                   | expand / collapse one level everywhere   |

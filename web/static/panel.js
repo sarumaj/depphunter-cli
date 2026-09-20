@@ -9,6 +9,9 @@ import { fetchSource } from './data.js';
 import { ago, formatDate } from './history.js';
 import { fmt, h, escapeHTML } from './dom.js';
 
+// indexHost keeps the part of an index URL that identifies it on a stat tile.
+const indexHost = url => url.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+
 const HLJS = {
   Go: 'go', JavaScript: 'javascript', TypeScript: 'typescript', Python: 'python', Rust: 'rust',
   Java: 'java', Kotlin: 'kotlin', 'C#': 'csharp', C: 'c', 'C++': 'cpp', Ruby: 'ruby', PHP: 'php',
@@ -23,6 +26,9 @@ export class Panel {
   constructor(root, body, { model, colorOf, onSelect, onOpen, openLabel, historyOf, linkKind }) {
     Object.assign(this, { root, body, model, colorOf, onSelect, onOpen, openLabel, historyOf, linkKind });
     this.seq = 0;
+    // Which branches of the dependency trees are open, by direction and path, so a
+    // live update redraws the panel without closing what the reader opened.
+    this.open = new Set();
   }
 
   close() {
@@ -44,7 +50,8 @@ export class Panel {
         node.name, h('span', { class: 'badge' }, node.symbolKind || node.kind),
         node.unresolved ? h('span', { class: 'badge warn', title: 'Not found in any manifest' }, '⚠ unresolved') : null,
         node.floating ? h('span', { class: 'badge warn', title: 'Not fixed to one version: it moves when installed again' }, '⚠ floating') : null,
-        node.transitive ? h('span', { class: 'badge', title: 'No file here imports it: a dependency pulled it in' }, 'transitive') : null),
+        node.transitive ? h('span', { class: 'badge', title: 'No file here imports it: a dependency pulled it in' }, 'transitive') : null,
+        node.indexUnknown ? h('span', { class: 'badge warn', title: 'Only this repository names this index; nothing on your machine does' }, '⚠ index') : null),
       this.openButton(node),
       this.stats(node),
       node.kind === 'dir' ? this.languageMix(node) : null,
@@ -96,7 +103,8 @@ export class Panel {
           stat(n.version || '-', n.floating ? 'version (floating)' : 'version'),
           n.requested ? stat(n.requested, 'requested') : null,
           stat(fmt.format(n.importers), 'importing files'),
-          stat(n.parentNode?.name || '', 'ecosystem'));
+          stat(n.parentNode?.name || '', 'ecosystem'),
+          n.index ? stat(indexHost(n.index), n.indexUnknown ? 'index (unknown here)' : 'index') : null);
       case 'ecosystem':
         return h('div', { class: 'stats' }, stat(fmt.format(n.children.length), 'packages'));
     }
@@ -118,36 +126,122 @@ export class Panel {
     );
   }
 
+  // neighbours are what a node depends on ('out') or what depends on it ('in'),
+  // grouped per node so a file importing the same package twice is one row.
+  neighbours(node, dir) {
+    const { out, in: inc } = boundaryEdges(this.model, node, this.linkKind());
+    const edges = dir === 'out' ? out : inc;
+    const key = dir === 'out' ? 'to' : 'from';
+    const m = new Map();
+    for (const e of edges) {
+      const node = this.model.byId.get(e[key]);
+      const g = m.get(node.id) || { node, count: 0, line: e.line };
+      g.count++;
+      m.set(node.id, g);
+    }
+    return [...m.values()].sort((a, b) => b.count - a.count || a.node.name.localeCompare(b.node.name));
+  }
+
+  // tree renders one direction as rows that open into the next: a dependency's own
+  // dependencies, and theirs, which is the shape a supply chain has once versions are
+  // pinned and transitive packages are on the map. Nothing is fetched - the edges are
+  // in the model - so opening a row costs only layout.
+  tree(title, hint, root, dir) {
+    const groups = this.neighbours(root, dir);
+    const ul = h('ul', { class: 'p-list tree' });
+    this.insertRows(ul, null, groups, dir, [root.id], 0);
+    return h('div', { class: 'p-section' },
+      h('h4', {}, h('span', { class: 'swatch', style: `background:${hint}` }), title,
+        h('span', { class: 'n' }, fmt.format(groups.length))),
+      groups.length ? ul : h('div', { class: 'empty' }, 'None'));
+  }
+
+  // insertRows puts one level of rows after `after` (or at the end of the list).
+  insertRows(ul, after, groups, dir, ancestors, depth) {
+    let anchor = after;
+    for (const g of groups) {
+      const row = this.treeRow(ul, g, dir, ancestors, depth);
+      if (anchor) anchor.after(row);
+      else ul.append(row);
+      anchor = row;
+    }
+  }
+
+  treeRow(ul, g, dir, ancestors, depth) {
+    const node = g.node, branch = [...ancestors, node.id], key = dir + '|' + branch.join('>');
+    // A package that depends on something that depends back on it would open for
+    // ever: the repeat is shown and left closed.
+    const cyclic = ancestors.includes(node.id);
+    const children = cyclic ? [] : this.neighbours(node, dir);
+    const twisty = children.length
+      ? h('button', { class: 'twisty', 'aria-label': `Show what ${node.name} ${dir === 'out' ? 'depends on' : 'is used by'}` }, '▸')
+      : h('span', { class: 'twisty leaf' }, cyclic ? '↻' : '');
+
+    const row = this.item('li', {
+      class: 'tree-row', style: `padding-left:${8 + depth * 14}px`,
+      onclick: () => this.onSelect(node),
+      title: cyclic ? `${node.path || node.name} (already open further up)` : node.path || node.name,
+    },
+      twisty,
+      h('span', { class: 'swatch', style: `background:${this.swatchOf(node)}` }),
+      h('span', { class: 'name' }, node.kind === 'symbol' ? node.name : node.path || node.name),
+      h('span', { class: 'meta' }, node.kind === 'package' ? node.parentNode.name
+        : node.kind === 'symbol' ? node.parentNode.path : node.kind),
+      g.count > 1 ? h('span', { class: 'meta' }, `×${g.count}`) : null);
+    row.dataset.branch = key;
+
+    if (!children.length) return row;
+    const toggle = event => {
+      if (event) event.stopPropagation();
+      this.open.has(key) ? this.collapse(ul, key) : this.expand(ul, row, children, dir, branch, depth);
+    };
+    twisty.addEventListener('click', toggle);
+    // The row itself selects; the arrow keys open and close it, as a tree does.
+    row.addEventListener('keydown', e => {
+      if (e.key === 'ArrowRight' && !this.open.has(key)) { e.preventDefault(); toggle(); }
+      if (e.key === 'ArrowLeft' && this.open.has(key)) { e.preventDefault(); toggle(); }
+    });
+    row.setAttribute('aria-expanded', 'false');
+    if (this.open.has(key)) { // an update re-draws the panel; what was open stays open
+      this.expand(ul, row, children, dir, branch, depth);
+    }
+    return row;
+  }
+
+  expand(ul, row, children, dir, branch, depth) {
+    const key = row.dataset.branch;
+    this.open.add(key);
+    row.setAttribute('aria-expanded', 'true');
+    row.querySelector('.twisty').textContent = '▾';
+    this.insertRows(ul, row, children, dir, branch, depth + 1);
+  }
+
+  collapse(ul, key) {
+    this.open.delete(key);
+    const row = ul.querySelector(`[data-branch="${CSS.escape(key)}"]`);
+    if (row) {
+      row.setAttribute('aria-expanded', 'false');
+      row.querySelector('.twisty').textContent = '▸';
+    }
+    // Everything opened below it goes with it, however deep.
+    for (const el of [...ul.children]) {
+      if (el.dataset.branch && el.dataset.branch.startsWith(key + '>')) {
+        this.open.delete(el.dataset.branch);
+        el.remove();
+      }
+    }
+  }
+
+  swatchOf(node) {
+    const file = node.kind === 'symbol' ? node.parentNode : node;
+    return file.kind === 'file' ? this.colorOf(file.lang) : 'var(--pkg)';
+  }
+
   dependencies(n) {
     const refs = this.linkKind() === 'reference';
     if (n.kind === 'ecosystem' || (n.kind === 'symbol' && !refs)) return [];
-    const { out, in: inc } = boundaryEdges(this.model, n, this.linkKind());
-    const group = (edges, key) => {
-      const m = new Map();
-      for (const e of edges) {
-        const node = this.model.byId.get(e[key]);
-        const g = m.get(node.id) || { node, count: 0, line: e.line };
-        g.count++;
-        m.set(node.id, g);
-      }
-      return [...m.values()].sort((a, b) => b.count - a.count || a.node.name.localeCompare(b.node.name));
-    };
-    const list = (title, hint, groups) => h('div', { class: 'p-section' },
-      h('h4', {}, h('span', { class: 'swatch', style: `background:${hint}` }), title, h('span', { class: 'n' }, fmt.format(groups.length))),
-      groups.length
-        ? h('ul', { class: 'p-list' }, groups.map(g => this.item('li', { onclick: () => this.onSelect(g.node), title: g.node.path || g.node.name },
-            h('span', { class: 'swatch', style: `background:${swatchOf(g.node)}` }),
-            h('span', { class: 'name' }, g.node.kind === 'symbol' ? g.node.name : g.node.path || g.node.name),
-            h('span', { class: 'meta' }, g.node.kind === 'package' ? g.node.parentNode.name
-              : g.node.kind === 'symbol' ? g.node.parentNode.path : g.node.kind),
-            g.count > 1 ? h('span', { class: 'meta' }, `×${g.count}`) : null)))
-        : h('div', { class: 'empty' }, 'None'));
-    const swatchOf = node => {
-      const file = node.kind === 'symbol' ? node.parentNode : node;
-      return file.kind === 'file' ? this.colorOf(file.lang) : 'var(--pkg)';
-    };
-    const usedBy = list('Used by', 'var(--edge-in)', group(inc, 'from'));
-    if (refs) return [list('Uses', 'var(--edge-out)', group(out, 'to')), usedBy];
+    const usedBy = this.tree('Used by', 'var(--edge-in)', n, 'in');
+    if (refs) return [this.tree('Uses', 'var(--edge-out)', n, 'out'), usedBy];
     // Some ecosystems (Go) import directories, not files: point at the package instead.
     const pkg = n.kind === 'file' && n.parentNode;
     const pkgUsers = pkg ? (this.model.edgesTo.get(pkg.id) || []).length : 0;
@@ -155,7 +249,7 @@ export class Panel {
       usedBy.append(h('div', { class: 'hint' }, `Its package is imported ${pkgUsers}× - `,
         h('a', { class: 'link', onclick: () => this.onSelect(pkg) }, `select ${pkg.path}/`)));
     }
-    return [list('Depends on', 'var(--edge-out)', group(out, 'to')), usedBy];
+    return [this.tree('Depends on', 'var(--edge-out)', n, 'out'), usedBy];
   }
 
   // Git history of a file or directory in the selected range, with top authors.

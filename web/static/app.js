@@ -754,7 +754,7 @@ function showTooltip(i, x, y) {
   if (n.kind === 'file') html += row('Language', n.lang || 'unknown') + row('Lines', fmt.format(n.loc || 0)) + (n.children.length ? row('Symbols', n.children.length) : '');
   else if (n.kind === 'dir') html += row(b.kind === 'district' ? 'Collapsed directory' : 'Directory', '') + row('Files', fmt.format(n.fileCount)) + row('Lines', fmt.format(n.totalLoc));
   else if (n.kind === 'symbol') html += row(n.symbolKind, `line ${n.line}`);
-  else if (n.kind === 'package') html += row('Ecosystem', n.parentNode.name) + (n.version ? row('Version', n.version) : '') + (n.requested ? row('Requested', n.requested) : '') + row('Imported by', `${n.importers} files`) + (n.unresolved ? row('⚠', 'not declared in a manifest') : '') + (n.floating ? row('⚠', 'not pinned to one version') : '') + (n.transitive ? row('Pulled in by', 'another dependency') : '');
+  else if (n.kind === 'package') html += row('Ecosystem', n.parentNode.name) + (n.version ? row('Version', n.version) : '') + (n.requested ? row('Requested', n.requested) : '') + row('Imported by', `${n.importers} files`) + (n.unresolved ? row('⚠', 'not declared in a manifest') : '') + (n.floating ? row('⚠', 'not pinned to one version') : '') + (n.transitive ? row('Pulled in by', 'another dependency') : '') + (n.index ? row(n.indexUnknown ? '⚠ Index' : 'Index', n.index.replace(/^https?:\/\//, '')) : '');
   else if (n.kind === 'ecosystem') html += row('Packages', n.children.length);
   const hm = (n.kind === 'file' || n.kind === 'dir') && metrics();
   if (hm) {

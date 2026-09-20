@@ -20,6 +20,13 @@ type Options struct {
 	URL      string // the page to show, token and all
 	Browser  string // a Chromium-based browser to drive; "" looks for one
 	Graphics string // auto, kitty, iterm, sixel or blocks
+	// Download allows fetching a browser when the machine has none. Without it, a
+	// machine with no browser is asked before anything is fetched, and told what to
+	// do when there is nobody to ask.
+	Download bool
+	// SHA256 is the digest the downloaded archive must have; empty accepts what the
+	// publisher serves over TLS and reports the digest it got.
+	SHA256 string
 }
 
 // Protocols lists the values Graphics takes, for the flag's help and validation.
@@ -58,6 +65,13 @@ const (
 
 // Run shows opt.URL in the terminal until the user quits with Ctrl+C or ctx is done.
 func Run(ctx context.Context, opt Options) error {
+	// The browser is settled before the terminal is taken over: a question about
+	// downloading one, and the progress of doing so, belong on an ordinary screen.
+	bin, err := browserFor(ctx, opt)
+	if err != nil {
+		return err
+	}
+
 	t, err := openTTY()
 	if err != nil {
 		return fmt.Errorf("terminal view: %w", err)
@@ -67,13 +81,6 @@ func Run(ctx context.Context, opt Options) error {
 		return fmt.Errorf("terminal view: %w", err)
 	}
 	defer t.restore()
-
-	bin := opt.Browser
-	if bin == "" {
-		if bin, err = findBrowser(exec.LookPath, os.Stat); err != nil {
-			return err
-		}
-	}
 
 	in := newInputReader(t.input())
 	defer in.stop()
@@ -90,6 +97,51 @@ func Run(ctx context.Context, opt Options) error {
 		return fmt.Errorf("terminal size: %w", err)
 	}
 	return v.run(ctx, bin, opt.URL, t, in)
+}
+
+// browserFor returns the browser to drive: the one named, the first one installed,
+// or - with permission - one fetched from Chrome for Testing.
+func browserFor(ctx context.Context, opt Options) (string, error) {
+	if opt.Browser != "" {
+		return opt.Browser, nil
+	}
+	bin, err := findBrowser(exec.LookPath, os.Stat)
+	if err == nil || !errors.Is(err, errNoBrowser) {
+		return bin, err
+	}
+	if !opt.Download && !askToDownload() {
+		return "", err
+	}
+	dir, dirErr := browserDir()
+	if dirErr != nil {
+		return "", err
+	}
+	if mkErr := os.MkdirAll(dir, 0o755); mkErr != nil {
+		return "", mkErr
+	}
+	return download(ctx, dir, versionsURL, opt.SHA256, func(msg string) {
+		fmt.Fprintln(os.Stderr, "depphunter: "+msg)
+	})
+}
+
+// askToDownload asks for permission when there is someone to ask. With no terminal on
+// the standard input - a script, a pipeline - nothing is downloaded and the caller
+// reports what to pass instead.
+func askToDownload() bool {
+	if !isTerminal(int(os.Stdin.Fd())) {
+		return false
+	}
+	fmt.Fprint(os.Stderr, "depphunter: no browser found. Download the Chrome for Testing headless shell "+
+		"(about 90 MB) into the cache directory? [y/N] ")
+	answer, err := bufio.NewReader(os.Stdin).ReadString('\n')
+	if err != nil {
+		return false
+	}
+	switch strings.ToLower(strings.TrimSpace(answer)) {
+	case "y", "yes":
+		return true
+	}
+	return false
 }
 
 // view holds everything the drawing loop needs.
