@@ -61,15 +61,20 @@ func WriteStatic(w io.Writer, g *graph.Graph, ui config.UI, root string, extra m
 	if err != nil {
 		return err
 	}
-	// The hand model is a binary asset the UI fetches; a page with no server to fetch
-	// from carries it inline instead.
-	hand, err := fs.ReadFile(assets, "hand.glb")
-	if err != nil {
-		return err
+	// The models are binary assets the UI fetches; a page with no server to fetch
+	// from carries them inline instead.
+	models := map[string]string{}
+	for key, name := range map[string]string{"hand": "hand.glb", "props": "props.glb"} {
+		b, err := fs.ReadFile(assets, name)
+		if err != nil {
+			return err
+		}
+		models[key] = "data:model/gltf-binary;base64," + base64.StdEncoding.EncodeToString(b)
 	}
 	// json.Marshal escapes <, > and &, so the payload cannot close its <script> element.
 	data := map[string]any{
-		"hand":  "data:model/gltf-binary;base64," + base64.StdEncoding.EncodeToString(hand),
+		"hand":  models["hand"],
+		"props": models["props"],
 		"graph": g,
 		"config": struct {
 			config.UI
