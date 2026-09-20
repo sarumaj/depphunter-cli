@@ -635,21 +635,29 @@ vec3 cityTexture(vec3 base) {
   // Keep the per-face shade the flat colors carry.
   float shade = sideX ? 0.62 : 0.78;
   vec2 wall = vec2(u, lp.y);
+  vec3 c;
   if (k < 0.5) {
-    if (circuit) return boardEdge(vec3(0.3, 0.24, 0.16), wall) * shade / 0.7;
-    if (galaxy) return crystalWall(vec3(0.42, 0.36, 0.6), wall) * shade / 0.7;
-    return retaining(vec3(0.3, 0.24, 0.16), wall, 0.0) * shade / 0.7;
+    if (circuit) c = boardEdge(vec3(0.3, 0.24, 0.16), wall) * shade / 0.7;
+    else if (galaxy) c = crystalWall(vec3(0.42, 0.36, 0.6), wall) * shade / 0.7;
+    else c = retaining(vec3(0.3, 0.24, 0.16), wall, 0.0) * shade / 0.7;
+  } else if (k > 5.5) {
+    c = circuit ? boardEdge(base, wall) : galaxy ? crystalWall(base, wall) : retaining(base, wall, 0.35);
+  } else if (k < 1.5) {
+    if (circuit) c = boardEdge(base, wall);
+    else if (galaxy) c = crystalWall(base, wall);
+    else c = stairs(retaining(base, wall, 0.35), u, faceW, lp.y, sz.y);
+  } else {
+    vec2 seed = vSeed + n.xz * 3.1;
+    if (circuit) c = chipFace(base, u, faceW, lp.y, sz.y, seed);
+    else if (galaxy) c = crystalFace(base, u, faceW, lp.y, sz.y, seed);
+    else c = facade(base, u, faceW, lp.y, sz.y, seed);
   }
-  if (k > 5.5) return circuit ? boardEdge(base, wall) : galaxy ? crystalWall(base, wall) : retaining(base, wall, 0.35);
-  if (k < 1.5) {
-    if (circuit) return boardEdge(base, wall);
-    if (galaxy) return crystalWall(base, wall);
-    return stairs(retaining(base, wall, 0.35), u, faceW, lp.y, sz.y);
-  }
-  vec2 seed = vSeed + n.xz * 3.1;
-  if (circuit) return chipFace(base, u, faceW, lp.y, sz.y, seed);
-  if (galaxy) return crystalFace(base, u, faceW, lp.y, sz.y, seed);
-  return facade(base, u, faceW, lp.y, sz.y, seed);
+  // Anything standing on something is darker where the two meet. There are no lights
+  // in this scene and so no shadows either, and without this a building floats over
+  // its own plot: the band is what puts it back down on it. A short wall gets a
+  // shorter one, or a kerb would be all shadow.
+  float foot = min(0.24, sz.y * 0.35);
+  return c * mix(0.7, 1.0, smoothstep(0.0, foot, lp.y + sz.y * 0.5));
 }
 `;
 
