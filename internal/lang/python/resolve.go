@@ -59,8 +59,10 @@ var importAliases = map[string]string{
 // dist is a distribution declared in a manifest or pinned in a lockfile. Lockfile-only
 // entries (transitive dependencies) are installed too, so importing them resolves.
 type dist struct {
-	name    string
-	version string
+	name      string
+	version   string
+	requested string // the manifest's specifier once a lock file replaced it
+	pinned    bool
 }
 
 type resolver struct {
@@ -220,7 +222,7 @@ func (r *resolver) distribution(parts []string) lang.Target {
 	}
 	for _, c := range candidates {
 		if d := r.distMap[normalize(c)]; d != nil {
-			return lang.Target{Ecosystem: ecoPyPI, Package: d.name, Version: d.version}
+			return lang.Target{Ecosystem: ecoPyPI, Package: d.name, Version: d.version, Requested: d.requested, Pinned: d.pinned}
 		}
 	}
 	return lang.Target{Ecosystem: ecoPyPI, Package: candidates[0], Unresolved: true}
@@ -243,22 +245,35 @@ func (r *resolver) addRequirement(req string) {
 	if m == nil {
 		return
 	}
-	r.addDist(m[1], strings.TrimSpace(m[3]))
+	r.addDist(m[1], strings.TrimSpace(m[3]), false)
 }
 
-func (r *resolver) addDist(name, version string) {
+// addDist records a distribution and what its specifier says about the version:
+// "==1.2.3" and a lock file name one, ">=2.0" and "*" do not. locked marks entries
+// read from a lock file, which are read after the manifests and win.
+func (r *resolver) addDist(name, spec string, locked bool) {
 	if name == "" || strings.EqualFold(name, "python") {
 		return
 	}
-	version = strings.TrimSpace(strings.TrimPrefix(version, "=="))
 	key := normalize(name)
 	d := r.distMap[key]
 	if d == nil {
 		d = &dist{name: name}
 		r.distMap[key] = d
 	}
-	if version != "" && version != "*" {
-		d.version = version
+	spec = strings.TrimSpace(spec)
+	if spec == "" || spec == "*" {
+		return
+	}
+	version := strings.TrimSpace(strings.TrimPrefix(spec, "=="))
+	switch {
+	case locked:
+		if d.version != "" && d.version != version {
+			d.requested = d.version // what the manifest asked for before the lock
+		}
+		d.version, d.pinned = version, true
+	case !d.pinned: // a range must not loosen what a lock already fixed
+		d.version, d.pinned = version, lang.Pinned(spec)
 	}
 }
 
@@ -393,7 +408,7 @@ func (r *resolver) addTable(t map[string]any) {
 		case map[string]any:
 			version, _ = v["version"].(string)
 		}
-		r.addDist(name, version)
+		r.addDist(name, version, false)
 	}
 }
 
@@ -408,7 +423,7 @@ func (r *resolver) readLock(f *scan.File) {
 			var packages map[string]struct{ Version string }
 			if json.Unmarshal(doc[section], &packages) == nil {
 				for name, p := range packages {
-					r.addDist(name, p.Version)
+					r.addDist(name, p.Version, true)
 				}
 			}
 		}
@@ -419,7 +434,7 @@ func (r *resolver) readLock(f *scan.File) {
 	}
 	if _, err := toml.DecodeFile(f.Abs, &doc); err == nil {
 		for _, p := range doc.Package {
-			r.addDist(p.Name, p.Version)
+			r.addDist(p.Name, p.Version, true)
 		}
 	}
 }

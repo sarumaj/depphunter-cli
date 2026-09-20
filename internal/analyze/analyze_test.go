@@ -5,12 +5,14 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sarumaj/depphunter-cli/internal/cache"
 	"github.com/sarumaj/depphunter-cli/internal/graph"
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/golang"
+	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
 func writeProject(t *testing.T, root string, files map[string]string) {
@@ -88,5 +90,80 @@ func TestNilCache(t *testing.T) {
 	_, st, err := Run(context.Background(), root, Options{Plugins: []lang.Plugin{golang.Plugin{}}})
 	if err != nil || st.Parsed != 1 {
 		t.Fatalf("stats %+v, err %v", st, err)
+	}
+}
+
+// fakePlugin resolves each import to the target its spec names, so the builder can be
+// asked what it does with versions without going through a real ecosystem.
+type fakePlugin struct{ targets map[string]lang.Target }
+
+func (fakePlugin) Name() string             { return "fake" }
+func (fakePlugin) Version() int             { return 1 }
+func (fakePlugin) Claims(f *scan.File) bool { return filepath.Ext(f.Path) == ".fake" }
+func (fakePlugin) Ecosystems() []lang.Ecosystem {
+	return []lang.Ecosystem{{ID: "fake-eco", Name: "Fake"}}
+}
+
+func (fakePlugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+	e := &lang.Extraction{}
+	for i, line := range strings.Split(string(src), "\n") {
+		if spec := strings.TrimSpace(line); spec != "" {
+			e.Imports = append(e.Imports, lang.RawImport{Spec: spec, Module: spec, Line: i + 1})
+		}
+	}
+	return e, nil
+}
+
+func (p fakePlugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
+	return fakeResolver(p), nil
+}
+
+type fakeResolver fakePlugin
+
+func (r fakeResolver) Resolve(file string, imp lang.RawImport) lang.Target {
+	return r.targets[imp.Module]
+}
+
+// TestPackageVersions checks what the builder makes of the versions its plugins
+// report: the first version wins, and a package is floating as soon as one importer
+// leaves it open - a lock file elsewhere does not fix what this manifest lets drift.
+func TestPackageVersions(t *testing.T) {
+	root := t.TempDir()
+	writeProject(t, root, map[string]string{
+		"a.fake": "pinned\nfloating\nboth\nunknown\n",
+	})
+	p := fakePlugin{targets: map[string]lang.Target{
+		"pinned":   {Ecosystem: "fake-eco", Package: "pinned", Version: "1.2.3", Requested: "^1.2.0", Pinned: true},
+		"floating": {Ecosystem: "fake-eco", Package: "floating", Version: "^2.0.0"},
+		"both":     {Ecosystem: "fake-eco", Package: "both", Version: "3.0.0", Pinned: true},
+		"unknown":  {Ecosystem: "fake-eco", Package: "unknown"},
+	}}
+	g, _, err := Run(context.Background(), root, Options{Plugins: []lang.Plugin{p}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]*graph.Node{}
+	for _, n := range g.Nodes {
+		byID[n.ID] = n
+	}
+	for _, c := range []struct {
+		pkg, version, requested string
+		floating                bool
+	}{
+		{"pinned", "1.2.3", "^1.2.0", false},
+		{"floating", "^2.0.0", "", true},
+		{"both", "3.0.0", "", false},
+		// Nothing is known about it, which is not the same as knowing it floats.
+		{"unknown", "", "", false},
+	} {
+		n := byID[graph.PackageID("fake-eco", c.pkg)]
+		if n == nil {
+			t.Errorf("%s: no package node", c.pkg)
+			continue
+		}
+		if n.Version != c.version || n.Requested != c.requested || n.Floating != c.floating {
+			t.Errorf("%s: version %q requested %q floating %v, want %q %q %v",
+				c.pkg, n.Version, n.Requested, n.Floating, c.version, c.requested, c.floating)
+		}
 	}
 }

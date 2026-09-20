@@ -42,7 +42,8 @@ export class Panel {
       this.crumbs(node),
       h('h2', { class: 'p-title' }, node.kind === 'file' ? h('span', { class: 'swatch', style: `background:${this.colorOf(node.lang)}` }) : null,
         node.name, h('span', { class: 'badge' }, node.symbolKind || node.kind),
-        node.unresolved ? h('span', { class: 'badge warn', title: 'Not found in any manifest' }, '⚠ unresolved') : null),
+        node.unresolved ? h('span', { class: 'badge warn', title: 'Not found in any manifest' }, '⚠ unresolved') : null,
+        node.floating ? h('span', { class: 'badge warn', title: 'Not fixed to one version: it moves when installed again' }, '⚠ floating') : null),
       this.openButton(node),
       this.stats(node),
       node.kind === 'dir' ? this.languageMix(node) : null,
@@ -91,7 +92,9 @@ export class Panel {
         return h('div', { class: 'stats' }, stat(n.symbolKind, 'kind'), stat(`line ${n.line}`, 'defined at'));
       case 'package':
         return h('div', { class: 'stats' },
-          stat(n.version || '-', 'version'), stat(fmt.format(n.importers), 'importing files'),
+          stat(n.version || '-', n.floating ? 'version (floating)' : 'version'),
+          n.requested ? stat(n.requested, 'requested') : null,
+          stat(fmt.format(n.importers), 'importing files'),
           stat(n.parentNode?.name || '', 'ecosystem'));
       case 'ecosystem':
         return h('div', { class: 'stats' }, stat(fmt.format(n.children.length), 'packages'));

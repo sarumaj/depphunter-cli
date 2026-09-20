@@ -116,9 +116,29 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 		}
 	}
 	if g, ok := r.group(spec); ok {
-		return lang.Target{Ecosystem: ecoMaven, Package: g, Version: r.groups[g]}
+		v := r.groups[g]
+		return lang.Target{Ecosystem: ecoMaven, Package: g, Version: v, Pinned: pinnedMaven(v)}
 	}
 	return lang.Target{Ecosystem: ecoMaven, Package: strings.Join(segments[:max(1, min(3, len(segments)-1))], "."), Unresolved: true}
+}
+
+// pinnedMaven reports whether a Maven version names one artifact. A plain version
+// does, whatever its shape (Spring writes 1.2.3.RELEASE); a range, the LATEST and
+// RELEASE keywords, an unexpanded property and a snapshot - republished under the
+// same name - do not.
+func pinnedMaven(v string) bool {
+	v = strings.TrimSpace(v)
+	switch {
+	case v == "", strings.Contains(v, "${"):
+		return false
+	case strings.HasPrefix(v, "["), strings.HasPrefix(v, "("):
+		return lang.Pinned(v) // "[1.2.3]" is one version, "[1.0,2.0)" is not
+	case strings.EqualFold(v, "LATEST"), strings.EqualFold(v, "RELEASE"):
+		return false
+	case strings.HasSuffix(strings.ToUpper(v), "-SNAPSHOT"):
+		return false
+	}
+	return true
 }
 
 // group finds the declared groupId an import belongs to: the longest groupId that is a

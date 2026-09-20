@@ -6,6 +6,7 @@ import { createRoot } from 'react-dom/client';
 import { readFileSync } from 'node:fs';
 import * as path from 'path';
 import tool from '@scope/tool/sub';
+import chalk from 'chalk';
 import { shared } from '@acme/shared';
 import './styles.css';
 import '../outside';

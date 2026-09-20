@@ -9,6 +9,7 @@
       <Version>5.0.1</Version>
     </PackageReference>
     <PackageReference Include="Microsoft.Extensions.Hosting" Version="8.0.0" />
+    <PackageReference Include="Dapper" Version="2.*" />
     <ProjectReference Include="..\MyApp.Core\MyApp.Core.csproj" />
   </ItemGroup>
 </Project>

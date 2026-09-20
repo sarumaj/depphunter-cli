@@ -7,3 +7,4 @@ serde = { workspace = true }
 tokio = { version = "1", features = ["full"] }
 core-lib = { path = "../core-lib" }
 json = { package = "serde_json", version = "1" }
+anyhow = "1.0.86"  # not in Cargo.lock: Cargo reads this as ^1.0.86

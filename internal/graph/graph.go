@@ -34,6 +34,12 @@ type Node struct {
 	SymbolKind string   `json:"symbolKind,omitempty"`
 	Line       int      `json:"line,omitempty"`
 	Version    string   `json:"version,omitempty"`
+	// Requested is the specifier a manifest asked for when a lock file pinned it to
+	// another version, e.g. "^4.2.0" for version 4.3.1.
+	Requested string `json:"requested,omitempty"`
+	// Floating marks an external package that is not fixed to one version: it will
+	// resolve to something else once it is installed again.
+	Floating bool `json:"floating,omitempty"`
 	// Std marks ecosystems holding a language's standard library, which the UI hides by default.
 	Std bool `json:"std,omitempty"`
 	// Unresolved marks packages whose owning module could not be determined from manifests.

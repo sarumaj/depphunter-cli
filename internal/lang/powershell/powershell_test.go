@@ -16,8 +16,9 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 
 func TestScript(t *testing.T) {
 	langtest.CheckImports(t, analyze(t)["scripts/deploy.ps1"], map[string]lang.Target{
-		"#Requires -Modules Az.Storage":             {Ecosystem: "psgallery", Package: "Az.Storage"},
-		"#Requires -Modules Az.Resources":           {Ecosystem: "psgallery", Package: "Az.Resources", Version: "6.1.0"},
+		"#Requires -Modules Az.Storage": {Ecosystem: "psgallery", Package: "Az.Storage"},
+		// RequiredVersion in a #Requires table names one version.
+		"#Requires -Modules Az.Resources":           {Ecosystem: "psgallery", Package: "Az.Resources", Version: "6.1.0", Pinned: true},
 		"using module ../tools/Tools/Tools.psm1":    {Local: "tools/Tools/Tools.psm1"},
 		"Import-Module Tools":                       {Local: "tools/Tools/Tools.psd1"},
 		"Import-Module PSReadLine":                  {Ecosystem: "powershell", Package: "PSReadLine"},
@@ -34,8 +35,10 @@ func TestScript(t *testing.T) {
 
 func TestManifest(t *testing.T) {
 	langtest.CheckImports(t, analyze(t)["tools/Tools/Tools.psd1"], map[string]lang.Target{
-		"RequiredModules: PSReadLine":        {Ecosystem: "powershell", Package: "PSReadLine"},
+		"RequiredModules: PSReadLine": {Ecosystem: "powershell", Package: "PSReadLine"},
+		// ModuleVersion is a minimum, RequiredVersion names one version.
 		"RequiredModules: Pester":            {Ecosystem: "psgallery", Package: "Pester", Version: "5.3.0"},
+		"RequiredModules: PSScriptAnalyzer":  {Ecosystem: "psgallery", Package: "PSScriptAnalyzer", Version: "1.21.0", Pinned: true},
 		"RequiredModules: Az.Accounts":       {Ecosystem: "psgallery", Package: "Az.Accounts"},
 		"RootModule: Tools.psm1":             {Local: "tools/Tools/Tools.psm1"},
 		"NestedModules: Private/Helpers.ps1": {Local: "tools/Tools/Private/Helpers.ps1"},

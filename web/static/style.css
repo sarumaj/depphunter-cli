@@ -29,6 +29,7 @@
   --no-data: #d9d7d0;   /* history modes: no commits in range */
   --pkg: #8f8b80;
   --pkg-unresolved: #c9c6bc;
+  --pkg-floating: #c59a4a;
   /* edges use ink, not hues, so they never impersonate a language */
   --edge-out: #0b0b0b;
   --edge-in: #898781;
@@ -49,7 +50,7 @@
     --seq-1: #184f95; --seq-2: #1c5cab; --seq-3: #256abf; --seq-4: #2a78d6;
     --seq-5: #3987e5; --seq-6: #6da7ec; --seq-7: #9ec5f4;
     --water: #11171b; --sky: #1b2738; --sky-top: #03060d; --sea: #0b1a26; --land: #3b3934; --terrace-a: #2a2a28; --terrace-b: #34332f;
-    --district: #55534d; --no-data: #3a3935; --pkg: #7c786e; --pkg-unresolved: #4a4843;
+    --district: #55534d; --no-data: #3a3935; --pkg: #7c786e; --pkg-unresolved: #4a4843; --pkg-floating: #a07a2e;
     --edge-out: #ffffff; --edge-in: #898781; --dim: #45443f;
     --hl-keyword: #e87ba4; --hl-string: #5ccf9e; --hl-comment: #898781; --hl-number: #f0b24a;
     --hl-title: #86b6ef; --hl-type: #b3a9f2;
@@ -65,7 +66,7 @@
   --seq-1: #184f95; --seq-2: #1c5cab; --seq-3: #256abf; --seq-4: #2a78d6;
   --seq-5: #3987e5; --seq-6: #6da7ec; --seq-7: #9ec5f4;
   --water: #11171b; --sky: #1b2738; --sky-top: #03060d; --sea: #0b1a26; --land: #3b3934; --terrace-a: #2a2a28; --terrace-b: #34332f;
-  --district: #55534d; --no-data: #3a3935; --pkg: #7c786e; --pkg-unresolved: #4a4843;
+  --district: #55534d; --no-data: #3a3935; --pkg: #7c786e; --pkg-unresolved: #4a4843; --pkg-floating: #a07a2e;
   --edge-out: #ffffff; --edge-in: #898781; --dim: #45443f;
   --hl-keyword: #e87ba4; --hl-string: #5ccf9e; --hl-comment: #898781; --hl-number: #f0b24a;
   --hl-title: #86b6ef; --hl-type: #b3a9f2;

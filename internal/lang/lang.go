@@ -39,7 +39,14 @@ type Target struct {
 	Local     string // relative path of a project file or directory
 	Ecosystem string // ecosystem id, e.g. "go", "go-std", "npm"
 	Package   string // package / module name within the ecosystem
-	Version   string
+	Version   string // the version in use: exact when Pinned, else what the manifest says
+	// Requested is what the manifest asked for when a lock file resolved it to
+	// something else: "^4.2.0" locked to 4.3.1.
+	Requested string
+	// Pinned marks a dependency fixed to one version - by a lock file, an exact
+	// specifier or a digest - rather than one that moves when it is next installed
+	// (see Pinned in version.go).
+	Pinned bool
 	// Unresolved means the package's owning module is unknown (missing from manifests).
 	Unresolved bool
 }

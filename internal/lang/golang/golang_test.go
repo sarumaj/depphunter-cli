@@ -25,8 +25,9 @@ func TestImportResolution(t *testing.T) {
 		"net/http":                      {Ecosystem: "go-std", Package: "net/http"},
 		"example.com/app/internal/util": {Local: "app/internal/util"},
 		"example.com/lib/sub":           {Local: "lib/sub"},
-		"github.com/spf13/cobra/doc":    {Ecosystem: "go", Package: "github.com/spf13/cobra", Version: "v1.8.0"},
-		"github.com/undeclared/thing":   {Ecosystem: "go", Package: "github.com/undeclared/thing", Unresolved: true},
+		// A require line is the version the build selects, so Go modules are pinned.
+		"github.com/spf13/cobra/doc":  {Ecosystem: "go", Package: "github.com/spf13/cobra", Version: "v1.8.0", Pinned: true},
+		"github.com/undeclared/thing": {Ecosystem: "go", Package: "github.com/undeclared/thing", Unresolved: true},
 	})
 }
 

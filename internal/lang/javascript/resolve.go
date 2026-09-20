@@ -159,8 +159,9 @@ func (r *resolver) resolve(spec, from string) lang.Target {
 	if strings.HasPrefix(spec, "~") || strings.HasPrefix(spec, "#") || strings.HasPrefix(spec, "@/") {
 		return lang.Target{}
 	}
-	version, declared := r.declared(pkg, dir)
-	return lang.Target{Ecosystem: ecoNPM, Package: pkg, Version: version, Unresolved: !declared}
+	t, declared := r.declared(pkg, dir)
+	t.Ecosystem, t.Package, t.Unresolved = ecoNPM, pkg, !declared
+	return t
 }
 
 // splitPackage splits "@scope/name/sub/path" into "@scope/name" and "sub/path".
@@ -249,22 +250,24 @@ func (r *resolver) viaConfig(c *tsconfig, spec string) (lang.Target, bool) {
 }
 
 // declared looks up pkg in the nearest package.json files that declare it, preferring
-// the exact version from the nearest package-lock.json.
-func (r *resolver) declared(pkg, dir string) (string, bool) {
+// the exact version from the nearest package-lock.json: the range in package.json is
+// what was asked for, the lock is what is installed.
+func (r *resolver) declared(pkg, dir string) (lang.Target, bool) {
 	for d := dir; ; d = path.Dir(d) {
 		if v, ok := r.deps[d][pkg]; ok {
 			for l := d; ; l = path.Dir(l) {
 				if exact := r.locks[l][pkg]; exact != "" {
-					return exact, true
+					return lang.Target{Version: exact, Requested: v, Pinned: true}, true
 				}
 				if l == "." {
 					break
 				}
 			}
-			return v, true
+			// Without a lock only a complete version pins: npm reads "1.2" as 1.2.x.
+			return lang.Target{Version: v, Pinned: lang.PinnedSemver(v)}, true
 		}
 		if d == "." {
-			return "", false
+			return lang.Target{}, false
 		}
 	}
 }

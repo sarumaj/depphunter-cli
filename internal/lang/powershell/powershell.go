@@ -34,7 +34,7 @@ const (
 type Plugin struct{}
 
 func (Plugin) Name() string { return "powershell" }
-func (Plugin) Version() int { return 1 }
+func (Plugin) Version() int { return 2 }
 func (Plugin) Claims(f *scan.File) bool {
 	switch strings.ToLower(path.Ext(f.Path)) {
 	case ".ps1", ".psm1", ".psd1":
@@ -180,10 +180,18 @@ func importModuleNames(args []string) []string {
 	return names
 }
 
-type moduleSpec struct{ name, version string }
+// moduleSpec is a module requirement: RequiredVersion names one version, while
+// ModuleVersion is a minimum the installed module may exceed.
+type moduleSpec struct {
+	name, version string
+	exact         bool
+}
 
 func (m moduleSpec) requires() string {
 	if m.version != "" {
+		if m.exact {
+			return refRequires + "==" + m.version
+		}
 		return refRequires + "=" + m.version
 	}
 	return refRequires
@@ -192,7 +200,7 @@ func (m moduleSpec) requires() string {
 var (
 	hashtable = regexp.MustCompile(`@\{[^}]*\}`)
 	hashName  = regexp.MustCompile(`(?i)ModuleName\s*=\s*['"]([^'"]+)['"]`)
-	hashVer   = regexp.MustCompile(`(?i)(?:RequiredVersion|ModuleVersion)\s*=\s*['"]([^'"]+)['"]`)
+	hashVer   = regexp.MustCompile(`(?i)(RequiredVersion|ModuleVersion)\s*=\s*['"]([^'"]+)['"]`)
 	bareword  = regexp.MustCompile(`'([^']+)'|"([^"]+)"|([A-Za-z][\w.\-]*)`)
 	quotedStr = regexp.MustCompile(`'([^']+)'|"([^"]+)"`)
 )
@@ -204,8 +212,11 @@ func moduleSpecs(s string) []moduleSpec {
 	for _, t := range hashtable.FindAllString(s, -1) {
 		if n := hashName.FindStringSubmatch(t); n != nil {
 			spec := moduleSpec{name: n[1]}
-			if v := hashVer.FindStringSubmatch(t); v != nil {
-				spec.version = v[1]
+			for _, v := range hashVer.FindAllStringSubmatch(t, -1) {
+				// RequiredVersion wins: a table may carry both.
+				if exact := strings.EqualFold(v[1], "RequiredVersion"); exact || !spec.exact {
+					spec.version, spec.exact = v[2], exact
+				}
 			}
 			out = append(out, spec)
 		}
