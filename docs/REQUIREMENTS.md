@@ -468,6 +468,16 @@ from the command (the command tests).
   block instead of beside it.
 - The selection outline sits on its box (it floated half a box too high since
   M7); in walk mode it is hidden behind nearer geometry.
+- Walk mode hands the walker a tool, drawn in front of the camera as a hand and
+  what it holds, and the gesture of using it is animated rather than implied: a
+  rod loads and casts, a net sweeps across the view, a camera's shutter kicks
+  back, a bubble wand waves, a dart gun recoils. `T` takes out the next one and
+  the choice is saved with the rest of the view (`ui.tool`).
+- A tool carries what it throws (a bobber trailing its line, a spinning hoop, a
+  wobbling bubble, a dart that points along its flight - or nothing at all, for
+  the camera, whose photograph arrives the moment it is taken), what the HUD
+  calls its tally, and its own aim helper: the crosshair belongs to the dart,
+  not to every tool.
 - Reading the details of what was just hit holds the view still. The panel takes
   the pointer, and a freed cursor steering the same scene as a reticle fixed in
   the centre is two controls fighting over one view: while the panel is open the

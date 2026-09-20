@@ -213,6 +213,43 @@ main { position: relative; flex: 1; min-height: 0; }
 #walk-hud.compact .w-keys { display: none; } /* folded away once the walker gets going */
 #walk-hud .crosshair { transition: width 0.12s, height 0.12s; }
 #walk-hud.scoped .crosshair { width: 64px; height: 64px; } /* looking through the scope */
+
+/* The aim helper belongs to the tool in your hands, not to first-person shooters:
+   a bobber for the rod, a hoop for the net, a viewfinder for the camera, a soft ring
+   for bubbles. The scope reticle above is the dart's. */
+#walk-hud[data-tool="bobber"] .crosshair,
+#walk-hud[data-tool="rod"] .crosshair {
+  width: 22px; height: 22px; border-width: 2px; border-color: #e4402f;
+  background:
+    linear-gradient(#f2f4f7, #f2f4f7) top / 100% 50% no-repeat,
+    radial-gradient(circle, var(--text) 0 1.5px, transparent 2px);
+}
+#walk-hud[data-tool="net"] .crosshair {
+  width: 34px; height: 34px; border-style: dashed; border-width: 2px;
+  background: radial-gradient(circle, transparent 0 40%, color-mix(in srgb, var(--text) 18%, transparent) 41%);
+}
+#walk-hud[data-tool="camera"] .crosshair {
+  width: 46px; height: 34px; border: none; border-radius: 0;
+  background:
+    linear-gradient(var(--text), var(--text)) left top / 10px 2px no-repeat,
+    linear-gradient(var(--text), var(--text)) left top / 2px 10px no-repeat,
+    linear-gradient(var(--text), var(--text)) right top / 10px 2px no-repeat,
+    linear-gradient(var(--text), var(--text)) right top / 2px 10px no-repeat,
+    linear-gradient(var(--text), var(--text)) left bottom / 10px 2px no-repeat,
+    linear-gradient(var(--text), var(--text)) left bottom / 2px 10px no-repeat,
+    linear-gradient(var(--text), var(--text)) right bottom / 10px 2px no-repeat,
+    linear-gradient(var(--text), var(--text)) right bottom / 2px 10px no-repeat;
+}
+#walk-hud[data-tool="bubbles"] .crosshair {
+  width: 26px; height: 26px; border-color: #7fc8f0; border-width: 2px;
+  background: radial-gradient(circle at 35% 35%, #ffffff55 0 20%, transparent 21%);
+}
+/* A photograph has no flight to watch: the viewfinder blinks instead. */
+#walk-hud .crosshair.flash { animation: shutter 0.35s ease-out; }
+@keyframes shutter {
+  0% { box-shadow: 0 0 0 2000px rgba(255, 255, 255, 0.55); }
+  100% { box-shadow: 0 0 0 2000px rgba(255, 255, 255, 0); }
+}
 #walk-hud kbd { font: 11px ui-monospace, monospace; border: 1px solid var(--border); border-radius: 3px; padding: 0 3px; background: var(--page); }
 main.walking #legend { display: none; }
 #walk[aria-pressed=true] { background: var(--accent); color: #fff; border-color: var(--accent); }

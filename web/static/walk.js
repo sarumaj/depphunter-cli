@@ -2,12 +2,16 @@
 // lives on the flat map (layout coordinates) - collisions, heights and darts are all
 // computed there - and MapScene bends what is drawn around the walker's feet.
 //
-// The dependency hunt: fire tracking darts at buildings. A hit tags the module: it is
-// selected, so its dependency trails light up, and a beacon marks it for the rest
-// of the session. A second dart in an already tagged building opens its details.
+// The dependency hunt: whatever the tool in your hands is - a fishing rod, a net, a
+// camera, a bubble wand, a tracking dart (tools.js) - using it on a building tags the
+// module: it is selected, so its dependency trails light up, and a beacon marks it
+// for the rest of the session. Using it a second time on a tagged building opens its
+// details. The hand and the tool are drawn in front of the camera and swing when
+// used, so the gesture is visible rather than implied.
 
 import * as THREE from './vendor/three.module.min.js';
 import { rampsFor, rampHeight, bridgesFor, bridgeHeight, bridgeBounds } from './city.js';
+import { TOOLS, TOOL_IDS, DEFAULT_TOOL, toolFor, idleTool } from './tools.js';
 
 // A building is one unit wide and its storeys 0.3 high (city.js): the walker is
 // about a storey and a half tall.
@@ -26,6 +30,7 @@ const MAX_LOOK_STEP = 250;  // pixels; larger pointer movements are glitches, no
 // Degrees: the default view, the wheel's zoom range, and the view through the scope
 // (right button).
 const FOV = 70, MIN_FOV = 30, MAX_FOV = 90, SCOPE_FOV = 22;
+const SWING = 0.45;         // seconds a tool takes to swing and settle
 // How far the walker may leave the map: over the water beyond the outermost shore,
 // and above its tallest building when flying.
 const SHORE_MARGIN = 3, SKY_MARGIN = 12;
@@ -36,7 +41,7 @@ const SHORE_MARGIN = 3, SKY_MARGIN = 12;
 const KEYS = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   'Space', 'ShiftLeft', 'ShiftRight', 'KeyC', 'KeyF', 'KeyE', 'KeyQ', 'Enter',
-  'Escape', 'KeyV',
+  'Escape', 'KeyV', 'KeyT',
 ]);
 
 // Planet curvature, by the character typed rather than the key's place on the board:
@@ -74,6 +79,9 @@ export class Walker {
     // the freed cursor and the reticle in the centre both steer the same scene, and
     // reading about a building means fighting it.
     this.frozen = false;
+    this.tool = toolFor(hooks.tool?.() || DEFAULT_TOOL);
+    this.viewmodel = null;      // the hand and its tool, parented to the walk camera
+    this.swing = -1;            // seconds into the current gesture, -1 when idle
     this.p = { x: 0, z: 0, feet: 0, vy: 0, yaw: 0, pitch: 0, ground: true, fly: false };
     this.radius = 40;
     this.fov = FOV;
@@ -145,6 +153,7 @@ export class Walker {
     this.hud.hidden = false;
     this.scene.setWalking(true, this.radius);
     this.scene.scene.add(this.beacons);
+    this.showTool();
     this.setFog();
     if (box) this.teleport(box);
     else Object.assign(this.p, { x: block.x, z: block.z + block.d / 2 - 0.15, yaw: 0, pitch: -0.15 });
@@ -167,6 +176,7 @@ export class Walker {
     for (const dart of this.darts) this.scene.scene.remove(dart.mesh);
     this.darts = [];
     this.scene.scene.remove(this.beacons);
+    this.hideTool();
     if (document.pointerLockElement) document.exitPointerLock();
     cancelAnimationFrame(this.frame);
     this.hud.hidden = true;
@@ -210,6 +220,64 @@ export class Walker {
     p.yaw = Math.atan2(-(box.x - s.x), -(box.z - s.z));
     const dist = Math.hypot(box.x - s.x, box.z - s.z);
     p.pitch = clamp(Math.atan2(box.y + box.h / 2 - (s.h + EYE), dist), -0.6, 0.9);
+  }
+
+  // ------------------------------------------------------------------ the tool
+
+  /** Put the hand and its tool in front of the camera. */
+  showTool() {
+    this.hideTool();
+    // A camera draws its children only when it is itself part of the scene.
+    this.scene.scene.add(this.scene.walkCamera);
+    this.viewmodel = this.tool.viewmodel();
+    this.viewmodel.userData.restY = this.viewmodel.position.y;
+    this.scene.walkCamera.add(this.viewmodel);
+    this.hud.dataset.tool = this.tool.id;
+  }
+
+  hideTool() {
+    if (this.viewmodel) {
+      this.scene.walkCamera.remove(this.viewmodel);
+      this.viewmodel = null;
+    }
+    this.scene.scene.remove(this.scene.walkCamera);
+  }
+
+  /** Take another tool out: same hunt, different gesture. */
+  setTool(id) {
+    this.tool = toolFor(id);
+    this.swing = -1;
+    if (this.active) {
+      this.showTool();
+      this.drawHud();
+      this.flash(`${this.tool.label}. ${this.tool.hint}`);
+    }
+    this.hooks.onTool?.(this.tool.id);
+  }
+
+  nextTool() {
+    const ids = TOOL_IDS;
+    this.setTool(ids[(ids.indexOf(this.tool.id) + 1) % ids.length]);
+  }
+
+  // The tool breathes while it waits and swings while it is used; the swing is what
+  // makes the gesture legible, so it runs to its end even if the shot lands sooner.
+  poseTool(dt, now) {
+    const vm = this.viewmodel;
+    if (!vm) return;
+    if (this.swing >= 0) {
+      this.swing += dt;
+      const u = this.swing / SWING;
+      if (u >= 1) {
+        this.swing = -1;
+        vm.position.set(0.26, vm.userData.restY, -0.55);
+        vm.rotation.set(0.1, -0.25, 0);
+      } else {
+        this.tool.pose(vm, u, now);
+        return;
+      }
+    }
+    idleTool(vm, now);
   }
 
   /**
@@ -276,6 +344,7 @@ export class Walker {
       else if (SMALLER.has(e.key)) this.setRadius(this.radius / 1.25);
       switch (e.code) {
         case 'KeyF': this.p.fly = !this.p.fly; this.p.vy = 0; this.drawHud(); break;
+        case 'KeyT': this.nextTool(); break;
         case 'Escape':
           // Browsers usually swallow the Esc that frees the pointer; if not, free it first.
           if (document.pointerLockElement) document.exitPointerLock();
@@ -378,6 +447,7 @@ export class Walker {
       if (this.p.fly) this.setFog();
       this.zoom(dt);
       this.updateDarts(dt);
+      this.poseTool(dt, now);
       this.scene.setWalker(this.p.x, this.p.feet, this.p.z, EYE, this.p.yaw, this.p.pitch);
       if (!this.frozen) this.updateAim();
       this.scene.renderNow();
@@ -565,24 +635,49 @@ export class Walker {
 
   // ------------------------------------------------------------------ darts
 
-  // A dart fired at an aimed box flies a shallow arc to the aimed point and always
-  // hits; fired at nothing it flies ahead under gravity until it hits something or
-  // falls into the water.
+  // Using the tool on an aimed box sends whatever it throws along a shallow arc to
+  // the aimed point, and it always arrives; used on nothing it flies ahead under
+  // gravity until it hits something or falls into the water. A tool that throws
+  // nothing - the camera - reaches its target at once.
   fire() {
     if (this.frozen) return;
     const p = this.p;
+    const tool = this.tool;
+    this.swing = 0; // the hand moves whether or not anything flies
+    const target = this.aimed(), to = this.aim.point;
+
+    if (!tool.projectile) {
+      if (tool.flash) this.screenFlash();
+      if (target) this.tag(target);
+      return;
+    }
     const start = new THREE.Vector3(p.x, p.feet + EYE - 0.08, p.z);
-    const mesh = dartMesh(this.scene);
+    const mesh = tool.projectile();
     mesh.position.copy(start);
     this.scene.scene.add(mesh);
-    const target = this.aimed(), to = this.aim.point;
+    const shot = { mesh, t: 0, tool };
+    if (tool.line) { // a cast trails its line back to the rod
+      const geo = new THREE.BufferGeometry().setFromPoints([start.clone(), start.clone()]);
+      shot.line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: tool.line }));
+      shot.line.frustumCulled = false;
+      this.scene.scene.add(shot.line);
+    }
     if (target) {
       const dist = start.distanceTo(to);
-      this.darts.push({ mesh, start, to, target, t: 0, T: Math.max(0.12, dist / DART_SPEED), arc: 0.05 + dist * 0.03 });
+      Object.assign(shot, { start, to, target, T: Math.max(0.12, dist / tool.speed), arc: (0.05 + dist * 0.03) * tool.arc });
     } else {
       const dir = new THREE.Vector3(-Math.sin(p.yaw) * Math.cos(p.pitch), Math.sin(p.pitch) + 0.04, -Math.cos(p.yaw) * Math.cos(p.pitch));
-      this.darts.push({ mesh, vel: dir.multiplyScalar(DART_SPEED), t: 0 });
+      shot.vel = dir.multiplyScalar(tool.speed);
     }
+    this.darts.push(shot);
+  }
+
+  // A photograph has no flight to watch, so the screen says it happened.
+  screenFlash() {
+    const el = this.hud.querySelector('.crosshair');
+    el.classList.remove('flash');
+    void el.offsetWidth; // restart the animation
+    el.classList.add('flash');
   }
 
   updateDarts(dt) {
@@ -606,11 +701,21 @@ export class Walker {
         if (hit && hit.kind !== 'land' && hit.kind !== 'terrace') this.tag(hit);
         if (hit || m.position.y < WATER || dart.t > 4) done.push(dart);
       }
-      // Point along the flight path.
-      if (dir.subVectors(m.position, prev).lengthSq() > 1e-10) m.quaternion.setFromUnitVectors(FORWARD, dir.normalize());
+      // A dart points along its flight; a hoop spins, a bubble wobbles, a bobber
+      // just bobs along.
+      if (m.userData.aim && dir.subVectors(m.position, prev).lengthSq() > 1e-10) {
+        m.quaternion.setFromUnitVectors(FORWARD, dir.normalize());
+      }
+      if (m.userData.spin) m.rotation.z += m.userData.spin * dt;
+      if (m.userData.wobble) m.scale.set(1 + Math.sin(dart.t * 9) * 0.07, 1 - Math.sin(dart.t * 9) * 0.07, 1);
+      if (dart.line) { // keep the line between the walker's hand and what was cast
+        const hand = new THREE.Vector3(this.p.x, this.p.feet + EYE - 0.05, this.p.z);
+        dart.line.geometry.setFromPoints([hand, m.position.clone()]);
+      }
     }
     for (const dart of done) {
       this.scene.scene.remove(dart.mesh);
+      if (dart.line) this.scene.scene.remove(dart.line);
       this.darts.splice(this.darts.indexOf(dart), 1);
     }
   }
@@ -654,11 +759,13 @@ export class Walker {
       this.frozen ? 'reading' : this.p.fly ? 'flying' : 'walking';
     this.hud.querySelector('.w-tagged').textContent = this.tagged.size;
     this.hud.querySelector('.w-radius').textContent = Math.round(this.radius);
+    this.hud.querySelector('.w-tool').textContent = this.tool.label;
+    this.hud.querySelector('.w-noun').textContent = this.tool.noun;
     this.hud.querySelector('.w-hint').textContent = this.frozen
       ? 'The view is held still while you read · Enter or a click on the map: walk on · Esc: close · V: back to the map'
       : locked
-        ? 'Click: tag a building, hit it again for details · hold right: scope · V: back to the map · Esc: free the mouse · ?: all controls'
-        : 'Click the map to capture the mouse, or drag to look · V / Esc: back to the map · ?: all controls';
+        ? `${this.tool.hint} · hold right: scope · T: another tool · V: back to the map · Esc: free the mouse`
+        : 'Click the map to capture the mouse, or drag to look · T: another tool · V / Esc: back to the map';
   }
 }
 
@@ -667,26 +774,9 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 // The walker's footprint, sampled at its centre and four corners (height).
 const PROBES = [[0, 0], [BODY, BODY], [BODY, -BODY], [-BODY, BODY], [-BODY, -BODY]];
 
-const DART_SPEED = 30;
 const FORWARD = new THREE.Vector3(0, 0, 1); // the dart geometry's nose
 const BEACON = '#ff8a1f';
 let beaconParts = null;
 
 // A tracking dart: a dark shaft, a glowing tip and two crossed fins, nose along +z.
 // Its materials bend like the map's.
-let dart = null;
-function dartMesh(scene) {
-  dart ||= [
-    [new THREE.CylinderGeometry(0.008, 0.008, 0.26, 6).rotateX(Math.PI / 2), '#2b2d31'],
-    [new THREE.ConeGeometry(0.018, 0.06, 8).rotateX(Math.PI / 2).translate(0, 0, 0.16), BEACON],
-    [new THREE.BoxGeometry(0.07, 0.003, 0.06).translate(0, 0, -0.11), '#d8dadf'],
-    [new THREE.BoxGeometry(0.003, 0.07, 0.06).translate(0, 0, -0.11), '#d8dadf'],
-  ].map(([geo, color]) => [geo, scene.bendable(new THREE.MeshBasicMaterial({ color }))]);
-  const g = new THREE.Group();
-  for (const [geo, mat] of dart) {
-    const m = new THREE.Mesh(geo, mat);
-    m.frustumCulled = false;
-    g.add(m);
-  }
-  return g;
-}

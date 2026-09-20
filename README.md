@@ -27,11 +27,14 @@ Browse any code base as an interactive isometric archipelago in your browser.
   **double-click** to expand or collapse directories and files (files expand
   into their symbols).
 - **Hunt** dependencies on foot (`V`): walk the map in first person on a tiny
-  planet, `WASD` to move, the mouse to look, `Space` to jump, `F` to fly. Fire
-  tracking darts (click) at buildings: a hit tags the module, lights up its
-  dependency trails and plants a beacon over it. Hold the right button for the
-  scope, the mouse wheel zooms. Terraces become city blocks: the space between
-  buildings is a connected street network with sidewalks, lane markings and
+  planet, `WASD` to move, the mouse to look, `Space` to jump, `F` to fly. You
+  hold a tool - a fishing rod by default - drawn in your hands, and using it
+  (click) on a building tags the module, lights up its dependency trails and
+  plants a beacon over it. `T` takes out another: a butterfly net, a camera, a
+  bubble wand, or the tracking dart. Each swings its own way and brings its own
+  aim helper. Hold the right button for the scope, the mouse wheel zooms.
+  Terraces become city blocks: the space between buildings is a connected street
+  network with sidewalks, lane markings and
   crossings, ramps and stairs lead between levels, empty lots are parks with
   trees and bushes, and bridges cross the water to every island.
 
@@ -120,6 +123,7 @@ ui:
   height_scale: sqrt
   show_std: false
   expand_depth: 0
+  tool: rod                       # walk mode: rod, net, camera, bubbles, dart
   hide_languages: [Markdown]      # filters, as the Filters panel sets them
   hide_islands: [npm]
   path_filter: "!**/testdata/**"
@@ -439,6 +443,7 @@ mode you can go 3 units out over the water and 12 above the tallest building.
 | `Enter`, `Backspace`      | expand–collapse selection, select parent |
 | `→` `←` in the panel      | open / close a dependency row            |
 | `Enter` while reading     | close the details and walk on            |
+| `T` in walk mode          | take out another tool                    |
 | `Q` `E`                   | rotate 90°                               |
 | `F`                       | fit to screen                            |
 | `+` `−`                   | expand / collapse one level everywhere   |

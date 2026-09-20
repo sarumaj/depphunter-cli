@@ -31,6 +31,7 @@ const state = {
   referencesStatus: 'off', // off | loading | ready | none
   linkKind: 'import',     // edges drawn and listed for the selection: import | reference
   theme: 'auto',
+  tool: '',               // what walk mode holds; empty leaves tools.js its default
 };
 
 let model, L, pal, langs, scene, panel, searchItems, defaultHiddenEcosystems, maxDepth = 0, fileCount = 0;
@@ -47,7 +48,7 @@ let aimX = 0;     // where the walk-mode tooltip was last placed
 async function main() {
   const [{ graph, version }, cfg] = await Promise.all([fetchGraph(), fetchConfig()]);
   config = cfg;
-  Object.assign(state, { colorBy: cfg.colorBy, heightScale: cfg.heightScale, theme: cfg.theme });
+  Object.assign(state, { colorBy: cfg.colorBy, heightScale: cfg.heightScale, theme: cfg.theme, tool: cfg.tool || '' });
   // Saved filters (config ui.hide_languages / hide_islands / path_filter).
   for (const l of cfg.hideLanguages || []) state.filters.hiddenLangs.add(l);
   for (const e of cfg.hideIslands || []) state.filters.hiddenEcosystems.add('e:' + e);
@@ -84,16 +85,18 @@ async function main() {
       showTooltip(i, x, y);
     },
     onHit: (box, tagged) => {
+      const tool = walker.tool;
       select(box.node);
-      walker.flash(`Tagged ${box.node.name} - ${tagged} tagged so far; its dependency trails are lit. Hit it again for its details`);
+      walker.flash(`${box.node.name} ${tool.noun} - ${tagged} ${tool.noun} so far; its dependency trails are lit. ` +
+        `Use the ${tool.label.toLowerCase()} on it again for its details`);
     },
-    // A second dart in a tagged building, or Enter: read about what the reticle is
-    // on. The panel needs the pointer, so it is freed; a click on the map (or
-    // closing the panel) captures it again.
+    // Using the tool a second time on a tagged building, or Enter: read about what
+    // the reticle is on. The panel needs the pointer, so it is freed; a click on the
+    // map (or closing the panel) captures it again.
     onInspect: box => {
       const n = box ? box.node : state.selected;
       if (!n) {
-        walker.flash('Tag a building with a dart, then hit it again (or press Enter) to see its details');
+        walker.flash(`${walker.tool.verb} a building, then use the tool on it again (or press Enter) for its details`);
         return;
       }
       select(n);
@@ -104,6 +107,8 @@ async function main() {
       walker.flash(`Details of ${n.name} - click the map to keep walking`);
     },
     onExit: () => setWalking(false),
+    tool: () => state.tool,
+    onTool: id => { state.tool = id; },
     onRender: drawLabels,
   });
   panel = new Panel($('panel'), $('panel-body'), {
@@ -209,6 +214,7 @@ function viewSettings() {
     // Standard-library islands follow showStd; save only the other hidden islands.
     hideIslands: hiddenIslands.filter(id => !stdIslands.some(e => e.id === 'e:' + id)),
     pathFilter: state.filters.path,
+    tool: state.tool,
   };
 }
 

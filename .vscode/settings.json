@@ -165,6 +165,7 @@
         "trimpath",
         "Tsvg",
         "unflatten",
+        "viewmodel",
         "vnoise",
         "vulncheck",
         "WASD",
