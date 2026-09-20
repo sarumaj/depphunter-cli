@@ -24,7 +24,10 @@ type UI struct {
 	Theme       string `yaml:"theme" mapstructure:"theme" json:"theme"`                     // auto | light | dark
 	ColorBy     string `yaml:"color_by" mapstructure:"color_by" json:"colorBy"`             // language | size | commits | churn | age | authors
 	HeightScale string `yaml:"height_scale" mapstructure:"height_scale" json:"heightScale"` // linear | sqrt | log
-	ShowStd     bool   `yaml:"show_std" mapstructure:"show_std" json:"showStd"`
+	// Style is what the map is dressed as (see web/static/city.js): the same layout
+	// drawn as a city, a printed circuit board or a galaxy.
+	Style   string `yaml:"style,omitempty" mapstructure:"style" json:"style"` // city | circuit | galaxy
+	ShowStd bool   `yaml:"show_std" mapstructure:"show_std" json:"showStd"`
 	// Tool is what walk mode puts in the walker's hands (see web/static/tools.js).
 	Tool        string `yaml:"tool,omitempty" mapstructure:"tool" json:"tool"`
 	ExpandDepth int    `yaml:"expand_depth" mapstructure:"expand_depth" json:"expandDepth"` // 0 = auto, -1 = everything
@@ -40,6 +43,12 @@ func (u UI) Validate() error {
 		oneOf("theme", u.Theme, "auto", "light", "dark"),
 		oneOf("color-by", u.ColorBy, "language", "size", "commits", "churn", "age", "authors"),
 		oneOf("height-scale", u.HeightScale, "linear", "sqrt", "log"),
+		func() error {
+			if u.Style == "" {
+				return nil // the browser's default
+			}
+			return oneOf("style", u.Style, "city", "circuit", "galaxy")
+		}(),
 		func() error {
 			if u.Tool == "" {
 				return nil // the browser's default
@@ -104,7 +113,7 @@ func Default() Config {
 		HistoryCommits: 10000,
 		LSPTimeout:     5 * time.Minute,
 		MaxFileSize:    2 << 20,
-		UI:             UI{Theme: "auto", ColorBy: "language", HeightScale: "sqrt"},
+		UI:             UI{Theme: "auto", ColorBy: "language", HeightScale: "sqrt", Style: "city"},
 	}
 }
 
@@ -119,6 +128,7 @@ func RegisterFlags(fs *pflag.FlagSet) {
 	fs.String("theme", d.UI.Theme, "color theme: auto, light, dark")
 	fs.String("color-by", d.UI.ColorBy, "building color: language, size, commits, churn, age, authors")
 	fs.String("height-scale", d.UI.HeightScale, "building height scale: linear, sqrt, log")
+	fs.String("style", d.UI.Style, "what the map is dressed as: city, circuit, galaxy")
 	fs.Bool("show-std", d.UI.ShowStd, "show standard-library islands")
 	fs.Int("expand-depth", d.UI.ExpandDepth, "initially expanded directory depth (0 = auto, -1 = all)")
 	fs.Bool("watch", false, "re-analyze on file changes and update the browser live")
@@ -143,7 +153,7 @@ var flagKeys = map[string]string{
 	"addr": "addr", "max-file-size": "max_file_size", "watch": "watch",
 	"history-commits": "history_commits", "resolve-depth": "resolve_depth", "online": "online",
 	"lsp": "lsp", "lsp-timeout": "lsp_timeout", "editor": "editor",
-	"theme": "ui.theme", "color-by": "ui.color_by", "height-scale": "ui.height_scale",
+	"theme": "ui.theme", "color-by": "ui.color_by", "height-scale": "ui.height_scale", "style": "ui.style",
 	"show-std": "ui.show_std", "expand-depth": "ui.expand_depth",
 }
 
@@ -156,7 +166,7 @@ var envKeys = map[string]string{
 	"addr": "ADDR", "open": "OPEN", "max_file_size": "MAX_FILE_SIZE", "watch": "WATCH", "cache": "CACHE",
 	"history": "HISTORY", "history_commits": "HISTORY_COMMITS", "resolve_depth": "RESOLVE_DEPTH", "online": "ONLINE",
 	"vulns": "VULNS", "lsp": "LSP", "lsp_timeout": "LSP_TIMEOUT",
-	"editor": "EDITOR", "ui.theme": "THEME", "ui.color_by": "COLOR_BY", "ui.height_scale": "HEIGHT_SCALE",
+	"editor": "EDITOR", "ui.theme": "THEME", "ui.color_by": "COLOR_BY", "ui.height_scale": "HEIGHT_SCALE", "ui.style": "STYLE",
 	"ui.show_std": "SHOW_STD", "ui.expand_depth": "EXPAND_DEPTH",
 }
 
@@ -252,7 +262,7 @@ func setDefaults(v *viper.Viper, d Config) {
 		"resolve_depth": d.ResolveDepth, "online": d.Online, "findings": d.Findings, "vulns": d.Vulns,
 		"lsp": d.LSP, "lsp_timeout": d.LSPTimeout,
 		"editor":   d.Editor,
-		"ui.theme": d.UI.Theme, "ui.color_by": d.UI.ColorBy, "ui.height_scale": d.UI.HeightScale,
+		"ui.theme": d.UI.Theme, "ui.color_by": d.UI.ColorBy, "ui.height_scale": d.UI.HeightScale, "ui.style": d.UI.Style,
 		"ui.show_std": d.UI.ShowStd, "ui.expand_depth": d.UI.ExpandDepth, "ui.tool": d.UI.Tool,
 		"ui.hide_languages": d.UI.HideLanguages, "ui.hide_islands": d.UI.HideIslands, "ui.path_filter": d.UI.PathFilter,
 	} {

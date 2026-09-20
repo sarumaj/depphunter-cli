@@ -14,7 +14,7 @@
 
 import * as THREE from './vendor/three.module.min.js';
 import { rampsFor, rampHeight, bridgesFor, bridgeHeight, bridgeBounds } from './city.js';
-import { TOOLS, TOOL_IDS, DEFAULT_TOOL, toolFor, idleTool } from './tools.js';
+import { TOOL_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool } from './tools.js';
 
 // A building is one unit wide and its storeys 0.3 high (city.js): the walker is
 // about a storey and a half tall.
@@ -35,6 +35,11 @@ const MAX_LOOK_STEP = 250;  // pixels; larger pointer movements are glitches, no
 // units away is two pixels wide, and the building behind it is one more click away in
 // any case.
 const BUG_AIM = t => 0.3 + t * 0.012;
+// The bug tracker: how far around the walker it sweeps, and how often it is redrawn.
+// A dozen times a second is plenty for something that turns as slowly as a walker.
+// The range follows the hunt - a four-file repository and a thousand-file one are both
+// worth seeing whole - within these bounds, and eases rather than jumping.
+const RADAR_MIN = 12, RADAR_MAX = 400, RADAR_MS = 85, RADAR_SIZE = 150;
 // Degrees: the default view, the wheel's zoom range, and the view through the scope
 // (right button).
 const FOV = 70, MIN_FOV = 30, MAX_FOV = 90, SCOPE_FOV = 22;
@@ -91,6 +96,7 @@ export class Walker {
     this.tool = toolFor(hooks.tool?.() || DEFAULT_TOOL);
     this.viewmodel = null;      // the hand and its tool, parented to the walk camera
     this.swing = -1;            // seconds into the current gesture, -1 when idle
+    this.pace = 0;              // how hard the walker is moving, for the tool's sway
     this.p = { x: 0, z: 0, feet: 0, vy: 0, yaw: 0, pitch: 0, ground: true, fly: false };
     this.radius = 40;
     this.fov = FOV;
@@ -289,14 +295,14 @@ export class Walker {
       const u = this.swing / SWING;
       if (u >= 1) {
         this.swing = -1;
-        vm.position.set(0.26, vm.userData.restY, -0.55);
-        vm.rotation.set(0.1, -0.25, 0);
+        this.tool.pose(vm, 1, now); // land the gesture on its own end state
+        restTool(vm);
       } else {
         this.tool.pose(vm, u, now);
         return;
       }
     }
-    idleTool(vm, now);
+    idleTool(vm, now, this.pace);
   }
 
   /**
@@ -310,6 +316,11 @@ export class Walker {
     if (on) {
       this.keys.clear(); // a key held when the panel opened must not walk on
       this.setScoped(false);
+      // The aim is not recomputed while frozen, so whatever the crosshair was on
+      // would keep its hover card - on top of the panel that is being read.
+      this.aim = { i: -1, point: null, bug: null };
+      this.showTarget(null);
+      this.hooks.onAim(-1);
     }
     this.drawHud();
   }
@@ -467,6 +478,7 @@ export class Walker {
       this.zoom(dt);
       this.updateDarts(dt);
       this.bugs?.update(dt, now);
+      this.drawRadar(now);
       this.poseTool(dt, now);
       this.scene.setWalker(this.p.x, this.p.feet, this.p.z, EYE, this.p.yaw, this.p.pitch);
       if (!this.frozen) this.updateAim();
@@ -513,6 +525,9 @@ export class Walker {
     if (ok(this.height(nx, p.z))) p.x = nx;
     const nz = p.z + mz * speed * dt;
     if (ok(this.height(p.x, nz))) p.z = nz;
+    // How hard the walker is moving, eased: the tool in their hands sways with it.
+    const effort = len > 0 ? (p.fly ? 0.3 : run ? 1.5 : 1) : 0;
+    this.pace += (effort - this.pace) * Math.min(1, dt * 7);
     // The key list folds away while moving and comes back after a pause.
     if (len > 0) {
       this.movedAt = performance.now();
@@ -699,6 +714,159 @@ export class Walker {
     this.darts.push(shot);
   }
 
+  // ------------------------------------------------------------------ the tracker
+
+  /**
+   * A top-down sweep centred on the walker and turning with them: every bug still on
+   * the streets as a dot in its severity's color, every module already tagged as a
+   * ring, and anything beyond the sweep's range pinned to its rim as an arrow - the
+   * point of the thing being to say which way to walk. Under it, how far the nearest
+   * bug is and what it is carrying.
+   */
+  drawRadar(now) {
+    const box = this.hud.querySelector('.w-radar');
+    if (!this.bugs?.bugs.length) {
+      box.hidden = true;
+      return;
+    }
+    box.hidden = false;
+    if (now - (this.radarAt || 0) < RADAR_MS) return;
+    this.radarAt = now;
+
+    const canvas = box.querySelector('canvas');
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    if (canvas.width !== Math.round(RADAR_SIZE * dpr)) {
+      canvas.width = canvas.height = Math.round(RADAR_SIZE * dpr);
+    }
+    const g = canvas.getContext('2d');
+    const cs = getComputedStyle(this.hud);
+    const v = name => cs.getPropertyValue(name).trim();
+    const size = RADAR_SIZE, c = size / 2, R = c - 7;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, size, size);
+
+    // The range fits whatever is still out there, so the sweep is never all centre
+    // dot or all rim arrows; it eases so a bug walking round a corner does not zoom.
+    const { x: px, z: pz, yaw } = this.p;
+    const live = this.bugs.bugs.filter(b => !b.caught && b.mesh);
+    let far = RADAR_MIN;
+    for (const bug of live) far = Math.max(far, Math.hypot(bug.mesh.position.x - px, bug.mesh.position.z - pz));
+    const want = clamp(far * 1.2, RADAR_MIN, RADAR_MAX);
+    this.radarRange = this.radarRange ? this.radarRange + (want - this.radarRange) * 0.12 : want;
+    const k = R / this.radarRange;
+
+    // The sweep itself: a disc, range rings, and the wedge the walker is looking into.
+    g.save();
+    g.beginPath();
+    g.arc(c, c, R, 0, Math.PI * 2);
+    g.fillStyle = v('--surface');
+    g.globalAlpha = 0.84;
+    g.fill();
+    g.globalAlpha = 1;
+    g.clip();
+    // The wedge is what the walker can actually see: the horizontal field of view,
+    // which is the vertical one widened by the aspect ratio.
+    const cam = this.scene.walkCamera;
+    const half = Math.atan(Math.tan((cam.fov * Math.PI / 180) / 2) * (cam.aspect || 1.6));
+    g.beginPath();
+    g.moveTo(c, c);
+    g.arc(c, c, R, -Math.PI / 2 - half, -Math.PI / 2 + half);
+    g.closePath();
+    g.fillStyle = v('--grid');
+    g.globalAlpha = 0.75;
+    g.fill();
+    g.globalAlpha = 1;
+    g.restore();
+    g.strokeStyle = v('--border');
+    g.lineWidth = 1;
+    for (const r of [R, R * 0.66, R * 0.33]) {
+      g.beginPath();
+      g.arc(c, c, r, 0, Math.PI * 2);
+      g.stroke();
+    }
+
+    // Everything is placed in the walker's frame: forward is up.
+    const sin = Math.sin(yaw), cos = Math.cos(yaw);
+    const place = (x, z) => {
+      const dx = x - px, dz = z - pz;
+      const u = dx * cos - dz * sin, f = -dx * sin - dz * cos;
+      const d = Math.hypot(u, f);
+      const inside = d * k <= R - 4;
+      const scale = inside ? k : (R - 4) / Math.max(d, 1e-6);
+      return { x: c + u * scale, y: c - f * scale, d, inside, angle: Math.atan2(u, f) };
+    };
+
+    // North, so the sweep can be read against the map it came from.
+    const n = place(px, pz - this.radarRange * 4);
+    g.fillStyle = v('--muted');
+    g.font = '600 9px system-ui, sans-serif';
+    g.textAlign = 'center';
+    g.textBaseline = 'middle';
+    g.fillText('N', n.x, n.y);
+
+    // Modules already tagged: where the hunt has been.
+    g.strokeStyle = v('--muted');
+    for (const b of this.boxes) {
+      if (b.kind === 'land' || !this.tagged.has(b.node.id)) continue;
+      const q = place(b.x, b.z);
+      if (!q.inside) continue;
+      g.beginPath();
+      g.arc(q.x, q.y, 2.6, 0, Math.PI * 2);
+      g.stroke();
+    }
+
+    // The bugs, worst drawn last so a critical one is never hidden under a nit.
+    const colors = this.bugs.colors;
+    live.sort((a, b) => severityRank(a.f.severity) - severityRank(b.f.severity));
+    let nearest = null;
+    for (const bug of live) {
+      const m = bug.mesh.position;
+      const q = place(m.x, m.z);
+      if (!nearest || q.d < nearest.d) nearest = { d: q.d, bug };
+      g.fillStyle = colors[bug.f.severity] || v('--muted');
+      if (q.inside) {
+        g.beginPath();
+        g.arc(q.x, q.y, 3, 0, Math.PI * 2);
+        g.fill();
+      } else {
+        // Out of range: an arrow on the rim, pointing the way.
+        g.save();
+        g.translate(q.x, q.y);
+        g.rotate(q.angle);
+        g.beginPath();
+        g.moveTo(0, -4);
+        g.lineTo(3, 3);
+        g.lineTo(-3, 3);
+        g.closePath();
+        g.fill();
+        g.restore();
+      }
+    }
+
+    // How far the sweep reaches, so a dot's distance can be read off it.
+    g.fillStyle = v('--muted');
+    g.font = '9px system-ui, sans-serif';
+    g.textAlign = 'right';
+    g.textBaseline = 'bottom';
+    g.fillText(`${Math.round(this.radarRange)}`, size - 2, size - 1);
+
+    // The walker, facing up.
+    g.fillStyle = v('--text');
+    g.beginPath();
+    g.moveTo(c, c - 5);
+    g.lineTo(c + 3.6, c + 4);
+    g.lineTo(c - 3.6, c + 4);
+    g.closePath();
+    g.fill();
+
+    const label = this.hud.querySelector('.w-nearest');
+    const { caught, total } = this.bugs.counts;
+    label.textContent = nearest
+      ? `nearest ${Math.round(nearest.d)} away · ${nearest.bug.f.severity}: ${nearest.bug.f.title}`
+      : `all ${total} bugs caught`;
+    if (!nearest && !caught) label.textContent = '';
+  }
+
   // Names what the crosshair is on while it is a bug, so it is clear what would be
   // caught before the tool is used.
   showTarget(bug) {
@@ -832,6 +1000,10 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 // The walker's footprint, sampled at its centre and four corners (height).
 const PROBES = [[0, 0], [BODY, BODY], [BODY, -BODY], [-BODY, BODY], [-BODY, -BODY]];
+
+// The tracker draws the worst bugs last, so a critical one is never hidden under a nit.
+const SEVERITY_ORDER = ['unknown', 'info', 'low', 'medium', 'high', 'critical'];
+const severityRank = s => SEVERITY_ORDER.indexOf(s);
 
 const FORWARD = new THREE.Vector3(0, 0, 1); // the dart geometry's nose
 const BEACON = '#ff8a1f';

@@ -684,6 +684,56 @@ the vector's, a repository with no reports and no `--online` asks nothing and
 shows nothing, and catching a bug in walk mode opens the same finding the side
 panel lists for its building.
 
+### M14 - Three styles, and something in your hands worth looking at
+
+- The map is dressed by a style (`--style`, `ui.style`): a city, a printed
+  circuit board, or a galaxy. All three share every measurement and every piece
+  of geometry - the same layout, the same street network, the same ramps and
+  bridges - and differ only in which painter answers "what surface is this?"
+  (one `uStyle` uniform) and in which props stand on it. A style is a look, not
+  a second renderer, and switching costs one prop rebuild.
+- The colors that carry data do not change with the style. Languages, the
+  history overlays, hover, selection and dimming read the same in all three;
+  what the style owns is the environment - the ground, the water, the sky - which
+  it takes from the stylesheet like everything else, so both themes still choose
+  their own values.
+- The board: chip packages with rows of pins and a printed part number, a
+  heatsink where a building is tall, copper traces down the middle of every
+  street with vias along them, a hatched ground pour, solder pads inside a
+  silkscreen outline around every part, capacitors and resistors where the trees
+  and bushes were, LEDs where the lamps were, and the board's own layered edge.
+- The galaxy: crystal spires, faceted and dark at the foot, with strata of light
+  across them and windows that read as stars; glowing conduits down every gap;
+  dust, rubble and beacons; nebulae and a star field instead of sea and sky.
+- The tool in the walker's hands is a hand: a palm with knuckles, four fingers of
+  two segments curled around the grip, a thumb across them, a wrist and a sleeve.
+  Every part carries a soft key light baked into its vertex colors, because an
+  unlit cylinder is a silhouette and the map has no lights to give it form. The
+  tools are built to the same standard: a rod with a cork grip, a tapering blank,
+  line guides and a reel with a handle; a net with a bound grip, a ferrule and a
+  bag with stiffening rings; a camera with a prism hump, a focus ring, a hood and
+  a shutter button, held in both hands; a wand with a bottle cap and a soap film
+  that thins and lets go; a launcher with a scope, an air cylinder and a dart
+  riding up after each shot.
+- A gesture has anticipation, a strike and a follow-through, not a ramp, and the
+  hand grips harder through it. Standing still the tool breathes; walking, it
+  rises and falls and swings across with the walker's weight.
+- While the details panel holds the pointer the crosshair is not recomputed, so
+  whatever it was last on has its hover card cleared: a card left on top of what
+  is being read is worse than no card.
+- Walk mode carries a tracker: a top-down sweep centred on the walker and turning
+  with them, with every bug still on the streets as a dot in its severity's
+  color, every tagged module as a ring, and anything beyond its range as an
+  arrow on the rim. Its range fits whatever is still out there and eases rather
+  than jumping, and under it is the distance to the nearest bug and what it
+  carries - a map with a thousand files is otherwise a map you cannot find a bug
+  on.
+
+*Accepted when* the same repository in all three styles keeps the same layout and
+the same language colors, a board's streets carry copper where a city's carry
+asphalt, opening a building's details in walk mode leaves no hover card on the
+panel, and the tracker points at a bug on the far side of the map.
+
 ### Known limits
 
 - Java imports name packages, not artifacts, so Maven dependencies are matched

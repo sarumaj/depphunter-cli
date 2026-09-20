@@ -485,7 +485,7 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		}
 		var buf bytes.Buffer
 		if err := web.WriteStatic(&buf, sn.g, ui, s.root, map[string]any{
-			"history": s.Lazy("history"), "references": s.Lazy("references"),
+			"history": s.Lazy("history"), "references": s.Lazy("references"), "findings": s.Lazy("findings"),
 		}); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
