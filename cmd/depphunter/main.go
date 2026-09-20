@@ -7,7 +7,6 @@ import (
 	"fmt"
 	"io"
 	"log"
-	"net"
 	"net/http"
 	"os"
 	"os/exec"
@@ -41,7 +40,6 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lsp"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 	"github.com/sarumaj/depphunter-cli/internal/server"
-	"github.com/sarumaj/depphunter-cli/internal/termview"
 	"github.com/sarumaj/depphunter-cli/internal/watch"
 	"github.com/sarumaj/depphunter-cli/web"
 )
@@ -312,9 +310,6 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 	}
 
 	log.Printf("serving at %s (Ctrl+C to stop)", url)
-	if cfg.Terminal {
-		return serveInTerminal(ctx, cfg, srv, httpSrv, ln, url)
-	}
 	if cfg.Open {
 		if err := browser.OpenURL(url); err != nil {
 			log.Printf("could not open browser: %v", err)
@@ -324,55 +319,6 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 		return err
 	}
 	return nil
-}
-
-// serveInTerminal serves in the background and draws the map in this terminal, which
-// the view then owns: the log is silenced while it runs, because a line printed into
-// the middle of a frame would stay there until the next full redraw. Returning ends
-// the session, so the server is shut down with the view.
-func serveInTerminal(ctx context.Context, cfg config.Config, srv *server.Server, httpSrv *http.Server,
-	ln net.Listener, url string) error {
-
-	served := make(chan error, 1)
-	stopped := make(chan struct{})
-	go func() {
-		err := httpSrv.Serve(ln)
-		if errors.Is(err, http.ErrServerClosed) {
-			err = nil
-		}
-		served <- err
-		close(stopped)
-	}()
-	defer func() {
-		srv.Close()
-		shutdown, cancel := context.WithTimeout(context.Background(), 3*time.Second)
-		defer cancel()
-		httpSrv.Shutdown(shutdown)
-		// Wait for the server to be down, not for its error: the select below may
-		// have taken that already, and receiving it twice would wait for ever.
-		<-stopped
-	}()
-
-	out := log.Writer()
-	log.SetOutput(io.Discard)
-	defer log.SetOutput(out)
-
-	viewed := make(chan error, 1)
-	go func() {
-		viewed <- termview.Run(ctx, termview.Options{
-			URL:      url,
-			Browser:  cfg.TerminalBrowser,
-			Graphics: cfg.TerminalGraphics,
-			Download: cfg.TerminalDownload,
-			SHA256:   cfg.TerminalSHA256,
-		})
-	}()
-	select {
-	case err := <-viewed:
-		return err
-	case err := <-served: // the listener died under us
-		return err
-	}
 }
 
 // watchDirs lists the directories holding analyzed files: ignored trees are not watched.

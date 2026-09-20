@@ -15,8 +15,6 @@ import (
 	"github.com/spf13/pflag"
 	"github.com/spf13/viper"
 	"gopkg.in/yaml.v3"
-
-	"github.com/sarumaj/depphunter-cli/internal/termview"
 )
 
 const ProjectFile = ".depphunter.yaml"
@@ -83,16 +81,7 @@ type Config struct {
 	LSPTimeout time.Duration `yaml:"lsp_timeout" mapstructure:"lsp_timeout"`
 	// Editor is a command template such as "code -g {file}:{line}"; empty = auto-detect.
 	Editor string `yaml:"editor" mapstructure:"editor"`
-	// Terminal draws the map in the terminal itself, through a headless browser.
-	// TerminalBrowser names the browser to drive (empty = look for one) and
-	// TerminalGraphics the protocol to draw with (see termview.Protocols).
-	Terminal        bool   `yaml:"terminal" mapstructure:"terminal"`
-	TerminalBrowser string `yaml:"terminal_browser" mapstructure:"terminal_browser"`
-	// TerminalDownload allows fetching a browser when none is installed.
-	TerminalDownload bool   `yaml:"terminal_download" mapstructure:"terminal_download"`
-	TerminalSHA256   string `yaml:"terminal_browser_sha256" mapstructure:"terminal_browser_sha256"`
-	TerminalGraphics string `yaml:"terminal_graphics" mapstructure:"terminal_graphics"`
-	UI               UI     `yaml:"ui" mapstructure:"ui"`
+	UI     UI     `yaml:"ui" mapstructure:"ui"`
 
 	// Export and Output are one-shot actions, so they only come from flags.
 	Export string `yaml:"-" mapstructure:"-"`
@@ -101,15 +90,14 @@ type Config struct {
 
 func Default() Config {
 	return Config{
-		Addr:             "127.0.0.1:0",
-		Open:             true,
-		Cache:            true,
-		History:          true,
-		HistoryCommits:   10000,
-		LSPTimeout:       5 * time.Minute,
-		MaxFileSize:      2 << 20,
-		TerminalGraphics: "auto",
-		UI:               UI{Theme: "auto", ColorBy: "language", HeightScale: "sqrt"},
+		Addr:           "127.0.0.1:0",
+		Open:           true,
+		Cache:          true,
+		History:        true,
+		HistoryCommits: 10000,
+		LSPTimeout:     5 * time.Minute,
+		MaxFileSize:    2 << 20,
+		UI:             UI{Theme: "auto", ColorBy: "language", HeightScale: "sqrt"},
 	}
 }
 
@@ -136,11 +124,6 @@ func RegisterFlags(fs *pflag.FlagSet) {
 	fs.Bool("lsp", false, "find symbol references with installed language servers (gopls, …)")
 	fs.Duration("lsp-timeout", d.LSPTimeout, "time budget for language servers")
 	fs.String("editor", "", `editor command template, e.g. "code -g {file}:{line}" (default: auto-detect)`)
-	fs.Bool("terminal", false, "draw the map in the terminal instead of opening a browser window")
-	fs.String("terminal-browser", "", "browser binary the terminal view drives (default: the first Chromium found)")
-	fs.Bool("terminal-download", false, "fetch a browser for the terminal view when none is installed")
-	fs.String("terminal-graphics", d.TerminalGraphics,
-		"how the terminal view draws: "+strings.Join(termview.Protocols(), ", "))
 	fs.String("export", "", "write the graph as json, graphml, dot or html and exit instead of serving")
 	fs.StringP("output", "o", "", "output file for --export (default: stdout)")
 }
@@ -150,9 +133,7 @@ var flagKeys = map[string]string{
 	"addr": "addr", "max-file-size": "max_file_size", "watch": "watch",
 	"history-commits": "history_commits", "resolve-depth": "resolve_depth", "online": "online",
 	"lsp": "lsp", "lsp-timeout": "lsp_timeout", "editor": "editor",
-	"terminal": "terminal", "terminal-browser": "terminal_browser", "terminal-graphics": "terminal_graphics",
-	"terminal-download": "terminal_download",
-	"theme":             "ui.theme", "color-by": "ui.color_by", "height-scale": "ui.height_scale",
+	"theme": "ui.theme", "color-by": "ui.color_by", "height-scale": "ui.height_scale",
 	"show-std": "ui.show_std", "expand-depth": "ui.expand_depth",
 }
 
@@ -164,9 +145,7 @@ var negatedFlags = map[string]string{"no-open": "open", "no-cache": "cache", "no
 var envKeys = map[string]string{
 	"addr": "ADDR", "open": "OPEN", "max_file_size": "MAX_FILE_SIZE", "watch": "WATCH", "cache": "CACHE",
 	"history": "HISTORY", "history_commits": "HISTORY_COMMITS", "resolve_depth": "RESOLVE_DEPTH", "online": "ONLINE", "lsp": "LSP", "lsp_timeout": "LSP_TIMEOUT",
-	"editor": "EDITOR", "terminal": "TERMINAL", "terminal_browser": "TERMINAL_BROWSER",
-	"terminal_download": "TERMINAL_DOWNLOAD", "terminal_browser_sha256": "TERMINAL_BROWSER_SHA256",
-	"terminal_graphics": "TERMINAL_GRAPHICS", "ui.theme": "THEME", "ui.color_by": "COLOR_BY", "ui.height_scale": "HEIGHT_SCALE",
+	"editor": "EDITOR", "ui.theme": "THEME", "ui.color_by": "COLOR_BY", "ui.height_scale": "HEIGHT_SCALE",
 	"ui.show_std": "SHOW_STD", "ui.expand_depth": "EXPAND_DEPTH",
 }
 
@@ -202,8 +181,8 @@ func Load(fs *pflag.FlagSet, args []string, userDir string) (Config, error) {
 		}
 	}
 	// The project config comes with the (possibly untrusted) repository, so it may not
-	// choose a program this machine runs: its editor and terminal_browser keys are
-	// dropped. A file named with --config is the user's own choice.
+	// choose a program this machine runs or send it onto the network: its editor and
+	// online keys are dropped. A file named with --config is the user's own choice.
 	configFile, _ := fs.GetString("config")
 	if configFile != "" {
 		if configFile, err = filepath.Abs(configFile); err != nil {
@@ -255,9 +234,7 @@ func setDefaults(v *viper.Viper, d Config) {
 		"addr": d.Addr, "open": d.Open, "exclude": d.Exclude, "max_file_size": d.MaxFileSize,
 		"watch": d.Watch, "cache": d.Cache, "history": d.History, "history_commits": d.HistoryCommits,
 		"resolve_depth": d.ResolveDepth, "online": d.Online, "lsp": d.LSP, "lsp_timeout": d.LSPTimeout,
-		"editor": d.Editor, "terminal": d.Terminal,
-		"terminal_browser": d.TerminalBrowser, "terminal_graphics": d.TerminalGraphics,
-		"terminal_download": d.TerminalDownload, "terminal_browser_sha256": d.TerminalSHA256,
+		"editor":   d.Editor,
 		"ui.theme": d.UI.Theme, "ui.color_by": d.UI.ColorBy, "ui.height_scale": d.UI.HeightScale,
 		"ui.show_std": d.UI.ShowStd, "ui.expand_depth": d.UI.ExpandDepth, "ui.tool": d.UI.Tool,
 		"ui.hide_languages": d.UI.HideLanguages, "ui.hide_islands": d.UI.HideIslands, "ui.path_filter": d.UI.PathFilter,
@@ -280,13 +257,9 @@ func mergeFile(v *viper.Viper, name string, required, trusted bool) error {
 		return fmt.Errorf("%s: %w", name, err)
 	}
 	if !trusted {
-		// The keys that decide what this machine runs or fetches: a repository must
+		// The keys that decide what this machine runs or reaches: a repository must
 		// not choose either.
 		delete(m, "editor")
-		delete(m, "terminal_browser")
-		delete(m, "terminal_download")
-		delete(m, "terminal_browser_sha256")
-		// Nor does a repository decide that this machine goes on the network.
 		delete(m, "online")
 	}
 	return v.MergeConfigMap(m)
@@ -319,6 +292,5 @@ func (c Config) validate() error {
 			}
 			return nil
 		}(),
-		oneOf("terminal-graphics", c.TerminalGraphics, termview.Protocols()...),
 	)
 }

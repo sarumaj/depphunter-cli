@@ -38,7 +38,8 @@ Browse any code base as an interactive isometric archipelago in your browser.
   crossings, ramps and stairs lead between levels, empty lots are parks with
   trees and bushes, and bridges cross the water to every island.
 
-Everything runs locally: one binary, no network access, no Node.js.
+Everything runs locally: one binary, no Node.js, and no network access unless
+you ask for it with `--online` (see [Package indexes](#package-indexes)).
 
 ## Install
 
@@ -64,40 +65,35 @@ depphunter            # analyze the current directory and open the browser
 depphunter ~/src/app  # analyze another directory
 depphunter --no-open --addr 127.0.0.1:8080
 depphunter --watch    # keep the map in sync while you edit
-depphunter --terminal # draw the map in the terminal itself
 depphunter --export dot -o deps.dot   # write the graph and exit
 depphunter --export html -o map.html  # a self-contained map to share
 ```
 
-| Flag                  | Default                   |                                                                     |
-|-----------------------|---------------------------|---------------------------------------------------------------------|
-| `--addr`              | `127.0.0.1:0`             | listen address; port 0 picks a free port                            |
-| `--no-open`           |                           | print the URL instead of opening the browser                        |
-| `--exclude`           |                           | glob of paths to skip (repeatable)                                  |
-| `--max-file-size`     | `2097152`                 | larger files are listed but not read                                |
-| `--config`            | `<path>/.depphunter.yaml` | config file to use                                                  |
-| `--theme`             | `auto`                    | `auto`, `light`, `dark`                                             |
-| `--color-by`          | `language`                | `language`, `size`, `commits`, `churn`, `age`, `authors`            |
-| `--height-scale`      | `sqrt`                    | `linear`, `sqrt`, `log`                                             |
-| `--show-std`          | `false`                   | show standard-library islands                                       |
-| `--expand-depth`      | `0`                       | initially expanded depth; `0` = auto, `-1` = all                    |
-| `--watch`             | `false`                   | re-analyze on file changes, update the browser live                 |
-| `--no-cache`          |                           | neither read nor write the analysis cache                           |
-| `--no-history`        |                           | do not read git history                                             |
-| `--history-commits`   | `10000`                   | read at most this many commits                                      |
-| `--resolve-depth`     | `0`                       | levels of dependencies-of-dependencies from lock files (`-1` = all) |
-| `--online`            | `false`                   | ask package indexes for what the project's files do not record      |
-| `--lsp`               |                           | find symbol references with installed language servers              |
-| `--lsp-timeout`       | `5m`                      | time budget for language servers                                    |
-| `-v`, `--version`     |                           | print the version and exit                                          |
-| `-h`, `--help`        |                           | list the flags with their defaults                                  |
-| `--editor`            | auto-detected             | editor command template, e.g. `"code -g {file}:{line}"`             |
-| `--terminal`          | `false`                   | draw the map in the terminal instead of a browser window            |
-| `--terminal-browser`  | first Chromium found      | browser binary the terminal view drives                             |
-| `--terminal-graphics` | `auto`                    | `auto`, `kitty`, `iterm`, `sixel`, `blocks`, `halfblocks`           |
-| `--terminal-download` | `false`                   | fetch a browser when none is installed                              |
-| `--export`            |                           | write `json`, `graphml`, `dot` or `html` and exit                   |
-| `-o`, `--output`      | stdout                    | output file for `--export`                                          |
+| Flag                | Default                   |                                                                     |
+|---------------------|---------------------------|---------------------------------------------------------------------|
+| `--addr`            | `127.0.0.1:0`             | listen address; port 0 picks a free port                            |
+| `--no-open`         |                           | print the URL instead of opening the browser                        |
+| `--exclude`         |                           | glob of paths to skip (repeatable)                                  |
+| `--max-file-size`   | `2097152`                 | larger files are listed but not read                                |
+| `--config`          | `<path>/.depphunter.yaml` | config file to use                                                  |
+| `--theme`           | `auto`                    | `auto`, `light`, `dark`                                             |
+| `--color-by`        | `language`                | `language`, `size`, `commits`, `churn`, `age`, `authors`            |
+| `--height-scale`    | `sqrt`                    | `linear`, `sqrt`, `log`                                             |
+| `--show-std`        | `false`                   | show standard-library islands                                       |
+| `--expand-depth`    | `0`                       | initially expanded depth; `0` = auto, `-1` = all                    |
+| `--watch`           | `false`                   | re-analyze on file changes, update the browser live                 |
+| `--no-cache`        |                           | neither read nor write the analysis cache                           |
+| `--no-history`      |                           | do not read git history                                             |
+| `--history-commits` | `10000`                   | read at most this many commits                                      |
+| `--resolve-depth`   | `0`                       | levels of dependencies-of-dependencies from lock files (`-1` = all) |
+| `--online`          | `false`                   | ask package indexes for what the project's files do not record      |
+| `--lsp`             |                           | find symbol references with installed language servers              |
+| `--lsp-timeout`     | `5m`                      | time budget for language servers                                    |
+| `-v`, `--version`   |                           | print the version and exit                                          |
+| `-h`, `--help`      |                           | list the flags with their defaults                                  |
+| `--editor`          | auto-detected             | editor command template, e.g. `"code -g {file}:{line}"`             |
+| `--export`          |                           | write `json`, `graphml`, `dot` or `html` and exit                   |
+| `-o`, `--output`    | stdout                    | output file for `--export`                                          |
 
 Long flags take two dashes (`--addr`, not `-addr`); a flag's value may follow
 after a space or `=`.
@@ -107,12 +103,11 @@ user config (`$XDG_CONFIG_HOME/depphunter/config.yaml`, or the OS equivalent),
 the project config `.depphunter.yaml`, `DEPPHUNTER_*` environment variables
 (`ADDR`, `OPEN`, `EXCLUDE`, `MAX_FILE_SIZE`, `THEME`, `COLOR_BY`,
 `HEIGHT_SCALE`, `SHOW_STD`, `EXPAND_DEPTH`, `WATCH`, `CACHE`, `EDITOR`,
-`HISTORY`, `HISTORY_COMMITS`, `RESOLVE_DEPTH`, `ONLINE`, `LSP`, `LSP_TIMEOUT`, `TERMINAL`,
-`TERMINAL_BROWSER`, `TERMINAL_DOWNLOAD`, `TERMINAL_BROWSER_SHA256`,
-`TERMINAL_GRAPHICS`), and flags. Exclude globs
+`HISTORY`, `HISTORY_COMMITS`, `RESOLVE_DEPTH`, `ONLINE`, `LSP`, `LSP_TIMEOUT`),
+and flags. Exclude globs
 add up across all sources instead of replacing each other. The project config
-cannot set `editor` or `terminal_browser`: they arrive with the repository, and
-both name a command depphunter runs.
+cannot set `editor`: it arrives with the repository, and the editor is a command
+depphunter runs.
 
 ```yaml
 # .depphunter.yaml
@@ -141,109 +136,6 @@ changed: the CPython standard library goes from 1.2 s to 20 ms. With `--watch`,
 depphunter watches the directories it analyzed, re-analyzes after changes settle
 (300 ms), and pushes the new map to the browser, which keeps your expansion,
 selection and filters and briefly highlights the files that changed.
-
-## The map in the terminal
-
-`--terminal` draws the map in the terminal you started it from, with no window
-and no desktop session - over SSH, in a tiling terminal, on a machine whose only
-screen is the one you are typing into.
-
-A text browser cannot show any of this: the map is a single WebGL canvas, and
-there is nothing underneath it to read. So depphunter drives a headless Chromium
-instead - the first one on your `PATH`, or `--terminal-browser` - over the
-DevTools protocol, streams the frames it renders, and paints them with whatever
-your terminal understands:
-
-| `--terminal-graphics` | Terminals                                                | What you get                            |
-|-----------------------|----------------------------------------------------------|-----------------------------------------|
-| `kitty`               | kitty, Ghostty, WezTerm, Konsole                         | the frame at your terminal's resolution |
-| `iterm`               | iTerm2                                                   | the browser's own JPEG, unaltered       |
-| `sixel`               | foot, mlterm, contour, xterm -ti vt340, Windows Terminal | 216 colors, dithered                    |
-| `blocks`              | anything with 24-bit color                               | four pixels per character cell          |
-| `halfblocks`          | anything with 24-bit color and an old font               | two pixels per character cell           |
-
-`auto` (the default) takes the terminals that name themselves in the environment
-at their word and asks the rest what they support. Inside tmux or screen it
-settles for `blocks`, whose output is ordinary text and always arrives.
-
-`blocks` draws four pixels per character cell - a quadrant each, in the two
-colors a cell can hold - so it has twice the width and twice the height of a
-half block. That is the difference between reading the street layout and
-guessing at it, but the quadrant glyphs (`▘▝▀▖▌▞▛▗▚▐▜▄▙▟█`) need a font that has
-them; every font Ubuntu ships does. Where one does not, or where a terminal
-spaces them oddly, `halfblocks` is the older, safer fallback.
-
-### Getting a terminal that draws pixels
-
-On Ubuntu, any of these gives you a real picture instead of blocks:
-
-```sh
-sudo apt install kitty        # kitty graphics, the sharpest of the four
-sudo apt install foot         # sixel (Wayland)
-sudo apt install mlterm       # sixel (X11)
-sudo apt install xterm && xterm -ti vt340   # sixel, off unless asked for
-sudo apt install contour      # sixel, on newer releases
-```
-
-WezTerm and Ghostty are not in the archive; WezTerm ships a `.deb` on its
-releases page, Ghostty an AppImage. Konsole (`sudo apt install konsole`) speaks
-the kitty protocol from 24.04 on.
-
-To see what the terminal you are in supports, ask it:
-
-```sh
-printf '\e[c'; sleep 0.2; echo     # a ";4;" in the reply means sixel
-echo $TERM $TERM_PROGRAM            # xterm-kitty, xterm-ghostty, WezTerm, iTerm.app…
-```
-
-`depphunter --terminal` asks the same question the same way and picks for you;
-`--terminal-graphics` overrides it when you want to compare. A quick check that
-a mode works at all, without running the whole map:
-
-```sh
-sudo apt install libsixel-bin && img2sixel docs/screenshots/screenshot1.png
-```
-
-Keys and the mouse go to the page, so the map works as it does in a browser:
-click to select, double-click to expand, drag to pan, right-drag to orbit, the
-wheel to zoom, `V` for walk mode, `?` for the key list. `Ctrl+C` closes the view
-and stops the server. A terminal reports a key once per press and then repeats
-it, so a held key is kept down between the repeats - long enough for `W` to walk
-rather than step - and an upper-case letter holds shift with it, which is how
-walk mode runs.
-
-What a terminal cannot pass on: the pointer lock (walk mode falls back to
-drag-to-look), hover without a button where only drags are reported, and
-pixel-perfect aim in `blocks`, where the map is as wide as your terminal has
-columns. Text is legible in `kitty` and `sixel`, and a suggestion in `blocks`.
-
-The page is laid out at a usable size whatever the terminal's resolution and the
-browser scales the frames down to it, so the toolbar stays where it belongs. The
-view is not available on Windows, whose console offers neither the raw input nor
-the pixels it needs; run depphunter without `--terminal` there.
-
-**When there is no browser**, depphunter can fetch one, the way a browser
-automation toolkit does. It asks first: with a terminal to ask at, you get a
-yes/no question; in a script, where nobody can answer, it prints what to pass
-instead. `--terminal-download` (or `DEPPHUNTER_TERMINAL_DOWNLOAD=true`) answers
-it ahead of time. What arrives is the Chrome for Testing **headless shell** -
-about 90 MB rather than the full browser's 170 - unpacked into
-`~/.cache/depphunter/browsers/chrome-headless-shell-<platform>-<version>/`,
-where the version in the name keeps a new download from overwriting a browser in
-use. Chrome for Testing publishes no checksums, so depphunter prints the SHA-256
-of what it fetched; pin it with `DEPPHUNTER_TERMINAL_BROWSER_SHA256` and a
-download that does not match is refused. Linux on arm and the 32-bit targets have
-no published build - there the flag says so instead of fetching something that
-will not run.
-
-**How fast it is** depends on the browser, not on the terminal. Where the
-headless browser finds a GPU, frames arrive as quickly as the terminal takes
-them. Where it does not - a server you reached over SSH - WebGL falls back to a
-software renderer, and this map is heavy: measured on a four-core container,
-about one frame a second in walk mode, and a click shows its selection after a
-second or two. The same machine is just as slow in a browser window; the
-terminal costs nothing on top. Reading the map, selecting and expanding are fine
-at that rate; walking around is a slideshow.
 
 ## Exports
 
@@ -479,10 +371,7 @@ shows all controls.
 ## Security
 
 The server binds to loopback by default and prints a URL containing a random
-token, which the browser exchanges for a cookie. The terminal view hands that URL
-to the headless browser over the DevTools pipe instead of its command line, which
-anything on the machine can read, and starts it with a throw-away profile and no
-debugging port. Requests without it, requests
+token, which the browser exchanges for a cookie. Requests without it, requests
 with a foreign `Host` header (DNS rebinding), and requests for files that are
 not part of the analyzed project are rejected.
 

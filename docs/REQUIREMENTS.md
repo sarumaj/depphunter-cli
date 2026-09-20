@@ -562,65 +562,6 @@ from the command (the command tests).
 street onto the other without crossing a curb, a dart tags what the reticle is
 on, and the right button only zooms.
 
-### M11 - The map in the terminal
-
-- `--terminal` draws the map in the terminal the command was started from, for
-  machines reached over SSH and desktops that are not there. The server runs as
-  it does otherwise; only the client changes.
-- The client is a headless Chromium (`--terminal-browser`, or the first of
-  chromium, google-chrome, brave, edge on `PATH` or in the usual install
-  locations) driven over the DevTools protocol through `--remote-debugging-pipe`
-  - a pair of file descriptors, so no debugging port is opened and the URL, with
-  its token, never appears in a command line. The browser runs with a throw-away
-  profile and SwiftShader, which is what gives WebGL without a GPU.
-- Frames arrive as a screencast and are painted with the terminal's own
-  graphics: the kitty protocol (raw pixels, zlib-compressed), the iTerm2 inline
-  image (the browser's JPEG forwarded untouched), sixel (a fixed 6x6x6 color
-  cube with an ordered dither, run-length encoded), or Block Elements with
-  24-bit color, which need no protocol at all. The block renderer carries four
-  pixels per cell - one per quadrant, split into the cell's two colors by
-  brightness so an edge survives - and falls back to two pixels per cell
-  (`halfblocks`) where the quadrant glyphs or the font are not to be trusted.
-  `--terminal-graphics` chooses; `auto` reads the environment, asks the terminal
-  (a kitty query followed by the device attributes request) and falls back to
-  blocks, as it does inside tmux and screen.
-- The page is laid out at a usable size with the aspect ratio of the terminal's
-  picture and the browser scales the frames down to it: at the resolution of a
-  half-block terminal, a page sized in its pixels would show the toolbar alone.
-- Keys and mouse reports are forwarded as input events, so the whole UI works
-  unchanged: SGR mouse tracking carries hovering, dragging, the wheel and
-  double clicks; keys carry both `key` and `code`, since the toolbar reads one
-  and walk mode the other. A key stays down until its terminal repeats stop, so
-  holding `W` walks instead of stepping, and an upper-case letter holds shift
-  alongside it, which is how walk mode runs.
-- The view owns the screen while it runs: the alternate screen buffer, no
-  cursor, the log silenced, and the terminal restored on the way out, whether it
-  leaves through `Ctrl+C`, a signal or an error. `SIGWINCH` re-sizes the page.
-
-- A browser an earlier run downloaded is found before anyone is asked anything:
-  it is installed nowhere the system search looks, and asking to fetch what is
-  already on disk makes a tool look broken.
-- With no browser installed, `--terminal-download` (or a yes to the question
-  asked when there is a terminal to ask at) fetches the Chrome for Testing
-  headless shell - the renderer and its DevTools endpoint without the rest of a
-  browser - into the cache directory, named by platform and version so a new
-  download never overwrites a browser in use. The archive is unpacked beside its
-  destination and moved into place, entry names are checked rather than trusted,
-  and the SHA-256 of what was fetched is reported and can be pinned, since the
-  publisher offers no checksum to compare against. Platforms with no published
-  build say so rather than fetching.
-
-> **Decisions (M11):** a text browser was never an option - the map is one WebGL
-> canvas with no DOM underneath - so the choice was between shipping a second,
-> poorer renderer and carrying a real one's pixels to the terminal. The pixels
-> won: one map, one set of behaviors, and every terminal gets the same map its
-> browser would draw. The cost is a dependency on an installed Chromium, which
-> is why the view is opt-in and says so when it finds none.
-
-*Accepted when* `depphunter --terminal` over SSH shows the map, a click opens
-the side panel, a double click expands a directory, `V` enters walk mode and
-`W` walks, and quitting leaves the terminal as it was found.
-
 ### M12 - The supply chain
 
 - Every external package says whether anything fixes it to one version. A lock
@@ -702,12 +643,3 @@ be opened down to its repeat and no further.
   by heuristics; unmatched imports are shown as unresolved.
 - Servers that index slowly (rust-analyzer, jdtls) may answer before indexing
   finishes and return fewer references within the time budget.
-- The terminal view draws as fast as the browser renders: with a GPU that is as
-  fast as the terminal can take the frames, without one (a server reached over
-  SSH) software WebGL gives about one frame a second on this map - measured with
-  no screencast attached, so it is the renderer, not the bridge.
-- The terminal view needs a Chromium-based browser installed, and is not
-  available on Windows, whose console offers neither raw input nor pixels
-  through the interfaces used here. A terminal cannot lock the pointer, so walk
-  mode falls back to drag-to-look, and terminals that report only drags have no
-  hover.
