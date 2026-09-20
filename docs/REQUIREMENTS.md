@@ -371,7 +371,7 @@ export matches the view.
   construction: side streets in the gaps between children, a ring road along
   the terrace edge. Every obstacle (child footprint, terrace edge) gets a
   sidewalk with a curb; a straight street between two facing obstacles gets a
-  dashed centre line, wheel tracks and manholes; long streets get zebra
+  dashed center line, wheel tracks and manholes; long streets get zebra
   crossings where the facing obstacles end; free space farther than a street's
   width from any obstacle becomes a park with paths. Terrace sides carry stairs.
   Lamps stand on the sidewalk along each terrace edge.
@@ -480,7 +480,7 @@ from the command (the command tests).
   not to every tool.
 - Reading the details of what was just hit holds the view still. The panel takes
   the pointer, and a freed cursor steering the same scene as a reticle fixed in
-  the centre is two controls fighting over one view: while the panel is open the
+  the center is two controls fighting over one view: while the panel is open the
   walker does not move, look, aim or fire, and the scene keeps rendering so what
   is being read about stays on screen. Enter or a click on the map takes the
   pointer back and walks on.
@@ -561,6 +561,49 @@ from the command (the command tests).
 *Accepted when* a walker can drive up every nested block by its ramp from one
 street onto the other without crossing a curb, a dart tags what the reticle is
 on, and the right button only zooms.
+
+### ~~M11 - The map in the terminal~~ (**dropped**)
+
+- `--terminal` draws the map in the terminal the command was started from, for
+  machines reached over SSH and desktops that are not there. The server runs as
+  it does otherwise; only the client changes.
+- The client is a headless Chromium (`--terminal-browser`, or the first of
+  chromium, google-chrome, brave, edge on `PATH` or in the usual install
+  locations) driven over the DevTools protocol through `--remote-debugging-pipe`
+  - a pair of file descriptors, so no debugging port is opened and the URL, with
+  its token, never appears in a command line. The browser runs with a throw-away
+  profile and SwiftShader, which is what gives WebGL without a GPU.
+- Frames arrive as a screencast and are painted with the terminal's own
+  graphics: the kitty protocol (raw pixels, zlib-compressed), the iTerm2 inline
+  image (the browser's JPEG forwarded untouched), sixel (a fixed 6x6x6 color
+  cube with an ordered dither, run-length encoded), or half blocks with 24-bit
+  color, which need no protocol at all. `--terminal-graphics` chooses;
+  `auto` reads the environment, asks the terminal (a kitty query followed by the
+  device attributes request) and falls back to half blocks, as it does inside
+  tmux and screen.
+- The page is laid out at a usable size with the aspect ratio of the terminal's
+  picture and the browser scales the frames down to it: at the resolution of a
+  half-block terminal, a page sized in its pixels would show the toolbar alone.
+- Keys and mouse reports are forwarded as input events, so the whole UI works
+  unchanged: SGR mouse tracking carries hovering, dragging, the wheel and
+  double clicks; keys carry both `key` and `code`, since the toolbar reads one
+  and walk mode the other. A key stays down until its terminal repeats stop, so
+  holding `W` walks instead of stepping, and an upper-case letter holds shift
+  alongside it, which is how walk mode runs.
+- The view owns the screen while it runs: the alternate screen buffer, no
+  cursor, the log silenced, and the terminal restored on the way out, whether it
+  leaves through `Ctrl+C`, a signal or an error. `SIGWINCH` re-sizes the page.
+
+> **Decisions (M11):** a text browser was never an option - the map is one WebGL
+> canvas with no DOM underneath - so the choice was between shipping a second,
+> poorer renderer and carrying a real one's pixels to the terminal. The pixels
+> won: one map, one set of behaviors, and every terminal gets the same map its
+> browser would draw. The cost is a dependency on an installed Chromium, which
+> is why the view is opt-in and says so when it finds none.
+
+*Accepted when* `depphunter --terminal` over SSH shows the map, a click opens
+the side panel, a double click expands a directory, `V` enters walk mode and
+`W` walks, and quitting leaves the terminal as it was found.
 
 ### M12 - The supply chain
 
@@ -738,7 +781,7 @@ panel lists for its building.
 - While the details panel holds the pointer the crosshair is not recomputed, so
   whatever it was last on has its hover card cleared: a card left on top of what
   is being read is worse than no card.
-- Walk mode carries a tracker: a top-down sweep centred on the walker and turning
+- Walk mode carries a tracker: a top-down sweep centered on the walker and turning
   with them, with every bug still on the streets as a dot in its severity's
   color, every tagged module as a ring, and anything beyond its range as an
   arrow on the rim. Its range fits whatever is still out there and eases rather
