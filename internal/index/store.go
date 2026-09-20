@@ -28,8 +28,8 @@ func newStore(dir string, ttl time.Duration) *store {
 }
 
 type entry struct {
-	At    time.Time `json:"at"`
-	Names []string  `json:"names"`
+	At   time.Time `json:"at"`
+	Deps []dep     `json:"deps"`
 }
 
 func (s *store) path(key string) string {
@@ -37,7 +37,7 @@ func (s *store) path(key string) string {
 	return filepath.Join(s.dir, hex.EncodeToString(sum[:])+".json")
 }
 
-func (s *store) get(key string) ([]string, bool) {
+func (s *store) get(key string) ([]dep, bool) {
 	if s == nil {
 		return nil, false
 	}
@@ -49,14 +49,14 @@ func (s *store) get(key string) ([]string, bool) {
 	if json.Unmarshal(data, &e) != nil || time.Since(e.At) > s.ttl {
 		return nil, false
 	}
-	return e.Names, true
+	return e.Deps, true
 }
 
-func (s *store) put(key string, names []string) {
+func (s *store) put(key string, deps []dep) {
 	if s == nil {
 		return
 	}
-	data, err := json.Marshal(entry{At: time.Now().UTC(), Names: names})
+	data, err := json.Marshal(entry{At: time.Now().UTC(), Deps: deps})
 	if err != nil {
 		return
 	}

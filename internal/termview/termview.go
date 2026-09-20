@@ -67,7 +67,8 @@ const (
 func Run(ctx context.Context, opt Options) error {
 	// The browser is settled before the terminal is taken over: a question about
 	// downloading one, and the progress of doing so, belong on an ordinary screen.
-	bin, err := browserFor(ctx, opt)
+	dir, _ := browserDir() // "" when the cache directory cannot be found: no downloads
+	bin, err := browserFor(ctx, opt, dir, askToDownload)
 	if err != nil {
 		return err
 	}
@@ -100,8 +101,9 @@ func Run(ctx context.Context, opt Options) error {
 }
 
 // browserFor returns the browser to drive: the one named, the first one installed,
-// or - with permission - one fetched from Chrome for Testing.
-func browserFor(ctx context.Context, opt Options) (string, error) {
+// the one an earlier run downloaded, or - with permission - a fresh download. dir is
+// where downloads are kept; ask is how permission is obtained.
+func browserFor(ctx context.Context, opt Options, dir string, ask func() bool) (string, error) {
 	if opt.Browser != "" {
 		return opt.Browser, nil
 	}
@@ -109,11 +111,15 @@ func browserFor(ctx context.Context, opt Options) (string, error) {
 	if err == nil || !errors.Is(err, errNoBrowser) {
 		return bin, err
 	}
-	if !opt.Download && !askToDownload() {
+	if dir == "" {
 		return "", err
 	}
-	dir, dirErr := browserDir()
-	if dirErr != nil {
+	// Asking to fetch what is already on disk is the sort of thing that makes a tool
+	// feel broken, so the cache is looked at before anyone is asked anything.
+	if bin, ok := downloaded(dir); ok {
+		return bin, nil
+	}
+	if !opt.Download && !ask() {
 		return "", err
 	}
 	if mkErr := os.MkdirAll(dir, 0o755); mkErr != nil {

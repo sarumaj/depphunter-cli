@@ -468,6 +468,12 @@ from the command (the command tests).
   block instead of beside it.
 - The selection outline sits on its box (it floated half a box too high since
   M7); in walk mode it is hidden behind nearer geometry.
+- Reading the details of what was just hit holds the view still. The panel takes
+  the pointer, and a freed cursor steering the same scene as a reticle fixed in
+  the centre is two controls fighting over one view: while the panel is open the
+  walker does not move, look, aim or fire, and the scene keeps rendering so what
+  is being read about stays on screen. Enter or a click on the map takes the
+  pointer back and walks on.
 
 > **Decisions (M10):** ramps run along a terrace's side rather than across the
 > street: streets are 0.35-0.55 units wide, and climbing a 0.28-unit terrace in
@@ -560,11 +566,14 @@ on, and the right button only zooms.
 - Frames arrive as a screencast and are painted with the terminal's own
   graphics: the kitty protocol (raw pixels, zlib-compressed), the iTerm2 inline
   image (the browser's JPEG forwarded untouched), sixel (a fixed 6x6x6 color
-  cube with an ordered dither, run-length encoded), or half blocks with 24-bit
-  color, which need no protocol at all. `--terminal-graphics` chooses;
-  `auto` reads the environment, asks the terminal (a kitty query followed by the
-  device attributes request) and falls back to half blocks, as it does inside
-  tmux and screen.
+  cube with an ordered dither, run-length encoded), or Block Elements with
+  24-bit color, which need no protocol at all. The block renderer carries four
+  pixels per cell - one per quadrant, split into the cell's two colors by
+  brightness so an edge survives - and falls back to two pixels per cell
+  (`halfblocks`) where the quadrant glyphs or the font are not to be trusted.
+  `--terminal-graphics` chooses; `auto` reads the environment, asks the terminal
+  (a kitty query followed by the device attributes request) and falls back to
+  blocks, as it does inside tmux and screen.
 - The page is laid out at a usable size with the aspect ratio of the terminal's
   picture and the browser scales the frames down to it: at the resolution of a
   half-block terminal, a page sized in its pixels would show the toolbar alone.
@@ -578,6 +587,9 @@ on, and the right button only zooms.
   cursor, the log silenced, and the terminal restored on the way out, whether it
   leaves through `Ctrl+C`, a signal or an error. `SIGWINCH` re-sizes the page.
 
+- A browser an earlier run downloaded is found before anyone is asked anything:
+  it is installed nowhere the system search looks, and asking to fetch what is
+  already on disk makes a tool look broken.
 - With no browser installed, `--terminal-download` (or a yes to the question
   asked when there is a terminal to ask at) fetches the Chrome for Testing
   headless shell - the renderer and its DevTools endpoint without the rest of a
@@ -651,8 +663,11 @@ the side panel, a double click expands a directory, `V` enters walk mode and
 - `--online` allows asking the trusted indexes for what the repository does not
   record - a Go module's own go.mod from the proxy, an npm version document, a
   distribution's requires-dist - which is what lets `--resolve-depth` reach
-  ecosystems whose graph is not in the repository. Lock files are asked first,
-  answers are cached for a day, and credentials come from the user's own npm
+  ecosystems whose graph is not in the repository. The version travels with each
+  dependency the index names, since without it the level below cannot be asked
+  for at all: a module proxy serves a go.mod for a version, not for a module.
+  Lock files are asked first, answers are cached for a day, and credentials come
+  from the user's own npm
   tokens and netrc and go only to the host they were written for.
 
 - The side panel lists dependencies and dependents as trees rather than flat

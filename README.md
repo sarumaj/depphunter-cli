@@ -91,7 +91,7 @@ depphunter --export html -o map.html  # a self-contained map to share
 | `--editor`            | auto-detected             | editor command template, e.g. `"code -g {file}:{line}"`             |
 | `--terminal`          | `false`                   | draw the map in the terminal instead of a browser window            |
 | `--terminal-browser`  | first Chromium found      | browser binary the terminal view drives                             |
-| `--terminal-graphics` | `auto`                    | `auto`, `kitty`, `iterm`, `sixel`, `blocks`                         |
+| `--terminal-graphics` | `auto`                    | `auto`, `kitty`, `iterm`, `sixel`, `blocks`, `halfblocks`           |
 | `--terminal-download` | `false`                   | fetch a browser when none is installed                              |
 | `--export`            |                           | write `json`, `graphml`, `dot` or `html` and exit                   |
 | `-o`, `--output`      | stdout                    | output file for `--export`                                          |
@@ -155,11 +155,50 @@ your terminal understands:
 | `kitty`               | kitty, Ghostty, WezTerm, Konsole                         | the frame at your terminal's resolution |
 | `iterm`               | iTerm2                                                   | the browser's own JPEG, unaltered       |
 | `sixel`               | foot, mlterm, contour, xterm -ti vt340, Windows Terminal | 216 colors, dithered                    |
-| `blocks`              | anything with 24-bit color                               | two pixels per character cell           |
+| `blocks`              | anything with 24-bit color                               | four pixels per character cell          |
+| `halfblocks`          | anything with 24-bit color and an old font               | two pixels per character cell           |
 
 `auto` (the default) takes the terminals that name themselves in the environment
 at their word and asks the rest what they support. Inside tmux or screen it
 settles for `blocks`, whose output is ordinary text and always arrives.
+
+`blocks` draws four pixels per character cell - a quadrant each, in the two
+colors a cell can hold - so it has twice the width and twice the height of a
+half block. That is the difference between reading the street layout and
+guessing at it, but the quadrant glyphs (`▘▝▀▖▌▞▛▗▚▐▜▄▙▟█`) need a font that has
+them; every font Ubuntu ships does. Where one does not, or where a terminal
+spaces them oddly, `halfblocks` is the older, safer fallback.
+
+### Getting a terminal that draws pixels
+
+On Ubuntu, any of these gives you a real picture instead of blocks:
+
+```sh
+sudo apt install kitty        # kitty graphics, the sharpest of the four
+sudo apt install foot         # sixel (Wayland)
+sudo apt install mlterm       # sixel (X11)
+sudo apt install xterm && xterm -ti vt340   # sixel, off unless asked for
+sudo apt install contour      # sixel, on newer releases
+```
+
+WezTerm and Ghostty are not in the archive; WezTerm ships a `.deb` on its
+releases page, Ghostty an AppImage. Konsole (`sudo apt install konsole`) speaks
+the kitty protocol from 24.04 on.
+
+To see what the terminal you are in supports, ask it:
+
+```sh
+printf '\e[c'; sleep 0.2; echo     # a ";4;" in the reply means sixel
+echo $TERM $TERM_PROGRAM            # xterm-kitty, xterm-ghostty, WezTerm, iTerm.app…
+```
+
+`depphunter --terminal` asks the same question the same way and picks for you;
+`--terminal-graphics` overrides it when you want to compare. A quick check that
+a mode works at all, without running the whole map:
+
+```sh
+sudo apt install libsixel-bin && img2sixel docs/screenshots/screenshot1.png
+```
 
 Keys and the mouse go to the page, so the map works as it does in a browser:
 click to select, double-click to expand, drag to pan, right-drag to orbit, the
@@ -399,6 +438,7 @@ mode you can go 3 units out over the water and 12 above the tallest building.
 | Click / double-click      | select / expand–collapse                 |
 | `Enter`, `Backspace`      | expand–collapse selection, select parent |
 | `→` `←` in the panel      | open / close a dependency row            |
+| `Enter` while reading     | close the details and walk on            |
 | `Q` `E`                   | rotate 90°                               |
 | `F`                       | fit to screen                            |
 | `+` `−`                   | expand / collapse one level everywhere   |

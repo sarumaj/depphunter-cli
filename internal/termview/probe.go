@@ -12,9 +12,10 @@ const (
 	protoITerm  = "iterm"
 	protoSixel  = "sixel"
 	protoBlocks = "blocks"
+	protoHalf   = "halfblocks"
 )
 
-var protocols = []string{protoAuto, protoKitty, protoITerm, protoSixel, protoBlocks}
+var protocols = []string{protoAuto, protoKitty, protoITerm, protoSixel, protoBlocks, protoHalf}
 
 // probeQuery asks the terminal what it can do: the first sequence is a one-pixel
 // kitty transmission, which kitty-capable terminals answer and the rest ignore, and
