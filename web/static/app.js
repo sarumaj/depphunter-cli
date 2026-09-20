@@ -157,7 +157,21 @@ async function main() {
     openLabel: cfg.static ? null : cfg.editor ? 'Open in editor' : 'Open in VS Code',
     // Closing the details gives the pointer back, so walk mode may move again.
     onClose: () => walker.setFrozen(false),
-    findingsOf: node => state.findings && { own: state.findings.own(node.id), rollup: state.findings.rollup(node.id) },
+    // `under` is a getter: a directory near the root carries every finding in the
+    // repository, and the panel only asks for that list when a reader presses for it.
+    findingsOf: node => state.findings && {
+      own: state.findings.own(node.id),
+      rollup: state.findings.rollup(node.id),
+      get under() { return state.findings.under(node.id); },
+    },
+    caught: id => pack.has(id),
+    // Taking a finding from the panel is the same act as netting its bug in the
+    // street: it goes in the same backpack, and its bug stops walking. It is the
+    // whole of collecting in the map view, where there are no streets to walk.
+    onCatch: (f, kept) => {
+      if (kept) pack.remove(f.id);
+      else pack.add(f, state.findings?.place(f));
+    },
   });
 
   applyStyle(false);
@@ -237,6 +251,10 @@ function placeBugs() {
 // drawPack redraws the list and the toolbar button. The button only exists when there
 // is something to put in it: a map read without --findings has no bugs to catch.
 function drawPack() {
+  // The backpack is what says which findings are caught, so whatever changed it has
+  // just changed the streets too.
+  bugs?.keepCaught(pack.ids);
+  scene?.requestRender();
   const { total, open, fixed } = pack.counts;
   const btn = $('pack-btn'), count = $('pack-count');
   btn.hidden = !(total || state.findings);
@@ -895,6 +913,31 @@ function bindSinceSlider() {
   });
 }
 
+// What a marker stands for, without having to click it: how many findings are under
+// it, the worst of them, and how much of that is already in the backpack.
+//
+// Counting what is in the backpack means walking the subtree, and the pointer asks
+// once a frame, so the answer is kept until the pin or the backpack changes.
+let pinTip = { key: '', html: '' };
+
+function showPinTooltip(pin, x, y) {
+  const tip = $('tooltip');
+  const n = pin.box.node;
+  const key = `${n.id}|${pin.count}|${pack.counts.total}`;
+  if (key !== pinTip.key) {
+    const row = (k, v) => `<div class="t-row">${k} <b>${escapeHTML(String(v))}</b></div>`;
+    const ids = pack.ids;
+    const kept = (state.findings?.under(n.id) || []).filter(f => ids.has(f.id)).length;
+    pinTip = { key, html: `<div class="t-title">${escapeHTML(n.path && n.path !== '.' ? n.path : n.name)}</div>`
+      + row('Findings', fmt.format(pin.count)) + row('Worst', pin.worst || 'unknown')
+      + (kept ? row('In the backpack', fmt.format(kept)) : '')
+      + '<div class="t-row">Click to read them</div>' };
+  }
+  tip.innerHTML = pinTip.html;
+  tip.hidden = false;
+  placeTooltip(tip, x, y);
+}
+
 function showTooltip(i, x, y) {
   const tip = $('tooltip');
   if (i < 0) { tip.hidden = true; return; }
@@ -916,15 +959,17 @@ function showTooltip(i, x, y) {
   }
   tip.innerHTML = html;
   tip.hidden = false;
+  placeTooltip(tip, x, y);
+}
+
+// Beside the pointer, or below the reticle while walking; flipped to the other side
+// when it would not fit, so it never covers what it describes.
+function placeTooltip(tip, x, y) {
   const r = tip.parentElement.getBoundingClientRect();
-  // Beside the pointer, or below the reticle while walking; flipped to the other
-  // side when it would not fit, so it never covers what it describes.
   const gap = walker.active ? 46 : 14;
   const fit = (v, size, max) => (v + gap + size <= max ? v + gap : Math.max(8, Math.min(v - gap - size, max - size - 8)));
-  const tx = fit(x - r.left, tip.offsetWidth, r.width);
-  const ty = fit(y - r.top, tip.offsetHeight, r.height);
-  tip.style.left = tx + 'px';
-  tip.style.top = ty + 'px';
+  tip.style.left = fit(x - r.left, tip.offsetWidth, r.width) + 'px';
+  tip.style.top = fit(y - r.top, tip.offsetHeight, r.height) + 'px';
 }
 
 
@@ -975,13 +1020,22 @@ function bindControls() {
     if (!down) return;
     const moved = Math.hypot(e.clientX - down.x, e.clientY - down.y) > 4;
     if (!moved && down.button === 0 && e.target === scene.renderer.domElement) {
-      const i = scene.pick(e.clientX, e.clientY);
-      select(i >= 0 ? L.boxes[i].node : null);
+      // A pin stands above the roof it belongs to, so the ray that would hit the
+      // building goes past it; it is tried first, and hitting one opens what it is
+      // there for rather than the building's stats.
+      const pin = pins.at(e.clientX, e.clientY);
+      if (pin) {
+        select(pin.box.node);
+        panel.revealFindings();
+      } else {
+        const i = scene.pick(e.clientX, e.clientY);
+        select(i >= 0 ? L.boxes[i].node : null);
+      }
     }
     down = null;
   });
   map.addEventListener('dblclick', e => {
-    if (walker.active) return;
+    if (walker.active || pins.at(e.clientX, e.clientY)) return; // the pin was the target
     const i = scene.pick(e.clientX, e.clientY);
     if (i >= 0) {
       const n = L.boxes[i].node;
@@ -994,10 +1048,12 @@ function bindControls() {
     if (walker.active || hoverFrame || (down && e.buttons)) return;
     hoverFrame = requestAnimationFrame(() => {
       hoverFrame = 0;
-      const i = scene.pick(lastMove.clientX, lastMove.clientY);
-      map.classList.toggle('hovering', i >= 0);
+      const pin = pins.at(lastMove.clientX, lastMove.clientY);
+      const i = pin ? -1 : scene.pick(lastMove.clientX, lastMove.clientY);
+      map.classList.toggle('hovering', !!pin || i >= 0);
       if (i !== state.hovered) { state.hovered = i; recolor(); }
-      showTooltip(i, lastMove.clientX, lastMove.clientY);
+      if (pin) showPinTooltip(pin, lastMove.clientX, lastMove.clientY);
+      else showTooltip(i, lastMove.clientX, lastMove.clientY);
     });
   });
   map.addEventListener('pointerleave', () => {

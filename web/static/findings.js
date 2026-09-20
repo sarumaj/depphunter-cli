@@ -22,8 +22,9 @@ export function severityColors() {
 /**
  * indexFindings places a findings document (internal/findings.Set) on the model.
  *
- * Returns { all, own, rollup, place, sources, partial }:
+ * Returns { all, own, under, rollup, place, sources, partial }:
  *   own     nodeId -> the findings listed on that node itself
+ *   under   nodeId -> those, and everything below it, worst first
  *   rollup  nodeId -> { count, worst } including everything below it
  *   place   finding -> the node its bug stands at (a package before a file)
  */
@@ -62,9 +63,27 @@ export function indexFindings(set, model) {
   visit(model.root);
   for (const e of model.ecosystems) visit(e);
 
+  // What a marker over a collapsed directory stands for. The panel needs it because
+  // a map read from above is the one place a bug cannot simply be walked up to: the
+  // directory's own findings are rarely the ones the pin is red for.
+  const under = id => {
+    const n = model.byId.get(id);
+    if (!n) return [];
+    const out = [], seen = new Set();
+    const walk = m => {
+      // A finding about a package in a file is listed on both, and both can be in
+      // one subtree, so the same one is not collected twice.
+      for (const f of own.get(m.id) || []) if (!seen.has(f)) { seen.add(f); out.push(f); }
+      for (const c of m.children) walk(c);
+    };
+    walk(n);
+    return out.sort((a, b) => rankOf(b.severity) - rankOf(a.severity));
+  };
+
   return {
     all,
     own: id => own.get(id) || [],
+    under,
     rollup: id => rollup.get(id) || { count: 0, worst: undefined },
     place: f => home.get(f) || model.root,
     sources: set?.sources || [],

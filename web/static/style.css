@@ -430,6 +430,24 @@ main.walking #legend { display: none; }
 .f-detail { margin-top: 6px; color: var(--text-2); font-size: 12px; }
 .f-detail p { margin: 0 0 4px; white-space: pre-wrap; overflow-wrap: anywhere; }
 .f-detail p:last-child { margin-bottom: 0; }
+/* Taking a finding into the backpack, which is what catching its bug does in the
+   street. It sits at the end of the row and stays out of the way until pointed at,
+   because a list of forty lint complaints is a list first. */
+.p-list.findings .catch {
+  flex: 0 0 auto; align-self: flex-start; margin-top: 1px;
+  width: 20px; height: 20px; padding: 0; line-height: 18px;
+  border: 1px solid var(--border); border-radius: 5px;
+  background: none; color: var(--muted); cursor: pointer;
+}
+.p-list.findings li:hover .catch, .p-list.findings .catch:focus-visible { color: var(--text); border-color: var(--text-2); }
+.p-list.findings .catch.kept { color: var(--sev, var(--accent)); border-color: var(--sev, var(--accent)); }
+/* What lies below a collapsed directory, behind one press. */
+.p-section button.more {
+  margin-top: 6px; padding: 4px 8px; font: inherit; font-size: 12px;
+  border: 1px solid var(--border); border-radius: 6px;
+  background: none; color: var(--text-2); cursor: pointer;
+}
+.p-section button.more:hover { color: var(--text); border-color: var(--text-2); }
 
 .bar { display: flex; height: 10px; gap: 2px; border-radius: 4px; overflow: hidden; }
 .bar-legend { display: flex; flex-wrap: wrap; gap: 4px 12px; margin-top: 6px; color: var(--text-2); font-size: 12px; }

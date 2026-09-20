@@ -14,6 +14,12 @@
 // map: the isometric camera is orthographic, and a world unit is exactly its zoom in
 // pixels, so dividing by the zoom holds a pin the same size however far out the map
 // is pulled. follow is what keeps up with that.
+//
+// A pin can be pointed at, which is how findings are read without walking to them:
+// `at` answers which one is under the pointer. It projects the pins rather than
+// raycasting them, because a marker is a thing on the screen - a pin two pixels wide
+// has to stay as easy to hit as a fat one - and because the map's geometry is bent in
+// the vertex shader, where a raycaster cannot follow it.
 
 import * as THREE from './vendor/three.module.min.js';
 import { boxFor } from './bugs.js';
@@ -25,6 +31,7 @@ const STEM = 0.55;    // the stalk, before the count stretches it
 const GROWTH = 0.22;  // how much taller each doubling of the count makes it
 const MIN = 0.05;     // never smaller than this in map units
 const MAX = 4;        // nor bigger, however far the map is pulled away
+const GRAB = 9;       // how many pixels wide the pointer's grip on a pin is
 
 let parts = null;
 
@@ -75,7 +82,7 @@ export class Pins {
     for (const [box, at] of tally) {
       const sev = at.worst || 'unknown';
       if (!bySeverity.has(sev)) bySeverity.set(sev, []);
-      bySeverity.get(sev).push({ box, count: at.count });
+      bySeverity.get(sev).push({ box, count: at.count, worst: sev });
     }
     // Worst last, so a critical pin draws over the low one behind it.
     for (const sev of [...bySeverity.keys()].sort((a, b) => rankOf(a) - rankOf(b))) {
@@ -115,11 +122,42 @@ export class Pins {
         const top = b.y + b.h;
         stems.setMatrixAt(i, m.compose(p.set(b.x, top, b.z), q, s.set(k, tall, k)));
         heads.setMatrixAt(i, m.compose(p.set(b.x, top + tall + k * HEAD, b.z), q, s.setScalar(k)));
+        // Where the pin stands and where its head ended up, so the pointer can be
+        // told which one it is over without any of this being worked out again.
+        it.foot = new THREE.Vector3(b.x, top, b.z);
+        it.head = new THREE.Vector3(b.x, top + tall + k * HEAD * 2, b.z);
       });
       stems.instanceMatrix.needsUpdate = true;
       heads.instanceMatrix.needsUpdate = true;
     }
     this.scene.requestRender();
+  }
+
+  /**
+   * The pin under a point on the screen, as { box, count, worst }, or null. The pin is
+   * a target, head and stalk both: a stalk is what the eye follows down to the
+   * building, so it is what the pointer goes for.
+   */
+  at(clientX, clientY) {
+    if (!this.group.visible || !this.meshes.length) return null;
+    const r = this.scene.renderer.domElement.getBoundingClientRect();
+    const x = clientX - r.left, y = clientY - r.top;
+    if (x < 0 || y < 0 || x > r.width || y > r.height) return null;
+    const cam = this.scene.camera;
+    const v = new THREE.Vector3();
+    const px = w => ({ x: ((w.x + 1) / 2) * r.width, y: ((1 - w.y) / 2) * r.height });
+    let best = null, bestSq = GRAB * GRAB;
+    // Later meshes are the worse severities (place() sorts them that way), so a
+    // critical pin wins a tie against the low one standing behind it.
+    for (const { items } of this.meshes) {
+      for (const it of items) {
+        if (!it.head) continue;
+        const a = px(v.copy(it.foot).project(cam)), b = px(v.copy(it.head).project(cam));
+        const dSq = toSegment(x, y, a, b);
+        if (dSq <= bestSq) { best = it; bestSq = dSq; }
+      }
+    }
+    return best && { box: best.box, count: best.count, worst: best.worst };
   }
 
   // One material per color: six colors for however many pins there are.
@@ -144,6 +182,14 @@ export class Pins {
     this.clear();
     this.scene.scene.remove(this.group);
   }
+}
+
+// How far a point is from a segment, squared, all in pixels.
+function toSegment(x, y, a, b) {
+  const dx = b.x - a.x, dy = b.y - a.y;
+  const len = dx * dx + dy * dy;
+  const t = len ? Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / len)) : 0;
+  return (x - a.x - dx * t) ** 2 + (y - a.y - dy * t) ** 2;
 }
 
 // A pin, a unit across: a thin stalk off the roof with a diamond on the end of it.
