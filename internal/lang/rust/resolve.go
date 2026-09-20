@@ -186,11 +186,13 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 			if dir, ok := r.members[norm(d.pkg)]; ok {
 				return r.local(dir, segments[1:])
 			}
-			v := d.version
+			// Cargo reads a bare "1.2.3" as ^1.2.3, so a manifest never pins on its
+			// own: only Cargo.lock says which version is built.
+			t := lang.Target{Ecosystem: ecoCrates, Package: d.pkg, Version: d.version}
 			if exact := r.locked[d.pkg]; exact != "" {
-				v = exact
+				t.Version, t.Requested, t.Pinned = exact, d.version, true
 			}
-			return lang.Target{Ecosystem: ecoCrates, Package: d.pkg, Version: v}
+			return t
 		}
 	}
 	if dir, ok := r.members[name]; ok {

@@ -224,6 +224,28 @@ tooltips and the side panel show the same figures, the panel also the top
 authors. Renamed files keep the history of their old names. With `--watch`, a
 new commit updates the overlay.
 
+## Versions and pinning
+
+Every external package carries the version the project resolves it to, and
+whether anything fixes it there. Lock files, exact specifiers (`==1.2.3`,
+`RequiredVersion`), single-version ranges (`[1.2.3]`), commits and digests pin a
+dependency; ranges, wildcards, snapshots and moving tags let it drift. A
+dependency nothing pins is drawn in amber, badged **⚠ floating** in the side
+panel, and marked in its tooltip; where a lock file resolved a range, the panel
+shows both - `4.3.1`, requested as `^4.2.0`.
+
+| Ecosystem           | pinned by                                     | floats on                                            |
+|---------------------|-----------------------------------------------|------------------------------------------------------|
+| Go modules          | the version in `go.mod`, which the build picks | a require without a version                          |
+| npm                 | `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, an exact `1.2.3` | any range - including `1.2`, which means 1.2.x |
+| crates.io           | `Cargo.lock`                                  | the manifest alone: `"1.2.3"` there means `^1.2.3`   |
+| PyPI                | `poetry.lock`, `uv.lock`, `pdm.lock`, `Pipfile.lock`, `==1.2.3` | `>=`, `~=`, `^`, or no version at all |
+| Maven               | a plain version, `[1.2.3]`                    | ranges, `LATEST`, `RELEASE`, `-SNAPSHOT`, unexpanded `${…}` |
+| NuGet               | an exact version, `[1.2.3]`                   | wildcards (`2.*`) and ranges                         |
+| PowerShell Gallery  | `RequiredVersion`                             | `ModuleVersion`, which is a minimum                  |
+
+The JSON and GraphML exports carry `requested` and `floating` per package.
+
 ## Symbol references
 
 Imports show which files depend on which; with `--lsp`, depphunter also asks

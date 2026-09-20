@@ -9,6 +9,7 @@ import static com.example.app.util.Strings.trim;
 import com.example.generated.Gen;
 import org.springframework.context.ApplicationContext;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import org.slf4j.Logger;
 import static org.junit.jupiter.api.Assertions.assertEquals;
 import okhttp3.OkHttpClient;
 import com.google.common.collect.Lists;
