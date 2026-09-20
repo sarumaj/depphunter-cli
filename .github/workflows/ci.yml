@@ -77,7 +77,7 @@ jobs:
         run: go run honnef.co/go/tools/cmd/staticcheck@2026.2.1 ./...
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 24
       - name: JavaScript syntax
         # Our own modules only: the vendored libraries are shipped as their authors
         # built them (see web/static/vendor/README.md).
