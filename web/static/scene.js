@@ -30,6 +30,10 @@ export class MapScene {
     this.camera.zoom = 20;
     this.walkCamera = new THREE.PerspectiveCamera(70, 1, 0.02, 3000);
     this.walkCamera.rotation.order = 'YXZ';
+    // What the walker holds is drawn in a pass of its own, over a cleared depth
+    // buffer, so that a wall the walker is standing against cannot be drawn through
+    // their own hand. It holds the walk camera, and the camera holds the viewmodel.
+    this.viewScene = new THREE.Scene();
     this.walking = false;
     // center: the walker's position on the flat map; radius: the planet's; night:
     // the dark theme's city; time: seconds, for clouds and water.
@@ -521,8 +525,18 @@ export class MapScene {
    * the drawing buffer is not preserved between frames.
    */
   renderNow() {
-    this.renderer.render(this.scene, this.view);
-    return this.renderer.domElement;
+    const r = this.renderer;
+    r.render(this.scene, this.view);
+    // The held tool, second and on top of everything: the depth buffer is cleared
+    // between the two, so nothing in the world can occlude a hand that is, in truth,
+    // a few centimetres from the lens.
+    if (this.walking && this.viewScene.children.length) {
+      r.autoClear = false;
+      r.clearDepth();
+      r.render(this.viewScene, this.walkCamera);
+      r.autoClear = true;
+    }
+    return r.domElement;
   }
 
   /**

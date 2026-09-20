@@ -29,6 +29,7 @@ import tempfile
 import urllib.request
 
 import bpy
+import bmesh  # only importable once bpy has loaded, so not in alphabetical order
 from mathutils import Vector
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -36,18 +37,50 @@ OUT = os.path.normpath(os.path.join(HERE, "..", "web", "static", "props.glb"))
 
 # The pack, pinned. There is no release to pin to, so each file is pinned by its own
 # checksum, which is the thing that actually matters.
-PACK = ("https://raw.githubusercontent.com/flo-bit/low-poly-asset-packs/"
-        "main/nature-pack/glb/{}.glb")
+PACK = (
+    "https://raw.githubusercontent.com/flo-bit/low-poly-asset-packs/"
+    "main/nature-pack/glb/{}.glb"
+)
 
 # What the map plants, what it is, how tall it stands in map units - a building is one
 # across - and how many triangles it may cost. Three species so a park is not a
 # pattern, one bush, and a stone the galaxy style uses for its rubble.
 MODELS = [
-    ("tree1", "common_tree_1", "e17c3742e9251af93f03dee12d7d94c3ab15b78d61661e1a86b704f1f725f9ea", 0.95, 620),
-    ("tree2", "common_tree_2", "8451a97982c5e43641dce7cbea4624f68f22f6048c1a13f004d21e1e3c7b9d02", 0.86, 620),
-    ("tree3", "pine_tree_1", "d37154637ccd55a5ff0cf53df7645f0503fd0b9bd81900bce8bc92624b2e514a", 0.92, 520),
-    ("bush", "bush_5", "794874b05994e50cfedd37298fe8fd9b03c2135b802299c447bc8fb42f5c1b7d", 0.2, 120),
-    ("rock", "stone_2", "27b75335e445e611bc18b2837e354cef557f2424e5015b47d93d1bbcf655d6e7", 0.17, 60),
+    (
+        "tree1",
+        "common_tree_1",
+        "e17c3742e9251af93f03dee12d7d94c3ab15b78d61661e1a86b704f1f725f9ea",
+        0.95,
+        950,
+    ),
+    (
+        "tree2",
+        "common_tree_2",
+        "8451a97982c5e43641dce7cbea4624f68f22f6048c1a13f004d21e1e3c7b9d02",
+        0.86,
+        950,
+    ),
+    (
+        "tree3",
+        "pine_tree_1",
+        "d37154637ccd55a5ff0cf53df7645f0503fd0b9bd81900bce8bc92624b2e514a",
+        0.92,
+        700,
+    ),
+    (
+        "bush",
+        "bush_5",
+        "794874b05994e50cfedd37298fe8fd9b03c2135b802299c447bc8fb42f5c1b7d",
+        0.2,
+        120,
+    ),
+    (
+        "rock",
+        "stone_2",
+        "27b75335e445e611bc18b2837e354cef557f2424e5015b47d93d1bbcf655d6e7",
+        0.17,
+        60,
+    ),
 ]
 
 # Which half of a model is the trunk. The pack names its materials; anything else is
@@ -145,7 +178,32 @@ def stand(objs, height):
         o.data.transform(o.matrix_world)
         o.matrix_world.identity()
         for v in o.data.vertices:
-            v.co = Vector(((v.co.x - mid.x) * scale, (v.co.y - mid.y) * scale, (v.co.z - lo.z) * scale))
+            v.co = Vector(
+                (
+                    (v.co.x - mid.x) * scale,
+                    (v.co.y - mid.y) * scale,
+                    (v.co.z - lo.z) * scale,
+                )
+            )
+        o.data.update()
+
+
+def weld(objs):
+    """Sew the model back into a surface.
+
+    glTF splits a vertex per normal and per uv, and these models are flat shaded, so
+    every triangle arrives with its own three vertices and shares an edge with
+    nothing: a tree is not a mesh but two thousand loose triangles. A decimator given
+    that can only throw triangles away - it has nothing to collapse them into - which
+    is why a thinned crown came out full of holes and floating shards. Welded, a tree
+    is seven surfaces and decimating it works the way decimating is supposed to.
+    """
+    for o in objs:
+        bm = bmesh.new()
+        bm.from_mesh(o.data)
+        bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
+        bm.to_mesh(o.data)
+        bm.free()
         o.data.update()
 
 
@@ -171,6 +229,7 @@ def prepare(prefix, name, digest, height, budget):
         if joined:
             parts.append(joined)
     stand(parts, height)
+    weld(parts)
     thin(parts, budget)
     for o in parts:
         bpy.context.view_layer.objects.active = o
