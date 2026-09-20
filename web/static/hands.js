@@ -105,15 +105,22 @@ const CURL = 'x', SPREAD = 'z';
 export function closeHand(hand, amount, spread = 0) {
   if (!hand) return;
   for (let i = 0; i < FINGERS.length; i++) {
-    for (let j = 0; j < 3; j++) {
-      pose(hand, FINGERS[i][j], CURL, -amount * GIVE[j]);
-    }
+    closeFinger(hand, i, amount);
     pose(hand, FINGERS[i][0], SPREAD, spread * (i - 1.5) * 0.12);
   }
   // The thumb comes across rather than curling under.
   pose(hand, THUMB[0], CURL, -amount * 0.35);
   pose(hand, THUMB[1], CURL, -amount * 0.5);
   pose(hand, THUMB[2], CURL, -amount * 0.4);
+}
+
+/**
+ * One finger on its own, 0 straight and 1 curled, which is what a trigger finger is:
+ * the rest of the hand holds the thing while the index lies along it and presses.
+ * Call it after closeHand, which closes this one too.
+ */
+export function closeFinger(hand, i, amount) {
+  for (let j = 0; j < 3; j++) pose(hand, FINGERS[i][j], CURL, -amount * GIVE[j]);
 }
 
 /** Bends the wrist and turns the forearm; both are bones like any other. */

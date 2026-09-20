@@ -20,6 +20,11 @@ What the script does is the part that is ours:
   * write web/static/hand.glb, which the UI loads once and clones per hand.
 
 The bone names are the WebXR joint names and are the contract with hands.js.
+
+Re-running this does not reproduce the committed file byte for byte: Blender's glTF
+exporter writes the same mesh with slightly different floats each time. The model is
+committed for that reason rather than built, and a regenerated one is equivalent
+without being identical.
 """
 
 import hashlib
@@ -30,6 +35,7 @@ import tempfile
 import urllib.request
 
 import bpy
+import bmesh  # only importable once bpy has loaded, so not in alphabetical order
 from mathutils import Matrix, Vector
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -72,10 +78,20 @@ DIGITS = [
 # The forearm, as a fraction of the hand's length: how far back the elbow is, and how
 # much thicker than the wrist the arm is at its middle and at the elbow.
 ARM = 1.42
-# How thick the arm is where it leaves the hand, at its widest and at the elbow, as a
-# fraction of the hand's length. A forearm is widest a third of the way down from the
-# elbow, not at the elbow itself.
-SWELL = (0.172, 0.225, 0.192)
+# The arm's profile: how far along it each ring sits, and how much wider that ring is
+# than the one before. A forearm leaves the wrist narrow, is widest a third of the way
+# down from the elbow, and draws in again to close.
+ARM_PROFILE = [
+    (0.06, 1.06),
+    (0.16, 1.14),
+    (0.3, 1.16),
+    (0.46, 1.12),
+    (0.62, 1.04),
+    (0.78, 0.97),
+    (0.9, 0.9),
+    (0.97, 0.72),
+    (1.0, 0.38),
+]
 
 
 def fetch():
@@ -179,66 +195,99 @@ def rig_hand(rig, head):
     return elbow, head["wrist"]
 
 
-def stump(mesh, axis):
-    """The middle of the cut face the model ends at, which is where the arm comes out."""
-    far = max((v.co.dot(axis) for v in mesh.data.vertices))
-    rim = [v.co for v in mesh.data.vertices if v.co.dot(axis) > far - HAND * 0.03]
-    return sum(rim, Vector()) / len(rim)
-
-
 def forearm(mesh, elbow, wrist):
-    """An arm out of the wrist, grown the way the old hand was: a line with a radius
-    at every point, thickened by the Skin modifier and rounded off by Subdivision.
+    """Grow the arm out of the wrist the model was cut off at.
 
-    It starts inside the palm and comes out through the cut face the model ends at, so
-    there is no seam to line up - the wrist is simply inside the sleeve of the arm.
+    The model ends in a flat cap across the wrist. Rather than push a separate tube up
+    inside it - which leaves the cap's rim showing as a bracelet, and a seam where two
+    surfaces that know nothing about each other cross - the cap is taken off and the
+    hole it leaves is extruded back along the arm, ring by ring, widening to a forearm
+    and closing again at the elbow. What comes out is one surface: there is no join to
+    line up because there is no join.
     """
     axis = (elbow - wrist).normalized()
-    centre = stump(mesh, axis) - axis * HAND * 0.28
-    points = [centre, centre.lerp(elbow, 0.62), elbow]
-    radii = [s * HAND for s in SWELL]
+    bm = bmesh.new()
+    bm.from_mesh(mesh.data)
+    # glTF splits a vertex per normal and per uv, so the model arrives as a shell full
+    # of seams that look like holes to anything that walks its edges. Welding them back
+    # together costs nothing - the copies sit on top of one another - and leaves one
+    # real hole once the cap comes off, which is the one being extruded.
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
 
-    data = bpy.data.meshes.new("forearm")
-    data.from_pydata([tuple(p) for p in points], [(0, 1), (1, 2)], [])
-    data.update()
-    obj = bpy.data.objects.new("forearm", data)
-    bpy.context.collection.objects.link(obj)
-    bpy.context.view_layer.objects.active = obj
-    obj.select_set(True)
-    skin = obj.modifiers.new("Skin", "SKIN")
-    skin.use_smooth_shade = True
-    for i, r in enumerate(radii):
-        # An arm is wider across than it is deep, which is why a forearm reads as a
-        # forearm and not as a length of pipe.
-        obj.data.skin_vertices[0].data[i].radius = (r, r * 0.84)
-    obj.data.skin_vertices[0].data[0].use_root = True
+    # The cap: the faces at the far end of the arm that face along it.
+    far = max(v.co.dot(axis) for v in bm.verts)
+    cap = [
+        f
+        for f in bm.faces
+        if f.calc_center_median().dot(axis) > far - HAND * 0.12
+        and f.normal.dot(axis) > 0.6
+    ]
+    if not cap:
+        raise SystemExit("the model does not end in a cap across the wrist")
+    bmesh.ops.delete(bm, geom=cap, context="FACES")
 
-    subsurf = obj.modifiers.new("Subdivision", "SUBSURF")
-    subsurf.levels = subsurf.render_levels = 2
-    for modifier in ("Skin", "Subdivision"):
-        bpy.ops.object.modifier_apply(modifier=modifier)
-    obj.data.materials.append(mesh.data.materials[0])
-    obj.vertex_groups.new(name="forearm")
-    return obj, centre.dot(axis), axis
+    rim = [e for e in bm.edges if len(e.link_faces) == 1]
+    ring = {v for e in rim for v in e.verts}
+    centre = sum((v.co for v in ring), Vector()) / len(ring)
+    # How wide the wrist is where the model stops, which every ring after it is a
+    # multiple of: the arm keeps the wrist's own oval rather than becoming a tube.
+    width = sum((v.co - centre).length for v in ring) / len(ring)
+
+    edges = rim
+    at = centre
+    for t, swell in ARM_PROFILE:
+        edges, at, ring = grow(
+            bm, edges, centre + axis * (HAND * ARM * t) - at, at, swell
+        )
+    # ... and close the elbow off with a ring pulled into a point.
+    bmesh.ops.contextual_create(bm, geom=edges)
+
+    bm.normal_update()
+    bm.to_mesh(mesh.data)
+    bm.free()
+    mesh.data.update()
+    return centre.dot(axis), width, axis
 
 
-def attach(mesh, arm, cuff, axis):
-    """Join the arm to the hand and weight it, fading into the wrist at the cuff so
-    that bending the wrist takes the sleeve with it rather than tearing it."""
-    first = len(mesh.data.vertices)
-    bpy.ops.object.select_all(action="DESELECT")
-    arm.select_set(True)
-    mesh.select_set(True)
-    bpy.context.view_layer.objects.active = mesh
-    bpy.ops.object.join()
+def grow(bm, edges, move, at, swell):
+    """One ring further along the arm: extrude the open edge, shift it and scale it
+    about the arm's own line, so the profile widens without wandering off it."""
+    out = bmesh.ops.extrude_edge_only(bm, edges=edges)["geom"]
+    verts = [v for v in out if isinstance(v, bmesh.types.BMVert)]
+    bmesh.ops.translate(bm, verts=verts, vec=move)
+    to = at + move
+    bmesh.ops.scale(
+        bm,
+        verts=verts,
+        vec=Vector((swell, swell, swell)),
+        space=Matrix.Translation(-to),
+    )
+    return (
+        [
+            e
+            for e in out
+            if isinstance(e, bmesh.types.BMEdge) and len(e.link_faces) == 1
+        ],
+        to,
+        verts,
+    )
 
-    forearm_group = mesh.vertex_groups["forearm"]
+
+def weigh(mesh, cuff, width, axis):
+    """Weight the new arm: the forearm bone below the cuff, fading into the wrist bone
+    across it, so bending the wrist takes the sleeve with it rather than tearing it."""
+    forearm_group = mesh.vertex_groups.get("forearm") or mesh.vertex_groups.new(
+        name="forearm"
+    )
     wrist_group = mesh.vertex_groups["wrist"]
-    for v in mesh.data.vertices[first:]:
-        along = v.co.dot(axis)
-        share = min(max((cuff - along) / (HAND * 0.22), 0.0), 1.0)
+    for v in mesh.data.vertices:
+        along = v.co.dot(axis) - cuff
+        if along < -width:
+            continue  # the hand itself, weighted by the model
+        share = min(max(1.0 - along / (width * 2.2), 0.0), 1.0)
         forearm_group.add([v.index], 1.0 - share, "REPLACE")
         wrist_group.add([v.index], share, "REPLACE")
+    bpy.context.view_layer.objects.active = mesh
     bpy.ops.object.shade_smooth()
 
 
@@ -257,8 +306,8 @@ def main():
     head = place(mesh, rig)
     elbow, wrist = rig_hand(rig, head)
     material(mesh)
-    arm, cuff, axis = forearm(mesh, elbow, wrist)
-    attach(mesh, arm, cuff, axis)
+    cuff, width, axis = forearm(mesh, elbow, wrist)
+    weigh(mesh, cuff, width, axis)
 
     bpy.ops.export_scene.gltf(
         filepath=OUT,
@@ -268,6 +317,9 @@ def main():
         export_apply=False,
         export_yup=True,
         use_selection=False,
+        # The UI re-colors the model and never reads a texture, so the coordinates
+        # for one are a third of the file wasted.
+        export_texcoords=False,
     )
     print(
         f"wrote {OUT}: {len(mesh.data.vertices)} vertices, {len(mesh.data.polygons)} faces, "

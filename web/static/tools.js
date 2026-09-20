@@ -18,7 +18,7 @@
 
 import * as THREE from './vendor/three.module.min.js';
 
-import { handModel, closeHand, setWrist, loadHands, handsReady } from './hands.js';
+import { handModel, closeHand, closeFinger, setWrist, loadHands, handsReady } from './hands.js';
 
 /**
  * One part of a tool. Unlike everything else on the map these are lit: the walk
@@ -160,11 +160,24 @@ function fillHand(holder, mirror, restGrip) {
  * an open hand; a tool is held with the fist already most of the way shut, and a
  * gesture takes it the rest of the way.
  */
-function grip(vm, amount) {
+function grip(vm, amount, press = 0) {
   for (const holder of vm.userData.hands || []) {
     const rest = holder.userData.restGrip ?? vm.userData.restGrip ?? 0.75;
     closeHand(holder.userData.hand, rest + amount * (1 - rest));
   }
+  // A tool with a button on it lays its index finger back out afterwards, because
+  // closing the fist closed that one too, and presses it as the gesture lands.
+  const trigger = vm.userData.trigger;
+  if (trigger != null) finger(vm, trigger + press * (1 - trigger));
+}
+
+/**
+ * Lays the first hand's index finger on a trigger: 0 is straight along it, 1 pressed.
+ * A fist closed evenly round a camera or a launcher has nothing to fire it with.
+ */
+function finger(vm, amount) {
+  const holder = vm.userData.hands?.[0];
+  if (holder?.userData.hand) closeFinger(holder.userData.hand, 0, amount);
 }
 
 /** Back to where a gesture started; the one place the rest pose is written down. */
@@ -389,6 +402,9 @@ const net = {
   arc: 1.1,
 };
 
+// How much smaller than life the camera body is drawn, so one hand can hold it.
+const SHELL = 0.78;
+
 const camera = {
   id: 'camera',
   label: 'Camera',
@@ -396,12 +412,11 @@ const camera = {
   noun: 'photographed',
   hint: 'Click: photograph a building, twice for details',
   reticle: 'frame',
-  // A camera is the one tool here held in both hands, so it is placed first and the
-  // hands are laid on it: the right one round the body's own grip, the left cupped
-  // under the lens, which is how a camera is actually held.
-  body: { x: 0.0, y: -0.09, z: -0.12, rx: 0.05, ry: -0.18, rz: 0.03 },
-  right: { at: [0.158, -0.025, 0.015], along: [0.08, 1, 0], back: [0.62, -0.75, 0.75], close: 0.86 },
-  left: { at: [-0.055, -0.085, -0.125], along: [0, 0.12, -1], back: [-0.55, -0.95, 0.5], close: 0.34 },
+  // Unlike the other tools the camera is not held in a fist, so it is placed first
+  // and the hand is laid on it: fingers round the body's own grip, the way anyone
+  // holds a camera they are about to fire one-handed.
+  body: { x: 0.055, y: -0.03, z: -0.09, rx: 0.06, ry: -0.3, rz: 0.04 },
+  right: { at: [0.205, -0.03, 0.02], along: [0.1, 1, -0.05], back: [0.45, -0.95, 0.5], close: 0.9 },
   viewmodel() {
     return viewmodel(g => {
       const cam = new THREE.Group();
@@ -409,44 +424,50 @@ const camera = {
       cam.position.set(this.body.x, this.body.y, this.body.z);
       cam.rotation.set(this.body.rx, this.body.ry, this.body.rz);
       g.add(cam);
+      // A camera modelled at the size of a real one is more than one hand can hold at
+      // the scale the walker is: the body is drawn a little smaller than life, and the
+      // hand goes on the grip where the shrinking leaves it.
+      const shell = new THREE.Group();
+      shell.scale.setScalar(SHELL);
+      cam.add(shell);
 
       const body = part(new THREE.BoxGeometry(0.27, 0.165, 0.11), '#2c3138');
-      cam.add(body);
-      cam.add(part(new THREE.BoxGeometry(0.06, 0.15, 0.115).translate(0.105, -0.005, 0.005), '#20242a')); // the grip
-      cam.add(part(new THREE.BoxGeometry(0.27, 0.03, 0.112).translate(0, 0.045, 0.002), '#3a4149'));      // a leatherette band
+      shell.add(body);
+      shell.add(part(new THREE.BoxGeometry(0.06, 0.15, 0.115).translate(0.105, -0.005, 0.005), '#20242a')); // the grip
+      shell.add(part(new THREE.BoxGeometry(0.27, 0.03, 0.112).translate(0, 0.045, 0.002), '#3a4149'));      // a leatherette band
       // The prism hump, with the viewfinder behind it.
-      cam.add(part(new THREE.BoxGeometry(0.09, 0.05, 0.08).translate(-0.02, 0.105, 0.005), '#262b31'));
-      cam.add(part(new THREE.BoxGeometry(0.05, 0.035, 0.012).translate(-0.02, 0.1, 0.056), '#0d0f12'));
+      shell.add(part(new THREE.BoxGeometry(0.09, 0.05, 0.08).translate(-0.02, 0.105, 0.005), '#262b31'));
+      shell.add(part(new THREE.BoxGeometry(0.05, 0.035, 0.012).translate(-0.02, 0.1, 0.056), '#0d0f12'));
       const barrel = rodPart(0.062, 0.07, 0.115, '#1a1d21');
       barrel.rotation.x = Math.PI / 2;
       barrel.position.z = -0.11;
-      cam.add(barrel);
+      shell.add(barrel);
       const focus = rodPart(0.073, 0.073, 0.03, '#2f353c'); // the focus ring, ribbed by its facets
       focus.rotation.x = Math.PI / 2;
       focus.position.z = -0.115;
-      cam.add(focus);
+      shell.add(focus);
       const hood = rodPart(0.078, 0.07, 0.03, '#15181b');
       hood.rotation.x = Math.PI / 2;
       hood.position.z = -0.175;
-      cam.add(hood);
+      shell.add(hood);
       const glass = part(new THREE.SphereGeometry(0.056, 14, 8, 0, Math.PI * 2, 0, Math.PI / 2), '#5c9be0');
       glass.rotation.x = -Math.PI / 2;
       glass.position.z = -0.168;
-      cam.add(glass);
+      shell.add(glass);
       const button = rodPart(0.019, 0.019, 0.022, '#e4402f');
       button.position.set(0.1, 0.09, 0.01);
       button.name = 'button';
-      cam.add(button);
+      shell.add(button);
       const dial = rodPart(0.028, 0.028, 0.02, '#40474f');
       dial.position.set(0.045, 0.092, -0.01);
-      cam.add(dial);
+      shell.add(dial);
       // The flash, which brightens for a frame when the shutter goes.
       const flash = part(new THREE.BoxGeometry(0.05, 0.016, 0.02).translate(-0.02, 0.13, 0.0), '#e8eef6');
       flash.name = 'flash';
-      cam.add(flash);
+      shell.add(flash);
 
-      grasps(g, cam, this.right);
-      grasps(g, cam, this.left, -1);
+      grasps(g, cam, { ...this.right, at: this.right.at.map(v => v * SHELL) });
+      g.userData.trigger = 0.12; // the index finger rests on the shutter release
     });
   },
   // The camera is lifted to the eye, the shutter pressed, and the body kicks back.
@@ -459,7 +480,7 @@ const camera = {
     vm.position.y = vm.userData.restY + k * 0.03;
     vm.rotation.x = REST.rx + k * 0.1;
     vm.rotation.y = REST.ry + k * 0.12;
-    grip(vm, k * 0.6);
+    grip(vm, k * 0.35, k);
   },
   projectile: null, // a photograph arrives the moment it is taken
   flash: '#ffffff',
@@ -601,6 +622,7 @@ const dart = {
       loaded.position.set(0, 0.095, -0.125);
       loaded.name = 'loaded';
       frame.add(loaded);
+      g.userData.trigger = 0.1; // the index finger rests on the trigger
     });
   },
   // Recoil: the whole thing drives back and the muzzle rises, then settles.
@@ -612,7 +634,7 @@ const dart = {
     vm.position.y = vm.userData.restY + k * 0.012;
     vm.rotation.x = REST.rx + k * 0.22;
     vm.rotation.z = REST.rz + k * 0.05;
-    grip(vm, k);
+    grip(vm, k * 0.4, k);
   },
   projectile() {
     const g = new THREE.Group();
