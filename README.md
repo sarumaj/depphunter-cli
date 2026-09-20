@@ -5,13 +5,13 @@
 > **Note:** This codebase was developed with the assistance of AI tools
 > (Claude, by Anthropic). All code is reviewed and tested before being merged.
 
-|                   Initial view                    |                   Dependency trace                    |
-|:-------------------------------------------------:|:-----------------------------------------------------:|
-| ![Initial view](docs/screenshots/screenshot1.png) | ![Dependency trace](docs/screenshots/screenshot2.png) |
-|                   **Walk mode**                   |                    **Night mode**                     |
-|  ![Walk mode](docs/screenshots/screenshot3.png)   |    ![Night mode](docs/screenshots/screenshot4.png)    |
-|                  **Flight mode**                  |                                                       |
-| ![Flight mode](docs/screenshots/screenshot5.png)  |                                                       |
+|                   Initial view                    |                      Dependency trace                      |
+|:-------------------------------------------------:|:----------------------------------------------------------:|
+| ![Initial view](docs/screenshots/screenshot1.png) |   ![Dependency trace](docs/screenshots/screenshot2.png)    |
+|                   **Walk mode**                   |                       **Night mode**                       |
+|  ![Walk mode](docs/screenshots/screenshot3.png)   |      ![Night mode](docs/screenshots/screenshot4.png)       |
+|                  **Flight mode**                  |                 **Vulnerability hunting**                  |
+| ![Flight mode](docs/screenshots/screenshot5.png)  | ![Vulnerability hunting](docs/screenshots/screenshot6.png) |
 
 Browse any code base as an interactive isometric archipelago in your browser.
 
