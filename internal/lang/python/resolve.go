@@ -70,10 +70,12 @@ type resolver struct {
 	pyDirs  map[string]bool // directories containing Python files at any depth
 	roots   []string        // import roots, most specific first, "." last
 	distMap map[string]*dist
+	// tree maps a normalized distribution name to what a lock file says it needs.
+	tree map[string][]string
 }
 
 func newResolver(all, claimed []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, pyDirs: map[string]bool{}, distMap: map[string]*dist{}}
+	r := &resolver{files: map[string]bool{}, pyDirs: map[string]bool{}, distMap: map[string]*dist{}, tree: map[string][]string{}}
 	for _, f := range claimed {
 		r.files[f.Path] = true
 		for d := path.Dir(f.Path); d != "." && !r.pyDirs[d]; d = path.Dir(d) {
@@ -430,11 +432,70 @@ func (r *resolver) readLock(f *scan.File) {
 		return
 	}
 	var doc struct {
-		Package []struct{ Name, Version string }
+		Package []struct {
+			Name, Version string
+			// What the distribution itself needs, written differently by every tool:
+			// a table of name -> constraint (poetry), a list of {name = …} tables
+			// (uv), or a list of requirement strings (pdm).
+			Dependencies any
+		}
 	}
 	if _, err := toml.DecodeFile(f.Abs, &doc); err == nil {
 		for _, p := range doc.Package {
 			r.addDist(p.Name, p.Version, true)
+			for _, dep := range lockDependencies(p.Dependencies) {
+				if dep != "" && !strings.EqualFold(dep, p.Name) {
+					key := normalize(p.Name)
+					r.tree[key] = append(r.tree[key], dep)
+				}
+			}
 		}
 	}
+}
+
+// lockDependencies reads the names out of whichever shape a lock file wrote.
+func lockDependencies(v any) []string {
+	var out []string
+	switch v := v.(type) {
+	case map[string]any: // poetry: certifi = ">=2017.4.17"
+		for name := range v {
+			out = append(out, name)
+		}
+	case []any:
+		for _, item := range v {
+			switch item := item.(type) {
+			case map[string]any: // uv: { name = "certifi" }
+				if name, _ := item["name"].(string); name != "" {
+					out = append(out, name)
+				}
+			case string: // pdm: "certifi>=2017.4.17; python_version >= '3'"
+				out = append(out, requirementName(item))
+			}
+		}
+	}
+	return out
+}
+
+// requirementName takes the distribution name off the front of a requirement string.
+func requirementName(req string) string {
+	if i := strings.IndexAny(req, " <>=!~[;("); i >= 0 {
+		req = req[:i]
+	}
+	return strings.TrimSpace(req)
+}
+
+// Dependencies implements lang.Transitive from the lock files the project carries.
+func (r *resolver) Dependencies(t lang.Target) []lang.Target {
+	if t.Ecosystem != ecoPyPI {
+		return nil
+	}
+	var out []lang.Target
+	for _, dep := range r.tree[normalize(t.Package)] {
+		name, version, pinned := dep, "", false
+		if d := r.distMap[normalize(dep)]; d != nil {
+			name, version, pinned = d.name, d.version, d.pinned
+		}
+		out = append(out, lang.Target{Ecosystem: ecoPyPI, Package: name, Version: version, Pinned: pinned})
+	}
+	return out
 }

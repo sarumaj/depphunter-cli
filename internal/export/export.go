@@ -93,7 +93,7 @@ func writeGraphML(w io.Writer, g *graph.Graph) error {
 	for _, k := range []struct{ id, typ string }{
 		{"kind", "string"}, {"name", "string"}, {"path", "string"}, {"parent", "string"},
 		{"lang", "string"}, {"loc", "int"}, {"symbolKind", "string"}, {"line", "int"},
-		{"version", "string"}, {"requested", "string"}, {"floating", "boolean"},
+		{"version", "string"}, {"requested", "string"}, {"floating", "boolean"}, {"transitive", "boolean"},
 		{"std", "boolean"}, {"unresolved", "boolean"},
 	} {
 		doc.Keys = append(doc.Keys, gmlKey{ID: k.id, For: "node", Name: k.id, Type: k.typ})
@@ -132,6 +132,7 @@ func writeGraphML(w io.Writer, g *graph.Graph) error {
 		add("version", n.Version)
 		add("requested", n.Requested)
 		flag("floating", n.Floating)
+		flag("transitive", n.Transitive)
 		flag("std", n.Std)
 		flag("unresolved", n.Unresolved)
 		doc.Graph.Nodes = append(doc.Graph.Nodes, gmlNode{ID: n.ID, Data: data})

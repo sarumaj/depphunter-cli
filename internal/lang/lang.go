@@ -59,6 +59,16 @@ type Resolver interface {
 	Resolve(file string, imp RawImport) Target
 }
 
+// Transitive is the optional half of a Resolver: what an external package itself
+// depends on, as far as the project's own lock files say. It is how --resolve-depth
+// reaches past the packages a project imports directly without asking a registry,
+// which is why the answer is only as complete as the lock files are.
+type Transitive interface {
+	// Dependencies lists what t depends on. Nothing known and nothing to declare look
+	// alike here; both return no targets.
+	Dependencies(t Target) []Target
+}
+
 type Import struct {
 	Spec   string
 	Line   int

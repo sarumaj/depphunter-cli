@@ -54,3 +54,24 @@ func TestExpandUse(t *testing.T) {
 		t.Errorf("got %v, want %v", got, want)
 	}
 }
+
+// TestLockTree checks the crate graph Cargo.lock resolves: --resolve-depth walks it
+// without asking crates.io anything.
+func TestLockTree(t *testing.T) {
+	r, err := (Plugin{}).Resolver("testdata/repo", langtest.Files(t, "testdata/repo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, ok := r.(lang.Transitive)
+	if !ok {
+		t.Fatal("the resolver cannot answer for transitive dependencies")
+	}
+	got := tr.Dependencies(lang.Target{Ecosystem: "crates", Package: "serde"})
+	if len(got) != 1 || got[0].Package != "serde_derive" || got[0].Version != "1.0.200" || !got[0].Pinned {
+		t.Fatalf("serde depends on %+v, want serde_derive 1.0.200 pinned", got)
+	}
+	// "syn 2.0.60" names a version beside the crate; only the name is the edge.
+	if got = tr.Dependencies(lang.Target{Ecosystem: "crates", Package: "serde_derive"}); len(got) != 1 || got[0].Package != "syn" {
+		t.Errorf("serde_derive depends on %+v, want syn", got)
+	}
+}

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 
@@ -167,6 +168,86 @@ func TestPackageVersions(t *testing.T) {
 		if n.Version != c.version || n.Requested != c.requested || n.Floating != c.floating {
 			t.Errorf("%s: version %q requested %q floating %v, want %q %q %v",
 				c.pkg, n.Version, n.Requested, n.Floating, c.version, c.requested, c.floating)
+		}
+	}
+}
+
+// fakeResolver answers for transitive dependencies too, so the walk can be tested
+// without a lock file: direct -> middle -> deep, and deep needs nothing.
+func (r fakeResolver) Dependencies(t lang.Target) []lang.Target {
+	next := map[string]string{"direct": "middle", "middle": "deep"}
+	if dep, ok := next[t.Package]; ok {
+		return []lang.Target{{Ecosystem: "fake-eco", Package: dep, Version: "1.0.0", Pinned: true}}
+	}
+	return nil
+}
+
+func TestResolveDepth(t *testing.T) {
+	root := t.TempDir()
+	writeProject(t, root, map[string]string{"a.fake": "direct\n"})
+	p := fakePlugin{targets: map[string]lang.Target{
+		"direct": {Ecosystem: "fake-eco", Package: "direct", Version: "2.0.0", Pinned: true},
+	}}
+
+	for _, c := range []struct {
+		depth int
+		want  []string // package nodes, in the order the walk reaches them
+	}{
+		{0, []string{"direct"}},
+		{1, []string{"direct", "middle"}},
+		{2, []string{"direct", "middle", "deep"}},
+		{-1, []string{"direct", "middle", "deep"}}, // as far as the lock files reach
+	} {
+		g, _, err := Run(context.Background(), root, Options{Plugins: []lang.Plugin{p}, ResolveDepth: c.depth})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var packages []string
+		transitive := map[string]bool{}
+		for _, n := range g.Nodes {
+			if n.Kind == graph.KindPackage {
+				packages = append(packages, n.Name)
+				transitive[n.Name] = n.Transitive
+			}
+		}
+		sort.Strings(packages)
+		want := append([]string(nil), c.want...)
+		sort.Strings(want)
+		if strings.Join(packages, ",") != strings.Join(want, ",") {
+			t.Errorf("depth %d: packages %v, want %v", c.depth, packages, want)
+		}
+		// What the project imports itself is not transitive, whatever the depth.
+		if transitive["direct"] {
+			t.Errorf("depth %d: the imported package is marked transitive", c.depth)
+		}
+		if len(c.want) > 1 && !transitive["middle"] {
+			t.Errorf("depth %d: a package only a dependency needs is not marked transitive", c.depth)
+		}
+	}
+}
+
+func TestResolveDepthEdges(t *testing.T) {
+	root := t.TempDir()
+	writeProject(t, root, map[string]string{"a.fake": "direct\n"})
+	p := fakePlugin{targets: map[string]lang.Target{
+		"direct": {Ecosystem: "fake-eco", Package: "direct", Version: "2.0.0", Pinned: true},
+	}}
+	g, _, err := Run(context.Background(), root, Options{Plugins: []lang.Plugin{p}, ResolveDepth: -1})
+	if err != nil {
+		t.Fatal(err)
+	}
+	kinds := map[string]graph.EdgeKind{}
+	for _, e := range g.Edges {
+		kinds[e.From+" -> "+e.To] = e.Kind
+	}
+	// A file imports a package; a package depends on a package.
+	if got := kinds[graph.FileID("a.fake")+" -> "+graph.PackageID("fake-eco", "direct")]; got != graph.EdgeImport {
+		t.Errorf("file edge is %q, want import", got)
+	}
+	for _, pair := range [][2]string{{"direct", "middle"}, {"middle", "deep"}} {
+		key := graph.PackageID("fake-eco", pair[0]) + " -> " + graph.PackageID("fake-eco", pair[1])
+		if got := kinds[key]; got != graph.EdgeDepends {
+			t.Errorf("%s edge is %q, want depends", key, got)
 		}
 	}
 }

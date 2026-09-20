@@ -113,7 +113,8 @@ func run(ctx context.Context, cfg config.Config) error {
 			golang.Plugin{}, javascript.Plugin{}, python.Plugin{}, rust.Plugin{}, java.Plugin{},
 			csharp.Plugin{}, powershell.Plugin{}, ci.Plugin{},
 		},
-		Cache: c,
+		Cache:        c,
+		ResolveDepth: cfg.ResolveDepth,
 	}
 	g, err := analyze(ctx, cfg.Root, opts, c)
 	if err != nil {

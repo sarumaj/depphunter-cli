@@ -22,7 +22,7 @@ func TestImportResolution(t *testing.T) {
 		"os.path":                            {Ecosystem: "python-std", Package: "os"},
 		"json":                               {Ecosystem: "python-std", Package: "json"},
 		"from typing import List":            {Ecosystem: "python-std", Package: "typing"},
-		"requests":                           {Ecosystem: "pypi", Package: "requests", Version: ">=2.31"},
+		"requests":                           {Ecosystem: "pypi", Package: "requests", Version: "2.31.0", Requested: ">=2.31", Pinned: true},
 		"yaml":                               {Ecosystem: "pypi", Package: "PyYAML", Version: "6.0.1", Pinned: true},
 		"from bs4 import BeautifulSoup":      {Ecosystem: "pypi", Package: "beautifulsoup4", Version: "^4.12"},
 		"numpy":                              {Ecosystem: "pypi", Package: "numpy", Version: "1.26.4", Pinned: true},
@@ -82,4 +82,55 @@ func TestSetuptoolsManifests(t *testing.T) {
 		"ruff":     pypi("ruff", ""),
 		"numpy":    {Ecosystem: "pypi", Package: "numpy", Unresolved: true},
 	})
+}
+
+// TestLockTree checks the dependency edges a lock file records; uv writes them as a
+// list of tables, poetry as a table, pdm as requirement strings.
+func TestLockTree(t *testing.T) {
+	r, err := (Plugin{}).Resolver("testdata/repo", langtest.Files(t, "testdata/repo"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr, ok := r.(lang.Transitive)
+	if !ok {
+		t.Fatal("the resolver cannot answer for transitive dependencies")
+	}
+	got := map[string]lang.Target{}
+	for _, d := range tr.Dependencies(lang.Target{Ecosystem: "pypi", Package: "requests"}) {
+		got[d.Package] = d
+	}
+	if len(got) != 2 {
+		t.Fatalf("requests depends on %+v, want certifi and urllib3", got)
+	}
+	if c := got["certifi"]; c.Version != "2024.2.2" || !c.Pinned {
+		t.Errorf("certifi: %+v, want 2024.2.2 pinned", c)
+	}
+	if u := got["urllib3"]; u.Version != "2.2.1" {
+		t.Errorf("urllib3: %+v, want 2.2.1", u)
+	}
+}
+
+func TestLockDependencyShapes(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		in   any
+		want []string
+	}{
+		{"poetry table", map[string]any{"certifi": ">=2017.4.17"}, []string{"certifi"}},
+		{"uv tables", []any{map[string]any{"name": "certifi"}}, []string{"certifi"}},
+		{"pdm strings", []any{"certifi>=2017.4.17; python_version >= '3'"}, []string{"certifi"}},
+		{"nothing", nil, nil},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			got := lockDependencies(c.in)
+			if len(got) != len(c.want) {
+				t.Fatalf("got %v, want %v", got, c.want)
+			}
+			for i := range got {
+				if got[i] != c.want[i] {
+					t.Errorf("got %v, want %v", got, c.want)
+				}
+			}
+		})
+	}
 }

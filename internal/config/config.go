@@ -64,6 +64,9 @@ type Config struct {
 	// History reads git history (up to HistoryCommits commits) for the history overlay.
 	History        bool `yaml:"history" mapstructure:"history"`
 	HistoryCommits int  `yaml:"history_commits" mapstructure:"history_commits"`
+	// ResolveDepth adds an external package's own dependencies, read from the
+	// project's lock files: 0 none, -1 as far as they reach.
+	ResolveDepth int `yaml:"resolve_depth" mapstructure:"resolve_depth"`
 	// LSP asks installed language servers for symbol-level references (slow, opt-in).
 	LSP        bool          `yaml:"lsp" mapstructure:"lsp"`
 	LSPTimeout time.Duration `yaml:"lsp_timeout" mapstructure:"lsp_timeout"`
@@ -113,6 +116,8 @@ func RegisterFlags(fs *pflag.FlagSet) {
 	fs.Bool("no-cache", false, "do not read or write the analysis cache")
 	fs.Bool("no-history", false, "do not read git history")
 	fs.Int("history-commits", d.HistoryCommits, "read at most this many commits of git history")
+	fs.Int("resolve-depth", d.ResolveDepth,
+		"levels of external dependencies-of-dependencies to resolve from lock files (-1 = all)")
 	fs.Bool("lsp", false, "find symbol references with installed language servers (gopls, …)")
 	fs.Duration("lsp-timeout", d.LSPTimeout, "time budget for language servers")
 	fs.String("editor", "", `editor command template, e.g. "code -g {file}:{line}" (default: auto-detect)`)
@@ -127,7 +132,7 @@ func RegisterFlags(fs *pflag.FlagSet) {
 // Settings a flag sets directly, by flag name.
 var flagKeys = map[string]string{
 	"addr": "addr", "max-file-size": "max_file_size", "watch": "watch",
-	"history-commits": "history_commits", "lsp": "lsp", "lsp-timeout": "lsp_timeout", "editor": "editor",
+	"history-commits": "history_commits", "resolve-depth": "resolve_depth", "lsp": "lsp", "lsp-timeout": "lsp_timeout", "editor": "editor",
 	"terminal": "terminal", "terminal-browser": "terminal_browser", "terminal-graphics": "terminal_graphics",
 	"theme": "ui.theme", "color-by": "ui.color_by", "height-scale": "ui.height_scale",
 	"show-std": "ui.show_std", "expand-depth": "ui.expand_depth",
@@ -140,7 +145,7 @@ var negatedFlags = map[string]string{"no-open": "open", "no-cache": "cache", "no
 // handled apart: it adds to the configured globs instead of replacing them.
 var envKeys = map[string]string{
 	"addr": "ADDR", "open": "OPEN", "max_file_size": "MAX_FILE_SIZE", "watch": "WATCH", "cache": "CACHE",
-	"history": "HISTORY", "history_commits": "HISTORY_COMMITS", "lsp": "LSP", "lsp_timeout": "LSP_TIMEOUT",
+	"history": "HISTORY", "history_commits": "HISTORY_COMMITS", "resolve_depth": "RESOLVE_DEPTH", "lsp": "LSP", "lsp_timeout": "LSP_TIMEOUT",
 	"editor": "EDITOR", "terminal": "TERMINAL", "terminal_browser": "TERMINAL_BROWSER",
 	"terminal_graphics": "TERMINAL_GRAPHICS", "ui.theme": "THEME", "ui.color_by": "COLOR_BY", "ui.height_scale": "HEIGHT_SCALE",
 	"ui.show_std": "SHOW_STD", "ui.expand_depth": "EXPAND_DEPTH",
@@ -230,7 +235,8 @@ func setDefaults(v *viper.Viper, d Config) {
 	for key, val := range map[string]any{
 		"addr": d.Addr, "open": d.Open, "exclude": d.Exclude, "max_file_size": d.MaxFileSize,
 		"watch": d.Watch, "cache": d.Cache, "history": d.History, "history_commits": d.HistoryCommits,
-		"lsp": d.LSP, "lsp_timeout": d.LSPTimeout, "editor": d.Editor, "terminal": d.Terminal,
+		"resolve_depth": d.ResolveDepth, "lsp": d.LSP, "lsp_timeout": d.LSPTimeout,
+		"editor": d.Editor, "terminal": d.Terminal,
 		"terminal_browser": d.TerminalBrowser, "terminal_graphics": d.TerminalGraphics,
 		"ui.theme": d.UI.Theme, "ui.color_by": d.UI.ColorBy, "ui.height_scale": d.UI.HeightScale,
 		"ui.show_std": d.UI.ShowStd, "ui.expand_depth": d.UI.ExpandDepth,
@@ -268,6 +274,12 @@ func (c Config) validate() error {
 		func() error {
 			if c.HistoryCommits < 1 {
 				return errors.New("history-commits must be at least 1")
+			}
+			return nil
+		}(),
+		func() error {
+			if c.ResolveDepth < -1 {
+				return errors.New("resolve-depth must be -1 or more")
 			}
 			return nil
 		}(),
