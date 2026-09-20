@@ -811,7 +811,7 @@ export function makeSky(uniforms) {
        * across the line of sight rather than through it, which keeps a star a round
        * dot however the cube grid happens to cross the sphere.
        *
-       * Colour runs from cool blue through white to amber, because a sky of identical
+       * color runs from cool blue through white to amber, because a sky of identical
        * white dots reads as dirt on the screen.
        *
        * A star smaller than a pixel would flicker as the view turned, so one that far
@@ -879,7 +879,7 @@ export function makeSky(uniforms) {
         col += vec3(0.16, 0.15, 0.25) * along * (0.35 + 1.05 * smoothstep(0.3, 0.88, skyFbm(d, 2.6, 0.0)));
         col *= 1.0 - 0.6 * along * smoothstep(0.44, 0.9, skyFbm(d, 5.5, 31.0));
 
-        // Two nebulae, drifting. They are patches of colour, not a wash: spread over
+        // Two nebulae, drifting. They are patches of color, not a wash: spread over
         // the whole dome they only lift the black to a flat mauve and take the depth
         // out of everything in front of them.
         //
@@ -955,7 +955,7 @@ export function waterMaterial(uniforms) {
         // Between the platforms there is no sea, only more of the same sky seen the
         // other way: a drift of dust with something deeper burning through it, and
         // stars at three densities so it has a distance to it rather than being an
-        // even speckle laid on a flat colour.
+        // even speckle laid on a flat color.
         float deep = fbm(vW.xz * 0.06);
         diffuseColor.rgb *= 0.45 + 0.45 * vnoise(vW.xz * 0.12);
         diffuseColor.rgb += vec3(0.13, 0.04, 0.22) * smoothstep(0.55, 0.92, deep) * (0.4 + 0.6 * deep);
@@ -964,7 +964,7 @@ export function waterMaterial(uniforms) {
         diffuseColor.rgb += vec3(0.86, 0.9, 1.0) * starDot(vW.xz * 11.0, 0.985, 0.13) * 1.6;
         diffuseColor.rgb += vec3(1.0, 0.86, 0.66) * starDot(vW.zx * 4.5 + 7.0, 0.992, 0.1) * 2.0;
       } else if (uStyle > 0.5) {
-        // Around the board there is only the bench it lies on: an anodised plate,
+        // Around the board there is only the bench it lies on: an anodized plate,
         // brushed along one axis, with the cutting grid scribed across it. The brush
         // is what the flat grey was missing - a bench with nothing on it but a grid
         // reads as graph paper.
@@ -976,13 +976,13 @@ export function waterMaterial(uniforms) {
         float bw = fwidth(vW.x * 160.0);
         brush = mix(brush, 0.75, smoothstep(0.35, 1.2, bw)); // to its mean when minified
         diffuseColor.rgb *= 0.9 + 0.13 * (brush - 0.75) + 0.12 * vnoise(vW.xz * 8.0);
-        // Anodising is never quite even: broad, very slight clouding over the brush.
+        // Anodizing is never quite even: broad, very slight clouding over the brush.
         diffuseColor.rgb *= 0.96 + 0.08 * fbm(vW.xz * 0.35);
         diffuseColor.rgb *= 1.0 + 0.5 * grid * (1.0 - smoothstep(0.02, 0.08, max(tw.x, tw.y)));
       } else {
         // Open water: a long swell with wind chop riding on it, the crests catching
         // the sky and a little of it showing through where the water is thin. Two
-        // octaves travelling at different speeds and angles is what stops it reading
+        // octaves traveling at different speeds and angles is what stops it reading
         // as one sheet of noise sliding sideways.
         vec2 w = vW.xz;
         float swell = vnoise(w * 0.7 + vec2(uTime * 0.09, uTime * 0.05))

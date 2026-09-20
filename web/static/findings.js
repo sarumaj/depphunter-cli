@@ -1,7 +1,7 @@
 // What the scanners said, placed on the map: a vulnerability belongs to the package it
 // affects, a linter's complaint to the file it is about, and a directory carries what
 // lies below it. The same index answers three questions - what the panel lists, what
-// colour the streets' bugs are, and how many there are still to catch.
+// color the streets' bugs are, and how many there are still to catch.
 
 export const SEVERITIES = ['critical', 'high', 'medium', 'low', 'info', 'unknown'];
 const RANK = { critical: 5, high: 4, medium: 3, low: 2, info: 1, unknown: 0 };
@@ -11,7 +11,7 @@ export const rankOf = sev => RANK[sev] ?? 0;
 /** The worst of two severities, either of which may be missing. */
 export const worse = (a, b) => (!a ? b : !b ? a : rankOf(a) >= rankOf(b) ? a : b);
 
-/** Severity colours, read from the stylesheet so both themes choose their own. */
+/** Severity colors, read from the stylesheet so both themes choose their own. */
 export function severityColors() {
   const cs = getComputedStyle(document.documentElement);
   const out = {};

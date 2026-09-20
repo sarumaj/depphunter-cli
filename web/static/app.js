@@ -12,6 +12,7 @@ import { loadHands } from './hands.js';
 import { loadPlants } from './props.js';
 import { Bugs } from './bugs.js';
 import { Pins } from './pins.js';
+import { Routes } from './routes.js';
 import { Backpack } from './backpack.js';
 import { indexFindings } from './findings.js';
 import { $, h, fmt, escapeHTML } from './dom.js';
@@ -54,6 +55,7 @@ let labels;       // Labels layer over the map
 let walker;       // first-person walk mode
 let bugs;         // the findings walking the streets in walk mode
 let pins;         // the same findings, as markers over the map
+let routes;       // the selection's dependencies, laid down as roads
 let pack;         // what has been caught (backpack.js)
 let aimX = 0;     // where the walk-mode tooltip was last placed
 
@@ -127,6 +129,7 @@ async function main() {
     onRender: drawLabels,
   });
   pins = new Pins(scene);
+  routes = new Routes(scene);
   pack = new Backpack(model.root.name, drawPack);
   bugs = new Bugs(scene, {
     // A caught bug reads itself out: the building it belongs to is selected and its
@@ -706,6 +709,7 @@ function relayout() {
   L = layout(model, state);
   scene.setBoxes(L.boxes, baseColors());
   walker.setBoxes(L.boxes);
+  routes?.setLayout(L.boxes); // where a road may run changed with the blocks
   if (bugs) placeBugs();
   const to = anchor && rep(anchor.node);
   if (to) walker.reanchor(anchor, to);
@@ -780,6 +784,10 @@ function refreshFocus() {
     focus = { lit, arcs, selBox };
   }
   scene.setArcs(focus ? focus.arcs : []);
+  // The same edges on the ground, routed between the blocks. The arcs say which
+  // buildings are joined; the roads say how you would get there, which is the part
+  // a map of a city is supposed to answer.
+  routes.set(focus ? focus.arcs : [], focus ? focus.selBox : null);
   scene.setOutline(focus ? focus.selBox : null, pal.select);
   recolor();
   labels.set(L.boxes, focus, state.selected);
