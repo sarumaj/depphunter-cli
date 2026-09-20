@@ -705,21 +705,26 @@ panel lists for its building.
 - The galaxy: crystal spires, faceted and dark at the foot, with strata of light
   across them and windows that read as stars; glowing conduits down every gap;
   dust, rubble and beacons; nebulae and a star field instead of sea and sky.
-- The tool in the walker's hands is on the end of an arm. Hand and forearm are
-  built from elliptical cross-sections swept along a spine (limb), which is what
-  every part of an arm is: a forearm that swells from a flattened wrist, a palm
-  wide across the knuckles and thin at the wrist with the pads at its thumb and
-  its edge, four fingers of three tapering bones with nails, and an opposed thumb
-  of two. Every part carries a soft key light baked into its vertex colors, and
-  the skin reddens towards the knuckles and fingertips, because the map has no
-  lights and an unlit tube is a silhouette. No model is downloaded: a rigged hand
-  that could be posed per tool and redistributed under a license this repository
-  can carry does not exist to fetch, and a realistic one dropped into an unlit
-  scene renders as a flat shape anyway.
-- The hand is part of the tool it holds, placed so a shaft passes through the
-  hole in its fist rather than beside it, and the arm hangs off the wrist
-  counter-rotated so that however the tool is angled the arm still falls away to
-  the corner of the frame. A launcher held across the view must not take the
+- The walker's hands and forearms are a model, not geometry assembled in the UI:
+  tools/hand.py builds one in Blender - a skeleton of joints with a radius each,
+  grown into flesh by the Skin modifier, smoothed, and rigged with a bone per
+  phalanx - and exports web/static/hand.glb. The script is the source and is
+  committed with it, so the model can be read, reviewed and regenerated rather
+  than being a binary nobody can change. No model is downloaded: a rigged hand
+  that can be posed per tool and redistributed under this repository's license is
+  not something there is to fetch.
+- It is loaded once and cloned for every hand drawn, and it is posed by bone
+  name: the fist closes around whatever is held, the knuckle giving least and the
+  middle joint most. The names are the contract between the Blender script and
+  the UI.
+- What the walker holds is the only lit thing on the map. The walk camera carries
+  a key, a fill and some ambient light, and because every material in the scene
+  proper is unlit they reach nothing else - so a hand is round and a rod blank has
+  a highlight, while the city keeps its flat, data-first coloring.
+- A tool is held rather than placed beside a hand: each one says which way the
+  shaft through the fist points and which way the arm runs back out of the frame,
+  and the hand is oriented from those two directions. The tool is a child of the
+  hand, so the two move together.
   shoulder with it. The
   tools are built to the same standard: a rod with a cork grip, a tapering blank,
   line guides and a reel with a handle; a net with a bound grip, a ferrule and a

@@ -42,6 +42,13 @@ Browse any code base as an interactive isometric archipelago in your browser.
   crossings, ramps and stairs lead between levels, empty lots are parks with
   trees and bushes, and bridges cross the water to every island.
 
+The hands and forearms you see in walk mode are a rigged model, built by
+`tools/hand.py` in Blender and exported to `web/static/hand.glb`; the script is
+the source for it, so it can be read and regenerated rather than being a binary
+nobody can change. They are also the only lit thing on the map - the walk camera
+carries its own lights, and every other material is unlit, so the city keeps its
+flat, data-first coloring.
+
 Everything runs locally: one binary, no Node.js, and no network access unless
 you ask for it with `--online` (see [Package indexes](#package-indexes)).
 
