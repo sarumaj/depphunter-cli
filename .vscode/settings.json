@@ -217,5 +217,6 @@
         "yarnrc",
         "Ypixel"
     ],
-    "java.compile.nullAnalysis.mode": "disabled"
+    "java.compile.nullAnalysis.mode": "disabled",
+    "python-envs.defaultEnvManager": "ms-python.python:system"
 }
