@@ -164,7 +164,25 @@ export class Panel {
       if (anchor) anchor.after(row);
       else ul.append(row);
       anchor = row;
+      // Only now is the row in the list, so its own children have somewhere to go:
+      // this is what reopens the branches a redraw inherited.
+      if (row.reopen) {
+        row.reopen();
+        anchor = ul.lastChild === row ? row : this.lastOf(ul, row);
+      }
     }
+  }
+
+  // lastOf is the last row belonging to a row's branch, which is where the next
+  // sibling goes once that branch has been reopened.
+  lastOf(ul, row) {
+    const prefix = row.dataset.branch + '>';
+    let last = row;
+    for (let el = row.nextElementSibling; el; el = el.nextElementSibling) {
+      if (!el.dataset.branch || !el.dataset.branch.startsWith(prefix)) break;
+      last = el;
+    }
+    return last;
   }
 
   treeRow(ul, g, dir, ancestors, depth) {
@@ -202,8 +220,10 @@ export class Panel {
       if (e.key === 'ArrowLeft' && this.open.has(key)) { e.preventDefault(); toggle(); }
     });
     row.setAttribute('aria-expanded', 'false');
-    if (this.open.has(key)) { // an update re-draws the panel; what was open stays open
-      this.expand(ul, row, children, dir, branch, depth);
+    if (this.open.has(key)) {
+      // An update redraws the panel; what was open stays open. The children can only
+      // be inserted once the row itself is in the list, which insertRows does next.
+      row.reopen = () => this.expand(ul, row, children, dir, branch, depth);
     }
     return row;
   }
