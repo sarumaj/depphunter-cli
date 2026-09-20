@@ -168,8 +168,10 @@ func (b *builder) target(t lang.Target, ecosystems map[string]lang.Ecosystem) st
 		n.Requested = t.Requested
 	}
 	// A package one manifest pins and another leaves open is only as fixed as its
-	// loosest requester, which is what a supply chain answers to.
-	if !t.Pinned && (t.Version != "" || t.Requested != "") {
+	// loosest requester, which is what a supply chain answers to. A version has to be
+	// known before it can be called floating, unless the plugin says the reference
+	// moves although it names none.
+	if t.Floating || (!t.Pinned && (t.Version != "" || t.Requested != "")) {
 		n.Floating = true
 	}
 	return n.ID
