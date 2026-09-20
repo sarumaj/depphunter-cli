@@ -44,17 +44,23 @@ const skinMaterial = () => new THREE.MeshPhongMaterial({ color: SKIN, shininess:
 
 /**
  * The lights the walk camera carries for its own hands: a key over the left shoulder,
- * a dim fill from the other side so nothing goes black, and enough ambient that the
- * shadowed side still reads. They are parented to the camera, so they travel with the
- * view - and they reach nothing else, because the map is drawn with unlit materials.
+ * a dim fill from the other side, a rim behind to pick the arm out of whatever is
+ * behind it, and sky above and ground below instead of a flat ambient - which is what
+ * stops the shaded side of a forearm from going to one dead tone. They are parented
+ * to the camera, so they travel with the view, and they reach nothing else, because
+ * the map is drawn with unlit materials.
  */
 export function viewLights() {
   const g = new THREE.Group();
-  const key = new THREE.DirectionalLight(0xfff4e6, 2.1);
+  const key = new THREE.DirectionalLight(0xfff4e6, 1.85);
   key.position.set(-0.5, 0.9, 0.6);
-  const fill = new THREE.DirectionalLight(0xbcd2ea, 0.75);
-  fill.position.set(0.8, -0.2, 0.35);
-  g.add(key, fill, new THREE.AmbientLight(0xffffff, 0.55));
+  const fill = new THREE.DirectionalLight(0xbcd2ea, 0.6);
+  fill.position.set(0.8, -0.1, 0.35);
+  // From behind and above: a thin bright edge along the top of the arm, which is what
+  // a hand in front of a bright sky actually looks like.
+  const rim = new THREE.DirectionalLight(0xffffff, 0.75);
+  rim.position.set(0.25, 0.7, -1);
+  g.add(key, fill, rim, new THREE.HemisphereLight(0xdceaff, 0x6a5a4a, 0.85));
   return g;
 }
 
