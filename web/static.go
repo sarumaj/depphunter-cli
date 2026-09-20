@@ -14,6 +14,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/config"
 	"github.com/sarumaj/depphunter-cli/internal/export"
 	"github.com/sarumaj/depphunter-cli/internal/graph"
+	"github.com/sarumaj/depphunter-cli/internal/minify"
 )
 
 // Limits for source text embedded in a static page.
@@ -40,6 +41,8 @@ func WriteStatic(w io.Writer, g *graph.Graph, ui config.UI, root string, extra m
 	if err != nil {
 		return err
 	}
+	css = []byte(minify.CSS(string(css)))
+	index = []byte(minify.HTML(string(index)))
 
 	imports := map[string]string{}
 	err = fs.WalkDir(assets, ".", func(p string, d fs.DirEntry, err error) error {
@@ -51,6 +54,9 @@ func WriteStatic(w io.Writer, g *graph.Graph, ui config.UI, root string, extra m
 			return err
 		}
 		src = relativeImport.ReplaceAll(src, []byte(`$1"depphunter/$3"`))
+		// An export is one file with everything in it and no server to compress it,
+		// so the comments come out here too (internal/minify).
+		src = []byte(minify.JS(string(src)))
 		imports["depphunter/"+strings.TrimSuffix(path.Base(p), ".js")] = "data:text/javascript;base64," + base64.StdEncoding.EncodeToString(src)
 		return nil
 	})

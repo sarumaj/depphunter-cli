@@ -306,7 +306,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/export", s.handleExport)
 	mux.HandleFunc("POST /api/open", s.handleOpen)
 	mux.HandleFunc("POST /api/settings", s.handleSettings)
-	mux.Handle("GET /", http.FileServerFS(s.assets))
+	mux.Handle("GET /", newAssets(s.assets))
 	return s.guard(mux)
 }
 
