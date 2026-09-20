@@ -145,6 +145,16 @@ export class MapScene {
   }
 
   /**
+   * Dresses the map again, for when the prop models arrive (props.js). It is the same
+   * rebuild a style change costs, and the map is drawn with its stand-in plants until
+   * then rather than waiting on the fetch.
+   */
+  redress() {
+    if (this.boxes) this.setBoxes(this.boxes, this.boxColors);
+    this.requestRender();
+  }
+
+  /**
    * Patches a material to bend its vertices onto the planet while walking; city
    * materials (the boxes) also get walk mode's facades and streets.
    */

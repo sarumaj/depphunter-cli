@@ -9,6 +9,7 @@ import { MODES, isHistoryMode, computeMetrics, historyT, timeRange, ago, formatD
 import { Labels } from './labels.js';
 import { Walker } from './walk.js';
 import { loadHands } from './hands.js';
+import { loadPlants } from './props.js';
 import { Bugs } from './bugs.js';
 import { indexFindings } from './findings.js';
 import { $, fmt, escapeHTML } from './dom.js';
@@ -154,6 +155,7 @@ async function main() {
   applyStyle(false);
   applyTheme();
   loadHands(); // the walker's hands, fetched while the map is still being looked at
+  loadPlants().then(got => got && scene.redress()); // and what grows on the map
   bindControls();
   relayout();
   scene.fit(L.bounds);

@@ -27,6 +27,7 @@
 // usual one (uGroundRef, uLandRef): nesting levels, hover and flashes still show.
 
 import * as THREE from './vendor/three.module.min.js';
+import { plants } from './props.js';
 
 /** Box kinds as the shaders see them (attribute aKind). */
 export function kindCode(b) {
@@ -305,7 +306,7 @@ vec3 streets(vec3 base, vec3 lp, vec3 sz) {
 const float PAD = 0.03;
 const vec3 GLOW = vec3(0.25, 0.8, 0.95); // the galaxy's light, before it is tinted
 
-// Solder mask over woven glass, which is what gives a board its colour up close and
+// Solder mask over woven glass, which is what gives a board its color up close and
 // its flat green from across the room.
 vec3 solderMask(vec3 base, vec2 p) {
   vec2 t = p * 190.0, w = fwidth(t);
@@ -314,7 +315,7 @@ vec3 solderMask(vec3 base, vec2 p) {
   return mix(c, base * 0.3, 0.16) * dark(0.55);
 }
 
-// Bare substrate: the board's own fibreglass, where no mask was printed.
+// Bare substrate: the board's own fiberglass, where no mask was printed.
 vec3 substrate(vec3 base, vec2 p) {
   vec2 t = p * 130.0, w = fwidth(t);
   float weave = mix(0.5 + 0.5 * sin(t.x) * sin(t.y), 0.5, smoothstep(0.4, 1.2, max(w.x, w.y)));
@@ -1200,7 +1201,7 @@ const PARK_CLEAR = 0.72, PARK_PATHS = 2.2, PATH_CLEAR = 0.16, MAX_PARK_SAMPLES =
  * at night (setNight).
  */
 export function makeProps(boxes, bendable, style = 'city') {
-  const set = PROPS[style] || PROPS.city;
+  const set = dressed(style);
   const trees = [], bushes = [], lamps = [];
   const ramps = rampsFor(boxes), bridges = bridgesFor(boxes);
   const inDrive = (x, z) => ramps.some(r => r.drive && x > r.drive.x0 - 0.2 && x < r.drive.x1 + 0.2 && z > r.drive.z0 - 0.2 && z < r.drive.z1 + 0.2);
@@ -1466,7 +1467,7 @@ const PROPS = {
   circuit: {
     species: PARTS, stem: '#b9bec6', low: SMD, lowHue: 0.09,
     pole: LED_LEGS, poleColor: '#b9bec6', lampHead: LED, headColor: '#c94a3a', headNight: '#ff6a52',
-    // Parts are made in a handful of colours, not a spectrum: a little jitter around
+    // Parts are made in a handful of colors, not a spectrum: a little jitter around
     // the one the part type is usually sold in.
     tint: hue => (it, c) => c.setHSL(hue + (it.r - 0.5) * 0.04, hue < 0.05 ? 0.05 : 0.55, 0.12 + it.r * 0.12),
   },
@@ -1476,3 +1477,34 @@ const PROPS = {
     tint: hue => (it, c) => c.setHSL(hue + it.r * 0.12, 0.6 + 0.25 * it.r, 0.3 + it.r * 0.22),
   },
 };
+
+// The city's plants, and the galaxy's rubble, are models when props.js has them: the
+// same trunk-and-crown shape as the blobs above, but a shape somebody drew. They are
+// shaded here like everything else, so they take the map's flat paint and its
+// per-instance tint and read as part of it rather than as an import.
+//
+// Built once, the first time makeProps runs after the models land.
+let modelled = null;
+
+const MODELS = ['tree1_stem', 'tree1_head', 'tree2_stem', 'tree2_head',
+  'tree3_stem', 'tree3_head', 'bush_head', 'rock_head'];
+
+function dressed(style) {
+  const set = PROPS[style] || PROPS.city;
+  const got = plants();
+  // A file that loaded but is missing a part would be worse than no file at all.
+  if (!got || MODELS.some(name => !got.has(name))) return set;
+  modelled ||= {
+    city: {
+      ...PROPS.city,
+      species: [1, 2, 3].map((n, i) => ({
+        hue: PROPS.city.species[i].hue,
+        stem: shaded(got.get(`tree${n}_stem`)),
+        head: shaded(got.get(`tree${n}_head`), 0.16),
+      })),
+      low: shaded(got.get('bush_head'), 0.16),
+    },
+    galaxy: { ...PROPS.galaxy, low: shaded(got.get('rock_head'), 0.12) },
+  };
+  return modelled[style] || set;
+}
