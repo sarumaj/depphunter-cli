@@ -29,7 +29,7 @@ const LEGS = 6;
 // dark over the head and the seam - and the severity color is set per instance, so
 // one mesh draws every color. Nothing in this scene is lit, so that split has to be
 // painted: without it a beetle at arm's length is a colored blob.
-const SHELL = '#151515'; // legs, and how dark the painted parts are
+const SHELL = '#151515'; // the legs, which are the same dark whatever the severity
 const DARK = 0.05;       // how dark the head and the seam are, in linear light
 let parts = null;
 
@@ -44,7 +44,6 @@ export class Bugs {
     this.grid = new Map();   // cell -> bugs whose lap passes through it
     this.caught = new Set(); // finding ids, so a relayout does not revive them
     this.colors = {};
-    this.materials = new Map();
     this.shell = null;      // the instanced bodies
     this.legs = null;       // ... and the instanced legs, which rock on their own
     this.dirty = false;     // the instance colors need writing again
@@ -72,13 +71,9 @@ export class Bugs {
    * the map. index is what findings.js built; boxes are the current layout's.
    */
   place(index, boxes) {
-    for (const mesh of this.group.children) mesh.dispose();
-    this.group.clear();
-    this.shell = this.legs = null;
+    this.drop();
     this.bugs = [];
     this.grid.clear();
-    for (const m of this.materials.values()) m.dispose();
-    this.materials.clear();
     if (!index || !boxes?.length) return;
     this.colors = severityColors();
 
@@ -155,8 +150,6 @@ export class Bugs {
     }
     this.shell = shell;
     this.legs = legs;
-    this.materials.set('shell', shell.material);
-    this.materials.set('legs', legs.material);
     this.dirty = true;
   }
 
@@ -221,13 +214,20 @@ export class Bugs {
   }
 
   dispose() {
-    for (const mesh of this.group.children) mesh.dispose();
-    this.group.clear();
+    this.drop();
     this.grid.clear();
     this.scene.scene.remove(this.group);
-    for (const m of this.materials.values()) m.dispose();
-    this.materials.clear();
     this.bugs = [];
+  }
+
+  /** Lets go of the meshes and their materials; the geometry is shared and stays. */
+  drop() {
+    for (const mesh of this.group.children) {
+      mesh.material.dispose();
+      mesh.dispose();
+    }
+    this.group.clear();
+    this.shell = this.legs = null;
   }
 }
 

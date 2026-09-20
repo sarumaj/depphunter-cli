@@ -511,14 +511,16 @@ dialog form { margin-top: 12px; text-align: right; }
   flex-direction: column;
   z-index: 4;
 }
-#pack header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
-#pack header h3 { margin: 0; font-size: 13px; }
-#pack header .spacer { flex: 1; }
+#pack header { display: flex; align-items: baseline; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+#pack header h3 { margin: 0; font-size: 13px; white-space: nowrap; }
+#pack header .hint { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#pack header .link { white-space: nowrap; }
 #pack header .close { border: none; font-size: 18px; line-height: 1; padding: 2px 8px; }
 #pack-list { list-style: none; margin: 0; padding: 0; overflow: auto; flex: 1; min-height: 0; }
 #pack-list li { display: flex; align-items: flex-start; gap: 8px; padding: 7px 12px; border-bottom: 1px solid var(--grid); cursor: pointer; }
 #pack-list li:last-child { border-bottom: none; }
-#pack-list li:hover { background: var(--grid); }
+#pack-list li:hover, #pack-list li:focus-visible { background: var(--grid); outline: none; }
+#pack-list li:focus-visible { box-shadow: inset 2px 0 0 var(--sev, var(--accent, #2a78d6)); }
 #pack-list .body { flex: 1; min-width: 0; }
 #pack-list .t { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #pack-list .w { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }

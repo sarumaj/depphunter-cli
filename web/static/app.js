@@ -260,7 +260,9 @@ function packRow(it) {
   return h('li', {
     class: `${it.fixed ? 'fixed ' : ''}sev-${it.severity}`,
     title: it.fixed ? 'Gone from the latest scan' : it.title,
+    tabindex: '0', role: 'button',
     onclick: () => openCaught(it),
+    onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); openCaught(it); } },
   },
     h('span', { class: 'sev-dot' }),
     h('span', { class: 'body' },

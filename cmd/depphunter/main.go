@@ -348,7 +348,14 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 			return fmt.Errorf("watch: %w", err)
 		}
 		gitDirs := history.GitDirs(ctx, cfg.Root) // commits change only these
-		w.Sync(append(watchDirs(cfg.Root, g), gitDirs...))
+		// A scanner writing its report again is news too: the backpack in the UI
+		// marks a caught finding fixed when it stops being reported, and that only
+		// works if the report is re-read when it is written.
+		reportDirs := findingDirs(cfg)
+		watched := func(g *graph.Graph) []string {
+			return append(append(watchDirs(cfg.Root, g), gitDirs...), reportDirs...)
+		}
+		w.Sync(watched(g))
 		go w.Run(ctx, 300*time.Millisecond, func() {
 			start := time.Now()
 			ng, st, err := anal.Run(ctx, cfg.Root, opts)
@@ -359,7 +366,7 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 				return
 			}
 			c.Save()
-			w.Sync(append(watchDirs(cfg.Root, ng), gitDirs...))
+			w.Sync(watched(ng))
 			changed, err := srv.Update(ng, st.ParsedFiles)
 			if err != nil {
 				log.Printf("update failed: %v", err)
@@ -372,8 +379,10 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 			if cfg.LSP && changed {
 				go referencesRun.Run(ng)
 			}
-			if cfg.FindingsEnabled() && changed {
-				go findingsRun.Run(ng) // a new dependency, or a report written again
+			if cfg.FindingsEnabled() {
+				// Not only when the graph changed: a linter complains about the text
+				// of a file, and fixing one changes neither its imports nor its size.
+				go findingsRun.Run(ng)
 			}
 		})
 	}
@@ -388,6 +397,21 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 		return err
 	}
 	return nil
+}
+
+// findingDirs lists the directories holding the scanner reports, so that rewriting
+// one is a change the watcher sees.
+func findingDirs(cfg config.Config) []string {
+	seen := map[string]bool{}
+	var dirs []string
+	for _, f := range findings.Files(cfg.Root, cfg.Findings) {
+		d := filepath.Dir(f)
+		if !seen[d] {
+			seen[d] = true
+			dirs = append(dirs, d)
+		}
+	}
+	return dirs
 }
 
 // watchDirs lists the directories holding analyzed files: ignored trees are not watched.

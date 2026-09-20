@@ -67,6 +67,11 @@ func Collect(ctx context.Context, o Options) *Set {
 	return set
 }
 
+// Files is the reports a run would read, which is what a watcher has to watch: a
+// report rewritten by a scanner is a finding fixed, or a new one, and the map should
+// say so without being restarted.
+func Files(root string, patterns []string) []string { return expand(root, patterns) }
+
 // expand turns the configured patterns into file names, in a stable order. A pattern
 // is relative to the repository unless it is absolute.
 func expand(root string, patterns []string) []string {
