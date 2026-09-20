@@ -115,7 +115,7 @@ jobs:
         run: |
           tar -xzf dist/depphunter_*_linux_amd64.tar.gz -C "$RUNNER_TEMP"
           "$RUNNER_TEMP"/depphunter_*_linux_amd64/depphunter --version
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v7
         with:
           name: depphunter-${{ github.sha }}
           path: dist/
