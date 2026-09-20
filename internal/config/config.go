@@ -27,6 +27,8 @@ type UI struct {
 	ColorBy     string `yaml:"color_by" mapstructure:"color_by" json:"colorBy"`             // language | size | commits | churn | age | authors
 	HeightScale string `yaml:"height_scale" mapstructure:"height_scale" json:"heightScale"` // linear | sqrt | log
 	ShowStd     bool   `yaml:"show_std" mapstructure:"show_std" json:"showStd"`
+	// Tool is what walk mode puts in the walker's hands (see web/static/tools.js).
+	Tool        string `yaml:"tool,omitempty" mapstructure:"tool" json:"tool"`
 	ExpandDepth int    `yaml:"expand_depth" mapstructure:"expand_depth" json:"expandDepth"` // 0 = auto, -1 = everything
 	// Filters, as the browser's Filters panel sets them.
 	HideLanguages []string `yaml:"hide_languages,omitempty" mapstructure:"hide_languages" json:"hideLanguages"`
@@ -40,6 +42,12 @@ func (u UI) Validate() error {
 		oneOf("theme", u.Theme, "auto", "light", "dark"),
 		oneOf("color-by", u.ColorBy, "language", "size", "commits", "churn", "age", "authors"),
 		oneOf("height-scale", u.HeightScale, "linear", "sqrt", "log"),
+		func() error {
+			if u.Tool == "" {
+				return nil // the browser's default
+			}
+			return oneOf("tool", u.Tool, "rod", "net", "camera", "bubbles", "dart")
+		}(),
 	)
 }
 
@@ -251,7 +259,7 @@ func setDefaults(v *viper.Viper, d Config) {
 		"terminal_browser": d.TerminalBrowser, "terminal_graphics": d.TerminalGraphics,
 		"terminal_download": d.TerminalDownload, "terminal_browser_sha256": d.TerminalSHA256,
 		"ui.theme": d.UI.Theme, "ui.color_by": d.UI.ColorBy, "ui.height_scale": d.UI.HeightScale,
-		"ui.show_std": d.UI.ShowStd, "ui.expand_depth": d.UI.ExpandDepth,
+		"ui.show_std": d.UI.ShowStd, "ui.expand_depth": d.UI.ExpandDepth, "ui.tool": d.UI.Tool,
 		"ui.hide_languages": d.UI.HideLanguages, "ui.hide_islands": d.UI.HideIslands, "ui.path_filter": d.UI.PathFilter,
 	} {
 		v.SetDefault(key, val)

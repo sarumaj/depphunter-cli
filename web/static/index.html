@@ -91,9 +91,9 @@
     <div id="walk-hud" hidden>
       <div class="crosshair"></div>
       <div class="w-bar">
-        <div><b class="w-mode">walking</b> · modules tagged <b class="w-tagged">0</b> · planet radius <b class="w-radius"></b></div>
+        <div><b class="w-mode">walking</b> · <b class="w-tool">Fishing rod</b> · modules <span class="w-noun">landed</span> <b class="w-tagged">0</b> · planet radius <b class="w-radius"></b></div>
         <div class="w-keys"><kbd>W A S D</kbd>/<kbd>arrows</kbd> move · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump · <kbd>F</kbd> fly (<kbd>W</kbd> goes where you look, <kbd>Space</kbd>/<kbd>C</kbd> up/down)
-          · <kbd>Click</kbd> fire (hit again: details) · hold <kbd>Right</kbd> scope · <kbd>Wheel</kbd> zoom · <kbd>+</kbd> <kbd>-</kbd> curvature · <kbd>V</kbd> back to the map</div>
+          · <kbd>Click</kbd> use the tool (again: details) · <kbd>T</kbd> another tool · hold <kbd>Right</kbd> scope · <kbd>Wheel</kbd> zoom · <kbd>+</kbd> <kbd>-</kbd> curvature · <kbd>V</kbd> back to the map</div>
         <div class="w-hint hint"></div>
         <div class="w-flash" role="status"></div>
       </div>
@@ -131,7 +131,8 @@
         <tr><th>Shift</th><td>Run</td></tr>
         <tr><th>Space</th><td>Jump (flying: straight up)</td></tr>
         <tr><th>F</th><td>Fly on / off. Flying, W / S move where you look (look down and press W to dive); Space / C go straight up / down</td></tr>
-        <tr><th>Click</th><td>Fire a tracking dart: the module it hits is tagged, selected and its dependencies light up. A second dart in a building already tagged shows its details</td></tr>
+        <tr><th>Click</th><td>Use what is in your hands - a fishing rod, a net, a camera, a bubble wand, a tracking dart: the module it reaches is tagged, selected and its dependencies light up. Using it again on a tagged building shows its details</td></tr>
+        <tr><th>T</th><td>Take out another tool</td></tr>
         <tr><th>Hold right button</th><td>Look through the scope (zoom)</td></tr>
         <tr><th>Enter</th><td>Show the details of what the reticle is on (dependencies, source) - the same as a second dart. The mouse is freed for reading; click the map to walk on. <kbd>O</kbd> opens the file in your editor.</td></tr>
         <tr><th>Wheel</th><td>Zoom in / out</td></tr>
