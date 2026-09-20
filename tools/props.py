@@ -24,28 +24,32 @@ The node names are the contract with web/static/props.js.
 
 import hashlib
 import os
-import sys
 import tempfile
 import urllib.request
 
 import bpy
 import bmesh  # only importable once bpy has loaded, so not in alphabetical order
+from bpy.types import Material, Object
 from mathutils import Vector
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.normpath(os.path.join(HERE, "..", "web", "static", "props.glb"))
+HERE: str = os.path.dirname(os.path.abspath(__file__))
+OUT: str = os.path.normpath(os.path.join(HERE, "..", "web", "static", "props.glb"))
 
 # The pack, pinned. There is no release to pin to, so each file is pinned by its own
 # checksum, which is the thing that actually matters.
-PACK = (
+PACK: str = (
     "https://raw.githubusercontent.com/flo-bit/low-poly-asset-packs/"
     "main/nature-pack/glb/{}.glb"
 )
 
+# A prop as this script takes it: the name the UI knows it by, the file in the pack,
+# that file's checksum, how tall it stands in map units and what it may cost.
+Model = tuple[str, str, str, float, int]
+
 # What the map plants, what it is, how tall it stands in map units - a building is one
 # across - and how many triangles it may cost. Three species so a park is not a
 # pattern, one bush, and a stone the galaxy style uses for its rubble.
-MODELS = [
+MODELS: list[Model] = [
     (
         "tree1",
         "common_tree_1",
@@ -85,10 +89,10 @@ MODELS = [
 
 # Which half of a model is the trunk. The pack names its materials; anything else is
 # foliage, which is the part the map recolors.
-WOOD = ("trunk", "bark", "wood", "stem")
+WOOD: tuple[str, ...] = ("trunk", "bark", "wood", "stem")
 
 
-def fetch(name, digest):
+def fetch(name: str, digest: str) -> str:
     """One model from the pack, from a local copy if there is one and GitHub otherwise."""
     path = os.path.join(tempfile.gettempdir(), f"low-poly-nature-{name}.glb")
     if not os.path.exists(path):
@@ -103,7 +107,7 @@ def fetch(name, digest):
     return path
 
 
-def imported(path):
+def imported(path: str) -> list[Object]:
     """Everything one model brought in, as one mesh per material: a model may keep
     its trunk and its leaves in one mesh, and the two are colored separately here."""
     before = set(bpy.data.objects)
@@ -124,13 +128,13 @@ def imported(path):
     return out
 
 
-def role(obj):
+def role(obj: Object) -> str:
     """Trunk or crown, by what the model calls the material on it."""
     names = [m.name.lower() for m in obj.data.materials if m] + [obj.name.lower()]
     return "stem" if any(w in n for w in WOOD for n in names) else "head"
 
 
-def join(objs, name):
+def join(objs: list[Object], name: str) -> Object | None:
     """One object out of several, or None if there were none."""
     if not objs:
         return None
@@ -152,12 +156,12 @@ def join(objs, name):
     return out
 
 
-def skin():
+def skin() -> Material:
     """The one material every part shares; it carries no information the UI reads."""
     return bpy.data.materials.get("prop") or bpy.data.materials.new("prop")
 
 
-def bounds(objs):
+def bounds(objs: list[Object]) -> tuple[Vector, Vector]:
     lo = Vector((1e9,) * 3)
     hi = Vector((-1e9,) * 3)
     for o in objs:
@@ -168,7 +172,7 @@ def bounds(objs):
     return lo, hi
 
 
-def stand(objs, height):
+def stand(objs: list[Object], height: float) -> None:
     """Scale the model to the height a prop is on the map and sit it on the origin,
     centred on its own footprint so that turning an instance turns it on the spot."""
     lo, hi = bounds(objs)
@@ -188,7 +192,7 @@ def stand(objs, height):
         o.data.update()
 
 
-def weld(objs):
+def weld(objs: list[Object]) -> None:
     """Sew the model back into a surface.
 
     glTF splits a vertex per normal and per uv, and these models are flat shaded, so
@@ -207,7 +211,7 @@ def weld(objs):
         o.data.update()
 
 
-def thin(objs, budget):
+def thin(objs: list[Object], budget: int) -> None:
     """Decimate to a triangle budget. A prop stands on the map a few thousand times
     over, so what it costs is what it costs times a few thousand."""
     total = sum(len(o.data.polygons) for o in objs)
@@ -220,7 +224,9 @@ def thin(objs, budget):
         bpy.ops.object.modifier_apply(modifier="Decimate")
 
 
-def prepare(prefix, name, digest, height, budget):
+def prepare(
+    prefix: str, name: str, digest: str, height: float, budget: int
+) -> list[Object]:
     """One prop: fetched, split, decimated and stood on the origin."""
     meshes = imported(fetch(name, digest))
     parts = []
@@ -237,7 +243,7 @@ def prepare(prefix, name, digest, height, budget):
     return parts
 
 
-def main():
+def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)
     for stray in list(bpy.data.objects):
         bpy.data.objects.remove(stray, do_unlink=True)
@@ -263,4 +269,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
