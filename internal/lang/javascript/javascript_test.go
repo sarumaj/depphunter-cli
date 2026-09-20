@@ -113,8 +113,12 @@ func TestLockTree(t *testing.T) {
 	if next := deps("loose-envify"); next["js-tokens"].Version != "4.0.0" {
 		t.Errorf("loose-envify depends on %+v, want js-tokens 4.0.0", next)
 	}
-	if n := len(deps("js-tokens")); n != 0 {
-		t.Errorf("js-tokens has %d dependencies, want none", n)
+	// Lock files contain cycles; the walk has to survive one.
+	if next := deps("js-tokens"); next["cyclic-a"].Version != "1.0.0" {
+		t.Errorf("js-tokens depends on %+v, want cyclic-a", next)
+	}
+	if next := deps("cyclic-b"); next["cyclic-a"].Version != "1.0.0" {
+		t.Errorf("cyclic-b depends on %+v, want cyclic-a back again", next)
 	}
 	// Another ecosystem's packages are not this resolver's business.
 	if n := len(tr.Dependencies(lang.Target{Ecosystem: "pypi", Package: "react"})); n != 0 {

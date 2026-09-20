@@ -184,7 +184,7 @@ func TestHistorySettings(t *testing.T) {
 
 func TestLSPSettings(t *testing.T) {
 	root := t.TempDir()
-	write(t, filepath.Join(root, ProjectFile), "lsp: true\nlsp_timeout: 90s\n")
+	write(t, filepath.Join(root, ProjectFile), "lsp: true\n"+"lsp_timeout: 90s\n")
 	cfg, err := load(t, []string{root}, nil, "")
 	if err != nil {
 		t.Fatal(err)
@@ -229,5 +229,51 @@ func TestSymlinkedRootAndPaths(t *testing.T) {
 	}
 	if _, err := load(t, []string{dir, dir}, nil, ""); err == nil {
 		t.Error("two paths accepted")
+	}
+}
+
+// TestEveryFlagIsBound catches the mistake of registering a flag and forgetting to
+// give it a setting: the flag then parses, prints in --help, and changes nothing.
+func TestEveryFlagIsBound(t *testing.T) {
+	// The flags that act on their own instead of setting a value.
+	standalone := map[string]bool{
+		"config": true, "export": true, "output": true, "exclude": true,
+		"help": true, "version": true,
+	}
+	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	RegisterFlags(fs)
+	fs.VisitAll(func(f *pflag.Flag) {
+		if standalone[f.Name] {
+			return
+		}
+		if _, ok := flagKeys[f.Name]; ok {
+			return
+		}
+		if _, ok := negatedFlags[f.Name]; ok {
+			return
+		}
+		t.Errorf("--%s is registered but bound to no setting", f.Name)
+	})
+}
+
+func TestOnlineSettings(t *testing.T) {
+	root := t.TempDir()
+	cfg, err := load(t, []string{"--online", root}, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Online {
+		t.Error("--online did not reach the configuration")
+	}
+	// A repository does not get to decide that this machine goes on the network.
+	write(t, filepath.Join(root, ProjectFile), "online: true\nresolve_depth: 2\n")
+	if cfg, err = load(t, []string{root}, nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Online {
+		t.Error("the project config turned on network access")
+	}
+	if cfg.ResolveDepth != 2 {
+		t.Errorf("resolve_depth from the project config is %d", cfg.ResolveDepth)
 	}
 }

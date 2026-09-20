@@ -14,6 +14,7 @@ var errUnsupported = errors.New("--terminal is not available on Windows; " +
 	"run depphunter without it to use the browser")
 
 func openTTY() (*tty, error)           { return nil, errUnsupported }
+func isTerminal(int) bool              { return false }
 func (t *tty) file() *os.File          { return t.f }
 func (t *tty) input() *os.File         { return t.f }
 func (t *tty) raw() error              { return errUnsupported }

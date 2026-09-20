@@ -3,12 +3,12 @@ package termview
 import (
 	"context"
 	"encoding/json"
-	"errors"
 	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"runtime"
+	"strings"
 	"time"
 )
 
@@ -65,15 +65,20 @@ func findBrowser(lookPath func(string) (string, error), stat func(string) (os.Fi
 			return p, nil
 		}
 	}
-	return "", errors.New("no Chromium-based browser found: install chromium or google-chrome, " +
-		"or name one with --terminal-browser")
+	return "", fmt.Errorf("%w found: install chromium or google-chrome, name one with "+
+		"--terminal-browser, or let depphunter fetch one with --terminal-download", errNoBrowser)
+}
+
+// headlessShell reports whether bin is Chrome's headless shell rather than the full
+// browser. The shell is headless by definition and has no switch to ask it to be.
+func headlessShell(bin string) bool {
+	return strings.Contains(strings.ToLower(filepath.Base(bin)), "headless")
 }
 
 // browserArgs are the flags the headless browser is started with. profileDir is a
 // throw-away user data directory, so the user's own profile is never touched.
-func browserArgs(profileDir string, width, height int, root bool) []string {
+func browserArgs(bin, profileDir string, width, height int, root bool) []string {
 	args := []string{
-		"--headless=new",
 		"--remote-debugging-pipe",
 		"--user-data-dir=" + profileDir,
 		"--no-first-run",
@@ -88,6 +93,9 @@ func browserArgs(profileDir string, width, height int, root bool) []string {
 		// to fall back to unless asked. A machine that does have a GPU still uses it.
 		"--enable-unsafe-swiftshader",
 		fmt.Sprintf("--window-size=%d,%d", width, height),
+	}
+	if !headlessShell(bin) {
+		args = append(args, "--headless=new")
 	}
 	if root {
 		// Chromium refuses to start as root with its sandbox on, which is how it is
@@ -115,7 +123,7 @@ func startBrowser(ctx context.Context, bin string, width, height int,
 	if err != nil {
 		return nil, err
 	}
-	cmd := exec.Command(bin, browserArgs(profile, width, height, os.Geteuid() == 0)...)
+	cmd := exec.Command(bin, browserArgs(bin, profile, width, height, os.Geteuid() == 0)...)
 	cmd.Stdout, cmd.Stderr = nil, nil // the browser's chatter would corrupt the frames
 	out, in, err := pipes(cmd)
 	if err != nil {

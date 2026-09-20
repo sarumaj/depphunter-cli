@@ -46,6 +46,11 @@ type Node struct {
 	// Transitive marks a package no file in the project imports: it is on the map
 	// because something the project depends on depends on it.
 	Transitive bool `json:"transitive,omitempty"`
+	// Index is the package index or mirror the package resolves from, and
+	// IndexUnknown marks one that only the repository's own configuration names -
+	// nothing on this machine vouches for it.
+	Index        string `json:"index,omitempty"`
+	IndexUnknown bool   `json:"indexUnknown,omitempty"`
 	// Std marks ecosystems holding a language's standard library, which the UI hides by default.
 	Std bool `json:"std,omitempty"`
 	// Unresolved marks packages whose owning module could not be determined from manifests.

@@ -319,6 +319,13 @@ main.walking #legend { display: none; }
 .p-list .name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .p-list .meta { color: var(--muted); font-variant-numeric: tabular-nums; font-size: 12px; }
 .p-list.authors li { cursor: default; }
+.p-list.tree { max-height: 320px; }
+.tree-row .twisty {
+  flex: 0 0 14px; width: 14px; padding: 0; border: 0; background: none;
+  color: var(--muted); font-size: 10px; line-height: 1; cursor: pointer;
+}
+.tree-row .twisty.leaf { cursor: default; }
+.tree-row .twisty:hover { color: var(--text); }
 .p-list .share { flex: 0 0 90px; height: 6px; border-radius: 3px; background: var(--grid); overflow: hidden; }
 .p-list .share i { display: block; height: 100%; background: var(--seq-4); border-radius: 3px; }
 .bar { display: flex; height: 10px; gap: 2px; border-radius: 4px; overflow: hidden; }

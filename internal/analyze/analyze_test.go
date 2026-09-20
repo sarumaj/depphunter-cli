@@ -251,3 +251,49 @@ func TestResolveDepthEdges(t *testing.T) {
 		}
 	}
 }
+
+// fakeIndexes answers for one ecosystem, so the builder's attribution can be checked
+// without a real configuration on disk.
+type fakeIndexes struct{ index string }
+
+func (f fakeIndexes) For(eco, pkg string) (string, bool) {
+	if eco != "fake-eco" {
+		return "", false
+	}
+	if pkg == "public" {
+		return "https://public.example", true
+	}
+	return f.index, false
+}
+
+func TestPackagesCarryTheirIndex(t *testing.T) {
+	root := t.TempDir()
+	writeProject(t, root, map[string]string{"a.fake": "public\nprivate\n"})
+	p := fakePlugin{targets: map[string]lang.Target{
+		"public":  {Ecosystem: "fake-eco", Package: "public"},
+		"private": {Ecosystem: "fake-eco", Package: "private"},
+	}}
+	g, _, err := Run(context.Background(), root, Options{
+		Plugins: []lang.Plugin{p},
+		Indexes: func([]*scan.File) Indexes { return fakeIndexes{index: "https://internal.example"} },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range g.Nodes {
+		if n.Kind != graph.KindPackage {
+			continue
+		}
+		switch n.Name {
+		case "public":
+			if n.Index != "https://public.example" || n.IndexUnknown {
+				t.Errorf("public: index %q unknown %v", n.Index, n.IndexUnknown)
+			}
+		case "private":
+			// Nothing on this machine vouches for it, which is what the map shows.
+			if n.Index != "https://internal.example" || !n.IndexUnknown {
+				t.Errorf("private: index %q unknown %v", n.Index, n.IndexUnknown)
+			}
+		}
+	}
+}

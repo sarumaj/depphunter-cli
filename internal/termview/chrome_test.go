@@ -50,7 +50,7 @@ func TestFindBrowser(t *testing.T) {
 }
 
 func TestBrowserArgs(t *testing.T) {
-	args := strings.Join(browserArgs("/tmp/profile", 800, 600, false), " ")
+	args := strings.Join(browserArgs("/usr/bin/chromium", "/tmp/profile", 800, 600, false), " ")
 	for _, want := range []string{
 		"--headless=new",
 		"--remote-debugging-pipe", // no debugging port for others to connect to
@@ -65,7 +65,7 @@ func TestBrowserArgs(t *testing.T) {
 	if strings.Contains(args, "--no-sandbox") {
 		t.Error("the sandbox is off although we are not root")
 	}
-	if !strings.Contains(strings.Join(browserArgs("/tmp/p", 1, 1, true), " "), "--no-sandbox") {
+	if !strings.Contains(strings.Join(browserArgs("/usr/bin/chromium", "/tmp/p", 1, 1, true), " "), "--no-sandbox") {
 		t.Error("as root the browser will not start with its sandbox on")
 	}
 }

@@ -24,6 +24,20 @@ type Options struct {
 	// ResolveDepth is how many levels of an external package's own dependencies to
 	// add, from the project's lock files: 0 none, -1 as far as they reach.
 	ResolveDepth int
+	// Registry answers for packages whose own dependencies the repository does not
+	// record - Go modules, say - when --online allows asking an index. nil keeps
+	// the analysis offline.
+	Registry lang.Transitive
+	// Indexes answers where an external package comes from. It is built from the
+	// scanned files, since a repository configures its indexes in its own files;
+	// nil leaves the question unanswered.
+	Indexes func(files []*scan.File) Indexes
+}
+
+// Indexes says which package index serves a package, and whether anything on this
+// machine vouches for that index (see internal/index).
+type Indexes interface {
+	For(eco, pkg string) (index string, known bool)
 }
 
 // Stats describes one run: how many files were parsed and how many came from the cache.
@@ -49,6 +63,9 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 		edges:    map[[2]string]bool{},
 		files:    map[string]bool{},
 		packages: map[string]lang.Target{},
+	}
+	if opts.Indexes != nil {
+		b.indexes = opts.Indexes(files)
 	}
 	b.add(&graph.Node{ID: graph.DirID("."), Kind: graph.KindDir, Name: b.g.Root, Path: "."})
 	for _, f := range files {
@@ -99,12 +116,29 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 		}
 		// Only now, with every direct package of this plugin on the graph, is there
 		// something to walk out from.
-		if tr, ok := r.(lang.Transitive); ok && opts.ResolveDepth != 0 {
-			b.expand(tr, ecosystems, opts.ResolveDepth)
+		local, _ := r.(lang.Transitive)
+		if (local != nil || opts.Registry != nil) && opts.ResolveDepth != 0 {
+			b.expand(chain{local: local, remote: opts.Registry}, ecosystems, opts.ResolveDepth)
 		}
 	}
 	stats.Parsed, stats.Cached = int(parsed.Load()), int(cached.Load())
 	return b.g, stats, nil
+}
+
+// chain asks what the repository records before it asks an index: a lock file is
+// both faster and more truthful about this project than a registry can be.
+type chain struct{ local, remote lang.Transitive }
+
+func (c chain) Dependencies(t lang.Target) []lang.Target {
+	if c.local != nil {
+		if deps := c.local.Dependencies(t); len(deps) > 0 {
+			return deps
+		}
+	}
+	if c.remote != nil {
+		return c.remote.Dependencies(t)
+	}
+	return nil
 }
 
 type builder struct {
@@ -115,6 +149,7 @@ type builder struct {
 	// packages remembers what each package node was built from, so the transitive
 	// walk can ask a resolver about it again.
 	packages map[string]lang.Target
+	indexes  Indexes
 }
 
 // expand walks out from the packages already on the graph, adding what the project's
@@ -222,6 +257,11 @@ func (b *builder) target(t lang.Target, ecosystems map[string]lang.Ecosystem) st
 	n := b.add(&graph.Node{ID: graph.PackageID(t.Ecosystem, t.Package), Kind: graph.KindPackage, Name: t.Package, Parent: eid, Unresolved: t.Unresolved})
 	if _, ok := b.packages[n.ID]; !ok {
 		b.packages[n.ID] = t
+	}
+	if b.indexes != nil && n.Index == "" {
+		if idx, known := b.indexes.For(t.Ecosystem, t.Package); idx != "" {
+			n.Index, n.IndexUnknown = idx, !known
+		}
 	}
 	if n.Version == "" {
 		n.Version = t.Version

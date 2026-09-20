@@ -578,6 +578,16 @@ on, and the right button only zooms.
   cursor, the log silenced, and the terminal restored on the way out, whether it
   leaves through `Ctrl+C`, a signal or an error. `SIGWINCH` re-sizes the page.
 
+- With no browser installed, `--terminal-download` (or a yes to the question
+  asked when there is a terminal to ask at) fetches the Chrome for Testing
+  headless shell - the renderer and its DevTools endpoint without the rest of a
+  browser - into the cache directory, named by platform and version so a new
+  download never overwrites a browser in use. The archive is unpacked beside its
+  destination and moved into place, entry names are checked rather than trusted,
+  and the SHA-256 of what was fetched is reported and can be pinned, since the
+  publisher offers no checksum to compare against. Platforms with no published
+  build say so rather than fetching.
+
 > **Decisions (M11):** a text browser was never an option - the map is one WebGL
 > canvas with no DOM underneath - so the choice was between shipping a second,
 > poorer renderer and carrying a real one's pixels to the terminal. The pixels
@@ -632,11 +642,34 @@ the side panel, a double click expands a directory, `V` enters walk mode and
   imports it - and package-to-package edges are a kind of their own (`depends`),
   so the count of files importing a package stays a count of files.
 
+- Every external package carries the index it resolves from, read from the
+  configuration this machine holds and the configuration the repository carries
+  (npm, Yarn, pip, Poetry, uv, NuGet, Maven, Cargo, `GOPROXY`; a container
+  reference names its own registry). An index only the repository names is
+  marked: nothing here vouches for it, which is what dependency confusion looks
+  like, and nothing is fetched from it.
+- `--online` allows asking the trusted indexes for what the repository does not
+  record - a Go module's own go.mod from the proxy, an npm version document, a
+  distribution's requires-dist - which is what lets `--resolve-depth` reach
+  ecosystems whose graph is not in the repository. Lock files are asked first,
+  answers are cached for a day, and credentials come from the user's own npm
+  tokens and netrc and go only to the host they were written for.
+
+- The side panel lists dependencies and dependents as trees rather than flat
+  lists: a row opens into what that node depends on in turn, without fetching
+  anything, since the edges are already in the model. Open branches survive a
+  live update, the arrow keys open and close a row beside the pointer, and a
+  node already open further up its own branch is shown once more, marked, and
+  left closed - lock files contain cycles, and a tree that followed one would
+  not end.
+
 *Accepted when* a repository whose dependencies are locked shows no floating
 packages, removing its lock file makes every one of them floating, a workflow
 pinned to tags shows every action floating until the tags are replaced by
-commits, and `--resolve-depth 1` adds exactly the packages the lock file names
-as the direct dependencies' own.
+commits, `--resolve-depth 1` adds exactly the packages the lock file names as
+the direct dependencies' own, a repository whose .npmrc names an index this
+machine does not know has every npm package marked, and a dependency cycle can
+be opened down to its repeat and no further.
 
 ### Known limits
 

@@ -1,0 +1,147 @@
+package index
+
+import (
+	"os"
+	"path/filepath"
+	"testing"
+
+	"github.com/sarumaj/depphunter-cli/internal/scan"
+)
+
+// write lays out a fixture and returns the scanned files, the way analysis sees them.
+func write(t *testing.T, files map[string]string) []*scan.File {
+	t.Helper()
+	root := t.TempDir()
+	var out []*scan.File
+	for name, body := range files {
+		abs := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(abs, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		out = append(out, &scan.File{Path: name, Abs: abs})
+	}
+	return out
+}
+
+func env(m map[string]string) func(string) string {
+	return func(k string) string { return m[k] }
+}
+
+func TestPublicDefaults(t *testing.T) {
+	c := Discover(nil, env(nil), "")
+	for eco, want := range map[string]string{
+		NPM: "https://registry.npmjs.org", PyPI: "https://pypi.org/simple", Go: "https://proxy.golang.org",
+	} {
+		idx, known := c.For(eco, "anything")
+		if idx != want || !known {
+			t.Errorf("%s: got %s (known %v), want %s known", eco, idx, known, want)
+		}
+	}
+}
+
+func TestRepositoryIndexIsNotVouchedFor(t *testing.T) {
+	files := write(t, map[string]string{
+		".npmrc": "registry=https://artifactory.internal/api/npm/all\n@acme:registry=https://artifactory.internal/api/npm/acme\n",
+	})
+	c := Discover(files, env(nil), "")
+
+	// The repository's index is what a package resolves from - and nothing on this
+	// machine says it should be, which is the whole point of showing it.
+	idx, known := c.For(NPM, "lodash")
+	if idx != "https://artifactory.internal/api/npm/all" || known {
+		t.Errorf("got %s (known %v), want the repository's index, unknown", idx, known)
+	}
+	if idx, _ := c.For(NPM, "@acme/tool"); idx != "https://artifactory.internal/api/npm/acme" {
+		t.Errorf("scoped package resolves from %s", idx)
+	}
+	// A scope's index applies to that scope only.
+	if idx, _ := c.For(NPM, "@other/tool"); idx != "https://artifactory.internal/api/npm/all" {
+		t.Errorf("another scope resolves from %s", idx)
+	}
+}
+
+func TestMachineConfigurationWins(t *testing.T) {
+	home := t.TempDir()
+	if err := os.WriteFile(filepath.Join(home, ".npmrc"), []byte("registry=https://mirror.corp/npm\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	files := write(t, map[string]string{".npmrc": "registry=https://somewhere.else/npm\n"})
+	c := Discover(files, env(nil), home)
+
+	idx, known := c.For(NPM, "lodash")
+	if idx != "https://mirror.corp/npm" || !known {
+		t.Errorf("got %s (known %v), want this machine's mirror, known", idx, known)
+	}
+}
+
+func TestDiscoverReadsEveryEcosystem(t *testing.T) {
+	files := write(t, map[string]string{
+		"requirements.txt":   "--extra-index-url https://pypi.internal/simple\nrequests\n",
+		"pyproject.toml":     "[[tool.uv.index]]\nname = \"corp\"\nurl = \"https://uv.internal/simple\"\n",
+		"NuGet.config":       `<configuration><packageSources><add key="corp" value="https://nuget.internal/v3/index.json" /></packageSources></configuration>`,
+		"pom.xml":            `<project><repositories><repository><url>https://maven.internal/releases</url></repository></repositories></project>`,
+		".cargo/config.toml": "[source.corp]\nregistry = \"https://crates.internal/index\"\n",
+		".yarnrc.yml":        "npmRegistryServer: \"https://yarn.internal/npm\"\n",
+	})
+	c := Discover(files, env(map[string]string{"GOPROXY": "https://goproxy.internal,direct"}), "")
+
+	for _, tt := range []struct{ eco, want string }{
+		// Several files name an index; the first by path wins, the same way every run.
+		{PyPI, "https://uv.internal/simple"},
+		{NuGet, "https://nuget.internal/v3/index.json"},
+		{Maven, "https://maven.internal/releases"},
+		{Cargo, "https://crates.internal/index"},
+		{NPM, "https://yarn.internal/npm"},
+		{Go, "https://goproxy.internal"},
+	} {
+		if idx, _ := c.For(tt.eco, "pkg"); idx != tt.want {
+			t.Errorf("%s: got %s, want %s", tt.eco, idx, tt.want)
+		}
+	}
+	// The others are still recorded: the map shows one, the configuration keeps all.
+	var found bool
+	for _, s := range c.Sources(PyPI) {
+		found = found || s.URL == "https://pypi.internal/simple"
+	}
+	if !found {
+		t.Errorf("the requirements file's index was dropped: %+v", c.Sources(PyPI))
+	}
+	// GOPROXY comes from this machine's environment, so it is vouched for; the
+	// repository's own files are not.
+	if _, known := c.For(Go, "example.com/mod"); !known {
+		t.Error("GOPROXY from the environment is not trusted")
+	}
+	if _, known := c.For(PyPI, "requests"); known {
+		t.Error("an index only the repository names is trusted")
+	}
+}
+
+func TestContainerRegistryComesFromTheReference(t *testing.T) {
+	c := Discover(nil, env(nil), "")
+	for _, tt := range []struct {
+		image, want string
+		known       bool
+	}{
+		{"nginx", "https://registry-1.docker.io", true},
+		{"library/nginx", "https://registry-1.docker.io", true},
+		{"ghcr.io/org/app", "https://ghcr.io", false},
+		{"localhost:5000/app", "https://localhost:5000", false},
+	} {
+		idx, known := c.For(OCI, tt.image)
+		if idx != tt.want || known != tt.known {
+			t.Errorf("%s: got %s (known %v), want %s (%v)", tt.image, idx, known, tt.want, tt.known)
+		}
+	}
+}
+
+func TestHost(t *testing.T) {
+	if got := Host("https://artifactory.internal/api/npm/all"); got != "artifactory.internal" {
+		t.Errorf("got %q", got)
+	}
+	if got := Host("not a url"); got != "not a url" {
+		t.Errorf("got %q", got)
+	}
+}

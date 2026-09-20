@@ -40,12 +40,12 @@ package grammarruntime
 // ts_external_scanner_states[10][12]. Columns are the C# external token indices,
 // in the language's ExternalSymbols order:
 //
-//	 0 _optional_semi              6 interpolation_open_brace
-//	 1 interpolation_regular_start 7 interpolation_close_brace
-//	 2 interpolation_verbatim_start 8 interpolation_string_content
-//	 3 interpolation_raw_start     9 raw_string_start
-//	 4 interpolation_start_quote  10 raw_string_end
-//	 5 interpolation_end_quote    11 raw_string_content
+//	0 _optional_semi              6 interpolation_open_brace
+//	1 interpolation_regular_start 7 interpolation_close_brace
+//	2 interpolation_verbatim_start 8 interpolation_string_content
+//	3 interpolation_raw_start     9 raw_string_start
+//	4 interpolation_start_quote  10 raw_string_end
+//	5 interpolation_end_quote    11 raw_string_content
 var cSharpExternalLexStates = [][]bool{
 	/*  0 */ {false, false, false, false, false, false, false, false, false, false, false, false},
 	/*  1 */ {true, true, true, true, true, true, true, true, true, true, true, true},

@@ -28,6 +28,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/export"
 	"github.com/sarumaj/depphunter-cli/internal/graph"
 	"github.com/sarumaj/depphunter-cli/internal/history"
+	"github.com/sarumaj/depphunter-cli/internal/index"
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/ci"
 	"github.com/sarumaj/depphunter-cli/internal/lang/csharp"
@@ -43,6 +44,12 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/termview"
 	"github.com/sarumaj/depphunter-cli/internal/watch"
 	"github.com/sarumaj/depphunter-cli/web"
+)
+
+// How long an index's answer stays usable, and how long one request may take.
+const (
+	indexCacheTTL = 24 * time.Hour
+	indexTimeout  = 30 * time.Second
 )
 
 // version is set at release builds: -ldflags "-X main.version=v1.2.3".
@@ -115,6 +122,15 @@ func run(ctx context.Context, cfg config.Config) error {
 		},
 		Cache:        c,
 		ResolveDepth: cfg.ResolveDepth,
+	}
+	home, _ := os.UserHomeDir()
+	indexes := index.NewDiscoverer(os.Getenv, home)
+	opts.Indexes = func(files []*scan.File) anal.Indexes { return indexes.Discover(files) }
+	if cfg.Online {
+		// The configuration is filled while the scan runs; the client only reads it
+		// afterwards, when the walk starts asking about packages.
+		opts.Registry = index.NewClient(indexes.Config(), filepath.Join(cacheDir, "index"),
+			indexCacheTTL, indexTimeout, home)
 	}
 	g, err := analyze(ctx, cfg.Root, opts, c)
 	if err != nil {
@@ -338,6 +354,8 @@ func serveInTerminal(ctx context.Context, cfg config.Config, srv *server.Server,
 			URL:      url,
 			Browser:  cfg.TerminalBrowser,
 			Graphics: cfg.TerminalGraphics,
+			Download: cfg.TerminalDownload,
+			SHA256:   cfg.TerminalSHA256,
 		})
 	}()
 	select {
