@@ -494,3 +494,40 @@ dialog form { margin-top: 12px; text-align: right; }
   #legend { left: 8px; bottom: 8px; max-width: calc(100% - 16px); }
   #panel { top: auto; height: 60%; left: 8px; right: 8px; bottom: 8px; width: auto; }
 }
+
+/* The backpack: what has been caught, and whether it has been fixed since. It sits
+   where the details panel does but lower in the stack, so opening a finding from it
+   puts the panel in front rather than replacing it. */
+#pack {
+  position: absolute;
+  top: 12px; left: 12px;
+  width: min(420px, calc(100% - 24px));
+  max-height: min(60vh, 520px);
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  display: flex;
+  flex-direction: column;
+  z-index: 4;
+}
+#pack header { display: flex; align-items: center; gap: 8px; padding: 10px 12px; border-bottom: 1px solid var(--border); }
+#pack header h3 { margin: 0; font-size: 13px; }
+#pack header .spacer { flex: 1; }
+#pack header .close { border: none; font-size: 18px; line-height: 1; padding: 2px 8px; }
+#pack-list { list-style: none; margin: 0; padding: 0; overflow: auto; flex: 1; min-height: 0; }
+#pack-list li { display: flex; align-items: flex-start; gap: 8px; padding: 7px 12px; border-bottom: 1px solid var(--grid); cursor: pointer; }
+#pack-list li:last-child { border-bottom: none; }
+#pack-list li:hover { background: var(--grid); }
+#pack-list .body { flex: 1; min-width: 0; }
+#pack-list .t { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#pack-list .w { color: var(--muted); font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; display: block; }
+#pack-list li.fixed .t { text-decoration: line-through; color: var(--muted); }
+#pack-list .state { font-size: 11px; border: 1px solid var(--border); border-radius: 10px; padding: 0 6px; color: var(--muted); white-space: nowrap; }
+#pack-list li.fixed .state { color: #2f8f4e; border-color: #2f8f4e; }
+#pack-list .drop { border: none; background: none; color: var(--muted); cursor: pointer; padding: 0 2px; line-height: 1; }
+#pack-list .drop:hover { color: var(--text); }
+#pack-empty-note { margin: 0; padding: 14px 12px; }
+@media (max-width: 720px) {
+  #pack { left: 8px; right: 8px; width: auto; }
+}

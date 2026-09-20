@@ -77,6 +77,7 @@
       <button id="rotate-right" title="Rotate right (E)" aria-label="Rotate right">⟳</button>
       <button id="fit" title="Fit to screen (F)">Fit</button>
       <button id="walk" title="Walk the map in first person (V)" aria-pressed="false">Walk</button>
+      <button id="pack-btn" title="What you have caught (B)" aria-expanded="false" aria-controls="pack" hidden>Backpack <span id="pack-count" class="count" hidden></span></button>
       <button id="save-settings">Save settings</button>
       <div class="export">
         <button id="export-btn" aria-expanded="false" aria-controls="export">Export</button>
@@ -113,6 +114,18 @@
     <div id="tooltip" hidden></div>
     <section id="legend" aria-label="Legend"></section>
     <div id="status"><span id="live" class="live" role="status" hidden></span><span id="status-text" role="status" aria-live="polite">Analyzing…</span></div>
+    <aside id="pack" hidden aria-label="Backpack">
+      <header>
+        <h3>Backpack</h3>
+        <span id="pack-summary" class="hint"></span>
+        <span class="spacer"></span>
+        <button id="pack-clear-fixed" class="link" type="button" title="Forget the ones that are fixed">clear fixed</button>
+        <button id="pack-empty" class="link" type="button" title="Empty the backpack">empty</button>
+        <button id="pack-close" class="close" title="Close (Esc)" aria-label="Close backpack">×</button>
+      </header>
+      <ul id="pack-list"></ul>
+      <p id="pack-empty-note" class="hint">Nothing caught yet. Walk the map and catch a bug with whatever is in your hands.</p>
+    </aside>
     <aside id="panel" hidden>
       <button id="panel-close" class="close" title="Close (Esc)" aria-label="Close details">×</button>
       <div id="panel-body"></div>
@@ -134,7 +147,9 @@
         <tr data-server><th>O</th><td>Open selected file in your editor</td></tr>
         <tr><th>P</th><td>Save the map as a PNG image</td></tr>
         <tr><th>Legend click</th><td>Hide / show a language</td></tr>
-        <tr><th>Esc</th><td>Clear selection</td></tr>
+        <tr><th>Esc</th><td>Close the backpack, or clear the selection</td></tr>
+        <tr><th>Pins</th><td>Where the scanners found something: a marker over the building, in the color of the worst of them, taller the more there are</td></tr>
+        <tr><th>B</th><td>The backpack: every bug caught in walk mode, still open or fixed since. Click one to go back to where it was caught</td></tr>
       </table>
       <h2>Walk mode (V)</h2>
       <table>
@@ -144,7 +159,7 @@
         <tr><th>Space</th><td>Jump (flying: straight up)</td></tr>
         <tr><th>F</th><td>Fly on / off. Flying, W / S move where you look (look down and press W to dive); Space / C go straight up / down</td></tr>
         <tr><th>Click</th><td>Use what is in your hands - a fishing rod, a net, a camera, a bubble wand, a tracking dart: the module it reaches is tagged, selected and its dependencies light up. Using it again on a tagged building shows its details</td></tr>
-        <tr><th>Bugs</th><td>Every finding a scanner reported walks the streets around the building it belongs to, colored by severity. Use any tool on one to catch it and read what it was carrying; the HUD counts what is left</td></tr>
+        <tr><th>Bugs</th><td>Every finding a scanner reported walks the streets around the building it belongs to, colored by severity. Use any tool on one to catch it and read what it was carrying; the HUD counts what is left, and what you catch goes in the backpack (<kbd>B</kbd> on the map) until the source is fixed</td></tr>
         <tr><th>Tracker</th><td>The sweep in the corner turns with you: a dot per bug still out there, a ring per module already tagged, an arrow on the rim for anything beyond its range</td></tr>
         <tr><th>T</th><td>Take out another tool</td></tr>
         <tr><th>Hold right button</th><td>Look through the scope (zoom)</td></tr>

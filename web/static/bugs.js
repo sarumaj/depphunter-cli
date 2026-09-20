@@ -1,5 +1,5 @@
 // Bugs on the streets. Every finding a scanner reported walks a lap around the
-// building it belongs to, coloured by how serious it is; catching one with whatever
+// building it belongs to, colored by how serious it is; catching one with whatever
 // tool is in your hands opens what was said about it.
 //
 // The bugs live on the flat map, like the walker: MapScene bends what is drawn, so a
@@ -19,7 +19,7 @@ const MARGIN = 1.5;
 const BODY = 0.1;         // half the length of a bug's body
 const LEGS = 6;
 
-// Geometry is shared by every bug; only the shell's colour and the transform differ.
+// Geometry is shared by every bug; only the shell's color and the transform differ.
 const SHELL = '#151515'; // head, legs and the split down the shell
 let parts = null;
 
@@ -44,6 +44,15 @@ export class Bugs {
   }
 
   show(on) { this.group.visible = on; }
+
+  /**
+   * The findings already caught, which stay caught. The backpack is what remembers
+   * them - across a relayout, a depth change and a reload - so it says which they are
+   * and this follows.
+   */
+  keepCaught(ids) {
+    this.caught = new Set(ids);
+  }
 
   /**
    * place puts a bug on the streets for every finding that belongs to a building on
@@ -119,7 +128,7 @@ export class Bugs {
     g.add(new THREE.Mesh(parts.body, this.material(this.colors[severity] || this.colors.unknown)));
     g.add(new THREE.Mesh(parts.head, this.material(SHELL)));
     // Nothing in this scene is lit, so the shell's split is drawn rather than shaded:
-    // without it a beetle at arm's length is a coloured blob.
+    // without it a beetle at arm's length is a colored blob.
     g.add(new THREE.Mesh(parts.seam, this.material(SHELL)));
     const legs = new THREE.Group();
     for (let i = 0; i < LEGS; i++) {
@@ -135,7 +144,7 @@ export class Bugs {
     return g;
   }
 
-  // One material per colour: six colours for however many bugs there are.
+  // One material per color: six colors for however many bugs there are.
   material(color) {
     let m = this.materials.get(color);
     if (!m) {
@@ -207,7 +216,8 @@ export class Bugs {
 
 // boxFor finds the building a finding's node is drawn as. A file inside a collapsed
 // directory has no box of its own, so the nearest ancestor that does takes its bug.
-function boxFor(byNode, node) {
+// pins.js places its markers by the same rule, so a bug and its pin agree.
+export function boxFor(byNode, node) {
   for (let n = node; n; n = n.parentNode) {
     const b = byNode.get(n.id);
     if (b) return b;
@@ -223,16 +233,16 @@ function lapOf(box) {
     [box.x - hw, box.z - hd], [box.x + hw, box.z - hd],
     [box.x + hw, box.z + hd], [box.x - hw, box.z + hd],
   ];
-  const segs = [];
+  const segments = [];
   let length = 0;
   for (let i = 0; i < corners.length; i++) {
     const [x0, z0] = corners[i], [x1, z1] = corners[(i + 1) % corners.length];
     const len = Math.hypot(x1 - x0, z1 - z0);
-    segs.push({ x0, z0, x1, z1, len, at: length });
+    segments.push({ x0, z0, x1, z1, len, at: length });
     length += len;
   }
   return {
-    segs, length: length || 1, y: box.y,
+    segments, length: length || 1, y: box.y,
     bounds: { x0: box.x - hw, x1: box.x + hw, z0: box.z - hd, z1: box.z + hd },
   };
 }
@@ -240,8 +250,8 @@ function lapOf(box) {
 // pointAt walks the lap: where the bug is at u in [0,1), and which way it faces.
 function pointAt(lap, u) {
   const want = u * lap.length;
-  let seg = lap.segs[lap.segs.length - 1];
-  for (const s of lap.segs) {
+  let seg = lap.segments[lap.segments.length - 1];
+  for (const s of lap.segments) {
     if (want < s.at + s.len) { seg = s; break; }
   }
   const t = seg.len ? (want - seg.at) / seg.len : 0;
