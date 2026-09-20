@@ -260,8 +260,9 @@ export class Walker {
   /** Put the hand and its tool in front of the camera. */
   showTool() {
     this.hideTool();
-    // A camera draws its children only when it is itself part of the scene.
-    this.scene.scene.add(this.scene.walkCamera);
+    // A camera draws its children only when it is itself part of a scene, and this
+    // one belongs to the pass that draws the tool over the world (MapScene.renderNow).
+    this.scene.viewScene.add(this.scene.walkCamera);
     // The only lights in the scene, and they travel with the view: everything on the
     // map is drawn with unlit materials, so they reach nothing but what is held.
     this.lights ||= viewLights();
@@ -286,7 +287,7 @@ export class Walker {
       this.held = null;
       this.viewmodel = null;
     }
-    this.scene.scene.remove(this.scene.walkCamera);
+    this.scene.viewScene.remove(this.scene.walkCamera);
   }
 
   /** Take another tool out: same hunt, different gesture. */

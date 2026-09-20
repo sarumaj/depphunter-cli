@@ -77,20 +77,25 @@ DIGITS = [
 
 # The forearm, as a fraction of the hand's length: how far back the elbow is, and how
 # much thicker than the wrist the arm is at its middle and at the elbow.
-ARM = 1.42
+ARM = 5.0
 # The arm's profile: how far along it each ring sits, and how much wider that ring is
-# than the one before. A forearm leaves the wrist narrow, is widest a third of the way
-# down from the elbow, and draws in again to close.
+# than the one before. A forearm leaves the wrist narrow and is widest a third of the
+# way down - and then keeps going, straight, for as far again as the viewmodel is from
+# the lens. That run is not anatomy: the arm has to leave the frame behind the camera
+# rather than stop somewhere inside it, or a walker who zooms out sees it end in mid
+# air. What closes it off at the end is behind the near plane and is never drawn.
 ARM_PROFILE = [
-    (0.06, 1.06),
-    (0.16, 1.14),
-    (0.3, 1.16),
-    (0.46, 1.12),
-    (0.62, 1.04),
-    (0.78, 0.97),
-    (0.9, 0.9),
-    (0.97, 0.72),
-    (1.0, 0.38),
+    (0.020, 1.06),
+    (0.054, 1.14),
+    (0.101, 1.16),
+    (0.155, 1.12),
+    (0.210, 1.04),
+    (0.264, 1.00),
+    (0.45, 1.02),
+    (0.70, 1.02),
+    (0.94, 1.00),
+    (0.98, 0.70),
+    (1.0, 0.35),
 ]
 
 
