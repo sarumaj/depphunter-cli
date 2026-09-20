@@ -281,10 +281,39 @@ func TestFindingsSettings(t *testing.T) {
 	}
 }
 
+// Which paths a repository may name is a question about a file that travels between
+// systems, so it is answered the same way on all of them - which is what makes this
+// table worth having on every platform rather than only on the one that would break.
+func TestInside(t *testing.T) {
+	for _, tc := range []struct {
+		path string
+		want bool
+	}{
+		{"reports/trivy.json", true},
+		{"reports\\trivy.json", true},
+		{"./a/../b.json", true},
+		{"", false},
+		{"/etc/shadow", false},          // rooted on POSIX; on Windows, not absolute
+		{"\\etc\\shadow", false},        // ... and the same path the other way round
+		{"C:\\Windows\\win.ini", false}, // a drive letter, on either system
+		{"c:/windows/win.ini", false},
+		{"\\\\server\\share\\report.json", false}, // a UNC share
+		{"../../elsewhere/report.json", false},
+		{"..\\..\\elsewhere\\report.json", false},
+		{"..", false},
+		{"reports/../../out.json", false},
+	} {
+		if got := inside(tc.path); got != tc.want {
+			t.Errorf("inside(%q) = %v, want %v", tc.path, got, tc.want)
+		}
+	}
+}
+
 // A repository may point at reports it ships; it may not point at files outside itself.
 func TestProjectConfigFindingsStayInsideTheRepository(t *testing.T) {
 	root := t.TempDir()
-	project := "findings:\n  - reports/trivy.json\n  - /etc/shadow\n  - ../../elsewhere/report.json\n  - ''\nvulns: true\n"
+	project := "findings:\n  - reports/trivy.json\n  - /etc/shadow\n  - 'C:\\Windows\\win.ini'\n" +
+		"  - ../../elsewhere/report.json\n  - ''\nvulns: true\n"
 	if err := os.WriteFile(filepath.Join(root, ProjectFile), []byte(project), 0o644); err != nil {
 		t.Fatal(err)
 	}

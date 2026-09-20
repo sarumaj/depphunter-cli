@@ -8,6 +8,7 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path"
 	"path/filepath"
 	"strings"
 	"time"
@@ -298,7 +299,7 @@ func mergeFile(v *viper.Viper, name string, required, trusted bool) error {
 }
 
 // confine keeps the report paths a repository may name: relative ones that stay
-// within it. An absolute path, or one climbing out, is dropped.
+// within it. Anything rooted, or climbing out, is dropped.
 func confine(list any) []string {
 	items, ok := list.([]any)
 	if !ok {
@@ -306,17 +307,38 @@ func confine(list any) []string {
 	}
 	var out []string
 	for _, it := range items {
-		s, ok := it.(string)
-		if !ok || s == "" || filepath.IsAbs(s) {
-			continue
+		if s, ok := it.(string); ok && inside(s) {
+			out = append(out, s)
 		}
-		clean := filepath.Clean(s)
-		if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
-			continue
-		}
-		out = append(out, s)
 	}
 	return out
+}
+
+// inside reports whether a path stays within the directory it was read from.
+//
+// The question is deliberately not put to path/filepath, which answers for the host,
+// because this path travels: it comes out of a file in the repository and is read on
+// whatever machine the repository was cloned to. On Windows filepath.IsAbs("/etc/shadow")
+// is false - that path is rooted, not absolute - so a check that trusted it would let
+// a repository point the scanner wherever it liked as soon as someone cloned it there.
+// Both conventions are applied to every path, and either one objecting is enough.
+func inside(s string) bool {
+	if s == "" || rooted(s) {
+		return false
+	}
+	// Slashes both ways, since the file may have been written on the other system.
+	clean := path.Clean(strings.ReplaceAll(s, `\`, "/"))
+	return clean != ".." && !strings.HasPrefix(clean, "../")
+}
+
+// rooted reports whether a path starts from the root of some filesystem: a leading
+// separator of either kind, a drive letter, or a UNC share.
+func rooted(s string) bool {
+	if s[0] == '/' || s[0] == '\\' {
+		return true
+	}
+	return len(s) >= 2 && s[1] == ':' &&
+		(s[0] >= 'a' && s[0] <= 'z' || s[0] >= 'A' && s[0] <= 'Z')
 }
 
 // FindingsEnabled reports whether anything will be placed on the map: a report to read,
