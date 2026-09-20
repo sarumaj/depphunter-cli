@@ -253,9 +253,9 @@ func (s *Server) handleLazy(name string) http.HandlerFunc {
 	}
 }
 
-// Close ends event streams so an HTTP server shutdown does not wait for them. It may
-// be called more than once: the terminal view closes the server when it exits, and the
-// signal handler closes it again on the way out.
+// Close ends event streams so an HTTP server shutdown does not wait for them. It is
+// safe to call more than once, so a shutdown path may close the server without
+// checking whether the signal handler got there first.
 func (s *Server) Close() { s.closeOnce.Do(func() { close(s.done) }) }
 
 func (s *Server) current() *snapshot {

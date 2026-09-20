@@ -130,43 +130,6 @@ func TestProjectConfigCannotChooseEditor(t *testing.T) {
 	}
 }
 
-func TestProjectConfigCannotChooseTerminalBrowser(t *testing.T) {
-	root, user := t.TempDir(), t.TempDir()
-	write(t, filepath.Join(user, "config.yaml"), "terminal_browser: /usr/bin/chromium\n")
-	write(t, filepath.Join(root, ProjectFile), "terminal: true\nterminal_browser: /tmp/payload\n")
-	cfg, err := load(t, []string{root}, nil, user)
-	if err != nil {
-		t.Fatal(err)
-	}
-	// The repository may ask for the terminal view, but not name the binary it runs.
-	if !cfg.Terminal {
-		t.Error("project config did not enable the terminal view")
-	}
-	if cfg.TerminalBrowser != "/usr/bin/chromium" {
-		t.Errorf("project config set terminal_browser to %q", cfg.TerminalBrowser)
-	}
-}
-
-func TestTerminalSettings(t *testing.T) {
-	root := t.TempDir()
-	cfg, err := load(t, []string{"--terminal", "--terminal-graphics", "sixel", root}, nil, "")
-	if err != nil {
-		t.Fatal(err)
-	}
-	if !cfg.Terminal || cfg.TerminalGraphics != "sixel" {
-		t.Errorf("unexpected config: %+v", cfg)
-	}
-	if cfg, err = load(t, []string{root}, map[string]string{"DEPPHUNTER_TERMINAL": "true"}, ""); err != nil {
-		t.Fatal(err)
-	}
-	if !cfg.Terminal || cfg.TerminalGraphics != "auto" {
-		t.Errorf("unexpected config: %+v", cfg)
-	}
-	if _, err := load(t, []string{"--terminal-graphics", "ascii", root}, nil, ""); err == nil {
-		t.Error("unknown graphics protocol accepted")
-	}
-}
-
 func TestHistorySettings(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, ProjectFile), "history_commits: 500\nui:\n  color_by: churn\n")
