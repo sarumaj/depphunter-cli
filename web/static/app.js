@@ -8,6 +8,7 @@ import { STATIC, fetchGraph, fetchConfig, fetchLazy, saveSettings } from './data
 import { MODES, isHistoryMode, computeMetrics, historyT, timeRange, ago, formatDate } from './history.js';
 import { Labels } from './labels.js';
 import { Walker } from './walk.js';
+import { loadHands } from './hands.js';
 import { Bugs } from './bugs.js';
 import { indexFindings } from './findings.js';
 import { $, fmt, escapeHTML } from './dom.js';
@@ -152,6 +153,7 @@ async function main() {
 
   applyStyle(false);
   applyTheme();
+  loadHands(); // the walker's hands, fetched while the map is still being looked at
   bindControls();
   relayout();
   scene.fit(L.bounds);

@@ -14,7 +14,7 @@
 
 import * as THREE from './vendor/three.module.min.js';
 import { rampsFor, rampHeight, bridgesFor, bridgeHeight, bridgeBounds } from './city.js';
-import { TOOL_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool } from './tools.js';
+import { TOOL_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool, viewLights } from './tools.js';
 
 // A building is one unit wide and its storeys 0.3 high (city.js): the walker is
 // about a storey and a half tall.
@@ -254,6 +254,10 @@ export class Walker {
     this.hideTool();
     // A camera draws its children only when it is itself part of the scene.
     this.scene.scene.add(this.scene.walkCamera);
+    // The only lights in the scene, and they travel with the view: everything on the
+    // map is drawn with unlit materials, so they reach nothing but what is held.
+    this.lights ||= viewLights();
+    this.scene.walkCamera.add(this.lights);
     this.viewmodel = this.tool.viewmodel();
     this.viewmodel.userData.restY = this.viewmodel.position.y;
     this.scene.walkCamera.add(this.viewmodel);
@@ -261,6 +265,7 @@ export class Walker {
   }
 
   hideTool() {
+    if (this.lights) this.scene.walkCamera.remove(this.lights);
     if (this.viewmodel) {
       this.scene.walkCamera.remove(this.viewmodel);
       this.viewmodel = null;
