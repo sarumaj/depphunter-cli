@@ -19,15 +19,16 @@ func TestResolution(t *testing.T) {
 		"using System":                       {Ecosystem: "dotnet", Package: "System"},
 		"using System.Collections.Generic":   {Ecosystem: "dotnet", Package: "System.Collections"},
 		"using static System.Math":           {Ecosystem: "dotnet", Package: "System.Math"},
-		"using Json = Newtonsoft.Json.Linq":  {Ecosystem: "nuget", Package: "Newtonsoft.Json", Version: "13.0.3"},
+		"using Json = Newtonsoft.Json.Linq":  {Ecosystem: "nuget", Package: "Newtonsoft.Json", Version: "13.0.3", Pinned: true},
 		"using MyApp.Core.Services":          {Local: "src/MyApp.Core/Services"},
 		"using MyApp.Core.Missing":           {Local: "src/MyApp.Core"},
 		"using MyApp.Web.Controllers":        {Local: "src/MyApp.Web/Controllers"},
-		"global using Serilog.Sinks.Console": {Ecosystem: "nuget", Package: "Serilog.Sinks.Console", Version: "5.0.1"},
-		"using Serilog":                      {Ecosystem: "nuget", Package: "Serilog", Version: "3.1.1"},
-		"using Microsoft.Extensions.Hosting": {Ecosystem: "nuget", Package: "Microsoft.Extensions.Hosting", Version: "8.0.0"},
+		"global using Serilog.Sinks.Console": {Ecosystem: "nuget", Package: "Serilog.Sinks.Console", Version: "5.0.1", Pinned: true},
+		"using Serilog":                      {Ecosystem: "nuget", Package: "Serilog", Version: "3.1.1", Pinned: true},
+		"using Microsoft.Extensions.Hosting": {Ecosystem: "nuget", Package: "Microsoft.Extensions.Hosting", Version: "8.0.0", Pinned: true},
 		"using Microsoft.AspNetCore.Builder": {Ecosystem: "dotnet", Package: "Microsoft.AspNetCore"},
-		"using Dapper":                       {Ecosystem: "nuget", Package: "Dapper", Unresolved: true},
+		// A wildcard version moves with every restore.
+		"using Dapper": {Ecosystem: "nuget", Package: "Dapper", Version: "2.*"},
 	})
 }
 

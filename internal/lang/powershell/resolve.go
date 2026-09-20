@@ -89,10 +89,17 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 		return lang.Target{Ecosystem: ecoBuiltin, Package: ref}
 	}
 	if spec, ok := r.declared[lower]; ok {
-		return lang.Target{Ecosystem: ecoGallery, Package: spec.name, Version: spec.version}
+		return lang.Target{
+			Ecosystem: ecoGallery, Package: spec.name, Version: spec.version,
+			Pinned: spec.exact && lang.Pinned(spec.version),
+		}
 	}
 	if how, ok := strings.CutPrefix(imp.Name, refRequires); ok {
-		return lang.Target{Ecosystem: ecoGallery, Package: ref, Version: strings.TrimPrefix(how, "=")}
+		// "=<version>" is a minimum (ModuleVersion), "==<version>" one version.
+		v := strings.TrimPrefix(how, "=")
+		exact := strings.HasPrefix(v, "=")
+		v = strings.TrimPrefix(v, "=")
+		return lang.Target{Ecosystem: ecoGallery, Package: ref, Version: v, Pinned: exact && lang.Pinned(v)}
 	}
 	return lang.Target{Ecosystem: ecoGallery, Package: ref, Unresolved: true}
 }

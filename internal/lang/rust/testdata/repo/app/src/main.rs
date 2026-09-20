@@ -4,6 +4,7 @@ use serde::Deserialize;
 use tokio::runtime;
 use core_lib::util;
 use json::Value;
+use anyhow::Result;
 use rand::Rng;
 extern crate alloc;
 mod net;

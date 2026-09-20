@@ -150,7 +150,10 @@ func resolve(ip string, own *module, mods []*module, pkgDirs map[string]bool) la
 			}
 		}
 		if best != "" {
-			return lang.Target{Ecosystem: ecoModules, Package: best, Version: own.requires[best]}
+			// A require line carries the version the build selects, so a module is
+			// pinned unless go.mod was written without one.
+			v := own.requires[best]
+			return lang.Target{Ecosystem: ecoModules, Package: best, Version: v, Pinned: lang.Pinned(v)}
 		}
 	}
 	return lang.Target{Ecosystem: ecoModules, Package: ip, Unresolved: true}

@@ -21,6 +21,7 @@ export function readPalette() {
     noData: v('--no-data'),
     pkg: v('--pkg'),
     pkgUnresolved: v('--pkg-unresolved'),
+    pkgFloating: v('--pkg-floating'),
     edgeOut: v('--edge-out'),
     edgeIn: v('--edge-in'),
     dim: v('--dim'),

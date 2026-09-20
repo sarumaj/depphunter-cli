@@ -164,5 +164,13 @@ func (b *builder) target(t lang.Target, ecosystems map[string]lang.Ecosystem) st
 	if n.Version == "" {
 		n.Version = t.Version
 	}
+	if n.Requested == "" {
+		n.Requested = t.Requested
+	}
+	// A package one manifest pins and another leaves open is only as fixed as its
+	// loosest requester, which is what a supply chain answers to.
+	if !t.Pinned && (t.Version != "" || t.Requested != "") {
+		n.Floating = true
+	}
 	return n.ID
 }

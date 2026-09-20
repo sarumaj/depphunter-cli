@@ -60,7 +60,9 @@ exports).
     { "id": "f:internal/x.go",         "kind": "file",      "name": "x.go", "path": "internal/x.go", "parent": "d:internal", "lang": "Go", "loc": 120 },
     { "id": "s:internal/x.go#Foo",     "kind": "symbol",    "name": "Foo", "symbolKind": "func", "line": 10, "parent": "f:internal/x.go" },
     { "id": "e:go",                    "kind": "ecosystem", "name": "Go modules" },
-    { "id": "p:go:github.com/a/b",     "kind": "package",   "name": "github.com/a/b", "version": "v1.2.3", "parent": "e:go" }
+    { "id": "p:go:github.com/a/b",     "kind": "package",   "name": "github.com/a/b", "version": "v1.2.3", "parent": "e:go" },
+    { "id": "p:npm:react",             "kind": "package",   "name": "react", "version": "18.3.1", "requested": "^18.2.0", "parent": "e:npm" },
+    { "id": "p:npm:chalk",             "kind": "package",   "name": "chalk", "version": "^5.3.0", "floating": true, "parent": "e:npm" }
   ],
   "edges": [
     { "from": "f:internal/x.go", "to": "p:go:github.com/a/b", "kind": "import", "line": 5 }
@@ -69,6 +71,9 @@ exports).
 ```
 
 - Node kinds: `dir`, `file`, `symbol`, `ecosystem`, `package`.
+- A package node's `version` is what the project resolves to, `requested` the
+  specifier a manifest asked for when a lock file replaced it, and `floating`
+  marks a dependency nothing fixes to one version (§ M12).
 - Edge kinds: `import` (v1). The model must accept `reference` (symbol → symbol)
   later without changes to the UI's aggregation logic.
 - An edge target may be a file, a directory (e.g. a Go package), or a package
@@ -583,6 +588,25 @@ on, and the right button only zooms.
 *Accepted when* `depphunter --terminal` over SSH shows the map, a click opens
 the side panel, a double click expands a directory, `V` enters walk mode and
 `W` walks, and quitting leaves the terminal as it was found.
+
+### M12 - The supply chain
+
+- Every external package says whether anything fixes it to one version. A lock
+  file, an exact specifier, a single-version range, a commit or a digest pins it;
+  a range, a wildcard, a snapshot or a moving tag does not, and the package is
+  drawn apart, badged in the side panel, and carried as `floating` into the JSON
+  and GraphML exports. Where a lock file resolved a range, both are kept: 4.3.1
+  `requested` as ^4.2.0.
+- What counts as a pin is the ecosystem's own rule, not a shared guess: a version
+  in `go.mod` is the one the build selects, while the same string in `Cargo.toml`
+  means a caret range and only `Cargo.lock` decides; npm reads "1.2" as 1.2.x;
+  Maven pins a plain version whatever its shape (1.2.3.RELEASE) but not a
+  `-SNAPSHOT`, which is republished under its own name; NuGet moves on wildcards
+  and ranges; PowerShell's `RequiredVersion` names one version where
+  `ModuleVersion` is only a minimum.
+
+*Accepted when* a repository whose dependencies are locked shows no floating
+packages, and removing its lock file makes every one of them floating.
 
 ### Known limits
 

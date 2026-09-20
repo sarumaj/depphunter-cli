@@ -121,12 +121,12 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 			continue
 		}
 		// The deepest existing folder along the namespace path.
-		segs := []string{}
+		segments := []string{}
 		if rest != "" {
-			segs = strings.Split(rest, ".")
+			segments = strings.Split(rest, ".")
 		}
-		for n := len(segs); n >= 0; n-- {
-			if d := path.Join(append([]string{p.dir}, segs[:n]...)...); r.csDirs[d] {
+		for n := len(segments); n >= 0; n-- {
+			if d := path.Join(append([]string{p.dir}, segments[:n]...)...); r.csDirs[d] {
 				return lang.Target{Local: d}
 			}
 		}
@@ -138,11 +138,14 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 		}
 	}
 	if best != "" {
-		return lang.Target{Ecosystem: ecoNuGet, Package: best, Version: r.packages[best]}
+		// A PackageReference version is a minimum, but restore installs exactly it
+		// when it exists: the versions that move are the wildcards and the ranges.
+		v := r.packages[best]
+		return lang.Target{Ecosystem: ecoNuGet, Package: best, Version: v, Pinned: lang.Pinned(v)}
 	}
-	segs := strings.Split(ns, ".")
-	top := strings.Join(segs[:min(2, len(segs))], ".")
-	switch segs[0] {
+	segments := strings.Split(ns, ".")
+	top := strings.Join(segments[:min(2, len(segments))], ".")
+	switch segments[0] {
 	case "System", "Microsoft", "Windows":
 		return lang.Target{Ecosystem: ecoDotnet, Package: top}
 	}

@@ -23,12 +23,12 @@ func TestImportResolution(t *testing.T) {
 		"json":                               {Ecosystem: "python-std", Package: "json"},
 		"from typing import List":            {Ecosystem: "python-std", Package: "typing"},
 		"requests":                           {Ecosystem: "pypi", Package: "requests", Version: ">=2.31"},
-		"yaml":                               {Ecosystem: "pypi", Package: "PyYAML", Version: "6.0.1"},
+		"yaml":                               {Ecosystem: "pypi", Package: "PyYAML", Version: "6.0.1", Pinned: true},
 		"from bs4 import BeautifulSoup":      {Ecosystem: "pypi", Package: "beautifulsoup4", Version: "^4.12"},
-		"numpy":                              {Ecosystem: "pypi", Package: "numpy", Version: "1.26.4"},
-		"certifi":                            {Ecosystem: "pypi", Package: "certifi", Version: "2024.2.2"},
+		"numpy":                              {Ecosystem: "pypi", Package: "numpy", Version: "1.26.4", Pinned: true},
+		"certifi":                            {Ecosystem: "pypi", Package: "certifi", Version: "2024.2.2", Pinned: true},
 		"pytest":                             {Ecosystem: "pypi", Package: "pytest", Version: ">=8"},
-		"black":                              {Ecosystem: "pypi", Package: "black", Version: "24.1.0"},
+		"black":                              {Ecosystem: "pypi", Package: "black", Version: "24.1.0", Pinned: true},
 		"notdeclared.sub":                    {Ecosystem: "pypi", Package: "notdeclared", Unresolved: true},
 		"from . import utils":                {Local: "src/app/utils.py"},
 		"from .models import User":           {Local: "src/app/models"},
@@ -69,7 +69,8 @@ func TestSymbols(t *testing.T) {
 
 func TestSetuptoolsManifests(t *testing.T) {
 	pypi := func(pkg, version string) lang.Target {
-		return lang.Target{Ecosystem: "pypi", Package: pkg, Version: version}
+		// "==" pins, everything else these manifests write is a lower bound.
+		return lang.Target{Ecosystem: "pypi", Package: pkg, Version: version, Pinned: lang.Pinned(version)}
 	}
 	langtest.CheckImports(t, langtest.Analyze(t, Plugin{}, "testdata/setuptools")["pkg/app.py"], map[string]lang.Target{
 		"requests": pypi("requests", ">=2.31"), // setup.cfg, trailing comment dropped

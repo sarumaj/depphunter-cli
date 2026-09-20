@@ -21,15 +21,17 @@ func TestResolution(t *testing.T) {
 		"use std::collections::HashMap":  {Ecosystem: "rust-std", Package: "std"},
 		"use crate::net":                 {Local: "app/src/net/mod.rs"},
 		"use crate::net::server::Server": {Local: "app/src/net/server.rs"},
-		"use serde::Deserialize":         {Ecosystem: "crates", Package: "serde", Version: "1.0.200"},
-		"use tokio::runtime":             {Ecosystem: "crates", Package: "tokio", Version: "1.37.0"},
+		"use serde::Deserialize":         {Ecosystem: "crates", Package: "serde", Version: "1.0.200", Requested: "1.0", Pinned: true},
+		"use tokio::runtime":             {Ecosystem: "crates", Package: "tokio", Version: "1.37.0", Requested: "1", Pinned: true},
 		"use core_lib::util":             {Local: "core-lib/src/util.rs"},
-		"use json::Value":                {Ecosystem: "crates", Package: "serde_json", Version: "1.0.117"},
+		"use json::Value":                {Ecosystem: "crates", Package: "serde_json", Version: "1.0.117", Requested: "1", Pinned: true},
 		"use rand::Rng":                  {Ecosystem: "crates", Package: "rand", Unresolved: true},
-		"extern crate alloc":             {Ecosystem: "rust-std", Package: "alloc"},
-		"mod net":                        {Local: "app/src/net/mod.rs"},
-		"use Mode":                       {}, // a local enum, not a crate
-		"mod config":                     {Local: "app/src/config.rs"},
+		// Cargo.toml alone never pins: "1.0.86" means ^1.0.86 until Cargo.lock says otherwise.
+		"use anyhow::Result": {Ecosystem: "crates", Package: "anyhow", Version: "1.0.86"},
+		"extern crate alloc": {Ecosystem: "rust-std", Package: "alloc"},
+		"mod net":            {Local: "app/src/net/mod.rs"},
+		"use Mode":           {}, // a local enum, not a crate
+		"mod config":         {Local: "app/src/config.rs"},
 	})
 	langtest.CheckImports(t, res["app/src/net/mod.rs"], map[string]lang.Target{
 		"mod server":                  {Local: "app/src/net/server.rs"},
