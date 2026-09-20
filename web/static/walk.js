@@ -26,6 +26,9 @@ const BODY = 0.12;          // walker radius for collisions
 const WATER = -0.45;        // the water surface (layout LAND_H below the mainland)
 const REACH = 90;           // aiming distance
 const CELL = 2;             // spatial grid for box lookups
+// A prop only stops a walker standing at its own level: a tree on the terrace above
+// is not in the way, and one on the shore below is not either.
+const PROP_REACH = 0.7;
 const LOOK = 0.0022;        // radians per pixel of mouse movement
 const TURN = 2.2;           // radians per second with the arrow keys
 const MIN_R = 6, MAX_R = 2000;
@@ -98,6 +101,8 @@ export class Walker {
     this.tool = toolFor(hooks.tool?.() || DEFAULT_TOOL);
     this.viewmodel = null;      // the hand and its tool
     this.held = null;           // what holds them in front of the walk camera
+    this.props = null;          // the prop obstacle list this grid was built from
+    this.propGrid = new Map();  // cell -> the props standing in it
     this.swing = -1;            // seconds into the current gesture, -1 when idle
     this.pace = 0;              // how hard the walker is moving, for the tool's sway
     this.p = { x: 0, z: 0, feet: 0, vy: 0, yaw: 0, pitch: 0, ground: true, fly: false };
@@ -554,6 +559,9 @@ export class Walker {
       this.hud.classList.remove('compact');
     }
 
+    const planted = this.scene.props?.userData.obstacles || null;
+    if (planted !== this.props) this.indexProps(planted);
+    this.clearProps();
     this.confine();
 
     const floor = this.height(p.x, p.z);
@@ -612,6 +620,65 @@ export class Walker {
         const a = i / 16 * Math.PI * 2;
         const x = p.x + Math.cos(a) * r, z = p.z + Math.sin(a) * r;
         if (fits(x, z)) { p.x = x; p.z = z; return; }
+      }
+    }
+  }
+
+  /**
+   * The props the current layout planted, in the same kind of grid as the boxes.
+   * MapScene rebuilds them on a relayout and on a style change, and the list is a new
+   * array each time, so noticing that is a reference test rather than a subscription.
+   */
+  indexProps(list) {
+    this.props = list;
+    this.propGrid = new Map();
+    for (const o of list || []) {
+      const k = Math.floor(o.x / CELL) + ',' + Math.floor(o.z / CELL);
+      if (!this.propGrid.has(k)) this.propGrid.set(k, []);
+      this.propGrid.get(k).push(o);
+    }
+  }
+
+  /**
+   * Pushes the walker off anything standing on the map they have walked into: a trunk,
+   * a lamp post, a crystal. Boxes are cleared by never stepping into them, axis by
+   * axis, which is what makes a wall slide; a trunk is a circle, and pushing out of a
+   * circle along its own radius slides around it without any of that bookkeeping.
+   *
+   * Twice over, because stepping off one tree can be a step into the next.
+   */
+  clearProps() {
+    const p = this.p;
+    if (p.fly || !this.props?.length) return;
+    for (let pass = 0; pass < 2; pass++) {
+      let moved = false;
+      for (const o of this.propsNear(p.x, p.z)) {
+        if (Math.abs(o.y - p.feet) > PROP_REACH) continue;
+        const dx = p.x - o.x, dz = p.z - o.z;
+        const want = o.r + BODY;
+        const d2 = dx * dx + dz * dz;
+        if (d2 >= want * want) continue;
+        const d = Math.sqrt(d2);
+        // Dead centre: push along the way they came rather than picking an axis.
+        const [ux, uz] = d > 1e-4 ? [dx / d, dz / d] : [Math.sin(p.yaw), Math.cos(p.yaw)];
+        const x = o.x + ux * want, z = o.z + uz * want;
+        // Never push someone through a wall or up onto a roof to get them off a tree;
+        // standing in the trunk is the lesser of those.
+        if (this.height(x, z) > p.feet + STEP) continue;
+        p.x = x;
+        p.z = z;
+        moved = true;
+      }
+      if (!moved) return;
+    }
+  }
+
+  /** The props whose cell the point is in, or next to. */
+  *propsNear(x, z) {
+    const i = Math.floor(x / CELL), j = Math.floor(z / CELL);
+    for (let di = -1; di <= 1; di++) {
+      for (let dj = -1; dj <= 1; dj++) {
+        yield* this.propGrid.get(i + di + ',' + (j + dj)) || [];
       }
     }
   }
