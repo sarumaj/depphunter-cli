@@ -29,7 +29,7 @@ var relativeImport = regexp.MustCompile(`((?:from|import)\s*\(?\s*)(['"])\./(?:v
 // server: every ES module is inlined as a data: URL behind an import map (relative
 // imports are rewritten to the map's names), the stylesheet is inlined, and the graph,
 // UI settings and source texts (within size limits) are embedded as JSON.
-// extra holds optional datasets ("history", "references") embedded as they are.
+// extra holds optional datasets ("history", "references", "findings") embedded as they are.
 func WriteStatic(w io.Writer, g *graph.Graph, ui config.UI, root string, extra map[string]any) error {
 	assets := Assets()
 	index, err := fs.ReadFile(assets, "index.html")

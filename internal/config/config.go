@@ -76,6 +76,12 @@ type Config struct {
 	// Online allows asking package indexes about dependencies the repository's own
 	// files do not record. Analysis is offline without it.
 	Online bool `yaml:"online" mapstructure:"online"`
+	// Findings are files (or globs) holding what a scanner already reported:
+	// govulncheck, npm audit, trivy, golangci-lint, eslint or osv-scanner JSON.
+	Findings []string `yaml:"findings" mapstructure:"findings"`
+	// Vulns places those reports on the map and, with Online, additionally asks the
+	// OSV database about every pinned external package.
+	Vulns bool `yaml:"vulns" mapstructure:"vulns"`
 	// LSP asks installed language servers for symbol-level references (slow, opt-in).
 	LSP        bool          `yaml:"lsp" mapstructure:"lsp"`
 	LSPTimeout time.Duration `yaml:"lsp_timeout" mapstructure:"lsp_timeout"`
@@ -94,6 +100,7 @@ func Default() Config {
 		Open:           true,
 		Cache:          true,
 		History:        true,
+		Vulns:          true,
 		HistoryCommits: 10000,
 		LSPTimeout:     5 * time.Minute,
 		MaxFileSize:    2 << 20,
@@ -119,6 +126,9 @@ func RegisterFlags(fs *pflag.FlagSet) {
 	fs.Bool("no-history", false, "do not read git history")
 	fs.Int("history-commits", d.HistoryCommits, "read at most this many commits of git history")
 	fs.Bool("online", false, "ask package indexes about dependencies the project's files do not record")
+	fs.StringArray("findings", nil,
+		"scanner report to place on the map (govulncheck, npm audit, trivy, golangci-lint, eslint, osv-scanner JSON); repeatable, globs allowed")
+	fs.Bool("no-vulns", false, "do not place scanner reports on the map, and do not ask the OSV database")
 	fs.Int("resolve-depth", d.ResolveDepth,
 		"levels of external dependencies-of-dependencies to resolve from lock files (-1 = all)")
 	fs.Bool("lsp", false, "find symbol references with installed language servers (gopls, …)")
@@ -138,13 +148,14 @@ var flagKeys = map[string]string{
 }
 
 // Settings a --no-* flag turns off.
-var negatedFlags = map[string]string{"no-open": "open", "no-cache": "cache", "no-history": "history"}
+var negatedFlags = map[string]string{"no-open": "open", "no-cache": "cache", "no-history": "history", "no-vulns": "vulns"}
 
 // Environment variables (after the DEPPHUNTER_ prefix), by setting. EXCLUDE is
 // handled apart: it adds to the configured globs instead of replacing them.
 var envKeys = map[string]string{
 	"addr": "ADDR", "open": "OPEN", "max_file_size": "MAX_FILE_SIZE", "watch": "WATCH", "cache": "CACHE",
-	"history": "HISTORY", "history_commits": "HISTORY_COMMITS", "resolve_depth": "RESOLVE_DEPTH", "online": "ONLINE", "lsp": "LSP", "lsp_timeout": "LSP_TIMEOUT",
+	"history": "HISTORY", "history_commits": "HISTORY_COMMITS", "resolve_depth": "RESOLVE_DEPTH", "online": "ONLINE",
+	"vulns": "VULNS", "lsp": "LSP", "lsp_timeout": "LSP_TIMEOUT",
 	"editor": "EDITOR", "ui.theme": "THEME", "ui.color_by": "COLOR_BY", "ui.height_scale": "HEIGHT_SCALE",
 	"ui.show_std": "SHOW_STD", "ui.expand_depth": "EXPAND_DEPTH",
 }
@@ -222,6 +233,11 @@ func Load(fs *pflag.FlagSet, args []string, userDir string) (Config, error) {
 	}
 	flagExclude, _ := fs.GetStringArray("exclude")
 	cfg.Exclude = append(cfg.Exclude, flagExclude...)
+	if f := os.Getenv("DEPPHUNTER_FINDINGS"); f != "" {
+		cfg.Findings = append(cfg.Findings, strings.Split(f, ",")...)
+	}
+	flagFindings, _ := fs.GetStringArray("findings")
+	cfg.Findings = append(cfg.Findings, flagFindings...)
 	cfg.Export, _ = fs.GetString("export")
 	cfg.Output, _ = fs.GetString("output")
 	return cfg, cfg.validate()
@@ -233,7 +249,8 @@ func setDefaults(v *viper.Viper, d Config) {
 	for key, val := range map[string]any{
 		"addr": d.Addr, "open": d.Open, "exclude": d.Exclude, "max_file_size": d.MaxFileSize,
 		"watch": d.Watch, "cache": d.Cache, "history": d.History, "history_commits": d.HistoryCommits,
-		"resolve_depth": d.ResolveDepth, "online": d.Online, "lsp": d.LSP, "lsp_timeout": d.LSPTimeout,
+		"resolve_depth": d.ResolveDepth, "online": d.Online, "findings": d.Findings, "vulns": d.Vulns,
+		"lsp": d.LSP, "lsp_timeout": d.LSPTimeout,
 		"editor":   d.Editor,
 		"ui.theme": d.UI.Theme, "ui.color_by": d.UI.ColorBy, "ui.height_scale": d.UI.HeightScale,
 		"ui.show_std": d.UI.ShowStd, "ui.expand_depth": d.UI.ExpandDepth, "ui.tool": d.UI.Tool,
@@ -261,8 +278,41 @@ func mergeFile(v *viper.Viper, name string, required, trusted bool) error {
 		// not choose either.
 		delete(m, "editor")
 		delete(m, "online")
+		// A repository may point at its own scanner reports, which is how a project
+		// ships the output its CI already produces - but only at paths inside itself.
+		if list, ok := m["findings"]; ok {
+			m["findings"] = confine(list)
+		}
 	}
 	return v.MergeConfigMap(m)
+}
+
+// confine keeps the report paths a repository may name: relative ones that stay
+// within it. An absolute path, or one climbing out, is dropped.
+func confine(list any) []string {
+	items, ok := list.([]any)
+	if !ok {
+		return nil
+	}
+	var out []string
+	for _, it := range items {
+		s, ok := it.(string)
+		if !ok || s == "" || filepath.IsAbs(s) {
+			continue
+		}
+		clean := filepath.Clean(s)
+		if clean == ".." || strings.HasPrefix(clean, ".."+string(filepath.Separator)) {
+			continue
+		}
+		out = append(out, s)
+	}
+	return out
+}
+
+// FindingsEnabled reports whether anything will be placed on the map: a report to read,
+// or a database to ask.
+func (c Config) FindingsEnabled() bool {
+	return c.Vulns && (len(c.Findings) > 0 || c.Online)
 }
 
 func (c Config) validate() error {

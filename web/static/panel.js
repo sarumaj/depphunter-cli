@@ -5,6 +5,7 @@ import powershell from './vendor/highlight-powershell.min.js';
 
 hljs.registerLanguage('powershell', powershell);
 import { ancestors, boundaryEdges } from './model.js';
+import { whereOf } from './findings.js';
 import { fetchSource } from './data.js';
 import { ago, formatDate } from './history.js';
 import { fmt, h, escapeHTML } from './dom.js';
@@ -23,8 +24,8 @@ const MAX_HIGHLIGHT = 300_000; // bytes; larger files are shown as plain text
 
 
 export class Panel {
-  constructor(root, body, { model, colorOf, onSelect, onOpen, openLabel, historyOf, linkKind, onClose }) {
-    Object.assign(this, { root, body, model, colorOf, onSelect, onOpen, openLabel, historyOf, linkKind, onClose });
+  constructor(root, body, { model, colorOf, onSelect, onOpen, openLabel, historyOf, linkKind, onClose, findingsOf }) {
+    Object.assign(this, { root, body, model, colorOf, onSelect, onOpen, openLabel, historyOf, linkKind, onClose, findingsOf });
     this.seq = 0;
     // Which branches of the dependency trees are open, by direction and path, so a
     // live update redraws the panel without closing what the reader opened.
@@ -38,9 +39,13 @@ export class Panel {
     this.onClose?.();
   }
 
-  /** keepScroll: stay where the reader was (a live update re-showing the same node). */
-  show(node, keepScroll = false) {
+  /**
+   * keepScroll: stay where the reader was (a live update re-showing the same node).
+   * focus: the id of a finding to open and scroll to - what catching its bug does.
+   */
+  show(node, keepScroll = false, focus = null) {
     const top = keepScroll && this.node?.id === node.id ? this.body.scrollTop : 0;
+    this.focus = focus;
     this.node = node;
     this.root.hidden = false;
     this.root.parentElement.classList.add('panel-open');
@@ -52,9 +57,11 @@ export class Panel {
         node.unresolved ? h('span', { class: 'badge warn', title: 'Not found in any manifest' }, '⚠ unresolved') : null,
         node.floating ? h('span', { class: 'badge warn', title: 'Not fixed to one version: it moves when installed again' }, '⚠ floating') : null,
         node.transitive ? h('span', { class: 'badge', title: 'No file here imports it: a dependency pulled it in' }, 'transitive') : null,
-        node.indexUnknown ? h('span', { class: 'badge warn', title: 'Only this repository names this index; nothing on your machine does' }, '⚠ index') : null),
+        node.indexUnknown ? h('span', { class: 'badge warn', title: 'Only this repository names this index; nothing on your machine does' }, '⚠ index') : null,
+        this.findingBadge(node)),
       this.openButton(node),
       this.stats(node),
+      this.findings(node),
       node.kind === 'dir' ? this.languageMix(node) : null,
       ...this.dependencies(node),
       this.history(node),
@@ -70,6 +77,60 @@ export class Panel {
       ...attrs, tabindex: '0', role: 'button',
       onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } },
     }, ...children);
+  }
+
+  // The worst thing said about this node, or anything below it, as a badge beside its
+  // name: a directory is colored by the worst bug on its streets.
+  findingBadge(node) {
+    const { count, worst } = this.findingsOf?.(node)?.rollup || {};
+    if (!count) return null;
+    return h('span', {
+      class: `badge sev sev-${worst}`,
+      title: `${count} finding${count === 1 ? '' : 's'} here or below, worst: ${worst}`,
+    }, `${worst} · ${fmt.format(count)}`);
+  }
+
+  // What the scanners said about this node. A finding opens in place: the summary is
+  // the row, the description and the advisory link are behind it, which keeps a file
+  // with forty lint complaints readable.
+  findings(node) {
+    const res = this.findingsOf?.(node);
+    if (!res) return null;
+    const own = res.own || [];
+    const below = (res.rollup?.count || 0) - own.length;
+    if (!own.length && below <= 0) return null;
+    const ul = h('ul', { class: 'p-list findings' }, own.map(f => this.findingRow(f)));
+    return h('div', { class: 'p-section' },
+      h('h4', {}, 'Findings ', h('span', { class: 'n' }, fmt.format(own.length))),
+      own.length ? ul : null,
+      below > 0 ? h('div', { class: 'hint' }, `${fmt.format(below)} more below this one`) : null);
+  }
+
+  findingRow(f) {
+    const detail = h('div', { class: 'f-detail', hidden: true },
+      f.detail ? h('p', {}, f.detail) : null,
+      f.fixed ? h('p', {}, h('b', {}, 'Fixed in '), f.fixed) : null,
+      f.url ? h('p', {}, h('a', { class: 'link', href: f.url, target: '_blank', rel: 'noreferrer noopener' }, f.url)) : null,
+      h('p', { class: 'meta' }, `reported by ${f.source}`));
+    const body = h('div', { class: 'f-body' },
+      h('div', { class: 'f-head' },
+        h('span', { class: 'name' }, f.title),
+        h('span', { class: 'meta' }, f.ref)),
+      h('div', { class: 'meta' }, whereOf(f), f.fixed ? ` · fixed in ${f.fixed}` : ''),
+      detail);
+    const row = this.item('li', {
+      class: `finding sev-${f.severity}`,
+      onclick: () => { detail.hidden = !detail.hidden; },
+      title: `${f.severity} · ${f.source}`,
+    }, h('i', { class: 'sev-dot' }), body);
+    row.dataset.finding = f.id;
+    if (this.focus === f.id) {
+      detail.hidden = false;
+      row.classList.add('hit');
+      // The panel is still being assembled: scroll once it is on the page.
+      queueMicrotask(() => row.scrollIntoView({ block: 'center' }));
+    }
+    return row;
   }
 
   openButton(node) {

@@ -1,0 +1,17 @@
+{
+  "Issues": [
+    {
+      "FromLinter": "errcheck",
+      "Text": "Error return value of `w.Write` is not checked",
+      "Severity": "error",
+      "SourceLines": ["\tw.Write(sn.json)"],
+      "Pos": { "Filename": "internal/server/server.go", "Offset": 3110, "Line": 112, "Column": 4 }
+    },
+    {
+      "FromLinter": "unused",
+      "Text": "func `spare` is unused",
+      "Pos": { "Filename": "internal/scan/scan.go", "Offset": 900, "Line": 51, "Column": 6 }
+    }
+  ],
+  "Report": { "Linters": [{ "Name": "errcheck", "Enabled": true }] }
+}

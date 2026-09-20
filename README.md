@@ -33,6 +33,8 @@ Browse any code base as an interactive isometric archipelago in your browser.
   plants a beacon over it. `T` takes out another: a butterfly net, a camera, a
   bubble wand, or the tracking dart. Each swings its own way and brings its own
   aim helper. Hold the right button for the scope, the mouse wheel zooms.
+  Bugs walk the streets - one per finding a scanner reported - and catching one
+  with any tool opens what was said about it.
   Terraces become city blocks: the space between buildings is a connected street
   network with sidewalks, lane markings and
   crossings, ramps and stairs lead between levels, empty lots are parks with
@@ -65,6 +67,7 @@ depphunter            # analyze the current directory and open the browser
 depphunter ~/src/app  # analyze another directory
 depphunter --no-open --addr 127.0.0.1:8080
 depphunter --watch    # keep the map in sync while you edit
+depphunter --findings trivy.json      # put what a scanner reported on the map
 depphunter --export dot -o deps.dot   # write the graph and exit
 depphunter --export html -o map.html  # a self-contained map to share
 ```
@@ -89,6 +92,8 @@ depphunter --export html -o map.html  # a self-contained map to share
 | `--online`          | `false`                   | ask package indexes for what the project's files do not record      |
 | `--lsp`             |                           | find symbol references with installed language servers              |
 | `--lsp-timeout`     | `5m`                      | time budget for language servers                                    |
+| `--findings`        |                           | scanner report to place on the map (repeatable, globs)              |
+| `--no-vulns`        |                           | place no findings, and do not ask the OSV database                  |
 | `-v`, `--version`   |                           | print the version and exit                                          |
 | `-h`, `--help`      |                           | list the flags with their defaults                                  |
 | `--editor`          | auto-detected             | editor command template, e.g. `"code -g {file}:{line}"`             |
@@ -292,6 +297,53 @@ Lock files still come first: an index is asked only where the repository is
 silent. Answers are cached for a day under the cache directory, credentials come
 from your own `~/.npmrc` tokens and `~/.netrc` and are sent only to the host they
 were written for, and Maven, NuGet and container registries are not asked yet.
+
+## Findings
+
+depphunter does not run a scanner; it reads what yours already wrote. Point
+`--findings` at the JSON your CI produces (the flag is repeatable and takes
+globs) and each report lands on the map:
+
+| Tool                                  | written by                                         |
+|---------------------------------------|----------------------------------------------------|
+| `govulncheck -format json`            | the advisory, and the call site that reaches it    |
+| `npm audit --json`                    | npm 7+ and the older npm 6 advisory table          |
+| `trivy … --format json`               | vulnerabilities, misconfigurations and secret hits |
+| `osv-scanner --format json`           | lock-file scans                                    |
+| `golangci-lint run --out-format json` | one finding per issue                              |
+| `eslint -f json`                      | one finding per message                            |
+
+The format is recognized from the report's own shape, not from its file name,
+so it does not matter what your pipeline calls them:
+
+```sh
+govulncheck -format json ./... > reports/govulncheck.json
+trivy fs --format json -o reports/trivy.json .
+depphunter --findings 'reports/*.json'
+```
+
+A finding is placed where it belongs: a vulnerability on the package it affects,
+a linter's complaint on the file it is about, and a directory carries the worst
+of everything below it. Severities are one scale - critical, high, medium, low,
+info - taken from the advisory's CVSS v3 vector where there is one, because the
+word a distribution chose often disagrees with it (Trivy's `MEDIUM` for
+CVE-2020-8203 is a 9.8 vector). A linter's "error" is deliberately not a
+critical advisory: lint findings are capped at medium, or the streets would fill
+with bugs that mean a missing comment.
+
+With `--online`, depphunter additionally asks [OSV](https://osv.dev) about every
+external package the map pins to a version - one batched query for the whole
+dependency tree, then the advisories it matched - for Go, npm, PyPI, crates.io,
+Maven, NuGet and GitHub Actions. Floating packages are not asked: they resolve
+to something else on the next install. Answers are cached for six hours.
+`--no-vulns` turns all of it off.
+
+The side panel lists them under **Findings**, worst first, each opening in place
+for the description, the fixed version and the advisory link. In walk mode they
+come out on the streets: every finding is a **bug** patrolling the building it
+belongs to, colored by severity, and catching one with whatever tool is in your
+hands - the butterfly net was made for this - opens what it was carrying. The
+HUD counts how many are left.
 
 ## Symbol references
 

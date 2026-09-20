@@ -24,6 +24,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/config"
 	"github.com/sarumaj/depphunter-cli/internal/editor"
 	"github.com/sarumaj/depphunter-cli/internal/export"
+	"github.com/sarumaj/depphunter-cli/internal/findings"
 	"github.com/sarumaj/depphunter-cli/internal/graph"
 	"github.com/sarumaj/depphunter-cli/internal/history"
 	"github.com/sarumaj/depphunter-cli/web"
@@ -49,7 +50,7 @@ type Server struct {
 
 	mu   sync.RWMutex
 	snap *snapshot
-	lazy map[string]*lazyData // "history", "references": computed after startup
+	lazy map[string]*lazyData // "history", "references", "findings": computed after startup
 	subs map[chan event]struct{}
 	done chan struct{}
 
@@ -88,6 +89,7 @@ func New(cfg config.Config, g *graph.Graph, assets fs.FS) (*Server, error) {
 		lazy: map[string]*lazyData{
 			"history":    {pending: cfg.History},
 			"references": {pending: cfg.LSP},
+			"findings":   {pending: cfg.FindingsEnabled()},
 		},
 	}
 	var err error
@@ -192,6 +194,14 @@ func (s *Server) SetReferences(r *References) error {
 	return s.setLazy("references", r)
 }
 
+// SetFindings publishes what the scanners said (nil: nothing was found or asked).
+func (s *Server) SetFindings(f *findings.Set) error {
+	if f.Empty() {
+		return s.setLazy("findings", nil)
+	}
+	return s.setLazy("findings", f)
+}
+
 // References is the /api/references document.
 type References struct {
 	Edges   []*graph.Edge `json:"edges"`
@@ -292,6 +302,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/events", s.handleEvents)
 	mux.HandleFunc("GET /api/history", s.handleLazy("history"))
 	mux.HandleFunc("GET /api/references", s.handleLazy("references"))
+	mux.HandleFunc("GET /api/findings", s.handleLazy("findings"))
 	mux.HandleFunc("GET /api/export", s.handleExport)
 	mux.HandleFunc("POST /api/open", s.handleOpen)
 	mux.HandleFunc("POST /api/settings", s.handleSettings)
@@ -363,7 +374,8 @@ func (s *Server) handleConfig(w http.ResponseWriter, _ *http.Request) {
 		Watch      bool   `json:"watch"`
 		ConfigFile string `json:"configFile"`
 		LSP        bool   `json:"lsp"`
-	}{cfg.UI, s.editor != "", cfg.Root, cfg.Watch, filepath.Base(cfg.ConfigFile), cfg.LSP})
+		Findings   bool   `json:"findings"`
+	}{cfg.UI, s.editor != "", cfg.Root, cfg.Watch, filepath.Base(cfg.ConfigFile), cfg.LSP, cfg.FindingsEnabled()})
 }
 
 // handleSettings saves the browser's view settings into the project config file.

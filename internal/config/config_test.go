@@ -4,6 +4,7 @@ import (
 	"io"
 	"os"
 	"path/filepath"
+	"slices"
 	"testing"
 	"time"
 
@@ -198,9 +199,11 @@ func TestSymlinkedRootAndPaths(t *testing.T) {
 // TestEveryFlagIsBound catches the mistake of registering a flag and forgetting to
 // give it a setting: the flag then parses, prints in --help, and changes nothing.
 func TestEveryFlagIsBound(t *testing.T) {
-	// The flags that act on their own instead of setting a value.
+	// The flags that act on their own instead of setting a value. exclude and findings
+	// add to what the configuration already holds rather than replacing it, so Load
+	// appends them itself.
 	standalone := map[string]bool{
-		"config": true, "export": true, "output": true, "exclude": true,
+		"config": true, "export": true, "output": true, "exclude": true, "findings": true,
 		"help": true, "version": true,
 	}
 	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
@@ -238,5 +241,67 @@ func TestOnlineSettings(t *testing.T) {
 	}
 	if cfg.ResolveDepth != 2 {
 		t.Errorf("resolve_depth from the project config is %d", cfg.ResolveDepth)
+	}
+}
+
+func TestFindingsSettings(t *testing.T) {
+	root := t.TempDir()
+	cfg, err := load(t, []string{"--findings", "reports/trivy.json", "--findings", "audit.json", root}, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Findings) != 2 || cfg.Findings[0] != "reports/trivy.json" || cfg.Findings[1] != "audit.json" {
+		t.Errorf("findings %v", cfg.Findings)
+	}
+	if !cfg.Vulns || !cfg.FindingsEnabled() {
+		t.Errorf("vulns %t, enabled %t", cfg.Vulns, cfg.FindingsEnabled())
+	}
+
+	// Nothing is read or asked without reports and without --online.
+	bare, err := load(t, []string{root}, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if bare.FindingsEnabled() {
+		t.Error("a plain run would go looking for findings")
+	}
+	online, err := load(t, []string{"--online", root}, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !online.FindingsEnabled() {
+		t.Error("--online does not ask the vulnerability database")
+	}
+	off, err := load(t, []string{"--online", "--no-vulns", root}, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if off.FindingsEnabled() {
+		t.Error("--no-vulns still asks")
+	}
+}
+
+// A repository may point at reports it ships; it may not point at files outside itself.
+func TestProjectConfigFindingsStayInsideTheRepository(t *testing.T) {
+	root := t.TempDir()
+	project := "findings:\n  - reports/trivy.json\n  - /etc/shadow\n  - ../../elsewhere/report.json\n  - ''\nvulns: true\n"
+	if err := os.WriteFile(filepath.Join(root, ProjectFile), []byte(project), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	cfg, err := load(t, []string{root}, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Findings) != 1 || cfg.Findings[0] != "reports/trivy.json" {
+		t.Errorf("findings %v, want only the path inside the repository", cfg.Findings)
+	}
+
+	// Named with --config, the same file is the user's own choice.
+	trusted, err := load(t, []string{"--config", filepath.Join(root, ProjectFile), root}, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(trusted.Findings, "/etc/shadow") {
+		t.Errorf("a file the user named lost entries: %v", trusted.Findings)
 	}
 }

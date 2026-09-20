@@ -8,6 +8,9 @@
 // for the rest of the session. Using it a second time on a tagged building opens its
 // details. The hand and the tool are drawn in front of the camera and swing when
 // used, so the gesture is visible rather than implied.
+//
+// The other quarry is real: every finding a scanner reported walks the streets as a
+// bug (bugs.js), and catching one reads out what was said about it.
 
 import * as THREE from './vendor/three.module.min.js';
 import { rampsFor, rampHeight, bridgesFor, bridgeHeight, bridgeBounds } from './city.js';
@@ -27,6 +30,11 @@ const LOOK = 0.0022;        // radians per pixel of mouse movement
 const TURN = 2.2;           // radians per second with the arrow keys
 const MIN_R = 6, MAX_R = 2000;
 const MAX_LOOK_STEP = 250;  // pixels; larger pointer movements are glitches, not looks
+// How near the crosshair ray a bug counts as aimed at. It is generous, and grows with
+// distance: the ray is sampled ever more coarsely the farther it goes, a bug fifty
+// units away is two pixels wide, and the building behind it is one more click away in
+// any case.
+const BUG_AIM = t => 0.3 + t * 0.012;
 // Degrees: the default view, the wheel's zoom range, and the view through the scope
 // (right button).
 const FOV = 70, MIN_FOV = 30, MAX_FOV = 90, SCOPE_FOV = 22;
@@ -74,7 +82,8 @@ export class Walker {
     this.ramps = [];
     this.bridges = [];
     this.decks = new Map(); // ramps and bridge decks, by grid cell (indexDecks)
-    this.aim = { i: -1, point: null };
+    this.aim = { i: -1, point: null, bug: null };
+    this.bugs = null; // set by setBugs once there are findings to walk the streets
     // Frozen: the details panel has the pointer, so the view holds still. Otherwise
     // the freed cursor and the reticle in the centre both steer the same scene, and
     // reading about a building means fighting it.
@@ -91,6 +100,13 @@ export class Walker {
   /** Keys that belong to walk mode while it is active. */
   owns(e) {
     return this.active && (KEYS.has(e.code) || BIGGER.has(e.key) || SMALLER.has(e.key));
+  }
+
+  /** Hands the walker the bugs patrolling the map (bugs.js); null takes them away. */
+  setBugs(bugs) {
+    this.bugs = bugs;
+    bugs?.show(this.active);
+    if (this.active) this.drawHud();
   }
 
   setBoxes(boxes) {
@@ -153,6 +169,7 @@ export class Walker {
     this.hud.hidden = false;
     this.scene.setWalking(true, this.radius);
     this.scene.scene.add(this.beacons);
+    this.bugs?.show(true);
     this.showTool();
     this.setFog();
     if (box) this.teleport(box);
@@ -176,6 +193,8 @@ export class Walker {
     for (const dart of this.darts) this.scene.scene.remove(dart.mesh);
     this.darts = [];
     this.scene.scene.remove(this.beacons);
+    this.bugs?.show(false);
+    this.showTarget(null);
     this.hideTool();
     if (document.pointerLockElement) document.exitPointerLock();
     cancelAnimationFrame(this.frame);
@@ -447,6 +466,7 @@ export class Walker {
       if (this.p.fly) this.setFog();
       this.zoom(dt);
       this.updateDarts(dt);
+      this.bugs?.update(dt, now);
       this.poseTool(dt, now);
       this.scene.setWalker(this.p.x, this.p.feet, this.p.z, EYE, this.p.yaw, this.p.pitch);
       if (!this.frozen) this.updateAim();
@@ -618,17 +638,22 @@ export class Walker {
     const cam = this.scene.walkCamera;
     const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
     const v = new THREE.Vector3();
-    let hit = null, point = null;
+    let hit = null, point = null, bug = null;
     for (let t = 0.2; t < REACH; t += 0.04 + t * 0.008) {
       v.copy(cam.position).addScaledVector(dir, t);
       this.scene.unbend(v);
       if (v.y < WATER) break;
+      // A bug walks in front of the building it belongs to, so it is tested first:
+      // otherwise the wall behind it would always win.
+      bug = this.bugs?.at(v, BUG_AIM(t)) || null;
+      if (bug) { point = v.clone(); break; }
       hit = this.boxAt(v);
       if (hit) { point = v.clone(); break; }
     }
     // The ground underfoot and the shore are scenery, not targets.
-    const i = hit && !this.underfoot(hit) ? hit.i : -1;
-    this.aim = { i, point };
+    const i = !bug && hit && !this.underfoot(hit) ? hit.i : -1;
+    this.aim = { i, point, bug };
+    this.showTarget(bug);
     const r = this.scene.renderer.domElement.getBoundingClientRect();
     this.hooks.onAim(i, r.left + r.width / 2, r.top + r.height / 2);
   }
@@ -644,11 +669,13 @@ export class Walker {
     const p = this.p;
     const tool = this.tool;
     this.swing = 0; // the hand moves whether or not anything flies
-    const target = this.aimed(), to = this.aim.point;
+    const target = this.aimed(), bug = this.aim.bug;
+    const to = bug?.mesh ? bug.mesh.position.clone() : this.aim.point;
 
     if (!tool.projectile) {
       if (tool.flash) this.screenFlash();
-      if (target) this.tag(target);
+      if (bug) this.bugs.catch(bug);
+      else if (target) this.tag(target);
       return;
     }
     const start = new THREE.Vector3(p.x, p.feet + EYE - 0.08, p.z);
@@ -662,14 +689,32 @@ export class Walker {
       shot.line.frustumCulled = false;
       this.scene.scene.add(shot.line);
     }
-    if (target) {
+    if (bug || target) {
       const dist = start.distanceTo(to);
-      Object.assign(shot, { start, to, target, T: Math.max(0.12, dist / tool.speed), arc: (0.05 + dist * 0.03) * tool.arc });
+      Object.assign(shot, { start, to, target, bug, T: Math.max(0.12, dist / tool.speed), arc: (0.05 + dist * 0.03) * tool.arc });
     } else {
       const dir = new THREE.Vector3(-Math.sin(p.yaw) * Math.cos(p.pitch), Math.sin(p.pitch) + 0.04, -Math.cos(p.yaw) * Math.cos(p.pitch));
       shot.vel = dir.multiplyScalar(tool.speed);
     }
     this.darts.push(shot);
+  }
+
+  // Names what the crosshair is on while it is a bug, so it is clear what would be
+  // caught before the tool is used.
+  showTarget(bug) {
+    const el = this.hud.querySelector('.w-target');
+    if (!bug) {
+      el.hidden = true;
+      el.textContent = '';
+      this.targeted = null;
+      return;
+    }
+    if (this.targeted === bug) return;
+    this.targeted = bug;
+    el.hidden = false;
+    el.replaceChildren(
+      Object.assign(document.createElement('i'), { className: `sev-dot sev-${bug.f.severity}` }),
+      document.createTextNode(`${bug.f.severity}: ${bug.f.title}`));
   }
 
   // A photograph has no flight to watch, so the screen says it happened.
@@ -686,20 +731,26 @@ export class Walker {
       dart.t += dt;
       const m = dart.mesh;
       prev.copy(m.position);
-      if (dart.target) {
+      if (dart.bug || dart.target) {
+        // A bug walks on while the cast is in the air, so the shot follows it.
+        if (dart.bug?.mesh) dart.to.copy(dart.bug.mesh.position);
         const u = Math.min(1, dart.t / dart.T);
         m.position.lerpVectors(dart.start, dart.to, u);
         m.position.y += dart.arc * 4 * u * (1 - u);
         if (u >= 1) {
           done.push(dart);
-          this.tag(dart.target);
+          if (dart.bug) this.bugs.catch(dart.bug);
+          else this.tag(dart.target);
         }
       } else {
         dart.vel.y -= 6 * dt;
         m.position.addScaledVector(dart.vel, dt);
+        // Anything thrown catches a bug it passes through, aimed at or not.
+        const bug = this.bugs?.at(m.position);
+        if (bug) this.bugs.catch(bug);
         const hit = this.boxAt(m.position);
         if (hit && hit.kind !== 'land' && hit.kind !== 'terrace') this.tag(hit);
-        if (hit || m.position.y < WATER || dart.t > 4) done.push(dart);
+        if (bug || hit || m.position.y < WATER || dart.t > 4) done.push(dart);
       }
       // A dart points along its flight; a hoop spins, a bubble wobbles, a bobber
       // just bobs along.
@@ -759,12 +810,20 @@ export class Walker {
       this.frozen ? 'reading' : this.p.fly ? 'flying' : 'walking';
     this.hud.querySelector('.w-tagged').textContent = this.tagged.size;
     this.hud.querySelector('.w-radius').textContent = Math.round(this.radius);
+    const bugs = this.bugs?.counts;
+    const counter = this.hud.querySelector('.w-bugs');
+    counter.hidden = !bugs?.total;
+    if (bugs?.total) {
+      this.hud.querySelector('.w-caught').textContent = bugs.caught;
+      this.hud.querySelector('.w-total').textContent = bugs.total;
+    }
     this.hud.querySelector('.w-tool').textContent = this.tool.label;
     this.hud.querySelector('.w-noun').textContent = this.tool.noun;
     this.hud.querySelector('.w-hint').textContent = this.frozen
       ? 'The view is held still while you read · Enter or a click on the map: walk on · Esc: close · V: back to the map'
       : locked
-        ? `${this.tool.hint} · hold right: scope · T: another tool · V: back to the map · Esc: free the mouse`
+        ? `${this.tool.hint}${bugs?.total ? ' · bugs on the streets carry what the scanners found' : ''}` +
+        ` · hold right: scope · T: another tool · V: back to the map · Esc: free the mouse`
         : 'Click the map to capture the mouse, or drag to look · T: another tool · V / Esc: back to the map';
   }
 }
