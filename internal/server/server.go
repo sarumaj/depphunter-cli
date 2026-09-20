@@ -52,6 +52,8 @@ type Server struct {
 	lazy map[string]*lazyData // "history", "references": computed after startup
 	subs map[chan event]struct{}
 	done chan struct{}
+
+	closeOnce sync.Once
 }
 
 type event struct {
@@ -251,8 +253,10 @@ func (s *Server) handleLazy(name string) http.HandlerFunc {
 	}
 }
 
-// Close ends event streams so an HTTP server shutdown does not wait for them.
-func (s *Server) Close() { close(s.done) }
+// Close ends event streams so an HTTP server shutdown does not wait for them. It may
+// be called more than once: the terminal view closes the server when it exits, and the
+// signal handler closes it again on the way out.
+func (s *Server) Close() { s.closeOnce.Do(func() { close(s.done) }) }
 
 func (s *Server) current() *snapshot {
 	s.mu.RLock()
