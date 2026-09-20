@@ -23,9 +23,11 @@ Browse any code base as an interactive isometric archipelago in your browser.
   out.
 - **Islands** = external ecosystems (Go modules, the standard library, …) with
   one building per dependency.
-- **Click** anything to see what it depends on and what uses it;
-  **double-click** to expand or collapse directories and files (files expand
-  into their symbols).
+- **Click** anything to see what it depends on and what uses it: arcs over the
+  map to each one, and the same edges laid down as roads through the streets,
+  with chevrons for the direction the dependency runs in. A road to an external
+  package leaves the shore as a causeway. **Double-click** to expand or collapse
+  directories and files (files expand into their symbols).
 - **Hunt** dependencies on foot (`V`): walk the map in first person on a tiny
   planet, `WASD` to move, the mouse to look, `Space` to jump, `F` to fly. You
   hold a tool - a fishing rod by default - drawn in your hands, on the end of an
@@ -48,6 +50,11 @@ the source for it, so it can be read and regenerated rather than being a binary
 nobody can change. They are also the only lit thing on the map - the walk camera
 carries its own lights, and every other material is unlit, so the city keeps its
 flat, data-first coloring.
+
+The trees and bushes are the same arrangement: `tools/props.py` takes a CC0 low
+poly nature pack, splits each model into its trunk and its crown so the map can
+color and tint them apart, decimates it to something a few thousand instances
+can afford, and writes `web/static/props.glb`.
 
 Everything runs locally: one binary, no Node.js, and no network access unless
 you ask for it with `--online` (see [Package indexes](#package-indexes)).
@@ -348,15 +355,28 @@ Maven, NuGet and GitHub Actions. Floating packages are not asked: they resolve
 to something else on the next install. Answers are cached for six hours.
 `--no-vulns` turns all of it off.
 
-The side panel lists them under **Findings**, worst first, each opening in place
-for the description, the fixed version and the advisory link. In walk mode they
-come out on the streets: every finding is a **bug** patrolling the building it
-belongs to, colored by severity, and catching one with whatever tool is in your
-hands - the butterfly net was made for this - opens what it was carrying. The
-HUD counts how many are left.
+Seen from above, every building that carries findings wears a **pin**, in the
+color of the worst of them and standing taller the more there are: from across
+the map the red ones are where to go next. Point at one for the tally, click it
+to read them. The side panel lists them under **Findings**, worst first, each
+opening in place for the description, the fixed version and the advisory link,
+and a collapsed directory opens what is below it as well - a district is red for
+something several levels down, and that is where it can be reached from.
+
+In walk mode they come out on the streets: every finding is a **bug** patrolling
+the building it belongs to, colored by severity, and catching one with whatever
+tool is in your hands - the butterfly net was made for this - opens what it was
+carrying. The HUD counts how many are left.
+
+The **backpack** (`B`) is what the two views share. Taking a finding with the
+`+` beside it in the panel is the same catch as netting its bug in the street -
+the bug stops walking either way - and what is in there survives a relayout, a
+depth change and a reload. It stays until the scanners stop reporting it, and is
+then struck through rather than dropped, so seeing what you caught turn green is
+the point of having caught it.
 
 A repository is bigger than it looks from inside it, so the corner of the walk
-HUD carries a **tracker**: a sweep centred on you and turning with you, with a
+HUD carries a **tracker**: a sweep centered on you and turning with you, with a
 dot per bug in its severity's color, a ring per module you have already tagged,
 and an arrow on the rim for anything beyond its range. Its range follows the
 hunt - it fits whatever is still out there - and under it is how far the nearest
@@ -370,7 +390,7 @@ The same map, dressed three ways (`--style`, or the **Style** menu):
 |-----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `city`    | Buildings with facades and roofs, streets with crossings and parks, shores with trees, bridges between the islands                                                                                                                                       |
 | `circuit` | A printed circuit board: chip packages with rows of pins, heatsinks where the buildings are tall, copper traces down every street with vias along them, solder pads and silkscreen around every part, capacitors and LEDs where the trees and lamps were |
-| `galaxy`  | Platforms out in the dark: crystal spires with strata of light and windows like stars, glowing conduits between them, dust and nebulae instead of sea and sky                                                                                            |
+| `galaxy`  | Platforms out in the dark: crystal spires with strata of light and windows like stars, glowing conduits between them, and instead of sea and sky the band of the galaxy with its dust lanes, two nebulae behind it and three layers of stars in front    |
 
 Only the environment changes. The colors that carry data - the language
 palette, the history overlays, hover and selection - are the same in all three,
@@ -408,7 +428,7 @@ hands the file to VS Code's `vscode://` URL handler.
 
 ## Keyboard & mouse
 
-Panning stops once the centre of the view is a quarter of the map's size beyond
+Panning stops once the center of the view is a quarter of the map's size beyond
 its edge, and zooming out once the map covers about a third of the view; in walk
 mode you can go 3 units out over the water and 12 above the tallest building.
 
@@ -427,7 +447,10 @@ mode you can go 3 units out over the water and 12 above the tallest building.
 | `O`                       | open the selected file in your editor    |
 | `P`                       | save the map as a PNG image              |
 | Legend click              | hide / show a language                   |
-| `Esc`                     | clear selection                          |
+| Pin click                 | read the findings over a building        |
+| `+` beside a finding      | put it in the backpack                   |
+| `B`                       | the backpack: everything caught          |
+| `Esc`                     | close the backpack, or clear selection   |
 | `V`                       | walk mode                                |
 
 In walk mode:
@@ -438,7 +461,7 @@ In walk mode:
 | `W` `A` `S` `D`/arrows | move / turn; `Shift` runs                                                                                   |
 | `Space`                | jump (flying: straight up)                                                                                  |
 | `F`                    | fly on / off; flying, `W`/`S` move where you look (look down and press `W` to dive), `C` goes straight down |
-| Click                  | fire a tracking dart: the module it hits is tagged; a second dart in a tagged building opens its details    |
+| Click                  | use what is in your hands: the module it reaches is tagged, a bug it catches is read out and kept           |
 | Hold right button      | look through the scope                                                                                      |
 | `Enter`                | details of what the reticle is on, like a second dart (frees the mouse; click the map to walk on)           |
 | Wheel                  | zoom in / out                                                                                               |
@@ -485,80 +508,35 @@ scanners instead), so the binary still cross-compiles without a C toolchain.
 
 ```mermaid
 flowchart TB
-    SCAN["scan"]
-    SCAN_A["git ls-files"]
-    SCAN_B["built-in ignores"]
+    SCAN["scan<br/>git ls-files, or ignores<br/>excludes, language, lines"]
+    EXTRACT["extract<br/>tree-sitter, go/parser<br/>per file, cached"]
+    RESOLVE["resolve<br/>manifests and lock files<br/>imports become packages"]
+    GRAPH["graph<br/>files, symbols, packages<br/>one JSON document"]
+    SERVER["server<br/>loopback HTTP, token<br/>graph, source, exports"]
+    BROWSER["browser<br/>plain ES modules, three.js<br/>the map and walk mode"]
 
-    EXTRACT["extract"]
-    EXTRACT_A["tree-sitter"]
-    EXTRACT_B["go/parser"]
-    EXTRACT_C["scanners"]
-    EXTRACT_D["per file · cached"]
+    SCAN --> EXTRACT --> RESOLVE --> GRAPH --> SERVER --> BROWSER
 
-    RESOLVE["resolve"]
-    RESOLVE_A["manifests"]
-    RESOLVE_B["lockfiles"]
-
-    GRAPH["graph"]
-    GRAPH_A["JSON"]
-
-    SERVER["server"]
-    SERVER_A["HTTP + SSE"]
-
-    BROWSER["browser"]
-    BROWSER_A["three.js"]
-    BROWSER_B["map / walk"]
-
-    SCAN_A --> SCAN
-    SCAN_B --> SCAN
-
-    SCAN --> EXTRACT
-
-    EXTRACT_A --> EXTRACT
-    EXTRACT_B --> EXTRACT
-    EXTRACT_C --> EXTRACT
-    EXTRACT_D --> EXTRACT
-
-    EXTRACT --> RESOLVE
-
-    RESOLVE_A --> RESOLVE
-    RESOLVE_B --> RESOLVE
-
-    RESOLVE --> GRAPH
-
-    GRAPH_A --> GRAPH
-
-    GRAPH --> SERVER
-
-    SERVER_A --> SERVER
-
-    SERVER --> BROWSER
-
-    BROWSER_A --> BROWSER
-    BROWSER_B --> BROWSER
-
-    subgraph BG["background - after map is shown"]
+    subgraph BG["read in the background, once the map is up"]
         direction LR
         HISTORY["git history"]
         LSP["LSP references"]
+        FINDINGS["scanner reports, OSV"]
         SSE["SSE"]
-        OVERLAY["overlay"]
 
         HISTORY --> SSE
         LSP --> SSE
-        SSE --> OVERLAY
+        FINDINGS --> SSE
     end
 
-    SERVER -.->|"async feed"| BG
-    BG -.->|"pushes to"| BROWSER
+    SERVER -.->|"starts"| BG
+    SSE -.->|"pushes to"| BROWSER
 
-    classDef pipeline fill:#1e293b,stroke:#38bdf8,stroke-width:2px,color:#e2e8f0
-    classDef detail   fill:#0f2233,stroke:#38bdf8,stroke-width:1px,color:#94a3b8
-    classDef bg       fill:#0f172a,stroke:#818cf8,stroke-width:1.5px,color:#c7d2fe
+    classDef stage fill:#1e293b,stroke:#38bdf8,stroke-width:2px,color:#e2e8f0
+    classDef bg    fill:#0f172a,stroke:#818cf8,stroke-width:1.5px,color:#c7d2fe
 
-    class SCAN,EXTRACT,RESOLVE,GRAPH,SERVER,BROWSER pipeline
-    class SCAN_A,SCAN_B,EXTRACT_A,EXTRACT_B,EXTRACT_C,EXTRACT_D,RESOLVE_A,RESOLVE_B,GRAPH_A,SERVER_A,BROWSER_A,BROWSER_B detail
-    class HISTORY,LSP,SSE,OVERLAY bg
+    class SCAN,EXTRACT,RESOLVE,GRAPH,SERVER,BROWSER stage
+    class HISTORY,LSP,FINDINGS,SSE bg
 ```
 
 1. **Scan** (`internal/scan`) lists the project's files through `git ls-files`
@@ -580,16 +558,20 @@ flowchart TB
    serves the embedded UI (`web/static`) and the graph (`/api/graph`), file
    source (`/api/file`), exports, "open in editor" and "save settings".
    Server-Sent Events (`/api/events`) push new graphs in `--watch` mode
-   (`internal/watch`) and announce the git history (`internal/history`) and
-   LSP references (`internal/lsp`), which are read in the background once the
-   map is up.
+   (`internal/watch`) and announce the git history (`internal/history`), the
+   LSP references (`internal/lsp`) and what the scanners reported
+   (`internal/findings`), all three read in the background once the map is up
+   and re-read whenever a report is written.
 6. **Render** (browser, plain ES modules, no build step): `model.js` builds a
    navigable tree with aggregates, `layout.js` computes the archipelago from
    the hierarchy and expansion state (never a force simulation, so the same
    repository always gives the same map), `scene.js` draws every box in one
-   instanced three.js mesh and edges as arcs, `labels.js` places labels,
-   `filter.js` and `history.js` compute filters, search and history colors
-   locally, and `walk.js`/`city.js` add the first-person view.
+   instanced three.js mesh and edges as arcs, `routes.js` finds the roads those
+   edges take by one sweep over a grid of the map, `pins.js` and `bugs.js` put
+   what the scanners reported over the buildings and on the streets,
+   `labels.js` places labels, `filter.js` and `history.js` compute filters,
+   search and history colors locally, and `walk.js`, `city.js` and `tools.js`
+   add the first-person view and what it puts in your hands.
 
 The HTML export (`--export html`) inlines the same modules as `data:` URLs with
 the graph, settings, history and source text, so the page needs neither
