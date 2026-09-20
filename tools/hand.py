@@ -29,40 +29,41 @@ without being identical.
 
 import hashlib
 import os
-import sys
 import tarfile
 import tempfile
 import urllib.request
 
 import bpy
 import bmesh  # only importable once bpy has loaded, so not in alphabetical order
+from bmesh.types import BMEdge, BMesh, BMVert
+from bpy.types import EditBone, Object
 from mathutils import Matrix, Vector
 
-HERE = os.path.dirname(os.path.abspath(__file__))
-OUT = os.path.normpath(os.path.join(HERE, "..", "web", "static", "hand.glb"))
+HERE: str = os.path.dirname(os.path.abspath(__file__))
+OUT: str = os.path.normpath(os.path.join(HERE, "..", "web", "static", "hand.glb"))
 
 # The model, pinned. The package carries a hand per side; we take the right one and
 # the UI mirrors it for the left, which is what a left hand is.
-PACKAGE = "@webxr-input-profiles/assets"
-VERSION = "1.0.20"
-TARBALL = f"https://registry.npmjs.org/{PACKAGE}/-/assets-{VERSION}.tgz"
-DIGEST = "30df2a2268220fc0d0e034bed1550aabdd7a2500573c5216f64fc70d59c3d91e"
-MEMBER = "package/dist/profiles/generic-hand/right.glb"
+PACKAGE: str = "@webxr-input-profiles/assets"
+VERSION: str = "1.0.20"
+TARBALL: str = f"https://registry.npmjs.org/{PACKAGE}/-/assets-{VERSION}.tgz"
+DIGEST: str = "30df2a2268220fc0d0e034bed1550aabdd7a2500573c5216f64fc70d59c3d91e"
+MEMBER: str = "package/dist/profiles/generic-hand/right.glb"
 
 # The model is built with the fingers along -z, the back of the hand along +x and
 # the thumb along +y. The viewmodel wants Blender's -y for the fingers and +z for
 # the back, which is the cycle below; glTF's y-up export then lands the fingers on
 # +z and the back of the hand on +y, where tools.js expects them.
-TO_BLENDER = Matrix(((0, 1, 0), (0, 0, 1), (1, 0, 0))).to_4x4()
+TO_BLENDER: Matrix = Matrix(((0, 1, 0), (0, 0, 1), (1, 0, 0))).to_4x4()
 
 # Map units: a building is one across and the walker about 0.55 tall. A viewmodel
 # hand is not to scale with the walker - it is close to the lens - and 0.21 long is
 # what fills the corner of the frame without swallowing it.
-HAND = 0.213
+HAND: float = 0.213
 
 # The digits, each from the palm outwards. Every joint but the last deforms; the tip
 # is there to give the distal phalanx a direction to point in.
-DIGITS = [
+DIGITS: list[list[str]] = [
     ["thumb-metacarpal", "thumb-phalanx-proximal", "thumb-phalanx-distal", "thumb-tip"],
 ] + [
     [
@@ -77,14 +78,14 @@ DIGITS = [
 
 # The forearm, as a fraction of the hand's length: how far back the elbow is, and how
 # much thicker than the wrist the arm is at its middle and at the elbow.
-ARM = 5.0
+ARM: float = 5.0
 # The arm's profile: how far along it each ring sits, and how much wider that ring is
 # than the one before. A forearm leaves the wrist narrow and is widest a third of the
 # way down - and then keeps going, straight, for as far again as the viewmodel is from
 # the lens. That run is not anatomy: the arm has to leave the frame behind the camera
 # rather than stop somewhere inside it, or a walker who zooms out sees it end in mid
 # air. What closes it off at the end is behind the near plane and is never drawn.
-ARM_PROFILE = [
+ARM_PROFILE: list[tuple[float, float]] = [
     (0.020, 1.06),
     (0.054, 1.14),
     (0.101, 1.16),
@@ -99,7 +100,7 @@ ARM_PROFILE = [
 ]
 
 
-def fetch():
+def fetch() -> str:
     """The upstream model, from a local copy if there is one and npm otherwise."""
     cache = os.path.join(
         tempfile.gettempdir(), f"webxr-input-profiles-assets-{VERSION}.tgz"
@@ -114,12 +115,15 @@ def fetch():
         raise SystemExit(f"{cache}: sha256 {digest}, expected {DIGEST}")
     out = os.path.join(tempfile.gettempdir(), "generic-hand-right.glb")
     with tarfile.open(cache) as tar:
-        with tar.extractfile(MEMBER) as src, open(out, "wb") as dst:
+        src = tar.extractfile(MEMBER)
+        if src is None:
+            raise SystemExit(f"{cache}: {MEMBER} is not a file in the package")
+        with src, open(out, "wb") as dst:
             dst.write(src.read())
     return out
 
 
-def load(path):
+def load(path: str) -> tuple[Object, Object]:
     """The model's mesh and armature, and nothing else that came in with them."""
     bpy.ops.wm.read_factory_settings(use_empty=True)
     for stray in list(bpy.data.objects):
@@ -136,7 +140,7 @@ def load(path):
     return mesh, rig
 
 
-def place(mesh, rig):
+def place(mesh: Object, rig: Object) -> dict[str, Vector]:
     """Turn the model to our axes, scale it to map units and sit the wrist on the origin.
 
     Both the vertices and the bones are moved by hand rather than by transforming the
@@ -159,7 +163,7 @@ def place(mesh, rig):
     return {name: transform @ p for name, p in head.items()}
 
 
-def rig_hand(rig, head):
+def rig_hand(rig: Object, head: dict[str, Vector]) -> tuple[Vector, Vector]:
     """Hang the joints off one another, so a finger carries its own tip when it curls.
 
     WebXR reports every joint as an absolute pose, so the profile's skeleton is a flat
@@ -174,7 +178,7 @@ def rig_hand(rig, head):
 
     for digit in DIGITS:
         for i, name in enumerate(digit):
-            bone = bones[name]
+            bone: EditBone = bones[name]
             bone.parent = bones["wrist"] if i == 0 else bones[digit[i - 1]]
             bone.use_connect = i > 0
             if i + 1 < len(digit):
@@ -200,7 +204,7 @@ def rig_hand(rig, head):
     return elbow, head["wrist"]
 
 
-def forearm(mesh, elbow, wrist):
+def forearm(mesh: Object, elbow: Vector, wrist: Vector) -> tuple[float, float, Vector]:
     """Grow the arm out of the wrist the model was cut off at.
 
     The model ends in a flat cap across the wrist. Rather than push a separate tube up
@@ -241,9 +245,7 @@ def forearm(mesh, elbow, wrist):
     edges = rim
     at = centre
     for t, swell in ARM_PROFILE:
-        edges, at, ring = grow(
-            bm, edges, centre + axis * (HAND * ARM * t) - at, at, swell
-        )
+        edges, at, _ = grow(bm, edges, centre + axis * (HAND * ARM * t) - at, at, swell)
     # ... and close the elbow off with a ring pulled into a point.
     bmesh.ops.contextual_create(bm, geom=edges)
 
@@ -254,7 +256,9 @@ def forearm(mesh, elbow, wrist):
     return centre.dot(axis), width, axis
 
 
-def grow(bm, edges, move, at, swell):
+def grow(
+    bm: BMesh, edges: list[BMEdge], move: Vector, at: Vector, swell: float
+) -> tuple[list[BMEdge], Vector, list[BMVert]]:
     """One ring further along the arm: extrude the open edge, shift it and scale it
     about the arm's own line, so the profile widens without wandering off it."""
     out = bmesh.ops.extrude_edge_only(bm, edges=edges)["geom"]
@@ -278,7 +282,7 @@ def grow(bm, edges, move, at, swell):
     )
 
 
-def weigh(mesh, cuff, width, axis):
+def weigh(mesh: Object, cuff: float, width: float, axis: Vector) -> None:
     """Weight the new arm: the forearm bone below the cuff, fading into the wrist bone
     across it, so bending the wrist takes the sleeve with it rather than tearing it."""
     forearm_group = mesh.vertex_groups.get("forearm") or mesh.vertex_groups.new(
@@ -296,7 +300,7 @@ def weigh(mesh, cuff, width, axis):
     bpy.ops.object.shade_smooth()
 
 
-def material(mesh):
+def material(mesh: Object) -> None:
     """A plain skin material; the UI re-colors and lights it."""
     mat = mesh.data.materials[0]
     mat.name = "skin"
@@ -306,7 +310,7 @@ def material(mesh):
     bsdf.inputs["Roughness"].default_value = 0.72
 
 
-def main():
+def main() -> None:
     mesh, rig = load(fetch())
     head = place(mesh, rig)
     elbow, wrist = rig_hand(rig, head)
@@ -333,4 +337,4 @@ def main():
 
 
 if __name__ == "__main__":
-    sys.exit(main())
+    main()
