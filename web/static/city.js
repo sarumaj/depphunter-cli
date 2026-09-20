@@ -1252,6 +1252,12 @@ export function makeProps(boxes, bendable, style = 'city') {
   add(set.pole, set.poleColor, lamps, lampAt);
   group.userData.heads = add(set.lampHead, set.headColor, lamps, lampAt);
   group.userData.night = set.headNight;
+  // What a walker cannot walk through. A trunk, a capacitor's case, a crystal and a
+  // lamp post are all a circle standing on a spot; a bush is something to walk over.
+  group.userData.obstacles = [
+    ...trees.map(it => ({ x: it.x, z: it.z, y: it.y, r: set.solid * it.s })),
+    ...lamps.map(it => ({ x: it.x, z: it.z, y: it.y, r: set.post })),
+  ];
   for (const geo of [ramps.length && rampGeometry(ramps), bridges.length && bridgeGeometry(bridges)]) {
     if (!geo) continue;
     const mesh = new THREE.Mesh(geo, rampMaterial(bendable));
@@ -1462,11 +1468,13 @@ const PROPS = {
   city: {
     species: TREES, stem: '#5a4030', low: BUSH, lowHue: 0.25,
     pole: POLE, poleColor: '#3a3d42', lampHead: HEAD, headColor: '#8a8d92', headNight: '#ffd28a',
+    solid: 0.055, post: 0.03,
     tint: hue => (it, c) => c.setHSL(hue + it.r * 0.07, 0.5 + 0.2 * it.r, 0.2 + it.r * 0.1),
   },
   circuit: {
     species: PARTS, stem: '#b9bec6', low: SMD, lowHue: 0.09,
     pole: LED_LEGS, poleColor: '#b9bec6', lampHead: LED, headColor: '#c94a3a', headNight: '#ff6a52',
+    solid: 0.09, post: 0.03,
     // Parts are made in a handful of colors, not a spectrum: a little jitter around
     // the one the part type is usually sold in.
     tint: hue => (it, c) => c.setHSL(hue + (it.r - 0.5) * 0.04, hue < 0.05 ? 0.05 : 0.55, 0.12 + it.r * 0.12),
@@ -1474,6 +1482,7 @@ const PROPS = {
   galaxy: {
     species: CRYSTALS, stem: '#2b2540', low: RUBBLE, lowHue: 0.68,
     pole: BEACON_STEM, poleColor: '#2b2540', lampHead: BEACON, headColor: '#4fd0e8', headNight: '#9df0ff',
+    solid: 0.085, post: 0.025,
     tint: hue => (it, c) => c.setHSL(hue + it.r * 0.12, 0.6 + 0.25 * it.r, 0.3 + it.r * 0.22),
   },
 };
