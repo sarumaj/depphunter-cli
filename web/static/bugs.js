@@ -6,6 +6,7 @@
 // bug's position here is a layout coordinate and nothing more.
 
 import * as THREE from './vendor/three.module.min.js';
+import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { rankOf, severityColors } from './findings.js';
 
 const MAX_BUGS = 140;     // a large repository reports thousands; the worst ones walk
@@ -19,8 +20,17 @@ const MARGIN = 1.5;
 const BODY = 0.1;         // half the length of a bug's body
 const LEGS = 6;
 
-// Geometry is shared by every bug; only the shell's color and the transform differ.
-const SHELL = '#151515'; // head, legs and the split down the shell
+// Every bug is drawn from the same two geometries, as two instanced meshes: the
+// shell (body, head and the split down it) and the legs, which rock on their own.
+// A hundred and forty beetles were a thousand draw calls as separate meshes, which
+// is most of a frame in walk mode; they are two now, whatever the count.
+//
+// The shell carries its shading in its vertex colors - white over the wing cases,
+// dark over the head and the seam - and the severity color is set per instance, so
+// one mesh draws every color. Nothing in this scene is lit, so that split has to be
+// painted: without it a beetle at arm's length is a colored blob.
+const SHELL = '#151515'; // legs, and how dark the painted parts are
+const DARK = 0.05;       // how dark the head and the seam are, in linear light
 let parts = null;
 
 export class Bugs {
@@ -35,6 +45,9 @@ export class Bugs {
     this.caught = new Set(); // finding ids, so a relayout does not revive them
     this.colors = {};
     this.materials = new Map();
+    this.shell = null;      // the instanced bodies
+    this.legs = null;       // ... and the instanced legs, which rock on their own
+    this.dirty = false;     // the instance colors need writing again
     scene.scene.add(this.group);
   }
 
@@ -59,7 +72,9 @@ export class Bugs {
    * the map. index is what findings.js built; boxes are the current layout's.
    */
   place(index, boxes) {
+    for (const mesh of this.group.children) mesh.dispose();
     this.group.clear();
+    this.shell = this.legs = null;
     this.bugs = [];
     this.grid.clear();
     for (const m of this.materials.values()) m.dispose();
@@ -87,6 +102,7 @@ export class Bugs {
       this.bugs.push(bug);
       this.index(bug);
     }
+    if (this.bugs.length) this.build();
   }
 
   // A bug never leaves its lap, so one indexing at spawn is enough: the crosshair
@@ -112,65 +128,68 @@ export class Bugs {
       speed: SPEED * (0.75 + ((nth * 0.19) % 0.5)),
       phase: nth * 1.7,
       caught: this.caught.has(f.id),
-      mesh: null,
+      // Where it is on the flat map: what the crosshair and everything thrown at it
+      // measure against, kept here rather than read back off a shared mesh.
+      pos: new THREE.Vector3(),
+      heading: 0,
+      rock: 0,
     };
-    if (!bug.caught) {
-      bug.mesh = this.mesh(f.severity);
-      this.group.add(bug.mesh);
-      this.moveTo(bug, 0);
-    }
+    this.moveTo(bug, 0);
     return bug;
   }
 
-  mesh(severity) {
+  /**
+   * The two instanced meshes, sized for the bugs that are out there. They are rebuilt
+   * with the layout rather than resized, because a layout is where the count changes.
+   */
+  build() {
     parts ||= geometry();
-    const g = new THREE.Group();
-    g.add(new THREE.Mesh(parts.body, this.material(this.colors[severity] || this.colors.unknown)));
-    g.add(new THREE.Mesh(parts.head, this.material(SHELL)));
-    // Nothing in this scene is lit, so the shell's split is drawn rather than shaded:
-    // without it a beetle at arm's length is a colored blob.
-    g.add(new THREE.Mesh(parts.seam, this.material(SHELL)));
-    const legs = new THREE.Group();
-    for (let i = 0; i < LEGS; i++) {
-      const leg = new THREE.Mesh(parts.leg, this.material(SHELL));
-      const side = i % 2 ? 1 : -1;
-      leg.position.set(side * BODY * 0.55, 0.012, (Math.floor(i / 2) - 1) * BODY * 0.5);
-      leg.rotation.z = side * 0.9;
-      legs.add(leg);
+    const shell = new THREE.InstancedMesh(parts.shell,
+      this.scene.bendable(new THREE.MeshBasicMaterial({ vertexColors: true })), this.bugs.length);
+    const legs = new THREE.InstancedMesh(parts.legs,
+      this.scene.bendable(new THREE.MeshBasicMaterial({ color: SHELL })), this.bugs.length);
+    for (const mesh of [shell, legs]) {
+      mesh.frustumCulled = false;
+      mesh.count = 0;
+      this.group.add(mesh);
     }
-    g.add(legs);
-    g.userData.legs = legs;
-    g.frustumCulled = false;
-    return g;
-  }
-
-  // One material per color: six colors for however many bugs there are.
-  material(color) {
-    let m = this.materials.get(color);
-    if (!m) {
-      m = this.scene.bendable(new THREE.MeshBasicMaterial({ color }));
-      this.materials.set(color, m);
-    }
-    return m;
+    this.shell = shell;
+    this.legs = legs;
+    this.materials.set('shell', shell.material);
+    this.materials.set('legs', legs.material);
+    this.dirty = true;
   }
 
   update(dt, now) {
+    if (!this.shell) return;
+    const m = new THREE.Matrix4(), r = new THREE.Matrix4(), q = new THREE.Quaternion();
+    const p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
+    const c = new THREE.Color();
+    let n = 0;
     for (const bug of this.bugs) {
       if (bug.caught) continue;
       bug.u = (bug.u + (bug.speed * dt) / bug.lap.length) % 1;
       this.moveTo(bug, now);
+      m.compose(p.copy(bug.pos), q.setFromAxisAngle(UP, bug.heading), one);
+      this.shell.setMatrixAt(n, m);
+      // The legs scurry: the whole set rocks, which reads as six legs at this size.
+      this.legs.setMatrixAt(n, r.multiplyMatrices(m, rockAbout(bug.rock)));
+      if (this.dirty) this.shell.setColorAt(n, c.set(this.colors[bug.f.severity] || this.colors.unknown));
+      n++;
     }
+    this.shell.count = this.legs.count = n;
+    this.shell.instanceMatrix.needsUpdate = true;
+    this.legs.instanceMatrix.needsUpdate = true;
+    if (this.dirty && this.shell.instanceColor) this.shell.instanceColor.needsUpdate = true;
+    this.dirty = false;
   }
 
   moveTo(bug, now) {
-    const m = bug.mesh;
-    if (!m) return;
     const { x, z, heading } = pointAt(bug.lap, bug.u);
     const t = now / 1000 + bug.phase;
-    m.position.set(x, bug.lap.y + 0.035 + Math.sin(t * 9) * 0.006, z);
-    m.rotation.y = heading;
-    // The legs scurry: the whole set rocks, which reads as six legs at this size.
-    m.userData.legs.rotation.x = Math.sin(t * 16) * 0.35;
+    bug.pos.set(x, bug.lap.y + 0.035 + Math.sin(t * 9) * 0.006, z);
+    bug.heading = heading;
+    bug.rock = Math.sin(t * 16) * 0.35;
   }
 
   /**
@@ -183,8 +202,8 @@ export class Bugs {
     const r = Math.min(radius, MARGIN); // past this a bug may sit in the next cell
     let best = null, bestSq = r * r;
     for (const bug of cell) {
-      if (bug.caught || !bug.mesh) continue;
-      const m = bug.mesh.position;
+      if (bug.caught) continue;
+      const m = bug.pos;
       const dSq = (m.x - v.x) ** 2 + (m.y - v.y) ** 2 + (m.z - v.z) ** 2;
       if (dSq < bestSq) { best = bug; bestSq = dSq; }
     }
@@ -196,15 +215,13 @@ export class Bugs {
     if (!bug || bug.caught) return false;
     bug.caught = true;
     this.caught.add(bug.f.id);
-    if (bug.mesh) {
-      this.group.remove(bug.mesh);
-      bug.mesh = null;
-    }
+    this.dirty = true; // the instances close up over the gap it leaves
     this.hooks.onCatch?.(bug.f, bug.node);
     return true;
   }
 
   dispose() {
+    for (const mesh of this.group.children) mesh.dispose();
     this.group.clear();
     this.grid.clear();
     this.scene.scene.remove(this.group);
@@ -262,12 +279,36 @@ function pointAt(lap, u) {
   };
 }
 
-// A beetle: a rounded shell, a dark head in front and six legs under it, nose along +z.
+// A beetle: a rounded shell, a dark head in front and six legs under it, nose along
+// +z. The shell is one geometry painted in two tones; the legs are another, so they
+// can rock without the rest of it following.
 function geometry() {
-  return {
-    body: new THREE.SphereGeometry(BODY, 10, 7).scale(0.62, 0.48, 1).translate(0, BODY * 0.45, 0),
-    head: new THREE.SphereGeometry(BODY * 0.42, 8, 6).translate(0, BODY * 0.45, BODY * 0.82),
-    leg: new THREE.BoxGeometry(BODY * 0.7, 0.012, 0.012),
-    seam: new THREE.BoxGeometry(0.01, 0.02, BODY * 1.4).translate(0, BODY * 0.86, -BODY * 0.12),
-  };
+  const body = paint(new THREE.SphereGeometry(BODY, 10, 7).scale(0.62, 0.48, 1).translate(0, BODY * 0.45, 0), 1);
+  const head = paint(new THREE.SphereGeometry(BODY * 0.42, 8, 6).translate(0, BODY * 0.45, BODY * 0.82), DARK);
+  const seam = paint(new THREE.BoxGeometry(0.01, 0.02, BODY * 1.4).translate(0, BODY * 0.86, -BODY * 0.12), DARK);
+  const legs = [];
+  for (let i = 0; i < LEGS; i++) {
+    const side = i % 2 ? 1 : -1;
+    legs.push(new THREE.BoxGeometry(BODY * 0.7, 0.012, 0.012)
+      .rotateZ(side * 0.9)
+      .translate(side * BODY * 0.55, 0.012, (Math.floor(i / 2) - 1) * BODY * 0.5));
+  }
+  return { shell: mergeGeometries([body, head, seam]), legs: mergeGeometries(legs) };
+}
+
+// paint gives a geometry a flat vertex color, which the instance color then tints:
+// the wing cases take the severity color and the head and seam a dark share of it.
+function paint(geo, k) {
+  const n = geo.getAttribute('position').count;
+  const c = new Float32Array(n * 3).fill(k);
+  geo.setAttribute('color', new THREE.BufferAttribute(c, 3));
+  return geo;
+}
+
+const UP = new THREE.Vector3(0, 1, 0);
+const rock = new THREE.Matrix4();
+
+// The legs' rocking, as a matrix to hang off the bug's own.
+function rockAbout(angle) {
+  return rock.makeRotationX(angle);
 }

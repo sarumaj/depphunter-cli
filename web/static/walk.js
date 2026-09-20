@@ -768,7 +768,7 @@ export class Walker {
     const tool = this.tool;
     this.swing = 0; // the hand moves whether or not anything flies
     const target = this.aimed(), bug = this.aim.bug;
-    const to = bug?.mesh ? bug.mesh.position.clone() : this.aim.point;
+    const to = bug ? bug.pos.clone() : this.aim.point;
 
     if (!tool.projectile) {
       if (tool.flash) this.screenFlash();
@@ -831,9 +831,9 @@ export class Walker {
     // The range fits whatever is still out there, so the sweep is never all centre
     // dot or all rim arrows; it eases so a bug walking round a corner does not zoom.
     const { x: px, z: pz, yaw } = this.p;
-    const live = this.bugs.bugs.filter(b => !b.caught && b.mesh);
+    const live = this.bugs.bugs.filter(b => !b.caught);
     let far = RADAR_MIN;
-    for (const bug of live) far = Math.max(far, Math.hypot(bug.mesh.position.x - px, bug.mesh.position.z - pz));
+    for (const bug of live) far = Math.max(far, Math.hypot(bug.pos.x - px, bug.pos.z - pz));
     const want = clamp(far * 1.2, RADAR_MIN, RADAR_MAX);
     this.radarRange = this.radarRange ? this.radarRange + (want - this.radarRange) * 0.12 : want;
     const k = R / this.radarRange;
@@ -903,7 +903,7 @@ export class Walker {
     live.sort((a, b) => severityRank(a.f.severity) - severityRank(b.f.severity));
     let nearest = null;
     for (const bug of live) {
-      const m = bug.mesh.position;
+      const m = bug.pos;
       const q = place(m.x, m.z);
       if (!nearest || q.d < nearest.d) nearest = { d: q.d, bug };
       g.fillStyle = colors[bug.f.severity] || v('--muted');
@@ -984,7 +984,7 @@ export class Walker {
       prev.copy(m.position);
       if (dart.bug || dart.target) {
         // A bug walks on while the cast is in the air, so the shot follows it.
-        if (dart.bug?.mesh) dart.to.copy(dart.bug.mesh.position);
+        if (dart.bug && !dart.bug.caught) dart.to.copy(dart.bug.pos);
         const u = Math.min(1, dart.t / dart.T);
         m.position.lerpVectors(dart.start, dart.to, u);
         m.position.y += dart.arc * 4 * u * (1 - u);
