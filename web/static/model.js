@@ -44,7 +44,8 @@ export function buildModel(graph) {
     push(edgesFrom, e.from, e);
     push(edgesTo, e.to, e);
     const t = byId.get(e.to);
-    if (t.kind === 'package') t.importers++;
+    // "depends" edges come from other packages (--resolve-depth), not from files.
+    if (t.kind === 'package' && e.kind !== 'depends') t.importers++;
   }
 
   return { graph, byId, root, ecosystems, edgesFrom, edgesTo, refsFrom: new Map(), refsTo: new Map(), languages: rankLanguages(root) };

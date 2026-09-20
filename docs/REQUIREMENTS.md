@@ -621,10 +621,22 @@ the side panel, a double click expands a directory, `V` enters walk mode and
   Where a commit is documented by the version in a trailing comment - the
   hardening convention - that version is kept as what was requested.
 
+- `--resolve-depth` adds what external packages themselves depend on, level by
+  level (`-1` for as far as the answer reaches), from the lock files the
+  repository carries: `package-lock.json` v1-v3, `pnpm-lock.yaml` v5-v9,
+  classic `yarn.lock`, `Cargo.lock`, and `uv.lock` / `poetry.lock` / `pdm.lock`,
+  each of which writes its edges differently. Nothing is fetched. A resolver
+  offers this through an optional `lang.Transitive` interface, so an ecosystem
+  that cannot answer offline simply does not implement it.
+- A package the walk adds is marked `transitive` - no file in the project
+  imports it - and package-to-package edges are a kind of their own (`depends`),
+  so the count of files importing a package stays a count of files.
+
 *Accepted when* a repository whose dependencies are locked shows no floating
-packages, removing its lock file makes every one of them floating, and a
-workflow pinned to tags shows every action floating until the tags are replaced
-by commits.
+packages, removing its lock file makes every one of them floating, a workflow
+pinned to tags shows every action floating until the tags are replaced by
+commits, and `--resolve-depth 1` adds exactly the packages the lock file names
+as the direct dependencies' own.
 
 ### Known limits
 

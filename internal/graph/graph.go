@@ -21,6 +21,9 @@ const (
 	// EdgeReference links a symbol (or file) to a definition it uses, found by a
 	// language server.
 	EdgeReference EdgeKind = "reference"
+	// EdgeDepends links an external package to a package it depends on, read from the
+	// project's lock files (see --resolve-depth).
+	EdgeDepends EdgeKind = "depends"
 )
 
 type Node struct {
@@ -40,6 +43,9 @@ type Node struct {
 	// Floating marks an external package that is not fixed to one version: it will
 	// resolve to something else once it is installed again.
 	Floating bool `json:"floating,omitempty"`
+	// Transitive marks a package no file in the project imports: it is on the map
+	// because something the project depends on depends on it.
+	Transitive bool `json:"transitive,omitempty"`
 	// Std marks ecosystems holding a language's standard library, which the UI hides by default.
 	Std bool `json:"std,omitempty"`
 	// Unresolved marks packages whose owning module could not be determined from manifests.

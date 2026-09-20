@@ -3,6 +3,18 @@ version = 3
 [[package]]
 name = "serde"
 version = "1.0.200"
+dependencies = ["serde_derive"]
+
+[[package]]
+name = "serde_derive"
+version = "1.0.200"
+dependencies = [
+ "syn 2.0.60",
+]
+
+[[package]]
+name = "syn"
+version = "2.0.60"
 
 [[package]]
 name = "serde_json"
