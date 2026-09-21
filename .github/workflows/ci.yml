@@ -92,6 +92,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The 3D models in web/static are in LFS and embedded in the binary.
+          lfs: true
+      - name: Check the LFS files are real
+        # web/static is embedded in the binary; a pointer file there ships as a
+        # model that will not load, and nothing else would notice.
+        run: |
+          if grep -rlx 'version https://git-lfs.github.com/spec/v1' web/static; then
+            echo "::error::LFS pointers instead of content (above)"; exit 1
+          fi
       - uses: actions/setup-go@v5
         with:
           go-version: stable
@@ -146,6 +156,16 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
+        with:
+          # The 3D models in web/static are in LFS and embedded in the binary.
+          lfs: true
+      - name: Check the LFS files are real
+        # web/static is embedded in the binary; a pointer file there ships as a
+        # model that will not load, and nothing else would notice.
+        run: |
+          if grep -rlx 'version https://git-lfs.github.com/spec/v1' web/static; then
+            echo "::error::LFS pointers instead of content (above)"; exit 1
+          fi
       - uses: actions/setup-go@v5
         with:
           go-version: stable
