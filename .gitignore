@@ -1,3 +1,6 @@
 /depphunter
 /dist/
 .gradle/
+node_modules/
+extension/out/
+*.vsix
