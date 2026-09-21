@@ -32,14 +32,18 @@ Browse any code base as an interactive isometric archipelago in your browser.
   planet, `WASD` to move, the mouse to look, `Space` to jump, `F` to fly. You
   hold a tool - a fishing rod by default - drawn in your hands, on the end of an
   arm, and using it (click) on a building tags the module, lights up its
-  dependency trails and plants a beacon over it. The other four are in slots
-  `1`…`5`, the way a shooter holds them, and `T` walks along the row: a
-  butterfly net, a camera, a bubble wand, a tracking dart. Each swings its own
-  way, brings its own aim helper, and is good for its own quarry - the rod and
-  the dart work on buildings, the net and the bubbles on bugs, the camera on
-  either. What they throw flies as what it is: a dart drops like a dart, a
-  bubble slows and climbs. The net throws nothing at all, and has to be walked
-  up to. Hold the right button for the scope, the mouse wheel zooms.
+  dependency trails and plants a beacon over it. The rest are in slots `1`…`7`,
+  the way a shooter holds them, and `T` walks along the row: a butterfly net, a
+  camera, a bubble wand, a tracking dart, a nail gun and a grapple gun. Each
+  swings its own way, brings its own aim helper, and is good for its own quarry
+  - the rod, the dart and the nailer work on buildings, the net and the bubbles
+  on bugs, the camera on either. What they throw flies as what it is: a nail
+  goes fast and flat, a dart drops like a dart, a bubble slows and climbs. The
+  net throws nothing at all and has to be walked up to; the camera's back has
+  the view through its lens live on it. The grapple gun does nothing to what it
+  hits - it pulls you up the facade and onto the roof, and from up there a shot
+  over the edge is the way down. Hold the right button for the scope, the mouse
+  wheel zooms.
   Bugs are one per finding a scanner reported, and they are not only on the
   streets: a tall building is walked on at several heights up its facade and
   around its roof, each beetle standing out of whatever it is holding on to.

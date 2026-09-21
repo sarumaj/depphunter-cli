@@ -42,6 +42,10 @@ const BUG_AIM = t => 0.3 + t * 0.012;
 // gravity. Every tool that throws does say (tools.js); this is here so that adding
 // one cannot make it fall through the floor of the world instead.
 const DEFAULT_FLIGHT = { speed: 24, arc: 1, gravity: 6, drag: 0 };
+// The grapple: how fast the line reels the walker in, the longest it may pull before
+// letting go (so a hook on something that moved cannot strand anyone), and how far in
+// from a roof's edge it sets them down.
+const GRAPPLE_PULL = 17, GRAPPLE_TIME = 5, ROOF_IN = 0.5, NO_PULL = 1.2;
 // The bug tracker: how far around the walker it sweeps, and how often it is redrawn.
 // A dozen times a second is plenty for something that turns as slowly as a walker.
 // The range follows the hunt - a four-file repository and a thousand-file one are both
@@ -163,6 +167,7 @@ export class Walker {
     // Darts in flight aim at boxes of the old layout: let them go.
     for (const dart of this.darts) this.scene.scene.remove(dart.mesh);
     this.darts = [];
+    this.cutLine();
     for (const b of boxes) {
       const x0 = Math.floor((b.x - b.w / 2) / CELL), x1 = Math.floor((b.x + b.w / 2) / CELL);
       const z0 = Math.floor((b.z - b.d / 2) / CELL), z1 = Math.floor((b.z + b.d / 2) / CELL);
@@ -254,6 +259,7 @@ export class Walker {
     this.keys.clear();
     for (const dart of this.darts) this.scene.scene.remove(dart.mesh);
     this.darts = [];
+    this.cutLine();
     this.scene.scene.remove(this.beacons);
     this.bugs?.show(false);
     this.showTarget(null);
@@ -420,11 +426,33 @@ export class Walker {
     this.setTool(ids[(ids.indexOf(this.tool.id) + 1) % ids.length]);
   }
 
+  /**
+   * The lens the camera tool's screen looks through: the walk camera's place and
+   * heading, a little tighter, so the picture on the back is what a camera held up
+   * would actually be framing rather than the whole view.
+   */
+  lens() {
+    const cam = this.scene.walkCamera;
+    this.filmCamera ||= new THREE.PerspectiveCamera(1, 4 / 3, 0.02, 3000);
+    const lens = this.filmCamera;
+    lens.position.copy(cam.position);
+    lens.quaternion.copy(cam.quaternion);
+    const fov = cam.fov * 0.8;
+    if (lens.fov !== fov) { lens.fov = fov; lens.updateProjectionMatrix(); }
+    lens.updateMatrixWorld();
+    return lens;
+  }
+
   // The tool breathes while it waits and swings while it is used; the swing is what
   // makes the gesture legible, so it runs to its end even if the shot lands sooner.
   poseTool(dt, now) {
     const vm = this.viewmodel;
     if (!vm) return;
+    // A tool with something live on it gets its frame here. Every other frame is
+    // enough for a screen this size, and halves what it costs.
+    if (this.tool.live && ((this.frames = (this.frames || 0) + 1) & 1)) {
+      this.tool.live(vm, this.scene, this.lens());
+    }
     if (this.swing >= 0) {
       this.swing += dt;
       const u = this.swing / SWING;
@@ -679,6 +707,12 @@ export class Walker {
   step(dt) {
     if (this.frozen) return;
     const k = this.keys, p = this.p;
+    // A line in a wall pulls the walker along it, past walls and gravity both, and
+    // nothing else moves them until it lets go. Jump cuts it.
+    if (this.pull) {
+      if (k.has('Space')) this.cutLine('Line cut');
+      else return this.reel(dt);
+    }
     const turn = (k.has('ArrowLeft') ? 1 : 0) - (k.has('ArrowRight') ? 1 : 0);
     p.yaw += turn * TURN * dt;
     const fwd = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0);
@@ -984,6 +1018,78 @@ export class Walker {
     this.darts.push(shot);
   }
 
+  // ---------------------------------------------------------------- the grapple
+
+  /**
+   * The hook has bitten. What follows is not a tag but a climb: the walker is pulled
+   * along the line to the top of whatever it caught, which is how a facade is got up
+   * and a roof is arrived on. Caught on the ground from a roof, the same pull is the
+   * way down - one gesture, because going up and coming down are the same line.
+   */
+  hook(at, box, shot) {
+    const to = at.clone();
+    if (box && box.kind !== 'land' && box.kind !== 'terrace') {
+      // Onto it rather than against it: the top of the box, a step in from the face
+      // so the landing is on the roof and not on its edge.
+      to.y = box.y + box.h + 0.02;
+      to.x += clamp(box.x - to.x, -ROOF_IN, ROOF_IN);
+      to.z += clamp(box.z - to.z, -ROOF_IN, ROOF_IN);
+    } else {
+      to.y = this.height(to.x, to.z);
+    }
+    // A hook that lands where the walker already is pulls them nowhere: looking
+    // straight down from a roof catches that roof. Say so instead of paying out a
+    // line and reeling in nothing - from up here, the way down is over the edge.
+    if (Math.hypot(to.x - this.p.x, to.y - this.p.feet, to.z - this.p.z) < NO_PULL) {
+      this.flash('Nothing to be pulled to - aim past the edge');
+      return;
+    }
+    const up = to.y > this.p.feet;
+    this.cutLine();
+    this.pull = { to, t: 0, mesh: shot.mesh, line: shot.line };
+    this.p.fly = false;
+    this.p.vy = 0;
+    this.flash(up ? 'Line away - going up' : 'Line away - going down');
+    this.drawHud();
+  }
+
+  /** Reels the walker along the line, and lets go at the end of it. */
+  reel(dt) {
+    const p = this.p, to = this.pull.to;
+    const dx = to.x - p.x, dy = to.y - p.feet, dz = to.z - p.z;
+    const d = Math.hypot(dx, dy, dz);
+    this.pull.t += dt;
+    if (d < 0.25 || this.pull.t > GRAPPLE_TIME) {
+      this.cutLine();
+      // Let go standing on what was arrived at, rather than falling back off it.
+      p.feet = Math.max(p.feet, this.height(p.x, p.z));
+      p.vy = 0;
+      p.ground = true;
+      return;
+    }
+    const step = Math.min(d, GRAPPLE_PULL * dt);
+    p.x += (dx / d) * step;
+    p.feet += (dy / d) * step;
+    p.z += (dz / d) * step;
+    p.vy = 0;
+    p.ground = false;
+    // The hook stays where it bit, and the line follows the hand to it.
+    if (this.pull.mesh) this.pull.mesh.position.copy(to);
+    if (this.pull.line) {
+      const tip = this.muzzle() || new THREE.Vector3(p.x, p.feet + EYE - 0.05, p.z);
+      this.pull.line.geometry.setFromPoints([tip, to.clone()]);
+    }
+  }
+
+  /** Lets go of whatever the line is holding, and takes the line off the map. */
+  cutLine(say) {
+    if (!this.pull) return;
+    if (this.pull.mesh) this.scene.scene.remove(this.pull.mesh);
+    if (this.pull.line) this.scene.scene.remove(this.pull.line);
+    this.pull = null;
+    if (say) this.flash(say);
+  }
+
   // ------------------------------------------------------------------ the tracker
 
   /**
@@ -1216,7 +1322,8 @@ export class Walker {
         m.position.y += dart.arc * 4 * u * (1 - u);
         if (u >= 1) {
           done.push(dart);
-          if (dart.bug) this.bugs.catch(dart.bug);
+          if (dart.tool.grapple) { dart.kept = true; this.hook(m.position, dart.target, dart); }
+          else if (dart.bug) this.bugs.catch(dart.bug);
           else this.tag(dart.target);
         }
       } else {
@@ -1231,7 +1338,10 @@ export class Walker {
         const bug = hits(dart.tool, 'bugs') ? this.bugs?.at(m.position) : null;
         if (bug) this.bugs.catch(bug);
         const hit = this.boxAt(m.position);
-        if (hit && hits(dart.tool, 'buildings') && hit.kind !== 'land' && hit.kind !== 'terrace') this.tag(hit);
+        // A grapple that finds anything solid bites it, the ground included: that is
+        // what makes a shot off a roof a way down rather than a wasted line.
+        if (hit && dart.tool.grapple) { dart.kept = true; this.hook(m.position, hit, dart); }
+        else if (hit && hits(dart.tool, 'buildings') && hit.kind !== 'land' && hit.kind !== 'terrace') this.tag(hit);
         if (bug || hit || m.position.y < WATER || dart.t > 6) done.push(dart);
       }
       // A dart points along its flight; a hoop spins, a bubble wobbles, a bobber
@@ -1247,8 +1357,12 @@ export class Walker {
       }
     }
     for (const dart of done) {
-      this.scene.scene.remove(dart.mesh);
-      if (dart.line) this.scene.scene.remove(dart.line);
+      // A grapple that bit keeps its hook and its line: they are what the walker is
+      // being pulled along, and cutLine is what takes them off the map.
+      if (!dart.kept) {
+        this.scene.scene.remove(dart.mesh);
+        if (dart.line) this.scene.scene.remove(dart.line);
+      }
       this.darts.splice(this.darts.indexOf(dart), 1);
     }
   }
