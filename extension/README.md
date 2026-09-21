@@ -9,10 +9,18 @@ browser. The map is the same one `depphunter` serves anywhere else - clicking,
 walking, the panel, the findings and the live updates all work as they do in a
 browser tab.
 
-## Requirements
+## Install
 
-The `depphunter` binary, from
-[the releases page](https://github.com/sarumaj/depphunter-cli/releases) or
+Every [release](https://github.com/sarumaj/depphunter-cli/releases) carries a
+`depphunter_<version>_vscode.vsix` beside the binaries. Download it, then in VS
+Code: *Extensions: Install from VSIX…* from the command palette, and pick the
+file. Or from a terminal:
+
+```sh
+code --install-extension depphunter_1.2.3_vscode.vsix
+```
+
+It also needs the `depphunter` binary itself - from the same release, or
 `go install github.com/sarumaj/depphunter-cli/cmd/depphunter@latest`. It has to
 be on `PATH`, or named by the `depphunter.path` setting.
 
@@ -75,9 +83,10 @@ terminal there instead, for now.
 
 The extension is not on any marketplace yet. What it takes, when it is time:
 
-1. `npm install -g @vscode/vsce`, and `vsce package` to build `depphunter-0.1.0.vsix`.
-   That file can be installed directly - *Extensions: Install from VSIX…* - which
-   is enough for sharing it without publishing anything.
+1. `npm install -g @vscode/vsce`, and `vsce package` to build the `.vsix`. The
+   release workflow already does this and attaches the file to every release,
+   packaged with the tag's version; the `version` in `package.json` is only what
+   a build from a checkout gets.
 2. For the **Visual Studio Marketplace**: create an Azure DevOps organization,
    then a personal access token with *Marketplace → Manage* scope for **all
    accessible organizations**. Create the publisher at
@@ -96,18 +105,98 @@ once per `--target` (`win32-x64`, `linux-x64`, `darwin-arm64`, …).
 A 128×128 PNG `icon.png` beside `package.json`, named by an `"icon"` field, is
 worth adding before publishing: without one the marketplace shows a placeholder.
 
-## Building it
+## Working on it
+
+An extension is a Node program the editor loads into a process of its own, the
+*extension host*. It is not a web page, it has no DOM, and `console.log` from it
+does not go where you might expect. Everything below follows from that.
+
+### The first run
 
 ```sh
+cd extension
 npm install
-npm run compile                              # or: npm run watch
-DEPPHUNTER=../path/to/depphunter npm test    # skipped without a binary to test
+npm run compile
 ```
 
-Then open this directory in VS Code and press F5, which launches a second window
-with the extension loaded.
+Open **this directory** as the workspace - not the repository root, or F5 will
+not find the launch configuration - and press F5. A second editor window opens,
+titled *[Extension Development Host]*. That window has your extension loaded and
+nothing else different about it; the first window is now a debugger attached to
+it.
 
-The tests run the built extension against a real server with the editor stubbed
-out (`test/stub.js`). That is where the coupling is: the arguments the extension
-starts `depphunter` with, and the address it reads back out of its output.
-Neither the Go tests nor the type checker see either one.
+In the new window, open a folder with some code in it and run
+`depphunter: Open the Map` from the command palette (Ctrl/Cmd+Shift+P).
+
+### Changing code
+
+`npm run watch` in a terminal recompiles on every save. The extension host does
+not reload itself, so after a save go to the *[Extension Development Host]*
+window and run **Developer: Reload Window** (Ctrl/Cmd+R). That is the whole
+edit-run loop.
+
+Reloading kills the extension host, which kills the `depphunter` it started, so
+the next open analyzes again from a warm cache. Nothing leaks between runs.
+
+### Breakpoints
+
+Click the gutter beside a line in `src/*.ts` in the **first** window and it will
+be hit - `tsc` writes source maps, so you are stopped in the TypeScript, not in
+`out/`. The Debug Console there is where `console.log` from the extension goes,
+and where an uncaught exception is reported.
+
+Useful places to stop when something is wrong: `start()` in `src/server.ts`
+(what arguments went to the binary), the `read` function just below it (what
+came back), and `show()` in `src/extension.ts` (what address the browser was
+handed).
+
+### The four places output goes
+
+This is the part that catches people out. There are four separate consoles and
+they show different things:
+
+| Where                       | What is in it                                                                | How to open it                                                                                              |
+|-----------------------------|------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------|
+| Debug Console, first window | `console.log` and exceptions from *your* extension                           | F5 opens it                                                                                                 |
+| Output → **depphunter**     | the server's own log, verbatim: the command line, the analysis, the warnings | *Output: Focus on Output View*, then pick depphunter in the dropdown - or `depphunter: Show the Server Log` |
+| Output → **Extension Host** | the editor's own complaints about loading extensions                         | same dropdown                                                                                               |
+| Webview developer tools     | errors from the map itself - WebGL, the page's JavaScript                    | **Developer: Open Webview Developer Tools** in the *[Extension Development Host]* window                    |
+
+If the map opens but is blank or broken, it is the last one you want. If the map
+never opens, it is the first two.
+
+### When it goes wrong
+
+- **"depphunter was not found"** - the extension host inherited a `PATH` without
+  it. Set `depphunter.path` to the absolute path; that always works.
+- **The tab opens empty, and the webview console says *Refused to frame*** - the
+  server was started without the right `--embed` origin. The **depphunter**
+  output channel shows the exact command line it used; check it has
+  `--embed vscode-webview:` in it.
+- **Nothing happens at all and there is no error** - the extension may not have
+  activated. **Developer: Show Running Extensions** in the development window
+  lists what loaded and how long each took.
+- **A change did nothing** - `npm run watch` was not running, or the window was
+  not reloaded. `out/extension.js`'s timestamp settles it.
+
+### Tests
+
+```sh
+DEPPHUNTER=../path/to/depphunter npm test   # skipped without a binary to test
+```
+
+These run without an editor at all: `test/stub.js` stands in for the editor API,
+so the built `out/extension.js` drives a real server and the test checks what
+came back. That is where the coupling is - the arguments the extension starts
+`depphunter` with, and the address it reads out of its output. Neither the Go
+tests nor the type checker see either one.
+
+### Installing your build
+
+```sh
+npx @vscode/vsce package                  # depphunter-0.1.0.vsix
+code --install-extension depphunter-0.1.0.vsix
+```
+
+That installs it into your real editor, not the development window. `code
+--uninstall-extension sarumaj.depphunter` removes it again.

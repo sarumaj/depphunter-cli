@@ -27,6 +27,29 @@ jobs:
         run: |
           tar -xzf dist/depphunter_*_linux_amd64.tar.gz -C "$RUNNER_TEMP"
           "$RUNNER_TEMP"/depphunter_*_linux_amd64/depphunter --version | grep -F "${{ github.ref_name }}"
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: extension/package-lock.json
+      - name: Build the VS Code extension
+        # Released with the binary and carrying the same version, so "the extension
+        # from v1.2.3" is one file and not a question. A tag the marketplace would
+        # not take as a version (a release candidate, say) leaves the manifest's own
+        # version alone rather than failing the release.
+        working-directory: extension
+        env:
+          TAG: ${{ github.ref_name }}
+        run: |
+          version=${TAG#v}
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+$'; then
+            echo "::warning::$TAG is not a plain x.y.z; packaging the manifest version"
+            version=""
+          fi
+          npm ci
+          npx @vscode/vsce@4 package $version --no-git-tag-version \
+            --out "../dist/depphunter_${TAG#v}_vscode.vsix"
+          (cd ../dist && sha256sum "depphunter_${TAG#v}_vscode.vsix" >> checksums.txt)
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
