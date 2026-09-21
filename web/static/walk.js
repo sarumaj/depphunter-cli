@@ -14,7 +14,7 @@
 
 import * as THREE from './vendor/three.module.min.js';
 import { rampsFor, rampHeight, bridgesFor, bridgeHeight, bridgeBounds } from './city.js';
-import { TOOL_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool, viewLights } from './tools.js';
+import { TOOL_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool, viewLights, hits, isMelee } from './tools.js';
 
 // A building is one unit wide and its storeys 0.3 high (city.js): the walker is
 // about a storey and a half tall.
@@ -38,11 +38,22 @@ const MAX_LOOK_STEP = 250;  // pixels; larger pointer movements are glitches, no
 // units away is two pixels wide, and the building behind it is one more click away in
 // any case.
 const BUG_AIM = t => 0.3 + t * 0.012;
+// What a tool throws when it says nothing about how: a middling lob under ordinary
+// gravity. Every tool that throws does say (tools.js); this is here so that adding
+// one cannot make it fall through the floor of the world instead.
+const DEFAULT_FLIGHT = { speed: 24, arc: 1, gravity: 6, drag: 0 };
 // The bug tracker: how far around the walker it sweeps, and how often it is redrawn.
 // A dozen times a second is plenty for something that turns as slowly as a walker.
 // The range follows the hunt - a four-file repository and a thousand-file one are both
 // worth seeing whole - within these bounds, and eases rather than jumping.
 const RADAR_MIN = 12, RADAR_MAX = 400, RADAR_MS = 85, RADAR_SIZE = 150;
+// Closing in: inside this, the sweep stops trying to hold the whole map and draws the
+// neighbourhood instead, growing by up to RADAR_GROW as it does. The last few steps
+// to a bug are the ones worth seeing, and they are the ones a whole-map sweep loses.
+// 14 rather than something roomier because a city block is a few units across: any
+// wider and a map with bugs on every street is zoomed in the whole time, which is
+// the same as not zooming at all.
+const RADAR_NEAR = 14, RADAR_GROW = 0.55;
 // Degrees: the default view, the wheel's zoom range, and the view through the scope
 // (right button).
 const FOV = 70, MIN_FOV = 30, MAX_FOV = 90, SCOPE_FOV = 22;
@@ -56,10 +67,14 @@ const SHORE_MARGIN = 3, SKY_MARGIN = 12;
 // Keys the walker owns while active, by KeyboardEvent.code; the map's own shortcuts
 // for these letters are suspended. E and Q do nothing here: on the map they rotate
 // the view and expand things, which would only reshuffle the city around a walker.
+// The keys walk mode answers to. A key that is not here never reaches it: the map
+// keeps it, which is why this has to list every one the handler below acts on -
+// KeyH among them, which is how hands-away went unreachable until now.
 const KEYS = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   'Space', 'ShiftLeft', 'ShiftRight', 'KeyC', 'KeyF', 'KeyE', 'KeyQ', 'Enter',
-  'Escape', 'KeyV', 'KeyT',
+  'Escape', 'KeyV', 'KeyT', 'KeyH',
+  ...Array.from({ length: 9 }, (_, i) => `Digit${i + 1}`), // the tool slots
 ]);
 
 // Planet curvature, by the character typed rather than the key's place on the board:
@@ -223,6 +238,7 @@ export class Walker {
     this.last = performance.now();
     this.scoped = false;
     this.fov = FOV;
+    this.drawSlots();
     this.drawHud();
     this.loop();
     // Like a first-person shooter: the pointer is captured at the reticle at once (V
@@ -363,10 +379,40 @@ export class Walker {
     this.swing = -1;
     if (this.active) {
       this.showTool();
+      this.drawSlots();
       this.drawHud();
-      this.flash(`${this.tool.label}. ${this.tool.hint}`);
+      this.flash(this.tool.hint);
+      this.aim = { i: -1, point: null, bug: null, far: false }; // it may want another target
     }
     this.hooks.onTool?.(this.tool.id);
+  }
+
+  /**
+   * The row of tools along the bottom, built once: a slot per tool, in slot order,
+   * carrying the number that picks it. Only the one in hand is named, so the row
+   * stays a row of shapes rather than a sentence.
+   */
+  drawSlots() {
+    const row = this.hud.querySelector('.w-slots');
+    if (row.children.length !== TOOL_IDS.length) {
+      row.replaceChildren(...TOOL_IDS.map((id, n) => {
+        const tool = toolFor(id);
+        const el = document.createElement('div');
+        el.className = 'w-slot';
+        el.dataset.tool = id;
+        el.setAttribute('role', 'option');
+        el.title = `${tool.label} - ${tool.hint}`;
+        el.append(
+          Object.assign(document.createElement('kbd'), { textContent: String(n + 1) }),
+          document.createElement('i'),
+          Object.assign(document.createElement('span'), { className: 'w-slot-name', textContent: tool.label }),
+        );
+        return el;
+      }));
+    }
+    for (const el of row.children) {
+      el.setAttribute('aria-selected', String(el.dataset.tool === this.tool.id));
+    }
   }
 
   nextTool() {
@@ -489,6 +535,13 @@ export class Walker {
       this.keys.add(e.code);
       if (BIGGER.has(e.key)) this.setRadius(this.radius * 1.25);
       else if (SMALLER.has(e.key)) this.setRadius(this.radius / 1.25);
+      // 1..9 pick a tool by its slot, the way a shooter does; T still walks the row
+      // for anyone who would rather not look down at it.
+      if (e.code.startsWith('Digit')) {
+        const id = TOOL_IDS[+e.code.slice(5) - 1];
+        if (id && id !== this.tool.id) this.setTool(id);
+        return;
+      }
       switch (e.code) {
         case 'KeyF': this.p.fly = !this.p.fly; this.p.vy = 0; this.drawHud(); break;
         case 'KeyT': this.nextTool(); break;
@@ -842,22 +895,30 @@ export class Walker {
     const cam = this.scene.walkCamera;
     const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
     const v = new THREE.Vector3();
+    const tool = this.tool;
     let hit = null, point = null, bug = null;
     for (let t = 0.2; t < REACH; t += 0.04 + t * 0.008) {
       v.copy(cam.position).addScaledVector(dir, t);
       this.scene.unbend(v);
       if (v.y < WATER) break;
       // A bug walks in front of the building it belongs to, so it is tested first:
-      // otherwise the wall behind it would always win.
-      bug = this.bugs?.at(v, BUG_AIM(t)) || null;
+      // otherwise the wall behind it would always win. A tool that is no use against
+      // bugs looks straight through them - and one that is no use against buildings
+      // still stops at the wall, because the wall is still in the way.
+      bug = hits(tool, 'bugs') ? this.bugs?.at(v, BUG_AIM(t)) || null : null;
       if (bug) { point = v.clone(); break; }
       hit = this.boxAt(v);
       if (hit) { point = v.clone(); break; }
     }
     // The ground underfoot and the shore are scenery, not targets.
-    const i = !bug && hit && !this.underfoot(hit) ? hit.i : -1;
-    this.aim = { i, point, bug };
-    this.showTarget(bug);
+    let i = !bug && hit && hits(tool, 'buildings') && !this.underfoot(hit) ? hit.i : -1;
+    // A tool with a reach is swung, not thrown: past it there is nothing to be done
+    // about what the crosshair is on, which the HUD says rather than going blank.
+    const far = tool.reach != null && point != null
+      && cam.position.distanceTo(point) > tool.reach && (bug || i >= 0);
+    if (far) { bug = null; i = -1; }
+    this.aim = { i, point, bug, far };
+    this.showTarget(bug, far);
     const r = this.scene.renderer.domElement.getBoundingClientRect();
     this.hooks.onAim(i, r.left + r.width / 2, r.top + r.height / 2);
   }
@@ -881,9 +942,10 @@ export class Walker {
   }
 
   // Using the tool on an aimed box sends whatever it throws along a shallow arc to
-  // the aimed point, and it always arrives; used on nothing it flies ahead under
-  // gravity until it hits something or falls into the water. A tool that throws
-  // nothing - the camera - reaches its target at once.
+  // the aimed point, and it always arrives; used on nothing it flies ahead under its
+  // own gravity and drag until it hits something or falls into the water. A tool that
+  // throws nothing reaches what it is pointed at the moment it is used - as far as it
+  // reaches, which for the camera is any distance and for the net is arm's length.
   fire() {
     if (this.frozen) return;
     const p = this.p;
@@ -896,6 +958,7 @@ export class Walker {
       if (tool.flash) this.screenFlash();
       if (bug) this.bugs.catch(bug);
       else if (target) this.tag(target);
+      else if (this.aim.far) this.flash(`Out of reach: the ${tool.label.toLowerCase()} has to be walked up to`);
       return;
     }
     const start = this.muzzle() || new THREE.Vector3(p.x, p.feet + EYE - 0.08, p.z);
@@ -909,12 +972,14 @@ export class Walker {
       shot.line.frustumCulled = false;
       this.scene.scene.add(shot.line);
     }
+    const flight = tool.flight || DEFAULT_FLIGHT;
+    shot.flight = flight;
     if (bug || target) {
       const dist = start.distanceTo(to);
-      Object.assign(shot, { start, to, target, bug, T: Math.max(0.12, dist / tool.speed), arc: (0.05 + dist * 0.03) * tool.arc });
+      Object.assign(shot, { start, to, target, bug, T: Math.max(0.12, dist / flight.speed), arc: (0.05 + dist * 0.03) * flight.arc });
     } else {
       const dir = new THREE.Vector3(-Math.sin(p.yaw) * Math.cos(p.pitch), Math.sin(p.pitch) + 0.04, -Math.cos(p.yaw) * Math.cos(p.pitch));
-      shot.vel = dir.multiplyScalar(tool.speed);
+      shot.vel = dir.multiplyScalar(flight.speed);
     }
     this.darts.push(shot);
   }
@@ -940,24 +1005,42 @@ export class Walker {
 
     const canvas = box.querySelector('canvas');
     const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    if (canvas.width !== Math.round(RADAR_SIZE * dpr)) {
-      canvas.width = canvas.height = Math.round(RADAR_SIZE * dpr);
-    }
-    const g = canvas.getContext('2d');
     const cs = getComputedStyle(this.hud);
     const v = name => cs.getPropertyValue(name).trim();
-    const size = RADAR_SIZE, c = size / 2, R = c - 7;
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
-    g.clearRect(0, 0, size, size);
 
     // The range fits whatever is still out there, so the sweep is never all centre
     // dot or all rim arrows; it eases so a bug walking round a corner does not zoom.
+    // Once one is close, though, holding the whole map is the wrong thing to hold:
+    // the range pulls in to the neighbourhood and the dial grows to meet it, which
+    // is the difference between knowing a bug is somewhere ahead and seeing which
+    // side of the building it is on.
     const { x: px, z: pz, yaw } = this.p;
     const live = this.bugs.bugs.filter(b => !b.caught);
-    let far = RADAR_MIN;
-    for (const bug of live) far = Math.max(far, Math.hypot(bug.pos.x - px, bug.pos.z - pz));
-    const want = clamp(far * 1.2, RADAR_MIN, RADAR_MAX);
+    let far = RADAR_MIN, near = Infinity;
+    for (const bug of live) {
+      const d = Math.hypot(bug.pos.x - px, bug.pos.z - pz);
+      far = Math.max(far, d);
+      near = Math.min(near, d);
+    }
+    const closing = near < RADAR_NEAR ? 1 - near / RADAR_NEAR : 0;
+    this.radarNear = near; // what the sweep thinks it is closing on, for the tests
+    const want = closing
+      ? clamp(Math.max(near * 2.4, RADAR_MIN), RADAR_MIN, RADAR_NEAR * 2.4)
+      : clamp(far * 1.2, RADAR_MIN, RADAR_MAX);
     this.radarRange = this.radarRange ? this.radarRange + (want - this.radarRange) * 0.12 : want;
+    // Eased as well, and rounded to whole pixels, so the canvas is not resized on
+    // every frame of the approach.
+    const grow = 1 + closing * RADAR_GROW;
+    this.radarZoom = this.radarZoom ? this.radarZoom + (grow - this.radarZoom) * 0.1 : grow;
+    const size = Math.round(RADAR_SIZE * this.radarZoom);
+    if (canvas.width !== Math.round(size * dpr)) {
+      canvas.width = canvas.height = Math.round(size * dpr);
+      canvas.style.width = canvas.style.height = `${size}px`;
+    }
+    const g = canvas.getContext('2d');
+    const c = size / 2, R = c - 7;
+    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    g.clearRect(0, 0, size, size);
     const k = R / this.radarRange;
 
     // The sweep itself: a disc, range rings, and the wedge the walker is looking into.
@@ -1064,6 +1147,19 @@ export class Walker {
     g.closePath();
     g.fill();
 
+    // Close in, the nearest bug is marked as well as drawn: a ring around it, so the
+    // one being walked up to is not one dot among several.
+    if (nearest && closing > 0.25) {
+      const q = place(nearest.bug.pos.x, nearest.bug.pos.z);
+      if (q.inside) {
+        g.strokeStyle = colors[nearest.bug.f.severity] || v('--text');
+        g.lineWidth = 1.5;
+        g.beginPath();
+        g.arc(q.x, q.y, 6.5, 0, Math.PI * 2);
+        g.stroke();
+      }
+    }
+
     const label = this.hud.querySelector('.w-nearest');
     const { caught, total } = this.bugs.counts;
     label.textContent = nearest
@@ -1073,9 +1169,17 @@ export class Walker {
   }
 
   // Names what the crosshair is on while it is a bug, so it is clear what would be
-  // caught before the tool is used.
-  showTarget(bug) {
+  // caught before the tool is used - or says that it is out of a swung tool's reach,
+  // which is the one case where the crosshair is on something and nothing happens.
+  showTarget(bug, far = false) {
     const el = this.hud.querySelector('.w-target');
+    this.hud.classList.toggle('far', !!far);
+    if (far) {
+      this.targeted = null;
+      el.hidden = false;
+      el.textContent = `Out of reach - walk closer to use the ${this.tool.label.toLowerCase()}`;
+      return;
+    }
     if (!bug) {
       el.hidden = true;
       el.textContent = '';
@@ -1116,14 +1220,19 @@ export class Walker {
           else this.tag(dart.target);
         }
       } else {
-        dart.vel.y -= 6 * dt;
+        // A miss flies on under the tool's own physics: a dart drops like a dart, a
+        // bubble slows to a crawl and then climbs.
+        const { gravity, drag } = dart.flight || DEFAULT_FLIGHT;
+        dart.vel.y -= gravity * dt;
+        if (drag) dart.vel.multiplyScalar(Math.max(0, 1 - drag * dt));
         m.position.addScaledVector(dart.vel, dt);
-        // Anything thrown catches a bug it passes through, aimed at or not.
-        const bug = this.bugs?.at(m.position);
+        // Anything thrown catches a bug it passes through, aimed at or not - if it is
+        // the kind of thing that catches bugs at all.
+        const bug = hits(dart.tool, 'bugs') ? this.bugs?.at(m.position) : null;
         if (bug) this.bugs.catch(bug);
         const hit = this.boxAt(m.position);
-        if (hit && hit.kind !== 'land' && hit.kind !== 'terrace') this.tag(hit);
-        if (bug || hit || m.position.y < WATER || dart.t > 4) done.push(dart);
+        if (hit && hits(dart.tool, 'buildings') && hit.kind !== 'land' && hit.kind !== 'terrace') this.tag(hit);
+        if (bug || hit || m.position.y < WATER || dart.t > 6) done.push(dart);
       }
       // A dart points along its flight; a hoop spins, a bubble wobbles, a bobber
       // just bobs along.
@@ -1179,8 +1288,12 @@ export class Walker {
 
   drawHud() {
     const locked = document.pointerLockElement === this.scene.renderer.domElement;
-    this.hud.querySelector('.w-mode').textContent =
-      this.frozen ? 'reading' : this.p.fly ? 'flying' : 'walking';
+    // Walking is what walk mode is; saying so is a chip that never changes. Flying
+    // and reading are worth a word, and get one.
+    const mode = this.frozen ? 'reading' : this.p.fly ? 'flying' : '';
+    const modeChip = this.hud.querySelector('.w-mode');
+    modeChip.hidden = !mode;
+    modeChip.textContent = mode;
     this.hud.querySelector('.w-tagged').textContent = this.tagged.size;
     this.hud.querySelector('.w-radius').textContent = Math.round(this.radius);
     const bugs = this.bugs?.counts;
@@ -1190,16 +1303,14 @@ export class Walker {
       this.hud.querySelector('.w-caught').textContent = bugs.caught;
       this.hud.querySelector('.w-total').textContent = bugs.total;
     }
-    this.hud.querySelector('.w-tool').textContent = this.tool.label;
-    this.hud.querySelector('.w-noun').textContent = this.tool.noun;
-    const found = bugs?.total ? ' · bugs on the streets carry what the scanners found' : '';
+
+    // One line, and only when it has something to say that the slots and the
+    // reticle do not: how to get the mouse back, or what reading means.
     this.hud.querySelector('.w-hint').textContent = this.frozen
-      ? 'The view is held still while you read · Enter or a click on the map: walk on · Esc: close · V: back to the map'
-      : locked
-        ? `${this.tool.hint}${found} · hold right: scope · T: another tool · V: back to the map · Esc: free the mouse`
-        : this.noLock
-          ? `Drag to look. ${this.tool.hint}${found} · hold right: scope · T: another tool · V / Esc: back to the map`
-          : 'Click the map to capture the mouse, or drag to look · T: another tool · V / Esc: back to the map';
+      ? 'Reading · Enter or a click: walk on · Esc: close'
+      : locked ? ''
+        : this.noLock ? 'Drag to look · click: use the tool'
+          : 'Click the map to capture the mouse, or drag to look';
   }
 }
 

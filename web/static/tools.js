@@ -11,10 +11,19 @@
 // Each tool provides:
 //   viewmodel(scene)  the group parented to the walk camera, posed at rest
 //   pose(vm, u, now)  u through the swing, 0..1
-//   projectile(scene) what flies, or null when the tool acts at once (the camera)
+//   projectile(scene) what flies, or null when the tool acts where it is pointed
 //   reticle           the aim helper's style, so it fits the tool rather than an
 //                     ever-present crosshair
 //   verb / noun       what the HUD and its messages call the act and its tally
+//   targets           'bugs', 'buildings' or 'both': what it is any use against
+//   reach             how far it works, in map units; absent means as far as it is
+//                     thrown, and on a tool that throws nothing that is any distance
+//                     at all (the camera). A reach with nothing thrown is a tool
+//                     swung by hand - the net - which has to be walked up to.
+//   flight            how what it throws behaves: speed, how much it is lobbed
+//                     (arc), what gravity does to it, and how the air holds it back.
+//                     A dart is fast and flat, a bubble slow and rising; the same
+//                     code flies both.
 
 import * as THREE from './vendor/three.module.min.js';
 
@@ -305,8 +314,12 @@ const rod = {
   label: 'Fishing rod',
   verb: 'Cast at',
   noun: 'landed',
-  hint: 'Click: cast at a building, land it twice for details',
+  hint: 'Cast at a building; land it twice for details',
   reticle: 'bobber',
+  slot: 1,
+  targets: 'buildings',
+  // A weighted bobber on a line: thrown hard, dropping the way a cast does.
+  flight: { speed: 24, arc: 1.6, gravity: 6, drag: 0.1 },
   // The blank goes up, the arm back out of the bottom of the frame.
   hold: { x: 0.2, y: -0.28, z: -0.52, along: [-0.05, 1, 0.3], back: [0.4, -0.3, 1] },
   grip: { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: -Math.PI / 2 },
@@ -392,8 +405,6 @@ const rod = {
     return g;
   },
   line: '#e8ecf2', // a line is drawn from the rod to the bobber while it flies
-  speed: 24,
-  arc: 1.6,
 };
 
 const net = {
@@ -401,8 +412,13 @@ const net = {
   label: 'Butterfly net',
   verb: 'Net',
   noun: 'netted',
-  hint: 'Click: net a building, net it twice for details',
+  hint: 'Swing at a bug you can reach; it does not throw',
   reticle: 'hoop',
+  slot: 2,
+  // A net catches what is in it. Throwing the whole net at a building across the
+  // map was the one thing here that never made sense as a gesture.
+  targets: 'bugs',
+  reach: 2.1,
   hold: { x: 0.2, y: -0.28, z: -0.52, along: [0.08, 1, 0.32], back: [0.4, -0.3, 1] },
   grip: { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: -Math.PI / 2 },
   viewmodel() {
@@ -447,20 +463,7 @@ const net = {
     head.rotation.z = -k * 0.45; // the bag lags behind the hoop
     grip(vm, Math.abs(k) * 0.8);
   },
-  projectile() {
-    const g = new THREE.Group();
-    const mouth = new THREE.Group();
-    mouth.rotation.x = -Math.PI / 2; // the bag streams behind the hoop as it flies
-    g.add(mouth);
-    const hoop = part(new THREE.TorusGeometry(0.16, 0.009, 6, 22), '#dfe4ea');
-    hoop.rotation.x = Math.PI / 2;
-    mouth.add(hoop);
-    bagOf(mouth, 0.16, 0.34);
-    g.userData.spin = 6;
-    return g;
-  },
-  speed: 20,
-  arc: 1.1,
+  projectile: null, // the net stays on the stick
 };
 
 // How much smaller than life the camera body is drawn, so one hand can hold it.
@@ -471,8 +474,11 @@ const camera = {
   label: 'Camera',
   verb: 'Photograph',
   noun: 'photographed',
-  hint: 'Click: photograph a building, twice for details',
+  hint: 'Photograph a building or a bug, at any range',
   reticle: 'frame',
+  slot: 3,
+  // A photograph records whatever is in the frame, near or far, bug or building.
+  targets: 'both',
   // Unlike the other tools the camera is not held in a fist, so it is placed first
   // and the hand is laid on it: fingers round the body's own grip, the way anyone
   // holds a camera they are about to fire one-handed.
@@ -545,8 +551,6 @@ const camera = {
   },
   projectile: null, // a photograph arrives the moment it is taken
   flash: '#ffffff',
-  speed: 0,
-  arc: 0,
 };
 
 const bubbles = {
@@ -554,7 +558,13 @@ const bubbles = {
   label: 'Bubble wand',
   verb: 'Bubble',
   noun: 'bubbled',
-  hint: 'Click: send a bubble at a building, twice for details',
+  hint: 'Float a bubble onto a bug; it rises and drifts',
+  slot: 4,
+  // Soap on a beetle is a catch; soap on a wall is a clean wall.
+  targets: 'bugs',
+  // A bubble is lighter than the air it is thrown through: it slows almost at once
+  // and then climbs, which is why it is lobbed high and aimed early.
+  flight: { speed: 12, arc: 2.2, gravity: -1.1, drag: 1.5 },
   reticle: 'soft',
   hold: { x: 0.2, y: -0.28, z: -0.52, along: [0.05, 1, 0.32], back: [0.4, -0.3, 1] },
   grip: { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: -Math.PI / 2 },
@@ -613,8 +623,6 @@ const bubbles = {
     g.userData.wobble = true;
     return g;
   },
-  speed: 12, // a bubble takes its time
-  arc: 2.2,
 };
 
 const dart = {
@@ -622,8 +630,12 @@ const dart = {
   label: 'Tracking dart',
   verb: 'Tag',
   noun: 'tagged',
-  hint: 'Click: tag a building, hit it again for details',
+  hint: 'Tag a building; hit it again for details',
   reticle: 'scope',
+  slot: 5,
+  targets: 'buildings',
+  // Heavy, fast and barely lobbed: the flattest thing in the bag.
+  flight: { speed: 34, arc: 0.6, gravity: 7, drag: 0.05 },
   // The pistol grip hangs down out of the fist, so the shaft through it points up.
   hold: { x: 0.19, y: -0.24, z: -0.5, along: [0.05, 1, 0.1], back: [0.45, -0.3, 1] },
   // Pointed down the view, a few degrees off it. Held square across the frame - which
@@ -720,12 +732,18 @@ const dart = {
     g.userData.aim = true; // points along its flight
     return g;
   },
-  speed: 34,
-  arc: 0.6,
 };
 
 export const TOOLS = { rod, net, camera, bubbles, dart };
-export const TOOL_IDS = Object.keys(TOOLS);
+
+/** The tools in slot order, which is the order the number keys pick them in. */
+export const TOOL_IDS = Object.values(TOOLS).sort((a, b) => a.slot - b.slot).map(t => t.id);
+
+/** What a tool is any use against, for the aim and for what the HUD says. */
+export const hits = (tool, what) => (tool.targets || 'both') === 'both' || tool.targets === what;
+
+/** A tool that is swung rather than thrown: it has a reach and nothing leaves it. */
+export const isMelee = tool => !tool.projectile && tool.reach != null;
 export const DEFAULT_TOOL = 'rod';
 
 export function toolFor(id) { return TOOLS[id] || TOOLS[DEFAULT_TOOL]; }

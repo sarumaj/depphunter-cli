@@ -225,15 +225,63 @@ main { position: relative; flex: 1; min-height: 0; }
     linear-gradient(var(--text), var(--text)) right / 8px 1.5px no-repeat;
   opacity: 0.75;
 }
+/* The readout is three counters and nothing else: what the walker is doing is in
+   front of them, and what they can press is one keystroke away (?). Anything that
+   does not change while walking was prose in the way of the map. */
 #walk-hud .w-bar {
   position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
-  max-width: calc(100% - 32px);
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  border: 1px solid var(--border); border-radius: 8px; box-shadow: var(--shadow);
-  padding: 6px 12px; text-align: center; color: var(--text-2);
+  max-width: calc(100% - 32px); text-align: center; color: var(--text-2);
 }
-#walk-hud .w-bar b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
-#walk-hud .w-keys { font-size: 12px; margin-top: 2px; }
+#walk-hud .w-stats { display: flex; gap: 6px; justify-content: center; }
+#walk-hud .w-chip {
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  border: 1px solid var(--border); border-radius: 999px; box-shadow: var(--shadow);
+  font-size: 12px; line-height: 18px;
+}
+#walk-hud .w-chip s { text-decoration: none; opacity: 0.55; }
+#walk-hud .w-chip b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
+/* Drawn rather than written: a chip wide enough for a word is a chip in the way. */
+#walk-hud .w-ic { width: 11px; height: 11px; opacity: 0.75; background: var(--text-2); }
+#walk-hud .w-ic.tag { clip-path: polygon(0 0, 55% 0, 100% 45%, 45% 100%, 0 55%); }
+#walk-hud .w-ic.bug { border-radius: 50% 50% 46% 46%; clip-path: inset(0 round 45%); }
+#walk-hud .w-ic.globe { border-radius: 50%; background: none; border: 1.5px solid var(--text-2); }
+#walk-hud .w-keys { font-size: 12px; margin-top: 5px; color: var(--text-2);
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px; box-shadow: var(--shadow); }
+
+/* The tools, as slots along the bottom: the number that picks each one, and the name
+   of the one in hand. A shooter's row, for the same reason - which tool is out is a
+   thing to see rather than to read. */
+#walk-hud .w-foot {
+  position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center; gap: 5px;
+  max-width: calc(100% - 380px);
+}
+#walk-hud .w-slots { display: flex; gap: 5px; }
+#walk-hud .w-slot {
+  display: flex; align-items: center; gap: 5px; padding: 3px 7px;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  border: 1px solid var(--border); border-radius: 7px;
+  font-size: 11px; color: var(--text-2); opacity: 0.66;
+}
+#walk-hud .w-slot kbd { font-size: 10px; padding: 0 3px; }
+#walk-hud .w-slot .w-slot-name { display: none; }
+#walk-hud .w-slot[aria-selected="true"] {
+  opacity: 1; color: var(--text); border-color: var(--accent);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow: var(--shadow);
+}
+#walk-hud .w-slot[aria-selected="true"] .w-slot-name { display: inline; font-weight: 600; }
+/* Each slot wears its tool: the reticle shapes again, small. */
+#walk-hud .w-slot i {
+  width: 12px; height: 12px; border: 1.5px solid currentColor; border-radius: 50%;
+}
+#walk-hud .w-slot[data-tool="rod"] i { border-color: #e4402f; background: linear-gradient(currentColor, currentColor) top / 100% 50% no-repeat; }
+#walk-hud .w-slot[data-tool="net"] i { border-style: dashed; }
+#walk-hud .w-slot[data-tool="camera"] i { border-radius: 2px; width: 15px; height: 11px; }
+#walk-hud .w-slot[data-tool="bubbles"] i { border-color: #7fc8f0; }
+#walk-hud .w-slot[data-tool="dart"] i { border-radius: 50%; box-shadow: inset 0 0 0 1px currentColor; }
 /* The bug tracker: a top-down sweep of the streets around the walker, so a finding
    somewhere across the map can be walked to rather than stumbled on. */
 #walk-hud .w-radar {
@@ -241,7 +289,7 @@ main { position: relative; flex: 1; min-height: 0; }
   display: flex; flex-direction: column; align-items: center; gap: 3px;
 }
 #walk-hud .w-radar canvas {
-  width: 150px; height: 150px; display: block;
+  display: block; /* the size is set as it zooms (walk.js) */
   border-radius: 50%; box-shadow: var(--shadow);
 }
 #walk-hud .w-nearest {
@@ -251,15 +299,27 @@ main { position: relative; flex: 1; min-height: 0; }
 }
 #walk-hud .w-nearest:empty { display: none; }
 
-/* What the crosshair is on, when it is a bug. */
+/* What the crosshair is on, when it is a bug - or out of reach, which is the one
+   case where the crosshair is on something and using the tool does nothing. */
 #walk-hud .w-target:not([hidden]) {
-  margin-top: 2px; font-size: 12px; color: var(--text);
+  margin-top: 5px; font-size: 12px; color: var(--text);
+  display: inline-block; padding: 2px 8px; border-radius: 6px;
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  border: 1px solid var(--border);
 }
+#walk-hud.far .w-target { color: var(--text-2); }
+/* Out of reach: the reticle says so before the click does. */
+#walk-hud.far .crosshair { opacity: 0.32; }
 #walk-hud .w-target .sev-dot { display: inline-block; margin: 0 6px 0 0; vertical-align: baseline; }
-/* What just happened, under the HUD bar. */
+/* What just happened, above the slots. */
 #walk-hud .w-flash:not(:empty) {
-  margin-top: 4px; padding: 3px 8px; border-radius: 6px;
-  background: color-mix(in srgb, var(--select) 20%, transparent); color: var(--text);
+  padding: 3px 9px; border-radius: 6px; font-size: 12px;
+  background: color-mix(in srgb, var(--select) 24%, transparent); color: var(--text);
+  border: 1px solid var(--border);
+}
+#walk-hud .w-hint:not(:empty) {
+  font-size: 11px; padding: 2px 8px; border-radius: 6px;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
 }
 #walk-hud.compact .w-keys { display: none; } /* folded away once the walker gets going */
 #walk-hud .crosshair { transition: width 0.12s, height 0.12s; }
