@@ -74,6 +74,9 @@ type lazyData struct {
 	pending bool
 	value   any // nil when unavailable
 	gz      []byte
+	// sum fingerprints the encoded value, so a re-read that produced the same answer
+	// can be recognised and not announced again.
+	sum [32]byte
 }
 
 // snapshot is one immutable analysis result with its encodings.
@@ -220,9 +223,14 @@ type References struct {
 func (s *Server) setLazy(name string, v any) error {
 	d := &lazyData{value: v}
 	if v != nil {
+		var raw bytes.Buffer
+		if err := json.NewEncoder(&raw).Encode(v); err != nil {
+			return err
+		}
+		d.sum = sha256.Sum256(raw.Bytes())
 		var buf bytes.Buffer
 		zw := gzip.NewWriter(&buf)
-		if err := json.NewEncoder(zw).Encode(v); err != nil {
+		if _, err := zw.Write(raw.Bytes()); err != nil {
 			return err
 		}
 		if err := zw.Close(); err != nil {
@@ -232,6 +240,14 @@ func (s *Server) setLazy(name string, v any) error {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
+	// A re-read that produced the same answer is not news. Saying so anyway has
+	// every browser reload the dataset and redraw for nothing - and re-reads are
+	// far more common than changes: with --watch, the scanner reports are re-read
+	// after any re-analysis, because a linter complains about the text of a file
+	// and fixing one changes neither its imports nor its size.
+	if old := s.lazy[name]; old != nil && !old.pending && old.sum == d.sum && (old.value == nil) == (v == nil) {
+		return nil
+	}
 	s.lazy[name] = d
 	s.broadcast(event{name, []byte(fmt.Sprintf(`{"available":%t}`, v != nil))})
 	return nil

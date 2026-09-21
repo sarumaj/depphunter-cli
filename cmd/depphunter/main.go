@@ -351,11 +351,11 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 		// A scanner writing its report again is news too: the backpack in the UI
 		// marks a caught finding fixed when it stops being reported, and that only
 		// works if the report is re-read when it is written.
-		reportDirs := findingDirs(cfg)
+		reportDirs, reportFiles := findingWatch(cfg)
 		watched := func(g *graph.Graph) []string {
 			return append(append(watchDirs(cfg.Root, g), gitDirs...), reportDirs...)
 		}
-		w.Sync(watched(g))
+		w.Sync(watched(g), reportFiles)
 		go w.Run(ctx, 300*time.Millisecond, func() {
 			start := time.Now()
 			ng, st, err := anal.Run(ctx, cfg.Root, opts)
@@ -366,7 +366,7 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 				return
 			}
 			c.Save()
-			w.Sync(watched(ng))
+			w.Sync(watched(ng), reportFiles)
 			changed, err := srv.Update(ng, st.ParsedFiles)
 			if err != nil {
 				log.Printf("update failed: %v", err)
@@ -399,19 +399,37 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 	return nil
 }
 
-// findingDirs lists the directories holding the scanner reports, so that rewriting
-// one is a change the watcher sees.
-func findingDirs(cfg config.Config) []string {
-	seen := map[string]bool{}
-	var dirs []string
-	for _, f := range findings.Files(cfg.Root, cfg.Findings) {
-		d := filepath.Dir(f)
-		if !seen[d] {
-			seen[d] = true
+// findingWatch says what to watch for the scanner reports, so that rewriting one is a
+// change the watcher sees: the named reports as single files, and the directory of
+// every pattern that is a glob.
+//
+// The distinction matters because a report is usually written into a directory that
+// holds a great deal besides - often the repository root - and a watch on a directory
+// reports every file written into it. Watching the report itself means a screenshot
+// or an editor's swap file landing beside it is no longer a reason to re-analyze the
+// repository and re-read the report. A glob has no one file to watch, and a new file
+// matching it is news, so there the whole directory stays watched.
+func findingWatch(cfg config.Config) (dirs, files []string) {
+	globbed := map[string]bool{}
+	for _, p := range cfg.Findings {
+		if !strings.ContainsAny(p, "*?[") {
+			continue
+		}
+		if !filepath.IsAbs(p) {
+			p = filepath.Join(cfg.Root, p)
+		}
+		d := filepath.Dir(p)
+		if !globbed[d] {
+			globbed[d] = true
 			dirs = append(dirs, d)
 		}
 	}
-	return dirs
+	for _, f := range findings.Files(cfg.Root, cfg.Findings) {
+		if !globbed[filepath.Dir(f)] {
+			files = append(files, f)
+		}
+	}
+	return dirs, files
 }
 
 // watchDirs lists the directories holding analyzed files: ignored trees are not watched.
