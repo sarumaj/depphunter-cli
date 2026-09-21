@@ -22,15 +22,22 @@ What the script does is fit them to the map:
 The node names are the contract with web/static/props.js.
 """
 
+# pyright: basic
 import hashlib
 import os
 import tempfile
 import urllib.request
 
 import bpy
-import bmesh  # only importable once bpy has loaded, so not in alphabetical order
-from bpy.types import Material, Object
-from mathutils import Vector
+
+try:  # only importable once bpy has loaded
+    import bmesh  # type: ignore[reportMissingImports]
+    from bpy.types import Material, Object  # type: ignore[reportMissingImports]
+    from mathutils import Vector  # type: ignore[reportMissingImports]
+except (ImportError, ModuleNotFoundError):
+    raise SystemExit(
+        "run this with Blender or the bpy module on the same Python it was built for"
+    )
 
 HERE: str = os.path.dirname(os.path.abspath(__file__))
 OUT: str = os.path.normpath(os.path.join(HERE, "..", "web", "static", "props.glb"))
@@ -100,31 +107,36 @@ def fetch(name: str, digest: str) -> str:
         print(f"fetching {url}")
         with urllib.request.urlopen(url) as r, open(path, "wb") as f:
             f.write(r.read())
+
     with open(path, "rb") as f:
         got = hashlib.sha256(f.read()).hexdigest()
+
     if got != digest:
         raise SystemExit(f"{path}: sha256 {got}, expected {digest}")
+
     return path
 
 
 def imported(path: str) -> list[Object]:
     """Everything one model brought in, as one mesh per material: a model may keep
     its trunk and its leaves in one mesh, and the two are colored separately here."""
-    before = set(bpy.data.objects)
-    bpy.ops.import_scene.gltf(filepath=path)
-    new = [o for o in bpy.data.objects if o not in before]
+    before = set(bpy.data.objects)  # type: ignore[reportAttributeAccessIssue]
+    bpy.ops.import_scene.gltf(filepath=path)  # type: ignore[reportAttributeAccessIssue]
+    new = [o for o in bpy.data.objects if o not in before]  # type: ignore[reportAttributeAccessIssue]
     # bpy leaves a default object behind whatever the factory settings say, and the
     # pack's files carry empties for the scene they were authored in.
     meshes = [o for o in new if o.type == "MESH" and o.name != "Icosphere"]
     for stray in [o for o in new if o not in meshes]:
-        bpy.data.objects.remove(stray, do_unlink=True)
-    bpy.ops.object.select_all(action="DESELECT")
+        bpy.data.objects.remove(stray, do_unlink=True)  # type: ignore[reportAttributeAccessIssue]
+
+    bpy.ops.object.select_all(action="DESELECT")  # type: ignore[reportAttributeAccessIssue]
     for o in meshes:
         o.select_set(True)
-    bpy.context.view_layer.objects.active = meshes[0]
-    bpy.ops.mesh.separate(type="MATERIAL")
-    out = [o for o in bpy.data.objects if o.select_get()]
-    bpy.ops.object.select_all(action="DESELECT")
+
+    bpy.context.view_layer.objects.active = meshes[0]  # type: ignore[reportAttributeAccessIssue]
+    bpy.ops.mesh.separate(type="MATERIAL")  # type: ignore[reportAttributeAccessIssue]
+    out = [o for o in bpy.data.objects if o.select_get()]  # type: ignore[reportAttributeAccessIssue]
+    bpy.ops.object.select_all(action="DESELECT")  # type: ignore[reportAttributeAccessIssue]
     return out
 
 
@@ -138,13 +150,16 @@ def join(objs: list[Object], name: str) -> Object | None:
     """One object out of several, or None if there were none."""
     if not objs:
         return None
-    bpy.ops.object.select_all(action="DESELECT")
+
+    bpy.ops.object.select_all(action="DESELECT")  # type: ignore[reportAttributeAccessIssue]
     for o in objs:
         o.select_set(True)
-    bpy.context.view_layer.objects.active = objs[0]
+
+    bpy.context.view_layer.objects.active = objs[0]  # type: ignore[reportAttributeAccessIssue]
     if len(objs) > 1:
-        bpy.ops.object.join()
-    out = bpy.context.view_layer.objects.active
+        bpy.ops.object.join()  # type: ignore[reportAttributeAccessIssue]
+
+    out = bpy.context.view_layer.objects.active  # type: ignore[reportAttributeAccessIssue]
     out.name = out.data.name = name
     # One material, so the part exports as one primitive: the UI shades it itself and
     # the models' own colors are not used.
@@ -152,13 +167,14 @@ def join(objs: list[Object], name: str) -> Object | None:
     out.data.materials.append(skin())
     while out.data.uv_layers:
         out.data.uv_layers.remove(out.data.uv_layers[0])
-    bpy.ops.object.select_all(action="DESELECT")
+
+    bpy.ops.object.select_all(action="DESELECT")  # type: ignore[reportAttributeAccessIssue]
     return out
 
 
 def skin() -> Material:
     """The one material every part shares; it carries no information the UI reads."""
-    return bpy.data.materials.get("prop") or bpy.data.materials.new("prop")
+    return bpy.data.materials.get("prop") or bpy.data.materials.new("prop")  # type: ignore[reportAttributeAccessIssue]
 
 
 def bounds(objs: list[Object]) -> tuple[Vector, Vector]:
@@ -169,6 +185,7 @@ def bounds(objs: list[Object]) -> tuple[Vector, Vector]:
             w = o.matrix_world @ Vector(corner)
             lo = Vector(map(min, lo, w))
             hi = Vector(map(max, hi, w))
+
     return lo, hi
 
 
@@ -217,11 +234,12 @@ def thin(objs: list[Object], budget: int) -> None:
     total = sum(len(o.data.polygons) for o in objs)
     if total <= budget:
         return
+
     for o in objs:
-        bpy.context.view_layer.objects.active = o
+        bpy.context.view_layer.objects.active = o  # type: ignore[reportAttributeAccessIssue]
         decimate = o.modifiers.new("Decimate", "DECIMATE")
         decimate.ratio = budget / total
-        bpy.ops.object.modifier_apply(modifier="Decimate")
+        bpy.ops.object.modifier_apply(modifier="Decimate")  # type: ignore[reportAttributeAccessIssue]
 
 
 def prepare(
@@ -234,25 +252,27 @@ def prepare(
         joined = join([o for o in meshes if role(o) == part], f"{prefix}_{part}")
         if joined:
             parts.append(joined)
+
     stand(parts, height)
     weld(parts)
     thin(parts, budget)
     for o in parts:
-        bpy.context.view_layer.objects.active = o
-        bpy.ops.object.shade_flat()
+        bpy.context.view_layer.objects.active = o  # type: ignore[reportAttributeAccessIssue]
+        bpy.ops.object.shade_flat()  # type: ignore[reportAttributeAccessIssue]
+
     return parts
 
 
 def main() -> None:
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    for stray in list(bpy.data.objects):
-        bpy.data.objects.remove(stray, do_unlink=True)
+    bpy.ops.wm.read_factory_settings(use_empty=True)  # type: ignore[reportAttributeAccessIssue]
+    for stray in list(bpy.data.objects):  # type: ignore[reportAttributeAccessIssue]
+        bpy.data.objects.remove(stray, do_unlink=True)  # type: ignore[reportAttributeAccessIssue]
 
     made = []
     for spec in MODELS:
         made += prepare(*spec)
 
-    bpy.ops.export_scene.gltf(
+    bpy.ops.export_scene.gltf(  # type: ignore[reportAttributeAccessIssue]
         filepath=OUT,
         export_format="GLB",
         export_skins=False,
@@ -265,6 +285,7 @@ def main() -> None:
     )
     for o in made:
         print(f"  {o.name}: {len(o.data.polygons)} faces")
+
     print(f"wrote {OUT}: {len(made)} parts, {os.path.getsize(OUT)} bytes")
 
 

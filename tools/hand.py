@@ -27,6 +27,7 @@ committed for that reason rather than built, and a regenerated one is equivalent
 without being identical.
 """
 
+# pyright: basic
 import hashlib
 import os
 import tarfile
@@ -34,10 +35,14 @@ import tempfile
 import urllib.request
 
 import bpy
-import bmesh  # only importable once bpy has loaded, so not in alphabetical order
-from bmesh.types import BMEdge, BMesh, BMVert
-from bpy.types import EditBone, Object
-from mathutils import Matrix, Vector
+
+try:  # only importable once bpy has loaded
+    import bmesh  # type: ignore[reportMissingImports]
+    from bmesh.types import BMEdge, BMesh, BMVert  # type: ignore[reportMissingImports]
+    from bpy.types import EditBone, Object  # type: ignore[reportMissingImports]
+    from mathutils import Matrix, Vector  # type: ignore[reportMissingImports]
+except (ImportError, ModuleNotFoundError):
+    raise SystemExit("this script must be run with Blender or the bpy module")
 
 HERE: str = os.path.dirname(os.path.abspath(__file__))
 OUT: str = os.path.normpath(os.path.join(HERE, "..", "web", "static", "hand.glb"))
@@ -125,16 +130,18 @@ def fetch() -> str:
 
 def load(path: str) -> tuple[Object, Object]:
     """The model's mesh and armature, and nothing else that came in with them."""
-    bpy.ops.wm.read_factory_settings(use_empty=True)
-    for stray in list(bpy.data.objects):
-        bpy.data.objects.remove(stray, do_unlink=True)
-    bpy.ops.import_scene.gltf(filepath=path)
-    rig = next(o for o in bpy.data.objects if o.type == "ARMATURE")
+    bpy.ops.wm.read_factory_settings(use_empty=True)  # type: ignore[reportAttributeAccessIssue]
+    for stray in list(bpy.data.objects):  # type: ignore[reportAttributeAccessIssue]
+        bpy.data.objects.remove(stray, do_unlink=True)  # type: ignore[reportAttributeAccessIssue]
+
+    bpy.ops.import_scene.gltf(filepath=path)  # type: ignore[reportAttributeAccessIssue]
+    rig = next(o for o in bpy.data.objects if o.type == "ARMATURE")  # type: ignore[reportAttributeAccessIssue]
     mesh = next(o for o in rig.children if o.type == "MESH")
     # The profile carries controller widgets alongside the hand, and bpy leaves a
     # default object behind whatever the factory settings say.
-    for stray in [o for o in bpy.data.objects if o not in (mesh, rig)]:
-        bpy.data.objects.remove(stray, do_unlink=True)
+    for stray in [o for o in bpy.data.objects if o not in (mesh, rig)]:  # type: ignore[reportAttributeAccessIssue]
+        bpy.data.objects.remove(stray, do_unlink=True)  # type: ignore[reportAttributeAccessIssue]
+
     mesh.name = mesh.data.name = "hand"
     rig.name = rig.data.name = "rig"
     return mesh, rig
@@ -155,11 +162,14 @@ def place(mesh: Object, rig: Object) -> dict[str, Vector]:
 
     for v in mesh.data.vertices:
         v.co = transform @ v.co
-    bpy.context.view_layer.objects.active = rig
-    bpy.ops.object.mode_set(mode="EDIT")
+
+    bpy.context.view_layer.objects.active = rig  # type: ignore[reportAttributeAccessIssue]
+    bpy.ops.object.mode_set(mode="EDIT")  # type: ignore[reportAttributeAccessIssue]
+
     for bone in rig.data.edit_bones:
         bone.head, bone.tail = transform @ bone.head, transform @ bone.tail
-    bpy.ops.object.mode_set(mode="OBJECT")
+
+    bpy.ops.object.mode_set(mode="OBJECT")  # type: ignore[reportAttributeAccessIssue]
     return {name: transform @ p for name, p in head.items()}
 
 
@@ -172,8 +182,8 @@ def rig_hand(rig: Object, head: dict[str, Vector]) -> tuple[Vector, Vector]:
     roll is set so that every bone's local x runs across the hand: that one axis is
     what a finger curls about, and hands.js curls them all the same way.
     """
-    bpy.context.view_layer.objects.active = rig
-    bpy.ops.object.mode_set(mode="EDIT")
+    bpy.context.view_layer.objects.active = rig  # type: ignore[reportAttributeAccessIssue]
+    bpy.ops.object.mode_set(mode="EDIT")  # type: ignore[reportAttributeAccessIssue]
     bones = rig.data.edit_bones
 
     for digit in DIGITS:
@@ -198,9 +208,9 @@ def rig_hand(rig: Object, head: dict[str, Vector]) -> tuple[Vector, Vector]:
     arm.head, arm.tail = elbow, head["wrist"]
     bones["wrist"].parent, bones["wrist"].use_connect = arm, True
 
-    bpy.ops.armature.select_all(action="SELECT")
-    bpy.ops.armature.calculate_roll(type="GLOBAL_POS_Z")
-    bpy.ops.object.mode_set(mode="OBJECT")
+    bpy.ops.armature.select_all(action="SELECT")  # type: ignore[reportAttributeAccessIssue]
+    bpy.ops.armature.calculate_roll(type="GLOBAL_POS_Z")  # type: ignore[reportAttributeAccessIssue]
+    bpy.ops.object.mode_set(mode="OBJECT")  # type: ignore[reportAttributeAccessIssue]
     return elbow, head["wrist"]
 
 
@@ -233,6 +243,7 @@ def forearm(mesh: Object, elbow: Vector, wrist: Vector) -> tuple[float, float, V
     ]
     if not cap:
         raise SystemExit("the model does not end in a cap across the wrist")
+
     bmesh.ops.delete(bm, geom=cap, context="FACES")
 
     rim = [e for e in bm.edges if len(e.link_faces) == 1]
@@ -253,7 +264,7 @@ def forearm(mesh: Object, elbow: Vector, wrist: Vector) -> tuple[float, float, V
     bm.to_mesh(mesh.data)
     bm.free()
     mesh.data.update()
-    return centre.dot(axis), width, axis
+    return centre.dot(axis), width, axis  # type: ignore[reportAttributeAccessIssue]
 
 
 def grow(
@@ -296,8 +307,9 @@ def weigh(mesh: Object, cuff: float, width: float, axis: Vector) -> None:
         share = min(max(1.0 - along / (width * 2.2), 0.0), 1.0)
         forearm_group.add([v.index], 1.0 - share, "REPLACE")
         wrist_group.add([v.index], share, "REPLACE")
-    bpy.context.view_layer.objects.active = mesh
-    bpy.ops.object.shade_smooth()
+
+    bpy.context.view_layer.objects.active = mesh  # type: ignore[reportAttributeAccessIssue]
+    bpy.ops.object.shade_smooth()  # type: ignore[reportAttributeAccessIssue]
 
 
 def material(mesh: Object) -> None:
@@ -318,7 +330,7 @@ def main() -> None:
     cuff, width, axis = forearm(mesh, elbow, wrist)
     weigh(mesh, cuff, width, axis)
 
-    bpy.ops.export_scene.gltf(
+    bpy.ops.export_scene.gltf(  # type: ignore[reportAttributeAccessIssue]
         filepath=OUT,
         export_format="GLB",
         export_skins=True,
