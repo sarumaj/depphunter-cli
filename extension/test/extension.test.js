@@ -47,7 +47,15 @@ describe('depphunter.open', { skip: available() ? false : 'no depphunter binary 
     const res = await fetch(address);
     assert.strictEqual(res.status, 200);
     // --embed, without which the editor's browser could not show the page at all.
-    assert.match(res.headers.get('content-security-policy'), /frame-ancestors vscode-webview:/);
+    const csp = res.headers.get('content-security-policy');
+    assert.match(csp, /frame-ancestors /);
+    // Every frame above the page has to be named, not only the one holding it: the
+    // built-in browser is the editor's window framing a webview framing the page
+    // that frames the map, and a single origin missing from this list is an empty
+    // tab with the reason buried in the webview's developer tools.
+    for (const origin of ['vscode-webview:', 'vscode-file:', 'https://*.vscode-cdn.net']) {
+      assert.ok(csp.includes(origin), `frame-ancestors is missing ${origin}: ${csp}`);
+    }
   });
 
   it('reuses the server rather than starting a second one', async () => {

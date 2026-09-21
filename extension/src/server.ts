@@ -19,11 +19,28 @@ import * as vscode from 'vscode';
 
 import { editorTemplate } from './launcher';
 
-// The origins the map may be framed by. A webview is given an origin of its own for
-// every session - vscode-webview://<uuid> in the desktop editor, and
-// https://<uuid>.vscode-cdn.net in the browser build - so there is no exact name to
-// give, only the scheme and the wildcard host.
-const FRAME_ORIGINS = ['vscode-webview:', 'https://*.vscode-cdn.net'];
+// The origins the map may be framed by.
+//
+// frame-ancestors is checked against every frame above the page, not just the one
+// holding it, and the built-in browser is three deep: the editor's window frames the
+// webview, the webview frames the extension's page, and that page frames the map. So
+// naming the webview alone leaves the window above it violating the policy, and the
+// browser refuses the page before it loads - an empty tab, with the reason only in
+// the webview's own developer tools.
+//
+//   vscode-webview:          the webview, which is given an origin of its own for
+//                            every session (vscode-webview://<uuid>), so there is
+//                            no exact name to give
+//   vscode-file:             the editor's window, which is served from
+//                            vscode-file://vscode-app in the desktop editor
+//   https://*.vscode-cdn.net the webview in the browser build
+//
+// The browser build's window is whatever page the editor is being served from, which
+// cannot be known from here - one of the two reasons the browser build is not
+// supported (the other is in the README: the server answers to loopback only).
+// Another editor with another scheme can be added with --embed through
+// depphunter.args, which are passed after these.
+const FRAME_ORIGINS = ['vscode-webview:', 'vscode-file:', 'https://*.vscode-cdn.net'];
 
 const READY = /\bserving at (\S+)/;
 
