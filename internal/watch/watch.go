@@ -9,6 +9,7 @@ package watch
 import (
 	"context"
 	"log"
+	"path/filepath"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -17,6 +18,8 @@ import (
 type Watcher struct {
 	w       *fsnotify.Watcher
 	watched map[string]bool
+	dirs    map[string]bool // directories in which every change counts
+	files   map[string]bool // single files that count in the directories holding them
 	warned  bool
 }
 
@@ -25,14 +28,30 @@ func New() (*Watcher, error) {
 	if err != nil {
 		return nil, err
 	}
-	return &Watcher{w: w, watched: map[string]bool{}}, nil
+	return &Watcher{
+		w:       w,
+		watched: map[string]bool{},
+		dirs:    map[string]bool{},
+		files:   map[string]bool{},
+	}, nil
 }
 
-// Sync makes the watched set equal to dirs (absolute paths).
-func (w *Watcher) Sync(dirs []string) {
-	want := make(map[string]bool, len(dirs))
+// Sync makes the watched set equal to dirs, plus the directories holding files (all
+// absolute paths). A change anywhere in dirs is a change; in a directory watched only
+// because it holds one of files, only those files are.
+func (w *Watcher) Sync(dirs, files []string) {
+	want := make(map[string]bool, len(dirs)+len(files))
+	w.dirs = make(map[string]bool, len(dirs))
+	w.files = make(map[string]bool, len(files))
+	for _, f := range files {
+		w.files[f] = true
+		want[filepath.Dir(f)] = true
+	}
 	for _, d := range dirs {
+		w.dirs[d] = true
 		want[d] = true
+	}
+	for d := range want {
 		if w.watched[d] {
 			continue
 		}
@@ -54,6 +73,15 @@ func (w *Watcher) Sync(dirs []string) {
 	}
 }
 
+// counts reports whether an event is one of the changes that were asked for. A watch
+// is on a whole directory even when only one file in it was asked for, so a scanner's
+// report is watched together with everything else written beside it - and a directory
+// a tool writes a report into usually holds a good deal else. Re-analyzing the
+// repository for those is work nobody asked for.
+func (w *Watcher) counts(name string) bool {
+	return w.dirs[filepath.Dir(name)] || w.files[name]
+}
+
 // Run calls onChange once changes have been quiet for debounce, until ctx ends.
 // Changes that arrive while onChange runs trigger another call afterwards.
 func (w *Watcher) Run(ctx context.Context, debounce time.Duration, onChange func()) {
@@ -70,6 +98,9 @@ func (w *Watcher) Run(ctx context.Context, debounce time.Duration, onChange func
 			}
 			if ev.Op == fsnotify.Chmod {
 				continue // metadata only; contents did not change
+			}
+			if !w.counts(ev.Name) {
+				continue
 			}
 			timer.Reset(debounce)
 		case err, ok := <-w.w.Errors:

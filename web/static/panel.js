@@ -434,17 +434,20 @@ export class Panel {
     } catch (e) {
       text = `(${e.message})`;
     }
-    if (seq !== this.seq) return; // selection changed meanwhile
-
-    const lang = HLJS[file.lang];
-    let lines;
-    if (lang && hljs.getLanguage(lang) && text.length < MAX_HIGHLIGHT) {
-      lines = splitHighlighted(hljs.highlight(text, { language: lang, ignoreIllegals: true }).value);
-    } else {
-      lines = text.split('\n').map(escapeHTML);
+    // The selection changed while the file was being read - or, far more often, a
+    // live update redrew the panel for the same node, throwing this <pre> away and
+    // starting its own read. Nothing may go into a <pre> that is no longer on screen,
+    // but the text is still good: while the panel is showing this same file and the
+    // redraw's own read has not come back yet, fill the pane that is there instead of
+    // leaving it saying "Loading..." for as long as the updates keep arriving.
+    if (seq !== this.seq) {
+      if (this.node?.id === node.id) {
+        const live = this.body.querySelector('pre.code');
+        if (live && !live.dataset.filled) paint(live, text, file);
+      }
+      return;
     }
-    if (lines.length && lines[lines.length - 1] === '') lines.pop();
-    pre.innerHTML = lines.map(l => `<span class="ln">${l || ' '}</span>`).join('');
+    paint(pre, text, file);
 
     const outline = file.children.filter(c => c.kind === 'symbol');
     if (outline.length) {
@@ -463,6 +466,22 @@ export class Panel {
     el.classList.add('hit');
     el.scrollIntoView({ block: 'center' });
   }
+}
+
+
+// The file, one <span> per line so a symbol can be scrolled to, highlighted when
+// hljs knows the language and the file is small enough to be worth it.
+function paint(pre, text, file) {
+  const lang = HLJS[file.lang];
+  let lines;
+  if (lang && hljs.getLanguage(lang) && text.length < MAX_HIGHLIGHT) {
+    lines = splitHighlighted(hljs.highlight(text, { language: lang, ignoreIllegals: true }).value);
+  } else {
+    lines = text.split('\n').map(escapeHTML);
+  }
+  if (lines.length && lines[lines.length - 1] === '') lines.pop();
+  pre.innerHTML = lines.map(l => `<span class="ln">${l || ' '}</span>`).join('');
+  pre.dataset.filled = '1';
 }
 
 
