@@ -1,4 +1,4 @@
-# This repository is a Go project that also happens to be a VS Code extension, so
+# The repository is a Go project that also happens to be a VS Code extension, so
 # this says what goes into the package rather than what stays out of it: everything
 # is left out, and the few files the extension is made of are let back in. A list
 # the other way round would have to be kept up with every directory ever added.
@@ -8,3 +8,6 @@
 !README.md
 !LICENSE
 !extension/out/**/*.js
+# The binary a released build ships, put here by the release workflow. A build from
+# a checkout has no bin/ and packages without one.
+!bin/**

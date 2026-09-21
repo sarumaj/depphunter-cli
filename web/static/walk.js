@@ -42,10 +42,11 @@ const BUG_AIM = t => 0.3 + t * 0.012;
 // gravity. Every tool that throws does say (tools.js); this is here so that adding
 // one cannot make it fall through the floor of the world instead.
 const DEFAULT_FLIGHT = { speed: 24, arc: 1, gravity: 6, drag: 0 };
-// The grapple: how fast the line reels the walker in, the longest it may pull before
-// letting go (so a hook on something that moved cannot strand anyone), and how far in
-// from a roof's edge it sets them down.
-const GRAPPLE_PULL = 17, GRAPPLE_TIME = 5, ROOF_IN = 0.5, NO_PULL = 1.2;
+// A line that has stuck: the longest it may pull before letting go (so a hook on
+// something that moved cannot strand anyone), how far in from a roof's edge it sets
+// the walker down, and how close a thing has to be before pulling to it is nothing.
+// How fast and how near is the tool's business (tools.js).
+const GRAPPLE_TIME = 5, ROOF_IN = 0.5, NO_PULL = 1.2;
 // The bug tracker: how far around the walker it sweeps, and how often it is redrawn.
 // A dozen times a second is plenty for something that turns as slowly as a walker.
 // The range follows the hunt - a four-file repository and a thousand-file one are both
@@ -1021,32 +1022,39 @@ export class Walker {
   // ---------------------------------------------------------------- the grapple
 
   /**
-   * The hook has bitten. What follows is not a tag but a climb: the walker is pulled
-   * along the line to the top of whatever it caught, which is how a facade is got up
-   * and a roof is arrived on. Caught on the ground from a roof, the same pull is the
-   * way down - one gesture, because going up and coming down are the same line.
+   * A line has stuck, and it pulls: the walker goes along it to what it caught.
+   *
+   * The grapple sets them on top of it, which is how a facade is got up and a roof
+   * arrived on - and, aimed off that roof at anything lower, how they get down again.
+   * The rod anchors where its hook landed instead, so a cast at the tenth floor
+   * brings the walker to that wall rather than standing them on the roof.
    */
   hook(at, box, shot) {
+    const line = shot.tool.reel;
     const to = at.clone();
-    if (box && box.kind !== 'land' && box.kind !== 'terrace') {
+    if (line.onto && box && box.kind !== 'land' && box.kind !== 'terrace') {
       // Onto it rather than against it: the top of the box, a step in from the face
       // so the landing is on the roof and not on its edge.
       to.y = box.y + box.h + 0.02;
       to.x += clamp(box.x - to.x, -ROOF_IN, ROOF_IN);
       to.z += clamp(box.z - to.z, -ROOF_IN, ROOF_IN);
-    } else {
+    } else if (!box || box.kind === 'land' || box.kind === 'terrace') {
       to.y = this.height(to.x, to.z);
     }
+    const away = Math.hypot(to.x - this.p.x, to.y - this.p.feet, to.z - this.p.z);
     // A hook that lands where the walker already is pulls them nowhere: looking
     // straight down from a roof catches that roof. Say so instead of paying out a
     // line and reeling in nothing - from up here, the way down is over the edge.
-    if (Math.hypot(to.x - this.p.x, to.y - this.p.feet, to.z - this.p.z) < NO_PULL) {
-      this.flash('Nothing to be pulled to - aim past the edge');
+    if (away < Math.max(NO_PULL, line.stop)) {
+      if (line.onto) this.flash('Nothing to be pulled to - aim past the edge');
       return;
     }
+    // And a line only so long: past that the cast still lands, it simply does not
+    // drag the walker the width of the map to where it landed.
+    if (away > line.max) return;
     const up = to.y > this.p.feet;
     this.cutLine();
-    this.pull = { to, t: 0, mesh: shot.mesh, line: shot.line };
+    this.pull = { to, t: 0, line, mesh: shot.mesh, rope: shot.line };
     this.p.fly = false;
     this.p.vy = 0;
     this.flash(up ? 'Line away - going up' : 'Line away - going down');
@@ -1059,7 +1067,7 @@ export class Walker {
     const dx = to.x - p.x, dy = to.y - p.feet, dz = to.z - p.z;
     const d = Math.hypot(dx, dy, dz);
     this.pull.t += dt;
-    if (d < 0.25 || this.pull.t > GRAPPLE_TIME) {
+    if (d < this.pull.line.stop || this.pull.t > GRAPPLE_TIME) {
       this.cutLine();
       // Let go standing on what was arrived at, rather than falling back off it.
       p.feet = Math.max(p.feet, this.height(p.x, p.z));
@@ -1067,7 +1075,7 @@ export class Walker {
       p.ground = true;
       return;
     }
-    const step = Math.min(d, GRAPPLE_PULL * dt);
+    const step = Math.min(d, this.pull.line.speed * dt);
     p.x += (dx / d) * step;
     p.feet += (dy / d) * step;
     p.z += (dz / d) * step;
@@ -1075,9 +1083,9 @@ export class Walker {
     p.ground = false;
     // The hook stays where it bit, and the line follows the hand to it.
     if (this.pull.mesh) this.pull.mesh.position.copy(to);
-    if (this.pull.line) {
+    if (this.pull.rope) {
       const tip = this.muzzle() || new THREE.Vector3(p.x, p.feet + EYE - 0.05, p.z);
-      this.pull.line.geometry.setFromPoints([tip, to.clone()]);
+      this.pull.rope.geometry.setFromPoints([tip, to.clone()]);
     }
   }
 
@@ -1085,7 +1093,7 @@ export class Walker {
   cutLine(say) {
     if (!this.pull) return;
     if (this.pull.mesh) this.scene.scene.remove(this.pull.mesh);
-    if (this.pull.line) this.scene.scene.remove(this.pull.line);
+    if (this.pull.rope) this.scene.scene.remove(this.pull.rope);
     this.pull = null;
     if (say) this.flash(say);
   }
@@ -1322,9 +1330,12 @@ export class Walker {
         m.position.y += dart.arc * 4 * u * (1 - u);
         if (u >= 1) {
           done.push(dart);
-          if (dart.tool.grapple) { dart.kept = true; this.hook(m.position, dart.target, dart); }
-          else if (dart.bug) this.bugs.catch(dart.bug);
-          else this.tag(dart.target);
+          // A rod both lands the cast and hauls on it; a grapple only hauls.
+          if (!dart.tool.climbs) {
+            if (dart.bug) this.bugs.catch(dart.bug);
+            else if (dart.target) this.tag(dart.target);
+          }
+          if (dart.tool.reel) { dart.kept = true; this.hook(m.position, dart.target, dart); }
         }
       } else {
         // A miss flies on under the tool's own physics: a dart drops like a dart, a
@@ -1338,10 +1349,17 @@ export class Walker {
         const bug = hits(dart.tool, 'bugs') ? this.bugs?.at(m.position) : null;
         if (bug) this.bugs.catch(bug);
         const hit = this.boxAt(m.position);
-        // A grapple that finds anything solid bites it, the ground included: that is
-        // what makes a shot off a roof a way down rather than a wasted line.
-        if (hit && dart.tool.grapple) { dart.kept = true; this.hook(m.position, hit, dart); }
-        else if (hit && hits(dart.tool, 'buildings') && hit.kind !== 'land' && hit.kind !== 'terrace') this.tag(hit);
+        if (hit && !dart.tool.climbs && hits(dart.tool, 'buildings')
+          && hit.kind !== 'land' && hit.kind !== 'terrace') this.tag(hit);
+        // A grapple bites anything solid, the ground included: that is what makes a
+        // shot off a roof a way down rather than a wasted line. A rod does not - a
+        // cast that falls short lands on the pavement, and a line that hauls the
+        // walker a step across their own street is not worth having.
+        const ground = hit && (hit.kind === 'land' || hit.kind === 'terrace');
+        if (hit && dart.tool.reel && (dart.tool.climbs || !ground)) {
+          dart.kept = true;
+          this.hook(m.position, hit, dart);
+        }
         if (bug || hit || m.position.y < WATER || dart.t > 6) done.push(dart);
       }
       // A dart points along its flight; a hoop spins, a bubble wobbles, a bobber
@@ -1357,7 +1375,7 @@ export class Walker {
       }
     }
     for (const dart of done) {
-      // A grapple that bit keeps its hook and its line: they are what the walker is
+      // A line that bit keeps its hook and its rope: they are what the walker is
       // being pulled along, and cutLine is what takes them off the map.
       if (!dart.kept) {
         this.scene.scene.remove(dart.mesh);

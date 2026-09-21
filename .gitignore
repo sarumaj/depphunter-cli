@@ -1,5 +1,6 @@
 /depphunter
 /dist/
+/bin/
 .gradle/
 node_modules/
 extension/out/

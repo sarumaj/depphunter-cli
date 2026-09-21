@@ -17,6 +17,7 @@
 import { ChildProcess, spawn } from 'node:child_process';
 import * as vscode from 'vscode';
 
+import { binaryFor } from './binary';
 import { editorTemplate } from './launcher';
 
 // The origins the map may be framed by.
@@ -56,13 +57,14 @@ export class StartError extends Error {
 }
 
 /**
- * Starts a server for root and resolves once it says where it is listening. The
- * promise rejects if the binary is missing, if the server exits first, or if token
- * is cancelled; in every one of those cases nothing is left running.
+ * Starts a server for root and resolves once it says where it is listening. home is
+ * the extension's own directory, where a released build keeps the binary it ships.
+ * The promise rejects if the binary is missing, if the server exits first, or if
+ * token is cancelled; in every one of those cases nothing is left running.
  */
-export function start(root: string, log: vscode.OutputChannel, token: vscode.CancellationToken): Promise<Running> {
+export function start(root: string, home: string | undefined, log: vscode.OutputChannel, token: vscode.CancellationToken): Promise<Running> {
   const cfg = vscode.workspace.getConfiguration('depphunter', vscode.Uri.file(root));
-  const bin = cfg.get<string>('path')?.trim() || 'depphunter';
+  const bin = binaryFor(cfg.get<string>('path'), home);
   const args = argv(cfg, root);
 
   log.appendLine(`> ${bin} ${args.join(' ')}`);
