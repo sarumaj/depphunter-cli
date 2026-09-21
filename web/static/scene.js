@@ -17,6 +17,10 @@ const ISO_POLAR = Math.acos(1 / Math.sqrt(3)); // true isometric elevation (35.2
 
 // The styles, as the shaders number them (city.js cityTexture).
 const STYLE_CODES = { city: 0, circuit: 1, galaxy: 2 };
+// The styles whose ground does not hold still: the galaxy's void drifts and the
+// circuit's backplane carries current. A city's sea ripples too, but only close up,
+// and walk mode draws its own frames.
+const MOVES = new Set(['circuit', 'galaxy']);
 
 export class MapScene {
   constructor(container) {
@@ -146,6 +150,9 @@ export class MapScene {
     if (this.style === id) return;
     this.style = id;
     this.curve.uStyle.value = STYLE_CODES[id] ?? 0;
+    // Two of the three have something moving in them, and the map view is drawn on
+    // demand, so they have to ask for a ticker. The style knows; nobody else has to.
+    this.setAnimated(MOVES.has(id));
     if (this.boxes) this.setBoxes(this.boxes, this.boxColors);
     this.requestRender();
   }

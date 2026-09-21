@@ -953,6 +953,31 @@ export function waterMaterial(uniforms) {
       uniform float uTime, uNight, uStyle;
       varying vec3 vW;
 
+      const float BUS = 1.6;    // how far apart the backplane's tracks run
+      const float TRACK = 0.05; // how wide one is, in lanes
+      const float RUN = 7.0;    // and how far apart the pulses on one of them are
+      const float FLOW = 0.16;  // runs per second: about one unit and a bit a second
+      const vec3 CURRENT = vec3(0.35, 0.78, 1.0);
+
+      /**
+       * How much charge is passing this point of a lane. The lanes alternate
+       * direction and each starts at a phase of its own, so the plane reads as
+       * traffic rather than as one pattern marching in step. The pulse is a comet -
+       * a bright head with a tail drawn out behind it - because a symmetrical blob
+       * says it is moving and not which way.
+       *
+       * It fades out once a pixel covers a good part of the run between two pulses:
+       * a train of comets seen from far enough away is a flicker, and the map view
+       * is often seen from exactly that far away.
+       */
+      float charge(float along, float lane, float w) {
+        float dir = mod(lane, 2.0) * 2.0 - 1.0;
+        float u = fract(along / RUN + dir * uTime * FLOW + hash12(vec2(lane, 7.0)));
+        float head = exp(-u * u * 420.0);           // the front of it
+        float tail = exp(-u * 4.5) * step(0.0, u);  // and what it drags
+        return (head + 0.6 * tail) * (1.0 - smoothstep(0.03, 0.14, w));
+      }
+
       /**
        * How bright a star is at this moment, between a half and one. Each has its own
        * phase, taken from the cell it sits in, and its own rate from the layer it
@@ -997,21 +1022,44 @@ export function waterMaterial(uniforms) {
         diffuseColor.rgb += vec3(0.86, 0.9, 1.0) * starDot(s1, 0.985, 0.13) * 1.6 * breathe(s1, 0.7);
         diffuseColor.rgb += vec3(1.0, 0.86, 0.66) * starDot(s2, 0.992, 0.1) * 2.0 * breathe(s2, 0.45);
       } else if (uStyle > 0.5) {
-        // Around the board there is only the bench it lies on: an anodized plate,
-        // brushed along one axis, with the cutting grid scribed across it. The brush
-        // is what the flat grey was missing - a bench with nothing on it but a grid
-        // reads as graph paper.
-        vec2 t = vW.xz / 0.9;
+        // Off the edge of the board is the backplane it is plugged into, and it is
+        // live. This is the circuit style's water: the place the map will not let
+        // you walk. A flat grey bench said nothing about that - it read as a floor -
+        // and a bus with charge running down it says it without a word.
+        //
+        // The plane is dark and brushed, with a copper track down the middle of
+        // every lane in both directions, and charge traveling along them: lanes run
+        // in alternating directions and start at their own phase, so what is seen is
+        // traffic rather than a pattern marching in step.
+        vec2 t = vW.xz / BUS;
         vec2 tw = fwidth(t) + 1e-4;
-        float grid = max(1.0 - smoothstep(0.012 - tw.x, 0.012 + tw.x, abs(fract(t.x) - 0.5)),
-                         1.0 - smoothstep(0.012 - tw.y, 0.012 + tw.y, abs(fract(t.y) - 0.5)));
+        vec2 mid = abs(fract(t) - 0.5); // how far into a lane, in lanes
         float brush = vnoise(vec2(vW.x * 160.0, vW.z * 2.5)) + 0.5 * vnoise(vec2(vW.x * 420.0, vW.z * 1.3));
-        float bw = fwidth(vW.x * 160.0);
-        brush = mix(brush, 0.75, smoothstep(0.35, 1.2, bw)); // to its mean when minified
-        diffuseColor.rgb *= 0.9 + 0.13 * (brush - 0.75) + 0.12 * vnoise(vW.xz * 8.0);
-        // Anodizing is never quite even: broad, very slight clouding over the brush.
-        diffuseColor.rgb *= 0.96 + 0.08 * fbm(vW.xz * 0.35);
-        diffuseColor.rgb *= 1.0 + 0.5 * grid * (1.0 - smoothstep(0.02, 0.08, max(tw.x, tw.y)));
+        brush = mix(brush, 0.75, smoothstep(0.35, 1.2, fwidth(vW.x * 160.0))); // to its mean, minified
+        diffuseColor.rgb *= 0.42 + 0.12 * (brush - 0.75) + 0.08 * vnoise(vW.xz * 8.0);
+
+        // The tracks: a hair of copper down each lane. They are left to soften into
+        // the plane as the map is pulled away rather than held to a pixel - a grid
+        // of lines finer than the screen can draw is a brown haze, and the pulses
+        // are what has to carry this from a distance, not the lines they run on.
+        float onX = 1.0 - smoothstep(TRACK - tw.y, TRACK + tw.y, mid.y);
+        float onZ = 1.0 - smoothstep(TRACK - tw.x, TRACK + tw.x, mid.x);
+        float track = max(onX, onZ) * (1.0 - smoothstep(0.09, 0.3, max(tw.x, tw.y)));
+        diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.3, 0.17, 0.06) * (0.8 + 0.4 * brush), track);
+
+        // The charge. Each lane carries a train of pulses, running one way on the
+        // even lanes and the other on the odd ones; a pulse is a comet, bright at
+        // the head and drawn out behind it, because that is what reads as a
+        // direction at a glance.
+        float goX = charge(vW.x, floor(t.y), tw.y);
+        float goZ = charge(vW.z, floor(t.x), tw.x);
+        diffuseColor.rgb += CURRENT * (onX * goX + onZ * goZ);
+        // And the light it throws on the plane beside it, which is what makes the
+        // whole of the off-board area read as live rather than as a dark floor.
+        float haloX = max(0.11, tw.y * 2.0), haloZ = max(0.11, tw.x * 2.0);
+        float nearX = exp(-mid.y * mid.y / (haloX * haloX));
+        float nearZ = exp(-mid.x * mid.x / (haloZ * haloZ));
+        diffuseColor.rgb += CURRENT * 0.3 * (nearX * goX + nearZ * goZ);
       } else {
         // Open water: a long swell with wind chop riding on it, the crests catching
         // the sky and a little of it showing through where the water is thin. Two
@@ -1420,8 +1468,8 @@ export function makeProps(boxes, bendable, style = 'city') {
   const group = new THREE.Group();
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
   const c = new THREE.Color();
-  const add = (geo, color, items, place, tint) => {
-    const mesh = new THREE.InstancedMesh(geo, bendable(new THREE.MeshBasicMaterial({ color, vertexColors: true })), Math.max(1, items.length));
+  const add = (geo, color, items, place, tint, opts) => {
+    const mesh = new THREE.InstancedMesh(geo, bendable(new THREE.MeshBasicMaterial({ color, vertexColors: true, ...opts })), Math.max(1, items.length));
     mesh.count = items.length;
     items.forEach((it, i) => {
       mesh.setMatrixAt(i, place(it, m));
@@ -1443,6 +1491,15 @@ export function makeProps(boxes, bendable, style = 'city') {
   add(set.pole, set.poleColor, lamps, lampAt);
   group.userData.heads = add(set.lampHead, set.headColor, lamps, lampAt);
   group.userData.night = set.headNight;
+  if (set.glowAt !== undefined) {
+    for (const [r, opacity] of GLOW) {
+      const mesh = add(glowShell(r, set.glowAt), set.headNight, lamps, lampAt, null, {
+        vertexColors: false, transparent: true, opacity,
+        blending: THREE.AdditiveBlending, depthWrite: false,
+      });
+      mesh.userData.glow = opacity;
+    }
+  }
   // What a walker cannot walk through. A trunk, a capacitor's case, a crystal and a
   // lamp post are all a circle standing on a spot; a bush is something to walk over.
   group.userData.obstacles = [
@@ -1506,7 +1563,10 @@ function plantParks(boxes, tree, bush) {
 /** Day or night for the props: the lights come on, everything else darkens. */
 export function setNight(group, night) {
   for (const mesh of group.children) {
-    if (mesh === group.userData.heads && night) mesh.material.color.set(group.userData.night);
+    // A glow is the one thing that does not go down with the light: it is the
+    // light. It is drawn a little stronger in the dark, as one looks.
+    if (mesh.userData.glow) mesh.material.opacity = mesh.userData.glow * (night ? 1.5 : 1);
+    else if (mesh === group.userData.heads && night) mesh.material.color.set(group.userData.night);
     else mesh.material.color.set(mesh.userData.day).multiplyScalar(night ? 0.4 : 1);
   }
 }
@@ -1634,6 +1694,12 @@ const LED = merge([
   shaded(new THREE.CylinderGeometry(0.038, 0.042, 0.08, 10).translate(0, 0.46, 0)),
   shaded(new THREE.SphereGeometry(0.038, 10, 6, 0, Math.PI * 2, 0, Math.PI / 2).translate(0, 0.54, 0)),
 ]);
+// What a lit LED throws around itself. Nothing on this map is lit and there is no
+// pass to bloom in, so a glow has to be geometry: shells of light over the lens,
+// added to whatever is behind them, the wider one fainter. Two is enough to read as
+// one soft ball at this size, and they cost two draws however many lights there are.
+const GLOW = [[0.075, 0.55], [0.135, 0.22], [0.24, 0.07]];
+const glowShell = (r, y) => new THREE.SphereGeometry(r, 9, 6).translate(0, y, 0);
 
 // What grows out in the dark: spires of crystal, and rubble that still glows.
 const shard = (r, h, x, y, z, tilt = 0) => shaded(
@@ -1664,7 +1730,9 @@ const PROPS = {
   },
   circuit: {
     species: PARTS, stem: '#b9bec6', low: SMD, lowHue: 0.09,
-    pole: LED_LEGS, poleColor: '#b9bec6', lampHead: LED, headColor: '#c94a3a', headNight: '#ff6a52',
+    pole: LED_LEGS, poleColor: '#b9bec6', lampHead: LED, headColor: '#e2513c', headNight: '#ff6a52',
+    // An LED is lit whether or not the room is: the glow sits over its lens.
+    glowAt: 0.52,
     solid: 0.09, post: 0.03,
     // Parts are made in a handful of colors, not a spectrum: a little jitter around
     // the one the part type is usually sold in.
