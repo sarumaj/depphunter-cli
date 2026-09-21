@@ -13,6 +13,7 @@ import { loadPlants } from './props.js';
 import { Bugs } from './bugs.js';
 import { Pins } from './pins.js';
 import { Routes } from './routes.js';
+import { Avatar } from './avatar.js';
 import { Backpack } from './backpack.js';
 import { indexFindings } from './findings.js';
 import { $, h, fmt, escapeHTML } from './dom.js';
@@ -56,6 +57,7 @@ let walker;       // first-person walk mode
 let bugs;         // the findings walking the streets in walk mode
 let pins;         // the same findings, as markers over the map
 let routes;       // the selection's dependencies, laid down as roads
+let avatar;       // where the walker stands, seen from the map
 let pack;         // what has been caught (backpack.js)
 let aimX = 0;     // where the walk-mode tooltip was last placed
 
@@ -91,7 +93,7 @@ async function main() {
     }
     labels.draw();
   };
-  scene.onRender = () => { drawLabels(); pins?.follow(); };
+  scene.onRender = () => { drawLabels(); pins?.follow(); avatar?.follow(); };
   walker = new Walker(scene, $('walk-hud'), {
     onAim: (i, x, y) => {
       if (i !== state.hovered) {
@@ -130,6 +132,7 @@ async function main() {
   });
   pins = new Pins(scene);
   routes = new Routes(scene);
+  avatar = new Avatar(scene);
   pack = new Backpack(model.root.name, drawPack);
   bugs = new Bugs(scene, {
     // A caught bug reads itself out: the building it belongs to is selected and its
@@ -676,10 +679,22 @@ function reveal(n) {
 }
 
 // Walk mode: the map seen in first person on a small planet (walk.js).
+// The node the walker was last sent to. Entering walk mode resumes where they were
+// standing; picking a building on the map first is how you say "take me there
+// instead", so a selection that has moved on since wins over the remembered spot.
+let sentTo = null;
+
+function walkTarget() {
+  const id = state.selected?.id || null;
+  const same = id === sentTo;
+  sentTo = id;
+  return same ? null : state.selected && rep(state.selected);
+}
+
 function setWalking(on) {
   if (on && !walker.active) {
     showTooltip(-1);
-    walker.enter(state.selected && rep(state.selected), rep(model.root), L.bounds);
+    walker.enter(walkTarget(), rep(model.root), L.bounds);
   } else if (!on && walker.active) {
     walker.exit(); // calls back here once it has left
     return;
@@ -688,6 +703,9 @@ function setWalking(on) {
   $('map').parentElement.classList.toggle('walking', on);
   // The pins are how findings show on the map; in the street they are bugs instead.
   pins.show(!on && !!state.findings);
+  // ... and the walker, who is only worth drawing when you are not being them.
+  avatar.set(walker.stance(), pal.avatar);
+  avatar.show(!on);
   if (on) setPackOpen(false);
   // The map view must never keep the pointer captured: the cursor would be invisible.
   if (!on && document.pointerLockElement) document.exitPointerLock();
@@ -713,6 +731,8 @@ function relayout() {
   if (bugs) placeBugs();
   const to = anchor && rep(anchor.node);
   if (to) walker.reanchor(anchor, to);
+  avatar.set(walker.stance(), pal.avatar);
+  avatar.show(!walker.active);
   refreshFocus();
 }
 
@@ -1009,6 +1029,7 @@ function applyTheme() {
   langs = languageColors(model, pal, slots);
   scene.setBackground({ water: pal.water, sky: pal.sky, skyTop: pal.skyTop, sea: pal.sea, ground: pal.terraceA, land: pal.land });
   if (L) { scene.setOutline(focus?.selBox, pal.select); refreshFocus(); }
+  avatar?.set(walker.stance(), pal.avatar); // its color is the theme's too
   if (bugs && L) placeBugs(); // the bugs' colors come from the stylesheet too
   if (state.selected) panel.show(state.selected); // swatches in the panel
   drawLegend();

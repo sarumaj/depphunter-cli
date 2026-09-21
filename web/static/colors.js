@@ -26,6 +26,7 @@ export function readPalette() {
     edgeIn: v('--edge-in'),
     dim: v('--dim'),
     select: v('--text'),
+    avatar: v('--avatar') || v('--text'), // the walker's marker: ink, so it is nobody's language
   };
 }
 

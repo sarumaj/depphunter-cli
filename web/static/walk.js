@@ -106,6 +106,8 @@ export class Walker {
     this.swing = -1;            // seconds into the current gesture, -1 when idle
     this.pace = 0;              // how hard the walker is moving, for the tool's sway
     this.p = { x: 0, z: 0, feet: 0, vy: 0, yaw: 0, pitch: 0, ground: true, fly: false };
+    this.handsOff = false; // H: the view with nothing held in it
+    this.home = null;      // where the walker stood when they last left the street
     this.radius = 40;
     this.fov = FOV;
     this.bindInput();
@@ -176,6 +178,21 @@ export class Walker {
   }
 
   /** Starts walking in front of `box`, or on the south road of `block`. bounds sizes the planet. */
+  /**
+   * Where the walker is, for the map to draw them standing there (avatar.js), or null
+   * before they have ever been out. The anchor is the block under their feet, so the
+   * spot can be found again after the city has been rebuilt around it.
+   */
+  stance() {
+    if (!this.active) return this.home;
+    const { x, z, feet, yaw, pitch, fly } = this.p;
+    return { x, z, feet, yaw, pitch, fly, anchor: this.anchorFor() };
+  }
+
+  /**
+   * enter takes `box` when the map has somewhere in mind - a building just selected -
+   * and null when it has not, in which case the walker picks up where they left off.
+   */
   enter(box, block, bounds) {
     const diag = Math.hypot(bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ);
     this.radius = clamp(diag * 0.6, 15, Math.min(600, this.maxRadius()));
@@ -186,10 +203,16 @@ export class Walker {
     this.bugs?.show(true);
     this.showTool();
     this.setFog();
-    if (box) this.teleport(box);
-    else Object.assign(this.p, { x: block.x, z: block.z + block.d / 2 - 0.15, yaw: 0, pitch: -0.15 });
-    Object.assign(this.p, { vy: 0, fly: false });
-    this.p.feet = this.height(this.p.x, this.p.z);
+    if (box) {
+      this.teleport(box);
+      Object.assign(this.p, { vy: 0, fly: false });
+      this.p.feet = this.height(this.p.x, this.p.z);
+    } else if (this.home) {
+      this.resume(this.home);
+    } else {
+      Object.assign(this.p, { x: block.x, z: block.z + block.d / 2 - 0.15, yaw: 0, pitch: -0.15, vy: 0, fly: false });
+      this.p.feet = this.height(this.p.x, this.p.z);
+    }
     this.last = performance.now();
     this.scoped = false;
     this.fov = FOV;
@@ -202,6 +225,8 @@ export class Walker {
 
   exit() {
     if (!this.active) return;
+    // Where they stood, so coming back is coming back rather than starting again.
+    this.home = this.stance();
     this.active = false;
     this.keys.clear();
     for (const dart of this.darts) this.scene.scene.remove(dart.mesh);
@@ -232,6 +257,25 @@ export class Walker {
    * edge looking across it; beside anything else, on its lowest side that is not
    * water, looking at it.
    */
+  /**
+   * Back to a remembered stance. The city may have been rebuilt while the walker was
+   * away - a depth change, a filter, a live update - so the block they were standing
+   * on is looked for by name and they are put back against it; failing that they land
+   * where they were and step aside from whatever now stands there.
+   */
+  resume(home) {
+    Object.assign(this.p, { x: home.x, z: home.z, feet: home.feet, yaw: home.yaw, pitch: home.pitch, vy: 0, fly: !!home.fly });
+    const now = home.anchor && this.boxes?.find(b => b.node?.id === home.anchor.node.id);
+    if (now) {
+      this.reanchor(home.anchor, now);
+      return;
+    }
+    this.confine();
+    this.makeRoom(this.p.feet);
+    const floor = this.height(this.p.x, this.p.z);
+    this.p.feet = this.p.fly ? Math.max(this.p.feet, floor) : floor;
+  }
+
   teleport(box) {
     const p = this.p, gap = 1.0;
     if (box.kind === 'terrace') {
@@ -258,8 +302,25 @@ export class Walker {
   // ------------------------------------------------------------------ the tool
 
   /** Put the hand and its tool in front of the camera. */
+  /**
+   * Whether anything is held. An empty view is worth having - a hand and a rod take
+   * up the lower right of the screen, and a screenshot or a look straight down at a
+   * street wants neither - so H puts the tool away and takes it out again. It is only
+   * the drawing: the tool still works, and a shot with nothing in hand leaves from
+   * the walker's eye, which is where it left from before any of them had a muzzle.
+   */
+  setHandsOff(off) {
+    this.handsOff = off;
+    if (!this.active) return;
+    if (off) this.hideTool(); else this.showTool();
+    this.flash(off ? 'Empty-handed - H takes the tool out again' : `${this.tool.label} back in hand`);
+    this.drawHud();
+  }
+
   showTool() {
     this.hideTool();
+    this.hud.dataset.tool = this.tool.id;
+    if (this.handsOff) return;
     // A camera draws its children only when it is itself part of a scene, and this
     // one belongs to the pass that draws the tool over the world (MapScene.renderNow).
     this.scene.viewScene.add(this.scene.walkCamera);
@@ -277,7 +338,6 @@ export class Walker {
     this.held.scale.setScalar(VIEW_NEAR);
     this.held.add(this.viewmodel);
     this.scene.walkCamera.add(this.held);
-    this.hud.dataset.tool = this.tool.id;
   }
 
   hideTool() {
@@ -397,6 +457,7 @@ export class Walker {
       switch (e.code) {
         case 'KeyF': this.p.fly = !this.p.fly; this.p.vy = 0; this.drawHud(); break;
         case 'KeyT': this.nextTool(); break;
+        case 'KeyH': this.setHandsOff(!this.handsOff); break;
         case 'Escape':
           // Browsers usually swallow the Esc that frees the pointer; if not, free it first.
           if (document.pointerLockElement) document.exitPointerLock();
