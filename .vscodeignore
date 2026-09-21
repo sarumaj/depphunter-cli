@@ -1,0 +1,10 @@
+# This repository is a Go project that also happens to be a VS Code extension, so
+# this says what goes into the package rather than what stays out of it: everything
+# is left out, and the few files the extension is made of are let back in. A list
+# the other way round would have to be kept up with every directory ever added.
+**
+
+!package.json
+!README.md
+!LICENSE
+!extension/out/**/*.js

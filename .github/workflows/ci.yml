@@ -90,9 +90,6 @@ jobs:
     # jobs above see: type-check it, and package it, because a manifest vsce will
     # not package is one that cannot be published.
     runs-on: ubuntu-latest
-    defaults:
-      run:
-        working-directory: extension
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
@@ -102,7 +99,6 @@ jobs:
         with:
           node-version: 20
           cache: npm
-          cache-dependency-path: extension/package-lock.json
       - name: Install
         run: npm ci
       - name: Type-check
@@ -110,18 +106,17 @@ jobs:
       - name: Build depphunter
         # The extension's tests run the real thing: an argument it stops accepting
         # is exactly what they are there to catch.
-        working-directory: .
-        run: go build -o extension/depphunter ./cmd/depphunter
+        run: go build -o depphunter ./cmd/depphunter
       - name: Test
         run: npm test
         env:
-          DEPPHUNTER: ./depphunter
+          DEPPHUNTER: ${{ github.workspace }}/depphunter
       - name: Package
         run: npx @vscode/vsce@4 package --out depphunter.vsix
       - uses: actions/upload-artifact@v4
         with:
           name: depphunter-vscode-${{ github.sha }}
-          path: extension/depphunter.vsix
+          path: depphunter.vsix
           retention-days: 14
 
   vulncheck:

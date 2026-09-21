@@ -91,35 +91,35 @@ depphunter --export dot -o deps.dot   # write the graph and exit
 depphunter --export html -o map.html  # a self-contained map to share
 ```
 
-| Flag                | Default                   |                                                                     |
-|---------------------|---------------------------|---------------------------------------------------------------------|
-| `--addr`            | `127.0.0.1:0`             | listen address; port 0 picks a free port                            |
-| `--no-open`         |                           | print the URL instead of opening the browser                        |
-| `--exclude`         |                           | glob of paths to skip (repeatable)                                  |
-| `--max-file-size`   | `2097152`                 | larger files are listed but not read                                |
-| `--config`          | `<path>/.depphunter.yaml` | config file to use                                                  |
-| `--theme`           | `auto`                    | `auto`, `light`, `dark`                                             |
-| `--color-by`        | `language`                | `language`, `size`, `commits`, `churn`, `age`, `authors`            |
-| `--height-scale`    | `sqrt`                    | `linear`, `sqrt`, `log`                                             |
-| `--style`           | `city`                    | what the map is dressed as: `city`, `circuit`, `galaxy`             |
-| `--show-std`        | `false`                   | show standard-library islands                                       |
-| `--expand-depth`    | `0`                       | initially expanded depth; `0` = auto, `-1` = all                    |
-| `--watch`           | `false`                   | re-analyze on file changes, update the browser live                 |
-| `--no-cache`        |                           | neither read nor write the analysis cache                           |
-| `--no-history`      |                           | do not read git history                                             |
-| `--history-commits` | `10000`                   | read at most this many commits                                      |
-| `--resolve-depth`   | `0`                       | levels of dependencies-of-dependencies from lock files (`-1` = all) |
-| `--online`          | `false`                   | ask package indexes for what the project's files do not record      |
-| `--lsp`             |                           | find symbol references with installed language servers              |
-| `--lsp-timeout`     | `5m`                      | time budget for language servers                                    |
-| `--findings`        |                           | scanner report to place on the map (repeatable, globs)              |
-| `--no-vulns`        |                           | place no findings, and do not ask the OSV database                  |
-| `-v`, `--version`   |                           | print the version and exit                                          |
-| `-h`, `--help`      |                           | list the flags with their defaults                                  |
-| `--editor`          | auto-detected             | editor command template, e.g. `"code -g {file}:{line}"`             |
+| Flag                | Default                   |                                                                                |
+|---------------------|---------------------------|--------------------------------------------------------------------------------|
+| `--addr`            | `127.0.0.1:0`             | listen address; port 0 picks a free port                                       |
+| `--no-open`         |                           | print the URL instead of opening the browser                                   |
+| `--exclude`         |                           | glob of paths to skip (repeatable)                                             |
+| `--max-file-size`   | `2097152`                 | larger files are listed but not read                                           |
+| `--config`          | `<path>/.depphunter.yaml` | config file to use                                                             |
+| `--theme`           | `auto`                    | `auto`, `light`, `dark`                                                        |
+| `--color-by`        | `language`                | `language`, `size`, `commits`, `churn`, `age`, `authors`                       |
+| `--height-scale`    | `sqrt`                    | `linear`, `sqrt`, `log`                                                        |
+| `--style`           | `city`                    | what the map is dressed as: `city`, `circuit`, `galaxy`                        |
+| `--show-std`        | `false`                   | show standard-library islands                                                  |
+| `--expand-depth`    | `0`                       | initially expanded depth; `0` = auto, `-1` = all                               |
+| `--watch`           | `false`                   | re-analyze on file changes, update the browser live                            |
+| `--no-cache`        |                           | neither read nor write the analysis cache                                      |
+| `--no-history`      |                           | do not read git history                                                        |
+| `--history-commits` | `10000`                   | read at most this many commits                                                 |
+| `--resolve-depth`   | `0`                       | levels of dependencies-of-dependencies from lock files (`-1` = all)            |
+| `--online`          | `false`                   | ask package indexes for what the project's files do not record                 |
+| `--lsp`             |                           | find symbol references with installed language servers                         |
+| `--lsp-timeout`     | `5m`                      | time budget for language servers                                               |
+| `--findings`        |                           | scanner report to place on the map (repeatable, globs)                         |
+| `--no-vulns`        |                           | place no findings, and do not ask the OSV database                             |
+| `-v`, `--version`   |                           | print the version and exit                                                     |
+| `-h`, `--help`      |                           | list the flags with their defaults                                             |
+| `--editor`          | auto-detected             | editor command template, e.g. `"code -g {file}:{line}"`                        |
 | `--embed`           |                           | origin allowed to show the map in a frame, e.g. `vscode-webview:` (repeatable) |
-| `--export`          |                           | write `json`, `graphml`, `dot` or `html` and exit                   |
-| `-o`, `--output`    | stdout                    | output file for `--export`                                          |
+| `--export`          |                           | write `json`, `graphml`, `dot` or `html` and exit                              |
+| `-o`, `--output`    | stdout                    | output file for `--export`                                                     |
 
 Long flags take two dashes (`--addr`, not `-addr`); a flag's value may follow
 after a space or `=`.
@@ -390,11 +390,11 @@ bug is and what it is carrying.
 
 The same map, dressed three ways (`--style`, or the **Style** menu):
 
-| Style     | What it is                                                                                                                                                                                                                                                                                                                                                                                                        |
-|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `city`    | Buildings with facades and roofs, streets with crossings and parks, shores with trees, bridges between the islands                                                                                                                                                                                                                                                                                                |
+| Style     | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                        |
+|-----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `city`    | Buildings with facades and roofs, streets with crossings and parks, shores with trees, bridges between the islands                                                                                                                                                                                                                                                                                                                                |
 | `circuit` | A printed circuit board: chip packages with rows of pins, heatsinks where the buildings are tall, copper traces down every street with vias along them, solder pads and silkscreen around every part, capacitors where the trees were and LEDs, lit, where the lamps were. Off the edge of the board is the backplane it is plugged into, and it is live: charge runs along its tracks, which is this style's way of saying you cannot walk there |
-| `galaxy`  | Platforms out in the dark: crystal spires with strata of light and windows like stars, glowing conduits between them, and instead of sea and sky the band of the galaxy with its dust lanes, two nebulae behind it and three layers of stars in front. The void the platforms hang in drifts, in layers and at three speeds, so the map view keeps drawing itself while this style is on; the other two are still |
+| `galaxy`  | Platforms out in the dark: crystal spires with strata of light and windows like stars, glowing conduits between them, and instead of sea and sky the band of the galaxy with its dust lanes, two nebulae behind it and three layers of stars in front. The void the platforms hang in drifts, in layers and at three speeds, so the map view keeps drawing itself while this style is on; the other two are still                                 |
 
 Only the environment changes. The colors that carry data - the language
 palette, the history overlays, hover and selection - are the same in all three,
@@ -452,7 +452,9 @@ everywhere.
 
 [extension/README.md](extension/README.md) has the settings, how to work on it
 and debug it, how the framing works, what does not work over Codespaces, and
-what publishing it would take.
+what publishing it would take. Its manifest is this repository's `package.json`,
+so the extension shares this README and this LICENSE rather than keeping copies
+of them; the source is in `extension/`.
 
 ## Keyboard & mouse
 
@@ -677,6 +679,7 @@ tools are optional: `git` for file listing and history, language servers for
 ```sh
 go test -race ./...
 go run honnef.co/go/tools/cmd/staticcheck@2026.2.1 ./...
+npm install && npm run lint   # the VS Code extension, whose manifest is at the root
 ```
 
 CI (`.github/workflows/ci.yml`) builds and tests on Linux, macOS and Windows, on

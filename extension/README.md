@@ -9,6 +9,13 @@ browser. The map is the same one `depphunter` serves anywhere else - clicking,
 walking, the panel, the findings and the live updates all work as they do in a
 browser tab.
 
+Its manifest lives at the root of the repository, not here, so that it shares the
+project's `README.md` and `LICENSE` instead of keeping copies: `package.json`,
+`tsconfig.json` and `.vscodeignore` are up there, and this directory holds the
+source, the tests and this page. `.vscodeignore` is written the other way round
+from usual - it leaves everything out and lets the handful of extension files
+back in - because most of what is in this repository is a Go program.
+
 ## Install
 
 Every [release](https://github.com/sarumaj/depphunter-cli/releases) carries a
@@ -83,10 +90,10 @@ terminal there instead, for now.
 
 The extension is not on any marketplace yet. What it takes, when it is time:
 
-1. `npm install -g @vscode/vsce`, and `vsce package` to build the `.vsix`. The
-   release workflow already does this and attaches the file to every release,
-   packaged with the tag's version; the `version` in `package.json` is only what
-   a build from a checkout gets.
+1. `npm install -g @vscode/vsce`, and `vsce package` at the root of the
+   repository to build the `.vsix`. The release workflow already does this and
+   attaches the file to every release, packaged with the tag's version; the
+   `version` in `package.json` is only what a build from a checkout gets.
 2. For the **Visual Studio Marketplace**: create an Azure DevOps organization,
    then a personal access token with *Marketplace → Manage* scope for **all
    accessible organizations**. Create the publisher at
@@ -102,8 +109,14 @@ VSIX works on every platform and it does not need per-platform targets. If a
 binary is ever bundled instead, that changes - the VSIX would have to be built
 once per `--target` (`win32-x64`, `linux-x64`, `darwin-arm64`, …).
 
-A 128×128 PNG `icon.png` beside `package.json`, named by an `"icon"` field, is
-worth adding before publishing: without one the marketplace shows a placeholder.
+The marketplace page is the project's own `README.md`, with its relative links
+rewritten to GitHub by `vsce`. `vsce package --readme-path extension/README.md`
+would put this page there instead, if the project page ever reads badly as an
+extension listing.
+
+A 128×128 PNG `icon.png` at the root, named by an `"icon"` field in
+`package.json`, is worth adding before publishing: without one the marketplace
+shows a placeholder.
 
 ## Working on it
 
@@ -113,17 +126,17 @@ does not go where you might expect. Everything below follows from that.
 
 ### The first run
 
+From the root of the repository:
+
 ```sh
-cd extension
 npm install
 npm run compile
 ```
 
-Open **this directory** as the workspace - not the repository root, or F5 will
-not find the launch configuration - and press F5. A second editor window opens,
-titled *[Extension Development Host]*. That window has your extension loaded and
-nothing else different about it; the first window is now a debugger attached to
-it.
+Open the repository as the workspace, press F5, and pick **Run the VS Code
+extension** if you are asked. A second editor window opens, titled *[Extension
+Development Host]*. That window has your extension loaded and nothing else
+different about it; the first window is now a debugger attached to it.
 
 In the new window, open a folder with some code in it and run
 `depphunter: Open the Map` from the command palette (Ctrl/Cmd+Shift+P).
@@ -140,15 +153,15 @@ the next open analyzes again from a warm cache. Nothing leaks between runs.
 
 ### Breakpoints
 
-Click the gutter beside a line in `src/*.ts` in the **first** window and it will
-be hit - `tsc` writes source maps, so you are stopped in the TypeScript, not in
-`out/`. The Debug Console there is where `console.log` from the extension goes,
-and where an uncaught exception is reported.
+Click the gutter beside a line in `extension/src/*.ts` in the **first** window
+and it will be hit - `tsc` writes source maps, so you are stopped in the
+TypeScript, not in `extension/out/`. The Debug Console there is where
+`console.log` from the extension goes, and where an uncaught exception is
+reported.
 
-Useful places to stop when something is wrong: `start()` in `src/server.ts`
-(what arguments went to the binary), the `read` function just below it (what
-came back), and `show()` in `src/extension.ts` (what address the browser was
-handed).
+Useful places to stop when something is wrong: `start()` in `server.ts` (what
+arguments went to the binary), the `read` function just below it (what came
+back), and `show()` in `extension.ts` (what address the browser was handed).
 
 ### The four places output goes
 
@@ -177,24 +190,28 @@ never opens, it is the first two.
   activated. **Developer: Show Running Extensions** in the development window
   lists what loaded and how long each took.
 - **A change did nothing** - `npm run watch` was not running, or the window was
-  not reloaded. `out/extension.js`'s timestamp settles it.
+  not reloaded. The timestamp on `extension/out/extension.js` settles it.
 
 ### Tests
 
 ```sh
-DEPPHUNTER=../path/to/depphunter npm test   # skipped without a binary to test
+go build -o depphunter ./cmd/depphunter
+DEPPHUNTER="$PWD/depphunter" npm test   # skipped without a binary to test
 ```
 
-These run without an editor at all: `test/stub.js` stands in for the editor API,
-so the built `out/extension.js` drives a real server and the test checks what
-came back. That is where the coupling is - the arguments the extension starts
-`depphunter` with, and the address it reads out of its output. Neither the Go
-tests nor the type checker see either one.
+These run without an editor at all: `extension/test/stub.js` stands in for the
+editor API, so the built `extension/out/extension.js` drives a real server and
+the test checks what came back. That is where the coupling is - the arguments
+the extension starts `depphunter` with, and the address it reads out of its
+output. Neither the Go tests nor the type checker see either one.
+
+Give `DEPPHUNTER` an absolute path: the extension starts the binary in the folder
+it is mapping, and a relative one is not resolved the same way on every platform.
 
 ### Installing your build
 
 ```sh
-npx @vscode/vsce package                  # depphunter-0.1.0.vsix
+npx @vscode/vsce package                  # depphunter-0.1.0.vsix, at the root
 code --install-extension depphunter-0.1.0.vsix
 ```
 
