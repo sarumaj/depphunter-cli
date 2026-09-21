@@ -42,6 +42,8 @@ export class MapScene {
       uNight: { value: 0 }, uTime: { value: 0 }, uStyle: { value: 0 },
     };
     this.style = 'city'; // what the same geometry is dressed as (city.js)
+    this.animated = false; // whether the map view redraws itself (setAnimated)
+    this.ticker = 0;
     this.roads = roadUniforms(); // the street network of walk mode (city.js)
 
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
@@ -149,6 +151,25 @@ export class MapScene {
   }
 
   /**
+   * Whether the map view keeps drawing itself. It renders on demand otherwise -
+   * nothing on a still map changes, and a canvas that redraws forever is a fan
+   * running for nothing - so a style with something moving in it has to ask.
+   *
+   * Walk mode has its own loop, and a hidden tab is not worth drawing for, so
+   * neither is ticked here; the ticker rate is its own, below the display's,
+   * because what it drives is a drift and not an animation.
+   */
+  setAnimated(on) {
+    this.animated = on;
+    clearInterval(this.ticker);
+    this.ticker = 0;
+    if (!on) return;
+    this.ticker = setInterval(() => {
+      if (!this.walking && document.visibilityState === 'visible') this.requestRender();
+    }, TICK);
+  }
+
+  /**
    * Dresses the map again, for when the prop models arrive (props.js). It is the same
    * rebuild a style change costs, and the map is drawn with its stand-in plants until
    * then rather than waiting on the fetch.
@@ -204,7 +225,6 @@ export class MapScene {
 
   /** Places the walker: flat-map feet position, eye height, yaw and pitch (radians). */
   setWalker(x, feet, z, eye, yaw, pitch) {
-    this.curve.uTime.value = performance.now() / 1000;
     this.sky.position.set(x, feet + eye, z);
     this.curve.uCenter.value.set(x, 0, z);
     this.planet.position.set(x, -this.curve.uRadius.value, z);
@@ -526,6 +546,10 @@ export class MapScene {
    */
   renderNow() {
     const r = this.renderer;
+    // Whatever moves by itself - clouds, water, the drift of the void - reads this.
+    // It used to be set only where the walker was placed, so the map view was drawn
+    // at one frozen instant however long it was looked at.
+    this.curve.uTime.value = performance.now() / 1000;
     r.render(this.scene, this.view);
     // The held tool, second and on top of everything: the depth buffer is cleared
     // between the two, so nothing in the world can occlude a hand that is, in truth,
@@ -582,6 +606,11 @@ export class MapScene {
     return v.set(c.x + dx / horizontal * r, h, c.z + dz / horizontal * r);
   }
 }
+
+// How often the map view redraws itself while a style has something moving in it.
+// Slower than the display refreshes, because a drift of dust does not need 60 of
+// these a second and a map left open should not cost one.
+const TICK = 66;
 
 const WATER_DEPTH = 0.45;
 // The isometric sea: just above the land boxes' base (layout LAND_H below the
