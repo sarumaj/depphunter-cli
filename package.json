@@ -34,22 +34,32 @@
       {
         "command": "depphunter.open",
         "title": "Open the Map",
-        "category": "depphunter"
+        "category": "depphunter",
+        "icon": "$(play)"
       },
       {
         "command": "depphunter.restart",
         "title": "Restart the Server",
-        "category": "depphunter"
+        "category": "depphunter",
+        "icon": "$(debug-restart)"
       },
       {
         "command": "depphunter.stop",
         "title": "Stop the Server",
-        "category": "depphunter"
+        "category": "depphunter",
+        "icon": "$(debug-stop)"
       },
       {
         "command": "depphunter.showLog",
         "title": "Show the Server Log",
-        "category": "depphunter"
+        "category": "depphunter",
+        "icon": "$(output)"
+      },
+      {
+        "command": "depphunter.openSettings",
+        "title": "Open Settings",
+        "category": "depphunter",
+        "icon": "$(gear)"
       }
     ],
     "menus": {
@@ -59,76 +69,329 @@
           "when": "explorerResourceIsFolder",
           "group": "navigation@90"
         }
+      ],
+      "view/title": [
+        {
+          "command": "depphunter.showLog",
+          "when": "view == depphunter.maps",
+          "group": "navigation@1"
+        },
+        {
+          "command": "depphunter.openSettings",
+          "when": "view == depphunter.maps",
+          "group": "navigation@2"
+        }
+      ],
+      "view/item/context": [
+        {
+          "command": "depphunter.open",
+          "when": "view == depphunter.maps",
+          "group": "inline@1"
+        },
+        {
+          "command": "depphunter.restart",
+          "when": "view == depphunter.maps && viewItem == running",
+          "group": "inline@2"
+        },
+        {
+          "command": "depphunter.stop",
+          "when": "view == depphunter.maps && viewItem == running",
+          "group": "inline@3"
+        },
+        {
+          "command": "depphunter.open",
+          "when": "view == depphunter.maps",
+          "group": "1_server@1"
+        },
+        {
+          "command": "depphunter.restart",
+          "when": "view == depphunter.maps && viewItem == running",
+          "group": "1_server@2"
+        },
+        {
+          "command": "depphunter.stop",
+          "when": "view == depphunter.maps && viewItem == running",
+          "group": "1_server@3"
+        }
       ]
     },
-    "configuration": {
-      "title": "depphunter",
-      "properties": {
-        "depphunter.path": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "The `depphunter` binary to run. **Leave it empty** to use the one the extension ships with - a released build carries the binary for your platform, pinned to the same version - falling back to `depphunter` on `PATH` for a build that carries none. Set it only to point at a different build: a bare name is looked up on `PATH`, an absolute path is used as given."
-        },
-        "depphunter.watch": {
-          "type": "boolean",
-          "default": true,
-          "description": "Re-analyze on file changes and update the map live (--watch)."
-        },
-        "depphunter.style": {
-          "type": "string",
-          "enum": [
-            "default",
-            "city",
-            "circuit",
-            "galaxy"
-          ],
-          "default": "default",
-          "description": "What the map is dressed as. \"default\" leaves it to the config files."
-        },
-        "depphunter.findings": {
-          "type": "array",
-          "items": {
-            "type": "string"
+    "configuration": [
+      {
+        "id": "depphunter.general",
+        "title": "General",
+        "order": 1,
+        "properties": {
+          "depphunter.path": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "The `depphunter` binary to run. **Leave it empty** to use the one the extension ships with - a released build carries the binary for your platform, pinned to the same version - falling back to `depphunter` on `PATH` for a build that carries none. Set it only to point at a different build: a bare name is looked up on `PATH`, an absolute path is used as given.",
+            "order": 1
           },
-          "default": [],
-          "markdownDescription": "Scanner reports to place on the map (`--findings`), relative to the workspace folder. Globs are allowed."
-        },
-        "depphunter.args": {
-          "type": "array",
-          "items": {
-            "type": "string"
+          "depphunter.openIn": {
+            "type": "string",
+            "enum": [
+              "webview",
+              "simpleBrowser",
+              "externalBrowser"
+            ],
+            "enumDescriptions": [
+              "A tab of the editor's own. The only one where walk mode can capture the mouse.",
+              "The editor's built-in browser, which has an address bar but withholds the pointer lock.",
+              "The default browser, outside the editor."
+            ],
+            "default": "webview",
+            "description": "Where the map opens.",
+            "order": 2
           },
-          "default": [],
-          "markdownDescription": "Further arguments, one per entry, e.g. `[\"--exclude\", \"vendor\", \"--lsp\"]`. Run `depphunter --help` for the list."
-        },
-        "depphunter.openIn": {
-          "type": "string",
-          "enum": [
-            "webview",
-            "simpleBrowser",
-            "externalBrowser"
-          ],
-          "enumDescriptions": [
-            "A tab of the editor's own. The only one where walk mode can capture the mouse.",
-            "The editor's built-in browser, which has an address bar but withholds the pointer lock.",
-            "The default browser, outside the editor."
-          ],
-          "default": "webview",
-          "description": "Where the map opens."
-        },
-        "depphunter.editorCommand": {
-          "type": "string",
-          "default": "",
-          "markdownDescription": "What the map's \"Open in editor\" button runs, e.g. `code -g {file}:{line}`. Empty means this editor, when its command-line launcher can be found, and otherwise whatever depphunter detects."
+          "depphunter.watch": {
+            "type": "boolean",
+            "default": true,
+            "description": "Re-analyze on file changes and update the map live (--watch).",
+            "order": 3
+          },
+          "depphunter.config": {
+            "type": "string",
+            "default": "",
+            "order": 4,
+            "markdownDescription": "A config file to use instead of the folder's own `.depphunter.yaml` (`--config`), relative to the folder. Unlike the folder's file, one named here may set `editor` and `online`."
+          },
+          "depphunter.editorCommand": {
+            "type": "string",
+            "default": "",
+            "markdownDescription": "What the map's \"Open in editor\" button runs, e.g. `code -g {file}:{line}`. Empty means this editor, when its command-line launcher can be found, and otherwise whatever depphunter detects.",
+            "order": 5
+          },
+          "depphunter.args": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "markdownDescription": "Further arguments, one per entry, passed after everything the settings above produce, e.g. `[\"--exclude\", \"vendor\"]`. Run `depphunter --help` for the list.",
+            "order": 99
+          }
+        }
+      },
+      {
+        "id": "depphunter.analysis",
+        "title": "Analysis",
+        "order": 2,
+        "properties": {
+          "depphunter.exclude": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "order": 1,
+            "markdownDescription": "Globs of paths to skip (`--exclude`), added to those the config files name, e.g. `vendor` or `**/*.gen.go`."
+          },
+          "depphunter.maxFileSize": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "default": null,
+            "minimum": 1,
+            "order": 2,
+            "markdownDescription": "Files larger than this many bytes are not read (`--max-file-size`). Empty leaves it to the config files and the default. (2 MiB)."
+          },
+          "depphunter.resolveDepth": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "default": null,
+            "minimum": -1,
+            "order": 3,
+            "markdownDescription": "Levels of dependencies-of-dependencies to resolve from lock files (`--resolve-depth`): `0` none, `-1` as far as they reach. Empty leaves it to the config files and the default."
+          },
+          "depphunter.online": {
+            "type": "boolean",
+            "default": false,
+            "order": 4,
+            "markdownDescription": "Ask package indexes about dependencies the project's files do not record, and the OSV database about pinned packages (`--online`). Analysis is offline without it."
+          },
+          "depphunter.cache": {
+            "type": "boolean",
+            "default": true,
+            "order": 5,
+            "markdownDescription": "Read and write the analysis cache. Unticked passes `--no-cache`."
+          },
+          "depphunter.history": {
+            "type": "boolean",
+            "default": true,
+            "order": 6,
+            "markdownDescription": "Read git history for the commits, churn, age and authors overlays. Unticked passes `--no-history`."
+          },
+          "depphunter.historyCommits": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "default": null,
+            "minimum": 1,
+            "order": 7,
+            "markdownDescription": "Read at most this many commits of git history (`--history-commits`). Empty leaves it to the config files and the default. (10000)."
+          }
+        }
+      },
+      {
+        "id": "depphunter.appearance",
+        "title": "Appearance",
+        "order": 3,
+        "properties": {
+          "depphunter.style": {
+            "type": "string",
+            "enum": [
+              "default",
+              "city",
+              "circuit",
+              "galaxy"
+            ],
+            "default": "default",
+            "order": 1,
+            "enumDescriptions": [
+              "Whatever the config files say, or a city.",
+              "A city of buildings.",
+              "A printed circuit board.",
+              "A galaxy."
+            ],
+            "markdownDescription": "What the map is dressed as (`--style`). `default` leaves it to the config files."
+          },
+          "depphunter.theme": {
+            "type": "string",
+            "enum": [
+              "default",
+              "auto",
+              "light",
+              "dark"
+            ],
+            "default": "default",
+            "order": 2,
+            "markdownDescription": "The map's color theme (`--theme`); `auto` follows the system. `default` leaves it to the config files."
+          },
+          "depphunter.colorBy": {
+            "type": "string",
+            "enum": [
+              "default",
+              "language",
+              "size",
+              "commits",
+              "churn",
+              "age",
+              "authors"
+            ],
+            "default": "default",
+            "order": 3,
+            "markdownDescription": "What colors the buildings (`--color-by`). All but `language` and `size` need git history. `default` leaves it to the config files."
+          },
+          "depphunter.heightScale": {
+            "type": "string",
+            "enum": [
+              "default",
+              "linear",
+              "sqrt",
+              "log"
+            ],
+            "default": "default",
+            "order": 4,
+            "markdownDescription": "How lines of code turn into building height (`--height-scale`). `default` leaves it to the config files."
+          },
+          "depphunter.expandDepth": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "default": null,
+            "minimum": -1,
+            "order": 5,
+            "markdownDescription": "How many directory levels start expanded (`--expand-depth`): `0` picks for you, `-1` expands everything. Empty leaves it to the config files and the default."
+          },
+          "depphunter.showStd": {
+            "type": "boolean",
+            "default": false,
+            "order": 6,
+            "markdownDescription": "Show standard-library islands (`--show-std`)."
+          }
+        }
+      },
+      {
+        "id": "depphunter.findings",
+        "title": "Findings",
+        "order": 4,
+        "properties": {
+          "depphunter.findings": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "markdownDescription": "Scanner reports to place on the map (`--findings`), relative to the folder: govulncheck, npm audit, trivy, golangci-lint, eslint or osv-scanner JSON. Globs are allowed.",
+            "order": 1
+          },
+          "depphunter.vulns": {
+            "type": "boolean",
+            "default": true,
+            "order": 2,
+            "markdownDescription": "Place scanner reports on the map and, with `#depphunter.online#`, ask the OSV database. Unticked passes `--no-vulns`."
+          }
+        }
+      },
+      {
+        "id": "depphunter.references",
+        "title": "References",
+        "order": 5,
+        "properties": {
+          "depphunter.lsp": {
+            "type": "boolean",
+            "default": false,
+            "order": 1,
+            "markdownDescription": "Find symbol references with the language servers installed on this machine - gopls and the like (`--lsp`). Slow on a large repository."
+          },
+          "depphunter.lspTimeout": {
+            "type": "string",
+            "default": "",
+            "order": 2,
+            "pattern": "^$|^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$",
+            "patternErrorMessage": "A Go duration, e.g. 90s, 5m or 1h30m.",
+            "markdownDescription": "Time budget for the language servers (`--lsp-timeout`), e.g. `90s` or `10m`. Empty leaves it to the config files and the default. (5m)."
+          }
         }
       }
-    }
+    ],
+    "viewsContainers": {
+      "activitybar": [
+        {
+          "id": "depphunter",
+          "title": "depphunter",
+          "icon": "extension/media/activitybar.svg"
+        }
+      ]
+    },
+    "views": {
+      "depphunter": [
+        {
+          "id": "depphunter.maps",
+          "name": "Maps",
+          "icon": "extension/media/activitybar.svg",
+          "contextualTitle": "depphunter"
+        }
+      ]
+    },
+    "viewsWelcome": [
+      {
+        "view": "depphunter.maps",
+        "contents": "depphunter maps a folder, and this window has none open.\n[Open Folder](command:vscode.openFolder)",
+        "when": "workbenchState == empty"
+      }
+    ]
   },
   "scripts": {
     "compile": "tsc -p .",
     "watch": "tsc -w -p .",
     "lint": "tsc -p . --noEmit",
-    "test": "npm run compile && node --test extension/test/binary.test.js extension/test/extension.test.js",
+    "test": "npm run compile && node --test extension/test/binary.test.js extension/test/argv.test.js extension/test/extension.test.js",
     "package": "vsce package",
     "vscode:prepublish": "npm run compile"
   },

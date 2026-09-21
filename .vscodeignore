@@ -9,6 +9,7 @@
 !LICENSE
 !icon.png
 !extension/out/**/*.js
+!extension/media/**
 # The binary a released build ships, put here by the release workflow. A build from
 # a checkout has no bin/ and packages without one.
 !bin/**
