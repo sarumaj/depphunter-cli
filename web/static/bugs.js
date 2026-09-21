@@ -8,6 +8,7 @@
 import * as THREE from './vendor/three.module.min.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { rankOf, severityColors } from './findings.js';
+import { bugParts } from './models.js';
 
 const MAX_BUGS = 140;     // a large repository reports thousands; the worst ones walk
 const LANE = 0.3;         // how far outside a building's footprint its bugs patrol
@@ -25,13 +26,15 @@ const LEGS = 6;
 // A hundred and forty beetles were a thousand draw calls as separate meshes, which
 // is most of a frame in walk mode; they are two now, whatever the count.
 //
-// The shell carries its shading in its vertex colors - white over the wing cases,
-// dark over the head and the seam - and the severity color is set per instance, so
-// one mesh draws every color. Nothing in this scene is lit, so that split has to be
-// painted: without it a beetle at arm's length is a colored blob.
+// The shell carries its shading in its vertex colors - the wing cases take the
+// severity color, the head and the plate behind it stay nearly black - and the
+// severity color is set per instance, so one mesh draws every color. Nothing in this
+// scene is lit, so both the split and the roundness have to be painted: without them
+// a beetle at arm's length is a colored blob.
 const SHELL = '#151515'; // the legs, which are the same dark whatever the severity
-const DARK = 0.05;       // how dark the head and the seam are, in linear light
-let parts = null;
+const DARK = 0.06;       // how dark the head and its plate are, in linear light
+let parts = null;        // the two geometries, once built
+let fromModel = false;   // ... and whether they came out of bug.glb
 
 export class Bugs {
   /** hooks: { onCatch(finding, node) } */
@@ -144,7 +147,7 @@ export class Bugs {
    * with the layout rather than resized, because a layout is where the count changes.
    */
   build() {
-    parts ||= geometry();
+    parts = geometry();
     const shell = new THREE.InstancedMesh(parts.shell,
       this.scene.bendable(new THREE.MeshBasicMaterial({ vertexColors: true })), this.bugs.length);
     const legs = new THREE.InstancedMesh(parts.legs,
@@ -285,13 +288,35 @@ function pointAt(lap, u) {
   };
 }
 
-// A beetle: a rounded shell, a dark head in front and six legs under it, nose along
-// +z. The shell is one geometry painted in two tones; the legs are another, so they
-// can rock without the rest of it following.
+/**
+ * The two geometries a bug is drawn from: the shell, which is one mesh painted in
+ * two tones, and the legs, which are another so they can rock without the rest of it
+ * following. Both stand on the origin with the nose along +z.
+ *
+ * The beetle is modelled in Blender (tools/bug.py) and arrives as bug.glb; until it
+ * does - and if it never does - the map draws the one below out of spheres, so a bug
+ * is on the street from the first frame.
+ */
 function geometry() {
-  const body = paint(new THREE.SphereGeometry(BODY, 10, 7).scale(0.62, 0.48, 1).translate(0, BODY * 0.45, 0), 1);
-  const head = paint(new THREE.SphereGeometry(BODY * 0.42, 8, 6).translate(0, BODY * 0.45, BODY * 0.82), DARK);
-  const seam = paint(new THREE.BoxGeometry(0.01, 0.02, BODY * 1.4).translate(0, BODY * 0.86, -BODY * 0.12), DARK);
+  const model = bugParts();
+  if (parts && fromModel === !!model) return parts;
+  fromModel = !!model;
+  parts = model ? modelled(model) : drawn();
+  return parts;
+}
+
+// The model: its wing cases lit and tinted, its front end dark, its legs their own.
+function modelled(model) {
+  const shell = shade(model.get('shell').clone(), 1);
+  const dark = shade(model.get('dark').clone(), DARK);
+  return { shell: mergeGeometries([shell, dark]), legs: model.get('legs').clone() };
+}
+
+// The stand-in: a squashed sphere with a smaller one in front and six sticks under it.
+function drawn() {
+  const body = shade(new THREE.SphereGeometry(BODY, 10, 7).scale(0.62, 0.48, 1).translate(0, BODY * 0.45, 0), 1);
+  const head = shade(new THREE.SphereGeometry(BODY * 0.42, 8, 6).translate(0, BODY * 0.45, BODY * 0.82), DARK);
+  const seam = shade(new THREE.BoxGeometry(0.01, 0.02, BODY * 1.4).translate(0, BODY * 0.86, -BODY * 0.12), DARK);
   const legs = [];
   for (let i = 0; i < LEGS; i++) {
     const side = i % 2 ? 1 : -1;
@@ -302,12 +327,27 @@ function geometry() {
   return { shell: mergeGeometries([body, head, seam]), legs: mergeGeometries(legs) };
 }
 
-// paint gives a geometry a flat vertex color, which the instance color then tints:
-// the wing cases take the severity color and the head and seam a dark share of it.
-function paint(geo, k) {
-  const n = geo.getAttribute('position').count;
-  const c = new Float32Array(n * 3).fill(k);
+/**
+ * Paints a geometry's roundness into its vertex colors, around a base tone the
+ * instance color then tints: the wing cases take the severity color and the front
+ * end a dark share of it.
+ *
+ * Nothing in this scene is lit, so a surface that is not painted is flat, and a
+ * beetle's shell is the one thing about it that has to look curved. Brightest where
+ * it faces up, a little brighter on one side than the other, which is the same
+ * reckoning city.js makes for a tree.
+ */
+function shade(geo, base) {
+  if (geo.index) geo = geo.toNonIndexed();
+  geo.computeVertexNormals();
+  const n = geo.getAttribute('normal');
+  const c = new Float32Array(n.count * 3);
+  for (let i = 0; i < n.count; i++) {
+    const k = base * (0.62 + 0.38 * Math.max(0, n.getY(i)) + 0.1 * n.getX(i) - 0.05 * n.getZ(i));
+    c[i * 3] = c[i * 3 + 1] = c[i * 3 + 2] = k;
+  }
   geo.setAttribute('color', new THREE.BufferAttribute(c, 3));
+  geo.deleteAttribute('normal'); // an unlit material never reads it
   return geo;
 }
 
