@@ -12,6 +12,7 @@ import * as vscode from 'vscode';
 
 import * as panel from './panel';
 import { StartError, start } from './server';
+import { MapsView } from './view';
 
 const RELEASES = 'https://github.com/sarumaj/depphunter-cli/releases';
 
@@ -25,6 +26,7 @@ interface Session {
 const sessions = new Map<string, Session>();
 let log: vscode.OutputChannel;
 let status: vscode.StatusBarItem;
+let view: MapsView;
 /** Where this build was installed, which is where a released one keeps its binary. */
 let home: string | undefined;
 
@@ -33,15 +35,20 @@ export function activate(context: vscode.ExtensionContext): void {
   log = vscode.window.createOutputChannel('depphunter');
   status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   status.command = 'depphunter.open';
-  context.subscriptions.push(log, status, { dispose: stopAll });
+  view = new MapsView(() => sessions);
+  context.subscriptions.push(log, status, view, { dispose: stopAll });
 
   context.subscriptions.push(
     vscode.commands.registerCommand('depphunter.open', (resource?: vscode.Uri) => open(resource)),
-    vscode.commands.registerCommand('depphunter.restart', () => restart()),
-    vscode.commands.registerCommand('depphunter.stop', () => stop()),
+    vscode.commands.registerCommand('depphunter.restart', (resource?: vscode.Uri) => restart(resource)),
+    vscode.commands.registerCommand('depphunter.stop', (resource?: vscode.Uri) => stop(resource)),
     vscode.commands.registerCommand('depphunter.showLog', () => log.show()),
+    vscode.commands.registerCommand('depphunter.openSettings', () =>
+      vscode.commands.executeCommand('workbench.action.openSettings', '@ext:sarumaj.depphunter')),
+    vscode.window.registerTreeDataProvider('depphunter.maps', view),
     vscode.workspace.onDidChangeWorkspaceFolders(e => {
       for (const folder of e.removed) end(folder.uri.fsPath);
+      view.refresh();
     }),
     vscode.workspace.onDidChangeConfiguration(e => {
       if (e.affectsConfiguration('depphunter')) offerRestart();
@@ -103,8 +110,9 @@ async function show(session: Session): Promise<void> {
   void check(address);
 }
 
-async function restart(): Promise<void> {
-  const root = await pickRunning('Restart which map?');
+// Both take the folder the Maps view hands them; from the command palette they ask.
+async function restart(resource?: vscode.Uri): Promise<void> {
+  const root = resource?.fsPath ?? await pickRunning('Restart which map?');
   if (!root) return;
   const was = sessions.get(root);
   end(root);
@@ -112,8 +120,8 @@ async function restart(): Promise<void> {
   if (session) await show(session);
 }
 
-async function stop(): Promise<void> {
-  const folder = await pickRunning('Stop which map?');
+async function stop(resource?: vscode.Uri): Promise<void> {
+  const folder = resource?.fsPath ?? await pickRunning('Stop which map?');
   if (folder) end(folder);
 }
 
@@ -165,6 +173,7 @@ async function pickRunning(prompt: string): Promise<string | undefined> {
 }
 
 function refreshStatus(): void {
+  view.refresh();
   const running = [...sessions.values()];
   if (running.length === 0) {
     status.hide();

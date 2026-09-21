@@ -74,6 +74,10 @@ const vscode = {
     showInformationMessage: async m => { calls.push(['info', m]); return undefined; },
     showWorkspaceFolderPick: async () => vscode.workspace.workspaceFolders[0],
     showQuickPick: async items => items[0],
+    registerTreeDataProvider: (id, provider) => {
+      calls.push(['registerTreeDataProvider', id, provider]);
+      return { dispose() {} };
+    },
     withProgress: (_options, task) => task(
       { report() {} }, { onCancellationRequested: () => ({ dispose() {} }) }),
   },
@@ -81,6 +85,17 @@ const vscode = {
     registerCommand: (id, fn) => { commands.set(id, fn); return { dispose() {} }; },
     executeCommand: async (id, ...args) => { calls.push(['executeCommand', id, ...args]); },
   },
+  EventEmitter: class EventEmitter {
+    constructor() { this.listeners = []; }
+    get event() { return fn => { this.listeners.push(fn); return { dispose() {} }; }; }
+    fire(v) { for (const fn of this.listeners) fn(v); }
+    dispose() { this.listeners = []; }
+  },
+  TreeItem: class TreeItem {
+    constructor(label, collapsibleState) { this.label = label; this.collapsibleState = collapsibleState; }
+  },
+  TreeItemCollapsibleState: { None: 0 },
+  ThemeIcon: class ThemeIcon { constructor(id) { this.id = id; } },
   StatusBarAlignment: { Right: 2 },
   ViewColumn: { Active: -1 },
   ProgressLocation: { Notification: 15 },

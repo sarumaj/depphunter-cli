@@ -116,17 +116,56 @@ export function start(root: string, home: string | undefined, log: vscode.Output
   });
 }
 
-function argv(cfg: vscode.WorkspaceConfiguration, root: string): string[] {
+/**
+ * The command line for a server of root. A setting only turns into a flag when it
+ * asks for something other than what depphunter would do anyway, so that a folder's
+ * .depphunter.yaml, which flags override, still has its say over everything the
+ * user has not set here: an enum left at "default", a number left empty, a switch
+ * left where depphunter's own default puts it.
+ */
+export function argv(cfg: vscode.WorkspaceConfiguration, root: string): string[] {
   const args = ['--no-open', '--addr', '127.0.0.1:0'];
   for (const origin of FRAME_ORIGINS) args.push('--embed', origin);
-  if (cfg.get<boolean>('watch')) args.push('--watch');
 
-  const style = cfg.get<string>('style');
-  if (style && style !== 'default') args.push('--style', style);
+  const text = (key: string, flag: string) => {
+    const v = (cfg.get<string>(key) ?? '').trim();
+    if (v && v !== 'default') args.push(flag, v);
+  };
+  const number = (key: string, flag: string) => {
+    const v = cfg.get<number | null>(key);
+    if (typeof v === 'number' && Number.isFinite(v)) args.push(flag, String(Math.trunc(v)));
+  };
+  const list = (key: string, flag: string) => {
+    for (const v of cfg.get<string[]>(key) ?? []) if (v.trim()) args.push(flag, v);
+  };
+  // depphunter's switches only go one way each: --watch and the like turn something
+  // on that is off by default, --no-cache and the like turn off something that is on.
+  const on = (key: string, flag: string) => { if (cfg.get<boolean>(key) === true) args.push(flag); };
+  const off = (key: string, flag: string) => { if (cfg.get<boolean>(key) === false) args.push(flag); };
 
-  for (const report of cfg.get<string[]>('findings') ?? []) {
-    if (report.trim()) args.push('--findings', report);
-  }
+  text('config', '--config');
+  on('watch', '--watch');
+
+  list('exclude', '--exclude');
+  number('maxFileSize', '--max-file-size');
+  number('resolveDepth', '--resolve-depth');
+  on('online', '--online');
+  off('cache', '--no-cache');
+  off('history', '--no-history');
+  number('historyCommits', '--history-commits');
+
+  text('style', '--style');
+  text('theme', '--theme');
+  text('colorBy', '--color-by');
+  text('heightScale', '--height-scale');
+  number('expandDepth', '--expand-depth');
+  on('showStd', '--show-std');
+
+  list('findings', '--findings');
+  off('vulns', '--no-vulns');
+
+  on('lsp', '--lsp');
+  text('lspTimeout', '--lsp-timeout');
 
   const template = editorTemplate(cfg);
   if (template) args.push('--editor', template);

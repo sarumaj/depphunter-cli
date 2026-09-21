@@ -43,6 +43,16 @@ describe('depphunter.open', { skip: available() ? false : 'no depphunter binary 
     assert.match(address ?? '', ADDRESS);
   });
 
+  it('lists the folder as running in the Maps view', async () => {
+    const view = stub.last('registerTreeDataProvider', 'depphunter.maps')?.[2];
+    assert.ok(view, 'the Maps view has no data provider');
+    const [folder] = view.getChildren();
+    const item = view.getTreeItem(folder);
+    assert.strictEqual(item.contextValue, 'running');
+    // The description is on screen, and the token is not something to put there.
+    assert.ok(!/token/.test(item.description + item.tooltip), `the token is shown: ${item.description}`);
+  });
+
   it('keeps the token when the address is rewritten under it', async () => {
     // asExternalUri does not reliably keep the query, and in embed mode the query is
     // where the session token is - there is no cookie to hold it inside somebody

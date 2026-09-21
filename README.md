@@ -260,8 +260,11 @@ explicit setting always wins over the one that shipped.
 
 ### Use
 
-`depphunter: Open the Map` from the command palette, or right-click a folder in
-the explorer.
+Click the depphunter icon in the activity bar: the **Maps** view lists the
+window's folders, and clicking one maps it. Its buttons restart and stop a
+running server, and the view's title bar has the log and the settings. The
+same is in the command palette as `depphunter: Open the Map`, and on the
+explorer's right-click menu for any folder.
 
 | Command                           | What it does                                       |
 |-----------------------------------|----------------------------------------------------|
@@ -269,6 +272,7 @@ the explorer.
 | `depphunter: Restart the Server`  | Starts it again, which is how settings take effect |
 | `depphunter: Stop the Server`     | Stops it; the next open analyzes afresh            |
 | `depphunter: Show the Server Log` | The server's own output, verbatim                  |
+| `depphunter: Open Settings`       | The extension's settings, below                    |
 
 One server per folder, kept until the window closes or you stop it: analyzing a
 large repository takes a moment, and with `--watch` it only has to happen once.
@@ -276,15 +280,46 @@ A status bar item appears while one is running, and clicking it opens the map.
 
 ### Settings
 
-| Setting                    | Default   | What it does                                                                                                                                                                 |
-|----------------------------|-----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `depphunter.path`          | *(empty)* | The binary to run. Empty means the one the extension ships with, falling back to `depphunter` on `PATH`. A bare name is looked up on `PATH`, an absolute path used as given. |
-| `depphunter.watch`         | `true`    | Re-analyze on file changes and update the map (`--watch`).                                                                                                                   |
-| `depphunter.style`         | `default` | `city`, `circuit` or `galaxy`; `default` leaves it to the config files.                                                                                                      |
-| `depphunter.findings`      | `[]`      | Scanner reports to place on the map, relative to the folder. Globs allowed.                                                                                                  |
-| `depphunter.args`          | `[]`      | Further arguments, one per entry. [Usage](#usage) has the list.                                                                                                              |
-| `depphunter.openIn`        | `webview` | `webview` for a tab of the editor's own, `simpleBrowser` for its built-in browser, `externalBrowser` for yours.                                                              |
-| `depphunter.editorCommand` | `""`      | What **Open in editor** runs. Empty means this editor.                                                                                                                       |
+Settings, in the groups the Settings editor shows them in. Each one names the
+flag it passes, and passes it only when set to something other than what
+depphunter would do anyway - an enum at `default`, a number left empty, a
+switch where depphunter's own default puts it - so a folder's
+`.depphunter.yaml` still decides everything you leave alone here.
+
+| Setting                      | Default   | Flag                | What it does                                                                                               |
+|------------------------------|-----------|---------------------|------------------------------------------------------------------------------------------------------------|
+| **General**                  |           |                     |                                                                                                            |
+| `depphunter.path`            | *(empty)* |                     | The binary to run. Empty means the one the extension ships with, falling back to `depphunter` on `PATH`.   |
+| `depphunter.openIn`          | `webview` |                     | `webview` (a tab of its own), `simpleBrowser` (the built-in browser) or `externalBrowser` (yours).         |
+| `depphunter.watch`           | `true`    | `--watch`           | Re-analyze on file changes and update the map.                                                             |
+| `depphunter.config`          | `""`      | `--config`          | A config file to use instead of the folder's `.depphunter.yaml`, relative to the folder.                   |
+| `depphunter.editorCommand`   | `""`      | `--editor`          | What **Open in editor** runs. Empty means this editor.                                                     |
+| `depphunter.args`            | `[]`      |                     | Further arguments, one per entry, passed last. [Usage](#usage) has the list.                               |
+| **Analysis**                 |           |                     |                                                                                                            |
+| `depphunter.exclude`         | `[]`      | `--exclude`         | Globs of paths to skip.                                                                                    |
+| `depphunter.maxFileSize`     | *(empty)* | `--max-file-size`   | Files larger than this many bytes are not read.                                                            |
+| `depphunter.resolveDepth`    | *(empty)* | `--resolve-depth`   | Levels of dependencies-of-dependencies to resolve from lock files; `-1` for all.                           |
+| `depphunter.online`          | `false`   | `--online`          | Ask package indexes, and the OSV database, over the network.                                               |
+| `depphunter.cache`           | `true`    | `--no-cache`        | Read and write the analysis cache.                                                                         |
+| `depphunter.history`         | `true`    | `--no-history`      | Read git history for the history overlays.                                                                 |
+| `depphunter.historyCommits`  | *(empty)* | `--history-commits` | Read at most this many commits.                                                                            |
+| **Appearance**               |           |                     |                                                                                                            |
+| `depphunter.style`           | `default` | `--style`           | `city`, `circuit` or `galaxy`.                                                                             |
+| `depphunter.theme`           | `default` | `--theme`           | `auto`, `light` or `dark`.                                                                                 |
+| `depphunter.colorBy`         | `default` | `--color-by`        | `language`, `size`, `commits`, `churn`, `age` or `authors`.                                                |
+| `depphunter.heightScale`     | `default` | `--height-scale`    | `linear`, `sqrt` or `log`.                                                                                 |
+| `depphunter.expandDepth`     | *(empty)* | `--expand-depth`    | Directory levels expanded at first; `0` picks, `-1` expands everything.                                    |
+| `depphunter.showStd`         | `false`   | `--show-std`        | Show standard-library islands.                                                                             |
+| **Findings**                 |           |                     |                                                                                                            |
+| `depphunter.findings`        | `[]`      | `--findings`        | Scanner reports to place on the map, relative to the folder. Globs allowed.                                |
+| `depphunter.vulns`           | `true`    | `--no-vulns`        | Place reports on the map and, with `online`, ask the OSV database.                                         |
+| **References**               |           |                     |                                                                                                            |
+| `depphunter.lsp`             | `false`   | `--lsp`             | Find symbol references with installed language servers.                                                    |
+| `depphunter.lspTimeout`      | `""`      | `--lsp-timeout`     | Time budget for the language servers, e.g. `90s`.                                                          |
+
+What is left out is left out on purpose: `--addr`, `--no-open` and `--embed`
+are how the extension hosts the map and are not for changing, and `--export`
+writes a file and exits rather than serving.
 
 They are ordinary settings, so they can be set per workspace in
 `.vscode/settings.json`:
@@ -293,7 +328,9 @@ They are ordinary settings, so they can be set per workspace in
 {
   "depphunter.style": "circuit",
   "depphunter.findings": ["reports/trivy.json", "reports/*.sarif"],
-  "depphunter.args": ["--exclude", "vendor", "--lsp", "--resolve-depth", "1"]
+  "depphunter.exclude": ["vendor"],
+  "depphunter.lsp": true,
+  "depphunter.resolveDepth": 1
 }
 ```
 
