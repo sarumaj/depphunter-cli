@@ -1013,9 +1013,6 @@ function applyStyle(redraw = true) {
   if (state.style === 'city') delete document.documentElement.dataset.style;
   else document.documentElement.dataset.style = state.style;
   scene.setStyle(state.style);
-  // The galaxy's void drifts, so the map view has to keep drawing itself; the other
-  // two are still, and a still map is drawn once and left alone.
-  scene.setAnimated(state.style === 'galaxy');
   if (redraw) {
     applyTheme(); // re-reads the palette, and with it the ground, water and sky
     recolor();
