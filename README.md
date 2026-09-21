@@ -54,7 +54,10 @@ flat, data-first coloring.
 The trees and bushes are the same arrangement: `tools/props.py` takes a CC0 low
 poly nature pack, splits each model into its trunk and its crown so the map can
 color and tint them apart, decimates it to something a few thousand instances
-can afford, and writes `web/static/props.glb`.
+can afford, and writes `web/static/props.glb`. The beetle a finding walks the
+streets as is modelled rather than fetched - neither pack has an insect in it -
+by `tools/bug.py` into `web/static/bug.glb`: wing cases that take the severity's
+color, a dark front end, and six legs that rock on their own.
 
 Everything runs locally: one binary, no Node.js, and no network access unless
 you ask for it with `--online` (see [Package indexes](#package-indexes)).
@@ -389,7 +392,7 @@ The same map, dressed three ways (`--style`, or the **Style** menu):
 | Style     | What it is                                                                                                                                                                                                                                                                                                                                                                                                        |
 |-----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `city`    | Buildings with facades and roofs, streets with crossings and parks, shores with trees, bridges between the islands                                                                                                                                                                                                                                                                                                |
-| `circuit` | A printed circuit board: chip packages with rows of pins, heatsinks where the buildings are tall, copper traces down every street with vias along them, solder pads and silkscreen around every part, capacitors and LEDs where the trees and lamps were                                                                                                                                                          |
+| `circuit` | A printed circuit board: chip packages with rows of pins, heatsinks where the buildings are tall, copper traces down every street with vias along them, solder pads and silkscreen around every part, capacitors where the trees were and LEDs, lit, where the lamps were. Off the edge of the board is the backplane it is plugged into, and it is live: charge runs along its tracks, which is this style's way of saying you cannot walk there |
 | `galaxy`  | Platforms out in the dark: crystal spires with strata of light and windows like stars, glowing conduits between them, and instead of sea and sky the band of the galaxy with its dust lanes, two nebulae behind it and three layers of stars in front. The void the platforms hang in drifts, in layers and at three speeds, so the map view keeps drawing itself while this style is on; the other two are still |
 
 Only the environment changes. The colors that carry data - the language

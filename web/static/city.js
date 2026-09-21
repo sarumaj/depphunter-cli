@@ -27,7 +27,7 @@
 // usual one (uGroundRef, uLandRef): nesting levels, hover and flashes still show.
 
 import * as THREE from './vendor/three.module.min.js';
-import { plants } from './props.js';
+import { plants } from './models.js';
 
 /** Box kinds as the shaders see them (attribute aKind). */
 export function kindCode(b) {
