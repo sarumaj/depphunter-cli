@@ -304,3 +304,115 @@ func TestHistoryLifecycle(t *testing.T) {
 		t.Errorf("without history: %d, want 204", code)
 	}
 }
+
+// Embed mode is what an editor's built-in browser needs: the map has to be allowed
+// into a frame, and the cookie the server would normally hand out is no use there,
+// so the token comes back on every call instead. None of it may leak into the
+// ordinary mode, which is what the second half of each of these checks.
+
+func embedded(t *testing.T) (string, string, string) {
+	t.Helper()
+	s, url, base := start(t, func(c *config.Config) { c.Embed = []string{"vscode-webview:"} })
+	return s.token, url, base
+}
+
+func headers(t *testing.T, url string) http.Header {
+	t.Helper()
+	res, err := http.Get(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	return res.Header
+}
+
+func TestEmbedAllowsTheFrameItWasTold(t *testing.T) {
+	_, url, _ := embedded(t)
+	h := headers(t, url)
+	if got := h.Get("Content-Security-Policy"); !strings.Contains(got, "frame-ancestors vscode-webview:") {
+		t.Errorf("embed CSP: %q", got)
+	}
+	if got := h.Get("X-Frame-Options"); got != "" {
+		// It has no syntax for naming an origin that browsers still honour, so in
+		// embed mode it can only be absent; the CSP above is the whole of the answer.
+		t.Errorf("X-Frame-Options in embed mode: %q", got)
+	}
+
+	_, plain, _ := start(t)
+	h = headers(t, plain)
+	if got := h.Get("Content-Security-Policy"); !strings.Contains(got, "frame-ancestors 'none'") {
+		t.Errorf("default CSP: %q", got)
+	}
+	if got := h.Get("X-Frame-Options"); got != "DENY" {
+		t.Errorf("default X-Frame-Options: %q", got)
+	}
+}
+
+func TestEmbedKeepsTheTokenInTheAddress(t *testing.T) {
+	token, url, base := embedded(t)
+	// No redirect and no cookie: the page needs the token where it can read it.
+	res, err := (&http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+		return http.ErrUseLastResponse
+	}}).Get(url)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusOK {
+		t.Errorf("document: got %d, want 200", res.StatusCode)
+	}
+	if len(res.Cookies()) != 0 {
+		t.Errorf("embed mode set a cookie: %v", res.Cookies())
+	}
+
+	// The token is taken from a header, and from the query for what cannot set one.
+	if code, body := get(t, http.DefaultClient, base+"/api/graph", func(r *http.Request) {
+		r.Header.Set(tokenHeader, token)
+	}); code != http.StatusOK || !strings.Contains(body, `"a.go"`) {
+		t.Errorf("graph with the token header: %d %q", code, body)
+	}
+	if code, _ := get(t, http.DefaultClient, base+"/api/graph?token="+token, nil); code != http.StatusOK {
+		t.Errorf("graph with the token in the query: got %d", code)
+	}
+	if code, _ := get(t, http.DefaultClient, base+"/api/graph", func(r *http.Request) {
+		r.Header.Set(tokenHeader, "wrong")
+	}); code != http.StatusUnauthorized {
+		t.Errorf("graph with a wrong token: got %d", code)
+	}
+}
+
+func TestEmbedServesTheInterfaceButNotTheProject(t *testing.T) {
+	_, _, base := embedded(t)
+	// The UI's own files are the same bytes in every release and say nothing about
+	// the project, so a frame can load them without the token it cannot attach.
+	if code, body := get(t, http.DefaultClient, base+"/index.html", nil); code != http.StatusOK || !strings.Contains(body, "ui") {
+		t.Errorf("asset without a token: %d %q", code, body)
+	}
+	// Everything that knows anything still needs it, and so does the document that
+	// carries the token to the page.
+	for _, path := range []string{"/", "/api/graph", "/api/config", "/api/file?path=a.go"} {
+		if code, _ := get(t, http.DefaultClient, base+path, nil); code != http.StatusUnauthorized {
+			t.Errorf("%s without a token: got %d, want 401", path, code)
+		}
+	}
+
+	// And none of that applies without --embed: there, an asset needs the cookie.
+	_, _, plain := start(t)
+	if code, _ := get(t, http.DefaultClient, plain+"/index.html", nil); code != http.StatusUnauthorized {
+		t.Errorf("asset without --embed: got %d, want 401", code)
+	}
+}
+
+func TestEmbedStillRefusesAWriteWithoutTheRequestHeader(t *testing.T) {
+	token, _, base := embedded(t)
+	req, _ := http.NewRequest(http.MethodPost, base+"/api/settings", strings.NewReader("{}"))
+	req.Header.Set(tokenHeader, token)
+	res, err := http.DefaultClient.Do(req)
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	if res.StatusCode != http.StatusForbidden {
+		t.Errorf("POST without %s: got %d, want 403", requestHeader, res.StatusCode)
+	}
+}

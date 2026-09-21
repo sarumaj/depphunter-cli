@@ -102,6 +102,13 @@ type Config struct {
 	// Export and Output are one-shot actions, so they only come from flags.
 	Export string `yaml:"-" mapstructure:"-"`
 	Output string `yaml:"-" mapstructure:"-"`
+
+	// Embed lists the origins allowed to show the map in a frame of their own - an
+	// editor's built-in browser, which is how the VS Code extension hosts it. It
+	// relaxes what the server otherwise refuses outright, so it comes from flags
+	// only: a program that launches depphunter passes it, and neither a config file
+	// nor the environment can turn it on behind the user's back.
+	Embed []string `yaml:"-" mapstructure:"-"`
 }
 
 func Default() Config {
@@ -145,6 +152,8 @@ func RegisterFlags(fs *pflag.FlagSet) {
 	fs.Bool("lsp", false, "find symbol references with installed language servers (gopls, …)")
 	fs.Duration("lsp-timeout", d.LSPTimeout, "time budget for language servers")
 	fs.String("editor", "", `editor command template, e.g. "code -g {file}:{line}" (default: auto-detect)`)
+	fs.StringArray("embed", nil,
+		"origin allowed to show the map in a frame, e.g. vscode-webview: for an editor's browser; repeatable")
 	fs.String("export", "", "write the graph as json, graphml, dot or html and exit instead of serving")
 	fs.StringP("output", "o", "", "output file for --export (default: stdout)")
 }
@@ -249,6 +258,7 @@ func Load(fs *pflag.FlagSet, args []string, userDir string) (Config, error) {
 	}
 	flagFindings, _ := fs.GetStringArray("findings")
 	cfg.Findings = append(cfg.Findings, flagFindings...)
+	cfg.Embed, _ = fs.GetStringArray("embed")
 	cfg.Export, _ = fs.GetString("export")
 	cfg.Output, _ = fs.GetString("output")
 	return cfg, cfg.validate()
@@ -374,5 +384,72 @@ func (c Config) validate() error {
 			}
 			return nil
 		}(),
+		func() error {
+			for _, origin := range c.Embed {
+				if !frameOrigin(origin) {
+					return fmt.Errorf("embed: %q is not a scheme or an origin, e.g. vscode-webview: or https://example.test", origin)
+				}
+			}
+			return nil
+		}(),
 	)
 }
+
+// frameOrigin says whether a string may go into the Content-Security-Policy header
+// as a frame-ancestors source. What comes in is a command line argument and what it
+// lands in is a security header, so what it may be is spelled out here rather than
+// left to whatever the browser makes of it: a scheme on its own
+// ("vscode-webview:"), or a scheme with a host and maybe a port. Nothing with a
+// space, a quote, a slash or a semicolon in it gets through, so nothing passed here
+// can end the directive early or start another one.
+func frameOrigin(s string) bool {
+	if scheme, host, ok := strings.Cut(s, "://"); ok {
+		return isScheme(scheme) && isHost(host)
+	}
+	scheme, ok := strings.CutSuffix(s, ":")
+	return ok && isScheme(scheme)
+}
+
+// isScheme: a letter, then letters, digits and the three punctuation marks a URL
+// scheme is allowed (RFC 3986).
+func isScheme(s string) bool {
+	if s == "" || !isLetter(rune(s[0])) {
+		return false
+	}
+	for _, r := range s {
+		if !isLetter(r) && !isDigit(r) && r != '+' && r != '-' && r != '.' {
+			return false
+		}
+	}
+	return true
+}
+
+// isHost: a host name and an optional port. A leading "*." is allowed, and only
+// there, because an editor's web build hands every session a host of its own and
+// there is nothing else to name it by.
+func isHost(s string) bool {
+	host, port, hasPort := strings.Cut(s, ":")
+	if hasPort {
+		if port == "" {
+			return false
+		}
+		for _, r := range port {
+			if !isDigit(r) {
+				return false
+			}
+		}
+	}
+	host = strings.TrimPrefix(host, "*.")
+	if host == "" {
+		return false
+	}
+	for _, r := range host {
+		if !isLetter(r) && !isDigit(r) && r != '.' && r != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+func isLetter(r rune) bool { return r >= 'a' && r <= 'z' || r >= 'A' && r <= 'Z' }
+func isDigit(r rune) bool  { return r >= '0' && r <= '9' }

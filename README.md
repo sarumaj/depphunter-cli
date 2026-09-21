@@ -117,6 +117,7 @@ depphunter --export html -o map.html  # a self-contained map to share
 | `-v`, `--version`   |                           | print the version and exit                                          |
 | `-h`, `--help`      |                           | list the flags with their defaults                                  |
 | `--editor`          | auto-detected             | editor command template, e.g. `"code -g {file}:{line}"`             |
+| `--embed`           |                           | origin allowed to show the map in a frame, e.g. `vscode-webview:` (repeatable) |
 | `--export`          |                           | write `json`, `graphml`, `dot` or `html` and exit                   |
 | `-o`, `--output`    | stdout                    | output file for `--export`                                          |
 
@@ -490,7 +491,35 @@ shows all controls.
 The server binds to loopback by default and prints a URL containing a random
 token, which the browser exchanges for a cookie. Requests without it, requests
 with a foreign `Host` header (DNS rebinding), and requests for files that are
-not part of the analyzed project are rejected.
+not part of the analyzed project are rejected. Nothing may put the map in a
+frame: `X-Frame-Options: DENY` and `frame-ancestors 'none'`.
+
+### Inside an editor
+
+That last part is also what stops an editor showing the map in its own built-in
+browser, which is a frame like any other. `--embed <origin>` allows the origins
+it names, and only those - `--embed vscode-webview:` for VS Code - which is what
+a wrapper such as an editor extension passes when it starts the server. Three
+things follow from it, and nothing else changes:
+
+- `frame-ancestors` names those origins instead of `'none'`, and
+  `X-Frame-Options` is not sent, because it has no way to name an origin that
+  browsers still honour.
+- The token stays in the address instead of being exchanged for a cookie. A
+  cookie set by the map is a third-party cookie inside somebody else's frame,
+  and browsers do not send those back; the page reads the token from its own
+  URL and returns it on every call, in a header, or in the query string for the
+  event stream, which cannot set headers. `Referrer-Policy: no-referrer` keeps
+  it out of any request that leaves.
+- The interface's own files - `app.js` and what it imports - are served without
+  the token, since a frame cannot attach one to a `<script src>`. They are the
+  same bytes in every release and say nothing about the project. Everything
+  under `/api`, and the document that hands the page its token, still needs it.
+
+It is deliberately a flag and nothing else: no config file and no environment
+variable can turn it on, so a repository cannot arrange to be framed by a page
+of its choosing. Each origin is checked before it reaches the header, so nothing
+passed on the command line can end the directive early or start another one.
 
 ## Languages
 

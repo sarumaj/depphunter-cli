@@ -4,7 +4,7 @@ import { MapScene } from './scene.js';
 import { readPalette, languageColors, assignSlots, sequential } from './colors.js';
 import { Panel } from './panel.js';
 import { computeVisibility, searchIndex, search } from './filter.js';
-import { STATIC, fetchGraph, fetchConfig, fetchLazy, saveSettings } from './data.js';
+import { STATIC, auth, authed, fetchGraph, fetchConfig, fetchLazy, saveSettings } from './data.js';
 import { MODES, isHistoryMode, computeMetrics, historyT, timeRange, ago, formatDate } from './history.js';
 import { Labels } from './labels.js';
 import { Walker } from './walk.js';
@@ -423,7 +423,9 @@ let events = null, reconnects = 0;
 
 function connectEvents() {
   events?.close();
-  const es = events = new EventSource('api/events');
+  // An EventSource cannot set a header, so in embed mode the token rides in the
+  // query string instead (data.js).
+  const es = events = new EventSource(authed('api/events'));
   es.onopen = () => { reconnects = 0; setLive('live'); };
   es.onerror = () => {
     if (++reconnects <= MAX_RECONNECTS) return setLive('reconnecting');
@@ -530,7 +532,7 @@ async function openFile(path, line = 1) {
   }
   const res = await fetch('api/open', {
     method: 'POST',
-    headers: { 'Content-Type': 'application/json', 'X-Depphunter-Request': '1' },
+    headers: auth({ 'Content-Type': 'application/json', 'X-Depphunter-Request': '1' }),
     body: JSON.stringify({ path, line }),
   });
   if (!res.ok) updateStatus(`could not open editor: ${(await res.text()).trim()}`);
@@ -1257,6 +1259,8 @@ function bindExport() {
   const btn = $('export-btn'), pop = $('export');
   const setOpen = open => { pop.hidden = !open; btn.setAttribute('aria-expanded', open); };
   btn.onclick = () => setOpen(pop.hidden);
+  // These are links, not fetches, so in embed mode the token has to be on them.
+  for (const a of pop.querySelectorAll('a[href^="api/"]')) a.href = authed(a.getAttribute('href'));
   // The HTML export carries the current view, not whatever the config file holds.
   pop.querySelector('a[href*="format=html"]')?.addEventListener('pointerdown', e => {
     const url = new URL(e.target.closest('a').href, location.href);
