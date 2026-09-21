@@ -386,11 +386,11 @@ bug is and what it is carrying.
 
 The same map, dressed three ways (`--style`, or the **Style** menu):
 
-| Style     | What it is                                                                                                                                                                                                                                               |
-|-----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `city`    | Buildings with facades and roofs, streets with crossings and parks, shores with trees, bridges between the islands                                                                                                                                       |
-| `circuit` | A printed circuit board: chip packages with rows of pins, heatsinks where the buildings are tall, copper traces down every street with vias along them, solder pads and silkscreen around every part, capacitors and LEDs where the trees and lamps were |
-| `galaxy`  | Platforms out in the dark: crystal spires with strata of light and windows like stars, glowing conduits between them, and instead of sea and sky the band of the galaxy with its dust lanes, two nebulae behind it and three layers of stars in front    |
+| Style     | What it is                                                                                                                                                                                                                                                                                                                                                                                                        |
+|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `city`    | Buildings with facades and roofs, streets with crossings and parks, shores with trees, bridges between the islands                                                                                                                                                                                                                                                                                                |
+| `circuit` | A printed circuit board: chip packages with rows of pins, heatsinks where the buildings are tall, copper traces down every street with vias along them, solder pads and silkscreen around every part, capacitors and LEDs where the trees and lamps were                                                                                                                                                          |
+| `galaxy`  | Platforms out in the dark: crystal spires with strata of light and windows like stars, glowing conduits between them, and instead of sea and sky the band of the galaxy with its dust lanes, two nebulae behind it and three layers of stars in front. The void the platforms hang in drifts, in layers and at three speeds, so the map view keeps drawing itself while this style is on; the other two are still |
 
 Only the environment changes. The colors that carry data - the language
 palette, the history overlays, hover and selection - are the same in all three,
@@ -450,6 +450,7 @@ mode you can go 3 units out over the water and 12 above the tallest building.
 | Pin click                 | read the findings over a building        |
 | `+` beside a finding      | put it in the backpack                   |
 | `B`                       | the backpack: everything caught          |
+| The figure                | where you were standing in walk mode     |
 | `Esc`                     | close the backpack, or clear selection   |
 | `V`                       | walk mode                                |
 
@@ -462,11 +463,17 @@ In walk mode:
 | `Space`                | jump (flying: straight up)                                                                                  |
 | `F`                    | fly on / off; flying, `W`/`S` move where you look (look down and press `W` to dive), `C` goes straight down |
 | Click                  | use what is in your hands: the module it reaches is tagged, a bug it catches is read out and kept           |
+| `H`                    | put the tool away, or take it out again; it still works, and throws from your eye                           |
 | Hold right button      | look through the scope                                                                                      |
 | `Enter`                | details of what the reticle is on, like a second dart (frees the mouse; click the map to walk on)           |
 | Wheel                  | zoom in / out                                                                                               |
 | `+` `-` (or `[` `]`)   | planet size (curvature)                                                                                     |
-| `V` / `Esc`            | back to the map                                                                                             |
+| `V` / `Esc`            | back to the map; going in again puts you back where you stood                                               |
+
+The map draws the walker where they are standing, as a figure facing the way
+they were facing, and going back in puts them there - unless you picked
+something on the map while you were away, which is how you say "take me there"
+instead.
 
 On foot, the shore stops you, but every island can be reached over a bridge;
 flying, you can go 3 units out over the water. The ground you stand on is never
