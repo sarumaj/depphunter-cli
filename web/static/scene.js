@@ -17,6 +17,10 @@ const ISO_POLAR = Math.acos(1 / Math.sqrt(3)); // true isometric elevation (35.2
 
 // The styles, as the shaders number them (city.js cityTexture).
 const STYLE_CODES = { city: 0, circuit: 1, galaxy: 2 };
+// The live view on the back of the camera tool, in pixels. Small on purpose: it is a
+// screen a centimetre across in the walker's hands, and it costs a second pass over
+// the world every time it is drawn.
+const FILM_W = 192, FILM_H = 144;
 // The styles whose ground does not hold still: the galaxy's void drifts and the
 // circuit's backplane carries current. A city's sea ripples too, but only close up,
 // and walk mode draws its own frames.
@@ -568,6 +572,27 @@ export class MapScene {
       r.autoClear = true;
     }
     return r.domElement;
+  }
+
+  /**
+   * The world again, small, from a camera of its own, into a texture: the live view
+   * on the back of the camera tool.
+   *
+   * The hands are not in it and do not have to be taken out - what they hold is a
+   * scene of its own, drawn over the world rather than in it (renderNow above). The
+   * bend is a property of the materials and of uniforms already set for this frame,
+   * so a second camera at the same place sees the same curved world.
+   */
+  film(camera) {
+    if (!this.filmTarget) {
+      this.filmTarget = new THREE.WebGLRenderTarget(FILM_W, FILM_H);
+      this.filmTarget.texture.colorSpace = this.renderer.outputColorSpace;
+    }
+    const r = this.renderer;
+    r.setRenderTarget(this.filmTarget);
+    r.render(this.scene, camera);
+    r.setRenderTarget(null);
+    return this.filmTarget.texture;
   }
 
   /**

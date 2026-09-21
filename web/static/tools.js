@@ -435,18 +435,39 @@ const net = {
       ferrule.position.y = 0.45;
       net.add(ferrule);
 
+      // The head, built so the shaft runs into the rim rather than through the middle
+      // of the mouth. A hoop centred on the shaft's axis is a landing net looked at
+      // down its handle; a butterfly net's hoop stands in the line of the shaft, and
+      // the stick ends where the rim begins. That is one group and one offset: the
+      // mouth is turned a quarter so its plane contains the shaft, and lifted by its
+      // own radius so the bottom of the rim sits exactly on the ferrule.
       const head = new THREE.Group();
       head.position.y = 0.47;
       head.rotation.x = -0.25;
       head.name = 'head';
       net.add(head);
+
+      const mouth = new THREE.Group();
+      mouth.rotation.x = Math.PI / 2; // the bag now trails forward, out of the frame
+      mouth.position.y = HOOP;
+      head.add(mouth);
       const hoop = part(new THREE.TorusGeometry(HOOP, 0.006, 6, 24), '#dfe4ea');
       hoop.rotation.x = Math.PI / 2;
-      head.add(hoop);
-      // The collar that binds the hoop to the shaft.
-      head.add(part(new THREE.BoxGeometry(0.028, 0.055, 0.015).translate(0, -0.028, 0), '#aab2bb'));
-      muzzle(head, 0, 0, 0);
-      bagOf(head, HOOP, BAG);
+      mouth.add(hoop);
+      bagOf(mouth, HOOP, BAG);
+
+      // And the join itself: a socket over the end of the shaft, and two struts
+      // splayed from it to the rim, which is how a net is actually built. Without
+      // them the hoop is a ring balanced on a stick.
+      head.add(part(new THREE.CylinderGeometry(0.019, 0.022, 0.05, 10), '#aab2bb'));
+      for (const side of [-1, 1]) {
+        const out = Math.sin(0.85) * HOOP, up = HOOP - Math.cos(0.85) * HOOP;
+        const strut = rodPart(0.006, 0.005, Math.hypot(out, up), '#aab2bb');
+        strut.position.set(side * out / 2, 0.02 + up / 2, 0);
+        strut.rotation.z = -Math.atan2(side * out, up);
+        head.add(strut);
+      }
+      muzzle(head, 0, HOOP, 0);
     });
   },
   // A wind-up away from the view, then a sweep across it, the head trailing the hand.
@@ -533,6 +554,22 @@ const camera = {
       flash.name = 'flash';
       shell.add(flash);
 
+      // The screen on the back, which is the one part of this that is not scenery:
+      // it shows the world the lens is pointed at, rendered small each frame (live
+      // below). A bezel around it, and a lit strip above it while the film runs.
+      const bezel = part(new THREE.BoxGeometry(0.155, 0.115, 0.008).translate(-0.035, -0.012, 0.058), '#15181b');
+      shell.add(bezel);
+      const screen = new THREE.Mesh(
+        new THREE.PlaneGeometry(0.135, 0.097).translate(-0.035, -0.012, 0.063),
+        // Unlit, unlike the rest of what is held: a screen makes its own light, and
+        // the walk camera's lamps would only wash the picture out.
+        new THREE.MeshBasicMaterial({ color: '#0b0d10', toneMapped: false }));
+      screen.name = 'screen';
+      shell.add(screen);
+      const lamp = part(new THREE.BoxGeometry(0.012, 0.008, 0.006).translate(-0.1, 0.05, 0.058), '#3ad07a');
+
+      shell.add(lamp);
+
       grasps(g, cam, { ...this.right, at: this.right.at.map(v => v * SHELL) });
       g.userData.trigger = 0.12; // the index finger rests on the shutter release
     });
@@ -551,6 +588,23 @@ const camera = {
   },
   projectile: null, // a photograph arrives the moment it is taken
   flash: '#ffffff',
+
+  /**
+   * The live view, once a frame: the world drawn again from the lens into a small
+   * texture and hung on the back of the camera. Only this tool has one, and only
+   * while it is the tool in hand - it is a second pass over the whole map, which is
+   * worth it for the one thing here that is supposed to be looking at something.
+   */
+  live(vm, scene, lens) {
+    const screen = vm.getObjectByName('screen');
+    if (!screen) return;
+    const texture = scene.film(lens);
+    if (screen.material.map !== texture) {
+      screen.material.map = texture;
+      screen.material.color.set('#ffffff');
+      screen.material.needsUpdate = true;
+    }
+  },
 };
 
 const bubbles = {
@@ -734,7 +788,181 @@ const dart = {
   },
 };
 
-export const TOOLS = { rod, net, camera, bubbles, dart };
+// ------------------------------------------------- what the buildings are for
+
+/**
+ * A framing nailer: the construction trade's answer to the tracking dart. Nails go
+ * into buildings and nothing else, they go fast and nearly flat, and the magazine
+ * means they go one after another - a wall of a warehouse can be pinned at a run in a
+ * way a single dart cannot.
+ */
+const nailer = {
+  id: 'nailer',
+  label: 'Nail gun',
+  verb: 'Pin',
+  noun: 'pinned',
+  hint: 'Drive a nail into a building; hit it again for details',
+  reticle: 'cross',
+  slot: 6,
+  targets: 'buildings',
+  // Fired rather than thrown: the fastest and flattest thing here, and heavy enough
+  // that the air does nothing to it.
+  flight: { speed: 70, arc: 0.1, gravity: 3.5, drag: 0 },
+  hold: { x: 0.19, y: -0.24, z: -0.5, along: [0.05, 1, 0.1], back: [0.45, -0.3, 1] },
+  grip: { x: 0, y: 0, z: 0, rx: -3.124, ry: 0.117, rz: -1.599 },
+  restGrip: 0.88,
+  viewmodel() {
+    return viewmodel(g => {
+      const gun = armed(g, this, tool => { tool.name = 'gun'; });
+      const frame = new THREE.Group();
+      frame.position.set(0, 0.045, -0.01);
+      gun.add(frame);
+      // The body, in the yellow every tool on a site is painted.
+      frame.add(part(new THREE.BoxGeometry(0.085, 0.1, 0.17).translate(0, 0.06, -0.09), '#e8a317'));
+      frame.add(part(new THREE.BoxGeometry(0.089, 0.03, 0.06).translate(0, 0.105, -0.11), '#2b2f34'));
+      // The nose: a stepped muzzle with the safety contact tip standing off it.
+      const nose = rodPart(0.026, 0.02, 0.16, '#39424c');
+      nose.rotation.x = Math.PI / 2;
+      nose.position.set(0, 0.045, -0.24);
+      frame.add(nose);
+      const tip = rodPart(0.016, 0.013, 0.05, '#b9bec6');
+      tip.rotation.x = Math.PI / 2;
+      tip.position.set(0, 0.045, -0.34);
+      frame.add(tip);
+      muzzle(frame, 0, 0.045, -0.37);
+      // The magazine, raked back under the nose the way a strip nailer's is, with a
+      // strip of nails showing along it.
+      const mag = new THREE.Group();
+      mag.position.set(0, 0.03, -0.13);
+      mag.rotation.x = -0.62;
+      frame.add(mag);
+      mag.add(part(new THREE.BoxGeometry(0.036, 0.26, 0.032).translate(0, -0.11, 0), '#2b2f34'));
+      mag.add(part(new THREE.BoxGeometry(0.014, 0.2, 0.01).translate(0.024, -0.09, 0), '#c9ced6'));
+      // The grip and its trigger, and the air line coming out of the heel.
+      frame.add(part(new THREE.BoxGeometry(0.05, 0.13, 0.05).translate(0, -0.04, 0.01), '#2b2f34'));
+      frame.add(part(new THREE.BoxGeometry(0.018, 0.032, 0.012).translate(0, 0.018, -0.05), '#15181b'));
+      const hose = rodPart(0.012, 0.012, 0.09, '#d0433a');
+      hose.rotation.x = 0.5;
+      hose.position.set(0, -0.1, 0.06);
+      frame.add(hose);
+      g.userData.trigger = 0.1;
+    });
+  },
+  // Recoil: a nailer kicks up and comes straight back down onto the work.
+  pose(vm, u) {
+    const k = press(u);
+    vm.position.z = REST.z + k * 0.05;
+    vm.position.y = vm.userData.restY + k * 0.02;
+    vm.rotation.x = REST.rx + k * 0.3;
+    vm.rotation.z = REST.rz + k * 0.03;
+    grip(vm, k * 0.4, k);
+  },
+  projectile() {
+    const g = new THREE.Group();
+    const shank = rodPart(0.006, 0.006, 0.12, '#c9ced6');
+    shank.rotation.x = Math.PI / 2;
+    g.add(shank);
+    g.add(part(new THREE.ConeGeometry(0.007, 0.03, 8).rotateX(Math.PI / 2).translate(0, 0, 0.072), '#e6eaef'));
+    const head = part(new THREE.CylinderGeometry(0.014, 0.014, 0.006, 10), '#aab2bb');
+    head.rotation.x = Math.PI / 2;
+    head.position.z = -0.062;
+    g.add(head);
+    g.userData.aim = true;
+    return g;
+  },
+};
+
+/**
+ * A grapple gun, which is the one tool here that does nothing to what it hits. It
+ * bites, and then the line pulls the walker up it: a facade is climbed, a roof is
+ * arrived on, and from that roof the same shot fired at the street below is the way
+ * down. Nothing is tagged and nothing is caught - this is how you get about.
+ */
+const grapple = {
+  id: 'grapple',
+  label: 'Grapple gun',
+  verb: 'Hook',
+  noun: 'climbed',
+  hint: 'Hook a building and be pulled up it; from a roof, hook the ground to come down',
+  reticle: 'hook',
+  slot: 7,
+  targets: 'buildings',
+  // A line paid out taut: no lob and no drop worth speaking of.
+  flight: { speed: 55, arc: 0.05, gravity: 0.6, drag: 0 },
+  line: '#cfd6de', // the line stays drawn, out and back
+  grapple: true,   // what arriving means (walk.js)
+  hold: { x: 0.19, y: -0.24, z: -0.5, along: [0.05, 1, 0.1], back: [0.45, -0.3, 1] },
+  grip: { x: 0, y: 0, z: 0, rx: -3.124, ry: 0.117, rz: -1.599 },
+  restGrip: 0.88,
+  viewmodel() {
+    return viewmodel(g => {
+      const gun = armed(g, this, tool => { tool.name = 'gun'; });
+      const frame = new THREE.Group();
+      frame.position.set(0, 0.045, -0.01);
+      gun.add(frame);
+      // A stubby launcher in the matt grey of issued kit, with the drum of line on
+      // its side - which is the part that says what this does.
+      frame.add(part(new THREE.BoxGeometry(0.07, 0.085, 0.15).translate(0, 0.055, -0.08), '#3c444d'));
+      const barrel = rodPart(0.034, 0.036, 0.22, '#2b3138');
+      barrel.rotation.x = Math.PI / 2;
+      barrel.position.set(0, 0.055, -0.22);
+      frame.add(barrel);
+      muzzle(frame, 0, 0.055, -0.33);
+      const drum = rodPart(0.05, 0.05, 0.03, '#59636e');
+      drum.rotation.z = Math.PI / 2;
+      drum.position.set(-0.05, 0.055, -0.08);
+      frame.add(drum);
+      const coil = part(new THREE.TorusGeometry(0.034, 0.005, 5, 16), '#cfd6de'); // the line on it
+      coil.rotation.y = Math.PI / 2;
+      coil.position.set(-0.066, 0.055, -0.08);
+      frame.add(coil);
+      // The claw, folded back along the barrel until it is fired.
+      const claw = new THREE.Group();
+      claw.position.set(0, 0.055, -0.32);
+      claw.name = 'claw';
+      frame.add(claw);
+      for (let i = 0; i < 3; i++) {
+        const arm = rodPart(0.006, 0.004, 0.09, '#b9bec6');
+        arm.position.set(0, 0.03, 0.03);
+        arm.rotation.x = -0.9;
+        const hinge = new THREE.Group();
+        hinge.rotation.z = (i * Math.PI * 2) / 3;
+        hinge.add(arm);
+        claw.add(hinge);
+      }
+      frame.add(part(new THREE.BoxGeometry(0.05, 0.13, 0.05).translate(0, -0.04, 0.01), '#23292f'));
+      frame.add(part(new THREE.BoxGeometry(0.018, 0.032, 0.012).translate(0, 0.018, -0.05), '#15181b'));
+      g.userData.trigger = 0.1;
+    });
+  },
+  // A launcher this size shoves back rather than kicking up, and the claw goes with it.
+  pose(vm, u) {
+    const k = press(u);
+    const claw = vm.getObjectByName('claw');
+    if (claw) claw.visible = u < 0.25 || u > 0.8; // it leaves, and the next one rides up
+    vm.position.z = REST.z + k * 0.1;
+    vm.rotation.x = REST.rx + k * 0.16;
+    grip(vm, k * 0.4, k);
+  },
+  projectile() {
+    const g = new THREE.Group();
+    g.add(part(new THREE.ConeGeometry(0.02, 0.09, 8).rotateX(Math.PI / 2).translate(0, 0, 0.05), '#9aa4b0'));
+    const shaft = rodPart(0.01, 0.01, 0.1, '#6f7884');
+    shaft.rotation.x = Math.PI / 2;
+    g.add(shaft);
+    // Three flukes, opened out: what it looks like once it has left the barrel.
+    for (let i = 0; i < 3; i++) {
+      const fluke = part(new THREE.ConeGeometry(0.008, 0.075, 6).translate(0, 0.038, 0), '#b9bec6');
+      fluke.rotation.set(2.3, 0, (i * Math.PI * 2) / 3);
+      fluke.position.z = -0.03;
+      g.add(fluke);
+    }
+    g.userData.aim = true;
+    return g;
+  },
+};
+
+export const TOOLS = { rod, net, camera, bubbles, dart, nailer, grapple };
 
 /** The tools in slot order, which is the order the number keys pick them in. */
 export const TOOL_IDS = Object.values(TOOLS).sort((a, b) => a.slot - b.slot).map(t => t.id);
