@@ -84,11 +84,7 @@ async function launch(folder: { root: string; name: string }): Promise<Session |
 }
 
 async function show(session: Session): Promise<void> {
-  // asExternalUri is what makes this work over a remote or a tunnel: the server
-  // listens on the loopback address of the machine the extension host is on, which is
-  // not the machine the browser is on, and this forwards the port and rewrites the
-  // address. Locally it hands back what it was given.
-  const address = (await vscode.env.asExternalUri(vscode.Uri.parse(session.url))).toString();
+  const address = await reachable(session.url);
   const where = vscode.workspace.getConfiguration('depphunter', vscode.Uri.file(session.root)).get<string>('openIn');
   if (where === 'externalBrowser') {
     await vscode.env.openExternal(vscode.Uri.parse(address));
@@ -104,6 +100,7 @@ async function show(session: Session): Promise<void> {
     }
   }
   panel.open(session.root, `depphunter: ${session.name}`, address);
+  void check(address);
 }
 
 async function restart(): Promise<void> {
@@ -185,6 +182,49 @@ async function offerRestart(): Promise<void> {
   const answer = await vscode.window.showInformationMessage(
     'depphunter settings changed. Restart the server to use them?', 'Restart');
   if (answer === 'Restart') await restart();
+}
+
+/**
+ * The address to put in front of the reader.
+ *
+ * asExternalUri is what makes this work over a remote or a tunnel: the server listens
+ * on the loopback address of the machine the extension host is on, which is not the
+ * machine the browser is on, and this forwards the port and rewrites the address.
+ * Locally it hands back what it was given.
+ *
+ * What it does not reliably hand back is the query, and the query is where the
+ * session token lives in embed mode - there is no cookie to keep it in, because the
+ * page is inside somebody else's frame. An address that lost it loads to
+ * "unauthorized: open the URL printed by depphunter" and nothing else, so the token
+ * is put back on whatever comes out rather than trusted to survive the trip.
+ */
+async function reachable(url: string): Promise<string> {
+  const token = new URL(url).searchParams.get('token');
+  const external = await vscode.env.asExternalUri(vscode.Uri.parse(url));
+  if (!token) return external.toString();
+  const out = new URL(external.toString());
+  out.searchParams.set('token', token);
+  return out.toString();
+}
+
+/**
+ * Asks the server, once, whether the address actually opens - the map is about to be
+ * shown in a frame, where a refusal is a page of text nobody can do anything with and
+ * no hint as to why. Here it can be named, in the log, next to the command line that
+ * produced it.
+ */
+async function check(address: string): Promise<void> {
+  try {
+    const res = await fetch(address, { redirect: 'manual' });
+    if (res.status === 200) return;
+    log.appendLine(`the map answered ${res.status} at ${address.replace(/token=[^&]*/, 'token=...')}`);
+    log.appendLine(res.status === 401 || res.status === 303
+      ? 'the session token did not reach the page: the server may have been started without --embed, '
+        + 'or the address lost its query on the way. The command line above is what was run.'
+      : 'see the command line above for what was started.');
+  } catch (err) {
+    log.appendLine(`the map could not be reached: ${err instanceof Error ? err.message : String(err)}`);
+  }
 }
 
 async function report(err: unknown): Promise<void> {

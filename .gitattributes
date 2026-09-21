@@ -2,6 +2,11 @@
 # Windows checkouts would otherwise convert them to CRLF.
 * text=auto eol=lf
 *.png filter=lfs diff=lfs merge=lfs -text
+# ... except the icons, which are a few kilobytes each and are read straight out
+# of a checkout: vsce wants icon.png when it packages, and a clone with no LFS
+# should still show the right thing in a browser tab.
+/icon.png -filter -diff -merge -text
+/web/static/favicon.png -filter -diff -merge -text
 *.mp4 filter=lfs diff=lfs merge=lfs -text
 *.webm filter=lfs diff=lfs merge=lfs -text
 *.webp filter=lfs diff=lfs merge=lfs -text

@@ -430,11 +430,18 @@ function geometry() {
   return parts;
 }
 
-// The model: its wing cases lit and tinted, its front end dark, its legs their own.
+// The model: its wing cases lit and tinted, its front end dark, its legs their own,
+// and - for the ones that fly - the one flight wing it was modelled with. An older
+// bug.glb has no wing in it, so the drawn one below stands in rather than the flyers
+// losing theirs.
 function modelled(model) {
   const shell = shade(model.get('shell').clone(), 1);
   const dark = shade(model.get('dark').clone(), DARK);
-  return { shell: mergeGeometries([shell, dark]), legs: model.get('legs').clone(), wing: wing() };
+  return {
+    shell: mergeGeometries([shell, dark]),
+    legs: model.get('legs').clone(),
+    wing: model.get('wing')?.clone() || wing(),
+  };
 }
 
 // The stand-in: a squashed sphere with a smaller one in front and six sticks under it.
@@ -453,12 +460,10 @@ function drawn() {
 }
 
 /**
- * The left wing, hinged on the body's own length so that turning it about that line
- * beats it (flap above). Flat, because a wing at thirty-odd beats a second is a blur
- * whatever shape it is - what carries is the outline and the way it sweeps back.
- *
- * It is built lying along the body from the hinge outwards, which puts its root at
- * the origin: the same matrix that places the beetle places this.
+ * The stand-in left wing, for a bug.glb modelled before there was one in it. The
+ * shape is tools/bug.py's, drawn here the way the stand-in beetle above is drawn:
+ * flat, hinged on the body's own length so that turning it about that line beats it
+ * (flap above), and lying over the back from the hinge outwards.
  */
 function wing() {
   const w = WING, root = 0.018;

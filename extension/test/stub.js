@@ -20,6 +20,7 @@ const settings = {
   findings: [],
   args: [],
   openIn: 'webview',
+  dropQuery: false,
   editorCommand: '',
 };
 
@@ -35,7 +36,12 @@ const vscode = {
   },
   env: {
     appRoot: '', // no editor to find a launcher in, so --editor is left off
-    asExternalUri: async u => u,
+    // The real one forwards the port and rewrites the address over a remote or a
+    // tunnel. settings.dropQuery makes it drop the query while doing so, which is
+    // what takes the session token with it.
+    asExternalUri: async u => (settings.dropQuery
+      ? vscode.Uri.parse(u.toString().replace(/\?.*/, ''))
+      : u),
     openExternal: async u => { calls.push(['openExternal', u.toString()]); return true; },
   },
   workspace: {

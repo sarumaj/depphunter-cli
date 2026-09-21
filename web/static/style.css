@@ -240,6 +240,15 @@ main { position: relative; flex: 1; min-height: 0; }
   font-size: 12px; line-height: 18px;
 }
 #walk-hud .w-chip s { text-decoration: none; opacity: 0.55; }
+/* Each counter says what it counts while the walker is standing still, and drops to
+   its number once they get going - the same fold the key list does. A row of bare
+   numbers is quick to read only once you already know what they are. */
+#walk-hud .w-chip em {
+  font-style: normal; opacity: 0.7; margin-left: 1px;
+  max-width: 5em; overflow: hidden; white-space: nowrap;
+  transition: max-width 0.2s, opacity 0.2s, margin-left 0.2s;
+}
+#walk-hud.compact .w-chip em { max-width: 0; opacity: 0; margin-left: 0; }
 #walk-hud .w-chip b { color: var(--text); font-weight: 600; font-variant-numeric: tabular-nums; }
 /* Drawn rather than written: a chip wide enough for a word is a chip in the way. */
 #walk-hud .w-ic { width: 11px; height: 11px; opacity: 0.75; background: var(--text-2); }

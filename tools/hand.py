@@ -81,9 +81,14 @@ DIGITS: list[list[str]] = [
     for d in ("index", "middle", "ring", "pinky")
 ]
 
-# The forearm, as a fraction of the hand's length: how far back the elbow is, and how
-# much thicker than the wrist the arm is at its middle and at the elbow.
-ARM: float = 5.0
+# The whole arm, as a multiple of the hand's length: wrist to elbow and on past it.
+ARM: float = 3.7
+# Where the elbow is along that run, and how far the arm turns at it. A forearm that
+# runs straight from the fist to behind the camera is four hand-lengths of unbroken
+# tube, which reads as an arm belonging to nobody; bending it where an elbow goes,
+# and dropping the rest away towards a shoulder, is what makes it a person's.
+ELBOW: float = 0.42
+BEND: float = 0.62  # radians
 # The arm's profile: how far along it each ring sits, and how much wider that ring is
 # than the one before. A forearm leaves the wrist narrow and is widest a third of the
 # way down - and then keeps going, straight, for as far again as the viewmodel is from
@@ -97,7 +102,10 @@ ARM_PROFILE: list[tuple[float, float]] = [
     (0.155, 1.12),
     (0.210, 1.04),
     (0.264, 1.00),
-    (0.45, 1.02),
+    # Two rings close together at the elbow, so the turn is spread over both rather
+    # than creasing one of them.
+    (0.38, 1.02),
+    (0.46, 1.03),
     (0.70, 1.02),
     (0.94, 1.00),
     (0.98, 0.70),
@@ -253,10 +261,21 @@ def forearm(mesh: Object, elbow: Vector, wrist: Vector) -> tuple[float, float, V
     # multiple of: the arm keeps the wrist's own oval rather than becoming a tube.
     width = sum((v.co - centre).length for v in ring) / len(ring)
 
+    # The arm's line: straight out of the wrist to the elbow, and turned at it.
+    side = axis.cross(Vector((0.0, 0.0, 1.0)))
+    upper = axis.copy()
+    if side.length > 1e-6:
+        upper.rotate(Matrix.Rotation(BEND, 4, side.normalized()))
+    run = HAND * ARM
+    bent = axis * (run * ELBOW)
+
+    def at_t(t: float) -> Vector:
+        return bent + upper * (run * (t - ELBOW)) if t > ELBOW else axis * (run * t)
+
     edges = rim
     at = centre
     for t, swell in ARM_PROFILE:
-        edges, at, _ = grow(bm, edges, centre + axis * (HAND * ARM * t) - at, at, swell)
+        edges, at, _ = grow(bm, edges, centre + at_t(t) - at, at, swell)
     # ... and close the elbow off with a ring pulled into a point.
     bmesh.ops.contextual_create(bm, geom=edges)
 
