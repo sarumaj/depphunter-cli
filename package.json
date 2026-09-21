@@ -66,8 +66,8 @@
       "properties": {
         "depphunter.path": {
           "type": "string",
-          "default": "depphunter",
-          "markdownDescription": "The `depphunter` binary. A bare name is looked up on `PATH`; an absolute path is used as given. Releases: [github.com/sarumaj/depphunter-cli/releases](https://github.com/sarumaj/depphunter-cli/releases)."
+          "default": "",
+          "markdownDescription": "The `depphunter` binary to run. **Leave it empty** to use the one the extension ships with - a released build carries the binary for your platform, pinned to the same version - falling back to `depphunter` on `PATH` for a build that carries none. Set it only to point at a different build: a bare name is looked up on `PATH`, an absolute path is used as given."
         },
         "depphunter.watch": {
           "type": "boolean",
@@ -136,5 +136,6 @@
     "@types/node": "^22.20.4",
     "@types/vscode": "^1.74.0",
     "typescript": "^5.7.0"
-  }
+  },
+  "icon": "icon.png"
 }

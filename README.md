@@ -382,7 +382,7 @@ mode you can go 3 units out over the water and 12 above the tallest building.
 | `Enter` while reading     | close the details and walk on            |
 | `T` in walk mode          | take out another tool                    |
 | `Q` `E`                   | rotate 90°                               |
-| `F`                       | fit to screen                            |
+| `Home`                    | fit to screen                            |
 | `+` `−`                   | expand / collapse one level everywhere   |
 | `/`                       | search files, symbols and packages       |
 | `O`                       | open the selected file in your editor    |

@@ -43,6 +43,23 @@ describe('depphunter.open', { skip: available() ? false : 'no depphunter binary 
     assert.match(address ?? '', ADDRESS);
   });
 
+  it('keeps the token when the address is rewritten under it', async () => {
+    // asExternalUri does not reliably keep the query, and in embed mode the query is
+    // where the session token is - there is no cookie to hold it inside somebody
+    // else's frame. An address that lost it shows "unauthorized" and nothing else.
+    await stub.commands.get('depphunter.stop')();
+    stub.settings.dropQuery = true;
+    try {
+      await stub.commands.get('depphunter.open')();
+      const html = stub.last('panel.html')[1];
+      const shown = html.match(/<iframe src="([^"]+)"/)?.[1];
+      assert.match(shown ?? '', ADDRESS, 'the token did not survive the rewrite');
+      assert.strictEqual((await fetch(shown)).status, 200);
+    } finally {
+      stub.settings.dropQuery = false;
+    }
+  });
+
   it('leaves the frame the pointer lock the editor granted it', async () => {
     // A nested frame already carries every restriction its ancestors carry, so a
     // sandbox attribute here can only take something away - and what it takes away

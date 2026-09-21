@@ -329,6 +329,14 @@ The marketplace page is the project's front page: `vsce` takes the `README.md`
 beside the manifest and rewrites its relative links to GitHub. There is
 no second copy to keep in step.
 
-A 128×128 PNG `icon.png` at the root, named by an `"icon"` field in
-`package.json`, is worth adding before publishing: without one the marketplace
-shows a placeholder.
+The icon is `icon.png` at the root, drawn by `tools/icon.py`, which also writes
+the browser's `favicon.svg` and `favicon.png`. Run it after changing the mark:
+
+```sh
+python3 tools/icon.py
+```
+
+Those three are the only PNGs kept out of Git LFS (see `.gitattributes`). They
+are a few kilobytes each and are read straight out of a checkout - `vsce` wants
+`icon.png` when it packages, and a clone without LFS should still show the right
+thing in a browser tab.

@@ -902,7 +902,7 @@ const grapple = {
   // A winch rather than a rod: faster, right up to what it caught, from any range,
   // and it sets the walker on top of it. Catching nothing else is the point of the
   // tool, so arriving is all it does (walk.js).
-  reel: { speed: 17, stop: 0.25, max: Infinity, onto: true },
+  reel: { speed: 17, stop: 0.25, max: 60, onto: true },
   climbs: true, // ... and nothing is tagged or caught when it lands
   hold: { x: 0.19, y: -0.24, z: -0.5, along: [0.05, 1, 0.1], back: [0.45, -0.3, 1] },
   grip: { x: 0, y: 0, z: 0, rx: -3.124, ry: 0.117, rz: -1.599 },

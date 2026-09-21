@@ -1155,7 +1155,9 @@ function bindControls() {
       case 'b': case 'B':
         if (!$('pack-btn').hidden) setPackOpen($('pack').hidden);
         break;
-      case 'f': case 'F': scene.fit(L.bounds); break;
+      // Home rather than F: F is fly in walk mode, and one letter meaning two
+      // things depending on which view you are in is a letter nobody presses.
+      case 'Home': scene.fit(L.bounds); break;
       case 'q': case 'Q': scene.setIso(scene.quarter - 1); break;
       case 'e': case 'E': scene.setIso(scene.quarter + 1); break;
       case '+': case '=': setLevel(state.level + 1); break;

@@ -53,7 +53,7 @@ const GRAPPLE_TIME = 5, ROOF_IN = 0.5, NO_PULL = 1.2;
 // worth seeing whole - within these bounds, and eases rather than jumping.
 const RADAR_MIN = 12, RADAR_MAX = 400, RADAR_MS = 85, RADAR_SIZE = 150;
 // Closing in: inside this, the sweep stops trying to hold the whole map and draws the
-// neighbourhood instead, growing by up to RADAR_GROW as it does. The last few steps
+// neighborhood instead, growing by up to RADAR_GROW as it does. The last few steps
 // to a bug are the ones worth seeing, and they are the ones a whole-map sweep loses.
 // 14 rather than something roomier because a city block is a few units across: any
 // wider and a map with bugs on every street is zoomed in the whole time, which is
@@ -1015,6 +1015,7 @@ export class Walker {
     } else {
       const dir = new THREE.Vector3(-Math.sin(p.yaw) * Math.cos(p.pitch), Math.sin(p.pitch) + 0.04, -Math.cos(p.yaw) * Math.cos(p.pitch));
       shot.vel = dir.multiplyScalar(flight.speed);
+      shot.from = start.clone(); // how far it has gone, for a line that can run out
     }
     this.darts.push(shot);
   }
@@ -1028,6 +1029,10 @@ export class Walker {
    * arrived on - and, aimed off that roof at anything lower, how they get down again.
    * The rod anchors where its hook landed instead, so a cast at the tenth floor
    * brings the walker to that wall rather than standing them on the roof.
+   *
+   * Returns whether the line was taken up. It may not be - too far to pull from, or
+   * already there - and the caller has to know, because a hook that is not holding
+   * anything has to come off the map with the rest of the shot.
    */
   hook(at, box, shot) {
     const line = shot.tool.reel;
@@ -1047,11 +1052,14 @@ export class Walker {
     // line and reeling in nothing - from up here, the way down is over the edge.
     if (away < Math.max(NO_PULL, line.stop)) {
       if (line.onto) this.flash('Nothing to be pulled to - aim past the edge');
-      return;
+      return false;
     }
     // And a line only so long: past that the cast still lands, it simply does not
     // drag the walker the width of the map to where it landed.
-    if (away > line.max) return;
+    if (away > line.max) {
+      this.flash('Too far for the line');
+      return false;
+    }
     const up = to.y > this.p.feet;
     this.cutLine();
     this.pull = { to, t: 0, line, mesh: shot.mesh, rope: shot.line };
@@ -1059,6 +1067,7 @@ export class Walker {
     this.p.vy = 0;
     this.flash(up ? 'Line away - going up' : 'Line away - going down');
     this.drawHud();
+    return true;
   }
 
   /** Reels the walker along the line, and lets go at the end of it. */
@@ -1125,7 +1134,7 @@ export class Walker {
     // The range fits whatever is still out there, so the sweep is never all centre
     // dot or all rim arrows; it eases so a bug walking round a corner does not zoom.
     // Once one is close, though, holding the whole map is the wrong thing to hold:
-    // the range pulls in to the neighbourhood and the dial grows to meet it, which
+    // the range pulls in to the neighborhood and the dial grows to meet it, which
     // is the difference between knowing a bug is somewhere ahead and seeing which
     // side of the building it is on.
     const { x: px, z: pz, yaw } = this.p;
@@ -1335,7 +1344,7 @@ export class Walker {
             if (dart.bug) this.bugs.catch(dart.bug);
             else if (dart.target) this.tag(dart.target);
           }
-          if (dart.tool.reel) { dart.kept = true; this.hook(m.position, dart.target, dart); }
+          if (dart.tool.reel && this.hook(m.position, dart.target, dart)) dart.kept = true;
         }
       } else {
         // A miss flies on under the tool's own physics: a dart drops like a dart, a
@@ -1356,11 +1365,15 @@ export class Walker {
         // cast that falls short lands on the pavement, and a line that hauls the
         // walker a step across their own street is not worth having.
         const ground = hit && (hit.kind === 'land' || hit.kind === 'terrace');
-        if (hit && dart.tool.reel && (dart.tool.climbs || !ground)) {
-          dart.kept = true;
-          this.hook(m.position, hit, dart);
-        }
-        if (bug || hit || m.position.y < WATER || dart.t > 6) done.push(dart);
+        if (hit && dart.tool.reel && (dart.tool.climbs || !ground)
+          && this.hook(m.position, hit, dart)) dart.kept = true;
+        // A line has a length. Fired into the sky or out over the water a hook finds
+        // nothing to stop it, and without this it would be six seconds before the
+        // line came down - six seconds of a rope across the view, going nowhere.
+        const out = dart.tool.reel && dart.from
+          && m.position.distanceTo(dart.from) > dart.tool.reel.max;
+        if (out) this.flash('The line ran out');
+        if (bug || hit || out || m.position.y < WATER || dart.t > 6) done.push(dart);
       }
       // A dart points along its flight; a hoop spins, a bubble wobbles, a bobber
       // just bobs along.

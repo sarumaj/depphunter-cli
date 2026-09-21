@@ -7,6 +7,7 @@
 !package.json
 !README.md
 !LICENSE
+!icon.png
 !extension/out/**/*.js
 # The binary a released build ships, put here by the release workflow. A build from
 # a checkout has no bin/ and packages without one.

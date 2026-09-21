@@ -17,12 +17,15 @@ as a beetle from a metre away in flat paint, and cost almost nothing. What came
 before was a squashed sphere with a smaller sphere in front of it and six boxes
 under it, which read as a bean.
 
-Three meshes come out, which is the contract with web/static/bugs.js:
+Four meshes come out, which is the contract with web/static/bugs.js:
 
   * shell  the wing cases, which take the severity's color
   * dark   the head, the plate behind it, its jaws and its antennae, which stay
            nearly black whatever the severity is
   * legs   six of them, drawn as their own mesh because they rock on their own
+  * wing   the left flight wing, folded out, for the ones that fly. One wing and
+           not two: the right is the same mesh mirrored, so it beats in step and
+           costs no more geometry.
 
 Nothing here is colored: bugs.js shades and tints what it is given, the way city.js
 does for the plants. It is one beetle standing on the origin, nose along -Y, which
@@ -199,6 +202,38 @@ def dark() -> Object:
     return mesh("dark", bm, smooth=False)
 
 
+def wing() -> Object:
+    """
+    One flight wing, out of the case it folds under.
+
+    Only the left; bugs.js draws the right by mirroring this one across the body, so
+    the pair is one geometry and stays in step by construction. It is a flat fan
+    rather than a solid: a wing beating thirty times a second is a blur whatever
+    shape it has, and what carries at this size is the outline and the sweep back.
+
+    It lies flat over the back, hinged at the body's side, running out along +x with
+    its chord along y. Laid out that way, a turn about the body's length is the beat,
+    which is all bugs.js has to do to fly it.
+    """
+    bm = bmesh.new()
+    span = LONG * 1.55
+    root = WIDE * 0.35
+    high = TALL * 1.12
+    # The leading edge runs out and forward, the trailing edge comes back in behind
+    # it, and the tip is rounded rather than pointed: a beetle's wing is a paddle.
+    outline = [
+        (root, -LONG * 0.2, high),
+        (span * 0.42, -LONG * 0.42, high),
+        (span * 0.78, -LONG * 0.3, high),
+        (span, LONG * 0.02, high),
+        (span * 0.72, LONG * 0.3, high),
+        (span * 0.3, LONG * 0.34, high),
+        (root, LONG * 0.2, high),
+    ]
+    bm.faces.new([bm.verts.new(v) for v in outline])
+    return mesh("wing", bm, smooth=True)
+
+
 def legs() -> Object:
     """
     Six legs, in three pairs, each a thigh out and down and a shin down to the
@@ -247,7 +282,7 @@ def main() -> None:
     for stray in list(bpy.data.objects):  # type: ignore[reportAttributeAccessIssue]
         bpy.data.objects.remove(stray, do_unlink=True)  # type: ignore[reportAttributeAccessIssue]
 
-    made = [shell(), dark(), legs()]
+    made = [shell(), dark(), legs(), wing()]
     bpy.ops.export_scene.gltf(  # type: ignore[reportAttributeAccessIssue]
         filepath=OUT,
         export_format="GLB",
