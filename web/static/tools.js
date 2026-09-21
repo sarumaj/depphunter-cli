@@ -24,6 +24,10 @@
 //                     (arc), what gravity does to it, and how the air holds it back.
 //                     A dart is fast and flat, a bubble slow and rising; the same
 //                     code flies both.
+//   reel              what happens to the line once it has stuck: how fast it pulls
+//                     the walker along it, how close it brings them, how far away it
+//                     will still pull from, and whether it sets them on top of what
+//                     it caught or leaves them against it.
 
 import * as THREE from './vendor/three.module.min.js';
 
@@ -314,7 +318,7 @@ const rod = {
   label: 'Fishing rod',
   verb: 'Cast at',
   noun: 'landed',
-  hint: 'Cast at a building; land it twice for details',
+  hint: 'Cast at a building; the line hauls you to it, twice for details',
   reticle: 'bobber',
   slot: 1,
   targets: 'buildings',
@@ -405,6 +409,11 @@ const rod = {
     return g;
   },
   line: '#e8ecf2', // a line is drawn from the rod to the bobber while it flies
+  // A rod that has hooked something pulls. It anchors where the hook landed and
+  // brings the walker to it rather than onto it - a cast at the tenth floor leaves
+  // you against that wall, not standing on the roof - and it will not pull from
+  // across the map, because past a point the sensible thing is to walk.
+  reel: { speed: 11, stop: 1.1, max: 28, onto: false },
 };
 
 const net = {
@@ -448,7 +457,7 @@ const net = {
       net.add(head);
 
       const mouth = new THREE.Group();
-      mouth.rotation.x = Math.PI / 2; // the bag now trails forward, out of the frame
+      mouth.rotation.x = -Math.PI / 2; // the mouth faces the way the net is swung
       mouth.position.y = HOOP;
       head.add(mouth);
       const hoop = part(new THREE.TorusGeometry(HOOP, 0.006, 6, 24), '#dfe4ea');
@@ -883,14 +892,18 @@ const grapple = {
   label: 'Grapple gun',
   verb: 'Hook',
   noun: 'climbed',
-  hint: 'Hook a building and be pulled up it; from a roof, hook the ground to come down',
+  hint: 'Hook a building to be pulled onto its roof; from up there, hook lower to come down',
   reticle: 'hook',
   slot: 7,
   targets: 'buildings',
   // A line paid out taut: no lob and no drop worth speaking of.
   flight: { speed: 55, arc: 0.05, gravity: 0.6, drag: 0 },
   line: '#cfd6de', // the line stays drawn, out and back
-  grapple: true,   // what arriving means (walk.js)
+  // A winch rather than a rod: faster, right up to what it caught, from any range,
+  // and it sets the walker on top of it. Catching nothing else is the point of the
+  // tool, so arriving is all it does (walk.js).
+  reel: { speed: 17, stop: 0.25, max: Infinity, onto: true },
+  climbs: true, // ... and nothing is tagged or caught when it lands
   hold: { x: 0.19, y: -0.24, z: -0.5, along: [0.05, 1, 0.1], back: [0.45, -0.3, 1] },
   grip: { x: 0, y: 0, z: 0, rx: -3.124, ry: 0.117, rz: -1.599 },
   restGrip: 0.88,

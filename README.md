@@ -40,10 +40,11 @@ Browse any code base as an interactive isometric archipelago in your browser.
   on bugs, the camera on either. What they throw flies as what it is: a nail
   goes fast and flat, a dart drops like a dart, a bubble slows and climbs. The
   net throws nothing at all and has to be walked up to; the camera's back has
-  the view through its lens live on it. The grapple gun does nothing to what it
-  hits - it pulls you up the facade and onto the roof, and from up there a shot
-  over the edge is the way down. Hold the right button for the scope, the mouse
-  wheel zooms.
+  the view through its lens live on it. Two of them pull on their line once it
+  has stuck: the rod hauls you in to the wall it hooked, and the grapple gun,
+  which does nothing else to what it hits, up the facade and onto the roof -
+  and from up there a shot over the edge is the way down. Hold the right button
+  for the scope, the mouse wheel zooms.
   Bugs are one per finding a scanner reported, and they are not only on the
   streets: a building is walked on at several heights up its facade and around
   its roof, each beetle standing out of whatever it is holding on to, and some
@@ -238,20 +239,24 @@ it does in a browser tab, live updates and all. Its source is in `extension/`.
 ### Install the extension
 
 It is not on a marketplace yet, but every
-[release](https://github.com/sarumaj/depphunter-cli/releases) carries a
-`depphunter_<version>_vscode.vsix` beside the binaries. Download it and pick it
-from *Extensions: Install from VSIX…* in the command palette, or from a
+[release](https://github.com/sarumaj/depphunter-cli/releases) carries one
+`.vsix` per platform, each with the binary for that platform inside it. Take
+the one that matches - `linux-x64`, `darwin-arm64`, `win32-x64` and so on - and
+pick it from *Extensions: Install from VSIX…* in the command palette, or from a
 terminal:
 
 ```sh
-code --install-extension depphunter_1.2.3_vscode.vsix
+code --install-extension depphunter_1.2.3_vscode_darwin-arm64.vsix
 ```
 
-It also needs the `depphunter` binary itself - from the same release, or
-`go install github.com/sarumaj/depphunter-cli/cmd/depphunter@latest` (see
-[Install](#install)) - on `PATH` or named by the `depphunter.path` setting. The
-extension runs whatever `depphunter` it finds, so it carries no binary of its
-own and the same `.vsix` works everywhere.
+**Nothing else to install.** The extension and the server it starts come out of
+the same release and carry the same version, so they cannot drift apart. There
+is a `_universal` build as well, for a platform not on the list; that one has no
+binary and falls back to `depphunter` on `PATH`.
+
+To run a different build - one you are working on, or a newer release on a
+machine whose extension has not been updated - set `depphunter.path` to it. An
+explicit setting always wins over the one that shipped.
 
 ### Use
 
@@ -271,15 +276,15 @@ A status bar item appears while one is running, and clicking it opens the map.
 
 ### Settings
 
-| Setting                    | Default         | What it does                                                                       |
-|----------------------------|-----------------|------------------------------------------------------------------------------------|
-| `depphunter.path`          | `depphunter`    | The binary. A bare name is looked up on `PATH`; an absolute path is used as given. |
-| `depphunter.watch`         | `true`          | Re-analyze on file changes and update the map (`--watch`).                         |
-| `depphunter.style`         | `default`       | `city`, `circuit` or `galaxy`; `default` leaves it to the config files.            |
-| `depphunter.findings`      | `[]`            | Scanner reports to place on the map, relative to the folder. Globs allowed.        |
-| `depphunter.args`          | `[]`            | Further arguments, one per entry. [Usage](#usage) has the list.                    |
-| `depphunter.openIn`        | `simpleBrowser` | `simpleBrowser` for a tab beside the code, `externalBrowser` for your own.         |
-| `depphunter.editorCommand` | `""`            | What **Open in editor** runs. Empty means this editor.                             |
+| Setting                    | Default   | What it does                                                                                                                                                                 |
+|----------------------------|-----------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `depphunter.path`          | *(empty)* | The binary to run. Empty means the one the extension ships with, falling back to `depphunter` on `PATH`. A bare name is looked up on `PATH`, an absolute path used as given. |
+| `depphunter.watch`         | `true`    | Re-analyze on file changes and update the map (`--watch`).                                                                                                                   |
+| `depphunter.style`         | `default` | `city`, `circuit` or `galaxy`; `default` leaves it to the config files.                                                                                                      |
+| `depphunter.findings`      | `[]`      | Scanner reports to place on the map, relative to the folder. Globs allowed.                                                                                                  |
+| `depphunter.args`          | `[]`      | Further arguments, one per entry. [Usage](#usage) has the list.                                                                                                              |
+| `depphunter.openIn`        | `webview` | `webview` for a tab of the editor's own, `simpleBrowser` for its built-in browser, `externalBrowser` for yours.                                                              |
+| `depphunter.editorCommand` | `""`      | What **Open in editor** runs. Empty means this editor.                                                                                                                       |
 
 They are ordinary settings, so they can be set per workspace in
 `.vscode/settings.json`:
@@ -311,15 +316,43 @@ address is a public hostname, which the server rejects as a DNS-rebinding
 attempt: it only answers to `localhost` and `127.0.0.1`. Run `depphunter` in a
 terminal there instead, for now.
 
+### Why the map is in a tab of its own
+
+The editor's built-in browser is the obvious place to put a local page, and it
+was the first thing this used. It puts that page in a sandbox of its own,
+though, and one of the things that sandbox withholds is the pointer lock - so
+walk mode could not capture the mouse there, and a sandbox can only ever be
+narrowed on the way down, so there was nothing the page could do about it.
+
+The map opens in a tab of the editor's own instead: one webview, one iframe, and
+that iframe carries no sandbox attribute - which takes nothing away, and so
+keeps the pointer lock the editor granted the webview in the first place. What
+is lost is an address bar and a back button, on a single page that needs
+neither. `depphunter.openIn` can still ask for `simpleBrowser`, and walk mode
+there says so and turns the view by dragging instead.
+
 ### How the framing works
 
-A page in the built-in browser is inside a webview, which means it is framed by
-an origin belonging to the editor. depphunter refuses to be framed by default,
-so the extension starts it with `--embed`, naming the two origins an editor
-webview can have: `vscode-webview:` in the desktop editor and
-`https://*.vscode-cdn.net` in the browser build. Nothing else may frame it - a
-page at any other origin is refused by the browser before it loads. What else
-that mode changes is in [Inside an editor](#inside-an-editor).
+Either way the page is inside a webview, which means it is framed by origins
+belonging to the editor. depphunter refuses to be framed by default, so the
+extension starts it with `--embed`, naming every frame above the page - all
+three of them, because `frame-ancestors` is checked against the whole chain and
+not just the frame holding the page:
+
+```sh
+--embed vscode-webview: --embed vscode-file: --embed https://*.vscode-cdn.net
+```
+
+- `vscode-webview:` is the webview, which is given an origin of its own for
+  every session (`vscode-webview://<uuid>`), so there is no exact name to give.
+- `vscode-file:` is the editor's window, served from `vscode-file://vscode-app`
+  in the desktop editor.
+- `https://*.vscode-cdn.net` is the webview in the browser build.
+
+Leave one of them out and the browser refuses the page before it loads: an empty
+tab, and the reason only in the webview's own developer tools. Nothing else may
+frame it - a page at any other origin is refused the same way. What else that
+mode changes is in [Inside an editor](#inside-an-editor).
 
 In that mode the session token stays in the address instead of being exchanged
 for a cookie, because a cookie set by the map would be a third-party cookie
@@ -364,20 +397,20 @@ mode you can go 3 units out over the water and 12 above the tallest building.
 
 In walk mode:
 
-|                        |                                                                                                             |
-|------------------------|-------------------------------------------------------------------------------------------------------------|
+|                        |                                                                                                                                                                                                                                                               |
+|------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Mouse                  | look; captured at the reticle (`Esc` frees it, a click on the map captures it again), or drag. Where the mouse cannot be captured at all - a frame that withholds the pointer lock - walk mode says so once and a click uses the tool instead of asking again |
-| `1` … `5`              | pick a tool by its slot; `T` still walks along the row |
-| `W` `A` `S` `D`/arrows | move / turn; `Shift` runs                                                                                   |
-| `Space`                | jump (flying: straight up)                                                                                  |
-| `F`                    | fly on / off; flying, `W`/`S` move where you look (look down and press `W` to dive), `C` goes straight down |
-| Click                  | use what is in your hands: the module it reaches is tagged, a bug it catches is read out and kept           |
-| `H`                    | put the tool away, or take it out again; it still works, and throws from your eye                           |
-| Hold right button      | look through the scope                                                                                      |
-| `Enter`                | details of what the reticle is on, like a second dart (frees the mouse; click the map to walk on)           |
-| Wheel                  | zoom in / out                                                                                               |
-| `+` `-` (or `[` `]`)   | planet size (curvature)                                                                                     |
-| `V` / `Esc`            | back to the map; going in again puts you back where you stood                                               |
+| `1` … `7`              | pick a tool by its slot; `T` still walks along the row row                                                                                                                                                                                                    |
+| `W` `A` `S` `D`/arrows | move / turn; `Shift` runs                                                                                                                                                                                                                                     |
+| `Space`                | jump (flying: straight up)                                                                                                                                                                                                                                    |
+| `F`                    | fly on / off; flying, `W`/`S` move where you look (look down and press `W` to dive), `C` goes straight down                                                                                                                                                   |
+| Click                  | use what is in your hands: the module it reaches is tagged, a bug it catches is read out and kept                                                                                                                                                             |
+| `H`                    | put the tool away, or take it out again; it still works, and throws from your eye                                                                                                                                                                             |
+| Hold right button      | look through the scope                                                                                                                                                                                                                                        |
+| `Enter`                | details of what the reticle is on, like a second dart (frees the mouse; click the map to walk on)                                                                                                                                                             |
+| Wheel                  | zoom in / out                                                                                                                                                                                                                                                 |
+| `+` `-` (or `[` `]`)   | planet size (curvature)                                                                                                                                                                                                                                       |
+| `V` / `Esc`            | back to the map; going in again puts you back where you stood                                                                                                                                                                                                 |
 
 The map draws the walker where they are standing, as a figure facing the way
 they were facing, and going back in puts them there - unless you picked
@@ -664,10 +697,11 @@ frame: `X-Frame-Options: DENY` and `frame-ancestors 'none'`.
 
 That last part is also what stops an editor showing the map in its own built-in
 browser, which is a frame like any other. `--embed <origin>` allows the origins
-it names, and only those - `--embed vscode-webview:` for VS Code - which is what
-a wrapper such as an editor extension passes when it starts the server (see
-[VS Code extension](#vs-code-extension)). Three things follow from it, and nothing else
-changes:
+it names, and only those, which is what a wrapper such as an editor extension
+passes when it starts the server - every frame above the page, since
+`frame-ancestors` is checked against the whole chain and not just the parent
+(see [How the framing works](#how-the-framing-works)). Three things follow from
+it, and nothing else changes:
 
 - `frame-ancestors` names those origins instead of `'none'`, and
   `X-Frame-Options` is not sent, because it has no way to name an origin that

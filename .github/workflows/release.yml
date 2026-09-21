@@ -10,6 +10,8 @@ permissions:
 jobs:
   release:
     runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.vsix.outputs.version }}
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-go@v5
@@ -29,13 +31,20 @@ jobs:
           "$RUNNER_TEMP"/depphunter_*_linux_amd64/depphunter --version | grep -F "${{ github.ref_name }}"
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - name: Build the VS Code extension
-        # Released with the binary and carrying the same version, so "the extension
-        # from v1.2.3" is one file and not a question. A tag the marketplace would
-        # not take as a version (a release candidate, say) leaves the manifest's own
-        # version alone rather than failing the release.
+        id: vsix
+        # One VSIX per platform, each carrying the binary for that platform, all of
+        # them the tag's version: installing the extension installs the server it
+        # starts, pinned to it, and "the extension from v1.2.3" is one file and not
+        # a question. The marketplace hands each machine the one that matches, and
+        # the universal build at the end is for anything not on this list, which
+        # falls back to whatever depphunter is on the PATH.
+        #
+        # A tag the marketplace would not take as a version (a release candidate,
+        # say) leaves the manifest's own version alone rather than failing the
+        # release.
         env:
           TAG: ${{ github.ref_name }}
         run: |
@@ -44,11 +53,43 @@ jobs:
             echo "::warning::$TAG is not a plain x.y.z; packaging the manifest version"
             version=""
           fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
           npm ci
+          # vsce's target, then the Go platform to build the binary it carries.
+          # alpine is musl, which a cgo-free static build runs on unchanged.
+          for spec in \
+            win32-x64:windows:amd64: win32-arm64:windows:arm64: \
+            linux-x64:linux:amd64 linux-arm64:linux:arm64 linux-armhf:linux:arm:7 \
+            darwin-x64:darwin:amd64 darwin-arm64:darwin:arm64 \
+            alpine-x64:linux:amd64 alpine-arm64:linux:arm64
+          do
+            IFS=: read -r target goos goarch goarm <<< "$spec"
+            ext=""; [ "$goos" = windows ] && ext=.exe
+            rm -rf bin && mkdir bin
+            CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch GOARM=$goarm go build -trimpath \
+              -ldflags "-s -w -X main.version=$TAG" -o "bin/depphunter$ext" ./cmd/depphunter
+            npx @vscode/vsce@4 package $version --no-git-tag-version --target "$target" \
+              --out "dist/depphunter_${TAG#v}_vscode_${target}.vsix"
+          done
+          rm -rf bin
           npx @vscode/vsce@4 package $version --no-git-tag-version \
-            --out "dist/depphunter_${TAG#v}_vscode.vsix"
-          (cd dist && sha256sum "depphunter_${TAG#v}_vscode.vsix" >> checksums.txt)
+            --out "dist/depphunter_${TAG#v}_vscode_universal.vsix"
+          (cd dist && sha256sum depphunter_*_vscode_*.vsix >> checksums.txt)
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh release create "${{ github.ref_name }}" dist/* --title "${{ github.ref_name }}" --generate-notes --verify-tag
+      # Every VSIX goes to both registries, which read each one's target from the
+      # package itself and serve the universal one wherever no target matches. A tag
+      # packaged under the manifest's version is not published: that version is
+      # either already there or not the one the tag names.
+      - name: Publish to Visual Studio Marketplace
+        if: steps.vsix.outputs.version != ''
+        env:
+          VSCE_PAT: ${{ secrets.VS_MARKETPLACE_TOKEN }}
+        run: npx @vscode/vsce@4 publish --packagePath dist/*_vscode_*.vsix
+      - name: Publish to Open VSX Registry
+        if: steps.vsix.outputs.version != ''
+        env:
+          OVSX_PAT: ${{ secrets.OPEN_VSX_TOKEN }}
+        run: npx --yes ovsx@1 publish --packagePath dist/*_vscode_*.vsix

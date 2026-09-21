@@ -25,8 +25,11 @@ interface Session {
 const sessions = new Map<string, Session>();
 let log: vscode.OutputChannel;
 let status: vscode.StatusBarItem;
+/** Where this build was installed, which is where a released one keeps its binary. */
+let home: string | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
+  home = context.extensionPath;
   log = vscode.window.createOutputChannel('depphunter');
   status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   status.command = 'depphunter.open';
@@ -62,7 +65,7 @@ async function launch(folder: { root: string; name: string }): Promise<Session |
   try {
     const running = await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: `depphunter: mapping ${folder.name}…`, cancellable: true },
-      (_progress, token) => start(folder.root, log, token),
+      (_progress, token) => start(folder.root, home, log, token),
     );
     const session: Session = { ...folder, ...running };
     sessions.set(folder.root, session);

@@ -2,7 +2,7 @@
   "name": "depphunter",
   "displayName": "depphunter",
   "description": "Browse the workspace as an interactive isometric city, in the editor's built-in browser.",
-  "version": "0.1.0",
+  "version": "0.0.0",
   "publisher": "sarumaj",
   "license": "BSD-3-Clause",
   "engines": {
@@ -128,12 +128,12 @@
     "compile": "tsc -p .",
     "watch": "tsc -w -p .",
     "lint": "tsc -p . --noEmit",
-    "test": "npm run compile && node --test extension/test/extension.test.js",
+    "test": "npm run compile && node --test extension/test/binary.test.js extension/test/extension.test.js",
     "package": "vsce package",
     "vscode:prepublish": "npm run compile"
   },
   "devDependencies": {
-    "@types/node": "^22.10.0",
+    "@types/node": "^22.20.4",
     "@types/vscode": "^1.74.0",
     "typescript": "^5.7.0"
   }

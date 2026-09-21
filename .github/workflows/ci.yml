@@ -77,7 +77,7 @@ jobs:
         run: go run honnef.co/go/tools/cmd/staticcheck@2026.2.1 ./...
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
       - name: JavaScript syntax
         # Our own modules only: the vendored libraries are shipped as their authors
         # built them (see web/static/vendor/README.md).
@@ -97,7 +97,7 @@ jobs:
           go-version: stable
       - uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
           cache: npm
       - name: Install
         run: npm ci
@@ -105,14 +105,23 @@ jobs:
         run: npm run lint
       - name: Build depphunter
         # The extension's tests run the real thing: an argument it stops accepting
-        # is exactly what they are there to catch.
-        run: go build -o depphunter ./cmd/depphunter
+        # is exactly what they are there to catch. bin/ is where a released VSIX
+        # keeps the binary it ships, so packaging below carries this one and proves
+        # the bundling works rather than only the manifest.
+        run: |
+          go build -o depphunter ./cmd/depphunter
+          mkdir -p bin && cp depphunter bin/depphunter
       - name: Test
         run: npm test
         env:
           DEPPHUNTER: ${{ github.workspace }}/depphunter
       - name: Package
-        run: npx @vscode/vsce@4 package --out depphunter.vsix
+        run: npx @vscode/vsce@4 package --target linux-x64 --out depphunter.vsix
+      - name: Check it carries the binary
+        run: |
+          unzip -p depphunter.vsix extension/bin/depphunter > packaged
+          chmod +x packaged
+          ./packaged --version
       - uses: actions/upload-artifact@v4
         with:
           name: depphunter-vscode-${{ github.sha }}

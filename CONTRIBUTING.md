@@ -265,15 +265,38 @@ Give `DEPPHUNTER` an absolute path: the extension starts the binary in the
 folder it is mapping, and a relative one is not resolved the same way on every
 platform.
 
+### The binary it ships
+
+A released VSIX carries the `depphunter` for the platform it was built for, at
+`bin/depphunter` inside the package, so installing the extension installs the
+server it starts and the two cannot be different versions. `bin/` is not in the
+repository: the workflows put the binary there just before packaging, and a
+build from a checkout has none.
+
+What gets run is decided in `extension/src/binary.ts`, in this order:
+
+1. `depphunter.path`, when it is set to anything. The only way to point at a
+   build that is not the one the extension shipped with, so it is never
+   second-guessed.
+2. `bin/depphunter` beside the manifest, if this build has one.
+3. `depphunter` on the `PATH`.
+
+Step 2 also sets the executable bit. A VSIX is a zip, and a zip's permission
+bits do not survive every installer; setting it costs nothing and beats finding
+out when the server will not start.
+
 ### Installing your build
 
 ```sh
-npx @vscode/vsce package                  # depphunter-0.1.0.vsix, at the root
+go build -o bin/depphunter ./cmd/depphunter   # optional: what a release would ship
+npx @vscode/vsce package --target linux-x64   # or omit --target for a universal one
 code --install-extension depphunter-0.1.0.vsix
 ```
 
 That installs it into your real editor, not the development window. `code
---uninstall-extension sarumaj.depphunter` removes it again.
+--uninstall-extension sarumaj.depphunter` removes it again. A `--target` build
+must carry a binary for that platform and nothing else, which is why `bin/` is
+emptied between targets in the release workflow.
 
 ## Publishing the extension
 
@@ -281,8 +304,9 @@ The extension is not on any marketplace yet. What it takes, when it is time:
 
 1. `npm install -g @vscode/vsce`, and `vsce package` at the root of the
    repository to build the `.vsix`. The release workflow already does this and
-   attaches the file to every release, packaged with the tag's version; the
-   `version` in `package.json` is only what a build from a checkout gets.
+   attaches one per platform to every release, each carrying the matching
+   binary and packaged with the tag's version; the `version` in `package.json`
+   is only what a build from a checkout gets.
 2. For the **Visual Studio Marketplace**: create an Azure DevOps organization,
    then a personal access token with *Marketplace → Manage* scope for **all
    accessible organizations**. Create the publisher at
@@ -294,10 +318,12 @@ The extension is not on any marketplace yet. What it takes, when it is time:
    install from: an account at <https://open-vsx.org>, an access token, and
    `npx ovsx publish depphunter-0.1.0.vsix -p <token>`.
 
-The extension carries no binary: it runs whatever `depphunter` it finds, so one
-VSIX works on every platform and it does not need per-platform targets. If a
-binary is ever bundled instead, that changes - the VSIX would have to be built
-once per `--target` (`win32-x64`, `linux-x64`, `darwin-arm64`, …).
+Because the extension ships a binary, there is a VSIX per `--target`
+(`win32-x64`, `win32-arm64`, `linux-x64`, `linux-arm64`, `linux-armhf`,
+`darwin-x64`, `darwin-arm64`, `alpine-x64`, `alpine-arm64`) and a universal one
+without a binary for anything else. `vsce publish` takes them one at a time and
+the marketplace hands each machine the one that matches; publish the universal
+one too, or a platform off the list gets nothing at all.
 
 The marketplace page is the project's front page: `vsce` takes the `README.md`
 beside the manifest and rewrites its relative links to GitHub. There is
