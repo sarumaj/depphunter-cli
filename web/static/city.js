@@ -949,20 +949,53 @@ export function waterMaterial(uniforms) {
     Object.assign(shader.uniforms, uniforms);
     shader.vertexShader = 'varying vec3 vW;\n' + shader.vertexShader.replace('#include <project_vertex>',
       '#include <project_vertex>\nvW = (modelMatrix * vec4(position, 1.0)).xyz;');
-    shader.fragmentShader = NOISE_GLSL + 'uniform float uTime, uNight, uStyle;\nvarying vec3 vW;\n' + shader.fragmentShader.replace('#include <color_fragment>', `
+    shader.fragmentShader = NOISE_GLSL + `
+      uniform float uTime, uNight, uStyle;
+      varying vec3 vW;
+
+      /**
+       * How bright a star is at this moment, between a half and one. Each has its own
+       * phase, taken from the cell it sits in, and its own rate from the layer it
+       * belongs to - a field that all pulsed together would read as the screen
+       * flickering rather than as stars.
+       */
+      float breathe(vec2 q, float rate) {
+        return 0.75 + 0.25 * sin(uTime * rate + hash12(floor(q)) * 43.0);
+      }
+    ` + shader.fragmentShader.replace('#include <color_fragment>', `
       #include <color_fragment>
       if (uStyle > 1.5) {
         // Between the platforms there is no sea, only more of the same sky seen the
-        // other way: a drift of dust with something deeper burning through it, and
-        // stars at three densities so it has a distance to it rather than being an
-        // even speckle laid on a flat color.
-        float deep = fbm(vW.xz * 0.06);
-        diffuseColor.rgb *= 0.45 + 0.45 * vnoise(vW.xz * 0.12);
-        diffuseColor.rgb += vec3(0.13, 0.04, 0.22) * smoothstep(0.55, 0.92, deep) * (0.4 + 0.6 * deep);
-        diffuseColor.rgb += vec3(0.025, 0.1, 0.15) * smoothstep(0.62, 0.96, fbm(vW.zx * 0.1 + 23.0));
-        diffuseColor.rgb += vec3(0.72, 0.78, 1.0) * starDot(vW.xz * 34.0, 0.955, 0.16) * 0.8;
-        diffuseColor.rgb += vec3(0.86, 0.9, 1.0) * starDot(vW.xz * 11.0, 0.985, 0.13) * 1.6;
-        diffuseColor.rgb += vec3(1.0, 0.86, 0.66) * starDot(vW.zx * 4.5 + 7.0, 0.992, 0.1) * 2.0;
+        // other way. Nothing here is still: the platforms are adrift, and what is
+        // behind them moves.
+        //
+        // Depth is the whole of it. Three layers travel at three speeds and in three
+        // directions - the far cloud barely at all, the veil in front of it faster
+        // and across it, the stars faster still - which is why it reads as something
+        // deep rather than as one sheet of noise sliding sideways. The speeds are in
+        // the noise's own coordinates, so the far cloud crosses about a fifth of a
+        // map unit a second: a drift, not an animation.
+        vec2 far = vW.xz * 0.055 + vec2(uTime * 0.007, uTime * -0.004);
+        vec2 veil = vW.zx * 0.1 + vec2(uTime * -0.021, uTime * 0.014);
+        float deep = fbm(far);
+        diffuseColor.rgb *= 0.42 + 0.42 * vnoise(vW.xz * 0.12 + vec2(uTime * 0.01, 0.0));
+        diffuseColor.rgb += vec3(0.13, 0.04, 0.22) * smoothstep(0.52, 0.9, deep) * (0.4 + 0.6 * deep);
+        diffuseColor.rgb += vec3(0.02, 0.08, 0.15) * smoothstep(0.62, 0.95, fbm(veil + 23.0));
+        // Through the dust, a slow curtain of light: the one thing here bright enough
+        // to be seen moving, so it is what makes the rest of it read as moving too.
+        // Broad and faint - a sheet drawn across the whole of it, not a cloud, which
+        // is the difference between a nebula and mould on the screen.
+        float curtain = fbm(vW.xz * 0.045 + vec2(uTime * -0.012, uTime * 0.007) + 61.0);
+        diffuseColor.rgb += vec3(0.05, 0.09, 0.19) * smoothstep(0.58, 0.96, curtain);
+
+        // The stars, drifting with the layer they belong to and each breathing at its
+        // own rate. One field at one brightness is a speckle; these have a distance.
+        vec2 s0 = vW.xz * 34.0 + vec2(uTime * 0.09, uTime * -0.05);
+        vec2 s1 = vW.xz * 11.0 + vec2(uTime * -0.14, uTime * 0.08);
+        vec2 s2 = vW.zx * 4.5 + vec2(uTime * 0.11, uTime * -0.16) + 7.0;
+        diffuseColor.rgb += vec3(0.72, 0.78, 1.0) * starDot(s0, 0.955, 0.16) * 0.8 * breathe(s0, 1.0);
+        diffuseColor.rgb += vec3(0.86, 0.9, 1.0) * starDot(s1, 0.985, 0.13) * 1.6 * breathe(s1, 0.7);
+        diffuseColor.rgb += vec3(1.0, 0.86, 0.66) * starDot(s2, 0.992, 0.1) * 2.0 * breathe(s2, 0.45);
       } else if (uStyle > 0.5) {
         // Around the board there is only the bench it lies on: an anodized plate,
         // brushed along one axis, with the cutting grid scribed across it. The brush
