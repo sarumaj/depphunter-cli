@@ -956,26 +956,47 @@ export function waterMaterial(uniforms) {
       const float BUS = 1.6;    // how far apart the backplane's tracks run
       const float TRACK = 0.05; // how wide one is, in lanes
       const float RUN = 7.0;    // and how far apart the pulses on one of them are
+      const float BALL = 0.17;  // how big the head of a pulse is, in map units
+      const float TAIL = 2.1;   // and how far its wake reaches behind it
       const float FLOW = 0.16;  // runs per second: about one unit and a bit a second
       const vec3 CURRENT = vec3(0.35, 0.78, 1.0);
 
       /**
-       * How much charge is passing this point of a lane. The lanes alternate
-       * direction and each starts at a phase of its own, so the plane reads as
-       * traffic rather than as one pattern marching in step. The pulse is a comet -
-       * a bright head with a tail drawn out behind it - because a symmetrical blob
-       * says it is moving and not which way.
+       * The light one lane is carrying where this pixel is: a ball of it at the head
+       * of a pulse, and the tail the ball drags behind it.
+       *
+       * It takes both where the pixel is down the lane and how far it is off the
+       * lane's centre line, because a head that only knows the first is a band of
+       * even brightness the width of the track - a straight edge crossing it - and
+       * what a current wants to look like is a ball of light with a wake.
+       *
+       * The lanes alternate direction and each starts at a phase of its own, so the
+       * plane reads as traffic rather than as one pattern marching in step.
        *
        * It fades out once a pixel covers a good part of the run between two pulses:
        * a train of comets seen from far enough away is a flicker, and the map view
        * is often seen from exactly that far away.
        */
-      float charge(float along, float lane, float w) {
+      float charge(float along, float across, float lane, float w) {
         float dir = mod(lane, 2.0) * 2.0 - 1.0;
-        float u = fract(along / RUN + dir * uTime * FLOW + hash12(vec2(lane, 7.0)));
-        float head = exp(-u * u * 420.0);           // the front of it
-        float tail = exp(-u * 4.5) * step(0.0, u);  // and what it drags
-        return (head + 0.6 * tail) * (1.0 - smoothstep(0.03, 0.14, w));
+        float back = fract(along / RUN + dir * uTime * FLOW + hash12(vec2(lane, 7.0))) * RUN;
+        float off = across * BUS; // map units, like everything else here
+
+        // The ball. Its distance from the head is measured along the lane and across
+        // it at once, so what falls off is a circle rather than a pair of edges, and
+        // it is wider than the track it runs on, so it bulges off either side. The
+        // second, broader term is the light it throws around itself.
+        float near = min(back, RUN - back);
+        float d2 = near * near + off * off;
+        float ball = exp(-d2 / (BALL * BALL)) + 0.35 * exp(-d2 / (5.0 * BALL * BALL));
+
+        // The tail, behind the head only, narrowing as it falls away: a tail of one
+        // width is a bar, and only one that comes to a point reads as a wake.
+        float t = clamp(back / TAIL, 0.0, 1.0);
+        float wide = BALL * mix(0.85, 0.12, t);
+        float tail = exp(-off * off / (wide * wide)) * (1.0 - t) * (1.0 - t);
+
+        return (ball + 0.8 * tail) * (1.0 - smoothstep(0.03, 0.14, w));
       }
 
       /**
@@ -1047,19 +1068,13 @@ export function waterMaterial(uniforms) {
         float track = max(onX, onZ) * (1.0 - smoothstep(0.09, 0.3, max(tw.x, tw.y)));
         diffuseColor.rgb = mix(diffuseColor.rgb, vec3(0.3, 0.17, 0.06) * (0.8 + 0.4 * brush), track);
 
-        // The charge. Each lane carries a train of pulses, running one way on the
-        // even lanes and the other on the odd ones; a pulse is a comet, bright at
-        // the head and drawn out behind it, because that is what reads as a
-        // direction at a glance.
-        float goX = charge(vW.x, floor(t.y), tw.y);
-        float goZ = charge(vW.z, floor(t.x), tw.x);
-        diffuseColor.rgb += CURRENT * (onX * goX + onZ * goZ);
-        // And the light it throws on the plane beside it, which is what makes the
-        // whole of the off-board area read as live rather than as a dark floor.
-        float haloX = max(0.11, tw.y * 2.0), haloZ = max(0.11, tw.x * 2.0);
-        float nearX = exp(-mid.y * mid.y / (haloX * haloX));
-        float nearZ = exp(-mid.x * mid.x / (haloZ * haloZ));
-        diffuseColor.rgb += CURRENT * 0.3 * (nearX * goX + nearZ * goZ);
+        // The charge. Each lane carries a train of balls of light, running one way
+        // on the even lanes and the other on the odd ones, each dragging a wake
+        // behind it - which is what says at a glance which way the current runs.
+        // The light is its own shape rather than something painted onto the track,
+        // so it spills off either side the way light does.
+        diffuseColor.rgb += CURRENT * (charge(vW.x, mid.y, floor(t.y), tw.y)
+                                     + charge(vW.z, mid.x, floor(t.x), tw.x));
       } else {
         // Open water: a long swell with wind chop riding on it, the crests catching
         // the sky and a little of it showing through where the water is thin. Two
