@@ -10,6 +10,7 @@ import { ChildProcess } from 'node:child_process';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 
+import * as panel from './panel';
 import { StartError, start } from './server';
 
 const RELEASES = 'https://github.com/sarumaj/depphunter-cli/releases';
@@ -47,6 +48,7 @@ export function activate(context: vscode.ExtensionContext): void {
 
 export function deactivate(): void {
   stopAll();
+  panel.closeAll();
 }
 
 async function open(resource?: vscode.Uri): Promise<void> {
@@ -89,13 +91,16 @@ async function show(session: Session): Promise<void> {
     await vscode.env.openExternal(vscode.Uri.parse(address));
     return;
   }
-  try {
-    await vscode.commands.executeCommand('simpleBrowser.show', address);
-  } catch {
-    // Not every build of every editor ships the built-in browser.
-    log.appendLine('the built-in browser is not available here; opening the map outside the editor');
-    await vscode.env.openExternal(vscode.Uri.parse(address));
+  if (where === 'simpleBrowser') {
+    try {
+      await vscode.commands.executeCommand('simpleBrowser.show', address);
+      return;
+    } catch {
+      // Not every build of every editor ships the built-in browser.
+      log.appendLine('the built-in browser is not available here; opening the map in a tab of its own');
+    }
   }
+  panel.open(session.root, `depphunter: ${session.name}`, address);
 }
 
 async function restart(): Promise<void> {
@@ -113,6 +118,9 @@ async function stop(): Promise<void> {
 }
 
 function end(root: string): void {
+  // The tab goes with the server: what it holds is a page on a port that is about to
+  // stop answering, and an error page is worse than no tab.
+  panel.close(root);
   const session = sessions.get(root);
   if (!session) return;
   sessions.delete(root);

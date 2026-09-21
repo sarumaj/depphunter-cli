@@ -353,7 +353,7 @@ In walk mode:
 
 |                        |                                                                                                             |
 |------------------------|-------------------------------------------------------------------------------------------------------------|
-| Mouse                  | look; captured at the reticle (`Esc` frees it, a click on the map captures it again), or drag               |
+| Mouse                  | look; captured at the reticle (`Esc` frees it, a click on the map captures it again), or drag. Where the mouse cannot be captured at all - a frame that withholds the pointer lock - walk mode says so once and a click uses the tool instead of asking again |
 | `W` `A` `S` `D`/arrows | move / turn; `Shift` runs                                                                                   |
 | `Space`                | jump (flying: straight up)                                                                                  |
 | `F`                    | fly on / off; flying, `W`/`S` move where you look (look down and press `W` to dive), `C` goes straight down |

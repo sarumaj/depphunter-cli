@@ -19,7 +19,7 @@ const settings = {
   style: 'default',
   findings: [],
   args: [],
-  openIn: 'simpleBrowser',
+  openIn: 'webview',
   editorCommand: '',
 };
 
@@ -49,6 +49,16 @@ const vscode = {
     createOutputChannel: () => ({
       appendLine: s => log(s + '\n'), append: log, show() {}, dispose() {},
     }),
+    createWebviewPanel: (type, title, _column, options) => {
+      const panel = {
+        viewType: type, title, options, reveal() { calls.push(['panel.reveal', panel.title]); },
+        webview: { set html(v) { panel.html = v; calls.push(['panel.html', v]); } },
+        onDidDispose: fn => { panel.disposed = fn; return { dispose() {} }; },
+        dispose() { calls.push(['panel.dispose', panel.title]); panel.disposed?.(); },
+      };
+      calls.push(['createWebviewPanel', panel]);
+      return panel;
+    },
     createStatusBarItem: () => ({
       show() { calls.push(['status.show']); }, hide() { calls.push(['status.hide']); },
       dispose() {}, set text(v) { calls.push(['status.text', v]); },
@@ -66,6 +76,7 @@ const vscode = {
     executeCommand: async (id, ...args) => { calls.push(['executeCommand', id, ...args]); },
   },
   StatusBarAlignment: { Right: 2 },
+  ViewColumn: { Active: -1 },
   ProgressLocation: { Notification: 15 },
   CancellationError: class CancellationError extends Error {},
 };

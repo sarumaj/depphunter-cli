@@ -104,14 +104,16 @@
         "depphunter.openIn": {
           "type": "string",
           "enum": [
+            "webview",
             "simpleBrowser",
             "externalBrowser"
           ],
           "enumDescriptions": [
-            "The editor's built-in browser, in a tab beside the code.",
+            "A tab of the editor's own. The only one where walk mode can capture the mouse.",
+            "The editor's built-in browser, which has an address bar but withholds the pointer lock.",
             "The default browser, outside the editor."
           ],
-          "default": "simpleBrowser",
+          "default": "webview",
           "description": "Where the map opens."
         },
         "depphunter.editorCommand": {

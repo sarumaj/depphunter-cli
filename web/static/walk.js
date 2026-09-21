@@ -98,6 +98,13 @@ export class Walker {
     // the freed cursor and the reticle in the centre both steer the same scene, and
     // reading about a building means fighting it.
     this.frozen = false;
+    // Set once the pointer lock has been asked for and refused for good. Somewhere
+    // that never grants it, asking again on every click is a click that never does
+    // anything else, so from then on a click is the tool and the view is turned by
+    // dragging. lockFails counts refusals since the last lock, to tell that apart
+    // from a browser that refuses one request and grants the next.
+    this.noLock = false;
+    this.lockFails = 0;
     this.tool = toolFor(hooks.tool?.() || DEFAULT_TOOL);
     this.viewmodel = null;      // the hand and its tool
     this.held = null;           // what holds them in front of the walk camera
@@ -413,7 +420,35 @@ export class Walker {
     if (!this.active) return;
     this.setFrozen(false); // taking the pointer back is how you walk on
     const done = this.scene.renderer.domElement.requestPointerLock?.();
-    done?.then?.(() => this.active || document.exitPointerLock(), () => {});
+    // Older browsers return nothing and report the refusal on the document instead,
+    // which is why refused is also wired to pointerlockerror below.
+    if (!done?.then) return;
+    done.then(() => this.active || document.exitPointerLock(), err => this.refused(err));
+  }
+
+  /**
+   * The pointer lock was refused. Refusals come in two kinds and they have to be
+   * told apart: a frame that withholds the lock refuses every time - an editor's
+   * built-in browser puts the page in one, and so does anything else that frames
+   * the map without allowing it - while a browser still winding down a lock that
+   * was just released refuses once and grants the next request.
+   *
+   * A sandboxed frame says which it is in the error. Where it does not say, two
+   * refusals with no lock in between are taken as the same answer.
+   *
+   * Walk mode is still worth having without the lock, because dragging already
+   * turns the view. But a click has to stop asking and start using the tool, or the
+   * tool can never be used at all - and it is said out loud once, because a mouse
+   * that will not be captured looks like something broken rather than something
+   * that was decided elsewhere.
+   */
+  refused(err) {
+    const sandboxed = err?.name === 'SecurityError' && /sandbox/i.test(err.message || '');
+    if (!sandboxed && ++this.lockFails < 2) return;
+    if (this.noLock) return;
+    this.noLock = true;
+    this.flash('The mouse cannot be captured here: drag to look, click to use the tool');
+    this.drawHud();
   }
 
   /** A message about what just happened, shown for a few seconds. */
@@ -491,7 +526,14 @@ export class Walker {
     });
     window.addEventListener('mouseup', e => {
       if (e.button === 2) this.setScoped(false);
-      if (this.active && drag && !drag.moved && e.button === 0) this.lockPointer();
+      if (this.active && drag && !drag.moved && e.button === 0) {
+        // A click that went nowhere: normally that asks for the mouse. Where the
+        // mouse is not given, it is the tool instead - or the way back out of
+        // reading, which is what asking for the mouse would have done.
+        if (!this.noLock) this.lockPointer();
+        else if (this.frozen) this.setFrozen(false);
+        else this.fire();
+      }
       if (e.button === 0) drag = null;
     });
     window.addEventListener('pointermove', e => {
@@ -513,8 +555,10 @@ export class Walker {
       e.preventDefault();
       this.fov = clamp(this.fov * Math.exp(e.deltaY * 0.001), MIN_FOV, MAX_FOV); // zoom
     }, { passive: false });
+    document.addEventListener('pointerlockerror', () => this.active && this.refused(null));
     document.addEventListener('pointerlockchange', () => {
       fresh = document.pointerLockElement === canvas;
+      if (fresh) this.lockFails = 0; // it can be had here; earlier refusals were passing
       if (fresh && !this.active) document.exitPointerLock(); // never keep the map's cursor hidden
       if (this.active) this.drawHud();
     });
@@ -1148,12 +1192,14 @@ export class Walker {
     }
     this.hud.querySelector('.w-tool').textContent = this.tool.label;
     this.hud.querySelector('.w-noun').textContent = this.tool.noun;
+    const found = bugs?.total ? ' · bugs on the streets carry what the scanners found' : '';
     this.hud.querySelector('.w-hint').textContent = this.frozen
       ? 'The view is held still while you read · Enter or a click on the map: walk on · Esc: close · V: back to the map'
       : locked
-        ? `${this.tool.hint}${bugs?.total ? ' · bugs on the streets carry what the scanners found' : ''}` +
-        ` · hold right: scope · T: another tool · V: back to the map · Esc: free the mouse`
-        : 'Click the map to capture the mouse, or drag to look · T: another tool · V / Esc: back to the map';
+        ? `${this.tool.hint}${found} · hold right: scope · T: another tool · V: back to the map · Esc: free the mouse`
+        : this.noLock
+          ? `Drag to look. ${this.tool.hint}${found} · hold right: scope · T: another tool · V / Esc: back to the map`
+          : 'Click the map to capture the mouse, or drag to look · T: another tool · V / Esc: back to the map';
   }
 }
 
