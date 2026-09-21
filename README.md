@@ -437,21 +437,22 @@ It starts a server for the folder you are working in, waits for it to say where
 it is listening, and opens that address in the editor's built-in browser; the
 map behaves exactly as it does in a browser tab, live updates and all.
 
-It is not on a marketplace yet. To build and install it:
+It is not on a marketplace yet, but every
+[release](https://github.com/sarumaj/depphunter-cli/releases) carries a
+`depphunter_<version>_vscode.vsix` beside the binaries:
 
 ```sh
-cd extension
-npm install
-npx @vscode/vsce package     # depphunter-0.1.0.vsix
+code --install-extension depphunter_1.2.3_vscode.vsix
 ```
 
-Then *Extensions: Install from VSIX…* in VS Code, and `depphunter: Open the Map`
-from the command palette - or right-click a folder in the explorer. The
-extension runs whatever `depphunter` it finds on `PATH`, so it carries no binary
-of its own and the same `.vsix` works everywhere.
+Then `depphunter: Open the Map` from the command palette, or right-click a
+folder in the explorer. The extension runs whatever `depphunter` it finds on
+`PATH`, so it carries no binary of its own and the same `.vsix` works
+everywhere.
 
-[extension/README.md](extension/README.md) has the settings, how the framing
-works, what does not work over Codespaces, and what publishing it would take.
+[extension/README.md](extension/README.md) has the settings, how to work on it
+and debug it, how the framing works, what does not work over Codespaces, and
+what publishing it would take.
 
 ## Keyboard & mouse
 
