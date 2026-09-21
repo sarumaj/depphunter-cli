@@ -38,6 +38,8 @@
   --edge-out: #0b0b0b;
   --edge-in: #898781;
   --dim: #d6d4cd;
+  /* the walker's own marker on the map, for the same reason: it is not a language */
+  --avatar: #1b1a16;
 
   --hl-keyword: #a1307a; --hl-string: #0b6e4f; --hl-comment: #898781; --hl-number: #9a5b00;
   --hl-title: #1c5cab; --hl-type: #6b3fa0;
@@ -58,6 +60,7 @@
     --sev-critical: #f2555f; --sev-high: #f0842f; --sev-medium: #e0b422;
     --sev-low: #6da7ec; --sev-info: #898781; --sev-unknown: #6d6b66;
     --edge-out: #ffffff; --edge-in: #898781; --dim: #45443f;
+    --avatar: #ffffff;
     --hl-keyword: #e87ba4; --hl-string: #5ccf9e; --hl-comment: #898781; --hl-number: #f0b24a;
     --hl-title: #86b6ef; --hl-type: #b3a9f2;
   }
@@ -76,6 +79,7 @@
   --sev-critical: #f2555f; --sev-high: #f0842f; --sev-medium: #e0b422;
   --sev-low: #6da7ec; --sev-info: #898781; --sev-unknown: #6d6b66;
   --edge-out: #ffffff; --edge-in: #898781; --dim: #45443f;
+  --avatar: #ffffff;
   --hl-keyword: #e87ba4; --hl-string: #5ccf9e; --hl-comment: #898781; --hl-number: #f0b24a;
   --hl-title: #86b6ef; --hl-type: #b3a9f2;
 }
