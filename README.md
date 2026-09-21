@@ -45,8 +45,10 @@ Browse any code base as an interactive isometric archipelago in your browser.
   over the edge is the way down. Hold the right button for the scope, the mouse
   wheel zooms.
   Bugs are one per finding a scanner reported, and they are not only on the
-  streets: a tall building is walked on at several heights up its facade and
-  around its roof, each beetle standing out of whatever it is holding on to.
+  streets: a building is walked on at several heights up its facade and around
+  its roof, each beetle standing out of whatever it is holding on to, and some
+  of them are not holding on to anything - they fly a circuit round the
+  building, rising and falling and leaning into the corners, wings going.
   Catching one opens what was said about it; a tracker in the corner sweeps the
   map around you, and grows and closes in as you come up on one, so the last few
   steps can be taken on the sweep rather than by guesswork.
