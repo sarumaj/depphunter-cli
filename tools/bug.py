@@ -37,6 +37,7 @@ import bpy
 
 try:  # only importable once bpy has loaded
     import bmesh  # type: ignore[reportMissingImports]
+    from bmesh.types import BMesh, BMVert  # type: ignore[reportMissingImports]
     from bpy.types import Object  # type: ignore[reportMissingImports]
     from mathutils import Euler, Vector  # type: ignore[reportMissingImports]
 except (ImportError, ModuleNotFoundError):
@@ -53,7 +54,7 @@ WIDE: float = 0.062  # half of it across the wing cases
 TALL: float = 0.052  # and how high they stand off the street
 
 
-def sphere(bm: bmesh.types.BMesh, r: float, u: int, v: int) -> list[bmesh.types.BMVert]:
+def sphere(bm: BMesh, r: float, u: int, v: int) -> list[BMVert]:
     """A sphere at the origin, and the vertices it added."""
     before = set(bm.verts)
     bmesh.ops.create_uvsphere(bm, u_segments=u, v_segments=v, radius=r)  # type: ignore[reportMissingImports]
@@ -61,8 +62,8 @@ def sphere(bm: bmesh.types.BMesh, r: float, u: int, v: int) -> list[bmesh.types.
 
 
 def cone(
-    bm: bmesh.types.BMesh, r0: float, r1: float, depth: float, segments: int = 6
-) -> list[bmesh.types.BMVert]:
+    bm: BMesh, r0: float, r1: float, depth: float, segments: int = 6
+) -> list[BMVert]:
     """A cone or cylinder along +Z at the origin, and the vertices it added."""
     before = set(bm.verts)
     bmesh.ops.create_cone(  # type: ignore[reportMissingImports]
@@ -78,8 +79,8 @@ def cone(
 
 
 def put(
-    bm: bmesh.types.BMesh,
-    verts: list[bmesh.types.BMVert],
+    bm: BMesh,
+    verts: list[BMVert],
     scale: tuple[float, float, float] = (1, 1, 1),
     rotate: tuple[float, float, float] = (0, 0, 0),
     at: tuple[float, float, float] = (0, 0, 0),
@@ -93,19 +94,19 @@ def put(
     bmesh.ops.translate(bm, vec=Vector(at), verts=verts)  # type: ignore[reportMissingImports]
 
 
-def mesh(name: str, bm: bmesh.types.BMesh, smooth: bool) -> Object:
+def mesh(name: str, bm: BMesh, smooth: bool) -> Object:
     """Closes a bmesh into an object, welded and shaded."""
     # Welded first: the parts are built as separate primitives that overlap, and a
     # decimator or a normal is only as good as the surface it is given. Loose
     # triangles are what made the plants look shredded before tools/props.py sewed
     # them (see that script), and the same applies to anything built from lumps.
-    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)  # type: ignore[reportMissingImports]
-    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)  # type: ignore[reportMissingImports]
-    data = bpy.data.meshes.new(name)
+    bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
+    bmesh.ops.recalc_face_normals(bm, faces=bm.faces)
+    data = bpy.data.meshes.new(name)  # type: ignore[reportAttributeAccessIssue]
     bm.to_mesh(data)
     bm.free()
-    obj = bpy.data.objects.new(name, data)  # type: ignore[reportMissingImports]
-    bpy.context.scene.collection.objects.link(obj)  # type: ignore[reportMissingImports]
+    obj = bpy.data.objects.new(name, data)  # type: ignore[reportAttributeAccessIssue]
+    bpy.context.scene.collection.objects.link(obj)  # type: ignore[reportAttributeAccessIssue]
     for face in data.polygons:
         face.use_smooth = smooth
     return obj
@@ -232,7 +233,7 @@ def legs() -> Object:
     return mesh("legs", bm, smooth=False)
 
 
-def bone(bm: bmesh.types.BMesh, a: Vector, b: Vector, r: float) -> None:
+def bone(bm: BMesh, a: Vector, b: Vector, r: float) -> None:
     """A tapered segment from a to b, thinner at the far end."""
     span = b - a
     verts = cone(bm, r, r * 0.65, span.length, segments=5)
@@ -242,12 +243,12 @@ def bone(bm: bmesh.types.BMesh, a: Vector, b: Vector, r: float) -> None:
 
 
 def main() -> None:
-    bpy.ops.wm.read_factory_settings(use_empty=True)  # type: ignore[reportMissingImports]
-    for stray in list(bpy.data.objects):
-        bpy.data.objects.remove(stray, do_unlink=True)  # type: ignore[reportMissingImports]
+    bpy.ops.wm.read_factory_settings(use_empty=True)  # type: ignore[reportAttributeAccessIssue]
+    for stray in list(bpy.data.objects):  # type: ignore[reportAttributeAccessIssue]
+        bpy.data.objects.remove(stray, do_unlink=True)  # type: ignore[reportAttributeAccessIssue]
 
     made = [shell(), dark(), legs()]
-    bpy.ops.export_scene.gltf(  # type: ignore[reportMissingImports]
+    bpy.ops.export_scene.gltf(  # type: ignore[reportAttributeAccessIssue]
         filepath=OUT,
         export_format="GLB",
         export_skins=False,
