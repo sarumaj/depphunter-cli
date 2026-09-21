@@ -33,14 +33,37 @@ describe('depphunter.open', { skip: available() ? false : 'no depphunter binary 
 
   let address;
 
-  it('starts a server and shows it in the built-in browser', async () => {
+  it('starts a server and shows it in a tab', async () => {
     await stub.commands.get('depphunter.open')();
-    const opened = stub.last('executeCommand', 'simpleBrowser.show');
-    assert.ok(opened, `the map was not opened: ${JSON.stringify(stub.calls)}`);
-    address = opened[2];
+    const html = stub.last('panel.html');
+    assert.ok(html, `the map was not opened: ${JSON.stringify(stub.calls.map(c => c[0]))}`);
+    address = html[1].match(/<iframe src="([^"]+)"/)?.[1];
     // The address carries the session token, which is the whole reason it is read
     // from the server's output rather than put together from the port.
-    assert.match(address, ADDRESS);
+    assert.match(address ?? '', ADDRESS);
+  });
+
+  it('leaves the frame the pointer lock the editor granted it', async () => {
+    // A nested frame already carries every restriction its ancestors carry, so a
+    // sandbox attribute here can only take something away - and what it takes away
+    // is walk mode's mouse. This is what the built-in browser does, and the reason
+    // the map is not shown there any more.
+    const html = stub.last('panel.html')[1];
+    assert.ok(!/<iframe[^>]*\bsandbox\b/.test(html), `the iframe is sandboxed:\n${html}`);
+  });
+
+  it('uses the built-in browser when asked to', async () => {
+    await stub.commands.get('depphunter.stop')();
+    stub.settings.openIn = 'simpleBrowser';
+    try {
+      await stub.commands.get('depphunter.open')();
+      const opened = stub.last('executeCommand', 'simpleBrowser.show');
+      assert.ok(opened, 'the built-in browser was not asked to show anything');
+      assert.match(opened[2], ADDRESS);
+      address = opened[2];
+    } finally {
+      stub.settings.openIn = 'webview';
+    }
   });
 
   it('serves the map at the address it handed over', async () => {
@@ -61,6 +84,14 @@ describe('depphunter.open', { skip: available() ? false : 'no depphunter binary 
   it('reuses the server rather than starting a second one', async () => {
     await stub.commands.get('depphunter.open')();
     assert.strictEqual(stub.last('executeCommand', 'simpleBrowser.show')[2], address);
+  });
+
+  it('closes the tab when the server stops', async () => {
+    stub.settings.openIn = 'webview';
+    await stub.commands.get('depphunter.open')();
+    assert.ok(stub.last('panel.html'), 'no tab was opened');
+    await stub.commands.get('depphunter.stop')();
+    assert.ok(stub.last('panel.dispose'), 'the tab outlived the server');
   });
 
   it('stops the server when told to', async () => {
