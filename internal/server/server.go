@@ -36,7 +36,11 @@ const (
 	// requestHeader must accompany state-changing requests. Cross-site pages cannot
 	// set it without a CORS preflight, which this server never grants.
 	requestHeader = "X-Depphunter-Request"
-	heartbeat     = 25 * time.Second
+	// tokenHeader carries the token in embed mode, where there is no cookie to carry
+	// it: the page is shown inside another origin's frame, and a cookie set here is
+	// a third-party cookie there, which browsers do not send back.
+	tokenHeader = "X-Depphunter-Token"
+	heartbeat   = 25 * time.Second
 )
 
 type Server struct {
@@ -47,6 +51,9 @@ type Server struct {
 	cfg    config.Config
 	// allowedHosts is nil when listening on a non-loopback address.
 	allowedHosts map[string]bool
+	// embed lists the origins allowed to show the map in a frame of their own; empty
+	// - the default - means nobody may.
+	embed []string
 
 	mu   sync.RWMutex
 	snap *snapshot
@@ -85,7 +92,8 @@ func New(cfg config.Config, g *graph.Graph, assets fs.FS) (*Server, error) {
 	}
 	s := &Server{
 		token: hex.EncodeToString(tok), root: cfg.Root, assets: assets, editor: cfg.Editor, cfg: cfg,
-		subs: map[chan event]struct{}{}, done: make(chan struct{}),
+		embed: cfg.Embed,
+		subs:  map[chan event]struct{}{}, done: make(chan struct{}),
 		lazy: map[string]*lazyData{
 			"history":    {pending: cfg.History},
 			"references": {pending: cfg.LSP},
@@ -320,20 +328,18 @@ func (s *Server) guard(next http.Handler) http.Handler {
 		h := w.Header()
 		h.Set("Referrer-Policy", "no-referrer")
 		h.Set("X-Content-Type-Options", "nosniff")
-		h.Set("X-Frame-Options", "DENY")
-		h.Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors 'none'")
-
-		if t := r.URL.Query().Get("token"); t != "" && s.equalToken(t) {
-			http.SetCookie(w, &http.Cookie{Name: cookieName, Value: s.token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
-			u := *r.URL
-			q := u.Query()
-			q.Del("token")
-			u.RawQuery = q.Encode()
-			http.Redirect(w, r, u.String(), http.StatusSeeOther)
-			return
+		ancestors := "'none'"
+		if len(s.embed) > 0 {
+			ancestors = strings.Join(s.embed, " ")
+		} else {
+			// Only where nothing may frame us at all. X-Frame-Options has no way to
+			// name an origin that browsers still honour, so in embed mode the
+			// Content-Security-Policy below is the whole of the answer.
+			h.Set("X-Frame-Options", "DENY")
 		}
-		if c, err := r.Cookie(cookieName); err != nil || !s.equalToken(c.Value) {
-			http.Error(w, "unauthorized: open the URL printed by depphunter", http.StatusUnauthorized)
+		h.Set("Content-Security-Policy", "default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:; frame-ancestors "+ancestors)
+
+		if !s.allowed(w, r) {
 			return
 		}
 		if r.Method != http.MethodGet && r.Header.Get(requestHeader) != "1" {
@@ -342,6 +348,54 @@ func (s *Server) guard(next http.Handler) http.Handler {
 		}
 		next.ServeHTTP(w, r)
 	})
+}
+
+// allowed decides whether a request carries the token, and answers the request
+// itself when it does not: it writes to w only when one is refused or redirected.
+func (s *Server) allowed(w http.ResponseWriter, r *http.Request) bool {
+	if len(s.embed) > 0 {
+		return s.embedAllowed(w, r)
+	}
+	// The ordinary way in: the token arrives once in the URL and is exchanged for a
+	// cookie, so it leaves the address bar and never reaches a link or a log.
+	if t := r.URL.Query().Get("token"); t != "" && s.equalToken(t) {
+		http.SetCookie(w, &http.Cookie{Name: cookieName, Value: s.token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
+		u := *r.URL
+		q := u.Query()
+		q.Del("token")
+		u.RawQuery = q.Encode()
+		http.Redirect(w, r, u.String(), http.StatusSeeOther)
+		return false
+	}
+	if c, err := r.Cookie(cookieName); err != nil || !s.equalToken(c.Value) {
+		http.Error(w, "unauthorized: open the URL printed by depphunter", http.StatusUnauthorized)
+		return false
+	}
+	return true
+}
+
+// The same question inside somebody else's frame, where a cookie is no help: one set
+// here is a third-party cookie there and is not sent back, so the token stays in the
+// address the frame was given and the page hands it back on every call - in a header
+// where one can be set, and in the query string for the event stream, which cannot
+// set headers.
+//
+// The interface's own files are served without it. They are the same bytes in every
+// release and say nothing about the project; what the token guards is /api, which is
+// where the repository's contents are, and the document that carries the token to
+// the page.
+func (s *Server) embedAllowed(w http.ResponseWriter, r *http.Request) bool {
+	if t := r.Header.Get(tokenHeader); t != "" && s.equalToken(t) {
+		return true
+	}
+	if t := r.URL.Query().Get("token"); t != "" && s.equalToken(t) {
+		return true
+	}
+	if r.Method == http.MethodGet && r.URL.Path != "/" && !strings.HasPrefix(r.URL.Path, "/api/") {
+		return true
+	}
+	http.Error(w, "unauthorized: open the URL printed by depphunter", http.StatusUnauthorized)
+	return false
 }
 
 func (s *Server) equalToken(t string) bool {

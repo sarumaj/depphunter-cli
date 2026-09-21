@@ -201,10 +201,11 @@ func TestSymlinkedRootAndPaths(t *testing.T) {
 func TestEveryFlagIsBound(t *testing.T) {
 	// The flags that act on their own instead of setting a value. exclude and findings
 	// add to what the configuration already holds rather than replacing it, so Load
-	// appends them itself.
+	// appends them itself; embed is read straight off the flag set because no file
+	// and no variable may turn it on (TestEmbedComesFromTheCommandLineOnly).
 	standalone := map[string]bool{
 		"config": true, "export": true, "output": true, "exclude": true, "findings": true,
-		"help": true, "version": true,
+		"embed": true, "help": true, "version": true,
 	}
 	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
 	RegisterFlags(fs)
@@ -359,5 +360,57 @@ func TestStyleSettings(t *testing.T) {
 	// The browser may leave it out; the default takes over rather than failing.
 	if err := (UI{Theme: "auto", ColorBy: "language", HeightScale: "sqrt"}).Validate(); err != nil {
 		t.Errorf("an unset style was rejected: %v", err)
+	}
+}
+
+// --embed relaxes what the server otherwise refuses outright - it lets another origin
+// put the map in a frame of its own - so it comes from the command line and nowhere
+// else. A config file or an environment variable that could turn it on would be a
+// way for a repository, or something that once set a variable, to arrange for the
+// map to be framed by a page of its choosing.
+func TestEmbedComesFromTheCommandLineOnly(t *testing.T) {
+	root, user := t.TempDir(), t.TempDir()
+	write(t, filepath.Join(user, "config.yaml"), "embed: [https://evil.test]\n")
+	write(t, filepath.Join(root, ProjectFile), "embed: [https://worse.test]\n")
+	cfg, err := load(t, []string{root}, map[string]string{"DEPPHUNTER_EMBED": "https://worst.test"}, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(cfg.Embed) != 0 {
+		t.Errorf("embed came from somewhere other than a flag: %v", cfg.Embed)
+	}
+
+	cfg, err = load(t, []string{"--embed", "vscode-webview:", "--embed", "https://example.test:8080", root}, nil, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Equal(cfg.Embed, []string{"vscode-webview:", "https://example.test:8080"}) {
+		t.Errorf("embed from flags: %v", cfg.Embed)
+	}
+}
+
+// What lands in a security header is checked before it gets there, so nothing passed
+// on the command line can end the frame-ancestors directive early or start another.
+func TestEmbedOriginsAreChecked(t *testing.T) {
+	for _, origin := range []string{
+		"vscode-webview:", "https://example.test", "https://example.test:8080",
+		"http://127.0.0.1:1234", "https://*.vscode-cdn.net",
+	} {
+		if !frameOrigin(origin) {
+			t.Errorf("frameOrigin(%q) = false, want true", origin)
+		}
+	}
+	for _, origin := range []string{
+		"", "example.test", "vscode-webview", "'self'", "*", "https://*",
+		"https://a.test; script-src *", "https://a.test 'unsafe-inline'",
+		"https://a.test/path", "https://", "https://a.*.test", "https://a.test:",
+		"https://a.test:80x", "1https://a.test", "a:b:c",
+	} {
+		if frameOrigin(origin) {
+			t.Errorf("frameOrigin(%q) = true, want false", origin)
+		}
+	}
+	if _, err := load(t, []string{"--embed", "'self'", t.TempDir()}, nil, ""); err == nil {
+		t.Error("a bare CSP keyword was accepted as an origin")
 	}
 }
