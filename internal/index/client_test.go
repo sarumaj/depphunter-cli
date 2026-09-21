@@ -1,6 +1,7 @@
 package index
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -152,11 +153,41 @@ func TestAnswersAreCached(t *testing.T) {
 	if len(*asked) != 1 {
 		t.Errorf("the index was asked %d times", len(*asked))
 	}
-	// An expired answer is asked for again.
-	third := NewClient(cfg, dir, time.Nanosecond, 5*time.Second, "")
+	// An expired answer is asked for again. The entry is aged rather than the time
+	// to live shortened: Windows reads a clock that ticks every fifteen
+	// milliseconds, so an answer written and read inside one test is the same
+	// instant there, and no time to live short of zero expires it.
+	age(t, dir, 2*time.Hour)
+	third := NewClient(cfg, dir, time.Hour, 5*time.Second, "")
 	third.Dependencies(target)
 	if len(*asked) != 2 {
 		t.Errorf("a stale answer was reused: %v", *asked)
+	}
+}
+
+// age moves every cached answer in dir that far into the past.
+func age(t *testing.T, dir string, by time.Duration) {
+	t.Helper()
+	found, err := filepath.Glob(filepath.Join(dir, "*.json"))
+	if err != nil || len(found) == 0 {
+		t.Fatalf("no cached answers in %s: %v", dir, err)
+	}
+	for _, name := range found {
+		data, err := os.ReadFile(name)
+		if err != nil {
+			t.Fatal(err)
+		}
+		var e entry
+		if err := json.Unmarshal(data, &e); err != nil {
+			t.Fatal(err)
+		}
+		e.At = e.At.Add(-by)
+		if data, err = json.Marshal(e); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(name, data, 0o644); err != nil {
+			t.Fatal(err)
+		}
 	}
 }
 
@@ -169,6 +200,7 @@ func TestNetrcCredentials(t *testing.T) {
 	c := readCredentials(home)
 	req, _ := http.NewRequest(http.MethodGet, "https://index.internal/simple/requests/", nil)
 	c.apply(req)
+	// cSpell: disable-next-line
 	if got := req.Header.Get("Authorization"); got != "Basic dXNlcjpwYXNz" {
 		t.Errorf("got %q", got)
 	}
