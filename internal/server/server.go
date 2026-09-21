@@ -75,7 +75,7 @@ type lazyData struct {
 	value   any // nil when unavailable
 	gz      []byte
 	// sum fingerprints the encoded value, so a re-read that produced the same answer
-	// can be recognised and not announced again.
+	// can be recognized and not announced again.
 	sum [32]byte
 }
 

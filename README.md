@@ -430,6 +430,29 @@ the user config, or detects a GUI editor from `$VISUAL`, `$EDITOR` or `PATH` (VS
 Code, Cursor, Zed, Sublime Text, JetBrains IDEs, …). Without one, the button
 hands the file to VS Code's `vscode://` URL handler.
 
+## In VS Code
+
+`extension/` is a VS Code extension that puts the map in a tab beside the code.
+It starts a server for the folder you are working in, waits for it to say where
+it is listening, and opens that address in the editor's built-in browser; the
+map behaves exactly as it does in a browser tab, live updates and all.
+
+It is not on a marketplace yet. To build and install it:
+
+```sh
+cd extension
+npm install
+npx @vscode/vsce package     # depphunter-0.1.0.vsix
+```
+
+Then *Extensions: Install from VSIX…* in VS Code, and `depphunter: Open the Map`
+from the command palette - or right-click a folder in the explorer. The
+extension runs whatever `depphunter` it finds on `PATH`, so it carries no binary
+of its own and the same `.vsix` works everywhere.
+
+[extension/README.md](extension/README.md) has the settings, how the framing
+works, what does not work over Codespaces, and what publishing it would take.
+
 ## Keyboard & mouse
 
 Panning stops once the center of the view is a quarter of the map's size beyond
@@ -499,8 +522,9 @@ frame: `X-Frame-Options: DENY` and `frame-ancestors 'none'`.
 That last part is also what stops an editor showing the map in its own built-in
 browser, which is a frame like any other. `--embed <origin>` allows the origins
 it names, and only those - `--embed vscode-webview:` for VS Code - which is what
-a wrapper such as an editor extension passes when it starts the server. Three
-things follow from it, and nothing else changes:
+a wrapper such as an editor extension passes when it starts the server (see
+[In VS Code](#in-vs-code)). Three things follow from it, and nothing else
+changes:
 
 - `frame-ancestors` names those origins instead of `'none'`, and
   `X-Frame-Options` is not sent, because it has no way to name an origin that
@@ -658,7 +682,8 @@ CI (`.github/workflows/ci.yml`) builds and tests on Linux, macOS and Windows, on
 the current Go and on exactly the Go that `go.mod` states, with
 `GOTOOLCHAIN=local`, so a `go.mod` that claims less than the code needs fails
 the build. It also checks formatting, `go mod
-tidy`, vet, staticcheck, govulncheck, JavaScript syntax and Markdown. Pushing a
+tidy`, vet, staticcheck, govulncheck, JavaScript syntax and Markdown, and
+type-checks and packages the VS Code extension. Pushing a
 `v*` tag runs `.github/workflows/release.yml`, which tests and then publishes
 stripped binaries for every platform in the [Install](#install) table.
 
