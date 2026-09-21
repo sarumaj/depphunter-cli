@@ -1,6 +1,13 @@
-// Bugs on the streets. Every finding a scanner reported walks a lap around the
-// building it belongs to, colored by how serious it is; catching one with whatever
-// tool is in your hands opens what was said about it.
+// Bugs on the buildings. Every finding a scanner reported walks a lap on the building
+// it belongs to, colored by how serious it is; catching one with whatever tool is in
+// your hands opens what was said about it.
+//
+// A lap is one of three: the street around the footprint, a band around the facade at
+// some height, or a circuit of the roof. A beetle holds to whatever it is standing on,
+// so one on a wall stands out of that wall sideways and one under an eave would hang
+// from it - which is what makes a tall building look infested rather than decorated
+// around the bottom. All three are the same loop of four corners; what changes is the
+// plane it lies in and which way is up on it.
 //
 // The bugs live on the flat map, like the walker: MapScene bends what is drawn, so a
 // bug's position here is a layout coordinate and nothing more.
@@ -12,6 +19,8 @@ import { bugParts } from './models.js';
 
 const MAX_BUGS = 140;     // a large repository reports thousands; the worst ones walk
 const LANE = 0.3;         // how far outside a building's footprint its bugs patrol
+const EAVE = 0.28;        // how far in from the roof's edge its circuit runs
+const CLIMBABLE = 0.9;    // a building shorter than this has walls not worth walking
 const SPEED = 0.42;       // units per second along the lap - a walking pace, catchable
 const CATCH = 0.42;       // how close a shot has to pass
 const CELL = 4;           // spatial grid for finding the bug under a ray sample
@@ -123,7 +132,7 @@ export class Bugs {
   }
 
   spawn(f, node, box, nth) {
-    const lap = lapOf(box);
+    const lap = lapOf(box, surfaceFor(box, nth));
     const bug = {
       f, node, box, lap,
       // Bugs on the same building start apart and walk at slightly different speeds,
@@ -132,6 +141,8 @@ export class Bugs {
       speed: SPEED * (0.75 + ((nth * 0.19) % 0.5)),
       phase: nth * 1.7,
       caught: this.caught.has(f.id),
+      // Which way is up for this bug: the way the surface it walks on faces.
+      up: new THREE.Vector3(0, 1, 0),
       // Where it is on the flat map: what the crosshair and everything thrown at it
       // measure against, kept here rather than read back off a shared mesh.
       pos: new THREE.Vector3(),
@@ -164,15 +175,14 @@ export class Bugs {
 
   update(dt, now) {
     if (!this.shell) return;
-    const m = new THREE.Matrix4(), r = new THREE.Matrix4(), q = new THREE.Quaternion();
-    const p = new THREE.Vector3(), one = new THREE.Vector3(1, 1, 1);
+    const m = new THREE.Matrix4(), r = new THREE.Matrix4();
     const c = new THREE.Color();
     let n = 0;
     for (const bug of this.bugs) {
       if (bug.caught) continue;
       bug.u = (bug.u + (bug.speed * dt) / bug.lap.length) % 1;
       this.moveTo(bug, now);
-      m.compose(p.copy(bug.pos), q.setFromAxisAngle(UP, bug.heading), one);
+      orient(m, bug);
       this.shell.setMatrixAt(n, m);
       // The legs scurry: the whole set rocks, which reads as six legs at this size.
       this.legs.setMatrixAt(n, r.multiplyMatrices(m, rockAbout(bug.rock)));
@@ -187,10 +197,14 @@ export class Bugs {
   }
 
   moveTo(bug, now) {
-    const { x, z, heading } = pointAt(bug.lap, bug.u);
+    const at = pointAt(bug.lap, bug.u);
     const t = now / 1000 + bug.phase;
-    bug.pos.set(x, bug.lap.y + 0.035 + Math.sin(t * 9) * 0.006, z);
-    bug.heading = heading;
+    // The bob is along whatever the bug is standing on, so one on a wall bobs in and
+    // out of it rather than up and down past it.
+    const bob = 0.035 + Math.sin(t * 9) * 0.006;
+    bug.pos.set(at.x + at.nx * bob, at.y + at.ny * bob, at.z + at.nz * bob);
+    bug.heading = at.heading;
+    bug.up.set(at.nx, at.ny, at.nz);
     bug.rock = Math.sin(t * 16) * 0.35;
   }
 
@@ -251,10 +265,43 @@ export function boxFor(byNode, node) {
   return null;
 }
 
-// lapOf is the loop a bug walks: the building's footprint, one lane out, at the height
-// its base stands on.
-function lapOf(box) {
-  const hw = box.w / 2 + LANE, hd = box.d / 2 + LANE;
+/**
+ * Which surface a bug gets. They are dealt out in turn so that a building with
+ * several findings is walked on at several heights rather than ringed at the bottom,
+ * and a building too short or too small to have walls worth walking keeps them all
+ * on the street.
+ */
+function surfaceFor(box, nth) {
+  if (!(box.h > CLIMBABLE) || box.w < 2 * EAVE + 0.4 || box.d < 2 * EAVE + 0.4) return { kind: 'street' };
+  switch (nth % 3) {
+    case 1: {
+      // Spread up the facade rather than all at one height, and never at the very
+      // top or the very bottom, where the wall runs into the roof or the ground.
+      const bands = Math.max(1, Math.min(4, Math.floor(box.h / 1.2)));
+      const band = (Math.floor(nth / 3) % bands) + 1;
+      return { kind: 'wall', up: box.h * (band / (bands + 1)) };
+    }
+    case 2: return { kind: 'roof' };
+    default: return { kind: 'street' };
+  }
+}
+
+/**
+ * lapOf is the loop a bug walks, as four corners in the plane of whatever it is
+ * standing on, plus the direction that plane faces.
+ *
+ *   street  the footprint, one lane out, at the height the building stands on
+ *   wall    the footprint itself at a height up the facade, each side facing out
+ *   roof    the footprint drawn in from the edge, at the top, facing up
+ *
+ * A wall lap's four sides each face a different way, so the normal belongs to the
+ * segment rather than to the lap; a street or roof lap has the same one throughout.
+ */
+function lapOf(box, surface) {
+  const flat = surface.kind !== 'wall';
+  const out = surface.kind === 'street' ? LANE : surface.kind === 'roof' ? -EAVE : 0;
+  const hw = box.w / 2 + out, hd = box.d / 2 + out;
+  const y = surface.kind === 'roof' ? box.y + box.h : surface.kind === 'wall' ? box.y + surface.up : box.y;
   const corners = [
     [box.x - hw, box.z - hd], [box.x + hw, box.z - hd],
     [box.x + hw, box.z + hd], [box.x - hw, box.z + hd],
@@ -264,16 +311,24 @@ function lapOf(box) {
   for (let i = 0; i < corners.length; i++) {
     const [x0, z0] = corners[i], [x1, z1] = corners[(i + 1) % corners.length];
     const len = Math.hypot(x1 - x0, z1 - z0);
-    segments.push({ x0, z0, x1, z1, len, at: length });
+    // Walking the corners in this order keeps the building on the left, so the
+    // outward normal is the walking direction turned right.
+    const n = flat ? { nx: 0, ny: 1, nz: 0 }
+      : { nx: (z1 - z0) / (len || 1), ny: 0, nz: -(x1 - x0) / (len || 1) };
+    segments.push({ x0, z0, x1, z1, len, at: length, ...n });
     length += len;
   }
+  // A wall lap sits on the footprint and a roof lap inside it, so the street lap's
+  // bounds cover every kind: one box for the spatial index, whatever is walked on.
+  const bx = box.w / 2 + LANE, bz = box.d / 2 + LANE;
   return {
-    segments, length: length || 1, y: box.y,
-    bounds: { x0: box.x - hw, x1: box.x + hw, z0: box.z - hd, z1: box.z + hd },
+    segments, length: length || 1, y, kind: surface.kind,
+    bounds: { x0: box.x - bx, x1: box.x + bx, z0: box.z - bz, z1: box.z + bz },
   };
 }
 
-// pointAt walks the lap: where the bug is at u in [0,1), and which way it faces.
+// pointAt walks the lap: where the bug is at u in [0,1), which way it faces, and
+// which way is up for it there.
 function pointAt(lap, u) {
   const want = u * lap.length;
   let seg = lap.segments[lap.segments.length - 1];
@@ -283,8 +338,10 @@ function pointAt(lap, u) {
   const t = seg.len ? (want - seg.at) / seg.len : 0;
   return {
     x: seg.x0 + (seg.x1 - seg.x0) * t,
+    y: lap.y,
     z: seg.z0 + (seg.z1 - seg.z0) * t,
     heading: Math.atan2(seg.x1 - seg.x0, seg.z1 - seg.z0),
+    nx: seg.nx, ny: seg.ny, nz: seg.nz,
   };
 }
 
@@ -351,8 +408,24 @@ function shade(geo, base) {
   return geo;
 }
 
-const UP = new THREE.Vector3(0, 1, 0);
 const rock = new THREE.Matrix4();
+const fwd = new THREE.Vector3(), side = new THREE.Vector3();
+
+/**
+ * Stands a bug on its surface: nose along the lap, back along the surface's normal.
+ *
+ * The model's nose is +z and its back +y, so the matrix's z column is the way it is
+ * walking and its y column the way the wall or the roof faces; the x column is what
+ * is left, which is the cross product of those two and keeps the beetle from being
+ * mirrored. On the street this comes out as the plain turn about the vertical it
+ * used to be.
+ */
+function orient(m, bug) {
+  fwd.set(Math.sin(bug.heading), 0, Math.cos(bug.heading));
+  side.crossVectors(bug.up, fwd).normalize();
+  m.makeBasis(side, bug.up, fwd);
+  m.setPosition(bug.pos);
+}
 
 // The legs' rocking, as a matrix to hang off the bug's own.
 function rockAbout(angle) {
