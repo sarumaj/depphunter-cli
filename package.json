@@ -502,11 +502,13 @@
         {
           "id": "depphunter.tree",
           "name": "Dependencies",
+          "icon": "extension/media/tree.svg",
           "contextualTitle": "depphunter"
         },
         {
           "id": "depphunter.backpack",
           "name": "Backpack",
+          "icon": "extension/media/backpack.svg",
           "contextualTitle": "depphunter"
         }
       ]

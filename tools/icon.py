@@ -8,6 +8,7 @@ Three sizes out of one drawing:
   * web/static/favicon.png   48x48, the tab icon for browsers that want a raster
   * web/static/favicon.svg   the same mark as vectors, for those that prefer it
   * extension/media/activitybar.svg   the mark in one colour, for VS Code's activity bar
+  * extension/media/tree.svg, backpack.svg   the side panel's other views, drawn the same way
 
 The mark is the map itself, shortened to one thing: three towers on an isometric
 block, in the blue the map paints an unknown language. Drawn rather than fetched
@@ -18,6 +19,7 @@ a 16-pixel tab.
 
 # pyright: basic
 import os
+from collections.abc import Callable
 
 from PIL import Image, ImageDraw
 
@@ -171,6 +173,104 @@ def write_activitybar() -> str:
     return path
 
 
+# The side panel's other views want icons of their own, and they are painted the
+# same way the activity bar's is: as a mask. So they are drawn with the same boxes
+# on the same grid, plus the odd stroke a box can't make - a wire, a handle.
+WIRE = 1.0  # opacity of a stroke
+
+
+def view_icon(draw: Callable[[object], None]) -> str:
+    """One view icon: draw() at unit size, fitted into the activity bar's frame."""
+    shapes: list[tuple[str, list[tuple[float, float]], float]] = []
+
+    class Pen:
+        def polygon(self, points, fill):
+            shapes.append(("polygon", list(points), FACE_OPACITY[fill]))
+
+        def line(self, points, fill):
+            shapes.append(("line", list(points), fill))
+
+    draw(Pen())
+    xs = [x for _, pts, _ in shapes for x, _ in pts]
+    ys = [y for _, pts, _ in shapes for _, y in pts]
+    # The frame is 8,16 48x48; leave the margin the mark leaves.
+    k = 42 / max(max(xs) - min(xs), max(ys) - min(ys))
+    ox = 32 - (max(xs) + min(xs)) / 2 * k
+    oy = 40 - (max(ys) + min(ys)) / 2 * k
+
+    out: list[str] = []
+    for kind, pts, opacity in shapes:
+        g = round(opacity * 255)
+        d = " ".join(f"{x * k + ox:.2f},{y * k + oy:.2f}" for x, y in pts)
+        if kind == "polygon":
+            out.append(f'    <polygon points="{d}" fill="#{g:02x}{g:02x}{g:02x}"/>')
+        else:
+            out.append(
+                f'    <polyline points="{d}" fill="none" stroke="#{g:02x}{g:02x}{g:02x}"'
+                ' stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>'
+            )
+    return ACTIVITYBAR.format(body="\n".join(out))
+
+
+def draw_tree(pen) -> None:
+    """Dependencies: one block raised behind, wired down to two in front of it."""
+    at = lambda x, y, z: iso(x, y, z, 1, 0, 0)
+    # The wires first, so the blocks cover where they end.
+    pen.line([at(0.5, 0.5, 1.3), at(0.5, 0.5, 0.45), at(2.3, 0.5, 0.45)], WIRE)
+    pen.line([at(0.5, 0.5, 0.45), at(0.5, 2.3, 0.45)], WIRE)
+    box(pen, (0, 0), (1, 1), 1.3, 0.9, 1, 0, 0, (TOP, LEFT, RIGHT))
+    box(pen, (1.8, 0), (1, 1), 0.0, 0.9, 1, 0, 0, (TOP, LEFT, RIGHT))
+    box(pen, (0, 1.8), (1, 1), 0.0, 0.9, 1, 0, 0, (TOP, LEFT, RIGHT))
+
+
+def draw_backpack(pen) -> None:
+    """Backpack: a tall block with a flap over its top, a pocket and a handle."""
+    at = lambda x, y, z: iso(x, y, z, 1, 0, 0)
+    box(pen, (0, 0), (1.1, 0.8), 0.0, 1.9, 1, 0, 0, (TOP, LEFT, RIGHT))
+    box(
+        pen,
+        (-0.04, -0.04),
+        (1.18, 0.92),
+        1.35,
+        0.6,
+        1,
+        0,
+        0,
+        (GROUND_TOP, GROUND_LEFT, GROUND_RIGHT),
+    )
+    box(
+        pen,
+        (0.2, 0.8),
+        (0.7, 0.22),
+        0.2,
+        0.75,
+        1,
+        0,
+        0,
+        (GROUND_TOP, GROUND_LEFT, GROUND_RIGHT),
+    )
+    # The handle last: it stands on the flap, and nothing is in front of it.
+    pen.line(
+        [
+            at(0.3, 0.4, 1.95),
+            at(0.3, 0.4, 2.35),
+            at(0.8, 0.4, 2.35),
+            at(0.8, 0.4, 1.95),
+        ],
+        WIRE,
+    )
+
+
+def write_view_icons() -> list[str]:
+    wrote = []
+    for name, draw in (("tree", draw_tree), ("backpack", draw_backpack)):
+        path = os.path.join(ROOT, "extension", "media", f"{name}.svg")
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(view_icon(draw))
+        wrote.append(path)
+    return wrote
+
+
 def main() -> None:
     wrote = []
     for path, size, radius in (
@@ -185,6 +285,7 @@ def main() -> None:
         fh.write(SVG.format(body=svg_polygons()))
     wrote.append(svg)
     wrote.append(write_activitybar())
+    wrote.extend(write_view_icons())
 
     for path in wrote:
         print(f"wrote {os.path.relpath(path, ROOT)}: {os.path.getsize(path)} bytes")

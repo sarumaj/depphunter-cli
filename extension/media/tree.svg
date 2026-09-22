@@ -1,0 +1,16 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="8 16 48 48" width="24" height="24">
+  <mask id="m" maskUnits="userSpaceOnUse" x="8" y="16" width="48" height="48">
+    <polyline points="32.00,35.12 32.00,41.50 45.50,48.25" fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>
+    <polyline points="32.00,41.50 18.50,48.25" fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>
+    <polygon points="32.00,24.62 39.50,28.37 32.00,32.12 24.50,28.37" fill="#ffffff"/>
+    <polygon points="24.50,28.37 32.00,32.12 32.00,38.88 24.50,35.12" fill="#808080"/>
+    <polygon points="39.50,28.37 32.00,32.12 32.00,38.88 39.50,35.12" fill="#b2b2b2"/>
+    <polygon points="45.50,41.12 53.00,44.88 45.50,48.62 38.00,44.88" fill="#ffffff"/>
+    <polygon points="38.00,44.88 45.50,48.62 45.50,55.38 38.00,51.62" fill="#808080"/>
+    <polygon points="53.00,44.88 45.50,48.62 45.50,55.38 53.00,51.62" fill="#b2b2b2"/>
+    <polygon points="18.50,41.12 26.00,44.88 18.50,48.62 11.00,44.88" fill="#ffffff"/>
+    <polygon points="11.00,44.88 18.50,48.62 18.50,55.38 11.00,51.62" fill="#808080"/>
+    <polygon points="26.00,44.88 18.50,48.62 18.50,55.38 26.00,51.62" fill="#b2b2b2"/>
+  </mask>
+  <rect x="8" y="16" width="48" height="48" fill="#000" mask="url(#m)"/>
+</svg>
