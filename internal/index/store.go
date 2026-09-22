@@ -60,8 +60,15 @@ func (s *store) put(key string, deps []dep) {
 	if err != nil {
 		return
 	}
-	tmp := s.path(key) + ".tmp"
-	if os.WriteFile(tmp, data, 0o644) == nil {
-		os.Rename(tmp, s.path(key))
+	// A temporary of its own rather than one named after the key: two goroutines
+	// asking about the same package at once would otherwise write the same scratch
+	// file over each other, and the rename would publish whichever half won.
+	tmp, err := os.CreateTemp(s.dir, "put-*")
+	if err != nil {
+		return
+	}
+	_, err = tmp.Write(data)
+	if closeErr := tmp.Close(); err != nil || closeErr != nil || os.Rename(tmp.Name(), s.path(key)) != nil {
+		os.Remove(tmp.Name())
 	}
 }

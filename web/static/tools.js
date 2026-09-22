@@ -16,10 +16,12 @@
 //                     ever-present crosshair
 //   verb / noun       what the HUD and its messages call the act and its tally
 //   targets           'bugs', 'buildings' or 'both': what it is any use against
-//   reach             how far it works, in map units; absent means as far as it is
-//                     thrown, and on a tool that throws nothing that is any distance
-//                     at all (the camera). A reach with nothing thrown is a tool
-//                     swung by hand - the net - which has to be walked up to.
+//   reach             how far it works, in map units. Every tool has one but the
+//                     camera, which photographs whatever is in the frame however far
+//                     away it is. A reach with nothing thrown is a tool swung by hand
+//                     - the net - which has to be walked up to; a reach on a tool
+//                     that throws is how far what it throws carries, and past it the
+//                     reticle dims, the shot still leaves and it falls short.
 //   flight            how what it throws behaves: speed, how much it is lobbed
 //                     (arc), what gravity does to it, and how the air holds it back.
 //                     A dart is fast and flat, a bubble slow and rising; the same
@@ -322,6 +324,9 @@ const rod = {
   reticle: 'bobber',
   slot: 1,
   targets: 'buildings',
+  // A long cast, but a cast: a rod puts a bobber a good way down the street and no
+  // further, and past that the line would not be worth hauling on anyway (reel.max).
+  reach: 26,
   // A weighted bobber on a line: thrown hard, dropping the way a cast does.
   flight: { speed: 24, arc: 1.6, gravity: 6, drag: 0.1 },
   // The blank goes up, the arm back out of the bottom of the frame.
@@ -625,6 +630,9 @@ const bubbles = {
   slot: 4,
   // Soap on a beetle is a catch; soap on a wall is a clean wall.
   targets: 'bugs',
+  // Nothing blown off a wand carries: it is out of reach across the street, never
+  // mind across the map.
+  reach: 7,
   // A bubble is lighter than the air it is thrown through: it slows almost at once
   // and then climbs, which is why it is lobbed high and aimed early.
   flight: { speed: 12, arc: 2.2, gravity: -1.1, drag: 1.5 },
@@ -697,6 +705,10 @@ const dart = {
   reticle: 'scope',
   slot: 5,
   targets: 'buildings',
+  // A dart launcher out-throws an arm and loses to a rifle: a couple of blocks, and
+  // then it is dropping. It used to tag a building anywhere the crosshair could
+  // reach, which was most of the city from a rooftop.
+  reach: 20,
   // Heavy, fast and barely lobbed: the flattest thing in the bag.
   flight: { speed: 34, arc: 0.6, gravity: 7, drag: 0.05 },
   // The pistol grip hangs down out of the fist, so the shaft through it points up.
@@ -814,6 +826,10 @@ const nailer = {
   reticle: 'cross',
   slot: 6,
   targets: 'buildings',
+  // The flattest shot here and the shortest: a nail gun drives a nail into what is
+  // in front of it. It reaches further than an arm and nothing like as far as the
+  // dart, which is the trade for not having to lead the shot at all.
+  reach: 12,
   // Fired rather than thrown: the fastest and flattest thing here, and heavy enough
   // that the air does nothing to it.
   flight: { speed: 70, arc: 0.1, gravity: 3.5, drag: 0 },
@@ -896,6 +912,9 @@ const grapple = {
   reticle: 'hook',
   slot: 7,
   targets: 'buildings',
+  // The longest reach in the bag, because a line is the one thing here that is meant
+  // to span a street - but a line, not a rifle: it ends where the rope does.
+  reach: 50,
   // A line paid out taut: no lob and no drop worth speaking of.
   flight: { speed: 55, arc: 0.05, gravity: 0.6, drag: 0 },
   line: '#cfd6de', // the line stays drawn, out and back

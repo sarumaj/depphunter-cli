@@ -4,7 +4,7 @@ import { MapScene } from './scene.js';
 import { readPalette, languageColors, assignSlots, sequential } from './colors.js';
 import { Panel } from './panel.js';
 import { computeVisibility, searchIndex, search } from './filter.js';
-import { STATIC, auth, authed, fetchGraph, fetchConfig, fetchLazy, saveSettings } from './data.js';
+import { STATIC, CLIENT, auth, authed, fetchGraph, fetchConfig, fetchLazy, saveSettings, fetchSession, pushSelection, pushBackpack } from './data.js';
 import { MODES, isHistoryMode, computeMetrics, historyT, timeRange, ago, formatDate } from './history.js';
 import { Labels } from './labels.js';
 import { Walker } from './walk.js';
@@ -101,7 +101,7 @@ async function main() {
         recolor();
       } else if (x === aimX) return; // the crosshair moves when the panel resizes the map
       aimX = x;
-      showTooltip(i, x, y);
+      tooltip(i >= 0 ? `box:${i}` : null, x, y, showTooltip.bind(null, i));
     },
     onHit: (box, tagged) => {
       const tool = walker.tool;
@@ -134,6 +134,9 @@ async function main() {
   routes = new Routes(scene);
   avatar = new Avatar(scene);
   pack = new Backpack(model.root.name, drawPack);
+  // The page is the one with a store that outlives the server, so what it remembers
+  // is what the session starts from.
+  pushBackpack(pack.items);
   bugs = new Bugs(scene, {
     // A caught bug reads itself out: the building it belongs to is selected and its
     // finding opened, exactly as a second shot into a building would. It also goes
@@ -190,7 +193,10 @@ async function main() {
   relayout();
   scene.fit(L.bounds);
   updateStatus();
-  if (cfg.watch) connectEvents();
+  // The stream is worth having whether or not the file system is being watched: it
+  // is also how a selection made in the editor's side panel, or a backpack changed
+  // there, reaches this page. Without a server there is nothing to connect to.
+  if (!STATIC) connectEvents();
   loadLazy('history', setHistory);
   if (cfg.lsp || STATIC?.references) {
     state.referencesStatus = 'loading';
@@ -257,10 +263,13 @@ function placeBugs() {
 
 // drawPack redraws the list and the toolbar button. The button only exists when there
 // is something to put in it: a map read without --findings has no bugs to catch.
-function drawPack() {
+function drawPack(_pack, fromServer = false) {
   // The backpack is what says which findings are caught, so whatever changed it has
   // just changed the streets too.
   bugs?.keepCaught(pack.ids);
+  // ... and whatever else is looking at this server - the editor's side panel - is
+  // reading the same catch, so it goes up. Not when it just came down from there.
+  if (!fromServer) pushBackpack(pack.items);
   scene?.requestRender();
   const { total, open, fixed } = pack.counts;
   const btn = $('pack-btn'), count = $('pack-count');
@@ -420,6 +429,9 @@ let reloadChain = Promise.resolve();
 // stream of console errors instead of an answer.
 const MAX_RECONNECTS = 4;
 let events = null, reconnects = 0;
+// Whether this page has been greeted by a stream before, which is what tells a
+// reconnection from the first connection of all.
+let greeted = false;
 
 function connectEvents() {
   events?.close();
@@ -432,14 +444,56 @@ function connectEvents() {
     es.close();
     setLive('stopped');
   };
-  // After a reconnect the server may be ahead of us.
+  // After a reconnect the server may be ahead of us - or may be a different server,
+  // started under a page that was left open, numbering its versions from one again.
+  // `resumed` is the stream saying nothing has been announced since the last event
+  // this page saw; failing that it asks, and the entity tag makes the asking free
+  // when the answer is the graph it already has.
+  //
+  // The first greeting is not a reconnection: main() has just read everything.
   es.addEventListener('hello', e => {
-    if (JSON.parse(e.data).version !== graphVersion) queueReload([]);
+    const first = !greeted;
+    greeted = true;
+    if (first || JSON.parse(e.data).resumed) return;
+    queueReload([]);
+    adoptSession();
   });
   es.addEventListener('graph', e => queueReload(JSON.parse(e.data).changed || []));
   es.addEventListener('history', () => loadLazy('history', setHistory));
   es.addEventListener('references', () => loadLazy('references', applyReferences));
   es.addEventListener('findings', () => loadLazy('findings', applyFindings));
+  // What somebody else picked, and what somebody else took out of the backpack. Our
+  // own changes come back too, named as ours, and are left alone.
+  es.addEventListener('selection', e => {
+    const { id, origin } = JSON.parse(e.data);
+    if (origin === CLIENT) return;
+    const n = id ? model.byId.get(id) : null;
+    if (n) reveal(n);
+    else if (!id) select(null, true);
+  });
+  es.addEventListener('backpack', e => {
+    if (JSON.parse(e.data).origin === CLIENT) return;
+    adoptBackpack();
+  });
+}
+
+/** Takes the backpack as the server now has it; replace redraws through onChange. */
+async function adoptBackpack() {
+  const session = await fetchSession();
+  if (session) pack.replace(session.backpack);
+}
+
+/**
+ * Catches up on what was shared while this page was not listening. A stream that
+ * came back without resuming may have missed a selection or a change to the catch,
+ * and neither is announced again.
+ */
+async function adoptSession() {
+  const session = await fetchSession();
+  if (!session) return;
+  pack.replace(session.backpack);
+  const n = session.selected ? model.byId.get(session.selected) : null;
+  if (n && n !== state.selected) reveal(n);
 }
 
 function queueReload(changed) {
@@ -451,7 +505,13 @@ function queueReload(changed) {
 
 async function reload(changed) {
   const { graph, version } = await fetchGraph();
-  if (version === graphVersion) return;
+  // 304: the server has what this page already holds, whatever the version counter
+  // says. A server restarted under an open page numbers from one again, and the
+  // graph it found is usually the same graph.
+  if (!graph || version === graphVersion) {
+    graphVersion = version;
+    return;
+  }
   setModel(graph, version);
   langs = languageColors(model, pal, slots);
   // The findings are indexed onto the model, and this is a new one.
@@ -476,10 +536,15 @@ function setLive(state) {
   el.hidden = false;
   el.classList.toggle('off', state !== 'live');
   el.classList.toggle('stopped', state === 'stopped');
-  el.textContent = { live: 'live', reconnecting: 'reconnecting…', stopped: 'depphunter stopped' }[state];
-  el.title = state === 'live'
-    ? 'Watching the file system; the map updates as files change'
-    : state === 'reconnecting' ? 'Lost connection to depphunter' : 'depphunter is no longer running - click to try again';
+  // Connected without --watch: the map does not follow the files, but the selection
+  // and the backpack still travel, so saying "live" would promise the wrong thing.
+  const connected = config.watch ? 'live' : 'connected';
+  el.textContent = { live: connected, reconnecting: 'reconnecting…', stopped: 'depphunter stopped' }[state];
+  el.title = state !== 'live'
+    ? state === 'reconnecting' ? 'Lost connection to depphunter' : 'depphunter is no longer running - click to try again'
+    : config.watch
+      ? 'Watching the file system; the map updates as files change'
+      : 'Connected to depphunter. Started without --watch, so the map does not follow the files';
   el.onclick = state === 'stopped' ? () => { reconnects = 0; setLive('reconnecting'); connectEvents(); } : null;
 }
 
@@ -654,8 +719,9 @@ function toggle(n) {
   relayout();
 }
 
-function select(n) {
+function select(n, fromServer = false) {
   state.selected = n;
+  if (!fromServer) pushSelection(n?.id);
   // The panel would cover the reticle and cannot be reached with the pointer locked,
   // so a walker's selection only opens it once they are back on the map.
   if (n && !walker.active) panel.show(n);
@@ -694,9 +760,14 @@ function walkTarget() {
   return same ? null : state.selected && rep(state.selected);
 }
 
+// What the toolbar cannot do from the street. Rotating and fitting move the map's
+// own camera, which nobody is looking through while walking, and the backpack wants
+// a pointer that walk mode has captured - so all three did nothing, silently.
+const WALK_DISABLED = ['rotate-left', 'rotate-right', 'fit', 'pack-btn'];
+
 function setWalking(on) {
   if (on && !walker.active) {
-    showTooltip(-1);
+    hideTooltip();
     walker.enter(walkTarget(), rep(model.root), L.bounds);
   } else if (!on && walker.active) {
     walker.exit(); // calls back here once it has left
@@ -704,6 +775,18 @@ function setWalking(on) {
   }
   $('walk').setAttribute('aria-pressed', on);
   $('map').parentElement.classList.toggle('walking', on);
+  for (const id of WALK_DISABLED) {
+    const el = $(id);
+    if (el.dataset.title === undefined) el.dataset.title = el.title;
+    el.disabled = on;
+    el.title = on ? `${el.dataset.title} - not while walking` : el.dataset.title;
+  }
+  // The counters would otherwise sit across the tool row in the corner they share.
+  // Nothing can be moved out of the way without covering something else, so they
+  // stack instead: the readout joins the top of the row's own column.
+  const status = $('status');
+  const home = on ? $('walk-hud').querySelector('.w-foot') : $('map').parentElement;
+  if (status.parentElement !== home) home[on ? 'prepend' : 'append'](status);
   // The pins are how findings show on the map; in the street they are bugs instead.
   pins.show(!on && !!state.findings);
   // ... and the walker, who is only worth drawing when you are not being them.
@@ -726,7 +809,7 @@ function relayout() {
   // Box indexes change: whatever was hovered or described is gone.
   state.hovered = -1;
   aimX = NaN;
-  showTooltip(-1);
+  hideTooltip();
   L = layout(model, state);
   scene.setBoxes(L.boxes, baseColors());
   walker.setBoxes(L.boxes);
@@ -944,41 +1027,92 @@ function bindSinceSlider() {
   });
 }
 
+// The tooltip waits a moment before it appears.
+//
+// A panel of numbers thrown under the pointer the instant it crosses a roof is in
+// the way of the map it is describing, and crossing the city is most of what the
+// pointer does. Waiting until it settles on one building means the panel turns up
+// when it was wanted and stays out of the way when it was not - and once it is up,
+// moving on to the next building swaps it straight away, because by then the reader
+// has said they are reading.
+const TIP_DELAY = 240;
+
+// key names what is being described (null: nothing), paint draws it at a position.
+const tipState = { key: null, timer: 0, open: false, x: 0, y: 0, paint: null };
+
+function tooltip(key, x = 0, y = 0, paint = null) {
+  Object.assign(tipState, { x, y, paint });
+  if (key === null) {
+    clearTimeout(tipState.timer);
+    Object.assign(tipState, { key: null, timer: 0, open: false, paint: null });
+    $('tooltip').hidden = true;
+    return;
+  }
+  const same = key === tipState.key;
+  tipState.key = key;
+  if (tipState.open) {
+    tipState.paint(tipState.x, tipState.y);
+  } else if (!same) {
+    clearTimeout(tipState.timer);
+    tipState.timer = setTimeout(() => {
+      tipState.open = true;
+      tipState.paint?.(tipState.x, tipState.y);
+    }, TIP_DELAY);
+  }
+}
+
+/** Takes the tooltip away, and the wait with it. */
+const hideTooltip = () => tooltip(null);
+
+// The card is written once and then only moved.
+//
+// The pointer asks for it once a frame while it is up, and every one of those asks
+// used to build a string and hand it to the HTML parser to say the same thing again.
+// What it says is keyed instead, on the element itself, so that whichever of the two
+// kinds of card wrote it last can tell whether the other one has been in since.
+function paint(tip, key, html) {
+  if (tip.dataset.card !== key) {
+    tip.innerHTML = html();
+    tip.dataset.card = key;
+  }
+  tip.hidden = false;
+}
+
 // What a marker stands for, without having to click it: how many findings are under
 // it, the worst of them, and how much of that is already in the backpack.
 //
-// Counting what is in the backpack means walking the subtree, and the pointer asks
-// once a frame, so the answer is kept until the pin or the backpack changes.
-let pinTip = { key: '', html: '' };
-
+// Counting what is in the backpack means walking the subtree, which is the other
+// reason not to do it once a frame.
 function showPinTooltip(pin, x, y) {
   const tip = $('tooltip');
   const n = pin.box.node;
-  const key = `${n.id}|${pin.count}|${pack.counts.total}`;
-  if (key !== pinTip.key) {
+  paint(tip, `pin:${n.id}|${pin.count}|${pack.counts.total}`, () => {
     const row = (k, v) => `<div class="t-row">${k} <b>${escapeHTML(String(v))}</b></div>`;
     const ids = pack.ids;
     const kept = (state.findings?.under(n.id) || []).filter(f => ids.has(f.id)).length;
-    pinTip = { key, html: `<div class="t-title">${escapeHTML(n.path && n.path !== '.' ? n.path : n.name)}</div>`
+    return `<div class="t-title">${escapeHTML(n.path && n.path !== '.' ? n.path : n.name)}</div>`
       + row('Findings', fmt.format(pin.count)) + row('Worst', pin.worst || 'unknown')
       + (kept ? row('In the backpack', fmt.format(kept)) : '')
-      + '<div class="t-row">Click to read them</div>' };
-  }
-  tip.innerHTML = pinTip.html;
-  tip.hidden = false;
+      + '<div class="t-row">Click to read them</div>';
+  });
   placeTooltip(tip, x, y);
 }
 
 function showTooltip(i, x, y) {
   const tip = $('tooltip');
-  if (i < 0) { tip.hidden = true; return; }
-  const b = L.boxes[i], n = b.node;
+  const b = L.boxes[i], n = b?.node;
+  if (!n) { tip.hidden = true; return; } // the layout moved under the wait
+  paint(tip, `box:${n.id}|${b.kind}|${graphVersion}|${state.since}`, () => card(b, n));
+  placeTooltip(tip, x, y);
+}
+
+function card(b, n) {
   const row = (k, v) => `<div class="t-row">${k} <b>${escapeHTML(String(v))}</b></div>`;
   let html = `<div class="t-title">${escapeHTML(n.path && n.path !== '.' ? n.path : n.name)}</div>`;
   if (n.kind === 'file') html += row('Language', n.lang || 'unknown') + row('Lines', fmt.format(n.loc || 0)) + (n.children.length ? row('Symbols', n.children.length) : '');
   else if (n.kind === 'dir') html += row(b.kind === 'district' ? 'Collapsed directory' : 'Directory', '') + row('Files', fmt.format(n.fileCount)) + row('Lines', fmt.format(n.totalLoc));
   else if (n.kind === 'symbol') html += row(n.symbolKind, `line ${n.line}`);
-  else if (n.kind === 'package') html += row('Ecosystem', n.parentNode.name) + (n.version ? row('Version', n.version) : '') + (n.requested ? row('Requested', n.requested) : '') + row('Imported by', `${n.importers} files`) + (n.unresolved ? row('⚠', 'not declared in a manifest') : '') + (n.floating ? row('⚠', 'not pinned to one version') : '') + (n.transitive ? row('Pulled in by', 'another dependency') : '') + (n.index ? row(n.indexUnknown ? '⚠ Index' : 'Index', n.index.replace(/^https?:\/\//, '')) : '');
+  else if (n.kind === 'package') html += row('Ecosystem', n.parentNode.name) + (n.version ? row('Version', n.version) : '') + (n.requested ? row('Requested', n.requested) : '') + row('Imported by', `${n.importers} files`) + (n.private ? row('Private', 'yours; nothing about it is asked of anyone') : '') + (n.unresolved ? row('⚠', 'not declared in a manifest') : '') + (n.floating ? row('⚠', 'not pinned to one version') : '') + (n.transitive ? row('Pulled in by', 'another dependency') : '') + (n.index ? row(n.indexUnknown ? '⚠ Index' : 'Index', n.index.replace(/^https?:\/\//, '')) : '');
   else if (n.kind === 'ecosystem') html += row('Packages', n.children.length);
   const hm = (n.kind === 'file' || n.kind === 'dir') && metrics();
   if (hm) {
@@ -988,9 +1122,7 @@ function showTooltip(i, x, y) {
         row('Last change', ago(m.last)) + row('Authors', m.authors.size)
       : row('Git history', 'not committed');
   }
-  tip.innerHTML = html;
-  tip.hidden = false;
-  placeTooltip(tip, x, y);
+  return html;
 }
 
 // Beside the pointer, or below the reticle while walking; flipped to the other side
@@ -1045,7 +1177,7 @@ function bindControls() {
     if (walker.active) return;
     down = { x: e.clientX, y: e.clientY, button: e.button };
     map.classList.add('grabbing');
-    showTooltip(-1); // it would hang over the map for the whole pan
+    hideTooltip(); // it would hang over the map for the whole pan
   });
   window.addEventListener('pointerup', e => {
     map.classList.remove('grabbing');
@@ -1069,11 +1201,13 @@ function bindControls() {
   map.addEventListener('dblclick', e => {
     if (walker.active || pins.at(e.clientX, e.clientY)) return; // the pin was the target
     const i = scene.pick(e.clientX, e.clientY);
-    if (i >= 0) {
-      const n = L.boxes[i].node;
-      toggle(n);
-      select(n.kind === 'symbol' && !state.expanded.has(n.parentNode.id) ? n.parentNode : n);
-    }
+    // On a building, the second click opens it; on open ground there is nothing to
+    // open, and walking in is what one is usually after down there anyway. V still
+    // does it from anywhere, and M is the way back.
+    if (i < 0) { setWalking(true); return; }
+    const n = L.boxes[i].node;
+    toggle(n);
+    select(n.kind === 'symbol' && !state.expanded.has(n.parentNode.id) ? n.parentNode : n);
   });
   map.addEventListener('pointermove', e => {
     lastMove = e;
@@ -1084,8 +1218,9 @@ function bindControls() {
       const i = pin ? -1 : scene.pick(lastMove.clientX, lastMove.clientY);
       map.classList.toggle('hovering', !!pin || i >= 0);
       if (i !== state.hovered) { state.hovered = i; recolor(); }
-      if (pin) showPinTooltip(pin, lastMove.clientX, lastMove.clientY);
-      else showTooltip(i, lastMove.clientX, lastMove.clientY);
+      const { clientX: mx, clientY: my } = lastMove;
+      if (pin) tooltip(`pin:${pin.box.node.id}`, mx, my, showPinTooltip.bind(null, pin));
+      else tooltip(i >= 0 ? `box:${i}` : null, mx, my, showTooltip.bind(null, i));
     });
   });
   map.addEventListener('pointerleave', () => {
@@ -1093,7 +1228,7 @@ function bindControls() {
     cancelAnimationFrame(hoverFrame); // else it re-shows the tooltip after the pointer left
     hoverFrame = 0;
     state.hovered = -1;
-    showTooltip(-1);
+    hideTooltip();
     recolor();
   });
   map.addEventListener('contextmenu', e => e.preventDefault());
@@ -1153,13 +1288,15 @@ function bindControls() {
         select(null);
         break;
       case 'b': case 'B':
-        if (!$('pack-btn').hidden) setPackOpen($('pack').hidden);
+        // The backpack needs the pointer, and walk mode has it.
+        if (!$('pack-btn').hidden && !walker.active) setPackOpen($('pack').hidden);
         break;
       // Home rather than F: F is fly in walk mode, and one letter meaning two
       // things depending on which view you are in is a letter nobody presses.
-      case 'Home': scene.fit(L.bounds); break;
-      case 'q': case 'Q': scene.setIso(scene.quarter - 1); break;
-      case 'e': case 'E': scene.setIso(scene.quarter + 1); break;
+      // ... and they move the map's camera, which is not the one in use while walking.
+      case 'Home': if (!walker.active) scene.fit(L.bounds); break;
+      case 'q': case 'Q': if (!walker.active) scene.setIso(scene.quarter - 1); break;
+      case 'e': case 'E': if (!walker.active) scene.setIso(scene.quarter + 1); break;
       case '+': case '=': setLevel(state.level + 1); break;
       case '-': case '_': setLevel(state.level - 1); break;
       case '?': document.exitPointerLock?.(); $('help').showModal(); break;

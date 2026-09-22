@@ -40,6 +40,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang/rust"
 	"github.com/sarumaj/depphunter-cli/internal/lsp"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
+	"github.com/sarumaj/depphunter-cli/internal/scope"
 	"github.com/sarumaj/depphunter-cli/internal/server"
 	"github.com/sarumaj/depphunter-cli/internal/watch"
 	"github.com/sarumaj/depphunter-cli/web"
@@ -128,7 +129,16 @@ func run(ctx context.Context, cfg config.Config) error {
 		ResolveDepth: cfg.ResolveDepth,
 	}
 	home, _ := os.UserHomeDir()
+	// What this organization owns: what was declared, plus what the machine already
+	// says about private Go modules. Nothing named here is asked of a public index or
+	// sent to the vulnerability database.
+	private := scope.New(append(append([]string{}, cfg.Private...), scope.FromGoEnv(os.Getenv)...))
+	if !private.Empty() {
+		log.Printf("private: %s", strings.Join(private.Patterns(), ", "))
+	}
+	opts.Private = private.Match
 	indexes := index.NewDiscoverer(os.Getenv, home)
+	indexes.Config().Trust(cfg.TrustIndexes)
 	opts.Indexes = func(files []*scan.File) anal.Indexes { return indexes.Discover(files) }
 	if cfg.Online {
 		// The configuration is filled while the scan runs; the client only reads it
@@ -139,7 +149,7 @@ func run(ctx context.Context, cfg config.Config) error {
 		if cacheDir != "" {
 			store = filepath.Join(cacheDir, "index")
 		}
-		opts.Registry = index.NewClient(indexes.Config(), store, indexCacheTTL, indexTimeout, home)
+		opts.Registry = index.NewClient(indexes.Config(), store, indexCacheTTL, indexTimeout, home, private)
 	}
 	g, err := analyze(ctx, cfg.Root, opts, c)
 	if err != nil {
@@ -267,6 +277,12 @@ func pinned(g *graph.Graph) []findings.Package {
 	var out []findings.Package
 	for _, n := range g.Nodes {
 		if n.Kind != graph.KindPackage || n.Version == "" || n.Floating {
+			continue
+		}
+		// An organization's own package is not asked about. The database would have
+		// nothing to say about it, and the question itself hands the name and the
+		// version of internal code to somebody else's server.
+		if n.Private {
 			continue
 		}
 		eco := n.Parent

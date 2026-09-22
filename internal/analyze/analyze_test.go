@@ -297,3 +297,48 @@ func TestPackagesCarryTheirIndex(t *testing.T) {
 		}
 	}
 }
+
+func TestPackagesAreMarkedAsTheOrganizationsOwn(t *testing.T) {
+	root := t.TempDir()
+	writeProject(t, root, map[string]string{"a.fake": "corp.example/lib\nreact\n"})
+	p := fakePlugin{targets: map[string]lang.Target{
+		"corp.example/lib": {Ecosystem: "fake-eco", Package: "corp.example/lib", Version: "v1.0.0", Pinned: true},
+		"react":            {Ecosystem: "fake-eco", Package: "react", Version: "18.3.1", Pinned: true},
+	}}
+	g, _, err := Run(context.Background(), root, Options{
+		Plugins: []lang.Plugin{p},
+		Private: func(eco, pkg string) bool { return eco == "fake-eco" && pkg == "corp.example/lib" },
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	marked := map[string]bool{}
+	for _, n := range g.Nodes {
+		if n.Kind == graph.KindPackage {
+			marked[n.Name] = n.Private
+		}
+	}
+	if !marked["corp.example/lib"] {
+		t.Error("the organization's own package was not marked")
+	}
+	if marked["react"] {
+		t.Error("a public package was marked private")
+	}
+}
+
+func TestNothingIsPrivateWithoutBeingDeclared(t *testing.T) {
+	// The ordinary case: a repository of open-source dependencies, no configuration,
+	// and nothing held back from the index or the vulnerability database.
+	root := t.TempDir()
+	writeProject(t, root, map[string]string{"a.fake": "react\n"})
+	p := fakePlugin{targets: map[string]lang.Target{"react": {Ecosystem: "fake-eco", Package: "react"}}}
+	g, _, err := Run(context.Background(), root, Options{Plugins: []lang.Plugin{p}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range g.Nodes {
+		if n.Private {
+			t.Errorf("%s was marked private with nothing declared", n.ID)
+		}
+	}
+}

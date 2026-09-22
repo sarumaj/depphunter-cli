@@ -12,6 +12,7 @@ import (
 	"time"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/scope"
 )
 
 // stubIndex serves what each ecosystem's index serves, so the client can be checked
@@ -50,7 +51,7 @@ func clientFor(t *testing.T, eco, url, home string) *Client {
 	t.Helper()
 	cfg := New()
 	cfg.Add(eco, Source{URL: url, Trusted: true})
-	return NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, home)
+	return NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, home, nil)
 }
 
 func names(deps []lang.Target) []string {
@@ -95,7 +96,7 @@ func TestPyPIDependencies(t *testing.T) {
 	srv, _ := stubIndex(t)
 	cfg := New()
 	cfg.Add(PyPI, Source{URL: srv.URL + "/simple", Trusted: true})
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, "")
+	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, "", nil)
 	got := names(c.Dependencies(lang.Target{Ecosystem: PyPI, Package: "requests", Version: "2.31.0"}))
 	// An extra's dependency is installed only when that extra is asked for.
 	if len(got) != 2 || got[0] != "certifi" || got[1] != "urllib3" {
@@ -107,7 +108,7 @@ func TestAnIndexOnlyTheRepositoryNamesIsNotAsked(t *testing.T) {
 	srv, asked := stubIndex(t)
 	cfg := New()
 	cfg.Add(NPM, Source{URL: srv.URL}) // as a repository's .npmrc would
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, "")
+	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, "", nil)
 	if deps := c.Dependencies(lang.Target{Ecosystem: NPM, Package: "react", Version: "18.3.1"}); len(deps) != 0 {
 		t.Errorf("got %v from an index nothing here vouches for", names(deps))
 	}
@@ -143,10 +144,10 @@ func TestAnswersAreCached(t *testing.T) {
 	cfg.Add(Go, Source{URL: srv.URL, Trusted: true})
 	target := lang.Target{Ecosystem: Go, Package: "example.com/mod", Version: "v1.2.3"}
 
-	first := NewClient(cfg, dir, time.Hour, 5*time.Second, "")
+	first := NewClient(cfg, dir, time.Hour, 5*time.Second, "", nil)
 	first.Dependencies(target)
 	// A second client, a second run: the answer is on disk.
-	second := NewClient(cfg, dir, time.Hour, 5*time.Second, "")
+	second := NewClient(cfg, dir, time.Hour, 5*time.Second, "", nil)
 	if got := names(second.Dependencies(target)); len(got) != 1 {
 		t.Errorf("got %v from the cache", got)
 	}
@@ -158,7 +159,7 @@ func TestAnswersAreCached(t *testing.T) {
 	// milliseconds, so an answer written and read inside one test is the same
 	// instant there, and no time to live short of zero expires it.
 	age(t, dir, 2*time.Hour)
-	third := NewClient(cfg, dir, time.Hour, 5*time.Second, "")
+	third := NewClient(cfg, dir, time.Hour, 5*time.Second, "", nil)
 	third.Dependencies(target)
 	if len(*asked) != 2 {
 		t.Errorf("a stale answer was reused: %v", *asked)
@@ -208,5 +209,45 @@ func TestNetrcCredentials(t *testing.T) {
 	c.apply(other)
 	if got := other.Header.Get("Authorization"); got != "" {
 		t.Errorf("credentials were sent to another host: %q", got)
+	}
+}
+
+func TestAPrivatePackageIsNotNamedToAPublicIndex(t *testing.T) {
+	srv, asked := stubIndex(t)
+	// The stub stands in for the ecosystem's public index, which is what makes
+	// asking it a disclosure.
+	public[Go] = srv.URL
+	t.Cleanup(func() { public[Go] = "https://proxy.golang.org" })
+
+	cfg := New()
+	cfg.Add(Go, Source{URL: srv.URL, Trusted: true})
+	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, "",
+		scope.New([]string{"go:example.com/*"}))
+
+	if deps := c.Dependencies(lang.Target{Ecosystem: Go, Package: "example.com/mod", Version: "v1.2.3"}); len(deps) != 0 {
+		t.Errorf("answered %v for a private module", names(deps))
+	}
+	// Not "asked and ignored": not asked. The request is what would say the module
+	// exists, and to whom.
+	for _, path := range *asked {
+		t.Errorf("asked the public index for %s", path)
+	}
+}
+
+// cSpell: words Companys
+func TestAPrivatePackageIsStillAskedOfTheCompanysOwnIndex(t *testing.T) {
+	srv, asked := stubIndex(t)
+	// The machine's own configuration points Go at an internal proxy, which is not
+	// the ecosystem's public one: asking it discloses nothing that is not already
+	// inside the organization.
+	c := clientFor(t, Go, srv.URL, "")
+	c.private = scope.New([]string{"go:example.com/*"})
+
+	got := names(c.Dependencies(lang.Target{Ecosystem: Go, Package: "example.com/mod", Version: "v1.2.3"}))
+	if len(got) != 1 || got[0] != "github.com/direct/dep" {
+		t.Errorf("got %v, want the module's own requirement", got)
+	}
+	if len(*asked) == 0 {
+		t.Error("the internal proxy was never asked")
 	}
 }

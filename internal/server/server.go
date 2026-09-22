@@ -60,6 +60,12 @@ type Server struct {
 	lazy map[string]*lazyData // "history", "references", "findings": computed after startup
 	subs map[chan event]struct{}
 	done chan struct{}
+	// What the clients share while the map is open (session.go): the selected node
+	// and the catch, so the page and the editor's side panel are one interface.
+	selected string
+	pack     []PackItem
+	// seq counts the announcements made on the event stream; see event.seq.
+	seq uint64
 
 	closeOnce sync.Once
 }
@@ -67,6 +73,12 @@ type Server struct {
 type event struct {
 	name string
 	data []byte
+	// seq numbers every announcement this server has made, and goes out as the
+	// stream's event id. A client that reconnects hands its last one back
+	// (Last-Event-ID) and is told whether it is still current; without it a dropped
+	// connection is indistinguishable from a quiet one, and whatever was announced
+	// while it was down is simply lost.
+	seq uint64
 }
 
 // lazyData is a dataset computed in the background after the map is served.
@@ -85,7 +97,9 @@ type snapshot struct {
 	version     int
 	json, gz    []byte
 	fingerprint [32]byte
-	files       map[string]int // path -> lines, also the allow-list for /api/file
+	// etag is the fingerprint as an HTTP entity tag, quoted and ready to compare.
+	etag  string
+	files map[string]int // path -> lines, also the allow-list for /api/file
 }
 
 func New(cfg config.Config, g *graph.Graph, assets fs.FS) (*Server, error) {
@@ -110,21 +124,59 @@ func New(cfg config.Config, g *graph.Graph, assets fs.FS) (*Server, error) {
 	return s, nil
 }
 
+// docHead is everything the served graph document says about itself, which is
+// everything in graph.Graph but its two big lists. Those are encoded on their own and
+// the document is built around them (see newSnapshot), so this has to keep saying
+// what graph.Graph says: a field added there and forgotten here would simply stop
+// being served. TestServedGraphMatchesTheDocument holds it to that.
+type docHead struct {
+	Root        string    `json:"root"`
+	GeneratedAt time.Time `json:"generatedAt"`
+}
+
 func newSnapshot(g *graph.Graph, version int) (*snapshot, error) {
-	sn := &snapshot{g: g, version: version, files: map[string]int{}}
+	sn := &snapshot{g: g, version: version, files: make(map[string]int, len(g.Nodes))}
 	for _, n := range g.Nodes {
 		if n.Kind == graph.KindFile {
 			sn.files[n.Path] = n.LOC
 		}
 	}
-	content, err := json.Marshal([]any{g.Nodes, g.Edges})
+	nodes, err := json.Marshal(g.Nodes)
 	if err != nil {
 		return nil, err
 	}
-	sn.fingerprint = sha256.Sum256(content)
-	if sn.json, err = json.Marshal(g); err != nil {
+	edges, err := json.Marshal(g.Edges)
+	if err != nil {
 		return nil, err
 	}
+	// What the map is of, and not when it was made: a re-analysis that produced the
+	// same graph has to fingerprint the same, and generatedAt never would.
+	sum := sha256.New()
+	sum.Write(nodes)
+	sum.Write(edges)
+	sum.Sum(sn.fingerprint[:0])
+	sn.etag = `"` + hex.EncodeToString(sn.fingerprint[:16]) + `"`
+
+	// The nodes and the edges go into the document as they are.
+	//
+	// They used to be encoded twice over - once whole to serve, and once more as
+	// [nodes, edges] to fingerprint - and handing them to the encoder again as raw
+	// messages is not much better, because it revalidates and copies every byte. On
+	// a repository with a hundred thousand nodes those two passes were most of what
+	// a --watch update cost. Written straight into the buffer they cost a copy.
+	head, err := json.Marshal(docHead{g.Root, g.GeneratedAt})
+	if err != nil {
+		return nil, err
+	}
+	var doc bytes.Buffer
+	doc.Grow(len(head) + len(nodes) + len(edges) + 32)
+	doc.Write(head[:len(head)-1]) // everything but the closing brace
+	doc.WriteString(`,"nodes":`)
+	doc.Write(nodes)
+	doc.WriteString(`,"edges":`)
+	doc.Write(edges)
+	doc.WriteByte('}')
+	sn.json = doc.Bytes()
 	var buf bytes.Buffer
 	zw := gzip.NewWriter(&buf)
 	zw.Write(sn.json)
@@ -175,12 +227,14 @@ func (s *Server) Update(g *graph.Graph, touched []string) (bool, error) {
 	}{sn.version, paths})
 
 	s.snap = sn
-	s.broadcast(event{"graph", msg})
+	s.broadcast(event{name: "graph", data: msg})
 	return true, nil
 }
 
 // broadcast sends ev to every event stream; callers hold s.mu.
 func (s *Server) broadcast(ev event) {
+	s.seq++
+	ev.seq = s.seq
 	for ch := range s.subs {
 		select {
 		case ch <- ev:
@@ -249,7 +303,7 @@ func (s *Server) setLazy(name string, v any) error {
 		return nil
 	}
 	s.lazy[name] = d
-	s.broadcast(event{name, []byte(fmt.Sprintf(`{"available":%t}`, v != nil))})
+	s.broadcast(event{name: name, data: []byte(fmt.Sprintf(`{"available":%t}`, v != nil))})
 	return nil
 }
 
@@ -328,6 +382,10 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/references", s.handleLazy("references"))
 	mux.HandleFunc("GET /api/findings", s.handleLazy("findings"))
 	mux.HandleFunc("GET /api/export", s.handleExport)
+	mux.HandleFunc("GET /api/session", s.handleSession)
+	mux.HandleFunc("POST /api/selection", s.handleSelection)
+	mux.HandleFunc("GET /api/backpack", s.handlePackExport)
+	mux.HandleFunc("PUT /api/backpack", s.handlePack)
 	mux.HandleFunc("POST /api/open", s.handleOpen)
 	mux.HandleFunc("POST /api/settings", s.handleSettings)
 	mux.Handle("GET /", newAssets(s.assets))
@@ -421,15 +479,39 @@ func (s *Server) equalToken(t string) bool {
 func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 	sn := s.current()
 	w.Header().Set("Content-Type", "application/json")
-	w.Header().Set("Cache-Control", "no-store")
+	// Revalidate rather than refuse to store: the document is large and usually
+	// unchanged, and an ETag is no use to a client that was told not to keep it.
+	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Vary", "Accept-Encoding")
+	w.Header().Set("ETag", sn.etag)
 	w.Header().Set("X-Graph-Version", strconv.Itoa(sn.version))
+	// The fingerprint is of the nodes and the edges, not of when they were read, so
+	// a re-analysis that found the same project answers 304 - which is what a client
+	// reconnecting to a server that restarted under it is asking about.
+	if matches(r.Header.Get("If-None-Match"), sn.etag) {
+		w.WriteHeader(http.StatusNotModified)
+		return
+	}
 	if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 		w.Header().Set("Content-Encoding", "gzip")
 		w.Write(sn.gz)
 		return
 	}
 	w.Write(sn.json)
+}
+
+// matches reports whether an If-None-Match header names this entity. The header is a
+// comma-separated list and may be "*"; a weak validator (W/"…") compares by its tag,
+// which is all the comparison this needs - there is one representation per graph, and
+// gzip is negotiated with Vary.
+func matches(header, etag string) bool {
+	for part := range strings.SplitSeq(header, ",") {
+		part = strings.TrimSpace(part)
+		if part == "*" || strings.TrimPrefix(part, "W/") == etag {
+			return true
+		}
+	}
+	return false
 }
 
 func (s *Server) handleConfig(w http.ResponseWriter, _ *http.Request) {
@@ -506,7 +588,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	ch := make(chan event, 8)
 	s.mu.Lock()
 	s.subs[ch] = struct{}{}
-	version := s.snap.version
+	version, etag, seq := s.snap.version, s.snap.etag, s.seq
 	s.mu.Unlock()
 	defer func() {
 		s.mu.Lock()
@@ -516,7 +598,19 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-store")
-	fmt.Fprintf(w, "retry: 2000\nevent: hello\ndata: {\"version\":%d}\n\n", version)
+	// The greeting says where the stream is, so a client knows whether it missed
+	// anything while it was away. resumed is the whole point of the event ids: the
+	// browser retries an EventSource by itself, and until now a client that came
+	// back had no way to tell a reconnection from a first connection, so either it
+	// refetched everything or - as the editor's side panel did - it carried on
+	// listening and never learned about the announcements it had slept through.
+	hello, _ := json.Marshal(struct {
+		Version int    `json:"version"`
+		ETag    string `json:"etag"`
+		Seq     uint64 `json:"seq"`
+		Resumed bool   `json:"resumed"`
+	}{version, etag, seq, resumed(r, seq)})
+	fmt.Fprintf(w, "retry: 2000\nevent: hello\ndata: %s\n\n", hello)
 	flusher.Flush()
 
 	tick := time.NewTicker(heartbeat)
@@ -524,7 +618,7 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	for {
 		select {
 		case ev := <-ch:
-			fmt.Fprintf(w, "event: %s\ndata: %s\n\n", ev.name, ev.data)
+			fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", ev.seq, ev.name, ev.data)
 		case <-tick.C:
 			fmt.Fprint(w, ": ping\n\n")
 		case <-r.Context().Done():
@@ -534,6 +628,15 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		}
 		flusher.Flush()
 	}
+}
+
+// resumed reports whether a reconnecting client is still up to date: it hands back
+// the id of the last event it saw (Last-Event-ID, which EventSource sends by itself),
+// and nothing has been announced since. A client that never saw one, or that is
+// talking to a server restarted under it, is not resumed and refetches.
+func resumed(r *http.Request, seq uint64) bool {
+	last, err := strconv.ParseUint(strings.TrimSpace(r.Header.Get("Last-Event-ID")), 10, 64)
+	return err == nil && last == seq
 }
 
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {

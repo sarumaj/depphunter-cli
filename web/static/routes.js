@@ -17,12 +17,16 @@
 //
 // Roads keep to the axes and prefer to carry straight on, so what comes out is a
 // street with corners rather than a staircase of pixels. They lie on whatever they
-// cross, so a road that climbs onto a terrace steps up with it, and where there is
-// nothing to cross - the water between the mainland and an ecosystem's island - the
-// road becomes a causeway over it, because an external package has dependents and
-// they are all ashore.
+// cross, so a road that climbs onto a terrace steps up with it - and that includes
+// the bridges, which are the way across the water and are laid into the grid as the
+// ground they are. Every island is on the end of one (city.js builds a spanning tree
+// of them), so a road to an external package goes over a bridge like everything
+// else. Open water is left passable at a price, for the shores no bridge was built
+// between; it used to be cheap enough that a road would swim the bay rather than
+// walk to the crossing, which is what made the network look like it was guessing.
 
 import * as THREE from './vendor/three.module.min.js';
+import { bridgesFor, bridgeBounds, bridgeHeight } from './city.js';
 
 const CELL = 0.12;        // the grid routes are found on: a street is three cells wide
 const MAX_CELLS = 700000; // a very large map gets a coarser grid rather than a slow one
@@ -39,11 +43,12 @@ const CHEV_LEN = 0.3;     // ... this long, and as wide as the road
 // vertices.
 const SEG = 0.5;
 const MAX_ROUTES = 60;    // beyond this the map is a plate of spaghetti anyway
-// What a cell of open water costs against a cell of street. An external package is an
-// island, so a road to one has to leave the shore; making the crossing dear keeps a
-// road between two buildings on the mainland in the streets, where it belongs, rather
-// than letting it cut the corner over the bay.
-const SEA = 9;
+// What a cell of open water costs against a cell of street. The bridges carry the
+// crossings, so swimming is the last resort rather than a shortcut: at this price a
+// road will walk five units out of its way to reach a bridge before it will leave
+// the shore for one cell. The sweep holds one list per outstanding cost, so this is
+// also how many of those there are - cheap, but not free.
+const SEA = 60;
 
 // The kinds that stand on the ground, and so cannot be driven through. A terrace is
 // not one of them: it is the ground its children stand on, and a road crosses it.
@@ -193,6 +198,39 @@ function gridOf(boxes) {
       g.dry[k] = 1;
       if (y > g.top[k]) g.top[k] = y;
     });
+  }
+  // Then the bridges, which are ground over water and the only ground there is
+  // between two shores. They go down after the land - where a deck runs over its own
+  // shore the two agree on the height anyway - and before the solids, so a building
+  // standing at a landing still closes the road off.
+  //
+  // Walked along rather than filled in by cell centres, the way a box is: a deck is
+  // under a unit wide, and on a map coarse enough to need a bigger cell it would fall
+  // through the gaps between the centres and leave the roads swimming beside a bridge
+  // that was right there. The width is taken in by the road's own, so what is marked
+  // is where a road may lie rather than where the deck ends.
+  for (const r of bridgesFor(boxes)) {
+    const b = bridgeBounds(r);
+    const half = (r.axis === 'x' ? b.z1 - b.z0 : b.x1 - b.x0) / 2;
+    const usable = Math.max(0, half - (WIDTH / 2 + CASE));
+    const step = 0.5 / per; // half a cell, so nothing between two samples is missed
+    const alongs = Math.max(1, Math.ceil((r.to - r.from) / step));
+    const across = Math.max(1, Math.ceil((2 * usable) / step));
+    for (let a = 0; a <= alongs; a++) {
+      const at = r.from + ((r.to - r.from) * a) / alongs;
+      for (let c = 0; c <= across; c++) {
+        const off = usable === 0 ? 0 : -usable + (2 * usable * c) / across;
+        const x = r.axis === 'x' ? at : r.across + off;
+        const z = r.axis === 'x' ? r.across + off : at;
+        const i = col(g, x), j = row(g, z);
+        if (i < 0 || i >= W || j < 0 || j >= H) continue;
+        const k = j * W + i;
+        g.dry[k] = 1;
+        const h = bridgeHeight(r, x, z);
+        if (h > g.top[k]) g.top[k] = h;
+        if (usable === 0) break;
+      }
+    }
   }
   for (const b of boxes) {
     if (!SOLID.has(b.kind)) continue;

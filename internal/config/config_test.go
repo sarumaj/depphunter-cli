@@ -199,12 +199,14 @@ func TestSymlinkedRootAndPaths(t *testing.T) {
 // TestEveryFlagIsBound catches the mistake of registering a flag and forgetting to
 // give it a setting: the flag then parses, prints in --help, and changes nothing.
 func TestEveryFlagIsBound(t *testing.T) {
-	// The flags that act on their own instead of setting a value. exclude and findings
-	// add to what the configuration already holds rather than replacing it, so Load
-	// appends them itself; embed is read straight off the flag set because no file
-	// and no variable may turn it on (TestEmbedComesFromTheCommandLineOnly).
+	// The flags that act on their own instead of setting a value. exclude, findings,
+	// private and trust-index add to what the configuration already holds rather than
+	// replacing it, so Load appends them itself; embed is read straight off the flag
+	// set because no file and no variable may turn it on
+	// (TestEmbedComesFromTheCommandLineOnly).
 	standalone := map[string]bool{
 		"config": true, "export": true, "output": true, "exclude": true, "findings": true,
+		"private": true, "trust-index": true,
 		"embed": true, "help": true, "version": true,
 	}
 	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
@@ -412,5 +414,51 @@ func TestEmbedOriginsAreChecked(t *testing.T) {
 	}
 	if _, err := load(t, []string{"--embed", "'self'", t.TempDir()}, nil, ""); err == nil {
 		t.Error("a bare CSP keyword was accepted as an origin")
+	}
+}
+
+func TestPrivatePatternsCollectFromEverywhere(t *testing.T) {
+	root, user := t.TempDir(), t.TempDir()
+	write(t, filepath.Join(user, "config.yaml"), "private:\n  - corp.example/*\n")
+	// A repository may say which of its own packages are internal: all that can do
+	// is stop depphunter naming them to somebody else, and the repository is who
+	// would know.
+	write(t, filepath.Join(root, ProjectFile), "private:\n  - npm:@acme/*\n")
+	cfg, err := load(t, []string{"--private", "oci:harbor.corp/*", root},
+		map[string]string{"DEPPHUNTER_PRIVATE": "maven:com.acme.*,pypi:acme-*"}, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, want := range []string{"npm:@acme/*", "oci:harbor.corp/*", "maven:com.acme.*", "pypi:acme-*"} {
+		if !slices.Contains(cfg.Private, want) {
+			t.Errorf("%q did not reach the configuration: %v", want, cfg.Private)
+		}
+	}
+}
+
+func TestProjectConfigCannotVouchForAnIndex(t *testing.T) {
+	// The marking exists because a repository's word for its own registry is not
+	// enough - that is the shape dependency confusion takes. A repository that could
+	// clear its own warning would leave no guard at all.
+	root, user := t.TempDir(), t.TempDir()
+	write(t, filepath.Join(user, "config.yaml"), "trust_indexes:\n  - https://nexus.corp/npm\n")
+	write(t, filepath.Join(root, ProjectFile), "trust_indexes:\n  - https://evil.example/npm\n")
+	cfg, err := load(t, []string{root}, nil, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if slices.Contains(cfg.TrustIndexes, "https://evil.example/npm") {
+		t.Errorf("a project config vouched for its own index: %v", cfg.TrustIndexes)
+	}
+	if !slices.Contains(cfg.TrustIndexes, "https://nexus.corp/npm") {
+		t.Errorf("the user's own config was dropped with it: %v", cfg.TrustIndexes)
+	}
+	// ... and the command line is the user speaking, so it is heard.
+	flagged, err := load(t, []string{"--trust-index", "https://artifactory.corp/api/npm/npm", root}, nil, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !slices.Contains(flagged.TrustIndexes, "https://artifactory.corp/api/npm/npm") {
+		t.Errorf("--trust-index did not reach the configuration: %v", flagged.TrustIndexes)
 	}
 }

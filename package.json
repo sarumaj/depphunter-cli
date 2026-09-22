@@ -60,6 +60,52 @@
         "title": "Open Settings",
         "category": "depphunter",
         "icon": "$(gear)"
+      },
+      {
+        "command": "depphunter.openExternal",
+        "title": "Open the Map in the Browser",
+        "category": "depphunter",
+        "icon": "$(link-external)"
+      },
+      {
+        "command": "depphunter.refresh",
+        "title": "Refresh the Side Panel",
+        "category": "depphunter",
+        "icon": "$(refresh)"
+      },
+      {
+        "command": "depphunter.export",
+        "title": "Export the Graph",
+        "category": "depphunter",
+        "icon": "$(desktop-download)"
+      },
+      {
+        "command": "depphunter.exportBackpack",
+        "title": "Export the Backpack",
+        "category": "depphunter",
+        "icon": "$(desktop-download)"
+      },
+      {
+        "command": "depphunter.openFile",
+        "title": "Open File",
+        "category": "depphunter",
+        "icon": "$(go-to-file)"
+      },
+      {
+        "command": "depphunter.select",
+        "title": "Show on the Map",
+        "category": "depphunter"
+      },
+      {
+        "command": "depphunter.showFinding",
+        "title": "Show the Finding on the Map",
+        "category": "depphunter"
+      },
+      {
+        "command": "depphunter.dropFinding",
+        "title": "Take Out of the Backpack",
+        "category": "depphunter",
+        "icon": "$(close)"
       }
     ],
     "menus": {
@@ -72,6 +118,11 @@
       ],
       "view/title": [
         {
+          "command": "depphunter.openExternal",
+          "when": "view == depphunter.maps",
+          "group": "navigation@0"
+        },
+        {
           "command": "depphunter.showLog",
           "when": "view == depphunter.maps",
           "group": "navigation@1"
@@ -80,6 +131,21 @@
           "command": "depphunter.openSettings",
           "when": "view == depphunter.maps",
           "group": "navigation@2"
+        },
+        {
+          "command": "depphunter.export",
+          "when": "view == depphunter.tree",
+          "group": "navigation@1"
+        },
+        {
+          "command": "depphunter.refresh",
+          "when": "view == depphunter.tree",
+          "group": "navigation@2"
+        },
+        {
+          "command": "depphunter.exportBackpack",
+          "when": "view == depphunter.backpack",
+          "group": "navigation@1"
         }
       ],
       "view/item/context": [
@@ -112,6 +178,44 @@
           "command": "depphunter.stop",
           "when": "view == depphunter.maps && viewItem == running",
           "group": "1_server@3"
+        },
+        {
+          "command": "depphunter.openFile",
+          "when": "view == depphunter.tree && viewItem == file",
+          "group": "inline@1"
+        },
+        {
+          "command": "depphunter.openFile",
+          "when": "view == depphunter.tree && viewItem == file",
+          "group": "1_open@1"
+        },
+        {
+          "command": "depphunter.dropFinding",
+          "when": "view == depphunter.backpack && viewItem == finding",
+          "group": "inline@1"
+        },
+        {
+          "command": "depphunter.dropFinding",
+          "when": "view == depphunter.backpack && viewItem == finding",
+          "group": "1_pack@1"
+        }
+      ],
+      "commandPalette": [
+        {
+          "command": "depphunter.select",
+          "when": "false"
+        },
+        {
+          "command": "depphunter.showFinding",
+          "when": "false"
+        },
+        {
+          "command": "depphunter.dropFinding",
+          "when": "false"
+        },
+        {
+          "command": "depphunter.openFile",
+          "when": "false"
         }
       ]
     },
@@ -233,6 +337,24 @@
             "minimum": 1,
             "order": 7,
             "markdownDescription": "Read at most this many commits of git history (`--history-commits`). Empty leaves it to the config files and the default. (10000)."
+          },
+          "depphunter.private": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "order": 8,
+            "markdownDescription": "Globs naming the packages your organization owns (`--private`), written the way `GOPRIVATE` writes them: `corp.example/*`, `npm:@acme/*`, `oci:harbor.corp/*`. Nothing matched is asked of a public index or sent to the OSV database - the request itself would say that an internal package exists, and to whom. `GOPRIVATE` and `GONOPROXY` are read on top of this, so Go projects usually need nothing here."
+          },
+          "depphunter.trustIndexes": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            },
+            "default": [],
+            "order": 9,
+            "markdownDescription": "Index URLs to treat as though this machine configured them (`--trust-index`), e.g. `https://nexus.corp/repository/npm-group`. An index only the repository names is otherwise marked **\u26a0 index** and never fetched from, which is the dependency-confusion guard; this is how to say that one of them is yours."
           }
         }
       },
@@ -353,7 +475,7 @@
             "type": "string",
             "default": "",
             "order": 2,
-            "pattern": "^$|^([0-9]+(\\.[0-9]+)?(ns|us|µs|ms|s|m|h))+$",
+            "pattern": "^$|^([0-9]+(\\.[0-9]+)?(ns|us|\u00b5s|ms|s|m|h))+$",
             "patternErrorMessage": "A Go duration, e.g. 90s, 5m or 1h30m.",
             "markdownDescription": "Time budget for the language servers (`--lsp-timeout`), e.g. `90s` or `10m`. Empty leaves it to the config files and the default. (5m)."
           }
@@ -376,6 +498,16 @@
           "name": "Maps",
           "icon": "extension/media/activitybar.svg",
           "contextualTitle": "depphunter"
+        },
+        {
+          "id": "depphunter.tree",
+          "name": "Dependencies",
+          "contextualTitle": "depphunter"
+        },
+        {
+          "id": "depphunter.backpack",
+          "name": "Backpack",
+          "contextualTitle": "depphunter"
         }
       ]
     },
@@ -384,6 +516,16 @@
         "view": "depphunter.maps",
         "contents": "depphunter maps a folder, and this window has none open.\n[Open Folder](command:vscode.openFolder)",
         "when": "workbenchState == empty"
+      },
+      {
+        "view": "depphunter.tree",
+        "contents": "The dependency tree is read from a running map.\n[Open the Map](command:depphunter.open)",
+        "when": "workbenchState != empty"
+      },
+      {
+        "view": "depphunter.backpack",
+        "contents": "Findings caught while walking the map turn up here.\n[Open the Map](command:depphunter.open)",
+        "when": "workbenchState != empty"
       }
     ]
   },
@@ -391,7 +533,7 @@
     "compile": "tsc -p .",
     "watch": "tsc -w -p .",
     "lint": "tsc -p . --noEmit",
-    "test": "npm run compile && node --test extension/test/binary.test.js extension/test/argv.test.js extension/test/extension.test.js",
+    "test": "npm run compile && node --test extension/test/binary.test.js extension/test/argv.test.js extension/test/extension.test.js extension/test/panel.test.js web/uitest/bridges.test.mjs",
     "package": "vsce package",
     "vscode:prepublish": "npm run compile"
   },

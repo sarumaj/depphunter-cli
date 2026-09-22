@@ -1249,10 +1249,18 @@ export function bridgeBounds(r) {
     : { x0: r.across - half, x1: r.across + half, z0: r.from, z1: r.to };
 }
 
-/** The deck's height at (x, z), or -Infinity beside the bridge. */
-export function bridgeHeight(r, x, z) {
+/**
+ * The deck's height at (x, z), or -Infinity beside the bridge.
+ *
+ * `inset` narrows the deck on both sides by that much: what a body of that radius
+ * may stand on, rather than what is drawn. A bridge has railings, and a walker whose
+ * middle is over the deck's own edge is a walker hanging over the water - so the
+ * walker asks with their own radius and everything else asks for the deck itself.
+ */
+export function bridgeHeight(r, x, z, inset = 0) {
   const along = r.axis === 'x' ? x : z, across = r.axis === 'x' ? z : x;
-  if (along < r.from || along > r.to || Math.abs(across - r.across) > DECK_W / 2) return -Infinity;
+  const half = DECK_W / 2 - inset;
+  if (half <= 0 || along < r.from || along > r.to || Math.abs(across - r.across) > half) return -Infinity;
   const t = (along - r.from) / Math.max(1e-6, r.to - r.from);
   return r.y + DECK_RISE * Math.sin(Math.PI * t);
 }

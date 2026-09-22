@@ -32,6 +32,11 @@ type Options struct {
 	// scanned files, since a repository configures its indexes in its own files;
 	// nil leaves the question unanswered.
 	Indexes func(files []*scan.File) Indexes
+	// Private reports whether a package is the organization's own (internal/scope).
+	// Such a package is marked on the graph, and what is marked is never named to a
+	// public index or to the vulnerability database. nil makes everything public,
+	// which is what a repository of open-source dependencies is.
+	Private func(eco, pkg string) bool
 }
 
 // Indexes says which package index serves a package, and whether anything on this
@@ -63,6 +68,7 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 		edges:    map[[2]string]bool{},
 		files:    map[string]bool{},
 		packages: map[string]lang.Target{},
+		private:  opts.Private,
 	}
 	if opts.Indexes != nil {
 		b.indexes = opts.Indexes(files)
@@ -150,47 +156,88 @@ type builder struct {
 	// walk can ask a resolver about it again.
 	packages map[string]lang.Target
 	indexes  Indexes
+	private  func(eco, pkg string) bool
 }
 
+// transitiveWorkers is how many packages are asked about at once. A lock file
+// answers from memory, but an index is a round trip each, and walking the queue one
+// package at a time made --resolve-depth with --online take as long as the requests
+// laid end to end. Bounded, because the other end is somebody's registry.
+const transitiveWorkers = 12
+
 // expand walks out from the packages already on the graph, adding what the project's
-// lock files say they depend on. depth counts levels past the direct dependencies;
-// -1 walks until nothing new appears.
+// lock files - and, with --online, the package indexes - say they depend on. depth
+// counts levels past the direct dependencies; -1 walks until nothing new appears.
+//
+// It goes a level at a time rather than one package at a time: every package on a
+// level is asked about together, and the answers are applied in the level's own order
+// afterwards, so what is on the graph does not depend on which request came back
+// first.
 func (b *builder) expand(tr lang.Transitive, ecosystems map[string]lang.Ecosystem, depth int) {
-	type step struct {
-		id    string
-		level int
-	}
-	var queue []step
+	var level []string
 	for id, t := range b.packages {
 		if _, ok := ecosystems[t.Ecosystem]; ok {
-			queue = append(queue, step{id, 0})
+			level = append(level, id)
 		}
 	}
 	// A stable order keeps the graph (and the tests reading it) the same run to run.
-	sort.Slice(queue, func(i, j int) bool { return queue[i].id < queue[j].id })
+	sort.Strings(level)
 
 	seen := map[string]bool{}
-	for i := 0; i < len(queue); i++ {
-		cur := queue[i]
-		if depth >= 0 && cur.level >= depth {
-			continue
+	for n := 0; len(level) > 0 && (depth < 0 || n < depth); n++ {
+		answers := b.ask(tr, level)
+		var next []string
+		for i, from := range level {
+			for _, dep := range answers[i] {
+				_, known := b.nodes[graph.PackageID(dep.Ecosystem, dep.Package)]
+				id := b.target(dep, ecosystems)
+				if id == "" || id == from {
+					continue
+				}
+				if !known {
+					b.nodes[id].Transitive = true
+				}
+				b.edge(from, id, graph.EdgeDepends, 0)
+				if !seen[id] {
+					seen[id] = true
+					next = append(next, id)
+				}
+			}
 		}
-		for _, dep := range tr.Dependencies(b.packages[cur.id]) {
-			_, known := b.nodes[graph.PackageID(dep.Ecosystem, dep.Package)]
-			id := b.target(dep, ecosystems)
-			if id == "" || id == cur.id {
-				continue
-			}
-			if !known {
-				b.nodes[id].Transitive = true
-			}
-			b.edge(cur.id, id, graph.EdgeDepends, 0)
-			if !seen[id] {
-				seen[id] = true
-				queue = append(queue, step{id, cur.level + 1})
-			}
-		}
+		level = next
 	}
+}
+
+// ask resolves one level of packages at once and hands back their answers in the
+// order they were asked, each sorted: a resolver may answer out of a map, and the
+// graph must not come out differently for it.
+func (b *builder) ask(tr lang.Transitive, level []string) [][]lang.Target {
+	answers := make([][]lang.Target, len(level))
+	workers := min(transitiveWorkers, len(level))
+	var wg sync.WaitGroup
+	work := make(chan int)
+	for range workers {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for i := range work {
+				deps := tr.Dependencies(b.packages[level[i]])
+				sort.Slice(deps, func(a, c int) bool {
+					if deps[a].Ecosystem != deps[c].Ecosystem {
+						return deps[a].Ecosystem < deps[c].Ecosystem
+					}
+					return deps[a].Package < deps[c].Package
+				})
+				answers[i] = deps
+			}
+		}()
+	}
+	for i := range level {
+		work <- i
+	}
+	close(work)
+	wg.Wait()
+	return answers
 }
 
 func (b *builder) add(n *graph.Node) *graph.Node {
@@ -262,6 +309,9 @@ func (b *builder) target(t lang.Target, ecosystems map[string]lang.Ecosystem) st
 		if idx, known := b.indexes.For(t.Ecosystem, t.Package); idx != "" {
 			n.Index, n.IndexUnknown = idx, !known
 		}
+	}
+	if b.private != nil && !n.Private {
+		n.Private = b.private(t.Ecosystem, t.Package)
 	}
 	if n.Version == "" {
 		n.Version = t.Version

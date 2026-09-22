@@ -10,8 +10,11 @@ import { ChildProcess } from 'node:child_process';
 import * as path from 'node:path';
 import * as vscode from 'vscode';
 
+import { Api, PackItem } from './api';
+import { BackpackView } from './backpack';
 import * as panel from './panel';
 import { StartError, start } from './server';
+import { DependencyTree, Row } from './tree';
 import { MapsView } from './view';
 
 const RELEASES = 'https://github.com/sarumaj/depphunter-cli/releases';
@@ -27,6 +30,16 @@ const sessions = new Map<string, Session>();
 let log: vscode.OutputChannel;
 let status: vscode.StatusBarItem;
 let view: MapsView;
+let tree: DependencyTree;
+let treeView: vscode.TreeView<Row>;
+let backpack: BackpackView;
+/**
+ * The session the two lower views are showing. One window may map several folders;
+ * the panel shows the one whose map was opened last, which is the one being looked at.
+ */
+let attached: { root: string; api: Api; stream: vscode.Disposable; greeted?: boolean } | undefined;
+/** What the map has selected, so a panel that was hidden can catch up when it opens. */
+let selected = '';
 /** Where this build was installed, which is where a released one keeps its binary. */
 let home: string | undefined;
 
@@ -36,7 +49,14 @@ export function activate(context: vscode.ExtensionContext): void {
   status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   status.command = 'depphunter.open';
   view = new MapsView(() => sessions);
-  context.subscriptions.push(log, status, view, { dispose: stopAll });
+  tree = new DependencyTree();
+  backpack = new BackpackView();
+  treeView = vscode.window.createTreeView('depphunter.tree', { treeDataProvider: tree, showCollapseAll: true });
+  context.subscriptions.push(log, status, view, tree, backpack, treeView,
+    // A tree that was hidden was not revealed, so opening the panel would show
+    // nothing picked out although the map has had something selected all along.
+    treeView.onDidChangeVisibility(e => e.visible && revealSelected(selected)),
+    { dispose: stopAll }, { dispose: detach });
 
   context.subscriptions.push(
     vscode.commands.registerCommand('depphunter.open', (resource?: vscode.Uri) => open(resource)),
@@ -45,7 +65,16 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('depphunter.showLog', () => log.show()),
     vscode.commands.registerCommand('depphunter.openSettings', () =>
       vscode.commands.executeCommand('workbench.action.openSettings', '@ext:sarumaj.depphunter')),
+    vscode.commands.registerCommand('depphunter.openExternal', (resource?: vscode.Uri) => openExternal(resource)),
+    vscode.commands.registerCommand('depphunter.refresh', () => refreshPanel()),
+    vscode.commands.registerCommand('depphunter.select', (row: Row) => attached?.api.select(row.node.id).catch(noted)),
+    vscode.commands.registerCommand('depphunter.openFile', (row: Row) => openFile(row)),
+    vscode.commands.registerCommand('depphunter.showFinding', (it: PackItem) => showFinding(it)),
+    vscode.commands.registerCommand('depphunter.dropFinding', (it: PackItem) => dropFinding(it)),
+    vscode.commands.registerCommand('depphunter.export', () => exportGraph()),
+    vscode.commands.registerCommand('depphunter.exportBackpack', () => exportBackpack()),
     vscode.window.registerTreeDataProvider('depphunter.maps', view),
+    vscode.window.registerTreeDataProvider('depphunter.backpack', backpack),
     vscode.workspace.onDidChangeWorkspaceFolders(e => {
       for (const folder of e.removed) end(folder.uri.fsPath);
       view.refresh();
@@ -58,14 +87,200 @@ export function activate(context: vscode.ExtensionContext): void {
 
 export function deactivate(): void {
   stopAll();
+  detach();
   panel.closeAll();
+}
+
+// ---------------------------------------------------------------- the panel
+
+/**
+ * Points the dependency tree and the backpack at a running server, and follows what
+ * it says afterwards.
+ *
+ * The graph is fetched once and redrawn on a --watch update; the selection and the
+ * catch arrive on the server's event stream, which is also how a building picked on
+ * the map turns into a revealed row here.
+ */
+async function attach(session: Session): Promise<void> {
+  detach();
+  const api = new Api(session.url);
+  const stream = api.watch(event => {
+    if (attached?.api !== api) return;
+    switch (event.name) {
+      case 'graph':
+        void refreshGraph(api);
+        break;
+      case 'selection':
+        if (event.data.origin !== api.origin) revealSelected(event.data.id);
+        break;
+      case 'backpack':
+        void refreshSession(api);
+        break;
+      case 'hello': {
+        // A connection that did not resume may have missed announcements while it
+        // was down, and nothing announces them twice. Until the stream said so, a
+        // panel whose connection dropped carried on listening and quietly showed a
+        // graph and a backpack from before the gap. Asking again is cheap: the
+        // graph answers 304 when it has not moved.
+        //
+        // The first greeting is not a reconnection - attach has just read both.
+        const first = !attached.greeted;
+        attached.greeted = true;
+        if (!first && !event.data.resumed) void Promise.all([refreshGraph(api), refreshSession(api)]);
+        break;
+      }
+    }
+  });
+  attached = { root: session.root, api, stream };
+  treeView.title = `Dependencies: ${session.name}`;
+  await Promise.all([refreshGraph(api), refreshSession(api)]);
+}
+
+function detach(): void {
+  attached?.stream.dispose();
+  attached = undefined;
+  selected = '';
+  tree.setGraph(undefined);
+  backpack.setItems([]);
+  treeView.title = 'Dependencies';
+}
+
+async function refreshGraph(api: Api, force = false): Promise<void> {
+  try {
+    // null: the server says the panel already has this graph, so there is nothing
+    // to rebuild. Re-indexing a hundred thousand nodes to arrive at the same tree
+    // is the sort of work nobody sees and everybody pays for.
+    const graph = await api.graph(force);
+    if (graph && attached?.api === api) tree.setGraph(graph);
+  } catch (err) {
+    noted(err);
+  }
+}
+
+async function refreshSession(api: Api): Promise<void> {
+  try {
+    const state = await api.session();
+    if (attached?.api !== api) return;
+    backpack.setItems(state.backpack ?? []);
+    revealSelected(state.selected);
+  } catch (err) {
+    noted(err);
+  }
+}
+
+// The Refresh command: somebody pressed it, so the graph is read again whether or
+// not the server thinks the panel already has it.
+function refreshPanel(): void {
+  if (attached) void Promise.all([refreshGraph(attached.api, true), refreshSession(attached.api)]);
+}
+
+/** Opens the tree down to what the map has selected, without stealing the focus. */
+function revealSelected(id: string): void {
+  selected = id;
+  const row = id ? tree.graphModel?.rowFor(id) : undefined;
+  if (row && treeView.visible) void treeView.reveal(row, { select: true, focus: false, expand: true });
+}
+
+async function openFile(row: Row): Promise<void> {
+  const file = row.node.kind === 'file' ? row.node : undefined;
+  if (!file?.path || !attached) return;
+  const uri = vscode.Uri.file(path.join(attached.root, file.path));
+  await vscode.window.showTextDocument(uri, { preview: true });
+}
+
+/** A caught finding, back where it was caught: the map selects what it belongs to. */
+async function showFinding(it: PackItem): Promise<void> {
+  if (!attached || !it.nodeId) return;
+  await attached.api.select(it.nodeId).catch(noted);
+  revealSelected(it.nodeId);
+}
+
+async function dropFinding(it: PackItem): Promise<void> {
+  if (!attached) return;
+  const left = backpack.contents.filter(other => other.id !== it.id);
+  try {
+    await attached.api.setBackpack(left);
+    backpack.setItems(left);
+  } catch (err) {
+    await report(err);
+  }
+}
+
+// ---------------------------------------------------------------- exports
+
+const GRAPH_FORMATS = [
+  { label: 'JSON', detail: 'the graph document', format: 'json', ext: 'json' },
+  { label: 'GraphML', detail: 'Gephi, yEd, NetworkX', format: 'graphml', ext: 'graphml' },
+  { label: 'DOT', detail: 'Graphviz dependency graph', format: 'dot', ext: 'dot' },
+  { label: 'HTML', detail: 'a self-contained map to share', format: 'html', ext: 'html' },
+];
+
+const PACK_FORMATS = [
+  { label: 'Markdown', detail: 'a checklist to paste into an issue', format: 'md', ext: 'md' },
+  { label: 'CSV', detail: 'for a spreadsheet', format: 'csv', ext: 'csv' },
+  { label: 'JSON', detail: 'the items as the map records them', format: 'json', ext: 'json' },
+];
+
+const exportGraph = () => save('api/export', GRAPH_FORMATS, name => name);
+const exportBackpack = () => save('api/backpack', PACK_FORMATS, name => `${name}-backpack`);
+
+/** Asks what format, asks where, and writes what the server produced. */
+async function save(
+  endpoint: string,
+  formats: { label: string; detail: string; format: string; ext: string }[],
+  name: (root: string) => string,
+): Promise<void> {
+  if (!attached) {
+    void vscode.window.showInformationMessage('Open a map first: there is nothing to export yet.');
+    return;
+  }
+  const chosen = await vscode.window.showQuickPick(formats, { title: 'Export as', matchOnDetail: true });
+  if (!chosen) return;
+  const base = name(path.basename(attached.root) || 'depphunter');
+  const uri = await vscode.window.showSaveDialog({
+    defaultUri: vscode.Uri.file(path.join(attached.root, `${base}.${chosen.ext}`)),
+    filters: { [chosen.label]: [chosen.ext] },
+  });
+  if (!uri) return;
+  try {
+    const body = await attached.api.download(`/${endpoint}?format=${chosen.format}`);
+    await vscode.workspace.fs.writeFile(uri, body);
+    const open = await vscode.window.showInformationMessage(`Exported to ${path.basename(uri.fsPath)}.`, 'Open');
+    if (open === 'Open') await vscode.commands.executeCommand('vscode.open', uri);
+  } catch (err) {
+    await report(err);
+  }
+}
+
+/**
+ * The map in the browser outside the editor, whatever depphunter.openIn says. The
+ * setting is where it opens by default; this is for the one time it is wanted
+ * somewhere with more screen, or a second monitor, or a browser's own dev tools.
+ */
+async function openExternal(resource?: vscode.Uri): Promise<void> {
+  const folder = await pick(resource);
+  if (!folder) return;
+  const session = sessions.get(folder.root) ?? await launch(folder);
+  if (!session) return;
+  if (attached?.root !== session.root) await attach(session);
+  await vscode.env.openExternal(vscode.Uri.parse(await reachable(session.url)));
+}
+
+/** An error worth a line in the log and nothing more: the panel is not the task. */
+function noted(err: unknown): void {
+  log.appendLine(`side panel: ${err instanceof Error ? err.message : String(err)}`);
 }
 
 async function open(resource?: vscode.Uri): Promise<void> {
   const folder = await pick(resource);
   if (!folder) return;
   const session = sessions.get(folder.root) ?? await launch(folder);
-  if (session) await show(session);
+  if (!session) return;
+  // launch attaches the panel to what it started; this is the other way in, where
+  // the server was already running - possibly for a different folder than the one
+  // the panel is showing.
+  if (attached?.root !== session.root) await attach(session);
+  await show(session);
 }
 
 async function launch(folder: { root: string; name: string }): Promise<Session | undefined> {
@@ -76,6 +291,10 @@ async function launch(folder: { root: string; name: string }): Promise<Session |
     );
     const session: Session = { ...folder, ...running };
     sessions.set(folder.root, session);
+    // Awaited, so that the panel is filled by the time the map is on screen rather
+    // than a moment afterwards. It is one request to a server on this machine, and
+    // it reports its own failures to the log.
+    await attach(session);
     // It may still stop on its own - a bad argument, a port taken, the user killing
     // it - and a remembered address that answers nothing is worse than none.
     running.child.on('exit', () => {
@@ -129,6 +348,7 @@ function end(root: string): void {
   // The tab goes with the server: what it holds is a page on a port that is about to
   // stop answering, and an error page is worse than no tab.
   panel.close(root);
+  if (attached?.root === root) detach();
   const session = sessions.get(root);
   if (!session) return;
   sessions.delete(root);

@@ -53,9 +53,31 @@ type Source struct {
 // what the repository asks for.
 type Config struct {
 	sources map[string][]Source // ecosystem -> sources, the repository's last
+	// trusted holds the indexes the user vouched for themselves (--trust-index), for
+	// the organization whose repositories carry their own .npmrc naming the company
+	// registry: without it every one of its packages is marked, and a warning that
+	// is always on is a warning nobody reads.
+	trusted map[string]bool
 }
 
-func New() *Config { return &Config{sources: map[string][]Source{}} }
+func New() *Config { return &Config{sources: map[string][]Source{}, trusted: map[string]bool{}} }
+
+// Trust vouches for index URLs whatever names them. It is the user's own say-so, from
+// their config or the command line; a repository cannot reach it (see config.go).
+func (c *Config) Trust(urls []string) {
+	for _, u := range urls {
+		if u = strings.TrimRight(strings.TrimSpace(u), "/"); u != "" {
+			c.trusted[u] = true
+		}
+	}
+}
+
+// Public reports whether an index is the ecosystem's own public one - registry.npmjs.org,
+// proxy.golang.org, Docker Hub. It is what decides whether naming a package to it
+// would tell the world that the package exists.
+func (c *Config) Public(eco, index string) bool {
+	return index != "" && index == public[eco]
+}
 
 // Add records a source for an ecosystem. Sources added first are preferred, which is
 // why the machine's own configuration is read before the repository's.
@@ -107,7 +129,7 @@ func (c *Config) For(eco, pkg string) (index string, known bool) {
 	if best.URL == "" {
 		return public[eco], public[eco] != ""
 	}
-	return best.URL, best.Trusted || best.URL == public[eco]
+	return best.URL, best.Trusted || best.URL == public[eco] || c.trusted[best.URL]
 }
 
 // matches reports whether a scope covers a package name. npm scopes are exact, Maven

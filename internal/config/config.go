@@ -86,6 +86,20 @@ type Config struct {
 	// Online allows asking package indexes about dependencies the repository's own
 	// files do not record. Analysis is offline without it.
 	Online bool `yaml:"online" mapstructure:"online"`
+	// Private names the packages that are this organization's own, as glob patterns
+	// with GOPRIVATE's meaning (see internal/scope). They are never named to a public
+	// index and never sent to the vulnerability database, so an internal package's
+	// name and version do not leave the machine. GOPRIVATE and GONOPROXY are read on
+	// top of whatever is set here, since Go projects have usually said it already.
+	Private []string `yaml:"private" mapstructure:"private"`
+	// TrustIndexes are index URLs to treat as though this machine's own configuration
+	// named them. An index only a repository asks for is otherwise marked and never
+	// fetched from - that is the dependency-confusion guard - which leaves an
+	// organization whose repositories carry their own .npmrc with a map full of
+	// warnings about its own registry. This is how to say "that one is ours", and it
+	// comes from the user's own config or the command line only: a repository
+	// vouching for itself would be no guard at all.
+	TrustIndexes []string `yaml:"trust_indexes" mapstructure:"trust_indexes"`
 	// Findings are files (or globs) holding what a scanner already reported:
 	// govulncheck, npm audit, trivy, golangci-lint, eslint or osv-scanner JSON.
 	Findings []string `yaml:"findings" mapstructure:"findings"`
@@ -144,6 +158,11 @@ func RegisterFlags(fs *pflag.FlagSet) {
 	fs.Bool("no-history", false, "do not read git history")
 	fs.Int("history-commits", d.HistoryCommits, "read at most this many commits of git history")
 	fs.Bool("online", false, "ask package indexes about dependencies the project's files do not record")
+	fs.StringArray("private", nil,
+		"glob naming packages your organization owns, as GOPRIVATE writes them (e.g. corp.example/*, npm:@acme/*); "+
+			"they are never asked of a public index nor sent to the vulnerability database; repeatable")
+	fs.StringArray("trust-index", nil,
+		"index URL to treat as configured on this machine, so a repository that names it is not marked; repeatable")
 	fs.StringArray("findings", nil,
 		"scanner report to place on the map (govulncheck, npm audit, trivy, golangci-lint, eslint, osv-scanner JSON); repeatable, globs allowed")
 	fs.Bool("no-vulns", false, "do not place scanner reports on the map, and do not ask the OSV database")
@@ -258,6 +277,16 @@ func Load(fs *pflag.FlagSet, args []string, userDir string) (Config, error) {
 	}
 	flagFindings, _ := fs.GetStringArray("findings")
 	cfg.Findings = append(cfg.Findings, flagFindings...)
+	if p := os.Getenv("DEPPHUNTER_PRIVATE"); p != "" {
+		cfg.Private = append(cfg.Private, strings.Split(p, ",")...)
+	}
+	flagPrivate, _ := fs.GetStringArray("private")
+	cfg.Private = append(cfg.Private, flagPrivate...)
+	if t := os.Getenv("DEPPHUNTER_TRUST_INDEXES"); t != "" {
+		cfg.TrustIndexes = append(cfg.TrustIndexes, strings.Split(t, ",")...)
+	}
+	flagTrust, _ := fs.GetStringArray("trust-index")
+	cfg.TrustIndexes = append(cfg.TrustIndexes, flagTrust...)
 	cfg.Embed, _ = fs.GetStringArray("embed")
 	cfg.Export, _ = fs.GetString("export")
 	cfg.Output, _ = fs.GetString("output")
@@ -271,6 +300,7 @@ func setDefaults(v *viper.Viper, d Config) {
 		"addr": d.Addr, "open": d.Open, "exclude": d.Exclude, "max_file_size": d.MaxFileSize,
 		"watch": d.Watch, "cache": d.Cache, "history": d.History, "history_commits": d.HistoryCommits,
 		"resolve_depth": d.ResolveDepth, "online": d.Online, "findings": d.Findings, "vulns": d.Vulns,
+		"private": d.Private, "trust_indexes": d.TrustIndexes,
 		"lsp": d.LSP, "lsp_timeout": d.LSPTimeout,
 		"editor":   d.Editor,
 		"ui.theme": d.UI.Theme, "ui.color_by": d.UI.ColorBy, "ui.height_scale": d.UI.HeightScale, "ui.style": d.UI.Style,
@@ -296,9 +326,16 @@ func mergeFile(v *viper.Viper, name string, required, trusted bool) error {
 	}
 	if !trusted {
 		// The keys that decide what this machine runs or reaches: a repository must
-		// not choose either.
+		// not choose either. Vouching for an index is the same kind of decision -
+		// the whole point of the marking is that a repository's word for its own
+		// registry is not enough - so a project file does not get to do it.
+		//
+		// `private` is the other way round and stays: all it can do is stop
+		// depphunter from naming a package to somebody else, and a repository saying
+		// "these are ours" is exactly who would know.
 		delete(m, "editor")
 		delete(m, "online")
+		delete(m, "trust_indexes")
 		// A repository may point at its own scanner reports, which is how a project
 		// ships the output its CI already produces - but only at paths inside itself.
 		if list, ok := m["findings"]; ok {
