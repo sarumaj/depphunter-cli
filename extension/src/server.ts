@@ -166,6 +166,7 @@ export function argv(cfg: vscode.WorkspaceConfiguration, root: string): string[]
 
   list('findings', '--findings');
   off('vulns', '--no-vulns');
+  off('links', '--no-links');
 
   on('lsp', '--lsp');
   text('lspTimeout', '--lsp-timeout');

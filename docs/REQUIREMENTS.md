@@ -910,6 +910,45 @@ no `--resolve-depth` still reports which index every package resolves from; the
 ecosystems that cannot be walked offline are named; and the document the editor
 opens and the digest `--explain` writes describe the same analysis.
 
+### M19 - Documentation as a dependency
+
+- A document that links to a file depends on it, and nothing a package manager
+  reads will say so. Every link a repository's Markdown carries to a file or a
+  directory inside it becomes an edge from the document, drawn like an import;
+  the headings become the file's symbols, so a document expands into its
+  sections the way a source file expands into its functions. Inline links,
+  reference definitions, autolinks and the `href` and `src` of raw HTML all
+  count; a link inside fenced code or a code span does not, since it is printed
+  rather than followed.
+- There is no island for external hosts. A URL is not a dependency the map can
+  say anything about, and a legend of somebody else's domain names would only
+  crowd the sea.
+- A link that leads nowhere is a finding on the line that carries it, with the
+  column, so two breaks on one line are two findings rather than one. Four
+  things can be wrong: the file is not there, the fragment names no heading of
+  the file it points at, the reference was never defined, or a host says the
+  page is gone.
+- The first three need nothing but the repository and are exact, so they run on
+  every analysis without being asked for. A target that exists but is not on the
+  map - ignored, excluded, generated at build time - is not broken; the question
+  is the filesystem's, not the graph's.
+- The fourth needs somebody else's server and happens only with `--online`. Only
+  404 and 410 count: a refusal, a rate limit, a timeout and a server error are
+  what a checker is given by hosts that block robots, and reading them as rot
+  would report links that work in a browser. What could not be checked is
+  counted and said, not drawn, and it does not mark the set incomplete. Answers
+  are kept for a day.
+- Vendored documentation is not checked. Its links point at the parts of its own
+  repository that vendoring does not copy, so they are broken by definition and
+  in a file nobody here can fix.
+
+*Accepted when* a README linking to a moved file reports it and one linking to a
+generated file does not, a fragment naming a heading that exists is silent and
+one naming a heading that does not is reported, a link inside a fenced block is
+neither an edge nor a finding, two broken links on one line are two findings,
+and a run over a repository that vendors its dependencies reports nothing from
+their READMEs.
+
 ### Known limits
 
 - Java imports name packages, not artifacts, so Maven dependencies are matched
