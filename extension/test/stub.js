@@ -50,6 +50,11 @@ const vscode = {
       writeFile: async (uri, data) => { calls.push(['writeFile', uri.fsPath, data]); },
     },
     getConfiguration: () => ({ get: key => settings[key] }),
+    openTextDocument: async options => {
+      const doc = { ...options, uri: vscode.Uri.parse('untitled:Untitled-1') };
+      calls.push(['openTextDocument', doc]);
+      return doc;
+    },
     getWorkspaceFolder: () => undefined,
     onDidChangeWorkspaceFolders: () => ({ dispose() {} }),
     onDidChangeConfiguration: () => ({ dispose() {} }),
@@ -93,6 +98,7 @@ const vscode = {
       return view;
     },
     showSaveDialog: async options => { calls.push(['showSaveDialog', options]); return undefined; },
+    showTextDocument: async doc => { calls.push(['showTextDocument', doc]); return { document: doc }; },
     withProgress: (_options, task) => task(
       { report() {} }, { onCancellationRequested: () => ({ dispose() {} }) }),
   },

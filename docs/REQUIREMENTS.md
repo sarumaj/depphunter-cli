@@ -151,6 +151,8 @@ extension, lines counted) but carry no edges.
 - Watch mode: file-system watcher, incremental re-analysis, updates pushed to
   the browser (M3).
 - Graph export: JSON, DOT, GraphML (M3).
+- Resolution report: how the dependencies on the map were arrived at, written to
+  the log with `--explain` and served as JSON, Markdown or text (M18).
 - Static self-contained HTML export (M4).
 - PNG image of the map as shown (M7).
 
@@ -886,6 +888,51 @@ mark a Go repository's internal modules.
 reconnection that missed nothing makes none, a reconnection that missed something
 is answered 304 where the graph did not change, and adding a field to graph.Node
 without regenerating fails the tests by name.
+
+### M18 - Saying how it resolved
+
+- Dependency resolution leaves no mark on the map it produces, and two of its
+  questions are answered off screen. Which index a package resolves from decides
+  whether naming it discloses anything and whether it may be fetched at all; how
+  far the walk past the direct dependencies got decides what the map contains.
+  Both are invisible in the result: a package that resolves from a company Nexus
+  is drawn exactly like one from registry.npmjs.org, and a tree that stops two
+  levels down looks the same whether the dependencies end there or a proxy
+  answered 404.
+- One report per analysis therefore records what the graph cannot carry
+  (`internal/trace`): the indexes the run knew about with where each was learned
+  from and whether anything vouches for it; per ecosystem and level, how many
+  packages were asked about, how many answered and what was added; and one entry
+  per question, naming who answered it - a lock file, an index, a cached or
+  already-given answer - or why nobody did.
+- The reasons nobody answered are kept apart, because on the map they are one
+  and the same absence: no lock file covers it and the run is offline; its index
+  is one only the repository names; it is private and its index is the public
+  one; a proxy needs a version it has not got; the ecosystem has no index that
+  can be asked; or the request was made and came back 404, 401 or worse. Where
+  requests were made, each URL and the status it returned is kept, since a
+  container image takes three round trips to answer and which one failed is the
+  question.
+- An ecosystem whose walk never started - its graph lives outside the repository
+  and `--online` was not given - is recorded as such rather than contributing
+  nothing silently. A standard library is not asked about at all.
+- The report is rendered once, in Go, and read three ways: `--explain` writes a
+  digest to the log (which is where the editor's output channel reads it),
+  `GET /api/resolution` serves the whole of it as JSON, and the same endpoint
+  renders it as a document (`?format=md`) or as that digest (`?format=text`).
+  The editor's **Show the Resolution Report** opens the document, so nothing in
+  TypeScript can drift from what the analysis actually did.
+- Recording is bounded: the counts are always complete, the per-question detail
+  stops at a fixed number of entries, and the written report cuts its long lists
+  and its over-long cells short. `--watch` re-analyzes, and each re-analysis
+  brings a report of its own rather than adding to yesterday's.
+
+*Accepted when* a package declined for being private, one whose index only the
+repository names, one whose index answered 404 and one that nothing was asked
+about are four distinguishable entries with four different reasons; a run with
+no `--resolve-depth` still reports which index every package resolves from; the
+ecosystems that cannot be walked offline are named; and the document the editor
+opens and the digest `--explain` writes describe the same analysis.
 
 ### Known limits
 

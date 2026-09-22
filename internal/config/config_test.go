@@ -462,3 +462,30 @@ func TestProjectConfigCannotVouchForAnIndex(t *testing.T) {
 		t.Errorf("--trust-index did not reach the configuration: %v", flagged.TrustIndexes)
 	}
 }
+
+// TestExplainSettings checks the three ways of asking for the resolution report.
+// Unlike online, a repository may ask for it: all it can do is make depphunter say
+// more about its own resolution, on the terminal of whoever ran it.
+func TestExplainSettings(t *testing.T) {
+	root := t.TempDir()
+	cfg, err := load(t, []string{"--explain", root}, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Explain {
+		t.Error("--explain did not reach the configuration")
+	}
+	if cfg, err = load(t, []string{root}, map[string]string{"DEPPHUNTER_EXPLAIN": "true"}, ""); err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Explain {
+		t.Error("DEPPHUNTER_EXPLAIN did not reach the configuration")
+	}
+	write(t, filepath.Join(root, ProjectFile), "explain: true\n")
+	if cfg, err = load(t, []string{root}, nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	if !cfg.Explain {
+		t.Error("explain in the project config did not reach the configuration")
+	}
+}

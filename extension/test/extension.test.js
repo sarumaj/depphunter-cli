@@ -53,6 +53,20 @@ describe('depphunter.open', { skip: available() ? false : 'no depphunter binary 
     assert.ok(!/token/.test(item.description + item.tooltip), `the token is shown: ${item.description}`);
   });
 
+  it('opens the resolution report as a document', async () => {
+    // The report is rendered by the server, so what opens here is the same account
+    // of the analysis that --explain writes to the log - there is no second copy of
+    // it in TypeScript that could drift.
+    await stub.commands.get('depphunter.resolution')();
+    const opened = stub.last('openTextDocument');
+    assert.ok(opened, `no document was opened: ${JSON.stringify(stub.calls.map(c => c[0]))}`);
+    assert.strictEqual(opened[1].language, 'markdown');
+    assert.match(opened[1].content, /# Resolution report/);
+    // It says where the packages came from, which is half of what it is for.
+    assert.match(opened[1].content, /## Indexes this run knew about/);
+    assert.ok(stub.last('executeCommand', 'markdown.showPreview'), 'the report was never shown');
+  });
+
   it('keeps the token when the address is rewritten under it', async () => {
     // asExternalUri does not reliably keep the query, and in embed mode the query is
     // where the session token is - there is no cookie to hold it inside somebody

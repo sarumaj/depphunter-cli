@@ -46,7 +46,9 @@ func (d *Discoverer) Discover(files []*scan.File) *Config {
 // machine reads the configuration of whoever is running depphunter: environment first,
 // then the files their package managers read.
 func (c *Config) machine(env func(string) string, home string) {
-	add := func(eco, url, scope string) { c.Add(eco, Source{URL: url, Scope: scope, Trusted: true}) }
+	add := func(eco, url, scope string) {
+		c.Add(eco, Source{URL: url, Scope: scope, Trusted: true, Origin: OriginMachine})
+	}
 
 	add(NPM, env("NPM_CONFIG_REGISTRY"), "")
 	add(PyPI, env("PIP_INDEX_URL"), "")
@@ -82,7 +84,7 @@ func (c *Config) machine(env func(string) string, home string) {
 // project reads what the repository asks for. Nothing here is trusted: it says where a
 // package comes from, and a source nobody on this machine knows is worth seeing.
 func (c *Config) project(files []*scan.File) {
-	add := func(eco, url, scope string) { c.Add(eco, Source{URL: url, Scope: scope}) }
+	add := func(eco, url, scope string) { c.Add(eco, Source{URL: url, Scope: scope, Origin: OriginProject}) }
 	// A repository may declare several indexes for one ecosystem. Which one is shown
 	// is then arbitrary, but it must not change between runs, or the same repository
 	// would draw differently each time.

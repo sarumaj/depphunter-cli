@@ -80,6 +80,12 @@
         "icon": "$(desktop-download)"
       },
       {
+        "command": "depphunter.resolution",
+        "title": "Show the Resolution Report",
+        "category": "depphunter",
+        "icon": "$(list-tree)"
+      },
+      {
         "command": "depphunter.exportBackpack",
         "title": "Export the Backpack",
         "category": "depphunter",
@@ -133,14 +139,19 @@
           "group": "navigation@2"
         },
         {
-          "command": "depphunter.export",
+          "command": "depphunter.resolution",
           "when": "view == depphunter.tree",
           "group": "navigation@1"
         },
         {
-          "command": "depphunter.refresh",
+          "command": "depphunter.export",
           "when": "view == depphunter.tree",
           "group": "navigation@2"
+        },
+        {
+          "command": "depphunter.refresh",
+          "when": "view == depphunter.tree",
+          "group": "navigation@3"
         },
         {
           "command": "depphunter.exportBackpack",
@@ -346,6 +357,12 @@
             "default": [],
             "order": 8,
             "markdownDescription": "Globs naming the packages your organization owns (`--private`), written the way `GOPRIVATE` writes them: `corp.example/*`, `npm:@acme/*`, `oci:harbor.corp/*`. Nothing matched is asked of a public index or sent to the OSV database - the request itself would say that an internal package exists, and to whom. `GOPRIVATE` and `GONOPROXY` are read on top of this, so Go projects usually need nothing here."
+          },
+          "depphunter.explain": {
+            "type": "boolean",
+            "default": false,
+            "order": 10,
+            "markdownDescription": "Write the resolution report to the depphunter output channel whenever the map is built (`--explain`): which index each package resolves from and who named it, what each level of `#depphunter.resolveDepth#` asked and what answered, and every question that came back with nothing, with the reason. The same report is a document at any time through **depphunter: Show the Resolution Report**."
           },
           "depphunter.trustIndexes": {
             "type": "array",
