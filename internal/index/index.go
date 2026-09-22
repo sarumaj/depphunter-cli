@@ -1,13 +1,11 @@
 // Package index works out where a dependency comes from: the package index or mirror
-// that would serve it. A repository often carries that configuration itself - an
-// .npmrc naming an internal registry, a requirements file with --extra-index-url - and
-// reading it is how the map can say "this one is ours" and "this one is the public
-// one".
+// that would serve it, read from this machine's configuration and from the
+// repository's own (an .npmrc naming an internal registry, a --extra-index-url).
 //
-// The configuration a repository carries is read for that answer only. Fetching, when
-// --online allows it, goes to the indexes this machine's own configuration names: a
-// repository that points at an index nobody here configured is the shape a dependency
-// confusion attack takes, and the map says so rather than following it.
+// What the repository carries answers that question and nothing else. Fetching, when
+// --online allows it, goes only to the indexes this machine configures: a repository
+// pointing at an index nobody here configured is the shape a dependency-confusion
+// attack takes, and the map says so rather than following it.
 package index
 
 import (

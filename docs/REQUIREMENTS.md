@@ -570,46 +570,18 @@ on, and the right button only zooms.
 
 ### ~~M11 - The map in the terminal~~ (**dropped**)
 
-- `--terminal` draws the map in the terminal the command was started from, for
-  machines reached over SSH and desktops that are not there. The server runs as
-  it does otherwise; only the client changes.
-- The client is a headless Chromium (`--terminal-browser`, or the first of
-  chromium, google-chrome, brave, edge on `PATH` or in the usual install
-  locations) driven over the DevTools protocol through `--remote-debugging-pipe`
-  - a pair of file descriptors, so no debugging port is opened and the URL, with
-  its token, never appears in a command line. The browser runs with a throw-away
-  profile and SwiftShader, which is what gives WebGL without a GPU.
-- Frames arrive as a screencast and are painted with the terminal's own
-  graphics: the kitty protocol (raw pixels, zlib-compressed), the iTerm2 inline
-  image (the browser's JPEG forwarded untouched), sixel (a fixed 6x6x6 color
-  cube with an ordered dither, run-length encoded), or half blocks with 24-bit
-  color, which need no protocol at all. `--terminal-graphics` chooses;
-  `auto` reads the environment, asks the terminal (a kitty query followed by the
-  device attributes request) and falls back to half blocks, as it does inside
-  tmux and screen.
-- The page is laid out at a usable size with the aspect ratio of the terminal's
-  picture and the browser scales the frames down to it: at the resolution of a
-  half-block terminal, a page sized in its pixels would show the toolbar alone.
-- Keys and mouse reports are forwarded as input events, so the whole UI works
-  unchanged: SGR mouse tracking carries hovering, dragging, the wheel and
-  double clicks; keys carry both `key` and `code`, since the toolbar reads one
-  and walk mode the other. A key stays down until its terminal repeats stop, so
-  holding `W` walks instead of stepping, and an upper-case letter holds shift
-  alongside it, which is how walk mode runs.
-- The view owns the screen while it runs: the alternate screen buffer, no
-  cursor, the log silenced, and the terminal restored on the way out, whether it
-  leaves through `Ctrl+C`, a signal or an error. `SIGWINCH` re-sizes the page.
+`--terminal` would have drawn the map in the terminal the command was started
+from, for machines reached over SSH: a headless Chromium driven over the
+DevTools protocol, its frames painted with the terminal's own graphics (kitty,
+iTerm2, sixel, half blocks) and its input forwarded back as events.
 
 > **Decisions (M11):** a text browser was never an option - the map is one WebGL
 > canvas with no DOM underneath - so the choice was between shipping a second,
 > poorer renderer and carrying a real one's pixels to the terminal. The pixels
-> won: one map, one set of behaviors, and every terminal gets the same map its
-> browser would draw. The cost is a dependency on an installed Chromium, which
-> is why the view is opt-in and says so when it finds none.
-
-*Accepted when* `depphunter --terminal` over SSH shows the map, a click opens
-the side panel, a double click expands a directory, `V` enters walk mode and
-`W` walks, and quitting leaves the terminal as it was found.
+> would have won: one map, one set of behaviors, and every terminal gets the same
+> map its browser would draw. What sank it is the cost of the other end - a
+> dependency on an installed Chromium, for a view that is opt-in and useless
+> without it.
 
 ### M12 - The supply chain
 

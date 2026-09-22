@@ -86,9 +86,9 @@ describe('depphunter.open', { skip: available() ? false : 'no depphunter binary 
 
   it('leaves the frame the pointer lock the editor granted it', async () => {
     // A nested frame already carries every restriction its ancestors carry, so a
-    // sandbox attribute here can only take something away - and what it takes away
-    // is walk mode's mouse. This is what the built-in browser does, and the reason
-    // the map is not shown there any more.
+    // sandbox attribute here can only take something away - and what it takes away is
+    // walk mode's mouse. It is what the built-in browser does, and why the map is not
+    // shown there.
     const html = stub.last('panel.html')[1];
     assert.ok(!/<iframe[^>]*\bsandbox\b/.test(html), `the iframe is sandboxed:\n${html}`);
   });

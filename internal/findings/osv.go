@@ -11,6 +11,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"github.com/sarumaj/depphunter-cli/internal/store"
 )
 
 // The OSV database: the one question a repository's own files cannot answer, which is
@@ -44,7 +46,7 @@ type Package struct {
 // OSV asks api.osv.dev which of the given packages are known to be vulnerable.
 type OSV struct {
 	http  *http.Client
-	cache *store
+	cache *store.Store
 	// API overrides the database's address; tests point it at their own server.
 	API string
 	// Logf reports what could not be asked; nil is silent.
@@ -52,7 +54,7 @@ type OSV struct {
 }
 
 func NewOSV(dir string, ttl, timeout time.Duration) *OSV {
-	return &OSV{http: &http.Client{Timeout: timeout}, cache: newStore(dir, ttl)}
+	return &OSV{http: &http.Client{Timeout: timeout}, cache: store.New(dir, ttl)}
 }
 
 // Query returns a finding per (package, vulnerability) pair, and whether anything was
@@ -99,20 +101,20 @@ func (o *OSV) Query(ctx context.Context, pkgs []Package) ([]*Finding, bool) {
 	return out, partial
 }
 
+// queryKey is where one package's answer is kept.
+func queryKey(p Package) string { return "osv-query|" + p.Ecosystem + "|" + p.Name + "|" + p.Version }
+
 // ids asks which vulnerabilities affect each package. The answer is only a list of
 // ids, which is what makes one batch request enough for a whole dependency tree.
 func (o *OSV) ids(ctx context.Context, pkgs []Package) (map[Package][]string, bool) {
 	out := map[Package][]string{}
 	ask := pkgs[:0:0]
 	for _, p := range pkgs {
-		if raw, ok := o.cache.get("osv-query|" + p.Ecosystem + "|" + p.Name + "|" + p.Version); ok {
-			var ids []string
-			if json.Unmarshal(raw, &ids) == nil {
-				if len(ids) > 0 {
-					out[p] = ids
-				}
-				continue
+		if ids, ok := store.Get[[]string](o.cache, queryKey(p)); ok {
+			if len(ids) > 0 {
+				out[p] = ids
 			}
+			continue
 		}
 		ask = append(ask, p)
 	}
@@ -133,7 +135,7 @@ func (o *OSV) ids(ctx context.Context, pkgs []Package) (map[Package][]string, bo
 					ids = append(ids, v.ID)
 				}
 			}
-			o.cache.put("osv-query|"+p.Ecosystem+"|"+p.Name+"|"+p.Version, ids)
+			o.cache.Put(queryKey(p), ids)
 			if len(ids) > 0 {
 				out[p] = ids
 			}
@@ -194,12 +196,9 @@ func (o *OSV) entries(ctx context.Context, ids map[Package][]string) (map[string
 	out := map[string]*osvEntry{}
 	var todo []string
 	for id := range want {
-		if raw, ok := o.cache.get("osv-vuln|" + id); ok {
-			var e osvEntry
-			if json.Unmarshal(raw, &e) == nil {
-				out[id] = &e
-				continue
-			}
+		if e, ok := store.Get[osvEntry](o.cache, "osv-vuln|"+id); ok {
+			out[id] = &e
+			continue
 		}
 		todo = append(todo, id)
 	}
@@ -239,7 +238,7 @@ func (o *OSV) vuln(ctx context.Context, id string) (*osvEntry, error) {
 	if err := o.do(req, &e); err != nil {
 		return nil, err
 	}
-	o.cache.put("osv-vuln|"+id, e)
+	o.cache.Put("osv-vuln|"+id, e)
 	return &e, nil
 }
 

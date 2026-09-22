@@ -1,18 +1,12 @@
-// Talking to a running depphunter from the extension host.
+// Talking to a running depphunter from the extension host. The map's page and this
+// extension are two views of one server (internal/server).
 //
-// The map's page and this extension are two views of one server, and the server is
-// what keeps them one interface: the graph they both draw, and the session state -
-// what is selected, what has been caught - that they both change (internal/server).
-//
-// It speaks over node:http rather than fetch because of the event stream: the server
-// pushes updates as Server-Sent Events, and a plain request whose body is read line
-// by line is the shortest way to read them without pulling in a client library. The
-// server listens on loopback on this machine, which is where the extension host is,
-// so the address it printed is the address to use - not the one asExternalUri
-// rewrites for a browser somewhere else.
-//
-// Every call carries the session token in a header. The token is in the query of the
-// address the server printed, which is the only place it appears.
+// node:http rather than fetch, because of the event stream: a request whose body is
+// read line by line is the shortest way to follow Server-Sent Events without a client
+// library. The server listens on this machine's loopback, which is where the
+// extension host is, so the address it printed is the address to use - not the one
+// asExternalUri rewrites for a browser elsewhere. That address is also the only place
+// the session token appears, and every call carries it in a header.
 
 import * as http from 'node:http';
 import * as vscode from 'vscode';
@@ -51,7 +45,7 @@ export type ServerEvent =
   // The greeting every connection opens with. `resumed` says the stream carried on
   // from the last event this client saw, so nothing was announced while it was away;
   // without it a reconnection is indistinguishable from a first connection, and the
-  // panel used to carry on listening and never learn what it had slept through.
+  // panel carries on listening without learning what it slept through.
   | { name: 'hello'; data: { version: number; etag: string; seq: number; resumed: boolean } };
 
 export class Api {
@@ -73,14 +67,12 @@ export class Api {
   }
 
   /**
-   * The graph, or null when the server says this client already has it. `force`
-   * asks for it whatever the server thinks, which is what the panel's own Refresh
-   * means: somebody pressed it because they wanted it read again.
+   * The graph, or null when the server says this client already has it. `force` asks
+   * for it whatever the server thinks, which is what the panel's Refresh means.
    *
-   * The document is the largest thing the panel reads, and most of the times it is
-   * asked for nothing about it has changed - a reconnect, or a server restarted
-   * under an open window. The fingerprint is of the nodes and the edges rather than
-   * of when they were read, so those answer 304 and cost nothing to parse.
+   * The document is the largest thing the panel reads and rarely differs between
+   * asks - a reconnect, a server restarted under an open window. Its fingerprint is
+   * of the nodes and edges rather than of when they were read, so those answer 304.
    */
   async graph(force = false): Promise<Graph | null> {
     const res = await this.fetch('GET', '/api/graph', undefined,

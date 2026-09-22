@@ -119,12 +119,9 @@ async function attach(session: Session): Promise<void> {
         break;
       case 'hello': {
         // A connection that did not resume may have missed announcements while it
-        // was down, and nothing announces them twice. Until the stream said so, a
-        // panel whose connection dropped carried on listening and quietly showed a
-        // graph and a backpack from before the gap. Asking again is cheap: the
-        // graph answers 304 when it has not moved.
-        //
-        // The first greeting is not a reconnection - attach has just read both.
+        // was down, and nothing announces them twice - so ask again, which is cheap:
+        // the graph answers 304 when it has not moved. The first greeting is not a
+        // reconnection; attach has just read both.
         const first = !attached.greeted;
         attached.greeted = true;
         if (!first && !event.data.resumed) void Promise.all([refreshGraph(api), refreshSession(api)]);
@@ -254,15 +251,9 @@ async function save(
 }
 
 /**
- * How the analysis reached the dependencies it drew, as a document beside the code:
- * which index each external package resolves from and whether anything on this
- * machine vouches for it, what each level of --resolve-depth asked and what answered,
- * and - the part the map cannot show - every question that came back with nothing,
- * and why.
- *
- * The server renders it (internal/trace), so what opens here and what `--explain`
- * writes to the log are one report in two shapes rather than two accounts that can
- * disagree.
+ * How the analysis reached the dependencies it drew, as a document beside the code.
+ * The server renders it (internal/trace), so this and what `--explain` writes to the
+ * log are one report in two shapes rather than two accounts that can disagree.
  */
 async function showResolution(): Promise<void> {
   if (!attached) {
@@ -450,16 +441,13 @@ async function offerRestart(): Promise<void> {
 /**
  * The address to put in front of the reader.
  *
- * asExternalUri is what makes this work over a remote or a tunnel: the server listens
- * on the loopback address of the machine the extension host is on, which is not the
- * machine the browser is on, and this forwards the port and rewrites the address.
- * Locally it hands back what it was given.
- *
- * What it does not reliably hand back is the query, and the query is where the
- * session token lives in embed mode - there is no cookie to keep it in, because the
- * page is inside somebody else's frame. An address that lost it loads to
- * "unauthorized: open the URL printed by depphunter" and nothing else, so the token
- * is put back on whatever comes out rather than trusted to survive the trip.
+ * asExternalUri is what makes this work over a remote or a tunnel - it forwards the
+ * port and rewrites the address, since the server listens on the loopback of the
+ * extension host's machine and not the browser's. What it does not reliably hand back
+ * is the query, which in embed mode is where the session token lives (no cookie
+ * survives inside somebody else's frame). An address that lost it loads to
+ * "unauthorized" and nothing else, so the token is put back rather than trusted to
+ * survive the trip.
  */
 async function reachable(url: string): Promise<string> {
   const token = new URL(url).searchParams.get('token');

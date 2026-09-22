@@ -29,6 +29,7 @@
     "darwin",
     "databind",
     "depphunter",
+    "depphunters",
     "describedby",
     "dotnet",
     "edgedefault",

@@ -129,6 +129,25 @@ export function viewLights() {
 
 const REST = { x: 0.235, y: -0.2, z: -0.55, rx: 0.1, ry: -0.25, rz: 0 };
 
+// How a tool sits in the fist, for the two shapes that repeat.
+//
+// SWUNG is anything held across the palm - a rod, a net, a wand - whose shaft lies
+// along the arm. Each still places its own hold: what the arm is swinging changes
+// where it comes into the frame.
+//
+// PISTOL is a grip hanging down out of the fist, so the shaft through it points up,
+// pointed down the view a few degrees off it. Held square across the frame the barrel
+// aims sixteen degrees wide of the reticle and what it fires leaves sideways; end-on
+// it would be a dark blob instead. These angles put the barrel eleven degrees off the
+// aim with the scope on top, solved from the pose rather than guessed at, so the
+// flank still reads.
+const SWUNG = { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: -Math.PI / 2 };
+const PISTOL = {
+  hold: { x: 0.19, y: -0.24, z: -0.5, along: [0.05, 1, 0.1], back: [0.45, -0.3, 1] },
+  grip: { x: 0, y: 0, z: 0, rx: -3.124, ry: 0.117, rz: -1.599 },
+  restGrip: 0.88,
+};
+
 // viewmodel places a hand and its tool where a first-person view expects them: low
 // and to the right, angled towards the middle of the screen.
 function viewmodel(build) {
@@ -331,7 +350,7 @@ const rod = {
   flight: { speed: 24, arc: 1.6, gravity: 6, drag: 0.1 },
   // The blank goes up, the arm back out of the bottom of the frame.
   hold: { x: 0.2, y: -0.28, z: -0.52, along: [-0.05, 1, 0.3], back: [0.4, -0.3, 1] },
-  grip: { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: -Math.PI / 2 },
+  grip: SWUNG,
   viewmodel() {
     return viewmodel(g => {
       const rod = armed(g, this, tool => { tool.name = 'rod'; });
@@ -434,7 +453,7 @@ const net = {
   targets: 'bugs',
   reach: 2.1,
   hold: { x: 0.2, y: -0.28, z: -0.52, along: [0.08, 1, 0.32], back: [0.4, -0.3, 1] },
-  grip: { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: -Math.PI / 2 },
+  grip: SWUNG,
   viewmodel() {
     return viewmodel(g => {
       const net = armed(g, this, tool => { tool.name = 'net'; });
@@ -638,7 +657,7 @@ const bubbles = {
   flight: { speed: 12, arc: 2.2, gravity: -1.1, drag: 1.5 },
   reticle: 'soft',
   hold: { x: 0.2, y: -0.28, z: -0.52, along: [0.05, 1, 0.32], back: [0.4, -0.3, 1] },
-  grip: { x: 0, y: 0, z: 0, rx: 0, ry: 0, rz: -Math.PI / 2 },
+  grip: SWUNG,
   viewmodel() {
     return viewmodel(g => {
       const wand = armed(g, this, tool => { tool.name = 'wand'; });
@@ -706,20 +725,12 @@ const dart = {
   slot: 5,
   targets: 'buildings',
   // A dart launcher out-throws an arm and loses to a rifle: a couple of blocks, and
-  // then it is dropping. It used to tag a building anywhere the crosshair could
-  // reach, which was most of the city from a rooftop.
+  // then it is dropping. Without a reach it would tag anything the crosshair found,
+  // which from a rooftop is most of the city.
   reach: 20,
   // Heavy, fast and barely lobbed: the flattest thing in the bag.
   flight: { speed: 34, arc: 0.6, gravity: 7, drag: 0.05 },
-  // The pistol grip hangs down out of the fist, so the shaft through it points up.
-  hold: { x: 0.19, y: -0.24, z: -0.5, along: [0.05, 1, 0.1], back: [0.45, -0.3, 1] },
-  // Pointed down the view, a few degrees off it. Held square across the frame - which
-  // is what this was - the barrel aimed sixteen degrees wide of the reticle and the
-  // dart left it sideways; end-on it would be a dark blob instead. These are the
-  // angles that put the barrel eleven degrees off the aim with the scope on top,
-  // solved from the pose rather than guessed at, so the flank still reads.
-  grip: { x: 0, y: 0, z: 0, rx: -3.124, ry: 0.117, rz: -1.599 },
-  restGrip: 0.88,
+  ...PISTOL,
   viewmodel() {
     return viewmodel(g => {
       const gun = armed(g, this, tool => { tool.name = 'gun'; });
@@ -833,9 +844,7 @@ const nailer = {
   // Fired rather than thrown: the fastest and flattest thing here, and heavy enough
   // that the air does nothing to it.
   flight: { speed: 70, arc: 0.1, gravity: 3.5, drag: 0 },
-  hold: { x: 0.19, y: -0.24, z: -0.5, along: [0.05, 1, 0.1], back: [0.45, -0.3, 1] },
-  grip: { x: 0, y: 0, z: 0, rx: -3.124, ry: 0.117, rz: -1.599 },
-  restGrip: 0.88,
+  ...PISTOL,
   viewmodel() {
     return viewmodel(g => {
       const gun = armed(g, this, tool => { tool.name = 'gun'; });
@@ -923,9 +932,7 @@ const grapple = {
   // tool, so arriving is all it does (walk.js).
   reel: { speed: 17, stop: 0.25, max: 60, onto: true },
   climbs: true, // ... and nothing is tagged or caught when it lands
-  hold: { x: 0.19, y: -0.24, z: -0.5, along: [0.05, 1, 0.1], back: [0.45, -0.3, 1] },
-  grip: { x: 0, y: 0, z: 0, rx: -3.124, ry: 0.117, rz: -1.599 },
-  restGrip: 0.88,
+  ...PISTOL,
   viewmodel() {
     return viewmodel(g => {
       const gun = armed(g, this, tool => { tool.name = 'gun'; });

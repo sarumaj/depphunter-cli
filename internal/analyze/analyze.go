@@ -222,10 +222,8 @@ const transitiveWorkers = 12
 // lock files - and, with --online, the package indexes - say they depend on. depth
 // counts levels past the direct dependencies; -1 walks until nothing new appears.
 //
-// It goes a level at a time rather than one package at a time: every package on a
-// level is asked about together, and the answers are applied in the level's own order
-// afterwards, so what is on the graph does not depend on which request came back
-// first.
+// A whole level is asked at once and its answers applied in the level's own order, so
+// what lands on the graph does not depend on which request came back first.
 func (b *builder) expand(tr lang.Transitive, plugin string, ecosystems map[string]lang.Ecosystem, depth int) {
 	var level []string
 	for id, t := range b.packages {

@@ -15,9 +15,8 @@ import (
 
 // The graph document crosses three languages: it is declared here, served as JSON,
 // read by the browser (which needs no declaration) and read by the VS Code extension
-// (which does). That last copy used to be typed out by hand in api.ts, and a hand
-// copy of a struct is a hand copy: a field added here and forgotten there does not
-// fail to compile, it simply stops being read, and nothing says so.
+// (which does). A hand copy of that last one would be a field added here and
+// forgotten there: not a compile error, just a field that stops being read.
 //
 // So it is generated. This test writes extension/src/graph.ts from the declarations
 // in graph.go - fields, JSON names, whether they may be absent, and the doc comments

@@ -1,22 +1,14 @@
-// Package trace records how an analysis reached the dependencies it drew.
+// Package trace records how an analysis reached the dependencies it drew, because
+// neither half of that leaves a mark on the map. A tree that stops two levels down
+// looks the same whether the dependencies end there, a lock file said nothing, or a
+// proxy answered 404; a package from the company's Nexus is drawn like one from
+// registry.npmjs.org, which is the whole of a dependency-confusion question.
 //
-// Two of the things depphunter does leave no mark on the map they produce. One is
-// the walk past what the code imports (--resolve-depth): a tree that stops two
-// levels down looks the same whether the dependencies end there, or a lock file said
-// nothing, or a proxy answered 404. The other is where each external package is
-// taken to come from: a package resolving from the company's Nexus and one resolving
-// from registry.npmjs.org are drawn the same way, and which of the two it is is the
-// whole of a dependency-confusion question.
-//
-// A Report is the account of both. Every question the walk asked is in it, with who
-// answered - a lock file the repository carries, an index over the network, an
-// answer kept from an earlier run, or nobody - and, when nobody did, why not; and
-// every index the run knew about, where that was learned from, whether anything here
-// vouches for it, and what resolved from it.
-//
-// One report is filled per analysis and read three ways: --explain writes it to the
-// log when the run is over, the server serves it at /api/resolution as JSON, and the
-// same endpoint renders it as a document for the editor's Resolution Report.
+// A Report holds every question the walk asked with who answered it - a lock file,
+// an index, a kept answer, or nobody, and then why not - and every index the run
+// knew about, where that was learned and what resolved from it. One is filled per
+// analysis and read three ways: --explain writes it to the log, and the server
+// serves it at /api/resolution as JSON or rendered.
 package trace
 
 import (

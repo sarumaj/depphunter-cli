@@ -1066,10 +1066,10 @@ const hideTooltip = () => tooltip(null);
 
 // The card is written once and then only moved.
 //
-// The pointer asks for it once a frame while it is up, and every one of those asks
-// used to build a string and hand it to the HTML parser to say the same thing again.
-// What it says is keyed instead, on the element itself, so that whichever of the two
-// kinds of card wrote it last can tell whether the other one has been in since.
+// The pointer asks for it once a frame while it is up, and rebuilding a string for
+// the HTML parser each time says the same thing over and over. What it says is keyed
+// on the element instead, so whichever of the two kinds of card wrote it last can
+// tell whether the other has been in since.
 function paint(tip, key, html) {
   if (tip.dataset.card !== key) {
     tip.innerHTML = html();

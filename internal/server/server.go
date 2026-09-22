@@ -162,13 +162,10 @@ func newSnapshot(g *graph.Graph, version int) (*snapshot, error) {
 	sum.Sum(sn.fingerprint[:0])
 	sn.etag = `"` + hex.EncodeToString(sn.fingerprint[:16]) + `"`
 
-	// The nodes and the edges go into the document as they are.
-	//
-	// They used to be encoded twice over - once whole to serve, and once more as
-	// [nodes, edges] to fingerprint - and handing them to the encoder again as raw
-	// messages is not much better, because it revalidates and copies every byte. On
-	// a repository with a hundred thousand nodes those two passes were most of what
-	// a --watch update cost. Written straight into the buffer they cost a copy.
+	// The nodes and the edges are written straight into the buffer and fingerprinted
+	// from it. Encoding them a second time to fingerprint - or handing them back to
+	// the encoder as raw messages, which revalidates and copies every byte - is most
+	// of what a --watch update costs on a hundred-thousand-node repository.
 	head, err := json.Marshal(docHead{g.Root, g.GeneratedAt})
 	if err != nil {
 		return nil, err
@@ -464,14 +461,12 @@ func (s *Server) allowed(w http.ResponseWriter, r *http.Request) bool {
 
 // The same question inside somebody else's frame, where a cookie is no help: one set
 // here is a third-party cookie there and is not sent back, so the token stays in the
-// address the frame was given and the page hands it back on every call - in a header
-// where one can be set, and in the query string for the event stream, which cannot
-// set headers.
+// address the frame was given and the page hands it back on every call - in a header,
+// or in the query string for the event stream, which cannot set headers.
 //
-// The interface's own files are served without it. They are the same bytes in every
-// release and say nothing about the project; what the token guards is /api, which is
-// where the repository's contents are, and the document that carries the token to
-// the page.
+// The interface's own files are served without it: they are the same bytes in every
+// release and say nothing about the project. What the token guards is /api, where the
+// repository's contents are, and the document that carries the token to the page.
 func (s *Server) embedAllowed(w http.ResponseWriter, r *http.Request) bool {
 	if t := r.Header.Get(tokenHeader); t != "" && s.equalToken(t) {
 		return true
@@ -613,11 +608,10 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "text/event-stream")
 	w.Header().Set("Cache-Control", "no-store")
 	// The greeting says where the stream is, so a client knows whether it missed
-	// anything while it was away. resumed is the whole point of the event ids: the
-	// browser retries an EventSource by itself, and until now a client that came
-	// back had no way to tell a reconnection from a first connection, so either it
-	// refetched everything or - as the editor's side panel did - it carried on
-	// listening and never learned about the announcements it had slept through.
+	// anything while it was away. resumed is the point of the event ids: the browser
+	// retries an EventSource by itself, and without one a client cannot tell a
+	// reconnection from a first connection - so it either refetches everything or
+	// carries on listening, never learning what it slept through.
 	hello, _ := json.Marshal(struct {
 		Version int    `json:"version"`
 		ETag    string `json:"etag"`
@@ -653,10 +647,9 @@ func resumed(r *http.Request, seq uint64) bool {
 	return err == nil && last == seq
 }
 
-// handleResolution serves how the analysis reached its dependencies: as JSON by
-// default, as the document the editor opens with ?format=md, and as the text the
-// command line prints with ?format=text. One report, three renderings, because the
-// question "did it resolve that the way I think it did" is asked from all three.
+// handleResolution serves how the analysis reached its dependencies: JSON by default,
+// the document the editor opens with ?format=md, and the command line's digest with
+// ?format=text.
 func (s *Server) handleResolution(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	rep := s.resolution

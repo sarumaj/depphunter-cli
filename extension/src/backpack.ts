@@ -1,11 +1,10 @@
 // What has been caught, beside the code rather than inside the map.
 //
-// The backpack is the map's: a finding caught in walk mode goes in it and stays until
-// the scanners stop reporting it, and the browser is where it is kept, because it has
-// to outlive a server that only runs while somebody is looking. What the server holds
-// is this session's copy (internal/server/session.go), and this is a view of that -
-// so what was caught while walking can be worked through here, in the editor, which
-// is where the fixing happens.
+// A finding caught in walk mode stays in the backpack until the scanners stop
+// reporting it, and the browser keeps it, since it has to outlive a server that runs
+// only while somebody is looking. The server holds this session's copy
+// (internal/server/session.go); this is a view of that, so the catch can be worked
+// through in the editor, where the fixing happens.
 
 import * as vscode from 'vscode';
 

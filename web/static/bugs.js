@@ -515,8 +515,7 @@ const fwd = new THREE.Vector3(), side = new THREE.Vector3(), lean = new THREE.Ve
  * The model's nose is +z and its back +y, so the matrix's z column is the way it is
  * walking and its y column the way the wall or the roof faces; the x column is what
  * is left, which is the cross product of those two and keeps the beetle from being
- * mirrored. On the street this comes out as the plain turn about the vertical it
- * used to be.
+ * mirrored. On the street it comes out as a plain turn about the vertical.
  *
  * A flyer has nothing to stand on, so its "up" is rolled about the way it is going -
  * the lean into a corner, which is the whole difference between a beetle in the air

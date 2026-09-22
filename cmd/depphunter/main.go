@@ -67,22 +67,17 @@ func main() {
 	err := newCommand().ExecuteContext(ctx)
 	stop()
 	if err != nil {
-		// Wherever the log was going by then (see logOutput), a failure belongs on
-		// stderr: it is not part of the output anybody asked for, and with --export
-		// it would otherwise arrive in the middle of the document.
+		// A failure is not part of the output anybody asked for, wherever the log
+		// was going by then (logOutput).
 		log.SetOutput(os.Stderr)
 		log.Println(err)
 		os.Exit(1)
 	}
 }
 
-// logOutput is where depphunter's own log goes: stdout, where it can be piped,
-// redirected and read like any other output of a command.
-//
-// The exception is an export with no file to write to, where stdout is the document
-// itself. "analyzed …" in the middle of a JSON graph is not a log line anybody can
-// use, so there the log steps aside to stderr - which is where the export's own
-// reader would look for it anyway.
+// logOutput is where depphunter's own log goes: stdout, like any other output of a
+// command - except where stdout is already carrying an export with no file to go to,
+// since "analyzed …" in the middle of a JSON graph is no use to anyone.
 func logOutput(cfg config.Config) io.Writer {
 	if cfg.Export != "" && cfg.Output == "" {
 		return os.Stderr
@@ -150,8 +145,7 @@ func run(ctx context.Context, cfg config.Config) error {
 	}
 	home, _ := os.UserHomeDir()
 	// What this organization owns: what was declared, plus what the machine already
-	// says about private Go modules. Nothing named here is asked of a public index or
-	// sent to the vulnerability database.
+	// says about private Go modules (internal/scope).
 	private := scope.New(append(append([]string{}, cfg.Private...), scope.FromGoEnv(os.Getenv)...))
 	if !private.Empty() {
 		log.Printf("private: %s", strings.Join(private.Patterns(), ", "))
@@ -171,9 +165,8 @@ func run(ctx context.Context, cfg config.Config) error {
 		}
 		opts.Registry = index.NewClient(indexes.Config(), store, indexCacheTTL, indexTimeout, home, private)
 	}
-	// One report per analysis, and --watch analyzes again on every change: a report
-	// that accumulated over a morning's editing would say nothing about the run whose
-	// map is on screen.
+	// One report per analysis: --watch analyzes again on every change, and a report
+	// that accumulated over a morning's editing describes no run in particular.
 	newReport := func() *trace.Report {
 		return trace.New(cfg.ResolveDepth, opts.Registry != nil, private.Patterns(), cfg.TrustIndexes)
 	}
@@ -204,16 +197,12 @@ func run(ctx context.Context, cfg config.Config) error {
 	return serve(ctx, cfg, g, opts, c, cacheDir, newReport)
 }
 
-// explain writes the resolution report when --explain asked for it: how the walk
-// past the direct dependencies went, and which index each package resolves from.
-// It goes wherever the log goes (logOutput), which is also where the VS Code
-// extension reads it from: the extension follows both of the server's streams.
+// explain writes the resolution report when --explain asked for it, wherever the log
+// goes (logOutput) - which is where the VS Code extension reads it from too.
 func explain(cfg config.Config, r *trace.Report) {
 	if !cfg.Explain || r == nil {
 		return
 	}
-	// Beside the rest of the log rather than beside it on another stream: the
-	// report is read together with the lines that led to it.
 	w := log.Writer()
 	fmt.Fprintln(w)
 	if err := r.Text(w); err != nil {
@@ -325,9 +314,8 @@ func pinned(g *graph.Graph) []findings.Package {
 		if n.Kind != graph.KindPackage || n.Version == "" || n.Floating {
 			continue
 		}
-		// An organization's own package is not asked about. The database would have
-		// nothing to say about it, and the question itself hands the name and the
-		// version of internal code to somebody else's server.
+		// An organization's own package is not asked about: the question hands the
+		// name and version of internal code to somebody else's server.
 		if n.Private {
 			continue
 		}
@@ -469,15 +457,13 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 }
 
 // findingWatch says what to watch for the scanner reports, so that rewriting one is a
-// change the watcher sees: the named reports as single files, and the directory of
-// every pattern that is a glob.
+// change the watcher sees: named reports as single files, and the directory of every
+// pattern that is a glob.
 //
-// The distinction matters because a report is usually written into a directory that
-// holds a great deal besides - often the repository root - and a watch on a directory
-// reports every file written into it. Watching the report itself means a screenshot
-// or an editor's swap file landing beside it is no longer a reason to re-analyze the
-// repository and re-read the report. A glob has no one file to watch, and a new file
-// matching it is news, so there the whole directory stays watched.
+// A report usually sits in a directory holding a great deal besides - often the
+// repository root - and a watch on the directory fires for every file written into
+// it. A glob has no one file to watch, and a new file matching it is news, so there
+// the whole directory stays watched.
 func findingWatch(cfg config.Config) (dirs, files []string) {
 	globbed := map[string]bool{}
 	for _, p := range cfg.Findings {
