@@ -436,11 +436,10 @@ export class Panel {
       text = `(${e.message})`;
     }
     // The selection changed while the file was being read - or, far more often, a
-    // live update redrew the panel for the same node, throwing this <pre> away and
-    // starting its own read. Nothing may go into a <pre> that is no longer on screen,
-    // but the text is still good: while the panel is showing this same file and the
-    // redraw's own read has not come back yet, fill the pane that is there instead of
-    // leaving it saying "Loading..." for as long as the updates keep arriving.
+    // live update redrew the panel for the same node and started its own read. The
+    // <pre> this began with is gone, but the text is still good: while the panel is
+    // showing the same file and the redraw's read has not come back, fill the pane
+    // that is there rather than leave it on "Loading..." while updates keep arriving.
     if (seq !== this.seq) {
       if (this.node?.id === node.id) {
         const live = this.body.querySelector('pre.code');

@@ -1,14 +1,10 @@
 // Which depphunter to run.
 //
-// A released VSIX carries the binary for the platform it was built for, so the
-// extension and the server it starts are one version, pinned together, and there is
-// nothing to install alongside it. A build from a checkout carries none, and falls
-// back to whatever is on the PATH.
-//
-// The setting wins over both. It is the only way to point the extension at a build
-// that is not the one it shipped with - a local one being worked on, or a newer
-// release on a machine where the extension has not been updated - so an explicit
-// value is never second-guessed.
+// A released VSIX carries the binary for its platform, so the extension and the
+// server it starts are one pinned version with nothing to install alongside. A build
+// from a checkout carries none and falls back to the PATH. The setting wins over
+// both, and is never second-guessed: it is the only way to point at a build that is
+// not the one that shipped.
 
 import * as fs from 'node:fs';
 import * as path from 'node:path';

@@ -85,11 +85,10 @@ const SWING = 0.45;         // seconds a tool takes to swing and settle
 const SHORE_MARGIN = 3, SKY_MARGIN = 12;
 
 // Keys the walker owns while active, by KeyboardEvent.code; the map's own shortcuts
-// for these letters are suspended. E and Q do nothing here: on the map they rotate
-// the view and expand things, which would only reshuffle the city around a walker.
-// The keys walk mode answers to. A key that is not here never reaches it: the map
-// keeps it, which is why this has to list every one the handler below acts on -
-// KeyH among them, which is how hands-away went unreachable until now.
+// for these letters are suspended. A key that is not here never reaches walk mode -
+// the map keeps it - so this has to list every one the handler below acts on. E and Q
+// are held and do nothing: on the map they rotate the view and expand things, which
+// would only reshuffle the city around a walker.
 const KEYS = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   'Space', 'ShiftLeft', 'ShiftRight', 'KeyC', 'KeyF', 'KeyE', 'KeyQ', 'Enter',
@@ -960,10 +959,9 @@ export class Walker {
    * The boxes indexed in the cell holding (x, z) - candidates, not answers: a cell is
    * larger than a box, so the caller tests the footprint.
    *
-   * That test used to be here, in a generator that yielded only what matched. The ray
-   * the crosshair marches calls this a few hundred times a frame, and an iterator
-   * object per call is a few hundred objects a frame allocated to be thrown away
-   * again; the callers do the same two comparisons and allocate nothing.
+   * The test stays with the caller rather than here in a generator that yields only
+   * what matches: the ray the crosshair marches calls this a few hundred times a
+   * frame, and an iterator object per call is that many allocations to throw away.
    */
   cellAt(x, z) {
     return this.grid.get(cellKey(x, z)) || NO_CELL;

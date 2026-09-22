@@ -243,15 +243,23 @@ func parseCargoConfig(data []byte, add func(eco, url, scope string)) {
 	}
 }
 
+// nugetEntry is NuGet's <add key="…" value="…" />, which is how a config names both a
+// package source and a credential.
+type nugetEntry struct {
+	Key   string `xml:"key,attr"`
+	Value string `xml:"value,attr"`
+}
+
+// nugetSources is the <packageSources> block: the feeds a config declares, which
+// auth.go reads for the same reason this does.
+type nugetSources struct {
+	Add []nugetEntry `xml:"add"`
+}
+
 // parseNuGetConfig reads the package sources of a NuGet configuration.
 func parseNuGetConfig(data []byte, add func(eco, url, scope string)) {
 	var doc struct {
-		PackageSources struct {
-			Add []struct {
-				Key   string `xml:"key,attr"`
-				Value string `xml:"value,attr"`
-			} `xml:"add"`
-		} `xml:"packageSources"`
+		PackageSources nugetSources `xml:"packageSources"`
 	}
 	if xml.Unmarshal(data, &doc) != nil {
 		return

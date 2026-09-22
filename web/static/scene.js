@@ -18,7 +18,7 @@ const ISO_POLAR = Math.acos(1 / Math.sqrt(3)); // true isometric elevation (35.2
 // The styles, as the shaders number them (city.js cityTexture).
 const STYLE_CODES = { city: 0, circuit: 1, galaxy: 2 };
 // The live view on the back of the camera tool, in pixels. Small on purpose: it is a
-// screen a centimetre across in the walker's hands, and it costs a second pass over
+// screen a centimeter across in the walker's hands, and it costs a second pass over
 // the world every time it is drawn.
 const FILM_W = 192, FILM_H = 144;
 // The styles whose ground does not hold still: the galaxy's void drifts and the
@@ -557,9 +557,8 @@ export class MapScene {
    */
   renderNow() {
     const r = this.renderer;
-    // Whatever moves by itself - clouds, water, the drift of the void - reads this.
-    // It used to be set only where the walker was placed, so the map view was drawn
-    // at one frozen instant however long it was looked at.
+    // Whatever moves by itself - clouds, water, the drift of the void - reads this,
+    // so it has to be set per frame and not only where the walker is placed.
     this.curve.uTime.value = performance.now() / 1000;
     r.render(this.scene, this.view);
     // The held tool, second and on top of everything: the depth buffer is cleared

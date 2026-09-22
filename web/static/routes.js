@@ -22,8 +22,8 @@
 // ground they are. Every island is on the end of one (city.js builds a spanning tree
 // of them), so a road to an external package goes over a bridge like everything
 // else. Open water is left passable at a price, for the shores no bridge was built
-// between; it used to be cheap enough that a road would swim the bay rather than
-// walk to the crossing, which is what made the network look like it was guessing.
+// between - dear enough that a road walks to the crossing rather than swimming the
+// bay, which is what would make the network look like it was guessing.
 
 import * as THREE from './vendor/three.module.min.js';
 import { bridgesFor, bridgeBounds, bridgeHeight } from './city.js';

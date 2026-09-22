@@ -50,11 +50,9 @@ func readCredentials(home string) *credentials {
 }
 
 // readMavenSettings takes the username and password of every <server> whose id names
-// a <mirror> or a <profile>'s <repository>, and files it under that URL's host.
-//
-// A settings.xml is where a developer's Nexus or Artifactory password lives, and
-// without it every request to the company repository comes back 401 and the map goes
-// quiet about half the dependency tree.
+// a <mirror> or a <profile>'s <repository>, and files it under that URL's host. It is
+// where a developer's Nexus or Artifactory password lives; without it the company
+// repository answers 401 and half the dependency tree goes quiet.
 func (c *credentials) readMavenSettings(data []byte) {
 	var doc struct {
 		Servers struct {
@@ -114,21 +112,13 @@ func (c *credentials) readMavenSettings(data []byte) {
 // host of the source they name.
 func (c *credentials) readNuGetConfig(data []byte) {
 	var doc struct {
-		PackageSources struct {
-			Add []struct {
-				Key   string `xml:"key,attr"`
-				Value string `xml:"value,attr"`
-			} `xml:"add"`
-		} `xml:"packageSources"`
-		Credentials struct {
+		PackageSources nugetSources `xml:"packageSources"`
+		Credentials    struct {
 			// One element per source, named after it, so the shape is not known in
 			// advance: it is read as a list of whatever elements are there.
 			Sources []struct {
 				XMLName xml.Name
-				Add     []struct {
-					Key   string `xml:"key,attr"`
-					Value string `xml:"value,attr"`
-				} `xml:"add"`
+				Add     []nugetEntry `xml:"add"`
 			} `xml:",any"`
 		} `xml:"packageSourceCredentials"`
 	}

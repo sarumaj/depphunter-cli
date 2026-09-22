@@ -8,6 +8,8 @@ import (
 	"sync/atomic"
 	"testing"
 	"time"
+
+	"github.com/sarumaj/depphunter-cli/internal/store"
 )
 
 // osvServer answers like api.osv.dev for one known-vulnerable package, and counts what
@@ -69,7 +71,7 @@ func TestOSVQueriesTheDatabaseAndCachesTheAnswer(t *testing.T) {
 		{Ecosystem: "npm", Name: "left-pad", Version: ""},          // nothing to ask about
 	}
 
-	o := &OSV{http: srv.Client(), cache: newStore(dir, time.Hour), API: srv.URL}
+	o := &OSV{http: srv.Client(), cache: store.New(dir, time.Hour), API: srv.URL}
 	found, partial := o.Query(context.Background(), pkgs)
 	if partial {
 		t.Error("a complete answer was reported as partial")
@@ -91,7 +93,7 @@ func TestOSVQueriesTheDatabaseAndCachesTheAnswer(t *testing.T) {
 	// A second run with the same cache directory asks nothing at all - including about
 	// the packages that turned out to be fine, which is most of them.
 	b1, d1 := atomic.LoadInt32(batches), atomic.LoadInt32(details)
-	again := &OSV{http: srv.Client(), cache: newStore(dir, time.Hour), API: srv.URL}
+	again := &OSV{http: srv.Client(), cache: store.New(dir, time.Hour), API: srv.URL}
 	if found, _ := again.Query(context.Background(), pkgs); len(found) != 1 {
 		t.Fatalf("cached run: %d findings, want 1", len(found))
 	}

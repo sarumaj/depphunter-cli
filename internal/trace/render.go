@@ -8,10 +8,9 @@ import (
 	"unicode/utf8"
 )
 
-// Text writes the report the way the command line shows it: columns, no markup, and
-// the long lists cut off at maxListed with a count of what was left out. It is the
-// digest. The whole of it - every question, in order - is in the JSON the server
-// serves and in the document Markdown writes.
+// Text writes the digest the command line shows: columns, no markup, long lists cut
+// off at maxListed with a count of what was left out. The whole of it is in the JSON
+// and in what Markdown writes.
 func (r *Report) Text(w io.Writer) error {
 	if r == nil {
 		return nil
@@ -56,9 +55,9 @@ func (r *Report) Text(w io.Writer) error {
 	return out.err
 }
 
-// Markdown writes the same report as a document, which is what the editor opens: the
-// tables render, and the full list of questions is here rather than cut short,
-// because a document is scrolled and searched rather than read past.
+// Markdown writes the report as the document the editor opens: tables render, and
+// the full list of questions is here rather than cut short, because a document is
+// scrolled and searched rather than read past.
 func (r *Report) Markdown(w io.Writer) error {
 	if r == nil {
 		return nil
@@ -273,10 +272,9 @@ type table struct {
 
 func (t *table) add(cells ...string) { t.rows = append(t.rows, cells) }
 
-// How wide one cell may get before the written report cuts it short. A registry
-// redirect signs its URLs, and one such error message is several hundred characters
-// of base64 that turns the whole table into a ragged wall. Nothing is lost: the JSON
-// at /api/resolution carries every value whole.
+// How wide one cell may get before the written report cuts it short: a signed
+// registry-redirect URL is several hundred characters of base64, and one of them
+// turns the table into a ragged wall. The JSON carries every value whole.
 const (
 	textCell = 72
 	mdCell   = 200

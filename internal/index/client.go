@@ -15,6 +15,7 @@ import (
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/scope"
+	"github.com/sarumaj/depphunter-cli/internal/store"
 	"github.com/sarumaj/depphunter-cli/internal/trace"
 )
 
@@ -25,7 +26,7 @@ import (
 type Client struct {
 	cfg     *Config
 	http    *http.Client
-	cache   *store
+	cache   *store.Store
 	auth    *credentials
 	private *scope.Private
 	timeout time.Duration
@@ -66,7 +67,7 @@ func NewClient(cfg *Config, dir string, ttl, timeout time.Duration, home string,
 	return &Client{
 		cfg:     cfg,
 		http:    &http.Client{Timeout: timeout},
-		cache:   newStore(dir, ttl),
+		cache:   store.New(dir, ttl),
 		auth:    readCredentials(home),
 		private: private,
 		timeout: timeout,
@@ -75,12 +76,9 @@ func NewClient(cfg *Config, dir string, ttl, timeout time.Duration, home string,
 	}
 }
 
-// Dependencies implements lang.Transitive against the indexes.
-//
-// Every way out of here is recorded (internal/trace), and most of them answer
-// nothing. A question declined for what asking would disclose is indistinguishable
-// on the map from a dependency that genuinely has none, and telling those apart is
-// what --explain and /api/resolution exist for.
+// Dependencies implements lang.Transitive against the indexes. Every way out is
+// recorded (internal/trace), because a question declined for what asking would
+// disclose is indistinguishable on the map from a dependency that genuinely has none.
 func (c *Client) Dependencies(t lang.Target) []lang.Target {
 	if c == nil || t.Package == "" {
 		return nil
@@ -97,11 +95,10 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 		c.report(l)
 		return nil
 	}
-	// An organization's own package is not named to the world. Asking the public
-	// index about corp.example/billing would not answer anyway, and the asking is
-	// itself the disclosure: the request says the package exists, and to whom. A
-	// private registry that this machine is configured for is a different matter, and
-	// is asked as usual.
+	// An organization's own package is not named to the world: asking the public
+	// index about corp.example/billing would not answer anyway, and the request
+	// itself is the disclosure. A private registry this machine configures is asked
+	// as usual.
 	if c.private.Match(t.Ecosystem, t.Package) && c.cfg.Public(t.Ecosystem, index) {
 		l.Reason = trace.ReasonPrivate
 		c.report(l)
@@ -145,7 +142,7 @@ type answer struct {
 // lookup answers from the cache when it can, and from the index when it must.
 func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 	key := t.Ecosystem + "|" + index + "|" + t.Package + "|" + t.Version
-	if deps, ok := c.cache.get(key); ok {
+	if deps, ok := store.Get[[]dep](c.cache, key); ok {
 		return answer{deps: c.targets(t.Ecosystem, deps), source: trace.FromCache}, nil
 	}
 	if t.Ecosystem == Go && t.Version == "" {
@@ -187,7 +184,7 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 	if err != nil {
 		return answer{requests: made.taken()}, err
 	}
-	c.cache.put(key, deps)
+	c.cache.Put(key, deps)
 	return answer{deps: c.targets(t.Ecosystem, deps), source: trace.FromIndex, requests: made.taken()}, nil
 }
 

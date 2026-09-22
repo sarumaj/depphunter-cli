@@ -14,23 +14,15 @@ import (
 
 // The ecosystems whose transitive dependencies are read from a registry rather than
 // from the repository: crates.io and its mirrors, NuGet feeds, and OCI registries.
-//
-// Each speaks its own protocol, and only the last of them needs a word of warning.
-// An image has no dependency list; what it has is a base image, which is the one
-// thing an image is built on and the one thing a vulnerability in it is inherited
-// from. That is what is followed here, and following it means a pull: the manifest,
-// then the config blob it points at, then the base image named in the blob's labels
-// or annotations. Nothing is downloaded beyond those two small documents - no layers.
+// Each speaks its own protocol; ociBase, below, explains the odd one out.
 
 // ---------------------------------------------------------------- crates.io
 
 // cargoCrate reads a crate's own dependencies from a sparse index (RFC 2789): one
-// line of JSON per published version, at a path derived from the crate's name.
-//
-// That is the protocol every modern registry speaks, crates.io included - but
-// crates.io's index is not served from the address Cargo is configured with, which
-// is the registry, so the one is turned into the other here. A mirror is configured
-// with its index already, and is used as given.
+// line of JSON per published version, at a path derived from the crate's name. Every
+// modern registry speaks it, but crates.io serves its index from a different host
+// than the registry Cargo is configured with, so the one is turned into the other
+// here; a mirror already names its index and is used as given.
 func (c *Client) cargoCrate(ctx context.Context, index string, t lang.Target) ([]dep, error) {
 	return c.cargoSparse(ctx, cargoIndex(index), t)
 }
@@ -252,13 +244,11 @@ const ociAccept = "application/vnd.oci.image.manifest.v1+json," +
 
 // ociBase resolves the image an image was built on.
 //
-// There is no dependency list in a container image. What there is - when whoever
-// built it said so - is the base image, recorded as an annotation on the manifest or
-// as a label in the config blob, and that is the image whose vulnerabilities this one
-// inherits. Following it is what makes an image on the map more than a leaf.
-//
-// It takes two or three requests and reads no layers: the manifest, one more when it
-// turns out to be a multi-platform index, and the config blob it points at.
+// A container image has no dependency list. What it has, when whoever built it said
+// so, is a base image - an annotation on the manifest or a label in the config blob -
+// and that is the image whose vulnerabilities this one inherits, which is what makes
+// an image on the map more than a leaf. Two or three requests, no layers: the
+// manifest, one more for a multi-platform index, and the config blob.
 func (c *Client) ociBase(ctx context.Context, index string, t lang.Target) ([]dep, error) {
 	repo := ociRepository(t.Package)
 	ref := t.Version
@@ -404,12 +394,11 @@ func (c *Client) ociGet(ctx context.Context, index, repo, address, accept string
 // ociToken asks for the pull token a registry's challenge describes.
 //
 // A challenge is a header, and a header names wherever it likes, so the realm is
-// looked at before it is followed: either it is https, or it is the registry this
-// request was already going to - which is how a registry on a private network over
-// plain http still works, without a plain-http challenge being able to point the
-// request somewhere else entirely. Whatever credentials go with it are chosen by the
-// realm's own host (see credentials.apply), so a redirected realm gets none of the
-// registry's.
+// checked before it is followed: either https, or the registry this request was
+// already going to - which keeps a registry on a private plain-http network working
+// without letting a plain-http challenge redirect the request elsewhere. Credentials
+// are chosen by the realm's own host (credentials.apply), so a redirected realm gets
+// none of the registry's.
 func (c *Client) ociToken(ctx context.Context, index, repo, challenge string) (string, error) {
 	scheme, params, ok := strings.Cut(challenge, " ")
 	if !ok || !strings.EqualFold(scheme, "Bearer") {

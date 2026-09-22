@@ -1,17 +1,12 @@
-// Where the walker is standing, shown on the map.
+// Where the walker is standing, shown on the map: a figure at their feet, facing the
+// way they were facing, on the block they were on, so that leaving the street does
+// not put you back above a city with no sign of who was in it.
 //
-// Walk mode and the map are one place seen two ways, and until now only one of them
-// said where you were: leaving the street put you back above a city with no sign of
-// the person who had been in it. This is that sign - a figure at the walker's feet,
-// facing the way they were facing, on the block they were on.
-//
-// It is a marker rather than a model, so it is drawn at a size on the screen and not
-// a size on the map (the same arithmetic as pins.js: an orthographic camera's zoom is
-// pixels per world unit, so dividing by it holds a marker still while the map is
-// pulled about). And it is drawn twice: once solid, and once faintly with the depth
-// test off, so a walker standing in a street between two towers is still visible
-// through the one in front. A marker that says where you are has to be seen from
-// wherever you are looking.
+// It is a marker rather than a model, drawn at a size on the screen and not a size on
+// the map (the same arithmetic as pins.js: an orthographic camera's zoom is pixels
+// per world unit, so dividing by it holds a marker still while the map is pulled
+// about). It is drawn twice - once solid, once faintly with the depth test off - so a
+// walker in a street between two towers is still visible through the one in front.
 
 import * as THREE from './vendor/three.module.min.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';

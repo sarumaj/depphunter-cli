@@ -180,11 +180,19 @@ func age(t *testing.T, dir string, by time.Duration) {
 		if err != nil {
 			t.Fatal(err)
 		}
-		var e entry
+		// Read as a bag of fields: what is aged is the timestamp, and what is kept
+		// is whatever internal/store wrote beside it.
+		var e map[string]json.RawMessage
 		if err := json.Unmarshal(data, &e); err != nil {
 			t.Fatal(err)
 		}
-		e.At = e.At.Add(-by)
+		var at time.Time
+		if err := json.Unmarshal(e["at"], &at); err != nil {
+			t.Fatal(err)
+		}
+		if e["at"], err = json.Marshal(at.Add(-by)); err != nil {
+			t.Fatal(err)
+		}
 		if data, err = json.Marshal(e); err != nil {
 			t.Fatal(err)
 		}

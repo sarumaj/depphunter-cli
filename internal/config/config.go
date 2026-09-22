@@ -86,26 +86,20 @@ type Config struct {
 	// Online allows asking package indexes about dependencies the repository's own
 	// files do not record. Analysis is offline without it.
 	Online bool `yaml:"online" mapstructure:"online"`
-	// Explain writes the resolution report when the analysis is over: which index
-	// answered for which package, what each level of the walk added, and what
-	// nothing answered for (see internal/trace). The report is served at
-	// /api/resolution whether this is set or not; this is what puts it on the
-	// terminal - and, since the VS Code extension reads the server's output, in the
-	// editor's depphunter channel.
+	// Explain writes the resolution report to the log when the analysis is over (see
+	// internal/trace). The report is served at /api/resolution either way; this is
+	// what puts it on the terminal.
 	Explain bool `yaml:"explain" mapstructure:"explain"`
 	// Private names the packages that are this organization's own, as glob patterns
-	// with GOPRIVATE's meaning (see internal/scope). They are never named to a public
-	// index and never sent to the vulnerability database, so an internal package's
-	// name and version do not leave the machine. GOPRIVATE and GONOPROXY are read on
-	// top of whatever is set here, since Go projects have usually said it already.
+	// with GOPRIVATE's meaning; nothing matched is named to a public index or sent to
+	// the vulnerability database (see internal/scope, which says why). GOPRIVATE and
+	// GONOPROXY are read on top of whatever is set here.
 	Private []string `yaml:"private" mapstructure:"private"`
 	// TrustIndexes are index URLs to treat as though this machine's own configuration
-	// named them. An index only a repository asks for is otherwise marked and never
-	// fetched from - that is the dependency-confusion guard - which leaves an
-	// organization whose repositories carry their own .npmrc with a map full of
-	// warnings about its own registry. This is how to say "that one is ours", and it
-	// comes from the user's own config or the command line only: a repository
-	// vouching for itself would be no guard at all.
+	// named them, for the organization whose repositories carry their own .npmrc and
+	// would otherwise draw a warning on every package (see internal/index). It comes
+	// from the user's own config or the command line only: a repository vouching for
+	// itself would be no guard at all.
 	TrustIndexes []string `yaml:"trust_indexes" mapstructure:"trust_indexes"`
 	// Findings are files (or globs) holding what a scanner already reported:
 	// govulncheck, npm audit, trivy, golangci-lint, eslint or osv-scanner JSON.

@@ -846,11 +846,10 @@ export function makeSky(uniforms) {
 
       /**
        * Noise over a direction rather than over a plane. Projecting the sky onto one
-       * plane pinches everything to a smear at the pole, which is what the nebulae
-       * used to do directly overhead; this takes all three projections and weighs
-       * each by how square-on the direction is to it, so the structure is the same
-       * size wherever it is looked at. Three octaves, not five: at the size of a
-       * nebula the last two are below a pixel.
+       * plane pinches everything into a smear at the pole; this takes all three
+       * projections and weighs each by how square-on the direction is to it, so the
+       * structure is the same size wherever it is looked at. Three octaves, not
+       * five: at the size of a nebula the last two are below a pixel.
        */
       float skyFbm(vec3 d, float s, float seed) {
         vec3 w = abs(d);

@@ -14,17 +14,16 @@ import (
 // What the map's clients share while it is open: what is selected, and what has been
 // caught.
 //
-// Neither is analysis. They are what somebody is doing with it, and up to now they
-// lived in the one browser tab that was doing it - which was enough while that tab
-// was the whole interface. It is not any more: the editor's side panel lists the same
-// dependencies and the same catch, and a selection made in one of the two that the
-// other knows nothing about is two interfaces rather than one.
+// Neither is analysis - they are what somebody is doing with it - but they cannot
+// live in one browser tab, because the editor's side panel lists the same
+// dependencies and the same catch, and a selection one of the two knows nothing
+// about is two interfaces rather than one. So the server holds them, says when they
+// change, and every client is a view.
 //
-// So the server holds them and says when they change, and every client is a view.
-// Nothing here is durable: the backpack's own store is still the browser's, per
-// repository, because it has to outlive the server that is only running while
-// somebody is looking. What the server keeps is this session's copy, pushed up as the
-// page loads and kept in step afterwards, which is what the side panel reads.
+// Nothing here is durable: the backpack's own store is the browser's, per repository,
+// since it has to outlive a server that runs only while somebody is looking. What the
+// server keeps is this session's copy, pushed up as the page loads and kept in step
+// afterwards.
 
 // maxPack is what the browser's own backpack holds (backpack.js), and there is no
 // reason for the relay to take more.

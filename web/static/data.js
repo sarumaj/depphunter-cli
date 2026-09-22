@@ -22,8 +22,7 @@ export const auth = (more = {}) => (token ? { ...more, 'X-Depphunter-Token': tok
 /** The same token on a URL, for the requests that cannot carry a header. */
 export const authed = url => (token ? url + (url.includes('?') ? '&' : '?') + `token=${encodeURIComponent(token)}` : url);
 
-// The entity tag of the graph this page last read, so it can ask for a new one
-// without being sent the old one again.
+// The entity tag of the graph this page last read, so an unchanged one answers 304.
 let graphTag = '';
 
 /**
