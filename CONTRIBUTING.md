@@ -92,7 +92,12 @@ flowchart TB
    document is what the UI, the exports and the cache exchange.
 5. **Serve** (`internal/server`): a loopback HTTP server with a per-run token
    serves the embedded UI (`web/static`) and the graph (`/api/graph`), file
-   source (`/api/file`), exports, "open in editor" and "save settings".
+   source (`/api/file`), exports, "open in editor", "save settings" and the
+   session state the map and the editor's side panel share (`/api/session`,
+   `/api/selection`, `/api/backpack`).
+   The graph carries an `ETag` so a client that already holds it is answered 304,
+   and its TypeScript declaration is generated from the Go one
+   (`go test ./internal/graph -update`) rather than copied by hand.
    Server-Sent Events (`/api/events`) push new graphs in `--watch` mode
    (`internal/watch`) and announce the git history (`internal/history`), the
    LSP references (`internal/lsp`) and what the scanners reported

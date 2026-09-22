@@ -26,6 +26,18 @@ const BODY = 0.12;          // walker radius for collisions
 const WATER = -0.45;        // the water surface (layout LAND_H below the mainland)
 const REACH = 90;           // aiming distance
 const CELL = 2;             // spatial grid for box lookups
+// A grid cell as one number rather than "gx,gz". These lookups happen several hundred
+// times a frame - the crosshair marches a ray through them, and every step the walker
+// takes probes five points - and a key built by concatenation is that many strings a
+// frame for the collector to take away again. Packing two cell indexes into one
+// integer costs an add and a multiply. Cells beyond 32768 from the origin - 65 536
+// map units, which no layout comes within orders of magnitude of - would share a key
+// with another cell; even then the callers' own footprint tests reject the stranger,
+// so the cost would be a comparison rather than a wrong answer.
+const cellOf = (gx, gz) => (gx + 32768) * 65536 + (gz + 32768);
+const cellKey = (x, z) => cellOf(Math.floor(x / CELL), Math.floor(z / CELL));
+// Handed back where a cell holds nothing, so that a miss allocates as little as a hit.
+const NO_CELL = [];
 // A prop only stops a walker standing at its own level: a tree on the terrace above
 // is not in the way, and one on the shore below is not either.
 const PROP_REACH = 0.7;
@@ -59,6 +71,9 @@ const RADAR_MIN = 12, RADAR_MAX = 400, RADAR_MS = 85, RADAR_SIZE = 150;
 // wider and a map with bugs on every street is zoomed in the whole time, which is
 // the same as not zooming at all.
 const RADAR_NEAR = 14, RADAR_GROW = 0.55;
+// How long the range and the dial take to settle, in seconds. Eased by elapsed time
+// rather than per redraw, so the growth is the same on a slow frame as on a fast one.
+const RADAR_RANGE_TAU = 0.5, RADAR_ZOOM_TAU = 0.55;
 // Degrees: the default view, the wheel's zoom range, and the view through the scope
 // (right button).
 const FOV = 70, MIN_FOV = 30, MAX_FOV = 90, SCOPE_FOV = 22;
@@ -78,7 +93,7 @@ const SHORE_MARGIN = 3, SKY_MARGIN = 12;
 const KEYS = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   'Space', 'ShiftLeft', 'ShiftRight', 'KeyC', 'KeyF', 'KeyE', 'KeyQ', 'Enter',
-  'Escape', 'KeyV', 'KeyT', 'KeyH',
+  'Escape', 'KeyV', 'KeyM', 'KeyT', 'KeyH',
   ...Array.from({ length: 9 }, (_, i) => `Digit${i + 1}`), // the tool slots
 ]);
 
@@ -111,7 +126,8 @@ export class Walker {
     this.beacons = new THREE.Group();
     this.ramps = [];
     this.bridges = [];
-    this.decks = new Map(); // ramps and bridge decks, by grid cell (indexDecks)
+    this.decks = new Map(); // ramps, by grid cell (indexDecks)
+    this.spans = new Map(); // bridge decks, likewise, but tested differently (height)
     this.aim = { i: -1, point: null, bug: null };
     this.bugs = null; // set by setBugs once there are findings to walk the streets
     // Frozen: the details panel has the pointer, so the view holds still. Otherwise
@@ -173,9 +189,8 @@ export class Walker {
       const x0 = Math.floor((b.x - b.w / 2) / CELL), x1 = Math.floor((b.x + b.w / 2) / CELL);
       const z0 = Math.floor((b.z - b.d / 2) / CELL), z1 = Math.floor((b.z + b.d / 2) / CELL);
       for (let x = x0; x <= x1; x++) for (let z = z0; z <= z1; z++) {
-        const k = x + ',' + z;
-        if (!this.grid.has(k)) this.grid.set(k, []);
-        this.grid.get(k).push(b);
+        const cell = this.grid.get(cellOf(x, z));
+        if (cell) cell.push(b); else this.grid.set(cellOf(x, z), [b]);
       }
     }
     this.drawBeacons();
@@ -190,19 +205,24 @@ export class Walker {
 
   // Ramps and bridge decks into the same spatial grid as the boxes: height() is called
   // several times a frame, at five points each, and a large map has a ramp per block.
+  //
+  // They are kept apart because height() asks them different questions. A ramp is
+  // narrower than the walker and is asked at their footprint, the way a box is. A
+  // bridge is asked once, at their middle, with the deck already narrowed by their
+  // own radius - which is what keeps a body from hanging over the railing.
   indexDecks() {
     this.decks = new Map();
-    const put = (r, at) => {
+    this.spans = new Map();
+    const put = (map, r, at) => {
       for (let x = Math.floor(r.x0 / CELL); x <= Math.floor(r.x1 / CELL); x++) {
         for (let z = Math.floor(r.z0 / CELL); z <= Math.floor(r.z1 / CELL); z++) {
-          const k = x + ',' + z;
-          if (!this.decks.has(k)) this.decks.set(k, []);
-          this.decks.get(k).push(at);
+          const cell = map.get(cellOf(x, z));
+          if (cell) cell.push(at); else map.set(cellOf(x, z), [at]);
         }
       }
     };
-    for (const r of this.ramps) put(r, (x, z) => rampHeight(r, x, z));
-    for (const b of this.bridges) put(bridgeBounds(b), (x, z) => bridgeHeight(b, x, z));
+    for (const r of this.ramps) put(this.decks, r, (x, z) => rampHeight(r, x, z));
+    for (const b of this.bridges) put(this.spans, bridgeBounds(b), (x, z) => bridgeHeight(b, x, z, BODY));
   }
 
   /** Starts walking in front of `box`, or on the south road of `block`. bounds sizes the planet. */
@@ -244,6 +264,10 @@ export class Walker {
     this.last = performance.now();
     this.scoped = false;
     this.fov = FOV;
+    // The tracker starts where it belongs rather than easing in from wherever it was
+    // left the last time walk mode was entered, possibly half a map away.
+    this.radarRange = this.radarZoom = undefined;
+    this.radarAt = 0;
     this.drawSlots();
     this.drawHud();
     this.loop();
@@ -545,6 +569,16 @@ export class Walker {
     const canvas = this.scene.renderer.domElement;
     let drag = null;
 
+    // Where the reticle is on the screen, which is where the hover card goes. It is
+    // asked for every frame, and getBoundingClientRect is a forced layout - sixty a
+    // second, for a number that only moves when the canvas does. So it is measured
+    // when the canvas is resized, which is the only thing that moves it: the window,
+    // or the details panel taking a third of the width.
+    const measure = () => { this.canvasRect = canvas.getBoundingClientRect(); };
+    measure();
+    new ResizeObserver(measure).observe(canvas);
+    window.addEventListener('resize', measure);
+
     window.addEventListener('keydown', e => {
       if (!this.owns(e) || e.target.closest('input, select, textarea, dialog') || e.ctrlKey || e.metaKey || e.altKey) return;
       // This listener is registered before the map's; stopping here keeps the map from
@@ -555,7 +589,7 @@ export class Walker {
       if (this.frozen) {
         // Reading: Esc and V still work, Enter goes back to walking, nothing moves.
         switch (e.code) {
-          case 'KeyV': this.exit(); break;
+          case 'KeyV': case 'KeyM': this.exit(); break;
           case 'Escape':
           case 'Enter': this.setFrozen(false); this.lockPointer(); break;
         }
@@ -581,7 +615,9 @@ export class Walker {
           else this.exit();
           break;
         case 'Enter': this.hooks.onInspect(this.aimed()); break;
-        case 'KeyV': this.exit(); break;
+        // V is the toggle the map also answers to; M says where it goes, for anyone
+        // who reaches for the map by name rather than remembering which way V points.
+        case 'KeyV': case 'KeyM': this.exit(); break;
       }
     });
     window.addEventListener('keyup', e => this.keys.delete(e.code));
@@ -687,7 +723,7 @@ export class Walker {
       this.zoom(dt);
       this.updateDarts(dt);
       this.bugs?.update(dt, now);
-      this.drawRadar(now);
+      this.drawRadar(now, dt);
       this.poseTool(dt, now);
       this.scene.setWalker(this.p.x, this.p.feet, this.p.z, EYE, this.p.yaw, this.p.pitch);
       if (!this.frozen) this.updateAim();
@@ -779,7 +815,10 @@ export class Walker {
   /** The block the walker stands on, to keep them by it across a relayout (reanchor). */
   anchorFor() {
     let box = null;
-    for (const b of this.at(this.p.x, this.p.z)) if (b.y <= this.p.feet + 0.01 && (!box || b.y > box.y)) box = b;
+    for (const b of this.cellAt(this.p.x, this.p.z)) {
+      if (Math.abs(this.p.x - b.x) <= b.w / 2 && Math.abs(this.p.z - b.z) <= b.d / 2
+        && b.y <= this.p.feet + 0.01 && (!box || b.y > box.y)) box = b;
+    }
     return box && { node: box.node, x: box.x, z: box.z, w: box.w, d: box.d };
   }
 
@@ -827,9 +866,9 @@ export class Walker {
     this.props = list;
     this.propGrid = new Map();
     for (const o of list || []) {
-      const k = Math.floor(o.x / CELL) + ',' + Math.floor(o.z / CELL);
-      if (!this.propGrid.has(k)) this.propGrid.set(k, []);
-      this.propGrid.get(k).push(o);
+      const k = cellKey(o.x, o.z);
+      const cell = this.propGrid.get(k);
+      if (cell) cell.push(o); else this.propGrid.set(k, [o]);
     }
   }
 
@@ -844,9 +883,10 @@ export class Walker {
   clearProps() {
     const p = this.p;
     if (p.fly || !this.props?.length) return;
+    const nearby = this.nearby ||= []; // reused: this runs twice every frame
     for (let pass = 0; pass < 2; pass++) {
       let moved = false;
-      for (const o of this.propsNear(p.x, p.z)) {
+      for (const o of this.propsNear(p.x, p.z, nearby)) {
         if (Math.abs(o.y - p.feet) > PROP_REACH) continue;
         const dx = p.x - o.x, dz = p.z - o.z;
         const want = o.r + BODY;
@@ -856,9 +896,12 @@ export class Walker {
         // Dead centre: push along the way they came rather than picking an axis.
         const [ux, uz] = d > 1e-4 ? [dx / d, dz / d] : [Math.sin(p.yaw), Math.cos(p.yaw)];
         const x = o.x + ux * want, z = o.z + uz * want;
-        // Never push someone through a wall or up onto a roof to get them off a tree;
-        // standing in the trunk is the lesser of those.
-        if (this.height(x, z) > p.feet + STEP) continue;
+        // Never push someone through a wall or up onto a roof to get them off a tree,
+        // and never push them off what they are standing on into the water - a
+        // bridge is narrow and a push across it would go over the side. Standing in
+        // the trunk is the lesser of all of those.
+        const to = this.height(x, z);
+        if (to > p.feet + STEP || (to <= WATER && p.feet > WATER)) continue;
         p.x = x;
         p.z = z;
         moved = true;
@@ -868,13 +911,16 @@ export class Walker {
   }
 
   /** The props whose cell the point is in, or next to. */
-  *propsNear(x, z) {
+  propsNear(x, z, out) {
+    out.length = 0;
     const i = Math.floor(x / CELL), j = Math.floor(z / CELL);
     for (let di = -1; di <= 1; di++) {
       for (let dj = -1; dj <= 1; dj++) {
-        yield* this.propGrid.get(i + di + ',' + (j + dj)) || [];
+        const cell = this.propGrid.get(cellOf(i + di, j + dj));
+        if (cell) for (const o of cell) out.push(o);
       }
     }
+    return out;
   }
 
   /** Keeps the walker over the map or the water just off its shores. */
@@ -891,26 +937,44 @@ export class Walker {
    */
   height(x, z) {
     let top = WATER;
-    for (const [dx, dz] of PROBES) {
-      const px = x + dx, pz = z + dz;
-      for (const b of this.at(px, pz)) top = Math.max(top, b.y + b.h);
-      for (const at of this.decks.get(Math.floor(px / CELL) + ',' + Math.floor(pz / CELL)) || []) {
-        top = Math.max(top, at(px, pz));
+    for (let i = 0; i < PROBES.length; i += 2) {
+      const px = x + PROBES[i], pz = z + PROBES[i + 1];
+      for (const b of this.cellAt(px, pz)) {
+        if (Math.abs(px - b.x) <= b.w / 2 && Math.abs(pz - b.z) <= b.d / 2) {
+          top = Math.max(top, b.y + b.h);
+        }
       }
+      for (const at of this.decks.get(cellKey(px, pz)) || NO_CELL) top = Math.max(top, at(px, pz));
     }
+    // A bridge carries the walker, not the corners of them. It is asked once, at
+    // their middle, against a deck already narrowed by their own radius: asking at
+    // the corners meant one corner on the deck was enough to stand on, so a body
+    // could be walked out through the railing and left hanging over the water. On
+    // the shores the deck overlaps there is land underneath, so stepping off at
+    // either end is as free as it ever was.
+    for (const at of this.spans.get(cellKey(x, z)) || NO_CELL) top = Math.max(top, at(x, z));
     return top;
   }
 
-  /** Boxes whose footprint contains (x, z). */
-  *at(x, z) {
-    for (const b of this.grid.get(Math.floor(x / CELL) + ',' + Math.floor(z / CELL)) || []) {
-      if (Math.abs(x - b.x) <= b.w / 2 && Math.abs(z - b.z) <= b.d / 2) yield b;
-    }
+  /**
+   * The boxes indexed in the cell holding (x, z) - candidates, not answers: a cell is
+   * larger than a box, so the caller tests the footprint.
+   *
+   * That test used to be here, in a generator that yielded only what matched. The ray
+   * the crosshair marches calls this a few hundred times a frame, and an iterator
+   * object per call is a few hundred objects a frame allocated to be thrown away
+   * again; the callers do the same two comparisons and allocate nothing.
+   */
+  cellAt(x, z) {
+    return this.grid.get(cellKey(x, z)) || NO_CELL;
   }
 
   /** The box containing a flat-map point, or null. */
   boxAt(v) {
-    for (const b of this.at(v.x, v.z)) if (v.y >= b.y - 0.02 && v.y <= b.y + b.h + 0.02) return b;
+    for (const b of this.cellAt(v.x, v.z)) {
+      if (Math.abs(v.x - b.x) <= b.w / 2 && Math.abs(v.z - b.z) <= b.d / 2
+        && v.y >= b.y - 0.02 && v.y <= b.y + b.h + 0.02) return b;
+    }
     return null;
   }
 
@@ -931,6 +995,9 @@ export class Walker {
     const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
     const v = new THREE.Vector3();
     const tool = this.tool;
+    // Both answers are the same at every step of the march, so they are asked once.
+    const catches = hits(tool, 'bugs') && this.bugs ? this.bugs : null;
+    const tags = hits(tool, 'buildings');
     let hit = null, point = null, bug = null;
     for (let t = 0.2; t < REACH; t += 0.04 + t * 0.008) {
       v.copy(cam.position).addScaledVector(dir, t);
@@ -940,13 +1007,13 @@ export class Walker {
       // otherwise the wall behind it would always win. A tool that is no use against
       // bugs looks straight through them - and one that is no use against buildings
       // still stops at the wall, because the wall is still in the way.
-      bug = hits(tool, 'bugs') ? this.bugs?.at(v, BUG_AIM(t)) || null : null;
+      bug = catches ? catches.at(v, BUG_AIM(t)) : null;
       if (bug) { point = v.clone(); break; }
       hit = this.boxAt(v);
       if (hit) { point = v.clone(); break; }
     }
     // The ground underfoot and the shore are scenery, not targets.
-    let i = !bug && hit && hits(tool, 'buildings') && !this.underfoot(hit) ? hit.i : -1;
+    let i = !bug && hit && tags && !this.underfoot(hit) ? hit.i : -1;
     // A tool with a reach is swung, not thrown: past it there is nothing to be done
     // about what the crosshair is on, which the HUD says rather than going blank.
     const far = tool.reach != null && point != null
@@ -954,7 +1021,7 @@ export class Walker {
     if (far) { bug = null; i = -1; }
     this.aim = { i, point, bug, far };
     this.showTarget(bug, far);
-    const r = this.scene.renderer.domElement.getBoundingClientRect();
+    const r = this.canvasRect;
     this.hooks.onAim(i, r.left + r.width / 2, r.top + r.height / 2);
   }
 
@@ -1015,7 +1082,9 @@ export class Walker {
     } else {
       const dir = new THREE.Vector3(-Math.sin(p.yaw) * Math.cos(p.pitch), Math.sin(p.pitch) + 0.04, -Math.cos(p.yaw) * Math.cos(p.pitch));
       shot.vel = dir.multiplyScalar(flight.speed);
-      shot.from = start.clone(); // how far it has gone, for a line that can run out
+      // Where it left from, so how far it has carried can be measured against the
+      // tool's reach - and against the length of a line, for the ones that pay one out.
+      shot.from = start.clone();
     }
     this.darts.push(shot);
   }
@@ -1116,27 +1185,20 @@ export class Walker {
    * point of the thing being to say which way to walk. Under it, how far the nearest
    * bug is and what it is carrying.
    */
-  drawRadar(now) {
+  drawRadar(now, dt) {
     const box = this.hud.querySelector('.w-radar');
     if (!this.bugs?.bugs.length) {
       box.hidden = true;
       return;
     }
     box.hidden = false;
-    if (now - (this.radarAt || 0) < RADAR_MS) return;
-    this.radarAt = now;
-
     const canvas = box.querySelector('canvas');
-    const dpr = Math.min(window.devicePixelRatio || 1, 2);
-    const cs = getComputedStyle(this.hud);
-    const v = name => cs.getPropertyValue(name).trim();
 
     // The range fits whatever is still out there, so the sweep is never all centre
-    // dot or all rim arrows; it eases so a bug walking round a corner does not zoom.
-    // Once one is close, though, holding the whole map is the wrong thing to hold:
-    // the range pulls in to the neighborhood and the dial grows to meet it, which
-    // is the difference between knowing a bug is somewhere ahead and seeing which
-    // side of the building it is on.
+    // dot or all rim arrows. Once one is close, though, holding the whole map is the
+    // wrong thing to hold: the range pulls in to the neighborhood and the dial grows
+    // to meet it, which is the difference between knowing a bug is somewhere ahead
+    // and seeing which side of the building it is on.
     const { x: px, z: pz, yaw } = this.p;
     const live = this.bugs.bugs.filter(b => !b.caught);
     let far = RADAR_MIN, near = Infinity;
@@ -1147,22 +1209,38 @@ export class Walker {
     }
     const closing = near < RADAR_NEAR ? 1 - near / RADAR_NEAR : 0;
     this.radarNear = near; // what the sweep thinks it is closing on, for the tests
+
+    // Both the range and the dial ease towards where they are going, and both ease
+    // by elapsed time rather than by redraw, so the approach looks the same whatever
+    // the frame rate is and whatever the throttle below decides.
     const want = closing
       ? clamp(Math.max(near * 2.4, RADAR_MIN), RADAR_MIN, RADAR_NEAR * 2.4)
       : clamp(far * 1.2, RADAR_MIN, RADAR_MAX);
-    this.radarRange = this.radarRange ? this.radarRange + (want - this.radarRange) * 0.12 : want;
-    // Eased as well, and rounded to whole pixels, so the canvas is not resized on
-    // every frame of the approach.
-    const grow = 1 + closing * RADAR_GROW;
-    this.radarZoom = this.radarZoom ? this.radarZoom + (grow - this.radarZoom) * 0.1 : grow;
-    const size = Math.round(RADAR_SIZE * this.radarZoom);
-    if (canvas.width !== Math.round(size * dpr)) {
-      canvas.width = canvas.height = Math.round(size * dpr);
-      canvas.style.width = canvas.style.height = `${size}px`;
-    }
+    this.radarRange = ease(this.radarRange, want, RADAR_RANGE_TAU, dt);
+    this.radarZoom = ease(this.radarZoom, 1 + closing * RADAR_GROW, RADAR_ZOOM_TAU, dt);
+    // The dial grows by transform rather than by resizing the canvas: a scale is
+    // sub-pixel and costs the compositor alone, where a resize rounded to whole
+    // pixels grew in visible steps, threw the drawing away and reallocated the
+    // bitmap on the way. The bitmap is therefore made once, at the size the dial
+    // reaches when it is fully grown, so growing into it stays sharp.
+    canvas.style.transform = `scale(${this.radarZoom.toFixed(3)})`;
+    const dpr = Math.min(window.devicePixelRatio || 1, 2);
+    const pixels = Math.round(RADAR_SIZE * (1 + RADAR_GROW) * dpr);
+    if (canvas.width !== pixels) canvas.width = canvas.height = pixels;
+
+    // The contents turn as slowly as a walker does, so they are repainted a dozen
+    // times a second; the scale above follows every frame.
+    if (now - (this.radarAt || 0) < RADAR_MS) return;
+    this.radarAt = now;
+
+    const cs = getComputedStyle(this.hud);
+    const v = name => cs.getPropertyValue(name).trim();
+    // Drawn in CSS pixels of the unscaled dial, whatever the bitmap behind it is.
+    const size = RADAR_SIZE;
     const g = canvas.getContext('2d');
     const c = size / 2, R = c - 7;
-    g.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const unit = pixels / size;
+    g.setTransform(unit, 0, 0, unit, 0, 0);
     g.clearRect(0, 0, size, size);
     const k = R / this.radarRange;
 
@@ -1292,15 +1370,20 @@ export class Walker {
   }
 
   // Names what the crosshair is on while it is a bug, so it is clear what would be
-  // caught before the tool is used - or says that it is out of a swung tool's reach,
+  // caught before the tool is used - or says that it is out of the tool's reach,
   // which is the one case where the crosshair is on something and nothing happens.
+  // A swung tool has to be walked up to; a thrown one would simply fall short, and
+  // saying which it is saves the walker guessing why the shot did nothing.
   showTarget(bug, far = false) {
     const el = this.hud.querySelector('.w-target');
     this.hud.classList.toggle('far', !!far);
     if (far) {
+      const name = this.tool.label.toLowerCase();
       this.targeted = null;
       el.hidden = false;
-      el.textContent = `Out of reach - walk closer to use the ${this.tool.label.toLowerCase()}`;
+      el.textContent = isMelee(this.tool)
+        ? `Out of reach - walk closer to use the ${name}`
+        : `Too far - the ${name} will fall short`;
       return;
     }
     if (!bug) {
@@ -1367,13 +1450,18 @@ export class Walker {
         const ground = hit && (hit.kind === 'land' || hit.kind === 'terrace');
         if (hit && dart.tool.reel && (dart.tool.climbs || !ground)
           && this.hook(m.position, hit, dart)) dart.kept = true;
-        // A line has a length. Fired into the sky or out over the water a hook finds
-        // nothing to stop it, and without this it would be six seconds before the
-        // line came down - six seconds of a rope across the view, going nowhere.
-        const out = dart.tool.reel && dart.from
-          && m.position.distanceTo(dart.from) > dart.tool.reel.max;
-        if (out) this.flash('The line ran out');
-        if (bug || hit || out || m.position.y < WATER || dart.t > 6) done.push(dart);
+        // A shot that hits nothing still has a range: what a tool reaches is what it
+        // throws that far, and a nail that sails on over the next six blocks made
+        // the reticle's own "too far" a lie. A line is shorter still - fired into
+        // the sky or out over the water a hook finds nothing to stop it, and without
+        // this it would be six seconds of a rope across the view, going nowhere.
+        const gone = dart.from ? m.position.distanceTo(dart.from) : 0;
+        // A tool that pays out a line ends where the line does, and says so; for
+        // everything else the end is the tool's reach.
+        const rope = dart.tool.reel && dart.from && gone > dart.tool.reel.max;
+        const spent = !dart.tool.reel && dart.from && gone > (dart.tool.reach ?? REACH);
+        if (rope) this.flash('The line ran out');
+        if (bug || hit || rope || spent || m.position.y < WATER || dart.t > 6) done.push(dart);
       }
       // A dart points along its flight; a hoop spins, a bubble wobbles, a bobber
       // just bobs along.
@@ -1461,8 +1549,17 @@ export class Walker {
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
-// The walker's footprint, sampled at its centre and four corners (height).
-const PROBES = [[0, 0], [BODY, BODY], [BODY, -BODY], [-BODY, BODY], [-BODY, -BODY]];
+/**
+ * Exponential easing towards a value: `tau` is how long it takes to close most of
+ * the gap, in seconds, whatever dt happens to be. An undefined current value starts
+ * where it is going, so nothing animates in from zero on the first frame.
+ */
+const ease = (cur, want, tau, dt) =>
+  cur === undefined ? want : cur + (want - cur) * (1 - Math.exp(-Math.max(0, dt) / tau));
+
+// The walker's footprint, sampled at its centre and four corners (height). Flat
+// pairs, so walking it allocates nothing.
+const PROBES = [0, 0, BODY, BODY, BODY, -BODY, -BODY, BODY, -BODY, -BODY];
 
 // The tracker draws the worst bugs last, so a critical one is never hidden under a nit.
 const SEVERITY_ORDER = ['unknown', 'info', 'low', 'medium', 'high', 'critical'];

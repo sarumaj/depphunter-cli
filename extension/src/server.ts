@@ -147,6 +147,8 @@ export function argv(cfg: vscode.WorkspaceConfiguration, root: string): string[]
   on('watch', '--watch');
 
   list('exclude', '--exclude');
+  list('private', '--private');
+  list('trustIndexes', '--trust-index');
   number('maxFileSize', '--max-file-size');
   number('resolveDepth', '--resolve-depth');
   on('online', '--online');

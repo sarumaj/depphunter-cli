@@ -46,6 +46,9 @@ const vscode = {
   },
   workspace: {
     get workspaceFolders() { return [{ uri: { fsPath: root, scheme: 'file' }, name: 'workspace' }]; },
+    fs: {
+      writeFile: async (uri, data) => { calls.push(['writeFile', uri.fsPath, data]); },
+    },
     getConfiguration: () => ({ get: key => settings[key] }),
     getWorkspaceFolder: () => undefined,
     onDidChangeWorkspaceFolders: () => ({ dispose() {} }),
@@ -78,6 +81,18 @@ const vscode = {
       calls.push(['registerTreeDataProvider', id, provider]);
       return { dispose() {} };
     },
+    createTreeView: (id, options) => {
+      const view = {
+        id, visible: true, title: id,
+        reveal: async (element, opts) => { calls.push(['reveal', id, element, opts]); },
+        onDidChangeVisibility: fn => { view.visibilityListener = fn; return { dispose() {} }; },
+        dispose() {},
+      };
+      calls.push(['registerTreeDataProvider', id, options.treeDataProvider]);
+      calls.push(['createTreeView', id, view]);
+      return view;
+    },
+    showSaveDialog: async options => { calls.push(['showSaveDialog', options]); return undefined; },
     withProgress: (_options, task) => task(
       { report() {} }, { onCancellationRequested: () => ({ dispose() {} }) }),
   },
@@ -94,8 +109,16 @@ const vscode = {
   TreeItem: class TreeItem {
     constructor(label, collapsibleState) { this.label = label; this.collapsibleState = collapsibleState; }
   },
-  TreeItemCollapsibleState: { None: 0 },
-  ThemeIcon: class ThemeIcon { constructor(id) { this.id = id; } },
+  TreeItemCollapsibleState: { None: 0, Collapsed: 1, Expanded: 2 },
+  ThemeIcon: class ThemeIcon { constructor(id, color) { this.id = id; this.color = color; } },
+  ThemeColor: class ThemeColor { constructor(id) { this.id = id; } },
+  MarkdownString: class MarkdownString {
+    constructor(value = '') { this.value = value; }
+    appendMarkdown(text) { this.value += text; return this; }
+  },
+  Disposable: class Disposable {
+    constructor(fn) { this.dispose = fn; }
+  },
   StatusBarAlignment: { Right: 2 },
   ViewColumn: { Active: -1 },
   ProgressLocation: { Notification: 15 },

@@ -14,6 +14,7 @@ import (
 	"golang.org/x/mod/module"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/scope"
 )
 
 // Client asks package indexes what a package depends on, for the ecosystems whose
@@ -25,22 +26,28 @@ type Client struct {
 	http    *http.Client
 	cache   *store
 	auth    *credentials
+	private *scope.Private
 	timeout time.Duration
 
 	mu   sync.Mutex
 	seen map[string][]lang.Target // answers already given, including empty ones
+	// feeds is what a NuGet service index resolved to: the same answer for every
+	// package on that feed, and one request rather than one per package.
+	feeds map[string]string
 }
 
 // NewClient prepares the client. dir holds the cached answers; ttl is how long one
-// stays usable.
-func NewClient(cfg *Config, dir string, ttl, timeout time.Duration, home string) *Client {
+// stays usable; private names the packages that must not be asked of a public index.
+func NewClient(cfg *Config, dir string, ttl, timeout time.Duration, home string, private *scope.Private) *Client {
 	return &Client{
 		cfg:     cfg,
 		http:    &http.Client{Timeout: timeout},
 		cache:   newStore(dir, ttl),
 		auth:    readCredentials(home),
+		private: private,
 		timeout: timeout,
 		seen:    map[string][]lang.Target{},
+		feeds:   map[string]string{},
 	}
 }
 
@@ -52,6 +59,14 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 	index, known := c.cfg.For(t.Ecosystem, t.Package)
 	if !known {
 		return nil // an index only the repository asks for is not fetched from
+	}
+	// An organization's own package is not named to the world. Asking the public
+	// index about corp.example/billing would not answer anyway, and the asking is
+	// itself the disclosure: the request says the package exists, and to whom. A
+	// private registry that this machine is configured for is a different matter, and
+	// is asked as usual.
+	if c.private.Match(t.Ecosystem, t.Package) && c.cfg.Public(t.Ecosystem, index) {
+		return nil
 	}
 	key := t.Ecosystem + " " + t.Package + "@" + t.Version
 	c.mu.Lock()
@@ -89,9 +104,17 @@ func (c *Client) lookup(t lang.Target, index string) ([]lang.Target, error) {
 		deps, err = c.npmPackage(ctx, index, t)
 	case PyPI:
 		deps, err = c.pypiDistribution(ctx, index, t)
+	case Cargo:
+		deps, err = c.cargoCrate(ctx, index, t)
+	case NuGet:
+		deps, err = c.nugetPackage(ctx, index, t)
+	case OCI:
+		deps, err = c.ociBase(ctx, index, t)
 	default:
-		// The other ecosystems need a different request per index flavour; until
-		// that is written, saying nothing is better than guessing.
+		// Maven is the one that cannot be asked. A POM is addressed by group *and*
+		// artifact, and the Java plugin puts only the group on the map (an import
+		// names a package, and a package does not say which artifact ships it), so
+		// there is no document to request. Saying nothing beats guessing an artifact.
 		return nil, nil
 	}
 	if err != nil {
@@ -115,15 +138,22 @@ func (c *Client) targets(eco string, deps []dep) []lang.Target {
 	return out
 }
 
+// userAgent identifies depphunter to the indexes. crates.io refuses a request without
+// one, and an index that is rate-limiting is owed a name to complain about.
+const userAgent = "depphunter (+https://github.com/sarumaj/depphunter-cli)"
+
+// maxBody is as much of an answer as any of this needs to read.
+const maxBody = 8 << 20
+
 // get performs one request, with whatever credentials this machine has for the host.
 func (c *Client) get(ctx context.Context, url string) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Accept", "application/json")
-	c.auth.apply(req)
-	resp, err := c.http.Do(req)
+	return c.accept(ctx, url, "application/json")
+}
+
+// accept is get for the answers that are not JSON: a nuspec, a sparse index line, an
+// image manifest that has to name the media types it will take.
+func (c *Client) accept(ctx context.Context, url, media string) ([]byte, error) {
+	resp, err := c.do(ctx, url, media, "")
 	if err != nil {
 		return nil, err
 	}
@@ -131,7 +161,30 @@ func (c *Client) get(ctx context.Context, url string) ([]byte, error) {
 	if resp.StatusCode != http.StatusOK {
 		return nil, fmt.Errorf("%s: %s", url, resp.Status)
 	}
-	return io.ReadAll(io.LimitReader(resp.Body, 8<<20))
+	return readLimited(resp)
+}
+
+// readLimited reads an answer, and no more of it than any of this has any use for.
+func readLimited(resp *http.Response) ([]byte, error) {
+	return io.ReadAll(io.LimitReader(resp.Body, maxBody))
+}
+
+// do makes one request and hands back the response unread. bearer, when given, is
+// sent instead of this machine's own credentials - it is the token a registry handed
+// out for this one pull (see ociToken).
+func (c *Client) do(ctx context.Context, url, media, bearer string) (*http.Response, error) {
+	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	if err != nil {
+		return nil, err
+	}
+	req.Header.Set("Accept", media)
+	req.Header.Set("User-Agent", userAgent)
+	if bearer != "" {
+		req.Header.Set("Authorization", "Bearer "+bearer)
+	} else {
+		c.auth.apply(req)
+	}
+	return c.http.Do(req)
 }
 
 // goModule reads a module's own requirements from its go.mod, which a module proxy

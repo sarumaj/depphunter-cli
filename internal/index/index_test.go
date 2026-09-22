@@ -145,3 +145,46 @@ func TestHost(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+func TestAnIndexTheUserVouchesForIsNotMarked(t *testing.T) {
+	// The shape this is for: an organization whose repositories carry their own
+	// .npmrc pointing at the company registry. Without a word from the user that is
+	// an index nothing on this machine configures, which is what dependency
+	// confusion looks like - so every package is marked, and a warning that is
+	// always on is a warning nobody reads.
+	repoOnly := func() *Config {
+		c := New()
+		c.Add(NPM, Source{URL: "https://nexus.corp/repository/npm-group"})
+		return c
+	}
+
+	c := repoOnly()
+	if _, known := c.For(NPM, "@acme/widgets"); known {
+		t.Error("an index only the repository names was trusted without being vouched for")
+	}
+
+	c = repoOnly()
+	c.Trust([]string{"https://nexus.corp/repository/npm-group/"}) // a trailing slash is the same index
+	index, known := c.For(NPM, "@acme/widgets")
+	if index != "https://nexus.corp/repository/npm-group" || !known {
+		t.Errorf("got %q known=%v after vouching for it", index, known)
+	}
+	// Vouching for one index says nothing about any other.
+	c.Add(PyPI, Source{URL: "https://pypi.evil.example/simple"})
+	if _, known := c.For(PyPI, "requests"); known {
+		t.Error("vouching for one index trusted another")
+	}
+}
+
+func TestPublicNamesTheEcosystemsOwnIndex(t *testing.T) {
+	c := New()
+	if !c.Public(NPM, "https://registry.npmjs.org") {
+		t.Error("the public npm registry was not recognized as public")
+	}
+	if c.Public(NPM, "https://nexus.corp/repository/npm-group") {
+		t.Error("a company registry was called public")
+	}
+	if c.Public(NPM, "") {
+		t.Error("nothing at all was called public")
+	}
+}

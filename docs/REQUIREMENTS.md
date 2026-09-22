@@ -656,13 +656,20 @@ the side panel, a double click expands a directory, `V` enters walk mode and
   like, and nothing is fetched from it.
 - `--online` allows asking the trusted indexes for what the repository does not
   record - a Go module's own go.mod from the proxy, an npm version document, a
-  distribution's requires-dist - which is what lets `--resolve-depth` reach
-  ecosystems whose graph is not in the repository. The version travels with each
+  distribution's requires-dist, a crate's line in the sparse index, a NuGet
+  package's nuspec, and the base image an OCI image was built on - which is what
+  lets `--resolve-depth` reach ecosystems whose graph is not in the repository.
+  An image is followed through its manifest and config blob only, for the base
+  name in its annotations or labels; no layers are fetched, and a registry's
+  pull-token challenge is answered only where the realm is HTTPS or the
+  registry's own host. Maven cannot be asked at all: a POM needs a group and an
+  artifact, and a package on the map is a group. The version travels with each
   dependency the index names, since without it the level below cannot be asked
   for at all: a module proxy serves a go.mod for a version, not for a module.
-  Lock files are asked first, answers are cached for a day, and credentials come
-  from the user's own npm
-  tokens and netrc and go only to the host they were written for.
+  Lock files are asked first, one level of the walk is asked at once rather than
+  one package at a time, answers are cached for a day, and credentials come from
+  the user's own npm tokens and netrc and go only to the host they were written
+  for.
 
 - The side panel lists dependencies and dependents as trees rather than flat
   lists: a row opens into what that node depends on in turn, without fetching
@@ -794,9 +801,104 @@ the same language colors, a board's streets carry copper where a city's carry
 asphalt, opening a building's details in walk mode leaves no hover card on the
 panel, and the tracker points at a bug on the far side of the map.
 
+### M15 - One interface, in the editor as well as in the map
+
+- The extension's own corner of the activity bar holds a **dependency tree** and
+  a **backpack** beside the list of maps, both reading the map that was opened
+  last. The tree is the graph document itself: a directory opens into what it
+  holds, a file into what it imports, an island into its packages and a package
+  into what it depends on, with no request per row, since every edge arrived with
+  the graph. A branch that reaches something already open on it is shown once
+  more, marked, and left closed.
+- The selection and the catch are the server's while the map is open
+  (`GET /api/session`, `POST /api/selection`, `PUT /api/backpack`), announced on
+  the same event stream as everything else. A row picked in the panel selects
+  that building on the map; a building picked on the map opens the tree to its
+  row. Each change names the client that made it, so a client can tell its own
+  change coming back from somebody else's.
+- The backpack's lasting store stays the browser's, per repository: it has to
+  outlive a server that only runs while somebody is looking. The page pushes it
+  up as it loads, and a finding dropped in the panel is dropped from the map too.
+- The catch can be written out as Markdown, CSV or JSON, and the graph in its
+  own formats, from the editor as well as from the page; and the map can be
+  opened in the browser outside the editor for the one time that is wanted,
+  without changing where it opens by default.
+
+*Accepted when* clicking a package in the panel selects the same package on the
+map, catching a bug in walk mode makes it appear in the panel's backpack, taking
+it out of the panel takes it out of the map's, and a package that depends on
+something that depends back on it can be opened down to its repeat and no
+further.
+
+### M16 - What the organization owns
+
+- Most of an enterprise repository is internal, and two things depphunter does for
+  a public package must not be done for an internal one: naming it to that
+  ecosystem's public index (which does not answer, and says the package exists),
+  and asking the vulnerability database about it (which hands its name and version
+  to a third party). Neither is inferable - a module path on a company host looks
+  like any other - so `--private` / `private:` declares them, with GOPRIVATE's
+  glob-prefix meaning and an optional ecosystem prefix (`npm:@acme/*`). GOPRIVATE
+  and GONOPROXY are read on top, so a Go project that has configured its machine
+  needs no configuration here.
+- A package so matched carries `private` on the graph, is drawn with a badge, and
+  is skipped by both the index client and the OSV query. It is still asked of an
+  index this machine's own configuration names: a company registry knows about it
+  already. A repository may declare its own packages private - the effect is only
+  that depphunter says less, and the repository is who would know.
+- `--trust-index` / `trust_indexes:` vouches for an index that appears only in the
+  repository, which otherwise carries the ⚠ marking and is never fetched from. It
+  is read from the user's own config and the command line only: a repository that
+  could clear its own warning would leave no guard at all, which is the whole
+  point of the marking.
+- Credentials are read from the files an enterprise keeps them in - npm auth
+  tokens, netrc, `~/.m2/settings.xml` `<servers>` matched to the mirror or
+  repository that names them, and `<packageSourceCredentials>` matched to its
+  `<packageSources>` entry - with `${env.NAME}` and `%NAME%` resolved, and an
+  encrypted password left alone rather than sent as ciphertext. Each goes to the
+  host it was written for and to no other.
+
+*Accepted when* a run with `--private 'corp.example/*'` names no corp.example
+package to a public proxy and sends none of them to osv.dev, those
+packages are still resolved from a registry the machine configures, a project
+config naming `trust_indexes` changes nothing, and GOPRIVATE alone is enough to
+mark a Go repository's internal modules.
+
+### M17 - Asking again without being answered again
+
+- `/api/graph` carries an `ETag` and honours `If-None-Match`. The tag is the
+  snapshot's fingerprint, which is of the nodes and the edges and not of when
+  they were read, so a re-analysis that found the same project is the same
+  entity. `Cache-Control` is `no-cache` rather than `no-store`: a validator is
+  no use to a client that was told not to keep the document.
+- Every announcement on the event stream carries an `id`, and the greeting says
+  the current sequence and whether the client's `Last-Event-ID` is still it.
+  A client that did not resume may have slept through an announcement - nothing
+  is announced twice - and asks again; the ETag makes that free when the answer
+  is the document it already holds. The first greeting of a connection's life is
+  not a reconnection and asks nothing.
+- The graph document's TypeScript declaration is generated from the Go one and
+  checked by the ordinary test run (`go test ./internal/graph -update` rewrites
+  it). A hand copy of a struct is a field added on one side and quietly not read
+  on the other, which is not a compile error anywhere.
+
+*Accepted when* loading the map makes exactly one request for the graph, a
+reconnection that missed nothing makes none, a reconnection that missed something
+is answered 304 where the graph did not change, and adding a field to graph.Node
+without regenerating fails the tests by name.
+
 ### Known limits
 
 - Java imports name packages, not artifacts, so Maven dependencies are matched
-  by heuristics; unmatched imports are shown as unresolved.
+  by heuristics; unmatched imports are shown as unresolved. For the same reason
+  an index cannot be asked what a Maven package depends on: a POM is addressed by
+  group and artifact, and the map has only the group.
+- A GitHub Actions reference is `owner/repo@ref` whether it comes from github.com
+  or from a GitHub Enterprise instance, so the two are one ecosystem on the map.
+  `--private 'actions:internal-org/*'` is how an instance's own actions are kept
+  off the public index and out of the vulnerability database.
+- Cargo registry tokens (`CARGO_REGISTRIES_*_TOKEN`) and pip's keyring are not
+  read, so a private crate registry or a keyring-backed PyPI mirror answers 401
+  and is passed over in silence.
 - Servers that index slowly (rust-analyzer, jdtls) may answer before indexing
   finishes and return fewer references within the time budget.

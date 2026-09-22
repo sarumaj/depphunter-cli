@@ -1,6 +1,13 @@
 // Package graph defines the document exchanged between analysis and the UI.
 // Its JSON shape is specified in docs/REQUIREMENTS.md §3.
+//
+// The VS Code extension needs the same shape in TypeScript, and that file is
+// generated from these declarations rather than written beside them: see
+// types_test.go, which also checks on every ordinary test run that what is
+// committed is still what this file says.
 package graph
+
+//go:generate go test . -update
 
 import "time"
 
@@ -51,6 +58,10 @@ type Node struct {
 	// nothing on this machine vouches for it.
 	Index        string `json:"index,omitempty"`
 	IndexUnknown bool   `json:"indexUnknown,omitempty"`
+	// Private marks a package this organization owns (--private, GOPRIVATE). Nothing
+	// so marked is named to a public index or sent to the vulnerability database: the
+	// request would be the disclosure.
+	Private bool `json:"private,omitempty"`
 	// Std marks ecosystems holding a language's standard library, which the UI hides by default.
 	Std bool `json:"std,omitempty"`
 	// Unresolved marks packages whose owning module could not be determined from manifests.

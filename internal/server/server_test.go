@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"encoding/json"
 	"io"
 	"net/http"
 	"net/http/cookiejar"
@@ -9,6 +10,7 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
+	"strconv"
 	"strings"
 	"testing"
 	"testing/fstest"
@@ -138,8 +140,18 @@ func TestUpdatePushesEvents(t *testing.T) {
 			return ""
 		}
 	}
-	if e := next(); e != `data: {"version":1}` {
+	var hello struct {
+		Version int    `json:"version"`
+		ETag    string `json:"etag"`
+		Resumed bool   `json:"resumed"`
+	}
+	if e := next(); json.Unmarshal([]byte(strings.TrimPrefix(e, "data: ")), &hello) != nil || hello.Version != 1 {
 		t.Fatalf("hello: %s", e)
+	}
+	// A first connection has nothing to resume, and the greeting carries the
+	// validator so a client can ask whether what it already holds is still current.
+	if hello.Resumed || hello.ETag == "" {
+		t.Errorf("hello: resumed %v etag %q", hello.Resumed, hello.ETag)
 	}
 
 	same := &graph.Graph{Nodes: []*graph.Node{{ID: graph.FileID("a.go"), Kind: graph.KindFile, Path: "a.go"}}}
@@ -414,5 +426,216 @@ func TestEmbedStillRefusesAWriteWithoutTheRequestHeader(t *testing.T) {
 	res.Body.Close()
 	if res.StatusCode != http.StatusForbidden {
 		t.Errorf("POST without %s: got %d, want 403", requestHeader, res.StatusCode)
+	}
+}
+
+// The document the server hands out is assembled rather than marshalled from the
+// graph, so that the nodes and the edges are encoded once instead of twice (see
+// newSnapshot). That makes it possible to add a field to graph.Graph and quietly stop
+// serving it, which is what this is here to catch.
+func TestServedGraphMatchesTheDocument(t *testing.T) {
+	g := &graph.Graph{
+		Root:        "repo",
+		GeneratedAt: time.Date(2024, 5, 4, 3, 2, 1, 0, time.UTC),
+		Nodes: []*graph.Node{
+			{ID: "f:a.go", Kind: graph.KindFile, Name: "a.go", Path: "a.go", Lang: "Go", LOC: 12},
+			{ID: "p:go:example.com/x", Kind: graph.KindPackage, Name: "example.com/x", Version: "v1.2.3",
+				Requested: "v1.2", Floating: true, Transitive: true, Index: "https://proxy.golang.org", IndexUnknown: true},
+		},
+		Edges: []*graph.Edge{{From: "f:a.go", To: "p:go:example.com/x", Kind: graph.EdgeImport, Line: 3}},
+	}
+	sn, err := newSnapshot(g, 1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	want, err := json.Marshal(g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if string(sn.json) != string(want) {
+		t.Errorf("the served document is not the graph:\n got %s\nwant %s", sn.json, want)
+	}
+
+	// And the fingerprint is of what the map is of, not of when it was made: the same
+	// analysis a minute later is the same analysis.
+	later := *g
+	later.GeneratedAt = g.GeneratedAt.Add(time.Minute)
+	again, err := newSnapshot(&later, 2)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if again.fingerprint != sn.fingerprint {
+		t.Error("a later run of the same analysis fingerprinted differently")
+	}
+}
+
+func TestGraphAnswersNotModifiedForWhatTheClientHolds(t *testing.T) {
+	s, url, base := start(t)
+	c := login(t, url)
+
+	res, err := c.Get(base + "/api/graph")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	etag := res.Header.Get("ETag")
+	if etag == "" {
+		t.Fatal("no ETag on the graph")
+	}
+	// A validator is no use to a client that was told not to keep the document.
+	if cc := res.Header.Get("Cache-Control"); cc == "no-store" {
+		t.Errorf("Cache-Control %q forbids the store an ETag is for", cc)
+	}
+
+	ask := func(match string) int {
+		req, _ := http.NewRequest(http.MethodGet, base+"/api/graph", nil)
+		req.Header.Set("If-None-Match", match)
+		res, err := c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res.StatusCode
+	}
+	if code := ask(etag); code != http.StatusNotModified {
+		t.Errorf("holding the current graph: %d", code)
+	}
+	// The forms a cache is allowed to send.
+	if code := ask(`"stale", ` + etag); code != http.StatusNotModified {
+		t.Errorf("a list holding it: %d", code)
+	}
+	if code := ask("W/" + etag); code != http.StatusNotModified {
+		t.Errorf("weakened: %d", code)
+	}
+	if code := ask("*"); code != http.StatusNotModified {
+		t.Errorf("*: %d", code)
+	}
+	if code := ask(`"something-else"`); code != http.StatusOK {
+		t.Errorf("holding something else: %d", code)
+	}
+
+	// A re-analysis that found the same project is the same entity, however many
+	// times it is read: the fingerprint is of the graph, not of the reading.
+	same := &graph.Graph{Nodes: []*graph.Node{{ID: graph.FileID("a.go"), Kind: graph.KindFile, Path: "a.go"}}}
+	if changed, _ := s.Update(same, nil); changed {
+		t.Fatal("an identical graph was reported as a change")
+	}
+	if code := ask(etag); code != http.StatusNotModified {
+		t.Errorf("after an identical re-analysis: %d", code)
+	}
+
+	// A real change is a new entity.
+	g := &graph.Graph{Nodes: []*graph.Node{{ID: graph.FileID("b.go"), Kind: graph.KindFile, Path: "b.go"}}}
+	if changed, err := s.Update(g, nil); !changed || err != nil {
+		t.Fatalf("update: %v %v", changed, err)
+	}
+	if code := ask(etag); code != http.StatusOK {
+		t.Errorf("after the graph changed: %d", code)
+	}
+}
+
+func TestAReconnectingStreamIsToldWhetherItMissedAnything(t *testing.T) {
+	s, url, base := start(t)
+	c := login(t, url)
+
+	hello := func(lastID string) (seq uint64, wasResumed bool) {
+		req, _ := http.NewRequest(http.MethodGet, base+"/api/events", nil)
+		if lastID != "" {
+			req.Header.Set("Last-Event-ID", lastID)
+		}
+		res, err := c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		defer res.Body.Close()
+		sc := bufio.NewScanner(res.Body)
+		for sc.Scan() {
+			data, ok := strings.CutPrefix(sc.Text(), "data: ")
+			if !ok {
+				continue
+			}
+			var h struct {
+				Seq     uint64 `json:"seq"`
+				Resumed bool   `json:"resumed"`
+			}
+			if err := json.Unmarshal([]byte(data), &h); err != nil {
+				t.Fatal(err)
+			}
+			return h.Seq, h.Resumed
+		}
+		t.Fatal("no greeting")
+		return 0, false
+	}
+
+	// Nothing has been announced yet, and a client with no id to hand back has
+	// nothing to resume.
+	seq, wasResumed := hello("")
+	if seq != 0 || wasResumed {
+		t.Fatalf("first connection: seq %d resumed %v", seq, wasResumed)
+	}
+	// Handing back the id it last saw says it is still current.
+	if _, wasResumed = hello("0"); !wasResumed {
+		t.Error("a client holding the latest id was told it had missed something")
+	}
+
+	// Something happens while it is away.
+	g := &graph.Graph{Nodes: []*graph.Node{{ID: graph.FileID("b.go"), Kind: graph.KindFile, Path: "b.go"}}}
+	if _, err := s.Update(g, nil); err != nil {
+		t.Fatal(err)
+	}
+	seq, wasResumed = hello("0")
+	if wasResumed {
+		t.Error("a client that slept through an announcement was told it was up to date")
+	}
+	if seq == 0 {
+		t.Error("the sequence did not move when something was announced")
+	}
+	// ... and once it has caught up it is current again.
+	if _, wasResumed = hello(strconv.FormatUint(seq, 10)); !wasResumed {
+		t.Error("a caught-up client was not resumed")
+	}
+	// Nonsense is not a resume.
+	if _, wasResumed = hello("not-a-number"); wasResumed {
+		t.Error("an unreadable Last-Event-ID resumed the stream")
+	}
+}
+
+func TestEventsCarryTheirIdSoAClientCanResume(t *testing.T) {
+	s, url, base := start(t)
+	c := login(t, url)
+	res, err := c.Get(base + "/api/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer res.Body.Close()
+	lines := make(chan string, 16)
+	go func() {
+		sc := bufio.NewScanner(res.Body)
+		for sc.Scan() {
+			lines <- sc.Text()
+		}
+	}()
+	next := func() string {
+		select {
+		case l := <-lines:
+			return l
+		case <-time.After(3 * time.Second):
+			t.Fatal("no line")
+			return ""
+		}
+	}
+	for next() != "" { // the greeting, up to its blank line
+	}
+	g := &graph.Graph{Nodes: []*graph.Node{{ID: graph.FileID("b.go"), Kind: graph.KindFile, Path: "b.go"}}}
+	if _, err := s.Update(g, nil); err != nil {
+		t.Fatal(err)
+	}
+	// An announcement leads with its id, which is what EventSource remembers and
+	// hands back on the next connection.
+	if line := next(); line != "id: 1" {
+		t.Errorf("first announcement: %q, want an id", line)
+	}
+	if line := next(); line != "event: graph" {
+		t.Errorf("after the id: %q", line)
 	}
 }

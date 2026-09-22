@@ -81,16 +81,20 @@ the code. The map itself is the same page either way.
 - [Command-line tool](#command-line-tool): [Install](#install) ·
   [Usage](#usage) · [Configuration](#configuration) ·
   [Watch mode and cache](#watch-mode-and-cache) · [Exports](#exports) ·
+  [HTTP API](#http-api) ·
   [Opening files in your editor](#opening-files-in-your-editor)
 - [VS Code extension](#vs-code-extension):
-  [Install](#install-the-extension) · [Use](#use) · [Settings](#settings) ·
-  [Remote workspaces](#remote-workspaces) ·
+  [Install](#install-the-extension) · [Use](#use) ·
+  [The panel beside the code](#the-panel-beside-the-code) ·
+  [Settings](#settings) · [Remote workspaces](#remote-workspaces) ·
   [How the framing works](#how-the-framing-works)
 - [The map](#the-map): [Keyboard & mouse](#keyboard--mouse) ·
   [Styles](#styles) · [Findings](#findings) · [Git history](#git-history) ·
   [Versions and pinning](#versions-and-pinning) ·
   [Dependencies of dependencies](#dependencies-of-dependencies) ·
-  [Package indexes](#package-indexes) · [CI pipelines](#ci-pipelines) ·
+  [Package indexes](#package-indexes) ·
+  [Private dependencies](#private-and-internal-dependencies) ·
+  [CI pipelines](#ci-pipelines) ·
   [Symbol references](#symbol-references) · [Languages](#languages)
 - [Security](#security) · [Contributing](#contributing) · [License](#license)
 
@@ -125,35 +129,37 @@ depphunter --export dot -o deps.dot   # write the graph and exit
 depphunter --export html -o map.html  # a self-contained map to share
 ```
 
-| Flag                | Default                   |                                                                                |
-|---------------------|---------------------------|--------------------------------------------------------------------------------|
-| `--addr`            | `127.0.0.1:0`             | listen address; port 0 picks a free port                                       |
-| `--no-open`         |                           | print the URL instead of opening the browser                                   |
-| `--exclude`         |                           | glob of paths to skip (repeatable)                                             |
-| `--max-file-size`   | `2097152`                 | larger files are listed but not read                                           |
-| `--config`          | `<path>/.depphunter.yaml` | config file to use                                                             |
-| `--theme`           | `auto`                    | `auto`, `light`, `dark`                                                        |
-| `--color-by`        | `language`                | `language`, `size`, `commits`, `churn`, `age`, `authors`                       |
-| `--height-scale`    | `sqrt`                    | `linear`, `sqrt`, `log`                                                        |
-| `--style`           | `city`                    | what the map is dressed as: `city`, `circuit`, `galaxy`                        |
-| `--show-std`        | `false`                   | show standard-library islands                                                  |
-| `--expand-depth`    | `0`                       | initially expanded depth; `0` = auto, `-1` = all                               |
-| `--watch`           | `false`                   | re-analyze on file changes, update the browser live                            |
-| `--no-cache`        |                           | neither read nor write the analysis cache                                      |
-| `--no-history`      |                           | do not read git history                                                        |
-| `--history-commits` | `10000`                   | read at most this many commits                                                 |
-| `--resolve-depth`   | `0`                       | levels of dependencies-of-dependencies from lock files (`-1` = all)            |
-| `--online`          | `false`                   | ask package indexes for what the project's files do not record                 |
-| `--lsp`             |                           | find symbol references with installed language servers                         |
-| `--lsp-timeout`     | `5m`                      | time budget for language servers                                               |
-| `--findings`        |                           | scanner report to place on the map (repeatable, globs)                         |
-| `--no-vulns`        |                           | place no findings, and do not ask the OSV database                             |
-| `-v`, `--version`   |                           | print the version and exit                                                     |
-| `-h`, `--help`      |                           | list the flags with their defaults                                             |
-| `--editor`          | auto-detected             | editor command template, e.g. `"code -g {file}:{line}"`                        |
-| `--embed`           |                           | origin allowed to show the map in a frame, e.g. `vscode-webview:` (repeatable) |
-| `--export`          |                           | write `json`, `graphml`, `dot` or `html` and exit                              |
-| `-o`, `--output`    | stdout                    | output file for `--export`                                                     |
+| Flag                | Default                   |                                                                                           |
+|---------------------|---------------------------|-------------------------------------------------------------------------------------------|
+| `--addr`            | `127.0.0.1:0`             | listen address; port 0 picks a free port                                                  |
+| `--no-open`         |                           | print the URL instead of opening the browser                                              |
+| `--exclude`         |                           | glob of paths to skip (repeatable)                                                        |
+| `--max-file-size`   | `2097152`                 | larger files are listed but not read                                                      |
+| `--config`          | `<path>/.depphunter.yaml` | config file to use                                                                        |
+| `--theme`           | `auto`                    | `auto`, `light`, `dark`                                                                   |
+| `--color-by`        | `language`                | `language`, `size`, `commits`, `churn`, `age`, `authors`                                  |
+| `--height-scale`    | `sqrt`                    | `linear`, `sqrt`, `log`                                                                   |
+| `--style`           | `city`                    | what the map is dressed as: `city`, `circuit`, `galaxy`                                   |
+| `--show-std`        | `false`                   | show standard-library islands                                                             |
+| `--expand-depth`    | `0`                       | initially expanded depth; `0` = auto, `-1` = all                                          |
+| `--watch`           | `false`                   | re-analyze on file changes, update the browser live                                       |
+| `--no-cache`        |                           | neither read nor write the analysis cache                                                 |
+| `--no-history`      |                           | do not read git history                                                                   |
+| `--history-commits` | `10000`                   | read at most this many commits                                                            |
+| `--resolve-depth`   | `0`                       | levels of dependencies-of-dependencies from lock files (`-1` = all)                       |
+| `--private`         | *(GOPRIVATE)*             | glob naming packages your organization owns; never asked of a public index nor of OSV     |
+| `--trust-index`     | *(none)*                  | index URL to treat as configured on this machine, so a repository naming it is not marked |
+| `--online`          | `false`                   | ask package indexes for what the project's files do not record                            |
+| `--lsp`             |                           | find symbol references with installed language servers                                    |
+| `--lsp-timeout`     | `5m`                      | time budget for language servers                                                          |
+| `--findings`        |                           | scanner report to place on the map (repeatable, globs)                                    |
+| `--no-vulns`        |                           | place no findings, and do not ask the OSV database                                        |
+| `-v`, `--version`   |                           | print the version and exit                                                                |
+| `-h`, `--help`      |                           | list the flags with their defaults                                                        |
+| `--editor`          | auto-detected             | editor command template, e.g. `"code -g {file}:{line}"`                                   |
+| `--embed`           |                           | origin allowed to show the map in a frame, e.g. `vscode-webview:` (repeatable)            |
+| `--export`          |                           | write `json`, `graphml`, `dot` or `html` and exit                                         |
+| `-o`, `--output`    | stdout                    | output file for `--export`                                                                |
 
 Long flags take two dashes (`--addr`, not `-addr`); a flag's value may follow
 after a space or `=`.
@@ -219,6 +225,56 @@ commit authors' names; share it like you would share the repository.
 Dependency graphs are shallow, so Graphviz draws them long and thin; for big
 ones, `unflatten -l 3 -c 5 deps.dot | dot -Tsvg -o deps.svg` spreads them out.
 
+### HTTP API
+
+The server the map runs on is a small HTTP API, and it is the same one the VS
+Code extension's side panel reads. Everything needs the session token - in the
+cookie the address exchanges it for, or in an `X-Depphunter-Token` header - and
+everything that changes something also needs `X-Depphunter-Request: 1`, which a
+cross-site page cannot set.
+
+| Endpoint                                               | What it is                                                                                |
+|--------------------------------------------------------|-------------------------------------------------------------------------------------------|
+| `GET /api/graph`                                       | the graph document: nodes, symbols, edges                                                 |
+| `GET /api/config`                                      | the view the map opens with, and what the server can do                                   |
+| `GET /api/file?path=`                                  | the source of a file that is on the map, and no other file                                |
+| `GET /api/history`, `/api/references`, `/api/findings` | read in the background: `202` while they are, `204` if there are none                     |
+| `GET /api/export?format=`                              | `json`, `graphml`, `dot` or `html`                                                        |
+| `GET /api/events`                                      | Server-Sent Events: `graph`, `history`, `references`, `findings`, `selection`, `backpack` |
+| `GET /api/session`                                     | what the clients share: the selected node and the backpack                                |
+| `POST /api/selection`                                  | `{"id": "f:src/main.go", "origin": "…"}` - the map follows                                |
+| `GET /api/backpack?format=`                            | the catch as `json`, `csv` or `md`                                                        |
+| `PUT /api/backpack`                                    | `{"items": [...], "origin": "…"}` - replaces it                                           |
+| `POST /api/open`                                       | `{"path": "…", "line": 12}` - opens it in the editor                                      |
+| `POST /api/settings`                                   | writes the `ui:` section of the config file                                               |
+
+`origin` names the client making the change and comes back on the announcement,
+so a client can tell its own change returning from somebody else's. The selection
+and the backpack are this session's: the backpack's lasting store is the
+browser's own, per repository, and the page pushes it up as it loads.
+
+**`/api/graph` carries an `ETag`**, so a client that already has the document can
+send `If-None-Match` and be answered `304`. The tag is a fingerprint of the nodes
+and the edges rather than of when they were read, so a re-analysis that found the
+same project is the same entity - which is what a client reconnecting to a server
+restarted under it is really asking about. The document is twenty megabytes on a
+hundred-thousand-node repository, and most of the times it is asked for, nothing
+about it has changed.
+
+**Every announcement carries an id**, and the stream opens with a greeting saying
+where it is:
+
+```json
+event: hello
+data: {"version":3,"etag":"\"9e4f…\"","seq":11,"resumed":true}
+```
+
+`resumed` is the stream answering the `Last-Event-ID` the client handed back:
+nothing has been announced since the event it last saw, so it has missed nothing.
+Without it a reconnection is indistinguishable from a first connection, and
+whatever was announced while the connection was down is simply gone - a browser
+retries an `EventSource` by itself, so this happens without anybody noticing.
+
 ### Opening files in your editor
 
 The side panel's **Open in editor** button (or `O`) opens the selected file at
@@ -266,17 +322,44 @@ running server, and the view's title bar has the log and the settings. The
 same is in the command palette as `depphunter: Open the Map`, and on the
 explorer's right-click menu for any folder.
 
-| Command                           | What it does                                       |
-|-----------------------------------|----------------------------------------------------|
-| `depphunter: Open the Map`        | Maps the folder, or shows the map already made     |
-| `depphunter: Restart the Server`  | Starts it again, which is how settings take effect |
-| `depphunter: Stop the Server`     | Stops it; the next open analyzes afresh            |
-| `depphunter: Show the Server Log` | The server's own output, verbatim                  |
-| `depphunter: Open Settings`       | The extension's settings, below                    |
+| Command                                   | What it does                                       |
+|-------------------------------------------|----------------------------------------------------|
+| `depphunter: Open the Map`                | Maps the folder, or shows the map already made     |
+| `depphunter: Open the Map in the Browser` | The same map outside the editor, this once         |
+| `depphunter: Restart the Server`          | Starts it again, which is how settings take effect |
+| `depphunter: Stop the Server`             | Stops it; the next open analyzes afresh            |
+| `depphunter: Show the Server Log`         | The server's own output, verbatim                  |
+| `depphunter: Export the Graph`            | JSON, GraphML, DOT or a self-contained HTML map    |
+| `depphunter: Export the Backpack`         | The catch as Markdown, CSV or JSON                 |
+| `depphunter: Open Settings`               | The extension's settings, below                    |
 
 One server per folder, kept until the window closes or you stop it: analyzing a
 large repository takes a moment, and with `--watch` it only has to happen once.
 A status bar item appears while one is running, and clicking it opens the map.
+
+#### The panel beside the code
+
+Under **Maps** the same panel holds two more views, both of the map that was
+opened last:
+
+- **Dependencies** is the graph as a tree. A directory opens into what is in it,
+  a file into what it imports, an island into its packages, and a package into
+  what it depends on - as far down as `--resolve-depth` reached. Opening a row
+  costs nothing: every edge is already in the graph the panel fetched once. A
+  branch that leads back to something already open on it is shown once more with
+  `↻` and left closed, because dependency graphs contain cycles. A package that
+  is not pinned, or that resolves from an index nothing here configures, is
+  marked in the list rather than only in its tooltip.
+
+- **Backpack** is what walking the map caught: every finding, worst first, the
+  ones that are gone from the latest scan ticked off at the bottom. Taking one
+  out here takes it out of the map's backpack too.
+
+The two views and the map are one interface, not two: picking a row selects that
+building on the map, and picking a building on the map opens the tree down to its
+row. That is the server's doing - it holds the selection and the catch while the
+map is open, and says when either moves ([API](#http-api)), so a second tab
+follows along as well.
 
 ### Settings
 
@@ -286,36 +369,38 @@ depphunter would do anyway - an enum at `default`, a number left empty, a
 switch where depphunter's own default puts it - so a folder's
 `.depphunter.yaml` still decides everything you leave alone here.
 
-| Setting                      | Default   | Flag                | What it does                                                                                               |
-|------------------------------|-----------|---------------------|------------------------------------------------------------------------------------------------------------|
-| **General**                  |           |                     |                                                                                                            |
-| `depphunter.path`            | *(empty)* |                     | The binary to run. Empty means the one the extension ships with, falling back to `depphunter` on `PATH`.   |
-| `depphunter.openIn`          | `webview` |                     | `webview` (a tab of its own), `simpleBrowser` (the built-in browser) or `externalBrowser` (yours).         |
-| `depphunter.watch`           | `true`    | `--watch`           | Re-analyze on file changes and update the map.                                                             |
-| `depphunter.config`          | `""`      | `--config`          | A config file to use instead of the folder's `.depphunter.yaml`, relative to the folder.                   |
-| `depphunter.editorCommand`   | `""`      | `--editor`          | What **Open in editor** runs. Empty means this editor.                                                     |
-| `depphunter.args`            | `[]`      |                     | Further arguments, one per entry, passed last. [Usage](#usage) has the list.                               |
-| **Analysis**                 |           |                     |                                                                                                            |
-| `depphunter.exclude`         | `[]`      | `--exclude`         | Globs of paths to skip.                                                                                    |
-| `depphunter.maxFileSize`     | *(empty)* | `--max-file-size`   | Files larger than this many bytes are not read.                                                            |
-| `depphunter.resolveDepth`    | *(empty)* | `--resolve-depth`   | Levels of dependencies-of-dependencies to resolve from lock files; `-1` for all.                           |
-| `depphunter.online`          | `false`   | `--online`          | Ask package indexes, and the OSV database, over the network.                                               |
-| `depphunter.cache`           | `true`    | `--no-cache`        | Read and write the analysis cache.                                                                         |
-| `depphunter.history`         | `true`    | `--no-history`      | Read git history for the history overlays.                                                                 |
-| `depphunter.historyCommits`  | *(empty)* | `--history-commits` | Read at most this many commits.                                                                            |
-| **Appearance**               |           |                     |                                                                                                            |
-| `depphunter.style`           | `default` | `--style`           | `city`, `circuit` or `galaxy`.                                                                             |
-| `depphunter.theme`           | `default` | `--theme`           | `auto`, `light` or `dark`.                                                                                 |
-| `depphunter.colorBy`         | `default` | `--color-by`        | `language`, `size`, `commits`, `churn`, `age` or `authors`.                                                |
-| `depphunter.heightScale`     | `default` | `--height-scale`    | `linear`, `sqrt` or `log`.                                                                                 |
-| `depphunter.expandDepth`     | *(empty)* | `--expand-depth`    | Directory levels expanded at first; `0` picks, `-1` expands everything.                                    |
-| `depphunter.showStd`         | `false`   | `--show-std`        | Show standard-library islands.                                                                             |
-| **Findings**                 |           |                     |                                                                                                            |
-| `depphunter.findings`        | `[]`      | `--findings`        | Scanner reports to place on the map, relative to the folder. Globs allowed.                                |
-| `depphunter.vulns`           | `true`    | `--no-vulns`        | Place reports on the map and, with `online`, ask the OSV database.                                         |
-| **References**               |           |                     |                                                                                                            |
-| `depphunter.lsp`             | `false`   | `--lsp`             | Find symbol references with installed language servers.                                                    |
-| `depphunter.lspTimeout`      | `""`      | `--lsp-timeout`     | Time budget for the language servers, e.g. `90s`.                                                          |
+| Setting                     | Default   | Flag                | What it does                                                                                             |
+|-----------------------------|-----------|---------------------|----------------------------------------------------------------------------------------------------------|
+| **General**                 |           |                     |                                                                                                          |
+| `depphunter.path`           | *(empty)* |                     | The binary to run. Empty means the one the extension ships with, falling back to `depphunter` on `PATH`. |
+| `depphunter.openIn`         | `webview` |                     | `webview` (a tab of its own), `simpleBrowser` (the built-in browser) or `externalBrowser` (yours).       |
+| `depphunter.watch`          | `true`    | `--watch`           | Re-analyze on file changes and update the map.                                                           |
+| `depphunter.config`         | `""`      | `--config`          | A config file to use instead of the folder's `.depphunter.yaml`, relative to the folder.                 |
+| `depphunter.editorCommand`  | `""`      | `--editor`          | What **Open in editor** runs. Empty means this editor.                                                   |
+| `depphunter.args`           | `[]`      |                     | Further arguments, one per entry, passed last. [Usage](#usage) has the list.                             |
+| **Analysis**                |           |                     |                                                                                                          |
+| `depphunter.exclude`        | `[]`      | `--exclude`         | Globs of paths to skip.                                                                                  |
+| `depphunter.maxFileSize`    | *(empty)* | `--max-file-size`   | Files larger than this many bytes are not read.                                                          |
+| `depphunter.resolveDepth`   | *(empty)* | `--resolve-depth`   | Levels of dependencies-of-dependencies to resolve from lock files; `-1` for all.                         |
+| `depphunter.private`        | `[]`      | `--private`         | Globs naming the packages your organization owns. Never asked of a public index, never sent to OSV.      |
+| `depphunter.trustIndexes`   | `[]`      | `--trust-index`     | Index URLs to treat as configured on this machine, so a repository that names one is not marked.         |
+| `depphunter.online`         | `false`   | `--online`          | Ask package indexes, and the OSV database, over the network.                                             |
+| `depphunter.cache`          | `true`    | `--no-cache`        | Read and write the analysis cache.                                                                       |
+| `depphunter.history`        | `true`    | `--no-history`      | Read git history for the history overlays.                                                               |
+| `depphunter.historyCommits` | *(empty)* | `--history-commits` | Read at most this many commits.                                                                          |
+| **Appearance**              |           |                     |                                                                                                          |
+| `depphunter.style`          | `default` | `--style`           | `city`, `circuit` or `galaxy`.                                                                           |
+| `depphunter.theme`          | `default` | `--theme`           | `auto`, `light` or `dark`.                                                                               |
+| `depphunter.colorBy`        | `default` | `--color-by`        | `language`, `size`, `commits`, `churn`, `age` or `authors`.                                              |
+| `depphunter.heightScale`    | `default` | `--height-scale`    | `linear`, `sqrt` or `log`.                                                                               |
+| `depphunter.expandDepth`    | *(empty)* | `--expand-depth`    | Directory levels expanded at first; `0` picks, `-1` expands everything.                                  |
+| `depphunter.showStd`        | `false`   | `--show-std`        | Show standard-library islands.                                                                           |
+| **Findings**                |           |                     |                                                                                                          |
+| `depphunter.findings`       | `[]`      | `--findings`        | Scanner reports to place on the map, relative to the folder. Globs allowed.                              |
+| `depphunter.vulns`          | `true`    | `--no-vulns`        | Place reports on the map and, with `online`, ask the OSV database.                                       |
+| **References**              |           |                     |                                                                                                          |
+| `depphunter.lsp`            | `false`   | `--lsp`             | Find symbol references with installed language servers.                                                  |
+| `depphunter.lspTimeout`     | `""`      | `--lsp-timeout`     | Time budget for the language servers, e.g. `90s`.                                                        |
 
 What is left out is left out on purpose: `--addr`, `--no-open` and `--embed`
 are how the extension hosts the map and are not for changing, and `--export`
@@ -607,8 +692,8 @@ Two versions of one package are one building, as they always were, so an edge
 between packages is an edge between names.
 
 Ecosystems whose lock files carry no edges (`Pipfile.lock`) add nothing here;
-those that keep the graph outside the repository (Go modules, and Maven, NuGet
-and the PowerShell Gallery for now) need `--online`, below.
+those that keep the graph outside the repository (Go modules, NuGet, container
+images, and Maven and the PowerShell Gallery for now) need `--online`, below.
 
 The side panel reads them as a **tree**: every row under *Depends on* and *Used
 by* opens into what that node depends on in turn, and so on down. Nothing is
@@ -638,16 +723,101 @@ such an index.
 repository does not record - which is how `--resolve-depth` reaches the
 ecosystems whose graph lives outside the repo:
 
-| Ecosystem | asked for                           | answer                           |
-|-----------|-------------------------------------|----------------------------------|
-| Go        | `<proxy>/<module>/@v/<version>.mod` | that module's own requires       |
-| npm       | `<registry>/<package>/<version>`    | its `dependencies`               |
-| PyPI      | `<host>/pypi/<name>/<version>/json` | `requires_dist`, extras excluded |
+| Ecosystem | asked for                                 | answer                              |
+|-----------|-------------------------------------------|-------------------------------------|
+| Go        | `<proxy>/<module>/@v/<version>.mod`       | that module's own requires          |
+| npm       | `<registry>/<package>/<version>`          | its `dependencies`                  |
+| PyPI      | `<host>/pypi/<name>/<version>/json`       | `requires_dist`, extras excluded    |
+| crates.io | `<index>/<se>/<rd>/<name>` (sparse index) | its `deps`, dev and optional out    |
+| NuGet     | `<feed>/<id>/<version>/<id>.nuspec`       | `<dependencies>`, flat and by group |
+| OCI       | the manifest, then its config blob        | the **base image** it was built on  |
+
+A container image has no dependency list. What it has is the image it was built
+on, which is where its unpatched CVEs come from, and that is what is followed:
+the manifest (and, on a multi-platform index, one platform's), then the small
+config blob it points at, read for `org.opencontainers.image.base.name` in the
+manifest's annotations or the image's labels. No layers are downloaded. A
+registry that wants a pull token first is given the chance to say so, and the
+token endpoint it names is followed only over HTTPS or back to the registry's own
+host.
+
+Maven is the one that is still not asked, and cannot easily be: an import names
+a package, a package does not say which artifact ships it, and a POM is
+addressed by group *and* artifact.
 
 Lock files still come first: an index is asked only where the repository is
-silent. Answers are cached for a day under the cache directory, credentials come
-from your own `~/.npmrc` tokens and `~/.netrc` and are sent only to the host they
-were written for, and Maven, NuGet and container registries are not asked yet.
+silent, and a whole level of the walk is asked at once rather than one package at
+a time. Answers are cached for a day under the cache directory.
+
+Credentials come from your own files and are sent only to the host they were
+written for: `~/.npmrc` auth tokens, `~/.netrc`, the `<servers>` of
+`~/.m2/settings.xml` matched to the `<mirror>` or `<repository>` that names them,
+and `<packageSourceCredentials>` in a `NuGet.Config` matched to its
+`<packageSources>` entry - which between them is how a Nexus, an Artifactory,
+Azure Artifacts or a ProGet feed lets you in. `${env.NAME}` and `%NAME%` in those
+files are resolved, so a password can live in the environment. A password stored
+encrypted (Maven's `{...}`, NuGet's Windows-encrypted form) is left alone: it
+cannot be decrypted here, and sending it as itself would only be a 401 with your
+ciphertext attached.
+
+### Private and internal dependencies
+
+Most of an enterprise repository is the enterprise's own, and two of the things
+depphunter does for a public package must not be done for those:
+
+- **asking a public index** what it depends on, which does not answer and tells
+  proxy.golang.org (or registry.npmjs.org) that the package exists; and
+- **asking the OSV database** about it, which hands the name and the version of
+  internal code to a third party.
+
+Neither can be guessed - a module path on a company host looks like any other -
+so you say which are yours:
+
+```bash
+depphunter --private 'corp.example/*' --private 'npm:@acme/*' .
+```
+
+A pattern is a glob with `GOPRIVATE`'s meaning: it matches a package whose
+leading path elements match it, so `corp.example/*` covers
+`corp.example/team/billing`. It works as well for an npm scope (`@acme/*`), a
+Maven group (`com.acme.*`) or a registry path (`harbor.corp/*`). Prefix it with
+an ecosystem - `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`, `crates:`,
+`actions:` - to limit it to that one.
+
+**`GOPRIVATE` and `GONOPROXY` are read on top of whatever you set**, so a Go
+project that has already configured its machine needs nothing here at all.
+
+A package matched this way is drawn with a **private** badge, is never named to
+that ecosystem's public index, and is never sent to the vulnerability database.
+It is still asked of an index *your own machine* is configured for - your Nexus
+knows about it already - so a private registry still answers for what its
+packages depend on. `private` may also be set in a repository's own
+`.depphunter.yaml`: all it can do is make depphunter say less, and the repository
+is who would know.
+
+### Vouching for your own index
+
+An index that appears only in the repository is marked **⚠ index** and never
+fetched from, because a repository pointing your package manager somewhere nobody
+here configured is what dependency confusion looks like. In an organization whose
+repositories carry their own `.npmrc` naming the company registry, that is every
+package marked - and a warning that is always on is a warning nobody reads.
+
+`--trust-index` says which one is yours:
+
+```bash
+depphunter --trust-index https://nexus.corp/repository/npm-group .
+```
+
+It comes from your own config file or the command line only. A repository cannot
+vouch for itself; if it could, the marking would guard nothing.
+
+| Setting         | Flag            | Environment                |
+|-----------------|-----------------|----------------------------|
+| `private`       | `--private`     | `DEPPHUNTER_PRIVATE`       |
+| `trust_indexes` | `--trust-index` | `DEPPHUNTER_TRUST_INDEXES` |
+
+Both are repeatable, and each value may itself be a comma-separated list.
 
 ### CI pipelines
 

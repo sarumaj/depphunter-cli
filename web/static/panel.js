@@ -58,6 +58,7 @@ export class Panel {
         node.floating ? h('span', { class: 'badge warn', title: 'Not fixed to one version: it moves when installed again' }, '⚠ floating') : null,
         node.transitive ? h('span', { class: 'badge', title: 'No file here imports it: a dependency pulled it in' }, 'transitive') : null,
         node.indexUnknown ? h('span', { class: 'badge warn', title: 'Only this repository names this index; nothing on your machine does' }, '⚠ index') : null,
+        node.private ? h('span', { class: 'badge own', title: 'Yours: never named to a public index, never sent to the vulnerability database' }, 'private') : null,
         this.findingBadge(node)),
       this.openButton(node),
       this.stats(node),

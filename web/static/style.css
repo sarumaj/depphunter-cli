@@ -265,7 +265,14 @@ main { position: relative; flex: 1; min-height: 0; }
 #walk-hud .w-foot {
   position: absolute; left: 50%; bottom: 14px; transform: translateX(-50%);
   display: flex; flex-direction: column; align-items: center; gap: 5px;
-  max-width: calc(100% - 380px);
+  /* Room for the tracker in the left corner; the readout that used to hold the
+     right one now stacks in this column instead (setWalking in app.js). */
+  max-width: calc(100% - 300px);
+}
+/* The files / lines / imports readout, while it is stacked here rather than lying
+   over the tool row in the corner they both wanted. */
+#walk-hud .w-foot > #status {
+  position: static; pointer-events: auto; text-align: center;
 }
 #walk-hud .w-slots { display: flex; gap: 5px; }
 #walk-hud .w-slot {
@@ -297,10 +304,15 @@ main { position: relative; flex: 1; min-height: 0; }
    somewhere across the map can be walked to rather than stumbled on. */
 #walk-hud .w-radar {
   position: absolute; left: 14px; bottom: 14px; pointer-events: none;
-  display: flex; flex-direction: column; align-items: center; gap: 3px;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 3px;
 }
+/* The dial keeps one size and one bitmap, and grows by scale (walk.js): a transform
+   is sub-pixel and costs the compositor alone, where resizing the canvas grew in
+   whole-pixel steps and reallocated on the way. It grows up and to the right, away
+   from the corner it is anchored in, so the label under it never moves. */
 #walk-hud .w-radar canvas {
-  display: block; /* the size is set as it zooms (walk.js) */
+  display: block; width: 150px; height: 150px;
+  transform-origin: bottom left; will-change: transform;
   border-radius: 50%; box-shadow: var(--shadow);
 }
 #walk-hud .w-nearest {
@@ -403,17 +415,25 @@ main.walking #legend { display: none; }
 .label.island { font-weight: 600; font-size: 12px; }
 .label.secondary { color: var(--text-2); }
 
+/* Quieter than it was: it is a note about what is under the pointer, not a dialog.
+   It waits before it appears (TIP_DELAY in app.js) and then fades in rather than
+   snapping, so crossing the city does not flash panels over it. */
 #tooltip {
   position: absolute;
   pointer-events: none;
-  background: var(--surface);
-  border: 1px solid var(--border);
-  box-shadow: var(--shadow);
-  border-radius: 8px;
-  padding: 8px 10px;
-  max-width: 360px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  box-shadow: 0 1px 6px rgb(0 0 0 / 0.10);
+  border-radius: 7px;
+  padding: 5px 8px;
+  max-width: 320px;
+  font-size: 12px;
+  line-height: 1.45;
   z-index: 6;
+  animation: tip-in 0.12s ease-out;
 }
+@keyframes tip-in { from { opacity: 0; } to { opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { #tooltip { animation: none; } }
 #tooltip .t-title { font-weight: 600; word-break: break-all; }
 #tooltip .t-row { display: flex; gap: 8px; color: var(--text-2); font-variant-numeric: tabular-nums; }
 #tooltip .t-row b { color: var(--text); font-weight: 500; }
@@ -478,6 +498,8 @@ main.walking #legend { display: none; }
 .p-title { font-size: 16px; font-weight: 600; margin: 0; word-break: break-all; display: flex; align-items: center; gap: 8px; }
 .badge { font-size: 11px; font-weight: 500; color: var(--text-2); border: 1px solid var(--border); border-radius: 10px; padding: 0 7px; }
 .badge.warn { color: var(--text); border-color: #fab219; }
+/* A package of this organization's own: nothing about it has left the machine. */
+.badge.own { color: var(--text); border-color: var(--accent); }
 .stats { display: flex; gap: 20px; flex-wrap: wrap; }
 .stat .v { font-size: 18px; font-weight: 600; }
 .stat .k { color: var(--muted); font-size: 11px; }

@@ -76,6 +76,20 @@ export class Backpack {
   }
 
   /**
+   * Takes the list as somebody else has it - the editor's side panel, which drops
+   * items from the same backpack through the server. `quiet` travels to onChange, so
+   * that whoever redraws knows not to hand the same list straight back up again.
+   */
+  replace(items) {
+    if (!Array.isArray(items)) return false;
+    const clean = items.filter(it => it && typeof it.id === 'string').slice(0, MAX);
+    if (JSON.stringify(clean) === JSON.stringify(this.items)) return false;
+    this.items = clean;
+    this.save(true);
+    return true;
+  }
+
+  /**
    * Compares what is in the backpack against the newest scanner reports. A finding
    * that is still reported is still there; one that is not has been fixed, and is
    * marked rather than dropped. Called with null - findings turned off, or a report
@@ -97,14 +111,14 @@ export class Backpack {
     return changed;
   }
 
-  save() {
+  save(quiet = false) {
     try {
       localStorage.setItem(this.key, JSON.stringify(this.items));
     } catch {
       // A full or blocked store is not worth a broken map; the backpack is then
       // just for this session.
     }
-    this.onChange(this);
+    this.onChange(this, quiet);
   }
 }
 

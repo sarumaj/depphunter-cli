@@ -78,7 +78,7 @@
       <button id="rotate-left" title="Rotate left (Q)" aria-label="Rotate left">⟲</button>
       <button id="rotate-right" title="Rotate right (E)" aria-label="Rotate right">⟳</button>
       <button id="fit" title="Fit to screen (Home)">Fit</button>
-      <button id="walk" title="Walk the map in first person (V)" aria-pressed="false">Walk</button>
+      <button id="walk" title="Walk the map in first person (V, or double-click open ground)" aria-pressed="false">Walk</button>
       <button id="pack-btn" title="What you have caught (B)" aria-expanded="false" aria-controls="pack" hidden>Backpack <span id="pack-count" class="count" hidden></span></button>
       <button id="save-settings">Save settings</button>
       <div class="export">
@@ -114,7 +114,7 @@
         <div class="w-target" hidden></div>
         <div class="w-keys"><kbd>W A S D</kbd> move · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump · <kbd>F</kbd> fly
           · <kbd>Click</kbd> use the tool · <kbd>1</kbd>…<kbd>7</kbd> or <kbd>T</kbd> pick one · <kbd>H</kbd> hands away
-          · hold <kbd>Right</kbd> scope · <kbd>?</kbd> everything else · <kbd>V</kbd> back to the map</div>
+          · hold <kbd>Right</kbd> scope · <kbd>?</kbd> everything else · <kbd>M</kbd> back to the map</div>
       </div>
       <div class="w-foot">
         <div class="w-flash" role="status"></div>
@@ -147,7 +147,7 @@
         <tr><th>Right-drag</th><td>Orbit</td></tr>
         <tr><th>Wheel</th><td>Zoom at cursor</td></tr>
         <tr><th>Click</th><td>Select &amp; show dependencies: arcs over the map to what it depends on and what depends on it, and the same edges as roads on the ground, routed between the blocks with chevrons for the direction. A road to an external package leaves the shore as a causeway</td></tr>
-        <tr><th>Double-click</th><td>Expand / collapse directory or file</td></tr>
+        <tr><th>Double-click</th><td>Expand / collapse directory or file - or, on open ground, walk into the map</td></tr>
         <tr><th>Enter</th><td>Expand / collapse selection</td></tr>
         <tr><th>Backspace</th><td>Select parent</td></tr>
         <tr><th>Q / E</th><td>Rotate 90°</td></tr>
@@ -173,14 +173,14 @@
         <tr><th>Click</th><td>Use what is in your hands - a fishing rod, a net, a camera, a bubble wand, a tracking dart: the module it reaches is tagged, selected and its dependencies light up. Using it again on a tagged building shows its details</td></tr>
         <tr><th>Bugs</th><td>Every finding a scanner reported keeps to a lap on the building it belongs to, colored by severity - around it on the street, along its facade at some height, across its roof, or flying a wider circuit round it, each beetle standing out of whatever it is holding on to, or leaning into the corners if it is holding on to nothing. Use any tool on one to catch it and read what it was carrying; the HUD counts what is left, and what you catch goes in the backpack (<kbd>B</kbd> on the map) until the source is fixed. The map view collects the same findings from the panel, if you would rather not walk</td></tr>
         <tr><th>Tracker</th><td>The sweep in the corner turns with you: a dot per bug still out there, a ring per module already tagged, an arrow on the rim for anything beyond its range</td></tr>
-        <tr><th>1 … 7</th><td>Take out the tool in that slot; <kbd>T</kbd> walks along the row. Each is good for its own quarry - the rod, the tracking dart and the nail gun tag buildings, the butterfly net and the bubble wand catch bugs, the camera does either - and the reticle dims when what you are pointing at is not for the tool in hand. The net throws nothing: it has to be swung within reach. The camera's back screen shows what its lens is on</td></tr>
+        <tr><th>1 … 7</th><td>Take out the tool in that slot; <kbd>T</kbd> walks along the row. Each is good for its own quarry - the rod, the tracking dart and the nail gun tag buildings, the butterfly net and the bubble wand catch bugs, the camera does either - and the reticle dims when what you are pointing at is not for the tool in hand. Each also has a range, and they differ: the wand barely crosses a street, the nail gun carries a block or so, the dart further, the rod and the grapple furthest. Past it the reticle dims too and the shot falls short. The net throws nothing at all: it has to be swung within arm's length, and the camera alone photographs at any distance. The camera's back screen shows what its lens is on</td></tr>
         <tr><th>Grapple gun</th><td>The one tool that does nothing to what it hits. Hook a building and the line pulls you up the facade and onto its roof; from up there, aim over the edge at anything lower and the same shot is the way down. <kbd>Space</kbd> cuts the line</td></tr>
         <tr><th>H</th><td>Put the tool away, or take it out again. Only the drawing of it: it still works, and what it throws then leaves from your eye</td></tr>
         <tr><th>Hold right button</th><td>Look through the scope (zoom)</td></tr>
         <tr><th>Enter</th><td>Show the details of what the reticle is on (dependencies, source) - the same as a second dart. The mouse is freed for reading; click the map to walk on. <kbd>O</kbd> opens the file in your editor.</td></tr>
         <tr><th>Wheel</th><td>Zoom in / out</td></tr>
         <tr><th>+ −</th><td>Planet size (curvature); <kbd>[</kbd> <kbd>]</kbd> do the same</td></tr>
-        <tr><th>V</th><td>Back to the map (Esc frees the mouse first, then leaves). Coming back puts you where you were standing, unless you picked something on the map in the meantime</td></tr>
+        <tr><th>V / M</th><td>Back to the map (Esc frees the mouse first, then leaves). Coming back puts you where you were standing, unless you picked something on the map in the meantime</td></tr>
       </table>
       <p class="hint">Height encodes lines of code. Directories collapse into districts whose footprint grows with the number of files.</p>
       <form method="dialog"><button>Close</button></form>

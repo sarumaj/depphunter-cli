@@ -35,6 +35,9 @@ const WING = 0.15;        // how long a wing is, along the body
 const SPEED = 0.42;       // units per second along the lap - a walking pace, catchable
 const CATCH = 0.42;       // how close a shot has to pass
 const CELL = 4;           // spatial grid for finding the bug under a ray sample
+// One number per cell rather than "gx,gz": the crosshair asks a few hundred times a
+// frame, and a key built by concatenation is a string allocated for each of them.
+const cellOf = (gx, gz) => (gx + 32768) * 65536 + (gz + 32768);
 // The crosshair widens its search with distance (walk.js), so a bug is indexed into
 // every cell within this much of its lap - and no search may look farther.
 const MARGIN = 1.5;
@@ -143,7 +146,7 @@ export class Bugs {
     const { x0, x1, z0, z1 } = bug.lap.bounds;
     for (let x = Math.floor((x0 - MARGIN) / CELL); x <= Math.floor((x1 + MARGIN) / CELL); x++) {
       for (let z = Math.floor((z0 - MARGIN) / CELL); z <= Math.floor((z1 + MARGIN) / CELL); z++) {
-        const k = x + ',' + z;
+        const k = cellOf(x, z);
         const cell = this.grid.get(k);
         if (cell) cell.push(bug); else this.grid.set(k, [bug]);
       }
@@ -268,7 +271,7 @@ export class Bugs {
    * crosshair and by whatever the tool threw.
    */
   at(v, radius = CATCH) {
-    const cell = this.grid.get(Math.floor(v.x / CELL) + ',' + Math.floor(v.z / CELL));
+    const cell = this.grid.get(cellOf(Math.floor(v.x / CELL), Math.floor(v.z / CELL)));
     if (!cell) return null;
     const r = Math.min(radius, MARGIN); // past this a bug may sit in the next cell
     let best = null, bestSq = r * r;
