@@ -107,6 +107,10 @@ type Config struct {
 	// Vulns places those reports on the map and, with Online, additionally asks the
 	// OSV database about every pinned external package.
 	Vulns bool `yaml:"vulns" mapstructure:"vulns"`
+	// Links follows the links the repository's Markdown carries and reports the ones
+	// that lead nowhere. It needs nothing but the repository, so it is on by default;
+	// with Online the http(s) links are asked about as well.
+	Links bool `yaml:"links" mapstructure:"links"`
 	// LSP asks installed language servers for symbol-level references (slow, opt-in).
 	LSP        bool          `yaml:"lsp" mapstructure:"lsp"`
 	LSPTimeout time.Duration `yaml:"lsp_timeout" mapstructure:"lsp_timeout"`
@@ -133,6 +137,7 @@ func Default() Config {
 		Cache:          true,
 		History:        true,
 		Vulns:          true,
+		Links:          true,
 		HistoryCommits: 10000,
 		LSPTimeout:     5 * time.Minute,
 		MaxFileSize:    2 << 20,
@@ -170,6 +175,7 @@ func RegisterFlags(fs *pflag.FlagSet) {
 	fs.StringArray("findings", nil,
 		"scanner report to place on the map (govulncheck, npm audit, trivy, golangci-lint, eslint, osv-scanner JSON); repeatable, globs allowed")
 	fs.Bool("no-vulns", false, "do not place scanner reports on the map, and do not ask the OSV database")
+	fs.Bool("no-links", false, "do not follow the links the repository's Markdown carries")
 	fs.Int("resolve-depth", d.ResolveDepth,
 		"levels of external dependencies-of-dependencies to resolve from lock files (-1 = all)")
 	fs.Bool("lsp", false, "find symbol references with installed language servers (gopls, …)")
@@ -192,7 +198,10 @@ var flagKeys = map[string]string{
 }
 
 // Settings a --no-* flag turns off.
-var negatedFlags = map[string]string{"no-open": "open", "no-cache": "cache", "no-history": "history", "no-vulns": "vulns"}
+var negatedFlags = map[string]string{
+	"no-open": "open", "no-cache": "cache", "no-history": "history",
+	"no-vulns": "vulns", "no-links": "links",
+}
 
 // Environment variables (after the DEPPHUNTER_ prefix), by setting. EXCLUDE is
 // handled apart: it adds to the configured globs instead of replacing them.
@@ -200,7 +209,7 @@ var envKeys = map[string]string{
 	"addr": "ADDR", "open": "OPEN", "max_file_size": "MAX_FILE_SIZE", "watch": "WATCH", "cache": "CACHE",
 	"history": "HISTORY", "history_commits": "HISTORY_COMMITS", "resolve_depth": "RESOLVE_DEPTH", "online": "ONLINE",
 	"explain": "EXPLAIN",
-	"vulns":   "VULNS", "lsp": "LSP", "lsp_timeout": "LSP_TIMEOUT",
+	"vulns":   "VULNS", "links": "LINKS", "lsp": "LSP", "lsp_timeout": "LSP_TIMEOUT",
 	"editor": "EDITOR", "ui.theme": "THEME", "ui.color_by": "COLOR_BY", "ui.height_scale": "HEIGHT_SCALE", "ui.style": "STYLE",
 	"ui.show_std": "SHOW_STD", "ui.expand_depth": "EXPAND_DEPTH",
 }
@@ -306,7 +315,7 @@ func setDefaults(v *viper.Viper, d Config) {
 		"addr": d.Addr, "open": d.Open, "exclude": d.Exclude, "max_file_size": d.MaxFileSize,
 		"watch": d.Watch, "cache": d.Cache, "history": d.History, "history_commits": d.HistoryCommits,
 		"resolve_depth": d.ResolveDepth, "online": d.Online, "explain": d.Explain,
-		"findings": d.Findings, "vulns": d.Vulns,
+		"findings": d.Findings, "vulns": d.Vulns, "links": d.Links,
 		"private": d.Private, "trust_indexes": d.TrustIndexes,
 		"lsp": d.LSP, "lsp_timeout": d.LSPTimeout,
 		"editor":   d.Editor,
@@ -395,10 +404,10 @@ func rooted(s string) bool {
 		(s[0] >= 'a' && s[0] <= 'z' || s[0] >= 'A' && s[0] <= 'Z')
 }
 
-// FindingsEnabled reports whether anything will be placed on the map: a report to read,
-// or a database to ask.
+// FindingsEnabled reports whether anything will be placed on the map: a report to
+// read, a database to ask, or documentation whose links may lead nowhere.
 func (c Config) FindingsEnabled() bool {
-	return c.Vulns && (len(c.Findings) > 0 || c.Online)
+	return c.Links || c.Vulns && (len(c.Findings) > 0 || c.Online)
 }
 
 func (c Config) validate() error {

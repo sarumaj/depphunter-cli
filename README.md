@@ -95,7 +95,7 @@ the code. The map itself is the same page either way.
   [Package indexes](#package-indexes) ·
   [Private dependencies](#private-and-internal-dependencies) ·
   [The resolution report](#the-resolution-report) ·
-  [CI pipelines](#ci-pipelines) ·
+  [CI pipelines](#ci-pipelines) · [Documentation](#documentation) ·
   [Symbol references](#symbol-references) · [Languages](#languages)
 - [Security](#security) · [Contributing](#contributing) · [License](#license)
 
@@ -156,6 +156,7 @@ depphunter --export html -o map.html  # a self-contained map to share
 | `--lsp-timeout`     | `5m`                      | time budget for language servers                                                          |
 | `--findings`        |                           | scanner report to place on the map (repeatable, globs)                                    |
 | `--no-vulns`        |                           | place no findings, and do not ask the OSV database                                        |
+| `--no-links`        |                           | do not follow the links the repository's Markdown carries                                 |
 | `-v`, `--version`   |                           | print the version and exit                                                                |
 | `-h`, `--help`      |                           | list the flags with their defaults                                                        |
 | `--editor`          | auto-detected             | editor command template, e.g. `"code -g {file}:{line}"`                                   |
@@ -180,8 +181,8 @@ user config (`$XDG_CONFIG_HOME/depphunter/config.yaml`, or the OS equivalent),
 the project config `.depphunter.yaml`, `DEPPHUNTER_*` environment variables
 (`ADDR`, `OPEN`, `EXCLUDE`, `MAX_FILE_SIZE`, `THEME`, `COLOR_BY`,
 `HEIGHT_SCALE`, `SHOW_STD`, `EXPAND_DEPTH`, `WATCH`, `CACHE`, `EDITOR`,
-`HISTORY`, `HISTORY_COMMITS`, `RESOLVE_DEPTH`, `ONLINE`, `EXPLAIN`, `LSP`,
-`LSP_TIMEOUT`),
+`HISTORY`, `HISTORY_COMMITS`, `RESOLVE_DEPTH`, `ONLINE`, `EXPLAIN`, `LINKS`,
+`LSP`, `LSP_TIMEOUT`),
 and flags. Exclude globs
 add up across all sources instead of replacing each other. The project config
 cannot set `editor`: it arrives with the repository, and the editor is a command
@@ -411,6 +412,7 @@ switch where depphunter's own default puts it - so a folder's
 | **Findings**                |           |                     |                                                                                                          |
 | `depphunter.findings`       | `[]`      | `--findings`        | Scanner reports to place on the map, relative to the folder. Globs allowed.                              |
 | `depphunter.vulns`          | `true`    | `--no-vulns`        | Place reports on the map and, with `online`, ask the OSV database.                                       |
+| `depphunter.links`          | `true`    | `--no-links`        | Follow the folder's Markdown links and report the ones that lead nowhere.                                |
 | **References**              |           |                     |                                                                                                          |
 | `depphunter.lsp`            | `false`   | `--lsp`             | Find symbol references with installed language servers.                                                  |
 | `depphunter.lspTimeout`     | `""`      | `--lsp-timeout`     | Time budget for the language servers, e.g. `90s`.                                                        |
@@ -938,6 +940,54 @@ version and `v5.0.1` as what was requested. A GitLab template or a remote
 include names no version at all and still changes under you, so it is floating
 as well.
 
+### Documentation
+
+A README that links to `docs/REQUIREMENTS.md` depends on that file, and one that
+links to `internal/server/server.go` depends on that. Both break when the target
+moves, and no package manifest says so - so the links go on the map beside the
+imports.
+
+A link to a file or a directory in the repository becomes an edge from the
+document to it, drawn like any other dependency, and the headings become the
+file's symbols: a document expands into its sections the way a source file
+expands into its functions. Inline links, reference definitions, autolinks and
+the `href` and `src` of raw HTML all count, because a badge is a link too. A
+link inside a fenced block or a code span does not: it is printed rather than
+followed.
+
+There is no island for external hosts. A link to `https://example.test` is not a
+dependency the map can say anything about, and a legend of somebody else's
+domain names would only crowd the sea.
+
+**A link that leads nowhere becomes a [finding](#findings)** instead:
+
+| What is wrong                       | Reported as                 |
+|-------------------------------------|-----------------------------|
+| the file or directory is not there  | `link/missing-file`         |
+| the heading it names is not in it   | `link/missing-anchor`       |
+| the reference was never defined     | `link/undefined-reference`  |
+| the host says the page is gone      | `link/gone` (`--online`)    |
+
+The first three need nothing but the repository, so they are checked on every
+run and are exact: a path either names something on disk or it does not, and a
+fragment either matches a heading of the file it points at or it does not. A
+link to a file that exists but is not on the map - ignored, excluded, generated
+at build time - is not broken; it simply gets no edge.
+
+The fourth needs somebody else's server, so it happens only with `--online`, and
+it is deliberately hard to convince. A link is reported when a host says the
+page is **gone** - 404 or 410 - and not when it refuses a robot, rate-limits,
+times out or breaks. Those are the answers a checker gets from Cloudflare and
+from GitHub's own bot rules, and reading them as rot would invent a finding for
+every link that works perfectly well in a browser. What could not be checked is
+said in the log rather than drawn on the map. Answers are cached for a day.
+
+Vendored documentation is left out of all of it. A vendored README links to the
+parts of its own repository that vendoring does not copy, so its links are
+broken by definition, in a file nobody here can fix.
+
+`--no-links` turns the whole thing off.
+
 ### Symbol references
 
 Imports show which files depend on which; with `--lsp`, depphunter also asks
@@ -971,6 +1021,7 @@ uses it. JSON and GraphML exports include the reference edges.
 | C#                      | namespaces to project folders (`RootNamespace` + folder), `PackageReference`, `Directory.Packages.props`                                                                          | NuGet, .NET base library                    |
 | PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`) | PowerShell Gallery, built-in modules        |
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)      | GitHub Actions, GitLab CI, Container images |
+| Markdown                | links to files and directories in the repository (inline, reference, autolink, and the `href` and `src` of raw HTML); headings become the file's symbols                          | *(none: a link is not a package)*           |
 
 Java imports name packages, not artifacts, so they are matched to Maven groupIds
 by prefix, shared leading segments, artifact names and a short table of

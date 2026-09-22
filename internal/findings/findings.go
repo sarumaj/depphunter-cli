@@ -52,11 +52,12 @@ func severity(s string) Severity {
 	return Unknown
 }
 
-// Kinds of finding: one says a dependency is known to be vulnerable, the other that a
-// linter objects to code in this repository.
+// Kinds of finding: a dependency known to be vulnerable, a linter's objection to code
+// in this repository, and a link in its documentation that leads nowhere.
 const (
 	KindVulnerability = "vulnerability"
 	KindLint          = "lint"
+	KindLink          = "link"
 )
 
 // A Finding is one thing a tool reported, placed on the map. A finding carries a Path

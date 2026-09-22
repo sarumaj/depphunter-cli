@@ -474,6 +474,12 @@
             "default": true,
             "order": 2,
             "markdownDescription": "Place scanner reports on the map and, with `#depphunter.online#`, ask the OSV database. Unticked passes `--no-vulns`."
+          },
+          "depphunter.links": {
+            "type": "boolean",
+            "default": true,
+            "order": 3,
+            "markdownDescription": "Follow the links the folder's Markdown carries and report the ones that lead nowhere - a file that is not there, a heading that is not in it, a reference nobody defined. It needs nothing but the folder, so it is on by default; with `#depphunter.online#`, `http(s)` links are asked about as well. Unticked passes `--no-links`."
           }
         }
       },

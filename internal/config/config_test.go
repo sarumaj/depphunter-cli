@@ -260,27 +260,60 @@ func TestFindingsSettings(t *testing.T) {
 		t.Errorf("vulns %t, enabled %t", cfg.Vulns, cfg.FindingsEnabled())
 	}
 
-	// Nothing is read or asked without reports and without --online.
-	bare, err := load(t, []string{root}, nil, "")
+	// What makes a run look for findings at all. The link check needs nothing but the
+	// repository, so a plain run does look; the two switches turn off one source
+	// each, and only together do they turn the whole thing off.
+	for _, c := range []struct {
+		args []string
+		want bool
+		why  string
+	}{
+		{[]string{root}, true, "a plain run follows the documentation's links"},
+		{[]string{"--no-links", root}, false, "nothing is read or asked without reports, --online or links"},
+		{[]string{"--online", root}, true, "--online asks the vulnerability database"},
+		{[]string{"--online", "--no-vulns", root}, true, "--no-vulns leaves the link check"},
+		{[]string{"--no-vulns", "--no-links", root}, false, "both off asks nothing"},
+		{[]string{"--online", "--no-vulns", "--no-links", root}, false, "both off asks nothing, online or not"},
+	} {
+		cfg, err := load(t, c.args, nil, "")
+		if err != nil {
+			t.Fatal(err)
+		}
+		if cfg.FindingsEnabled() != c.want {
+			t.Errorf("%v: enabled %t, want %t (%s)", c.args, cfg.FindingsEnabled(), c.want, c.why)
+		}
+	}
+}
+
+// TestLinkSettings checks the three ways of turning the link check off, and that it
+// is on without being asked for: it needs nothing but the repository.
+func TestLinkSettings(t *testing.T) {
+	root := t.TempDir()
+	cfg, err := load(t, []string{root}, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if bare.FindingsEnabled() {
-		t.Error("a plain run would go looking for findings")
+	if !cfg.Links {
+		t.Error("the link check is off by default")
 	}
-	online, err := load(t, []string{"--online", root}, nil, "")
-	if err != nil {
+	if cfg, err = load(t, []string{"--no-links", root}, nil, ""); err != nil {
 		t.Fatal(err)
 	}
-	if !online.FindingsEnabled() {
-		t.Error("--online does not ask the vulnerability database")
+	if cfg.Links {
+		t.Error("--no-links did not reach the configuration")
 	}
-	off, err := load(t, []string{"--online", "--no-vulns", root}, nil, "")
-	if err != nil {
+	if cfg, err = load(t, []string{root}, map[string]string{"DEPPHUNTER_LINKS": "false"}, ""); err != nil {
 		t.Fatal(err)
 	}
-	if off.FindingsEnabled() {
-		t.Error("--no-vulns still asks")
+	if cfg.Links {
+		t.Error("DEPPHUNTER_LINKS did not reach the configuration")
+	}
+	write(t, filepath.Join(root, ProjectFile), "links: false\n")
+	if cfg, err = load(t, []string{root}, nil, ""); err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Links {
+		t.Error("links in the project config did not reach the configuration")
 	}
 }
 

@@ -35,6 +35,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang/golang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/java"
 	"github.com/sarumaj/depphunter-cli/internal/lang/javascript"
+	"github.com/sarumaj/depphunter-cli/internal/lang/markdown"
 	"github.com/sarumaj/depphunter-cli/internal/lang/powershell"
 	"github.com/sarumaj/depphunter-cli/internal/lang/python"
 	"github.com/sarumaj/depphunter-cli/internal/lang/rust"
@@ -138,7 +139,7 @@ func run(ctx context.Context, cfg config.Config) error {
 		Scan: scan.Options{Exclude: cfg.Exclude, MaxFileSize: cfg.MaxFileSize},
 		Plugins: []lang.Plugin{
 			golang.Plugin{}, javascript.Plugin{}, python.Plugin{}, rust.Plugin{}, java.Plugin{},
-			csharp.Plugin{}, powershell.Plugin{}, ci.Plugin{},
+			csharp.Plugin{}, powershell.Plugin{}, ci.Plugin{}, markdown.Plugin{},
 		},
 		Cache:        c,
 		ResolveDepth: cfg.ResolveDepth,
@@ -280,14 +281,31 @@ func loadFindings(ctx context.Context, cfg config.Config, cacheDir string, g *gr
 		return nil
 	}
 	start := time.Now()
-	opts := findings.Options{Root: cfg.Root, Reports: cfg.Findings, Logf: log.Printf}
+	// --no-vulns and --no-links turn off one source each, so each is asked for on
+	// its own: a run that wants only the link check reads no reports.
+	opts := findings.Options{Root: cfg.Root, Logf: log.Printf}
+	if cfg.Vulns {
+		opts.Reports = cfg.Findings
+	}
+	if cfg.Links {
+		opts.Docs = documents(g)
+	}
 	if cfg.Online {
 		store := ""
 		if cacheDir != "" {
 			store = filepath.Join(cacheDir, "osv")
 		}
-		opts.OSV = findings.NewOSV(store, findingsCacheTTL, indexTimeout)
-		opts.Packages = pinned(g)
+		if cfg.Vulns {
+			opts.OSV = findings.NewOSV(store, findingsCacheTTL, indexTimeout)
+			opts.Packages = pinned(g)
+		}
+		if cfg.Links {
+			links := ""
+			if cacheDir != "" {
+				links = filepath.Join(cacheDir, "links")
+			}
+			opts.Web = findings.NewWeb(links, findingsCacheTTL, indexTimeout)
+		}
 	}
 	set := findings.Collect(ctx, opts)
 	if set.Empty() {
@@ -303,6 +321,42 @@ func loadFindings(ctx context.Context, cfg config.Config, cacheDir string, g *gr
 	log.Printf("findings: %d from %s%s in %s", len(set.Findings), strings.Join(set.Sources, ", "), note,
 		time.Since(start).Round(time.Millisecond))
 	return set
+}
+
+// documents is the repository's own Markdown, which is where the links worth
+// following are. The map has already read which files those are, so nothing is
+// scanned twice to find them.
+//
+// Vendored documentation is left out. A vendored README's links point at the parts of
+// its own repository that vendoring does not copy, so they are broken by definition,
+// in a file nobody here can fix - which is thirty findings on this repository alone,
+// and not one of them a defect.
+func documents(g *graph.Graph) []string {
+	var out []string
+	for _, n := range g.Nodes {
+		if n.Kind == graph.KindFile && n.Lang == "Markdown" && !vendored(n.Path) {
+			out = append(out, n.Path)
+		}
+	}
+	return out
+}
+
+// thirdParty names the directories whose contents arrived with a dependency rather
+// than being written here.
+var thirdParty = map[string]bool{
+	"vendor": true, "node_modules": true, "third_party": true, "thirdparty": true,
+	"site-packages": true, ".venv": true, "venv": true,
+}
+
+// vendored reports whether a path lies under one of them, at any depth: a Go module's
+// vendor/ is at the root, a JavaScript workspace's node_modules is not.
+func vendored(p string) bool {
+	for _, segment := range strings.Split(p, "/") {
+		if thirdParty[segment] {
+			return true
+		}
+	}
+	return false
 }
 
 // pinned is every external package the map fixes to one version: the only ones a

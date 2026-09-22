@@ -18,7 +18,14 @@ type Options struct {
 	// about; empty asks nothing.
 	Packages []Package
 	// OSV is the database client; nil keeps the run offline.
-	OSV  *OSV
+	OSV *OSV
+	// Docs are the repository-relative Markdown files whose links to follow. The
+	// check needs nothing but the repository, so it runs whether or not anything
+	// else was asked for; empty checks nothing.
+	Docs []string
+	// Web additionally asks whether the http(s) links those documents carry still
+	// answer. nil keeps the link check offline, where it is exact.
+	Web  *Web
 	Logf func(string, ...any)
 }
 
@@ -48,6 +55,15 @@ func Collect(ctx context.Context, o Options) *Set {
 		}
 		logFormat("findings: %s: %d from %s", rel(o.Root, name), len(found), source)
 		set.Add(source, found)
+	}
+
+	if len(o.Docs) > 0 {
+		found, partial := checkLinks(ctx, o.Root, o.Docs, o.Web, logFormat)
+		set.Partial = set.Partial || partial
+		if len(found) > 0 {
+			logFormat("findings: %d broken links in %d documents", len(found), len(o.Docs))
+		}
+		set.Add("links", found)
 	}
 
 	if o.OSV != nil && len(o.Packages) > 0 {
