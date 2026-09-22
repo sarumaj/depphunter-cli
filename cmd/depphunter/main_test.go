@@ -4,12 +4,15 @@ import (
 	"bytes"
 	"context"
 	"encoding/json"
+	"io"
 	"os"
 	"path/filepath"
 	"strings"
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/sarumaj/depphunter-cli/internal/config"
 )
 
 // execute runs the command with args and returns what it printed.
@@ -86,5 +89,68 @@ func TestLatestCoalesces(t *testing.T) {
 	<-done
 	if len(seen) != 2 || seen[0] != 1 || seen[1] != 5 {
 		t.Errorf("runs %v, want [1 5]", seen)
+	}
+}
+
+// TestLogOutput checks where the log goes. It is stdout, so that what depphunter
+// says can be piped and read like any other output - except where stdout is already
+// carrying the export, which would otherwise have "analyzed …" written into the
+// middle of it.
+func TestLogOutput(t *testing.T) {
+	for _, c := range []struct {
+		name           string
+		export, output string
+		want           *os.File
+	}{
+		{"serving", "", "", os.Stdout},
+		{"export to a file", "json", "g.json", os.Stdout},
+		{"export to stdout", "json", "", os.Stderr},
+		// -o without --export is refused by the configuration, but the rule here
+		// reads off Export either way.
+		{"an output with no export", "", "g.json", os.Stdout},
+	} {
+		if got := logOutput(config.Config{Export: c.export, Output: c.output}); got != c.want {
+			t.Errorf("%s: the log goes to %v, want %v", c.name, got, c.want)
+		}
+	}
+}
+
+// TestExportToStdoutIsOnlyTheExport is the reason for the exception above: a caller
+// that redirects the export has to get a document and nothing else.
+func TestExportToStdoutIsOnlyTheExport(t *testing.T) {
+	root := t.TempDir()
+	if err := os.WriteFile(filepath.Join(root, "main.go"),
+		[]byte("package main\n\nimport \"fmt\"\n\nfunc main() { fmt.Println() }\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	t.Setenv("DEPPHUNTER_CACHE", "false")
+
+	read, write, err := os.Pipe()
+	if err != nil {
+		t.Fatal(err)
+	}
+	real := os.Stdout
+	os.Stdout = write
+	done := make(chan []byte)
+	go func() {
+		out, _ := io.ReadAll(read)
+		done <- out
+	}()
+	// --explain as well, so the longest thing depphunter writes is in the run.
+	_, runErr := execute(t, "--no-history", "--explain", "--export", "json", root)
+	os.Stdout = real
+	write.Close()
+	out := <-done
+	read.Close()
+	if runErr != nil {
+		t.Fatal(runErr)
+	}
+
+	var g struct{ Nodes []struct{ ID string } }
+	if err := json.Unmarshal(out, &g); err != nil {
+		t.Fatalf("stdout is not the export alone: %v\n%s", err, out)
+	}
+	if len(g.Nodes) == 0 {
+		t.Error("the export carried no nodes")
 	}
 }

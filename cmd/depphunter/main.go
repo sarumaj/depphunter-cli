@@ -67,9 +67,27 @@ func main() {
 	err := newCommand().ExecuteContext(ctx)
 	stop()
 	if err != nil {
+		// Wherever the log was going by then (see logOutput), a failure belongs on
+		// stderr: it is not part of the output anybody asked for, and with --export
+		// it would otherwise arrive in the middle of the document.
+		log.SetOutput(os.Stderr)
 		log.Println(err)
 		os.Exit(1)
 	}
+}
+
+// logOutput is where depphunter's own log goes: stdout, where it can be piped,
+// redirected and read like any other output of a command.
+//
+// The exception is an export with no file to write to, where stdout is the document
+// itself. "analyzed …" in the middle of a JSON graph is not a log line anybody can
+// use, so there the log steps aside to stderr - which is where the export's own
+// reader would look for it anyway.
+func logOutput(cfg config.Config) io.Writer {
+	if cfg.Export != "" && cfg.Output == "" {
+		return os.Stderr
+	}
+	return os.Stdout
 }
 
 // newCommand is the depphunter command: flags are declared by the config package,
@@ -112,6 +130,7 @@ variables, and flags.`,
 }
 
 func run(ctx context.Context, cfg config.Config) error {
+	log.SetOutput(logOutput(cfg))
 	var c *cache.Cache
 	cacheDir := "" // also holds git histories; "" disables caching
 	if cfg.Cache {
@@ -187,17 +206,20 @@ func run(ctx context.Context, cfg config.Config) error {
 
 // explain writes the resolution report when --explain asked for it: how the walk
 // past the direct dependencies went, and which index each package resolves from.
-// It goes to stderr beside the rest of the log, which is also where the VS Code
-// extension reads it from.
+// It goes wherever the log goes (logOutput), which is also where the VS Code
+// extension reads it from: the extension follows both of the server's streams.
 func explain(cfg config.Config, r *trace.Report) {
 	if !cfg.Explain || r == nil {
 		return
 	}
-	fmt.Fprintln(os.Stderr)
-	if err := r.Text(os.Stderr); err != nil {
+	// Beside the rest of the log rather than beside it on another stream: the
+	// report is read together with the lines that led to it.
+	w := log.Writer()
+	fmt.Fprintln(w)
+	if err := r.Text(w); err != nil {
 		log.Printf("resolution report: %v", err)
 	}
-	fmt.Fprintln(os.Stderr)
+	fmt.Fprintln(w)
 }
 
 // loadHistory reads (or loads from the cache) the git history of the graph's files;

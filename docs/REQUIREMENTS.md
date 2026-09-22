@@ -151,6 +151,10 @@ extension, lines counted) but carry no edges.
 - Watch mode: file-system watcher, incremental re-analysis, updates pushed to
   the browser (M3).
 - Graph export: JSON, DOT, GraphML (M3).
+- The log goes to stdout, so that what depphunter says can be piped and read
+  like any other output; it steps aside to stderr only where stdout is already
+  carrying an export with no file to go to. Errors go to stderr whatever the
+  log is doing.
 - Resolution report: how the dependencies on the map were arrived at, written to
   the log with `--explain` and served as JSON, Markdown or text (M18).
 - Static self-contained HTML export (M4).
