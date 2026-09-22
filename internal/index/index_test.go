@@ -1,11 +1,15 @@
 package index
 
 import (
+	"net/http"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sarumaj/depphunter-cli/internal/scan"
+
+	"github.com/sarumaj/depphunter-cli/internal/auth"
 )
 
 // write lays out a fixture and returns the scanned files, the way analysis sees them.
@@ -186,5 +190,40 @@ func TestPublicNamesTheEcosystemsOwnIndex(t *testing.T) {
 	}
 	if c.Public(NPM, "") {
 		t.Error("nothing at all was called public")
+	}
+}
+
+// TestACredentialInAnIndexURLIsNotRecorded is the disclosure this guards against: the
+// index a package resolves from is put on the graph, shown in the side panel and
+// written into every export, and the HTML export is a file the documentation suggests
+// sharing. A pip or Cargo mirror is routinely configured with the credential in the
+// URL.
+func TestACredentialInAnIndexURLIsNotRecorded(t *testing.T) {
+	store := auth.Read("", nil)
+	cfg := New()
+	cfg.Credentials(store)
+	cfg.Add(PyPI, Source{URL: "https://deploy:s3cr3t@pypi.corp/simple", Trusted: true, Origin: OriginMachine})
+	cfg.Add(NPM, Source{URL: "https://someone:else@npm.corp/", Origin: OriginProject})
+
+	index, _ := cfg.For(PyPI, "requests")
+	if index != "https://pypi.corp/simple" {
+		t.Errorf("the index is recorded as %q", index)
+	}
+	for _, s := range cfg.Report() {
+		if strings.Contains(s.URL, "s3cr3t") || strings.Contains(s.URL, "else") {
+			t.Errorf("the resolution report carries a credential: %q", s.URL)
+		}
+	}
+	// This machine's own configuration supplied one, so it is kept and sent to that
+	// host; the repository's is discarded rather than kept for a host it chose.
+	ours, _ := http.NewRequest(http.MethodGet, "https://pypi.corp/simple/requests/", nil)
+	store.Apply(ours)
+	if ours.Header.Get("Authorization") == "" {
+		t.Error("the credential the machine supplied was not kept")
+	}
+	theirs, _ := http.NewRequest(http.MethodGet, "https://npm.corp/react", nil)
+	store.Apply(theirs)
+	if got := theirs.Header.Get("Authorization"); got != "" {
+		t.Errorf("a credential the repository supplied was sent: %q", got)
 	}
 }

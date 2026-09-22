@@ -1,13 +1,15 @@
-package index
+package auth
 
 import (
 	"net/http"
+	"os"
+	"path/filepath"
 	"testing"
 )
 
 func TestMavenServerCredentialsFindTheirHost(t *testing.T) {
 	t.Setenv("NEXUS_PASSWORD", "from-the-environment")
-	c := &credentials{bearer: map[string]string{}, basic: map[string]string{}}
+	c := &Store{bearer: map[string]string{}, basic: map[string]string{}}
 	c.readMavenSettings([]byte(`<?xml version="1.0"?>
 <settings>
   <servers>
@@ -42,7 +44,7 @@ func TestMavenServerCredentialsFindTheirHost(t *testing.T) {
 
 func TestNuGetFeedCredentialsFindTheirHost(t *testing.T) {
 	t.Setenv("AZ_PAT", "a-token")
-	c := &credentials{bearer: map[string]string{}, basic: map[string]string{}}
+	c := &Store{bearer: map[string]string{}, basic: map[string]string{}}
 	c.readNuGetConfig([]byte(`<?xml version="1.0"?>
 <configuration>
   <packageSources>
@@ -75,15 +77,37 @@ func TestNuGetFeedCredentialsFindTheirHost(t *testing.T) {
 }
 
 func TestCredentialsGoOnlyToTheHostTheyWereWrittenFor(t *testing.T) {
-	c := &credentials{bearer: map[string]string{}, basic: map[string]string{"nexus.corp": "u:p"}}
+	c := &Store{bearer: map[string]string{}, basic: map[string]string{"nexus.corp": "u:p"}}
 	ours, _ := http.NewRequest(http.MethodGet, "https://nexus.corp/repository/x", nil)
-	c.apply(ours)
+	c.Apply(ours)
 	if ours.Header.Get("Authorization") == "" {
 		t.Error("the host it was written for got nothing")
 	}
 	theirs, _ := http.NewRequest(http.MethodGet, "https://registry.npmjs.org/react", nil)
-	c.apply(theirs)
+	c.Apply(theirs)
 	if got := theirs.Header.Get("Authorization"); got != "" {
 		t.Errorf("a company password was sent to the public registry: %q", got)
+	}
+}
+
+// A netrc is what git and curl read, and therefore what a Go proxy, a pip mirror and
+// a link into a private repository are most often reached with.
+func TestNetrcCredentials(t *testing.T) {
+	home := t.TempDir()
+	netrc := "machine index.internal login user password pass\nmachine other.internal login u2 password p2\n"
+	if err := os.WriteFile(filepath.Join(home, ".netrc"), []byte(netrc), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	c := Read(home, nil)
+	req, _ := http.NewRequest(http.MethodGet, "https://index.internal/simple/requests/", nil)
+	c.Apply(req)
+	// cSpell: disable-next-line
+	if got := req.Header.Get("Authorization"); got != "Basic dXNlcjpwYXNz" {
+		t.Errorf("got %q", got)
+	}
+	other, _ := http.NewRequest(http.MethodGet, "https://elsewhere.internal/x", nil)
+	c.Apply(other)
+	if got := other.Header.Get("Authorization"); got != "" {
+		t.Errorf("credentials were sent to another host: %q", got)
 	}
 }

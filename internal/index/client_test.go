@@ -12,6 +12,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/sarumaj/depphunter-cli/internal/auth"
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/scope"
 	"github.com/sarumaj/depphunter-cli/internal/trace"
@@ -53,7 +54,7 @@ func clientFor(t *testing.T, eco, url, home string) *Client {
 	t.Helper()
 	cfg := New()
 	cfg.Add(eco, Source{URL: url, Trusted: true})
-	return NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, home, nil)
+	return NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil), nil)
 }
 
 func names(deps []lang.Target) []string {
@@ -98,7 +99,7 @@ func TestPyPIDependencies(t *testing.T) {
 	srv, _ := stubIndex(t)
 	cfg := New()
 	cfg.Add(PyPI, Source{URL: srv.URL + "/simple", Trusted: true})
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, "", nil)
+	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, nil, nil)
 	got := names(c.Dependencies(lang.Target{Ecosystem: PyPI, Package: "requests", Version: "2.31.0"}))
 	// An extra's dependency is installed only when that extra is asked for.
 	if len(got) != 2 || got[0] != "certifi" || got[1] != "urllib3" {
@@ -110,7 +111,7 @@ func TestAnIndexOnlyTheRepositoryNamesIsNotAsked(t *testing.T) {
 	srv, asked := stubIndex(t)
 	cfg := New()
 	cfg.Add(NPM, Source{URL: srv.URL}) // as a repository's .npmrc would
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, "", nil)
+	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, nil, nil)
 	if deps := c.Dependencies(lang.Target{Ecosystem: NPM, Package: "react", Version: "18.3.1"}); len(deps) != 0 {
 		t.Errorf("got %v from an index nothing here vouches for", names(deps))
 	}
@@ -146,10 +147,10 @@ func TestAnswersAreCached(t *testing.T) {
 	cfg.Add(Go, Source{URL: srv.URL, Trusted: true})
 	target := lang.Target{Ecosystem: Go, Package: "example.com/mod", Version: "v1.2.3"}
 
-	first := NewClient(cfg, dir, time.Hour, 5*time.Second, "", nil)
+	first := NewClient(cfg, dir, time.Hour, 5*time.Second, nil, nil)
 	first.Dependencies(target)
 	// A second client, a second run: the answer is on disk.
-	second := NewClient(cfg, dir, time.Hour, 5*time.Second, "", nil)
+	second := NewClient(cfg, dir, time.Hour, 5*time.Second, nil, nil)
 	if got := names(second.Dependencies(target)); len(got) != 1 {
 		t.Errorf("got %v from the cache", got)
 	}
@@ -161,7 +162,7 @@ func TestAnswersAreCached(t *testing.T) {
 	// milliseconds, so an answer written and read inside one test is the same
 	// instant there, and no time to live short of zero expires it.
 	age(t, dir, 2*time.Hour)
-	third := NewClient(cfg, dir, time.Hour, 5*time.Second, "", nil)
+	third := NewClient(cfg, dir, time.Hour, 5*time.Second, nil, nil)
 	third.Dependencies(target)
 	if len(*asked) != 2 {
 		t.Errorf("a stale answer was reused: %v", *asked)
@@ -202,26 +203,6 @@ func age(t *testing.T, dir string, by time.Duration) {
 	}
 }
 
-func TestNetrcCredentials(t *testing.T) {
-	home := t.TempDir()
-	netrc := "machine index.internal login user password pass\nmachine other.internal login u2 password p2\n"
-	if err := os.WriteFile(filepath.Join(home, ".netrc"), []byte(netrc), 0o600); err != nil {
-		t.Fatal(err)
-	}
-	c := readCredentials(home)
-	req, _ := http.NewRequest(http.MethodGet, "https://index.internal/simple/requests/", nil)
-	c.apply(req)
-	// cSpell: disable-next-line
-	if got := req.Header.Get("Authorization"); got != "Basic dXNlcjpwYXNz" {
-		t.Errorf("got %q", got)
-	}
-	other, _ := http.NewRequest(http.MethodGet, "https://elsewhere.internal/x", nil)
-	c.apply(other)
-	if got := other.Header.Get("Authorization"); got != "" {
-		t.Errorf("credentials were sent to another host: %q", got)
-	}
-}
-
 func TestAPrivatePackageIsNotNamedToAPublicIndex(t *testing.T) {
 	srv, asked := stubIndex(t)
 	// The stub stands in for the ecosystem's public index, which is what makes
@@ -231,7 +212,7 @@ func TestAPrivatePackageIsNotNamedToAPublicIndex(t *testing.T) {
 
 	cfg := New()
 	cfg.Add(Go, Source{URL: srv.URL, Trusted: true})
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, "",
+	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, nil,
 		scope.New([]string{"go:example.com/*"}))
 
 	if deps := c.Dependencies(lang.Target{Ecosystem: Go, Package: "example.com/mod", Version: "v1.2.3"}); len(deps) != 0 {
@@ -275,7 +256,7 @@ func TestTheReportSaysWhoAnswered(t *testing.T) {
 	cfg := New()
 	cfg.Add(Go, Source{URL: srv.URL, Trusted: true, Origin: OriginMachine})
 	cfg.Add(NPM, Source{URL: srv.URL, Origin: OriginProject}) // as a repository's .npmrc would
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, "", scope.New([]string{"go:private.example/*"}))
+	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, nil, scope.New([]string{"go:private.example/*"}))
 	rep := trace.New(1, true, nil, nil)
 	c.Trace(rep)
 

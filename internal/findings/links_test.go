@@ -161,7 +161,7 @@ func TestOnlyAGoneAnswerIsAFinding(t *testing.T) {
 		body += "A [link](" + srv.URL + "/" + p + ").\n"
 	}
 	root := docs(t, map[string]string{"README.md": body})
-	web := NewWeb(dir, time.Hour, 5*time.Second)
+	web := NewWeb(dir, time.Hour, 5*time.Second, nil)
 	web.http = srv.Client()
 
 	found, _ := checkLinks(context.Background(), root, []string{"README.md"}, web, func(string, ...any) {})
@@ -177,7 +177,7 @@ func TestOnlyAGoneAnswerIsAFinding(t *testing.T) {
 	// The answers worth keeping are kept, so a second run asks again only about the
 	// ones that said nothing usable.
 	before := asked.Load()
-	again := NewWeb(dir, time.Hour, 5*time.Second)
+	again := NewWeb(dir, time.Hour, 5*time.Second, nil)
 	again.http = srv.Client()
 	checkLinks(context.Background(), root, []string{"README.md"}, again, func(string, ...any) {})
 	if asked.Load()-before >= before {

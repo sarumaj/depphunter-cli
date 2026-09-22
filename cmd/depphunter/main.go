@@ -21,6 +21,7 @@ import (
 	"github.com/spf13/cobra"
 
 	anal "github.com/sarumaj/depphunter-cli/internal/analyze"
+	"github.com/sarumaj/depphunter-cli/internal/auth"
 	"github.com/sarumaj/depphunter-cli/internal/cache"
 	"github.com/sarumaj/depphunter-cli/internal/config"
 	"github.com/sarumaj/depphunter-cli/internal/editor"
@@ -145,6 +146,10 @@ func run(ctx context.Context, cfg config.Config) error {
 		ResolveDepth: cfg.ResolveDepth,
 	}
 	home, _ := os.UserHomeDir()
+	// What this machine already holds for its registries and indexes. Read once: the
+	// index client, the container registries and the link check all send from it, and
+	// each credential goes only to the host it was written for.
+	credentials := auth.Read(home, os.Getenv)
 	// What this organization owns: what was declared, plus what the machine already
 	// says about private Go modules (internal/scope).
 	private := scope.New(append(append([]string{}, cfg.Private...), scope.FromGoEnv(os.Getenv)...))
@@ -153,6 +158,7 @@ func run(ctx context.Context, cfg config.Config) error {
 	}
 	opts.Private = private.Match
 	indexes := index.NewDiscoverer(os.Getenv, home)
+	indexes.Config().Credentials(credentials)
 	indexes.Config().Trust(cfg.TrustIndexes)
 	opts.Indexes = func(files []*scan.File) anal.Indexes { return indexes.Discover(files) }
 	if cfg.Online {
@@ -164,7 +170,7 @@ func run(ctx context.Context, cfg config.Config) error {
 		if cacheDir != "" {
 			store = filepath.Join(cacheDir, "index")
 		}
-		opts.Registry = index.NewClient(indexes.Config(), store, indexCacheTTL, indexTimeout, home, private)
+		opts.Registry = index.NewClient(indexes.Config(), store, indexCacheTTL, indexTimeout, credentials, private)
 	}
 	// One report per analysis: --watch analyzes again on every change, and a report
 	// that accumulated over a morning's editing describes no run in particular.
@@ -187,7 +193,7 @@ func run(ctx context.Context, cfg config.Config) error {
 			if refs != nil {
 				extra["references"] = refs
 			}
-			if f := loadFindings(ctx, cfg, cacheDir, g); !f.Empty() {
+			if f := loadFindings(ctx, cfg, cacheDir, g, credentials); !f.Empty() {
 				extra["findings"] = f
 			}
 		} else if refs != nil {
@@ -195,7 +201,7 @@ func run(ctx context.Context, cfg config.Config) error {
 		}
 		return writeExport(g, cfg, extra, cfg.Export, cfg.Output)
 	}
-	return serve(ctx, cfg, g, opts, c, cacheDir, newReport)
+	return serve(ctx, cfg, g, opts, c, cacheDir, newReport, credentials)
 }
 
 // explain writes the resolution report when --explain asked for it, wherever the log
@@ -276,7 +282,8 @@ func loadReferences(ctx context.Context, cfg config.Config, cacheDir string, g *
 // loadFindings reads the scanner reports the user named and, with --online, asks the
 // OSV database about every external package the map pins to a version. nil when
 // nothing was asked for or nothing was found.
-func loadFindings(ctx context.Context, cfg config.Config, cacheDir string, g *graph.Graph) *findings.Set {
+func loadFindings(ctx context.Context, cfg config.Config, cacheDir string, g *graph.Graph,
+	credentials *auth.Store) *findings.Set {
 	if !cfg.FindingsEnabled() {
 		return nil
 	}
@@ -304,7 +311,7 @@ func loadFindings(ctx context.Context, cfg config.Config, cacheDir string, g *gr
 			if cacheDir != "" {
 				links = filepath.Join(cacheDir, "links")
 			}
-			opts.Web = findings.NewWeb(links, findingsCacheTTL, indexTimeout)
+			opts.Web = findings.NewWeb(links, findingsCacheTTL, indexTimeout, credentials)
 		}
 	}
 	set := findings.Collect(ctx, opts)
@@ -327,32 +334,31 @@ func loadFindings(ctx context.Context, cfg config.Config, cacheDir string, g *gr
 // following are. The map has already read which files those are, so nothing is
 // scanned twice to find them.
 //
-// Vendored documentation is left out. A vendored README's links point at the parts of
-// its own repository that vendoring does not copy, so they are broken by definition,
-// in a file nobody here can fix - which is thirty findings on this repository alone,
-// and not one of them a defect.
+// Two kinds of Markdown are left out, because a finding against either would be a
+// defect nobody is meant to fix: a vendored README links to the parts of its own
+// repository that vendoring does not copy, and a fixture under testdata is wrong on
+// purpose - a link that leads nowhere is what a link check is tested against.
 func documents(g *graph.Graph) []string {
 	var out []string
 	for _, n := range g.Nodes {
-		if n.Kind == graph.KindFile && n.Lang == "Markdown" && !vendored(n.Path) {
+		if n.Kind == graph.KindFile && n.Lang == "Markdown" && !fixed(n.Path) {
 			out = append(out, n.Path)
 		}
 	}
 	return out
 }
 
-// thirdParty names the directories whose contents arrived with a dependency rather
-// than being written here.
-var thirdParty = map[string]bool{
+// notProse names the directories whose Markdown is not this repository's own writing.
+var notProse = map[string]bool{
 	"vendor": true, "node_modules": true, "third_party": true, "thirdparty": true,
-	"site-packages": true, ".venv": true, "venv": true,
+	"site-packages": true, ".venv": true, "venv": true, "testdata": true,
 }
 
-// vendored reports whether a path lies under one of them, at any depth: a Go module's
-// vendor/ is at the root, a JavaScript workspace's node_modules is not.
-func vendored(p string) bool {
+// fixed reports whether a path lies under one of them, at any depth: a Go module's
+// vendor/ is at the root, a workspace's node_modules and a package's testdata are not.
+func fixed(p string) bool {
 	for _, segment := range strings.Split(p, "/") {
-		if thirdParty[segment] {
+		if notProse[segment] {
 			return true
 		}
 	}
@@ -399,7 +405,7 @@ func writeExport(g *graph.Graph, cfg config.Config, extra map[string]any, format
 }
 
 func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Options, c *cache.Cache,
-	cacheDir string, newReport func() *trace.Report) error {
+	cacheDir string, newReport func() *trace.Report, credentials *auth.Store) error {
 	if cfg.Editor == "" {
 		cfg.Editor = editor.Detect(os.Getenv, exec.LookPath)
 	}
@@ -436,7 +442,7 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 		srv.SetReferences(loadReferences(ctx, cfg, cacheDir, g))
 	})
 	findingsRun := newLatest(func(g *graph.Graph) {
-		srv.SetFindings(loadFindings(ctx, cfg, cacheDir, g))
+		srv.SetFindings(loadFindings(ctx, cfg, cacheDir, g, credentials))
 	})
 	if cfg.History {
 		go historyRun.Run(g)

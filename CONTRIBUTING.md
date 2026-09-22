@@ -1,7 +1,8 @@
 # Contributing to depphunter
 
-This is the developer side of [README.md](README.md): how to build and test
-depphunter, how it is put together, and how to work on the VS Code extension.
+This is the developer counterpart to [README.md](README.md): how to build and
+test depphunter, how it is structured, and how to work on the VS Code
+extension.
 
 ## Building and testing
 
@@ -11,17 +12,18 @@ go run honnef.co/go/tools/cmd/staticcheck@2026.2.1 ./...
 npm install && npm run lint   # the VS Code extension, whose manifest is at the root
 ```
 
-The extension has its own edit-run loop, tests and debugging notes under
+The extension has its own edit-and-run cycle, tests and debugging notes, under
 [Working on the extension](#working-on-the-extension).
 
-CI (`.github/workflows/ci.yml`) builds and tests on Linux, macOS and Windows, on
-the current Go and on exactly the Go that `go.mod` states, with
-`GOTOOLCHAIN=local`, so a `go.mod` that claims less than the code needs fails
-the build. It also checks formatting, `go mod
-tidy`, vet, staticcheck, govulncheck, JavaScript syntax and Markdown, and
-type-checks and packages the VS Code extension. Pushing a
-`v*` tag runs `.github/workflows/release.yml`, which tests and then publishes
-stripped binaries for every platform in the [Install](README.md#install) table.
+CI (`.github/workflows/ci.yml`) builds and tests on Linux, macOS and Windows,
+against the current Go release and against exactly the version `go.mod` states,
+with `GOTOOLCHAIN=local`, so that a `go.mod` declaring less than the code
+requires fails the build. It also checks formatting, `go mod tidy`, vet,
+staticcheck, govulncheck, JavaScript syntax and Markdown, and it type-checks and
+packages the VS Code extension. Pushing a `v*` tag runs
+`.github/workflows/release.yml`, which runs the tests and then publishes
+stripped binaries for every platform listed in
+[Install](README.md#install).
 
 Both workflows build the archives with `scripts/dist.sh`, which also works
 locally (it needs `zip`):
@@ -31,13 +33,13 @@ scripts/dist.sh v1.2.3                     # every target into dist/
 TARGETS="linux/amd64 darwin/arm64" scripts/dist.sh
 ```
 
-CI builds all targets on every push, keeps the archives for 14 days as workflow
-artifacts, and runs the tests as 32-bit (`GOARCH=386`). Renovate
+CI builds every target on each push, retains the archives as workflow artifacts
+for 14 days, and runs the tests in 32-bit mode (`GOARCH=386`). Renovate
 (`renovate.json`) opens grouped pull requests for non-major dependency updates;
-one that needs a newer Go than `go.mod` states fails the oldest-Go job until
-`go.mod` is raised with it.
+an update requiring a newer Go than `go.mod` declares fails the oldest-Go job
+until `go.mod` is raised accordingly.
 
-The milestones and design decisions are in
+The milestones and design decisions are recorded in
 [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md).
 
 ## How it works
@@ -112,7 +114,7 @@ flowchart TB
    what the scanners reported over the buildings and on the streets,
    `labels.js` places labels, `filter.js` and `history.js` compute filters,
    search and history colors locally, and `walk.js`, `city.js` and `tools.js`
-   add the first-person view and what it puts in your hands.
+   provide the first-person view and the tools it presents.
 
 The HTML export (`--export html`) inlines the same modules as `data:` URLs with
 the graph, settings, history and source text, so the page needs neither
@@ -151,34 +153,36 @@ tools are optional: `git` for file listing and history, language servers for
 
 ### The 3D models
 
-The hands and forearms you see in walk mode are a rigged model, built by
-`tools/hand.py` in Blender and exported to `web/static/hand.glb`; the script is
-the source for it, so it can be read and regenerated rather than being a binary
-nobody can change. They are also the only lit thing on the map - the walk camera
-carries its own lights, and every other material is unlit, so the city keeps its
-flat, data-first coloring.
+The hands and forearms shown in walk mode are a rigged model, built by
+`tools/hand.py` in Blender and exported to `web/static/hand.glb`. The script is
+the source, so the model can be read and regenerated rather than being a binary
+that cannot be modified. They are also the only lit objects on the map: the walk
+camera carries its own lights and every other material is unlit, which preserves
+the city's flat, data-led coloring.
 
-The trees and bushes are the same arrangement: `tools/props.py` takes a CC0 low
-poly nature pack, splits each model into its trunk and its crown so the map can
-color and tint them apart, decimates it to something a few thousand instances
-can afford, and writes `web/static/props.glb`. The beetle a finding walks the
-streets as is modelled rather than fetched - neither pack has an insect in it -
-by `tools/bug.py` into `web/static/bug.glb`: wing cases that take the severity's
-color, a dark front end, and six legs that rock on their own.
+The trees and bushes follow the same arrangement. `tools/props.py` takes a CC0
+low-poly nature pack, separates each model into trunk and crown so that the two
+can be colored and tinted independently, decimates it to a cost several thousand
+instances can bear, and writes `web/static/props.glb`. The beetle representing a
+finding is modelled rather than sourced, since neither pack contains an insect:
+`tools/bug.py` writes `web/static/bug.glb`, with wing cases that take the
+severity's color, a dark head and thorax, and six independently animated
+legs.
 
 ## Working on the extension
 
-The extension's manifest lives at the root of the repository rather than in
-`extension/`, so that it shares the README and the LICENSE instead of keeping
-copies: `package.json`, `tsconfig.json` and `.vscodeignore` are up there, and
-`extension/` holds the source and the tests. `.vscodeignore` is written the
-other way round from usual - it leaves everything out and lets the handful of
-extension files back in - because most of what is in this repository is a Go
+The extension's manifest is at the root of the repository rather than in
+`extension/`, so that it shares the README and the LICENSE instead of holding
+copies: `package.json`, `tsconfig.json` and `.vscodeignore` are at the root, and
+`extension/` contains the source and the tests. `.vscodeignore` is written in
+the inverse of the usual manner — it excludes everything and then re-includes
+the few extension files — because the greater part of this repository is a Go
 program.
 
-An extension is a Node program the editor loads into a process of its own, the
-*extension host*. It is not a web page, it has no DOM, and `console.log` from it
-does not go where you might expect. Everything below follows from that.
+An extension is a Node program that the editor loads into a separate process,
+the *extension host*. It is not a web page, it has no DOM, and its `console.log`
+output does not appear where one might expect. Everything below follows from
+that.
 
 ### The first run
 
@@ -189,64 +193,67 @@ npm install
 npm run compile
 ```
 
-Open the repository as the workspace, press F5, and pick **Run the VS Code
-extension** if you are asked. A second editor window opens, titled *[Extension
-Development Host]*. That window has your extension loaded and nothing else
-different about it; the first window is now a debugger attached to it.
+Open the repository as the workspace, press F5, and select **Run the VS Code
+extension** if prompted. A second editor window opens, titled *[Extension
+Development Host]*. That window differs from the first only in having the
+extension loaded; the first window is now a debugger attached to it.
 
-In the new window, open a folder with some code in it and run
+In the new window, open a folder containing code and run
 `depphunter: Open the Map` from the command palette (Ctrl/Cmd+Shift+P).
 
 ### Changing code
 
-`npm run watch` in a terminal recompiles on every save. The extension host does
-not reload itself, so after a save go to the *[Extension Development Host]*
-window and run **Developer: Reload Window** (Ctrl/Cmd+R). That is the whole
-edit-run loop.
+`npm run watch` in a terminal recompiles on each save. The extension host does
+not reload itself, so after saving, switch to the *[Extension Development Host]*
+window and run **Developer: Reload Window** (Ctrl/Cmd+R). That is the entire
+edit-and-run cycle.
 
-Reloading kills the extension host, which kills the `depphunter` it started, so
-the next open analyzes again from a warm cache. Nothing leaks between runs.
+Reloading terminates the extension host, which terminates the `depphunter` it
+started, so the next invocation analyses again from a warm cache. No state
+persists between runs.
 
 ### Breakpoints
 
-Click the gutter beside a line in `extension/src/*.ts` in the **first** window
-and it will be hit - `tsc` writes source maps, so you are stopped in the
-TypeScript, not in `extension/out/`. The Debug Console there is where
-`console.log` from the extension goes, and where an uncaught exception is
-reported.
+Setting a breakpoint in the gutter beside a line of `extension/src/*.ts` in the
+**first** window will hit. `tsc` emits source maps, so execution stops in the
+TypeScript rather than in `extension/out/`. The Debug Console in that window
+receives the extension's `console.log` output and reports uncaught exceptions.
 
-Useful places to stop when something is wrong: `start()` in `server.ts` (what
-arguments went to the binary), the `read` function just below it (what came
-back), and `show()` in `extension.ts` (what address the browser was handed).
+Useful breakpoints when diagnosing a fault: `start()` in `server.ts`, for the
+arguments passed to the binary; the `read` function immediately below it, for
+what the binary returned; and `show()` in `extension.ts`, for the address handed
+to the browser.
 
 ### The four places output goes
 
-This is the part that catches people out. There are four separate consoles and
-they show different things:
+This is a common source of confusion. There are four separate consoles, and each
+shows something different:
 
-| Where                       | What is in it                                                                | How to open it                                                                                              |
-|-----------------------------|------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------|
-| Debug Console, first window | `console.log` and exceptions from *your* extension                           | F5 opens it                                                                                                 |
-| Output → **depphunter**     | the server's own log, verbatim: the command line, the analysis, the warnings | *Output: Focus on Output View*, then pick depphunter in the dropdown - or `depphunter: Show the Server Log` |
-| Output → **Extension Host** | the editor's own complaints about loading extensions                         | same dropdown                                                                                               |
-| Webview developer tools     | errors from the map itself - WebGL, the page's JavaScript                    | **Developer: Open Webview Developer Tools** in the *[Extension Development Host]* window                    |
+| Where                       | What is in it                                                                | How to open it                                                                                |
+|-----------------------------|------------------------------------------------------------------------------|-----------------------------------------------------------------------------------------------|
+| Debug Console, first window | `console.log` and exceptions from the extension itself                       | F5 opens it                                                                                   |
+| Output → **depphunter**     | the server's own log, verbatim: the command line, the analysis, any warnings | *Output: Focus on Output View*, then select depphunter — or `depphunter: Show the Server Log` |
+| Output → **Extension Host** | the editor's own diagnostics about loading extensions                        | the same selector                                                                             |
+| Webview developer tools     | errors from the map itself: WebGL and the page's JavaScript                  | **Developer: Open Webview Developer Tools** in the *[Extension Development Host]* window      |
 
-If the map opens but is blank or broken, it is the last one you want. If the map
-never opens, it is the first two.
+If the map opens but is blank or malformed, the last of these is the relevant
+one. If the map never opens, the first two are.
 
 ### When it goes wrong
 
-- **"depphunter was not found"** - the extension host inherited a `PATH` without
-  it. Set `depphunter.path` to the absolute path; that always works.
-- **The tab opens empty, and the webview console says *Refused to frame*** - the
-  server was started without the right `--embed` origin. The **depphunter**
-  output channel shows the exact command line it used; check it has
-  `--embed vscode-webview:` in it.
-- **Nothing happens at all and there is no error** - the extension may not have
+- **"depphunter was not found"** — the extension host inherited a `PATH` that
+  does not contain it. Set `depphunter.path` to the absolute path, which always
+  resolves.
+- **The tab opens empty and the webview console reports *Refused to frame*** —
+  the server was started without the required `--embed` origin. The
+  **depphunter** output channel records the exact command line used; confirm
+  that it contains `--embed vscode-webview:`.
+- **Nothing happens and no error is reported** — the extension may not have
   activated. **Developer: Show Running Extensions** in the development window
-  lists what loaded and how long each took.
-- **A change did nothing** - `npm run watch` was not running, or the window was
-  not reloaded. The timestamp on `extension/out/extension.js` settles it.
+  lists what was loaded and how long each extension took.
+- **A change had no effect** — either `npm run watch` was not running or the
+  window was not reloaded. The modification time of `extension/out/extension.js`
+  distinguishes the two.
 
 ### The extension's tests
 
@@ -255,42 +262,44 @@ go build -o depphunter ./cmd/depphunter
 DEPPHUNTER="$PWD/depphunter" npm test   # skipped without a binary to test
 ```
 
-`npm test` names the test files one by one rather than globbing them, which
-looks needlessly rigid and is not: only Node 22 and newer expand a glob after
-`--test`, only Node 20 and older search a directory given there, and naming the
-files is the one form that works on both. Add a file here, add it to the script.
+`npm test` names the test files individually rather than globbing them. This
+appears unnecessarily rigid but is not: only Node 22 and later expand a glob
+after `--test`, only Node 20 and earlier search a directory given there, and
+naming the files is the only form that works with both. A new test file must be
+added to the script.
 
-These run without an editor at all: `extension/test/stub.js` stands in for the
-editor API, so the built `extension/out/extension.js` drives a real server and
-the test checks what came back. That is where the coupling is - the arguments
-the extension starts `depphunter` with, and the address it reads out of its
-output. Neither the Go tests nor the type checker see either one.
+These tests run without an editor: `extension/test/stub.js` substitutes for the
+editor API, so that the built `extension/out/extension.js` drives a real server
+and the test inspects the result. That is where the coupling lies — the
+arguments with which the extension starts `depphunter`, and the address it reads
+from that process's output — and neither the Go tests nor the type checker
+observes either.
 
-Give `DEPPHUNTER` an absolute path: the extension starts the binary in the
-folder it is mapping, and a relative one is not resolved the same way on every
+`DEPPHUNTER` must be an absolute path: the extension starts the binary in the
+folder it is mapping, and a relative path is not resolved identically on every
 platform.
 
 ### The binary it ships
 
-A released VSIX carries the `depphunter` for the platform it was built for, at
-`bin/depphunter` inside the package, so installing the extension installs the
-server it starts and the two cannot be different versions. `bin/` is not in the
-repository: the workflows put the binary there just before packaging, and a
-build from a checkout has none.
+A released VSIX carries the `depphunter` built for its platform, at
+`bin/depphunter` within the package, so that installing the extension installs
+the server it starts and the two cannot be of different versions. `bin/` is not
+held in the repository: the workflows place the binary there immediately before
+packaging, and a build from a checkout contains none.
 
-What gets run is decided in `extension/src/binary.ts`, in this order:
+The binary to execute is determined in `extension/src/binary.ts`, in this order:
 
-1. `depphunter.path`, when it is set to anything. The only way to point at a
-   build that is not the one the extension shipped with, so it is never
-   second-guessed.
-2. `bin/depphunter` beside the manifest, if this build has one.
+1. `depphunter.path`, whenever it is set. It is the only means of selecting a
+   build other than the one the extension shipped with, and is therefore never
+   overridden.
+2. `bin/depphunter` beside the manifest, where this build has one.
 3. `depphunter` on the `PATH`.
 
-Step 2 also sets the executable bit. A VSIX is a zip, and a zip's permission
-bits do not survive every installer; setting it costs nothing and beats finding
-out when the server will not start.
+Step 2 also sets the executable bit. A VSIX is a zip archive, and a zip's
+permission bits do not survive every installer; setting the bit costs nothing
+and is preferable to discovering the omission when the server fails to start.
 
-### Installing your build
+### Installing a local build
 
 ```sh
 go build -o bin/depphunter ./cmd/depphunter   # optional: what a release would ship
@@ -298,14 +307,15 @@ npx @vscode/vsce package --target linux-x64   # or omit --target for a universal
 code --install-extension depphunter-0.1.0.vsix
 ```
 
-That installs it into your real editor, not the development window. `code
---uninstall-extension sarumaj.depphunter` removes it again. A `--target` build
-must carry a binary for that platform and nothing else, which is why `bin/` is
-emptied between targets in the release workflow.
+This installs into the ordinary editor, not the development window. `code
+--uninstall-extension sarumaj.depphunter` removes it. A `--target` build must
+carry a binary for that platform and no other, which is why `bin/` is emptied
+between targets in the release workflow.
 
 ## Publishing the extension
 
-The extension is not on any marketplace yet. What it takes, when it is time:
+The extension is not yet published to any marketplace. What publication
+requires:
 
 1. `npm install -g @vscode/vsce`, and `vsce package` at the root of the
    repository to build the `.vsix`. The release workflow already does this and
@@ -323,25 +333,27 @@ The extension is not on any marketplace yet. What it takes, when it is time:
    install from: an account at <https://open-vsx.org>, an access token, and
    `npx ovsx publish depphunter-0.1.0.vsix -p <token>`.
 
-Because the extension ships a binary, there is a VSIX per `--target`
+Because the extension ships a binary, there is one VSIX per `--target`
 (`win32-x64`, `win32-arm64`, `linux-x64`, `linux-arm64`, `linux-armhf`,
-`darwin-x64`, `darwin-arm64`, `alpine-x64`, `alpine-arm64`) and a universal one
-without a binary for anything else. `vsce publish` takes them one at a time and
-the marketplace hands each machine the one that matches; publish the universal
-one too, or a platform off the list gets nothing at all.
+`darwin-x64`, `darwin-arm64`, `alpine-x64`, `alpine-arm64`) and a universal
+build without a binary for every other platform. `vsce publish` accepts them one
+at a time, and the marketplace serves each machine the matching build; the
+universal build must be published as well, or a platform absent from the list
+receives nothing.
 
 The marketplace page is the project's front page: `vsce` takes the `README.md`
-beside the manifest and rewrites its relative links to GitHub. There is
-no second copy to keep in step.
+beside the manifest and rewrites its relative links to point at GitHub. There is
+no second copy to keep synchronized.
 
-The icon is `icon.png` at the root, drawn by `tools/icon.py`, which also writes
-the browser's `favicon.svg` and `favicon.png`. Run it after changing the mark:
+The icon is `icon.png` at the root, generated by `tools/icon.py`, which also
+writes the browser's `favicon.svg` and `favicon.png`. Run it after changing the
+mark:
 
 ```sh
 python3 tools/icon.py
 ```
 
-Those three are the only PNGs kept out of Git LFS (see `.gitattributes`). They
-are a few kilobytes each and are read straight out of a checkout - `vsce` wants
-`icon.png` when it packages, and a clone without LFS should still show the right
-thing in a browser tab.
+These three are the only PNGs excluded from Git LFS (see `.gitattributes`).
+Each is a few kilobytes and is read directly from a checkout: `vsce` requires
+`icon.png` when packaging, and a clone made without LFS should still present the
+correct icon in a browser tab.
