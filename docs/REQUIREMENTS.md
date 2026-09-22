@@ -1,24 +1,24 @@
 # depphunter - Requirements
 
-`depphunter` is a CLI that analyzes the project in the current directory and
-opens an interactive, isometric "archipelago" map of its code base in the
-default web browser.
+`depphunter` is a command-line tool that analyses the project in the current
+directory and opens an interactive isometric "archipelago" map of its code base
+in the default web browser.
 
 ## 1. Goals
 
-- Answer, within a minute on an unfamiliar repository: *what is here, how big is
-  it, what depends on what, and what does it pull in from outside?*
-- Let the user decide interactively **what** and **how much** to see (collapse /
-  expand, focus, filter) without re-running the CLI.
-- Work for any language ecosystem through a pluggable analysis layer.
-- Ship as one pure-Go, cross-platform binary that works offline.
+- Answer, within a minute on an unfamiliar repository: what is present, how
+  large it is, what depends on what, and what it draws in from outside.
+- Allow the user to determine interactively **what** and **how much** is shown —
+  collapsing, expanding, focusing and filtering — without re-running the tool.
+- Support any language ecosystem through a pluggable analysis layer.
+- Ship as a single pure-Go, cross-platform binary that operates offline.
 
-### Non-goals (for now)
+### Non-goals, at present
 
-- Precise symbol-level (call-graph) references - deferred to an optional LSP
-  layer.
+- Precise symbol-level call-graph references, which are deferred to an optional
+  LSP layer.
 - Editing code, refactoring, or running builds.
-- Hosting the view for remote users (the server is local-only by design).
+- Serving the view to remote users; the server is local-only by design.
 
 ## 2. The metaphor: an archipelago
 
@@ -42,8 +42,8 @@ Rules:
   no side has room (M7).
 - Edges are **never all drawn by default**. They appear for the focused node; a
   collapsed node shows the aggregate of its descendants' edges with counts.
-- Every color encodes exactly one thing, has a legend, and is never the only
-  channel (tooltip, labels and side panel repeat the information).
+- Every color encodes exactly one quantity, has a legend, and is never the sole
+  channel: the tooltip, the labels and the side panel repeat the information.
 
 ## 3. Graph data model
 
@@ -700,7 +700,7 @@ be opened down to its repeat and no further.
   description, the fixed version and the advisory link.
 - In walk mode every finding is a bug patrolling the building it belongs to,
   colored by its severity, and the crosshair names the one it is on. Catching
-  one with whatever tool is in your hands opens what it was carrying, exactly
+  one with the current tool displays what it carried, exactly
   as a second hit on a building opens its details; a thrown projectile follows
   a bug that walks on while it flies, and catches any bug it passes through.
   The HUD counts what is left. A finding whose building is not drawn (a
@@ -712,7 +712,7 @@ the vector's, a repository with no reports and no `--online` asks nothing and
 shows nothing, and catching a bug in walk mode opens the same finding the side
 panel lists for its building.
 
-### M14 - Three styles, and something in your hands worth looking at
+### M14 - Three styles, and a tool worth looking at
 
 - The map is dressed by a style (`--style`, `ui.style`): a city, a printed
   circuit board, or a galaxy. All three share every measurement and every piece
@@ -738,7 +738,7 @@ panel lists for its building.
   grown into flesh by the Skin modifier, smoothed, and rigged with a bone per
   phalanx - and exports web/static/hand.glb. The script is the source and is
   committed with it, so the model can be read, reviewed and regenerated rather
-  than being a binary nobody can change. No model is downloaded: a rigged hand
+  than a binary that cannot be modified. No model is downloaded: a rigged hand
   that can be posed per tool and redistributed under this repository's license is
   not something there is to fetch.
 - It is loaded once and cloned for every hand drawn, and it is posed by bone
@@ -771,8 +771,7 @@ panel lists for its building.
   color, every tagged module as a ring, and anything beyond its range as an
   arrow on the rim. Its range fits whatever is still out there and eases rather
   than jumping, and under it is the distance to the nearest bug and what it
-  carries - a map with a thousand files is otherwise a map you cannot find a bug
-  on.
+  carries; without it, a bug cannot be found on a map of a thousand files.
 
 *Accepted when* the same repository in all three styles keeps the same layout and
 the same language colors, a board's streets carry copper where a city's carry
@@ -793,9 +792,9 @@ panel, and the tracker points at a bug on the far side of the map.
   the same event stream as everything else. A row picked in the panel selects
   that building on the map; a building picked on the map opens the tree to its
   row. Each change names the client that made it, so a client can tell its own
-  change coming back from somebody else's.
+  change returning from another client's.
 - The backpack's lasting store stays the browser's, per repository: it has to
-  outlive a server that only runs while somebody is looking. The page pushes it
+  outlive a server that runs only while the map is open. The page uploads it
   up as it loads, and a finding dropped in the panel is dropped from the map too.
 - The catch can be written out as Markdown, CSV or JSON, and the graph in its
   own formats, from the editor as well as from the page; and the map can be
@@ -829,12 +828,28 @@ further.
   is read from the user's own config and the command line only: a repository that
   could clear its own warning would leave no guard at all, which is the whole
   point of the marking.
-- Credentials are read from the files an enterprise keeps them in - npm auth
-  tokens, netrc, `~/.m2/settings.xml` `<servers>` matched to the mirror or
-  repository that names them, and `<packageSourceCredentials>` matched to its
-  `<packageSources>` entry - with `${env.NAME}` and `%NAME%` resolved, and an
-  encrypted password left alone rather than sent as ciphertext. Each goes to the
-  host it was written for and to no other.
+- Credentials are read from the files and variables an enterprise keeps them in
+  (internal/auth): the four per-registry forms of an `.npmrc`; netrc; the
+  `<servers>` of `~/.m2/settings.xml`, matched to the mirror or repository naming
+  them; `<packageSourceCredentials>` matched to its `<packageSources>` entry; the
+  stored `auths` of a container registry configuration and the helpers it names;
+  a Cargo token, matched to its index through the registry's name; and a
+  credential written into an index URL. `${NAME}`, `${env.NAME}` and `%NAME%` are
+  expanded; an encrypted password is left alone rather than sent as ciphertext.
+  Each credential goes to the host it was written for and to no other, matched
+  with the port and then without it, since a registry reached on a port has a
+  credential of its own.
+- A credential written into an index URL is removed from that URL before the URL
+  is recorded. The index a package resolves from reaches the graph, the side
+  panel and every export, and the HTML export is a file the documentation
+  recommends sharing. Only this machine's own configuration contributes a
+  credential from a URL; the repository's is stripped and discarded.
+- A container registry that names a credential helper rather than storing a
+  credential is asked through that helper, as `docker login` is:
+  `docker-credential-<name> get` with the registry on standard input. It is the
+  only program executed that was not named on the command line, so the name must
+  be a bare name, is resolved on `PATH` alone, and is bounded by a timeout; an
+  identity token is declined, since only a registry accepts one.
 
 *Accepted when* a run with `--private 'corp.example/*'` names no corp.example
 package to a public proxy and sends none of them to osv.dev, those
@@ -880,12 +895,13 @@ without regenerating fails the tests by name.
   from and whether anything vouches for it; per ecosystem and level, how many
   packages were asked about, how many answered and what was added; and one entry
   per question, naming who answered it - a lock file, an index, a cached or
-  already-given answer - or why nobody did.
-- The reasons nobody answered are kept apart, because on the map they are one
-  and the same absence: no lock file covers it and the run is offline; its index
-  is one only the repository names; it is private and its index is the public
-  one; a proxy needs a version it has not got; the ecosystem has no index that
-  can be asked; or the request was made and came back 404, 401 or worse. Where
+  already-given answer - or, where none did, why not.
+- The reasons nothing answered are kept distinct, because on the map they are
+  one and the same absence: no lock file covers it and the run is offline; its
+  index is named only by the repository; it is private and its index is the
+  public one; a proxy requires a version it was not given; the ecosystem has no
+  index that can be queried; or a request was made and returned 404, 401 or
+  worse. Where
   requests were made, each URL and the status it returned is kept, since a
   container image takes three round trips to answer and which one failed is the
   question.
@@ -921,8 +937,7 @@ opens and the digest `--explain` writes describe the same analysis.
   count; a link inside fenced code or a code span does not, since it is printed
   rather than followed.
 - There is no island for external hosts. A URL is not a dependency the map can
-  say anything about, and a legend of somebody else's domain names would only
-  crowd the sea.
+  characterize, and a legend of third-party domain names would add nothing.
 - A link that leads nowhere is a finding on the line that carries it, with the
   column, so two breaks on one line are two findings rather than one. Four
   things can be wrong: the file is not there, the fragment names no heading of
@@ -932,15 +947,17 @@ opens and the digest `--explain` writes describe the same analysis.
   every analysis without being asked for. A target that exists but is not on the
   map - ignored, excluded, generated at build time - is not broken; the question
   is the filesystem's, not the graph's.
-- The fourth needs somebody else's server and happens only with `--online`. Only
+- The fourth requires a third-party server and occurs only under `--online`. Only
   404 and 410 count: a refusal, a rate limit, a timeout and a server error are
   what a checker is given by hosts that block robots, and reading them as rot
   would report links that work in a browser. What could not be checked is
   counted and said, not drawn, and it does not mark the set incomplete. Answers
   are kept for a day.
-- Vendored documentation is not checked. Its links point at the parts of its own
-  repository that vendoring does not copy, so they are broken by definition and
-  in a file nobody here can fix.
+- Vendored documentation and fixtures under `testdata` are not checked. The
+  first links to the parts of its own repository that vendoring does not copy;
+  the second is wrong on purpose, since a link that leads nowhere is what a link
+  check is tested against. A finding against either would be a defect that nobody
+  is expected to correct.
 
 *Accepted when* a README linking to a moved file reports it and one linking to a
 generated file does not, a fragment naming a heading that exists is silent and
@@ -959,8 +976,9 @@ their READMEs.
   or from a GitHub Enterprise instance, so the two are one ecosystem on the map.
   `--private 'actions:internal-org/*'` is how an instance's own actions are kept
   off the public index and out of the vulnerability database.
-- Cargo registry tokens (`CARGO_REGISTRIES_*_TOKEN`) and pip's keyring are not
-  read, so a private crate registry or a keyring-backed PyPI mirror answers 401
-  and is passed over in silence.
+- pip's keyring is not consulted, so a PyPI mirror whose credential is held only
+  in a keyring answers 401 and is passed over in silence. A credential in the
+  index URL or in netrc, which is how such a mirror is otherwise configured, is
+  read.
 - Servers that index slowly (rust-analyzer, jdtls) may answer before indexing
   finishes and return fewer references within the time budget.

@@ -13,6 +13,7 @@ import (
 	"golang.org/x/mod/modfile"
 	"golang.org/x/mod/module"
 
+	"github.com/sarumaj/depphunter-cli/internal/auth"
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/scope"
 	"github.com/sarumaj/depphunter-cli/internal/store"
@@ -27,7 +28,7 @@ type Client struct {
 	cfg     *Config
 	http    *http.Client
 	cache   *store.Store
-	auth    *credentials
+	auth    *auth.Store
 	private *scope.Private
 	timeout time.Duration
 
@@ -62,13 +63,15 @@ func (c *Client) report(l trace.Lookup) {
 }
 
 // NewClient prepares the client. dir holds the cached answers; ttl is how long one
-// stays usable; private names the packages that must not be asked of a public index.
-func NewClient(cfg *Config, dir string, ttl, timeout time.Duration, home string, private *scope.Private) *Client {
+// stays usable; credentials are what this machine holds for its indexes, and private
+// names the packages that must not be asked of a public index.
+func NewClient(cfg *Config, dir string, ttl, timeout time.Duration,
+	credentials *auth.Store, private *scope.Private) *Client {
 	return &Client{
 		cfg:     cfg,
 		http:    &http.Client{Timeout: timeout},
 		cache:   store.New(dir, ttl),
-		auth:    readCredentials(home),
+		auth:    credentials,
 		private: private,
 		timeout: timeout,
 		seen:    map[string][]lang.Target{},
@@ -274,7 +277,7 @@ func (c *Client) do(ctx context.Context, url, media, bearer string) (*http.Respo
 	if bearer != "" {
 		req.Header.Set("Authorization", "Bearer "+bearer)
 	} else {
-		c.auth.apply(req)
+		c.auth.Apply(req)
 	}
 	made, _ := ctx.Value(requestLogKey{}).(*requestLog)
 	start := time.Now()

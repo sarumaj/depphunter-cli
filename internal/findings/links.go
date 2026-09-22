@@ -12,6 +12,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/sarumaj/depphunter-cli/internal/auth"
 	"github.com/sarumaj/depphunter-cli/internal/lang/markdown"
 	"github.com/sarumaj/depphunter-cli/internal/store"
 )
@@ -169,16 +170,20 @@ func (c *anchorCache) of(p string, src []byte) map[string]bool {
 type Web struct {
 	http    *http.Client
 	cache   *store.Store
+	auth    *auth.Store
 	timeout time.Duration
 }
 
 // NewWeb prepares the checker. dir holds the answers, which are kept for ttl: link
 // rot is slow, and asking a hundred hosts on every re-analysis is the kind of thing
-// that gets a tool blocked.
-func NewWeb(dir string, ttl, timeout time.Duration) *Web {
+// that gets a tool blocked. credentials are what this machine holds, so that a link
+// into a private repository or an internal wiki is checked rather than reported
+// missing; each is sent only to the host it was written for.
+func NewWeb(dir string, ttl, timeout time.Duration, credentials *auth.Store) *Web {
 	return &Web{
 		http:    &http.Client{Timeout: timeout},
 		cache:   store.New(dir, ttl),
+		auth:    credentials,
 		timeout: timeout,
 	}
 }
@@ -263,6 +268,10 @@ func (w *Web) ask(ctx context.Context, method, u string) (int, error) {
 	}
 	req.Header.Set("User-Agent", userAgent)
 	req.Header.Set("Accept", "*/*")
+	// A link to a private repository or an internal wiki answers 404 to an
+	// anonymous request, and a 404 is what this reports. The credential goes only to
+	// a host this machine's own files name.
+	w.auth.Apply(req)
 	resp, err := w.http.Do(req)
 	if err != nil {
 		return 0, err

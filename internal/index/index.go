@@ -13,6 +13,7 @@ import (
 	"sort"
 	"strings"
 
+	"github.com/sarumaj/depphunter-cli/internal/auth"
 	"github.com/sarumaj/depphunter-cli/internal/trace"
 )
 
@@ -73,9 +74,17 @@ type Config struct {
 	// registry: without it every one of its packages is marked, and a warning that
 	// is always on is a warning nobody reads.
 	trusted map[string]bool
+	// credentials receives what an index URL carries in it - the form a private pip
+	// or Cargo mirror is usually configured with - and is what the URL is stripped
+	// of before it is recorded. nil strips it and keeps nothing.
+	credentials *auth.Store
 }
 
 func New() *Config { return &Config{sources: map[string][]Source{}, trusted: map[string]bool{}} }
+
+// Credentials is where a credential written into an index URL is filed. It is set
+// before anything is discovered, since a URL is stripped as it arrives.
+func (c *Config) Credentials(s *auth.Store) { c.credentials = s }
 
 // Trust vouches for index URLs whatever names them. It is the user's own say-so, from
 // their config or the command line; a repository cannot reach it (see config.go).
@@ -96,6 +105,11 @@ func (c *Config) Public(eco, index string) bool {
 
 // Add records a source for an ecosystem. Sources added first are preferred, which is
 // why the machine's own configuration is read before the repository's.
+//
+// A URL carrying a credential is stripped of it here, always: the index a package
+// resolves from is drawn on the map, named in the side panel and written into every
+// export, and an export is a file this project's documentation suggests sharing. The
+// credential is kept only where this machine's own configuration supplied it.
 func (c *Config) Add(eco string, s Source) {
 	if s.URL == "" {
 		return
@@ -104,6 +118,7 @@ func (c *Config) Add(eco string, s Source) {
 	if s.URL == "" {
 		return
 	}
+	s.URL = c.credentials.FromURL(s.URL, s.Trusted)
 	for _, have := range c.sources[eco] {
 		if have.URL == s.URL && have.Scope == s.Scope {
 			return

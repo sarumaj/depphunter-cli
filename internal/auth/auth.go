@@ -1,4 +1,11 @@
-package index
+// Package auth holds the credentials this machine already has for the registries and
+// package indexes it uses, so that a private feed answers instead of returning 401.
+//
+// Everything here is read from the user's own files and environment, never from the
+// repository: a repository that could supply a credential could also choose where it
+// is sent. Each credential is filed under the host it was written for and is sent to
+// that host and no other.
+package auth
 
 import (
 	"encoding/base64"
@@ -6,20 +13,24 @@ import (
 	"net/http"
 	"net/url"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 )
 
-// credentials are the tokens this machine already holds for its package indexes. They
-// are read from the user's own files only - never from the repository - and are sent
-// to the host they were written for and to no other.
-type credentials struct {
-	bearer map[string]string // host -> npm token
-	basic  map[string]string // host -> "user:password" from .netrc
+// Store is what this machine holds, by host.
+type Store struct {
+	bearer map[string]string // host -> token
+	basic  map[string]string // host -> "user:password"
 }
 
-func readCredentials(home string) *credentials {
-	c := &credentials{bearer: map[string]string{}, basic: map[string]string{}}
+// Read collects the credentials from the files and variables the package managers of
+// this machine keep them in. env is the environment to read; nil reads none.
+func Read(home string, env func(string) string) *Store {
+	c := &Store{bearer: map[string]string{}, basic: map[string]string{}}
+	if env == nil {
+		env = func(string) string { return "" }
+	}
 	if home == "" {
 		return c
 	}
@@ -46,6 +57,7 @@ func readCredentials(home string) *credentials {
 			c.readNuGetConfig(data)
 		}
 	}
+	c.readMachineSources(home, env, exec.LookPath)
 	return c
 }
 
@@ -53,7 +65,7 @@ func readCredentials(home string) *credentials {
 // a <mirror> or a <profile>'s <repository>, and files it under that URL's host. It is
 // where a developer's Nexus or Artifactory password lives; without it the company
 // repository answers 401 and half the dependency tree goes quiet.
-func (c *credentials) readMavenSettings(data []byte) {
+func (c *Store) readMavenSettings(data []byte) {
 	var doc struct {
 		Servers struct {
 			Server []struct {
@@ -110,15 +122,21 @@ func (c *credentials) readMavenSettings(data []byte) {
 // readNuGetConfig takes the credentials a NuGet configuration keeps for its own
 // package sources - Azure Artifacts, a Nexus feed, ProGet - and files them under the
 // host of the source they name.
-func (c *credentials) readNuGetConfig(data []byte) {
+func (c *Store) readNuGetConfig(data []byte) {
+	type entry struct {
+		Key   string `xml:"key,attr"`
+		Value string `xml:"value,attr"`
+	}
 	var doc struct {
-		PackageSources nugetSources `xml:"packageSources"`
-		Credentials    struct {
+		PackageSources struct {
+			Add []entry `xml:"add"`
+		} `xml:"packageSources"`
+		Credentials struct {
 			// One element per source, named after it, so the shape is not known in
 			// advance: it is read as a list of whatever elements are there.
 			Sources []struct {
 				XMLName xml.Name
-				Add     []nugetEntry `xml:"add"`
+				Add     []entry `xml:"add"`
 			} `xml:",any"`
 		} `xml:"packageSourceCredentials"`
 	}
@@ -162,6 +180,12 @@ func expand(v string) string {
 			return os.Getenv(name)
 		}
 	}
+	// npm's own form, and how every pipeline writes a token into an .npmrc.
+	if inner, ok := strings.CutPrefix(v, "${"); ok {
+		if name, ok := strings.CutSuffix(inner, "}"); ok && name != "" && !strings.ContainsAny(name, "${}") {
+			return os.Getenv(name)
+		}
+	}
 	if name, ok := strings.CutPrefix(v, "%"); ok {
 		if name, ok := strings.CutSuffix(name, "%"); ok && name != "" && !strings.Contains(name, "%") {
 			return os.Getenv(name)
@@ -179,27 +203,49 @@ func hostOf(raw string) string {
 	return u.Hostname()
 }
 
-// readNpmrc reads "//registry.example/:_authToken=…" lines.
-func (c *credentials) readNpmrc(data []byte) {
+// readNpmrc reads the per-registry credentials of an npm configuration, which is
+// "//registry.example/:<field>=<value>" for each of the four fields npm accepts:
+// a bearer token, a base64 "user:password", or the two halves of that pair written
+// separately, the password itself base64.
+func (c *Store) readNpmrc(data []byte) {
+	user, password := map[string]string{}, map[string]string{}
 	for _, line := range strings.Split(string(data), "\n") {
 		key, value, ok := strings.Cut(strings.TrimSpace(line), "=")
 		if !ok || !strings.HasPrefix(key, "//") {
 			continue
 		}
 		key = strings.TrimSpace(key)
-		if !strings.HasSuffix(key, ":_authToken") {
+		field := key[strings.LastIndex(key, ":")+1:]
+		hostPath := strings.TrimSuffix(strings.TrimPrefix(key, "//"), ":"+field)
+		host, _, _ := strings.Cut(hostPath, "/")
+		value = expand(strings.Trim(strings.TrimSpace(value), `"`))
+		if host == "" || value == "" {
 			continue
 		}
-		hostPath := strings.TrimSuffix(strings.TrimPrefix(key, "//"), ":_authToken")
-		host, _, _ := strings.Cut(hostPath, "/")
-		if token := strings.Trim(strings.TrimSpace(value), `"`); host != "" && token != "" {
-			c.bearer[host] = token
+		switch field {
+		case "_authToken":
+			c.bearer[host] = value
+		case "_auth":
+			if pair, err := base64.StdEncoding.DecodeString(value); err == nil && strings.Contains(string(pair), ":") {
+				c.basic[host] = string(pair)
+			}
+		case "username":
+			user[host] = value
+		case "_password":
+			if plain, err := base64.StdEncoding.DecodeString(value); err == nil {
+				password[host] = string(plain)
+			}
+		}
+	}
+	for host, name := range user {
+		if _, taken := c.basic[host]; !taken {
+			c.basic[host] = name + ":" + password[host]
 		}
 	}
 }
 
 // readNetrc reads the machine/login/password triples git and curl use.
-func (c *credentials) readNetrc(data []byte) {
+func (c *Store) readNetrc(data []byte) {
 	fields := strings.Fields(string(data))
 	machine, login, password := "", "", ""
 	flush := func() {
@@ -222,21 +268,25 @@ func (c *credentials) readNetrc(data []byte) {
 	flush()
 }
 
-// apply adds the credentials for the request's host, if there are any.
-func (c *credentials) apply(req *http.Request) {
+// Apply adds the credential for the request's host, if there is one.
+//
+// Each key is tried with the port and then without it, since a registry reached on a
+// port - a Harbor, a Nexus behind one - has a credential of its own, while a netrc
+// names a machine and nothing more.
+func (c *Store) Apply(req *http.Request) {
 	if c == nil {
 		return
 	}
-	host := req.URL.Hostname()
-	if token, ok := c.bearer[req.URL.Host]; ok {
-		req.Header.Set("Authorization", "Bearer "+token)
-		return
+	for _, host := range [...]string{req.URL.Host, req.URL.Hostname()} {
+		if token, ok := c.bearer[host]; ok {
+			req.Header.Set("Authorization", "Bearer "+token)
+			return
+		}
 	}
-	if token, ok := c.bearer[host]; ok {
-		req.Header.Set("Authorization", "Bearer "+token)
-		return
-	}
-	if pair, ok := c.basic[host]; ok {
-		req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(pair)))
+	for _, host := range [...]string{req.URL.Host, req.URL.Hostname()} {
+		if pair, ok := c.basic[host]; ok {
+			req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(pair)))
+			return
+		}
 	}
 }

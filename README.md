@@ -13,68 +13,73 @@
 |                  **Flight mode**                  |                 **Vulnerability hunting**                  |
 | ![Flight mode](docs/screenshots/screenshot5.png)  | ![Vulnerability hunting](docs/screenshots/screenshot6.png) |
 
-Browse any code base as an interactive isometric archipelago in your browser.
+depphunter renders a code base as an interactive isometric archipelago in a
+browser.
 
-- **Mainland** = your repository. Directories are terraces, files are buildings
-  (height = lines of code, color = language). The map is drawn as a city:
-  facades with windows, streets with sidewalks and crossings between buildings,
-  ramps between levels, parks with trees, all in a rippling sea; when a
-  selection dims the rest, dimmed buildings turn plain so the focus stands
-  out.
-- **Islands** = external ecosystems (Go modules, the standard library, …) with
-  one building per dependency.
-- **Click** anything to see what it depends on and what uses it: arcs over the
-  map to each one, and the same edges laid down as roads through the streets,
-  with chevrons for the direction the dependency runs in. A road to an external
-  package leaves the shore as a causeway. **Double-click** to expand or collapse
-  directories and files (files expand into their symbols).
-- **Hunt** dependencies on foot (`V`): walk the map in first person on a tiny
-  planet, `WASD` to move, the mouse to look, `Space` to jump, `F` to fly. You
-  hold a tool - a fishing rod by default - drawn in your hands, on the end of an
-  arm, and using it (click) on a building tags the module, lights up its
-  dependency trails and plants a beacon over it. The rest are in slots `1`…`7`,
-  the way a shooter holds them, and `T` walks along the row: a butterfly net, a
-  camera, a bubble wand, a tracking dart, a nail gun and a grapple gun. Each
-  swings its own way, brings its own aim helper, and is good for its own quarry
-  - the rod, the dart and the nailer work on buildings, the net and the bubbles
-  on bugs, the camera on either. What they throw flies as what it is: a nail
-  goes fast and flat, a dart drops like a dart, a bubble slows and climbs. The
-  net throws nothing at all and has to be walked up to; the camera's back has
-  the view through its lens live on it. Two of them pull on their line once it
-  has stuck: the rod hauls you in to the wall it hooked, and the grapple gun,
-  which does nothing else to what it hits, up the facade and onto the roof -
-  and from up there a shot over the edge is the way down. Hold the right button
-  for the scope, the mouse wheel zooms.
-  Bugs are one per finding a scanner reported, and they are not only on the
-  streets: a building is walked on at several heights up its facade and around
-  its roof, each beetle standing out of whatever it is holding on to, and some
-  of them are not holding on to anything - they fly a circuit round the
-  building, rising and falling and leaning into the corners, wings going.
-  Catching one opens what was said about it; a tracker in the corner sweeps the
-  map around you, and grows and closes in as you come up on one, so the last few
-  steps can be taken on the sweep rather than by guesswork.
-  Terraces become city blocks: the space between buildings is a connected street
-  network with sidewalks, lane markings and
-  crossings, ramps and stairs lead between levels, empty lots are parks with
-  trees and bushes, and bridges cross the water to every island.
+- **The mainland** is the repository. Directories are terraces and files are
+  buildings, whose height is the file's line count and whose color is its
+  language. The map is drawn as a city: facades with windows, streets with
+  sidewalks and crossings, ramps between levels, parks, and a surrounding sea.
+  Selecting a node dims the rest, and dimmed buildings lose their detail so that
+  the selection remains legible.
+- **The islands** are external ecosystems - Go modules, a standard library, npm
+  - with one building per dependency.
+- **Selecting** a node shows what it depends on and what depends on it, both as
+  arcs over the map and as roads through the streets, with chevrons indicating
+  the direction of each dependency. A road to an external package leaves the
+  shore as a causeway. Double-clicking expands or collapses a directory or a
+  file; a file expands into its symbols.
+- **Walk mode** (`V`) presents the same map in first person on a small planet.
+  `WASD` moves, the mouse looks, `Space` jumps and `F` toggles flight. The
+  walker holds a tool, drawn in the hands at the end of an arm; using it on a
+  building selects the module, draws its dependency trails and marks it with a
+  beacon for the rest of the session.
 
-Everything runs locally: one binary, no Node.js, and no network access unless
-you ask for it with `--online` (see [Package indexes](#package-indexes)).
+  Seven tools occupy slots `1` to `7`, and `T` cycles through them: a fishing
+  rod (the default), a butterfly net, a camera, a bubble wand, a tracking dart,
+  a nail gun and a grapple gun. Each has its own animation, its own aim helper
+  and its own valid targets - the rod, the dart and the nail gun act on
+  buildings, the net and the bubbles on bugs, the camera on either. What a tool
+  throws travels according to its own flight model: a nail is fast and flat, a
+  dart falls, a bubble decelerates and rises. The net throws nothing and must be
+  brought within reach; the camera shows its lens view live on its back. Two
+  tools pull on the line once it has attached: the rod draws the walker to the
+  wall it struck, and the grapple gun, which has no other effect on its target,
+  draws them up the facade and onto the roof, from where a shot over the edge is
+  the way down. The right button holds the scope; the mouse wheel zooms it.
+
+  Each finding a scanner reported is represented by one bug. Bugs are placed at
+  several heights on a building's facade and around its roof as well as in the
+  streets, each oriented to the surface it holds on to; some hold on to nothing
+  and instead fly a circuit around the building, rising, falling and banking at
+  the corners. Catching one opens what was reported about it. A tracker in the
+  corner of the screen sweeps the surrounding map and tightens as the walker
+  approaches a bug, so that the last part of the approach can be made on the
+  sweep rather than by guesswork.
+
+  Terraces are laid out as city blocks: the space between buildings forms a
+  connected street network with sidewalks, lane markings and crossings; ramps
+  and stairs connect levels; unoccupied lots become parks; and a bridge crosses
+  the water to every island.
+
+The tool runs entirely locally. It is a single binary, requires no Node.js, and
+makes no network request unless `--online` is given (see
+[Package indexes](#package-indexes)).
 
 ## Two ways to run it
 
-depphunter is a command-line tool that serves the map to your browser. The
-[VS Code extension](#vs-code-extension) is a thin wrapper around that same tool:
-it starts it for the folder you are working in and shows the map in a tab beside
-the code. The map itself is the same page either way.
+depphunter is a command-line tool that serves the map over HTTP to a browser.
+The [VS Code extension](#vs-code-extension) is a wrapper around that same tool:
+it starts a server for the open folder and displays the map in a tab beside the
+code. The page served is identical in both cases.
 
-|                  | [Command-line tool](#command-line-tool)             | [VS Code extension](#vs-code-extension)                  |
-|------------------|-----------------------------------------------------|----------------------------------------------------------|
-| Install          | a release archive, or `go install`                  | the `.vsix` from a release, plus the command-line tool   |
-| Start            | `depphunter [path]` in a terminal                   | `depphunter: Open the Map`, or right-click a folder      |
-| The map opens in | your browser                                        | the editor's built-in browser, beside the code           |
-| Configure with   | flags, `DEPPHUNTER_*` variables, `.depphunter.yaml` | `depphunter.*` settings, and the same `.depphunter.yaml` |
-| Also does        | exports to JSON, GraphML, DOT and HTML              | one server per folder, kept running while you work       |
+|                  | [Command-line tool](#command-line-tool)             | [VS Code extension](#vs-code-extension)                   |
+|------------------|-----------------------------------------------------|-----------------------------------------------------------|
+| Installation     | a release archive, or `go install`                  | the `.vsix` from a release, and the command-line tool     |
+| Invocation       | `depphunter [path]`                                 | `depphunter: Open the Map`, or a folder's context menu    |
+| The map opens in | the default browser                                 | the editor's built-in browser, beside the code            |
+| Configuration    | flags, `DEPPHUNTER_*` variables, `.depphunter.yaml` | `depphunter.*` settings, and the same `.depphunter.yaml`  |
+| Additionally     | exports to JSON, GraphML, DOT and HTML              | maintains one server per folder for the editor's lifetime |
 
 ## Contents
 
@@ -82,7 +87,7 @@ the code. The map itself is the same page either way.
   [Usage](#usage) · [Configuration](#configuration) ·
   [Watch mode and cache](#watch-mode-and-cache) · [Exports](#exports) ·
   [HTTP API](#http-api) ·
-  [Opening files in your editor](#opening-files-in-your-editor)
+  [Opening files in an editor](#opening-files-in-an-editor)
 - [VS Code extension](#vs-code-extension):
   [Install](#install-the-extension) · [Use](#use) ·
   [The panel beside the code](#the-panel-beside-the-code) ·
@@ -103,7 +108,7 @@ the code. The map itself is the same page either way.
 
 ### Install
 
-Download an archive for your platform from the
+Download an archive for the target platform from the
 [releases](https://github.com/sarumaj/depphunter-cli/releases) (checksums in
 `checksums.txt`), or build it with Go 1.27.1 or newer:
 
@@ -121,72 +126,72 @@ go install github.com/sarumaj/depphunter-cli/cmd/depphunter@latest
 ### Usage
 
 ```sh
-depphunter            # analyze the current directory and open the browser
+depphunter            # analyze the current directory and open a browser
 depphunter ~/src/app  # analyze another directory
 depphunter --no-open --addr 127.0.0.1:8080
-depphunter --watch    # keep the map in sync while you edit
-depphunter --findings trivy.json      # put what a scanner reported on the map
+depphunter --watch    # re-analyze on change and update the open map
+depphunter --findings trivy.json      # place a scanner's report on the map
 depphunter --export dot -o deps.dot   # write the graph and exit
-depphunter --export html -o map.html  # a self-contained map to share
+depphunter --export html -o map.html  # write a self-contained map
 ```
 
-| Flag                | Default                   |                                                                                           |
-|---------------------|---------------------------|-------------------------------------------------------------------------------------------|
-| `--addr`            | `127.0.0.1:0`             | listen address; port 0 picks a free port                                                  |
-| `--no-open`         |                           | print the URL instead of opening the browser                                              |
-| `--exclude`         |                           | glob of paths to skip (repeatable)                                                        |
-| `--max-file-size`   | `2097152`                 | larger files are listed but not read                                                      |
-| `--config`          | `<path>/.depphunter.yaml` | config file to use                                                                        |
-| `--theme`           | `auto`                    | `auto`, `light`, `dark`                                                                   |
-| `--color-by`        | `language`                | `language`, `size`, `commits`, `churn`, `age`, `authors`                                  |
-| `--height-scale`    | `sqrt`                    | `linear`, `sqrt`, `log`                                                                   |
-| `--style`           | `city`                    | what the map is dressed as: `city`, `circuit`, `galaxy`                                   |
-| `--show-std`        | `false`                   | show standard-library islands                                                             |
-| `--expand-depth`    | `0`                       | initially expanded depth; `0` = auto, `-1` = all                                          |
-| `--watch`           | `false`                   | re-analyze on file changes, update the browser live                                       |
-| `--no-cache`        |                           | neither read nor write the analysis cache                                                 |
-| `--no-history`      |                           | do not read git history                                                                   |
-| `--history-commits` | `10000`                   | read at most this many commits                                                            |
-| `--resolve-depth`   | `0`                       | levels of dependencies-of-dependencies from lock files (`-1` = all)                       |
-| `--private`         | *(GOPRIVATE)*             | glob naming packages your organization owns; never asked of a public index nor of OSV     |
-| `--trust-index`     | *(none)*                  | index URL to treat as configured on this machine, so a repository naming it is not marked |
-| `--online`          | `false`                   | ask package indexes for what the project's files do not record                            |
-| `--explain`         | `false`                   | write the resolution report when the analysis is done                                     |
-| `--lsp`             |                           | find symbol references with installed language servers                                    |
-| `--lsp-timeout`     | `5m`                      | time budget for language servers                                                          |
-| `--findings`        |                           | scanner report to place on the map (repeatable, globs)                                    |
-| `--no-vulns`        |                           | place no findings, and do not ask the OSV database                                        |
-| `--no-links`        |                           | do not follow the links the repository's Markdown carries                                 |
-| `-v`, `--version`   |                           | print the version and exit                                                                |
-| `-h`, `--help`      |                           | list the flags with their defaults                                                        |
-| `--editor`          | auto-detected             | editor command template, e.g. `"code -g {file}:{line}"`                                   |
-| `--embed`           |                           | origin allowed to show the map in a frame, e.g. `vscode-webview:` (repeatable)            |
-| `--export`          |                           | write `json`, `graphml`, `dot` or `html` and exit                                         |
-| `-o`, `--output`    | stdout                    | output file for `--export`                                                                |
+| Flag                | Default                   |                                                                                         |
+|---------------------|---------------------------|-----------------------------------------------------------------------------------------|
+| `--addr`            | `127.0.0.1:0`             | listen address; port `0` selects a free port                                            |
+| `--no-open`         |                           | print the URL rather than opening a browser                                             |
+| `--exclude`         |                           | glob of paths to omit; repeatable                                                       |
+| `--max-file-size`   | `2097152`                 | files above this size are listed but not read                                           |
+| `--config`          | `<path>/.depphunter.yaml` | configuration file to read                                                              |
+| `--theme`           | `auto`                    | `auto`, `light` or `dark`                                                               |
+| `--color-by`        | `language`                | `language`, `size`, `commits`, `churn`, `age` or `authors`                              |
+| `--height-scale`    | `sqrt`                    | `linear`, `sqrt` or `log`                                                               |
+| `--style`           | `city`                    | presentation of the map: `city`, `circuit` or `galaxy`                                  |
+| `--show-std`        | `false`                   | include standard-library islands                                                        |
+| `--expand-depth`    | `0`                       | directory depth expanded initially; `0` selects one, `-1` expands all                   |
+| `--watch`           | `false`                   | re-analyze on file change and update the open map                                       |
+| `--no-cache`        |                           | neither read nor write the analysis cache                                               |
+| `--no-history`      |                           | do not read git history                                                                 |
+| `--history-commits` | `10000`                   | read at most this many commits                                                          |
+| `--resolve-depth`   | `0`                       | levels of transitive dependencies to resolve from lock files; `-1` for all              |
+| `--private`         | *(GOPRIVATE)*             | glob naming packages the organization owns; never sent to a public index or to OSV      |
+| `--trust-index`     | *(none)*                  | index URL to treat as configured on this machine, so a repository naming it is unmarked |
+| `--online`          | `false`                   | query package indexes for what the project's own files do not record                    |
+| `--explain`         | `false`                   | write the resolution report once the analysis is complete                               |
+| `--lsp`             |                           | resolve symbol references using the installed language servers                          |
+| `--lsp-timeout`     | `5m`                      | time budget for the language servers                                                    |
+| `--findings`        |                           | scanner report to place on the map; repeatable, globs permitted                         |
+| `--no-vulns`        |                           | place no scanner reports and do not query the OSV database                              |
+| `--no-links`        |                           | do not follow the links in the repository's Markdown                                    |
+| `-v`, `--version`   |                           | print the version and exit                                                              |
+| `-h`, `--help`      |                           | list the flags with their defaults                                                      |
+| `--editor`          | auto-detected             | editor command template, e.g. `"code -g {file}:{line}"`                                 |
+| `--embed`           |                           | origin permitted to frame the map, e.g. `vscode-webview:`; repeatable                   |
+| `--export`          |                           | write `json`, `graphml`, `dot` or `html` and exit                                       |
+| `-o`, `--output`    | stdout                    | output file for `--export`                                                              |
 
-Long flags take two dashes (`--addr`, not `-addr`); a flag's value may follow
-after a space or `=`.
+Long flags take two hyphens (`--addr`, not `-addr`), and a flag's value may be
+separated from it by either a space or `=`.
 
-What depphunter says about itself - what it analyzed, where it is serving, and
-the [resolution report](#the-resolution-report) - goes to **stdout**, so it can
-be piped, redirected and `tee`d like any other output. The one exception is
-`--export` without `-o`, where stdout is the document: there the log moves to
-stderr so that a redirected export is the export and nothing else. Errors always
-go to stderr.
+Diagnostic output - what was analyzed, the address being served, and the
+[resolution report](#the-resolution-report) - is written to **stdout**, so that
+it can be piped or redirected like any other output. The sole exception is
+`--export` without `-o`, where stdout carries the exported document; the log is
+then written to stderr instead, so that a redirected export contains nothing but
+the export. Errors are written to stderr in all cases.
 
 ### Configuration
 
-Settings are resolved from, in increasing precedence: built-in defaults, the
-user config (`$XDG_CONFIG_HOME/depphunter/config.yaml`, or the OS equivalent),
-the project config `.depphunter.yaml`, `DEPPHUNTER_*` environment variables
-(`ADDR`, `OPEN`, `EXCLUDE`, `MAX_FILE_SIZE`, `THEME`, `COLOR_BY`,
+Settings are resolved in the following order of increasing precedence: built-in
+defaults; the user configuration
+(`$XDG_CONFIG_HOME/depphunter/config.yaml`, or the platform equivalent); the
+project configuration `.depphunter.yaml`; the `DEPPHUNTER_*` environment
+variables (`ADDR`, `OPEN`, `EXCLUDE`, `MAX_FILE_SIZE`, `THEME`, `COLOR_BY`,
 `HEIGHT_SCALE`, `SHOW_STD`, `EXPAND_DEPTH`, `WATCH`, `CACHE`, `EDITOR`,
 `HISTORY`, `HISTORY_COMMITS`, `RESOLVE_DEPTH`, `ONLINE`, `EXPLAIN`, `LINKS`,
-`LSP`, `LSP_TIMEOUT`),
-and flags. Exclude globs
-add up across all sources instead of replacing each other. The project config
-cannot set `editor`: it arrives with the repository, and the editor is a command
-depphunter runs.
+`LSP`, `LSP_TIMEOUT`); and the command-line flags. Exclude globs accumulate
+across all sources rather than replacing one another. The project configuration
+may not set `editor`, since it arrives with the repository and `editor` names a
+command that depphunter executes.
 
 ```yaml
 # .depphunter.yaml
@@ -209,213 +214,223 @@ depth and filters into the `ui:` section of `.depphunter.yaml` (or the
 
 ### Watch mode and cache
 
-Parsing results are cached per file content under the user cache directory
-(`~/.cache/depphunter` on Linux), so a second run only parses files that
-changed: the CPython standard library goes from 1.2 s to 20 ms. With `--watch`,
-depphunter watches the directories it analyzed, re-analyzes after changes settle
-(300 ms), and pushes the new map to the browser, which keeps your expansion,
-selection and filters and briefly highlights the files that changed.
+Parse results are cached by file content under the user cache directory
+(`~/.cache/depphunter` on Linux), so that a subsequent run parses only the files
+that have changed; for the CPython standard library this reduces analysis from
+1.2 s to 20 ms. Under `--watch`, depphunter monitors the directories it
+analyzed, re-analyzes once changes have settled for 300 ms, and pushes the
+resulting map to the browser, which preserves the current expansion, selection
+and filters and briefly highlights the files that changed.
 
 ### Exports
 
 `--export` (or the **Export** menu in the browser) writes:
 
-| Format    | Contents                                                                                                                                                                                                                                                                |
-|-----------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `json`    | the full graph document the UI uses (nodes, symbols, edges)                                                                                                                                                                                                             |
-| `graphml` | the full graph with all attributes, for Gephi, yEd or NetworkX                                                                                                                                                                                                          |
-| `dot`     | the dependency graph for Graphviz: files, package directories and external packages, clustered per directory; standard-library packages and files without imports are left out                                                                                          |
-| `html`    | the interactive map as one file that opens without depphunter or a network: UI, graph, source text (files up to 256 KB, 24 MB in total) and the view you are looking at — colors, height, theme, depth and filters (the CLI's `--export html` uses the configured view) |
+| Format    | Contents                                                                                                                                                                                                                                                                   |
+|-----------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `json`    | the complete graph document used by the interface: nodes, symbols and edges                                                                                                                                                                                                |
+| `graphml` | the complete graph with all attributes, for Gephi, yEd or NetworkX                                                                                                                                                                                                         |
+| `dot`     | the dependency graph for Graphviz: files, package directories and external packages, clustered by directory. Standard-library packages and files without imports are omitted                                                                                               |
+| `html`    | the interactive map as a single file, requiring neither depphunter nor a network: the interface, the graph, the source text (files up to 256 KB, 24 MB in total) and the current view — colors, height, theme, depth and filters. `--export html` uses the configured view |
 
-**Export → PNG image** (or `P`) saves the map as shown, labels included, at your
-screen's resolution; it also works in an exported HTML page.
+**Export → PNG image**, or `P`, writes the map as currently displayed, including
+labels, at the screen's resolution. It is available in an exported HTML page as
+well.
 
-The HTML export contains your source code and, when the git history was read,
-commit authors' names; share it like you would share the repository.
+The HTML export contains the repository's source code and, where git history was
+read, the names of commit authors. It should be distributed under the same
+conditions as the repository itself.
 
-Dependency graphs are shallow, so Graphviz draws them long and thin; for big
-ones, `unflatten -l 3 -c 5 deps.dot | dot -Tsvg -o deps.svg` spreads them out.
+Dependency graphs are shallow, which leads Graphviz to lay them out long and
+narrow. For large graphs, `unflatten -l 3 -c 5 deps.dot | dot -Tsvg -o deps.svg`
+produces a more even result.
 
 ### HTTP API
 
-The server the map runs on is a small HTTP API, and it is the same one the VS
-Code extension's side panel reads. Everything needs the session token - in the
-cookie the address exchanges it for, or in an `X-Depphunter-Token` header - and
-everything that changes something also needs `X-Depphunter-Request: 1`, which a
-cross-site page cannot set.
+The server that hosts the map exposes a small HTTP API, which is also what the
+VS Code extension's side panel reads. Every request requires the session token,
+supplied either in the cookie that the initial address is exchanged for or in an
+`X-Depphunter-Token` header. Every request that modifies state additionally
+requires the header `X-Depphunter-Request: 1`, which a cross-site page cannot
+set.
 
 | Endpoint                                               | What it is                                                                                |
 |--------------------------------------------------------|-------------------------------------------------------------------------------------------|
-| `GET /api/graph`                                       | the graph document: nodes, symbols, edges                                                 |
-| `GET /api/config`                                      | the view the map opens with, and what the server can do                                   |
-| `GET /api/file?path=`                                  | the source of a file that is on the map, and no other file                                |
-| `GET /api/history`, `/api/references`, `/api/findings` | read in the background: `202` while they are, `204` if there are none                     |
+| `GET /api/graph`                                       | the graph document: nodes, symbols and edges                                              |
+| `GET /api/config`                                      | the view the map opens with, and the server's capabilities                                |
+| `GET /api/file?path=`                                  | the source of a file present on the map, and of no other file                             |
+| `GET /api/history`, `/api/references`, `/api/findings` | computed in the background: `202` while in progress, `204` if there is no result          |
 | `GET /api/export?format=`                              | `json`, `graphml`, `dot` or `html`                                                        |
-| `GET /api/resolution?format=`                          | how the dependencies were resolved: `json` (the default), `md` or `text`                  |
+| `GET /api/resolution?format=`                          | how the dependencies were resolved: `json` (default), `md` or `text`                      |
 | `GET /api/events`                                      | Server-Sent Events: `graph`, `history`, `references`, `findings`, `selection`, `backpack` |
-| `GET /api/session`                                     | what the clients share: the selected node and the backpack                                |
-| `POST /api/selection`                                  | `{"id": "f:src/main.go", "origin": "…"}` - the map follows                                |
-| `GET /api/backpack?format=`                            | the catch as `json`, `csv` or `md`                                                        |
-| `PUT /api/backpack`                                    | `{"items": [...], "origin": "…"}` - replaces it                                           |
-| `POST /api/open`                                       | `{"path": "…", "line": 12}` - opens it in the editor                                      |
-| `POST /api/settings`                                   | writes the `ui:` section of the config file                                               |
+| `GET /api/session`                                     | the state shared between clients: the selected node and the backpack                      |
+| `POST /api/selection`                                  | `{"id": "f:src/main.go", "origin": "…"}`; the map follows                                 |
+| `GET /api/backpack?format=`                            | the collected findings as `json`, `csv` or `md`                                           |
+| `PUT /api/backpack`                                    | `{"items": [...], "origin": "…"}`; replaces the contents                                  |
+| `POST /api/open`                                       | `{"path": "…", "line": 12}`; opens the file in the configured editor                      |
+| `POST /api/settings`                                   | writes the `ui:` section of the configuration file                                        |
 
-`origin` names the client making the change and comes back on the announcement,
-so a client can tell its own change returning from somebody else's. The selection
-and the backpack are this session's: the backpack's lasting store is the
-browser's own, per repository, and the page pushes it up as it loads.
+`origin` identifies the client that made the change and is echoed in the
+resulting announcement, so that a client can distinguish its own change from
+another's. The selection and the backpack belong to the session; the backpack's
+durable store is the browser's, held per repository, and the page uploads it as
+it loads.
 
-**`/api/graph` carries an `ETag`**, so a client that already has the document can
-send `If-None-Match` and be answered `304`. The tag is a fingerprint of the nodes
-and the edges rather than of when they were read, so a re-analysis that found the
-same project is the same entity - which is what a client reconnecting to a server
-restarted under it is really asking about. The document is twenty megabytes on a
-hundred-thousand-node repository, and most of the times it is asked for, nothing
-about it has changed.
+**`/api/graph` carries an `ETag`**, so that a client already holding the document
+may send `If-None-Match` and receive `304`. The tag is a fingerprint of the nodes
+and edges rather than of the time at which they were read, so a re-analysis that
+finds the same project yields the same entity — which is the question a client
+reconnecting to a restarted server is in fact asking. The document reaches twenty
+megabytes for a repository of a hundred thousand nodes, and in the majority of
+requests nothing about it has changed.
 
-**Every announcement carries an id**, and the stream opens with a greeting saying
-where it is:
+**Every announcement carries an identifier**, and the stream opens with a
+greeting stating its current position:
 
 ```json
 event: hello
 data: {"version":3,"etag":"\"9e4f…\"","seq":11,"resumed":true}
 ```
 
-`resumed` is the stream answering the `Last-Event-ID` the client handed back:
-nothing has been announced since the event it last saw, so it has missed nothing.
-Without it a reconnection is indistinguishable from a first connection, and
-whatever was announced while the connection was down is simply gone - a browser
-retries an `EventSource` by itself, so this happens without anybody noticing.
+`resumed` is the stream's answer to the `Last-Event-ID` returned by the client:
+nothing has been announced since the event it last received, so nothing has been
+missed. Without it, a reconnection is indistinguishable from a first connection
+and any announcement made while the connection was down is lost — and since a
+browser retries an `EventSource` on its own, this occurs without the user's
+knowledge.
 
-### Opening files in your editor
+### Opening files in an editor
 
-The side panel's **Open in editor** button (or `O`) opens the selected file at
-the selected symbol's line. depphunter uses `--editor` / `DEPPHUNTER_EDITOR` /
-the user config, or detects a GUI editor from `$VISUAL`, `$EDITOR` or `PATH` (VS
-Code, Cursor, Zed, Sublime Text, JetBrains IDEs, …). Without one, the button
-hands the file to VS Code's `vscode://` URL handler. In
-[VS Code](#vs-code-extension), the extension points it at the editor it is
-running in.
+The side panel's **Open in editor** button, or `O`, opens the selected file at
+the line of the selected symbol. The command is taken from `--editor`,
+`DEPPHUNTER_EDITOR` or the user configuration; failing those, depphunter detects
+a graphical editor from `$VISUAL`, `$EDITOR` or `PATH` (VS Code, Cursor, Zed,
+Sublime Text, the JetBrains IDEs and others). If none is found, the button
+delegates to VS Code's `vscode://` URL handler. Under the
+[VS Code extension](#vs-code-extension), the command is set to the editor the
+extension is running in.
 
 ## VS Code extension
 
-The extension puts the map in a tab beside the code. It starts `depphunter` for
-the folder you are working in, waits for it to say where it is listening, and
-opens that address in the editor's built-in browser; the map behaves exactly as
-it does in a browser tab, live updates and all. Its source is in `extension/`.
+The extension displays the map in a tab beside the code. It starts `depphunter`
+for the open folder, waits for the address it reports, and opens that address in
+the editor's built-in browser. The map behaves exactly as it does in a browser
+tab, live updates included. Its source is under `extension/`.
 
 ### Install the extension
 
-It is not on a marketplace yet, but every
-[release](https://github.com/sarumaj/depphunter-cli/releases) carries one
-`.vsix` per platform, each with the binary for that platform inside it. Take
-the one that matches - `linux-x64`, `darwin-arm64`, `win32-x64` and so on - and
-pick it from *Extensions: Install from VSIX…* in the command palette, or from a
+The extension is not yet published to a marketplace. Every
+[release](https://github.com/sarumaj/depphunter-cli/releases) provides one
+`.vsix` per platform, each containing the binary for that platform. Select the
+matching build — `linux-x64`, `darwin-arm64`, `win32-x64` and so on — and install
+it with *Extensions: Install from VSIX…* in the command palette, or from a
 terminal:
 
 ```sh
 code --install-extension depphunter_1.2.3_vscode_darwin-arm64.vsix
 ```
 
-**Nothing else to install.** The extension and the server it starts come out of
-the same release and carry the same version, so they cannot drift apart. There
-is a `_universal` build as well, for a platform not on the list; that one has no
-binary and falls back to `depphunter` on `PATH`.
+**No further installation is required.** The extension and the server it starts
+are produced by the same release and carry the same version, so the two cannot
+diverge. A `_universal` build is also provided for platforms not listed above;
+it contains no binary and falls back to `depphunter` on `PATH`.
 
-To run a different build - one you are working on, or a newer release on a
-machine whose extension has not been updated - set `depphunter.path` to it. An
-explicit setting always wins over the one that shipped.
+To run a different build — one under development, or a newer release on a machine
+whose extension has not been updated — set `depphunter.path` to it. An explicit
+setting always takes precedence over the bundled binary.
 
 ### Use
 
-Click the depphunter icon in the activity bar: the **Maps** view lists the
-window's folders, and clicking one maps it. Its buttons restart and stop a
-running server, and the view's title bar has the log and the settings. The
-same is in the command palette as `depphunter: Open the Map`, and on the
-explorer's right-click menu for any folder.
+Select the depphunter icon in the activity bar. The **Maps** view lists the
+window's folders; selecting one maps it. The entry's buttons restart and stop a
+running server, and the view's title bar provides the log and the settings. The
+same action is available in the command palette as `depphunter: Open the Map`
+and in the explorer's context menu for any folder.
 
-| Command                                   | What it does                                            |
-|-------------------------------------------|---------------------------------------------------------|
-| `depphunter: Open the Map`                | Maps the folder, or shows the map already made          |
-| `depphunter: Open the Map in the Browser` | The same map outside the editor, this once              |
-| `depphunter: Restart the Server`          | Starts it again, which is how settings take effect      |
-| `depphunter: Stop the Server`             | Stops it; the next open analyzes afresh                 |
-| `depphunter: Show the Server Log`         | The server's own output, verbatim                       |
-| `depphunter: Show the Resolution Report`  | Where each package resolved from, and how the walk went |
-| `depphunter: Export the Graph`            | JSON, GraphML, DOT or a self-contained HTML map         |
-| `depphunter: Export the Backpack`         | The catch as Markdown, CSV or JSON                      |
-| `depphunter: Open Settings`               | The extension's settings, below                         |
+| Command                                   | What it does                                                       |
+|-------------------------------------------|--------------------------------------------------------------------|
+| `depphunter: Open the Map`                | Maps the folder, or displays a map already produced                |
+| `depphunter: Open the Map in the Browser` | Opens the same map outside the editor, for this instance           |
+| `depphunter: Restart the Server`          | Restarts it, which is how changed settings take effect             |
+| `depphunter: Stop the Server`             | Stops it; the next invocation analyzes afresh                      |
+| `depphunter: Show the Server Log`         | The server's output, verbatim                                      |
+| `depphunter: Show the Resolution Report`  | Which index each package resolved from, and how the walk proceeded |
+| `depphunter: Export the Graph`            | JSON, GraphML, DOT or a self-contained HTML map                    |
+| `depphunter: Export the Backpack`         | The collected findings as Markdown, CSV or JSON                    |
+| `depphunter: Open Settings`               | The extension's settings, documented below                         |
 
-One server per folder, kept until the window closes or you stop it: analyzing a
-large repository takes a moment, and with `--watch` it only has to happen once.
-A status bar item appears while one is running, and clicking it opens the map.
+One server is maintained per folder and kept until the window closes or the
+server is stopped explicitly: analyzing a large repository takes time, and under
+`--watch` it need happen only once. A status bar item is shown while a server is
+running; selecting it opens the map.
 
 #### The panel beside the code
 
-Under **Maps** the same panel holds two more views, both of the map that was
-opened last:
+The same panel holds two further views below **Maps**, both showing the map
+opened most recently:
 
-- **Dependencies** is the graph as a tree. A directory opens into what is in it,
-  a file into what it imports, an island into its packages, and a package into
-  what it depends on - as far down as `--resolve-depth` reached. Opening a row
-  costs nothing: every edge is already in the graph the panel fetched once. A
-  branch that leads back to something already open on it is shown once more with
-  `↻` and left closed, because dependency graphs contain cycles. A package that
-  is not pinned, or that resolves from an index nothing here configures, is
-  marked in the list rather than only in its tooltip.
+- **Dependencies** presents the graph as a tree. A directory expands into its
+  contents, a file into its imports, an island into its packages, and a package
+  into its own dependencies, as far as `--resolve-depth` reached. Expanding a row
+  requires no further request: every edge is already present in the graph the
+  panel fetched once. A branch leading back to a node already expanded above it
+  is shown once more, marked `↻`, and left collapsed, since dependency graphs
+  contain cycles. A package that is not pinned, or that resolves from an index
+  this machine does not configure, is marked in the list itself rather than only
+  in its tooltip.
 
-- **Backpack** is what walking the map caught: every finding, worst first, the
-  ones that are gone from the latest scan ticked off at the bottom. Taking one
-  out here takes it out of the map's backpack too.
+- **Backpack** holds the findings collected while walking the map, ordered by
+  severity, with those absent from the most recent scan marked as resolved at the
+  end. Removing an entry here removes it from the map's backpack as well.
 
-The two views and the map are one interface, not two: picking a row selects that
-building on the map, and picking a building on the map opens the tree down to its
-row. That is the server's doing - it holds the selection and the catch while the
-map is open, and says when either moves ([API](#http-api)), so a second tab
-follows along as well.
+The two views and the map form a single interface: selecting a row selects the
+corresponding building on the map, and selecting a building on the map expands
+the tree to its row. The server is what makes this so — it holds the selection
+and the collected findings while the map is open and announces changes to either
+([API](#http-api)) — which is also why a second browser tab stays in step.
 
 ### Settings
 
-Settings, in the groups the Settings editor shows them in. Each one names the
-flag it passes, and passes it only when set to something other than what
-depphunter would do anyway - an enum at `default`, a number left empty, a
-switch where depphunter's own default puts it - so a folder's
-`.depphunter.yaml` still decides everything you leave alone here.
+The settings, in the groups the Settings editor presents them in. Each names the
+flag it passes, and passes it only when set to something other than depphunter's
+own behavior — an enum left at `default`, a number left empty, a switch left at
+depphunter's default — so that a folder's `.depphunter.yaml` continues to govern
+everything not set here.
 
-| Setting                     | Default   | Flag                | What it does                                                                                             |
-|-----------------------------|-----------|---------------------|----------------------------------------------------------------------------------------------------------|
-| **General**                 |           |                     |                                                                                                          |
-| `depphunter.path`           | *(empty)* |                     | The binary to run. Empty means the one the extension ships with, falling back to `depphunter` on `PATH`. |
-| `depphunter.openIn`         | `webview` |                     | `webview` (a tab of its own), `simpleBrowser` (the built-in browser) or `externalBrowser` (yours).       |
-| `depphunter.watch`          | `true`    | `--watch`           | Re-analyze on file changes and update the map.                                                           |
-| `depphunter.config`         | `""`      | `--config`          | A config file to use instead of the folder's `.depphunter.yaml`, relative to the folder.                 |
-| `depphunter.editorCommand`  | `""`      | `--editor`          | What **Open in editor** runs. Empty means this editor.                                                   |
-| `depphunter.args`           | `[]`      |                     | Further arguments, one per entry, passed last. [Usage](#usage) has the list.                             |
-| **Analysis**                |           |                     |                                                                                                          |
-| `depphunter.exclude`        | `[]`      | `--exclude`         | Globs of paths to skip.                                                                                  |
-| `depphunter.maxFileSize`    | *(empty)* | `--max-file-size`   | Files larger than this many bytes are not read.                                                          |
-| `depphunter.resolveDepth`   | *(empty)* | `--resolve-depth`   | Levels of dependencies-of-dependencies to resolve from lock files; `-1` for all.                         |
-| `depphunter.private`        | `[]`      | `--private`         | Globs naming the packages your organization owns. Never asked of a public index, never sent to OSV.      |
-| `depphunter.trustIndexes`   | `[]`      | `--trust-index`     | Index URLs to treat as configured on this machine, so a repository that names one is not marked.         |
-| `depphunter.online`         | `false`   | `--online`          | Ask package indexes, and the OSV database, over the network.                                             |
-| `depphunter.explain`        | `false`   | `--explain`         | Write the [resolution report](#the-resolution-report) to the output channel whenever the map is built.   |
-| `depphunter.cache`          | `true`    | `--no-cache`        | Read and write the analysis cache.                                                                       |
-| `depphunter.history`        | `true`    | `--no-history`      | Read git history for the history overlays.                                                               |
-| `depphunter.historyCommits` | *(empty)* | `--history-commits` | Read at most this many commits.                                                                          |
-| **Appearance**              |           |                     |                                                                                                          |
-| `depphunter.style`          | `default` | `--style`           | `city`, `circuit` or `galaxy`.                                                                           |
-| `depphunter.theme`          | `default` | `--theme`           | `auto`, `light` or `dark`.                                                                               |
-| `depphunter.colorBy`        | `default` | `--color-by`        | `language`, `size`, `commits`, `churn`, `age` or `authors`.                                              |
-| `depphunter.heightScale`    | `default` | `--height-scale`    | `linear`, `sqrt` or `log`.                                                                               |
-| `depphunter.expandDepth`    | *(empty)* | `--expand-depth`    | Directory levels expanded at first; `0` picks, `-1` expands everything.                                  |
-| `depphunter.showStd`        | `false`   | `--show-std`        | Show standard-library islands.                                                                           |
-| **Findings**                |           |                     |                                                                                                          |
-| `depphunter.findings`       | `[]`      | `--findings`        | Scanner reports to place on the map, relative to the folder. Globs allowed.                              |
-| `depphunter.vulns`          | `true`    | `--no-vulns`        | Place reports on the map and, with `online`, ask the OSV database.                                       |
-| `depphunter.links`          | `true`    | `--no-links`        | Follow the folder's Markdown links and report the ones that lead nowhere.                                |
-| **References**              |           |                     |                                                                                                          |
-| `depphunter.lsp`            | `false`   | `--lsp`             | Find symbol references with installed language servers.                                                  |
-| `depphunter.lspTimeout`     | `""`      | `--lsp-timeout`     | Time budget for the language servers, e.g. `90s`.                                                        |
+| Setting                     | Default   | Flag                | What it does                                                                                                   |
+|-----------------------------|-----------|---------------------|----------------------------------------------------------------------------------------------------------------|
+| **General**                 |           |                     |                                                                                                                |
+| `depphunter.path`           | *(empty)* |                     | The binary to run. Empty selects the bundled binary, falling back to `depphunter` on `PATH`.                   |
+| `depphunter.openIn`         | `webview` |                     | `webview` (a dedicated tab), `simpleBrowser` (the built-in browser) or `externalBrowser` (the system default). |
+| `depphunter.watch`          | `true`    | `--watch`           | Re-analyze on file change and update the map.                                                                  |
+| `depphunter.config`         | `""`      | `--config`          | A configuration file to read instead of the folder's `.depphunter.yaml`, relative to the folder.               |
+| `depphunter.editorCommand`  | `""`      | `--editor`          | The command **Open in editor** invokes. Empty selects the current editor.                                      |
+| `depphunter.args`           | `[]`      |                     | Further arguments, one per entry, appended last. [Usage](#usage) lists them.                                   |
+| **Analysis**                |           |                     |                                                                                                                |
+| `depphunter.exclude`        | `[]`      | `--exclude`         | Globs of paths to omit.                                                                                        |
+| `depphunter.maxFileSize`    | *(empty)* | `--max-file-size`   | Files larger than this many bytes are not read.                                                                |
+| `depphunter.resolveDepth`   | *(empty)* | `--resolve-depth`   | Levels of transitive dependencies to resolve from lock files; `-1` for all.                                    |
+| `depphunter.private`        | `[]`      | `--private`         | Globs naming the packages the organization owns. Never sent to a public index or to OSV.                       |
+| `depphunter.trustIndexes`   | `[]`      | `--trust-index`     | Index URLs to treat as configured on this machine, so a repository that names one is not marked.               |
+| `depphunter.online`         | `false`   | `--online`          | Query package indexes and the OSV database over the network.                                                   |
+| `depphunter.explain`        | `false`   | `--explain`         | Write the [resolution report](#the-resolution-report) to the output channel whenever the map is built.         |
+| `depphunter.cache`          | `true`    | `--no-cache`        | Read and write the analysis cache.                                                                             |
+| `depphunter.history`        | `true`    | `--no-history`      | Read git history for the history overlays.                                                                     |
+| `depphunter.historyCommits` | *(empty)* | `--history-commits` | Read at most this many commits.                                                                                |
+| **Appearance**              |           |                     |                                                                                                                |
+| `depphunter.style`          | `default` | `--style`           | `city`, `circuit` or `galaxy`.                                                                                 |
+| `depphunter.theme`          | `default` | `--theme`           | `auto`, `light` or `dark`.                                                                                     |
+| `depphunter.colorBy`        | `default` | `--color-by`        | `language`, `size`, `commits`, `churn`, `age` or `authors`.                                                    |
+| `depphunter.heightScale`    | `default` | `--height-scale`    | `linear`, `sqrt` or `log`.                                                                                     |
+| `depphunter.expandDepth`    | *(empty)* | `--expand-depth`    | Directory levels expanded initially; `0` selects one, `-1` expands all.                                        |
+| `depphunter.showStd`        | `false`   | `--show-std`        | Include standard-library islands.                                                                              |
+| **Findings**                |           |                     |                                                                                                                |
+| `depphunter.findings`       | `[]`      | `--findings`        | Scanner reports to place on the map, relative to the folder. Globs permitted.                                  |
+| `depphunter.vulns`          | `true`    | `--no-vulns`        | Place reports on the map and, under `online`, query the OSV database.                                          |
+| `depphunter.links`          | `true`    | `--no-links`        | Follow the folder's Markdown links and report those that lead nowhere.                                         |
+| **References**              |           |                     |                                                                                                                |
+| `depphunter.lsp`            | `false`   | `--lsp`             | Resolve symbol references using the installed language servers.                                                |
+| `depphunter.lspTimeout`     | `""`      | `--lsp-timeout`     | Time budget for the language servers, e.g. `90s`.                                                              |
 
 What is left out is left out on purpose: `--addr`, `--no-open` and `--embed`
 are how the extension hosts the map and are not for changing, and `--export`
@@ -434,47 +449,47 @@ They are ordinary settings, so they can be set per workspace in
 }
 ```
 
-A server reads its settings when it starts, so changing one takes effect on the
-next `depphunter: Restart the Server` - the extension offers to do it for you.
-Anything the settings do not cover goes in `depphunter.args`, or in the
+A server reads its settings at start-up, so a change takes effect on the next
+`depphunter: Restart the Server`; the extension offers to perform the restart.
+Anything the settings do not cover belongs in `depphunter.args` or in the
 project's `.depphunter.yaml`, which the server reads as usual.
 
-**Open in editor** opens the file at the line you were looking at, in this
-editor: the extension works out where this editor's own command-line launcher
-is and hands it to the server, rather than leaving it to find whatever is on
-the `PATH` the extension host inherited. `depphunter.editorCommand` overrides
-that when you want the file somewhere else.
+**Open in editor** opens the file at the line currently in view, in this editor:
+the extension locates this editor's own command-line launcher and passes it to
+the server, rather than leaving the server to find whatever is on the `PATH` the
+extension host inherited. `depphunter.editorCommand` overrides this where the
+file should be opened elsewhere.
 
 ### Remote workspaces
 
-Over SSH, WSL and dev containers the port is forwarded to `localhost` on your
-machine and everything works. In Codespaces and on vscode.dev the forwarded
-address is a public hostname, which the server rejects as a DNS-rebinding
-attempt: it only answers to `localhost` and `127.0.0.1`. Run `depphunter` in a
-terminal there instead, for now.
+Over SSH, WSL and dev containers the port is forwarded to `localhost` on the
+local machine and the extension works unchanged. In Codespaces and on vscode.dev
+the forwarded address is a public hostname, which the server rejects as a
+DNS-rebinding attempt, since it answers only to `localhost` and `127.0.0.1`. In
+those environments, run `depphunter` from a terminal instead.
 
 ### Why the map is in a tab of its own
 
-The editor's built-in browser is the obvious place to put a local page, and it
-was the first thing this used. It puts that page in a sandbox of its own,
-though, and one of the things that sandbox withholds is the pointer lock - so
-walk mode could not capture the mouse there, and a sandbox can only ever be
-narrowed on the way down, so there was nothing the page could do about it.
+The editor's built-in browser is the natural place for a local page, but it
+places that page in a sandbox of its own, and the pointer lock is among the
+capabilities that sandbox withholds. Walk mode therefore cannot capture the
+mouse there, and since a sandbox can only be narrowed further down the frame
+chain, the page has no means of recovering it.
 
-The map opens in a tab of the editor's own instead: one webview, one iframe, and
-that iframe carries no sandbox attribute - which takes nothing away, and so
-keeps the pointer lock the editor granted the webview in the first place. What
-is lost is an address bar and a back button, on a single page that needs
-neither. `depphunter.openIn` can still ask for `simpleBrowser`, and walk mode
-there says so and turns the view by dragging instead.
+The map is opened in a dedicated editor tab instead: one webview containing one
+iframe, and that iframe carries no sandbox attribute. Adding none removes
+nothing, so the pointer lock the editor granted the webview is preserved. What
+is given up is an address bar and a back button, on a single page that requires
+neither. `depphunter.openIn` may still select `simpleBrowser`, where walk mode
+reports the limitation and turns the view by dragging instead.
 
 ### How the framing works
 
-Either way the page is inside a webview, which means it is framed by origins
+In either case the page is inside a webview and is therefore framed by origins
 belonging to the editor. depphunter refuses to be framed by default, so the
-extension starts it with `--embed`, naming every frame above the page - all
-three of them, because `frame-ancestors` is checked against the whole chain and
-not just the frame holding the page:
+extension starts it with `--embed`, naming every frame above the page — all
+three, because `frame-ancestors` is evaluated against the entire chain and not
+only the frame immediately containing the page:
 
 ```sh
 --embed vscode-webview: --embed vscode-file: --embed https://*.vscode-cdn.net
@@ -486,113 +501,116 @@ not just the frame holding the page:
   in the desktop editor.
 - `https://*.vscode-cdn.net` is the webview in the browser build.
 
-Leave one of them out and the browser refuses the page before it loads: an empty
-tab, and the reason only in the webview's own developer tools. Nothing else may
-frame it - a page at any other origin is refused the same way. What else that
-mode changes is in [Inside an editor](#inside-an-editor).
+If any one of them is omitted, the browser refuses the page before it loads,
+leaving an empty tab with the reason recorded only in the webview's own
+developer tools. No other origin may frame the page; any that attempts to is
+refused in the same way. The remaining effects of this mode are described under
+[Inside an editor](#inside-an-editor).
 
-In that mode the session token stays in the address instead of being exchanged
-for a cookie, because a cookie set by the map would be a third-party cookie
-inside the frame and would never be sent back. This is why the extension reads
-the address out of the server's own output rather than putting it together from
+In this mode the session token remains in the address rather than being
+exchanged for a cookie, because a cookie set by the map would be a third-party
+cookie within the frame and would never be returned. This is why the extension
+reads the address from the server's own output rather than constructing it from
 the port: that address is the only place the token appears.
 
 ## The map
 
-Everything below is the map itself, and works the same whether the command-line
-tool or the extension started it. Where a section names a flag, the extension
-takes it through its own setting where there is one (`depphunter.findings`,
-`depphunter.style`, `depphunter.watch`) and through `depphunter.args` otherwise.
+The remainder of this document describes the map itself, which behaves
+identically whether it was started by the command-line tool or by the extension.
+Where a section names a flag, the extension passes it through its own setting if
+one exists (`depphunter.findings`, `depphunter.style`, `depphunter.watch`) and
+through `depphunter.args` otherwise.
 
 ### Keyboard & mouse
 
-Panning stops once the center of the view is a quarter of the map's size beyond
-its edge, and zooming out once the map covers about a third of the view; in walk
-mode you can go 3 units out over the water and 12 above the tallest building.
+Panning is bounded at the point where the centre of the view lies a quarter of
+the map's extent beyond its edge, and zooming out at the point where the map
+occupies roughly a third of the view. In walk mode the walker may travel 3 units
+out over the water and 12 units above the tallest building.
 
-|                           |                                          |
-|---------------------------|------------------------------------------|
-| Drag / right-drag / wheel | pan / orbit / zoom                       |
-| Click / double-click      | select / expand–collapse                 |
-| `Enter`, `Backspace`      | expand–collapse selection, select parent |
-| `→` `←` in the panel      | open / close a dependency row            |
-| `Enter` while reading     | close the details and walk on            |
-| `T` in walk mode          | take out another tool                    |
-| `Q` `E`                   | rotate 90°                               |
-| `Home`                    | fit to screen                            |
-| `+` `−`                   | expand / collapse one level everywhere   |
-| `/`                       | search files, symbols and packages       |
-| `O`                       | open the selected file in your editor    |
-| `P`                       | save the map as a PNG image              |
-| Legend click              | hide / show a language                   |
-| Pin click                 | read the findings over a building        |
-| `+` beside a finding      | put it in the backpack                   |
-| `B`                       | the backpack: everything caught          |
-| The figure                | where you were standing in walk mode     |
-| `Esc`                     | close the backpack, or clear selection   |
-| `V`                       | walk mode                                |
+|                           |                                                 |
+|---------------------------|-------------------------------------------------|
+| Drag / right-drag / wheel | pan, orbit, zoom                                |
+| Click / double-click      | select, expand or collapse                      |
+| `Enter`, `Backspace`      | expand or collapse the selection, select parent |
+| `→` `←` in the panel      | expand or collapse a dependency row             |
+| `Enter` while reading     | close the details and resume                    |
+| `T` in walk mode          | select the next tool                            |
+| `Q` `E`                   | rotate by 90°                                   |
+| `Home`                    | fit the map to the view                         |
+| `+` `−`                   | expand or collapse one level throughout         |
+| `/`                       | search files, symbols and packages              |
+| `O`                       | open the selected file in the editor            |
+| `P`                       | write the map to a PNG image                    |
+| Legend click              | show or hide a language                         |
+| Pin click                 | read the findings recorded on a building        |
+| `+` beside a finding      | add it to the backpack                          |
+| `B`                       | open the backpack                               |
+| The figure                | the walker's last position in walk mode         |
+| `Esc`                     | close the backpack, or clear the selection      |
+| `V`                       | enter walk mode                                 |
 
 In walk mode:
 
-|                        |                                                                                                                                                                                                                                                               |
-|------------------------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Mouse                  | look; captured at the reticle (`Esc` frees it, a click on the map captures it again), or drag. Where the mouse cannot be captured at all - a frame that withholds the pointer lock - walk mode says so once and a click uses the tool instead of asking again |
-| `1` … `7`              | pick a tool by its slot; `T` still walks along the row row                                                                                                                                                                                                    |
-| `W` `A` `S` `D`/arrows | move / turn; `Shift` runs                                                                                                                                                                                                                                     |
-| `Space`                | jump (flying: straight up)                                                                                                                                                                                                                                    |
-| `F`                    | fly on / off; flying, `W`/`S` move where you look (look down and press `W` to dive), `C` goes straight down                                                                                                                                                   |
-| Click                  | use what is in your hands: the module it reaches is tagged, a bug it catches is read out and kept                                                                                                                                                             |
-| `H`                    | put the tool away, or take it out again; it still works, and throws from your eye                                                                                                                                                                             |
-| Hold right button      | look through the scope                                                                                                                                                                                                                                        |
-| `Enter`                | details of what the reticle is on, like a second dart (frees the mouse; click the map to walk on)                                                                                                                                                             |
-| Wheel                  | zoom in / out                                                                                                                                                                                                                                                 |
-| `+` `-` (or `[` `]`)   | planet size (curvature)                                                                                                                                                                                                                                       |
-| `V` / `Esc`            | back to the map; going in again puts you back where you stood                                                                                                                                                                                                 |
+|                        |                                                                                                                                                                                                                                                                                            |
+|------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Mouse                  | look. The pointer is captured at the reticle; `Esc` releases it and a click on the map captures it again. Where it cannot be captured at all — a frame that withholds the pointer lock — walk mode reports this once, and a click then uses the tool rather than requesting the lock again |
+| `1` … `7`              | select a tool by slot; `T` cycles through them                                                                                                                                                                                                                                             |
+| `W` `A` `S` `D`/arrows | move and turn; `Shift` runs                                                                                                                                                                                                                                                                |
+| `Space`                | jump; while flying, ascend                                                                                                                                                                                                                                                                 |
+| `F`                    | toggle flight. While flying, `W` and `S` move along the view direction — looking down and pressing `W` descends — and `C` descends vertically                                                                                                                                              |
+| Click                  | use the current tool: a module within reach is selected, and a bug that is caught is displayed and retained                                                                                                                                                                                |
+| `H`                    | stow or draw the tool. A stowed tool remains functional and throws from the walker's eye                                                                                                                                                                                                   |
+| Hold right button      | look through the scope                                                                                                                                                                                                                                                                     |
+| `Enter`                | show the details of whatever the reticle is on, as a second use of the tool would. This releases the pointer; a click on the map resumes                                                                                                                                                   |
+| Wheel                  | zoom                                                                                                                                                                                                                                                                                       |
+| `+` `-` (or `[` `]`)   | planet radius, and therefore curvature                                                                                                                                                                                                                                                     |
+| `V` / `Esc`            | return to the map. Re-entering walk mode restores the previous position                                                                                                                                                                                                                    |
 
-The map draws the walker where they are standing, as a figure facing the way
-they were facing, and going back in puts them there - unless you picked
-something on the map while you were away, which is how you say "take me there"
-instead.
+The map draws the walker at their last position, as a figure facing the
+direction they faced, and re-entering walk mode restores that position — unless
+a node was selected on the map in the interim, in which case the walker is
+placed at that node instead.
 
-On foot, the shore stops you, but every island can be reached over a bridge;
-flying, you can go 3 units out over the water. The ground you stand on is never
-a target, so aiming at the street does not select it. Expanding and collapsing
-is left to the map view: it rebuilds the whole city, which is disorienting from
-street level. The key list folds away once you start moving; `?`
-shows all controls.
+On foot the shore is impassable, but every island is reachable by bridge; while
+flying, the walker may travel 3 units out over the water. The ground beneath the
+walker is never a target, so aiming at the street selects nothing. Expanding and
+collapsing are reserved to the map view, since either rebuilds the entire city
+and is disorienting from street level. The list of controls collapses once the
+walker begins to move; `?` displays all of them.
 
 ### Styles
 
-The same map, dressed three ways (`--style`, or the **Style** menu):
+The same map, presented in three ways (`--style`, or the **Style** menu):
 
-| Style     | What it is                                                                                                                                                                                                                                                                                                                                                                                                                                        |
-|-----------|---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| `city`    | Buildings with facades and roofs, streets with crossings and parks, shores with trees, bridges between the islands                                                                                                                                                                                                                                                                                                                                |
-| `circuit` | A printed circuit board: chip packages with rows of pins, heatsinks where the buildings are tall, copper traces down every street with vias along them, solder pads and silkscreen around every part, capacitors where the trees were and LEDs, lit, where the lamps were. Off the edge of the board is the backplane it is plugged into, and it is live: charge runs along its tracks, which is this style's way of saying you cannot walk there |
-| `galaxy`  | Platforms out in the dark: crystal spires with strata of light and windows like stars, glowing conduits between them, and instead of sea and sky the band of the galaxy with its dust lanes, two nebulae behind it and three layers of stars in front. The void the platforms hang in drifts, in layers and at three speeds, so the map view keeps drawing itself while this style is on; the other two are still                                 |
+| Style     | What it is                                                                                                                                                                                                                                                                                                                                                                                                                     |
+|-----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| `city`    | Buildings with facades and roofs, streets with crossings and parks, wooded shores, and bridges between the islands                                                                                                                                                                                                                                                                                                             |
+| `circuit` | A printed circuit board: chip packages with rows of pins, heatsinks in place of tall buildings, copper traces along every street with vias set into them, solder pads and silkscreen around each part, capacitors in place of trees and lit LEDs in place of lamps. Beyond the edge of the board lies the backplane it is plugged into, which is live: charge travels along its tracks, indicating that it cannot be walked on |
+| `galaxy`  | Platforms suspended in darkness: crystal spires with strata of light and star-like windows, joined by luminous conduits. In place of sea and sky there is the band of the galaxy with its dust lanes, two nebulae behind it and three layers of stars in front. The void the platforms hang in drifts in layers at three different speeds, so the map view redraws continuously under this style; the other two are static     |
 
-Only the environment changes. The colors that carry data - the language
-palette, the history overlays, hover and selection - are the same in all three,
-so a style is a look and never a different reading of the code. Nothing else
-changes either: the same layout, the same streets, the same walk.
+Only the environment differs. The colors that carry data — the language
+palette, the history overlays, hover and selection — are identical in all three,
+so a style alters the presentation and never the reading of the code. Nothing
+else differs either: the same layout, the same streets, the same walk.
 
 ### Findings
 
-depphunter does not run a scanner; it reads what yours already wrote. Point
-`--findings` at the JSON your CI produces (the flag is repeatable and takes
-globs) and each report lands on the map:
+depphunter runs no scanner; it reads the reports an existing pipeline has
+already produced. Point `--findings` at the JSON emitted by CI — the flag is
+repeatable and accepts globs — and each report is placed on the map:
 
 | Tool                                  | written by                                         |
 |---------------------------------------|----------------------------------------------------|
 | `govulncheck -format json`            | the advisory, and the call site that reaches it    |
-| `npm audit --json`                    | npm 7+ and the older npm 6 advisory table          |
+| `npm audit --json`                    | npm 7 and later, and the npm 6 advisory table      |
 | `trivy … --format json`               | vulnerabilities, misconfigurations and secret hits |
 | `osv-scanner --format json`           | lock-file scans                                    |
 | `golangci-lint run --out-format json` | one finding per issue                              |
 | `eslint -f json`                      | one finding per message                            |
 
-The format is recognized from the report's own shape, not from its file name,
-so it does not matter what your pipeline calls them:
+The format is determined from the report's structure rather than from its file
+name, so the names a pipeline assigns are immaterial:
 
 ```sh
 govulncheck -format json ./... > reports/govulncheck.json
@@ -600,84 +618,86 @@ trivy fs --format json -o reports/trivy.json .
 depphunter --findings 'reports/*.json'
 ```
 
-A finding is placed where it belongs: a vulnerability on the package it affects,
-a linter's complaint on the file it is about, and a directory carries the worst
-of everything below it. Severities are one scale - critical, high, medium, low,
-info - taken from the advisory's CVSS v3 vector where there is one, because the
-word a distribution chose often disagrees with it (Trivy's `MEDIUM` for
-CVE-2020-8203 is a 9.8 vector). A linter's "error" is deliberately not a
-critical advisory: lint findings are capped at medium, or the streets would fill
-with bugs that mean a missing comment.
+Each finding is placed on the node it concerns: a vulnerability on the package
+it affects, a linter's diagnostic on the file it refers to. A directory carries
+the most severe finding beneath it. Severities are normalized onto one scale —
+critical, high, medium, low, info — derived from the advisory's CVSS v3 vector
+where one is present, because the severity a distribution assigns frequently
+disagrees with it; Trivy classifies CVE-2020-8203 as `MEDIUM` against a vector
+scoring 9.8. A linter's "error" is deliberately not treated as a critical
+advisory: lint findings are capped at medium, since otherwise the streets would
+fill with bugs representing missing comments.
 
-With `--online`, depphunter additionally asks [OSV](https://osv.dev) about every
-external package the map pins to a version - one batched query for the whole
-dependency tree, then the advisories it matched - for Go, npm, PyPI, crates.io,
-Maven, NuGet and GitHub Actions. Floating packages are not asked: they resolve
-to something else on the next install. Answers are cached for six hours.
-`--no-vulns` turns all of it off.
+Under `--online`, depphunter additionally queries [OSV](https://osv.dev) for
+every external package the map pins to a version — a single batched query for
+the whole dependency tree, followed by the advisories it matched — covering Go,
+npm, PyPI, crates.io, Maven, NuGet and GitHub Actions. Floating packages are not
+queried, since they resolve to a different version on the next installation.
+Answers are cached for six hours. `--no-vulns` disables all of this.
 
-Seen from above, every building that carries findings wears a **pin**, in the
-color of the worst of them and standing taller the more there are: from across
-the map the red ones are where to go next. Point at one for the tally, click it
-to read them. The side panel lists them under **Findings**, worst first, each
-opening in place for the description, the fixed version and the advisory link,
-and a collapsed directory opens what is below it as well - a district is red for
-something several levels down, and that is where it can be reached from.
+Viewed from above, every building carrying findings bears a **pin**, colored by
+the most severe of them and growing taller with their number, so that the red
+pins identify where to look next from across the map. Hovering over a pin gives
+the count; selecting it displays the findings. The side panel lists them under
+**Findings**, ordered by severity, each expanding in place to show the
+description, the fixed version and the advisory link. A collapsed directory
+lists the findings beneath it as well, so that a district marked red for
+something several levels down can be reached from its pin.
 
-In walk mode they come out on the streets: every finding is a **bug** patrolling
-the building it belongs to, colored by severity, and catching one with whatever
-tool is in your hands - the butterfly net was made for this - opens what it was
-carrying. The HUD counts how many are left.
+In walk mode the findings appear in the streets: each is a **bug** patrolling
+the building it belongs to, colored by severity. Catching one with the current
+tool — the butterfly net is intended for this — displays what it carries. The
+HUD reports how many remain.
 
-The **backpack** (`B`) is what the two views share. Taking a finding with the
-`+` beside it in the panel is the same catch as netting its bug in the street -
-the bug stops walking either way - and what is in there survives a relayout, a
-depth change and a reload. It stays until the scanners stop reporting it, and is
-then struck through rather than dropped, so seeing what you caught turn green is
-the point of having caught it.
+The **backpack** (`B`) is shared between the two views. Adding a finding with
+the `+` beside it in the panel is equivalent to catching its bug in the street;
+in both cases the bug stops moving. Its contents survive a re-layout, a depth
+change and a reload. An entry is retained until the scanners stop reporting it,
+at which point it is struck through rather than removed, so that a resolved
+finding remains visible as such.
 
-A repository is bigger than it looks from inside it, so the corner of the walk
-HUD carries a **tracker**: a sweep centered on you and turning with you, with a
-dot per bug in its severity's color, a ring per module you have already tagged,
-and an arrow on the rim for anything beyond its range. Its range follows the
-hunt - it fits whatever is still out there - and under it is how far the nearest
-bug is and what it is carrying.
+A repository is larger than it appears from within it, so the corner of the walk
+HUD carries a **tracker**: a sweep centred on the walker and rotating with them,
+with one dot per bug in its severity's color, one ring per module already
+selected, and an arrow at the rim for anything beyond its range. The range
+adapts to what remains, and beneath it are the distance to the nearest bug and
+what that bug carries.
 
 ### Git history
 
-In a git work tree, depphunter reads the history of the analyzed files (the
-newest 10,000 non-merge commits by default; `--history-commits` changes the
-limit, `--no-history` turns it off) in the background once the map is shown, and
-caches it per commit. The **color** menu then offers:
+In a git work tree, depphunter reads the history of the analyzed files — by
+default the most recent 10,000 non-merge commits; `--history-commits` changes
+the limit and `--no-history` disables it — in the background once the map is
+displayed, and caches the result per commit. The **color** menu then offers:
 
-| Mode          | color shows                                                |
-|---------------|------------------------------------------------------------|
-| Commits       | commits per file (per-file mean for collapsed directories) |
-| Lines changed | lines added plus deleted                                   |
-| Last change   | how recently a file changed, recent is strong              |
-| Authors       | distinct authors                                           |
+| Mode          | color shows                                                   |
+|---------------|---------------------------------------------------------------|
+| Commits       | commits per file; the per-file mean for collapsed directories |
+| Lines changed | lines added plus lines deleted                                |
+| Last change   | recency of the last change, with recent changes strongest     |
+| Authors       | the number of distinct authors                                |
 
-Files without commits in range get a separate neutral color. The **Since**
-slider in the legend limits commits, lines changed and authors to a time range;
-tooltips and the side panel show the same figures, the panel also the top
-authors. Renamed files keep the history of their old names. With `--watch`, a
-new commit updates the overlay.
+Files with no commits in range are given a separate neutral color. The
+**Since** slider in the legend restricts commits, lines changed and authors to a
+time range; tooltips and the side panel report the same figures, and the panel
+additionally lists the principal authors. Renamed files retain the history of
+their former names. Under `--watch`, a new commit updates the overlay.
 
 ### Versions and pinning
 
 Every external package carries the version the project resolves it to, and
-whether anything fixes it there. Lock files, exact specifiers (`==1.2.3`,
-`RequiredVersion`), single-version ranges (`[1.2.3]`), commits and digests pin a
-dependency; ranges, wildcards, snapshots and moving tags let it drift. A
-dependency nothing pins is drawn in amber, badged **⚠ floating** in the side
-panel, and marked in its tooltip; where a lock file resolved a range, the panel
-shows both - `4.3.1`, requested as `^4.2.0`.
+whether anything fixes it at that version. Lock files, exact specifiers
+(`==1.2.3`, `RequiredVersion`), single-version ranges (`[1.2.3]`), commits and
+digests pin a dependency; ranges, wildcards, snapshots and mutable tags do not.
+A dependency that nothing pins is drawn in amber, labelled **⚠ floating** in the
+side panel, and marked in its tooltip. Where a lock file resolved a range, the
+panel reports both: `4.3.1`, requested as `^4.2.0`.
 
 | Ecosystem          | pinned by                                                            | floats on                                                   |
 |--------------------|----------------------------------------------------------------------|-------------------------------------------------------------|
-| Go modules         | the version in `go.mod`, which the build picks                       | a require without a version                                 |
-| npm                | `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, an exact `1.2.3` | any range - including `1.2`, which means 1.2.x              |
-| crates.io          | `Cargo.lock`                                                         | the manifest alone: `"1.2.3"` there means `^1.2.3`          |
+| Go modules         | the version in `go.mod`, which the build selects                     | a `require` without a version                               |
+| npm                | `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, an exact `1.2.3` | any range, including `1.2`, which denotes 1.2.x             |
+| crates.io          | `Cargo.lock`                                                         | the manifest alone, where `"1.2.3"` denotes `^1.2.3`        |
 | PyPI               | `poetry.lock`, `uv.lock`, `pdm.lock`, `Pipfile.lock`, `==1.2.3`      | `>=`, `~=`, `^`, or no version at all                       |
 | Maven              | a plain version, `[1.2.3]`                                           | ranges, `LATEST`, `RELEASE`, `-SNAPSHOT`, unexpanded `${…}` |
 | NuGet              | an exact version, `[1.2.3]`                                          | wildcards (`2.*`) and ranges                                |
@@ -687,10 +707,11 @@ The JSON and GraphML exports carry `requested` and `floating` per package.
 
 ### Dependencies of dependencies
 
-`--resolve-depth` walks past what your code imports into what those packages
-themselves pull in: `1` adds one level, `2` two, `-1` as far as the answer
-reaches. The answer comes from the lock files the repository already carries -
-nothing is fetched, and depphunter stays offline.
+`--resolve-depth` extends the graph beyond what the code imports directly to
+what those packages themselves require: `1` adds one level, `2` adds two, and
+`-1` continues as far as the available information reaches. That information
+comes from the lock files the repository already carries; nothing is fetched,
+and the analysis remains offline.
 
 | Lock file                            | gives                                            |
 |--------------------------------------|--------------------------------------------------|
@@ -700,132 +721,174 @@ nothing is fetched, and depphunter stays offline.
 | `Cargo.lock`                         | `dependencies` per crate                         |
 | `uv.lock`, `poetry.lock`, `pdm.lock` | each distribution's own requirements             |
 
-Packages that arrive this way are marked **transitive** - no file here imports
-them - and the edges between packages are `depends`, apart from the `import`
-edges that start at a file, so "imported by N files" keeps meaning what it says.
-Two versions of one package are one building, as they always were, so an edge
-between packages is an edge between names.
+Packages added in this way are marked **transitive**, meaning that no file in
+the repository imports them. Edges between packages are of kind `depends`, as
+distinct from the `import` edges that originate at a file, so that the count of
+files importing a package remains exactly that. Two versions of one package
+remain a single building, so an edge between packages is an edge between names.
 
-Ecosystems whose lock files carry no edges (`Pipfile.lock`) add nothing here;
-those that keep the graph outside the repository (Go modules, NuGet, container
-images, and Maven and the PowerShell Gallery for now) need `--online`, below.
+Ecosystems whose lock files record no edges (`Pipfile.lock`) contribute nothing
+here. Those that keep the dependency graph outside the repository — Go modules,
+NuGet, container images, and at present Maven and the PowerShell Gallery —
+require `--online`, described below.
 
-The side panel reads them as a **tree**: every row under *Depends on* and *Used
-by* opens into what that node depends on in turn, and so on down. Nothing is
-fetched - the edges are already in the map - so a row opens instantly, `▸`/`▾`
-or the arrow keys open and close it, and what you opened stays open when a
-`--watch` update redraws the panel. A package that depends on something that
-depends back on it is shown once more with `↻` and left closed, because lock
-files do contain cycles and a tree that followed one would never end.
+The side panel presents these as a **tree**: every row under *Depends on* and
+*Used by* expands into that node's own dependencies, and so on recursively.
+Nothing is fetched, since the edges are already present in the map, so a row
+expands immediately; `▸`/`▾` or the arrow keys expand and collapse it, and the
+expansion state is preserved when a `--watch` update redraws the panel. A
+package that depends on something which in turn depends on it is shown once
+more, marked `↻`, and left collapsed, since lock files do contain cycles and a
+tree following one would not terminate.
 
 ### Package indexes
 
-Every external package says where it comes from. depphunter reads the index
-configuration your machine has and the one the repository carries - `.npmrc`
-(including `@scope:registry`), `.yarnrc.yml`, `pip.conf` and a requirements
-file's `--index-url`, Poetry and uv sources in `pyproject.toml`, `NuGet.config`,
-a pom's `<repositories>`, `~/.m2/settings.xml` mirrors, `.cargo/config.toml`,
-and `GOPROXY` - and the side panel names the index each package resolves from.
-A container image needs no configuration: `ghcr.io/org/app` says it already.
+Every external package records the index it comes from. depphunter reads both
+the index configuration present on this machine and the configuration the
+repository carries — `.npmrc`, including `@scope:registry`; `.yarnrc.yml`;
+`pip.conf` and a requirements file's `--index-url`; Poetry and uv sources in
+`pyproject.toml`; `NuGet.config`; a POM's `<repositories>`; the mirrors in
+`~/.m2/settings.xml`; `.cargo/config.toml`; and `GOPROXY` — and the side panel
+names the index each package resolves from. A container image requires no
+configuration, since `ghcr.io/org/app` names its registry directly.
 
-The two are not treated alike. An index **your** machine names is trusted; one
-that appears only in the repository is recorded and marked **⚠ index**, because
-a repository that points your package manager at an index nobody here configured
-is the shape a dependency-confusion attack takes. Nothing is ever fetched from
-such an index.
+The two sources are not treated alike. An index named by **this machine's** own
+configuration is trusted. One that appears only in the repository is recorded
+and marked **⚠ index**, because a repository directing a package manager at an
+index that nothing here configures is the form a dependency-confusion attack
+takes. No request is ever made to such an index.
 
-`--online` lets depphunter ask the trusted indexes about dependencies the
-repository does not record - which is how `--resolve-depth` reaches the
-ecosystems whose graph lives outside the repo:
+`--online` permits depphunter to query the trusted indexes for dependencies the
+repository does not record, which is how `--resolve-depth` reaches the
+ecosystems whose graph is held outside the repository:
 
-| Ecosystem | asked for                                 | answer                              |
-|-----------|-------------------------------------------|-------------------------------------|
-| Go        | `<proxy>/<module>/@v/<version>.mod`       | that module's own requires          |
-| npm       | `<registry>/<package>/<version>`          | its `dependencies`                  |
-| PyPI      | `<host>/pypi/<name>/<version>/json`       | `requires_dist`, extras excluded    |
-| crates.io | `<index>/<se>/<rd>/<name>` (sparse index) | its `deps`, dev and optional out    |
-| NuGet     | `<feed>/<id>/<version>/<id>.nuspec`       | `<dependencies>`, flat and by group |
-| OCI       | the manifest, then its config blob        | the **base image** it was built on  |
+| Ecosystem | asked for                                | answer                                   |
+|-----------|------------------------------------------|------------------------------------------|
+| Go        | `<proxy>/<module>/@v/<version>.mod`      | that module's own `require` entries      |
+| npm       | `<registry>/<package>/<version>`         | its `dependencies`                       |
+| PyPI      | `<host>/pypi/<name>/<version>/json`      | `requires_dist`, excluding extras        |
+| crates.io | `<index>/<se>/<rd>/<name>`, sparse index | its `deps`, excluding dev and optional   |
+| NuGet     | `<feed>/<id>/<version>/<id>.nuspec`      | `<dependencies>`, both flat and by group |
+| OCI       | the manifest, then its config blob       | the **base image** it was built on       |
 
 A container image has no dependency list. What it has is the image it was built
-on, which is where its unpatched CVEs come from, and that is what is followed:
-the manifest (and, on a multi-platform index, one platform's), then the small
-config blob it points at, read for `org.opencontainers.image.base.name` in the
-manifest's annotations or the image's labels. No layers are downloaded. A
-registry that wants a pull token first is given the chance to say so, and the
-token endpoint it names is followed only over HTTPS or back to the registry's own
-host.
+on, which is the source of its unpatched vulnerabilities, and that is what is
+followed: the manifest — one platform's, where the manifest is a multi-platform
+index — and then the small config blob it references, read for
+`org.opencontainers.image.base.name` in the manifest's annotations or the image's
+labels. No layers are downloaded. A registry requiring a pull token is given the
+opportunity to say so, and the token endpoint it names is followed only over
+HTTPS, or back to the registry's own host.
 
-Maven is the one that is still not asked, and cannot easily be: an import names
-a package, a package does not say which artifact ships it, and a POM is
-addressed by group *and* artifact.
+Maven alone is not queried, and cannot readily be: an import names a package, a
+package does not identify the artifact that ships it, and a POM is addressed by
+group *and* artifact.
 
-Lock files still come first: an index is asked only where the repository is
-silent, and a whole level of the walk is asked at once rather than one package at
-a time. Answers are cached for a day under the cache directory.
+Lock files take precedence: an index is queried only where the repository is
+silent, and an entire level of the walk is queried at once rather than one
+package at a time. Answers are cached for one day under the cache directory.
 
-Credentials come from your own files and are sent only to the host they were
-written for: `~/.npmrc` auth tokens, `~/.netrc`, the `<servers>` of
-`~/.m2/settings.xml` matched to the `<mirror>` or `<repository>` that names them,
-and `<packageSourceCredentials>` in a `NuGet.Config` matched to its
-`<packageSources>` entry - which between them is how a Nexus, an Artifactory,
-Azure Artifacts or a ProGet feed lets you in. `${env.NAME}` and `%NAME%` in those
-files are resolved, so a password can live in the environment. A password stored
-encrypted (Maven's `{...}`, NuGet's Windows-encrypted form) is left alone: it
-cannot be decrypted here, and sending it as itself would only be a 401 with your
-ciphertext attached.
+#### Authenticated registries
+
+An index behind authentication is read like any other, provided this machine is
+already configured for it. Credentials are taken from the user's own files and
+environment — never from the repository — and each is sent to the host it was
+written for and to no other.
+
+| Source                           | Holds                                                                        |
+|----------------------------------|------------------------------------------------------------------------------|
+| `~/.npmrc`                       | `_authToken`, `_auth`, and `username` with `_password`, per registry         |
+| `~/.netrc`, `~/_netrc`           | the machine/login/password triples git, curl, Go and pip already read        |
+| `~/.m2/settings.xml`             | each `<server>`, matched to the `<mirror>` or `<repository>` naming it       |
+| `NuGet.Config`                   | `<packageSourceCredentials>`, matched to its `<packageSources>` entry        |
+| `~/.docker/config.json`          | stored `auths`, and the helpers named by `credsStore` and `credHelpers`      |
+| `~/.config/containers/auth.json` | the same, for Podman and Skopeo                                              |
+| `~/.cargo/credentials.toml`      | a token per registry, matched to its index through `~/.cargo/config.toml`    |
+| `CARGO_REGISTRIES_<NAME>_TOKEN`  | the same token supplied by a pipeline instead                                |
+| the index URL itself             | `https://user:password@host/simple`, as a private pip or Cargo mirror is set |
+
+Between them these cover Nexus, Artifactory, Azure Artifacts, ProGet, GitHub
+Packages, Harbor, GHCR and a private crate registry.
+
+`${NAME}`, `${env.NAME}` and `%NAME%` in those files are expanded, so a password
+may be held in the environment. An encrypted password — Maven's `{...}` form,
+NuGet's Windows-encrypted form — is left untouched: it cannot be decrypted here,
+and transmitting the ciphertext would yield only a 401.
+
+**A credential written into an index URL is removed from that URL before it is
+recorded.** The index a package resolves from is drawn on the map, named in the
+side panel and written into every export, and the HTML export is a file this
+document recommends sharing. Only a URL supplied by this machine's own
+configuration contributes a credential; one supplied by the repository is
+stripped and discarded, since a repository able to supply a credential would
+also be choosing where it is sent.
+
+Most container registries no longer store a credential in `config.json`; they
+name a helper instead, and depphunter runs it as `docker login` does —
+`docker-credential-<name> get`, with the registry on standard input. This is the
+only program depphunter executes that was not named on its command line, so the
+helper's name must be a bare name, is resolved on `PATH` only, and is given ten
+seconds; a configuration naming a path obtains nothing. A helper that returns an
+identity token rather than a password is not used, since only registries accept
+one.
 
 ### Private and internal dependencies
 
-Most of an enterprise repository is the enterprise's own, and two of the things
-depphunter does for a public package must not be done for those:
+Most of an enterprise repository is the organization's own code, and two of the
+operations depphunter performs for a public package must not be performed for
+such packages:
 
-- **asking a public index** what it depends on, which does not answer and tells
-  proxy.golang.org (or registry.npmjs.org) that the package exists; and
-- **asking the OSV database** about it, which hands the name and the version of
-  internal code to a third party.
+- **querying a public index** for its dependencies, which does not answer and
+  discloses to proxy.golang.org, or registry.npmjs.org, that the package exists;
+  and
+- **querying the OSV database** about it, which discloses the name and version
+  of internal code to a third party.
 
-Neither can be guessed - a module path on a company host looks like any other -
-so you say which are yours:
+Neither case can be inferred — a module path on a company host is
+indistinguishable from any other — so the packages are declared:
 
 ```bash
 depphunter --private 'corp.example/*' --private 'npm:@acme/*' .
 ```
 
-A pattern is a glob with `GOPRIVATE`'s meaning: it matches a package whose
-leading path elements match it, so `corp.example/*` covers
-`corp.example/team/billing`. It works as well for an npm scope (`@acme/*`), a
-Maven group (`com.acme.*`) or a registry path (`harbor.corp/*`). Prefix it with
-an ecosystem - `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`, `crates:`,
-`actions:` - to limit it to that one.
+A pattern is a glob with `GOPRIVATE`'s semantics: it matches a package whose
+leading path elements match it, so that `corp.example/*` covers
+`corp.example/team/billing`. It applies equally to an npm scope (`@acme/*`), a
+Maven group (`com.acme.*`) and a registry path (`harbor.corp/*`). Prefixing a
+pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`,
+`crates:` or `actions:` — restricts it to that ecosystem.
 
-**`GOPRIVATE` and `GONOPROXY` are read on top of whatever you set**, so a Go
-project that has already configured its machine needs nothing here at all.
+**`GOPRIVATE` and `GONOPROXY` are read in addition to whatever is configured
+here**, so a Go project whose machine is already configured requires no further
+setting.
 
-A package matched this way is drawn with a **private** badge, is never named to
-that ecosystem's public index, and is never sent to the vulnerability database.
-It is still asked of an index *your own machine* is configured for - your Nexus
-knows about it already - so a private registry still answers for what its
-packages depend on. `private` may also be set in a repository's own
-`.depphunter.yaml`: all it can do is make depphunter say less, and the repository
-is who would know.
+A package matched in this way is drawn with a **private** label, is never named
+to that ecosystem's public index, and is never sent to the vulnerability
+database. It is still queried against an index *this machine* configures, since
+an internal registry already knows of it, so a private registry continues to
+answer for what its packages depend on. `private` may also be set in a
+repository's own `.depphunter.yaml`; the only effect available to it is to make
+depphunter disclose less, and the repository is the authority on which of its
+dependencies are internal.
 
-### Vouching for your own index
+### Vouching for an internal index
 
 An index that appears only in the repository is marked **⚠ index** and never
-fetched from, because a repository pointing your package manager somewhere nobody
-here configured is what dependency confusion looks like. In an organization whose
-repositories carry their own `.npmrc` naming the company registry, that is every
-package marked - and a warning that is always on is a warning nobody reads.
+queried, because a repository directing a package manager at an index that
+nothing here configures is the form dependency confusion takes. In an
+organization whose repositories carry their own `.npmrc` naming the company
+registry, this marks every package, and a warning that is always present conveys
+nothing.
 
-`--trust-index` says which one is yours:
+`--trust-index` identifies an index as the organization's own:
 
 ```bash
 depphunter --trust-index https://nexus.corp/repository/npm-group .
 ```
 
-It comes from your own config file or the command line only. A repository cannot
-vouch for itself; if it could, the marking would guard nothing.
+It may be set only in the user's own configuration file or on the command line.
+A repository cannot vouch for itself; were that permitted, the marking would
+guard nothing.
 
 | Setting         | Flag            | Environment                |
 |-----------------|-----------------|----------------------------|
@@ -836,47 +899,49 @@ Both are repeatable, and each value may itself be a comma-separated list.
 
 ### The resolution report
 
-Everything above happens off screen. A package that resolves from the company's
-Nexus and one that resolves from registry.npmjs.org are drawn the same way; a
-dependency tree that stops two levels down looks the same whether the
-dependencies end there, no lock file covers them, or a proxy answered 404. The
-report is where the difference is kept.
+None of the preceding resolution is visible in the map it produces. A package
+resolving from an internal Nexus and one resolving from registry.npmjs.org are
+drawn identically, and a dependency tree that terminates two levels down is
+indistinguishable whether the dependencies end there, no lock file covers them,
+or a proxy returned 404. The resolution report records the difference.
 
 ```bash
 depphunter --resolve-depth 2 --online --explain .
 ```
 
-It is one account of one analysis, and it comes out in three shapes:
+It is a single account of one analysis, available in three forms:
 
-| Where                        | What for                                                         |
-|------------------------------|------------------------------------------------------------------|
-| `--explain`, on the log      | a digest to read while the run is still in the terminal          |
-| `GET /api/resolution`        | the whole of it as JSON, to diff between runs or assert on in CI |
-| `?format=md`, `?format=text` | the same report rendered, which is what the editor opens         |
+| Form                            | Intended use                                                                 |
+|---------------------------------|------------------------------------------------------------------------------|
+| `--explain`, written to the log | a digest to read while the run is still in the terminal                      |
+| `GET /api/resolution`           | the complete report as JSON, for comparison between runs or assertions in CI |
+| `?format=md`, `?format=text`    | the same report rendered; the Markdown form is what the editor opens         |
 
-It has five things to say:
+The report records five things:
 
-- **the indexes this run knew about** - each one's URL, the scope it serves, and
-  whether it came from this machine, from the repository, or from the repository
-  with `--trust-index` vouching for it afterwards;
-- **what resolved from where** - one row per index, with how many packages
-  resolve from it and how many of those are private, so an index nobody expected
-  is a row rather than a hunt through the map;
-- **the walk** - per ecosystem and per level: how many packages were asked
-  about, how many answered, how many were new, and how long it took;
-- **what was never walked at all** - an ecosystem whose dependency graph lives
-  outside the repository and could not be asked for (Go modules, NuGet, Maven,
-  containers) says so, rather than silently contributing nothing; and
-- **what nothing answered for** - every package that came back empty, with the
-  reason: a lock file that does not cover it, an index only the repository names,
-  a private package that a public index is never asked about, a version the proxy
-  needs and does not have, or the request that was made and the status it came
-  back with.
+- **the indexes known to the run** — each index's URL, the scope it serves, and
+  whether it was learned from this machine, from the repository, or from the
+  repository with `--trust-index` subsequently vouching for it;
+- **what resolved from where** — one row per index, giving the number of
+  packages resolving from it and how many of those are private, so that an
+  unexpected index is a single row rather than a search through the map;
+- **the walk** — per ecosystem and per level: how many packages were queried,
+  how many answered, how many were new, and the elapsed time;
+- **the ecosystems not walked at all** — an ecosystem whose dependency graph is
+  held outside the repository and could not be queried (Go modules, NuGet,
+  Maven, container images) is named, rather than silently contributing nothing;
+  and
+- **the questions nothing answered** — every package for which no answer was
+  obtained, with the reason: no lock file covers it; its index is named only by
+  the repository; it is private and its index is the public one; the proxy
+  requires a version it was not given; or a request was made and returned a
+  given status.
 
-That last one is the point. Those reasons are indistinguishable on the map - each
-of them draws a package with nothing under it - and they mean entirely different
-things. The last of them, a 404 or a 401 from a feed whose credentials are
-wrong, is a configuration problem that the map can only show as an absence.
+The last of these is the principal reason for the report. All five reasons are
+indistinguishable on the map, each drawing a package with nothing beneath it,
+yet they mean entirely different things. A 404, or a 401 from a feed whose
+credentials are wrong, is a configuration fault that the map can express only as
+an absence.
 
 ```text
 the walk past what the code imports
@@ -898,24 +963,25 @@ nothing answered for these
   1      https://registry.npmjs.org/@scope%2ftool/1.2.0: 404 Not Found
 ```
 
-The JSON keeps what the written report cuts short: every question in the order
-the walk asked it, and for each one the URLs that went over the network with the
-status each came back with - which is how the three round trips a container image
-takes are told apart when one of them is the one that failed.
+The JSON retains what the written report abbreviates: every question in the
+order the walk asked it, and for each one the URLs requested with the status
+returned by each — which is how the three round trips a container image requires
+can be distinguished when one of them fails.
 
 In the editor, **depphunter: Show the Resolution Report** opens the same report
-as a document beside the code, and the `depphunter.explain` setting puts the
-digest in the depphunter output channel whenever the map is built. Under
-`--watch` the digest follows a re-analysis only where the map actually moved: a
-report after every saved file would bury the one belonging to the change being
-looked at.
+as a document beside the code, and the `depphunter.explain` setting writes the
+digest to the depphunter output channel whenever the map is built. Under
+`--watch`, the digest follows a re-analysis only where the map actually changed;
+a report after every saved file would obscure the one belonging to the change
+under examination.
 
 ### CI pipelines
 
-The code that runs with your repository's secrets is a dependency too, and it is
-declared nowhere a package manager looks. depphunter reads it from the pipeline
-files themselves - `.github/workflows/*.yml`, `action.yml`, `.gitlab-ci.yml`,
-`*.gitlab-ci.yml` and `.gitlab/**` - and puts it on the map beside the packages:
+The code that executes with a repository's secrets is also a dependency, and it
+is declared nowhere a package manager reads. depphunter takes it from the
+pipeline files themselves — `.github/workflows/*.yml`, `action.yml`,
+`.gitlab-ci.yml`, `*.gitlab-ci.yml` and `.gitlab/**` — and places it on the map
+alongside the packages:
 
 - **GitHub Actions**: each step's `uses:`, reusable workflows (`jobs.<id>.uses`),
   and a composite action's own steps. A `./path` resolves to the `action.yml` or
@@ -931,68 +997,74 @@ Jobs become the symbols of their file, so a pipeline expands into its jobs the
 way a source file expands into its functions.
 
 Pinning is stricter here than in a package ecosystem, because a reference that
-can be rewritten is not a pin: **only a commit or a digest counts**.
-`actions/checkout@v4` floats - the tag can be moved to other code - and so does
-`nginx:1.25.3`, since a tag is republished whenever its owner likes. The
-hardening convention of pinning to a commit and naming the version in a comment
-is read as both: `actions/setup-go@3041bf5… # v5.0.1` shows the commit as the
-version and `v5.0.1` as what was requested. A GitLab template or a remote
-include names no version at all and still changes under you, so it is floating
-as well.
+can be rewritten is not a pin: **only a commit or a digest qualifies**.
+`actions/checkout@v4` floats, since the tag may be moved to other code, and so
+does `nginx:1.25.3`, since an image tag may be republished at its owner's
+discretion. The hardening convention of pinning to a commit and recording the
+version in a trailing comment is read as both: `actions/setup-go@3041bf5… #
+v5.0.1` reports the commit as the version and `v5.0.1` as what was requested. A
+GitLab template or a remote include names no version at all and may still change
+beneath the repository, so it is likewise treated as floating.
 
 ### Documentation
 
 A README that links to `docs/REQUIREMENTS.md` depends on that file, and one that
 links to `internal/server/server.go` depends on that. Both break when the target
-moves, and no package manifest says so - so the links go on the map beside the
-imports.
+is moved, and no package manifest records the relationship, so the links are
+placed on the map alongside the imports.
 
 A link to a file or a directory in the repository becomes an edge from the
-document to it, drawn like any other dependency, and the headings become the
-file's symbols: a document expands into its sections the way a source file
-expands into its functions. Inline links, reference definitions, autolinks and
-the `href` and `src` of raw HTML all count, because a badge is a link too. A
-link inside a fenced block or a code span does not: it is printed rather than
-followed.
+document to it, drawn as any other dependency is, and the headings become the
+file's symbols: a document expands into its sections as a source file expands
+into its functions. Inline links, reference definitions, autolinks and the
+`href` and `src` attributes of raw HTML are all included, since a badge is also
+a link. A link within a fenced block or a code span is not, since it is rendered
+as text rather than followed.
 
 There is no island for external hosts. A link to `https://example.test` is not a
-dependency the map can say anything about, and a legend of somebody else's
-domain names would only crowd the sea.
+dependency the map can characterize, and a legend of third-party domain names
+would add nothing.
 
 **A link that leads nowhere becomes a [finding](#findings)** instead:
 
-| What is wrong                       | Reported as                 |
-|-------------------------------------|-----------------------------|
-| the file or directory is not there  | `link/missing-file`         |
-| the heading it names is not in it   | `link/missing-anchor`       |
-| the reference was never defined     | `link/undefined-reference`  |
-| the host says the page is gone      | `link/gone` (`--online`)    |
+| What is wrong                      | Reported as                |
+|------------------------------------|----------------------------|
+| the file or directory is not there | `link/missing-file`        |
+| the heading it names is not in it  | `link/missing-anchor`      |
+| the reference was never defined    | `link/undefined-reference` |
+| the host says the page is gone     | `link/gone` (`--online`)   |
 
-The first three need nothing but the repository, so they are checked on every
-run and are exact: a path either names something on disk or it does not, and a
-fragment either matches a heading of the file it points at or it does not. A
-link to a file that exists but is not on the map - ignored, excluded, generated
-at build time - is not broken; it simply gets no edge.
+The first three require nothing beyond the repository, so they are checked on
+every run and are exact: a path either names something on disk or it does not,
+and a fragment either matches a heading of the file it points at or it does not.
+A link to a file that exists but is absent from the map — ignored, excluded or
+generated at build time — is not broken; it simply produces no edge.
 
-The fourth needs somebody else's server, so it happens only with `--online`, and
-it is deliberately hard to convince. A link is reported when a host says the
-page is **gone** - 404 or 410 - and not when it refuses a robot, rate-limits,
-times out or breaks. Those are the answers a checker gets from Cloudflare and
-from GitHub's own bot rules, and reading them as rot would invent a finding for
-every link that works perfectly well in a browser. What could not be checked is
-said in the log rather than drawn on the map. Answers are cached for a day.
+The fourth requires a third-party server and is therefore performed only under
+`--online`. Links are checked with the same credentials the indexes use, host by
+host, so that a link into a private repository or an internal wiki is checked
+rather than reported missing on the strength of an anonymous 404. The check is
+otherwise deliberately conservative: a link is reported when a host states that
+the page is **gone**, that is 404 or 410, and not when the host refuses a robot,
+rate-limits, times out or fails. Those are the responses a
+checker receives from Cloudflare and from GitHub's own bot rules, and treating
+them as link rot would produce a finding for every link that functions correctly
+in a browser. Links that could not be checked are reported in the log rather
+than placed on the map. Answers are cached for one day.
 
-Vendored documentation is left out of all of it. A vendored README links to the
-parts of its own repository that vendoring does not copy, so its links are
-broken by definition, in a file nobody here can fix.
+Two categories of Markdown are excluded from all of the above, because a finding
+against either would be a defect nobody is expected to correct: vendored
+documentation, whose links point at the parts of its own repository that
+vendoring does not copy, and fixtures under `testdata`, which are incorrect by
+design.
 
-`--no-links` turns the whole thing off.
+`--no-links` disables the whole of it.
 
 ### Symbol references
 
-Imports show which files depend on which; with `--lsp`, depphunter also asks
-language servers which symbols use which. It uses the servers it finds on `PATH`
-(and `go install` locations for gopls):
+Imports establish which files depend on which. Under `--lsp`, depphunter
+additionally queries language servers for which symbols use which. It uses the
+servers found on `PATH`, and the `go install` locations for gopls:
 
 | Language                | Server                                                     |
 |-------------------------|------------------------------------------------------------|
@@ -1003,11 +1075,12 @@ language servers which symbols use which. It uses the servers it finds on `PATH`
 | Java                    | `jdtls`                                                    |
 | C#                      | `csharp-ls`                                                |
 
-The servers run in the background after the map is shown (gopls needs about 7 s
-for this repository), within `--lsp-timeout`; results are cached until the code
-changes. The legend's **Imports / References** switch then changes what
-selection arcs and the side panel show: for a function, what it uses and what
-uses it. JSON and GraphML exports include the reference edges.
+The servers run in the background once the map is displayed — gopls requires
+approximately 7 s for this repository — within the budget set by
+`--lsp-timeout`; results are cached until the code changes. The legend's
+**Imports / References** switch then determines what the selection arcs and the
+side panel show: for a function, what it uses and what uses it. The JSON and
+GraphML exports include the reference edges.
 
 ### Languages
 
@@ -1023,60 +1096,63 @@ uses it. JSON and GraphML exports include the reference edges.
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)      | GitHub Actions, GitLab CI, Container images |
 | Markdown                | links to files and directories in the repository (inline, reference, autolink, and the `href` and `src` of raw HTML); headings become the file's symbols                          | *(none: a link is not a package)*           |
 
-Java imports name packages, not artifacts, so they are matched to Maven groupIds
-by prefix, shared leading segments, artifact names and a short table of
-well-known mismatches (Guava, JUnit 4, Lombok, …); what cannot be matched is
-shown as unresolved.
+Java imports name packages rather than artifacts, so they are matched to Maven
+group identifiers by prefix, by shared leading segments, by artifact name, and
+by a short table of well-known exceptions such as Guava, JUnit 4 and Lombok.
+Imports that cannot be matched are shown as unresolved.
 
 Files in other languages appear on the map without dependency edges. Parsing
-uses a pure-Go tree-sitter runtime (C# and PowerShell use small built-in
-scanners instead), so the binary still cross-compiles without a C toolchain.
+uses a pure-Go tree-sitter runtime — C# and PowerShell use small built-in
+scanners instead — so the binary continues to cross-compile without a C
+toolchain.
 
 ## Security
 
 The server binds to loopback by default and prints a URL containing a random
-token, which the browser exchanges for a cookie. Requests without it, requests
-with a foreign `Host` header (DNS rebinding), and requests for files that are
-not part of the analyzed project are rejected. Nothing may put the map in a
-frame: `X-Frame-Options: DENY` and `frame-ancestors 'none'`.
+token, which the browser exchanges for a cookie. Requests lacking the token,
+requests carrying a foreign `Host` header — that is, DNS rebinding — and
+requests for files outside the analyzed project are all rejected. Nothing may
+frame the map: `X-Frame-Options: DENY` and `frame-ancestors 'none'`.
 
 ### Inside an editor
 
-That last part is also what stops an editor showing the map in its own built-in
-browser, which is a frame like any other. `--embed <origin>` allows the origins
-it names, and only those, which is what a wrapper such as an editor extension
-passes when it starts the server - every frame above the page, since
-`frame-ancestors` is checked against the whole chain and not just the parent
-(see [How the framing works](#how-the-framing-works)). Three things follow from
-it, and nothing else changes:
+That last provision is also what prevents an editor from displaying the map in
+its own built-in browser, which is a frame like any other. `--embed <origin>`
+permits the origins it names and no others; it is what a wrapper such as an
+editor extension passes when it starts the server, naming every frame above the
+page, since `frame-ancestors` is evaluated against the entire chain rather than
+the immediate parent (see [How the framing works](#how-the-framing-works)).
+Three consequences follow, and nothing else changes:
 
-- `frame-ancestors` names those origins instead of `'none'`, and
-  `X-Frame-Options` is not sent, because it has no way to name an origin that
-  browsers still honour.
-- The token stays in the address instead of being exchanged for a cookie. A
-  cookie set by the map is a third-party cookie inside somebody else's frame,
-  and browsers do not send those back; the page reads the token from its own
-  URL and returns it on every call, in a header, or in the query string for the
+- `frame-ancestors` names those origins rather than `'none'`, and
+  `X-Frame-Options` is not sent, since it provides no means of naming an origin
+  that browsers still honour.
+- The token remains in the address rather than being exchanged for a cookie. A
+  cookie set by the map is a third-party cookie within another origin's frame,
+  and browsers do not return those; the page reads the token from its own URL
+  and supplies it on every call, in a header, or in the query string for the
   event stream, which cannot set headers. `Referrer-Policy: no-referrer` keeps
-  it out of any request that leaves.
-- The interface's own files - `app.js` and what it imports - are served without
-  the token, since a frame cannot attach one to a `<script src>`. They are the
-  same bytes in every release and say nothing about the project. Everything
-  under `/api`, and the document that hands the page its token, still needs it.
+  it out of any outgoing request.
+- The interface's own files — `app.js` and its imports — are served without the
+  token, since a frame cannot attach one to a `<script src>`. They are identical
+  in every release and disclose nothing about the project. Everything under
+  `/api`, and the document that supplies the page with its token, still requires
+  it.
 
-It is deliberately a flag and nothing else: no config file and no environment
-variable can turn it on, so a repository cannot arrange to be framed by a page
-of its choosing. Each origin is checked before it reaches the header, so nothing
-passed on the command line can end the directive early or start another one.
+The option is deliberately a flag and nothing else: no configuration file and no
+environment variable can enable it, so a repository cannot arrange to be framed
+by a page of its choosing. Each origin is validated before it reaches the
+header, so nothing passed on the command line can terminate the directive early
+or begin another.
 
 ## Contributing
 
-Building, testing, how the code is laid out and how to work on the VS Code
-extension are in [CONTRIBUTING.md](CONTRIBUTING.md).
+Building and testing, the structure of the code, and working on the VS Code
+extension are documented in [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
 [BSD 3-Clause](LICENSE) © 2026 Dawid Ciepiela. The embedded three.js (MIT),
-highlight.js (BSD 3-Clause), potpack (ISC) and fzf-for-js (BSD 3-Clause) keep
+highlight.js (BSD 3-Clause), potpack (ISC) and fzf-for-js (BSD 3-Clause) retain
 their own licenses; see
 [web/static/vendor](web/static/vendor/README.md).
