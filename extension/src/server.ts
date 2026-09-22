@@ -152,6 +152,7 @@ export function argv(cfg: vscode.WorkspaceConfiguration, root: string): string[]
   number('maxFileSize', '--max-file-size');
   number('resolveDepth', '--resolve-depth');
   on('online', '--online');
+  on('explain', '--explain');
   off('cache', '--no-cache');
   off('history', '--no-history');
   number('historyCommits', '--history-commits');

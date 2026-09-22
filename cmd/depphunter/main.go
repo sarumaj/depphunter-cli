@@ -42,6 +42,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 	"github.com/sarumaj/depphunter-cli/internal/scope"
 	"github.com/sarumaj/depphunter-cli/internal/server"
+	"github.com/sarumaj/depphunter-cli/internal/trace"
 	"github.com/sarumaj/depphunter-cli/internal/watch"
 	"github.com/sarumaj/depphunter-cli/web"
 )
@@ -151,7 +152,14 @@ func run(ctx context.Context, cfg config.Config) error {
 		}
 		opts.Registry = index.NewClient(indexes.Config(), store, indexCacheTTL, indexTimeout, home, private)
 	}
-	g, err := analyze(ctx, cfg.Root, opts, c)
+	// One report per analysis, and --watch analyzes again on every change: a report
+	// that accumulated over a morning's editing would say nothing about the run whose
+	// map is on screen.
+	newReport := func() *trace.Report {
+		return trace.New(cfg.ResolveDepth, opts.Registry != nil, private.Patterns(), cfg.TrustIndexes)
+	}
+	opts.Trace = newReport()
+	g, err := analyze(ctx, cfg, opts, c)
 	if err != nil {
 		return err
 	}
@@ -174,7 +182,22 @@ func run(ctx context.Context, cfg config.Config) error {
 		}
 		return writeExport(g, cfg, extra, cfg.Export, cfg.Output)
 	}
-	return serve(ctx, cfg, g, opts, c, cacheDir)
+	return serve(ctx, cfg, g, opts, c, cacheDir, newReport)
+}
+
+// explain writes the resolution report when --explain asked for it: how the walk
+// past the direct dependencies went, and which index each package resolves from.
+// It goes to stderr beside the rest of the log, which is also where the VS Code
+// extension reads it from.
+func explain(cfg config.Config, r *trace.Report) {
+	if !cfg.Explain || r == nil {
+		return
+	}
+	fmt.Fprintln(os.Stderr)
+	if err := r.Text(os.Stderr); err != nil {
+		log.Printf("resolution report: %v", err)
+	}
+	fmt.Fprintln(os.Stderr)
 }
 
 // loadHistory reads (or loads from the cache) the git history of the graph's files;
@@ -205,14 +228,15 @@ func loadHistory(ctx context.Context, cfg config.Config, cacheDir string, g *gra
 	return h.Only(files)
 }
 
-func analyze(ctx context.Context, root string, opts anal.Options, c *cache.Cache) (*graph.Graph, error) {
+func analyze(ctx context.Context, cfg config.Config, opts anal.Options, c *cache.Cache) (*graph.Graph, error) {
 	start := time.Now()
-	g, st, err := anal.Run(ctx, root, opts)
+	g, st, err := anal.Run(ctx, cfg.Root, opts)
 	if err != nil {
 		return nil, err
 	}
 	log.Printf("analyzed %s: %d files (%d parsed, %d cached), %d nodes, %d edges in %s",
-		root, st.Files, st.Parsed, st.Cached, len(g.Nodes), len(g.Edges), time.Since(start).Round(time.Millisecond))
+		cfg.Root, st.Files, st.Parsed, st.Cached, len(g.Nodes), len(g.Edges), time.Since(start).Round(time.Millisecond))
+	explain(cfg, st.Resolution)
 	if err := c.Save(); err != nil {
 		log.Printf("cache not saved: %v", err)
 	}
@@ -310,7 +334,8 @@ func writeExport(g *graph.Graph, cfg config.Config, extra map[string]any, format
 	return export.Write(w, g, format)
 }
 
-func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Options, c *cache.Cache, cacheDir string) error {
+func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Options, c *cache.Cache,
+	cacheDir string, newReport func() *trace.Report) error {
 	if cfg.Editor == "" {
 		cfg.Editor = editor.Detect(os.Getenv, exec.LookPath)
 	}
@@ -318,6 +343,7 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 	if err != nil {
 		return err
 	}
+	srv.SetResolution(opts.Trace)
 	ln, url, err := srv.Listen(cfg.Addr)
 	if err != nil {
 		return err
@@ -374,6 +400,7 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 		w.Sync(watched(g), reportFiles)
 		go w.Run(ctx, 300*time.Millisecond, func() {
 			start := time.Now()
+			opts.Trace = newReport()
 			ng, st, err := anal.Run(ctx, cfg.Root, opts)
 			if err != nil {
 				if ctx.Err() == nil {
@@ -381,6 +408,7 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 				}
 				return
 			}
+			srv.SetResolution(st.Resolution)
 			c.Save()
 			w.Sync(watched(ng), reportFiles)
 			changed, err := srv.Update(ng, st.ParsedFiles)
@@ -388,6 +416,9 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 				log.Printf("update failed: %v", err)
 			} else if changed {
 				log.Printf("updated: %d files re-parsed in %s", st.Parsed, time.Since(start).Round(time.Millisecond))
+				// Only when the map moved. A report after every saved file would
+				// bury the one that belongs to the change being looked at.
+				explain(cfg, st.Resolution)
 			}
 			if cfg.History {
 				go historyRun.Run(ng) // a commit moves HEAD

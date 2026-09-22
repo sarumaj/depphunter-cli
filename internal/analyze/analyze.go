@@ -15,6 +15,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/graph"
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
+	"github.com/sarumaj/depphunter-cli/internal/trace"
 )
 
 type Options struct {
@@ -37,7 +38,17 @@ type Options struct {
 	// public index or to the vulnerability database. nil makes everything public,
 	// which is what a repository of open-source dependencies is.
 	Private func(eco, pkg string) bool
+	// Trace is the report this run writes its account of itself into: which index
+	// answered for what, and what each level of the walk added (internal/trace). One
+	// report belongs to one run, so --watch hands a fresh one to every re-analysis.
+	// nil records nothing.
+	Trace *trace.Report
 }
+
+// Traced is the optional half of a Registry that can say how it answered each
+// question. internal/index's client implements it; a registry that does not is
+// simply not heard from in the report.
+type Traced interface{ Trace(*trace.Report) }
 
 // Indexes says which package index serves a package, and whether anything on this
 // machine vouches for that index (see internal/index).
@@ -45,10 +56,18 @@ type Indexes interface {
 	For(eco, pkg string) (index string, known bool)
 }
 
+// Discovered is the optional half of Indexes: every index the run knew about and
+// where it was learned from, which is what the resolution report opens with.
+// internal/index's Config implements it.
+type Discovered interface{ Report() []trace.Source }
+
 // Stats describes one run: how many files were parsed and how many came from the cache.
 type Stats struct {
 	Files, Parsed, Cached int
 	ParsedFiles           []string // paths whose contents were (re-)parsed
+	// Resolution is Options.Trace, filled in, for callers that would rather not keep
+	// hold of what they passed.
+	Resolution *trace.Report
 }
 
 func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, error) {
@@ -57,7 +76,10 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 	if err != nil {
 		return nil, stats, fmt.Errorf("scanning %s: %w", root, err)
 	}
-	stats.Files = len(files)
+	stats.Files, stats.Resolution = len(files), opts.Trace
+	if t, ok := opts.Registry.(Traced); ok {
+		t.Trace(opts.Trace)
+	}
 	opts.Cache.BeginRun()
 	var parsed, cached atomic.Int64
 	var mu sync.Mutex
@@ -69,9 +91,13 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 		files:    map[string]bool{},
 		packages: map[string]lang.Target{},
 		private:  opts.Private,
+		rep:      opts.Trace,
 	}
 	if opts.Indexes != nil {
 		b.indexes = opts.Indexes(files)
+		if d, ok := b.indexes.(Discovered); ok {
+			opts.Trace.SetSources(d.Report())
+		}
 	}
 	b.add(&graph.Node{ID: graph.DirID("."), Kind: graph.KindDir, Name: b.g.Root, Path: "."})
 	for _, f := range files {
@@ -123,27 +149,53 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 		// Only now, with every direct package of this plugin on the graph, is there
 		// something to walk out from.
 		local, _ := r.(lang.Transitive)
-		if (local != nil || opts.Registry != nil) && opts.ResolveDepth != 0 {
-			b.expand(chain{local: local, remote: opts.Registry}, ecosystems, opts.ResolveDepth)
+		switch {
+		case opts.ResolveDepth == 0:
+		case local != nil || opts.Registry != nil:
+			b.expand(chain{local: local, remote: opts.Registry, rep: opts.Trace},
+				p.Name(), ecosystems, opts.ResolveDepth)
+		default:
+			// Neither half of the answer is available: this ecosystem keeps its
+			// dependency graph outside the repository (Go modules, NuGet, Maven,
+			// containers) and nothing may be asked. Silence here is not "no
+			// dependencies", and the report is where the difference is kept.
+			opts.Trace.Skip(p.Name(),
+				"the repository records no dependency graph for it, and --online was not given")
 		}
 	}
 	stats.Parsed, stats.Cached = int(parsed.Load()), int(cached.Load())
+	opts.Trace.Summarize(b.g)
+	opts.Trace.Finish()
 	return b.g, stats, nil
 }
 
 // chain asks what the repository records before it asks an index: a lock file is
 // both faster and more truthful about this project than a registry can be.
-type chain struct{ local, remote lang.Transitive }
+type chain struct {
+	local, remote lang.Transitive
+	rep           *trace.Report
+}
 
 func (c chain) Dependencies(t lang.Target) []lang.Target {
 	if c.local != nil {
 		if deps := c.local.Dependencies(t); len(deps) > 0 {
+			c.rep.Add(trace.Lookup{
+				Ecosystem: t.Ecosystem, Package: t.Package, Version: t.Version,
+				Answer: trace.FromLock, Deps: len(deps),
+			})
 			return deps
 		}
 	}
 	if c.remote != nil {
-		return c.remote.Dependencies(t)
+		return c.remote.Dependencies(t) // which records its own answer
 	}
+	// Offline, and the repository's own files said nothing. Whether that means the
+	// package has no dependencies or that no lock file covers it cannot be told
+	// apart from here, and the report says as much rather than implying the first.
+	c.rep.Add(trace.Lookup{
+		Ecosystem: t.Ecosystem, Package: t.Package, Version: t.Version,
+		Answer: trace.NoAnswer, Reason: trace.ReasonOffline,
+	})
 	return nil
 }
 
@@ -157,6 +209,7 @@ type builder struct {
 	packages map[string]lang.Target
 	indexes  Indexes
 	private  func(eco, pkg string) bool
+	rep      *trace.Report
 }
 
 // transitiveWorkers is how many packages are asked about at once. A lock file
@@ -173,10 +226,13 @@ const transitiveWorkers = 12
 // level is asked about together, and the answers are applied in the level's own order
 // afterwards, so what is on the graph does not depend on which request came back
 // first.
-func (b *builder) expand(tr lang.Transitive, ecosystems map[string]lang.Ecosystem, depth int) {
+func (b *builder) expand(tr lang.Transitive, plugin string, ecosystems map[string]lang.Ecosystem, depth int) {
 	var level []string
 	for id, t := range b.packages {
-		if _, ok := ecosystems[t.Ecosystem]; ok {
+		// A standard library is not walked: nothing publishes what "fs" or "os"
+		// depends on, so asking produces a round of questions nobody can answer and
+		// a report full of them.
+		if e, ok := ecosystems[t.Ecosystem]; ok && !e.Std {
 			level = append(level, id)
 		}
 	}
@@ -185,9 +241,15 @@ func (b *builder) expand(tr lang.Transitive, ecosystems map[string]lang.Ecosyste
 
 	seen := map[string]bool{}
 	for n := 0; len(level) > 0 && (depth < 0 || n < depth); n++ {
+		b.rep.Enter(plugin, n)
+		start := time.Now()
 		answers := b.ask(tr, level)
 		var next []string
+		answered, added, edges := 0, 0, 0
 		for i, from := range level {
+			if len(answers[i]) > 0 {
+				answered++
+			}
 			for _, dep := range answers[i] {
 				_, known := b.nodes[graph.PackageID(dep.Ecosystem, dep.Package)]
 				id := b.target(dep, ecosystems)
@@ -196,14 +258,18 @@ func (b *builder) expand(tr lang.Transitive, ecosystems map[string]lang.Ecosyste
 				}
 				if !known {
 					b.nodes[id].Transitive = true
+					added++
 				}
+				before := len(b.g.Edges)
 				b.edge(from, id, graph.EdgeDepends, 0)
+				edges += len(b.g.Edges) - before
 				if !seen[id] {
 					seen[id] = true
 					next = append(next, id)
 				}
 			}
 		}
+		b.rep.Done(len(level), answered, added, edges, time.Since(start))
 		level = next
 	}
 }

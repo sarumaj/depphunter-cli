@@ -86,6 +86,13 @@ type Config struct {
 	// Online allows asking package indexes about dependencies the repository's own
 	// files do not record. Analysis is offline without it.
 	Online bool `yaml:"online" mapstructure:"online"`
+	// Explain writes the resolution report when the analysis is over: which index
+	// answered for which package, what each level of the walk added, and what
+	// nothing answered for (see internal/trace). The report is served at
+	// /api/resolution whether this is set or not; this is what puts it on the
+	// terminal - and, since the VS Code extension reads the server's output, in the
+	// editor's depphunter channel.
+	Explain bool `yaml:"explain" mapstructure:"explain"`
 	// Private names the packages that are this organization's own, as glob patterns
 	// with GOPRIVATE's meaning (see internal/scope). They are never named to a public
 	// index and never sent to the vulnerability database, so an internal package's
@@ -158,6 +165,9 @@ func RegisterFlags(fs *pflag.FlagSet) {
 	fs.Bool("no-history", false, "do not read git history")
 	fs.Int("history-commits", d.HistoryCommits, "read at most this many commits of git history")
 	fs.Bool("online", false, "ask package indexes about dependencies the project's files do not record")
+	fs.Bool("explain", false,
+		"write the resolution report when the analysis is over: which index answered for which package, "+
+			"what each level of --resolve-depth added, and what nothing answered for")
 	fs.StringArray("private", nil,
 		"glob naming packages your organization owns, as GOPRIVATE writes them (e.g. corp.example/*, npm:@acme/*); "+
 			"they are never asked of a public index nor sent to the vulnerability database; repeatable")
@@ -181,7 +191,8 @@ func RegisterFlags(fs *pflag.FlagSet) {
 var flagKeys = map[string]string{
 	"addr": "addr", "max-file-size": "max_file_size", "watch": "watch",
 	"history-commits": "history_commits", "resolve-depth": "resolve_depth", "online": "online",
-	"lsp": "lsp", "lsp-timeout": "lsp_timeout", "editor": "editor",
+	"explain": "explain",
+	"lsp":     "lsp", "lsp-timeout": "lsp_timeout", "editor": "editor",
 	"theme": "ui.theme", "color-by": "ui.color_by", "height-scale": "ui.height_scale", "style": "ui.style",
 	"show-std": "ui.show_std", "expand-depth": "ui.expand_depth",
 }
@@ -194,7 +205,8 @@ var negatedFlags = map[string]string{"no-open": "open", "no-cache": "cache", "no
 var envKeys = map[string]string{
 	"addr": "ADDR", "open": "OPEN", "max_file_size": "MAX_FILE_SIZE", "watch": "WATCH", "cache": "CACHE",
 	"history": "HISTORY", "history_commits": "HISTORY_COMMITS", "resolve_depth": "RESOLVE_DEPTH", "online": "ONLINE",
-	"vulns": "VULNS", "lsp": "LSP", "lsp_timeout": "LSP_TIMEOUT",
+	"explain": "EXPLAIN",
+	"vulns":   "VULNS", "lsp": "LSP", "lsp_timeout": "LSP_TIMEOUT",
 	"editor": "EDITOR", "ui.theme": "THEME", "ui.color_by": "COLOR_BY", "ui.height_scale": "HEIGHT_SCALE", "ui.style": "STYLE",
 	"ui.show_std": "SHOW_STD", "ui.expand_depth": "EXPAND_DEPTH",
 }
@@ -299,7 +311,8 @@ func setDefaults(v *viper.Viper, d Config) {
 	for key, val := range map[string]any{
 		"addr": d.Addr, "open": d.Open, "exclude": d.Exclude, "max_file_size": d.MaxFileSize,
 		"watch": d.Watch, "cache": d.Cache, "history": d.History, "history_commits": d.HistoryCommits,
-		"resolve_depth": d.ResolveDepth, "online": d.Online, "findings": d.Findings, "vulns": d.Vulns,
+		"resolve_depth": d.ResolveDepth, "online": d.Online, "explain": d.Explain,
+		"findings": d.Findings, "vulns": d.Vulns,
 		"private": d.Private, "trust_indexes": d.TrustIndexes,
 		"lsp": d.LSP, "lsp_timeout": d.LSPTimeout,
 		"editor":   d.Editor,

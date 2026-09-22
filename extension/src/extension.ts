@@ -72,6 +72,7 @@ export function activate(context: vscode.ExtensionContext): void {
     vscode.commands.registerCommand('depphunter.showFinding', (it: PackItem) => showFinding(it)),
     vscode.commands.registerCommand('depphunter.dropFinding', (it: PackItem) => dropFinding(it)),
     vscode.commands.registerCommand('depphunter.export', () => exportGraph()),
+    vscode.commands.registerCommand('depphunter.resolution', () => showResolution()),
     vscode.commands.registerCommand('depphunter.exportBackpack', () => exportBackpack()),
     vscode.window.registerTreeDataProvider('depphunter.maps', view),
     vscode.window.registerTreeDataProvider('depphunter.backpack', backpack),
@@ -247,6 +248,39 @@ async function save(
     await vscode.workspace.fs.writeFile(uri, body);
     const open = await vscode.window.showInformationMessage(`Exported to ${path.basename(uri.fsPath)}.`, 'Open');
     if (open === 'Open') await vscode.commands.executeCommand('vscode.open', uri);
+  } catch (err) {
+    await report(err);
+  }
+}
+
+/**
+ * How the analysis reached the dependencies it drew, as a document beside the code:
+ * which index each external package resolves from and whether anything on this
+ * machine vouches for it, what each level of --resolve-depth asked and what answered,
+ * and - the part the map cannot show - every question that came back with nothing,
+ * and why.
+ *
+ * The server renders it (internal/trace), so what opens here and what `--explain`
+ * writes to the log are one report in two shapes rather than two accounts that can
+ * disagree.
+ */
+async function showResolution(): Promise<void> {
+  if (!attached) {
+    void vscode.window.showInformationMessage('Open a map first: there is nothing to report on yet.');
+    return;
+  }
+  try {
+    const body = await attached.api.download('/api/resolution?format=md');
+    const doc = await vscode.workspace.openTextDocument({
+      content: body.toString('utf8'), language: 'markdown',
+    });
+    // Rendered where the editor can render it; a build or a configuration without
+    // the Markdown preview still gets the document itself.
+    try {
+      await vscode.commands.executeCommand('markdown.showPreview', doc.uri);
+    } catch {
+      await vscode.window.showTextDocument(doc);
+    }
   } catch (err) {
     await report(err);
   }

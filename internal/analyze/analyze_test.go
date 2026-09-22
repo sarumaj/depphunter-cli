@@ -14,6 +14,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/golang"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
+	"github.com/sarumaj/depphunter-cli/internal/trace"
 )
 
 func writeProject(t *testing.T, root string, files map[string]string) {
@@ -341,4 +342,104 @@ func TestNothingIsPrivateWithoutBeingDeclared(t *testing.T) {
 			t.Errorf("%s was marked private with nothing declared", n.ID)
 		}
 	}
+}
+
+// stdPlugin claims .std files for an ecosystem that is a standard library, which the
+// walk must not ask about: nothing publishes what "fs" depends on.
+type stdPlugin struct{ fakePlugin }
+
+func (stdPlugin) Claims(f *scan.File) bool     { return strings.HasSuffix(f.Path, ".std") }
+func (stdPlugin) Ecosystems() []lang.Ecosystem { return []lang.Ecosystem{{ID: "std-eco", Std: true}} }
+func (p stdPlugin) Resolver(string, []*scan.File) (lang.Resolver, error) {
+	return fakeResolver(p.fakePlugin), nil
+}
+
+// TestResolutionReport checks the account the walk gives of itself: who answered for
+// each package, how far each level got, and - the part no other test can see - what
+// was never asked at all.
+func TestResolutionReport(t *testing.T) {
+	root := t.TempDir()
+	writeProject(t, root, map[string]string{"a.fake": "direct\n"})
+	p := fakePlugin{targets: map[string]lang.Target{
+		"direct": {Ecosystem: "fake-eco", Package: "direct", Version: "2.0.0", Pinned: true},
+	}}
+	rep := trace.New(-1, false, []string{"corp.example/*"}, nil)
+	if _, st, err := Run(context.Background(), root, Options{
+		Plugins: []lang.Plugin{p}, ResolveDepth: -1, Trace: rep,
+	}); err != nil {
+		t.Fatal(err)
+	} else if st.Resolution != rep {
+		t.Error("the stats did not hand back the report the run was given")
+	}
+
+	if len(rep.Levels) != 3 {
+		t.Fatalf("levels: %+v", rep.Levels)
+	}
+	// One package known to start with, which answers with one more, which answers
+	// with one more again - and a last round that finds the end of the chain.
+	for i, want := range []struct{ asked, answered, added int }{{1, 1, 1}, {1, 1, 1}, {1, 0, 0}} {
+		got := rep.Levels[i]
+		if got.Asked != want.asked || got.Answered != want.answered || got.Added != want.added {
+			t.Errorf("level %d: %+v, want asked %d answered %d added %d", i, got, want.asked, want.answered, want.added)
+		}
+	}
+	answered := map[string]trace.Answer{}
+	for _, l := range rep.Lookups {
+		answered[l.Package] = l.Answer
+	}
+	// The resolver is the repository's own answer, and "deep" needs nothing - which
+	// offline is indistinguishable from nothing being recorded about it.
+	if answered["direct"] != trace.FromLock || answered["middle"] != trace.FromLock {
+		t.Errorf("answers: %+v", answered)
+	}
+	if answered["deep"] != trace.NoAnswer {
+		t.Errorf("a package nothing could answer for is recorded as %q", answered["deep"])
+	}
+	if rep.Totals.FromLock != 2 || rep.Totals.Unanswered != 1 {
+		t.Errorf("totals: %+v", rep.Totals)
+	}
+}
+
+// TestResolutionReportSkips checks the two silences the report has to tell apart: an
+// ecosystem whose graph is nowhere to be read, and a standard library, which has no
+// graph to read.
+func TestResolutionReportSkips(t *testing.T) {
+	root := t.TempDir()
+	writeProject(t, root, map[string]string{"a.fake": "direct\n", "b.std": "direct\n"})
+	// A plugin with no Transitive half: offline, nothing can answer for it.
+	silent := quietPlugin{}
+	std := stdPlugin{fakePlugin{targets: map[string]lang.Target{
+		"direct": {Ecosystem: "std-eco", Package: "direct", Version: "1.0.0", Pinned: true},
+	}}}
+	rep := trace.New(1, false, nil, nil)
+	if _, _, err := Run(context.Background(), root, Options{
+		Plugins: []lang.Plugin{silent, std}, ResolveDepth: 1, Trace: rep,
+	}); err != nil {
+		t.Fatal(err)
+	}
+	if len(rep.Skipped) != 1 || rep.Skipped[0].Plugin != "quiet" {
+		t.Errorf("skipped: %+v", rep.Skipped)
+	}
+	// The standard library's plugin can answer, so its walk is not skipped - but the
+	// walk finds nothing to ask about, so it asks nothing.
+	if rep.Totals.Asked != 0 {
+		t.Errorf("a standard library was asked about: %+v", rep.Lookups)
+	}
+}
+
+// quietPlugin resolves imports but cannot say what a package depends on, which is the
+// shape of every ecosystem whose graph lives outside the repository.
+type quietPlugin struct{ fakePlugin }
+
+func (quietPlugin) Name() string                 { return "quiet" }
+func (quietPlugin) Claims(f *scan.File) bool     { return strings.HasSuffix(f.Path, ".fake") }
+func (quietPlugin) Ecosystems() []lang.Ecosystem { return []lang.Ecosystem{{ID: "quiet-eco"}} }
+func (quietPlugin) Resolver(string, []*scan.File) (lang.Resolver, error) {
+	return quietResolver{}, nil
+}
+
+type quietResolver struct{}
+
+func (quietResolver) Resolve(file string, imp lang.RawImport) lang.Target {
+	return lang.Target{Ecosystem: "quiet-eco", Package: imp.Module, Version: "1.0.0", Pinned: true}
 }

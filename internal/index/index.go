@@ -12,7 +12,10 @@ package index
 
 import (
 	"net/url"
+	"sort"
 	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/trace"
 )
 
 // Ecosystem ids, as the language plugins emit them.
@@ -37,6 +40,17 @@ var public = map[string]string{
 	OCI:   "https://registry-1.docker.io",
 }
 
+// Where an index was learned from. It decides nothing on its own - Trusted does
+// that - but it is the first thing anyone reading the resolution report wants to
+// know about an index they did not expect to see.
+const (
+	OriginMachine = "this machine"    // the environment, or a config file in $HOME
+	OriginProject = "the repository"  // a file the repository carries
+	OriginVouched = "--trust-index"   // the repository's, and the user vouched for it
+	OriginPublic  = "public default"  // nothing named one, so the ecosystem's own
+	OriginImage   = "image reference" // an image reference carries its own registry
+)
+
 // Source is one index, and what it serves.
 type Source struct {
 	URL string
@@ -47,6 +61,9 @@ type Source struct {
 	// repository declares is not trusted: it says where a package came from, and
 	// nothing is ever fetched from it.
 	Trusted bool
+	// Origin is where the source was learned from, for the resolution report. It is
+	// one of the Origin constants above.
+	Origin string
 }
 
 // Config is the index configuration of one analysis: what this machine knows, and
@@ -100,6 +117,63 @@ func (c *Config) Add(eco string, s Source) {
 // Sources lists what was found for an ecosystem, machine first.
 func (c *Config) Sources(eco string) []Source { return c.sources[eco] }
 
+// Report lists every index this configuration holds, plus the public default of
+// each ecosystem that has one and is not already named, for internal/trace. It is
+// the answer to "which indexes did this run even know about", which is the question
+// underneath every surprising index on the map.
+func (c *Config) Report() []trace.Source {
+	ecosystems := make([]string, 0, len(c.sources))
+	for eco := range c.sources {
+		ecosystems = append(ecosystems, eco)
+	}
+	sort.Strings(ecosystems)
+	var out []trace.Source
+	for _, eco := range ecosystems {
+		for _, s := range c.sources[eco] {
+			out = append(out, trace.Source{
+				Ecosystem: eco, URL: s.URL, Scope: s.Scope,
+				Origin: c.origin(s), Trusted: c.fetchable(eco, s),
+			})
+		}
+		if url := public[eco]; url != "" && !c.has(eco, url) {
+			out = append(out, trace.Source{Ecosystem: eco, URL: url, Origin: OriginPublic, Trusted: true})
+		}
+	}
+	return out
+}
+
+// has reports whether an ecosystem already names an index, so the public default is
+// not reported twice.
+func (c *Config) has(eco, url string) bool {
+	for _, s := range c.sources[eco] {
+		if s.URL == url {
+			return true
+		}
+	}
+	return false
+}
+
+// origin says where a source was learned from: this machine, the repository, or the
+// repository with the user vouching for it afterwards.
+func (c *Config) origin(s Source) string {
+	if !s.Trusted && c.trusted[s.URL] {
+		return OriginVouched
+	}
+	if s.Origin != "" {
+		return s.Origin
+	}
+	if s.Trusted {
+		return OriginMachine
+	}
+	return OriginProject
+}
+
+// fetchable reports whether anything here allows fetching from a source - the same
+// judgment For makes, which is why it is written once.
+func (c *Config) fetchable(eco string, s Source) bool {
+	return s.Trusted || s.URL == public[eco] || c.trusted[s.URL]
+}
+
 // For reports which index serves a package, and whether anything here vouches for it:
 // a public default or a source this machine's configuration names is known, a source
 // only the repository asks for is not.
@@ -129,7 +203,7 @@ func (c *Config) For(eco, pkg string) (index string, known bool) {
 	if best.URL == "" {
 		return public[eco], public[eco] != ""
 	}
-	return best.URL, best.Trusted || best.URL == public[eco] || c.trusted[best.URL]
+	return best.URL, c.fetchable(eco, best)
 }
 
 // matches reports whether a scope covers a package name. npm scopes are exact, Maven

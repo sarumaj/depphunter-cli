@@ -94,6 +94,7 @@ the code. The map itself is the same page either way.
   [Dependencies of dependencies](#dependencies-of-dependencies) ·
   [Package indexes](#package-indexes) ·
   [Private dependencies](#private-and-internal-dependencies) ·
+  [The resolution report](#the-resolution-report) ·
   [CI pipelines](#ci-pipelines) ·
   [Symbol references](#symbol-references) · [Languages](#languages)
 - [Security](#security) · [Contributing](#contributing) · [License](#license)
@@ -150,6 +151,7 @@ depphunter --export html -o map.html  # a self-contained map to share
 | `--private`         | *(GOPRIVATE)*             | glob naming packages your organization owns; never asked of a public index nor of OSV     |
 | `--trust-index`     | *(none)*                  | index URL to treat as configured on this machine, so a repository naming it is not marked |
 | `--online`          | `false`                   | ask package indexes for what the project's files do not record                            |
+| `--explain`         | `false`                   | write the resolution report when the analysis is done                                     |
 | `--lsp`             |                           | find symbol references with installed language servers                                    |
 | `--lsp-timeout`     | `5m`                      | time budget for language servers                                                          |
 | `--findings`        |                           | scanner report to place on the map (repeatable, globs)                                    |
@@ -171,7 +173,8 @@ user config (`$XDG_CONFIG_HOME/depphunter/config.yaml`, or the OS equivalent),
 the project config `.depphunter.yaml`, `DEPPHUNTER_*` environment variables
 (`ADDR`, `OPEN`, `EXCLUDE`, `MAX_FILE_SIZE`, `THEME`, `COLOR_BY`,
 `HEIGHT_SCALE`, `SHOW_STD`, `EXPAND_DEPTH`, `WATCH`, `CACHE`, `EDITOR`,
-`HISTORY`, `HISTORY_COMMITS`, `RESOLVE_DEPTH`, `ONLINE`, `LSP`, `LSP_TIMEOUT`),
+`HISTORY`, `HISTORY_COMMITS`, `RESOLVE_DEPTH`, `ONLINE`, `EXPLAIN`, `LSP`,
+`LSP_TIMEOUT`),
 and flags. Exclude globs
 add up across all sources instead of replacing each other. The project config
 cannot set `editor`: it arrives with the repository, and the editor is a command
@@ -240,6 +243,7 @@ cross-site page cannot set.
 | `GET /api/file?path=`                                  | the source of a file that is on the map, and no other file                                |
 | `GET /api/history`, `/api/references`, `/api/findings` | read in the background: `202` while they are, `204` if there are none                     |
 | `GET /api/export?format=`                              | `json`, `graphml`, `dot` or `html`                                                        |
+| `GET /api/resolution?format=`                          | how the dependencies were resolved: `json` (the default), `md` or `text`                  |
 | `GET /api/events`                                      | Server-Sent Events: `graph`, `history`, `references`, `findings`, `selection`, `backpack` |
 | `GET /api/session`                                     | what the clients share: the selected node and the backpack                                |
 | `POST /api/selection`                                  | `{"id": "f:src/main.go", "origin": "…"}` - the map follows                                |
@@ -322,16 +326,17 @@ running server, and the view's title bar has the log and the settings. The
 same is in the command palette as `depphunter: Open the Map`, and on the
 explorer's right-click menu for any folder.
 
-| Command                                   | What it does                                       |
-|-------------------------------------------|----------------------------------------------------|
-| `depphunter: Open the Map`                | Maps the folder, or shows the map already made     |
-| `depphunter: Open the Map in the Browser` | The same map outside the editor, this once         |
-| `depphunter: Restart the Server`          | Starts it again, which is how settings take effect |
-| `depphunter: Stop the Server`             | Stops it; the next open analyzes afresh            |
-| `depphunter: Show the Server Log`         | The server's own output, verbatim                  |
-| `depphunter: Export the Graph`            | JSON, GraphML, DOT or a self-contained HTML map    |
-| `depphunter: Export the Backpack`         | The catch as Markdown, CSV or JSON                 |
-| `depphunter: Open Settings`               | The extension's settings, below                    |
+| Command                                   | What it does                                            |
+|-------------------------------------------|---------------------------------------------------------|
+| `depphunter: Open the Map`                | Maps the folder, or shows the map already made          |
+| `depphunter: Open the Map in the Browser` | The same map outside the editor, this once              |
+| `depphunter: Restart the Server`          | Starts it again, which is how settings take effect      |
+| `depphunter: Stop the Server`             | Stops it; the next open analyzes afresh                 |
+| `depphunter: Show the Server Log`         | The server's own output, verbatim                       |
+| `depphunter: Show the Resolution Report`  | Where each package resolved from, and how the walk went |
+| `depphunter: Export the Graph`            | JSON, GraphML, DOT or a self-contained HTML map         |
+| `depphunter: Export the Backpack`         | The catch as Markdown, CSV or JSON                      |
+| `depphunter: Open Settings`               | The extension's settings, below                         |
 
 One server per folder, kept until the window closes or you stop it: analyzing a
 large repository takes a moment, and with `--watch` it only has to happen once.
@@ -385,6 +390,7 @@ switch where depphunter's own default puts it - so a folder's
 | `depphunter.private`        | `[]`      | `--private`         | Globs naming the packages your organization owns. Never asked of a public index, never sent to OSV.      |
 | `depphunter.trustIndexes`   | `[]`      | `--trust-index`     | Index URLs to treat as configured on this machine, so a repository that names one is not marked.         |
 | `depphunter.online`         | `false`   | `--online`          | Ask package indexes, and the OSV database, over the network.                                             |
+| `depphunter.explain`        | `false`   | `--explain`         | Write the [resolution report](#the-resolution-report) to the output channel whenever the map is built.   |
 | `depphunter.cache`          | `true`    | `--no-cache`        | Read and write the analysis cache.                                                                       |
 | `depphunter.history`        | `true`    | `--no-history`      | Read git history for the history overlays.                                                               |
 | `depphunter.historyCommits` | *(empty)* | `--history-commits` | Read at most this many commits.                                                                          |
@@ -818,6 +824,82 @@ vouch for itself; if it could, the marking would guard nothing.
 | `trust_indexes` | `--trust-index` | `DEPPHUNTER_TRUST_INDEXES` |
 
 Both are repeatable, and each value may itself be a comma-separated list.
+
+### The resolution report
+
+Everything above happens off screen. A package that resolves from the company's
+Nexus and one that resolves from registry.npmjs.org are drawn the same way; a
+dependency tree that stops two levels down looks the same whether the
+dependencies end there, no lock file covers them, or a proxy answered 404. The
+report is where the difference is kept.
+
+```bash
+depphunter --resolve-depth 2 --online --explain .
+```
+
+It is one account of one analysis, and it comes out in three shapes:
+
+| Where                        | What for                                                         |
+|------------------------------|------------------------------------------------------------------|
+| `--explain`, on the log      | a digest to read while the run is still in the terminal          |
+| `GET /api/resolution`        | the whole of it as JSON, to diff between runs or assert on in CI |
+| `?format=md`, `?format=text` | the same report rendered, which is what the editor opens         |
+
+It has five things to say:
+
+- **the indexes this run knew about** - each one's URL, the scope it serves, and
+  whether it came from this machine, from the repository, or from the repository
+  with `--trust-index` vouching for it afterwards;
+- **what resolved from where** - one row per index, with how many packages
+  resolve from it and how many of those are private, so an index nobody expected
+  is a row rather than a hunt through the map;
+- **the walk** - per ecosystem and per level: how many packages were asked
+  about, how many answered, how many were new, and how long it took;
+- **what was never walked at all** - an ecosystem whose dependency graph lives
+  outside the repository and could not be asked for (Go modules, NuGet, Maven,
+  containers) says so, rather than silently contributing nothing; and
+- **what nothing answered for** - every package that came back empty, with the
+  reason: a lock file that does not cover it, an index only the repository names,
+  a private package that a public index is never asked about, a version the proxy
+  needs and does not have, or the request that was made and the status it came
+  back with.
+
+That last one is the point. Those reasons are indistinguishable on the map - each
+of them draws a package with nothing under it - and they mean entirely different
+things. The last of them, a 404 or a 401 from a feed whose credentials are
+wrong, is a configuration problem that the map can only show as an absence.
+
+```text
+the walk past what the code imports
+  PLUGIN      LEVEL  ASKED  ANSWERED  ADDED  EDGES  TIME
+  go          0      25     13        6      27     120ms
+  javascript  0      7      3         9      10     3346ms
+
+not walked at all
+  PLUGIN  WHY
+  java    the repository records no dependency graph for it, and --online was not given
+
+answers
+  87 asked; 3 from lock files; 56 from indexes (56 fetched, 0 cached, 0 already asked); 28 unanswered (4 of them asked and failed); 89 requests; 159 external packages on the map (87 transitive, 0 private, 0 from an index nothing here vouches for)
+
+nothing answered for these
+  COUNT  WHY
+  15     depphunter asks no index for this ecosystem
+  8      this ecosystem's index cannot be asked (an import names no artifact)
+  1      https://registry.npmjs.org/@scope%2ftool/1.2.0: 404 Not Found
+```
+
+The JSON keeps what the written report cuts short: every question in the order
+the walk asked it, and for each one the URLs that went over the network with the
+status each came back with - which is how the three round trips a container image
+takes are told apart when one of them is the one that failed.
+
+In the editor, **depphunter: Show the Resolution Report** opens the same report
+as a document beside the code, and the `depphunter.explain` setting puts the
+digest in the depphunter output channel whenever the map is built. Under
+`--watch` the digest follows a re-analysis only where the map actually moved: a
+report after every saved file would bury the one belonging to the change being
+looked at.
 
 ### CI pipelines
 

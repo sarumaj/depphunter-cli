@@ -15,6 +15,7 @@ import (
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/scope"
+	"github.com/sarumaj/depphunter-cli/internal/trace"
 )
 
 // Client asks package indexes what a package depends on, for the ecosystems whose
@@ -34,6 +35,29 @@ type Client struct {
 	// feeds is what a NuGet service index resolved to: the same answer for every
 	// package on that feed, and one request rather than one per package.
 	feeds map[string]string
+	// rep is the report this run is writing, if anybody is reading it. It is set per
+	// analysis - one client serves every re-analysis in --watch - so it is guarded
+	// like the rest.
+	rep *trace.Report
+}
+
+// Trace points the client at the report of the analysis now running. Passing nil
+// stops it recording. internal/analyze calls this; nothing else needs to.
+func (c *Client) Trace(r *trace.Report) {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.rep = r
+}
+
+// report records one question, if anybody is listening.
+func (c *Client) report(l trace.Lookup) {
+	c.mu.Lock()
+	r := c.rep
+	c.mu.Unlock()
+	r.Add(l)
 }
 
 // NewClient prepares the client. dir holds the cached answers; ttl is how long one
@@ -52,13 +76,26 @@ func NewClient(cfg *Config, dir string, ttl, timeout time.Duration, home string,
 }
 
 // Dependencies implements lang.Transitive against the indexes.
+//
+// Every way out of here is recorded (internal/trace), and most of them answer
+// nothing. A question declined for what asking would disclose is indistinguishable
+// on the map from a dependency that genuinely has none, and telling those apart is
+// what --explain and /api/resolution exist for.
 func (c *Client) Dependencies(t lang.Target) []lang.Target {
 	if c == nil || t.Package == "" {
 		return nil
 	}
+	l := trace.Lookup{Ecosystem: t.Ecosystem, Package: t.Package, Version: t.Version, Answer: trace.NoAnswer}
 	index, known := c.cfg.For(t.Ecosystem, t.Package)
+	l.Index = index
 	if !known {
-		return nil // an index only the repository asks for is not fetched from
+		// An index only the repository asks for is not fetched from.
+		l.Reason = trace.ReasonUntrusted
+		if index == "" {
+			l.Reason = trace.ReasonNoIndex
+		}
+		c.report(l)
+		return nil
 	}
 	// An organization's own package is not named to the world. Asking the public
 	// index about corp.example/billing would not answer anyway, and the asking is
@@ -66,6 +103,8 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 	// private registry that this machine is configured for is a different matter, and
 	// is asked as usual.
 	if c.private.Match(t.Ecosystem, t.Package) && c.cfg.Public(t.Ecosystem, index) {
+		l.Reason = trace.ReasonPrivate
+		c.report(l)
 		return nil
 	}
 	key := t.Ecosystem + " " + t.Package + "@" + t.Version
@@ -73,27 +112,55 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 	cached, ok := c.seen[key]
 	c.mu.Unlock()
 	if ok {
+		l.Answer, l.Deps = trace.FromMemo, len(cached)
+		c.report(l)
 		return cached
 	}
 
-	deps, err := c.lookup(t, index)
+	start := time.Now()
+	a, err := c.lookup(t, index)
 	if err != nil {
-		deps = nil // an index that will not answer is not an error the map can use
+		// An index that will not answer is not an error the map can use - but it is
+		// the whole of what the report has to say about this package.
+		a = answer{source: trace.NoAnswer, reason: err.Error(), requests: a.requests}
 	}
+	l.Answer, l.Deps, l.Reason = a.source, len(a.deps), a.reason
+	l.Requests, l.Millis = a.requests, time.Since(start).Milliseconds()
+	c.report(l)
 	c.mu.Lock()
-	c.seen[key] = deps
+	c.seen[key] = a.deps
 	c.mu.Unlock()
-	return deps
+	return a.deps
+}
+
+// answer is what one question came to: the dependencies, who provided them, and -
+// when nobody did - why, with whatever went over the network on the way.
+type answer struct {
+	deps     []lang.Target
+	source   trace.Answer
+	reason   string
+	requests []trace.Request
 }
 
 // lookup answers from the cache when it can, and from the index when it must.
-func (c *Client) lookup(t lang.Target, index string) ([]lang.Target, error) {
+func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 	key := t.Ecosystem + "|" + index + "|" + t.Package + "|" + t.Version
 	if deps, ok := c.cache.get(key); ok {
-		return c.targets(t.Ecosystem, deps), nil
+		return answer{deps: c.targets(t.Ecosystem, deps), source: trace.FromCache}, nil
+	}
+	if t.Ecosystem == Go && t.Version == "" {
+		// A module proxy serves a go.mod for one version; without one there is no
+		// document to ask for. Said here rather than deeper down so the report can
+		// say it, instead of recording an empty answer that looks like "no
+		// dependencies".
+		return answer{source: trace.NoAnswer, reason: trace.ReasonNoVersion}, nil
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), c.timeout)
 	defer cancel()
+	// Every request this question makes is collected, so the report can say which of
+	// an image's three round trips was the one that failed.
+	made := &requestLog{}
+	ctx = context.WithValue(ctx, requestLogKey{}, made)
 
 	var deps []dep
 	var err error
@@ -115,13 +182,41 @@ func (c *Client) lookup(t lang.Target, index string) ([]lang.Target, error) {
 		// artifact, and the Java plugin puts only the group on the map (an import
 		// names a package, and a package does not say which artifact ships it), so
 		// there is no document to request. Saying nothing beats guessing an artifact.
-		return nil, nil
+		return answer{source: trace.NoAnswer, reason: trace.ReasonUnsupported}, nil
 	}
 	if err != nil {
-		return nil, err
+		return answer{requests: made.taken()}, err
 	}
 	c.cache.put(key, deps)
-	return c.targets(t.Ecosystem, deps), nil
+	return answer{deps: c.targets(t.Ecosystem, deps), source: trace.FromIndex, requests: made.taken()}, nil
+}
+
+// requestLog collects what one question sent, in the order it sent it. The ecosystem
+// functions know nothing about it: it rides on the context they already carry, and
+// do writes to it.
+type requestLog struct {
+	mu sync.Mutex
+	at []trace.Request
+}
+
+type requestLogKey struct{}
+
+func (l *requestLog) add(r trace.Request) {
+	if l == nil {
+		return
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	l.at = append(l.at, r)
+}
+
+func (l *requestLog) taken() []trace.Request {
+	if l == nil {
+		return nil
+	}
+	l.mu.Lock()
+	defer l.mu.Unlock()
+	return l.at
 }
 
 // targets turns an index's answer into what the graph takes. The version travels with
@@ -184,15 +279,25 @@ func (c *Client) do(ctx context.Context, url, media, bearer string) (*http.Respo
 	} else {
 		c.auth.apply(req)
 	}
-	return c.http.Do(req)
+	made, _ := ctx.Value(requestLogKey{}).(*requestLog)
+	start := time.Now()
+	resp, err := c.http.Do(req)
+	status := "ok"
+	switch {
+	case err != nil:
+		status = err.Error()
+	case resp != nil:
+		status = resp.Status
+	}
+	made.add(trace.Request{URL: url, Status: status, Millis: time.Since(start).Milliseconds()})
+	return resp, err
 }
 
 // goModule reads a module's own requirements from its go.mod, which a module proxy
-// serves on its own - no archive, no checkout.
+// serves on its own - no archive, no checkout. A version is guaranteed: lookup turns
+// a module without one away, so that the report can say why rather than record an
+// empty answer.
 func (c *Client) goModule(ctx context.Context, index string, t lang.Target) ([]dep, error) {
-	if t.Version == "" {
-		return nil, nil // the proxy needs a version to serve a go.mod
-	}
 	escaped, err := module.EscapePath(t.Package)
 	if err != nil {
 		return nil, err

@@ -19,6 +19,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/config"
 	"github.com/sarumaj/depphunter-cli/internal/graph"
 	"github.com/sarumaj/depphunter-cli/internal/history"
+	"github.com/sarumaj/depphunter-cli/internal/trace"
 )
 
 func start(t *testing.T, mods ...func(*config.Config)) (*Server, string, string) {
@@ -637,5 +638,63 @@ func TestEventsCarryTheirIdSoAClientCanResume(t *testing.T) {
 	}
 	if line := next(); line != "event: graph" {
 		t.Errorf("after the id: %q", line)
+	}
+}
+
+// TestResolutionReportIsServedInThreeShapes checks the endpoint the editor's
+// Resolution Report reads: the same account of one analysis, as data, as a document,
+// and as the text the command line prints.
+func TestResolutionReportIsServedInThreeShapes(t *testing.T) {
+	s, url, base := start(t)
+	c := login(t, url)
+
+	// Before an analysis has handed one over there is nothing to serve, and saying
+	// so beats serving an empty report that reads like "nothing resolved".
+	if code, _ := get(t, c, base+"/api/resolution", nil); code != http.StatusNotFound {
+		t.Errorf("with no report: %d, want 404", code)
+	}
+
+	rep := trace.New(2, true, []string{"corp.example/*"}, nil)
+	rep.Enter("go", 0)
+	rep.Add(trace.Lookup{Ecosystem: "go", Package: "corp.example/billing", Version: "v1.0.0",
+		Answer: trace.NoAnswer, Reason: trace.ReasonPrivate, Index: "https://proxy.golang.org"})
+	rep.Done(1, 0, 0, 0, time.Millisecond)
+	rep.Finish()
+	s.SetResolution(rep)
+
+	code, body := get(t, c, base+"/api/resolution", nil)
+	if code != http.StatusOK {
+		t.Fatalf("json: %d", code)
+	}
+	var doc struct {
+		ResolveDepth int      `json:"resolveDepth"`
+		Private      []string `json:"private"`
+		Lookups      []struct {
+			Package string `json:"package"`
+			Reason  string `json:"reason"`
+		} `json:"lookups"`
+	}
+	if err := json.Unmarshal([]byte(body), &doc); err != nil {
+		t.Fatalf("json: %v: %s", err, body)
+	}
+	if doc.ResolveDepth != 2 || len(doc.Private) != 1 || len(doc.Lookups) != 1 ||
+		doc.Lookups[0].Reason != trace.ReasonPrivate {
+		t.Errorf("the report came back as %+v", doc)
+	}
+
+	for _, c2 := range []struct{ format, want string }{
+		{"md", "# Resolution report"},
+		{"text", "resolution report for"},
+	} {
+		code, body := get(t, c, base+"/api/resolution?format="+c2.format, nil)
+		if code != http.StatusOK || !strings.Contains(body, c2.want) {
+			t.Errorf("format %s: %d, %q", c2.format, code, body)
+		}
+		if !strings.Contains(body, "corp.example/billing") {
+			t.Errorf("format %s does not name the package nothing was asked about", c2.format)
+		}
+	}
+	if code, _ := get(t, c, base+"/api/resolution?format=csv", nil); code != http.StatusBadRequest {
+		t.Errorf("an unknown format: %d, want 400", code)
 	}
 }

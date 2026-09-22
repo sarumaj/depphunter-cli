@@ -27,6 +27,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/findings"
 	"github.com/sarumaj/depphunter-cli/internal/graph"
 	"github.com/sarumaj/depphunter-cli/internal/history"
+	"github.com/sarumaj/depphunter-cli/internal/trace"
 	"github.com/sarumaj/depphunter-cli/web"
 )
 
@@ -66,6 +67,10 @@ type Server struct {
 	pack     []PackItem
 	// seq counts the announcements made on the event stream; see event.seq.
 	seq uint64
+	// resolution is the account the last analysis gave of itself (internal/trace).
+	// It is served rather than announced: nothing on the map is drawn from it, and
+	// the editor asks for it when somebody opens the report.
+	resolution *trace.Report
 
 	closeOnce sync.Once
 }
@@ -259,6 +264,14 @@ func (s *Server) SetReferences(r *References) error {
 	return s.setLazy("references", r)
 }
 
+// SetResolution publishes the report of the analysis now being served. --watch
+// analyzes again on every change, and each re-analysis brings its own.
+func (s *Server) SetResolution(r *trace.Report) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.resolution = r
+}
+
 // SetFindings publishes what the scanners said (nil: nothing was found or asked).
 func (s *Server) SetFindings(f *findings.Set) error {
 	if f.Empty() {
@@ -381,6 +394,7 @@ func (s *Server) Handler() http.Handler {
 	mux.HandleFunc("GET /api/history", s.handleLazy("history"))
 	mux.HandleFunc("GET /api/references", s.handleLazy("references"))
 	mux.HandleFunc("GET /api/findings", s.handleLazy("findings"))
+	mux.HandleFunc("GET /api/resolution", s.handleResolution)
 	mux.HandleFunc("GET /api/export", s.handleExport)
 	mux.HandleFunc("GET /api/session", s.handleSession)
 	mux.HandleFunc("POST /api/selection", s.handleSelection)
@@ -637,6 +651,41 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 func resumed(r *http.Request, seq uint64) bool {
 	last, err := strconv.ParseUint(strings.TrimSpace(r.Header.Get("Last-Event-ID")), 10, 64)
 	return err == nil && last == seq
+}
+
+// handleResolution serves how the analysis reached its dependencies: as JSON by
+// default, as the document the editor opens with ?format=md, and as the text the
+// command line prints with ?format=text. One report, three renderings, because the
+// question "did it resolve that the way I think it did" is asked from all three.
+func (s *Server) handleResolution(w http.ResponseWriter, r *http.Request) {
+	s.mu.RLock()
+	rep := s.resolution
+	s.mu.RUnlock()
+	if rep == nil {
+		http.Error(w, "no resolution report: this build served a graph it did not analyze", http.StatusNotFound)
+		return
+	}
+	var buf bytes.Buffer
+	var err error
+	switch r.URL.Query().Get("format") {
+	case "", "json":
+		w.Header().Set("Content-Type", "application/json")
+		err = json.NewEncoder(&buf).Encode(rep)
+	case "md":
+		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
+		err = rep.Markdown(&buf)
+	case "text":
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		err = rep.Text(&buf)
+	default:
+		http.Error(w, "format must be one of json, md, text", http.StatusBadRequest)
+		return
+	}
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Write(buf.Bytes())
 }
 
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
