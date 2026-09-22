@@ -166,6 +166,13 @@ depphunter --export html -o map.html  # a self-contained map to share
 Long flags take two dashes (`--addr`, not `-addr`); a flag's value may follow
 after a space or `=`.
 
+What depphunter says about itself - what it analyzed, where it is serving, and
+the [resolution report](#the-resolution-report) - goes to **stdout**, so it can
+be piped, redirected and `tee`d like any other output. The one exception is
+`--export` without `-o`, where stdout is the document: there the log moves to
+stderr so that a redirected export is the export and nothing else. Errors always
+go to stderr.
+
 ### Configuration
 
 Settings are resolved from, in increasing precedence: built-in defaults, the
