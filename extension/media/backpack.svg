@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="8 16 48 48" width="24" height="24">
+  <mask id="m" maskUnits="userSpaceOnUse" x="8" y="16" width="48" height="48">
+    <polygon points="30.15,20.42 45.81,28.25 34.42,33.95 18.76,26.12" fill="#ffffff"/>
+    <polygon points="18.76,26.12 34.42,33.95 34.42,61.00 18.76,53.17" fill="#808080"/>
+    <polygon points="45.81,28.25 34.42,33.95 34.42,61.00 45.81,55.31" fill="#b2b2b2"/>
+    <polygon points="30.15,19.14 46.95,27.54 33.85,34.09 17.05,25.69" fill="#8c8c8c"/>
+    <polygon points="17.05,25.69 33.85,34.09 33.85,42.63 17.05,34.23" fill="#404040"/>
+    <polygon points="46.95,27.54 33.85,34.09 33.85,42.63 46.95,36.08" fill="#595959"/>
+    <polygon points="21.61,41.07 31.57,46.05 28.44,47.62 18.47,42.63" fill="#8c8c8c"/>
+    <polygon points="18.47,42.63 28.44,47.62 28.44,58.29 18.47,53.31" fill="#404040"/>
+    <polygon points="31.57,46.05 28.44,47.62 28.44,58.29 31.57,56.73" fill="#595959"/>
+    <polyline points="28.73,24.69 28.73,19.00 35.84,22.56 35.84,28.25" fill="none" stroke="#ffffff" stroke-width="2.6" stroke-linejoin="round" stroke-linecap="round"/>
+  </mask>
+  <rect x="8" y="16" width="48" height="48" fill="#000" mask="url(#m)"/>
+</svg>

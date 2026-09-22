@@ -111,6 +111,8 @@
     "lerp",
     "Lflag",
     "libsixel",
+    "linecap",
+    "linejoin",
     "Linq",
     "locafero",
     "lombok",
