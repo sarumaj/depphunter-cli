@@ -24,20 +24,34 @@ import "strings"
 // harmless: a pattern may not contain a newline, so a scan that reaches one gives up
 // and the slash is treated as an ordinary character after all.
 func JS(src string) string {
-	var out strings.Builder
-	out.Grow(len(src))
+	// Indentation is taken out here, as the characters go by, rather than line by line
+	// afterwards: a template literal or a continued string spans lines, and the
+	// whitespace inside one is part of its value.
+	out := make([]byte, 0, len(src))
+	lineStart := true
 	prev := byte(0) // the last significant character written, for the slash rule
+	literal := func(s string) {
+		out = append(out, s...)
+		lineStart = false
+	}
+	newline := func() {
+		for len(out) > 0 && isSpace(out[len(out)-1]) {
+			out = out[:len(out)-1]
+		}
+		out = append(out, '\n')
+		lineStart = true
+	}
 	for i := 0; i < len(src); {
 		c := src[i]
 		switch {
 		case c == '"' || c == '\'':
 			j := endOfString(src, i)
-			out.WriteString(src[i:j])
+			literal(src[i:j])
 			prev = '"'
 			i = j
 		case c == '`':
 			j := endOfTemplate(src, i)
-			out.WriteString(src[i:j])
+			literal(src[i:j])
 			prev = '"'
 			i = j
 		case c == '/' && i+1 < len(src) && src[i+1] == '/':
@@ -57,29 +71,44 @@ func JS(src string) string {
 			// newline it contained stays too: the output then has the line numbering
 			// the source had, and a stack trace in the browser still points at the
 			// line it came from.
-			out.WriteByte(' ')
-			out.WriteString(strings.Repeat("\n", strings.Count(src[i:end], "\n")))
+			if !lineStart {
+				out = append(out, ' ')
+			}
+			for range strings.Count(src[i:end], "\n") {
+				newline()
+			}
 			i = end
-		case c == '/' && !dividesAfter(prev):
+		case c == '/' && !dividesAfter(prev, out):
 			if j := endOfRegexp(src, i); j > 0 {
-				out.WriteString(src[i:j])
+				literal(src[i:j])
 				prev = '/'
 				i = j
 				continue
 			}
-			out.WriteByte(c)
+			literal("/")
 			prev = c
 			i++
-		default:
-			out.WriteByte(c)
-			if c != ' ' && c != '\t' && c != '\r' {
-				prev = c
+		case c == '\n':
+			newline()
+			i++
+		case isSpace(c):
+			if !lineStart {
+				out = append(out, c)
 			}
+			i++
+		default:
+			literal(src[i : i+1])
+			prev = c
 			i++
 		}
 	}
-	return trimLines(out.String())
+	for len(out) > 0 && isSpace(out[len(out)-1]) {
+		out = out[:len(out)-1]
+	}
+	return string(out)
 }
+
+func isSpace(c byte) bool { return c == ' ' || c == '\t' || c == '\r' || c == '\v' || c == '\f' }
 
 // CSS removes comments and indentation from a stylesheet. A stylesheet has no regular
 // expressions and no line comments, so only strings have to be stepped over.
@@ -131,15 +160,41 @@ func HTML(src string) string {
 }
 
 // dividesAfter reports whether a slash following this character is a division rather
-// than the start of a pattern: it is, after anything that can end a value.
-func dividesAfter(prev byte) bool {
+// than the start of a pattern: it is, after anything that can end a value - except a
+// keyword that a value follows (return /x/, typeof /x/), which out, what has been
+// written so far, is looked back into to tell.
+func dividesAfter(prev byte, out []byte) bool {
 	switch {
-	case prev >= 'a' && prev <= 'z', prev >= 'A' && prev <= 'Z', prev >= '0' && prev <= '9':
-		return true
-	case prev == ')' || prev == ']' || prev == '}' || prev == '_' || prev == '$' || prev == '"':
+	case isWord(prev):
+		end := len(out)
+		for end > 0 && isSpace(out[end-1]) {
+			end--
+		}
+		start := end
+		for start > 0 && isWord(out[start-1]) {
+			start--
+		}
+		// obj.return / 2 is a property, and divides.
+		if start > 0 && out[start-1] == '.' {
+			return true
+		}
+		return !beforeValue[string(out[start:end])]
+	case prev == ')' || prev == ']' || prev == '}' || prev == '"':
 		return true
 	}
 	return false
+}
+
+func isWord(c byte) bool {
+	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '$'
+}
+
+// beforeValue are the keywords after which an expression starts, so that a slash
+// after them opens a pattern.
+var beforeValue = map[string]bool{
+	"return": true, "typeof": true, "instanceof": true, "in": true, "of": true, "new": true,
+	"delete": true, "void": true, "throw": true, "case": true, "do": true, "else": true,
+	"yield": true, "await": true,
 }
 
 // endOfString returns the index just past the quoted string starting at i.
