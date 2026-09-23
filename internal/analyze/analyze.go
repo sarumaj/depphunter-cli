@@ -169,6 +169,7 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 	stats.Parsed, stats.Cached = int(parsed.Load()), int(cached.Load())
 	opts.Trace.Summarize(b.g)
 	opts.Trace.Finish()
+	opts.Cache.EndRun()
 	return b.g, stats, nil
 }
 

@@ -479,7 +479,9 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 				return
 			}
 			srv.SetResolution(st.Resolution)
-			c.Save()
+			if err := c.Save(); err != nil {
+				log.Printf("cache not saved: %v", err)
+			}
 			w.Sync(watched(ng), reportFiles)
 			changed, err := srv.Update(ng, st.ParsedFiles)
 			if err != nil {

@@ -29,6 +29,13 @@ type Cache struct {
 	mu      sync.Mutex
 	entries map[string]*lang.Extraction
 	seen    map[string]bool // keys used by the current run
+	// done says the run that filled seen finished, so seen is the whole of what the
+	// project still uses. A run that failed or was cancelled part way saw only some
+	// of it, and pruning by that would throw away every file it did not reach.
+	done bool
+	// dirty says something was added since the last Save. A --watch re-analysis that
+	// parsed nothing new has nothing to write, and the file is the whole cache.
+	dirty bool
 }
 
 // Open loads the cache for project root from dir. A missing or unreadable cache file
@@ -57,14 +64,15 @@ func Key(plugin string, version int, filePath string, src []byte) string {
 	return fmt.Sprintf("%s/%d/%s/%x", plugin, version, path.Ext(filePath), sum)
 }
 
-// BeginRun starts a new analysis: entries the previous run did not use are dropped.
+// BeginRun starts a new analysis: entries the previous run did not use are dropped,
+// if that run finished (EndRun).
 func (c *Cache) BeginRun() {
 	if c == nil {
 		return
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	if len(c.seen) > 0 {
+	if c.done && len(c.seen) > 0 {
 		for k := range c.entries {
 			if !c.seen[k] {
 				delete(c.entries, k)
@@ -72,6 +80,17 @@ func (c *Cache) BeginRun() {
 		}
 	}
 	c.seen = map[string]bool{}
+	c.done = false
+}
+
+// EndRun marks the analysis started by BeginRun as finished.
+func (c *Cache) EndRun() {
+	if c == nil {
+		return
+	}
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	c.done = true
 }
 
 func (c *Cache) Get(key string) (*lang.Extraction, bool) {
@@ -95,20 +114,30 @@ func (c *Cache) Put(key string, ex *lang.Extraction) {
 	defer c.mu.Unlock()
 	c.entries[key] = ex
 	c.seen[key] = true
+	c.dirty = true
 }
 
-// Save writes the entries used by the current run, atomically.
+// Save writes the entries used by the current run, atomically. It writes nothing when
+// nothing was added since the last time.
 func (c *Cache) Save() error {
 	if c == nil {
 		return nil
 	}
 	c.mu.Lock()
+	if !c.dirty {
+		c.mu.Unlock()
+		return nil
+	}
+	c.dirty = false
 	data := file{Format: format, Entries: map[string]*lang.Extraction{}}
 	for k := range c.seen {
 		data.Entries[k] = c.entries[k]
 	}
 	c.mu.Unlock()
+	return c.fail(c.write(data))
+}
 
+func (c *Cache) write(data file) error {
 	if err := os.MkdirAll(filepath.Dir(c.path), 0o755); err != nil {
 		return err
 	}
@@ -125,4 +154,14 @@ func (c *Cache) Save() error {
 		return err
 	}
 	return os.Rename(tmp.Name(), c.path)
+}
+
+// fail puts back the mark Save took, so a save that did not happen is tried again.
+func (c *Cache) fail(err error) error {
+	if err != nil {
+		c.mu.Lock()
+		c.dirty = true
+		c.mu.Unlock()
+	}
+	return err
 }
