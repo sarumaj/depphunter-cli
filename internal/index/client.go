@@ -34,6 +34,11 @@ type Client struct {
 
 	mu   sync.Mutex
 	seen map[string][]lang.Target // answers already given, including empty ones
+	// failed is when each question the index would not answer was last asked. It is
+	// asked again once failRetry has passed: one client serves every re-analysis in
+	// --watch, and a timeout remembered as an answer would leave a package with no
+	// dependencies until the process is restarted.
+	failed map[string]time.Time
 	// feeds is what a NuGet service index resolved to: the same answer for every
 	// package on that feed, and one request rather than one per package.
 	feeds map[string]string
@@ -75,6 +80,7 @@ func NewClient(cfg *Config, dir string, ttl, timeout time.Duration,
 		private: private,
 		timeout: timeout,
 		seen:    map[string][]lang.Target{},
+		failed:  map[string]time.Time{},
 		feeds:   map[string]string{},
 	}
 }
@@ -110,6 +116,9 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 	key := t.Ecosystem + " " + t.Package + "@" + t.Version
 	c.mu.Lock()
 	cached, ok := c.seen[key]
+	if at, failed := c.failed[key]; !ok && failed && time.Since(at) < failRetry {
+		ok = true // not asked again so soon; the lookup that failed was reported
+	}
 	c.mu.Unlock()
 	if ok {
 		l.Answer, l.Deps = trace.FromMemo, len(cached)
@@ -128,10 +137,19 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 	l.Requests, l.Millis = a.requests, time.Since(start).Milliseconds()
 	c.report(l)
 	c.mu.Lock()
-	c.seen[key] = a.deps
+	if err != nil {
+		c.failed[key] = time.Now()
+	} else {
+		delete(c.failed, key)
+		c.seen[key] = a.deps
+	}
 	c.mu.Unlock()
 	return a.deps
 }
+
+// failRetry is how long a question an index did not answer is left before it is
+// asked again.
+const failRetry = 5 * time.Minute
 
 // answer is what one question came to: the dependencies, who provided them, and -
 // when nobody did - why, with whatever went over the network on the way.
