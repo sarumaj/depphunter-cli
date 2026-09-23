@@ -324,3 +324,37 @@ func TestTheReportSaysWhoAnswered(t *testing.T) {
 		t.Errorf("requests: %d, want 2", rep.Totals.Requests)
 	}
 }
+
+func TestAFailedLookupIsAskedAgainLater(t *testing.T) {
+	down := true
+	var asked int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked++
+		if down {
+			w.WriteHeader(http.StatusServiceUnavailable)
+			return
+		}
+		fmt.Fprint(w, "module example.com/mod\n\nrequire github.com/direct/dep v1.0.0\n")
+	}))
+	t.Cleanup(srv.Close)
+	c := clientFor(t, Go, srv.URL, "")
+	target := lang.Target{Ecosystem: Go, Package: "example.com/mod", Version: "v1.2.3"}
+
+	if got := c.Dependencies(target); len(got) != 0 {
+		t.Fatalf("an index that is down answered %v", got)
+	}
+	// Straight away, the same question is not put to an index that just failed.
+	down = false
+	c.Dependencies(target)
+	if asked != 1 {
+		t.Errorf("asked %d times within the retry interval", asked)
+	}
+	// Once it has passed - a later --watch cycle - the index is asked again, and
+	// the package gets the dependencies it has.
+	for k := range c.failed {
+		c.failed[k] = time.Now().Add(-2 * failRetry)
+	}
+	if got := names(c.Dependencies(target)); len(got) != 1 {
+		t.Errorf("after the index recovered: %v (asked %d times)", got, asked)
+	}
+}
