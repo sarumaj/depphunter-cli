@@ -55,7 +55,7 @@ func ForEachFile(ctx context.Context, files []*scan.File, fn func(f *scan.File, 
 		}
 		// What Parseable would reject on its size alone is not read: a generated
 		// bundle of a few megabytes costs a full read on every run otherwise.
-		if f.Binary || f.Size > MaxParseSize {
+		if f.Binary || f.TooLarge || f.Size > MaxParseSize {
 			continue
 		}
 		g.Go(func() error {

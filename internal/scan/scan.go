@@ -27,6 +27,9 @@ type File struct {
 	// Size is the file's size in bytes when it was measured, so that a file too
 	// large to be worth reading can be passed over without being read.
 	Size int64
+	// TooLarge says the file is over Options.MaxFileSize, which promises it is not
+	// read: not measured here, and not parsed by any plugin.
+	TooLarge bool
 }
 
 type Options struct {
@@ -158,6 +161,7 @@ func measure(f *File, maxSize int64) {
 	}
 	f.Size = st.Size()
 	if maxSize > 0 && f.Size > maxSize {
+		f.TooLarge = true
 		return
 	}
 	fh, err := os.Open(f.Abs)

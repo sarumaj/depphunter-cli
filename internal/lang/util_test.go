@@ -21,6 +21,7 @@ func TestForEachFileSkipsWhatItWouldNotParse(t *testing.T) {
 		{Path: "small.go", Abs: small, LOC: 1, Size: 10},
 		{Path: "big.go", Abs: big, LOC: 1, Size: MaxParseSize + 1},
 		{Path: "bin.go", Abs: small, Binary: true, Size: 10},
+		{Path: "over.go", Abs: small, LOC: 1, Size: 10, TooLarge: true}, // over --max-file-size
 	}
 	got := ForEachFile(context.Background(), files, func(f *scan.File, _ []byte) *FileResult {
 		return &FileResult{}
