@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"testing"
 
 	"github.com/sarumaj/depphunter-cli/internal/cache"
@@ -442,4 +443,72 @@ type quietResolver struct{}
 
 func (quietResolver) Resolve(file string, imp lang.RawImport) lang.Target {
 	return lang.Target{Ecosystem: "quiet-eco", Package: imp.Module, Version: "1.0.0", Pinned: true}
+}
+
+// counting answers like fakeResolver and counts how often each package is asked about.
+type counting struct {
+	mu    sync.Mutex
+	asked map[string]int
+}
+
+func (c *counting) Dependencies(t lang.Target) []lang.Target {
+	c.mu.Lock()
+	c.asked[t.Package]++
+	c.mu.Unlock()
+	return fakeResolver{}.Dependencies(t)
+}
+
+func TestTheWalkAsksAboutEachPackageOnce(t *testing.T) {
+	root := t.TempDir()
+	// Both imported directly, and one also depends on the other.
+	writeProject(t, root, map[string]string{"a.fake": "direct\nmiddle\n"})
+	p := fakePlugin{targets: map[string]lang.Target{
+		"direct": {Ecosystem: "fake-eco", Package: "direct", Version: "2.0.0", Pinned: true},
+		"middle": {Ecosystem: "fake-eco", Package: "middle", Version: "1.0.0", Pinned: true},
+	}}
+	c := &counting{asked: map[string]int{}}
+	if _, _, err := Run(context.Background(), root, Options{Plugins: []lang.Plugin{noLocks{p}}, Registry: c, ResolveDepth: -1}); err != nil {
+		t.Fatal(err)
+	}
+	for pkg, n := range c.asked {
+		if n != 1 {
+			t.Errorf("%s was asked about %d times", pkg, n)
+		}
+	}
+}
+
+func TestTheWalkStopsWhenCancelled(t *testing.T) {
+	root := t.TempDir()
+	writeProject(t, root, map[string]string{"a.fake": "direct\n"})
+	p := fakePlugin{targets: map[string]lang.Target{
+		"direct": {Ecosystem: "fake-eco", Package: "direct", Version: "2.0.0", Pinned: true},
+	}}
+	ctx, cancel := context.WithCancel(context.Background())
+	// Cancelled while the first level is being asked about, as Ctrl+C would be.
+	stop := transitiveFunc(func(t lang.Target) []lang.Target {
+		cancel()
+		return fakeResolver{}.Dependencies(t)
+	})
+	_, _, err := Run(ctx, root, Options{Plugins: []lang.Plugin{noLocks{p}}, Registry: stop, ResolveDepth: -1})
+	if err != context.Canceled {
+		t.Errorf("got %v, want the walk to stop with context.Canceled", err)
+	}
+}
+
+type transitiveFunc func(lang.Target) []lang.Target
+
+func (f transitiveFunc) Dependencies(t lang.Target) []lang.Target { return f(t) }
+
+// noLocks is a fakePlugin whose resolver records no dependency graph, so what the
+// walk asks goes to the Registry alone.
+type noLocks struct{ fakePlugin }
+
+func (p noLocks) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
+	return onlyResolve{fakeResolver(p.fakePlugin)}, nil
+}
+
+type onlyResolve struct{ r fakeResolver }
+
+func (o onlyResolve) Resolve(file string, imp lang.RawImport) lang.Target {
+	return o.r.Resolve(file, imp)
 }

@@ -152,8 +152,11 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 		switch {
 		case opts.ResolveDepth == 0:
 		case local != nil || opts.Registry != nil:
-			b.expand(chain{local: local, remote: opts.Registry, rep: opts.Trace},
+			b.expand(ctx, chain{local: local, remote: opts.Registry, rep: opts.Trace},
 				p.Name(), ecosystems, opts.ResolveDepth)
+			if err := ctx.Err(); err != nil {
+				return nil, stats, err
+			}
 		default:
 			// Neither half of the answer is available: this ecosystem keeps its
 			// dependency graph outside the repository (Go modules, NuGet, Maven,
@@ -224,7 +227,11 @@ const transitiveWorkers = 12
 //
 // A whole level is asked at once and its answers applied in the level's own order, so
 // what lands on the graph does not depend on which request came back first.
-func (b *builder) expand(tr lang.Transitive, plugin string, ecosystems map[string]lang.Ecosystem, depth int) {
+//
+// It stops early when ctx is cancelled - with --online a walk is hundreds of requests,
+// and Ctrl+C or a newer --watch change should not wait for all of them - leaving the
+// graph partial; the caller checks ctx and discards it.
+func (b *builder) expand(ctx context.Context, tr lang.Transitive, plugin string, ecosystems map[string]lang.Ecosystem, depth int) {
 	var level []string
 	for id, t := range b.packages {
 		// A standard library is not walked: nothing publishes what "fs" or "os"
@@ -237,11 +244,16 @@ func (b *builder) expand(tr lang.Transitive, plugin string, ecosystems map[strin
 	// A stable order keeps the graph (and the tests reading it) the same run to run.
 	sort.Strings(level)
 
+	// The first level is seen already: a direct dependency that another one also
+	// depends on (react-dom -> react) is not asked about a second time.
 	seen := map[string]bool{}
-	for n := 0; len(level) > 0 && (depth < 0 || n < depth); n++ {
+	for _, id := range level {
+		seen[id] = true
+	}
+	for n := 0; len(level) > 0 && (depth < 0 || n < depth) && ctx.Err() == nil; n++ {
 		b.rep.Enter(plugin, n)
 		start := time.Now()
-		answers := b.ask(tr, level)
+		answers := b.ask(ctx, tr, level)
 		var next []string
 		answered, added, edges := 0, 0, 0
 		for i, from := range level {
@@ -275,7 +287,7 @@ func (b *builder) expand(tr lang.Transitive, plugin string, ecosystems map[strin
 // ask resolves one level of packages at once and hands back their answers in the
 // order they were asked, each sorted: a resolver may answer out of a map, and the
 // graph must not come out differently for it.
-func (b *builder) ask(tr lang.Transitive, level []string) [][]lang.Target {
+func (b *builder) ask(ctx context.Context, tr lang.Transitive, level []string) [][]lang.Target {
 	answers := make([][]lang.Target, len(level))
 	workers := min(transitiveWorkers, len(level))
 	var wg sync.WaitGroup
@@ -285,6 +297,9 @@ func (b *builder) ask(tr lang.Transitive, level []string) [][]lang.Target {
 		go func() {
 			defer wg.Done()
 			for i := range work {
+				if ctx.Err() != nil {
+					continue // cancelled: what is left is not asked
+				}
 				deps := tr.Dependencies(b.packages[level[i]])
 				sort.Slice(deps, func(a, c int) bool {
 					if deps[a].Ecosystem != deps[c].Ecosystem {
