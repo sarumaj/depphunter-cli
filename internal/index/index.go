@@ -10,6 +10,7 @@ package index
 
 import (
 	"net/url"
+	"slices"
 	"sort"
 	"strings"
 
@@ -125,6 +126,13 @@ func (c *Config) Add(eco string, s Source) {
 		}
 	}
 	c.sources[eco] = append(c.sources[eco], s)
+}
+
+// forgetProject drops what the repository declared, before it is read again.
+func (c *Config) forgetProject() {
+	for eco, sources := range c.sources {
+		c.sources[eco] = slices.DeleteFunc(sources, func(s Source) bool { return s.Origin == OriginProject })
+	}
 }
 
 // Sources lists what was found for an ecosystem, machine first.

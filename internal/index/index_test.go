@@ -227,3 +227,51 @@ func TestACredentialInAnIndexURLIsNotRecorded(t *testing.T) {
 		t.Errorf("a credential the repository supplied was sent: %q", got)
 	}
 }
+
+// Under --watch the repository is read again on every analysis: an index taken out of
+// it is gone from the next map, and one only this machine names stays.
+func TestDiscoverForgetsWhatTheRepositoryNoLongerSays(t *testing.T) {
+	d := NewDiscoverer(env(map[string]string{"PIP_INDEX_URL": "https://pypi.machine/simple"}), "")
+	files := write(t, map[string]string{".npmrc": "registry=https://npm.old/\n"})
+	d.Discover(files)
+	os.WriteFile(files[0].Abs, []byte("registry=https://npm.new/\n"), 0o644)
+	c := d.Discover(files)
+
+	var urls []string
+	for _, s := range c.Sources(NPM) {
+		urls = append(urls, s.URL)
+	}
+	if len(urls) != 1 || urls[0] != "https://npm.new" {
+		t.Errorf("npm sources after the .npmrc changed: %v", urls)
+	}
+	if idx, known := c.For(PyPI, "requests"); idx != "https://pypi.machine/simple" || !known {
+		t.Errorf("the machine's index was lost: %s (known %v)", idx, known)
+	}
+}
+
+// Cargo resolves crates.io from whatever replace-with ends at, and the answer must
+// not depend on the order Go ranges over a map.
+func TestCargoFollowsReplaceWith(t *testing.T) {
+	config := `[source.crates-io]
+replace-with = "vendored"
+[source.vendored]
+replace-with = "corp"
+[source.aaa]
+registry = "https://aaa.example/index"
+[source.corp]
+registry = "https://corp.example/index"
+[registries.zzz]
+index = "https://zzz.example/index"
+`
+	for range 20 {
+		var first string
+		parseCargoConfig([]byte(config), func(eco, url, scope string) {
+			if first == "" && url != "" {
+				first = url
+			}
+		})
+		if first != "https://corp.example/index" {
+			t.Fatalf("crates.io resolves from %s, want the source replace-with names", first)
+		}
+	}
+}
