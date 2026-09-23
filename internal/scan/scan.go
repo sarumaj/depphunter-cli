@@ -24,6 +24,9 @@ type File struct {
 	Lang   string
 	LOC    int
 	Binary bool
+	// Size is the file's size in bytes when it was measured, so that a file too
+	// large to be worth reading can be passed over without being read.
+	Size int64
 }
 
 type Options struct {
@@ -150,7 +153,11 @@ func excluded(rel string, patterns []string) bool {
 
 func measure(f *File, maxSize int64) {
 	st, err := os.Stat(f.Abs)
-	if err != nil || (maxSize > 0 && st.Size() > maxSize) {
+	if err != nil {
+		return
+	}
+	f.Size = st.Size()
+	if maxSize > 0 && f.Size > maxSize {
 		return
 	}
 	fh, err := os.Open(f.Abs)
