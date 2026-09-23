@@ -388,14 +388,20 @@ func pinned(g *graph.Graph) []findings.Package {
 	return out
 }
 
-func writeExport(g *graph.Graph, cfg config.Config, extra map[string]any, format, output string) error {
+func writeExport(g *graph.Graph, cfg config.Config, extra map[string]any, format, output string) (err error) {
 	var w io.Writer = os.Stdout
 	if output != "" {
 		f, err := os.Create(output)
 		if err != nil {
 			return err
 		}
-		defer f.Close()
+		// Close is where a full disk or a network share reports that the write did
+		// not happen; ignoring it would leave a truncated export and exit 0.
+		defer func() {
+			if cerr := f.Close(); err == nil {
+				err = cerr
+			}
+		}()
 		w = f
 	}
 	if format == "html" {
