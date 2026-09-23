@@ -14,6 +14,7 @@
 // that token appears, which is why it is read from the server's own output rather
 // than put together from the port.
 
+import * as fs from 'node:fs';
 import { ChildProcess, spawn } from 'node:child_process';
 import * as vscode from 'vscode';
 
@@ -67,6 +68,11 @@ export function start(root: string, home: string | undefined, log: vscode.Output
   const bin = binaryFor(cfg.get<string>('path'), home);
   const args = argv(cfg, root);
 
+  // spawn reports a missing working directory as ENOENT too, which would read as a
+  // missing binary and send the user off to download one they already have.
+  if (!fs.existsSync(root)) {
+    return Promise.reject(new StartError(`${root} does not exist.`));
+  }
   log.appendLine(`> ${bin} ${args.join(' ')}`);
   const child = spawn(bin, args, { cwd: root });
 

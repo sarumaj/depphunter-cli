@@ -157,6 +157,28 @@ describe('depphunter.open', { skip: available() ? false : 'no depphunter binary 
     assert.strictEqual(answered, false, 'the server outlived the stop command');
   });
 
+  it('says so when a server stops on its own', async () => {
+    await stub.commands.get('depphunter.open')();
+    // The server is this process's only child at this point: killed from outside.
+    let pids = [];
+    try {
+      pids = execFileSync('pgrep', ['-P', String(process.pid)]).toString().split(/\s+/).filter(Boolean);
+    } catch {
+      return; // no pgrep here to find it with
+    }
+    assert.strictEqual(pids.length, 1, `children: ${pids}`);
+    process.kill(Number(pids[0]));
+    await new Promise(r => setTimeout(r, 500));
+    assert.match(stub.last('warning')?.[1] ?? '', /stopped/, 'the map went away without a word');
+  });
+
+  it('reports a folder that is not there', async () => {
+    await stub.commands.get('depphunter.open')(stub.vscode.Uri.file(path.join(ROOT, 'no-such-folder')));
+    const error = stub.last('error')?.[1] ?? '';
+    assert.match(error, /does not exist/);
+    assert.doesNotMatch(error, /was not found/, 'a missing folder was reported as a missing binary');
+  });
+
   it('reports a binary it cannot find', async () => {
     const real = stub.settings.path;
     stub.settings.path = path.join(__dirname, 'no-such-depphunter');
