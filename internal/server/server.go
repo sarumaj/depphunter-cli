@@ -343,7 +343,20 @@ func (s *Server) handleLazy(name string) http.HandlerFunc {
 		s.mu.RLock()
 		d := *s.lazy[name]
 		s.mu.RUnlock()
-		w.Header().Set("Cache-Control", "no-store")
+		if d.pending || d.value == nil {
+			w.Header().Set("Cache-Control", "no-store")
+		} else {
+			// The history and the findings can be megabytes and rarely change between
+			// page loads: revalidated like the graph, an unchanged one is a 304.
+			etag := `"` + hex.EncodeToString(d.sum[:16]) + `"`
+			w.Header().Set("Cache-Control", "no-cache")
+			w.Header().Set("Vary", "Accept-Encoding")
+			w.Header().Set("ETag", etag)
+			if matches(r.Header.Get("If-None-Match"), etag) {
+				w.WriteHeader(http.StatusNotModified)
+				return
+			}
+		}
 		switch {
 		case d.pending:
 			w.WriteHeader(http.StatusAccepted)
@@ -355,7 +368,6 @@ func (s *Server) handleLazy(name string) http.HandlerFunc {
 		default:
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Content-Encoding", "gzip")
-			w.Header().Set("Vary", "Accept-Encoding")
 			w.Write(d.gz)
 		}
 	}
