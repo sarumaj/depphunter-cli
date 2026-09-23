@@ -118,7 +118,7 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 			return nil, stats, fmt.Errorf("%s plugin: %w", p.Name(), err)
 		}
 		results := lang.ForEachFile(ctx, claimed, func(f *scan.File, src []byte) *lang.FileResult {
-			key := cache.Key(p.Name(), p.Version(), f.Path, src)
+			key := cache.Key(p.Name(), p.Version(), lang.ClassOf(p, f), src)
 			if ex, ok := opts.Cache.Get(key); ok {
 				cached.Add(1)
 				return lang.Apply(r, f.Path, ex)

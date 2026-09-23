@@ -9,6 +9,7 @@ package lang
 
 import (
 	"context"
+	"path"
 
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
@@ -95,10 +96,28 @@ type Plugin interface {
 	// Claims reports whether the plugin analyzes this file.
 	Claims(f *scan.File) bool
 	Ecosystems() []Ecosystem
-	// Extract must depend only on src and the file's extension.
+	// Extract must depend only on src and the file's extension, or else the plugin
+	// implements Classifier to say what else it depends on.
 	Extract(f *scan.File, src []byte) (*Extraction, error)
 	// Resolver prepares import resolution from all project files (manifests, layout).
 	Resolver(root string, all []*scan.File) (Resolver, error)
+}
+
+// Classifier is implemented by a plugin whose Extract depends on more of the file
+// than its extension - its directory, its name. Class names that, and becomes part of
+// the cache key, so a cached extraction is not read back for the same content in a
+// place that is read differently.
+type Classifier interface {
+	Class(f *scan.File) string
+}
+
+// ClassOf is what, besides the content, a plugin's extraction of f depends on.
+func ClassOf(p Plugin, f *scan.File) string {
+	class := path.Ext(f.Path)
+	if c, ok := p.(Classifier); ok {
+		class += "|" + c.Class(f)
+	}
+	return class
 }
 
 // Apply resolves an extraction's imports.

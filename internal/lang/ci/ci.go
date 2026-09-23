@@ -79,10 +79,22 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 	return newResolver(all), nil
 }
 
-// Extract reads one configuration file. Which platform's it is follows from the path,
-// which is part of the cache key, so a cached extraction is never read back for a file
-// that has moved between the two.
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+// Class is which of the three kinds of file f is (lang.Classifier): Extract reads the
+// same YAML differently for each, so the kind is part of the cache key and a cached
+// extraction is never read back for a file that has moved between them.
+func (Plugin) Class(f *scan.File) string {
+	base := path.Base(f.Path)
+	switch {
+	case base == "action.yml" || base == "action.yaml":
+		return "action"
+	case strings.HasPrefix(f.Path, ".github/workflows/"):
+		return "workflow"
+	}
+	return "gitlab"
+}
+
+// Extract reads one configuration file, as the kind Class says it is.
+func (p Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 	var doc yaml.Node
 	if err := yaml.Unmarshal(src, &doc); err != nil {
 		return &lang.Extraction{}, nil // a pipeline that does not parse has no dependencies
@@ -91,11 +103,10 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 	if root == nil {
 		return &lang.Extraction{}, nil
 	}
-	base := path.Base(f.Path)
-	if base == "action.yml" || base == "action.yaml" {
+	switch p.Class(f) {
+	case "action":
 		return extractAction(root), nil
-	}
-	if strings.HasPrefix(f.Path, ".github/workflows/") {
+	case "workflow":
 		return extractWorkflow(root), nil
 	}
 	return extractGitLab(root), nil
