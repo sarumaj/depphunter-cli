@@ -36,8 +36,7 @@ type Client struct {
 	seen map[string][]lang.Target // answers already given, including empty ones
 	// failed is when each question the index would not answer was last asked. It is
 	// asked again once failRetry has passed: one client serves every re-analysis in
-	// --watch, and a timeout remembered as an answer would leave a package with no
-	// dependencies until the process is restarted.
+	// --watch, so a failure kept as an answer would last as long as the process.
 	failed map[string]time.Time
 	// feeds is what a NuGet service index resolved to: the same answer for every
 	// package on that feed, and one request rather than one per package.

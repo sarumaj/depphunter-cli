@@ -135,8 +135,7 @@ export class Api {
           again();
           return;
         }
-        // Connected: the next drop is retried promptly again, however long the
-        // server was away before this.
+        // Reset on connecting, so a later drop is retried promptly.
         wait = 1000;
         // An event is a few lines and a blank one; only whole events are parsed, so
         // one split across two reads is not half-read.
@@ -212,9 +211,9 @@ export class Api {
         });
       }, extra);
       req.on('error', reject);
-      // A server that took the connection and never answers - wedged, or busy with a
-      // re-analysis - would otherwise hold whatever awaits this for good, the map
-      // included. The event stream is left without one: it is quiet by design.
+      // A server that accepts the connection and never answers would hold the caller,
+      // and the map waiting on it, indefinitely. The event stream has no timeout: it
+      // is quiet by design.
       req.setTimeout(REQUEST_TIMEOUT, () => req.destroy(new Error(`${method} ${path}: no answer in ${REQUEST_TIMEOUT / 1000}s`)));
       if (body !== undefined) req.write(body);
       req.end();

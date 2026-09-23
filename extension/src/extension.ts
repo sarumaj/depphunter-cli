@@ -27,9 +27,8 @@ interface Session {
 }
 
 const sessions = new Map<string, Session>();
-// Servers still starting, by folder: a second open while the first is mapping waits
-// for it rather than starting another, and closing the window cancels them, since
-// until they are in sessions nothing else would stop them.
+// Servers still starting, by folder. A second open of the folder waits on the entry,
+// and stopAll cancels it: until a server is in sessions, nothing else can stop it.
 const starting = new Map<string, { done: Promise<Session | undefined>; cancel: vscode.CancellationTokenSource }>();
 let log: vscode.OutputChannel;
 let status: vscode.StatusBarItem;
@@ -350,15 +349,13 @@ async function launching(folder: { root: string; name: string }, cancel: vscode.
     const session: Session = { ...folder, ...running };
     sessions.set(folder.root, session);
     // It may still stop on its own - a bad argument, a port taken, the user killing
-    // it - and a remembered address that answers nothing is worse than none. Listened
-    // for before attach, which takes a round-trip or two: an exit during it would
-    // otherwise go unheard and leave a dead server listed as running.
+    // it - and a remembered address that answers nothing is worse than none. The
+    // listener goes on before attach, so an exit during attach's requests is heard.
     running.child.on('exit', (code, signal) => {
       if (sessions.get(folder.root) !== session) return;
       end(folder.root);
-      // end() takes the tab with it, and a map that vanishes without a word looks
-      // like the editor's fault. stop and restart remove this listener first, so
-      // this is only ever a server that stopped on its own.
+      // end() closes the tab, so the user is told why. stop and restart remove this
+      // listener before killing the server; only an unexpected exit reaches here.
       void vscode.window.showWarningMessage(
         `depphunter for ${folder.name} stopped (${signal ?? `exit code ${code}`}).`, 'Show Log', 'Restart',
       ).then(answer => {
@@ -539,10 +536,10 @@ async function reachable(url: string): Promise<string> {
  * produced it.
  */
 async function check(local: string, address: string): Promise<void> {
-  // Asked of the server where the extension host reaches it, on its loopback: the
-  // rewritten address is for the browser's machine, and over a remote or a tunnel it
-  // is not this one. What is checked is that the path and query - the token - came
-  // through the rewrite, so they are taken from it.
+  // The server is probed on its loopback address, which the extension host can
+  // reach; the rewritten address is for the browser's machine, which over a remote or
+  // a tunnel is another one. Its path and query are used, since whether the token
+  // survived the rewrite is what is being checked.
   if (typeof fetch !== 'function') return; // Node before 18: nothing to ask with
   const probe = new URL(local);
   const shown = new URL(address);

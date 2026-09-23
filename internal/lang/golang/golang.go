@@ -166,10 +166,9 @@ func resolve(ip string, own *module, mods []*module, pkgDirs map[string]bool) la
 			case pkgDirs[path.Join(r.dir, rest)]:
 				return lang.Target{Local: path.Join(r.dir, rest)}
 			default:
-				// A directory outside the project: source on this machine, with no
-				// published version. The require line's version - often the
-				// v0.0.0-00010101000000-000000000000 placeholder - is not what is
-				// built and must not be looked up as though it were.
+				// A directory outside the project has no published version. The
+				// require line's version, often the v0.0.0-00010101000000-000000000000
+				// placeholder, is not what is built and must not be looked up.
 				return lang.Target{Ecosystem: ecoModules, Package: old}
 			}
 		}

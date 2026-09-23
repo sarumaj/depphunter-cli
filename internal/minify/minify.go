@@ -24,9 +24,9 @@ import "strings"
 // harmless: a pattern may not contain a newline, so a scan that reaches one gives up
 // and the slash is treated as an ordinary character after all.
 func JS(src string) string {
-	// Indentation is taken out here, as the characters go by, rather than line by line
-	// afterwards: a template literal or a continued string spans lines, and the
-	// whitespace inside one is part of its value.
+	// Indentation is dropped as the characters are copied, outside literals only: a
+	// template literal or a continued string may span lines, and the whitespace
+	// inside it is part of its value. trimLines, used for CSS and HTML, cannot tell.
 	out := make([]byte, 0, len(src))
 	lineStart := true
 	prev := byte(0) // the last significant character written, for the slash rule
@@ -159,10 +159,10 @@ func HTML(src string) string {
 	return trimLines(out.String())
 }
 
-// dividesAfter reports whether a slash following this character is a division rather
-// than the start of a pattern: it is, after anything that can end a value - except a
-// keyword that a value follows (return /x/, typeof /x/), which out, what has been
-// written so far, is looked back into to tell.
+// dividesAfter reports whether a slash following prev is a division rather than the
+// start of a pattern: it is after anything that can end a value, except a keyword an
+// expression follows (return /x/, typeof /x/). out is the output so far, from which
+// the word ending in prev is read.
 func dividesAfter(prev byte, out []byte) bool {
 	switch {
 	case isWord(prev):

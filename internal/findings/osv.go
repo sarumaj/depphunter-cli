@@ -415,9 +415,9 @@ func (e *osvEntry) url() string {
 // fixed is the version of the package to move to, when the advisory names one.
 //
 // An advisory often fixes each release line separately - 2.9.x in one release, 2.12.x
-// in another - so the answer is the lowest fix above the version in use: the first
-// one found could be a fix on an older line, which is a downgrade that is still
-// vulnerable. Versions that cannot be compared fall back to the last fix listed.
+// in another - so the answer is the lowest fix above the version in use; a fix on an
+// older line would be a downgrade that is still vulnerable. When the versions cannot
+// be compared, the answer is the last fix of the first affected range.
 func (e *osvEntry) fixed(pkg, version string) string {
 	current := semverOf(version)
 	first, best := "", ""

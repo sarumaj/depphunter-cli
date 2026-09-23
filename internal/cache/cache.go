@@ -32,8 +32,8 @@ type Cache struct {
 	// project still uses. A run that failed or was cancelled part way saw only some
 	// of it, and pruning by that would throw away every file it did not reach.
 	done bool
-	// dirty says something was added since the last Save. A --watch re-analysis that
-	// parsed nothing new has nothing to write, and the file is the whole cache.
+	// dirty says something was added since the last Save, which otherwise rewrites
+	// the whole file for nothing on a --watch re-analysis that parsed nothing.
 	dirty bool
 }
 

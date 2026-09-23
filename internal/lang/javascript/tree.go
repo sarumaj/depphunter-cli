@@ -1,10 +1,7 @@
 package javascript
 
 import (
-	"os"
 	"strings"
-
-	"gopkg.in/yaml.v3"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 )
@@ -59,23 +56,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 }
 
 // addPackageLockTree reads the dependency edges of package-lock.json, v1 through v3.
-func (t *tree) addPackageLockTree(abs string) {
-	var lock struct {
-		// v2 and v3 list every installed path under "packages".
-		Packages map[string]struct {
-			Version              string
-			Dependencies         map[string]string
-			OptionalDependencies map[string]string
-		}
-		// v1 nests them under "dependencies", with "requires" for the edges.
-		Dependencies map[string]struct {
-			Version  string
-			Requires map[string]string
-		}
-	}
-	if readJSON(abs, &lock) != nil {
-		return
-	}
+func (t *tree) addPackageLockTree(lock *packageLock) {
 	for key, p := range lock.Packages {
 		name := lockName(key)
 		if name == "" {
@@ -110,25 +91,8 @@ func lockName(key string) string {
 	return key[i+len("node_modules/"):]
 }
 
-// addPnpmTree reads the dependency edges of pnpm-lock.yaml. v5 to v8 keep them under
-// "packages", v9 moved them to "snapshots"; both key entries by name and version.
-func (t *tree) addPnpmTree(abs string) {
-	data, err := os.ReadFile(abs)
-	if err != nil {
-		return
-	}
-	var doc struct {
-		Packages map[string]struct {
-			Name, Version string
-			Dependencies  map[string]string `yaml:"dependencies"`
-		} `yaml:"packages"`
-		Snapshots map[string]struct {
-			Dependencies map[string]string `yaml:"dependencies"`
-		} `yaml:"snapshots"`
-	}
-	if yaml.Unmarshal(data, &doc) != nil {
-		return
-	}
+// addPnpmTree reads the dependency edges of pnpm-lock.yaml.
+func (t *tree) addPnpmTree(doc *pnpmLock) {
 	for key, p := range doc.Packages {
 		name, version := pnpmKey(key)
 		if p.Name != "" { // v5 spells them out instead of packing them into the key
@@ -171,11 +135,7 @@ func startsWithDigit(s string) bool { return s != "" && s[0] >= '0' && s[0] <= '
 
 // addYarnTree reads the dependency edges of a classic yarn.lock, whose entries name
 // their resolved version and then the ranges they in turn require.
-func (t *tree) addYarnTree(abs string) {
-	data, err := os.ReadFile(abs)
-	if err != nil {
-		return
-	}
+func (t *tree) addYarnTree(data []byte) {
 	var names []string
 	inDeps := false
 	for _, line := range strings.Split(string(data), "\n") {
