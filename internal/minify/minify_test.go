@@ -27,6 +27,11 @@ func TestJS(t *testing.T) {
 		{"a comment that looks like a pattern", "a = b;\n// /unterminated\nc = d;", "a = b;\n\nc = d;"},
 		{"an apostrophe in a comment", "a = 1; // don't\nb = 2;", "a = 1;\nb = 2;"},
 		{"a quote in a comment", `a = 1; /* "x */ b = 2;`, `a = 1;   b = 2;`},
+		{"a pattern after return", "function f(s){ return /[/*]/.test(s) } /* c */ let x = 1;", "function f(s){ return /[/*]/.test(s) }   let x = 1;"},
+		{"a pattern after typeof", "x = typeof /a/; // gone", "x = typeof /a/;"},
+		{"a property named like a keyword", "r = o.in / 2; // gone", "r = o.in / 2;"},
+		{"a template over lines", "const t = `a\n    b  \n`;\n    f();", "const t = `a\n    b  \n`;\nf();"},
+		{"a continued string", "const s = 'a\\\n   b';\n  f();", "const s = 'a\\\n   b';\nf();"},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			if got := JS(tc.in); got != tc.want {
@@ -98,7 +103,11 @@ func literals(src string) []string {
 			}
 			i = j - 1
 		case '`':
-			i = endOfTemplate(src, i) - 1
+			j := endOfTemplate(src, i)
+			if j-i > 4 {
+				out = append(out, src[i:j])
+			}
+			i = j - 1
 		case '/':
 			if i+1 < len(src) && (src[i+1] == '/' || src[i+1] == '*') {
 				// Skip the comment so its contents are not mistaken for a literal.
