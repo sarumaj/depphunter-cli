@@ -1,6 +1,8 @@
 package rust
 
 import (
+	"os"
+	"path/filepath"
 	"reflect"
 	"testing"
 
@@ -73,5 +75,72 @@ func TestLockTree(t *testing.T) {
 	// "syn 2.0.60" names a version beside the crate; only the name is the edge.
 	if got = tr.Dependencies(lang.Target{Ecosystem: "crates", Package: "serde_derive"}); len(got) != 1 || got[0].Package != "syn" {
 		t.Errorf("serde_derive depends on %+v, want syn", got)
+	}
+}
+
+// A lock file holding one crate in two versions - syn 1 beside syn 2 is the usual
+// case - pins each dependency to the version its own requirement means, and walks
+// each version's own dependencies.
+func TestLockWithTwoVersionsOfACrate(t *testing.T) {
+	root := t.TempDir()
+	write := func(name, content string) {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	write("Cargo.toml", "[package]\nname = \"app\"\n\n[dependencies]\nsyn = \"2\"\nold = \"0.3\"\n")
+	write("Cargo.lock", `version = 3
+
+[[package]]
+name = "app"
+version = "0.1.0"
+dependencies = ["old", "syn 2.0.48"]
+
+[[package]]
+name = "old"
+version = "0.3.1"
+dependencies = ["syn 1.0.109"]
+
+[[package]]
+name = "syn"
+version = "2.0.48"
+dependencies = ["unicode-ident"]
+
+[[package]]
+name = "syn"
+version = "1.0.109"
+dependencies = ["quote", "unicode-ident"]
+
+[[package]]
+name = "quote"
+version = "1.0.35"
+
+[[package]]
+name = "unicode-ident"
+version = "1.0.12"
+`)
+	os.MkdirAll(filepath.Join(root, "src"), 0o755)
+	write("src/main.rs", "use syn::Item;\nuse old::Thing;\nfn main() {}\n")
+
+	res := langtest.Analyze(t, Plugin{}, root)
+	langtest.CheckImports(t, res["src/main.rs"], map[string]lang.Target{
+		"use syn::Item":  {Ecosystem: "crates", Package: "syn", Version: "2.0.48", Requested: "2", Pinned: true},
+		"use old::Thing": {Ecosystem: "crates", Package: "old", Version: "0.3.1", Requested: "0.3", Pinned: true},
+	})
+
+	r, err := (Plugin{}).Resolver(root, langtest.Files(t, root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := r.(lang.Transitive)
+	got := tr.Dependencies(lang.Target{Ecosystem: "crates", Package: "old", Version: "0.3.1"})
+	if len(got) != 1 || got[0].Package != "syn" || got[0].Version != "1.0.109" {
+		t.Errorf("old depends on %+v, want syn 1.0.109", got)
+	}
+	if got := tr.Dependencies(lang.Target{Ecosystem: "crates", Package: "syn", Version: "2.0.48"}); len(got) != 1 {
+		t.Errorf("syn 2 depends on %+v, want unicode-ident alone", got)
+	}
+	if got := tr.Dependencies(lang.Target{Ecosystem: "crates", Package: "syn", Version: "1.0.109"}); len(got) != 2 {
+		t.Errorf("syn 1 depends on %+v, want quote and unicode-ident", got)
 	}
 }
