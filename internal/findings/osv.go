@@ -12,6 +12,8 @@ import (
 	"sync"
 	"time"
 
+	"golang.org/x/mod/semver"
+
 	"github.com/sarumaj/depphunter-cli/internal/store"
 )
 
@@ -323,7 +325,7 @@ func (e *osvEntry) finding(p Package) *Finding {
 		Ecosystem: p.Ecosystem,
 		Package:   p.Name,
 		Version:   p.Version,
-		Fixed:     e.fixed(p.Name),
+		Fixed:     e.fixed(p.Name, p.Version),
 	}
 	return f
 }
@@ -399,20 +401,49 @@ func (e *osvEntry) url() string {
 	return "https://osv.dev/vulnerability/" + e.ID
 }
 
-// fixed is the first version of the package that is not affected, when the advisory
-// names one.
-func (e *osvEntry) fixed(pkg string) string {
+// fixed is the version of the package to move to, when the advisory names one.
+//
+// An advisory often fixes each release line separately - 2.9.x in one release, 2.12.x
+// in another - so the answer is the lowest fix above the version in use: the first
+// one found could be a fix on an older line, which is a downgrade that is still
+// vulnerable. Versions that cannot be compared fall back to the last fix listed.
+func (e *osvEntry) fixed(pkg, version string) string {
+	current := semverOf(version)
+	first, best := "", ""
 	for _, a := range e.Affected {
 		if pkg != "" && a.Package.Name != "" && !strings.EqualFold(a.Package.Name, pkg) {
 			continue
 		}
 		for _, r := range a.Ranges {
 			for i := len(r.Events) - 1; i >= 0; i-- {
-				if r.Events[i].Fixed != "" {
-					return r.Events[i].Fixed
+				fix := r.Events[i].Fixed
+				if fix == "" {
+					continue
+				}
+				if first == "" {
+					first = fix
+				}
+				v := semverOf(fix)
+				if current == "" || v == "" || semver.Compare(v, current) <= 0 {
+					continue
+				}
+				if best == "" || semver.Compare(v, semverOf(best)) < 0 {
+					best = fix
 				}
 			}
 		}
 	}
-	return ""
+	if best != "" {
+		return best
+	}
+	return first
+}
+
+// semverOf is version as golang.org/x/mod/semver reads it, "" when it cannot.
+func semverOf(version string) string {
+	v := "v" + strings.TrimPrefix(strings.TrimSpace(version), "v")
+	if !semver.IsValid(v) {
+		return ""
+	}
+	return v
 }
