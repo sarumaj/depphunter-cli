@@ -2,9 +2,11 @@ package index
 
 import (
 	"encoding/xml"
+	"maps"
 	"os"
 	"path"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 
@@ -27,6 +29,9 @@ type Discoverer struct {
 	cfg  *Config
 	env  func(string) string
 	home string
+	// read says the machine's configuration has been read: it is this user's, it
+	// does not change with the repository, and --watch discovers on every analysis.
+	read bool
 }
 
 func NewDiscoverer(env func(string) string, home string) *Discoverer {
@@ -36,9 +41,15 @@ func NewDiscoverer(env func(string) string, home string) *Discoverer {
 // Config is the configuration this discoverer fills.
 func (d *Discoverer) Config() *Config { return d.cfg }
 
-// Discover reads the machine's configuration and then the repository's.
+// Discover reads the machine's configuration, the first time, and then the
+// repository's - afresh each time, so an index taken out of a .npmrc under --watch is
+// gone from the next map rather than kept until the process restarts.
 func (d *Discoverer) Discover(files []*scan.File) *Config {
-	d.cfg.machine(d.env, d.home)
+	if !d.read {
+		d.cfg.machine(d.env, d.home)
+		d.read = true
+	}
+	d.cfg.forgetProject()
 	d.cfg.project(files)
 	return d.cfg
 }
@@ -227,19 +238,40 @@ func parsePyproject(data []byte, add func(eco, url, scope string)) {
 }
 
 // parseCargoConfig reads replaced sources and alternative registries.
+//
+// The first source added is the one packages resolve from, so the order is fixed:
+// the source crates.io is replaced with (following replace-with to the end), then
+// every other source and registry by name. Ranging over the maps as they come would
+// pick a different one from run to run.
 func parseCargoConfig(data []byte, add func(eco, url, scope string)) {
 	var doc struct {
-		Source     map[string]struct{ Registry, ReplaceWith string }
+		Source map[string]struct {
+			Registry    string
+			ReplaceWith string `toml:"replace-with"`
+		}
 		Registries map[string]struct{ Index string }
 	}
 	if _, err := toml.Decode(string(data), &doc); err != nil {
 		return
 	}
-	for _, s := range doc.Source {
-		add(Cargo, s.Registry, "")
+	name := "crates-io"
+	for range len(doc.Source) { // bounded: a replace-with cycle is a broken config
+		next := doc.Source[name].ReplaceWith
+		if next == "" {
+			break
+		}
+		name = next
 	}
-	for _, r := range doc.Registries {
+	if s, ok := doc.Source[name]; ok {
+		add(Cargo, s.Registry, "")
+	} else if r, ok := doc.Registries[name]; ok {
 		add(Cargo, r.Index, "")
+	}
+	for _, key := range slices.Sorted(maps.Keys(doc.Source)) {
+		add(Cargo, doc.Source[key].Registry, "")
+	}
+	for _, key := range slices.Sorted(maps.Keys(doc.Registries)) {
+		add(Cargo, doc.Registries[key].Index, "")
 	}
 }
 
