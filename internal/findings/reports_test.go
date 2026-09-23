@@ -66,8 +66,13 @@ func TestReadRecognizesEveryFormat(t *testing.T) {
 func TestGovulncheckKeepsTheCallSite(t *testing.T) {
 	_, found := read(t, "govulncheck.json")
 	reached := find(t, found, "GO-2024-2687")
+	// Not the vulnerable function's own position, which is a path inside x/net: the
+	// frame nearest it that is in this repository's module.
 	if reached.Path != "internal/server/server.go" || reached.Line != 42 || reached.Column != 7 {
 		t.Errorf("call site: %s:%d:%d", reached.Path, reached.Line, reached.Column)
+	}
+	if !strings.Contains(reached.Detail, "Reached from Server.serve.") {
+		t.Errorf("detail does not name the caller: %q", reached.Detail)
 	}
 	if reached.Package != "golang.org/x/net" || reached.Version != "0.17.0" || reached.Fixed != "0.23.0" {
 		t.Errorf("package: %s@%s fixed in %s", reached.Package, reached.Version, reached.Fixed)
