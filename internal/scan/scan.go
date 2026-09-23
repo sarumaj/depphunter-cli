@@ -43,7 +43,10 @@ var defaultIgnore = map[string]bool{
 func Scan(ctx context.Context, root string, opts Options) ([]*File, error) {
 	paths, err := gitFiles(ctx, root)
 	if err != nil {
-		if paths, err = walkFiles(root); err != nil {
+		if ctx.Err() != nil {
+			return nil, ctx.Err()
+		}
+		if paths, err = walkFiles(ctx, root); err != nil {
 			return nil, err
 		}
 	}
@@ -70,17 +73,23 @@ func Scan(ctx context.Context, root string, opts Options) ([]*File, error) {
 
 // gitFiles lists tracked and untracked-but-not-ignored files, which honours every
 // .gitignore, .git/info/exclude and the global excludes file for free.
+//
+// Duplicates - a file with merge conflicts is listed once per stage - are dropped
+// here rather than with --deduplicate, which needs git 2.31; an older git refuses
+// the option, and the walk it would fall back to knows none of the ignore files.
 func gitFiles(ctx context.Context, root string) ([]string, error) {
-	cmd := exec.CommandContext(ctx, "git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard", "--deduplicate")
+	cmd := exec.CommandContext(ctx, "git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
 	out, err := cmd.Output()
 	if err != nil {
 		return nil, err
 	}
 	var paths []string
+	seen := map[string]bool{}
 	for _, p := range bytes.Split(out, []byte{0}) {
-		if len(p) == 0 {
+		if len(p) == 0 || seen[string(p)] {
 			continue
 		}
+		seen[string(p)] = true
 		// Deleted-but-tracked files and submodule entries are listed but are not regular
 		// files. Nor is a symbolic link, which is not followed: one committed to the
 		// repository may point anywhere on this machine, and what a file node holds is
@@ -93,10 +102,21 @@ func gitFiles(ctx context.Context, root string) ([]string, error) {
 	return paths, nil
 }
 
-func walkFiles(root string) ([]string, error) {
+func walkFiles(ctx context.Context, root string) ([]string, error) {
 	var paths []string
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
+		if ctx.Err() != nil {
+			return ctx.Err()
+		}
 		if err != nil {
+			// One directory that cannot be read - a volume owned by another user, say -
+			// is left out rather than failing the scan of everything else.
+			if p != root {
+				if d != nil && d.IsDir() {
+					return filepath.SkipDir
+				}
+				return nil
+			}
 			return err
 		}
 		if d.IsDir() {

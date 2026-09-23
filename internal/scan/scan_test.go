@@ -75,3 +75,26 @@ func TestScanSkipsSymlinksInGit(t *testing.T) {
 		t.Errorf("got %d files, want a.go alone", len(got))
 	}
 }
+
+func TestWalkSkipsUnreadableDirectories(t *testing.T) {
+	root := t.TempDir()
+	os.WriteFile(filepath.Join(root, "a.go"), []byte("package a\n"), 0o644)
+	locked := filepath.Join(root, "locked")
+	os.MkdirAll(locked, 0o755)
+	os.WriteFile(filepath.Join(locked, "b.go"), []byte("package b\n"), 0o644)
+	if err := os.Chmod(locked, 0); err != nil {
+		t.Skip(err)
+	}
+	t.Cleanup(func() { os.Chmod(locked, 0o755) })
+	if _, err := os.ReadDir(locked); err == nil {
+		t.Skip("the directory is readable anyway (running as root, or on Windows)")
+	}
+
+	got, err := walkFiles(context.Background(), root)
+	if err != nil {
+		t.Fatalf("one unreadable directory failed the walk: %v", err)
+	}
+	if len(got) != 1 || got[0] != "a.go" {
+		t.Errorf("got %v, want [a.go]", got)
+	}
+}
