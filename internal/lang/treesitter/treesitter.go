@@ -80,10 +80,13 @@ func (g *Grammar) Matches(src []byte, visit func(Match)) error {
 	if err != nil {
 		return err
 	}
-	if tree == nil || tree.RootNode() == nil {
+	if tree == nil {
 		return nil
 	}
-	defer tree.Release()
+	defer tree.Release() // an empty tree is still one to give back
+	if tree.RootNode() == nil {
+		return nil
+	}
 	for _, m := range g.query.Execute(tree) {
 		out := make(Match, 0, len(m.Captures))
 		for _, c := range m.Captures {
