@@ -125,6 +125,12 @@ func (o *OSV) ids(ctx context.Context, pkgs []Package) (map[Package][]string, bo
 		end := min(start+osvBatch, len(ask))
 		batch := ask[start:end]
 		res, err := o.batch(ctx, batch)
+		if err == nil && len(res) != len(batch) {
+			// Answers are matched to questions by position: a short answer cannot be
+			// matched, and caching the missing ones as clean would hide them for the
+			// whole time to live.
+			err = fmt.Errorf("%d answers to %d questions", len(res), len(batch))
+		}
 		if err != nil {
 			o.logFormat("osv.dev: %v", err)
 			partial = true
@@ -132,12 +138,16 @@ func (o *OSV) ids(ctx context.Context, pkgs []Package) (map[Package][]string, bo
 		}
 		for i, p := range batch {
 			var ids []string
-			if i < len(res) {
-				for _, v := range res[i].Vulns {
-					ids = append(ids, v.ID)
-				}
+			for _, v := range res[i].Vulns {
+				ids = append(ids, v.ID)
 			}
-			o.cache.Put(queryKey(p), ids)
+			if res[i].NextPageToken != "" {
+				// More than one page of advisories: what came is shown, but it is not
+				// the whole answer and is not cached as one.
+				partial = true
+			} else {
+				o.cache.Put(queryKey(p), ids)
+			}
 			if len(ids) > 0 {
 				out[p] = ids
 			}
@@ -150,6 +160,7 @@ type batchResult struct {
 	Vulns []struct {
 		ID string `json:"id"`
 	} `json:"vulns"`
+	NextPageToken string `json:"next_page_token"`
 }
 
 func (o *OSV) batch(ctx context.Context, pkgs []Package) ([]batchResult, error) {

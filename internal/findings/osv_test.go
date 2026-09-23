@@ -155,3 +155,26 @@ func TestOSVSuggestsTheFixOnTheLineInUse(t *testing.T) {
 		}
 	}
 }
+
+// An answer that does not match the questions one for one is not trusted: the
+// packages it leaves out are not cached as having no advisories.
+func TestOSVDoesNotCacheAShortAnswer(t *testing.T) {
+	var batches int32
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		atomic.AddInt32(&batches, 1)
+		w.Write([]byte(`{"results":[{"vulns":[]}]}`)) // one answer to two questions
+	}))
+	defer srv.Close()
+	o := &OSV{http: srv.Client(), cache: store.New(t.TempDir(), time.Hour), API: srv.URL, Logf: func(string, ...any) {}}
+	pkgs := []Package{
+		{Ecosystem: "go", Name: "example.com/a", Version: "v1.0.0"},
+		{Ecosystem: "go", Name: "example.com/b", Version: "v1.0.0"},
+	}
+	if _, partial := o.Query(context.Background(), pkgs); !partial {
+		t.Error("a short answer was reported as complete")
+	}
+	o.Query(context.Background(), pkgs)
+	if n := atomic.LoadInt32(&batches); n != 2 {
+		t.Errorf("the database was asked %d times, want 2: the short answer was cached", n)
+	}
+}
