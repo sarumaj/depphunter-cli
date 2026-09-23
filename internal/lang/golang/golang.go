@@ -73,7 +73,9 @@ func loadModules(all []*scan.File) ([]*module, error) {
 		}
 		data, err := os.ReadFile(f.Abs)
 		if err != nil {
-			return nil, err
+			// Gone since the scan - a branch switch, an editor saving by rename -
+			// and no more reason to abort the analysis than a broken one below.
+			continue
 		}
 		mf, err := modfile.ParseLax(f.Path, data, nil)
 		if err != nil || mf.Module == nil {
@@ -105,19 +107,19 @@ func owner(mods []*module, file string) *module {
 }
 
 func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
-	fset := token.NewFileSet()
+	fSet := token.NewFileSet()
 	// On syntax errors the parser still returns a partial AST, which is good enough for a map.
-	af, _ := parser.ParseFile(fset, f.Path, src, parser.SkipObjectResolution)
+	af, _ := parser.ParseFile(fSet, f.Path, src, parser.SkipObjectResolution)
 	if af == nil {
 		return &lang.Extraction{}, nil
 	}
-	ex := &lang.Extraction{Symbols: symbols(fset, af)}
+	ex := &lang.Extraction{Symbols: symbols(fSet, af)}
 	for _, spec := range af.Imports {
 		ip := strings.Trim(spec.Path.Value, "`\"")
 		if ip == "C" {
 			continue // cgo pseudo-package
 		}
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: ip, Module: ip, Line: fset.Position(spec.Pos()).Line})
+		ex.Imports = append(ex.Imports, lang.RawImport{Spec: ip, Module: ip, Line: fSet.Position(spec.Pos()).Line})
 	}
 	return ex, nil
 }
@@ -170,9 +172,9 @@ func within(ip, mod string) (string, bool) {
 	return "", false
 }
 
-func symbols(fset *token.FileSet, af *ast.File) []lang.Symbol {
+func symbols(fSet *token.FileSet, af *ast.File) []lang.Symbol {
 	var set lang.SymbolSet
-	add := func(name, kind string, pos token.Pos) { set.Add(name, kind, fset.Position(pos).Line) }
+	add := func(name, kind string, pos token.Pos) { set.Add(name, kind, fSet.Position(pos).Line) }
 	for _, decl := range af.Decls {
 		switch d := decl.(type) {
 		case *ast.FuncDecl:
