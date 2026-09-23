@@ -39,7 +39,7 @@ type Cache struct {
 }
 
 // Open loads the cache for project root from dir. A missing or unreadable cache file
-// yields an empty cache: the cache is an optimisation, never a reason to fail.
+// yields an empty cache: the cache is an optimization, never a reason to fail.
 func Open(dir, root string) *Cache {
 	sum := sha256.Sum256([]byte(root))
 	c := &Cache{

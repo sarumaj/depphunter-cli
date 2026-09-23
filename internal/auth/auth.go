@@ -17,10 +17,16 @@ import (
 	"os/exec"
 	"path/filepath"
 	"strings"
+	"sync"
 )
 
 // Store is what this machine holds, by host.
+//
+// It is filled by Read before it is shared, and afterwards only by FromURL, which
+// index discovery calls on every analysis - under --watch, while the previous
+// cycle's link checker may still be calling Apply. mu guards those two.
 type Store struct {
+	mu     sync.RWMutex
 	bearer map[string]string // host -> token
 	basic  map[string]string // host -> "user:password"
 	// plain holds the hosts this machine's own configuration reaches over http://,
@@ -302,6 +308,8 @@ func (c *Store) Apply(req *http.Request) {
 	if c == nil {
 		return
 	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
 	if req.URL.Scheme != "https" && !c.plain[req.URL.Host] && !c.plain[req.URL.Hostname()] && !loopback(req.URL.Hostname()) {
 		return
 	}

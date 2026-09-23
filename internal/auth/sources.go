@@ -232,6 +232,8 @@ func (c *Store) FromURL(raw string, trusted bool) string {
 		// Only this machine's own configuration may supply one. A repository that
 		// could would be choosing both the credential and where it is sent.
 		password, _ := u.User.Password()
+		c.mu.Lock()
+		defer c.mu.Unlock()
 		if user := u.User.Username(); user != "" {
 			c.basic[u.Host] = user + ":" + password
 			c.notePlain(u)

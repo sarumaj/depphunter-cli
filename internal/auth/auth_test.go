@@ -1,6 +1,7 @@
 package auth
 
 import (
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -137,4 +138,22 @@ func TestNoCredentialsInTheClear(t *testing.T) {
 	if legacy.Header.Get("Authorization") == "" {
 		t.Error("a feed configured over http got nothing")
 	}
+}
+
+// Index discovery files URL credentials on every --watch analysis while the link
+// checker of the one before may still be sending requests; run with -race.
+func TestFromURLWhileApplying(t *testing.T) {
+	c := Read("", nil)
+	done := make(chan struct{})
+	go func() {
+		defer close(done)
+		for i := range 200 {
+			c.FromURL(fmt.Sprintf("https://u:p@mirror%d.corp/simple", i), true)
+		}
+	}()
+	for range 200 {
+		req, _ := http.NewRequest(http.MethodGet, "https://mirror1.corp/x", nil)
+		c.Apply(req)
+	}
+	<-done
 }
