@@ -328,6 +328,19 @@ func TestHistoryLifecycle(t *testing.T) {
 	if code, body := get(t, c, base+"/api/history", nil); code != 200 || !strings.Contains(body, `"a.go":[[1000,0,2,0,0]]`) {
 		t.Errorf("history: %d %s", code, body)
 	}
+	// A page loaded again revalidates rather than downloading it all again.
+	res, err = c.Get(base + "/api/history")
+	if err != nil {
+		t.Fatal(err)
+	}
+	res.Body.Close()
+	etag := res.Header.Get("ETag")
+	if etag == "" {
+		t.Fatal("the history carries no entity tag")
+	}
+	if code, _ := get(t, c, base+"/api/history", func(r *http.Request) { r.Header.Set("If-None-Match", etag) }); code != http.StatusNotModified {
+		t.Errorf("unchanged history: %d, want 304", code)
+	}
 	s.SetHistory(nil)
 	if code, _ := get(t, c, base+"/api/history", nil); code != http.StatusNoContent {
 		t.Errorf("without history: %d, want 204", code)
