@@ -111,3 +111,30 @@ func TestNetrcCredentials(t *testing.T) {
 		t.Errorf("credentials were sent to another host: %q", got)
 	}
 }
+
+func TestNoCredentialsInTheClear(t *testing.T) {
+	c := &Store{bearer: map[string]string{}, basic: map[string]string{"nexus.corp": "u:p", "localhost": "l:p"}}
+	// An address from the repository - a README's link - asking for plain http.
+	link, _ := http.NewRequest(http.MethodGet, "http://nexus.corp/repository/x", nil)
+	c.Apply(link)
+	if got := link.Header.Get("Authorization"); got != "" {
+		t.Errorf("a password was sent over plain http: %q", got)
+	}
+	// A registry on this machine is reached over http and nothing leaves it.
+	local, _ := http.NewRequest(http.MethodGet, "http://localhost:4873/react", nil)
+	c.Apply(local)
+	if local.Header.Get("Authorization") == "" {
+		t.Error("the local registry got nothing")
+	}
+
+	// A company feed this machine's own configuration names over http keeps working.
+	c.readMavenSettings([]byte(`<settings>
+  <servers><server><id>old</id><username>u</username><password>p</password></server></servers>
+  <mirrors><mirror><id>old</id><url>http://legacy.corp/maven</url></mirror></mirrors>
+</settings>`))
+	legacy, _ := http.NewRequest(http.MethodGet, "http://legacy.corp/maven/x.pom", nil)
+	c.Apply(legacy)
+	if legacy.Header.Get("Authorization") == "" {
+		t.Error("a feed configured over http got nothing")
+	}
+}

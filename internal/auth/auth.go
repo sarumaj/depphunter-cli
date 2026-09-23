@@ -10,6 +10,7 @@ package auth
 import (
 	"encoding/base64"
 	"encoding/xml"
+	"net"
 	"net/http"
 	"net/url"
 	"os"
@@ -22,6 +23,9 @@ import (
 type Store struct {
 	bearer map[string]string // host -> token
 	basic  map[string]string // host -> "user:password"
+	// plain holds the hosts this machine's own configuration reaches over http://,
+	// the only hosts a credential is sent to unencrypted; see Apply.
+	plain map[string]bool
 }
 
 // Read collects the credentials from the files and variables the package managers of
@@ -113,7 +117,7 @@ func (c *Store) readMavenSettings(data []byte) {
 			// going without: a wrong Authorization header is a 401 either way.
 			continue
 		}
-		if host := hostOf(urls[s.ID]); host != "" {
+		if host := c.hostOf(urls[s.ID]); host != "" {
 			c.basic[host] = user + ":" + pass
 		}
 	}
@@ -164,7 +168,7 @@ func (c *Store) readNuGetConfig(data []byte) {
 		if user == "" || pass == "" {
 			continue
 		}
-		if host := hostOf(urls[src.XMLName.Local]); host != "" {
+		if host := c.hostOf(urls[src.XMLName.Local]); host != "" {
 			c.basic[host] = user + ":" + pass
 		}
 	}
@@ -194,13 +198,28 @@ func expand(v string) string {
 	return v
 }
 
-// hostOf is the host a source URL names, "" for anything that is not one.
-func hostOf(raw string) string {
+// hostOf is the host a source URL names, "" for anything that is not one. A source
+// this machine configured over plain http is noted as one to be reached that way.
+func (c *Store) hostOf(raw string) string {
 	u, err := url.Parse(strings.TrimSpace(raw))
 	if err != nil || u.Host == "" {
 		return ""
 	}
+	c.notePlain(u)
 	return u.Hostname()
+}
+
+// notePlain records that this machine's own configuration names u, so that if u is a
+// plain http:// address a credential for its host may be sent there.
+func (c *Store) notePlain(u *url.URL) {
+	if u.Scheme != "http" {
+		return
+	}
+	if c.plain == nil {
+		c.plain = map[string]bool{}
+	}
+	c.plain[u.Host] = true
+	c.plain[u.Hostname()] = true
 }
 
 // readNpmrc reads the per-registry credentials of an npm configuration, which is
@@ -273,8 +292,17 @@ func (c *Store) readNetrc(data []byte) {
 // Each key is tried with the port and then without it, since a registry reached on a
 // port - a Harbor, a Nexus behind one - has a credential of its own, while a netrc
 // names a machine and nothing more.
+//
+// Over plain http a credential is sent only to this machine itself or to a host its
+// own configuration names with an http:// address. The request's address may come
+// from the repository - the link checker follows every link in its Markdown - and
+// a link to http://nexus.corp/ must not put the password for nexus.corp on the wire
+// in the clear.
 func (c *Store) Apply(req *http.Request) {
 	if c == nil {
+		return
+	}
+	if req.URL.Scheme != "https" && !c.plain[req.URL.Host] && !c.plain[req.URL.Hostname()] && !loopback(req.URL.Hostname()) {
 		return
 	}
 	for _, host := range [...]string{req.URL.Host, req.URL.Hostname()} {
@@ -289,4 +317,14 @@ func (c *Store) Apply(req *http.Request) {
 			return
 		}
 	}
+}
+
+// loopback reports whether host is this machine, where plain http leaves nothing on
+// the network: a registry run locally for development is usually reached that way.
+func loopback(host string) bool {
+	if host == "localhost" {
+		return true
+	}
+	ip := net.ParseIP(host)
+	return ip != nil && ip.IsLoopback()
 }

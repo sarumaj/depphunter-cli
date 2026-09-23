@@ -210,6 +210,7 @@ func (c *Store) cargo(name, token string, config []byte) {
 	}
 	if u, err := url.Parse(strings.TrimPrefix(entry.Index, "sparse+")); err == nil && u.Host != "" {
 		c.bearer[u.Host] = token
+		c.notePlain(u)
 	}
 }
 
@@ -233,6 +234,7 @@ func (c *Store) FromURL(raw string, trusted bool) string {
 		password, _ := u.User.Password()
 		if user := u.User.Username(); user != "" {
 			c.basic[u.Host] = user + ":" + password
+			c.notePlain(u)
 		}
 	}
 	u.User = nil
