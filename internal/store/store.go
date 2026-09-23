@@ -15,6 +15,7 @@ import (
 	"encoding/json"
 	"os"
 	"path/filepath"
+	"strings"
 	"time"
 )
 
@@ -29,7 +30,34 @@ func New(dir string, ttl time.Duration) *Store {
 	if dir == "" || ttl <= 0 || os.MkdirAll(dir, 0o755) != nil {
 		return nil
 	}
+	sweep(dir, ttl)
 	return &Store{dir: dir, ttl: ttl}
+}
+
+// sweep removes the answers nobody can use any more. A stale answer is only ever
+// replaced when the same question is asked again, and most are not - a package
+// upgraded, a project no longer opened - so without this the directory grows with
+// every version of everything ever asked about. It goes by the file's age, which is
+// never less than that of the answer in it, and leaves the scratch file of a Put that
+// may still be running alone for a while.
+func sweep(dir string, ttl time.Duration) {
+	entries, err := os.ReadDir(dir)
+	if err != nil {
+		return
+	}
+	for _, e := range entries {
+		name := e.Name()
+		limit := ttl
+		switch {
+		case strings.HasPrefix(name, "put-"):
+			limit = min(ttl, time.Hour)
+		case !strings.HasSuffix(name, ".json"):
+			continue
+		}
+		if info, err := e.Info(); err == nil && info.Mode().IsRegular() && time.Since(info.ModTime()) > limit {
+			os.Remove(filepath.Join(dir, name))
+		}
+	}
 }
 
 // entry is one answer with the moment it was given.

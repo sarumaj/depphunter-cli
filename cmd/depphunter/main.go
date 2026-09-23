@@ -398,8 +398,8 @@ func writeExport(g *graph.Graph, cfg config.Config, extra map[string]any, format
 		// Close is where a full disk or a network share reports that the write did
 		// not happen; ignoring it would leave a truncated export and exit 0.
 		defer func() {
-			if cerr := f.Close(); err == nil {
-				err = cerr
+			if cErr := f.Close(); err == nil {
+				err = cErr
 			}
 		}()
 		w = f
