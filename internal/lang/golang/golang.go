@@ -38,8 +38,16 @@ func (Plugin) Ecosystems() []lang.Ecosystem {
 type module struct {
 	dir      string // relative, "." for the root
 	path     string
-	requires map[string]string // module path -> version
-	replaces map[string]string // module path -> local directory (relative to project root)
+	requires map[string]string      // module path -> version
+	replaces map[string]replacement // module path -> what the build uses instead
+}
+
+// replacement is the right-hand side of a replace directive: a directory (relative to
+// the project root, and possibly outside it) or another module at a version.
+type replacement struct {
+	dir     string
+	module  string
+	version string
 }
 
 func (Plugin) Version() int { return 1 }
@@ -77,17 +85,30 @@ func loadModules(all []*scan.File) ([]*module, error) {
 			// and no more reason to abort the analysis than a broken one below.
 			continue
 		}
-		mf, err := modfile.ParseLax(f.Path, data, nil)
+		// Parse, not ParseLax: the lax parser, meant for the go.mod of a dependency,
+		// drops replace directives, which are exactly what says where a module comes
+		// from. It stays the fallback for a go.mod the strict parser refuses.
+		mf, err := modfile.Parse(f.Path, data, nil)
+		if err != nil {
+			mf, err = modfile.ParseLax(f.Path, data, nil)
+		}
 		if err != nil || mf.Module == nil {
 			continue // a broken go.mod should not abort the whole analysis
 		}
-		m := &module{dir: path.Dir(f.Path), path: mf.Module.Mod.Path, requires: map[string]string{}, replaces: map[string]string{}}
+		m := &module{dir: path.Dir(f.Path), path: mf.Module.Mod.Path, requires: map[string]string{}, replaces: map[string]replacement{}}
 		for _, r := range mf.Require {
 			m.requires[r.Mod.Path] = r.Mod.Version
 		}
 		for _, r := range mf.Replace {
+			// "old v1.2.3 => new" replaces that one version, and only applies when it
+			// is the one required.
+			if r.Old.Version != "" && m.requires[r.Old.Path] != r.Old.Version {
+				continue
+			}
 			if modfile.IsDirectoryPath(r.New.Path) {
-				m.replaces[r.Old.Path] = path.Clean(path.Join(m.dir, r.New.Path))
+				m.replaces[r.Old.Path] = replacement{dir: path.Clean(path.Join(m.dir, r.New.Path))}
+			} else {
+				m.replaces[r.Old.Path] = replacement{module: r.New.Path, version: r.New.Version}
 			}
 		}
 		mods = append(mods, m)
@@ -126,11 +147,30 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 
 func resolve(ip string, own *module, mods []*module, pkgDirs map[string]bool) lang.Target {
 	if own != nil {
-		for old, dir := range own.replaces {
-			if rest, ok := within(ip, old); ok {
-				if d := path.Join(dir, rest); pkgDirs[d] {
-					return lang.Target{Local: d}
-				}
+		// The longest match, as the go command picks it: ranging over the map and
+		// taking the first would answer differently from run to run.
+		old := ""
+		for mp := range own.replaces {
+			if _, ok := within(ip, mp); ok && len(mp) > len(old) {
+				old = mp
+			}
+		}
+		if old != "" {
+			rest, _ := within(ip, old)
+			switch r := own.replaces[old]; {
+			case r.module != "":
+				// The build fetches the replacement, so that is the package - and the
+				// version a vulnerability database has to be asked about.
+				return lang.Target{Ecosystem: ecoModules, Package: r.module, Version: r.version,
+					Requested: own.requires[old], Pinned: lang.Pinned(r.version)}
+			case pkgDirs[path.Join(r.dir, rest)]:
+				return lang.Target{Local: path.Join(r.dir, rest)}
+			default:
+				// A directory outside the project: source on this machine, with no
+				// published version. The require line's version - often the
+				// v0.0.0-00010101000000-000000000000 placeholder - is not what is
+				// built and must not be looked up as though it were.
+				return lang.Target{Ecosystem: ecoModules, Package: old}
 			}
 		}
 	}

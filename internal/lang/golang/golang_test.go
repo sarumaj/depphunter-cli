@@ -1,6 +1,7 @@
 package golang
 
 import (
+	"os"
 	"path/filepath"
 	"testing"
 
@@ -68,4 +69,55 @@ func TestAVanishedGoModIsSkipped(t *testing.T) {
 	if _, err := (Plugin{}).Resolver(t.TempDir(), []*scan.File{gone}); err != nil {
 		t.Errorf("a go.mod that could not be read failed the analysis: %v", err)
 	}
+}
+
+func TestReplaceDirectives(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"go.mod": `module example.com/app
+
+go 1.22
+
+require (
+	example.com/forked v1.0.0
+	example.com/sibling v0.0.0-00010101000000-000000000000
+	example.com/pinned v1.2.0
+	example.com/other v1.5.0
+	example.com/nested v1.0.0
+	example.com/nested/deeper v1.0.0
+)
+
+replace (
+	example.com/forked => github.com/me/forked v1.0.1-fix
+	example.com/sibling => ../sibling
+	example.com/pinned v1.1.0 => github.com/me/pinned v1.1.1
+	example.com/nested => github.com/me/nested v1.0.1
+	example.com/nested/deeper => github.com/me/deeper v2.0.0
+)
+`,
+		"main.go": `package main
+
+import (
+	_ "example.com/forked/pkg"
+	_ "example.com/sibling"
+	_ "example.com/pinned"
+	_ "example.com/nested/deeper/x"
+)
+`,
+	}
+	for p, c := range files {
+		abs := filepath.Join(root, p)
+		os.WriteFile(abs, []byte(c), 0o644)
+	}
+	res := langtest.Analyze(t, Plugin{}, root)
+	langtest.CheckImports(t, res["main.go"], map[string]lang.Target{
+		// A module replaced by another module: the replacement is what is built.
+		"example.com/forked/pkg": {Ecosystem: "go", Package: "github.com/me/forked", Version: "v1.0.1-fix", Requested: "v1.0.0", Pinned: true},
+		// A directory outside the project has no version worth looking up.
+		"example.com/sibling": {Ecosystem: "go", Package: "example.com/sibling"},
+		// A replacement of another version than the one required does not apply.
+		"example.com/pinned": {Ecosystem: "go", Package: "example.com/pinned", Version: "v1.2.0", Pinned: true},
+		// The longest replaced path wins.
+		"example.com/nested/deeper/x": {Ecosystem: "go", Package: "github.com/me/deeper", Version: "v2.0.0", Requested: "v1.0.0", Pinned: true},
+	})
 }
