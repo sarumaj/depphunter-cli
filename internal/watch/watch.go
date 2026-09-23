@@ -10,6 +10,7 @@ import (
 	"context"
 	"log"
 	"path/filepath"
+	"strings"
 	"time"
 
 	"github.com/fsnotify/fsnotify"
@@ -79,15 +80,43 @@ func (w *Watcher) Sync(dirs, files []string) {
 // a tool writes a report into usually holds a good deal else. Re-analyzing the
 // repository for those is work nobody asked for.
 func (w *Watcher) counts(name string) bool {
+	if scratch(filepath.Base(name)) {
+		return false
+	}
 	return w.dirs[filepath.Dir(name)] || w.files[name]
 }
 
+// scratch reports whether a file name is one an editor writes beside the file being
+// edited and removes again - a swap file, a backup, a lock, vim's write test - which
+// changes nothing that could be on the map.
+func scratch(base string) bool {
+	switch {
+	case base == "4913", strings.HasSuffix(base, "~"), strings.HasPrefix(base, ".#"):
+		return true
+	case strings.HasPrefix(base, "#") && strings.HasSuffix(base, "#"):
+		return true
+	}
+	switch filepath.Ext(base) {
+	case ".swp", ".swo", ".swx", ".tmp":
+		return true
+	}
+	return false
+}
+
+// maxWait bounds, in debounces, how long a stream of changes can defer onChange.
+const maxWait = 10
+
 // Run calls onChange once changes have been quiet for debounce, until ctx ends.
 // Changes that arrive while onChange runs trigger another call afterwards.
+//
+// Changes that never go quiet - a build writing into a watched directory, a log
+// growing in one - do not put the call off indefinitely: it comes at the latest
+// maxWait debounces after the first of them.
 func (w *Watcher) Run(ctx context.Context, debounce time.Duration, onChange func()) {
 	defer w.w.Close()
 	timer := time.NewTimer(time.Hour)
 	timer.Stop()
+	var first time.Time // of the changes not yet handed on; zero when there are none
 	for {
 		select {
 		case <-ctx.Done():
@@ -102,13 +131,21 @@ func (w *Watcher) Run(ctx context.Context, debounce time.Duration, onChange func
 			if !w.counts(ev.Name) {
 				continue
 			}
-			timer.Reset(debounce)
+			if first.IsZero() {
+				first = time.Now()
+			}
+			wait := debounce
+			if left := time.Until(first.Add(maxWait * debounce)); left < wait {
+				wait = max(left, 0)
+			}
+			timer.Reset(wait)
 		case err, ok := <-w.w.Errors:
 			if !ok {
 				return
 			}
 			log.Printf("watch: %v", err)
 		case <-timer.C:
+			first = time.Time{}
 			onChange()
 		}
 	}

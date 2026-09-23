@@ -76,3 +76,41 @@ func TestOnlyTheNamedFilesInTheirDirectories(t *testing.T) {
 		t.Fatalf("writing the report called onChange %d times, want 1", n)
 	}
 }
+
+// Writes that never pause - a build, a growing log - still get the map updated.
+func TestChangesThatNeverGoQuiet(t *testing.T) {
+	dir := t.TempDir()
+	w, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	w.Sync([]string{dir}, nil)
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+	var calls atomic.Int32
+	debounce := 50 * time.Millisecond
+	go w.Run(ctx, debounce, func() { calls.Add(1) })
+
+	// A write every 20ms for well past maxWait debounces: never quiet for one.
+	stop := time.Now().Add(3 * maxWait * debounce)
+	for i := 0; time.Now().Before(stop); i++ {
+		os.WriteFile(filepath.Join(dir, "a.go"), []byte{byte(i)}, 0o644)
+		time.Sleep(20 * time.Millisecond)
+	}
+	if calls.Load() == 0 {
+		t.Error("a steady stream of changes put the update off for good")
+	}
+}
+
+func TestEditorScratchFilesAreNotChanges(t *testing.T) {
+	for _, name := range []string{".main.go.swp", "main.go~", "4913", ".#main.go", "#main.go#", "x.tmp"} {
+		if !scratch(name) {
+			t.Errorf("%s counts as a change", name)
+		}
+	}
+	for _, name := range []string{"main.go", "go.mod", "report.json"} {
+		if scratch(name) {
+			t.Errorf("%s is ignored", name)
+		}
+	}
+}
