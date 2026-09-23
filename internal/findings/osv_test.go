@@ -132,3 +132,26 @@ func TestOSVAsksNothingWhenThereIsNothingToAsk(t *testing.T) {
 		}
 	}
 }
+
+// An advisory that fixes two release lines separately suggests the fix on the line in
+// use, not whichever the advisory happens to list first.
+func TestOSVSuggestsTheFixOnTheLineInUse(t *testing.T) {
+	var e osvEntry
+	if err := json.Unmarshal([]byte(`{"id":"GHSA-x","affected":[
+		{"package":{"name":"lib"},"ranges":[{"type":"SEMVER","events":[{"introduced":"0"},{"fixed":"2.9.10"}]}]},
+		{"package":{"name":"lib"},"ranges":[{"type":"SEMVER","events":[{"introduced":"2.12.0"},{"fixed":"2.12.6"}]}]},
+		{"package":{"name":"other"},"ranges":[{"type":"SEMVER","events":[{"introduced":"0"},{"fixed":"2.12.2"}]}]}
+	]}`), &e); err != nil {
+		t.Fatal(err)
+	}
+	for version, want := range map[string]string{
+		"2.12.1": "2.12.6",
+		"2.9.3":  "2.9.10",
+		"":       "2.9.10", // nothing to compare with: the first fix, as before
+		"r1234":  "2.9.10",
+	} {
+		if got := e.fixed("lib", version); got != want {
+			t.Errorf("at %q: fixed in %q, want %q", version, got, want)
+		}
+	}
+}
