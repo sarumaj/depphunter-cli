@@ -127,6 +127,21 @@ describe('depphunter.open', { skip: available() ? false : 'no depphunter binary 
     assert.strictEqual(stub.last('executeCommand', 'simpleBrowser.show')[2], address);
   });
 
+  it('starts one server for two opens made while it is starting', async () => {
+    await stub.commands.get('depphunter.stop')();
+    stub.settings.openIn = 'simpleBrowser';
+    try {
+      await Promise.all([stub.commands.get('depphunter.open')(), stub.commands.get('depphunter.open')()]);
+      const shown = stub.calls.filter(c => c[0] === 'executeCommand' && c[1] === 'simpleBrowser.show').slice(-2);
+      assert.strictEqual(shown.length, 2);
+      // Both opens were given the one server: the second waited for the first.
+      assert.strictEqual(shown[0][2], shown[1][2]);
+      address = shown[1][2];
+    } finally {
+      stub.settings.openIn = 'webview';
+    }
+  });
+
   it('closes the tab when the server stops', async () => {
     stub.settings.openIn = 'webview';
     await stub.commands.get('depphunter.open')();

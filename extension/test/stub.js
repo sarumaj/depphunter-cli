@@ -129,6 +129,21 @@ const vscode = {
   ViewColumn: { Active: -1 },
   ProgressLocation: { Notification: 15 },
   CancellationError: class CancellationError extends Error {},
+  CancellationTokenSource: class CancellationTokenSource {
+    constructor() {
+      const listeners = [];
+      this.token = {
+        isCancellationRequested: false,
+        onCancellationRequested: fn => { listeners.push(fn); return { dispose() {} }; },
+      };
+      this.cancel = () => {
+        if (this.token.isCancellationRequested) return;
+        this.token.isCancellationRequested = true;
+        for (const fn of listeners) fn();
+      };
+    }
+    dispose() {}
+  },
 };
 
 function log(text) {
