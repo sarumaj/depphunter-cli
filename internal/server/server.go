@@ -198,15 +198,20 @@ func newSnapshot(g *graph.Graph, version int) (*snapshot, error) {
 // whose contents were re-read; together with added, removed and resized files they are
 // reported as changed. It returns false when the graph did not change.
 func (s *Server) Update(g *graph.Graph, touched []string) (bool, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	sn, err := newSnapshot(g, s.snap.version+1)
+	// Encoded before the lock is taken: on a large repository it is the expensive
+	// part of an update, and every request that reads the server's state - the
+	// graph, the session, the event streams - would wait for it. The version is only
+	// assigned once the snapshot is known to replace the current one.
+	sn, err := newSnapshot(g, 0)
 	if err != nil {
 		return false, err
 	}
+	s.mu.Lock()
+	defer s.mu.Unlock()
 	if sn.fingerprint == s.snap.fingerprint {
 		return false, nil
 	}
+	sn.version = s.snap.version + 1
 	changed := map[string]bool{}
 	for p, loc := range sn.files {
 		if old, ok := s.snap.files[p]; !ok || old != loc {
