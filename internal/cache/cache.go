@@ -9,7 +9,6 @@ import (
 	"encoding/hex"
 	"fmt"
 	"os"
-	"path"
 	"path/filepath"
 	"sync"
 
@@ -57,11 +56,12 @@ func Open(dir, root string) *Cache {
 	return c
 }
 
-// Key identifies an extraction: plugin, its version, the file extension (plugins
-// pick grammars by it) and the content hash.
-func Key(plugin string, version int, filePath string, src []byte) string {
+// Key identifies an extraction: plugin, its version, the class of the file (its
+// extension, which plugins pick grammars by, and whatever else lang.ClassOf says
+// the plugin reads) and the content hash.
+func Key(plugin string, version int, class string, src []byte) string {
 	sum := sha256.Sum256(src)
-	return fmt.Sprintf("%s/%d/%s/%x", plugin, version, path.Ext(filePath), sum)
+	return fmt.Sprintf("%s/%d/%s/%x", plugin, version, class, sum)
 }
 
 // BeginRun starts a new analysis: entries the previous run did not use are dropped,

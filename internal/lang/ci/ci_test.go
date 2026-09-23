@@ -3,6 +3,7 @@ package ci
 import (
 	"testing"
 
+	"github.com/sarumaj/depphunter-cli/internal/cache"
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/langtest"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
@@ -134,5 +135,20 @@ func TestImageReferences(t *testing.T) {
 		if got := image(c.ref); got != c.want {
 			t.Errorf("%s: got %+v, want %+v", c.ref, got, c.want)
 		}
+	}
+}
+
+// The same YAML is read as a workflow, an action or a GitLab pipeline depending on
+// where it is, so where it is has to be part of the cache key.
+func TestTheKindOfFileIsPartOfTheCacheKey(t *testing.T) {
+	src := []byte("runs:\n  using: composite\n")
+	key := func(p string) string {
+		return cache.Key(Plugin{}.Name(), Plugin{}.Version(), lang.ClassOf(Plugin{}, &scan.File{Path: p}), src)
+	}
+	if key(".github/workflows/x.yml") == key("action.yml") || key("action.yml") == key(".gitlab-ci.yml") {
+		t.Error("files read differently share a cache entry")
+	}
+	if key(".github/workflows/a.yml") != key(".github/workflows/b.yml") {
+		t.Error("two workflows with the same content do not share one")
 	}
 }
