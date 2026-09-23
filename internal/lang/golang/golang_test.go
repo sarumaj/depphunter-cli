@@ -1,10 +1,12 @@
 package golang
 
 import (
+	"path/filepath"
 	"testing"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/langtest"
+	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
 // testdata/repo holds two modules: app (requires cobra, replaces lib with ../lib) and
@@ -56,5 +58,14 @@ func TestSymbols(t *testing.T) {
 		if got[name] != kind {
 			t.Errorf("symbol %s: got kind %q, want %q (all: %v)", name, got[name], kind, got)
 		}
+	}
+}
+
+// A go.mod the scan listed can be gone by the time it is read - a branch switch, an
+// editor saving by rename - and that is no reason to fail the whole analysis.
+func TestAVanishedGoModIsSkipped(t *testing.T) {
+	gone := &scan.File{Path: "sub/go.mod", Abs: filepath.Join(t.TempDir(), "go.mod")}
+	if _, err := (Plugin{}).Resolver(t.TempDir(), []*scan.File{gone}); err != nil {
+		t.Errorf("a go.mod that could not be read failed the analysis: %v", err)
 	}
 }
