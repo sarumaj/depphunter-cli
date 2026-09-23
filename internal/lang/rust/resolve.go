@@ -32,8 +32,7 @@ type resolver struct {
 	members map[string]string // normalized package name -> crate dir (workspace / path crates)
 	// locked is every version of each package Cargo.lock holds. A lock file often
 	// holds two of one crate - syn 1 and syn 2, a windows-sys per major - and which
-	// of them a dependency means is decided by its own requirement, not by which
-	// came last in the file.
+	// of them a dependency means is decided by its own requirement (see pick).
 	locked map[string][]string
 	tree   map[string][]locked // "package version" -> the crates it depends on
 }

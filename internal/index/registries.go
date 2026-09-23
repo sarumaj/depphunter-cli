@@ -381,8 +381,7 @@ func (c *Client) ociGet(ctx context.Context, index, repo, address, accept string
 			return nil, err
 		}
 		if token == "" {
-			// No challenge this client can answer. Said as what it is, rather than
-			// handed back as an empty body the caller would fail to parse as JSON.
+			// No challenge this client can answer: the registry refused.
 			return nil, fmt.Errorf("%s: %s", address, http.StatusText(http.StatusUnauthorized))
 		}
 		if resp, err = c.do(ctx, address, accept, token); err != nil {

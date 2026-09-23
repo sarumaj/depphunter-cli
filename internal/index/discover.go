@@ -41,9 +41,9 @@ func NewDiscoverer(env func(string) string, home string) *Discoverer {
 // Config is the configuration this discoverer fills.
 func (d *Discoverer) Config() *Config { return d.cfg }
 
-// Discover reads the machine's configuration, the first time, and then the
-// repository's - afresh each time, so an index taken out of a .npmrc under --watch is
-// gone from the next map rather than kept until the process restarts.
+// Discover reads the machine's configuration on the first call and the repository's
+// on every call, replacing what the repository declared before, so under --watch the
+// sources follow the repository's files as they change.
 func (d *Discoverer) Discover(files []*scan.File) *Config {
 	if !d.read {
 		d.cfg.machine(d.env, d.home)

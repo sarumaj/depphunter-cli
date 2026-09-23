@@ -34,12 +34,11 @@ func New(dir string, ttl time.Duration) *Store {
 	return &Store{dir: dir, ttl: ttl}
 }
 
-// sweep removes the answers nobody can use any more. A stale answer is only ever
-// replaced when the same question is asked again, and most are not - a package
-// upgraded, a project no longer opened - so without this the directory grows with
-// every version of everything ever asked about. It goes by the file's age, which is
-// never less than that of the answer in it, and leaves the scratch file of a Put that
-// may still be running alone for a while.
+// sweep removes answers past their time to live. A stale answer is replaced only when
+// the same question is asked again, and most never are, so without a sweep the
+// directory grows with every version ever asked about. It goes by file age, which is
+// never less than the age of the answer inside, and gives a Put's scratch file an hour
+// in case that Put is still running.
 func sweep(dir string, ttl time.Duration) {
 	entries, err := os.ReadDir(dir)
 	if err != nil {

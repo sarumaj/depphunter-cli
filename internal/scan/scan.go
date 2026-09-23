@@ -97,10 +97,9 @@ func gitFiles(ctx context.Context, root string) ([]string, error) {
 		}
 		seen[string(p)] = true
 		// Deleted-but-tracked files and submodule entries are listed but are not regular
-		// files. Nor is a symbolic link, which is not followed: one committed to the
-		// repository may point anywhere on this machine, and what a file node holds is
-		// served by /api/file and written into the HTML export. The walk below skips
-		// them for the same reason.
+		// files. Nor is a symbolic link, deliberately (Lstat): a committed link may point
+		// anywhere on this machine, and a file node's content is served by /api/file and
+		// written into the HTML export. walkFiles skips links too.
 		if st, err := os.Lstat(filepath.Join(root, string(p))); err == nil && st.Mode().IsRegular() {
 			paths = append(paths, string(p))
 		}

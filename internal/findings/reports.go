@@ -156,13 +156,10 @@ func readGovulncheck(data []byte) ([]*Finding, error) {
 	return out, nil
 }
 
-// callSite is where in this repository a trace reaches the vulnerable code: the frame
-// nearest the vulnerable symbol that is in the main module. govulncheck orders frames
-// from the vulnerable symbol (first, in the dependency) to the entry point (last, in
-// the main module), and each frame's filename is relative to its own module - so the
-// first frame is a path inside the dependency, and only a main-module frame is a path
-// here. A trace that is one frame long (module and package level findings) is its
-// own answer, or none.
+// callSite is the frame nearest the vulnerable symbol that is in the main module, or
+// nil. govulncheck orders frames from the vulnerable symbol to the entry point, which
+// is in the main module, and each filename is relative to its frame's own module, so
+// only a main-module frame names a path in this repository.
 func callSite(frames []govulnFrame) *govulnFrame {
 	if len(frames) == 0 {
 		return nil

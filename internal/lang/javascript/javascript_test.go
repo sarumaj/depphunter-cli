@@ -139,11 +139,11 @@ func TestYarnEntryKeys(t *testing.T) {
 	if err := os.WriteFile(path, []byte(lock), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if got := readYarnLock(path)["lodash@^4.17.0"]; got != "4.17.21" {
+	if got := readYarnLock([]byte(lock))["lodash@^4.17.0"]; got != "4.17.21" {
 		t.Errorf("locked version %q, want 4.17.21", got)
 	}
 	tr := newTree()
-	tr.addYarnTree(path)
+	tr.addYarnTree([]byte(lock))
 	if got := tr.locked["lodash"]; got != "4.17.21" {
 		t.Errorf("tree version %q, want 4.17.21", got)
 	}
