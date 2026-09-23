@@ -48,6 +48,9 @@ export type ServerEvent =
   // panel carries on listening without learning what it slept through.
   | { name: 'hello'; data: { version: number; etag: string; seq: number; resumed: boolean } };
 
+/** How long a call waits for the server's answer to start. */
+const REQUEST_TIMEOUT = 30_000;
+
 export class Api {
   private readonly base: string;
   private readonly token: string;
@@ -209,6 +212,10 @@ export class Api {
         });
       }, extra);
       req.on('error', reject);
+      // A server that took the connection and never answers - wedged, or busy with a
+      // re-analysis - would otherwise hold whatever awaits this for good, the map
+      // included. The event stream is left without one: it is quiet by design.
+      req.setTimeout(REQUEST_TIMEOUT, () => req.destroy(new Error(`${method} ${path}: no answer in ${REQUEST_TIMEOUT / 1000}s`)));
       if (body !== undefined) req.write(body);
       req.end();
     });

@@ -49,6 +49,7 @@ let home: string | undefined;
 
 export function activate(context: vscode.ExtensionContext): void {
   home = context.extensionPath;
+  settings = settingsOf(context.extension?.packageJSON);
   log = vscode.window.createOutputChannel('depphunter');
   status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
   status.command = 'depphunter.open';
@@ -85,7 +86,7 @@ export function activate(context: vscode.ExtensionContext): void {
       view.refresh();
     }),
     vscode.workspace.onDidChangeConfiguration(e => {
-      if (e.affectsConfiguration('depphunter')) offerRestart();
+      if (e.affectsConfiguration('depphunter')) void offerRestart(e);
     }),
   );
 }
@@ -352,8 +353,18 @@ async function launching(folder: { root: string; name: string }, cancel: vscode.
     // it - and a remembered address that answers nothing is worse than none. Listened
     // for before attach, which takes a round-trip or two: an exit during it would
     // otherwise go unheard and leave a dead server listed as running.
-    running.child.on('exit', () => {
-      if (sessions.get(folder.root) === session) end(folder.root);
+    running.child.on('exit', (code, signal) => {
+      if (sessions.get(folder.root) !== session) return;
+      end(folder.root);
+      // end() takes the tab with it, and a map that vanishes without a word looks
+      // like the editor's fault. stop and restart remove this listener first, so
+      // this is only ever a server that stopped on its own.
+      void vscode.window.showWarningMessage(
+        `depphunter for ${folder.name} stopped (${signal ?? `exit code ${code}`}).`, 'Show Log', 'Restart',
+      ).then(answer => {
+        if (answer === 'Show Log') log.show();
+        if (answer === 'Restart') void restart(vscode.Uri.file(folder.root));
+      });
     });
     // Awaited, so that the panel is filled by the time the map is on screen rather
     // than a moment afterwards. It is one request to a server on this machine, and
@@ -385,7 +396,7 @@ async function show(session: Session): Promise<void> {
     }
   }
   panel.open(session.root, `depphunter: ${session.name}`, address);
-  void check(address);
+  void check(session.url, address);
 }
 
 // Both take the folder the Maps view hands them; from the command palette they ask.
@@ -468,11 +479,37 @@ function refreshStatus(): void {
 
 // A server reads its settings once, at startup, so changing them changes nothing
 // until it is started again. Say so, rather than leaving the user to wonder.
-async function offerRestart(): Promise<void> {
-  if (sessions.size === 0) return;
-  const answer = await vscode.window.showInformationMessage(
-    'depphunter settings changed. Restart the server to use them?', 'Restart');
-  if (answer === 'Restart') await restart();
+/** The extension's own settings, from its manifest; empty when it cannot be read. */
+let settings: string[] = [];
+
+function settingsOf(manifest: unknown): string[] {
+  const configuration = (manifest as { contributes?: { configuration?: unknown } } | undefined)?.contributes?.configuration;
+  const sections = (Array.isArray(configuration) ? configuration : [configuration]) as { properties?: object }[];
+  return sections.flatMap(section => Object.keys(section?.properties ?? {}));
+}
+
+/** Whether a restart prompt is on screen, so that editing settings.json does not stack them. */
+let offering = false;
+
+async function offerRestart(e: vscode.ConfigurationChangeEvent): Promise<void> {
+  // depphunter.openIn is read each time a map is shown; nothing running needs it.
+  const onlyShown = e.affectsConfiguration('depphunter.openIn')
+    && settings.length > 0 && !settings.some(key => key !== 'depphunter.openIn' && e.affectsConfiguration(key));
+  const affected = [...sessions.keys()].filter(root => e.affectsConfiguration('depphunter', vscode.Uri.file(root)));
+  if (onlyShown || affected.length === 0 || offering) return;
+  offering = true;
+  try {
+    const answer = await vscode.window.showInformationMessage(
+      'depphunter settings changed. Restart the server to use them?', 'Restart');
+    if (answer !== 'Restart') return;
+    // The servers running then, not the ones the change was made under: one may have
+    // been stopped, or restarted, while the question was on screen.
+    for (const root of affected) {
+      if (sessions.has(root)) await restart(vscode.Uri.file(root));
+    }
+  } finally {
+    offering = false;
+  }
 }
 
 /**
@@ -501,9 +538,18 @@ async function reachable(url: string): Promise<string> {
  * no hint as to why. Here it can be named, in the log, next to the command line that
  * produced it.
  */
-async function check(address: string): Promise<void> {
+async function check(local: string, address: string): Promise<void> {
+  // Asked of the server where the extension host reaches it, on its loopback: the
+  // rewritten address is for the browser's machine, and over a remote or a tunnel it
+  // is not this one. What is checked is that the path and query - the token - came
+  // through the rewrite, so they are taken from it.
+  if (typeof fetch !== 'function') return; // Node before 18: nothing to ask with
+  const probe = new URL(local);
+  const shown = new URL(address);
+  probe.pathname = shown.pathname;
+  probe.search = shown.search;
   try {
-    const res = await fetch(address, { redirect: 'manual' });
+    const res = await fetch(probe, { redirect: 'manual' });
     if (res.status === 200) return;
     log.appendLine(`the map answered ${res.status} at ${address.replace(/token=[^&]*/, 'token=...')}`);
     log.appendLine(res.status === 401 || res.status === 303

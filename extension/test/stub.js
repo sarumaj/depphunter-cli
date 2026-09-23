@@ -80,6 +80,7 @@ const vscode = {
     }),
     showErrorMessage: async m => { calls.push(['error', m]); return undefined; },
     showInformationMessage: async m => { calls.push(['info', m]); return undefined; },
+    showWarningMessage: async m => { calls.push(['warning', m]); return undefined; },
     showWorkspaceFolderPick: async () => vscode.workspace.workspaceFolders[0],
     showQuickPick: async items => items[0],
     registerTreeDataProvider: (id, provider) => {
