@@ -73,17 +73,7 @@ func Read(r io.Reader) (name string, out []*Finding, err error) {
 // the places in this repository that reach them. An advisory without a reachable call
 // is reported too, and says so.
 func readGovulncheck(data []byte) ([]*Finding, error) {
-	type trace struct {
-		Module   string `json:"module"`
-		Version  string `json:"version"`
-		Package  string `json:"package"`
-		Function string `json:"function"`
-		Position *struct {
-			Filename string `json:"filename"`
-			Line     int    `json:"line"`
-			Column   int    `json:"column"`
-		} `json:"position"`
-	}
+	type trace = govulnFrame
 	type message struct {
 		OSV     *osvEntry `json:"osv"`
 		Finding *struct {
@@ -130,15 +120,17 @@ func readGovulncheck(data []byte) ([]*Finding, error) {
 		if h.fixed == "" {
 			h.fixed = m.Finding.FixedVersion
 		}
-		if h.at == nil && top.Position != nil {
-			at := top
-			h.at = &at
+		if h.at == nil {
+			h.at = callSite(m.Finding.Trace)
 		}
 	}
 
 	var out []*Finding
 	for _, key := range order {
 		h := hits[key]
+		if h.at != nil && h.at.Position == nil {
+			h.at = nil
+		}
 		e, ok := entries[h.osv]
 		if !ok {
 			e = &osvEntry{ID: h.osv}
@@ -150,8 +142,8 @@ func readGovulncheck(data []byte) ([]*Finding, error) {
 		}
 		if h.at != nil && h.at.Position != nil {
 			f.Path, f.Line, f.Column = h.at.Position.Filename, h.at.Position.Line, h.at.Position.Column
-			if h.at.Function != "" {
-				f.Detail = prepend(f.Detail, "Reached from "+h.at.Function+".")
+			if name := symbol(h.at.Receiver, h.at.Function); name != "" {
+				f.Detail = prepend(f.Detail, "Reached from "+name+".")
 			}
 		} else {
 			f.Detail = prepend(f.Detail, "No call into the vulnerable code was found.")
@@ -162,6 +154,48 @@ func readGovulncheck(data []byte) ([]*Finding, error) {
 		out = append(out, f)
 	}
 	return out, nil
+}
+
+// callSite is where in this repository a trace reaches the vulnerable code: the frame
+// nearest the vulnerable symbol that is in the main module. govulncheck orders frames
+// from the vulnerable symbol (first, in the dependency) to the entry point (last, in
+// the main module), and each frame's filename is relative to its own module - so the
+// first frame is a path inside the dependency, and only a main-module frame is a path
+// here. A trace that is one frame long (module and package level findings) is its
+// own answer, or none.
+func callSite(frames []govulnFrame) *govulnFrame {
+	if len(frames) == 0 {
+		return nil
+	}
+	main := frames[len(frames)-1].Module
+	for i := range frames {
+		if frames[i].Module == main && frames[i].Position != nil {
+			return &frames[i]
+		}
+	}
+	return nil
+}
+
+// govulnFrame is one frame of a govulncheck trace.
+type govulnFrame struct {
+	Module   string `json:"module"`
+	Version  string `json:"version"`
+	Package  string `json:"package"`
+	Function string `json:"function"`
+	Receiver string `json:"receiver"`
+	Position *struct {
+		Filename string `json:"filename"`
+		Line     int    `json:"line"`
+		Column   int    `json:"column"`
+	} `json:"position"`
+}
+
+// symbol is a function's name as Go writes it, with its receiver when it has one.
+func symbol(receiver, function string) string {
+	if receiver != "" && function != "" {
+		return strings.TrimPrefix(receiver, "*") + "." + function
+	}
+	return function
 }
 
 // ------------------------------------------------------------------ osv-scanner
