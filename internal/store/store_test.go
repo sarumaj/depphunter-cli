@@ -63,7 +63,7 @@ func TestStaleAnswersAreAMiss(t *testing.T) {
 	}
 }
 
-// A store is an optimisation, so everything that could go wrong with one is a miss
+// A store is an optimization, so everything that could go wrong with one is a miss
 // rather than a failure - and a caller that has to ask which has a store it cannot
 // use from the branch where there is no cache directory.
 func TestNothingToKeepIsNotAFailure(t *testing.T) {
@@ -133,5 +133,28 @@ func TestConcurrentWritersDoNotPublishHalfAnAnswer(t *testing.T) {
 	left, _ := filepath.Glob(filepath.Join(s.dir, "put-*"))
 	if len(left) != 0 {
 		t.Errorf("scratch files left behind: %v", left)
+	}
+}
+
+func TestStaleAnswersAreSweptAway(t *testing.T) {
+	dir := t.TempDir()
+	s := New(dir, time.Hour)
+	s.Put("fresh", 1)
+	s.Put("stale", 2)
+	old := time.Now().Add(-2 * time.Hour)
+	os.Chtimes(s.path("stale"), old, old)
+	other := filepath.Join(dir, "README")
+	os.WriteFile(other, nil, 0o644)
+	os.Chtimes(other, old, old)
+
+	New(dir, time.Hour)
+	if _, err := os.Stat(s.path("stale")); !os.IsNotExist(err) {
+		t.Error("an answer past its time to live was kept")
+	}
+	if _, ok := Get[int](s, "fresh"); !ok {
+		t.Error("a fresh answer was swept")
+	}
+	if _, err := os.Stat(other); err != nil {
+		t.Error("a file the store did not write was removed")
 	}
 }
