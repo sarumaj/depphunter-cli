@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"golang.org/x/mod/semver"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
@@ -27,11 +28,19 @@ type crate struct {
 
 type resolver struct {
 	files   map[string]bool
-	crates  []*crate            // deepest first, so a file finds its own crate
-	members map[string]string   // normalized package name -> crate dir (workspace / path crates)
-	locked  map[string]string   // package -> version from Cargo.lock
-	tree    map[string][]string // package -> the crates it depends on, from Cargo.lock
+	crates  []*crate          // deepest first, so a file finds its own crate
+	members map[string]string // normalized package name -> crate dir (workspace / path crates)
+	// locked is every version of each package Cargo.lock holds. A lock file often
+	// holds two of one crate - syn 1 and syn 2, a windows-sys per major - and which
+	// of them a dependency means is decided by its own requirement, not by which
+	// came last in the file.
+	locked map[string][]string
+	tree   map[string][]locked // "package version" -> the crates it depends on
 }
+
+// locked is one crate in Cargo.lock: its name, and its version when the lock names
+// one - which it does exactly when that crate is there in more than one version.
+type locked struct{ name, version string }
 
 // Dependencies implements lang.Transitive: Cargo.lock resolves the whole crate graph,
 // so the answer needs nothing but the file the project already carries.
@@ -40,19 +49,72 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 		return nil
 	}
 	var out []lang.Target
-	for _, dep := range r.tree[t.Package] {
-		version := r.locked[dep]
+	for _, dep := range r.tree[t.Package+" "+r.pick(t.Package, t.Version)] {
+		version := dep.version
+		if version == "" {
+			version = r.pick(dep.name, "")
+		}
 		out = append(out, lang.Target{
-			Ecosystem: ecoCrates, Package: dep, Version: version, Pinned: version != "",
+			Ecosystem: ecoCrates, Package: dep.name, Version: version, Pinned: version != "",
 		})
 	}
 	return out
 }
 
+// pick is the locked version of a package that a requirement means: the only one
+// there is, the one it names exactly, or the newest one Cargo's default (caret)
+// reading of it accepts. "" when the lock holds none.
+func (r *resolver) pick(pkg, requirement string) string {
+	versions := r.locked[pkg]
+	if len(versions) <= 1 {
+		if len(versions) == 1 {
+			return versions[0]
+		}
+		return ""
+	}
+	req := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(requirement), "^="))
+	best := ""
+	for _, v := range versions {
+		if v == req {
+			return v
+		}
+		if (req == "" || caret(req, v)) && (best == "" || semver.Compare("v"+v, "v"+best) > 0) {
+			best = v
+		}
+	}
+	if best == "" { // a requirement this does not read (">=1, <3", "~1.2"): the newest
+		for _, v := range versions {
+			if best == "" || semver.Compare("v"+v, "v"+best) > 0 {
+				best = v
+			}
+		}
+	}
+	return best
+}
+
+// caret reports whether version v satisfies the requirement req read as Cargo reads a
+// bare one: the same leftmost non-zero component, and no older than req.
+func caret(req, v string) bool {
+	rp, vp := strings.Split(req, "."), strings.Split(v, ".")
+	for i, part := range rp {
+		if i >= len(vp) {
+			return false
+		}
+		if part != vp[i] {
+			return false
+		}
+		if part != "0" {
+			break
+		}
+	}
+	full := req + strings.Repeat(".0", max(0, 3-len(rp)))
+	return semver.Compare("v"+v, "v"+full) >= 0
+}
+
 func norm(name string) string { return strings.ReplaceAll(name, "-", "_") }
 
 func newResolver(all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, members: map[string]string{}, locked: map[string]string{}, tree: map[string][]string{}}
+	r := &resolver{files: map[string]bool{}, members: map[string]string{}, locked: map[string][]string{}, tree: map[string][]locked{}}
 	workspaceDeps := map[string]dep{}
 	type manifest struct {
 		f   *scan.File
@@ -83,11 +145,19 @@ func newResolver(all []*scan.File) *resolver {
 			}
 			if _, err := toml.DecodeFile(f.Abs, &lock); err == nil {
 				for _, p := range lock.Package {
-					r.locked[p.Name] = p.Version
+					r.locked[p.Name] = append(r.locked[p.Name], p.Version)
 					for _, d := range p.Dependencies {
-						if name, _, _ := strings.Cut(d, " "); name != "" && name != p.Name {
-							r.tree[p.Name] = append(r.tree[p.Name], name)
+						// "name", or "name version" and possibly " (source)".
+						fields := strings.Fields(d)
+						if len(fields) == 0 || fields[0] == p.Name {
+							continue
 						}
+						dep := locked{name: fields[0]}
+						if len(fields) > 1 {
+							dep.version = fields[1]
+						}
+						key := p.Name + " " + p.Version
+						r.tree[key] = append(r.tree[key], dep)
 					}
 				}
 			}
@@ -216,7 +286,7 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 			// Cargo reads a bare "1.2.3" as ^1.2.3, so a manifest never pins on its
 			// own: only Cargo.lock says which version is built.
 			t := lang.Target{Ecosystem: ecoCrates, Package: d.pkg, Version: d.version}
-			if exact := r.locked[d.pkg]; exact != "" {
+			if exact := r.pick(d.pkg, d.version); exact != "" {
 				t.Version, t.Requested, t.Pinned = exact, d.version, true
 			}
 			return t
