@@ -32,7 +32,11 @@ import (
 )
 
 const (
-	cookieName    = "depphunter_token"
+	// cookiePrefix starts the name of the cookie the token is exchanged for. The rest
+	// of the name is particular to the server: browsers keep cookies per host, not
+	// per port, so with one fixed name a second map opened on this machine would
+	// overwrite the first one's cookie and every tab of the first would be refused.
+	cookiePrefix  = "depphunter_"
 	maxServedFile = 4 << 20
 	// requestHeader must accompany state-changing requests. Cross-site pages cannot
 	// set it without a CORS preflight, which this server never grants.
@@ -46,6 +50,7 @@ const (
 
 type Server struct {
 	token  string
+	cookie string // the cookie's name; see cookiePrefix
 	root   string
 	assets fs.FS
 	editor string // command template; "" disables /api/open
@@ -113,7 +118,7 @@ func New(cfg config.Config, g *graph.Graph, assets fs.FS) (*Server, error) {
 		return nil, err
 	}
 	s := &Server{
-		token: hex.EncodeToString(tok), root: cfg.Root, assets: assets, editor: cfg.Editor, cfg: cfg,
+		token: hex.EncodeToString(tok), cookie: cookieFor(tok), root: cfg.Root, assets: assets, editor: cfg.Editor, cfg: cfg,
 		embed: cfg.Embed,
 		subs:  map[chan event]struct{}{}, done: make(chan struct{}),
 		lazy: map[string]*lazyData{
@@ -444,7 +449,7 @@ func (s *Server) allowed(w http.ResponseWriter, r *http.Request) bool {
 	// The ordinary way in: the token arrives once in the URL and is exchanged for a
 	// cookie, so it leaves the address bar and never reaches a link or a log.
 	if t := r.URL.Query().Get("token"); t != "" && s.equalToken(t) {
-		http.SetCookie(w, &http.Cookie{Name: cookieName, Value: s.token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
+		http.SetCookie(w, &http.Cookie{Name: s.cookie, Value: s.token, Path: "/", HttpOnly: true, SameSite: http.SameSiteStrictMode})
 		u := *r.URL
 		q := u.Query()
 		q.Del("token")
@@ -452,7 +457,7 @@ func (s *Server) allowed(w http.ResponseWriter, r *http.Request) bool {
 		http.Redirect(w, r, u.String(), http.StatusSeeOther)
 		return false
 	}
-	if c, err := r.Cookie(cookieName); err != nil || !s.equalToken(c.Value) {
+	if c, err := r.Cookie(s.cookie); err != nil || !s.equalToken(c.Value) {
 		http.Error(w, "unauthorized: open the URL printed by depphunter", http.StatusUnauthorized)
 		return false
 	}
@@ -479,6 +484,14 @@ func (s *Server) embedAllowed(w http.ResponseWriter, r *http.Request) bool {
 	}
 	http.Error(w, "unauthorized: open the URL printed by depphunter", http.StatusUnauthorized)
 	return false
+}
+
+// cookieFor names the cookie of the server with this token. It is derived from the
+// token rather than taken from it, so the name, which is not guarded as the value
+// is, gives nothing of the token away.
+func cookieFor(token []byte) string {
+	sum := sha256.Sum256(append([]byte("cookie:"), token...))
+	return cookiePrefix + hex.EncodeToString(sum[:6])
 }
 
 func (s *Server) equalToken(t string) bool {
