@@ -83,6 +83,22 @@ func TestTokenExchangeAndAccess(t *testing.T) {
 	}
 }
 
+func TestTwoServersOneBrowser(t *testing.T) {
+	// Browsers keep cookies per host, not per port: one jar for both servers is what a
+	// browser with two maps open looks like.
+	_, url1, base1 := start(t)
+	_, url2, base2 := start(t)
+	jar, _ := cookiejar.New(nil)
+	c := &http.Client{Jar: jar}
+	get(t, c, url1, nil)
+	get(t, c, url2, nil)
+	for _, base := range []string{base1, base2} {
+		if code, _ := get(t, c, base+"/api/graph", nil); code != http.StatusOK {
+			t.Errorf("%s after logging in to both: got %d", base, code)
+		}
+	}
+}
+
 func TestFileAllowList(t *testing.T) {
 	_, url, base := start(t)
 	jar, _ := cookiejar.New(nil)
