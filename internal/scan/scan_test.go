@@ -3,6 +3,7 @@ package scan
 import (
 	"context"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"testing"
 )
@@ -41,5 +42,36 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 	}
 	if f := byPath["img.bin"]; !f.Binary || f.LOC != 0 {
 		t.Errorf("img.bin: %+v", f)
+	}
+}
+
+func TestScanSkipsSymlinksInGit(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	outside := filepath.Join(t.TempDir(), "secret.txt")
+	os.WriteFile(outside, []byte("not part of the repository\n"), 0o644)
+	root := t.TempDir()
+	os.WriteFile(filepath.Join(root, "a.go"), []byte("package a\n"), 0o644)
+	if err := os.Symlink(outside, filepath.Join(root, "notes.txt")); err != nil {
+		t.Skip("symlinks unavailable:", err)
+	}
+	for _, args := range [][]string{{"init", "-q"}, {"add", "."}} {
+		if out, err := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+
+	got, err := Scan(context.Background(), root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, f := range got {
+		if f.Path == "notes.txt" {
+			t.Errorf("a tracked symlink to %s was scanned as a file", outside)
+		}
+	}
+	if len(got) != 1 {
+		t.Errorf("got %d files, want a.go alone", len(got))
 	}
 }
