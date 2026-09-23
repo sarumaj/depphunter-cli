@@ -27,6 +27,10 @@ interface Session {
 }
 
 const sessions = new Map<string, Session>();
+// Servers still starting, by folder: a second open while the first is mapping waits
+// for it rather than starting another, and closing the window cancels them, since
+// until they are in sessions nothing else would stop them.
+const starting = new Map<string, { done: Promise<Session | undefined>; cancel: vscode.CancellationTokenSource }>();
 let log: vscode.OutputChannel;
 let status: vscode.StatusBarItem;
 let view: MapsView;
@@ -285,7 +289,7 @@ async function showResolution(): Promise<void> {
 async function openExternal(resource?: vscode.Uri): Promise<void> {
   const folder = await pick(resource);
   if (!folder) return;
-  const session = sessions.get(folder.root) ?? await launch(folder);
+  const session = await ensure(folder);
   if (!session) return;
   if (attached?.root !== session.root) await attach(session);
   await vscode.env.openExternal(vscode.Uri.parse(await reachable(session.url)));
@@ -299,7 +303,7 @@ function noted(err: unknown): void {
 async function open(resource?: vscode.Uri): Promise<void> {
   const folder = await pick(resource);
   if (!folder) return;
-  const session = sessions.get(folder.root) ?? await launch(folder);
+  const session = await ensure(folder);
   if (!session) return;
   // launch attaches the panel to what it started; this is the other way in, where
   // the server was already running - possibly for a different folder than the one
@@ -308,25 +312,55 @@ async function open(resource?: vscode.Uri): Promise<void> {
   await show(session);
 }
 
-async function launch(folder: { root: string; name: string }): Promise<Session | undefined> {
+/** The server for a folder: the one running, the one starting, or a new one. */
+function ensure(folder: { root: string; name: string }): Promise<Session | undefined> {
+  const session = sessions.get(folder.root);
+  if (session) return Promise.resolve(session);
+  return starting.get(folder.root)?.done ?? launch(folder);
+}
+
+function launch(folder: { root: string; name: string }): Promise<Session | undefined> {
+  const pending = starting.get(folder.root);
+  if (pending) return pending.done;
+  const cancel = new vscode.CancellationTokenSource();
+  const done = launching(folder, cancel).finally(() => {
+    starting.delete(folder.root);
+    cancel.dispose();
+  });
+  starting.set(folder.root, { done, cancel });
+  return done;
+}
+
+async function launching(folder: { root: string; name: string }, cancel: vscode.CancellationTokenSource): Promise<Session | undefined> {
   try {
     const running = await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: `depphunter: mapping ${folder.name}…`, cancellable: true },
-      (_progress, token) => start(folder.root, home, log, token),
+      async (_progress, token) => {
+        // Cancelled from the notification by the user, or by stopAll through cancel.
+        const link = token.onCancellationRequested(() => cancel.cancel());
+        try {
+          if (cancel.token.isCancellationRequested) throw new vscode.CancellationError();
+          return await start(folder.root, home, log, cancel.token);
+        } finally {
+          link.dispose();
+        }
+      },
     );
     const session: Session = { ...folder, ...running };
     sessions.set(folder.root, session);
+    // It may still stop on its own - a bad argument, a port taken, the user killing
+    // it - and a remembered address that answers nothing is worse than none. Listened
+    // for before attach, which takes a round-trip or two: an exit during it would
+    // otherwise go unheard and leave a dead server listed as running.
+    running.child.on('exit', () => {
+      if (sessions.get(folder.root) === session) end(folder.root);
+    });
     // Awaited, so that the panel is filled by the time the map is on screen rather
     // than a moment afterwards. It is one request to a server on this machine, and
     // it reports its own failures to the log.
     await attach(session);
-    // It may still stop on its own - a bad argument, a port taken, the user killing
-    // it - and a remembered address that answers nothing is worse than none.
-    running.child.on('exit', () => {
-      if (sessions.get(folder.root) === session) end(folder.root);
-    });
     refreshStatus();
-    return session;
+    return sessions.get(folder.root) === session ? session : undefined;
   } catch (err) {
     if (err instanceof vscode.CancellationError) return undefined;
     await report(err);
@@ -358,6 +392,8 @@ async function show(session: Session): Promise<void> {
 async function restart(resource?: vscode.Uri): Promise<void> {
   const root = resource?.fsPath ?? await pickRunning('Restart which map?');
   if (!root) return;
+  // One already starting is let finish, so that it is ended rather than orphaned.
+  await starting.get(root)?.done;
   const was = sessions.get(root);
   end(root);
   const session = await launch({ root, name: was?.name ?? (path.basename(root) || root) });
@@ -383,6 +419,7 @@ function end(root: string): void {
 }
 
 function stopAll(): void {
+  for (const { cancel } of starting.values()) cancel.cancel();
   for (const root of [...sessions.keys()]) end(root);
 }
 
