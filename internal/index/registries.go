@@ -377,8 +377,13 @@ func (c *Client) ociGet(ctx context.Context, index, repo, address, accept string
 		challenge := resp.Header.Get("Www-Authenticate")
 		resp.Body.Close()
 		token, err := c.ociToken(ctx, index, repo, challenge)
-		if err != nil || token == "" {
+		if err != nil {
 			return nil, err
+		}
+		if token == "" {
+			// No challenge this client can answer. Said as what it is, rather than
+			// handed back as an empty body the caller would fail to parse as JSON.
+			return nil, fmt.Errorf("%s: %s", address, http.StatusText(http.StatusUnauthorized))
 		}
 		if resp, err = c.do(ctx, address, accept, token); err != nil {
 			return nil, err

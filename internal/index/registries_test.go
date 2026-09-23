@@ -1,9 +1,11 @@
 package index
 
 import (
+	"context"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
@@ -211,5 +213,20 @@ func TestMavenIsNotAsked(t *testing.T) {
 	c := clientFor(t, Maven, srv.URL, "")
 	if deps := c.Dependencies(lang.Target{Ecosystem: Maven, Package: "org.slf4j", Version: "2.0.9"}); len(deps) != 0 {
 		t.Errorf("got %v", names(deps))
+	}
+}
+
+// A 401 with no challenge this client can answer is reported as a 401, not as the
+// JSON parse error an empty body would make of it.
+func TestOCIUnansweredChallengeSaysUnauthorized(t *testing.T) {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Www-Authenticate", `Basic realm="registry"`)
+		w.WriteHeader(http.StatusUnauthorized)
+	}))
+	t.Cleanup(srv.Close)
+	c := clientFor(t, OCI, srv.URL, "")
+	_, err := c.ociGet(context.Background(), srv.URL, "library/app", srv.URL+"/v2/library/app/manifests/1", "application/json")
+	if err == nil || !strings.Contains(err.Error(), "Unauthorized") {
+		t.Errorf("got %v, want an Unauthorized error", err)
 	}
 }
