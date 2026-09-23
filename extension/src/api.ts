@@ -114,6 +114,15 @@ export class Api {
 
     const connect = () => {
       if (stopped) return;
+      // A connection ends with 'error' before a response, or 'close' after one, and
+      // may report both: only the first of them schedules the next attempt.
+      let over = false;
+      const again = () => {
+        if (over || stopped) return;
+        over = true;
+        retry = setTimeout(connect, wait);
+        wait = Math.min(wait * 2, 30_000);
+      };
       // Last-Event-ID is how the greeting knows whether this is a reconnection, and
       // therefore whether anything was announced while the connection was down.
       const resume = this.lastEvent ? { 'Last-Event-ID': this.lastEvent } : {};
@@ -123,6 +132,9 @@ export class Api {
           again();
           return;
         }
+        // Connected: the next drop is retried promptly again, however long the
+        // server was away before this.
+        wait = 1000;
         // An event is a few lines and a blank one; only whole events are parsed, so
         // one split across two reads is not half-read.
         let pending = '';
@@ -142,7 +154,8 @@ export class Api {
           }
           if (pending.length > 64 << 10) pending = ''; // not an event; nothing to wait for
         });
-        res.on('end', again);
+        // 'close' rather than 'end': a connection reset mid-stream never ends.
+        res.on('close', again);
       }, resume);
       request.on('error', again);
       request.end();
@@ -152,11 +165,6 @@ export class Api {
     // forever would be a request a second forever. Slowing down is enough: the view
     // is refreshed from scratch whenever a server is started again.
     let wait = 1000;
-    const again = () => {
-      if (stopped) return;
-      retry = setTimeout(connect, wait);
-      wait = Math.min(wait * 2, 30_000);
-    };
 
     connect();
     return new vscode.Disposable(() => {
