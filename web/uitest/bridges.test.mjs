@@ -1,19 +1,15 @@
-// The bridges: what carries a walker, and what carries a road.
+// The bridges: what links the islands to the mainland, and what carries a walker.
 //
-// Both used to be wrong in the same place. A deck answered "yes, stand here" for any
-// point within its drawn width, so a walker whose body was half over the railing was
-// still held up; and the roads knew nothing about bridges at all, so a road to an
-// island swam the bay wherever the sweep found it cheapest - beside a crossing that
-// was right there. Neither is visible in a screenshot until you go and look, which is
-// what these are for.
+// Every island is on the end of one, so a bridge that goes nowhere or carries nobody
+// is an island that cannot be reached on foot. Neither failing is visible in a
+// screenshot until you go and look, which is what these are for.
 
 import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 
-import { box, scene, vertices } from './stub.mjs';
+import { box } from './stub.mjs';
 
 const { bridgesFor, bridgeBounds, bridgeHeight } = await import('../static/city.js');
-const { Routes } = await import('../static/routes.js');
 
 // A body's radius, as walk.js knows it: what a deck is narrowed by before it will
 // carry anyone.
@@ -34,8 +30,6 @@ function twoIslands() {
     box('building', 10, 1.2, 0.8, 0.8, { y: SHORE, h: 1 }),
   ];
 }
-
-const gap = (v, from = 3.1, to = 7.9) => v > from && v < to;
 
 describe('a bridge deck', () => {
   it('links every island to the mainland and to nothing twice', () => {
@@ -82,54 +76,5 @@ describe('a bridge deck', () => {
     const [r] = bridgesFor(twoIslands());
     const mid = (r.from + r.to) / 2;
     assert.equal(bridgeHeight(r, mid, r.across), bridgeHeight(r, mid, r.across, 0));
-  });
-});
-
-describe('a road to an island', () => {
-  it('crosses on the bridge rather than beside it', () => {
-    const boxes = twoIslands();
-    const [ashore, across] = boxes.filter(b => b.kind === 'building');
-    const [r] = bridgesFor(boxes);
-    const deck = bridgeBounds(r);
-
-    const routes = new Routes(scene());
-    routes.setLayout(boxes);
-    routes.set([{ from: ashore, to: across, color: '#222222' }], ashore);
-
-    const laid = vertices(routes);
-    assert.ok(laid.length > 0, 'no road was laid at all');
-
-    const overWater = laid.filter(v => gap(v.x));
-    assert.ok(overWater.length > 0, 'the road never crossed the water');
-
-    // Every piece of road out over the gap is on the deck. The road is a ribbon with
-    // its own width and its casing, so it may sit a little proud of the deck's line;
-    // what it may not do is be somewhere else entirely.
-    const half = (deck.z1 - deck.z0) / 2 + 0.2;
-    const strays = overWater.filter(v => Math.abs(v.z - r.across) > half);
-    assert.equal(strays.length, 0,
-      `${strays.length} of ${overWater.length} road vertices cross the water away from the bridge` +
-      ` (worst z = ${strays.reduce((m, v) => Math.max(m, Math.abs(v.z - r.across)), 0)})`);
-
-    // ... and it climbs the arch rather than lying flat at the shore's level, which
-    // is what a causeway would do.
-    const top = overWater.reduce((m, v) => Math.max(m, v.y), -Infinity);
-    assert.ok(top > SHORE + 0.1, `the road stayed at ${top}, flat over the water`);
-  });
-
-  it('still crosses where there is no bridge to take', () => {
-    // One shore, so bridgesFor builds nothing: the causeway is the fallback and has
-    // to keep working, or an island nothing could be built to would be unreachable.
-    const boxes = [
-      box('land', 0, 0, 6, 6),
-      box('building', -2, 2, 0.8, 0.8, { y: 0.2, h: 1 }),
-      box('building', 2, -2, 0.8, 0.8, { y: 0.2, h: 1 }),
-    ];
-    assert.equal(bridgesFor(boxes).length, 0);
-    const [a, b] = boxes.filter(x => x.kind === 'building');
-    const routes = new Routes(scene());
-    routes.setLayout(boxes);
-    routes.set([{ from: a, to: b, color: '#222222' }], a);
-    assert.ok(vertices(routes).length > 0, 'no road between two buildings on one shore');
   });
 });

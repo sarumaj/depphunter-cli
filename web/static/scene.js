@@ -554,8 +554,12 @@ export class MapScene {
   /**
    * Renders at once and returns the canvas. Read it before yielding to the browser:
    * the drawing buffer is not preserved between frames.
+   *
+   * `hands` draws what the walker is holding over the world, which is every frame but
+   * one: a photograph taken with the camera cannot have the camera in it, and a hand
+   * across the corner of a picture is the same mistake as a thumb over the lens.
    */
-  renderNow() {
+  renderNow(hands = true) {
     const r = this.renderer;
     // Whatever moves by itself - clouds, water, the drift of the void - reads this,
     // so it has to be set per frame and not only where the walker is placed.
@@ -564,7 +568,7 @@ export class MapScene {
     // The held tool, second and on top of everything: the depth buffer is cleared
     // between the two, so nothing in the world can occlude a hand that is, in truth,
     // a few centimetres from the lens.
-    if (this.walking && this.viewScene.children.length) {
+    if (hands && this.walking && this.viewScene.children.length) {
       r.autoClear = false;
       r.clearDepth();
       r.render(this.viewScene, this.walkCamera);

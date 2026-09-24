@@ -232,10 +232,15 @@ main { position: relative; flex: 1; min-height: 0; }
   position: absolute; top: 12px; left: 50%; transform: translateX(-50%);
   max-width: calc(100% - 32px); text-align: center; color: var(--text-2);
 }
-#walk-hud .w-stats { display: flex; gap: 6px; justify-content: center; }
+/* Wrapping rather than overflowing: the row grows a chip when the walker is flying or
+   afloat, and a narrow window would otherwise push the health bar off the side. */
+#walk-hud .w-stats { display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
+/* flex: none, because these are a row of small fixed things and a flex item shrinks by
+   default: on a narrow window the row squeezed the health bar away to nothing while the
+   short chips beside it survived, which read as the bar having been replaced by them. */
 #walk-hud .w-chip {
-  display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px;
-  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  display: inline-flex; align-items: center; gap: 4px; padding: 2px 8px; flex: none;
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
   border: 1px solid var(--border); border-radius: 999px; box-shadow: var(--shadow);
   font-size: 12px; line-height: 18px;
 }
@@ -266,14 +271,38 @@ main { position: relative; flex: 1; min-height: 0; }
 #walk-hud .w-health[data-state="well"] .w-health-fill { background: #3fae6a; }
 #walk-hud .w-health[data-state="hurt"] .w-health-fill { background: #e0a32e; }
 #walk-hud .w-health[data-state="bad"] .w-health-fill { background: #e4402f; }
+/* How much wind the walker has left, drawn the same way as health and for the same
+   reason: running and jumping are spent out of it, and how much is left has to be
+   readable while running away from something. */
+#walk-hud .w-ic.wind { clip-path: polygon(58% 0, 20% 56%, 46% 56%, 34% 100%, 82% 40%, 52% 40%); }
+#walk-hud .w-stamina-fill { display: block; height: 100%; width: 100%; background: #d6c04a; transition: width 0.18s; }
+#walk-hud .w-stamina[data-state="low"] .w-stamina-fill { background: #e0a32e; }
+#walk-hud .w-stamina[data-state="empty"] .w-stamina-fill { background: #e4402f; }
+/* What is left in the carried tool's tank, drawn the same way as health so the two
+   read as one row of gauges rather than two unrelated widgets. */
+#walk-hud .w-ic.fuel { clip-path: polygon(20% 0, 80% 0, 80% 22%, 100% 40%, 100% 100%, 20% 100%); }
+#walk-hud .w-fuel-fill { display: block; height: 100%; width: 100%; background: #59b0e6; transition: width 0.18s; }
+#walk-hud .w-fuel[data-state="low"] .w-fuel-fill { background: #e0a32e; }
+#walk-hud .w-fuel[data-state="empty"] .w-fuel-fill { background: #e4402f; }
 /* A hit washes the edges of the screen red for a moment (health.js takes the class
    off again), which is the one thing a bar in the corner cannot say fast enough. */
 #walk-hud.hit::after {
   content: ""; position: absolute; inset: 0; pointer-events: none;
   box-shadow: inset 0 0 90px 10px rgba(200, 32, 24, 0.5);
 }
+/* And the last one fills the screen instead: the walker stops answering to anything,
+   the red comes up over the whole view and holds, and then the map is back. --dead is
+   how far into it walk.js has got, so the fade is driven by the frame clock rather
+   than by an animation that would have to be restarted and cancelled. */
+#walk-hud.dead::before {
+  content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 1;
+  background: radial-gradient(ellipse at center, rgba(120, 8, 6, 0.55), rgba(90, 4, 4, 0.98));
+  opacity: var(--dead, 0);
+}
+#walk-hud.dead .w-slots, #walk-hud.dead .w-radar, #walk-hud.dead .crosshair { opacity: 0.15; }
+#walk-hud.dead .w-flash { position: relative; z-index: 2; }
 #walk-hud .w-keys { font-size: 12px; margin-top: 5px; color: var(--text-2);
-  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
   border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px; box-shadow: var(--shadow); }
 
 /* The tools, as slots along the bottom: the number that picks each one, and the name
@@ -296,22 +325,40 @@ main { position: relative; flex: 1; min-height: 0; }
 #walk-hud .w-slots { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; justify-content: center; }
 /* The two kinds, kept apart: a primary tool does something to the map and a secondary
    one does something to you, and reaching for the wrong one should look like a mistake
-   before it is made. The gap between them is labelled, once. */
-#walk-hud .w-slot-gap {
-  font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-2);
-  opacity: 0.65; padding: 0 3px; border-left: 1px solid var(--border); margin-left: 3px;
+   before it is made.
+   Which hand each group of slots belongs to: four fingers, a palm and a thumb off to
+   one side, which is as much of a hand as fourteen pixels will carry. The left one is
+   the same drawing mirrored, because that is what a left hand is. */
+#walk-hud .w-hand {
+  position: relative; width: 14px; height: 15px; flex: none; margin: 0 2px;
+  color: var(--text-2); opacity: 0.75;
 }
+#walk-hud .w-hand::before {
+  content: ""; position: absolute; left: 4px; top: 0; width: 9px; height: 8px;
+  background:
+    linear-gradient(currentColor, currentColor) 0 1px / 2px 7px no-repeat,
+    linear-gradient(currentColor, currentColor) 3px 0 / 2px 8px no-repeat,
+    linear-gradient(currentColor, currentColor) 6px 1px / 2px 7px no-repeat;
+}
+/* The palm, with the thumb hung off its side as a shadow rather than a third box. */
+#walk-hud .w-hand::after {
+  content: ""; position: absolute; left: 4px; top: 6px; width: 9px; height: 9px;
+  border-radius: 2px 2px 4px 4px; background: currentColor;
+  box-shadow: -3px 0 0 -1px currentColor;
+}
+/* Mirrored, and in the color the slots it stands over already wear. */
+#walk-hud .w-hand[data-hand="left"] { transform: scaleX(-1); color: #59b0e6; }
 #walk-hud .w-slot {
   display: flex; align-items: center; gap: 5px; padding: 3px 7px;
-  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
   border: 1px solid var(--border); border-radius: 7px;
-  font-size: 11px; color: var(--text-2); opacity: 0.66;
+  font-size: 11px; color: var(--text-2); opacity: 0.8;
 }
 #walk-hud .w-slot kbd { font-size: 10px; padding: 0 3px; }
 #walk-hud .w-slot .w-slot-name { display: none; }
 #walk-hud .w-slot[aria-selected="true"] {
   opacity: 1; color: var(--text); border-color: var(--accent);
-  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  background: var(--surface);
   box-shadow: var(--shadow);
 }
 #walk-hud .w-slot[aria-selected="true"] .w-slot-name { display: inline; font-weight: 600; }
@@ -350,7 +397,7 @@ main { position: relative; flex: 1; min-height: 0; }
   border-radius: 50%; box-shadow: var(--shadow);
 }
 #walk-hud .w-nearest {
-  font-size: 11px; color: var(--text); background: color-mix(in srgb, var(--surface) 88%, transparent);
+  font-size: 11px; color: var(--text); background: color-mix(in srgb, var(--surface) 96%, transparent);
   border: 1px solid var(--border); border-radius: 6px; padding: 1px 7px; white-space: nowrap;
   max-width: 340px; overflow: hidden; text-overflow: ellipsis;
 }
@@ -361,7 +408,7 @@ main { position: relative; flex: 1; min-height: 0; }
 #walk-hud .w-target:not([hidden]) {
   margin-top: 5px; font-size: 12px; color: var(--text);
   display: inline-block; padding: 2px 8px; border-radius: 6px;
-  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
   border: 1px solid var(--border);
 }
 #walk-hud.far .w-target { color: var(--text-2); }
@@ -369,14 +416,19 @@ main { position: relative; flex: 1; min-height: 0; }
 #walk-hud.far .crosshair { opacity: 0.32; }
 #walk-hud .w-target .sev-dot { display: inline-block; margin: 0 6px 0 0; vertical-align: baseline; }
 /* What just happened, above the slots. */
+/* Everything the HUD says is read against a moving street, which can be any color at
+   all - so anything carrying words covers what is behind it rather than tinting it. A
+   panel at a quarter opacity is a panel nobody can read over a pale wall, and being
+   read is the whole of what a message has to do. */
 #walk-hud .w-flash:not(:empty) {
   padding: 3px 9px; border-radius: 6px; font-size: 12px;
-  background: color-mix(in srgb, var(--select) 24%, transparent); color: var(--text);
-  border: 1px solid var(--border);
+  background: color-mix(in srgb, var(--surface) 96%, transparent); color: var(--text);
+  border: 1px solid var(--accent); box-shadow: var(--shadow);
 }
 #walk-hud .w-hint:not(:empty) {
   font-size: 11px; padding: 2px 8px; border-radius: 6px;
-  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  border: 1px solid var(--border); box-shadow: var(--shadow);
 }
 #walk-hud.compact .w-keys { display: none; } /* folded away once the walker gets going */
 #walk-hud .crosshair { transition: width 0.12s, height 0.12s; }
@@ -670,6 +722,43 @@ dialog th { text-align: left; padding: 3px 14px 3px 0; white-space: nowrap; font
 dialog td { color: var(--text-2); }
 dialog form { margin-top: 12px; text-align: right; }
 
+/* The help is reference rather than a prompt: it is a page of prose and tables, so it
+   is given the width a paragraph wants and a column for the term being explained that
+   is wide enough to hold a tool's name without wrapping it. */
+#help {
+  max-width: min(860px, calc(100% - 32px));
+  max-height: calc(100vh - 64px);
+  overflow: auto;
+}
+#help h2 { margin: 22px 0 8px; font-size: 15px; letter-spacing: 0.02em; }
+#help h2:first-child { margin-top: 0; }
+#help p { margin: 0 0 10px; color: var(--text-2); line-height: 1.55; max-width: 76ch; }
+#help table { margin-bottom: 2px; }
+#help th {
+  width: 150px; vertical-align: top; padding: 6px 16px 6px 0;
+  white-space: normal; color: var(--text); font-weight: 600;
+}
+#help td { vertical-align: top; padding: 6px 0; line-height: 1.5; border-top: 1px solid var(--border); }
+#help th { border-top: 1px solid var(--border); }
+#help tr:first-child th, #help tr:first-child td { border-top: none; }
+#help form { display: flex; gap: 8px; justify-content: flex-end; }
+
+/* The introduction, shown once on a first visit and from the help after that. One
+   short card at a time, because the point of it is to be read rather than skimmed. */
+#tour { max-width: min(520px, calc(100% - 32px)); }
+#tour h2 { font-size: 17px; }
+#tour p { margin: 0; color: var(--text-2); line-height: 1.6; min-height: 7.2em; }
+#tour footer { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
+#tour .grow { flex: 1; }
+#tour button.primary {
+  background: var(--accent); border-color: var(--accent); color: var(--page); font-weight: 600;
+}
+#tour-dots { display: inline-flex; gap: 5px; }
+#tour-dots i {
+  width: 6px; height: 6px; border-radius: 50%; background: var(--border);
+}
+#tour-dots i.on { background: var(--accent); }
+
 @media (max-width: 720px) {
   .search input { width: 180px; }
   .toolbar { gap: 8px; padding: 6px 16px; }
@@ -677,6 +766,30 @@ dialog form { margin-top: 12px; text-align: right; }
   #legend { left: 8px; bottom: 8px; max-width: calc(100% - 16px); }
   #panel { top: auto; height: 60%; left: 8px; right: 8px; bottom: 8px; width: auto; }
 }
+
+/* The photographs the camera has taken: the same panel as the backpack, laid out as a
+   contact sheet. They live for the session only (stash.js), so the note says so and
+   every one of them carries the button that writes it to a file. */
+#stash {
+  position: absolute; top: 12px; right: 12px; width: 300px; max-height: calc(100% - 24px);
+  display: flex; flex-direction: column; z-index: 4;
+  background: var(--surface); border: 1px solid var(--border); border-radius: 10px;
+  box-shadow: var(--shadow); overflow: hidden;
+}
+#stash header { display: flex; align-items: center; gap: 8px; padding: 8px 10px 8px 12px; border-bottom: 1px solid var(--border); }
+#stash h3 { margin: 0; font-size: 13px; }
+#stash #stash-summary { flex: 1; }
+#stash ul { margin: 0; padding: 6px; list-style: none; overflow: auto; display: grid; gap: 6px; }
+#stash li {
+  display: flex; gap: 8px; align-items: center; padding: 5px;
+  border: 1px solid var(--border); border-radius: 8px;
+}
+#stash li img { width: 76px; height: 48px; object-fit: cover; border-radius: 5px; background: var(--page); }
+#stash li .what { flex: 1; min-width: 0; font-size: 12px; }
+#stash li .what b { display: block; font-weight: 600; }
+#stash li .what span { color: var(--text-2); font-size: 11px; }
+#stash li .keep { white-space: nowrap; }
+#stash #stash-empty-note, #stash #stash-show-note { margin: 10px 12px; }
 
 /* The backpack: what has been caught, and whether it has been fixed since. It sits
    where the details panel does but lower in the stack, so opening a finding from it
