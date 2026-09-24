@@ -1015,6 +1015,299 @@ secondary tool tags nothing it is pointed at, the jet backpack is the only way
 to fly, a nail catches a bug, and a critical finding is visibly a different
 animal from a note.
 
+### M21 - Two hands, and what the water does
+
+- A walker carries one tool of each kind at a time, one to a hand: the primary
+  in the right and the secondary in the left. A click uses the right hand and
+  `F` or the middle button the left, both hands keep their own gesture, and
+  stowing them (`H`) stows both. Pressing a secondary's slot key again puts it
+  down, which is how the walker comes out of the air or off the water
+  deliberately. The crosshair belongs to the hunt, so a line fired from the off
+  hand goes where the view points rather than at what is marked.
+- Deep water with nothing to float on takes the walker in a couple of seconds -
+  long enough to wade ashore from the shallows, nowhere near long enough to
+  cross the bay - so stowing the skimmers out over the water ends that walk.
+  Carrying them, the walker passes beneath a bridge rather than being lifted
+  onto it: a deck more than a step above the body is a deck the body is under.
+- Dying is watched rather than played. The walker stops answering to the keys,
+  the screen fills with red over about half a second and holds, and only then
+  does the map come back.
+- A module the walker has tagged carries a beacon in the color of the worst
+  finding in it, and its ring on the tracker matches, so what the hunt has
+  collected says which of them were worth having. With findings turned off the
+  beacon keeps its own color.
+- The backpack, the export menu and saving the view are reachable from the
+  street: `B`, `X` and `K` hand the pointer back and hold the view still the
+  way reading a building's details does, and closing any of them is walking on
+  again.
+- A tool is modelled around the hand that holds it. What runs through the fist
+  is something a fist can close on - a handle, a strap, a grip - and anything
+  wider than that hangs off it, so the extinguisher's bottle is under the hand
+  and the skimmer's float below its strap. What a tool throws leaves along the
+  view, not across it.
+
+*Accepted when* a walker can fly with the jet backpack while netting a bug with
+the other hand, stowing the skimmers over the bay kills them, walking the water
+passes under a bridge instead of over it, dying reddens the screen before the
+map returns, a tagged module's beacon is the color of its worst finding, and
+the backpack opens on the street.
+
+### M22 - Saying what it is, and telling the two launchers apart
+
+- A first visit is given a short introduction: five cards on what the shapes
+  stand for, what selecting does, that the map can be walked into, what the
+  bugs are, and where the help is. It is remembered per browser rather than per
+  repository, since what it explains is the tool; skipping counts as having
+  seen it; a browser that will not remember anything is treated as having seen
+  it, because a dialog on every load is worse than none.
+- The help is reference rather than a prompt, and is laid out as one: the width
+  a paragraph wants, sections for the map, for walking, for each kind of tool
+  and for the hunt, every tool described on its own in full sentences, and a
+  button back to the introduction.
+- Whatever a tool throws is unlit and bendable. A projectile ends up in the
+  scene, which carries no lights and is bent around the planet, so a lit
+  material out there is drawn black - which a soap bubble and a gout of white
+  foam made plain - and an unbent one flies straight through a curved world.
+- The tracking dart and the nail gun are told apart by what they are for, not
+  only by their numbers. The dart is the longest reach on the map, aimed
+  through the scope, one shot at a time, and it steers. The nail gun reaches
+  across a street, keeps firing while the trigger is held, and scatters; the
+  extinguisher is held down the same way. Everything else fires once per click.
+- A tool in the off hand has a trigger of its own - `F`, `C` or the middle
+  button - and a line fired from it hooks the building the walker is looking
+  at, since the crosshair belongs to the other hand. `C` keeps its meaning
+  while flying, where it is how the walker goes down.
+- The butterfly net is swung the way a net is swung: up over the shoulder on
+  the wind-up and down across the body to finish low on the other side.
+
+*Accepted when* a first load explains itself and a second does not, the help
+describes each tool separately, a bubble is blue in the air rather than black,
+the nail gun empties its magazine into a wall while the button is held and the
+dart does not, and the grapple can be fired at all.
+
+### M23 - A road network that is actually there
+
+- The sweep settles every cell it can reach. A wave's seeds are the far side of
+  every wall the last wave met and are spread over the whole map, so they are
+  let into the ring in order of distance as the walk reaches them rather than
+  all at once: the ring spans one step's worth of cost, and a seed dropped in
+  from further ahead than that lands in a bucket already passed, is taken for a
+  stale entry, and is thrown away. Islands and whole districts went unreached
+  that way, and the roads to them were simply not drawn.
+- A road runs wall to wall. The sweep works in the cells beside a building, so
+  each end is carried the last half step to the one it serves - which is also
+  what joins two buildings near enough to share a doorstep, where the cells
+  beside one are the cells beside the other and there is no route between them
+  to find.
+- Made ground that is not there is not ground. Off the end of a deck or a
+  roadway the height comes back as nothing at all, and marking that cell dry
+  anyway made the open water beside a bridge walkable at the causeway's level.
+- Walk mode has an introduction of its own, shown the first time somebody walks
+  in: what moves, what is in each hand, what using a tool does, and what the
+  bugs do back. It is remembered separately from the map's, and hands the
+  pointer back when it closes, because a walker with neither pointer nor
+  reticle is stuck.
+- A ring on the end of a stick is attached at its rim, not threaded onto it.
+  The bubble wand's ring is lifted by its own radius and collared where it
+  meets the tip, the way the net's hoop already was.
+
+*Accepted when* every building on a three-level map with an island offshore has
+a road to every other, two files in the same directory are joined, no cell of
+open water is walkable, and a first walk explains itself while a second does
+not.
+
+### M24 - Fewer moving parts, and more life in the ones that are left
+
+- The dependency roads are gone. A route found on a grid over a city that was
+  not laid out for one is a thing with no reliable answer: it went missing
+  where the sweep could not reach, climbed walls where no ramp had been fitted,
+  and read as a defect whenever it did either. The arcs say which buildings are
+  joined, which is what the question was.
+- A catch looks like the tool that made it. A bubbled bug rises sealed in soap
+  until the two go together, a reeled one comes down the line to the hand, a
+  netted one is scooped out of the air, a pinned one is driven flat onto what
+  it was standing on, a foamed one sags and is buried, and a photographed one
+  blinks out. A catch with no gesture named - a finding taken from the panel,
+  over on the map - simply stops it where it stands.
+- A tool is swung about the hand holding it. A viewmodel's origin is a point in
+  mid-air inboard of the fist, and a gesture written as a rotation of the whole
+  group turns the head of a net into the pivot and the hand into the thing
+  going round it.
+- The jet backpack and the water skimmers run on a tank. It empties only while
+  the tool is holding the walker up and fills again whenever it is not, so
+  neither is a way of getting everywhere; a gauge beside the health bar says
+  what is left, and running dry in the air is a fall.
+- The camera keeps a picture, as a PNG - the same file the map's own image
+  export produces.
+- A first walk is explained before the pointer is taken, not after: a dialog
+  and a captured reticle at the same time is a mouse fighting itself. Its cards
+  cover moving, both hands, what using a tool does, the bugs, and staying
+  alive.
+- A menu that wants the pointer waits for it. Releasing a pointer lock is
+  asynchronous, and until it lands every pointer event still goes to the
+  canvas, where the menu's own click-outside sees one and shuts it again -
+  which is a menu that opens on the second try.
+
+*Accepted when* selecting a module draws arcs and nothing on the ground, each
+tool takes a bug off the map in its own way, a net swings about the hand, the
+jet runs out and fills up again, the camera saves a file, a first walk explains
+itself with the mouse free, and the export menu opens the first time it is
+asked.
+
+### M25 - Weight, and somewhere to put the pictures
+
+- A jump clears a curb and a terrace wall and nothing else. At the map's scale
+  the old one topped out two and a half storeys up, which is a walker clearing
+  a tree.
+- The view rides on whatever is carrying it, and on nothing else: the long
+  heave of a jet holding the walker up and the swell of water under a pair of
+  floats. Feet on the ground do not ride at all - a bob on every footfall is
+  what makes people put a first-person view down. It is added to the eye height
+  and nowhere else, so what can be reached, what the crosshair is on and where a
+  shot leaves from do not wander with it.
+- A tank empties only while the tool is doing its work - the jet while it is
+  holding the walker off the ground, the skimmers while the water is the only
+  thing under them - and a tool that runs out stays stopped until it is put
+  away and taken out again, rather than flickering back on as the first drop
+  trickles in.
+- The camera keeps its pictures rather than writing them. A photograph goes
+  into a stash, captioned with whatever was in the frame, and the ones worth
+  having are saved from there one at a time. They live for the session only: a
+  finding id belongs in a store that outlives the tab and a megabyte of PNG
+  does not.
+- Nothing takes the pointer while something modal wants it. A reticle that
+  grabs it back underneath a dialog leaves a dialog nobody can click and a
+  street that answers every click instead, and a first walk is explained with
+  the mouse free from the start rather than taken and given back.
+- What a tool throws has to be on screen long enough to be seen. A nail a
+  centimeter across at ninety units a second crossed its own reach in six
+  frames; it is slower, larger, and drawn with a streak behind it.
+- A tool is modelled around the hand: nothing wider than a fist sits at the
+  height of one, and anything hung off a hose is a child of that hose rather
+  than placed beside it, where it drifts off the moment the hose is angled.
+
+*Accepted when* a jump clears a terrace wall and not a tree, the view breathes
+under a jet and settles on solid ground, a tank drains only in use and needs
+re-equipping once it is empty, a photograph can be looked at before it is
+saved, a nail is visible in flight, and the introduction can be clicked through
+without the mouse being taken.
+
+### M26 - Wind, and the water's other edge
+
+- Running and jumping are paid for out of the walker's wind, which is a gauge
+  beside the health bar and behaves like a tool's tank: a sprint drains it in
+  seconds, a jump takes a fixed bite of it, and it fills again while walking or
+  standing. A walker who has run it out is winded until a quarter of it is back,
+  without which one step's worth of recovery would buy another stride. Flying
+  costs none of it: that is the jet's tank rather than the walker's chest.
+- Whatever is in the water can get back out of it. The shore stands half a unit
+  above the surface, which is further than a step, so being down there - on a
+  pair of floats or in it - carries its own allowance to climb out. Without it
+  walking out over the bay was one way, and "get to a shore" was something to
+  read while drowning.
+- The water can be got into, and how says which. A shore is a curb: the bay is
+  half a unit below it and is stepped down into like any other floor, which is
+  the same rule that lets the walker back out. A bridge deck is not, although
+  the water beside it is no further down - walking off an edge into a drop is
+  not a thing anybody means to do, and a railing is there to be gone over rather
+  than through, so off a deck and off anything else standing well above the
+  surface it has to be jumped into. Either way, without the skimmers it is a
+  couple of seconds to find a shore, and then the end of the walk.
+- Nothing a tool is built from floats beside it. A part placed at an angle with
+  a length of its own arrives wherever that length runs out, which is how the
+  jet backpack came to be carried about with a thruster hanging in the air next
+  to it; anything that has to reach something is built from both its ends.
+- A netted bug is carried by the net. It homes on the hoop rather than on the
+  walker, fights there - bouncing off the netting, turning itself over, squashed
+  against the mesh, all of it fading as it tires - and is only tipped out of the
+  world once the swing has settled.
+
+*Accepted when* a flat-out sprint runs out and cannot be resumed with one step's
+recovery, a walker on the skimmers can step ashore, a walker without them can
+walk off a shore into the bay and drown there unless they reach one again, a
+bridge deck cannot be walked off into the water, no tool carries a part that
+touches nothing else on it, and a bug caught in the net stays visibly in the
+hoop while the hoop moves.
+
+### M27 - A picture in the hand, and animation that does not jump
+
+- Nothing that moves is driven by a rate read off the clock. A phase written as
+  the elapsed time times a rate re-scales the whole of that time whenever the
+  rate changes, so the held tool's walk cycle threw itself hundreds of radians
+  forward the moment the walker broke into a run - the further into the session,
+  the worse. Anything whose rate can change advances by the frame's own turn
+  instead, and anything eased is eased over seconds rather than over frames, so
+  a faster screen does not settle a jet's flame faster than a slower one.
+- What carries the view fades in and out rather than being switched on and off.
+  Ending the swell the moment the walker steps ashore drops the view by however
+  far up it had got, in one frame.
+- A photograph can be looked at where it was taken. From the street, one from
+  the stash goes back up on the camera: the camera comes to hand if it is not
+  already there and is brought all the way to the walker's face, until the
+  picture on its back screen - which stands in for the live view while it is
+  there - covers nearly the whole of the view. After a few seconds it goes back
+  down and returns the hand to whatever was in it; a click ends it sooner, and
+  reaching for another tool ends it without putting anything back.
+- Where it comes to rest is solved rather than chosen. Square on to the eye, or
+  the picture is read at a slant; centred on the line of sight; near enough to
+  cover nine tenths of the view's height; and with nothing on the tool nearer
+  than the screen itself, or the near plane cuts a hole in the picture. The arm
+  runs past the eye and is clipped there, which is what it was modelled long
+  enough to do.
+- A picture is fitted to the screen it is shown on, never squashed to it: the
+  screen is squarer than the window the picture was taken through, so the
+  picture fills it and the long side is cropped. While one is up, the second
+  pass over the map that draws the live view is not made at all.
+
+*Accepted when* the held tool does not jerk as the walker breaks into a run an
+hour into a session, the view does not drop as the skimmers reach a shore, and a
+photograph can be put back on the camera, brought up until it covers the view,
+and dismissed with a click, leaving the tool that was in hand before it.
+
+### M28 - A camera that takes a photograph when you press it
+
+- Every use of the camera keeps the frame. It took two uses in quick
+  succession, which is a thing to be told rather than a thing anybody does, and
+  left the ordinary use of the camera doing nothing that could be seen.
+- The one use that does not keep a frame is the second on a module already
+  tagged, which reads that module as every other tool does there. A tool that
+  answered a click differently from the rest would be a tool people press twice
+  to find out what it does.
+- A photograph is of the city and of nothing else. The camera is not in its own
+  picture: what the walker holds is drawn over the world in a pass of its own,
+  so leaving it out is a matter of not making that pass. Neither is anything
+  the interface has put on the map - nothing lit by a selection, nothing dimmed
+  by one, no outline and no dependency arcs, because a module tagged a minute
+  ago should not be lit in a picture of the street it stands on. A screenshot,
+  which is the screen rather than what the camera was pointed at, keeps all of
+  it.
+
+*Accepted when* one click on a building keeps a picture of it with nothing of
+the camera, the hand, the selection or the arcs in the frame, a second click on
+that same building opens its details instead, and a screenshot still shows the
+lot.
+
+### M29 - A HUD that can be read, and a row laid out like a walker
+
+- Anything the HUD says in words covers what is behind it. It is read against a
+  street that can be any color at all, so a panel tinted to a quarter opacity is
+  a panel nobody can read over a pale wall - and being read is the whole of what
+  a message has to do.
+- The tool row is laid out the way the walker is: what the left hand carries on
+  the left, what the right hand hunts with on the right, each group behind a
+  small hand of its own. A word between the two groups said which was which as
+  well and worse: the row is read at a glance in the middle of something else,
+  and a hand is the one thing nobody has to stop and parse. The key on each slot
+  is the tool's own, so laying the row out by hand renumbers nothing.
+- The two tanks are worth different amounts of time. Flying is the slow way to
+  look at a map from above and is worth staying up for; the bay is a thing to
+  cross rather than a place to be, so a pair of floats lasts a dash to the far
+  shore and no more.
+
+*Accepted when* every message in the street is legible over a white wall, the
+row shows a left hand over the carried tools and a right hand over the rest with
+the keys unchanged, and the jet outlasts the skimmers.
+
 ### Known limits
 
 - Java imports name packages, not artifacts, so Maven dependencies are matched

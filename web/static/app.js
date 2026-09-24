@@ -12,9 +12,10 @@ import { loadHands } from './hands.js';
 import { loadPlants, loadBugs } from './models.js';
 import { Bugs } from './bugs.js';
 import { Pins } from './pins.js';
-import { Routes } from './routes.js';
 import { Avatar } from './avatar.js';
+import { startTour, startWalkTour, walkTourPending } from './tour.js';
 import { Backpack } from './backpack.js';
+import { Stash } from './stash.js';
 import { indexFindings } from './findings.js';
 import { $, h, fmt, escapeHTML } from './dom.js';
 import { Color } from './vendor/three.module.min.js';
@@ -52,14 +53,20 @@ let graphVersion = 0;   // server graph version currently shown
 let flashTimer = 0;
 let metricsCache = null; // computeMetrics() for the current model, history and since
 let focus = null;  // {lit: Set<box>, arcs}
+let plainly = false; // the map is being drawn without anything the interface put on it
 let labels;       // Labels layer over the map
 let walker;       // first-person walk mode
 let bugs;         // the findings walking the streets in walk mode
 let pins;         // the same findings, as markers over the map
-let routes;       // the selection's dependencies, laid down as roads
 let avatar;       // where the walker stands, seen from the map
 let pack;         // what has been caught (backpack.js)
+let stash;        // what the camera has photographed (stash.js)
 let aimX = 0;     // where the walk-mode tooltip was last placed
+// Opens the export menu, which bindExport owns; X reaches it from either view.
+let openExport = () => {};
+// What wants the mouse while it is open. A pointer captured at the reticle goes to the
+// canvas and nowhere else, so none of these can be clicked while the walker holds it.
+const WANTS_POINTER = ['pack', 'stash', 'export', 'panel'];
 
 async function main() {
   const [{ graph, version }, cfg] = await Promise.all([fetchGraph(), fetchConfig()]);
@@ -104,7 +111,7 @@ async function main() {
       tooltip(i >= 0 ? `box:${i}` : null, x, y, showTooltip.bind(null, i));
     },
     onHit: (box, tagged) => {
-      const tool = walker.tool;
+      const tool = walker.primary;
       select(box.node);
       walker.flash(`${box.node.name} ${tool.noun} - ${tagged} ${tool.noun} so far; its dependency trails are lit. ` +
         `Use the ${tool.label.toLowerCase()} on it again for its details`);
@@ -115,7 +122,7 @@ async function main() {
     onInspect: box => {
       const n = box ? box.node : state.selected;
       if (!n) {
-        walker.flash(`${walker.tool.verb} a building, then use the tool on it again (or press Enter) for its details`);
+        walker.flash(`${walker.primary.verb} a building, then use the tool on it again (or press Enter) for its details`);
         return;
       }
       select(n);
@@ -126,17 +133,44 @@ async function main() {
       walker.flash(`Details of ${n.name} - click the map to keep walking`);
     },
     onExit: () => setWalking(false),
+    // Walking on again puts away whatever was being read, so Escape in the street is
+    // one key rather than one per thing that might be open.
+    onResume: () => { setPackOpen(false); setStashOpen(false); panel.close(); },
+    // Everything that wants the mouse, in one place. The walker asks before taking the
+    // pointer back, so a panel or a menu is never left with a reticle underneath it
+    // swallowing the clicks meant for it.
+    busy: () => !!document.querySelector('dialog[open]')
+      || WANTS_POINTER.some(id => !$(id).hidden),
     tool: () => state.tool,
     onTool: id => { state.tool = id; },
+    // Every use of the camera keeps the frame. It goes into the stash rather than
+    // straight to a file: a photograph is a thing to collect and look at, and the ones
+    // worth keeping are saved from there one at a time.
+    //
+    // A photograph is of the city and of nothing else: the hands are left out of it,
+    // because the camera cannot be in its own picture, and so is everything the
+    // interface has drawn on the map - a module tagged a minute ago should not be lit
+    // in a picture of the street it stands on, and the arcs over the rooftops belong
+    // to the map view rather than to the place.
+    onPhoto: where => {
+      plain(() => frame(blob => {
+        const it = stash.add(blob, where);
+        walker.flash(`Photograph ${it.n} kept - G opens them`);
+      }, false));
+      return true;
+    },
     // What the walker's health is built on: a full backpack is a walker who can stand
     // in a swarm, and an empty one is somebody who should watch their step.
     caught: () => pack?.counts.total ?? 0,
+    // The worst thing the scanners said about a module, which is what its beacon and
+    // its ring on the tracker are colored by. Nothing when findings are turned off.
+    severityOf: node => state.findings?.rollup(node.id).worst || null,
     onRender: drawLabels,
   });
   pins = new Pins(scene);
-  routes = new Routes(scene);
   avatar = new Avatar(scene);
   pack = new Backpack(model.root.name, drawPack);
+  stash = new Stash(drawStash);
   // The page is the one with a store that outlives the server, so what it remembers
   // is what the session starts from.
   pushBackpack(pack.items);
@@ -194,9 +228,13 @@ async function main() {
   loadBugs().then(got => got && bugs && placeBugs()); // ... and what walks it
   bindControls();
   drawPack();
+  drawStash();
   relayout();
   scene.fit(L.bounds);
   updateStatus();
+  // Last, so that what is being explained is already behind the dialog rather than
+  // arriving under it.
+  startTour();
   // The stream is worth having whether or not the file system is being watched: it
   // is also how a selection made in the editor's side panel, or a backpack changed
   // there, reaches this page. Without a server there is nothing to connect to.
@@ -327,6 +365,16 @@ function setPackOpen(on) {
   $('pack').hidden = !on;
   $('pack-btn').setAttribute('aria-expanded', on);
   if (on) drawPack();
+  // Reading is reading, on the street as much as over the map: the walker holds still
+  // and lets go of the pointer while the backpack is open, and picks both up again
+  // when it closes.
+  if (!walker?.active) return;
+  if (on) {
+    document.exitPointerLock?.();
+    walker.setFrozen(true);
+  } else {
+    walker.lockPointer();
+  }
 }
 
 // ---------------------------------------------------------------- git history
@@ -552,12 +600,110 @@ function setLive(state) {
   el.onclick = state === 'stopped' ? () => { reconnects = 0; setLive('reconnecting'); connectEvents(); } : null;
 }
 
+// ---------------------------------------------------------------- photographs
+
+/**
+ * The photographs, as a contact sheet. They live for the session only, so the note
+ * under them says so and every one carries the button that writes it to a file.
+ *
+ * From the street each one can also be put up on the camera and looked at there,
+ * which is the difference between a list of thumbnails and something the walker is
+ * carrying about with them. There is nothing to put it on from the map, so that
+ * button is only drawn while walking - setWalking redraws this when that changes.
+ */
+function drawStash() {
+  const btn = $('stash-btn'), list = $('stash-list');
+  btn.hidden = !stash.count;
+  $('stash-count').hidden = !stash.count;
+  $('stash-count').textContent = stash.count;
+  $('stash-summary').textContent = stash.count
+    ? `${stash.count} this session - save the ones you want`
+    : '';
+  $('stash-empty-note').hidden = !!stash.count;
+  // Only worth saying where there is both something to show and somewhere to show it.
+  $('stash-show-note').hidden = !stash.count || !walker?.active;
+  list.replaceChildren(...stash.items.map(it => h('li', {},
+    h('img', { src: it.url, alt: '', loading: 'lazy' }),
+    h('div', { class: 'what' },
+      h('b', {}, `Photograph ${it.n}`),
+      h('span', {}, it.where || new Date(it.at).toLocaleTimeString())),
+    walker?.active && h('button', {
+      class: 'link',
+      title: 'Put it up on the camera and look at it there',
+      onclick: () => { setStashOpen(false); walker.showPhoto(it); },
+    }, 'show'),
+    h('button', { class: 'link keep', onclick: () => stash.save(it.id, model.root.name) }, 'save'),
+    h('button', { class: 'close', title: 'Let go of this one', onclick: () => stash.remove(it.id) }, '×'))));
+  if (!stash.count) setStashOpen(false);
+}
+
+function setStashOpen(on) {
+  $('stash').hidden = !on;
+  $('stash-btn').setAttribute('aria-expanded', on);
+  // Looking at them is reading, the same as the backpack: the walker holds still and
+  // lets the pointer go while they are open, and takes both back when they close.
+  if (!walker?.active) return;
+  if (on) {
+    document.exitPointerLock?.();
+    walker.setFrozen(true);
+  } else {
+    walker.lockPointer();
+  }
+}
+
 // ---------------------------------------------------------------- screenshot
 
-// saveScreenshot downloads the map as shown, labels included, at the screen's
-// resolution.
+/** The view as it stands, written out as a PNG the browser downloads. */
 function saveScreenshot() {
-  const map = scene.renderNow();
+  frame(blob => {
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = `${model.root.name}.png`;
+    a.click();
+    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  });
+}
+
+/**
+ * Runs `then` with the map in its own colors: nothing lit by a selection, nothing
+ * dimmed by one, no outline and no dependency arcs. Everything is put back afterwards,
+ * including if `then` throws, because a map left plain would be a selection that has
+ * silently stopped showing.
+ *
+ * It is drawn twice more than it would otherwise be - once to strip it and once to put
+ * it back - which is nothing for something that happens on a click.
+ */
+function plain(then) {
+  const was = focus;
+  plainly = true;
+  focus = null;
+  scene.setArcs([]);
+  scene.setOutline(null, pal.select);
+  recolor();
+  try {
+    return then();
+  } finally {
+    plainly = false;
+    focus = was;
+    scene.setArcs(focus ? focus.arcs : []);
+    scene.setOutline(focus ? focus.selBox : null, pal.select);
+    recolor();
+  }
+}
+
+/**
+ * The view as it stands, as a PNG blob. `then` is called with it once the canvas has
+ * encoded it, which it does off the main thread.
+ *
+ * In walk mode the labels are not drawn over the street, so only the view itself is
+ * copied - which for a photograph is the whole of what was in the frame anyway.
+ *
+ * `hands` is what separates the two things this is asked for. A screenshot is the
+ * screen, hands and all; a photograph is what the camera was pointed at, and a camera
+ * held up in the corner of its own picture is a mistake nobody makes twice.
+ */
+function frame(then, hands = true) {
+  const map = scene.renderNow(hands);
   const dpr = map.width / map.clientWidth;
   const out = document.createElement('canvas');
   out.width = map.width;
@@ -566,7 +712,7 @@ function saveScreenshot() {
   ctx.drawImage(map, 0, 0);
   ctx.scale(dpr, dpr);
   const origin = map.getBoundingClientRect();
-  for (const el of labels.visible()) {
+  for (const el of walker.active ? [] : labels.visible()) {
     const r = el.getBoundingClientRect();
     const css = getComputedStyle(el);
     const x = r.left - origin.left, y = r.top - origin.top;
@@ -581,13 +727,7 @@ function saveScreenshot() {
     ctx.textBaseline = 'middle';
     ctx.fillText(el.textContent, x + parseFloat(css.paddingLeft) + 1, y + r.height / 2);
   }
-  out.toBlob(blob => {
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = `${model.root.name}.png`;
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
-  }, 'image/png');
+  out.toBlob(then, 'image/png');
 }
 
 // ---------------------------------------------------------------- editor
@@ -764,15 +904,24 @@ function walkTarget() {
   return same ? null : state.selected && rep(state.selected);
 }
 
-// What the toolbar cannot do from the street. Rotating and fitting move the map's
-// own camera, which nobody is looking through while walking, and the backpack wants
-// a pointer that walk mode has captured - so all three did nothing, silently.
-const WALK_DISABLED = ['rotate-left', 'rotate-right', 'fit', 'pack-btn'];
+// What the toolbar cannot do from the street: rotating and fitting move the map's own
+// camera, which nobody is looking through while walking, so both did nothing silently.
+const WALK_DISABLED = ['rotate-left', 'rotate-right', 'fit'];
 
 function setWalking(on) {
   if (on && !walker.active) {
     hideTooltip();
-    walker.enter(walkTarget(), rep(model.root), L.bounds);
+    // A first walk is explained on the way in, where there is something to try it on -
+    // and before the pointer is taken rather than after, because asking for the
+    // reticle and giving it straight back leaves the mouse fighting the dialog. The
+    // walker stands still with the pointer free until the last card is out of the way,
+    // and takes both back then.
+    const teaching = walkTourPending();
+    walker.enter(walkTarget(), rep(model.root), L.bounds, !teaching);
+    if (teaching) {
+      walker.setFrozen(true);
+      startWalkTour(false, () => walker.active && walker.lockPointer());
+    }
   } else if (!on && walker.active) {
     walker.exit(); // calls back here once it has left
     return;
@@ -797,6 +946,8 @@ function setWalking(on) {
   avatar.set(walker.stance(), pal.avatar);
   avatar.show(!on);
   if (on) setPackOpen(false);
+  // The photographs gain and lose their "show" button with the street.
+  if (stash.count) drawStash();
   // The map view must never keep the pointer captured: the cursor would be invisible.
   if (!on && document.pointerLockElement) document.exitPointerLock();
   if (on) panel.close();
@@ -817,7 +968,6 @@ function relayout() {
   L = layout(model, state);
   scene.setBoxes(L.boxes, baseColors());
   walker.setBoxes(L.boxes);
-  routes?.setLayout(L.boxes); // where a road may run changed with the blocks
   if (bugs) placeBugs();
   const to = anchor && rep(anchor.node);
   if (to) walker.reanchor(anchor, to);
@@ -894,10 +1044,6 @@ function refreshFocus() {
     focus = { lit, arcs, selBox };
   }
   scene.setArcs(focus ? focus.arcs : []);
-  // The same edges on the ground, routed between the blocks. The arcs say which
-  // buildings are joined; the roads say how you would get there, which is the part
-  // a map of a city is supposed to answer.
-  routes.set(focus ? focus.arcs : [], focus ? focus.selBox : null);
   scene.setOutline(focus ? focus.selBox : null, pal.select);
   recolor();
   labels.set(L.boxes, focus, state.selected);
@@ -909,6 +1055,12 @@ function recolor() {
   const faded = [];
   const colors = L.boxes.map((b, i) => {
     let c = base[i];
+    // Plainly: the city in its own colors, with nothing the interface has done to it
+    // (plain, above), which is what a photograph is of.
+    if (plainly) {
+      faded[i] = false;
+      return c;
+    }
     const structural = b.kind === 'land' || b.kind === 'terrace';
     if (focus && !structural && !focus.lit.has(b) && !isWithin(b.node, sel)) c = pal.dim;
     if (state.legendLang !== undefined && (b.kind === 'building' || b.kind === 'symbol')) {
@@ -1243,11 +1395,22 @@ function bindControls() {
   $('walk').onclick = () => setWalking(!walker.active);
   $('pack-btn').onclick = () => setPackOpen($('pack').hidden);
   $('pack-close').onclick = () => setPackOpen(false);
+  $('stash-btn').onclick = () => setStashOpen($('stash').hidden);
+  $('stash-close').onclick = () => setStashOpen(false);
+  $('stash-empty').onclick = () => stash.clear();
   $('pack-clear-fixed').onclick = () => pack.clear(true);
   $('pack-empty').onclick = () => pack.clear();
   $('rotate-left').onclick = () => scene.setIso(scene.quarter - 1);
   $('rotate-right').onclick = () => scene.setIso(scene.quarter + 1);
   $('help-btn').onclick = () => $('help').showModal();
+  // The help's own way back to the introduction, for anyone who skipped it or wants it
+  // again. One modal at a time, so the help is closed before the other opens.
+  $('help-tour').onclick = () => {
+    $('help').close();
+    // Whichever introduction fits where the reader is: the street has its own.
+    if (walker.active) startWalkTour(true, () => walker.active && walker.lockPointer());
+    else startTour(true);
+  };
   // Help frees the pointer; closing it captures it again for a walker (a click on
   // Close allows that; Esc does not, then the HUD asks for a click on the map).
   $('help').addEventListener('close', () => walker.active && walker.lockPointer());
@@ -1288,12 +1451,19 @@ function bindControls() {
     switch (e.key) {
       case 'Escape':
         if (document.pointerLockElement) document.exitPointerLock(); // a stray capture
+        if (!$('stash').hidden) { setStashOpen(false); break; }
         if (!$('pack').hidden) { setPackOpen(false); break; }
         select(null);
         break;
+      case 'g': case 'G':
+        // The photographs, from the street as much as from the map.
+        if (!$('stash-btn').hidden) setStashOpen($('stash').hidden);
+        break;
       case 'b': case 'B':
-        // The backpack needs the pointer, and walk mode has it.
-        if (!$('pack-btn').hidden && !walker.active) setPackOpen($('pack').hidden);
+        // The backpack needs the pointer, and in walk mode the reticle has it: opening
+        // it there gives the pointer back and holds the view still, the same as reading
+        // a building's details does, and closing it takes both back.
+        if (!$('pack-btn').hidden) setPackOpen($('pack').hidden);
         break;
       // Fitting, rotating and stepping the depth all move the map's own camera, which
       // is not the one in use while walking, so they belong to the map view alone.
@@ -1306,6 +1476,12 @@ function bindControls() {
       case '/': document.exitPointerLock?.(); $('search').focus(); break;
       case 'v': case 'V': setWalking(true); break;
       case 'p': case 'P': saveScreenshot(); break;
+      // Saving and exporting are toolbar buttons, and in walk mode the toolbar is
+      // behind a captured pointer - so both have a key. The export menu wants the
+      // pointer to pick from it and hands it back the way the backpack does; saving
+      // needs none, and reports into the status line the walk HUD already carries.
+      case 'x': case 'X': openExport(); break;
+      case 'k': case 'K': if (!STATIC) saveViewSettings(); break;
       case 'o': case 'O': {
         if (STATIC) break; // no server, no editor
         const f = sel?.kind === 'symbol' ? sel.parentNode : sel;
@@ -1322,7 +1498,12 @@ function bindControls() {
 
 function bindFilters() {
   const btn = $('filters-btn'), pop = $('filters');
-  const setOpen = open => { pop.hidden = !open; btn.setAttribute('aria-expanded', open); };
+  const setOpen = open => {
+    pop.hidden = !open;
+    btn.setAttribute('aria-expanded', open);
+    // Closing it in the street is walking on again, whichever way it was closed.
+    if (!open && walker?.active) walker.lockPointer();
+  };
   btn.onclick = () => setOpen(pop.hidden);
   document.addEventListener('pointerdown', e => { if (!e.target.closest('.filters')) setOpen(false); });
   btn.parentElement.addEventListener('keydown', e => {
@@ -1399,8 +1580,27 @@ function bindSearch() {
 
 function bindExport() {
   const btn = $('export-btn'), pop = $('export');
-  const setOpen = open => { pop.hidden = !open; btn.setAttribute('aria-expanded', open); };
+  const setOpen = open => {
+    pop.hidden = !open;
+    btn.setAttribute('aria-expanded', open);
+    // Closing it in the street is walking on again, whichever way it was closed.
+    if (!open && walker?.active) walker.lockPointer();
+  };
   btn.onclick = () => setOpen(pop.hidden);
+  /**
+   * Opens the menu, from the map or from the street.
+   */
+  openExport = () => {
+    if (btn.hidden) return;
+    // What Esc then the button would do, in one: the street holds still, the pointer
+    // comes back, and the menu opens. It always opens rather than toggling, because
+    // Esc and a click outside already close it and a key that does one or the other
+    // depending on what is on screen is a key you press twice.
+    walker?.setFrozen(true);
+    document.exitPointerLock?.();
+    setOpen(true);
+    btn.focus();
+  };
   // These are links, not fetches, so in embed mode the token has to be on them.
   for (const a of pop.querySelectorAll('a[href^="api/"]')) a.href = authed(a.getAttribute('href'));
   // The HTML export carries the current view, not whatever the config file holds.
@@ -1409,7 +1609,9 @@ function bindExport() {
     url.searchParams.set('ui', JSON.stringify(viewSettings()));
     e.target.closest('a').href = url.pathname + url.search;
   });
-  document.addEventListener('pointerdown', e => { if (!e.target.closest('.export')) setOpen(false); });
+  document.addEventListener('pointerdown', e => {
+    if (!pop.hidden && !e.target?.closest?.('.export')) setOpen(false);
+  });
   // On the group, not the popover: the button keeps the focus while the menu is open.
   btn.parentElement.addEventListener('keydown', e => {
     if (e.key === 'Escape' && !pop.hidden) { e.stopPropagation(); setOpen(false); btn.focus(); }

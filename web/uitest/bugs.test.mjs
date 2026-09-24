@@ -11,6 +11,7 @@ import { describe, it } from 'node:test';
 import { box, scene } from './stub.mjs';
 
 const { Bugs } = await import('../static/bugs.js');
+const TOOLS_MOD = await import('../static/tools.js');
 
 /**
  * A tower with `findings` reported against it, as findings.js hands them over: the
@@ -67,6 +68,72 @@ describe('a bug', () => {
     // A shape that never flies is not given wings to keep matrices for.
     const grub = three.drawn.find(d => d.bugs[0].shape === 'grub');
     assert.equal(grub.wings, null);
+  });
+
+  it('leaves the map the way the tool that caught it took it', () => {
+    const { TOOLS, TOOL_IDS, hits, toolFor } = TOOLS_MOD;
+    // Every tool that can catch one says how it takes it; a catch with no gesture
+    // named - a finding taken from the panel, over on the map - is still a catch.
+    for (const id of TOOL_IDS) {
+      const tool = toolFor(id);
+      if (hits(tool, 'bugs')) assert.ok(tool.catchAs, `${id} catches bugs and says nothing about how`);
+      else assert.ok(!tool.catchAs, `${id} cannot catch a bug but says how it would`);
+    }
+
+    // A bubbled one rises; a reeled one comes to the walker; a pinned one is driven
+    // down onto what it was standing on. All of them end up gone.
+    const at = { x: 3, y: 1, z: 3 };
+    const paths = {};
+    for (const how of ['bubble', 'reel', 'pin', 'net', 'foam', 'flash']) {
+      const bugs = placed(['medium']);
+      const [bug] = bugs.bugs;
+      const from = bug.pos.clone();
+      assert.ok(bugs.catch(bug, how));
+      assert.equal(bugs.counts.caught, 1, 'a catch with an animation did not count');
+      const seen = [];
+      for (let i = 0; i < 40 && bug.take; i++) {
+        bugs.update(0.05, i * 50, at);
+        if (bug.take) seen.push({ y: bug.pos.y - from.y, size: bug.size, to: bug.pos.distanceTo(at) });
+      }
+      assert.equal(bug.take, null, `a ${how} never finished; a bug would hang there for good`);
+      assert.ok(seen.length > 3, `a ${how} was over before it was seen`);
+      paths[how] = seen;
+    }
+    assert.ok(paths.bubble.at(-1).y > 0.3, 'a bubbled bug did not rise');
+    assert.ok(paths.pin.at(-1).y < 0, 'a pinned bug was not driven down');
+    assert.ok(paths.foam.at(-1).y < 0, 'a foamed bug did not sink');
+    assert.ok(paths.reel.at(-1).to < paths.reel[0].to * 0.6, 'a reeled bug was not drawn in');
+    for (const how of Object.keys(paths)) {
+      assert.ok(paths[how].at(-1).size < 0.35, `a ${how} left something behind`);
+    }
+  });
+
+  it('carries a netted one in the hoop rather than towards the walker', () => {
+    // The net is the one tool that takes a bug somewhere other than to the walker: it
+    // is in the hoop, and the hoop is on the end of a swing. Homing on the walker's
+    // eye meant a bug that set off across the street while the net went the other way.
+    const eye = { x: 4, y: 1.5, z: 4 }, hoop = { x: -5, y: 2, z: -5 };
+    const bugs = placed(['medium']);
+    const [bug] = bugs.bugs;
+    assert.ok(bugs.catch(bug, 'net'));
+    const far = bug.pos.distanceTo(hoop);
+    let near = Infinity, turns = 0, above = null, going = 0;
+    for (let i = 0; i < 40 && bug.take; i++) {
+      bugs.update(0.05, i * 50, eye, hoop);
+      if (!bug.take) break;
+      near = Math.min(near, bug.pos.distanceTo(hoop));
+      // It fights in there: the struggle is what makes a catch something anybody saw,
+      // and a struggle is a thing that changes direction.
+      const up = bug.pos.y - hoop.y;
+      if (above !== null) {
+        const way = Math.sign(up - above);
+        if (way !== 0 && going !== 0 && way !== going) turns++;
+        if (way !== 0) going = way;
+      }
+      above = up;
+    }
+    assert.ok(near < far * 0.15, `a netted bug got no nearer the hoop than ${near.toFixed(2)} of ${far.toFixed(2)}`);
+    assert.ok(turns > 1, 'a netted bug went quietly');
   });
 
   it('still remembers what was caught when the map is rebuilt under it', () => {
