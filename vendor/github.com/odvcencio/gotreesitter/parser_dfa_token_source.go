@@ -21,18 +21,45 @@ type dfaTokenSource struct {
 	// Parser.errorCostCompetition so reset/reuse does not rescan grammar tables.
 	cRecoveryEnabled bool
 
-	lookupActionIndex           func(state StateID, sym Symbol) uint16
-	lexModeStarts               []lexModeStart
-	hasKeywordState             []bool
-	externalValidByState        [][]uint16
-	externalValidMaskByState    []uint64
-	externalPayload             any
-	externalValid               []bool
-	externalSnapshot            []byte
-	externalRetrySnap           []byte
-	externalTokenStart          []byte
-	externalTokenEnd            []byte
-	externalCompare             []byte
+	lookupActionIndex        func(state StateID, sym Symbol) uint16
+	lexModeStarts            []lexModeStart
+	hasKeywordState          []bool
+	externalValidByState     [][]uint16
+	externalValidMaskByState []uint64
+	externalPayload          any
+	externalValid            []bool
+	externalSnapshot         []byte
+	externalRetrySnap        []byte
+	externalTokenStart       []byte
+	externalTokenEnd         []byte
+	externalCompare          []byte
+	// externalPreScanPayload is the scanner payload as of the start of the
+	// current shared token, captured whenever Next produces it inside a GLR
+	// fork (len(glrStates) > 1), regardless of whether the language
+	// supports checkpoints. relexZeroWidthExternalTokenForStackLexState's
+	// probe (parser_recover_c.go) needs this exact state for a stateful
+	// scanner without checkpoint support (perl today): externalTokenStart
+	// only carries it for checkpoint-capable scanners, and externalCompare
+	// is a general scratch buffer Next's own preferGLRUnionDFAOverExternalToken
+	// path can overwrite later in the same call, so neither fits. It is
+	// only ever populated inside a live GLR fork (len(glrStates) > 1 at lex
+	// time), so a single-stack parse never pays for it -- but the rescue
+	// itself also runs without it ever being populated: a single-stack
+	// dispatch that reaches the rescue through the C-recovery-gated call
+	// site with no live fork at lex time, or a fork that forms mid-pass
+	// after Next already ran for this exact token with len(glrStates) == 1,
+	// both leave this buffer empty and fall back to the dispatch-time
+	// payload (probeZeroWidthExternalTokenForLexState, parser_dfa_token_source.go).
+	externalPreScanPayload []byte
+	// externalProbeScratch is a reusable defensive-copy buffer for
+	// probeZeroWidthExternalTokenForLexState: it never installs a
+	// persistent buffer (externalTokenStart, and later externalPreScanPayload)
+	// directly into the live scanner via Deserialize, because Deserialize's
+	// buf argument is not guaranteed immutable (see
+	// externalScannerCheckpointRecord.restore's own defensive copy), and
+	// those buffers are state other bookkeeping for the same shared token
+	// still depends on after the probe returns.
+	externalProbeScratch        []byte
 	externalLexer               ExternalLexer
 	externalRetryLexer          ExternalLexer
 	externalLookaheadEndByte    uint32
@@ -44,18 +71,39 @@ type dfaTokenSource struct {
 	lastTokenStartByte          uint32
 	lastTokenEndByte            uint32
 	lastTokenValid              bool
-	singleState                 [1]StateID
-	glrStates                   []StateID // all active GLR stack states
-	hasExternalScanner          bool
-	hasExternalSymbols          bool
-	usesExternalCheckpoints     bool
-	zeroWidthSentinelSymbol     Symbol
-	hasZeroWidthSentinelSymbol  bool
-	isBash                      bool
-	isBashGenerated             bool
-	isComment                   bool
-	isFortran                   bool
-	isScheme                    bool
+	// externalTokensProduced counts the external-scanner tokens this token
+	// source accepted from nextExternalToken during the current Next call.
+	// Next resets it on entry. It is the only probe-visible record that the
+	// scanner offered a token at all: Next can discard an unusable zero-width
+	// external and return end of input in its place, and
+	// trackZeroWidthExternalToken clears its own tracking for a repeatable
+	// symbol, so neither of those survives the call. The compact end-of-input
+	// scanner quiescence proof
+	// (parsercore_phase0_eof_scanner_quiescence.go) reads it to separate "the
+	// scanner produced nothing" from "the scanner produced something the
+	// lexer then dropped".
+	externalTokensProduced uint32
+	// quiescenceProbing is true while proveCompactEOFScannerQuiescence
+	// (parsercore_phase0_eof_scanner_quiescence.go) drives Next() to re-run
+	// the external scanner in isolation, outside the parse. Next reads it to
+	// route perf-counter lexed-byte/token accounting to the probe's own
+	// counters instead of the parse's (finding F8), so a perf-instrumented
+	// build never bills probe lexing to the parse's lexed count. The prover
+	// sets it for the duration of its per-state loop and restores it to false
+	// on every exit path.
+	quiescenceProbing          bool
+	singleState                [1]StateID
+	glrStates                  []StateID // all active GLR stack states
+	hasExternalScanner         bool
+	hasExternalSymbols         bool
+	usesExternalCheckpoints    bool
+	zeroWidthSentinelSymbol    Symbol
+	hasZeroWidthSentinelSymbol bool
+	isBash                     bool
+	isBashGenerated            bool
+	isComment                  bool
+	isFortran                  bool
+	isScheme                   bool
 	// externalFailureModeLanguage records the language whose external scanner
 	// answered the two failure-mode capability probes below. The probes are
 	// interface assertions that every scan attempt repeated before this cache.
@@ -433,6 +481,7 @@ func (d *dfaTokenSource) Reset(source []byte) {
 	d.lastExternalTokenEndByte = 0
 	d.lastExternalTokenValid = false
 	d.externalLookaheadEndByte = 0
+	d.externalTokensProduced = 0
 	d.lastExternalTokenWasExtra = false
 	d.externalTokenEndSameAsStart = false
 	d.lastTokenStartByte = 0
@@ -496,6 +545,7 @@ func (d *dfaTokenSource) Close() {
 	d.lastExternalTokenEndByte = 0
 	d.lastExternalTokenValid = false
 	d.externalLookaheadEndByte = 0
+	d.externalTokensProduced = 0
 	d.lastExternalTokenWasExtra = false
 	d.externalTokenEndSameAsStart = false
 	d.lastTokenStartByte = 0
@@ -516,6 +566,7 @@ func (d *dfaTokenSource) Next() Token {
 		// A token-source read mirrors one C ts_parser__lex call. Preserve the
 		// maximum frontier only across attempts within this read.
 		d.externalLookaheadEndByte = 0
+		d.externalTokensProduced = 0
 	}
 	if d != nil && d.lexer != nil {
 		d.lexer.skipLeadingBOM()
@@ -537,9 +588,18 @@ func (d *dfaTokenSource) Next() Token {
 		}
 		var glrExternalStartSnapshot []byte
 		keepGLRExternalStartSnapshot := false
+		// Cleared on every call so a probe never reads a previous token's
+		// pre-scan state left over from an earlier fork.
+		d.externalPreScanPayload = d.externalPreScanPayload[:0]
 		if d.hasExternalScanner && len(d.glrStates) > 1 {
 			glrExternalStartSnapshot = d.captureExternalScannerStateInto(&d.externalCompare)
 			keepGLRExternalStartSnapshot = true
+			// relexZeroWidthExternalTokenForStackLexState's probe
+			// (parser_recover_c.go) needs this exact pre-scan state even for a
+			// scanner without checkpoint support (perl today). externalCompare
+			// is scratch this same Next call can overwrite again later, so
+			// copy it into a dedicated buffer now rather than alias it.
+			d.externalPreScanPayload = append(d.externalPreScanPayload, glrExternalStartSnapshot...)
 		}
 		if d.shouldForceEOFLookahead() {
 			tok := d.syntheticEOFLookaheadToken()
@@ -560,6 +620,7 @@ func (d *dfaTokenSource) Next() Token {
 			if extTok, ok := d.nextExternalToken(); ok {
 				tok = extTok
 				tokenFromExternal = true
+				d.externalTokensProduced++
 				extEndPos := d.lexer.pos
 				extEndRow := d.lexer.row
 				extEndCol := d.lexer.col
@@ -622,6 +683,7 @@ func (d *dfaTokenSource) Next() Token {
 				if extTok, ok := d.nextExternalToken(); ok && extTok.StartByte == tok.StartByte {
 					tok = extTok
 					tokenFromExternal = true
+					d.externalTokensProduced++
 				} else {
 					d.lexer.pos = dfaEndPos
 					d.lexer.row = dfaEndRow
@@ -699,7 +761,11 @@ func (d *dfaTokenSource) Next() Token {
 			if consumed < 0 {
 				consumed = 0
 			}
-			perfRecordLexed(consumed, 1)
+			if d.quiescenceProbing {
+				perfRecordProbeLexed(consumed, 1)
+			} else {
+				perfRecordLexed(consumed, 1)
+			}
 		}
 		if DebugDFA.Load() {
 			name := ""
@@ -1636,8 +1702,7 @@ func (d *dfaTokenSource) scanDFATokenForStateInto(state StateID, lexState uint32
 			d.lexer.includedRangeIdx = savedRangeIdx
 		}
 	}
-	var keywordDemoted bool
-	keywordDemoted = d.promoteKeyword(tok)
+	keywordDemoted := d.promoteKeyword(tok)
 	if !keywordDemoted {
 		d.promoteActiveLiteralForCurrentState(tok, savedPos, savedRow, savedCol)
 	}
@@ -3106,7 +3171,7 @@ type dfaRelexSnapshot struct {
 }
 
 func (s dfaRelexSnapshot) equal(other dfaRelexSnapshot) bool {
-	return s.lexerPos == other.lexerPos && s.lexerRow == other.lexerRow &&
+	if !(s.lexerPos == other.lexerPos && s.lexerRow == other.lexerRow &&
 		s.lexerCol == other.lexerCol && s.lexerRangeIdx == other.lexerRangeIdx &&
 		s.externalScannerPresent == other.externalScannerPresent &&
 		s.failTokenStartPos == other.failTokenStartPos &&
@@ -3125,9 +3190,34 @@ func (s dfaRelexSnapshot) equal(other dfaRelexSnapshot) bool {
 		s.lastTokenValid == other.lastTokenValid &&
 		bytes.Equal(s.externalTokenStart, other.externalTokenStart) &&
 		bytes.Equal(s.externalTokenEnd, other.externalTokenEnd) &&
-		s.extZeroPos == other.extZeroPos && s.extZeroState == other.extZeroState &&
-		slices.Equal(s.extZeroTried, other.extZeroTried) &&
-		s.zeroWidthPos == other.zeroWidthPos && s.zeroWidthCount == other.zeroWidthCount
+		s.zeroWidthPos == other.zeroWidthPos && s.zeroWidthCount == other.zeroWidthCount) {
+		return false
+	}
+	// extZeroPos/extZeroState/extZeroTried cache which external symbols Next
+	// (this file) has already tried as a zero-width result at one exact
+	// (byte position, parser state) pair. Every reader of extZeroTried gates
+	// on the live lexer sitting at that same pair first (for example
+	// probeZeroWidthExternalTokenForLexState and Next's own zero-width retry
+	// loop both check d.lexer.pos == d.extZeroPos before trusting
+	// d.extZeroTried at all), so a snapshot whose own extZeroPos no longer
+	// equals its own lexerPos is carrying a stale, already-ignored mask left
+	// over from an earlier position -- never live data. Comparing two such
+	// stale masks byte-for-byte would treat two heads that reached the exact
+	// same (position, payload, last-token, ...) state by different paths as
+	// different, purely because one of them tried and discarded a zero-width
+	// external symbol at some earlier, now-irrelevant position the other
+	// never visited (finding: an owned-dispatch head that took a zero-width
+	// shift carries this stale mask forever afterward, since only a fresh
+	// zero-width attempt at the CURRENT position ever clears or rewrites it).
+	sActive := s.extZeroPos == s.lexerPos
+	otherActive := other.extZeroPos == other.lexerPos
+	if sActive != otherActive {
+		return false
+	}
+	if !sActive {
+		return true
+	}
+	return s.extZeroState == other.extZeroState && slices.Equal(s.extZeroTried, other.extZeroTried)
 }
 
 // dfaRelexSnapshotScratch owns the mutable slice backing for one transient
@@ -4454,6 +4544,200 @@ func (d *dfaTokenSource) restoreExternalScannerState(snapshot []byte) {
 	d.language.ExternalScanner.Deserialize(d.externalPayload, snapshot)
 }
 
+// probeZeroWidthExternalTokenForLexState runs the external scanner from
+// tok's start byte using the ExternalLexStates row for lexState. It is the
+// zero-width-external counterpart to relexTokenForStackLexState's DFA-only
+// probe (parser_recover_c.go), which names the perl `_NONASSOC` witness this
+// exists for.
+//
+// It saves and restores exactly what a scan attempt can mutate -- the
+// scanner payload and the scratch external lexer -- into parser-owned
+// reusable buffers: this probe answers "what would this one stack's own lex
+// mode see here", not "what should every live stack's future tokens now
+// assume happened". The two frontier counters (externalLookaheadEndByte,
+// tokenInvariantMaxReadSpan) are the one exception: the scan this probe
+// runs does read real bytes, and those reads are exactly what decide
+// whether this stack gets rescued, so they are merged forward (grown,
+// never shrunk) instead of rolled back. Under-reporting the read span is
+// the unsafe direction: incremental_leaf_fastpath.go uses it to decide
+// whether an edit is contained.
+//
+// The payload it probes from is the scanner state as of the START of the
+// shared token tok, not whatever the payload holds when this probe happens
+// to run: for a stateful scanner (perl's quote stack, heredocs; scala's
+// brace/string state), "now" can be the state AFTER the shared token's own
+// scan, which is the wrong question when the shared token itself came from
+// the external scanner. externalPreScanPayload (captured by Next inside
+// every live GLR fork, regardless of checkpoint support) carries the exact
+// pre-scan state; absent that, externalTokenStart (checkpoint-capable
+// scanners only) is the same value under a different name. Absent both --
+// a single-stack dispatch that reaches this probe through the
+// C-recovery-gated call site with no live fork at lex time, or a fork that
+// forms mid-pass after Next already ran for this exact token with
+// len(glrStates) == 1 -- the probe falls back to the payload found at
+// dispatch time: exactly right when the shared token was DFA-preferred
+// over an external candidate (Next's own preferGLRUnionDFAOverExternalToken
+// rollback already restores the pre-scan payload in that case) and a
+// best-effort approximation otherwise.
+//
+// It never touches d.lexer, so the token source's own byte position is
+// untouched regardless of the outcome. It makes exactly one scan attempt,
+// calling RunExternalScanner directly instead of runExternalScannerWithRetry:
+// that helper's masked retry resets its retry lexer to d.lexer.pos, not this
+// probe's start byte, so retrying here would scan the wrong bytes and (via
+// its frontier bookkeeping) inflate the read-span proof besides. Declining
+// instead of retrying is simpler and correct.
+//
+// The second return value is a checkpoint (start/end serialized scanner
+// state) for the probed token when the language supports checkpoints; its
+// start and end are both empty otherwise. The caller uses it to give the
+// rescued leaf the same checkpoint a normal external-scanner shift would
+// carry, so the GLR merge guard (cStackEntryExternalScannerStatesEqual) can
+// tell "unchanged" from "unknown" instead of refusing every merge this
+// stack takes part in afterward.
+func (d *dfaTokenSource) probeZeroWidthExternalTokenForLexState(source []byte, lexState uint16, tok Token) (Token, externalScannerCheckpoint, bool) {
+	if d == nil || d.language == nil || d.language.ExternalScanner == nil {
+		return Token{}, externalScannerCheckpoint{}, false
+	}
+	if int(lexState) >= len(d.language.ExternalLexStates) {
+		return Token{}, externalScannerCheckpoint{}, false
+	}
+	row := d.language.ExternalLexStates[lexState]
+
+	// N2: everything above this point is a cheap, allocation-free decline
+	// that never touches scanner state. Only from here does the probe
+	// commit to invoking the scanner, so only from here does it save state
+	// to restore -- and it saves exactly what a scan attempt can mutate
+	// (the payload and the scratch external lexer) into parser-owned
+	// reusable buffers, rather than the full, always-freshly-allocated
+	// snapshotDFATokenSourceState/restoreDFATokenSourceState pair
+	// (incremental_leaf_fastpath.go), which also copies fields this probe
+	// never touches (d.lexer, d.state, d.glrStates, ...). The two frontier
+	// counters are handled differently below (see the doc comment above):
+	// merged forward, not restored.
+	// relexTokenForStackLexState's own doc says this class of probe "runs
+	// often even on grammars that never need a re-lex" (GLR prunes
+	// branches at no-action points constantly), so a decline it can
+	// already see coming must cost nothing, and even a decline that
+	// reaches this point (the scanner itself declines) must stay cheap.
+	// TestProbeZeroWidthExternalTokenForLexStateAllocations pins the
+	// measured costs.
+	dispatchPayload := d.captureExternalScannerStateInto(&d.externalSnapshot)
+	savedExternalLexer := d.externalLexer
+	defer func() {
+		// R1: the scan this probe just ran did read bytes, and those reads
+		// are exactly what decided whether this stack gets rescued, so
+		// d.externalLexer (still holding whatever RunExternalScanner
+		// examined, before the restore below overwrites it) is merged
+		// forward into the token source's own frontier counters rather than
+		// rolled back to what they were before the probe. Under-reporting
+		// the read span is the unsafe direction:
+		// incremental_leaf_fastpath.go uses it to decide whether an edit is
+		// contained, so a probe that actually read bytes must not erase
+		// that fact even though it discards everything else it did.
+		// recordTokenInvariantReadSpan and maxUint32 only grow their
+		// target, never shrink it.
+		recordTokenInvariantReadSpan(&d.tokenInvariantMaxReadSpan, int(tok.StartByte), tokenInvariantExaminedEnd(source, d.externalLexer.lookaheadEndByte))
+		d.externalLookaheadEndByte = maxUint32(d.externalLookaheadEndByte, d.externalLexer.lookaheadEndByte)
+		d.restoreExternalScannerState(dispatchPayload)
+		d.externalLexer = savedExternalLexer
+	}()
+
+	before := dispatchPayload
+	needsRestore := false
+	switch {
+	case len(d.externalPreScanPayload) > 0:
+		before = d.externalPreScanPayload
+		needsRestore = true
+	case d.usesExternalCheckpoints && len(d.externalTokenStart) > 0:
+		before = d.externalTokenStart
+		needsRestore = true
+	}
+	if needsRestore {
+		// dispatchPayload is already the live scanner's current state, so
+		// only a genuine pre-scan buffer (necessarily a different value)
+		// needs installing here. Deserialize's buf argument is not
+		// guaranteed immutable (see externalScannerCheckpointRecord.restore's
+		// own defensive copy), and both externalPreScanPayload and
+		// externalTokenStart are persistent state this same shared token's
+		// own checkpoint bookkeeping still depends on after this probe
+		// returns, so copy into reusable scratch first rather than install
+		// either directly.
+		beforeCopy := append(d.externalProbeScratch[:0], before...)
+		d.externalProbeScratch = beforeCopy
+		d.restoreExternalScannerState(beforeCopy)
+		before = beforeCopy
+	}
+
+	el := &d.externalLexer
+	el.reset(source, int(tok.StartByte), tok.StartPoint.Row, tok.StartPoint.Column)
+	if !RunExternalScanner(d.language, d.externalPayload, el, row) {
+		return Token{}, externalScannerCheckpoint{}, false
+	}
+	probed, ok := el.token()
+	if !ok || probed.Symbol == 0 {
+		return Token{}, externalScannerCheckpoint{}, false
+	}
+	probed.ExternalScannerToken = true
+	probed.ExternalScannerStartByte = tok.StartByte
+
+	// N1: end always equals start. The true end state is unchanged -- this
+	// probe restores the payload below on every path, so the marker's own
+	// scan effect (whatever it mutated while producing probed) never
+	// persists. Recording that discarded post-scan state as "end" instead
+	// would reach fastForwardWithExternalScannerCheckpoint on reuse
+	// (incremental.go), parent inheritance
+	// (rebuildExternalScannerCheckpointForNode), the merge guard
+	// (cStackEntryExternalScannerStatesEqual, glr.go), and the canonical
+	// leaf table (parser_reduce.go), all of which would then believe the
+	// scanner advanced when it never did.
+	var cp externalScannerCheckpoint
+	if d.usesExternalCheckpoints && len(before) != 0 {
+		start := append([]byte(nil), before...)
+		cp = externalScannerCheckpoint{start: start, end: append([]byte(nil), start...)}
+	}
+	return probed, cp, true
+}
+
+// singleShiftActionForSymbol is Parser.singleShiftActionForSymbol
+// (parser_recover_c.go) restated against the token source's own action
+// lookup, so a caller that holds a *dfaTokenSource but no *Parser -- the
+// compact scheduler's zero-width external rescue,
+// diagnosticParserCoreGenericScheduler.relexZeroWidthExternalTokenForState
+// (parsercore_phase0_driver.go) -- can still resolve a bare state+symbol
+// shift action. Both lookups read only p.language / d.language and the
+// bound action-index function, never GLR-stack state, so the two callers
+// answer the identical question from the identical tables.
+func (d *dfaTokenSource) singleShiftActionForSymbol(state StateID, sym Symbol) (ParseAction, bool) {
+	if d == nil || d.language == nil || d.lookupActionIndex == nil {
+		return ParseAction{}, false
+	}
+	idx := d.lookupActionIndex(state, sym)
+	if idx == 0 || int(idx) >= len(d.language.ParseActions) {
+		return ParseAction{}, false
+	}
+	actions := d.language.ParseActions[idx].Actions
+	if len(actions) != 1 || actions[0].Type != ParseActionShift {
+		return ParseAction{}, false
+	}
+	return actions[0], true
+}
+
+// stateHasActionForSymbol is Parser.stateHasActionForSymbol restated against
+// the token source's own action lookup; see singleShiftActionForSymbol above
+// for why the compact route needs this table-only restatement.
+func (d *dfaTokenSource) stateHasActionForSymbol(state StateID, sym Symbol) bool {
+	if d == nil || d.language == nil || d.lookupActionIndex == nil {
+		return false
+	}
+	parseActions := d.language.ParseActions
+	idx := d.lookupActionIndex(state, sym)
+	if idx == 0 || int(idx) >= len(parseActions) {
+		return false
+	}
+	return len(parseActions[idx].Actions) > 0
+}
+
 func (d *dfaTokenSource) lastExternalScannerCheckpoint() (externalScannerCheckpoint, uint32, uint32, bool) {
 	if d == nil || !d.lastExternalTokenValid {
 		return externalScannerCheckpoint{}, 0, 0, false
@@ -5056,7 +5340,6 @@ func (d *dfaTokenSource) promoteActiveLiteralForCurrentState(tok *Token, scanSta
 		tok.Symbol = sym
 		return
 	}
-	return
 }
 
 func (d *dfaTokenSource) activeStateCanPromoteLiteral(tok Token, sym Symbol, scanStartPos int, scanStartRow, scanStartCol uint32) bool {
@@ -5280,9 +5563,9 @@ func (d *dfaTokenSource) lexKeywordSource(source []byte) (Token, bool) {
 		}
 		st := &states[int(curState)]
 
-		if st.AcceptToken > 0 || st.Skip {
+		if st.AcceptToken > 0 || st.Skip || (st.AcceptEOF && scanPos >= len(source)) {
 			newPrio := st.AcceptPriority
-			if acceptPos < 0 || newPrio < acceptPriorityBest || (newPrio == acceptPriorityBest && scanPos > acceptPos) {
+			if acceptPos < 0 || newPrio < acceptPriorityBest || (newPrio == acceptPriorityBest && scanPos >= acceptPos) {
 				acceptPos = scanPos
 				acceptSymbol = st.AcceptToken
 				acceptSkip = st.Skip
@@ -5473,7 +5756,14 @@ func (d *dfaTokenSource) externalScannerQuiescent() bool {
 // keywordReservedInState reports whether the ABI 15 reserved-word set of the
 // parse state names the keyword (ts_language_is_reserved_word).
 func (d *dfaTokenSource) keywordReservedInState(state StateID, keyword Symbol) bool {
-	lang := d.language
+	return languageKeywordReservedInState(d.language, state, keyword)
+}
+
+// languageKeywordReservedInState reports whether the ABI 15 reserved-word set
+// of state names keyword (ts_language_is_reserved_word). It is the language-only
+// form of dfaTokenSource.keywordReservedInState, for callers such as
+// relexTokenForStackLexState that hold a *Parser, not a *dfaTokenSource.
+func languageKeywordReservedInState(lang *Language, state StateID, keyword Symbol) bool {
 	if lang == nil || len(lang.ReservedWords) == 0 || lang.MaxReservedWordSetSize == 0 || int(state) >= len(lang.LexModes) {
 		return false
 	}

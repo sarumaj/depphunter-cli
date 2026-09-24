@@ -231,7 +231,7 @@ func errorCostCompetitionLanguage(lang *Language) bool {
 	if lang == nil {
 		return false
 	}
-	switch v := os.Getenv("GOT_C_RECOVERY"); v {
+	switch v := envKnobs().cRecovery; v {
 	case "":
 	case "0":
 		return false
@@ -279,14 +279,14 @@ func cRecoveryGateReasonSlug(reason string) string {
 }
 
 func cRecoveryGateReason(lang *Language) string {
-	if os.Getenv("GOT_C_RECOVERY") == "0" {
+	if envKnobs().cRecovery == "0" {
 		return "disabled_by_got_c_recovery_0"
 	}
 	diag := DiagnoseCRecoveryGate(lang)
 	if !diag.Supported {
 		return cRecoveryGateReasonSlug(diag.Reason)
 	}
-	switch v := os.Getenv("GOT_C_RECOVERY"); v {
+	switch v := envKnobs().cRecovery; v {
 	case "all", "1":
 		return ""
 	case "":
@@ -611,12 +611,131 @@ func cRecoveryDefaultOptOut(name string) bool {
 	//   - html: the external lex election ledger keeps it opted out
 	//     (TestExternalLexStatesRecoveryElectionOptOutInventory); no board
 	//     case measures html yet.
+	//   - doxygen: the shipped blob has zero ExternalLexStates rows, so the
+	//     gate is off today; a routine regeneration restores the locked
+	//     parser.c's 8 rows and would flip it on with no board evidence
+	//     (pine's 2026-09-21 diagnosis). Two witnesses show the shape this
+	//     opt-out keeps pinned: the childless-error witness
+	//     "/** Adds all words in \a s to document \a doc with weight \a wfd
+	//     */" and the recovered-document witness "/**\n * @param {int}
+	//     value\n * @brief Example\n */" (TestCRecoveryGateDoxygenOptOut).
 	switch name {
-	case "cpp", "html", "javascript", "julia":
+	case "cpp", "doxygen", "html", "javascript", "julia":
 		return true
 	default:
 		return false
 	}
+}
+
+// cRecoverEOFBareRootReceiptedSet lists every grammar a full-shape C-oracle
+// comparison confirms may have its recover_eof root published bare
+// (tryPublishCRecoverEOFRoot, parser_result_root_build.go).
+// generatedCRecoveryDefaultSafe decides whether the C-recovery cost-
+// competition gate turns on at all; this table is a second, narrower gate
+// inside that: it decides whether the childless recover_eof root the gate
+// produces gets published unwrapped or stays under the ordinary
+// buildExpectedRootWrapperTree framing.
+//
+// The table is keyed on lang.Name, which production takes verbatim from
+// the decoded blob (decodeLanguageBlobData never assigns it;
+// DecodeAndCertifyLanguageBlob does, but that is the tooling path, not the
+// parse path). A third-party or hand-built blob whose embedded Name
+// collides with a receipted entry — for example "dot", "regex", "json5",
+// or "ron", all generic names — inherits that grammar's bare-publish
+// permission with no independent verification. This mirrors an existing,
+// accepted limitation elsewhere in the loader (AttachLanguageSupport keys
+// scanner lookup the same way); it is not new risk this table introduces.
+//
+// Publishing bare is only correct when the port's recover_eof route
+// selection also matches C's own recovery route (review round-2 finding
+// B-A): the gate itself is a shape rule (marked, childless, whole-source
+// span), not a C-agreement rule, so a grammar can pass the shape rule while
+// the port and C still choose different recovery routes for the same
+// input. Two grammars are known to diverge that way and are deliberately
+// absent from this table, even though they are capable and on by default:
+//
+//   - c_sharp: C resyncs and reduces compilation_unit before EOF on every
+//     ASCII identifier character. So C's root kind is compilation_unit,
+//     not ERROR. Task #77 fixed the port's route selection to match.
+//     The defect was a representational gap in cHandleError, not a
+//     cost-model bug (see cHandleError's own comment for the general
+//     mechanism). This port kept each do_all_potential_reductions
+//     interpretation as its own independent glrStack. Several of those
+//     siblings independently reached cRecoverEOFAccept and stayed
+//     accepted. For c_sharp specifically, that let them crowd the
+//     not-yet-accepted resync fork out of the per-iteration stack cap
+//     before cost ever decided anything. cHandleError now collapses
+//     those siblings to the one the result-selection comparator
+//     prefers, right after they are created, so only one representative
+//     reaches both the cap and the final selection fold. Verified with
+//     a full-shape comparison against C on every input in
+//     recoverEOFPublishRouteDivergences["c_sharp"] (cgo_harness
+//     TestParityCSharpRecoverEOFWrappedRootMatchesC): 0 mismatches.
+//     c_sharp still stays out of this table. C's own root for these
+//     inputs is never a bare ERROR. It is always compilation_unit
+//     wrapping the ERROR, so bare publish would never be correct here,
+//     regardless of which route the port's recovery selects.
+//   - earthfile: mixed, not uniformly wrong. On some inputs (for example
+//     "F0|") C's root is already a childless ERROR — bare publish would be
+//     an exact match; on others (for example "a1") C's root is ERROR with
+//     one invisible child, so bare publish would mismatch the child count.
+//     A 30-input census of every input where the port reaches the bare
+//     shape found C agrees on 8 of 30 (27%) and disagrees on the rest.
+//     Excluding earthfile is the conservative choice given that split, not
+//     a case where C never agrees.
+//
+// 19 of the grammars below were verified with a full-shape (kind, child
+// count, span, HasError, s-expression) comparison against the pinned C
+// oracle for every input a wide-corpus sweep found moved
+// (cgo_harness/parity_recover_eof_publish_sweep_test.go,
+// TestParityRecoverEOFPublishSweep, recoverEOFPublishCandidates).
+// TestCRecoverEOFBareRootReceiptMatchesSweep (in cgo_harness, which can
+// import this exported function) asserts this table agrees with that
+// test's grammar set, so neither can drift from the other.
+//
+// doxygen is the 20th and is a deliberate addition beyond the sweep: the
+// sweep only covers default=true grammars, and doxygen is opted out of the
+// default gate (cRecoveryDefaultOptOut), so it is never a sweep candidate.
+// It was verified separately, with the gate forced on
+// (GOT_C_RECOVERY=doxygen), against pine's 2026-09-21 witness
+// (cgo_harness/parity_doxygen_recover_eof_root_test.go,
+// TestParityDoxygenRecoverEOFRootMatchesC). Receipting it here lets that
+// witness test publish bare without granting doxygen the default gate.
+// The entry is dormant in production today: the shipped doxygen.bin has
+// zero ExternalLexStates rows, so even with the gate forced on the port
+// never reaches the recover_eof route with today's blob. It only becomes
+// live after both a blob regeneration that restores those rows and
+// removal of doxygen from cRecoveryDefaultOptOut.
+//
+// Exported (unlike cRecoveryDefaultOptOut) so the cgo_harness sweep test,
+// a separate Go module, can enumerate this exact set via
+// CRecoverEOFBareRootReceiptedNames and assert it matches its own
+// candidate set directly, instead of through a hand-duplicated copy.
+var cRecoverEOFBareRootReceiptedSet = map[string]bool{
+	"corn": true, "cpon": true, "dhall": true, "doxygen": true, "dot": true,
+	"dtd": true, "ebnf": true, "facility": true, "fidl": true, "graphql": true,
+	"jsdoc": true, "json5": true, "mermaid": true, "nickel": true,
+	"powershell": true, "promql": true, "regex": true, "ron": true,
+	"textproto": true, "vhdl": true,
+}
+
+func CRecoverEOFBareRootReceipted(name string) bool {
+	return cRecoverEOFBareRootReceiptedSet[name]
+}
+
+// CRecoverEOFBareRootReceiptedNames returns every grammar name
+// CRecoverEOFBareRootReceipted answers true for. A caller that must
+// enumerate the full receipted set — for example checking every entry is
+// still a real shipped grammar, not merely checking a fixed candidate list
+// against the table one name at a time — should use this instead of
+// probing individual names, since probing a fixed list can never notice an
+// extra, unexpected entry the table grants.
+func CRecoverEOFBareRootReceiptedNames() []string {
+	names := make([]string, 0, len(cRecoverEOFBareRootReceiptedSet))
+	for name := range cRecoverEOFBareRootReceiptedSet {
+		names = append(names, name)
+	}
+	return names
 }
 
 func langHasExternalRecoverySurface(lang *Language) bool {
@@ -3897,6 +4016,10 @@ func (p *Parser) cHandleError(stacks *[]glrStack, si int, source []byte, tok Tok
 	// token), absorb the token on each member, or halt members.
 	outcome := cRecoverOutcome(cRecConsumed)
 	first := true
+	var groupEOFAccepted []int
+	if gssScratch != nil {
+		groupEOFAccepted = gssScratch.groupEOFAcceptedScratch[:0]
+	}
 	for i := 0; i < len(*stacks); i++ {
 		if reason := checkStop(); reason != ParseStopNone {
 			return cRecHalted, needsRedispatch, reason
@@ -3918,6 +4041,75 @@ func (p *Parser) cHandleError(stacks *[]glrStack, si int, source []byte, tok Tok
 			first = false
 		} else if res == cRecHalted {
 			v.dead = true
+		}
+		if v.accepted && !v.dead {
+			if n := stackEntryNode(v.top()); n != nil && n.hasFlag(nodeFlagCompactRecoverEOF) {
+				groupEOFAccepted = append(groupEOFAccepted, i)
+			}
+		}
+	}
+	if gssScratch != nil {
+		gssScratch.groupEOFAcceptedScratch = groupEOFAccepted
+	}
+	// C's do_all_potential_reductions merges every reduction interpretation
+	// it explores into one stack version. It calls ts_stack_merge
+	// unconditionally, before ts_stack_record_summary and
+	// ts_parser__recover (parser.c:1512-1515, ts_parser__handle_error).
+	// That one version's own accept call later folds every GSS history
+	// into one finished_tree, using ts_parser__select_tree. A same-token
+	// resync fork (ts_parser__recover_to_state) therefore only ever
+	// competes against that one folded result — never against its own
+	// sibling interpretations.
+	//
+	// This port instead keeps every reduction interpretation as its own
+	// independent glrStack (see the "Mapping notes" comment atop this
+	// file). When several absorbing-group siblings independently reach
+	// cRecoverEOFAccept, they become N separately accepted stacks instead
+	// of C's one folded result. For most grammars this defect never
+	// touches the per-iteration stack cap: it changes the final
+	// result-selection fold in buildResultFromGLR instead
+	// (parser_result.go). On a cost tie, a dynamic-precedence tie, and a
+	// nonzero cost, stackCompareForResultSelectionWithRawShape prefers the
+	// later candidate. So a sibling's position relative to the resync
+	// candidate — not either one's cost — decided the argmax. Collapsing
+	// the group to one representative removes that spurious index
+	// dependency before the fold runs, the same way C's own fold only
+	// ever sees one candidate per merged version.
+	//
+	// c_sharp needs the collapse for a second, related reason. There the
+	// resync fork is itself a separate, not-yet-accepted stack. It must
+	// survive cullParseStacksForIteration's per-iteration cap before it
+	// can even reach the final fold. compareStackCullKeys ranks any
+	// accepted stack above any not-yet-accepted one, regardless of cost.
+	// Leaving every group sibling accepted let them crowd the fork out of
+	// the cull itself, before cost or fold order could ever matter.
+	// Collapsing the group to one representative fixes both stages at
+	// once (task #77).
+	//
+	// Caveat: the surviving representative now decides its own index
+	// after condense compaction, and that index is load-bearing input to
+	// the final fold's "prefer the later candidate" tie-break. No test in
+	// this file pins that index directly.
+	// TestParityCSharpRecoverEOFWrappedRootMatchesC and the cross-grammar
+	// shape checks in cgo_harness only pin the resulting tree shape.
+	if len(groupEOFAccepted) > 1 {
+		best := groupEOFAccepted[0]
+		for _, idx := range groupEOFAccepted[1:] {
+			if reason := checkStop(); reason != ParseStopNone {
+				return cRecHalted, needsRedispatch, reason
+			}
+			// skipErrorRank=false here matches the final selection's own
+			// !*trackChildErrors (parser.go, buildResultFromGLR's caller)
+			// only because cRecoverEOFAccept always sets *trackChildErrors
+			// = true before this collapse can run. If a future change lets
+			// a group member reach nodeFlagCompactRecoverEOF without also
+			// setting trackChildErrors, resync the two here.
+			if stackCompareForResultSelection(p, arena, &(*stacks)[idx], &(*stacks)[best], false) > 0 {
+				(*stacks)[best].dead = true
+				best = idx
+			} else {
+				(*stacks)[idx].dead = true
+			}
 		}
 	}
 	p.recordRecoveryLiveVersions(*stacks)
@@ -4384,6 +4576,12 @@ func (p *Parser) cRecoverEOFAccept(v *glrStack, tok Token, nodeCount *int, arena
 		cSetNodeSpan(root, tok.StartByte, tok.EndByte, tok.StartPoint, tok.EndPoint)
 	}
 	root.setHasError(true)
+	// Mark the C-recovery lineage so buildSingleRootTree can publish this
+	// exact root unwrapped when it lands as the parse's sole accepted node
+	// (tryPublishCRecoverEOFRoot, parser_result_root_build.go), matching
+	// tree-sitter C's ts_parser__accept, which never nests recover_eof's
+	// whole-file ERROR wrap under the grammar's expected root symbol.
+	root.setFlag(nodeFlagCompactRecoverEOF, true)
 	nodeBumpEquivVersionBeforePublication(root)
 	if perfCountersEnabled {
 		perfRecordErrorNode()
@@ -5505,7 +5703,9 @@ func (p *Parser) newRecoveryParentNodeInArena(arena *nodeArena, sym Symbol, name
 }
 
 // relexTokenForStackLexState re-lexes the current lookahead using one GLR
-// stack's own lex mode.
+// stack's own lex mode, and, when that finds nothing usable, tries a
+// zero-width external token the stack needs before it can accept the shared
+// lookahead at all.
 //
 // Background (issue #454 Scala investigation). tree-sitter C lexes once per
 // parse version, so two versions sitting in different states can legitimately
@@ -5514,14 +5714,15 @@ func (p *Parser) newRecoveryParentNodeInArena(arena *nodeArena, sym Symbol, name
 // whenever every live stack accepts the shared token. It starves a stack when
 // the same bytes must lex as a different symbol in that stack's state.
 //
-// Scala is the witness. In `if (a) c + 2` the correct derivation reduces `(a)`
-// to _if_condition and then needs `+` as the grammar's generic
-// operator_identifier. The rival derivation, which treats `(a)` as a plain
-// expression, needs the dedicated `+` token that exists so prefix_expression
-// can spell unary plus. The shared lexer emits the dedicated `+`, the correct
-// stack finds no action for it, pauses, and the condense step drops it because
-// the rival is still unpaused. The rival then dead-ends and the whole file
-// becomes one ERROR. The C oracle parses the same input cleanly.
+// Scala is the witness for the DFA-only case. In `if (a) c + 2` the correct
+// derivation reduces `(a)` to _if_condition and then needs `+` as the
+// grammar's generic operator_identifier. The rival derivation, which treats
+// `(a)` as a plain expression, needs the dedicated `+` token that exists so
+// prefix_expression can spell unary plus. The shared lexer emits the
+// dedicated `+`, the correct stack finds no action for it, pauses, and the
+// condense step drops it because the rival is still unpaused. The rival then
+// dead-ends and the whole file becomes one ERROR. The C oracle parses the
+// same input cleanly.
 //
 // This is not Scala-specific. Any grammar where one byte sequence lexes as
 // different symbols depending on parse state has the same exposure: `+ - ! ~`
@@ -5532,80 +5733,315 @@ func (p *Parser) newRecoveryParentNodeInArena(arena *nodeArena, sym Symbol, name
 // forks through the trailing `.`, one needing the `class` keyword and the
 // other needing plain `identifier` for the same bytes; the shared lexer
 // promotes the keyword, and the field_access fork used to die here with no
-// alternative. This function has two callers: the C-recovery port above
-// (parser.go, gated by errorCostCompetitionEnabled -- a no-action stack there
-// pauses instead of dying if the re-lex fails) and the plain multi-stack
-// dispatch loop (parser.go, ungated -- a no-action stack there is killed
-// instead of dying if the re-lex fails). Both callers restore the shared
-// token for every sibling stack via the same stackRelexRestoreTok /
-// stackRelexActive pair, so a re-lex never leaks sideways to a stack that
-// does accept the original symbol.
+// alternative.
 //
-// The re-lex is deliberately narrow, so it cannot disturb the lockstep token
-// loop the rest of the engine relies on:
+// Perl upstream 8917c6e9 is the witness for a starved stack that needs a
+// zero-width EXTERNAL token, not just a different DFA reading of the same
+// span. In `foo(1, 2;\n`, byte 4 (the `(`) forks state 976 into a stack that
+// wants the DFA `number` token and a stack that first needs the zero-width
+// external `_RECOVER_PAREN_CLOSE`/`_NONASSOC` precedence marker before
+// `number` has any action at all. preferGLRUnionDFAOverExternalToken scores
+// the shared lexer's choice toward `number` (parser_dfa_token_source.go), so
+// the marker stack starves under the DFA-only probe above -- there is no
+// alternative DFA reading of `number`'s bytes to find -- and used to die here
+// with "no action for sym=249". The C oracle accepts the same bytes cleanly
+// because it lexes once per stack and always gets the marker.
 //
-//   - It only runs where the stack would otherwise pause with no action, so a
-//     parse in which every stack accepts the shared token pays nothing.
-//   - It requires the re-lexed token to cover exactly the shared token's byte
-//     span. Same span means a stack that adopts it advances to the same offset
-//     as every stack that took the shared token, so the versions stay in
-//     lockstep and no caller has to reason about a ragged frontier.
-//   - It requires the stack's state to have a real action for the re-lexed
-//     symbol, so a failed probe leaves the existing pause path untouched.
-//   - It runs the internal DFA only. The external scanner is never re-entered,
-//     so no scanner state is mutated or needs restoring.
-func (p *Parser) relexTokenForStackLexState(source []byte, state StateID, tok Token, lexicalReadSpan *uint32) (Token, bool) {
+// This function has two callers: the C-recovery port above (parser.go, gated
+// by errorCostCompetitionEnabled -- a no-action stack there pauses instead of
+// dying if both probes fail) and the plain multi-stack dispatch loop
+// (parser.go, ungated -- a no-action stack there is killed instead of dying
+// if both probes fail). Both callers restore the shared token for every
+// sibling stack via the same stackRelexRestoreTok / stackRelexActive pair, so
+// neither probe's result ever leaks sideways to a stack that does accept the
+// original symbol.
+//
+// Both probes are deliberately narrow, so neither can disturb the lockstep
+// token loop the rest of the engine relies on:
+//
+//   - Both only run where the stack would otherwise pause with no action, so
+//     a parse in which every stack accepts the shared token pays nothing.
+//   - The DFA probe requires the re-lexed token to cover exactly the shared
+//     token's byte span. Same span means a stack that adopts it advances to
+//     the same offset as every stack that took the shared token, so the
+//     versions stay in lockstep and no caller has to reason about a ragged
+//     frontier.
+//   - The DFA probe requires the stack's state to have a real action for the
+//     re-lexed symbol, so a failed probe leaves the existing pause path
+//     untouched. It runs the internal DFA only: it never touches the
+//     external scanner, so no scanner state is mutated or needs restoring.
+//   - The external probe (relexZeroWidthExternalTokenForStackLexState) only
+//     runs after the DFA probe fails. It requires the external token to be
+//     zero-width at the shared token's own start byte, so shifting it onto
+//     the stack advances that stack's parse state without advancing its
+//     lexer position; the stack then retries the unmodified shared token
+//     against its new state. It requires the stack's state to carry exactly
+//     one action for the probed symbol, and that action must be a shift; it
+//     further requires the post-shift state to already have a real action
+//     for the shared token before it commits to anything, which is the
+//     rescue's actual termination proof (see that function's doc for why).
+//     It snapshots the shared token source's external scanner payload before
+//     probing and restores it on every path, including success, so the
+//     result belongs to this one starved stack and never perturbs the
+//     scanner state every other live stack's future tokens depend on.
+//     rescueBudget bounds how many times one stack's dispatch of one shared
+//     token may rescue at all; it is load-bearing, not merely
+//     defense-in-depth, because a deferred contextual action can make the
+//     termination proof above pass and still re-enter this same no-action
+//     block on the next retryAction pass (see that function's doc).
+func (p *Parser) relexTokenForStackLexState(
+	source []byte, state StateID, tok Token, lexicalReadSpan *uint32,
+	dts *dfaTokenSource, s *glrStack, nodeCount *int, arena *nodeArena,
+	scratch *parserScratch, trackChildErrors *bool, rescueBudget *int,
+) (Token, StateID, bool) {
 	lang := p.language
 	if lang == nil || len(lang.LexStates) == 0 || int(state) >= len(lang.LexModes) {
-		return tok, false
+		return tok, state, false
 	}
 	// Zero-width, missing, error-run and EOF lookaheads have no alternative
 	// tokenization to find; they are handled by the paths above the pause.
 	if tok.Symbol == 0 || tok.Symbol == errorSymbol || tok.Missing || tok.NoLookahead {
-		return tok, false
+		return tok, state, false
 	}
 	if tok.StartByte >= tok.EndByte || int(tok.StartByte) >= len(source) {
-		return tok, false
+		return tok, state, false
+	}
+	// ABI 15: a keyword the parse state reserves stays a keyword even when the
+	// state has no action for it (ts_language_is_reserved_word, parser.c). C
+	// blocks the re-lex here so a reserved word never re-lexes into the
+	// generic word token; without this guard, "var if = 1" in JavaScript
+	// would silently accept "if" as a binding identifier under the C-recovery
+	// port and the ungated multi-stack fork.
+	if languageKeywordReservedInState(lang, state, tok.Symbol) {
+		return tok, state, false
 	}
 	ls := lang.LexModes[state].LexStateIndex()
-	if ls == noLookaheadLexState || int(ls) >= len(lang.LexStates) {
-		return tok, false
+	if ls != noLookaheadLexState && int(ls) < len(lang.LexStates) {
+		// GLR prunes branches at no-action points constantly during ordinary
+		// parses, so this probe runs often even on grammars that never need a
+		// re-lex. Reuse one parser-owned Lexer rather than constructing a fresh one
+		// per call so the probe stays allocation-free on that hot path. Measured
+		// against origin/main with the grammar pre-warmed, java, cpp, go and
+		// javascript allocate byte-identically with the probe in place.
+		probe := &p.relexProbeLexer
+		*probe = Lexer{
+			states:          lang.LexStates,
+			asciiTable:      lang.LexAsciiTable(),
+			source:          source,
+			pos:             int(tok.StartByte),
+			row:             tok.StartPoint.Row,
+			col:             tok.StartPoint.Column,
+			immediateTokens: lang.ImmediateTokens,
+			zeroWidthTokens: lang.ZeroWidthTokens,
+		}
+		if len(p.included) != 0 && lang.ExternalScanner == nil && len(lang.ExternalSymbols) == 0 {
+			probe.setIncludedRanges(p.included)
+		}
+		relexed, ok := probe.scan(uint32(ls), probe.pos, probe.row, probe.col)
+		recordTokenInvariantReadSpan(lexicalReadSpan, int(tok.StartByte), tokenInvariantExaminedEnd(source, relexed.lexerLookaheadEndByte))
+		// Exact-span requirement: this is what keeps the shared-token loop in
+		// lockstep. A shorter or longer re-lex would leave this stack at a
+		// different byte offset than its siblings.
+		if ok && relexed.Symbol != 0 && relexed.Symbol != tok.Symbol &&
+			relexed.StartByte == tok.StartByte && relexed.EndByte == tok.EndByte &&
+			p.stateHasActionForSymbol(state, relexed.Symbol) {
+			return relexed, state, true
+		}
 	}
-	// GLR prunes branches at no-action points constantly during ordinary
-	// parses, so this probe runs often even on grammars that never need a
-	// re-lex. Reuse one parser-owned Lexer rather than constructing a fresh one
-	// per call so the probe stays allocation-free on that hot path. Measured
-	// against origin/main with the grammar pre-warmed, java, cpp, go and
-	// javascript allocate byte-identically with the probe in place.
-	probe := &p.relexProbeLexer
-	*probe = Lexer{
-		states:          lang.LexStates,
-		asciiTable:      lang.LexAsciiTable(),
-		source:          source,
-		pos:             int(tok.StartByte),
-		row:             tok.StartPoint.Row,
-		col:             tok.StartPoint.Column,
-		immediateTokens: lang.ImmediateTokens,
-		zeroWidthTokens: lang.ZeroWidthTokens,
+	return p.relexZeroWidthExternalTokenForStackLexState(source, dts, s, state, tok, nodeCount, arena, scratch, trackChildErrors, rescueBudget)
+}
+
+// relexZeroWidthExternalTokenForStackLexState is the zero-width-external
+// rescue described in relexTokenForStackLexState's doc above (the perl
+// `_NONASSOC` witness). It probes the external scanner from the shared
+// token's start byte using the starved stack's own ExternalLexStates row,
+// and, only when every one of the guards below holds, shifts it onto the
+// stack:
+//
+//   - the result is zero-width at the shared token's own start byte
+//     (otherwise the shift would move the byte frontier);
+//   - the stack's current state carries exactly one action for the probed
+//     symbol, and it is a shift (a conflicting or non-shift action cell is
+//     out of this rescue's scope, matching singleShiftActionForSymbol);
+//   - the post-shift state already has a real action for the ORIGINAL
+//     shared token's symbol (stateHasActionForSymbol), proving the shift is
+//     forward progress before it is committed. This is the main
+//     termination proof: without it, two states that each shift a
+//     zero-width symbol into the other -- neither ever gaining an action
+//     for the shared token -- loop forever;
+//   - the shared token's byte position still lines up with the stack's own
+//     position (realTokenAttachmentGapIsParserPadding), the same
+//     byte-continuity check every other shift call site in this dispatch
+//     loop makes before shifting. This probe uses the check directly
+//     rather than through guardRealShiftGap: that helper kills the stack
+//     on failure (s.dead = true), which is right for a stack about to
+//     really consume a token, but this probe has shifted nothing yet, so a
+//     gap here should simply decline the rescue, not kill a stack the
+//     ordinary no-action path would otherwise still pause or retry;
+//   - rescueBudget has not been exhausted for this stack's dispatch of this
+//     one shared token. This is NOT merely defense-in-depth behind the
+//     forward-progress check above: contextualActionIndex
+//     (parser_dfa_token_source.go) can return no action for a cell
+//     stateHasActionForSymbol reports as present (a deferred contextual
+//     action, for example the close-angle disambiguation
+//     shouldDeferContextualCloseAngleAction gates), so the forward-progress
+//     check can pass, the shift commit, and the no-action block still
+//     re-enter for the same shared token on the very next retryAction pass.
+//     rescueBudget is what actually bounds that case. d.extZeroTried (the
+//     token source's own zero-width loop guard) does not fit here: it is
+//     keyed by external symbol index and shared across every live stack, so
+//     one stack's legitimate rescue would wrongly suppress a different
+//     stack's unrelated rescue of the same symbol at the same byte.
+//     rescueBudget is a plain counter scoped to one stack's retryAction
+//     loop for one shared token instead (that loop already fixes "this
+//     stack" and "this byte"; the counter bounds "how many rescues").
+//
+// The shift advances only s's own parse state, never the shared lexer
+// position: a zero-width token never moves the byte frontier, so every
+// sibling stack still sees the same shared token at the same position next.
+// It resets s.shifted to false afterward: applyShiftAction sets it
+// unconditionally, but this stack has not consumed the shared token tok --
+// the caller is about to retry tok, unmodified, against the new state. A
+// stack sitting between an unrelated rescue-shift and that retry must still
+// read as "not done with tok" to allLiveUnacceptedStacksShifted and the
+// default-reduce helpers, exactly as it would with no rescue at all.
+//
+// It also gives the rescued leaf the checkpoint a normal external-scanner
+// shift would carry, scoped to the rescued token's own span, whenever the
+// probe found one (checkpoint-capable scanners only). Without this,
+// cStackEntryExternalScannerStatesEqual could never prove the rescued
+// leaf's end state and would refuse every merge this stack takes part in
+// afterward (fail-closed, not a correctness bug, but a needless merge
+// loss).
+func (p *Parser) relexZeroWidthExternalTokenForStackLexState(
+	source []byte, dts *dfaTokenSource, s *glrStack, state StateID, tok Token,
+	nodeCount *int, arena *nodeArena, scratch *parserScratch, trackChildErrors *bool,
+	rescueBudget *int,
+) (Token, StateID, bool) {
+	if dts == nil || s == nil || arena == nil || scratch == nil || nodeCount == nil {
+		return tok, state, false
 	}
-	if len(p.included) != 0 && lang.ExternalScanner == nil && len(lang.ExternalSymbols) == 0 {
-		probe.setIncludedRanges(p.included)
+	lang := p.language
+	if lang == nil || lang.ExternalScanner == nil || len(lang.ExternalLexStates) == 0 {
+		return tok, state, false
 	}
-	relexed, ok := probe.scan(uint32(ls), probe.pos, probe.row, probe.col)
-	recordTokenInvariantReadSpan(lexicalReadSpan, int(tok.StartByte), tokenInvariantExaminedEnd(source, relexed.lexerLookaheadEndByte))
-	if !ok || relexed.Symbol == 0 || relexed.Symbol == tok.Symbol {
-		return tok, false
+	// dts is the shared token source for this parse; it must be scanning
+	// this same language, or its ExternalLexStates rows describe a
+	// different grammar's lex states entirely.
+	if dts.language != lang {
+		return tok, state, false
 	}
-	// Exact-span requirement: this is what keeps the shared-token loop in
-	// lockstep. A shorter or longer re-lex would leave this stack at a
-	// different byte offset than its siblings.
-	if relexed.StartByte != tok.StartByte || relexed.EndByte != tok.EndByte {
-		return tok, false
+	if rescueBudget != nil && *rescueBudget <= 0 {
+		return tok, state, false
 	}
-	if !p.stateHasActionForSymbol(state, relexed.Symbol) {
-		return tok, false
+	if int(state) >= len(lang.LexModes) {
+		return tok, state, false
 	}
-	return relexed, true
+	elsID := lang.LexModes[state].ExternalLexState
+	if int(elsID) >= len(lang.ExternalLexStates) {
+		return tok, state, false
+	}
+	probed, checkpoint, ok := dts.probeZeroWidthExternalTokenForLexState(source, elsID, tok)
+	if !ok {
+		return tok, state, false
+	}
+	// Zero-width at the shared token's own start byte only: this is what
+	// keeps the shift from moving the byte frontier (requirement 3 in the doc
+	// comment above).
+	if probed.StartByte != tok.StartByte || probed.EndByte != probed.StartByte {
+		return tok, state, false
+	}
+	act, ok := p.singleShiftActionForSymbol(state, probed.Symbol)
+	if !ok {
+		return tok, state, false
+	}
+	// Forward-progress proof: the post-shift state must already have a real
+	// action for the shared token before this rescue commits to anything.
+	if !p.stateHasActionForSymbol(act.State, tok.Symbol) {
+		return tok, state, false
+	}
+	// guardRealShiftGap's failure path kills the stack (s.dead = true),
+	// which is right for a stack that was actually about to consume the
+	// shared token: every other shift call site in the dispatch loop uses
+	// it for exactly that reason. This probe has shifted nothing yet, so a
+	// gap here only means "decline the rescue, leave the stack exactly as
+	// the ordinary no-action path would have found it" -- killing it would
+	// let a paused-but-dead stack reach the condense step and wrongly mark
+	// C-recovery cost competition relevant. Use the same underlying
+	// byte-continuity check without that side effect.
+	if !realTokenAttachmentGapIsParserPadding(source, s, probed, p.included, p.lineContinuationEscapeByte()) {
+		return tok, state, false
+	}
+	if rescueBudget != nil {
+		*rescueBudget--
+	}
+	// Give the rescued leaf the checkpoint a normal external-scanner shift
+	// would carry, scoped to the rescued token's own span, whenever the
+	// probe found one (checkpoint-capable scanners only): borrow the
+	// parser's current-token-checkpoint fields for the duration of the
+	// shift, so applyShiftAction's existing checkpoint-recording path
+	// attaches it, then restore the shared token's own checkpoint fields
+	// immediately after -- in a defer, so a panic inside applyShiftAction
+	// cannot leave the fields repointed at this rescue's checkpoint.
+	// checkpoint.end always equals checkpoint.start (see the probe's doc):
+	// the probe never lets the marker's scan persist into the live
+	// scanner, so the true end state is unchanged, not the post-scan state
+	// the marker's own Scan call produced. A checkpoint recording that
+	// post-scan state as "end" would reach fastForwardWithExternalScannerCheckpoint
+	// on reuse (incremental.go), parent inheritance
+	// (rebuildExternalScannerCheckpointForNode), the merge guard
+	// (cStackEntryExternalScannerStatesEqual, glr.go), and the canonical
+	// leaf table (parser_reduce.go) -- all of which would then believe the
+	// scanner advanced when it never did.
+	//
+	// When the current parse configures skipInvisibleFullLeafCheckpoints
+	// and the rescued symbol is invisible, recordCurrentExternalLeafCheckpoint
+	// (parser.go) declines to attach anything regardless of the fields set
+	// here: no checkpoint attaches, and the merge guard stays fail-closed
+	// for this leaf. That is the existing, accepted behavior for every
+	// other external-scanner leaf on such a parse, not a gap this rescue
+	// introduces.
+	savedCheckpoint := p.currentExternalTokenCheckpoint
+	savedCheckpointStart := p.currentExternalTokenCheckpointStart
+	savedCheckpointEnd := p.currentExternalTokenCheckpointEnd
+	savedCheckpointValid := p.currentExternalTokenCheckpointValid
+	defer func() {
+		p.currentExternalTokenCheckpoint = savedCheckpoint
+		p.currentExternalTokenCheckpointStart = savedCheckpointStart
+		p.currentExternalTokenCheckpointEnd = savedCheckpointEnd
+		p.currentExternalTokenCheckpointValid = savedCheckpointValid
+	}()
+	if len(checkpoint.start) != 0 && len(checkpoint.end) != 0 {
+		p.currentExternalTokenCheckpoint = checkpoint
+		p.currentExternalTokenCheckpointStart = probed.StartByte
+		p.currentExternalTokenCheckpointEnd = probed.EndByte
+		p.currentExternalTokenCheckpointValid = true
+	} else {
+		p.currentExternalTokenCheckpointValid = false
+	}
+	p.applyShiftAction(s, act, probed, nodeCount, arena, &scratch.entries, &scratch.gss, trackChildErrors)
+	s.shifted = false
+	return tok, s.top().state, true
+}
+
+// singleShiftActionForSymbol returns state's action for sym when it is
+// exactly one shift action, with no conflict and no other action type. The
+// zero-width external rescue above only ever applies one deterministic
+// shift; a conflicting or non-shift action cell is out of its scope and
+// leaves the starved stack to die as before.
+func (p *Parser) singleShiftActionForSymbol(state StateID, sym Symbol) (ParseAction, bool) {
+	if p.language == nil {
+		return ParseAction{}, false
+	}
+	idx := p.lookupActionIndex(state, sym)
+	if idx == 0 || int(idx) >= len(p.language.ParseActions) {
+		return ParseAction{}, false
+	}
+	actions := p.language.ParseActions[idx].Actions
+	if len(actions) != 1 || actions[0].Type != ParseActionShift {
+		return ParseAction{}, false
+	}
+	return actions[0], true
 }
 
 // stateHasActionForSymbol reports whether state carries at least one real parse
