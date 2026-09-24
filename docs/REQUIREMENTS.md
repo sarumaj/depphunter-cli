@@ -1404,8 +1404,8 @@ a release puts a grapple gun in the off hand.
   a claim about the file rather than about the reading of it. A file nothing read
   says its size instead of saying it has no lines.
 - The height scale is set by counted lines alone, so the files that have none are
-  measured against the source around them rather than setting the scale for it. A
-  large blob tops out level with the longest file instead of flattening the city
+  measured against the source around them rather than setting the scale for it.
+  A large blob tops out level with the longest file instead of flattening the city
   to make room for itself.
 
 *Accepted when* a repository with a megabyte-sized binary in it draws that binary
