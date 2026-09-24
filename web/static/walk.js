@@ -25,7 +25,9 @@ import { rampsFor, rampHeight, bridgesFor, bridgeHeight, bridgeBounds } from './
 import { Health } from './health.js';
 import { Wind } from './wind.js';
 import { severityColors } from './findings.js';
-import { TOOL_IDS, PRIMARY_IDS, SECONDARY_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool, studyTool, viewLights, hits, isMelee } from './tools.js';
+import { PRIMARY_IDS, SECONDARY_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool, studyTool, viewLights, hits, isMelee } from './tools.js';
+import { ToolWheel, EMPTY, carriedRing, cycle, keyFor, keysFor, rowOrder, toolForKey } from './switcher.js';
+import { inBlaze } from './flames.js';
 
 // A building is one unit wide and its storeys 0.3 high (city.js): the walker is
 // about a storey and a half tall.
@@ -85,6 +87,15 @@ const RADAR_MIN = 12, RADAR_MAX = 400, RADAR_MS = 85, RADAR_SIZE = 150;
 // wider and a map with bugs on every street is zoomed in the whole time, which is
 // the same as not zooming at all.
 const RADAR_NEAR = 14, RADAR_GROW = 0.55;
+// How long a fire takes to pulse on the sweep, in milliseconds. Slow enough to read
+// as breathing rather than blinking: a blink is an alarm and there is nothing sudden
+// about a fire, which is already alight and will still be alight in a second.
+const RADAR_PULSE = 1500;
+// What a fire is drawn in on the sweep. Not a severity color: severity is what the
+// scanners said, and every fire here is the same thing whatever they rated it - a
+// vulnerability somebody can reach. It is the color of the flames instead, so the
+// dot and the thing it stands for are plainly the same.
+const FIRE_DOT = '#f26a1b';
 // How long the range and the dial take to settle, in seconds. Eased by elapsed time
 // rather than per redraw, so the growth is the same on a slow frame as on a fast one.
 const RADAR_RANGE_TAU = 0.5, RADAR_ZOOM_TAU = 0.55;
@@ -127,6 +138,14 @@ const DYING = 1.1;
 // The reach is a stride, so standing in the middle of a lap is what does it rather
 // than walking past one; a bug on a wall three storeys up cannot reach anybody.
 const BITE_REACH = 0.75, BITE_EVERY = 1.1;
+// Standing in a fire: how often it takes something, and what a full blaze takes each
+// time. Less than a bite from anything serious, and it lands over and over, which is
+// the difference between the two dangers. A bug bites and you turn and deal with it;
+// a fire does not bite, it is simply somewhere you cannot be - so what it costs is a
+// reason to get off the roof rather than a reason to fight it where you stand. Six
+// seconds in a blaze at full heat is most of a walker, and walking through the edge
+// of one costs a few points and a fright.
+const BURN_EVERY = 0.75, BURN = 13;
 // How far a dart looks for a wall to steer towards, and how nearly ahead of itself it
 // will accept one, as a cosine: about forty degrees either side, which is wide enough
 // to save a lobbed shot and narrow enough that a dart cannot turn round.
@@ -134,19 +153,17 @@ const TRACK_REACH = 30, TRACK_AHEAD = 0.75;
 
 // Keys the walker owns while active, by KeyboardEvent.code; the map's own shortcuts
 // for these letters are suspended. A key that is not here never reaches walk mode -
-// the map keeps it - so this has to list every one the handler below acts on. E and Q
-// are held and do nothing: on the map they rotate the view and expand things, which
-// would only reshuffle the city around a walker.
+// the map keeps it - so this has to list every one the handler below acts on. Q and E
+// rotate the map's view and expand things, which would only reshuffle the city around
+// a walker; out in it they change hands instead (switcher.js).
 const KEYS = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   'Space', 'ShiftLeft', 'ShiftRight', 'KeyC', 'KeyE', 'KeyQ', 'KeyF', 'Enter',
-  'Escape', 'KeyV', 'KeyM', 'KeyT', 'KeyH',
-  // The tool slots: 1 to 9, and 0 for the tenth, the way a shooter numbers them.
+  'Escape', 'KeyV', 'KeyM', 'KeyR', 'KeyH',
+  // Every tool's digit: the row is ten slots and the digits count along it, 1 to 9
+  // and then 0 for the tenth (switcher.js).
   'Digit0', ...Array.from({ length: 9 }, (_, i) => `Digit${i + 1}`),
 ]);
-
-// Which slot a number key picks: 1..9 in order, and 0 last.
-const slotOf = code => (code === 'Digit0' ? 9 : +code.slice(5) - 1);
 
 // Planet curvature, by the character typed rather than the key's place on the board:
 // on a German keyboard the key at BracketRight types '+', which would otherwise make
@@ -190,8 +207,12 @@ export class Walker {
     this.bridges = [];
     this.decks = new Map(); // ramps, by grid cell (indexDecks)
     this.spans = new Map(); // bridge decks, likewise, but tested differently (height)
-    this.aim = { i: -1, point: null, bug: null };
+    this.aim = { i: -1, point: null, bug: null, box: null };
     this.bugs = null; // set by setBugs once there are findings to walk the streets
+    // What is alight and what that looks like (fires.js, flames.js), set by setFires.
+    // Fire burns on the map as well as in the street, so the walker does not own it -
+    // it only puts it out.
+    this.fires = null;
     // Frozen: the details panel has the pointer, so the view holds still. Otherwise
     // the freed cursor and the reticle in the centre both steer the same scene, and
     // reading about a building means fighting it.
@@ -207,8 +228,13 @@ export class Walker {
     // left. There is always a primary; the off hand may be empty.
     this.primary = toolFor(hooks.tool?.() || DEFAULT_TOOL);
     this.secondary = null;
+    // The wheel, which is the third way of changing hands and the only one that shows
+    // all ten at once. It builds its own face the first time it comes up, and while it
+    // is up the mouse points at it rather than looking around.
+    this.wheel = new ToolWheel(hud.querySelector('.w-wheel'));
     this.health = new Health(hud);
     this.bitAt = 0;   // when a bug last got a bite in
+    this.burnAt = 0;  // ... and when a fire last took something
     this.burst = 0;   // seconds of jet backpack thrust left
     this.fell = null; // the height a fall in progress started from
     // How full each carried tool's tank is, as a share, by tool id. A tank is the
@@ -250,6 +276,9 @@ export class Walker {
   owns(e) {
     return this.active && (KEYS.has(e.code) || BIGGER.has(e.key) || SMALLER.has(e.key));
   }
+
+  /** Hands the walker the fires burning on it (fires.js); null takes them away. */
+  setFires(fires) { this.fires = fires; }
 
   /** Hands the walker the bugs patrolling the map (bugs.js); null takes them away. */
   setBugs(bugs) {
@@ -359,6 +388,7 @@ export class Walker {
     // Full health on the way in, which is also the way back after dying.
     this.health.reset(this.hooks.caught?.() ?? 0);
     this.bitAt = 0;
+    this.burnAt = 0;
     this.burst = 0;
     this.fell = null;
     this.dying = null;
@@ -391,6 +421,7 @@ export class Walker {
     this.active = false;
     this.keys.clear();
     this.firing = false;
+    this.closeWheel(false);
     for (const dart of this.darts) this.scene.scene.remove(dart.mesh);
     this.darts = [];
     this.cutLine();
@@ -405,6 +436,7 @@ export class Walker {
     this.hud.classList.remove('compact');
     this.hud.classList.remove('hit');
     this.hud.classList.remove('dead');
+    this.hud.classList.remove('held');
     this.hud.style.removeProperty('--dead');
     this.dying = null;
     this.hud.querySelector('.w-flash').textContent = '';
@@ -577,7 +609,7 @@ export class Walker {
       this.flash(tool.kind === 'secondary' && this.secondary !== tool
         ? `${tool.label} stowed`
         : tool.hint);
-      this.aim = { i: -1, point: null, bug: null, far: false }; // it may want another target
+      this.aim = { i: -1, point: null, bug: null, box: null, far: false }; // it may want another target
     }
     this.hooks.onTool?.(this.primary.id);
   }
@@ -595,7 +627,8 @@ export class Walker {
    */
   drawSlots() {
     const row = this.hud.querySelector('.w-slots');
-    const order = [...SECONDARY_IDS, ...PRIMARY_IDS];
+    // The same list the digits count along, so laying the row out is what numbers it.
+    const order = rowOrder();
     if (row.querySelectorAll('.w-slot').length !== order.length) {
       const slots = [];
       order.forEach((id, n) => {
@@ -616,12 +649,11 @@ export class Walker {
         el.dataset.tool = id;
         el.dataset.kind = tool.kind;
         el.setAttribute('role', 'option');
-        el.title = `${tool.label} (${hand} hand) - ${tool.hint}`;
+        el.title = `${tool.label} (${hand} hand, ${keysFor(id).join(' or ')}) - ${tool.hint}`;
         el.append(
-          // Ten slots, so the tenth is the 0 key: what a shooter does, and what the
-          // keyboard leaves room for. The key is the tool's own, not its place in the
-          // row, so laying the row out by hand does not renumber anything.
-          Object.assign(document.createElement('kbd'), { textContent: String(tool.slot % 10) }),
+          // Its place in the row, which is its key: the row reads 1 to 0 from left to
+          // right because the digits are counted along the order it is drawn in.
+          Object.assign(document.createElement('kbd'), { textContent: keyFor(id) }),
           document.createElement('i'),
           Object.assign(document.createElement('span'), { className: 'w-slot-name', textContent: tool.label }),
         );
@@ -636,10 +668,122 @@ export class Walker {
     }
   }
 
-  // T walks the hunt's row only: what the off hand carries is picked by its own key,
-  // because cycling into and out of flight by accident is not a thing anyone wants.
-  nextTool() {
-    this.setTool(PRIMARY_IDS[(PRIMARY_IDS.indexOf(this.primary.id) + 1) % PRIMARY_IDS.length]);
+  // ------------------------------------------------------------------ changing hands
+
+  /**
+   * E: the next tool for the hunting hand. The ring has no empty place in it - there
+   * is always something to hunt with - so this only ever swaps one for another.
+   */
+  nextPrimary(dir = 1) {
+    this.setTool(cycle(PRIMARY_IDS, this.primary.id, dir));
+  }
+
+  /**
+   * Q: the next tool for the off hand, and after the last of them, nothing. An empty
+   * hand belongs in that ring rather than outside it: putting the jet backpack away
+   * is how a walker comes down and stepping off the skimmers is how they go in the
+   * water, so "nothing" is a thing to reach for and not just what is left when you
+   * stop reaching.
+   *
+   * Which does mean Q can drop a walker out of the sky, exactly as pressing the jet's
+   * own key twice always could. It takes four presses to come back round to it, and
+   * the flash says which one you are on, so it is a decision rather than a slip.
+   */
+  nextCarried(dir = 1) {
+    const next = cycle(carriedRing(), this.secondary?.id ?? EMPTY, dir);
+    if (next !== EMPTY) this.setTool(next);
+    else if (this.secondary) this.setTool(this.secondary.id); // same tool again: stowed
+    else this.flash('Left hand empty');
+  }
+
+  /**
+   * R: the wheel. Flicked, it is one gesture - hold R, throw the mouse at a wedge, let
+   * go, and what it landed on is in hand. Tapped, or let go without having pointed
+   * anywhere, it stays up to be read, and R again, Enter or a click takes whatever is
+   * under the cursor; Esc or the right button leaves it and changes nothing.
+   *
+   * The walker is held where they stand while it is up (`still`), and the city
+   * behind it is blurred. Not because a menu wants a pause for its own sake, but
+   * because the wheel covers the view: a walker who cannot see the street should not
+   * be walking off a roof behind it, and stopping to change hands should not burn a
+   * tank, drown anybody or hand the bug at your ankle a free bite. The bugs go on
+   * walking their laps, since nothing they do can reach a held walker anyway.
+   *
+   * So a wheel opened by accident costs nothing at all: the cursor starts in the
+   * middle where it points at nothing, and the world waits.
+   */
+  openWheel() {
+    if (this.wheel.open) { this.closeWheel(true); return; }
+    this.setScoped(false);
+    this.firing = false;
+    this.wheel.raise(this.holding());
+  }
+
+  /** What is in hand, for the wheel to mark and name. */
+  holding() {
+    return { primary: this.primary.id, secondary: this.secondary?.id ?? null, dry: this.dry };
+  }
+
+  /**
+   * R let go. What decides whether that was the whole gesture is the mouse rather than
+   * the clock: let go pointing at something and the flick is finished, so it is taken;
+   * let go pointing at nothing - the cursor never left the hub - and the walker was
+   * asking to look rather than to choose, so the wheel stays up to be read.
+   *
+   * Which is deliberately not a hold-versus-tap threshold. A threshold has to be
+   * measured against a clock, and this page can drop a frame or several while a city
+   * is drawn behind the wheel; a tap that took one of those would have shut the wheel
+   * in the walker's face for no reason they could see. Nothing here is timed.
+   */
+  releaseWheel() {
+    if (this.wheel.pick) this.closeWheel(true);
+  }
+
+  /**
+   * Put the wheel away, taking what it is pointing at (take) or leaving it alone.
+   *
+   * Pointing at what is already in that hand keeps it, where the tool's own key would
+   * have put a carried one down. The wheel has a wedge for an empty hand and the row
+   * has not, so the key has to serve as both and the wheel does not: a walker who
+   * meant to put the jet backpack down aims at the bare hand, and one who let the
+   * cursor drift back onto the tool they are flying with does not fall out of the sky
+   * for it.
+   */
+  closeWheel(take) {
+    if (!this.wheel.open) return;
+    const pick = take ? this.wheel.pick : null;
+    this.wheel.close();
+    if (!pick) return;
+    if (pick === EMPTY) {
+      if (this.secondary) this.setTool(this.secondary.id); // the same tool again: stowed
+      else this.flash('Left hand empty');
+    } else if (pick === this.primary.id || pick === this.secondary?.id) {
+      this.flash(toolFor(pick).hint); // already in hand, so it only says what it is for
+    } else this.setTool(pick);
+  }
+
+  /** The mouse, while the wheel has it. */
+  aimWheel(dx, dy) {
+    this.wheel.move(dx, dy, this.holding());
+  }
+
+  /**
+   * A key pressed while the wheel is up. Returns whether the wheel took it, because
+   * everything it takes is a key that means something else out on the street.
+   */
+  wheelKey(code) {
+    if (!this.wheel.open) return false;
+    const digit = toolForKey(code);
+    if (digit) { this.wheel.close(); this.setTool(digit); return true; }
+    switch (code) {
+      case 'KeyQ': this.wheel.close(); this.nextCarried(); return true;
+      case 'KeyE': this.wheel.close(); this.nextPrimary(); return true;
+      // Esc backs out of it; V and M are let through to leave walk mode altogether,
+      // which puts the wheel away on the way out like everything else.
+      case 'Escape': this.closeWheel(false); return true;
+      case 'Enter': this.closeWheel(true); return true;
+      default: return false; // walking, jumping and running carry on underneath it
+    }
   }
 
   // ------------------------------------------------------------------ photographs
@@ -761,6 +905,26 @@ export class Walker {
   }
 
   /**
+   * Whether the walker is held where they stand: they do not move, look, aim or fire,
+   * and nothing that acts on them over time - the jet's tank, their wind, the water
+   * closing over them, a bug's bite - advances either, because all of it lives in
+   * step() and step() does not run.
+   *
+   * Two different things ask for it. A panel being read has taken the pointer away
+   * (frozen). The wheel is up in front of a walker who still has it, and is held for
+   * the opposite reason: changing hands is not a thing to be punished for. Stopping
+   * to pick a tool should not burn a tank, drown anybody, or hand the bug at your
+   * ankle a free bite - and a walker who cannot see past the wheel should not be
+   * walking off a roof behind it.
+   *
+   * The city is not held, only the walker: the bugs go on walking their laps. Two
+   * hundred of them stopped mid-stride and started again is a worse thing to watch
+   * than a street that carries on, and with bites frozen none of them can charge for
+   * the pause.
+   */
+  get still() { return this.frozen || this.wheel.open; }
+
+  /**
    * Hold the view still while something else has the pointer (the details panel), or
    * let it go again. Frozen, the walker does not move, look, aim or fire; the scene
    * keeps rendering, so what is being read about stays on screen.
@@ -768,14 +932,18 @@ export class Walker {
   setFrozen(on) {
     if (this.frozen === on || (!this.active && on)) return;
     this.frozen = on;
+    // Softening the street says which of the two things on screen is waiting: the
+    // walker, not the reader (.w-veil).
+    this.hud.classList.toggle('held', on);
     if (!on) this.hooks.onResume?.(); // whatever was being read is done with
     if (on) {
       this.keys.clear(); // a key held when the panel opened must not walk on
       this.firing = false;
+      this.closeWheel(false); // ... and a wheel left up under a panel is unreachable
       this.setScoped(false);
       // The aim is not recomputed while frozen, so whatever the crosshair was on
       // would keep its hover card - on top of the panel that is being read.
-      this.aim = { i: -1, point: null, bug: null };
+      this.aim = { i: -1, point: null, bug: null, box: null };
       this.showTarget(null);
       this.hooks.onAim(-1);
     }
@@ -857,27 +1025,42 @@ export class Walker {
       if (!this.owns(e) || e.target.closest('input, select, textarea, dialog') || e.ctrlKey || e.metaKey || e.altKey) return;
       // This listener is registered before the map's; stopping here keeps the map from
       // acting on the same key (V would leave walk mode and re-enter it at once).
-      e.preventDefault();
-      e.stopImmediatePropagation();
-      if (e.repeat) return;
+      const mine = () => { e.preventDefault(); e.stopImmediatePropagation(); };
       if (this.frozen) {
-        // Reading: Esc and V still work, Enter goes back to walking, nothing moves.
+        // Held, the walker is not playing and the page is. So the page keeps its keys
+        // and only the few that put the street back are taken here - where swallowing
+        // the rest meant that once the pointer had been let go, a button in the
+        // toolbar could not be worked by keyboard at all.
+        if (e.repeat) return;
+        // ... and not even those from a control somebody has tabbed to, where Enter
+        // and Space belong to the control. The Walk button is the exception: it keeps
+        // the focus from the click that began the walk, so a walker is very often
+        // standing on it without having chosen to.
+        if (e.target !== document.body
+          && e.target.closest('button:not(#walk), a[href], summary, [role="option"]')) return;
         switch (e.code) {
-          case 'KeyV': case 'KeyM': this.exit(); break;
+          case 'KeyV': case 'KeyM': mine(); this.exit(); break;
           case 'Escape':
-          case 'Enter': this.setFrozen(false); this.lockPointer(); break;
+          case 'Enter': mine(); this.setFrozen(false); this.lockPointer(); break;
         }
         return;
       }
+      mine();
+      if (e.repeat) return;
       this.keys.add(e.code);
       if (BIGGER.has(e.key)) this.setRadius(this.radius * 1.25);
       else if (SMALLER.has(e.key)) this.setRadius(this.radius / 1.25);
-      // 1..9 and 0 pick a tool by its slot, the way a shooter does; T still walks the
-      // primary row for anyone who would rather not look down at it. A secondary slot
-      // pressed again puts down what is being carried, so it is never a no-op.
-      if (e.code.startsWith('Digit')) {
-        const id = TOOL_IDS[slotOf(e.code)];
-        if (id && id !== this.primary.id) this.setTool(id);
+      // While the wheel is up it has first refusal on everything: it answers the keys
+      // that pick from it and passes on the ones that walk, so a walker can keep
+      // moving through a change of hands.
+      if (this.wheelKey(e.code)) return;
+      // The digits pick a tool outright, the way a shooter's number keys do, counting
+      // along the row: 1 to 3 for the carried tools and 4 to 0 for the hunt's. A
+      // carried tool's key pressed for the one already in hand puts it down, so it is
+      // never a no-op.
+      const digit = toolForKey(e.code);
+      if (digit) {
+        if (digit !== this.primary.id) this.setTool(digit);
         return;
       }
       switch (e.code) {
@@ -886,7 +1069,11 @@ export class Walker {
         // flying, where it is how you go down.
         case 'KeyF': this.useSecondary(); break;
         case 'KeyC': if (!this.p.fly) this.useSecondary(); break;
-        case 'KeyT': this.nextTool(); break;
+        // Changing hands, all three of them within reach of the hand that is already
+        // on W, A, S and D: the hunt's ring, the carried ring, and the wheel.
+        case 'KeyE': this.nextPrimary(); break;
+        case 'KeyQ': this.nextCarried(); break;
+        case 'KeyR': this.openWheel(); break;
         case 'KeyH': this.setHandsOff(!this.handsOff); break;
         case 'Escape':
           // Browsers usually swallow the Esc that frees the pointer; if not, free it first.
@@ -899,8 +1086,13 @@ export class Walker {
         case 'KeyV': case 'KeyM': this.exit(); break;
       }
     });
-    window.addEventListener('keyup', e => this.keys.delete(e.code));
-    window.addEventListener('blur', () => { this.keys.clear(); this.firing = false; });
+    window.addEventListener('keyup', e => {
+      this.keys.delete(e.code);
+      // R let go having pointed at something is the whole gesture; let go having
+      // pointed at nothing, it leaves the wheel up.
+      if (e.code === 'KeyR' && this.active) this.releaseWheel();
+    });
+    window.addEventListener('blur', () => { this.keys.clear(); this.firing = false; this.closeWheel(false); });
 
     // The pointer is locked at the reticle while walking (lockPointer): the mouse
     // looks around, the left button fires, holding the right one looks through the
@@ -912,10 +1104,31 @@ export class Walker {
     // while scoped would never arrive.
     let fresh = false; // the first movement after locking can carry a bogus jump
     canvas.addEventListener('mousedown', e => {
-      // Frozen means something else has the pointer - a panel, the backpack, a menu.
-      // The one thing a click on the map then means is "walk on", which mouseup below
-      // answers; it must not also scope, fire, or take hold of the trigger.
-      if (!this.active || this.dying !== null || this.frozen) return;
+      if (!this.active || this.dying !== null) return;
+      // Frozen means something else has the pointer - a panel, the backpack, a menu,
+      // the toolbar over the street. The one thing a click on the map then means is
+      // "walk on", which mouseup below answers; it must not also scope, fire, or take
+      // hold of the trigger.
+      //
+      // It does have to be written down here, though. mouseup listens on the window,
+      // because a button released off the edge of the canvas still has to be released;
+      // `drag` is the only thing that tells it a click began on the map rather than on
+      // a menu across the page, and while this returned before setting it, a click on
+      // the map did nothing at all - which is what the HUD and the help had been
+      // promising would walk on again.
+      if (this.frozen) {
+        if (e.button === 0) drag = { x: e.clientX, y: e.clientY, moved: false };
+        return;
+      }
+      // The wheel has the mouse while it is up: the left button takes what it is
+      // pointing at and the right one backs out, because a click is what a hand on the
+      // mouse reaches for and neither the scope nor the tool is any use mid-change.
+      if (this.wheel.open) {
+        e.preventDefault();
+        if (e.button === 0 || e.button === 1) this.closeWheel(true);
+        else if (e.button === 2) this.closeWheel(false);
+        return;
+      }
       if (e.button === 2) {
         this.setScoped(true);
         return;
@@ -950,6 +1163,11 @@ export class Walker {
     });
     window.addEventListener('pointermove', e => {
       if (!this.active) return;
+      // The wheel takes the mouse whether or not the pointer was ever captured. Where
+      // the lock is refused the view is turned by dragging, and a wheel that could
+      // only be aimed by dragging is a wheel nobody would find - and Esc, which is one
+      // of the ways to back out of it, hands the lock back on its way past.
+      if (this.wheel.open) { this.aimWheel(e.movementX || 0, e.movementY || 0); return; }
       if (document.pointerLockElement === canvas) {
         if (fresh) { fresh = false; return; }
         // Clamp implausible jumps (some browsers report one after focus changes)
@@ -972,6 +1190,26 @@ export class Walker {
       fresh = document.pointerLockElement === canvas;
       if (fresh) this.lockFails = 0; // it can be had here; earlier refusals were passing
       if (fresh && !this.active) document.exitPointerLock(); // never keep the map's cursor hidden
+      // Where the pointer can be captured at all, having it is what walking is, and
+      // this is the one place that decides. The mouse gone somewhere else - Esc, a
+      // switch to another tab, a reach for the toolbar over the street - holds the
+      // walker: one left running behind a dropdown keeps walking on whatever key was
+      // down when the pointer went, spends their wind, and can drown or walk off a
+      // roof while somebody is reading a menu. The mouse back on the street starts
+      // them again.
+      //
+      // Both halves, because half of it does not work. Holding on the way out without
+      // letting go on the way back in leaves a walker with the pointer captured and
+      // held still anyway, which is every control taken away at once - and it happens
+      // on nothing rarer than a click, since letting go of the reading closes the
+      // panel, the backpack and the photographs, and each of those asks for the
+      // pointer again on its way out. Reading the lock rather than counting the asks
+      // is also what makes that harmless.
+      //
+      // Not where the lock was refused in the first place: there the view is turned by
+      // dragging and the walker never has the pointer to lose, so this would hold them
+      // still for good.
+      if (this.active && !this.noLock) this.setFrozen(!fresh);
       if (this.active) this.drawHud();
     });
   }
@@ -1025,12 +1263,13 @@ export class Walker {
       // hoop of the net, for the one catch that carries a bug somewhere else.
       const hoop = this.primary.catchAs === 'net' ? this.muzzle(this.viewmodel, HOOP_AT) : null;
       this.bugs?.update(dt, now, this.eye(EYE_AT), hoop);
+      this.douse(dt);
       this.drawRadar(now, dt);
       this.health.draw(now); // the wash a hit leaves has to come off by itself
       this.drawFuel();
       this.poseTool(dt, now);
       this.scene.setWalker(this.p.x, this.p.feet, this.p.z, EYE + this.ride(dt), this.p.yaw, this.p.pitch);
-      if (!this.frozen) this.updateAim();
+      if (!this.still) this.updateAim();
       this.scene.renderNow();
       this.hooks.onRender();
       this.loop();
@@ -1045,7 +1284,7 @@ export class Walker {
    */
   autoFire(now) {
     const every = this.primary.auto;
-    if (!every || !this.firing || this.frozen || this.dying !== null) return;
+    if (!every || !this.firing || this.still || this.dying !== null) return;
     if (now - this.firedAt < every * 1000) return;
     this.fire(); // which is what sets the clock for the next one
   }
@@ -1082,7 +1321,7 @@ export class Walker {
   }
 
   step(dt) {
-    if (this.frozen) return;
+    if (this.still) return;
     const k = this.keys, p = this.p;
     // A line in a wall pulls the walker along it, past walls and gravity both, and
     // nothing else moves them until it lets go. Jump cuts it.
@@ -1199,7 +1438,12 @@ export class Walker {
       p.vy = 0;
     }
     this.bites();
+    this.scorches();
     this.drowns(dt, floor, afloat);
+    // ... and, for a walker none of the three has touched lately, time putting them
+    // back together. Last, so that anything which has just landed this turn holds it
+    // off rather than being half undone by it in the same frame.
+    this.health.mend(dt);
   }
 
   /**
@@ -1582,13 +1826,18 @@ export class Walker {
       if (hit) { point = v.clone(); break; }
     }
     // The ground underfoot and the shore are scenery, not targets.
-    let i = !bug && hit && tags && !this.underfoot(hit) ? hit.i : -1;
+    const on = hit && !this.underfoot(hit) ? hit : null;
+    let i = !bug && on && tags ? on.i : -1;
     // A tool with a reach is swung, not thrown: past it there is nothing to be done
     // about what the crosshair is on, which the HUD says rather than going blank.
     const far = tool.reach != null && point != null
-      && cam.position.distanceTo(point) > tool.reach && (bug || i >= 0);
+      && cam.position.distanceTo(point) > tool.reach && (bug || i >= 0 || (tool.douses && on));
     if (far) { bug = null; i = -1; }
-    this.aim = { i, point, bug, far };
+    // `box` is what the crosshair is on whether or not this tool can do anything to
+    // it; `i` is what this tool would tag. They were the same until the extinguisher
+    // needed to put a building's fire out without also tagging the module, which is
+    // not what an extinguisher is for.
+    this.aim = { i, point, bug, far, box: far ? null : on };
     this.showTarget(bug, far);
     const r = this.canvasRect;
     this.hooks.onAim(i, r.left + r.width / 2, r.top + r.height / 2);
@@ -1619,7 +1868,7 @@ export class Walker {
   // far as it reaches, which for the camera is any distance and for the net is arm's
   // length.
   fire() {
-    if (this.frozen || this.dying !== null) return;
+    if (this.still || this.dying !== null) return;
     // A photograph is up: the click that would have taken another one puts this one
     // away instead, which is the obvious thing to do with a picture held in front of
     // your face and saves waiting out the rest of the timer.
@@ -1669,6 +1918,28 @@ export class Walker {
   }
 
   /**
+   * The extinguisher, held on a burning building.
+   *
+   * Dousing is held rather than fired, which is the whole difference between this tool
+   * and the rest of the bag. Every other primary tool is a gesture with a result: one
+   * cast, one shot, one photograph. Fire does not answer to a gesture - it answers to
+   * standing there and keeping the cone on it - so this is paid in seconds and not in
+   * clicks, and the tool's own cadence is only what makes the foam keep coming.
+   *
+   * Putting out the building an advisory names puts out everything that fire lit,
+   * wherever it has reached. That is not a mercy: it is what upgrading the dependency
+   * actually does.
+   */
+  douse(dt) {
+    if (!this.fires || !this.primary.douses || !this.firing || this.still) return;
+    const box = this.aim.box;
+    if (!box) return;
+    const what = this.fires.douse(box.node.id, dt);
+    if (what === 'out') this.flash(`Out - ${box.node.name} and everything that fire reached`);
+    else if (what === 'cooled') this.flash(`${box.node.name} is out; the fire is still going elsewhere`);
+  }
+
+  /**
    * What a tool throws, leaving the muzzle of the hand that threw it, with its line
    * behind it if it trails one. Where it goes from there is the caller's business: the
    * crosshair's target for the hand the crosshair belongs to, and straight ahead for
@@ -1711,10 +1982,10 @@ export class Walker {
    * stand.
    */
   useSecondary() {
-    if (this.frozen || this.dying !== null) return;
+    if (this.still || this.dying !== null) return;
     const tool = this.secondary;
     if (!tool) {
-      this.flash('Nothing in your off hand - 8, 9 or 0 picks something up');
+      this.flash('Nothing in your off hand - Q or 1, 2, 3 picks one up, or hold R for the wheel');
       return;
     }
     this.offSwing = 0;
@@ -1867,9 +2138,64 @@ export class Walker {
    * point of the thing being to say which way to walk. Under it, how far the nearest
    * bug is and what it is carrying.
    */
+  /**
+   * Standing in a fire.
+   *
+   * It takes the hottest one the walker is inside, because standing where two blazes
+   * meet is not twice as survivable as standing in one, and taking from each in turn
+   * would make it so.
+   *
+   * There is no getting bitten back here and nothing to swing at: the extinguisher
+   * will put the fire out, but not from inside it and not quickly enough to matter, so
+   * what this asks of a walker is to leave. Which is why it says so, and says how -
+   * the flash names the tool, because a walker who has just found out that roofs are
+   * dangerous is not in a frame of mind to go looking for it.
+   */
+  scorches() {
+    const now = performance.now();
+    if (!this.fires?.burning || this.dying !== null) return;
+    if (now - this.burnAt < BURN_EVERY * 1000) return;
+    let worst = null;
+    for (const f of this.burning()) {
+      if (!inBlaze(this.p.x, this.p.feet, this.p.z, f)) continue;
+      if (!worst || f.heat > worst.heat) worst = f;
+    }
+    if (!worst) return;
+    this.burnAt = now;
+    const damage = Math.max(1, Math.round(BURN * worst.heat));
+    this.health.hurt(damage);
+    if (this.health.dead) this.die(`The fire on ${worst.node.name}`);
+    else this.flash(`Burning - ${worst.node.name} (-${damage}). Get clear, or put it out with the extinguisher`);
+  }
+
+  /**
+   * Where the fires are, in the flat map's own coordinates, for the sweep.
+   *
+   * Asked of the boxes rather than of fires.js, because what fires.js holds is node
+   * ids and the sweep needs somewhere to put a dot: a fire on a package island, or on
+   * a file inside a directory the map has collapsed, is burning at whatever the layout
+   * is showing for it. Boxes are the only thing that knows that.
+   */
+  burning() {
+    if (!this.fires?.burning) return [];
+    const out = [];
+    for (const b of this.boxes) {
+      if (b.kind === 'land' || !b.node) continue;
+      const heat = this.fires.heatOf(b.node.id);
+      // The roof they stand on and the footprint they cover come too: the sweep wants
+      // only x and z, but what decides whether a walker is standing in one needs all
+      // of it (inBlaze).
+      if (heat) out.push({ x: b.x, z: b.z, y: b.y + b.h, w: b.w, d: b.d, heat, node: b.node });
+    }
+    return out;
+  }
+
   drawRadar(now, dt) {
     const box = this.hud.querySelector('.w-radar');
-    if (!this.bugs?.bugs.length) {
+    // A map whose every advisory is reachable has no bugs walking it at all, and the
+    // sweep is worth more there than anywhere: everything on it is on fire.
+    const alight = this.burning();
+    if (!this.bugs?.bugs.length && !alight.length) {
       box.hidden = true;
       return;
     }
@@ -1882,10 +2208,10 @@ export class Walker {
     // to meet it, which is the difference between knowing a bug is somewhere ahead
     // and seeing which side of the building it is on.
     const { x: px, z: pz, yaw } = this.p;
-    const live = this.bugs.bugs.filter(b => !b.caught);
+    const live = this.bugs?.bugs.filter(b => !b.caught) || [];
     let far = RADAR_MIN, near = Infinity;
-    for (const bug of live) {
-      const d = Math.hypot(bug.pos.x - px, bug.pos.z - pz);
+    for (const at of [...live.map(b => b.pos), ...alight]) {
+      const d = Math.hypot(at.x - px, at.z - pz);
       far = Math.max(far, d);
       near = Math.min(near, d);
     }
@@ -1968,7 +2294,7 @@ export class Walker {
     };
 
     // The severity colors, for the bugs and for the rings around what is tagged.
-    const colors = this.bugs.colors;
+    const colors = this.bugs?.colors || {};
 
     // North, so the sweep can be read against the map it came from.
     const n = place(px, pz - this.radarRange * 4);
@@ -2017,6 +2343,49 @@ export class Walker {
       }
     }
 
+    // The fires, last of all and over everything else on the sweep.
+    //
+    // They pulse, and nothing else on the dial does. A bug is a still dot and a tagged
+    // module a still ring, because neither is going anywhere: a bug walks its lap and
+    // waits to be caught, and a module stays tagged. A fire is the one mark here that
+    // is getting worse while it is being looked at, and the one worth turning round
+    // for - so it is the one that moves. What pulses is a ring thrown off the dot and
+    // fading as it widens, which is a thing spreading, drawn small.
+    for (const f of alight) {
+      const q = place(f.x, f.z);
+      const beat = ((now % RADAR_PULSE) / RADAR_PULSE + f.x * 0.11 + f.z * 0.07) % 1;
+      g.fillStyle = FIRE_DOT;
+      g.strokeStyle = FIRE_DOT;
+      if (q.inside) {
+        // The ring first, so the dot it comes off stays solid over it.
+        g.save();
+        g.globalAlpha = (1 - beat) * 0.7 * (0.4 + f.heat * 0.6);
+        g.lineWidth = 1.5;
+        g.beginPath();
+        g.arc(q.x, q.y, 3 + beat * 7, 0, Math.PI * 2);
+        g.stroke();
+        g.restore();
+        g.beginPath();
+        g.arc(q.x, q.y, 2.6 + f.heat * 1.4, 0, Math.PI * 2);
+        g.fill();
+      } else {
+        // Out of range, a fire gets the same rim arrow a bug does, and the same pulse
+        // with it: a district alight across the map is worth walking towards, and
+        // saying so is most of what the sweep is for.
+        g.save();
+        g.translate(q.x, q.y);
+        g.rotate(q.angle);
+        g.globalAlpha = 0.55 + (1 - beat) * 0.45;
+        g.beginPath();
+        g.moveTo(0, -5);
+        g.lineTo(3.4, 3.4);
+        g.lineTo(-3.4, 3.4);
+        g.closePath();
+        g.fill();
+        g.restore();
+      }
+    }
+
     // How far the sweep reaches, so a dot's distance can be read off it.
     g.fillStyle = v('--muted');
     g.font = '9px system-ui, sans-serif';
@@ -2047,11 +2416,17 @@ export class Walker {
     }
 
     const label = this.hud.querySelector('.w-nearest');
-    const { caught, total } = this.bugs.counts;
-    label.textContent = nearest
-      ? `nearest ${Math.round(nearest.d)} away · ${nearest.bug.f.severity}: ${nearest.bug.f.title}`
-      : `all ${total} bugs caught`;
-    if (!nearest && !caught) label.textContent = '';
+    const { caught, total } = this.bugs?.counts || { caught: 0, total: 0 };
+    // What is alight comes first, whatever else the sweep is showing: it is the only
+    // thing on there that gets worse for being left.
+    const fire = alight.map(f => ({ f, d: Math.hypot(f.x - px, f.z - pz) }))
+      .sort((a, b) => a.d - b.d)[0];
+    label.textContent = fire
+      ? `${alight.length} alight · nearest ${Math.round(fire.d)} away · ${fire.f.node.name}`
+      : nearest
+        ? `nearest ${Math.round(nearest.d)} away · ${nearest.bug.f.severity}: ${nearest.bug.f.title}`
+        : `all ${total} bugs caught`;
+    if (!fire && !nearest && !caught) label.textContent = '';
   }
 
   // Names what the crosshair is on while it is a bug, so it is clear what would be
@@ -2308,7 +2683,7 @@ export class Walker {
     // One line, and only when it has something to say that the slots and the
     // reticle do not: how to get the mouse back, or what reading means.
     this.hud.querySelector('.w-hint').textContent = this.frozen
-      ? 'Reading · Enter or a click: walk on · Esc: close'
+      ? 'Holding still · click the map to walk on'
       : locked ? ''
         : this.noLock ? 'Drag to look · click: use the tool'
           : 'Click the map to capture the mouse, or drag to look';

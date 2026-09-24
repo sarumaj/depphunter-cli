@@ -4,7 +4,7 @@ import hljs from './vendor/highlight.min.js';
 import powershell from './vendor/highlight-powershell.min.js';
 
 hljs.registerLanguage('powershell', powershell);
-import { ancestors, boundaryEdges } from './model.js';
+import { ancestors, boundaryEdges, unread, fileSize } from './model.js';
 import { whereOf } from './findings.js';
 import { fetchSource } from './data.js';
 import { ago, formatDate } from './history.js';
@@ -220,8 +220,10 @@ export class Panel {
           stat(fmt.format(n.fileCount), 'files'), stat(fmt.format(n.totalLoc), 'lines'),
           stat(fmt.format(n.children.filter(c => c.kind === 'dir').length), 'sub-directories'));
       case 'file':
+        // Nothing read it, so it has a size rather than a count of lines.
         return h('div', { class: 'stats' },
-          stat(fmt.format(n.loc || 0), 'lines'), stat(n.lang || 'unknown', 'language'),
+          unread(n) ? stat(fileSize(n.bytes), 'size') : stat(fmt.format(n.loc || 0), 'lines'),
+          stat(n.lang || 'unknown', 'language'),
           stat(fmt.format(n.children.length), 'symbols'));
       case 'symbol':
         return h('div', { class: 'stats' }, stat(n.symbolKind, 'kind'), stat(`line ${n.line}`, 'defined at'));

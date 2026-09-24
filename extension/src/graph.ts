@@ -22,6 +22,15 @@ export interface GraphNode {
   parent?: string;
   lang?: string;
   loc?: number;
+
+  /**
+   * Bytes is what the file measured on disk. LOC is what the map is built out of,
+   * but a file can have no lines to count and still take up room: anything binary,
+   * and anything over --max-file-size, is listed without ever being read. Sized by
+   * lines alone those came out as flat slabs - a 4 MB model indistinguishable from
+   * an empty file - so the bytes travel too, and the UI falls back to them.
+   */
+  bytes?: number;
   symbolKind?: string;
   line?: number;
   version?: string;

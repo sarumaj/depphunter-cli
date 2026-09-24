@@ -25,6 +25,7 @@ import * as THREE from './vendor/three.module.min.js';
 import { mergeGeometries } from './vendor/BufferGeometryUtils.js';
 import { rankOf, severityColors } from './findings.js';
 import { bugParts } from './models.js';
+import { reachable } from './fires.js';
 
 const MAX_BUGS = 140;     // a large repository reports thousands; the worst ones walk
 const LANE = 0.3;         // how far outside a building's footprint its bugs patrol
@@ -53,6 +54,11 @@ const BODY = 0.1;         // half the length of a bug's body
 const LEGS = 6;
 // How long a bug takes to leave the map once it has been caught.
 const TAKE = 0.9;
+// The same, in milliseconds and out loud, because the catch is not only an animation:
+// app.js waits it out before it opens the details, so that what a walker sees is the
+// bug coming to them and then the reading, rather than the reading over the top of a
+// bug they never saw arrive.
+export const TAKE_MS = TAKE * 1000;
 
 /**
  * What being caught looks like, by the tool that did it. A catch that simply blinks
@@ -199,8 +205,15 @@ export class Bugs {
     for (const b of boxes) {
       if (b.kind !== 'land' && b.node) byNode.set(b.node.id, b);
     }
+    // A vulnerability somebody can actually reach is not a bug: it burns (fires.js),
+    // and a finding that did both would be answered twice - netted on the street and
+    // still alight on the roof above. The split is the point of the analogy. Most
+    // advisories against a lock file are against code nothing here calls, and those
+    // are exactly the ones worth walking up to and catching when you get to them.
+    //
     // The findings arrive worst first; a map that cannot show them all shows those.
     const wanted = [...index.all]
+      .filter(f => !reachable(f))
       .sort((a, b) => rankOf(b.severity) - rankOf(a.severity))
       .slice(0, MAX_BUGS);
 

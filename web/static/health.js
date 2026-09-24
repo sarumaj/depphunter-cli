@@ -29,6 +29,19 @@ const SAFE_FALL = 3, PER_UNIT = 26;
 // you rather than a thing that happens once and ends the walk.
 const BITE = { critical: 34, high: 22, medium: 13, low: 7, info: 4, unknown: 9 };
 const HURT_MS = 420; // how long the screen wears a hit
+// Mending: how long after the last thing that hurt before it starts, and how much a
+// second of not being hurt is worth.
+//
+// It is slow, and it waits. A walker who is being bitten or standing in a fire mends
+// nothing at all, so neither stops being dangerous for having been survived once; a
+// walker who has got clear is back on their feet in half a minute. That gap is the
+// whole of it - the map is a place to spend an afternoon in rather than a run to be
+// restarted, and without mending a walk is only ever as long as the worst mistake in
+// it, which turns every roof into a thing to avoid rather than a thing to stand on.
+//
+// It does not raise the ceiling. That is the backpack's, and catching things is meant
+// to stay the only way to be worth more than you started.
+const MENDS_AFTER = 5000, MENDS = 4;
 
 /**
  * The walker's condition, and the bar in the HUD that shows it. It holds no timers of
@@ -71,6 +84,24 @@ export class Health {
     this.max = BASE + Math.min(MAX_CATCH, total * PER_CATCH);
     this.hp = Math.min(this.max, this.hp + Math.max(0, this.max - was));
     this.draw();
+  }
+
+  /**
+   * Time going by, for a walker nothing has touched lately. Returns what it put back,
+   * so the caller can say so if it ever wants to; nothing while anything is still
+   * happening to them.
+   *
+   * Given the turn rather than the clock, so it mends by how much time the walk has
+   * spent and not by how long the page has been open - a walker held still while a
+   * panel is read is not quietly healing behind it.
+   */
+  mend(dt, now = performance.now()) {
+    if (this.dead || this.hp >= this.max) return 0;
+    if (now - this.hurtAt < MENDS_AFTER) return 0;
+    const put = Math.min(this.max - this.hp, MENDS * dt);
+    this.hp += put;
+    this.draw(now);
+    return put;
   }
 
   /** Takes `amount` off, and says whether that was the end of it. */

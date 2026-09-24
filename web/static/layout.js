@@ -1,5 +1,7 @@
 import potpack from './vendor/potpack.js';
 
+import { bulk } from './model.js';
+
 // Archipelago layout: the repository is a mainland of nested terraces, each external
 // ecosystem an island in rings around it. Positions derive only from the hierarchy and the
 // expansion state, so the same repository always produces the same map.
@@ -77,7 +79,7 @@ export function layout(model, state) {
           });
         });
       } else {
-        boxes.push({ node: n, kind: 'building', x: cx, z: cz, y, w: s.w, d: s.d, h: height(n.loc) });
+        boxes.push({ node: n, kind: 'building', x: cx, z: cz, y, w: s.w, d: s.d, h: height(bulk(n)) });
       }
       return;
     }
@@ -87,7 +89,7 @@ export function layout(model, state) {
     }
     if (n.kind === 'dir' && !expanded(n)) {
       const c = counts.get(n.id);
-      boxes.push({ node: n, kind: 'district', x: cx, z: cz, y, w: s.w, d: s.d, h: height(c.totalLoc / Math.max(1, c.fileCount)) });
+      boxes.push({ node: n, kind: 'district', x: cx, z: cz, y, w: s.w, d: s.d, h: height(c.totalBulk / Math.max(1, c.fileCount)) });
       return;
     }
     boxes.push({ node: n, kind: 'terrace', x: cx, z: cz, y, w: s.w, d: s.d, h: TERRACE });
@@ -189,7 +191,15 @@ function symbolHeight(sym) {
   }
 }
 
-// The largest file in the tree, for the height scale; every relayout asks again.
+/**
+ * The largest file in the tree, for the height scale; every relayout asks again.
+ *
+ * Counted in lines that were really counted, so that the files nobody could count -
+ * the binaries, and anything over --max-file-size - are measured against the source
+ * around them rather than setting the scale for it. A 4 MB blob among 500-line files
+ * would otherwise flatten the whole city to make room for itself; instead it runs up
+ * against the Math.min(1, ...) in height() and tops out level with the longest file.
+ */
 function maxFileLoc(n, max = 1) {
   if (n.kind === 'file') return Math.max(max, n.loc || 0);
   for (const c of n.children) if (c.kind === 'dir' || c.kind === 'file') max = maxFileLoc(c, max);

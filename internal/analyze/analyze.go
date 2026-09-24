@@ -104,7 +104,7 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 		b.files[f.Path] = true
 		b.add(&graph.Node{
 			ID: graph.FileID(f.Path), Kind: graph.KindFile, Name: path.Base(f.Path), Path: f.Path,
-			Parent: b.dir(path.Dir(f.Path)), Lang: f.Lang, LOC: f.LOC,
+			Parent: b.dir(path.Dir(f.Path)), Lang: f.Lang, LOC: f.LOC, Bytes: f.Size,
 		})
 	}
 

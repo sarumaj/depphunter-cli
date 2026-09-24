@@ -940,13 +940,26 @@ const extinguisher = {
   label: 'Fire extinguisher',
   verb: 'Douse',
   noun: 'doused',
-  hint: 'Hold the button down to hose bugs at close quarters; the foam spreads as it goes and falls',
+  hint: 'Hold it on a burning building to put the fire out, or hose a bug at close quarters',
   reticle: 'spray',
   slot: 5,
   kind: 'primary',
   // Foam on a beetle is a beetle that has stopped; foam on a wall is a wall to wash.
   catchAs: 'foam',
   targets: 'bugs',
+  // ... and foam on a fire is the reason the tool is in the bag at all (fires.js).
+  //
+  // It is the only thing here that is paid in seconds rather than in gestures. Every
+  // other primary tool is one act with one result - a cast, a shot, a photograph -
+  // and fire does not answer to an act. It answers to standing in front of it and
+  // keeping the cone on it, which is what `auto` below was already for and what a
+  // walker already does with this tool without being told.
+  //
+  // Dousing is not tagging: a building put out is not a module marked, and the aim
+  // keeps the two apart (walk.js, aim.box against aim.i). The crosshair still marks a
+  // building this can help, though, or there would be no way to tell from the street
+  // which fire is in range.
+  douses: true,
   // A horn throws foam across a room and no further.
   reach: 5,
   // Held down, it keeps discharging, which is what an extinguisher does and what makes
@@ -1594,7 +1607,11 @@ const skimmers = {
 
 export const TOOLS = { rod, net, camera, bubbles, extinguisher, dart, nailer, grapple, jetpack, skimmers };
 
-/** The tools in slot order, which is the order the number keys pick them in. */
+/**
+ * The tools in slot order, which is the order they are drawn in and cycled through.
+ * It is not what the number keys count along any more: the digits number the hunt's
+ * row alone and the off hand is Q's, for the reasons switcher.js gives.
+ */
 export const TOOL_IDS = Object.values(TOOLS).sort((a, b) => a.slot - b.slot).map(t => t.id);
 
 /** The same, split by which hand they go in: the hunt's row, and the carried row. */

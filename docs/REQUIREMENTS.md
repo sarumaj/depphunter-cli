@@ -477,8 +477,9 @@ from the command (the command tests).
 - Walk mode hands the walker a tool, drawn in front of the camera as a hand and
   what it holds, and the gesture of using it is animated rather than implied: a
   rod loads and casts, a net sweeps across the view, a camera's shutter kicks
-  back, a bubble wand waves, a dart gun recoils. `T` takes out the next one and
-  the choice is saved with the rest of the view (`ui.tool`).
+  back, a bubble wand waves, a dart gun recoils. The next one is taken out with
+  `E` (M31; it was `T` here) and the choice is saved with the rest of the view
+  (`ui.tool`).
 - A tool carries what it throws (a bobber trailing its line, a spinning hoop, a
   wobbling bubble, a dart that points along its flight - or nothing at all, for
   the camera, whose photograph arrives the moment it is taken), what the HUD
@@ -1330,6 +1331,120 @@ the keys unchanged, and the jet outlasts the skimmers.
 *Accepted when* an editor with a theme set opens an unsaved repository in that
 theme, Save in the map changes it for good, and `--theme` on the command line
 still wins over both.
+
+### M31 - Changing hands without looking down
+
+- Ten tools were ten number keys, and the row they were drawn in did not read in
+  that order: the carried tools were numbered 8, 9 and 0 and drawn at the
+  left-hand end, because that is the hand they go in. So the row read 8, 9, 0,
+  1, 2 from left to right - its keys and its layout disagreeing about which came
+  first, and a walker counting along it to the fourth slot finding a 1. The
+  layout is the one that is right: a walker's left hand is on the left of the
+  screen, where its tool is drawn.
+- So the digits are counted along the row instead of assigned by kind: 1, 2 and
+  3 for the carried tools on the left and 4 upwards for the hunt, with the tenth
+  on 0 the way a shooter numbers a tenth slot. The row now reads 1 to 0 from
+  left to right and a tool's key is wherever it is drawn.
+- One list decides both. The HUD builds its slots from it and the digits count
+  along it, so laying the row out is what numbers it and changing the layout
+  renumbers the keys with it. Two lists is how they came apart in the first
+  place, and nothing but one list keeps them together.
+- `Q` walks the carried row as well: the next carried tool, and after the last
+  of them an empty hand. An empty hand belongs in that ring rather than outside
+  it, because putting the jet backpack away is how a walker comes down and
+  stepping off the skimmers is how they go in the water. `E` is the same for the
+  hunting hand, which has no empty place in its ring; it replaces `T`, which was
+  a reach away from the hand that is on `W`, `A`, `S` and `D`.
+- `R` is the wheel: every tool at once, laid out where its hand is rather than
+  where its number is - the hunt down the right side, what carries you down the
+  left, an empty left hand at the bottom of it. Flicked, it is one gesture: hold
+  `R`, throw the mouse at a wedge, let go. Tapped, or let go without having
+  pointed anywhere, it stays up to be read, and `R` again, `Enter` or a click
+  takes what is under the cursor. `Esc` and the right button change nothing.
+- What decides whether letting `R` go finished the gesture is the mouse rather
+  than a clock: released pointing at a wedge it is taken, released pointing at
+  the hub the wheel stays up. A hold-versus-tap threshold would have to be timed,
+  and this page can drop frames drawing a city behind the wheel - a tap that took
+  one of those would shut the wheel in the walker's face for no visible reason.
+- The walker is held where they stand while the wheel is up, and the city behind
+  it is blurred. Not for a menu's own sake - walk mode has no pause - but because
+  the wheel covers the view: somebody who cannot see the street should not be
+  walking off a roof behind it, and stopping to change hands should not burn a
+  tank, drown anybody or hand the bug at their ankle a free bite. Held means
+  held: movement, aim, fire and everything that acts over time all live in
+  step(), and step() does not run.
+- The bugs are not held with the walker. Two hundred of them stopped mid-stride
+  and started again is a worse thing to watch than a street that carries on, and
+  with bites frozen none of them can charge for the pause.
+- Pointing at a tool already in hand keeps it, where that tool's own key would
+  have put a carried one down. The wheel has a wedge for the bare hand and the
+  row has not, so the key has to mean both and the wheel does not - and a
+  cursor that drifted back onto the jet backpack is not a reason to fall out of
+  the sky.
+
+*Accepted when* the tool row reads `1` to `0` from left to right, with `1`, `2`
+and `3` under the left hand, `Q` pressed four times from empty comes back to
+empty, `E` walks the hunt's row round, and `R` held with a flick to the left and
+a release puts a grapple gun in the off hand.
+
+### M32 - A file nobody read is still a file
+
+- Every file is measured in bytes when it is scanned, but only lines traveled to
+  the map, and a file that is never read has none: anything binary, and anything
+  over `--max-file-size`, is listed without being opened. Sized by lines alone
+  every one of them came out at the floor height - a 4 MB model drawn as the same
+  flat slab as an empty file, which reads as "there is nothing here" about a file
+  that is mostly what is there.
+- So the bytes travel too, and how big a thing is drawn falls back to them. The
+  conversion is an average of source and nothing more exact is claimed for it; it
+  decides a height and a shade and nothing else.
+- Which is the rule worth keeping: stated numbers and drawn size are different
+  questions. Lines in the status bar, Lines in the panel, what a filter totals -
+  those stay lines somebody counted, because a stand-in inside a stated number is
+  a claim about the file rather than about the reading of it. A file nothing read
+  says its size instead of saying it has no lines.
+- The height scale is set by counted lines alone, so the files that have none are
+  measured against the source around them rather than setting the scale for it. A
+  large blob tops out level with the longest file instead of flattening the city
+  to make room for itself.
+
+*Accepted when* a repository with a megabyte-sized binary in it draws that binary
+as a building rather than a slab, its details give a size where a source file
+gives lines, and the line count in the status bar is unchanged by its presence.
+
+### M33 - The pointer says whether the walker is walking
+
+- Walk mode captures the pointer at the reticle, and `Esc` hands it back so the
+  toolbar over the street can be reached. But letting the pointer go stopped
+  nothing: the walker went on walking on whatever key was down when it went,
+  spending their wind and drowning or stepping off a roof behind a dropdown
+  somebody was reading. Worse, a popup closing because the pointer had gone to
+  another control asked for the reticle back, which snatched the mouse out of
+  the control being reached for.
+- So where the pointer can be captured at all, having it is what walking is, and
+  one place decides: the lock coming and going holds the walker and starts them
+  again. Reading the lock rather than counting who asked for it is what makes a
+  handful of overlapping requests harmless.
+- Both halves, because half of it does not work. Holding on the way out without
+  letting go on the way back in leaves a walker with the pointer captured and
+  held still anyway - every control taken away at once - and it happens on
+  nothing rarer than a click, since letting go of the reading closes the panel,
+  the backpack and the photographs, and each asks for the pointer on its way out.
+- A click on the map is what walks on again, which is what the HUD and the help
+  had always said and what neither had ever done: the click was dropped before
+  anything wrote it down, so a held walker could only be started again with a
+  key.
+- Held, the page keeps its keys. Only the few that put the street back are taken,
+  and not those either from a control that has been tabbed to, where `Enter` and
+  `Space` belong to the control. Swallowing the rest is what made a button in the
+  toolbar impossible to work by keyboard once the pointer had been let go.
+- None of this applies where the lock was refused in the first place - a frame
+  that withholds it - since there the view is turned by dragging and the walker
+  never has the pointer to lose.
+
+*Accepted when* `Esc` in the street holds the walker where they stand, every
+control in the toolbar can then be worked by mouse and by keyboard without the
+reticle taking the mouse back, and one click on the map walks on again.
 
 ### Known limits
 

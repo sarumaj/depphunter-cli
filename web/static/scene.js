@@ -170,7 +170,16 @@ export class MapScene {
    * neither is ticked here; the ticker rate is its own, below the display's,
    * because what it drives is a drift and not an animation.
    */
-  setAnimated(on) {
+  setAnimated(on, why = 'style') {
+    // Two things ask for this now and they do not know about each other: a style with
+    // drift in it, and a fire burning somewhere on the map. Whoever asks last used to
+    // answer for both - so lighting a fire under the city style stopped nothing, and
+    // putting it out under the galaxy style stopped the drift. Each reason is held
+    // separately and the map keeps drawing while any of them stands.
+    this.wants ||= new Set();
+    if (on) this.wants.add(why); else this.wants.delete(why);
+    on = this.wants.size > 0;
+    if (this.animated === on) return;
     this.animated = on;
     clearInterval(this.ticker);
     this.ticker = 0;
