@@ -2,19 +2,26 @@
 // lives on the flat map (layout coordinates) - collisions, heights and darts are all
 // computed there - and MapScene bends what is drawn around the walker's feet.
 //
-// The dependency hunt: whatever the tool in your hands is - a fishing rod, a net, a
-// camera, a bubble wand, a tracking dart (tools.js) - using it on a building tags the
-// module: it is selected, so its dependency trails light up, and a beacon marks it
-// for the rest of the session. Using it a second time on a tagged building opens its
-// details. The hand and the tool are drawn in front of the camera and swing when
-// used, so the gesture is visible rather than implied.
+// The dependency hunt: whatever the primary tool in your hands is - a fishing rod, a
+// net, a camera, a bubble wand, an extinguisher, a tracking dart (tools.js) - using it
+// on a building tags the module: it is selected, so its dependency trails light up,
+// and a beacon marks it for the rest of the session. Using it a second time on a
+// tagged building opens its details. The hand and the tool are drawn in front of the
+// camera and swing when used, so the gesture is visible rather than implied.
+//
+// The secondary tools do none of that. They are how the walker gets about: a line to
+// a wall, a jet to fly on, floats to cross the bay with. Which one is in hand is what
+// decides whether the walker flies or the water holds them up, so putting one away is
+// how you come down or get wet.
 //
 // The other quarry is real: every finding a scanner reported walks the streets as a
-// bug (bugs.js), and catching one reads out what was said about it.
+// bug (bugs.js), and catching one reads out what was said about it. They bite back,
+// and a roof is a long way down, so the walker has a condition to keep (health.js).
 
 import * as THREE from './vendor/three.module.min.js';
 import { rampsFor, rampHeight, bridgesFor, bridgeHeight, bridgeBounds } from './city.js';
-import { TOOL_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool, viewLights, hits, isMelee } from './tools.js';
+import { Health } from './health.js';
+import { TOOL_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool, viewLights, hits, marks, isMelee } from './tools.js';
 
 // A building is one unit wide and its storeys 0.3 high (city.js): the walker is
 // about a storey and a half tall.
@@ -83,6 +90,16 @@ const SWING = 0.45;         // seconds a tool takes to swing and settle
 // How far the walker may leave the map: over the water beyond the outermost shore,
 // and above its tallest building when flying.
 const SHORE_MARGIN = 3, SKY_MARGIN = 12;
+// A burst on the jet backpack: how long it lasts and how much faster it goes.
+const BURST = 0.9, BURST_SPEED = 3;
+// Being bitten: how near a bug has to be to reach the walker, and how often it can.
+// The reach is a stride, so standing in the middle of a lap is what does it rather
+// than walking past one; a bug on a wall three storeys up cannot reach anybody.
+const BITE_REACH = 0.75, BITE_EVERY = 1.1;
+// How far a dart looks for a wall to steer towards, and how nearly ahead of itself it
+// will accept one, as a cosine: about forty degrees either side, which is wide enough
+// to save a lobbed shot and narrow enough that a dart cannot turn round.
+const TRACK_REACH = 30, TRACK_AHEAD = 0.75;
 
 // Keys the walker owns while active, by KeyboardEvent.code; the map's own shortcuts
 // for these letters are suspended. A key that is not here never reaches walk mode -
@@ -91,10 +108,14 @@ const SHORE_MARGIN = 3, SKY_MARGIN = 12;
 // would only reshuffle the city around a walker.
 const KEYS = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
-  'Space', 'ShiftLeft', 'ShiftRight', 'KeyC', 'KeyF', 'KeyE', 'KeyQ', 'Enter',
+  'Space', 'ShiftLeft', 'ShiftRight', 'KeyC', 'KeyE', 'KeyQ', 'Enter',
   'Escape', 'KeyV', 'KeyM', 'KeyT', 'KeyH',
-  ...Array.from({ length: 9 }, (_, i) => `Digit${i + 1}`), // the tool slots
+  // The tool slots: 1 to 9, and 0 for the tenth, the way a shooter numbers them.
+  'Digit0', ...Array.from({ length: 9 }, (_, i) => `Digit${i + 1}`),
 ]);
+
+// Which slot a number key picks: 1..9 in order, and 0 last.
+const slotOf = code => (code === 'Digit0' ? 9 : +code.slice(5) - 1);
 
 // Planet curvature, by the character typed rather than the key's place on the board:
 // on a German keyboard the key at BracketRight types '+', which would otherwise make
@@ -108,7 +129,10 @@ export class Walker {
    *   onHit(box, n)    a dart tagged a box; n: modules tagged so far
    *   onInspect(box)   show the box's details: a dart in a tagged building, or
    *                    Enter (null: nothing aimed at)
-   *   onExit()         the walker left walk mode (V, Esc)
+   *   onExit()         the walker left walk mode (V, Esc, or a fall they did not
+   *                    survive)
+   *   caught()         how many findings are in the backpack, which is what the
+   *                    walker's health is built on
    *   onRender()       after every frame (labels)
    * }
    */
@@ -141,6 +165,10 @@ export class Walker {
     this.noLock = false;
     this.lockFails = 0;
     this.tool = toolFor(hooks.tool?.() || DEFAULT_TOOL);
+    this.health = new Health(hud);
+    this.bitAt = 0;   // when a bug last got a bite in
+    this.burst = 0;   // seconds of jet backpack thrust left
+    this.fell = null; // the height a fall in progress started from
     this.viewmodel = null;      // the hand and its tool
     this.held = null;           // what holds them in front of the walk camera
     this.props = null;          // the prop obstacle list this grid was built from
@@ -224,7 +252,6 @@ export class Walker {
     for (const b of this.bridges) put(this.spans, bridgeBounds(b), (x, z) => bridgeHeight(b, x, z, BODY));
   }
 
-  /** Starts walking in front of `box`, or on the south road of `block`. bounds sizes the planet. */
   /**
    * Where the walker is, for the map to draw them standing there (avatar.js), or null
    * before they have ever been out. The anchor is the block under their feet, so the
@@ -232,13 +259,15 @@ export class Walker {
    */
   stance() {
     if (!this.active) return this.home;
-    const { x, z, feet, yaw, pitch, fly } = this.p;
-    return { x, z, feet, yaw, pitch, fly, anchor: this.anchorFor() };
+    const { x, z, feet, yaw, pitch } = this.p;
+    return { x, z, feet, yaw, pitch, anchor: this.anchorFor() };
   }
 
   /**
-   * enter takes `box` when the map has somewhere in mind - a building just selected -
-   * and null when it has not, in which case the walker picks up where they left off.
+   * Starts walking, at full health: in front of `box` when the map has somewhere in
+   * mind - a building just selected - and where the walker left off when it has not,
+   * or on the south road of `block` if they have never been out. `bounds` sizes the
+   * planet.
    */
   enter(box, block, bounds) {
     const diag = Math.hypot(bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ);
@@ -250,19 +279,25 @@ export class Walker {
     this.bugs?.show(true);
     this.showTool();
     this.setFog();
+    this.p.fly = !!this.tool.flies;
     if (box) {
       this.teleport(box);
-      Object.assign(this.p, { vy: 0, fly: false });
+      this.p.vy = 0;
       this.p.feet = this.height(this.p.x, this.p.z);
     } else if (this.home) {
       this.resume(this.home);
     } else {
-      Object.assign(this.p, { x: block.x, z: block.z + block.d / 2 - 0.15, yaw: 0, pitch: -0.15, vy: 0, fly: false });
+      Object.assign(this.p, { x: block.x, z: block.z + block.d / 2 - 0.15, yaw: 0, pitch: -0.15, vy: 0 });
       this.p.feet = this.height(this.p.x, this.p.z);
     }
     this.last = performance.now();
     this.scoped = false;
     this.fov = FOV;
+    // Full health on the way in, which is also the way back after dying.
+    this.health.reset(this.hooks.caught?.() ?? 0);
+    this.bitAt = 0;
+    this.burst = 0;
+    this.fell = null;
     // The tracker starts where it belongs rather than easing in from wherever it was
     // left the last time walk mode was entered, possibly half a map away.
     this.radarRange = this.radarZoom = undefined;
@@ -292,6 +327,7 @@ export class Walker {
     cancelAnimationFrame(this.frame);
     this.hud.hidden = true;
     this.hud.classList.remove('compact');
+    this.hud.classList.remove('hit');
     this.hud.querySelector('.w-flash').textContent = '';
     clearTimeout(this.flashTimer);
     this.setScoped(false);
@@ -306,18 +342,13 @@ export class Walker {
   }
 
   /**
-   * Stands the walker where `box` can be seen: on a block (terrace), at its south
-   * edge looking across it; beside anything else, on its lowest side that is not
-   * water, looking at it.
-   */
-  /**
    * Back to a remembered stance. The city may have been rebuilt while the walker was
    * away - a depth change, a filter, a live update - so the block they were standing
    * on is looked for by name and they are put back against it; failing that they land
    * where they were and step aside from whatever now stands there.
    */
   resume(home) {
-    Object.assign(this.p, { x: home.x, z: home.z, feet: home.feet, yaw: home.yaw, pitch: home.pitch, vy: 0, fly: !!home.fly });
+    Object.assign(this.p, { x: home.x, z: home.z, feet: home.feet, yaw: home.yaw, pitch: home.pitch, vy: 0 });
     const now = home.anchor && this.boxes?.find(b => b.node?.id === home.anchor.node.id);
     if (now) {
       this.reanchor(home.anchor, now);
@@ -329,6 +360,11 @@ export class Walker {
     this.p.feet = this.p.fly ? Math.max(this.p.feet, floor) : floor;
   }
 
+  /**
+   * Stands the walker where `box` can be seen: on a block (terrace), at its south
+   * edge looking across it; beside anything else, on its lowest side that is not
+   * water, looking at it.
+   */
   teleport(box) {
     const p = this.p, gap = 1.0;
     if (box.kind === 'terrace') {
@@ -372,7 +408,9 @@ export class Walker {
 
   showTool() {
     this.hideTool();
-    this.hud.dataset.tool = this.tool.id;
+    // The reticle is the tool's, not the tool's name: several tools share one, and
+    // style.css keys the crosshair off it.
+    this.hud.dataset.tool = this.tool.reticle || 'scope';
     if (this.handsOff) return;
     // A camera draws its children only when it is itself part of a scene, and this
     // one belongs to the pass that draws the tool over the world (MapScene.renderNow).
@@ -407,7 +445,12 @@ export class Walker {
   setTool(id) {
     this.tool = toolFor(id);
     this.swing = -1;
+    // Flight is a thing you are carrying, not a mode you are in: putting the jet
+    // backpack away is how you come down.
+    this.p.fly = !!this.tool.flies;
+    if (!this.p.fly) this.burst = 0;
     if (this.active) {
+      this.setFog();
       this.showTool();
       this.drawSlots();
       this.drawHud();
@@ -421,26 +464,42 @@ export class Walker {
    * The row of tools along the bottom, built once: a slot per tool, in slot order,
    * carrying the number that picks it. Only the one in hand is named, so the row
    * stays a row of shapes rather than a sentence.
+   *
+   * The two kinds are kept apart, with a gap and a mark between them: what a primary
+   * tool does to the map and what a secondary one does to you are different enough
+   * that reaching for the wrong one should look like a mistake before it is made.
    */
   drawSlots() {
     const row = this.hud.querySelector('.w-slots');
-    if (row.children.length !== TOOL_IDS.length) {
-      row.replaceChildren(...TOOL_IDS.map((id, n) => {
+    if (row.querySelectorAll('.w-slot').length !== TOOL_IDS.length) {
+      const slots = [];
+      TOOL_IDS.forEach((id, n) => {
         const tool = toolFor(id);
+        if (n && toolFor(TOOL_IDS[n - 1]).kind !== tool.kind) {
+          const gap = document.createElement('span');
+          gap.className = 'w-slot-gap';
+          gap.textContent = 'carried';
+          gap.setAttribute('aria-hidden', 'true'); // a listbox's children are its options
+          slots.push(gap);
+        }
         const el = document.createElement('div');
         el.className = 'w-slot';
         el.dataset.tool = id;
+        el.dataset.kind = tool.kind;
         el.setAttribute('role', 'option');
         el.title = `${tool.label} - ${tool.hint}`;
         el.append(
-          Object.assign(document.createElement('kbd'), { textContent: String(n + 1) }),
+          // Ten slots, so the tenth is the 0 key: what a shooter does, and what the
+          // keyboard leaves room for.
+          Object.assign(document.createElement('kbd'), { textContent: String((n + 1) % 10) }),
           document.createElement('i'),
           Object.assign(document.createElement('span'), { className: 'w-slot-name', textContent: tool.label }),
         );
-        return el;
-      }));
+        slots.push(el);
+      });
+      row.replaceChildren(...slots);
     }
-    for (const el of row.children) {
+    for (const el of row.querySelectorAll('.w-slot')) {
       el.setAttribute('aria-selected', String(el.dataset.tool === this.tool.id));
     }
   }
@@ -600,12 +659,11 @@ export class Walker {
       // 1..9 pick a tool by its slot, the way a shooter does; T still walks the row
       // for anyone who would rather not look down at it.
       if (e.code.startsWith('Digit')) {
-        const id = TOOL_IDS[+e.code.slice(5) - 1];
+        const id = TOOL_IDS[slotOf(e.code)];
         if (id && id !== this.tool.id) this.setTool(id);
         return;
       }
       switch (e.code) {
-        case 'KeyF': this.p.fly = !this.p.fly; this.p.vy = 0; this.drawHud(); break;
         case 'KeyT': this.nextTool(); break;
         case 'KeyH': this.setHandsOff(!this.handsOff); break;
         case 'Escape':
@@ -723,6 +781,7 @@ export class Walker {
       this.updateDarts(dt);
       this.bugs?.update(dt, now);
       this.drawRadar(now, dt);
+      this.health.draw(now); // the wash a hit leaves has to come off by itself
       this.poseTool(dt, now);
       this.scene.setWalker(this.p.x, this.p.feet, this.p.z, EYE, this.p.yaw, this.p.pitch);
       if (!this.frozen) this.updateAim();
@@ -754,7 +813,11 @@ export class Walker {
     const fwd = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0);
     const side = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
     const run = k.has('ShiftLeft') || k.has('ShiftRight');
-    const speed = p.fly ? (run ? FLY * 2.5 : FLY) : run ? RUN : WALK;
+    // A burst on the jet backpack runs down whether or not it is being used to go
+    // anywhere, so opening the throttle is a decision rather than a switch.
+    this.burst = Math.max(0, this.burst - dt);
+    const speed = (p.fly ? (run ? FLY * 2.5 : FLY) : run ? RUN : WALK)
+      * (this.burst > 0 ? BURST_SPEED : 1);
     // On foot, W and S move level; flying, they move where the view points (look
     // down and press W to dive), and Space and C add straight up and down.
     const lift = p.fly ? (k.has('Space') ? 1 : 0) - (k.has('KeyC') ? 1 : 0) : 0;
@@ -767,10 +830,12 @@ export class Walker {
 
     // Axis by axis, so the walker slides along walls.
     // On foot, the shore is the end of the world: water stops the walker (unless they
-    // are already in it, say after landing there).
+    // are already in it, say after landing there) - or it does not, because the water
+    // skimmers are what is in their hands, and then the bay is a street.
     const climb = p.feet + (p.ground || p.fly ? STEP : 0.05);
     const wet = !p.fly && this.height(p.x, p.z) <= WATER;
-    const ok = h => h <= climb && (p.fly || wet || h > WATER);
+    const afloat = !p.fly && !!this.tool.floats;
+    const ok = h => h <= climb && (p.fly || wet || afloat || h > WATER);
     const nx = p.x + mx * speed * dt;
     if (ok(this.height(nx, p.z))) p.x = nx;
     const nz = p.z + mz * speed * dt;
@@ -793,22 +858,70 @@ export class Walker {
     this.clearProps();
     this.confine();
 
+    // What the walker is standing on - or the surface of the water, while the
+    // skimmers are out and there is nothing under it.
     const floor = this.height(p.x, p.z);
     if (p.fly) {
       const ceiling = (this.limits?.maxY ?? 0) + SKY_MARGIN;
       p.feet = Math.max(floor, Math.min(ceiling, p.feet + my * speed * dt));
       p.vy = 0;
       p.ground = p.feet <= floor;
+      this.fell = null;
       return;
     }
     if (k.has('Space') && p.ground) p.vy = JUMP;
     p.vy -= GRAVITY * dt;
     p.feet += p.vy * dt;
+    // Where the fall started, so how far it was can be measured when it stops. A jump
+    // counts from the top of its arc, which is what makes jumping off a roof cost the
+    // roof's height and not a hand's breadth more.
+    if (p.vy < 0) this.fell = Math.max(this.fell ?? p.feet, p.feet);
     p.ground = p.feet <= floor;
     if (p.ground) {
+      if (this.fell !== null) this.land(floor);
       p.feet = floor;
       p.vy = 0;
     }
+    this.bites();
+  }
+
+  /** The end of a fall: what it was worth, and whether it was the end of the walk. */
+  land(floor) {
+    const drop = this.fell - floor;
+    this.fell = null;
+    const damage = this.health.fall(drop);
+    if (!damage) return;
+    if (this.health.dead) this.die(`A fall of ${Math.round(drop * 3.3)} storeys`);
+    else this.flash(`That drop cost ${damage} - watch the roofs`);
+  }
+
+  /**
+   * Anything close enough to bite, biting. One bug at a time and no faster than
+   * BITE_EVERY, so a swarm is dangerous by being hard to get out of rather than by
+   * taking the walker apart in a second - and it is the nearest one, so what bit is
+   * what the crosshair is most likely already on.
+   */
+  bites() {
+    const now = performance.now();
+    if (!this.bugs || now - this.bitAt < BITE_EVERY * 1000) return;
+    const at = this.biteAt ||= new THREE.Vector3();
+    at.set(this.p.x, this.p.feet + EYE * 0.55, this.p.z);
+    const bug = this.bugs.at(at, BITE_REACH);
+    if (!bug) return;
+    this.bitAt = now;
+    const damage = this.health.bite(bug.f.severity);
+    if (this.health.dead) this.die(`${bug.f.severity}: ${bug.f.title}`);
+    else this.flash(`Bitten - ${bug.f.severity}: ${bug.f.title} (-${damage}). Catch it or get clear`);
+  }
+
+  /**
+   * The walk is over. It ends the way leaving on foot does - back to the map, standing
+   * where you fell - because the backpack is what a session is for and nothing in it
+   * is lost. Coming back in is coming back at full health (enter).
+   */
+  die(cause) {
+    this.flash(`${cause} finished you. Back to the map; walk in again to start over`);
+    this.exit();
   }
 
   /** The block the walker stands on, to keep them by it across a relayout (reanchor). */
@@ -995,7 +1108,7 @@ export class Walker {
     const tool = this.tool;
     // Both answers are the same at every step of the march, so they are asked once.
     const catches = hits(tool, 'bugs') && this.bugs ? this.bugs : null;
-    const tags = hits(tool, 'buildings');
+    const tags = marks(tool, 'buildings');
     let hit = null, point = null, bug = null;
     for (let t = 0.2; t < REACH; t += 0.04 + t * 0.008) {
       v.copy(cam.position).addScaledVector(dir, t);
@@ -1004,7 +1117,8 @@ export class Walker {
       // A bug walks in front of the building it belongs to, so it is tested first:
       // otherwise the wall behind it would always win. A tool that is no use against
       // bugs looks straight through them - and one that is no use against buildings
-      // still stops at the wall, because the wall is still in the way.
+      // still stops at the wall, because the wall is still in the way. A secondary
+      // tool is no use against either: what it marks is only where it would take you.
       bug = catches ? catches.at(v, BUG_AIM(t)) : null;
       if (bug) { point = v.clone(); break; }
       hit = this.boxAt(v);
@@ -1052,11 +1166,20 @@ export class Walker {
     const tool = this.tool;
     this.swing = 0; // the hand moves whether or not anything flies
     const target = this.aimed(), bug = this.aim.bug;
-    const to = bug ? bug.pos.clone() : this.aim.point;
+    // A copy: a shot that scatters moves where it is going, and where it is going is
+    // the crosshair's own point until the next frame recomputes it.
+    const to = bug ? bug.pos.clone() : this.aim.point?.clone() || null;
 
     if (!tool.projectile) {
       if (tool.flash) this.screenFlash();
-      if (bug) this.bugs.catch(bug);
+      if (tool.flies) {
+        // The throttle, wide open for a moment. It is the one use of a tool that
+        // changes the walker rather than the map.
+        this.burst = BURST;
+        this.flash('Thrusters');
+      } else if (tool.floats) {
+        this.flash(this.height(p.x, p.z) <= WATER ? 'Riding the water' : 'The skimmers want water under them');
+      } else if (bug) this.bugs.catch(bug);
       else if (target) this.tag(target);
       else if (this.aim.far) this.flash(`Out of reach: the ${tool.label.toLowerCase()} has to be walked up to`);
       return;
@@ -1075,11 +1198,16 @@ export class Walker {
     const flight = tool.flight || DEFAULT_FLIGHT;
     shot.flight = flight;
     if (bug || target) {
+      // A tool that scatters does not land where it was aimed: the nail goes wide by
+      // a share of how far it has to travel, which is nothing across a room and the
+      // width of a window at the end of its reach.
       const dist = start.distanceTo(to);
+      if (flight.spread) scatter(to, flight.spread * dist);
       Object.assign(shot, { start, to, target, bug, T: Math.max(0.12, dist / flight.speed), arc: (0.05 + dist * 0.03) * flight.arc });
     } else {
       const dir = new THREE.Vector3(-Math.sin(p.yaw) * Math.cos(p.pitch), Math.sin(p.pitch) + 0.04, -Math.cos(p.yaw) * Math.cos(p.pitch));
-      shot.vel = dir.multiplyScalar(flight.speed);
+      if (flight.spread) scatter(dir, flight.spread);
+      shot.vel = dir.normalize().multiplyScalar(flight.speed);
       // Where it left from, so how far it has carried can be measured against the
       // tool's reach - and against the length of a line, for the ones that pay one out.
       shot.from = start.clone();
@@ -1425,14 +1553,21 @@ export class Walker {
             if (dart.bug) this.bugs.catch(dart.bug);
             else if (dart.target) this.tag(dart.target);
           }
-          if (dart.tool.reel && this.hook(m.position, dart.target, dart)) dart.kept = true;
+          // A line hauls on a wall, not on a beetle: what the rod caught comes back
+          // on the line, and the walker stays where they are.
+          if (dart.tool.reel && !dart.bug && this.hook(m.position, dart.target, dart)) dart.kept = true;
         }
       } else {
         // A miss flies on under the tool's own physics: a dart drops like a dart, a
         // bubble slows to a crawl and then climbs.
-        const { gravity, drag } = dart.flight || DEFAULT_FLIGHT;
+        const { gravity, drag, track } = dart.flight || DEFAULT_FLIGHT;
         dart.vel.y -= gravity * dt;
         if (drag) dart.vel.multiplyScalar(Math.max(0, 1 - drag * dt));
+        // A tracking dart earns the name on a miss: its fins pull it round towards
+        // whatever wall lies ahead of it, so a shot lobbed over a block still finds
+        // one. Nothing else here steers, which is the whole of the difference between
+        // it and a nail.
+        if (track) this.steer(dart, track * dt);
         m.position.addScaledVector(dart.vel, dt);
         // Anything thrown catches a bug it passes through, aimed at or not - if it is
         // the kind of thing that catches bugs at all.
@@ -1468,6 +1603,10 @@ export class Walker {
       }
       if (m.userData.spin) m.rotation.z += m.userData.spin * dt;
       if (m.userData.wobble) m.scale.set(1 + Math.sin(dart.t * 9) * 0.07, 1 - Math.sin(dart.t * 9) * 0.07, 1);
+      // A cloud opens out as it goes: what left the horn as a gout is a fog by the
+      // time it is across the street, which is why the extinguisher is forgiving up
+      // close and no use at all past that.
+      if (m.userData.swell) m.scale.setScalar(1 + dart.t * m.userData.swell);
       if (dart.line) { // keep the line between the rod's tip and what was cast
         const tip = this.muzzle() || new THREE.Vector3(this.p.x, this.p.feet + EYE - 0.05, this.p.z);
         dart.line.geometry.setFromPoints([tip, m.position.clone()]);
@@ -1482,6 +1621,46 @@ export class Walker {
       }
       this.darts.splice(this.darts.indexOf(dart), 1);
     }
+  }
+
+  /**
+   * Turns a shot in flight towards the wall it has picked, by at most `by` radians.
+   *
+   * It picks one on the way out of the muzzle and holds it: a dart that chose again
+   * every frame would swing from building to building as it passed them, and it would
+   * cost a sweep of the layout a frame to do it. Nothing is picked twice, and a shot
+   * that leaves with nothing ahead of it stays a shot that misses.
+   */
+  steer(dart, by) {
+    const at = dart.mesh.position;
+    const going = (this.aimAt ||= new THREE.Vector3()).copy(dart.vel).normalize();
+    if (dart.lock === undefined) dart.lock = this.wallAhead(at, going);
+    if (!dart.lock) return;
+    const b = dart.lock;
+    const want = (this.aimTo ||= new THREE.Vector3())
+      .set(b.x - at.x, b.y + b.h / 2 - at.y, b.z - at.z);
+    if (want.lengthSq() < 1e-6) return;
+    const speed = dart.vel.length();
+    dart.vel.copy(going.lerp(want.normalize(), Math.min(1, by)).normalize()).multiplyScalar(speed);
+  }
+
+  /**
+   * The nearest box a dart could tag that lies within TRACK_AHEAD of where it is
+   * going and TRACK_REACH of where it is. The ground and the blocks are not it: a dart
+   * that steered into the street would never reach anything.
+   */
+  wallAhead(at, going) {
+    let best = null, nearest = TRACK_REACH;
+    for (const b of this.boxes) {
+      if (b.kind === 'land' || b.kind === 'terrace') continue;
+      const dx = b.x - at.x, dy = b.y + b.h / 2 - at.y, dz = b.z - at.z;
+      const d = Math.hypot(dx, dy, dz);
+      if (d >= nearest || d < 0.2) continue;
+      if ((dx * going.x + dy * going.y + dz * going.z) / d < TRACK_AHEAD) continue;
+      nearest = d;
+      best = b;
+    }
+    return best;
   }
 
   // The hunt takes two shots: the first dart tags the module, a second one into the
@@ -1521,7 +1700,9 @@ export class Walker {
     const locked = document.pointerLockElement === this.scene.renderer.domElement;
     // Walking is what walk mode is; saying so is a chip that never changes. Flying
     // and reading are worth a word, and get one.
-    const mode = this.frozen ? 'reading' : this.p.fly ? 'flying' : '';
+    const mode = this.frozen ? 'reading'
+      : this.p.fly ? 'flying'
+        : this.tool.floats && this.height(this.p.x, this.p.z) <= WATER ? 'afloat' : '';
     const modeChip = this.hud.querySelector('.w-mode');
     modeChip.hidden = !mode;
     modeChip.textContent = mode;
@@ -1546,6 +1727,13 @@ export class Walker {
 }
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+
+/** Knocks a point or a direction off course by up to `by`, evenly in all directions. */
+function scatter(v, by) {
+  v.x += (Math.random() * 2 - 1) * by;
+  v.y += (Math.random() * 2 - 1) * by;
+  v.z += (Math.random() * 2 - 1) * by;
+}
 
 /**
  * Exponential easing towards a value: `tau` is how long it takes to close most of

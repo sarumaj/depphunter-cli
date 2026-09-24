@@ -3,6 +3,13 @@
 // travels to the target. Tagging a module is the same act throughout; only the
 // gesture changes, so none of this touches the map or the graph.
 //
+// Tools come in two kinds, and the difference is what they are for. A primary tool is
+// the hunt: it tags a module or catches a bug, and everything about it - its reach,
+// its flight, its reticle - is about reaching one of those. A secondary tool touches
+// neither. It carries the walker instead: a line to a wall, a jet to fly on, floats to
+// cross the water with. Carrying one is the whole of using it, so while a secondary
+// tool is in hand nothing on the map can be tagged or caught, and the HUD says so.
+//
 // The hand and the forearm are a rigged model (hands.js, modelled by tools/hand.py in
 // Blender); the tools themselves are built here. Both are lit, which nothing else on
 // the map is: the walk camera carries its own lights, and they reach only what it
@@ -15,7 +22,10 @@
 //   reticle           the aim helper's style, so it fits the tool rather than an
 //                     ever-present crosshair
 //   verb / noun       what the HUD and its messages call the act and its tally
-//   targets           'bugs', 'buildings' or 'both': what it is any use against
+//   kind              'primary' (it hunts) or 'secondary' (it carries you)
+//   targets           'bugs', 'buildings' or 'both': what it is any use against.
+//                     A secondary tool has none, whatever it says: hits() below is
+//                     what decides, and it never answers yes for one.
 //   reach             how far it works, in map units. Every tool has one but the
 //                     camera, which photographs whatever is in the frame however far
 //                     away it is. A reach with nothing thrown is a tool swung by hand
@@ -30,6 +40,9 @@
 //                     the walker along it, how close it brings them, how far away it
 //                     will still pull from, and whether it sets them on top of what
 //                     it caught or leaves them against it.
+//   flies / floats    what carrying a secondary tool does to the walker: the jet
+//                     backpack holds them in the air, the skimmers hold them on the
+//                     water. walk.js reads both off whatever is in hand.
 
 import * as THREE from './vendor/three.module.min.js';
 
@@ -339,10 +352,13 @@ const rod = {
   label: 'Fishing rod',
   verb: 'Cast at',
   noun: 'landed',
-  hint: 'Cast at a building; the line hauls you to it, twice for details',
+  hint: 'Cast at a building and the line hauls you to it, twice for details; a cast at a bug lands it',
   reticle: 'bobber',
   slot: 1,
-  targets: 'buildings',
+  kind: 'primary',
+  // A bobber dropped on a beetle is as good a catch as a net over it; the line is
+  // what the rod is for, and the catch is what any hook has always been for.
+  targets: 'both',
   // A long cast, but a cast: a rod puts a bobber a good way down the street and no
   // further, and past that the line would not be worth hauling on anyway (reel.max).
   reach: 26,
@@ -448,6 +464,7 @@ const net = {
   hint: 'Swing at a bug you can reach; it does not throw',
   reticle: 'hoop',
   slot: 2,
+  kind: 'primary',
   // A net catches what is in it. Throwing the whole net at a building across the
   // map was the one thing here that never made sense as a gesture.
   targets: 'bugs',
@@ -531,6 +548,7 @@ const camera = {
   hint: 'Photograph a building or a bug, at any range',
   reticle: 'frame',
   slot: 3,
+  kind: 'primary',
   // A photograph records whatever is in the frame, near or far, bug or building.
   targets: 'both',
   // Unlike the other tools the camera is not held in a fist, so it is placed first
@@ -647,6 +665,7 @@ const bubbles = {
   noun: 'bubbled',
   hint: 'Float a bubble onto a bug; it rises and drifts',
   slot: 4,
+  kind: 'primary',
   // Soap on a beetle is a catch; soap on a wall is a clean wall.
   targets: 'bugs',
   // Nothing blown off a wand carries: it is out of reach across the street, never
@@ -715,6 +734,110 @@ const bubbles = {
   },
 };
 
+// Where the extinguisher's lever sits when nothing is squeezing it.
+const LEVER_UP = 0.295;
+
+/**
+ * A fire extinguisher: the third way of taking a bug off the street, and the one with
+ * no finesse in it at all. The net has to be swung within arm's length and a bubble
+ * has to be floated onto its target; a horn full of foam is pointed in the rough
+ * direction and squeezed. What comes out is slow, spreads as it goes and drops out of
+ * the air a few strides on, so it clears a doorway rather than picking a beetle off a
+ * roof - which is the trade, and why all three are worth carrying.
+ */
+const extinguisher = {
+  id: 'extinguisher',
+  label: 'Fire extinguisher',
+  verb: 'Douse',
+  noun: 'doused',
+  hint: 'Hose a bug down at close quarters; the foam spreads and falls',
+  reticle: 'spray',
+  slot: 5,
+  kind: 'primary',
+  // Foam on a beetle is a beetle that has stopped; foam on a wall is a wall to wash.
+  targets: 'bugs',
+  // A horn throws foam across a room and no further.
+  reach: 5,
+  // It leaves fast and is stopped almost at once by its own drag, then falls: the
+  // shortest and heaviest arc in the bag, and the only one that spreads on the way.
+  flight: { speed: 15, arc: 0.5, gravity: 3.2, drag: 2.6 },
+  hold: { x: 0.2, y: -0.3, z: -0.5, along: [0.06, 1, 0.28], back: [0.4, -0.3, 1] },
+  grip: SWUNG,
+  viewmodel() {
+    return viewmodel(g => {
+      const body = armed(g, this, tool => { tool.name = 'body'; });
+
+      // The bottle: a red cylinder with a domed base and a label band round it, held
+      // by the neck so the fist closes where a hand actually carries one.
+      const shell = rodPart(0.058, 0.055, 0.3, '#c0231f');
+      shell.position.y = 0.02;
+      body.add(shell);
+      body.add(part(new THREE.SphereGeometry(0.058, 12, 8).scale(1, 0.5, 1).translate(0, -0.13, 0), '#9b1c19'));
+      const label = rodPart(0.0595, 0.0595, 0.08, '#f1efe8');
+      label.position.y = 0.01;
+      body.add(label);
+
+      // The neck, the valve block above it and the lever that opens it.
+      const neck = rodPart(0.022, 0.024, 0.06, '#8d9199');
+      neck.position.y = 0.2;
+      body.add(neck);
+      const valve = part(new THREE.BoxGeometry(0.05, 0.05, 0.07).translate(0, 0.25, 0), '#2f353c');
+      body.add(valve);
+      // Placed rather than built where it sits, because the gesture moves it and a
+      // geometry already carried into place would be moved from there twice.
+      const lever = part(new THREE.BoxGeometry(0.042, 0.014, 0.1), '#d8dadf');
+      lever.position.set(0, LEVER_UP, 0.02);
+      lever.name = 'lever';
+      body.add(lever);
+      body.add(part(new THREE.CylinderGeometry(0.02, 0.02, 0.006, 12).rotateX(Math.PI / 2).translate(0, 0.25, -0.036), '#f1efe8')); // the gauge
+
+      // The hose out of the valve and the horn on the end of it, which is where the
+      // foam leaves. Two straight runs rather than a curve: at this size the elbow
+      // between them reads as the bend a hose has.
+      const hose = rodPart(0.013, 0.013, 0.12, '#1d2024');
+      hose.rotation.z = -1.0;
+      hose.position.set(0.05, 0.24, 0.02);
+      body.add(hose);
+      const horn = new THREE.Group();
+      horn.position.set(0.1, 0.19, 0.03);
+      horn.rotation.z = -1.5;
+      horn.name = 'horn';
+      body.add(horn);
+      horn.add(rodPart(0.014, 0.02, 0.07, '#1d2024'));
+      horn.add(part(new THREE.CylinderGeometry(0.02, 0.055, 0.1, 14, 1, true).translate(0, 0.08, 0), '#15181b',
+        { side: THREE.DoubleSide }));
+      muzzle(horn, 0, 0.14, 0);
+    });
+  },
+  // The lever is squeezed, the bottle kicks back against the hand, and the horn lifts
+  // as the charge goes through it.
+  pose(vm, u) {
+    const k = press(u);
+    const lever = vm.getObjectByName('lever');
+    const horn = vm.getObjectByName('horn');
+    lever.position.y = LEVER_UP - k * 0.016;
+    horn.rotation.z = -1.5 - k * 0.12;
+    vm.position.z = REST.z + k * 0.05;
+    vm.position.y = vm.userData.restY + k * 0.02;
+    vm.rotation.x = REST.rx + k * 0.16;
+    vm.rotation.z = REST.rz - k * 0.1;
+    grip(vm, 0.4 + k * 0.5);
+  },
+  // A gout of foam: three lumps of it, off centre, that swell as they fly.
+  projectile() {
+    const g = new THREE.Group();
+    const skin = { transparent: true, opacity: 0.55, depthWrite: false };
+    g.add(part(new THREE.SphereGeometry(0.075, 10, 8), '#f4f8ff', skin));
+    for (const [x, y, z, r] of [[0.05, 0.03, -0.03, 0.05], [-0.045, -0.02, 0.02, 0.042]]) {
+      const lump = part(new THREE.SphereGeometry(r, 8, 6), '#e8eef7', skin);
+      lump.position.set(x, y, z);
+      g.add(lump);
+    }
+    g.userData.swell = 2.2; // it opens out into a cloud on the way
+    return g;
+  },
+};
+
 const dart = {
   id: 'dart',
   label: 'Tracking dart',
@@ -722,14 +845,19 @@ const dart = {
   noun: 'tagged',
   hint: 'Tag a building; hit it again for details',
   reticle: 'scope',
-  slot: 5,
+  slot: 6,
+  kind: 'primary',
   targets: 'buildings',
   // A dart launcher out-throws an arm and loses to a rifle: a couple of blocks, and
   // then it is dropping. Without a reach it would tag anything the crosshair found,
   // which from a rooftop is most of the city.
   reach: 20,
-  // Heavy, fast and barely lobbed: the flattest thing in the bag.
-  flight: { speed: 34, arc: 0.6, gravity: 7, drag: 0.05 },
+  // What the name says: a dart that is thrown high and steers. It is slow enough to
+  // watch, heavy enough to fall, and while it falls its fins pull it round towards
+  // whatever building lies ahead - so a shot lobbed over a block still lands on a
+  // wall. That is the whole of what separates it from the nail gun, which is fired
+  // dead flat and goes wherever the muzzle was pointing.
+  flight: { speed: 26, arc: 1.8, gravity: 9, drag: 0.15, track: 2.4 },
   ...PISTOL,
   viewmodel() {
     return viewmodel(g => {
@@ -823,10 +951,11 @@ const dart = {
 // ------------------------------------------------- what the buildings are for
 
 /**
- * A framing nailer: the construction trade's answer to the tracking dart. Nails go
- * into buildings and nothing else, they go fast and nearly flat, and the magazine
- * means they go one after another - a wall of a warehouse can be pinned at a run in a
- * way a single dart cannot.
+ * A framing nailer: the construction trade's answer to the tracking dart, and its
+ * opposite. A nail goes exactly where the muzzle pointed, very fast and very flat,
+ * and it never thinks better of it; the dart is lobbed and steers. The magazine means
+ * nails go one after another, so a wall of a warehouse can be pinned at a run in a way
+ * a single dart cannot - and anything small enough gets pinned to the wall with it.
  */
 const nailer = {
   id: 'nailer',
@@ -835,15 +964,20 @@ const nailer = {
   noun: 'pinned',
   hint: 'Drive a nail into a building; hit it again for details',
   reticle: 'cross',
-  slot: 6,
-  targets: 'buildings',
+  slot: 7,
+  kind: 'primary',
+  // A nail through a beetle is a beetle pinned to the wall behind it, which is a
+  // catch by anyone's reckoning.
+  targets: 'both',
   // The flattest shot here and the shortest: a nail gun drives a nail into what is
   // in front of it. It reaches further than an arm and nothing like as far as the
   // dart, which is the trade for not having to lead the shot at all.
   reach: 12,
-  // Fired rather than thrown: the fastest and flattest thing here, and heavy enough
-  // that the air does nothing to it.
-  flight: { speed: 70, arc: 0.1, gravity: 3.5, drag: 0 },
+  // Fired rather than thrown, and the opposite of the dart in every term: three times
+  // the speed, no lob worth the name, barely any drop over the distance it covers, and
+  // no steering at all. What it has instead is scatter - a nail leaves a strip nailer
+  // crooked, and at the far end of its reach that is the width of a window.
+  flight: { speed: 90, arc: 0.02, gravity: 1.2, drag: 0, spread: 0.03 },
   ...PISTOL,
   viewmodel() {
     return viewmodel(g => {
@@ -919,8 +1053,8 @@ const grapple = {
   noun: 'climbed',
   hint: 'Hook a building to be pulled onto its roof; from up there, hook lower to come down',
   reticle: 'hook',
-  slot: 7,
-  targets: 'buildings',
+  slot: 8,
+  kind: 'secondary',
   // The longest reach in the bag, because a line is the one thing here that is meant
   // to span a street - but a line, not a rifle: it ends where the rope does.
   reach: 50,
@@ -1001,13 +1135,190 @@ const grapple = {
   },
 };
 
-export const TOOLS = { rod, net, camera, bubbles, dart, nailer, grapple };
+// Where the jet backpack's throttle lever stands with the hand resting on it.
+const THROTTLE_OUT = -0.075;
+
+/**
+ * A jet backpack, which is how you get off the ground. It is not aimed and nothing
+ * leaves it: while it is the thing in your hands the pack on your back is running,
+ * and the walker flies - forward where they are looking, straight up and down on the
+ * jump and crouch keys. Using it opens the throttle for a moment, which is a burst of
+ * speed rather than a shot.
+ *
+ * What is drawn is the throttle the hand is holding and the feed line running back
+ * over the shoulder to the pack itself, with one of the thrusters swung into the
+ * bottom of the frame - the pack is behind the camera, and a first-person view of it
+ * is the part of it that reaches round.
+ */
+const jetpack = {
+  id: 'jetpack',
+  label: 'Jet backpack',
+  verb: 'Burn',
+  noun: 'flown',
+  hint: 'Carry it and you fly: W and S follow your eyes, Space and C go up and down. Click for a burst',
+  reticle: 'thrust',
+  slot: 9,
+  kind: 'secondary',
+  flies: true,
+  ...PISTOL,
+  viewmodel() {
+    return viewmodel(g => {
+      const gun = armed(g, this, tool => { tool.name = 'throttle'; });
+      const frame = new THREE.Group();
+      frame.position.set(0, 0.045, -0.01);
+      gun.add(frame);
+
+      // The throttle: a grip through the fist with a lever on the front of it and a
+      // gauge on top, so what is held reads as a control rather than a weapon.
+      frame.add(part(new THREE.BoxGeometry(0.05, 0.14, 0.05).translate(0, -0.04, 0.01), '#2b3138'));
+      frame.add(part(new THREE.BoxGeometry(0.06, 0.05, 0.09).translate(0, 0.05, -0.03), '#48525c'));
+      // Placed rather than built in place: the gesture moves it, and a geometry
+      // already carried there would be moved from there twice.
+      const lever = part(new THREE.BoxGeometry(0.03, 0.055, 0.016), '#e8a317');
+      lever.position.set(0, 0.03, THROTTLE_OUT);
+      lever.name = 'lever';
+      frame.add(lever);
+      const dial = part(new THREE.CylinderGeometry(0.017, 0.017, 0.006, 12), '#dfe4ea');
+      dial.position.set(0, 0.08, -0.03);
+      frame.add(dial);
+
+      // The feed line, out of the heel of the grip and back past the shoulder.
+      const feed = rodPart(0.014, 0.014, 0.26, '#5a6068');
+      feed.rotation.set(0.9, 0, 0.35);
+      feed.position.set(0.05, -0.06, 0.14);
+      frame.add(feed);
+
+      // One thruster, reaching round from the pack into the corner of the view, with
+      // the flame under it. The flame is drawn from the moment the pack is taken out:
+      // it is what is holding the walker up.
+      const pod = new THREE.Group();
+      pod.position.set(0.02, -0.2, 0.06);
+      pod.rotation.x = -0.25;
+      frame.add(pod);
+      pod.add(part(new THREE.CylinderGeometry(0.05, 0.05, 0.16, 12), '#3c444d'));
+      pod.add(part(new THREE.CylinderGeometry(0.05, 0.07, 0.06, 12).translate(0, -0.11, 0), '#23292f'));
+      const flame = part(new THREE.ConeGeometry(0.055, 0.2, 12).rotateX(Math.PI).translate(0, -0.24, 0), '#7fc8f0',
+        { transparent: true, opacity: 0.7, depthWrite: false });
+      flame.name = 'flame';
+      pod.add(flame);
+      const core = part(new THREE.ConeGeometry(0.028, 0.12, 10).rotateX(Math.PI).translate(0, -0.2, 0), '#ffffff',
+        { transparent: true, opacity: 0.8, depthWrite: false });
+      core.name = 'core';
+      pod.add(core);
+      g.userData.trigger = 0.15; // a finger laid on the lever
+    });
+  },
+  // The flame is never still: it is what a running jet looks like, and it says the
+  // pack is on without anything having to be pressed.
+  live(vm, scene, lens, now = performance.now()) {
+    const flame = vm.getObjectByName('flame'), core = vm.getObjectByName('core');
+    if (!flame) return;
+    const t = now / 1000;
+    const lick = 1 + Math.sin(t * 21) * 0.12 + Math.sin(t * 7.3) * 0.06;
+    // The burst the gesture opened, easing shut again: pose writes it while the
+    // throttle is down and this is what closes it afterwards, so the jet settles back
+    // to its idle instead of staying wide open.
+    const burn = vm.userData.burn = 1 + ((vm.userData.burn || 1) - 1) * 0.86;
+    flame.scale.set(1, lick * burn, 1);
+    core.scale.set(1, lick * 1.1 * burn, 1);
+  },
+  // The throttle goes forward and the jet lengthens behind it; the hand is pushed back
+  // by a pack that is suddenly pulling.
+  pose(vm, u) {
+    const k = press(u);
+    vm.getObjectByName('lever').position.z = THROTTLE_OUT - k * 0.012;
+    vm.userData.burn = 1 + k * 2.4; // live() reads it, so the flame keeps flickering
+    vm.position.z = REST.z + k * 0.06;
+    vm.position.y = vm.userData.restY - k * 0.02;
+    vm.rotation.x = REST.rx - k * 0.1;
+    grip(vm, k * 0.5, k);
+  },
+  projectile: null, // the thrust is the walker's, not something thrown
+};
+
+/**
+ * Water skimmers: a pair of floats, one of them held up in front of you, the other
+ * being the one you are standing on. Carrying them is the whole of using them - the
+ * water holds while they are in hand, so the bay becomes a street and the islands stop
+ * being somewhere only a bridge reaches. Put them away over deep water and you are in
+ * it, which is the reason to look where you are going.
+ */
+const skimmers = {
+  id: 'skimmers',
+  label: 'Water skimmers',
+  verb: 'Skim',
+  noun: 'skimmed',
+  hint: 'Carry them and the water carries you; stow them over the bay and it will not',
+  reticle: 'ripple',
+  slot: 10,
+  kind: 'secondary',
+  floats: true,
+  hold: { x: 0.21, y: -0.29, z: -0.52, along: [0.05, 1, 0.3], back: [0.4, -0.3, 1] },
+  grip: SWUNG,
+  viewmodel() {
+    return viewmodel(g => {
+      const float = armed(g, this, tool => { tool.name = 'float'; });
+
+      // The float itself: a long hull with a rounded nose, a flat deck along the top
+      // and a skeg under the tail, in the orange everything meant to be found in the
+      // water is painted.
+      const hull = part(new THREE.CapsuleGeometry(0.052, 0.34, 6, 12), '#e8641f');
+      hull.position.y = 0.12;
+      float.add(hull);
+      const deck = part(new THREE.BoxGeometry(0.07, 0.012, 0.26).translate(0, 0.17, 0), '#f1efe8');
+      deck.rotation.y = Math.PI / 2;
+      float.add(deck);
+      const skeg = part(new THREE.BoxGeometry(0.012, 0.05, 0.08).translate(0, -0.05, 0.03), '#2f353c');
+      float.add(skeg);
+
+      // The binding: a heel strap and the toe loop the fist is closed round.
+      const strap = part(new THREE.TorusGeometry(0.045, 0.008, 6, 14), '#2b3138');
+      strap.rotation.x = Math.PI / 2;
+      strap.position.y = 0.2;
+      float.add(strap);
+      const loop = part(new THREE.TorusGeometry(0.038, 0.0075, 6, 14), '#2b3138');
+      loop.rotation.x = Math.PI / 2;
+      loop.position.y = 0.02;
+      float.add(loop);
+      muzzle(float, 0, 0.3, 0);
+    });
+  },
+  // Nothing is fired, so using them is a look at them: the float is turned over in
+  // the hand and set down again.
+  pose(vm, u) {
+    const k = press(u);
+    const float = vm.getObjectByName('float');
+    float.rotation.z = k * 0.5;
+    float.rotation.x = -k * 0.35;
+    vm.position.y = vm.userData.restY + k * 0.06;
+    vm.rotation.z = REST.rz - k * 0.18;
+    grip(vm, 0.3 + k * 0.3);
+  },
+  projectile: null,
+};
+
+export const TOOLS = { rod, net, camera, bubbles, extinguisher, dart, nailer, grapple, jetpack, skimmers };
 
 /** The tools in slot order, which is the order the number keys pick them in. */
 export const TOOL_IDS = Object.values(TOOLS).sort((a, b) => a.slot - b.slot).map(t => t.id);
 
-/** What a tool is any use against, for the aim and for what the HUD says. */
-export const hits = (tool, what) => (tool.targets || 'both') === 'both' || tool.targets === what;
+/**
+ * What a tool is any use against, for the aim and for what the HUD says. A secondary
+ * tool is no use against anything: it carries the walker, and nothing it touches is
+ * tagged or caught. This is the one place that is decided.
+ */
+export const hits = (tool, what) =>
+  tool.kind !== 'secondary' && ((tool.targets || 'both') === 'both' || tool.targets === what);
+
+/**
+ * What the crosshair marks. A secondary tool hits nothing, but a line has to be aimed
+ * at the wall it is going to pull you up - so what it can travel to is still worth
+ * pointing out, and still not a target.
+ */
+export const marks = (tool, what) => hits(tool, what) || (what === 'buildings' && !!tool.reel);
+
+/** Whether a tool is one that carries the walker rather than one that hunts. */
+export const isSecondary = tool => tool.kind === 'secondary';
 
 /** A tool that is swung rather than thrown: it has a reach and nothing leaves it. */
 export const isMelee = tool => !tool.projectile && tool.reach != null;

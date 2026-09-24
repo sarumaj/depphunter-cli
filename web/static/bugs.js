@@ -1,6 +1,14 @@
 // Bugs on the buildings. Every finding a scanner reported walks a lap on the building
-// it belongs to, colored by how serious it is; catching one with whatever tool is in
-// your hands opens what was said about it.
+// it belongs to, colored by how serious it is and shaped by it too; catching one with
+// whatever primary tool is in your hands opens what was said about it.
+//
+// Shape carries the severity as well as color does, and carries it further: a color
+// is no use in a crowd, in the dark, or from behind, and it is the one thing the
+// tracker in the corner already says. So a critical finding is a caterpillar the
+// length of a doorstep, hauling itself along the street; an ordinary one is the
+// beetle; and the notes and the nits are mites you have to go and look for. They walk
+// the same laps and are caught the same way - only the thing you are looking at
+// changes, which is what makes a bad street legible from the end of it.
 //
 // A lap is one of four: the street around the footprint, a band around the facade at
 // some height, a circuit of the roof, or a wider circuit in the air above it. A beetle
@@ -44,19 +52,36 @@ const MARGIN = 1.5;
 const BODY = 0.1;         // half the length of a bug's body
 const LEGS = 6;
 
-// Every bug is drawn from the same two geometries, as two instanced meshes: the
-// shell (body, head and the split down it) and the legs, which rock on their own.
-// A hundred and forty beetles were a thousand draw calls as separate meshes, which
-// is most of a frame in walk mode; they are two now, whatever the count.
+/**
+ * What each severity walks as: which of the three shapes, how big it is drawn, and
+ * whether it can take to the air. A caterpillar cannot - it is the one that has to be
+ * walked up to, which is the right way round for the worst thing on the map.
+ */
+const SHAPES = {
+  critical: { shape: 'grub', scale: 1, flies: false },
+  high: { shape: 'beetle', scale: 1.3, flies: true },
+  medium: { shape: 'beetle', scale: 1, flies: true },
+  low: { shape: 'mite', scale: 0.85, flies: true },
+  info: { shape: 'mite', scale: 0.7, flies: true },
+  unknown: { shape: 'mite', scale: 0.9, flies: true },
+};
+const shapeOf = severity => SHAPES[severity] || SHAPES.unknown;
+
+// Each shape is drawn from two geometries, as two instanced meshes: the shell (body,
+// head and the split down it) and the legs, which rock on their own, with a third for
+// the wings of the shapes that fly. A hundred and forty beetles were a thousand draw
+// calls as separate meshes, which is most of a frame in walk mode; they are a handful
+// now, whatever the count, and a map showing all three shapes at once costs seven.
 //
-// The shell carries its shading in its vertex colors - the wing cases take the
-// severity color, the head and the plate behind it stay nearly black - and the
-// severity color is set per instance, so one mesh draws every color. Nothing in this
-// scene is lit, so both the split and the roundness have to be painted: without them
-// a beetle at arm's length is a colored blob.
+// The shell carries its shading in its vertex colors - the body takes the severity
+// color, the head and the plate behind it stay nearly black - and both the severity
+// color and the size are set per instance, so one mesh draws every color a shape
+// comes in and every size of it. Nothing in this scene is lit, so both the split and
+// the roundness have to be painted: without them a beetle at arm's length is a
+// colored blob.
 const SHELL = '#151515'; // the legs, which are the same dark whatever the severity
 const DARK = 0.06;       // how dark the head and its plate are, in linear light
-let parts = null;        // the two geometries, once built
+let parts = null;        // the geometries of every shape, once built
 let fromModel = false;   // ... and whether they came out of bug.glb
 
 export class Bugs {
@@ -70,9 +95,9 @@ export class Bugs {
     this.grid = new Map();   // cell -> bugs whose lap passes through it
     this.caught = new Set(); // finding ids, so a relayout does not revive them
     this.colors = {};
-    this.shell = null;      // the instanced bodies
-    this.legs = null;       // ... the instanced legs, which rock on their own
-    this.wings = null;      // ... and one pair of wings per bug that is in the air
+    // One set of instanced meshes per shape that is out there: the bodies, the legs
+    // (which rock on their own) and, for the shapes that fly, a pair of wings each.
+    this.drawn = [];
     this.dirty = false;     // the instance colors need writing again
     scene.scene.add(this.group);
   }
@@ -154,10 +179,13 @@ export class Bugs {
   }
 
   spawn(f, node, box, nth) {
-    const lap = lapOf(box, surfaceFor(box, nth));
+    const kind = shapeOf(f.severity);
+    const lap = lapOf(box, surfaceFor(box, nth, kind.flies));
     const flying = lap.kind === 'air';
     const bug = {
       f, node, box, lap, flying,
+      shape: kind.shape,
+      scale: kind.scale,
       // Bugs on the same building start apart and walk at slightly different speeds,
       // so a busy block looks like traffic rather than a marching band.
       u: (nth * 0.37) % 1,
@@ -179,65 +207,83 @@ export class Bugs {
   }
 
   /**
-   * The two instanced meshes, sized for the bugs that are out there. They are rebuilt
+   * The instanced meshes, sized for the bugs that are out there: three a shape at
+   * most, and only for the shapes any finding actually called for. They are rebuilt
    * with the layout rather than resized, because a layout is where the count changes.
    */
   build() {
     parts = geometry();
-    const shell = new THREE.InstancedMesh(parts.shell,
-      this.scene.bendable(new THREE.MeshBasicMaterial({ vertexColors: true })), this.bugs.length);
-    const legs = new THREE.InstancedMesh(parts.legs,
-      this.scene.bendable(new THREE.MeshBasicMaterial({ color: SHELL })), this.bugs.length);
-    // Two instances a flyer, one wing each: the geometry is the left wing, and the
-    // right one is the same matrix mirrored across the body. Mirroring turns the
-    // triangles inside out, which is what DoubleSide is here for.
-    const flyers = this.bugs.filter(b => b.flying).length;
-    const wings = new THREE.InstancedMesh(parts.wing,
-      this.scene.bendable(new THREE.MeshBasicMaterial({
-        color: '#dfe7f0', transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false,
-      })), Math.max(1, flyers * 2));
-    wings.renderOrder = 1; // over the shell it beats against, not fighting it for depth
-    for (const mesh of [shell, legs, wings]) {
-      mesh.frustumCulled = false;
-      mesh.count = 0;
-      this.group.add(mesh);
+    this.drawn = [];
+    const byShape = new Map();
+    for (const bug of this.bugs) {
+      const list = byShape.get(bug.shape);
+      if (list) list.push(bug); else byShape.set(bug.shape, [bug]);
     }
-    this.shell = shell;
-    this.legs = legs;
-    this.wings = wings;
+    for (const [name, bugs] of byShape) {
+      const shape = parts.get(name);
+      const shell = new THREE.InstancedMesh(shape.shell,
+        this.scene.bendable(new THREE.MeshBasicMaterial({ vertexColors: true })), bugs.length);
+      const legs = new THREE.InstancedMesh(shape.legs,
+        this.scene.bendable(new THREE.MeshBasicMaterial({ color: SHELL })), bugs.length);
+      const meshes = [shell, legs];
+      // Two instances a flyer, one wing each: the geometry is the left wing, and the
+      // right one is the same matrix mirrored across the body. Mirroring turns the
+      // triangles inside out, which is what DoubleSide is here for.
+      const flyers = bugs.filter(b => b.flying).length;
+      let wings = null;
+      if (shape.wing && flyers) {
+        wings = new THREE.InstancedMesh(shape.wing,
+          this.scene.bendable(new THREE.MeshBasicMaterial({
+            color: '#dfe7f0', transparent: true, opacity: 0.4, side: THREE.DoubleSide, depthWrite: false,
+          })), flyers * 2);
+        wings.renderOrder = 1; // over the shell it beats against, not fighting it for depth
+        meshes.push(wings);
+      }
+      for (const mesh of meshes) {
+        mesh.frustumCulled = false;
+        mesh.count = 0;
+        this.group.add(mesh);
+      }
+      this.drawn.push({ bugs, shell, legs, wings });
+    }
     this.dirty = true;
   }
 
   update(dt, now) {
-    if (!this.shell) return;
+    if (!this.drawn.length) return;
     const m = new THREE.Matrix4(), r = new THREE.Matrix4();
     const c = new THREE.Color();
-    let n = 0, w = 0;
-    for (const bug of this.bugs) {
-      if (bug.caught) continue;
-      bug.u = (bug.u + (bug.speed * dt) / bug.lap.length) % 1;
-      this.moveTo(bug, now);
-      orient(m, bug);
-      this.shell.setMatrixAt(n, m);
-      // The legs scurry: the whole set rocks, which reads as six legs at this size.
-      // Tucked back, the same rock is a flyer holding them out of the way.
-      this.legs.setMatrixAt(n, r.multiplyMatrices(m, rockAbout(bug.rock)));
-      if (bug.flying) {
-        // One beat, two wings: the same angle up on the left and down on the right of
-        // a body whose x axis is its own, so they meet over its back and part under it.
-        const beat = Math.sin(bug.wing) * 0.9 + 0.35;
-        this.wings.setMatrixAt(w++, r.multiplyMatrices(m, flap(beat, 1)));
-        this.wings.setMatrixAt(w++, r.multiplyMatrices(m, flap(beat, -1)));
+    for (const { bugs, shell, legs, wings } of this.drawn) {
+      let n = 0, w = 0;
+      for (const bug of bugs) {
+        if (bug.caught) continue;
+        bug.u = (bug.u + (bug.speed * dt) / bug.lap.length) % 1;
+        this.moveTo(bug, now);
+        orient(m, bug);
+        shell.setMatrixAt(n, m);
+        // The legs scurry: the whole set rocks, which reads as legs at this size.
+        // Tucked back, the same rock is a flyer holding them out of the way.
+        legs.setMatrixAt(n, r.multiplyMatrices(m, rockAbout(bug.rock)));
+        if (bug.flying && wings) {
+          // One beat, two wings: the same angle up on the left and down on the right
+          // of a body whose x axis is its own, so they meet over its back and part
+          // under it.
+          const beat = Math.sin(bug.wing) * 0.9 + 0.35;
+          wings.setMatrixAt(w++, r.multiplyMatrices(m, flap(beat, 1)));
+          wings.setMatrixAt(w++, r.multiplyMatrices(m, flap(beat, -1)));
+        }
+        if (this.dirty) shell.setColorAt(n, c.set(this.colors[bug.f.severity] || this.colors.unknown));
+        n++;
       }
-      if (this.dirty) this.shell.setColorAt(n, c.set(this.colors[bug.f.severity] || this.colors.unknown));
-      n++;
+      shell.count = legs.count = n;
+      shell.instanceMatrix.needsUpdate = true;
+      legs.instanceMatrix.needsUpdate = true;
+      if (wings) {
+        wings.count = w;
+        wings.instanceMatrix.needsUpdate = true;
+      }
+      if (this.dirty && shell.instanceColor) shell.instanceColor.needsUpdate = true;
     }
-    this.shell.count = this.legs.count = n;
-    this.wings.count = w;
-    this.shell.instanceMatrix.needsUpdate = true;
-    this.legs.instanceMatrix.needsUpdate = true;
-    this.wings.instanceMatrix.needsUpdate = true;
-    if (this.dirty && this.shell.instanceColor) this.shell.instanceColor.needsUpdate = true;
     this.dirty = false;
   }
 
@@ -308,7 +354,7 @@ export class Bugs {
       mesh.dispose();
     }
     this.group.clear();
-    this.shell = this.legs = this.wings = null;
+    this.drawn = [];
   }
 }
 
@@ -329,10 +375,11 @@ export function boxFor(byNode, node) {
  * and a building too short or too small to have walls worth walking keeps them all
  * on the street.
  */
-function surfaceFor(box, nth) {
+function surfaceFor(box, nth, flies) {
   // Nothing has to hold a flying one up, so even a shed gets them; the walls and the
-  // roof of a building too short or too narrow to be worth climbing do not.
-  const air = () => ({ kind: 'air', at: AIR_AT[Math.floor(nth / 4) % AIR_AT.length] });
+  // roof of a building too short or too narrow to be worth climbing do not. A shape
+  // with no wings takes the street instead of the air, wherever the deal lands.
+  const air = () => (flies ? { kind: 'air', at: AIR_AT[Math.floor(nth / 4) % AIR_AT.length] } : { kind: 'street' });
   if (!(box.h > CLIMBABLE) || box.w < 2 * EAVE + 0.4 || box.d < 2 * EAVE + 0.4) {
     return nth % 2 ? air() : { kind: 'street' };
   }
@@ -417,38 +464,48 @@ function pointAt(lap, u) {
 }
 
 /**
- * The two geometries a bug is drawn from: the shell, which is one mesh painted in
- * two tones, and the legs, which are another so they can rock without the rest of it
- * following. Both stand on the origin with the nose along +z.
+ * The geometries every shape is drawn from, by name: a shell, which is one mesh
+ * painted in two tones, and the legs, which are another so they can rock without the
+ * rest of it following, and for a shape that flies a wing as well. All of them stand
+ * on the origin with the nose along +z.
  *
- * The beetle is modelled in Blender (tools/bug.py) and arrives as bug.glb; until it
- * does - and if it never does - the map draws the one below out of spheres, so a bug
- * is on the street from the first frame.
+ * They are modelled in Blender (tools/bug.py) and arrive as bug.glb; until they do -
+ * and for any shape an older file was built without - the map draws the ones below
+ * out of spheres and boxes, so the street is never empty waiting on a download.
  */
 function geometry() {
   const model = bugParts();
   if (parts && fromModel === !!model) return parts;
   fromModel = !!model;
-  parts = model ? modelled(model) : drawn();
+  parts = new Map([
+    ['beetle', beetle(model)],
+    ['grub', grub(model)],
+    ['mite', mite(model)],
+  ]);
   return parts;
 }
 
-// The model: its wing cases lit and tinted, its front end dark, its legs their own,
-// and - for the ones that fly - the one flight wing it was modelled with. An older
-// bug.glb has no wing in it, so the drawn one below stands in rather than the flyers
-// losing theirs.
-function modelled(model) {
-  const shell = shade(model.get('shell').clone(), 1);
-  const dark = shade(model.get('dark').clone(), DARK);
+/**
+ * One shape out of the model file: `names` are the meshes bug.py exports for it -
+ * shell, dark front end, legs, and the flight wing where it has one - and `drawn`
+ * builds the same thing here. A file built before a shape existed has none of its
+ * meshes, and the drawn one stands in whole; a file that has the body but no wing
+ * keeps its body and borrows the drawn wing, which is the one part that was added
+ * after the beetle shipped.
+ */
+function fromFile(model, names, drawn) {
+  const [shell, dark, legs, flight] = names;
+  if (!model || !model.get(shell) || !model.get(dark) || !model.get(legs)) return drawn();
   return {
-    shell: mergeGeometries([shell, dark]),
-    legs: model.get('legs').clone(),
-    wing: model.get('wing')?.clone() || wing(),
+    shell: mergeGeometries([shade(model.get(shell).clone(), 1), shade(model.get(dark).clone(), DARK)]),
+    legs: model.get(legs).clone(),
+    wing: flight ? model.get(flight)?.clone() || wing() : null,
   };
 }
 
-// The stand-in: a squashed sphere with a smaller one in front and six sticks under it.
-function drawn() {
+// The beetle, which is what most findings are: wing cases that take the severity's
+// color, a dark front end, six legs and one flight wing.
+const beetle = model => fromFile(model, ['shell', 'dark', 'legs', 'wing'], () => {
   const body = shade(new THREE.SphereGeometry(BODY, 10, 7).scale(0.62, 0.48, 1).translate(0, BODY * 0.45, 0), 1);
   const head = shade(new THREE.SphereGeometry(BODY * 0.42, 8, 6).translate(0, BODY * 0.45, BODY * 0.82), DARK);
   const seam = shade(new THREE.BoxGeometry(0.01, 0.02, BODY * 1.4).translate(0, BODY * 0.86, -BODY * 0.12), DARK);
@@ -460,7 +517,58 @@ function drawn() {
       .translate(side * BODY * 0.55, 0.012, (Math.floor(i / 2) - 1) * BODY * 0.5));
   }
   return { shell: mergeGeometries([body, head, seam]), legs: mergeGeometries(legs), wing: wing() };
-}
+});
+
+/**
+ * The caterpillar a critical finding walks as: a rank of segments four times the
+ * length of a beetle, swelling in the middle and drawn in to a dark head. It has no
+ * wings - the worst thing on the map is the one that has to be walked up to - and its
+ * feet are stubs in pairs under every segment.
+ */
+const grub = model => fromFile(model, ['grub_shell', 'grub_dark', 'grub_legs'], () => {
+  const SEGMENTS = 7, SEGMENT = BODY * 0.52, R = BODY * 0.52;
+  const body = [];
+  for (let i = 0; i < SEGMENTS; i++) {
+    const t = i / (SEGMENTS - 1);
+    // Fattest a third of the way back and tapering to the tail, which is what tells a
+    // caterpillar from a length of rope.
+    const r = R * (0.62 + 0.38 * Math.sin(Math.PI * Math.min(1, t * 1.25)));
+    body.push(new THREE.SphereGeometry(r, 9, 7)
+      .scale(1, 0.86, 1.05)
+      .translate(0, r * 0.82, (t - 0.5) * SEGMENT * SEGMENTS));
+  }
+  const nose = (SEGMENTS / 2) * SEGMENT + R * 0.2;
+  const head = shade(new THREE.SphereGeometry(R * 0.66, 9, 7).translate(0, R * 0.7, nose), DARK);
+  const jaws = shade(new THREE.BoxGeometry(R * 0.9, R * 0.3, R * 0.3).translate(0, R * 0.42, nose + R * 0.5), DARK);
+  const legs = [];
+  for (let i = 0; i < SEGMENTS; i++) {
+    const at = (i / (SEGMENTS - 1) - 0.5) * SEGMENT * SEGMENTS;
+    for (const side of [-1, 1]) {
+      legs.push(new THREE.BoxGeometry(0.016, 0.03, 0.018).translate(side * R * 0.7, 0.014, at));
+    }
+  }
+  return { shell: mergeGeometries([shade(mergeGeometries(body), 1), head, jaws]), legs: mergeGeometries(legs), wing: null };
+});
+
+/**
+ * The mite the small findings walk as: a dome barely wider than it is long, with the
+ * head tucked under the front of it. Half a beetle's length and rounder, so a note
+ * about a style rule is something you have to go and look for rather than something
+ * that reads as a problem from across the street.
+ */
+const mite = model => fromFile(model, ['mite_shell', 'mite_dark', 'mite_legs', 'mite_wing'], () => {
+  const R = BODY * 0.66;
+  const dome = shade(new THREE.SphereGeometry(R, 10, 7).scale(1, 0.72, 0.92).translate(0, R * 0.62, 0), 1);
+  const head = shade(new THREE.SphereGeometry(R * 0.4, 8, 6).scale(1, 0.8, 1).translate(0, R * 0.34, R * 0.76), DARK);
+  const legs = [];
+  for (let i = 0; i < LEGS; i++) {
+    const side = i % 2 ? 1 : -1;
+    legs.push(new THREE.BoxGeometry(R * 0.6, 0.01, 0.01)
+      .rotateZ(side * 1.05)
+      .translate(side * R * 0.5, 0.01, (Math.floor(i / 2) - 1) * R * 0.5));
+  }
+  return { shell: mergeGeometries([dome, head]), legs: mergeGeometries(legs), wing: wing().scale(0.7, 0.7, 0.7) };
+});
 
 /**
  * The stand-in left wing, for a bug.glb modelled before there was one in it. The
@@ -526,6 +634,9 @@ function orient(m, bug) {
   const up = bug.bank ? lean.copy(bug.up).applyAxisAngle(fwd, bug.bank) : bug.up;
   side.crossVectors(up, fwd).normalize();
   m.makeBasis(side, up, fwd);
+  // How big this severity walks: the basis is scaled rather than the geometry, so one
+  // mesh per shape still draws every size of it.
+  if (bug.scale !== 1) m.scale(SIZE.setScalar(bug.scale));
   m.setPosition(bug.pos);
 }
 
@@ -546,3 +657,4 @@ function rockAbout(angle) {
 }
 
 const MIRROR = new THREE.Vector3(-1, 1, 1);
+const SIZE = new THREE.Vector3();

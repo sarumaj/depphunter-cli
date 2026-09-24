@@ -1,4 +1,4 @@
-"""Builds the beetle a finding walks the streets as, and exports it as glTF.
+"""Builds the creatures a finding walks the streets as, and exports them as glTF.
 
 Run it with Blender, or with the `bpy` module on the same Python it was built for:
 
@@ -6,30 +6,39 @@ Run it with Blender, or with the `bpy` module on the same Python it was built fo
     python3 tools/bug.py
 
 The hand and the plants are models somebody else drew and this fetches (tools/hand.py,
-tools/props.py). There is no beetle in either pack, and a beetle is simple enough to
-say out loud, so this one is modelled here: a bmesh of spheres and cones, welded,
-smoothed where it should be round and left faceted where it should catch the light.
+tools/props.py). There is nothing like these in either pack, and a beetle is simple
+enough to say out loud, so they are modelled here: a bmesh of spheres and cones,
+welded, smoothed where it should be round and left faceted where it should catch the
+light.
 
-What it is for: a hundred and forty of these walk the map at once, at arm's length
+What they are for: a hundred and forty of these walk the map at once, at arm's length
 from a walker and as a dot from the map view, drawn unlit in one instanced mesh per
-part and tinted per instance by how serious the finding is. So the shape has to read
-as a beetle from a metre away in flat paint, and cost almost nothing. What came
-before was a squashed sphere with a smaller sphere in front of it and six boxes
-under it, which read as a bean.
+part and tinted per instance by how serious the finding is. So a shape has to read for
+what it is from a metre away in flat paint, and cost almost nothing.
 
-Four meshes come out, which is the contract with web/static/bugs.js:
+Three creatures come out, because severity is carried by shape as well as by color -
+a color says nothing in a crowd or from behind:
 
-  * shell  the wing cases, which take the severity's color
+  * the beetle, which is what most findings walk as
+  * the caterpillar, four times its length, which is what a critical one walks as.
+    It has no wings: the worst thing on the map is the one that has to be walked up
+    to rather than the one that flies away.
+  * the mite, half a beetle and rounder, for the notes and the nits
+
+Each is a set of meshes, which is the contract with web/static/bugs.js. For the
+beetle they are named without a prefix, for the others with one (grub_, mite_):
+
+  * shell  the body, which takes the severity's color
   * dark   the head, the plate behind it, its jaws and its antennae, which stay
            nearly black whatever the severity is
-  * legs   six of them, drawn as their own mesh because they rock on their own
+  * legs   drawn as their own mesh because they rock on their own
   * wing   the left flight wing, folded out, for the ones that fly. One wing and
            not two: the right is the same mesh mirrored, so it beats in step and
-           costs no more geometry.
+           costs no more geometry. The caterpillar has none.
 
 Nothing here is colored: bugs.js shades and tints what it is given, the way city.js
-does for the plants. It is one beetle standing on the origin, nose along -Y, which
-is +Z once the exporter has turned it the way glTF wants.
+does for the plants. Each stands on the origin, nose along -Y, which is +Z once the
+exporter has turned it the way glTF wants.
 """
 
 # pyright: basic
@@ -277,12 +286,151 @@ def bone(bm: BMesh, a: Vector, b: Vector, r: float) -> None:
     bmesh.ops.translate(bm, vec=a + span * 0.5, verts=verts)  # type: ignore[reportMissingImports]
 
 
+# The caterpillar: how many segments it has, and how long and fat each one is. It is
+# four beetles end to end, which is the point of it - a critical finding should be the
+# thing you see first from the end of the street.
+GRUB_SEGMENTS: int = 9
+GRUB_SEGMENT: float = LONG * 0.42  # how far apart the segments sit along the body
+GRUB_R: float = WIDE * 0.95  # and how fat the fattest of them is
+
+
+def grub_shell() -> Object:
+    """
+    The caterpillar's body: a rank of segments, fattest a third of the way back and
+    drawn in to the tail, each one welded into the next so the surface is one tube
+    with a waist between every pair. Smoothed, because a caterpillar is soft.
+    """
+    bm = bmesh.new()
+    for i in range(GRUB_SEGMENTS):
+        t = i / (GRUB_SEGMENTS - 1)
+        # Fat at the shoulders and tapering back, with the widest point just behind
+        # the head: a tube of even thickness reads as a length of rope.
+        r = GRUB_R * (0.55 + 0.45 * math.sin(math.pi * min(1.0, t * 1.2)))
+        seg = sphere(bm, 1.0, 10, 7)
+        put(
+            bm,
+            seg,
+            scale=(r, r * 0.62, r * 0.86),
+            at=(0, (t - 0.5) * GRUB_SEGMENT * GRUB_SEGMENTS, r * 0.8),
+        )
+    return mesh("grub_shell", bm, smooth=True)
+
+
+def grub_dark() -> Object:
+    """The head on the front of it, with a pair of jaws and two short feelers."""
+    bm = bmesh.new()
+    nose = GRUB_SEGMENT * GRUB_SEGMENTS * 0.5
+    head = sphere(bm, 1.0, 10, 7)
+    put(
+        bm,
+        head,
+        scale=(GRUB_R * 0.7, GRUB_R * 0.7, GRUB_R * 0.7),
+        at=(0, nose + GRUB_R * 0.2, GRUB_R * 0.72),
+    )
+    for side in (-1, 1):
+        jaw = cone(bm, GRUB_R * 0.16, GRUB_R * 0.04, GRUB_R * 0.5, segments=5)
+        put(
+            bm,
+            jaw,
+            rotate=(math.radians(-100), 0, math.radians(22 * side)),
+            at=(side * GRUB_R * 0.22, nose + GRUB_R * 0.6, GRUB_R * 0.6),
+        )
+        feeler = cone(bm, GRUB_R * 0.06, GRUB_R * 0.03, GRUB_R * 0.6, segments=4)
+        put(
+            bm,
+            feeler,
+            rotate=(math.radians(-60), 0, math.radians(30 * side)),
+            at=(side * GRUB_R * 0.3, nose + GRUB_R * 0.45, GRUB_R * 1.05),
+        )
+    return mesh("grub_dark", bm, smooth=False)
+
+
+def grub_legs() -> Object:
+    """
+    A pair of stubs under every segment. They are stumps rather than jointed legs,
+    which is what a caterpillar has and what reads at this size; bugs.js rocks the
+    whole set, and a rank of them rocking is the ripple a caterpillar moves by.
+    """
+    bm = bmesh.new()
+    for i in range(GRUB_SEGMENTS):
+        t = i / (GRUB_SEGMENTS - 1)
+        along = (t - 0.5) * GRUB_SEGMENT * GRUB_SEGMENTS
+        r = GRUB_R * (0.55 + 0.45 * math.sin(math.pi * min(1.0, t * 1.2)))
+        for side in (-1, 1):
+            hip = Vector((side * r * 0.72, along, r * 0.55))
+            foot = Vector((side * r * 0.95, along, 0.004))
+            bone(bm, hip, foot, GRUB_R * 0.12)
+    return mesh("grub_legs", bm, smooth=False)
+
+
+# The mite: a dome a little over half a beetle long, and as wide as it is long.
+MITE: float = LONG * 0.58
+
+
+def mite_shell() -> Object:
+    """The dome, which is the whole of it: rounder than it is long, and smooth."""
+    bm = bmesh.new()
+    dome = sphere(bm, 1.0, 12, 8)
+    put(bm, dome, scale=(MITE * 0.86, MITE, MITE * 0.62), at=(0, 0, MITE * 0.5))
+    # Flattened underneath, so it sits on the street rather than rolling along it.
+    for vert in dome:
+        vert.co.z = max(vert.co.z, MITE * 0.06)
+    return mesh("mite_shell", bm, smooth=True)
+
+
+def mite_dark() -> Object:
+    """The head, tucked under the front of the dome rather than standing out of it."""
+    bm = bmesh.new()
+    head = sphere(bm, 1.0, 8, 6)
+    put(
+        bm,
+        head,
+        scale=(MITE * 0.4, MITE * 0.3, MITE * 0.3),
+        at=(0, MITE * 0.82, MITE * 0.3),
+    )
+    return mesh("mite_dark", bm, smooth=True)
+
+
+def mite_legs() -> Object:
+    """Six short legs, splayed further than a beetle's because the body is rounder."""
+    bm = bmesh.new()
+    for pair in (-1, 0, 1):
+        for side in (-1, 1):
+            along = pair * MITE * 0.42
+            hip = Vector((side * MITE * 0.5, along, MITE * 0.3))
+            foot = Vector((side * MITE * 0.86, along + MITE * 0.06, 0.004))
+            bone(bm, hip, foot, MITE * 0.07)
+    return mesh("mite_legs", bm, smooth=False)
+
+
+def mite_wing() -> Object:
+    """The mite's flight wing: the beetle's, cut down to the body it hangs off."""
+    obj = wing()
+    obj.name = "mite_wing"
+    obj.data.name = "mite_wing"
+    for vert in obj.data.vertices:
+        vert.co *= MITE / LONG
+    return obj
+
+
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)  # type: ignore[reportAttributeAccessIssue]
     for stray in list(bpy.data.objects):  # type: ignore[reportAttributeAccessIssue]
         bpy.data.objects.remove(stray, do_unlink=True)  # type: ignore[reportAttributeAccessIssue]
 
-    made = [shell(), dark(), legs(), wing()]
+    made = [
+        shell(),
+        dark(),
+        legs(),
+        wing(),
+        grub_shell(),
+        grub_dark(),
+        grub_legs(),
+        mite_shell(),
+        mite_dark(),
+        mite_legs(),
+        mite_wing(),
+    ]
     bpy.ops.export_scene.gltf(  # type: ignore[reportAttributeAccessIssue]
         filepath=OUT,
         export_format="GLB",

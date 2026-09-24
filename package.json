@@ -558,7 +558,7 @@
     "compile": "tsc -p .",
     "watch": "tsc -w -p .",
     "lint": "tsc -p . --noEmit",
-    "test": "npm run compile && node --test extension/test/binary.test.js extension/test/argv.test.js extension/test/extension.test.js extension/test/panel.test.js extension/test/stream.test.js web/uitest/bridges.test.mjs",
+    "test": "npm run compile && node --test extension/test/binary.test.js extension/test/argv.test.js extension/test/extension.test.js extension/test/panel.test.js extension/test/stream.test.js web/uitest/bridges.test.mjs web/uitest/roads.test.mjs web/uitest/walk.test.mjs web/uitest/bugs.test.mjs",
     "package": "vsce package",
     "vscode:prepublish": "npm run compile"
   },
