@@ -24,11 +24,9 @@ browser.
   the selection remains legible.
 - **The islands** are external ecosystems - Go modules, a standard library, npm
   - with one building per dependency.
-- **Selecting** a node shows what it depends on and what depends on it, both as
-  arcs over the map and as roads through the streets, with chevrons indicating
-  the direction of each dependency. A road to an external package leaves the
-  shore as a causeway. Double-clicking expands or collapses a directory or a
-  file; a file expands into its symbols.
+- **Selecting** a node shows what it depends on and what depends on it, as arcs
+  over the map with an arrow at the far end of each. Double-clicking expands or
+  collapses a directory or a file; a file expands into its symbols.
 - **Walk mode** (`V`) presents the same map in first person on a small planet.
   `WASD` moves, the mouse looks and `Space` jumps. The walker holds a tool,
   drawn in the hands at the end of an arm; using it on a building selects the
@@ -41,26 +39,78 @@ browser.
   tracking dart and a nail gun. Each has its own animation, its own aim helper
   and its own valid targets - the dart acts on buildings, the net, the bubbles
   and the extinguisher on bugs, the rod, the nail gun and the camera on either.
-  What a tool throws travels according to its own flight model: a nail is fired
-  flat and fast and scatters a little, a dart is lobbed and steers towards the
-  wall ahead of it, a bubble decelerates and rises, foam spreads and drops. The
-  net throws nothing and must be brought within reach; the camera shows its
-  lens view live on its back.
+  What a tool throws travels according to its own flight model, and the two
+  launchers are opposites rather than variants: the tracking dart is the longest
+  and most deliberate shot, lobbed high and steering in the air towards the wall
+  ahead of it, one shot per click through the scope; the nail gun reaches only
+  across a street, fires flat and fast for as long as the button is held down,
+  and scatters. The fire extinguisher is held down in the same way. A bubble
+  decelerates and rises; foam spreads and drops. The net throws nothing and must
+  be brought within reach; the camera shows its lens view live on its back, and
+  every use of it keeps the frame, except the second use on a module it has
+  already tagged, which reads that module the way every other tool does there.
+  A photograph is of the city and of nothing else: neither the camera nor the
+  hand holding it is in it — what the walker holds is drawn over the world in a
+  pass of its own, and that pass is left out — and neither is anything the
+  interface has put on the map, so nothing is lit by a selection, nothing is
+  dimmed by one and no dependency arcs cross the rooftops. A screenshot (`P`)
+  is the screen rather than what the camera was pointed at, so it keeps all of
+  them.
+
+  What it keeps goes into the **photographs** (`G`), a contact sheet of the
+  session's pictures captioned with whatever was in the frame. Each can be
+  saved to a PNG file, let go of, or — from the street — put back up on the
+  camera: the camera comes out if it is not already in hand and is brought all
+  the way up to the walker's face, square on, until the picture on its back
+  screen — which stands in for the live view while it is there — covers nearly
+  the whole of it. After a few seconds it goes back down and gives the hand
+  back to whatever was in it. A click puts it away sooner. The pictures are a session
+  and nothing more, so anything worth keeping is saved to a file.
 
   The three **secondary** tools touch nothing on the map and carry the walker
-  instead. The grapple gun hooks a building and draws them up the facade and
-  onto the roof, from where a shot over the edge is the way down; the jet
-  backpack flies, for as long as it is the thing in their hands; the water
-  skimmers make the bay walkable. The HUD keeps the two kinds apart, because
-  what a secondary tool cannot do is catch anything. The rod also pulls on its
-  line, drawing the walker to the wall it struck. The right button holds the
-  scope; the mouse wheel zooms it.
+  instead. The grapple gun, fired with `F` or `C`, hooks the building the walker
+  is looking at and draws them up the facade and onto the roof, from where a
+  shot over the edge is the way down; the jet backpack flies; the water
+  skimmers make the bay walkable, passing under the bridges rather than over
+  them and stepping back up onto a shore that stands half a unit above the
+  water. The latter two run on a tank, which empties only while the tool is
+  doing its work and fills again whenever it is not, so neither is a way of
+  getting everywhere; a gauge beside the health bar says what is left, running
+  dry in the air is a fall, and a tool that has run out stays stopped until it
+  is put away and taken out again. One tool of each kind is carried at a time,
+  one to a hand — the
+  primary in the right, the secondary in the left — so the map can be flown
+  over and its bugs netted without putting either down. A click uses the right
+  hand, and `F`, `C` or the middle button the left. The HUD lays the slots out
+  the way the walker is: what the left hand carries on the left and what the
+  right hand hunts with on the right, each group behind a small hand of its
+  own, because a row read at a glance in the middle of something else should
+  not have to be parsed. The rod
+  also pulls on its line, drawing the walker to the wall it struck. The right
+  button holds the scope; the mouse wheel zooms it.
+
+  Running and jumping are paid for out of a second gauge, the walker's **wind**.
+  A sprint drains it in a few seconds and each jump takes a little more; it
+  fills again while walking or standing, and a walker who has run it out has to
+  get a quarter of it back before they can sprint again, so the way across a
+  district is a series of dashes rather than one long one. Flying costs nothing:
+  that is the jet's tank, not the walker's chest.
 
   The walker has a **health bar**. A fall of more than a few storeys costs some
-  of it, and a bug's bite costs more the worse the finding is, so a busy street
-  is something to get clear of. Every bug in the backpack raises the bar and
-  mends by as much. At nothing, walk mode ends and the map returns - nothing
-  caught is lost - and walking in again starts at full health.
+  of it, a bug's bite costs more the worse the finding is, and deep water with
+  nothing to float on takes all of it in a couple of seconds — so stowing the
+  skimmers out over the bay is the end of that walk, and so is walking into it
+  without them unless a shore is reached first. The bay is not a wall around the
+  map: it is ground half a unit below the shore, so it can be stepped down into
+  the way a curb can, waded about in, and — because the shore is further up than
+  a step — climbed back out of, whether by something in it or something on a
+  pair of floats. A bridge deck is where that stops. Walking off an edge into a
+  drop is not a thing anybody means to do, so the railings have to be gone over
+  rather than through: off a deck, or off anything else standing well above the
+  surface, the water has to be jumped into. Every bug
+  in the backpack raises the bar and mends by as much. At nothing the screen goes red, walk mode
+  ends and the map returns — nothing caught is lost — and walking in again
+  starts at full health.
 
   Each finding a scanner reported is represented by one bug, shaped by its
   severity as well as colored by it: a critical finding is a caterpillar that
@@ -69,17 +119,23 @@ browser.
   as in the streets, each oriented to the surface it holds on to; some hold on
   to nothing and instead fly a circuit around the building, rising, falling and
   banking at the corners. Catching one opens what was reported about it. A
-  tracker in the corner of the screen sweeps the surrounding map and tightens
-  as the walker approaches a bug, so that the last part of the approach can be
-  made on the sweep rather than by guesswork.
+  module the walker has tagged carries a beacon in the color of the worst
+  finding in it, and its ring on the tracker matches, so the hunt's own
+  trophies say which of them were worth having. A tracker in the corner of the
+  screen sweeps the surrounding map and tightens as the walker approaches a
+  bug, so that the last part of the approach can be made on the sweep rather
+  than by guesswork.
+
+  A first visit is given a short **introduction** explaining what the shapes
+  stand for, that the map can be walked into, and what the bugs are, and a first
+  walk is given one of its own covering what moves, what is in each hand and
+  what the bugs do back; the help (`?`) documents every key and every tool, and
+  can show either introduction again.
 
   Terraces are laid out as city blocks: the space between buildings forms a
   connected street network with sidewalks, lane markings and crossings; ramps
   and stairs connect levels; unoccupied lots become parks; and a bridge crosses
-  the water to every island. The dependency roads use the same city: they climb
-  to a higher terrace on its ramp and cross the water on a bridge, rather than
-  standing on end at a curb. A road always takes the ramp where there is one,
-  however far round it has to wander to reach it.
+  the water to every island.
 
 The tool runs entirely locally. It is a single binary, requires no Node.js, and
 makes no network request unless `--online` is given (see
@@ -392,17 +448,17 @@ opened most recently:
 
 - **Dependencies** presents the graph as a tree. A directory expands into its
   contents, a file into its imports, an island into its packages, and a package
-  into its own dependencies, as far as `--resolve-depth` reached. Expanding a row
-  requires no further request: every edge is already present in the graph the
-  panel fetched once. A branch leading back to a node already expanded above it
-  is shown once more, marked `↻`, and left collapsed, since dependency graphs
-  contain cycles. A package that is not pinned, or that resolves from an index
-  this machine does not configure, is marked in the list itself rather than only
-  in its tooltip.
+  into its own dependencies, as far as `--resolve-depth` reached. Expanding a
+  row requires no further request: every edge is already present in the graph
+  the panel fetched once. A branch leading back to a node already expanded
+  above it is shown once more, marked `↻`, and left collapsed, since
+  dependency graphs contain cycles. A package that is not pinned, or that
+  resolves from an index this machine does not configure, is marked in the
+  list itself rather than only in its tooltip.
 
 - **Backpack** holds the findings collected while walking the map, ordered by
-  severity, with those absent from the most recent scan marked as resolved at the
-  end. Removing an entry here removes it from the map's backpack as well.
+  severity, with those absent from the most recent scan marked as resolved at
+  the end. Removing an entry here removes it from the map's backpack as well.
 
 The two views and the map form a single interface: selecting a row selects the
 corresponding building on the map, and selecting a building on the map expands
@@ -567,6 +623,9 @@ out over the water and 12 units above the tallest building.
 | Pin click                 | read the findings recorded on a building        |
 | `+` beside a finding      | add it to the backpack                          |
 | `B`                       | open the backpack                               |
+| `G`                       | open the photographs the camera has taken; from the street each can be put up on the camera and looked at there |
+| `X`                       | open the export menu                            |
+| `K`                       | save settings to the config file                |
 | The figure                | the walker's last position in walk mode         |
 | `Esc`                     | close the backpack, or clear the selection      |
 | `V`                       | enter walk mode                                 |
@@ -577,12 +636,15 @@ In walk mode:
 |------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Mouse                  | look. The pointer is captured at the reticle; `Esc` releases it and a click on the map captures it again. Where it cannot be captured at all — a frame that withholds the pointer lock — walk mode reports this once, and a click then uses the tool rather than requesting the lock again |
 | `1` … `9`, `0`         | select a tool by slot; `T` cycles through them. Slots `1`–`7` hold the primary tools, `8`–`0` the secondary ones                                                                                                                                                                            |
-| `W` `A` `S` `D`/arrows | move and turn; `Shift` runs                                                                                                                                                                                                                                                                |
-| `Space`                | jump; while flying, ascend                                                                                                                                                                                                                                                                 |
+| `W` `A` `S` `D`/arrows | move and turn; `Shift` runs, which spends the walker's wind                                                                                                                                                                                                                                |
+| `Space`                | jump, which costs a little wind; while flying, ascend                                                                                                                                                                                                                                      |
 | Jet backpack in hand   | flight. While flying, `W` and `S` move along the view direction — looking down and pressing `W` descends — and `C` descends vertically. A click opens the throttle for a burst                                                                                                             |
-| Water skimmers in hand | the surface of the water is walkable                                                                                                                                                                                                                                                       |
-| Click                  | use the current tool: a module within reach is selected, and a bug that is caught is displayed and retained. A secondary tool selects and catches nothing                                                                                                                                  |
-| `H`                    | stow or draw the tool. A stowed tool remains functional and throws from the walker's eye                                                                                                                                                                                                   |
+| Water skimmers in hand | the surface of the water is walkable, passing under the bridges rather than over them; stowing them over deep water drowns the walker                                                                                                                                                                                                                                                       |
+| Click                  | use the right hand; held down, the nail gun and the extinguisher keep firing. A module within reach is selected, and a bug that is caught is displayed and retained |
+| `F`, `C` / middle click | use the left hand. A secondary tool selects and catches nothing: the grapple hooks the building being looked at, the jet gives a burst of thrust. While flying, `C` descends instead |
+| `B`                    | the backpack, from the street as well as from the map                                                                                 |
+| `X` / `K`              | open the export menu; save the current view to the config file                                                                        |
+| `H`                    | stow or draw both hands. A stowed tool remains functional and throws from the walker's eye                                                                                                                                                                                                   |
 | Hold right button      | look through the scope                                                                                                                                                                                                                                                                     |
 | `Enter`                | show the details of whatever the reticle is on, as a second use of the tool would. This releases the pointer; a click on the map resumes                                                                                                                                                   |
 | Wheel                  | zoom                                                                                                                                                                                                                                                                                       |
@@ -977,10 +1039,14 @@ the walk past what the code imports
 
 not walked at all
   PLUGIN  WHY
-  java    the repository records no dependency graph for it, and --online was not given
+  java    the repository records no dependency graph for it, and --online was
+  not given
 
 answers
-  87 asked; 3 from lock files; 56 from indexes (56 fetched, 0 cached, 0 already asked); 28 unanswered (4 of them asked and failed); 89 requests; 159 external packages on the map (87 transitive, 0 private, 0 from an index nothing here vouches for)
+  87 asked; 3 from lock files; 56 from indexes (56 fetched, 0 cached, 0
+  already asked); 28 unanswered (4 of them asked and failed); 89 requests; 159
+  external packages on the map (87 transitive, 0 private, 0 from an index
+  nothing here vouches for)
 
 nothing answered for these
   COUNT  WHY
@@ -1011,7 +1077,8 @@ alongside the packages:
 
 - **GitHub Actions**: each step's `uses:`, reusable workflows (`jobs.<id>.uses`),
   and a composite action's own steps. A `./path` resolves to the `action.yml` or
-  workflow inside this repository, so a local action's own dependencies chain on.
+  workflow inside this repository, so a local action's own dependencies chain
+  on.
 - **GitLab CI**: every `include:` form - `local`, `project` (with `ref` and
   `file`), `template`, `remote` and `component` - plus the includes a bridge job
   triggers.
