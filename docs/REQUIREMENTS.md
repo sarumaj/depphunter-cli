@@ -1308,6 +1308,29 @@ lot.
 row shows a left hand over the carried tools and a right hand over the rest with
 the keys unchanged, and the jet outlasts the skimmers.
 
+### M30 - One place a view is saved
+
+- The map's Save button and the editor's appearance settings held the same six
+  values in two places, and the editor's won. Its settings became flags, flags
+  beat the project file, and the file is where Save writes - so for anybody who
+  had set a theme in the editor, Save quietly stopped working and said nothing.
+- The project file is where a view lives. It is per-repository, it is the same
+  file the command line reads, and it is the only one of the two that both hosts
+  can see.
+- What an editor sets is a seed rather than an override: `--ui-default key=value`
+  replaces what depphunter would otherwise start a view at and is beaten by every
+  config file, variable and flag above it. So it decides how a repository that
+  has never been saved opens, and stops deciding the moment somebody presses
+  Save. `--theme` and the rest still override, because that is what a flag is
+  for and somebody typing one has said so once, for one run.
+- A seed that cannot be understood is refused rather than dropped. It is set in
+  an editor's settings and never looked at again, so silence would leave
+  somebody wondering why their view is not what they asked for.
+
+*Accepted when* an editor with a theme set opens an unsaved repository in that
+theme, Save in the map changes it for good, and `--theme` on the command line
+still wins over both.
+
 ### Known limits
 
 - Java imports name packages, not artifacts, so Maven dependencies are matched

@@ -203,11 +203,13 @@ func TestEveryFlagIsBound(t *testing.T) {
 	// private and trust-index add to what the configuration already holds rather than
 	// replacing it, so Load appends them itself; embed is read straight off the flag
 	// set because no file and no variable may turn it on
-	// (TestEmbedComesFromTheCommandLineOnly).
+	// (TestEmbedComesFromTheCommandLineOnly); ui-default sets a default rather than a
+	// value, which is a layer under everything a binding would reach
+	// (TestUIDefaultsAreBeatenByTheProjectFile).
 	standalone := map[string]bool{
 		"config": true, "export": true, "output": true, "exclude": true, "findings": true,
 		"private": true, "trust-index": true,
-		"embed": true, "help": true, "version": true,
+		"embed": true, "help": true, "version": true, "ui-default": true,
 	}
 	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
 	RegisterFlags(fs)
@@ -520,5 +522,59 @@ func TestExplainSettings(t *testing.T) {
 	}
 	if !cfg.Explain {
 		t.Error("explain in the project config did not reach the configuration")
+	}
+}
+
+// A seed says what a repository should look like before anyone has said otherwise in
+// it, and never after. This is the whole reason --ui-default exists beside --theme:
+// the editor sets these, and the map's own Save button writes the project file, so a
+// seed that beat the file would make Save quietly stop working.
+func TestUIDefaultsAreBeatenByTheProjectFile(t *testing.T) {
+	root := t.TempDir()
+	seeds := []string{
+		"--ui-default", "theme=dark",
+		"--ui-default", "color_by=churn",
+		"--ui-default", "expand_depth=3",
+		"--ui-default", "show_std=true",
+	}
+
+	// With nothing saved, the seed is what the view opens at.
+	cfg, err := load(t, append(append([]string{}, seeds...), root), nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.UI.Theme != "dark" || cfg.UI.ColorBy != "churn" || cfg.UI.ExpandDepth != 3 || !cfg.UI.ShowStd {
+		t.Errorf("a seed did not reach an unsaved view: %+v", cfg.UI)
+	}
+
+	// Once the repository has a view of its own, the seed is beneath it.
+	write(t, filepath.Join(root, ProjectFile), "ui:\n  theme: light\n  color_by: size\n  expand_depth: 1\n  show_std: false\n")
+	cfg, err = load(t, append(append([]string{}, seeds...), root), nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.UI.Theme != "light" || cfg.UI.ColorBy != "size" || cfg.UI.ExpandDepth != 1 || cfg.UI.ShowStd {
+		t.Errorf("a seed overruled what the repository had saved: %+v", cfg.UI)
+	}
+
+	// ... and a flag still beats both, because that is what a flag is for.
+	cfg, err = load(t, append(append([]string{}, seeds...), "--theme", "auto", root), nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.UI.Theme != "auto" {
+		t.Errorf("--theme lost to the file it is meant to override: %q", cfg.UI.Theme)
+	}
+}
+
+// A pair that cannot be understood is refused rather than dropped: a seed is set in an
+// editor's settings and never seen again, so silence is the one answer that leaves
+// somebody wondering why their view is not what they asked for.
+func TestUIDefaultsRefuseWhatTheyCannotSeed(t *testing.T) {
+	root := t.TempDir()
+	for _, bad := range []string{"theme", "=dark", "hide_languages=go", "show_std=maybe", "expand_depth=deep"} {
+		if _, err := load(t, []string{"--ui-default", bad, root}, nil, ""); err == nil {
+			t.Errorf("--ui-default %q was accepted", bad)
+		}
 	}
 }

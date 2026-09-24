@@ -75,8 +75,12 @@ describe('the command line', () => {
       '--resolve-depth', '-1',
       '--online', '--explain', '--no-cache', '--no-history',
       '--history-commits', '500',
-      '--style', 'galaxy', '--theme', 'dark', '--color-by', 'churn', '--height-scale', 'log',
-      '--expand-depth', '2', '--show-std',
+      // The view settings go as seeds rather than as flags: a repository that has
+      // saved a view of its own keeps it, which is what makes the map's Save button
+      // mean something in an editor that has these set.
+      '--ui-default', 'style=galaxy', '--ui-default', 'theme=dark',
+      '--ui-default', 'color_by=churn', '--ui-default', 'height_scale=log',
+      '--ui-default', 'expand_depth=2', '--ui-default', 'show_std=true',
       '--findings', 'reports/*.json', '--no-vulns', '--no-links',
       '--lsp', '--lsp-timeout', '90s',
       '--editor', 'vim +{line} {file}',
@@ -86,6 +90,20 @@ describe('the command line', () => {
 
   it('passes zero, which is a value and not an unset number', () => {
     assert.deepStrictEqual(fromSettings({ watch: false, resolveDepth: 0, expandDepth: 0 }),
-      ['--resolve-depth', '0', '--expand-depth', '0']);
+      ['--resolve-depth', '0', '--ui-default', 'expand_depth=0']);
+  });
+
+  it('never sends a view setting as a flag, which would beat the saved view', () => {
+    // The map writes what it is set to into the repository's own ui: section, and a
+    // flag beats that file - so a view setting sent as one would make Save quietly
+    // stop working for whatever the editor happens to have set.
+    const flags = fromSettings({
+      watch: false, style: 'galaxy', theme: 'dark', colorBy: 'churn',
+      heightScale: 'log', expandDepth: 2, showStd: true,
+    });
+    for (const beats of ['--style', '--theme', '--color-by', '--height-scale', '--expand-depth', '--show-std']) {
+      assert.ok(!flags.includes(beats), `${beats} would overrule the saved view`);
+    }
+    assert.equal(flags.filter(a => a === '--ui-default').length, 6);
   });
 });
