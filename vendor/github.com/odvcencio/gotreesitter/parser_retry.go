@@ -355,10 +355,11 @@ func (p *Parser) retryIncrementalAcceptedErrorWithBaseMergeCap(source []byte, fi
 		timing.acceptedErrorRetryCause = IncrementalRetryCauseAcceptedErrorBaseMerge
 	}
 	if result != nil {
-		result.parseRuntime.IncrementalAcceptedErrorRetryAttempts = 1
-		result.parseRuntime.IncrementalAcceptedErrorRetryAdopted = adopted
-		result.parseRuntime.IncrementalAcceptedErrorRetryMergePerKey = baseCap
-		result.parseRuntime.IncrementalAcceptedErrorRetryCause = IncrementalRetryCauseAcceptedErrorBaseMerge
+		resultRT := result.ensureParseRuntime()
+		resultRT.IncrementalAcceptedErrorRetryAttempts = 1
+		resultRT.IncrementalAcceptedErrorRetryAdopted = adopted
+		resultRT.IncrementalAcceptedErrorRetryMergePerKey = baseCap
+		resultRT.IncrementalAcceptedErrorRetryCause = IncrementalRetryCauseAcceptedErrorBaseMerge
 	}
 	p.finishRecoveryRuntimeRetryTelemetry(result, len(source))
 	p.clearRecoveryRuntimeRetryTreesDetailed()
@@ -601,10 +602,11 @@ func preferRetryTreeOverFirstPass(p *Parser, candidate, firstPass *Tree) bool {
 	// preferRetryTree said yes; reject the replacement if its only winning
 	// axis was the NodesAllocated bookkeeping tie-break, i.e. the reverse
 	// comparison with NodesAllocated ignored would also say yes.
-	saved := candidate.parseRuntime.NodesAllocated
-	candidate.parseRuntime.NodesAllocated = firstPass.rawParseRuntime().NodesAllocated
+	candidateRT := candidate.ensureParseRuntime()
+	saved := candidateRT.NodesAllocated
+	candidateRT.NodesAllocated = firstPass.rawParseRuntime().NodesAllocated
 	strict := preferRetryTree(p, candidate, firstPass)
-	candidate.parseRuntime.NodesAllocated = saved
+	candidateRT.NodesAllocated = saved
 	return strict
 }
 
@@ -884,8 +886,59 @@ func effectiveFullParseInitialMaxStacks(lang *Language, initialMaxStacks int) in
 	return initialMaxStacks
 }
 
+// groovyIncrementalReuseUnsupportedReason names the fresh-parse fallback
+// languageDisablesIncrementalReuse takes for groovy. See its doc comment for
+// why groovy is the one language that currently needs this.
+const groovyIncrementalReuseUnsupportedReason = "language_incremental_reuse_disabled_groovy_juxt_call_gap"
+
+// languageDisablesIncrementalReuse reports a fresh-parse fallback reason for
+// languages whose grammar table makes old-tree reuse an observable
+// correctness hazard, or "" when reuse is safe to attempt as usual.
+//
+// Groovy (issue #454): its closure/block-statement table only recognizes a
+// juxt_function_call (a command-chain call with no parentheses, e.g.
+// `println "x"`) as the FIRST statement in a block. Every later statement in
+// the same block loses that derivation on an ordinary full parse -- confirmed
+// with isolated single- and two-statement reproductions, both inside and
+// outside a function body, and unaffected by GOT_GLR_MAX_STACKS at any width
+// tried (2 through 32): not a survivor-culling artifact, a genuine table gap
+// at that position. Incremental reuse's leaf-by-leaf splice through a
+// preceding statement can land the dispatch of the FOLLOWING statement in a
+// different parser state that -- by accident, not by design -- does support
+// the juxtaposition, so an incrementally reparsed function gains wrapper
+// nodes (juxt_function_call, argument_list) that no full parse of the
+// identical bytes ever produces (+4 nodes on every length-changing edit,
+// every fixture size, both the compact and production admission routes).
+//
+// Fixing the table gap is a grammar change (grammargen/tree-sitter-groovy),
+// not a parser-runtime one, and out of scope here. Until it lands, route
+// every groovy incremental parse through the same full-parse path Parse()
+// uses, so an incremental tree can never gain a derivation a fresh parse of
+// the identical bytes would not also produce. This costs groovy its
+// incremental reuse performance; correctness takes priority, and the
+// existing "language-can't-prove-this-reuse-safe" fallbacks in this function
+// already accept that same trade for other languages and tree states.
+func languageDisablesIncrementalReuse(lang *Language) string {
+	if lang == nil {
+		return ""
+	}
+	switch lang.Name {
+	case "groovy":
+		return groovyIncrementalReuseUnsupportedReason
+	}
+	return ""
+}
+
 func fullParseInitialMaxStacks(lang *Language, conflictWidth int) int {
-	initialMaxStacks := effectiveFullParseInitialMaxStacks(lang, parseMaxGLRStacksValue())
+	initialMaxStacks := parseMaxGLRStacksValue()
+	// GOT_GLR_MAX_STACKS is an explicit override. Keep it, also when it
+	// equals the built-in default, so the per-language defaults below do
+	// not replace a value the caller chose.
+	if !parseMaxGLRStacksEnvConfigured() {
+		initialMaxStacks = effectiveFullParseInitialMaxStacks(lang, initialMaxStacks)
+	} else if initialMaxStacks <= 0 {
+		initialMaxStacks = maxGLRStacks
+	}
 	if conflictWidth > initialMaxStacks {
 		initialMaxStacks = conflictWidth
 	}
@@ -1376,10 +1429,6 @@ func shouldRetryCertifiedNoStacksPressure(tree, retryTree *Tree, sourceLen, init
 		retryTreeHasError(retryTree) && retry.MaxStacksSeen >= retryMaxStacks
 }
 
-func fullParseRetryUsesInitialStackCeiling(tree *Tree, sourceLen int, initialMaxStacks int) bool {
-	return fullParseRetryUsesInitialStackCeilingForOrigin(tree, sourceLen, initialMaxStacks, fullParseRetryOriginFresh)
-}
-
 func fullParseRetryUsesInitialStackCeilingForOrigin(tree *Tree, sourceLen int, initialMaxStacks int, origin fullParseRetryOrigin) bool {
 	if tree == nil || tree.language == nil {
 		return false
@@ -1666,6 +1715,14 @@ func (p *Parser) retryFullParseForOrigin(source []byte, initialMaxStacks int, tr
 	}
 	maxStacksOverride := fullParseRetryMaxStacksOverrideForOrigin(tree, len(source), initialMaxStacks, origin)
 	maxNodesOverride := fullParseRetryNodeLimitOverride(tree, len(source))
+	if p != nil && p.parseWorkLimits.NodeLimit > 0 {
+		// An explicit NodeLimit is a deterministic caller contract (see
+		// SetParseWorkLimits): configureParseCaps already refuses to widen
+		// maxNodes past it, so a widened retry pass here can only redo the
+		// same bounded parse for no benefit. Skip the pass instead of
+		// paying for a redundant full reparse.
+		maxNodesOverride = 0
+	}
 	retryMaxStacks := initialMaxStacks
 	if maxStacksOverride > 0 {
 		retryMaxStacks = maxStacksOverride

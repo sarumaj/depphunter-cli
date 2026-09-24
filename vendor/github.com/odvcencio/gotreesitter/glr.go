@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"sync"
+	"sync/atomic"
 	"unsafe"
 )
 
@@ -602,12 +603,30 @@ func (s *glrStack) ensureGSS(scratch *gssScratch) {
 	if s.gss.head != nil || len(s.entries) == 0 {
 		return
 	}
+	entryCount := len(s.entries)
 	if workCountInstrumentationEnabled {
 		workCountTopologyPreparePromotion(s)
 	}
 	s.gss = buildGSSStack(s.entries, scratch)
 	if workCountInstrumentationEnabled {
 		workCountTopologyCommitPromotion(s)
+	}
+	// A real flat-to-GSS rebuild just happened: this is exactly the moment
+	// a fork disturbed a previously-demoted single stack. Reset the demotion
+	// hysteresis streak and re-derive its threshold from the depth this
+	// rebuild started from, so tryDemoteSingleLinearGSS (parser.go) waits
+	// for a fresh, depth-proportional run of single-stack tokens before
+	// paying another materialize cost. Scaling the threshold with depth (not
+	// holding it at a fixed constant) is what keeps the *total*
+	// demote+rebuild cost amortized O(depth) across the whole parse: see
+	// singleStackDemoteThreshold's doc comment (glr_gss.go).
+	if scratch != nil {
+		scratch.singleStackDemoteStreak = 0
+		threshold := uint32(gssDemotionHysteresisTokens)
+		if entryCount > 0 && uint32(entryCount) > threshold {
+			threshold = uint32(entryCount)
+		}
+		scratch.singleStackDemoteThreshold = threshold
 	}
 }
 
@@ -1185,11 +1204,42 @@ func finalizeMaterializingShapeHash(prefix glrMaterializingShapeHash) (uint64, b
 // in scratch.shapePrefixCache so a fresh head only pays for its own new
 // entries. The rolling direction is root->head (matching the s.entries path
 // and gssNodeHash) so shared prefixes are reusable across heads and tokens.
+// gssShapePrefixVerify makes gssMaterializingShapePrefix recompute every
+// cache hit without the cache and compare, recording the first mismatch in
+// gssShapePrefixVerifyMismatches. Tests set it to prove the invalidation rule
+// (gssShapePrefixLink0Rewrites) never serves a stale prefix on a workload;
+// it is off in production.
+//
+// GOT_GLR_SHAPE_PREFIX_VERIFY=1 turns the same oracle on for a whole process
+// and makes a mismatch panic, so a Docker parity ring can run the real
+// corpora with the cache audited on every hit.
+var (
+	gssShapePrefixVerify           bool
+	gssShapePrefixVerifyPanic      bool
+	gssShapePrefixVerifyMismatches atomic.Uint64
+)
+
+func init() {
+	if os.Getenv("GOT_GLR_SHAPE_PREFIX_VERIFY") == "1" {
+		gssShapePrefixVerify = true
+		gssShapePrefixVerifyPanic = true
+	}
+}
+
 func gssMaterializingShapePrefix(scratch *glrMergeScratch, n *gssNode) glrMaterializingShapeHash {
 	if n == nil {
 		return glrMaterializingShapeHash{hash: gssHashSeed}
 	}
 	if cached, ok := lookupShapePrefixCache(scratch, n); ok {
+		if gssShapePrefixVerify {
+			if fresh := gssMaterializingShapePrefixUncached(scratch, n); fresh != cached {
+				gssShapePrefixVerifyMismatches.Add(1)
+				if gssShapePrefixVerifyPanic {
+					panic(fmt.Sprintf("gssMaterializingShapePrefix: stale cached prefix %+v, fresh %+v (GOT_GLR_SHAPE_PREFIX_VERIFY)", cached, fresh))
+				}
+				return fresh
+			}
+		}
 		return cached
 	}
 	var local [32]*gssNode
@@ -1199,6 +1249,9 @@ func gssMaterializingShapePrefix(scratch *glrMergeScratch, n *gssNode) glrMateri
 		if cached, ok := lookupShapePrefixCache(scratch, cur); ok {
 			prefix = cached
 			break
+		}
+		if perfCountersEnabled {
+			perfRecordShapePrefixWalkStep()
 		}
 		pending = append(pending, cur)
 	}
@@ -1211,6 +1264,28 @@ func gssMaterializingShapePrefix(scratch *glrMergeScratch, n *gssNode) glrMateri
 			}
 		}
 		storeShapePrefixCache(scratch, cur, prefix)
+	}
+	return prefix
+}
+
+// gssMaterializingShapePrefixUncached folds the full root->n link-0 chain
+// with the same per-entry hash as gssMaterializingShapePrefix, never reading
+// or writing the cache. It is the oracle for gssShapePrefixVerify.
+func gssMaterializingShapePrefixUncached(scratch *glrMergeScratch, n *gssNode) glrMaterializingShapeHash {
+	var local [64]*gssNode
+	chain := local[:0]
+	for cur := n; cur != nil; cur = cur.prev {
+		chain = append(chain, cur)
+	}
+	prefix := glrMaterializingShapeHash{hash: gssHashSeed}
+	for i := len(chain) - 1; i >= 0; i-- {
+		cur := chain[i]
+		if stackEntryMaterializesForResult(cur.entry) {
+			prefix = glrMaterializingShapeHash{
+				hash:  materializingShapeEntryHashWithScratch(scratch, prefix.hash, cur.entry),
+				count: prefix.count + 1,
+			}
+		}
 	}
 	return prefix
 }
@@ -1622,12 +1697,40 @@ func (s *glrMergeScratch) ensureMergeHotCaches() {
 	}
 }
 
+// gssShapePrefixLink0Rewrites counts every setGSSMainLink call that changed a
+// node's link 0 (prev or entry), process-wide. A cached root->head shape
+// prefix (gssMaterializingShapePrefix) folds exactly the link-0 chain, so it
+// can only go stale through one of these rewrites, a payload retarget at a
+// reduce site, or a new parse epoch. The merge sites read this counter before
+// and after a successful main merge and invalidate the cache only when the
+// merge rewrote a link 0: most successful merges only add extra links (or
+// re-point an extra link), which leaves every cached prefix exact. Before
+// this counter existed every successful merge invalidated the whole cache,
+// which made the next head hash rewalk the entire spine and turned the
+// fork/collapse-per-token pattern superlinear (issue #454, depth >= 1600).
+// Cross-parser increments only cause an extra, harmless invalidation.
+var gssShapePrefixLink0Rewrites atomic.Uint64
+
+// bumpShapePrefixEpochIfLink0Rewritten invalidates the cache when
+// gssShapePrefixLink0Rewrites moved past rewritesBefore, the value read just
+// before the merge that may have rewritten a link 0. nil-safe.
+func (s *glrMergeScratch) bumpShapePrefixEpochIfLink0Rewritten(rewritesBefore uint64) {
+	if s == nil || gssShapePrefixLink0Rewrites.Load() == rewritesBefore {
+		return
+	}
+	s.bumpShapePrefixEpoch()
+}
+
 // bumpShapePrefixEpoch invalidates every cached materializing-shape prefix in
-// O(1). Called when a GSS main merge rewrites links (stale prefixes) and at
-// the start of each parse epoch.
+// O(1). Called when a GSS main merge rewrote a link 0 (stale prefixes), at
+// the reduce sites that retarget a spine payload, and at the start of each
+// parse epoch.
 func (s *glrMergeScratch) bumpShapePrefixEpoch() {
 	if s == nil {
 		return
+	}
+	if perfCountersEnabled {
+		perfRecordShapePrefixEpochBump()
 	}
 	if s.shapePrefixEpoch == ^uint32(0) {
 		clear(s.shapePrefixCache)
@@ -3473,6 +3576,7 @@ func tryGSSMainMergeForParser(p *Parser, a, b *glrStack) bool {
 	if p != nil {
 		scratch = p.mergeScratch
 	}
+	rewritesBefore := gssShapePrefixLink0Rewrites.Load()
 	merged := gssMainMergeWithScratch(scratch, a, b)
 	if merged {
 		workCountRecordMergeSuccess()
@@ -3481,7 +3585,7 @@ func tryGSSMainMergeForParser(p *Parser, a, b *glrStack) bool {
 		}
 		a.cEverErrored = a.cEverErrored || b.cEverErrored
 		if p != nil {
-			p.mergeScratch.bumpShapePrefixEpoch()
+			p.mergeScratch.bumpShapePrefixEpochIfLink0Rewritten(rewritesBefore)
 		}
 	} else if mergeCensusEnabled {
 		mergeCensusRecordMergeFailed()
@@ -3515,6 +3619,7 @@ func tryGSSMainMergeForParserPhase(p *Parser, a, b *glrStack, phase string, reco
 	if p != nil {
 		scratch = p.mergeScratch
 	}
+	rewritesBefore := gssShapePrefixLink0Rewrites.Load()
 	merged = false
 	if workCountInstrumentationEnabled {
 		workCountTopologyRecordMergeBeforeMutation(a, b) // work-count-assembly: topology parser-merge success seam
@@ -3536,12 +3641,13 @@ func tryGSSMainMergeForParserPhase(p *Parser, a, b *glrStack, phase string, reco
 		// glrStack.cEverErrored / tryGSSMainMergeResult).
 		a.cEverErrored = a.cEverErrored || b.cEverErrored
 		if p != nil {
-			// Mirror tryGSSMainMergeResult (bumpShapePrefixEpoch above): a successful
-			// main merge rewrites link 0 (setGSSMainLink) of surviving nodes during
-			// dispatch, so every root->head shape prefix cached in the active merge
-			// scratch may now be stale. p.mergeScratch is nil outside a parse and
-			// bumpShapePrefixEpoch is nil-safe.
-			p.mergeScratch.bumpShapePrefixEpoch()
+			// Mirror tryGSSMainMergeResult: a successful main merge can rewrite
+			// link 0 (setGSSMainLink) of surviving nodes during dispatch, which
+			// makes every root->head shape prefix cached in the active merge
+			// scratch that runs through them stale. Invalidate only when the
+			// merge rewrote a link 0 (see gssShapePrefixLink0Rewrites).
+			// p.mergeScratch is nil outside a parse and the helper is nil-safe.
+			p.mergeScratch.bumpShapePrefixEpochIfLink0Rewritten(rewritesBefore)
 		}
 	} else if mergeCensusEnabled {
 		mergeCensusRecordMergeFailed()
@@ -3653,6 +3759,15 @@ func gssNodeCanReach(from, target *gssNode) bool {
 	if from == target {
 		return true
 	}
+	// depth strictly decreases along every real (committed) link: pushEntry
+	// always allocates a node at prev.depth+1 (glr_gss.go), and
+	// gssStack.materialize panics if that invariant does not hold. So once
+	// from's own depth is at or below target's, nothing reachable from
+	// `from` can be `target` (gssMainPreflight.canReach, glr.go, already
+	// relies on this same invariant for its "reachStrict" fast path).
+	if from.depth <= target.depth {
+		return false
+	}
 	// Iterative DFS with a small linear visited set: these walks are almost
 	// always tiny, and the per-call map this used to allocate was a top
 	// profile cost on merge-heavy grammars (rust). Falls back to a map only
@@ -3706,8 +3821,17 @@ func gssNodeCanReach(from, target *gssNode) bool {
 	for len(stack) > 0 {
 		cur := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
-		if cur == nil || isVisited(cur) {
+		// Same depth-monotonicity argument as the from/target check above:
+		// once a walk drops below target's depth it can never come back up
+		// to it, so cur cannot be target and none of cur's own links are
+		// worth exploring either. This is what bounds the walk to the span
+		// between from's depth and target's depth instead of running all
+		// the way to the GSS root on every call.
+		if cur == nil || cur.depth < target.depth || isVisited(cur) {
 			continue
+		}
+		if perfCountersEnabled {
+			perfRecordGSSCanReachVisit()
 		}
 		if cur == target {
 			releaseVisited()
@@ -4152,6 +4276,9 @@ func setGSSMainLink(n *gssNode, i int, prev *gssNode, entry stackEntry) {
 		// not either aggregate. Keep the cache in that explicit identity case;
 		// every other rewrite remains conservatively globally invalidating.
 		changed := n.prev != prev || n.entry != entry
+		if changed {
+			gssShapePrefixLink0Rewrites.Add(1)
+		}
 		if n.prev != prev || stackEntryNode(n.entry) != stackEntryNode(entry) {
 			gssPrefixAggGen.Add(1)
 		}
@@ -5178,6 +5305,7 @@ func tryGSSMainMergeResult(scratch *glrMergeScratch, result []glrStack, idx int,
 		}
 		return false, true
 	}
+	rewritesBefore := gssShapePrefixLink0Rewrites.Load()
 	if workCountInstrumentationEnabled {
 		workCountTopologyRecordMergeBeforeMutation(logicalTarget, logicalCandidate) // work-count-assembly: topology boundary-merge success seam
 		topologyRecorded = true
@@ -5228,11 +5356,12 @@ func tryGSSMainMergeResult(scratch *glrMergeScratch, result []glrStack, idx int,
 				mergeCensusRecordSuccess()
 			}
 		}
-		if scratch != nil {
-			// A successful main merge can rewrite link 0 (prev/entry) of surviving
-			// nodes (setGSSMainLink), so every cached spine prefix may be stale.
-			scratch.bumpShapePrefixEpoch()
-		}
+		// A successful main merge can rewrite link 0 (prev/entry) of surviving
+		// nodes (setGSSMainLink), which makes every cached spine prefix that
+		// runs through them stale. Invalidate only when a rewrite happened: a
+		// merge that just added extra links leaves every cached prefix exact
+		// (see gssShapePrefixLink0Rewrites).
+		scratch.bumpShapePrefixEpochIfLink0Rewritten(rewritesBefore)
 	} else if mergeCensusEnabled {
 		mergeCensusRecordMergeFailed()
 	}

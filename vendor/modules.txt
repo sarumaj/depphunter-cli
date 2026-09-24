@@ -22,7 +22,7 @@ github.com/inconshreveable/mousetrap
 # github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
 ## explicit
 github.com/kballard/go-shellquote
-# github.com/odvcencio/gotreesitter v0.53.0
+# github.com/odvcencio/gotreesitter v0.54.0
 ## explicit; go 1.22.0
 github.com/odvcencio/gotreesitter
 github.com/odvcencio/gotreesitter/grammars/grammar_blobs

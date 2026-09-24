@@ -99,6 +99,7 @@ func shouldNormalizeIncrementalReturnedTree(tree, oldTree *Tree) bool {
 
 func (p *Parser) normalizeReturnedIncrementalTree(tree, oldTree *Tree, source []byte) {
 	if !shouldNormalizeIncrementalReturnedTree(tree, oldTree) {
+		markStoppedEarlyTreeHasError(tree)
 		return
 	}
 	if compactRecoverEOFRootSpanPreserved(tree) {
@@ -137,6 +138,7 @@ func shouldNormalizeReturnedTree(tree *Tree) bool {
 
 func (p *Parser) normalizeReturnedTreeForParse(tree *Tree, source []byte) {
 	if !shouldNormalizeReturnedTree(tree) {
+		markStoppedEarlyTreeHasError(tree)
 		return
 	}
 	if compactRecoverEOFRootSpanPreserved(tree) {
@@ -146,7 +148,10 @@ func (p *Parser) normalizeReturnedTreeForParse(tree *Tree, source []byte) {
 		finalizeDeferredReturnedTreeTruncation(tree, source)
 		return
 	}
-	if !tree.resultCompatibilityApplied {
+	// COBOL recovery can change the root after internal normalization.
+	// Other language normalizers are not safe to repeat on every erroring root.
+	if !tree.resultCompatibilityApplied ||
+		(p.language != nil && p.language.Name == "cobol" && rawRootStillHasError(tree)) {
 		if reason := p.normalizeReturnedTree(rawRootOrNil(tree), source, nil); parseStopReasonIsTerminal(reason) {
 			tree.setParseStopReason(reason)
 			return
@@ -154,6 +159,12 @@ func (p *Parser) normalizeReturnedTreeForParse(tree *Tree, source []byte) {
 		tree.resultCompatibilityApplied = true
 	}
 	finalizeReturnedTreeRootSpan(tree, source)
+}
+
+// rawRootStillHasError reads the current root, not a cached error summary.
+func rawRootStillHasError(tree *Tree) bool {
+	root := rawRootOrNil(tree)
+	return root != nil && root.hasError()
 }
 
 // finalizeDeferredReturnedTreeTruncation enforces the silent-truncation contract
@@ -170,7 +181,7 @@ func (p *Parser) normalizeReturnedTreeForParse(tree *Tree, source []byte) {
 // Clean deferred trees (rt.Truncated==false, the common typescript path) are
 // untouched and keep their lazy compat.
 func finalizeDeferredReturnedTreeTruncation(tree *Tree, _ []byte) {
-	if tree == nil || !tree.parseRuntime.Truncated {
+	if tree == nil || !tree.rawParseRuntime().Truncated {
 		return
 	}
 	// Flush the deferred compat normalization first (only for the rare truncated
@@ -178,7 +189,7 @@ func finalizeDeferredReturnedTreeTruncation(tree *Tree, _ []byte) {
 	// dropped if a normalizer rebuilds the root. ensureResultCompatibility joins
 	// the tree's one-shot deferred-finalization boundary.
 	tree.ensureResultCompatibility()
-	markTruncatedTreeHasError(tree.parseRuntime, rawRootOrNil(tree))
+	markTruncatedTreeHasError(*tree.rawParseRuntime(), rawRootOrNil(tree))
 }
 
 const (
@@ -193,11 +204,21 @@ func oldTreeDisablesIncrementalReuse(oldTree *Tree) bool {
 	return oldTree != nil && oldTree.incrementalReuseDisabled
 }
 
-// compactRecoverEOFTreeMarked identifies the one compact tree whose root
-// carries raw recover_eof framing. The marker remains useful for result-span
-// finalization, but it is no longer a permanent incremental-reuse bar.
-func compactRecoverEOFTreeMarked(tree *Tree) bool {
-	return tree != nil && tree.compactMaterialized && tree.root != nil &&
+// recoverEOFRootPublished identifies any tree — compact-materialized or
+// classic-GLR — whose root is the bare recover_eof ERROR root a producer
+// published unwrapped. It does not require tree.compactMaterialized: the
+// classic GLR C-recovery port (cRecoverEOFAccept, parser_recover_c.go) sets
+// nodeFlagCompactRecoverEOF on its published root but never sets
+// compactMaterialized, so a compactMaterialized-gated check never
+// recognizes it. This superseded compactRecoverEOFTreeMarked (removed;
+// its only production callers now use this predicate, and its one
+// remaining test caller inlines the compactMaterialized-gated check
+// directly — parsercore_phase0_owned_recovery_materialize_test.go).
+// compactRecoverEOFRootSpanPreserved stays tied to compactMaterialized on
+// purpose: it protects a compact-only raw-span guarantee the classic
+// pipeline does not share.
+func recoverEOFRootPublished(tree *Tree) bool {
+	return tree != nil && tree.root != nil && tree.root.symbol == errorSymbol &&
 		tree.root.hasFlag(nodeFlagCompactRecoverEOF)
 }
 
@@ -570,7 +591,7 @@ func finalizeReturnedTreeRootSpan(tree *Tree, source []byte) {
 		return
 	}
 	continuationEscape := languageLineContinuationEscapeByte(tree.language)
-	rt := tree.parseRuntime
+	rt := *tree.rawParseRuntime()
 	if rt.StopReason == ParseStopAccepted {
 		extendRootToAcceptedCleanTail(root, source, rt.ExpectedEOFByte, tree.includedRanges, continuationEscape)
 	}
@@ -598,7 +619,7 @@ func compactRecoverEOFRootSpanPreserved(tree *Tree) bool {
 		!tree.root.hasFlag(nodeFlagCompactRecoverEOF) {
 		return false
 	}
-	rt := tree.parseRuntime
+	rt := tree.rawParseRuntime()
 	return rt.StopReason == ParseStopAccepted && rt.LastTokenWasEOF &&
 		rt.ExpectedEOFByte > rt.RootEndByte &&
 		rt.LastTokenEndByte == rt.ExpectedEOFByte
@@ -622,16 +643,38 @@ func compactRecoverEOFRootSpanPreserved(tree *Tree) bool {
 // span cover the input is the GLR/dispatch layer's job (siblings), not the
 // result-reporting layer's.
 //
-// Only ever SETS the flag (never clears): a truncated tree that already reports
-// HasError (11 of the 14 members) is untouched. Trivia-only tails already
-// cleared rt.Truncated above, and early-stop trees (node_limit / memory_budget /
-// timeout) never reach this finalizer, so hard budget aborts keep their honest
-// Truncated flag without a synthetic error mark.
+// Only ever SETS the flag (never clears): a truncated tree that already
+// reports HasError (11 of the 14 members) is untouched. Trivia-only tails
+// already cleared rt.Truncated above. A hard budget abort (node_limit /
+// iteration_limit / stack_depth_limit / reuse_budget / token_source_eof)
+// reaches this same finalizer through markStoppedEarlyTreeHasError, so it
+// gets the identical mark instead of a silently clean truncated root. A
+// timeout, cancellation, memory-budget, or invariant-violation stop never
+// needs it: finalizeTree (parser.go) already replaces that tree with a
+// whole-source ERROR leaf before rt.Truncated is computed, so its root
+// always spans the input and rt.Truncated is already false.
 func markTruncatedTreeHasError(rt ParseRuntime, root *Node) {
 	if !rt.Truncated || root == nil || root.hasError() {
 		return
 	}
 	root.setHasError(true)
+}
+
+// markStoppedEarlyTreeHasError applies the markTruncatedTreeHasError contract
+// to a tree whose ParseStoppedEarly() is true. These trees skip
+// normalizeReturnedTree and finalizeReturnedTreeRootSpan (running the
+// compat-normalization tail on a deliberately incomplete parse is unsafe),
+// but the parser loop already recorded an accurate rt.Truncated and root span
+// before returning (recordParseRuntimeRootStats, parser.go), so the mark can
+// apply directly without recomputing either. Call this from every returned-
+// tree finalize path that skips normalization because ParseStoppedEarly() is
+// true, so a stopped-early tree never silently reports HasError()==false over
+// a dropped source tail.
+func markStoppedEarlyTreeHasError(tree *Tree) {
+	if tree == nil {
+		return
+	}
+	markTruncatedTreeHasError(*tree.rawParseRuntime(), rawRootOrNil(tree))
 }
 
 func extendRootToAcceptedCleanTail(root *Node, source []byte, expectedEOFByte uint32, included []Range, continuationEscape byte) bool {
@@ -928,7 +971,7 @@ func (p *Parser) parseWithTokenSource(source []byte, ts TokenSource, reparseFact
 	initialMaxStacks := fullParseInitialMaxStacks(p.language, p.maxConflictWidth)
 	workCountSetNextParseAttempt("initial_full", "fresh_token_source_full_parse")
 	tree := p.parseInternal(source, p.wrapIncludedRanges(ts), nil, nil, arenaClassFull, nil, initialMaxStacks, 0, 0, deterministicExternalConflicts)
-	if !p.recoveryInitialOnly && tree != nil && !tree.rawParseStoppedEarly() && !parseStopReasonIsActive(p.activeParseStopReason()) {
+	if !p.recoveryInitialOnly && tree != nil && tree.rawParseEligibleForFreshRetryLadder() && !parseStopReasonIsActive(p.activeParseStopReason()) {
 		tree = p.retryFullParseWithTokenSource(source, ts, initialMaxStacks, deterministicExternalConflicts, tree)
 		if tree != nil && !tree.rawParseStoppedEarly() && !parseStopReasonIsActive(p.activeParseStopReason()) && shouldRepeatExternalScannerFullParse(p.language, tree) {
 			tree = p.retryFullParseWithTokenSource(source, ts, initialMaxStacks, deterministicExternalConflicts, tree)
@@ -1359,7 +1402,10 @@ const errorSymbol = Symbol(65535)
 // Parse tokenizes and parses source using the built-in DFA lexer, returning
 // a syntax tree. This works for hand-built grammars that provide LexStates.
 // For real grammars that need a custom lexer, use ParseWithTokenSource.
-// If the input is empty, it returns a tree with a nil root and no error.
+// If the input is empty, the returned tree's root depends on the grammar:
+// some grammars return a nil root, others return a non-nil, zero-width root
+// (for example, JSON returns a zero-width document node for empty input).
+// Check Tree.RootNode() for nil before use; do not assume either shape.
 func (p *Parser) Parse(source []byte) (*Tree, error) {
 	if err := p.checkLanguageCompatible(); err != nil {
 		return nil, err
@@ -1448,7 +1494,7 @@ func (p *Parser) Parse(source []byte) (*Tree, error) {
 		if progress.enabled {
 			progress.emit(time.Now(), "retry_begin", 0, 0, Token{}, false, nil, 0, 0, 0, false, 0, 0, "")
 		}
-		if !p.recoveryInitialOnly && tree != nil && !tree.rawParseStoppedEarly() && !parseStopReasonIsActive(p.activeParseStopReason()) {
+		if !p.recoveryInitialOnly && tree != nil && tree.rawParseEligibleForFreshRetryLadder() && !parseStopReasonIsActive(p.activeParseStopReason()) {
 			tree = p.retryFullParseWithDFA(source, initialMaxStacks, deterministicExternalConflicts, tree)
 			if tree != nil && !tree.rawParseStoppedEarly() && !parseStopReasonIsActive(p.activeParseStopReason()) && shouldRepeatExternalScannerFullParse(p.language, tree) {
 				tree = p.retryFullParseWithDFA(source, initialMaxStacks, deterministicExternalConflicts, tree)
@@ -1812,6 +1858,13 @@ func (p *Parser) ParseWithTokenSourceFactoryStrict(source []byte, factory TokenS
 // It reuses unchanged subtrees from the old tree for better performance.
 // Call oldTree.Edit() for each edit before calling this method.
 //
+// A caller that skips Tree.Edit is only safe when source is unchanged or
+// stays the same length as oldTree's own source. Passing a different-length
+// source with no recorded edit falls back to an ordinary fresh parse instead
+// of an error, matching every other case where this method decides oldTree
+// cannot be trusted for reuse (a language or included-ranges mismatch, for
+// example); it does not attempt to guess which edit was skipped.
+//
 // Release the returned tree and oldTree once each. When source and oldTree
 // are unchanged, the method returns oldTree itself and adds a handle to it,
 // so releasing oldTree does not invalidate the result.
@@ -1837,7 +1890,7 @@ func (p *Parser) ParseIncremental(source []byte, oldTree *Tree) (*Tree, error) {
 	}
 	tree, err := p.parseIncrementalChanged(source, oldTree)
 	if tree != nil && tree != oldTree {
-		tree.parseRuntime.CompactIncrementalFallbackReason = reason
+		tree.ensureParseRuntime().CompactIncrementalFallbackReason = reason
 	}
 	return tree, err
 }
@@ -2044,7 +2097,7 @@ func (p *Parser) ParseIncrementalProfiled(source []byte, oldTree *Tree) (*Tree, 
 	tree, timing, err := p.parseIncrementalChangedProfiled(source, oldTree)
 	timing.addAttempt(&compactTiming)
 	if tree != nil && tree != oldTree {
-		tree.parseRuntime.CompactIncrementalFallbackReason = reason
+		tree.ensureParseRuntime().CompactIncrementalFallbackReason = reason
 	}
 	return tree, timing.toProfile(), err
 }
