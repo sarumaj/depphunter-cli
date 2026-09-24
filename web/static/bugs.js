@@ -51,6 +51,66 @@ const cellOf = (gx, gz) => (gx + 32768) * 65536 + (gz + 32768);
 const MARGIN = 1.5;
 const BODY = 0.1;         // half the length of a bug's body
 const LEGS = 6;
+// How long a bug takes to leave the map once it has been caught.
+const TAKE = 0.9;
+
+/**
+ * What being caught looks like, by the tool that did it. A catch that simply blinks
+ * out says nothing about what took it, and the tools are the whole character of walk
+ * mode - so each one carries its own gesture through to the thing it acted on.
+ *
+ * Each returns where the bug has got to a share `t` of the way through: `lift` along
+ * whatever it was standing on, `toward` a share of the way to wherever it is being
+ * taken, `shake` along the same axis as `lift` but added after that move, `size` and
+ * `squash` (the up axis alone), and `spin` about its own back. `bubble` asks for the
+ * soap film to be drawn around it.
+ */
+const TAKES = {
+  // Sealed in a bubble that carries it off, turning slowly as it goes, until the soap
+  // swells and the two of them go together.
+  bubble: t => {
+    const going = Math.max(0, (t - 0.6) / 0.4);
+    return {
+      lift: 1.7 * t * t,
+      size: 1 - going * going,
+      spin: t * 2.2,
+      bubble: (0.1 + 0.16 * Math.min(1, t * 3)) * (1 + going * 0.6),
+    };
+  },
+  // Reeled in: it comes down the line at the walker and is gone in the hand.
+  reel: t => ({ toward: t * t, size: 1 - t * 0.85, spin: t * 16 }),
+  // Scooped. The hoop passes over it and it goes with the hoop - which is why this is
+  // the one catch drawn to the tool rather than to the walker: a bug that flew off
+  // towards somebody's chest while the net went the other way was the whole trouble
+  // with this one. Inside it, it fights: it bounces off the netting, turns itself
+  // over and is squashed against the mesh, all of it fading as it tires, and only
+  // then is it tipped out of the world. Full size until well past the middle, because
+  // a bug that shrinks on the way in is a bug nobody saw caught.
+  net: t => {
+    const held = smooth(Math.min(1, t * 4.5)); // how far into the hoop it has got
+    const gone = Math.max(0, (t - 0.62) / 0.38);
+    const fight = held * (1 - gone);
+    return {
+      lift: 0.04,
+      toward: held * 0.97,
+      shake: Math.sin(t * 34) * 0.045 * fight,
+      size: 1 - gone * gone,
+      squash: 1 - 0.2 * fight - 0.12 * Math.sin(t * 40) * fight,
+      spin: 13 + Math.sin(t * 46) * 11,
+    };
+  },
+  // Pinned: driven down onto whatever it was standing on, and flattened there.
+  pin: t => ({ lift: -0.05 * ramp(t), squash: 1 - 0.8 * ramp(t), size: 1 - 2 * Math.max(0, t - 0.5) }),
+  // Foamed: it sags, shudders, settles and is buried.
+  foam: t => ({ lift: -0.1 * t, size: 1 - t * t, spin: Math.sin(t * 26) * 0.35 }),
+  // Photographed, which at this size is a blink and an empty street.
+  flash: t => ({ size: Math.max(0, 1 - t * 1.9), spin: t * 4 }),
+};
+const ramp = t => Math.min(1, t * 4); // the part of a take that lands at once
+const smooth = t => t * t * (3 - 2 * t); // ... and one that leaves and arrives gently
+// The catches that carry a bug in the tool rather than back to the walker.
+const IN_HAND = new Set(['net']);
+const TAKEN = '#cfe6ff';              // the soap around a bubbled one
 
 /**
  * What each severity walks as: which of the three shapes, how big it is drawn, and
@@ -249,22 +309,30 @@ export class Bugs {
     this.dirty = true;
   }
 
-  update(dt, now) {
+  /**
+   * A frame. `at` is where the walker is and `hand` where the tool that is catching
+   * them holds what it catches; the takes that draw a bug somewhere need one or the
+   * other, and without either they simply shrink where they stand.
+   */
+  update(dt, now, at = null, hand = null) {
     if (!this.drawn.length) return;
     const m = new THREE.Matrix4(), r = new THREE.Matrix4();
     const c = new THREE.Color();
     for (const { bugs, shell, legs, wings } of this.drawn) {
       let n = 0, w = 0;
       for (const bug of bugs) {
-        if (bug.caught) continue;
-        bug.u = (bug.u + (bug.speed * dt) / bug.lap.length) % 1;
-        this.moveTo(bug, now);
+        if (bug.caught && !bug.take) continue;
+        if (bug.take && !this.taking(bug, dt, at, hand)) continue;
+        if (!bug.take) {
+          bug.u = (bug.u + (bug.speed * dt) / bug.lap.length) % 1;
+          this.moveTo(bug, now);
+        }
         orient(m, bug);
         shell.setMatrixAt(n, m);
         // The legs scurry: the whole set rocks, which reads as legs at this size.
         // Tucked back, the same rock is a flyer holding them out of the way.
         legs.setMatrixAt(n, r.multiplyMatrices(m, rockAbout(bug.rock)));
-        if (bug.flying && wings) {
+        if (bug.flying && wings && !bug.take) {
           // One beat, two wings: the same angle up on the left and down on the right
           // of a body whose x axis is its own, so they meet over its back and part
           // under it.
@@ -285,6 +353,61 @@ export class Bugs {
       if (this.dirty && shell.instanceColor) shell.instanceColor.needsUpdate = true;
     }
     this.dirty = false;
+  }
+
+  /**
+   * One frame of a bug being taken off the map. Moves it along whatever its tool does
+   * to it and says whether it is still there to be drawn; the last frame lets go of
+   * the soap, if there was any, and closes the instances up over the gap.
+   */
+  taking(bug, dt, at, hand = null) {
+    const take = bug.take;
+    take.t += dt / TAKE;
+    if (take.t >= 1) {
+      this.unbubble(bug);
+      bug.take = null;
+      this.dirty = true;
+      return false;
+    }
+    const to = TAKES[take.how](take.t);
+    // Where it is being taken: the hoop of the net carries what it catches, so a
+    // netted one homes on the tool; everything else comes to the walker.
+    const home = (IN_HAND.has(take.how) ? hand : null) || at;
+    bug.pos.copy(take.at).addScaledVector(take.up, to.lift || 0);
+    if (to.toward && home) bug.pos.lerp(home, to.toward);
+    // The struggle is added after the move rather than before it: almost all of the
+    // way to the hoop, anything mixed in beforehand would be damped to nothing.
+    if (to.shake) bug.pos.addScaledVector(take.up, to.shake);
+    bug.size = Math.max(0, to.size ?? 1);
+    bug.squash = to.squash ?? 1;
+    bug.heading += (to.spin || 0) * dt;
+    bug.rock = 0;
+    if (to.bubble) this.bubble(bug, to.bubble); else this.unbubble(bug);
+    return bug.size > 0.01;
+  }
+
+  /** The soap around a bubbled one, made when it is first wanted and kept until it pops. */
+  bubble(bug, r) {
+    if (!bug.soap) {
+      soapParts ||= [
+        new THREE.SphereGeometry(1, 14, 10),
+        this.scene.bendable(new THREE.MeshBasicMaterial({
+          color: TAKEN, transparent: true, opacity: 0.32, depthWrite: false,
+        })),
+      ];
+      bug.soap = new THREE.Mesh(soapParts[0], soapParts[1]);
+      bug.soap.frustumCulled = false;
+      bug.soap.renderOrder = 2;
+      this.group.add(bug.soap);
+    }
+    bug.soap.position.copy(bug.pos);
+    bug.soap.scale.setScalar(r);
+  }
+
+  unbubble(bug) {
+    if (!bug.soap) return;
+    this.group.remove(bug.soap);
+    bug.soap = null;
   }
 
   moveTo(bug, now) {
@@ -330,10 +453,16 @@ export class Bugs {
     return best;
   }
 
-  /** Catch one: it stops walking, and what it was carrying is read out. */
-  catch(bug) {
+  /**
+   * Catch one: it stops walking, and what it was carrying is read out. `how` is the
+   * tool's own gesture (TAKES), carried through to the bug so that netting one and
+   * photographing one do not look the same; a catch with no gesture named - taking a
+   * finding from the panel, over on the map - simply stops it where it stands.
+   */
+  catch(bug, how = null) {
     if (!bug || bug.caught) return false;
     bug.caught = true;
+    if (TAKES[how]) bug.take = { how, t: 0, at: bug.pos.clone(), up: bug.up.clone() };
     this.caught.add(bug.f.id);
     this.dirty = true; // the instances close up over the gap it leaves
     this.hooks.onCatch?.(bug.f, bug.node);
@@ -349,9 +478,13 @@ export class Bugs {
 
   /** Lets go of the meshes and their materials; the geometry is shared and stays. */
   drop() {
+    for (const bug of this.bugs) {
+      bug.soap = null; // the group is about to be emptied; the material is shared
+      bug.take = null;
+    }
     for (const mesh of this.group.children) {
-      mesh.material.dispose();
-      mesh.dispose();
+      mesh.material?.dispose?.();
+      mesh.dispose?.();
     }
     this.group.clear();
     this.drawn = [];
@@ -634,9 +767,11 @@ function orient(m, bug) {
   const up = bug.bank ? lean.copy(bug.up).applyAxisAngle(fwd, bug.bank) : bug.up;
   side.crossVectors(up, fwd).normalize();
   m.makeBasis(side, up, fwd);
-  // How big this severity walks: the basis is scaled rather than the geometry, so one
-  // mesh per shape still draws every size of it.
-  if (bug.scale !== 1) m.scale(SIZE.setScalar(bug.scale));
+  // How big this severity walks, and how much of it is left if it is being taken off
+  // the map: the basis is scaled rather than the geometry, so one mesh per shape still
+  // draws every size of it.
+  const s = bug.scale * (bug.size ?? 1);
+  m.scale(SIZE.set(s, s * (bug.squash ?? 1), s));
   m.setPosition(bug.pos);
 }
 
@@ -658,3 +793,4 @@ function rockAbout(angle) {
 
 const MIRROR = new THREE.Vector3(-1, 1, 1);
 const SIZE = new THREE.Vector3();
+let soapParts = null; // the bubble a bubbled bug leaves in, built once

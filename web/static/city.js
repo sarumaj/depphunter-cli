@@ -1127,10 +1127,7 @@ function blocks(boxes) {
 // crosses the terrace's sidewalk into its ring road; at the foot an apron, APRON
 // long, replaces the street's curb. The far end leaves room for the stairs (the
 // stairs shader).
-// How wide a ramp's roadway is. Exported because the roads routes.js lays down run
-// up it, and a road has to know how much of it there is to lie on.
-export const RAMP_W = 0.2;
-const RAMP_MAX = 2.4, RAMP_MIN_SIDE = 1.7, RAMP_START = 0.1, RAMP_CLEAR = 0.1;
+const RAMP_W = 0.2, RAMP_MAX = 2.4, RAMP_MIN_SIDE = 1.7, RAMP_START = 0.1, RAMP_CLEAR = 0.1;
 const RAMP_LANDING = 0.35, DRIVE = 0.14, APRON = RAMP_START + 0.07;
 
 const rampCache = new WeakMap();

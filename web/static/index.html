@@ -80,6 +80,7 @@
       <button id="fit" title="Fit to screen (Home)">Fit</button>
       <button id="walk" title="Walk the map in first person (V, or double-click open ground)" aria-pressed="false">Walk</button>
       <button id="pack-btn" title="What you have caught (B)" aria-expanded="false" aria-controls="pack" hidden>Backpack <span id="pack-count" class="count" hidden></span></button>
+      <button id="stash-btn" title="Photographs you have taken (G)" aria-expanded="false" aria-controls="stash" hidden>Photos <span id="stash-count" class="count" hidden></span></button>
       <button id="save-settings">Save settings</button>
       <div class="export">
         <button id="export-btn" aria-expanded="false" aria-controls="export">Export</button>
@@ -106,16 +107,19 @@
       </div>
       <div class="w-bar">
         <div class="w-stats">
+          <span class="w-chip w-health" data-state="well" title="What you can take: a long fall, a bug's bite or the water costs some, and every bug in the backpack raises it"><i class="w-ic heart"></i><span class="w-health-track"><span class="w-health-fill"></span></span><b class="w-hp">100</b></span>
+          <span class="w-chip w-stamina" data-state="well" title="Your wind: running spends it, a jump costs a little of it, and it comes back while you are not doing either"><i class="w-ic wind"></i><span class="w-health-track"><span class="w-stamina-fill"></span></span></span>
+          <span class="w-chip w-fuel" hidden data-state="well" title="What is left in the tool you are carrying; it fills again while it is not in use"><i class="w-ic fuel"></i><span class="w-health-track"><span class="w-fuel-fill"></span></span></span>
           <span class="w-chip w-mode" hidden></span>
-          <span class="w-chip w-health" data-state="well" title="What you can take: a long fall or a bug's bite costs some, and every bug in the backpack raises it"><i class="w-ic heart"></i><span class="w-health-track"><span class="w-health-fill"></span></span><b class="w-hp">100</b></span>
           <span class="w-chip" title="Modules you have tagged with a tool"><i class="w-ic tag"></i><b class="w-tagged">0</b><em>tagged</em></span>
           <span class="w-chip w-bugs" hidden title="Findings caught, of the ones walking the map"><i class="w-ic bug"></i><b class="w-caught">0</b><s>/</s><b class="w-total">0</b><em>bugs</em></span>
           <span class="w-chip" title="How big the planet is: + and - bend the map more or less"><i class="w-ic globe"></i><b class="w-radius"></b><em>planet</em></span>
         </div>
         <div class="w-target" hidden></div>
         <div class="w-keys"><kbd>W A S D</kbd> move · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump
-          · <kbd>Click</kbd> use the tool · <kbd>1</kbd>…<kbd>0</kbd> or <kbd>T</kbd> pick one · <kbd>H</kbd> hands away
-          · hold <kbd>Right</kbd> scope · <kbd>?</kbd> everything else · <kbd>M</kbd> back to the map</div>
+          · <kbd>Click</kbd> right hand (hold to keep firing) · <kbd>F</kbd>/<kbd>C</kbd> left hand · <kbd>1</kbd>…<kbd>7</kbd> and <kbd>8</kbd><kbd>9</kbd><kbd>0</kbd> pick them
+          · <kbd>B</kbd> backpack · <kbd>H</kbd> hands away · hold <kbd>Right</kbd> scope
+          · <kbd>?</kbd> everything else · <kbd>M</kbd> back to the map</div>
       </div>
       <div class="w-foot">
         <div class="w-flash" role="status"></div>
@@ -137,55 +141,119 @@
       <ul id="pack-list"></ul>
       <p id="pack-empty-note" class="hint">Nothing caught yet. Walk the map and catch a bug with whatever is in your hands.</p>
     </aside>
+    <aside id="stash" hidden aria-label="Photographs">
+      <header>
+        <h3>Photographs</h3>
+        <span id="stash-summary" class="hint"></span>
+        <button id="stash-empty" class="link" type="button" title="Let go of every photograph">empty</button>
+        <button id="stash-close" class="close" title="Close (Esc)" aria-label="Close photographs">×</button>
+      </header>
+      <ul id="stash-list"></ul>
+      <p id="stash-empty-note" class="hint">Nothing photographed yet. Take the camera out in walk mode and use it on whatever you want a picture of.</p>
+      <p id="stash-show-note" class="hint">From the street, <b>show</b> puts one back on the camera to look at.</p>
+    </aside>
     <aside id="panel" hidden>
       <button id="panel-close" class="close" title="Close (Esc)" aria-label="Close details">×</button>
       <div id="panel-body"></div>
     </aside>
+    <dialog id="tour">
+      <h2 id="tour-title"></h2>
+      <p id="tour-body"></p>
+      <footer>
+        <span id="tour-dots" aria-hidden="true"></span>
+        <span class="grow"></span>
+        <button id="tour-skip" type="button" class="link">Skip</button>
+        <button id="tour-back" type="button">Back</button>
+        <button id="tour-next" type="button" class="primary">Next</button>
+      </footer>
+    </dialog>
     <dialog id="help">
-      <h2>Navigating the map</h2>
+      <h2>Reading the map</h2>
+      <p>The map is the repository seen from above. The mainland is the project itself:
+        directories are terraces, files are the buildings standing on them, and a
+        building's height is the number of lines in the file. The islands around it are
+        the package ecosystems the project depends on. Selecting anything draws its
+        dependencies as arcs across the map, with an arrow at the far end of each.</p>
       <table>
-        <tr><th>Drag</th><td>Pan</td></tr>
-        <tr><th>Right-drag</th><td>Orbit</td></tr>
-        <tr><th>Wheel</th><td>Zoom at cursor</td></tr>
-        <tr><th>Click</th><td>Select &amp; show dependencies: arcs over the map to what it depends on and what depends on it, and the same edges as roads on the ground, routed between the blocks with chevrons for the direction. A road to an external package leaves the shore as a causeway</td></tr>
-        <tr><th>Double-click</th><td>Expand / collapse directory or file - or, on open ground, walk into the map</td></tr>
-        <tr><th>Enter</th><td>Expand / collapse selection</td></tr>
-        <tr><th>Backspace</th><td>Select parent</td></tr>
-        <tr><th>Q / E</th><td>Rotate 90°</td></tr>
-        <tr><th>Home</th><td>Fit to screen</td></tr>
-        <tr><th>+ / −</th><td>Expand / collapse one level everywhere</td></tr>
-        <tr><th>/</th><td>Search</td></tr>
-        <tr data-server><th>O</th><td>Open selected file in your editor</td></tr>
-        <tr><th>P</th><td>Save the map as a PNG image</td></tr>
-        <tr><th>Legend click</th><td>Hide / show a language</td></tr>
-        <tr><th>Esc</th><td>Close the backpack, or clear the selection</td></tr>
-        <tr><th>Pins</th><td>Where the scanners found something: a marker over the building, in the color of the worst of them, taller the more there are. Point at one for the tally, click it to read them - a collapsed directory opens what is below it too</td></tr>
-        <tr><th>+ beside a finding</th><td>Puts it in the backpack without walking out to its bug. It is the same catch: the bug stops walking, and it stays there until the scanners stop reporting it</td></tr>
-        <tr><th>B</th><td>The backpack: every bug caught, in either view, still open or fixed since. Click one to go back to where it was caught</td></tr>
-        <tr><th>The figure</th><td>Where you were standing in walk mode, facing the way you were facing. <kbd>V</kbd> puts you back there</td></tr>
+        <tr><th>Drag</th><td>Pan the view.</td></tr>
+        <tr><th>Right-drag</th><td>Orbit the view.</td></tr>
+        <tr><th>Wheel</th><td>Zoom towards the cursor.</td></tr>
+        <tr><th>Click</th><td>Select a building and show what it depends on and what depends on it, as arcs over the map.</td></tr>
+        <tr><th>Double-click</th><td>Expand or collapse a directory or a file; a file expands into its symbols. On open ground it walks you into the map instead.</td></tr>
+        <tr><th>Enter / Backspace</th><td>Expand or collapse the selection; select its parent.</td></tr>
+        <tr><th>Q / E</th><td>Rotate the map by ninety degrees.</td></tr>
+        <tr><th>Home</th><td>Fit the whole map to the window.</td></tr>
+        <tr><th>+ / −</th><td>Expand or collapse one level throughout.</td></tr>
+        <tr><th>/</th><td>Search files, symbols and packages.</td></tr>
+        <tr data-server><th>O</th><td>Open the selected file in your editor.</td></tr>
+        <tr><th>P</th><td>Save the map as a PNG image.</td></tr>
+        <tr><th>X / K</th><td>Open the export menu; save the current view to the configuration file. Both work from the street as well as from the map.</td></tr>
+        <tr><th>?</th><td>This page. The button at the foot of it shows the introduction again — the map's, or walk mode's if you are out in it.</td></tr>
+        <tr><th>B</th><td>Open the backpack: everything you have caught, in either view, still open or fixed since. Selecting an entry returns you to where it was caught.</td></tr>
+        <tr><th>G</th><td>Open the photographs the camera has taken. They are kept for the session only, so the ones worth having are saved from there, one at a time, as PNG files. From the street each one can also be put up on the camera and looked at there.</td></tr>
+        <tr><th>Legend click</th><td>Hide or show a language.</td></tr>
+        <tr><th>Pins</th><td>A marker stands over every building the scanners reported something on, in the color of the worst of them and taller the more there are. Point at one for the tally, or select it to read them.</td></tr>
+        <tr><th>The figure</th><td>Where you were last standing in walk mode, facing the direction you faced. <kbd>V</kbd> puts you back there.</td></tr>
       </table>
+
       <h2>Walk mode (V)</h2>
+      <p>Walk mode presents the same map in first person, bent around a small planet. You
+        carry two tools at once, one in each hand: a primary tool for the hunt in your
+        right hand, and a secondary tool that carries you in your left.</p>
       <table>
-        <tr><th>Mouse</th><td>Look around: the pointer is captured at the reticle (Esc frees it, a click on the map captures it again; or drag to look)</td></tr>
-        <tr><th>W A S D / arrows</th><td>Move / turn</td></tr>
-        <tr><th>Shift</th><td>Run</td></tr>
-        <tr><th>Space</th><td>Jump (flying: straight up)</td></tr>
-        <tr><th>Click</th><td>Use what is in your hands. A primary tool - a fishing rod, a net, a camera, a bubble wand, a fire extinguisher, a tracking dart, a nail gun - tags the module it reaches, selects it and lights up its dependencies; using it again on a tagged building shows its details. A secondary tool tags nothing: it moves you</td></tr>
-        <tr><th>Health</th><td>The bar in the corner. A fall of more than a few storeys costs some of it and a bug's bite costs more the worse the finding is, so a swarm is a thing to get out of. Every bug in the backpack raises the bar and mends you by as much. At nothing you are back on the map, with everything you caught still in the backpack; walking in again starts at full health</td></tr>
-        <tr><th>Bugs</th><td>Every finding a scanner reported keeps to a lap on the building it belongs to, colored by severity and shaped by it: a critical one is a caterpillar that crawls and cannot be got away from in the air, an ordinary one a beetle, a note a mite. The lap is around the building on the street, along its facade at some height, across its roof, or a wider circuit flown round it, each one standing out of whatever it is holding on to, or leaning into the corners if it is holding on to nothing. Use a primary tool on one to catch it and read what it was carrying; the HUD counts what is left, and what you catch goes in the backpack (<kbd>B</kbd> on the map) until the source is fixed. The map view collects the same findings from the panel, if you would rather not walk</td></tr>
-        <tr><th>Tracker</th><td>The sweep in the corner turns with you: a dot per bug still out there, a ring per module already tagged, an arrow on the rim for anything beyond its range</td></tr>
-        <tr><th>1 … 7</th><td>The primary tools, the ones the hunt is done with; <kbd>T</kbd> walks along the whole row. Each is good for its own quarry - the tracking dart tags buildings, the net, the bubble wand and the fire extinguisher catch bugs, and the rod, the nail gun and the camera do either - and the reticle dims when what you are pointing at is not for the tool in hand. Each has a range too, and they differ: the extinguisher clears a doorway, the wand barely crosses a street, the nail gun carries a block or so, the dart further, the rod furthest. Past it the reticle dims and the shot falls short. The net throws nothing at all: it has to be swung within arm's length, and the camera alone photographs at any distance. The camera's back screen shows what its lens is on</td></tr>
-        <tr><th>Tracking dart vs nail gun</th><td>Two launchers that behave nothing alike. The dart is lobbed high and slowly, drops hard, and steers in the air towards whatever wall is ahead of it, so it can be thrown over a block. A nail leaves at three times the speed and dead flat, and goes precisely where the muzzle pointed give or take the scatter of a strip nailer - and anything small enough gets pinned to the wall with it</td></tr>
-        <tr><th>8 9 0</th><td>The secondary tools, which touch nothing on the map and move you instead. The <b>grapple gun</b> hooks a building and the line pulls you up its facade and onto the roof; from up there, aim over the edge at anything lower and the same shot is the way down (<kbd>Space</kbd> cuts the line). The <b>jet backpack</b> flies: while you are carrying it W and S go where you are looking - look down and press W to dive - and <kbd>Space</kbd> and <kbd>C</kbd> go straight up and down, with a click for a burst of thrust. The <b>water skimmers</b> hold you on the surface, so the bay is a street while they are in hand and cold water the moment they are not</td></tr>
-        <tr><th>H</th><td>Put the tool away, or take it out again. Only the drawing of it: it still works, and what it throws then leaves from your eye</td></tr>
-        <tr><th>Hold right button</th><td>Look through the scope (zoom)</td></tr>
-        <tr><th>Enter</th><td>Show the details of what the reticle is on (dependencies, source) - the same as a second hit. The mouse is freed for reading; click the map to walk on. <kbd>O</kbd> opens the file in your editor.</td></tr>
-        <tr><th>Wheel</th><td>Zoom in / out</td></tr>
-        <tr><th>+ −</th><td>Planet size (curvature); <kbd>[</kbd> <kbd>]</kbd> do the same</td></tr>
-        <tr><th>V / M</th><td>Back to the map (Esc frees the mouse first, then leaves). Coming back puts you where you were standing, unless you picked something on the map in the meantime</td></tr>
+        <tr><th>Mouse</th><td>Look around. The pointer is captured at the reticle; <kbd>Esc</kbd> releases it and a click on the map captures it again. Where it cannot be captured at all, dragging looks around instead.</td></tr>
+        <tr><th>W A S D</th><td>Move; the arrow keys do the same and also turn. <kbd>Shift</kbd> runs, for as long as your wind holds.</td></tr>
+        <tr><th>Space</th><td>Jump, which costs a little wind. While flying, ascend.</td></tr>
+        <tr><th>Click</th><td>Use the tool in your right hand. Holding the button down keeps the nail gun and the extinguisher firing; every other tool takes one shot per click.</td></tr>
+        <tr><th>F or C</th><td>Use the tool in your left hand. The middle mouse button does the same. While flying, <kbd>C</kbd> descends instead, and <kbd>F</kbd> is the throttle.</td></tr>
+        <tr><th>1 … 7</th><td>Take out a primary tool. <kbd>T</kbd> walks along the row.</td></tr>
+        <tr><th>8 9 0</th><td>Pick up a secondary tool, or press the same key again to put it down. Only one is carried at a time.</td></tr>
+        <tr><th>H</th><td>Put both hands away, or take them out again. This is only the drawing of them: both still work, and what they throw then leaves from your eye.</td></tr>
+        <tr><th>Hold right button</th><td>Look through the scope. The tracking dart is the tool this is meant for.</td></tr>
+        <tr><th>Enter</th><td>Show the details of whatever the reticle is on, as a second hit would. The pointer is released for reading; a click on the map resumes walking.</td></tr>
+        <tr><th>+ / −</th><td>Change the planet's radius, and so how sharply the world curves. <kbd>[</kbd> and <kbd>]</kbd> do the same.</td></tr>
+        <tr><th>V / M / Esc</th><td>Return to the map. Coming back puts you where you were standing, unless you selected something on the map in the meantime.</td></tr>
+      </table>
+
+      <h2>The primary tools</h2>
+      <p>A primary tool acts on the map. Used on a building it tags the module — the
+        module is selected, its dependency trails light up, and a beacon is planted over
+        it in the color of the worst finding inside it. Using the tool a second time on a
+        tagged building opens its details. Used on a bug it catches it and reads out what
+        the scanner reported. Each tool has a range, and the reticle dims when what you
+        are pointing at is out of range or is not something that tool acts on.</p>
+      <table>
+        <tr><th>Fishing rod</th><td>A long cast that acts on buildings and bugs alike. Where the bobber strikes a wall, the line hauls you to it, which makes the rod a way of getting about as well as a way of tagging. A cast that lands a bug simply lands it.</td></tr>
+        <tr><th>Butterfly net</th><td>Swung rather than thrown, so it has to be walked up to: its range is an arm's length. The stroke goes up over the shoulder and down across the body, and it catches bugs only.</td></tr>
+        <tr><th>Camera</th><td>Photographs whatever is in the frame, building or bug, at any distance whatsoever. Its back screen shows what its lens is looking at. Every use of it keeps the frame: the picture goes into the photographs (<kbd>G</kbd>), captioned with whatever was in it, and the ones worth having are saved from there as files. A second use on a module you have already tagged opens its details, the way every other tool does there, and keeps no picture. A photograph is of the city and of nothing else: neither the camera nor the hand holding it is in it, and neither is anything the interface has drawn on the map — nothing lit, nothing dimmed, no dependency arcs. Any of them can be put back up on that screen from there: the camera comes to hand and is brought right up to your face, square on, until the picture covers nearly the whole view; after a few seconds it goes back down and returns whatever you were carrying. A click puts it away sooner.</td></tr>
+        <tr><th>Bubble wand</th><td>Floats a bubble onto a bug. The bubble leaves slowly, is stopped almost at once by the air, and then rises — so it is aimed early and low, and it barely crosses a street.</td></tr>
+        <tr><th>Fire extinguisher</th><td>Hoses foam at bugs at close quarters. Holding the button keeps it discharging, and the foam spreads as it travels and falls out of the air after a few strides. It clears a doorway rather than picking one bug off a roof.</td></tr>
+        <tr><th>Tracking dart</th><td>The longest and most deliberate shot in the hunt, and the one the scope is for. A dart is lobbed high, falls hard, and steers in the air towards whatever wall lies ahead of it, so a shot thrown over a block still lands. It acts on buildings only, one shot at a time.</td></tr>
+        <tr><th>Nail gun</th><td>The opposite of the dart in every respect: flat, three times as fast, and effective only across a street. Held down it keeps firing, and a nail leaves a strip nailer crooked, so it hoses a wall rather than picking a spot on it. Anything small enough is pinned to the wall behind it.</td></tr>
+      </table>
+
+      <h2>The secondary tools</h2>
+      <p>A secondary tool tags nothing and catches nothing. It carries you, and carrying
+        it is most of using it. One is held in your left hand alongside whatever your
+        right hand is doing, so the map can be flown over and its bugs caught without
+        putting either down.</p>
+      <table>
+        <tr><th>Grapple gun</th><td>Fired with <kbd>F</kbd> or <kbd>C</kbd>. The hook flies at the building you are looking at and the line pulls you up its facade and onto the roof. From up there, aiming over the edge at anything lower makes the same shot the way down. <kbd>Space</kbd> cuts the line.</td></tr>
+        <tr><th>Jet backpack</th><td>Carrying it is flying, for as long as its tank lasts. <kbd>W</kbd> and <kbd>S</kbd> then move along the direction you are looking — look down and press <kbd>W</kbd> to dive — while <kbd>Space</kbd> and <kbd>C</kbd> go straight up and down. <kbd>F</kbd> opens the throttle for a burst of speed. Putting it away is how you come back down.</td></tr>
+        <tr><th>Water skimmers</th><td>Carrying them makes the surface of the water walkable, so the bay becomes a street and you pass beneath the bridges rather than over them. Putting them away over deep water leaves you in it, and so does letting them waterlog.</td></tr>
+        <tr><th>Fuel</th><td>The jet backpack and the water skimmers both run on a tank. It empties only while the tool is doing its work — while the jet is holding you off the ground, while the water is the only thing under the skimmers — and fills again whenever it is not, so neither is a way of getting everywhere. The gauge beside the health bar shows what is left in whichever you are carrying. A tool that runs out stops there and stays stopped: put it away and take it out again once it has filled.</td></tr>
+      </table>
+
+      <h2>The hunt</h2>
+      <table>
+        <tr><th>Bugs</th><td>Every finding a scanner reported walks a lap on the building it belongs to, colored by its severity and shaped by it as well: a critical finding is a caterpillar, which crawls and never flies; the middle of the range is a beetle; a note is a mite. A lap runs around the building at street level, along its facade at some height, across its roof, or as a wider circuit flown around it.</td></tr>
+        <tr><th>Wind</th><td>The second gauge in the corner is what running and jumping are paid for out of. A flat-out sprint empties it in a few seconds and each jump takes a little more; it fills again while you walk or stand still, and once it is gone you have to get a quarter of it back before you can sprint again. Flying costs none of it — that is the jet's tank rather than your chest.</td></tr>
+        <tr><th>Health</th><td>The bar in the corner is what you can take. A fall of more than a few storeys costs some of it, a bug's bite costs more the worse the finding is, and deep water with nothing to float on takes all of it within a couple of seconds. The bay is not a wall around the map: from a shore it is half a step down, so you can walk into it, wade about in it and climb back out onto any shore. Off a bridge, or off anything else well above the surface, you have to jump in — walking off an edge into a drop is not something you would mean to do. Either way, without the skimmers it is a couple of seconds to reach a shore. Every bug in your backpack raises the bar and mends you by as much. At nothing the screen turns red and the map returns, with everything you caught still in the backpack; walking in again starts at full health.</td></tr>
+        <tr><th>Tracker</th><td>The sweep in the corner turns with you: one dot per bug still out there, one ring per module already tagged in the color of its worst finding, and an arrow at the rim for anything beyond its range. It tightens as you close on a bug, so the last part of the approach can be made on the sweep rather than by guesswork.</td></tr>
+        <tr><th>Backpack</th><td>What you catch is kept, and stays kept across a re-layout, a change of depth and a reload. An entry is retained until the scanners stop reporting it, at which point it is struck through rather than removed.</td></tr>
       </table>
       <p class="hint">Height encodes lines of code. Directories collapse into districts whose footprint grows with the number of files.</p>
-      <form method="dialog"><button>Close</button></form>
+      <form method="dialog"><button type="button" id="help-tour">Show the introduction</button><button>Close</button></form>
     </dialog>
   </main>
   <script type="module" src="app.js"></script>

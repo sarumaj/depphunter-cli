@@ -10,9 +10,11 @@
 // camera and swing when used, so the gesture is visible rather than implied.
 //
 // The secondary tools do none of that. They are how the walker gets about: a line to
-// a wall, a jet to fly on, floats to cross the bay with. Which one is in hand is what
-// decides whether the walker flies or the water holds them up, so putting one away is
-// how you come down or get wet.
+// a wall, a jet to fly on, floats to cross the bay with. One of each is carried at a
+// time, one to a hand - the primary in the right and the secondary in the left - so a
+// walker can fly over the map and net what they find without putting either down.
+// Which secondary is in the off hand is what decides whether the walker flies or the
+// water holds them up, so putting one away is how you come down, or get wet.
 //
 // The other quarry is real: every finding a scanner reported walks the streets as a
 // bug (bugs.js), and catching one reads out what was said about it. They bite back,
@@ -21,14 +23,19 @@
 import * as THREE from './vendor/three.module.min.js';
 import { rampsFor, rampHeight, bridgesFor, bridgeHeight, bridgeBounds } from './city.js';
 import { Health } from './health.js';
-import { TOOL_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool, viewLights, hits, marks, isMelee } from './tools.js';
+import { Wind } from './wind.js';
+import { severityColors } from './findings.js';
+import { TOOL_IDS, PRIMARY_IDS, SECONDARY_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool, studyTool, viewLights, hits, isMelee } from './tools.js';
 
 // A building is one unit wide and its storeys 0.3 high (city.js): the walker is
 // about a storey and a half tall.
 const EYE = 0.45;           // eye height above the feet
 const WALK = 2.6, RUN = 7, FLY = 10; // units per second
-const JUMP = 4.4, GRAVITY = 13;
-const STEP = 0.5;           // highest ledge walked up without jumping
+// A jump clears a curb and a terrace wall and nothing more. At this gravity it tops
+// out about 0.4 units up, which against a storey of 0.3 is a person leaving the ground
+// rather than one clearing a tree.
+const JUMP = 3.2, GRAVITY = 13;
+const STEP = 0.32;          // highest ledge walked up without jumping
 const BODY = 0.12;          // walker radius for collisions
 const WATER = -0.45;        // the water surface (layout LAND_H below the mainland)
 const REACH = 90;           // aiming distance
@@ -87,11 +94,35 @@ const FOV = 70, MIN_FOV = 30, MAX_FOV = 90, SCOPE_FOV = 22;
 // How far in the held tool sits, as a fraction of where it is modelled. See showTool.
 const VIEW_NEAR = 0.5;
 const SWING = 0.45;         // seconds a tool takes to swing and settle
+// How far the view rides up and down, and how fast, for each of the two things that
+// carry the walker: the long slow heave of a jet holding them up, and the swell of
+// water under a pair of floats. Feet on solid ground do not ride at all - a bob on
+// every footfall is what makes people put a first-person view down. It is the view
+// alone: nothing about where the walker is or what they can reach moves with it.
+const RIDE = {
+  fly: { lift: 0.055, rate: 1.5 },
+  float: { lift: 0.045, rate: 2.1 },
+};
+// The shore stands half a unit above the water, which is further than a step. WADE is
+// what is added to a step to climb out of the bay - without it, anything down there is
+// down there for good - and WADE_IN is how far below the feet the water may be to be
+// walked into rather than jumped into.
+const WADE = 0.25, WADE_IN = 0.6;
 // How far the walker may leave the map: over the water beyond the outermost shore,
 // and above its tallest building when flying.
 const SHORE_MARGIN = 3, SKY_MARGIN = 12;
+// A photograph held up to look at: how long it stays up altogether, and how long the
+// camera takes to come all the way to the face and to go back down again. The travel
+// is most of the way from the hip to the eye, so it is given longer than a gesture.
+const SHOWING = 4.2, LIFTING = 0.6;
 // A burst on the jet backpack: how long it lasts and how much faster it goes.
 const BURST = 0.9, BURST_SPEED = 3;
+// Out of your depth: how fast the water takes a walker who is in it with nothing to
+// hold them up. A couple of seconds, so wading ashore is possible and standing in the
+// bay when the skimmers go away is not.
+const DROWN = 45;
+// How long the screen stays red after the walk ends, before the map comes back.
+const DYING = 1.1;
 // Being bitten: how near a bug has to be to reach the walker, and how often it can.
 // The reach is a stride, so standing in the middle of a lap is what does it rather
 // than walking past one; a bug on a wall three storeys up cannot reach anybody.
@@ -108,7 +139,7 @@ const TRACK_REACH = 30, TRACK_AHEAD = 0.75;
 // would only reshuffle the city around a walker.
 const KEYS = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
-  'Space', 'ShiftLeft', 'ShiftRight', 'KeyC', 'KeyE', 'KeyQ', 'Enter',
+  'Space', 'ShiftLeft', 'ShiftRight', 'KeyC', 'KeyE', 'KeyQ', 'KeyF', 'Enter',
   'Escape', 'KeyV', 'KeyM', 'KeyT', 'KeyH',
   // The tool slots: 1 to 9, and 0 for the tenth, the way a shooter numbers them.
   'Digit0', ...Array.from({ length: 9 }, (_, i) => `Digit${i + 1}`),
@@ -133,6 +164,14 @@ export class Walker {
    *                    survive)
    *   caught()         how many findings are in the backpack, which is what the
    *                    walker's health is built on
+   *   onPhoto(where)   keep the view as a photograph, captioned with whatever was in
+   *                    the frame; what a camera used twice in quick succession asks for
+   *   onResume()       the walker is walking again, so whatever was being read - the
+   *                    details, the backpack, a menu - can be put away
+   *   busy()           whether anything on screen wants the mouse. The walker never
+   *                    takes the pointer back while it does
+   *   severityOf(node) the worst thing the scanners said about a module, for its
+   *                    beacon and its ring on the tracker
    *   onRender()       after every frame (labels)
    * }
    */
@@ -164,16 +203,40 @@ export class Walker {
     // from a browser that refuses one request and grants the next.
     this.noLock = false;
     this.lockFails = 0;
-    this.tool = toolFor(hooks.tool?.() || DEFAULT_TOOL);
+    // One tool to a hand: the hunt in the right, whatever carries the walker in the
+    // left. There is always a primary; the off hand may be empty.
+    this.primary = toolFor(hooks.tool?.() || DEFAULT_TOOL);
+    this.secondary = null;
     this.health = new Health(hud);
     this.bitAt = 0;   // when a bug last got a bite in
     this.burst = 0;   // seconds of jet backpack thrust left
     this.fell = null; // the height a fall in progress started from
-    this.viewmodel = null;      // the hand and its tool
+    // How full each carried tool's tank is, as a share, by tool id. A tank is the
+    // tool's rather than the walker's, so putting the jet down and picking it up again
+    // does not refill it - but time on the ground does.
+    this.tanks = new Map();
+    // What has run out. A tool that empties in use is dead until it is taken out
+    // again, so an all-but-empty tank cannot flicker the walker in and out of the air
+    // a frame at a time; it fills in the meantime like everything else.
+    this.dry = new Set();
+    this.fuelShown = -1; // what the gauge currently says, so it is only written when it moves
+    // What running and jumping are paid for out of.
+    this.wind = new Wind(hud);
+    this.blown = false; // ... and whether the walker has been told they are out of it
+    this.rideLift = 0;   // how far the view is currently riding, eased rather than switched
+    this.ridePhase = 0;  // ... and where in the swell it is
+    this.showing = null; // a photograph being looked at on the back of the camera
+    this.dying = null;    // seconds into the red, null while the walker is alive
+    this.sinking = false; // ... and whether they are in the water with nothing to float on
+    this.viewmodel = null;      // the right hand and its tool
+    this.offhand = null;        // ... and the left, when something is carried in it
     this.held = null;           // what holds them in front of the walk camera
     this.props = null;          // the prop obstacle list this grid was built from
     this.propGrid = new Map();  // cell -> the props standing in it
-    this.swing = -1;            // seconds into the current gesture, -1 when idle
+    this.firing = false;        // the trigger is held; a tool with a cadence keeps going
+    this.firedAt = 0;           // ... and when it last went off
+    this.swing = -1;            // seconds into the right hand's gesture, -1 when idle
+    this.offSwing = -1;         // ... and the left hand's
     this.pace = 0;              // how hard the walker is moving, for the tool's sway
     this.p = { x: 0, z: 0, feet: 0, vy: 0, yaw: 0, pitch: 0, ground: true, fly: false };
     this.handsOff = false; // H: the view with nothing held in it
@@ -267,9 +330,9 @@ export class Walker {
    * Starts walking, at full health: in front of `box` when the map has somewhere in
    * mind - a building just selected - and where the walker left off when it has not,
    * or on the south road of `block` if they have never been out. `bounds` sizes the
-   * planet.
+   * planet, and `grab` is false when something else wants the pointer first.
    */
-  enter(box, block, bounds) {
+  enter(box, block, bounds, grab = true) {
     const diag = Math.hypot(bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ);
     this.radius = clamp(diag * 0.6, 15, Math.min(600, this.maxRadius()));
     this.active = true;
@@ -279,7 +342,7 @@ export class Walker {
     this.bugs?.show(true);
     this.showTool();
     this.setFog();
-    this.p.fly = !!this.tool.flies;
+    this.p.fly = this.flying();
     if (box) {
       this.teleport(box);
       this.p.vy = 0;
@@ -298,6 +361,16 @@ export class Walker {
     this.bitAt = 0;
     this.burst = 0;
     this.fell = null;
+    this.dying = null;
+    this.sinking = false;
+    this.tanks.clear();
+    this.dry.clear();
+    this.wind.reset();
+    this.blown = false;
+    this.rideLift = 0;
+    this.ridePhase = 0;
+    this.hud.classList.remove('dead');
+    this.hud.style.removeProperty('--dead');
     // The tracker starts where it belongs rather than easing in from wherever it was
     // left the last time walk mode was entered, possibly half a map away.
     this.radarRange = this.radarZoom = undefined;
@@ -306,8 +379,9 @@ export class Walker {
     this.drawHud();
     this.loop();
     // Like a first-person shooter: the pointer is captured at the reticle at once (V
-    // and the Walk button are user gestures, which browsers require for this).
-    this.lockPointer();
+    // and the Walk button are user gestures, which browsers require for this). A first
+    // walk is being explained instead, and asks for the pointer when it is done.
+    if (grab) this.lockPointer();
   }
 
   exit() {
@@ -316,9 +390,11 @@ export class Walker {
     this.home = this.stance();
     this.active = false;
     this.keys.clear();
+    this.firing = false;
     for (const dart of this.darts) this.scene.scene.remove(dart.mesh);
     this.darts = [];
     this.cutLine();
+    this.endShow(false);
     this.scene.scene.remove(this.beacons);
     this.bugs?.show(false);
     this.showTarget(null);
@@ -328,6 +404,9 @@ export class Walker {
     this.hud.hidden = true;
     this.hud.classList.remove('compact');
     this.hud.classList.remove('hit');
+    this.hud.classList.remove('dead');
+    this.hud.style.removeProperty('--dead');
+    this.dying = null;
     this.hud.querySelector('.w-flash').textContent = '';
     clearTimeout(this.flashTimer);
     this.setScoped(false);
@@ -402,15 +481,17 @@ export class Walker {
     this.handsOff = off;
     if (!this.active) return;
     if (off) this.hideTool(); else this.showTool();
-    this.flash(off ? 'Empty-handed - H takes the tool out again' : `${this.tool.label} back in hand`);
+    const back = this.secondary ? `${this.primary.label} and ${this.secondary.label.toLowerCase()}` : this.primary.label;
+    this.flash(off ? 'Empty-handed - H takes them out again' : `${back} back in hand`);
     this.drawHud();
   }
 
   showTool() {
     this.hideTool();
     // The reticle is the tool's, not the tool's name: several tools share one, and
-    // style.css keys the crosshair off it.
-    this.hud.dataset.tool = this.tool.reticle || 'scope';
+    // style.css keys the crosshair off it. It is the primary's, because the crosshair
+    // is what the hunt is aimed with; what the off hand carries is not aimed at all.
+    this.hud.dataset.tool = this.primary.reticle || 'scope';
     if (this.handsOff) return;
     // A camera draws its children only when it is itself part of a scene, and this
     // one belongs to the pass that draws the tool over the world (MapScene.renderNow).
@@ -419,79 +500,128 @@ export class Walker {
     // map is drawn with unlit materials, so they reach nothing but what is held.
     this.lights ||= viewLights();
     this.scene.walkCamera.add(this.lights);
-    this.viewmodel = this.tool.viewmodel();
-    this.viewmodel.userData.restY = this.viewmodel.position.y;
     // Held near the lens rather than out in the street. A viewmodel is drawn in the
     // same pass as the map, so at arm's length it is half a metre off the ground and
     // the pavement is drawn straight through it; brought in and scaled down by the
     // same amount, the picture is identical and nothing can reach it.
     this.held = new THREE.Group();
     this.held.scale.setScalar(VIEW_NEAR);
-    this.held.add(this.viewmodel);
+    this.viewmodel = this.take(this.primary);
+    if (this.secondary) this.offhand = this.take(this.secondary, true);
     this.scene.walkCamera.add(this.held);
+  }
+
+  /**
+   * Builds a tool's viewmodel and hangs it in front of the camera. `left` puts it in
+   * the other hand, which is the same viewmodel turned inside out: one negative scale
+   * across the frame mirrors the placement, the grip and the hand all at once, so
+   * nothing in tools.js has to know which hand it is in. A mirror reverses the winding
+   * of every triangle in it, so what it holds is drawn with both faces - which is also
+   * what keeps the lighting on the mirrored hand the right way round.
+   */
+  take(tool, left = false) {
+    const vm = tool.viewmodel();
+    vm.userData.restY = vm.position.y;
+    if (!left) {
+      this.held.add(vm);
+      return vm;
+    }
+    const hand = new THREE.Group();
+    hand.scale.x = -1;
+    hand.add(vm);
+    vm.traverse(o => { if (o.material) o.material.side = THREE.DoubleSide; });
+    this.held.add(hand);
+    return vm;
   }
 
   hideTool() {
     if (this.lights) this.scene.walkCamera.remove(this.lights);
-    if (this.held) {
-      this.scene.walkCamera.remove(this.held);
-      this.held = null;
-      this.viewmodel = null;
-    }
+    if (this.held) this.scene.walkCamera.remove(this.held);
+    this.held = null;
+    this.viewmodel = null;
+    this.offhand = null;
     this.scene.viewScene.remove(this.scene.walkCamera);
   }
 
-  /** Take another tool out: same hunt, different gesture. */
+  /**
+   * Take another tool out. Which hand it goes in is the tool's own business: a primary
+   * one replaces what the hunt is being done with, and a secondary one is picked up in
+   * the off hand - or put down again, if it is already the one being carried, which is
+   * how you come down out of the air or step off the water on purpose.
+   */
   setTool(id) {
-    this.tool = toolFor(id);
-    this.swing = -1;
+    // Reaching for another tool is done with the photograph: it comes down, and what
+    // was in hand before it went up is not put back, because the walker has just said
+    // what they want in their hand.
+    if (this.showing) this.endShow(false);
+    const tool = toolFor(id);
+    if (tool.kind === 'secondary') {
+      this.secondary = this.secondary === tool ? null : tool;
+      this.offSwing = -1;
+      // Taking one out is what brings it back after it has run dry - with whatever has
+      // filled in the meantime, which may be little enough to run out again at once.
+      if (this.secondary) this.dry.delete(tool.id);
+    } else {
+      this.primary = tool;
+      this.swing = -1;
+    }
     // Flight is a thing you are carrying, not a mode you are in: putting the jet
-    // backpack away is how you come down.
-    this.p.fly = !!this.tool.flies;
+    // backpack away is how you come down, and so is running its tank dry.
+    this.p.fly = this.flying();
     if (!this.p.fly) this.burst = 0;
     if (this.active) {
       this.setFog();
       this.showTool();
       this.drawSlots();
       this.drawHud();
-      this.flash(this.tool.hint);
+      this.flash(tool.kind === 'secondary' && this.secondary !== tool
+        ? `${tool.label} stowed`
+        : tool.hint);
       this.aim = { i: -1, point: null, bug: null, far: false }; // it may want another target
     }
-    this.hooks.onTool?.(this.tool.id);
+    this.hooks.onTool?.(this.primary.id);
   }
 
   /**
-   * The row of tools along the bottom, built once: a slot per tool, in slot order,
-   * carrying the number that picks it. Only the one in hand is named, so the row
-   * stays a row of shapes rather than a sentence.
+   * The row of tools along the bottom, built once: a slot per tool, carrying the
+   * number that picks it. Only the one in hand is named, so the row stays a row of
+   * shapes rather than a sentence.
    *
-   * The two kinds are kept apart, with a gap and a mark between them: what a primary
-   * tool does to the map and what a secondary one does to you are different enough
-   * that reaching for the wrong one should look like a mistake before it is made.
+   * It is laid out as the walker is: what the left hand carries on the left, what the
+   * right hand hunts with on the right, each group behind a small hand of its own. A
+   * word would have said which is which as well, and worse - the row is read at a
+   * glance in the middle of something else, and a hand is the one thing nobody has to
+   * stop and parse.
    */
   drawSlots() {
     const row = this.hud.querySelector('.w-slots');
-    if (row.querySelectorAll('.w-slot').length !== TOOL_IDS.length) {
+    const order = [...SECONDARY_IDS, ...PRIMARY_IDS];
+    if (row.querySelectorAll('.w-slot').length !== order.length) {
       const slots = [];
-      TOOL_IDS.forEach((id, n) => {
+      order.forEach((id, n) => {
         const tool = toolFor(id);
-        if (n && toolFor(TOOL_IDS[n - 1]).kind !== tool.kind) {
-          const gap = document.createElement('span');
-          gap.className = 'w-slot-gap';
-          gap.textContent = 'carried';
-          gap.setAttribute('aria-hidden', 'true'); // a listbox's children are its options
-          slots.push(gap);
+        const hand = tool.kind === 'secondary' ? 'left' : 'right';
+        if (!n || toolFor(order[n - 1]).kind !== tool.kind) {
+          const mark = document.createElement('span');
+          mark.className = 'w-hand';
+          mark.dataset.hand = hand;
+          mark.setAttribute('aria-hidden', 'true'); // a listbox's children are its options
+          mark.title = hand === 'left'
+            ? 'Your left hand: what carries you'
+            : 'Your right hand: what the hunt is done with';
+          slots.push(mark);
         }
         const el = document.createElement('div');
         el.className = 'w-slot';
         el.dataset.tool = id;
         el.dataset.kind = tool.kind;
         el.setAttribute('role', 'option');
-        el.title = `${tool.label} - ${tool.hint}`;
+        el.title = `${tool.label} (${hand} hand) - ${tool.hint}`;
         el.append(
           // Ten slots, so the tenth is the 0 key: what a shooter does, and what the
-          // keyboard leaves room for.
-          Object.assign(document.createElement('kbd'), { textContent: String((n + 1) % 10) }),
+          // keyboard leaves room for. The key is the tool's own, not its place in the
+          // row, so laying the row out by hand does not renumber anything.
+          Object.assign(document.createElement('kbd'), { textContent: String(tool.slot % 10) }),
           document.createElement('i'),
           Object.assign(document.createElement('span'), { className: 'w-slot-name', textContent: tool.label }),
         );
@@ -499,14 +629,85 @@ export class Walker {
       });
       row.replaceChildren(...slots);
     }
+    // Two of them are in hand at once now, so two of them are lit.
     for (const el of row.querySelectorAll('.w-slot')) {
-      el.setAttribute('aria-selected', String(el.dataset.tool === this.tool.id));
+      const out = el.dataset.tool === this.primary.id || el.dataset.tool === this.secondary?.id;
+      el.setAttribute('aria-selected', String(out));
     }
   }
 
+  // T walks the hunt's row only: what the off hand carries is picked by its own key,
+  // because cycling into and out of flight by accident is not a thing anyone wants.
   nextTool() {
-    const ids = TOOL_IDS;
-    this.setTool(ids[(ids.indexOf(this.tool.id) + 1) % ids.length]);
+    this.setTool(PRIMARY_IDS[(PRIMARY_IDS.indexOf(this.primary.id) + 1) % PRIMARY_IDS.length]);
+  }
+
+  // ------------------------------------------------------------------ photographs
+
+  /**
+   * Puts a photograph up on the back of the camera and holds it in front of the
+   * walker to look at. The camera is taken out to do it and whatever was in that hand
+   * goes back into it afterwards, so looking at a picture costs the walker nothing
+   * except the few seconds they spend on it - which is what the map's own panel does
+   * with the details, and for the same reason.
+   *
+   * Returns whether it took: there is nothing to put a picture on outside walk mode.
+   */
+  showPhoto(photo) {
+    if (!this.active || !photo?.url) return false;
+    // Looking at a second picture without having put the first one down keeps the tool
+    // the first one displaced, rather than settling for the camera it left in the hand.
+    const was = this.showing ? this.showing.was
+      : this.primary.id === 'camera' ? null : this.primary.id;
+    this.endShow(false);
+    if (this.primary.id !== 'camera') this.setTool('camera');
+    // The image arrives after the frame that asked for it, and how it is fitted to the
+    // screen depends on its shape - so it is hung once now, for the texture, and again
+    // when the picture itself is there to be measured.
+    const texture = new THREE.TextureLoader().load(photo.url, () => this.hangPhoto());
+    this.showing = { t: 0, texture, was };
+    this.hangPhoto();
+    this.setFrozen(false);
+    this.flash(`Photograph ${photo.n}${photo.where ? ` - ${photo.where}` : ''} - click to put it away`);
+    this.drawHud();
+    return true;
+  }
+
+  /** Hangs whatever is being looked at on the camera in hand, if that is what is in it. */
+  hangPhoto() {
+    if (this.showing && this.viewmodel) this.primary.shows?.(this.viewmodel, this.showing.texture);
+  }
+
+  /** One frame of looking at one: it comes up, it is held, and it goes back down. */
+  study(dt) {
+    this.showing.t += dt;
+    if (this.showing.t >= SHOWING) this.endShow();
+  }
+
+  /**
+   * How far up at the face the camera is: in over LIFTING, held there, and back down.
+   * Eased at both ends, because the last stretch of the way in is the one that fills
+   * the view, and a straight ramp arrives at it like a slammed door.
+   */
+  raised() {
+    const t = this.showing?.t ?? 0;
+    const k = Math.max(0, Math.min(1, t / LIFTING, (SHOWING - t) / LIFTING));
+    return k * k * (3 - 2 * k);
+  }
+
+  /**
+   * Takes the photograph off the camera. `restore` puts back the tool that was in hand
+   * before it went up, which is right when the picture's time is up and wrong when the
+   * walker has just asked for a different tool.
+   */
+  endShow(restore = true) {
+    const show = this.showing;
+    if (!show) return;
+    this.showing = null;
+    if (this.viewmodel) this.primary.shows?.(this.viewmodel, null);
+    show.texture.dispose();
+    if (restore && show.was && this.active) this.setTool(show.was);
+    else this.drawHud();
   }
 
   /**
@@ -526,29 +727,37 @@ export class Walker {
     return lens;
   }
 
-  // The tool breathes while it waits and swings while it is used; the swing is what
+  // Each tool breathes while it waits and swings while it is used; the swing is what
   // makes the gesture legible, so it runs to its end even if the shot lands sooner.
+  // The two hands keep their own gestures, so netting a bug while the jet is running
+  // is one hand doing each.
   poseTool(dt, now) {
-    const vm = this.viewmodel;
-    if (!vm) return;
     // A tool with something live on it gets its frame here. Every other frame is
     // enough for a screen this size, and halves what it costs.
-    if (this.tool.live && ((this.frames = (this.frames || 0) + 1) & 1)) {
-      this.tool.live(vm, this.scene, this.lens());
-    }
-    if (this.swing >= 0) {
-      this.swing += dt;
-      const u = this.swing / SWING;
-      if (u >= 1) {
-        this.swing = -1;
-        this.tool.pose(vm, 1, now); // land the gesture on its own end state
-        restTool(vm);
-      } else {
-        this.tool.pose(vm, u, now);
-        return;
+    const live = !((this.frames = (this.frames || 0) + 1) & 1);
+    this.swing = this.poseOne(this.viewmodel, this.primary, this.swing, dt, now, live);
+    this.offSwing = this.poseOne(this.offhand, this.secondary, this.offSwing, dt, now, live);
+    // A photograph being looked at is laid over the right hand afterwards: whatever
+    // that hand was doing, it is now holding the camera up at the face.
+    if (this.showing && this.viewmodel) studyTool(this.viewmodel, this.raised());
+  }
+
+  /** One hand's frame; returns how far into its gesture it now is, -1 once it is over. */
+  poseOne(vm, tool, swing, dt, now, live) {
+    if (!vm || !tool) return -1;
+    if (live && tool.live) tool.live(vm, this.scene, this.lens());
+    if (swing >= 0) {
+      swing += dt;
+      const u = swing / SWING;
+      if (u < 1) {
+        tool.pose(vm, u, now);
+        return swing;
       }
+      tool.pose(vm, 1, now); // land the gesture on its own end state
+      restTool(vm);
     }
-    idleTool(vm, now, this.pace);
+    idleTool(vm, now, this.pace, dt);
+    return -1;
   }
 
   /**
@@ -559,8 +768,10 @@ export class Walker {
   setFrozen(on) {
     if (this.frozen === on || (!this.active && on)) return;
     this.frozen = on;
+    if (!on) this.hooks.onResume?.(); // whatever was being read is done with
     if (on) {
       this.keys.clear(); // a key held when the panel opened must not walk on
+      this.firing = false;
       this.setScoped(false);
       // The aim is not recomputed while frozen, so whatever the crosshair was on
       // would keep its hover card - on top of the panel that is being read.
@@ -574,7 +785,12 @@ export class Walker {
   // Locking is asynchronous: a lock asked for just before leaving would be granted
   // afterwards and hide the cursor over the map, with nothing listening to it.
   lockPointer() {
-    if (!this.active) return;
+    // Not while anything on screen wants the mouse. The introduction, the help, the
+    // backpack, the photographs and the export menu all do, and a reticle that takes
+    // it back underneath one of them leaves a panel nobody can click and a street that
+    // answers every click instead. The map owns that list, because the map is what
+    // opens them (hooks.busy).
+    if (!this.active || this.hooks.busy?.()) return;
     this.setFrozen(false); // taking the pointer back is how you walk on
     const done = this.scene.renderer.domElement.requestPointerLock?.();
     // Older browsers return nothing and report the refusal on the document instead,
@@ -656,14 +872,20 @@ export class Walker {
       this.keys.add(e.code);
       if (BIGGER.has(e.key)) this.setRadius(this.radius * 1.25);
       else if (SMALLER.has(e.key)) this.setRadius(this.radius / 1.25);
-      // 1..9 pick a tool by its slot, the way a shooter does; T still walks the row
-      // for anyone who would rather not look down at it.
+      // 1..9 and 0 pick a tool by its slot, the way a shooter does; T still walks the
+      // primary row for anyone who would rather not look down at it. A secondary slot
+      // pressed again puts down what is being carried, so it is never a no-op.
       if (e.code.startsWith('Digit')) {
         const id = TOOL_IDS[slotOf(e.code)];
-        if (id && id !== this.tool.id) this.setTool(id);
+        if (id && id !== this.primary.id) this.setTool(id);
         return;
       }
       switch (e.code) {
+        // Two triggers for the off hand, because one hand's tool wants a button of its
+        // own and the mouse's spare one is already the scope. C is free except while
+        // flying, where it is how you go down.
+        case 'KeyF': this.useSecondary(); break;
+        case 'KeyC': if (!this.p.fly) this.useSecondary(); break;
         case 'KeyT': this.nextTool(); break;
         case 'KeyH': this.setHandsOff(!this.handsOff); break;
         case 'Escape':
@@ -678,7 +900,7 @@ export class Walker {
       }
     });
     window.addEventListener('keyup', e => this.keys.delete(e.code));
-    window.addEventListener('blur', () => this.keys.clear());
+    window.addEventListener('blur', () => { this.keys.clear(); this.firing = false; });
 
     // The pointer is locked at the reticle while walking (lockPointer): the mouse
     // looks around, the left button fires, holding the right one looks through the
@@ -690,17 +912,32 @@ export class Walker {
     // while scoped would never arrive.
     let fresh = false; // the first movement after locking can carry a bogus jump
     canvas.addEventListener('mousedown', e => {
-      if (!this.active) return;
+      // Frozen means something else has the pointer - a panel, the backpack, a menu.
+      // The one thing a click on the map then means is "walk on", which mouseup below
+      // answers; it must not also scope, fire, or take hold of the trigger.
+      if (!this.active || this.dying !== null || this.frozen) return;
       if (e.button === 2) {
         this.setScoped(true);
         return;
       }
+      // The middle button is the off hand, the way F is: a second tool wants a second
+      // trigger, and the right one is already the scope.
+      if (e.button === 1 && document.pointerLockElement === canvas) {
+        e.preventDefault();
+        this.useSecondary();
+        return;
+      }
       if (e.button !== 0) return;
-      if (document.pointerLockElement === canvas) this.fire();
-      else drag = { x: e.clientX, y: e.clientY, moved: false };
+      if (document.pointerLockElement === canvas) {
+        // Held down, a tool with a cadence keeps going (loop). One shot leaves now
+        // either way, so a tap is a tap whatever the tool is.
+        this.firing = true;
+        this.fire();
+      } else drag = { x: e.clientX, y: e.clientY, moved: false };
     });
     window.addEventListener('mouseup', e => {
       if (e.button === 2) this.setScoped(false);
+      if (e.button === 0) this.firing = false;
       if (this.active && drag && !drag.moved && e.button === 0) {
         // A click that went nowhere: normally that asks for the mouse. Where the
         // mouse is not given, it is the tool instead - or the way back out of
@@ -775,20 +1012,65 @@ export class Walker {
       const now = performance.now();
       const dt = Math.min(0.05, (now - this.last) / 1000);
       this.last = now;
-      this.step(dt);
+      // Dying is watched rather than played: the walker stops steering and the red
+      // deepens instead, until it takes them back to the map.
+      if (this.dying !== null) this.fade(dt);
+      else this.step(dt);
+      if (this.showing) this.study(dt);
+      this.autoFire(now);
       if (this.p.fly) this.setFog();
       this.zoom(dt);
       this.updateDarts(dt);
-      this.bugs?.update(dt, now);
+      // The walker's eye, for the catches that draw a bug in towards them - and the
+      // hoop of the net, for the one catch that carries a bug somewhere else.
+      const hoop = this.primary.catchAs === 'net' ? this.muzzle(this.viewmodel, HOOP_AT) : null;
+      this.bugs?.update(dt, now, this.eye(EYE_AT), hoop);
       this.drawRadar(now, dt);
       this.health.draw(now); // the wash a hit leaves has to come off by itself
+      this.drawFuel();
       this.poseTool(dt, now);
-      this.scene.setWalker(this.p.x, this.p.feet, this.p.z, EYE, this.p.yaw, this.p.pitch);
+      this.scene.setWalker(this.p.x, this.p.feet, this.p.z, EYE + this.ride(dt), this.p.yaw, this.p.pitch);
       if (!this.frozen) this.updateAim();
       this.scene.renderNow();
       this.hooks.onRender();
       this.loop();
     });
+  }
+
+  /**
+   * A held trigger, for the tools that have a cadence: the nail gun and the
+   * extinguisher keep going while the button is down, which is what separates a hose
+   * from the single aimed shot everything else takes. fire() lands the first one, so
+   * this only ever adds the ones after it.
+   */
+  autoFire(now) {
+    const every = this.primary.auto;
+    if (!every || !this.firing || this.frozen || this.dying !== null) return;
+    if (now - this.firedAt < every * 1000) return;
+    this.fire(); // which is what sets the clock for the next one
+  }
+
+  /**
+   * How far the eye is riding above where it would otherwise be. A jet holds the walker
+   * up on something that breathes and water swells under a pair of floats, so the view
+   * moves even when the walker's feet do not - and does not move at all when those feet
+   * are on the ground, whatever they are doing.
+   *
+   * It is added to the eye height and nowhere else: what can be reached, what the
+   * crosshair is on and where a shot leaves from are all measured from the feet, so
+   * none of them wander with it.
+   *
+   * How far it rides is eased rather than switched, and the swell is advanced by this
+   * frame's turn rather than read off the clock. Switched, stepping ashore would end
+   * the swell wherever it had got to and drop the view by that much in one frame; read
+   * off the clock, a change of rate would multiply the whole of the elapsed time and
+   * jump the phase by however many radians that came to.
+   */
+  ride(dt) {
+    const how = this.p.fly ? RIDE.fly : this.onWater() ? RIDE.float : null;
+    this.rideLift += ((how ? how.lift : 0) - this.rideLift) * Math.min(1, dt * 4);
+    this.ridePhase = (this.ridePhase + dt * (how?.rate ?? RIDE.float.rate) * Math.PI) % (2 * Math.PI);
+    return Math.sin(this.ridePhase) * this.rideLift;
   }
 
   // Eases the field of view towards the scope's or the normal one.
@@ -806,13 +1088,20 @@ export class Walker {
     // nothing else moves them until it lets go. Jump cuts it.
     if (this.pull) {
       if (k.has('Space')) this.cutLine('Line cut');
-      else return this.reel(dt);
+      else {
+        this.sinking = false; // a line out of the water is a way out of it
+        return this.reel(dt);
+      }
     }
     const turn = (k.has('ArrowLeft') ? 1 : 0) - (k.has('ArrowRight') ? 1 : 0);
     p.yaw += turn * TURN * dt;
     const fwd = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0);
     const side = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
-    const run = k.has('ShiftLeft') || k.has('ShiftRight');
+    // Sprinting is the legs' work, so it is the legs that pay for it; a jet carries
+    // the walker on its own tank and asks nothing of them.
+    const wants = k.has('ShiftLeft') || k.has('ShiftRight');
+    const run = wants && (p.fly || this.wind.ready);
+    this.wind.breathe(dt, run && !p.fly && (fwd !== 0 || side !== 0));
     // A burst on the jet backpack runs down whether or not it is being used to go
     // anywhere, so opening the throttle is a decision rather than a switch.
     this.burst = Math.max(0, this.burst - dt);
@@ -828,18 +1117,33 @@ export class Walker {
     const len = Math.hypot(mx, my, mz);
     if (len > 1) { mx /= len; my /= len; mz /= len; }
 
-    // Axis by axis, so the walker slides along walls.
-    // On foot, the shore is the end of the world: water stops the walker (unless they
-    // are already in it, say after landing there) - or it does not, because the water
-    // skimmers are what is in their hands, and then the bay is a street.
-    const climb = p.feet + (p.ground || p.fly ? STEP : 0.05);
-    const wet = !p.fly && this.height(p.x, p.z) <= WATER;
-    const afloat = !p.fly && !!this.tool.floats;
-    const ok = h => h <= climb && (p.fly || wet || afloat || h > WATER);
+    // Axis by axis, so the walker slides along walls. There is one question, and it is
+    // the same one everywhere: can they get up onto that? The bay is not a wall around
+    // the map, it is ground half a unit lower than the shore - so it can be walked
+    // into, waded about in and, with a shore to hand, climbed out of, exactly as a
+    // sunken yard could be. What it does to somebody standing in it is the water's
+    // business (drowns) rather than the movement's.
+    const wet = !p.fly && this.height(p.x, p.z, p.feet) <= WATER;
+    const afloat = !p.fly && this.floating();
+    // ... and getting out is the one thing that needs help: the shore stands further
+    // above the surface than a step, so anybody down there - on a pair of floats or in
+    // it - carries an allowance to climb it. It is the water that gives this and not
+    // the skimmers, so wearing them on a street is not a reason to climb higher walls.
+    const inWater = p.ground && (wet || this.onWater());
+    const climb = p.feet + (p.ground || p.fly ? STEP : 0.05) + (inWater ? WADE : 0);
+    // Getting in has one rule of its own, and it is about the drop rather than the
+    // water: a shore is a curb to step off and a bridge is not. Off a deck, and off
+    // anything else standing well above the surface, the bay has to be jumped into -
+    // walking off an edge into a drop is not a thing anybody means to do, and the
+    // railings are there to be gone over rather than through. In the air, in it
+    // already, or shod for it, none of this arises.
+    const step = !this.onDeck();
+    const ok = h => h <= climb
+      && (h > WATER || p.fly || !p.ground || wet || afloat || (step && p.feet - h <= WADE_IN));
     const nx = p.x + mx * speed * dt;
-    if (ok(this.height(nx, p.z))) p.x = nx;
+    if (ok(this.height(nx, p.z, p.feet))) p.x = nx;
     const nz = p.z + mz * speed * dt;
-    if (ok(this.height(p.x, nz))) p.z = nz;
+    if (ok(this.height(p.x, nz, p.feet))) p.z = nz;
     // How hard the walker is moving, eased: the tool in their hands sways with it.
     const effort = len > 0 ? (p.fly ? 0.3 : run ? 1.5 : 1) : 0;
     this.pace += (effort - this.pace) * Math.min(1, dt * 7);
@@ -860,16 +1164,28 @@ export class Walker {
 
     // What the walker is standing on - or the surface of the water, while the
     // skimmers are out and there is nothing under it.
-    const floor = this.height(p.x, p.z);
+    const floor = this.height(p.x, p.z, p.feet);
+    // Running dry takes effect on the next frame rather than this one, so the walker
+    // reads the flash before the ground arrives.
+    // Only what the tool is actually doing costs anything: the jet burns while it is
+    // holding the walker off the ground, not while they stand on a roof wearing it, and
+    // the skimmers only while the water is the only thing under them.
+    this.burn(dt, (p.fly && p.feet > floor + 0.02) || (afloat && floor <= WATER));
+    p.fly = this.flying();
     if (p.fly) {
       const ceiling = (this.limits?.maxY ?? 0) + SKY_MARGIN;
       p.feet = Math.max(floor, Math.min(ceiling, p.feet + my * speed * dt));
       p.vy = 0;
       p.ground = p.feet <= floor;
       this.fell = null;
+      this.sinking = false; // nothing in the air is drowning
       return;
     }
-    if (k.has('Space') && p.ground) p.vy = JUMP;
+    if (k.has('Space') && p.ground && this.wind.spend(Wind.jumpCost)) p.vy = JUMP;
+    // Said once, when it happens: a bar at nought explains why running and jumping
+    // stopped working, but only to somebody already looking at it.
+    if (this.wind.spent && !this.blown) this.flash('Out of breath');
+    this.blown = this.wind.spent;
     p.vy -= GRAVITY * dt;
     p.feet += p.vy * dt;
     // Where the fall started, so how far it was can be measured when it stops. A jump
@@ -883,6 +1199,117 @@ export class Walker {
       p.vy = 0;
     }
     this.bites();
+    this.drowns(dt, floor, afloat);
+  }
+
+  /**
+   * The water, for a walker with nothing holding them up. It takes a couple of seconds,
+   * which is long enough to wade ashore from the shallows and nowhere near long enough
+   * to cross the bay - so stowing the skimmers out over the water is the end of it,
+   * which is the whole reason to look where you are going before you do.
+   */
+  drowns(dt, floor, afloat) {
+    const p = this.p;
+    if (p.fly || afloat || floor > WATER || p.feet > WATER + 0.02) {
+      this.sinking = false;
+      return;
+    }
+    if (!this.sinking) {
+      this.sinking = true;
+      this.flash('In the water - get to a shore');
+    }
+    if (this.health.hurt(DROWN * dt)) this.die('The water');
+  }
+
+  /** Whether what is in the off hand is doing its work: it has to have something left
+   * in it, and not have run out since it was taken out. */
+  working(what) {
+    const tool = this.secondary;
+    return !!tool?.[what] && !this.dry.has(tool.id) && this.tank(tool) > 0;
+  }
+
+  /** Whether the thing in the off hand is flying the walker right now. */
+  flying() { return this.working('flies'); }
+
+  /** ... and whether it is holding them up on the water. */
+  floating() { return this.working('floats'); }
+
+  /**
+   * Whether what the walker is standing on is a bridge deck. A deck is the one floor on
+   * the map with open water beside it at about its own height, so it is the one place
+   * where "step down into the bay" has to mean something other than what it means on a
+   * shore.
+   */
+  onDeck() {
+    const p = this.p;
+    if (!p.ground || p.fly) return false;
+    for (const at of this.spans.get(cellKey(p.x, p.z)) || NO_CELL) {
+      const deck = at(p.x, p.z);
+      if (Number.isFinite(deck) && deck > WATER && Math.abs(deck - p.feet) <= 0.03) return true;
+    }
+    return false;
+  }
+
+  /** Whether the walker is standing on the water itself, rather than merely shod for it. */
+  onWater() {
+    const p = this.p;
+    return !p.fly && p.ground && p.feet <= WATER + 0.02 && this.floating();
+  }
+
+  /**
+   * The gauge for whatever is being carried, beside the health bar. It is hidden when
+   * the off hand is empty or holding something that never runs out, so the row says
+   * nothing rather than saying "full" about a grapple line.
+   */
+  drawFuel() {
+    const box = this.fuelBox ||= this.hud.querySelector('.w-fuel');
+    if (!box) return;
+    const tool = this.secondary?.fuel ? this.secondary : null;
+    box.hidden = !tool;
+    if (!tool) return;
+    const share = this.tank(tool);
+    const shown = Math.round(share * 100);
+    const spent = this.dry.has(tool.id);
+    if (shown === this.fuelShown && spent === this.fuelSpent) return;
+    this.fuelShown = shown;
+    this.fuelSpent = spent;
+    (this.fuelFill ||= box.querySelector('.w-fuel-fill')).style.width = `${shown}%`;
+    box.dataset.state = spent ? 'empty' : share > 0.25 ? 'well' : share > 0 ? 'low' : 'empty';
+    box.title = spent
+      ? `${tool.label} has run out: it is ${shown}% filled, and works again once you put it away and take it out`
+      : `${tool.label}: ${shown}% left, and it fills again while it is not in use`;
+  }
+
+  /** How full a carried tool's tank is, as a share of it; 1 for one with no tank. */
+  tank(tool) {
+    if (!tool?.fuel) return 1;
+    const at = this.tanks.get(tool.id);
+    return at === undefined ? 1 : at;
+  }
+
+  /**
+   * The tanks, over one frame. Whatever is in the off hand and doing its work burns;
+   * everything else fills. A tool that runs dry stops working where it stands, which
+   * for the jet is a fall and for the skimmers is the water - so it is said out loud
+   * before it happens rather than after.
+   */
+  burn(dt, using) {
+    for (const id of SECONDARY_IDS) {
+      const tool = toolFor(id);
+      if (!tool.fuel) continue;
+      const was = this.tank(tool);
+      const spending = tool === this.secondary && using;
+      const now = clamp(was + (spending ? -dt / tool.fuel.full : dt / tool.fuel.fills), 0, 1);
+      this.tanks.set(id, now);
+      if (!spending) continue;
+      if (now === 0 && was > 0) {
+        // Dead until it is taken out again, rather than coming back the moment a drop
+        // has trickled in: an empty jet that keeps catching is worse than one that has
+        // plainly stopped.
+        this.dry.add(id);
+        this.flash(`${tool.label} out - put it away and take it out again once it has filled`);
+      } else if (now <= 0.25 && was > 0.25) this.flash(`${tool.label} running low`);
+    }
   }
 
   /** The end of a fall: what it was worth, and whether it was the end of the walk. */
@@ -915,13 +1342,30 @@ export class Walker {
   }
 
   /**
-   * The walk is over. It ends the way leaving on foot does - back to the map, standing
-   * where you fell - because the backpack is what a session is for and nothing in it
-   * is lost. Coming back in is coming back at full health (enter).
+   * The walk is over. The screen goes red and holds for a moment before the map comes
+   * back, because a cut straight to the map reads as a bug rather than as dying - and
+   * the walker stops answering to anything in the meantime, so the last second is
+   * watched rather than played.
+   *
+   * It ends the way leaving on foot does, back to the map standing where you fell,
+   * because the backpack is what a session is for and nothing in it is lost. Coming
+   * back in is coming back at full health (enter).
    */
   die(cause) {
+    if (this.dying !== null) return;
+    this.dying = 0;
+    this.keys.clear();
+    this.firing = false;
+    this.setScoped(false);
+    this.hud.classList.add('dead');
     this.flash(`${cause} finished you. Back to the map; walk in again to start over`);
-    this.exit();
+  }
+
+  /** The red, deepening; at the end of it the walker is back on the map. */
+  fade(dt) {
+    this.dying += dt;
+    this.hud.style.setProperty('--dead', Math.min(1, this.dying / (DYING * 0.4)).toFixed(3));
+    if (this.dying >= DYING) this.exit();
   }
 
   /** The block the walker stands on, to keep them by it across a relayout (reanchor). */
@@ -1046,8 +1490,13 @@ export class Walker {
   /**
    * Top of the solid column under a body at (x, z): the highest box, ramp or bridge
    * deck it overlaps.
+   *
+   * `from` is where the body already is, and a bridge deck more than a step above that
+   * is a bridge the body is under rather than one it is on. Without it, walking the
+   * water on skimmers put the walker on top of every deck they passed beneath, which
+   * is the one place on the map where there is somewhere to be underneath.
    */
-  height(x, z) {
+  height(x, z, from = Infinity) {
     let top = WATER;
     for (let i = 0; i < PROBES.length; i += 2) {
       const px = x + PROBES[i], pz = z + PROBES[i + 1];
@@ -1064,7 +1513,10 @@ export class Walker {
     // could be walked out through the railing and left hanging over the water. On
     // the shores the deck overlaps there is land underneath, so stepping off at
     // either end is as free as it ever was.
-    for (const at of this.spans.get(cellKey(x, z)) || NO_CELL) top = Math.max(top, at(x, z));
+    for (const at of this.spans.get(cellKey(x, z)) || NO_CELL) {
+      const deck = at(x, z);
+      if (deck <= from + STEP) top = Math.max(top, deck);
+    }
     return top;
   }
 
@@ -1093,6 +1545,11 @@ export class Walker {
     return this.aim.i >= 0 ? this.boxes[this.aim.i] : null;
   }
 
+  /** Where the walker's eye is, into `out`, which saves one vector a frame. */
+  eye(out) {
+    return out.set(this.p.x, this.p.feet + EYE, this.p.z);
+  }
+
   /** Whether a box is the shore or the block the walker stands in. */
   underfoot(b) {
     const p = this.p;
@@ -1105,10 +1562,10 @@ export class Walker {
     const cam = this.scene.walkCamera;
     const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
     const v = new THREE.Vector3();
-    const tool = this.tool;
+    const tool = this.primary;
     // Both answers are the same at every step of the march, so they are asked once.
     const catches = hits(tool, 'bugs') && this.bugs ? this.bugs : null;
-    const tags = marks(tool, 'buildings');
+    const tags = hits(tool, 'buildings');
     let hit = null, point = null, bug = null;
     for (let t = 0.2; t < REACH; t += 0.04 + t * 0.008) {
       v.copy(cam.position).addScaledVector(dir, t);
@@ -1148,22 +1605,27 @@ export class Walker {
    * same coordinates, so this needs no conversion - only an up-to-date matrix, since
    * a shot is fired between frames.
    */
-  muzzle() {
-    const m = this.viewmodel?.getObjectByName('muzzle');
+  muzzle(vm = this.viewmodel, out = new THREE.Vector3()) {
+    const m = vm?.getObjectByName('muzzle');
     if (!m) return null;
     m.updateWorldMatrix(true, false);
-    return m.getWorldPosition(new THREE.Vector3());
+    return m.getWorldPosition(out);
   }
 
-  // Using the tool on an aimed box sends whatever it throws along a shallow arc to
-  // the aimed point, and it always arrives; used on nothing it flies ahead under its
-  // own gravity and drag until it hits something or falls into the water. A tool that
-  // throws nothing reaches what it is pointed at the moment it is used - as far as it
-  // reaches, which for the camera is any distance and for the net is arm's length.
+  // Using the primary tool on an aimed box sends whatever it throws along a shallow
+  // arc to the aimed point, and it always arrives; used on nothing it flies ahead
+  // under its own gravity and drag until it hits something or falls into the water. A
+  // tool that throws nothing reaches what it is pointed at the moment it is used - as
+  // far as it reaches, which for the camera is any distance and for the net is arm's
+  // length.
   fire() {
-    if (this.frozen) return;
-    const p = this.p;
-    const tool = this.tool;
+    if (this.frozen || this.dying !== null) return;
+    // A photograph is up: the click that would have taken another one puts this one
+    // away instead, which is the obvious thing to do with a picture held in front of
+    // your face and saves waiting out the rest of the timer.
+    if (this.showing) return this.endShow();
+    const tool = this.primary;
+    this.firedAt = performance.now();
     this.swing = 0; // the hand moves whether or not anything flies
     const target = this.aimed(), bug = this.aim.bug;
     // A copy: a shot that scatters moves where it is going, and where it is going is
@@ -1171,48 +1633,142 @@ export class Walker {
     const to = bug ? bug.pos.clone() : this.aim.point?.clone() || null;
 
     if (!tool.projectile) {
-      if (tool.flash) this.screenFlash();
-      if (tool.flies) {
-        // The throttle, wide open for a moment. It is the one use of a tool that
-        // changes the walker rather than the map.
-        this.burst = BURST;
-        this.flash('Thrusters');
-      } else if (tool.floats) {
-        this.flash(this.height(p.x, p.z) <= WATER ? 'Riding the water' : 'The skimmers want water under them');
-      } else if (bug) this.bugs.catch(bug);
+      // A camera keeps every frame it is used on, because pressing the shutter is what
+      // a camera is for and anything less leaves its ordinary use doing nothing that
+      // can be seen - every one but the use that asks to read a module it has already
+      // tagged, which is the second click on a building and wants the details rather
+      // than another picture of the same wall. What was in the frame goes with the
+      // picture, so it is more than a number in a list: the bug that was under the
+      // reticle, or the building behind it.
+      // A bug in front of a tagged wall is still a bug: the rule is about the second
+      // click on a building, not about everything standing in front of one.
+      const again = !bug && !!target && this.tagged.has(target.node.id);
+      const keeping = tool.keeps && !again;
+      // The shutter goes off when a picture is taken and not when one is not.
+      if (tool.flash && keeping) this.screenFlash();
+      if (keeping) {
+        this.hooks.onPhoto?.(bug ? `${bug.f.severity}: ${bug.f.title}` : target?.node.name || '');
+      }
+      if (bug) this.bugs.catch(bug, tool.catchAs);
       else if (target) this.tag(target);
       else if (this.aim.far) this.flash(`Out of reach: the ${tool.label.toLowerCase()} has to be walked up to`);
       return;
     }
-    const start = this.muzzle() || new THREE.Vector3(p.x, p.feet + EYE - 0.08, p.z);
-    const mesh = tool.projectile();
-    mesh.position.copy(start);
-    this.scene.scene.add(mesh);
-    const shot = { mesh, t: 0, tool };
-    if (tool.line) { // a cast trails its line back to the rod
-      const geo = new THREE.BufferGeometry().setFromPoints([start.clone(), start.clone()]);
-      shot.line = new THREE.Line(geo, new THREE.LineBasicMaterial({ color: tool.line }));
-      shot.line.frustumCulled = false;
-      this.scene.scene.add(shot.line);
-    }
-    const flight = tool.flight || DEFAULT_FLIGHT;
-    shot.flight = flight;
+    const shot = this.shotFrom(tool, this.viewmodel);
+    const flight = shot.flight;
     if (bug || target) {
       // A tool that scatters does not land where it was aimed: the nail goes wide by
       // a share of how far it has to travel, which is nothing across a room and the
       // width of a window at the end of its reach.
-      const dist = start.distanceTo(to);
+      const dist = shot.start.distanceTo(to);
       if (flight.spread) scatter(to, flight.spread * dist);
-      Object.assign(shot, { start, to, target, bug, T: Math.max(0.12, dist / flight.speed), arc: (0.05 + dist * 0.03) * flight.arc });
+      Object.assign(shot, { to, target, bug, T: Math.max(0.12, dist / flight.speed), arc: (0.05 + dist * 0.03) * flight.arc });
     } else {
-      const dir = new THREE.Vector3(-Math.sin(p.yaw) * Math.cos(p.pitch), Math.sin(p.pitch) + 0.04, -Math.cos(p.yaw) * Math.cos(p.pitch));
-      if (flight.spread) scatter(dir, flight.spread);
-      shot.vel = dir.normalize().multiplyScalar(flight.speed);
-      // Where it left from, so how far it has carried can be measured against the
-      // tool's reach - and against the length of a line, for the ones that pay one out.
-      shot.from = start.clone();
+      this.loose(shot);
+    }
+  }
+
+  /**
+   * What a tool throws, leaving the muzzle of the hand that threw it, with its line
+   * behind it if it trails one. Where it goes from there is the caller's business: the
+   * crosshair's target for the hand the crosshair belongs to, and straight ahead for
+   * the other one.
+   */
+  shotFrom(tool, vm) {
+    const p = this.p;
+    const start = this.muzzle(vm) || new THREE.Vector3(p.x, p.feet + EYE - 0.08, p.z);
+    const mesh = tool.projectile(this.scene);
+    mesh.position.copy(start);
+    this.scene.scene.add(mesh);
+    const shot = { mesh, t: 0, tool, hand: vm, start, flight: tool.flight || DEFAULT_FLIGHT };
+    if (tool.line) { // a cast trails its line back to the hand it left
+      const geo = new THREE.BufferGeometry().setFromPoints([start.clone(), start.clone()]);
+      // Bendable like everything else out there: a line across a street on a small
+      // planet is long enough for the curve to show.
+      shot.line = new THREE.Line(geo, this.scene.bendable(new THREE.LineBasicMaterial({ color: tool.line })));
+      shot.line.frustumCulled = false;
+      this.scene.scene.add(shot.line);
     }
     this.darts.push(shot);
+    return shot;
+  }
+
+  /** Sends a shot off along the view, to fly on under its own physics. */
+  loose(shot) {
+    const p = this.p;
+    const dir = new THREE.Vector3(-Math.sin(p.yaw) * Math.cos(p.pitch), Math.sin(p.pitch) + 0.04, -Math.cos(p.yaw) * Math.cos(p.pitch));
+    if (shot.flight.spread) scatter(dir, shot.flight.spread);
+    shot.vel = dir.normalize().multiplyScalar(shot.flight.speed);
+    // Where it left from, so how far it has carried can be measured against the tool's
+    // reach - and against the length of a line, for the ones that pay one out.
+    shot.from = shot.start.clone();
+  }
+
+  /**
+   * The off hand. What it carries is never aimed - the crosshair belongs to the hunt -
+   * so a line fired from it goes where the walker is looking and bites whatever it
+   * reaches, and the two that carry rather than throw do their one thing where they
+   * stand.
+   */
+  useSecondary() {
+    if (this.frozen || this.dying !== null) return;
+    const tool = this.secondary;
+    if (!tool) {
+      this.flash('Nothing in your off hand - 8, 9 or 0 picks something up');
+      return;
+    }
+    this.offSwing = 0;
+    if (tool.fuel && (this.dry.has(tool.id) || this.tank(tool) <= 0)) {
+      this.flash(`${tool.label} is spent - put it away and take it out again once it has filled`);
+      return;
+    }
+    if (tool.flies) {
+      // The throttle, wide open for a moment: a burst of speed rather than a shot.
+      this.burst = BURST;
+      this.flash('Thrusters');
+      return;
+    }
+    if (tool.floats) {
+      this.flash(this.height(this.p.x, this.p.z) <= WATER
+        ? 'Riding the water' : 'The skimmers want water under them');
+      return;
+    }
+    if (!tool.projectile) return;
+    const shot = this.shotFrom(tool, this.offhand);
+    // A line is aimed, even though the crosshair is not its own: the wall it is meant
+    // to pull the walker up is the wall they are looking at, and a hook that landed
+    // near it instead would be a tool nobody could use. Everything else the off hand
+    // throws simply goes where the view points.
+    const seen = tool.reel ? this.lookingAt(tool.reach ?? REACH) : null;
+    if (!seen) {
+      this.loose(shot);
+      return;
+    }
+    const dist = shot.start.distanceTo(seen.point);
+    Object.assign(shot, {
+      to: seen.point, target: seen.box,
+      T: Math.max(0.12, dist / shot.flight.speed),
+      arc: (0.05 + dist * 0.03) * shot.flight.arc,
+    });
+  }
+
+  /**
+   * The box the walker is looking at and where the ray met it, for a tool that is not
+   * the one the crosshair belongs to. The crosshair is the primary tool's, so the off
+   * hand asks for itself - one march of the ray, once, at the moment it is used.
+   */
+  lookingAt(reach) {
+    const cam = this.scene.walkCamera;
+    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+    const v = new THREE.Vector3();
+    for (let t = 0.2; t < reach; t += 0.04 + t * 0.008) {
+      v.copy(cam.position).addScaledVector(dir, t);
+      this.scene.unbend(v);
+      if (v.y < WATER) break;
+      const box = this.boxAt(v);
+      if (box) return { box, point: v.clone() };
+    }
+    return null;
   }
 
   // ---------------------------------------------------------------- the grapple
@@ -1257,8 +1813,8 @@ export class Walker {
     }
     const up = to.y > this.p.feet;
     this.cutLine();
-    this.pull = { to, t: 0, line, mesh: shot.mesh, rope: shot.line };
-    this.p.fly = false;
+    this.pull = { to, t: 0, line, mesh: shot.mesh, rope: shot.line, hand: shot.hand };
+    this.p.fly = this.flying(); // only one thing is carried, so a line is not a jet
     this.p.vy = 0;
     this.flash(up ? 'Line away - going up' : 'Line away - going down');
     this.drawHud();
@@ -1288,7 +1844,7 @@ export class Walker {
     // The hook stays where it bit, and the line follows the hand to it.
     if (this.pull.mesh) this.pull.mesh.position.copy(to);
     if (this.pull.rope) {
-      const tip = this.muzzle() || new THREE.Vector3(p.x, p.feet + EYE - 0.05, p.z);
+      const tip = this.muzzle(this.pull.hand) || new THREE.Vector3(p.x, p.feet + EYE - 0.05, p.z);
       this.pull.rope.geometry.setFromPoints([tip, to.clone()]);
     }
   }
@@ -1411,6 +1967,9 @@ export class Walker {
       return { x: c + u * scale, y: c - f * scale, d, inside, angle: Math.atan2(u, f) };
     };
 
+    // The severity colors, for the bugs and for the rings around what is tagged.
+    const colors = this.bugs.colors;
+
     // North, so the sweep can be read against the map it came from.
     const n = place(px, pz - this.radarRange * 4);
     g.fillStyle = v('--muted');
@@ -1419,19 +1978,19 @@ export class Walker {
     g.textBaseline = 'middle';
     g.fillText('N', n.x, n.y);
 
-    // Modules already tagged: where the hunt has been.
-    g.strokeStyle = v('--muted');
+    // Modules already tagged: where the hunt has been, each ring in the color of the
+    // worst thing found on it, the way its beacon is.
     for (const b of this.boxes) {
       if (b.kind === 'land' || !this.tagged.has(b.node.id)) continue;
       const q = place(b.x, b.z);
       if (!q.inside) continue;
+      g.strokeStyle = colors[this.severityOf(b.node)] || v('--muted');
       g.beginPath();
       g.arc(q.x, q.y, 2.6, 0, Math.PI * 2);
       g.stroke();
     }
 
     // The bugs, worst drawn last so a critical one is never hidden under a nit.
-    const colors = this.bugs.colors;
     live.sort((a, b) => severityRank(a.f.severity) - severityRank(b.f.severity));
     let nearest = null;
     for (const bug of live) {
@@ -1504,10 +2063,10 @@ export class Walker {
     const el = this.hud.querySelector('.w-target');
     this.hud.classList.toggle('far', !!far);
     if (far) {
-      const name = this.tool.label.toLowerCase();
+      const name = this.primary.label.toLowerCase();
       this.targeted = null;
       el.hidden = false;
-      el.textContent = isMelee(this.tool)
+      el.textContent = isMelee(this.primary)
         ? `Out of reach - walk closer to use the ${name}`
         : `Too far - the ${name} will fall short`;
       return;
@@ -1550,7 +2109,7 @@ export class Walker {
           done.push(dart);
           // A rod both lands the cast and hauls on it; a grapple only hauls.
           if (!dart.tool.climbs) {
-            if (dart.bug) this.bugs.catch(dart.bug);
+            if (dart.bug) this.bugs.catch(dart.bug, dart.tool.catchAs);
             else if (dart.target) this.tag(dart.target);
           }
           // A line hauls on a wall, not on a beetle: what the rod caught comes back
@@ -1572,7 +2131,7 @@ export class Walker {
         // Anything thrown catches a bug it passes through, aimed at or not - if it is
         // the kind of thing that catches bugs at all.
         const bug = hits(dart.tool, 'bugs') ? this.bugs?.at(m.position) : null;
-        if (bug) this.bugs.catch(bug);
+        if (bug) this.bugs.catch(bug, dart.tool.catchAs);
         const hit = this.boxAt(m.position);
         if (hit && !dart.tool.climbs && hits(dart.tool, 'buildings')
           && hit.kind !== 'land' && hit.kind !== 'terrace') this.tag(hit);
@@ -1607,8 +2166,8 @@ export class Walker {
       // time it is across the street, which is why the extinguisher is forgiving up
       // close and no use at all past that.
       if (m.userData.swell) m.scale.setScalar(1 + dart.t * m.userData.swell);
-      if (dart.line) { // keep the line between the rod's tip and what was cast
-        const tip = this.muzzle() || new THREE.Vector3(this.p.x, this.p.feet + EYE - 0.05, this.p.z);
+      if (dart.line) { // keep the line between the hand it left and what was cast
+        const tip = this.muzzle(dart.hand) || new THREE.Vector3(this.p.x, this.p.feet + EYE - 0.05, this.p.z);
         dart.line.geometry.setFromPoints([tip, m.position.clone()]);
       }
     }
@@ -1676,19 +2235,35 @@ export class Walker {
     this.hooks.onHit(box, this.tagged.size);
   }
 
-  // A beacon stands over every tagged module that has a box: a diamond on a thin light
-  // beam, so the hunt's trophies are visible across the city.
+  /**
+   * The worst thing the scanners said about a module, or null where they said nothing.
+   * The map is what knows; the walker only asks, so that walk mode works the same with
+   * findings turned off as with them on.
+   */
+  severityOf(node) {
+    return this.hooks.severityOf?.(node) || null;
+  }
+
+  /**
+   * A beacon stands over every tagged module that has a box: a diamond on a thin light
+   * beam, so the hunt's trophies are visible across the city - in the color of the
+   * worst finding on it, so what the beam says is not only that the module was tagged
+   * but how bad what is in it is. A module the scanners had nothing to say about keeps
+   * the plain beacon, which is what a clean module looks like from across the map.
+   */
   drawBeacons() {
     this.beacons.clear();
     if (!this.tagged.size) return;
     beaconParts ||= [
-      [new THREE.OctahedronGeometry(0.16).scale(1, 1.6, 1).translate(0, 1.75, 0), BEACON],
-      [new THREE.CylinderGeometry(0.018, 0.018, 1.5, 6).translate(0, 0.75, 0), BEACON],
-    ].map(([geo, color]) => [geo, this.scene.bendable(new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85 }))]);
+      new THREE.OctahedronGeometry(0.16).scale(1, 1.6, 1).translate(0, 1.75, 0),
+      new THREE.CylinderGeometry(0.018, 0.018, 1.5, 6).translate(0, 0.75, 0),
+    ];
+    const colors = severityColors();
     for (const b of this.boxes) {
       if (b.kind === 'land' || !this.tagged.has(b.node.id)) continue;
-      for (const [geo, mat] of beaconParts) {
-        const m = new THREE.Mesh(geo, mat);
+      const color = colors[this.severityOf(b.node)] || BEACON;
+      for (const geo of beaconParts) {
+        const m = new THREE.Mesh(geo, this.beaconMaterial(color));
         m.position.set(b.x, b.y + b.h, b.z);
         m.frustumCulled = false;
         this.beacons.add(m);
@@ -1696,13 +2271,27 @@ export class Walker {
     }
   }
 
+  // One material per color, however many beacons there are: seven at the very most,
+  // and they are rebuilt every time something is tagged.
+  beaconMaterial(color) {
+    const beams = this.beams ||= new Map();
+    let m = beams.get(color);
+    if (!m) {
+      m = this.scene.bendable(new THREE.MeshBasicMaterial({ color, transparent: true, opacity: 0.85 }));
+      beams.set(color, m);
+    }
+    return m;
+  }
+
   drawHud() {
     const locked = document.pointerLockElement === this.scene.renderer.domElement;
     // Walking is what walk mode is; saying so is a chip that never changes. Flying
     // and reading are worth a word, and get one.
     const mode = this.frozen ? 'reading'
-      : this.p.fly ? 'flying'
-        : this.tool.floats && this.height(this.p.x, this.p.z) <= WATER ? 'afloat' : '';
+      : this.showing ? 'looking'
+        : this.p.fly ? 'flying'
+          : this.sinking ? 'sinking'
+            : this.onWater() ? 'afloat' : '';
     const modeChip = this.hud.querySelector('.w-mode');
     modeChip.hidden = !mode;
     modeChip.textContent = mode;
@@ -1752,8 +2341,12 @@ const SEVERITY_ORDER = ['unknown', 'info', 'low', 'medium', 'high', 'critical'];
 const severityRank = s => SEVERITY_ORDER.indexOf(s);
 
 const FORWARD = new THREE.Vector3(0, 0, 1); // the dart geometry's nose
+const EYE_AT = new THREE.Vector3();        // where the walker is, handed to the bugs
+const HOOP_AT = new THREE.Vector3();       // ... and where the net's hoop is, likewise
+// What a beacon is over a module the scanners had nothing to say about; anything they
+// did have something to say about wears the color of the worst of it instead.
 const BEACON = '#ff8a1f';
-let beaconParts = null;
+let beaconParts = null; // the diamond and its beam, shared by every beacon
 
 // A tracking dart: a dark shaft, a glowing tip and two crossed fins, nose along +z.
 // Its materials bend like the map's.
