@@ -966,6 +966,55 @@ neither an edge nor a finding, two broken links on one line are two findings,
 and a run over a repository that vendors its dependencies reports nothing from
 their READMEs.
 
+### M20 - What the walk costs, and what it is carried out with
+
+- Roads take the city's own way up, always. The dependency roads are routed over
+  a grid that carries the ramps and the bridges as the ground they are, and a
+  rise steeper than a road can be drawn at is not priced against distance at
+  all: the sweep settles everything reachable without climbing before it
+  considers anything on the far side of a wall, so a road goes round to the ramp
+  however far round it is. A budget would have been wrong at any size, since
+  there is always a detour dear enough to buy a wall. Where no ramp connects two
+  levels - the shore, which the city above it meets as a wall, and a terrace too
+  small to fit one against - the rise is graded along the road until it lies at
+  a ramp's gradient. A road never stands a quad on end at a curb.
+- The walker has a condition. A fall of more than about a house costs health in
+  proportion to the rest of the drop, and a bug within a stride bites no
+  oftener than once a second for what its severity is worth, so several bites
+  of anything are survivable and a critical one is worth three of a note. Every
+  finding in the backpack raises the ceiling and mends by as much. At nothing
+  the walk ends and the map returns with the backpack intact; walking in again
+  begins at full health.
+- Tools are primary or secondary. A primary tool tags a module or catches a
+  bug; a secondary one does neither and carries the walker instead - the
+  grapple gun's line, the jet backpack's flight, the water skimmers' hold on
+  the surface. Which a tool is decides what the crosshair marks, what a shot
+  does when it lands and how the slot is drawn, and there is one place that
+  decides it.
+- Flight is a thing carried rather than a mode. There is no flight key: the jet
+  backpack is what flies, putting it away is how the walker comes down, and a
+  click on it is a burst of thrust. The water skimmers make open water walkable
+  for exactly as long as they are in hand.
+- Three tools catch bugs by design - the butterfly net, the bubble wand and the
+  fire extinguisher - and two more catch them incidentally, because a hook and
+  a nail both take something off a wall. The tracking dart and the nail gun are
+  told apart by their physics rather than by their models: the dart is lobbed,
+  slow and steers towards the wall ahead of it; the nail is flat, fast and
+  scatters.
+- Severity is a shape as well as a color, because a color says nothing in a
+  crowd or from behind. A critical finding walks as a caterpillar that never
+  flies, the middle of the range as the beetle, and a note as a mite. The
+  shapes are modelled in `tools/bug.py` and every one of them has a drawn
+  stand-in, so a file built before a shape existed still puts it on the street.
+
+*Accepted when* a road between two buildings on different terraces runs up a
+ramp and nowhere stands on end, and still does when the ramp is at the far end
+of the block and the detour is several times the direct route, a walker who
+steps off a tower dies and is returned to the map with the backpack intact, a
+secondary tool tags nothing it is pointed at, the jet backpack is the only way
+to fly, a nail catches a bug, and a critical finding is visibly a different
+animal from a note.
+
 ### Known limits
 
 - Java imports name packages, not artifacts, so Maven dependencies are matched

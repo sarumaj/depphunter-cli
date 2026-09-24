@@ -16,10 +16,24 @@ globalThis.document ??= {
 };
 globalThis.window ??= { devicePixelRatio: 1, addEventListener() {} };
 globalThis.location ??= { search: '' };
+// The palettes are read off the page's own custom properties (colors.js,
+// findings.js). Nothing here is about the colors, so every one of them is empty and
+// the modules fall back to what they were written with.
+globalThis.document.documentElement ??= {};
+globalThis.getComputedStyle ??= () => ({ getPropertyValue: () => '' });
 
-/** A box of the layout, with the defaults the tests do not care about filled in. */
+// Boxes are named so that a node can be made for each without the tests spelling one
+// out; the real layout always carries one, and city.js reads it to find which terrace
+// a box stands on.
+let nth = 0;
+
+/**
+ * A box of the layout, with the defaults the tests do not care about filled in. `node`
+ * may be given to stand a box on a terrace: pass the terrace's node as its parentNode.
+ */
 export function box(kind, x, z, w, d, opts = {}) {
-  return { kind, x, z, w, d, y: 0, h: 0.2, ...opts };
+  const node = { id: `n${nth++}`, kind: kind === 'building' ? 'file' : 'dir', parentNode: null };
+  return { kind, x, z, w, d, y: 0, h: 0.2, node, ...opts };
 }
 
 /**

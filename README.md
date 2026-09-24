@@ -30,37 +30,56 @@ browser.
   shore as a causeway. Double-clicking expands or collapses a directory or a
   file; a file expands into its symbols.
 - **Walk mode** (`V`) presents the same map in first person on a small planet.
-  `WASD` moves, the mouse looks, `Space` jumps and `F` toggles flight. The
-  walker holds a tool, drawn in the hands at the end of an arm; using it on a
-  building selects the module, draws its dependency trails and marks it with a
-  beacon for the rest of the session.
+  `WASD` moves, the mouse looks and `Space` jumps. The walker holds a tool,
+  drawn in the hands at the end of an arm; using it on a building selects the
+  module, draws its dependency trails and marks it with a beacon for the rest
+  of the session.
 
-  Seven tools occupy slots `1` to `7`, and `T` cycles through them: a fishing
-  rod (the default), a butterfly net, a camera, a bubble wand, a tracking dart,
-  a nail gun and a grapple gun. Each has its own animation, its own aim helper
-  and its own valid targets - the rod, the dart and the nail gun act on
-  buildings, the net and the bubbles on bugs, the camera on either. What a tool
-  throws travels according to its own flight model: a nail is fast and flat, a
-  dart falls, a bubble decelerates and rises. The net throws nothing and must be
-  brought within reach; the camera shows its lens view live on its back. Two
-  tools pull on the line once it has attached: the rod draws the walker to the
-  wall it struck, and the grapple gun, which has no other effect on its target,
-  draws them up the facade and onto the roof, from where a shot over the edge is
-  the way down. The right button holds the scope; the mouse wheel zooms it.
+  Ten tools occupy slots `1` to `9` and `0`, and `T` cycles through them. The
+  seven **primary** tools are what the hunt is done with: a fishing rod (the
+  default), a butterfly net, a camera, a bubble wand, a fire extinguisher, a
+  tracking dart and a nail gun. Each has its own animation, its own aim helper
+  and its own valid targets - the dart acts on buildings, the net, the bubbles
+  and the extinguisher on bugs, the rod, the nail gun and the camera on either.
+  What a tool throws travels according to its own flight model: a nail is fired
+  flat and fast and scatters a little, a dart is lobbed and steers towards the
+  wall ahead of it, a bubble decelerates and rises, foam spreads and drops. The
+  net throws nothing and must be brought within reach; the camera shows its
+  lens view live on its back.
 
-  Each finding a scanner reported is represented by one bug. Bugs are placed at
-  several heights on a building's facade and around its roof as well as in the
-  streets, each oriented to the surface it holds on to; some hold on to nothing
-  and instead fly a circuit around the building, rising, falling and banking at
-  the corners. Catching one opens what was reported about it. A tracker in the
-  corner of the screen sweeps the surrounding map and tightens as the walker
-  approaches a bug, so that the last part of the approach can be made on the
-  sweep rather than by guesswork.
+  The three **secondary** tools touch nothing on the map and carry the walker
+  instead. The grapple gun hooks a building and draws them up the facade and
+  onto the roof, from where a shot over the edge is the way down; the jet
+  backpack flies, for as long as it is the thing in their hands; the water
+  skimmers make the bay walkable. The HUD keeps the two kinds apart, because
+  what a secondary tool cannot do is catch anything. The rod also pulls on its
+  line, drawing the walker to the wall it struck. The right button holds the
+  scope; the mouse wheel zooms it.
+
+  The walker has a **health bar**. A fall of more than a few storeys costs some
+  of it, and a bug's bite costs more the worse the finding is, so a busy street
+  is something to get clear of. Every bug in the backpack raises the bar and
+  mends by as much. At nothing, walk mode ends and the map returns - nothing
+  caught is lost - and walking in again starts at full health.
+
+  Each finding a scanner reported is represented by one bug, shaped by its
+  severity as well as colored by it: a critical finding is a caterpillar that
+  crawls and never flies, an ordinary one a beetle, a note a mite. Bugs are
+  placed at several heights on a building's facade and around its roof as well
+  as in the streets, each oriented to the surface it holds on to; some hold on
+  to nothing and instead fly a circuit around the building, rising, falling and
+  banking at the corners. Catching one opens what was reported about it. A
+  tracker in the corner of the screen sweeps the surrounding map and tightens
+  as the walker approaches a bug, so that the last part of the approach can be
+  made on the sweep rather than by guesswork.
 
   Terraces are laid out as city blocks: the space between buildings forms a
   connected street network with sidewalks, lane markings and crossings; ramps
   and stairs connect levels; unoccupied lots become parks; and a bridge crosses
-  the water to every island.
+  the water to every island. The dependency roads use the same city: they climb
+  to a higher terrace on its ramp and cross the water on a bridge, rather than
+  standing on end at a curb. A road always takes the ramp where there is one,
+  however far round it has to wander to reach it.
 
 The tool runs entirely locally. It is a single binary, requires no Node.js, and
 makes no network request unless `--online` is given (see
@@ -202,7 +221,9 @@ ui:
   height_scale: sqrt
   show_std: false
   expand_depth: 0
-  tool: rod                       # walk mode: rod, net, camera, bubbles, dart
+  tool: rod                       # walk mode: rod, net, camera, bubbles,
+                                  # extinguisher, dart, nailer, grapple,
+                                  # jetpack, skimmers
   hide_languages: [Markdown]      # filters, as the Filters panel sets them
   hide_islands: [npm]
   path_filter: "!**/testdata/**"
@@ -555,11 +576,12 @@ In walk mode:
 |                        |                                                                                                                                                                                                                                                                                            |
 |------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Mouse                  | look. The pointer is captured at the reticle; `Esc` releases it and a click on the map captures it again. Where it cannot be captured at all — a frame that withholds the pointer lock — walk mode reports this once, and a click then uses the tool rather than requesting the lock again |
-| `1` … `7`              | select a tool by slot; `T` cycles through them                                                                                                                                                                                                                                             |
+| `1` … `9`, `0`         | select a tool by slot; `T` cycles through them. Slots `1`–`7` hold the primary tools, `8`–`0` the secondary ones                                                                                                                                                                            |
 | `W` `A` `S` `D`/arrows | move and turn; `Shift` runs                                                                                                                                                                                                                                                                |
 | `Space`                | jump; while flying, ascend                                                                                                                                                                                                                                                                 |
-| `F`                    | toggle flight. While flying, `W` and `S` move along the view direction — looking down and pressing `W` descends — and `C` descends vertically                                                                                                                                              |
-| Click                  | use the current tool: a module within reach is selected, and a bug that is caught is displayed and retained                                                                                                                                                                                |
+| Jet backpack in hand   | flight. While flying, `W` and `S` move along the view direction — looking down and pressing `W` descends — and `C` descends vertically. A click opens the throttle for a burst                                                                                                             |
+| Water skimmers in hand | the surface of the water is walkable                                                                                                                                                                                                                                                       |
+| Click                  | use the current tool: a module within reach is selected, and a bug that is caught is displayed and retained. A secondary tool selects and catches nothing                                                                                                                                  |
 | `H`                    | stow or draw the tool. A stowed tool remains functional and throws from the walker's eye                                                                                                                                                                                                   |
 | Hold right button      | look through the scope                                                                                                                                                                                                                                                                     |
 | `Enter`                | show the details of whatever the reticle is on, as a second use of the tool would. This releases the pointer; a click on the map resumes                                                                                                                                                   |
@@ -572,8 +594,9 @@ direction they faced, and re-entering walk mode restores that position — unles
 a node was selected on the map in the interim, in which case the walker is
 placed at that node instead.
 
-On foot the shore is impassable, but every island is reachable by bridge; while
-flying, the walker may travel 3 units out over the water. The ground beneath the
+On foot the shore is impassable unless the water skimmers are in hand, but every
+island is reachable by bridge; while flying, the walker may travel 3 units out
+over the water. The ground beneath the
 walker is never a target, so aiming at the street selects nothing. Expanding and
 collapsing are reserved to the map view, since either rebuilds the entire city
 and is disorienting from street level. The list of controls collapses once the
@@ -645,9 +668,12 @@ lists the findings beneath it as well, so that a district marked red for
 something several levels down can be reached from its pin.
 
 In walk mode the findings appear in the streets: each is a **bug** patrolling
-the building it belongs to, colored by severity. Catching one with the current
-tool — the butterfly net is intended for this — displays what it carries. The
-HUD reports how many remain.
+the building it belongs to, colored by severity and shaped by it — a
+caterpillar for a critical finding, a beetle for the middle of the range, a
+mite for a note. Catching one with the current primary tool — the net, the
+bubble wand and the fire extinguisher are meant for it — displays what it
+carries. The HUD reports how many remain, and a bug left uncaught bites: the
+worse the finding, the more it costs.
 
 The **backpack** (`B`) is shared between the two views. Adding a finding with
 the `+` beside it in the panel is equivalent to catching its bug in the street;

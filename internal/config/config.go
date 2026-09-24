@@ -54,7 +54,11 @@ func (u UI) Validate() error {
 			if u.Tool == "" {
 				return nil // the browser's default
 			}
-			return oneOf("tool", u.Tool, "rod", "net", "camera", "bubbles", "dart")
+			return oneOf("tool", u.Tool,
+				// The primary tools, which hunt, and then the secondary ones, which
+				// carry the walker (web/static/tools.js).
+				"rod", "net", "camera", "bubbles", "extinguisher", "dart", "nailer",
+				"grapple", "jetpack", "skimmers")
 		}(),
 	)
 }

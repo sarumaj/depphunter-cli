@@ -128,6 +128,9 @@ async function main() {
     onExit: () => setWalking(false),
     tool: () => state.tool,
     onTool: id => { state.tool = id; },
+    // What the walker's health is built on: a full backpack is a walker who can stand
+    // in a swarm, and an empty one is somebody who should watch their step.
+    caught: () => pack?.counts.total ?? 0,
     onRender: drawLabels,
   });
   pins = new Pins(scene);
@@ -147,6 +150,7 @@ async function main() {
       panel.show(node, false, f.id);
       document.exitPointerLock?.();
       walker.setFrozen(true);
+      walker.health.caught(pack.counts.total);
       walker.drawHud();
       const { caught, total } = bugs.counts;
       walker.flash(`${f.severity}: ${f.title} - ${caught} of ${total} caught, and in the backpack. Click the map to keep walking`);
@@ -1291,9 +1295,8 @@ function bindControls() {
         // The backpack needs the pointer, and walk mode has it.
         if (!$('pack-btn').hidden && !walker.active) setPackOpen($('pack').hidden);
         break;
-      // Home rather than F: F is fly in walk mode, and one letter meaning two
-      // things depending on which view you are in is a letter nobody presses.
-      // ... and they move the map's camera, which is not the one in use while walking.
+      // Fitting, rotating and stepping the depth all move the map's own camera, which
+      // is not the one in use while walking, so they belong to the map view alone.
       case 'Home': if (!walker.active) scene.fit(L.bounds); break;
       case 'q': case 'Q': if (!walker.active) scene.setIso(scene.quarter - 1); break;
       case 'e': case 'E': if (!walker.active) scene.setIso(scene.quarter + 1); break;

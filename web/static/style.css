@@ -255,6 +255,23 @@ main { position: relative; flex: 1; min-height: 0; }
 #walk-hud .w-ic.tag { clip-path: polygon(0 0, 55% 0, 100% 45%, 45% 100%, 0 55%); }
 #walk-hud .w-ic.bug { border-radius: 50% 50% 46% 46%; clip-path: inset(0 round 45%); }
 #walk-hud .w-ic.globe { border-radius: 50%; background: none; border: 1.5px solid var(--text-2); }
+#walk-hud .w-ic.heart { clip-path: polygon(50% 100%, 0 38%, 12% 8%, 50% 22%, 88% 8%, 100% 38%); }
+/* What the walker can take, as a bar rather than a number: a share read at a glance is
+   the only form of this worth having while something is biting you. */
+#walk-hud .w-health-track {
+  display: inline-block; width: 52px; height: 5px; border-radius: 3px;
+  background: color-mix(in srgb, var(--text-2) 30%, transparent); overflow: hidden;
+}
+#walk-hud .w-health-fill { display: block; height: 100%; width: 100%; background: var(--text-2); transition: width 0.18s; }
+#walk-hud .w-health[data-state="well"] .w-health-fill { background: #3fae6a; }
+#walk-hud .w-health[data-state="hurt"] .w-health-fill { background: #e0a32e; }
+#walk-hud .w-health[data-state="bad"] .w-health-fill { background: #e4402f; }
+/* A hit washes the edges of the screen red for a moment (health.js takes the class
+   off again), which is the one thing a bar in the corner cannot say fast enough. */
+#walk-hud.hit::after {
+  content: ""; position: absolute; inset: 0; pointer-events: none;
+  box-shadow: inset 0 0 90px 10px rgba(200, 32, 24, 0.5);
+}
 #walk-hud .w-keys { font-size: 12px; margin-top: 5px; color: var(--text-2);
   background: color-mix(in srgb, var(--surface) 86%, transparent);
   border: 1px solid var(--border); border-radius: 8px; padding: 4px 10px; box-shadow: var(--shadow); }
@@ -274,7 +291,16 @@ main { position: relative; flex: 1; min-height: 0; }
 #walk-hud .w-foot > #status {
   position: static; pointer-events: auto; text-align: center;
 }
-#walk-hud .w-slots { display: flex; gap: 5px; }
+/* Ten slots is more than a narrow window has room for in one line, so the row wraps
+   rather than running off the side of the screen. */
+#walk-hud .w-slots { display: flex; gap: 5px; align-items: center; flex-wrap: wrap; justify-content: center; }
+/* The two kinds, kept apart: a primary tool does something to the map and a secondary
+   one does something to you, and reaching for the wrong one should look like a mistake
+   before it is made. The gap between them is labelled, once. */
+#walk-hud .w-slot-gap {
+  font-size: 9px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-2);
+  opacity: 0.65; padding: 0 3px; border-left: 1px solid var(--border); margin-left: 3px;
+}
 #walk-hud .w-slot {
   display: flex; align-items: center; gap: 5px; padding: 3px 7px;
   background: color-mix(in srgb, var(--surface) 80%, transparent);
@@ -289,6 +315,11 @@ main { position: relative; flex: 1; min-height: 0; }
   box-shadow: var(--shadow);
 }
 #walk-hud .w-slot[aria-selected="true"] .w-slot-name { display: inline; font-weight: 600; }
+/* A carried tool wears the color of the things that move you, and its slot is drawn
+   with the dashed edge of something worn rather than wielded. */
+#walk-hud .w-slot[data-kind="secondary"] { border-style: dashed; }
+#walk-hud .w-slot[data-kind="secondary"][aria-selected="true"] { border-color: #59b0e6; color: #cfe8f8; }
+#walk-hud .w-slot[data-kind="secondary"][aria-selected="true"] .w-slot-name { color: #59b0e6; }
 /* Each slot wears its tool: the reticle shapes again, small. */
 #walk-hud .w-slot i {
   width: 12px; height: 12px; border: 1.5px solid currentColor; border-radius: 50%;
@@ -299,7 +330,10 @@ main { position: relative; flex: 1; min-height: 0; }
 #walk-hud .w-slot[data-tool="bubbles"] i { border-color: #7fc8f0; }
 #walk-hud .w-slot[data-tool="dart"] i { border-radius: 50%; box-shadow: inset 0 0 0 1px currentColor; }
 #walk-hud .w-slot[data-tool="nailer"] i { border: none; background: linear-gradient(currentColor, currentColor) center / 2px 100% no-repeat, linear-gradient(currentColor, currentColor) center / 100% 2px no-repeat; }
+#walk-hud .w-slot[data-tool="extinguisher"] i { border-color: #c0231f; border-radius: 3px; width: 9px; height: 14px; }
 #walk-hud .w-slot[data-tool="grapple"] i { border-bottom-color: transparent; }
+#walk-hud .w-slot[data-tool="jetpack"] i { border: none; clip-path: polygon(50% 0, 100% 100%, 50% 72%, 0 100%); background: currentColor; }
+#walk-hud .w-slot[data-tool="skimmers"] i { border-radius: 50% / 30%; height: 8px; width: 16px; }
 /* The bug tracker: a top-down sweep of the streets around the walker, so a finding
    somewhere across the map can be walked to rather than stumbled on. */
 #walk-hud .w-radar {
@@ -348,21 +382,22 @@ main { position: relative; flex: 1; min-height: 0; }
 #walk-hud .crosshair { transition: width 0.12s, height 0.12s; }
 #walk-hud.scoped .crosshair { width: 64px; height: 64px; } /* looking through the scope */
 
-/* The aim helper belongs to the tool in your hands, not to first-person shooters:
-   a bobber for the rod, a hoop for the net, a viewfinder for the camera, a soft ring
-   for bubbles. The scope reticle above is the dart's. */
-#walk-hud[data-tool="bobber"] .crosshair,
-#walk-hud[data-tool="rod"] .crosshair {
+/* The aim helper belongs to the tool in your hands, not to first-person shooters: a
+   bobber for the rod, a hoop for the net, a viewfinder for the camera, a soft ring for
+   bubbles, a cone for the extinguisher. The scope reticle above is the dart's, and
+   what every tool that names no other one falls back to. Each is keyed by the
+   reticle's name rather than the tool's, because several tools want the same one. */
+#walk-hud[data-tool="bobber"] .crosshair {
   width: 22px; height: 22px; border-width: 2px; border-color: #e4402f;
   background:
     linear-gradient(#f2f4f7, #f2f4f7) top / 100% 50% no-repeat,
     radial-gradient(circle, var(--text) 0 1.5px, transparent 2px);
 }
-#walk-hud[data-tool="net"] .crosshair {
+#walk-hud[data-tool="hoop"] .crosshair {
   width: 34px; height: 34px; border-style: dashed; border-width: 2px;
   background: radial-gradient(circle, transparent 0 40%, color-mix(in srgb, var(--text) 18%, transparent) 41%);
 }
-#walk-hud[data-tool="camera"] .crosshair {
+#walk-hud[data-tool="frame"] .crosshair {
   width: 46px; height: 34px; border: none; border-radius: 0;
   background:
     linear-gradient(var(--text), var(--text)) left top / 10px 2px no-repeat,
@@ -374,9 +409,30 @@ main { position: relative; flex: 1; min-height: 0; }
     linear-gradient(var(--text), var(--text)) right bottom / 10px 2px no-repeat,
     linear-gradient(var(--text), var(--text)) right bottom / 2px 10px no-repeat;
 }
-#walk-hud[data-tool="bubbles"] .crosshair {
+#walk-hud[data-tool="soft"] .crosshair {
   width: 26px; height: 26px; border-color: #7fc8f0; border-width: 2px;
   background: radial-gradient(circle at 35% 35%, #ffffff55 0 20%, transparent 21%);
+}
+/* The extinguisher's is a cone of foam: wide, soft-edged and open at the top, because
+   what it throws spreads rather than arriving at a point. */
+#walk-hud[data-tool="spray"] .crosshair {
+  width: 40px; height: 30px; border: none; border-radius: 0;
+  clip-path: polygon(50% 0, 100% 100%, 0 100%);
+  background: radial-gradient(ellipse at 50% 0, color-mix(in srgb, var(--text) 40%, transparent) 0 40%, transparent 72%);
+}
+/* Nothing is aimed with a jet or a pair of floats: the reticle says so by being a
+   mark rather than a sight. */
+#walk-hud[data-tool="thrust"] .crosshair {
+  width: 20px; height: 20px; border: none; border-radius: 0; opacity: 0.5;
+  background:
+    linear-gradient(var(--text), var(--text)) center bottom / 2px 8px no-repeat,
+    linear-gradient(var(--text), var(--text)) center top / 10px 2px no-repeat;
+}
+#walk-hud[data-tool="ripple"] .crosshair {
+  width: 30px; height: 12px; border: none; border-radius: 0; opacity: 0.5;
+  background:
+    linear-gradient(var(--text), var(--text)) center top / 100% 1.5px no-repeat,
+    linear-gradient(var(--text), var(--text)) center bottom / 60% 1.5px no-repeat;
 }
 /* The nailer's is a plain cross: it goes where it is pointed and nowhere else. */
 #walk-hud[data-tool="cross"] .crosshair {
