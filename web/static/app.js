@@ -1,4 +1,6 @@
-import { buildModel, boundaryEdges, isWithin, setReferences } from './model.js';
+import { buildModel, boundaryEdges, isWithin, setReferences, bulk, unread, fileSize } from './model.js';
+import { Fires, MOST } from './fires.js';
+import { Flames } from './flames.js';
 import { layout } from './layout.js';
 import { MapScene } from './scene.js';
 import { readPalette, languageColors, assignSlots, sequential } from './colors.js';
@@ -10,7 +12,7 @@ import { Labels } from './labels.js';
 import { Walker } from './walk.js';
 import { loadHands } from './hands.js';
 import { loadPlants, loadBugs } from './models.js';
-import { Bugs } from './bugs.js';
+import { Bugs, TAKE_MS } from './bugs.js';
 import { Pins } from './pins.js';
 import { Avatar } from './avatar.js';
 import { startTour, startWalkTour, walkTourPending } from './tour.js';
@@ -57,6 +59,9 @@ let plainly = false; // the map is being drawn without anything the interface pu
 let labels;       // Labels layer over the map
 let walker;       // first-person walk mode
 let bugs;         // the findings walking the streets in walk mode
+let readCaught = 0; // the timer that holds the details back until a catch has played
+let fires;        // what is alight, and where it is going (fires.js)
+let flames;       // ... and what that looks like, on the map and in the street
 let pins;         // the same findings, as markers over the map
 let avatar;       // where the walker stands, seen from the map
 let pack;         // what has been caught (backpack.js)
@@ -178,19 +183,42 @@ async function main() {
     // A caught bug reads itself out: the building it belongs to is selected and its
     // finding opened, exactly as a second shot into a building would. It also goes
     // into the backpack, which is where it can be found again afterwards.
+    //
+    // The reading waits for the catch to finish, though. Every tool takes a bug away
+    // in its own manner - reeled down the line, scooped into the net, carried off in a
+    // bubble - and that is nearly a second of the one thing in walk mode that happens
+    // because the walker did something well. Opening the details on the frame the bug
+    // is caught put a panel over it and a blur behind that, so nobody ever saw it:
+    // the reward for a good shot was the thing that hid it.
+    //
+    // So the backpack, the health and the word all land at once, and the panel comes
+    // when the bug has finished arriving.
     onCatch: (f, node) => {
       pack.add(f, node);
-      select(node);
-      panel.show(node, false, f.id);
-      document.exitPointerLock?.();
-      walker.setFrozen(true);
       walker.health.caught(pack.counts.total);
       walker.drawHud();
       const { caught, total } = bugs.counts;
-      walker.flash(`${f.severity}: ${f.title} - ${caught} of ${total} caught, and in the backpack. Click the map to keep walking`);
+      walker.flash(`${f.severity}: ${f.title} - ${caught} of ${total} caught, and in the backpack`);
+      clearTimeout(readCaught);
+      readCaught = setTimeout(() => {
+        // A walk can end, or be left, between the catch and the reading.
+        if (!walker.active || walker.dying !== null) return;
+        select(node);
+        panel.show(node, false, f.id);
+        document.exitPointerLock?.();
+        walker.setFrozen(true);
+        walker.flash(`${f.severity}: ${f.title} - click the map to keep walking`);
+      }, TAKE_MS + 120);
     },
   });
   walker.setBugs(bugs);
+  // Fire is the map's, not the walker's: a reachable vulnerability burns whether
+  // anybody is standing in the street or looking down at the city, and it goes on
+  // spreading either way. The walker only carries the thing that puts it out.
+  fires = new Fires(model);
+  flames = new Flames(scene, MOST);
+  flames.show(true);
+  walker.setFires(fires);
   panel = new Panel($('panel'), $('panel-body'), {
     model,
     colorOf: lang => langs.of(lang),
@@ -283,6 +311,9 @@ function applyFindings(set) {
   state.findingsStatus = set ? 'ready' : 'none';
   // Every live update is a chance for something in the backpack to have been fixed.
   pack.reconcile(state.findings);
+  // New reports are a new fire. What has been put out for good stays out: light()
+  // keeps that list, the way the backpack keeps what has been caught.
+  fires.light(state.findings);
   drawPack();
   placeBugs();
   updateStatus();
@@ -291,11 +322,49 @@ function applyFindings(set) {
 
 // placeBugs re-spawns the bugs for the current layout. Boxes change with every depth
 // change and every live update, and a bug stands beside its building.
+/**
+ * The fire clock.
+ *
+ * It runs only while something is alight, which is most of the time never: a map read
+ * without --findings, or one whose advisories are all against code nothing calls, has
+ * no fire in it and nothing here ever starts. While it does run it is the one place
+ * fire advances, so that the same fire is the same age whether it is being watched
+ * from the street or from above.
+ *
+ * Walk mode draws every frame on its own, so out there this only has to do the
+ * thinking; on the map it asks for the redraw as well, through the same reason-held
+ * animation a drifting style uses.
+ */
+let fireFrame = 0, fireAt = 0;
+function runFire(now) {
+  fireFrame = 0;
+  const dt = Math.min(0.1, (now - (fireAt || now)) / 1000); // a tab left in the background does not burn down
+  fireAt = now;
+  fires.step(dt);
+  flames.place([...fires.entries()], id => L?.byNode.get(id));
+  flames.step(dt);
+  if (!walker.active) scene.requestRender();
+  if (fires.burning) fireFrame = requestAnimationFrame(runFire);
+  else { fireAt = 0; scene.setAnimated(false, 'fire'); }
+}
+
+/** Starts the clock if anything is alight and it is not already running. */
+function keepBurning() {
+  if (!fires?.burning || fireFrame) return;
+  scene.setAnimated(true, 'fire');
+  fireAt = 0;
+  fireFrame = requestAnimationFrame(runFire);
+}
+
 function placeBugs() {
   // Whatever is in the backpack was caught already and stays caught across a relayout,
   // a reload, or a depth change.
   bugs.keepCaught(pack.ids);
   bugs.place(state.findings, L.boxes);
+  // A relayout moves every building, so the fires move with them; what is alight and
+  // how hot is not the layout's business and survives it untouched.
+  flames.place([...fires.entries()], id => L.byNode.get(id));
+  keepBurning();
   pins.place(state.findings, L.boxes);
   pins.show(!walker.active && !!state.findings);
   if (walker.active) walker.drawHud();
@@ -906,7 +975,36 @@ function walkTarget() {
 
 // What the toolbar cannot do from the street: rotating and fitting move the map's own
 // camera, which nobody is looking through while walking, so both did nothing silently.
-const WALK_DISABLED = ['rotate-left', 'rotate-right', 'fit'];
+/**
+ * The controls that only mean anything on the map, marked `data-map-only` where they
+ * are written rather than listed by id here, so adding one is a word in the markup.
+ *
+ * They are taken away in walk mode rather than greyed out. Greying says "not now",
+ * which is a thing worth saying about something a walker might reasonably reach for;
+ * none of these are. Rotating, fitting and stepping the depth all move or rebuild the
+ * map's own camera and layout, and the walker is standing in that layout - fitting the
+ * map to the screen while somebody is in the street is not a disabled action, it is a
+ * question nobody asked. A toolbar that shrinks to what is usable is also shorter to
+ * read, which matters more in the street than on the map, because reading it there
+ * costs the mouse.
+ */
+const mapOnly = () => document.querySelectorAll('[data-map-only]');
+
+/**
+ * Something on screen wants the mouse - a menu, the help, the backpack. In the street
+ * that means the same thing every time: the walker holds still where they stand and
+ * the pointer comes back, so the thing that asked for it can be worked.
+ *
+ * It is a function because every one of them was doing it separately and one of them
+ * was not. Export froze the walker when it was opened with the X key and did nothing
+ * at all when its button was clicked, which is the same menu opening two ways and
+ * behaving differently - and the way anybody actually opens it was the broken one.
+ */
+function readAway() {
+  if (!walker?.active) return;
+  walker.setFrozen(true);
+  document.exitPointerLock?.();
+}
 
 function setWalking(on) {
   if (on && !walker.active) {
@@ -928,12 +1026,7 @@ function setWalking(on) {
   }
   $('walk').setAttribute('aria-pressed', on);
   $('map').parentElement.classList.toggle('walking', on);
-  for (const id of WALK_DISABLED) {
-    const el = $(id);
-    if (el.dataset.title === undefined) el.dataset.title = el.title;
-    el.disabled = on;
-    el.title = on ? `${el.dataset.title} - not while walking` : el.dataset.title;
-  }
+  for (const el of mapOnly()) el.hidden = on;
   // The counters would otherwise sit across the tool row in the corner they share.
   // Nothing can be moved out of the way without covering something else, so they
   // stack instead: the readout joins the top of the row's own column.
@@ -998,12 +1091,12 @@ function baseColors() {
       case 'land': return pal.land;
       case 'terrace': return n.kind === 'file' ? pal.terraceB : (n.depth % 2 ? pal.terraceB : pal.terraceA);
       case 'district':
-        return state.colorBy === 'size' ? sequential(pal, sizeT(n.totalLoc / Math.max(1, n.fileCount))) : pal.district;
+        return state.colorBy === 'size' ? sequential(pal, sizeT(n.totalBulk / Math.max(1, n.fileCount))) : pal.district;
       case 'building':
-        return state.colorBy === 'size' ? sequential(pal, sizeT(n.loc)) : langs.of(n.lang);
+        return state.colorBy === 'size' ? sequential(pal, sizeT(bulk(n))) : langs.of(n.lang);
       case 'symbol': {
         const f = n.parentNode;
-        return state.colorBy === 'size' ? sequential(pal, sizeT(f.loc)) : langs.of(f.lang);
+        return state.colorBy === 'size' ? sequential(pal, sizeT(bulk(f))) : langs.of(f.lang);
       }
       // A package nothing pins is worth seeing from across the map.
       case 'package': return n.unresolved ? pal.pkgUnresolved : n.floating ? pal.pkgFloating : pal.pkg;
@@ -1265,7 +1358,9 @@ function showTooltip(i, x, y) {
 function card(b, n) {
   const row = (k, v) => `<div class="t-row">${k} <b>${escapeHTML(String(v))}</b></div>`;
   let html = `<div class="t-title">${escapeHTML(n.path && n.path !== '.' ? n.path : n.name)}</div>`;
-  if (n.kind === 'file') html += row('Language', n.lang || 'unknown') + row('Lines', fmt.format(n.loc || 0)) + (n.children.length ? row('Symbols', n.children.length) : '');
+  // A file nothing read has no lines to report, so it reports its size instead:
+  // "Lines 0" would have been a claim about the file rather than about the reading.
+  if (n.kind === 'file') html += row('Language', n.lang || 'unknown') + (unread(n) ? row('Size', fileSize(n.bytes)) : row('Lines', fmt.format(n.loc || 0))) + (n.children.length ? row('Symbols', n.children.length) : '');
   else if (n.kind === 'dir') html += row(b.kind === 'district' ? 'Collapsed directory' : 'Directory', '') + row('Files', fmt.format(n.fileCount)) + row('Lines', fmt.format(n.totalLoc));
   else if (n.kind === 'symbol') html += row(n.symbolKind, `line ${n.line}`);
   else if (n.kind === 'package') html += row('Ecosystem', n.parentNode.name) + (n.version ? row('Version', n.version) : '') + (n.requested ? row('Requested', n.requested) : '') + row('Imported by', `${n.importers} files`) + (n.private ? row('Private', 'yours; nothing about it is asked of anyone') : '') + (n.unresolved ? row('⚠', 'not declared in a manifest') : '') + (n.floating ? row('⚠', 'not pinned to one version') : '') + (n.transitive ? row('Pulled in by', 'another dependency') : '') + (n.index ? row(n.indexUnknown ? '⚠ Index' : 'Index', n.index.replace(/^https?:\/\//, '')) : '');
@@ -1402,7 +1497,7 @@ function bindControls() {
   $('pack-empty').onclick = () => pack.clear();
   $('rotate-left').onclick = () => scene.setIso(scene.quarter - 1);
   $('rotate-right').onclick = () => scene.setIso(scene.quarter + 1);
-  $('help-btn').onclick = () => $('help').showModal();
+  $('help-btn').onclick = () => { readAway(); $('help').showModal(); };
   // The help's own way back to the introduction, for anyone who skipped it or wants it
   // again. One modal at a time, so the help is closed before the other opens.
   $('help-tour').onclick = () => {
@@ -1472,7 +1567,7 @@ function bindControls() {
       case 'e': case 'E': if (!walker.active) scene.setIso(scene.quarter + 1); break;
       case '+': case '=': setLevel(state.level + 1); break;
       case '-': case '_': setLevel(state.level - 1); break;
-      case '?': document.exitPointerLock?.(); $('help').showModal(); break;
+      case '?': readAway(); $('help').showModal(); break;
       case '/': document.exitPointerLock?.(); $('search').focus(); break;
       case 'v': case 'V': setWalking(true); break;
       case 'p': case 'P': saveScreenshot(); break;
@@ -1498,14 +1593,19 @@ function bindControls() {
 
 function bindFilters() {
   const btn = $('filters-btn'), pop = $('filters');
-  const setOpen = open => {
+  // `back` is whether closing it is a way back to the street. Shutting it on purpose
+  // is; shutting it because the pointer has gone to another control is not, and taking
+  // the reticle back there would snatch the mouse out of the control being reached for
+  // - which is the whole of what made the toolbar unusable from the street. A click on
+  // the map needs no help from here: it asks for the pointer by itself.
+  const setOpen = (open, back = true) => {
     pop.hidden = !open;
     btn.setAttribute('aria-expanded', open);
-    // Closing it in the street is walking on again, whichever way it was closed.
-    if (!open && walker?.active) walker.lockPointer();
+    if (open) readAway();
+    else if (back && walker?.active) walker.lockPointer();
   };
   btn.onclick = () => setOpen(pop.hidden);
-  document.addEventListener('pointerdown', e => { if (!e.target.closest('.filters')) setOpen(false); });
+  document.addEventListener('pointerdown', e => { if (!e.target.closest('.filters')) setOpen(false, false); });
   btn.parentElement.addEventListener('keydown', e => {
     if (e.key === 'Escape' && !pop.hidden) { e.stopPropagation(); setOpen(false); btn.focus(); }
   });
@@ -1580,24 +1680,23 @@ function bindSearch() {
 
 function bindExport() {
   const btn = $('export-btn'), pop = $('export');
-  const setOpen = open => {
+  // `back` as in the filters above: shut on purpose it is a way back to the street,
+  // shut because the pointer went elsewhere in the page it is not, and taking the
+  // reticle back then would snatch the mouse out of whatever was being reached for.
+  const setOpen = (open, back = true) => {
     pop.hidden = !open;
     btn.setAttribute('aria-expanded', open);
-    // Closing it in the street is walking on again, whichever way it was closed.
-    if (!open && walker?.active) walker.lockPointer();
+    if (open) readAway();
+    else if (back && walker?.active) walker.lockPointer();
   };
   btn.onclick = () => setOpen(pop.hidden);
   /**
-   * Opens the menu, from the map or from the street.
+   * Opens the menu, from the map or from the street. It always opens rather than
+   * toggling, because Esc and a click outside already close it, and a key that does
+   * one or the other depending on what is on screen is a key you press twice.
    */
   openExport = () => {
     if (btn.hidden) return;
-    // What Esc then the button would do, in one: the street holds still, the pointer
-    // comes back, and the menu opens. It always opens rather than toggling, because
-    // Esc and a click outside already close it and a key that does one or the other
-    // depending on what is on screen is a key you press twice.
-    walker?.setFrozen(true);
-    document.exitPointerLock?.();
     setOpen(true);
     btn.focus();
   };
@@ -1610,7 +1709,7 @@ function bindExport() {
     e.target.closest('a').href = url.pathname + url.search;
   });
   document.addEventListener('pointerdown', e => {
-    if (!pop.hidden && !e.target?.closest?.('.export')) setOpen(false);
+    if (!pop.hidden && !e.target?.closest?.('.export')) setOpen(false, false);
   });
   // On the group, not the popover: the button keeps the focus while the menu is open.
   btn.parentElement.addEventListener('keydown', e => {

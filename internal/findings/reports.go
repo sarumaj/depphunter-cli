@@ -143,6 +143,7 @@ func readGovulncheck(data []byte) ([]*Finding, error) {
 		if h.at != nil && h.at.Position != nil {
 			f.Path, f.Line, f.Column = h.at.Position.Filename, h.at.Position.Line, h.at.Position.Column
 			if name := symbol(h.at.Receiver, h.at.Function); name != "" {
+				f.Reached = name
 				f.Detail = prepend(f.Detail, "Reached from "+name+".")
 			}
 		} else {

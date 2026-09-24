@@ -35,7 +35,7 @@
         </section>
       </div>
     </div>
-    <div class="group" role="group" aria-label="Expansion">
+    <div class="group" role="group" aria-label="Expansion" data-map-only>
       <button id="collapse-level" title="Collapse one level (-)" aria-label="Collapse one level">−</button>
       <span class="hint" id="depth-label">depth</span>
       <button id="expand-level" title="Expand one level (+)" aria-label="Expand one level">+</button>
@@ -75,9 +75,9 @@
     </label>
     <div class="spacer"></div>
     <div class="group" role="group" aria-label="View">
-      <button id="rotate-left" title="Rotate left (Q)" aria-label="Rotate left">⟲</button>
-      <button id="rotate-right" title="Rotate right (E)" aria-label="Rotate right">⟳</button>
-      <button id="fit" title="Fit to screen (Home)">Fit</button>
+      <button id="rotate-left" title="Rotate left (Q)" aria-label="Rotate left" data-map-only>⟲</button>
+      <button id="rotate-right" title="Rotate right (E)" aria-label="Rotate right" data-map-only>⟳</button>
+      <button id="fit" title="Fit to screen (Home)" data-map-only>Fit</button>
       <button id="walk" title="Walk the map in first person (V, or double-click open ground)" aria-pressed="false">Walk</button>
       <button id="pack-btn" title="What you have caught (B)" aria-expanded="false" aria-controls="pack" hidden>Backpack <span id="pack-count" class="count" hidden></span></button>
       <button id="stash-btn" title="Photographs you have taken (G)" aria-expanded="false" aria-controls="stash" hidden>Photos <span id="stash-count" class="count" hidden></span></button>
@@ -100,7 +100,14 @@
     <div id="map" tabindex="0" aria-label="Code base map"></div>
     <div id="labels" aria-hidden="true"></div>
     <div id="walk-hud" hidden>
+      <!-- Over the street while the walker is held, so that what is in focus is
+           whatever took the mouse away. First, so it softens the city and nothing
+           the HUD draws over it. -->
+      <div class="w-veil" aria-hidden="true"></div>
       <div class="crosshair"></div>
+      <!-- The tool switcher (R). Empty until the first time it is opened: switcher.js
+           builds its face once and then only moves the cursor over it. -->
+      <div class="w-wheel" hidden role="listbox" aria-label="Tool switcher"></div>
       <div class="w-radar" hidden>
         <canvas width="150" height="150" aria-hidden="true"></canvas>
         <div class="w-nearest"></div>
@@ -117,7 +124,8 @@
         </div>
         <div class="w-target" hidden></div>
         <div class="w-keys"><kbd>W A S D</kbd> move · <kbd>Shift</kbd> run · <kbd>Space</kbd> jump
-          · <kbd>Click</kbd> right hand (hold to keep firing) · <kbd>F</kbd>/<kbd>C</kbd> left hand · <kbd>1</kbd>…<kbd>7</kbd> and <kbd>8</kbd><kbd>9</kbd><kbd>0</kbd> pick them
+          · <kbd>Click</kbd> right hand (hold to keep firing) · <kbd>F</kbd>/<kbd>C</kbd> left hand
+          · hold <kbd>R</kbd> the tool wheel · <kbd>E</kbd>/<kbd>Q</kbd> next right/left · <kbd>1</kbd>…<kbd>0</kbd> pick
           · <kbd>B</kbd> backpack · <kbd>H</kbd> hands away · hold <kbd>Right</kbd> scope
           · <kbd>?</kbd> everything else · <kbd>M</kbd> back to the map</div>
       </div>
@@ -157,6 +165,9 @@
       <div id="panel-body"></div>
     </aside>
     <dialog id="tour">
+      <!-- The picture comes before the words, because a gesture is a thing to be shown
+           and then named. It is hidden on the cards that have nothing to show. -->
+      <img id="tour-shot" alt="" hidden>
       <h2 id="tour-title"></h2>
       <p id="tour-body"></p>
       <footer>
@@ -206,11 +217,15 @@
         <tr><th>Space</th><td>Jump, which costs a little wind. While flying, ascend.</td></tr>
         <tr><th>Click</th><td>Use the tool in your right hand. Holding the button down keeps the nail gun and the extinguisher firing; every other tool takes one shot per click.</td></tr>
         <tr><th>F or C</th><td>Use the tool in your left hand. The middle mouse button does the same. While flying, <kbd>C</kbd> descends instead, and <kbd>F</kbd> is the throttle.</td></tr>
-        <tr><th>1 … 7</th><td>Take out a primary tool. <kbd>T</kbd> walks along the row.</td></tr>
-        <tr><th>8 9 0</th><td>Pick up a secondary tool, or press the same key again to put it down. Only one is carried at a time.</td></tr>
+        <tr><th>R</th><td>The tool wheel, which is every tool at once, laid out the way you carry them and numbered the same way the row along the bottom is: the hunt’s row down the right side, what carries you down the left, and an empty left hand at the bottom of it. Hold <kbd>R</kbd>, point at one with the mouse and let go; or tap <kbd>R</kbd> to leave the wheel up and take what is under the cursor with <kbd>R</kbd> again, <kbd>Enter</kbd> or a click. <kbd>Esc</kbd> or the right button backs out and changes nothing, and so does letting go while the cursor is still in the middle. While it is up you are held where you stand and the city behind it is blurred — nothing moves you, spends a tank or bites you, so changing hands costs no time. Pointing at something already in your hands keeps it — the bare hand at the bottom left is how you put a carried tool down.</td></tr>
+        <tr><th>1 2 3</th><td>Take out a secondary tool, or press the same key again to put it down. Only one is carried at a time.</td></tr>
+        <tr><th>4 … 0</th><td>Take out a primary tool.</td></tr>
+        <tr><th>E</th><td>The next primary tool, round and round. Your right hand is never empty.</td></tr>
+        <tr><th>Q</th><td>The next secondary tool, and after the last of them an empty left hand — which is how you come down out of the air or step off the water on purpose. Four presses brings you back to where you started.</td></tr>
         <tr><th>H</th><td>Put both hands away, or take them out again. This is only the drawing of them: both still work, and what they throw then leaves from your eye.</td></tr>
         <tr><th>Hold right button</th><td>Look through the scope. The tracking dart is the tool this is meant for.</td></tr>
         <tr><th>Enter</th><td>Show the details of whatever the reticle is on, as a second hit would. The pointer is released for reading; a click on the map resumes walking.</td></tr>
+        <tr><th>Esc</th><td>Hand the mouse back, so the toolbar above the street can be used. You are held where you stand while it is gone — nothing moves you, spends a tank or bites you — and a click on the map takes the mouse back and walks on. The same holds whenever the mouse goes elsewhere, including switching to another tab.</td></tr>
         <tr><th>+ / −</th><td>Change the planet's radius, and so how sharply the world curves. <kbd>[</kbd> and <kbd>]</kbd> do the same.</td></tr>
         <tr><th>V / M / Esc</th><td>Return to the map. Coming back puts you where you were standing, unless you selected something on the map in the meantime.</td></tr>
       </table>

@@ -77,6 +77,15 @@ type Finding struct {
 	Line   int    `json:"line,omitempty"`
 	Column int    `json:"column,omitempty"`
 
+	// Reached names the function in this repository from which a scanner proved the
+	// vulnerable code can actually be called - govulncheck is the one that does this,
+	// and Path, Line and Column are that call site. It is the difference between a
+	// dependency that is vulnerable and a vulnerability this project can suffer, and
+	// most advisories against a lock file are the former. It is a field rather than a
+	// sentence in Detail because the map draws the two differently: what can be
+	// reached burns (web/static/fires.js), and what cannot walks a lap as a bug.
+	Reached string `json:"reached,omitempty"`
+
 	Ecosystem string `json:"ecosystem,omitempty"`
 	Package   string `json:"package,omitempty"`
 	Version   string `json:"version,omitempty"`

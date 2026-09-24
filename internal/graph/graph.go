@@ -34,16 +34,22 @@ const (
 )
 
 type Node struct {
-	ID         string   `json:"id"`
-	Kind       NodeKind `json:"kind"`
-	Name       string   `json:"name"`
-	Path       string   `json:"path,omitempty"`
-	Parent     string   `json:"parent,omitempty"`
-	Lang       string   `json:"lang,omitempty"`
-	LOC        int      `json:"loc,omitempty"`
-	SymbolKind string   `json:"symbolKind,omitempty"`
-	Line       int      `json:"line,omitempty"`
-	Version    string   `json:"version,omitempty"`
+	ID     string   `json:"id"`
+	Kind   NodeKind `json:"kind"`
+	Name   string   `json:"name"`
+	Path   string   `json:"path,omitempty"`
+	Parent string   `json:"parent,omitempty"`
+	Lang   string   `json:"lang,omitempty"`
+	LOC    int      `json:"loc,omitempty"`
+	// Bytes is what the file measured on disk. LOC is what the map is built out of,
+	// but a file can have no lines to count and still take up room: anything binary,
+	// and anything over --max-file-size, is listed without ever being read. Sized by
+	// lines alone those came out as flat slabs - a 4 MB model indistinguishable from
+	// an empty file - so the bytes travel too, and the UI falls back to them.
+	Bytes      int64  `json:"bytes,omitempty"`
+	SymbolKind string `json:"symbolKind,omitempty"`
+	Line       int    `json:"line,omitempty"`
+	Version    string `json:"version,omitempty"`
 	// Requested is the specifier a manifest asked for when a lock file pinned it to
 	// another version, e.g. "^4.2.0" for version 4.3.1.
 	Requested string `json:"requested,omitempty"`

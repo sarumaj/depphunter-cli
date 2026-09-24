@@ -381,6 +381,139 @@ main { position: relative; flex: 1; min-height: 0; }
 #walk-hud .w-slot[data-tool="grapple"] i { border-bottom-color: transparent; }
 #walk-hud .w-slot[data-tool="jetpack"] i { border: none; clip-path: polygon(50% 0, 100% 100%, 50% 72%, 0 100%); background: currentColor; }
 #walk-hud .w-slot[data-tool="skimmers"] i { border-radius: 50% / 30%; height: 8px; width: 16px; }
+
+/* Held (M33): the street is waiting on something else - a panel being read, a menu,
+   the toolbar over it - so it is softened and whatever took the mouse away is what
+   stays sharp. The same treatment the wheel gets, and for the same reason: a view in
+   focus behind something invites you to keep reading the view.
+   It sits under everything else in the HUD, so the crosshair, the slots and the line
+   saying how to walk on again are all still legible over it. */
+#walk-hud .w-veil {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none;
+  opacity: 0; transition: opacity 0.12s ease-out;
+  background: color-mix(in srgb, var(--surface) 14%, transparent);
+  -webkit-backdrop-filter: blur(6px) saturate(0.85);
+  backdrop-filter: blur(6px) saturate(0.85);
+}
+#walk-hud.held .w-veil { opacity: 1; }
+/* Where a blur is refused, or unwanted, dimming says the same thing. */
+@media (prefers-reduced-transparency: reduce) {
+  #walk-hud .w-veil {
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+    background: color-mix(in srgb, var(--surface) 45%, transparent);
+  }
+}
+@media (prefers-reduced-motion: reduce) { #walk-hud .w-veil { transition: none; } }
+/* Dying is its own red, and two washes over one street is one too many. */
+#walk-hud.dead .w-veil { display: none; }
+
+/* The tool wheel (R, switcher.js). Ten tools laid out the way they are carried rather
+   than the way they are numbered: the hunt down the right side, what carries you down
+   the left, an empty left hand at the bottom of it. It sits in the middle of the view
+   because that is where the mouse already is - the cursor starts in the hub and a
+   flick in any direction is the whole gesture. */
+/* It covers the whole view rather than only the circle it draws, because what is
+   behind it is held still (Walker.still) and softened: a street in focus behind a
+   menu invites a walker to keep reading the street, and the one thing worth reading
+   while the wheel is up is the wheel. The blur is what says the city is waiting. */
+#walk-hud .w-wheel {
+  position: absolute; inset: 0; z-index: 2; pointer-events: none;
+  display: flex; align-items: center; justify-content: center;
+  background: color-mix(in srgb, var(--surface) 20%, transparent);
+  -webkit-backdrop-filter: blur(7px) saturate(0.8);
+  backdrop-filter: blur(7px) saturate(0.8);
+  animation: w-wheel-lift 0.11s ease-out;
+}
+/* display above would otherwise beat the UA sheet's rule for the attribute. */
+#walk-hud .w-wheel[hidden] { display: none; }
+@keyframes w-wheel-lift { from { opacity: 0; } }
+/* Where a blur is refused, or unwanted, the same thing is said by dimming: the city
+   is still there and still not what you are looking at. */
+@media (prefers-reduced-transparency: reduce) {
+  #walk-hud .w-wheel {
+    -webkit-backdrop-filter: none; backdrop-filter: none;
+    background: color-mix(in srgb, var(--surface) 55%, transparent);
+  }
+}
+#walk-hud .w-wheel-face {
+  position: relative; width: var(--face); height: var(--face); border-radius: 50%;
+  flex: none;
+  /* Nearly opaque, like everything else the HUD says in words: it is read against a
+     street that can be any color at all, and a wheel you can see a white wall through
+     is a wheel whose keys nobody can find. */
+  background: color-mix(in srgb, var(--surface) 96%, transparent);
+  border: 1px solid var(--border); box-shadow: var(--shadow);
+  animation: w-wheel-in 0.11s ease-out;
+}
+@keyframes w-wheel-in { from { opacity: 0; transform: scale(0.9); } }
+@media (prefers-reduced-motion: reduce) {
+  #walk-hud .w-wheel-face, #walk-hud .w-wheel { animation: none; }
+}
+/* The wedge under the cursor, as a slice of a conic gradient - which starts at the
+   top and runs clockwise, the same way switcher.js measures its angles, so the two
+   never have to be reconciled. The hub covers the middle of it. */
+#walk-hud .w-wheel-lit {
+  position: absolute; inset: 0; border-radius: 50%;
+  background: conic-gradient(from var(--from, 0deg),
+    color-mix(in srgb, var(--accent) 55%, transparent) 0 var(--span, 0deg), transparent 0);
+}
+/* Where one wedge ends and the next begins. They are drawn from the middle outwards
+   and the hub hides the ends that meet there. */
+#walk-hud .w-wheel-split {
+  position: absolute; left: 50%; top: 50%; width: 1px; height: 50%;
+  transform-origin: top center; background: var(--border); opacity: 0.7;
+}
+/* The tools, each seated at the middle of its wedge. They are slots, the same markup
+   the row along the bottom is built from, so every tool's own shape comes with it. */
+#walk-hud .w-wheel .w-slot {
+  position: absolute; left: 50%; top: 50%;
+  flex-direction: column; gap: 2px; padding: 4px 6px; opacity: 0.95;
+  background: none; border-color: transparent; box-shadow: none;
+}
+/* Two different things are marked here and they have to stay apart: what is in the
+   walker's hands, which is the filled box every selected slot wears, and what the
+   cursor is over, which is the lit wedge behind it and a ring around it. Letting go
+   swaps the second for the first. */
+#walk-hud .w-wheel .w-slot.on {
+  opacity: 1; color: var(--text); background: var(--surface);
+  border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent);
+}
+/* Names live in the hub rather than out on the rim: eleven of them around a circle
+   this size overlap at the top and bottom, and the one being pointed at is the only
+   one anybody is reading. */
+#walk-hud .w-wheel .w-slot .w-slot-name { display: none; }
+/* A tank that has run dry. The tool is still on the wheel and still takes - it fills
+   while it is not in hand, and reaching for it is how a walker finds out. */
+#walk-hud .w-wheel .w-slot.dry { opacity: 0.4; }
+/* An empty left hand, which is a choice here rather than the absence of one. */
+#walk-hud .w-wheel .w-slot[data-tool="none"] i {
+  border-style: dashed; border-color: var(--text-2); background: none;
+}
+#walk-hud .w-wheel-hub {
+  position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  width: calc(var(--hub) * 2); height: calc(var(--hub) * 2); border-radius: 50%;
+  background: var(--surface); border: 1px solid var(--border);
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 3px; padding: 0 10px; text-align: center;
+}
+#walk-hud .w-wheel-hub b { font-size: 12px; color: var(--text); line-height: 1.2; }
+/* The hint is as long as the hint on any other tool, and the hub is 116px across: it
+   is clamped to what fits rather than allowed to push the name out of the circle. */
+#walk-hud .w-wheel-hub span {
+  font-size: 10px; color: var(--text-2); line-height: 1.25;
+  display: -webkit-box; -webkit-line-clamp: 4; -webkit-box-orient: vertical; overflow: hidden;
+}
+/* Where the mouse is. The pointer is captured at the reticle while walking, so this
+   is the only cursor there is to point with. */
+#walk-hud .w-wheel-dot {
+  position: absolute; left: 50%; top: 50%; width: 9px; height: 9px; border-radius: 50%;
+  background: var(--accent); box-shadow: 0 0 0 2px color-mix(in srgb, var(--surface) 80%, transparent);
+}
+/* A short window has no room for a 320px wheel over the rest of the HUD. */
+@media (max-height: 560px), (max-width: 420px) {
+  #walk-hud .w-wheel-face { transform: scale(0.78); }
+}
+
 /* The bug tracker: a top-down sweep of the streets around the walker, so a finding
    somewhere across the map can be walked to rather than stumbled on. */
 #walk-hud .w-radar {
@@ -745,8 +878,18 @@ dialog form { margin-top: 12px; text-align: right; }
 
 /* The introduction, shown once on a first visit and from the help after that. One
    short card at a time, because the point of it is to be read rather than skimmed. */
-#tour { max-width: min(520px, calc(100% - 32px)); }
+#tour { max-width: min(560px, calc(100% - 32px)); }
 #tour h2 { font-size: 17px; }
+/* The picture a card is told with (tour.js, tools/tour-shots.mjs). It keeps its own
+   aspect so the dialog does not change height between a card that has one and a card
+   that does not - the introduction is stepped through with a button that must not
+   move under the pointer. */
+#tour-shot {
+  display: block; width: 100%; aspect-ratio: 23 / 13; object-fit: cover;
+  border: 1px solid var(--border); border-radius: 8px; margin-bottom: 14px;
+  background: var(--surface-2, var(--surface));
+}
+#tour-shot[hidden] { display: none; }
 #tour p { margin: 0; color: var(--text-2); line-height: 1.6; min-height: 7.2em; }
 #tour footer { display: flex; align-items: center; gap: 8px; margin-top: 16px; }
 #tour .grow { flex: 1; }

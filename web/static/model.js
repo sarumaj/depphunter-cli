@@ -1,9 +1,48 @@
 // Graph document -> navigable tree with aggregates and edge indexes.
 
+// Roughly what a line of source weighs, for the files that have no lines to count.
+// Anything binary, and anything over --max-file-size, is listed without being read,
+// so it arrives with a size in bytes and nothing else; sized by lines alone every one
+// of them came out at the floor height, which drew a 4 MB model as the same flat slab
+// as an empty file. This is the conversion that gives them a storey instead. It is an
+// average of source, not a measurement of anything - which is why it is only ever
+// used for how big a thing is drawn, and never for a number the map puts in words.
+const BYTES_PER_LINE = 40;
+
+/**
+ * How big a file is for the purpose of drawing it: its lines where it has any, and
+ * what its bytes come to in lines where it has none.
+ *
+ * Kept apart from `loc` deliberately. Every count the map states out loud - the lines
+ * in the status bar, a file's Lines in the panel, what a filter totals - stays lines
+ * that were actually counted, because a stand-in in one of those is a lie. This is
+ * the other thing: the one the geometry and the size palette ask for, where the
+ * question is only ever "how much is there".
+ */
+export const bulk = n =>
+  n.loc || Math.round((n.bytes || 0) / BYTES_PER_LINE);
+
+/**
+ * Whether a file's size is only known in bytes: nothing read it, so there are no
+ * lines to report and "0 lines" would be a statement about the file rather than
+ * about the reading of it. What the UI says instead is how big it is.
+ */
+export const unread = n => n.kind === 'file' && !n.loc && !!n.bytes;
+
+/** Bytes, for somewhere there is room to say it: 4.1 MB, 812 kB, 96 bytes. */
+export function fileSize(bytes) {
+  if (!bytes) return '0 bytes';
+  if (bytes < 1000) return `${bytes} bytes`;
+  const units = ['kB', 'MB', 'GB', 'TB'];
+  let n = bytes / 1000, i = 0;
+  while (n >= 1000 && i < units.length - 1) { n /= 1000; i++; }
+  return `${n < 10 ? n.toFixed(1) : Math.round(n)} ${units[i]}`;
+}
+
 export function buildModel(graph) {
   const byId = new Map();
   for (const n of graph.nodes) {
-    byId.set(n.id, { ...n, children: [], parentNode: null, depth: 0, fileCount: 0, totalLoc: 0, langLoc: new Map(), importers: 0 });
+    byId.set(n.id, { ...n, children: [], parentNode: null, depth: 0, fileCount: 0, totalLoc: 0, totalBulk: 0, langLoc: new Map(), importers: 0 });
   }
   for (const n of byId.values()) {
     const p = n.parent && byId.get(n.parent);
@@ -19,12 +58,14 @@ export function buildModel(graph) {
     if (n.kind === 'file') {
       n.fileCount = 1;
       n.totalLoc = n.loc || 0;
+      n.totalBulk = bulk(n);
       n.langLoc.set(n.lang || '', n.totalLoc);
     } else if (n.kind === 'dir') {
       for (const c of n.children) {
         if (c.kind !== 'dir' && c.kind !== 'file') continue;
         n.fileCount += c.fileCount;
         n.totalLoc += c.totalLoc;
+        n.totalBulk += c.totalBulk;
         for (const [l, v] of c.langLoc) n.langLoc.set(l, (n.langLoc.get(l) || 0) + v);
       }
     }

@@ -15,10 +15,13 @@
 // is the tool and not the project.
 
 import { $ } from './dom.js';
+import { STATIC } from './data.js';
 
 /** The map's cards, in order. */
 export const TOUR = [
   {
+    shot: 'map',
+    alt: 'The map: a mainland of terraced buildings with dependency arcs over it, and package islands around it.',
     title: 'This is your repository',
     body: `The mainland is the project. Directories are terraces, the files standing on
       them are buildings, and a building's height is the number of lines in the file.
@@ -34,6 +37,8 @@ export const TOUR = [
       open it, or a file to see its functions as plots on a terrace.`,
   },
   {
+    shot: 'street',
+    alt: 'Walk mode: the same map seen from a street inside it, with a tool held in each hand.',
     title: 'The map is also a place',
     body: `Press V to walk into it. You explore in first person on a small planet,
       holding a tool in each hand: one for the hunt, one to carry you — a grapple line,
@@ -75,12 +80,15 @@ export const WALK_TOUR = [
       would rather they did that more or less. V, M or Esc returns you to the map.`,
   },
   {
+    shot: 'wheel',
+    alt: 'The tool wheel open, the hunt down its right side and what carries you down its left.',
     title: 'A tool in each hand',
-    body: `Keys 1 to 7 put a tool in your right hand: a fishing rod, a butterfly net, a
-      camera, a bubble wand, a fire extinguisher, a tracking dart or a nail gun. T
-      walks along that row. Keys 8, 9 and 0 pick up something for your left hand — a
-      grapple gun, a jet backpack or a pair of water skimmers — and pressing the same
-      key again puts it down. H stows both hands without putting either away.`,
+    body: `Hold R for the tool wheel: the hunt down its right side — rod, net,
+      camera, bubble wand, extinguisher, dart, nail gun — and down its left what
+      carries you: a grapple gun, a jet backpack, skimmers, or an empty hand. Point
+      at one and let go; you are held still while it is up. Without looking: E is the
+      next tool for your right hand, Q the next for your left, and 1 to 0 pick along
+      the row at the bottom. H stows both hands.`,
   },
   {
     title: 'Using them',
@@ -98,6 +106,8 @@ export const WALK_TOUR = [
       details without leaving the street. O opens the file in your editor.`,
   },
   {
+    shot: 'tracker',
+    alt: 'The tracker: a sweep of the streets around you, with what is still out there marked on it.',
     title: 'The bugs, and the backpack',
     body: `Every finding walks a lap on the building it belongs to — a caterpillar for
       a critical one, a beetle for the middle of the range, a mite for a note. Catch
@@ -106,13 +116,14 @@ export const WALK_TOUR = [
       you close on it.`,
   },
   {
-    title: 'Staying in one piece',
-    body: `The bar in the corner is what you can take: bugs bite, long falls hurt, and
-      deep water with nothing to float on drowns you — and the bay is a step down from
-      any shore, so walking into it is as easy as meaning to. Every bug in your backpack
-      raises it. The jet backpack and the skimmers run on a tank that fills again while they
-      are not in use — the gauge beside your health is what is left. Press ? for
-      everything, at any time.`,
+    shot: 'fire',
+    alt: 'A roof alight: a vulnerability something in the project actually calls, burning where it was reached.',
+    title: 'Fire, and staying in one piece',
+    body: `A vulnerability your code can actually reach burns where it was reached, and
+      spreads along the calls. Put it out with the extinguisher — douse the package it
+      came from and the whole chain goes out, which is what upgrading it does. Standing
+      in one hurts, as do bugs, long falls and deep water with nothing to float on. Get
+      clear and you mend. Press ? for everything, at any time.`,
   },
 ];
 
@@ -160,8 +171,27 @@ function show(cards, key, forced = false, after = null) {
   dots.replaceChildren(...cards.map(() => document.createElement('i')));
   let at = 0;
   const draw = () => {
-    $('tour-title').textContent = cards[at].title;
-    $('tour-body').textContent = cards[at].body.replace(/\s+/g, ' ').trim();
+    const card = cards[at];
+    // The picture, where the card has one. They are taken off the running map by
+    // tools/tour-shots.mjs rather than drawn, so that they cannot quietly stop being
+    // true: a drawing of a feature is a thing somebody has to remember to redraw.
+    //
+    // A missing one is not an error. The pictures are generated, and a working copy
+    // that has not generated them yet - or an export made before they existed - shows
+    // the cards as they always were, in words. Which is also why nothing here waits
+    // for them: the introduction opens on the first load of the map, and a card that
+    // held still until an image decoded would be a card that arrives late.
+    const shot = $('tour-shot');
+    shot.hidden = !card.shot;
+    if (card.shot) {
+      // An exported map has no server to fetch from and carries the pictures inline,
+      // the same way it carries the models (web/static.go).
+      shot.src = STATIC?.tour?.[card.shot] || `tour/${card.shot}.webp`;
+      shot.alt = card.alt || '';
+      shot.onerror = () => { shot.hidden = true; };
+    }
+    $('tour-title').textContent = card.title;
+    $('tour-body').textContent = card.body.replace(/\s+/g, ' ').trim();
     $('tour-back').disabled = at === 0;
     $('tour-next').textContent = at === cards.length - 1 ? 'Start' : 'Next';
     [...dots.children].forEach((d, i) => d.classList.toggle('on', i === at));

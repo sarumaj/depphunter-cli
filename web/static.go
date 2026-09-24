@@ -77,11 +77,31 @@ func WriteStatic(w io.Writer, g *graph.Graph, ui config.UI, root string, extra m
 		}
 		models[key] = "data:model/gltf-binary;base64," + base64.StdEncoding.EncodeToString(b)
 	}
+	// The introduction's pictures, likewise: a first visit to an exported map is still
+	// a first visit, and a card whose picture is a broken link is worse than a card
+	// that never had one. Read from the directory rather than from a list, so that
+	// taking a new picture is one command and not two edits (tools/tour-shots.mjs).
+	tour := map[string]string{}
+	shots, err := fs.ReadDir(assets, "tour")
+	if err == nil {
+		for _, shot := range shots {
+			name := shot.Name()
+			if !strings.HasSuffix(name, ".webp") {
+				continue
+			}
+			b, err := fs.ReadFile(assets, "tour/"+name)
+			if err != nil {
+				return err
+			}
+			tour[strings.TrimSuffix(name, ".webp")] = "data:image/webp;base64," + base64.StdEncoding.EncodeToString(b)
+		}
+	}
 	// json.Marshal escapes <, > and &, so the payload cannot close its <script> element.
 	data := map[string]any{
 		"hand":  models["hand"],
 		"props": models["props"],
 		"bug":   models["bug"],
+		"tour":  tour,
 		"graph": g,
 		"config": struct {
 			config.UI

@@ -16,6 +16,7 @@ import './stub.mjs';
 const { Health } = await import('../static/health.js');
 const { Wind } = await import('../static/wind.js');
 const { TOOLS, TOOL_IDS, PRIMARY_IDS, SECONDARY_IDS, hits, isSecondary, toolFor, idleTool, studyTool, DEFAULT_TOOL } = await import('../static/tools.js');
+const SWITCH = await import('../static/switcher.js');
 const THREE = await import('../static/vendor/three.module.min.js');
 
 // How close two parts of a tool have to be to count as touching, in map units: a
@@ -83,6 +84,53 @@ describe('what the walker can take', () => {
   });
 });
 
+describe('mending', () => {
+  it('puts a walker back together once nothing is happening to them', () => {
+    const h = blind();
+    h.reset(0);
+    h.hurt(50);
+    const at = h.hurtAt;
+    // Straight away, nothing: being bitten and then standing still is not a cure.
+    assert.equal(h.mend(1, at + 500), 0, 'a walker mended while still being hurt');
+    assert.equal(h.hp, h.max - 50);
+    // After the wait, steadily.
+    assert.ok(h.mend(1, at + 8000) > 0, 'a walker never mends');
+    assert.ok(h.hp > h.max - 50);
+  });
+
+  it('stops at the ceiling and never lifts it', () => {
+    const h = blind();
+    h.reset(0);
+    const ceiling = h.max;
+    h.hurt(5);
+    for (let i = 0; i < 200; i++) h.mend(1, h.hurtAt + 60000);
+    assert.equal(h.hp, ceiling, 'mending overshot or fell short of the ceiling');
+    assert.equal(h.max, ceiling, 'mending raised the ceiling, which is the backpack\'s job');
+  });
+
+  it('does nothing for the dead', () => {
+    const h = blind();
+    h.reset(0);
+    h.hurt(h.max);
+    assert.ok(h.dead);
+    assert.equal(h.mend(10, h.hurtAt + 60000), 0, 'a dead walker mended');
+    assert.equal(h.hp, 0);
+  });
+
+  it('is slow enough that a bad street still costs something', () => {
+    // A walk is meant to be survivable, not free: the worst bite must take longer to
+    // mend than the bug that gave it takes to come round again and give another.
+    const h = blind();
+    h.reset(0);
+    const bite = Health.biteFor('critical');
+    h.hurt(bite);
+    let seconds = 0;
+    while (h.hp < h.max && seconds < 120) { h.mend(1, h.hurtAt + 60000); seconds++; }
+    assert.ok(seconds >= 5, `a critical bite mends in ${seconds}s, which costs nothing`);
+    assert.ok(seconds <= 30, `a critical bite takes ${seconds}s to mend, which is a wait`);
+  });
+});
+
 describe('what running costs', () => {
   /** Wind draws into the walk HUD; none of these tests are about the drawing. */
   const blown = () => new Wind({ querySelector: () => null });
@@ -140,16 +188,9 @@ describe('the two kinds of tool', () => {
       assert.ok(!slots.has(tool.slot), `two tools in slot ${tool.slot}`);
       slots.add(tool.slot);
     }
-    // Ten slots, which is what 1 to 9 and 0 come to, numbered with the hunt first.
     assert.equal(TOOL_IDS.length, 10);
     const kinds = TOOL_IDS.map(id => toolFor(id).kind);
     assert.deepEqual(kinds, [...kinds].sort((a, b) => (a === 'primary' ? 0 : 1) - (b === 'primary' ? 0 : 1)));
-    // The HUD draws each slot's key from the tool's own slot rather than from where it
-    // sits in the row, which is what lets the row be laid out by hand - the carried
-    // tools on the left, the hunt on the right - without renumbering anything. That
-    // only holds while slot modulo ten is a digit of its own for every tool.
-    const keys = TOOL_IDS.map(id => toolFor(id).slot % 10);
-    assert.equal(new Set(keys).size, TOOL_IDS.length, `two tools share a key: ${keys}`);
     assert.equal(toolFor(DEFAULT_TOOL).kind, 'primary', 'walk mode opens with something that carries you');
   });
 
@@ -391,3 +432,102 @@ describe('the two kinds of tool', () => {
     }
   });
 });
+
+// Changing hands. The wheel is a circle of wedges and a cursor, and both halves of
+// that are arithmetic: which wedge an angle falls in, and which tool a ring steps to.
+// Neither needs a browser, and both are what a walker feels when they flick the mouse
+// - so a wedge that is off by one is a tool taken by mistake in the middle of a chase.
+describe('the tool switcher', () => {
+  it('numbers the row it draws, left to right', () => {
+    // The fix this all exists for. The row is laid out with the carried tools on the
+    // left, because that is the hand they go in, and the digits are counted along
+    // that same list - so the row reads 1 to 0 from left to right rather than
+    // 8, 9, 0, 1, 2, which is what assigning them by kind produced.
+    const row = SWITCH.rowOrder();
+    assert.deepEqual(row, [...SECONDARY_IDS, ...PRIMARY_IDS], 'the row is not laid out by hand');
+    assert.deepEqual(row.map(SWITCH.keyFor), ['1', '2', '3', '4', '5', '6', '7', '8', '9', '0']);
+    assert.deepEqual(SECONDARY_IDS.map(SWITCH.keyFor), ['1', '2', '3'], 'the left hand is not 1, 2, 3');
+    assert.deepEqual(PRIMARY_IDS.map(SWITCH.keyFor), ['4', '5', '6', '7', '8', '9', '0']);
+
+    // And every digit gets back the tool whose slot wears it.
+    for (const id of row) assert.equal(SWITCH.toolForKey(`Digit${SWITCH.keyFor(id)}`), id);
+    // Ten slots is exactly ten digits, which is the only reason the numbering can be
+    // this simple; an eleventh tool would take a digit another one already wears.
+    assert.equal(new Set(row.map(SWITCH.keyFor)).size, TOOL_IDS.length, 'two tools share a digit');
+    assert.equal(row.length, 10, 'ten slots no longer fit the ten digits');
+
+    // Nothing that is not a digit key picks a tool. 'KeyQ'.slice(5) is an empty
+    // string and +'' is nought, so an unguarded lookup answers Q with the 0 key -
+    // which would have put a nail gun in the hunting hand instead of walking the
+    // carried row, and only while somebody was reaching for something else.
+    for (const code of ['KeyQ', 'KeyE', 'KeyR', 'KeyW', 'Escape', 'Enter', 'Space', 'Digit', 'DigitX']) {
+      assert.equal(SWITCH.toolForKey(code), undefined, `${code} picked a tool`);
+    }
+
+    // A carried tool answers to its digit and to Q, its digit first because that is
+    // what its slot shows.
+    assert.deepEqual(SWITCH.keysFor(SECONDARY_IDS[0]), ['1', 'Q']);
+    assert.deepEqual(SWITCH.keysFor(PRIMARY_IDS[0]), ['4']);
+  });
+
+  it('cycles the off hand back to an empty one', () => {
+    const ring = SWITCH.carriedRing();
+    assert.deepEqual(ring, [...SECONDARY_IDS, SWITCH.EMPTY], 'nothing is not on the ring');
+    // Four presses from empty come back to empty, which is what makes Q safe to lean
+    // on: whatever it did, pressing it round again undoes it.
+    let at = SWITCH.EMPTY;
+    const seen = [];
+    for (let i = 0; i < ring.length; i++) { at = SWITCH.cycle(ring, at); seen.push(at); }
+    assert.deepEqual(seen, ring);
+    assert.equal(at, SWITCH.EMPTY);
+    // And backwards, for a ring that is walked the other way.
+    assert.equal(SWITCH.cycle(ring, SWITCH.EMPTY, -1), SECONDARY_IDS[SECONDARY_IDS.length - 1]);
+  });
+
+  it('cycles the hunting hand and never empties it', () => {
+    let at = PRIMARY_IDS[0];
+    for (let i = 0; i < PRIMARY_IDS.length; i++) {
+      at = SWITCH.cycle(PRIMARY_IDS, at);
+      assert.ok(PRIMARY_IDS.includes(at), 'E left the hunting hand holding nothing');
+    }
+    assert.equal(at, PRIMARY_IDS[0], 'the hunt does not come round');
+  });
+
+  it('lays the wheel out the way the walker is', () => {
+    const w = SWITCH.wedges();
+    assert.equal(w.length, TOOL_IDS.length + 1, 'the wheel has no wedge for an empty hand');
+    // Every wedge is somewhere, once, and the two halves are whole: the hunt owns the
+    // right, what carries you owns the left, and there is no gap between them.
+    for (const id of [...TOOL_IDS, SWITCH.EMPTY]) {
+      assert.equal(w.filter(x => x.id === id).length, 1, `${id} is on the wheel ${w.filter(x => x.id === id).length} times`);
+    }
+    const right = w.filter(x => x.from < 180), left = w.filter(x => x.from >= 180);
+    assert.deepEqual(right.map(x => x.id), PRIMARY_IDS, 'the hunt is not down the right side');
+    assert.deepEqual(left.map(x => x.id).sort(), SWITCH.carriedRing().slice().sort());
+    assert.equal(Math.min(...right.map(x => x.from)), 0);
+    assert.equal(Math.max(...right.map(x => x.to)), 180);
+    assert.equal(Math.min(...left.map(x => x.from)), 180);
+    assert.equal(Math.max(...left.map(x => x.to)), 360);
+  });
+
+  it('points at what the cursor is over, and at nothing in the middle', () => {
+    // The hub: a wheel opened and let go without moving the mouse changes no hands.
+    assert.equal(SWITCH.wedgeAt(0, 0), null);
+    assert.equal(SWITCH.wedgeAt(SWITCH.HUB - 1, 0), null, 'the dead zone is not the hub');
+    assert.ok(SWITCH.wedgeAt(SWITCH.HUB + 2, 0), 'the ring starts somewhere else than the hub ends');
+    // Straight up is the first of the hunt, straight down-left is the bare hand, and
+    // the middle of every wedge is the wedge it is the middle of.
+    assert.equal(SWITCH.wedgeAt(0, -120).id, PRIMARY_IDS[0]);
+    assert.equal(SWITCH.wedgeAt(120, 0).id, PRIMARY_IDS[Math.floor(PRIMARY_IDS.length / 2)]);
+    for (const wedge of SWITCH.wedges()) {
+      const { x, y } = SWITCH.seatOf(wedge);
+      assert.equal(SWITCH.wedgeAt(x, y)?.id, wedge.id, `the middle of ${wedge.id} points at something else`);
+    }
+    // All the way round, every angle is on exactly one wedge and never on none.
+    for (let a = 0; a < 360; a += 0.5) {
+      const r = (a - 90) * Math.PI / 180;
+      assert.ok(SWITCH.wedgeAt(Math.cos(r) * SWITCH.RING, Math.sin(r) * SWITCH.RING), `${a} degrees is on nothing`);
+    }
+  });
+});
+
