@@ -10,6 +10,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"time"
 
@@ -163,6 +164,9 @@ func RegisterFlags(fs *pflag.FlagSet) {
 	fs.String("style", d.UI.Style, "what the map is dressed as: city, circuit, galaxy")
 	fs.Bool("show-std", d.UI.ShowStd, "show standard-library islands")
 	fs.Int("expand-depth", d.UI.ExpandDepth, "initially expanded directory depth (0 = auto, -1 = all)")
+	fs.StringArray("ui-default", nil,
+		"seed a view setting for a repository that has saved none: key=value, repeatable "+
+			"(theme, color_by, height_scale, style, show_std, expand_depth, tool, path_filter)")
 	fs.Bool("watch", false, "re-analyze on file changes and update the browser live")
 	fs.Bool("no-cache", false, "do not read or write the analysis cache")
 	fs.Bool("no-history", false, "do not read git history")
@@ -244,6 +248,10 @@ func Load(fs *pflag.FlagSet, args []string, userDir string) (Config, error) {
 
 	v := viper.New()
 	setDefaults(v, cfg)
+	seeds, _ := fs.GetStringArray("ui-default")
+	if err := uiDefaults(v, seeds); err != nil {
+		return cfg, err
+	}
 	if userDir != "" {
 		if err := mergeFile(v, filepath.Join(userDir, "config.yaml"), false, true); err != nil {
 			return cfg, err
@@ -329,6 +337,46 @@ func setDefaults(v *viper.Viper, d Config) {
 	} {
 		v.SetDefault(key, val)
 	}
+}
+
+// uiDefaults applies --ui-default pairs, which are exactly that: defaults. They replace
+// what depphunter would otherwise start a view at, and every config file, environment
+// variable and flag beats them.
+//
+// That is what separates them from --theme and the rest, and it is the whole point of
+// having both. An editor can say what a repository should look like before anyone has
+// said otherwise in it, and still never overrule what the map's own Save button wrote
+// into that repository's ui: section - which a flag would, silently and for good.
+//
+// Only the keys one value can seed are accepted; a list is a thing to write in the
+// file rather than to spell on a command line.
+func uiDefaults(v *viper.Viper, pairs []string) error {
+	for _, pair := range pairs {
+		key, value, ok := strings.Cut(pair, "=")
+		key, value = strings.TrimSpace(key), strings.TrimSpace(value)
+		if !ok || key == "" {
+			return fmt.Errorf("ui-default %q: expected key=value", pair)
+		}
+		switch key {
+		case "show_std":
+			on, err := strconv.ParseBool(value)
+			if err != nil {
+				return fmt.Errorf("ui-default %s: %w", key, err)
+			}
+			v.SetDefault("ui."+key, on)
+		case "expand_depth":
+			depth, err := strconv.Atoi(value)
+			if err != nil {
+				return fmt.Errorf("ui-default %s: %w", key, err)
+			}
+			v.SetDefault("ui."+key, depth)
+		case "theme", "color_by", "height_scale", "style", "tool", "path_filter":
+			v.SetDefault("ui."+key, value)
+		default:
+			return fmt.Errorf("ui-default %q: not a view setting a single value can seed", key)
+		}
+	}
+	return nil
 }
 
 // mergeFile overlays the YAML file onto v; keys absent from the file keep their value.

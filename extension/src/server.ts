@@ -128,6 +128,9 @@ export function start(root: string, home: string | undefined, log: vscode.Output
  * .depphunter.yaml, which flags override, still has its say over everything the
  * user has not set here: an enum left at "default", a number left empty, a switch
  * left where depphunter's own default puts it.
+ *
+ * The settings that decide how the map looks are the exception, and go as seeds
+ * (--ui-default) rather than as flags - see below for why.
  */
 export function argv(cfg: vscode.WorkspaceConfiguration, root: string): string[] {
   const args = ['--no-open', '--addr', '127.0.0.1:0'];
@@ -163,12 +166,24 @@ export function argv(cfg: vscode.WorkspaceConfiguration, root: string): string[]
   off('history', '--no-history');
   number('historyCommits', '--history-commits');
 
-  text('style', '--style');
-  text('theme', '--theme');
-  text('colorBy', '--color-by');
-  text('heightScale', '--height-scale');
-  number('expandDepth', '--expand-depth');
-  on('showStd', '--show-std');
+  // The view settings are seeds, not overrides: --ui-default sits under every config
+  // file, so a repository that has saved a view of its own keeps it. These are the
+  // settings the map can change and write back itself (its Save button writes the
+  // project file's ui: section), and a flag here would beat that file for good -
+  // leaving Save quietly doing nothing for whatever happens to be set in the editor.
+  const seed = (key: string, name: string) => {
+    const v = (cfg.get<string>(key) ?? '').trim();
+    if (v && v !== 'default') args.push('--ui-default', `${name}=${v}`);
+  };
+  seed('style', 'style');
+  seed('theme', 'theme');
+  seed('colorBy', 'color_by');
+  seed('heightScale', 'height_scale');
+  const depth = cfg.get<number | null>('expandDepth');
+  if (typeof depth === 'number' && Number.isFinite(depth)) {
+    args.push('--ui-default', `expand_depth=${Math.trunc(depth)}`);
+  }
+  if (cfg.get<boolean>('showStd') === true) args.push('--ui-default', 'show_std=true');
 
   list('findings', '--findings');
   off('vulns', '--no-vulns');

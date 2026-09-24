@@ -396,7 +396,7 @@
               "A printed circuit board.",
               "A galaxy."
             ],
-            "markdownDescription": "What the map is dressed as (`--style`). `default` leaves it to the config files."
+            "markdownDescription": "What the map is dressed as. Where the repository has saved a view of its own, that view wins: this is what a map opens at before anyone has saved one in it."
           },
           "depphunter.theme": {
             "type": "string",
@@ -408,7 +408,7 @@
             ],
             "default": "default",
             "order": 2,
-            "markdownDescription": "The map's color theme (`--theme`); `auto` follows the system. `default` leaves it to the config files."
+            "markdownDescription": "The map's color theme; `auto` follows the system. Where the repository has saved a view of its own, that view wins: this is what a map opens at before anyone has saved one in it."
           },
           "depphunter.colorBy": {
             "type": "string",
@@ -423,7 +423,7 @@
             ],
             "default": "default",
             "order": 3,
-            "markdownDescription": "What colors the buildings (`--color-by`). All but `language` and `size` need git history. `default` leaves it to the config files."
+            "markdownDescription": "What colors the buildings. All but `language` and `size` need git history. Where the repository has saved a view of its own, that view wins: this is what a map opens at before anyone has saved one in it."
           },
           "depphunter.heightScale": {
             "type": "string",
@@ -435,7 +435,7 @@
             ],
             "default": "default",
             "order": 4,
-            "markdownDescription": "How lines of code turn into building height (`--height-scale`). `default` leaves it to the config files."
+            "markdownDescription": "How lines of code turn into building height. Where the repository has saved a view of its own, that view wins: this is what a map opens at before anyone has saved one in it."
           },
           "depphunter.expandDepth": {
             "type": [
@@ -445,13 +445,13 @@
             "default": null,
             "minimum": -1,
             "order": 5,
-            "markdownDescription": "How many directory levels start expanded (`--expand-depth`): `0` picks for you, `-1` expands everything. Empty leaves it to the config files and the default."
+            "markdownDescription": "How many directory levels start expanded: `0` picks for you, `-1` expands everything. Empty leaves it to the repository and the default. Where the repository has saved a view of its own, that view wins: this is what a map opens at before anyone has saved one in it."
           },
           "depphunter.showStd": {
             "type": "boolean",
             "default": false,
             "order": 6,
-            "markdownDescription": "Show standard-library islands (`--show-std`)."
+            "markdownDescription": "Show standard-library islands. Where the repository has saved a view of its own, that view wins: this is what a map opens at before anyone has saved one in it."
           }
         }
       },

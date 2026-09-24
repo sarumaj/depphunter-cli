@@ -108,9 +108,9 @@ browser.
   drop is not a thing anybody means to do, so the railings have to be gone over
   rather than through: off a deck, or off anything else standing well above the
   surface, the water has to be jumped into. Every bug
-  in the backpack raises the bar and mends by as much. At nothing the screen goes red, walk mode
-  ends and the map returns — nothing caught is lost — and walking in again
-  starts at full health.
+  in the backpack raises the bar and mends by as much. At nothing the screen goes
+  red, walk mode ends and the map returns — nothing caught is lost — and walking
+  in again starts at full health.
 
   Each finding a scanner reported is represented by one bug, shaped by its
   severity as well as colored by it: a critical finding is a caterpillar that
@@ -223,6 +223,7 @@ depphunter --export html -o map.html  # write a self-contained map
 | `--style`           | `city`                    | presentation of the map: `city`, `circuit` or `galaxy`                                  |
 | `--show-std`        | `false`                   | include standard-library islands                                                        |
 | `--expand-depth`    | `0`                       | directory depth expanded initially; `0` selects one, `-1` expands all                   |
+| `--ui-default`      |                           | seed a view setting for a repository that has saved none: `key=value`, repeatable       |
 | `--watch`           | `false`                   | re-analyze on file change and update the open map                                       |
 | `--no-cache`        |                           | neither read nor write the analysis cache                                               |
 | `--no-history`      |                           | do not read git history                                                                 |
@@ -288,6 +289,14 @@ ui:
 The browser's **Save settings** button writes the current color, height, theme,
 depth and filters into the `ui:` section of `.depphunter.yaml` (or the
 `--config` file), keeping the file's other keys and comments.
+
+That section is where a repository's view lives, and it is what the map reads on
+the way in. `--theme` and the rest override it, as a flag does; `--ui-default`
+sits underneath it instead, replacing only what depphunter would otherwise have
+started at. So `--ui-default theme=dark` decides how a repository that has never
+been saved opens, and stops deciding the moment somebody presses Save. That is
+what the editor extension sends its appearance settings as, so the two never
+disagree about which one won.
 
 ### Watch mode and cache
 
@@ -494,13 +503,13 @@ everything not set here.
 | `depphunter.cache`          | `true`    | `--no-cache`        | Read and write the analysis cache.                                                                             |
 | `depphunter.history`        | `true`    | `--no-history`      | Read git history for the history overlays.                                                                     |
 | `depphunter.historyCommits` | *(empty)* | `--history-commits` | Read at most this many commits.                                                                                |
-| **Appearance**              |           |                     |                                                                                                                |
-| `depphunter.style`          | `default` | `--style`           | `city`, `circuit` or `galaxy`.                                                                                 |
-| `depphunter.theme`          | `default` | `--theme`           | `auto`, `light` or `dark`.                                                                                     |
-| `depphunter.colorBy`        | `default` | `--color-by`        | `language`, `size`, `commits`, `churn`, `age` or `authors`.                                                    |
-| `depphunter.heightScale`    | `default` | `--height-scale`    | `linear`, `sqrt` or `log`.                                                                                     |
-| `depphunter.expandDepth`    | *(empty)* | `--expand-depth`    | Directory levels expanded initially; `0` selects one, `-1` expands all.                                        |
-| `depphunter.showStd`        | `false`   | `--show-std`        | Include standard-library islands.                                                                              |
+| **Appearance** (seeds: a repository that has saved a view of its own keeps it) |  |            |                                                                                                                |
+| `depphunter.style`          | `default` | `--ui-default`      | `city`, `circuit` or `galaxy`.                                                                                 |
+| `depphunter.theme`          | `default` | `--ui-default`      | `auto`, `light` or `dark`.                                                                                     |
+| `depphunter.colorBy`        | `default` | `--ui-default`      | `language`, `size`, `commits`, `churn`, `age` or `authors`.                                                    |
+| `depphunter.heightScale`    | `default` | `--ui-default`      | `linear`, `sqrt` or `log`.                                                                                     |
+| `depphunter.expandDepth`    | *(empty)* | `--ui-default`      | Directory levels expanded initially; `0` selects one, `-1` expands all.                                        |
+| `depphunter.showStd`        | `false`   | `--ui-default`      | Include standard-library islands.                                                                              |
 | **Findings**                |           |                     |                                                                                                                |
 | `depphunter.findings`       | `[]`      | `--findings`        | Scanner reports to place on the map, relative to the folder. Globs permitted.                                  |
 | `depphunter.vulns`          | `true`    | `--no-vulns`        | Place reports on the map and, under `online`, query the OSV database.                                          |
@@ -605,51 +614,51 @@ the map's extent beyond its edge, and zooming out at the point where the map
 occupies roughly a third of the view. In walk mode the walker may travel 3 units
 out over the water and 12 units above the tallest building.
 
-|                           |                                                 |
-|---------------------------|-------------------------------------------------|
-| Drag / right-drag / wheel | pan, orbit, zoom                                |
-| Click / double-click      | select, expand or collapse                      |
-| `Enter`, `Backspace`      | expand or collapse the selection, select parent |
-| `→` `←` in the panel      | expand or collapse a dependency row             |
-| `Enter` while reading     | close the details and resume                    |
-| `T` in walk mode          | select the next tool                            |
-| `Q` `E`                   | rotate by 90°                                   |
-| `Home`                    | fit the map to the view                         |
-| `+` `−`                   | expand or collapse one level throughout         |
-| `/`                       | search files, symbols and packages              |
-| `O`                       | open the selected file in the editor            |
-| `P`                       | write the map to a PNG image                    |
-| Legend click              | show or hide a language                         |
-| Pin click                 | read the findings recorded on a building        |
-| `+` beside a finding      | add it to the backpack                          |
-| `B`                       | open the backpack                               |
+|                           |                                                                                                                 |
+|---------------------------|-----------------------------------------------------------------------------------------------------------------|
+| Drag / right-drag / wheel | pan, orbit, zoom                                                                                                |
+| Click / double-click      | select, expand or collapse                                                                                      |
+| `Enter`, `Backspace`      | expand or collapse the selection, select parent                                                                 |
+| `→` `←` in the panel      | expand or collapse a dependency row                                                                             |
+| `Enter` while reading     | close the details and resume                                                                                    |
+| `T` in walk mode          | select the next tool                                                                                            |
+| `Q` `E`                   | rotate by 90°                                                                                                   |
+| `Home`                    | fit the map to the view                                                                                         |
+| `+` `−`                   | expand or collapse one level throughout                                                                         |
+| `/`                       | search files, symbols and packages                                                                              |
+| `O`                       | open the selected file in the editor                                                                            |
+| `P`                       | write the map to a PNG image                                                                                    |
+| Legend click              | show or hide a language                                                                                         |
+| Pin click                 | read the findings recorded on a building                                                                        |
+| `+` beside a finding      | add it to the backpack                                                                                          |
+| `B`                       | open the backpack                                                                                               |
 | `G`                       | open the photographs the camera has taken; from the street each can be put up on the camera and looked at there |
-| `X`                       | open the export menu                            |
-| `K`                       | save settings to the config file                |
-| The figure                | the walker's last position in walk mode         |
-| `Esc`                     | close the backpack, or clear the selection      |
-| `V`                       | enter walk mode                                 |
+| `X`                       | open the export menu                                                                                            |
+| `K`                       | save settings to the config file                                                                                |
+| The figure                | the walker's last position in walk mode                                                                         |
+| `Esc`                     | close the backpack, or clear the selection                                                                      |
+| `V`                       | enter walk mode                                                                                                 |
 
 In walk mode:
 
-|                        |                                                                                                                                                                                                                                                                                            |
-|------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
-| Mouse                  | look. The pointer is captured at the reticle; `Esc` releases it and a click on the map captures it again. Where it cannot be captured at all — a frame that withholds the pointer lock — walk mode reports this once, and a click then uses the tool rather than requesting the lock again |
-| `1` … `9`, `0`         | select a tool by slot; `T` cycles through them. Slots `1`–`7` hold the primary tools, `8`–`0` the secondary ones                                                                                                                                                                            |
-| `W` `A` `S` `D`/arrows | move and turn; `Shift` runs, which spends the walker's wind                                                                                                                                                                                                                                |
-| `Space`                | jump, which costs a little wind; while flying, ascend                                                                                                                                                                                                                                      |
-| Jet backpack in hand   | flight. While flying, `W` and `S` move along the view direction — looking down and pressing `W` descends — and `C` descends vertically. A click opens the throttle for a burst                                                                                                             |
-| Water skimmers in hand | the surface of the water is walkable, passing under the bridges rather than over them; stowing them over deep water drowns the walker                                                                                                                                                                                                                                                       |
-| Click                  | use the right hand; held down, the nail gun and the extinguisher keep firing. A module within reach is selected, and a bug that is caught is displayed and retained |
-| `F`, `C` / middle click | use the left hand. A secondary tool selects and catches nothing: the grapple hooks the building being looked at, the jet gives a burst of thrust. While flying, `C` descends instead |
-| `B`                    | the backpack, from the street as well as from the map                                                                                 |
-| `X` / `K`              | open the export menu; save the current view to the config file                                                                        |
-| `H`                    | stow or draw both hands. A stowed tool remains functional and throws from the walker's eye                                                                                                                                                                                                   |
-| Hold right button      | look through the scope                                                                                                                                                                                                                                                                     |
-| `Enter`                | show the details of whatever the reticle is on, as a second use of the tool would. This releases the pointer; a click on the map resumes                                                                                                                                                   |
-| Wheel                  | zoom                                                                                                                                                                                                                                                                                       |
-| `+` `-` (or `[` `]`)   | planet radius, and therefore curvature                                                                                                                                                                                                                                                     |
-| `V` / `Esc`            | return to the map. Re-entering walk mode restores the previous position                                                                                                                                                                                                                    |
+|                         |                                                                                                                                                                                                                                                                                            |
+|-------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| Mouse                   | look. The pointer is captured at the reticle; `Esc` releases it and a click on the map captures it again. Where it cannot be captured at all — a frame that withholds the pointer lock — walk mode reports this once, and a click then uses the tool rather than requesting the lock again |
+| `1` … `9`, `0`          | select a tool by slot; `T` cycles through them. Slots `1`–`7` hold the primary tools, `8`–`0` the secondary ones                                                                                                                                                                           |
+| `W` `A` `S` `D`/arrows  | move and turn; `Shift` runs, which spends the walker's wind                                                                                                                                                                                                                                |
+| `Space`                 | jump, which costs a little wind; while flying, ascend                                                                                                                                                                                                                                      |
+| Jet backpack in hand    | flight. While flying, `W` and `S` move along the view direction — looking down and pressing `W` descends — and `C` descends vertically. A click opens the throttle for a burst                                                                                                             |
+| Water skimmers in hand  | the surface of the water is walkable, passing under the bridges rather than over them; stowing them over deep water drowns the walker                                                                                                                                                      |
+| Click                   | use the right hand; held down, the nail gun and the extinguisher keep firing. A module within reach is selected, and a bug that is caught is displayed and retained                                                                                                                        |
+| `F`, `C` / middle click | use the left hand. A secondary tool selects and catches nothing: the grapple hooks the building being looked at, the jet gives a burst of thrust. While flying, `C` descends instead                                                                                                       |
+| `B`                     | the backpack, from the street as well as from the map                                                                                                                                                                                                                                      |
+| `X` / `K`               | open the export menu; save the current view to the config file                                                                                                                                                                                                                             |
+| `H`                     | stow or draw both hands. A stowed tool remains functional and throws from the walker's eye                                                                                                                                                                                                 |
+| Hold right button       | look through the scope                                                                                                                                                                                                                                                                     |
+| `Enter`                 | show the details of whatever the reticle is on, as a second use of the tool would. This releases the pointer; a click on the map resumes                                                                                                                                                   |
+| Wheel                   | zoom                                                                                                                                                                                                                                                                                       |
+| `+` `-` (or `[` `]`)    | planet radius, and therefore curvature                                                                                                                                                                                                                                                     |
+| `V` / `Esc`             | return to the map. Re-entering walk mode restores the previous position                                                                                                                                                                                                                    |
 
 The map draws the walker at their last position, as a figure facing the
 direction they faced, and re-entering walk mode restores that position — unless
