@@ -73,7 +73,16 @@ var builtinLanguageRuntimeProfiles = map[string]builtinLanguageRuntimeProfile{
 	// against the production parser and the tree-sitter C oracle.
 	// The owned EOF bundle requires its executed recovery route before publication.
 	"go": {
-		blobSHA256:                 mustRuntimeProfileSHA256("9cf914d26d962d1a62e7954f8b20b302337a44cb7d4a07218eec482c45a57a08"),
+		// Re-certified 2026-09-20 against grammars/grammar_blobs/go.bin
+		// SHA-256 df63fc35604c4e4e7a484abde9eb2110b61640045601c23991723f323a48310d,
+		// regenerated with cmd/grammargen (no -lr-split; -lr-split
+		// interacts badly with the Go external ASI scanner, see
+		// grammargen/README.md "Go's blob is generated without -lr-split").
+		// The compact/converged-split-drops and owned-EOF-recovery
+		// certifications were re-validated against this blob via the
+		// cgo_harness Go compact/recovery receipts (TestGoCompactIncrementalExecution*,
+		// TestGoCompactRecoveryVersionTurnsLockedC, TestStage6GoCompactCertification).
+		blobSHA256:                 mustRuntimeProfileSHA256("df63fc35604c4e4e7a484abde9eb2110b61640045601c23991723f323a48310d"),
 		compactConvergedSplitDrops: true,
 		compactOwnedEOFRecovery:    true,
 	},
@@ -108,8 +117,18 @@ var builtinLanguageRuntimeProfiles = map[string]builtinLanguageRuntimeProfile{
 			PeakHeaders:       1,
 		},
 	},
+	// Re-certified 2026-09-20 against grammars/grammar_blobs/erlang.bin
+	// SHA-256 aa63243bd946d324bfb335d84c162cbaf8cc9922feef71de17296a18186ecedf
+	// (WhatsApp/tree-sitter-erlang bump to 6ba4c762eb30). Both grants were
+	// re-validated against this blob: compactConvergedSplitDrops via
+	// TestAdmissionCandidateErlangConvergedSplitAdversarialProbe (host,
+	// admission_switch_erlang_converged_split_probe_test.go), and
+	// compactPackedGSSVersionOrder via
+	// TestCompactPackedGSSVersionOrderIssue984MatchesC (cgo_harness,
+	// re-pinned deep digests) plus the re-derived
+	// TestCTopologyReceiptErlangIssue984 anchors.
 	"erlang": {
-		blobSHA256:                   mustRuntimeProfileSHA256("355deb34ae4b9d8e0bf649c1c36096929d5e403107fa3c8b9c2ee82b138dfdc5"),
+		blobSHA256:                   mustRuntimeProfileSHA256("aa63243bd946d324bfb335d84c162cbaf8cc9922feef71de17296a18186ecedf"),
 		compactConvergedSplitDrops:   true,
 		compactPackedGSSVersionOrder: true,
 	},
@@ -199,7 +218,7 @@ var builtinLanguageRuntimeProfiles = map[string]builtinLanguageRuntimeProfile{
 	// S5 reductions before one missing insertion at EOF. The profile excludes
 	// stack-summary recovery and the distinct recover_eof ERROR-root route.
 	"scala": {
-		blobSHA256:                          mustRuntimeProfileSHA256("8bc4a20f983ea8c8873c28430f089ba2bbbf00a995dd29f575bf2bc598d29dfa"),
+		blobSHA256:                          mustRuntimeProfileSHA256("b319fb9e030c13c99c852cd0b09b76bc975fbd63c8b6d6999d711865ec9a5862"),
 		externalScannerCheckpointReuse:      true,
 		compactStrategy2ErrorRegion:         true,
 		compactMissingTokenInsertion:        true,
@@ -218,21 +237,28 @@ var builtinLanguageRuntimeProfiles = map[string]builtinLanguageRuntimeProfile{
 	// bodies, extension bodies, and top-level declaration lists) against this
 	// exact blob. The state and reduce-symbol checks preserve the retired
 	// helper's scope without a linear scan over every lookahead at each state.
+	//
+	// Derive each state again after a grammar bump. For one repeat symbol name,
+	// take the state that holds the most shift-over-reduce cells whose reduce
+	// actions all carry that symbol. Grammar be07cf7118d3 gives state 601 for
+	// enum_body_repeat2, state 616 for extension_body_repeat1, and state 574
+	// for program_repeat4. Each maximum is unique. The blob also carries its
+	// own table-derived precedence rows, and this profile only appends to them.
 	"dart": {
-		blobSHA256:                    mustRuntimeProfileSHA256("06bac15a9921a2e6af2810fb37ecb29a358b120e137345b9af5fb5f6c6632f59"),
+		blobSHA256:                    mustRuntimeProfileSHA256("a58e9eec2f520b8bfde15aec7a7064b25e5c8927fe9edcd87d6ec8562c554ec0"),
 		externalScannerFullParseRetry: gotreesitter.ExternalScannerFullParseRetrySkipRepeat,
 		nativeResultCompatibility:     gotreesitter.ResultCompatibilityNativeCollapsedChildren,
 		conflictPolicies: []gotreesitter.ConflictPolicy{
-			{State: 596, Lookahead: gotreesitter.ConflictPolicyAnyLookahead, Kind: gotreesitter.ConflictPolicyRepetitionShift, ReduceSymbols: []gotreesitter.Symbol{509}},
-			{State: 602, Lookahead: gotreesitter.ConflictPolicyAnyLookahead, Kind: gotreesitter.ConflictPolicyRepetitionShift, ReduceSymbols: []gotreesitter.Symbol{512}},
-			{State: 479, Lookahead: gotreesitter.ConflictPolicyAnyLookahead, Kind: gotreesitter.ConflictPolicyRepetitionShift, ReduceSymbols: []gotreesitter.Symbol{467}},
+			{State: 601, Lookahead: gotreesitter.ConflictPolicyAnyLookahead, Kind: gotreesitter.ConflictPolicyRepetitionShift, ReduceSymbols: []gotreesitter.Symbol{511}},
+			{State: 616, Lookahead: gotreesitter.ConflictPolicyAnyLookahead, Kind: gotreesitter.ConflictPolicyRepetitionShift, ReduceSymbols: []gotreesitter.Symbol{516}},
+			{State: 574, Lookahead: gotreesitter.ConflictPolicyAnyLookahead, Kind: gotreesitter.ConflictPolicyRepetitionShift, ReduceSymbols: []gotreesitter.Symbol{473}},
 		},
 	},
 	// C#'s certified low-pressure accepted-error trees are authoritative. A
 	// fresh no-stacks parse instead benefits from a bounded cap-16 retry; the
 	// generic cap-48 ladder exceeds the large-file memory and time budgets.
 	"c_sharp": {
-		blobSHA256:                    mustRuntimeProfileSHA256("7ad425e89733339dde94e3c03b762ae478fb453b530493f5d62e1ae7537e1784"),
+		blobSHA256:                    mustRuntimeProfileSHA256("198db0d7544ae78c6ba533889e972d4371bdbcaba5d438e6f51e6cb95fff9bcf"),
 		externalScannerFullParseRetry: gotreesitter.ExternalScannerFullParseRetrySkipRepeat,
 		fullParseGSSConvergence:       true,
 		nativeResultCompatibility: gotreesitter.ResultCompatibilityCSharpNativeNotNull |
@@ -324,8 +350,19 @@ var builtinLanguageRuntimeProfiles = map[string]builtinLanguageRuntimeProfile{
 	// withholding this grant. The derivation-selection defect in the
 	// converged-path split mechanism itself needs its own repair lane
 	// before this grant is reconsidered.
+	//
+	// Recertified on blob 8c618126 (tree-sitter-kotlin 1852ea17, Kotlin 2.1
+	// multi-dollar interpolation, 2026-09-19). The full-corpus sweep on the
+	// shipped primary-accept-only profile saw 16 files: 11 accepted, 5
+	// declined at the converged-path split, 0 divergences. Upstream #280
+	// ("Prefer class and object declarations over infix expressions")
+	// removed the infix derivation behind issue #93: the object_declaration
+	// witness has no tied election left, and the platform-modifier witness
+	// (internal actual fun f(): String = "x") is now C-exact in production.
+	// Split-drops stays withheld; this recertification did not re-run the
+	// split-drops ledger on the new blob.
 	"kotlin": {
-		blobSHA256:                     mustRuntimeProfileSHA256("643a3e6b60d07846dd972849b612159ff9bf09734b09fb00013229c8593a8c78"),
+		blobSHA256:                     mustRuntimeProfileSHA256("8c618126dbd4ed6cdda93b922e574cef500a8d5c9a250d3fc1a345c15b4c7f89"),
 		externalScannerFullParseRetry:  gotreesitter.ExternalScannerFullParseRetrySkipRepeat,
 		nativeResultCompatibility:      gotreesitter.ResultCompatibilityNativeCollapsedChildren,
 		compactPrimaryAcceptDerivation: true,
@@ -336,8 +373,13 @@ var builtinLanguageRuntimeProfiles = map[string]builtinLanguageRuntimeProfile{
 	// has no converged-path split-drop shape, so it does not certify that
 	// mechanism. Full-corpus field-aware C-oracle verification certifies this
 	// exact blob (A3 certification workstream, spec.campaign.v7).
+	//
+	// Recertified on blob 28fc59c4 (tree-sitter-sfapex da568eee,
+	// 2026-09-20). The bump adds the multi_line_string_literal rule and
+	// widens line_comment; the class-literal election shape does not change.
+	// The A3 full-corpus sweep on the new blob reports 0 divergences.
 	"apex": {
-		blobSHA256:                     mustRuntimeProfileSHA256("69fc1b577f1f783a204c98719d55d2f15f329d296b9e227d651056ce878c1bd2"),
+		blobSHA256:                     mustRuntimeProfileSHA256("28fc59c47d06990786d4480839ed91a4c40bef7b81e6ac6c901e6f4b0a0b8896"),
 		nativeResultCompatibility:      gotreesitter.ResultCompatibilityNativeCollapsedChildren,
 		compactPrimaryAcceptDerivation: true,
 	},
@@ -357,8 +399,14 @@ var builtinLanguageRuntimeProfiles = map[string]builtinLanguageRuntimeProfile{
 		blobSHA256:                mustRuntimeProfileSHA256("1f00617f5a6cb9106bb3739d6ab8c592772b87b20d232adff9faf1552fa396fd"),
 		nativeResultCompatibility: gotreesitter.ResultCompatibilityNativeCollapsedChildren,
 	},
+	// Recertified on blob b954781f (tree-sitter-r 58a22794466c, 2026-09-20).
+	// The bump splits _raw_string_literal into _raw_string_open /
+	// _raw_string_content / _raw_string_close and adds an identifier-
+	// continuation guard to the ELSE scan. Neither change touches a
+	// collapsed-child pair: collapsedChildOccurrenceRules carries no "r"
+	// entry, so this grant stays the pre-bump no-op it already was.
 	"r": {
-		blobSHA256:                mustRuntimeProfileSHA256("b09226c9eae0afc795d22e3dbed168118554d05b7ab80113bf06bb4315b90c4d"),
+		blobSHA256:                mustRuntimeProfileSHA256("b954781f75b780d26a01f009aa12e47cbfd243dea0c65784c9b3ec21cb80cf50"),
 		nativeResultCompatibility: gotreesitter.ResultCompatibilityNativeCollapsedChildren,
 	},
 	// Matlab's external-scanner repeat selects the same tree after the complete
@@ -399,8 +447,19 @@ var builtinLanguageRuntimeProfiles = map[string]builtinLanguageRuntimeProfile{
 	// primary derivation. Full-corpus field-aware C-oracle verification
 	// certifies both mechanisms for this exact blob (A3 certification
 	// workstream, spec.campaign.v7).
+	//
+	// Bumped to blob 86d67a08 (tree-sitter-perl 8917c6e9, 2026-09-20). That
+	// bump adds _RECOVER_PAREN_CLOSE (a synthetic close-paren the C scanner
+	// emits during error recovery inside an unclosed call argument list) and
+	// moves perl from the action-probe external-lex-state fallback to
+	// nextGLRScoredExternalToken (the new blob carries 50 external lex state
+	// rows; the old one carried 0). Symbol IDs 252-289 are unchanged; the new
+	// external took 290 and _ERROR moved from 290 to 291. Both grants below
+	// were re-proven against this exact blob with
+	// TestPerlA3CompactCertificationFullCorpusSweep (cgo_harness, Docker)
+	// before this pin landed; see that test for the full-corpus receipt.
 	"perl": {
-		blobSHA256:                     mustRuntimeProfileSHA256("22388f06c2c54bb4748fd5f5f682ed25eecff8115a7e8e6a98f94f9c94bb9820"),
+		blobSHA256:                     mustRuntimeProfileSHA256("86d67a0890101c16ea75282116915d7fa983272d4c872f404d9fc87ecd3fdea2"),
 		compactConvergedSplitDrops:     true,
 		compactPrimaryAcceptDerivation: true,
 	},
@@ -419,10 +478,18 @@ var builtinLanguageRuntimeProfiles = map[string]builtinLanguageRuntimeProfile{
 	// dynamic precedence on either alternative. The locked C oracle keeps
 	// the discrete_choice reading; this row-scoped fold (state/lookahead
 	// wildcarded, matched only by the declared-conflict symbol pair,
-	// component_choice_list=195, discrete_choice=255 in this blob) reproduces
+	// component_choice_list=196, discrete_choice=256 in this blob) reproduces
 	// that natively, the same mechanism ql's signatureExpr election uses.
+	//
+	// Recertified on blob fbb1e5cf (tree-sitter-ada dd5fa4cd, 2026-09-20).
+	// The bump adds the finally_part rule and rewrites
+	// handled_sequence_of_statements; it shifts every symbol above
+	// finally_part by one, so the declared-conflict pair moved from 195/255
+	// to 196/256. Both identifiers come from the shipped blob by name. The
+	// A3 full-corpus sweep on the new blob reports files=23 accepted=20
+	// declined=3 divergences=0, and the three ada C-oracle receipts pass.
 	"ada": {
-		blobSHA256:                     mustRuntimeProfileSHA256("32f2dd8f0053ffb7e6b7014f6ff2eb7025287c0d5fcdab6ce1f6a694c2d8899e"),
+		blobSHA256:                     mustRuntimeProfileSHA256("fbb1e5cf6239a98d57d79ec7dfe59f76df1b6acb6f1a7375364c3b7631268491"),
 		compactConvergedSplitDrops:     true,
 		compactPrimaryAcceptDerivation: true,
 		conflictPolicies: []gotreesitter.ConflictPolicy{
@@ -430,19 +497,35 @@ var builtinLanguageRuntimeProfiles = map[string]builtinLanguageRuntimeProfile{
 				State:         gotreesitter.ConflictPolicyAnyState,
 				Lookahead:     gotreesitter.ConflictPolicyAnyLookahead,
 				Kind:          gotreesitter.ConflictPolicyDeclaredReduceReduceHighestSymbol,
-				ReduceSymbols: []gotreesitter.Symbol{195, 255},
+				ReduceSymbols: []gotreesitter.Symbol{196, 256},
 			},
 		},
 	},
-	// Swift's low-pressure accepted-error parses select the same tree across
-	// the retry ladder. High-pressure parses still benefit from the first
-	// ladder, while repeating that ladder for the external scanner does not.
+	// Swift's external-scanner full-parse retry does not need to repeat: a
+	// width disagreement the first pass already resolved does not change on
+	// a second pass. Repeating that ladder for the external scanner does not
+	// help.
+	//
+	// The accepted-error skip now applies only to sources of 64 KiB and
+	// more. On blob 33fd9742, three small corpus files (swift-algorithms_
+	// Chunked.swift 27,814 bytes, FlattenCollection.swift 9,196, and
+	// Stride.swift 7,887) parse clean only through the complete retry
+	// ladder, so skipping that ladder for them regresses clean to error.
+	// The 104,681-byte issue-586 witness (stdlib_FloatingPointToString.swift)
+	// needs the opposite: without the skip it stays unbounded under the race
+	// detector (825s, over the CI shard timeout, versus 273s with the skip).
+	// The size gate keeps both: small sources always take the full ladder,
+	// and only large sources skip it. Recertified on blob 33fd9742
+	// (tree-sitter-swift 00bbb0a2, 2026-09-20) with the B16 telemetry
+	// receipt, 25/25 real-corpus parity, and the race-timed witness (see the
+	// commit that added this comment).
 	"swift": {
-		blobSHA256:                    mustRuntimeProfileSHA256("be4575bc0acc3c60324aab635d067f940ac5f0557b80a8e3565d1e7d02d53582"),
+		blobSHA256:                    mustRuntimeProfileSHA256("33fd9742ec9024832c89e8d4539f633036cfe28286a07a9fbff6f947b9de6b18"),
 		externalScannerFullParseRetry: gotreesitter.ExternalScannerFullParseRetrySkipRepeat,
 		fullParseAcceptedErrorRetryProfile: gotreesitter.FullParseAcceptedErrorRetryProfile{
 			SkipCompleteAcceptedErrorRetry:  true,
 			SkipCompleteMaxEntryScratchPeak: 3 * 64 * 1024,
+			SkipCompleteMinSourceBytes:      64 * 1024,
 		},
 	},
 	// Large ASM accepted-error parses improve during the same-stack merge
@@ -466,7 +549,7 @@ var builtinLanguageRuntimeProfiles = map[string]builtinLanguageRuntimeProfile{
 		},
 	},
 	"caddy": {
-		blobSHA256: mustRuntimeProfileSHA256("e1af0dcba90bca6949ac1a2756e1a6db2271061b40570b9a7fa2ada29478f6fa"),
+		blobSHA256: mustRuntimeProfileSHA256("94b81aa106461eaa9ef1ed8b3d25abdae36ac10b7b659ed3ec9bc21634c277db"),
 		fullParseAcceptedErrorRetryProfile: gotreesitter.FullParseAcceptedErrorRetryProfile{
 			SkipCompleteAcceptedErrorRetry: true,
 		},
@@ -591,7 +674,7 @@ var builtinLanguageRuntimeProfiles = map[string]builtinLanguageRuntimeProfile{
 		},
 	},
 	"d": {
-		blobSHA256: mustRuntimeProfileSHA256("1e2bf6c9d37193dad050a3e2f35d450973245dbee60550ef6cc24fca2b0e0016"),
+		blobSHA256: mustRuntimeProfileSHA256("1bdab06c1772ec18a0bb4c87c8a3b1dccecddc8447b00571ea85c03486a3a2d8"),
 		fullParseAcceptedErrorRetryProfile: gotreesitter.FullParseAcceptedErrorRetryProfile{
 			MinSourceBytes:      64 * 1024,
 			InitialStackCeiling: 3,
@@ -639,8 +722,17 @@ var builtinLanguageRuntimeProfiles = map[string]builtinLanguageRuntimeProfile{
 	// cRepetitionShiftConflictChoice; byte-for-byte C
 	// parity held by TestParityCTopLevelDeclAmbiguity /
 	// TestParityCPreprocConditional.
+	//
+	// Re-pinned 2026-09-20 to grammars/grammar_blobs/c.bin SHA-256
+	// db0123b46b06dbfdb139e834dff30ceca3b8df123aac39865813a596eb819ef9
+	// after the tree-sitter-c bump to b780e47fc780. The reduce symbols keep
+	// their identity in the new blob: 324 translation_unit_repeat1, 326
+	// preproc_if_repeat1, 343 enumerator_list_repeat1. The cgo receipts
+	// TestParityCTopLevelDeclAmbiguity, TestParityCPreprocConditional,
+	// TestIssue667CEnumListsMatchCReference, TestCExternCWrapperParity, and
+	// TestStage6CCompactCertification pass against this blob.
 	"c": {
-		blobSHA256: mustRuntimeProfileSHA256("9aee42825fd1446ce5b754951db26edadcdba5d2f26b61578a30e87ed2dbbd3c"),
+		blobSHA256: mustRuntimeProfileSHA256("db0123b46b06dbfdb139e834dff30ceca3b8df123aac39865813a596eb819ef9"),
 		// Measurements on large C witnesses show identical trees before and after
 		// the retry ladder. Keep the initial tree and avoid repeated full parses
 		// for this exact grammar blob.
@@ -704,7 +796,7 @@ var builtinLanguageRuntimeProfiles = map[string]builtinLanguageRuntimeProfile{
 	// through to skipped-gap ERROR materialization. C-oracle verified on the
 	// enclosing command_argument_sep shape (TestPowerShellBacktickContinuationIsParserPadding).
 	"powershell": {
-		blobSHA256:                 mustRuntimeProfileSHA256("8c7a2b47a39efb590cde7f75c9a1135c6423bc07b13b9604f1fa9f0061231687"),
+		blobSHA256:                 mustRuntimeProfileSHA256("bb15be2e939a75bc80ea56d6606f43dea101bf7437ac82073f61985c4dee2492"),
 		lineContinuationEscapeByte: '`',
 	},
 }
