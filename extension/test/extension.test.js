@@ -88,6 +88,29 @@ describe('depphunter.open', { skip: available() ? false : 'no depphunter binary 
     }
   });
 
+  // Verifies: REQ-EXT-015, REQ-EXT-023
+  it('hands the browser the token once', async () => {
+    // The address the browser is given has been through vscode.Uri, which decodes the
+    // query on the way in and escapes it on the way out: `?token=X` comes back as
+    // `?token%3DX`, which is one parameter *named* `token=X` and none called `token`.
+    // Setting the token on that address appends a second copy rather than replacing
+    // the first, and a server reads the first of two - trailing '=' and all. The map
+    // then opens to "unauthorized" with the right token in the address, twice.
+    await stub.commands.get('depphunter.stop')();
+    stub.settings.openIn = 'externalBrowser';
+    try {
+      await stub.commands.get('depphunter.open')();
+      const opened = stub.last('openExternal');
+      assert.ok(opened, `the browser was given nothing to open: ${JSON.stringify(stub.calls.map(c => c[0]))}`);
+      assert.match(opened[1], ADDRESS, 'the address carries the token more than once');
+      // And the server agrees that it is the token: the regexp above only says the
+      // address has the shape of one.
+      assert.strictEqual((await fetch(opened[1])).status, 200);
+    } finally {
+      stub.settings.openIn = 'webview';
+    }
+  });
+
   // Verifies: REQ-EXT-021
   it('leaves the frame the pointer lock the editor granted it', async () => {
     // A nested frame already carries every restriction its ancestors carry, so a

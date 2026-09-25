@@ -551,7 +551,10 @@ async function reachable(url: string): Promise<string> {
   const token = new URL(url).searchParams.get('token');
   const external = await vscode.env.asExternalUri(vscode.Uri.parse(url));
   if (!token) return external.toString();
-  const out = new URL(external.toString());
+  const out = new URL(external.toString(true)); // skipEncoding: keeps '=' and '&' literal
+  for (const key of [...out.searchParams.keys()]) {
+    if (key === 'token' || key.startsWith('token=')) out.searchParams.delete(key);
+  }
   out.searchParams.set('token', token);
   return out.toString();
 }
