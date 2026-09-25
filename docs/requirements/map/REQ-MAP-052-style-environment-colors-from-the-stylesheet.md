@@ -5,7 +5,7 @@ title: Style environment colors from the stylesheet
 scope: map
 type: functional
 priority: must
-status: partial
+status: implemented
 source:
   - docs/REQUIREMENTS.md M14
 verification:
@@ -29,7 +29,7 @@ The environment is the style's, and both themes still choose their own values.
 
 ## Notes
 
-Partial: the colors come from the stylesheet, but the circuit and galaxy styles
-define one set of environment values that override both themes
-(`:root[data-style=...]` after the theme rules), so under those styles the theme
-does not change the ground, water or sky.
+Fixed: the circuit and galaxy styles have a light set of environment values and a
+dark set, themed like the base tokens: the dark set applies under
+`prefers-color-scheme: dark` unless `data-theme="light"`, and under
+`data-theme="dark"`.

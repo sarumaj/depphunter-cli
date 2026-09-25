@@ -169,7 +169,7 @@ func TestLSPSettings(t *testing.T) {
 func TestNegatedFlagsAndNewEnv(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, ProjectFile), "open: true\nhistory_commits: 50\n")
-	env := map[string]string{"DEPPHUNTER_HISTORY_COMMITS": "70", "DEPPHUNTER_LSP_TIMEOUT": "2m", "DEPPHUNTER_EXPAND_DEPTH": "-1"}
+	env := map[string]string{"DEPPHUNTER_HISTORY_COMMITS": "70", "DEPPHUNTER_LSP_TIMEOUT": "2m", "DEPPHUNTER_EXPAND_DEPTH": "-1", "DEPPHUNTER_TOOL": "jetpack"}
 	cfg, err := load(t, []string{"--no-open", "--no-cache", root}, env, "")
 	if err != nil {
 		t.Fatal(err)
@@ -179,6 +179,9 @@ func TestNegatedFlagsAndNewEnv(t *testing.T) {
 	}
 	if cfg.HistoryCommits != 70 || cfg.LSPTimeout != 2*time.Minute || cfg.UI.ExpandDepth != -1 {
 		t.Errorf("env: history_commits %d lsp_timeout %v expand_depth %d", cfg.HistoryCommits, cfg.LSPTimeout, cfg.UI.ExpandDepth)
+	}
+	if cfg.UI.Tool != "jetpack" {
+		t.Errorf("env: tool %q", cfg.UI.Tool)
 	}
 	if _, err := load(t, []string{root}, map[string]string{"DEPPHUNTER_OPEN": "maybe"}, ""); err == nil {
 		t.Error("invalid boolean in the environment accepted")

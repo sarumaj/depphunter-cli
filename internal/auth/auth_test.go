@@ -8,8 +8,9 @@ import (
 	"testing"
 )
 
-// Verifies: REQ-AUTH-003, REQ-AUTH-009
+// Verifies: REQ-AUTH-003, REQ-AUTH-009, REQ-AUTH-010
 func TestMavenServerCredentialsFindTheirHost(t *testing.T) {
+	// cSpell: words COQLCE
 	t.Setenv("NEXUS_PASSWORD", "from-the-environment")
 	c := &Store{bearer: map[string]string{}, basic: map[string]string{}}
 	c.readMavenSettings([]byte(`<?xml version="1.0"?>
@@ -18,10 +19,13 @@ func TestMavenServerCredentialsFindTheirHost(t *testing.T) {
     <server><id>nexus</id><username>build</username><password>${env.NEXUS_PASSWORD}</password></server>
     <server><id>internal</id><username>dev</username><password>s3cRet</password></server>
     <server><id>encrypted</id><username>dev</username><password>{aGVsbG8=}</password></server>
+    <server><id>sealed</id><username>dev</username><password>Rotated 2026-01 {COQLCE6DU6GtcS5P=}</password></server>
     <server><id>orphan</id><username>dev</username><password>x</password></server>
   </servers>
   <mirrors>
     <mirror><id>nexus</id><url>https://nexus.corp/repository/maven-group</url></mirror>
+    <mirror><id>encrypted</id><url>https://vault.corp/maven</url></mirror>
+    <mirror><id>sealed</id><url>https://sealed.corp/maven</url></mirror>
   </mirrors>
   <profiles>
     <profile><repositories>
@@ -37,8 +41,14 @@ func TestMavenServerCredentialsFindTheirHost(t *testing.T) {
 	if got := c.basic["artifactory.corp"]; got != "dev:s3cRet" {
 		t.Errorf("artifactory.corp: %q", got)
 	}
-	// An encrypted password needs the master password to be of any use, and a server
-	// nothing points at has no host to be sent to. Neither is a credential.
+	// An encrypted password needs the master password to be of any use, even when a
+	// mirror names its server, and a server nothing points at has no host to be sent
+	// to. Neither is a credential.
+	for _, host := range []string{"vault.corp", "sealed.corp"} {
+		if got, ok := c.basic[host]; ok {
+			t.Errorf("%s: sent the encrypted password %q", host, got)
+		}
+	}
 	if len(c.basic) != 2 {
 		t.Errorf("kept %v", c.basic)
 	}

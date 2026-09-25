@@ -5,7 +5,7 @@ title: Collapsed directory height follows mean file size
 scope: map
 type: functional
 priority: must
-status: partial
+status: implemented
 source:
   - docs/REQUIREMENTS.md §2
   - docs/REQUIREMENTS.md M32
@@ -33,9 +33,8 @@ average file would be.
 
 ## Notes
 
-Partial: layout.js computes the height from `totalBulk` of the entry
-`computeVisibility` (filter.js) returns for the directory, but that entry only
-carries `fileCount` and `totalLoc`. The height is therefore computed from `NaN`,
-which falls back to 0, and every district is drawn at the floor height (0.2).
-The regression came with M32 (drawn size from bytes). Colors by size use the
-model's `totalBulk` and are not affected.
+Fixed: `computeVisibility` (filter.js) now also totals `totalBulk`, the drawn size
+of the visible files (lines, or bytes converted for unread files), which layout.js
+divides by the file count. It had carried only `fileCount` and `totalLoc` since
+M32 (drawn size from bytes), so every district was drawn at the floor height
+(0.2). `web/uitest/layout.test.mjs` checks both acceptance criteria.

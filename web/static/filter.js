@@ -3,11 +3,17 @@
 // Implements: REQ-DIST-017
 import { Fzf, byLengthAsc } from './vendor/fzf.es.js';
 
+import { bulk } from './model.js';
+
 /**
  * filters: {hiddenLangs: Set<string>, hiddenEcosystems: Set<string>, path: string}
  * `path` is a comma-separated glob list; plain patterns include, "!pattern" excludes.
- * Returns {visible(node), counts: Map<dirId, {fileCount, totalLoc}>, hiddenFiles}.
- * Implements: REQ-MAP-032, REQ-MAP-033, REQ-MAP-035, REQ-MAP-059
+ * Returns {visible(node), counts: Map<dirId, {fileCount, totalLoc, totalBulk}>, hiddenFiles}.
+ *
+ * `totalBulk` is what the layout sizes a collapsed district by (the mean drawn size of
+ * its visible files); `totalLoc` stays the lines that were really counted, for the
+ * numbers the map states in words.
+ * Implements: REQ-MAP-032, REQ-MAP-033, REQ-MAP-035, REQ-MAP-059, REQ-MAP-004
  */
 export function computeVisibility(model, filters) {
   const { include, exclude } = parsePathFilter(filters.path);
@@ -22,16 +28,16 @@ export function computeVisibility(model, filters) {
 
   const walk = n => {
     if (n.kind === 'file') {
-      if (fileVisible(n)) return { fileCount: 1, totalLoc: n.loc || 0 };
+      if (fileVisible(n)) return { fileCount: 1, totalLoc: n.loc || 0, totalBulk: bulk(n) };
       hidden.add(n.id);
       hiddenFiles++;
       return null;
     }
-    const c = { fileCount: 0, totalLoc: 0 };
+    const c = { fileCount: 0, totalLoc: 0, totalBulk: 0 };
     for (const ch of n.children) {
       if (ch.kind !== 'dir' && ch.kind !== 'file') continue;
       const r = walk(ch);
-      if (r) { c.fileCount += r.fileCount; c.totalLoc += r.totalLoc; }
+      if (r) { c.fileCount += r.fileCount; c.totalLoc += r.totalLoc; c.totalBulk += r.totalBulk; }
     }
     counts.set(n.id, c);
     if (!c.fileCount && n !== model.root) { hidden.add(n.id); return null; }

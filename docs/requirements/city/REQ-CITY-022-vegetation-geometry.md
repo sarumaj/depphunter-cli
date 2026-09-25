@@ -9,6 +9,7 @@ status: implemented
 source:
   - docs/REQUIREMENTS.md M10
 verification:
+  - ui
   - manual
 ---
 
@@ -31,6 +32,9 @@ Painted-on vegetation looks flat from the street.
 ## Notes
 
 When the plant models (`models.js`) have not loaded, `makeProps` falls back to
-the `TREES` table, whose entries have `trunk`/`crown` fields while `makeProps`
-reads `stem`/`head`: the fallback trees get empty geometry and are invisible,
-although their trunks still block the walker.
+the `TREES` table. Its entries had `trunk`/`crown` fields while `makeProps` reads
+`stem`/`head`, as every other style's table names them, so the fallback trees had
+empty geometry yet their trunks still blocked the walker.
+
+Fixed: the `TREES` entries are named `stem`/`head`; `web/uitest/props.test.mjs`
+checks that every species drawn without the models has geometry.

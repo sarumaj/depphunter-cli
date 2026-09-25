@@ -5,7 +5,7 @@ title: License notices in the release archives
 scope: dist
 type: constraint
 priority: must
-status: partial
+status: implemented
 source:
   - docs/REQUIREMENTS.md §6
   - docs/REQUIREMENTS.md M7
@@ -30,6 +30,6 @@ Permissive licenses require their notices to accompany redistributions.
 
 ## Notes
 
-Partial: the archives carry the vendored web libraries' licenses, but not the
-notices of the linked Go modules (cobra, viper, pflag, tree-sitter runtime and
-others), which §6 also names.
+The archives also carry every `LICENSE*`, `COPYING*` and `NOTICE*` file of the
+linked Go modules under `licenses/go/<module path>/`, copied from `vendor/`,
+which holds the same files in the source tree.

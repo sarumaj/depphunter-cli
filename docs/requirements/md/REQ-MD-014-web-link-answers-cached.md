@@ -5,7 +5,7 @@ title: Web link answers cached for a day
 scope: md
 type: functional
 priority: must
-status: partial
+status: implemented
 source:
   - docs/REQUIREMENTS.md M19
 verification:
@@ -32,5 +32,5 @@ next run.
 
 ## Notes
 
-Partial: the link cache shares `findingsCacheTTL`, which is 6 hours, not a day
-(criterion 2).
+The link cache has its own time to live, `linkCacheTTL` (24 hours); the OSV
+cache keeps its 6 hours (REQ-FND-012).

@@ -26,3 +26,9 @@ An npm scope and a Maven group are strings that may occur elsewhere.
 1. `npm:@acme/*` matches the npm package `@acme/ui` and not a package of the
    same name in another ecosystem.
 2. `localhost:5000/*` is a host and port, not an ecosystem prefix.
+
+## Notes
+
+The PowerShell Gallery's ecosystem id `psgallery` was missing from the prefixes,
+so `psgallery:Acme.*` was read as a name for every ecosystem; it is now one of
+them.

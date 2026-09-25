@@ -39,8 +39,10 @@ const WALK = 2.6, RUN = 7, FLY = 10; // units per second
 // rather than one clearing a tree.
 // Implements: REQ-WALK-005
 const JUMP = 3.2, GRAVITY = 13;
+// Half a storey (0.3): a curb, a ramp's slope and a bridge's arch are walked, a
+// terrace wall (0.28 in layout.js) is not - that takes the ramp or a jump.
 // Implements: REQ-WALK-006
-const STEP = 0.32;          // highest ledge walked up without jumping
+const STEP = 0.15;          // highest ledge walked up without jumping
 const BODY = 0.12;          // walker radius for collisions
 const WATER = -0.45;        // the water surface (layout LAND_H below the mainland)
 const REACH = 90;           // aiming distance
@@ -123,10 +125,12 @@ const RIDE = {
 };
 // The shore stands half a unit above the water, which is further than a step. WADE is
 // what is added to a step to climb out of the bay - without it, anything down there is
-// down there for good - and WADE_IN is how far below the feet the water may be to be
+// down there for good; with it, a step and a wade (0.57) clear the shore's 0.45 and
+// nothing much higher, so it is the water that sets how far that is, not STEP - and
+// WADE_IN is how far below the feet the water may be to be
 // walked into rather than jumped into.
 // Implements: REQ-WALK-040, REQ-WALK-041
-const WADE = 0.25, WADE_IN = 0.6;
+const WADE = 0.42, WADE_IN = 0.6;
 // How far the walker may leave the map: over the water beyond the outermost shore,
 // and above its tallest building when flying.
 // Implements: REQ-WALK-007, REQ-WALK-008
@@ -197,7 +201,8 @@ export class Walker {
    *   caught()         how many findings are in the backpack, which is what the
    *                    walker's health is built on
    *   onPhoto(where)   keep the view as a photograph, captioned with whatever was in
-   *                    the frame; what a camera used twice in quick succession asks for
+   *                    the frame; what every use of the camera asks for, except a
+   *                    second one on a module already tagged, which reads it instead
    *   onResume()       the walker is walking again, so whatever was being read - the
    *                    details, the backpack, a menu - can be put away
    *   busy()           whether anything on screen wants the mouse. The walker never

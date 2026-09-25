@@ -211,12 +211,17 @@ func (c *Config) fetchable(eco string, s Source) bool {
 // a public default or a source this machine's configuration names is known, a source
 // only the repository asks for is not.
 //
-// Implements: REQ-SUP-014, REQ-SUP-016, REQ-SUP-018
+// Implements: REQ-SUP-014, REQ-SUP-016, REQ-SUP-018, REQ-SUP-026
 func (c *Config) For(eco, pkg string) (index string, known bool) {
 	if eco == OCI {
 		// A container reference carries its registry: "ghcr.io/org/app" is not
-		// "app" from Docker Hub. Nothing needs to be configured to see that.
-		return ociRegistry(pkg), ociRegistry(pkg) == public[OCI]
+		// "app" from Docker Hub. Nothing needs to be configured to see that; to be
+		// asked, the registry has to be Docker Hub, one this machine's container
+		// configuration names, or one the user vouched for.
+		registry := ociRegistry(pkg)
+		host := Host(registry)
+		return registry, registry == public[OCI] || c.trusted[registry] || c.trusted[host] ||
+			c.credentials.Registry(host)
 	}
 	scoped, plain := Source{}, Source{}
 	for _, s := range c.sources[eco] {

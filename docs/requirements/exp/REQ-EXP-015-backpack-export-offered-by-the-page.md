@@ -5,7 +5,7 @@ title: Backpack export offered by the page
 scope: exp
 type: functional
 priority: must
-status: not-implemented
+status: implemented
 source:
   - docs/REQUIREMENTS.md M15
 verification:
@@ -27,5 +27,8 @@ editor.
 
 ## Notes
 
-Only the editor extension offers it (scope `ext`); the page backpack panel has
-no export action, although the server endpoint of REQ-EXP-014 exists.
+Fixed: the backpack panel has an Export footer with Markdown, CSV and JSON links
+to `GET /api/backpack?format=md|csv|json` (REQ-EXP-014). The page hands up the
+backpack on every change, so the server's copy is the page's. The footer is
+hidden while the backpack is empty and in the static HTML export, which has no
+server (`data-server`, as for the export menu's server links).

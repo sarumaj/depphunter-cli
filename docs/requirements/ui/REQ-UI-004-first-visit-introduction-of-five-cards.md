@@ -5,7 +5,7 @@ title: First-visit introduction of five cards
 scope: ui
 type: functional
 priority: must
-status: partial
+status: implemented
 source:
   - docs/REQUIREMENTS.md M22
 verification:
@@ -33,5 +33,7 @@ to be said out loud once.
 
 ## Notes
 
-Partial: the second card still says that selecting draws "roads through the
-streets ... with chevrons", which M24 removed; selecting draws arcs only.
+Fixed: the second card now says that selecting draws an arc to each dependency
+with an arrow for its direction, fades everything else, and opens the side panel
+listing both directions. The roads and chevrons went in M24. The tour test checks
+that the card mentions neither.

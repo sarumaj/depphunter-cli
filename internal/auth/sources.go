@@ -48,11 +48,20 @@ func (c *Store) readDockerConfig(data []byte, lookPath func(string) (string, err
 	if json.Unmarshal(data, &doc) != nil {
 		return
 	}
+	if c.registries == nil {
+		c.registries = map[string]bool{}
+	}
+	for registry := range doc.CredHelpers {
+		if host := registryHost(registry); host != "" {
+			c.registries[host] = true
+		}
+	}
 	for registry, entry := range doc.Auths {
 		host := registryHost(registry)
 		if host == "" {
 			continue
 		}
+		c.registries[host] = true
 		switch {
 		case entry.Auth != "":
 			if pair, err := base64.StdEncoding.DecodeString(entry.Auth); err == nil && strings.Contains(string(pair), ":") {
@@ -84,6 +93,20 @@ func (c *Store) readDockerConfig(data []byte, lookPath func(string) (string, err
 			c.basic[host] = user + ":" + secret
 		}
 	}
+}
+
+// Registry reports whether this machine's container configuration names a registry
+// host, whether or not it holds a credential for it: a registry somebody here logged
+// in to, or set a helper up for, is one this machine knows.
+//
+// Implements: REQ-SUP-026
+func (c *Store) Registry(host string) bool {
+	if c == nil {
+		return false
+	}
+	c.mu.RLock()
+	defer c.mu.RUnlock()
+	return c.registries[host]
 }
 
 // helperName is what may follow "docker-credential-". A helper is named by a

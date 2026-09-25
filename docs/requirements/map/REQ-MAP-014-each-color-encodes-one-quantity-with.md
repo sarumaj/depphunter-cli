@@ -5,7 +5,7 @@ title: Each color encodes one quantity with a legend
 scope: map
 type: functional
 priority: must
-status: partial
+status: implemented
 source:
   - docs/REQUIREMENTS.md §2
 verification:
@@ -33,7 +33,7 @@ A color that means two things, or whose meaning is not stated, cannot be read.
 
 ## Notes
 
-Partial: the legend covers languages, the size ramp, the history modes and the
-two edge colors, but not the package colors for unresolved and floating packages
-(the tooltip and panel state these in words). That color is never the sole
+Fixed: the legend has a Packages entry, shown when there are islands, with the
+three package colors (resolved, floating, unresolved) and what each means. The
+tooltip and panel also state these in words; that color is never the sole
 channel is REQ-A11Y-002.

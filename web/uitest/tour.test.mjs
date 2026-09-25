@@ -110,6 +110,15 @@ describe('the introduction', () => {
     }
   });
 
+  // Verifies: REQ-UI-004
+  it('describes selecting as the map now draws it', () => {
+    // Selecting drew roads with chevrons until M24 took them out, and the card went
+    // on promising them: a first visit was told to look for something not there.
+    const said = TOUR[1].body.replace(/\s+/g, ' ');
+    for (const gone of ['road', 'chevron']) assert.ok(!said.includes(gone), `the card still promises ${gone}s`);
+    for (const shown of ['arc', 'fades', 'panel']) assert.ok(said.includes(shown), `the card never mentions ${shown}`);
+  });
+
   // Verifies: REQ-UI-013
   it('hands the pointer back once walk mode\'s is out of the way', () => {
     const p = page();

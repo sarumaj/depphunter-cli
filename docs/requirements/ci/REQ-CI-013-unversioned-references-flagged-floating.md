@@ -5,7 +5,7 @@ title: Unversioned CI references flagged floating
 scope: ci
 type: functional
 priority: must
-status: partial
+status: implemented
 source:
   - docs/REQUIREMENTS.md M12
 verification:
@@ -15,7 +15,8 @@ verification:
 ## Statement
 
 The CI plugin **shall** mark a GitLab template include, a remote include, a
-project include without `ref` and an action or reusable workflow reference
+project include without `ref`, a component reference without `@version`, a
+container image without a tag and an action or reusable workflow reference
 without `@ref` as floating through the target's floating flag, without inventing
 a version for it.
 
@@ -32,10 +33,10 @@ than as the loosest dependency there is.
    version.
 3. A project include without `ref` is floating with an empty version.
 4. A component reference without `@version` is floating.
+5. An image without a tag is floating with an empty version.
 
 ## Notes
 
-Partial: a GitLab component without `@version` resolves with no version and no
-floating flag, so it is neither pinned nor floating (criterion 4). A container
-image without a tag is given version `latest` instead of the flag (REQ-CI-012),
-which is the reference Docker itself uses.
+A GitLab component without `@version` is floating, as is a container image
+without a tag: neither is given a version (not even `latest`). The index client
+asks a registry for `latest` when the reference names no tag.

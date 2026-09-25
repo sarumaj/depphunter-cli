@@ -524,8 +524,9 @@ vec3 crystalWall(vec3 base, vec2 p) {
 }
 
 // Terrace sides carry a staircase near one end of each long side (the other end is
-// where rampsFor puts a ramp): the walker steps up anyway, stairs and ramps show
-// where the levels connect.
+// where rampsFor puts a ramp): stairs and ramps show where the levels connect. The
+// stairs are paint - a terrace wall is higher than a step, so the walker takes the
+// ramp or jumps.
 // Implements: REQ-CITY-011
 vec3 stairs(vec3 c, float u, float faceW, float v, float h) {
   u -= faceW * 0.5 - 0.34;
@@ -1690,18 +1691,19 @@ const blob = (r, x, y, z, sy = 1) => shaded(new THREE.IcosahedronGeometry(r, 1).
 const trunk = (h, r) => shaded(new THREE.CylinderGeometry(r * 0.7, r, h, 6).translate(0, h / 2, 0));
 
 // Tree species: a broadleaf with a crown of several blobs, a conifer of stacked cones,
-// and a slender poplar. hue: their foliage's base hue.
+// and a slender poplar. hue: their foliage's base hue. stem and head are the trunk and
+// the crown under the names every style's species share, which is what makeProps reads.
 // Implements: REQ-CITY-022
 const TREES = [
   {
-    trunk: trunk(0.3, 0.04), hue: 0.24,
-    crown: merge([blob(0.19, 0, 0.47, 0), blob(0.14, 0.12, 0.4, 0.05), blob(0.14, -0.1, 0.42, -0.07), blob(0.12, 0.02, 0.6, -0.04)]),
+    stem: trunk(0.3, 0.04), hue: 0.24,
+    head: merge([blob(0.19, 0, 0.47, 0), blob(0.14, 0.12, 0.4, 0.05), blob(0.14, -0.1, 0.42, -0.07), blob(0.12, 0.02, 0.6, -0.04)]),
   },
   {
-    trunk: trunk(0.14, 0.035), hue: 0.3,
-    crown: merge([0, 1, 2].map(i => shaded(new THREE.ConeGeometry(0.2 - i * 0.05, 0.3, 8).translate(0, 0.25 + i * 0.16, 0), 0.2))),
+    stem: trunk(0.14, 0.035), hue: 0.3,
+    head: merge([0, 1, 2].map(i => shaded(new THREE.ConeGeometry(0.2 - i * 0.05, 0.3, 8).translate(0, 0.25 + i * 0.16, 0), 0.2))),
   },
-  { trunk: trunk(0.2, 0.03), hue: 0.21, crown: merge([blob(0.12, 0, 0.5, 0, 2.6)]) },
+  { stem: trunk(0.2, 0.03), hue: 0.21, head: merge([blob(0.12, 0, 0.5, 0, 2.6)]) },
 ];
 const BUSH = merge([blob(0.085, 0, 0.055, 0, 0.8), blob(0.065, 0.07, 0.04, 0.03, 0.8), blob(0.06, -0.06, 0.04, -0.04, 0.8)]);
 const POLE = shaded(new THREE.CylinderGeometry(0.012, 0.018, 0.6, 5).translate(0, 0.3, 0));

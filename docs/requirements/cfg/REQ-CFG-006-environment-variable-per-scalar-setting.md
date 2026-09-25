@@ -5,7 +5,7 @@ title: Environment variable for every scalar setting
 scope: cfg
 type: interface
 priority: must
-status: partial
+status: implemented
 source:
   - docs/REQUIREMENTS.md M9
 verification:
@@ -34,6 +34,6 @@ not `UI_THEME`).
 
 ## Notes
 
-Partial: the scalar setting `ui.tool` has no variable (`DEPPHUNTER_TOOL` is not
-bound). List settings (`exclude`, `findings`, `private`, `trust_indexes`) take
-comma-separated variables that add to the configured lists (REQ-CFG-009).
+`ui.tool` is bound to `DEPPHUNTER_TOOL`, which it once lacked. List settings
+(`exclude`, `findings`, `private`, `trust_indexes`) take comma-separated
+variables that add to the configured lists (REQ-CFG-009).

@@ -553,6 +553,17 @@ export class MapScene {
     this.requestRender();
   }
 
+  /**
+   * The view the map opened at: the first isometric quarter, at its own elevation,
+   * fitted to the box. Fit alone keeps whatever orbit and rotation brought the camera
+   * here; this is the way back from all of it at once.
+   */
+  // Implements: REQ-MAP-019
+  reset(b) {
+    this.setIso(0);
+    this.fit(b);
+  }
+
   /** The zoom at which a world-space box exactly fills the view, as currently oriented. */
   fitZoom(b) {
     this.camera.updateMatrixWorld();

@@ -45,7 +45,8 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 	case kindComponent:
 		name, version, ok := strings.Cut(imp.Module, "@")
 		if !ok {
-			return lang.Target{Ecosystem: ecoGitLab, Package: name}
+			// Without a version the component follows its project's default branch.
+			return lang.Target{Ecosystem: ecoGitLab, Package: name, Floating: true}
 		}
 		return lang.Target{Ecosystem: ecoGitLab, Package: name, Version: version, Pinned: lang.Commit(version)}
 	case kindTemplate:
@@ -112,7 +113,7 @@ func action(ref, requested string) lang.Target {
 // image resolves a container reference, "[registry/]name[:tag][@digest]". A tag is
 // republished whenever its owner likes, so only a digest pins an image.
 //
-// Implements: REQ-CI-012
+// Implements: REQ-CI-012, REQ-CI-013
 func image(ref string) lang.Target {
 	name, digest, hasDigest := strings.Cut(ref, "@")
 	tag := ""
@@ -127,8 +128,9 @@ func image(ref string) lang.Target {
 	case hasDigest:
 		return lang.Target{Ecosystem: ecoOCI, Package: name, Version: digest, Requested: tag, Pinned: lang.Pinned(digest)}
 	case tag == "":
-		// No tag at all means :latest, which is the loosest reference there is.
-		return lang.Target{Ecosystem: ecoOCI, Package: name, Version: "latest"}
+		// No tag at all means whatever :latest is today, the loosest reference there
+		// is; it names no version, so none is made up for it.
+		return lang.Target{Ecosystem: ecoOCI, Package: name, Floating: true}
 	}
 	return lang.Target{Ecosystem: ecoOCI, Package: name, Version: tag}
 }

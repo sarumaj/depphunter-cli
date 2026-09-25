@@ -244,7 +244,7 @@ var envKeys = map[string]string{
 	"explain": "EXPLAIN",
 	"vulns":   "VULNS", "links": "LINKS", "lsp": "LSP", "lsp_timeout": "LSP_TIMEOUT",
 	"editor": "EDITOR", "ui.theme": "THEME", "ui.color_by": "COLOR_BY", "ui.height_scale": "HEIGHT_SCALE", "ui.style": "STYLE",
-	"ui.show_std": "SHOW_STD", "ui.expand_depth": "EXPAND_DEPTH",
+	"ui.show_std": "SHOW_STD", "ui.expand_depth": "EXPAND_DEPTH", "ui.tool": "TOOL",
 }
 
 // Load builds the configuration from the parsed flags fs (see RegisterFlags), the
