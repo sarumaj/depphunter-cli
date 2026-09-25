@@ -205,7 +205,7 @@ function table(header, rows, right = []) {
   const all = [header, ...rows].map((r) => r.map(String));
   const width = header.map((_, i) => Math.max(3, ...all.map((r) => r[i].length)));
   const line = (r) => `| ${r.map((c, i) => (right.includes(i) ? c.padStart(width[i]) : c.padEnd(width[i]))).join(' | ')} |`;
-  const rule = `| ${width.map((w, i) => (right.includes(i) ? `${'-'.repeat(w - 1)}:` : '-'.repeat(w))).join(' | ')} |`;
+  const rule = `|${width.map((w, i) => (right.includes(i) ? `${'-'.repeat(w + 1)}:` : '-'.repeat(w + 2))).join('|')}|`;
   return [line(all[0]), rule, ...all.slice(1).map(line)];
 }
 

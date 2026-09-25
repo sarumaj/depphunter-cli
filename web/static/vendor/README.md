@@ -28,9 +28,9 @@ need.
 the model, adds the forearm it has no use for and rebuilds its rig; the hand
 itself is theirs.
 
-`../bug.glb` is not from anywhere: `scripts/bug.py` models the beetle in Blender out
-of spheres and cones, because neither pack has an insect in it and a beetle is
-simple enough to say out loud.
+`../bug.glb` is not from anywhere: `scripts/bug.py` models the beetle in Blender
+out of spheres and cones, because neither pack has an insect in it and a beetle
+is simple enough to say out loud.
 
 `../props.glb` is built by `scripts/props.py` from flo-bit's low poly nature pack
 (`flo-bit/low-poly-asset-packs`, `nature-pack/glb`), which is CC0 -
