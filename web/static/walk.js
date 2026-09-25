@@ -1526,9 +1526,13 @@ export class Walker {
     if (this.still) return;
     const k = this.keys, p = this.p;
     // A line in a wall pulls the walker along it, past walls and gravity both, and
-    // nothing else moves them until it lets go. Jump cuts it.
+    // nothing else moves them until it lets go. Jump cuts it - a press of Space made
+    // while the line is out. Space still down from the jump a line was cast in is not
+    // one: it cut every line cast mid-jump the moment it bit, before it pulled at all.
+    // Implements: REQ-TOOL-066
     if (this.pull) {
-      if (k.has('Space')) this.cutLine('Line cut');
+      if (!k.has('Space')) this.pull.jumping = false;
+      if (k.has('Space') && !this.pull.jumping) this.cutLine('Line cut');
       else {
         this.sinking = false; // a line out of the water is a way out of it
         return this.reel(dt);
@@ -2338,7 +2342,9 @@ export class Walker {
     }
     const up = to.y > this.p.feet;
     this.cutLine();
-    this.pull = { to, t: 0, line, mesh: shot.mesh, rope: shot.line, hand: shot.hand };
+    // Whether Space is still down from a jump when the line bites (step).
+    const jumping = this.keys.has('Space');
+    this.pull = { to, t: 0, line, mesh: shot.mesh, rope: shot.line, hand: shot.hand, jumping };
     this.p.fly = this.flying(); // only one thing is carried, so a line is not a jet
     this.p.vy = 0;
     this.flash(up ? 'Line away - going up' : 'Line away - going down');
