@@ -68,7 +68,7 @@
     "night": [
       { "do": "walk", "hide": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint"] },
       { "do": "caption", "text": "Or strap on the jet backpack and fly the city at night" },
-      { "do": "choose", "target": "#theme", "value": "dark" },
+      { "do": "choose", "target": "#theme", "value": "dark", "fade": 1.5 },
       { "do": "fly", "s": 9, "speed": 5, "turn": 0.35, "above": 3 },
       { "do": "caption", "text": "" },
       { "do": "hold", "s": 0.8 }
