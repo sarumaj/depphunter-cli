@@ -6,8 +6,6 @@ scope: scope
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §5
 verification:
   - unit
 ---

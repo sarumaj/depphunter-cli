@@ -6,8 +6,6 @@ scope: md
 type: constraint
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M19
 verification:
   - unit
 ---

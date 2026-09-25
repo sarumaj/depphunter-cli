@@ -6,10 +6,6 @@ scope: cfg
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §5
-  - docs/REQUIREMENTS.md M4
-  - docs/REQUIREMENTS.md M30
 verification:
   - integration
   - e2e
@@ -27,7 +23,7 @@ and the server **shall** write them to the project config file, or to the
 
 The project file is where a view lives: it is per-repository, it is the file the
 command line reads, and it is the one file both the map and the editor extension
-can see (M30).
+can see.
 
 ## Acceptance criteria
 

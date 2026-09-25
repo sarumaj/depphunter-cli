@@ -6,9 +6,6 @@ scope: watch
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §5
-  - docs/REQUIREMENTS.md M3
 verification:
   - integration
 ---
@@ -23,7 +20,7 @@ did not change it **shall** announce nothing.
 
 ## Rationale
 
-Decision (M3): SSE instead of WebSocket. Updates flow one way, SSE needs no
+Decision: SSE instead of WebSocket. Updates flow one way, SSE needs no
 dependency and the browser reconnects by itself.
 
 ## Acceptance criteria

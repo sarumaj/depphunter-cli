@@ -6,8 +6,6 @@ scope: city
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M10
 verification:
   - manual
 ---
@@ -29,5 +27,5 @@ A dimmed city must still read as dimmed, yet keep its texture.
 
 ## Notes
 
-The design log says dimmed boxes are drawn plain, without windows. The code
-keeps the facades and roofs, only much fainter (`FADE` 0.72 in `city.js`).
+Facades and roofs stay on dimmed boxes, only much fainter (`FADE` 0.72 in
+`city.js`).

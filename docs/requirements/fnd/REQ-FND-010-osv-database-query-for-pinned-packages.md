@@ -6,8 +6,6 @@ scope: fnd
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M13
 verification:
   - unit
 ---
@@ -33,4 +31,4 @@ repository's own files cannot answer.
 
 ## Notes
 
-Packages declared private (scope `sup`, M16) are not asked about either.
+Packages declared private (scope `sup`) are not asked about either.

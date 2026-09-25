@@ -6,8 +6,6 @@ scope: lsp
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M6
 verification:
   - unit
 ---
@@ -19,7 +17,7 @@ UTF-16 code units.
 
 ## Rationale
 
-Decision (M6): UTF-16 is the LSP default position encoding.
+Decision: UTF-16 is the LSP default position encoding.
 
 ## Acceptance criteria
 

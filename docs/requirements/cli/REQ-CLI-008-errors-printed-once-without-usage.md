@@ -6,8 +6,6 @@ scope: cli
 type: interface
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M9
 verification:
   - integration
 ---
@@ -31,4 +29,5 @@ the usage text makes them harder to read.
 
 ## Notes
 
-No automated test checks the single printing or the exit status.
+`TestFailedRunPrintsTheErrorOnceOnStderr` runs the built binary and checks the
+single printing, the missing usage text and the exit status.

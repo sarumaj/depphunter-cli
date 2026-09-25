@@ -6,8 +6,6 @@ scope: mod
 type: interface
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §3
 verification:
   - unit
 ---

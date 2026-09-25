@@ -1,6 +1,8 @@
 package python
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
@@ -140,4 +142,27 @@ func TestLockDependencyShapes(t *testing.T) {
 			}
 		})
 	}
+}
+
+// A Pipenv project declares its distributions in the Pipfile alone: under packages
+// and dev-packages, as a version string or as a table with a version key.
+//
+// Verifies: REQ-PY-008
+func TestPipfile(t *testing.T) {
+	root := t.TempDir()
+	for name, content := range map[string]string{
+		"Pipfile": "[packages]\nrequests = \"*\"\nflask = {version = \">=3.0\", extras = [\"async\"]}\n\n" +
+			"[dev-packages]\npytest = \"==8.1.1\"\n",
+		"app.py": "import requests\nimport flask\nimport pytest\nimport undeclared\n",
+	} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	langtest.CheckImports(t, langtest.Analyze(t, Plugin{}, root)["app.py"], map[string]lang.Target{
+		"requests":   {Ecosystem: "pypi", Package: "requests"},
+		"flask":      {Ecosystem: "pypi", Package: "flask", Version: ">=3.0"},
+		"pytest":     {Ecosystem: "pypi", Package: "pytest", Version: "8.1.1", Pinned: true},
+		"undeclared": {Ecosystem: "pypi", Package: "undeclared", Unresolved: true},
+	})
 }

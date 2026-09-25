@@ -7,7 +7,6 @@ type: interface
 priority: must
 status: implemented
 source:
-  - docs/REQUIREMENTS.md M15
   - README.md Use
   - README.md The panel beside the code
 verification:

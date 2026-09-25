@@ -47,9 +47,7 @@ for 14 days, and runs the tests in 32-bit mode (`GOARCH=386`). Renovate
 an update requiring a newer Go than `go.mod` declares fails the oldest-Go job
 until `go.mod` is raised accordingly.
 
-The milestones and design decisions are recorded in
-[docs/REQUIREMENTS.md](docs/REQUIREMENTS.md). The requirements derived from
-them are specified one per file in
+The requirements are specified one per file in
 [docs/requirements/](docs/requirements/README.md). Code that implements a
 requirement carries an `Implements: REQ-…` comment, and a test that verifies
 one a `Verifies: REQ-…` comment; after adding or changing either, regenerate

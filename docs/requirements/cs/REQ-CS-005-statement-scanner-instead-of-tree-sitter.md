@@ -6,8 +6,6 @@ scope: cs
 type: constraint
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M4
 verification:
   - unit
 ---
@@ -40,4 +38,4 @@ takes 20 ms.
 
 ## Notes
 
-Criterion 4 is a measurement from the design log (M4), not an automated test.
+Criterion 4 is a measurement, not an automated test.

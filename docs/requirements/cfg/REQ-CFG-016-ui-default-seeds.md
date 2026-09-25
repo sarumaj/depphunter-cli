@@ -6,8 +6,6 @@ scope: cfg
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M30
 verification:
   - unit
   - extension

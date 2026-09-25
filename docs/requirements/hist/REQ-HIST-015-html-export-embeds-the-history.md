@@ -6,8 +6,6 @@ scope: hist
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M5
 verification:
   - e2e
 ---
@@ -19,7 +17,7 @@ that the exported map keeps the overlay.
 
 ## Rationale
 
-Acceptance criterion of M5: the HTML export keeps the overlay.
+A shared export shows the same overlays as the live map.
 
 ## Acceptance criteria
 

@@ -6,9 +6,6 @@ scope: dist
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M6
-  - docs/REQUIREMENTS.md M7
 verification:
   - inspection
 ---
@@ -21,8 +18,7 @@ archives and `checksums.txt` as a GitHub release of that tag.
 
 ## Rationale
 
-M7 accepts releases when the workflow publishes archives for every listed
-target.
+A release is complete only when every listed target has its archive.
 
 ## Acceptance criteria
 

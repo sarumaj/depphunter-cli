@@ -6,9 +6,6 @@ scope: py
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M2
-  - docs/REQUIREMENTS.md M12
 verification:
   - unit
 ---

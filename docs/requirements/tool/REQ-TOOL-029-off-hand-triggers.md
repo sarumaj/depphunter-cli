@@ -6,9 +6,6 @@ scope: tool
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M21
-  - docs/REQUIREMENTS.md M22
 verification:
   - e2e
 ---
@@ -25,6 +22,6 @@ already the scope.
 
 ## Acceptance criteria
 
-1. The grapple can be fired at all (M22 acceptance): `F`, `C` and the middle
+1. The grapple can be fired at all: `F`, `C` and the middle
    button each fire it.
 2. A left click uses the primary tool.

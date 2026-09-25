@@ -6,8 +6,6 @@ scope: walk
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M20
 verification:
   - ui
   - manual
@@ -35,6 +33,5 @@ swarm is dangerous by being hard to escape.
 
 ## Notes
 
-The design log says a critical bite is worth three of a note. The code charges
-34 for critical and 4 for info (the severity SARIF `note` maps to), a ratio of
-8.5; against `low` (7) it is about 5.
+A bite costs 34 for critical and 4 for info (the severity SARIF `note` maps
+to), a ratio of 8.5; against `low` (7) it is about 5.

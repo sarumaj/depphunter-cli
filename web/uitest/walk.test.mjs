@@ -9,7 +9,7 @@
 // pull you up.
 
 import assert from 'node:assert/strict';
-import { describe, it } from 'node:test';
+import { describe, it, mock } from 'node:test';
 
 import './stub.mjs';
 
@@ -17,6 +17,7 @@ const { Health } = await import('../static/health.js');
 const { Wind } = await import('../static/wind.js');
 const { TOOLS, TOOL_IDS, PRIMARY_IDS, SECONDARY_IDS, hits, isSecondary, toolFor, idleTool, studyTool, DEFAULT_TOOL } = await import('../static/tools.js');
 const SWITCH = await import('../static/switcher.js');
+const WALK = await import('../static/walk.js');
 const THREE = await import('../static/vendor/three.module.min.js');
 
 // How close two parts of a tool have to be to count as touching, in map units: a
@@ -559,3 +560,117 @@ describe('the tool switcher', () => {
   });
 });
 
+
+describe('what the tools reach and how long they last', () => {
+  // Verifies: REQ-TOOL-042
+  it('sends nails across a street and no further, and scatters them round the aim', () => {
+    assert.equal(TOOLS.nailer.reach, 9, 'the nail gun reaches further or shorter than a street');
+    // The draw is seeded, so the spread measured here is the same on every run.
+    let seed = 7;
+    const rng = mock.method(Math, 'random', () => (seed = (seed * 16807) % 2147483647) / 2147483647);
+    try {
+      // Aimed at a point at the far end of its reach, the way walk.js scatters a nail
+      // that has a target: by the tool's spread times how far it has to go.
+      const aim = new THREE.Vector3(0, 1, -TOOLS.nailer.reach);
+      const by = TOOLS.nailer.flight.spread * TOOLS.nailer.reach;
+      const hits = Array.from({ length: 400 }, () => {
+        const to = aim.clone();
+        WALK.scatter(to, by);
+        return to;
+      });
+      const mean = hits.reduce((a, p) => a.add(p), new THREE.Vector3()).multiplyScalar(1 / hits.length);
+      assert.ok(mean.distanceTo(aim) < by * 0.15, 'the nails do not land around where they were aimed');
+      for (const axis of ['x', 'y', 'z']) {
+        const off = hits.map(p => p[axis] - aim[axis]);
+        assert.ok(Math.max(...off.map(Math.abs)) <= by + 1e-9, `a nail went wider than the spread along ${axis}`);
+        assert.ok(Math.min(...off) < -by / 2 && Math.max(...off) > by / 2, `the nails do not spread along ${axis}`);
+      }
+      assert.equal(new Set(hits.map(p => p.toArray().join())).size, hits.length, 'two nails landed in one hole');
+    } finally {
+      rng.mock.restore();
+    }
+  });
+
+  // Verifies: REQ-TOOL-052
+  it('keeps the jet going longer than the skimmers on a full tank', () => {
+    /** Seconds of use a full tank gives, burned a frame at a time the way walk.js does. */
+    const lasts = id => {
+      const walker = {
+        tanks: new Map(), dry: new Set(), secondary: TOOLS[id], flash() {},
+        tank: WALK.Walker.prototype.tank,
+      };
+      let t = 0;
+      while (walker.tank(TOOLS[id]) > 0 && t < 600) { WALK.Walker.prototype.burn.call(walker, 0.05, true); t += 0.05; }
+      assert.ok(walker.dry.has(id), `${id} never ran dry`);
+      return t;
+    };
+    const jet = lasts('jetpack'), skim = lasts('skimmers');
+    assert.ok(jet > skim, `the jet lasts ${jet.toFixed(1)}s against the skimmers' ${skim.toFixed(1)}s`);
+  });
+});
+
+describe('the wheel, flicked', () => {
+  /**
+   * A walker as far as the wheel concerns it: the hands, and the wheel's own methods
+   * off Walker. The wheel's face is marked as built, with stand-ins for the parts it
+   * redraws - what it looks like is not what is being tested, what it takes is.
+   */
+  function walker() {
+    const el = { hidden: true, replaceChildren() {} };
+    const wheel = Object.assign(new SWITCH.ToolWheel(el), {
+      built: true, seats: new Map(), name: {}, says: {},
+      dot: { style: {} }, lit: { style: { setProperty() {} } },
+    });
+    const W = WALK.Walker.prototype;
+    return {
+      wheel, primary: TOOLS[DEFAULT_TOOL], secondary: null, dry: new Set(), p: {}, hooks: {},
+      showing: null, active: false, firing: false, flashed: [],
+      setScoped() {}, flying() { return false; }, flash(m) { this.flashed.push(m); },
+      openWheel: W.openWheel, holding: W.holding, aimWheel: W.aimWheel,
+      releaseWheel: W.releaseWheel, closeWheel: W.closeWheel, setTool: W.setTool,
+    };
+  }
+
+  // Verifies: REQ-TOOL-059
+  it('takes what R is let go on and puts the wheel away', () => {
+    // The M31 gesture: R down, the mouse thrown out to the left-hand side where the
+    // grapple gun sits, R up. The throw arrives as a handful of movements, as a
+    // captured pointer delivers it.
+    const w = walker();
+    w.openWheel();
+    assert.ok(w.wheel.open);
+    const { x, y } = SWITCH.seatOf(SWITCH.wedges().find(s => s.id === 'grapple'));
+    assert.ok(x < 0, 'the grapple gun is not on the left of the wheel');
+    for (let i = 0; i < 4; i++) w.aimWheel(x / 4, y / 4);
+    w.releaseWheel();
+    assert.equal(w.wheel.open, false, 'the wheel stayed up after a flick');
+    assert.equal(w.secondary?.id, 'grapple', 'the off hand does not hold the grapple gun');
+    assert.equal(w.primary.id, DEFAULT_TOOL, 'the hunting hand changed as well');
+  });
+
+  // Verifies: REQ-TOOL-059
+  it('puts a carried tool in the off hand for any flick to the left', () => {
+    // However the flick to the left is thrown - level, a little up or a little down -
+    // what lands in hand is something carried, in the carrying hand.
+    for (const dy of [-60, -20, 0, 20, 60]) {
+      const w = walker();
+      w.openWheel();
+      w.aimWheel(-130, dy);
+      w.releaseWheel();
+      assert.equal(w.wheel.open, false);
+      assert.ok(SECONDARY_IDS.includes(w.secondary?.id), `a flick left by ${dy} put ${w.secondary?.id} in the off hand`);
+      assert.equal(w.primary.id, DEFAULT_TOOL);
+    }
+  });
+
+  // Verifies: REQ-TOOL-059
+  it('stays up when let go without pointing anywhere', () => {
+    const w = walker();
+    w.openWheel();
+    w.aimWheel(10, -5); // still in the hub
+    w.releaseWheel();
+    assert.ok(w.wheel.open, 'a tap shut the wheel');
+    assert.equal(w.secondary, null);
+    assert.equal(w.primary.id, DEFAULT_TOOL);
+  });
+});

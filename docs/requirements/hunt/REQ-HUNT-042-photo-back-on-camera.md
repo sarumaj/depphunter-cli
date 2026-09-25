@@ -6,8 +6,6 @@ scope: hunt
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M27
 verification:
   - e2e
 ---
@@ -25,4 +23,4 @@ A photograph can be looked at where it was taken.
 ## Acceptance criteria
 
 1. Choosing to show a photograph puts the camera in hand and raises it with the
-   picture on its screen (M27 acceptance).
+   picture on its screen.

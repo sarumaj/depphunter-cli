@@ -6,9 +6,6 @@ scope: hunt
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M14
-  - docs/REQUIREMENTS.md M21
 verification:
   - e2e
   - manual

@@ -6,8 +6,6 @@ scope: tool
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M31
 verification:
   - ui
   - e2e
@@ -24,5 +22,6 @@ Flicked, the wheel is one gesture.
 
 ## Acceptance criteria
 
-1. `R` held with a flick to the left and a release puts a grapple gun in the off
-   hand (M31 acceptance).
+1. `R` held with a flick up and to the left, onto the grapple gun's wedge, and a
+   release puts a grapple gun in the off hand (straight left is the jet
+   backpack's wedge).

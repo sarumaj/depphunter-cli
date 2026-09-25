@@ -6,8 +6,6 @@ scope: ps
 type: non-functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M4
 verification:
   - e2e
 ---
@@ -19,7 +17,7 @@ dependency.
 
 ## Rationale
 
-Pester was the PowerShell reference project in M4.
+Pester is the PowerShell reference project.
 
 ## Acceptance criteria
 
@@ -27,4 +25,4 @@ Pester was the PowerShell reference project in M4.
 
 ## Notes
 
-Measured in the design log (M4). No automated test runs against Pester.
+A manual measurement; no automated test runs against Pester.

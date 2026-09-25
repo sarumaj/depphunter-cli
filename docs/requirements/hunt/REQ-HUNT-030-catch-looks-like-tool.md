@@ -6,8 +6,6 @@ scope: hunt
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M24
 verification:
   - ui
   - manual
@@ -28,7 +26,7 @@ says nothing about what took it.
 
 ## Acceptance criteria
 
-1. Each tool takes a bug off the map in its own way (M24 acceptance).
+1. Each tool takes a bug off the map in its own way.
 2. A bubbled bug rises, a pinned or foamed one sinks and a reeled one is drawn
    in.
 3. Every take finishes and leaves nothing behind.

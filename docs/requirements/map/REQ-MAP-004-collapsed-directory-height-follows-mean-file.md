@@ -6,9 +6,6 @@ scope: map
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §2
-  - docs/REQUIREMENTS.md M32
 verification:
   - ui
   - manual
@@ -33,8 +30,8 @@ average file would be.
 
 ## Notes
 
-Fixed: `computeVisibility` (filter.js) now also totals `totalBulk`, the drawn size
-of the visible files (lines, or bytes converted for unread files), which layout.js
-divides by the file count. It had carried only `fileCount` and `totalLoc` since
-M32 (drawn size from bytes), so every district was drawn at the floor height
-(0.2). `web/uitest/layout.test.mjs` checks both acceptance criteria.
+Fixed: `computeVisibility` (filter.js) now also totals `totalBulk`, the drawn
+size of the visible files (lines, or bytes converted for unread files), which
+layout.js divides by the file count. It had carried only `fileCount` and
+`totalLoc`, so every district was drawn at the floor height (0.2).
+`web/uitest/layout.test.mjs` checks both acceptance criteria.

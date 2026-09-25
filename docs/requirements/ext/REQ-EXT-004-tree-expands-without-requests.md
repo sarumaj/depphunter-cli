@@ -7,7 +7,6 @@ type: non-functional
 priority: must
 status: implemented
 source:
-  - docs/REQUIREMENTS.md M15
   - README.md The panel beside the code
 verification:
   - extension

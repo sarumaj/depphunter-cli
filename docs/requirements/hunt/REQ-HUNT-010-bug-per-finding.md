@@ -6,8 +6,6 @@ scope: hunt
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M13
 verification:
   - ui
   - e2e
@@ -39,7 +37,5 @@ fire, which spreads and must be put out.
 
 ## Notes
 
-Amended during the requirements review: M13 of the design log has a bug for
-every finding; the cap (`MAX_BUGS` in `bugs.js`) and the fires (`fires.js`)
-were added later and are kept. Laps lie on the street, a wall band, the roof or
-in the air.
+The cap is `MAX_BUGS` in `bugs.js`; the fires are drawn by `fires.js`. Laps lie
+on the street, a wall band, the roof or in the air.

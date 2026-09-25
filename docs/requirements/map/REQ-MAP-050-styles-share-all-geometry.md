@@ -6,8 +6,6 @@ scope: map
 type: constraint
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M14
 verification:
   - manual
   - inspection

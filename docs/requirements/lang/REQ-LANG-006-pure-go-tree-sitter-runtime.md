@@ -6,9 +6,6 @@ scope: lang
 type: constraint
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §4
-  - docs/REQUIREMENTS.md M2
 verification:
   - inspection
 ---
@@ -32,6 +29,6 @@ meets this without maintaining a C-to-WASM toolchain, with 0 syntax errors on
 
 ## Notes
 
-The original plan (tree-sitter compiled to WASM run by `wazero`) was replaced in
-M2. Trade-offs recorded: parsing is about 1-1.6 MB/s per core (about 20 times
-slower than the C runtime) and the binary grows about 15 MB.
+The alternative, tree-sitter compiled to WASM and run by `wazero`, needs a C to
+WASM toolchain to maintain. Trade-offs: parsing is about 1-1.6 MB/s per core
+(about 20 times slower than the C runtime) and the binary grows about 15 MB.

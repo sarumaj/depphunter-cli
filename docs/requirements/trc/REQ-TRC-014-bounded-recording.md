@@ -6,8 +6,6 @@ scope: trc
 type: non-functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M18
 verification:
   - unit
 ---
@@ -27,7 +25,3 @@ nobody can open explains nothing.
 
 1. After more than 20 000 questions the totals count all of them, 20 000 entries
    are kept and the report states how many were dropped.
-
-## Notes
-
-No automated test exercises the cap.

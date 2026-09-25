@@ -6,9 +6,6 @@ scope: walk
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M10
-  - docs/REQUIREMENTS.md M20
 verification:
   - manual
 ---
@@ -31,5 +28,5 @@ Look down and press `W` to dive; on foot the ground carries the walker.
 
 ## Notes
 
-Flight is provided by the jet backpack (scope `tool`, M20); there is no flight
-key any more (REQ-WALK-048).
+Flight is provided by the jet backpack (scope `tool`, REQ-TOOL-023); there is no
+flight key any more (REQ-WALK-048).

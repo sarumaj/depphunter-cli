@@ -6,8 +6,6 @@ scope: tool
 type: non-functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M25
 verification:
   - manual
 ---
@@ -25,4 +23,4 @@ frames.
 
 ## Acceptance criteria
 
-1. A nail is visible in flight (M25 acceptance).
+1. A nail is visible in flight.

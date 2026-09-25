@@ -6,8 +6,6 @@ scope: city
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M10
 verification:
   - manual
 ---
@@ -21,7 +19,7 @@ street's level to the terrace's top over at most 2.4 units.
 
 ## Rationale
 
-Decision (M10): streets are 0.35-0.55 units wide, and climbing a 0.28-unit
+Decision: streets are 0.35-0.55 units wide, and climbing a 0.28-unit
 terrace across that distance would be a wall, not a road; a ramp along the side
 has room to be a road.
 

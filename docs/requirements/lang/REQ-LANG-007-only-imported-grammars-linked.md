@@ -6,8 +6,6 @@ scope: lang
 type: constraint
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §4
 verification:
   - inspection
 ---

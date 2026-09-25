@@ -6,8 +6,6 @@ scope: sup
 type: constraint
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M16
 verification:
   - unit
 ---
@@ -30,4 +28,4 @@ is the whole point of the marking.
 
 ## Notes
 
-`DEPPHUNTER_TRUST_INDEXES` is also read, which the design log does not state.
+`DEPPHUNTER_TRUST_INDEXES` is also read.

@@ -1,13 +1,13 @@
-import { buildModel, boundaryEdges, isWithin, setReferences, bulk, unread, fileSize } from './model.js';
+import { buildModel, focusArcs, expandToLevel, toggles as togglesIn, isWithin, setReferences, unread, fileSize } from './model.js';
 import { Fires, MOST } from './fires.js';
 import { Flames } from './flames.js';
-import { layout } from './layout.js';
+import { layout, representative } from './layout.js';
 import { MapScene } from './scene.js';
-import { readPalette, languageColors, assignSlots, sequential } from './colors.js';
+import { readPalette, languageColors, assignSlots, boxColor } from './colors.js';
 import { Panel } from './panel.js';
 import { computeVisibility, searchIndex, search } from './filter.js';
 import { STATIC, CLIENT, auth, authed, fetchGraph, fetchConfig, fetchLazy, saveSettings, fetchSession, pushSelection, pushBackpack } from './data.js';
-import { MODES, isHistoryMode, computeMetrics, historyT, timeRange, ago, formatDate } from './history.js';
+import { MODES, isHistoryMode, effectiveMode, computeMetrics, historyT, timeRange, ago, formatDate } from './history.js';
 import { Labels } from './labels.js';
 import { Walker } from './walk.js';
 import { loadHands } from './hands.js';
@@ -500,7 +500,7 @@ function metrics() {
 
 /** The color mode in effect: history modes fall back to language until loaded. */
 function colorMode() {
-  return isHistoryMode(state.colorBy) && !state.history ? 'language' : state.colorBy;
+  return effectiveMode(state.colorBy, state.history);
 }
 
 // The view as the settings format describes it: colors, heights, theme, depth and
@@ -934,8 +934,7 @@ function drawFilters() {
 
 // Implements: REQ-MAP-023
 function setLevel(level, redraw = true) {
-  state.level = Math.max(1, Math.min(maxDepth, level));
-  state.expanded = new Set([...model.byId.values()].filter(n => n.kind === 'dir' && n.depth < state.level).map(n => n.id));
+  ({ level: state.level, expanded: state.expanded } = expandToLevel(model, level));
   $('depth-label').textContent = `depth ${state.level}/${Math.max(1, maxDepth)}`;
   if (redraw) relayout();
 }
@@ -957,10 +956,7 @@ function autoLevel() {
 
 /** What toggling `n` would do: 'open', 'close', or '' when there is nothing to open. */
 function toggles(n) {
-  if (n.kind === 'symbol') n = n.parentNode;
-  if (n.kind === 'file' && !n.children.length) return '';
-  if (n.kind !== 'dir' && n.kind !== 'file') return '';
-  return state.expanded.has(n.id) ? 'close' : 'open';
+  return togglesIn(n, state.expanded);
 }
 
 // Implements: REQ-MAP-022
@@ -1124,40 +1120,14 @@ function relayout() {
 /** The box that stands for `n` in the current layout: itself or its nearest visible ancestor. */
 // Implements: REQ-MAP-009
 function rep(n) {
-  for (let p = n; p; p = p.parentNode) {
-    const b = L.byNode.get(p.id);
-    if (b) return b;
-  }
-  return null;
+  return representative(L.byNode, n);
 }
 
 // Implements: REQ-MAP-037, REQ-MAP-051, REQ-MAP-058, REQ-HIST-010, REQ-HIST-013
 function baseColors() {
   const mode = colorMode();
   const hm = isHistoryMode(mode) && metrics();
-  return L.boxes.map(b => {
-    const n = b.node;
-    if (hm && (b.kind === 'district' || b.kind === 'building' || b.kind === 'symbol')) {
-      const t = historyT(mode, b.kind === 'symbol' ? n.parentNode : n, hm);
-      return t === null ? pal.noData : sequential(pal, t);
-    }
-    switch (b.kind) {
-      case 'land': return pal.land;
-      case 'terrace': return n.kind === 'file' ? pal.terraceB : (n.depth % 2 ? pal.terraceB : pal.terraceA);
-      case 'district':
-        return state.colorBy === 'size' ? sequential(pal, sizeT(n.totalBulk / Math.max(1, n.fileCount))) : pal.district;
-      case 'building':
-        return state.colorBy === 'size' ? sequential(pal, sizeT(bulk(n))) : langs.of(n.lang);
-      case 'symbol': {
-        const f = n.parentNode;
-        return state.colorBy === 'size' ? sequential(pal, sizeT(bulk(f))) : langs.of(f.lang);
-      }
-      // A package nothing pins is worth seeing from across the map.
-      // Implements: REQ-SUP-004
-      case 'package': return n.unresolved ? pal.pkgUnresolved : n.floating ? pal.pkgFloating : pal.pkg;
-    }
-    return pal.other;
-  });
+  return L.boxes.map(b => boxColor(b, { mode, pal, langs, sizeT, hm, historyT }));
 }
 
 let maxLoc = 1;
@@ -1168,30 +1138,10 @@ function sizeT(loc) {
 
 // Implements: REQ-MAP-012, REQ-MAP-013, REQ-MAP-026
 function refreshFocus() {
-  const sel = state.selected;
-  const selBox = sel && rep(sel);
-  focus = null;
-  if (sel && selBox) {
-    const { out, in: inc } = boundaryEdges(model, sel, state.linkKind);
-    const agg = new Map();
-    const add = (from, to, color) => {
-      if (!from || !to || from === to) return;
-      const key = `${from.i}>${to.i}>${color}`;
-      const a = agg.get(key) || { from, to, color, count: 0 };
-      a.count++;
-      agg.set(key, a);
-    };
-    const shown = id => {
-      const n = model.byId.get(id);
-      return state.vis.visible(n) ? rep(n) : null;
-    };
-    for (const e of out) add(selBox, shown(e.to), pal.edgeOut);
-    for (const e of inc) add(shown(e.from), selBox, pal.edgeIn);
-    const arcs = [...agg.values()].sort((a, b) => b.count - a.count).slice(0, MAX_ARCS);
-    const lit = new Set([selBox]);
-    for (const a of arcs) { lit.add(a.from); lit.add(a.to); }
-    focus = { lit, arcs, selBox };
-  }
+  focus = focusArcs(model, state.selected, {
+    kind: state.linkKind, rep, visible: state.vis.visible,
+    outColor: pal.edgeOut, inColor: pal.edgeIn, max: MAX_ARCS,
+  });
   scene.setArcs(focus ? focus.arcs : []);
   scene.setOutline(focus ? focus.selBox : null, pal.select);
   recolor();

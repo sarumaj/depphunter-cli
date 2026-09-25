@@ -6,9 +6,6 @@ scope: dist
 type: constraint
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §6
-  - docs/REQUIREMENTS.md M7
 verification:
   - inspection
 ---

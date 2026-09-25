@@ -6,8 +6,6 @@ scope: ui
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M22
 verification:
   - ui
   - manual
@@ -35,5 +33,5 @@ to be said out loud once.
 
 Fixed: the second card now says that selecting draws an arc to each dependency
 with an arrow for its direction, fades everything else, and opens the side panel
-listing both directions. The roads and chevrons went in M24. The tour test checks
-that the card mentions neither.
+listing both directions. It had described dependency roads and chevrons, which
+are gone. The tour test checks that the card mentions neither.

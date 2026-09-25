@@ -7,7 +7,6 @@ type: functional
 priority: must
 status: implemented
 source:
-  - docs/REQUIREMENTS.md M15
   - README.md Use
 verification:
   - extension

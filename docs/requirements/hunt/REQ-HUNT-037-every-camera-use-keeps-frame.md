@@ -6,8 +6,6 @@ scope: hunt
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M28
 verification:
   - ui
   - e2e
@@ -25,5 +23,5 @@ anybody does, and left the ordinary use doing nothing visible.
 
 ## Acceptance criteria
 
-1. One click on a building keeps a picture of it (M28 acceptance).
+1. One click on a building keeps a picture of it.
 2. The camera is the only tool that keeps pictures.

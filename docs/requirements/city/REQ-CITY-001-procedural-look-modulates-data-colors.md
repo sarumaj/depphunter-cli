@@ -6,8 +6,6 @@ scope: city
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M7
 verification:
   - manual
   - inspection
@@ -32,5 +30,4 @@ The map's colors carry data; the city must not hide them.
 
 ## Notes
 
-M7 kept the isometric view unchanged; since M10 the city look is shared by both
-views (REQ-CITY-002).
+The city look is shared by both views (REQ-CITY-002).

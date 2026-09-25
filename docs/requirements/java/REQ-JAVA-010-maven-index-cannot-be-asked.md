@@ -6,9 +6,6 @@ scope: java
 type: limitation
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md Known limits
-  - docs/REQUIREMENTS.md M12
 verification:
   - unit
 ---

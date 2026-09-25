@@ -6,8 +6,6 @@ scope: cli
 type: interface
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M9
 verification:
   - unit
   - integration
@@ -22,8 +20,8 @@ error.
 
 ## Rationale
 
-The command moved to cobra and pflag in M9 so that its flags behave like those
-of other command-line tools.
+The command is built on cobra and pflag so that its flags behave like those of
+other command-line tools.
 
 ## Acceptance criteria
 

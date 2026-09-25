@@ -6,8 +6,6 @@ scope: hunt
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M24
 verification:
   - e2e
 ---
@@ -23,5 +21,4 @@ One way of turning the view into a file.
 
 ## Acceptance criteria
 
-1. A saved photograph is a PNG file of the view (M24 acceptance: the camera
-   saves a file).
+1. A saved photograph is a PNG file of the view.

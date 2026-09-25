@@ -6,8 +6,6 @@ scope: sup
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M16
 verification:
   - unit
 ---

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"net/http/cookiejar"
 	"net/http/httptest"
+	neturl "net/url"
 	"os"
 	"path/filepath"
 	"runtime"
@@ -17,6 +18,7 @@ import (
 	"time"
 
 	"github.com/sarumaj/depphunter-cli/internal/config"
+	"github.com/sarumaj/depphunter-cli/internal/findings"
 	"github.com/sarumaj/depphunter-cli/internal/graph"
 	"github.com/sarumaj/depphunter-cli/internal/history"
 	"github.com/sarumaj/depphunter-cli/internal/trace"
@@ -743,5 +745,179 @@ func TestResolutionReportIsServedInThreeShapes(t *testing.T) {
 	}
 	if code, _ := get(t, c, base+"/api/resolution?format=csv", nil); code != http.StatusBadRequest {
 		t.Errorf("an unknown format: %d, want 400", code)
+	}
+}
+
+// TestHTMLExportCarriesTheViewOnScreen checks the ui parameter of an HTML export:
+// the page written opens with the settings the browser sent, not those of the
+// configuration, and a value that is not valid settings is refused outright.
+//
+// Verifies: REQ-EXP-009
+func TestHTMLExportCarriesTheViewOnScreen(t *testing.T) {
+	_, url, base := start(t) // configured theme: auto
+	c := login(t, url)
+	data := func(body string) (cfg struct {
+		Theme  string `json:"theme"`
+		Style  string `json:"style"`
+		Static bool   `json:"static"`
+	}) {
+		t.Helper()
+		const open = `<script type="application/json" id="depphunter-data">`
+		i := strings.Index(body, open)
+		if i < 0 {
+			t.Fatalf("no data element in %.200s", body)
+		}
+		rest := body[i+len(open):]
+		var doc struct {
+			Config json.RawMessage `json:"config"`
+		}
+		if err := json.Unmarshal([]byte(rest[:strings.Index(rest, "</script>")]), &doc); err != nil {
+			t.Fatal(err)
+		}
+		if err := json.Unmarshal(doc.Config, &cfg); err != nil {
+			t.Fatal(err)
+		}
+		return cfg
+	}
+
+	code, body := get(t, c, base+"/api/export?format=html", nil)
+	if code != 200 || data(body).Theme != "auto" {
+		t.Fatalf("without ui: %d, theme %q", code, data(body).Theme)
+	}
+	ui := `{"theme":"dark","colorBy":"size","heightScale":"log","style":"galaxy"}`
+	code, body = get(t, c, base+"/api/export?format=html&ui="+neturl.QueryEscape(ui), nil)
+	if got := data(body); code != 200 || got.Theme != "dark" || got.Style != "galaxy" || !got.Static {
+		t.Errorf("with ui: %d, %+v", code, got)
+	}
+	for _, bad := range []string{`{"theme":"neon","colorBy":"size","heightScale":"log"}`, `not json`} {
+		code, body := get(t, c, base+"/api/export?format=html&ui="+neturl.QueryEscape(bad), nil)
+		if code != http.StatusBadRequest || strings.TrimSpace(body) != "invalid ui settings" {
+			t.Errorf("ui %s: %d %q, want 400 invalid ui settings", bad, code, body)
+		}
+	}
+}
+
+// lazyEvents reads the names of the events on an open /api/events stream, after
+// the greeting.
+func lazyEvents(t *testing.T, c *http.Client, base string) <-chan string {
+	t.Helper()
+	res, err := c.Get(base + "/api/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	t.Cleanup(func() { res.Body.Close() })
+	events := make(chan string, 8)
+	go func() {
+		sc := bufio.NewScanner(res.Body)
+		for sc.Scan() {
+			if line := sc.Text(); strings.HasPrefix(line, "event: ") {
+				events <- strings.TrimPrefix(line, "event: ")
+			}
+		}
+	}()
+	<-events // hello
+	return events
+}
+
+func expectEvent(t *testing.T, events <-chan string, want string) {
+	t.Helper()
+	select {
+	case e := <-events:
+		if e != want {
+			t.Errorf("event %q, want %q", e, want)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatalf("no %s event", want)
+	}
+}
+
+func expectNoEvent(t *testing.T, events <-chan string) {
+	t.Helper()
+	select {
+	case e := <-events:
+		t.Errorf("unexpected event %q", e)
+	case <-time.After(200 * time.Millisecond):
+	}
+}
+
+// TestFindingsLifecycle checks the findings as a background dataset: pending while
+// the reports are read, then the set with its sources, announced once - a re-read
+// that found the same is not news - and 204 when nothing is left.
+//
+// Verifies: REQ-FND-022
+func TestFindingsLifecycle(t *testing.T) {
+	s, url, base := start(t, func(c *config.Config) { c.Links = true })
+	c := login(t, url)
+	if code, _ := get(t, c, base+"/api/findings", nil); code != http.StatusAccepted {
+		t.Errorf("while reading: %d, want 202", code)
+	}
+	events := lazyEvents(t, c, base)
+
+	set := func() *findings.Set {
+		return &findings.Set{Sources: []string{"govulncheck"}, Partial: true, Findings: []*findings.Finding{
+			{ID: "f1", Kind: "vuln", Source: "govulncheck", Ref: "GO-2024-0001", Title: "bad", Path: "a.go"}}}
+	}
+	if err := s.SetFindings(set()); err != nil {
+		t.Fatal(err)
+	}
+	expectEvent(t, events, "findings")
+	code, body := get(t, c, base+"/api/findings", nil)
+	var doc struct {
+		Findings []struct{ Ref string } `json:"findings"`
+		Sources  []string               `json:"sources"`
+		Partial  bool                   `json:"partial"`
+	}
+	if code != 200 || json.Unmarshal([]byte(body), &doc) != nil || len(doc.Findings) != 1 ||
+		doc.Findings[0].Ref != "GO-2024-0001" || len(doc.Sources) != 1 || !doc.Partial {
+		t.Errorf("findings: %d %s", code, body)
+	}
+
+	// The same answer again, as a --watch re-read produces it.
+	if err := s.SetFindings(set()); err != nil {
+		t.Fatal(err)
+	}
+	expectNoEvent(t, events)
+
+	s.SetFindings(nil)
+	expectEvent(t, events, "findings")
+	if code, _ := get(t, c, base+"/api/findings", nil); code != http.StatusNoContent {
+		t.Errorf("without findings: %d, want 204", code)
+	}
+}
+
+// TestReferencesLifecycle checks the references as a background dataset: with
+// --lsp they are pending until the servers finish, then served as {edges, servers,
+// partial} with a references event, and 204 when no server answered.
+//
+// Verifies: REQ-LSP-005
+func TestReferencesLifecycle(t *testing.T) {
+	s, url, base := start(t, func(c *config.Config) { c.LSP = true })
+	c := login(t, url)
+	if code, _ := get(t, c, base+"/api/references", nil); code != http.StatusAccepted {
+		t.Errorf("while the servers run: %d, want 202", code)
+	}
+	events := lazyEvents(t, c, base)
+
+	refs := &References{Servers: []string{"gopls"}, Edges: []*graph.Edge{
+		{From: "s:a.go#A", To: graph.FileID("a.go"), Kind: graph.EdgeReference}}}
+	if err := s.SetReferences(refs); err != nil {
+		t.Fatal(err)
+	}
+	expectEvent(t, events, "references")
+	code, body := get(t, c, base+"/api/references", nil)
+	var doc struct {
+		Edges   []struct{ From, To, Kind string } `json:"edges"`
+		Servers []string                          `json:"servers"`
+		Partial *bool                             `json:"partial"`
+	}
+	if code != 200 || json.Unmarshal([]byte(body), &doc) != nil || len(doc.Edges) != 1 ||
+		doc.Edges[0].From != "s:a.go#A" || len(doc.Servers) != 1 || doc.Partial == nil {
+		t.Errorf("references: %d %s", code, body)
+	}
+
+	s.SetReferences(nil)
+	expectEvent(t, events, "references")
+	if code, _ := get(t, c, base+"/api/references", nil); code != http.StatusNoContent {
+		t.Errorf("without references: %d, want 204", code)
 	}
 }

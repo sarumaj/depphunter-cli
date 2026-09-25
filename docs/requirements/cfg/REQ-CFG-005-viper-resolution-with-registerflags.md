@@ -6,8 +6,6 @@ scope: cfg
 type: constraint
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M9
 verification:
   - unit
   - inspection

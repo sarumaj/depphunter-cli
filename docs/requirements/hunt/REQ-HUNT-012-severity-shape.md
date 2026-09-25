@@ -6,8 +6,6 @@ scope: hunt
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M20
 verification:
   - ui
   - manual
@@ -29,5 +27,4 @@ worst finding is the one that has to be walked up to.
 1. A critical finding's bug uses the caterpillar geometry and is never placed on
    an air lap.
 2. High and medium findings use the beetle; low and info use the mite.
-3. A critical finding is visibly a different animal from a note (M20
-   acceptance).
+3. A critical finding is visibly a different animal from a note.

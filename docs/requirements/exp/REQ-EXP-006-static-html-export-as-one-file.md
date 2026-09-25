@@ -6,9 +6,6 @@ scope: exp
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §5
-  - docs/REQUIREMENTS.md M4
 verification:
   - unit
 ---

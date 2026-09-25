@@ -6,8 +6,6 @@ scope: hist
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M6
 verification:
   - unit
   - integration
@@ -32,5 +30,5 @@ age and authorship.
 
 ## Notes
 
-Supersedes the M5 decision not to follow renames (`--no-renames`, because
-`--follow` works for single files only).
+`--follow` works for single files only, so renames are detected with `-M` over
+the whole log instead.

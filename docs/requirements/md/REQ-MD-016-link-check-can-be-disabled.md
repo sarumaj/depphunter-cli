@@ -6,8 +6,6 @@ scope: md
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M19
 verification:
   - unit
   - extension
@@ -34,5 +32,4 @@ to switch it off from every configuration source.
 
 ## Notes
 
-The design log does not name the switch; it is recorded here from the code.
 Configuration precedence belongs to scope `cfg`.

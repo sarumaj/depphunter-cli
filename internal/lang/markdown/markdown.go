@@ -1,5 +1,5 @@
 // Package markdown reads a repository's documentation as what it is: a set of
-// dependencies. A README that links to docs/REQUIREMENTS.md depends on that file, and
+// dependencies. A README that links to CONTRIBUTING.md depends on that file, and
 // one that links to internal/server/server.go depends on that; both break when the
 // target is moved, and nothing a package manager reads will say so.
 //

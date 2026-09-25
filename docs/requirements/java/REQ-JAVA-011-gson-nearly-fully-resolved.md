@@ -6,8 +6,6 @@ scope: java
 type: non-functional
 priority: should
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M4
 verification:
   - e2e
 ---
@@ -19,7 +17,7 @@ unresolved imports, all of them in generated or test-only code.
 
 ## Rationale
 
-gson was the Java reference project in M4; the remaining unresolved imports come
+gson is the Java reference project; the remaining unresolved imports come
 from generated and test-only code the heuristics cannot attribute.
 
 ## Acceptance criteria
@@ -28,4 +26,4 @@ from generated and test-only code the heuristics cannot attribute.
 
 ## Notes
 
-Measured in the design log (M4). No automated test runs against gson.
+A manual measurement; no automated test runs against gson.

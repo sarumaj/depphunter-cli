@@ -6,8 +6,6 @@ scope: cli
 type: interface
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M9
 verification:
   - integration
 ---
@@ -20,8 +18,8 @@ with an error when they are unknown.
 
 ## Rationale
 
-POSIX flags reserve a single dash for short flags. The standard `flag` package
-used before M9 accepted `-addr`; that form is no longer valid.
+POSIX flags reserve a single dash for short flags, so `-addr` is not a long
+flag.
 
 ## Acceptance criteria
 
@@ -30,4 +28,5 @@ used before M9 accepted `-addr`; that form is no longer valid.
 
 ## Notes
 
-No automated test covers this; it follows from pflag's parsing.
+It follows from pflag's parsing; `TestSingleDashLongFlagIsRejected` runs the
+built binary with `-addr`.

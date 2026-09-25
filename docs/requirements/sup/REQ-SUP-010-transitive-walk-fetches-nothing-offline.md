@@ -6,8 +6,6 @@ scope: sup
 type: constraint
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M12
 verification:
   - unit
   - inspection

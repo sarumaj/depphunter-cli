@@ -6,8 +6,6 @@ scope: md
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M19
 verification:
   - unit
 ---
@@ -32,5 +30,5 @@ either would be a defect nobody is expected to correct.
 
 ## Notes
 
-No automated test covers this selection (`documents` and `fixed` in
-`cmd/depphunter/main.go`).
+`TestVendoredDocsAndTestdataAreNotLinkChecked` covers this selection
+(`documents` and `fixed` in `cmd/depphunter/main.go`).

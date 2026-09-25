@@ -6,9 +6,6 @@ scope: hist
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M5
-  - docs/REQUIREMENTS.md §5
 verification:
   - manual
 ---

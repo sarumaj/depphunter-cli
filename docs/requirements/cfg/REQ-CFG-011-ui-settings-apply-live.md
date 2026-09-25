@@ -6,10 +6,7 @@ scope: cfg
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §5
 verification:
-  - ui
   - manual
 ---
 
@@ -32,4 +29,8 @@ The user determines interactively what is shown (goal 2 of the product).
 
 ## Notes
 
-No automated UI test covers the live application.
+No automated UI test covers the live application. The wiring lives in
+`app.js`, which starts the whole page (WebGL scene, server connection, every
+control) when it is imported, so it cannot be driven headlessly at reasonable
+cost; the pieces it calls - `computeVisibility`, `layout`, `languageColors` -
+are covered by the `web/uitest` tests of REQ-MAP-032 to REQ-MAP-036.

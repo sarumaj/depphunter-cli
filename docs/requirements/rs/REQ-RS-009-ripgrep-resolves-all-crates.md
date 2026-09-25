@@ -6,8 +6,6 @@ scope: rs
 type: non-functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M4
 verification:
   - e2e
 ---
@@ -20,7 +18,7 @@ crate.
 ## Rationale
 
 ripgrep is a multi-crate workspace with path, renamed and workspace-inherited
-dependencies; it served as the reference project for the Rust plugin in M4.
+dependencies; it is the reference project for the Rust plugin.
 
 ## Acceptance criteria
 
@@ -28,4 +26,4 @@ dependencies; it served as the reference project for the Rust plugin in M4.
 
 ## Notes
 
-Measured in the design log (M4). No automated test runs against ripgrep.
+A manual measurement; no automated test runs against ripgrep.

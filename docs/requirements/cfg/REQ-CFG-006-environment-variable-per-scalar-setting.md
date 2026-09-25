@@ -6,8 +6,6 @@ scope: cfg
 type: interface
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M9
 verification:
   - unit
 ---

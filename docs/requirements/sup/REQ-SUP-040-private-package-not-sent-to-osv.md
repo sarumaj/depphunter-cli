@@ -6,8 +6,6 @@ scope: sup
 type: constraint
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M16
 verification:
   - unit
 ---
@@ -28,5 +26,4 @@ The query would hand the name and version of internal code to a third party.
 
 ## Notes
 
-The OSV query itself is specified by scope [`fnd`](../fnd/). No automated test
-checks that private packages are left out.
+The OSV query itself is specified by scope [`fnd`](../fnd/).

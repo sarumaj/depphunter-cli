@@ -6,8 +6,6 @@ scope: lang
 type: interface
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §4
 verification:
   - unit
   - inspection

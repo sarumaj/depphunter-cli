@@ -6,8 +6,6 @@ scope: tool
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M14
 verification:
   - ui
   - manual
@@ -26,5 +24,4 @@ A tool that hangs rigidly in the frame looks pasted on.
 ## Acceptance criteria
 
 1. Standing still, the tool moves slowly and slightly.
-2. Breaking into a run an hour into a session does not make the tool jerk (M27
-   acceptance).
+2. Breaking into a run an hour into a session does not make the tool jerk.

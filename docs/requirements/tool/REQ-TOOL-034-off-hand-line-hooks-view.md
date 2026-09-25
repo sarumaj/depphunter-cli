@@ -6,9 +6,6 @@ scope: tool
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M21
-  - docs/REQUIREMENTS.md M22
 verification:
   - e2e
 ---

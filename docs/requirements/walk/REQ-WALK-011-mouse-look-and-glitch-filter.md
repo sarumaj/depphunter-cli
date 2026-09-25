@@ -6,8 +6,6 @@ scope: walk
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M10
 verification:
   - manual
 ---
@@ -32,5 +30,5 @@ focus change; without the filter the view snaps to a random direction.
 
 ## Notes
 
-The design log says jumps of 250 px or more are ignored; the code clamps them
-instead so that a fast flick still turns the view.
+Large jumps are clamped rather than ignored so that a fast flick still turns the
+view.

@@ -223,3 +223,36 @@ func TestNilReportRecordsNothing(t *testing.T) {
 		t.Errorf("a nil report wrote %q (%v)", b.String(), err)
 	}
 }
+
+// TestRecordingIsBoundedButCountsEverything asks more questions than a report keeps
+// in full: the totals still count every one, the detail stops at the cap, and the
+// report says how many it left out rather than reading as though that was all.
+//
+// Verifies: REQ-TRC-014
+func TestRecordingIsBoundedButCountsEverything(t *testing.T) {
+	const extra = 123
+	r := New(-1, false, nil, nil)
+	r.Enter("javascript", 0)
+	for i := 0; i < maxLookups+extra; i++ {
+		r.Add(Lookup{Ecosystem: "npm", Package: "p", Version: "1.0.0", Answer: FromLock})
+	}
+	r.Done(maxLookups+extra, maxLookups+extra, 0, 0, time.Millisecond)
+	r.Finish()
+
+	if r.Totals.Asked != maxLookups+extra || r.Totals.FromLock != maxLookups+extra {
+		t.Errorf("totals %+v, want every one of %d questions counted", r.Totals, maxLookups+extra)
+	}
+	if len(r.Lookups) != 20000 {
+		t.Errorf("%d questions kept in full, want 20000", len(r.Lookups))
+	}
+	if r.Dropped != extra {
+		t.Errorf("%d dropped, want %d", r.Dropped, extra)
+	}
+	var b strings.Builder
+	if err := r.Text(&b); err != nil {
+		t.Fatal(err)
+	}
+	if want := "123 further questions were counted but not kept: the detail stops at 20000."; !strings.Contains(b.String(), want) {
+		t.Errorf("the report does not say what it dropped:\n%s", b.String())
+	}
+}

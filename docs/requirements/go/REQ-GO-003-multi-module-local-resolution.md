@@ -6,8 +6,6 @@ scope: go
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M1
 verification:
   - unit
 ---
@@ -33,4 +31,4 @@ that import each other.
 ## Notes
 
 Each file belongs to the module of the deepest `go.mod` above it. `replace`
-directives are honored as well (not covered by the design log).
+directives are honored as well.

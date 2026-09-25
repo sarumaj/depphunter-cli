@@ -6,8 +6,6 @@ scope: tool
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M21
 verification:
   - e2e
   - manual
@@ -26,6 +24,6 @@ A walker can fly with the jet backpack while netting a bug with the other hand.
 ## Acceptance criteria
 
 1. A walker can fly with the jet backpack while netting a bug with the other
-   hand (M21 acceptance).
+   hand.
 2. Taking a primary tool replaces the right hand's tool and leaves the left
    hand's alone.

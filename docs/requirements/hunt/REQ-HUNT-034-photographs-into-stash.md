@@ -6,8 +6,6 @@ scope: hunt
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M25
 verification:
   - ui
   - e2e
@@ -26,7 +24,7 @@ way to look at the pictures.
 
 ## Acceptance criteria
 
-1. A photograph can be looked at before it is saved (M25 acceptance).
+1. A photograph can be looked at before it is saved.
 2. A photograph of a bug is captioned with its severity and title; one of a
    building with the building's name.
 3. The newest photograph is listed first.

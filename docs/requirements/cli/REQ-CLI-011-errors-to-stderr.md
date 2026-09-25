@@ -6,8 +6,6 @@ scope: cli
 type: interface
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §5
 verification:
   - integration
 ---
@@ -28,4 +26,5 @@ A failure is not part of the output anybody asked for.
 
 ## Notes
 
-No automated test checks the stream of the error.
+`TestFailedRunPrintsTheErrorOnceOnStderr` runs the built binary with the two
+streams apart, including a failure after the log has gone to stdout.

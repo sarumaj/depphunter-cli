@@ -135,3 +135,74 @@ func TestReferencesInExports(t *testing.T) {
 		t.Error("DOT should leave symbol references out")
 	}
 }
+
+// TestFloatingAndRequestedInExports checks that the pin status of an external
+// package survives both machine-readable exports: a floating range is marked
+// floating, and a range a lock file resolved keeps the specifier it asked for,
+// so a downstream tool need not re-derive the ecosystem rules.
+//
+// Verifies: REQ-EXP-013, REQ-SUP-006
+func TestFloatingAndRequestedInExports(t *testing.T) {
+	g := sample()
+	g.Nodes = append(g.Nodes,
+		&graph.Node{ID: "p:go:x.io/floating", Kind: graph.KindPackage, Name: "x.io/floating", Version: "latest",
+			Floating: true, Parent: "e:go"},
+		&graph.Node{ID: "p:go:x.io/ranged", Kind: graph.KindPackage, Name: "x.io/ranged", Version: "v1.2.3",
+			Requested: ">=v1.2.0", Parent: "e:go"})
+
+	var js bytes.Buffer
+	if err := Write(&js, g, "json"); err != nil {
+		t.Fatal(err)
+	}
+	var doc struct {
+		Nodes []map[string]any `json:"nodes"`
+	}
+	if err := json.Unmarshal(js.Bytes(), &doc); err != nil {
+		t.Fatal(err)
+	}
+	byID := map[string]map[string]any{}
+	for _, n := range doc.Nodes {
+		byID[n["id"].(string)] = n
+	}
+	if byID["p:go:x.io/floating"]["floating"] != true {
+		t.Errorf("JSON: floating package %v", byID["p:go:x.io/floating"])
+	}
+	if byID["p:go:x.io/ranged"]["requested"] != ">=v1.2.0" || byID["p:go:x.io/ranged"]["floating"] != nil {
+		t.Errorf("JSON: resolved package %v", byID["p:go:x.io/ranged"])
+	}
+	if _, ok := byID["p:go:x.io/y"]["floating"]; ok {
+		t.Error("JSON: a pinned package is marked floating")
+	}
+
+	var gml bytes.Buffer
+	if err := Write(&gml, g, "graphml"); err != nil {
+		t.Fatal(err)
+	}
+	var x gmlDoc
+	if err := xml.Unmarshal(gml.Bytes(), &x); err != nil {
+		t.Fatal(err)
+	}
+	keys := map[string]string{}
+	for _, k := range x.Keys {
+		keys[k.ID] = k.Type
+	}
+	if keys["floating"] != "boolean" || keys["requested"] != "string" {
+		t.Errorf("GraphML keys: floating %q, requested %q", keys["floating"], keys["requested"])
+	}
+	data := map[string]map[string]string{}
+	for _, n := range x.Graph.Nodes {
+		data[n.ID] = map[string]string{}
+		for _, d := range n.Data {
+			data[n.ID][d.Key] = d.Value
+		}
+	}
+	if data["p:go:x.io/floating"]["floating"] != "true" {
+		t.Errorf("GraphML: floating package %v", data["p:go:x.io/floating"])
+	}
+	if data["p:go:x.io/ranged"]["requested"] != ">=v1.2.0" {
+		t.Errorf("GraphML: resolved package %v", data["p:go:x.io/ranged"])
+	}
+	if !strings.Contains(gml.String(), `<data key="floating">true</data>`) {
+		t.Error(`GraphML lacks <data key="floating">true</data>`)
+	}
+}

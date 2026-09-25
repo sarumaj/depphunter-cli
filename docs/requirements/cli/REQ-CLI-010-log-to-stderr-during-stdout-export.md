@@ -6,8 +6,6 @@ scope: cli
 type: interface
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §5
 verification:
   - unit
   - integration

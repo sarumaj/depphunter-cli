@@ -6,8 +6,6 @@ scope: sup
 type: interface
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M12
 verification:
   - unit
 ---
@@ -30,5 +28,4 @@ must survive it.
 
 ## Notes
 
-The JSON field is defined by the graph model (scope [`mod`](../mod/)). No
-automated test checks the flag in either export.
+The JSON field is defined by the graph model (scope [`mod`](../mod/)).

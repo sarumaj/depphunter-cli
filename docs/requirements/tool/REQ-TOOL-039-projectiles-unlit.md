@@ -6,8 +6,6 @@ scope: tool
 type: constraint
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M22
 verification:
   - ui
 ---
@@ -22,5 +20,5 @@ The scene carries no lights, so a lit material out there is drawn black.
 
 ## Acceptance criteria
 
-1. A bubble is blue in the air rather than black (M22 acceptance).
+1. A bubble is blue in the air rather than black.
 2. Every projectile mesh uses an unlit material.

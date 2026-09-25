@@ -12,20 +12,22 @@ import { box, scene } from './stub.mjs';
 
 const { Bugs } = await import('../static/bugs.js');
 const TOOLS_MOD = await import('../static/tools.js');
+const { seatsOf } = await import('../static/fires.js');
+const { bugParts } = await import('../static/models.js');
 
 /**
  * A tower with `findings` reported against it, as findings.js hands them over: the
  * whole list, and the node each one belongs to.
  */
-function reported(severities) {
+function reported(severities, extra = () => ({})) {
   const tower = box('building', 0, 0, 1, 1, { y: 0.2, h: 4 });
-  const all = severities.map((severity, i) => ({ id: `f${i}`, severity, title: `${severity} ${i}` }));
+  const all = severities.map((severity, i) => ({ id: `f${i}`, severity, title: `${severity} ${i}`, ...extra(i) }));
   return { boxes: [box('land', 0, 0, 12, 12, { y: -0.45, h: 0.45 }), tower], index: { all, place: () => tower.node } };
 }
 
 /** The bugs placed for those severities. */
-function placed(severities) {
-  const { boxes, index } = reported(severities);
+function placed(severities, extra) {
+  const { boxes, index } = reported(severities, extra);
   const bugs = new Bugs(scene());
   bugs.place(index, boxes);
   return bugs;
@@ -148,5 +150,89 @@ describe('a bug', () => {
     assert.equal(bugs.counts.caught, 1);
     bugs.place(index, boxes);
     assert.equal(bugs.counts.caught, 1, 'a relayout revived a bug that was caught');
+  });
+});
+
+describe('which findings walk', () => {
+  // Verifies: REQ-HUNT-010
+  it('puts a bug on the building of a finding and keeps it walking', () => {
+    const { boxes, index } = reported(['medium']);
+    const bugs = new Bugs(scene());
+    bugs.place(index, boxes);
+    const [bug] = bugs.bugs;
+    assert.equal(bugs.bugs.length, 1);
+    assert.equal(bug.box, boxes[1], 'the bug is not on the building its finding belongs to');
+    // Round the lap it goes, and on: never at rest while it is still to be caught.
+    const seen = [];
+    for (let i = 0; i < 20; i++) {
+      bugs.update(0.25, i * 250);
+      seen.push(bug.pos.clone());
+    }
+    for (let i = 1; i < seen.length; i++) {
+      assert.ok(seen[i].distanceTo(seen[i - 1]) > 0.01, `the bug stood still at step ${i}`);
+    }
+    const { x0, x1, z0, z1 } = bug.lap.bounds;
+    for (const p of seen) assert.ok(p.x >= x0 && p.x <= x1 && p.z >= z0 && p.z <= z1, 'the bug wandered off its building');
+  });
+
+  // Verifies: REQ-HUNT-010
+  it('walks the 140 worst when there are more', () => {
+    // 200 findings, worst in the middle so that the order they arrive in is no help.
+    const severities = [
+      ...Array.from({ length: 70 }, () => 'low'),
+      ...Array.from({ length: 50 }, () => 'critical'),
+      ...Array.from({ length: 40 }, () => 'info'),
+      ...Array.from({ length: 40 }, () => 'high'),
+    ];
+    const bugs = placed(severities);
+    assert.equal(bugs.bugs.length, 140);
+    const count = s => bugs.bugs.filter(b => b.f.severity === s).length;
+    assert.equal(count('critical'), 50);
+    assert.equal(count('high'), 40);
+    assert.equal(count('low'), 50, 'the last places went to something other than the next worst');
+    assert.equal(count('info'), 0, 'a note walked while worse findings did not');
+  });
+
+  // Verifies: REQ-HUNT-010
+  it('burns a reachable vulnerability instead of walking it', () => {
+    const reached = i => (i === 0 ? { kind: 'vulnerability', reached: true, path: 'a.go' } : { kind: 'vulnerability' });
+    const { boxes, index } = reported(['critical', 'high'], reached);
+    const bugs = new Bugs(scene());
+    bugs.place(index, boxes);
+    assert.deepEqual(bugs.bugs.map(b => b.f.id), ['f1'], 'a reachable vulnerability walks as a bug');
+    // ... and is where the fires start from instead.
+    const model = { byId: new Map([['f:a.go', { id: 'f:a.go' }]]) };
+    assert.deepEqual(seatsOf(index, model).map(s => s.f.id), ['f0']);
+    // Reachable crowds nothing out of the 140: they are not counted against the cap.
+    const many = placed(Array.from({ length: 150 }, () => 'high'), i => (i < 10 ? { kind: 'vulnerability', reached: true } : {}));
+    assert.equal(many.bugs.length, 140);
+    assert.ok(many.bugs.every(b => !b.f.reached));
+  });
+});
+
+describe('the shapes without their model', () => {
+  // Verifies: REQ-HUNT-013
+  it('draws all three shapes when bug.glb has not arrived', () => {
+    // Nothing in a test loads the file, which is the case this is about: a first
+    // frame, an old export, a load that failed.
+    assert.equal(bugParts(), null);
+    const bugs = placed(['critical', 'medium', 'info', ...Array.from({ length: 12 }, () => 'medium')]);
+    const byShape = new Map(bugs.drawn.map(d => [d.bugs[0].shape, d]));
+    assert.deepEqual([...byShape.keys()].sort(), ['beetle', 'grub', 'mite']);
+    for (const [shape, d] of byShape) {
+      for (const part of ['shell', 'legs']) {
+        const n = d[part].geometry.getAttribute('position')?.count || 0;
+        assert.ok(n > 30, `the ${shape}'s ${part} has ${n} vertices, which is not a stand-in`);
+      }
+      assert.equal(d.shell.count, 0, 'an instanced mesh started out drawing something');
+    }
+    // Twelve beetles on one building are dealt every surface, the air among them, and
+    // a beetle that flies has wings to fly with.
+    const beetle = byShape.get('beetle');
+    assert.ok(beetle.bugs.some(b => b.flying), 'the fixture should have a beetle in the air');
+    assert.ok(beetle.wings?.geometry.getAttribute('position').count > 0, 'a flying beetle was drawn without wings');
+    // The frame after places every one of them.
+    bugs.update(0.05, 0);
+    for (const [shape, d] of byShape) assert.equal(d.shell.count, d.bugs.length, `not every ${shape} was drawn`);
   });
 });

@@ -6,8 +6,6 @@ scope: walk
 type: functional
 priority: should
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M10
 verification:
   - manual
 ---

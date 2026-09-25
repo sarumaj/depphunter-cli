@@ -6,8 +6,6 @@ scope: hunt
 type: non-functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M29
 verification:
   - manual
   - inspection
@@ -24,4 +22,4 @@ A panel tinted to a quarter opacity is a panel nobody can read over a pale wall.
 
 ## Acceptance criteria
 
-1. Every message in the street is legible over a white wall (M29 acceptance).
+1. Every message in the street is legible over a white wall.

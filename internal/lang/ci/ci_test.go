@@ -1,12 +1,15 @@
 package ci
 
 import (
+	"os"
+	"path/filepath"
 	"testing"
 
 	"github.com/sarumaj/depphunter-cli/internal/cache"
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/langtest"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
+	"github.com/sarumaj/depphunter-cli/internal/scope"
 )
 
 // testdata/repo holds a GitHub workflow (actions by tag and by commit, a local
@@ -164,5 +167,77 @@ func TestTheKindOfFileIsPartOfTheCacheKey(t *testing.T) {
 	}
 	if key(".github/workflows/a.yml") != key(".github/workflows/b.yml") {
 		t.Error("two workflows with the same content do not share one")
+	}
+}
+
+// writeRepo lays out a project in a temporary directory.
+func writeRepo(t *testing.T, files map[string]string) string {
+	t.Helper()
+	root := t.TempDir()
+	for p, c := range files {
+		abs := filepath.Join(root, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(abs, []byte(c), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
+}
+
+// A bridge job starts a child pipeline, and what it includes is read like any
+// top-level include.
+//
+// Verifies: REQ-CI-006
+func TestBridgeJobIncludes(t *testing.T) {
+	root := writeRepo(t, map[string]string{
+		".gitlab-ci.yml": "deploy:\n  trigger:\n    include:\n      - local: child.yml\n" +
+			"      - project: infra/pipelines\n        ref: main\n        file: /child.yml\n" +
+			"downstream:\n  trigger:\n    include: other.yml\n",
+		"child.yml": "job:\n  script: [true]\n",
+		"other.yml": "job:\n  script: [true]\n",
+	})
+	langtest.CheckImports(t, langtest.Analyze(t, Plugin{}, root)[".gitlab-ci.yml"], map[string]lang.Target{
+		"include local: child.yml": {Local: "child.yml"},
+		"include project: infra/pipelines@main /child.yml": {
+			Ecosystem: "gitlab-ci", Package: "infra/pipelines", Version: "main",
+		},
+		"include: other.yml": {Local: "other.yml"},
+	})
+}
+
+// An action reference does not say which host serves it, so github.com and a GitHub
+// Enterprise instance land in one ecosystem - and an --private pattern scoped to that
+// ecosystem is what keeps the instance's own actions to themselves.
+//
+// Verifies: REQ-CI-015
+func TestGitHubAndEnterpriseActionsShareOneEcosystem(t *testing.T) {
+	root := writeRepo(t, map[string]string{
+		".github/workflows/ci.yml": "on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n" +
+			"      - uses: actions/checkout@v4\n      - uses: internal-org/deploy@v1\n",
+	})
+	private := scope.New([]string{"actions:internal-org/*"})
+	res := langtest.Analyze(t, Plugin{}, root)[".github/workflows/ci.yml"]
+	got := langtest.Imports(t, res)
+	for spec, want := range map[string]bool{
+		"uses: actions/checkout@v4":    false,
+		"uses: internal-org/deploy@v1": true,
+	} {
+		target, ok := got[spec]
+		if !ok {
+			t.Errorf("%s: not captured (got %v)", spec, got)
+			continue
+		}
+		if target.Ecosystem != "actions" {
+			t.Errorf("%s: ecosystem %q, want actions", spec, target.Ecosystem)
+		}
+		if p := private.Match(target.Ecosystem, target.Package); p != want {
+			t.Errorf("%s: private %v, want %v", spec, p, want)
+		}
+	}
+	// The pattern is scoped: the same name in another ecosystem stays public.
+	if private.Match("npm", "internal-org/deploy") {
+		t.Error("an actions pattern matched outside the actions ecosystem")
 	}
 }

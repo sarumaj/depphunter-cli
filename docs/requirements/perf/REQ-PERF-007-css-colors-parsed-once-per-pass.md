@@ -6,8 +6,6 @@ scope: perf
 type: non-functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M10
 verification:
   - inspection
 ---

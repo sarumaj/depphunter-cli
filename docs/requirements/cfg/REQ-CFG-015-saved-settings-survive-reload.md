@@ -6,8 +6,6 @@ scope: cfg
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M4
 verification:
   - integration
   - e2e
@@ -21,7 +19,7 @@ start from them.
 
 ## Rationale
 
-M4 accepts Save when saved settings survive a reload.
+Save is only worth having if what it saved is what the next load shows.
 
 ## Acceptance criteria
 

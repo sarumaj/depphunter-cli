@@ -6,8 +6,6 @@ scope: hunt
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M14
 verification:
   - e2e
   - manual
@@ -24,4 +22,4 @@ The point of the tracker is to say which way to walk.
 
 ## Acceptance criteria
 
-1. The tracker points at a bug on the far side of the map (M14 acceptance).
+1. The tracker points at a bug on the far side of the map.

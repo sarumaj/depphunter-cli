@@ -149,3 +149,61 @@ export function boundaryEdges(model, sel, kind = 'import') {
   visit(sel);
   return { out, in: inc };
 }
+
+/**
+ * The arcs drawn for a selection: the edges crossing its subtree's boundary, joined
+ * between the representatives of their ends (`rep`, only for ends `visible` leaves
+ * standing), one arc per pair and direction with the number of edges it stands for,
+ * the `max` largest first. Null when nothing is selected or the selection is not drawn.
+ * Returns {selBox, arcs: [{from, to, color, count}], lit: Set<box>}.
+ * Implements: REQ-MAP-012, REQ-MAP-013
+ */
+export function focusArcs(model, sel, { kind = 'import', rep, visible, outColor, inColor, max = Infinity }) {
+  const selBox = sel && rep(sel);
+  if (!sel || !selBox) return null;
+  const { out, in: inc } = boundaryEdges(model, sel, kind);
+  const agg = new Map();
+  const add = (from, to, color) => {
+    if (!from || !to || from === to) return;
+    const key = `${from.i}>${to.i}>${color}`;
+    const a = agg.get(key) || { from, to, color, count: 0 };
+    a.count++;
+    agg.set(key, a);
+  };
+  const shown = id => {
+    const n = model.byId.get(id);
+    return visible(n) ? rep(n) : null;
+  };
+  for (const e of out) add(selBox, shown(e.to), outColor);
+  for (const e of inc) add(shown(e.from), selBox, inColor);
+  const arcs = [...agg.values()].sort((a, b) => b.count - a.count).slice(0, max);
+  const lit = new Set([selBox]);
+  for (const a of arcs) { lit.add(a.from); lit.add(a.to); }
+  return { lit, arcs, selBox };
+}
+
+/**
+ * The expansion for stepping to depth `level`, clamped to 1 and the deepest
+ * directory level: every directory above it open, every one at or below it shut.
+ * Returns {level, maxDepth, expanded: Set<id>}.
+ * Implements: REQ-MAP-023
+ */
+export function expandToLevel(model, level) {
+  let maxDepth = 0;
+  for (const n of model.byId.values()) if (n.kind === 'dir') maxDepth = Math.max(maxDepth, n.depth + 1);
+  level = Math.max(1, Math.min(maxDepth, level));
+  const expanded = new Set([...model.byId.values()].filter(n => n.kind === 'dir' && n.depth < level).map(n => n.id));
+  return { level, maxDepth, expanded };
+}
+
+/**
+ * What toggling `n` would do given the expanded set: 'open', 'close', or '' when
+ * there is nothing to open. A symbol toggles its file.
+ * Implements: REQ-MAP-022
+ */
+export function toggles(n, expanded) {
+  if (n.kind === 'symbol') n = n.parentNode;
+  if (n.kind === 'file' && !n.children.length) return '';
+  if (n.kind !== 'dir' && n.kind !== 'file') return '';
+  return expanded.has(n.id) ? 'close' : 'open';
+}

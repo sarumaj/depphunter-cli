@@ -6,8 +6,6 @@ scope: dist
 type: non-functional
 priority: should
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M9
 verification:
   - inspection
 ---

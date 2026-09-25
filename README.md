@@ -1116,7 +1116,7 @@ beneath the repository, so it is likewise treated as floating.
 
 ### Documentation
 
-A README that links to `docs/REQUIREMENTS.md` depends on that file, and one that
+A README that links to `CONTRIBUTING.md` depends on that file, and one that
 links to `internal/server/server.go` depends on that. Both break when the target
 is moved, and no package manifest records the relationship, so the links are
 placed on the map alongside the imports.

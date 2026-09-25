@@ -6,8 +6,6 @@ scope: hunt
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M14
 verification:
   - e2e
 ---
@@ -29,5 +27,4 @@ The walker needs to know how far to go and what they will find.
 
 ## Notes
 
-When fires are burning, the label reports the nearest fire instead; fires are
-not in the design log.
+When fires are burning, the label reports the nearest fire instead.

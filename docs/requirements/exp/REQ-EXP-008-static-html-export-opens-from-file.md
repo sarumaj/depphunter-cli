@@ -6,8 +6,6 @@ scope: exp
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M4
 verification:
   - e2e
 ---
@@ -20,7 +18,7 @@ reading all data from the embedded payload and hiding the server-only actions
 
 ## Rationale
 
-Acceptance criterion of M4: the export is a file to share, not a page to host.
+The export is a file to share, not a page to host.
 
 ## Acceptance criteria
 

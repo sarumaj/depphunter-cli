@@ -6,8 +6,6 @@ scope: walk
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M7
 verification:
   - manual
 ---
@@ -40,5 +38,4 @@ from 0.25 to 0.42 so that a step and a wade still clear the shore by the same
 margin as before. The step up a ramp's slope in one frame can exceed 0.15 only
 when running up the shortest ramp below about 23 frames per second.
 
-Trunks and lamp posts are also obstacles (`clearProps`), which the design log
-does not mention.
+Trunks and lamp posts are also obstacles (`clearProps`).

@@ -6,9 +6,6 @@ scope: exp
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M3
-  - docs/REQUIREMENTS.md M4
 verification:
   - integration
 ---

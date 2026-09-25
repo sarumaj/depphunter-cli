@@ -6,8 +6,6 @@ scope: trc
 type: non-functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M18
 verification:
   - unit
 ---
@@ -32,5 +30,4 @@ into a ragged wall.
 ## Notes
 
 The Markdown document keeps the full list of questions and cuts only its cells;
-the design log says the written report cuts its long lists, which holds for the
-text digest only.
+only the text digest cuts its long lists.

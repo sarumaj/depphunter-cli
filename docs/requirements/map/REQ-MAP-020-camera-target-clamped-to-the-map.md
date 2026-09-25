@@ -6,8 +6,6 @@ scope: map
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M8
 verification:
   - manual
   - e2e
@@ -30,6 +28,5 @@ Panning must not be able to leave the map behind in empty water.
 
 ## Notes
 
-The design log states the margin as "a quarter of its size (at least 6 units)";
-the code adds the two (`PAN_MARGIN_MIN + PAN_MARGIN * size`). The walker's
-bounds are REQ-WALK requirements.
+The margin is `PAN_MARGIN_MIN + PAN_MARGIN * size`. The walker's bounds are
+REQ-WALK requirements.

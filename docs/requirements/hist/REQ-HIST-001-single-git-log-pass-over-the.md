@@ -6,9 +6,6 @@ scope: hist
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M5
-  - docs/REQUIREMENTS.md M6
 verification:
   - integration
 ---
@@ -33,4 +30,4 @@ lists commits outside the analyzed directory, so the pathspec restricts them.
 
 ## Notes
 
-M5 specified `--no-renames`; M6 replaced it with `-M` (see REQ-HIST-006).
+Renames are followed with `-M` (REQ-HIST-006).

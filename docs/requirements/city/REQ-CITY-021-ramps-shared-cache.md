@@ -6,8 +6,6 @@ scope: city
 type: non-functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M10
 verification:
   - inspection
 ---
@@ -19,7 +17,7 @@ cached, and shared by the renderer and the walker's collisions.
 
 ## Rationale
 
-Decision (M10): one computation guarantees that what is drawn is what is walked
+Decision: one computation guarantees that what is drawn is what is walked
 on, and avoids recomputing it per frame.
 
 ## Acceptance criteria

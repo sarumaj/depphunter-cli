@@ -6,8 +6,6 @@ scope: ui
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M7
 verification:
   - manual
   - inspection

@@ -2,6 +2,7 @@ package graph
 
 import (
 	"bytes"
+	"encoding/json"
 	"flag"
 	"fmt"
 	"go/ast"
@@ -9,6 +10,7 @@ import (
 	"go/token"
 	"os"
 	"path/filepath"
+	"sort"
 	"strings"
 	"testing"
 )
@@ -293,4 +295,51 @@ func at(lines []string, i int) string {
 		return lines[i]
 	}
 	return "(end of file)"
+}
+
+// members lists the JSON members a node serializes with, sorted.
+func members(t *testing.T, n *Node) string {
+	t.Helper()
+	data, err := json.Marshal(n)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var m map[string]any
+	if err := json.Unmarshal(data, &m); err != nil {
+		t.Fatal(err)
+	}
+	var keys []string
+	for k := range m {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	return strings.Join(keys, ",")
+}
+
+// A node always has id, kind and name; everything else is written under the name the
+// UI reads, and only when it applies.
+//
+// Verifies: REQ-MOD-004, REQ-MOD-012
+func TestNodeMembersAreNamedAndOmittedAsSpecified(t *testing.T) {
+	for _, c := range []struct {
+		node *Node
+		want string
+	}{
+		{&Node{ID: EcosystemID("go"), Kind: KindEcosystem, Name: "Go modules"}, "id,kind,name"},
+		{&Node{ID: DirID("a"), Kind: KindDir, Name: "a", Path: "a", Parent: DirID(".")}, "id,kind,name,parent,path"},
+		{
+			&Node{ID: FileID("a/x.go"), Kind: KindFile, Name: "x.go", Path: "a/x.go", Parent: DirID("a"), Lang: "Go", LOC: 3, Bytes: 42},
+			"bytes,id,kind,lang,loc,name,parent,path",
+		},
+		// A binary file: its size, and no lines.
+		{&Node{ID: FileID("a.bin"), Kind: KindFile, Name: "a.bin", Path: "a.bin", Parent: DirID("."), Bytes: 7}, "bytes,id,kind,name,parent,path"},
+		{
+			&Node{ID: SymbolID("a/x.go", "F"), Kind: KindSymbol, Name: "F", Parent: FileID("a/x.go"), SymbolKind: "func", Line: 1},
+			"id,kind,line,name,parent,symbolKind",
+		},
+	} {
+		if got := members(t, c.node); got != c.want {
+			t.Errorf("%s: members %s, want %s", c.node.ID, got, c.want)
+		}
+	}
 }

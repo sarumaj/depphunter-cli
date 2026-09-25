@@ -6,8 +6,6 @@ scope: tool
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M20
 verification:
   - ui
 ---
@@ -25,5 +23,5 @@ One place deciding it keeps the aim, the landing and the HUD consistent.
 
 ## Acceptance criteria
 
-1. A secondary tool tags nothing it is pointed at (M20 acceptance).
+1. A secondary tool tags nothing it is pointed at.
 2. No secondary tool catches bugs or tags buildings.

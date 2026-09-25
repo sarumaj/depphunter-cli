@@ -6,9 +6,6 @@ scope: lang
 type: non-functional
 priority: should
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §6
-  - docs/REQUIREMENTS.md M3
 verification:
   - e2e
 ---

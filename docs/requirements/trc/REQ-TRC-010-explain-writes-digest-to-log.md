@@ -6,8 +6,6 @@ scope: trc
 type: interface
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M18
 verification:
   - unit
   - integration

@@ -191,6 +191,19 @@ function ringIslands(items, rect, put) {
   }
 }
 
+/**
+ * The box that stands for `n` in a layout's byNode: its own, or its nearest drawn
+ * ancestor's; null when nothing above it is drawn either.
+ * Implements: REQ-MAP-009
+ */
+export function representative(byNode, n) {
+  for (let p = n; p; p = p.parentNode) {
+    const b = byNode.get(p.id);
+    if (b) return b;
+  }
+  return null;
+}
+
 function symbolHeight(sym) {
   switch (sym.symbolKind) {
     case 'type': case 'class': case 'interface': return 1.1;

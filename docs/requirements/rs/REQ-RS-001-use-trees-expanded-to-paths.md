@@ -6,8 +6,6 @@ scope: rs
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M4
 verification:
   - unit
 ---
@@ -33,5 +31,5 @@ expanded paths can be resolved to files and packages.
 
 ## Notes
 
-The Rust plugin parses with tree-sitter (M4); the C# and PowerShell plugins do
+The Rust plugin parses with tree-sitter; the C# and PowerShell plugins do
 not (see REQ-CS-005, REQ-PS-009).

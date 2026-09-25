@@ -8,9 +8,6 @@ priority: must
 status: superseded
 superseded_by:
   - REQ-WALK-026
-source:
-  - docs/REQUIREMENTS.md M7
-  - docs/REQUIREMENTS.md M20
 verification:
   - manual
 ---
@@ -29,5 +26,5 @@ The original walk mode had a free flight mode.
 
 ## Notes
 
-Superseded in M20: flight is a carried tool (the jet backpack, scope `tool`),
+Superseded: flight is a carried tool (the jet backpack, scope `tool`),
 putting it away is how the walker comes down, and `F` uses the off-hand tool.

@@ -6,8 +6,6 @@ scope: ci
 type: limitation
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md Known limits
 verification:
   - unit
 ---

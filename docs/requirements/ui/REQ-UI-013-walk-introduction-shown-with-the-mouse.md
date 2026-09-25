@@ -6,9 +6,6 @@ scope: ui
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M24
-  - docs/REQUIREMENTS.md M25
 verification:
   - ui
   - manual
@@ -33,5 +30,5 @@ taking the pointer and handing it back left it stuck.
 
 ## Notes
 
-M23 captured the pointer on entry and handed it back while the introduction was
-open; M24 and M25 replaced that with the order above.
+Capturing the pointer on entry and handing it back while the introduction was
+open made a dialog and a captured reticle fight over the mouse.

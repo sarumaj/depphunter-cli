@@ -6,8 +6,6 @@ scope: hunt
 type: constraint
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M20
 verification:
   - inspection
   - ui

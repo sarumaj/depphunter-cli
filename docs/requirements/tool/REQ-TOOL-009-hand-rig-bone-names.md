@@ -6,8 +6,6 @@ scope: tool
 type: interface
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M14
 verification:
   - inspection
   - manual
