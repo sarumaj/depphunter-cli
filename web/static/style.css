@@ -248,6 +248,9 @@ main { position: relative; flex: 1; min-height: 0; }
 
 /* Walk mode: a crosshair and a status bar over the map. */
 #walk-hud { position: absolute; inset: 0; pointer-events: none; z-index: 3; }
+/* Nothing over the view while the way in plays (walk.js startArrival) - but the red
+   of dying, which is the HUD's own ::before, stays until getting up clears it. */
+#walk-hud.arriving > * { visibility: hidden; }
 /* A scope reticle: a ring with four ticks and a dot, open in the middle. */
 #walk-hud .crosshair {
   position: absolute; left: 50%; top: 50%; width: 30px; height: 30px; transform: translate(-50%, -50%);

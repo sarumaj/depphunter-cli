@@ -162,7 +162,9 @@ async function main() {
   // around one - should not have to download a second copy to take five pictures.
   const browser = await chromium.launch(
     process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {});
-  const page = await browser.newPage({ viewport: VIEW });
+  // Reduced motion: the first walk is not flown in (walk.js startArrival), so the street
+  // is there to be photographed as soon as the tour is out of the way.
+  const page = await browser.newPage({ viewport: VIEW, reducedMotion: 'reduce' });
   page.on('pageerror', e => console.error('page error:', e.message));
   await page.goto(url, { waitUntil: 'domcontentloaded' });
   await settle(page, 20000);

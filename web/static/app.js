@@ -1063,6 +1063,9 @@ function setWalking(on) {
     // and takes both back then.
     const teaching = walkTourPending();
     walker.enter(walkTarget(), rep(model.root), L.bounds, !teaching);
+    // A first walk is also flown in (walker.startArrival): held, the flight waits at
+    // its top, so the cards are read over the city and the flight goes on once they
+    // are closed and the pointer is taken.
     if (teaching) {
       walker.setFrozen(true);
       startWalkTour(false, () => walker.active && walker.lockPointer());
