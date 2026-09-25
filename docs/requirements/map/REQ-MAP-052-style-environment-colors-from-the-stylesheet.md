@@ -27,7 +27,7 @@ The environment is the style's, and both themes still choose their own values.
 
 ## Notes
 
-Fixed: the circuit and galaxy styles have a light set of environment values and a
-dark set, themed like the base tokens: the dark set applies under
+Fixed: the circuit and galaxy styles have a light set of environment values and
+a dark set, themed like the base tokens: the dark set applies under
 `prefers-color-scheme: dark` unless `data-theme="light"`, and under
 `data-theme="dark"`.

@@ -72,68 +72,68 @@ The server **shall** ...
 
 ### Front matter fields
 
-| Field          | Meaning                                                                                              |
-|----------------|------------------------------------------------------------------------------------------------------|
-| `id`           | `REQ-<SCOPE>-<NNN>`. Stable, never reused. Used in code annotations.                                  |
-| `uuid`         | Random (version 4) UUID. Immutable, survives a renumbering or a move to another scope.                |
-| `title`        | A short noun phrase naming the capability or constraint.                                              |
-| `scope`        | The functional area; one of the scopes below, equal to the directory name.                            |
-| `type`         | `functional`, `non-functional`, `interface`, `constraint` or `limitation`.                            |
-| `priority`     | `must`, `should` or `may`, matching the strongest keyword of the statement.                           |
-| `status`       | `implemented`, `partial`, `not-implemented`, `superseded` or `withdrawn`.                             |
-| `superseded_by`| For `superseded` requirements, the identifier(s) of the requirement(s) that replace it.               |
-| `source`       | Optional. The section(s) of the user documentation that also describe the requirement.               |
-| `verification` | The kinds of test that verify the requirement; see below.                                            |
+| Field           | Meaning                                                                                 |
+| --------------- | --------------------------------------------------------------------------------------- |
+| `id`            | `REQ-<SCOPE>-<NNN>`. Stable, never reused. Used in code annotations.                    |
+| `uuid`          | Random (version 4) UUID. Immutable, survives a renumbering or a move to another scope.  |
+| `title`         | A short noun phrase naming the capability or constraint.                                |
+| `scope`         | The functional area; one of the scopes below, equal to the directory name.              |
+| `type`          | `functional`, `non-functional`, `interface`, `constraint` or `limitation`.              |
+| `priority`      | `must`, `should` or `may`, matching the strongest keyword of the statement.             |
+| `status`        | `implemented`, `partial`, `not-implemented`, `superseded` or `withdrawn`.               |
+| `superseded_by` | For `superseded` requirements, the identifier(s) of the requirement(s) that replace it. |
+| `source`        | Optional. The section(s) of the user documentation that also describe the requirement.  |
+| `verification`  | The kinds of test that verify the requirement; see below.                               |
 
 ### Verification (test) types
 
-| Type          | Meaning                                                                                               |
-|---------------|-------------------------------------------------------------------------------------------------------|
-| `unit`        | Go unit tests (`go test ./...`) or Node tests of a single module, without I/O beyond fixtures.         |
+| Type          | Meaning                                                                                                                        |
+| ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+| `unit`        | Go unit tests (`go test ./...`) or Node tests of a single module, without I/O beyond fixtures.                                 |
 | `integration` | Tests that exercise several components together: the HTTP server, `git`, the file system, a language server, the built binary. |
-| `ui`          | Headless Node tests of the browser modules (`web/uitest/*.test.mjs`).                                 |
-| `extension`   | Node tests of the VS Code extension (`extension/test/*.test.js`).                                      |
-| `e2e`         | Manual or scripted end-to-end runs of the command and the map in a real browser.                       |
-| `manual`      | Human judgement of a visual or interactive quality that no automated test captures.                    |
-| `inspection`  | Review of source, configuration, CI workflows or release artifacts.                                    |
+| `ui`          | Headless Node tests of the browser modules (`web/uitest/*.test.mjs`).                                                          |
+| `extension`   | Node tests of the VS Code extension (`extension/test/*.test.js`).                                                              |
+| `e2e`         | Manual or scripted end-to-end runs of the command and the map in a real browser.                                               |
+| `manual`      | Human judgement of a visual or interactive quality that no automated test captures.                                            |
+| `inspection`  | Review of source, configuration, CI workflows or release artifacts.                                                            |
 
 ### Scopes
 
-| Scope    | Area                                                                                  |
-|----------|---------------------------------------------------------------------------------------|
-| `cli`    | The command, its flags, arguments, help, version, logging and exit behavior.           |
-| `cfg`    | Configuration sources, precedence, environment variables and saved view settings.     |
-| `sec`    | Security of the local server and of executed commands.                                |
-| `dist`   | Distribution, licensing, release engineering, CI and dependency maintenance.          |
-| `mod`    | The graph data model exchanged between analysis, UI, exports and extension.            |
-| `lang`   | The language plugin contract, file scanning, extraction cache and analysis pipeline.   |
-| `go`     | The Go plugin.                                                                         |
-| `js`     | The JavaScript and TypeScript plugin.                                                  |
-| `py`     | The Python plugin.                                                                     |
-| `rs`     | The Rust plugin.                                                                       |
-| `java`   | The Java plugin.                                                                       |
-| `cs`     | The C# plugin.                                                                         |
-| `ps`     | The PowerShell plugin.                                                                 |
-| `ci`     | The continuous-integration plugin (GitHub Actions, GitLab CI, container images).       |
-| `md`     | Markdown documents as dependencies, and broken-link findings.                          |
-| `sup`    | Supply chain: pinning, transitive resolution, package indexes, private packages.       |
-| `auth`   | Registry credentials.                                                                  |
-| `trc`    | The resolution report.                                                                 |
-| `fnd`    | Findings from scanner reports and the vulnerability database.                          |
-| `hist`   | The git history overlay.                                                               |
-| `lsp`    | Symbol references through language servers.                                            |
-| `srv`    | The local HTTP API and the event stream.                                               |
-| `watch`  | Watch mode and incremental re-analysis.                                                |
-| `exp`    | Exports: JSON, DOT, GraphML, HTML, PNG and the backpack.                               |
-| `map`    | The isometric map: layout, navigation, selection, side panel, search, filters, colors, styles. |
-| `ui`     | Page-level behavior: introductions, help, reconnection, menus.                         |
-| `a11y`   | Accessibility.                                                                         |
-| `perf`   | Performance.                                                                           |
-| `walk`   | Walk mode: movement, camera, pointer capture, planet, water, health and wind.          |
-| `city`   | The procedural city shared by both views: streets, ramps, bridges, vegetation, facades. |
-| `tool`   | Walk-mode tools, hands, gestures, projectiles, the tool row and the wheel.            |
-| `hunt`   | The dependency hunt: tagging, bugs, catches, beacons, tracker, backpack, photographs, HUD. |
-| `ext`    | The VS Code extension.                                                                 |
+| Scope   | Area                                                                                           |
+| ------- | ---------------------------------------------------------------------------------------------- |
+| `cli`   | The command, its flags, arguments, help, version, logging and exit behavior.                   |
+| `cfg`   | Configuration sources, precedence, environment variables and saved view settings.              |
+| `sec`   | Security of the local server and of executed commands.                                         |
+| `dist`  | Distribution, licensing, release engineering, CI and dependency maintenance.                   |
+| `mod`   | The graph data model exchanged between analysis, UI, exports and extension.                    |
+| `lang`  | The language plugin contract, file scanning, extraction cache and analysis pipeline.           |
+| `go`    | The Go plugin.                                                                                 |
+| `js`    | The JavaScript and TypeScript plugin.                                                          |
+| `py`    | The Python plugin.                                                                             |
+| `rs`    | The Rust plugin.                                                                               |
+| `java`  | The Java plugin.                                                                               |
+| `cs`    | The C# plugin.                                                                                 |
+| `ps`    | The PowerShell plugin.                                                                         |
+| `ci`    | The continuous-integration plugin (GitHub Actions, GitLab CI, container images).               |
+| `md`    | Markdown documents as dependencies, and broken-link findings.                                  |
+| `sup`   | Supply chain: pinning, transitive resolution, package indexes, private packages.               |
+| `auth`  | Registry credentials.                                                                          |
+| `trc`   | The resolution report.                                                                         |
+| `fnd`   | Findings from scanner reports and the vulnerability database.                                  |
+| `hist`  | The git history overlay.                                                                       |
+| `lsp`   | Symbol references through language servers.                                                    |
+| `srv`   | The local HTTP API and the event stream.                                                       |
+| `watch` | Watch mode and incremental re-analysis.                                                        |
+| `exp`   | Exports: JSON, DOT, GraphML, HTML, PNG and the backpack.                                       |
+| `map`   | The isometric map: layout, navigation, selection, side panel, search, filters, colors, styles. |
+| `ui`    | Page-level behavior: introductions, help, reconnection, menus.                                 |
+| `a11y`  | Accessibility.                                                                                 |
+| `perf`  | Performance.                                                                                   |
+| `walk`  | Walk mode: movement, camera, pointer capture, planet, water, health and wind.                  |
+| `city`  | The procedural city shared by both views: streets, ramps, bridges, vegetation, facades.        |
+| `tool`  | Walk-mode tools, hands, gestures, projectiles, the tool row and the wheel.                     |
+| `hunt`  | The dependency hunt: tagging, bugs, catches, beacons, tracker, backpack, photographs, HUD.     |
+| `ext`   | The VS Code extension.                                                                         |
 
 ## Traceability
 

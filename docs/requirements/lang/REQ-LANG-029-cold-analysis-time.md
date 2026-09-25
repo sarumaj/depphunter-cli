@@ -29,10 +29,10 @@ additionally:
 ## Rationale
 
 The tool is meant to answer questions about an unfamiliar repository within a
-minute, and the map is not shown before analysis ends. Nearly all of a cold run is
-tree-sitter parsing (REQ-LANG-006), whose speed the runtime sets: about 1 MB/s
-per core for TypeScript and 1.3 MB/s for Python. The time therefore depends on
-the core count, and the requirement is stated against a machine. The two
+minute, and the map is not shown before analysis ends. Nearly all of a cold run
+is tree-sitter parsing (REQ-LANG-006), whose speed the runtime sets: about 1
+MB/s per core for TypeScript and 1.3 MB/s for Python. The time therefore depends
+on the core count, and the requirement is stated against a machine. The two
 additional criteria are what that machine's time is made of: CPU work, and how
 evenly it is spread over the cores.
 
@@ -48,11 +48,11 @@ evenly it is spread over the cores.
 
 Measured on 2026-09-25 on a 4-core 2.8 GHz Intel Xeon container:
 
-| Cores | Wall time | CPU time |
-|------:|----------:|---------:|
-| 1 | 32.8 s | 32.8 cpu-s |
-| 2 | 17.2 s | 34.1 cpu-s |
-| 4 | 8.9 s | 34.3 cpu-s |
+| Cores | Wall time |   CPU time |
+| ----: | --------: | ---------: |
+|     1 |    32.8 s | 32.8 cpu-s |
+|     2 |    17.2 s | 34.1 cpu-s |
+|     4 |     8.9 s | 34.3 cpu-s |
 
 Criteria 2 and 3 are met: the 4-core speed-up is 3.67. Criterion 1 is
 extrapolated rather than measured, since no 8-core machine was available:
