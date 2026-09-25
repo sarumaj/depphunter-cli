@@ -73,7 +73,7 @@ The server **shall** ...
 ### Front matter fields
 
 | Field           | Meaning                                                                                 |
-| --------------- | --------------------------------------------------------------------------------------- |
+|-----------------|-----------------------------------------------------------------------------------------|
 | `id`            | `REQ-<SCOPE>-<NNN>`. Stable, never reused. Used in code annotations.                    |
 | `uuid`          | Random (version 4) UUID. Immutable, survives a renumbering or a move to another scope.  |
 | `title`         | A short noun phrase naming the capability or constraint.                                |
@@ -88,7 +88,7 @@ The server **shall** ...
 ### Verification (test) types
 
 | Type          | Meaning                                                                                                                        |
-| ------------- | ------------------------------------------------------------------------------------------------------------------------------ |
+|---------------|--------------------------------------------------------------------------------------------------------------------------------|
 | `unit`        | Go unit tests (`go test ./...`) or Node tests of a single module, without I/O beyond fixtures.                                 |
 | `integration` | Tests that exercise several components together: the HTTP server, `git`, the file system, a language server, the built binary. |
 | `ui`          | Headless Node tests of the browser modules (`web/uitest/*.test.mjs`).                                                          |
@@ -100,7 +100,7 @@ The server **shall** ...
 ### Scopes
 
 | Scope   | Area                                                                                           |
-| ------- | ---------------------------------------------------------------------------------------------- |
+|---------|------------------------------------------------------------------------------------------------|
 | `cli`   | The command, its flags, arguments, help, version, logging and exit behavior.                   |
 | `cfg`   | Configuration sources, precedence, environment variables and saved view settings.              |
 | `sec`   | Security of the local server and of executed commands.                                         |
@@ -161,9 +161,9 @@ A step of a CI workflow (`.github/workflows/`) may carry `# Verifies: ...`
 where the job is the automated check, such as building and running every
 release target.
 
-`node tools/reqtrace.mjs` reads the requirement files and the annotations and
+`node scripts/reqtrace.mjs` reads the requirement files and the annotations and
 writes [TRACEABILITY.md](TRACEABILITY.md): for each requirement, where it is
-implemented and where it is verified. `node tools/reqtrace.mjs --check` fails
+implemented and where it is verified. `node scripts/reqtrace.mjs --check` fails
 when an annotation names an unknown requirement, when a requirement file is
 malformed or duplicates an identifier or a UUID, or when TRACEABILITY.md is out
 of date.

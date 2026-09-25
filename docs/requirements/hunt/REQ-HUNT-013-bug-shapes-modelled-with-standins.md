@@ -13,7 +13,7 @@ verification:
 
 ## Statement
 
-The bug shapes **shall** be modelled by `tools/bug.py` and exported to
+The bug shapes **shall** be modelled by `scripts/bug.py` and exported to
 `web/static/bug.glb`, and the UI **shall** draw a stand-in for every shape whose
 meshes are missing from the loaded file.
 
@@ -24,6 +24,6 @@ nothing waits on the model load.
 
 ## Acceptance criteria
 
-1. `tools/bug.py` exports shell, dark, legs and wing meshes for the beetle, and
+1. `scripts/bug.py` exports shell, dark, legs and wing meshes for the beetle, and
    prefixed meshes for the caterpillar and the mite.
 2. Without `bug.glb`, all three shapes are still drawn.

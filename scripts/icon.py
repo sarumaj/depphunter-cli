@@ -1,6 +1,7 @@
+#!/usr/bin/env python3.11
 """Draws the depphunter mark, and writes it where the things that want it look.
 
-    python3 tools/icon.py
+    python3 scripts/icon.py
 
 Three sizes out of one drawing:
 

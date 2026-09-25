@@ -1,9 +1,10 @@
+#!/usr/bin/env python3.11
 """Prepares the walker's hand and forearm, and exports it as glTF.
 
 Run it with Blender, or with the `bpy` module on the same Python it was built for:
 
     pip install "numpy<2" bpy
-    python3 tools/hand.py
+    python3 scripts/hand.py
 
 The hand itself is not modelled here. It is `generic-hand` from the WebXR Input
 Profiles project - a real hand, modelled and rigged by people who model hands, and

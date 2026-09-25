@@ -14,7 +14,7 @@
 // without putting either down. Nothing a secondary tool does can tag or catch, which
 // is what hits() below is for, and the HUD keeps the two rows apart.
 //
-// The hand and the forearm are a rigged model (hands.js, modelled by tools/hand.py in
+// The hand and the forearm are a rigged model (hands.js, modelled by scripts/hand.py in
 // Blender); the tools themselves are built here. Both are lit, which nothing else on
 // the map is: the walk camera carries its own lights, and they reach only what it
 // holds, because every other material in the scene is unlit.

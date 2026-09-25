@@ -1,3 +1,4 @@
+#!/usr/bin/env node
 // Takes the pictures the introduction is told with.
 //
 // The cards used to be prose alone, and prose is the worst medium there is for a
@@ -12,7 +13,7 @@
 // remember to redraw, and nobody ever does. This is a command instead, and the point
 // of it is that anybody can run it again:
 //
-//     node tools/tour-shots.mjs [--repo PATH] [--bin ./depphunter]
+//     node scripts/tour-shots.mjs [--repo PATH] [--bin ./depphunter]
 //
 // It builds the binary if it has to, serves this repository with a report that has
 // something reachable in it (so there is a fire to photograph), drives the map through
