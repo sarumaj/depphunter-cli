@@ -1409,6 +1409,10 @@ type ParseRuntime struct {
 	CompactIncrementalFallbackReason string
 	// CompactReductions counts reductions executed by the compact scheduler.
 	CompactReductions uint64
+	// CompactPeakHeaders and CompactPeakDerivations are populated only when
+	// SetCompactCertificationTelemetry is enabled on a compact parse.
+	CompactPeakHeaders     uint64
+	CompactPeakDerivations uint64
 	// CRecoveryEnteredErrorState is true when the faithful C error-recovery
 	// port (parser_recover_c.go) actually ran ts_parser__handle_error at
 	// least once while producing this specific tree — i.e. some no-action
@@ -1805,6 +1809,9 @@ type ParseRuntime struct {
 	// and child slabs this parse held, including slabs inherited from the
 	// pool. The scratch lifetime isolation bound applies to this value.
 	TransientScratchBytesAllocated int64
+	// CRecoverEOFFallbacks counts recovery calls that use the prior exact
+	// EOF trial when Go paths cannot be counted as C physical versions.
+	CRecoverEOFFallbacks uint64
 }
 
 // parseRuntimePool recycles the ParseRuntime block that a Tree points to.
