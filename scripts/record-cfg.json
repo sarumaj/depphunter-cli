@@ -36,46 +36,37 @@
     ],
     "intro": [
       { "do": "caption", "text": "Now step inside", "sub": "the same map, in first person" },
-      { "do": "walk" },
-      { "do": "hide", "targets": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint"] },
-      { "do": "hide", "targets": ["#walk-hud"] },
-      { "do": "descend", "s": 7, "above": 9, "from": [14, 18] },
-      { "do": "show", "targets": ["#walk-hud"] },
+      { "do": "walk", "hide": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint"] },
       { "do": "hold", "s": 1.2 }
     ],
     "hunt": [
-      { "do": "walk" },
-      { "do": "hide", "targets": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint"] },
+      { "do": "walk", "hide": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint"] },
       { "do": "caption", "text": "Scanner findings roam the streets as bugs", "sub": "catch them with a net, a bubble wand or a nail gun" },
       { "do": "catch", "tool": "net", "distance": 1.3, "read": 1.6 },
       { "do": "catch", "tool": "bubbles", "distance": 3.0, "read": 0.3 },
       { "do": "catch", "tool": "nailer", "distance": 4.0, "held": 0.8, "read": 0.3 }
     ],
     "fire": [
-      { "do": "walk" },
-      { "do": "hide", "targets": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint"] },
+      { "do": "walk", "hide": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint"] },
       { "do": "caption", "text": "Code that reaches a vulnerability catches fire", "sub": "put it out before it spreads to what imports it" },
       { "do": "douse", "s": 6, "back": 1.4 },
       { "do": "hold", "s": 1.2 }
     ],
     "photo": [
-      { "do": "walk" },
-      { "do": "hide", "targets": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint"] },
+      { "do": "walk", "hide": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint"] },
       { "do": "caption", "text": "Photograph what you find", "sub": "and look at it again on the camera" },
       { "do": "photo", "show": 3.2 },
       { "do": "hold", "s": 0.6 }
     ],
     "grapple": [
-      { "do": "walk" },
-      { "do": "hide", "targets": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint"] },
+      { "do": "walk", "hide": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint"] },
       { "do": "caption", "text": "Grapple from roof to roof", "sub": "the line bites, and pulls you across" },
       { "do": "grapple", "hops": 3, "near": 6, "far": 18, "rise": 3 },
       { "do": "caption", "text": "" },
       { "do": "hold", "s": 0.4 }
     ],
     "night": [
-      { "do": "walk" },
-      { "do": "hide", "targets": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint"] },
+      { "do": "walk", "hide": ["header.toolbar", "#tooltip", "#status", "#walk-hud .w-keys", "#walk-hud .w-hint"] },
       { "do": "caption", "text": "Or strap on the jet backpack and fly the city at night" },
       { "do": "choose", "target": "#theme", "value": "dark" },
       { "do": "fly", "s": 9, "speed": 5, "turn": 0.35, "above": 3 },

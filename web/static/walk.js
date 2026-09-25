@@ -167,6 +167,16 @@ const BURN_EVERY = 0.75, BURN = 13;
 // will accept one, as a cosine: about forty degrees either side, which is wide enough
 // to save a lobbed shot and narrow enough that a dart cannot turn round.
 const TRACK_REACH = 30, TRACK_AHEAD = 0.75;
+// The first arrival: seconds from high over the city down to the spot, and where the
+// flight starts from, in map units behind, to the right of and above the tallest roof.
+// Implements: REQ-WALK-051
+const ARRIVAL = 5, ARRIVAL_BACK = 18, ARRIVAL_SIDE = 14, ARRIVAL_ABOVE = 9;
+// Walking in again after dying: seconds from lying in the red to standing, and how
+// high the eye is off the ground at the start of it.
+// Implements: REQ-WALK-052
+const REVIVAL = 2.5, REVIVAL_EYE = 0.08;
+// ... and, having drowned, how far in from the water's edge they get up (ashore).
+const ASHORE_IN = 0.6;
 
 // Keys the walker owns while active, by KeyboardEvent.code; the map's own shortcuts
 // for these letters are suspended. A key that is not here never reaches walk mode -
@@ -228,6 +238,9 @@ export class Walker {
     this.decks = new Map(); // ramps, by grid cell (indexDecks)
     this.spans = new Map(); // bridge decks, likewise, but tested differently (height)
     this.aim = { i: -1, point: null, bug: null, box: null };
+    this.spawned = false; // whether walk mode has been entered on this page yet
+    this.arrival = null;  // the first arrival or a revival, while it plays (arrive)
+    this.fallen = false;  // whether the last walk ended in dying (die), until the next
     this.bugs = null; // set by setBugs once there are findings to walk the streets
     // What is alight and what that looks like (fires.js, flames.js), set by setFires.
     // Fire burns on the map as well as in the street, so the walker does not own it -
@@ -431,6 +444,17 @@ export class Walker {
     this.radarAt = 0;
     this.drawSlots();
     this.drawHud();
+    // The first time out on this page is flown in rather than cut to: down from over
+    // the city onto the spot, so the street is seen as part of the map first. Walking
+    // in again after dying is getting up off the ground instead, out of the red.
+    const first = !this.spawned, fallen = this.fallen;
+    this.spawned = true;
+    this.fallen = false;
+    if (fallen) this.ashore(); // drowned: coming back is on the shore, not in the water
+    if (!reducedMotion()) {
+      if (first) this.startArrival('fly');
+      else if (fallen) this.startArrival('rise');
+    }
     this.loop();
     // Like a first-person shooter: the pointer is captured at the reticle at once (V
     // and the Walk button are user gestures, which browsers require for this). A first
@@ -441,6 +465,7 @@ export class Walker {
   // Implements: REQ-WALK-001
   exit() {
     if (!this.active) return;
+    if (this.arrival) this.endArrival(false);
     // Where they stood, so coming back is coming back rather than starting again.
     this.home = this.stance();
     this.active = false;
@@ -475,6 +500,89 @@ export class Walker {
     this.scene.setWalking(false);
     this.hooks.onAim(-1);
     this.hooks.onExit();
+  }
+
+  /**
+   * Plays the way in: `fly`, the first arrival, down from over the city, or `rise`,
+   * getting up after dying. The walker is where enter() put them, and that is where
+   * either ends. Tool and HUD stay out of the picture until then; rising, the red of
+   * dying is still over the view at first and clears as they get up.
+   */
+  startArrival(kind = 'fly') {
+    const p = this.p;
+    const land = { x: p.x, z: p.z, feet: p.feet, yaw: p.yaw, pitch: p.pitch };
+    const top = this.boxes.reduce((m, b) => Math.max(m, b.y + b.h), p.feet);
+    const rise = kind === 'rise';
+    this.arrival = {
+      t: 0, kind, land, T: rise ? REVIVAL : ARRIVAL,
+      path: rise ? t => revivalAt(land, t) : t => arrivalAt(land, top, t),
+    };
+    this.hideTool();
+    this.hud.classList.add('arriving');
+    if (rise) this.hud.classList.add('dead');
+    this.arrive(0);
+  }
+
+  // Held (frozen) it waits where it is: the first walk's tour is read over the city
+  // from the top of the flight, and the flight goes on once the tour is closed.
+  arrive(dt) {
+    const a = this.arrival;
+    if (this.frozen && dt > 0) return;
+    a.t = Math.min(1, a.t + dt / a.T);
+    Object.assign(this.p, a.path(a.t), { vy: 0 });
+    if (a.kind === 'rise') this.hud.style.setProperty('--dead', (1 - clamp(a.t / 0.6, 0, 1)).toFixed(3));
+    if (a.t >= 1) this.endArrival(true);
+  }
+
+  /**
+   * Down: on the spot, facing the way enter() meant, with tool and HUD back. A key or
+   * a click ends the flight early. Leaving walk mode ends it too (landed false): the
+   * walker is still put on the spot, which is where walk mode remembers them.
+   */
+  endArrival(landed = true) {
+    const a = this.arrival;
+    if (!a) return;
+    this.arrival = null;
+    this.hud.classList.remove('arriving');
+    if (a.kind === 'rise') {
+      this.hud.classList.remove('dead');
+      this.hud.style.removeProperty('--dead');
+    }
+    const { x, z, feet, yaw, pitch } = a.land;
+    Object.assign(this.p, { x, z, feet, yaw, pitch, vy: 0 });
+    if (!landed) return;
+    if (!this.handsOff) this.showTool();
+    this.drawHud();
+  }
+
+  /**
+   * Out of the water, for coming back after drowning: the nearest ground - the shore
+   * or a street, never a roof - a step in from its edge, facing on inland the way
+   * from where they went down. Nothing moves when they are not in the water.
+   *
+   * Implements: REQ-WALK-052
+   */
+  ashore() {
+    const p = this.p;
+    if (p.fly || this.height(p.x, p.z) > WATER) return;
+    const dry = (x, z) => {
+      const h = this.height(x, z);
+      if (h <= WATER) return null;
+      const b = this.boxAt({ x, y: h - 0.01, z });
+      return b && (b.kind === 'land' || b.kind === 'terrace') ? h : null;
+    };
+    for (let r = 0.5; r <= 120; r += 0.5) {
+      const n = Math.max(8, Math.ceil(r * 4));
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2, dx = Math.cos(a), dz = Math.sin(a);
+        if (dry(p.x + dx * r, p.z + dz * r) === null) continue;
+        // A step in from the edge, where there is room for one.
+        const inward = dry(p.x + dx * (r + ASHORE_IN), p.z + dz * (r + ASHORE_IN)) !== null ? r + ASHORE_IN : r;
+        const x = p.x + dx * inward, z = p.z + dz * inward;
+        Object.assign(p, { x, z, feet: dry(x, z), yaw: Math.atan2(-dx, -dz), pitch: -0.1, vy: 0 });
+        return;
+      }
+    }
   }
 
   /**
@@ -1088,6 +1196,11 @@ export class Walker {
       // This listener is registered before the map's; stopping here keeps the map from
       // acting on the same key (V would leave walk mode and re-enter it at once).
       const mine = () => { e.preventDefault(); e.stopImmediatePropagation(); };
+      // Any key cuts the way in short; V and M then go on to leave as usual.
+      if (this.arrival && !this.frozen) {
+        this.endArrival(true);
+        if (e.code !== 'KeyV' && e.code !== 'KeyM') { mine(); return; }
+      }
       // Implements: REQ-WALK-046
       if (this.frozen) {
         // Held, the walker is not playing and the page is. So the page keeps its keys
@@ -1173,6 +1286,11 @@ export class Walker {
     // Implements: REQ-WALK-012, REQ-WALK-014, REQ-WALK-015, REQ-WALK-045
     canvas.addEventListener('mousedown', e => {
       if (!this.active || this.dying !== null) return;
+      if (this.arrival && !this.frozen) {
+        e.preventDefault();
+        this.endArrival(true);
+        return;
+      }
       // Frozen means something else has the pointer - a panel, the backpack, a menu,
       // the toolbar over the street. The one thing a click on the map then means is
       // "walk on", which mouseup below answers; it must not also scope, fire, or take
@@ -1329,7 +1447,8 @@ export class Walker {
       this.last = now;
       // Dying is watched rather than played: the walker stops steering and the red
       // deepens instead, until it takes them back to the map.
-      if (this.dying !== null) this.fade(dt);
+      if (this.arrival) this.arrive(dt);
+      else if (this.dying !== null) this.fade(dt);
       else this.step(dt);
       if (this.showing) this.study(dt);
       this.autoFire(now);
@@ -1346,7 +1465,7 @@ export class Walker {
       this.drawFuel();
       this.poseTool(dt, now);
       this.scene.setWalker(this.p.x, this.p.feet, this.p.z, EYE + this.ride(dt), this.p.yaw, this.p.pitch);
-      if (!this.still) this.updateAim();
+      if (!this.still && !this.arrival) this.updateAim();
       this.scene.renderNow();
       this.hooks.onRender();
       this.loop();
@@ -1703,6 +1822,7 @@ export class Walker {
   die(cause) {
     if (this.dying !== null) return;
     this.dying = 0;
+    this.fallen = true; // walking in again gets up off the ground (startArrival)
     this.keys.clear();
     this.firing = false;
     this.setScoped(false);
@@ -2844,6 +2964,60 @@ export function scatter(v, by) {
   v.y += (Math.random() * 2 - 1) * by;
   v.z += (Math.random() * 2 - 1) * by;
 }
+
+/**
+ * Where the first arrival has the walker at t (0 to 1): from behind and to the right
+ * of `land`, `ARRIVAL_ABOVE` over the roof at `top`, down onto `land`, looking at the
+ * point the landing looks at from the start, tipped down over the city at first and
+ * levelling on the way. It ends exactly on `land`, yaw and pitch included, so the
+ * walker is handed back the view they would have had without it.
+ *
+ * Implements: REQ-WALK-051
+ */
+export function arrivalAt(land, top, t) {
+  const e = inOut(t);
+  const ahead = { x: -Math.sin(land.yaw), z: -Math.cos(land.yaw) }, right = { x: -ahead.z, z: ahead.x };
+  const from = {
+    x: land.x - ahead.x * ARRIVAL_BACK + right.x * ARRIVAL_SIDE,
+    z: land.z - ahead.z * ARRIVAL_BACK + right.z * ARRIVAL_SIDE,
+    feet: top + ARRIVAL_ABOVE,
+  };
+  const x = from.x + (land.x - from.x) * e, z = from.z + (land.z - from.z) * e;
+  const feet = from.feet + (land.feet - from.feet) * Math.min(1, e * 1.08);
+  // What the landing looks at, a few strides ahead of it.
+  const look = { x: land.x + ahead.x * 8, z: land.z + ahead.z * 8, y: land.feet + EYE + Math.tan(land.pitch) * 8 };
+  const dx = look.x - x, dz = look.z - z;
+  let yaw = Math.atan2(-dx, -dz);
+  let pitch = -0.95 + (Math.min(0.15, Math.atan2(look.y - (feet + EYE), Math.hypot(dx, dz))) + 0.95) * inOut(Math.min(1, t * 1.25));
+  // The last stretch settles into the landing's own view.
+  const k = inOut(clamp((t - 0.85) / 0.15, 0, 1));
+  let d = land.yaw - yaw;
+  while (d > Math.PI) d -= 2 * Math.PI;
+  while (d < -Math.PI) d += 2 * Math.PI;
+  yaw += d * k;
+  pitch += (land.pitch - pitch) * k;
+  return { x, z, feet, yaw, pitch };
+}
+/**
+ * Where getting up after dying has the walker at t (0 to 1): lying on the spot
+ * looking up at the sky, turned a little away, then sitting up and standing, to end
+ * exactly on `land`, yaw and pitch included.
+ *
+ * Implements: REQ-WALK-052
+ */
+export function revivalAt(land, t) {
+  const look = inOut(clamp(t / 0.75, 0, 1)), up = inOut(clamp((t - 0.3) / 0.7, 0, 1));
+  return {
+    x: land.x, z: land.z,
+    // The eye, not the feet, is what gets up: from just off the ground to eye height.
+    feet: land.feet - EYE + REVIVAL_EYE + (EYE - REVIVAL_EYE) * up,
+    yaw: land.yaw + 0.6 * (1 - look),
+    pitch: 1.25 + (land.pitch - 1.25) * look,
+  };
+}
+const inOut = t => (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2);
+/** Whether the page has been asked to keep still, which the ways in respect. */
+const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /**
  * Exponential easing towards a value: `tau` is how long it takes to close most of

@@ -37,8 +37,8 @@
 //   cursor   hidden             hide or show the drawn pointer
 //   hide     targets            take the overlays matching these selectors out of shot
 //   show     targets            ... and put them back
-//   walk                        enter walk mode, if not in it yet
-//   descend  s, above, from     fly down from above the city to the street
+//   walk     hide               enter walk mode, if not in it yet, with hide out of shot;
+//                               the first time, the arrival over the city is filmed
 //   catch    tool, distance, held, read
 //                               walk up to the nearest bug and catch it with tool
 //   douse    s, back            put out the nearest fire with the extinguisher
@@ -201,6 +201,27 @@ const spotOf = (i, dist) => dh((d, a) => {
   const ox = b.pos.x - b.box.x, oz = b.pos.z - b.box.z, len = Math.hypot(ox, oz) || 1;
   return { x: b.pos.x + (ox / len) * a.dist, z: b.pos.z + (oz / len) * a.dist, feet: b.pos.y - 0.04 };
 }, { i, dist });
+/**
+ * Turns the walker, as little as it takes, until the crosshair is on bug i as the
+ * game itself finds it (walker.updateAim marches the ray through the bent view):
+ * angles worked out on the flat map can leave it on the wall behind a small bug,
+ * and a tool fired then tags the wall. Returns whether it is on the bug.
+ */
+const aimOn = i => dh((d, a) => {
+  const w = d.walker, p = w.p, bug = d.bugs.bugs[a.i];
+  const yaw = p.yaw, pitch = p.pitch;
+  const offsets = [];
+  for (let y = -15; y <= 15; y++) for (let x = -15; x <= 15; x++) offsets.push([x * 0.008, y * 0.008]);
+  offsets.sort((u, v) => Math.hypot(...u) - Math.hypot(...v));
+  for (const [dy, dp] of offsets) {
+    w.scene.setWalker(p.x, p.feet, p.z, a.eye, yaw + dy, pitch + dp);
+    w.updateAim();
+    if (w.aim.bug === bug) { p.yaw = yaw + dy; p.pitch = pitch + dp; return true; }
+  }
+  w.scene.setWalker(p.x, p.feet, p.z, a.eye, yaw, pitch);
+  w.updateAim();
+  return false;
+}, { i, eye: EYE });
 const bugAt = i => dh((d, i) => { const b = d.bugs.bugs[i]; return { x: b.pos.x, y: b.pos.y + 0.05, z: b.pos.z, caught: b.caught }; }, i);
 /**
  * The next grapple hop: from tower `from` (a box index; null picks the first tower
@@ -259,6 +280,7 @@ const at = (sel) => (Array.isArray(sel) ? { x: VIEW.width * sel[0], y: VIEW.heig
 const CLICK = 0.7, TAKE = 2.5, APPROACH = 2.5, SETTLE = 0.3, OPENS = 1.3;
 const HOP_AIM = 1.4, GRAPPLE_BITE = 1.2, GRAPPLE_REEL = 4;
 const LIST_OPEN = 0.5, LIST_READ = 0.35;
+const ARRIVAL = 5; // walk.js ARRIVAL: the first walk's flight in
 const actions = {
   caption: { length: () => 0, run: st => caption(st.text ?? '', st.sub ?? '') },
   hold: { length: st => st.s, run: st => hold(st.s) },
@@ -302,40 +324,30 @@ const actions = {
   show: { length: () => 0, run: st => overlays(st.targets, false) },
   cursor: { length: () => 0, run: st => hideCursor(!!st.hidden) },
 
+  // Into walk mode, with `hide` out of shot from the first frame. The first walk on
+  // the page is flown in (walk.js startArrival); it is landed in the street the story
+  // goes on in, and filmed until it is down.
   walk: {
-    length: () => CLICK + 3 / FPS,
-    async run() {
-      if (await dh(d => d.walker.active)) return ready();
-      await clickAt('#walk');
-      await frame();
-      await hideCursor(true);
-      if (!stage) await findStage();
+    length: () => CLICK + 2 / FPS + ARRIVAL,
+    async run(st) {
+      if (await dh(d => d.walker.active)) { if (st.hide) await overlays(st.hide, true); return ready(); }
+      const c = await center('#walk');
+      await glide(c.x, c.y, CLICK);
+      await frame(() => page.mouse.down());
+      await frame(async () => {
+        await page.mouse.up();
+        if (st.hide) await overlays(st.hide, true);
+        await hideCursor(true);
+        if (!stage) await findStage();
+        await dh((d, spot) => {
+          const a = d.walker.arrival;
+          if (a && spot) { Object.assign(a.land, spot, { pitch: 0.05 }); a.t = 0; }
+        }, stage?.spot);
+      });
+      for (let k = 0; k < frames_(ARRIVAL + 1) && await dh(d => !!d.walker.arrival); k++) await frame();
     },
   },
 
-  // A descent from above the city to the street: the jet backpack carries the walker
-  // (flying, so nothing falls), with the hands out of shot until the landing.
-  descend: {
-    length: st => st.s,
-    async run(st) {
-      await ready();
-      if (!stage) { say('  descend: no street to land in'); return; }
-      const top = await dh(d => Math.max(...d.walker.boxes.map(b => b.y + b.h)));
-      await dh(d => { d.walker.setHandsOff(true); if (d.walker.secondary?.id !== 'jetpack') d.walker.setTool('jetpack'); });
-      const end = stage.spot;
-      const [ox, oz] = st.from ?? [14, 18];
-      const start = { x: end.x + ox, z: end.z + oz, feet: top + (st.above ?? 9) };
-      const aimAt = { x: stage.box.x, y: stage.box.top * 0.5, z: stage.box.z };
-      await hold(st.s, t => {
-        const e = ease(t);
-        const here = { x: lerp(start.x, end.x, e), z: lerp(start.z, end.z, e), feet: lerp(start.feet, end.feet + 0.02, Math.min(1, e * 1.08)) };
-        const want = lookAngles(here, aimAt);
-        return view({ ...here, yaw: want.yaw, pitch: lerp(-0.95, Math.min(0.15, want.pitch), ease(Math.min(1, t * 1.25))) });
-      });
-      // On the ground: the jet goes back on its hook and the hands come into view.
-      await dh(d => { d.walker.setTool('jetpack'); d.walker.setHandsOff(false); });
-    },
-  },
 
   // Walks up to the nearest bug, aims at it, uses the tool and lets the catch play
   // out. A catch opens its finding and holds the walker, as the map does; after
@@ -365,7 +377,8 @@ const actions = {
         const to = await spotOf(i, st.distance);
         me = await state();
         const here = { x: lerp(me.x, to.x, 0.3), z: lerp(me.z, to.z, 0.3), feet: lerp(me.feet, to.feet, 0.3) };
-        return view({ ...here, ...lookAngles(here, await bugAt(i)) });
+        await view({ ...here, ...lookAngles(here, await bugAt(i)) });
+        return aimOn(i);
       };
       await hold(SETTLE, track);
       if (st.held) {
@@ -570,7 +583,8 @@ async function encode({ frames: count, fps, scale }) {
   } catch (e) {
     const tmp = [os.tmpdir(), '/tmp'].some(t => OUT.startsWith(t + path.sep));
     throw new Error(`ffmpeg could not encode ${path.join(OUT, 'frames')}: ${e.message.split('\n')[0]}. ` +
-      (tmp ? 'An ffmpeg installed as a snap cannot read files in /tmp; use --out somewhere in your home. ' : '') +
+      (e.code === 'ENOENT' ? 'ffmpeg is not installed, or not on the PATH. '
+        : tmp ? 'An ffmpeg installed as a snap cannot read files in /tmp; use --out somewhere in your home. ' : '') +
       'The frames are kept, and --encode encodes them again without recording.');
   }
   console.log(`wrote ${video} (${total.toFixed(1)} s)`);
@@ -673,6 +687,26 @@ await ctx.addInitScript(() => {
   // the mouse, a ripple on every press, hidden while the pointer is locked or the
   // director says so.
   addEventListener('DOMContentLoaded', () => {
+    // The text caret blinks on the browser's own clock, not the page's, and a frame
+    // here takes anything up to seconds: filmed, it flickered at random. It is held
+    // still and blinked on the page's clock instead, at the usual half-second, which
+    // plays back at the right speed; a browser that cannot hold it still hides it
+    // (CSS caret-animation, Chromium 139 and later).
+    const caret = document.createElement('style');
+    caret.textContent = CSS.supports('caret-animation', 'manual')
+      ? 'input, textarea { caret-animation: manual; } .promo-caret-off input, .promo-caret-off textarea { caret-color: transparent !important; }'
+      : 'input, textarea { caret-color: transparent !important; }';
+    document.head.appendChild(caret);
+    // Shown again on every keystroke and focus, as a real caret is.
+    let blink = 0;
+    const restart = () => {
+      document.documentElement.classList.remove('promo-caret-off');
+      clearInterval(blink);
+      blink = setInterval(() => document.documentElement.classList.toggle('promo-caret-off'), 530);
+    };
+    restart();
+    addEventListener('input', restart, true);
+    addEventListener('focusin', restart, true);
     const c = document.createElement('div');
     c.innerHTML = '<svg width="26" height="26" viewBox="0 0 26 26"><path d="M3 2 L3 21 L8.2 16.2 L11.6 23.6 L15 22.1 L11.7 14.9 L18.6 14.9 Z" fill="#fff" stroke="#111" stroke-width="1.6" stroke-linejoin="round"/></svg>';
     c.style.cssText = 'position:fixed;left:-50px;top:-50px;z-index:2147483647;pointer-events:none;transform:translate(-3px,-2px);filter:drop-shadow(0 2px 3px rgba(0,0,0,.45))';

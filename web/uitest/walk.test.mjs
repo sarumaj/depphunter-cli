@@ -674,3 +674,136 @@ describe('the wheel, flicked', () => {
     assert.equal(w.primary.id, DEFAULT_TOOL);
   });
 });
+
+describe('the first arrival', () => {
+  const land = { x: 3, z: -4, feet: 0.5, yaw: 0.7, pitch: -0.15 };
+
+  // Verifies: REQ-WALK-051
+  it('starts over the tallest roof and ends exactly on the landing, facing its way', () => {
+    const top = 6;
+    const start = WALK.arrivalAt(land, top, 0);
+    assert.ok(start.feet > top, `the flight began at ${start.feet}, under the roof at ${top}`);
+    assert.ok(Math.hypot(start.x - land.x, start.z - land.z) > 10, 'the flight began on the spot');
+    assert.ok(start.pitch < -0.5, 'the flight did not look down over the city');
+    const end = WALK.arrivalAt(land, top, 1);
+    for (const k of ['x', 'z', 'feet', 'yaw', 'pitch']) assert.ok(Math.abs(end[k] - land[k]) < 1e-9, `${k} ended at ${end[k]}, not ${land[k]}`);
+    // Down all the way, never back up.
+    let last = start.feet;
+    for (let t = 0.05; t <= 1; t += 0.05) {
+      const at = WALK.arrivalAt(land, top, t);
+      assert.ok(at.feet <= last + 1e-9, `the flight climbed at t=${t.toFixed(2)}`);
+      last = at.feet;
+    }
+  });
+
+  /** A walker as far as the arrival concerns it, with the arrival's own methods. */
+  function walker() {
+    const W = WALK.Walker.prototype;
+    const classes = new Set();
+    return {
+      p: { ...land, vy: 0 }, boxes: [{ y: 0, h: 6 }], arrival: null, handsOff: false, frozen: false, shown: 0,
+      hud: {
+        classList: { add: c => classes.add(c), remove: c => classes.delete(c) },
+        style: { props: {}, setProperty(k, v) { this.props[k] = v; }, removeProperty(k) { delete this.props[k]; } },
+      }, classes,
+      hideTool() {}, showTool() { this.shown++; }, drawHud() {},
+      startArrival: W.startArrival, arrive: W.arrive, endArrival: W.endArrival,
+    };
+  }
+
+  // Verifies: REQ-WALK-051
+  it('lands after its flight, and hides the HUD until then', () => {
+    const w = walker();
+    w.startArrival();
+    assert.ok(w.classes.has('arriving'), 'the HUD was over the flight');
+    assert.ok(w.p.feet > 6, 'the walker was not put up in the air');
+    for (let i = 0; i < 200 && w.arrival; i++) w.arrive(0.05);
+    assert.equal(w.arrival, null, 'the flight never ended');
+    assert.ok(!w.classes.has('arriving'), 'the HUD stayed hidden');
+    assert.equal(w.shown, 1, 'the tool did not come back');
+    assert.deepEqual({ x: w.p.x, z: w.p.z, feet: w.p.feet }, { x: land.x, z: land.z, feet: land.feet });
+  });
+
+  // Verifies: REQ-WALK-051
+  it('waits at the top while held, for the first walk\'s tour to be read', () => {
+    const w = walker();
+    w.startArrival();
+    const top = { ...w.p };
+    w.frozen = true;
+    for (let i = 0; i < 200; i++) w.arrive(0.05);
+    assert.ok(w.arrival, 'the flight ended under the tour');
+    assert.deepEqual(w.p, top, 'the flight moved under the tour');
+    w.frozen = false;
+    for (let i = 0; i < 200 && w.arrival; i++) w.arrive(0.05);
+    assert.equal(w.arrival, null, 'the flight did not go on once the tour was closed');
+  });
+
+  // Verifies: REQ-WALK-051
+  it('lands at once when cut short, or when walk mode is left', () => {
+    const w = walker();
+    w.startArrival();
+    w.arrive(0.05);
+    w.endArrival(true); // a key or a click
+    assert.equal(w.arrival, null);
+    assert.equal(w.p.feet, land.feet, 'cutting it short did not land the walker');
+
+    const gone = walker();
+    gone.startArrival();
+    gone.endArrival(false); // exit
+    assert.equal(gone.p.feet, land.feet, 'walk mode would remember the walker in mid-air');
+    assert.equal(gone.shown, 0, 'the tool came out on the way out of walk mode');
+    assert.ok(!gone.classes.has('arriving'));
+  });
+
+  // Verifies: REQ-WALK-052
+  it('gets up after dying: from the ground looking up, out of the red, onto the spot', () => {
+    const start = WALK.revivalAt(land, 0);
+    assert.equal(start.x, land.x);
+    assert.equal(start.z, land.z);
+    assert.ok(start.feet + 0.45 < land.feet + 0.15, 'the eye did not start on the ground');
+    assert.ok(start.pitch > 1, 'the revival did not start looking up at the sky');
+    const end = WALK.revivalAt(land, 1);
+    for (const k of ['x', 'z', 'feet', 'yaw', 'pitch']) assert.ok(Math.abs(end[k] - land[k]) < 1e-9, `${k} ended at ${end[k]}, not ${land[k]}`);
+
+    const w = walker();
+    w.startArrival('rise');
+    assert.ok(w.classes.has('dead') && w.classes.has('arriving'), 'the red was not over the start of it');
+    assert.equal(w.hud.style.props['--dead'], '1.000');
+    const reds = [];
+    for (let i = 0; i < 100 && w.arrival; i++) { w.arrive(0.05); reds.push(Number(w.hud.style.props['--dead'] ?? 0)); }
+    assert.equal(w.arrival, null, 'the revival never ended');
+    assert.ok(reds.every((r, i) => i === 0 || r <= reds[i - 1]), 'the red came back on the way up');
+    assert.ok(!w.classes.has('dead') && !('--dead' in w.hud.style.props), 'the red stayed after getting up');
+    assert.equal(w.shown, 1, 'the tool did not come back');
+    assert.equal(w.p.feet, land.feet);
+  });
+
+  // Verifies: REQ-WALK-052
+  it('gets a drowned walker up on the nearest shore, facing inland, and nobody else', () => {
+    const WATER = -0.45;
+    // The bay west of x = 10, a shore east of it, and a tall building on the shore
+    // nearer to the walker than any street, which is no place to get up.
+    const shore = { kind: 'land', x: 30, z: 0, w: 40, d: 200, y: WATER, h: 0.45 };
+    const tower = { kind: 'building', x: 6, z: 3, w: 2, d: 2, y: 0, h: 5 };
+    const boxes = [shore, tower];
+    const inside = (b, x, z) => Math.abs(x - b.x) <= b.w / 2 && Math.abs(z - b.z) <= b.d / 2;
+    const W = WALK.Walker.prototype;
+    const drowned = (x, z) => ({
+      p: { x, z, feet: WATER, yaw: 2, pitch: 0.3, fly: false, vy: 0 },
+      height: (px, pz) => boxes.filter(b => inside(b, px, pz)).reduce((m, b) => Math.max(m, b.y + b.h), WATER),
+      boxAt: v => boxes.filter(b => inside(b, v.x, v.z) && v.y >= b.y - 0.02 && v.y <= b.y + b.h + 0.02).sort((a, b) => b.y + b.h - (a.y + a.h))[0] || null,
+      ashore: W.ashore,
+    });
+    const w = drowned(4, 0);
+    w.ashore();
+    assert.ok(w.p.x > 10 && w.p.x < 12, `got up at x=${w.p.x}, not on the shore's edge`);
+    assert.ok(Math.abs(w.p.z) < 0.5, `got up at z=${w.p.z}, not the nearest of the shore`);
+    assert.equal(w.p.feet, 0, 'did not stand on the shore');
+    assert.ok(Math.abs(w.p.yaw - Math.atan2(-1, 0)) < 1e-9, 'did not face inland');
+
+    const dry = drowned(20, 0); // died on the shore itself: left where they fell
+    dry.p.feet = 0;
+    dry.ashore();
+    assert.deepEqual([dry.p.x, dry.p.z, dry.p.yaw], [20, 0, 2]);
+  });
+});
