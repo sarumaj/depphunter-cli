@@ -42,26 +42,49 @@ TARGETS="linux/amd64 darwin/arm64" scripts/dist.sh
 ```
 
 `scripts/record.mjs` records a showcase video of the map and walk mode on this
-repository: it builds depphunter into the temporary directory, steps the page's
-clock one frame at a time, and encodes the frames and `endcard.html` into an MP4.
-What it films is configured rather than coded: `scripts/showcase.json` lists the
-scenes in order and each scene's steps (a caption, a click, a catch with the net,
-a grapple between two towers), and the script's header describes every step it
-knows. It needs Go, ffmpeg with libx264, and Playwright with Chromium in this
-repository's `node_modules`; `--no-save` keeps it out of `package.json`, which is
-the extension's manifest, so a later `npm ci` removes it again.
+repository, and `scripts/tour-shots.mjs` takes the pictures the introduction's
+cards show (`web/static/tour/*.webp`). Both build depphunter, serve the
+repository with made-up scanner reports so the map has bugs and a fire to show,
+and drive it in Chromium. `record.mjs` steps the page's clock one frame at a time
+and encodes the frames and `endcard.html` into an MP4. What it films is
+configured rather than coded: `scripts/record-cfg.json` lists the scenes in order
+and each scene's steps (a caption, a click, a catch with the net, grapple hops
+from roof to roof), and the script's header describes every step it knows. They
+need Go and Playwright with Chromium in this repository's `node_modules`, and
+`record.mjs` also ffmpeg with libx264; `--no-save` keeps Playwright out of
+`package.json`, which is the extension's manifest, so a later `npm ci` removes it
+again.
 
 ```sh
 npm install --no-save playwright && npx playwright install chromium
-node scripts/record.mjs --plan                    # what each scene will tak
+node scripts/record.mjs --plan                    # what each scene will take
 node scripts/record.mjs --preview                 # 640x360 at 10 fps
 node scripts/record.mjs --headed --out showcase   # 1280x720 at 30 fps
+node scripts/tour-shots.mjs                       # rewrite web/static/tour/*.webp
 ```
 
-It reports progress as it goes, with the time a frame takes and how long is
-left. Without a GPU a walk-mode frame takes seconds and the first frame minutes,
-so `--preview` is the practical way to check the scenes; `--headed` renders the
-full video much faster on a desktop that has one.
+Both take the same options for what they have in common, and `--help` lists
+them all:
+
+| Option        | Default                | Meaning                                                  |
+|---------------|------------------------|----------------------------------------------------------|
+| `--out DIR`   | per script             | where what it makes goes: `showcase/`, `web/static/tour` |
+| `--repo PATH` | this checkout          | the repository to serve                                  |
+| `--bin PATH`  | build one              | a depphunter binary to serve it with                     |
+| `--port N`    | `0` (any free port)    | the port to serve on                                     |
+| `--headed`    | headless (SwiftShader) | draw in a visible browser, which uses the GPU            |
+| `--keep-temp` | removed                | leave the temporary directory behind                     |
+
+`CHROMIUM=PATH` uses that browser instead of Playwright's own. What a run makes
+and nobody keeps, the binary and the reports, goes in one temporary directory
+(`depphunter-record-*` or `depphunter-tourshot-*`), removed when the run ends
+however it ends. The 3D models a checkout without Git LFS lacks are fetched
+once into the user cache directory (`depphunter/scripts`).
+
+`record.mjs` reports progress as it goes, with the time a frame takes and how
+long is left. Without a GPU a walk-mode frame takes seconds and the first frame
+minutes, so `--preview` is the practical way to check the scenes; `--headed`
+renders the full video much faster on a desktop that has one.
 
 CI builds every target on each push, retains the archives as workflow artifacts
 for 14 days, and runs the tests in 32-bit mode (`GOARCH=386`). Renovate

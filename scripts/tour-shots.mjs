@@ -13,11 +13,20 @@
 // remember to redraw, and nobody ever does. This is a command instead, and the point
 // of it is that anybody can run it again:
 //
-//     node scripts/tour-shots.mjs [--repo PATH] [--bin ./depphunter]
+//     node scripts/tour-shots.mjs [--out DIR]
+//                                 [--repo PATH] [--bin PATH] [--port N] [--headed] [--keep-temp]
 //
-// It builds the binary if it has to, serves this repository with a report that has
-// something reachable in it (so there is a fire to photograph), drives the map through
-// each scene, and writes web/static/tour/*.webp.
+// It builds depphunter (or takes --bin), serves this repository (or --repo) with a
+// report that has something reachable in it (so there is a fire to photograph), drives
+// the map through each scene, and writes DIR/*.webp; DIR is web/static/tour unless
+// --out says otherwise. --help lists the options. CHROMIUM names a browser to use
+// instead of Playwright's own.
+//
+// Where things go, as in record.mjs: what a run makes and nobody keeps (the binary,
+// the report) goes in one temporary directory, depphunter-tourshot-*, removed when the
+// run ends however it ends (--keep-temp leaves it); what is worth keeping between runs
+// (the 3D models a checkout without Git LFS lacks) goes in the user cache directory,
+// depphunter/scripts; the pictures go in --out.
 //
 // Small on purpose. Every one of these is embedded in the binary and inlined again,
 // base64, into any standalone HTML export - so a screenshot is not a screenshot here,
@@ -29,12 +38,42 @@
 import { chromium } from 'playwright';
 import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
-import path from 'node:path';
 import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
 
-const HERE = path.dirname(new URL(import.meta.url).pathname);
-const REPO = path.resolve(HERE, '..');
-const OUT = path.join(REPO, 'web/static/tour');
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
+
+// ------------------------------------------------------------------ arguments
+
+// This script's own option, then the ones record.mjs takes as well, which mean the
+// same in both.
+const OPTIONS = {
+  out: { type: 'string', value: 'DIR', help: 'where the pictures go (default: web/static/tour)' },
+  repo: { type: 'string', value: 'PATH', help: 'repository to serve (default: this checkout)' },
+  bin: { type: 'string', value: 'PATH', help: 'depphunter binary to serve it with (default: build one)' },
+  port: { type: 'string', value: 'N', help: 'port to serve on (default: 0, any free one)' },
+  headed: { type: 'boolean', help: 'draw in a visible browser, which uses the GPU' },
+  'keep-temp': { type: 'boolean', help: 'leave the temporary directory behind' },
+  help: { type: 'boolean', help: 'print this and exit' },
+};
+const ARGS = parseArgs({ options: Object.fromEntries(Object.entries(OPTIONS).map(([k, o]) => [k, { type: o.type }])) }).values;
+if (ARGS.help) {
+  const rows = Object.entries(OPTIONS).map(([k, o]) => [`--${k}${o.value ? ` ${o.value}` : ''}`, o.help]);
+  const w = Math.max(...rows.map(r => r[0].length));
+  console.log(`usage: node scripts/tour-shots.mjs [options]\n\n${rows.map(([a, h]) => `  ${a.padEnd(w)}  ${h}`).join('\n')}` +
+    '\n\nCHROMIUM=PATH uses that browser instead of Playwright\'s own.');
+  process.exit(0);
+}
+const number = (name, fallback) => {
+  const v = Number(ARGS[name] ?? fallback);
+  if (!Number.isFinite(v)) throw new Error(`--${name} takes a number, not ${ARGS[name]}`);
+  return v;
+};
+const OUT = path.resolve(ARGS.out ?? path.join(REPO, 'web/static/tour'));
+const SERVED = path.resolve(ARGS.repo ?? REPO);
+const PORT = number('port', 0); // 0: whatever port is free
 
 // What a card's picture is drawn at. Wide enough to read a HUD in, narrow enough that
 // the dialog does not have to grow around it.
@@ -44,20 +83,140 @@ const QUALITY = 0.82;
 // from the middle of a scene rather than the whole of a cramped one.
 const VIEW = { width: 1280, height: 800 };
 
-const arg = (name, fallback) => {
-  const at = process.argv.indexOf(name);
-  return at > 0 ? process.argv[at + 1] : fallback;
+// ------------------------------------------------------------------ leaving
+
+// What has to happen however the run ends - the server stopped, the browser closed,
+// the temporary directory removed - run once, newest first, on a normal exit, an
+// error or Ctrl+C. A server left behind keeps its port, and a temporary directory
+// left behind is a binary the size of this one per run.
+const cleanups = [];
+let cleaned = false;
+const onExit = fn => cleanups.push(fn);
+const cleanup = () => {
+  if (cleaned) return;
+  cleaned = true;
+  for (const fn of cleanups.reverse()) { try { fn(); } catch { /* leaving anyway */ } }
 };
+process.on('exit', cleanup);
+for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { cleanup(); process.exit(130); });
+process.on('uncaughtException', e => { console.error(e); cleanup(); process.exit(1); });
+process.on('unhandledRejection', e => { console.error(e); cleanup(); process.exit(1); });
+
+// ------------------------------------------------------------------ where things go
+
+let temp = null;
+/** This run's temporary directory, made on first use and removed on exit (--keep-temp). */
+function tempDir() {
+  if (temp) return temp;
+  temp = fs.mkdtempSync(path.join(os.tmpdir(), 'depphunter-tourshot-'));
+  onExit(ARGS['keep-temp'] ? () => console.log(`kept ${temp}`) : () => fs.rmSync(temp, { recursive: true, force: true }));
+  return temp;
+}
+
+/** The user cache directory's corner for these scripts, where os.UserCacheDir puts it in Go. */
+function cacheDir() {
+  const home = os.homedir();
+  const base = process.env.XDG_CACHE_HOME
+    || (process.platform === 'darwin' ? path.join(home, 'Library', 'Caches')
+      : process.platform === 'win32' ? (process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'))
+        : path.join(home, '.cache'));
+  const dir = path.join(base, 'depphunter', 'scripts');
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
+// ------------------------------------------------------------------ the server and the browser
+
+/** The binary to serve with: --bin as given, or this checkout built into the temporary directory. */
+function binary() {
+  if (ARGS.bin) {
+    const bin = path.resolve(ARGS.bin);
+    if (!fs.existsSync(bin)) throw new Error(`--bin ${bin}: no such file`);
+    return bin;
+  }
+  const bin = path.join(tempDir(), process.platform === 'win32' ? 'depphunter.exe' : 'depphunter');
+  console.log('building depphunter...');
+  execFileSync('go', ['build', '-o', bin, './cmd/depphunter'], { cwd: REPO, stdio: 'inherit' });
+  return bin;
+}
+
+/**
+ * Serves `repo`, placing the given reports, and resolves to the URL it is served at;
+ * the server is stopped when the run ends. One that stops before it says where, or
+ * says nothing for two minutes, is an error that quotes what it did say.
+ */
+async function serve(bin, repo, findings) {
+  const srv = spawn(bin, [repo, '--addr', `127.0.0.1:${PORT}`, '--no-open', ...findings.flatMap(f => ['--findings', f])]);
+  onExit(() => { if (srv.exitCode === null) srv.kill(); });
+  let url = '', said = '', exited = null;
+  const grab = d => {
+    said += String(d);
+    const m = /http:\/\/\S+/.exec(said);
+    if (m && !url) url = m[0];
+  };
+  srv.stdout.on('data', grab);
+  srv.stderr.on('data', grab);
+  srv.on('exit', code => { exited = code; });
+  srv.on('error', e => { exited = e.message; });
+  for (let i = 0; i < 240 && !url && exited === null; i++) await new Promise(r => setTimeout(r, 500));
+  if (!url) {
+    throw new Error(`depphunter ${exited === null ? 'said nothing about where it was serving in 2 minutes'
+      : `stopped (${exited}) before serving`}; it said:\n${said.trim() || '(nothing)'}`);
+  }
+  console.log('serving at', url);
+  return url;
+}
+
+/**
+ * Chromium, closed when the run ends. Headless, WebGL is drawn in software
+ * (SwiftShader), which works anywhere and is slow; --headed, the GPU draws it.
+ * CHROMIUM names a browser to use instead of Playwright's own: a machine that already
+ * has one - a CI image, a container built around one - should not have to download a
+ * second copy to take five pictures.
+ */
+async function launch(headed = !!ARGS.headed) {
+  const exe = process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {};
+  const b = await chromium.launch(headed
+    ? { ...exe, headless: false, args: ['--ignore-gpu-blocklist', `--window-size=${VIEW.width},${VIEW.height + 120}`] }
+    : { ...exe, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+  onExit(() => { b.close().catch(() => {}); });
+  return b;
+}
+
+// The 3D models are Git LFS objects. A checkout without `git lfs pull` holds only
+// their pointers, and the map then draws stand-ins - in a picture of the tools, the
+// wrong thing entirely; the real files are fetched once into the cache directory and
+// served to `ctx` in their place.
+async function routeModels(ctx) {
+  for (const name of ['hand', 'bug', 'props']) {
+    const file = path.join(REPO, 'web/static', `${name}.glb`);
+    if (fs.readFileSync(file).subarray(0, 4).toString() === 'glTF') continue; // the real thing is embedded
+    const cached = path.join(cacheDir(), `${name}.glb`);
+    if (!fs.existsSync(cached)) {
+      const url = `https://media.githubusercontent.com/media/sarumaj/depphunter-cli/main/web/static/${name}.glb`;
+      console.log(`fetching ${name}.glb (the checkout holds an LFS pointer)`);
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`${url}: ${res.status}; run git lfs pull instead`);
+      fs.writeFileSync(`${cached}.part`, Buffer.from(await res.arrayBuffer()));
+      fs.renameSync(`${cached}.part`, cached);
+    }
+    const body = fs.readFileSync(cached);
+    await ctx.route(`**/${name}.glb*`, route => route.fulfill({ contentType: 'model/gltf-binary', body }));
+  }
+}
+
+// ------------------------------------------------------------------ findings
 
 /**
  * A report with a reachable vulnerability in it, so that the fire card has a fire to
- * photograph. Written to a temporary file: it describes this repository and nothing
- * else, and it is not worth keeping.
+ * photograph, written into `dir` (the one record.mjs writes for its fire). Returns its
+ * path.
  *
  * It names a real package and a real file, because what the picture has to show is the
  * map doing its actual job. A made-up path would place the fire nowhere.
  */
-function report(into) {
+function report(dir) {
+  const into = path.join(dir, 'govuln.json');
   const main = 'github.com/sarumaj/depphunter-cli';
   const frame = (module, pkg, fn, at) => ({
     module, version: at ? '' : 'v0.3.7', package: pkg, function: fn,
@@ -139,32 +298,14 @@ async function shot(page, name, clip) {
 
 async function main() {
   fs.mkdirSync(OUT, { recursive: true });
-  const repo = path.resolve(arg('--repo', REPO));
-  let bin = arg('--bin', '');
-  if (!bin) {
-    bin = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'depphunter-tourshot-')), 'depphunter');
-    console.log('building depphunter...');
-    execFileSync('go', ['build', '-o', bin, './cmd/depphunter'], { cwd: REPO, stdio: 'inherit' });
-  }
-  const reportFile = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'tourshot-')), 'govuln.json');
-  report(reportFile);
+  const url = await serve(binary(), SERVED, [report(tempDir())]);
 
-  const srv = spawn(bin, [repo, '--addr', '127.0.0.1:8977', '--no-open', '--findings', reportFile]);
-  let url = '';
-  srv.stdout.on('data', d => { const m = /http:\/\/\S+/.exec(String(d)); if (m && !url) url = m[0]; });
-  srv.stderr.on('data', d => { const m = /http:\/\/\S+/.exec(String(d)); if (m && !url) url = m[0]; });
-  for (let i = 0; i < 120 && !url; i++) await new Promise(r => setTimeout(r, 500));
-  if (!url) throw new Error('the map never said where it was serving');
-  console.log('serving at', url);
-
-  // Playwright's own browser where it has one, and whatever CHROMIUM names where it
-  // does not. A machine that already has a Chromium - a CI image, a container built
-  // around one - should not have to download a second copy to take five pictures.
-  const browser = await chromium.launch(
-    process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {});
+  const browser = await launch();
   // Reduced motion: the first walk is not flown in (walk.js startArrival), so the street
   // is there to be photographed as soon as the tour is out of the way.
-  const page = await browser.newPage({ viewport: VIEW, reducedMotion: 'reduce' });
+  const ctx = await browser.newContext({ viewport: VIEW, reducedMotion: 'reduce' });
+  await routeModels(ctx);
+  const page = await ctx.newPage();
   page.on('pageerror', e => console.error('page error:', e.message));
   await page.goto(url, { waitUntil: 'domcontentloaded' });
   await settle(page, 20000);
@@ -218,8 +359,6 @@ async function main() {
   // 5. The tracker, which says where the rest of it is.
   await shot(page, 'tracker', { x: 10, y: VIEW.height - 250, width: 420, height: 240 });
 
-  await browser.close();
-  srv.kill();
   console.log('done; the cards name these in web/static/tour.js');
 }
 
@@ -266,4 +405,5 @@ async function pick(page, what) {
   await page.fill('#search', '');
 }
 
-main().catch(err => { console.error(err); process.exit(1); });
+// Exiting is what stops the server and removes the temporary directory (onExit).
+main().then(() => process.exit(0), err => { console.error(err); process.exit(1); });

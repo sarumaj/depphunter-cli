@@ -2,15 +2,23 @@
 // Records a showcase video of depphunter running on this repository.
 //
 //     node scripts/record.mjs [--out DIR] [--scenes map,intro,...] [--config FILE]
-//                             [--preview] [--headed] [--plan] [--encode]
+//                             [--preview] [--fps N] [--plan] [--encode]
+//                             [--repo PATH] [--bin PATH] [--port N] [--headed] [--keep-temp]
 //
-// It builds depphunter into the temporary directory, serves this repository, drives
+// It builds depphunter (or takes --bin), serves this repository (or --repo), drives
 // the map and walk mode through the scenes below, and encodes the frames with the
 // end card (endcard.html) into DIR/depphunter-showcase.mp4; DIR is showcase/ at the
 // root unless --out says otherwise. The frames stay in DIR/frames, and --encode
-// encodes them again without recording. It needs Playwright with
-// Chromium in this repository's node_modules (npm install --no-save playwright &&
-// npx playwright install chromium) and ffmpeg with libx264.
+// encodes them again without recording. --help lists the options. It needs
+// Playwright with Chromium in this repository's node_modules (npm install --no-save
+// playwright && npx playwright install chromium) and ffmpeg with libx264; CHROMIUM
+// names a browser to use instead of Playwright's own.
+//
+// Where things go, as in tour-shots.mjs: what a run makes and nobody keeps (the
+// binary, the scanner reports) goes in one temporary directory, depphunter-record-*,
+// removed when the run ends however it ends (--keep-temp leaves it); what is worth
+// keeping between runs (the 3D models a checkout without Git LFS lacks) goes in the
+// user cache directory, depphunter/scripts; what is made to be kept goes in --out.
 //
 // Frames are taken one at a time rather than filmed. The page's clock
 // (requestAnimationFrame, performance.now, timers) is frozen and stepped by exactly
@@ -55,37 +63,110 @@
 import { chromium } from 'playwright';
 import { spawn, execFileSync } from 'node:child_process';
 import fs from 'node:fs';
-import path from 'node:path';
 import os from 'node:os';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { parseArgs } from 'node:util';
 
-const REPO = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const REPO = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 
 // ------------------------------------------------------------------ arguments
 
-const argv = process.argv.slice(2);
-const opt = (name, fallback) => { const i = argv.indexOf(`--${name}`); return i >= 0 ? argv[i + 1] : fallback; };
-const flag = name => argv.includes(`--${name}`);
-const PREVIEW = flag('preview');
+// This script's own options, then the ones tour-shots.mjs takes as well, which mean
+// the same in both.
+const OPTIONS = {
+  out: { type: 'string', value: 'DIR', help: 'where the frames and the video go (default: showcase/)' },
+  scenes: { type: 'string', value: 'A,B', help: 'the scenes to record, in order (default: all, in the config\'s order)' },
+  config: { type: 'string', value: 'FILE', help: 'the scenes and their steps (default: scripts/record-cfg.json)' },
+  preview: { type: 'boolean', help: 'half the resolution and 10 fps, to check the scenes' },
+  fps: { type: 'string', value: 'N', help: 'frames a second (default: 30, 10 with --preview)' },
+  plan: { type: 'boolean', help: 'print what each scene will take, and record nothing' },
+  encode: { type: 'boolean', help: 'encode the frames of the last recording again, and record nothing' },
+  repo: { type: 'string', value: 'PATH', help: 'repository to serve (default: this checkout)' },
+  bin: { type: 'string', value: 'PATH', help: 'depphunter binary to serve it with (default: build one)' },
+  port: { type: 'string', value: 'N', help: 'port to serve on (default: 0, any free one)' },
+  headed: { type: 'boolean', help: 'draw in a visible browser, which uses the GPU' },
+  'keep-temp': { type: 'boolean', help: 'leave the temporary directory behind' },
+  help: { type: 'boolean', help: 'print this and exit' },
+};
+const ARGS = parseArgs({ options: Object.fromEntries(Object.entries(OPTIONS).map(([k, o]) => [k, { type: o.type }])) }).values;
+if (ARGS.help) {
+  const rows = Object.entries(OPTIONS).map(([k, o]) => [`--${k}${o.value ? ` ${o.value}` : ''}`, o.help]);
+  const w = Math.max(...rows.map(r => r[0].length));
+  console.log(`usage: node scripts/record.mjs [options]\n\n${rows.map(([a, h]) => `  ${a.padEnd(w)}  ${h}`).join('\n')}` +
+    '\n\nCHROMIUM=PATH uses that browser instead of Playwright\'s own.');
+  process.exit(0);
+}
+const number = (name, fallback) => {
+  const v = Number(ARGS[name] ?? fallback);
+  if (!Number.isFinite(v)) throw new Error(`--${name} takes a number, not ${ARGS[name]}`);
+  return v;
+};
+const PREVIEW = !!ARGS.preview;
 // Not in the temporary directory: an ffmpeg installed as a snap has a private /tmp
 // of its own and would find no frames there.
-const OUT = path.resolve(opt('out', path.join(REPO, 'showcase')));
-const FPS = Number(opt('fps', PREVIEW ? 10 : 30));
+const OUT = path.resolve(ARGS.out ?? path.join(REPO, 'showcase'));
+const FPS = number('fps', PREVIEW ? 10 : 30);
 // The page is always laid out at 1280x720, so a preview looks like the video; a
 // preview only draws it at half the resolution, which is a quarter of the pixels.
 const VIEW = { width: 1280, height: 720 };
 const SCALE = PREVIEW ? 0.5 : 1;
-const CONFIG = JSON.parse(fs.readFileSync(path.resolve(opt('config', path.join(REPO, 'scripts/record-cfg.json'))), 'utf8'));
-const SCENES = opt('scenes', CONFIG.order.join(',')).split(',');
+const CONFIG = JSON.parse(fs.readFileSync(path.resolve(ARGS.config ?? path.join(REPO, 'scripts/record-cfg.json')), 'utf8'));
+const SCENES = (ARGS.scenes ?? CONFIG.order.join(',')).split(',');
 for (const name of SCENES) if (!CONFIG.scenes[name]) throw new Error(`no scene called ${name} in the config`);
-const PORT = Number(opt('port', 0)); // 0: whatever port is free
+const SERVED = path.resolve(ARGS.repo ?? REPO);
+const PORT = number('port', 0); // 0: whatever port is free
 const STEP = 1000 / FPS;
 const EYE = 0.45; // walk.js: eye height above the feet
 
+// ------------------------------------------------------------------ leaving
+
+// What has to happen however the run ends - the server stopped, the browser closed,
+// the temporary directory removed - run once, newest first, on a normal exit, an
+// error or Ctrl+C. A server left behind keeps its port, and a temporary directory
+// left behind is a binary the size of this one per run.
+const cleanups = [];
+let cleaned = false;
+const onExit = fn => cleanups.push(fn);
+const cleanup = () => {
+  if (cleaned) return;
+  cleaned = true;
+  for (const fn of cleanups.reverse()) { try { fn(); } catch { /* leaving anyway */ } }
+};
+process.on('exit', cleanup);
+for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { cleanup(); process.exit(130); });
+process.on('uncaughtException', e => { console.error(e); cleanup(); process.exit(1); });
+process.on('unhandledRejection', e => { console.error(e); cleanup(); process.exit(1); });
+
+// ------------------------------------------------------------------ where things go
+
+let temp = null;
+/** This run's temporary directory, made on first use and removed on exit (--keep-temp). */
+function tempDir() {
+  if (temp) return temp;
+  temp = fs.mkdtempSync(path.join(os.tmpdir(), 'depphunter-record-'));
+  onExit(ARGS['keep-temp'] ? () => console.log(`kept ${temp}`) : () => fs.rmSync(temp, { recursive: true, force: true }));
+  return temp;
+}
+
+/** The user cache directory's corner for these scripts, where os.UserCacheDir puts it in Go. */
+function cacheDir() {
+  const home = os.homedir();
+  const base = process.env.XDG_CACHE_HOME
+    || (process.platform === 'darwin' ? path.join(home, 'Library', 'Caches')
+      : process.platform === 'win32' ? (process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'))
+        : path.join(home, '.cache'));
+  const dir = path.join(base, 'depphunter', 'scripts');
+  fs.mkdirSync(dir, { recursive: true });
+  return dir;
+}
+
 // ------------------------------------------------------------------ findings
 
-// Reports for the map to place: lint issues on real Go files (bugs on buildings),
-// advisories against the Go modules nothing calls (bugs on the island), and one the
-// code reaches (a building on fire). They are made up; the files are not.
+// Reports for the map to place, written into `dir`: lint issues on real Go files (bugs
+// on buildings), advisories against the Go modules nothing calls (bugs on the island),
+// and one the code reaches (a building on fire, internal/scan/scan.go, as in
+// tour-shots.mjs). They are made up; the files are not. Returns their paths.
 function writeReports(dir) {
   const files = execFileSync('git', ['ls-files', 'internal/*.go', 'cmd/*.go'], { cwd: REPO, encoding: 'utf8' })
     .split('\n').filter(f => f && !f.endsWith('_test.go') && !f.includes('/testdata/'));
@@ -123,29 +204,86 @@ function writeReports(dir) {
   });
   fs.writeFileSync(path.join(dir, 'govuln.json'), lines.map(l => JSON.stringify(l)).join('\n'));
   console.log(`reports: ${issues.length} lint issues, 8 advisories`);
+  return [path.join(dir, 'golangci.json'), path.join(dir, 'govuln.json')];
 }
 
 // ------------------------------------------------------------------ models
 
 // The 3D models are Git LFS objects. A checkout without `git lfs pull` holds only
-// their pointers, and the map then draws stand-ins; fetch the real files instead.
-async function models() {
-  const out = {};
+// their pointers, and the map then draws stand-ins; the real files are fetched once
+// into the cache directory and served to `ctx` in their place.
+async function routeModels(ctx) {
   for (const name of ['hand', 'bug', 'props']) {
     const file = path.join(REPO, 'web/static', `${name}.glb`);
-    const head = fs.readFileSync(file).subarray(0, 4).toString();
-    if (head === 'glTF') continue; // the real thing is already embedded
-    const cache = path.join(os.tmpdir(), `depphunter-${name}.glb`);
-    if (!fs.existsSync(cache)) {
+    if (fs.readFileSync(file).subarray(0, 4).toString() === 'glTF') continue; // the real thing is embedded
+    const cached = path.join(cacheDir(), `${name}.glb`);
+    if (!fs.existsSync(cached)) {
       const url = `https://media.githubusercontent.com/media/sarumaj/depphunter-cli/main/web/static/${name}.glb`;
       console.log(`fetching ${name}.glb (the checkout holds an LFS pointer)`);
       const res = await fetch(url);
       if (!res.ok) throw new Error(`${url}: ${res.status}; run git lfs pull instead`);
-      fs.writeFileSync(cache, Buffer.from(await res.arrayBuffer()));
+      fs.writeFileSync(`${cached}.part`, Buffer.from(await res.arrayBuffer()));
+      fs.renameSync(`${cached}.part`, cached);
     }
-    out[name] = fs.readFileSync(cache);
+    const body = fs.readFileSync(cached);
+    await ctx.route(`**/${name}.glb*`, route => route.fulfill({ contentType: 'model/gltf-binary', body }));
   }
-  return out;
+}
+
+// ------------------------------------------------------------------ the server and the browser
+
+/** The binary to serve with: --bin as given, or this checkout built into the temporary directory. */
+function binary() {
+  if (ARGS.bin) {
+    const bin = path.resolve(ARGS.bin);
+    if (!fs.existsSync(bin)) throw new Error(`--bin ${bin}: no such file`);
+    return bin;
+  }
+  const bin = path.join(tempDir(), process.platform === 'win32' ? 'depphunter.exe' : 'depphunter');
+  console.log('building depphunter...');
+  execFileSync('go', ['build', '-o', bin, './cmd/depphunter'], { cwd: REPO, stdio: 'inherit' });
+  return bin;
+}
+
+/**
+ * Serves `repo`, placing the given reports, and resolves to the URL it is served at;
+ * the server is stopped when the run ends. One that stops before it says where, or
+ * says nothing for two minutes, is an error that quotes what it did say.
+ */
+async function serve(bin, repo, findings) {
+  const srv = spawn(bin, [repo, '--addr', `127.0.0.1:${PORT}`, '--no-open', ...findings.flatMap(f => ['--findings', f])]);
+  onExit(() => { if (srv.exitCode === null) srv.kill(); });
+  let url = '', said = '', exited = null;
+  const grab = d => {
+    said += String(d);
+    const m = /http:\/\/\S+/.exec(said);
+    if (m && !url) url = m[0];
+  };
+  srv.stdout.on('data', grab);
+  srv.stderr.on('data', grab);
+  srv.on('exit', code => { exited = code; });
+  srv.on('error', e => { exited = e.message; });
+  for (let i = 0; i < 240 && !url && exited === null; i++) await new Promise(r => setTimeout(r, 500));
+  if (!url) {
+    throw new Error(`depphunter ${exited === null ? 'said nothing about where it was serving in 2 minutes'
+      : `stopped (${exited}) before serving`}; it said:\n${said.trim() || '(nothing)'}`);
+  }
+  console.log('serving at', url);
+  return url;
+}
+
+/**
+ * Chromium, closed when the run ends. Headless, WebGL is drawn in software
+ * (SwiftShader), which works anywhere and is slow; --headed, the GPU draws it.
+ * CHROMIUM names a browser to use instead of Playwright's own.
+ */
+async function launch(headed = !!ARGS.headed) {
+  const exe = process.env.CHROMIUM ? { executablePath: process.env.CHROMIUM } : {};
+  const b = await chromium.launch(headed
+    ? { ...exe, headless: false, args: ['--ignore-gpu-blocklist', `--window-size=${VIEW.width},${VIEW.height + 120}`] }
+    : { ...exe, args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+  onExit(() => { b.close().catch(() => {}); });
+  return b;
 }
 
 // ------------------------------------------------------------------ actions
@@ -561,7 +699,7 @@ const actions = {
  */
 async function encode({ frames: count, fps, scale }) {
   const size = { width: VIEW.width * scale, height: VIEW.height * scale };
-  const browser = await chromium.launch();
+  const browser = await launch(false);
   const card = await browser.newPage({ viewport: VIEW, deviceScaleFactor: scale });
   await card.goto(`file://${path.join(REPO, 'endcard.html')}`);
   await card.waitForTimeout(400);
@@ -591,7 +729,7 @@ async function encode({ frames: count, fps, scale }) {
 }
 
 // --encode: the frames of an earlier recording, encoded again without recording.
-if (flag('encode')) {
+if (ARGS.encode) {
   const dir = path.join(OUT, 'frames');
   const count = fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => /^f\d{5}\.jpg$/.test(f)).length : 0;
   if (!count || !fs.existsSync(path.join(dir, 'f00000.jpg'))) {
@@ -611,7 +749,7 @@ for (const name of SCENES) {
 }
 const lengthOf = name => CONFIG.scenes[name].reduce((s, st) => s + Math.round(actions[st.do].length(st) * FPS), 0);
 let planned = Math.max(1, SCENES.reduce((sum, name) => sum + lengthOf(name), 0));
-if (flag('plan')) {
+if (ARGS.plan) {
   for (const name of SCENES) console.log(`${name.padEnd(10)} ${String(lengthOf(name)).padStart(5)} frames  ${(lengthOf(name) / FPS).toFixed(1).padStart(5)} s`);
   console.log(`${'total'.padEnd(10)} ${String(planned).padStart(5)} frames  ${(planned / FPS).toFixed(1).padStart(5)} s at ${FPS} fps, plus the end card`);
   process.exit(0);
@@ -620,9 +758,7 @@ if (flag('plan')) {
 // ------------------------------------------------------------------ the rig
 
 fs.mkdirSync(OUT, { recursive: true });
-const BIN = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'depphunter-record-')), 'depphunter');
-console.log('building depphunter...');
-execFileSync('go', ['build', '-o', BIN, './cmd/depphunter'], { cwd: REPO, stdio: 'inherit' });
+const BIN = binary();
 const frames = path.join(OUT, 'frames');
 // The last recording's frames are kept aside rather than deleted: a run that fails
 // before its first frame would otherwise take a finished recording with it.
@@ -632,40 +768,9 @@ if (fs.existsSync(frames) && fs.readdirSync(frames).length) {
 }
 fs.rmSync(frames, { recursive: true, force: true });
 fs.mkdirSync(frames, { recursive: true });
-writeReports(OUT);
-const glb = await models();
+const url = await serve(BIN, SERVED, writeReports(tempDir()));
 
-const srv = spawn(BIN, [REPO, '--addr', `127.0.0.1:${PORT}`, '--no-open',
-  '--findings', path.join(OUT, 'golangci.json'), '--findings', path.join(OUT, 'govuln.json')]);
-// The server goes when this does, however that happens: a server left behind by an
-// interrupted run keeps its port, and the next run's server cannot have it.
-let browser = null;
-const stop = () => { if (srv.exitCode === null) srv.kill(); };
-process.on('exit', stop);
-for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { stop(); process.exit(130); });
-process.on('uncaughtException', e => { stop(); console.error(e); process.exit(1); });
-process.on('unhandledRejection', e => { stop(); console.error(e); process.exit(1); });
-
-let url = '', said = '', exited = null;
-const grab = d => {
-  said += String(d);
-  const m = /http:\/\/\S+/.exec(said);
-  if (m && !url) url = m[0];
-};
-srv.stdout.on('data', grab);
-srv.stderr.on('data', grab);
-srv.on('exit', code => { exited = code; });
-srv.on('error', e => { exited = e.message; });
-for (let i = 0; i < 240 && !url && exited === null; i++) await new Promise(r => setTimeout(r, 500));
-if (!url) {
-  throw new Error(`depphunter ${exited === null ? 'said nothing about where it was serving in 2 minutes'
-    : `stopped (${exited}) before serving`}; it said:\n${said.trim() || '(nothing)'}`);
-}
-console.log('serving at', url);
-
-browser = await chromium.launch(flag('headed')
-  ? { headless: false, args: ['--ignore-gpu-blocklist', `--window-size=${VIEW.width},${VIEW.height + 120}`] }
-  : { args: ['--use-gl=angle', '--use-angle=swiftshader', '--enable-unsafe-swiftshader', '--ignore-gpu-blocklist'] });
+let browser = await launch();
 const ctx = await browser.newContext({ viewport: VIEW, deviceScaleFactor: SCALE });
 // The director's handle: app.js keeps the walker and the rest in module scope, so the
 // copy served to this browser also exports them. Nothing else about it changes.
@@ -676,9 +781,7 @@ await ctx.route('**/app.js*', async route => {
 window.__dh = { get walker() { return walker; }, get bugs() { return bugs; }, get fires() { return fires; },
   get stash() { return stash; }, get scene() { return scene; } };` });
 });
-for (const [name, body] of Object.entries(glb)) {
-  await ctx.route(`**/${name}.glb*`, route => route.fulfill({ contentType: 'model/gltf-binary', body }));
-}
+await routeModels(ctx);
 await ctx.addInitScript(() => {
   // Straight to the map: the introductions are for people, not for a camera.
   localStorage.setItem('depphunter.introduced', '1');
@@ -941,10 +1044,11 @@ for (const name of SCENES) {
 }
 progress(true);
 console.log(`done: ${n} frames = ${(n / FPS).toFixed(1)} s at ${FPS} fps`);
-srv.kill();
 
 // ------------------------------------------------------------------ the video
 
 await browser.close();
 fs.writeFileSync(path.join(OUT, 'recording.json'), JSON.stringify({ frames: n, fps: FPS, scale: SCALE }));
 await encode({ frames: n, fps: FPS, scale: SCALE });
+// Exiting is what stops the server and removes the temporary directory (onExit).
+process.exit(0);
