@@ -19,6 +19,8 @@ import (
 
 // Why a link is reported, carried as the finding's Ref so the side panel can group
 // them the way it groups a linter's rules.
+//
+// Implements: REQ-MD-007, REQ-MD-008, REQ-MD-009, REQ-MD-012
 const (
 	refMissingFile   = "link/missing-file"
 	refMissingAnchor = "link/missing-anchor"
@@ -33,6 +35,8 @@ const (
 // not, and a fragment either names a heading of the file it points at or does not.
 // Neither needs the network, so both run on every analysis. An http(s) link needs
 // somebody else's server to answer and is checked only when web is given.
+//
+// Implements: REQ-MD-007, REQ-MD-008, REQ-MD-009, REQ-MD-010, REQ-MD-011, REQ-MD-012, REQ-MD-013
 func checkLinks(ctx context.Context, root string, docs []string, web *Web,
 	logFormat func(string, ...any)) ([]*Finding, bool) {
 	var out []*Finding
@@ -115,6 +119,8 @@ func checkLinks(ctx context.Context, root string, docs []string, web *Web,
 }
 
 // broken is one link that leads nowhere, placed on the line that carries it.
+//
+// Implements: REQ-MD-006
 func broken(doc string, l markdown.Link, severity Severity, ref, title string) *Finding {
 	return &Finding{
 		Kind: KindLink, Source: "links", Ref: ref, Severity: severity,
@@ -125,6 +131,8 @@ func broken(doc string, l markdown.Link, severity Severity, ref, title string) *
 
 // anchor normalizes a fragment the way a renderer normalizes a heading, so that
 // "#Package-indexes" finds the anchor of "## Package indexes".
+//
+// Implements: REQ-MD-008
 func anchor(fragment string) string { return strings.ToLower(fragment) }
 
 func isMarkdown(p string) bool {
@@ -167,6 +175,8 @@ func (c *anchorCache) of(p string, src []byte) map[string]bool {
 // out or breaks. Those are the answers a checker gets from Cloudflare and from
 // GitHub's own bot rules, and a checker that read them as rot would invent a finding
 // for every link that works perfectly well in a browser.
+//
+// Implements: REQ-MD-012
 type Web struct {
 	http    *http.Client
 	cache   *store.Store
@@ -179,6 +189,8 @@ type Web struct {
 // that gets a tool blocked. credentials are what this machine holds, so that a link
 // into a private repository or an internal wiki is checked rather than reported
 // missing; each is sent only to the host it was written for.
+//
+// Implements: REQ-MD-014
 func NewWeb(dir string, ttl, timeout time.Duration, credentials *auth.Store) *Web {
 	return &Web{
 		http:    &http.Client{Timeout: timeout},
@@ -198,6 +210,8 @@ const userAgent = "depphunter link check (+https://github.com/sarumaj/depphunter
 
 // Check asks about each URL once. It answers with the ones a host said are gone, and
 // with how many could not be checked at all.
+//
+// Implements: REQ-MD-012, REQ-MD-013
 func (w *Web) Check(ctx context.Context, urls []string, logFormat func(string, ...any)) (map[string]int, int) {
 	gone := map[string]int{}
 	unchecked := 0
@@ -236,6 +250,8 @@ func (w *Web) Check(ctx context.Context, urls []string, logFormat func(string, .
 // status is what a host says about a URL, and whether it said anything usable. A
 // HEAD is asked for first, because it is the question without the answer's body;
 // hosts that will not take one are asked again with GET.
+//
+// Implements: REQ-MD-012, REQ-MD-013, REQ-MD-014
 func (w *Web) status(ctx context.Context, u string) (int, bool) {
 	if code, ok := store.Get[int](w.cache, "link|"+u); ok {
 		return code, true

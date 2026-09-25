@@ -20,14 +20,15 @@ type stmt struct {
 type blockInfo struct{ kind, name string }
 
 var (
-	typeDecl  = regexp.MustCompile(`(?:^|\s)(class|interface|struct|enum|record(?:\s+(?:class|struct))?)\s+([A-Za-z_]\w*)`)
-	delegDecl = regexp.MustCompile(`(?:^|\s)delegate\s+[\w<>\[\],.?\s]+?\s+([A-Za-z_]\w*)\s*[<(]`)
-	nsDecl    = regexp.MustCompile(`^namespace\s+([\w.]+)`)
-	usingDecl = regexp.MustCompile(`^(?:global\s+)?using\s+[^(]`)
-	method    = regexp.MustCompile(`^(?:\[[^\]]*\]\s*)*(?:(?:public|private|protected|internal|static|virtual|override|abstract|sealed|async|extern|unsafe|new|partial|readonly|required)\s+)*[\w<>\[\],.?]+(?:\s*<[^>]*>)?\s+([A-Za-z_]\w*)\s*(?:<[^>]*>)?\s*\(`)
-	notNames  = map[string]bool{"if": true, "while": true, "for": true, "foreach": true, "switch": true, "using": true, "lock": true, "catch": true, "return": true, "new": true, "await": true, "yield": true, "throw": true, "nameof": true, "typeof": true, "sizeof": true, "fixed": true}
+	typeDecl     = regexp.MustCompile(`(?:^|\s)(class|interface|struct|enum|record(?:\s+(?:class|struct))?)\s+([A-Za-z_]\w*)`)
+	delegateDecl = regexp.MustCompile(`(?:^|\s)delegate\s+[\w<>\[\],.?\s]+?\s+([A-Za-z_]\w*)\s*[<(]`)
+	nsDecl       = regexp.MustCompile(`^namespace\s+([\w.]+)`)
+	usingDecl    = regexp.MustCompile(`^(?:global\s+)?using\s+[^(]`)
+	method       = regexp.MustCompile(`^(?:\[[^\]]*\]\s*)*(?:(?:public|private|protected|internal|static|virtual|override|abstract|sealed|async|extern|unsafe|new|partial|readonly|required)\s+)*[\w<>\[\],.?]+(?:\s*<[^>]*>)?\s+([A-Za-z_]\w*)\s*(?:<[^>]*>)?\s*\(`)
+	notNames     = map[string]bool{"if": true, "while": true, "for": true, "foreach": true, "switch": true, "using": true, "lock": true, "catch": true, "return": true, "new": true, "await": true, "yield": true, "throw": true, "nameof": true, "typeof": true, "sizeof": true, "fixed": true}
 )
 
+// Implements: REQ-CS-005
 func scanStatements(src string) []stmt {
 	var out []stmt
 	var cur strings.Builder
@@ -162,6 +163,8 @@ func isLiteralStart(rs []rune, i int) bool {
 // skipLiteral returns the index of the last rune of the string literal starting at i,
 // counting newlines into line. Interpolation holes are walked, so strings, chars and
 // braces inside them ($"{(ok ? "}" : "{")}") cannot end the literal early.
+//
+// Implements: REQ-CS-005, REQ-CS-006
 func skipLiteral(rs []rune, i int, line *int) int {
 	at := func(j int) rune {
 		if j < len(rs) {
@@ -169,10 +172,10 @@ func skipLiteral(rs []rune, i int, line *int) int {
 		}
 		return 0
 	}
-	verbatim, interp := false, false
+	verbatim, interpolated := false, false
 	for ; rs[i] != '"'; i++ {
 		verbatim = verbatim || rs[i] == '@'
-		interp = interp || rs[i] == '$'
+		interpolated = interpolated || rs[i] == '$'
 	}
 	quotes := 0
 	for at(i+quotes) == '"' {
@@ -202,7 +205,7 @@ func skipLiteral(rs []rune, i int, line *int) int {
 				continue
 			}
 			return i
-		case interp && c == '{':
+		case interpolated && c == '{':
 			if at(i+1) == '{' { // {{ is a literal brace
 				i++
 				continue

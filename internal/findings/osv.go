@@ -28,6 +28,8 @@ const (
 // osvEcosystems maps this project's ecosystem ids onto OSV's names. An ecosystem that
 // is not here is not asked about: a PowerShell Gallery module or a CI runner image has
 // no OSV counterpart, and guessing one would invent findings.
+//
+// Implements: REQ-FND-010
 var osvEcosystems = map[string]string{
 	"go":      "Go",
 	"npm":     "npm",
@@ -55,6 +57,7 @@ type OSV struct {
 	Logf func(string, ...any)
 }
 
+// Implements: REQ-FND-012
 func NewOSV(dir string, ttl, timeout time.Duration) *OSV {
 	return &OSV{http: &http.Client{Timeout: timeout}, cache: store.New(dir, ttl)}
 }
@@ -62,6 +65,8 @@ func NewOSV(dir string, ttl, timeout time.Duration) *OSV {
 // Query returns a finding per (package, vulnerability) pair, and whether anything was
 // left unasked. A database that will not answer is not an error the map can use: the
 // set is marked partial and what did arrive is kept.
+//
+// Implements: REQ-FND-010, REQ-FND-016
 func (o *OSV) Query(ctx context.Context, pkgs []Package) ([]*Finding, bool) {
 	queries := make([]Package, 0, len(pkgs))
 	seen := map[string]bool{}
@@ -108,6 +113,8 @@ func queryKey(p Package) string { return "osv-query|" + p.Ecosystem + "|" + p.Na
 
 // ids asks which vulnerabilities affect each package. The answer is only a list of
 // ids, which is what makes one batch request enough for a whole dependency tree.
+//
+// Implements: REQ-FND-011, REQ-FND-012
 func (o *OSV) ids(ctx context.Context, pkgs []Package) (map[Package][]string, bool) {
 	out := map[Package][]string{}
 	ask := pkgs[:0:0]
@@ -199,6 +206,8 @@ func (o *OSV) batch(ctx context.Context, pkgs []Package) ([]batchResult, error) 
 
 // entries fetches the vulnerabilities themselves. Only the few ids a query matched are
 // fetched, and each one only once however many packages it affects.
+//
+// Implements: REQ-FND-011
 func (o *OSV) entries(ctx context.Context, ids map[Package][]string) (map[string]*osvEntry, bool) {
 	want := map[string]bool{}
 	for _, list := range ids {
@@ -324,6 +333,8 @@ type osvEntry struct {
 }
 
 // finding places the vulnerability on the package it affects.
+//
+// Implements: REQ-FND-020
 func (e *osvEntry) finding(p Package) *Finding {
 	f := &Finding{
 		Kind:      KindVulnerability,
@@ -376,6 +387,8 @@ func (e *osvEntry) otherIDs() []string {
 
 // severity prefers the CVSS vector, which says what an advisory's severity word only
 // summarizes; the word is the fallback, and some databases give neither.
+//
+// Implements: REQ-FND-018
 func (e *osvEntry) severity() Severity {
 	for _, s := range e.Severity {
 		if !strings.HasPrefix(s.Type, "CVSS_V3") && s.Type != "" && !strings.HasPrefix(s.Score, "CVSS:3") {

@@ -38,6 +38,7 @@ func sample() *graph.Graph {
 	}
 }
 
+// Verifies: REQ-EXP-001
 func TestJSONRoundTrip(t *testing.T) {
 	var buf bytes.Buffer
 	if err := Write(&buf, sample(), "json"); err != nil {
@@ -49,6 +50,7 @@ func TestJSONRoundTrip(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-EXP-002
 func TestGraphML(t *testing.T) {
 	var buf bytes.Buffer
 	if err := Write(&buf, sample(), "graphml"); err != nil {
@@ -79,6 +81,7 @@ func TestGraphML(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-EXP-003
 func TestDOT(t *testing.T) {
 	var buf bytes.Buffer
 	if err := Write(&buf, sample(), "dot"); err != nil {

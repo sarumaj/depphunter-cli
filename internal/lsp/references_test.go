@@ -14,6 +14,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang/golang"
 )
 
+// Verifies: REQ-LSP-002, REQ-LSP-003, REQ-LSP-004
 func TestGoplsReferences(t *testing.T) {
 	gopls := Servers[0].command(exec.LookPath)
 	if gopls == nil {
@@ -71,6 +72,7 @@ func TestGoplsReferences(t *testing.T) {
 	t.Logf("%d references: %v", len(res.Edges), got)
 }
 
+// Verifies: REQ-LSP-008
 func TestNameColumn(t *testing.T) {
 	for _, c := range []struct {
 		line, name string

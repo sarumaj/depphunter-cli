@@ -10,6 +10,8 @@ import (
 
 // extractWorkflow reads a GitHub Actions workflow: its jobs are the symbols, and every
 // step's uses:, every reusable workflow and every container image is a dependency.
+//
+// Implements: REQ-CI-002, REQ-CI-003, REQ-CI-010
 func extractWorkflow(root *yaml.Node) *lang.Extraction {
 	ex := &lang.Extraction{}
 	for _, job := range pairs(field(root, "jobs")) {
@@ -34,6 +36,8 @@ func extractWorkflow(root *yaml.Node) *lang.Extraction {
 
 // extractAction reads a composite action's own steps; a JavaScript or Docker action
 // declares what it runs in runs.image.
+//
+// Implements: REQ-CI-002, REQ-CI-004
 func extractAction(root *yaml.Node) *lang.Extraction {
 	ex := &lang.Extraction{}
 	runs := field(root, "runs")
@@ -55,6 +59,8 @@ func extractAction(root *yaml.Node) *lang.Extraction {
 
 // addUses records a step's or job's uses:, which is either an action in another
 // repository, a path inside this one, or a container image.
+//
+// Implements: REQ-CI-002, REQ-CI-003, REQ-CI-004, REQ-CI-014
 func addUses(ex *lang.Extraction, n *yaml.Node, kind string) {
 	ref := text(n)
 	if ref == "" {
@@ -77,6 +83,8 @@ func addUses(ex *lang.Extraction, n *yaml.Node, kind string) {
 }
 
 // addContainers records the images a job runs in and the services beside it.
+//
+// Implements: REQ-CI-004
 func addContainers(ex *lang.Extraction, job *yaml.Node) {
 	add := func(n *yaml.Node, label string) {
 		if n == nil {

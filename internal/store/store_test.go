@@ -33,6 +33,7 @@ func TestRoundTrip(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-FND-012
 func TestStaleAnswersAreAMiss(t *testing.T) {
 	dir := t.TempDir()
 	New(dir, time.Hour).Put("k", answer{Name: "x"})

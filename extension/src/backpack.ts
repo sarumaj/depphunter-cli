@@ -10,6 +10,7 @@ import * as vscode from 'vscode';
 
 import { PackItem } from './api';
 
+// Implements: REQ-EXT-010
 export class BackpackView implements vscode.TreeDataProvider<PackItem> {
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this.changed.event;

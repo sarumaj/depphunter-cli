@@ -51,6 +51,8 @@ type Session struct {
 }
 
 // handleSession serves the shared state whole.
+//
+// Implements: REQ-SRV-009
 func (s *Server) handleSession(w http.ResponseWriter, _ *http.Request) {
 	s.mu.RLock()
 	out := Session{Selected: s.selected, Backpack: append([]PackItem(nil), s.pack...)}
@@ -68,6 +70,8 @@ func (s *Server) handleSession(w http.ResponseWriter, _ *http.Request) {
 // origin is the client that made the change, echoed back in the announcement: without
 // it every client would apply its own selection a second time on the way back, and
 // two of them watching each other would never settle.
+//
+// Implements: REQ-SRV-010, REQ-SRV-012
 func (s *Server) handleSelection(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		ID     string `json:"id"`
@@ -90,6 +94,8 @@ func (s *Server) handleSelection(w http.ResponseWriter, r *http.Request) {
 // handlePack takes the browser's backpack and tells the others it moved. The page
 // owns the list - it is the one with a store that survives the server - so this
 // replaces rather than merges: a merge would resurrect what somebody just cleared.
+//
+// Implements: REQ-SRV-011, REQ-SRV-012
 func (s *Server) handlePack(w http.ResponseWriter, r *http.Request) {
 	var req struct {
 		Items  []PackItem `json:"items"`
@@ -122,6 +128,8 @@ func (s *Server) handlePack(w http.ResponseWriter, r *http.Request) {
 // handlePackExport writes the catch out for somewhere that is not this map: JSON to
 // feed something else, CSV for a spreadsheet, Markdown to paste into the issue the
 // whole exercise was for.
+//
+// Implements: REQ-EXP-014
 func (s *Server) handlePackExport(w http.ResponseWriter, r *http.Request) {
 	format := r.URL.Query().Get("format")
 	if format == "" {

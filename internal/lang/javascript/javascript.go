@@ -23,6 +23,8 @@ const (
 
 // Captures: @import is a module specifier; @def.<kind> the name of a top-level
 // definition (methods are named after their class).
+//
+// Implements: REQ-LANG-023, REQ-JS-001, REQ-JS-011
 const commonQuery = `
 (import_statement source: (string (string_fragment) @import))
 (export_statement source: (string (string_fragment) @import))
@@ -57,12 +59,14 @@ const typescriptQuery = commonQuery + `
 (abstract_class_declaration body: (class_body (method_definition name: (_) @def.method)))
 `
 
+// Implements: REQ-LANG-007
 var (
 	jsGrammar  = treesitter.MustGrammar("javascript", javascript.Language(), commonQuery)
 	tsGrammar  = treesitter.MustGrammar("typescript", typescript.Language(), typescriptQuery)
 	tsxGrammar = treesitter.MustGrammar("tsx", tsx.Language(), typescriptQuery)
 )
 
+// Implements: REQ-JS-001
 func grammarFor(p string) *treesitter.Grammar {
 	switch path.Ext(p) {
 	case ".ts", ".mts", ".cts":
@@ -81,6 +85,7 @@ func (Plugin) Name() string { return "javascript" }
 
 func (Plugin) Claims(f *scan.File) bool { return grammarFor(f.Path) != nil && !f.Binary }
 
+// Implements: REQ-JS-005
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
 		{ID: ecoNPM, Name: "npm"},
@@ -94,6 +99,7 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 	return newResolver(all), nil
 }
 
+// Implements: REQ-JS-001, REQ-JS-011, REQ-LANG-024
 func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 	ex := &lang.Extraction{}
 	var symbols lang.SymbolSet

@@ -31,6 +31,8 @@ type UI struct {
 	Style   string `yaml:"style,omitempty" mapstructure:"style" json:"style"` // city | circuit | galaxy
 	ShowStd bool   `yaml:"show_std" mapstructure:"show_std" json:"showStd"`
 	// Tool is what walk mode puts in the walker's hands (see web/static/tools.js).
+	//
+	// Implements: REQ-TOOL-003
 	Tool        string `yaml:"tool,omitempty" mapstructure:"tool" json:"tool"`
 	ExpandDepth int    `yaml:"expand_depth" mapstructure:"expand_depth" json:"expandDepth"` // 0 = auto, -1 = everything
 	// Filters, as the browser's Filters panel sets them.
@@ -87,24 +89,34 @@ type Config struct {
 	HistoryCommits int  `yaml:"history_commits" mapstructure:"history_commits"`
 	// ResolveDepth adds an external package's own dependencies, read from the
 	// project's lock files: 0 none, -1 as far as they reach.
+	//
+	// Implements: REQ-SUP-008
 	ResolveDepth int `yaml:"resolve_depth" mapstructure:"resolve_depth"`
 	// Online allows asking package indexes about dependencies the repository's own
 	// files do not record. Analysis is offline without it.
+	//
+	// Implements: REQ-SUP-020
 	Online bool `yaml:"online" mapstructure:"online"`
 	// Explain writes the resolution report to the log when the analysis is over (see
 	// internal/trace). The report is served at /api/resolution either way; this is
 	// what puts it on the terminal.
+	//
+	// Implements: REQ-TRC-010
 	Explain bool `yaml:"explain" mapstructure:"explain"`
 	// Private names the packages that are this organization's own, as glob patterns
 	// with GOPRIVATE's meaning; nothing matched is named to a public index or sent to
 	// the vulnerability database (see internal/scope, which says why). GOPRIVATE and
 	// GONOPROXY are read on top of whatever is set here.
+	//
+	// Implements: REQ-SUP-034, REQ-SUP-041
 	Private []string `yaml:"private" mapstructure:"private"`
 	// TrustIndexes are index URLs to treat as though this machine's own configuration
 	// named them, for the organization whose repositories carry their own .npmrc and
 	// would otherwise draw a warning on every package (see internal/index). It comes
 	// from the user's own config or the command line only: a repository vouching for
 	// itself would be no guard at all.
+	//
+	// Implements: REQ-SUP-042
 	TrustIndexes []string `yaml:"trust_indexes" mapstructure:"trust_indexes"`
 	// Findings are files (or globs) holding what a scanner already reported:
 	// govulncheck, npm audit, trivy, golangci-lint, eslint or osv-scanner JSON.
@@ -115,6 +127,8 @@ type Config struct {
 	// Links follows the links the repository's Markdown carries and reports the ones
 	// that lead nowhere. It needs nothing but the repository, so it is on by default;
 	// with Online the http(s) links are asked about as well.
+	//
+	// Implements: REQ-MD-010, REQ-MD-016
 	Links bool `yaml:"links" mapstructure:"links"`
 	// LSP asks installed language servers for symbol-level references (slow, opt-in).
 	LSP        bool          `yaml:"lsp" mapstructure:"lsp"`
@@ -135,6 +149,7 @@ type Config struct {
 	Embed []string `yaml:"-" mapstructure:"-"`
 }
 
+// Implements: REQ-SEC-001
 func Default() Config {
 	return Config{
 		Addr:           "127.0.0.1:0",
@@ -151,6 +166,8 @@ func Default() Config {
 }
 
 // RegisterFlags declares the command-line flags on fs. Load reads them back.
+//
+// Implements: REQ-CFG-005, REQ-CLI-004
 func RegisterFlags(fs *pflag.FlagSet) {
 	d := Default()
 	fs.String("config", "", "config file to use instead of <path>/"+ProjectFile)
@@ -170,6 +187,7 @@ func RegisterFlags(fs *pflag.FlagSet) {
 	fs.Bool("watch", false, "re-analyze on file changes and update the browser live")
 	fs.Bool("no-cache", false, "do not read or write the analysis cache")
 	fs.Bool("no-history", false, "do not read git history")
+	// Implements: REQ-HIST-002
 	fs.Int("history-commits", d.HistoryCommits, "read at most this many commits of git history")
 	fs.Bool("online", false, "ask package indexes about dependencies the project's files do not record")
 	fs.Bool("explain", false,
@@ -180,13 +198,16 @@ func RegisterFlags(fs *pflag.FlagSet) {
 			"they are never asked of a public index nor sent to the vulnerability database; repeatable")
 	fs.StringArray("trust-index", nil,
 		"index URL to treat as configured on this machine, so a repository that names it is not marked; repeatable")
+	// Implements: REQ-FND-001
 	fs.StringArray("findings", nil,
 		"scanner report to place on the map (govulncheck, npm audit, trivy, golangci-lint, eslint, osv-scanner JSON); repeatable, globs allowed")
 	fs.Bool("no-vulns", false, "do not place scanner reports on the map, and do not ask the OSV database")
+	// Implements: REQ-MD-016
 	fs.Bool("no-links", false, "do not follow the links the repository's Markdown carries")
 	fs.Int("resolve-depth", d.ResolveDepth,
 		"levels of external dependencies-of-dependencies to resolve from lock files (-1 = all)")
 	fs.Bool("lsp", false, "find symbol references with installed language servers (gopls, …)")
+	// Implements: REQ-LSP-009
 	fs.Duration("lsp-timeout", d.LSPTimeout, "time budget for language servers")
 	fs.String("editor", "", `editor command template, e.g. "code -g {file}:{line}" (default: auto-detect)`)
 	fs.StringArray("embed", nil,
@@ -206,6 +227,8 @@ var flagKeys = map[string]string{
 }
 
 // Settings a --no-* flag turns off.
+//
+// Implements: REQ-CFG-008
 var negatedFlags = map[string]string{
 	"no-open": "open", "no-cache": "cache", "no-history": "history",
 	"no-vulns": "vulns", "no-links": "links",
@@ -213,6 +236,8 @@ var negatedFlags = map[string]string{
 
 // Environment variables (after the DEPPHUNTER_ prefix), by setting. EXCLUDE is
 // handled apart: it adds to the configured globs instead of replacing them.
+//
+// Implements: REQ-CFG-006
 var envKeys = map[string]string{
 	"addr": "ADDR", "open": "OPEN", "max_file_size": "MAX_FILE_SIZE", "watch": "WATCH", "cache": "CACHE",
 	"history": "HISTORY", "history_commits": "HISTORY_COMMITS", "resolve_depth": "RESOLVE_DEPTH", "online": "ONLINE",
@@ -225,6 +250,8 @@ var envKeys = map[string]string{
 // Load builds the configuration from the parsed flags fs (see RegisterFlags), the
 // positional args (at most one path), the environment, and the config files.
 // userDir holds the user-level config (e.g. ~/.config/depphunter); "" skips it.
+//
+// Implements: REQ-CFG-001, REQ-CFG-002, REQ-CFG-003, REQ-CLI-002
 func Load(fs *pflag.FlagSet, args []string, userDir string) (Config, error) {
 	cfg := Default()
 	if len(args) > 1 {
@@ -294,6 +321,7 @@ func Load(fs *pflag.FlagSet, args []string, userDir string) (Config, error) {
 	}
 
 	cfg.Root, cfg.ConfigFile = root, configFile
+	// Implements: REQ-CFG-009
 	if e := os.Getenv("DEPPHUNTER_EXCLUDE"); e != "" {
 		cfg.Exclude = append(cfg.Exclude, strings.Split(e, ",")...)
 	}
@@ -350,6 +378,8 @@ func setDefaults(v *viper.Viper, d Config) {
 //
 // Only the keys one value can seed are accepted; a list is a thing to write in the
 // file rather than to spell on a command line.
+//
+// Implements: REQ-CFG-016, REQ-CFG-017
 func uiDefaults(v *viper.Viper, pairs []string) error {
 	for _, pair := range pairs {
 		key, value, ok := strings.Cut(pair, "=")
@@ -380,6 +410,8 @@ func uiDefaults(v *viper.Viper, pairs []string) error {
 }
 
 // mergeFile overlays the YAML file onto v; keys absent from the file keep their value.
+//
+// Implements: REQ-CFG-004, REQ-CFG-010
 func mergeFile(v *viper.Viper, name string, required, trusted bool) error {
 	data, err := os.ReadFile(name)
 	if errors.Is(err, os.ErrNotExist) && !required {
@@ -401,6 +433,8 @@ func mergeFile(v *viper.Viper, name string, required, trusted bool) error {
 		// `private` is the other way round and stays: all it can do is stop
 		// depphunter from naming a package to somebody else, and a repository saying
 		// "these are ours" is exactly who would know.
+		//
+		// Implements: REQ-SUP-020, REQ-SUP-041, REQ-SUP-043
 		delete(m, "editor")
 		delete(m, "online")
 		delete(m, "trust_indexes")
@@ -458,10 +492,13 @@ func rooted(s string) bool {
 
 // FindingsEnabled reports whether anything will be placed on the map: a report to
 // read, a database to ask, or documentation whose links may lead nowhere.
+//
+// Implements: REQ-MD-010
 func (c Config) FindingsEnabled() bool {
 	return c.Links || c.Vulns && (len(c.Findings) > 0 || c.Online)
 }
 
+// Implements: REQ-CFG-007
 func (c Config) validate() error {
 	return errors.Join(
 		c.UI.Validate(),

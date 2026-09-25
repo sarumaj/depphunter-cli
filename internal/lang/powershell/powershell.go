@@ -31,6 +31,7 @@ const (
 	refRequires = "requires" // a declared module requirement, optionally "requires=<version>"
 )
 
+// Implements: REQ-PS-011
 type Plugin struct{}
 
 func (Plugin) Name() string { return "powershell" }
@@ -64,6 +65,7 @@ var (
 // Words that look like method headers inside class bodies but are statements.
 var keywords = map[string]bool{"if": true, "elseif": true, "foreach": true, "for": true, "while": true, "switch": true, "until": true, "catch": true, "return": true, "throw": true}
 
+// Implements: REQ-PS-005, REQ-PS-006
 func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 	ex := &lang.Extraction{}
 	var symbols lang.SymbolSet
@@ -121,6 +123,7 @@ type ref struct{ spec, module, how string }
 // commandRefs reads the dependencies a single command expresses.
 var assignment = regexp.MustCompile(`^\$[\w:]+(?:\.\w+)*\s*[+]?=\s*`)
 
+// Implements: REQ-PS-001, REQ-PS-002, REQ-PS-003
 func commandRefs(text string) []ref {
 	// $psGet = Import-Module PowerShellGet -PassThru
 	fields := psFields(assignment.ReplaceAllString(text, ""))
@@ -155,6 +158,7 @@ var valueParams = map[string]bool{
 	"-alias": true, "-psession": true, "-cimsession": true, "-version": true,
 }
 
+// Implements: REQ-PS-002
 func importModuleNames(args []string) []string {
 	var names []string
 	collecting := false
@@ -182,6 +186,8 @@ func importModuleNames(args []string) []string {
 
 // moduleSpec is a module requirement: RequiredVersion names one version, while
 // ModuleVersion is a minimum the installed module may exceed.
+//
+// Implements: REQ-PS-010
 type moduleSpec struct {
 	name, version string
 	exact         bool
@@ -207,6 +213,8 @@ var (
 
 // moduleSpecs parses module specifications: names, quoted names and
 // @{ModuleName='X'; ModuleVersion='1.0'} tables, in lists or @(...) arrays.
+//
+// Implements: REQ-PS-005, REQ-PS-006, REQ-PS-010
 func moduleSpecs(s string) []moduleSpec {
 	var out []moduleSpec
 	for _, t := range hashtable.FindAllString(s, -1) {

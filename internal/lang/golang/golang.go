@@ -28,6 +28,7 @@ func (Plugin) Name() string { return "go" }
 
 func (Plugin) Claims(f *scan.File) bool { return strings.HasSuffix(f.Path, ".go") && !f.Binary }
 
+// Implements: REQ-LANG-005, REQ-GO-004
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
 		{ID: ecoModules, Name: "Go modules"},
@@ -73,6 +74,7 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 	return resolve(imp.Module, owner(r.mods, file), r.mods, r.pkgDirs)
 }
 
+// Implements: REQ-GO-003
 func loadModules(all []*scan.File) ([]*module, error) {
 	var mods []*module
 	for _, f := range all {
@@ -127,6 +129,7 @@ func owner(mods []*module, file string) *module {
 	return nil
 }
 
+// Implements: REQ-LANG-009, REQ-GO-001
 func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 	fSet := token.NewFileSet()
 	// On syntax errors the parser still returns a partial AST, which is good enough for a map.
@@ -145,6 +148,7 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 	return ex, nil
 }
 
+// Implements: REQ-GO-003, REQ-GO-004, REQ-GO-005, REQ-GO-006
 func resolve(ip string, own *module, mods []*module, pkgDirs map[string]bool) lang.Target {
 	if own != nil {
 		// The longest match, as the go command picks it: ranging over the map and
@@ -211,6 +215,7 @@ func within(ip, mod string) (string, bool) {
 	return "", false
 }
 
+// Implements: REQ-GO-002, REQ-LANG-024
 func symbols(fSet *token.FileSet, af *ast.File) []lang.Symbol {
 	var set lang.SymbolSet
 	add := func(name, kind string, pos token.Pos) { set.Add(name, kind, fSet.Position(pos).Line) }

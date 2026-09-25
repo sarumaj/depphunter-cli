@@ -15,6 +15,7 @@
 
 const MAX = 24; // beyond this the oldest is let go of, so a long session cannot grow
 
+// Implements: REQ-HUNT-034, REQ-HUNT-036
 export class Stash {
   /** onChange is called whenever the contents change, for whatever draws them. */
   constructor(onChange = () => {}) {
@@ -62,6 +63,8 @@ export class Stash {
   /**
    * Writes one out as a file. The name carries the repository and the photograph's
    * number, so a handful saved from one session sort the way they were taken.
+   *
+   * Implements: REQ-HUNT-035
    */
   save(id, repo) {
     const it = this.items.find(x => x.id === id);

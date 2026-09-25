@@ -33,16 +33,19 @@ function fromSettings(values) {
 }
 
 describe('the command line', () => {
+  // Verifies: REQ-EXT-022
   it('always runs headless, on a free port, embeddable', () => {
     const args = argv(config({}), ROOT);
     assert.deepStrictEqual(args.slice(0, 3), ['--no-open', '--addr', '127.0.0.1:0']);
     assert.ok(args.includes('--embed'));
   });
 
+  // Verifies: REQ-EXT-024
   it('adds nothing but --watch for settings left at their defaults', () => {
     assert.deepStrictEqual(fromSettings({}), ['--watch']);
   });
 
+  // Verifies: REQ-EXT-017, REQ-EXT-018, REQ-EXT-024, REQ-EXT-025, REQ-MD-016
   it('turns every setting into its flag', () => {
     assert.deepStrictEqual(fromSettings({
       config: 'ci/depphunter.yaml',
@@ -88,11 +91,13 @@ describe('the command line', () => {
     ]);
   });
 
+  // Verifies: REQ-EXT-024
   it('passes zero, which is a value and not an unset number', () => {
     assert.deepStrictEqual(fromSettings({ watch: false, resolveDepth: 0, expandDepth: 0 }),
       ['--resolve-depth', '0', '--ui-default', 'expand_depth=0']);
   });
 
+  // Verifies: REQ-EXT-018
   it('never sends a view setting as a flag, which would beat the saved view', () => {
     // The map writes what it is set to into the repository's own ui: section, and a
     // flag beats that file - so a view setting sent as one would make Save quietly

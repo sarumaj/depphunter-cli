@@ -1,3 +1,4 @@
+// Implements: REQ-DIST-017
 import potpack from './vendor/potpack.js';
 
 import { bulk } from './model.js';
@@ -14,6 +15,7 @@ const MAX_H = 10;        // tallest building
 const SYM = 0.42, SYM_GAP = 0.12;
 const LAND_MARGIN = 1.2, LAND_H = 0.45, ISLAND_GAP = 4;
 
+// Implements: REQ-MAP-038
 export const SCALES = {
   linear: t => t,
   sqrt: t => Math.sqrt(t),
@@ -24,6 +26,7 @@ export const SCALES = {
  * @returns {{boxes: Box[], byNode: Map<string, Box>, bounds}}
  * Heights use the unfiltered maximum so filtering never rescales what stays visible.
  * Box: {node, kind: 'land'|'terrace'|'district'|'building'|'symbol'|'package', x, z (centre), y, w, d, h}
+ * Implements: REQ-MAP-010
  */
 export function layout(model, state) {
   const { visible, counts } = state.vis;
@@ -39,6 +42,7 @@ export function layout(model, state) {
   const expanded = n => state.expanded.has(n.id);
   const symbols = n => n.children.filter(c => c.kind === 'symbol');
 
+  // Implements: REQ-MAP-003
   function measure(n) {
     let s;
     if (n.kind === 'package') {
@@ -63,6 +67,7 @@ export function layout(model, state) {
     return s;
   }
 
+  // Implements: REQ-MAP-002, REQ-MAP-004, REQ-MAP-005, REQ-MAP-006, REQ-MAP-008, REQ-MAP-058
   function place(n, x0, z0, y) {
     const s = sizes.get(n.id);
     const cx = x0 + s.w / 2, cz = z0 + s.d / 2;
@@ -97,6 +102,7 @@ export function layout(model, state) {
   }
 
   // Mainland.
+  // Implements: REQ-MAP-001
   const main = measure(model.root);
   const land = (x0, z0, w, d, node) => boxes.push({
     node, kind: 'land', x: x0 + w / 2, z: z0 + d / 2, y: -LAND_H, w: w + 2 * LAND_MARGIN, d: d + 2 * LAND_MARGIN, h: LAND_H,
@@ -105,6 +111,7 @@ export function layout(model, state) {
   place(model.root, 0, 0, 0);
 
   // Islands ring the mainland, the most imported nearest.
+  // Implements: REQ-MAP-007, REQ-MAP-011
   const islands = model.ecosystems
     .filter(e => visible(e) && e.children.length)
     .map(e => ({ e, s: measure(e), uses: e.children.reduce((a, p) => a + (p.importers || 0), 0) }))
@@ -132,6 +139,7 @@ export function layout(model, state) {
  * side's length, so they never reach the corners; only a northern or southern row
  * may outgrow its side, for an island wider than the whole side.
  * put(item, x0, z0) receives the island's outer corner, land margin included.
+ * Implements: REQ-MAP-011
  */
 function ringIslands(items, rect, put) {
   const G = ISLAND_GAP;
@@ -199,6 +207,7 @@ function symbolHeight(sym) {
  * around them rather than setting the scale for it. A 4 MB blob among 500-line files
  * would otherwise flatten the whole city to make room for itself; instead it runs up
  * against the Math.min(1, ...) in height() and tops out level with the longest file.
+ * Implements: REQ-MAP-061
  */
 function maxFileLoc(n, max = 1) {
   if (n.kind === 'file') return Math.max(max, n.loc || 0);
@@ -209,6 +218,7 @@ function maxFileLoc(n, max = 1) {
 // Packs a terrace's children into a near-square area with potpack. Each box carries
 // its gap; positions are offset by the terrace padding. potpack's sort is stable and
 // children arrive in name order, so the same tree always packs the same way.
+// Implements: REQ-MAP-043, REQ-MAP-010
 function shelf(items) {
   if (!items.length) return { w: FILE + 2 * PAD, d: FILE + 2 * PAD };
   const boxes = items.map(it => ({ w: it.w + GAP, h: it.d + GAP, it }));

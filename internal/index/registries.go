@@ -23,6 +23,8 @@ import (
 // modern registry speaks it, but crates.io serves its index from a different host
 // than the registry Cargo is configured with, so the one is turned into the other
 // here; a mirror already names its index and is used as given.
+//
+// Implements: REQ-SUP-024
 func (c *Client) cargoCrate(ctx context.Context, index string, t lang.Target) ([]dep, error) {
 	return c.cargoSparse(ctx, cargoIndex(index), t)
 }
@@ -104,6 +106,8 @@ func sparsePath(name string) string {
 // A NuGet feed is a service index naming the resources it offers, so the address of
 // the packages themselves has to be asked for before anything can be fetched from it.
 // That answer is the same for every package on the feed and is kept for the run.
+//
+// Implements: REQ-SUP-025
 func (c *Client) nugetPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
 	base, err := c.nugetBase(ctx, index)
 	if err != nil || base == "" {
@@ -249,6 +253,8 @@ const ociAccept = "application/vnd.oci.image.manifest.v1+json," +
 // and that is the image whose vulnerabilities this one inherits, which is what makes
 // an image on the map more than a leaf. Two or three requests, no layers: the
 // manifest, one more for a multi-platform index, and the config blob.
+//
+// Implements: REQ-SUP-026
 func (c *Client) ociBase(ctx context.Context, index string, t lang.Target) ([]dep, error) {
 	repo := ociRepository(t.Package)
 	ref := t.Version
@@ -403,6 +409,8 @@ func (c *Client) ociGet(ctx context.Context, index, repo, address, accept string
 // without letting a plain-http challenge redirect the request elsewhere. Credentials
 // are chosen by the realm's own host (credentials.apply), so a redirected realm gets
 // none of the registry's.
+//
+// Implements: REQ-SUP-027
 func (c *Client) ociToken(ctx context.Context, index, repo, challenge string) (string, error) {
 	scheme, params, ok := strings.Cut(challenge, " ")
 	if !ok || !strings.EqualFold(scheme, "Bearer") {

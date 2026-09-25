@@ -14,6 +14,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
+// Implements: REQ-PY-005
 var stdlib = map[string]bool{"__future__": true, "_thread": true}
 
 func init() {
@@ -42,6 +43,8 @@ func init() {
 
 // importAliases maps import names to the distribution that provides them, for the
 // well-known cases where the two differ.
+//
+// Implements: REQ-PY-010
 var importAliases = map[string]string{
 	// cSpell: disable
 	"yaml": "PyYAML", "PIL": "Pillow", "sklearn": "scikit-learn", "skimage": "scikit-image",
@@ -74,6 +77,7 @@ type resolver struct {
 	tree map[string][]string
 }
 
+// Implements: REQ-PY-003, REQ-PY-006, REQ-PY-009
 func newResolver(all, claimed []*scan.File) *resolver {
 	r := &resolver{files: map[string]bool{}, pyDirs: map[string]bool{}, distMap: map[string]*dist{}, tree: map[string][]string{}}
 	for _, f := range claimed {
@@ -136,6 +140,8 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 }
 
 // resolve handles "import a.b.c".
+//
+// Implements: REQ-PY-003, REQ-PY-004, REQ-PY-005
 func (r *resolver) resolve(dotted, file string) lang.Target {
 	parts := strings.Split(dotted, ".")
 	for _, root := range r.roots {
@@ -154,6 +160,8 @@ func (r *resolver) resolve(dotted, file string) lang.Target {
 }
 
 // resolveFrom handles "from mod import name"; name may be a sub-module.
+//
+// Implements: REQ-PY-002
 func (r *resolver) resolveFrom(mod, name, file string) lang.Target {
 	if !strings.HasPrefix(mod, ".") {
 		if name != "" {
@@ -211,6 +219,7 @@ func (r *resolver) probe(root string, parts []string) (lang.Target, bool) {
 	return lang.Target{}, false
 }
 
+// Implements: REQ-PY-010
 func (r *resolver) distribution(parts []string) lang.Target {
 	top := parts[0]
 	candidates := []string{top, "python-" + top, "py" + top, top + "-python"}
@@ -253,6 +262,8 @@ func (r *resolver) addRequirement(req string) {
 // addDist records a distribution and what its specifier says about the version:
 // "==1.2.3" and a lock file name one, ">=2.0" and "*" do not. locked marks entries
 // read from a lock file, which are read after the manifests and win.
+//
+// Implements: REQ-SUP-003, REQ-PY-009, REQ-PY-013
 func (r *resolver) addDist(name, spec string, locked bool) {
 	if name == "" || strings.EqualFold(name, "python") {
 		return
@@ -279,6 +290,7 @@ func (r *resolver) addDist(name, spec string, locked bool) {
 	}
 }
 
+// Implements: REQ-PY-006
 func (r *resolver) readRequirements(abs string) {
 	data, err := os.ReadFile(abs)
 	if err != nil {
@@ -291,6 +303,7 @@ func (r *resolver) readRequirements(abs string) {
 	}
 }
 
+// Implements: REQ-PY-007
 func (r *resolver) readPyproject(abs string) {
 	var doc struct {
 		Project struct {
@@ -333,6 +346,8 @@ func (r *resolver) readPyproject(abs string) {
 
 // readSetupCfg reads [options] install_requires and [options.extras_require] from a
 // setuptools setup.cfg (INI with indented continuation lines).
+//
+// Implements: REQ-PY-011
 func (r *resolver) readSetupCfg(abs string) {
 	data, err := os.ReadFile(abs)
 	if err != nil {
@@ -368,6 +383,8 @@ var (
 
 // readSetupPy reads literal install_requires / extras_require lists from setup.py;
 // requirements computed at run time cannot be seen without executing it.
+//
+// Implements: REQ-PY-012
 func (r *resolver) readSetupPy(abs string) {
 	data, err := os.ReadFile(abs)
 	if err != nil {
@@ -389,6 +406,7 @@ func (r *resolver) readSetupPy(abs string) {
 	}
 }
 
+// Implements: REQ-PY-008
 func (r *resolver) readPipfile(abs string) {
 	var doc struct {
 		Packages    map[string]any
@@ -414,6 +432,7 @@ func (r *resolver) addTable(t map[string]any) {
 	}
 }
 
+// Implements: REQ-PY-009
 func (r *resolver) readLock(f *scan.File) {
 	if path.Base(f.Path) == "Pipfile.lock" {
 		var doc map[string]json.RawMessage
@@ -485,6 +504,8 @@ func requirementName(req string) string {
 }
 
 // Dependencies implements lang.Transitive from the lock files the project carries.
+//
+// Implements: REQ-SUP-009
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 	if t.Ecosystem != ecoPyPI {
 		return nil

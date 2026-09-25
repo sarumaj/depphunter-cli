@@ -32,6 +32,7 @@ type Server struct {
 	Open bool
 }
 
+// Implements: REQ-LSP-002
 var Servers = []Server{
 	{Name: "gopls", Exts: map[string]string{".go": "go"}, Commands: [][]string{{"gopls"}}},
 	{Name: "typescript-language-server", Open: true, Exts: map[string]string{
@@ -80,6 +81,8 @@ type span struct {
 
 // References asks every applicable, installed language server where each symbol of g
 // is referenced.
+//
+// Implements: REQ-LSP-002, REQ-LSP-009, REQ-LSP-010
 func References(ctx context.Context, g *graph.Graph, opts Options) (*Result, error) {
 	if opts.Parallel <= 0 {
 		opts.Parallel = max(2, runtime.NumCPU()/2)
@@ -210,6 +213,7 @@ func goBin(name string) string {
 	return ""
 }
 
+// Implements: REQ-LSP-003
 func runServer(ctx context.Context, srv Server, argv []string, opts Options, paths []string,
 	files map[string]*fileInfo, add func(from, to string)) (int, error) {
 	c, err := start(ctx, opts.Root, argv)
@@ -325,6 +329,8 @@ func runServer(ctx context.Context, srv Server, argv []string, opts Options, pat
 // enclosing returns the innermost symbol whose definition contains line, or the file
 // for top-level code. Without extents from the server it falls back to the closest
 // preceding definition.
+//
+// Implements: REQ-LSP-004
 func (f *fileInfo) enclosing(line int) string {
 	if f.spans != nil {
 		best := span{id: f.id, start: 0, end: 1 << 30}
@@ -359,6 +365,8 @@ type documentSymbol struct {
 
 // documentSpans matches the file's symbols to the server's document symbols by
 // definition line and returns their extents; nil when the server gives none.
+//
+// Implements: REQ-LSP-004
 func documentSpans(ctx context.Context, c *client, uri string, symbols []symbol) []span {
 	var reply []documentSymbol
 	if err := c.call(ctx, "textDocument/documentSymbol", map[string]any{
@@ -401,6 +409,8 @@ var wordCache sync.Map // name -> *regexp.Regexp
 
 // nameColumn finds name as a whole word on the definition line and returns its
 // column in UTF-16 code units, the unit LSP positions use by default.
+//
+// Implements: REQ-LSP-008
 func nameColumn(line, name string) (int, bool) {
 	re, ok := wordCache.Load(name)
 	if !ok {

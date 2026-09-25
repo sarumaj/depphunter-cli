@@ -18,6 +18,7 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 	return langtest.Analyze(t, Plugin{}, "testdata/repo")
 }
 
+// Verifies: REQ-CI-002, REQ-CI-003, REQ-CI-004, REQ-CI-009, REQ-CI-011, REQ-CI-012, REQ-CI-014
 func TestWorkflow(t *testing.T) {
 	// cSpell: disable
 	langtest.CheckImports(t, analyze(t)[".github/workflows/ci.yml"], map[string]lang.Target{
@@ -45,6 +46,7 @@ func TestWorkflow(t *testing.T) {
 	// cSpell: enable
 }
 
+// Verifies: REQ-CI-010
 func TestWorkflowJobsAreSymbols(t *testing.T) {
 	got := langtest.Symbols(t, analyze(t)[".github/workflows/ci.yml"])
 	for _, job := range []string{"test", "release", "build"} {
@@ -57,6 +59,7 @@ func TestWorkflowJobsAreSymbols(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-CI-002, REQ-CI-014
 func TestCompositeAction(t *testing.T) {
 	langtest.CheckImports(t, analyze(t)[".github/actions/setup/action.yml"], map[string]lang.Target{
 		"uses: actions/cache@0c907a75c2c80ebcb7f088228285e798b750cf8f # v4.2.1": {
@@ -66,6 +69,7 @@ func TestCompositeAction(t *testing.T) {
 	})
 }
 
+// Verifies: REQ-CI-005, REQ-CI-007, REQ-CI-008, REQ-CI-009, REQ-CI-011, REQ-CI-013
 func TestGitLabPipeline(t *testing.T) {
 	langtest.CheckImports(t, analyze(t)[".gitlab-ci.yml"], map[string]lang.Target{
 		"include local: /.gitlab/ci/build.yml": {Local: ".gitlab/ci/build.yml"},
@@ -86,6 +90,7 @@ func TestGitLabPipeline(t *testing.T) {
 	})
 }
 
+// Verifies: REQ-CI-010
 func TestGitLabJobsAreSymbols(t *testing.T) {
 	got := langtest.Symbols(t, analyze(t)[".gitlab-ci.yml"])
 	for _, job := range []string{"unit", ".hidden-template"} {
@@ -98,6 +103,7 @@ func TestGitLabJobsAreSymbols(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-CI-001
 func TestClaims(t *testing.T) {
 	for _, p := range []string{
 		".github/workflows/ci.yml", ".github/workflows/nightly.yaml", "action.yml",
@@ -120,6 +126,7 @@ func TestClaims(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-CI-012
 func TestImageReferences(t *testing.T) {
 	for _, c := range []struct {
 		ref  string
@@ -140,6 +147,8 @@ func TestImageReferences(t *testing.T) {
 
 // The same YAML is read as a workflow, an action or a GitLab pipeline depending on
 // where it is, so where it is has to be part of the cache key.
+//
+// Verifies: REQ-CI-001
 func TestTheKindOfFileIsPartOfTheCacheKey(t *testing.T) {
 	src := []byte("runs:\n  using: composite\n")
 	key := func(p string) string {

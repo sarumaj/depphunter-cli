@@ -4,6 +4,8 @@ import "testing"
 
 // The base scores the specification's own examples produce. Getting these wrong would
 // put the wrong color on every bug in the city.
+//
+// Verifies: REQ-FND-018
 func TestCVSSBaseScores(t *testing.T) {
 	for vector, want := range map[string]float64{
 		"CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:H/I:H/A:H": 9.8,
@@ -41,6 +43,7 @@ func TestCVSSRejectsWhatItCannotScore(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-FND-018
 func TestSeverityOfScore(t *testing.T) {
 	for score, want := range map[float64]Severity{
 		0: Info, 0.1: Low, 3.9: Low, 4: Medium, 6.9: Medium,

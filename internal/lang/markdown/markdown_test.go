@@ -18,6 +18,7 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 	return langtest.Analyze(t, Plugin{}, "testdata/repo")
 }
 
+// Verifies: REQ-MD-001, REQ-MD-003, REQ-MD-004, REQ-MD-005
 func TestLinksBecomeDependencies(t *testing.T) {
 	got := langtest.Imports(t, analyze(t)["README.md"])
 	for spec, want := range map[string]lang.Target{
@@ -61,6 +62,7 @@ func TestLinksBecomeDependencies(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-MD-002
 func TestHeadingsBecomeSymbols(t *testing.T) {
 	got := langtest.Symbols(t, analyze(t)["README.md"])
 	for name, kind := range map[string]string{
@@ -79,6 +81,7 @@ func TestHeadingsBecomeSymbols(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-MD-008
 func TestAnchors(t *testing.T) {
 	src, err := os.ReadFile("testdata/repo/docs/SPEC.md")
 	if err != nil {
@@ -95,6 +98,7 @@ func TestAnchors(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-MD-008
 func TestSlug(t *testing.T) {
 	for _, c := range []struct{ heading, want string }{
 		{"How it works", "how-it-works"},
@@ -117,6 +121,8 @@ func TestSlug(t *testing.T) {
 
 // A reference link whose definition is missing renders as the literal text it was
 // written as, which is a break that reading the rendered page does not reveal.
+//
+// Verifies: REQ-MD-009
 func TestUndefinedReferenceIsReported(t *testing.T) {
 	src, err := os.ReadFile("testdata/repo/README.md")
 	if err != nil {

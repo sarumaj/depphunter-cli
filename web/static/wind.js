@@ -19,6 +19,7 @@
 // the jet has its own tank, and paying twice for the same flight would only mean
 // landing to catch a breath the walker never took.
 
+// Implements: REQ-WALK-038, REQ-WALK-039
 const FULL = 9;        // seconds of flat-out running a walker has in them
 const JUMP = 0.16;     // ... and what one jump takes out of it, as a share
 const RECOVER = 7;     // seconds of not running it takes to get all of it back
@@ -27,6 +28,8 @@ const SECOND_WIND = 0.25; // how much has to be back before they can run again
 /**
  * The walker's wind, and the gauge in the HUD that shows it. Like Health it holds no
  * timers: walk.js calls it once a frame with what the walker is doing.
+ *
+ * Implements: REQ-WALK-038, REQ-WALK-039
  */
 export class Wind {
   /** `hud` is the walk HUD, whose .w-stamina it draws into. */

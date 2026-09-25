@@ -12,6 +12,8 @@ import (
 // Read imports one report. The format is recognized from its own shape rather than
 // from the file's name: a report is whatever a tool wrote, and CI pipelines name them
 // anything. The returned name is the tool the report came from.
+//
+// Implements: REQ-FND-009
 func Read(r io.Reader) (name string, out []*Finding, err error) {
 	data, err := io.ReadAll(io.LimitReader(r, 256<<20))
 	if err != nil {
@@ -72,6 +74,8 @@ func Read(r io.Reader) (name string, out []*Finding, err error) {
 // govulncheck -json writes a stream of one-key objects: the advisories it knows, then
 // the places in this repository that reach them. An advisory without a reachable call
 // is reported too, and says so.
+//
+// Implements: REQ-FND-003, REQ-FND-020
 func readGovulncheck(data []byte) ([]*Finding, error) {
 	type trace = govulnFrame
 	type message struct {
@@ -198,6 +202,7 @@ func symbol(receiver, function string) string {
 
 // ------------------------------------------------------------------ osv-scanner
 
+// Implements: REQ-FND-006
 func readOSVScanner(data []byte) ([]*Finding, error) {
 	var doc struct {
 		Results []struct {
@@ -250,6 +255,8 @@ func ourEcosystem(name string) string {
 // npm audit --json (npm 7 and later) reports one entry per affected package, with the
 // advisories behind it in "via". A via entry that is a string names another package
 // that pulls the problem in, which is a chain rather than an advisory.
+//
+// Implements: REQ-FND-004
 func readNPMAudit(data []byte) ([]*Finding, error) {
 	type via struct {
 		Source   json.Number `json:"source"`
@@ -353,6 +360,8 @@ func npmFix(raw json.RawMessage) string {
 }
 
 // npm 6 wrote a flat advisory table instead.
+//
+// Implements: REQ-FND-004
 func readNPMAuditV6(data []byte) ([]*Finding, error) {
 	var doc struct {
 		Advisories map[string]struct {
@@ -415,6 +424,7 @@ func advisoryRef(url, id string) string {
 
 // ------------------------------------------------------------------ trivy
 
+// Implements: REQ-FND-005, REQ-FND-018
 func readTrivy(data []byte) ([]*Finding, error) {
 	type cause struct {
 		StartLine int `json:"StartLine"`
@@ -540,6 +550,7 @@ func trivyPath(class, target string) string {
 
 // ------------------------------------------------------------------ golangci-lint
 
+// Implements: REQ-FND-007
 func readGolangCI(data []byte) ([]*Finding, error) {
 	var doc struct {
 		Issues []struct {
@@ -574,6 +585,7 @@ func readGolangCI(data []byte) ([]*Finding, error) {
 
 // ------------------------------------------------------------------ eslint
 
+// Implements: REQ-FND-008
 func readESLint(data []byte) ([]*Finding, error) {
 	var doc []struct {
 		FilePath string `json:"filePath"`
@@ -615,6 +627,8 @@ func readESLint(data []byte) ([]*Finding, error) {
 // lintSeverity keeps a linter's complaint below a vulnerability: "error" from a linter
 // is not the same news as a critical advisory, and the streets would fill with bugs
 // that only mean a missing comment.
+//
+// Implements: REQ-FND-019
 func lintSeverity(s string, fallback Severity) Severity {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "error", "critical", "high":

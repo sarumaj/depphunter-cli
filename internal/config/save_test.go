@@ -7,6 +7,7 @@ import (
 	"testing"
 )
 
+// Verifies: REQ-CFG-013
 func TestSaveUIPreservesTheRest(t *testing.T) {
 	root := t.TempDir()
 	file := filepath.Join(root, ProjectFile)
@@ -41,6 +42,7 @@ func TestSaveUIPreservesTheRest(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-CFG-013, REQ-CFG-014
 func TestSaveUICreatesFileAndRejectsBadValues(t *testing.T) {
 	file := filepath.Join(t.TempDir(), ProjectFile)
 	if err := SaveUI(file, Default().UI); err != nil {

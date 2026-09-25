@@ -58,7 +58,10 @@ export class Api {
   private graphTag = '';
   /** The id of the last announcement seen, handed back when the stream reconnects. */
   private lastEvent = '';
-  /** This client, so our own changes coming back are not applied a second time. */
+  /**
+   * This client, so our own changes coming back are not applied a second time.
+   * Implements: REQ-EXT-009
+   */
   readonly origin = `vscode-${Math.random().toString(36).slice(2, 10)}`;
 
   /** address is what the server printed: its URL with the session token in the query. */
@@ -76,6 +79,7 @@ export class Api {
    * The document is the largest thing the panel reads and rarely differs between
    * asks - a reconnect, a server restarted under an open window. Its fingerprint is
    * of the nodes and edges rather than of when they were read, so those answer 304.
+   * Implements: REQ-EXT-004
    */
   async graph(force = false): Promise<Graph | null> {
     const res = await this.fetch('GET', '/api/graph', undefined,
@@ -89,12 +93,18 @@ export class Api {
     return this.json<Session>('GET', '/api/session');
   }
 
-  /** Says what the side panel picked; the map follows. */
+  /**
+   * Says what the side panel picked; the map follows.
+   * Implements: REQ-EXT-007, REQ-EXT-009
+   */
   select(id: string): Promise<void> {
     return this.send('POST', '/api/selection', { id, origin: this.origin });
   }
 
-  /** Hands the backpack back with something taken out of it. */
+  /**
+   * Hands the backpack back with something taken out of it.
+   * Implements: REQ-EXT-009, REQ-EXT-011
+   */
   setBackpack(items: PackItem[]): Promise<void> {
     return this.send('PUT', '/api/backpack', { items, origin: this.origin });
   }

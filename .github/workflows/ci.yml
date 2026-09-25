@@ -13,6 +13,7 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Implements: REQ-DIST-010
   test:
     name: test (${{ matrix.os }}, Go ${{ matrix.go }})
     strategy:
@@ -25,6 +26,7 @@ jobs:
           # cannot claim less than the code and its dependencies need.
           # GOTOOLCHAIN=local makes the build fail instead of silently downloading
           # a newer toolchain.
+          # Implements: REQ-DIST-011, REQ-DIST-018
           - os: ubuntu-latest
             go: oldest
     runs-on: ${{ matrix.os }}
@@ -49,6 +51,7 @@ jobs:
         run: |
           if [ "$RUNNER_OS" = Windows ]; then go test ./...; else go test -race ./...; fi
 
+  # Implements: REQ-DIST-012
   lint:
     runs-on: ubuntu-latest
     env:
@@ -84,6 +87,10 @@ jobs:
         run: for f in web/static/*.js; do node --check "$f"; done
       - name: markdownlint
         run: npx --yes markdownlint-cli@0.41.0 '**/*.md' --ignore '**/testdata/**' --ignore node_modules
+      - name: Requirements traceability
+        # Every Implements:/Verifies: annotation must name a requirement in
+        # docs/requirements, and the matrix generated from them must be current.
+        run: node tools/reqtrace.mjs --check
 
   extension:
     # The VS Code extension is TypeScript and a manifest, neither of which the Go
@@ -138,6 +145,7 @@ jobs:
           path: depphunter.vsix
           retention-days: 14
 
+  # Implements: REQ-DIST-013, REQ-DIST-019
   vulncheck:
     runs-on: ubuntu-latest
     steps:
@@ -149,6 +157,7 @@ jobs:
       - name: govulncheck
         run: go run golang.org/x/vuln/cmd/govulncheck@latest ./...
 
+  # Implements: REQ-DIST-014
   dist:
     # Builds the release archives for every target on each push, so a target that
     # stops cross-compiling fails here rather than at tag time. The archives are
@@ -169,6 +178,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: stable
+      # Implements: REQ-DIST-015
       - name: Test on 32-bit
         # Releases include 386 and armv7 builds; catch int overflows on 32-bit ints.
         run: GOARCH=386 CGO_ENABLED=0 go test ./...

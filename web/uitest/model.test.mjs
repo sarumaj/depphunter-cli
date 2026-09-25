@@ -22,11 +22,13 @@ const model = (...files) => buildModel({
 });
 
 describe('how big a file is', () => {
+  // Verifies: REQ-MAP-058
   it('measures a read file in its own lines', () => {
     assert.equal(bulk(file('a.go', { loc: 500, bytes: 18000 })), 500);
     assert.equal(unread(file('a.go', { loc: 500, bytes: 18000 })), false);
   });
 
+  // Verifies: REQ-MAP-058, REQ-MAP-060
   it('falls back to bytes for a file nothing read', () => {
     // The case this exists for: a model, an image, anything over the size limit. It
     // has to come out as a building with a storey on it rather than the bare floor
@@ -46,6 +48,7 @@ describe('how big a file is', () => {
     assert.equal(unread({ kind: 'dir', name: 'src' }), false);
   });
 
+  // Verifies: REQ-MAP-059
   it('keeps stated lines and drawn size apart', () => {
     // The one rule. totalLoc is what the status bar and the panel put in words, so it
     // counts only lines somebody counted; totalBulk is what the geometry asks for, so
@@ -58,6 +61,7 @@ describe('how big a file is', () => {
     assert.equal(root.fileCount, 2);
   });
 
+  // Verifies: REQ-MAP-060
   it('writes a size somebody can read at a glance', () => {
     assert.equal(fileSize(0), '0 bytes');
     assert.equal(fileSize(96), '96 bytes');

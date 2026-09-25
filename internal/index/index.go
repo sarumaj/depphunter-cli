@@ -89,6 +89,8 @@ func (c *Config) Credentials(s *auth.Store) { c.credentials = s }
 
 // Trust vouches for index URLs whatever names them. It is the user's own say-so, from
 // their config or the command line; a repository cannot reach it (see config.go).
+//
+// Implements: REQ-SUP-042
 func (c *Config) Trust(urls []string) {
 	for _, u := range urls {
 		if u = strings.TrimRight(strings.TrimSpace(u), "/"); u != "" {
@@ -100,6 +102,8 @@ func (c *Config) Trust(urls []string) {
 // Public reports whether an index is the ecosystem's own public one - registry.npmjs.org,
 // proxy.golang.org, Docker Hub. It is what decides whether naming a package to it
 // would tell the world that the package exists.
+//
+// Implements: REQ-SUP-038
 func (c *Config) Public(eco, index string) bool {
 	return index != "" && index == public[eco]
 }
@@ -111,6 +115,8 @@ func (c *Config) Public(eco, index string) bool {
 // resolves from is drawn on the map, named in the side panel and written into every
 // export, and an export is a file this project's documentation suggests sharing. The
 // credential is kept only where this machine's own configuration supplied it.
+//
+// Implements: REQ-SUP-016, REQ-AUTH-013
 func (c *Config) Add(eco string, s Source) {
 	if s.URL == "" {
 		return
@@ -142,6 +148,8 @@ func (c *Config) Sources(eco string) []Source { return c.sources[eco] }
 // each ecosystem that has one and is not already named, for internal/trace. It is
 // the answer to "which indexes did this run even know about", which is the question
 // underneath every surprising index on the map.
+//
+// Implements: REQ-TRC-002
 func (c *Config) Report() []trace.Source {
 	ecosystems := make([]string, 0, len(c.sources))
 	for eco := range c.sources {
@@ -176,6 +184,8 @@ func (c *Config) has(eco, url string) bool {
 
 // origin says where a source was learned from: this machine, the repository, or the
 // repository with the user vouching for it afterwards.
+//
+// Implements: REQ-TRC-002, REQ-SUP-042
 func (c *Config) origin(s Source) string {
 	if !s.Trusted && c.trusted[s.URL] {
 		return OriginVouched
@@ -191,6 +201,8 @@ func (c *Config) origin(s Source) string {
 
 // fetchable reports whether anything here allows fetching from a source - the same
 // judgment For makes, which is why it is written once.
+//
+// Implements: REQ-SUP-019, REQ-SUP-042
 func (c *Config) fetchable(eco string, s Source) bool {
 	return s.Trusted || s.URL == public[eco] || c.trusted[s.URL]
 }
@@ -198,6 +210,8 @@ func (c *Config) fetchable(eco string, s Source) bool {
 // For reports which index serves a package, and whether anything here vouches for it:
 // a public default or a source this machine's configuration names is known, a source
 // only the repository asks for is not.
+//
+// Implements: REQ-SUP-014, REQ-SUP-016, REQ-SUP-018
 func (c *Config) For(eco, pkg string) (index string, known bool) {
 	if eco == OCI {
 		// A container reference carries its registry: "ghcr.io/org/app" is not
@@ -241,6 +255,8 @@ func matches(eco, scope, pkg string) bool {
 
 // ociRegistry reads the registry out of an image reference. A first segment with a dot
 // or a port is a host; anything else is a Docker Hub image, official or not.
+//
+// Implements: REQ-SUP-017
 func ociRegistry(image string) string {
 	first, _, ok := strings.Cut(image, "/")
 	if !ok || (!strings.Contains(first, ".") && !strings.Contains(first, ":") && first != "localhost") {

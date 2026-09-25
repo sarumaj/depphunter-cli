@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// Verifies: REQ-SUP-034
 func TestMatchesTheWayGoprivateDoes(t *testing.T) {
 	p := New([]string{"corp.example/*", "@acme/*", "com.acme.*"})
 	for name, want := range map[string]bool{
@@ -29,6 +30,7 @@ func TestMatchesTheWayGoprivateDoes(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-035
 func TestAPatternMayNameItsEcosystem(t *testing.T) {
 	p := New([]string{"npm:@acme/*", "oci:harbor.corp/*"})
 	if !p.Match("npm", "@acme/widgets") {
@@ -43,6 +45,7 @@ func TestAPatternMayNameItsEcosystem(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-035
 func TestAHostAndPortIsNotAnEcosystem(t *testing.T) {
 	// "localhost:5000/*" is a registry, not the ecosystem "localhost". Cutting at the
 	// colon regardless would have filed it under an ecosystem nothing ever names, and
@@ -53,6 +56,7 @@ func TestAHostAndPortIsNotAnEcosystem(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-034
 func TestOneEntryMayHoldSeveralPatterns(t *testing.T) {
 	// One flag, one environment variable and one config entry all say the same thing,
 	// because GOPRIVATE itself is a comma-separated list.
@@ -62,6 +66,7 @@ func TestOneEntryMayHoldSeveralPatterns(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-034
 func TestNothingDeclaredMatchesNothing(t *testing.T) {
 	for _, p := range []*Private{nil, New(nil), New([]string{"", ","})} {
 		if !p.Empty() {
@@ -73,6 +78,7 @@ func TestNothingDeclaredMatchesNothing(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-036
 func TestReadsWhatTheMachineAlreadySaysAboutGo(t *testing.T) {
 	env := map[string]string{
 		"GOPRIVATE": "corp.example/*,other.example/x",

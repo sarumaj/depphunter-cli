@@ -20,6 +20,7 @@ const (
 	ecoDotnet = "dotnet"
 )
 
+// Implements: REQ-CS-008
 type Plugin struct{}
 
 func (Plugin) Name() string             { return "csharp" }
@@ -36,9 +37,10 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 	return newResolver(all), nil
 }
 
+// Implements: REQ-CS-005
 func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 	ex := &lang.Extraction{}
-	var syms lang.SymbolSet
+	var symbols lang.SymbolSet
 	for _, st := range scanStatements(string(src)) {
 		switch {
 		case (st.scope == "" || st.scope == "namespace") && usingDecl.MatchString(st.text):
@@ -51,22 +53,24 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 			if strings.HasPrefix(kind, "record") {
 				kind = "record"
 			}
-			syms.Add(m[2], kind, st.line)
-		case delegDecl.MatchString(st.text):
-			syms.Add(delegDecl.FindStringSubmatch(st.text)[1], "delegate", st.line)
+			symbols.Add(m[2], kind, st.line)
+		case delegateDecl.MatchString(st.text):
+			symbols.Add(delegateDecl.FindStringSubmatch(st.text)[1], "delegate", st.line)
 		case st.scope == "type":
 			// A member named like its type is a constructor, not a method.
 			if m := method.FindStringSubmatch(st.text); m != nil && !notNames[m[1]] && m[1] != st.owner {
-				syms.Add(st.owner+"."+m[1], "method", st.line)
+				symbols.Add(st.owner+"."+m[1], "method", st.line)
 			}
 		}
 	}
-	ex.Symbols = syms.List()
+	ex.Symbols = symbols.List()
 	return ex, nil
 }
 
 // usingNamespace extracts the namespace from "global using static A.B;",
 // "using Alias = A.B;" and the like.
+//
+// Implements: REQ-CS-001
 func usingNamespace(text string) string {
 	s := strings.TrimSpace(strings.TrimSuffix(strings.TrimSpace(text), ";"))
 	s = strings.TrimSpace(strings.TrimPrefix(s, "global "))

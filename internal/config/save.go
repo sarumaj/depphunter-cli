@@ -11,6 +11,8 @@ import (
 
 // SaveUI writes ui into the `ui:` section of the YAML file, creating the file or the
 // section as needed. Other keys, their order and comments are preserved.
+//
+// Implements: REQ-CFG-013, REQ-CFG-014
 func SaveUI(file string, ui UI) error {
 	if err := ui.Validate(); err != nil {
 		return err

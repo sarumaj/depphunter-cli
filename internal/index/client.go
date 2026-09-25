@@ -87,6 +87,8 @@ func NewClient(cfg *Config, dir string, ttl, timeout time.Duration,
 // Dependencies implements lang.Transitive against the indexes. Every way out is
 // recorded (internal/trace), because a question declined for what asking would
 // disclose is indistinguishable on the map from a dependency that genuinely has none.
+//
+// Implements: REQ-SUP-019, REQ-SUP-038, REQ-SUP-039, REQ-TRC-005, REQ-TRC-006
 func (c *Client) Dependencies(t lang.Target) []lang.Target {
 	if c == nil || t.Package == "" {
 		return nil
@@ -148,6 +150,8 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 
 // failRetry is how long a question an index did not answer is left before it is
 // asked again.
+//
+// Implements: REQ-SUP-032
 const failRetry = 5 * time.Minute
 
 // answer is what one question came to: the dependencies, who provided them, and -
@@ -160,6 +164,8 @@ type answer struct {
 }
 
 // lookup answers from the cache when it can, and from the index when it must.
+//
+// Implements: REQ-SUP-020, REQ-SUP-029, REQ-SUP-032, REQ-TRC-006
 func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 	key := t.Ecosystem + "|" + index + "|" + t.Package + "|" + t.Version
 	if deps, ok := store.Get[[]dep](c.cache, key); ok {
@@ -199,6 +205,7 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		// artifact, and the Java plugin puts only the group on the map (an import
 		// names a package, and a package does not say which artifact ships it), so
 		// there is no document to request. Saying nothing beats guessing an artifact.
+		// Implements: REQ-JAVA-010, REQ-SUP-028
 		return answer{source: trace.NoAnswer, reason: trace.ReasonUnsupported}, nil
 	}
 	if err != nil {
@@ -211,6 +218,8 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 // requestLog collects what one question sent, in the order it sent it. The ecosystem
 // functions know nothing about it: it rides on the context they already carry, and
 // do writes to it.
+//
+// Implements: REQ-TRC-007
 type requestLog struct {
 	mu sync.Mutex
 	at []trace.Request
@@ -239,6 +248,8 @@ func (l *requestLog) taken() []trace.Request {
 // targets turns an index's answer into what the graph takes. The version travels with
 // the name: without it the next level cannot be asked for at all - a module proxy
 // serves a go.mod for a version, not for a module.
+//
+// Implements: REQ-SUP-029
 func (c *Client) targets(eco string, deps []dep) []lang.Target {
 	out := make([]lang.Target, 0, len(deps))
 	for _, d := range deps {
@@ -284,6 +295,8 @@ func readLimited(resp *http.Response) ([]byte, error) {
 // do makes one request and hands back the response unread. bearer, when given, is
 // sent instead of this machine's own credentials - it is the token a registry handed
 // out for this one pull (see ociToken).
+//
+// Implements: REQ-SUP-033, REQ-TRC-007
 func (c *Client) do(ctx context.Context, url, media, bearer string) (*http.Response, error) {
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
@@ -314,6 +327,8 @@ func (c *Client) do(ctx context.Context, url, media, bearer string) (*http.Respo
 // serves on its own - no archive, no checkout. A version is guaranteed: lookup turns
 // a module without one away, so that the report can say why rather than record an
 // empty answer.
+//
+// Implements: REQ-SUP-021
 func (c *Client) goModule(ctx context.Context, index string, t lang.Target) ([]dep, error) {
 	escaped, err := module.EscapePath(t.Package)
 	if err != nil {
@@ -343,6 +358,8 @@ func (c *Client) goModule(ctx context.Context, index string, t lang.Target) ([]d
 }
 
 // npmPackage reads a version's dependencies from the registry.
+//
+// Implements: REQ-SUP-022
 func (c *Client) npmPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
 	version := t.Version
 	if !lang.PinnedSemver(version) {
@@ -369,6 +386,8 @@ func (c *Client) npmPackage(ctx context.Context, index string, t lang.Target) ([
 
 // pypiDistribution reads requires-dist from the JSON API. A simple index (PEP 503)
 // serves file listings and no metadata, so this asks the host that has both.
+//
+// Implements: REQ-SUP-023
 func (c *Client) pypiDistribution(ctx context.Context, index string, t lang.Target) ([]dep, error) {
 	host := strings.TrimSuffix(strings.TrimSuffix(index, "/simple"), "/simple/")
 	url := fmt.Sprintf("%s/pypi/%s/json", host, t.Package)

@@ -33,6 +33,7 @@ describe('depphunter.open', { skip: available() ? false : 'no depphunter binary 
 
   let address;
 
+  // Verifies: REQ-EXT-020, REQ-EXT-023
   it('starts a server and shows it in a tab', async () => {
     await stub.commands.get('depphunter.open')();
     const html = stub.last('panel.html');
@@ -43,6 +44,7 @@ describe('depphunter.open', { skip: available() ? false : 'no depphunter binary 
     assert.match(address ?? '', ADDRESS);
   });
 
+  // Verifies: REQ-EXT-028
   it('lists the folder as running in the Maps view', async () => {
     const view = stub.last('registerTreeDataProvider', 'depphunter.maps')?.[2];
     assert.ok(view, 'the Maps view has no data provider');
@@ -53,6 +55,7 @@ describe('depphunter.open', { skip: available() ? false : 'no depphunter binary 
     assert.ok(!/token/.test(item.description + item.tooltip), `the token is shown: ${item.description}`);
   });
 
+  // Verifies: REQ-EXT-016
   it('opens the resolution report as a document', async () => {
     // The report is rendered by the server, so what opens here is the same account
     // of the analysis that --explain writes to the log - there is no second copy of
@@ -67,6 +70,7 @@ describe('depphunter.open', { skip: available() ? false : 'no depphunter binary 
     assert.ok(stub.last('executeCommand', 'markdown.showPreview'), 'the report was never shown');
   });
 
+  // Verifies: REQ-EXT-023
   it('keeps the token when the address is rewritten under it', async () => {
     // asExternalUri does not reliably keep the query, and in embed mode the query is
     // where the session token is - there is no cookie to hold it inside somebody
@@ -84,6 +88,7 @@ describe('depphunter.open', { skip: available() ? false : 'no depphunter binary 
     }
   });
 
+  // Verifies: REQ-EXT-021
   it('leaves the frame the pointer lock the editor granted it', async () => {
     // A nested frame already carries every restriction its ancestors carry, so a
     // sandbox attribute here can only take something away - and what it takes away is
@@ -93,6 +98,7 @@ describe('depphunter.open', { skip: available() ? false : 'no depphunter binary 
     assert.ok(!/<iframe[^>]*\bsandbox\b/.test(html), `the iframe is sandboxed:\n${html}`);
   });
 
+  // Verifies: REQ-EXT-020
   it('uses the built-in browser when asked to', async () => {
     await stub.commands.get('depphunter.stop')();
     stub.settings.openIn = 'simpleBrowser';
@@ -107,6 +113,7 @@ describe('depphunter.open', { skip: available() ? false : 'no depphunter binary 
     }
   });
 
+  // Verifies: REQ-EXT-022
   it('serves the map at the address it handed over', async () => {
     const res = await fetch(address);
     assert.strictEqual(res.status, 200);
@@ -122,11 +129,13 @@ describe('depphunter.open', { skip: available() ? false : 'no depphunter binary 
     }
   });
 
+  // Verifies: REQ-EXT-026
   it('reuses the server rather than starting a second one', async () => {
     await stub.commands.get('depphunter.open')();
     assert.strictEqual(stub.last('executeCommand', 'simpleBrowser.show')[2], address);
   });
 
+  // Verifies: REQ-EXT-026
   it('starts one server for two opens made while it is starting', async () => {
     await stub.commands.get('depphunter.stop')();
     stub.settings.openIn = 'simpleBrowser';
@@ -142,6 +151,7 @@ describe('depphunter.open', { skip: available() ? false : 'no depphunter binary 
     }
   });
 
+  // Verifies: REQ-EXT-029
   it('closes the tab when the server stops', async () => {
     stub.settings.openIn = 'webview';
     await stub.commands.get('depphunter.open')();
@@ -150,6 +160,7 @@ describe('depphunter.open', { skip: available() ? false : 'no depphunter binary 
     assert.ok(stub.last('panel.dispose'), 'the tab outlived the server');
   });
 
+  // Verifies: REQ-EXT-029
   it('stops the server when told to', async () => {
     await stub.commands.get('depphunter.stop')();
     await new Promise(r => setTimeout(r, 1000));

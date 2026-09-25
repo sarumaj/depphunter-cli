@@ -15,6 +15,7 @@ const BUNDLED = 'bin';
 /**
  * The binary this build ships, or undefined when it ships none - which is every
  * build that did not come from a release.
+ * Implements: REQ-EXT-019
  */
 export function bundled(home: string | undefined): string | undefined {
   if (!home) return undefined;
@@ -33,7 +34,10 @@ export function bundled(home: string | undefined): string | undefined {
   return file;
 }
 
-/** What to start: the setting if it names something, else what we ship, else the PATH. */
+/**
+ * What to start: the setting if it names something, else what we ship, else the PATH.
+ * Implements: REQ-EXT-019
+ */
 export function binaryFor(configured: string | undefined, home: string | undefined): string {
   return configured?.trim() || bundled(home) || 'depphunter';
 }

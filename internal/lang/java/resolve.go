@@ -14,6 +14,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
+// Implements: REQ-JAVA-002
 var jdkPrefixes = []string{
 	"java.", "jdk.", "sun.", "com.sun.", "org.w3c.dom", "org.xml.sax", "org.ietf.jgss", "org.omg.",
 	// javax is split: these ship with the JDK, others (servlet, persistence, …) do not.
@@ -25,6 +26,8 @@ var jdkPrefixes = []string{
 
 // knownGroups maps packages of popular libraries to their groupId where the two share
 // too little for group() to connect them. Used only when that group is declared.
+//
+// Implements: REQ-JAVA-007
 var knownGroups = map[string]string{
 	"com.google.common":     "com.google.guava",
 	"com.google.thirdparty": "com.google.guava",
@@ -68,6 +71,7 @@ func newResolver(all []*scan.File) *resolver {
 	return r
 }
 
+// Implements: REQ-JAVA-007
 func (r *resolver) addGroup(group, artifact, version string) {
 	if group == "" {
 		return
@@ -83,6 +87,7 @@ func (r *resolver) addGroup(group, artifact, version string) {
 	r.groups[group] = version
 }
 
+// Implements: REQ-JAVA-001, REQ-JAVA-002, REQ-JAVA-003, REQ-JAVA-009
 func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 	spec := imp.Module
 	wildcard := strings.HasSuffix(spec, ".*")
@@ -126,6 +131,8 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 // does, whatever its shape (Spring writes 1.2.3.RELEASE); a range, the LATEST and
 // RELEASE keywords, an unexpanded property and a snapshot - republished under the
 // same name - do not.
+//
+// Implements: REQ-JAVA-008
 func pinnedMaven(v string) bool {
 	v = strings.TrimSpace(v)
 	switch {
@@ -146,6 +153,8 @@ func pinnedMaven(v string) bool {
 // all of a shorter groupId) - com.fasterxml.jackson.databind comes from the group
 // com.fasterxml.jackson.core - else a group whose artifactId or last segment names
 // the import's first package segment (okhttp3.* from com.squareup.okhttp3).
+//
+// Implements: REQ-JAVA-007
 func (r *resolver) group(spec string) (string, bool) {
 	best, bestScore := "", 0
 	segments := strings.Split(spec, ".")
@@ -193,6 +202,7 @@ type pomDep struct {
 
 var property = regexp.MustCompile(`\$\{([^}]+)\}`)
 
+// Implements: REQ-JAVA-003, REQ-JAVA-004
 func (r *resolver) readPOM(abs string) {
 	data, err := os.ReadFile(abs)
 	if err != nil {
@@ -255,6 +265,7 @@ var (
 	gradleGroup = regexp.MustCompile(`(?m)^\s*group\s*=\s*["']([\w.\-]+)["']`)
 )
 
+// Implements: REQ-JAVA-005
 func (r *resolver) readGradle(abs string) {
 	data, err := os.ReadFile(abs)
 	if err != nil {
@@ -270,6 +281,8 @@ func (r *resolver) readGradle(abs string) {
 
 // readCatalog reads a Gradle version catalog: [libraries] entries as "g:a:v" or
 // { module = "g:a", version = "1" | version.ref = "name" }.
+//
+// Implements: REQ-JAVA-006
 func (r *resolver) readCatalog(abs string) {
 	var cat struct {
 		Versions  map[string]any

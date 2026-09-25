@@ -35,6 +35,7 @@ const generated = "extension/src/graph.ts"
 // exported are the types the extension reads, in the order they are written out.
 var exported = []string{"Graph", "Node", "Edge"}
 
+// Verifies: REQ-MOD-013
 func TestGeneratedTypeScriptMatchesTheGoDeclarations(t *testing.T) {
 	root := repoRoot(t)
 	want, err := renderTypeScript(filepath.Join(root, "graph.go"))
@@ -70,6 +71,8 @@ func repoRoot(t *testing.T) string {
 
 // renderTypeScript reads the declarations out of graph.go and writes the interfaces
 // the extension imports.
+//
+// Implements: REQ-MOD-013
 func renderTypeScript(path string) ([]byte, error) {
 	fSet := token.NewFileSet()
 	file, err := parser.ParseFile(fSet, path, nil, parser.ParseComments)

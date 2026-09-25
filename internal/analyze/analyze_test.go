@@ -41,6 +41,7 @@ func canonical(t *testing.T, g *graph.Graph) string {
 	return string(b)
 }
 
+// Verifies: REQ-MOD-003, REQ-MOD-008, REQ-LANG-026, REQ-LANG-028
 func TestCacheSkipsUnchangedFiles(t *testing.T) {
 	root, cacheDir := t.TempDir(), t.TempDir()
 	writeProject(t, root, map[string]string{
@@ -130,6 +131,8 @@ func (r fakeResolver) Resolve(file string, imp lang.RawImport) lang.Target {
 // TestPackageVersions checks what the builder makes of the versions its plugins
 // report: the first version wins, and a package is floating as soon as one importer
 // leaves it open - a lock file elsewhere does not fix what this manifest lets drift.
+//
+// Verifies: REQ-SUP-001, REQ-SUP-007, REQ-MOD-005
 func TestPackageVersions(t *testing.T) {
 	root := t.TempDir()
 	writeProject(t, root, map[string]string{
@@ -184,6 +187,7 @@ func (r fakeResolver) Dependencies(t lang.Target) []lang.Target {
 	return nil
 }
 
+// Verifies: REQ-SUP-008, REQ-SUP-012, REQ-MOD-009
 func TestResolveDepth(t *testing.T) {
 	root := t.TempDir()
 	writeProject(t, root, map[string]string{"a.fake": "direct\n"})
@@ -228,6 +232,7 @@ func TestResolveDepth(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-013, REQ-MOD-006, REQ-MOD-010
 func TestResolveDepthEdges(t *testing.T) {
 	root := t.TempDir()
 	writeProject(t, root, map[string]string{"a.fake": "direct\n"})
@@ -268,6 +273,7 @@ func (f fakeIndexes) For(eco, pkg string) (string, bool) {
 	return f.index, false
 }
 
+// Verifies: REQ-SUP-014, REQ-SUP-018
 func TestPackagesCarryTheirIndex(t *testing.T) {
 	root := t.TempDir()
 	writeProject(t, root, map[string]string{"a.fake": "public\nprivate\n"})
@@ -300,6 +306,7 @@ func TestPackagesCarryTheirIndex(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-037, REQ-MOD-011
 func TestPackagesAreMarkedAsTheOrganizationsOwn(t *testing.T) {
 	root := t.TempDir()
 	writeProject(t, root, map[string]string{"a.fake": "corp.example/lib\nreact\n"})
@@ -328,6 +335,7 @@ func TestPackagesAreMarkedAsTheOrganizationsOwn(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-037
 func TestNothingIsPrivateWithoutBeingDeclared(t *testing.T) {
 	// The ordinary case: a repository of open-source dependencies, no configuration,
 	// and nothing held back from the index or the vulnerability database.
@@ -358,6 +366,8 @@ func (p stdPlugin) Resolver(string, []*scan.File) (lang.Resolver, error) {
 // TestResolutionReport checks the account the walk gives of itself: who answered for
 // each package, how far each level got, and - the part no other test can see - what
 // was never asked at all.
+//
+// Verifies: REQ-TRC-001, REQ-TRC-004, REQ-TRC-005, REQ-SUP-010, REQ-SUP-030
 func TestResolutionReport(t *testing.T) {
 	root := t.TempDir()
 	writeProject(t, root, map[string]string{"a.fake": "direct\n"})
@@ -404,6 +414,8 @@ func TestResolutionReport(t *testing.T) {
 // TestResolutionReportSkips checks the two silences the report has to tell apart: an
 // ecosystem whose graph is nowhere to be read, and a standard library, which has no
 // graph to read.
+//
+// Verifies: REQ-TRC-008, REQ-TRC-009, REQ-SUP-011
 func TestResolutionReportSkips(t *testing.T) {
 	root := t.TempDir()
 	writeProject(t, root, map[string]string{"a.fake": "direct\n", "b.std": "direct\n"})
@@ -458,6 +470,7 @@ func (c *counting) Dependencies(t lang.Target) []lang.Target {
 	return fakeResolver{}.Dependencies(t)
 }
 
+// Verifies: REQ-SUP-008
 func TestTheWalkAsksAboutEachPackageOnce(t *testing.T) {
 	root := t.TempDir()
 	// Both imported directly, and one also depends on the other.
@@ -477,6 +490,7 @@ func TestTheWalkAsksAboutEachPackageOnce(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-031
 func TestTheWalkStopsWhenCancelled(t *testing.T) {
 	root := t.TempDir()
 	writeProject(t, root, map[string]string{"a.fake": "direct\n"})

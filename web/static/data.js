@@ -11,6 +11,7 @@
 // In the ordinary case there is no token in the address to find, because the server
 // took it out, and all of this costs nothing.
 
+// Implements: REQ-EXP-008
 const embedded = document.getElementById('depphunter-data');
 export const STATIC = embedded ? JSON.parse(embedded.textContent) : null;
 
@@ -33,6 +34,8 @@ let graphTag = '';
  * it has changed: a reconnect, a reload, a server restarted under a page that was
  * left open. The fingerprint is of the nodes and the edges rather than of when they
  * were read, so all of those answer 304 and cost nothing to parse.
+ *
+ * Implements: REQ-SRV-017
  */
 export async function fetchGraph() {
   if (STATIC) return { graph: STATIC.graph, version: 1 };
@@ -62,6 +65,7 @@ export async function fetchSource(path) {
   return text;
 }
 
+// Implements: REQ-CFG-012
 export async function saveSettings(ui) {
   const res = await fetch('api/settings', {
     method: 'POST',
@@ -74,6 +78,8 @@ export async function saveSettings(ui) {
 /**
  * A dataset the server computes after startup ("history", "references"): its value,
  * 'pending' while it is computed, or null when there is none.
+ *
+ * Implements: REQ-HIST-007, REQ-LSP-005, REQ-FND-022
  */
 export async function fetchLazy(name) {
   if (STATIC) return STATIC[name] || null;
@@ -95,6 +101,8 @@ export async function fetchLazy(name) {
  * Who this client is. Every change carries it, and the announcement carries it back,
  * so a client can tell its own change returning from somebody else's - without which
  * two of them watching each other would never settle.
+ *
+ * Implements: REQ-SRV-012
  */
 export const CLIENT = `page-${Math.random().toString(36).slice(2, 10)}`;
 

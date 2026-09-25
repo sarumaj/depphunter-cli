@@ -17,6 +17,7 @@
              role="combobox" aria-expanded="false" aria-controls="search-results" aria-label="Search">
       <ul id="search-results" role="listbox" hidden></ul>
     </div>
+    <!-- Implements: REQ-MAP-032, REQ-MAP-033, REQ-MAP-034, REQ-A11Y-005 -->
     <div class="filters">
       <button id="filters-btn" aria-expanded="false" aria-controls="filters">Filters <span id="filter-count" class="count" hidden></span></button>
       <div id="filters" class="popover" hidden>
@@ -40,6 +41,7 @@
       <span class="hint" id="depth-label">depth</span>
       <button id="expand-level" title="Expand one level (+)" aria-label="Expand one level">+</button>
     </div>
+    <!-- Implements: REQ-MAP-037 -->
     <label class="group">Color
       <select id="color-by">
         <option value="language">Language</option>
@@ -52,6 +54,7 @@
         </optgroup>
       </select>
     </label>
+    <!-- Implements: REQ-MAP-038 -->
     <label class="group">Height
       <select id="height-scale">
         <option value="sqrt">√ lines</option>
@@ -59,6 +62,7 @@
         <option value="log">log lines</option>
       </select>
     </label>
+    <!-- Implements: REQ-MAP-049 -->
     <label class="group">Style
       <select id="style" title="What the map is dressed as">
         <option value="city">City</option>
@@ -66,6 +70,7 @@
         <option value="galaxy">Galaxy</option>
       </select>
     </label>
+    <!-- Implements: REQ-MAP-039 -->
     <label class="group">Theme
       <select id="theme">
         <option value="auto">Auto</option>
@@ -82,6 +87,7 @@
       <button id="pack-btn" title="What you have caught (B)" aria-expanded="false" aria-controls="pack" hidden>Backpack <span id="pack-count" class="count" hidden></span></button>
       <button id="stash-btn" title="Photographs you have taken (G)" aria-expanded="false" aria-controls="stash" hidden>Photos <span id="stash-count" class="count" hidden></span></button>
       <button id="save-settings">Save settings</button>
+      <!-- Implements: REQ-EXP-005, REQ-EXP-011 -->
       <div class="export">
         <button id="export-btn" aria-expanded="false" aria-controls="export">Export</button>
         <div id="export" class="popover menu" hidden>
@@ -178,6 +184,7 @@
         <button id="tour-next" type="button" class="primary">Next</button>
       </footer>
     </dialog>
+    <!-- Implements: REQ-UI-008, REQ-UI-009, REQ-UI-010, REQ-A11Y-003 -->
     <dialog id="help">
       <h2>Reading the map</h2>
       <p>The map is the repository seen from above. The mainland is the project itself:

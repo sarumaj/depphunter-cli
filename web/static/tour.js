@@ -18,6 +18,7 @@ import { $ } from './dom.js';
 import { STATIC } from './data.js';
 
 /** The map's cards, in order. */
+// Implements: REQ-UI-004
 export const TOUR = [
   {
     shot: 'map',
@@ -68,6 +69,7 @@ export const TOUR = [
  * different thing to learn - a pair of hands and a body rather than a diagram - and
  * saying it on the way in is worth more than saying it on a first load, where there is
  * nothing yet to try it on.
+ * Implements: REQ-UI-011
  */
 export const WALK_TOUR = [
   {
@@ -127,12 +129,14 @@ export const WALK_TOUR = [
   },
 ];
 
+// Implements: REQ-UI-005, REQ-UI-012
 const TOUR_SEEN = 'depphunter.introduced';
 const WALK_SEEN = 'depphunter.introduced.walk';
 
 /**
  * Opens the map's introduction: once on a first visit, and whenever the help asks for
  * it again, which is what `forced` is for.
+ * Implements: REQ-UI-004
  */
 export const startTour = (forced = false) => show(TOUR, TOUR_SEEN, forced);
 
@@ -140,6 +144,7 @@ export const startTour = (forced = false) => show(TOUR, TOUR_SEEN, forced);
  * Walk mode's, the first time somebody walks in. `done` is called once it is out of the
  * way, which is how walk mode knows to take the pointer back: the dialog has it while
  * it is open, and a walker with no pointer and no reticle is stuck.
+ * Implements: REQ-UI-011, REQ-UI-013
  */
 export const startWalkTour = (forced, done) => show(WALK_TOUR, WALK_SEEN, forced, done);
 
@@ -148,10 +153,12 @@ export const startWalkTour = (forced, done) => show(WALK_TOUR, WALK_SEEN, forced
  * the street, because a first walk is explained before the pointer is taken rather
  * than after: asking for the reticle and giving it straight back leaves the mouse
  * fighting the dialog for the same few seconds.
+ * Implements: REQ-UI-013
  */
 export const walkTourPending = () => !remembered(WALK_SEEN);
 
 /** Whether a deck has been seen. A store that cannot be read counts as seen. */
+// Implements: REQ-UI-005, REQ-UI-007
 function remembered(key) {
   try {
     return localStorage.getItem(key) === '1';
@@ -164,6 +171,7 @@ function remembered(key) {
  * One deck of cards, if it has not been seen. Returns whether it was opened, so a
  * caller can tell the difference between "shown" and "already seen"; `after` runs when
  * it closes, however it was closed.
+ * Implements: REQ-UI-004, REQ-UI-006
  */
 function show(cards, key, forced = false, after = null) {
   if (remembered(key) && !forced) return false;

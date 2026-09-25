@@ -1,5 +1,6 @@
 /* Tokens. Chart roles follow the validated reference palette: categorical slots for
    languages, one blue ramp for magnitude, neutral terrain so hue is spent only on data. */
+/* Implements: REQ-A11Y-001, REQ-MAP-039 */
 :root {
   color-scheme: light;
   --page: #f9f9f7;
@@ -29,6 +30,7 @@
   --no-data: #d9d7d0;   /* history modes: no commits in range */
   --pkg: #8f8b80;
   --pkg-unresolved: #c9c6bc;
+  /* Implements: REQ-SUP-004 */
   --pkg-floating: #c59a4a;
 
   /* Findings: how serious a scanner said it is (also the color of its bug). */
@@ -88,6 +90,7 @@
    changes - the ground, the water, the sky - because the colors that carry data are
    still the language and history palettes above. These come after both themes, so a
    style wins over the theme's ground and sky whichever theme is in force. */
+/* Implements: REQ-MAP-052, REQ-MAP-051 */
 :root[data-style="circuit"] {
   --water: #d5d9dd;
   --land: #6d5d28; --terrace-a: #17281c; --terrace-b: #112017; --district: #0d1a12;
@@ -126,6 +129,7 @@ button:focus-visible, select:focus-visible, input:focus-visible, #map:focus-visi
   outline-offset: 1px;
 }
 
+/* Implements: REQ-UI-001 */
 .toolbar {
   display: flex;
   align-items: center;
@@ -329,6 +333,7 @@ main { position: relative; flex: 1; min-height: 0; }
    Which hand each group of slots belongs to: four fingers, a palm and a thumb off to
    one side, which is as much of a hand as fourteen pixels will carry. The left one is
    the same drawing mirrored, because that is what a left hand is. */
+/* Implements: REQ-TOOL-053 */
 #walk-hud .w-hand {
   position: relative; width: 14px; height: 15px; flex: none; margin: 0 2px;
   color: var(--text-2); opacity: 0.75;
@@ -416,6 +421,7 @@ main { position: relative; flex: 1; min-height: 0; }
    behind it is held still (Walker.still) and softened: a street in focus behind a
    menu invites a walker to keep reading the street, and the one thing worth reading
    while the wheel is up is the wheel. The blur is what says the city is waiting. */
+/* Implements: REQ-TOOL-062 */
 #walk-hud .w-wheel {
   position: absolute; inset: 0; z-index: 2; pointer-events: none;
   display: flex; align-items: center; justify-content: center;
@@ -553,6 +559,7 @@ main { position: relative; flex: 1; min-height: 0; }
    all - so anything carrying words covers what is behind it rather than tinting it. A
    panel at a quarter opacity is a panel nobody can read over a pale wall, and being
    read is the whole of what a message has to do. */
+/* Implements: REQ-HUNT-048 */
 #walk-hud .w-flash:not(:empty) {
   padding: 3px 9px; border-radius: 6px; font-size: 12px;
   background: color-mix(in srgb, var(--surface) 96%, transparent); color: var(--text);
@@ -572,6 +579,7 @@ main { position: relative; flex: 1; min-height: 0; }
    bubbles, a cone for the extinguisher. The scope reticle above is the dart's, and
    what every tool that names no other one falls back to. Each is keyed by the
    reticle's name rather than the tool's, because several tools want the same one. */
+/* Implements: REQ-TOOL-006 */
 #walk-hud[data-tool="bobber"] .crosshair {
   width: 22px; height: 22px; border-width: 2px; border-color: #e4402f;
   background:
@@ -858,6 +866,7 @@ dialog form { margin-top: 12px; text-align: right; }
 /* The help is reference rather than a prompt: it is a page of prose and tables, so it
    is given the width a paragraph wants and a column for the term being explained that
    is wide enough to hold a tool's name without wrapping it. */
+/* Implements: REQ-UI-008 */
 #help {
   max-width: min(860px, calc(100% - 32px));
   max-height: calc(100vh - 64px);

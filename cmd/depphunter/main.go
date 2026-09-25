@@ -51,6 +51,7 @@ import (
 
 // How long an index's answer stays usable, and how long one request may take.
 const (
+	// Implements: REQ-SUP-032
 	indexCacheTTL = 24 * time.Hour
 	indexTimeout  = 30 * time.Second
 	// Advisories are published against versions that are already released, so what the
@@ -62,6 +63,7 @@ const (
 // version is set at release builds: -ldflags "-X main.version=v1.2.3".
 var version = "dev"
 
+// Implements: REQ-CLI-008, REQ-CLI-011
 func main() {
 	log.SetFlags(0)
 	log.SetPrefix("depphunter: ")
@@ -80,6 +82,8 @@ func main() {
 // logOutput is where depphunter's own log goes: stdout, like any other output of a
 // command - except where stdout is already carrying an export with no file to go to,
 // since "analyzed …" in the middle of a JSON graph is no use to anyone.
+//
+// Implements: REQ-CLI-009, REQ-CLI-010
 func logOutput(cfg config.Config) io.Writer {
 	if cfg.Export != "" && cfg.Output == "" {
 		return os.Stderr
@@ -89,6 +93,8 @@ func logOutput(cfg config.Config) io.Writer {
 
 // newCommand is the depphunter command: flags are declared by the config package,
 // which layers them over the config files and environment (viper).
+//
+// Implements: REQ-CLI-001, REQ-CLI-002, REQ-CLI-003, REQ-CLI-005, REQ-CLI-006, REQ-CLI-007, REQ-CLI-008
 func newCommand() *cobra.Command {
 	cmd := &cobra.Command{
 		Use:   "depphunter [path]",
@@ -152,6 +158,7 @@ func run(ctx context.Context, cfg config.Config) error {
 	credentials := auth.Read(home, os.Getenv)
 	// What this organization owns: what was declared, plus what the machine already
 	// says about private Go modules (internal/scope).
+	// Implements: REQ-SUP-036
 	private := scope.New(append(append([]string{}, cfg.Private...), scope.FromGoEnv(os.Getenv)...))
 	if !private.Empty() {
 		log.Printf("private: %s", strings.Join(private.Patterns(), ", "))
@@ -161,6 +168,7 @@ func run(ctx context.Context, cfg config.Config) error {
 	indexes.Config().Credentials(credentials)
 	indexes.Config().Trust(cfg.TrustIndexes)
 	opts.Indexes = func(files []*scan.File) anal.Indexes { return indexes.Discover(files) }
+	// Implements: REQ-DIST-003, REQ-SUP-010, REQ-SUP-020
 	if cfg.Online {
 		// The configuration is filled while the scan runs; the client only reads it
 		// afterwards, when the walk starts asking about packages. Without a cache
@@ -174,6 +182,7 @@ func run(ctx context.Context, cfg config.Config) error {
 	}
 	// One report per analysis: --watch analyzes again on every change, and a report
 	// that accumulated over a morning's editing describes no run in particular.
+	// Implements: REQ-TRC-001, REQ-TRC-016
 	newReport := func() *trace.Report {
 		return trace.New(cfg.ResolveDepth, opts.Registry != nil, private.Patterns(), cfg.TrustIndexes)
 	}
@@ -183,6 +192,7 @@ func run(ctx context.Context, cfg config.Config) error {
 		return err
 	}
 
+	// Implements: REQ-EXP-004, REQ-EXP-010, REQ-HIST-015
 	if cfg.Export != "" {
 		extra := map[string]any{}
 		refs := loadReferences(ctx, cfg, cacheDir, g)
@@ -206,6 +216,8 @@ func run(ctx context.Context, cfg config.Config) error {
 
 // explain writes the resolution report when --explain asked for it, wherever the log
 // goes (logOutput) - which is where the VS Code extension reads it from too.
+//
+// Implements: REQ-TRC-010, REQ-TRC-013
 func explain(cfg config.Config, r *trace.Report) {
 	if !cfg.Explain || r == nil {
 		return
@@ -263,6 +275,8 @@ func analyze(ctx context.Context, cfg config.Config, opts anal.Options, c *cache
 
 // loadReferences asks the installed language servers for symbol references; nil when
 // disabled or when no server could answer.
+//
+// Implements: REQ-LSP-001, REQ-LSP-009
 func loadReferences(ctx context.Context, cfg config.Config, cacheDir string, g *graph.Graph) *server.References {
 	if !cfg.LSP {
 		return nil
@@ -282,6 +296,8 @@ func loadReferences(ctx context.Context, cfg config.Config, cacheDir string, g *
 // loadFindings reads the scanner reports the user named and, with --online, asks the
 // OSV database about every external package the map pins to a version. nil when
 // nothing was asked for or nothing was found.
+//
+// Implements: REQ-FND-014, REQ-FND-015, REQ-MD-010, REQ-MD-012, REQ-MD-016
 func loadFindings(ctx context.Context, cfg config.Config, cacheDir string, g *graph.Graph,
 	credentials *auth.Store) *findings.Set {
 	if !cfg.FindingsEnabled() {
@@ -338,6 +354,8 @@ func loadFindings(ctx context.Context, cfg config.Config, cacheDir string, g *gr
 // defect nobody is meant to fix: a vendored README links to the parts of its own
 // repository that vendoring does not copy, and a fixture under testdata is wrong on
 // purpose - a link that leads nowhere is what a link check is tested against.
+//
+// Implements: REQ-MD-015
 func documents(g *graph.Graph) []string {
 	var out []string
 	for _, n := range g.Nodes {
@@ -349,6 +367,8 @@ func documents(g *graph.Graph) []string {
 }
 
 // notProse names the directories whose Markdown is not this repository's own writing.
+//
+// Implements: REQ-MD-015
 var notProse = map[string]bool{
 	"vendor": true, "node_modules": true, "third_party": true, "thirdparty": true,
 	"site-packages": true, ".venv": true, "venv": true, "testdata": true,
@@ -368,6 +388,8 @@ func fixed(p string) bool {
 // pinned is every external package the map fixes to one version: the only ones a
 // vulnerability database can answer about, since a floating range resolves to
 // something else on the next install.
+//
+// Implements: REQ-FND-013, REQ-SUP-040
 func pinned(g *graph.Graph) []findings.Package {
 	var out []findings.Package
 	for _, n := range g.Nodes {
@@ -388,6 +410,7 @@ func pinned(g *graph.Graph) []findings.Package {
 	return out
 }
 
+// Implements: REQ-EXP-004
 func writeExport(g *graph.Graph, cfg config.Config, extra map[string]any, format, output string) (err error) {
 	var w io.Writer = os.Stdout
 	if output != "" {
@@ -410,6 +433,7 @@ func writeExport(g *graph.Graph, cfg config.Config, extra map[string]any, format
 	return export.Write(w, g, format)
 }
 
+// Implements: REQ-SRV-001
 func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Options, c *cache.Cache,
 	cacheDir string, newReport func() *trace.Report, credentials *auth.Store) error {
 	if cfg.Editor == "" {
@@ -435,6 +459,7 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 
 	// The map is served at once; history and references follow in the background and,
 	// in watch mode, are refreshed after changes.
+	// Implements: REQ-HIST-007, REQ-LSP-005, REQ-FND-022
 	histHead, histRead := "", false
 	historyRun := newLatest(func(g *graph.Graph) {
 		head, _ := history.Head(ctx, cfg.Root) // "" without commits
@@ -460,6 +485,7 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 		go findingsRun.Run(g)
 	}
 
+	// Implements: REQ-WATCH-001, REQ-WATCH-003, REQ-WATCH-007, REQ-HIST-009, REQ-FND-023
 	if cfg.Watch {
 		w, err := watch.New()
 		if err != nil {
@@ -476,6 +502,7 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 		w.Sync(watched(g), reportFiles)
 		go w.Run(ctx, 300*time.Millisecond, func() {
 			start := time.Now()
+			// Implements: REQ-TRC-016
 			opts.Trace = newReport()
 			ng, st, err := anal.Run(ctx, cfg.Root, opts)
 			if err != nil {
@@ -513,6 +540,7 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 	}
 
 	log.Printf("serving at %s (Ctrl+C to stop)", url)
+	// Implements: REQ-CLI-001, REQ-DIST-016
 	if cfg.Open {
 		if err := browser.OpenURL(url); err != nil {
 			log.Printf("could not open browser: %v", err)
@@ -532,6 +560,8 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 // repository root - and a watch on the directory fires for every file written into
 // it. A glob has no one file to watch, and a new file matching it is news, so there
 // the whole directory stays watched.
+//
+// Implements: REQ-FND-023
 func findingWatch(cfg config.Config) (dirs, files []string) {
 	globbed := map[string]bool{}
 	for _, p := range cfg.Findings {
@@ -556,6 +586,8 @@ func findingWatch(cfg config.Config) (dirs, files []string) {
 }
 
 // watchDirs lists the directories holding analyzed files: ignored trees are not watched.
+//
+// Implements: REQ-WATCH-001
 func watchDirs(root string, g *graph.Graph) []string {
 	var dirs []string
 	for _, n := range g.Nodes {

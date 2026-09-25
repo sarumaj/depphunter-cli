@@ -12,6 +12,8 @@ import "strings"
 // "==1.2.3", a bracketed single-version range ("[1.2.3]" in NuGet and Maven), a git
 // commit, and an OCI digest. Everything else - ranges, carets, tildes, wildcards,
 // "latest", "RELEASE" - floats.
+//
+// Implements: REQ-SUP-001
 func Pinned(spec string) bool {
 	s := strings.TrimSpace(spec)
 	if s == "" {
@@ -35,6 +37,8 @@ func Pinned(spec string) bool {
 
 // Commit reports whether ref is a full git commit, the only git reference that cannot
 // be moved: a tag points wherever its owner last pushed it.
+//
+// Implements: REQ-CI-011
 func Commit(ref string) bool {
 	ref = strings.TrimSpace(ref)
 	return isHex(ref, 40) || isHex(ref, 64) // SHA-1 today, SHA-256 where it is enabled
@@ -42,6 +46,8 @@ func Commit(ref string) bool {
 
 // PinnedSemver is Pinned for the ecosystems where a shortened version is itself a
 // range: npm reads "1.2" as 1.2.x, so only a complete "1.2.3" pins.
+//
+// Implements: REQ-JS-010, REQ-SUP-002
 func PinnedSemver(spec string) bool {
 	if !Pinned(spec) {
 		return false

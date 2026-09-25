@@ -44,6 +44,8 @@ func (d *Discoverer) Config() *Config { return d.cfg }
 // Discover reads the machine's configuration on the first call and the repository's
 // on every call, replacing what the repository declared before, so under --watch the
 // sources follow the repository's files as they change.
+//
+// Implements: REQ-SUP-015, REQ-SUP-016
 func (d *Discoverer) Discover(files []*scan.File) *Config {
 	if !d.read {
 		d.cfg.machine(d.env, d.home)
@@ -56,6 +58,8 @@ func (d *Discoverer) Discover(files []*scan.File) *Config {
 
 // machine reads the configuration of whoever is running depphunter: environment first,
 // then the files their package managers read.
+//
+// Implements: REQ-SUP-015
 func (c *Config) machine(env func(string) string, home string) {
 	add := func(eco, url, scope string) {
 		c.Add(eco, Source{URL: url, Scope: scope, Trusted: true, Origin: OriginMachine})
@@ -94,6 +98,8 @@ func (c *Config) machine(env func(string) string, home string) {
 
 // project reads what the repository asks for. Nothing here is trusted: it says where a
 // package comes from, and a source nobody on this machine knows is worth seeing.
+//
+// Implements: REQ-SUP-015, REQ-SUP-018
 func (c *Config) project(files []*scan.File) {
 	add := func(eco, url, scope string) { c.Add(eco, Source{URL: url, Scope: scope, Origin: OriginProject}) }
 	// A repository may declare several indexes for one ecosystem. Which one is shown

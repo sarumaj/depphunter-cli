@@ -10,6 +10,7 @@ import (
 //go:embed static
 var static embed.FS
 
+// Implements: REQ-DIST-002
 func Assets() fs.FS {
 	sub, err := fs.Sub(static, "static")
 	if err != nil {

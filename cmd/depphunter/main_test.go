@@ -27,6 +27,7 @@ func execute(t *testing.T, args ...string) (string, error) {
 	return out.String(), err
 }
 
+// Verifies: REQ-CLI-002, REQ-CLI-003, REQ-CLI-006, REQ-CLI-007
 func TestVersionAndHelp(t *testing.T) {
 	out, err := execute(t, "--version")
 	if err != nil || out != "depphunter "+version+"\n" {
@@ -44,6 +45,7 @@ func TestVersionAndHelp(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-CLI-001, REQ-CLI-004, REQ-EXP-004
 func TestExportFromCommand(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "main.go"), []byte("package main\n\nimport \"fmt\"\n\nfunc main() { fmt.Println() }\n"), 0o644); err != nil {
@@ -96,6 +98,8 @@ func TestLatestCoalesces(t *testing.T) {
 // says can be piped and read like any other output - except where stdout is already
 // carrying the export, which would otherwise have "analyzed …" written into the
 // middle of it.
+//
+// Verifies: REQ-CLI-009, REQ-CLI-010
 func TestLogOutput(t *testing.T) {
 	for _, c := range []struct {
 		name           string
@@ -117,6 +121,8 @@ func TestLogOutput(t *testing.T) {
 
 // TestExportToStdoutIsOnlyTheExport is the reason for the exception above: a caller
 // that redirects the export has to get a document and nothing else.
+//
+// Verifies: REQ-CLI-010, REQ-EXP-004
 func TestExportToStdoutIsOnlyTheExport(t *testing.T) {
 	root := t.TempDir()
 	if err := os.WriteFile(filepath.Join(root, "main.go"),

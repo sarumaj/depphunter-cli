@@ -14,6 +14,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
+// Implements: REQ-LANG-003
 type Symbol struct {
 	Name string // unique within its file, e.g. "Server.Start" for methods
 	Kind string // func, method, type, const, var, class, …
@@ -21,6 +22,8 @@ type Symbol struct {
 }
 
 // RawImport is an import as written in source.
+//
+// Implements: REQ-LANG-002
 type RawImport struct {
 	Spec   string // as shown to users, e.g. "from .models import User"
 	Module string // what resolution looks up: import path, specifier, dotted module
@@ -36,6 +39,8 @@ type Extraction struct {
 
 // Target is what an import resolves to. Exactly one of Local or Package is set;
 // neither means the import is dropped (e.g. it points outside the project).
+//
+// Implements: REQ-LANG-004
 type Target struct {
 	Local     string // relative path of a project file or directory
 	Ecosystem string // ecosystem id, e.g. "go", "go-std", "npm"
@@ -64,6 +69,8 @@ type Resolver interface {
 // depends on, as far as the project's own lock files say. It is how --resolve-depth
 // reaches past the packages a project imports directly without asking a registry,
 // which is why the answer is only as complete as the lock files are.
+//
+// Implements: REQ-SUP-011
 type Transitive interface {
 	// Dependencies lists what t depends on. Nothing known and nothing to declare look
 	// alike here; both return no targets.
@@ -82,12 +89,14 @@ type FileResult struct {
 	Imports []Import
 }
 
+// Implements: REQ-LANG-005
 type Ecosystem struct {
 	ID   string
 	Name string
 	Std  bool // standard library; hidden in the UI unless enabled
 }
 
+// Implements: REQ-LANG-001, REQ-LANG-025
 type Plugin interface {
 	Name() string
 	// Version must change whenever Extract's output for the same input changes,
@@ -107,11 +116,15 @@ type Plugin interface {
 // than its extension - its directory, its name. Class names that, and becomes part of
 // the cache key, so a cached extraction is not read back for the same content in a
 // place that is read differently.
+//
+// Implements: REQ-LANG-025
 type Classifier interface {
 	Class(f *scan.File) string
 }
 
 // ClassOf is what, besides the content, a plugin's extraction of f depends on.
+//
+// Implements: REQ-LANG-026
 func ClassOf(p Plugin, f *scan.File) string {
 	class := path.Ext(f.Path)
 	if c, ok := p.(Classifier); ok {
@@ -130,6 +143,8 @@ func Apply(r Resolver, file string, ex *Extraction) *FileResult {
 }
 
 // Claimed returns the files p analyzes.
+//
+// Implements: REQ-LANG-001
 func Claimed(p Plugin, all []*scan.File) []*scan.File {
 	var out []*scan.File
 	for _, f := range all {

@@ -61,6 +61,7 @@ func osvServer(t *testing.T) (*httptest.Server, *int32, *int32) {
 	return srv, &batches, &details
 }
 
+// Verifies: REQ-FND-010, REQ-FND-011, REQ-FND-012
 func TestOSVQueriesTheDatabaseAndCachesTheAnswer(t *testing.T) {
 	srv, batches, details := osvServer(t)
 	dir := t.TempDir()
@@ -103,6 +104,8 @@ func TestOSVQueriesTheDatabaseAndCachesTheAnswer(t *testing.T) {
 }
 
 // A database that will not answer leaves the map standing: the set says it is partial.
+//
+// Verifies: REQ-FND-016
 func TestOSVSurvivesADatabaseThatWillNotAnswer(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "service unavailable", http.StatusServiceUnavailable)
@@ -119,6 +122,8 @@ func TestOSVSurvivesADatabaseThatWillNotAnswer(t *testing.T) {
 }
 
 // Nothing leaves the machine for an ecosystem the database does not cover.
+//
+// Verifies: REQ-FND-010, REQ-FND-014
 func TestOSVAsksNothingWhenThereIsNothingToAsk(t *testing.T) {
 	o := &OSV{http: &http.Client{}, API: "http://127.0.0.1:1"} // any request would fail
 	for _, pkgs := range [][]Package{
@@ -158,6 +163,8 @@ func TestOSVSuggestsTheFixOnTheLineInUse(t *testing.T) {
 
 // An answer that does not match the questions one for one is not trusted: the
 // packages it leaves out are not cached as having no advisories.
+//
+// Verifies: REQ-FND-012
 func TestOSVDoesNotCacheAShortAnswer(t *testing.T) {
 	var batches int32
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

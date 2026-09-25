@@ -46,6 +46,7 @@ let selected = '';
 /** Where this build was installed, which is where a released one keeps its binary. */
 let home: string | undefined;
 
+// Implements: REQ-EXT-001, REQ-EXT-027
 export function activate(context: vscode.ExtensionContext): void {
   home = context.extensionPath;
   settings = settingsOf(context.extension?.packageJSON);
@@ -105,6 +106,7 @@ export function deactivate(): void {
  * The graph is fetched once and redrawn on a --watch update; the selection and the
  * catch arrive on the server's event stream, which is also how a building picked on
  * the map turns into a revealed row here.
+ * Implements: REQ-EXT-002, REQ-EXT-004, REQ-EXT-008, REQ-EXT-009, REQ-EXT-010
  */
 async function attach(session: Session): Promise<void> {
   detach();
@@ -138,6 +140,7 @@ async function attach(session: Session): Promise<void> {
   await Promise.all([refreshGraph(api), refreshSession(api)]);
 }
 
+// Implements: REQ-EXT-002
 function detach(): void {
   attached?.stream.dispose();
   attached = undefined;
@@ -176,7 +179,10 @@ function refreshPanel(): void {
   if (attached) void Promise.all([refreshGraph(attached.api, true), refreshSession(attached.api)]);
 }
 
-/** Opens the tree down to what the map has selected, without stealing the focus. */
+/**
+ * Opens the tree down to what the map has selected, without stealing the focus.
+ * Implements: REQ-EXT-008
+ */
 function revealSelected(id: string): void {
   selected = id;
   const row = id ? tree.graphModel?.rowFor(id) : undefined;
@@ -190,13 +196,17 @@ async function openFile(row: Row): Promise<void> {
   await vscode.window.showTextDocument(uri, { preview: true });
 }
 
-/** A caught finding, back where it was caught: the map selects what it belongs to. */
+/**
+ * A caught finding, back where it was caught: the map selects what it belongs to.
+ * Implements: REQ-EXT-012
+ */
 async function showFinding(it: PackItem): Promise<void> {
   if (!attached || !it.nodeId) return;
   await attached.api.select(it.nodeId).catch(noted);
   revealSelected(it.nodeId);
 }
 
+// Implements: REQ-EXT-011
 async function dropFinding(it: PackItem): Promise<void> {
   if (!attached) return;
   const left = backpack.contents.filter(other => other.id !== it.id);
@@ -210,6 +220,7 @@ async function dropFinding(it: PackItem): Promise<void> {
 
 // ---------------------------------------------------------------- exports
 
+// Implements: REQ-EXT-014
 const GRAPH_FORMATS = [
   { label: 'JSON', detail: 'the graph document', format: 'json', ext: 'json' },
   { label: 'GraphML', detail: 'Gephi, yEd, NetworkX', format: 'graphml', ext: 'graphml' },
@@ -217,6 +228,7 @@ const GRAPH_FORMATS = [
   { label: 'HTML', detail: 'a self-contained map to share', format: 'html', ext: 'html' },
 ];
 
+// Implements: REQ-EXT-013
 const PACK_FORMATS = [
   { label: 'Markdown', detail: 'a checklist to paste into an issue', format: 'md', ext: 'md' },
   { label: 'CSV', detail: 'for a spreadsheet', format: 'csv', ext: 'csv' },
@@ -226,7 +238,10 @@ const PACK_FORMATS = [
 const exportGraph = () => save('api/export', GRAPH_FORMATS, name => name);
 const exportBackpack = () => save('api/backpack', PACK_FORMATS, name => `${name}-backpack`);
 
-/** Asks what format, asks where, and writes what the server produced. */
+/**
+ * Asks what format, asks where, and writes what the server produced.
+ * Implements: REQ-EXT-013, REQ-EXT-014
+ */
 async function save(
   endpoint: string,
   formats: { label: string; detail: string; format: string; ext: string }[],
@@ -258,6 +273,7 @@ async function save(
  * How the analysis reached the dependencies it drew, as a document beside the code.
  * The server renders it (internal/trace), so this and what `--explain` writes to the
  * log are one report in two shapes rather than two accounts that can disagree.
+ * Implements: REQ-EXT-016
  */
 async function showResolution(): Promise<void> {
   if (!attached) {
@@ -285,6 +301,7 @@ async function showResolution(): Promise<void> {
  * The map in the browser outside the editor, whatever depphunter.openIn says. The
  * setting is where it opens by default; this is for the one time it is wanted
  * somewhere with more screen, or a second monitor, or a browser's own dev tools.
+ * Implements: REQ-EXT-015
  */
 async function openExternal(resource?: vscode.Uri): Promise<void> {
   const folder = await pick(resource);
@@ -312,7 +329,10 @@ async function open(resource?: vscode.Uri): Promise<void> {
   await show(session);
 }
 
-/** The server for a folder: the one running, the one starting, or a new one. */
+/**
+ * The server for a folder: the one running, the one starting, or a new one.
+ * Implements: REQ-EXT-026
+ */
 function ensure(folder: { root: string; name: string }): Promise<Session | undefined> {
   const session = sessions.get(folder.root);
   if (session) return Promise.resolve(session);
@@ -376,6 +396,7 @@ async function launching(folder: { root: string; name: string }, cancel: vscode.
   }
 }
 
+// Implements: REQ-EXT-020
 async function show(session: Session): Promise<void> {
   const address = await reachable(session.url);
   const where = vscode.workspace.getConfiguration('depphunter', vscode.Uri.file(session.root)).get<string>('openIn');
@@ -413,6 +434,7 @@ async function stop(resource?: vscode.Uri): Promise<void> {
   if (folder) end(folder);
 }
 
+// Implements: REQ-EXT-029
 function end(root: string): void {
   // The tab goes with the server: what it holds is a page on a port that is about to
   // stop answering, and an error page is worse than no tab.
@@ -426,6 +448,7 @@ function end(root: string): void {
   refreshStatus();
 }
 
+// Implements: REQ-EXT-026
 function stopAll(): void {
   for (const { cancel } of starting.values()) cancel.cancel();
   for (const root of [...sessions.keys()]) end(root);
@@ -433,6 +456,7 @@ function stopAll(): void {
 
 // Which folder to map: the one that was right-clicked, the only one there is, or the
 // one the user says.
+// Implements: REQ-EXT-027
 async function pick(resource?: vscode.Uri): Promise<{ root: string; name: string } | undefined> {
   if (resource?.scheme === 'file') {
     // A folder in the explorer, which may be one inside a workspace folder rather
@@ -462,6 +486,7 @@ async function pickRunning(prompt: string): Promise<string | undefined> {
   return chosen?.description;
 }
 
+// Implements: REQ-EXT-030
 function refreshStatus(): void {
   view.refresh();
   const running = [...sessions.values()];
@@ -488,6 +513,7 @@ function settingsOf(manifest: unknown): string[] {
 /** Whether a restart prompt is on screen, so that editing settings.json does not stack them. */
 let offering = false;
 
+// Implements: REQ-EXT-031
 async function offerRestart(e: vscode.ConfigurationChangeEvent): Promise<void> {
   // depphunter.openIn is read each time a map is shown; nothing running needs it.
   const onlyShown = e.affectsConfiguration('depphunter.openIn')
@@ -519,6 +545,7 @@ async function offerRestart(e: vscode.ConfigurationChangeEvent): Promise<void> {
  * survives inside somebody else's frame). An address that lost it loads to
  * "unauthorized" and nothing else, so the token is put back rather than trusted to
  * survive the trip.
+ * Implements: REQ-EXT-023
  */
 async function reachable(url: string): Promise<string> {
   const token = new URL(url).searchParams.get('token');

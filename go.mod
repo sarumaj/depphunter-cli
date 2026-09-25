@@ -8,6 +8,7 @@ require (
 	github.com/emicklei/dot v1.11.0
 	github.com/fsnotify/fsnotify v1.10.1
 	github.com/kballard/go-shellquote v0.0.0-20180428030007-95032a82bc51
+	// Implements: REQ-LANG-013
 	github.com/odvcencio/gotreesitter v0.54.0
 	github.com/sourcegraph/jsonrpc2 v0.2.3
 	github.com/spf13/cobra v1.10.2

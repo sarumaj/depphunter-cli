@@ -24,6 +24,8 @@ var ErrNoHistory = errors.New("no git history")
 
 // Change is one commit's change to one file, as a compact JSON array:
 // [unix time, author index, lines added, lines deleted, commit index].
+//
+// Implements: REQ-HIST-003
 type Change [5]int64
 
 type History struct {
@@ -45,6 +47,8 @@ func Head(ctx context.Context, root string) (string, error) {
 
 // GitDirs returns the directories whose changes signal a new HEAD: the git directory
 // (HEAD, packed-refs) and refs/heads (branch tips). Nil outside a work tree.
+//
+// Implements: REQ-HIST-009
 func GitDirs(ctx context.Context, root string) []string {
 	out, err := exec.CommandContext(ctx, "git", "-C", root, "rev-parse", "--absolute-git-dir").Output()
 	if err != nil {
@@ -57,6 +61,8 @@ func GitDirs(ctx context.Context, root string) []string {
 // Collect reads at most maxCommits non-merge commits reachable from HEAD. Paths are
 // relative to root (which may be a subdirectory of the repository). Renames are
 // followed: changes made under an old name are filed under the file's current path.
+//
+// Implements: REQ-HIST-001, REQ-HIST-002, REQ-HIST-003, REQ-HIST-004, REQ-HIST-006
 func Collect(ctx context.Context, root string, maxCommits int) (*History, error) {
 	head, err := Head(ctx, root)
 	if err != nil {
@@ -151,6 +157,8 @@ func Collect(ctx context.Context, root string, maxCommits int) (*History, error)
 
 // renamePaths splits a numstat rename, "old => new" or "dir/{old => new}/file",
 // into its paths; old is "" for a plain path.
+//
+// Implements: REQ-HIST-006
 func renamePaths(p string) (old, new string) {
 	if !strings.Contains(p, " => ") {
 		return "", p
@@ -202,6 +210,8 @@ func cacheFile(dir, root, head string, maxCommits int) string {
 
 // Cached returns the history of root at HEAD, collecting and caching it in dir when
 // needed. Histories of older HEADs of the same project are removed.
+//
+// Implements: REQ-HIST-005
 func Cached(ctx context.Context, dir, root string, maxCommits int) (*History, error) {
 	head, err := Head(ctx, root)
 	if err != nil {

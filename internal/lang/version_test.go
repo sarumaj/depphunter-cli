@@ -2,6 +2,7 @@ package lang
 
 import "testing"
 
+// Verifies: REQ-SUP-001
 func TestPinned(t *testing.T) {
 	for _, spec := range []string{
 		"1.2.3", "v1.2.3", "1.2", "1.2.3-rc.1", "1.2.3+build.5",
@@ -26,6 +27,7 @@ func TestPinned(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-JS-010, REQ-SUP-002
 func TestPinnedSemver(t *testing.T) {
 	// npm reads a shortened version as a range, so it needs all three parts.
 	for _, spec := range []string{"1.2.3", "v1.2.3", "1.2.3-rc.1"} {

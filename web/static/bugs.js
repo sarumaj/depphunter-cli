@@ -70,6 +70,8 @@ export const TAKE_MS = TAKE * 1000;
  * taken, `shake` along the same axis as `lift` but added after that move, `size` and
  * `squash` (the up axis alone), and `spin` about its own back. `bubble` asks for the
  * soap film to be drawn around it.
+ *
+ * Implements: REQ-HUNT-030
  */
 const TAKES = {
   // Sealed in a bubble that carries it off, turning slowly as it goes, until the soap
@@ -115,6 +117,7 @@ const TAKES = {
 const ramp = t => Math.min(1, t * 4); // the part of a take that lands at once
 const smooth = t => t * t * (3 - 2 * t); // ... and one that leaves and arrives gently
 // The catches that carry a bug in the tool rather than back to the walker.
+// Implements: REQ-HUNT-032
 const IN_HAND = new Set(['net']);
 const TAKEN = '#cfe6ff';              // the soap around a bubbled one
 
@@ -122,6 +125,8 @@ const TAKEN = '#cfe6ff';              // the soap around a bubbled one
  * What each severity walks as: which of the three shapes, how big it is drawn, and
  * whether it can take to the air. A caterpillar cannot - it is the one that has to be
  * walked up to, which is the right way round for the worst thing on the map.
+ *
+ * Implements: REQ-HUNT-012
  */
 const SHAPES = {
   critical: { shape: 'grub', scale: 1, flies: false },
@@ -183,6 +188,8 @@ export class Bugs {
    * It follows while the bugs are out there, too: taking a finding from the panel in
    * the map view is the same catch as netting it in the street, and putting one back
    * puts its bug back on its lap.
+   *
+   * Implements: REQ-HUNT-029
    */
   keepCaught(ids) {
     this.caught = new Set(ids);
@@ -193,6 +200,8 @@ export class Bugs {
   /**
    * place puts a bug on the streets for every finding that belongs to a building on
    * the map. index is what findings.js built; boxes are the current layout's.
+   *
+   * Implements: REQ-HUNT-010
    */
   place(index, boxes) {
     this.drop();
@@ -326,6 +335,8 @@ export class Bugs {
    * A frame. `at` is where the walker is and `hand` where the tool that is catching
    * them holds what it catches; the takes that draw a bug somewhere need one or the
    * other, and without either they simply shrink where they stand.
+   *
+   * Implements: REQ-HUNT-011
    */
   update(dt, now, at = null, hand = null) {
     if (!this.drawn.length) return;
@@ -372,6 +383,8 @@ export class Bugs {
    * One frame of a bug being taken off the map. Moves it along whatever its tool does
    * to it and says whether it is still there to be drawn; the last frame lets go of
    * the soap, if there was any, and closes the instances up over the gap.
+   *
+   * Implements: REQ-HUNT-030, REQ-HUNT-032
    */
   taking(bug, dt, at, hand = null) {
     const take = bug.take;
@@ -451,6 +464,8 @@ export class Bugs {
   /**
    * at is the bug nearest to a point on the flat map, within radius; used both by the
    * crosshair and by whatever the tool threw.
+   *
+   * Implements: REQ-HUNT-014, REQ-HUNT-018
    */
   at(v, radius = CATCH) {
     const cell = this.grid.get(cellOf(Math.floor(v.x / CELL), Math.floor(v.z / CELL)));
@@ -471,6 +486,8 @@ export class Bugs {
    * tool's own gesture (TAKES), carried through to the bug so that netting one and
    * photographing one do not look the same; a catch with no gesture named - taking a
    * finding from the panel, over on the map - simply stops it where it stands.
+   *
+   * Implements: REQ-HUNT-031
    */
   catch(bug, how = null) {
     if (!bug || bug.caught) return false;
@@ -507,6 +524,7 @@ export class Bugs {
 // boxFor finds the building a finding's node is drawn as. A file inside a collapsed
 // directory has no box of its own, so the nearest ancestor that does takes its bug.
 // pins.js places its markers by the same rule, so a bug and its pin agree.
+// Implements: REQ-HUNT-020
 export function boxFor(byNode, node) {
   for (let n = node; n; n = n.parentNode) {
     const b = byNode.get(n.id);
@@ -618,6 +636,8 @@ function pointAt(lap, u) {
  * They are modelled in Blender (tools/bug.py) and arrive as bug.glb; until they do -
  * and for any shape an older file was built without - the map draws the ones below
  * out of spheres and boxes, so the street is never empty waiting on a download.
+ *
+ * Implements: REQ-HUNT-013
  */
 function geometry() {
   const model = bugParts();

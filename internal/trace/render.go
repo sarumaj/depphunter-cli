@@ -11,6 +11,8 @@ import (
 // Text writes the digest the command line shows: columns, no markup, long lists cut
 // off at maxListed with a count of what was left out. The whole of it is in the JSON
 // and in what Markdown writes.
+//
+// Implements: REQ-TRC-013, REQ-TRC-015
 func (r *Report) Text(w io.Writer) error {
 	if r == nil {
 		return nil
@@ -58,6 +60,8 @@ func (r *Report) Text(w io.Writer) error {
 // Markdown writes the report as the document the editor opens: tables render, and
 // the full list of questions is here rather than cut short, because a document is
 // scrolled and searched rather than read past.
+//
+// Implements: REQ-TRC-012
 func (r *Report) Markdown(w io.Writer) error {
 	if r == nil {
 		return nil
@@ -275,6 +279,8 @@ func (t *table) add(cells ...string) { t.rows = append(t.rows, cells) }
 // How wide one cell may get before the written report cuts it short: a signed
 // registry-redirect URL is several hundred characters of base64, and one of them
 // turns the table into a ragged wall. The JSON carries every value whole.
+//
+// Implements: REQ-TRC-015
 const (
 	textCell = 72
 	mdCell   = 200

@@ -20,6 +20,8 @@ var (
 // defines it. Advisories carry the vector far more often than a severity word, so this
 // is usually what decides how serious a finding looks on the map. ok is false for a
 // vector that is not v3 or is missing a base metric.
+//
+// Implements: REQ-FND-018
 func scoreCVSS(vector string) (float64, bool) {
 	m := map[string]string{}
 	parts := strings.Split(strings.TrimSpace(vector), "/")

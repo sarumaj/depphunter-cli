@@ -32,6 +32,7 @@ function twoIslands() {
 }
 
 describe('a bridge deck', () => {
+  // Verifies: REQ-CITY-026
   it('links every island to the mainland and to nothing twice', () => {
     // Four shores, one of them the mainland: a spanning tree over four nodes has
     // three edges, and every island is on the end of one.
@@ -42,6 +43,7 @@ describe('a bridge deck', () => {
     for (const island of boxes.slice(1)) assert.ok(joined.has(island), 'an island no bridge reaches');
   });
 
+  // Verifies: REQ-CITY-027, REQ-CITY-028
   it('arches: the middle stands above the shores it leaves', () => {
     const [r] = bridgesFor(twoIslands());
     const middle = bridgeHeight(r, (r.from + r.to) / 2, r.across);
@@ -51,6 +53,7 @@ describe('a bridge deck', () => {
     assert.ok(Math.abs(bridgeHeight(r, r.to, r.across) - SHORE) < 1e-9);
   });
 
+  // Verifies: REQ-CITY-028, REQ-WALK-035
   it('carries a body only while the whole of it is on the deck', () => {
     const [r] = bridgesFor(twoIslands());
     const mid = (r.from + r.to) / 2;

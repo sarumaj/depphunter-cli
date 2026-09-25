@@ -34,6 +34,7 @@ func env(m map[string]string) func(string) string {
 	return func(k string) string { return m[k] }
 }
 
+// Verifies: REQ-SUP-014
 func TestPublicDefaults(t *testing.T) {
 	c := Discover(nil, env(nil), "")
 	for eco, want := range map[string]string{
@@ -46,6 +47,7 @@ func TestPublicDefaults(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-018
 func TestRepositoryIndexIsNotVouchedFor(t *testing.T) {
 	files := write(t, map[string]string{
 		".npmrc": "registry=https://artifactory.internal/api/npm/all\n@acme:registry=https://artifactory.internal/api/npm/acme\n",
@@ -67,6 +69,7 @@ func TestRepositoryIndexIsNotVouchedFor(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-016
 func TestMachineConfigurationWins(t *testing.T) {
 	home := t.TempDir()
 	if err := os.WriteFile(filepath.Join(home, ".npmrc"), []byte("registry=https://mirror.corp/npm\n"), 0o644); err != nil {
@@ -81,6 +84,7 @@ func TestMachineConfigurationWins(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-015
 func TestDiscoverReadsEveryEcosystem(t *testing.T) {
 	files := write(t, map[string]string{
 		"requirements.txt":   "--extra-index-url https://pypi.internal/simple\nrequests\n",
@@ -123,6 +127,7 @@ func TestDiscoverReadsEveryEcosystem(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-017
 func TestContainerRegistryComesFromTheReference(t *testing.T) {
 	c := Discover(nil, env(nil), "")
 	for _, tt := range []struct {
@@ -150,6 +155,7 @@ func TestHost(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-042
 func TestAnIndexTheUserVouchesForIsNotMarked(t *testing.T) {
 	// The shape this is for: an organization whose repositories carry their own
 	// .npmrc pointing at the company registry. Without a word from the user that is
@@ -180,6 +186,7 @@ func TestAnIndexTheUserVouchesForIsNotMarked(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-038
 func TestPublicNamesTheEcosystemsOwnIndex(t *testing.T) {
 	c := New()
 	if !c.Public(NPM, "https://registry.npmjs.org") {
@@ -198,6 +205,8 @@ func TestPublicNamesTheEcosystemsOwnIndex(t *testing.T) {
 // written into every export, and the HTML export is a file the documentation suggests
 // sharing. A pip or Cargo mirror is routinely configured with the credential in the
 // URL.
+//
+// Verifies: REQ-AUTH-012, REQ-AUTH-013, REQ-TRC-002
 func TestACredentialInAnIndexURLIsNotRecorded(t *testing.T) {
 	store := auth.Read("", nil)
 	cfg := New()
@@ -230,6 +239,8 @@ func TestACredentialInAnIndexURLIsNotRecorded(t *testing.T) {
 
 // Under --watch the repository is read again on every analysis: an index taken out of
 // it is gone from the next map, and one only this machine names stays.
+//
+// Verifies: REQ-SUP-015
 func TestDiscoverForgetsWhatTheRepositoryNoLongerSays(t *testing.T) {
 	d := NewDiscoverer(env(map[string]string{"PIP_INDEX_URL": "https://pypi.machine/simple"}), "")
 	files := write(t, map[string]string{".npmrc": "registry=https://npm.old/\n"})
@@ -251,6 +262,8 @@ func TestDiscoverForgetsWhatTheRepositoryNoLongerSays(t *testing.T) {
 
 // Cargo resolves crates.io from whatever replace-with ends at, and the answer must
 // not depend on the order Go ranges over a map.
+//
+// Verifies: REQ-SUP-015
 func TestCargoFollowsReplaceWith(t *testing.T) {
 	config := `[source.crates-io]
 replace-with = "vendored"

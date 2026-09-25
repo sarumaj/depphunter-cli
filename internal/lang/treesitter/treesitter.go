@@ -13,8 +13,11 @@ import (
 
 // parseTimeout bounds a single parse; the runtime then returns a partial tree,
 // which is still useful for imports near the top of a file.
+//
+// Implements: REQ-LANG-011
 const parseTimeout = 3_000_000 // µs
 
+// Implements: REQ-LANG-006, REQ-LANG-008
 type Grammar struct {
 	name    string
 	lang    *ts.Language

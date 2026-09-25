@@ -16,6 +16,7 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 	return langtest.Analyze(t, Plugin{}, "testdata/repo")
 }
 
+// Verifies: REQ-JS-002, REQ-JS-003, REQ-JS-004, REQ-JS-005, REQ-JS-006, REQ-JS-007, REQ-JS-010
 func TestTypeScriptResolution(t *testing.T) {
 	langtest.CheckImports(t, analyze(t)["src/index.ts"], map[string]lang.Target{
 		"./util.js":        {Local: "src/util.ts"},
@@ -36,6 +37,7 @@ func TestTypeScriptResolution(t *testing.T) {
 	})
 }
 
+// Verifies: REQ-JS-001
 func TestCommonJSAndDynamicImports(t *testing.T) {
 	got := langtest.Imports(t, analyze(t)["legacy/app.js"])
 	if got["fs"] != (lang.Target{Ecosystem: "node", Package: "fs"}) {
@@ -46,6 +48,7 @@ func TestCommonJSAndDynamicImports(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-LANG-023, REQ-LANG-024, REQ-JS-011
 func TestSymbols(t *testing.T) {
 	res := analyze(t)
 	check := func(file string, want map[string]string) {
@@ -68,6 +71,7 @@ func TestSymbols(t *testing.T) {
 	check("legacy/app.js", map[string]string{"Legacy": "class", "Legacy.start": "method", "lazy": "func", "fs": "var"})
 }
 
+// Verifies: REQ-JS-008, REQ-JS-009, REQ-SUP-003, REQ-SUP-007
 func TestLockfiles(t *testing.T) {
 	// Every lock file pins; what package.json asked for stays visible beside it.
 	npm := func(pkg, version, requested string) lang.Target {
@@ -92,6 +96,8 @@ func TestLockfiles(t *testing.T) {
 
 // TestLockTree checks what the lock file says the packages themselves need: this is
 // what --resolve-depth walks, and it must come out of the file alone.
+//
+// Verifies: REQ-SUP-009
 func TestLockTree(t *testing.T) {
 	r, err := (Plugin{}).Resolver("testdata/repo", langtest.Files(t, "testdata/repo"))
 	if err != nil {
@@ -131,6 +137,8 @@ func TestLockTree(t *testing.T) {
 // TestYarnEntryKeys checks the two places a classic yarn.lock is read: a dependency
 // whose name begins with "version" must not be mistaken for the entry's own version,
 // which is only told apart by how deep it is indented.
+//
+// Verifies: REQ-SUP-009, REQ-JS-008
 func TestYarnEntryKeys(t *testing.T) {
 	lock := "lodash@^4.17.0:\n  version \"4.17.21\"\n  resolved \"https://registry.npmjs.org/lodash\"\n" +
 		"  dependencies:\n    version-guard \"^1.1.1\"\n    js-tokens \"^4\"\n"
@@ -156,6 +164,8 @@ func TestYarnEntryKeys(t *testing.T) {
 
 // TestPnpmKeys covers both spellings: version 5 put the version after a slash,
 // version 6 and later after an @, with peer context in parentheses.
+//
+// Verifies: REQ-SUP-009
 func TestPnpmKeys(t *testing.T) {
 	for _, c := range []struct{ key, name, version string }{
 		{"/lodash/4.17.21", "lodash", "4.17.21"},

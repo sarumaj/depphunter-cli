@@ -33,6 +33,7 @@ func sample() *Report {
 	return r
 }
 
+// Verifies: REQ-TRC-004, REQ-TRC-005
 func TestReportCountsWhoAnswered(t *testing.T) {
 	r := sample()
 	got := r.Totals
@@ -65,6 +66,7 @@ func TestReportCountsWhoAnswered(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-TRC-006
 func TestReasonsGroupTheUnanswered(t *testing.T) {
 	reasons := sample().Reasons()
 	if len(reasons) != 3 {
@@ -84,6 +86,7 @@ func TestReasonsGroupTheUnanswered(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-TRC-003
 func TestSummarizeReadsTheMapForIndexes(t *testing.T) {
 	g := &graph.Graph{Root: "app", Nodes: []*graph.Node{
 		{ID: "e:npm", Kind: graph.KindEcosystem, Name: "npm"},
@@ -150,6 +153,7 @@ func TestFinishOrdersTheQuestions(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-TRC-001, REQ-TRC-002, REQ-TRC-008, REQ-TRC-013
 func TestTextSaysWhatHappened(t *testing.T) {
 	r := sample()
 	r.Summarize(&graph.Graph{Root: "app"})
@@ -175,6 +179,7 @@ func TestTextSaysWhatHappened(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-TRC-012, REQ-TRC-015
 func TestMarkdownIsATableAndKeepsItsColumns(t *testing.T) {
 	r := New(1, true, nil, nil)
 	r.Enter("javascript", 0)

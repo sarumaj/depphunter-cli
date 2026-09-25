@@ -9,6 +9,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
+// Verifies: REQ-LANG-012, REQ-LANG-021, REQ-LANG-022
 func TestForEachFileSkipsWhatItWouldNotParse(t *testing.T) {
 	dir := t.TempDir()
 	small := filepath.Join(dir, "small.go")

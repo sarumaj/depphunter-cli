@@ -28,6 +28,7 @@ const TOUCH = 0.004;
 const blind = () => new Health({ querySelector: () => null, classList: { toggle() {} } });
 
 describe('what the walker can take', () => {
+  // Verifies: REQ-WALK-027
   it('ignores a short drop and kills on a long one', () => {
     const h = blind();
     h.reset(0);
@@ -42,6 +43,7 @@ describe('what the walker can take', () => {
     assert.ok(far.dead, 'a drop off the tallest building was survived');
   });
 
+  // Verifies: REQ-WALK-028
   it('charges a bite by severity, and takes several of any of them', () => {
     const worst = Health.biteFor('critical');
     assert.ok(worst > Health.biteFor('high'));
@@ -56,6 +58,7 @@ describe('what the walker can take', () => {
     assert.ok(bites >= 3, `the worst bug on the map killed in ${bites}`);
   });
 
+  // Verifies: REQ-WALK-029
   it('raises the ceiling and mends by as much for every bug in the backpack', () => {
     const h = blind();
     h.reset(0);
@@ -73,6 +76,7 @@ describe('what the walker can take', () => {
     assert.ok(full.max < 10 * bare);
   });
 
+  // Verifies: REQ-WALK-030
   it('starts every walk whole, however the last one ended', () => {
     const h = blind();
     h.reset(3);
@@ -135,6 +139,7 @@ describe('what running costs', () => {
   /** Wind draws into the walk HUD; none of these tests are about the drawing. */
   const blown = () => new Wind({ querySelector: () => null });
 
+  // Verifies: REQ-WALK-038
   it('runs out after a dash and not after a stride', () => {
     const w = blown();
     w.reset();
@@ -146,6 +151,7 @@ describe('what running costs', () => {
     assert.equal(w.share, 0);
   });
 
+  // Verifies: REQ-WALK-039
   it('holds a winded walker to a walk until they have their breath back', () => {
     const w = blown();
     w.reset();
@@ -160,6 +166,7 @@ describe('what running costs', () => {
     assert.ok(w.spend(Wind.jumpCost), 'a rested walker could not jump');
   });
 
+  // Verifies: REQ-WALK-038
   it('charges a jump, and lets go of a few of them before it is spent', () => {
     const w = blown();
     w.reset();
@@ -169,6 +176,7 @@ describe('what running costs', () => {
     assert.ok(jumps <= 12, `a rested walker managed ${jumps} jumps, which is a staircase`);
   });
 
+  // Verifies: REQ-WALK-038
   it('fills again, and no further', () => {
     const w = blown();
     w.reset();
@@ -180,6 +188,7 @@ describe('what running costs', () => {
 });
 
 describe('the two kinds of tool', () => {
+  // Verifies: REQ-TOOL-021
   it('gives every tool a kind and its own slot', () => {
     const slots = new Set();
     for (const id of TOOL_IDS) {
@@ -194,6 +203,7 @@ describe('the two kinds of tool', () => {
     assert.equal(toolFor(DEFAULT_TOOL).kind, 'primary', 'walk mode opens with something that carries you');
   });
 
+  // Verifies: REQ-TOOL-022
   it('lets no secondary tool hit anything', () => {
     for (const id of SECONDARY_IDS) {
       const tool = toolFor(id);
@@ -203,6 +213,7 @@ describe('the two kinds of tool', () => {
     }
   });
 
+  // Verifies: REQ-TOOL-021
   it('splits the row into the hand each tool goes in', () => {
     assert.deepEqual([...PRIMARY_IDS, ...SECONDARY_IDS], TOOL_IDS, 'the rows do not make up the row');
     assert.equal(PRIMARY_IDS.length, 7);
@@ -210,6 +221,7 @@ describe('the two kinds of tool', () => {
     for (const id of PRIMARY_IDS) assert.equal(isSecondary(toolFor(id)), false);
   });
 
+  // Verifies: REQ-TOOL-026
   it('leaves three ways to catch a bug on purpose and two by the way', () => {
     const catchers = TOOL_IDS.filter(id => hits(toolFor(id), 'bugs'));
     for (const id of ['net', 'bubbles', 'extinguisher', 'rod', 'nailer', 'camera']) {
@@ -218,6 +230,7 @@ describe('the two kinds of tool', () => {
     assert.equal(hits(TOOLS.dart, 'bugs'), false, 'the tracking dart is for buildings');
   });
 
+  // Verifies: REQ-TOOL-047
   it('puts a tank on what carries the walker, and on nothing else', () => {
     // A line does not run out; a jet and a pair of floats do, or flying is simply the
     // way you get about and the walk has no shape to it.
@@ -232,11 +245,13 @@ describe('the two kinds of tool', () => {
     assert.ok(!TOOLS.grapple.fuel, 'a line does not run out');
   });
 
+  // Verifies: REQ-TOOL-023, REQ-TOOL-025
   it('flies and floats on a carried tool and on nothing else', () => {
     assert.deepEqual(TOOL_IDS.filter(id => toolFor(id).flies), ['jetpack']);
     assert.deepEqual(TOOL_IDS.filter(id => toolFor(id).floats), ['skimmers']);
   });
 
+  // Verifies: REQ-TOOL-027, REQ-TOOL-041
   it('makes the dart and the nail gun opposites rather than near-copies', () => {
     const dart = TOOLS.dart.flight, nail = TOOLS.nailer.flight;
     assert.ok(nail.speed > dart.speed * 2, 'a nail is not markedly faster than a dart');
@@ -251,6 +266,7 @@ describe('the two kinds of tool', () => {
     assert.ok(TOOLS.nailer.auto > 0, 'the nail gun should keep firing while held');
   });
 
+  // Verifies: REQ-TOOL-043
   it('gives a cadence only to the tools that hose rather than aim', () => {
     const held = TOOL_IDS.filter(id => toolFor(id).auto);
     assert.deepEqual(held.sort(), ['extinguisher', 'nailer']);
@@ -261,6 +277,7 @@ describe('the two kinds of tool', () => {
     }
   });
 
+  // Verifies: REQ-HUNT-037
   it('keeps what it is pointed at with one tool, and that one is the camera', () => {
     // `keeps` is what makes a use of a tool produce a photograph, and walk.js asks no
     // tool anything else about it. Two tools answering to it would mean two tools
@@ -272,6 +289,7 @@ describe('the two kinds of tool', () => {
     assert.equal(TOOLS.camera.targets, 'both');
   });
 
+  // Verifies: REQ-TOOL-037
   it('builds each tool as one thing, with nothing floating beside it', () => {
     // A viewmodel is a few dozen boxes and cylinders placed by hand, and the failure
     // they have is always the same: a part is put at an angle with a length of its
@@ -307,6 +325,7 @@ describe('the two kinds of tool', () => {
     }
   });
 
+  // Verifies: REQ-TOOL-020, REQ-WALK-042
   it('keeps the walk cycle of a held tool steady when the pace changes', () => {
     // The cycle used to be read off the clock as a rate times the elapsed time, which
     // meant a change of rate re-scaled the whole of that time and threw the phase
@@ -323,6 +342,7 @@ describe('the two kinds of tool', () => {
     assert.ok(jumped < 0.02, `the tool swung ${jumped.toFixed(3)} radians between two frames`);
   });
 
+  // Verifies: REQ-HUNT-046
   it('fits a photograph to the shape of the camera screen, not the picture', () => {
     // A photograph is the shape of the window it was taken through and the screen on
     // the back of the camera is squarer than that, so it is filled to the screen and
@@ -340,6 +360,7 @@ describe('the two kinds of tool', () => {
     }
   });
 
+  // Verifies: REQ-HUNT-047
   it('draws no second pass over the map while a photograph is up', () => {
     // The live view on the camera's back is the whole map rendered again. A still
     // picture is not, and asking for one while a photograph is up would be a frame's
@@ -361,6 +382,7 @@ describe('the two kinds of tool', () => {
     assert.equal(films, 2, 'the live view never came back');
   });
 
+  // Verifies: REQ-HUNT-043
   it('brings the camera up until the picture is nearly all you can see', () => {
     // What "held up to look at" has to come to: the screen square on to the eye,
     // centred on the line of sight, filling most of the view - and no part of the tool
@@ -418,6 +440,7 @@ describe('the two kinds of tool', () => {
     assert.deepEqual(rest.position.toArray(), was.toArray());
   });
 
+  // Verifies: REQ-TOOL-039
   it('builds everything it throws out of unlit parts', () => {
     // What leaves the hand ends up in the scene, and the scene has no lights in it at
     // all - so a lit material out there is drawn black, which is what a soap bubble and
@@ -438,6 +461,7 @@ describe('the two kinds of tool', () => {
 // Neither needs a browser, and both are what a walker feels when they flick the mouse
 // - so a wedge that is off by one is a tool taken by mistake in the middle of a chase.
 describe('the tool switcher', () => {
+  // Verifies: REQ-TOOL-054, REQ-TOOL-055
   it('numbers the row it draws, left to right', () => {
     // The fix this all exists for. The row is laid out with the carried tools on the
     // left, because that is the hand they go in, and the digits are counted along
@@ -470,6 +494,7 @@ describe('the tool switcher', () => {
     assert.deepEqual(SWITCH.keysFor(PRIMARY_IDS[0]), ['4']);
   });
 
+  // Verifies: REQ-TOOL-056
   it('cycles the off hand back to an empty one', () => {
     const ring = SWITCH.carriedRing();
     assert.deepEqual(ring, [...SECONDARY_IDS, SWITCH.EMPTY], 'nothing is not on the ring');
@@ -484,6 +509,7 @@ describe('the tool switcher', () => {
     assert.equal(SWITCH.cycle(ring, SWITCH.EMPTY, -1), SECONDARY_IDS[SECONDARY_IDS.length - 1]);
   });
 
+  // Verifies: REQ-TOOL-057
   it('cycles the hunting hand and never empties it', () => {
     let at = PRIMARY_IDS[0];
     for (let i = 0; i < PRIMARY_IDS.length; i++) {
@@ -493,6 +519,7 @@ describe('the tool switcher', () => {
     assert.equal(at, PRIMARY_IDS[0], 'the hunt does not come round');
   });
 
+  // Verifies: REQ-TOOL-058
   it('lays the wheel out the way the walker is', () => {
     const w = SWITCH.wedges();
     assert.equal(w.length, TOOL_IDS.length + 1, 'the wheel has no wedge for an empty hand');
@@ -510,6 +537,7 @@ describe('the tool switcher', () => {
     assert.equal(Math.max(...left.map(x => x.to)), 360);
   });
 
+  // Verifies: REQ-TOOL-060
   it('points at what the cursor is over, and at nothing in the middle', () => {
     // The hub: a wheel opened and let go without moving the mouse changes no hands.
     assert.equal(SWITCH.wedgeAt(0, 0), null);

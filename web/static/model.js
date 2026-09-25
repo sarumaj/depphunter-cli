@@ -18,6 +18,7 @@ const BYTES_PER_LINE = 40;
  * that were actually counted, because a stand-in in one of those is a lie. This is
  * the other thing: the one the geometry and the size palette ask for, where the
  * question is only ever "how much is there".
+ * Implements: REQ-MAP-058
  */
 export const bulk = n =>
   n.loc || Math.round((n.bytes || 0) / BYTES_PER_LINE);
@@ -26,10 +27,12 @@ export const bulk = n =>
  * Whether a file's size is only known in bytes: nothing read it, so there are no
  * lines to report and "0 lines" would be a statement about the file rather than
  * about the reading of it. What the UI says instead is how big it is.
+ * Implements: REQ-MAP-060
  */
 export const unread = n => n.kind === 'file' && !n.loc && !!n.bytes;
 
 /** Bytes, for somewhere there is room to say it: 4.1 MB, 812 kB, 96 bytes. */
+// Implements: REQ-MAP-060
 export function fileSize(bytes) {
   if (!bytes) return '0 bytes';
   if (bytes < 1000) return `${bytes} bytes`;
@@ -39,6 +42,7 @@ export function fileSize(bytes) {
   return `${n < 10 ? n.toFixed(1) : Math.round(n)} ${units[i]}`;
 }
 
+// Implements: REQ-MAP-059, REQ-MAP-008, REQ-MAP-010
 export function buildModel(graph) {
   const byId = new Map();
   for (const n of graph.nodes) {
@@ -111,6 +115,7 @@ function push(map, k, v) {
 
 // Languages ordered by lines of code; the order decides categorical color slots once
 // per repository, so a language keeps its color regardless of later filtering.
+// Implements: REQ-MAP-036
 function rankLanguages(root) {
   return [...root.langLoc.entries()]
     .filter(([l]) => l)
@@ -131,6 +136,7 @@ export function ancestors(n) {
 
 // Edges of a kind ('import' or 'reference') crossing the boundary of `sel`'s subtree,
 // as {out, in} lists of raw edges.
+// Implements: REQ-MOD-007, REQ-MAP-013
 export function boundaryEdges(model, sel, kind = 'import') {
   const from = kind === 'reference' ? model.refsFrom : model.edgesFrom;
   const to = kind === 'reference' ? model.refsTo : model.edgesTo;

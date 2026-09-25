@@ -15,6 +15,7 @@
 // Nothing here is authoritative: the findings document is, and the backpack is a
 // record of what someone did about it.
 
+// Implements: REQ-HUNT-027
 const KEY = 'depphunter.backpack';
 const MAX = 500; // a backpack, not a database
 
@@ -44,6 +45,7 @@ export class Backpack {
     return this.items.some(it => it.id === id);
   }
 
+  // Implements: REQ-HUNT-016
   /** Puts a caught finding in. Catching the same one twice changes nothing. */
   add(finding, node) {
     if (this.has(finding.id)) return false;
@@ -79,6 +81,8 @@ export class Backpack {
    * Takes the list as somebody else has it - the editor's side panel, which drops
    * items from the same backpack through the server. `quiet` travels to onChange, so
    * that whoever redraws knows not to hand the same list straight back up again.
+   *
+   * Implements: REQ-HUNT-029
    */
   replace(items) {
     if (!Array.isArray(items)) return false;

@@ -112,6 +112,7 @@ type snapshot struct {
 	files map[string]int // path -> lines, also the allow-list for /api/file
 }
 
+// Implements: REQ-SEC-002
 func New(cfg config.Config, g *graph.Graph, assets fs.FS) (*Server, error) {
 	tok := make([]byte, 24)
 	if _, err := rand.Read(tok); err != nil {
@@ -144,6 +145,7 @@ type docHead struct {
 	GeneratedAt time.Time `json:"generatedAt"`
 }
 
+// Implements: REQ-SRV-013
 func newSnapshot(g *graph.Graph, version int) (*snapshot, error) {
 	sn := &snapshot{g: g, version: version, files: make(map[string]int, len(g.Nodes))}
 	for _, n := range g.Nodes {
@@ -197,6 +199,8 @@ func newSnapshot(g *graph.Graph, version int) (*snapshot, error) {
 // Update publishes a new analysis and notifies connected browsers. touched lists files
 // whose contents were re-read; together with added, removed and resized files they are
 // reported as changed. It returns false when the graph did not change.
+//
+// Implements: REQ-WATCH-004
 func (s *Server) Update(g *graph.Graph, touched []string) (bool, error) {
 	// Encoded before the lock is taken: it is the expensive part of an update, and
 	// every request reading the server's state would wait for it. The version is
@@ -243,6 +247,8 @@ func (s *Server) Update(g *graph.Graph, touched []string) (bool, error) {
 }
 
 // broadcast sends ev to every event stream; callers hold s.mu.
+//
+// Implements: REQ-SRV-015
 func (s *Server) broadcast(ev event) {
 	s.seq++
 	ev.seq = s.seq
@@ -272,6 +278,8 @@ func (s *Server) SetReferences(r *References) error {
 
 // SetResolution publishes the report of the analysis now being served. --watch
 // analyzes again on every change, and each re-analysis brings its own.
+//
+// Implements: REQ-TRC-016
 func (s *Server) SetResolution(r *trace.Report) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -293,6 +301,7 @@ type References struct {
 	Partial bool          `json:"partial"`
 }
 
+// Implements: REQ-HIST-008, REQ-LSP-005, REQ-FND-022
 func (s *Server) setLazy(name string, v any) error {
 	d := &lazyData{value: v}
 	if v != nil {
@@ -337,6 +346,8 @@ func (s *Server) Lazy(name string) any {
 }
 
 // handleLazy serves a background dataset: 202 while it is computed, 204 without one.
+//
+// Implements: REQ-HIST-007, REQ-LSP-005, REQ-FND-022
 func (s *Server) handleLazy(name string) http.HandlerFunc {
 	return func(w http.ResponseWriter, r *http.Request) {
 		s.mu.RLock()
@@ -384,6 +395,8 @@ func (s *Server) current() *snapshot {
 }
 
 // Listen binds the address and returns the listener and the URL to open (including the token).
+//
+// Implements: REQ-SEC-002, REQ-SEC-005
 func (s *Server) Listen(addr string) (net.Listener, string, error) {
 	ln, err := net.Listen("tcp", addr)
 	if err != nil {
@@ -424,6 +437,7 @@ func (s *Server) Handler() http.Handler {
 	return s.guard(mux)
 }
 
+// Implements: REQ-SEC-004, REQ-SEC-005, REQ-SEC-007
 func (s *Server) guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// A foreign Host header means a DNS-rebinding page is talking to us.
@@ -461,6 +475,8 @@ func (s *Server) guard(next http.Handler) http.Handler {
 
 // allowed decides whether a request carries the token, and answers the request
 // itself when it does not: it writes to w only when one is refused or redirected.
+//
+// Implements: REQ-SEC-003, REQ-SEC-004
 func (s *Server) allowed(w http.ResponseWriter, r *http.Request) bool {
 	if len(s.embed) > 0 {
 		return s.embedAllowed(w, r)
@@ -508,6 +524,8 @@ func (s *Server) embedAllowed(w http.ResponseWriter, r *http.Request) bool {
 // cookieFor names the cookie of the server with this token. It is derived from the
 // token rather than taken from it, so the name, which is not guarded as the value
 // is, gives nothing of the token away.
+//
+// Implements: REQ-SEC-003
 func cookieFor(token []byte) string {
 	sum := sha256.Sum256(append([]byte("cookie:"), token...))
 	return cookiePrefix + hex.EncodeToString(sum[:6])
@@ -517,6 +535,7 @@ func (s *Server) equalToken(t string) bool {
 	return subtle.ConstantTimeCompare([]byte(t), []byte(s.token)) == 1
 }
 
+// Implements: REQ-SRV-002, REQ-SRV-013, REQ-SRV-014
 func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
 	sn := s.current()
 	w.Header().Set("Content-Type", "application/json")
@@ -555,6 +574,7 @@ func matches(header, etag string) bool {
 	return false
 }
 
+// Implements: REQ-CFG-015, REQ-SRV-004
 func (s *Server) handleConfig(w http.ResponseWriter, _ *http.Request) {
 	s.mu.RLock()
 	cfg := s.cfg
@@ -572,6 +592,8 @@ func (s *Server) handleConfig(w http.ResponseWriter, _ *http.Request) {
 }
 
 // handleSettings saves the browser's view settings into the project config file.
+//
+// Implements: REQ-CFG-012, REQ-CFG-014, REQ-CFG-015
 func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	var ui config.UI
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 64<<10)).Decode(&ui); err != nil {
@@ -593,6 +615,8 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleFile serves the source of a file that is part of the graph, and nothing else.
+//
+// Implements: REQ-SEC-006, REQ-SRV-003
 func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
 	rel := r.URL.Query().Get("path")
 	if _, ok := s.current().files[rel]; !ok {
@@ -620,6 +644,8 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleEvents streams graph updates as Server-Sent Events.
+//
+// Implements: REQ-WATCH-004, REQ-SRV-015, REQ-SRV-016
 func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	flusher, ok := w.(http.Flusher)
 	if !ok {
@@ -674,6 +700,8 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 // the id of the last event it saw (Last-Event-ID, which EventSource sends by itself),
 // and nothing has been announced since. A client that never saw one, or that is
 // talking to a server restarted under it, is not resumed and refetches.
+//
+// Implements: REQ-SRV-016
 func resumed(r *http.Request, seq uint64) bool {
 	last, err := strconv.ParseUint(strings.TrimSpace(r.Header.Get("Last-Event-ID")), 10, 64)
 	return err == nil && last == seq
@@ -682,6 +710,8 @@ func resumed(r *http.Request, seq uint64) bool {
 // handleResolution serves how the analysis reached its dependencies: JSON by default,
 // the document the editor opens with ?format=md, and the command line's digest with
 // ?format=text.
+//
+// Implements: REQ-TRC-011, REQ-TRC-012, REQ-TRC-013
 func (s *Server) handleResolution(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	rep := s.resolution
@@ -713,6 +743,7 @@ func (s *Server) handleResolution(w http.ResponseWriter, r *http.Request) {
 	w.Write(buf.Bytes())
 }
 
+// Implements: REQ-EXP-005, REQ-EXP-009, REQ-HIST-015
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	format := r.URL.Query().Get("format")
 	if format == "html" {
@@ -763,6 +794,8 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 }
 
 // handleOpen opens a graph file in the configured editor: {"path": "...", "line": 12}.
+//
+// Implements: REQ-SEC-008, REQ-SRV-005
 func (s *Server) handleOpen(w http.ResponseWriter, r *http.Request) {
 	if s.editor == "" {
 		http.Error(w, "no editor configured (set --editor or DEPPHUNTER_EDITOR)", http.StatusNotImplemented)

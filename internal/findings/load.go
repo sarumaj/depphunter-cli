@@ -32,6 +32,8 @@ type Options struct {
 // Collect reads every report and, when a database client is given, asks it about the
 // pinned packages. A report that will not parse is not fatal: the rest of the map is
 // still worth having, and the set says it is incomplete.
+//
+// Implements: REQ-FND-001, REQ-FND-016
 func Collect(ctx context.Context, o Options) *Set {
 	set := &Set{}
 	logFormat := o.Logf
@@ -90,6 +92,8 @@ func Files(root string, patterns []string) []string { return expand(root, patter
 
 // expand turns the configured patterns into file names, in a stable order. A pattern
 // is relative to the repository unless it is absolute.
+//
+// Implements: REQ-FND-001
 func expand(root string, patterns []string) []string {
 	var out []string
 	seen := map[string]bool{}

@@ -21,6 +21,8 @@ import (
 )
 
 // Answer says who answered one question about what a package depends on.
+//
+// Implements: REQ-TRC-005
 type Answer string
 
 const (
@@ -40,6 +42,8 @@ const (
 
 // Why nothing answered. These are sentences rather than codes because the report is
 // read by whoever ran depphunter, and "private" on its own explains nothing.
+//
+// Implements: REQ-TRC-006
 const (
 	ReasonOffline     = "no lock file records it, and --online was not given"
 	ReasonUntrusted   = "its index is one only the repository names, which is never fetched from"
@@ -52,13 +56,19 @@ const (
 // maxLookups is as many questions as one report keeps in full. Past it the counts go
 // on being kept and the detail is dropped: -1 over a large lock file asks hundreds of
 // thousands of times, and a report nobody can open explains nothing either.
+//
+// Implements: REQ-TRC-014
 const maxLookups = 20000
 
 // maxListed is as many of one list as the written report prints before it says how
 // many more there were. The JSON keeps all of them.
+//
+// Implements: REQ-TRC-015
 const maxListed = 50
 
 // Source is one index the run knew about, and how it came to know.
+//
+// Implements: REQ-TRC-002
 type Source struct {
 	Ecosystem string `json:"ecosystem"`
 	URL       string `json:"url"`
@@ -72,6 +82,8 @@ type Source struct {
 }
 
 // Use is one index and what ended up resolving from it.
+//
+// Implements: REQ-TRC-003
 type Use struct {
 	Ecosystem string `json:"ecosystem"`
 	Index     string `json:"index"`
@@ -81,6 +93,8 @@ type Use struct {
 }
 
 // Level is one round of the walk: every package known at that depth, asked together.
+//
+// Implements: REQ-TRC-004
 type Level struct {
 	Plugin string `json:"plugin"`
 	// Depth counts rounds past the packages the code imports directly: 0 asks those,
@@ -96,6 +110,8 @@ type Level struct {
 // Skip is an ecosystem the walk never entered, and why. It is the other half of the
 // answer to "why does this package have no dependencies on the map": not every
 // ecosystem keeps its graph somewhere depphunter was allowed to look.
+//
+// Implements: REQ-TRC-008
 type Skip struct {
 	Plugin string `json:"plugin"`
 	Reason string `json:"reason"`
@@ -103,6 +119,8 @@ type Skip struct {
 
 // Request is one round trip an index question took. A container image takes three of
 // them, and "which one failed" is the question this report exists to answer.
+//
+// Implements: REQ-TRC-007
 type Request struct {
 	URL    string `json:"url"`
 	Status string `json:"status"`
@@ -110,6 +128,8 @@ type Request struct {
 }
 
 // Lookup is one question about one package, and what came of it.
+//
+// Implements: REQ-TRC-005
 type Lookup struct {
 	Plugin    string `json:"plugin,omitempty"`
 	Level     int    `json:"level"`
@@ -145,6 +165,8 @@ type Totals struct {
 
 // Report is one analysis's account of itself. A nil *Report records nothing, so the
 // analysis does not have to know whether anybody is reading.
+//
+// Implements: REQ-TRC-001
 type Report struct {
 	Root string `json:"root,omitempty"`
 	// What the run was asked to do, so a report read on its own says what produced it.
@@ -172,6 +194,8 @@ type Report struct {
 }
 
 // New starts a report for a run configured this way.
+//
+// Implements: REQ-TRC-001
 func New(resolveDepth int, online bool, private, trusted []string) *Report {
 	return &Report{
 		ResolveDepth: resolveDepth, Online: online,
@@ -192,6 +216,8 @@ func (r *Report) SetSources(s []Source) {
 // Enter says which plugin's walk is about to ask, and how far past the direct
 // dependencies it has got. Plugins are walked one after another, so one current
 // level is enough for the workers of all of them.
+//
+// Implements: REQ-TRC-004
 func (r *Report) Enter(plugin string, depth int) {
 	if r == nil {
 		return
@@ -226,6 +252,8 @@ func (r *Report) Skip(plugin, reason string) {
 
 // Add records one question. The level and the plugin are the walk's, not the
 // caller's: whoever answers is too far down to know either.
+//
+// Implements: REQ-TRC-005, REQ-TRC-014
 func (r *Report) Add(l Lookup) {
 	if r == nil {
 		return
@@ -262,6 +290,8 @@ func (r *Report) Add(l Lookup) {
 // Summarize reads the finished graph for what the walk itself cannot say: which index
 // each package on the map ended up resolving from, and how many of them the map
 // marks private or marks as coming from an index nothing here vouches for.
+//
+// Implements: REQ-TRC-003
 func (r *Report) Summarize(g *graph.Graph) {
 	if r == nil || g == nil {
 		return
@@ -347,6 +377,8 @@ type Reason struct {
 
 // Reasons counts the unanswered questions by what went wrong, commonest first.
 // Fifty identical lines say less than one line and a count.
+//
+// Implements: REQ-TRC-006
 func (r *Report) Reasons() []Reason {
 	if r == nil {
 		return nil

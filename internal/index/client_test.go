@@ -66,6 +66,7 @@ func names(deps []lang.Target) []string {
 	return out
 }
 
+// Verifies: REQ-SUP-021, REQ-SUP-029
 func TestGoModuleDependencies(t *testing.T) {
 	srv, _ := stubIndex(t)
 	c := clientFor(t, Go, srv.URL, "")
@@ -80,6 +81,7 @@ func TestGoModuleDependencies(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-022
 func TestNpmDependencies(t *testing.T) {
 	srv, asked := stubIndex(t)
 	c := clientFor(t, NPM, srv.URL, "")
@@ -95,6 +97,7 @@ func TestNpmDependencies(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-023
 func TestPyPIDependencies(t *testing.T) {
 	srv, _ := stubIndex(t)
 	cfg := New()
@@ -107,6 +110,7 @@ func TestPyPIDependencies(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-019
 func TestAnIndexOnlyTheRepositoryNamesIsNotAsked(t *testing.T) {
 	srv, asked := stubIndex(t)
 	cfg := New()
@@ -120,6 +124,7 @@ func TestAnIndexOnlyTheRepositoryNamesIsNotAsked(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-033
 func TestCredentialsGoToTheHostTheyWereWrittenFor(t *testing.T) {
 	srv, _ := stubIndex(t)
 	home := t.TempDir()
@@ -140,6 +145,7 @@ func TestCredentialsGoToTheHostTheyWereWrittenFor(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-032
 func TestAnswersAreCached(t *testing.T) {
 	srv, asked := stubIndex(t)
 	dir := t.TempDir()
@@ -203,6 +209,7 @@ func age(t *testing.T, dir string, by time.Duration) {
 	}
 }
 
+// Verifies: REQ-SUP-038
 func TestAPrivatePackageIsNotNamedToAPublicIndex(t *testing.T) {
 	srv, asked := stubIndex(t)
 	// The stub stands in for the ecosystem's public index, which is what makes
@@ -226,6 +233,8 @@ func TestAPrivatePackageIsNotNamedToAPublicIndex(t *testing.T) {
 }
 
 // cSpell: words Companys
+//
+// Verifies: REQ-SUP-039
 func TestAPrivatePackageIsStillAskedOfTheCompanysOwnIndex(t *testing.T) {
 	srv, asked := stubIndex(t)
 	// The machine's own configuration points Go at an internal proxy, which is not
@@ -246,6 +255,8 @@ func TestAPrivatePackageIsStillAskedOfTheCompanysOwnIndex(t *testing.T) {
 // TestTheReportSaysWhoAnswered checks the account the client gives of itself. Most
 // of these answer nothing, and on the map a package nothing answered for looks
 // exactly like one that depends on nothing; the report is where they are told apart.
+//
+// Verifies: REQ-JAVA-010, REQ-SUP-028, REQ-SUP-029, REQ-TRC-005, REQ-TRC-006, REQ-TRC-007
 func TestTheReportSaysWhoAnswered(t *testing.T) {
 	srv, _ := stubIndex(t)
 	// The stub stands in for the Go ecosystem's public index, which is what makes
@@ -325,6 +336,7 @@ func TestTheReportSaysWhoAnswered(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-032
 func TestAFailedLookupIsAskedAgainLater(t *testing.T) {
 	down := true
 	var asked int

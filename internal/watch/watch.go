@@ -40,6 +40,8 @@ func New() (*Watcher, error) {
 // Sync makes the watched set equal to dirs, plus the directories holding files (all
 // absolute paths). A change anywhere in dirs is a change; in a directory watched only
 // because it holds one of files, only those files are.
+//
+// Implements: REQ-WATCH-001
 func (w *Watcher) Sync(dirs, files []string) {
 	want := make(map[string]bool, len(dirs)+len(files))
 	w.dirs = make(map[string]bool, len(dirs))
@@ -112,6 +114,8 @@ const maxWait = 10
 // Changes that never go quiet - a build writing into a watched directory, a log
 // growing in one - do not put the call off indefinitely: it comes at the latest
 // maxWait debounces after the first of them.
+//
+// Implements: REQ-WATCH-002
 func (w *Watcher) Run(ctx context.Context, debounce time.Duration, onChange func()) {
 	defer w.w.Close()
 	timer := time.NewTimer(time.Hour)

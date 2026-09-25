@@ -42,6 +42,7 @@ export class Panel {
   /**
    * keepScroll: stay where the reader was (a live update re-showing the same node).
    * focus: the id of a finding to open and scroll to - what catching its bug does.
+   * Implements: REQ-MAP-044
    */
   show(node, keepScroll = false, focus = null) {
     const top = keepScroll && this.node?.id === node.id ? this.body.scrollTop : 0;
@@ -55,6 +56,7 @@ export class Panel {
       h('h2', { class: 'p-title' }, node.kind === 'file' ? h('span', { class: 'swatch', style: `background:${this.colorOf(node.lang)}` }) : null,
         node.name, h('span', { class: 'badge' }, node.symbolKind || node.kind),
         node.unresolved ? h('span', { class: 'badge warn', title: 'Not found in any manifest' }, '⚠ unresolved') : null,
+        // Implements: REQ-SUP-005, REQ-SUP-012, REQ-SUP-018, REQ-SUP-037
         node.floating ? h('span', { class: 'badge warn', title: 'Not fixed to one version: it moves when installed again' }, '⚠ floating') : null,
         node.transitive ? h('span', { class: 'badge', title: 'No file here imports it: a dependency pulled it in' }, 'transitive') : null,
         node.indexUnknown ? h('span', { class: 'badge warn', title: 'Only this repository names this index; nothing on your machine does' }, '⚠ index') : null,
@@ -80,6 +82,7 @@ export class Panel {
   }
 
   /** A list row or breadcrumb: clickable, and reachable by keyboard. */
+  // Implements: REQ-A11Y-004
   item(tag, attrs, ...children) {
     const go = attrs.onclick;
     return h(tag, {
@@ -90,6 +93,7 @@ export class Panel {
 
   // The worst thing said about this node, or anything below it, as a badge beside its
   // name: a directory is colored by the worst bug on its streets.
+  // Implements: REQ-FND-021
   findingBadge(node) {
     const { count, worst } = this.findingsOf?.(node)?.rollup || {};
     if (!count) return null;
@@ -107,6 +111,7 @@ export class Panel {
   // where it stands, so the walker never has to ask for it; from above, the marker
   // over a district is red for something several levels down, and a reader who
   // cannot reach it from here cannot reach it at all.
+  // Implements: REQ-FND-024
   findings(node) {
     const res = this.findingsOf?.(node);
     if (!res) return null;
@@ -145,6 +150,7 @@ export class Panel {
     return h('div', {}, button, rest);
   }
 
+  // Implements: REQ-FND-025
   findingRow(f) {
     const detail = h('div', { class: 'f-detail', hidden: true },
       f.detail ? h('p', {}, f.detail) : null,
@@ -205,6 +211,7 @@ export class Panel {
       h('button', { onclick: () => this.onOpen(file.path, node.line || 1), title: `${this.openLabel} (O)` }, this.openLabel + ' ↗'));
   }
 
+  // Implements: REQ-A11Y-004
   crumbs(node) {
     const parts = ancestors(node).map(a => this.item('a', { onclick: () => this.onSelect(a) }, a.name));
     const out = [];
@@ -212,6 +219,7 @@ export class Panel {
     return h('div', { class: 'crumbs' }, out);
   }
 
+  // Implements: REQ-MAP-030, REQ-MAP-059, REQ-MAP-060
   stats(n) {
     const stat = (v, k) => h('div', { class: 'stat' }, h('div', { class: 'v' }, v), h('div', { class: 'k' }, k));
     switch (n.kind) {
@@ -227,6 +235,7 @@ export class Panel {
           stat(fmt.format(n.children.length), 'symbols'));
       case 'symbol':
         return h('div', { class: 'stats' }, stat(n.symbolKind, 'kind'), stat(`line ${n.line}`, 'defined at'));
+      // Implements: REQ-SUP-005, REQ-SUP-007, REQ-SUP-014
       case 'package':
         return h('div', { class: 'stats' },
           stat(n.version || '-', n.floating ? 'version (floating)' : 'version'),
@@ -240,6 +249,7 @@ export class Panel {
     return null;
   }
 
+  // Implements: REQ-MAP-030
   languageMix(n) {
     const total = n.totalLoc || 1;
     const rows = [...n.langLoc.entries()].sort((a, b) => b[1] - a[1]);
@@ -275,6 +285,7 @@ export class Panel {
   // dependencies, and theirs, which is the shape a supply chain has once versions are
   // pinned and transitive packages are on the map. Nothing is fetched - the edges are
   // in the model - so opening a row costs only layout.
+  // Implements: REQ-MAP-029, REQ-MAP-045
   tree(title, hint, root, dir) {
     const groups = this.neighbors(root, dir);
     const ul = h('ul', { class: 'p-list tree' });
@@ -314,6 +325,7 @@ export class Panel {
     return last;
   }
 
+  // Implements: REQ-MAP-029, REQ-MAP-046, REQ-MAP-047, REQ-MAP-048
   treeRow(ul, g, dir, ancestors, depth) {
     const node = g.node, branch = [...ancestors, node.id], key = dir + '|' + branch.join('>');
     // A package that depends on something that depends back on it would open for
@@ -402,6 +414,7 @@ export class Panel {
   }
 
   // Git history of a file or directory in the selected range, with top authors.
+  // Implements: REQ-HIST-014
   history(n) {
     if (n.kind !== 'file' && n.kind !== 'dir') return null;
     const hist = this.historyOf(n);
@@ -427,6 +440,7 @@ export class Panel {
     );
   }
 
+  // Implements: REQ-MAP-027, REQ-MAP-028, REQ-MAP-044
   async source(node, seq, keepTop = 0) {
     const file = node.kind === 'symbol' ? node.parentNode : node;
     const pre = h('pre', { class: 'code' }, h('span', { class: 'ln' }, 'Loading…'));
@@ -473,6 +487,7 @@ export class Panel {
 
 // The file, one <span> per line so a symbol can be scrolled to, highlighted when
 // hljs knows the language and the file is small enough to be worth it.
+// Implements: REQ-MAP-027
 function paint(pre, text, file) {
   const lang = HLJS[file.lang];
   let lines;

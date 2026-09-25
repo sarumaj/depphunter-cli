@@ -2,6 +2,7 @@
 // ([time, author, added, deleted, commit], newest first; see internal/history), so any
 // time range can be evaluated here without another request.
 
+// Implements: REQ-HIST-010
 export const MODES = {
   commits: { label: 'Commits', title: 'Commits' },
   churn: { label: 'Lines changed', title: 'Lines changed' },
@@ -28,6 +29,8 @@ export function timeRange(hist) {
  * Returns {byId: Map<id, Metric>, max: {commits, churn, authors}, range}.
  * Metric: {commits, churn, authors: Map<authorIdx, commits>, last, first, fileCount}
  * where a directory's commits are distinct commits across its files.
+ *
+ * Implements: REQ-HIST-010, REQ-HIST-011
  */
 export function computeMetrics(model, hist, since) {
   const byId = new Map();
@@ -77,6 +80,8 @@ export function computeMetrics(model, hist, since) {
  * Color position t in [0, 1] for a node in a history mode, or null when it has no
  * history in range. Directories (districts) use per-file means for counts, like
  * size mode, so they share the files' scale.
+ *
+ * Implements: REQ-HIST-012, REQ-HIST-013
  */
 export function historyT(mode, node, metrics) {
   const m = metrics.byId.get(node.id);

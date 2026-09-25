@@ -55,6 +55,7 @@ func stream(t *testing.T, c *http.Client, base string) func() string {
 	}
 }
 
+// Verifies: REQ-SRV-010, REQ-SRV-012
 func TestSelectionIsSharedAndSaysWhoMadeIt(t *testing.T) {
 	_, url, base := start(t)
 	c := login(t, url)
@@ -89,6 +90,7 @@ func TestSelectionIsSharedAndSaysWhoMadeIt(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SRV-009, REQ-SRV-011, REQ-EXP-014
 func TestBackpackRelayAndExports(t *testing.T) {
 	_, url, base := start(t)
 	c := login(t, url)
@@ -142,6 +144,7 @@ func TestBackpackRelayAndExports(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SRV-011
 func TestBackpackIsCappedAtWhatTheBrowserHolds(t *testing.T) {
 	_, url, base := start(t)
 	c := login(t, url)

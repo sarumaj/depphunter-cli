@@ -17,6 +17,7 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 	return langtest.Analyze(t, Plugin{}, "testdata/repo")
 }
 
+// Verifies: REQ-LANG-002, REQ-LANG-004, REQ-GO-003, REQ-GO-004, REQ-GO-005, REQ-GO-006
 func TestImportResolution(t *testing.T) {
 	res := analyze(t)
 	main := res["app/main.go"]
@@ -34,12 +35,14 @@ func TestImportResolution(t *testing.T) {
 	})
 }
 
+// Verifies: REQ-GO-001
 func TestCgoPseudoPackageIgnored(t *testing.T) {
 	if n := len(analyze(t)["lib/sub/sub.go"].Imports); n != 0 {
 		t.Errorf(`import "C" should be skipped, got %d imports`, n)
 	}
 }
 
+// Verifies: REQ-GO-001
 func TestBrokenFileStillResolves(t *testing.T) {
 	r := analyze(t)["tools/broken.go"]
 	if r == nil || len(r.Imports) != 1 || r.Imports[0].Target.Local != "app/internal/util" {
@@ -47,6 +50,7 @@ func TestBrokenFileStillResolves(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-LANG-003, REQ-LANG-024, REQ-GO-002
 func TestSymbols(t *testing.T) {
 	got := map[string]string{}
 	for _, s := range analyze(t)["app/main.go"].Symbols {
@@ -64,6 +68,8 @@ func TestSymbols(t *testing.T) {
 
 // A go.mod the scan listed can be gone by the time it is read - a branch switch, an
 // editor saving by rename - and that is no reason to fail the whole analysis.
+//
+// Verifies: REQ-GO-003
 func TestAVanishedGoModIsSkipped(t *testing.T) {
 	gone := &scan.File{Path: "sub/go.mod", Abs: filepath.Join(t.TempDir(), "go.mod")}
 	if _, err := (Plugin{}).Resolver(t.TempDir(), []*scan.File{gone}); err != nil {

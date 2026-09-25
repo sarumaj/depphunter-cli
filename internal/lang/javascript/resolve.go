@@ -13,6 +13,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
+// Implements: REQ-JS-005
 var builtins = map[string]bool{}
 
 func init() {
@@ -112,6 +113,7 @@ func newResolver(all []*scan.File) *resolver {
 		}
 	}
 	// yarn.lock keys are "name@range": pin each declared range of the packages below.
+	// Implements: REQ-JS-008
 	for lockDir, descriptors := range yarn {
 		for pkgDir, deps := range r.deps {
 			if lockDir != "." && pkgDir != lockDir && !strings.HasPrefix(pkgDir, lockDir+"/") {
@@ -143,6 +145,7 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 	return r.resolve(imp.Module, file)
 }
 
+// Implements: REQ-JS-002, REQ-JS-004, REQ-JS-005, REQ-JS-006
 func (r *resolver) resolve(spec, from string) lang.Target {
 	dir := path.Dir(from)
 	switch {
@@ -197,6 +200,8 @@ func splitPackage(spec string) (string, string) {
 }
 
 // probe finds the file or directory a module path refers to.
+//
+// Implements: REQ-JS-002
 func (r *resolver) probe(p string) (lang.Target, bool) {
 	p = path.Clean(p)
 	if strings.HasPrefix(p, "../") || p == ".." {
@@ -240,6 +245,7 @@ func (r *resolver) nearestConfig(dir string) *tsconfig {
 	}
 }
 
+// Implements: REQ-JS-003
 func (r *resolver) viaConfig(c *tsconfig, spec string) (lang.Target, bool) {
 	best, bestLen := (*pathRule)(nil), -1
 	var star string
@@ -270,6 +276,8 @@ func (r *resolver) viaConfig(c *tsconfig, spec string) (lang.Target, bool) {
 // declared looks up pkg in the nearest package.json files that declare it, preferring
 // the exact version from the nearest package-lock.json: the range in package.json is
 // what was asked for, the lock is what is installed.
+//
+// Implements: REQ-JS-006, REQ-JS-007, REQ-JS-010
 func (r *resolver) declared(pkg, dir string) (lang.Target, bool) {
 	for d := dir; ; d = path.Dir(d) {
 		if v, ok := r.deps[d][pkg]; ok {
@@ -290,6 +298,7 @@ func (r *resolver) declared(pkg, dir string) (lang.Target, bool) {
 	}
 }
 
+// Implements: REQ-JS-003
 func loadTSConfig(rel string, files map[string]*scan.File, seen map[string]bool) *tsconfig {
 	f := files[rel]
 	if f == nil || seen[rel] {
@@ -307,6 +316,7 @@ func loadTSConfig(rel string, files map[string]*scan.File, seen map[string]bool)
 			Paths   map[string][]string `json:"paths"`
 		} `json:"compilerOptions"`
 	}
+	// Implements: REQ-DIST-016
 	if json.Unmarshal(jsonc.ToJSON(data), &raw) != nil { // tsconfig allows comments and trailing commas
 		return nil
 	}
@@ -361,6 +371,7 @@ func readJSON(abs string, v any) error {
 	return json.Unmarshal(data, v)
 }
 
+// Implements: REQ-SUP-003
 func (r *resolver) addLock(dir string, versions map[string]string) {
 	if len(versions) == 0 {
 		return
@@ -378,6 +389,8 @@ func (r *resolver) addLock(dir string, versions map[string]string) {
 // readYarnLock maps "name@range" descriptors to versions. Both the classic format
 // (`"a@^1", a@^1.2:` / `  version "1.2.3"`) and Berry's YAML (`"a@npm:^1":` /
 // `  version: 1.2.3`) are line-oriented enough to read the same way.
+//
+// Implements: REQ-JS-008
 func readYarnLock(data []byte) map[string]string {
 	out := map[string]string{}
 	var keys []string
@@ -438,6 +451,8 @@ func newYarnDescriptors(exact map[string]string) yarnDescriptors {
 }
 
 // version finds the locked version of name for the declared range.
+//
+// Implements: REQ-JS-008
 func (d yarnDescriptors) version(name, rng string) string {
 	for _, key := range []string{name + "@" + rng, name + "@npm:" + rng} {
 		if v, ok := d.exact[key]; ok {
@@ -471,6 +486,8 @@ type pnpmLock struct {
 
 // versions returns versions per importer (a directory relative to the lockfile,
 // "." for the root) from pnpm-lock.yaml v5–v9.
+//
+// Implements: REQ-JS-009
 func (lock *pnpmLock) versions() map[string]map[string]string {
 	out := map[string]map[string]string{}
 	collect := func(sec pnpmDeps) map[string]string {
@@ -518,6 +535,8 @@ type packageLock struct {
 }
 
 // versions returns the top-level package versions.
+//
+// Implements: REQ-JS-007
 func (lock *packageLock) versions() map[string]string {
 	out := map[string]string{}
 	for k, v := range lock.Dependencies {

@@ -29,6 +29,8 @@ func (Plugin) Version() int { return 1 }
 
 // Claims takes the documentation a repository carries. Extensions rather than names,
 // since a repository's docs are not only its README.
+//
+// Implements: REQ-MD-001
 func (Plugin) Claims(f *scan.File) bool {
 	if f.Binary {
 		return false
@@ -43,12 +45,15 @@ func (Plugin) Claims(f *scan.File) bool {
 // Ecosystems is empty: a link is not a package. What a document depends on is inside
 // the repository, and an island of external hosts would be a legend of somebody
 // else's domain names rather than a dependency the map can say anything about.
+//
+// Implements: REQ-MD-005
 func (Plugin) Ecosystems() []lang.Ecosystem { return nil }
 
 func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 	return newResolver(all), nil
 }
 
+// Implements: REQ-MD-001, REQ-MD-002
 func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 	ex := &lang.Extraction{}
 	for _, l := range Links(src) {
@@ -78,6 +83,8 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 }
 
 // heading names a level the way the side panel can show it.
+//
+// Implements: REQ-MD-002
 func heading(level int) string {
 	if level <= 1 {
 		return "title"

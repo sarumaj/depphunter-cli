@@ -32,11 +32,14 @@ import { inBlaze } from './flames.js';
 // A building is one unit wide and its storeys 0.3 high (city.js): the walker is
 // about a storey and a half tall.
 const EYE = 0.45;           // eye height above the feet
+// Implements: REQ-WALK-004
 const WALK = 2.6, RUN = 7, FLY = 10; // units per second
 // A jump clears a curb and a terrace wall and nothing more. At this gravity it tops
 // out about 0.4 units up, which against a storey of 0.3 is a person leaving the ground
 // rather than one clearing a tree.
+// Implements: REQ-WALK-005
 const JUMP = 3.2, GRAVITY = 13;
+// Implements: REQ-WALK-006
 const STEP = 0.32;          // highest ledge walked up without jumping
 const BODY = 0.12;          // walker radius for collisions
 const WATER = -0.45;        // the water surface (layout LAND_H below the mainland)
@@ -60,6 +63,7 @@ const PROP_REACH = 0.7;
 const LOOK = 0.0022;        // radians per pixel of mouse movement
 const TURN = 2.2;           // radians per second with the arrow keys
 const MIN_R = 6, MAX_R = 2000;
+// Implements: REQ-WALK-011
 const MAX_LOOK_STEP = 250;  // pixels; larger pointer movements are glitches, not looks
 // How near the crosshair ray a bug counts as aimed at. It is generous, and grows with
 // distance: the ray is sampled ever more coarsely the farther it goes, a bug fifty
@@ -79,6 +83,7 @@ const GRAPPLE_TIME = 5, ROOF_IN = 0.5, NO_PULL = 1.2;
 // A dozen times a second is plenty for something that turns as slowly as a walker.
 // The range follows the hunt - a four-file repository and a thousand-file one are both
 // worth seeing whole - within these bounds, and eases rather than jumping.
+// Implements: REQ-HUNT-025
 const RADAR_MIN = 12, RADAR_MAX = 400, RADAR_MS = 85, RADAR_SIZE = 150;
 // Closing in: inside this, the sweep stops trying to hold the whole map and draws the
 // neighborhood instead, growing by up to RADAR_GROW as it does. The last few steps
@@ -101,6 +106,7 @@ const FIRE_DOT = '#f26a1b';
 const RADAR_RANGE_TAU = 0.5, RADAR_ZOOM_TAU = 0.55;
 // Degrees: the default view, the wheel's zoom range, and the view through the scope
 // (right button).
+// Implements: REQ-WALK-012, REQ-WALK-013
 const FOV = 70, MIN_FOV = 30, MAX_FOV = 90, SCOPE_FOV = 22;
 // How far in the held tool sits, as a fraction of where it is modelled. See showTool.
 const VIEW_NEAR = 0.5;
@@ -110,6 +116,7 @@ const SWING = 0.45;         // seconds a tool takes to swing and settle
 // water under a pair of floats. Feet on solid ground do not ride at all - a bob on
 // every footfall is what makes people put a first-person view down. It is the view
 // alone: nothing about where the walker is or what they can reach moves with it.
+// Implements: REQ-WALK-036
 const RIDE = {
   fly: { lift: 0.055, rate: 1.5 },
   float: { lift: 0.045, rate: 2.1 },
@@ -118,25 +125,31 @@ const RIDE = {
 // what is added to a step to climb out of the bay - without it, anything down there is
 // down there for good - and WADE_IN is how far below the feet the water may be to be
 // walked into rather than jumped into.
+// Implements: REQ-WALK-040, REQ-WALK-041
 const WADE = 0.25, WADE_IN = 0.6;
 // How far the walker may leave the map: over the water beyond the outermost shore,
 // and above its tallest building when flying.
+// Implements: REQ-WALK-007, REQ-WALK-008
 const SHORE_MARGIN = 3, SKY_MARGIN = 12;
 // A photograph held up to look at: how long it stays up altogether, and how long the
 // camera takes to come all the way to the face and to go back down again. The travel
 // is most of the way from the hip to the eye, so it is given longer than a gesture.
 const SHOWING = 4.2, LIFTING = 0.6;
 // A burst on the jet backpack: how long it lasts and how much faster it goes.
+// Implements: REQ-TOOL-024
 const BURST = 0.9, BURST_SPEED = 3;
 // Out of your depth: how fast the water takes a walker who is in it with nothing to
 // hold them up. A couple of seconds, so wading ashore is possible and standing in the
 // bay when the skimmers go away is not.
+// Implements: REQ-WALK-031
 const DROWN = 45;
 // How long the screen stays red after the walk ends, before the map comes back.
+// Implements: REQ-WALK-033
 const DYING = 1.1;
 // Being bitten: how near a bug has to be to reach the walker, and how often it can.
 // The reach is a stride, so standing in the middle of a lap is what does it rather
 // than walking past one; a bug on a wall three storeys up cannot reach anybody.
+// Implements: REQ-WALK-028
 const BITE_REACH = 0.75, BITE_EVERY = 1.1;
 // Standing in a fire: how often it takes something, and what a full blaze takes each
 // time. Less than a bite from anything serious, and it lands over and over, which is
@@ -156,6 +169,7 @@ const TRACK_REACH = 30, TRACK_AHEAD = 0.75;
 // the map keeps it - so this has to list every one the handler below acts on. Q and E
 // rotate the map's view and expand things, which would only reshuffle the city around
 // a walker; out in it they change hands instead (switcher.js).
+// Implements: REQ-WALK-023
 const KEYS = new Set([
   'KeyW', 'KeyA', 'KeyS', 'KeyD', 'ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight',
   'Space', 'ShiftLeft', 'ShiftRight', 'KeyC', 'KeyE', 'KeyQ', 'KeyF', 'Enter',
@@ -168,6 +182,7 @@ const KEYS = new Set([
 // Planet curvature, by the character typed rather than the key's place on the board:
 // on a German keyboard the key at BracketRight types '+', which would otherwise make
 // '+' curve the planet while '-' still changed the map's depth.
+// Implements: REQ-WALK-003
 const BIGGER = new Set(['+', '=', ']']), SMALLER = new Set(['-', '_', '[']);
 
 export class Walker {
@@ -287,6 +302,7 @@ export class Walker {
     if (this.active) this.drawHud();
   }
 
+  // Implements: REQ-PERF-005, REQ-PERF-008
   setBoxes(boxes) {
     this.boxes = boxes;
     this.grid.clear();
@@ -329,6 +345,7 @@ export class Walker {
   // narrower than the walker and is asked at their footprint, the way a box is. A
   // bridge is asked once, at their middle, with the deck already narrowed by their
   // own radius - which is what keeps a body from hanging over the railing.
+  // Implements: REQ-PERF-008
   indexDecks() {
     this.decks = new Map();
     this.spans = new Map();
@@ -360,6 +377,8 @@ export class Walker {
    * mind - a building just selected - and where the walker left off when it has not,
    * or on the south road of `block` if they have never been out. `bounds` sizes the
    * planet, and `grab` is false when something else wants the pointer first.
+   *
+   * Implements: REQ-WALK-001, REQ-WALK-009, REQ-WALK-010, REQ-WALK-030
    */
   enter(box, block, bounds, grab = true) {
     const diag = Math.hypot(bounds.maxX - bounds.minX, bounds.maxZ - bounds.minZ);
@@ -414,6 +433,7 @@ export class Walker {
     if (grab) this.lockPointer();
   }
 
+  // Implements: REQ-WALK-001
   exit() {
     if (!this.active) return;
     // Where they stood, so coming back is coming back rather than starting again.
@@ -475,6 +495,8 @@ export class Walker {
    * Stands the walker where `box` can be seen: on a block (terrace), at its south
    * edge looking across it; beside anything else, on its lowest side that is not
    * water, looking at it.
+   *
+   * Implements: REQ-WALK-019
    */
   teleport(box) {
     const p = this.p, gap = 1.0;
@@ -508,6 +530,8 @@ export class Walker {
    * street wants neither - so H puts the tool away and takes it out again. It is only
    * the drawing: the tool still works, and a shot with nothing in hand leaves from
    * the walker's eye, which is where it left from before any of them had a muzzle.
+   *
+   * Implements: REQ-TOOL-032
    */
   setHandsOff(off) {
     this.handsOff = off;
@@ -518,6 +542,7 @@ export class Walker {
     this.drawHud();
   }
 
+  // Implements: REQ-TOOL-001, REQ-TOOL-006, REQ-TOOL-028
   showTool() {
     this.hideTool();
     // The reticle is the tool's, not the tool's name: several tools share one, and
@@ -550,6 +575,8 @@ export class Walker {
    * nothing in tools.js has to know which hand it is in. A mirror reverses the winding
    * of every triangle in it, so what it holds is drawn with both faces - which is also
    * what keeps the lighting on the mirrored hand the right way round.
+   *
+   * Implements: REQ-TOOL-028
    */
   take(tool, left = false) {
     const vm = tool.viewmodel();
@@ -580,6 +607,8 @@ export class Walker {
    * one replaces what the hunt is being done with, and a secondary one is picked up in
    * the off hand - or put down again, if it is already the one being carried, which is
    * how you come down out of the air or step off the water on purpose.
+   *
+   * Implements: REQ-TOOL-023, REQ-TOOL-028, REQ-TOOL-033, REQ-TOOL-050, REQ-HUNT-045
    */
   setTool(id) {
     // Reaching for another tool is done with the photograph: it comes down, and what
@@ -624,6 +653,8 @@ export class Walker {
    * word would have said which is which as well, and worse - the row is read at a
    * glance in the middle of something else, and a hand is the one thing nobody has to
    * stop and parse.
+   *
+   * Implements: REQ-TOOL-053, REQ-TOOL-054, REQ-TOOL-055
    */
   drawSlots() {
     const row = this.hud.querySelector('.w-slots');
@@ -673,6 +704,8 @@ export class Walker {
   /**
    * E: the next tool for the hunting hand. The ring has no empty place in it - there
    * is always something to hunt with - so this only ever swaps one for another.
+   *
+   * Implements: REQ-TOOL-057
    */
   nextPrimary(dir = 1) {
     this.setTool(cycle(PRIMARY_IDS, this.primary.id, dir));
@@ -688,6 +721,8 @@ export class Walker {
    * Which does mean Q can drop a walker out of the sky, exactly as pressing the jet's
    * own key twice always could. It takes four presses to come back round to it, and
    * the flash says which one you are on, so it is a decision rather than a slip.
+   *
+   * Implements: REQ-TOOL-056
    */
   nextCarried(dir = 1) {
     const next = cycle(carriedRing(), this.secondary?.id ?? EMPTY, dir);
@@ -711,6 +746,8 @@ export class Walker {
    *
    * So a wheel opened by accident costs nothing at all: the cursor starts in the
    * middle where it points at nothing, and the world waits.
+   *
+   * Implements: REQ-TOOL-058, REQ-TOOL-062
    */
   openWheel() {
     if (this.wheel.open) { this.closeWheel(true); return; }
@@ -734,6 +771,8 @@ export class Walker {
    * measured against a clock, and this page can drop a frame or several while a city
    * is drawn behind the wheel; a tap that took one of those would have shut the wheel
    * in the walker's face for no reason they could see. Nothing here is timed.
+   *
+   * Implements: REQ-TOOL-059, REQ-TOOL-060
    */
   releaseWheel() {
     if (this.wheel.pick) this.closeWheel(true);
@@ -748,6 +787,8 @@ export class Walker {
    * meant to put the jet backpack down aims at the bare hand, and one who let the
    * cursor drift back onto the tool they are flying with does not fall out of the sky
    * for it.
+   *
+   * Implements: REQ-TOOL-059, REQ-TOOL-061, REQ-TOOL-064
    */
   closeWheel(take) {
     if (!this.wheel.open) return;
@@ -770,6 +811,8 @@ export class Walker {
   /**
    * A key pressed while the wheel is up. Returns whether the wheel took it, because
    * everything it takes is a key that means something else out on the street.
+   *
+   * Implements: REQ-TOOL-060, REQ-TOOL-061
    */
   wheelKey(code) {
     if (!this.wheel.open) return false;
@@ -796,6 +839,8 @@ export class Walker {
    * with the details, and for the same reason.
    *
    * Returns whether it took: there is nothing to put a picture on outside walk mode.
+   *
+   * Implements: REQ-HUNT-042
    */
   showPhoto(photo) {
     if (!this.active || !photo?.url) return false;
@@ -822,6 +867,7 @@ export class Walker {
     if (this.showing && this.viewmodel) this.primary.shows?.(this.viewmodel, this.showing.texture);
   }
 
+  // Implements: REQ-HUNT-044
   /** One frame of looking at one: it comes up, it is held, and it goes back down. */
   study(dt) {
     this.showing.t += dt;
@@ -843,6 +889,8 @@ export class Walker {
    * Takes the photograph off the camera. `restore` puts back the tool that was in hand
    * before it went up, which is right when the picture's time is up and wrong when the
    * walker has just asked for a different tool.
+   *
+   * Implements: REQ-HUNT-044, REQ-HUNT-045
    */
   endShow(restore = true) {
     const show = this.showing;
@@ -875,6 +923,7 @@ export class Walker {
   // makes the gesture legible, so it runs to its end even if the shot lands sooner.
   // The two hands keep their own gestures, so netting a bug while the jet is running
   // is one hand doing each.
+  // Implements: REQ-TOOL-031
   poseTool(dt, now) {
     // A tool with something live on it gets its frame here. Every other frame is
     // enough for a screen this size, and halves what it costs.
@@ -886,6 +935,7 @@ export class Walker {
     if (this.showing && this.viewmodel) studyTool(this.viewmodel, this.raised());
   }
 
+  // Implements: REQ-TOOL-002
   /** One hand's frame; returns how far into its gesture it now is, -1 once it is over. */
   poseOne(vm, tool, swing, dt, now, live) {
     if (!vm || !tool) return -1;
@@ -921,6 +971,8 @@ export class Walker {
    * hundred of them stopped mid-stride and started again is a worse thing to watch
    * than a street that carries on, and with bites frozen none of them can charge for
    * the pause.
+   *
+   * Implements: REQ-TOOL-062, REQ-TOOL-063
    */
   get still() { return this.frozen || this.wheel.open; }
 
@@ -928,6 +980,8 @@ export class Walker {
    * Hold the view still while something else has the pointer (the details panel), or
    * let it go again. Frozen, the walker does not move, look, aim or fire; the scene
    * keeps rendering, so what is being read about stays on screen.
+   *
+   * Implements: REQ-WALK-021, REQ-WALK-022
    */
   setFrozen(on) {
     if (this.frozen === on || (!this.active && on)) return;
@@ -952,6 +1006,7 @@ export class Walker {
 
   // Locking is asynchronous: a lock asked for just before leaving would be granted
   // afterwards and hide the cursor over the map, with nothing listening to it.
+  // Implements: REQ-WALK-010, REQ-WALK-037
   lockPointer() {
     // Not while anything on screen wants the mouse. The introduction, the help, the
     // backpack, the photographs and the export menu all do, and a reticle that takes
@@ -982,6 +1037,8 @@ export class Walker {
    * tool can never be used at all - and it is said out loud once, because a mouse
    * that will not be captured looks like something broken rather than something
    * that was decided elsewhere.
+   *
+   * Implements: REQ-WALK-047
    */
   refused(err) {
     const sandboxed = err?.name === 'SecurityError' && /sandbox/i.test(err.message || '');
@@ -1026,6 +1083,7 @@ export class Walker {
       // This listener is registered before the map's; stopping here keeps the map from
       // acting on the same key (V would leave walk mode and re-enter it at once).
       const mine = () => { e.preventDefault(); e.stopImmediatePropagation(); };
+      // Implements: REQ-WALK-046
       if (this.frozen) {
         // Held, the walker is not playing and the page is. So the page keeps its keys
         // and only the few that put the street back are taken here - where swallowing
@@ -1058,6 +1116,7 @@ export class Walker {
       // along the row: 1 to 3 for the carried tools and 4 to 0 for the hunt's. A
       // carried tool's key pressed for the one already in hand puts it down, so it is
       // never a no-op.
+      // Implements: REQ-TOOL-033, REQ-TOOL-054
       const digit = toolForKey(e.code);
       if (digit) {
         if (digit !== this.primary.id) this.setTool(digit);
@@ -1067,10 +1126,12 @@ export class Walker {
         // Two triggers for the off hand, because one hand's tool wants a button of its
         // own and the mouse's spare one is already the scope. C is free except while
         // flying, where it is how you go down.
+        // Implements: REQ-TOOL-029, REQ-TOOL-030
         case 'KeyF': this.useSecondary(); break;
         case 'KeyC': if (!this.p.fly) this.useSecondary(); break;
         // Changing hands, all three of them within reach of the hand that is already
         // on W, A, S and D: the hunt's ring, the carried ring, and the wheel.
+        // Implements: REQ-TOOL-056, REQ-TOOL-057, REQ-TOOL-058
         case 'KeyE': this.nextPrimary(); break;
         case 'KeyQ': this.nextCarried(); break;
         case 'KeyR': this.openWheel(); break;
@@ -1080,6 +1141,7 @@ export class Walker {
           if (document.pointerLockElement) document.exitPointerLock();
           else this.exit();
           break;
+        // Implements: REQ-HUNT-006
         case 'Enter': this.hooks.onInspect(this.aimed()); break;
         // V is the toggle the map also answers to; M says where it goes, for anyone
         // who reaches for the map by name rather than remembering which way V points.
@@ -1103,6 +1165,7 @@ export class Walker {
     // button while one is held fires pointermove rather than pointerdown, so firing
     // while scoped would never arrive.
     let fresh = false; // the first movement after locking can carry a bogus jump
+    // Implements: REQ-WALK-012, REQ-WALK-014, REQ-WALK-015, REQ-WALK-045
     canvas.addEventListener('mousedown', e => {
       if (!this.active || this.dying !== null) return;
       // Frozen means something else has the pointer - a panel, the backpack, a menu,
@@ -1123,6 +1186,7 @@ export class Walker {
       // The wheel has the mouse while it is up: the left button takes what it is
       // pointing at and the right one backs out, because a click is what a hand on the
       // mouse reaches for and neither the scope nor the tool is any use mid-change.
+      // Implements: REQ-TOOL-060, REQ-TOOL-061
       if (this.wheel.open) {
         e.preventDefault();
         if (e.button === 0 || e.button === 1) this.closeWheel(true);
@@ -1135,6 +1199,7 @@ export class Walker {
       }
       // The middle button is the off hand, the way F is: a second tool wants a second
       // trigger, and the right one is already the scope.
+      // Implements: REQ-TOOL-029
       if (e.button === 1 && document.pointerLockElement === canvas) {
         e.preventDefault();
         this.useSecondary();
@@ -1161,6 +1226,7 @@ export class Walker {
       }
       if (e.button === 0) drag = null;
     });
+    // Implements: REQ-WALK-011, REQ-WALK-047
     window.addEventListener('pointermove', e => {
       if (!this.active) return;
       // The wheel takes the mouse whether or not the pointer was ever captured. Where
@@ -1180,12 +1246,14 @@ export class Walker {
       }
     });
     window.addEventListener('blur', () => this.setScoped(false));
+    // Implements: REQ-WALK-013
     canvas.addEventListener('wheel', e => {
       if (!this.active || this.frozen) return;
       e.preventDefault();
       this.fov = clamp(this.fov * Math.exp(e.deltaY * 0.001), MIN_FOV, MAX_FOV); // zoom
     }, { passive: false });
     document.addEventListener('pointerlockerror', () => this.active && this.refused(null));
+    // Implements: REQ-WALK-044
     document.addEventListener('pointerlockchange', () => {
       fresh = document.pointerLockElement === canvas;
       if (fresh) this.lockFails = 0; // it can be had here; earlier refusals were passing
@@ -1214,6 +1282,7 @@ export class Walker {
     });
   }
 
+  // Implements: REQ-WALK-011, REQ-WALK-012
   look(dx, dy) {
     if (this.frozen) return;
     const k = LOOK * this.scene.walkCamera.fov / FOV; // steadier through the scope
@@ -1222,6 +1291,7 @@ export class Walker {
   }
 
   // The planet can grow until the map looks flat, not beyond.
+  // Implements: REQ-WALK-009
   maxRadius() {
     const l = this.limits;
     if (!l) return MAX_R;
@@ -1237,6 +1307,7 @@ export class Walker {
 
   // Fog fades what lies near the horizon; a larger planet, or a higher flight, shows
   // farther.
+  // Implements: REQ-WALK-017
   setFog() {
     const far = Math.max(60, this.radius * 2.5) + 6 * Math.max(0, this.p.feet);
     Object.assign(this.scene.scene.fog, { near: far * 0.3, far });
@@ -1244,6 +1315,7 @@ export class Walker {
 
   // ------------------------------------------------------------------ simulation
 
+  // Implements: REQ-WALK-042
   loop() {
     this.frame = requestAnimationFrame(() => {
       if (!this.active) return;
@@ -1281,6 +1353,8 @@ export class Walker {
    * extinguisher keep going while the button is down, which is what separates a hose
    * from the single aimed shot everything else takes. fire() lands the first one, so
    * this only ever adds the ones after it.
+   *
+   * Implements: REQ-TOOL-043
    */
   autoFire(now) {
     const every = this.primary.auto;
@@ -1304,6 +1378,8 @@ export class Walker {
    * the swell wherever it had got to and drop the view by that much in one frame; read
    * off the clock, a change of rate would multiply the whole of the elapsed time and
    * jump the phase by however many radians that came to.
+   *
+   * Implements: REQ-WALK-036, REQ-WALK-042, REQ-WALK-043
    */
   ride(dt) {
     const how = this.p.fly ? RIDE.fly : this.onWater() ? RIDE.float : null;
@@ -1313,6 +1389,7 @@ export class Walker {
   }
 
   // Eases the field of view towards the scope's or the normal one.
+  // Implements: REQ-WALK-012, REQ-WALK-042
   zoom(dt) {
     const cam = this.scene.walkCamera, target = this.scoped ? Math.min(SCOPE_FOV, this.fov) : this.fov;
     if (Math.abs(cam.fov - target) < 0.05) return;
@@ -1320,6 +1397,7 @@ export class Walker {
     cam.updateProjectionMatrix();
   }
 
+  // Implements: REQ-WALK-004, REQ-WALK-006, REQ-WALK-008, REQ-WALK-026
   step(dt) {
     if (this.still) return;
     const k = this.keys, p = this.p;
@@ -1369,6 +1447,7 @@ export class Walker {
     // it - carries an allowance to climb it. It is the water that gives this and not
     // the skimmers, so wearing them on a street is not a reason to climb higher walls.
     const inWater = p.ground && (wet || this.onWater());
+    // Implements: REQ-WALK-040
     const climb = p.feet + (p.ground || p.fly ? STEP : 0.05) + (inWater ? WADE : 0);
     // Getting in has one rule of its own, and it is about the drop rather than the
     // water: a shore is a curb to step off and a bridge is not. Off a deck, and off
@@ -1377,6 +1456,7 @@ export class Walker {
     // railings are there to be gone over rather than through. In the air, in it
     // already, or shod for it, none of this arises.
     const step = !this.onDeck();
+    // Implements: REQ-WALK-041
     const ok = h => h <= climb
       && (h > WATER || p.fly || !p.ground || wet || afloat || (step && p.feet - h <= WADE_IN));
     const nx = p.x + mx * speed * dt;
@@ -1387,6 +1467,7 @@ export class Walker {
     const effort = len > 0 ? (p.fly ? 0.3 : run ? 1.5 : 1) : 0;
     this.pace += (effort - this.pace) * Math.min(1, dt * 7);
     // The key list folds away while moving and comes back after a pause.
+    // Implements: REQ-WALK-018
     if (len > 0) {
       this.movedAt = performance.now();
       if (!this.hudTimer) this.hudTimer = setTimeout(() => this.hud.classList.add('compact'), 2500);
@@ -1409,6 +1490,7 @@ export class Walker {
     // Only what the tool is actually doing costs anything: the jet burns while it is
     // holding the walker off the ground, not while they stand on a roof wearing it, and
     // the skimmers only while the water is the only thing under them.
+    // Implements: REQ-TOOL-047, REQ-TOOL-049
     this.burn(dt, (p.fly && p.feet > floor + 0.02) || (afloat && floor <= WATER));
     p.fly = this.flying();
     if (p.fly) {
@@ -1420,6 +1502,7 @@ export class Walker {
       this.sinking = false; // nothing in the air is drowning
       return;
     }
+    // Implements: REQ-WALK-005, REQ-WALK-038
     if (k.has('Space') && p.ground && this.wind.spend(Wind.jumpCost)) p.vy = JUMP;
     // Said once, when it happens: a bar at nought explains why running and jumping
     // stopped working, but only to somebody already looking at it.
@@ -1451,6 +1534,8 @@ export class Walker {
    * which is long enough to wade ashore from the shallows and nowhere near long enough
    * to cross the bay - so stowing the skimmers out over the water is the end of it,
    * which is the whole reason to look where you are going before you do.
+   *
+   * Implements: REQ-WALK-031
    */
   drowns(dt, floor, afloat) {
     const p = this.p;
@@ -1465,6 +1550,7 @@ export class Walker {
     if (this.health.hurt(DROWN * dt)) this.die('The water');
   }
 
+  // Implements: REQ-TOOL-023, REQ-TOOL-025, REQ-TOOL-049, REQ-TOOL-050
   /** Whether what is in the off hand is doing its work: it has to have something left
    * in it, and not have run out since it was taken out. */
   working(what) {
@@ -1483,6 +1569,8 @@ export class Walker {
    * the map with open water beside it at about its own height, so it is the one place
    * where "step down into the bay" has to mean something other than what it means on a
    * shore.
+   *
+   * Implements: REQ-WALK-041
    */
   onDeck() {
     const p = this.p;
@@ -1504,6 +1592,8 @@ export class Walker {
    * The gauge for whatever is being carried, beside the health bar. It is hidden when
    * the off hand is empty or holding something that never runs out, so the row says
    * nothing rather than saying "full" about a grapple line.
+   *
+   * Implements: REQ-TOOL-048
    */
   drawFuel() {
     const box = this.fuelBox ||= this.hud.querySelector('.w-fuel');
@@ -1536,6 +1626,8 @@ export class Walker {
    * everything else fills. A tool that runs dry stops working where it stands, which
    * for the jet is a fall and for the skimmers is the water - so it is said out loud
    * before it happens rather than after.
+   *
+   * Implements: REQ-TOOL-047, REQ-TOOL-049, REQ-TOOL-050
    */
   burn(dt, using) {
     for (const id of SECONDARY_IDS) {
@@ -1556,7 +1648,11 @@ export class Walker {
     }
   }
 
-  /** The end of a fall: what it was worth, and whether it was the end of the walk. */
+  /**
+   * The end of a fall: what it was worth, and whether it was the end of the walk.
+   *
+   * Implements: REQ-WALK-027
+   */
   land(floor) {
     const drop = this.fell - floor;
     this.fell = null;
@@ -1571,6 +1667,8 @@ export class Walker {
    * BITE_EVERY, so a swarm is dangerous by being hard to get out of rather than by
    * taking the walker apart in a second - and it is the nearest one, so what bit is
    * what the crosshair is most likely already on.
+   *
+   * Implements: REQ-WALK-028
    */
   bites() {
     const now = performance.now();
@@ -1594,6 +1692,8 @@ export class Walker {
    * It ends the way leaving on foot does, back to the map standing where you fell,
    * because the backpack is what a session is for and nothing in it is lost. Coming
    * back in is coming back at full health (enter).
+   *
+   * Implements: REQ-WALK-030, REQ-WALK-033
    */
   die(cause) {
     if (this.dying !== null) return;
@@ -1605,7 +1705,11 @@ export class Walker {
     this.flash(`${cause} finished you. Back to the map; walk in again to start over`);
   }
 
-  /** The red, deepening; at the end of it the walker is back on the map. */
+  /**
+   * The red, deepening; at the end of it the walker is back on the map.
+   *
+   * Implements: REQ-WALK-033
+   */
   fade(dt) {
     this.dying += dt;
     this.hud.style.setProperty('--dead', Math.min(1, this.dying / (DYING * 0.4)).toFixed(3));
@@ -1627,6 +1731,8 @@ export class Walker {
    * new box `b`: outside it, at the same distance from the same edge; over it, at
    * the same share of its size. So a depth change, a filter or a live update rebuilds
    * the city around the walker instead of teleporting them.
+   *
+   * Implements: REQ-WALK-025
    */
   reanchor(a, b) {
     const p = this.p, was = p.feet;
@@ -1645,6 +1751,7 @@ export class Walker {
 
   // Steps aside when a building now stands where the walker was put: the nearest
   // spot no higher than the level they were on.
+  // Implements: REQ-WALK-025
   makeRoom(level) {
     const p = this.p, fits = (x, z) => this.height(x, z) <= level + STEP;
     if (fits(p.x, p.z)) return;
@@ -1723,7 +1830,11 @@ export class Walker {
     return out;
   }
 
-  /** Keeps the walker over the map or the water just off its shores. */
+  /**
+   * Keeps the walker over the map or the water just off its shores.
+   *
+   * Implements: REQ-WALK-007
+   */
   confine() {
     const l = this.limits, p = this.p;
     if (!l) return;
@@ -1739,6 +1850,8 @@ export class Walker {
    * is a bridge the body is under rather than one it is on. Without it, walking the
    * water on skimmers put the walker on top of every deck they passed beneath, which
    * is the one place on the map where there is somewhere to be underneath.
+   *
+   * Implements: REQ-WALK-002, REQ-WALK-032, REQ-WALK-035, REQ-CITY-018, REQ-CITY-028, REQ-PERF-008
    */
   height(x, z, from = Infinity) {
     let top = WATER;
@@ -1771,6 +1884,7 @@ export class Walker {
    * The test stays with the caller rather than here in a generator that yields only
    * what matches: the ray the crosshair marches calls this a few hundred times a
    * frame, and an iterator object per call is that many allocations to throw away.
+   * Implements: REQ-PERF-008
    */
   cellAt(x, z) {
     return this.grid.get(cellKey(x, z)) || NO_CELL;
@@ -1794,7 +1908,11 @@ export class Walker {
     return out.set(this.p.x, this.p.feet + EYE, this.p.z);
   }
 
-  /** Whether a box is the shore or the block the walker stands in. */
+  /**
+   * Whether a box is the shore or the block the walker stands in.
+   *
+   * Implements: REQ-WALK-016
+   */
   underfoot(b) {
     const p = this.p;
     return b.kind === 'land' || b.kind === 'terrace' && Math.abs(p.x - b.x) <= b.w / 2 && Math.abs(p.z - b.z) <= b.d / 2;
@@ -1802,6 +1920,7 @@ export class Walker {
 
   // Marches the crosshair ray through the bent view, mapping each sample back to the
   // flat map, until it enters a box or the water.
+  // Implements: REQ-TOOL-022
   updateAim() {
     const cam = this.scene.walkCamera;
     const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
@@ -1853,6 +1972,8 @@ export class Walker {
    * The viewmodel hangs off the walk camera, which is at the walker's eye in those
    * same coordinates, so this needs no conversion - only an up-to-date matrix, since
    * a shot is fired between frames.
+   *
+   * Implements: REQ-TOOL-038
    */
   muzzle(vm = this.viewmodel, out = new THREE.Vector3()) {
     const m = vm?.getObjectByName('muzzle');
@@ -1867,6 +1988,7 @@ export class Walker {
   // tool that throws nothing reaches what it is pointed at the moment it is used - as
   // far as it reaches, which for the camera is any distance and for the net is arm's
   // length.
+  // Implements: REQ-HUNT-037, REQ-HUNT-038, REQ-HUNT-044, REQ-TOOL-029
   fire() {
     if (this.still || this.dying !== null) return;
     // A photograph is up: the click that would have taken another one puts this one
@@ -1944,6 +2066,8 @@ export class Walker {
    * behind it if it trails one. Where it goes from there is the caller's business: the
    * crosshair's target for the hand the crosshair belongs to, and straight ahead for
    * the other one.
+   *
+   * Implements: REQ-TOOL-004, REQ-TOOL-038, REQ-TOOL-040
    */
   shotFrom(tool, vm) {
     const p = this.p;
@@ -1964,6 +2088,7 @@ export class Walker {
     return shot;
   }
 
+  // Implements: REQ-TOOL-038
   /** Sends a shot off along the view, to fly on under its own physics. */
   loose(shot) {
     const p = this.p;
@@ -1980,6 +2105,8 @@ export class Walker {
    * so a line fired from it goes where the walker is looking and bites whatever it
    * reaches, and the two that carry rather than throw do their one thing where they
    * stand.
+   *
+   * Implements: REQ-TOOL-024, REQ-TOOL-029, REQ-TOOL-034
    */
   useSecondary() {
     if (this.still || this.dying !== null) return;
@@ -2027,6 +2154,8 @@ export class Walker {
    * The box the walker is looking at and where the ray met it, for a tool that is not
    * the one the crosshair belongs to. The crosshair is the primary tool's, so the off
    * hand asks for itself - one march of the ray, once, at the moment it is used.
+   *
+   * Implements: REQ-TOOL-034
    */
   lookingAt(reach) {
     const cam = this.scene.walkCamera;
@@ -2190,6 +2319,7 @@ export class Walker {
     return out;
   }
 
+  // Implements: REQ-HUNT-021, REQ-HUNT-022, REQ-HUNT-023, REQ-HUNT-024, REQ-HUNT-025, REQ-HUNT-026
   drawRadar(now, dt) {
     const box = this.hud.querySelector('.w-radar');
     // A map whose every advisory is reachable has no bugs walking it at all, and the
@@ -2434,6 +2564,7 @@ export class Walker {
   // which is the one case where the crosshair is on something and nothing happens.
   // A swung tool has to be walked up to; a thrown one would simply fall short, and
   // saying which it is saves the walker guessing why the shot did nothing.
+  // Implements: REQ-HUNT-014
   showTarget(bug, far = false) {
     const el = this.hud.querySelector('.w-target');
     this.hud.classList.toggle('far', !!far);
@@ -2468,6 +2599,7 @@ export class Walker {
     el.classList.add('flash');
   }
 
+  // Implements: REQ-HUNT-001, REQ-HUNT-017, REQ-HUNT-018, REQ-TOOL-004, REQ-TOOL-027
   updateDarts(dt) {
     const done = [], prev = new THREE.Vector3(), dir = new THREE.Vector3();
     for (const dart of this.darts) {
@@ -2564,6 +2696,8 @@ export class Walker {
    * every frame would swing from building to building as it passed them, and it would
    * cost a sweep of the layout a frame to do it. Nothing is picked twice, and a shot
    * that leaves with nothing ahead of it stays a shot that misses.
+   *
+   * Implements: REQ-TOOL-027, REQ-TOOL-041
    */
   steer(dart, by) {
     const at = dart.mesh.position;
@@ -2599,6 +2733,7 @@ export class Walker {
 
   // The hunt takes two shots: the first dart tags the module, a second one into the
   // same building asks what it is - the details, without letting go of the trigger.
+  // Implements: REQ-HUNT-001, REQ-HUNT-002, REQ-HUNT-005
   tag(box) {
     if (this.tagged.has(box.node.id)) {
       this.hooks.onInspect(box);
@@ -2614,6 +2749,8 @@ export class Walker {
    * The worst thing the scanners said about a module, or null where they said nothing.
    * The map is what knows; the walker only asks, so that walk mode works the same with
    * findings turned off as with them on.
+   *
+   * Implements: REQ-HUNT-004
    */
   severityOf(node) {
     return this.hooks.severityOf?.(node) || null;
@@ -2625,6 +2762,8 @@ export class Walker {
    * worst finding on it, so what the beam says is not only that the module was tagged
    * but how bad what is in it is. A module the scanners had nothing to say about keeps
    * the plain beacon, which is what a clean module looks like from across the map.
+   *
+   * Implements: REQ-HUNT-003, REQ-HUNT-004
    */
   drawBeacons() {
     this.beacons.clear();
@@ -2658,6 +2797,7 @@ export class Walker {
     return m;
   }
 
+  // Implements: REQ-HUNT-002, REQ-HUNT-019
   drawHud() {
     const locked = document.pointerLockElement === this.scene.renderer.domElement;
     // Walking is what walk mode is; saying so is a chip that never changes. Flying
@@ -2692,6 +2832,7 @@ export class Walker {
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
+// Implements: REQ-TOOL-027, REQ-TOOL-042
 /** Knocks a point or a direction off course by up to `by`, evenly in all directions. */
 function scatter(v, by) {
   v.x += (Math.random() * 2 - 1) * by;
