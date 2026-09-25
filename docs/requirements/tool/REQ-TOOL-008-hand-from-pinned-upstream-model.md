@@ -12,7 +12,7 @@ verification:
 
 ## Statement
 
-`tools/hand.py` **shall** prepare the walker's hand from the MIT-licensed
+`scripts/hand.py` **shall** prepare the walker's hand from the MIT-licensed
 `generic-hand` model of the WebXR Input Profiles project, fetched from npm and
 pinned by version and checksum; it **shall** add the forearm the model lacks,
 rebuild its rig as a skeleton with one bone per joint named after the WebXR
@@ -31,7 +31,7 @@ REQ-DIST-005).
 
 ## Acceptance criteria
 
-1. `tools/hand.py` verifies the downloaded package against a pinned checksum
+1. `scripts/hand.py` verifies the downloaded package against a pinned checksum
    before using it.
 2. The exported rig has one bone per phalanx, named after the WebXR joints.
 3. The model's license is listed in `web/static/vendor/README.md`.

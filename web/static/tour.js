@@ -182,7 +182,7 @@ function show(cards, key, forced = false, after = null) {
   const draw = () => {
     const card = cards[at];
     // The picture, where the card has one. They are taken off the running map by
-    // tools/tour-shots.mjs rather than drawn, so that they cannot quietly stop being
+    // scripts/tour-shots.mjs rather than drawn, so that they cannot quietly stop being
     // true: a drawing of a feature is a thing somebody has to remember to redraw.
     //
     // A missing one is not an error. The pictures are generated, and a working copy

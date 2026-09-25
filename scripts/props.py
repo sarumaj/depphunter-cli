@@ -1,11 +1,12 @@
+#!/usr/bin/env python3.11
 """Prepares the plants that stand on the city map, and exports them as glTF.
 
 Run it with Blender, or with the `bpy` module on the same Python it was built for:
 
     pip install "numpy<2" bpy
-    python3 tools/props.py
+    python3 scripts/props.py
 
-Like the hand (tools/hand.py), the models are not made here: they are from flo-bit's
+Like the hand (scripts/hand.py), the models are not made here: they are from flo-bit's
 low poly nature pack, which is CC0 (see web/static/vendor/README.md). Blobs of
 icosahedron read as a bush from a distance and as nothing at all from a street, and
 the map is walked down streets.

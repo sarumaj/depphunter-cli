@@ -21,18 +21,18 @@ instead of the bare specifier `three` (and each other by file name), because the
 Content-Security-Policy forbids the inline import map a bare specifier would
 need.
 
-`../hand.glb` is built by `tools/hand.py` from the `generic-hand` model in
+`../hand.glb` is built by `scripts/hand.py` from the `generic-hand` model in
 `@webxr-input-profiles/assets@1.0.20`
 (`dist/profiles/generic-hand/right.glb`), which is MIT licensed - Copyright (c)
 2019 Amazon, `webxr-input-profiles.LICENSE`. The script re-orients and rescales
 the model, adds the forearm it has no use for and rebuilds its rig; the hand
 itself is theirs.
 
-`../bug.glb` is not from anywhere: `tools/bug.py` models the beetle in Blender out
+`../bug.glb` is not from anywhere: `scripts/bug.py` models the beetle in Blender out
 of spheres and cones, because neither pack has an insect in it and a beetle is
 simple enough to say out loud.
 
-`../props.glb` is built by `tools/props.py` from flo-bit's low poly nature pack
+`../props.glb` is built by `scripts/props.py` from flo-bit's low poly nature pack
 (`flo-bit/low-poly-asset-packs`, `nature-pack/glb`), which is CC0 -
 `low-poly-nature.LICENSE`. The script splits each model into its trunk and its
 crown, decimates it to something the map can instance and stands it on the

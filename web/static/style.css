@@ -920,7 +920,7 @@ dialog form { margin-top: 12px; text-align: right; }
    short card at a time, because the point of it is to be read rather than skimmed. */
 #tour { max-width: min(560px, calc(100% - 32px)); }
 #tour h2 { font-size: 17px; }
-/* The picture a card is told with (tour.js, tools/tour-shots.mjs). It keeps its own
+/* The picture a card is told with (tour.js, scripts/tour-shots.mjs). It keeps its own
    aspect so the dialog does not change height between a card that has one and a card
    that does not - the introduction is stepped through with a button that must not
    move under the pointer. */

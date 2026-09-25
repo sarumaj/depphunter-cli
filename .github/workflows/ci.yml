@@ -90,7 +90,7 @@ jobs:
       - name: Requirements traceability
         # Every Implements:/Verifies: annotation must name a requirement in
         # docs/requirements, and the matrix generated from them must be current.
-        run: node tools/reqtrace.mjs --check
+        run: node scripts/reqtrace.mjs --check
 
   extension:
     # The VS Code extension is TypeScript and a manifest, neither of which the Go

@@ -1,12 +1,13 @@
+#!/usr/bin/env python3.11
 """Builds the creatures a finding walks the streets as, and exports them as glTF.
 
 Run it with Blender, or with the `bpy` module on the same Python it was built for:
 
     pip install "numpy<2" bpy
-    python3 tools/bug.py
+    python3 scripts/bug.py
 
-The hand and the plants are models somebody else drew and this fetches (tools/hand.py,
-tools/props.py). There is nothing like these in either pack, and a beetle is simple
+The hand and the plants are models somebody else drew and this fetches (scripts/hand.py,
+scripts/props.py). There is nothing like these in either pack, and a beetle is simple
 enough to say out loud, so they are modelled here: a bmesh of spheres and cones,
 welded, smoothed where it should be round and left faceted where it should catch the
 light.
@@ -110,7 +111,7 @@ def mesh(name: str, bm: BMesh, smooth: bool) -> Object:
     """Closes a bmesh into an object, welded and shaded."""
     # Welded first: the parts are built as separate primitives that overlap, and a
     # decimator or a normal is only as good as the surface it is given. Loose
-    # triangles are what made the plants look shredded before tools/props.py sewed
+    # triangles are what made the plants look shredded before scripts/props.py sewed
     # them (see that script), and the same applies to anything built from lumps.
     bmesh.ops.remove_doubles(bm, verts=bm.verts, dist=1e-5)
     bmesh.ops.recalc_face_normals(bm, faces=bm.faces)

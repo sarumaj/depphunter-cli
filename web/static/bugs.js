@@ -633,7 +633,7 @@ function pointAt(lap, u) {
  * rest of it following, and for a shape that flies a wing as well. All of them stand
  * on the origin with the nose along +z.
  *
- * They are modelled in Blender (tools/bug.py) and arrive as bug.glb; until they do -
+ * They are modelled in Blender (scripts/bug.py) and arrive as bug.glb; until they do -
  * and for any shape an older file was built without - the map draws the ones below
  * out of spheres and boxes, so the street is never empty waiting on a download.
  *
@@ -738,7 +738,7 @@ const mite = model => fromFile(model, ['mite_shell', 'mite_dark', 'mite_legs', '
 
 /**
  * The stand-in left wing, for a bug.glb modelled before there was one in it. The
- * shape is tools/bug.py's, drawn here the way the stand-in beetle above is drawn:
+ * shape is scripts/bug.py's, drawn here the way the stand-in beetle above is drawn:
  * flat, hinged on the body's own length so that turning it about that line beats it
  * (flap above), and lying over the back from the hinge outwards.
  */

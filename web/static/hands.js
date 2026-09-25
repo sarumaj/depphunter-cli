@@ -1,6 +1,6 @@
 // The walker's hands, as a model rather than as a pile of boxes.
 //
-// hand.glb is prepared by tools/hand.py: the MIT-licensed `generic-hand` from the
+// hand.glb is prepared by scripts/hand.py: the MIT-licensed `generic-hand` from the
 // WebXR Input Profiles project, turned to the axes used here, scaled to map units,
 // given the forearm a VR hand has no need of, and re-rigged so that a finger carries
 // its own tip when it curls. It is loaded once and every hand the UI draws is a clone
@@ -9,7 +9,7 @@
 // The rig is what makes it worth loading a model at all: the fingers close around
 // whatever the walker is holding, and the wrist and forearm turn so the arm leaves the
 // frame at its corner however the tool is angled. Posing is by name (pose), and the
-// names are the WebXR joint names, which is the contract between this and tools/hand.py.
+// names are the WebXR joint names, which is the contract between this and scripts/hand.py.
 
 import * as THREE from './vendor/three.module.min.js';
 import { GLTFLoader } from './vendor/GLTFLoader.js';
@@ -83,7 +83,7 @@ const axis = new THREE.Vector3();
 const turn = new THREE.Quaternion();
 
 /**
- * Turns one bone by an angle about one of its own axes, from its rest pose. tools/hand.py
+ * Turns one bone by an angle about one of its own axes, from its rest pose. scripts/hand.py
  * rolls every bone so that its local x runs across the hand and its local z points out
  * of the back of it, which is why one axis curls every finger the same way.
  *

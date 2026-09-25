@@ -13,7 +13,7 @@ verification:
 ## Statement
 
 The walker's hands and forearms **shall** be a rigged model prepared by
-`tools/hand.py` in Blender and exported to `web/static/hand.glb`, and the script
+`scripts/hand.py` in Blender and exported to `web/static/hand.glb`, and the script
 **shall** be committed as the model's source.
 
 ## Rationale
@@ -23,5 +23,5 @@ alone is not.
 
 ## Acceptance criteria
 
-1. `tools/hand.py` runs under Blender or `bpy` and writes `web/static/hand.glb`.
+1. `scripts/hand.py` runs under Blender or `bpy` and writes `web/static/hand.glb`.
 2. The UI draws no hand geometry of its own.

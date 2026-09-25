@@ -84,7 +84,7 @@ func WriteStatic(w io.Writer, g *graph.Graph, ui config.UI, root string, extra m
 	// The introduction's pictures, likewise: a first visit to an exported map is still
 	// a first visit, and a card whose picture is a broken link is worse than a card
 	// that never had one. Read from the directory rather than from a list, so that
-	// taking a new picture is one command and not two edits (tools/tour-shots.mjs).
+	// taking a new picture is one command and not two edits (scripts/tour-shots.mjs).
 	tour := map[string]string{}
 	shots, err := fs.ReadDir(assets, "tour")
 	if err == nil {
