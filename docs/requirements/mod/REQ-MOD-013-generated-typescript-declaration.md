@@ -6,8 +6,6 @@ scope: mod
 type: constraint
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M17
 verification:
   - unit
 ---

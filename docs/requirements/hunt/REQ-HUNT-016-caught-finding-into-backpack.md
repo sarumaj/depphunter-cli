@@ -6,8 +6,6 @@ scope: hunt
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M15
 verification:
   - e2e
 ---
@@ -23,6 +21,5 @@ The point of catching a finding is to come back to it.
 
 ## Acceptance criteria
 
-1. Catching a bug in walk mode makes its finding appear in the backpack (M15
-   acceptance).
+1. Catching a bug in walk mode makes its finding appear in the backpack.
 2. Catching the same finding again does not add a second entry.

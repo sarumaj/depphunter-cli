@@ -6,9 +6,6 @@ scope: sec
 type: non-functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §6
-  - docs/REQUIREMENTS.md M1
 verification:
   - unit
   - inspection
@@ -32,4 +29,5 @@ not be reachable from the network by default.
 
 ## Notes
 
-No test checks the default address itself.
+`TestServesOnLoopbackByDefault` runs the built binary without `--addr` and
+checks the logged URL.

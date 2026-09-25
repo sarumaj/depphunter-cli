@@ -182,10 +182,15 @@ jobs:
       - name: Test on 32-bit
         # Releases include 386 and armv7 builds; catch int overflows on 32-bit ints.
         run: GOARCH=386 CGO_ENABLED=0 go test ./...
+      # Verifies: REQ-DIST-001, REQ-DIST-007
       - name: Build
         run: scripts/dist.sh "${GITHUB_SHA::7}"
+      # Verifies: REQ-DIST-001, REQ-DIST-007
       - name: Smoke test
+        # Every target's archive and the checksums, then the Linux binary runs.
         run: |
+          test "$(ls dist/depphunter_*.tar.gz dist/depphunter_*.zip | wc -l)" -eq 12
+          (cd dist && sha256sum -c checksums.txt)
           tar -xzf dist/depphunter_*_linux_amd64.tar.gz -C "$RUNNER_TEMP"
           "$RUNNER_TEMP"/depphunter_*_linux_amd64/depphunter --version
       - uses: actions/upload-artifact@v4

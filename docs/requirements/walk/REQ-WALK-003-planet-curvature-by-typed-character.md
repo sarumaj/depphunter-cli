@@ -6,9 +6,6 @@ scope: walk
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M7
-  - docs/REQUIREMENTS.md M10
 verification:
   - manual
 ---
@@ -33,5 +30,5 @@ position made `+` curve the planet while `-` still changed the map's depth.
 
 ## Notes
 
-M7 also let the mouse wheel change the radius; since M10 the wheel zooms the
-field of view (REQ-WALK-013).
+The mouse wheel zooms the field of view (REQ-WALK-013) rather than changing the
+radius.

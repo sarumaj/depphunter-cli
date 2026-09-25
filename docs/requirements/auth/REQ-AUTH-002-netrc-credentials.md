@@ -6,9 +6,6 @@ scope: auth
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M16
-  - docs/REQUIREMENTS.md M12
 verification:
   - unit
 ---

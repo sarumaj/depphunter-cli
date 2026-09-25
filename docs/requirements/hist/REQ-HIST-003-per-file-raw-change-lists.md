@@ -6,8 +6,6 @@ scope: hist
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M5
 verification:
   - integration
 ---
@@ -20,7 +18,7 @@ added, lines deleted, commit index), with binary changes counting zero lines.
 
 ## Rationale
 
-Decision (M5): raw changes are sent instead of server-side aggregates so any
+Decision: raw changes are sent instead of server-side aggregates so any
 time range can be evaluated in the browser instantly, and the payload stays
 small.
 

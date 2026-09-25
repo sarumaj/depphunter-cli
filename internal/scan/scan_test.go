@@ -5,6 +5,8 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"reflect"
+	"strings"
 	"testing"
 )
 
@@ -98,5 +100,96 @@ func TestWalkSkipsUnreadableDirectories(t *testing.T) {
 	}
 	if len(got) != 1 || got[0] != "a.go" {
 		t.Errorf("got %v, want [a.go]", got)
+	}
+}
+
+// git decides what a repository contains: whatever .gitignore excludes is left out,
+// an untracked file nothing ignores is kept, and a file in conflict - which git lists
+// once per merge stage - comes back once.
+//
+// Verifies: REQ-LANG-017
+func TestScanListsWhatGitDoes(t *testing.T) {
+	if _, err := exec.LookPath("git"); err != nil {
+		t.Skip("no git")
+	}
+	root := t.TempDir()
+	git := func(args ...string) {
+		t.Helper()
+		// No user configuration is assumed: identity and signing are set here.
+		base := []string{"-C", root, "-c", "user.name=test", "-c", "user.email=test@example.com",
+			"-c", "commit.gpgsign=false", "-c", "core.autocrlf=false"}
+		if out, err := exec.Command("git", append(base, args...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", args, err, out)
+		}
+	}
+	write := func(p, content string) {
+		t.Helper()
+		abs := filepath.Join(root, filepath.FromSlash(p))
+		os.MkdirAll(filepath.Dir(abs), 0o755)
+		if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	git("init", "-q")
+	write(".gitignore", "*.log\nout/\n")
+	write("conflict.txt", "base\n")
+	git("add", ".")
+	git("commit", "-q", "-m", "base")
+	git("checkout", "-q", "-b", "other")
+	write("conflict.txt", "other\n")
+	git("commit", "-q", "-am", "other")
+	git("checkout", "-q", "-")
+	write("conflict.txt", "mine\n")
+	git("commit", "-q", "-am", "mine")
+	// The merge fails by design, leaving conflict.txt in three stages.
+	exec.Command("git", "-C", root, "-c", "user.name=test", "-c", "user.email=test@example.com",
+		"merge", "-q", "other").Run()
+
+	write("debug.log", "ignored\n")
+	write("out/app.bin", "ignored\n")
+	write("new.go", "package a\n") // untracked, and nothing ignores it
+
+	got, err := Scan(context.Background(), root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	count := map[string]int{}
+	for _, f := range got {
+		count[f.Path]++
+	}
+	want := map[string]int{".gitignore": 1, "conflict.txt": 1, "new.go": 1}
+	if !reflect.DeepEqual(count, want) {
+		t.Errorf("scanned %v, want %v", count, want)
+	}
+}
+
+// Verifies: REQ-LANG-020
+func TestScanMeasuresEveryFilesSize(t *testing.T) {
+	// Bytes are measured whether or not the lines are counted: a text file, a binary
+	// and a file over the size limit all carry their size on disk.
+	root := t.TempDir()
+	files := map[string]string{
+		"a.go":    "package a\n\nfunc A() {}\n",
+		"img.bin": "\x00\x01\x02\x03",
+		"big.txt": strings.Repeat("x", 100) + "\n",
+	}
+	for p, c := range files {
+		os.WriteFile(filepath.Join(root, p), []byte(c), 0o644)
+	}
+	got, err := Scan(context.Background(), root, Options{MaxFileSize: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(got) != len(files) {
+		t.Fatalf("got %d files, want %d", len(got), len(files))
+	}
+	for _, f := range got {
+		st, err := os.Stat(f.Abs)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if f.Size != st.Size() || f.Size != int64(len(files[f.Path])) {
+			t.Errorf("%s: size %d, want %d", f.Path, f.Size, st.Size())
+		}
 	}
 }

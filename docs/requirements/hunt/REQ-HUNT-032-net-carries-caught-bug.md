@@ -6,8 +6,6 @@ scope: hunt
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M26
 verification:
   - ui
   - manual
@@ -26,6 +24,5 @@ not look caught.
 
 ## Acceptance criteria
 
-1. A bug caught in the net stays visibly in the hoop while the hoop moves (M26
-   acceptance).
+1. A bug caught in the net stays visibly in the hoop while the hoop moves.
 2. The bug turns over at least once during the catch.

@@ -6,8 +6,6 @@ scope: watch
 type: non-functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M3
 verification:
   - e2e
 ---
@@ -19,7 +17,7 @@ open map within one second, without losing the view state.
 
 ## Rationale
 
-Acceptance criterion of M3; the 300 ms debounce and the incremental re-analysis
+The 300 ms debounce and the incremental re-analysis
 leave room for delivery and redraw.
 
 ## Acceptance criteria

@@ -6,9 +6,6 @@ scope: watch
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §5
-  - docs/REQUIREMENTS.md M3
 verification:
   - integration
 ---

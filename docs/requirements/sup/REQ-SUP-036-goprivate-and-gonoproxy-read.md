@@ -6,8 +6,6 @@ scope: sup
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M16
 verification:
   - unit
 ---
@@ -29,5 +27,4 @@ A Go project that has configured its machine needs no configuration here.
 
 ## Notes
 
-`GONOSUMDB` and `GONOSUMCHECK` are read as well, which the design log does not
-state.
+`GONOSUMDB` and `GONOSUMCHECK` are read as well.

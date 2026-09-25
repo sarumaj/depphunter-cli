@@ -6,10 +6,6 @@ scope: srv
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §5
-  - docs/REQUIREMENTS.md M3
-  - docs/REQUIREMENTS.md M7
 verification:
   - unit
 ---
@@ -25,8 +21,7 @@ the program directly without a shell; a template that names no program or lacks
 ## Rationale
 
 A file name is substituted into an argument and never re-parsed, so it cannot
-inject commands. The established go-shellquote library replaced hand-rolled
-splitting (M7).
+inject commands. The splitting is the established go-shellquote library's.
 
 ## Acceptance criteria
 

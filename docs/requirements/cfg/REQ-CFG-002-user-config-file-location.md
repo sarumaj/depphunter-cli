@@ -6,8 +6,6 @@ scope: cfg
 type: interface
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §5
 verification:
   - unit
   - integration
@@ -32,6 +30,5 @@ any repository.
 
 ## Notes
 
-The design log names `$XDG_CONFIG_HOME/depphunter/config.yaml`; the code uses
-Go's `os.UserConfigDir`, which is that path on Linux but `~/Library/Application
-Support` on macOS and `%AppData%` on Windows.
+The directory is Go's `os.UserConfigDir`: `$XDG_CONFIG_HOME` on Linux,
+`~/Library/Application Support` on macOS and `%AppData%` on Windows.

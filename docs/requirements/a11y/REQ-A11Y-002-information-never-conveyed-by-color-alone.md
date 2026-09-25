@@ -6,9 +6,6 @@ scope: a11y
 type: non-functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §2
-  - docs/REQUIREMENTS.md §6
 verification:
   - manual
   - inspection

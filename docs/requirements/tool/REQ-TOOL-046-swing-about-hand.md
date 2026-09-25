@@ -6,8 +6,6 @@ scope: tool
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M24
 verification:
   - manual
 ---
@@ -24,4 +22,4 @@ the pivot.
 
 ## Acceptance criteria
 
-1. A net swings about the hand (M24 acceptance).
+1. A net swings about the hand.

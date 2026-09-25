@@ -6,9 +6,6 @@ scope: lsp
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M6
-  - docs/REQUIREMENTS.md M9
 verification:
   - inspection
 ---

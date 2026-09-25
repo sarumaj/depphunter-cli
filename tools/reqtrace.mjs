@@ -30,7 +30,7 @@ const ENUMS = {
 };
 // Verification kinds that a test in the repository can carry out.
 const AUTOMATED = new Set(['unit', 'integration', 'ui', 'extension']);
-const REQUIRED = ['id', 'uuid', 'title', 'scope', 'type', 'priority', 'status', 'source', 'verification'];
+const REQUIRED = ['id', 'uuid', 'title', 'scope', 'type', 'priority', 'status', 'verification'];
 const ID = /^REQ-[A-Z0-9]+-\d{3}$/;
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const ANNOTATION = /\b(Implements|Verifies):\s*(REQ-[A-Z0-9]+-\d{3}(?:\s*,\s*REQ-[A-Z0-9]+-\d{3})*)/g;
@@ -162,7 +162,9 @@ function scanAnnotations(requirements) {
     }
     if (!text.includes('REQ-')) continue;
     const lines = text.split('\n');
-    const test = /(_test\.go|\.test\.m?js|\/uitest\/|\/test\/)/.test(file);
+    // CI workflows count as tests: a job that builds and runs every release target
+    // verifies what no unit test can.
+    const test = /(_test\.go|\.test\.m?js|\/uitest\/|\/test\/|^\.github\/workflows\/)/.test(file);
     lines.forEach((line, i) => {
       for (const m of line.matchAll(ANNOTATION)) {
         const [, kind, list] = m;

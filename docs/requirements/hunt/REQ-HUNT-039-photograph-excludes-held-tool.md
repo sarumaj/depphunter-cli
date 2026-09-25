@@ -6,8 +6,6 @@ scope: hunt
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M28
 verification:
   - e2e
 ---
@@ -24,4 +22,4 @@ not making that pass; a camera cannot be in its own picture.
 
 ## Acceptance criteria
 
-1. A photograph shows nothing of the camera or the hand (M28 acceptance).
+1. A photograph shows nothing of the camera or the hand.

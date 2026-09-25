@@ -6,8 +6,6 @@ scope: sup
 type: constraint
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M16
 verification:
   - unit
 ---

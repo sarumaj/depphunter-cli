@@ -6,9 +6,6 @@ scope: go
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M1
-  - docs/REQUIREMENTS.md M2
 verification:
   - unit
 ---

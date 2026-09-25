@@ -13,6 +13,7 @@ import (
 	"time"
 
 	"github.com/sarumaj/depphunter-cli/internal/config"
+	"github.com/sarumaj/depphunter-cli/internal/graph"
 )
 
 // execute runs the command with args and returns what it printed.
@@ -171,5 +172,84 @@ func TestLinkAnswersOutliveAdvisories(t *testing.T) {
 	}
 	if findingsCacheTTL != 6*time.Hour {
 		t.Errorf("advisories kept for %v, want six hours", findingsCacheTTL)
+	}
+}
+
+// Markdown that is not this repository's own writing - vendored dependencies'
+// READMEs and fixtures under testdata - is never handed to the link check, at
+// whatever depth it sits.
+//
+// Verifies: REQ-MD-015
+func TestVendoredDocsAndTestdataAreNotLinkChecked(t *testing.T) {
+	g := &graph.Graph{}
+	for _, p := range []string{
+		"README.md", "docs/guide.md", "internal/x/notes.md",
+		"vendor/github.com/a/b/README.md", "web/node_modules/pkg/README.md",
+		"third_party/lib/README.md", "thirdparty/lib/README.md",
+		"lib/site-packages/pkg/README.md", ".venv/lib/README.md", "venv/README.md",
+		"internal/x/testdata/README.md",
+	} {
+		g.Nodes = append(g.Nodes, &graph.Node{ID: graph.FileID(p), Kind: graph.KindFile, Path: p, Lang: "Markdown"})
+	}
+	// Not Markdown, so not a document either way.
+	g.Nodes = append(g.Nodes, &graph.Node{ID: graph.FileID("main.go"), Kind: graph.KindFile, Path: "main.go", Lang: "Go"})
+
+	got := documents(g)
+	want := []string{"README.md", "docs/guide.md", "internal/x/notes.md"}
+	if strings.Join(got, ",") != strings.Join(want, ",") {
+		t.Errorf("documents %v, want %v", got, want)
+	}
+}
+
+// TestPrivatePackagesAreNotAskedAbout runs an analysis with --private and reads the
+// packages the vulnerability database would be asked about off the map it drew:
+// the organization's own package is on the map, pinned like the public one, and is
+// still not among them.
+//
+// Verifies: REQ-SUP-040
+func TestPrivatePackagesAreNotAskedAbout(t *testing.T) {
+	root := t.TempDir()
+	for name, content := range map[string]string{
+		"go.mod":  "module app\n\ngo 1.22\n\nrequire (\n\tcorp.example/lib v1.0.0\n\tgithub.com/pub/lib v1.2.0\n)\n",
+		"main.go": "package main\n\nimport (\n\t_ \"corp.example/lib\"\n\t_ \"github.com/pub/lib\"\n)\n\nfunc main() {}\n",
+	} {
+		if err := os.WriteFile(filepath.Join(root, name), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	t.Setenv("DEPPHUNTER_CACHE", "false")
+	t.Setenv("GOPRIVATE", "")
+	t.Setenv("GONOPROXY", "")
+	out := filepath.Join(t.TempDir(), "g.json")
+	if _, err := execute(t, "--no-history", "--no-links", "--private", "corp.example/*",
+		"--export", "json", "-o", out, root); err != nil {
+		t.Fatal(err)
+	}
+	data, err := os.ReadFile(out)
+	if err != nil {
+		t.Fatal(err)
+	}
+	var g graph.Graph
+	if err := json.Unmarshal(data, &g); err != nil {
+		t.Fatal(err)
+	}
+	onMap := false
+	for _, n := range g.Nodes {
+		if n.Name == "corp.example/lib" && n.Private && n.Version == "v1.0.0" {
+			onMap = true
+		}
+	}
+	if !onMap {
+		t.Fatal("the private package is not on the map as a pinned private package")
+	}
+	var asked []string
+	for _, p := range pinned(&g) {
+		asked = append(asked, p.Name)
+		if strings.HasPrefix(p.Name, "corp.example/") {
+			t.Errorf("%s would be sent to the vulnerability database", p.Name)
+		}
+	}
+	if len(asked) != 1 || asked[0] != "github.com/pub/lib" {
+		t.Errorf("asked about %v, want the public package only", asked)
 	}
 }

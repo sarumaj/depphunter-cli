@@ -7,7 +7,6 @@ type: functional
 priority: must
 status: implemented
 source:
-  - docs/REQUIREMENTS.md M18
   - README.md Use
   - README.md Settings
 verification:

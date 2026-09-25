@@ -6,8 +6,6 @@ scope: tool
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M31
 verification:
   - ui
 ---
@@ -25,10 +23,10 @@ A walker counting along the row to the fourth slot must find a 4.
 ## Acceptance criteria
 
 1. The tool row reads `1` to `0` from left to right, with `1`, `2` and `3` under
-   the left hand (M31 acceptance).
+   the left hand.
 2. Keys that are not digits pick no tool.
 
 ## Notes
 
-Previously the carried tools were numbered 8, 9 and 0 and drawn at the left-hand
-end (M29: the key on each slot was the tool's own).
+Numbering by kind (8, 9 and 0 for the carried tools, drawn at the left-hand
+end) made the keys and the layout disagree.

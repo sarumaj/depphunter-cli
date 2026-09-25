@@ -6,9 +6,6 @@ scope: ui
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M23
-  - docs/REQUIREMENTS.md M24
 verification:
   - ui
   - manual

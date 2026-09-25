@@ -6,8 +6,6 @@ scope: lang
 type: non-functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §6
 verification:
   - integration
   - e2e
@@ -31,8 +29,7 @@ additionally:
 ## Rationale
 
 The tool is meant to answer questions about an unfamiliar repository within a
-minute, and the map is not shown before analysis ends. The design log stated
-"under 5 s for 10k files" without naming a machine. Nearly all of a cold run is
+minute, and the map is not shown before analysis ends. Nearly all of a cold run is
 tree-sitter parsing (REQ-LANG-006), whose speed the runtime sets: about 1 MB/s
 per core for TypeScript and 1.3 MB/s for Python. The time therefore depends on
 the core count, and the requirement is stated against a machine. The two
@@ -64,9 +61,8 @@ In a CPU profile, tree-sitter parsing and its queries account for 80-90 % of the
 CPU time. The budget of 36 CPU-seconds is what 8 cores at 92 % efficiency get
 through in 5 s.
 
-Amended during the requirements review. The design log's target named no
-machine and could not be met on 4 cores: the parsing alone takes more than 5 s
-of wall time there. Meeting it on any machine would mean replacing tree-sitter
+On 4 cores the target cannot be met: the parsing alone takes more than 5 s of
+wall time there. Meeting it on any machine would mean replacing tree-sitter
 for TypeScript and Python with hand-written scanners, as C# and PowerShell
 already are (REQ-CS-005, REQ-PS-009). That was judged not worth the loss of
 parsing accuracy. A single worker pool shared by all plugins was also tried; it

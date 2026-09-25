@@ -9,10 +9,6 @@ status: superseded
 superseded_by:
   - REQ-WALK-031
   - REQ-WALK-041
-source:
-  - docs/REQUIREMENTS.md M10
-  - docs/REQUIREMENTS.md M21
-  - docs/REQUIREMENTS.md M26
 verification:
   - manual
 ---
@@ -31,5 +27,5 @@ The bay was a boundary before it was a hazard.
 
 ## Notes
 
-Superseded in M21 and M26: the bay is ground half a unit below the shore that
+Superseded: the bay is ground half a unit below the shore that
 can be stepped into and drowns a walker without floats.

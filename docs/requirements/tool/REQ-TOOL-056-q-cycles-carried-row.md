@@ -6,8 +6,6 @@ scope: tool
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M31
 verification:
   - ui
   - e2e
@@ -25,4 +23,4 @@ down.
 
 ## Acceptance criteria
 
-1. `Q` pressed four times from empty comes back to empty (M31 acceptance).
+1. `Q` pressed four times from empty comes back to empty.

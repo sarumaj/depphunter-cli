@@ -6,8 +6,6 @@ scope: py
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M2
 verification:
   - unit
 ---
@@ -28,4 +26,4 @@ Pipenv projects declare dependencies only in the Pipfile.
 
 ## Notes
 
-No automated test covers the Pipfile.
+`TestPipfile` covers both sections and the table form.

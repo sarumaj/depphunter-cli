@@ -6,8 +6,6 @@ scope: hunt
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M15
 verification:
   - e2e
 ---
@@ -25,5 +23,5 @@ The backpack is one catch shared by every client of the session.
 ## Acceptance criteria
 
 1. Taking a finding out of the editor panel's backpack takes it out of the map's
-   (M15 acceptance).
+  .
 2. Its bug walks again on the map.

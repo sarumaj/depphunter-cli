@@ -6,8 +6,6 @@ scope: tool
 type: constraint
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M26
 verification:
   - ui
 ---
@@ -25,4 +23,4 @@ runs out, which is how a thruster came to hang in the air.
 
 ## Acceptance criteria
 
-1. No tool carries a part that touches nothing else on it (M26 acceptance).
+1. No tool carries a part that touches nothing else on it.

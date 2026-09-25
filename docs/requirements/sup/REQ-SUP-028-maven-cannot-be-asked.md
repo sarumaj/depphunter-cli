@@ -6,9 +6,6 @@ scope: sup
 type: limitation
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M12
-  - docs/REQUIREMENTS.md Known limits
 verification:
   - unit
 ---

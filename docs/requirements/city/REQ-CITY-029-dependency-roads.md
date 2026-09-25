@@ -6,10 +6,6 @@ scope: city
 type: functional
 priority: must
 status: withdrawn
-source:
-  - docs/REQUIREMENTS.md M20
-  - docs/REQUIREMENTS.md M23
-  - docs/REQUIREMENTS.md M24
 verification:
   - manual
 ---
@@ -29,7 +25,6 @@ The routes were meant to show how dependencies connect across the city.
 
 ## Notes
 
-Added in M20 and reworked in M23 (settling every reachable cell, carrying roads
-wall to wall). Withdrawn in M24: a route found on a grid over a city not laid
-out for one went missing where the sweep could not reach and climbed walls where
-no ramp had been fitted. The arcs say which buildings are joined.
+Withdrawn: a route found on a grid over a city not laid out for one went missing
+where the sweep could not reach and climbed walls where no ramp had been fitted.
+The arcs say which buildings are joined.

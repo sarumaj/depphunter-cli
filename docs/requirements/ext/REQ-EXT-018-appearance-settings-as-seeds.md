@@ -7,7 +7,6 @@ type: functional
 priority: must
 status: implemented
 source:
-  - docs/REQUIREMENTS.md M30
   - README.md Settings
   - README.md Configuration
 verification:

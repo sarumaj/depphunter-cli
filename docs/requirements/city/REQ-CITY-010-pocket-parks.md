@@ -6,9 +6,6 @@ scope: city
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M8
-  - docs/REQUIREMENTS.md M10
 verification:
   - manual
 ---

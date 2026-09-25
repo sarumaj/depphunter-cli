@@ -6,8 +6,6 @@ scope: map
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M8
 verification:
   - manual
   - e2e

@@ -6,9 +6,6 @@ scope: hunt
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M10
-  - docs/REQUIREMENTS.md M7
 verification:
   - e2e
   - manual
@@ -24,17 +21,15 @@ isometric view would.
 ## Rationale
 
 The walker hunts dependencies: tagging is the walk-mode equivalent of selecting,
-so walking the map selects buildings like clicking does (M7 acceptance).
-Tracking darts replaced the newspapers thrown before M10.
+so walking the map selects buildings like clicking does.
 
 ## Acceptance criteria
 
 1. A dart that lands on an untagged building selects that module and lights its
    dependency trails.
-2. A dart aimed at what the reticle is on tags that module (M10 acceptance).
+2. A dart aimed at what the reticle is on tags that module.
 3. The ground underfoot and the shore are never tagged.
 
 ## Notes
 
-Before M10 the thrown object was a newspaper; this history is kept here only. A
-secondary tool never tags (REQ-TOOL-022).
+A secondary tool never tags (REQ-TOOL-022).

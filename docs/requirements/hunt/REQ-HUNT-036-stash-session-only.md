@@ -6,8 +6,6 @@ scope: hunt
 type: constraint
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M25
 verification:
   - inspection
 ---
@@ -29,5 +27,4 @@ not.
 
 ## Notes
 
-The stash keeps at most 24 photographs and lets go of the oldest; the cap is not
-in the design log.
+The stash keeps at most 24 photographs and lets go of the oldest.

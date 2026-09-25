@@ -1,5 +1,5 @@
 // Package lang defines the contract every language ecosystem plugin implements
-// (docs/REQUIREMENTS.md §4).
+// (docs/requirements/lang).
 //
 // Analysis is split in two so parsing can be cached: Extract reads one file's
 // content and nothing else (its result is cached by content hash), while a Resolver,

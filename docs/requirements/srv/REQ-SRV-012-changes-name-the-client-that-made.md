@@ -6,8 +6,6 @@ scope: srv
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M15
 verification:
   - integration
   - extension

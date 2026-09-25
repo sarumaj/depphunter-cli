@@ -6,8 +6,6 @@ scope: tool
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M20
 verification:
   - ui
 ---
@@ -25,11 +23,10 @@ from what the tool physically does.
 
 ## Acceptance criteria
 
-1. A nail catches a bug (M20 acceptance).
+1. A nail catches a bug.
 2. The net, the bubble wand and the extinguisher catch bugs.
 3. The tracking dart passes through bugs.
 
 ## Notes
 
-The camera also catches bugs (the photographed bug blinks out, REQ-HUNT-030),
-which the design log's count of three plus two does not mention.
+The camera also catches bugs: the photographed bug blinks out (REQ-HUNT-030).

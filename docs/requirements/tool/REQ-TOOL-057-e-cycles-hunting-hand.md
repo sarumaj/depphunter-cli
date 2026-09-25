@@ -6,9 +6,6 @@ scope: tool
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M31
-  - docs/REQUIREMENTS.md M10
 verification:
   - ui
   - e2e
@@ -26,8 +23,8 @@ There is always something to hunt with; `E` is within reach of the hand on `W`,
 
 ## Acceptance criteria
 
-1. `E` walks the hunt's row round (M31 acceptance).
+1. `E` walks the hunt's row round.
 
 ## Notes
 
-This key was `T` before M31.
+`E` sits next to the movement keys, where the left hand already is.

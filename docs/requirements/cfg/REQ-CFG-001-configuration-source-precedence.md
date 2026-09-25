@@ -6,10 +6,6 @@ scope: cfg
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §5
-  - docs/REQUIREMENTS.md M1
-  - docs/REQUIREMENTS.md M9
 verification:
   - unit
 ---
@@ -25,8 +21,7 @@ from every source of lower precedence.
 ## Rationale
 
 The user's standing preferences are refined per repository, then per shell, then
-per run. M1 required the precedence to be implemented and tested; M9 kept it
-when the resolution moved to viper.
+per run. The precedence is resolved with viper.
 
 ## Acceptance criteria
 

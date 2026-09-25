@@ -6,8 +6,6 @@ scope: js
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M6
 verification:
   - unit
 ---

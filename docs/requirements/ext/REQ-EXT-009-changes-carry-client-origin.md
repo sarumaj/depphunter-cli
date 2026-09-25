@@ -6,8 +6,6 @@ scope: ext
 type: interface
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M15
 verification:
   - extension
 ---

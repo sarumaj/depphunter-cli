@@ -6,8 +6,6 @@ scope: tool
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M20
 verification:
   - ui
   - e2e
@@ -25,9 +23,9 @@ Flight is a thing carried rather than a mode.
 
 ## Acceptance criteria
 
-1. The jet backpack is the only way to fly (M20 acceptance).
+1. The jet backpack is the only way to fly.
 2. Stowing the jet backpack in the air makes the walker fall.
 
 ## Notes
 
-This replaced the `F` flight toggle of M7 (walk scope).
+There is no flight toggle key (REQ-WALK-048).

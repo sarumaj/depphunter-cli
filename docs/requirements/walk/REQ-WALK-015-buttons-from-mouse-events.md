@@ -6,8 +6,6 @@ scope: walk
 type: constraint
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M10
 verification:
   - manual
   - inspection

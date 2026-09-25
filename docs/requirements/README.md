@@ -5,11 +5,6 @@ is a single file, written in formal language, identified by a human-readable
 identifier and a UUID, and traced to the source code that implements it and the
 tests that verify it.
 
-[docs/REQUIREMENTS.md](../REQUIREMENTS.md) remains the design log from which
-these requirements were derived: it records the milestones in the order they
-were built, together with the decisions and measurements behind them. Where the
-two disagree, the files in this directory prevail.
-
 ## Purpose and scope of the product
 
 depphunter is a command-line tool that analyzes the project in a directory and
@@ -53,8 +48,6 @@ scope: srv
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M17
 verification:
   - unit
   - integration
@@ -89,7 +82,7 @@ The server **shall** ...
 | `priority`     | `must`, `should` or `may`, matching the strongest keyword of the statement.                           |
 | `status`       | `implemented`, `partial`, `not-implemented`, `superseded` or `withdrawn`.                             |
 | `superseded_by`| For `superseded` requirements, the identifier(s) of the requirement(s) that replace it.               |
-| `source`       | The section(s) or milestone(s) of the design log the requirement was derived from.                    |
+| `source`       | Optional. The section(s) of the user documentation that also describe the requirement.               |
 | `verification` | The kinds of test that verify the requirement; see below.                                            |
 
 ### Verification (test) types
@@ -164,18 +157,16 @@ The same form is used in YAML and shell (`# Implements: ...`), in CSS
 (`/* Implements: ... */`) and in HTML (`<!-- Implements: ... -->`). Vendored
 code, generated files and test data are never annotated.
 
+A step of a CI workflow (`.github/workflows/`) may carry `# Verifies: ...`
+where the job is the automated check, such as building and running every
+release target.
+
 `node tools/reqtrace.mjs` reads the requirement files and the annotations and
 writes [TRACEABILITY.md](TRACEABILITY.md): for each requirement, where it is
 implemented and where it is verified. `node tools/reqtrace.mjs --check` fails
 when an annotation names an unknown requirement, when a requirement file is
 malformed or duplicates an identifier or a UUID, or when TRACEABILITY.md is out
 of date.
-
-[GAPS.md](GAPS.md) records the review that produced this specification: the
-requirements that are not, or only partly, implemented, the defects and the
-discrepancies between the design log and the code found while tracing them,
-the implemented behavior no requirement covers, and the gaps in automated
-verification.
 
 ## Known limitations
 

@@ -12,6 +12,13 @@ export const MODES = {
 
 export const isHistoryMode = mode => mode in MODES;
 
+/**
+ * The color mode in effect for the chosen one: a history mode falls back to language
+ * until the history has loaded.
+ * Implements: REQ-MAP-037
+ */
+export const effectiveMode = (colorBy, history) => (isHistoryMode(colorBy) && !history ? 'language' : colorBy);
+
 /** Oldest and newest change time in the history (unix seconds). */
 export function timeRange(hist) {
   let from = Infinity, to = -Infinity;

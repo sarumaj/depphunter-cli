@@ -6,9 +6,6 @@ scope: map
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §5
-  - docs/REQUIREMENTS.md M2
 verification:
   - ui
   - manual

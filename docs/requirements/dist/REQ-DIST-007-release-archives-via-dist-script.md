@@ -6,9 +6,6 @@ scope: dist
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §6
-  - docs/REQUIREMENTS.md M7
 verification:
   - integration
   - inspection

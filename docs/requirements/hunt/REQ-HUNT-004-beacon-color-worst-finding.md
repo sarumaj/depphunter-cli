@@ -6,8 +6,6 @@ scope: hunt
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M21
 verification:
   - e2e
   - manual
@@ -27,5 +25,5 @@ works the same with findings on or off.
 ## Acceptance criteria
 
 1. A tagged module containing a critical finding shows a beacon in the critical
-   severity color (M21 acceptance).
+   severity color.
 2. With findings turned off, every beacon is the default beacon color.

@@ -6,8 +6,6 @@ scope: tool
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M29
 verification:
   - e2e
   - manual
@@ -25,4 +23,4 @@ A hand is read at a glance; a word between the groups is not.
 ## Acceptance criteria
 
 1. The row shows a left hand over the carried tools and a right hand over the
-   rest (M29 acceptance).
+   rest.

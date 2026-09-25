@@ -6,8 +6,6 @@ scope: a11y
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §6
 verification:
   - manual
   - e2e

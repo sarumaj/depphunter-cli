@@ -6,8 +6,6 @@ scope: tool
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M22
 verification:
   - ui
   - e2e
@@ -25,5 +23,5 @@ A strip nailer and an extinguisher are hoses; everything else is one act.
 ## Acceptance criteria
 
 1. The nail gun empties its magazine into a wall while the button is held and
-   the dart does not (M22 acceptance).
+   the dart does not.
 2. Only the nail gun and the extinguisher have a cadence.

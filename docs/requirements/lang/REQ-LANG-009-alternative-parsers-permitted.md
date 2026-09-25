@@ -6,9 +6,6 @@ scope: lang
 type: constraint
 priority: may
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §4
-  - docs/REQUIREMENTS.md M4
 verification:
   - inspection
 ---

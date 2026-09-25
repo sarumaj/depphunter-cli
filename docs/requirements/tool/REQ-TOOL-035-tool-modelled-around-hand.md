@@ -6,9 +6,6 @@ scope: tool
 type: constraint
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M21
-  - docs/REQUIREMENTS.md M25
 verification:
   - manual
   - inspection

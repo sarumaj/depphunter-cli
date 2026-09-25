@@ -6,9 +6,6 @@ scope: watch
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §5
-  - docs/REQUIREMENTS.md M3
 verification:
   - unit
 ---
@@ -33,7 +30,7 @@ keeps the map current without redundant work.
 
 ## Notes
 
-Two refinements not in the design log are implemented: a stream of changes that
+Two refinements: a stream of changes that
 never goes quiet defers the re-analysis by at most ten debounce intervals, and
 editor scratch files (swap, backup, lock files) and metadata-only events are
 ignored.

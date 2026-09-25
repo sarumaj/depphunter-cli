@@ -6,8 +6,6 @@ scope: cs
 type: non-functional
 priority: should
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M4
 verification:
   - e2e
 ---
@@ -19,7 +17,7 @@ unresolved dependency.
 
 ## Rationale
 
-Serilog was the C# reference project in M4.
+Serilog is the C# reference project.
 
 ## Acceptance criteria
 
@@ -27,4 +25,4 @@ Serilog was the C# reference project in M4.
 
 ## Notes
 
-Measured in the design log (M4). No automated test runs against Serilog.
+A manual measurement; no automated test runs against Serilog.

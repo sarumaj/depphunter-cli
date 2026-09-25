@@ -6,9 +6,6 @@ scope: tool
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M24
-  - docs/REQUIREMENTS.md M25
 verification:
   - ui
   - e2e
@@ -26,7 +23,7 @@ Neither is a way of getting everywhere.
 
 ## Acceptance criteria
 
-1. The jet runs out and fills up again (M24 acceptance).
-2. A tank drains only in use (M25 acceptance): standing on a roof with the jet
+1. The jet runs out and fills up again.
+2. A tank drains only in use: standing on a roof with the jet
    in hand does not drain it.
 3. The grapple has no tank.

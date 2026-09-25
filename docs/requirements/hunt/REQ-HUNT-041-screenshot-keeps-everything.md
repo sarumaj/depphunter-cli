@@ -6,8 +6,6 @@ scope: hunt
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M28
 verification:
   - e2e
 ---
@@ -23,5 +21,4 @@ A screenshot is the screen, not what the camera was pointed at.
 
 ## Acceptance criteria
 
-1. A screenshot still shows the hand, the selection and the arcs (M28
-   acceptance).
+1. A screenshot still shows the hand, the selection and the arcs.

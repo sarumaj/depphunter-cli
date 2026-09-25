@@ -6,8 +6,6 @@ scope: hunt
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M28
 verification:
   - e2e
 ---
@@ -26,5 +24,5 @@ stands on.
 ## Acceptance criteria
 
 1. A photograph taken with a module selected shows no arcs, outline, highlight
-   or dimming (M28 acceptance).
+   or dimming.
 2. The selection is still shown on screen after the photograph.

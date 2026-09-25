@@ -1,5 +1,5 @@
 // Package graph defines the document exchanged between analysis and the UI.
-// Its JSON shape is specified in docs/REQUIREMENTS.md §3.
+// Its JSON shape is specified in docs/requirements/mod.
 //
 // The VS Code extension needs the same shape in TypeScript, and that file is
 // generated from these declarations rather than written beside them: see

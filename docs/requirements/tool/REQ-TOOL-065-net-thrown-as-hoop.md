@@ -9,8 +9,6 @@ status: superseded
 superseded_by:
   - REQ-TOOL-004
   - REQ-TOOL-044
-source:
-  - docs/REQUIREMENTS.md M10
 verification:
   - inspection
 ---

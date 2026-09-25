@@ -6,8 +6,6 @@ scope: tool
 type: constraint
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M14
 verification:
   - inspection
 ---

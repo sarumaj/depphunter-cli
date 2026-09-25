@@ -9,9 +9,6 @@ status: superseded
 superseded_by:
   - REQ-WALK-012
   - REQ-WALK-023
-source:
-  - docs/REQUIREMENTS.md M7
-  - docs/REQUIREMENTS.md M10
 verification:
   - manual
 ---
@@ -31,6 +28,6 @@ The original walk mode could change the map's depth from the street.
 
 ## Notes
 
-Superseded in M10: collapsing folded buildings into a district block, which
+Superseded: collapsing folded buildings into a district block, which
 looked like buildings vanishing, and rebuilt the city around the walker. The
 right button now scopes and expanding is not offered in walk mode.

@@ -6,8 +6,6 @@ scope: tool
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M29
 verification:
   - ui
 ---
@@ -22,4 +20,4 @@ Flying is worth staying up for; the bay is a thing to cross, not a place to be.
 
 ## Acceptance criteria
 
-1. The jet outlasts the skimmers (M29 acceptance).
+1. The jet outlasts the skimmers.

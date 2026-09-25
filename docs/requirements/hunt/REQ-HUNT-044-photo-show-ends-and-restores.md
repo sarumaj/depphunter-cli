@@ -6,8 +6,6 @@ scope: hunt
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M27
 verification:
   - e2e
 ---
@@ -25,5 +23,5 @@ Looking at a picture costs the walker only the seconds spent on it.
 ## Acceptance criteria
 
 1. A photograph can be dismissed with a click, leaving the tool that was in hand
-   before it (M27 acceptance).
+   before it.
 2. Without a click it goes down by itself after about four seconds.

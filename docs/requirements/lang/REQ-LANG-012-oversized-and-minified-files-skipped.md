@@ -6,9 +6,6 @@ scope: lang
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §4
-  - docs/REQUIREMENTS.md M2
 verification:
   - unit
 ---

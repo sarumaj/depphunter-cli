@@ -6,8 +6,6 @@ scope: exp
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M15
 verification:
   - manual
 ---
@@ -18,8 +16,8 @@ The page **shall** offer the backpack export in Markdown, CSV and JSON.
 
 ## Rationale
 
-M15 requires the catch to be written out from the page as well as from the
-editor.
+The catch can be written out from the page as well as from the editor
+(REQ-EXT-013).
 
 ## Acceptance criteria
 

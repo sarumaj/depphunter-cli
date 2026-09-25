@@ -6,8 +6,6 @@ scope: walk
 type: constraint
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M7
 verification:
   - inspection
   - manual
@@ -21,7 +19,7 @@ the flat layout coordinates of the isometric map, and only the renderer
 
 ## Rationale
 
-Decision (M7): one layout serves picking, collisions and the isometric view;
+Decision: one layout serves picking, collisions and the isometric view;
 bending is a vertex-shader concern (`bendWorld`), and aiming unbends the view
 ray back onto the flat map.
 

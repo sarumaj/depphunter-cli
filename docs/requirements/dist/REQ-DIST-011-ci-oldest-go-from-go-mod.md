@@ -6,9 +6,6 @@ scope: dist
 type: non-functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M6
-  - docs/REQUIREMENTS.md M9
 verification:
   - inspection
 ---
@@ -32,6 +29,5 @@ silently downloading a newer toolchain.
 
 ## Notes
 
-M6 pinned CI to Go 1.22. The dependency refresh after M9 (viper 1.21,
-`golang.org/x/*` of 2026) needs Go 1.26 or newer, so Go 1.22 support ended;
+The dependencies (viper 1.21, `golang.org/x/*` of 2026) need Go 1.26 or newer;
 `go.mod` states Go 1.27.1 and the job reads the version from it.

@@ -6,8 +6,6 @@ scope: tool
 type: non-functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M14
 verification:
   - inspection
 ---

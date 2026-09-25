@@ -6,8 +6,6 @@ scope: fnd
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M13
 verification:
   - unit
   - e2e

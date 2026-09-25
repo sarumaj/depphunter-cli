@@ -2839,7 +2839,7 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 
 // Implements: REQ-TOOL-027, REQ-TOOL-042
 /** Knocks a point or a direction off course by up to `by`, evenly in all directions. */
-function scatter(v, by) {
+export function scatter(v, by) {
   v.x += (Math.random() * 2 - 1) * by;
   v.y += (Math.random() * 2 - 1) * by;
   v.z += (Math.random() * 2 - 1) * by;

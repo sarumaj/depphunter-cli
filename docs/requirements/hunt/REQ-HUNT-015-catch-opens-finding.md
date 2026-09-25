@@ -6,8 +6,6 @@ scope: hunt
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M13
 verification:
   - e2e
 ---
@@ -26,5 +24,5 @@ animation so that it does not hide it.
 ## Acceptance criteria
 
 1. Catching a bug opens the same finding the side panel lists for its building
-   (M13 acceptance).
+  .
 2. The panel opens after the catch animation, not on the frame of the catch.

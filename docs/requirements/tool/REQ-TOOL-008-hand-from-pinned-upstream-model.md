@@ -6,8 +6,6 @@ scope: tool
 type: constraint
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M14
 verification:
   - inspection
 ---
@@ -42,7 +40,5 @@ REQ-DIST-005).
 
 ## Notes
 
-Amended during the requirements review: M14 of the design log describes the
-earlier Skin-modifier hand, which `tools/hand.py` replaced; its module
-docstring records the decision. The bone names remain the contract with
-`hands.js` (REQ-TOOL-009).
+The script's module docstring records the decision. The bone names remain the
+contract with `hands.js` (REQ-TOOL-009).

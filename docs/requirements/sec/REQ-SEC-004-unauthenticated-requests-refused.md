@@ -6,10 +6,6 @@ scope: sec
 type: non-functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md §6
-  - docs/REQUIREMENTS.md M1
-  - docs/REQUIREMENTS.md M3
 verification:
   - integration
 ---

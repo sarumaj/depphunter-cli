@@ -6,8 +6,6 @@ scope: ps
 type: constraint
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M4
 verification:
   - unit
 ---

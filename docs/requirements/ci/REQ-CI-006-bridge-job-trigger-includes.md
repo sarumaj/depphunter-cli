@@ -6,8 +6,6 @@ scope: ci
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M12
 verification:
   - unit
 ---
@@ -29,4 +27,4 @@ A bridge job runs another pipeline, which is a dependency like any include.
 
 ## Notes
 
-No automated test covers a bridge job.
+`TestBridgeJobIncludes` covers the list, project and bare-string forms.

@@ -6,8 +6,6 @@ scope: tool
 type: functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M25
 verification:
   - e2e
 ---
@@ -23,4 +21,4 @@ An empty jet that keeps catching is worse than one that has plainly stopped.
 
 ## Acceptance criteria
 
-1. A tank that has run dry needs re-equipping once it is empty (M25 acceptance).
+1. A tank that has run dry needs re-equipping once it is empty.

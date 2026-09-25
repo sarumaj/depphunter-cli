@@ -6,8 +6,6 @@ scope: city
 type: non-functional
 priority: must
 status: implemented
-source:
-  - docs/REQUIREMENTS.md M8
 verification:
   - manual
   - inspection
@@ -22,7 +20,7 @@ a texture of all footprints; the grid **shall** be rebuilt after every relayout.
 
 ## Rationale
 
-Decision (M8): the shader measures exact distances to a handful of nearby
+Decision: the shader measures exact distances to a handful of nearby
 obstacles instead of looping over all boxes. Footprints a fragment lies inside
 are skipped, so one 2D grid serves every terrace level.
 
@@ -33,6 +31,5 @@ are skipped, so one 2D grid serves every terrace level.
 
 ## Notes
 
-The design log says the grid is built only when walk mode is shown. Since M10
-the isometric map draws streets too, so the grid is built for every layout
-(`MapScene.setBoxes`).
+The isometric map draws streets too, so the grid is built for every layout
+(`MapScene.setBoxes`), not only when walk mode is shown.
