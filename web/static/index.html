@@ -83,6 +83,7 @@
       <button id="rotate-left" title="Rotate left (Q)" aria-label="Rotate left" data-map-only>⟲</button>
       <button id="rotate-right" title="Rotate right (E)" aria-label="Rotate right" data-map-only>⟳</button>
       <button id="fit" title="Fit to screen (Home)" data-map-only>Fit</button>
+      <button id="reset-view" title="Back to the view the map opened at (R)" data-map-only>Reset</button>
       <button id="walk" title="Walk the map in first person (V, or double-click open ground)" aria-pressed="false">Walk</button>
       <button id="pack-btn" title="What you have caught (B)" aria-expanded="false" aria-controls="pack" hidden>Backpack <span id="pack-count" class="count" hidden></span></button>
       <button id="stash-btn" title="Photographs you have taken (G)" aria-expanded="false" aria-controls="stash" hidden>Photos <span id="stash-count" class="count" hidden></span></button>
@@ -154,6 +155,15 @@
       </header>
       <ul id="pack-list"></ul>
       <p id="pack-empty-note" class="hint">Nothing caught yet. Walk the map and catch a bug with whatever is in your hands.</p>
+      <!-- The catch as the server holds it: the page hands it up on every change, so
+           this is the same list. A static export has no server and hides it.
+           Implements: REQ-EXP-015 -->
+      <footer id="pack-export" data-server hidden>
+        <span class="hint">Export</span>
+        <a href="api/backpack?format=md" download>Markdown</a>
+        <a href="api/backpack?format=csv" download>CSV</a>
+        <a href="api/backpack?format=json" download>JSON</a>
+      </footer>
     </aside>
     <aside id="stash" hidden aria-label="Photographs">
       <header>
@@ -201,6 +211,7 @@
         <tr><th>Enter / Backspace</th><td>Expand or collapse the selection; select its parent.</td></tr>
         <tr><th>Q / E</th><td>Rotate the map by ninety degrees.</td></tr>
         <tr><th>Home</th><td>Fit the whole map to the window.</td></tr>
+        <tr><th>R</th><td>Reset the view: the orientation and zoom the map opened at, fitted to the window.</td></tr>
         <tr><th>+ / −</th><td>Expand or collapse one level throughout.</td></tr>
         <tr><th>/</th><td>Search files, symbols and packages.</td></tr>
         <tr data-server><th>O</th><td>Open the selected file in your editor.</td></tr>

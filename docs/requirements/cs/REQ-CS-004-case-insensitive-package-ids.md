@@ -5,7 +5,7 @@ title: Case-insensitive NuGet package ids
 scope: cs
 type: functional
 priority: must
-status: partial
+status: implemented
 source:
   - docs/REQUIREMENTS.md M4
 verification:
@@ -29,6 +29,6 @@ namespaces.
 
 ## Notes
 
-Partial: the namespace-to-package match is case-insensitive (criterion 1), but
-the central version lookup (criterion 2) and the package map are keyed by the id
-as written. No test covers a case difference.
+The package map and the central version lookup are keyed by the lower-case id,
+so two spellings of one id are one package, named as first written, and a
+reference takes the central version whatever its case. A test covers it.

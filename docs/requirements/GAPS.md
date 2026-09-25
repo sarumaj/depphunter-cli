@@ -15,63 +15,66 @@ is updated when an item here is resolved.
 
 ## 1. Requirements not met
 
-### Not implemented
+The review found 2 requirements not implemented and 17 partly implemented.
+All but one were resolved in a follow-up change, either by repairing the code
+or, where the code reflects a later decision than the design log, by amending
+the requirement. Each requirement's Notes record what was done.
+
+### Repaired in the code
+
+| Requirement | Finding | Repair |
+|-------------|---------|--------|
+| [REQ-EXP-015](exp/REQ-EXP-015-backpack-export-offered-by-the-page.md) | The page's backpack had no export; only the extension offered it. | The backpack panel offers Markdown, CSV and JSON downloads from `GET /api/backpack?format=`, hidden in the static export and while the backpack is empty. |
+| [REQ-MAP-004](map/REQ-MAP-004-collapsed-directory-height-follows-mean-file.md) | **Defect.** Every collapsed directory was drawn at the floor height: `layout.js` read `totalBulk`, which `computeVisibility` did not return (regression of 1d979b8). | `computeVisibility` sums `totalBulk`; `web/uitest/layout.test.mjs`. |
+| [REQ-WALK-006](walk/REQ-WALK-006-step-height-and-collisions.md) | `STEP = 0.32` exceeded a terrace wall (0.28), so terrace walls were walked up. | `STEP = 0.15` (half a storey); the wading allowance was raised so the walker still climbs out of the water. |
+| [REQ-AUTH-010](auth/REQ-AUTH-010-encrypted-password-left-alone.md) | **Security.** A Maven encrypted password was sent as ciphertext. | Encrypted `{…}` passwords are skipped; the test now covers a mirror naming the encrypted server. |
+| [REQ-SUP-026](sup/REQ-SUP-026-oci-base-image-via-manifest-config.md) | Only Docker Hub images were asked for their base image. | A registry named by the machine's container configuration (`auths`, `credHelpers`) or by `--trust-index` is asked; one only the repository names stays marked. |
+| [REQ-CFG-006](cfg/REQ-CFG-006-environment-variable-per-scalar-setting.md) | `ui.tool` had no environment variable. | `DEPPHUNTER_TOOL`. |
+| [REQ-DIST-006](dist/REQ-DIST-006-license-notices-ship-with-releases.md) | Release archives lacked the Go modules' license notices. | `scripts/dist.sh` copies every vendored `LICENSE*`, `COPYING*` and `NOTICE*` to `licenses/go/<module>/`. |
+| [REQ-CS-004](cs/REQ-CS-004-case-insensitive-package-ids.md) | Package map and central versions were case-sensitive. | Both keyed by lower-case id. |
+| [REQ-CI-013](ci/REQ-CI-013-unversioned-references-flagged-floating.md) | A versionless component was neither pinned nor floating; an untagged image got `latest`. | Both float with no invented version; the index still asks for `latest`. [REQ-CI-012](ci/REQ-CI-012-only-digests-pin-images.md) was aligned. |
+| [REQ-MD-014](md/REQ-MD-014-web-link-answers-cached.md) | Web-link answers were cached for 6 h. | Own 24 h TTL; OSV keeps 6 h. |
+| [REQ-MAP-014](map/REQ-MAP-014-each-color-encodes-one-quantity-with.md) | The legend did not explain floating and unresolved packages. | A Packages section in the legend. |
+| [REQ-MAP-019](map/REQ-MAP-019-fit-and-reset-view-actions.md) | No reset action. | Reset button and `R` in the map view. |
+| [REQ-MAP-052](map/REQ-MAP-052-style-environment-colors-from-the-stylesheet.md) | Circuit and galaxy colors overrode both themes. | Separate light and dark environment values per style. |
+| [REQ-UI-004](ui/REQ-UI-004-first-visit-introduction-of-five-cards.md) | Introduction card described the removed roads. | Card describes arcs, dimming and the panel; test added. |
+| [REQ-UI-014](ui/REQ-UI-014-menus-wait-for-the-pointer-lock.md) | Menus did not wait for the pointer lock release. | `whenUnlocked` in `dom.js`, used by the Filters and Export menus, the backpack and the photographs; `web/uitest/menus.test.mjs`. |
+
+### Requirement amended
+
+| Requirement | Finding | Amendment |
+|-------------|---------|-----------|
+| [REQ-TOOL-008](tool/REQ-TOOL-008-hand-from-pinned-upstream-model.md) | M14 had the hand grown with the Skin modifier; `tools/hand.py` prepares the WebXR `generic-hand`, and its docstring records why. | The requirement specifies the pinned upstream model; the UI still downloads nothing. |
+| [REQ-TOOL-016](tool/REQ-TOOL-016-camera-build.md) | M14 had the camera held in both hands; since M21 the left hand carries the secondary tool. | The camera is held in the right hand. |
+| [REQ-HUNT-010](hunt/REQ-HUNT-010-bug-per-finding.md) | M13 had a bug for every finding; the code caps bugs at 140 and draws reachable vulnerabilities as fires. | The cap and the fires are specified; every finding stays listed in the panel. |
+
+### Open
 
 | Requirement | Finding |
 |-------------|---------|
-| [REQ-EXP-015](exp/REQ-EXP-015-backpack-export-offered-by-the-page.md) | M15 requires the catch to be exportable as Markdown, CSV or JSON "from the page". The page's backpack panel has no export action; only the VS Code extension offers it. The server endpoint `GET /api/backpack?format=` exists. |
-| [REQ-TOOL-008](tool/REQ-TOOL-008-hand-skin-modifier-no-download.md) | M14 requires the hand to be grown from a skeleton with the Skin modifier and states that no model is downloaded. `tools/hand.py` downloads the MIT-licensed WebXR `generic-hand` (pinned by version and checksum), adds a forearm and re-rigs it. Either the script or the requirement has to change. |
-
-### Partially implemented
-
-| Requirement | What is missing |
-|-------------|-----------------|
-| [REQ-MAP-004](map/REQ-MAP-004-collapsed-directory-height-follows-mean-file.md) | **Defect.** Every collapsed directory is drawn at the floor height (0.2). See [section 2](#2-defects). |
-| [REQ-WALK-006](walk/REQ-WALK-006-step-height-and-collisions.md) | The step height `STEP = 0.32` exceeds a storey (0.3) and a terrace wall (`TERRACE = 0.28`), so terrace walls are walked up without a ramp or a jump. The design log specifies half a storey. |
-| [REQ-AUTH-010](auth/REQ-AUTH-010-encrypted-password-left-alone.md) | **Security.** NuGet leaves encrypted passwords alone; Maven does not. `readMavenSettings` sends an encrypted `{…}` password as ciphertext when a mirror or repository names the server. `TestMavenServerCredentialsFindTheirHost` passes for an unrelated reason (its encrypted server has no mirror). |
-| [REQ-SUP-026](sup/REQ-SUP-026-oci-base-image-via-manifest-config.md) | Only Docker Hub images are asked for their base image. `index.Config.For` marks every other registry (ghcr.io, a private Harbor) as unknown to the machine, even with `--trust-index` or a machine credential, which also contradicts M16 for private images. |
-| [REQ-CFG-006](cfg/REQ-CFG-006-environment-variable-per-scalar-setting.md) | The scalar setting `ui.tool` has no environment variable (`DEPPHUNTER_TOOL`). |
-| [REQ-DIST-006](dist/REQ-DIST-006-license-notices-ship-with-releases.md) | Release archives carry the vendored web libraries' licenses but not the notices of the linked Go modules (cobra, viper, pflag, gotreesitter, …). |
-| [REQ-LANG-029](lang/REQ-LANG-029-cold-analysis-time.md) | A synthetic 10 000-file project (40 MB, Go/TS/Python) took 8.3 s cold on four cores (1.2 s warm), against the 5 s target. No benchmark exists. |
-| [REQ-CS-004](cs/REQ-CS-004-case-insensitive-package-ids.md) | Only the namespace-to-package match ignores case; the package map and the `Directory.Packages.props` lookup are case-sensitive. |
-| [REQ-CI-013](ci/REQ-CI-013-unversioned-references-flagged-floating.md) | A GitLab `component:` without `@version` is neither pinned nor floating; an untagged image receives the version `latest` instead of the floating flag. |
-| [REQ-MD-014](md/REQ-MD-014-web-link-answers-cached.md) | Web-link answers are cached for 6 h (`findingsCacheTTL`), not a day. |
-| [REQ-MAP-014](map/REQ-MAP-014-each-color-encodes-one-quantity-with.md) | The legend does not explain the colors of unresolved and floating packages. |
-| [REQ-MAP-019](map/REQ-MAP-019-fit-and-reset-view-actions.md) | A fit action exists; a reset action does not. |
-| [REQ-MAP-052](map/REQ-MAP-052-style-environment-colors-from-the-stylesheet.md) | The circuit and galaxy environment colors (`:root[data-style=…]`) override both themes instead of each theme choosing its own. |
-| [REQ-UI-004](ui/REQ-UI-004-first-visit-introduction-of-five-cards.md) | The second introduction card still describes the dependency roads and chevrons removed in M24. |
-| [REQ-UI-014](ui/REQ-UI-014-menus-wait-for-the-pointer-lock.md) | Nothing waits for `pointerlockchange`; a click-outside handler can close a menu on an event delivered to the still-locked canvas. |
-| [REQ-HUNT-010](hunt/REQ-HUNT-010-bug-per-finding.md) | At most 140 findings (`MAX_BUGS`, most severe first) become bugs, and reachable vulnerabilities are drawn as fires instead. The design log requires a bug for every finding. |
-| [REQ-TOOL-016](tool/REQ-TOOL-016-camera-build.md) | The camera is held in the right hand only; M14 specifies both hands. |
+| [REQ-LANG-029](lang/REQ-LANG-029-cold-analysis-time.md) | A synthetic 10 000-file project (40 MB) took 8.3 s cold on four cores, against 5 s. Meeting it needs profiling of parsing and resolution, and a benchmark to hold the result. |
 
 ## 2. Defects
 
-These were found while tracing and are recorded in the Notes of the named
-requirements. None of them was fixed as part of this review.
+Found while tracing, and fixed in the same follow-up change:
 
-1. **Collapsed directories are flat** ([REQ-MAP-004](map/REQ-MAP-004-collapsed-directory-height-follows-mean-file.md)).
-   `layout.js` computes a district's height from `counts.get(id).totalBulk`,
-   but `computeVisibility` in `filter.js` returns only `fileCount` and
-   `totalLoc`. The height is computed from `NaN` and falls back to the floor.
-   Introduced in commit 1d979b8 (M32).
-2. **Maven encrypted passwords are sent**
-   ([REQ-AUTH-010](auth/REQ-AUTH-010-encrypted-password-left-alone.md)); see
-   above.
-3. **Fallback trees are invisible but solid**
-   ([REQ-CITY-022](city/REQ-CITY-022-vegetation-geometry.md)). The fallback
-   `TREES` table in `city.js` defines `trunk`/`crown`, but `makeProps` reads
-   `stem`/`head`. When the plant models fail to load, trees get empty geometry
-   and still block the walker.
-4. **`psgallery` is not an ecosystem prefix**
-   ([REQ-SUP-035](sup/REQ-SUP-035-private-pattern-ecosystem-prefix.md)). The
-   ecosystem list in `internal/scope/scope.go` contains `powershell` (the
-   built-in modules) but not `psgallery`, so `--private 'psgallery:…'` is not
-   read as ecosystem-scoped.
-5. **Terrace walls can be walked up**
-   ([REQ-WALK-006](walk/REQ-WALK-006-step-height-and-collisions.md)); see
-   above.
-6. **Stale comment**: `walk.js` describes `onPhoto` as "what a camera used
-   twice in quick succession asks for", which M28 made obsolete.
+1. Collapsed directories were flat
+   ([REQ-MAP-004](map/REQ-MAP-004-collapsed-directory-height-follows-mean-file.md)).
+2. Maven encrypted passwords were sent
+   ([REQ-AUTH-010](auth/REQ-AUTH-010-encrypted-password-left-alone.md)).
+3. Fallback trees were invisible but solid: the fallback `TREES` table in
+   `city.js` used `trunk`/`crown` where `makeProps` reads `stem`/`head`
+   ([REQ-CITY-022](city/REQ-CITY-022-vegetation-geometry.md);
+   `web/uitest/props.test.mjs`).
+4. `psgallery` was not an ecosystem prefix for `--private`
+   ([REQ-SUP-035](sup/REQ-SUP-035-private-pattern-ecosystem-prefix.md)).
+5. Terrace walls could be walked up
+   ([REQ-WALK-006](walk/REQ-WALK-006-step-height-and-collisions.md)). At very
+   low frame rates (below about 23 fps) the steepest ramp can now stall a
+   runner, since one frame's rise exceeds the step; the requirement's Notes
+   record this.
+6. A stale comment in `walk.js` described `onPhoto` as the result of a double
+   use of the camera (obsolete since M28).
 
 ## 3. Design log and code disagree
 
@@ -201,9 +204,9 @@ removal if it is unintended.
 - **Walk mode and the city** are verified almost entirely by hand: the
   `Walker` class is never instantiated in a test. Health, wind, bridges, the
   tool catalogue, the wheel and the stash are covered by `web/uitest`.
-- **The map**: the pure functions `layout`, `computeVisibility`, `globMatcher`,
-  `assignSlots` and the panel tree could be covered by `web/uitest` at little
-  cost; a test of `layout` would have caught the district-height defect.
+- **The map**: `layout` and `computeVisibility` are now covered
+  (`web/uitest/layout.test.mjs`); `globMatcher`, `assignSlots` and the panel
+  tree could be covered by `web/uitest` at little cost.
 - **History in the browser** (`history.js`) and **findings in the browser**
   (`findings.js`) have no tests.
 - **Exports**: nothing checks that `floating` and `requested` reach the JSON

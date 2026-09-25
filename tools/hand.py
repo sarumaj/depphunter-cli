@@ -113,6 +113,7 @@ ARM_PROFILE: list[tuple[float, float]] = [
 ]
 
 
+# Implements: REQ-TOOL-008
 def fetch() -> str:
     """The upstream model, from a local copy if there is one and npm otherwise."""
     cache = os.path.join(

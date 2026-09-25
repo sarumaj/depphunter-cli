@@ -43,6 +43,14 @@ func TestAPatternMayNameItsEcosystem(t *testing.T) {
 	if !p.Match("oci", "harbor.corp/team/app") {
 		t.Error("the oci pattern did not match an image")
 	}
+	// The PowerShell Gallery's id is psgallery; a gallery pattern keeps to it.
+	p = New([]string{"psgallery:Acme.*"})
+	if !p.Match("psgallery", "Acme.Tools") {
+		t.Error("the psgallery pattern did not match a gallery module")
+	}
+	if p.Match("nuget", "Acme.Tools") {
+		t.Error("a psgallery-scoped pattern matched a NuGet package")
+	}
 }
 
 // Verifies: REQ-SUP-035

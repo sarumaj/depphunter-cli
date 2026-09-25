@@ -187,6 +187,23 @@ func TestOCIBaseFromManifestAnnotation(t *testing.T) {
 	}
 }
 
+// An image named without a tag carries no version (it floats); the registry is
+// asked for the tag such a reference pulls, latest.
+//
+// Verifies: REQ-CI-013
+func TestOCIUntaggedImageAsksForLatest(t *testing.T) {
+	srv, asked := stubRegistry(t, `{}`, `{}`)
+	c := clientFor(t, OCI, srv.URL, "")
+	c.Dependencies(lang.Target{Ecosystem: OCI, Package: "app", Floating: true})
+	found := false
+	for _, path := range *asked {
+		found = found || path == "/v2/library/app/manifests/latest"
+	}
+	if !found {
+		t.Errorf("never asked for the latest manifest; asked %v", *asked)
+	}
+}
+
 func TestOCIRepository(t *testing.T) {
 	for image, want := range map[string]string{
 		"alpine":             "library/alpine",

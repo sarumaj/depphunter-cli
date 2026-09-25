@@ -5,7 +5,7 @@ title: Base image from the manifest and config blob
 scope: sup
 type: functional
 priority: must
-status: partial
+status: implemented
 source:
   - docs/REQUIREMENTS.md M12
 verification:
@@ -33,6 +33,7 @@ vulnerabilities from.
 
 ## Notes
 
-Partial: only images on Docker Hub are asked. An image on any other registry is
-reported as from an index only the repository names and is never asked, even
-with `--trust-index` or a registry credential on this machine.
+A registry other than Docker Hub is asked when this machine's container
+configuration names it (`auths` or `credHelpers`) or `--trust-index` vouches for
+it; one only an image reference in the repository names stays marked and is not
+asked.

@@ -1,10 +1,14 @@
 package csharp
 
 import (
+	"os"
+	"path/filepath"
+	"strings"
 	"testing"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/langtest"
+	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
 // testdata/repo: two projects (one with an explicit RootNamespace), central package
@@ -39,4 +43,34 @@ func TestSymbols(t *testing.T) {
 		"Program": "class", "Program.Main": "method", "IService": "interface", "Person": "record",
 		"Pt": "struct", "Mode": "enum", "Handler": "delegate",
 	})
+}
+
+// Verifies: REQ-CS-004
+func TestPackageIdsIgnoreCase(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"Directory.Packages.props": `<Project><ItemGroup><PackageVersion Include="Newtonsoft.Json" Version="13.0.3" /></ItemGroup></Project>`,
+		"a/A.csproj":               `<Project><ItemGroup><PackageReference Include="newtonsoft.json" /></ItemGroup></Project>`,
+		"b/B.csproj":               `<Project><ItemGroup><PackageReference Include="NEWTONSOFT.JSON" /></ItemGroup></Project>`,
+	}
+	var all []*scan.File
+	for rel, body := range files {
+		abs := filepath.Join(root, filepath.FromSlash(rel))
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(abs, []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		all = append(all, &scan.File{Path: rel, Abs: abs})
+	}
+	r := newResolver(all)
+	// Two spellings of one id are one package, and it takes the central version.
+	if len(r.packages) != 1 {
+		t.Errorf("packages: %v", r.packages)
+	}
+	got := r.Resolve("a/Program.cs", lang.RawImport{Module: "Newtonsoft.Json.Linq"})
+	if got.Ecosystem != "nuget" || !strings.EqualFold(got.Package, "Newtonsoft.Json") || got.Version != "13.0.3" || !got.Pinned {
+		t.Errorf("Newtonsoft.Json.Linq: %+v", got)
+	}
 }

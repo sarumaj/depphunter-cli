@@ -5,7 +5,7 @@ title: Collisions and step height on the flat layout
 scope: walk
 type: functional
 priority: must
-status: partial
+status: implemented
 source:
   - docs/REQUIREMENTS.md M7
 verification:
@@ -32,8 +32,13 @@ slides along walls instead of sticking to them.
 
 ## Notes
 
-Partial: `STEP` in `walk.js` is 0.32 units, more than a storey (0.3) and more
-than a terrace wall (`TERRACE` 0.28 in `layout.js`), so terrace walls are walked
-up without a jump or a ramp (the stairs shader comment says so). The design log
-says "half a storey". Trunks and lamp posts are also obstacles (`clearProps`),
-which the design log does not mention.
+Fixed: `STEP` in `walk.js` is 0.15 units, half a storey (0.3), below a terrace
+wall (`TERRACE` 0.28 in `layout.js`), so a terrace needs its ramp or a jump
+(`JUMP` tops out near 0.4). Ramps and bridge arches change height continuously
+and stay walkable. Climbing out of the water keeps its own allowance: `WADE` rose
+from 0.25 to 0.42 so that a step and a wade still clear the shore by the same
+margin as before. The step up a ramp's slope in one frame can exceed 0.15 only
+when running up the shortest ramp below about 23 frames per second.
+
+Trunks and lamp posts are also obstacles (`clearProps`), which the design log
+does not mention.

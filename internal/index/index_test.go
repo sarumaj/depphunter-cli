@@ -146,6 +146,39 @@ func TestContainerRegistryComesFromTheReference(t *testing.T) {
 	}
 }
 
+// A registry this machine's container configuration names, or one the user vouched
+// for, is asked about its images; one only the repository names is not.
+//
+// Verifies: REQ-SUP-026, REQ-SUP-042
+func TestContainerRegistryTheMachineKnowsIsAsked(t *testing.T) {
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".docker"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(filepath.Join(home, ".docker", "config.json"), []byte(`{
+		"auths": {"ghcr.io": {}},
+		"credHelpers": {"123.dkr.ecr.eu-west-1.amazonaws.com": "ecr-login"}}`), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	c := New()
+	c.Credentials(auth.Read(home, nil))
+	c.Trust([]string{"https://harbor.corp", "localhost:5000"})
+	for _, tt := range []struct {
+		image string
+		known bool
+	}{
+		{"ghcr.io/org/app", true},
+		{"123.dkr.ecr.eu-west-1.amazonaws.com/app", true},
+		{"harbor.corp/team/app", true},
+		{"localhost:5000/app", true},
+		{"quay.io/org/app", false},
+	} {
+		if _, known := c.For(OCI, tt.image); known != tt.known {
+			t.Errorf("%s: known %v, want %v", tt.image, known, tt.known)
+		}
+	}
+}
+
 func TestHost(t *testing.T) {
 	if got := Host("https://artifactory.internal/api/npm/all"); got != "artifactory.internal" {
 		t.Errorf("got %q", got)

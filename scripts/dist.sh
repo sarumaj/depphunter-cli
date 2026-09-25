@@ -6,9 +6,10 @@
 #
 # depphunter is pure Go (no cgo), so every target builds from any host. Windows
 # archives are zip files, all others gzipped tarballs; each holds the binary, README,
-# LICENSE and the licenses of the vendored web libraries embedded in the binary.
+# LICENSE and the licenses of the vendored web libraries embedded in the binary and of
+# the Go modules linked into it (licenses/go/<module path>/).
 #
-# Implements: REQ-DIST-001, REQ-DIST-007
+# Implements: REQ-DIST-001, REQ-DIST-006, REQ-DIST-007
 set -euo pipefail
 
 version=${1:-dev}
@@ -37,6 +38,13 @@ for target in $targets; do
   # Implements: REQ-DIST-004, REQ-DIST-005, REQ-DIST-006
   cp README.md LICENSE "dist/$name/"
   cp web/static/vendor/*.LICENSE "dist/$name/licenses/"
+  # The linked Go modules' notices, from the vendor/ tree the binary is built from.
+  find vendor -type f \( -iname 'LICENSE*' -o -iname 'COPYING*' -o -iname 'NOTICE*' \) |
+    while read -r notice; do
+      dest="dist/$name/licenses/go/${notice#vendor/}"
+      mkdir -p "$(dirname "$dest")"
+      cp "$notice" "$dest"
+    done
   if [ "$goos" = windows ]; then
     (cd dist && zip -qr "$name.zip" "$name")
   else

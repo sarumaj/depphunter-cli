@@ -5,7 +5,7 @@ title: Fit and reset view actions
 scope: map
 type: functional
 priority: must
-status: partial
+status: implemented
 source:
   - docs/REQUIREMENTS.md §5
 verification:
@@ -31,7 +31,7 @@ orbiting.
 
 ## Notes
 
-Partial: fit is implemented (`MapScene.fit`); there is no separate reset action.
-Rotating with `Q`/`E` restores the isometric elevation after a free orbit, and
-fit restores the zoom, but the initial azimuth is not restored by any single
-action.
+Fixed: `MapScene.reset` returns to the first isometric quarter and its elevation
+(`setIso(0)`) and fits the map, as on load. It is the toolbar's Reset button and
+the `R` key in the map view (walk mode's `R`, the tool wheel, is not affected),
+and the help lists it.

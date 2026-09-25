@@ -32,6 +32,9 @@ type Store struct {
 	// plain holds the hosts this machine's own configuration reaches over http://,
 	// the only hosts a credential is sent to unencrypted; see Apply.
 	plain map[string]bool
+	// registries holds the container registries this machine's own configuration
+	// names, with or without a credential; see Registry.
+	registries map[string]bool
 }
 
 // Read collects the credentials from the files and variables the package managers of
@@ -121,7 +124,7 @@ func (c *Store) readMavenSettings(data []byte) {
 	}
 	for _, s := range doc.Servers.Server {
 		user, pass := expand(s.Username), expand(s.Password)
-		if user == "" || pass == "" {
+		if user == "" || pass == "" || mavenEncrypted(pass) {
 			// An encrypted password ({...}) needs the master password from
 			// settings-security.xml to be of any use, and guessing is worse than
 			// going without: a wrong Authorization header is a 401 either way.
@@ -131,6 +134,14 @@ func (c *Store) readMavenSettings(data []byte) {
 			c.basic[host] = user + ":" + pass
 		}
 	}
+}
+
+// mavenEncrypted reports whether a Maven password is in the encrypted form: a
+// {...} with something inside, which Maven finds anywhere in the value so that a
+// note may sit around it.
+func mavenEncrypted(pass string) bool {
+	i := strings.Index(pass, "{")
+	return i >= 0 && strings.LastIndex(pass, "}") > i+1
 }
 
 // readNuGetConfig takes the credentials a NuGet configuration keeps for its own

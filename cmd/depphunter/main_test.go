@@ -160,3 +160,16 @@ func TestExportToStdoutIsOnlyTheExport(t *testing.T) {
 		t.Error("the export carried no nodes")
 	}
 }
+
+// A link's answer is kept for a day; an advisory, which changes faster, for six
+// hours. The two caches have their own lifetimes.
+//
+// Verifies: REQ-MD-014, REQ-FND-012
+func TestLinkAnswersOutliveAdvisories(t *testing.T) {
+	if linkCacheTTL != 24*time.Hour {
+		t.Errorf("link answers kept for %v, want a day", linkCacheTTL)
+	}
+	if findingsCacheTTL != 6*time.Hour {
+		t.Errorf("advisories kept for %v, want six hours", findingsCacheTTL)
+	}
+}

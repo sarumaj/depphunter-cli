@@ -264,7 +264,7 @@ defaults; the user configuration
 (`$XDG_CONFIG_HOME/depphunter/config.yaml`, or the platform equivalent); the
 project configuration `.depphunter.yaml`; the `DEPPHUNTER_*` environment
 variables (`ADDR`, `OPEN`, `EXCLUDE`, `MAX_FILE_SIZE`, `THEME`, `COLOR_BY`,
-`HEIGHT_SCALE`, `SHOW_STD`, `EXPAND_DEPTH`, `WATCH`, `CACHE`, `EDITOR`,
+`HEIGHT_SCALE`, `SHOW_STD`, `EXPAND_DEPTH`, `TOOL`, `WATCH`, `CACHE`, `EDITOR`,
 `HISTORY`, `HISTORY_COMMITS`, `RESOLVE_DEPTH`, `ONLINE`, `EXPLAIN`, `LINKS`,
 `LSP`, `LSP_TIMEOUT`); and the command-line flags. Exclude globs accumulate
 across all sources rather than replacing one another. The project configuration

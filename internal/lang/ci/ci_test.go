@@ -83,6 +83,10 @@ func TestGitLabPipeline(t *testing.T) {
 		"include component: gitlab.com/components/sonar/scan@1.4.0": {
 			Ecosystem: "gitlab-ci", Package: "gitlab.com/components/sonar/scan", Version: "1.4.0",
 		},
+		// A component without a version follows its project's default branch.
+		"include component: gitlab.com/components/lint/check": {
+			Ecosystem: "gitlab-ci", Package: "gitlab.com/components/lint/check", Floating: true,
+		},
 		"image: node:20":                         {Ecosystem: "oci", Package: "node", Version: "20"},
 		"default service: redis:7.2":             {Ecosystem: "oci", Package: "redis", Version: "7.2"},
 		"unit image: python:3.12-slim":           {Ecosystem: "oci", Package: "python", Version: "3.12-slim"},
@@ -126,17 +130,18 @@ func TestClaims(t *testing.T) {
 	}
 }
 
-// Verifies: REQ-CI-012
+// Verifies: REQ-CI-012, REQ-CI-013
 func TestImageReferences(t *testing.T) {
 	for _, c := range []struct {
 		ref  string
 		want lang.Target
 	}{
-		{"nginx", lang.Target{Ecosystem: "oci", Package: "nginx", Version: "latest"}},
+		// No tag floats, with no version made up for it.
+		{"nginx", lang.Target{Ecosystem: "oci", Package: "nginx", Floating: true}},
 		{"nginx:1.25.3", lang.Target{Ecosystem: "oci", Package: "nginx", Version: "1.25.3"}},
 		{"ghcr.io/org/app:main", lang.Target{Ecosystem: "oci", Package: "ghcr.io/org/app", Version: "main"}},
 		// A registry's port is not a tag.
-		{"localhost:5000/app", lang.Target{Ecosystem: "oci", Package: "localhost:5000/app", Version: "latest"}},
+		{"localhost:5000/app", lang.Target{Ecosystem: "oci", Package: "localhost:5000/app", Floating: true}},
 		{"localhost:5000/app:2", lang.Target{Ecosystem: "oci", Package: "localhost:5000/app", Version: "2"}},
 	} {
 		if got := image(c.ref); got != c.want {

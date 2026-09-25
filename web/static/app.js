@@ -19,7 +19,7 @@ import { startTour, startWalkTour, walkTourPending } from './tour.js';
 import { Backpack } from './backpack.js';
 import { Stash } from './stash.js';
 import { indexFindings } from './findings.js';
-import { $, h, fmt, escapeHTML } from './dom.js';
+import { $, h, fmt, escapeHTML, whenUnlocked } from './dom.js';
 import { Color } from './vendor/three.module.min.js';
 
 const MAX_ARCS = 400;
@@ -406,6 +406,8 @@ function drawPack(_pack, fromServer = false) {
   $('pack-empty-note').hidden = total > 0;
   $('pack-clear-fixed').hidden = !fixed;
   $('pack-empty').hidden = !total;
+  // Implements: REQ-EXP-015
+  $('pack-export').hidden = STATIC || !total;
   const list = $('pack-list');
   list.replaceChildren(...pack.items.map(it => packRow(it)));
 }
@@ -443,19 +445,26 @@ function openCaught(it) {
   panel.show(node, false, it.fixed ? undefined : it.id);
 }
 
-// Implements: REQ-WALK-034
+let packing = () => {}; // calls off a backpack still waiting for the pointer (whenUnlocked)
+
+// Implements: REQ-WALK-034, REQ-UI-014
 function setPackOpen(on) {
-  $('pack').hidden = !on;
-  $('pack-btn').setAttribute('aria-expanded', on);
-  if (on) drawPack();
+  packing();
+  const show = () => {
+    $('pack').hidden = !on;
+    $('pack-btn').setAttribute('aria-expanded', on);
+    if (on) drawPack();
+  };
   // Reading is reading, on the street as much as over the map: the walker holds still
   // and lets go of the pointer while the backpack is open, and picks both up again
-  // when it closes.
-  if (!walker?.active) return;
+  // when it closes. It opens once the pointer is free, not while the lock is still
+  // letting go.
+  if (!walker?.active) return show();
   if (on) {
-    document.exitPointerLock?.();
     walker.setFrozen(true);
+    packing = whenUnlocked(show);
   } else {
+    show();
     walker.lockPointer();
   }
 }
@@ -728,16 +737,23 @@ function drawStash() {
   if (!stash.count) setStashOpen(false);
 }
 
+let stashing = () => {}; // as `packing`, for the photographs
+
+// Implements: REQ-UI-014
 function setStashOpen(on) {
-  $('stash').hidden = !on;
-  $('stash-btn').setAttribute('aria-expanded', on);
+  stashing();
+  const show = () => {
+    $('stash').hidden = !on;
+    $('stash-btn').setAttribute('aria-expanded', on);
+  };
   // Looking at them is reading, the same as the backpack: the walker holds still and
   // lets the pointer go while they are open, and takes both back when they close.
-  if (!walker?.active) return;
+  if (!walker?.active) return show();
   if (on) {
-    document.exitPointerLock?.();
     walker.setFrozen(true);
+    stashing = whenUnlocked(show);
   } else {
+    show();
     walker.lockPointer();
   }
 }
@@ -1231,6 +1247,15 @@ function drawLegend() {
     parts.push(`<h3>File size</h3><div class="ramp" style="background:linear-gradient(90deg,${pal.seq.join(',')})"></div>
       <div class="ramp-labels"><span>0</span><span>${fmt.format(maxLoc)} lines</span></div>`);
   }
+  // Islands keep their own three colors in every mode, so they get a key of their own:
+  // the tooltip and the panel say which state a package is in, but only here is it
+  // said what the paint means. Shown once there is an island to paint.
+  if (model.ecosystems.some(e => e.children.length)) {
+    parts.push(`<h3>Packages</h3><div class="pkg-key">
+      <span title="Declared in a manifest"><i class="swatch" style="background:${pal.pkg}"></i>resolved</span>
+      <span title="Not fixed to one version: it moves when installed again"><i class="swatch" style="background:${pal.pkgFloating}"></i>floating</span>
+      <span title="Not found in any manifest"><i class="swatch" style="background:${pal.pkgUnresolved}"></i>unresolved</span></div>`);
+  }
   parts.push('<h3>Selection</h3>' + linkKindControl() + `<div class="edge-key">
       <span><i class="line" style="background:${pal.edgeOut}"></i>depends on</span>
       <span><i class="line" style="background:${pal.edgeIn}"></i>used by</span></div>`);
@@ -1544,8 +1569,11 @@ function bindControls() {
   $('stash-empty').onclick = () => stash.clear();
   $('pack-clear-fixed').onclick = () => pack.clear(true);
   $('pack-empty').onclick = () => pack.clear();
+  // Links, as the export menu's are, so in embed mode the token has to be on them.
+  for (const a of $('pack-export').querySelectorAll('a')) a.href = authed(a.getAttribute('href'));
   $('rotate-left').onclick = () => scene.setIso(scene.quarter - 1);
   $('rotate-right').onclick = () => scene.setIso(scene.quarter + 1);
+  $('reset-view').onclick = () => scene.reset(L.bounds);
   $('help-btn').onclick = () => { readAway(); $('help').showModal(); };
   // The help's own way back to the introduction, for anyone who skipped it or wants it
   // again. One modal at a time, so the help is closed before the other opens.
@@ -1617,6 +1645,7 @@ function bindControls() {
       // Fitting, rotating and stepping the depth all move the map's own camera, which
       // is not the one in use while walking, so they belong to the map view alone.
       case 'Home': if (!walker.active) scene.fit(L.bounds); break;
+      case 'r': case 'R': if (!walker.active) scene.reset(L.bounds); break;
       case 'q': case 'Q': if (!walker.active) scene.setIso(scene.quarter - 1); break;
       case 'e': case 'E': if (!walker.active) scene.setIso(scene.quarter + 1); break;
       case '+': case '=': setLevel(state.level + 1); break;
@@ -1654,14 +1683,27 @@ function bindFilters() {
   // the reticle back there would snatch the mouse out of the control being reached for
   // - which is the whole of what made the toolbar unusable from the street. A click on
   // the map needs no help from here: it asks for the pointer by itself.
+  //
+  // Opening waits for the pointer lock to let go (whenUnlocked), and the click-outside
+  // handler only looks at a menu that is showing, so an event still delivered to the
+  // locked canvas cannot shut it on the way in.
+  let pending = () => {};
   const setOpen = (open, back = true) => {
-    pop.hidden = !open;
-    btn.setAttribute('aria-expanded', open);
-    if (open) readAway();
-    else if (back && walker?.active) walker.lockPointer();
+    pending();
+    const show = () => {
+      pop.hidden = !open;
+      btn.setAttribute('aria-expanded', open);
+    };
+    if (open) {
+      readAway();
+      pending = whenUnlocked(show);
+    } else {
+      show();
+      if (back && walker?.active) walker.lockPointer();
+    }
   };
   btn.onclick = () => setOpen(pop.hidden);
-  document.addEventListener('pointerdown', e => { if (!e.target.closest('.filters')) setOpen(false, false); });
+  document.addEventListener('pointerdown', e => { if (!pop.hidden && !e.target.closest('.filters')) setOpen(false, false); });
   btn.parentElement.addEventListener('keydown', e => {
     if (e.key === 'Escape' && !pop.hidden) { e.stopPropagation(); setOpen(false); btn.focus(); }
   });
@@ -1743,11 +1785,22 @@ function bindExport() {
   // `back` as in the filters above: shut on purpose it is a way back to the street,
   // shut because the pointer went elsewhere in the page it is not, and taking the
   // reticle back then would snatch the mouse out of whatever was being reached for.
-  const setOpen = (open, back = true) => {
-    pop.hidden = !open;
-    btn.setAttribute('aria-expanded', open);
-    if (open) readAway();
-    else if (back && walker?.active) walker.lockPointer();
+  // Opening waits for the pointer lock to let go, as the filters' does.
+  let pending = () => {};
+  const setOpen = (open, back = true, then) => {
+    pending();
+    const show = () => {
+      pop.hidden = !open;
+      btn.setAttribute('aria-expanded', open);
+      then?.();
+    };
+    if (open) {
+      readAway();
+      pending = whenUnlocked(show);
+    } else {
+      show();
+      if (back && walker?.active) walker.lockPointer();
+    }
   };
   btn.onclick = () => setOpen(pop.hidden);
   /**
@@ -1757,8 +1810,7 @@ function bindExport() {
    */
   openExport = () => {
     if (btn.hidden) return;
-    setOpen(true);
-    btn.focus();
+    setOpen(true, true, () => btn.focus());
   };
   // These are links, not fetches, so in embed mode the token has to be on them.
   for (const a of pop.querySelectorAll('a[href^="api/"]')) a.href = authed(a.getAttribute('href'));

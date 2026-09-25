@@ -17,10 +17,13 @@ type project struct {
 }
 
 type resolver struct {
-	projects []project         // longest root namespace first
-	csDirs   map[string]bool   // directories holding C# files
-	packages map[string]string // NuGet package id -> version
+	projects []project        // longest root namespace first
+	csDirs   map[string]bool  // directories holding C# files
+	packages map[string]nuget // lower-case NuGet package id -> package
 }
+
+// nuget is a referenced package: its id as first written, and its version.
+type nuget struct{ id, version string }
 
 type msbuild struct {
 	Groups []struct {
@@ -46,10 +49,13 @@ func (p packageRef) version() string {
 	return strings.TrimSpace(p.VersionChild)
 }
 
-// Implements: REQ-CS-001, REQ-CS-002, REQ-CS-003
+// NuGet ids are case-insensitive, so both maps are keyed by the lower-case id: a
+// reference to serilog takes the central version of Serilog.
+//
+// Implements: REQ-CS-001, REQ-CS-002, REQ-CS-003, REQ-CS-004
 func newResolver(all []*scan.File) *resolver {
-	r := &resolver{csDirs: map[string]bool{}, packages: map[string]string{}}
-	central := map[string]string{} // Directory.Packages.props
+	r := &resolver{csDirs: map[string]bool{}, packages: map[string]nuget{}}
+	central := map[string]string{} // Directory.Packages.props, by lower-case id
 	for _, f := range all {
 		base := path.Base(f.Path)
 		switch {
@@ -71,11 +77,15 @@ func newResolver(all []*scan.File) *resolver {
 			}
 			for _, ig := range doc.Items {
 				for _, p := range ig.Versions {
-					central[p.Include] = p.version()
+					central[strings.ToLower(p.Include)] = p.version()
 				}
 				for _, p := range ig.Refs {
 					if p.Include != "" {
-						r.packages[p.Include] = p.version()
+						key, id := strings.ToLower(p.Include), p.Include
+						if have, ok := r.packages[key]; ok {
+							id = have.id
+						}
+						r.packages[key] = nuget{id: id, version: p.version()}
 					}
 				}
 			}
@@ -95,9 +105,10 @@ func newResolver(all []*scan.File) *resolver {
 			}
 		}
 	}
-	for id, v := range r.packages {
-		if v == "" {
-			r.packages[id] = central[id]
+	for key, p := range r.packages {
+		if p.version == "" {
+			p.version = central[key]
+			r.packages[key] = p
 		}
 	}
 	sort.Slice(r.projects, func(i, j int) bool { return len(r.projects[i].root) > len(r.projects[j].root) })
@@ -134,16 +145,16 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 		}
 	}
 	best := "" // NuGet ids are case-insensitive: the xunit package provides Xunit.*
-	for id := range r.packages {
-		if _, ok := within(strings.ToLower(ns), strings.ToLower(id)); ok && len(id) > len(best) {
-			best = id
+	for key := range r.packages {
+		if _, ok := within(strings.ToLower(ns), key); ok && len(key) > len(best) {
+			best = key
 		}
 	}
 	if best != "" {
 		// A PackageReference version is a minimum, but restore installs exactly it
 		// when it exists: the versions that move are the wildcards and the ranges.
-		v := r.packages[best]
-		return lang.Target{Ecosystem: ecoNuGet, Package: best, Version: v, Pinned: lang.Pinned(v)}
+		p := r.packages[best]
+		return lang.Target{Ecosystem: ecoNuGet, Package: p.id, Version: p.version, Pinned: lang.Pinned(p.version)}
 	}
 	segments := strings.Split(ns, ".")
 	top := strings.Join(segments[:min(2, len(segments))], ".")

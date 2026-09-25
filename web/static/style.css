@@ -89,7 +89,10 @@
 /* The styles (web/static/city.js): what the map is dressed as. Only the environment
    changes - the ground, the water, the sky - because the colors that carry data are
    still the language and history palettes above. These come after both themes, so a
-   style wins over the theme's ground and sky whichever theme is in force. */
+   style wins over the theme's ground and sky; and each style is themed the way the
+   tokens above are, light first and then dark twice over (the system's preference
+   unless the page says light, and the page saying dark), so that the theme still
+   chooses between two sets of the style's own. */
 /* Implements: REQ-MAP-052, REQ-MAP-051 */
 :root[data-style="circuit"] {
   --water: #d5d9dd;
@@ -98,6 +101,34 @@
   --pkg: #3a4048; --pkg-unresolved: #555b62; --pkg-floating: #8a6a2e;
 }
 :root[data-style="galaxy"] {
+  --water: #cfc9e0;
+  --land: #4a3d6e; --terrace-a: #2a2250; --terrace-b: #231c45; --district: #1b1538;
+  --sky: #8a7fb8; --sky-top: #2e2560; --sea: #1d1838;
+  --pkg: #5e5580; --pkg-unresolved: #413a5c; --pkg-floating: #8f74bd;
+}
+/* In the dark the board's backplane goes out and its zenith is night, so the LEDs are
+   what light it; the galaxy is the deep space it was drawn as. */
+@media (prefers-color-scheme: dark) {
+  :root[data-style="circuit"]:where(:not([data-theme="light"])) {
+    --water: #0e1114;
+    --land: #4a3f1b; --terrace-a: #0f1d14; --terrace-b: #0b170f; --district: #08120c;
+    --sky: #2a3038; --sky-top: #0b0e12; --sea: #111519;
+    --pkg: #2e343b; --pkg-unresolved: #3f444a; --pkg-floating: #735724;
+  }
+  :root[data-style="galaxy"]:where(:not([data-theme="light"])) {
+    --water: #0a0812;
+    --land: #221a35; --terrace-a: #15112a; --terrace-b: #100d21; --district: #0a0818;
+    --sky: #140f28; --sky-top: #05030f; --sea: #08060f;
+    --pkg: #4a4266; --pkg-unresolved: #2e2a42; --pkg-floating: #7a5ea8;
+  }
+}
+:root[data-style="circuit"][data-theme="dark"] {
+  --water: #0e1114;
+  --land: #4a3f1b; --terrace-a: #0f1d14; --terrace-b: #0b170f; --district: #08120c;
+  --sky: #2a3038; --sky-top: #0b0e12; --sea: #111519;
+  --pkg: #2e343b; --pkg-unresolved: #3f444a; --pkg-floating: #735724;
+}
+:root[data-style="galaxy"][data-theme="dark"] {
   --water: #0a0812;
   --land: #221a35; --terrace-a: #15112a; --terrace-b: #100d21; --district: #0a0818;
   --sky: #140f28; --sky-top: #05030f; --sea: #08060f;
@@ -708,11 +739,11 @@ main.walking #legend { display: none; }
 #legend li:hover { background: var(--grid); }
 #legend .ramp { height: 10px; border-radius: 3px; }
 #legend .ramp-labels { display: flex; justify-content: space-between; color: var(--muted); font-size: 11px; font-variant-numeric: tabular-nums; }
-#legend .edge-key { display: flex; gap: 14px; }
+#legend .edge-key, #legend .pkg-key { display: flex; flex-wrap: wrap; gap: 4px 14px; }
 #legend .link-kind { display: inline-flex; margin-bottom: 6px; border: 1px solid var(--border); border-radius: 6px; overflow: hidden; }
 #legend .link-kind button { border: none; border-radius: 0; padding: 2px 10px; font-size: 12px; }
 #legend .link-kind button[aria-pressed=true] { background: var(--accent); color: #fff; }
-#legend .edge-key span { display: flex; align-items: center; gap: 6px; }
+#legend .edge-key span, #legend .pkg-key span { display: flex; align-items: center; gap: 6px; }
 #legend .line { width: 18px; height: 3px; border-radius: 2px; }
 #legend p { margin: 6px 0 0; color: var(--muted); font-size: 11px; }
 #legend .no-data { display: flex; align-items: center; gap: 6px; margin-top: 6px; color: var(--text-2); font-size: 12px; }
@@ -978,6 +1009,9 @@ dialog form { margin-top: 12px; text-align: right; }
 #pack-list .drop { border: none; background: none; color: var(--muted); cursor: pointer; padding: 0 2px; line-height: 1; }
 #pack-list .drop:hover { color: var(--text); }
 #pack-empty-note { margin: 0; padding: 14px 12px; }
+#pack-export { display: flex; align-items: baseline; gap: 10px; padding: 7px 12px; border-top: 1px solid var(--border); font-size: 12px; }
+#pack-export a { color: var(--accent); text-decoration: none; }
+#pack-export a:hover { text-decoration: underline; }
 @media (max-width: 720px) {
   #pack { left: 8px; right: 8px; width: auto; }
 }

@@ -5,10 +5,11 @@ title: Menus wait for the pointer lock release
 scope: ui
 type: functional
 priority: must
-status: partial
+status: implemented
 source:
   - docs/REQUIREMENTS.md M24
 verification:
+  - ui
   - manual
   - e2e
 ---
@@ -32,8 +33,9 @@ second try.
 
 ## Notes
 
-Partial: opening a menu releases the pointer and holds the walker (`readAway` in
-app.js), and `X` opens the export menu at the first press, but nothing waits for
-`pointerlockchange`: the menus' click-outside handlers close the menu on any
-pointer event outside it, including one delivered to the canvas while the lock
-is still held.
+Fixed: `whenUnlocked` (dom.js) releases the pointer lock and opens a menu only
+once `pointerlockchange` reports the lock gone, or after a 250 ms safety
+timeout, and can be called off meanwhile. The Filters and Export menus, the
+backpack and the photographs open through it, and the click-outside handlers look
+only at a menu that is showing, so an event still delivered to the locked canvas
+cannot close one. `web/uitest/menus.test.mjs` tests the helper.

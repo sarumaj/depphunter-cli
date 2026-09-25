@@ -33,9 +33,10 @@ export const TOUR = [
   {
     title: 'Selecting draws the dependencies',
     body: `Click a building and the map shows what it depends on and what depends on it:
-      arcs overhead for the shape of it, and roads through the streets for the route,
-      with chevrons marking which way each dependency runs. Double-click a directory to
-      open it, or a file to see its functions as plots on a terrace.`,
+      an arc overhead to each, with an arrow at the far end for which way it runs, and
+      everything else fades so the arcs stand out. The panel at the side says what it
+      is and lists both directions in full. Double-click a directory to open it, or a
+      file to see its functions as plots on a terrace.`,
   },
   {
     shot: 'street',

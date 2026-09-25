@@ -58,6 +58,11 @@ const (
 	// database said yesterday is almost always still true - but not for long enough to
 	// keep for a week.
 	findingsCacheTTL = 6 * time.Hour
+	// Link rot is slow, and asking a hundred hosts on every run is the kind of thing
+	// that gets a tool blocked: a link's answer is kept for a day.
+	//
+	// Implements: REQ-MD-014
+	linkCacheTTL = 24 * time.Hour
 )
 
 // version is set at release builds: -ldflags "-X main.version=v1.2.3".
@@ -327,7 +332,7 @@ func loadFindings(ctx context.Context, cfg config.Config, cacheDir string, g *gr
 			if cacheDir != "" {
 				links = filepath.Join(cacheDir, "links")
 			}
-			opts.Web = findings.NewWeb(links, findingsCacheTTL, indexTimeout, credentials)
+			opts.Web = findings.NewWeb(links, linkCacheTTL, indexTimeout, credentials)
 		}
 	}
 	set := findings.Collect(ctx, opts)
