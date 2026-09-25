@@ -609,6 +609,48 @@ describe('what the tools reach and how long they last', () => {
   });
 });
 
+describe('a line and a jump', () => {
+  // Once the line is cut, step goes on to walking, which is not what is tested here.
+  const CUT = Symbol('cut');
+  const step = w => { try { w.step(0.016); } catch (e) { if (e !== CUT) throw e; } };
+
+  /** A walker being pulled along a line, with step's own logic and nothing else. */
+  function pulled(keys) {
+    const W = WALK.Walker.prototype;
+    return {
+      keys: new Set(keys), p: { x: 0, z: 0, feet: 0, yaw: 0, pitch: 0, vy: 0 }, still: false, cut: [], reeled: 0,
+      pull: { to: { x: 0, y: 5, z: -10 }, t: 0, line: { speed: 17, stop: 0.25 }, jumping: keys.includes('Space') },
+      cutLine(say) { this.pull = null; this.cut.push(say); throw CUT; }, reel() { this.reeled++; },
+      step: W.step,
+    };
+  }
+
+  // Verifies: REQ-TOOL-066
+  it('keeps pulling when Space is still down from the jump the line was cast in', () => {
+    const w = pulled(['Space']);
+    for (let i = 0; i < 10; i++) step(w);
+    assert.equal(w.cut.length, 0, 'a line cast mid-jump was cut as it bit');
+    assert.equal(w.reeled, 10, 'the line did not pull');
+  });
+
+  // Verifies: REQ-TOOL-066
+  it('cuts on a press of Space made once the line is out', () => {
+    const w = pulled(['Space']);
+    step(w);
+    w.keys.delete('Space'); // the jump's Space let go ...
+    step(w);
+    w.keys.add('Space'); // ... and pressed again
+    step(w);
+    assert.deepEqual(w.cut, ['Line cut']);
+
+    const fresh = pulled([]);
+    step(fresh);
+    fresh.keys.add('Space');
+    step(fresh);
+    assert.deepEqual(fresh.cut, ['Line cut'], 'a jump did not cut a line bitten on the ground');
+  });
+});
+
 describe('the wheel, flicked', () => {
   /**
    * A walker as far as the wheel concerns it: the hands, and the wheel's own methods
