@@ -29,9 +29,26 @@ const commands = new Map();
 
 let root = process.cwd();
 
+// A Uri is not a URL, and the difference is the whole of what reachable() has to
+// work around: parse() percent-decodes every part it takes, and toString() escapes
+// everything in the query that is not unreserved - '=' among it - so `?token=X` goes
+// out as `?token%3DX` unless toString is told to skip the encoding.
+function parse(s) {
+  const cut = s.indexOf('?');
+  const head = cut === -1 ? s : s.slice(0, cut);
+  const query = cut === -1 ? '' : decodeURIComponent(s.slice(cut + 1));
+  return {
+    scheme: head.split(':')[0],
+    fsPath: s,
+    query,
+    toString: (skipEncoding = false) => head + (query === '' ? '' : '?'
+      + (skipEncoding ? query : query.replace(/[^A-Za-z0-9\-._~]/g, c => encodeURIComponent(c)))),
+  };
+}
+
 const vscode = {
   Uri: {
-    parse: s => ({ scheme: s.split(':')[0], fsPath: s, toString: () => s }),
+    parse,
     file: p => ({ scheme: 'file', fsPath: p, toString: () => 'file://' + p }),
   },
   env: {
@@ -42,7 +59,10 @@ const vscode = {
     asExternalUri: async u => (settings.dropQuery
       ? vscode.Uri.parse(u.toString().replace(/\?.*/, ''))
       : u),
-    openExternal: async u => { calls.push(['openExternal', u.toString()]); return true; },
+    // The editor hands the address to the operating system as it parsed it, without
+    // the escaping toString() would otherwise add: what the browser opens is what is
+    // recorded here.
+    openExternal: async u => { calls.push(['openExternal', u.toString(true)]); return true; },
   },
   workspace: {
     get workspaceFolders() { return [{ uri: { fsPath: root, scheme: 'file' }, name: 'workspace' }]; },
