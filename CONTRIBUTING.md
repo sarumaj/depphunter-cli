@@ -12,6 +12,14 @@ go run honnef.co/go/tools/cmd/staticcheck@2026.2.1 ./...
 npm install && npm run lint   # the VS Code extension, whose manifest is at the root
 ```
 
+Cold-analysis performance (REQ-LANG-029) is measured by a benchmark over a
+generated 10 000-file project; it reports the wall time and the CPU time, and
+`-cpu` shows how well the work spreads over the cores:
+
+```sh
+go test ./internal/analyze -run '^$' -bench ColdAnalysis -benchtime 3x -cpu 1,4
+```
+
 The extension has its own edit-and-run cycle, tests and debugging notes, under
 [Working on the extension](#working-on-the-extension).
 

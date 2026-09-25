@@ -16,9 +16,10 @@ is updated when an item here is resolved.
 ## 1. Requirements not met
 
 The review found 2 requirements not implemented and 17 partly implemented.
-All but one were resolved in a follow-up change, either by repairing the code
-or, where the code reflects a later decision than the design log, by amending
-the requirement. Each requirement's Notes record what was done.
+All were resolved in follow-up changes, either by repairing the code or, where
+the code reflects a later decision than the design log or the design log's
+target could not be checked, by amending the requirement. Each requirement's
+Notes record what was done.
 
 ### Repaired in the code
 
@@ -47,12 +48,7 @@ the requirement. Each requirement's Notes record what was done.
 | [REQ-TOOL-008](tool/REQ-TOOL-008-hand-from-pinned-upstream-model.md) | M14 had the hand grown with the Skin modifier; `tools/hand.py` prepares the WebXR `generic-hand`, and its docstring records why. | The requirement specifies the pinned upstream model; the UI still downloads nothing. |
 | [REQ-TOOL-016](tool/REQ-TOOL-016-camera-build.md) | M14 had the camera held in both hands; since M21 the left hand carries the secondary tool. | The camera is held in the right hand. |
 | [REQ-HUNT-010](hunt/REQ-HUNT-010-bug-per-finding.md) | M13 had a bug for every finding; the code caps bugs at 140 and draws reachable vulnerabilities as fires. | The cap and the fires are specified; every finding stays listed in the panel. |
-
-### Open
-
-| Requirement | Finding |
-|-------------|---------|
-| [REQ-LANG-029](lang/REQ-LANG-029-cold-analysis-time.md) | A synthetic 10 000-file project (40 MB) took 8.3 s cold on four cores, against 5 s. Meeting it needs profiling of parsing and resolution, and a benchmark to hold the result. |
+| [REQ-LANG-029](lang/REQ-LANG-029-cold-analysis-time.md) | "Under 5 s for 10k files" named no machine. On 4 cores the reference project took 8.9 s, nearly all of it tree-sitter parsing at the runtime's own speed. | Stated for an 8-core reference machine, with a CPU budget (36 CPU-seconds) and a parallel-efficiency floor (0.85 × N) that can be checked anywhere, measured by `BenchmarkColdAnalysis`. Measured: 34.3 CPU-seconds and a 3.67× speed-up on 4 cores; about 4.7 s projected for 8 cores. |
 
 ## 2. Defects
 
@@ -219,7 +215,8 @@ removal if it is unintended.
   stderr, `-v`, `--no-history`, and the loopback default address are not
   tested.
 - **The M4 acceptance runs** (ripgrep, gson, Serilog, Pester) and the
-  performance targets (REQ-LANG-029, REQ-LANG-030, REQ-PERF-001) have no
-  benchmark or scripted end-to-end run.
+  performance targets REQ-LANG-030 and REQ-PERF-001 have no benchmark or
+  scripted end-to-end run. REQ-LANG-029 has `BenchmarkColdAnalysis`, which
+  `go test` does not run by default.
 - **Tests that skip**: the gopls reference test needs `gopls`, and the
   extension's panel and server tests need `DEPPHUNTER` to name a built binary.

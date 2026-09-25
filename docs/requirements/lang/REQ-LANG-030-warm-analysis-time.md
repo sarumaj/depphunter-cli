@@ -31,5 +31,5 @@ Repeated runs and watch-mode re-analyses happen far more often than cold runs.
 
 ## Notes
 
-Measured on 2026-09-25 on the project described in REQ-LANG-029: the warm run
-took 1.2 s against 8.3 s cold.
+Measured on 2026-09-25 on the reference project of REQ-LANG-029 (4 cores):
+the warm run took 1.2 s against 8.3 s cold.

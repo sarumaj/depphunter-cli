@@ -27,7 +27,7 @@ it with `node tools/reqtrace.mjs`.
 | [hunt](#hunt)   |           48 |          48 |       0 |               0 |                      0 |                               2 |             39 |
 | [java](#java)   |           11 |          11 |       0 |               0 |                      0 |                               0 |              1 |
 | [js](#js)       |           11 |          11 |       0 |               0 |                      0 |                               0 |              0 |
-| [lang](#lang)   |           30 |          29 |       1 |               0 |                      0 |                               8 |             16 |
+| [lang](#lang)   |           30 |          30 |       0 |               0 |                      0 |                               8 |             15 |
 | [lsp](#lsp)     |           10 |          10 |       0 |               0 |                      0 |                               1 |              6 |
 | [map](#map)     |           61 |          61 |       0 |               0 |                      0 |                              31 |             56 |
 | [md](#md)       |           16 |          16 |       0 |               0 |                      0 |                               1 |              1 |
@@ -44,7 +44,7 @@ it with `node tools/reqtrace.mjs`.
 | [ui](#ui)       |           14 |          14 |       0 |               0 |                      0 |                               0 |              6 |
 | [walk](#walk)   |           50 |          47 |       0 |               0 |                      3 |                               0 |             39 |
 | [watch](#watch) |            7 |           7 |       0 |               0 |                      0 |                               1 |              4 |
-| **Total**       |          675 |         669 |       1 |               0 |                      5 |                              78 |            328 |
+| **Total**       |          675 |         670 |       0 |               0 |                      5 |                              78 |            327 |
 
 ## Coverage gaps
 
@@ -54,9 +54,7 @@ None.
 
 ### Partially implemented
 
-| ID                                                      | Title              |
-|---------------------------------------------------------|--------------------|
-| [REQ-LANG-029](lang/REQ-LANG-029-cold-analysis-time.md) | Cold analysis time |
+None.
 
 ### No automated test
 
@@ -535,7 +533,7 @@ None.
 | [REQ-LANG-026](lang/REQ-LANG-026-content-addressed-extraction-cache.md)    | `2dab280c-7a85-42ee-8a6c-89b2ecfddc91` | Content-addressed extraction cache    | functional     | implemented | unit             | [internal/analyze/analyze.go](../../internal/analyze/analyze.go)<br>[internal/cache/cache.go](../../internal/cache/cache.go) `Key`<br>[internal/lang/lang.go](../../internal/lang/lang.go) `ClassOf`                                                                     | [internal/analyze/analyze_test.go](../../internal/analyze/analyze_test.go) `TestCacheSkipsUnchangedFiles`                                                                                                                                                                                                          |
 | [REQ-LANG-027](lang/REQ-LANG-027-cached-runs-resolve-current-manifests.md) | `94ad5073-e630-4e78-a425-e25eba746277` | Cached runs resolve current manifests | functional     | implemented | unit             | [internal/analyze/analyze.go](../../internal/analyze/analyze.go)                                                                                                                                                                                                         | —                                                                                                                                                                                                                                                                                                                  |
 | [REQ-LANG-028](lang/REQ-LANG-028-warm-run-parses-no-unchanged-file.md)     | `563158df-2880-4b68-ae8c-2261dfffc710` | Warm run parses no unchanged file     | functional     | implemented | unit             | [internal/analyze/analyze.go](../../internal/analyze/analyze.go)<br>[internal/cache/cache.go](../../internal/cache/cache.go) `Open`<br>[internal/cache/cache.go](../../internal/cache/cache.go) `Save`                                                                   | [internal/analyze/analyze_test.go](../../internal/analyze/analyze_test.go) `TestCacheSkipsUnchangedFiles`                                                                                                                                                                                                          |
-| [REQ-LANG-029](lang/REQ-LANG-029-cold-analysis-time.md)                    | `6f087598-abb9-4a34-bdb4-3fc7476887c6` | Cold analysis time                    | non-functional | partial     | e2e              | [internal/analyze/analyze.go](../../internal/analyze/analyze.go) `Run`                                                                                                                                                                                                   | —                                                                                                                                                                                                                                                                                                                  |
+| [REQ-LANG-029](lang/REQ-LANG-029-cold-analysis-time.md)                    | `6f087598-abb9-4a34-bdb4-3fc7476887c6` | Cold analysis time                    | non-functional | implemented | integration, e2e | [internal/analyze/analyze.go](../../internal/analyze/analyze.go) `Run`                                                                                                                                                                                                   | [internal/analyze/bench_test.go](../../internal/analyze/bench_test.go) `BenchmarkColdAnalysis`                                                                                                                                                                                                                     |
 | [REQ-LANG-030](lang/REQ-LANG-030-warm-analysis-time.md)                    | `60133cd2-bd8b-427a-b4c8-32c5523527ec` | Warm analysis time                    | non-functional | implemented | e2e              | [internal/analyze/analyze.go](../../internal/analyze/analyze.go) `Run`                                                                                                                                                                                                   | —                                                                                                                                                                                                                                                                                                                  |
 
 ## lsp
