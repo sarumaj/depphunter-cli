@@ -38,7 +38,10 @@
 //   click    target, s          glide to target and click it
 //   type     text               type, one key every other frame
 //   set      target, value      set a field's value, no frame of its own
-//   choose   target, value      set a field's value and show it for a frame
+//   choose   target, value, fade
+//                               set a field's value and show it for a frame; with fade,
+//                               crossfade into it from the frame before over fade seconds,
+//                               while the steps after it go on
 //   pick     target, value, s, down
 //                               click a select open, go down its list and click value
 //   key      key                press a key
@@ -307,15 +310,18 @@ async function findStage() {
 }
 
 /**
- * The nearest bug walking a street, which is the one a walker can stand beside:
- * one on a wall or a roof, or in the air, is out of a net's reach from the ground.
- * Returns its index and the spot `dist` out from its building, in the street it
- * walks, or null.
+ * The nearest bug a walker can get at: one walking a street (on a wall or a roof, or
+ * in the air, it is out of a net's reach from the ground), with a spot `dist` out
+ * from its building, in its street, that the walker can walk to in a straight line
+ * along the ground - not through a building, which the walker would be lifted onto
+ * the roof of - and from which the tool in hand has the bug under its crosshair, as
+ * the game itself finds it (walker.updateAim), rather than a building in between.
+ * Returns its index and that spot, or null.
  */
 async function streetBug(from, dist) {
   return dh((d, a) => {
-    const w = d.walker;
-    let best = null, bd = Infinity;
+    const w = d.walker, p = w.p, eye = a.eye;
+    const candidates = [];
     (d.bugs?.bugs || []).forEach((b, i) => {
       if (b.caught || b.flying || b.lap.kind !== 'street') return;
       // Out from the building the bug circles, so the spot is in its street and not
@@ -324,41 +330,69 @@ async function streetBug(from, dist) {
       const spot = { x: b.pos.x + (ox / len) * a.dist, z: b.pos.z + (oz / len) * a.dist };
       spot.feet = w.height(spot.x, spot.z);
       if (Math.abs(spot.feet - (b.pos.y - 0.04)) > 0.2) return;
-      const far = Math.hypot(b.pos.x - a.x, b.pos.z - a.z);
-      if (far < bd) { bd = far; best = { i, spot }; }
+      candidates.push({ i, b, spot, far: Math.hypot(spot.x - a.x, spot.z - a.z) });
     });
-    return best;
-  }, { x: from.x, z: from.z, dist });
+    candidates.sort((u, v) => u.far - v.far);
+    // Along the ground all the way: no rise or drop between one sample and the next
+    // that a walker could not step, which is what a wall is; a ramp or a gentle slope
+    // between terraces is walked.
+    const walkable = spot => {
+      const n = Math.max(1, Math.ceil(Math.hypot(spot.x - a.x, spot.z - a.z) / 0.2));
+      let last = w.height(a.x, a.z);
+      for (let k = 1; k <= n; k++) {
+        const u = k / n, h = w.height(a.x + (spot.x - a.x) * u, a.z + (spot.z - a.z) * u);
+        if (Math.abs(h - last) > 0.3) return false;
+        last = h;
+      }
+      return true;
+    };
+    // Under the crosshair and in plain view, as the game draws it (window.__sight).
+    const inSight = (spot, b) => window.__sight(w, b, spot, eye)?.clear;
+    // Walked to and seen, first; else seen, and cut to rather than walked through
+    // buildings; else the nearest, as it always was.
+    let walked = null, seen = null, walks = 0, sights = 0;
+    for (const c of candidates.slice(0, 60)) {
+      const see = inSight(c.spot, c.b), walk = walkable(c.spot);
+      sights += see; walks += walk;
+      if (see && walk) { walked = c; break; }
+      if (see && !seen) seen = c;
+    }
+    w.scene.setWalker(p.x, p.feet, p.z, eye, p.yaw, p.pitch);
+    w.updateAim();
+    const pick = walked || seen || candidates[0];
+    return pick && { i: pick.i, spot: pick.spot, cut: !walked,
+      why: `${candidates.length} in the streets, ${Math.min(60, candidates.length)} tried: ${walks} walkable, ${sights} in sight` };
+  }, { x: from.x, z: from.z, feet: from.feet, dist, eye: EYE });
 }
 /**
  * Where to stand to face bug i now: `dist` out from its building, level with it.
- * The bug keeps walking its lap, so the spot moves with it, around corners too.
+ * The bug keeps walking its lap, so the spot moves with it, around corners too -
+ * and so it is checked every time: where the street narrows, `dist` out can be
+ * inside the building across it, and a walker put there sees that building's walls
+ * and nothing else. The spot then comes in, a step at a time, until it is on the
+ * street at the bug's level.
  */
 const spotOf = (i, dist) => dh((d, a) => {
-  const b = d.bugs.bugs[a.i];
+  const w = d.walker, b = d.bugs.bugs[a.i];
   const ox = b.pos.x - b.box.x, oz = b.pos.z - b.box.z, len = Math.hypot(ox, oz) || 1;
-  return { x: b.pos.x + (ox / len) * a.dist, z: b.pos.z + (oz / len) * a.dist, feet: b.pos.y - 0.04 };
+  const level = b.pos.y - 0.04;
+  let r = a.dist;
+  while (r > 0.8 && Math.abs(w.height(b.pos.x + (ox / len) * r, b.pos.z + (oz / len) * r) - level) > 0.2) r -= 0.2;
+  return { x: b.pos.x + (ox / len) * r, z: b.pos.z + (oz / len) * r, feet: level };
 }, { i, dist });
 /**
- * Turns the walker, as little as it takes, until the crosshair is on bug i as the
- * game itself finds it (walker.updateAim marches the ray through the bent view):
- * angles worked out on the flat map can leave it on the wall behind a small bug,
- * and a tool fired then tags the wall. Returns whether it is on the bug.
+ * Turns the walker onto bug i as the game draws it (window.__sight): the crosshair
+ * through its middle, in the bent view. Returns whether it is in plain view too -
+ * nothing solid before it on that line - which is when a shot at it is a shot a
+ * viewer can see land. The walker's aim (walker.aim) is left on it either way.
  */
 const aimOn = i => dh((d, a) => {
-  const w = d.walker, p = w.p, bug = d.bugs.bugs[a.i];
-  const yaw = p.yaw, pitch = p.pitch;
-  const offsets = [];
-  for (let y = -15; y <= 15; y++) for (let x = -15; x <= 15; x++) offsets.push([x * 0.008, y * 0.008]);
-  offsets.sort((u, v) => Math.hypot(...u) - Math.hypot(...v));
-  for (const [dy, dp] of offsets) {
-    w.scene.setWalker(p.x, p.feet, p.z, a.eye, yaw + dy, pitch + dp);
-    w.updateAim();
-    if (w.aim.bug === bug) { p.yaw = yaw + dy; p.pitch = pitch + dp; return true; }
-  }
-  w.scene.setWalker(p.x, p.feet, p.z, a.eye, yaw, pitch);
+  const w = d.walker, p = w.p;
+  const got = window.__sight(w, d.bugs.bugs[a.i], p, a.eye);
+  if (got) { p.yaw = got.yaw; p.pitch = got.pitch; }
+  w.scene.setWalker(p.x, p.feet, p.z, a.eye, p.yaw, p.pitch);
   w.updateAim();
-  return false;
+  return !!got?.clear;
 }, { i, eye: EYE });
 const bugAt = i => dh((d, i) => { const b = d.bugs.bugs[i]; return { x: b.pos.x, y: b.pos.y + 0.05, z: b.pos.z, caught: b.caught }; }, i);
 /**
@@ -415,10 +449,15 @@ const at = (sel) => (Array.isArray(sel) ? { x: VIEW.width * sel[0], y: VIEW.heig
 // Each action is `run` (does it) and `length` (the seconds it will take, which is
 // what the progress line counts against; a step that can end early is counted at
 // its longest).
-const CLICK = 0.7, TAKE = 2.5, APPROACH = 2.5, SETTLE = 0.3, OPENS = 1.3;
+const CLICK = 0.7, TAKE = 2.5, APPROACH = 2.5, SETTLE = 0.3, AIM_WAIT = 0.6, OPENS = 1.3;
 const HOP_AIM = 1.4, GRAPPLE_BITE = 1.2, GRAPPLE_REEL = 4;
 const LIST_OPEN = 0.5, LIST_READ = 0.35;
-const ARRIVAL = 5; // walk.js ARRIVAL: the first walk's flight in
+const ARRIVAL = 5; // walk.js ARRIVAL: the first walk's flight in, in the walker's time
+// The walker's time is not the video's. walk.js advances by each frame's time but at
+// most MAX_DT a frame, so at under 20 fps (a --preview's 10) the flight takes more
+// frames than ARRIVAL seconds of them - twice as many at 10 fps.
+const MAX_DT = 0.05; // walk.js loop
+const arrivalFrames = () => Math.ceil(ARRIVAL / Math.min(MAX_DT, 1 / FPS));
 const actions = {
   caption: { length: () => 0, run: st => caption(st.text ?? '', st.sub ?? '') },
   hold: { length: st => st.s, run: st => hold(st.s) },
@@ -429,7 +468,19 @@ const actions = {
   click: { length: st => (st.s ?? CLICK) + 2 / FPS, run: st => clickAt(st.target, st.s ?? CLICK) },
   type: { length: st => (2 * st.text.length) / FPS, run: st => typeSlowly(st.text) },
   set: { length: () => 0, run: st => choose(st.target, st.value) },
-  choose: { length: () => 1 / FPS, run: st => frame(() => choose(st.target, st.value)) },
+  // With `fade`, the frame before stays over the page and fades out over that many
+  // seconds of the page's own clock - a day turning to night rather than a cut to it -
+  // while the next steps are already filmed underneath.
+  choose: {
+    length: () => 1 / FPS,
+    async run(st) {
+      if (st.fade && n > 0) {
+        const last = fs.readFileSync(path.join(frames, `f${String(n - 1).padStart(5, '0')}.jpg`)).toString('base64');
+        await page.evaluate(({ src, ms }) => window.__fade(src, ms), { src: `data:image/jpeg;base64,${last}`, ms: st.fade * 1000 });
+      }
+      await frame(() => choose(st.target, st.value));
+    },
+  },
   key: { length: () => 1 / FPS, run: st => frame(() => page.keyboard.press(st.key)) },
   // A select, chosen the way a person does it: a click opens the list, the pointer
   // goes down it to the option, and a click there takes it. The list is drawn into
@@ -466,7 +517,7 @@ const actions = {
   // the page is flown in (walk.js startArrival); it is landed in the street the story
   // goes on in, and filmed until it is down.
   walk: {
-    length: () => CLICK + 2 / FPS + ARRIVAL,
+    length: () => CLICK + 2 / FPS + arrivalFrames() / FPS,
     async run(st) {
       if (await dh(d => d.walker.active)) { if (st.hide) await overlays(st.hide, true); return ready(); }
       const c = await center('#walk');
@@ -482,7 +533,11 @@ const actions = {
           if (a && spot) { Object.assign(a.land, spot, { pitch: 0.05 }); a.t = 0; }
         }, stage?.spot);
       });
-      for (let k = 0; k < frames_(ARRIVAL + 1) && await dh(d => !!d.walker.arrival); k++) await frame();
+      // Filmed until it is down. It has to be: while it flies it overrides every
+      // position the director sets, and nothing is aimed, so a catch made then
+      // catches nothing.
+      for (let k = 0; k < arrivalFrames() + FPS && await dh(d => !!d.walker.arrival); k++) await frame();
+      await land();
     },
   },
 
@@ -491,22 +546,32 @@ const actions = {
   // out. A catch opens its finding and holds the walker, as the map does; after
   // `read` seconds of it the walk goes on.
   catch: {
-    length: st => APPROACH + SETTLE + (st.held ?? 0) + TAKE + OPENS + (st.read ?? 0) + 0.4,
+    length: st => APPROACH + SETTLE + AIM_WAIT + 1 / FPS + (st.held ?? 0) + TAKE + OPENS + (st.read ?? 0) + 0.4,
     async run(st) {
       await ready();
+      // The tool first: whether a bug is in its sight depends on what it reaches.
+      await dh((d, id) => { if (d.walker.primary.id !== id) d.walker.setTool(id); }, st.tool);
       let me = await state();
       const found = await streetBug(me, st.distance);
-      if (!found) { say(`  ${st.tool}: no bug left in the streets`); return; }
+      if (!found) { say(`  ${st.tool}: no bug to be walked up to and seen from the street`); return; }
       const { i, spot } = found;
-      await dh((d, id) => { if (d.walker.primary.id !== id) d.walker.setTool(id); }, st.tool);
+      if (found.cut) say(`  ${st.tool}: no bug both walkable and in sight (${found.why}); cutting to bug ${i}`);
+      if (found.cut) {
+        // A cut, not a walk through the buildings in between: there, facing it.
+        const want = lookAngles(spot, await bugAt(i));
+        await view({ ...spot, ...want });
+        me = await state();
+      }
       const from = { ...me };
       // Walked, roughly: a fifth of the way a second, however far, within limits.
       const walkTime = Math.min(APPROACH, Math.max(0.8, Math.hypot(spot.x - me.x, spot.z - me.z) / 5));
       // Toward the bug's spot as it is each frame, not as it was when chosen: a bug
       // that rounds a corner meanwhile would leave the walker facing a wall.
+      // On the ground all the way, as walking is: the path was chosen clear of buildings.
       await hold(walkTime, async t => {
         const e = ease(t), to = await spotOf(i, st.distance);
-        const here = { x: lerp(from.x, to.x, e), z: lerp(from.z, to.z, e), feet: lerp(from.feet, to.feet, e) };
+        const here = { x: lerp(from.x, to.x, e), z: lerp(from.z, to.z, e) };
+        here.feet = await groundAt(here.x, here.z);
         const want = lookAngles(here, await bugAt(i));
         return view({ ...here, yaw: turn(from.yaw, want.yaw, e), pitch: lerp(from.pitch, want.pitch, e) });
       });
@@ -514,24 +579,44 @@ const actions = {
       const track = async () => {
         const to = await spotOf(i, st.distance);
         me = await state();
-        const here = { x: lerp(me.x, to.x, 0.3), z: lerp(me.z, to.z, 0.3), feet: lerp(me.feet, to.feet, 0.3) };
+        const here = { x: lerp(me.x, to.x, 0.3), z: lerp(me.z, to.z, 0.3) };
+        here.feet = await groundAt(here.x, here.z);
         await view({ ...here, ...lookAngles(here, await bugAt(i)) });
         return aimOn(i);
       };
       await hold(SETTLE, track);
+      // Fired only with the crosshair on the bug and the bug in plain view: a lamp post
+      // or a corner that comes between them meanwhile is waited out, for a moment.
+      let on = false;
+      for (let k = 0; k < frames_(AIM_WAIT) && !on; k++) await frame(async () => { on = await track(); });
+      if (!on) {
+        // Better no shot than one into a wall after a bug nobody can see.
+        say(`  ${st.tool}: bug ${i} not fired at: it did not come into plain view`);
+        await hold(0.4);
+        return;
+      }
+      // What the crosshair was on when the tool went off, for the log if it misses.
+      const aimed = () => dh((d, i) => {
+        const w = d.walker, a = w.aim, b = d.bugs.bugs[i];
+        return { on: a.bug ? (a.bug === b ? 'the bug' : `bug ${d.bugs.bugs.indexOf(a.bug)}`) : a.box ? `the ${a.box.kind} ${a.box.node?.name ?? ''}`.trim() : 'nothing',
+          far: a.far, away: Math.hypot(b.pos.x - w.p.x, b.pos.y - (w.p.feet + 0.45), b.pos.z - w.p.z), frozen: w.frozen, arriving: !!w.arrival };
+      }, i);
+      let shot;
       if (st.held) {
-        await dh(d => { d.walker.firing = true; d.walker.fire(); });
+        // The first shot in a frame that aims first, as every one after it is.
+        await frame(async () => { await track(); shot = await aimed(); await dh(d => { d.walker.firing = true; d.walker.fire(); }); });
         await hold(st.held, track);
         await dh(d => { d.walker.firing = false; });
       } else {
-        await frame(async () => { await track(); await dh(d => d.walker.fire()); });
+        await frame(async () => { await track(); shot = await aimed(); await dh(d => d.walker.fire()); });
       }
       for (let k = 0; k < frames_(TAKE); k++) {
         await frame(track);
         if ((await bugAt(i)).caught) break;
       }
       const caught = (await bugAt(i)).caught;
-      say(`  ${st.tool}: bug ${i} ${caught ? 'caught' : 'missed'}`);
+      say(`  ${st.tool}: bug ${i} ${caught ? 'caught' : `missed: fired at ${shot.on}${shot.far ? ' (out of reach)' : ''}, ` +
+        `the bug ${shot.away.toFixed(2)} away${shot.frozen ? ', the walker held' : ''}${shot.arriving ? ', still arriving' : ''}`}`);
       // The finding opens once the catch has played out (TAKE_MS in bugs.js, about a
       // second), not at once: wait for it, so it is read here rather than landing on
       // whatever the next step is doing.
@@ -824,7 +909,61 @@ await ctx.addInitScript(() => {
       document.body.appendChild(r);
     };
     addEventListener('mousedown', e => { place(e); window.__ripple(e.clientX, e.clientY); }, true);
+    // Where to look to see bug `b` from `at` (x, z, feet), as the game draws it. The
+    // walk view is bent (scene.unbend), so angles worked out on the flat map miss a
+    // bug a few units off; and the crosshair takes a bug its ray passes near
+    // (walker.updateAim), which a bug just round a building's corner is. So the view
+    // is searched, coarse then fine, for the aim whose crosshair ray passes closest to
+    // the bug's middle. That is in plain view (clear) when it passes through the
+    // middle: a building corner that hides the middle leaves only rays grazing the
+    // bug's edge that the crosshair still takes. How near a ray passes is measured on
+    // the line from the eye through the point the crosshair took the bug at, which
+    // near the bug is the ray itself; that point alone is where the ray first came
+    // within reach of the bug, up to a third of a unit short of it. Returns
+    // { yaw, pitch, clear }, or null when no aim finds it; leaves the camera where it
+    // was put last.
+    window.__sight = (w, b, at, eye) => {
+      if (!b) return null;
+      const dx = b.pos.x - at.x, dz = b.pos.z - at.z;
+      const yaw0 = Math.atan2(-dx, -dz), pitch0 = Math.atan2(b.pos.y + 0.05 - (at.feet + eye), Math.hypot(dx, dz));
+      let best = null;
+      const look = (yaw, pitch) => {
+        w.scene.setWalker(at.x, at.feet, at.z, eye, yaw, pitch);
+        w.updateAim();
+        if (w.aim.bug !== b) return;
+        const q = w.aim.point, e = { x: at.x, y: at.feet + eye, z: at.z };
+        const r = { x: q.x - e.x, y: q.y - e.y, z: q.z - e.z }, c = { x: b.pos.x - e.x, y: b.pos.y + 0.05 - e.y, z: b.pos.z - e.z };
+        const rr = r.x * r.x + r.y * r.y + r.z * r.z || 1, u = (c.x * r.x + c.y * r.y + c.z * r.z) / rr;
+        const miss = Math.hypot(c.x - r.x * u, c.y - r.y * u, c.z - r.z * u);
+        if (!best || miss < best.miss) best = { yaw, pitch, miss };
+      };
+      for (let i = -6; i <= 6; i++) for (let j = -6; j <= 6; j++) look(yaw0 + i * 0.025, pitch0 + j * 0.025);
+      if (!best) return null;
+      const { yaw: y1, pitch: p1 } = best;
+      for (let i = -5; i <= 5; i++) for (let j = -5; j <= 5; j++) look(y1 + i * 0.005, p1 + j * 0.005);
+      w.scene.setWalker(at.x, at.feet, at.z, eye, best.yaw, best.pitch);
+      w.updateAim();
+      return { yaw: best.yaw, pitch: best.pitch, clear: best.miss < 0.12 };
+    };
+    // A crossfade: a still of the frame before, over everything but the caption and
+    // the pointer, fading out on the page's clock (choose with fade).
+    window.__fade = (src, ms) => {
+      document.getElementById('promo-fade')?.remove();
+      const img = document.createElement('img');
+      img.id = 'promo-fade';
+      img.src = src;
+      img.dataset.born = String(performance.now());
+      img.dataset.ms = String(ms);
+      img.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;object-fit:cover;z-index:99998;pointer-events:none';
+      document.body.appendChild(img);
+    };
     const tick = () => {
+      const fade = document.getElementById('promo-fade');
+      if (fade) {
+        const t = (performance.now() - Number(fade.dataset.born)) / Number(fade.dataset.ms);
+        if (t >= 1) fade.remove();
+        else fade.style.opacity = String(1 - (t < 0.5 ? 2 * t * t : 1 - (-2 * t + 2) ** 2 / 2));
+      }
       c.style.display = document.pointerLockElement || window.__hideCursor ? 'none' : 'block';
       for (const r of document.querySelectorAll('.promo-ripple')) {
         const age = (performance.now() - Number(r.dataset.born)) / 450;
@@ -1025,7 +1164,14 @@ const state = () => dh(d => ({ ...d.walker.p, frozen: d.walker.frozen }));
 const groundAt = (x, z) => dh((d, a) => d.walker.height(a.x, a.z), { x, z });
 /** Makes sure the walker is walking: nothing read or open holds them still. */
 async function ready() {
+  await land();
   if (await dh(d => d.walker.frozen)) await resume();
+}
+/** Ends a way in (walk.js startArrival) still under way, which would override the director. */
+async function land() {
+  if (await dh(d => { const a = !!d.walker.arrival; if (a) d.walker.endArrival(true); return a; })) {
+    say('  the way in was still under way; landed it');
+  }
 }
 async function resume() {
   // A catch opens its finding and holds the walker, as a second hit on a building
