@@ -59,6 +59,10 @@ type Target struct {
 	Floating bool
 	// Unresolved means the package's owning module is unknown (missing from manifests).
 	Unresolved bool
+	// Origin is where the package was installed from when that was not a package
+	// index - a local directory, an archive, a VCS URL - which is how a package no
+	// index has is known at all. Nothing so marked is named to an index.
+	Origin string
 }
 
 type Resolver interface {
@@ -75,6 +79,13 @@ type Transitive interface {
 	// Dependencies lists what t depends on. Nothing known and nothing to declare look
 	// alike here; both return no targets.
 	Dependencies(t Target) []Target
+}
+
+// Installed is the optional part of a Transitive that says when its answer comes from
+// what an environment has installed rather than from a lock file, which the
+// resolution report tells apart.
+type Installed interface {
+	Installed(t Target) bool
 }
 
 type Import struct {

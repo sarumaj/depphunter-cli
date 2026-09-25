@@ -150,7 +150,7 @@ func run(ctx context.Context, cfg config.Config) error {
 	opts := anal.Options{
 		Scan: scan.Options{Exclude: cfg.Exclude, MaxFileSize: cfg.MaxFileSize},
 		Plugins: []lang.Plugin{
-			golang.Plugin{}, javascript.Plugin{}, python.Plugin{}, rust.Plugin{}, java.Plugin{},
+			golang.Plugin{}, javascript.Plugin{}, python.Plugin{Interpreter: cfg.Python, Getenv: os.Getenv}, rust.Plugin{}, java.Plugin{},
 			csharp.Plugin{}, powershell.Plugin{}, ci.Plugin{}, markdown.Plugin{},
 		},
 		Cache:        c,

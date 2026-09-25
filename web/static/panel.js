@@ -12,6 +12,10 @@ import { fmt, h, escapeHTML } from './dom.js';
 
 // indexHost keeps the part of an index URL that identifies it on a stat tile.
 const indexHost = url => url.replace(/^https?:\/\//, '').replace(/\/.*$/, '');
+// originPlace keeps the part of where a package was installed from that says which:
+// the last two parts of a directory, or a repository's host and path.
+const originPlace = url => url.replace(/^[\w+.-]+:\/\//, '').replace(/[?#@].*$/, '').replace(/\/+$/, '')
+  .split('/').slice(-2).join('/');
 
 const HLJS = {
   Go: 'go', JavaScript: 'javascript', TypeScript: 'typescript', Python: 'python', Rust: 'rust',
@@ -242,7 +246,9 @@ export class Panel {
           n.requested ? stat(n.requested, 'requested') : null,
           stat(fmt.format(n.importers), 'importing files'),
           stat(n.parentNode?.name || '', 'ecosystem'),
-          n.index ? stat(indexHost(n.index), n.indexUnknown ? 'index (unknown here)' : 'index') : null);
+          // Implements: REQ-PY-015
+          n.origin ? stat(originPlace(n.origin), 'installed from')
+            : n.index ? stat(indexHost(n.index), n.indexUnknown ? 'index (unknown here)' : 'index') : null);
       case 'ecosystem':
         return h('div', { class: 'stats' }, stat(fmt.format(n.children.length), 'packages'));
     }

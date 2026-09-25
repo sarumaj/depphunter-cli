@@ -233,6 +233,7 @@ depphunter --export html -o map.html  # write a self-contained map
 | `--resolve-depth`   | `0`                       | levels of transitive dependencies to resolve from lock files; `-1` for all              |
 | `--private`         | *(GOPRIVATE)*             | glob naming packages the organization owns; never sent to a public index or to OSV      |
 | `--trust-index`     | *(none)*                  | index URL to treat as configured on this machine, so a repository naming it is unmarked |
+| `--python`          | *(VIRTUAL_ENV, `.venv`)*  | Python interpreter whose installed packages resolve imports no package index has        |
 | `--online`          | `false`                   | query package indexes for what the project's own files do not record                    |
 | `--explain`         | `false`                   | write the resolution report once the analysis is complete                               |
 | `--lsp`             |                           | resolve symbol references using the installed language servers                          |
@@ -1203,6 +1204,22 @@ GraphML exports include the reference edges.
 | PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`) | PowerShell Gallery, built-in modules        |
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)      | GitHub Actions, GitLab CI, Container images |
 | Markdown                | links to files and directories in the repository (inline, reference, autolink, and the `href` and `src` of raw HTML); headings become the file's symbols                          | *(none: a link is not a package)*           |
+
+Python packages that no index has - an in-house package installed from a
+directory, a wheel file or a Git repository - are resolved from what a Python
+environment has installed. The environment is the interpreter named with
+`--python` (`DEPPHUNTER_PYTHON`, or `python:` in the user's own configuration
+file), otherwise the activated virtual environment (`VIRTUAL_ENV`), otherwise
+the project's own `.venv` or `venv`. Its site-packages directories are read,
+along with the base interpreter's when the virtual environment includes system
+site-packages; the interpreter itself is never run. A distribution counts only
+when its metadata records that it was installed from somewhere other than an
+index (`direct_url.json`, PEP 610). Such a package takes its name and version
+from its installed metadata, and its dependencies from its `Requires-Dist`. It
+is treated as private: it is never named to an index or to OSV, and the side
+panel says where it was installed from. An import that an index-installed
+distribution provides but no manifest declares remains unresolved, but under
+that distribution's name.
 
 Java imports name packages rather than artifacts, so they are matched to Maven
 group identifiers by prefix, by shared leading segments, by artifact name, and

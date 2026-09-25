@@ -75,6 +75,8 @@ type resolver struct {
 	distMap map[string]*dist
 	// tree maps a normalized distribution name to what a lock file says it needs.
 	tree map[string][]string
+	// env is the interpreter's installed distributions, or nil (findEnvironment).
+	env *environment
 }
 
 // Implements: REQ-PY-003, REQ-PY-006, REQ-PY-009
@@ -233,10 +235,38 @@ func (r *resolver) distribution(parts []string) lang.Target {
 	}
 	for _, c := range candidates {
 		if d := r.distMap[normalize(c)]; d != nil {
-			return lang.Target{Ecosystem: ecoPyPI, Package: d.name, Version: d.version, Requested: d.requested, Pinned: d.pinned}
+			return r.declared(d)
 		}
 	}
+	// What the environment says provides the import settles what the names could not:
+	// a distribution declared under a name its modules do not share, or one no index
+	// has that is installed all the same. One an index has and nothing declares is
+	// still undeclared, under its own name now rather than a guess.
+	// Implements: REQ-PY-015
+	if in := r.env.provider(parts); in != nil {
+		if d := r.distMap[normalize(in.name)]; d != nil {
+			return r.declared(d)
+		}
+		if in.origin != "" {
+			return lang.Target{Ecosystem: ecoPyPI, Package: in.name, Version: in.version, Origin: in.origin}
+		}
+		return lang.Target{Ecosystem: ecoPyPI, Package: in.name, Unresolved: true}
+	}
 	return lang.Target{Ecosystem: ecoPyPI, Package: candidates[0], Unresolved: true}
+}
+
+// declared is the target of a distribution the project declares. Installed from
+// outside any index, it says where from, and takes the installed version when the
+// project names none.
+func (r *resolver) declared(d *dist) lang.Target {
+	t := lang.Target{Ecosystem: ecoPyPI, Package: d.name, Version: d.version, Requested: d.requested, Pinned: d.pinned}
+	if in := r.env.get(d.name); in != nil && in.origin != "" {
+		t.Origin = in.origin
+		if t.Version == "" {
+			t.Version = in.version
+		}
+	}
+	return t
 }
 
 var separators = regexp.MustCompile(`[-_.]+`)
@@ -510,6 +540,9 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 	if t.Ecosystem != ecoPyPI {
 		return nil
 	}
+	if _, locked := r.tree[normalize(t.Package)]; !locked {
+		return r.installedDependencies(t)
+	}
 	var out []lang.Target
 	for _, dep := range r.tree[normalize(t.Package)] {
 		name, version, pinned := dep, "", false
@@ -517,6 +550,38 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 			name, version, pinned = d.name, d.version, d.pinned
 		}
 		out = append(out, lang.Target{Ecosystem: ecoPyPI, Package: name, Version: version, Pinned: pinned})
+	}
+	return out
+}
+
+// Installed implements lang.Installed: whether Dependencies answers for t from the
+// environment rather than from a lock file.
+func (r *resolver) Installed(t lang.Target) bool {
+	_, locked := r.tree[normalize(t.Package)]
+	in := r.env.get(t.Package)
+	return !locked && in != nil && in.origin != ""
+}
+
+// installedDependencies answers for a distribution no lock file covers and no index
+// can be asked about, because it was installed from somewhere else: what its own
+// metadata requires, as the environment has it installed.
+//
+// Implements: REQ-PY-015
+func (r *resolver) installedDependencies(t lang.Target) []lang.Target {
+	in := r.env.get(t.Package)
+	if in == nil || in.origin == "" {
+		return nil
+	}
+	var out []lang.Target
+	for _, req := range in.requires {
+		switch dep := r.env.get(req); {
+		case r.distMap[normalize(req)] != nil:
+			out = append(out, r.declared(r.distMap[normalize(req)]))
+		case dep != nil:
+			out = append(out, lang.Target{Ecosystem: ecoPyPI, Package: dep.name, Version: dep.version, Origin: dep.origin})
+		default:
+			out = append(out, lang.Target{Ecosystem: ecoPyPI, Package: req})
+		}
 	}
 	return out
 }

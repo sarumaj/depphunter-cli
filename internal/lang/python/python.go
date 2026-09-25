@@ -2,7 +2,8 @@
 // (relative imports, the importing file's directory, the project root, src/ layouts
 // and every directory holding a pyproject.toml, setup.py or setup.cfg), to the
 // standard library, or to distributions declared in requirements files, pyproject.toml
-// or Pipfile, with versions pinned by poetry.lock, uv.lock, pdm.lock or Pipfile.lock.
+// or Pipfile, with versions pinned by poetry.lock, uv.lock, pdm.lock or Pipfile.lock -
+// or, for what no index has, to what the interpreter's environment has installed.
 package python
 
 import (
@@ -48,7 +49,15 @@ const query = `
 // Implements: REQ-LANG-007
 var grammar = treesitter.MustGrammar("python", python.Language(), query)
 
-type Plugin struct{}
+// Plugin is the Python analyzer. Interpreter and Getenv choose the environment whose
+// installed distributions resolve what nothing in the repository declares
+// (findEnvironment); the zero value reads only the project's own .venv or venv.
+type Plugin struct {
+	// Interpreter is a Python interpreter's path (--python).
+	Interpreter string
+	// Getenv reads the process environment, for an activated VIRTUAL_ENV.
+	Getenv func(string) string
+}
 
 func (Plugin) Name() string { return "python" }
 
@@ -66,8 +75,10 @@ func (Plugin) Ecosystems() []lang.Ecosystem {
 
 func (Plugin) Version() int { return 1 }
 
-func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
-	return newResolver(all, lang.Claimed(Plugin{}, all)), nil
+func (p Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
+	r := newResolver(all, lang.Claimed(p, all))
+	r.env = findEnvironment(root, p.Interpreter, p.Getenv)
+	return r, nil
 }
 
 // Implements: REQ-PY-001, REQ-PY-014, REQ-LANG-024

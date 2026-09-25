@@ -620,7 +620,7 @@ if (flag('plan')) {
 // ------------------------------------------------------------------ the rig
 
 fs.mkdirSync(OUT, { recursive: true });
-const BIN = path.join(os.tmpdir(), 'depphunter-showcase-bin', 'depphunter');
+const BIN = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'depphunter-record-')), 'depphunter');
 console.log('building depphunter...');
 execFileSync('go', ['build', '-o', BIN, './cmd/depphunter'], { cwd: REPO, stdio: 'inherit' });
 const frames = path.join(OUT, 'frames');

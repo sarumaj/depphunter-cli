@@ -90,6 +90,11 @@ type Node struct {
 	Std bool `json:"std,omitempty"`
 	// Unresolved marks packages whose owning module could not be determined from manifests.
 	Unresolved bool `json:"unresolved,omitempty"`
+	// Origin is where a package no index has was installed from: a local directory,
+	// an archive or a VCS URL. Such a package is also Private.
+	//
+	// Implements: REQ-PY-015
+	Origin string `json:"origin,omitempty"`
 }
 
 // Implements: REQ-MOD-006

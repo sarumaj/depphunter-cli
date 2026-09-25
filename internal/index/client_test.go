@@ -370,3 +370,24 @@ func TestAFailedLookupIsAskedAgainLater(t *testing.T) {
 		t.Errorf("after the index recovered: %v (asked %d times)", got, asked)
 	}
 }
+
+// Verifies: REQ-PY-015
+func TestAPackageInstalledFromElsewhereIsNotAsked(t *testing.T) {
+	srv, asked := stubIndex(t)
+	cfg := New()
+	cfg.Add(PyPI, Source{URL: srv.URL, Trusted: true})
+	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, nil, scope.New(nil))
+	rep := trace.New(1, true, nil, nil)
+	c.Trace(rep)
+
+	if deps := c.Dependencies(lang.Target{Ecosystem: PyPI, Package: "acme-core", Version: "1.4.0", Origin: "file:///src/acme-core"}); len(deps) != 0 {
+		t.Errorf("answered %v for a package no index has", names(deps))
+	}
+	for _, path := range *asked {
+		t.Errorf("asked the index for %s", path)
+	}
+	rep.Finish()
+	if got := rep.Lookups; len(got) != 1 || got[0].Reason != trace.ReasonInstalled {
+		t.Errorf("reported %+v, want one lookup declined as installed", got)
+	}
+}

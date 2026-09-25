@@ -163,6 +163,9 @@ func (r *Report) answers() string {
 	if t.FromLock > 0 {
 		parts = append(parts, fmt.Sprintf("%d from lock files", t.FromLock))
 	}
+	if t.FromInstalled > 0 {
+		parts = append(parts, fmt.Sprintf("%d from what is installed", t.FromInstalled))
+	}
 	if from := t.FromIndex + t.FromCache + t.FromMemo; from > 0 {
 		parts = append(parts, fmt.Sprintf("%d from indexes (%d fetched, %d cached, %d already asked)",
 			from, t.FromIndex, t.FromCache, t.FromMemo))
