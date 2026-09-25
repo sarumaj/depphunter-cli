@@ -94,6 +94,14 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 		return nil
 	}
 	l := trace.Lookup{Ecosystem: t.Ecosystem, Package: t.Package, Version: t.Version, Answer: trace.NoAnswer}
+	// A package installed from a directory, an archive or a repository is on no index:
+	// a question about it could only name it to somebody.
+	// Implements: REQ-PY-015
+	if t.Origin != "" {
+		l.Reason = trace.ReasonInstalled
+		c.report(l)
+		return nil
+	}
 	index, known := c.cfg.For(t.Ecosystem, t.Package)
 	l.Index = index
 	if !known {

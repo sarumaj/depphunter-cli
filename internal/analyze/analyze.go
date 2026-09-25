@@ -190,9 +190,14 @@ type chain struct {
 func (c chain) Dependencies(t lang.Target) []lang.Target {
 	if c.local != nil {
 		if deps := c.local.Dependencies(t); len(deps) > 0 {
+			answer := trace.FromLock
+			// Implements: REQ-PY-015
+			if in, ok := c.local.(lang.Installed); ok && in.Installed(t) {
+				answer = trace.FromInstalled
+			}
 			c.rep.Add(trace.Lookup{
 				Ecosystem: t.Ecosystem, Package: t.Package, Version: t.Version,
-				Answer: trace.FromLock, Deps: len(deps),
+				Answer: answer, Deps: len(deps),
 			})
 			return deps
 		}
@@ -409,6 +414,15 @@ func (b *builder) target(t lang.Target, ecosystems map[string]lang.Ecosystem) st
 	}
 	if b.private != nil && !n.Private {
 		n.Private = b.private(t.Ecosystem, t.Package)
+	}
+	// Installed from outside every index, it is as good as the organization's own:
+	// asking an index or the vulnerability database about it could only disclose it.
+	// Implements: REQ-PY-015
+	if t.Origin != "" {
+		n.Private = true
+		if n.Origin == "" {
+			n.Origin = t.Origin
+		}
 	}
 	if n.Version == "" {
 		n.Version = t.Version

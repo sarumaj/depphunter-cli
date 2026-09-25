@@ -605,3 +605,26 @@ func TestUIDefaultsRefuseWhatTheyCannotSeed(t *testing.T) {
 		}
 	}
 }
+
+// Verifies: REQ-PY-015
+func TestPythonInterpreterIsTheUsersChoice(t *testing.T) {
+	root, user := t.TempDir(), t.TempDir()
+	write(t, filepath.Join(root, ProjectFile), "python: /tmp/evil/bin/python\n")
+	cfg, err := load(t, []string{root}, nil, "")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if cfg.Python != "" {
+		t.Errorf("project config chose the interpreter %q", cfg.Python)
+	}
+	write(t, filepath.Join(user, "config.yaml"), "python: /opt/py/bin/python3.12\n")
+	if cfg, err = load(t, []string{root}, nil, user); err != nil || cfg.Python != "/opt/py/bin/python3.12" {
+		t.Errorf("user config: %q, %v", cfg.Python, err)
+	}
+	if cfg, err = load(t, []string{root}, map[string]string{"DEPPHUNTER_PYTHON": "/env/python"}, ""); err != nil || cfg.Python != "/env/python" {
+		t.Errorf("DEPPHUNTER_PYTHON: %q, %v", cfg.Python, err)
+	}
+	if cfg, err = load(t, []string{"--python", "/flag/python", root}, nil, ""); err != nil || cfg.Python != "/flag/python" {
+		t.Errorf("--python: %q, %v", cfg.Python, err)
+	}
+}

@@ -118,6 +118,12 @@ type Config struct {
 	//
 	// Implements: REQ-SUP-042
 	TrustIndexes []string `yaml:"trust_indexes" mapstructure:"trust_indexes"`
+	// Python is the interpreter whose installed distributions resolve Python imports
+	// that no index has (internal/lang/python); it is read, never run. Empty uses an
+	// activated VIRTUAL_ENV, else the project's own .venv or venv.
+	//
+	// Implements: REQ-PY-015
+	Python string `yaml:"python" mapstructure:"python"`
 	// Findings are files (or globs) holding what a scanner already reported:
 	// govulncheck, npm audit, trivy, golangci-lint, eslint or osv-scanner JSON.
 	Findings []string `yaml:"findings" mapstructure:"findings"`
@@ -196,6 +202,9 @@ func RegisterFlags(fs *pflag.FlagSet) {
 	fs.StringArray("private", nil,
 		"glob naming packages your organization owns, as GOPRIVATE writes them (e.g. corp.example/*, npm:@acme/*); "+
 			"they are never asked of a public index nor sent to the vulnerability database; repeatable")
+	fs.String("python", "",
+		"Python interpreter whose installed packages resolve imports no package index has (default: an activated "+
+			"VIRTUAL_ENV, else the project's .venv or venv); its files are read, it is never run")
 	fs.StringArray("trust-index", nil,
 		"index URL to treat as configured on this machine, so a repository that names it is not marked; repeatable")
 	// Implements: REQ-FND-001
@@ -221,7 +230,7 @@ var flagKeys = map[string]string{
 	"addr": "addr", "max-file-size": "max_file_size", "watch": "watch",
 	"history-commits": "history_commits", "resolve-depth": "resolve_depth", "online": "online",
 	"explain": "explain",
-	"lsp":     "lsp", "lsp-timeout": "lsp_timeout", "editor": "editor",
+	"lsp":     "lsp", "lsp-timeout": "lsp_timeout", "editor": "editor", "python": "python",
 	"theme": "ui.theme", "color-by": "ui.color_by", "height-scale": "ui.height_scale", "style": "ui.style",
 	"show-std": "ui.show_std", "expand-depth": "ui.expand_depth",
 }
@@ -243,7 +252,7 @@ var envKeys = map[string]string{
 	"history": "HISTORY", "history_commits": "HISTORY_COMMITS", "resolve_depth": "RESOLVE_DEPTH", "online": "ONLINE",
 	"explain": "EXPLAIN",
 	"vulns":   "VULNS", "links": "LINKS", "lsp": "LSP", "lsp_timeout": "LSP_TIMEOUT",
-	"editor": "EDITOR", "ui.theme": "THEME", "ui.color_by": "COLOR_BY", "ui.height_scale": "HEIGHT_SCALE", "ui.style": "STYLE",
+	"editor": "EDITOR", "python": "PYTHON", "ui.theme": "THEME", "ui.color_by": "COLOR_BY", "ui.height_scale": "HEIGHT_SCALE", "ui.style": "STYLE",
 	"ui.show_std": "SHOW_STD", "ui.expand_depth": "EXPAND_DEPTH", "ui.tool": "TOOL",
 }
 
@@ -358,7 +367,7 @@ func setDefaults(v *viper.Viper, d Config) {
 		"findings": d.Findings, "vulns": d.Vulns, "links": d.Links,
 		"private": d.Private, "trust_indexes": d.TrustIndexes,
 		"lsp": d.LSP, "lsp_timeout": d.LSPTimeout,
-		"editor":   d.Editor,
+		"editor": d.Editor, "python": d.Python,
 		"ui.theme": d.UI.Theme, "ui.color_by": d.UI.ColorBy, "ui.height_scale": d.UI.HeightScale, "ui.style": d.UI.Style,
 		"ui.show_std": d.UI.ShowStd, "ui.expand_depth": d.UI.ExpandDepth, "ui.tool": d.UI.Tool,
 		"ui.hide_languages": d.UI.HideLanguages, "ui.hide_islands": d.UI.HideIslands, "ui.path_filter": d.UI.PathFilter,
@@ -437,6 +446,8 @@ func mergeFile(v *viper.Viper, name string, required, trusted bool) error {
 		// Implements: REQ-SUP-020, REQ-SUP-041, REQ-SUP-043
 		delete(m, "editor")
 		delete(m, "online")
+		// Which interpreter's files are read is this machine's business too.
+		delete(m, "python")
 		delete(m, "trust_indexes")
 		// A repository may point at its own scanner reports, which is how a project
 		// ships the output its CI already produces - but only at paths inside itself.

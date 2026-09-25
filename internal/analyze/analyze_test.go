@@ -743,3 +743,21 @@ func TestCachedRunsResolveAgainstTheCurrentManifest(t *testing.T) {
 		t.Errorf("second run: version %s, want the one go.mod names now", v)
 	}
 }
+
+// Verifies: REQ-PY-015
+func TestAPackageInstalledFromElsewhereIsPrivate(t *testing.T) {
+	root := t.TempDir()
+	writeProject(t, root, map[string]string{"a.fake": "acme-core\n"})
+	p := fakePlugin{targets: map[string]lang.Target{
+		"acme-core": {Ecosystem: "fake-eco", Package: "acme-core", Version: "1.4.0", Origin: "file:///src/acme-core"},
+	}}
+	g, _, err := Run(context.Background(), root, Options{Plugins: []lang.Plugin{p}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, n := range g.Nodes {
+		if n.Kind == graph.KindPackage && (!n.Private || n.Origin != "file:///src/acme-core") {
+			t.Errorf("%s: private %v, origin %q", n.Name, n.Private, n.Origin)
+		}
+	}
+}

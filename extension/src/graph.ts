@@ -97,6 +97,14 @@ export interface GraphNode {
    * Unresolved marks packages whose owning module could not be determined from manifests.
    */
   unresolved?: boolean;
+
+  /**
+   * Origin is where a package no index has was installed from: a local directory,
+   * an archive or a VCS URL. Such a package is also Private.
+   *
+   * Implements: REQ-PY-015
+   */
+  origin?: string;
 }
 
 /**

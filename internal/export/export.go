@@ -97,7 +97,7 @@ func writeGraphML(w io.Writer, g *graph.Graph) error {
 		{"lang", "string"}, {"loc", "int"}, {"symbolKind", "string"}, {"line", "int"},
 		{"version", "string"}, {"requested", "string"}, {"floating", "boolean"}, {"transitive", "boolean"},
 		{"index", "string"}, {"indexUnknown", "boolean"}, {"private", "boolean"},
-		{"std", "boolean"}, {"unresolved", "boolean"},
+		{"std", "boolean"}, {"unresolved", "boolean"}, {"origin", "string"},
 	} {
 		doc.Keys = append(doc.Keys, gmlKey{ID: k.id, For: "node", Name: k.id, Type: k.typ})
 	}
@@ -142,6 +142,7 @@ func writeGraphML(w io.Writer, g *graph.Graph) error {
 		flag("private", n.Private)
 		flag("std", n.Std)
 		flag("unresolved", n.Unresolved)
+		add("origin", n.Origin)
 		doc.Graph.Nodes = append(doc.Graph.Nodes, gmlNode{ID: n.ID, Data: data})
 	}
 	for i, e := range g.Edges {

@@ -142,7 +142,7 @@ async function main() {
   const repo = path.resolve(arg('--repo', REPO));
   let bin = arg('--bin', '');
   if (!bin) {
-    bin = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'tourshot-')), 'depphunter');
+    bin = path.join(fs.mkdtempSync(path.join(os.tmpdir(), 'depphunter-tourshot-')), 'depphunter');
     console.log('building depphunter...');
     execFileSync('go', ['build', '-o', bin, './cmd/depphunter'], { cwd: REPO, stdio: 'inherit' });
   }

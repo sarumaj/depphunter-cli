@@ -28,6 +28,9 @@ type Answer string
 const (
 	// FromLock is the repository's own answer: a lock file it carries.
 	FromLock Answer = "lock"
+	// FromInstalled is what an installed package's own metadata says it requires, for
+	// a package no index has (a Python environment's Requires-Dist).
+	FromInstalled Answer = "installed"
 	// FromIndex is a package index, asked over the network.
 	FromIndex Answer = "index"
 	// FromCache is an index's answer, kept on disk from an earlier run.
@@ -51,6 +54,7 @@ const (
 	ReasonNoVersion   = "no version to ask for: a proxy serves a document per version"
 	ReasonUnsupported = "this ecosystem's index cannot be asked (an import names no artifact)"
 	ReasonNoIndex     = "depphunter asks no index for this ecosystem"
+	ReasonInstalled   = "installed from outside any index, so no index is asked about it"
 )
 
 // maxLookups is as many questions as one report keeps in full. Past it the counts go
@@ -155,12 +159,14 @@ type Totals struct {
 	Untrusted  int `json:"untrustedPackages"`
 	Asked      int `json:"asked"`
 	FromLock   int `json:"fromLock"`
-	FromIndex  int `json:"fromIndex"`
-	FromCache  int `json:"fromCache"`
-	FromMemo   int `json:"fromMemo"`
-	Unanswered int `json:"unanswered"`
-	Failed     int `json:"failed"`
-	Requests   int `json:"requests"`
+	// Implements: REQ-PY-015
+	FromInstalled int `json:"fromInstalled,omitempty"`
+	FromIndex     int `json:"fromIndex"`
+	FromCache     int `json:"fromCache"`
+	FromMemo      int `json:"fromMemo"`
+	Unanswered    int `json:"unanswered"`
+	Failed        int `json:"failed"`
+	Requests      int `json:"requests"`
 }
 
 // Report is one analysis's account of itself. A nil *Report records nothing, so the
@@ -266,6 +272,8 @@ func (r *Report) Add(l Lookup) {
 	switch l.Answer {
 	case FromLock:
 		r.Totals.FromLock++
+	case FromInstalled:
+		r.Totals.FromInstalled++
 	case FromIndex:
 		r.Totals.FromIndex++
 	case FromCache:
