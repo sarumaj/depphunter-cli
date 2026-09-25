@@ -12,6 +12,7 @@ export class Labels {
   }
 
   /** Chooses what may be labelled: the layout's boxes plus the focus (arcs, selection). */
+  // Implements: REQ-MAP-040, REQ-MAP-041
   set(boxes, focus, selected) {
     const c = [];
     for (const b of boxes) {
@@ -33,6 +34,7 @@ export class Labels {
   }
 
   /** Positions labels for the current camera; called after every render. */
+  // Implements: REQ-MAP-040, REQ-MAP-042
   draw() {
     const { root, scene } = this;
     const placed = [];

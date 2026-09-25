@@ -59,6 +59,8 @@ var (
 //
 // Fenced code is skipped, and so are code spans, because a link inside either is
 // printed rather than followed and checking it would report a defect in an example.
+//
+// Implements: REQ-MD-003, REQ-MD-004, REQ-MD-006, REQ-MD-009
 func Links(src []byte) []Link {
 	var out []Link
 	defined := map[string]bool{}
@@ -116,6 +118,8 @@ func Links(src []byte) []Link {
 
 // Headings reads the document's headings, which are what a fragment names and what a
 // Markdown file expands into on the map.
+//
+// Implements: REQ-MD-002
 func Headings(src []byte) []Heading {
 	var out []Heading
 	all := split(src)
@@ -147,6 +151,8 @@ func Headings(src []byte) []Heading {
 // Anchors is every name a fragment in this document may point at: the slug a renderer
 // gives each heading, with GitHub's numbering where one repeats, plus the anchors the
 // document sets itself.
+//
+// Implements: REQ-MD-008
 func Anchors(src []byte) map[string]bool {
 	out := map[string]bool{}
 	seen := map[string]int{}
@@ -178,6 +184,8 @@ func Anchors(src []byte) map[string]bool {
 // Slug is the anchor a renderer derives from a heading: its text with the formatting
 // taken off, lower-cased, everything but letters, digits, spaces, hyphens and
 // underscores dropped, and the spaces turned into hyphens.
+//
+// Implements: REQ-MD-008
 func Slug(text string) string {
 	var b strings.Builder
 	for _, r := range strings.ToLower(plain(text)) {
@@ -238,6 +246,8 @@ type line struct {
 // split cuts a document into lines, marking the fenced code - the fence lines
 // included. A fence closes on a run of the same character at least as long as the one
 // that opened it, which is what lets a ```` block hold ``` lines.
+//
+// Implements: REQ-MD-004
 func split(src []byte) []line {
 	var out []line
 	fence := ""

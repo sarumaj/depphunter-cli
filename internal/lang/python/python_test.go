@@ -14,6 +14,7 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 	return langtest.Analyze(t, Plugin{}, "testdata/repo")
 }
 
+// Verifies: REQ-PY-001, REQ-PY-002, REQ-PY-003, REQ-PY-005, REQ-PY-006, REQ-PY-007, REQ-PY-009, REQ-PY-010, REQ-PY-013
 func TestImportResolution(t *testing.T) {
 	res := analyze(t)
 	langtest.CheckImports(t, res["src/app/main.py"], map[string]lang.Target{
@@ -39,6 +40,7 @@ func TestImportResolution(t *testing.T) {
 	})
 }
 
+// Verifies: REQ-PY-004
 func TestScriptDirectoryImports(t *testing.T) {
 	got := map[string]lang.Target{}
 	for _, im := range analyze(t)["scripts/tool.py"].Imports {
@@ -52,6 +54,7 @@ func TestScriptDirectoryImports(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-LANG-023, REQ-LANG-024, REQ-PY-014
 func TestSymbols(t *testing.T) {
 	got := map[string]string{}
 	for _, s := range analyze(t)["src/app/main.py"].Symbols {
@@ -67,6 +70,7 @@ func TestSymbols(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-PY-011, REQ-PY-012
 func TestSetuptoolsManifests(t *testing.T) {
 	pypi := func(pkg, version string) lang.Target {
 		// "==" pins, everything else these manifests write is a lower bound.
@@ -86,6 +90,8 @@ func TestSetuptoolsManifests(t *testing.T) {
 
 // TestLockTree checks the dependency edges a lock file records; uv writes them as a
 // list of tables, poetry as a table, pdm as requirement strings.
+//
+// Verifies: REQ-SUP-009
 func TestLockTree(t *testing.T) {
 	r, err := (Plugin{}).Resolver("testdata/repo", langtest.Files(t, "testdata/repo"))
 	if err != nil {
@@ -110,6 +116,7 @@ func TestLockTree(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-009
 func TestLockDependencyShapes(t *testing.T) {
 	for _, c := range []struct {
 		name string

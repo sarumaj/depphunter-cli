@@ -77,6 +77,7 @@ describe('the side panel', { skip: available() ? false : 'no depphunter binary (
   });
   after(() => extension.deactivate());
 
+  // Verifies: REQ-EXT-003
   it('draws the graph as a tree of directories, files and what they import', () => {
     const tree = provider('depphunter.tree');
     assert.ok(tree, 'the Dependencies view has no data provider');
@@ -113,6 +114,7 @@ describe('the side panel', { skip: available() ? false : 'no depphunter binary (
     assert.ok(item.command.command === 'depphunter.select');
   });
 
+  // Verifies: REQ-EXT-005
   it('stops a branch that leads back to where it has been', () => {
     const tree = provider('depphunter.tree');
     const eco = tree.getChildren().find(r => r.node.kind === 'ecosystem');
@@ -131,6 +133,7 @@ describe('the side panel', { skip: available() ? false : 'no depphunter binary (
     assert.ok(seen.size > 0, 'the ecosystem held no packages');
   });
 
+  // Verifies: REQ-EXT-007, REQ-SRV-009, REQ-SRV-010
   it('sends a picked row to the map as the selection', async () => {
     const tree = provider('depphunter.tree');
     const row = tree.getChildren().find(r => r.node.kind === 'dir');
@@ -140,6 +143,7 @@ describe('the side panel', { skip: available() ? false : 'no depphunter binary (
     assert.strictEqual(JSON.parse(res.body).selected, row.node.id);
   });
 
+  // Verifies: REQ-EXT-008
   it('opens the tree to what the map selected, and catches up when it was hidden', async () => {
     const tree = provider('depphunter.tree');
     const view = stub.last('createTreeView', 'depphunter.tree')[2];
@@ -162,6 +166,7 @@ describe('the side panel', { skip: available() ? false : 'no depphunter binary (
     assert.strictEqual(revealed[3].focus, false, 'revealing took the focus');
   });
 
+  // Verifies: REQ-EXT-010, REQ-EXT-011, REQ-SRV-011
   it('shows a backpack changed elsewhere, and takes an item back out of it', async () => {
     const caught = {
       id: 'TEST-1', severity: 'high', title: 'something the scanner said',
@@ -185,6 +190,7 @@ describe('the side panel', { skip: available() ? false : 'no depphunter binary (
     assert.deepStrictEqual(pack.getChildren(), []);
   });
 
+  // Verifies: REQ-EXP-014
   it('exports the backpack in the format that was picked', async () => {
     await call(address, 'PUT', '/api/backpack', {
       items: [{ id: 'TEST-2', severity: 'critical', title: 'a large thing', where: 'a.go' }],
@@ -195,6 +201,7 @@ describe('the side panel', { skip: available() ? false : 'no depphunter binary (
     assert.match(res.body, /- \[ \] \*\*critical\*\* a large thing/);
   });
 
+  // Verifies: REQ-EXT-015
   it('opens the map outside the editor when asked to', async () => {
     await stub.commands.get('depphunter.openExternal')();
     const opened = stub.last('openExternal');

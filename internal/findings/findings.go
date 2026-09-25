@@ -7,6 +7,8 @@
 // already produce in CI. With --online, pinned package versions are additionally looked
 // up in the OSV database, which is the one question a repository's own files cannot
 // answer.
+//
+// Implements: REQ-FND-002
 package findings
 
 import (
@@ -36,6 +38,8 @@ var rank = map[Severity]int{Critical: 5, High: 4, Medium: 3, Low: 2, Info: 1, Un
 func (s Severity) Rank() int { return rank[s] }
 
 // severity maps what a report calls a severity onto the shared vocabulary.
+//
+// Implements: REQ-FND-018
 func severity(s string) Severity {
 	switch strings.ToLower(strings.TrimSpace(s)) {
 	case "critical":
@@ -107,6 +111,8 @@ type Set struct {
 	Sources  []string   `json:"sources"`
 	// Partial marks a set that is missing something it was asked for: a report that
 	// would not parse, or a database that would not answer.
+	//
+	// Implements: REQ-FND-016
 	Partial bool `json:"partial,omitempty"`
 }
 
@@ -135,6 +141,8 @@ func (s *Set) Add(source string, fs []*Finding) {
 // Localize rewrites absolute report paths to repository-relative ones and drops the
 // path of anything outside the repository: such a finding is still about a package,
 // and the map has somewhere to put it.
+//
+// Implements: REQ-FND-017
 func (s *Set) Localize(root string) {
 	root = filepath.Clean(root)
 	for _, f := range s.Findings {
@@ -164,6 +172,8 @@ func localize(root, path string) string {
 
 // Finish gives every finding a stable id and orders the set: most serious first, then
 // by where it is, so the panel and the streets agree on which bug matters most.
+//
+// Implements: REQ-FND-024
 func (s *Set) Finish() {
 	sort.Strings(s.Sources)
 	sort.SliceStable(s.Findings, func(i, j int) bool {

@@ -33,6 +33,8 @@ import (
 //
 // A pattern may be limited to one ecosystem by naming it first: "npm:@acme/*" matches
 // only npm packages, where the bare "@acme/*" would match anything so named.
+//
+// Implements: REQ-SUP-034, REQ-SUP-035
 type Private struct {
 	// any applies to every ecosystem; byEco only to the one that named it. Both are
 	// comma-joined, because that is what MatchPrefixPatterns takes.
@@ -42,6 +44,8 @@ type Private struct {
 
 // New builds a matcher. Patterns may themselves be comma-separated, so one flag, one
 // environment variable and one config entry all say the same thing.
+//
+// Implements: REQ-SUP-034, REQ-SUP-035
 func New(patterns []string) *Private {
 	p := &Private{byEco: map[string]string{}}
 	var any []string
@@ -67,6 +71,8 @@ func New(patterns []string) *Private {
 }
 
 // Match reports whether a package is the organization's own.
+//
+// Implements: REQ-SUP-034, REQ-SUP-035
 func (p *Private) Match(eco, name string) bool {
 	if p == nil || name == "" {
 		return false
@@ -103,6 +109,8 @@ func (p *Private) Patterns() []string {
 // FromGoEnv reads what the machine already says about private Go modules. GOPRIVATE
 // is the usual place; GONOPROXY is what actually governs whether a module is fetched
 // from the proxy, and it defaults to GOPRIVATE when it is not set itself.
+//
+// Implements: REQ-SUP-036
 func FromGoEnv(env func(string) string) []string {
 	var out []string
 	for _, name := range []string{"GOPRIVATE", "GONOPROXY", "GONOSUMDB", "GONOSUMCHECK"} {
@@ -116,6 +124,8 @@ func FromGoEnv(env func(string) string) []string {
 }
 
 // The ecosystem ids a pattern may be limited to, as the language plugins emit them.
+//
+// Implements: REQ-CI-015
 var ecosystems = map[string]bool{
 	"go": true, "npm": true, "pypi": true, "crates": true, "maven": true,
 	"nuget": true, "oci": true, "actions": true, "gitlab-ci": true, "powershell": true,

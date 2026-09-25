@@ -46,6 +46,7 @@ func write(t *testing.T, path, content string) {
 	}
 }
 
+// Verifies: REQ-CFG-001, REQ-CFG-002, REQ-CFG-004, REQ-CFG-006, REQ-CFG-009
 func TestPrecedence(t *testing.T) {
 	root, user := t.TempDir(), t.TempDir()
 	write(t, filepath.Join(user, "config.yaml"), "addr: 127.0.0.1:1\nui:\n  theme: dark\n  color_by: size\n  height_scale: log\n")
@@ -73,6 +74,7 @@ func TestPrecedence(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-CFG-001
 func TestUnsetFlagsDoNotOverrideFiles(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, ProjectFile), "open: false\nui:\n  show_std: true\n  expand_depth: 3\n")
@@ -85,6 +87,7 @@ func TestUnsetFlagsDoNotOverrideFiles(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-CFG-003
 func TestExplicitConfigMustExist(t *testing.T) {
 	_, err := load(t, []string{"--config", filepath.Join(t.TempDir(), "missing.yaml"), t.TempDir()}, nil, "")
 	if err == nil {
@@ -92,6 +95,7 @@ func TestExplicitConfigMustExist(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-CFG-007
 func TestValidation(t *testing.T) {
 	_, err := load(t, []string{"--theme", "neon", t.TempDir()}, nil, "")
 	if err == nil {
@@ -99,6 +103,7 @@ func TestValidation(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-CFG-006, REQ-CLI-004
 func TestWatchCacheEditorAndExport(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, ProjectFile), "watch: true\n")
@@ -118,6 +123,7 @@ func TestWatchCacheEditorAndExport(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-CFG-010
 func TestProjectConfigCannotChooseEditor(t *testing.T) {
 	root, user := t.TempDir(), t.TempDir()
 	write(t, filepath.Join(user, "config.yaml"), "editor: code -g {file}:{line}\n")
@@ -131,6 +137,7 @@ func TestProjectConfigCannotChooseEditor(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-CFG-007
 func TestHistorySettings(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, ProjectFile), "history_commits: 500\nui:\n  color_by: churn\n")
@@ -158,6 +165,7 @@ func TestLSPSettings(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-CFG-006, REQ-CFG-007, REQ-CFG-008
 func TestNegatedFlagsAndNewEnv(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, ProjectFile), "open: true\nhistory_commits: 50\n")
@@ -177,6 +185,7 @@ func TestNegatedFlagsAndNewEnv(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-CLI-001, REQ-CLI-002, REQ-CFG-003
 func TestSymlinkedRootAndPaths(t *testing.T) {
 	dir := t.TempDir()
 	link := filepath.Join(t.TempDir(), "link")
@@ -198,6 +207,8 @@ func TestSymlinkedRootAndPaths(t *testing.T) {
 
 // TestEveryFlagIsBound catches the mistake of registering a flag and forgetting to
 // give it a setting: the flag then parses, prints in --help, and changes nothing.
+//
+// Verifies: REQ-CFG-005
 func TestEveryFlagIsBound(t *testing.T) {
 	// The flags that act on their own instead of setting a value. exclude, findings,
 	// private and trust-index add to what the configuration already holds rather than
@@ -227,6 +238,7 @@ func TestEveryFlagIsBound(t *testing.T) {
 	})
 }
 
+// Verifies: REQ-SUP-020
 func TestOnlineSettings(t *testing.T) {
 	root := t.TempDir()
 	cfg, err := load(t, []string{"--online", root}, nil, "")
@@ -249,6 +261,7 @@ func TestOnlineSettings(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-MD-010, REQ-MD-016
 func TestFindingsSettings(t *testing.T) {
 	root := t.TempDir()
 	cfg, err := load(t, []string{"--findings", "reports/trivy.json", "--findings", "audit.json", root}, nil, "")
@@ -289,6 +302,8 @@ func TestFindingsSettings(t *testing.T) {
 
 // TestLinkSettings checks the three ways of turning the link check off, and that it
 // is on without being asked for: it needs nothing but the repository.
+//
+// Verifies: REQ-MD-010, REQ-MD-016
 func TestLinkSettings(t *testing.T) {
 	root := t.TempDir()
 	cfg, err := load(t, []string{root}, nil, "")
@@ -373,6 +388,7 @@ func TestProjectConfigFindingsStayInsideTheRepository(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-MAP-049
 func TestStyleSettings(t *testing.T) {
 	root := t.TempDir()
 	cfg, err := load(t, []string{root}, nil, "")
@@ -452,6 +468,7 @@ func TestEmbedOriginsAreChecked(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-034, REQ-SUP-041
 func TestPrivatePatternsCollectFromEverywhere(t *testing.T) {
 	root, user := t.TempDir(), t.TempDir()
 	write(t, filepath.Join(user, "config.yaml"), "private:\n  - corp.example/*\n")
@@ -471,6 +488,7 @@ func TestPrivatePatternsCollectFromEverywhere(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-042, REQ-SUP-043
 func TestProjectConfigCannotVouchForAnIndex(t *testing.T) {
 	// The marking exists because a repository's word for its own registry is not
 	// enough - that is the shape dependency confusion takes. A repository that could
@@ -501,6 +519,8 @@ func TestProjectConfigCannotVouchForAnIndex(t *testing.T) {
 // TestExplainSettings checks the three ways of asking for the resolution report.
 // Unlike online, a repository may ask for it: all it can do is make depphunter say
 // more about its own resolution, on the terminal of whoever ran it.
+//
+// Verifies: REQ-TRC-010
 func TestExplainSettings(t *testing.T) {
 	root := t.TempDir()
 	cfg, err := load(t, []string{"--explain", root}, nil, "")
@@ -529,6 +549,8 @@ func TestExplainSettings(t *testing.T) {
 // it, and never after. This is the whole reason --ui-default exists beside --theme:
 // the editor sets these, and the map's own Save button writes the project file, so a
 // seed that beat the file would make Save quietly stop working.
+//
+// Verifies: REQ-CFG-016
 func TestUIDefaultsAreBeatenByTheProjectFile(t *testing.T) {
 	root := t.TempDir()
 	seeds := []string{
@@ -570,6 +592,8 @@ func TestUIDefaultsAreBeatenByTheProjectFile(t *testing.T) {
 // A pair that cannot be understood is refused rather than dropped: a seed is set in an
 // editor's settings and never seen again, so silence is the one answer that leaves
 // somebody wondering why their view is not what they asked for.
+//
+// Verifies: REQ-CFG-017
 func TestUIDefaultsRefuseWhatTheyCannotSeed(t *testing.T) {
 	root := t.TempDir()
 	for _, bad := range []string{"theme", "=dark", "hide_languages=go", "show_std=maybe", "expand_depth=deep"} {

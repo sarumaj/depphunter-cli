@@ -7,6 +7,8 @@
 # depphunter is pure Go (no cgo), so every target builds from any host. Windows
 # archives are zip files, all others gzipped tarballs; each holds the binary, README,
 # LICENSE and the licenses of the vendored web libraries embedded in the binary.
+#
+# Implements: REQ-DIST-001, REQ-DIST-007
 set -euo pipefail
 
 version=${1:-dev}
@@ -29,8 +31,10 @@ for target in $targets; do
   ext=""; [ "$goos" = windows ] && ext=.exe
   echo "building $name"
   mkdir -p "dist/$name/licenses"
+  # Implements: REQ-DIST-008
   CGO_ENABLED=0 GOOS=$goos GOARCH=$goarch GOARM=$goarm go build -trimpath \
     -ldflags "-s -w -X main.version=$version" -o "dist/$name/depphunter$ext" ./cmd/depphunter
+  # Implements: REQ-DIST-004, REQ-DIST-005, REQ-DIST-006
   cp README.md LICENSE "dist/$name/"
   cp web/static/vendor/*.LICENSE "dist/$name/licenses/"
   if [ "$goos" = windows ]; then

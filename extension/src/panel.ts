@@ -16,7 +16,10 @@ import * as vscode from 'vscode';
 
 const panels = new Map<string, vscode.WebviewPanel>();
 
-/** Shows the map for root, in the tab it already has or in a new one. */
+/**
+ * Shows the map for root, in the tab it already has or in a new one.
+ * Implements: REQ-EXT-020, REQ-EXT-021
+ */
 export function open(root: string, title: string, address: string): void {
   let panel = panels.get(root);
   if (!panel) {
@@ -52,6 +55,7 @@ export function closeAll(): void {
  * bound by every restriction its ancestors carry, so leaving it off does not remove
  * anything - it only declines to add more, which is what keeps the pointer lock the
  * editor granted. Adding `sandbox` here, even spelled out in full, is how this breaks.
+ * Implements: REQ-EXT-021
  */
 function page(address: string): string {
   const origin = new URL(address).origin;

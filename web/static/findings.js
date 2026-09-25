@@ -27,6 +27,8 @@ export function severityColors() {
  *   under   nodeId -> those, and everything below it, worst first
  *   rollup  nodeId -> { count, worst } including everything below it
  *   place   finding -> the node its bug stands at (a package before a file)
+ *
+ * Implements: REQ-FND-020, REQ-FND-021
  */
 export function indexFindings(set, model) {
   const all = [], own = new Map(), home = new Map();

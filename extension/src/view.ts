@@ -14,6 +14,7 @@ export interface Running {
   readonly url: string;
 }
 
+// Implements: REQ-EXT-028
 export class MapsView implements vscode.TreeDataProvider<vscode.Uri> {
   private readonly changed = new vscode.EventEmitter<void>();
   readonly onDidChangeTreeData = this.changed.event;

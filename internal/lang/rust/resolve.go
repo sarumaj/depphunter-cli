@@ -43,6 +43,8 @@ type locked struct{ name, version string }
 
 // Dependencies implements lang.Transitive: Cargo.lock resolves the whole crate graph,
 // so the answer needs nothing but the file the project already carries.
+//
+// Implements: REQ-SUP-009
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 	if t.Ecosystem != ecoCrates {
 		return nil
@@ -63,6 +65,8 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 // pick is the locked version of a package that a requirement means: the only one
 // there is, the one it names exactly, or the newest one Cargo's default (caret)
 // reading of it accepts. "" when the lock holds none.
+//
+// Implements: REQ-RS-007
 func (r *resolver) pick(pkg, requirement string) string {
 	versions := r.locked[pkg]
 	if len(versions) <= 1 {
@@ -112,6 +116,7 @@ func caret(req, v string) bool {
 
 func norm(name string) string { return strings.ReplaceAll(name, "-", "_") }
 
+// Implements: REQ-RS-004, REQ-RS-006, REQ-RS-007
 func newResolver(all []*scan.File) *resolver {
 	r := &resolver{files: map[string]bool{}, members: map[string]string{}, locked: map[string][]string{}, tree: map[string][]locked{}}
 	workspaceDeps := map[string]dep{}
@@ -200,6 +205,7 @@ func table(v any) map[string]any {
 	return t
 }
 
+// Implements: REQ-RS-004, REQ-RS-005
 func parseDep(key string, v any, dir string) dep {
 	d := dep{pkg: key}
 	switch v := v.(type) {
@@ -230,6 +236,8 @@ func (r *resolver) crateOf(file string) *crate {
 
 // moduleDir is where a file's child modules live: src/lib.rs and a/mod.rs own their
 // directory, a/b.rs owns a/b/.
+//
+// Implements: REQ-RS-002
 func moduleDir(file string) string {
 	switch base := path.Base(file); base {
 	case "lib.rs", "main.rs", "mod.rs":
@@ -239,6 +247,7 @@ func moduleDir(file string) string {
 	}
 }
 
+// Implements: REQ-RS-002, REQ-RS-003, REQ-RS-004, REQ-RS-005, REQ-RS-007, REQ-RS-008
 func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 	segments := strings.Split(imp.Module, "::")
 	c := r.crateOf(file)
@@ -298,6 +307,8 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 }
 
 // local resolves a path inside another project crate, falling back to the crate itself.
+//
+// Implements: REQ-RS-004
 func (r *resolver) local(crateDir string, segments []string) lang.Target {
 	if t, ok := r.probe(path.Join(crateDir, "src"), segments); ok && len(segments) > 0 {
 		return t
@@ -307,6 +318,8 @@ func (r *resolver) local(crateDir string, segments []string) lang.Target {
 
 // probe finds the module file for the longest prefix of segments under dir; with no
 // segments it returns the crate or module root file.
+//
+// Implements: REQ-RS-002, REQ-RS-003
 func (r *resolver) probe(dir string, segments []string) (lang.Target, bool) {
 	if len(segments) == 0 {
 		for _, root := range []string{"lib.rs", "main.rs", "mod.rs"} {

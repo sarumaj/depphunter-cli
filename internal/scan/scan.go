@@ -18,6 +18,8 @@ import (
 )
 
 // File is a project file with paths relative to the project root, always slash-separated.
+//
+// Implements: REQ-LANG-020
 type File struct {
 	Path   string
 	Abs    string
@@ -39,6 +41,8 @@ type Options struct {
 
 // defaultIgnore applies when git is unavailable, so a plain walk does not descend into
 // dependency caches and build output.
+//
+// Implements: REQ-LANG-018
 var defaultIgnore = map[string]bool{
 	".git": true, ".hg": true, ".svn": true, "node_modules": true, "vendor": true,
 	"dist": true, "build": true, "target": true, "bin": true, "obj": true,
@@ -65,6 +69,7 @@ func Scan(ctx context.Context, root string, opts Options) ([]*File, error) {
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
 
+	// Implements: REQ-DIST-016
 	var g errgroup.Group
 	g.SetLimit(runtime.NumCPU())
 	for _, f := range files {
@@ -83,6 +88,8 @@ func Scan(ctx context.Context, root string, opts Options) ([]*File, error) {
 // Duplicates - a file with merge conflicts is listed once per stage - are dropped
 // here rather than with --deduplicate, which needs git 2.31; an older git refuses
 // the option, and the walk it would fall back to knows none of the ignore files.
+//
+// Implements: REQ-LANG-017
 func gitFiles(ctx context.Context, root string) ([]string, error) {
 	cmd := exec.CommandContext(ctx, "git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
 	out, err := cmd.Output()
@@ -107,6 +114,7 @@ func gitFiles(ctx context.Context, root string) ([]string, error) {
 	return paths, nil
 }
 
+// Implements: REQ-LANG-018
 func walkFiles(ctx context.Context, root string) ([]string, error) {
 	var paths []string
 	err := filepath.WalkDir(root, func(p string, d fs.DirEntry, err error) error {
@@ -139,6 +147,7 @@ func walkFiles(ctx context.Context, root string) ([]string, error) {
 	return paths, err
 }
 
+// Implements: REQ-LANG-019
 func excluded(rel string, patterns []string) bool {
 	for _, pat := range patterns {
 		if ok, _ := path.Match(pat, rel); ok {
@@ -153,6 +162,7 @@ func excluded(rel string, patterns []string) bool {
 	return false
 }
 
+// Implements: REQ-LANG-016, REQ-LANG-020, REQ-LANG-021, REQ-LANG-022
 func measure(f *File, maxSize int64) {
 	st, err := os.Stat(f.Abs)
 	if err != nil {

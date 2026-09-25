@@ -39,6 +39,7 @@ function page({ store = {} } = {}) {
 describe('the introduction', () => {
   beforeEach(() => page());
 
+  // Verifies: REQ-UI-004, REQ-UI-011
   it('says something on every card, and never more than a full screen', () => {
     for (const deck of [TOUR, WALK_TOUR]) {
       assert.ok(deck.length >= 3 && deck.length <= 6, `${deck.length} cards is not an introduction`);
@@ -51,6 +52,7 @@ describe('the introduction', () => {
     }
   });
 
+  // Verifies: REQ-UI-012
   it('keeps the two introductions apart', () => {
     const p = page();
     // Seeing the map's does not spend walk mode's, and the other way round: they are
@@ -63,6 +65,7 @@ describe('the introduction', () => {
     assert.equal(startWalkTour(false), false);
   });
 
+  // Verifies: REQ-UI-011, REQ-UI-013
   it('says in advance whether a walk needs explaining', () => {
     const p = page();
     // Walk mode asks before it takes the pointer: a dialog and a captured reticle at
@@ -92,6 +95,7 @@ describe('the introduction', () => {
     }
   });
 
+  // Verifies: REQ-UI-011
   it('covers the keys somebody walking in has to know', () => {
     // As the dialog renders it: the cards are written wrapped, and a key can fall
     // across a line break in the source without doing so on screen.
@@ -106,6 +110,7 @@ describe('the introduction', () => {
     }
   });
 
+  // Verifies: REQ-UI-013
   it('hands the pointer back once walk mode\'s is out of the way', () => {
     const p = page();
     let resumed = 0;
@@ -118,6 +123,7 @@ describe('the introduction', () => {
     assert.equal(resumed, 1);
   });
 
+  // Verifies: REQ-UI-004, REQ-UI-005
   it('opens on a first visit and not on the next one', () => {
     const p = page();
     assert.equal(startTour(), true, 'a first visit was not shown anything');
@@ -135,6 +141,7 @@ describe('the introduction', () => {
     assert.equal(startTour(true), true, 'the help could not open it again');
   });
 
+  // Verifies: REQ-UI-004
   it('goes back as well as forward, and stops at both ends', () => {
     const p = page();
     startTour();
@@ -151,6 +158,7 @@ describe('the introduction', () => {
     assert.equal(p.els.get('tour-next').textContent, 'Start');
   });
 
+  // Verifies: REQ-UI-006
   it('is skippable, and skipping counts as seen', () => {
     const p = page();
     startTour();
@@ -159,6 +167,7 @@ describe('the introduction', () => {
     assert.equal(startTour(), false, 'skipping did not count');
   });
 
+  // Verifies: REQ-UI-007
   it('stays out of the way when the browser will not remember anything', () => {
     page();
     globalThis.localStorage = {

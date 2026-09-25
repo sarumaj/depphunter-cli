@@ -96,6 +96,7 @@ async function main() {
   // they are redrawn a few times a second rather than on every frame. The walker
   // draws its own frames, so its hook must go through the same throttle as the map's
   // renderer - drawing from it directly meant a layout per frame.
+  // Implements: REQ-PERF-003
   let labelsAt = 0;
   const drawLabels = () => {
     if (walker?.active) {
@@ -115,6 +116,7 @@ async function main() {
       aimX = x;
       tooltip(i >= 0 ? `box:${i}` : null, x, y, showTooltip.bind(null, i));
     },
+    // Implements: REQ-HUNT-001, REQ-HUNT-008, REQ-HUNT-009, REQ-TOOL-005
     onHit: (box, tagged) => {
       const tool = walker.primary;
       select(box.node);
@@ -124,6 +126,7 @@ async function main() {
     // Using the tool a second time on a tagged building, or Enter: read about what
     // the reticle is on. The panel needs the pointer, so it is freed; a click on the
     // map (or closing the panel) captures it again.
+    // Implements: REQ-WALK-021, REQ-HUNT-005, REQ-HUNT-006, REQ-HUNT-007
     onInspect: box => {
       const n = box ? box.node : state.selected;
       if (!n) {
@@ -144,8 +147,10 @@ async function main() {
     // Everything that wants the mouse, in one place. The walker asks before taking the
     // pointer back, so a panel or a menu is never left with a reticle underneath it
     // swallowing the clicks meant for it.
+    // Implements: REQ-WALK-037
     busy: () => !!document.querySelector('dialog[open]')
       || WANTS_POINTER.some(id => !$(id).hidden),
+    // Implements: REQ-TOOL-003
     tool: () => state.tool,
     onTool: id => { state.tool = id; },
     // Every use of the camera keeps the frame. It goes into the stash rather than
@@ -157,6 +162,7 @@ async function main() {
     // interface has drawn on the map - a module tagged a minute ago should not be lit
     // in a picture of the street it stands on, and the arcs over the rooftops belong
     // to the map view rather than to the place.
+    // Implements: REQ-HUNT-034, REQ-HUNT-039, REQ-HUNT-040
     onPhoto: where => {
       plain(() => frame(blob => {
         const it = stash.add(blob, where);
@@ -169,6 +175,7 @@ async function main() {
     caught: () => pack?.counts.total ?? 0,
     // The worst thing the scanners said about a module, which is what its beacon and
     // its ring on the tracker are colored by. Nothing when findings are turned off.
+    // Implements: REQ-HUNT-004, REQ-HUNT-023
     severityOf: node => state.findings?.rollup(node.id).worst || null,
     onRender: drawLabels,
   });
@@ -178,6 +185,7 @@ async function main() {
   stash = new Stash(drawStash);
   // The page is the one with a store that outlives the server, so what it remembers
   // is what the session starts from.
+  // Implements: REQ-HUNT-028
   pushBackpack(pack.items);
   bugs = new Bugs(scene, {
     // A caught bug reads itself out: the building it belongs to is selected and its
@@ -193,6 +201,7 @@ async function main() {
     //
     // So the backpack, the health and the word all land at once, and the panel comes
     // when the bug has finished arriving.
+    // Implements: REQ-HUNT-015, REQ-HUNT-016
     onCatch: (f, node) => {
       pack.add(f, node);
       walker.health.caught(pack.counts.total);
@@ -243,6 +252,7 @@ async function main() {
     // Taking a finding from the panel is the same act as netting its bug in the
     // street: it goes in the same backpack, and its bug stops walking. It is the
     // whole of collecting in the map view, where there are no streets to walk.
+    // Implements: REQ-HUNT-029, REQ-HUNT-031
     onCatch: (f, kept) => {
       if (kept) pack.remove(f.id);
       else pack.add(f, state.findings?.place(f));
@@ -280,6 +290,7 @@ async function main() {
 
 // loadLazy fetches a dataset the server computes after startup, polling while it is
 // still being computed, and hands the result (or null) to apply.
+// Implements: REQ-HIST-007
 async function loadLazy(name, apply) {
   for (;;) {
     let v = null;
@@ -293,6 +304,7 @@ async function loadLazy(name, apply) {
   }
 }
 
+// Implements: REQ-LSP-007
 function applyReferences(r) {
   state.references = r;
   state.referencesStatus = r ? 'ready' : 'none';
@@ -374,6 +386,7 @@ function placeBugs() {
 
 // drawPack redraws the list and the toolbar button. The button only exists when there
 // is something to put in it: a map read without --findings has no bugs to catch.
+// Implements: REQ-HUNT-029
 function drawPack(_pack, fromServer = false) {
   // The backpack is what says which findings are caught, so whatever changed it has
   // just changed the streets too.
@@ -430,6 +443,7 @@ function openCaught(it) {
   panel.show(node, false, it.fixed ? undefined : it.id);
 }
 
+// Implements: REQ-WALK-034
 function setPackOpen(on) {
   $('pack').hidden = !on;
   $('pack-btn').setAttribute('aria-expanded', on);
@@ -448,6 +462,7 @@ function setPackOpen(on) {
 
 // ---------------------------------------------------------------- git history
 
+// Implements: REQ-HIST-010
 function setHistory(h) {
   state.history = h;
   state.historyStatus = h ? 'ready' : 'none';
@@ -500,6 +515,7 @@ function viewSettings() {
   };
 }
 
+// Implements: REQ-CFG-012
 async function saveViewSettings() {
   try {
     await saveSettings(viewSettings());
@@ -511,6 +527,7 @@ async function saveViewSettings() {
 
 // setModel installs a graph, carrying over what the user chose on the previous one:
 // expanded directories, selection, filters and language colors.
+// Implements: REQ-WATCH-005
 function setModel(graph, version) {
   const prev = model;
   model = buildModel(graph);
@@ -548,12 +565,14 @@ let reloadChain = Promise.resolve();
 // How many failed reconnects before giving up: the browser retries an EventSource by
 // itself, and once depphunter has stopped (Ctrl+C, or a crash) that is an endless
 // stream of console errors instead of an answer.
+// Implements: REQ-UI-002
 const MAX_RECONNECTS = 4;
 let events = null, reconnects = 0;
 // Whether this page has been greeted by a stream before, which is what tells a
 // reconnection from the first connection of all.
 let greeted = false;
 
+// Implements: REQ-UI-002, REQ-WATCH-004, REQ-HIST-008, REQ-LSP-005, REQ-FND-022, REQ-SRV-012, REQ-SRV-017
 function connectEvents() {
   events?.close();
   // An EventSource cannot set a header, so in embed mode the token rides in the
@@ -598,6 +617,7 @@ function connectEvents() {
   });
 }
 
+// Implements: REQ-HUNT-029
 /** Takes the backpack as the server now has it; replace redraws through onChange. */
 async function adoptBackpack() {
   const session = await fetchSession();
@@ -624,6 +644,7 @@ function queueReload(changed) {
   });
 }
 
+// Implements: REQ-MAP-044, REQ-MAP-046, REQ-WATCH-005, REQ-WATCH-006, REQ-SRV-017
 async function reload(changed) {
   const { graph, version } = await fetchGraph();
   // 304: the server has what this page already holds, whatever the version counter
@@ -652,6 +673,7 @@ async function reload(changed) {
 }
 
 /** state: 'live' | 'reconnecting' | 'stopped'; stopped can be clicked to try again. */
+// Implements: REQ-UI-002, REQ-UI-003
 function setLive(state) {
   const el = $('live');
   el.hidden = false;
@@ -723,6 +745,7 @@ function setStashOpen(on) {
 // ---------------------------------------------------------------- screenshot
 
 /** The view as it stands, written out as a PNG the browser downloads. */
+// Implements: REQ-EXP-011, REQ-EXP-012, REQ-HUNT-041
 function saveScreenshot() {
   frame(blob => {
     const a = document.createElement('a');
@@ -741,6 +764,8 @@ function saveScreenshot() {
  *
  * It is drawn twice more than it would otherwise be - once to strip it and once to put
  * it back - which is nothing for something that happens on a click.
+ *
+ * Implements: REQ-HUNT-040
  */
 function plain(then) {
   const was = focus;
@@ -770,6 +795,8 @@ function plain(then) {
  * `hands` is what separates the two things this is asked for. A screenshot is the
  * screen, hands and all; a photograph is what the camera was pointed at, and a camera
  * held up in the corner of its own picture is a mistake nobody makes twice.
+ *
+ * Implements: REQ-EXP-011, REQ-HUNT-033, REQ-HUNT-039, REQ-HUNT-041
  */
 function frame(then, hands = true) {
   const map = scene.renderNow(hands);
@@ -801,6 +828,7 @@ function frame(then, hands = true) {
 
 // ---------------------------------------------------------------- editor
 
+// Implements: REQ-SRV-005, REQ-SRV-008
 async function openFile(path, line = 1) {
   if (!config.editor) {
     // No server-side editor: hand the file to VS Code through its URL handler.
@@ -816,6 +844,7 @@ async function openFile(path, line = 1) {
   if (!res.ok) updateStatus(`could not open editor: ${(await res.text()).trim()}`);
 }
 
+// Implements: REQ-MAP-059
 function updateStatus(note = '') {
   const hidden = state.vis.hiddenFiles ? ` · ${fmt.format(state.vis.hiddenFiles)} hidden by filters` : '';
   const refs = state.referencesStatus === 'ready'
@@ -887,6 +916,7 @@ function drawFilters() {
 
 // ---------------------------------------------------------------- state changes
 
+// Implements: REQ-MAP-023
 function setLevel(level, redraw = true) {
   state.level = Math.max(1, Math.min(maxDepth, level));
   state.expanded = new Set([...model.byId.values()].filter(n => n.kind === 'dir' && n.depth < state.level).map(n => n.id));
@@ -917,6 +947,7 @@ function toggles(n) {
   return state.expanded.has(n.id) ? 'close' : 'open';
 }
 
+// Implements: REQ-MAP-022
 function toggle(n) {
   if (n.kind === 'symbol') n = n.parentNode;
   if (!toggles(n)) {
@@ -943,6 +974,7 @@ function select(n, fromServer = false) {
 }
 
 // Expand everything needed to make `n` visible, select it and bring it into view.
+// Implements: REQ-WALK-019
 function reveal(n) {
   let changed = false;
   for (let p = n.parentNode; p; p = p.parentNode) {
@@ -999,6 +1031,8 @@ const mapOnly = () => document.querySelectorAll('[data-map-only]');
  * was not. Export froze the walker when it was opened with the X key and did nothing
  * at all when its button was clicked, which is the same menu opening two ways and
  * behaving differently - and the way anybody actually opens it was the broken one.
+ *
+ * Implements: REQ-WALK-021, REQ-WALK-024, REQ-WALK-034, REQ-UI-014
  */
 function readAway() {
   if (!walker?.active) return;
@@ -1006,6 +1040,7 @@ function readAway() {
   document.exitPointerLock?.();
 }
 
+// Implements: REQ-WALK-001, REQ-WALK-023, REQ-UI-011, REQ-UI-013
 function setWalking(on) {
   if (on && !walker.active) {
     hideTooltip();
@@ -1052,6 +1087,7 @@ function setWalking(on) {
 
 // A relayout moves everything; in walk mode the walker is kept next to the block they
 // stand on, so a depth change or a live update does not teleport them.
+// Implements: REQ-WALK-025
 function relayout() {
   const anchor = walker.active ? walker.anchorFor() : null;
   // Box indexes change: whatever was hovered or described is gone.
@@ -1070,6 +1106,7 @@ function relayout() {
 }
 
 /** The box that stands for `n` in the current layout: itself or its nearest visible ancestor. */
+// Implements: REQ-MAP-009
 function rep(n) {
   for (let p = n; p; p = p.parentNode) {
     const b = L.byNode.get(p.id);
@@ -1078,6 +1115,7 @@ function rep(n) {
   return null;
 }
 
+// Implements: REQ-MAP-037, REQ-MAP-051, REQ-MAP-058, REQ-HIST-010, REQ-HIST-013
 function baseColors() {
   const mode = colorMode();
   const hm = isHistoryMode(mode) && metrics();
@@ -1099,6 +1137,7 @@ function baseColors() {
         return state.colorBy === 'size' ? sequential(pal, sizeT(bulk(f))) : langs.of(f.lang);
       }
       // A package nothing pins is worth seeing from across the map.
+      // Implements: REQ-SUP-004
       case 'package': return n.unresolved ? pal.pkgUnresolved : n.floating ? pal.pkgFloating : pal.pkg;
     }
     return pal.other;
@@ -1111,6 +1150,7 @@ function sizeT(loc) {
   return Math.sqrt(Math.min(1, (loc || 0) / maxLoc));
 }
 
+// Implements: REQ-MAP-012, REQ-MAP-013, REQ-MAP-026
 function refreshFocus() {
   const sel = state.selected;
   const selBox = sel && rep(sel);
@@ -1142,6 +1182,7 @@ function refreshFocus() {
   labels.set(L.boxes, focus, state.selected);
 }
 
+// Implements: REQ-MAP-025
 function recolor() {
   const base = baseColors();
   const sel = state.selected;
@@ -1173,6 +1214,7 @@ const mix = (a, b, t) => '#' + new Color(a).lerp(new Color(b), t).getHexString()
 
 // ---------------------------------------------------------------- legend & tooltip
 
+// Implements: REQ-MAP-014, REQ-MAP-032, REQ-A11Y-005, REQ-A11Y-006
 function drawLegend() {
   const el = $('legend');
   state.legendLang = undefined; // the <li> under the pointer is replaced: no mouseleave follows
@@ -1230,6 +1272,7 @@ function isOff(entry) {
 }
 
 // The Imports / References switch, once language servers have answered.
+// Implements: REQ-LSP-007
 function linkKindControl() {
   if (state.referencesStatus === 'loading') return '<p class="hint">finding symbol references…</p>';
   if (state.referencesStatus !== 'ready') return '';
@@ -1238,6 +1281,7 @@ function linkKindControl() {
   return `<div class="link-kind" role="group" aria-label="Edges">${button('import', 'Imports')}${button('reference', 'References')}</div>`;
 }
 
+// Implements: REQ-HIST-011, REQ-HIST-013
 function historyLegend(mode) {
   const hm = metrics();
   const { from, to } = hm.range;
@@ -1259,6 +1303,7 @@ function historyLegend(mode) {
 }
 
 // The since slider recolors live while dragging and redraws the legend on release.
+// Implements: REQ-HIST-011
 function bindSinceSlider() {
   const slider = $('since');
   if (!slider) return;
@@ -1355,6 +1400,7 @@ function showTooltip(i, x, y) {
   placeTooltip(tip, x, y);
 }
 
+// Implements: REQ-MAP-024, REQ-MAP-060, REQ-A11Y-002, REQ-HIST-014
 function card(b, n) {
   const row = (k, v) => `<div class="t-row">${k} <b>${escapeHTML(String(v))}</b></div>`;
   let html = `<div class="t-title">${escapeHTML(n.path && n.path !== '.' ? n.path : n.name)}</div>`;
@@ -1394,6 +1440,7 @@ function placeTooltip(tip, x, y) {
  * stylesheet (the ground, the water, the sky) and tells the scene which painter to
  * use; the colors that carry data are the language and history palettes, which do
  * not change with it. redraw is false only while the map is first being built.
+ * Implements: REQ-MAP-049, REQ-MAP-052
  */
 function applyStyle(redraw = true) {
   if (state.style === 'city') delete document.documentElement.dataset.style;
@@ -1405,6 +1452,7 @@ function applyStyle(redraw = true) {
   }
 }
 
+// Implements: REQ-MAP-039
 function applyTheme() {
   if (state.theme === 'auto') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = state.theme;
@@ -1449,6 +1497,7 @@ function bindControls() {
     }
     down = null;
   });
+  // Implements: REQ-MAP-022
   map.addEventListener('dblclick', e => {
     if (walker.active || pins.at(e.clientX, e.clientY)) return; // the pin was the target
     const i = scene.pick(e.clientX, e.clientY);
@@ -1500,6 +1549,7 @@ function bindControls() {
   $('help-btn').onclick = () => { readAway(); $('help').showModal(); };
   // The help's own way back to the introduction, for anyone who skipped it or wants it
   // again. One modal at a time, so the help is closed before the other opens.
+  // Implements: REQ-UI-010
   $('help-tour').onclick = () => {
     $('help').close();
     // Whichever introduction fits where the reader is: the street has its own.
@@ -1508,6 +1558,7 @@ function bindControls() {
   };
   // Help frees the pointer; closing it captures it again for a walker (a click on
   // Close allows that; Esc does not, then the HUD asks for a click on the map).
+  // Implements: REQ-WALK-024
   $('help').addEventListener('close', () => walker.active && walker.lockPointer());
   $('panel-close').onclick = () => {
     select(null);
@@ -1515,6 +1566,7 @@ function bindControls() {
     if (walker.active) walker.lockPointer(); // straight back to the reticle
   };
 
+  // Implements: REQ-CFG-011
   const bindSelect = (id, key, after) => {
     const el = $(id);
     el.value = state[key];
@@ -1529,6 +1581,7 @@ function bindControls() {
   bindExport();
   $('path-filter').value = state.filters.path;
   updateFilterBadge();
+  // Implements: REQ-EXP-008, REQ-EXP-012
   if (STATIC) {
     // A static export has no server: nothing to save or open, and only the image to export.
     $('save-settings').hidden = true;
@@ -1540,6 +1593,7 @@ function bindControls() {
   $('screenshot').onclick = saveScreenshot;
   matchMedia('(prefers-color-scheme: dark)').addEventListener('change', () => state.theme === 'auto' && applyTheme());
 
+  // Implements: REQ-A11Y-003, REQ-MAP-017, REQ-MAP-019
   window.addEventListener('keydown', e => {
     if (e.target.closest('input, select, textarea, dialog') || e.ctrlKey || e.metaKey || e.altKey || walker.owns(e)) return;
     const sel = state.selected;
@@ -1575,6 +1629,7 @@ function bindControls() {
       // behind a captured pointer - so both have a key. The export menu wants the
       // pointer to pick from it and hands it back the way the backpack does; saving
       // needs none, and reports into the status line the walk HUD already carries.
+      // Implements: REQ-WALK-034
       case 'x': case 'X': openExport(); break;
       case 'k': case 'K': if (!STATIC) saveViewSettings(); break;
       case 'o': case 'O': {
@@ -1591,6 +1646,7 @@ function bindControls() {
   });
 }
 
+// Implements: REQ-MAP-032, REQ-MAP-033, REQ-MAP-034
 function bindFilters() {
   const btn = $('filters-btn'), pop = $('filters');
   // `back` is whether closing it is a way back to the street. Shutting it on purpose
@@ -1628,10 +1684,12 @@ function bindFilters() {
   drawFilters();
 }
 
+// Implements: REQ-MAP-031
 function bindSearch() {
   const input = $('search'), list = $('search-results');
   let results = [], active = 0;
   const close = () => { list.hidden = true; input.setAttribute('aria-expanded', 'false'); };
+  // Implements: REQ-WALK-024
   const choose = r => {
     close();
     input.blur();
@@ -1652,6 +1710,7 @@ function bindSearch() {
     input.setAttribute('aria-activedescendant', results.length ? `sr-${active}` : '');
   };
   // Debounced: the index can hold 100k entries, and every keystroke would rank them.
+  // Implements: REQ-PERF-002
   let typing = 0;
   input.addEventListener('input', () => {
     clearTimeout(typing);
@@ -1678,6 +1737,7 @@ function bindSearch() {
   });
 }
 
+// Implements: REQ-UI-014, REQ-EXP-005, REQ-EXP-009
 function bindExport() {
   const btn = $('export-btn'), pop = $('export');
   // `back` as in the filters above: shut on purpose it is a way back to the street,

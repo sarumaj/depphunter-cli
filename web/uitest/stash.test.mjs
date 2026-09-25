@@ -29,6 +29,7 @@ describe('the photograph stash', () => {
   let live;
   beforeEach(() => { live = urls(); });
 
+  // Verifies: REQ-HUNT-034
   it('keeps what it is given, newest first', () => {
     const s = new Stash();
     s.add({}, 'one');
@@ -71,6 +72,7 @@ describe('the photograph stash', () => {
     assert.equal(drawn, 3);
   });
 
+  // Verifies: REQ-HUNT-035
   it('names a saved file after the repository and the photograph', () => {
     const clicked = [];
     globalThis.document.createElement = () => ({ click() { clicked.push(this.download); } });

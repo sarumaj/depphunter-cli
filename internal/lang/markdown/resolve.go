@@ -28,6 +28,8 @@ func newResolver(all []*scan.File) *resolver {
 // Resolve points a link at what it names in this repository. Anything else - a URL, a
 // mail address, a fragment of this same document - is not a dependency the map can
 // draw, and is left to the link check to judge.
+//
+// Implements: REQ-MD-001, REQ-MD-005
 func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 	p, ok := Target(file, imp.Module)
 	if !ok {
@@ -49,6 +51,8 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 // It is here rather than in the resolver because the link check asks the same
 // question: a link that points outside the repository, or at something other than a
 // path, is neither an edge on the map nor a defect in the document.
+//
+// Implements: REQ-MD-001
 func Target(from, dest string) (string, bool) {
 	dest, _, _ = strings.Cut(dest, "#")
 	dest, _, _ = strings.Cut(dest, "?")

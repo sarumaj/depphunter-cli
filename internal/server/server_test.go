@@ -64,6 +64,7 @@ func get(t *testing.T, c *http.Client, url string, mod func(*http.Request)) (int
 	return res.StatusCode, string(b)
 }
 
+// Verifies: REQ-SEC-002, REQ-SEC-003, REQ-SEC-004
 func TestTokenExchangeAndAccess(t *testing.T) {
 	_, url, base := start(t)
 	jar, _ := cookiejar.New(nil)
@@ -83,6 +84,7 @@ func TestTokenExchangeAndAccess(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SEC-003
 func TestTwoServersOneBrowser(t *testing.T) {
 	// Browsers keep cookies per host, not per port: one jar for both servers is what a
 	// browser with two maps open looks like.
@@ -99,6 +101,7 @@ func TestTwoServersOneBrowser(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SEC-006, REQ-SRV-003
 func TestFileAllowList(t *testing.T) {
 	_, url, base := start(t)
 	jar, _ := cookiejar.New(nil)
@@ -115,6 +118,7 @@ func TestFileAllowList(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SEC-005
 func TestForeignHostRejected(t *testing.T) {
 	_, url, _ := start(t)
 	code, _ := get(t, http.DefaultClient, url, func(r *http.Request) { r.Host = "attacker.example:80" })
@@ -131,6 +135,7 @@ func login(t *testing.T, url string) *http.Client {
 	return c
 }
 
+// Verifies: REQ-WATCH-004, REQ-SRV-016
 func TestUpdatePushesEvents(t *testing.T) {
 	s, url, base := start(t)
 	c := login(t, url)
@@ -190,6 +195,7 @@ func TestUpdatePushesEvents(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-EXP-005
 func TestExportDownload(t *testing.T) {
 	_, url, base := start(t)
 	c := login(t, url)
@@ -203,6 +209,7 @@ func TestExportDownload(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SEC-007, REQ-SEC-008, REQ-SRV-005
 func TestOpenInEditor(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("uses /bin/sh")
@@ -243,6 +250,7 @@ func TestOpenInEditor(t *testing.T) {
 	t.Error("editor command did not run")
 }
 
+// Verifies: REQ-CFG-012, REQ-CFG-014, REQ-CFG-015, REQ-SEC-007, REQ-SRV-004
 func TestSaveSettings(t *testing.T) {
 	file := filepath.Join(t.TempDir(), config.ProjectFile)
 	_, url, base := start(t, func(c *config.Config) { c.ConfigFile = file })
@@ -281,6 +289,7 @@ func TestSaveSettings(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-EXP-005
 func TestStaticExportDownload(t *testing.T) {
 	_, url, base := start(t)
 	c := login(t, url)
@@ -289,6 +298,7 @@ func TestStaticExportDownload(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-HIST-007, REQ-HIST-008
 func TestHistoryLifecycle(t *testing.T) {
 	s, url, base := start(t, func(c *config.Config) { c.History = true })
 	c := login(t, url)
@@ -445,6 +455,7 @@ func TestEmbedServesTheInterfaceButNotTheProject(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SEC-007
 func TestEmbedStillRefusesAWriteWithoutTheRequestHeader(t *testing.T) {
 	token, _, base := embedded(t)
 	req, _ := http.NewRequest(http.MethodPost, base+"/api/settings", strings.NewReader("{}"))
@@ -463,6 +474,8 @@ func TestEmbedStillRefusesAWriteWithoutTheRequestHeader(t *testing.T) {
 // graph, so that the nodes and the edges are encoded once instead of twice (see
 // newSnapshot). That makes it possible to add a field to graph.Graph and quietly stop
 // serving it, which is what this is here to catch.
+//
+// Verifies: REQ-SRV-002
 func TestServedGraphMatchesTheDocument(t *testing.T) {
 	g := &graph.Graph{
 		Root:        "repo",
@@ -499,6 +512,7 @@ func TestServedGraphMatchesTheDocument(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SRV-013, REQ-SRV-014
 func TestGraphAnswersNotModifiedForWhatTheClientHolds(t *testing.T) {
 	s, url, base := start(t)
 	c := login(t, url)
@@ -564,6 +578,7 @@ func TestGraphAnswersNotModifiedForWhatTheClientHolds(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SRV-016
 func TestAReconnectingStreamIsToldWhetherItMissedAnything(t *testing.T) {
 	s, url, base := start(t)
 	c := login(t, url)
@@ -630,6 +645,7 @@ func TestAReconnectingStreamIsToldWhetherItMissedAnything(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SRV-015
 func TestEventsCarryTheirIdSoAClientCanResume(t *testing.T) {
 	s, url, base := start(t)
 	c := login(t, url)
@@ -673,6 +689,8 @@ func TestEventsCarryTheirIdSoAClientCanResume(t *testing.T) {
 // TestResolutionReportIsServedInThreeShapes checks the endpoint the editor's
 // Resolution Report reads: the same account of one analysis, as data, as a document,
 // and as the text the command line prints.
+//
+// Verifies: REQ-TRC-011, REQ-TRC-012, REQ-TRC-013
 func TestResolutionReportIsServedInThreeShapes(t *testing.T) {
 	s, url, base := start(t)
 	c := login(t, url)

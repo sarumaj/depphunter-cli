@@ -18,6 +18,8 @@ import (
 )
 
 // Limits for source text embedded in a static page.
+//
+// Implements: REQ-EXP-007
 const (
 	staticPerFile = 256 << 10
 	staticTotal   = 24 << 20
@@ -31,6 +33,8 @@ var relativeImport = regexp.MustCompile(`((?:from|import)\s*\(?\s*)(['"])\./(?:v
 // imports are rewritten to the map's names), the stylesheet is inlined, and the graph,
 // UI settings and source texts (within size limits) are embedded as JSON.
 // extra holds optional datasets ("history", "references", "findings") embedded as they are.
+//
+// Implements: REQ-EXP-006, REQ-EXP-007, REQ-HIST-015
 func WriteStatic(w io.Writer, g *graph.Graph, ui config.UI, root string, extra map[string]any) error {
 	assets := Assets()
 	index, err := fs.ReadFile(assets, "index.html")

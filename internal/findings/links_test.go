@@ -40,6 +40,7 @@ func reasons(fs []*Finding) map[string]string {
 	return out
 }
 
+// Verifies: REQ-MD-006, REQ-MD-007, REQ-MD-008, REQ-MD-009, REQ-MD-010
 func TestBrokenLinksAreFound(t *testing.T) {
 	root := docs(t, map[string]string{
 		"README.md": `# Home
@@ -88,6 +89,8 @@ Line six uses [a reference][missing] and [another][spec].
 // A link is broken when nothing is there, not when the target is merely absent from
 // the map: a repository links to files it generates and files it ignores, and neither
 // is a defect in the document.
+//
+// Verifies: REQ-MD-007, REQ-MD-011
 func TestATargetOutsideTheScanIsNotBroken(t *testing.T) {
 	root := docs(t, map[string]string{
 		"README.md":        "# Home\n\nThe [report](dist/report.html) and the [log](dist/build.log).\n",
@@ -101,6 +104,8 @@ func TestATargetOutsideTheScanIsNotBroken(t *testing.T) {
 
 // Two broken links on one line are two findings: they are told apart by the column,
 // without which the set would keep the first and drop the second as a repeat.
+//
+// Verifies: REQ-MD-006
 func TestTwoBreaksOnOneLine(t *testing.T) {
 	root := docs(t, map[string]string{
 		"README.md": "# Home\n\n| [a](a.md) | [b](b.md) |\n",
@@ -114,6 +119,7 @@ func TestTwoBreaksOnOneLine(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-MD-010
 func TestADocumentThatCannotBeReadIsSaidSo(t *testing.T) {
 	root := docs(t, map[string]string{"README.md": "# Home\n"})
 	found, partial := checkLinks(context.Background(), root,
@@ -127,6 +133,8 @@ func TestADocumentThatCannotBeReadIsSaidSo(t *testing.T) {
 // gone is a finding. A refusal, a rate limit and a server error are the answers a
 // link checker gets from hosts that block robots, and reading them as rot would
 // report links that work perfectly well in a browser.
+//
+// Verifies: REQ-MD-012, REQ-MD-013, REQ-MD-014
 func TestOnlyAGoneAnswerIsAFinding(t *testing.T) {
 	var asked atomic.Int64
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

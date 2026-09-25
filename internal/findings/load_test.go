@@ -28,6 +28,7 @@ func copyReports(t *testing.T, names ...string) string {
 	return root
 }
 
+// Verifies: REQ-FND-001, REQ-FND-024
 func TestCollectReadsEveryReportAndOrdersThem(t *testing.T) {
 	root := copyReports(t, "govulncheck.json", "trivy.json", "eslint.json")
 	set := Collect(context.Background(), Options{Root: root, Reports: []string{"reports/*.json"}})
@@ -60,6 +61,8 @@ func TestCollectReadsEveryReportAndOrdersThem(t *testing.T) {
 
 // A report path that points outside the repository still describes a package, so the
 // finding is kept - it just no longer claims to be about a file on this map.
+//
+// Verifies: REQ-FND-017
 func TestLocalizeKeepsOnlyPathsInsideTheRepository(t *testing.T) {
 	if runtime.GOOS == "windows" {
 		t.Skip("path shapes differ")
@@ -101,6 +104,7 @@ func TestAddKeepsOneOfEachFinding(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-FND-001, REQ-FND-016
 func TestCollectSurvivesAReportItCannotRead(t *testing.T) {
 	root := copyReports(t, "trivy.json")
 	if err := os.WriteFile(filepath.Join(root, "reports", "broken.json"), []byte("{ not json"), 0o644); err != nil {

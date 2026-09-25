@@ -122,6 +122,7 @@ export const CITY_VERT_BODY = `
 `;
 
 /** Fragment declarations: surface functions, all in linear color. */
+// Implements: REQ-CITY-001, REQ-CITY-002
 export const CITY_FRAG_HEAD = NOISE_GLSL + `
 uniform float uBend;
 uniform float uNight;
@@ -153,6 +154,7 @@ vec3 paving(vec3 base, vec2 p) {
 
 // A lawn: one green with gentle, large variation and a few drier patches, and blades
 // up close. Bushes and trees are real geometry (makeProps), not painted on.
+// Implements: REQ-CITY-003, REQ-CITY-023
 vec3 grass(vec3 base, vec2 p) {
   vec2 w = fwidth(p * 60.0);
   float far = smoothstep(0.3, 1.0, max(w.x, w.y));
@@ -162,6 +164,7 @@ vec3 grass(vec3 base, vec2 p) {
   return mix(g, base, 0.08) * dark(0.35);
 }
 
+// Implements: REQ-CITY-003, REQ-CITY-015
 vec3 asphalt(vec2 p) {
   vec2 w = fwidth(p * 40.0);
   float far = smoothstep(0.3, 1.0, max(w.x, w.y));
@@ -183,6 +186,7 @@ uniform vec3 uGroundRef; // a terrace's usual color (the palette's), and land's
 uniform vec3 uLandRef;
 
 // How a box's color differs from its kind's usual one, as a multiplier.
+// Implements: REQ-CITY-004
 vec3 tint(vec3 base, vec3 ref) { return clamp(base / max(ref, vec3(0.02)), 0.4, 2.2); }
 
 const float SIDEWALK = 0.065;
@@ -190,6 +194,7 @@ const float CARRIAGE = 0.42; // farther from every obstacle than this is a park,
 
 // A pocket park where the packing left a hole: a mown lawn crossed by gravel paths
 // (PARK_PATHS apart; makeProps keeps its bushes and trees off them).
+// Implements: REQ-CITY-010, REQ-CITY-023
 vec3 park(vec3 base, vec2 p) {
   vec3 c = grass(base, p);
   vec2 m = p / 0.35, mw = fwidth(m) + 1e-4;
@@ -268,6 +273,7 @@ Road roadField(vec3 lp, vec3 sz) {
 
 // The top of a terrace as a city: asphalt between the buildings, sidewalks, crossings
 // and pocket parks.
+// Implements: REQ-CITY-006, REQ-CITY-007, REQ-CITY-008, REQ-CITY-009, REQ-CITY-010
 vec3 streets(vec3 base, vec3 lp, vec3 sz) {
   Road r = roadField(lp, sz);
   vec2 p = r.p;
@@ -355,6 +361,7 @@ vec3 substrate(vec3 base, vec2 p) {
 // The top of a terrace as a board: a hatched ground pour over the open copper, traces
 // down the middle of every street with vias along them, and round every part a ring of
 // solder pads inside a silkscreen outline.
+// Implements: REQ-MAP-054
 vec3 traces(vec3 base, vec3 lp, vec3 sz) {
   Road r = roadField(lp, sz);
   vec2 p = r.p;
@@ -396,6 +403,7 @@ vec3 traces(vec3 base, vec3 lp, vec3 sz) {
 
 // A chip package: black epoxy with a parting line and a row of tin pins along the foot
 // of every face. A tall part is a heatsink instead, finned from top to bottom.
+// Implements: REQ-MAP-053
 vec3 chipFace(vec3 base, float u, float faceW, float v, float h, vec2 seed) {
   float wv = fwidth(v) + 1e-4, wu = fwidth(u) + 1e-4;
   if (h > 2.2) {
@@ -438,6 +446,7 @@ vec3 chipTop(vec3 base, vec3 lp, vec3 sz, float e) {
 }
 
 // The edge of the board: its layers, copper between prepreg, with the mask on top.
+// Implements: REQ-MAP-054
 vec3 boardEdge(vec3 base, vec2 p) {
   float t = p.y / 0.05, w = fwidth(t) + 1e-4;
   vec3 c = vec3(0.28, 0.24, 0.11) * (0.85 + 0.3 * vnoise(p * 60.0));
@@ -460,6 +469,7 @@ vec3 dust(vec3 base, vec2 p) {
 
 // The top of a terrace as a platform: plating, with a lit conduit down the middle of
 // every gap and light along every edge.
+// Implements: REQ-MAP-056
 vec3 conduits(vec3 base, vec3 lp, vec3 sz) {
   Road r = roadField(lp, sz);
   vec2 p = r.p;
@@ -480,6 +490,7 @@ vec3 conduits(vec3 base, vec3 lp, vec3 sz) {
 
 // A spire: faceted, dark at the foot and lit towards the tip, with strata of light
 // across it and a scatter of windows that read as stars.
+// Implements: REQ-MAP-056
 vec3 crystalFace(vec3 base, float u, float faceW, float v, float h, vec2 seed) {
   float t = clamp(v / max(h, 1e-3), 0.0, 1.0);
   vec3 c = mix(base * 0.14, base * 0.62, t);
@@ -515,6 +526,7 @@ vec3 crystalWall(vec3 base, vec2 p) {
 // Terrace sides carry a staircase near one end of each long side (the other end is
 // where rampsFor puts a ramp): the walker steps up anyway, stairs and ramps show
 // where the levels connect.
+// Implements: REQ-CITY-011
 vec3 stairs(vec3 c, float u, float faceW, float v, float h) {
   u -= faceW * 0.5 - 0.34;
   if (faceW < 1.5 || abs(u) > 0.16) return c;
@@ -527,6 +539,7 @@ vec3 stairs(vec3 c, float u, float faceW, float v, float h) {
 
 // A flat roof: gravel, a parapet, and per building either a plant room with a couple
 // of air-conditioning units or rows of solar panels.
+// Implements: REQ-CITY-014
 vec3 roof(vec3 base, vec3 lp, vec3 sz, float e) {
   float w = fwidth(e) + 1e-4;
   vec2 gw = fwidth(lp.xz * 60.0);
@@ -562,6 +575,7 @@ vec3 roof(vec3 base, vec3 lp, vec3 sz, float e) {
 // door on the ground floor and a cornice on top. Each building picks a style: brick
 // with framed windows, concrete panels, or (tall ones) a glass curtain wall. Lit
 // windows glow, more of them at night.
+// Implements: REQ-CITY-013
 vec3 facade(vec3 base, float u, float faceW, float v, float h, vec2 seed) {
   float bays = max(1.0, floor(faceW / 0.24));
   vec2 cell = vec2((u + faceW * 0.5) / (faceW / bays), v / 0.3);
@@ -628,6 +642,7 @@ vec3 retaining(vec3 base, vec2 p, float mixBase) {
 
 // Dimmed boxes (a selection or the legend) keep their facades and roofs, only much
 // fainter, so the focus stands out without the city losing its texture.
+// Implements: REQ-CITY-005
 vec3 cityColor(vec3 base) {
   vec3 c = cityTexture(base);
   return vFade > 0.5 ? mix(c, base, FADE) : c;
@@ -636,6 +651,7 @@ vec3 cityColor(vec3 base) {
 // Which surface a fragment is on is the same question in every style - a shore, the
 // top of a terrace, a symbol plot, a roof, a wall, a facade - so the styles differ only
 // in which painter answers it.
+// Implements: REQ-CITY-001, REQ-MAP-050
 vec3 cityTexture(vec3 base) {
   vec3 n = normalize(vObjN);
   float k = floor(vKind + 0.5);
@@ -718,6 +734,8 @@ export function roadUniforms() {
  * Builds the street lookup for a layout: every box but land is an obstacle for the
  * terrace it stands on. A fragment ignores footprints it lies inside (its own
  * terrace and those below it), so one grid serves all terrace levels.
+ *
+ * Implements: REQ-CITY-016
  */
 export function setRoads(u, boxes) {
   for (const k of ['uRoadIdx', 'uRoadRects']) {
@@ -782,7 +800,11 @@ export function setRoads(u, boxes) {
 
 // ------------------------------------------------------------------ sky and water
 
-/** A sky dome drawn behind everything; it follows the camera. */
+/**
+ * A sky dome drawn behind everything; it follows the camera.
+ *
+ * Implements: REQ-CITY-030, REQ-MAP-057
+ */
 export function makeSky(uniforms) {
   const mat = new THREE.ShaderMaterial({
     uniforms: { ...uniforms, uTop: { value: new THREE.Color() }, uHorizon: { value: new THREE.Color() } },
@@ -941,6 +963,8 @@ export function makeSky(uniforms) {
 /**
  * Water with slow ripples: the planet's surface in walk mode, the sea around the
  * isometric map. Ripples fade to their mean where a pixel covers several of them.
+ *
+ * Implements: REQ-CITY-003, REQ-CITY-025, REQ-CITY-030, REQ-MAP-057
  */
 export function waterMaterial(uniforms) {
   const mat = new THREE.MeshBasicMaterial();
@@ -1127,6 +1151,7 @@ function blocks(boxes) {
 // crosses the terrace's sidewalk into its ring road; at the foot an apron, APRON
 // long, replaces the street's curb. The far end leaves room for the stairs (the
 // stairs shader).
+// Implements: REQ-CITY-017, REQ-CITY-020
 const RAMP_W = 0.2, RAMP_MAX = 2.4, RAMP_MIN_SIDE = 1.7, RAMP_START = 0.1, RAMP_CLEAR = 0.1;
 const RAMP_LANDING = 0.35, DRIVE = 0.14, APRON = RAMP_START + 0.07;
 
@@ -1138,6 +1163,8 @@ const rampCache = new WeakMap();
  * ramp, n: away from the wall, len, rise (the sloped part's length), y0, y1 (low and
  * high surface), x0, z0, x1, z1 (footprint), drive (the driveway's footprint on the
  * terrace)}. Cached per boxes array: scene and walker share it.
+ *
+ * Implements: REQ-CITY-017, REQ-CITY-020, REQ-CITY-021
  */
 export function rampsFor(boxes) {
   if (rampCache.has(boxes)) return rampCache.get(boxes);
@@ -1173,7 +1200,11 @@ export function rampsFor(boxes) {
   return ramps;
 }
 
-/** The ramp surface's height at (x, z), or -Infinity off the ramp. */
+/**
+ * The ramp surface's height at (x, z), or -Infinity off the ramp.
+ *
+ * Implements: REQ-CITY-018, REQ-WALK-035
+ */
 export function rampHeight(r, x, z) {
   if (x < r.x0 || x > r.x1 || z < r.z0 || z > r.z1) return -Infinity;
   const s = ((x - r.origin[0]) * r.u[0] + (z - r.origin[1]) * r.u[1]) / r.rise;
@@ -1213,6 +1244,8 @@ const bridgeCache = new WeakMap();
  * The bridges of a layout: {a, b: the two shores, axis: 'x'|'z' (the span's
  * direction), across: the deck's centre on the other axis, from, to: the span's ends
  * along the axis, y: the shores' level}. Cached per boxes array, like rampsFor.
+ *
+ * Implements: REQ-CITY-021, REQ-CITY-026
  */
 export function bridgesFor(boxes) {
   if (bridgeCache.has(boxes)) return bridgeCache.get(boxes);
@@ -1255,6 +1288,8 @@ export function bridgeBounds(r) {
  * may stand on, rather than what is drawn. A bridge has railings, and a walker whose
  * middle is over the deck's own edge is a walker hanging over the water - so the
  * walker asks with their own radius and everything else asks for the deck itself.
+ *
+ * Implements: REQ-CITY-027, REQ-CITY-028, REQ-WALK-035
  */
 export function bridgeHeight(r, x, z, inset = 0) {
   const along = r.axis === 'x' ? x : z, across = r.axis === 'x' ? z : x;
@@ -1291,6 +1326,7 @@ const clampTo = ([lo, hi], v) => Math.min(hi - DECK_W, Math.max(lo + DECK_W, v))
 // planet), its sides and railings, and a pier every PIER_EVERY down to the water.
 // aRamp, as for ramps: across and along in world units, 3 on the deck (a road with a
 // centre line), 0 on everything else.
+// Implements: REQ-CITY-027
 function bridgeGeometry(bridges) {
   const pos = [], ramp = [], shade = [], index = [];
   const quad = (a, b, c, d, ra, rb, rc, rd, k) => {
@@ -1345,6 +1381,7 @@ function bridgeGeometry(bridges) {
 // its outer wall with a parapet, the wall and barrier at its high end, the driveway
 // onto the terrace and the apron at its foot. aRamp: across and along the roadway in
 // world units, and 1 on the sloped roadway (markings), 2 on plain asphalt, 0 on walls.
+// Implements: REQ-CITY-019, REQ-CITY-020
 function rampGeometry(ramps) {
   const pos = [], ramp = [], shade = [], index = [];
   const quad = (a, b, c, d, ra, rb, rc, rd, k) => {
@@ -1393,6 +1430,7 @@ function rampGeometry(ramps) {
 // The ramps' and bridges' look on top of a bendable material: asphalt with edge lines
 // and chevrons pointing uphill, concrete walls - or, in the other styles, a copper
 // track between the parts, or a lit gangway between the platforms.
+// Implements: REQ-CITY-019, REQ-CITY-027
 function rampMaterial(bendable) {
   const mat = bendable(new THREE.MeshBasicMaterial({ vertexColors: true, side: THREE.DoubleSide }));
   const bend = mat.onBeforeCompile;
@@ -1460,6 +1498,8 @@ const PARK_CLEAR = 0.72, PARK_PATHS = 2.2, PATH_CLEAR = 0.16, MAX_PARK_SAMPLES =
  * bushes and street lamps in a city; capacitors, resistors and LEDs on a board;
  * crystals, glowing rubble and beacons in a galaxy. Returns a Group; the lights glow
  * at night (setNight).
+ *
+ * Implements: REQ-CITY-012, REQ-CITY-022, REQ-MAP-050
  */
 export function makeProps(boxes, bendable, style = 'city') {
   const set = dressed(style);
@@ -1540,6 +1580,7 @@ export function makeProps(boxes, bendable, style = 'city') {
 
 // Samples each block's lawn (the park the street shader draws) on a jittered grid
 // and plants trees and bushes there.
+// Implements: REQ-CITY-024
 function plantParks(boxes, tree, bush) {
   const all = blocks(boxes);
   const area = [...all.keys()].reduce((a, t) => a + t.w * t.d, 0);
@@ -1615,6 +1656,7 @@ function rand(x, z) {
 // Geometries with vertex colors as fixed shading: lighter facing up and towards the
 // light, darker towards the base (self-shadowing), with a little per-vertex jitter so
 // foliage does not look faceted.
+// Implements: REQ-CITY-022
 function shaded(geo, jitter = 0) {
   geo = geo.index ? geo.toNonIndexed() : geo;
   geo.computeVertexNormals();
@@ -1649,6 +1691,7 @@ const trunk = (h, r) => shaded(new THREE.CylinderGeometry(r * 0.7, r, h, 6).tran
 
 // Tree species: a broadleaf with a crown of several blobs, a conifer of stacked cones,
 // and a slender poplar. hue: their foliage's base hue.
+// Implements: REQ-CITY-022
 const TREES = [
   {
     trunk: trunk(0.3, 0.04), hue: 0.24,
@@ -1743,6 +1786,7 @@ const BEACON = merge([
 
 // Each style's props, in the same four roles: a tall one for shores and parks, a low
 // one beside it, and a light with its stem for the terrace edges.
+// Implements: REQ-MAP-055, REQ-MAP-057
 const PROPS = {
   city: {
     species: TREES, stem: '#5a4030', low: BUSH, lowHue: 0.25,

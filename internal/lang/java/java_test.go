@@ -14,6 +14,7 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 	return langtest.Analyze(t, Plugin{}, "testdata/repo")
 }
 
+// Verifies: REQ-JAVA-001, REQ-JAVA-002, REQ-JAVA-003, REQ-JAVA-004, REQ-JAVA-005, REQ-JAVA-006, REQ-JAVA-007, REQ-JAVA-008, REQ-JAVA-009
 func TestResolution(t *testing.T) {
 	// cSpell: disable
 	res := analyze(t)["src/main/java/com/example/app/App.java"]

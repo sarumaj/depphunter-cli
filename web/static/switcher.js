@@ -39,6 +39,7 @@ import { PRIMARY_IDS, SECONDARY_IDS, toolFor } from './tools.js';
 /** The left hand holding nothing, which is a choice on the wheel like any tool. */
 export const EMPTY = 'none';
 
+// Implements: REQ-TOOL-056
 /** What the off hand cycles through: everything it can carry, and then nothing. */
 export const carriedRing = () => [...SECONDARY_IDS, EMPTY];
 
@@ -46,6 +47,8 @@ export const carriedRing = () => [...SECONDARY_IDS, EMPTY];
  * One step along a ring of tools. `current` may be anything not on the ring - an
  * empty hand where EMPTY is not a member of it - and the step then lands on the
  * first, which is what makes the first press of a cycling key predictable.
+ *
+ * Implements: REQ-TOOL-056, REQ-TOOL-057
  */
 export function cycle(ring, current, dir = 1) {
   const at = ring.indexOf(current);
@@ -57,6 +60,8 @@ export function cycle(ring, current, dir = 1) {
  * first, because that is the hand it goes in and the left of the screen is where its
  * tool is drawn, and then the hunt's row. The HUD builds its slots from this and the
  * digits count along it, so there is one order rather than two.
+ *
+ * Implements: REQ-TOOL-053, REQ-TOOL-055
  */
 export const rowOrder = () => [...SECONDARY_IDS, ...PRIMARY_IDS];
 
@@ -64,6 +69,8 @@ export const rowOrder = () => [...SECONDARY_IDS, ...PRIMARY_IDS];
  * The digit a slot wears: its place in the row, 1 upwards, with the tenth on 0 the
  * way a shooter numbers a tenth slot. Ten slots is exactly ten digits, which is the
  * only reason this can be as simple as counting.
+ *
+ * Implements: REQ-TOOL-054
  */
 export const keyFor = id => {
   const at = rowOrder().indexOf(id);
@@ -77,6 +84,8 @@ export const keyFor = id => {
  * `'KeyQ'.slice(5)` is an empty string, which +coerces to nought - so without it, Q
  * would come through here as the 0 key and put a nail gun in the hunting hand instead
  * of walking the carried row.
+ *
+ * Implements: REQ-TOOL-054
  */
 export const toolForKey = code =>
   /^Digit[0-9]$/.test(code) ? rowOrder()[(+code.slice(5) + 9) % 10] : undefined;
@@ -103,6 +112,8 @@ export const FACE = 320, RING = 112, HUB = 58;
  * hunt's seven share the right half and the carried three and the empty hand share
  * the left. So the wedges differ in width between the halves and the halves are what
  * the eye reads, which is the point.
+ *
+ * Implements: REQ-TOOL-058
  */
 export function wedges() {
   const left = carriedRing();
@@ -124,6 +135,8 @@ export function seatOf(w, r = RING) {
 /**
  * The wedge a cursor at (dx, dy) from the middle is on, or null for the hub - which
  * is not a refusal to choose so much as the choice to keep what is already in hand.
+ *
+ * Implements: REQ-TOOL-059, REQ-TOOL-060
  */
 export function wedgeAt(dx, dy) {
   if (Math.hypot(dx, dy) < HUB) return null;
@@ -145,6 +158,8 @@ function saysOf(id) {
  * It draws nothing about the world and decides nothing about the walker. What it is
  * pointing at is `pick`, and who reads it and what they do about it is walk.js's
  * business.
+ *
+ * Implements: REQ-TOOL-058
  */
 export class ToolWheel {
   constructor(el) {

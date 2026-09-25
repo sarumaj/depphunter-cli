@@ -24,6 +24,7 @@ func newResolver(all []*scan.File) *resolver {
 	return r
 }
 
+// Implements: REQ-CI-005, REQ-CI-011, REQ-CI-013
 func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 	// A pinned reference may carry the version it documents in a comment.
 	kind, requested, _ := strings.Cut(imp.Name, "\x00")
@@ -61,6 +62,8 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 
 // local resolves a path inside this repository. Both platforms read such a path from
 // the repository root, whichever directory the file naming it sits in.
+//
+// Implements: REQ-CI-009
 func (r *resolver) local(p string) lang.Target {
 	p = path.Clean(strings.TrimPrefix(strings.TrimPrefix(p, "./"), "/"))
 	if p == "" || strings.HasPrefix(p, "..") {
@@ -85,6 +88,8 @@ func (r *resolver) local(p string) lang.Target {
 // action resolves "owner/repo[/path][@ref]". The dependency is the repository: a
 // reference to a sub-directory still runs whatever that repository holds at ref.
 // Only a commit pins it - a tag can be moved to other code at any time.
+//
+// Implements: REQ-CI-002, REQ-CI-011, REQ-CI-013, REQ-CI-014, REQ-CI-015
 func action(ref, requested string) lang.Target {
 	spec, version, _ := strings.Cut(ref, "@")
 	segments := strings.Split(spec, "/")
@@ -106,6 +111,8 @@ func action(ref, requested string) lang.Target {
 
 // image resolves a container reference, "[registry/]name[:tag][@digest]". A tag is
 // republished whenever its owner likes, so only a digest pins an image.
+//
+// Implements: REQ-CI-012
 func image(ref string) lang.Target {
 	name, digest, hasDigest := strings.Cut(ref, "@")
 	tag := ""

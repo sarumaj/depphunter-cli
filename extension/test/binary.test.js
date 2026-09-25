@@ -13,6 +13,7 @@ const { binaryFor, bundled } = require('../out/binary.js');
 
 const NAME = process.platform === 'win32' ? 'depphunter.exe' : 'depphunter';
 
+// Verifies: REQ-EXT-019
 describe('which depphunter to run', () => {
   let home, empty;
 

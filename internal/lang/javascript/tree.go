@@ -39,6 +39,8 @@ func (t *tree) add(pkg string, deps ...string) {
 }
 
 // Dependencies implements lang.Transitive.
+//
+// Implements: REQ-SUP-009
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 	if t.Ecosystem != ecoNPM {
 		return nil
@@ -56,6 +58,8 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 }
 
 // addPackageLockTree reads the dependency edges of package-lock.json, v1 through v3.
+//
+// Implements: REQ-SUP-009
 func (t *tree) addPackageLockTree(lock *packageLock) {
 	for key, p := range lock.Packages {
 		name := lockName(key)
@@ -92,6 +96,8 @@ func lockName(key string) string {
 }
 
 // addPnpmTree reads the dependency edges of pnpm-lock.yaml.
+//
+// Implements: REQ-SUP-009
 func (t *tree) addPnpmTree(doc *pnpmLock) {
 	for key, p := range doc.Packages {
 		name, version := pnpmKey(key)
@@ -135,6 +141,8 @@ func startsWithDigit(s string) bool { return s != "" && s[0] >= '0' && s[0] <= '
 
 // addYarnTree reads the dependency edges of a classic yarn.lock, whose entries name
 // their resolved version and then the ranges they in turn require.
+//
+// Implements: REQ-SUP-009
 func (t *tree) addYarnTree(data []byte) {
 	var names []string
 	inDeps := false

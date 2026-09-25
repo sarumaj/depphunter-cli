@@ -6,6 +6,7 @@ import (
 	"testing"
 )
 
+// Verifies: REQ-SEC-009, REQ-DIST-016, REQ-SRV-007
 func TestCommand(t *testing.T) {
 	cmd, err := Command(`"/opt/My Editor/bin/ed" --goto '{file}:{line}'`, "/src/a b.go", 12)
 	if err != nil {
@@ -26,6 +27,7 @@ func TestCommand(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SRV-006
 func TestDetect(t *testing.T) {
 	env := func(m map[string]string) func(string) string { return func(k string) string { return m[k] } }
 	onPath := func(bins ...string) func(string) (string, error) {

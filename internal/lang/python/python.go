@@ -23,6 +23,8 @@ const (
 // @import is a dotted module; @from.module / @from.name come from "from m import n"
 // (one match per imported name); @future is a __future__ import; @def.<kind> names a
 // definition. The runtime may elide expression_statement wrappers, hence the alternation.
+//
+// Implements: REQ-LANG-023, REQ-PY-001, REQ-PY-014
 const query = `
 (import_statement name: (dotted_name) @import)
 (import_statement name: (aliased_import name: (dotted_name) @import))
@@ -43,6 +45,7 @@ const query = `
 (class_definition body: (block (decorated_definition definition: (function_definition name: (identifier) @def.method))))
 `
 
+// Implements: REQ-LANG-007
 var grammar = treesitter.MustGrammar("python", python.Language(), query)
 
 type Plugin struct{}
@@ -53,6 +56,7 @@ func (Plugin) Claims(f *scan.File) bool {
 	return (strings.HasSuffix(f.Path, ".py") || strings.HasSuffix(f.Path, ".pyi")) && !f.Binary
 }
 
+// Implements: REQ-PY-005
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
 		{ID: ecoPyPI, Name: "PyPI"},
@@ -66,6 +70,7 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 	return newResolver(all, lang.Claimed(Plugin{}, all)), nil
 }
 
+// Implements: REQ-PY-001, REQ-PY-014, REQ-LANG-024
 func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 	ex := &lang.Extraction{}
 	var symbols lang.SymbolSet

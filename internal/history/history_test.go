@@ -61,6 +61,7 @@ func repo(t *testing.T) string {
 	return dir
 }
 
+// Verifies: REQ-HIST-001, REQ-HIST-003, REQ-HIST-004, REQ-HIST-006
 func TestCollect(t *testing.T) {
 	dir := repo(t)
 	h, err := Collect(context.Background(), dir, 100)
@@ -94,6 +95,7 @@ func TestCollect(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-HIST-006
 func TestRenamePaths(t *testing.T) {
 	for in, want := range map[string][2]string{
 		"a.go":                    {"", "a.go"},
@@ -109,6 +111,7 @@ func TestRenamePaths(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-HIST-001
 func TestCollectFromSubdirectory(t *testing.T) {
 	h, err := Collect(context.Background(), filepath.Join(repo(t), "app"), 100)
 	if err != nil {
@@ -122,6 +125,7 @@ func TestCollectFromSubdirectory(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-HIST-002
 func TestCollectTruncates(t *testing.T) {
 	h, err := Collect(context.Background(), repo(t), 2)
 	if err != nil {
@@ -146,6 +150,7 @@ func TestNoHistory(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-HIST-005
 func TestCached(t *testing.T) {
 	dir, cache := repo(t), t.TempDir()
 	h1, err := Cached(context.Background(), cache, dir, 100)

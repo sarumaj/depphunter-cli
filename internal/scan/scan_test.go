@@ -8,6 +8,7 @@ import (
 	"testing"
 )
 
+// Verifies: REQ-LANG-015, REQ-LANG-016, REQ-LANG-018, REQ-LANG-019, REQ-LANG-021
 func TestScanMeasuresAndExcludes(t *testing.T) {
 	root := t.TempDir()
 	files := map[string]string{
@@ -76,6 +77,7 @@ func TestScanSkipsSymlinksInGit(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-LANG-018
 func TestWalkSkipsUnreadableDirectories(t *testing.T) {
 	root := t.TempDir()
 	os.WriteFile(filepath.Join(root, "a.go"), []byte("package a\n"), 0o644)

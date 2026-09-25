@@ -32,6 +32,7 @@ function placed(severities) {
 }
 
 describe('a bug', () => {
+  // Verifies: REQ-HUNT-012
   it('walks as the shape its severity calls for', () => {
     const bugs = placed(['critical', 'high', 'medium', 'low', 'info']);
     const shapes = new Map(bugs.bugs.map(b => [b.f.severity, b]));
@@ -45,6 +46,7 @@ describe('a bug', () => {
     assert.ok(shapes.get('info').scale < shapes.get('low').scale);
   });
 
+  // Verifies: REQ-HUNT-012
   it('gives the worst of them nowhere to fly to', () => {
     // Enough of them that the deal reaches every surface several times over: if a
     // caterpillar could be dealt the air, this is where it would happen.
@@ -70,6 +72,7 @@ describe('a bug', () => {
     assert.equal(grub.wings, null);
   });
 
+  // Verifies: REQ-HUNT-030
   it('leaves the map the way the tool that caught it took it', () => {
     const { TOOLS, TOOL_IDS, hits, toolFor } = TOOLS_MOD;
     // Every tool that can catch one says how it takes it; a catch with no gesture
@@ -108,6 +111,7 @@ describe('a bug', () => {
     }
   });
 
+  // Verifies: REQ-HUNT-032
   it('carries a netted one in the hoop rather than towards the walker', () => {
     // The net is the one tool that takes a bug somewhere other than to the walker: it
     // is in the hoop, and the hoop is on the end of a swing. Homing on the walker's

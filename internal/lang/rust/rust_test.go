@@ -17,6 +17,7 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 	return langtest.Analyze(t, Plugin{}, "testdata/repo")
 }
 
+// Verifies: REQ-RS-002, REQ-RS-003, REQ-RS-004, REQ-RS-005, REQ-RS-006, REQ-RS-007, REQ-RS-008
 func TestResolution(t *testing.T) {
 	res := analyze(t)
 	langtest.CheckImports(t, res["app/src/main.rs"], map[string]lang.Target{
@@ -49,6 +50,7 @@ func TestSymbols(t *testing.T) {
 	langtest.CheckSymbols(t, analyze(t)["app/src/main.rs"], map[string]string{"main": "func", "App": "struct", "App.run": "method"})
 }
 
+// Verifies: REQ-RS-001
 func TestExpandUse(t *testing.T) {
 	got := expandUse("crate::a::{self, b::{c, d as e}, f::*}")
 	want := []string{"crate::a", "crate::a::b::c", "crate::a::b::d", "crate::a::f"}
@@ -59,6 +61,8 @@ func TestExpandUse(t *testing.T) {
 
 // TestLockTree checks the crate graph Cargo.lock resolves: --resolve-depth walks it
 // without asking crates.io anything.
+//
+// Verifies: REQ-SUP-009
 func TestLockTree(t *testing.T) {
 	r, err := (Plugin{}).Resolver("testdata/repo", langtest.Files(t, "testdata/repo"))
 	if err != nil {
@@ -81,6 +85,8 @@ func TestLockTree(t *testing.T) {
 // A lock file holding one crate in two versions - syn 1 beside syn 2 is the usual
 // case - pins each dependency to the version its own requirement means, and walks
 // each version's own dependencies.
+//
+// Verifies: REQ-RS-007, REQ-SUP-009
 func TestLockWithTwoVersionsOfACrate(t *testing.T) {
 	root := t.TempDir()
 	write := func(name, content string) {

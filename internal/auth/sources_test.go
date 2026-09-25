@@ -12,6 +12,7 @@ import (
 // noHelper stands in for a machine with no credential helper installed.
 func noHelper(string) (string, error) { return "", errors.New("not found") }
 
+// Verifies: REQ-AUTH-001, REQ-AUTH-009
 func TestNpmrcCredentialForms(t *testing.T) {
 	t.Setenv("NPM_TOKEN", "from-the-environment")
 	c := &Store{bearer: map[string]string{}, basic: map[string]string{}}
@@ -38,6 +39,7 @@ registry=https://registry.npmjs.org
 	}
 }
 
+// Verifies: REQ-AUTH-005
 func TestDockerStoredCredentials(t *testing.T) {
 	c := &Store{bearer: map[string]string{}, basic: map[string]string{}}
 	c.readDockerConfig([]byte(`{"auths":{
@@ -66,6 +68,8 @@ func TestDockerStoredCredentials(t *testing.T) {
 // A helper is a program named by a configuration file, so the name is all it may
 // contribute: anything that could select a program outside PATH is refused before
 // anything is executed.
+//
+// Verifies: REQ-AUTH-006, REQ-AUTH-007
 func TestOnlyANameCanNameAHelper(t *testing.T) {
 	for _, name := range []string{
 		"../../../bin/evil", "/bin/sh", "evil;rm -rf /", "..", "with space", "",
@@ -91,6 +95,7 @@ func TestOnlyANameCanNameAHelper(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-AUTH-008
 func TestCargoTokens(t *testing.T) {
 	config := []byte(`
 [registries]
@@ -131,6 +136,8 @@ token = "corp-token"
 // An index URL may carry its own credential, which is how a private pip or Cargo
 // mirror is usually configured. It must never survive into what is recorded: the
 // index a package resolves from is drawn on the map and written into every export.
+//
+// Verifies: REQ-AUTH-012, REQ-AUTH-013
 func TestACredentialInA_URL_IsTakenOutOfIt(t *testing.T) {
 	c := &Store{bearer: map[string]string{}, basic: map[string]string{}}
 	got := c.FromURL("https://deploy:s3cr3t@pypi.corp/simple", true)
@@ -175,6 +182,8 @@ func TestReadWithoutAnyOfThem(t *testing.T) {
 
 // A bearer token is preferred over a password for the same host, and a host and port
 // are matched before the host alone: a registry on a port has its own credential.
+//
+// Verifies: REQ-AUTH-011
 func TestApplyPrefersTheMoreSpecificCredential(t *testing.T) {
 	c := &Store{
 		bearer: map[string]string{"harbor.corp:5000": "port-token"},
@@ -190,6 +199,8 @@ func TestApplyPrefersTheMoreSpecificCredential(t *testing.T) {
 // A registry reached on a port has a credential of its own, and a credential written
 // for the bare host still reaches it. Before this was so, a Harbor on :5000 was sent
 // nothing at all.
+//
+// Verifies: REQ-AUTH-011
 func TestARegistryOnAPortIsReached(t *testing.T) {
 	c := &Store{bearer: map[string]string{}, basic: map[string]string{
 		"harbor.corp:5000": "robot:r0b0t",
@@ -213,6 +224,7 @@ func TestARegistryOnAPortIsReached(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-AUTH-005
 func TestDockerConfigIsReadFromDisk(t *testing.T) {
 	home := t.TempDir()
 	if err := os.MkdirAll(filepath.Join(home, ".docker"), 0o755); err != nil {

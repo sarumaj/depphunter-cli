@@ -8,6 +8,7 @@ import (
 	"testing"
 )
 
+// Verifies: REQ-AUTH-003, REQ-AUTH-009
 func TestMavenServerCredentialsFindTheirHost(t *testing.T) {
 	t.Setenv("NEXUS_PASSWORD", "from-the-environment")
 	c := &Store{bearer: map[string]string{}, basic: map[string]string{}}
@@ -43,6 +44,7 @@ func TestMavenServerCredentialsFindTheirHost(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-AUTH-004, REQ-AUTH-009, REQ-AUTH-010
 func TestNuGetFeedCredentialsFindTheirHost(t *testing.T) {
 	t.Setenv("AZ_PAT", "a-token")
 	c := &Store{bearer: map[string]string{}, basic: map[string]string{}}
@@ -77,6 +79,7 @@ func TestNuGetFeedCredentialsFindTheirHost(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-AUTH-011
 func TestCredentialsGoOnlyToTheHostTheyWereWrittenFor(t *testing.T) {
 	c := &Store{bearer: map[string]string{}, basic: map[string]string{"nexus.corp": "u:p"}}
 	ours, _ := http.NewRequest(http.MethodGet, "https://nexus.corp/repository/x", nil)
@@ -93,6 +96,8 @@ func TestCredentialsGoOnlyToTheHostTheyWereWrittenFor(t *testing.T) {
 
 // A netrc is what git and curl read, and therefore what a Go proxy, a pip mirror and
 // a link into a private repository are most often reached with.
+//
+// Verifies: REQ-AUTH-002
 func TestNetrcCredentials(t *testing.T) {
 	home := t.TempDir()
 	netrc := "machine index.internal login user password pass\nmachine other.internal login u2 password p2\n"

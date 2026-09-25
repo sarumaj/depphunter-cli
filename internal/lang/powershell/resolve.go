@@ -11,6 +11,8 @@ import (
 )
 
 // builtin lists modules that ship with PowerShell or Windows (lower case).
+//
+// Implements: REQ-PS-008
 var builtin = map[string]bool{}
 
 func init() {
@@ -36,6 +38,7 @@ type resolver struct {
 
 var requiredModules = regexp.MustCompile(`(?is)RequiredModules\s*=\s*`)
 
+// Implements: REQ-PS-007, REQ-PS-010
 func newResolver(all []*scan.File) *resolver {
 	r := &resolver{files: map[string]bool{}, modules: map[string]string{}, declared: map[string]moduleSpec{}}
 	for _, f := range all {
@@ -69,6 +72,7 @@ func requiredValue(manifest string) string {
 	return valueAt(manifest[loc[1]:])
 }
 
+// Implements: REQ-PS-001, REQ-PS-007, REQ-PS-008, REQ-PS-010
 func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 	ref := imp.Module
 	if imp.Name == refPath || looksLikePath(ref) {
@@ -114,6 +118,8 @@ func looksLikePath(s string) bool {
 
 // localPath maps a script or module path, relative to the referring script or using
 // $PSScriptRoot, to a project file.
+//
+// Implements: REQ-PS-003, REQ-PS-004
 func (r *resolver) localPath(ref, file string) (lang.Target, bool) {
 	dir := path.Dir(file)
 	p := strings.ReplaceAll(ref, `\`, "/")

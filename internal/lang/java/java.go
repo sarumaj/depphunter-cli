@@ -34,6 +34,7 @@ const query = `
 
 var grammar = treesitter.MustGrammar("java", java.Language(), query)
 
+// Implements: REQ-JAVA-011
 type Plugin struct{}
 
 func (Plugin) Name() string             { return "java" }

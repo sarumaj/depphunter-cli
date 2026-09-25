@@ -14,6 +14,7 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 	return langtest.Analyze(t, Plugin{}, "testdata/repo")
 }
 
+// Verifies: REQ-PS-001, REQ-PS-002, REQ-PS-003, REQ-PS-004, REQ-PS-005, REQ-PS-007, REQ-PS-008, REQ-PS-010
 func TestScript(t *testing.T) {
 	langtest.CheckImports(t, analyze(t)["scripts/deploy.ps1"], map[string]lang.Target{
 		"#Requires -Modules Az.Storage": {Ecosystem: "psgallery", Package: "Az.Storage"},
@@ -33,6 +34,7 @@ func TestScript(t *testing.T) {
 	})
 }
 
+// Verifies: REQ-PS-006, REQ-PS-008, REQ-PS-010
 func TestManifest(t *testing.T) {
 	langtest.CheckImports(t, analyze(t)["tools/Tools/Tools.psd1"], map[string]lang.Target{
 		"RequiredModules: PSReadLine": {Ecosystem: "powershell", Package: "PSReadLine"},

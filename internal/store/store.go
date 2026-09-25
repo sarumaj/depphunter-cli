@@ -26,6 +26,8 @@ type Store struct {
 
 // New opens the store under dir, keeping answers for ttl. It returns nil - a store
 // that keeps nothing - when there is nowhere to write or nothing to be gained.
+//
+// Implements: REQ-FND-012
 func New(dir string, ttl time.Duration) *Store {
 	if dir == "" || ttl <= 0 || os.MkdirAll(dir, 0o755) != nil {
 		return nil

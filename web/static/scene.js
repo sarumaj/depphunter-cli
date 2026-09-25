@@ -54,6 +54,7 @@ export class MapScene {
     this.ticker = 0;
     this.roads = roadUniforms(); // the street network of walk mode (city.js)
 
+    // Implements: REQ-MAP-015, REQ-MAP-016, REQ-MAP-018
     this.controls = new OrbitControls(this.camera, this.renderer.domElement);
     this.controls.enableDamping = false;
     this.controls.screenSpacePanning = true;
@@ -149,6 +150,7 @@ export class MapScene {
    * What the map is dressed as: 'city', 'circuit' or 'galaxy' (city.js). The geometry
    * does not change - only the shaders' style uniform and the props standing on it - so
    * switching costs one prop rebuild and nothing else.
+   * Implements: REQ-MAP-050
    */
   setStyle(id) {
     if (this.style === id) return;
@@ -202,6 +204,8 @@ export class MapScene {
   /**
    * Patches a material to bend its vertices onto the planet while walking; city
    * materials (the boxes) also get walk mode's facades and streets.
+   *
+   * Implements: REQ-CITY-002
    */
   bendable(material, city = false) {
     material.onBeforeCompile = shader => {
@@ -222,6 +226,8 @@ export class MapScene {
   /**
    * Switches between the isometric map and walk mode. radius: the planet's; the
    * walker's camera and centre are set with setWalker.
+   *
+   * Implements: REQ-CITY-030
    */
   setWalking(on, radius) {
     this.walking = on;
@@ -254,6 +260,7 @@ export class MapScene {
   }
 
   /** Replace all boxes. colors: array of CSS colors, one per box. */
+  // Implements: REQ-PERF-001
   setBoxes(boxes, colors) {
     // New buffers: nothing of the old colors survives for setColors to compare against.
     this.shown = null;
@@ -295,6 +302,7 @@ export class MapScene {
       }
     }
     this.props = makeProps(boxes, m => this.bendable(m), this.style);
+    // Implements: REQ-CITY-016
     setRoads(this.roads, boxes); // both views draw the streets
     if (this.colors) setNight(this.props, this.curve.uNight.value > 0);
     this.scene.add(this.props);
@@ -308,6 +316,7 @@ export class MapScene {
    * Bounds the isometric view to the map: the point the camera looks at stays within
    * the map plus a margin, and zooming out stops when the whole map is a fraction of
    * the screen.
+   * Implements: REQ-MAP-020, REQ-MAP-021
    */
   setLimits(boxes) {
     let minX = Infinity, maxX = -Infinity, minZ = Infinity, maxZ = -Infinity, maxY = 0;
@@ -324,6 +333,7 @@ export class MapScene {
     this.clampView();
   }
 
+  // Implements: REQ-MAP-021
   updateMinZoom() {
     if (!this.limits) return;
     this.controls.minZoom = this.fitZoom(this.limits) * MIN_ZOOM_SHARE;
@@ -333,6 +343,7 @@ export class MapScene {
     }
   }
 
+  // Implements: REQ-MAP-020
   clampView() {
     const b = this.limits;
     if (!b || this.walking) return;
@@ -375,6 +386,7 @@ export class MapScene {
    * recolors two boxes, and repainting the ground's hundreds of thousands of vertex
    * colors for that took longer than a frame; the callers hand over fresh arrays
    * every time and do not keep them, so the last ones serve as the comparison.
+   * Implements: REQ-PERF-004, REQ-PERF-006
    */
   setColors(colors, faded = []) {
     parsed.clear();
@@ -408,6 +420,7 @@ export class MapScene {
   }
 
   /** Paints the ground's vertex colors, for the given box indexes or for all of them. */
+  // Implements: REQ-PERF-006
   paintGround(colors, faded, only) {
     const g = this.ground.geometry, ranges = g.userData.ranges;
     const shade = g.getAttribute('shade'), box = g.getAttribute('box');
@@ -453,6 +466,7 @@ export class MapScene {
     return hit ? hit.instanceId : -1;
   }
 
+  // Implements: REQ-WALK-020
   setOutline(box, color) {
     if (this.outline) {
       this.scene.remove(this.outline);
@@ -474,6 +488,7 @@ export class MapScene {
   }
 
   /** arcs: [{from: box, to: box, color, count}] - drawn as raised curves with an arrow head at the target. */
+  // Implements: REQ-MAP-009, REQ-MAP-026
   setArcs(arcs) {
     for (const c of this.edgeGroup.children) c.geometry.dispose();
     this.edgeGroup.clear();
@@ -505,6 +520,7 @@ export class MapScene {
   }
 
   /** Orient the camera isometrically; quarter = number of 90° turns. */
+  // Implements: REQ-MAP-015, REQ-MAP-017
   setIso(quarter) {
     this.quarter = ((quarter % 4) + 4) % 4;
     const az = Math.PI / 4 + this.quarter * Math.PI / 2;
@@ -522,6 +538,7 @@ export class MapScene {
   }
 
   /** Centre and zoom on a world-space box {minX,maxX,minZ,maxZ,maxY}. */
+  // Implements: REQ-MAP-019
   fit(b, margin = 0.88) {
     const center = new THREE.Vector3((b.minX + b.maxX) / 2, 0, (b.minZ + b.maxZ) / 2);
     const offset = this.camera.position.clone().sub(this.controls.target);
@@ -567,6 +584,8 @@ export class MapScene {
    * `hands` draws what the walker is holding over the world, which is every frame but
    * one: a photograph taken with the camera cannot have the camera in it, and a hand
    * across the corner of a picture is the same mistake as a thumb over the lens.
+   *
+   * Implements: REQ-TOOL-001, REQ-HUNT-039
    */
   renderNow(hands = true) {
     const r = this.renderer;
@@ -639,7 +658,11 @@ export class MapScene {
     return v.set(c.x + dx / r * rr * Math.sin(th), rr * Math.cos(th) - R, c.z + dz / r * rr * Math.sin(th));
   }
 
-  /** Inverse of bend: a point in walk-mode space -> the flat-map point it shows (in place). */
+  /**
+   * Inverse of bend: a point in walk-mode space -> the flat-map point it shows (in place).
+   *
+   * Implements: REQ-WALK-002
+   */
   unbend(v) {
     const c = this.curve.uCenter.value, R = this.curve.uRadius.value;
     const dx = v.x - c.x, dy = v.y + R, dz = v.z - c.z;
@@ -660,9 +683,11 @@ const WATER_DEPTH = 0.45;
 // The isometric sea: just above the land boxes' base (layout LAND_H below the
 // mainland), so shores meet the water without a sliver of box bottom, and this many
 // map sizes across.
+// Implements: REQ-CITY-025
 const SEA_LEVEL = -WATER_DEPTH + 0.03, SEA_SIZE = 40;
 // Zooming out stops when the map fills this share of the view; panning stops when
 // the view's centre is this far beyond the map (a share of its size, plus a minimum).
+// Implements: REQ-MAP-020, REQ-MAP-021
 const MIN_ZOOM_SHARE = 0.35, PAN_MARGIN = 0.25, PAN_MARGIN_MIN = 6;
 
 const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
@@ -670,6 +695,7 @@ const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
 // Colors arrive as CSS strings, one per box, and every ground vertex reads its box's
 // again; parsing one takes long enough to be worth doing once per color. setColors
 // empties the cache on entry, so it never outlives a single pass.
+// Implements: REQ-PERF-007
 const parsed = new Map();
 function parseColor(css) {
   let c = parsed.get(css);
@@ -680,6 +706,7 @@ function parseColor(css) {
 // Wraps a world position around a sphere of radius uRadius touching the flat map at
 // uCenter: distance along the surface and height above it are preserved, so vertical
 // edges stay straight (radial) and flat faces curve with the planet.
+// Implements: REQ-WALK-002
 const BEND_GLSL = `
 uniform vec3 uCenter;
 uniform float uRadius;

@@ -14,6 +14,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/graph"
 )
 
+// Verifies: REQ-EXP-006, REQ-EXP-007
 func TestWriteStatic(t *testing.T) {
 	root := t.TempDir()
 	os.WriteFile(filepath.Join(root, "a.go"), []byte("package a // </script><script>alert(1)</script>\n"), 0o644)

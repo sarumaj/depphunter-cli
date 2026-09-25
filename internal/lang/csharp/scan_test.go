@@ -7,6 +7,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
+// Verifies: REQ-CS-005
 func TestScannerEdgeCases(t *testing.T) {
 	src := `// using Commented;
 /* using BlockCommented; */
@@ -26,7 +27,7 @@ namespace Outer
             { unbalanced
             """;
         private string verbatim = @"C:\path ""quoted"" { ";
-        private string interp = $"{Raw} using Nope;";
+        private string interpolated = $"{Raw} using Nope;";
         private char brace = '{';
 
         public Widget() { }
@@ -59,23 +60,24 @@ namespace Outer
 	if want := []string{"System.Diagnostics", "System.Text", "Inner.Stuff"}; !reflect.DeepEqual(usings, want) {
 		t.Errorf("usings %v, want %v", usings, want)
 	}
-	syms := map[string]string{}
+	symbols := map[string]string{}
 	lines := map[string]int{}
 	for _, s := range ex.Symbols {
-		syms[s.Name], lines[s.Name] = s.Kind, s.Line
+		symbols[s.Name], lines[s.Name] = s.Kind, s.Line
 	}
 	want := map[string]string{
 		"Widget": "class", "Widget.Items": "method", "Widget.RunAsync": "method",
 		"Nested": "class", "Nested.Deep": "method", "IThing": "interface",
 	}
-	if !reflect.DeepEqual(syms, want) {
-		t.Errorf("symbols %v, want %v", syms, want)
+	if !reflect.DeepEqual(symbols, want) {
+		t.Errorf("symbols %v, want %v", symbols, want)
 	}
 	if lines["Widget.RunAsync"] != 24 {
 		t.Errorf("RunAsync on line %d, want 24", lines["Widget.RunAsync"])
 	}
 }
 
+// Verifies: REQ-CS-006
 func TestInterpolatedStrings(t *testing.T) {
 	src := "class A\n{\n" +
 		"    string a = $\"{(ok ? \"x;{\" : \"b\")} {{not a hole}} {d:yyyy-MM-dd} {'{'}\";\n" +

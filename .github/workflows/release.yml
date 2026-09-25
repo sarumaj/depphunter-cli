@@ -8,6 +8,7 @@ permissions:
   contents: write # create the release and upload its assets
 
 jobs:
+  # Implements: REQ-DIST-008, REQ-DIST-009
   release:
     runs-on: ubuntu-latest
     outputs:

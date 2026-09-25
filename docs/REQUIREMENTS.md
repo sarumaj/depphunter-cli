@@ -4,6 +4,12 @@
 directory and opens an interactive isometric "archipelago" map of its code base
 in the default web browser.
 
+> **Note:** this document is the design log: the milestones in the order they
+> were built, with the decisions behind them. The normative requirements derived
+> from it - one file per requirement, each with a scope, a UUID, its
+> verification types and its trace to the code - are in
+> [requirements/](requirements/README.md).
+
 ## 1. Goals
 
 - Answer, within a minute on an unfamiliar repository: what is present, how

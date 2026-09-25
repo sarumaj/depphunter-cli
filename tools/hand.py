@@ -181,6 +181,7 @@ def place(mesh: Object, rig: Object) -> dict[str, Vector]:
     return {name: transform @ p for name, p in head.items()}
 
 
+# Implements: REQ-TOOL-009
 def rig_hand(rig: Object, head: dict[str, Vector]) -> tuple[Vector, Vector]:
     """Hang the joints off one another, so a finger carries its own tip when it curls.
 
@@ -341,6 +342,7 @@ def material(mesh: Object) -> None:
     bsdf.inputs["Roughness"].default_value = 0.72
 
 
+# Implements: REQ-TOOL-007
 def main() -> None:
     mesh, rig = load(fetch())
     head = place(mesh, rig)

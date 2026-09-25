@@ -39,6 +39,8 @@ type Cache struct {
 
 // Open loads the cache for project root from dir. A missing or unreadable cache file
 // yields an empty cache: the cache is an optimization, never a reason to fail.
+//
+// Implements: REQ-LANG-028
 func Open(dir, root string) *Cache {
 	sum := sha256.Sum256([]byte(root))
 	c := &Cache{
@@ -59,6 +61,8 @@ func Open(dir, root string) *Cache {
 // Key identifies an extraction: plugin, its version, the class of the file (its
 // extension, which plugins pick grammars by, and whatever else lang.ClassOf says
 // the plugin reads) and the content hash.
+//
+// Implements: REQ-LANG-026
 func Key(plugin string, version int, class string, src []byte) string {
 	sum := sha256.Sum256(src)
 	return fmt.Sprintf("%s/%d/%s/%x", plugin, version, class, sum)
@@ -119,6 +123,8 @@ func (c *Cache) Put(key string, ex *lang.Extraction) {
 
 // Save writes the entries used by the current run, atomically. It writes nothing when
 // nothing was added since the last time.
+//
+// Implements: REQ-LANG-028
 func (c *Cache) Save() error {
 	if c == nil {
 		return nil

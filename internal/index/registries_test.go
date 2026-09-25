@@ -11,6 +11,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 )
 
+// Verifies: REQ-SUP-024
 func TestCargoIndex(t *testing.T) {
 	for configured, want := range map[string]string{
 		"":                                "https://index.crates.io",
@@ -24,6 +25,7 @@ func TestCargoIndex(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-024
 func TestCargoDependenciesFromSparseIndex(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/se/rd/serde" {
@@ -50,6 +52,7 @@ func TestCargoDependenciesFromSparseIndex(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-024
 func TestSparsePath(t *testing.T) {
 	for name, want := range map[string]string{
 		"a":     "1/a",
@@ -92,6 +95,7 @@ func stubNuGet(t *testing.T) *httptest.Server {
 	return srv
 }
 
+// Verifies: REQ-SUP-025
 func TestNuGetDependencies(t *testing.T) {
 	srv := stubNuGet(t)
 	c := clientFor(t, NuGet, srv.URL+"/v3/index.json", "")
@@ -142,6 +146,7 @@ func stubRegistry(t *testing.T, manifest, blob string) (*httptest.Server, *[]str
 	return srv, &asked
 }
 
+// Verifies: REQ-SUP-026, REQ-SUP-027
 func TestOCIBaseFromConfigLabel(t *testing.T) {
 	srv, asked := stubRegistry(t,
 		`{"config":{"digest":"sha256:cfg"}}`,
@@ -163,6 +168,7 @@ func TestOCIBaseFromConfigLabel(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-026
 func TestOCIBaseFromManifestAnnotation(t *testing.T) {
 	// An annotation on the manifest says it outright, and the digest beside it is
 	// what was actually built on, so the tag is not what travels.
@@ -202,6 +208,7 @@ func TestSplitChallenge(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-028
 func TestMavenIsNotAsked(t *testing.T) {
 	// A Maven package on the map is a group, and a POM needs a group and an artifact:
 	// there is nothing to request, and nothing should be requested.
@@ -218,6 +225,8 @@ func TestMavenIsNotAsked(t *testing.T) {
 
 // A 401 with no challenge this client can answer is reported as a 401, not as the
 // JSON parse error an empty body would make of it.
+//
+// Verifies: REQ-SUP-027, REQ-TRC-007
 func TestOCIUnansweredChallengeSaysUnauthorized(t *testing.T) {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Www-Authenticate", `Basic realm="registry"`)

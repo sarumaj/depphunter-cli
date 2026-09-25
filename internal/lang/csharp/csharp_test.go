@@ -14,6 +14,7 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 	return langtest.Analyze(t, Plugin{}, "testdata/repo")
 }
 
+// Verifies: REQ-CS-001, REQ-CS-002, REQ-CS-003, REQ-CS-007
 func TestResolution(t *testing.T) {
 	langtest.CheckImports(t, analyze(t)["src/MyApp.Web/Program.cs"], map[string]lang.Target{
 		"using System":                       {Ecosystem: "dotnet", Package: "System"},
@@ -32,6 +33,7 @@ func TestResolution(t *testing.T) {
 	})
 }
 
+// Verifies: REQ-CS-005
 func TestSymbols(t *testing.T) {
 	langtest.CheckSymbols(t, analyze(t)["src/MyApp.Web/Program.cs"], map[string]string{
 		"Program": "class", "Program.Main": "method", "IService": "interface", "Person": "record",

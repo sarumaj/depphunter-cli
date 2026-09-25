@@ -34,6 +34,8 @@ var known = []struct{ bin, template string }{
 
 // Detect picks a template: $VISUAL or $EDITOR when it names a known GUI editor,
 // otherwise the first known editor on PATH; "" when none is found.
+//
+// Implements: REQ-SRV-006
 func Detect(getenv func(string) string, lookPath func(string) (string, error)) string {
 	for _, v := range []string{getenv("VISUAL"), getenv("EDITOR")} {
 		if fields := strings.Fields(v); len(fields) > 0 {
@@ -56,6 +58,8 @@ func Detect(getenv func(string) string, lookPath func(string) (string, error)) s
 // Command expands template for file (absolute) and line. The template is split with
 // POSIX shell quoting rules (so quote Windows paths that contain backslashes), but no
 // shell runs it: file names cannot inject commands.
+//
+// Implements: REQ-SEC-009, REQ-DIST-016, REQ-SRV-007
 func Command(template, file string, line int) (*exec.Cmd, error) {
 	args, err := shellquote.Split(template)
 	if err != nil {

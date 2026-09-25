@@ -42,8 +42,10 @@ import { editorTemplate } from './launcher';
 // supported (the other is in the README: the server answers to loopback only).
 // Another editor with another scheme can be added with --embed through
 // depphunter.args, which are passed after these.
+// Implements: REQ-EXT-022
 const FRAME_ORIGINS = ['vscode-webview:', 'vscode-file:', 'https://*.vscode-cdn.net'];
 
+// Implements: REQ-EXT-023
 const READY = /\bserving at (\S+)/;
 
 export interface Running {
@@ -62,6 +64,7 @@ export class StartError extends Error {
  * the extension's own directory, where a released build keeps the binary it ships.
  * The promise rejects if the binary is missing, if the server exits first, or if
  * token is cancelled; in every one of those cases nothing is left running.
+ * Implements: REQ-EXT-017, REQ-EXT-019, REQ-EXT-023
  */
 export function start(root: string, home: string | undefined, log: vscode.OutputChannel, token: vscode.CancellationToken): Promise<Running> {
   const cfg = vscode.workspace.getConfiguration('depphunter', vscode.Uri.file(root));
@@ -131,6 +134,7 @@ export function start(root: string, home: string | undefined, log: vscode.Output
  *
  * The settings that decide how the map looks are the exception, and go as seeds
  * (--ui-default) rather than as flags - see below for why.
+ * Implements: REQ-EXT-022, REQ-EXT-024
  */
 export function argv(cfg: vscode.WorkspaceConfiguration, root: string): string[] {
   const args = ['--no-open', '--addr', '127.0.0.1:0'];
@@ -161,6 +165,7 @@ export function argv(cfg: vscode.WorkspaceConfiguration, root: string): string[]
   number('maxFileSize', '--max-file-size');
   number('resolveDepth', '--resolve-depth');
   on('online', '--online');
+  // Implements: REQ-EXT-017
   on('explain', '--explain');
   off('cache', '--no-cache');
   off('history', '--no-history');
@@ -171,6 +176,7 @@ export function argv(cfg: vscode.WorkspaceConfiguration, root: string): string[]
   // settings the map can change and write back itself (its Save button writes the
   // project file's ui: section), and a flag here would beat that file for good -
   // leaving Save quietly doing nothing for whatever happens to be set in the editor.
+  // Implements: REQ-EXT-018
   const seed = (key: string, name: string) => {
     const v = (cfg.get<string>(key) ?? '').trim();
     if (v && v !== 'default') args.push('--ui-default', `${name}=${v}`);
@@ -187,6 +193,7 @@ export function argv(cfg: vscode.WorkspaceConfiguration, root: string): string[]
 
   list('findings', '--findings');
   off('vulns', '--no-vulns');
+  // Implements: REQ-MD-016
   off('links', '--no-links');
 
   on('lsp', '--lsp');

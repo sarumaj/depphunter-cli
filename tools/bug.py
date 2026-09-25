@@ -413,6 +413,7 @@ def mite_wing() -> Object:
     return obj
 
 
+# Implements: REQ-HUNT-013
 def main() -> None:
     bpy.ops.wm.read_factory_settings(use_empty=True)  # type: ignore[reportAttributeAccessIssue]
     for stray in list(bpy.data.objects):  # type: ignore[reportAttributeAccessIssue]

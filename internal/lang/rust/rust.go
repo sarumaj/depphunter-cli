@@ -40,6 +40,7 @@ const query = `
 
 var grammar = treesitter.MustGrammar("rust", rust.Language(), query)
 
+// Implements: REQ-RS-009
 type Plugin struct{}
 
 func (Plugin) Name() string             { return "rust" }
@@ -56,9 +57,10 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 	return newResolver(all), nil
 }
 
+// Implements: REQ-RS-001, REQ-RS-003
 func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 	ex := &lang.Extraction{}
-	var syms lang.SymbolSet
+	var symbols lang.SymbolSet
 	err := grammar.Matches(src, func(m treesitter.Match) {
 		for _, c := range m {
 			switch {
@@ -75,13 +77,13 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 				if i := strings.IndexAny(typ, "<"); i >= 0 {
 					typ = typ[:i] // Server<T> -> Server
 				}
-				syms.Add(typ+"."+c.Text, "method", c.Line)
+				symbols.Add(typ+"."+c.Text, "method", c.Line)
 			case strings.HasPrefix(c.Name, "def."):
-				syms.Add(c.Text, strings.TrimPrefix(c.Name, "def."), c.Line)
+				symbols.Add(c.Text, strings.TrimPrefix(c.Name, "def."), c.Line)
 			}
 		}
 	})
-	ex.Symbols = syms.List()
+	ex.Symbols = symbols.List()
 	return ex, err
 }
 
@@ -89,6 +91,8 @@ var alias = regexp.MustCompile(`\s+as\s+[A-Za-z_][A-Za-z0-9_]*`)
 
 // expandUse turns a use tree into the paths it imports:
 // "crate::a::{self, b::c as d, e::*}" -> crate::a, crate::a::b::c, crate::a::e.
+//
+// Implements: REQ-RS-001
 func expandUse(tree string) []string {
 	tree = strings.Join(strings.Fields(alias.ReplaceAllString(tree, "")), "")
 	var out []string

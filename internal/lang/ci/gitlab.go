@@ -10,6 +10,8 @@ import (
 
 // reserved are the top-level keys that configure the pipeline; everything else at that
 // level is a job, including the hidden ".template" ones jobs extend.
+//
+// Implements: REQ-CI-010
 var reserved = map[string]bool{
 	"image": true, "services": true, "stages": true, "types": true, "before_script": true,
 	"after_script": true, "variables": true, "cache": true, "include": true,
@@ -18,6 +20,8 @@ var reserved = map[string]bool{
 
 // extractGitLab reads a GitLab pipeline: its jobs are the symbols, and its includes,
 // components, templates and images are the dependencies.
+//
+// Implements: REQ-CI-005, REQ-CI-006, REQ-CI-007, REQ-CI-010
 func extractGitLab(root *yaml.Node) *lang.Extraction {
 	ex := &lang.Extraction{}
 	for _, inc := range items(field(root, "include")) {
@@ -42,6 +46,8 @@ func extractGitLab(root *yaml.Node) *lang.Extraction {
 }
 
 // addInclude records one include entry in any of the forms GitLab accepts.
+//
+// Implements: REQ-CI-005, REQ-CI-006
 func addInclude(ex *lang.Extraction, n *yaml.Node) {
 	if n == nil {
 		return
@@ -92,6 +98,8 @@ func addInclude(ex *lang.Extraction, n *yaml.Node) {
 
 // addImages records the image a job runs in and the services beside it. owner names
 // the job for the import's label; "" is the pipeline-wide setting.
+//
+// Implements: REQ-CI-007
 func addImages(ex *lang.Extraction, n *yaml.Node, owner string) {
 	if n == nil {
 		return

@@ -18,6 +18,7 @@ import { STATIC } from './data.js';
 
 // The joints that bend. WebXR gives a finger a metacarpal inside the palm as well,
 // but that one is part of the hand's shape rather than part of closing it.
+// Implements: REQ-TOOL-009
 export const FINGERS = ['index', 'middle', 'ring', 'pinky'].map(d =>
   ['proximal', 'intermediate', 'distal'].map(j => `${d}-finger-phalanx-${j}`));
 export const THUMB = ['thumb-metacarpal', 'thumb-phalanx-proximal', 'thumb-phalanx-distal'];
@@ -29,6 +30,8 @@ let loading = null;  // the load in flight
  * Starts loading the model, and resolves once it is in. Calling it again while it is
  * loading joins the same load. The UI can go on drawing without it: a hand that has
  * not arrived yet simply is not there, which is a frame or two at startup.
+ *
+ * Implements: REQ-TOOL-010
  */
 export function loadHands() {
   // A static export has no server to fetch from and carries the model inline.
@@ -53,6 +56,8 @@ export const handsReady = () => model !== null;
  * The model is a right hand; a left hand is the same mesh mirrored across x, which is
  * what a left hand is. Mirroring reverses the winding, so its material draws back
  * faces instead - otherwise the hand turns inside out.
+ *
+ * Implements: REQ-TOOL-010
  */
 export function handModel(mirror = 1, material) {
   if (!model) return null;
@@ -81,6 +86,8 @@ const turn = new THREE.Quaternion();
  * Turns one bone by an angle about one of its own axes, from its rest pose. tools/hand.py
  * rolls every bone so that its local x runs across the hand and its local z points out
  * of the back of it, which is why one axis curls every finger the same way.
+ *
+ * Implements: REQ-TOOL-009
  */
 export function pose(hand, name, about, angle) {
   const joint = hand?.userData.bones?.get(name);
@@ -92,6 +99,7 @@ export function pose(hand, name, about, angle) {
 // How far each joint of a finger gives when the hand closes. A hand does not fold
 // evenly: the knuckle gives least and the middle joint most, which is the difference
 // between a fist and a claw.
+// Implements: REQ-TOOL-011
 const GIVE = [0.75, 1.25, 0.95];
 
 // Across the hand, and out of the back of it: fingers curl about the first and fan

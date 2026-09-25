@@ -46,6 +46,7 @@ func (p packageRef) version() string {
 	return strings.TrimSpace(p.VersionChild)
 }
 
+// Implements: REQ-CS-001, REQ-CS-002, REQ-CS-003
 func newResolver(all []*scan.File) *resolver {
 	r := &resolver{csDirs: map[string]bool{}, packages: map[string]string{}}
 	central := map[string]string{} // Directory.Packages.props
@@ -113,6 +114,7 @@ func within(ns, prefix string) (string, bool) {
 	return "", false
 }
 
+// Implements: REQ-CS-001, REQ-CS-002, REQ-CS-004, REQ-CS-007
 func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 	ns := imp.Module
 	for _, p := range r.projects {

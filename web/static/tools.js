@@ -67,6 +67,8 @@ import { handModel, closeHand, closeFinger, setWrist, loadHands, handsReady } fr
  * camera carries its own lights (viewLights), and since every material in the scene
  * proper is unlit, nothing but what is in the walker's hands can see them. That is
  * what gives a rod blank its highlight and a hand its roundness.
+ *
+ * Implements: REQ-TOOL-012
  */
 function part(geo, color, opts) {
   return new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
@@ -80,6 +82,8 @@ function part(geo, color, opts) {
  * So these are unlit - a lit material out there sees no light at all and is drawn
  * black, which is what a soap bubble and a gout of white foam made very plain - and
  * bendable, so a dart in the air follows the same curve as the street under it.
+ *
+ * Implements: REQ-TOOL-039, REQ-TOOL-040
  */
 function flying(scene, geo, color, opts) {
   return new THREE.Mesh(geo, scene.bendable(new THREE.MeshBasicMaterial({ color, ...opts })));
@@ -159,6 +163,8 @@ const ALONG = new THREE.Vector3(0, 1, 0);
  * is meant to reach - and that is how a tool ends up with something floating beside
  * it, because the two ends are set independently and only one of them is ever checked.
  * Anything that has to arrive somewhere exactly is built this way instead.
+ *
+ * Implements: REQ-TOOL-037
  */
 function linkPart(from, to, r, color) {
   const run = new THREE.Vector3().subVectors(to, from);
@@ -187,6 +193,8 @@ const skinMaterial = () =>
  * stops the shaded side of a forearm from going to one dead tone. They are parented
  * to the camera, so they travel with the view, and they reach nothing else, because
  * the map is drawn with unlit materials.
+ *
+ * Implements: REQ-TOOL-012
  */
 export function viewLights() {
   const g = new THREE.Group();
@@ -227,6 +235,7 @@ const PISTOL = {
 
 // viewmodel places a hand and its tool where a first-person view expects them: low
 // and to the right, angled towards the middle of the screen.
+// Implements: REQ-TOOL-001
 function viewmodel(build) {
   const g = new THREE.Group();
   g.position.set(REST.x, REST.y, REST.z);
@@ -246,6 +255,8 @@ function viewmodel(build) {
  *
  * The model arrives asynchronously, so the hand is an empty anchor until it does. One
  * or two frames at the start of a session is the price of not blocking on it.
+ *
+ * Implements: REQ-TOOL-013
  */
 function armed(g, { hold, grip, restGrip = 0.75 }, build, mirror = 1) {
   const holder = new THREE.Group();
@@ -296,6 +307,8 @@ function grasps(g, tool, { at, along, back, close = 0.75 }, mirror = 1) {
  * `back` out of the frame. Those two are what anyone would say about a held tool -
  * which way it points and which way the arm goes - and they are perpendicular by
  * construction, so `back` is squared up against `along` rather than trusted.
+ *
+ * Implements: REQ-TOOL-013
  */
 function aimHand(holder, along, back) {
   const x = new THREE.Vector3(...along).normalize();
@@ -328,6 +341,8 @@ function fillHand(holder, mirror, restGrip) {
  * Closes every hand of a viewmodel further than it already is. The model's own pose is
  * an open hand; a tool is held with the fist already most of the way shut, and a
  * gesture takes it the rest of the way.
+ *
+ * Implements: REQ-TOOL-019
  */
 function grip(vm, amount, press = 0) {
   for (const holder of vm.userData.hands || []) {
@@ -345,6 +360,8 @@ function grip(vm, amount, press = 0) {
  * ring, the launcher's muzzle. walk.js reads its world position when it fires, so a
  * bobber starts at the end of the rod rather than at the walker's eye - which is what
  * made a cast look like it came from nowhere.
+ *
+ * Implements: REQ-TOOL-038
  */
 function muzzle(parent, x, y, z) {
   const m = new THREE.Object3D();
@@ -392,6 +409,8 @@ const STUDY_AT = new THREE.Vector3();
  * It is laid over whatever the idle wrote rather than replacing it, so the camera
  * still breathes on its way up and the hand does not go rigid the moment a photograph
  * is put on it.
+ *
+ * Implements: REQ-HUNT-042, REQ-HUNT-043
  */
 export function studyTool(vm, u) {
   const k = clamp01(u);
@@ -415,6 +434,8 @@ export function studyTool(vm, u) {
  * shudders every time the walker breaks into a run. The breath keeps one rate for
  * ever and can be read off the clock; this cannot. It is kept modulo two full turns of
  * the slower term, so both stay continuous where it wraps.
+ *
+ * Implements: REQ-WALK-042, REQ-TOOL-020
  */
 function idle(vm, now, pace = 0, dt = 0) {
   const t = now / 1000;
@@ -443,6 +464,8 @@ function idle(vm, now, pace = 0, dt = 0) {
  * hand where the rotation would otherwise have moved it from: rotating about a point
  * is rotating about the origin and putting that point back. `hold` is the tool's own,
  * the offset the fist sits at, and `sway` is any travel the arm makes on top of it.
+ *
+ * Implements: REQ-TOOL-046
  */
 function aboutHand(vm, hold, sway = null) {
   PIVOT.set(hold.x, hold.y, hold.z);
@@ -462,6 +485,8 @@ const clamp01 = t => Math.min(1, Math.max(0, t));
  * The shape of a swing: a gesture is not a ramp. It loads backwards first
  * (anticipation), drives through the strike, and settles back - which is what makes
  * a throw look thrown rather than slid. Returns -0.55 .. 1 .. 0.
+ *
+ * Implements: REQ-TOOL-019
  */
 function swing(u) {
   if (u < 0.22) return -0.55 * smooth(u / 0.22);
@@ -478,6 +503,7 @@ function press(u) {
 
 // ------------------------------------------------------------------ the tools
 
+// Implements: REQ-TOOL-014
 const rod = {
   id: 'rod',
   label: 'Fishing rod',
@@ -588,6 +614,7 @@ const rod = {
   reel: { speed: 11, stop: 1.1, max: 28, onto: false },
 };
 
+// Implements: REQ-TOOL-015
 const net = {
   id: 'net',
   label: 'Butterfly net',
@@ -663,6 +690,8 @@ const net = {
    * It turns about the hand (aboutHand), which is what makes it a swing rather than a
    * net held still while the arm is carried around it: the head is half a metre out on
    * the end of the shaft, and it is the head that has to travel.
+   *
+   * Implements: REQ-TOOL-044, REQ-TOOL-046
    */
   pose(vm, u) {
     const k = swing(u);
@@ -685,6 +714,7 @@ const net = {
 // How much smaller than life the camera body is drawn, so one hand can hold it.
 const SHELL = 0.78;
 
+// Implements: REQ-TOOL-016
 const camera = {
   id: 'camera',
   label: 'Camera',
@@ -796,6 +826,8 @@ const camera = {
    * taken through, so the picture is filled to the screen and what will not fit is
    * cropped off the long side - a photograph squashed to a shape it was never in is
    * worse than a photograph with its edges missing.
+   *
+   * Implements: REQ-HUNT-042, REQ-HUNT-046
    */
   shows(vm, texture) {
     vm.userData.photo = texture || null;
@@ -817,6 +849,8 @@ const camera = {
    * A photograph put up on it stands in for that view, and while one is up the second
    * pass is not made at all: the camera is then being used as the thing that holds
    * its pictures rather than as a camera.
+   *
+   * Implements: REQ-HUNT-047
    */
   live(vm, scene, lens) {
     const screen = vm.getObjectByName('screen');
@@ -830,6 +864,7 @@ const camera = {
   },
 };
 
+// Implements: REQ-TOOL-017, REQ-TOOL-045
 const bubbles = {
   id: 'bubbles',
   label: 'Bubble wand',
@@ -934,6 +969,8 @@ const LEVER_UP = 0.055, BOTTLE = -0.2;
  * below the fist. What runs through the fist is therefore the handle bar and not the
  * bottle, which is three times too fat for a hand to close on - the same reckoning as
  * the rod's cork and the net's bound grip.
+ *
+ * Implements: REQ-TOOL-035
  */
 const extinguisher = {
   id: 'extinguisher',
@@ -1052,6 +1089,7 @@ const extinguisher = {
   },
 };
 
+// Implements: REQ-TOOL-018, REQ-TOOL-027, REQ-TOOL-041
 const dart = {
   id: 'dart',
   label: 'Tracking dart',
@@ -1170,6 +1208,8 @@ const dart = {
  * and it never thinks better of it; the dart is lobbed and steers. The magazine means
  * nails go one after another, so a wall of a warehouse can be pinned at a run in a way
  * a single dart cannot - and anything small enough gets pinned to the wall with it.
+ *
+ * Implements: REQ-TOOL-027, REQ-TOOL-042, REQ-TOOL-051
  */
 const nailer = {
   id: 'nailer',
@@ -1378,6 +1418,8 @@ const THROTTLE_OUT = -0.075;
  * over the shoulder to the pack itself, with one of the thrusters swung into the
  * bottom of the frame - the pack is behind the camera, and a first-person view of it
  * is the part of it that reaches round.
+ *
+ * Implements: REQ-TOOL-023, REQ-TOOL-035, REQ-TOOL-036, REQ-TOOL-052
  */
 const jetpack = {
   id: 'jetpack',
@@ -1543,6 +1585,8 @@ const FLOAT_AT = -0.24, FLOAT_LEN = 0.34;
  * What runs through the fist is the binding strap, the way anyone carries a boot or a
  * ski: the float itself hangs below the hand, because a hull wide enough to stand on
  * is far too wide for a hand to close around.
+ *
+ * Implements: REQ-TOOL-025, REQ-TOOL-035, REQ-TOOL-052
  */
 const skimmers = {
   id: 'skimmers',
@@ -1605,6 +1649,7 @@ const skimmers = {
   projectile: null,
 };
 
+// Implements: REQ-TOOL-004, REQ-TOOL-005, REQ-TOOL-021
 export const TOOLS = { rod, net, camera, bubbles, extinguisher, dart, nailer, grapple, jetpack, skimmers };
 
 /**
@@ -1622,6 +1667,8 @@ export const SECONDARY_IDS = TOOL_IDS.filter(id => TOOLS[id].kind === 'secondary
  * What a tool is any use against, for the aim and for what the HUD says. A secondary
  * tool is no use against anything: it carries the walker, and nothing it touches is
  * tagged or caught. This is the one place that is decided.
+ *
+ * Implements: REQ-TOOL-022, REQ-TOOL-026
  */
 export const hits = (tool, what) =>
   tool.kind !== 'secondary' && ((tool.targets || 'both') === 'both' || tool.targets === what);

@@ -36,6 +36,8 @@ type Store struct {
 
 // Read collects the credentials from the files and variables the package managers of
 // this machine keep them in. env is the environment to read; nil reads none.
+//
+// Implements: REQ-AUTH-014
 func Read(home string, env func(string) string) *Store {
 	c := &Store{bearer: map[string]string{}, basic: map[string]string{}}
 	if env == nil {
@@ -75,6 +77,8 @@ func Read(home string, env func(string) string) *Store {
 // a <mirror> or a <profile>'s <repository>, and files it under that URL's host. It is
 // where a developer's Nexus or Artifactory password lives; without it the company
 // repository answers 401 and half the dependency tree goes quiet.
+//
+// Implements: REQ-AUTH-003, REQ-AUTH-010
 func (c *Store) readMavenSettings(data []byte) {
 	var doc struct {
 		Servers struct {
@@ -132,6 +136,8 @@ func (c *Store) readMavenSettings(data []byte) {
 // readNuGetConfig takes the credentials a NuGet configuration keeps for its own
 // package sources - Azure Artifacts, a Nexus feed, ProGet - and files them under the
 // host of the source they name.
+//
+// Implements: REQ-AUTH-004, REQ-AUTH-010
 func (c *Store) readNuGetConfig(data []byte) {
 	type entry struct {
 		Key   string `xml:"key,attr"`
@@ -183,6 +189,8 @@ func (c *Store) readNuGetConfig(data []byte) {
 // expand resolves the environment references these files are allowed to hold, so a
 // password can live in the environment rather than on disk: Maven writes ${env.NAME}
 // and NuGet %NAME%.
+//
+// Implements: REQ-AUTH-009
 func expand(v string) string {
 	v = strings.TrimSpace(v)
 	if inner, ok := strings.CutPrefix(v, "${env."); ok {
@@ -232,6 +240,8 @@ func (c *Store) notePlain(u *url.URL) {
 // "//registry.example/:<field>=<value>" for each of the four fields npm accepts:
 // a bearer token, a base64 "user:password", or the two halves of that pair written
 // separately, the password itself base64.
+//
+// Implements: REQ-AUTH-001
 func (c *Store) readNpmrc(data []byte) {
 	user, password := map[string]string{}, map[string]string{}
 	for _, line := range strings.Split(string(data), "\n") {
@@ -270,6 +280,8 @@ func (c *Store) readNpmrc(data []byte) {
 }
 
 // readNetrc reads the machine/login/password triples git and curl use.
+//
+// Implements: REQ-AUTH-002
 func (c *Store) readNetrc(data []byte) {
 	fields := strings.Fields(string(data))
 	machine, login, password := "", "", ""
@@ -304,6 +316,8 @@ func (c *Store) readNetrc(data []byte) {
 // from the repository - the link checker follows every link in its Markdown - and
 // a link to http://nexus.corp/ must not put the password for nexus.corp on the wire
 // in the clear.
+//
+// Implements: REQ-AUTH-011
 func (c *Store) Apply(req *http.Request) {
 	if c == nil {
 		return

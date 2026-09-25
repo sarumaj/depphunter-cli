@@ -7,6 +7,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
+// Verifies: REQ-PS-009
 func TestStatementLines(t *testing.T) {
 	statements, _ := scanStatements("function A {\n    Import-Module X\n}\n\n  Import-Module Y; Import-Module Z\n")
 	lines := map[string]int{}
@@ -36,6 +37,7 @@ func extract(t *testing.T, name, src string) ([]string, map[string]string) {
 	return mods, symbols
 }
 
+// Verifies: REQ-PS-002, REQ-PS-009
 func TestScannerIgnoresNonCode(t *testing.T) {
 	src := "$doc = @\"\nImport-Module InHereString\n\"@\n" +
 		"<#\nImport-Module InBlockComment\n#>\n" +
@@ -48,6 +50,7 @@ func TestScannerIgnoresNonCode(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-PS-009
 func TestScannerClasses(t *testing.T) {
 	src := "class Shape {\n  [double] Area() { if ($true) { return 0 } }\n  static [Shape] New() { return $null }\n  hidden [void] reset() {}\n  [int] $Sides = @{ a = 1 }.a\n}\n" +
 		"function script:Get-Shape { param($n) }\nfilter Only-Big { $_ }\n"
@@ -61,6 +64,7 @@ func TestScannerClasses(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-PS-006
 func TestManifestWithComments(t *testing.T) {
 	src := "@{\n  # RequiredModules = @('Commented')\n  RequiredModules = @(\n    'A' # first\n    @{ ModuleName = 'B'; RequiredVersion = '2.0' }\n  )\n}\n"
 	mods, _ := extract(t, "m.psd1", src)

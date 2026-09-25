@@ -14,6 +14,8 @@ import (
 
 // client is a JSON-RPC connection to a language server process over stdio, framed
 // with LSP's Content-Length headers.
+//
+// Implements: REQ-LSP-002
 type client struct {
 	cmd  *exec.Cmd
 	conn *jsonrpc2.Conn
@@ -44,6 +46,7 @@ func start(ctx context.Context, dir string, argv []string) (*client, error) {
 	if err := cmd.Start(); err != nil {
 		return nil, err
 	}
+	// Implements: REQ-DIST-016
 	stream := jsonrpc2.NewBufferedStream(stdio{stdout, stdin}, jsonrpc2.VSCodeObjectCodec{})
 	conn := jsonrpc2.NewConn(context.Background(), stream, jsonrpc2.HandlerWithError(answer))
 	return &client{cmd: cmd, conn: conn}, nil

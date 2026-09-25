@@ -45,6 +45,8 @@ func (Plugin) Version() int { return 1 }
 
 // Claims takes the files a CI platform reads: GitHub workflows and composite actions,
 // and GitLab pipeline files, including the ones a pipeline includes from .gitlab/.
+//
+// Implements: REQ-CI-001
 func (Plugin) Claims(f *scan.File) bool {
 	if f.Binary {
 		return false
@@ -67,6 +69,7 @@ func (Plugin) Claims(f *scan.File) bool {
 	return false
 }
 
+// Implements: REQ-CI-008
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
 		{ID: ecoActions, Name: "GitHub Actions"},
@@ -82,6 +85,8 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 // Class is which of the three kinds of file f is (lang.Classifier): Extract reads the
 // same YAML differently for each, so the kind is part of the cache key and a cached
 // extraction is never read back for a file that has moved between them.
+//
+// Implements: REQ-CI-001
 func (Plugin) Class(f *scan.File) string {
 	base := path.Base(f.Path)
 	switch {
@@ -94,6 +99,8 @@ func (Plugin) Class(f *scan.File) string {
 }
 
 // Extract reads one configuration file, as the kind Class says it is.
+//
+// Implements: REQ-CI-001
 func (p Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 	var doc yaml.Node
 	if err := yaml.Unmarshal(src, &doc); err != nil {
@@ -201,6 +208,8 @@ func text(n *yaml.Node) string {
 // comment returns the version a pinned reference documents beside itself: the
 // hardening guides tell you to pin an action to a commit, so the readable version
 // survives only as "# v4.1.1" at the end of the line.
+//
+// Implements: REQ-CI-014
 func comment(n *yaml.Node) string {
 	if n == nil {
 		return ""

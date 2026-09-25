@@ -45,6 +45,8 @@ func find(t *testing.T, fs []*Finding, ref string) *Finding {
 }
 
 // Every report shape is recognized from its own content: the file's name says nothing.
+//
+// Verifies: REQ-FND-003, REQ-FND-004, REQ-FND-005, REQ-FND-006, REQ-FND-007, REQ-FND-008, REQ-FND-009
 func TestReadRecognizesEveryFormat(t *testing.T) {
 	for name, want := range map[string]string{
 		"govulncheck.json":   "govulncheck",
@@ -63,6 +65,7 @@ func TestReadRecognizesEveryFormat(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-FND-003, REQ-FND-020
 func TestGovulncheckKeepsTheCallSite(t *testing.T) {
 	_, found := read(t, "govulncheck.json")
 	reached := find(t, found, "GO-2024-2687")
@@ -98,6 +101,7 @@ func TestGovulncheckKeepsTheCallSite(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-FND-004
 func TestNPMAuditReadsAdvisoriesAndChains(t *testing.T) {
 	_, found := read(t, "npm-audit.json")
 	direct := find(t, found, "GHSA-p6mc-m468-83gg")
@@ -111,6 +115,7 @@ func TestNPMAuditReadsAdvisoriesAndChains(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-FND-004
 func TestNPMAuditV6PrefersTheCVE(t *testing.T) {
 	_, found := read(t, "npm-audit-v6.json")
 	f := find(t, found, "CVE-2021-44906")
@@ -121,6 +126,8 @@ func TestNPMAuditV6PrefersTheCVE(t *testing.T) {
 
 // Trivy's own severity word is a distribution's rating; the advisory's CVSS vector is
 // what the map shows.
+//
+// Verifies: REQ-FND-005, REQ-FND-018
 func TestTrivyPrefersTheCVSSVector(t *testing.T) {
 	_, found := read(t, "trivy.json")
 	vuln := find(t, found, "CVE-2020-8203")
@@ -137,6 +144,8 @@ func TestTrivyPrefersTheCVSSVector(t *testing.T) {
 }
 
 // A linter's "error" is not a critical advisory: lint findings stay below vulnerabilities.
+//
+// Verifies: REQ-FND-019
 func TestLintSeveritiesStayBelowVulnerabilities(t *testing.T) {
 	_, golangci := read(t, "golangci-lint.json")
 	errcheck := find(t, golangci, "errcheck")
@@ -162,6 +171,7 @@ func TestLintSeveritiesStayBelowVulnerabilities(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-FND-006, REQ-FND-020
 func TestOSVScannerPlacesFindingsOnPackages(t *testing.T) {
 	_, found := read(t, "osv-scanner.json")
 	f := find(t, found, "GHSA-1234-5678-90ab")
@@ -180,6 +190,7 @@ func TestOSVScannerPlacesFindingsOnPackages(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-FND-009
 func TestReadRejectsWhatIsNotAReport(t *testing.T) {
 	for _, in := range []string{
 		"", "   \n", "not json at all", `<?xml version="1.0"?><report/>`,

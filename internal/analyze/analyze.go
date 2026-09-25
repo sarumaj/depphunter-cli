@@ -70,6 +70,7 @@ type Stats struct {
 	Resolution *trace.Report
 }
 
+// Implements: REQ-MOD-001, REQ-LANG-029, REQ-LANG-030
 func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, error) {
 	var stats Stats
 	files, err := scan.Scan(ctx, root, opts.Scan)
@@ -100,6 +101,7 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 		}
 	}
 	b.add(&graph.Node{ID: graph.DirID("."), Kind: graph.KindDir, Name: b.g.Root, Path: "."})
+	// Implements: REQ-LANG-014, REQ-LANG-020
 	for _, f := range files {
 		b.files[f.Path] = true
 		b.add(&graph.Node{
@@ -117,6 +119,7 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 		if err != nil {
 			return nil, stats, fmt.Errorf("%s plugin: %w", p.Name(), err)
 		}
+		// Implements: REQ-LANG-026, REQ-LANG-027, REQ-LANG-028
 		results := lang.ForEachFile(ctx, claimed, func(f *scan.File, src []byte) *lang.FileResult {
 			key := cache.Key(p.Name(), p.Version(), lang.ClassOf(p, f), src)
 			if ex, ok := opts.Cache.Get(key); ok {
@@ -148,6 +151,7 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 		}
 		// Only now, with every direct package of this plugin on the graph, is there
 		// something to walk out from.
+		// Implements: REQ-SUP-011, REQ-TRC-008
 		local, _ := r.(lang.Transitive)
 		switch {
 		case opts.ResolveDepth == 0:
@@ -175,11 +179,14 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 
 // chain asks what the repository records before it asks an index: a lock file is
 // both faster and more truthful about this project than a registry can be.
+//
+// Implements: REQ-SUP-010, REQ-SUP-030
 type chain struct {
 	local, remote lang.Transitive
 	rep           *trace.Report
 }
 
+// Implements: REQ-SUP-030, REQ-TRC-005, REQ-TRC-006
 func (c chain) Dependencies(t lang.Target) []lang.Target {
 	if c.local != nil {
 		if deps := c.local.Dependencies(t); len(deps) > 0 {
@@ -220,6 +227,8 @@ type builder struct {
 // answers from memory, but an index is a round trip each, and walking the queue one
 // package at a time made --resolve-depth with --online take as long as the requests
 // laid end to end. Bounded, because the other end is somebody's registry.
+//
+// Implements: REQ-SUP-031
 const transitiveWorkers = 12
 
 // expand walks out from the packages already on the graph, adding what the project's
@@ -232,6 +241,8 @@ const transitiveWorkers = 12
 // It stops early when ctx is cancelled - with --online a walk is hundreds of requests,
 // and Ctrl+C or a newer --watch change should not wait for all of them - leaving the
 // graph partial; the caller checks ctx and discards it.
+//
+// Implements: REQ-SUP-008, REQ-SUP-012, REQ-SUP-013, REQ-TRC-004, REQ-TRC-009
 func (b *builder) expand(ctx context.Context, tr lang.Transitive, plugin string, ecosystems map[string]lang.Ecosystem, depth int) {
 	var level []string
 	for id, t := range b.packages {
@@ -288,6 +299,8 @@ func (b *builder) expand(ctx context.Context, tr lang.Transitive, plugin string,
 // ask resolves one level of packages at once and hands back their answers in the
 // order they were asked, each sorted: a resolver may answer out of a map, and the
 // graph must not come out differently for it.
+//
+// Implements: REQ-SUP-031
 func (b *builder) ask(ctx context.Context, tr lang.Transitive, level []string) [][]lang.Target {
 	answers := make([][]lang.Target, len(level))
 	workers := min(transitiveWorkers, len(level))
@@ -338,6 +351,7 @@ func (b *builder) dir(p string) string {
 	return id
 }
 
+// Implements: REQ-MOD-002, REQ-MOD-003
 func (b *builder) fileResult(file string, res *lang.FileResult, ecosystems map[string]lang.Ecosystem) {
 	fid := graph.FileID(file)
 	for _, s := range res.Symbols {
@@ -353,6 +367,8 @@ func (b *builder) fileResult(file string, res *lang.FileResult, ecosystems map[s
 }
 
 // edge adds one edge, at most once per pair.
+//
+// Implements: REQ-MOD-006
 func (b *builder) edge(from, to string, kind graph.EdgeKind, line int) {
 	key := [2]string{from, to}
 	if b.edges[key] {
@@ -362,6 +378,7 @@ func (b *builder) edge(from, to string, kind graph.EdgeKind, line int) {
 	b.g.Edges = append(b.g.Edges, &graph.Edge{From: from, To: to, Kind: kind, Line: line})
 }
 
+// Implements: REQ-SUP-001, REQ-SUP-007, REQ-SUP-014, REQ-SUP-018, REQ-SUP-037, REQ-MOD-008
 func (b *builder) target(t lang.Target, ecosystems map[string]lang.Ecosystem) string {
 	if t.Local != "" {
 		if b.files[t.Local] {

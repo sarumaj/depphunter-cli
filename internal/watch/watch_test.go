@@ -9,6 +9,7 @@ import (
 	"time"
 )
 
+// Verifies: REQ-WATCH-002
 func TestDebouncedChanges(t *testing.T) {
 	dir := t.TempDir()
 	w, err := New()
@@ -47,6 +48,8 @@ func TestDebouncedChanges(t *testing.T) {
 
 // A report a scanner writes shares its directory with whatever else is written there,
 // and fsnotify watches directories; only the report itself is a change.
+//
+// Verifies: REQ-WATCH-001, REQ-FND-023
 func TestOnlyTheNamedFilesInTheirDirectories(t *testing.T) {
 	dir := t.TempDir()
 	report := filepath.Join(dir, "report.json")
@@ -78,6 +81,8 @@ func TestOnlyTheNamedFilesInTheirDirectories(t *testing.T) {
 }
 
 // Writes that never pause - a build, a growing log - still get the map updated.
+//
+// Verifies: REQ-WATCH-002
 func TestChangesThatNeverGoQuiet(t *testing.T) {
 	dir := t.TempDir()
 	w, err := New()

@@ -18,6 +18,8 @@ import (
 // Cached returns References for g, reusing the result of an earlier run on the same
 // content (the graph's nodes and edges) with the same installed servers. Complete
 // results are stored in dir; "" disables caching.
+//
+// Implements: REQ-LSP-006
 func Cached(ctx context.Context, dir string, g *graph.Graph, opts Options) (*Result, error) {
 	if opts.LookPath == nil {
 		opts.LookPath = exec.LookPath

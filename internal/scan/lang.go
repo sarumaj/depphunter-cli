@@ -31,6 +31,8 @@ var byName = map[string]string{
 }
 
 // Language guesses a file's language from its name; "" means unknown.
+//
+// Implements: REQ-LANG-015
 func Language(p string) string {
 	base := path.Base(p)
 	if l, ok := byName[base]; ok {

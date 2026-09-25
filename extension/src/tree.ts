@@ -27,7 +27,10 @@ export interface Row {
   readonly cycle?: boolean;
 }
 
-/** The graph, indexed for the questions a tree asks of it. */
+/**
+ * The graph, indexed for the questions a tree asks of it.
+ * Implements: REQ-EXT-003, REQ-EXT-004
+ */
 export class Model {
   readonly byId = new Map<string, GraphNode>();
   private readonly children = new Map<string, GraphNode[]>();
@@ -60,7 +63,10 @@ export class Model {
     sort(this.roots);
   }
 
-  /** What sits under a node: what it holds, or what it depends on. */
+  /**
+   * What sits under a node: what it holds, or what it depends on.
+   * Implements: REQ-EXT-003
+   */
   childrenOf(id: string): GraphNode[] {
     const node = this.byId.get(id);
     if (!node) return [];
@@ -77,7 +83,10 @@ export class Model {
     }
   }
 
-  /** The chain from a root down to a node, as the tree holds it. */
+  /**
+   * The chain from a root down to a node, as the tree holds it.
+   * Implements: REQ-EXT-008
+   */
   rowFor(id: string): Row | undefined {
     const chain: GraphNode[] = [];
     for (let n = this.byId.get(id); n; n = n.parent ? this.byId.get(n.parent) : undefined) {
@@ -110,6 +119,7 @@ export class DependencyTree implements vscode.TreeDataProvider<Row> {
     this.changed.dispose();
   }
 
+  // Implements: REQ-EXT-005
   getChildren(element?: Row): Row[] {
     if (!this.model) return [];
     if (!element) return this.model.roots.map(node => ({ node }));
@@ -124,6 +134,7 @@ export class DependencyTree implements vscode.TreeDataProvider<Row> {
     return element.parent;
   }
 
+  // Implements: REQ-EXT-005, REQ-EXT-007
   getTreeItem(row: Row): vscode.TreeItem {
     const n = row.node;
     const leaf = row.cycle || this.model?.childrenOf(n.id).length === 0;
@@ -138,6 +149,7 @@ export class DependencyTree implements vscode.TreeDataProvider<Row> {
   }
 }
 
+// Implements: REQ-EXT-006
 function icon(n: GraphNode): vscode.ThemeIcon {
   switch (n.kind) {
     case 'dir':
@@ -155,6 +167,7 @@ function icon(n: GraphNode): vscode.ThemeIcon {
   }
 }
 
+// Implements: REQ-EXT-005, REQ-EXT-006
 function description(n: GraphNode, cycle: boolean): string {
   const parts: string[] = [];
   if (n.version) parts.push(n.version);

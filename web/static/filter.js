@@ -1,11 +1,13 @@
 // Filters decide what exists on the map; search finds nodes among what is visible.
 
+// Implements: REQ-DIST-017
 import { Fzf, byLengthAsc } from './vendor/fzf.es.js';
 
 /**
  * filters: {hiddenLangs: Set<string>, hiddenEcosystems: Set<string>, path: string}
  * `path` is a comma-separated glob list; plain patterns include, "!pattern" excludes.
  * Returns {visible(node), counts: Map<dirId, {fileCount, totalLoc}>, hiddenFiles}.
+ * Implements: REQ-MAP-032, REQ-MAP-033, REQ-MAP-035, REQ-MAP-059
  */
 export function computeVisibility(model, filters) {
   const { include, exclude } = parsePathFilter(filters.path);
@@ -52,6 +54,7 @@ export function computeVisibility(model, filters) {
   return { visible, counts, hiddenFiles };
 }
 
+// Implements: REQ-MAP-034
 export function parsePathFilter(text) {
   const include = [], exclude = [];
   for (let p of (text || '').split(',').map(s => s.trim()).filter(Boolean)) {
@@ -65,6 +68,7 @@ export function parsePathFilter(text) {
 /**
  * gitignore-flavoured globs: `*` and `?` stay within a path segment, `**` spans
  * segments; a pattern without "/" matches the file name or any directory name.
+ * Implements: REQ-MAP-034
  */
 export function globMatcher(glob) {
   const anchored = glob.includes('/');
@@ -85,6 +89,7 @@ export function globMatcher(glob) {
  * A fuzzy finder (fzf's algorithm, via fzf-for-js) over files, directories, symbols
  * and packages. Each entry is matched as "name path", so a query can name a symbol,
  * a file or a directory.
+ * Implements: REQ-MAP-031
  */
 export function searchIndex(model) {
   const items = [];

@@ -3,6 +3,7 @@
 
 const SLOTS = 7; // categorical slots for languages; the rest fold into "Other"
 
+// Implements: REQ-A11Y-001, REQ-MAP-051
 export function readPalette() {
   const cs = getComputedStyle(document.documentElement);
   const v = name => cs.getPropertyValue(name).trim();
@@ -33,6 +34,7 @@ export function readPalette() {
 // assignSlots gives the largest languages the categorical slots and keeps earlier
 // assignments (prev) while those languages exist, so live updates never repaint a
 // language: color follows the language, not its rank.
+// Implements: REQ-MAP-036
 export function assignSlots(model, prev = []) {
   const present = new Set(model.languages.map(l => l.lang));
   const slots = Array.from({ length: SLOTS }, (_, i) => (present.has(prev[i]) ? prev[i] : null));
@@ -44,6 +46,7 @@ export function assignSlots(model, prev = []) {
   return slots;
 }
 
+// Implements: REQ-MAP-014, REQ-A11Y-001
 export function languageColors(model, pal, slots) {
   const map = new Map();
   slots.forEach((lang, i) => lang && map.set(lang, pal.series[i]));

@@ -38,6 +38,7 @@ func WithEdges(g *graph.Graph, extra []*graph.Edge) *graph.Graph {
 	return &c
 }
 
+// Implements: REQ-EXP-001
 func Write(w io.Writer, g *graph.Graph, format string) error {
 	switch format {
 	case "json":
@@ -88,6 +89,7 @@ type gmlDoc struct {
 	} `xml:"graph"`
 }
 
+// Implements: REQ-EXP-002, REQ-EXP-013
 func writeGraphML(w io.Writer, g *graph.Graph) error {
 	doc := gmlDoc{NS: "http://graphml.graphdrawing.org/xmlns"}
 	for _, k := range []struct{ id, typ string }{
@@ -131,6 +133,7 @@ func writeGraphML(w io.Writer, g *graph.Graph) error {
 		add("symbolKind", n.SymbolKind)
 		num("line", n.Line)
 		add("version", n.Version)
+		// Implements: REQ-SUP-006
 		add("requested", n.Requested)
 		flag("floating", n.Floating)
 		flag("transitive", n.Transitive)
@@ -168,6 +171,8 @@ func writeGraphML(w io.Writer, g *graph.Graph) error {
 // ecosystem. Standard-library packages and files without edges are left out: they
 // dominate the drawing without saying much. Nested clusters were tried and make
 // Graphviz stack them into very tall layouts. JSON and GraphML keep everything.
+//
+// Implements: REQ-EXP-003
 func writeDOT(w io.Writer, g *graph.Graph) error {
 	byID := map[string]*graph.Node{}
 	for _, n := range g.Nodes {
@@ -205,6 +210,7 @@ func writeDOT(w io.Writer, g *graph.Graph) error {
 	}
 	sort.Strings(keys)
 
+	// Implements: REQ-DIST-016
 	d := dot.NewGraph(dot.Directed)
 	d.Attr("label", g.Root)
 	d.Attr("rankdir", "LR")
@@ -257,6 +263,8 @@ func writeDOT(w io.Writer, g *graph.Graph) error {
 
 // Sources reads the text of the graph's files for a static export. Files over perFile
 // bytes and binary files are skipped; reading stops once total bytes are collected.
+//
+// Implements: REQ-EXP-007
 func Sources(root string, g *graph.Graph, perFile, total int64) map[string]string {
 	out := map[string]string{}
 	var used int64

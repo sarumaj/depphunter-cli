@@ -21,6 +21,8 @@ type block struct {
 // scanner splits PowerShell source into statements (on newlines, `;`, `{` and `}`),
 // skipping comments, string and here-string contents, and joining lines continued with
 // a backtick, a trailing pipe or comma, or an open parenthesis.
+//
+// Implements: REQ-PS-009
 type scanner struct {
 	statements []stmt
 	comments   []comment

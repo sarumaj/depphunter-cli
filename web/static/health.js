@@ -23,10 +23,12 @@ const MAX_CATCH = 150;   // as far as catching can raise it
 // A fall is free up to this, in map units - a storey is 0.3, so about a house - and
 // costs this much per unit beyond it. Off a tall tower that is fatal, off a terrace
 // wall it is nothing, and the walk mostly happens in between.
+// Implements: REQ-WALK-027
 const SAFE_FALL = 3, PER_UNIT = 26;
 // A bite, by what the finding it came from was called. Several of any of them are
 // survivable, which is the point: being bitten is a reason to swing at what is biting
 // you rather than a thing that happens once and ends the walk.
+// Implements: REQ-WALK-028
 const BITE = { critical: 34, high: 22, medium: 13, low: 7, info: 4, unknown: 9 };
 const HURT_MS = 420; // how long the screen wears a hit
 // Mending: how long after the last thing that hurt before it starts, and how much a
@@ -66,6 +68,8 @@ export class Health {
   /**
    * Back to full, with a ceiling set by how much is already in the backpack. Called
    * on the way into walk mode, which is the only way back in after dying.
+   *
+   * Implements: REQ-WALK-029, REQ-WALK-030
    */
   reset(caught = 0) {
     this.max = BASE + Math.min(MAX_CATCH, caught * PER_CATCH);
@@ -78,6 +82,8 @@ export class Health {
    * One more in the backpack: the ceiling goes up and the walker is mended by as
    * much. Catching is how you get through a bad street, and this is what makes that
    * true rather than a figure of speech.
+   *
+   * Implements: REQ-WALK-029
    */
   caught(total) {
     const was = this.max;
@@ -116,6 +122,8 @@ export class Health {
   /**
    * What a drop of `height` map units costs. Returns what was taken, so the caller
    * can say so; nothing at all for anything shorter than a house.
+   *
+   * Implements: REQ-WALK-027
    */
   fall(height) {
     const damage = Math.round(Math.max(0, height - SAFE_FALL) * PER_UNIT);

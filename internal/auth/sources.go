@@ -33,6 +33,8 @@ func dockerConfigs(home string) []string {
 // installations no longer store one: the config names a helper instead, per registry
 // (credHelpers) or for all of them (credsStore), and the credential has to be asked
 // for. runHelper does that.
+//
+// Implements: REQ-AUTH-005, REQ-AUTH-006
 func (c *Store) readDockerConfig(data []byte, lookPath func(string) (string, error)) {
 	var doc struct {
 		Auths map[string]struct {
@@ -87,11 +89,15 @@ func (c *Store) readDockerConfig(data []byte, lookPath func(string) (string, err
 // helperName is what may follow "docker-credential-". A helper is named by a
 // configuration file, and a name is all it may contribute: anything that could reach
 // outside PATH - a separator, a relative segment, an extension - is not a name.
+//
+// Implements: REQ-AUTH-007
 var helperName = regexp.MustCompile(`^[A-Za-z0-9_-]+$`)
 
 // helperTimeout bounds one helper. Some of them talk to a cloud service, and none of
 // them is worth waiting on: a credential that does not arrive means an anonymous
 // request, which is what would have happened anyway.
+//
+// Implements: REQ-AUTH-007
 const helperTimeout = 10 * time.Second
 
 // runHelper asks a credential helper for one registry, the way docker login does:
@@ -101,6 +107,8 @@ const helperTimeout = 10 * time.Second
 // This is the one place depphunter runs a program it was not told to run on the
 // command line, so the name is checked against helperName and resolved on PATH only -
 // a configuration naming "../../evil" or an absolute path gets nothing.
+//
+// Implements: REQ-AUTH-006, REQ-AUTH-007
 func runHelper(name, registry string, lookPath func(string) (string, error)) (user, secret string, ok bool) {
 	if !helperName.MatchString(name) {
 		return "", "", false
@@ -132,6 +140,8 @@ func runHelper(name, registry string, lookPath func(string) (string, error)) (us
 
 // registryHost is the host a registry key names. The keys are historical: Docker Hub
 // is written as a v1 API URL, and the rest are bare hosts or URLs.
+//
+// Implements: REQ-AUTH-005
 func registryHost(registry string) string {
 	registry = strings.TrimSpace(registry)
 	if registry == "" {
@@ -154,6 +164,8 @@ func registryHost(registry string) string {
 // readCargoCredentials takes the tokens Cargo keeps for its registries, which are
 // named rather than addressed: the index URL for each name is in config.toml beside
 // them.
+//
+// Implements: REQ-AUTH-008
 func (c *Store) readCargoCredentials(credentials, config []byte) {
 	var creds struct {
 		Registry   struct{ Token string }
@@ -177,6 +189,8 @@ func (c *Store) readCargoCredentials(credentials, config []byte) {
 // pipeline supplies them. The name is upper-cased with hyphens turned into
 // underscores, and there is no way back from the variable to the name, so the
 // environment is matched against the names config.toml declares.
+//
+// Implements: REQ-AUTH-008
 func (c *Store) readCargoEnv(env func(string) string, config []byte) {
 	var doc struct {
 		Registries map[string]struct{ Index string }
@@ -223,6 +237,8 @@ func (c *Store) cargo(name, token string, config []byte) {
 // Stripping is not optional. The index a package resolves from is drawn on the map,
 // named in the side panel and written into every export, and an export is a file the
 // documentation suggests sharing.
+//
+// Implements: REQ-AUTH-012, REQ-AUTH-013
 func (c *Store) FromURL(raw string, trusted bool) string {
 	u, err := url.Parse(raw)
 	if err != nil || u.User == nil {
