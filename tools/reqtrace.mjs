@@ -195,6 +195,20 @@ const link = (from, file) => relative(from, join(ROOT, file)).split(sep).join('/
 const loc = (w) => `[${w.file}](${link(REQ_DIR, w.file)})${w.name ? ` \`${w.name.replace(/[`|]/g, '')}\`` : ''}`;
 const cell = (s) => String(s).replace(/\|/g, '\\|');
 
+/**
+ * A Markdown table with its pipes aligned: every cell padded to its column's width
+ * and the delimiter row spelled out to match, so the source reads as a table and
+ * markdownlint's table-column-style rule (MD060) accepts it. `right` names the
+ * columns aligned right, which is where counts belong.
+ */
+function table(header, rows, right = []) {
+  const all = [header, ...rows].map((r) => r.map(String));
+  const width = header.map((_, i) => Math.max(3, ...all.map((r) => r[i].length)));
+  const line = (r) => `| ${r.map((c, i) => (right.includes(i) ? c.padStart(width[i]) : c.padEnd(width[i]))).join(' | ')} |`;
+  const rule = `| ${width.map((w, i) => (right.includes(i) ? `${'-'.repeat(w - 1)}:` : '-'.repeat(w))).join(' | ')} |`;
+  return [line(all[0]), rule, ...all.slice(1).map(line)];
+}
+
 function render(requirements) {
   const scopes = [...new Set(requirements.map((r) => r.scope))];
   const count = (list, pred) => list.filter(pred).length;
@@ -207,19 +221,23 @@ function render(requirements) {
   out.push('<!-- markdownlint-disable MD033 -->', '');
   out.push('Generated from the requirement files in this directory and the', '`Implements:` and `Verifies:` annotations in the source tree. Regenerate', 'it with `node tools/reqtrace.mjs`.', '');
   out.push('## Summary', '');
-  out.push('| Scope | Requirements | Implemented | Partial | Not implemented | Superseded / withdrawn | Expected automated test missing | No test at all |');
-  out.push('|-------|-------------:|------------:|--------:|----------------:|-----------------------:|--------------------------------:|---------------:|');
-  const row = (name, list) => `| ${name} | ${list.length} | ${count(list, (r) => r.status === 'implemented')} | ${count(list, (r) => r.status === 'partial')} | ${count(list, (r) => r.status === 'not-implemented')} | ${count(list, (r) => !live(r))} | ${count(list, untested)} | ${count(list, unverified)} |`;
-  for (const s of scopes) out.push(row(`[${s}](#${s})`, requirements.filter((r) => r.scope === s)));
-  out.push(row('**Total**', requirements), '');
+  const row = (name, list) => [name, list.length, count(list, (r) => r.status === 'implemented'), count(list, (r) => r.status === 'partial'), count(list, (r) => r.status === 'not-implemented'), count(list, (r) => !live(r)), count(list, untested), count(list, unverified)];
+  out.push(
+    ...table(
+      ['Scope', 'Requirements', 'Implemented', 'Partial', 'Not implemented', 'Superseded / withdrawn', 'Expected automated test missing', 'No test at all'],
+      [...scopes.map((s) => row(`[${s}](#${s})`, requirements.filter((r) => r.scope === s))), row('**Total**', requirements)],
+      [1, 2, 3, 4, 5, 6, 7],
+    ),
+    '',
+  );
 
   const gap = (title, list, extra) => {
     out.push(`### ${title}`, '');
     if (!list.length) out.push('None.', '');
     else {
-      out.push(`| ID | Title |${extra ? ' Expected tests |' : ''}`, `|----|-------|${extra ? '----------------|' : ''}`);
-      for (const r of list) out.push(`| [${r.id}](${link(REQ_DIR, r.file)}) | ${cell(r.title)} |${extra ? ` ${extra(r)} |` : ''}`);
-      out.push('');
+      const header = extra ? ['ID', 'Title', 'Expected tests'] : ['ID', 'Title'];
+      const rows = list.map((r) => [`[${r.id}](${link(REQ_DIR, r.file)})`, cell(r.title), ...(extra ? [extra(r)] : [])]);
+      out.push(...table(header, rows), '');
     }
   };
   out.push('## Coverage gaps', '');
@@ -229,13 +247,12 @@ function render(requirements) {
 
   for (const s of scopes) {
     out.push(`## ${s}`, '');
-    out.push('| ID | UUID | Title | Type | Status | Verification | Implemented in | Verified by |');
-    out.push('|----|------|-------|------|--------|--------------|----------------|-------------|');
+    const rows = [];
     for (const r of requirements.filter((x) => x.scope === s)) {
       const status = r.superseded_by.length ? `${r.status} by ${r.superseded_by.join(', ')}` : r.status;
-      out.push(`| [${r.id}](${link(REQ_DIR, r.file)}) | \`${r.uuid}\` | ${cell(r.title)} | ${r.type} | ${status} | ${r.verification.join(', ')} | ${r.impl.map(loc).join('<br>') || '—'} | ${r.tests.map(loc).join('<br>') || '—'} |`);
+      rows.push([`[${r.id}](${link(REQ_DIR, r.file)})`, `\`${r.uuid}\``, cell(r.title), r.type, status, r.verification.join(', '), r.impl.map(loc).join('<br>') || '—', r.tests.map(loc).join('<br>') || '—']);
     }
-    out.push('');
+    out.push(...table(['ID', 'UUID', 'Title', 'Type', 'Status', 'Verification', 'Implemented in', 'Verified by'], rows), '');
   }
   return out.join('\n');
 }
