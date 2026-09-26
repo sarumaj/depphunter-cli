@@ -81,6 +81,10 @@ const DEFAULT_FLIGHT = { speed: 24, arc: 1, gravity: 6, drag: 0 };
 // the walker down, and how close a thing has to be before pulling to it is nothing.
 // How fast and how near is the tool's business (tools.js).
 const GRAPPLE_TIME = 5, ROOF_IN = 0.5, NO_PULL = 1.2;
+// How full a tank that ran dry has to be again before the tool works (burn): the
+// share at which it also says it is running low, and the quarter the walker's own
+// wind has to get back before running again.
+const REFILLED = 0.25;
 // A hook that does not hold comes back off the wall: what of its speed it keeps, and
 // how far out of the wall it is put so that it does not strike the same face again.
 const GLANCE_KEEP = 0.35, GLANCE_OUT = 0.05;
@@ -1747,7 +1751,7 @@ export class Walker {
     (this.fuelFill ||= box.querySelector('.w-fuel-fill')).style.width = `${shown}%`;
     box.dataset.state = spent ? 'empty' : share > 0.25 ? 'well' : share > 0 ? 'low' : 'empty';
     box.title = spent
-      ? `${tool.label} has run out: it is ${shown}% filled, and works again once you put it away and take it out`
+      ? `${tool.label} has run out: it is ${shown}% filled, and works again at ${Math.round(REFILLED * 100)}%`
       : `${tool.label}: ${shown}% left, and it fills again while it is not in use`;
   }
 
@@ -1774,14 +1778,21 @@ export class Walker {
       const spending = tool === this.secondary && using;
       const now = clamp(was + (spending ? -dt / tool.fuel.full : dt / tool.fuel.fills), 0, 1);
       this.tanks.set(id, now);
-      if (!spending) continue;
+      if (!spending) {
+        // Back once there is enough in it to be worth having, in the hand or not - not
+        // the moment a drop has trickled in, because an empty jet that keeps catching
+        // is worse than one that has plainly stopped, and not only once it has been
+        // put away and taken out again, which nothing on screen asks for.
+        if (this.dry.has(id) && now >= REFILLED) {
+          this.dry.delete(id);
+          if (tool === this.secondary) this.flash(`${tool.label} has filled - ready again`);
+        }
+        continue;
+      }
       if (now === 0 && was > 0) {
-        // Dead until it is taken out again, rather than coming back the moment a drop
-        // has trickled in: an empty jet that keeps catching is worse than one that has
-        // plainly stopped.
         this.dry.add(id);
-        this.flash(`${tool.label} out - put it away and take it out again once it has filled`);
-      } else if (now <= 0.25 && was > 0.25) this.flash(`${tool.label} running low`);
+        this.flash(`${tool.label} out - it works again once it has filled a little`);
+      } else if (now <= REFILLED && was > REFILLED) this.flash(`${tool.label} running low`);
     }
   }
 
@@ -2256,7 +2267,7 @@ export class Walker {
     }
     this.offSwing = 0;
     if (tool.fuel && (this.dry.has(tool.id) || this.tank(tool) <= 0)) {
-      this.flash(`${tool.label} is spent - put it away and take it out again once it has filled`);
+      this.flash(`${tool.label} is spent - it works again once it has filled a little`);
       return;
     }
     if (tool.flies) {

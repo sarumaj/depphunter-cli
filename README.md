@@ -83,7 +83,8 @@ browser.
   empties only while the tool is doing its work and fills again whenever it is
   not, so neither is a way of getting everywhere; a gauge beside the health bar
   says what is left, running dry in the air is a fall, and a tool that has run
-  out stays stopped until it is put away and taken out again. One tool of each
+  out stays stopped until its tank has filled back to a quarter, when it works
+  again by itself. One tool of each
   kind is carried at a time, one to a hand — the primary in the right, the
   secondary in the left — so the map can be flown over and its bugs netted
   without putting either down. A click uses the right hand, and `F`, `C` or the
@@ -99,8 +100,8 @@ browser.
   Running and jumping are paid for out of a second gauge, the walker's **wind**.
   A sprint drains it in a few seconds and each jump takes a little more; it
   fills again while walking or standing, and a walker who has run it out has to
-  get a quarter of it back before they can run or jump again, so the way across
-  a district is a series of dashes rather than one long one. Flying costs nothing:
+  get a quarter of it back before they can run or jump again, so the way across a
+  district is a series of dashes rather than one long one. Flying costs nothing:
   that is the jet's tank, not the walker's chest.
 
   The walker has a **health bar**. A fall is what it would be in life, measured
