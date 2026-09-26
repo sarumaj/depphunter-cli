@@ -64,6 +64,10 @@ const NO_CELL = [];
 const PROP_REACH = 0.7;
 const LOOK = 0.0022;        // radians per pixel of mouse movement
 const TURN = 2.2;           // radians per second with the arrow keys
+// Banking in flight (bankFor): radians of roll per radian a second of turn, the roll a
+// sideways move adds, the most it may lean either way, and how quickly the view eases
+// into a bank and back out of it (per second).
+const BANK_PER_TURN = 0.22, BANK_SIDE = 0.16, BANK_MAX = 0.42, BANK_EASE = 4;
 const MIN_R = 6, MAX_R = 2000;
 // Implements: REQ-WALK-011
 const MAX_LOOK_STEP = 250;  // pixels; larger pointer movements are glitches, not looks
@@ -264,6 +268,8 @@ export class Walker {
     // the freed cursor and the reticle in the centre both steer the same scene, and
     // reading about a building means fighting it.
     this.frozen = false;
+    this.roll = 0;        // the view's bank in flight, eased towards bankFor's (bank)
+    this.lastYaw = null;  // the yaw a frame ago, for how fast the view is turning
     this.focus = null;    // the box kept sharp in the blur while it is being read (focusOn)
     this.focusKey = '';   // the outline last drawn into the blur's mask, to redraw only on change
     // Set once the pointer lock has been asked for and refused for good. Somewhere
@@ -504,6 +510,8 @@ export class Walker {
     this.hud.style.removeProperty('--dead');
     this.dying = null;
     this.focusOn(null);
+    this.roll = 0;
+    this.lastYaw = null;
     this.hud.classList.remove('catching');
     this.hud.querySelector('.w-flash').textContent = '';
     clearTimeout(this.flashTimer);
@@ -1563,7 +1571,8 @@ export class Walker {
       this.health.draw(now); // the wash a hit leaves has to come off by itself
       this.drawFuel();
       this.poseTool(dt, now);
-      this.scene.setWalker(this.p.x, this.p.feet, this.p.z, EYE + this.ride(dt), this.p.yaw, this.p.pitch);
+      this.bank(dt);
+      this.scene.setWalker(this.p.x, this.p.feet, this.p.z, EYE + this.ride(dt), this.p.yaw, this.p.pitch, this.roll);
       if (!this.still && !this.arrival) this.updateAim();
       this.scene.renderNow();
       if (this.frozen && this.focus) this.drawFocus();
@@ -1620,6 +1629,31 @@ export class Walker {
     if (Math.abs(cam.fov - target) < 0.05) return;
     cam.fov += (target - cam.fov) * Math.min(1, dt * 14);
     cam.updateProjectionMatrix();
+  }
+
+  /**
+   * Leans the view into a turn while flying, the way anything that turns in the air
+   * has to, and levels it again when the turn is over or the walker lands. How far
+   * is bankFor's; this eases towards it, so a flick of the mouse is a lean and not a
+   * lurch. The yaw is measured rather than read from the keys, so a turn made with
+   * the mouse banks as much as one made with the arrows.
+   *
+   * Implements: REQ-WALK-054
+   */
+  bank(dt) {
+    const p = this.p;
+    let turning = 0;
+    if (this.lastYaw !== null && dt > 0) {
+      let d = p.yaw - this.lastYaw;
+      d = Math.atan2(Math.sin(d), Math.cos(d)); // across the ±π seam the short way
+      turning = d / dt;
+    }
+    this.lastYaw = p.yaw;
+    const k = this.keys;
+    const side = this.frozen || this.still ? 0 : (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
+    const want = reducedMotion() || this.arrival ? 0 : bankFor(turning, side, !!p.fly);
+    this.roll += (want - this.roll) * Math.min(1, dt * BANK_EASE);
+    if (Math.abs(this.roll) < 1e-4 && want === 0) this.roll = 0;
   }
 
   // Implements: REQ-WALK-004, REQ-WALK-006, REQ-WALK-008, REQ-WALK-026
@@ -3328,6 +3362,20 @@ export function focusMask(points, width, height) {
     + `<feGaussianBlur stdDeviation="${FOCUS_FEATHER}"/></filter>`
     + `<path fill="#000" fill-rule="evenodd" filter="url(#f)" `
     + `d="M${-m} ${-m}H${w + m}V${h + m}H${-m}Z M${at.replaceAll(' ', 'L')}Z"/></svg>`;
+}
+
+/**
+ * How far the view leans while flying: into a turn, by how fast it is (radians a
+ * second, positive to the left), and a little into a sideways move (`side`, +1 to
+ * the right), never past BANK_MAX either way. Level on the ground, where a walker
+ * turning on the spot does not lean. Positive rolls the view to the left, which is a
+ * left turn's bank.
+ *
+ * Implements: REQ-WALK-054
+ */
+export function bankFor(turning, side, flying) {
+  if (!flying) return 0;
+  return clamp(turning * BANK_PER_TURN - side * BANK_SIDE, -BANK_MAX, BANK_MAX);
 }
 
 /**
