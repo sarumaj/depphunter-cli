@@ -49,6 +49,13 @@ class El {
     const p = this.parentElement;
     p.insertAt(el, p.childNodes.indexOf(this) + 1);
   }
+  replaceWith(el) {
+    const p = this.parentElement;
+    if (!p) return;
+    const at = p.childNodes.indexOf(this);
+    this.remove();
+    p.insertAt(el, at);
+  }
   remove() {
     const p = this.parentElement;
     if (!p) return;
@@ -468,5 +475,49 @@ describe('opening the file from the corner', () => {
     const none = cornered(null);
     none.panel.show(model.byId.get('f:cmd/main.go'));
     assert.equal(none.slot.children.length, 0, 'a static export offered to open the file');
+  });
+});
+
+describe('a binary file in a hex editor', () => {
+  // Verifies: REQ-EXT-034
+  it('offers a hex editor for a file found to have no text, and the editor again after', async () => {
+    const shell = new El('main'), root = new El('aside'), body = new El('div'), tools = new El('div'), slot = new El('span');
+    tools.append(slot);
+    shell.append(root);
+    root.append(tools, body);
+    const find = root.querySelector.bind(root);
+    root.querySelector = sel => ({ '.p-tools': tools, '#panel-open': slot }[sel] ?? find(sel));
+    const opened = [];
+    const p = new Panel(root, body, {
+      model, colorOf: () => '', onSelect() {}, linkKind: () => 'import', historyOf: () => null,
+      openLabel: 'Open in VS Code', onOpen: (...a) => opened.push(a),
+    });
+    const real = globalThis.fetch;
+    globalThis.fetch = async () => ({ status: 415, ok: false, headers: { get: () => 'application/octet-stream' }, text: async () => 'binary file' });
+    try {
+      p.show(model.byId.get('f:internal/lang/golang/testdata.yaml'));
+      await new Promise(r => setTimeout(r, 0));
+      const [hex] = slot.children;
+      assert.equal(hex?.textContent, 'Hex editor ↗', 'a binary file was offered to the editor as text');
+      assert.equal(p.hexFor('internal/lang/golang/testdata.yaml'), true);
+      fire(hex, 'click');
+      assert.deepEqual(opened.at(-1), ['internal/lang/golang/testdata.yaml', 1, true]);
+      // Another file is not known to be binary until it is read.
+      globalThis.fetch = real;
+      p.show(model.byId.get('f:cmd/main.go'));
+      assert.equal(slot.children[0]?.textContent, 'VS Code ↗');
+      assert.equal(p.hexFor('internal/lang/golang/testdata.yaml'), false, 'the last binary file was still taken for binary');
+    } finally {
+      globalThis.fetch = real;
+    }
+  });
+
+  // Verifies: REQ-EXT-034
+  it('does not offer a hex editor for a picture, which an editor shows as itself', () => {
+    const p = Object.create(Panel.prototype);
+    p.binaryPath = 'docs/logo.png';
+    assert.equal(p.hexFor('docs/logo.png'), false);
+    p.binaryPath = 'bin/tool.wasm';
+    assert.equal(p.hexFor('bin/tool.wasm'), true);
   });
 });

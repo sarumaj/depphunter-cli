@@ -42,6 +42,9 @@ export type ServerEvent =
   | { name: 'graph'; data: { version: number; changed?: string[] } }
   | { name: 'selection'; data: { id: string; origin: string } }
   | { name: 'backpack'; data: { count: number; origin: string } }
+  // A binary file the map wants opened in a hex editor, sent to this client alone
+  // because it asked for them (?opens=hex).
+  | { name: 'open'; data: { path: string; hex: boolean } }
   // The greeting every connection opens with. `resumed` says the stream carried on
   // from the last event this client saw, so nothing was announced while it was away;
   // without it a reconnection is indistinguishable from a first connection, and the
@@ -139,7 +142,9 @@ export class Api {
       // Last-Event-ID is how the greeting knows whether this is a reconnection, and
       // therefore whether anything was announced while the connection was down.
       const resume = this.lastEvent ? { 'Last-Event-ID': this.lastEvent } : {};
-      request = this.open('GET', '/api/events', undefined, res => {
+      // opens=hex: this client can open a file in a hex editor, which a page asks for
+      // on a binary file and a launcher on the command line cannot do (REQ-EXT-034).
+      request = this.open('GET', '/api/events?opens=hex', undefined, res => {
         if (res.statusCode !== 200) {
           res.resume();
           again();

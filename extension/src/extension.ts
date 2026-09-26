@@ -108,6 +108,49 @@ export function deactivate(): void {
   panel.closeAll();
 }
 
+// ---------------------------------------------------------------- hex editing
+
+/** Microsoft's Hex Editor, and the editor it contributes for a file. */
+const HEX_EDITOR = 'ms-vscode.hexeditor';
+const HEX_VIEW = 'hexEditor.hexedit';
+
+/**
+ * Opens a binary file from the map in the Hex Editor, which edits its bytes and their
+ * text side by side - what the map's "Hex editor" button asks for, and what the
+ * launcher the server would otherwise run has no way to ask for. Without the Hex
+ * Editor it offers to install it, or to open the file as it is.
+ *
+ * `rel` is a path on the map, relative to the folder the server maps; the server
+ * only announces files that are on it.
+ *
+ * Implements: REQ-EXT-034
+ */
+export async function openHex(root: string, rel: string): Promise<void> {
+  const uri = vscode.Uri.file(path.join(root, ...rel.split('/')));
+  if (!vscode.extensions.getExtension(HEX_EDITOR)) {
+    const answer = await vscode.window.showInformationMessage(
+      `${rel} is a binary file. The Hex Editor edits its bytes and their text side by side, and is not installed.`,
+      'Install Hex Editor', 'Open as is');
+    if (answer === 'Open as is') {
+      await vscode.commands.executeCommand('vscode.open', uri);
+      return;
+    }
+    if (answer !== 'Install Hex Editor') return;
+    try {
+      await vscode.commands.executeCommand('workbench.extensions.installExtension', HEX_EDITOR);
+    } catch (e) {
+      log?.appendLine(`Installing the Hex Editor failed: ${e instanceof Error ? e.message : e}`);
+      return;
+    }
+  }
+  try {
+    await vscode.commands.executeCommand('vscode.openWith', uri, HEX_VIEW);
+  } catch (e) {
+    log?.appendLine(`The Hex Editor could not open ${rel}: ${e instanceof Error ? e.message : e}`);
+    await vscode.commands.executeCommand('vscode.open', uri);
+  }
+}
+
 // ---------------------------------------------------------------- the panel
 
 /**
@@ -133,6 +176,9 @@ async function attach(session: Session): Promise<void> {
         break;
       case 'backpack':
         void refreshSession(api);
+        break;
+      case 'open':
+        if (event.data.hex && typeof event.data.path === 'string') void openHex(session.root, event.data.path);
         break;
       case 'hello': {
         // A connection that did not resume may have missed announcements while it

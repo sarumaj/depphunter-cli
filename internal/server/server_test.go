@@ -998,3 +998,105 @@ func TestFileServesBytesOnlyWhenAskedAndSandboxed(t *testing.T) {
 		t.Errorf("outside the graph, raw: %d", res.StatusCode)
 	}
 }
+
+// Verifies: REQ-EXT-034, REQ-SRV-005
+func TestOpenInAHexEditor(t *testing.T) {
+	if runtime.GOOS == "windows" {
+		t.Skip("uses /bin/sh")
+	}
+	marker := filepath.Join(t.TempDir(), "opened")
+	_, url, base := start(t, func(c *config.Config) {
+		c.Editor = `/bin/sh -c "echo {file} > ` + marker + `"`
+	})
+	c := login(t, url)
+	post := func(body string) *http.Response {
+		req, _ := http.NewRequest(http.MethodPost, base+"/api/open", strings.NewReader(body))
+		req.Header.Set(requestHeader, "1")
+		res, err := c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		res.Body.Close()
+		return res
+	}
+
+	// Nothing that opens hex editors is listening: the editor opens it as it is,
+	// and the answer says so.
+	res := post(`{"path":"a.go","line":1,"hex":true}`)
+	if res.StatusCode != http.StatusNoContent || res.Header.Get(openedHeader) != "as-is" {
+		t.Fatalf("no hexer: %d %q", res.StatusCode, res.Header.Get(openedHeader))
+	}
+	// The editor runs in the background: wait for it, both to know it did open the
+	// file and so that it cannot write its marker after the marker is cleared below.
+	for deadline := time.Now().Add(3 * time.Second); ; time.Sleep(20 * time.Millisecond) {
+		if b, err := os.ReadFile(marker); err == nil && strings.Contains(string(b), "a.go") {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the editor did not open it as it is")
+		}
+	}
+
+	// A page's stream is no hexer; the extension's is.
+	page, err := c.Get(base + "/api/events")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer page.Body.Close()
+	ext, err := c.Get(base + "/api/events?opens=hex")
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer ext.Body.Close()
+	lines := func(r io.Reader) <-chan string {
+		out := make(chan string, 16)
+		go func() {
+			s := bufio.NewScanner(r)
+			for s.Scan() {
+				out <- s.Text()
+			}
+			close(out)
+		}()
+		return out
+	}
+	fromPage, fromExt := lines(page.Body), lines(ext.Body)
+	waitFor := func(from <-chan string, want string, d time.Duration) bool {
+		deadline := time.After(d)
+		for {
+			select {
+			case l, ok := <-from:
+				if !ok {
+					return false
+				}
+				if strings.Contains(l, want) {
+					return true
+				}
+			case <-deadline:
+				return false
+			}
+		}
+	}
+	for _, from := range []<-chan string{fromPage, fromExt} {
+		if !waitFor(from, "event: hello", 2*time.Second) {
+			t.Fatal("a stream never said hello")
+		}
+	}
+	os.Remove(marker)
+	if res := post(`{"path":"a.go","line":1,"hex":true}`); res.StatusCode != http.StatusAccepted {
+		t.Fatalf("with a hexer listening: %d", res.StatusCode)
+	}
+	if !waitFor(fromExt, `"path":"a.go"`, 2*time.Second) {
+		t.Error("the extension was not handed the file")
+	}
+	if waitFor(fromPage, "event: open", 300*time.Millisecond) {
+		t.Error("a page was handed the file as well")
+	}
+	time.Sleep(200 * time.Millisecond)
+	if _, err := os.Stat(marker); err == nil {
+		t.Error("the editor opened it as well as the hex editor")
+	}
+	// Still nothing off the map, hex or not.
+	if res := post(`{"path":"secret.txt","hex":true}`); res.StatusCode != http.StatusNotFound {
+		t.Errorf("off the map, hex: %d", res.StatusCode)
+	}
+}
