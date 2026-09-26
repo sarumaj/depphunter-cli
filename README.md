@@ -112,7 +112,10 @@ browser.
   with the height, and the end of the walk from about seventeen metres — five or
   six floors — however full the backpack. Being reeled down a line counts as
   falling. A bug's bite costs more the worse the finding is, and deep water with
-  nothing to float on takes all of it in a couple of seconds — so stowing the
+  nothing to float on takes all of it in a couple of seconds, the walker going
+  under as it does: the view sinks and bobs, the water closes over it from the
+  bottom of the screen with bubbles rising through it, and all of it drains away
+  again if a shore is reached in time — so stowing the
   skimmers out over the bay is the end of that walk, and so is walking into it
   without them unless a shore is reached first. The bay is not a wall around the
   map: it is ground half a unit below the shore, so it can be stepped down into
