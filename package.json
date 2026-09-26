@@ -242,6 +242,13 @@
             "markdownDescription": "The `depphunter` binary to run. **Leave it empty** to use the one the extension ships with - a released build carries the binary for your platform, pinned to the same version - falling back to `depphunter` on `PATH` for a build that carries none. Set it only to point at a different build: a bare name is looked up on `PATH`, an absolute path is used as given.",
             "order": 1
           },
+          "depphunter.addToPath": {
+            "type": "boolean",
+            "default": true,
+            "scope": "window",
+            "markdownDescription": "Put the `depphunter` binary the extension runs (see `#depphunter.path#`) first on `PATH` in the editor's integrated terminals, so `depphunter` there is the same version as the map. Only terminals opened by the editor are changed, not your shell profile. Nothing is added when the binary is found on `PATH` anyway.",
+            "order": 1
+          },
           "depphunter.openIn": {
             "type": "string",
             "enum": [
@@ -558,7 +565,7 @@
     "compile": "tsc -p .",
     "watch": "tsc -w -p .",
     "lint": "tsc -p . --noEmit",
-    "test": "npm run compile && node --test extension/test/binary.test.js extension/test/argv.test.js extension/test/extension.test.js extension/test/panel.test.js extension/test/stream.test.js extension/test/views.test.js web/uitest/bridges.test.mjs web/uitest/model.test.mjs web/uitest/map.test.mjs web/uitest/labels.test.mjs web/uitest/panel.test.mjs web/uitest/filter.test.mjs web/uitest/walk.test.mjs web/uitest/bugs.test.mjs web/uitest/fires.test.mjs web/uitest/flames.test.mjs web/uitest/tour.test.mjs web/uitest/stash.test.mjs web/uitest/layout.test.mjs web/uitest/props.test.mjs web/uitest/menus.test.mjs",
+    "test": "npm run compile && node --test extension/test/binary.test.js extension/test/terminal.test.js extension/test/argv.test.js extension/test/extension.test.js extension/test/panel.test.js extension/test/stream.test.js extension/test/views.test.js web/uitest/bridges.test.mjs web/uitest/model.test.mjs web/uitest/map.test.mjs web/uitest/labels.test.mjs web/uitest/panel.test.mjs web/uitest/filter.test.mjs web/uitest/walk.test.mjs web/uitest/bugs.test.mjs web/uitest/fires.test.mjs web/uitest/flames.test.mjs web/uitest/tour.test.mjs web/uitest/stash.test.mjs web/uitest/layout.test.mjs web/uitest/props.test.mjs web/uitest/menus.test.mjs",
     "package": "vsce package",
     "vscode:prepublish": "npm run compile"
   },

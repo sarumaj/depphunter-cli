@@ -14,6 +14,7 @@ import { Api, PackItem } from './api';
 import { BackpackView } from './backpack';
 import * as panel from './panel';
 import { StartError, start } from './server';
+import { binDirFor, exposeOnPath } from './terminal';
 import { DependencyTree, Row } from './tree';
 import { MapsView } from './view';
 
@@ -46,9 +47,18 @@ let selected = '';
 /** Where this build was installed, which is where a released one keeps its binary. */
 let home: string | undefined;
 
-// Implements: REQ-EXT-001, REQ-EXT-027
+// Implements: REQ-EXT-001, REQ-EXT-027, REQ-EXT-033
 export function activate(context: vscode.ExtensionContext): void {
   home = context.extensionPath;
+  // The editor's terminals get the binary on their PATH (terminal.ts), from the start
+  // and again whenever the setting that decides which binary it is changes.
+  const onPath = (): void => {
+    const cfg = vscode.workspace.getConfiguration('depphunter');
+    if (context.environmentVariableCollection) {
+      exposeOnPath(context.environmentVariableCollection, binDirFor(cfg.get<string>('path'), home, cfg.get<boolean>('addToPath') ?? true));
+    }
+  };
+  onPath();
   settings = settingsOf(context.extension?.packageJSON);
   log = vscode.window.createOutputChannel('depphunter');
   status = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Right, 100);
@@ -86,6 +96,7 @@ export function activate(context: vscode.ExtensionContext): void {
       view.refresh();
     }),
     vscode.workspace.onDidChangeConfiguration(e => {
+      if (e.affectsConfiguration('depphunter.path') || e.affectsConfiguration('depphunter.addToPath')) onPath();
       if (e.affectsConfiguration('depphunter')) void offerRestart(e);
     }),
   );
@@ -515,9 +526,11 @@ let offering = false;
 
 // Implements: REQ-EXT-031
 async function offerRestart(e: vscode.ConfigurationChangeEvent): Promise<void> {
-  // depphunter.openIn is read each time a map is shown; nothing running needs it.
-  const onlyShown = e.affectsConfiguration('depphunter.openIn')
-    && settings.length > 0 && !settings.some(key => key !== 'depphunter.openIn' && e.affectsConfiguration(key));
+  // depphunter.openIn is read each time a map is shown, and depphunter.addToPath only
+  // touches the terminals; nothing running needs either.
+  const notServer = ['depphunter.openIn', 'depphunter.addToPath'];
+  const onlyShown = notServer.some(key => e.affectsConfiguration(key))
+    && settings.length > 0 && !settings.some(key => !notServer.includes(key) && e.affectsConfiguration(key));
   const affected = [...sessions.keys()].filter(root => e.affectsConfiguration('depphunter', vscode.Uri.file(root)));
   if (onlyShown || affected.length === 0 || offering) return;
   offering = true;

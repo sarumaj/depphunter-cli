@@ -461,6 +461,13 @@ To run a different build — one under development, or a newer release on a mach
 whose extension has not been updated — set `depphunter.path` to it. An explicit
 setting always takes precedence over the bundled binary.
 
+The binary the extension runs is also put first on `PATH` in the editor's
+integrated terminals, so `depphunter` typed there — `depphunter --export html`,
+say — is the same version as the map. Only terminals the editor opens are
+changed, not the shell profile; ones already open are offered a relaunch.
+Nothing is added where the binary is found on `PATH` anyway, and
+`depphunter.addToPath` turns it off.
+
 ### Use
 
 Select the depphunter icon in the activity bar. The **Maps** view lists the
@@ -531,6 +538,7 @@ everything not set here.
 |--------------------------------------------------------------------------------|-----------|---------------------|----------------------------------------------------------------------------------------------------------------|
 | **General**                                                                    |           |                     |                                                                                                                |
 | `depphunter.path`                                                              | *(empty)* |                     | The binary to run. Empty selects the bundled binary, falling back to `depphunter` on `PATH`.                   |
+| `depphunter.addToPath`                                                         | `true`    |                     | Put that binary first on `PATH` in the editor's terminals.                                                     |
 | `depphunter.openIn`                                                            | `webview` |                     | `webview` (a dedicated tab), `simpleBrowser` (the built-in browser) or `externalBrowser` (the system default). |
 | `depphunter.watch`                                                             | `true`    | `--watch`           | Re-analyze on file change and update the map.                                                                  |
 | `depphunter.config`                                                            | `""`      | `--config`          | A configuration file to read instead of the folder's `.depphunter.yaml`, relative to the folder.               |

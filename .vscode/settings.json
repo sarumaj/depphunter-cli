@@ -242,6 +242,7 @@
     "staticcheck",
     "stdlib",
     "stretchr",
+    "strs",
     "stylesheet",
     "subl",
     "subosito",
