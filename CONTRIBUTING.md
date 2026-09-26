@@ -375,8 +375,11 @@ between targets in the release workflow.
 
 ## Publishing the extension
 
-The extension is not yet published to any marketplace. What publication
-requires:
+The release workflow publishes every `.vsix` it builds to both the Visual Studio
+Marketplace and Open VSX whenever the tag is a plain `x.y.z`, using the
+`VS_MARKETPLACE_TOKEN` and `OPEN_VSX_TOKEN` repository secrets (a tag packaged
+under the manifest's version is not published). Setting that up, or publishing
+by hand, requires:
 
 1. `npm install -g @vscode/vsce`, and `vsce package` at the root of the
    repository to build the `.vsix`. The release workflow already does this and
