@@ -892,6 +892,20 @@ main.walking #legend { display: none; }
   user-select: none;
 }
 .code .ln.hit { background: color-mix(in srgb, var(--accent) 16%, transparent); }
+/* A binary file's bytes (panel.js hexDump) carry their own offsets, so no line numbers. */
+.code.hex { min-height: 0; }
+.code.hex .ln { padding-left: 10px; }
+.code.hex .ln::before { content: none; }
+/* A picture, a clip or a recording, previewed as itself - never wider than the panel,
+   and never so tall that the rest of it is out of reach. */
+.p-media {
+  display: block; max-width: 100%; max-height: 360px; margin: 0 auto;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--page);
+}
+audio.p-media { width: 100%; }
+/* ... and one that has nothing to show until somebody asks for its bytes. */
+.p-binary { margin: 0 0 8px; color: var(--text-2); }
+.p-reveal { font-size: 12px; }
 .hljs-keyword, .hljs-built_in, .hljs-literal, .hljs-meta { color: var(--hl-keyword); }
 .hljs-string, .hljs-regexp { color: var(--hl-string); }
 .hljs-comment, .hljs-quote { color: var(--hl-comment); font-style: italic; }

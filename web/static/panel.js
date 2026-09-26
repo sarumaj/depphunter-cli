@@ -6,7 +6,7 @@ import powershell from './vendor/highlight-powershell.min.js';
 hljs.registerLanguage('powershell', powershell);
 import { ancestors, boundaryEdges, unread, fileSize } from './model.js';
 import { whereOf } from './findings.js';
-import { fetchSource } from './data.js';
+import { BinaryFile, fetchBytes, fetchSource, fileURL } from './data.js';
 import { ago, formatDate } from './history.js';
 import { fmt, h, escapeHTML } from './dom.js';
 
@@ -446,15 +446,28 @@ export class Panel {
     );
   }
 
-  // Implements: REQ-MAP-027, REQ-MAP-028, REQ-MAP-044
+  // Implements: REQ-MAP-027, REQ-MAP-028, REQ-MAP-044, REQ-MAP-062
   async source(node, seq, keepTop = 0) {
     const file = node.kind === 'symbol' ? node.parentNode : node;
+    // A picture, a clip or a recording is shown as itself rather than read as text,
+    // and without asking for the text first: the element fetches what it needs.
+    const kind = mediaKind(file.path), url = kind && fileURL(file.path);
+    if (url) {
+      const section = h('div', { class: 'p-section' }, h('h4', {}, 'Preview'));
+      section.append(media(kind, url, file, () => section.replaceWith(this.binary(file, 'application/octet-stream'))));
+      this.body.append(section);
+      return;
+    }
     const pre = h('pre', { class: 'code' }, h('span', { class: 'ln' }, 'Loading…'));
     this.body.append(h('div', { class: 'p-section' }, h('h4', {}, 'Source'), pre));
     let text;
     try {
       text = await fetchSource(file.path);
     } catch (e) {
+      if (e instanceof BinaryFile) {
+        if (seq === this.seq) pre.parentElement.replaceWith(this.binary(file, e.type));
+        return;
+      }
       text = `(${e.message})`;
     }
     // The selection changed while the file was being read - or, far more often, a
@@ -482,6 +495,39 @@ export class Panel {
     else if (node.kind === 'symbol') this.gotoLine(pre, node.line);
   }
 
+  /**
+   * What is shown for a file that is not text: nothing of its content until asked.
+   * Its bytes say little and there can be a great many of them, so the section says
+   * what the file is and how big, and a button - which says as much - shows the first
+   * RAW_BYTES of them, as offsets, hexadecimal and whatever is printable.
+   *
+   * Implements: REQ-MAP-062
+   */
+  binary(file, type) {
+    const size = file.bytes || 0;
+    const note = h('p', { class: 'p-binary' },
+      `Binary file${type && type !== 'application/octet-stream' ? ` (${type})` : ''}`
+      + `${size ? `, ${formatBytes(size)}` : ''} - it has no text to show, so its content is not shown.`);
+    const show = h('button', {
+      class: 'p-reveal', type: 'button',
+      title: `Shows the first ${formatBytes(RAW_BYTES)} as hexadecimal. It is rarely readable, and it is not highlighted or searched.`,
+      onclick: async () => {
+        show.disabled = true;
+        show.textContent = 'Reading…';
+        const pre = h('pre', { class: 'code hex' });
+        try {
+          const bytes = await fetchBytes(file.path, RAW_BYTES);
+          pre.innerHTML = hexDump(bytes).map(l => `<span class="ln">${escapeHTML(l)}</span>`).join('');
+          if (size > bytes.length) pre.append(h('span', { class: 'ln meta' }, `… the first ${formatBytes(bytes.length)} of ${formatBytes(size)}`));
+          show.replaceWith(pre);
+        } catch (e) {
+          show.replaceWith(h('p', { class: 'p-binary' }, `(${e.message})`));
+        }
+      },
+    }, '⚠ Show raw bytes');
+    return h('div', { class: 'p-section' }, h('h4', {}, 'Content'), note, show);
+  }
+
   gotoLine(pre, line) {
     const el = pre.children[line - 1];
     if (!el) return;
@@ -490,6 +536,59 @@ export class Panel {
   }
 }
 
+
+// How much of a binary file its "show raw bytes" button reads: enough to recognize
+// a header or a signature by, and few enough lines to scroll past.
+const RAW_BYTES = 64 * 1024;
+
+// The files previewed as themselves, by extension: the same list the server serves
+// under a media type (internal/server mediaTypes). Anything else is text or bytes.
+const MEDIA = {
+  image: ['png', 'jpg', 'jpeg', 'gif', 'webp', 'bmp', 'ico', 'avif'],
+  video: ['mp4', 'm4v', 'webm', 'ogv', 'mov'],
+  audio: ['mp3', 'wav', 'ogg', 'oga', 'flac', 'm4a'],
+};
+
+/**
+ * 'image', 'video' or 'audio' for a file the panel previews, or null.
+ *
+ * Implements: REQ-MAP-062
+ */
+export function mediaKind(path) {
+  const ext = /\.([^./]+)$/.exec(path || '')?.[1]?.toLowerCase();
+  return Object.keys(MEDIA).find(k => MEDIA[k].includes(ext)) || null;
+}
+
+/** The element that previews it; `failed` replaces it when the browser cannot play it. */
+function media(kind, url, file, failed) {
+  const el = kind === 'image'
+    ? h('img', { class: 'p-media', src: url, alt: file.name })
+    : h(kind, { class: 'p-media', src: url, controls: '', preload: 'metadata' });
+  el.addEventListener('error', failed, { once: true });
+  return el;
+}
+
+/**
+ * Bytes as a hex dump, one line per 16: the offset, the bytes in hexadecimal in two
+ * groups of eight, and the printable ASCII among them with a dot for the rest - the
+ * layout `hexdump -C` and `xxd` use, so it reads the way anybody who has read one
+ * expects.
+ *
+ * Implements: REQ-MAP-062
+ */
+export function hexDump(bytes) {
+  const out = [];
+  for (let at = 0; at < bytes.length; at += 16) {
+    const row = Array.from(bytes.subarray(at, at + 16));
+    const hex = row.map(b => b.toString(16).padStart(2, '0'));
+    const left = hex.slice(0, 8).join(' '), right = hex.slice(8).join(' ');
+    const text = row.map(b => (b >= 0x20 && b < 0x7f ? String.fromCharCode(b) : '.')).join('');
+    out.push(`${at.toString(16).padStart(8, '0')}  ${left.padEnd(23)}  ${right.padEnd(23)}  |${text}|`);
+  }
+  return out;
+}
+
+const formatBytes = fileSize;
 
 // The file, one <span> per line so a symbol can be scrolled to, highlighted when
 // hljs knows the language and the file is small enough to be worth it.
