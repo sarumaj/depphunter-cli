@@ -28,4 +28,5 @@ A release is complete only when every listed target has its archive.
 
 ## Notes
 
-The same workflow publishes the VS Code extension (scope `ext`).
+The same workflow packages and publishes the VS Code extension
+([REQ-EXT-032](../ext/REQ-EXT-032-packaged-per-platform-and-published.md)).

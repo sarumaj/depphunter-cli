@@ -29,7 +29,8 @@ to see that.
 
 ## Notes
 
-An image on any registry other than Docker Hub is marked as coming from an index
+An image on a registry other than Docker Hub is marked as coming from an index
 nothing here vouches for (see
-[REQ-SUP-018](REQ-SUP-018-repository-only-index-marked.md)); `--trust-index`
-does not change that for container registries.
+[REQ-SUP-018](REQ-SUP-018-repository-only-index-marked.md)) unless this
+machine's container configuration names that registry (`auths` or
+`credHelpers`) or `--trust-index` vouches for it.

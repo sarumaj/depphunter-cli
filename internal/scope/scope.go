@@ -60,6 +60,8 @@ func New(patterns []string) *Private {
 			// so only a known-shaped ecosystem id counts - which is to say one with
 			// no slash before the colon.
 			if eco, rest, ok := strings.Cut(pattern, ":"); ok && rest != "" && !strings.Contains(eco, "/") && isEcosystem(eco) {
+				// Ids are matched lowercased, so "NPM:" must be stored as "npm:".
+				eco = strings.ToLower(eco)
 				p.byEco[eco] = join(p.byEco[eco], rest)
 				continue
 			}
@@ -113,7 +115,7 @@ func (p *Private) Patterns() []string {
 // Implements: REQ-SUP-036
 func FromGoEnv(env func(string) string) []string {
 	var out []string
-	for _, name := range []string{"GOPRIVATE", "GONOPROXY", "GONOSUMDB", "GONOSUMCHECK"} {
+	for _, name := range []string{"GOPRIVATE", "GONOPROXY", "GONOSUMDB"} {
 		for _, pattern := range strings.Split(env(name), ",") {
 			if pattern = strings.TrimSpace(pattern); pattern != "" && pattern != "none" && pattern != "*" {
 				out = append(out, "go:"+pattern)

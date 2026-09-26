@@ -13,7 +13,8 @@ verification:
 ## Statement
 
 A private pattern **may** be limited to one ecosystem by a prefix naming it
-(`npm:@acme/*`); such a pattern **shall** match only that ecosystem's packages.
+(`npm:@acme/*`), in any case; such a pattern **shall** match only that
+ecosystem's packages.
 
 ## Rationale
 
@@ -24,6 +25,7 @@ An npm scope and a Maven group are strings that may occur elsewhere.
 1. `npm:@acme/*` matches the npm package `@acme/ui` and not a package of the
    same name in another ecosystem.
 2. `localhost:5000/*` is a host and port, not an ecosystem prefix.
+3. `NPM:@acme/*` matches the npm package `@acme/ui` as `npm:@acme/*` does.
 
 ## Notes
 

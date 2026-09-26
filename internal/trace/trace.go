@@ -57,6 +57,12 @@ const (
 	ReasonInstalled   = "installed from outside any index, so no index is asked about it"
 )
 
+// Installed stands in for the index in the report's table of what resolved from
+// where, for packages installed from outside every index.
+//
+// Implements: REQ-TRC-003, REQ-PY-015
+const Installed = "installed from outside any index"
+
 // maxLookups is as many questions as one report keeps in full. Past it the counts go
 // on being kept and the detail is dropped: -1 over a large lock file asks hundreds of
 // thousands of times, and a report nobody can open explains nothing either.
@@ -90,10 +96,12 @@ type Source struct {
 // Implements: REQ-TRC-003
 type Use struct {
 	Ecosystem string `json:"ecosystem"`
-	Index     string `json:"index"`
-	Trusted   bool   `json:"trusted"`
-	Packages  int    `json:"packages"`
-	Private   int    `json:"private"`
+	// Index is the index URL, or Installed for packages installed from outside every
+	// index.
+	Index    string `json:"index"`
+	Trusted  bool   `json:"trusted"`
+	Packages int    `json:"packages"`
+	Private  int    `json:"private"`
 }
 
 // Level is one round of the walk: every package known at that depth, asked together.
@@ -315,7 +323,11 @@ func (r *Report) Summarize(g *graph.Graph) {
 	}
 	use := map[[2]string]*Use{}
 	for _, n := range g.Nodes {
-		if n.Kind != graph.KindPackage || n.Index == "" {
+		index := n.Index
+		if n.Origin != "" {
+			index = Installed
+		}
+		if n.Kind != graph.KindPackage || index == "" {
 			continue
 		}
 		r.Totals.Packages++
@@ -328,10 +340,10 @@ func (r *Report) Summarize(g *graph.Graph) {
 		if n.IndexUnknown {
 			r.Totals.Untrusted++
 		}
-		key := [2]string{eco[n.Parent], n.Index}
+		key := [2]string{eco[n.Parent], index}
 		u := use[key]
 		if u == nil {
-			u = &Use{Ecosystem: key[0], Index: n.Index, Trusted: !n.IndexUnknown}
+			u = &Use{Ecosystem: key[0], Index: index, Trusted: !n.IndexUnknown}
 			use[key] = u
 		}
 		u.Packages++

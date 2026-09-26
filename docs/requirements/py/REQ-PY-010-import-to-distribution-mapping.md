@@ -17,7 +17,8 @@ trying, in order, the well-known alias of the import (for example `yaml` to
 `PyYAML`, `bs4` to `beautifulsoup4`, `sklearn` to `scikit-learn`, also for
 two-segment names such as `google.protobuf`), the name itself, `python-<name>`,
 `py<name>` and `<name>-python`, comparing names after PEP 503 normalization, and
-**shall** mark an import matching no declared distribution as unresolved.
+**shall** mark an import matching no declared distribution as unresolved, unless
+[REQ-PY-015](REQ-PY-015-installed-packages-no-index-has.md) resolves it.
 
 ## Rationale
 

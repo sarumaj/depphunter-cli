@@ -1653,9 +1653,9 @@ const skimmers = {
 export const TOOLS = { rod, net, camera, bubbles, extinguisher, dart, nailer, grapple, jetpack, skimmers };
 
 /**
- * The tools in slot order, which is the order they are drawn in and cycled through.
- * It is not what the number keys count along any more: the digits number the hunt's
- * row alone and the off hand is Q's, for the reasons switcher.js gives.
+ * The tools in slot order, which is the order each hand cycles through them. The row
+ * the HUD draws and the number keys count along is switcher.js's rowOrder instead:
+ * the carried tools first, then the hunt's.
  */
 export const TOOL_IDS = Object.values(TOOLS).sort((a, b) => a.slot - b.slot).map(t => t.id);
 

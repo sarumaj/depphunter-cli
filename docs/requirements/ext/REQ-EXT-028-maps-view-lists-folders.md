@@ -14,7 +14,8 @@ verification:
 
 ## Statement
 
-The Maps view **shall** list the window's folders and any other mapped folder,
+The Maps view **shall** list the window's folders and any other folder with a
+running server,
 show which have a running server and its address without the session token, open
 the map when an entry is selected, and offer restart and stop on a running
 entry.

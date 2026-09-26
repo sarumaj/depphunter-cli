@@ -12,8 +12,9 @@ verification:
 
 ## Statement
 
-The severity of a linter finding **shall** be at most medium: a linter "error"
-**shall** be medium and a "warning" low.
+The severity of a golangci-lint or eslint finding **shall** be at most medium: a
+linter "error" **shall** be medium and a "warning" low. Trivy misconfiguration
+and secret findings keep the severity Trivy assigns.
 
 ## Rationale
 

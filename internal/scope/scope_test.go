@@ -51,6 +51,11 @@ func TestAPatternMayNameItsEcosystem(t *testing.T) {
 	if p.Match("nuget", "Acme.Tools") {
 		t.Error("a psgallery-scoped pattern matched a NuGet package")
 	}
+	// The prefix is recognized whatever its case, and must then match as well.
+	p = New([]string{"NPM:@acme/*"})
+	if !p.Match("npm", "@acme/widgets") {
+		t.Error("an upper-case ecosystem prefix was accepted but matched nothing")
+	}
 }
 
 // Verifies: REQ-SUP-035

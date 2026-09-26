@@ -31,5 +31,5 @@ file.
 
 ## Notes
 
-The same mechanism drops `online` and `trust_indexes` and confines `findings`
-paths (scopes `sup` and `fnd`).
+The same mechanism drops `online`, `python` and `trust_indexes` and confines
+`findings` paths (scopes `sup`, `py` and `fnd`).

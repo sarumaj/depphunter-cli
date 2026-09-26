@@ -407,7 +407,7 @@ func (b *builder) target(t lang.Target, ecosystems map[string]lang.Ecosystem) st
 	if _, ok := b.packages[n.ID]; !ok {
 		b.packages[n.ID] = t
 	}
-	if b.indexes != nil && n.Index == "" {
+	if b.indexes != nil && n.Index == "" && n.Origin == "" && t.Origin == "" {
 		if idx, known := b.indexes.For(t.Ecosystem, t.Package); idx != "" {
 			n.Index, n.IndexUnknown = idx, !known
 		}
@@ -418,8 +418,13 @@ func (b *builder) target(t lang.Target, ecosystems map[string]lang.Ecosystem) st
 	// Installed from outside every index, it is as good as the organization's own:
 	// asking an index or the vulnerability database about it could only disclose it.
 	// Implements: REQ-PY-015
+	// It resolves from where it was installed, not from the ecosystem's index, so it
+	// is attributed to no index and cannot be marked as coming from one nothing here
+	// vouches for.
+	// Implements: REQ-PY-015
 	if t.Origin != "" {
 		n.Private = true
+		n.Index, n.IndexUnknown = "", false
 		if n.Origin == "" {
 			n.Origin = t.Origin
 		}

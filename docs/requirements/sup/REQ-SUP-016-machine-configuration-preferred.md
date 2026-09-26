@@ -12,8 +12,13 @@ verification:
 
 ## Statement
 
-An index this machine's configuration names **shall** be preferred over one the
-repository names for the same packages.
+Among sources of the same kind for a package - two scoped sources that both
+cover it, or two unscoped ones - an index this machine's configuration names
+**shall** be preferred over one the repository names. A scoped source that covers
+the package **shall** take precedence over an unscoped one whoever named either
+([REQ-SUP-014](REQ-SUP-014-package-carries-its-index.md)); a repository's scoped
+source chosen this way is still marked and never fetched from
+([REQ-SUP-018](REQ-SUP-018-repository-only-index-marked.md)).
 
 ## Rationale
 
@@ -24,3 +29,6 @@ actually use.
 
 1. With the same ecosystem configured on the machine and in the repository,
    packages resolve from the machine's index.
+2. A repository's `@acme:registry` wins over the machine's unscoped registry for
+   `@acme/*` packages, which are then marked as coming from an index nothing
+   here vouches for.

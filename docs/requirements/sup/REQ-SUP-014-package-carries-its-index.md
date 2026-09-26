@@ -14,7 +14,9 @@ verification:
 ## Statement
 
 The system **shall** record on every external package the URL of the package
-index it resolves from, and the side panel **shall** show that index's host.
+index it resolves from, except one installed from outside any index
+([REQ-PY-015](../py/REQ-PY-015-installed-packages-no-index-has.md)), and the
+side panel **shall** show that index's host.
 
 ## Rationale
 

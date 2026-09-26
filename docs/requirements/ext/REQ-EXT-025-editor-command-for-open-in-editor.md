@@ -28,4 +28,6 @@ which need not be this editor.
 
 1. With `depphunter.editorCommand` set, `--editor` carries it verbatim.
 2. Otherwise `--editor '<appRoot>/bin/<applicationName>' -g {file}:{line}` is
-   passed when that launcher exists, and nothing when it does not.
+   passed when that launcher exists, and nothing when it does not. On Windows
+   the editor's own executable (`process.execPath`) is passed instead, unless it
+   is `node.exe`.

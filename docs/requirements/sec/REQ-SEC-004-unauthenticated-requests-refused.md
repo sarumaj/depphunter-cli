@@ -13,7 +13,9 @@ verification:
 ## Statement
 
 The server **shall** answer 401 to every request that carries neither the
-correct token nor the cookie holding it.
+correct token nor the cookie holding it, except that in embed mode a GET request
+for an interface file other than `/` and outside `/api/` is served without the
+token.
 
 ## Rationale
 
@@ -27,5 +29,5 @@ The token is what separates the user from any other local process or web page.
 
 ## Notes
 
-In embed mode (`--embed`, scope `ext`) the token travels in a header or the
-query string instead of a cookie.
+In embed mode (`--embed`, scope `ext`) the token travels in the
+`X-Depphunter-Token` header or the `token` query parameter instead of a cookie.
