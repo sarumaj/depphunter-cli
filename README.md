@@ -372,21 +372,21 @@ parameter, which the event stream uses). Every request that modifies state addit
 requires the header `X-Depphunter-Request: 1`, which a cross-site page cannot
 set.
 
-| Endpoint                                               | What it is                                                                                |
-|--------------------------------------------------------|-------------------------------------------------------------------------------------------|
-| `GET /api/graph`                                       | the graph document: nodes, symbols and edges                                              |
-| `GET /api/config`                                      | the view the map opens with, and the server's capabilities                                |
-| `GET /api/file?path=`                                  | the source of a file present on the map, and of no other file                             |
-| `GET /api/history`, `/api/references`, `/api/findings` | computed in the background: `202` while in progress, `204` if there is no result          |
-| `GET /api/export?format=&ui=`                          | `json`, `graphml`, `dot` or `html`; `ui` is the view (JSON) an `html` export opens with   |
-| `GET /api/resolution?format=`                          | how the dependencies were resolved: `json` (default), `md` or `text`                      |
-| `GET /api/events`                                      | Server-Sent Events: `graph`, `history`, `references`, `findings`, `selection`, `backpack` |
-| `GET /api/session`                                     | the state shared between clients: the selected node and the backpack                      |
-| `POST /api/selection`                                  | `{"id": "f:src/main.go", "origin": "…"}`; the map follows                                 |
-| `GET /api/backpack?format=`                            | the collected findings as `json`, `csv` or `md`                                           |
-| `PUT /api/backpack`                                    | `{"items": [...], "origin": "…"}`; replaces the contents                                  |
-| `POST /api/open`                                       | `{"path": "…", "line": 12}`; opens the file in the configured editor                      |
-| `POST /api/settings`                                   | writes the `ui:` section of the configuration file                                        |
+| Endpoint                                               | What it is                                                                                                                   |
+| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+| `GET /api/graph`                                       | the graph document: nodes, symbols and edges                                                                                 |
+| `GET /api/config`                                      | the view the map opens with, and the server's capabilities                                                                   |
+| `GET /api/file?path=`                                  | the source of a file present on the map, and of no other file; `415` for a binary file, naming its type; `&as=raw` its bytes |
+| `GET /api/history`, `/api/references`, `/api/findings` | computed in the background: `202` while in progress, `204` if there is no result                                             |
+| `GET /api/export?format=&ui=`                          | `json`, `graphml`, `dot` or `html`; `ui` is the view (JSON) an `html` export opens with                                      |
+| `GET /api/resolution?format=`                          | how the dependencies were resolved: `json` (default), `md` or `text`                                                         |
+| `GET /api/events`                                      | Server-Sent Events: `graph`, `history`, `references`, `findings`, `selection`, `backpack`                                    |
+| `GET /api/session`                                     | the state shared between clients: the selected node and the backpack                                                         |
+| `POST /api/selection`                                  | `{"id": "f:src/main.go", "origin": "…"}`; the map follows                                                                    |
+| `GET /api/backpack?format=`                            | the collected findings as `json`, `csv` or `md`                                                                              |
+| `PUT /api/backpack`                                    | `{"items": [...], "origin": "…"}`; replaces the contents                                                                     |
+| `POST /api/open`                                       | `{"path": "…", "line": 12}`; opens the file in the configured editor                                                         |
+| `POST /api/settings`                                   | writes the `ui:` section of the configuration file                                                                           |
 
 `origin` identifies the client that made the change and is echoed in the
 resulting announcement, so that a client can distinguish its own change from
@@ -1334,7 +1334,15 @@ token, which the browser exchanges for a cookie. Requests lacking the token,
 requests carrying a foreign `Host` header while bound to loopback — that is,
 DNS rebinding — and
 requests for files outside the analyzed project are all rejected. Nothing may
-frame the map: `X-Frame-Options: DENY` and `frame-ancestors 'none'`.
+frame the map: `X-Frame-Options: DENY` and `frame-ancestors 'none'`. A file's
+raw bytes, which the side panel previews pictures, clips and recordings from,
+are served only under a known image, video or audio type or as
+`application/octet-stream`, and always with `default-src 'none'; sandbox`, so
+nothing in a repository can run as the map.
+
+The side panel shows a file's source; a binary file's content stays hidden
+behind a button that shows its first 64 KB as a hex dump, since its bytes are
+rarely worth reading and there can be a great many of them.
 
 ### Inside an editor
 

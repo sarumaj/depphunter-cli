@@ -53,6 +53,14 @@ export async function fetchConfig() {
   return res.json();
 }
 
+/** A file that has no text to show, and what the server says it is instead. */
+export class BinaryFile extends Error {
+  constructor(type) {
+    super('binary file');
+    this.type = type || 'application/octet-stream';
+  }
+}
+
 export async function fetchSource(path) {
   if (STATIC) {
     const src = STATIC.sources?.[path];
@@ -60,9 +68,28 @@ export async function fetchSource(path) {
     return src;
   }
   const res = await fetch(`api/file?path=${encodeURIComponent(path)}`, { headers: auth() });
+  if (res.status === 415) throw new BinaryFile(res.headers.get('X-Depphunter-Binary'));
   const text = await res.text();
   if (!res.ok) throw new Error(`${res.status} ${text.trim()}`);
   return text;
+}
+
+/**
+ * Where a file's own bytes are served, for an <img>, a <video> or an <audio> to load
+ * by itself - which is why the token rides on the URL rather than in a header - or
+ * null in a static export, which carries no bytes.
+ *
+ * Implements: REQ-MAP-062
+ */
+export const fileURL = path => (STATIC ? null : authed(`api/file?as=raw&path=${encodeURIComponent(path)}`));
+
+/** The first `limit` bytes of a file, asked for as a range so a large one is not read whole. */
+export async function fetchBytes(path, limit) {
+  if (STATIC) throw new Error('not included in this export');
+  const res = await fetch(`api/file?as=raw&path=${encodeURIComponent(path)}`,
+    { headers: auth({ Range: `bytes=0-${limit - 1}` }) });
+  if (!res.ok) throw new Error(`${res.status} ${(await res.text()).trim()}`);
+  return new Uint8Array(await res.arrayBuffer()).subarray(0, limit);
 }
 
 // Implements: REQ-CFG-012

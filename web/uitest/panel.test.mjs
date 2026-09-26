@@ -96,7 +96,7 @@ let requests = 0;
 globalThis.fetch = async () => { requests++; throw new Error('no network in a test'); };
 
 const { buildModel } = await import('../static/model.js');
-const { Panel } = await import('../static/panel.js');
+const { Panel, hexDump, mediaKind } = await import('../static/panel.js');
 
 const dir = (path, parent) => ({ id: `d:${path}`, kind: 'dir', name: path.split('/').pop(), path, parent });
 const file = (path, parent, lang, loc) => ({ id: `f:${path}`, kind: 'file', name: path.split('/').pop(), path, parent, lang, loc });
@@ -281,5 +281,29 @@ describe('the numbers for a node with no source', () => {
     });
     show('e:npm');
     assert.deepEqual(stats(), { packages: '6' });
+  });
+});
+
+describe('a file that is not text', () => {
+  // Verifies: REQ-MAP-062
+  it('previews pictures, clips and recordings, by extension', () => {
+    assert.equal(mediaKind('docs/screenshots/shot1.png'), 'image');
+    assert.equal(mediaKind('LOGO.JPEG'), 'image', 'an upper-case extension is not previewed');
+    assert.equal(mediaKind('demo/tour.webm'), 'video');
+    assert.equal(mediaKind('sounds/ping.mp3'), 'audio');
+    // An SVG is text and shown as source; the rest are bytes.
+    for (const p of ['icon.svg', 'app.wasm', 'vendor/archive.zip', 'Makefile', 'dir.png/file']) {
+      assert.equal(mediaKind(p), null, `${p} is previewed`);
+    }
+  });
+
+  // Verifies: REQ-MAP-062
+  it('shows bytes the way hexdump -C does', () => {
+    const bytes = new Uint8Array([...'PK\x03\x04hello, world!\x00\x01'].map(c => c.charCodeAt(0)));
+    assert.deepEqual(hexDump(bytes), [
+      '00000000  50 4b 03 04 68 65 6c 6c  6f 2c 20 77 6f 72 6c 64  |PK..hello, world|',
+      '00000010  21 00 01                                          |!..|',
+    ]);
+    assert.deepEqual(hexDump(new Uint8Array()), []);
   });
 });

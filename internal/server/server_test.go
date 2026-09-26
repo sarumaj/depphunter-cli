@@ -2,6 +2,7 @@ package server
 
 import (
 	"bufio"
+	"bytes"
 	"encoding/json"
 	"io"
 	"net/http"
@@ -920,5 +921,80 @@ func TestReferencesLifecycle(t *testing.T) {
 	expectEvent(t, events, "references")
 	if code, _ := get(t, c, base+"/api/references", nil); code != http.StatusNoContent {
 		t.Errorf("without references: %d, want 204", code)
+	}
+}
+
+// Verifies: REQ-MAP-062, REQ-SEC-006
+func TestFileServesBytesOnlyWhenAskedAndSandboxed(t *testing.T) {
+	root := t.TempDir()
+	// cSpell: disable-next-line
+	png := append([]byte("\x89PNG\r\n\x1a\n\x00\x00\x00\rIHDR"), make([]byte, 64)...)
+	blob := append([]byte("PK\x03\x04"), bytes.Repeat([]byte{0, 1, 2, 3}, 40)...)
+	files := map[string][]byte{"a.go": []byte("package a\n"), "logo.png": png, "pack.zip": blob}
+	var nodes []*graph.Node
+	for name, data := range files {
+		os.WriteFile(filepath.Join(root, name), data, 0o644)
+		nodes = append(nodes, &graph.Node{ID: graph.FileID(name), Kind: graph.KindFile, Path: name})
+	}
+	cfg := config.Default()
+	cfg.Root = root
+	s, err := New(cfg, &graph.Graph{Nodes: nodes}, fstest.MapFS{"index.html": {Data: []byte("ui")}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	ln, url, err := s.Listen("127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	srv := &httptest.Server{Listener: ln, Config: &http.Server{Handler: s.Handler()}}
+	srv.Start()
+	t.Cleanup(srv.Close)
+	t.Cleanup(s.Close)
+	base := strings.TrimSuffix(url[:strings.Index(url, "?")], "/")
+	c := login(t, url)
+	fetch := func(query string, mod func(*http.Request)) *http.Response {
+		t.Helper()
+		req, _ := http.NewRequest(http.MethodGet, base+"/api/file?"+query, nil)
+		if mod != nil {
+			mod(req)
+		}
+		res, err := c.Do(req)
+		if err != nil {
+			t.Fatal(err)
+		}
+		t.Cleanup(func() { res.Body.Close() })
+		return res
+	}
+
+	// Text is served as text, as it always was.
+	if res := fetch("path=a.go", nil); res.StatusCode != http.StatusOK || !strings.HasPrefix(res.Header.Get("Content-Type"), "text/plain") {
+		t.Errorf("source: %d %s", res.StatusCode, res.Header.Get("Content-Type"))
+	}
+	// Binary asked for as text: refused, and said what it is.
+	for name, want := range map[string]string{"logo.png": "image/png", "pack.zip": "application/octet-stream"} {
+		res := fetch("path="+name, nil)
+		if res.StatusCode != http.StatusUnsupportedMediaType || res.Header.Get(binaryHeader) != want {
+			t.Errorf("%s as text: %d, %s %q", name, res.StatusCode, binaryHeader, res.Header.Get(binaryHeader))
+		}
+	}
+	// Asked for raw: a picture as a picture, anything else as bytes, both sandboxed.
+	for name, want := range map[string]string{"logo.png": "image/png", "pack.zip": "application/octet-stream", "a.go": "application/octet-stream"} {
+		res := fetch("as=raw&path="+name, nil)
+		body, _ := io.ReadAll(res.Body)
+		if res.StatusCode != http.StatusOK || res.Header.Get("Content-Type") != want || !bytes.Equal(body, files[name]) {
+			t.Errorf("%s raw: %d %s, %d bytes", name, res.StatusCode, res.Header.Get("Content-Type"), len(body))
+		}
+		if csp := res.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "sandbox") || !strings.Contains(csp, "default-src 'none'") {
+			t.Errorf("%s raw is not sandboxed: %q", name, csp)
+		}
+	}
+	// A range, which is how the panel reads only the start of a large binary file.
+	res := fetch("as=raw&path=pack.zip", func(r *http.Request) { r.Header.Set("Range", "bytes=0-3") })
+	if body, _ := io.ReadAll(res.Body); res.StatusCode != http.StatusPartialContent || string(body) != "PK\x03\x04" {
+		t.Errorf("range: %d %q", res.StatusCode, body)
+	}
+	// And still nothing outside the graph, raw or not.
+	if res := fetch("as=raw&path=../secret", nil); res.StatusCode != http.StatusNotFound {
+		t.Errorf("outside the graph, raw: %d", res.StatusCode)
 	}
 }

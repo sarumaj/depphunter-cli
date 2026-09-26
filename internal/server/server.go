@@ -10,6 +10,7 @@ import (
 	"encoding/hex"
 	"encoding/json"
 	"fmt"
+	"io"
 	"io/fs"
 	"net"
 	"net/http"
@@ -38,6 +39,14 @@ const (
 	// overwrite the first one's cookie and every tab of the first would be refused.
 	cookiePrefix  = "depphunter_"
 	maxServedFile = 4 << 20
+	// maxServedMedia is as large as a picture, a clip or a recording may be and still
+	// be played in the panel (?as=raw). Larger than source, because such a file is not
+	// read into the page at once: an <img>, a <video> or an <audio> asks for what it
+	// needs, in ranges.
+	maxServedMedia = 64 << 20
+	// binaryHeader answers a request for a file's text when the file has none, and
+	// says what it is instead (mediaType), so the panel can decide what to show.
+	binaryHeader = "X-Depphunter-Binary"
 	// requestHeader must accompany state-changing requests. Cross-site pages cannot
 	// set it without a CORS preflight, which this server never grants.
 	requestHeader = "X-Depphunter-Request"
@@ -614,9 +623,42 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	w.WriteHeader(http.StatusNoContent)
 }
 
-// handleFile serves the source of a file that is part of the graph, and nothing else.
+// mediaTypes are the files the panel previews rather than lists: pictures, clips and
+// recordings a browser plays, by extension. Nothing else is ever served under a type
+// a browser would render - an SVG is text and is shown as source, and anything that
+// is not on this list goes out as application/octet-stream.
+var mediaTypes = map[string]string{
+	".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg", ".gif": "image/gif",
+	".webp": "image/webp", ".bmp": "image/bmp", ".ico": "image/x-icon", ".avif": "image/avif",
+	".mp4": "video/mp4", ".m4v": "video/mp4", ".webm": "video/webm", ".ogv": "video/ogg",
+	".mov": "video/quicktime",
+	".mp3": "audio/mpeg", ".wav": "audio/wav", ".ogg": "audio/ogg", ".oga": "audio/ogg",
+	".flac": "audio/flac", ".m4a": "audio/mp4",
+}
+
+// mediaType is the type a file's bytes are served under: its media type if it is one
+// the panel previews, and application/octet-stream otherwise.
+func mediaType(rel string) string {
+	if t, ok := mediaTypes[strings.ToLower(filepath.Ext(rel))]; ok {
+		return t
+	}
+	return "application/octet-stream"
+}
+
+// handleFile serves a file that is part of the graph, and nothing else: its source by
+// default, or with ?as=raw its bytes, for the panel to preview a picture, a clip or a
+// recording, or to show a binary file's first bytes when asked to.
 //
-// Implements: REQ-SEC-006, REQ-SRV-003
+// Asked for the source of a file that has none, it answers 415 with the file's type in
+// X-Depphunter-Binary, rather than pouring its bytes into the page as text. Binary
+// means what the scanner means by it (internal/scan): a NUL in the first 8000 bytes.
+//
+// The raw bytes of somebody's repository are served from the same origin as the map
+// and its token, so they go out sandboxed: no script, no style, no frame, whatever
+// the file claims to be. A browser only renders them where the page puts them - in an
+// <img>, a <video> or an <audio> - and only as one of mediaTypes.
+//
+// Implements: REQ-SEC-006, REQ-SRV-003, REQ-MAP-062
 func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
 	rel := r.URL.Query().Get("path")
 	if _, ok := s.current().files[rel]; !ok {
@@ -634,12 +676,35 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	if st.Size() > maxServedFile {
+	raw := r.URL.Query().Get("as") == "raw"
+	limit := int64(maxServedFile)
+	if raw && mediaType(rel) != "application/octet-stream" {
+		limit = maxServedMedia
+	}
+	if st.Size() > limit {
 		http.Error(w, "file too large to display", http.StatusRequestEntityTooLarge)
 		return
 	}
-	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-	w.Header().Set("Cache-Control", "no-store")
+	h := w.Header()
+	h.Set("Cache-Control", "no-store")
+	if raw {
+		h.Set("Content-Type", mediaType(rel))
+		h.Set("Content-Security-Policy", "default-src 'none'; sandbox")
+		http.ServeContent(w, r, "", time.Time{}, f)
+		return
+	}
+	head := make([]byte, 8000)
+	n, _ := io.ReadFull(f, head)
+	if bytes.IndexByte(head[:n], 0) >= 0 {
+		h.Set(binaryHeader, mediaType(rel))
+		http.Error(w, "binary file", http.StatusUnsupportedMediaType)
+		return
+	}
+	if _, err := f.Seek(0, io.SeekStart); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	h.Set("Content-Type", "text/plain; charset=utf-8")
 	http.ServeContent(w, r, "", time.Time{}, f)
 }
 
