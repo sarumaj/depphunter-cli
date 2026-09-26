@@ -31,17 +31,31 @@ const blind = () => new Health({ querySelector: () => null, classList: { toggle(
 describe('what the walker can take', () => {
   // Verifies: REQ-WALK-027
   it('ignores a short drop and kills on a long one', () => {
+    // The walker is half a unit tall, so a unit is about three and a half metres.
     const h = blind();
     h.reset(0);
-    assert.equal(h.fall(2), 0, 'a drop off a terrace wall cost something');
+    // A jump off a terrace wall: the wall (0.28) and the height of the jump (0.39).
+    assert.equal(h.fall(0.28 + 0.39), 0, 'jumping down off a terrace wall cost something');
     assert.equal(h.hp, h.max);
-    assert.ok(h.fall(6) > 0, 'a drop off a roof cost nothing');
-    assert.ok(!h.dead, 'one roof finished the walk');
+    const roof = h.fall(2);
+    assert.ok(roof > 0 && !h.dead, `a drop of about seven metres cost ${roof}`);
 
-    const far = blind();
-    far.reset(0);
-    far.fall(40);
-    assert.ok(far.dead, 'a drop off the tallest building was survived');
+    // Five units - about seventeen metres - is the end of the walk, and so is
+    // anything higher, however full the backpack.
+    for (const [caught, height] of [[0, 5], [50, 5], [0, 40]]) {
+      const far = blind();
+      far.reset(caught);
+      far.fall(height);
+      assert.ok(far.dead, `a drop of ${height} was survived with ${caught} caught`);
+    }
+  });
+
+  // Verifies: REQ-WALK-027
+  it('costs more the higher the drop, as a share of the walker', () => {
+    const cost = (caught, height) => { const h = blind(); h.reset(caught); return h.fall(height) / h.max; };
+    assert.ok(cost(0, 1.5) < cost(0, 3) && cost(0, 3) < cost(0, 4.5), 'a higher drop did not cost more');
+    // A full backpack is more to lose, not armour against the ground.
+    assert.ok(Math.abs(cost(0, 3) - cost(50, 3)) < 0.01, 'the backpack changed what a fall is worth');
   });
 
   // Verifies: REQ-WALK-028
@@ -847,5 +861,45 @@ describe('the first arrival', () => {
     dry.p.feet = 0;
     dry.ashore();
     assert.deepEqual([dry.p.x, dry.p.z, dry.p.yaw], [20, 0, 2]);
+  });
+});
+
+describe('what a line holds on to', () => {
+  const tower = { kind: 'building', x: 0, z: 0, y: 0, w: 1, d: 1, h: 4 };
+  const street = { kind: 'land', x: 0, z: 0, y: 0, w: 10, d: 10, h: 0 };
+  const grapple = TOOLS.grapple, rod = TOOLS.rod;
+
+  // Verifies: REQ-TOOL-067
+  it('closes the grapple near a roof and nowhere lower', () => {
+    const edge = tower.y + tower.h;
+    for (const roll of [0, 0.5, 0.99]) {
+      assert.ok(WALK.holds(grapple, tower, edge, roll), 'the claw let go of the roof');
+      assert.ok(WALK.holds(grapple, tower, edge - grapple.reel.grip + 0.01, roll), 'the claw let go of the parapet');
+      assert.ok(!WALK.holds(grapple, tower, 0.2, roll), 'the claw held the foot of the wall');
+      assert.ok(!WALK.holds(grapple, tower, edge - grapple.reel.grip - 0.1, roll), 'the claw held halfway up');
+    }
+    // The ground is still the way down off a roof.
+    assert.ok(WALK.holds(grapple, street, 0, 0.99), 'the claw would not bite the street');
+  });
+
+  // Verifies: REQ-TOOL-068
+  it('holds the rod on a wall only by chance, and less often than the grapple', () => {
+    assert.ok(rod.reel.bite > 0 && rod.reel.bite < 1, `the rod bites ${rod.reel.bite} of the time`);
+    assert.ok(WALK.holds(rod, tower, 1, 0), 'a lucky cast did not hold');
+    assert.ok(!WALK.holds(rod, tower, 1, 0.999), 'an unlucky cast held');
+    // At the top of a wall, where the grapple always holds, the rod still may not.
+    assert.ok(!WALK.holds(rod, tower, tower.h, 0.999), 'the rod held the parapet every time');
+    const tries = 1000;
+    let held = 0;
+    for (let i = 0; i < tries; i++) held += WALK.holds(rod, tower, 1, i / tries);
+    assert.ok(Math.abs(held / tries - rod.reel.bite) < 0.01, `the rod held ${held} of ${tries}`);
+  });
+
+  // Verifies: REQ-TOOL-067, REQ-TOOL-068
+  it('sends a hook that does not hold back off the face it struck', () => {
+    const at = (x, y, z) => new THREE.Vector3(x, y, z);
+    assert.deepEqual(WALK.faceOf(tower, at(0.5, 1, 0.1)).toArray(), [1, 0, 0], 'the east face');
+    assert.deepEqual(WALK.faceOf(tower, at(-0.1, 1, -0.5)).toArray(), [0, 0, -1], 'the north face');
+    assert.deepEqual(WALK.faceOf(tower, at(0.1, 4, 0.1)).toArray(), [0, 1, 0], 'the roof');
   });
 });

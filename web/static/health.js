@@ -7,9 +7,10 @@
 // somewhere else means being bitten, and how hard depends on what the scanner said -
 // a note about a style rule stings, a critical advisory takes a third of you.
 //
-// Neither is a single blow. A fall has a height it is free below, and a bite is one
-// of several the walker can stand, so what either does is turn walking about into a
-// thing with a cost - not a way to lose a map by surprise.
+// A bite is one of several the walker can stand, so the bugs turn walking about into
+// a thing with a cost rather than a way to lose a map by surprise. A fall is what it
+// would be in life: nothing off a wall, a lot off a roof, and the end of the walk off
+// a tower - which is what makes the grapple and the jet worth handling with care.
 //
 // The other direction is the hunt itself: every bug in the backpack raises the ceiling
 // and heals by the same amount, so a walker who has been catching things is a walker
@@ -20,11 +21,16 @@
 const BASE = 100;        // what the walker starts with, before anything is caught
 const PER_CATCH = 8;     // ... and what each bug in the backpack adds to the ceiling
 const MAX_CATCH = 150;   // as far as catching can raise it
-// A fall is free up to this, in map units - a storey is 0.3, so about a house - and
-// costs this much per unit beyond it. Off a tall tower that is fatal, off a terrace
-// wall it is nothing, and the walk mostly happens in between.
+// A fall is measured against the walker, who is half a unit tall - so a unit is
+// about three and a half metres of a person's world. It is free up to SAFE_FALL,
+// about three metres, which is what anybody jumps down without thinking (a jump off
+// a terrace wall stays under it), and from there it takes a share of the walker's
+// health that grows with the height, until LETHAL_FALL - about seventeen metres, five
+// or six floors of a real building - which nobody walks away from. It is a share
+// rather than a number of points so that a full backpack does not make a walker
+// survive what nobody would.
 // Implements: REQ-WALK-027
-const SAFE_FALL = 3, PER_UNIT = 26;
+const SAFE_FALL = 0.9, LETHAL_FALL = 5;
 // A bite, by what the finding it came from was called. Several of any of them are
 // survivable, which is the point: being bitten is a reason to swing at what is biting
 // you rather than a thing that happens once and ends the walk.
@@ -121,12 +127,15 @@ export class Health {
 
   /**
    * What a drop of `height` map units costs. Returns what was taken, so the caller
-   * can say so; nothing at all for anything shorter than a house.
+   * can say so; nothing at all for a drop a person jumps down without thinking, and
+   * everything for one nobody survives.
    *
    * Implements: REQ-WALK-027
    */
   fall(height) {
-    const damage = Math.round(Math.max(0, height - SAFE_FALL) * PER_UNIT);
+    if (!(height > SAFE_FALL)) return 0;
+    const share = Math.min(1, (height - SAFE_FALL) / (LETHAL_FALL - SAFE_FALL));
+    const damage = Math.max(1, Math.round(share * this.max));
     this.hurt(damage);
     return damage;
   }
