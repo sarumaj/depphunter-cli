@@ -214,7 +214,6 @@ button:focus-visible, select:focus-visible, input:focus-visible, #map:focus-visi
 .menu { padding: 4px; }
 .menu a, .menu button { display: flex; width: 100%; border: none; background: none; text-align: left; font: inherit; cursor: pointer; justify-content: space-between; gap: 12px; padding: 6px 10px; border-radius: 5px; color: var(--text); text-decoration: none; }
 .menu a:hover, .menu a:focus-visible, .menu button:hover, .menu button:focus-visible { background: var(--grid); }
-.p-actions { display: flex; gap: 8px; }
 .live { margin-right: 8px; color: var(--text-2); }
 .live::before { content: ''; display: inline-block; width: 7px; height: 7px; border-radius: 50%; margin-right: 5px; background: #0ca30c; vertical-align: 1px; }
 .live.off::before { background: #fab219; }
@@ -834,14 +833,18 @@ main.walking #legend { display: none; }
   flex-direction: column;
   z-index: 5;
 }
-#panel .close { position: absolute; top: 8px; right: 8px; border: none; font-size: 18px; line-height: 1; padding: 2px 8px; }
-#panel .maximize { position: absolute; top: 8px; right: 40px; border: none; font-size: 16px; line-height: 1; padding: 3px 7px; }
+/* The panel's own buttons, pinned in its corner whatever it is scrolled to: open the
+   file (panel.js pinOpen), maximize, close. */
+#panel .p-tools { position: absolute; top: 8px; right: 8px; z-index: 2; display: flex; align-items: center; gap: 2px; }
+#panel .close { border: none; font-size: 18px; line-height: 1; padding: 2px 8px; }
+#panel .maximize { border: none; font-size: 16px; line-height: 1; padding: 3px 7px; }
+#panel .p-open { font-size: 12px; padding: 2px 8px; margin-right: 4px; white-space: nowrap; }
 /* Maximized (panel.js maximize): over the whole of the map's room, left edge to right. */
 #panel.max { left: 12px; width: auto; z-index: 6; }
 #panel.max .p-media { max-height: 75vh; }
 #panel.max .p-list { max-height: 40vh; }
 #panel-body { overflow: auto; padding: 14px 16px; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
-.crumbs { color: var(--muted); font-size: 12px; padding-right: 64px; word-break: break-all; }
+.crumbs { color: var(--muted); font-size: 12px; padding-right: var(--p-tools, 64px); word-break: break-all; }
 .crumbs a { color: var(--text-2); cursor: pointer; text-decoration: none; }
 .crumbs a:hover { text-decoration: underline; }
 .p-title { font-size: 16px; font-weight: 600; margin: 0; word-break: break-all; display: flex; align-items: center; gap: 8px; }
@@ -942,6 +945,23 @@ main.walking #legend { display: none; }
 .code .ln.hit { background: color-mix(in srgb, var(--accent) 16%, transparent); }
 /* A binary file's bytes (panel.js hexDump) carry their own offsets, so no line numbers. */
 .code.hex { min-height: 0; }
+/* Find in the file (panel.js findBar): a heading with the search beside it, and the
+   matches highlighted where they are, the current one more strongly; the lines that
+   hold them get a mark in the margin, which is all a browser without highlights shows. */
+.p-head { display: flex; align-items: center; gap: 8px; margin-bottom: 6px; }
+/* The source's heading, and its find bar with it, stays at the top of the panel while
+   a long file scrolls under it - stepping to a match further down would otherwise
+   scroll the very field being typed in out of sight. -14px is #panel-body's padding. */
+.p-section > .p-head { position: sticky; top: -14px; z-index: 1; background: var(--surface); padding: 4px var(--p-tools, 64px) 4px 0; }
+.p-head h4 { margin: 0; }
+.p-findbar { margin-left: auto; display: flex; align-items: center; gap: 4px; }
+.p-find { width: 180px; font-size: 12px; padding: 3px 7px; border: 1px solid var(--border); border-radius: 5px; background: var(--page); }
+.p-find-count { font-size: 11px; color: var(--muted); min-width: 5.5em; text-align: right; }
+.p-find-step { font-size: 12px; padding: 1px 6px; }
+.code .ln.found { box-shadow: inset 3px 0 0 color-mix(in srgb, var(--accent) 45%, transparent); }
+.code .ln.current { background: color-mix(in srgb, var(--accent) 12%, transparent); box-shadow: inset 3px 0 0 var(--accent); }
+::highlight(dh-found) { background-color: rgb(255 214 64 / 0.45); color: inherit; }
+::highlight(dh-current) { background-color: rgb(255 150 30 / 0.85); color: #000; }
 .code.hex .ln { padding-left: 10px; }
 .code.hex .ln::before { content: none; }
 /* A picture, a clip or a recording, previewed as itself - never wider than the panel,

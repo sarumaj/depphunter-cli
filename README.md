@@ -422,8 +422,10 @@ knowledge.
 
 ### Opening files in an editor
 
-The side panel's **Open in editor** button, or `O`, opens the selected file at
-the line of the selected symbol. The command is taken from `--editor`,
+The **Open in editor** button in the side panel's corner — labelled with the
+editor, "VS Code ↗", and pinned beside maximize and close however far the panel
+is scrolled — or `O`, opens the selected file at the line of the selected
+symbol. The command is taken from `--editor`,
 `DEPPHUNTER_EDITOR`, the user configuration or a `--config` file; failing those,
 depphunter detects a graphical editor from `$VISUAL`, `$EDITOR` or `PATH` (VS
 Code, Cursor, Zed, Sublime Text, the JetBrains IDEs and others). If none is
@@ -676,34 +678,35 @@ point where the map occupies roughly a third of the view. In walk mode the
 walker may travel 3 units out over the water and 12 units above the tallest
 building.
 
-|                           |                                                                                                                 |
-| ------------------------- | --------------------------------------------------------------------------------------------------------------- |
-| Drag / right-drag / wheel | pan, orbit, zoom                                                                                                |
-| Click / double-click      | select, expand or collapse; double-click on open ground enters walk mode                                        |
-| Middle-drag               | zoom                                                                                                            |
-| `Enter`, `Backspace`      | expand or collapse the selection, select parent                                                                 |
-| `→` `←` in the panel      | expand or collapse a dependency row                                                                             |
-| `Enter` while reading     | close the details and resume                                                                                    |
-| `E` `Q` in walk mode      | the next tool for the right hand, the left hand                                                                 |
-| `Q` `E`                   | rotate by 90°                                                                                                   |
-| `Home`                    | fit the map to the view                                                                                         |
-| `R`                       | reset the view                                                                                                  |
-| `+` `-`                   | expand or collapse one level throughout                                                                         |
-| `/`                       | search files, symbols and packages                                                                              |
-| `O`                       | open the selected file in the editor                                                                            |
-| `P`                       | write the map to a PNG image                                                                                    |
-| Legend click              | show or hide a language                                                                                         |
-| Pin click                 | read the findings recorded on a building                                                                        |
-| `⤢` in the details        | maximize the details over the map, or put them back beside it; remembered for the next file                     |
-| `+` beside a finding      | add it to the backpack                                                                                          |
-| `B`                       | open the backpack                                                                                               |
-| `G`                       | open the photographs the camera has taken; from the street each can be put up on the camera and looked at there |
-| `X`                       | open the export menu                                                                                            |
-| `K`                       | save settings to the config file                                                                                |
-| The figure                | the walker's last position in walk mode                                                                         |
-| `Esc`                     | close the photographs or the backpack, or clear the selection                                                   |
-| `V`                       | enter walk mode                                                                                                 |
-| `?`                       | show all the controls                                                                                           |
+|                           |                                                                                                                   |
+| ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+| Drag / right-drag / wheel | pan, orbit, zoom                                                                                                  |
+| Click / double-click      | select, expand or collapse; double-click on open ground enters walk mode                                          |
+| Middle-drag               | zoom                                                                                                              |
+| `Enter`, `Backspace`      | expand or collapse the selection, select parent                                                                   |
+| `→` `←` in the panel      | expand or collapse a dependency row                                                                               |
+| `Enter` while reading     | close the details and resume                                                                                      |
+| `E` `Q` in walk mode      | the next tool for the right hand, the left hand                                                                   |
+| `Q` `E`                   | rotate by 90°                                                                                                     |
+| `Home`                    | fit the map to the view                                                                                           |
+| `R`                       | reset the view                                                                                                    |
+| `+` `-`                   | expand or collapse one level throughout                                                                           |
+| `/`                       | search files, symbols and packages                                                                                |
+| `O`                       | open the selected file in the editor                                                                              |
+| `P`                       | write the map to a PNG image                                                                                      |
+| Legend click              | show or hide a language                                                                                           |
+| Pin click                 | read the findings recorded on a building                                                                          |
+| `⤢` in the details        | maximize the details over the map, or put them back beside it; remembered for the next file                       |
+| Find in the details       | search a file's source: every match highlighted, `Enter`/`Shift+Enter` or `↓`/`↑` step through them, `Esc` clears |
+| `+` beside a finding      | add it to the backpack                                                                                            |
+| `B`                       | open the backpack                                                                                                 |
+| `G`                       | open the photographs the camera has taken; from the street each can be put up on the camera and looked at there   |
+| `X`                       | open the export menu                                                                                              |
+| `K`                       | save settings to the config file                                                                                  |
+| The figure                | the walker's last position in walk mode                                                                           |
+| `Esc`                     | close the photographs or the backpack, or clear the selection                                                     |
+| `V`                       | enter walk mode                                                                                                   |
+| `?`                       | show all the controls                                                                                             |
 
 In walk mode:
 
