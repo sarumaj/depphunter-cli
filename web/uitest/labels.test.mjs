@@ -10,7 +10,7 @@ import { describe, it } from 'node:test';
 
 import './stub.mjs';
 
-const { Labels } = await import('../static/labels.js');
+const { Labels, covers } = await import('../static/labels.js');
 
 const SCALE = 20; // pixels per map unit
 
@@ -43,9 +43,58 @@ const overlaps = (a, b) => a.x < b.x + b.w && b.x < a.x + a.w && a.y < b.y + b.h
 
 describe('labels', () => {
   // Verifies: REQ-MAP-042
+  it('keep off what the walker is holding', () => {
+    // The same crowd twice: once over an open screen, once with the walker's hands up
+    // across its lower right quarter - the camera, say, held up showing a photograph.
+    const boxes = [];
+    for (let i = 0; i < 6; i++) {
+      for (let j = 0; j < 6; j++) boxes.push(box('district', 'dir', `d${i}${j}`, 4 + i * 6, 4 + j * 5, 6));
+    }
+    const hands = { x: 400, y: 300, w: 400, h: 300 };
+    const open = screen(), held = screen();
+    open.set(boxes, null, null);
+    open.draw();
+    held.set(boxes, null, null);
+    held.draw([hands]);
+    assert.ok(open.visible().some(el => overlaps(rect(el), hands)), 'nothing would have been under the hands anyway');
+    const over = held.visible().filter(el => overlaps(rect(el), hands));
+    assert.deepEqual(over.map(el => el.textContent), [], 'a label was placed over the hands');
+    assert.ok(held.visible().length > 0, 'the hands took every label off the screen');
+  });
+
+  // Verifies: REQ-MAP-042
+  it('keep off what the walker is holding, to its outline and not its box', () => {
+    // A mask of an 800x600 screen, 8x6 cells of 100px, the way WebGL reads it back -
+    // bottom row first. Something is drawn in the bottom-right cell alone: the camera
+    // held low, say, and nothing else in the way.
+    const w = 8, h = 6, data = new Uint8Array(w * h * 4);
+    data[(0 * w + 7) * 4 + 3] = 255; // row 0 is the bottom of the screen
+    const mask = { data, w, h, width: 800, height: 600 };
+    assert.ok(covers(mask, { x: 720, y: 530, w: 40, h: 18 }), 'the held camera is not covered');
+    assert.ok(!covers(mask, { x: 720, y: 30, w: 40, h: 18 }), 'the top of the screen counts as the camera');
+    assert.ok(!covers(mask, { x: 100, y: 530, w: 40, h: 18 }), 'the bottom left counts as the camera');
+    assert.ok(!covers(null, { x: 0, y: 0, w: 800, h: 600 }), 'no mask covers something');
+
+    // The whole crowd, with the camera in that one corner: labels everywhere else.
+    const boxes = [];
+    for (let i = 0; i < 6; i++) {
+      for (let j = 0; j < 6; j++) boxes.push(box('district', 'dir', `m${i}${j}`, 4 + i * 6, 4 + j * 5, 6));
+    }
+    const open = screen(), held = screen();
+    open.set(boxes, null, null);
+    open.draw();
+    held.set(boxes, null, null);
+    held.draw(mask);
+    const corner = { x: 700, y: 500, w: 100, h: 100 };
+    assert.ok(held.visible().every(el => !overlaps(rect(el), corner)), 'a label was placed over the camera');
+    assert.equal(held.visible().filter(el => !overlaps(rect(el), corner)).length,
+      open.visible().filter(el => !overlaps(rect(el), corner)).length, 'the camera took labels from elsewhere');
+  });
+
+  // Verifies: REQ-MAP-042
   it('never overlap one another', () => {
     // A crowd of districts on a jittered grid tighter than a label, so that most of
-    // them collide with a neighbour and have to be dropped.
+    // them collide with a neighbor and have to be dropped.
     let seed = 7;
     const rand = () => (seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31;
     const boxes = [];

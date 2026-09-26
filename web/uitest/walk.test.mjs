@@ -884,34 +884,36 @@ describe('what a line holds on to', () => {
   const tower = { kind: 'building', x: 0, z: 0, y: 0, w: 1, d: 1, h: 4 };
   const street = { kind: 'land', x: 0, z: 0, y: 0, w: 10, d: 10, h: 0 };
   const grapple = TOOLS.grapple, rod = TOOLS.rod;
+  // On the east face at height y, and on the roof a little in from its edge.
+  const wall = y => new THREE.Vector3(0.5, y, 0);
+  const roof = new THREE.Vector3(0.3, tower.h, 0.1);
 
   // Verifies: REQ-TOOL-067
   it('closes the grapple near a roof and nowhere lower', () => {
     const edge = tower.y + tower.h;
-    for (const roll of [0, 0.5, 0.99]) {
-      assert.ok(WALK.holds(grapple, tower, edge, roll), 'the claw let go of the roof');
-      assert.ok(WALK.holds(grapple, tower, edge - grapple.reel.grip + 0.01, roll), 'the claw let go of the parapet');
-      assert.ok(!WALK.holds(grapple, tower, 0.2, roll), 'the claw held the foot of the wall');
-      assert.ok(!WALK.holds(grapple, tower, edge - grapple.reel.grip - 0.1, roll), 'the claw held halfway up');
-    }
+    assert.ok(WALK.holds(grapple, tower, roof), 'the claw let go of the roof');
+    assert.ok(WALK.holds(grapple, tower, wall(edge - grapple.reel.grip + 0.01)), 'the claw let go of the parapet');
+    assert.ok(!WALK.holds(grapple, tower, wall(0.2)), 'the claw held the foot of the wall');
+    assert.ok(!WALK.holds(grapple, tower, wall(edge - grapple.reel.grip - 0.1)), 'the claw held halfway up');
     // The ground is still the way down off a roof.
-    assert.ok(WALK.holds(grapple, street, 0, 0.99), 'the claw would not bite the street');
+    assert.ok(WALK.holds(grapple, street, new THREE.Vector3(3, 0, 3)), 'the claw would not bite the street');
   });
 
-  // Verifies: REQ-TOOL-068
-  it('holds the rod on a wall only by chance, and less often than the grapple', () => {
-    assert.ok(rod.reel.bite > 0 && rod.reel.bite < 1, `the rod bites ${rod.reel.bite} of the time`);
-    assert.ok(WALK.holds(rod, tower, 1, 0), 'a lucky cast did not hold');
-    assert.ok(!WALK.holds(rod, tower, 1, 0.999), 'an unlucky cast held');
-    // At the top of a wall, where the grapple always holds, the rod still may not.
-    assert.ok(!WALK.holds(rod, tower, tower.h, 0.999), 'the rod held the parapet every time');
-    const tries = 1000;
-    let held = 0;
-    for (let i = 0; i < tries; i++) held += WALK.holds(rod, tower, 1, i / tries);
-    assert.ok(Math.abs(held / tries - rod.reel.bite) < 0.01, `the rod held ${held} of ${tries}`);
+  // Verifies: REQ-TOOL-069
+  it('holds the rod on a roof and never on a wall, the same every time', () => {
+    for (let i = 0; i < 5; i++) {
+      assert.ok(WALK.holds(rod, tower, roof), 'a cast onto the roof did not hold');
+      // Even at the top of a wall, where the grapple would hold, a fish hook skips off.
+      assert.ok(!WALK.holds(rod, tower, wall(tower.h - 0.05)), 'a cast at the parapet held');
+      assert.ok(!WALK.holds(rod, tower, wall(1)), 'a cast at the wall held');
+    }
+    // What it holds on to it winds the walker up onto, as the grapple does.
+    assert.ok(rod.reel.onto, 'the rod leaves the walker hanging off the wall');
+    assert.ok(rod.reel.max < grapple.reel.max && rod.reel.speed < grapple.reel.speed,
+      'the rod climbs as far and as fast as the grapple');
   });
 
-  // Verifies: REQ-TOOL-067, REQ-TOOL-068
+  // Verifies: REQ-TOOL-067, REQ-TOOL-069
   it('sends a hook that does not hold back off the face it struck', () => {
     const at = (x, y, z) => new THREE.Vector3(x, y, z);
     assert.deepEqual(WALK.faceOf(tower, at(0.5, 1, 0.1)).toArray(), [1, 0, 0], 'the east face');

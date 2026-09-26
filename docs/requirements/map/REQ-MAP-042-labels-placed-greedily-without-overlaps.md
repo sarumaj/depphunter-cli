@@ -15,7 +15,8 @@ verification:
 
 The system **shall** place labels in priority order (selection, arc ends,
 islands, then directories by depth), skipping any label that would overlap one
-already placed or lie off screen, and **shall** place at most 160 labels.
+already placed, lie off screen, or, in walk mode, cover any part of what the
+walker is holding, and **shall** place at most 160 labels.
 
 ## Rationale
 
@@ -26,3 +27,6 @@ labels cover one another.
 
 1. No two visible labels overlap.
 2. A selection's own label is never dropped in favour of a region label.
+3. In walk mode no label is placed over the hands or what they hold, and a label
+   anywhere else on screen is not dropped because of them: what they cover is
+   their outline, not a box around them.

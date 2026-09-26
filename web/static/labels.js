@@ -33,9 +33,14 @@ export class Labels {
     this.scene.requestRender();
   }
 
-  /** Positions labels for the current camera; called after every render. */
+  /**
+   * Positions labels for the current camera; called after every render. `avoid` is
+   * where on screen something drawn in the canvas must not be covered - the tool in
+   * the walker's hands - and no label is placed over it: either a list of CSS-pixel
+   * rectangles, or a coverage mask of the screen (Scene.handMask, and see covers).
+   */
   // Implements: REQ-MAP-040, REQ-MAP-042
-  draw() {
+  draw(avoid = []) {
     const { root, scene } = this;
     const placed = [];
     const seen = new Set();
@@ -56,7 +61,8 @@ export class Labels {
       const anchor = l.prio > 0 && b.kind !== 'district' ? corners.reduce((a, c) => (c.y < a.y ? c : a)) : scene.project(b.x, top, b.z);
       const rect = { x: anchor.x - width / 2, y: anchor.y - 20, w: width, h: 18 };
       if (rect.x > root.clientWidth || rect.y > root.clientHeight || rect.x + rect.w < 0 || rect.y + rect.h < 0) continue;
-      if (placed.some(p => p.x < rect.x + rect.w && rect.x < p.x + p.w && p.y < rect.y + rect.h && rect.y < p.y + p.h)) continue;
+      const over = p => p.x < rect.x + rect.w && rect.x < p.x + p.w && p.y < rect.y + rect.h && rect.y < p.y + p.h;
+      if (placed.some(over) || (Array.isArray(avoid) ? avoid.some(over) : covers(avoid, rect))) continue;
       placed.push(rect);
 
       let el = this.pool[used];
@@ -79,4 +85,24 @@ export class Labels {
   visible() {
     return this.pool.filter(el => !el.hidden);
   }
+}
+
+/**
+ * Whether any of a coverage mask falls under a CSS-pixel rectangle. The mask is a
+ * low-resolution RGBA image of the whole screen, `w` by `h` cells, read from WebGL -
+ * so its first row is the bottom of the screen - and `width` by `height` is the size
+ * of the screen in CSS pixels. A cell counts as covered where anything was drawn.
+ *
+ * Implements: REQ-MAP-042
+ */
+export function covers(mask, rect) {
+  if (!mask) return false;
+  const { data, w, h, width, height } = mask;
+  const x0 = Math.max(0, Math.floor(rect.x / width * w)), x1 = Math.min(w - 1, Math.floor((rect.x + rect.w) / width * w));
+  const y0 = Math.max(0, Math.floor(rect.y / height * h)), y1 = Math.min(h - 1, Math.floor((rect.y + rect.h) / height * h));
+  for (let y = y0; y <= y1; y++) {
+    const row = (h - 1 - y) * w; // WebGL reads bottom row first
+    for (let x = x0; x <= x1; x++) if (data[(row + x) * 4 + 3]) return true;
+  }
+  return false;
 }

@@ -92,16 +92,18 @@ browser.
   the left hand carries on the left and what the right hand hunts with on the
   right, each group behind a small hand of its own, because a row read at a
   glance in the middle of something else should not have to be parsed. The rod
-  also pulls on its line, drawing the walker to the wall it struck — but a fish
-  hook is not made for brick: on a wall it holds about half the time, at random,
-  and skips off the rest the way a glancing grapple does. The right button holds
+  climbs too, from the hunting hand, which leaves the other free for the jet or
+  the skimmers: a cast that comes down on a roof winds the walker up onto it,
+  more slowly than the grapple and on a shorter line. A fish hook is not made
+  for brick, though, so a cast at a wall, however high, always skips off the way
+  a glancing grapple does. The right button holds
   the scope, and the mouse wheel zooms the view.
 
   Running and jumping are paid for out of a second gauge, the walker's **wind**.
   A sprint drains it in a few seconds and each jump takes a little more; it
   fills again while walking or standing, and a walker who has run it out has to
-  get a quarter of it back before they can run or jump again, so the way across a
-  district is a series of dashes rather than one long one. Flying costs nothing:
+  get a quarter of it back before they can run or jump again, so the way across
+  a district is a series of dashes rather than one long one. Flying costs nothing:
   that is the jet's tank, not the walker's chest.
 
   The walker has a **health bar**. A fall is what it would be in life, measured
