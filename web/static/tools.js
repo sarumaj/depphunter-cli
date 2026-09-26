@@ -610,8 +610,10 @@ const rod = {
   // A rod that has hooked something pulls. It anchors where the hook landed and
   // brings the walker to it rather than onto it - a cast at the tenth floor leaves
   // you against that wall, not standing on the roof - and it will not pull from
-  // across the map, because past a point the sensible thing is to walk.
-  reel: { speed: 11, stop: 1.1, max: 28, onto: false },
+  // across the map, because past a point the sensible thing is to walk. A fish hook
+  // is not made for brick, though: on a wall it catches about half the time and
+  // skips off the rest (walk.js holds), which is what the grapple is for.
+  reel: { speed: 11, stop: 1.1, max: 28, onto: false, bite: 0.5 },
 };
 
 // Implements: REQ-TOOL-015
@@ -1332,8 +1334,10 @@ const grapple = {
   line: '#cfd6de', // the line stays drawn, out and back
   // A winch rather than a rod: faster, right up to what it caught, from any range,
   // and it sets the walker on top of it. Catching nothing else is the point of the
-  // tool, so arriving is all it does (walk.js).
-  reel: { speed: 17, stop: 0.25, max: 60, onto: true },
+  // tool, so arriving is all it does (walk.js). The claw closes on a parapet, not
+  // on a flat wall: it holds anywhere within `grip` of a roof's edge, every time,
+  // and glances off anything lower (walk.js holds).
+  reel: { speed: 17, stop: 0.25, max: 60, onto: true, grip: 0.6 },
   climbs: true, // ... and nothing is tagged or caught when it lands
   ...PISTOL,
   viewmodel() {

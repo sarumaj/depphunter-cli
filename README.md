@@ -74,24 +74,27 @@ browser.
   The three **secondary** tools touch nothing on the map and carry the walker
   instead. The grapple gun, fired with `F` or `C`, hooks the building the walker
   is looking at and draws them up the facade and onto the roof, from where a
-  shot over the edge is the way down; the jet backpack flies; the water
-  skimmers make the bay walkable, passing under the bridges rather than over
-  them and stepping back up onto a shore that stands half a unit above the
-  water. The latter two run on a tank, which empties only while the tool is
-  doing its work and fills again whenever it is not, so neither is a way of
-  getting everywhere; a gauge beside the health bar says what is left, running
-  dry in the air is a fall, and a tool that has run out stays stopped until it
-  is put away and taken out again. One tool of each kind is carried at a time,
-  one to a hand — the
-  primary in the right, the secondary in the left — so the map can be flown
-  over and its bugs netted without putting either down. A click uses the right
-  hand, and `F`, `C` or the middle button the left. The HUD lays the slots out
-  the way the walker is: what the left hand carries on the left and what the
-  right hand hunts with on the right, each group behind a small hand of its
-  own, because a row read at a glance in the middle of something else should
-  not have to be parsed. The rod
-  also pulls on its line, drawing the walker to the wall it struck. The right
-  button holds the scope, and the mouse wheel zooms the view.
+  shot over the edge is the way down. Its claw closes on a parapet, not on a
+  flat wall: a hook that strikes more than two storeys below a roof's edge
+  glances off, tumbles down and is reeled back in, and pulls nobody anywhere;
+  the jet backpack flies; the water skimmers make the bay walkable, passing
+  under the bridges rather than over them and stepping back up onto a shore that
+  stands half a unit above the water. The latter two run on a tank, which
+  empties only while the tool is doing its work and fills again whenever it is
+  not, so neither is a way of getting everywhere; a gauge beside the health bar
+  says what is left, running dry in the air is a fall, and a tool that has run
+  out stays stopped until it is put away and taken out again. One tool of each
+  kind is carried at a time, one to a hand — the primary in the right, the
+  secondary in the left — so the map can be flown over and its bugs netted
+  without putting either down. A click uses the right hand, and `F`, `C` or the
+  middle button the left. The HUD lays the slots out the way the walker is: what
+  the left hand carries on the left and what the right hand hunts with on the
+  right, each group behind a small hand of its own, because a row read at a
+  glance in the middle of something else should not have to be parsed. The rod
+  also pulls on its line, drawing the walker to the wall it struck — but a fish
+  hook is not made for brick: on a wall it holds about half the time, at random,
+  and skips off the rest the way a glancing grapple does. The right button holds
+  the scope, and the mouse wheel zooms the view.
 
   Running and jumping are paid for out of a second gauge, the walker's **wind**.
   A sprint drains it in a few seconds and each jump takes a little more; it
@@ -100,8 +103,12 @@ browser.
   a district is a series of dashes rather than one long one. Flying costs nothing:
   that is the jet's tank, not the walker's chest.
 
-  The walker has a **health bar**. A fall of more than about ten storeys costs some
-  of it, a bug's bite costs more the worse the finding is, and deep water with
+  The walker has a **health bar**. A fall is what it would be in life, measured
+  against the walker, who is half a unit tall: nothing up to about three metres,
+  which a jump off a terrace wall stays under, then a share of the bar that grows
+  with the height, and the end of the walk from about seventeen metres — five or
+  six floors — however full the backpack. Being reeled down a line counts as
+  falling. A bug's bite costs more the worse the finding is, and deep water with
   nothing to float on takes all of it in a couple of seconds — so stowing the
   skimmers out over the bay is the end of that walk, and so is walking into it
   without them unless a shore is reached first. The bay is not a wall around the

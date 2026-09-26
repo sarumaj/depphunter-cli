@@ -81,6 +81,15 @@ const DEFAULT_FLIGHT = { speed: 24, arc: 1, gravity: 6, drag: 0 };
 // the walker down, and how close a thing has to be before pulling to it is nothing.
 // How fast and how near is the tool's business (tools.js).
 const GRAPPLE_TIME = 5, ROOF_IN = 0.5, NO_PULL = 1.2;
+// A hook that does not hold comes back off the wall: what of its speed it keeps, and
+// how far out of the wall it is put so that it does not strike the same face again.
+const GLANCE_KEEP = 0.35, GLANCE_OUT = 0.05;
+// ... and how it goes from there: dropping under real gravity and tumbling end over
+// end for GLANCE_DROP seconds, lying where it lands if it lands sooner, and then
+// reeled back to the hand over GLANCE_REEL, skipping a little on the way.
+const GLANCE_GRAVITY = 13, GLANCE_TUMBLE = 14, GLANCE_DROP = 0.7, GLANCE_REEL = 0.45;
+// The puff where it struck: how long it lasts and how far it spreads.
+const PUFF_TIME = 0.35, PUFF_GROW = 5;
 // The bug tracker: how far around the walker it sweeps, and how often it is redrawn.
 // A dozen times a second is plenty for something that turns as slowly as a walker.
 // The range follows the hunt - a four-file repository and a thousand-file one are both
@@ -231,6 +240,7 @@ export class Walker {
     this.grid = new Map();
     this.keys = new Set();
     this.darts = [];
+    this.puffs = []; // where a hook struck a wall and did not hold (puff)
     this.tagged = new Set(); // node ids
     this.beacons = new THREE.Group();
     this.ramps = [];
@@ -335,8 +345,7 @@ export class Walker {
     this.bridges = bridgesFor(boxes);
     this.indexDecks();
     // Darts in flight aim at boxes of the old layout: let them go.
-    for (const dart of this.darts) this.scene.scene.remove(dart.mesh);
-    this.darts = [];
+    this.dropDarts();
     this.cutLine();
     for (const b of boxes) {
       const x0 = Math.floor((b.x - b.w / 2) / CELL), x1 = Math.floor((b.x + b.w / 2) / CELL);
@@ -472,8 +481,7 @@ export class Walker {
     this.keys.clear();
     this.firing = false;
     this.closeWheel(false);
-    for (const dart of this.darts) this.scene.scene.remove(dart.mesh);
-    this.darts = [];
+    this.dropDarts();
     this.cutLine();
     this.endShow(false);
     this.scene.scene.remove(this.beacons);
@@ -1455,6 +1463,7 @@ export class Walker {
       if (this.p.fly) this.setFog();
       this.zoom(dt);
       this.updateDarts(dt);
+      this.updatePuffs(dt);
       // The walker's eye, for the catches that draw a bug in towards them - and the
       // hoop of the net, for the one catch that carries a bug somewhere else.
       const hoop = this.primary.catchAs === 'net' ? this.muzzle(this.viewmodel, HOOP_AT) : null;
@@ -1786,7 +1795,8 @@ export class Walker {
     this.fell = null;
     const damage = this.health.fall(drop);
     if (!damage) return;
-    if (this.health.dead) this.die(`A fall of ${Math.round(drop * 3.3)} storeys`);
+    // In a person's metres, the walker being half a unit tall (health.js).
+    if (this.health.dead) this.die(`A fall of ${Math.round(drop * 3.5)} metres`);
     else this.flash(`That drop cost ${damage} - watch the roofs`);
   }
 
@@ -2347,6 +2357,12 @@ export class Walker {
     this.pull = { to, t: 0, line, mesh: shot.mesh, rope: shot.line, hand: shot.hand, jumping };
     this.p.fly = this.flying(); // only one thing is carried, so a line is not a jet
     this.p.vy = 0;
+    // A line is not a brake. Reeled down, the walker is falling as far as the ground
+    // is concerned, and arriving at the bottom costs what dropping that far would -
+    // counted from wherever the fall began, a jump before the shot included, and
+    // carried on if the line is cut on the way. Reeled up, a fall in progress is over.
+    // Implements: REQ-WALK-027
+    this.fell = up ? null : Math.max(this.fell ?? this.p.feet, this.p.feet);
     this.flash(up ? 'Line away - going up' : 'Line away - going down');
     this.drawHud();
     return true;
@@ -2379,6 +2395,106 @@ export class Walker {
       this.pull.rope.geometry.setFromPoints([tip, to.clone()]);
     }
   }
+
+  /**
+   * A hook that struck `box` and did not hold: it comes back off the face it hit,
+   * mirrored and slowed, and falls from there under its own physics until it lands -
+   * so a miss looks like one, rather than a line that simply vanishes. Returns true,
+   * for the caller that wants to know it went on.
+   *
+   * Implements: REQ-TOOL-067, REQ-TOOL-068
+   */
+  glance(shot, box) {
+    const at = shot.mesh.position;
+    const vel = shot.vel ? shot.vel.clone()
+      : at.clone().sub(shot.start).normalize().multiplyScalar(shot.flight.speed);
+    const n = faceOf(box, at);
+    vel.addScaledVector(n, -2 * vel.dot(n)).multiplyScalar(GLANCE_KEEP);
+    at.addScaledVector(n, GLANCE_OUT);
+    Object.assign(shot, { vel, bug: null, target: null, to: null, from: null, glanced: true, since: 0, back: null });
+    this.puff(at, n);
+    this.flash(shot.tool.climbs
+      ? 'The claw found nothing to close on - aim at the top of the wall'
+      : 'The hook skipped off the wall');
+    return true;
+  }
+
+  /**
+   * One frame of a hook that glanced off a wall (glance): it drops and tumbles, comes
+   * to rest if it reaches the ground first, and then the line brings it back to the
+   * hand - wherever the hand has got to since. Returns true once it is back.
+   *
+   * Implements: REQ-TOOL-067, REQ-TOOL-068
+   */
+  rebound(shot, dt) {
+    const m = shot.mesh;
+    shot.since += dt;
+    if (shot.since < GLANCE_DROP) {
+      if (shot.vel.lengthSq() > 0) {
+        shot.vel.y -= GLANCE_GRAVITY * dt;
+        m.position.addScaledVector(shot.vel, dt);
+        m.rotation.x += GLANCE_TUMBLE * dt;
+        m.rotation.z += GLANCE_TUMBLE * 0.37 * dt;
+        const floor = Math.max(WATER, this.height(m.position.x, m.position.z));
+        if (m.position.y <= floor) {
+          m.position.y = floor;
+          shot.vel.set(0, 0, 0); // lying where it fell until the line takes it up
+        }
+      }
+      return false;
+    }
+    shot.back ??= m.position.clone();
+    const u = Math.min(1, (shot.since - GLANCE_DROP) / GLANCE_REEL);
+    const hand = this.muzzle(shot.hand) || new THREE.Vector3(this.p.x, this.p.feet + EYE - 0.05, this.p.z);
+    m.position.lerpVectors(shot.back, hand, u * u);
+    m.position.y += 0.25 * Math.sin(Math.PI * u) * (1 - u); // skipping as it is dragged in
+    m.rotation.x += GLANCE_TUMBLE * 0.5 * dt;
+    return u >= 1;
+  }
+
+  /**
+   * A small burst where a hook struck and did not hold, flat against the face it hit,
+   * opening out and fading - the one moment of the miss that is easy to lose sight of.
+   */
+  puff(at, normal) {
+    const mat = this.scene.bendable(new THREE.MeshBasicMaterial({
+      color: '#eef1f5', transparent: true, opacity: 0.9, depthWrite: false, side: THREE.DoubleSide,
+    }));
+    const mesh = new THREE.Mesh(new THREE.RingGeometry(0.015, 0.05, 20), mat);
+    mesh.position.copy(at).addScaledVector(normal, 0.01);
+    mesh.quaternion.setFromUnitVectors(new THREE.Vector3(0, 0, 1), normal);
+    this.scene.scene.add(mesh);
+    this.puffs.push({ mesh, t: 0 });
+  }
+
+  updatePuffs(dt) {
+    for (const puff of this.puffs) {
+      puff.t += dt;
+      puff.mesh.scale.setScalar(1 + puff.t * PUFF_GROW);
+      puff.mesh.material.opacity = 0.9 * Math.max(0, 1 - puff.t / PUFF_TIME);
+    }
+    for (const puff of this.puffs.filter(p => p.t >= PUFF_TIME)) this.dropPuff(puff);
+  }
+
+  dropPuff(puff) {
+    this.scene.scene.remove(puff.mesh);
+    puff.mesh.geometry.dispose();
+    puff.mesh.material.dispose();
+    this.puffs.splice(this.puffs.indexOf(puff), 1);
+  }
+
+  /** Takes everything thrown off the map, lines and puffs included. */
+  dropDarts() {
+    for (const dart of this.darts) {
+      this.scene.scene.remove(dart.mesh);
+      if (dart.line) this.scene.scene.remove(dart.line);
+    }
+    this.darts = [];
+    for (const puff of [...this.puffs]) this.dropPuff(puff);
+  }
+
+  /** A roll of the dice, for the tools that do not always hold (holds). */
+  roll() { return Math.random(); }
 
   /** Lets go of whatever the line is holding, and takes the line off the map. */
   cutLine(say) {
@@ -2737,7 +2853,10 @@ export class Walker {
       dart.t += dt;
       const m = dart.mesh;
       prev.copy(m.position);
-      if (dart.bug || dart.target) {
+      if (dart.glanced) {
+        // Off the wall and on its way back: see rebound.
+        if (this.rebound(dart, dt)) done.push(dart);
+      } else if (dart.bug || dart.target) {
         // A bug walks on while the cast is in the air, so the shot follows it.
         if (dart.bug && !dart.bug.caught) dart.to.copy(dart.bug.pos);
         const u = Math.min(1, dart.t / dart.T);
@@ -2751,8 +2870,14 @@ export class Walker {
             else if (dart.target) this.tag(dart.target);
           }
           // A line hauls on a wall, not on a beetle: what the rod caught comes back
-          // on the line, and the walker stays where they are.
-          if (dart.tool.reel && !dart.bug && this.hook(m.position, dart.target, dart)) dart.kept = true;
+          // on the line, and the walker stays where they are. A hook that does not
+          // hold flies on off the wall instead, so it is not done with yet.
+          if (dart.tool.reel && !dart.bug) {
+            if (!holds(dart.tool, dart.target, m.position.y, this.roll())) {
+              this.glance(dart, dart.target);
+              done.pop();
+            } else if (this.hook(m.position, dart.target, dart)) dart.kept = true;
+          }
         }
       } else {
         // A miss flies on under the tool's own physics: a dart drops like a dart, a
@@ -2771,15 +2896,20 @@ export class Walker {
         const bug = hits(dart.tool, 'bugs') ? this.bugs?.at(m.position) : null;
         if (bug) this.bugs.catch(bug, dart.tool.catchAs);
         const hit = this.boxAt(m.position);
-        if (hit && !dart.tool.climbs && hits(dart.tool, 'buildings')
+        // One that has already glanced off a wall is on its way down, spent: it tags
+        // nothing and bites nothing on the way.
+        if (hit && !dart.glanced && !dart.tool.climbs && hits(dart.tool, 'buildings')
           && hit.kind !== 'land' && hit.kind !== 'terrace') this.tag(hit);
         // A grapple bites anything solid, the ground included: that is what makes a
         // shot off a roof a way down rather than a wasted line. A rod does not - a
         // cast that falls short lands on the pavement, and a line that hauls the
         // walker a step across their own street is not worth having.
         const ground = hit && (hit.kind === 'land' || hit.kind === 'terrace');
-        if (hit && dart.tool.reel && (dart.tool.climbs || !ground)
-          && this.hook(m.position, hit, dart)) dart.kept = true;
+        let glanced = false;
+        if (hit && dart.tool.reel && !dart.glanced && (dart.tool.climbs || !ground)) {
+          if (!holds(dart.tool, hit, m.position.y, this.roll())) glanced = this.glance(dart, hit);
+          else if (this.hook(m.position, hit, dart)) dart.kept = true;
+        }
         // A shot that hits nothing still has a range: what a tool reaches is what it
         // throws that far, and a nail that sails on over the next six blocks made
         // the reticle's own "too far" a lie. A line is shorter still - fired into
@@ -2791,11 +2921,11 @@ export class Walker {
         const rope = dart.tool.reel && dart.from && gone > dart.tool.reel.max;
         const spent = !dart.tool.reel && dart.from && gone > (dart.tool.reach ?? REACH);
         if (rope) this.flash('The line ran out');
-        if (bug || hit || rope || spent || m.position.y < WATER || dart.t > 6) done.push(dart);
+        if (!glanced && (bug || hit || rope || spent || m.position.y < WATER || dart.t > 6)) done.push(dart);
       }
       // A dart points along its flight; a hoop spins, a bubble wobbles, a bobber
       // just bobs along.
-      if (m.userData.aim && dir.subVectors(m.position, prev).lengthSq() > 1e-10) {
+      if (m.userData.aim && !dart.glanced && dir.subVectors(m.position, prev).lengthSq() > 1e-10) {
         m.quaternion.setFromUnitVectors(FORWARD, dir.normalize());
       }
       if (m.userData.spin) m.rotation.z += m.userData.spin * dt;
@@ -3004,6 +3134,36 @@ export function arrivalAt(land, top, t) {
   pitch += (land.pitch - pitch) * k;
   return { x, z, feet, yaw, pitch };
 }
+/**
+ * Whether a line that struck `box` at height `y` holds. The ground always does - it
+ * is what a shot off a roof is for - and so does anything that is not a building.
+ * On a building the grapple's claw holds within its `grip` of the roof's edge, every
+ * time, and nowhere lower; a fishing hook holds by chance, `bite` of the time,
+ * wherever it strikes. `roll` is a number from 0 to 1.
+ *
+ * Implements: REQ-TOOL-067, REQ-TOOL-068
+ */
+export function holds(tool, box, y, roll) {
+  const line = tool.reel;
+  if (!line || !box || box.kind === 'land' || box.kind === 'terrace') return true;
+  if (line.grip !== undefined && box.y + box.h - y > line.grip) return false;
+  return line.bite === undefined || roll < line.bite;
+}
+
+/**
+ * The outward normal of the face of `box` that `at` is nearest: a side, or the top.
+ * The bottom is never struck from outside a box that stands on something.
+ */
+export function faceOf(box, at) {
+  const sides = [
+    [box.w / 2 - Math.abs(at.x - box.x), Math.sign(at.x - box.x) || 1, 0, 0],
+    [box.d / 2 - Math.abs(at.z - box.z), 0, 0, Math.sign(at.z - box.z) || 1],
+    [Math.abs(box.y + box.h - at.y), 0, 1, 0],
+  ];
+  const [, x, y, z] = sides.reduce((a, b) => (b[0] < a[0] ? b : a));
+  return new THREE.Vector3(x, y, z);
+}
+
 /**
  * Where getting up after dying has the walker at t (0 to 1): lying on the spot
  * looking up at the sky, turned a little away, then sitting up and standing, to end
