@@ -1199,6 +1199,27 @@ export class Walker {
     this.drawHud();
   }
 
+  /**
+   * A click on the map that went nowhere. Normally that asks for the mouse. Where the
+   * mouse is not given, it is the tool instead - or the way back out of reading,
+   * which is what asking for the mouse would have done.
+   *
+   * Reading is put away before the mouse is asked for, not after: lockPointer will
+   * not take the pointer from under an open panel (hooks.busy), so a click on the map
+   * with a building's details open asked, was refused, and left the walker standing
+   * there with the details still up and the mouse still free. Enter and Esc were
+   * never caught by it, because they close the panel on the way.
+   *
+   * Implements: REQ-WALK-021, REQ-WALK-044
+   */
+  clicked() {
+    if (!this.noLock) {
+      if (this.frozen) this.hooks.onResume?.(); // the panel, the backpack, the photographs
+      this.lockPointer();
+    } else if (this.frozen) this.setFrozen(false);
+    else this.fire();
+  }
+
   // Locking is asynchronous: a lock asked for just before leaving would be granted
   // afterwards and hide the cursor over the map, with nothing listening to it.
   // Implements: REQ-WALK-010, REQ-WALK-037
@@ -1422,12 +1443,7 @@ export class Walker {
       if (e.button === 2) this.setScoped(false);
       if (e.button === 0) this.firing = false;
       if (this.active && drag && !drag.moved && e.button === 0) {
-        // A click that went nowhere: normally that asks for the mouse. Where the
-        // mouse is not given, it is the tool instead - or the way back out of
-        // reading, which is what asking for the mouse would have done.
-        if (!this.noLock) this.lockPointer();
-        else if (this.frozen) this.setFrozen(false);
-        else this.fire();
+        this.clicked();
       }
       if (e.button === 0) drag = null;
     });

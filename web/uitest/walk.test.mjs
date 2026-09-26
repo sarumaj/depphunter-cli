@@ -54,7 +54,7 @@ describe('what the walker can take', () => {
   it('costs more the higher the drop, as a share of the walker', () => {
     const cost = (caught, height) => { const h = blind(); h.reset(caught); return h.fall(height) / h.max; };
     assert.ok(cost(0, 1.5) < cost(0, 3) && cost(0, 3) < cost(0, 4.5), 'a higher drop did not cost more');
-    // A full backpack is more to lose, not armour against the ground.
+    // A full backpack is more to lose, not armor against the ground.
     assert.ok(Math.abs(cost(0, 3) - cost(50, 3)) < 0.01, 'the backpack changed what a fall is worth');
   });
 
@@ -965,5 +965,52 @@ describe('the building in focus while it is read', () => {
     assert.ok(far.r >= 50, 'a far bug has no street around it');
     assert.ok(close.r <= 250, `a bug in the hand clears ${close.r}px of the view`);
     assert.equal(WALK.bugFocus(null, null), null, 'a bug off screen is kept in focus');
+  });
+});
+
+describe('a click on the map while reading', () => {
+  /**
+   * A walker as far as clicked() needs one: held, with something open that makes
+   * hooks.busy say no, and a lockPointer that records whether it would have been let
+   * through - which is the whole of what the bug was.
+   */
+  const reading = (open, noLock = false) => {
+    const w = {
+      frozen: true, noLock, asked: null, fired: false, open: new Set(open),
+      hooks: {
+        busy: () => w.open.size > 0,
+        onResume: () => { w.open.delete('panel'); w.open.delete('pack'); w.open.delete('stash'); },
+      },
+      lockPointer() { this.asked = !this.hooks.busy(); if (this.asked) this.frozen = false; },
+      setFrozen(on) { this.frozen = on; if (!on) this.hooks.onResume(); },
+      fire() { this.fired = true; },
+    };
+    return w;
+  };
+
+  // Verifies: REQ-WALK-021
+  it('closes the details and takes the mouse back', () => {
+    const w = reading(['panel']);
+    WALK.Walker.prototype.clicked.call(w);
+    assert.equal(w.open.has('panel'), false, 'the details stayed open');
+    assert.equal(w.asked, true, 'the mouse was asked for from under the open details');
+    assert.equal(w.fired, false, 'the click also used the tool');
+  });
+
+  // Verifies: REQ-WALK-021
+  it('leaves a menu that is still open alone, holding the walker', () => {
+    const w = reading(['export']);
+    WALK.Walker.prototype.clicked.call(w);
+    assert.equal(w.asked, false, 'the mouse was taken from under an open menu');
+    assert.equal(w.frozen, true, 'the walker walked on with the menu still open');
+  });
+
+  // Verifies: REQ-WALK-021, REQ-WALK-047
+  it('where the mouse is never given, walks on without using the tool', () => {
+    const w = reading(['panel'], true);
+    WALK.Walker.prototype.clicked.call(w);
+    assert.equal(w.frozen, false);
+    assert.equal(w.open.has('panel'), false);
+    assert.equal(w.fired, false);
   });
 });
