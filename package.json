@@ -1,7 +1,7 @@
 {
   "name": "depphunter",
   "displayName": "depphunter",
-  "description": "Browse the workspace as an interactive isometric city, in the editor's built-in browser.",
+  "description": "Browse the workspace as an interactive isometric city, in a tab beside the code.",
   "version": "0.0.0",
   "publisher": "sarumaj",
   "license": "BSD-3-Clause",
