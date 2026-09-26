@@ -253,13 +253,17 @@ export class MapScene {
     this.planet.scale.setScalar(r - WATER_DEPTH);
   }
 
-  /** Places the walker: flat-map feet position, eye height, yaw and pitch (radians). */
-  setWalker(x, feet, z, eye, yaw, pitch) {
+  /**
+   * Places the walker: flat-map feet position, eye height, yaw, pitch and roll
+   * (radians). Roll is about the line of sight, so it tilts the view without changing
+   * where it points.
+   */
+  setWalker(x, feet, z, eye, yaw, pitch, roll = 0) {
     this.sky.position.set(x, feet + eye, z);
     this.curve.uCenter.value.set(x, 0, z);
     this.planet.position.set(x, -this.curve.uRadius.value, z);
     this.walkCamera.position.set(x, feet + eye, z);
-    this.walkCamera.rotation.set(pitch, yaw, 0);
+    this.walkCamera.rotation.set(pitch, yaw, roll);
     this.walkCamera.updateMatrixWorld();
   }
 

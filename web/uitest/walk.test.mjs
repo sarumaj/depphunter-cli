@@ -1014,3 +1014,32 @@ describe('a click on the map while reading', () => {
     assert.equal(w.fired, false);
   });
 });
+
+describe('banking in flight', () => {
+  // Verifies: REQ-WALK-054
+  it('leans into a turn and a sideways move, only in the air, and only so far', () => {
+    assert.equal(WALK.bankFor(2.2, 0, false), 0, 'turning on the spot on foot leaned the view');
+    assert.equal(WALK.bankFor(0, 0, true), 0, 'flying straight is not level');
+    const left = WALK.bankFor(1, 0, true), right = WALK.bankFor(-1, 0, true);
+    assert.ok(left > 0 && right < 0 && Math.abs(left + right) < 1e-9, 'a left and a right turn do not lean opposite ways');
+    assert.ok(WALK.bankFor(2, 0, true) > left, 'a harder turn does not lean further');
+    assert.ok(WALK.bankFor(0, 1, true) < 0, 'moving right does not lean right');
+    // Never over on its side, however hard the mouse is flicked.
+    for (const rate of [20, -20]) assert.ok(Math.abs(WALK.bankFor(rate, 0, true)) <= 0.5, `${rate} rad/s leans too far`);
+  });
+
+  // Verifies: REQ-WALK-054
+  it('eases into the bank and back out rather than jumping', () => {
+    const w = { p: { yaw: 0, fly: true }, keys: new Set(), roll: 0, lastYaw: 0, frozen: false, still: false, arrival: null };
+    const frame = () => WALK.Walker.prototype.bank.call(w, 1 / 60);
+    w.p.yaw += 2.2 / 60; // one frame of a left turn
+    frame();
+    const first = w.roll;
+    assert.ok(first > 0 && first < WALK.bankFor(2.2, 0, true) / 2, `the first frame leaned ${first} at once`);
+    for (let i = 0; i < 120; i++) { w.p.yaw += 2.2 / 60; frame(); }
+    assert.ok(Math.abs(w.roll - WALK.bankFor(2.2, 0, true)) < 0.02, `a held turn settled at ${w.roll}`);
+    w.p.fly = false; // landed
+    for (let i = 0; i < 180; i++) frame();
+    assert.ok(Math.abs(w.roll) < 0.01, `still leaning ${w.roll} after landing`);
+  });
+});
