@@ -84,6 +84,25 @@ func TestMachineConfigurationWins(t *testing.T) {
 	}
 }
 
+// Verifies: REQ-SUP-016
+func TestAScopedSourceBeatsTheMachinesUnscopedOne(t *testing.T) {
+	home := t.TempDir()
+	if err := os.WriteFile(filepath.Join(home, ".npmrc"), []byte("registry=https://mirror.corp/npm\n"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	files := write(t, map[string]string{".npmrc": "@acme:registry=https://acme.example/npm\n"})
+	c := Discover(files, env(nil), home)
+
+	// The repository's scope is the more specific answer, so it is the one recorded -
+	// and, since only the repository names it, it is marked rather than fetched from.
+	if idx, known := c.For(NPM, "@acme/ui"); idx != "https://acme.example/npm" || known {
+		t.Errorf("@acme/ui: got %s (known %v), want the repository's scope, unknown", idx, known)
+	}
+	if idx, known := c.For(NPM, "lodash"); idx != "https://mirror.corp/npm" || !known {
+		t.Errorf("lodash: got %s (known %v), want this machine's mirror, known", idx, known)
+	}
+}
+
 // Verifies: REQ-SUP-015
 func TestDiscoverReadsEveryEcosystem(t *testing.T) {
 	files := write(t, map[string]string{
@@ -318,6 +337,27 @@ index = "https://zzz.example/index"
 		})
 		if first != "https://corp.example/index" {
 			t.Fatalf("crates.io resolves from %s, want the source replace-with names", first)
+		}
+	}
+}
+
+// Verifies: REQ-SUP-015
+func TestReadsNuGetConfigFromBothUserLocations(t *testing.T) {
+	// The credentials are read from either file, so the feeds have to be as well, or
+	// a feed kept only in the second has a password nothing ever uses.
+	for _, dir := range [][]string{{".nuget", "NuGet"}, {".config", "NuGet"}} {
+		home := t.TempDir()
+		path := filepath.Join(append([]string{home}, dir...)...)
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		cfg := `<configuration><packageSources><add key="corp" value="https://nuget.corp/v3/index.json" /></packageSources></configuration>`
+		if err := os.WriteFile(filepath.Join(path, "NuGet.Config"), []byte(cfg), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		c := Discover(nil, env(nil), home)
+		if idx, known := c.For(NuGet, "Acme.Tools"); idx != "https://nuget.corp/v3/index.json" || !known {
+			t.Errorf("~/%s: got %s (known %v), want the machine's feed, known", filepath.Join(dir...), idx, known)
 		}
 	}
 }

@@ -268,7 +268,7 @@
             "type": "string",
             "default": "",
             "order": 4,
-            "markdownDescription": "A config file to use instead of the folder's own `.depphunter.yaml` (`--config`), relative to the folder. Unlike the folder's file, one named here may set `editor` and `online`."
+            "markdownDescription": "A config file to use instead of the folder's own `.depphunter.yaml` (`--config`), relative to the folder. Unlike the folder's file, one named here may set `editor`, `online`, `python` and `trust_indexes`, and name reports outside the folder."
           },
           "depphunter.editorCommand": {
             "type": "string",

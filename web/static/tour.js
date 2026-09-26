@@ -103,9 +103,9 @@ export const WALK_TOUR = [
   },
   {
     title: 'What using one does',
-    body: `On a building, any of them tags the module: it is selected, its dependency
-      trails light up, and a beacon is planted over it in the color of the worst thing
-      the scanners found inside. Use the tool on it again, or press Enter, to read the
+    body: `On a building, the rod, the camera, the dart or the nail gun tags the
+      module: it is selected, its dependency trails light up, and a beacon is planted
+      over it in the color of the worst thing the scanners found inside. Use the tool on it again, or press Enter, to read the
       details without leaving the street. O opens the file in your editor.`,
   },
   {

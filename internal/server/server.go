@@ -437,7 +437,7 @@ func (s *Server) Handler() http.Handler {
 	return s.guard(mux)
 }
 
-// Implements: REQ-SEC-004, REQ-SEC-005, REQ-SEC-007
+// Implements: REQ-SEC-004, REQ-SEC-005, REQ-SEC-007, REQ-SEC-010
 func (s *Server) guard(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// A foreign Host header means a DNS-rebinding page is talking to us.

@@ -14,7 +14,9 @@ verification:
 
 The system **shall** send a credential only to the host it was written for,
 matching the request's host with its port first and then without it, a Bearer
-token taking precedence over a Basic credential for the same host.
+token taking precedence over a Basic credential for the same host. Over plain
+`http://` it **shall** send none, unless the host is loopback or this machine's
+own configuration names that host with `http://`.
 
 ## Rationale
 

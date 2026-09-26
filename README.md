@@ -35,29 +35,31 @@ browser.
   module, draws its dependency trails and marks it with a beacon for the rest
   of the session.
 
-  Ten tools occupy slots `1` to `9` and `0`, and `T` cycles through them. The
-  seven **primary** tools are what the hunt is done with: a fishing rod (the
-  default), a butterfly net, a camera, a bubble wand, a fire extinguisher, a
-  tracking dart and a nail gun. Each has its own animation, its own aim helper
-  and its own valid targets - the dart acts on buildings, the net, the bubbles
-  and the extinguisher on bugs, the rod, the nail gun and the camera on either.
-  What a tool throws travels according to its own flight model, and the two
-  launchers are opposites rather than variants: the tracking dart is the longest
-  and most deliberate shot, lobbed high and steering in the air towards the wall
-  ahead of it, one shot per click through the scope; the nail gun reaches only
-  across a street, fires flat and fast for as long as the button is held down,
-  and scatters. The fire extinguisher is held down in the same way. A bubble
-  decelerates and rises; foam spreads and drops. The net throws nothing and must
-  be brought within reach; the camera shows its lens view live on its back, and
-  every use of it keeps the frame, except the second use on a module it has
-  already tagged, which reads that module the way every other tool does there.
-  A photograph is of the city and of nothing else: neither the camera nor the
-  hand holding it is in it — what the walker holds is drawn over the world in a
-  pass of its own, and that pass is left out — and neither is anything the
-  interface has put on the map, so nothing is lit by a selection, nothing is
-  dimmed by one and no dependency arcs cross the rooftops. A screenshot (`P`)
-  is the screen rather than what the camera was pointed at, so it keeps all of
-  them.
+  Ten tools occupy slots `1` to `9` and `0`; `E` cycles through the primary
+  tools, `Q` through the secondary ones, and holding `R` opens a wheel of all of
+  them. The seven **primary** tools are what the hunt is done with: a fishing
+  rod (the default), a butterfly net, a camera, a bubble wand, a fire
+  extinguisher, a tracking dart and a nail gun. Each has its own animation, its
+  own aim helper and its own valid targets - the dart acts on buildings, the
+  net, the bubbles and the extinguisher on bugs (the extinguisher also puts out
+  fires), the rod, the nail gun and the camera on either. What a tool throws
+  travels according to its own flight model, and the two launchers are opposites
+  rather than variants: the tracking dart is the longest and most deliberate
+  shot, lobbed high and steering in the air towards the wall ahead of it, one
+  shot per click through the scope; the nail gun reaches only across a street,
+  fires flat and fast for as long as the button is held down, and scatters. The
+  fire extinguisher is held down in the same way. A bubble decelerates and
+  rises; foam spreads and drops. The net throws nothing and must be brought
+  within reach; the camera shows its lens view live on its back, and every use
+  of it keeps the frame, except a use on a module that has already been tagged,
+  with no bug in front of it, which reads that module the way every other tool
+  does there. A photograph is of the city and of nothing else: neither the
+  camera nor the hand holding it is in it — what the walker holds is drawn over
+  the world in a pass of its own, and that pass is left out — and neither is
+  anything the interface has put on the map, so nothing is lit by a selection,
+  nothing is dimmed by one and no dependency arcs cross the rooftops. A
+  screenshot (`P`) is the screen rather than what the camera was pointed at, so
+  it keeps all of them.
 
   What it keeps goes into the **photographs** (`G`), a contact sheet of the
   session's pictures captioned with whatever was in the frame. Each can be
@@ -89,16 +91,16 @@ browser.
   own, because a row read at a glance in the middle of something else should
   not have to be parsed. The rod
   also pulls on its line, drawing the walker to the wall it struck. The right
-  button holds the scope; the mouse wheel zooms it.
+  button holds the scope, and the mouse wheel zooms the view.
 
   Running and jumping are paid for out of a second gauge, the walker's **wind**.
   A sprint drains it in a few seconds and each jump takes a little more; it
   fills again while walking or standing, and a walker who has run it out has to
-  get a quarter of it back before they can sprint again, so the way across a
-  district is a series of dashes rather than one long one. Flying costs nothing:
+  get a quarter of it back before they can run or jump again, so the way across
+  a district is a series of dashes rather than one long one. Flying costs nothing:
   that is the jet's tank, not the walker's chest.
 
-  The walker has a **health bar**. A fall of more than a few storeys costs some
+  The walker has a **health bar**. A fall of more than about ten storeys costs some
   of it, a bug's bite costs more the worse the finding is, and deep water with
   nothing to float on takes all of it in a couple of seconds — so stowing the
   skimmers out over the bay is the end of that walk, and so is walking into it
@@ -112,27 +114,30 @@ browser.
   surface, the water has to be jumped into. Every bug
   in the backpack raises the bar and mends by as much. At nothing the screen goes
   red, walk mode ends and the map returns — nothing caught is lost — and walking
-  in again starts at full health.
+  in again starts at full health. Away from bites and fire, the bar slowly
+  fills again by itself.
 
-  Each finding a scanner reported is represented by one bug, shaped by its
-  severity as well as colored by it: a critical finding is a caterpillar that
-  crawls and never flies, an ordinary one a beetle, a note a mite. Bugs are
-  placed at several heights on a building's facade and around its roof as well
-  as in the streets, each oriented to the surface it holds on to; some hold on
-  to nothing and instead fly a circuit around the building, rising, falling and
-  banking at the corners. Catching one opens what was reported about it. A
-  module the walker has tagged carries a beacon in the color of the worst
-  finding in it, and its ring on the tracker matches, so the hunt's own
-  trophies say which of them were worth having. A tracker in the corner of the
-  screen sweeps the surrounding map and tightens as the walker approaches a
-  bug, so that the last part of the approach can be made on the sweep rather
-  than by guesswork.
+  Each finding a scanner reported is represented by one bug, up to 140 of the
+  most severe, except a vulnerability proven reachable, which burns as a fire
+  instead (see [Findings](#findings)). A bug is shaped by its severity as well
+  as colored by it: a critical finding is a caterpillar that crawls and never
+  flies, a high or medium one a beetle, and a low or informational one a mite.
+  Bugs are placed at several heights on a building's facade and around its roof
+  as well as in the streets, each oriented to the surface it holds on to; some
+  hold on to nothing and instead fly a circuit around the building, rising,
+  falling and banking at the corners. Catching one opens what was reported about
+  it. A module the walker has tagged carries a beacon in the color of the worst
+  finding in it, and its ring on the tracker matches, so the hunt's own trophies
+  say which of them were worth having. A tracker in the corner of the screen
+  sweeps the surrounding map and tightens as the walker approaches a bug, so
+  that the last part of the approach can be made on the sweep rather than by
+  guesswork.
 
   A first visit is given a short **introduction** explaining what the shapes
   stand for, that the map can be walked into, and what the bugs are, and a first
-  walk is given one of its own covering what moves, what is in each hand and
-  what the bugs do back; the help (`?`) documents every key and every tool, and
-  can show either introduction again.
+  walk is given one of its own covering what moves, what is in each hand, what
+  using it does, the bugs, and fire and staying alive; the help (`?`) documents
+  every key and every tool, and can show either introduction again.
 
   Terraces are laid out as city blocks: the space between buildings forms a
   connected street network with sidewalks, lane markings and crossings; ramps
@@ -214,7 +219,7 @@ depphunter --export html -o map.html  # write a self-contained map
 ```
 
 | Flag                | Default                   |                                                                                               |
-| ------------------- | ------------------------- | --------------------------------------------------------------------------------------------- |
+|---------------------|---------------------------|-----------------------------------------------------------------------------------------------|
 | `--addr`            | `127.0.0.1:0`             | listen address; port `0` selects a free port                                                  |
 | `--no-open`         |                           | print the URL rather than opening a browser                                                   |
 | `--exclude`         |                           | glob of paths to omit; repeatable                                                             |
@@ -270,10 +275,9 @@ variables (`ADDR`, `OPEN`, `EXCLUDE`, `MAX_FILE_SIZE`, `THEME`, `COLOR_BY`,
 `EDITOR`, `PYTHON`, `HISTORY`, `HISTORY_COMMITS`, `RESOLVE_DEPTH`, `ONLINE`,
 `EXPLAIN`, `VULNS`, `LINKS`, `LSP`, `LSP_TIMEOUT`, and the comma-separated
 `FINDINGS`, `PRIVATE` and `TRUST_INDEXES`); and the command-line flags. For
-`exclude`, `findings`, `private` and `trust_indexes`, the values from the
-environment and from flags are added to those from the configuration files
-rather than replacing them; between the two files, the project file's list
-replaces the user file's. `--private` also takes in the Go toolchain's
+`exclude`, `findings`, `private` and `trust_indexes`, the lists from every
+source — the user file, the project file, the environment and the flags — are
+combined rather than replacing one another. `--private` also takes in the Go toolchain's
 `GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` patterns.
 
 The project configuration arrives with the repository, so it may not set
@@ -359,7 +363,7 @@ requires the header `X-Depphunter-Request: 1`, which a cross-site page cannot
 set.
 
 | Endpoint                                               | What it is                                                                                |
-| ------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+|--------------------------------------------------------|-------------------------------------------------------------------------------------------|
 | `GET /api/graph`                                       | the graph document: nodes, symbols and edges                                              |
 | `GET /api/config`                                      | the view the map opens with, and the server's capabilities                                |
 | `GET /api/file?path=`                                  | the source of a file present on the map, and of no other file                             |
@@ -438,9 +442,10 @@ code --install-extension depphunter_1.2.3_vscode_darwin-arm64.vsix
 ```
 
 **No further installation is required.** The extension and the server it starts
-are produced by the same release and carry the same version, so the two cannot
-diverge. A `_universal` build is also provided for platforms not listed above;
-it contains no binary and falls back to `depphunter` on `PATH`.
+are produced by the same release and, for a release tagged `vX.Y.Z`, carry the
+same version, so the two cannot diverge. A `_universal` build is also provided
+for platforms not listed above; it contains no binary and falls back to
+`depphunter` on `PATH`.
 
 To run a different build — one under development, or a newer release on a machine
 whose extension has not been updated — set `depphunter.path` to it. An explicit
@@ -449,12 +454,12 @@ setting always takes precedence over the bundled binary.
 ### Use
 
 Select the depphunter icon in the activity bar. The **Maps** view lists the
-window's folders, and any subfolder mapped from the explorer; selecting one maps
-it. The entry's buttons open the map and, while a server runs, restart and stop
-it; the view's title bar opens the map in the browser, shows the log and opens
-the settings. The
-same action is available in the command palette as `depphunter: Open the Map`
-and in the explorer's context menu for any folder.
+window's folders, and any subfolder mapped from the explorer while its server
+runs; selecting one maps it. The entry's buttons open the map and, while a
+server runs, restart and stop it; the view's title bar opens the map in the
+browser, shows the log and opens the settings. The same action is available in
+the command palette as `depphunter: Open the Map` and in the explorer's context
+menu for any folder.
 
 | Command                                   | What it does                                                       |
 |-------------------------------------------|--------------------------------------------------------------------|
@@ -571,10 +576,11 @@ Anything the settings do not cover belongs in `depphunter.args` or in the
 project's `.depphunter.yaml`, which the server reads as usual.
 
 **Open in editor** opens the file at the line currently in view, in this editor:
-the extension locates this editor's own command-line launcher and passes it to
-the server, rather than leaving the server to find whatever is on the `PATH` the
-extension host inherited. `depphunter.editorCommand` overrides this where the
-file should be opened elsewhere.
+the extension locates this editor's own command-line launcher (on Windows, its
+executable) and passes it to the server, rather than leaving the server to find
+whatever is on the `PATH` the extension host inherited.
+`depphunter.editorCommand` overrides this where the file should be opened
+elsewhere.
 
 ### Remote workspaces
 
@@ -637,27 +643,31 @@ keeps the token in the address.
 The remainder of this document describes the map itself, which behaves
 identically whether it was started by the command-line tool or by the extension.
 Where a section names a flag, the extension passes it through its own setting if
-one exists (`depphunter.findings`, `depphunter.style`, `depphunter.watch`) and
-through `depphunter.args` otherwise.
+one exists (see [Settings](#settings); `depphunter.style` and the other
+appearance settings only seed the default) and through `depphunter.args`
+otherwise.
 
 ### Keyboard & mouse
 
 Panning is bounded at the point where the centre of the view lies a quarter of
-the map's extent beyond its edge, and zooming out at the point where the map
-occupies roughly a third of the view. In walk mode the walker may travel 3 units
-out over the water and 12 units above the tallest building.
+the map's extent (plus a small margin) beyond its edge, and zooming out at the
+point where the map occupies roughly a third of the view. In walk mode the
+walker may travel 3 units out over the water and 12 units above the tallest
+building.
 
 |                           |                                                                                                                 |
 |---------------------------|-----------------------------------------------------------------------------------------------------------------|
 | Drag / right-drag / wheel | pan, orbit, zoom                                                                                                |
-| Click / double-click      | select, expand or collapse                                                                                      |
+| Click / double-click      | select, expand or collapse; double-click on open ground enters walk mode                                        |
+| Middle-drag               | zoom                                                                                                            |
 | `Enter`, `Backspace`      | expand or collapse the selection, select parent                                                                 |
 | `→` `←` in the panel      | expand or collapse a dependency row                                                                             |
 | `Enter` while reading     | close the details and resume                                                                                    |
 | `E` `Q` in walk mode      | the next tool for the right hand, the left hand                                                                 |
 | `Q` `E`                   | rotate by 90°                                                                                                   |
 | `Home`                    | fit the map to the view                                                                                         |
-| `+` `−`                   | expand or collapse one level throughout                                                                         |
+| `R`                       | reset the view                                                                                                  |
+| `+` `-`                   | expand or collapse one level throughout                                                                         |
 | `/`                       | search files, symbols and packages                                                                              |
 | `O`                       | open the selected file in the editor                                                                            |
 | `P`                       | write the map to a PNG image                                                                                    |
@@ -669,8 +679,9 @@ out over the water and 12 units above the tallest building.
 | `X`                       | open the export menu                                                                                            |
 | `K`                       | save settings to the config file                                                                                |
 | The figure                | the walker's last position in walk mode                                                                         |
-| `Esc`                     | close the backpack, or clear the selection                                                                      |
+| `Esc`                     | close the photographs or the backpack, or clear the selection                                                   |
 | `V`                       | enter walk mode                                                                                                 |
+| `?`                       | show all the controls                                                                                           |
 
 In walk mode:
 
@@ -684,7 +695,7 @@ In walk mode:
 | `Q`                     | the next secondary tool, and after the last of them an empty left hand — which is how the walker comes down out of the air or steps off the water deliberately. Four presses return to the starting state                                                                                                                                                                                                                                                                                                                                                                                                  |
 | `W` `A` `S` `D`/arrows  | move and turn; `Shift` runs, which spends the walker's wind                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 | `Space`                 | jump, which costs a little wind; while flying, ascend                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
-| Jet backpack in hand    | flight. While flying, `W` and `S` move along the view direction — looking down and pressing `W` descends — and `C` descends vertically. A click opens the throttle for a burst                                                                                                                                                                                                                                                                                                                                                                                                                             |
+| Jet backpack in hand    | flight. While flying, `W` and `S` move along the view direction — looking down and pressing `W` descends — and `C` descends vertically. `F` (or middle click) opens the throttle for a burst                                                                                                                                                                                                                                                                                                                                                                                                               |
 | Water skimmers in hand  | the surface of the water is walkable, passing under the bridges rather than over them; stowing them over deep water drowns the walker                                                                                                                                                                                                                                                                                                                                                                                                                                                                      |
 | Click                   | use the right hand; held down, the nail gun and the extinguisher keep firing. A module within reach is selected, and a bug that is caught is displayed and retained                                                                                                                                                                                                                                                                                                                                                                                                                                        |
 | `F`, `C` / middle click | use the left hand. A secondary tool selects and catches nothing: the grapple hooks the building being looked at, the jet gives a burst of thrust. While flying, `C` descends instead                                                                                                                                                                                                                                                                                                                                                                                                                       |
@@ -695,16 +706,16 @@ In walk mode:
 | `Enter`                 | show the details of whatever the reticle is on, as a second use of the tool would. This releases the pointer; a click on the map resumes                                                                                                                                                                                                                                                                                                                                                                                                                                                                   |
 | Wheel                   | zoom                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
 | `+` `-` (or `[` `]`)    | planet radius, and therefore curvature                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                     |
-| `V` / `Esc`             | return to the map. Re-entering walk mode restores the previous position                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `V` / `M` / `Esc`       | return to the map (`Esc` first releases a captured pointer). Re-entering walk mode restores the previous position                                                                                                                                                                                                                                                                                                                                                                                                                                                                                          |
 
 The map draws the walker at their last position, as a figure facing the
 direction they faced, and re-entering walk mode restores that position — unless
 a node was selected on the map in the interim, in which case the walker is
 placed at that node instead.
 
-On foot the shore is impassable unless the water skimmers are in hand, but every
-island is reachable by bridge; while flying, the walker may travel 3 units out
-over the water. The ground beneath the
+On foot the bay can be stepped down into and waded in, but deep water drowns a
+walker without the water skimmers, and every island is reachable by bridge; the
+walker may travel at most 3 units out over the water. The ground beneath the
 walker is never a target, so aiming at the street selects nothing. Expanding and
 collapsing are reserved to the map view, since either rebuilds the entire city
 and is disorienting from street level. The list of controls collapses once the
@@ -718,10 +729,11 @@ The same map, presented in three ways (`--style`, or the **Style** menu):
 |-----------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | `city`    | Buildings with facades and roofs, streets with crossings and parks, wooded shores, and bridges between the islands                                                                                                                                                                                                                                                                                                             |
 | `circuit` | A printed circuit board: chip packages with rows of pins, heatsinks in place of tall buildings, copper traces along every street with vias set into them, solder pads and silkscreen around each part, capacitors in place of trees and lit LEDs in place of lamps. Beyond the edge of the board lies the backplane it is plugged into, which is live: charge travels along its tracks, indicating that it cannot be walked on |
-| `galaxy`  | Platforms suspended in darkness: crystal spires with strata of light and star-like windows, joined by luminous conduits. In place of sea and sky there is the band of the galaxy with its dust lanes, two nebulae behind it and three layers of stars in front. The void the platforms hang in drifts in layers at three different speeds, so the map view redraws continuously under this style; the other two are static     |
+| `galaxy`  | Platforms suspended in darkness: crystal spires with strata of light and star-like windows, joined by luminous conduits. In place of sea and sky there is the band of the galaxy with its dust lanes, two nebulae behind it and three layers of stars in front. The void the platforms hang in drifts in layers at three different speeds, so the map view redraws continuously under this style (and under `circuit`)         |
 
 Only the environment differs. The colors that carry data — the language
-palette, the history overlays, hover and selection — are identical in all three,
+palette, the history overlays, hover and selection — are identical in all three
+(packages take a tint matching the style),
 so a style alters the presentation and never the reading of the code. Nothing
 else differs either: the same layout, the same streets, the same walk.
 
@@ -752,16 +764,19 @@ depphunter --findings 'reports/*.json'
 Each finding is placed on the node it concerns: a vulnerability on the package
 it affects, a linter's diagnostic on the file it refers to. A directory carries
 the most severe finding beneath it. Severities are normalized onto one scale —
-critical, high, medium, low, info — derived from the advisory's CVSS v3 vector
-where one is present, because the severity a distribution assigns frequently
+critical, high, medium, low, info — derived, for Trivy and OSV entries, from the
+advisory's CVSS v3 vector where one is present (npm audit's own rating is used as
+given), because the severity a distribution assigns frequently
 disagrees with it; Trivy classifies CVE-2020-8203 as `MEDIUM` against a vector
 scoring 9.8. A linter's "error" is deliberately not treated as a critical
-advisory: lint findings are capped at medium, since otherwise the streets would
-fill with bugs representing missing comments.
+advisory: golangci-lint and eslint findings are capped at medium, since
+otherwise the streets would fill with bugs representing missing comments;
+Trivy's misconfigurations and secret hits keep Trivy's rating. An advisory
+govulncheck finds no call into is capped at low.
 
 Under `--online`, depphunter additionally queries [OSV](https://osv.dev) for
-every external package the map pins to a version — a single batched query for
-the whole dependency tree, followed by the advisories it matched — covering Go,
+every external package the map pins to a version — batched queries of 500
+packages each, followed by the advisories it matched — covering Go,
 npm, PyPI, crates.io, Maven, NuGet and GitHub Actions. Floating packages are not
 queried, since they resolve to a different version on the next installation.
 Answers are cached for six hours. `--no-vulns` disables all of this.
@@ -783,17 +798,23 @@ bubble wand and the fire extinguisher are meant for it — displays what it
 carries. The HUD reports how many remain, and a bug left uncaught bites: the
 worse the finding, the more it costs.
 
+A vulnerability govulncheck proved reachable is not a bug but a **fire**: the
+package and the file that calls into it burn, on the map as well as in the
+street, and the fire spreads to the files that import them until it is put out
+with the extinguisher.
+
 The **backpack** (`B`) is shared between the two views. Adding a finding with
 the `+` beside it in the panel is equivalent to catching its bug in the street;
 in both cases the bug stops moving. Its contents survive a re-layout, a depth
-change and a reload. An entry is retained until the scanners stop reporting it,
-at which point it is struck through rather than removed, so that a resolved
+change and a reload. An entry is kept until it is cleared; once the scanners
+stop reporting it, it is struck through rather than removed, so that a resolved
 finding remains visible as such.
 
 A repository is larger than it appears from within it, so the corner of the walk
 HUD carries a **tracker**: a sweep centred on the walker and rotating with them,
 with one dot per bug in its severity's color, one ring per module already
-selected, and an arrow at the rim for anything beyond its range. The range
+tagged with the tool, and an arrow at the rim for each bug or fire beyond its
+range. The range
 adapts to what remains, and beneath it are the distance to the nearest bug and
 what that bug carries.
 
@@ -804,12 +825,12 @@ default the most recent 10,000 non-merge commits; `--history-commits` changes
 the limit and `--no-history` disables it — in the background once the map is
 displayed, and caches the result per commit. The **color** menu then offers:
 
-| Mode          | color shows                                                   |
-|---------------|---------------------------------------------------------------|
-| Commits       | commits per file; the per-file mean for collapsed directories |
-| Lines changed | lines added plus lines deleted                                |
-| Last change   | recency of the last change, with recent changes strongest     |
-| Authors       | the number of distinct authors                                |
+| Mode          | color shows                                                                 |
+|---------------|-----------------------------------------------------------------------------|
+| Commits       | commits per file; the per-file mean for collapsed directories               |
+| Lines changed | lines added plus lines deleted; the per-file mean for collapsed directories |
+| Last change   | recency of the last change, with recent changes strongest                   |
+| Authors       | the number of distinct authors                                              |
 
 Files with no commits in range are given a separate neutral color. The
 **Since** slider in the legend restricts commits, lines changed and authors to a
@@ -819,23 +840,28 @@ their former names. Under `--watch`, a new commit updates the overlay.
 
 ### Versions and pinning
 
-Every external package carries the version the project resolves it to, and
-whether anything fixes it at that version. Lock files, exact specifiers
+Every external package carries the version the project resolves it to — or,
+where nothing resolves it, the range it is declared with — and whether anything
+fixes it at that version. Lock files, exact specifiers
 (`==1.2.3`, `RequiredVersion`), single-version ranges (`[1.2.3]`), commits and
 digests pin a dependency; ranges, wildcards, snapshots and mutable tags do not.
-A dependency that nothing pins is drawn in amber, labelled **⚠ floating** in the
-side panel, and marked in its tooltip. Where a lock file resolved a range, the
-panel reports both: `4.3.1`, requested as `^4.2.0`.
+A dependency that nothing pins is drawn in amber (violet under `galaxy`),
+labelled **⚠ floating** in the side panel, and marked in its tooltip. Where a
+lock file resolved a range, the panel reports both: `4.3.1`, requested as
+`^4.2.0`.
 
 | Ecosystem          | pinned by                                                            | floats on                                                   |
 |--------------------|----------------------------------------------------------------------|-------------------------------------------------------------|
-| Go modules         | the version in `go.mod`, which the build selects                     | a `require` without a version                               |
+| Go modules         | the version in `go.mod`, which the build selects                     | — (a `require` always names a version)                      |
 | npm                | `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, an exact `1.2.3` | any range, including `1.2`, which denotes 1.2.x             |
 | crates.io          | `Cargo.lock`                                                         | the manifest alone, where `"1.2.3"` denotes `^1.2.3`        |
-| PyPI               | `poetry.lock`, `uv.lock`, `pdm.lock`, `Pipfile.lock`, `==1.2.3`      | `>=`, `~=`, `^`, or no version at all                       |
+| PyPI               | `poetry.lock`, `uv.lock`, `pdm.lock`, `Pipfile.lock`, `==1.2.3`      | `>=`, `~=`, `^` and other ranges                            |
 | Maven              | a plain version, `[1.2.3]`                                           | ranges, `LATEST`, `RELEASE`, `-SNAPSHOT`, unexpanded `${…}` |
 | NuGet              | an exact version, `[1.2.3]`                                          | wildcards (`2.*`) and ranges                                |
 | PowerShell Gallery | `RequiredVersion`                                                    | `ModuleVersion`, which is a minimum                         |
+| GitHub Actions     | a full commit SHA                                                    | tags, branches, or no ref                                   |
+| GitLab CI includes | a commit                                                             | tags, branches, templates, remote includes, or no ref       |
+| Container images   | an `@sha256:` digest                                                 | tags                                                        |
 
 The JSON and GraphML exports carry `requested` and `floating` per package.
 
@@ -854,6 +880,7 @@ and the analysis remains offline.
 | `yarn.lock` (classic)                | each entry's resolved version and `dependencies` |
 | `Cargo.lock`                         | `dependencies` per crate                         |
 | `uv.lock`, `poetry.lock`, `pdm.lock` | each distribution's own requirements             |
+| an installed Python environment      | each distribution's `Requires-Dist`              |
 
 Packages added in this way are marked **transitive**, meaning that no file in
 the repository imports them. Edges between packages are of kind `depends`, as
@@ -861,10 +888,11 @@ distinct from the `import` edges that originate at a file, so that the count of
 files importing a package remains exactly that. Two versions of one package
 remain a single building, so an edge between packages is an edge between names.
 
-Ecosystems whose lock files record no edges (`Pipfile.lock`) contribute nothing
-here. Those that keep the dependency graph outside the repository — Go modules,
-NuGet, container images, and at present Maven and the PowerShell Gallery —
-require `--online`, described below.
+A Python package that no lock file gives edges for (`Pipfile.lock` records
+none) falls back to the installed environment (see [Languages](#languages)).
+Ecosystems that keep the dependency graph outside the repository — Go modules,
+NuGet and container images — require `--online`, described below; Maven and the
+PowerShell Gallery are not resolved beyond the first level at present.
 
 The side panel presents these as a **tree**: every row under *Depends on* and
 *Used by* expands into that node's own dependencies, and so on recursively.
@@ -890,20 +918,21 @@ The two sources are not treated alike. An index named by **this machine's** own
 configuration is trusted. One that appears only in the repository is recorded
 and marked **⚠ index**, because a repository directing a package manager at an
 index that nothing here configures is the form a dependency-confusion attack
-takes. No request is ever made to such an index.
+takes. No request is ever made to such an index, unless it is vouched for with
+[`--trust-index`](#vouching-for-an-internal-index).
 
 `--online` permits depphunter to query the trusted indexes for dependencies the
 repository does not record, which is how `--resolve-depth` reaches the
 ecosystems whose graph is held outside the repository:
 
-| Ecosystem | asked for                                | answer                                   |
-|-----------|------------------------------------------|------------------------------------------|
-| Go        | `<proxy>/<module>/@v/<version>.mod`      | that module's own `require` entries      |
-| npm       | `<registry>/<package>/<version>`         | its `dependencies`                       |
-| PyPI      | `<host>/pypi/<name>/<version>/json`      | `requires_dist`, excluding extras        |
-| crates.io | `<index>/<se>/<rd>/<name>`, sparse index | its `deps`, excluding dev and optional   |
-| NuGet     | `<feed>/<id>/<version>/<id>.nuspec`      | `<dependencies>`, both flat and by group |
-| OCI       | the manifest, then its config blob       | the **base image** it was built on       |
+| Ecosystem | asked for                                                                 | answer                                           |
+|-----------|---------------------------------------------------------------------------|--------------------------------------------------|
+| Go        | `<proxy>/<module>/@v/<version>.mod`                                       | its direct (non-`// indirect`) `require` entries |
+| npm       | `<registry>/<package>/<version>`, or `/latest` when unpinned              | its `dependencies`                               |
+| PyPI      | `<host>/pypi/<name>/<version>/json`, or `/pypi/<name>/json` when unpinned | `requires_dist`, excluding extras                |
+| crates.io | `<index>/<se>/<rd>/<name>`, sparse index                                  | its normal `deps`, excluding optional ones       |
+| NuGet     | `<feed>/<id>/<version>/<id>.nuspec`                                       | `<dependencies>`, both flat and by group         |
+| OCI       | the manifest, then its config blob                                        | the **base image** it was built on               |
 
 A container image has no dependency list. What it has is the image it was built
 on, which is the source of its unpatched vulnerabilities, and that is what is
@@ -914,9 +943,9 @@ labels. No layers are downloaded. A registry requiring a pull token is given the
 opportunity to say so, and the token endpoint it names is followed only over
 HTTPS, or back to the registry's own host.
 
-Maven alone is not queried, and cannot readily be: an import names a package, a
-package does not identify the artifact that ships it, and a POM is addressed by
-group *and* artifact.
+Maven and the PowerShell Gallery are not queried. Maven cannot readily be: an
+import names a package, a package does not identify the artifact that ships it,
+and a POM is addressed by group *and* artifact.
 
 Lock files take precedence: an index is queried only where the repository is
 silent, and an entire level of the walk is queried at once rather than one
@@ -929,23 +958,24 @@ already configured for it. Credentials are taken from the user's own files and
 environment — never from the repository — and each is sent to the host it was
 written for and to no other.
 
-| Source                           | Holds                                                                        |
-|----------------------------------|------------------------------------------------------------------------------|
-| `~/.npmrc`                       | `_authToken`, `_auth`, and `username` with `_password`, per registry         |
-| `~/.netrc`, `~/_netrc`           | the machine/login/password triples git, curl, Go and pip already read        |
-| `~/.m2/settings.xml`             | each `<server>`, matched to the `<mirror>` or `<repository>` naming it       |
-| `NuGet.Config`                   | `<packageSourceCredentials>`, matched to its `<packageSources>` entry        |
-| `~/.docker/config.json`          | stored `auths`, and the helpers named by `credsStore` and `credHelpers`      |
-| `~/.config/containers/auth.json` | the same, for Podman and Skopeo                                              |
-| `~/.cargo/credentials.toml`      | a token per registry, matched to its index through `~/.cargo/config.toml`    |
-| `CARGO_REGISTRIES_<NAME>_TOKEN`  | the same token supplied by a pipeline instead                                |
-| the index URL itself             | `https://user:password@host/simple`, as a private pip or Cargo mirror is set |
+| Source                                                        | Holds                                                                                                             |
+|---------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------|
+| `~/.npmrc`                                                    | `_authToken`, `_auth`, and `username` with `_password`, per registry                                              |
+| `~/.netrc`, `~/_netrc`                                        | the machine/login/password triples git, curl, Go and pip already read                                             |
+| `~/.m2/settings.xml`                                          | each `<server>`, matched to the `<mirror>` or profile `<repository>` in the same file                             |
+| `~/.nuget/NuGet/NuGet.Config`, `~/.config/NuGet/NuGet.Config` | `<packageSourceCredentials>` (`ClearTextPassword`), matched to its `<packageSources>` entry                       |
+| `~/.docker/config.json`                                       | stored `auths`, and the helpers named by `credsStore` and `credHelpers`                                           |
+| `~/.config/containers/auth.json`                              | the same, for Podman and Skopeo                                                                                   |
+| `~/.cargo/credentials.toml`                                   | a token per registry, matched to its index through `~/.cargo/config.toml` (legacy `credentials` and `config` too) |
+| `CARGO_REGISTRIES_<NAME>_TOKEN`, `CARGO_REGISTRY_TOKEN`       | the same token supplied by a pipeline instead                                                                     |
+| the index URL itself                                          | `https://user:password@host/simple`, as a private pip or Cargo mirror is set                                      |
 
 Between them these cover Nexus, Artifactory, Azure Artifacts, ProGet, GitHub
 Packages, Harbor, GHCR and a private crate registry.
 
-`${NAME}`, `${env.NAME}` and `%NAME%` in those files are expanded, so a password
-may be held in the environment. An encrypted password — Maven's `{...}` form,
+In `~/.npmrc`, `settings.xml` and `NuGet.Config`, a value that is exactly
+`${NAME}`, `${env.NAME}` or `%NAME%` is read from the environment, so a password
+may be held there. An encrypted password — Maven's `{...}` form,
 NuGet's Windows-encrypted form — is left untouched: it cannot be decrypted here,
 and transmitting the ciphertext would yield only a 401.
 
@@ -1065,14 +1095,16 @@ The report records five things:
   image reference, or is the ecosystem's public default;
 - **what resolved from where** — one row per index, giving the number of
   packages resolving from it and how many of those are private, so that an
-  unexpected index is a single row rather than a search through the map, plus
-  the number resolved from what a Python environment has installed;
+  unexpected index is a single row rather than a search through the map;
+  packages installed from outside any index form a row of their own;
 - **the walk** — per ecosystem and per level: how many packages were queried,
-  how many answered, how many were new, and the elapsed time;
-- **the ecosystems not walked at all** — an ecosystem whose dependency graph is
-  held outside the repository and could not be queried (Go modules, NuGet,
-  Maven, container images) is named, rather than silently contributing nothing;
-  and
+  how many answered, how many were new, and the elapsed time; the answers line
+  also counts the questions answered from what a Python environment has
+  installed;
+- **the ecosystems not walked at all** — when `--online` is not given, an
+  ecosystem whose dependency graph is held outside the repository (Go modules,
+  NuGet, Maven, container images) is named, rather than silently contributing
+  nothing; and
 - **the questions nothing answered** — every package for which no answer was
   obtained, with the reason: no lock file covers it; its index is named only by
   the repository; it is private and its index is the public one; the proxy
@@ -1093,11 +1125,6 @@ the walk past what the code imports
   go          0      25     13        6      27     120ms
   javascript  0      7      3         9      10     3346ms
 
-not walked at all
-  PLUGIN  WHY
-  java    the repository records no dependency graph for it, and --online was
-  not given
-
 answers
   87 asked; 3 from lock files; 56 from indexes (56 fetched, 0 cached, 0
   already asked); 28 unanswered (4 of them asked and failed); 89 requests; 159
@@ -1111,10 +1138,11 @@ nothing answered for these
   1      https://registry.npmjs.org/@scope%2ftool/1.2.0: 404 Not Found
 ```
 
-The JSON retains what the written report abbreviates: every question in the
-order the walk asked it, and for each one the URLs requested with the status
-returned by each — which is how the three round trips a container image requires
-can be distinguished when one of them fails.
+The JSON retains what the written report abbreviates: every question, up to 20
+000, ordered by level, ecosystem and package, and for each one the URLs
+requested, in the order made, with the status returned by each — which is how
+the three round trips a container image requires can be distinguished when one
+of them fails.
 
 In the editor, **depphunter: Show the Resolution Report** opens the same report
 as a document beside the code, and the `depphunter.explain` setting writes the
@@ -1127,8 +1155,9 @@ under examination.
 
 The code that executes with a repository's secrets is also a dependency, and it
 is declared nowhere a package manager reads. depphunter takes it from the
-pipeline files themselves — `.github/workflows/*.yml`, `action.yml`,
-`.gitlab-ci.yml`, `*.gitlab-ci.yml` and `.gitlab/**` — and places it on the map
+pipeline files themselves — `.github/workflows/*.yml` and `*.yaml`,
+`action.yml`/`action.yaml`, `.gitlab-ci.yml`, `*.gitlab-ci.yml` and any YAML
+file under `.gitlab/` — and places it on the map
 alongside the packages:
 
 - **GitHub Actions**: each step's `uses:`, reusable workflows (`jobs.<id>.uses`),
@@ -1226,15 +1255,18 @@ servers found on `PATH`, and the `go install` locations for gopls:
 
 The servers run in the background once the map is displayed — gopls requires
 approximately 7 s for this repository — within the budget set by
-`--lsp-timeout`; results are cached until the code changes. The legend's
-**Imports / References** switch then determines what the selection arcs and the
-side panel show: for a function, what it uses and what uses it. The JSON and
-GraphML exports include the reference edges.
+`--lsp-timeout`; results are cached until the map's files, symbols or imports
+change, or a different set of language servers is installed. Servers that index
+slowly, rust-analyzer and jdtls in particular, may answer before indexing has
+finished, so a first run can report fewer references than a later one. The
+legend's **Imports / References** switch then determines what the selection arcs
+and the side panel show: for a function, what it uses and what uses it. The JSON
+and GraphML exports include the reference edges.
 
 ### Languages
 
 | Ecosystem               | Imports resolved through                                                                                                                                                                                    | Islands                                     |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------- |
+|-------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------|
 | Go                      | every `go.mod` (multi-module, local `replace`)                                                                                                                                                              | Go modules, Go standard library             |
 | JavaScript / TypeScript | relative paths, `tsconfig`/`jsconfig` `paths`, workspaces, `package.json` + `package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`                                                                            | npm, Node.js built-ins                      |
 | Python                  | relative imports, `src/` layouts, requirements files, `setup.cfg`, literal `setup.py` lists, `pyproject.toml`, `Pipfile`, `poetry.lock`/`uv.lock`/`pdm.lock`/`Pipfile.lock`, installed environments (below) | PyPI, Python standard library               |
@@ -1250,18 +1282,19 @@ directory, a wheel file or a Git repository - are resolved from what a Python
 environment has installed. The environment is the interpreter named with
 `--python` (`DEPPHUNTER_PYTHON`, or `python:` in the user's own configuration
 file), otherwise the activated virtual environment (`VIRTUAL_ENV`), otherwise
-the project's own `.venv` or `venv`; the per-user site directory
-(`pip install --user`) is not read. Its site-packages directories are read,
-along with the base interpreter's when the virtual environment includes system
-site-packages; the interpreter itself is never run. A distribution counts only
-when its metadata records that it was installed from somewhere other than an
-index (`direct_url.json`, PEP 610). Such a package takes its name and version
-from its installed metadata, and its dependencies from its `Requires-Dist`. It
-is treated as private: it is never named to an index or to OSV, and the side
-panel says where it was installed from. An import that an index-installed
-distribution provides but no manifest declares remains unresolved, but under
-that distribution's name. The extension has no setting for this; pass
-`--python` through `depphunter.args`.
+the project's own `.venv` or `venv`; the per-user site directory (`pip install
+--user`) is not read. Its site-packages directories are read, along with the
+base interpreter's when the virtual environment includes system site-packages;
+the interpreter itself is never run. A distribution counts only when its
+metadata records that it was installed from somewhere other than an index
+(`direct_url.json`, PEP 610). Such a package takes its name and version from its
+installed metadata, and its dependencies from its `Requires-Dist`. It is treated
+as private: it is never named to an index or to OSV, it is attributed to where
+it was installed from rather than to any index (so it is never marked **⚠
+index**), and the side panel says where that was. An import that an
+index-installed distribution provides but no manifest declares remains
+unresolved, but under that distribution's name. The extension has no setting for
+this; pass `--python` through `depphunter.args`.
 
 Java imports name packages rather than artifacts, so they are matched to Maven
 group identifiers by prefix, by shared leading segments, by artifact name, and
@@ -1302,11 +1335,11 @@ Three consequences follow, and nothing else changes:
   and supplies it on every call, in a header, or in the query string for the
   event stream, which cannot set headers. `Referrer-Policy: no-referrer` keeps
   it out of any outgoing request.
-- The interface's own files — `app.js` and its imports — are served without the
-  token, since a frame cannot attach one to a `<script src>`. They are identical
-  in every release and disclose nothing about the project. Everything under
-  `/api`, and the document that supplies the page with its token, still requires
-  it.
+- The interface's static files — the page, `app.js` and its imports, styles and
+  models — are served without the token, since a frame cannot attach one to a
+  `<script src>`. They are identical in every release and disclose nothing about
+  the project. Everything under `/api`, and the entry address `/`, still
+  requires it.
 
 The option is deliberately a flag and nothing else: no configuration file and no
 environment variable can enable it, so a repository cannot arrange to be framed

@@ -17,7 +17,8 @@ verification:
 
 The extension **shall** provide the commands Open the Map, Open the Map in the
 Browser, Restart the Server, Stop the Server, Show the Server Log, Show the
-Resolution Report, Export the Graph, Export the Backpack and Open Settings, and
+Resolution Report, Export the Graph, Export the Backpack, Refresh the Side Panel
+and Open Settings, and
 **shall** offer Open the Map in the explorer's context menu for any folder.
 
 ## Rationale

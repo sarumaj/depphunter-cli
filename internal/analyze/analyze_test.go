@@ -751,13 +751,21 @@ func TestAPackageInstalledFromElsewhereIsPrivate(t *testing.T) {
 	p := fakePlugin{targets: map[string]lang.Target{
 		"acme-core": {Ecosystem: "fake-eco", Package: "acme-core", Version: "1.4.0", Origin: "file:///src/acme-core"},
 	}}
-	g, _, err := Run(context.Background(), root, Options{Plugins: []lang.Plugin{p}})
+	// The repository names an index for the ecosystem; the package still did not
+	// come from it, so it is attributed to no index and not marked for one.
+	g, _, err := Run(context.Background(), root, Options{
+		Plugins: []lang.Plugin{p},
+		Indexes: func([]*scan.File) Indexes { return fakeIndexes{index: "https://internal.example"} },
+	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, n := range g.Nodes {
 		if n.Kind == graph.KindPackage && (!n.Private || n.Origin != "file:///src/acme-core") {
 			t.Errorf("%s: private %v, origin %q", n.Name, n.Private, n.Origin)
+		}
+		if n.Kind == graph.KindPackage && (n.Index != "" || n.IndexUnknown) {
+			t.Errorf("%s: index %q (unknown %v), want none", n.Name, n.Index, n.IndexUnknown)
 		}
 	}
 }

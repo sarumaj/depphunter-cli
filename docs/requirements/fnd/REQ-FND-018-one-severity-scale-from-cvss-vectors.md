@@ -14,7 +14,8 @@ verification:
 
 The system **shall** map every finding onto the severities critical, high,
 medium, low and info, taking the severity from the advisory's CVSS v3 base score
-where a vector is present and from the severity word of the report otherwise.
+where a Trivy or OSV entry carries a vector and from the severity word of the
+report otherwise; npm audit ratings are taken as given.
 
 ## Rationale
 

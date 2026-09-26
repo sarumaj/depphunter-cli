@@ -380,6 +380,7 @@ func headers(t *testing.T, url string) http.Header {
 	return res.Header
 }
 
+// Verifies: REQ-SEC-010
 func TestEmbedAllowsTheFrameItWasTold(t *testing.T) {
 	_, url, _ := embedded(t)
 	h := headers(t, url)

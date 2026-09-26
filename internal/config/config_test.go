@@ -424,6 +424,8 @@ func TestStyleSettings(t *testing.T) {
 // else. A config file or an environment variable that could turn it on would be a
 // way for a repository, or something that once set a variable, to arrange for the
 // map to be framed by a page of its choosing.
+//
+// Verifies: REQ-SEC-010
 func TestEmbedComesFromTheCommandLineOnly(t *testing.T) {
 	root, user := t.TempDir(), t.TempDir()
 	write(t, filepath.Join(user, "config.yaml"), "embed: [https://evil.test]\n")
@@ -447,6 +449,8 @@ func TestEmbedComesFromTheCommandLineOnly(t *testing.T) {
 
 // What lands in a security header is checked before it gets there, so nothing passed
 // on the command line can end the frame-ancestors directive early or start another.
+//
+// Verifies: REQ-SEC-010
 func TestEmbedOriginsAreChecked(t *testing.T) {
 	for _, origin := range []string{
 		"vscode-webview:", "https://example.test", "https://example.test:8080",
@@ -484,7 +488,7 @@ func TestPrivatePatternsCollectFromEverywhere(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, want := range []string{"npm:@acme/*", "oci:harbor.corp/*", "maven:com.acme.*", "pypi:acme-*"} {
+	for _, want := range []string{"corp.example/*", "npm:@acme/*", "oci:harbor.corp/*", "maven:com.acme.*", "pypi:acme-*"} {
 		if !slices.Contains(cfg.Private, want) {
 			t.Errorf("%q did not reach the configuration: %v", want, cfg.Private)
 		}
@@ -626,5 +630,20 @@ func TestPythonInterpreterIsTheUsersChoice(t *testing.T) {
 	}
 	if cfg, err = load(t, []string{"--python", "/flag/python", root}, nil, ""); err != nil || cfg.Python != "/flag/python" {
 		t.Errorf("--python: %q, %v", cfg.Python, err)
+	}
+}
+
+// Verifies: REQ-CFG-009
+func TestExcludeCombinesUserAndProjectFiles(t *testing.T) {
+	root, user := t.TempDir(), t.TempDir()
+	write(t, filepath.Join(user, "config.yaml"), "exclude:\n  - fromuser\n")
+	write(t, filepath.Join(root, ProjectFile), "exclude:\n  - fromproject\n")
+	cfg, err := load(t, []string{"--exclude", "fromflag", root},
+		map[string]string{"DEPPHUNTER_EXCLUDE": "fromenv"}, user)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if want := []string{"fromuser", "fromproject", "fromenv", "fromflag"}; !slices.Equal(cfg.Exclude, want) {
+		t.Errorf("exclude = %v, want %v", cfg.Exclude, want)
 	}
 }

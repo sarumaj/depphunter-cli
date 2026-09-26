@@ -24,3 +24,9 @@ A reader switching style must not have to relearn the colors.
 
 1. The same repository in all three styles keeps the same language colors in the
    legend and on the buildings.
+
+## Notes
+
+Package colors (plain, unresolved and floating) take a tint matching the style,
+so that packages remain legible against each style's ground; the floating mark
+is amber under `city` and `circuit` and violet under `galaxy`.

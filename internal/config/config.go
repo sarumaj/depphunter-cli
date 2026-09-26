@@ -152,6 +152,7 @@ type Config struct {
 	// relaxes what the server otherwise refuses outright, so it comes from flags
 	// only: a program that launches depphunter passes it, and neither a config file
 	// nor the environment can turn it on behind the user's back.
+	// Implements: REQ-SEC-010
 	Embed []string `yaml:"-" mapstructure:"-"`
 }
 
@@ -455,7 +456,31 @@ func mergeFile(v *viper.Viper, name string, required, trusted bool) error {
 			m["findings"] = confine(list)
 		}
 	}
+	// A list adds to what an earlier file set rather than replacing it, so a project
+	// file cannot drop the user's own globs or private patterns.
+	//
+	// Implements: REQ-CFG-009, REQ-SUP-041
+	for _, key := range []string{"exclude", "findings", "private", "trust_indexes"} {
+		if list, ok := m[key]; ok {
+			m[key] = append(v.GetStringSlice(key), strs(list)...)
+		}
+	}
 	return v.MergeConfigMap(m)
+}
+
+// strs is a list as YAML decodes it ([]any), or as confine returns it, as strings.
+func strs(list any) []string {
+	switch l := list.(type) {
+	case []string:
+		return l
+	case []any:
+		out := make([]string, 0, len(l))
+		for _, item := range l {
+			out = append(out, fmt.Sprint(item))
+		}
+		return out
+	}
+	return nil
 }
 
 // confine keeps the report paths a repository may name: relative ones that stay
@@ -555,6 +580,8 @@ func (c Config) validate() error {
 // ("vscode-webview:"), or a scheme with a host and maybe a port. Nothing with a
 // space, a quote, a slash or a semicolon in it gets through, so nothing passed here
 // can end the directive early or start another one.
+//
+// Implements: REQ-SEC-010
 func frameOrigin(s string) bool {
 	if scheme, host, ok := strings.Cut(s, "://"); ok {
 		return isScheme(scheme) && isHost(host)

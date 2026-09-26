@@ -13,7 +13,8 @@ verification:
 ## Statement
 
 The report **shall** state, per ecosystem and index, how many packages on the
-map resolve from it and how many of them are private, and the totals of
+map resolve from it and how many of them are private, counting packages
+installed from outside any index as a row of their own, and the totals of
 packages, transitive, private and untrusted-index packages.
 
 ## Rationale

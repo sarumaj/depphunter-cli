@@ -24,4 +24,6 @@ Whoever reads the map should see what depphunter treats as internal.
 
 1. A package matching a declared pattern is marked `private`; a package not
    matching is not.
-2. Nothing is marked private when nothing is declared.
+2. Nothing is marked private when nothing is declared, except a package
+   installed from outside any index
+   ([REQ-PY-015](../py/REQ-PY-015-installed-packages-no-index-has.md)).

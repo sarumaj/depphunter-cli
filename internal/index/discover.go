@@ -88,7 +88,10 @@ func (c *Config) machine(env func(string) string, home string) {
 		{filepath.Join(home, ".pip", "pip.conf"), parsePipConf},
 		{filepath.Join(home, ".cargo", "config.toml"), parseCargoConfig},
 		{filepath.Join(home, ".m2", "settings.xml"), parseMavenSettings},
+		// Both places the dotnet CLI keeps the user's NuGet.Config, the same two the
+		// credentials are read from, so a feed with a password is also a feed.
 		{filepath.Join(home, ".nuget", "NuGet", "NuGet.Config"), parseNuGetConfig},
+		{filepath.Join(home, ".config", "NuGet", "NuGet.Config"), parseNuGetConfig},
 	} {
 		if data, err := os.ReadFile(f.path); err == nil {
 			f.parse(data, add)

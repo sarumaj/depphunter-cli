@@ -27,4 +27,4 @@ The system does not wait for a server-specific "indexing finished" signal.
 
 ## Notes
 
-The README lists the supported servers but does not state this limitation.
+The README states this limitation under *Symbol references*.

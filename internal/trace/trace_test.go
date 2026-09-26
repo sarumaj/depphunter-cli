@@ -97,6 +97,8 @@ func TestSummarizeReadsTheMapForIndexes(t *testing.T) {
 		// A file is not a package, and a package with no index has nothing to say here.
 		{ID: "f:main.js", Kind: graph.KindFile},
 		{ID: "p:npm:local", Kind: graph.KindPackage, Parent: "e:npm"},
+		// Installed from a directory: it resolves from there, not from an index.
+		{ID: "p:npm:mine", Kind: graph.KindPackage, Parent: "e:npm", Origin: "file:///src/mine", Private: true},
 	}}
 	r := New(0, false, nil, nil)
 	r.Summarize(g)
@@ -104,8 +106,11 @@ func TestSummarizeReadsTheMapForIndexes(t *testing.T) {
 	if r.Root != "app" {
 		t.Errorf("root is %q", r.Root)
 	}
-	if len(r.Indexes) != 3 {
+	if len(r.Indexes) != 4 {
 		t.Fatalf("indexes: %+v", r.Indexes)
+	}
+	if u := r.Indexes[3]; u.Index != Installed || u.Packages != 1 || u.Private != 1 || !u.Trusted {
+		t.Errorf("the installed package is not a row of its own: %+v", u)
 	}
 	// Sorted by ecosystem then index, so the same repository reports the same way twice.
 	if r.Indexes[0].Index != "https://evil.test/npm" || r.Indexes[0].Trusted {
@@ -119,9 +124,9 @@ func TestSummarizeReadsTheMapForIndexes(t *testing.T) {
 		got  int
 		want int
 	}{
-		{"packages", r.Totals.Packages, 3},
+		{"packages", r.Totals.Packages, 4},
 		{"transitive", r.Totals.Transitive, 1},
-		{"private", r.Totals.PrivatePkg, 1},
+		{"private", r.Totals.PrivatePkg, 2},
 		{"untrusted", r.Totals.Untrusted, 1},
 	} {
 		if c.got != c.want {

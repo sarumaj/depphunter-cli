@@ -27,4 +27,4 @@ A Go project that has configured its machine needs no configuration here.
 
 ## Notes
 
-`GONOSUMDB` and `GONOSUMCHECK` are read as well.
+`GONOSUMDB` is read as well.

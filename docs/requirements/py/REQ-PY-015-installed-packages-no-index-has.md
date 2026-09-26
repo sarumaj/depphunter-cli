@@ -19,13 +19,16 @@ distributions installed in a Python environment: the interpreter named with
 the base interpreter's when the virtual environment includes system
 site-packages, and the interpreter **shall not** be run. A distribution
 installed from somewhere other than an index (`direct_url.json`, PEP 610)
-**shall** resolve the import under its installed name and version, **shall**
-be marked private and record where it was installed from, and **shall** take
-its transitive dependencies from its `Requires-Dist`; no index and no
-vulnerability database **shall** be asked about it. A distribution installed
-from an index that no manifest declares **shall** leave the import unresolved,
-under that distribution's name. A project configuration file **shall not**
-choose the interpreter.
+**shall** resolve the import under its installed name and version, **shall** be
+marked private and record where it was installed from, **shall** be attributed
+to that origin rather than to any index, and **shall** take its transitive
+dependencies from its `Requires-Dist`; no index and no vulnerability database
+**shall** be asked about it. A distribution installed from an index that no
+manifest declares **shall** leave the import unresolved, under that
+distribution's name. An import that an installed distribution provides **shall**
+resolve to that distribution when the project declares it, whatever the import's
+name. The per-user site directory is not read. A project configuration file
+**shall not** choose the interpreter.
 
 ## Rationale
 
@@ -49,3 +52,7 @@ the repository's own `.venv` contains.
    is read.
 6. The index client asks nothing about a package with an origin, and the map
    marks it private.
+7. A package with an origin carries no index and is not marked as coming from an
+   index nothing here vouches for, even where the repository names an index for
+   its ecosystem; the resolution report counts it under
+   "installed from outside any index".

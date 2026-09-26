@@ -15,7 +15,8 @@ verification:
 
 The first time somebody enters walk mode, the UI **shall** open walk mode's own
 introduction, with cards on moving, on the tool in each hand, on using a tool,
-on the bugs, and on staying alive.
+on what using one does, on the bugs and the backpack, and on fire and staying
+alive.
 
 ## Rationale
 
