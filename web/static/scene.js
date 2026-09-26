@@ -79,6 +79,10 @@ export class MapScene {
     this.mesh = null;
     this.ground = null; // tessellated large boxes, shown in walk mode
     this.props = null;  // trees, bushes, lamps and ramps
+    // What handMask draws the walker's hands into and reads back, made on first use.
+    this.maskTarget = null;
+    this.maskMaterial = null;
+    this.maskData = null;
     this.planet = new THREE.Mesh(new THREE.SphereGeometry(1, 96, 48), waterMaterial(this.curve));
     this.sky = makeSky(this.curve);
     this.planet.visible = this.sky.visible = false;
@@ -658,6 +662,40 @@ export class MapScene {
   }
 
   /**
+   * Which parts of the screen the walker's hands and what they hold cover, as a
+   * coverage mask for Labels (labels.js covers), or null when nothing is held.
+   *
+   * They are drawn in a pass of their own over the world (renderNow), but the labels
+   * are HTML laid over the whole canvas, so they would otherwise sit on top of the
+   * tool too - across the camera's screen, even, while it is held up showing a
+   * photograph. So the same pass is drawn once more, in one flat color, into a small
+   * image the size of the mask, and read back: where it is not empty, the hands are.
+   * Their true outline rather than any box around them, because a box around an arm
+   * that reaches back past the lens covers the whole screen.
+   *
+   * Implements: REQ-MAP-042
+   */
+  handMask() {
+    if (!this.walking || !this.viewScene.children.length) return null;
+    const r = this.renderer;
+    this.maskTarget ||= new THREE.WebGLRenderTarget(MASK_W, MASK_H);
+    this.maskMaterial ||= new THREE.MeshBasicMaterial({ color: 0xffffff, side: THREE.DoubleSide });
+    this.maskData ||= new Uint8Array(MASK_W * MASK_H * 4);
+    const color = r.getClearColor(_clear), alpha = r.getClearAlpha();
+    this.viewScene.overrideMaterial = this.maskMaterial;
+    r.setRenderTarget(this.maskTarget);
+    r.setClearColor(0x000000, 0);
+    r.clear();
+    r.render(this.viewScene, this.walkCamera);
+    r.readRenderTargetPixels(this.maskTarget, 0, 0, MASK_W, MASK_H, this.maskData);
+    r.setRenderTarget(null);
+    r.setClearColor(color, alpha);
+    this.viewScene.overrideMaterial = null;
+    const { clientWidth: width, clientHeight: height } = this.container;
+    return { data: this.maskData, w: MASK_W, h: MASK_H, width, height };
+  }
+
+  /**
    * Flat-map point -> where walk mode draws it (in place). Mirrors BEND_GLSL: the point
    * keeps its height above the surface and its distance along it from the centre.
    */
@@ -747,6 +785,10 @@ gl_Position = projectionMatrix * mvPosition;
 
 // Scratch vectors for project and occludedBySphere, which run per label per frame.
 const _p = new THREE.Vector3(), _q = new THREE.Vector3(), _d = new THREE.Vector3(), _oc = new THREE.Vector3();
+// The mask of what the walker holds (handMask): fine enough to tell a label's worth of
+// screen, small enough to read back several times a second.
+const MASK_W = 128, MASK_H = 72;
+const _clear = new THREE.Color();
 
 // Whether the segment eye->p passes through the sphere (centre c, radius r).
 function occludedBySphere(eye, p, c, r) {

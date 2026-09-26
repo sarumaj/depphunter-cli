@@ -5,7 +5,9 @@ title: Fishing rod holds on a wall only by chance
 scope: tool
 type: functional
 priority: must
-status: implemented
+status: superseded
+superseded_by:
+  - REQ-TOOL-069
 verification:
   - unit
   - manual

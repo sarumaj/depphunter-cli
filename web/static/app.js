@@ -104,7 +104,9 @@ async function main() {
       if (now - labelsAt < 90) return;
       labelsAt = now;
     }
-    labels.draw();
+    // Nothing is labelled across what the walker is holding, which is drawn in the
+    // canvas under the labels' own layer.
+    labels.draw(walker?.active ? scene.handMask() : []);
   };
   scene.onRender = () => { drawLabels(); pins?.follow(); avatar?.follow(); };
   walker = new Walker(scene, $('walk-hud'), {

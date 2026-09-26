@@ -2326,10 +2326,9 @@ export class Walker {
   /**
    * A line has stuck, and it pulls: the walker goes along it to what it caught.
    *
-   * The grapple sets them on top of it, which is how a facade is got up and a roof
-   * arrived on - and, aimed off that roof at anything lower, how they get down again.
-   * The rod anchors where its hook landed instead, so a cast at the tenth floor
-   * brings the walker to that wall rather than standing them on the roof.
+   * A line that bit a building sets them on top of it, which is how a facade is got
+   * up and a roof arrived on - and the grapple, aimed off that roof at anything
+   * lower, is how they get down again. Whether it bit at all is holds'.
    *
    * Returns whether the line was taken up. It may not be - too far to pull from, or
    * already there - and the caller has to know, because a hook that is not holding
@@ -2413,7 +2412,7 @@ export class Walker {
    * so a miss looks like one, rather than a line that simply vanishes. Returns true,
    * for the caller that wants to know it went on.
    *
-   * Implements: REQ-TOOL-067, REQ-TOOL-068
+   * Implements: REQ-TOOL-067, REQ-TOOL-069
    */
   glance(shot, box) {
     const at = shot.mesh.position;
@@ -2426,7 +2425,7 @@ export class Walker {
     this.puff(at, n);
     this.flash(shot.tool.climbs
       ? 'The claw found nothing to close on - aim at the top of the wall'
-      : 'The hook skipped off the wall');
+      : 'The hook skipped off the wall - cast it onto the roof');
     return true;
   }
 
@@ -2435,7 +2434,7 @@ export class Walker {
    * to rest if it reaches the ground first, and then the line brings it back to the
    * hand - wherever the hand has got to since. Returns true once it is back.
    *
-   * Implements: REQ-TOOL-067, REQ-TOOL-068
+   * Implements: REQ-TOOL-067, REQ-TOOL-069
    */
   rebound(shot, dt) {
     const m = shot.mesh;
@@ -2503,9 +2502,6 @@ export class Walker {
     this.darts = [];
     for (const puff of [...this.puffs]) this.dropPuff(puff);
   }
-
-  /** A roll of the dice, for the tools that do not always hold (holds). */
-  roll() { return Math.random(); }
 
   /** Lets go of whatever the line is holding, and takes the line off the map. */
   cutLine(say) {
@@ -2884,7 +2880,7 @@ export class Walker {
           // on the line, and the walker stays where they are. A hook that does not
           // hold flies on off the wall instead, so it is not done with yet.
           if (dart.tool.reel && !dart.bug) {
-            if (!holds(dart.tool, dart.target, m.position.y, this.roll())) {
+            if (!holds(dart.tool, dart.target, m.position)) {
               this.glance(dart, dart.target);
               done.pop();
             } else if (this.hook(m.position, dart.target, dart)) dart.kept = true;
@@ -2918,7 +2914,7 @@ export class Walker {
         const ground = hit && (hit.kind === 'land' || hit.kind === 'terrace');
         let glanced = false;
         if (hit && dart.tool.reel && !dart.glanced && (dart.tool.climbs || !ground)) {
-          if (!holds(dart.tool, hit, m.position.y, this.roll())) glanced = this.glance(dart, hit);
+          if (!holds(dart.tool, hit, m.position)) glanced = this.glance(dart, hit);
           else if (this.hook(m.position, hit, dart)) dart.kept = true;
         }
         // A shot that hits nothing still has a range: what a tool reaches is what it
@@ -3146,19 +3142,19 @@ export function arrivalAt(land, top, t) {
   return { x, z, feet, yaw, pitch };
 }
 /**
- * Whether a line that struck `box` at height `y` holds. The ground always does - it
- * is what a shot off a roof is for - and so does anything that is not a building.
- * On a building the grapple's claw holds within its `grip` of the roof's edge, every
- * time, and nowhere lower; a fishing hook holds by chance, `bite` of the time,
- * wherever it strikes. `roll` is a number from 0 to 1.
+ * Whether a line that struck `box` at `at` holds. The ground always does - it is what
+ * a shot off a roof is for - and so does anything that is not a building. On a
+ * building the grapple's claw holds within its `grip` of the roof's edge and nowhere
+ * lower; a fishing hook (`roof`) holds only where it came down on the roof itself,
+ * never on a wall. Either way the same shot always does the same thing.
  *
- * Implements: REQ-TOOL-067, REQ-TOOL-068
+ * Implements: REQ-TOOL-067, REQ-TOOL-069
  */
-export function holds(tool, box, y, roll) {
+export function holds(tool, box, at) {
   const line = tool.reel;
   if (!line || !box || box.kind === 'land' || box.kind === 'terrace') return true;
-  if (line.grip !== undefined && box.y + box.h - y > line.grip) return false;
-  return line.bite === undefined || roll < line.bite;
+  if (line.grip !== undefined && box.y + box.h - at.y > line.grip) return false;
+  return !line.roof || faceOf(box, at).y === 1;
 }
 
 /**

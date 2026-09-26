@@ -509,7 +509,7 @@ const rod = {
   label: 'Fishing rod',
   verb: 'Cast at',
   noun: 'landed',
-  hint: 'Cast at a building and the line hauls you to it, twice for details; a cast at a bug lands it',
+  hint: 'Cast onto a roof and the line hauls you up onto it, twice for details; a cast at a bug lands it',
   reticle: 'bobber',
   slot: 1,
   kind: 'primary',
@@ -607,13 +607,14 @@ const rod = {
     return g;
   },
   line: '#e8ecf2', // a line is drawn from the rod to the bobber while it flies
-  // A rod that has hooked something pulls. It anchors where the hook landed and
-  // brings the walker to it rather than onto it - a cast at the tenth floor leaves
-  // you against that wall, not standing on the roof - and it will not pull from
-  // across the map, because past a point the sensible thing is to walk. A fish hook
-  // is not made for brick, though: on a wall it catches about half the time and
-  // skips off the rest (walk.js holds), which is what the grapple is for.
-  reel: { speed: 11, stop: 1.1, max: 28, onto: false, bite: 0.5 },
+  // A rod that has hooked something pulls. A fish hook is not made for brick: it
+  // holds only where it drops over onto a roof, and then winds the walker up onto
+  // that roof the way the grapple does - slower, and on a shorter line, because past
+  // a point the sensible thing is to walk. On a wall it always skips off (walk.js
+  // holds). So it climbs from the hunting hand, which leaves the other free for the
+  // jet or the skimmers, but it wants a clean shot at the roof where the grapple
+  // forgives two storeys of facade.
+  reel: { speed: 11, stop: 0.25, max: 28, onto: true, roof: true },
 };
 
 // Implements: REQ-TOOL-015
