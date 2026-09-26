@@ -138,8 +138,10 @@ async function main() {
       select(n);
       panel.show(n);
       document.exitPointerLock?.();
-      // The panel has the pointer now; hold the view still until it is given back.
+      // The panel has the pointer now; hold the view still until it is given back,
+      // with the building being read left sharp in the blur.
       walker.setFrozen(true);
+      walker.focusOn(box || rep(n));
       walker.flash(`Details of ${n.name} - click the map to keep walking`);
     },
     onExit: () => setWalking(false),
@@ -218,6 +220,7 @@ async function main() {
         panel.show(node, false, f.id);
         document.exitPointerLock?.();
         walker.setFrozen(true);
+        walker.focusOn(rep(node));
         walker.flash(`${f.severity}: ${f.title} - click the map to keep walking`);
       }, TAKE_MS + 120);
     },

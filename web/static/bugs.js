@@ -181,6 +181,14 @@ export class Bugs {
   show(on) { this.group.visible = on; }
 
   /**
+   * The bug being taken off the map right now, if one is: while its catch plays out it
+   * is what the walker is watching, and walk.js keeps it in focus (drawCatchFocus).
+   */
+  beingTaken() {
+    return this.bugs.find(b => b.take) || null;
+  }
+
+  /**
    * The findings already caught, which stay caught. The backpack is what remembers
    * them - across a relayout, a depth change and a reload - so it says which they are
    * and this follows.

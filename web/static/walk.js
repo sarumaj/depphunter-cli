@@ -264,6 +264,8 @@ export class Walker {
     // the freed cursor and the reticle in the centre both steer the same scene, and
     // reading about a building means fighting it.
     this.frozen = false;
+    this.focus = null;    // the box kept sharp in the blur while it is being read (focusOn)
+    this.focusKey = '';   // the outline last drawn into the blur's mask, to redraw only on change
     // Set once the pointer lock has been asked for and refused for good. Somewhere
     // that never grants it, asking again on every click is a click that never does
     // anything else, so from then on a click is the tool and the view is turned by
@@ -501,6 +503,8 @@ export class Walker {
     this.hud.classList.remove('held');
     this.hud.style.removeProperty('--dead');
     this.dying = null;
+    this.focusOn(null);
+    this.hud.classList.remove('catching');
     this.hud.querySelector('.w-flash').textContent = '';
     clearTimeout(this.flashTimer);
     this.setScoped(false);
@@ -1102,6 +1106,70 @@ export class Walker {
   get still() { return this.frozen || this.wheel.open; }
 
   /**
+   * Keeps `box` sharp in the blur that holding the walker puts over the street - the
+   * building whose details are open, and a little of the street around it - so what
+   * is being read about stays in focus and the rest of the city softens behind it, the
+   * way a lens would. null makes the blur whole again. It is drawn from the next frame
+   * on (drawFocus) and lasts until the walker is let go.
+   *
+   * Implements: REQ-WALK-053
+   */
+  focusOn(box) {
+    this.focus = this.active && box ? box : null;
+    if (this.focus) return;
+    this.focusKey = '';
+    const veil = this.hud.querySelector('.w-veil');
+    if (veil) for (const k of ['maskImage', 'webkitMaskImage']) veil.style[k] = '';
+  }
+
+  /**
+   * The hole in the blur, for the frame just drawn. The view is held still, but the
+   * details panel opening beside it resizes the map, so the outline is worked out
+   * again each frame and the mask only rewritten when it has moved.
+   */
+  drawFocus() {
+    const veil = this.veil ||= this.hud.querySelector('.w-veil');
+    if (!veil) return;
+    const b = this.focus, pts = [];
+    for (const x of [b.x - b.w / 2, b.x + b.w / 2]) {
+      for (const z of [b.z - b.d / 2, b.z + b.d / 2]) {
+        for (const y of [b.y, b.y + b.h]) {
+          const p = this.scene.project(x, y, z);
+          if (p) pts.push(p);
+        }
+      }
+    }
+    const svg = focusMask(pts, veil.clientWidth, veil.clientHeight);
+    if (svg === this.focusKey) return;
+    this.focusKey = svg;
+    const url = svg ? `url("data:image/svg+xml,${encodeURIComponent(svg)}")` : '';
+    veil.style.maskImage = veil.style.webkitMaskImage = url;
+  }
+
+  /**
+   * Keeps a bug that is being caught in focus while its catch plays out: the street
+   * softens around it for the second it takes, and comes back when it is gone. It
+   * moves the whole time - reeled in, carried off, driven into the wall - so this is a
+   * round hole that follows it, drawn by CSS from three variables, rather than an
+   * outline worked out afresh each frame. The walker is not held for it; a catch is
+   * something to watch, not to stop for.
+   *
+   * Implements: REQ-WALK-053
+   */
+  drawCatchFocus() {
+    const bug = !this.frozen && this.dying === null ? this.bugs?.beingTaken() : null;
+    const p = bug?.pos;
+    const at = p && this.scene.project(p.x, p.y, p.z);
+    const hole = at && bugFocus(at, this.scene.project(p.x, p.y + BUG_FOCUS_SPAN, p.z));
+    this.hud.classList.toggle('catching', !!hole);
+    if (!hole) return;
+    const veil = this.veil ||= this.hud.querySelector('.w-veil');
+    veil?.style.setProperty('--fx', `${Math.round(hole.x)}px`);
+    veil?.style.setProperty('--fy', `${Math.round(hole.y)}px`);
+    veil?.style.setProperty('--fr', `${Math.round(hole.r)}px`);
+  }
+
+  /**
    * Hold the view still while something else has the pointer (the details panel), or
    * let it go again. Frozen, the walker does not move, look, aim or fire; the scene
    * keeps rendering, so what is being read about stays on screen.
@@ -1114,8 +1182,10 @@ export class Walker {
     // Softening the street says which of the two things on screen is waiting: the
     // walker, not the reader (.w-veil).
     this.hud.classList.toggle('held', on);
+    if (!on) this.focusOn(null); // the blur goes whole again, and then goes
     if (!on) this.hooks.onResume?.(); // whatever was being read is done with
     if (on) {
+      this.hud.classList.remove('catching'); // reading has its own focus (focusOn)
       this.keys.clear(); // a key held when the panel opened must not walk on
       this.firing = false;
       this.closeWheel(false); // ... and a wheel left up under a panel is unreachable
@@ -1480,6 +1550,8 @@ export class Walker {
       this.scene.setWalker(this.p.x, this.p.feet, this.p.z, EYE + this.ride(dt), this.p.yaw, this.p.pitch);
       if (!this.still && !this.arrival) this.updateAim();
       this.scene.renderNow();
+      if (this.frozen && this.focus) this.drawFocus();
+      else this.drawCatchFocus();
       this.hooks.onRender();
       this.loop();
     });
@@ -3169,6 +3241,77 @@ export function faceOf(box, at) {
   ];
   const [, x, y, z] = sides.reduce((a, b) => (b[0] < a[0] ? b : a));
   return new THREE.Vector3(x, y, z);
+}
+
+// The focus in the blur (focusOn): how far past the building's outline the street
+// stays sharp, and over how many pixels the blur then comes in, both in CSS pixels.
+const FOCUS_PAD = 36, FOCUS_FEATHER = 22;
+// ... and around a bug being caught (drawCatchFocus): the height, in map units, whose
+// size on screen says how near it is; how many of those the clear circle spans; and
+// the least and most that circle may be, in CSS pixels, so a bug across the street
+// still has some street around it and one in the hand does not clear the whole view.
+const BUG_FOCUS_SPAN = 0.3, BUG_FOCUS_SPANS = 2.5, BUG_FOCUS_MIN = 60, BUG_FOCUS_MAX = 220;
+
+/**
+ * The clear circle around a bug being caught: centred where it is on screen, `at`,
+ * and sized by how far `top` - a point BUG_FOCUS_SPAN above it - is from there, which
+ * is how big it looks. null when it is not on screen.
+ *
+ * Implements: REQ-WALK-053
+ */
+export function bugFocus(at, top) {
+  if (!at) return null;
+  const span = top ? Math.hypot(top.x - at.x, top.y - at.y) : 0;
+  return { x: at.x, y: at.y, r: clamp(span * BUG_FOCUS_SPANS, BUG_FOCUS_MIN, BUG_FOCUS_MAX) };
+}
+
+/**
+ * The convex outline of points on the screen, anticlockwise, without repeats: all a
+ * box can be seen as from anywhere, which is at most six of its eight corners.
+ */
+export function hull(points) {
+  const p = [...points].sort((a, b) => a.x - b.x || a.y - b.y);
+  if (p.length < 3) return p;
+  const cross = (o, a, b) => (a.x - o.x) * (b.y - o.y) - (a.y - o.y) * (b.x - o.x);
+  const half = list => {
+    const out = [];
+    for (const q of list) {
+      while (out.length >= 2 && cross(out[out.length - 2], out[out.length - 1], q) <= 0) out.pop();
+      out.push(q);
+    }
+    out.pop();
+    return out;
+  };
+  return [...half(p), ...half([...p].reverse())];
+}
+
+/**
+ * The mask that keeps a box in focus: an SVG the size of the screen, opaque - blurred
+ * - everywhere except the box's outline pushed out by FOCUS_PAD, which is clear and
+ * fades back into the blur over FOCUS_FEATHER. '' when too little of the box is on
+ * screen to say where it is, which leaves the blur whole.
+ *
+ * Implements: REQ-WALK-053
+ */
+export function focusMask(points, width, height) {
+  const outline = hull(points);
+  if (outline.length < 3 || !(width > 0 && height > 0)) return '';
+  const cx = outline.reduce((s, p) => s + p.x, 0) / outline.length;
+  const cy = outline.reduce((s, p) => s + p.y, 0) / outline.length;
+  const at = outline.map(p => {
+    const dx = p.x - cx, dy = p.y - cy, len = Math.hypot(dx, dy) || 1;
+    return `${Math.round(p.x + (dx / len) * FOCUS_PAD)},${Math.round(p.y + (dy / len) * FOCUS_PAD)}`;
+  }).join(' ');
+  const w = Math.round(width), h = Math.round(height), m = 4 * FOCUS_FEATHER;
+  // One shape: the view, reaching well past its edges so the feathering does not fade
+  // them, with the outline cut out of it by the even-odd rule. (A <mask> inside the
+  // SVG would say the same more plainly, but a browser drawing the SVG as a CSS mask
+  // image ignores it, and the whole view stays blurred.)
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`
+    + `<filter id="f" filterUnits="userSpaceOnUse" x="${-m}" y="${-m}" width="${w + 2 * m}" height="${h + 2 * m}">`
+    + `<feGaussianBlur stdDeviation="${FOCUS_FEATHER}"/></filter>`
+    + `<path fill="#000" fill-rule="evenodd" filter="url(#f)" `
+    + `d="M${-m} ${-m}H${w + m}V${h + m}H${-m}Z M${at.replaceAll(' ', 'L')}Z"/></svg>`;
 }
 
 /**

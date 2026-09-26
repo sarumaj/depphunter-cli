@@ -435,6 +435,24 @@ main { position: relative; flex: 1; min-height: 0; }
   backdrop-filter: blur(6px) saturate(0.85);
 }
 #walk-hud.held .w-veil { opacity: 1; }
+/* A bug being caught is kept in focus while its catch plays (walk.js drawCatchFocus):
+   the veil comes up with a round hole that follows it, placed by --fx, --fy and --fr,
+   and the blur comes back in over the next few dozen pixels. */
+#walk-hud.catching .w-veil { opacity: 1; }
+/* Kept whenever the walker is not held, not only while catching, so the hole stays
+   where the bug was while the veil fades out rather than the whole view blurring for
+   the length of the fade. Before the first catch the variables are unset, which makes
+   the gradient invalid and the mask none - on a veil nobody can see. */
+#walk-hud:not(.held) .w-veil {
+  -webkit-mask-image: radial-gradient(circle at var(--fx) var(--fy), transparent var(--fr), #000 calc(var(--fr) + 48px));
+  mask-image: radial-gradient(circle at var(--fx) var(--fy), transparent var(--fr), #000 calc(var(--fr) + 48px));
+}
+/* A building being read is left sharp (walk.js focusOn): the mask is set from script,
+   and is the size of the view, stretched to it. */
+#walk-hud .w-veil {
+  -webkit-mask-size: 100% 100%; mask-size: 100% 100%;
+  -webkit-mask-repeat: no-repeat; mask-repeat: no-repeat;
+}
 /* Where a blur is refused, or unwanted, dimming says the same thing. */
 @media (prefers-reduced-transparency: reduce) {
   #walk-hud .w-veil {

@@ -921,3 +921,49 @@ describe('what a line holds on to', () => {
     assert.deepEqual(WALK.faceOf(tower, at(0.1, 4, 0.1)).toArray(), [0, 1, 0], 'the roof');
   });
 });
+
+describe('the building in focus while it is read', () => {
+  // A box seen from the front and a little above: its eight corners on the screen, as
+  // scene.project would give them, the two back-bottom ones hidden behind the rest.
+  const corners = [
+    { x: 400, y: 500 }, { x: 600, y: 500 }, { x: 400, y: 200 }, { x: 600, y: 200 },
+    { x: 430, y: 180 }, { x: 630, y: 180 }, { x: 500, y: 350 }, { x: 560, y: 320 },
+  ];
+
+  // Verifies: REQ-WALK-053
+  it('outlines what is on screen of the building and nothing inside it', () => {
+    const outline = WALK.hull(corners);
+    const key = p => `${p.x},${p.y}`;
+    assert.deepEqual(new Set(outline.map(key)),
+      new Set(['400,500', '600,500', '630,180', '430,180', '400,200']), 'the wrong outline');
+  });
+
+  // Verifies: REQ-WALK-053
+  it('leaves a clear, softened hole a little larger than the building, and nothing else', () => {
+    const svg = WALK.focusMask(corners, 1280, 800);
+    assert.match(svg, /^<svg[^>]*width="1280" height="800"/, 'the mask is not the size of the view');
+    assert.match(svg, /feGaussianBlur stdDeviation="\d+"/, 'the edge of the hole is hard');
+    // The hole is the second part of the path: M x,y L x,y ... Z after the view's own.
+    const at = svg.match(/Z M([^Z]+)Z/)[1].split('L').map(p => p.split(',').map(Number));
+    const xs = at.map(p => p[0]), ys = at.map(p => p[1]);
+    // Pushed out past the building on every side: some of the street stays sharp too.
+    assert.ok(Math.min(...xs) < 400 && Math.max(...xs) > 630 && Math.min(...ys) < 180 && Math.max(...ys) > 500,
+      `the hole ${JSON.stringify(at)} does not take in the building and around it`);
+    assert.ok(Math.max(...xs) - Math.min(...xs) < 400, 'the hole takes in half the view');
+    // Too little of it on screen to say where it is: the blur stays whole.
+    assert.equal(WALK.focusMask(corners.slice(0, 2), 1280, 800), '');
+    assert.equal(WALK.focusMask(corners, 0, 0), '');
+  });
+
+  // Verifies: REQ-WALK-053
+  it('keeps a bug being caught in a circle that follows it and grows as it comes near', () => {
+    const far = WALK.bugFocus({ x: 300, y: 200 }, { x: 300, y: 196 });
+    const near = WALK.bugFocus({ x: 640, y: 400 }, { x: 640, y: 340 });
+    const close = WALK.bugFocus({ x: 640, y: 400 }, { x: 640, y: 100 });
+    assert.deepEqual([far.x, far.y], [300, 200], 'the circle is not on the bug');
+    assert.ok(far.r > 0 && far.r < near.r, `a bug across the street (${far.r}) is not ringed tighter than one nearby (${near.r})`);
+    assert.ok(far.r >= 50, 'a far bug has no street around it');
+    assert.ok(close.r <= 250, `a bug in the hand clears ${close.r}px of the view`);
+    assert.equal(WALK.bugFocus(null, null), null, 'a bug off screen is kept in focus');
+  });
+});
