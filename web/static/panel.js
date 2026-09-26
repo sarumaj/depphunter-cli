@@ -88,6 +88,8 @@ export class Panel {
   show(node, keepScroll = false, focus = null) {
     const top = keepScroll && this.node?.id === node.id ? this.body.scrollTop : 0;
     if (this.node?.id !== node.id) this.findText = ''; // another file: nothing is being looked for in it
+    const shown = node.kind === 'symbol' ? node.parentNode : node;
+    if (shown?.path !== this.binaryPath) this.binaryPath = null; // known binary until another file is shown
     clearFound();
     this.focus = focus;
     this.node = node;
@@ -258,10 +260,28 @@ export class Panel {
   openButton(node) {
     const file = node.kind === 'symbol' ? node.parentNode : node;
     if (file.kind !== 'file' || !this.openLabel) return null;
+    if (this.hexFor(file.path)) {
+      return h('button', {
+        class: 'p-open', type: 'button', onclick: () => this.onOpen(file.path, 1, true),
+        title: 'Open in a hex editor (O): its bytes and their text, side by side - in VS Code, its Hex Editor',
+        'aria-label': 'Open in a hex editor',
+      }, 'Hex editor ↗');
+    }
     return h('button', {
       class: 'p-open', type: 'button', onclick: () => this.onOpen(file.path, node.line || 1),
       title: `${this.openLabel} (O)`, 'aria-label': this.openLabel,
     }, `${this.openLabel.replace(/^Open in /, '')} ↗`);
+  }
+
+  /**
+   * Whether the file at `path` is one to open in a hex editor rather than as text:
+   * the one shown, found to have no text, and not a picture, clip or recording - an
+   * editor shows those as themselves.
+   *
+   * Implements: REQ-EXT-034
+   */
+  hexFor(path) {
+    return !!path && path === this.binaryPath && !mediaKind(path);
   }
 
   /**
@@ -531,7 +551,11 @@ export class Panel {
       text = await fetchSource(file.path);
     } catch (e) {
       if (e instanceof BinaryFile) {
-        if (seq === this.seq) pre.parentElement.replaceWith(this.binary(file, e.type));
+        if (seq !== this.seq) return;
+        pre.parentElement.replaceWith(this.binary(file, e.type));
+        // Now it is known to have no text, the corner offers a hex editor for it.
+        this.binaryPath = file.path;
+        this.pinOpen(this.node);
         return;
       }
       text = `(${e.message})`;

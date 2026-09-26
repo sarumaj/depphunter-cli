@@ -74,7 +74,11 @@ type Server struct {
 	snap *snapshot
 	lazy map[string]*lazyData // "history", "references", "findings": computed after startup
 	subs map[chan event]struct{}
-	done chan struct{}
+	// hexers are the streams that said they can open a file in a hex editor
+	// (/api/events?opens=hex) - the VS Code extension, which can ask the editor it
+	// runs in for one where the launcher on the command line cannot.
+	hexers map[chan event]struct{}
+	done   chan struct{}
 	// What the clients share while the map is open (session.go): the selected node
 	// and the catch, so the page and the editor's side panel are one interface.
 	selected string
@@ -130,7 +134,7 @@ func New(cfg config.Config, g *graph.Graph, assets fs.FS) (*Server, error) {
 	s := &Server{
 		token: hex.EncodeToString(tok), cookie: cookieFor(tok), root: cfg.Root, assets: assets, editor: cfg.Editor, cfg: cfg,
 		embed: cfg.Embed,
-		subs:  map[chan event]struct{}{}, done: make(chan struct{}),
+		subs:  map[chan event]struct{}{}, hexers: map[chan event]struct{}{}, done: make(chan struct{}),
 		lazy: map[string]*lazyData{
 			"history":    {pending: cfg.History},
 			"references": {pending: cfg.LSP},
@@ -708,6 +712,28 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
 	http.ServeContent(w, r, "", time.Time{}, f)
 }
 
+// handToHexer announces a file to be opened in a hex editor to the streams that can,
+// and reports whether any was listening. It is not an announcement to everybody, so
+// it does not move the stream's position (seq): a page reconnecting afterwards has
+// missed nothing it would have wanted.
+func (s *Server) handToHexer(path string) bool {
+	data, _ := json.Marshal(struct {
+		Path string `json:"path"`
+		Hex  bool   `json:"hex"`
+	}{path, true})
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	sent := false
+	for ch := range s.hexers {
+		select {
+		case ch <- event{name: "open", data: data, seq: s.seq}:
+			sent = true
+		default: // a stream too far behind to take it is not one to rely on
+		}
+	}
+	return sent
+}
+
 // handleEvents streams graph updates as Server-Sent Events.
 //
 // Implements: REQ-WATCH-004, REQ-SRV-015, REQ-SRV-016
@@ -718,13 +744,18 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	ch := make(chan event, 8)
+	hexer := r.URL.Query().Get("opens") == "hex"
 	s.mu.Lock()
 	s.subs[ch] = struct{}{}
+	if hexer {
+		s.hexers[ch] = struct{}{}
+	}
 	version, etag, seq := s.snap.version, s.snap.etag, s.seq
 	s.mu.Unlock()
 	defer func() {
 		s.mu.Lock()
 		delete(s.subs, ch)
+		delete(s.hexers, ch)
 		s.mu.Unlock()
 	}()
 
@@ -858,17 +889,25 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	w.Write(buf.Bytes())
 }
 
+// openedHeader says how a file asked for in a hex editor was opened after all:
+// "as-is" when nothing that can open one was listening, and the editor got it as
+// any other file.
+const openedHeader = "X-Depphunter-Opened"
+
 // handleOpen opens a graph file in the configured editor: {"path": "...", "line": 12}.
 //
-// Implements: REQ-SEC-008, REQ-SRV-005
+// With "hex": true it is a binary file wanted in a hex editor. A launcher on the
+// command line has no way to ask for one, but the VS Code extension can, so if a
+// stream that said it opens files that way (?opens=hex) is listening, the file is
+// handed to it as an "open" event - to it alone - and the answer is 202. Otherwise
+// the editor opens it as it would any file, and X-Depphunter-Opened says so.
+//
+// Implements: REQ-SEC-008, REQ-SRV-005, REQ-EXT-034
 func (s *Server) handleOpen(w http.ResponseWriter, r *http.Request) {
-	if s.editor == "" {
-		http.Error(w, "no editor configured (set --editor or DEPPHUNTER_EDITOR)", http.StatusNotImplemented)
-		return
-	}
 	var req struct {
 		Path string `json:"path"`
 		Line int    `json:"line"`
+		Hex  bool   `json:"hex"`
 	}
 	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
@@ -877,6 +916,17 @@ func (s *Server) handleOpen(w http.ResponseWriter, r *http.Request) {
 	if _, ok := s.current().files[req.Path]; !ok {
 		http.NotFound(w, r)
 		return
+	}
+	if req.Hex && s.handToHexer(req.Path) {
+		w.WriteHeader(http.StatusAccepted)
+		return
+	}
+	if s.editor == "" {
+		http.Error(w, "no editor configured (set --editor or DEPPHUNTER_EDITOR)", http.StatusNotImplemented)
+		return
+	}
+	if req.Hex {
+		w.Header().Set(openedHeader, "as-is")
 	}
 	cmd, err := editor.Command(s.editor, filepath.Join(s.root, filepath.FromSlash(req.Path)), req.Line)
 	if err == nil {

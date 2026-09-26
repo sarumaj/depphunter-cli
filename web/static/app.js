@@ -850,7 +850,11 @@ function frame(then, hands = true) {
 // ---------------------------------------------------------------- editor
 
 // Implements: REQ-SRV-005, REQ-SRV-008
-async function openFile(path, line = 1) {
+// hex: a binary file, wanted in a hex editor rather than as text. Only the VS Code
+// extension can open one, so the server hands it there when it is listening and has
+// the editor open it as it is otherwise - which the status line then explains.
+// Implements: REQ-EXT-034
+async function openFile(path, line = 1, hex = false) {
   if (!config.editor) {
     // No server-side editor: hand the file to VS Code through its URL handler.
     const abs = config.root.replace(/\\/g, '/') + '/' + path;
@@ -860,9 +864,13 @@ async function openFile(path, line = 1) {
   const res = await fetch('api/open', {
     method: 'POST',
     headers: auth({ 'Content-Type': 'application/json', 'X-Depphunter-Request': '1' }),
-    body: JSON.stringify({ path, line }),
+    body: JSON.stringify({ path, line, hex }),
   });
   if (!res.ok) updateStatus(`could not open editor: ${(await res.text()).trim()}`);
+  else if (res.status === 202) updateStatus(`${path} opened in the Hex Editor`);
+  else if (res.headers.get('X-Depphunter-Opened') === 'as-is') {
+    updateStatus(`${path} opened as it is - in VS Code, Reopen Editor With… and pick the Hex Editor to edit its bytes`);
+  }
 }
 
 // Implements: REQ-MAP-059
@@ -1627,7 +1635,7 @@ function bindControls() {
       case 'o': case 'O': {
         if (STATIC) break; // no server, no editor
         const f = sel?.kind === 'symbol' ? sel.parentNode : sel;
-        if (f?.kind === 'file') openFile(f.path, sel.line || 1);
+        if (f?.kind === 'file') openFile(f.path, sel.line || 1, panel.hexFor(f.path));
         break;
       }
       case 'Enter': if (sel) { toggle(sel); select(sel); } break;

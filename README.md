@@ -1349,7 +1349,13 @@ nothing in a repository can run as the map.
 
 The side panel shows a file's source; a binary file's content stays hidden
 behind a button that shows its first 64 KB as a hex dump, since its bytes are
-rarely worth reading and there can be a great many of them.
+rarely worth reading and there can be a great many of them. For such a file the
+corner's open button becomes **Hex editor ↗**: in the VS Code extension it opens
+the file in Microsoft's Hex Editor, which edits the bytes and their text side by
+side, and offers to install it if it is missing. A launcher on the command line
+cannot ask for one, so elsewhere the file opens as it is, and the status line
+says how to reopen it in the Hex Editor. depphunter itself never writes to the
+repository.
 
 ### Inside an editor
 

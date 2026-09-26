@@ -24,6 +24,10 @@ const settings = {
   editorCommand: '',
 };
 
+/** The extensions a test says are installed, and the answers it gives to prompts. */
+const installed = new Set();
+const answers = { info: [] };
+
 /** The commands the extension registered, by id. */
 const commands = new Map();
 
@@ -99,7 +103,9 @@ const vscode = {
       set tooltip(v) { calls.push(['status.tooltip', v]); }, set command(_v) {},
     }),
     showErrorMessage: async m => { calls.push(['error', m]); return undefined; },
-    showInformationMessage: async m => { calls.push(['info', m]); return undefined; },
+    // answers.info: what the next information message is answered with (a button's
+    // label), for a test of what the extension does with it; nothing by default.
+    showInformationMessage: async (m, ...buttons) => { calls.push(['info', m, ...buttons]); return answers.info.shift(); },
     showWarningMessage: async m => { calls.push(['warning', m]); return undefined; },
     showWorkspaceFolderPick: async () => vscode.workspace.workspaceFolders[0],
     showQuickPick: async items => items[0],
@@ -123,6 +129,8 @@ const vscode = {
     withProgress: (_options, task) => task(
       { report() {} }, { onCancellationRequested: () => ({ dispose() {} }) }),
   },
+  // Which extensions are installed, by id; a test adds the ones it needs.
+  extensions: { getExtension: id => (installed.has(id) ? { id } : undefined) },
   commands: {
     registerCommand: (id, fn) => { commands.set(id, fn); return { dispose() {} }; },
     executeCommand: async (id, ...args) => { calls.push(['executeCommand', id, ...args]); },
@@ -180,7 +188,7 @@ Module._resolveFilename = function (request, ...rest) {
 require.cache['vscode'] = { id: 'vscode', filename: 'vscode', loaded: true, exports: vscode };
 
 module.exports = {
-  vscode, calls, commands, settings,
+  vscode, calls, commands, settings, installed, answers,
   setRoot: dir => { root = dir; },
   /** The last call of a kind, or undefined. */
   last: (kind, id) => [...calls].reverse().find(c => c[0] === kind && (!id || c[1] === id)),
