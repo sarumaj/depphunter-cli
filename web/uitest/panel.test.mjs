@@ -96,7 +96,7 @@ let requests = 0;
 globalThis.fetch = async () => { requests++; throw new Error('no network in a test'); };
 
 const { buildModel } = await import('../static/model.js');
-const { Panel, hexDump, mediaKind } = await import('../static/panel.js');
+const { Panel, hexDump, mediaKind, findMatches, findBar } = await import('../static/panel.js');
 
 const dir = (path, parent) => ({ id: `d:${path}`, kind: 'dir', name: path.split('/').pop(), path, parent });
 const file = (path, parent, lang, loc) => ({ id: `f:${path}`, kind: 'file', name: path.split('/').pop(), path, parent, lang, loc });
@@ -356,5 +356,117 @@ describe('the details maximized', () => {
     } finally {
       delete globalThis.localStorage;
     }
+  });
+});
+
+describe('finding in a file', () => {
+  // Verifies: REQ-MAP-063
+  it('finds every place the text occurs, ignoring case and taking it literally', () => {
+    const lines = ['func Main() {', '  main()  // MAIN', 'a.b(c)', ''];
+    assert.deepEqual(findMatches(lines, 'main'), [
+      { line: 0, start: 5, end: 9 }, { line: 1, start: 2, end: 6 }, { line: 1, start: 13, end: 17 },
+    ]);
+    assert.deepEqual(findMatches(lines, 'a.b('), [{ line: 2, start: 0, end: 4 }], 'a dot or a bracket was read as a pattern');
+    assert.deepEqual(findMatches(['aaaa'], 'aa'), [{ line: 0, start: 0, end: 2 }, { line: 0, start: 2, end: 4 }], 'overlaps counted twice');
+    assert.deepEqual(findMatches(lines, ''), []);
+    assert.equal(findMatches(Array(10).fill('x x x'), 'x', 7).length, 7, 'the limit was not kept');
+  });
+
+  /** A painted source pane: one line element per line, the way paint() leaves it. */
+  const pane = lines => {
+    const pre = new El('pre');
+    pre.dataset.filled = '1';
+    for (const l of lines) { const ln = new El('span'); ln.className = 'ln'; ln.append(l); pre.append(ln); }
+    return pre;
+  };
+  const type = (bar, text) => { bar.input.value = text; fire(bar.input, 'input'); };
+  const count = bar => bar.el.querySelector('span.p-find-count').textContent;
+  const current = pre => pre.children.findIndex(el => el.classList.contains('current'));
+
+  // Verifies: REQ-MAP-063
+  it('counts the matches, marks their lines, and steps through them both ways', () => {
+    const pre = pane(['alpha', 'beta', 'alphabet', 'gamma']);
+    let kept = null;
+    const bar = findBar(pre, '', q => { kept = q; });
+    type(bar, 'ALPHA');
+    assert.equal(kept, 'ALPHA', 'what was looked for was not remembered');
+    assert.equal(count(bar), '1 of 2');
+    assert.deepEqual(pre.children.map(el => el.classList.contains('found')), [true, false, true, false]);
+    assert.equal(current(pre), 0);
+    fire(bar.input, 'keydown', { key: 'Enter' });
+    assert.equal(count(bar), '2 of 2');
+    assert.equal(current(pre), 2);
+    fire(bar.input, 'keydown', { key: 'Enter' });
+    assert.equal(current(pre), 0, 'stepping on from the last did not wrap round');
+    fire(bar.input, 'keydown', { key: 'Enter', shiftKey: true });
+    assert.equal(current(pre), 2, 'Shift+Enter did not step back');
+    type(bar, 'delta');
+    assert.equal(count(bar), 'No matches');
+    assert.ok(pre.children.every(el => !el.classList.contains('found')), 'a line stayed marked');
+  });
+
+  // Verifies: REQ-MAP-063
+  it('clears with Escape before the panel does, and finds again when the text comes in', () => {
+    const pre = pane(['one', 'two']);
+    const bar = findBar(pre, 'two');
+    bar.run(false);
+    assert.equal(count(bar), '1 of 1', 'what was being looked for was not found again');
+    let stopped = false;
+    fire(bar.input, 'keydown', { key: 'Escape', stopPropagation: () => { stopped = true; } });
+    assert.equal(bar.input.value, '');
+    assert.ok(stopped, 'Escape went on to close the panel as well');
+    assert.equal(count(bar), '');
+    // Before the text arrives there is nothing to find in the placeholder.
+    const loading = pane(['Loading…']);
+    delete loading.dataset.filled;
+    const early = findBar(loading, 'Loading');
+    early.run();
+    assert.equal(count(early), '');
+  });
+});
+
+describe('opening the file from the corner', () => {
+  /** A panel with its corner: the open slot, maximize and close, and a width to report. */
+  const cornered = (openLabel = 'Open in VS Code') => {
+    const shell = new El('main'), root = new El('aside'), body = new El('div');
+    const tools = new El('div'), slot = new El('span');
+    tools.append(slot);
+    tools.offsetWidth = 150;
+    shell.append(root);
+    root.append(tools, body);
+    const find = root.querySelector.bind(root);
+    root.querySelector = sel => ({ '.p-tools': tools, '#panel-open': slot }[sel] ?? find(sel));
+    root.style.setProperty = (k, v) => { root.style[k] = v; };
+    const opened = [];
+    const panel = new Panel(root, body, {
+      model, colorOf: () => '', onSelect() {}, linkKind: () => 'import', historyOf: () => null,
+      openLabel, onOpen: (path, line) => opened.push([path, line]),
+    });
+    return { panel, root, body, slot, opened };
+  };
+
+  // Verifies: REQ-UI-016
+  it('pins the button beside maximize and close, short, and opens the file', () => {
+    const { panel, root, body, slot, opened } = cornered();
+    panel.show(model.byId.get('f:cmd/main.go'));
+    const [button] = slot.children;
+    assert.ok(button, 'no open button in the corner');
+    assert.equal(button.textContent, 'VS Code ↗');
+    assert.equal(button.getAttribute('title'), 'Open in VS Code (O)', 'the full action is not in its title');
+    assert.equal(body.querySelector('button.p-open'), null, 'the button is also in the scrolling content');
+    assert.equal(root.style['--p-tools'], '158px', 'what shares the top of the panel was not told how wide the corner is');
+    fire(button, 'click');
+    assert.deepEqual(opened, [['cmd/main.go', 1]]);
+  });
+
+  // Verifies: REQ-UI-016
+  it('empties the corner for what is not a file, and where there is no editor', () => {
+    const { panel, slot } = cornered();
+    panel.show(model.byId.get('f:cmd/main.go'));
+    panel.show(model.byId.get('d:cmd'));
+    assert.equal(slot.children.length, 0, 'a directory kept the last file\'s open button');
+    const none = cornered(null);
+    none.panel.show(model.byId.get('f:cmd/main.go'));
+    assert.equal(none.slot.children.length, 0, 'a static export offered to open the file');
   });
 });

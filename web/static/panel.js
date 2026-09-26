@@ -38,6 +38,10 @@ export class Panel {
     // or looking at a picture properly. Remembered, so the next file opens the same
     // way until it is restored.
     this.maxButton = root.querySelector?.('#panel-max') ?? null;
+    // The corner the panel's own buttons are pinned in, and the place in it for the
+    // file's "open in the editor", which changes with every file shown.
+    this.tools = root.querySelector?.('.p-tools') ?? null;
+    this.openSlot = root.querySelector?.('#panel-open') ?? null;
     if (this.maxButton) this.maxButton.onclick = () => this.maximize(!this.maximized);
     this.maximize(remembered(), false);
   }
@@ -68,6 +72,8 @@ export class Panel {
   }
 
   close() {
+    clearFound();
+    this.openSlot?.replaceChildren();
     this.root.hidden = true;
     this.root.parentElement.classList.remove('panel-open');
     this.node = null;
@@ -81,11 +87,14 @@ export class Panel {
    */
   show(node, keepScroll = false, focus = null) {
     const top = keepScroll && this.node?.id === node.id ? this.body.scrollTop : 0;
+    if (this.node?.id !== node.id) this.findText = ''; // another file: nothing is being looked for in it
+    clearFound();
     this.focus = focus;
     this.node = node;
     this.root.hidden = false;
     this.root.parentElement.classList.add('panel-open');
     const seq = ++this.seq;
+    this.pinOpen(node);
     this.body.replaceChildren(...[
       this.crumbs(node),
       h('h2', { class: 'p-title' }, node.kind === 'file' ? h('span', { class: 'swatch', style: `background:${this.colorOf(node.lang)}` }) : null,
@@ -97,7 +106,6 @@ export class Panel {
         node.indexUnknown ? h('span', { class: 'badge warn', title: 'Only this repository names this index; nothing on your machine does' }, '⚠ index') : null,
         node.private ? h('span', { class: 'badge own', title: 'Yours: never named to a public index, never sent to the vulnerability database' }, 'private') : null,
         this.findingBadge(node)),
-      this.openButton(node),
       this.stats(node),
       this.findings(node),
       node.kind === 'dir' ? this.languageMix(node) : null,
@@ -239,11 +247,35 @@ export class Panel {
     return button;
   }
 
+  /**
+   * Opening the file in the editor, as a button pinned in the corner beside maximize
+   * and close, so it is there however far the panel has been scrolled. Short on the
+   * button - "VS Code ↗" - and in full in its title. Nothing for what is not a file,
+   * or where there is no editor to open it in.
+   *
+   * Implements: REQ-UI-016
+   */
   openButton(node) {
     const file = node.kind === 'symbol' ? node.parentNode : node;
     if (file.kind !== 'file' || !this.openLabel) return null;
-    return h('div', { class: 'p-actions' },
-      h('button', { onclick: () => this.onOpen(file.path, node.line || 1), title: `${this.openLabel} (O)` }, this.openLabel + ' ↗'));
+    return h('button', {
+      class: 'p-open', type: 'button', onclick: () => this.onOpen(file.path, node.line || 1),
+      title: `${this.openLabel} (O)`, 'aria-label': this.openLabel,
+    }, `${this.openLabel.replace(/^Open in /, '')} ↗`);
+  }
+
+  /**
+   * Puts the node's open button in the corner, and tells the panel how wide the corner
+   * now is (--p-tools), so what shares the top of it - the breadcrumbs, and the source
+   * heading with its search pinned there while the file scrolls - runs up to the
+   * buttons rather than under them or a fixed distance short of them.
+   */
+  pinOpen(node) {
+    if (!this.openSlot) return;
+    const button = this.openButton(node);
+    this.openSlot.replaceChildren(...(button ? [button] : []));
+    const w = this.tools?.offsetWidth;
+    if (w) this.root.style.setProperty('--p-tools', `${w + 8}px`);
   }
 
   // Implements: REQ-A11Y-004
@@ -490,7 +522,10 @@ export class Panel {
       return;
     }
     const pre = h('pre', { class: 'code' }, h('span', { class: 'ln' }, 'Loading…'));
-    this.body.append(h('div', { class: 'p-section' }, h('h4', {}, 'Source'), pre));
+    // Find in the file, above it: what was being looked for is kept across a live
+    // update that redraws the panel, and found again in the new text.
+    const find = findBar(pre, this.findText, q => { this.findText = q; });
+    this.body.append(h('div', { class: 'p-section' }, h('div', { class: 'p-head' }, h('h4', {}, 'Source'), find.el), pre));
     let text;
     try {
       text = await fetchSource(file.path);
@@ -514,6 +549,7 @@ export class Panel {
       return;
     }
     paint(pre, text, file);
+    find.run(false);
 
     const outline = file.children.filter(c => c.kind === 'symbol');
     if (outline.length) {
@@ -567,6 +603,132 @@ export class Panel {
   }
 }
 
+
+// Find in the file (findBar). As many matches as are marked at once, which is more
+// than anybody steps through, and a limit on the work a one-letter search does in a
+// file of a hundred thousand lines.
+const MAX_FOUND = 5000;
+
+/**
+ * Every place `query` occurs in `lines`, ignoring case, in reading order: its line
+ * (0-based) and where in the line it starts and ends. Literal text, not a pattern -
+ * somebody looking for `a.b(` means those four characters. Overlapping occurrences
+ * are not counted twice.
+ *
+ * Implements: REQ-MAP-063
+ */
+export function findMatches(lines, query, limit = MAX_FOUND) {
+  const out = [];
+  const q = (query || '').toLowerCase();
+  if (!q) return out;
+  for (let i = 0; i < lines.length && out.length < limit; i++) {
+    const line = lines[i].toLowerCase();
+    for (let at = line.indexOf(q); at >= 0 && out.length < limit; at = line.indexOf(q, at + q.length)) {
+      out.push({ line: i, start: at, end: at + q.length });
+    }
+  }
+  return out;
+}
+
+/**
+ * The find bar over a file's source: a search field, how many matches and which one
+ * is current, and buttons to step between them. Enter steps on, Shift+Enter back,
+ * Escape clears. Matches are highlighted where they are without touching the lines
+ * themselves (the CSS Custom Highlight API), so the syntax coloring and a symbol's
+ * own marking are left as they were; where a browser has no such thing, the lines
+ * that match are marked instead. `remember` hears every change of what is looked for.
+ *
+ * Returns the bar and `run`, which finds again - after the text arrives, say. `step`
+ * false leaves the current match where it is instead of scrolling to the first.
+ *
+ * Implements: REQ-MAP-063
+ */
+export function findBar(pre, initial = '', remember = () => {}) {
+  let found = [], at = -1;
+  const input = h('input', {
+    class: 'p-find', type: 'search', placeholder: 'Find in file', 'aria-label': 'Find in this file',
+    spellcheck: 'false', autocomplete: 'off',
+  });
+  input.value = initial || '';
+  const count = h('span', { class: 'p-find-count', 'aria-live': 'polite' });
+  const prev = h('button', { type: 'button', class: 'p-find-step', title: 'Previous match (Shift+Enter)', 'aria-label': 'Previous match' }, '↑');
+  const next = h('button', { type: 'button', class: 'p-find-step', title: 'Next match (Enter)', 'aria-label': 'Next match' }, '↓');
+  const lines = () => pre.children.filter ? pre.children : [...pre.children];
+
+  const show = () => {
+    const els = lines();
+    for (const el of els) { el.classList.remove('found'); el.classList.remove('current'); }
+    for (const m of found) els[m.line]?.classList.add('found');
+    const cur = found[at];
+    if (cur) els[cur.line]?.classList.add('current');
+    count.textContent = !input.value ? '' : found.length ? `${at + 1} of ${found.length}${found.length >= MAX_FOUND ? '+' : ''}` : 'No matches';
+    prev.disabled = next.disabled = found.length < 2;
+    highlight(els, found, cur);
+  };
+  const go = i => {
+    if (!found.length) return;
+    at = (i + found.length) % found.length;
+    show();
+    lines()[found[at].line]?.scrollIntoView?.({ block: 'center' });
+  };
+  const run = (step = true) => {
+    // Nothing to search until the text is in: the placeholder line is not the file.
+    if (!pre.dataset.filled) { found = []; at = -1; count.textContent = ''; return; }
+    found = findMatches(lines().map(el => el.textContent), input.value);
+    at = found.length ? 0 : -1;
+    // Stepping needs something to step to; with nothing found the count and the
+    // marks still have to change, or the last search's would stay on screen.
+    if (step && found.length) go(0); else show();
+  };
+
+  input.addEventListener('input', () => { remember(input.value); run(); });
+  input.addEventListener('keydown', e => {
+    if (e.key === 'Enter') { e.preventDefault(); go(at + (e.shiftKey ? -1 : 1)); }
+    else if (e.key === 'Escape' && input.value) {
+      e.preventDefault();
+      e.stopPropagation(); // the first Escape clears the search, not the panel
+      input.value = '';
+      remember('');
+      run();
+    }
+  });
+  prev.addEventListener('click', () => go(at - 1));
+  next.addEventListener('click', () => go(at + 1));
+  return { el: h('div', { class: 'p-findbar', role: 'search' }, input, count, prev, next), run, input };
+}
+
+/** Marks the matches in the page, or takes the marks away (no matches). */
+function highlight(lines, found, current) {
+  const registry = globalThis.CSS?.highlights;
+  if (!registry || typeof Highlight !== 'function' || typeof document.createRange !== 'function') return;
+  const all = new Highlight(), cur = new Highlight();
+  for (const m of found) {
+    const range = rangeIn(lines[m.line], m.start, m.end);
+    if (range) (m === current ? cur : all).add(range);
+  }
+  registry.set('dh-found', all);
+  registry.set('dh-current', cur);
+}
+
+function clearFound() {
+  globalThis.CSS?.highlights?.delete('dh-found');
+  globalThis.CSS?.highlights?.delete('dh-current');
+}
+
+/** A range over characters start..end of an element's text, across however many text nodes. */
+function rangeIn(el, start, end) {
+  if (!el) return null;
+  const walk = document.createTreeWalker(el, NodeFilter.SHOW_TEXT);
+  const range = document.createRange();
+  let seen = 0, begun = false;
+  for (let node = walk.nextNode(); node; node = walk.nextNode()) {
+    const len = node.nodeValue.length;
+    if (!begun && start < seen + len) { range.setStart(node, start - seen); begun = true; }
+    if (begun && end <= seen + len) { range.setEnd(node, end - seen); return range; }
+    seen += len;
+  }
+  return null;
+}
 
 // Where whether the panel was left maximized is kept, per browser (Panel.maximize).
 const MAXIMIZED = 'depphunter.panel.maximized';

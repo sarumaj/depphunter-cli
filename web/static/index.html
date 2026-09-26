@@ -182,8 +182,13 @@
       <p id="stash-show-note" class="hint">From the street, <b>show</b> puts one back on the camera to look at.</p>
     </aside>
     <aside id="panel" hidden>
-      <button id="panel-max" class="maximize" type="button" aria-pressed="false">⤢</button>
-      <button id="panel-close" class="close" title="Close (Esc)" aria-label="Close details">×</button>
+      <!-- Pinned in the corner whatever the panel is scrolled to: opening the file in
+           the editor (filled per file by panel.js), maximizing, closing. -->
+      <div class="p-tools">
+        <span id="panel-open"></span>
+        <button id="panel-max" class="maximize" type="button" aria-pressed="false">⤢</button>
+        <button id="panel-close" class="close" title="Close (Esc)" aria-label="Close details">×</button>
+      </div>
       <div id="panel-body"></div>
     </aside>
     <dialog id="tour">
