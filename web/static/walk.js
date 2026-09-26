@@ -164,6 +164,11 @@ const BURST = 0.9, BURST_SPEED = 3;
 // bay when the skimmers go away is not.
 // Implements: REQ-WALK-031
 const DROWN = 45;
+// Going under, as it looks (drowningView): how high the eye is still above the water
+// at the end of it, how far and how fast the walker bobs while fighting it, how
+// quickly it all drains away again once they are out, and how far the hands dip.
+// Implements: REQ-WALK-055
+const SINK_EYE = 0.06, DROWN_BOB = 0.05, DROWN_BOB_RATE = 7, SINK_BACK = 1.5, SINK_DIP = 0.12;
 // How long the screen stays red after the walk ends, before the map comes back.
 // Implements: REQ-WALK-033
 const DYING = 1.1;
@@ -269,6 +274,9 @@ export class Walker {
     // reading about a building means fighting it.
     this.frozen = false;
     this.roll = 0;        // the view's bank in flight, eased towards bankFor's (bank)
+    this.sunk = 0;        // how far under the walker has gone, 0 to 1 (drown)
+    this.sinkT = 0;       // seconds in the water this time
+    this.sinkFrom = 0;    // the health they went in with, which is how long they have
     this.lastYaw = null;  // the yaw a frame ago, for how fast the view is turning
     this.focus = null;    // the box kept sharp in the blur while it is being read (focusOn)
     this.focusKey = '';   // the outline last drawn into the blur's mask, to redraw only on change
@@ -510,6 +518,8 @@ export class Walker {
     this.hud.style.removeProperty('--dead');
     this.dying = null;
     this.focusOn(null);
+    this.sunk = this.sinkT = 0;
+    this.hud.classList.remove('drowning');
     this.roll = 0;
     this.lastYaw = null;
     this.hud.classList.remove('catching');
@@ -1572,7 +1582,8 @@ export class Walker {
       this.drawFuel();
       this.poseTool(dt, now);
       this.bank(dt);
-      this.scene.setWalker(this.p.x, this.p.feet, this.p.z, EYE + this.ride(dt), this.p.yaw, this.p.pitch, this.roll);
+      const under = this.drown(dt, now);
+      this.scene.setWalker(this.p.x, this.p.feet, this.p.z, EYE + this.ride(dt) + under, this.p.yaw, this.p.pitch, this.roll);
       if (!this.still && !this.arrival) this.updateAim();
       this.scene.renderNow();
       if (this.frozen && this.focus) this.drawFocus();
@@ -1654,6 +1665,39 @@ export class Walker {
     const want = reducedMotion() || this.arrival ? 0 : bankFor(turning, side, !!p.fly);
     this.roll += (want - this.roll) * Math.min(1, dt * BANK_EASE);
     if (Math.abs(this.roll) < 1e-4 && want === 0) this.roll = 0;
+  }
+
+  /**
+   * What going under looks like, a frame at a time: the eye sinks towards the
+   * surface, bobbing as the walker fights it, the water closes over the view from
+   * the bottom of the screen with bubbles rising through it, and the hands dip and
+   * flail. How far along is how much of the health they went in with is gone, so it
+   * reaches the end exactly when the water does. Out of it again - a shore, a line,
+   * the skimmers - it all drains away; dead, it stays under the red.
+   *
+   * Returns how far below its usual height the eye is this frame.
+   *
+   * Implements: REQ-WALK-055
+   */
+  drown(dt, now) {
+    const want = this.sinking ? Math.min(1, (this.sinkT * DROWN) / Math.max(1, this.sinkFrom)) : 0;
+    this.sunk = want >= this.sunk ? want : Math.max(want, this.sunk - dt * SINK_BACK);
+    const on = this.sunk > 0;
+    this.hud.classList.toggle('drowning', on);
+    if (this.held) {
+      this.held.position.y = 0;
+      this.held.rotation.z = 0;
+    }
+    if (!on) return 0;
+    const view = drowningView(this.sunk, now / 1000, reducedMotion());
+    const water = this.water ||= this.hud.querySelector('.w-water');
+    water?.style.setProperty('--sink', view.line.toFixed(3));
+    water?.style.setProperty('--struggle', view.struggle.toFixed(3));
+    if (this.held) {
+      this.held.position.y = -SINK_DIP * VIEW_NEAR * view.dip;
+      this.held.rotation.z = view.sway;
+    }
+    return view.eye;
   }
 
   // Implements: REQ-WALK-004, REQ-WALK-006, REQ-WALK-008, REQ-WALK-026
@@ -1808,8 +1852,11 @@ export class Walker {
     }
     if (!this.sinking) {
       this.sinking = true;
+      this.sinkT = 0;
+      this.sinkFrom = this.health.hp;
       this.flash('In the water - get to a shore');
     }
+    this.sinkT += dt;
     if (this.health.hurt(DROWN * dt)) this.die('The water');
   }
 
@@ -3362,6 +3409,34 @@ export function focusMask(points, width, height) {
     + `<feGaussianBlur stdDeviation="${FOCUS_FEATHER}"/></filter>`
     + `<path fill="#000" fill-rule="evenodd" filter="url(#f)" `
     + `d="M${-m} ${-m}H${w + m}V${h + m}H${-m}Z M${at.replaceAll(' ', 'L')}Z"/></svg>`;
+}
+
+/**
+ * Going under at `progress` (0, just in, to 1, gone), `t` seconds into the walk:
+ *
+ *   eye       how far below its usual height the eye is - most of the way down to the
+ *             surface by the end, bobbing while there is still fight in them
+ *   line      how much of the screen the water covers, from the bottom
+ *   struggle  how much there is to show of it - the bubbles - fading as they tire
+ *   dip, sway how far the hands sink, and how they flail, in radians
+ *
+ * Where the page asks for reduced motion there is no bobbing, flailing or bubbling:
+ * the eye sinks and the water rises, and that is all.
+ *
+ * Implements: REQ-WALK-055
+ */
+export function drowningView(progress, t, reduced = false) {
+  const p = clamp(progress, 0, 1);
+  if (p === 0) return { eye: 0, line: 0, struggle: 0, dip: 0, sway: 0 };
+  const ease = p * p * (3 - 2 * p);
+  const fight = reduced ? 0 : (1 - p) * Math.min(1, p * 6); // comes in at once, goes as they tire
+  return {
+    eye: -(EYE - SINK_EYE) * ease + Math.sin(t * DROWN_BOB_RATE) * DROWN_BOB * fight,
+    line: clamp((p - 0.1) / 0.9, 0, 1),
+    struggle: reduced ? 0 : 0.25 + 0.75 * (1 - p),
+    dip: ease,
+    sway: Math.sin(t * DROWN_BOB_RATE * 0.8) * 0.3 * fight,
+  };
 }
 
 /**

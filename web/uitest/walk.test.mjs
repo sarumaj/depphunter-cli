@@ -1043,3 +1043,47 @@ describe('banking in flight', () => {
     assert.ok(Math.abs(w.roll) < 0.01, `still leaning ${w.roll} after landing`);
   });
 });
+
+describe('going under', () => {
+  // Verifies: REQ-WALK-055
+  it('sinks the eye and raises the water as the drowning goes on', () => {
+    assert.deepEqual(WALK.drowningView(0, 1), { eye: 0, line: 0, struggle: 0, dip: 0, sway: 0 }, 'dry, and something shows');
+    const at = p => WALK.drowningView(p, 0.25, true); // no bob, so the trend is the trend
+    assert.ok(at(0.3).eye < 0 && at(0.7).eye < at(0.3).eye && at(1).eye < at(0.7).eye, 'the eye does not keep sinking');
+    assert.ok(at(1).eye > -0.45, 'the eye went under the surface, which cannot be drawn');
+    assert.ok(at(0.05).line === 0 && at(0.5).line > 0 && at(1).line === 1, 'the water does not rise to cover the view');
+    // Moving, the struggle shows and fades as they tire; still, none of it does.
+    assert.ok(WALK.drowningView(0.2, 1).struggle > WALK.drowningView(0.9, 1).struggle);
+    const still = WALK.drowningView(0.4, 1.3, true);
+    assert.equal(still.struggle, 0);
+    assert.equal(still.sway, 0);
+  });
+
+  // Verifies: REQ-WALK-055
+  it('reaches the bottom when the health does, and drains away on reaching a shore', () => {
+    const style = new Map();
+    const hud = {
+      classList: { on: new Set(), toggle(c, v) { v ? this.on.add(c) : this.on.delete(c); } },
+      querySelector: () => ({ style: { setProperty: (k, v) => style.set(k, +v) } }),
+    };
+    const w = { hud, held: null, sinking: true, sinkT: 0, sinkFrom: 90, sunk: 0 };
+    const drown = (dt, t) => WALK.Walker.prototype.drown.call(w, dt, t * 1000);
+    // 90 health at 45 a second is two seconds of water.
+    w.sinkT = 1;
+    drown(1 / 60, 1);
+    assert.ok(Math.abs(w.sunk - 0.5) < 1e-9, `halfway through the health, ${w.sunk} under`);
+    assert.ok(hud.classList.on.has('drowning'));
+    w.sinkT = 2;
+    drown(1 / 60, 2);
+    assert.equal(w.sunk, 1);
+    assert.equal(style.get('--sink'), 1, 'at the end the water does not cover the view');
+    // Out: a shore reached at the last moment.
+    w.sinking = false;
+    let t = 2;
+    for (let i = 0; i < 30; i++) drown(1 / 60, (t += 1 / 60));
+    assert.ok(w.sunk > 0 && w.sunk < 1, 'getting out was a cut rather than the water draining away');
+    for (let i = 0; i < 120; i++) drown(1 / 60, (t += 1 / 60));
+    assert.equal(w.sunk, 0);
+    assert.ok(!hud.classList.on.has('drowning'), 'the water stayed on the screen ashore');
+  });
+});

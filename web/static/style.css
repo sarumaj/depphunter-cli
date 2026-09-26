@@ -461,6 +461,49 @@ main { position: relative; flex: 1; min-height: 0; }
   }
 }
 @media (prefers-reduced-motion: reduce) { #walk-hud .w-veil { transition: none; } }
+/* Going under (walk.js drown): the water rises over the view from the bottom as far as
+   --sink says, its surface rocking, blurred and darkening with depth below the line,
+   and bubbles rise through it as strongly as --struggle says. */
+#walk-hud .w-water {
+  position: absolute; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+  display: none; --sink: 0; --struggle: 0;
+}
+#walk-hud.drowning .w-water { display: block; }
+#walk-hud .w-water::before {
+  content: ''; position: absolute; left: -10%; right: -10%; bottom: 0;
+  height: calc(var(--sink) * 100% + 16px);
+  border-radius: 50% 50% 0 0 / 16px 16px 0 0;
+  background: linear-gradient(to bottom, rgb(150 210 225 / 0.55) 0, rgb(30 95 125 / 0.7) 18px, rgb(8 40 62 / 0.92) 100%);
+  -webkit-backdrop-filter: blur(3px); backdrop-filter: blur(3px);
+  animation: w-wave 1.7s ease-in-out infinite alternate;
+}
+@keyframes w-wave { from { transform: translateX(-3%) rotate(-0.6deg); } to { transform: translateX(3%) rotate(0.6deg); } }
+/* Only under the water line: the bubbles rise from the bottom and vanish at the top
+   of it rather than floating on up into the sky. */
+#walk-hud .w-bubbles {
+  position: absolute; inset: 0; opacity: var(--struggle);
+  clip-path: inset(calc((1 - var(--sink)) * 100%) 0 0 0);
+}
+#walk-hud .w-bubbles i {
+  position: absolute; bottom: -24px; width: 9px; height: 9px; border-radius: 50%;
+  border: 1.5px solid rgb(220 245 255 / 0.85); background: rgb(220 245 255 / 0.15);
+  animation: w-bubble 2.2s linear infinite;
+}
+#walk-hud .w-bubbles i:nth-child(1) { left: 12%; animation-delay: -0.3s; }
+#walk-hud .w-bubbles i:nth-child(2) { left: 27%; animation-delay: -1.1s; width: 6px; height: 6px; }
+#walk-hud .w-bubbles i:nth-child(3) { left: 41%; animation-delay: -1.8s; }
+#walk-hud .w-bubbles i:nth-child(4) { left: 53%; animation-delay: -0.7s; width: 12px; height: 12px; }
+#walk-hud .w-bubbles i:nth-child(5) { left: 66%; animation-delay: -1.5s; width: 7px; height: 7px; }
+#walk-hud .w-bubbles i:nth-child(6) { left: 78%; animation-delay: -0.2s; }
+#walk-hud .w-bubbles i:nth-child(7) { left: 90%; animation-delay: -1.3s; width: 5px; height: 5px; }
+@keyframes w-bubble {
+  from { transform: translate(0, 0); }
+  50% { transform: translate(8px, -50vh); }
+  to { transform: translate(-4px, -100vh); }
+}
+@media (prefers-reduced-motion: reduce) {
+  #walk-hud .w-water::before, #walk-hud .w-bubbles i { animation: none; }
+}
 /* Dying is its own red, and two washes over one street is one too many. */
 #walk-hud.dead .w-veil { display: none; }
 
