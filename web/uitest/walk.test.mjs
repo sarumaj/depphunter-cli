@@ -621,6 +621,22 @@ describe('what the tools reach and how long they last', () => {
     const jet = lasts('jetpack'), skim = lasts('skimmers');
     assert.ok(jet > skim, `the jet lasts ${jet.toFixed(1)}s against the skimmers' ${skim.toFixed(1)}s`);
   });
+
+  // Verifies: REQ-TOOL-050
+  it('brings a tool that ran dry back once it has refilled a quarter, still in the hand', () => {
+    const said = [];
+    const walker = {
+      tanks: new Map([['jetpack', 0]]), dry: new Set(['jetpack']), secondary: TOOLS.jetpack,
+      flash: t => said.push(t), tank: WALK.Walker.prototype.tank,
+    };
+    const burn = () => WALK.Walker.prototype.burn.call(walker, 0.05, false); // held, not flying
+    let t = 0;
+    while (walker.dry.has('jetpack') && t < 60) { burn(); t += 0.05; }
+    const tank = walker.tank(TOOLS.jetpack);
+    assert.ok(!walker.dry.has('jetpack'), 'the jet never came back without being taken out again');
+    assert.ok(tank >= 0.25 && tank < 0.26, `the jet came back at ${tank}, not at a quarter`);
+    assert.ok(said.some(s => /ready again/.test(s)), 'nobody was told the jet was back');
+  });
 });
 
 describe('a line and a jump', () => {
