@@ -835,8 +835,13 @@ main.walking #legend { display: none; }
   z-index: 5;
 }
 #panel .close { position: absolute; top: 8px; right: 8px; border: none; font-size: 18px; line-height: 1; padding: 2px 8px; }
+#panel .maximize { position: absolute; top: 8px; right: 40px; border: none; font-size: 16px; line-height: 1; padding: 3px 7px; }
+/* Maximized (panel.js maximize): over the whole of the map's room, left edge to right. */
+#panel.max { left: 12px; width: auto; z-index: 6; }
+#panel.max .p-media { max-height: 75vh; }
+#panel.max .p-list { max-height: 40vh; }
 #panel-body { overflow: auto; padding: 14px 16px; flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 12px; }
-.crumbs { color: var(--muted); font-size: 12px; padding-right: 28px; word-break: break-all; }
+.crumbs { color: var(--muted); font-size: 12px; padding-right: 64px; word-break: break-all; }
 .crumbs a { color: var(--text-2); cursor: pointer; text-decoration: none; }
 .crumbs a:hover { text-decoration: underline; }
 .p-title { font-size: 16px; font-weight: 600; margin: 0; word-break: break-all; display: flex; align-items: center; gap: 8px; }
@@ -1026,6 +1031,7 @@ dialog form { margin-top: 12px; text-align: right; }
   .toolbar label.group { font-size: 12px; }
   #legend { left: 8px; bottom: 8px; max-width: calc(100% - 16px); }
   #panel { top: auto; height: 60%; left: 8px; right: 8px; bottom: 8px; width: auto; }
+  #panel.max { top: 8px; left: 8px; height: auto; }
 }
 
 /* The photographs the camera has taken: the same panel as the backpack, laid out as a

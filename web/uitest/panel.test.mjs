@@ -307,3 +307,54 @@ describe('a file that is not text', () => {
     assert.deepEqual(hexDump(new Uint8Array()), []);
   });
 });
+
+describe('the details maximized', () => {
+  /** A panel with its maximize button, and the browser storage it remembers the choice in. */
+  const setup = () => {
+    const store = new Map();
+    globalThis.localStorage = { getItem: k => store.get(k) ?? null, setItem: (k, v) => store.set(k, String(v)) };
+    const make = () => {
+      const shell = new El('main'), root = new El('aside'), body = new El('div'), button = new El('button');
+      shell.append(root);
+      root.append(button, body);
+      const find = root.querySelector.bind(root);
+      root.querySelector = sel => (sel === '#panel-max' ? button : find(sel));
+      const panel = new Panel(root, body, { model, colorOf: () => '', onSelect() {}, linkKind: () => 'import', historyOf: () => null });
+      return { panel, root, button };
+    };
+    return { make, store };
+  };
+
+  // Verifies: REQ-UI-015
+  it('toggles over the map from its button, and says which it will do', () => {
+    const { make } = setup();
+    try {
+      const { root, button } = make();
+      assert.equal(root.classList.contains('max'), false, 'a first panel opened maximized');
+      assert.equal(button.getAttribute('aria-pressed'), 'false');
+      assert.match(button.getAttribute('title'), /^Maximize/);
+      button.onclick();
+      assert.equal(root.classList.contains('max'), true, 'the button did not maximize it');
+      assert.equal(button.getAttribute('aria-pressed'), 'true');
+      assert.match(button.getAttribute('title'), /^Restore/);
+      button.onclick();
+      assert.equal(root.classList.contains('max'), false, 'the button did not restore it');
+    } finally {
+      delete globalThis.localStorage;
+    }
+  });
+
+  // Verifies: REQ-UI-015
+  it('opens the next time the way it was left', () => {
+    const { make } = setup();
+    try {
+      make().button.onclick();
+      assert.equal(make().root.classList.contains('max'), true, 'a maximized panel came back beside the map');
+      const again = make();
+      again.button.onclick();
+      assert.equal(make().root.classList.contains('max'), false, 'a restored panel came back maximized');
+    } finally {
+      delete globalThis.localStorage;
+    }
+  });
+});
