@@ -113,6 +113,17 @@ describe('a bug', () => {
     }
   });
 
+  // Verifies: REQ-WALK-053
+  it('says which bug is being caught while its catch plays, and none after', () => {
+    const bugs = placed(['medium', 'low']);
+    assert.equal(bugs.beingTaken(), null, 'a bug was being caught before any catch');
+    const [, bug] = bugs.bugs;
+    assert.ok(bugs.catch(bug, 'reel'));
+    assert.strictEqual(bugs.beingTaken(), bug, 'the catch is not of the bug that was caught');
+    for (let i = 0; i < 60 && bug.take; i++) bugs.update(0.05, i * 50, { x: 0, y: 1.5, z: 0 });
+    assert.equal(bugs.beingTaken(), null, 'a catch that has finished is still being watched');
+  });
+
   // Verifies: REQ-HUNT-032
   it('carries a netted one in the hoop rather than towards the walker', () => {
     // The net is the one tool that takes a bug somewhere other than to the walker: it
