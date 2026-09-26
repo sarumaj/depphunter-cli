@@ -1062,6 +1062,13 @@ function setWalking(on) {
     // walker stands still with the pointer free until the last card is out of the way,
     // and takes both back then.
     const teaching = walkTourPending();
+    // The side panel and the backpack go before the walker asks for the pointer, not
+    // after: it will not take the pointer from under either (hooks.busy), and leaving
+    // walk mode reopens the panel on whatever is selected - so walking in again,
+    // after dying above all, came back with the mouse free.
+    // Implements: REQ-WALK-010, REQ-WALK-037
+    setPackOpen(false);
+    panel.close();
     walker.enter(walkTarget(), rep(model.root), L.bounds, !teaching);
     // A first walk is also flown in (walker.startArrival): held, the flight waits at
     // its top, so the cards are read over the city and the flight goes on once they
@@ -1088,13 +1095,11 @@ function setWalking(on) {
   // ... and the walker, who is only worth drawing when you are not being them.
   avatar.set(walker.stance(), pal.avatar);
   avatar.show(!on);
-  if (on) setPackOpen(false);
   // The photographs gain and lose their "show" button with the street.
   if (stash.count) drawStash();
   // The map view must never keep the pointer captured: the cursor would be invisible.
   if (!on && document.pointerLockElement) document.exitPointerLock();
-  if (on) panel.close();
-  else if (state.selected) panel.show(state.selected);
+  if (!on && state.selected) panel.show(state.selected);
   if (!on) scene.requestRender();
 }
 
