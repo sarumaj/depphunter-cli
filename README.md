@@ -677,7 +677,7 @@ walker may travel 3 units out over the water and 12 units above the tallest
 building.
 
 |                           |                                                                                                                 |
-|---------------------------|-----------------------------------------------------------------------------------------------------------------|
+| ------------------------- | --------------------------------------------------------------------------------------------------------------- |
 | Drag / right-drag / wheel | pan, orbit, zoom                                                                                                |
 | Click / double-click      | select, expand or collapse; double-click on open ground enters walk mode                                        |
 | Middle-drag               | zoom                                                                                                            |
@@ -694,6 +694,7 @@ building.
 | `P`                       | write the map to a PNG image                                                                                    |
 | Legend click              | show or hide a language                                                                                         |
 | Pin click                 | read the findings recorded on a building                                                                        |
+| `⤢` in the details        | maximize the details over the map, or put them back beside it; remembered for the next file                     |
 | `+` beside a finding      | add it to the backpack                                                                                          |
 | `B`                       | open the backpack                                                                                               |
 | `G`                       | open the photographs the camera has taken; from the street each can be put up on the camera and looked at there |

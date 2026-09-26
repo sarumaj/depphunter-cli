@@ -34,6 +34,37 @@ export class Panel {
     // Which branches of the dependency trees are open, by direction and path, so a
     // live update redraws the panel without closing what the reader opened.
     this.open = new Set();
+    // Maximized: the panel takes the whole of the map's room, for reading a long file
+    // or looking at a picture properly. Remembered, so the next file opens the same
+    // way until it is restored.
+    this.maxButton = root.querySelector?.('#panel-max') ?? null;
+    if (this.maxButton) this.maxButton.onclick = () => this.maximize(!this.maximized);
+    this.maximize(remembered(), false);
+  }
+
+  /**
+   * Maximizes the panel over the map, or puts it back beside it. The map is not
+   * resized either way - it is still there behind the panel, at the size it had.
+   *
+   * Implements: REQ-UI-015
+   */
+  maximize(on, remember = true) {
+    this.maximized = !!on;
+    this.root.classList?.toggle('max', this.maximized);
+    const b = this.maxButton;
+    if (b) {
+      b.textContent = this.maximized ? '⤡' : '⤢';
+      const what = this.maximized ? 'Restore the details beside the map' : 'Maximize the details over the map';
+      b.setAttribute('title', what);
+      b.setAttribute('aria-label', what);
+      b.setAttribute('aria-pressed', String(this.maximized));
+    }
+    if (!remember) return;
+    try {
+      localStorage.setItem(MAXIMIZED, this.maximized ? '1' : '0');
+    } catch {
+      // Private browsing or storage turned off: it lasts the page, and that is all.
+    }
   }
 
   close() {
@@ -536,6 +567,16 @@ export class Panel {
   }
 }
 
+
+// Where whether the panel was left maximized is kept, per browser (Panel.maximize).
+const MAXIMIZED = 'depphunter.panel.maximized';
+function remembered() {
+  try {
+    return localStorage.getItem(MAXIMIZED) === '1';
+  } catch {
+    return false;
+  }
+}
 
 // How much of a binary file its "show raw bytes" button reads: enough to recognize
 // a header or a signature by, and few enough lines to scroll past.
