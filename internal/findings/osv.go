@@ -27,7 +27,8 @@ const (
 
 // osvEcosystems maps this project's ecosystem ids onto OSV's names. An ecosystem that
 // is not here is not asked about: a PowerShell Gallery module or a CI runner image has
-// no OSV counterpart, and guessing one would invent findings.
+// no OSV counterpart, and guessing one would invent findings. Neither CocoaPods nor
+// Carthage is an OSV ecosystem, so pods are not asked about.
 //
 // Implements: REQ-FND-010
 var osvEcosystems = map[string]string{

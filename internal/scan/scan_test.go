@@ -281,3 +281,48 @@ func TestScanTellsQtLinguistFromTypeScript(t *testing.T) {
 		}
 	}
 }
+
+// ".m" is Objective-C's, MATLAB's and Mercury's, and ".h" C's, C++'s and
+// Objective-C's: what the head of the file writes says which. A ".m" without any
+// directive, comment or keyword of Objective-C is not Objective-C; a ".h" with a
+// keyword of Objective-C or #import is.
+//
+// Verifies: REQ-LANG-015, REQ-OBJC-001
+func TestScanTellsObjectiveC(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"App/Cart.m":       "//  Cart.m\n#import \"Cart.h\"\n@implementation Cart\n@end\n",
+		"App/main.m":       "#include <stdio.h>\nint main(void) { return 0; }\n",
+		"App/Bare.m":       "\xef\xbb\xbf@implementation Bare\n@end\n",
+		"App/Cart.h":       "/* Cart */\n#import <Foundation/Foundation.h>\n",
+		"App/Proto.h":      "#pragma once\n@protocol Shop <NSObject>\n@end\n",
+		"App/Fwd.h":        "@class Cart;\n",
+		"lib/util.h":       "#ifndef UTIL_H\n#define UTIL_H\nint add(int, int);\n#endif\n",
+		"lib/comment.h":    "// uses @interface in a comment? no: @interfaces\nint x;\n",
+		"matlab/smooth.m":  "% SMOOTH moving average\nfunction y = smooth(x)\ny = x;\nend\n",
+		"matlab/script.m":  "x = linspace(0, 1);\nplot(x, x.^2)\n",
+		"mercury/solver.m": "%---%\n:- module solver.\n:- interface.\n",
+		"App/Store.mm":     "x = 1;\n",
+	}
+	for p, c := range files {
+		abs := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(abs), 0o755)
+		os.WriteFile(abs, []byte(c), 0o644)
+	}
+	got, err := Scan(context.Background(), root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"App/Cart.m": "Objective-C", "App/main.m": "Objective-C", "App/Bare.m": "Objective-C",
+		"App/Cart.h": "Objective-C", "App/Proto.h": "Objective-C", "App/Fwd.h": "Objective-C",
+		"lib/util.h": "C", "lib/comment.h": "C",
+		"matlab/smooth.m": "MATLAB", "matlab/script.m": "MATLAB", "mercury/solver.m": "Mercury",
+		"App/Store.mm": "Objective-C++",
+	}
+	for _, f := range got {
+		if f.Lang != want[f.Path] {
+			t.Errorf("%s: lang %q, want %q", f.Path, f.Lang, want[f.Path])
+		}
+	}
+}

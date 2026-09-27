@@ -19,6 +19,7 @@ import (
 	"github.com/odvcencio/gotreesitter/grammars/swift"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/cocoapods"
 	"github.com/sarumaj/depphunter-cli/internal/lang/treesitter"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
@@ -71,11 +72,11 @@ func buildOutput(p string) bool {
 }
 
 func (Plugin) Ecosystems() []lang.Ecosystem {
-	return []lang.Ecosystem{
+	return append([]lang.Ecosystem{
 		{ID: ecoSwiftPM, Name: "Swift packages"},
 		{ID: ecoStd, Name: "Swift standard library", Std: true},
 		{ID: ecoApple, Name: "Apple SDKs", Std: true},
-	}
+	}, cocoapods.Ecosystems()...)
 }
 
 func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {

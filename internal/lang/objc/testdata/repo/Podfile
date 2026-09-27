@@ -1,0 +1,28 @@
+source 'https://cdn.cocoapods.org/'
+source 'https://github.com/acme/Specs.git'
+
+platform :ios, '15.0'
+use_frameworks!
+
+def shared_pods
+  pod 'AFNetworking', '~> 4.0' # networking
+  pod 'SDWebImage', '5.18.0'
+end
+
+target 'App' do
+  shared_pods
+  pod 'Firebase/Analytics'
+  pod 'Masonry', '= 1.1.0'
+  pod 'GRDB.swift'
+  pod 'Alamofire', :git => 'https://github.com/Alamofire/Alamofire.git', :tag => '5.8.1'
+  pod 'AcmeKit', git: 'https://github.com/acme/AcmeKit.git', branch: 'main'
+  pod 'LocalKit', :path => 'LocalKit'
+  pod 'Lottie',
+      :git => 'https://github.com/airbnb/lottie-ios.git',
+      :commit => '0123456789abcdef0123456789abcdef01234567'
+
+  target 'AppTests' do
+    inherit! :search_paths
+    pod 'OCMock', '>= 3.0'
+  end
+end

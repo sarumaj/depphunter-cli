@@ -1,0 +1,2 @@
+github "Mantle/Mantle" "2.2.0"
+git "https://git.example.com/ios/ReactiveObjC.git" "3f2d9a1c0b6e4f8a7d5c3b2a1908f7e6d5c4b3a2"

@@ -15,7 +15,8 @@ verification:
 The C/C++ plugin **shall** analyze files ending in `.c`, `.h`, `.cc`, `.cpp`,
 `.cxx`, `.c++`, `.hpp`, `.hh`, `.hxx`, `.h++`, `.ipp` and `.inl` (in any
 case), parsing `.c` files with the C grammar and every other one, `.h`
-included, with the C++ grammar.
+included, with the C++ grammar, except a `.h` file the scan labels
+Objective-C (REQ-OBJC-001).
 
 ## Rationale
 
@@ -29,7 +30,7 @@ C++ grammar would not read.
 ## Acceptance criteria
 
 1. `src/main.cpp`, `lib/util.c`, `include/app/app.hpp` and a `.h` file are
-   analyzed; `compile_commands.json` is not.
+   analyzed; `compile_commands.json` is not, nor an Objective-C header.
 2. In a `.c` file, a function declaring a variable named `new` is still a
    symbol.
 

@@ -11,6 +11,7 @@ import (
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/cocoapods"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
@@ -25,6 +26,7 @@ type resolver struct {
 	// shallowest first.
 	projects []*project
 	types    map[string][]string // type name -> files declaring it at the top level
+	pods     *cocoapods.Index    // what Podfiles and Cartfiles declare
 }
 
 // project is what one directory's manifests say: Package.swift, the Xcode projects
@@ -168,6 +170,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 		r.named[name] = dirs
 	}
 	r.indexTypes(sorted)
+	r.pods = cocoapods.Read(root, all)
 	return r
 }
 
@@ -324,8 +327,10 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 // module resolves an imported module: a target of the project's own manifests, the
 // toolchain's and Apple's libraries, a package the project declares, a directory
 // named after the module (an Xcode project's framework), else an unresolved package.
+// A module no SwiftPM manifest provides may be a pod a Podfile declares or a
+// Carthage framework (REQ-OBJC-012).
 //
-// Implements: REQ-SWIFT-004, REQ-SWIFT-005, REQ-SWIFT-007
+// Implements: REQ-SWIFT-004, REQ-SWIFT-005, REQ-SWIFT-007, REQ-OBJC-012
 func (r *resolver) module(file, m string) lang.Target {
 	own := r.moduleOf(file)
 	if dirs := r.modules[m]; len(dirs) > 0 {
@@ -344,6 +349,9 @@ func (r *resolver) module(file, m string) lang.Target {
 	projects := r.projectsOf(file)
 	if id, ok := r.packageOf(projects, m); ok {
 		return r.pkg(projects, id, "")
+	}
+	if t, ok := r.pods.Module(file, m); ok {
+		return t // a pod or Carthage framework of an app built with CocoaPods or Carthage
 	}
 	if dirs := r.named[m]; len(dirs) > 0 {
 		if d := r.nearest(file, dirs); d != own {
@@ -588,6 +596,9 @@ func (r *resolver) typeRef(file, name, imported string) lang.Target {
 //
 // Implements: REQ-SWIFT-012
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
+	if t.Ecosystem == cocoapods.Ecosystem {
+		return r.pods.Dependencies(t)
+	}
 	if t.Ecosystem != ecoSwiftPM || r.root == "" {
 		return nil
 	}

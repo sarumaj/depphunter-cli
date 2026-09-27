@@ -29,6 +29,22 @@ type frame struct {
 //
 // Implements: REQ-CPP-002, REQ-CPP-007
 func preprocess(src []byte) (includes []lang.RawImport, dead []bool) {
+	return scanDirectives(src, false)
+}
+
+// Preprocess is preprocess for Objective-C (the objc plugin), where `#import` is an
+// include that is read once: it is returned like `#include`.
+//
+// Implements: REQ-OBJC-002
+func Preprocess(src []byte) (includes []lang.RawImport, dead []bool) {
+	return scanDirectives(src, true)
+}
+
+// Quoted is the RawImport.Name of a quoted include ("x.h"); an angle include has
+// another.
+const Quoted = quoted
+
+func scanDirectives(src []byte, objc bool) (includes []lang.RawImport, dead []bool) {
 	lines := strings.Split(string(src), "\n")
 	dead = make([]bool, len(lines)+2)
 	var stack []frame
@@ -90,7 +106,7 @@ func preprocess(src []byte) (includes []lang.RawImport, dead []bool) {
 				stack = stack[:n-1]
 			}
 		case "include", "include_next", "import":
-			if word == "import" || isDead() {
+			if (word == "import" && !objc) || isDead() {
 				continue // #import is Objective-C's and MSVC's type libraries
 			}
 			if name, kind, ok := target(rest); ok {

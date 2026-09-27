@@ -3,12 +3,16 @@ package index
 import (
 	"cmp"
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"maps"
 	"net/http"
 	"net/url"
 	"regexp"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -1307,4 +1311,117 @@ func splitChallenge(params string) []string {
 		}
 	}
 	return append(out, params[start:])
+}
+
+// ---------------------------------------------------------------- CocoaPods
+
+// cocoapodsPod reads a pod's dependencies from a CocoaPods CDN (the trunk spec
+// repository served as files, https://cdn.cocoapods.org). Pods are sharded by the
+// MD5 of their name: all_pods_versions_<a>_<b>_<c>.txt lists "Name/1.0/1.1" per
+// pod, and Specs/<a>/<b>/<c>/<Name>/<version>/<Name>.podspec.json is one release's
+// specification. The release asked for is read when the version is exact, else the
+// newest one that is not a pre-release and that the requirement allows (else the
+// newest at all). Its dependencies are the root spec's and
+// those of its default subspecs (all subspecs when none is named), without test
+// specs and the pod's own subspecs; "= 1.2.3" is the bare, pinned version.
+//
+// Implements: REQ-SUP-051
+func (c *Client) cocoapodsPod(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+	sum := md5.Sum([]byte(t.Package))
+	h := hex.EncodeToString(sum[:])
+	shard := []string{h[0:1], h[1:2], h[2:3]}
+	base := strings.TrimRight(index, "/")
+	version := strings.TrimSpace(t.Version)
+	if !lang.Pinned(version) {
+		body, err := c.accept(ctx, base+"/all_pods_versions_"+strings.Join(shard, "_")+".txt", "text/plain")
+		if err != nil {
+			return nil, err
+		}
+		constraint := version
+		version = ""
+		newest := ""
+		for _, line := range strings.Split(string(body), "\n") {
+			fields := strings.Split(strings.TrimSpace(line), "/")
+			if fields[0] != t.Package {
+				continue
+			}
+			for _, v := range fields[1:] {
+				if strings.Contains(v, "-") {
+					continue // a pre-release
+				}
+				if newest == "" || compareVersions(v, newest) > 0 {
+					newest = v
+				}
+				// CocoaPods' operators are Terraform's: ~>, >=, <, =, !=.
+				if terraformAllows(constraint, v) && (version == "" || compareVersions(v, version) > 0) {
+					version = v
+				}
+			}
+		}
+		if version == "" {
+			version = newest
+		}
+		if version == "" {
+			return nil, nil
+		}
+	}
+	esc := url.PathEscape(t.Package)
+	body, err := c.get(ctx, base+"/Specs/"+strings.Join(shard, "/")+"/"+esc+"/"+url.PathEscape(version)+"/"+esc+".podspec.json")
+	if err != nil {
+		return nil, err
+	}
+	var spec podSpec
+	if err := json.Unmarshal(body, &spec); err != nil {
+		return nil, err
+	}
+	seen := map[string]bool{}
+	var out []dep
+	var walk func(s podSpec)
+	walk = func(s podSpec) {
+		for _, name := range slices.Sorted(maps.Keys(s.Dependencies)) {
+			root, _, _ := strings.Cut(name, "/")
+			if root == t.Package || seen[root] {
+				continue
+			}
+			seen[root] = true
+			req := strings.Join(s.Dependencies[name], ", ")
+			if v, ok := strings.CutPrefix(req, "= "); ok && lang.Pinned(v) {
+				req = v
+			}
+			out = append(out, dep{Name: root, Version: req})
+		}
+	}
+	walk(spec)
+	defaults := map[string]bool{}
+	for _, d := range spec.defaults() {
+		defaults[d] = true
+	}
+	for _, sub := range spec.Subspecs {
+		if len(defaults) == 0 || defaults[sub.Name] {
+			walk(sub)
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// podSpec is the part of a podspec.json read for dependencies.
+type podSpec struct {
+	Name         string              `json:"name"`
+	Dependencies map[string][]string `json:"dependencies"`
+	Subspecs     []podSpec           `json:"subspecs"`
+	// DefaultSubspecs is a name or a list of names.
+	DefaultSubspecs json.RawMessage `json:"default_subspecs"`
+}
+
+func (s podSpec) defaults() []string {
+	var list []string
+	if json.Unmarshal(s.DefaultSubspecs, &list) == nil {
+		return list
+	}
+	var one string
+	if json.Unmarshal(s.DefaultSubspecs, &one) == nil && one != "" {
+		return []string{one}
+	}
+	return nil
 }

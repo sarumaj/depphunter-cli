@@ -199,6 +199,10 @@ func (c *Config) project(files []*scan.File) {
 			parseCabalRepositories(data, add)
 		case base == "config.toml" && strings.HasSuffix(path.Dir(f.Path), ".cargo"):
 			parseCargoConfig(data, add)
+		case f.Path == "Podfile" || strings.HasSuffix(f.Path, "/Podfile"):
+			parsePodfile(data, add)
+		case base == "podfile.lock":
+			parsePodfileLock(data, add)
 		}
 	}
 }
@@ -670,5 +674,45 @@ func parseMavenSettings(data []byte, add func(eco, url, scope string)) {
 	}
 	for _, m := range doc.Mirrors.Mirror {
 		add(Maven, strings.TrimSpace(m.URL), "")
+	}
+}
+
+// podSource matches a Podfile's `source 'url'` line.
+var podSource = regexp.MustCompile(`(?m)^\s*source[\s(]+['"]([^'"]+)['"]`)
+
+// parsePodfile reads the spec repositories a Podfile's `source` lines name. CocoaPods
+// asks each of them for every pod, in order, so a private one is recorded for all of
+// them: the repository cannot say which pods it holds, and naming a company's pod to
+// the public CDN is what the private patterns exist to prevent. CocoaPods' own
+// repository is the public index and is not recorded.
+//
+// Implements: REQ-SUP-015, REQ-SUP-051
+func parsePodfile(data []byte, add func(eco, url, scope string)) {
+	for _, m := range podSource.FindAllSubmatch(data, -1) {
+		if u := string(m[1]); !CocoaPodsTrunk(u) {
+			add(CocoaPods, u, "")
+		}
+	}
+}
+
+// parsePodfileLock reads Podfile.lock's SPEC REPOS, which say which repository each
+// pod was installed from: a private one is recorded for its pods only.
+//
+// Implements: REQ-SUP-015, REQ-SUP-051
+func parsePodfileLock(data []byte, add func(eco, url, scope string)) {
+	var doc struct {
+		Repos map[string][]string `yaml:"SPEC REPOS"`
+	}
+	if yaml.Unmarshal(data, &doc) != nil {
+		return
+	}
+	for _, repo := range slices.Sorted(maps.Keys(doc.Repos)) {
+		if CocoaPodsTrunk(repo) {
+			continue
+		}
+		for _, name := range doc.Repos[repo] {
+			root, _, _ := strings.Cut(name, "/")
+			add(CocoaPods, repo, root)
+		}
 	}
 }

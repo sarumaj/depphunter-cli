@@ -647,3 +647,36 @@ func TestTerraformModuleRegistryFromTheName(t *testing.T) {
 		t.Error("--trust-index did not vouch for a Terraform registry host")
 	}
 }
+
+// A Podfile's `source` lines and Podfile.lock's SPEC REPOS are the repository's spec
+// repositories: a private one in the lock serves the pods installed from it, one only
+// the Podfile names serves every pod (so none is named to the public CDN), and
+// CocoaPods' own repository - the CDN, the trunk repository on GitHub - is the public
+// index, never recorded.
+//
+// Verifies: REQ-SUP-015, REQ-SUP-051
+func TestDiscoverReadsCocoaPodsSources(t *testing.T) {
+	lock := "PODS:\n  - Acme/Core (1.0)\n  - AFNetworking (4.0.1)\n\nSPEC REPOS:\n" +
+		"  https://github.com/acme/Specs.git:\n    - Acme/Core\n  trunk:\n    - AFNetworking\n"
+	files := write(t, map[string]string{
+		"ios/Podfile":      "source 'https://cdn.cocoapods.org/'\nsource 'https://github.com/CocoaPods/Specs.git'\npod 'AFNetworking'\n",
+		"ios/Podfile.lock": lock,
+	})
+	cfg := Discover(files, env(nil), "")
+	if idx, known := cfg.For(CocoaPods, "Acme"); idx != "https://github.com/acme/Specs.git" || known {
+		t.Errorf("Acme: got %s (known %v)", idx, known)
+	}
+	if idx, known := cfg.For(CocoaPods, "AFNetworking"); idx != "https://cdn.cocoapods.org" || !known {
+		t.Errorf("AFNetworking: got %s (known %v)", idx, known)
+	}
+	files = write(t, map[string]string{"Podfile": "source 'https://git.corp.test/Specs.git'\nsource 'https://cdn.cocoapods.org/'\n"})
+	if idx, known := Discover(files, env(nil), "").For(CocoaPods, "AFNetworking"); idx != "https://git.corp.test/Specs.git" || known {
+		t.Errorf("Podfile source: got %s (known %v)", idx, known)
+	}
+	for repo, want := range map[string]bool{"trunk": true, "https://cdn.cocoapods.org/": true,
+		"https://github.com/CocoaPods/Specs.git": true, "https://github.com/acme/Specs.git": false} {
+		if got := CocoaPodsTrunk(repo); got != want {
+			t.Errorf("%s: got %v, want %v", repo, got, want)
+		}
+	}
+}

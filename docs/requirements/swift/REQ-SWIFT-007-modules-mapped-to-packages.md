@@ -20,8 +20,10 @@ ArgumentParser swift-argument-parser) when the project declares or pins that
 package, else the declared or pinned package whose identity (a leading
 `swift-` or trailing `.swift` ignored, a registry id's name) equals the
 module's name or is the longest one starting it (NIOHTTP2 is
-swift-nio-http2). A module that matches nothing is an unresolved package
-named after the table's URL, else after the module.
+swift-nio-http2), else the pod or Carthage dependency a Podfile, podspec,
+Cartfile or their locks over the file declare (REQ-OBJC-012). A module that
+matches nothing is an unresolved package named after the table's URL, else
+after the module.
 
 ## Rationale
 

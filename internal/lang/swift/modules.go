@@ -1,6 +1,9 @@
 package swift
 
-import "strings"
+import (
+	"strings"
+	"sync"
+)
 
 // stdModules are the modules every Swift toolchain ships on every platform: the
 // standard library and its satellites, the core libraries (Foundation, Dispatch,
@@ -57,7 +60,40 @@ var appleModules = set(
 	"NearbyInteraction", "HomeKitUI", "FinderSync", "QuickLookUI", "Quartz", "InputMethodKit",
 	"ImageCaptureCore", "AppleScriptObjC", "OSAKit", "SecurityInterface", "SafariServices", "_AppIntents_SwiftUI", "_MapKit_SwiftUI",
 	"_AVKit_SwiftUI", "_StoreKit_SwiftUI", "_PhotosUI_SwiftUI", "_SwiftData_SwiftUI",
+	// Older frameworks Objective-C code still imports.
+	"AddressBook", "AddressBookUI", "AssetsLibrary", "Twitter", "NotificationCenter",
+	"WatchConnectivity", "OpenAL", "MediaAccessibility", "NewsstandKit", "GSS",
+	"ExceptionHandling", "PreferencePanes", "ScriptingBridge", "InstantMessage", "DiscRecording",
+	"LocalAuthenticationEmbeddedUI", "DeviceDiscoveryUI", "PlaygroundSupport",
+	"notify", "zlib", "Compression", "XPC",
 )
+
+// AppleEcosystem is the island of Apple's SDK frameworks, which the objc plugin
+// shares.
+const AppleEcosystem = ecoApple
+
+// AppleSDK names the Apple SDK framework a module or framework directory is, for
+// the objc plugin, in its own spelling: case is ignored, since Xcode's default file
+// system is case-insensitive and <Appkit/Appkit.h> compiles. Foundation and XCTest
+// count too, which Swift counts as its toolchain's (swift-corelibs-foundation,
+// swift-corelibs-xctest) but an Objective-C program gets from Xcode.
+//
+// Implements: REQ-SWIFT-005, REQ-OBJC-005
+func AppleSDK(name string) (string, bool) {
+	if appleModules[name] {
+		return name, true
+	}
+	n, ok := appleFolded()[strings.ToLower(name)]
+	return n, ok
+}
+
+var appleFolded = sync.OnceValue(func() map[string]string {
+	m := map[string]string{"foundation": "Foundation", "xctest": "XCTest", "dispatch": "Dispatch"}
+	for n := range appleModules {
+		m[strings.ToLower(n)] = n
+	}
+	return m
+})
 
 // knownPackages names the package of modules whose names say little about it:
 // module -> repository URL (without scheme), from which the SwiftPM identity is the

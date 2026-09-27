@@ -195,6 +195,14 @@ func measure(f *File, maxSize int64) {
 	if f.Lang == "TypeScript" && strings.EqualFold(path.Ext(f.Path), ".ts") && xmlDocument(head) {
 		f.Lang = "XML"
 	}
+	// ".m" is MATLAB's and Mercury's too, and ".h" C's: Objective-C says which by
+	// its keywords and directives, within the head already read.
+	switch ext := strings.ToLower(path.Ext(f.Path)); {
+	case ext == ".m" && f.Lang == "Objective-C" && !objcMarker(head, true):
+		f.Lang = notObjC(head)
+	case ext == ".h" && f.Lang == "C" && objcMarker(head, false):
+		f.Lang = "Objective-C"
+	}
 	// An extensionless script is labelled by the shell its "#!" line runs.
 	if f.Interpreter = interpreter(head); f.Lang == "" && ShellInterpreter(f.Interpreter) {
 		f.Lang = "Shell"

@@ -120,6 +120,7 @@ The server **shall** ...
 | `php`       | The PHP plugin and Composer.                                                                   |
 | `ruby`      | The Ruby plugin and Bundler.                                                                   |
 | `swift`     | The Swift plugin, SwiftPM and Xcode's package references.                                      |
+| `objc`      | The Objective-C plugin, CocoaPods (Podfile, Podfile.lock, podspecs) and Carthage.              |
 | `dart`      | The Dart plugin, Flutter and pub.                                                              |
 | `beam`      | The Elixir and Erlang plugin, Mix, rebar3 and Hex.                                             |
 | `r`         | The R plugin, R Markdown and Quarto documents, renv, packrat, CRAN and Bioconductor.           |
@@ -214,6 +215,10 @@ requirements of type `limitation` in their scopes:
   has no package-to-package edges without a checkout, type references are
   matched by name, and files the grammar cannot fully parse give partial
   results.
+- Objective-C is read without Xcode or CocoaPods: header search paths of an
+  Xcode project or `.xcconfig` are not read, pods are matched to headers and
+  modules by name, private spec repositories are never fetched, and no
+  vulnerability database covers CocoaPods or Carthage.
 - Dart is read without running pub: generated files that are not committed are
   not seen, and `pubspec.lock` has no package-to-package edges, so only
   `--online` walks past the first level.

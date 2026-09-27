@@ -100,6 +100,11 @@ func TestAPatternMayNameItsEcosystem(t *testing.T) {
 	if !p.Match("pub", "acme_auth") || p.Match("npm", "acme_auth") || p.Match("pub", "http") {
 		t.Error("a pub-scoped pattern did not keep to its ecosystem")
 	}
+	p = New([]string{"cocoapods:Acme*", "carthage:github.com/acme/*"})
+	if !p.Match("cocoapods", "AcmeKit") || p.Match("npm", "AcmeKit") || p.Match("cocoapods", "AFNetworking") ||
+		!p.Match("carthage", "github.com/acme/Net") || p.Match("swiftpm", "github.com/acme/Net") {
+		t.Error("cocoapods- and carthage-scoped patterns did not keep to their ecosystems")
+	}
 	// The prefix is recognized whatever its case, and must then match as well.
 	p = New([]string{"NPM:@acme/*"})
 	if !p.Match("npm", "@acme/widgets") {
