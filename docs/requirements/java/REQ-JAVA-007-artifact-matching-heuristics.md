@@ -21,13 +21,16 @@ the group's last segment for a group of three or more segments, and the name's
 words as a root package) - and its group, its own prefix winning a tie with the
 group; else one sharing at least three leading segments with its group (or all
 of a shorter group); else one whose group's last segment or name is one of the
-import's first two segments. A tie **shall** go to the artifact more of whose
+import's first two segments. A tie **shall** go to the artifact whose group
+names the import's root package, then to the one more of whose
 name words the import spells, then to the family's main artifact (named after
 the group alone, else ending in `core`, `api` or `common`), then to a declared
 artifact, then to the shorter name, then alphabetically. A table artifact that
 no manifest declares **shall** still be the match when another artifact of its
 group is declared (it arrives with it), carrying the version all declared
-artifacts of the group share, if any.
+artifacts of the group share, if any. An import the table places in an artifact
+that is neither declared nor arrives with a declared one, by a prefix at least
+as long as the best match's, **shall** match no declared artifact.
 
 ## Rationale
 
@@ -56,6 +59,11 @@ declared by one artifact but imported from several.
    `org.springframework.boot.SpringApplication` resolves to
    `org.springframework.boot:spring-boot`.
 6. An artifact declared at two different versions carries no version.
+7. With `org.liquibase:liquibase-core` and
+   `com.github.blagerweij:liquibase-sessionlock` declared, `liquibase.Liquibase`
+   resolves to the former.
+8. With only `com.google.guava:guava` declared,
+   `com.google.common.jimfs.Jimfs` is unresolved `com.google.jimfs:jimfs`.
 
 ## Notes
 

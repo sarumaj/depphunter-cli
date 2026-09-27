@@ -1652,13 +1652,17 @@ libraries (`com.google.common` is `com.google.guava:guava`,
 (`org.springframework:spring-context` gives `org.springframework.context`,
 `com.fasterxml.jackson.core:jackson-databind` gives
 `com.fasterxml.jackson.databind`, `cats-effect` gives `cats.effect`), or its
-group. Among several artifacts of one group, the one whose name the import
-spells wins (`io.ktor.client.engine.cio` is `ktor-client-cio`), then the
+group. Among artifacts matching equally, the one whose group names the
+import's root package wins (`liquibase` is `org.liquibase`'s, not an
+extension's named after it), then the one whose name the import
+spells (`io.ktor.client.engine.cio` is `ktor-client-cio`), then the
 family's main one (`spring-boot`, a `-core`). A table artifact the build does
 not declare still matches when another of its group is declared, since it
 comes with it: `com.fasterxml.jackson.annotation` is `jackson-annotations`
 beside `jackson-databind`, at its version, and a Spring Boot starter brings
-`spring-boot`. An import nothing declared matches is unresolved, named after
+`spring-boot`. A package the table gives an artifact that is not declared is
+no other artifact's (`com.google.common.jimfs` is `com.google.jimfs:jimfs`, not
+Guava's). An import nothing declared matches is unresolved, named after
 the table's artifact (`javax.servlet:javax.servlet-api`) or guessed from its
 package (`net.sf.saxon.s9api` becomes `net.sf.saxon:saxon`).
 
@@ -2064,7 +2068,12 @@ declares for it, found by a table of popular libraries (`ring.util.*` is
 naming habits (`next.jdbc`, `cheshire.core`, `taoensso.timbre`,
 `reitit.ring` from `metosin/reitit-ring`), else an unresolved one.
 `:import` names JDK classes (the Java standard library), records and types of
-the project's namespaces, and classes of declared artifacts by their group; a
+the project's namespaces, Java files of the project, and classes of declared
+artifacts, matched as Java imports are (see above: `com.google.common` is
+`com.google.guava/guava`, `com.fasterxml.jackson.annotation` is
+`jackson-annotations` beside a declared `jackson-databind`, at its version),
+else by their coordinates; a class of a jar only a dependency brings is left
+out rather than guessed; a
 ClojureScript string require (`["react" :as react]`) is an npm package from
 the `package.json` beside the build. The manifests' dependencies - `deps.edn`
 and `bb.edn` `:deps` and aliases, `project.clj` `:dependencies`, profiles and

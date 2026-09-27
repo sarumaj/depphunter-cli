@@ -205,6 +205,62 @@ netty-buffer = { module = "io.netty:netty-buffer", version = { require = "4.1.11
 	// cSpell: enable
 }
 
+// A root package goes to the artifact whose group names it, not to an extension
+// named after it; a package the table gives to an undeclared artifact is not taken
+// by a declared one with a shorter prefix.
+//
+// Verifies: REQ-JAVA-007, REQ-JAVA-012
+func TestArtifactOwnership(t *testing.T) {
+	// cSpell: disable
+	got := resolveIn(t, Language{}, map[string]string{
+		"build.gradle": `dependencies {
+    implementation "com.github.blagerweij:liquibase-sessionlock:1.6.9"
+    implementation "org.liquibase:liquibase-core:4.33.0"
+    implementation "com.google.guava:guava:33.0.0-jre"
+    implementation "commons-validator:commons-validator:1.10.0"
+    implementation "org.apache.commons:commons-lang3:3.14.0"
+}`,
+	}, "liquibase.Liquibase", "com.google.common.jimfs.Jimfs", "com.google.common.collect.ImmutableList",
+		"org.apache.commons.validator.routines.UrlValidator")
+	checkTargets(t, got, map[string]lang.Target{
+		"liquibase.Liquibase":                     {Ecosystem: "maven", Package: "org.liquibase:liquibase-core", Version: "4.33.0", Pinned: true},
+		"com.google.common.jimfs.Jimfs":           {Ecosystem: "maven", Package: "com.google.jimfs:jimfs", Unresolved: true},
+		"com.google.common.collect.ImmutableList": {Ecosystem: "maven", Package: "com.google.guava:guava", Version: "33.0.0-jre", Pinned: true},
+		"org.apache.commons.validator.routines.UrlValidator": {Ecosystem: "maven", Package: "commons-validator:commons-validator",
+			Version: "1.10.0", Pinned: true},
+	})
+	// cSpell: enable
+}
+
+// Artifacts is the matcher for another language's class imports: prefixes only,
+// the language's own root packages claimed by no artifact.
+//
+// Verifies: REQ-JAVA-012, REQ-CLOJURE-006
+func TestArtifactsForOtherLanguages(t *testing.T) {
+	a := NewArtifacts(Language{Prefixes: []string{"clojure."}})
+	a.Declare("org.clojure", "clojure", "1.12.0")
+	a.Declare("com.fasterxml.jackson.core", "jackson-databind", "2.17.0")
+	a.Declare("com.fasterxml.jackson.core", "jackson-core", "2.17.0")
+	a.Declare("io.acme.platform.core", "widgets", "1.0")
+	a.Finish()
+	for _, c := range []struct {
+		class string
+		want  Match
+		ok    bool
+	}{
+		{"com.fasterxml.jackson.databind.ObjectMapper", Match{Name: "com.fasterxml.jackson.core:jackson-databind", Version: "2.17.0"}, true},
+		{"com.fasterxml.jackson.annotation.JsonProperty", Match{Name: "com.fasterxml.jackson.core:jackson-annotations", Version: "2.17.0", Virtual: true}, true},
+		{"okhttp3.OkHttpClient", Match{}, false},            // Java's weak rule (the group's last segment) is not applied
+		{"clojure.core.async.impl.Channel", Match{}, false}, // org.clojure/clojure owns no clojure.* class here
+		{"org.quartz.JobKey", Match{}, false},
+	} {
+		got, ok := a.Match(c.class)
+		if got != c.want || ok != c.ok {
+			t.Errorf("Match(%s) = %+v, %v; want %+v, %v", c.class, got, ok, c.want, c.ok)
+		}
+	}
+}
+
 // sbt's %% appends the Scala binary version of the build's scalaVersion (the
 // file's own, else the root build's; a val works too); % does not, and without a
 // scalaVersion the name stays as written.

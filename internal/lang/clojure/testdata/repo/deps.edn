@@ -11,7 +11,9 @@
         io.github.acme/widgets {:git/tag "v1.2.0" :git/sha "0123456789abcdef0123456789abcdef01234567"}
         io.github.acme/gadgets {:git/tag "v0.3"}
         acme/shared {:local/root "libs/shared"}
-        org.eclipse.jetty/jetty-server ^:antq/exclude {:mvn/version "11.0.18"}}
+        org.eclipse.jetty/jetty-server ^:antq/exclude {:mvn/version "11.0.18"}
+        com.google.guava/guava {:mvn/version "33.0.0-jre"}
+        com.fasterxml.jackson.core/jackson-databind {:mvn/version "2.17.0"}}
  :aliases {:test {:extra-paths ["test"]
                   :extra-deps {lambdaisland/kaocha {:mvn/version "1.87.1366"}}}
            :dev {:extra-deps {integrant/repl {:mvn/version "0.3.3"}

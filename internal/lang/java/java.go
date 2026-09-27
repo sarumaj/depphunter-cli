@@ -38,7 +38,7 @@ var grammar = treesitter.MustGrammar("java", java.Language(), query)
 type Plugin struct{}
 
 func (Plugin) Name() string             { return "java" }
-func (Plugin) Version() int             { return 2 }
+func (Plugin) Version() int             { return 3 }
 func (Plugin) Claims(f *scan.File) bool { return strings.HasSuffix(f.Path, ".java") && !f.Binary }
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{

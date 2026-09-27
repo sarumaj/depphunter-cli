@@ -13,10 +13,11 @@ import (
 )
 
 // Java, Clojure and Bazel all name a Maven package group:artifact, so Guava reached
-// through a Java import (declared by pom.xml), a deps.edn dependency and a Bazel
+// through a Java import (declared by pom.xml), a deps.edn dependency, a Clojure
+// :import of a Guava class (matched by the Java plugin's rules) and a Bazel
 // maven.install artifact is one node.
 //
-// Verifies: REQ-JAVA-012
+// Verifies: REQ-JAVA-012, REQ-CLOJURE-006
 func TestOneMavenNodeAcrossJavaClojureAndBazel(t *testing.T) {
 	root := t.TempDir()
 	writeProject(t, root, map[string]string{
@@ -27,6 +28,7 @@ func TestOneMavenNodeAcrossJavaClojureAndBazel(t *testing.T) {
 </project>`,
 		"src/main/java/com/example/App.java": "package com.example;\n\nimport com.google.common.collect.Lists;\n\nclass App {}\n",
 		"clj/deps.edn":                       `{:paths ["src"] :deps {com.google.guava/guava {:mvn/version "33.0.0-jre"}}}`,
+		"clj/src/app/core.clj":               "(ns app.core\n  (:import (com.google.common.collect ImmutableList)))\n",
 		"MODULE.bazel": `bazel_dep(name = "rules_jvm_external", version = "6.1")
 maven = use_extension("@rules_jvm_external//:extensions.bzl", "maven")
 maven.install(artifacts = ["com.google.guava:guava:33.0.0-jre"])
@@ -54,7 +56,7 @@ use_repo(maven, "maven")
 			from[e.From] = true
 		}
 	}
-	for _, f := range []string{"src/main/java/com/example/App.java", "clj/deps.edn", "BUILD.bazel"} {
+	for _, f := range []string{"src/main/java/com/example/App.java", "clj/deps.edn", "clj/src/app/core.clj", "BUILD.bazel"} {
 		if !from[graph.FileID(f)] {
 			t.Errorf("%s has no edge to %s (edges from %v)", f, id, strings.Join(keys(from), ", "))
 		}
