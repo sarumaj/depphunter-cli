@@ -56,6 +56,10 @@ func TestAPatternMayNameItsEcosystem(t *testing.T) {
 	if !p.Match("c-external", "acmecore") || p.Match("npm", "acmecore") {
 		t.Error("a c-external-scoped pattern did not keep to that ecosystem")
 	}
+	p = New([]string{"vcpkg:acme*", "conan:corp-*"})
+	if !p.Match("vcpkg", "acme-core") || !p.Match("conan", "corp-net") || p.Match("conan", "acme-core") {
+		t.Error("vcpkg- and conan-scoped patterns did not keep to their ecosystems")
+	}
 	// The prefix is recognized whatever its case, and must then match as well.
 	p = New([]string{"NPM:@acme/*"})
 	if !p.Match("npm", "@acme/widgets") {

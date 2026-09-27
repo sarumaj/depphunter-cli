@@ -804,7 +804,8 @@ govulncheck finds no call into is capped at low.
 Under `--online`, depphunter additionally queries [OSV](https://osv.dev) for
 every external package the map pins to a version — batched queries of 500
 packages each, followed by the advisories it matched — covering Go,
-npm, PyPI, crates.io, Maven, NuGet and GitHub Actions. Floating packages are not
+npm, PyPI, crates.io, Maven, NuGet, GitHub Actions and Conan (as OSV's
+ConanCenter; vcpkg has no OSV ecosystem). Floating packages are not
 queried, since they resolve to a different version on the next installation.
 Answers are cached for six hours. `--no-vulns` disables all of this.
 
@@ -889,6 +890,8 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | GitHub Actions     | a full commit SHA                                                    | tags, branches, or no ref                                                                 |
 | GitLab CI includes | a commit                                                             | tags, branches, templates, remote includes, or no ref                                     |
 | Container images   | an `@sha256:` digest                                                 | tags                                                                                      |
+| vcpkg              | an `overrides` entry                                                 | `version>=`, which is a minimum; no version and no baseline                               |
+| Conan              | an exact reference (`zlib/1.2.13`), `conan.lock`                     | a version range (`[>=1.0 <2]`, `[~1.2]`)                                                  |
 
 The JSON and GraphML exports carry `requested` and `floating` per package.
 
@@ -908,6 +911,7 @@ and the analysis remains offline.
 | `Cargo.lock`                         | `dependencies` per crate                         |
 | `uv.lock`, `poetry.lock`, `pdm.lock` | each distribution's own requirements             |
 | an installed Python environment      | each distribution's `Requires-Dist`              |
+| `conan.lock` (Conan 1, `graph_lock`) | the `requires` of each node                      |
 
 Packages added in this way are marked **transitive**, meaning that no file in
 the repository imports them. Edges between packages are of kind `depends`, as
@@ -918,8 +922,9 @@ remain a single building, so an edge between packages is an edge between names.
 A Python package that no lock file gives edges for (`Pipfile.lock` records
 none) falls back to the installed environment (see [Languages](#languages)).
 Ecosystems that keep the dependency graph outside the repository — Go modules,
-NuGet and container images — require `--online`, described below; Maven and the
-PowerShell Gallery are not resolved beyond the first level at present.
+NuGet and container images — require `--online`, described below; Maven, the
+PowerShell Gallery, vcpkg and Conan 2 (whose lock is a flat list) are not
+resolved beyond the first level at present.
 
 The side panel presents these as a **tree**: every row under *Depends on* and
 *Used by* expands into that node's own dependencies, and so on recursively.
@@ -1048,9 +1053,8 @@ leading path elements match it, so that `corp.example/*` covers
 `corp.example/team/billing`. It applies equally to an npm scope (`@acme/*`), a
 Maven group (`com.acme.*`) and a registry path (`harbor.corp/*`). Prefixing a
 pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`,
-`crates:`, `actions:`, `gitlab-ci:`, `psgallery:` or `c-external:` — restricts
-it to that
-ecosystem.
+`crates:`, `actions:`, `gitlab-ci:`, `psgallery:`, `c-external:`, `vcpkg:` or
+`conan:` — restricts it to that ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
 to whatever is configured here**, so a Go project whose machine is already
@@ -1328,21 +1332,21 @@ uses it. The JSON and GraphML exports include the reference edges.
 
 ### Languages
 
-| Ecosystem               | Imports resolved through                                                                                                                                                                                       | Islands                                                      |
-|-------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|--------------------------------------------------------------|
-| Go                      | every `go.mod` (multi-module, local `replace`)                                                                                                                                                                 | Go modules, Go standard library                              |
-| JavaScript / TypeScript | relative paths, `tsconfig`/`jsconfig` `paths`, workspaces, `package.json` + `package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`; also the scripts of Vue, Svelte and Astro components, and SvelteKit's `$lib` | npm, Node.js built-ins                                       |
-| Python                  | relative imports, `src/` layouts, requirements files, `setup.cfg`, literal `setup.py` lists, `pyproject.toml`, `Pipfile`, `poetry.lock`/`uv.lock`/`pdm.lock`/`Pipfile.lock`, installed environments (below)    | PyPI, Python standard library                                |
-| Rust                    | the module tree (`crate::`, `self::`, `super::`, `mod x;`), workspace and path crates, `Cargo.toml` (renamed and workspace dependencies) + `Cargo.lock`                                                        | crates.io, Rust standard library                             |
-| Java                    | source files by package path (any source root), `pom.xml` (properties, dependency management), Gradle scripts and version catalogs, sbt builds                                                                 | Maven, Java standard library                                 |
-| Kotlin                  | source files by the package they declare (any directory; Java files by path), the Java manifests                                                                                                               | Maven, Kotlin and Java standard libraries                    |
-| Scala                   | source files by the package they declare (any directory; Java files by path), `build.sbt` (`%`, `%%`, versions held in a `val`), the Java manifests                                                            | Maven, Scala and Java standard libraries                     |
-| C#                      | namespaces to project folders (`RootNamespace` + folder), `PackageReference`, `Directory.Packages.props`                                                                                                       | NuGet, .NET base library                                     |
-| C / C++                 | `#include` beside the includer, the include paths of `compile_commands.json` (`-I`, `-iquote`, `-isystem`, `/I`), `include/` and `src/`, and a unique project file ending in the included path                 | C/C++ external, C and C++ standard libraries, system headers |
-| PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                              | PowerShell Gallery, built-in modules                         |
-| CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                   | GitHub Actions, GitLab CI, Container images                  |
-| Dockerfile / Compose    | `FROM`, `COPY --from`, `RUN --mount from=` and `# syntax=` with `ARG` defaults expanded and stages told apart; Compose `image:`, and `build:` to the Dockerfile in the repository                              | Container images                                             |
-| Markdown                | links to files and directories in the repository (inline, reference, autolink, and the `href` and `src` of raw HTML); headings become the file's symbols                                                       | *(none: a link is not a package)*                            |
+| Ecosystem               | Imports resolved through                                                                                                                                                                                                                                                    | Islands                                                                    |
+|-------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------|
+| Go                      | every `go.mod` (multi-module, local `replace`)                                                                                                                                                                                                                              | Go modules, Go standard library                                            |
+| JavaScript / TypeScript | relative paths, `tsconfig`/`jsconfig` `paths`, workspaces, `package.json` + `package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`; also the scripts of Vue, Svelte and Astro components, and SvelteKit's `$lib`                                                              | npm, Node.js built-ins                                                     |
+| Python                  | relative imports, `src/` layouts, requirements files, `setup.cfg`, literal `setup.py` lists, `pyproject.toml`, `Pipfile`, `poetry.lock`/`uv.lock`/`pdm.lock`/`Pipfile.lock`, installed environments (below)                                                                 | PyPI, Python standard library                                              |
+| Rust                    | the module tree (`crate::`, `self::`, `super::`, `mod x;`), workspace and path crates, `Cargo.toml` (renamed and workspace dependencies) + `Cargo.lock`                                                                                                                     | crates.io, Rust standard library                                           |
+| Java                    | source files by package path (any source root), `pom.xml` (properties, dependency management), Gradle scripts and version catalogs, sbt builds                                                                                                                              | Maven, Java standard library                                               |
+| Kotlin                  | source files by the package they declare (any directory; Java files by path), the Java manifests                                                                                                                                                                            | Maven, Kotlin and Java standard libraries                                  |
+| Scala                   | source files by the package they declare (any directory; Java files by path), `build.sbt` (`%`, `%%`, versions held in a `val`), the Java manifests                                                                                                                         | Maven, Scala and Java standard libraries                                   |
+| C#                      | namespaces to project folders (`RootNamespace` + folder), `PackageReference`, `Directory.Packages.props`                                                                                                                                                                    | NuGet, .NET base library                                                   |
+| C / C++                 | `#include` beside the includer, the include paths of `compile_commands.json` (`-I`, `-iquote`, `-isystem`, `/I`), `include/` and `src/`, and a unique project file ending in the included path; libraries by `vcpkg.json`, `conanfile.txt`, `conanfile.py` and `conan.lock` | vcpkg, Conan, C/C++ external, C and C++ standard libraries, system headers |
+| PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                           | PowerShell Gallery, built-in modules                                       |
+| CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                | GitHub Actions, GitLab CI, Container images                                |
+| Dockerfile / Compose    | `FROM`, `COPY --from`, `RUN --mount from=` and `# syntax=` with `ARG` defaults expanded and stages told apart; Compose `image:`, and `build:` to the Dockerfile in the repository                                                                                           | Container images                                                           |
+| Markdown                | links to files and directories in the repository (inline, reference, autolink, and the `href` and `src` of raw HTML); headings become the file's symbols                                                                                                                    | *(none: a link is not a package)*                                          |
 
 Python packages that no index has - an in-house package installed from a
 directory, a wheel file or a Git repository - are resolved from what a Python
@@ -1415,8 +1419,32 @@ first directory (`<boost/asio.hpp>` is `boost`, `<zlib.h>` is `zlib`), shown
 unresolved; a quoted bare name the project lacks, such as a generated
 `config.h`, is dropped. Only `#if 0` and `#if 1` are evaluated: the includes of
 every other branch count, whatever the platform, and macros are not expanded,
-so `#include CONFIG_H` is not followed. No package manager is read yet, so C
-and C++ libraries carry no version.
+so `#include CONFIG_H` is not followed.
+
+A library that a vcpkg or Conan manifest declares takes the header's place
+under its package: the manifests in the including file's directory and those
+above it are searched, the nearest first (or, for a file under no manifest,
+every manifest in the project, the shallowest first — sibling directories are
+often built under one), for a package named like the header's library
+(ignoring case and `-` against `_`), a known alias of it
+(`gtest`/`googletest`, `nlohmann`/`nlohmann-json`, `Eigen`/`eigen3`,
+`SDL2`, `GLFW`/`glfw3`, `google`/`protobuf`, `absl`/`abseil` and a few more),
+or its name after `lib` (`<curl/curl.h>` is Conan's `libcurl`); a Boost header
+belongs to the port of its directory (`<boost/asio.hpp>` to `boost-asio`)
+before `boost`, and a Qt module's directory (`<QtCore/QString>`) to its own
+port before `qtbase` and `qt`. vcpkg's `vcpkg.json` is read for its
+dependencies and those of its features (names or objects with `version>=`;
+platforms are not evaluated) and `overrides`; Conan's `conanfile.txt` for its `[requires]`
+and tool sections, a `conanfile.py` for the string literals given to
+`self.requires()` and its kin or assigned to `requires` and `tool_requires`,
+and a `conan.lock` beside them in either Conan 1 or Conan 2 form, whose
+libraries count as declared since the build installs them. The recipe is not
+run, so a reference built at run time (an f-string) is not seen and a
+conditional one counts whatever the condition. A vcpkg port pins only by an
+override: a `builtin-baseline` fixes versions through the registry's history,
+which the repository does not carry, so a port without a version is then
+neither pinned nor floating, while without a baseline it floats. Everything
+else stays in C/C++ external, without a version.
 
 Files in other languages appear on the map without dependency edges. Parsing
 uses a pure-Go tree-sitter runtime for JavaScript/TypeScript, Python, Rust,

@@ -13,8 +13,8 @@ verification:
 ## Statement
 
 The C/C++ plugin **shall not** evaluate preprocessor conditions other than
-a literal 0 or 1, expand macros, or read build files (CMake, Meson, Make) or
-package manifests; includes of every platform branch are recorded, and a C
+a literal 0 or 1, expand macros, or read build files (CMake, Meson, Make);
+includes of every platform branch are recorded, and a C
 header that uses C++ keywords as names may lose definitions.
 
 ## Rationale

@@ -9,8 +9,9 @@
 // project files (the includer's directory, the include paths of a
 // compile_commands.json, then the conventional include/ and src/ directories and a
 // unique file whose path ends in the include), to the C and C++ standard libraries
-// and the system headers, and otherwise to a third-party library named after the
-// include's first directory (resolve.go).
+// and the system headers, to a package a vcpkg or Conan manifest declares
+// (packages.go), and otherwise to a third-party library named after the include's
+// first directory (resolve.go).
 package cpp
 
 import (
@@ -90,6 +91,8 @@ func (Plugin) Claims(f *scan.File) bool {
 }
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
+		{ID: ecoVcpkg, Name: "vcpkg"},
+		{ID: ecoConan, Name: "Conan"},
 		{ID: ecoExternal, Name: "C/C++ external"},
 		{ID: ecoCStd, Name: "C standard library", Std: true},
 		{ID: ecoCppStd, Name: "C++ standard library", Std: true},

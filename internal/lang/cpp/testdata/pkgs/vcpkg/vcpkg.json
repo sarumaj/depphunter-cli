@@ -1,0 +1,33 @@
+{
+  "name": "demo",
+  "version": "1.0.0",
+  "builtin-baseline": "3426db05b996481ca31e95fff3734cf23e0f51bc",
+  "dependencies": [
+    "fmt",
+    { "name": "boost-asio", "version>=": "1.83.0" },
+    {
+      "name": "openssl",
+      "version>=": "3.0.8",
+      "features": ["tools"],
+      "platform": "!windows"
+    },
+    "nlohmann-json",
+    "zlib",
+    "gtest",
+    "eigen3",
+    "sdl2",
+    "glfw3",
+    "qtbase",
+    "curl"
+  ],
+  "features": {
+    "images": {
+      "description": "Image support",
+      "dependencies": [{ "name": "opencv4", "default-features": false }]
+    }
+  },
+  "overrides": [
+    { "name": "fmt", "version": "10.1.1" },
+    { "name": "openssl", "version": "3.2.0" }
+  ]
+}

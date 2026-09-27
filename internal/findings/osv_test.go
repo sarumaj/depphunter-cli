@@ -138,6 +138,40 @@ func TestOSVAsksNothingWhenThereIsNothingToAsk(t *testing.T) {
 	}
 }
 
+// A Conan package is asked about as ConanCenter's; vcpkg has no OSV ecosystem, so a
+// port is not asked about at all.
+//
+// Verifies: REQ-FND-010, REQ-CPP-011
+func TestOSVAsksConanCenterForConanPackages(t *testing.T) {
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Queries []struct {
+				Package struct{ Name, Ecosystem string } `json:"package"`
+				Version string                           `json:"version"`
+			} `json:"queries"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		out := struct {
+			Results []batchResult `json:"results"`
+		}{}
+		for _, q := range body.Queries {
+			asked = append(asked, q.Package.Ecosystem+" "+q.Package.Name+" "+q.Version)
+			out.Results = append(out.Results, batchResult{})
+		}
+		json.NewEncoder(w).Encode(out)
+	}))
+	defer srv.Close()
+	o := &OSV{http: srv.Client(), cache: store.New(t.TempDir(), time.Hour), API: srv.URL}
+	o.Query(context.Background(), []Package{
+		{Ecosystem: "conan", Name: "zlib", Version: "1.2.13"},
+		{Ecosystem: "vcpkg", Name: "zlib", Version: "1.2.13"},
+	})
+	if len(asked) != 1 || asked[0] != "ConanCenter zlib 1.2.13" {
+		t.Errorf("asked %q, want only ConanCenter zlib 1.2.13", asked)
+	}
+}
+
 // An advisory that fixes two release lines separately suggests the fix on the line in
 // use, not whichever the advisory happens to list first.
 func TestOSVSuggestsTheFixOnTheLineInUse(t *testing.T) {
