@@ -273,10 +273,100 @@ func TestParseImport(t *testing.T) {
 			t.Errorf("%q: got %q %v, want %q", in, imp.Module, ok, want)
 		}
 	}
-	src := "import A\n#if canImport(UIKit)\nimport UIKit\n  #elseif os(macOS)\nimport AppKit\n#else\n#endif\n    #expect(a)\n#Preview {}\nif #available(iOS 15, *) {}\nf { unsafe Array($0) }; let unsafe = 1; nonisolated(unsafe) var x\n"
-	want := "import A\n                    \nimport UIKit\n                   \nimport AppKit\n     \n      \n    _expect(a)\n_Preview {}\nif #available(iOS 15, *) {}\nf {        Array($0) }; let unsafe = 1; nonisolated(unsafe) var x\n"
-	if got := string(prepare([]byte(src))); got != want {
-		t.Errorf("prepare: got %q", got)
+}
+
+// The scanner reads imports, declarations and type uses around what would trip a
+// tokenizer: nested comments, interpolations (read as code), raw and multi-line
+// strings, regex literals, macros, `#if` branches (both read, or only the first
+// when they open braces differently) and generic expressions.
+//
+// Verifies: REQ-SWIFT-002, REQ-SWIFT-003, REQ-SWIFT-011, REQ-SWIFT-014
+func TestScanner(t *testing.T) {
+	src := `import A
+/* /* import Nested */ still a comment */
+#if canImport(UIKit)
+import UIKit
+#elseif os(macOS)
+@preconcurrency import AppKit
+#endif
+let quote = #"a "raw" \(NotCode) \#(Raw.value)"#
+let text = """
+    import NotAnImport \(Interp.value) "
+    """
+let re = /"[a-z]+"/
+#if os(iOS)
+extension Box: UIView {
+#else
+extension Box: NSView {
+#endif
+    func draw() { #expect(Macro.x) }
+}
+struct Box<T: Hashable> where T: Sendable {
+    var cache = [Key: Value]()
+    var calls = Set<Item>()
+    static func < (a: Box, b: Box) -> Bool { a.v < b.v }
+    enum Kind { case plain, boxed(Inner, label: Other = .none) }
+}
+`
+	ex, err := Plugin{}.Extract(&scan.File{Path: "x.swift"}, []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	var imports []string
+	refs := map[string]int{}
+	for _, imp := range ex.Imports {
+		if imp.Name == kindImport {
+			imports = append(imports, imp.Spec)
+		} else {
+			refs[imp.Spec] = imp.Line
+		}
+	}
+	if want := []string{"import A", "import UIKit", "@preconcurrency import AppKit"}; !reflect.DeepEqual(imports, want) {
+		t.Errorf("imports %q, want %q", imports, want)
+	}
+	for name, line := range map[string]int{"Raw": 8, "Interp": 10, "UIView": 14, "Macro": 18, "Hashable": 20, "Sendable": 20, "Item": 22, "Inner": 24, "Other": 24} {
+		if refs[name] != line {
+			t.Errorf("ref %s at %d, want %d", name, refs[name], line)
+		}
+	}
+	for _, name := range []string{"NotCode", "NotAnImport", "NSView", "Key", "Value", "Box", "Kind", "T"} {
+		if _, ok := refs[name]; ok {
+			t.Errorf("unexpected ref %s", name)
+		}
+	}
+	symbols := map[string]string{}
+	for _, s := range ex.Symbols {
+		symbols[s.Name] = s.Kind
+	}
+	want := map[string]string{"quote": "var", "text": "var", "re": "var", "Box": "extension", "Box.draw": "method",
+		"Box@20": "type", "Box.cache": "property", "Box.calls": "property", "Box.Kind": "type"}
+	if !reflect.DeepEqual(symbols, want) {
+		t.Errorf("symbols %v\nwant %v", symbols, want)
+	}
+}
+
+// Whatever a file holds, cut anywhere, the scanner returns: every prefix of a file
+// full of unfinished constructs extracts without a panic.
+//
+// Verifies: REQ-SWIFT-014
+func TestTruncated(t *testing.T) {
+	src := []byte(`@testable import A.B
+extension Array<Box<Int>>: P where Element == Int { }
+func f<T: P & Q>(_ x: inout [String: (Int) async throws(E) -> Void] = [:], y: T...) -> some View {
+    let s = "\(a + "\(b)") \( { $0 } (1) )" + #"\#(c)"# + """
+        \(d)
+        """
+    let r = #/a\/b/# ; let q = x / y / z
+    guard let v = w as? Foo<Bar>, case .a(let z) = v else { return }
+    for i: Int in 0..<n where i > 0 { _ = Foo<A, B>() ?? [Baz].init() }
+    let c = { [weak self] (a: A, b) -> B in a }
+    /* /* unterminated
+}
+`)
+	for i := range len(src) + 1 {
+		if _, err := (Plugin{}).Extract(&scan.File{Path: "x.swift"}, src[:i]); err != nil {
+			t.Fatalf("prefix %d: %v", i, err)
+		}
 	}
 }
 

@@ -212,9 +212,8 @@ requirements of type `limitation` in their scopes:
   applications, and a require of an undeclared gem is named by heuristics.
 - Swift is read without running SwiftPM or Xcode: an Xcode project's targets
   are not read (module directories are guessed by name), `Package.resolved`
-  has no package-to-package edges without a checkout, type references are
-  matched by name, and files the grammar cannot fully parse give partial
-  results.
+  has no package-to-package edges without a checkout, and type references are
+  matched by name by a scanner that does not type-check.
 - Objective-C is read without Xcode or CocoaPods: header search paths of an
   Xcode project or `.xcconfig` are not read, pods are matched to headers and
   modules by name, private spec repositories are never fetched, and no
