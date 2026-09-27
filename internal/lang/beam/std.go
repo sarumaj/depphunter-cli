@@ -146,3 +146,9 @@ func underscore(s string) string {
 	}
 	return b.String()
 }
+
+// OTPModule reports whether an Erlang module is one of Erlang/OTP's, for the
+// Gleam plugin's @external(erlang, ...) targets.
+//
+// Implements: REQ-BEAM-007
+func OTPModule(m string) bool { return otpModule(m) }

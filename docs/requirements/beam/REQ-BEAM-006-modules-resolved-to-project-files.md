@@ -18,7 +18,8 @@ umbrella applications included, where a definition outside test code wins),
 else - once Elixir's own modules, curated package prefixes and fetched
 packages are ruled out - to the file defining its longest defined prefix
 (`MyAppWeb.Router.Helpers` is generated in `MyAppWeb.Router`); an Erlang module
-to `<module>.erl` (or the `.xrl`/`.yrl` it is generated from); a reference
+to `<module>.erl` (or the `.xrl`/`.yrl` it is generated from), and one naming a
+compiled Gleam module (`gleam@list`) as REQ-GLEAM-009 says; a reference
 whose first segment the file does not alias, through the aliases that the
 quote blocks of the modules it uses inject (`use MyApp.Schema`,
 `use MyAppWeb, :controller`), following their own uses. A reference in the
