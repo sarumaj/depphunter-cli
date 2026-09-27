@@ -12,8 +12,10 @@ verification:
 
 ## Statement
 
-The index client **shall not** ask a Maven repository what a package depends on,
-and **shall** record the question as unanswerable for this ecosystem.
+The index client **shall not** ask a Maven repository what a package named by
+its group alone depends on, and **shall** record the question as unanswerable
+for this ecosystem. A package named `group:artifact` is asked
+(REQ-SUP-056).
 
 ## Rationale
 

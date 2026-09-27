@@ -12,12 +12,14 @@ import (
 	"os"
 	"path/filepath"
 	"reflect"
+	"slices"
 	"strings"
 	"testing"
 	"time"
 
 	"github.com/sarumaj/depphunter-cli/internal/auth"
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
 // Verifies: REQ-SUP-024
@@ -1057,5 +1059,123 @@ repo = "https://github.com/acme/AcmeRegistry.git"
 	cfg = Discover(nil, env(map[string]string{"JULIA_DEPOT_PATH": other}), home)
 	if idx, _ := cfg.For(Julia, "AcmeBilling"); idx != "https://raw.githubusercontent.com/JuliaRegistries/General/master" {
 		t.Errorf("depot path not followed: %s", idx)
+	}
+}
+
+// A Maven artifact named group:artifact (the Clojure plugin's) is read from its POM:
+// the release maven-metadata.xml names when nothing pins it, compile and runtime
+// dependencies that are not optional, versions from properties and from the parent
+// POM's dependencyManagement, and the parent's own dependencies. With a Clojure
+// manifest in the repository, what Maven Central does not have is asked of Clojars.
+//
+// Verifies: REQ-SUP-056
+func TestMavenArtifactDependencies(t *testing.T) {
+	var asked []string
+	central := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, "central "+r.URL.Path)
+		switch r.URL.Path {
+		case "/org/clojure/clojure/1.11.1/clojure-1.11.1.pom":
+			w.Write([]byte(`<project><groupId>org.clojure</groupId><artifactId>clojure</artifactId><version>1.11.1</version>
+<parent><groupId>org.clojure</groupId><artifactId>pom.contrib</artifactId><version>1.1.0</version></parent>
+<properties><spec.version>0.3.218</spec.version></properties>
+<dependencies>
+ <dependency><groupId>org.clojure</groupId><artifactId>spec.alpha</artifactId><version>${spec.version}</version></dependency>
+ <dependency><groupId>org.clojure</groupId><artifactId>core.specs.alpha</artifactId></dependency>
+ <dependency><groupId>junit</groupId><artifactId>junit</artifactId><version>4.13</version><scope>test</scope></dependency>
+ <dependency><groupId>org.x</groupId><artifactId>opt</artifactId><version>1</version><optional>true</optional></dependency>
+</dependencies></project>`))
+		case "/org/clojure/pom.contrib/1.1.0/pom.contrib-1.1.0.pom":
+			w.Write([]byte(`<project><dependencyManagement><dependencies>
+ <dependency><groupId>org.clojure</groupId><artifactId>core.specs.alpha</artifactId><version>0.2.62</version></dependency>
+</dependencies></dependencyManagement>
+<dependencies><dependency><groupId>org.parent</groupId><artifactId>inherited</artifactId><version>[1.0,2.0)</version></dependency></dependencies></project>`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(central.Close)
+	clojars := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, "clojars "+r.URL.Path)
+		switch r.URL.Path {
+		case "/cheshire/cheshire/maven-metadata.xml":
+			w.Write([]byte(`<metadata><versioning><latest>6.0.0-SNAPSHOT</latest><release>5.12.0</release><versions><version>5.11.0</version><version>5.12.0</version></versions></versioning></metadata>`))
+		case "/cheshire/cheshire/5.12.0/cheshire-5.12.0.pom":
+			w.Write([]byte(`<project><dependencies><dependency><groupId>com.fasterxml.jackson.core</groupId><artifactId>jackson-core</artifactId><version>2.15.2</version></dependency></dependencies></project>`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(clojars.Close)
+	defer func(central, clojars string) { public[Maven], clojarsURL = central, clojars }(public[Maven], clojarsURL)
+	public[Maven], clojarsURL = central.URL, clojars.URL
+
+	cfg := New()
+	cfg.clojure = true
+	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
+	got := c.Dependencies(lang.Target{Ecosystem: Maven, Package: "org.clojure:clojure", Version: "1.11.1", Pinned: true})
+	want := []lang.Target{
+		{Ecosystem: Maven, Package: "org.clojure:spec.alpha", Version: "0.3.218", Pinned: true},
+		{Ecosystem: Maven, Package: "org.clojure:core.specs.alpha", Version: "0.2.62", Pinned: true},
+		{Ecosystem: Maven, Package: "org.parent:inherited", Version: "[1.0,2.0)"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("clojure: got %+v, want %+v", got, want)
+	}
+	// Not on Central: Clojars answers, for the release its metadata names.
+	got = c.Dependencies(lang.Target{Ecosystem: Maven, Package: "cheshire:cheshire", Version: "RELEASE"})
+	if len(got) != 1 || got[0].Package != "com.fasterxml.jackson.core:jackson-core" || !got[0].Pinned {
+		t.Errorf("cheshire: got %+v", got)
+	}
+	if !slices.Contains(asked, "clojars /cheshire/cheshire/5.12.0/cheshire-5.12.0.pom") {
+		t.Errorf("Clojars not asked: %v", asked)
+	}
+	// Without a Clojure manifest Clojars is not asked; a group alone is never asked.
+	asked = nil
+	cfg.clojure = false
+	c = NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
+	c.Dependencies(lang.Target{Ecosystem: Maven, Package: "cheshire:cheshire", Version: "5.12.0", Pinned: true})
+	c.Dependencies(lang.Target{Ecosystem: Maven, Package: "org.slf4j", Version: "2.0.9", Pinned: true})
+	for _, a := range asked {
+		if strings.HasPrefix(a, "clojars") || strings.Contains(a, "slf4j") {
+			t.Errorf("asked %s", a)
+		}
+	}
+}
+
+// Verifies: REQ-SUP-056
+func TestClojureRepositoryDiscovery(t *testing.T) {
+	dir := t.TempDir()
+	write := func(name, body string) *scan.File {
+		p := filepath.Join(dir, name)
+		os.MkdirAll(filepath.Dir(p), 0o755)
+		os.WriteFile(p, []byte(body), 0o644)
+		return &scan.File{Path: name, Abs: p}
+	}
+	files := []*scan.File{
+		write("deps.edn", `{:mvn/repos {"central" {:url "https://repo1.maven.org/maven2/"} "acme" {:url "https://maven.acme.example/releases"}}}`),
+		write("lein/project.clj", `(defproject a "1" :repositories [["clojars" "https://repo.clojars.org/"] ["corp" {:url "https://nexus.corp.example/repo"}]])`),
+	}
+	cfg := Discover(files, env(nil), "")
+	var urls []string
+	for _, s := range cfg.Sources(Maven) {
+		urls = append(urls, s.URL)
+		if s.Trusted {
+			t.Errorf("%s is trusted", s.URL)
+		}
+	}
+	if !reflect.DeepEqual(urls, []string{"https://maven.acme.example/releases", "https://nexus.corp.example/repo"}) {
+		t.Errorf("sources %v", urls)
+	}
+	var report []string
+	for _, s := range cfg.Report() {
+		if s.Ecosystem == Maven && s.Origin == OriginPublic {
+			report = append(report, s.URL)
+		}
+	}
+	if !reflect.DeepEqual(report, []string{public[Maven], Clojars}) {
+		t.Errorf("public Maven indexes reported: %v", report)
+	}
+	if !MavenPublic("https://clojars.org/repo") || MavenPublic("https://clojars.example/repo") {
+		t.Error("MavenPublic")
 	}
 }

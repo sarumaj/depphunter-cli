@@ -12,8 +12,10 @@ verification:
 
 ## Statement
 
-The system **shall not** ask a package index what a Maven package depends on,
-and **shall** record such a question as unanswered for want of support.
+The system **shall not** ask a package index what a Maven package named by its
+group alone (as the Java, Kotlin and Scala plugins name them) depends on, and
+**shall** record such a question as unanswered for want of support. A package
+named `group:artifact` (the Clojure plugin's) is asked (REQ-SUP-056).
 
 ## Rationale
 

@@ -30,6 +30,8 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 		"zig-cache/h/timestamp.zig":          "pub const x = 1;\n",
 		"zig-out/bin/gen.zig":                "pub const x = 1;\n",
 		"zig-pkg/x-0.1.0-AAAA/build.zig.zon": ".{}\n",
+		".cpcache/1234.basis":                "{}\n",
+		".shadow-cljs/builds/app/x.edn":      "{}\n",
 		"img.bin":                            "\x00\x01\x02",
 	}
 	for p, c := range files {
@@ -351,6 +353,7 @@ func TestScanTellsPerl(t *testing.T) {
 		"t/plain.t":         "\nuse strict;\n",
 		"templates/page.t":  "<h1>[% title %]</h1>\n",
 		"script/shop":       "#!/usr/bin/env perl\nuse strict;\n",
+		"script/bbtool":     "#!/usr/bin/env bb\n(println 1)\n",
 		"script/raku":       "#!/usr/bin/env perl6\nsay 1;\n",
 		"cgi-bin/index.cgi": "#!/usr/bin/perl5.36.0\nprint 1;\n",
 		"lib/Shop.pm":       "package Shop;\n1;\n",
@@ -374,7 +377,7 @@ func TestScanTellsPerl(t *testing.T) {
 		// A fact alone reads as neither; the extension's language stays.
 		"prolog/facts.pl": "Perl",
 		"t/basic.t":       "Perl", "t/plain.t": "Perl", "templates/page.t": "",
-		"script/shop": "Perl", "script/raku": "", "cgi-bin/index.cgi": "Perl",
+		"script/shop": "Perl", "script/raku": "", "script/bbtool": "Clojure", "cgi-bin/index.cgi": "Perl",
 		"lib/Shop.pm": "Perl", "app.psgi": "Perl", "cpanfile": "Perl", "cpanfile.snapshot": "Carton",
 		"dist.ini": "Dist::Zilla", "Makefile.PL": "Perl",
 	}

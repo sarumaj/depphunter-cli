@@ -35,6 +35,29 @@ func Pinned(spec string) bool {
 	return exact(s)
 }
 
+// PinnedMaven reports whether a Maven version names one artifact. A plain version
+// does, whatever its shape (Spring writes 1.2.3.RELEASE); a range, the LATEST and
+// RELEASE keywords, Gradle's and Ivy's dynamic versions (1.+, latest.release), an
+// unexpanded property and a snapshot - republished under the same name - do not.
+//
+// Implements: REQ-JAVA-008, REQ-CLOJURE-008
+func PinnedMaven(v string) bool {
+	v = strings.TrimSpace(v)
+	switch {
+	case v == "", strings.Contains(v, "$"), strings.Contains(v, "+"):
+		return false
+	case strings.HasPrefix(strings.ToLower(v), "latest."):
+		return false
+	case strings.HasPrefix(v, "["), strings.HasPrefix(v, "("):
+		return Pinned(v) // "[1.2.3]" is one version, "[1.0,2.0)" is not
+	case strings.EqualFold(v, "LATEST"), strings.EqualFold(v, "RELEASE"):
+		return false
+	case strings.HasSuffix(strings.ToUpper(v), "-SNAPSHOT"):
+		return false
+	}
+	return true
+}
+
 // Commit reports whether ref is a full git commit, the only git reference that cannot
 // be moved: a tag points wherever its owner last pushed it.
 //

@@ -92,6 +92,34 @@ var public = map[string]string{
 	Julia: "https://raw.githubusercontent.com/JuliaRegistries/General/master",
 }
 
+// Clojars is the Maven repository Clojure's libraries are published to. Leiningen,
+// tools.deps and babashka search it after Maven Central without being told to, so a
+// repository with a Clojure manifest has it as a public index of its own (see
+// Config.clojure).
+const Clojars = "https://repo.clojars.org"
+
+// clojarsURL is where Clojars is asked; tests point it at their own server.
+var clojarsURL = Clojars
+
+// MavenPublic reports whether a Maven repository URL is Maven Central (any of its
+// hosts) or Clojars, which Clojure manifests name as often as a private one: they
+// are public indexes, not ones the repository brings along.
+//
+// Implements: REQ-SUP-056
+func MavenPublic(repo string) bool {
+	u, err := url.Parse(strings.TrimSpace(repo))
+	if err != nil {
+		return false
+	}
+	switch strings.ToLower(u.Hostname()) {
+	case "repo.maven.apache.org", "repo1.maven.org", "central.maven.org", "repo.clojars.org":
+		return true
+	case "clojars.org":
+		return strings.HasPrefix(u.Path, "/repo")
+	}
+	return false
+}
+
 // HackageItself reports whether a repository URL is Hackage (any scheme, with or
 // without a trailing slash), which cabal configurations name as often as they name a
 // mirror: it is the public index, not one the repository brings along.
@@ -186,6 +214,10 @@ type Config struct {
 	// registry: without it every one of its packages is marked, and a warning that
 	// is always on is a warning nobody reads.
 	trusted map[string]bool
+	// clojure says the repository has a Clojure manifest (deps.edn, project.clj,
+	// shadow-cljs.edn, bb.edn, build.boot), whose tools search Clojars after Maven
+	// Central: Maven artifacts are then asked of both.
+	clojure bool
 	// credentials receives what an index URL carries in it - the form a private pip
 	// or Cargo mirror is usually configured with - and is what the URL is stripped
 	// of before it is recorded. nil strips it and keeps nothing.
@@ -247,6 +279,7 @@ func (c *Config) Add(eco string, s Source) {
 
 // forgetProject drops what the repository declared, before it is read again.
 func (c *Config) forgetProject() {
+	c.clojure = false
 	for eco, sources := range c.sources {
 		c.sources[eco] = slices.DeleteFunc(sources, func(s Source) bool { return s.Origin == OriginProject })
 	}
@@ -266,6 +299,9 @@ func (c *Config) Report() []trace.Source {
 	for eco := range c.sources {
 		ecosystems = append(ecosystems, eco)
 	}
+	if _, listed := c.sources[Maven]; !listed && c.clojure {
+		ecosystems = append(ecosystems, Maven) // Central and Clojars, which Clojure's tools search
+	}
 	sort.Strings(ecosystems)
 	var out []trace.Source
 	for _, eco := range ecosystems {
@@ -277,6 +313,9 @@ func (c *Config) Report() []trace.Source {
 		}
 		if url := public[eco]; url != "" && !c.has(eco, url) {
 			out = append(out, trace.Source{Ecosystem: eco, URL: url, Origin: OriginPublic, Trusted: true})
+		}
+		if eco == Maven && c.clojure && !c.has(eco, Clojars) {
+			out = append(out, trace.Source{Ecosystem: eco, URL: Clojars, Origin: OriginPublic, Trusted: true})
 		}
 	}
 	return out
@@ -373,7 +412,9 @@ func matches(eco, scope, pkg string) bool {
 	case NPM:
 		return strings.HasPrefix(pkg, scope+"/")
 	case Maven:
-		return pkg == scope || strings.HasPrefix(pkg, scope+".")
+		// A Clojure plugin's package is group:artifact; the scope is a group prefix.
+		group, _, _ := strings.Cut(pkg, ":")
+		return group == scope || strings.HasPrefix(group, scope+".")
 	}
 	return strings.EqualFold(scope, pkg)
 }

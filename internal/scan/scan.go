@@ -54,6 +54,7 @@ var defaultIgnore = map[string]bool{
 	".build": true, ".dart_tool": true, "_build": true, "dist-newstyle": true, ".stack-work": true,
 	".terraform": true, ".terragrunt-cache": true, "lua_modules": true, "_opam": true,
 	".zig-cache": true, "zig-cache": true, "zig-out": true, "zig-pkg": true,
+	".cpcache": true, ".shadow-cljs": true,
 }
 
 func Scan(ctx context.Context, root string, opts Options) ([]*File, error) {
@@ -218,6 +219,8 @@ func measure(f *File, maxSize int64) {
 		f.Lang = "Shell"
 	case f.Lang == "" && PerlInterpreter(f.Interpreter):
 		f.Lang = "Perl"
+	case f.Lang == "" && f.Interpreter == "bb":
+		f.Lang = "Clojure" // a babashka script
 	}
 	var lines, last int
 	buf := make([]byte, 32*1024)
