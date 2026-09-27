@@ -812,3 +812,62 @@ func TestLuaRocksDependencies(t *testing.T) {
 		srv.Close()
 	}
 }
+
+// MetaCPAN's release endpoint lists a distribution's latest release's dependencies by
+// module; the run-time requirements are kept, without perl, each module named by the
+// distribution the module endpoint says provides it (asked once), a module only perl
+// provides (or one MetaCPAN does not know) left out, and a version is a minimum,
+// never pinned.
+//
+// Verifies: REQ-SUP-053
+func TestCPANDependencies(t *testing.T) {
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Path)
+		switch r.URL.Path {
+		case "/v1/release/Plack":
+			w.Write([]byte(`{"distribution": "Plack", "version": "1.0050", "dependency": [
+				{"module": "perl", "version": "5.012000", "phase": "runtime", "relationship": "requires"},
+				{"module": "HTTP::Message", "version": "5.814", "phase": "runtime", "relationship": "requires"},
+				{"module": "HTTP::Headers", "version": "0", "phase": "runtime", "relationship": "requires"},
+				{"module": "Try::Tiny", "version": 0, "phase": "runtime", "relationship": "requires"},
+				{"module": "Carp", "version": "0", "phase": "runtime", "relationship": "requires"},
+				{"module": "Plack::Util", "version": "0", "phase": "runtime", "relationship": "requires"},
+				{"module": "Gone::Module", "version": "0", "phase": "runtime", "relationship": "requires"},
+				{"module": "Test::More", "version": "0.88", "phase": "test", "relationship": "requires"},
+				{"module": "FCGI", "version": "0", "phase": "runtime", "relationship": "suggests"}
+			]}`))
+		case "/v1/module/HTTP::Message", "/v1/module/HTTP::Headers":
+			w.Write([]byte(`{"distribution": "HTTP-Message"}`))
+		case "/v1/module/Try::Tiny":
+			w.Write([]byte(`{"distribution": "Try-Tiny"}`))
+		case "/v1/module/Carp":
+			w.Write([]byte(`{"distribution": "perl"}`))
+		case "/v1/module/Plack::Util":
+			w.Write([]byte(`{"distribution": "Plack"}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	c := clientFor(t, CPAN, srv.URL, "")
+	got := c.Dependencies(lang.Target{Ecosystem: CPAN, Package: "Plack", Version: "1.0050", Pinned: true})
+	want := []lang.Target{
+		{Ecosystem: CPAN, Package: "HTTP-Message", Version: ">= 5.814"},
+		{Ecosystem: CPAN, Package: "Try-Tiny"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+	wantAsked := []string{"/v1/release/Plack", "/v1/module/HTTP::Message", "/v1/module/HTTP::Headers",
+		"/v1/module/Try::Tiny", "/v1/module/Carp", "/v1/module/Plack::Util", "/v1/module/Gone::Module"}
+	if !reflect.DeepEqual(asked, wantAsked) {
+		t.Errorf("asked %v", asked)
+	}
+	if got := c.Dependencies(lang.Target{Ecosystem: CPAN, Package: "Absent"}); len(got) != 0 {
+		t.Errorf("absent: %+v", got)
+	}
+	if idx, known := Discover(nil, env(nil), "").For(CPAN, "Plack"); idx != "https://fastapi.metacpan.org" || !known {
+		t.Errorf("default index: %s (known %v)", idx, known)
+	}
+}

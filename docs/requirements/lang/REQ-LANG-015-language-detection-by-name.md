@@ -23,16 +23,20 @@ Haskell's `cabal.project`, `stack.yaml` and `package.yaml`, Terraform's
 `CMakeUserPresets.json`, CocoaPods' `Podfile`, `Podfile.lock` and
 `*.podspec`, Carthage's `Cartfile`, `Cartfile.private` and
 `Cartfile.resolved`, LuaRocks' `luarocks.lock`, luacheck's `.luacheckrc` and
-busted's `.busted`, the shells' and direnv's startup files (`.bashrc`,
+busted's `.busted`, Perl's `cpanfile`, Carton's `cpanfile.snapshot` and
+Dist::Zilla's `dist.ini`, the shells' and direnv's startup files (`.bashrc`,
 `.zshrc`, `.profile`, `.envrc` and the others of REQ-SHELL-001), and the
 Dockerfile names of REQ-DOCKER-001), or, for a file neither names, from a
-`#!` line running a shell (REQ-SHELL-001), and **shall** leave the language
-empty when none is known. A `.ts` file whose first bytes, after an optional
-byte order mark and whitespace, are an XML declaration (`<?xml`) or a document
-type (`<!DOCTYPE`) is a Qt Linguist translation and **shall** be XML rather than
-TypeScript. A `.m` file is Objective-C only when its head shows it, else MATLAB
-or Mercury, and a `.h` file whose head shows Objective-C **shall** be
-Objective-C rather than C (REQ-OBJC-001); `.mm` is Objective-C++.
+`#!` line running a shell (REQ-SHELL-001) or perl (REQ-PERL-001), and
+**shall** leave the language empty when none is known. A `.ts` file whose
+first bytes, after an optional byte order mark and whitespace, are an XML
+declaration (`<?xml`) or a document type (`<!DOCTYPE`) is a Qt Linguist
+translation and **shall** be XML rather than TypeScript. A `.m` file is
+Objective-C only when its head shows it, else MATLAB or Mercury, and a `.h`
+file whose head shows Objective-C **shall** be Objective-C rather than C
+(REQ-OBJC-001); `.mm` is Objective-C++. A `.pl` file whose head shows Prolog
+and nothing of Perl **shall** be Prolog, and a `.t` file whose head shows
+nothing of Perl **shall** have no language (REQ-PERL-001).
 
 ## Rationale
 

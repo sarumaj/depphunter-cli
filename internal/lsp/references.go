@@ -89,6 +89,11 @@ var Servers = []Server{
 	// answers no references.
 	{Name: "lua", Open: true, Exts: map[string]string{".lua": "lua"}, Commands: [][]string{{"lua-language-server"}}},
 	{Name: "luau", Open: true, Exts: map[string]string{".luau": "luau"}, Commands: [][]string{{"luau-lsp", "lsp"}}},
+	// Perl Navigator and PLS are standalone servers; Perl::LanguageServer runs inside
+	// perl, which is on PATH wherever Perl is, so without the module installed its
+	// initialize fails, is logged, and the server is passed over.
+	{Name: "perl", Open: true, Exts: map[string]string{".pl": "perl", ".pm": "perl", ".t": "perl", ".psgi": "perl"},
+		Commands: [][]string{{"perlnavigator", "--stdio"}, {"pls"}, {"perl", "-MPerl::LanguageServer", "-e", "Perl::LanguageServer::run"}}},
 	// neocmakelsp and cmake-language-server both answer references for CMake's
 	// functions, macros and variables; a CMakeLists.txt is known by its name.
 	{Name: "cmake", Open: true, Exts: map[string]string{".cmake": "cmake"}, Names: map[string]string{"CMakeLists.txt": "cmake"},

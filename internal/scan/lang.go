@@ -16,7 +16,7 @@ var byExt = map[string]string{
 	".c": "C", ".h": "C", ".cc": "C++", ".cpp": "C++", ".cxx": "C++", ".c++": "C++", ".hpp": "C++", ".hh": "C++",
 	".hxx": "C++", ".h++": "C++", ".ipp": "C++", ".inl": "C++",
 	".m": "Objective-C", ".mm": "Objective-C++", ".podspec": "Ruby", ".swift": "Swift", ".dart": "Dart",
-	".rb": "Ruby", ".rake": "Ruby", ".gemspec": "Ruby", ".ru": "Ruby", ".php": "PHP", ".phtml": "PHP", ".pl": "Perl", ".lua": "Lua", ".luau": "Luau", ".tl": "Teal", ".rockspec": "Lua", ".r": "R", ".rmd": "R Markdown", ".qmd": "Quarto", ".rprofile": "R",
+	".rb": "Ruby", ".rake": "Ruby", ".gemspec": "Ruby", ".ru": "Ruby", ".php": "PHP", ".phtml": "PHP", ".pl": "Perl", ".pm": "Perl", ".t": "Perl", ".psgi": "Perl", ".lua": "Lua", ".luau": "Luau", ".tl": "Teal", ".rockspec": "Lua", ".r": "R", ".rmd": "R Markdown", ".qmd": "Quarto", ".rprofile": "R",
 	".ex": "Elixir", ".exs": "Elixir", ".erl": "Erlang", ".hrl": "Erlang", ".hs": "Haskell", ".lhs": "Haskell", ".hs-boot": "Haskell", ".hsc": "Haskell", ".cabal": "Cabal", ".clj": "Clojure",
 	".zig": "Zig", ".nim": "Nim", ".jl": "Julia",
 	".sh": "Shell", ".bash": "Shell", ".zsh": "Shell", ".ksh": "Shell", ".bats": "Shell", ".zsh-theme": "Shell", ".ps1": "PowerShell", ".psm1": "PowerShell", ".psd1": "PowerShell",
@@ -33,6 +33,7 @@ var byName = map[string]string{
 	"CMakeLists.txt": "CMake", "CMakePresets.json": "CMake", "CMakeUserPresets.json": "CMake",
 	"Jenkinsfile": "Groovy", "Gemfile": "Ruby", "Rakefile": "Ruby", "Guardfile": "Ruby", "Capfile": "Ruby",
 	"rebar.config": "Erlang", "rebar.lock": "Erlang", "mix.lock": "Elixir",
+	"cpanfile": "Perl", "cpanfile.snapshot": "Carton", "dist.ini": "Dist::Zilla",
 	"luarocks.lock": "Lua", ".luacheckrc": "Lua", ".busted": "Lua",
 	"DESCRIPTION": "R", "NAMESPACE": "R", "renv.lock": "R", "packrat.lock": "R",
 	"cabal.project": "Cabal", "cabal.project.freeze": "Cabal", "cabal.project.local": "Cabal",
@@ -150,6 +151,50 @@ func notObjC(head []byte) string {
 		}
 	}
 	return "MATLAB"
+}
+
+// perlMarker reports whether a line of a file's head starts as only Perl (among the
+// languages sharing ".pl" and ".t") starts one: use, no, require, package, sub, my,
+// our, local, BEGIN or POD. Prolog writes none of them at the start of a line; its
+// use_module has no space.
+//
+// Implements: REQ-LANG-015, REQ-PERL-001
+func perlMarker(head []byte) bool {
+	for _, line := range bytes.Split(head, []byte("\n")) {
+		line = bytes.TrimLeft(line, " \t\xef\xbb\xbf")
+		for _, kw := range []string{"use ", "no ", "require ", "package ", "sub ", "my ", "our ", "local ", "BEGIN", "=pod", "=head", "=encoding"} {
+			if bytes.HasPrefix(line, []byte(kw)) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// prologClause reports whether a line of a file's head is Prolog: a directive
+// (":- module(shop, [])") or a clause with a body ("price(X) :- ...", a DCG rule
+// "greeting --> ...").
+//
+// Implements: REQ-LANG-015, REQ-PERL-001
+func prologClause(head []byte) bool {
+	for _, line := range bytes.Split(head, []byte("\n")) {
+		line = bytes.TrimSpace(line)
+		if bytes.HasPrefix(line, []byte(":-")) {
+			return true
+		}
+		if len(line) > 0 && line[0] >= 'a' && line[0] <= 'z' && (bytes.Contains(line, []byte(") :-")) || bytes.Contains(line, []byte(") -->"))) {
+			return true
+		}
+	}
+	return false
+}
+
+// PerlInterpreter reports whether a "#!" line's program is Perl 5: perl, or a
+// versioned perl5.36.0 (not perl6, which is Raku).
+//
+// Implements: REQ-PERL-001
+func PerlInterpreter(name string) bool {
+	return name == "perl" || strings.HasPrefix(name, "perl5")
 }
 
 // shells are the interpreters whose scripts are shell scripts.

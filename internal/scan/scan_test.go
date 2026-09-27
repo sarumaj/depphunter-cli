@@ -326,3 +326,56 @@ func TestScanTellsObjectiveC(t *testing.T) {
 		}
 	}
 }
+
+// ".pl" is Perl's and Prolog's, and ".t" Perl's tests only by convention: a perl
+// "#!" line or a line starting as only Perl starts one (use, package, sub, my...)
+// makes a file Perl; a ".pl" with Prolog directives or clauses and nothing of Perl
+// is Prolog, a ".t" with nothing of Perl has no language. A script without an
+// extension whose "#!" line runs perl (not perl6) is Perl.
+//
+// Verifies: REQ-LANG-015, REQ-PERL-001
+func TestScanTellsPerl(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"bin/tool.pl":       "#!/usr/bin/perl -w\nprint 1;\n",
+		"lib/helper.pl":     "use strict;\nour %DATA;\n1;\n",
+		"prolog/family.pl":  "% family\n:- module(family, [parent/2]).\nparent(tom, bob).\n",
+		"prolog/rules.pl":   "ancestor(X, Y) :- parent(X, Y).\n",
+		"prolog/facts.pl":   "parent(tom, bob).\n",
+		"t/basic.t":         "#!perl -T\nuse Test::More;\n",
+		"t/plain.t":         "\nuse strict;\n",
+		"templates/page.t":  "<h1>[% title %]</h1>\n",
+		"script/shop":       "#!/usr/bin/env perl\nuse strict;\n",
+		"script/raku":       "#!/usr/bin/env perl6\nsay 1;\n",
+		"cgi-bin/index.cgi": "#!/usr/bin/perl5.36.0\nprint 1;\n",
+		"lib/Shop.pm":       "package Shop;\n1;\n",
+		"app.psgi":          "my $app = sub { [200, [], ['ok']] };\n",
+		"cpanfile":          "requires 'Plack';\n",
+		"cpanfile.snapshot": "# carton snapshot format: version 1.0\n",
+		"dist.ini":          "name = Shop\n",
+		"Makefile.PL":       "use ExtUtils::MakeMaker;\n",
+	}
+	for p, c := range files {
+		abs := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(abs), 0o755)
+		os.WriteFile(abs, []byte(c), 0o644)
+	}
+	got, err := Scan(context.Background(), root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"bin/tool.pl": "Perl", "lib/helper.pl": "Perl", "prolog/family.pl": "Prolog", "prolog/rules.pl": "Prolog",
+		// A fact alone reads as neither; the extension's language stays.
+		"prolog/facts.pl": "Perl",
+		"t/basic.t":       "Perl", "t/plain.t": "Perl", "templates/page.t": "",
+		"script/shop": "Perl", "script/raku": "", "cgi-bin/index.cgi": "Perl",
+		"lib/Shop.pm": "Perl", "app.psgi": "Perl", "cpanfile": "Perl", "cpanfile.snapshot": "Carton",
+		"dist.ini": "Dist::Zilla", "Makefile.PL": "Perl",
+	}
+	for _, f := range got {
+		if f.Lang != want[f.Path] {
+			t.Errorf("%s: lang %q, want %q", f.Path, f.Lang, want[f.Path])
+		}
+	}
+}
