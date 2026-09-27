@@ -230,6 +230,7 @@
     "cpath",
     "cpcache",
     "cpio",
+    "cplus",
     "cpmaddpackage",
     "cpmdeclarepackage",
     "cpmfindpackage",

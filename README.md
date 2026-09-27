@@ -1694,9 +1694,9 @@ name stays as written, and `%%%` is read as `%%`, since the Scala.js or Native
 platform suffix depends on the project.
 
 C and C++ are one plugin, since their files include each other: `.c` files are
-parsed as C and every other extension (`.h`, `.cc`, `.cpp`, `.cxx`, `.c++`,
-`.hpp`, `.hh`, `.hxx`, `.h++`, `.ipp`, `.inl`) as C++, whose grammar reads
-nearly all C headers too. Includes are read the way the preprocessor reads
+read as C and every other extension (`.h`, `.cc`, `.cpp`, `.cxx`, `.c++`,
+`.hpp`, `.hh`, `.hxx`, `.h++`, `.ipp`, `.inl`) as C++, which covers nearly all
+C headers too. Includes are read the way the preprocessor reads
 them, line by line, and resolved in the compilers' order: `#include "x"` first
 beside the including file; then the include directories of a
 `compile_commands.json` (at the root or in a `build*/` or `cmake-build-*/`
@@ -2121,18 +2121,22 @@ the zsh files measured. See [Shell scripts](#shell-scripts).
 CMake files are read by a small scanner: the tree-sitter cmake grammar parsed
 every file measured correctly but took 6.4 ms per file on average.
 
+C and C++ definitions are read by a scanner too: the tree-sitter C and C++
+grammars parsed more than half of the files of the projects measured with
+errors, and grpc's generated protobuf tables ran each into the parse bound,
+90 s for one analysis (3.5 s with the scanner).
+
 Files in other languages appear on the map without dependency edges. Parsing
 uses a pure-Go tree-sitter runtime for JavaScript/TypeScript, Python, Rust,
-Java, Kotlin, Scala, C, C++, PHP and Ruby; Go uses the standard library's own
-parser, CI, Compose and Buf files a YAML parser, and C#, PowerShell, Markdown,
+Java, Kotlin, Scala, PHP and Ruby; Go uses the standard library's own parser,
+CI, Compose and Buf files a YAML parser, and C, C++, C#, PowerShell, Markdown,
 Dart, Elixir, Erlang, R, Haskell, HCL, Protocol Buffers, shell scripts, CMake
-files, Swift, Objective-C, CocoaPods and Carthage manifests, Lua, Luau, Teal
-and LuaRocks files, Perl and its CPAN manifests, OCaml, dune and opam
-files, Julia, Zig and `build.zig.zon`, Clojure and its EDN manifests,
-Bazel's Starlark files, Dockerfiles, the markup of
-Vue, Svelte and Astro components, R Markdown chunks and C preprocessor
-directives small built-in scanners — so the binary continues to cross-compile
-without a C toolchain.
+files, Swift, Objective-C, CocoaPods and Carthage manifests, Lua, Luau, Teal and
+LuaRocks files, Perl and its CPAN manifests, OCaml, dune and opam files, Julia,
+Zig and `build.zig.zon`, Clojure and its EDN manifests, Bazel's Starlark files,
+Dockerfiles, the markup of Vue, Svelte and Astro components, R Markdown chunks
+and C preprocessor directives small built-in scanners — so the binary continues
+to cross-compile without a C toolchain.
 
 ## Security
 

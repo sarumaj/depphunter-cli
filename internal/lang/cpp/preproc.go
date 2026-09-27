@@ -49,14 +49,8 @@ func scanDirectives(src []byte, objc bool) (includes []lang.RawImport, dead []bo
 	dead = make([]bool, len(lines)+2)
 	var stack []frame
 	inComment := false
-	isDead := func() bool {
-		for _, f := range stack {
-			if f.dead {
-				return true
-			}
-		}
-		return false
-	}
+	deadFrames := 0 // frames on the stack whose current branch is skipped
+	isDead := func() bool { return deadFrames > 0 }
 	for i := 0; i < len(lines); i++ {
 		start := i + 1
 		var text string
@@ -87,11 +81,15 @@ func scanDirectives(src []byte, objc bool) (includes []lang.RawImport, dead []bo
 			cond := strings.Trim(strings.Join(strings.Fields(rest), ""), "()")
 			stack = append(stack, frame{zero: cond == "0" || cond == "false", one: cond == "1" || cond == "true"})
 			stack[len(stack)-1].dead = stack[len(stack)-1].zero
+			if stack[len(stack)-1].dead {
+				deadFrames++
+			}
 		case "ifdef", "ifndef":
 			stack = append(stack, frame{})
 		case "elif", "elifdef", "elifndef", "else":
 			if n := len(stack); n > 0 {
 				f := &stack[n-1]
+				was := f.dead
 				switch {
 				case f.one: // the first branch was taken; no other is
 					f.dead = true
@@ -100,9 +98,17 @@ func scanDirectives(src []byte, objc bool) (includes []lang.RawImport, dead []bo
 				case f.zero: // an #elif after #if 0 may or may not hold: live
 					f.dead, f.zero = false, false
 				}
+				if f.dead && !was {
+					deadFrames++
+				} else if was && !f.dead {
+					deadFrames--
+				}
 			}
 		case "endif":
 			if n := len(stack); n > 0 {
+				if stack[n-1].dead {
+					deadFrames--
+				}
 				stack = stack[:n-1]
 			}
 		case "include", "include_next", "import":
