@@ -1,0 +1,9 @@
+x-base: &base
+  image: ghcr.io/acme/web:${TAG}
+services:
+  web:
+    <<: *base
+  app:
+    build:
+      context: ..
+      dockerfile: api/api.Dockerfile

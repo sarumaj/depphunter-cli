@@ -966,7 +966,8 @@ on, which is the source of its unpatched vulnerabilities, and that is what is
 followed: the manifest — one platform's, where the manifest is a multi-platform
 index — and then the small config blob it references, read for
 `org.opencontainers.image.base.name` in the manifest's annotations or the image's
-labels. No layers are downloaded. A registry requiring a pull token is given the
+labels, for an image named in a pipeline, a Dockerfile or a Compose file alike.
+No layers are downloaded. A registry requiring a pull token is given the
 opportunity to say so, and the token endpoint it names is followed only over
 HTTPS, or back to the registry's own host.
 
@@ -1211,6 +1212,37 @@ v5.0.1` reports the commit as the version and `v5.0.1` as what was requested. A
 GitLab template or a remote include names no version at all and may still change
 beneath the repository, so it is likewise treated as floating.
 
+### Container builds
+
+A Dockerfile names the images an application is built on, and a Compose file
+names the images it runs beside; both are dependencies no package manifest
+records. depphunter reads `Dockerfile` and `Containerfile` under any casing,
+the variants named after them (`Dockerfile.dev`, `api.Dockerfile`), and the
+Compose files `compose.yaml`, `compose.*.yaml` and `docker-compose*.yml`, in
+either `.yml` or `.yaml`:
+
+- **Dockerfile**: the image of every `FROM`, `COPY --from=` and
+  `RUN --mount=…,from=`, and the frontend a `# syntax=` directive names. A
+  reference to an earlier stage, by name or index, is part of the build and not
+  a dependency, nor is `scratch`. Named stages become the file's symbols.
+- **Compose**: a service's `image:`, unless the service has a `build:`, in
+  which case `image:` is only the tag of the result and the service points at
+  the Dockerfile inside the repository that builds it, so that file's own base
+  images chain on. Images of an inline Dockerfile and `docker-image://`
+  build contexts are included; services become the file's symbols.
+
+Build arguments are expanded from their defaults, so `ARG BASE=node:20` and
+`FROM ${BASE}` name `node:20`, and Compose's `${VAR:-default}` likewise. A
+value only `--build-arg`, the environment or an `.env` file supplies is not in
+the repository and is not guessed: an image whose name depends on one is shown
+as unresolved, and one whose tag depends on one keeps the tag as written.
+
+The images join those of the CI pipelines in one **Container images** island,
+with the same rule that only a digest pins, the same `oci:` private patterns
+and the same base-image lookup under `--online`. Docker Hub's long names
+(`docker.io/library/nginx`) are shortened to the name used everywhere else
+(`nginx`), so one image is one building however it is written.
+
 ### Documentation
 
 A README that links to `CONTRIBUTING.md` depends on that file, and one that
@@ -1306,6 +1338,7 @@ uses it. The JSON and GraphML exports include the reference edges.
 | C#                      | namespaces to project folders (`RootNamespace` + folder), `PackageReference`, `Directory.Packages.props`                                                                                                    | NuGet, .NET base library                    |
 | PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                           | PowerShell Gallery, built-in modules        |
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                | GitHub Actions, GitLab CI, Container images |
+| Dockerfile / Compose    | `FROM`, `COPY --from`, `RUN --mount from=` and `# syntax=` with `ARG` defaults expanded and stages told apart; Compose `image:`, and `build:` to the Dockerfile in the repository                           | Container images                            |
 | Markdown                | links to files and directories in the repository (inline, reference, autolink, and the `href` and `src` of raw HTML); headings become the file's symbols                                                    | *(none: a link is not a package)*           |
 
 Python packages that no index has - an in-house package installed from a
@@ -1351,9 +1384,10 @@ and `scalaVersion` is not consulted.
 
 Files in other languages appear on the map without dependency edges. Parsing
 uses a pure-Go tree-sitter runtime for JavaScript/TypeScript, Python, Rust,
-Java, Kotlin and Scala; Go uses the standard library's own parser, CI files a
-YAML parser, and C#, PowerShell and Markdown small built-in scanners — so the
-binary continues to cross-compile without a C toolchain.
+Java, Kotlin and Scala; Go uses the standard library's own parser, CI and
+Compose files a YAML parser, and C#, PowerShell, Markdown and Dockerfiles small
+built-in scanners — so the binary continues to cross-compile without a C
+toolchain.
 
 ## Security
 

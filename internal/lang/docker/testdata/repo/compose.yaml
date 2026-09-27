@@ -1,0 +1,28 @@
+services:
+  web:
+    build: .
+    image: acme/web:dev
+  api:
+    build:
+      context: ./api
+      dockerfile: api.Dockerfile
+      additional_contexts:
+        base: docker-image://alpine:3.20
+        src: ../src
+  db:
+    image: "postgres:${PG_VERSION:-16}"
+  cache:
+    image: redis@sha256:0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef
+  proxy:
+    image: ${PROXY_IMAGE}
+  worker:
+    image: docker.io/library/python:3.12
+  inline:
+    build:
+      dockerfile_inline: |
+        FROM alpine:3.20 AS base
+        FROM base
+  remote:
+    build: https://github.com/acme/app.git#main
+  missing:
+    build: ./nowhere

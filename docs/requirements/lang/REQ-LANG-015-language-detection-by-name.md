@@ -14,8 +14,8 @@ verification:
 
 The system **shall** determine a file's language from its extension,
 case-insensitively, or from well-known file names (for example `Dockerfile`,
-`Makefile`, `go.mod`), and **shall** leave the language empty when neither is
-known.
+`Makefile`, `go.mod`, and the Dockerfile names of REQ-DOCKER-001), and
+**shall** leave the language empty when neither is known.
 
 ## Rationale
 
@@ -24,5 +24,6 @@ colors and filters.
 
 ## Acceptance criteria
 
-1. `a.go` is Go, `x.py` is Python, `Dockerfile` is Docker.
+1. `a.go` is Go, `x.py` is Python, `Dockerfile`, `Containerfile`,
+   `Dockerfile.dev` and `api.Dockerfile` are Docker.
 2. A file with an unknown extension has no `lang`.

@@ -133,26 +133,6 @@ func TestClaims(t *testing.T) {
 	}
 }
 
-// Verifies: REQ-CI-012, REQ-CI-013
-func TestImageReferences(t *testing.T) {
-	for _, c := range []struct {
-		ref  string
-		want lang.Target
-	}{
-		// No tag floats, with no version made up for it.
-		{"nginx", lang.Target{Ecosystem: "oci", Package: "nginx", Floating: true}},
-		{"nginx:1.25.3", lang.Target{Ecosystem: "oci", Package: "nginx", Version: "1.25.3"}},
-		{"ghcr.io/org/app:main", lang.Target{Ecosystem: "oci", Package: "ghcr.io/org/app", Version: "main"}},
-		// A registry's port is not a tag.
-		{"localhost:5000/app", lang.Target{Ecosystem: "oci", Package: "localhost:5000/app", Floating: true}},
-		{"localhost:5000/app:2", lang.Target{Ecosystem: "oci", Package: "localhost:5000/app", Version: "2"}},
-	} {
-		if got := image(c.ref); got != c.want {
-			t.Errorf("%s: got %+v, want %+v", c.ref, got, c.want)
-		}
-	}
-}
-
 // The same YAML is read as a workflow, an action or a GitLab pipeline depending on
 // where it is, so where it is has to be part of the cache key.
 //
