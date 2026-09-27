@@ -1,0 +1,2 @@
+alexandria, ghcr.io/ocicl/alexandria@sha256:ab8c5e0cfd1ff1f9fcd84cae4a4d0a3ba8b0e18e7f5f4d9dbd7e4e67b4a9ec1a, alexandria-20240503-8514d8e/alexandria.asd
+cl-ppcre-unicode, ghcr.io/ocicl/cl-ppcre@sha256:0f1e2d3c4b5a69788796a5b4c3d2e1f00f1e2d3c4b5a69788796a5b4c3d2e1f0, cl-ppcre-20240423-80fb19d/cl-ppcre-unicode.asd

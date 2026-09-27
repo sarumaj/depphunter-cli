@@ -2500,3 +2500,144 @@ func alireExact(v string) bool {
 	_, ok := ada.ExactVersion(v)
 	return ok
 }
+
+// ---------------------------------------------------------------- quicklisp
+
+// qlIndex is a Quicklisp dist's system index: the systems of each project
+// and the project releasing each system.
+type qlIndex struct {
+	projects map[string][]qlSystem
+	project  map[string]string
+}
+
+type qlSystem struct {
+	name, file string
+	deps       []string
+}
+
+// quicklispProject reads a Quicklisp project's dependencies from its dist's
+// system index. The dist's distinfo (the index URL itself, or for a dated
+// version <dist>/<version>/distinfo.txt beside it) names the system index,
+// systems.txt, whose lines are `project system-file system-name dependency
+// ...`; it is read once per dist version. The project's own systems (the one
+// named like the project, else each .asd file's primary system, test systems
+// left out) give the dependencies, each named by the project releasing it
+// from the same index; ASDF, UIOP and SBCL's contribs are left out. A dated
+// version answers with its dependencies at that same dist version.
+//
+// Implements: REQ-SUP-062
+func (c *Client) quicklispProject(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+	name := t.Package
+	if !quicklispName.MatchString(name) {
+		return nil, fmt.Errorf("not a Quicklisp project name: %q", name)
+	}
+	distinfo := index
+	if quicklispDated(t.Version) {
+		distinfo = strings.TrimSuffix(index, ".txt") + "/" + t.Version + "/distinfo.txt"
+	}
+	idx, err := c.quicklispIndex(ctx, distinfo)
+	if err != nil {
+		return nil, err
+	}
+	systems := idx.projects[name]
+	if len(systems) == 0 {
+		return nil, fmt.Errorf("%s: no project %q", distinfo, name)
+	}
+	var own []qlSystem
+	for _, s := range systems {
+		if s.name == name {
+			own = append(own, s)
+		}
+	}
+	if len(own) == 0 {
+		for _, s := range systems {
+			if s.name == s.file && !strings.Contains(s.name, "test") {
+				own = append(own, s)
+			}
+		}
+	}
+	version := ""
+	if quicklispDated(t.Version) {
+		version = t.Version
+	}
+	seen := map[string]bool{}
+	var out []dep
+	for _, s := range own {
+		for _, d := range s.deps {
+			if d == "asdf" || d == "uiop" || strings.HasPrefix(d, "sb-") {
+				continue
+			}
+			p := idx.project[d]
+			if p == "" {
+				p = d
+			}
+			if p == name || seen[p] {
+				continue
+			}
+			seen[p] = true
+			out = append(out, dep{Name: p, Version: version})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// quicklispIndex reads a distinfo and the system index it names, once.
+func (c *Client) quicklispIndex(ctx context.Context, distinfo string) (*qlIndex, error) {
+	c.mu.Lock()
+	idx, ok := c.qlSystems[distinfo]
+	c.mu.Unlock()
+	if ok {
+		return idx, nil
+	}
+	info, err := c.accept(ctx, distinfo, "text/plain")
+	if err != nil {
+		return nil, err
+	}
+	systems := ""
+	for _, line := range strings.Split(string(info), "\n") {
+		if k, v, ok := strings.Cut(line, ":"); ok && strings.TrimSpace(k) == "system-index-url" {
+			systems = strings.TrimSpace(v)
+		}
+	}
+	if systems == "" {
+		return nil, fmt.Errorf("%s: no system-index-url", distinfo)
+	}
+	body, err := c.accept(ctx, systems, "text/plain")
+	if err != nil {
+		return nil, err
+	}
+	idx = &qlIndex{projects: map[string][]qlSystem{}, project: map[string]string{}}
+	for _, line := range strings.Split(string(body), "\n") {
+		f := strings.Fields(line)
+		if len(f) < 3 || strings.HasPrefix(f[0], "#") {
+			continue
+		}
+		s := qlSystem{file: f[1], name: f[2], deps: f[3:]}
+		idx.projects[f[0]] = append(idx.projects[f[0]], s)
+		if _, dup := idx.project[s.name]; !dup {
+			idx.project[s.name] = f[0]
+		}
+	}
+	c.mu.Lock()
+	c.qlSystems[distinfo] = idx
+	c.mu.Unlock()
+	return idx, nil
+}
+
+// quicklispName is a Quicklisp project name: what a dist's directories are
+// named (cl-ppcre, cl+ssl's cl-plus-ssl, 3bmd, hu.dwim.stefil).
+var quicklispName = regexp.MustCompile(`^[a-zA-Z0-9][a-zA-Z0-9._+-]{0,127}$`)
+
+// quicklispDated reports whether a version is a dist version: 2023-10-21.
+func quicklispDated(v string) bool {
+	if len(v) != 10 || v[4] != '-' || v[7] != '-' {
+		return false
+	}
+	for i, r := range v {
+		if i != 4 && i != 7 && (r < '0' || r > '9') {
+			return false
+		}
+	}
+	return true
+}

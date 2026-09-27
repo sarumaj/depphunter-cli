@@ -1,0 +1,26 @@
+(in-package :shop)
+
+;;; Nothing below may become an import or a symbol.
+; (ql:quickload :fake-in-line-comment)
+#|
+  (ql:quickload :fake-in-block-comment)
+  #| nested |# (defun fake-in-nested-comment ())
+|#
+(defparameter *doc* "(ql:quickload :fake-in-string) \"(in-package :x)\"")
+(defparameter *paren* #\()
+(defparameter *semi* #\;)
+(defparameter *quote* #\")
+(defparameter *space* #\Space)
+(defparameter |weird (name| 1)
+(defparameter *path* #p"data/prices.lisp")
+(defparameter *data* '(defun quoted-fake () nil))
+(defparameter *read-time* #.(+ 1 2))
+#+nil (ql:quickload :fake-behind-nil)
+#-(and) (defun fake-behind-and ())
+#+(or) (require :fake-behind-or)
+#+sbcl #+nil (defun fake-double ()) (defun after-double ())
+(defparameter *vec* #(1 2 3))
+(defparameter *bits* #*1010)
+(defparameter *hex* #x1F)
+(defparameter *label* '#1=(a . #1#))
+(defun read-prices (stream) (read stream))

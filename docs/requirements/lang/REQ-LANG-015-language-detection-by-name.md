@@ -39,7 +39,8 @@ extensions (`.f90`, `.f95`, `.f03`, `.f08`, `.f18`, `.f`, `.for`, `.ftn`,
 `.f77`, `.fpp` and fypp's `.fypp`, in either case), Haxe's `.hx` and
 `.hxml`, Ada's `.ads`, `.adb` and `.ada` and GNAT's project files (`.gpr`,
 GPR), Racket's `.rkt`, `.rktl` and `.rktd`, Scribble's `.scrbl` and
-Scheme's `.scm` and `.ss`,
+Scheme's `.scm` and `.ss`, Common Lisp's `.lisp`, `.lsp`, `.cl` and `.asd`,
+Qlot's `qlfile` and `qlfile.lock` (Qlot) and ocicl's `ocicl.csv` (ocicl),
 the shells' and direnv's startup files (`.bashrc`,
 `.zshrc`, `.profile`, `.envrc` and the others of REQ-SHELL-001), and the
 Dockerfile names of REQ-DOCKER-001), or, for a file neither names, from a
@@ -65,7 +66,11 @@ definition in column 1) **shall** be Forth, rather than Fortran
 (REQ-FORTRAN-001). A `.scm` or `.ss` file whose first line, after an
 optional `#!` line, blank lines and `;` comments, is a `#lang` line (or
 `#!racket/base`, not `#!r6rs`) **shall** be Racket rather than Scheme
-(REQ-RACKET-001).
+(REQ-RACKET-001). A `.cl` file whose head has a line starting with a
+preprocessor directive (`#include`, `#define`, `#pragma`, `#if`, `#ifdef`,
+`#ifndef`, `#endif`) or declares an OpenCL kernel (`__kernel`, `kernel
+void`, `__global`) **shall** be OpenCL rather than Common Lisp
+(REQ-COMMONLISP-001).
 
 ## Rationale
 
@@ -135,3 +140,7 @@ Objective-C from MATLAB, Mercury and C.
     comment, `.ss` files starting `#!/usr/bin/env racket` then `#lang` or
     `#!racket/base`, and an extensionless file whose `#!` line runs racket
     are Racket, and a `.scm` starting `#!r6rs` stays Scheme.
+15. `src/shop.lisp`, `legacy/tools.lsp`, `old/reader.cl` and `shop.asd`
+    are Common Lisp, `qlfile` and `qlfile.lock` are Qlot and `ocicl.csv` is
+    ocicl; `.cl` files starting `__kernel void`, `#pragma OPENCL` or
+    `#include` are OpenCL.

@@ -55,6 +55,9 @@ type Client struct {
 	// juliaDirs is where each package's files are in a Julia registry other than
 	// General, from its Registry.toml: one request per registry.
 	juliaDirs map[string]map[string]string
+	// qlSystems is what each Quicklisp dist's system index lists: one request
+	// per dist version rather than one per project.
+	qlSystems map[string]*qlIndex
 	// rep is the report this run is writing, if anybody is reading it. It is set per
 	// analysis - one client serves every re-analysis in --watch - so it is guarded
 	// like the rest.
@@ -99,6 +102,7 @@ func NewClient(cfg *Config, dir string, ttl, timeout time.Duration,
 		rocks:       map[string]map[string][]string{},
 		cpanModules: map[string]string{},
 		juliaDirs:   map[string]map[string]string{},
+		qlSystems:   map[string]*qlIndex{},
 	}
 }
 
@@ -260,6 +264,8 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		deps, err = c.dubPackage(ctx, index, t)
 	case Alire:
 		deps, err = c.alireCrate(ctx, index, t)
+	case Quicklisp:
+		deps, err = c.quicklispProject(ctx, index, t)
 	case Maven:
 		if !strings.Contains(t.Package, ":") {
 			// A name without an artifact cannot be asked: a POM is addressed by

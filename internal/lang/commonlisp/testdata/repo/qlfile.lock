@@ -1,0 +1,27 @@
+("quicklisp" .
+ (:class qlot/source/dist:source-dist
+  :initargs (:distribution "https://beta.quicklisp.org/dist/quicklisp.txt" :%version :latest)
+  :version "2023-10-21"))
+("alexandria" .
+ (:class qlot/source/ql:source-ql
+  :initargs (:%version :latest)
+  :version "ql-2023-10-21"))
+("cl-ppcre" .
+ (:class qlot/source/ql:source-ql
+  :initargs (:%version "2023-06-18")
+  :version "ql-2023-06-18"))
+("dexador" .
+ (:class qlot/source/github:source-github
+  :initargs (:repos "fukamachi/dexador" :ref nil :branch "master" :tag nil)
+  :version "github-1c2b3a4d5e6f708192a3b4c5d6e7f8091a2b3c4d"
+  :remote-url "https://github.com/fukamachi/dexador.git"))
+("str" .
+ (:class qlot/source/git:source-git
+  :initargs (:remote-url "https://github.com/vindarel/cl-str.git" :tag "0.21")
+  :version "git-aaaabbbbccccddddeeeeffff0000111122223333"))
+("tree-sitter-cl" .
+ (:class qlot/source/git:source-git
+  :initargs (:remote-url "https://git.acme.dev/lisp/tree-sitter-cl.git")
+  :version "git-0123456789abcdef0123456789abcdef01234567"
+  :remote-url "https://git.acme.dev/lisp/tree-sitter-cl.git"
+  :ref "0123456789abcdef0123456789abcdef01234567"))

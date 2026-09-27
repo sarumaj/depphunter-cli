@@ -1522,3 +1522,78 @@ url = "https://github.com/AdaCore/aws/releases/download/v25.2.0/aws.zip"
 		t.Errorf("public index %q %v", idx, known)
 	}
 }
+
+// A Quicklisp dist's distinfo names its system index, systems.txt, read once
+// per dist version: a project's dependencies are those of its own systems
+// (the one named like the project, else each .asd file's primary system),
+// each named by the project releasing it; ASDF, UIOP and SBCL's contribs are
+// left out, and a dated version asks that version's distinfo and answers at
+// that version.
+//
+// Verifies: REQ-SUP-062
+func TestQuicklispDependencies(t *testing.T) {
+	var asked []string
+	systems := `# project system-file system-name dependency1 dependency2 ... dependencyN
+alexandria alexandria alexandria asdf
+cl-ppcre cl-ppcre cl-ppcre
+cl-ppcre cl-ppcre-unicode cl-ppcre-unicode cl-ppcre cl-unicode
+cl-unicode cl-unicode cl-unicode cl-ppcre flexi-streams
+dexador dexador dexador alexandria babel bordeaux-threads cl-ppcre sb-posix uiop usocket
+dexador dexador-test dexador-test dexador rove
+babel babel babel alexandria trivial-features
+babel babel-streams babel-streams babel trivial-gray-streams
+iolib iolib.base iolib.base alexandria
+iolib iolib.asdf iolib.asdf asdf
+`
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Path)
+		switch r.URL.Path {
+		case "/dist/quicklisp.txt":
+			w.Write([]byte("name: quicklisp\nversion: 2024-10-12\nsystem-index-url: " + "http://" + r.Host + "/dist/quicklisp/2024-10-12/systems.txt\n"))
+		case "/dist/quicklisp/2023-10-21/distinfo.txt":
+			w.Write([]byte("name: quicklisp\nversion: 2023-10-21\nsystem-index-url: " + "http://" + r.Host + "/dist/quicklisp/2023-10-21/systems.txt\n"))
+		case "/dist/quicklisp/2024-10-12/systems.txt", "/dist/quicklisp/2023-10-21/systems.txt":
+			w.Write([]byte(systems))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	c := clientFor(t, Quicklisp, srv.URL+"/dist/quicklisp.txt", "")
+	want := []lang.Target{
+		{Ecosystem: Quicklisp, Package: "alexandria"},
+		{Ecosystem: Quicklisp, Package: "babel"},
+		{Ecosystem: Quicklisp, Package: "bordeaux-threads"},
+		{Ecosystem: Quicklisp, Package: "cl-ppcre"},
+		{Ecosystem: Quicklisp, Package: "usocket"},
+	}
+	if got := c.Dependencies(lang.Target{Ecosystem: Quicklisp, Package: "dexador", Floating: true}); !reflect.DeepEqual(got, want) {
+		t.Errorf("dexador: got %+v, want %+v", got, want)
+	}
+	// cl-ppcre-unicode depends on cl-ppcre (its own project) and cl-unicode:
+	// only the primary system counts.
+	if got := c.Dependencies(lang.Target{Ecosystem: Quicklisp, Package: "cl-ppcre"}); len(got) != 0 {
+		t.Errorf("cl-ppcre: %+v", got)
+	}
+	// No system named like the project: each .asd's primary system.
+	if got := c.Dependencies(lang.Target{Ecosystem: Quicklisp, Package: "iolib"}); !reflect.DeepEqual(got, []lang.Target{{Ecosystem: Quicklisp, Package: "alexandria"}}) {
+		t.Errorf("iolib: %+v", got)
+	}
+	dated := []lang.Target{{Ecosystem: Quicklisp, Package: "alexandria", Version: "2023-10-21", Pinned: true}, {Ecosystem: Quicklisp, Package: "trivial-features", Version: "2023-10-21", Pinned: true}}
+	if got := c.Dependencies(lang.Target{Ecosystem: Quicklisp, Package: "babel", Version: "2023-10-21", Pinned: true}); !reflect.DeepEqual(got, dated) {
+		t.Errorf("babel: got %+v, want %+v", got, dated)
+	}
+	for _, p := range []string{"../x", "github.com/fukamachi/dexador", "missing"} {
+		if got := c.Dependencies(lang.Target{Ecosystem: Quicklisp, Package: p}); len(got) != 0 {
+			t.Errorf("%s: %+v", p, got)
+		}
+	}
+	wantAsked := []string{"/dist/quicklisp.txt", "/dist/quicklisp/2024-10-12/systems.txt",
+		"/dist/quicklisp/2023-10-21/distinfo.txt", "/dist/quicklisp/2023-10-21/systems.txt"}
+	if !reflect.DeepEqual(asked, wantAsked) {
+		t.Errorf("asked %v\nwant %v", asked, wantAsked)
+	}
+	if idx, known := New().For(Quicklisp, "alexandria"); idx != "https://beta.quicklisp.org/dist/quicklisp.txt" || !known {
+		t.Errorf("public index %q %v", idx, known)
+	}
+}

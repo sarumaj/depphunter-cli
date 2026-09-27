@@ -55,7 +55,7 @@ var defaultIgnore = map[string]bool{
 	".terraform": true, ".terragrunt-cache": true, "lua_modules": true, "_opam": true,
 	".zig-cache": true, "zig-cache": true, "zig-out": true, "zig-pkg": true,
 	".cpcache": true, ".shadow-cljs": true, "elm-stuff": true, ".spago": true, "bower_components": true,
-	".crystal": true, ".fake": true, ".dub": true, ".haxelib": true, "compiled": true,
+	".crystal": true, ".fake": true, ".dub": true, ".haxelib": true, "compiled": true, ".qlot": true,
 }
 
 func Scan(ctx context.Context, root string, opts Options) ([]*File, error) {
@@ -158,7 +158,9 @@ func walkFiles(ctx context.Context, root string) ([]string, error) {
 // generatedBeside names directories that hold what a tool wrote only when its
 // manifest sits next to them: the PureScript compiler's output/ beside a
 // spago.yaml or spago.dhall, the shards shards installs into lib/ beside a
-// shard.yml, and Paket's packages/ and paket-files/ beside a paket.dependencies.
+// shard.yml, Paket's packages/ and paket-files/ beside a paket.dependencies,
+// Alire's alire/ beside an alire.toml and ocicl's systems/ beside an
+// ocicl.csv.
 // Elsewhere an output/, lib/ or packages/ directory may well be source.
 var generatedBeside = map[string][]string{
 	"output": {"spago.yaml", "spago.dhall"},
@@ -170,6 +172,8 @@ var generatedBeside = map[string][]string{
 	// Alire keeps its lock file, build cache and the crates it fetches in
 	// alire/ beside alire.toml.
 	"alire": {"alire.toml"},
+	// ocicl downloads the systems it installs into systems/ beside ocicl.csv.
+	"systems": {"ocicl.csv"},
 }
 
 // besideManifest reports whether the directory name in dir is such a directory.
@@ -234,7 +238,8 @@ func measure(f *File, maxSize int64) {
 	// #! line and statements. ".fs" is F#'s, a GLSL fragment shader's and Forth's.
 	// ".d" is D's, a make dependency file's and a DTrace script's. ".f" and ".for"
 	// are fixed-form Fortran's and sometimes Forth's. ".scm" and ".ss" are
-	// Scheme's, and Racket's when a #lang line starts them.
+	// Scheme's, and Racket's when a #lang line starts them. ".cl" is Common
+	// Lisp's and OpenCL's.
 	switch ext := strings.ToLower(path.Ext(f.Path)); {
 	case ext == ".m" && f.Lang == "Objective-C" && !objcMarker(head, true):
 		f.Lang = notObjC(head)
@@ -256,6 +261,8 @@ func measure(f *File, maxSize int64) {
 		f.Lang = "DTrace"
 	case (ext == ".scm" || ext == ".ss") && f.Lang == "Scheme" && racketSource(head):
 		f.Lang = "Racket"
+	case ext == ".cl" && f.Lang == "Common Lisp" && openclSource(head):
+		f.Lang = "OpenCL"
 	}
 	// A script without a language is labelled by the shell or perl its "#!" line
 	// runs.

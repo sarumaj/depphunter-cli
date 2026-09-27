@@ -141,6 +141,7 @@ The server **shall** ...
 | `haxe`       | The Haxe plugin: modules, .hxml, haxelib.json, lix pins, Lime project files and installed haxelibs.     |
 | `ada`        | The Ada plugin: specs and bodies, GNAT project files, alire.toml, Alire's lock file and fetched crates. |
 | `racket`     | The Racket plugin: modules, Scribble documents, info.rkt packages and collections, raco packages.       |
+| `commonlisp` | The Common Lisp plugin: sources, ASDF systems, packages, Qlot's qlfile and lock, and ocicl.csv.         |
 | `terraform`  | The Terraform and OpenTofu plugin, lock files, Terragrunt and the module registries.                    |
 | `proto`      | The Protocol Buffers plugin, Buf's configuration and lock files and the Buf Schema Registry.            |
 | `shell`      | The shell script plugin (sh, Bash, zsh, bats), direnv and packages scripts install.                     |
@@ -350,6 +351,11 @@ requirements of type `limitation` in their scopes:
   attributed by the base collections, a curated table and the declared
   packages' names, and neither the package catalog nor installed packages
   are read (no `--online`, no `--resolve-depth`).
+- Common Lisp is read without running a Lisp or ASDF: macros are not
+  expanded, `.asd` code is not evaluated, reader conditionals keep both
+  branches, installed dependencies (`.qlot/`, ocicl's `systems/`) are not
+  read, and a package no file of the repository defines is attributed by
+  the declared systems' names and a curated table.
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

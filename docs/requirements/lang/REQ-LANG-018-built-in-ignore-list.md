@@ -19,14 +19,16 @@ When git cannot list the files, the system **shall** walk the directory tree and
 `dist-newstyle`, `.stack-work`, `.terraform`, `.terragrunt-cache`,
 `lua_modules`, `_opam`, `.zig-cache`, `zig-cache`, `zig-out`, `zig-pkg`,
 `.cpcache`, `.shadow-cljs`, `elm-stuff`, `.spago`, `bower_components` and
-`.crystal`, `.fake`, `.dub`, `.haxelib` and `compiled` (what `raco make`
-writes beside Racket modules), an `output` directory beside a
+`.crystal`, `.fake`, `.dub`, `.haxelib`, `compiled` (what `raco make`
+writes beside Racket modules) and `.qlot` (what Qlot installs), an
+`output` directory beside a
 `spago.yaml` or `spago.dhall` (what the PureScript compiler wrote), a `lib`
 directory beside a `shard.yml` (what shards installed), `packages` and
 `paket-files` directories beside a `paket.dependencies` (what Paket
-installed and downloaded), and an `alire` directory beside an `alire.toml`
-(Alire's lock file and the crates it fetched); an `output`, `lib`,
-`packages` or `alire` directory elsewhere is kept.
+installed and downloaded), an `alire` directory beside an `alire.toml`
+(Alire's lock file and the crates it fetched), and a `systems` directory
+beside an `ocicl.csv` (the systems ocicl downloaded); an `output`, `lib`,
+`packages`, `alire` or `systems` directory elsewhere is kept.
 
 ## Rationale
 
@@ -47,14 +49,17 @@ caches and build output.
    `bower_components/purescript-maybe/src/Data/Maybe.purs` and
    `.crystal/cache/macro.cr`, `.fake/build.fsx/intellisense.fsx` and
    `.dub/packages/leftpad/1.0.0/leftpad/source/leftpad.d`,
-   `.haxelib/format/3,5,0/format/png/Reader.hx`, `compiled/main_rkt.dep`
-   and `src/compiled/errortrace/main_rkt.dep` do not
+   `.haxelib/format/3,5,0/format/png/Reader.hx`, `compiled/main_rkt.dep`,
+   `src/compiled/errortrace/main_rkt.dep` and
+   `.qlot/dists/quicklisp/software/alexandria/package.lisp` do not
    appear in the graph, nor do `app/output/Main/index.js` beside
    `app/spago.yaml`, `shop/lib/kemal/src/kemal.cr` beside `shop/shard.yml`,
    `fs/packages/Argu/tools/x.fsx` and
    `fs/paket-files/fsharp/FAKE/Globbing.fs` beside `fs/paket.dependencies`,
-   and `crate/alire/cache/dependencies/aunit_24.0.0_1a2b3c4d/src/aunit.ads`
-   beside `crate/alire.toml`, while `report/output/summary.md`,
-   `tools/lib/helper.cr`, `web/packages/app.fs` and `docs/alire/intro.md`
-   do.
+   `crate/alire/cache/dependencies/aunit_24.0.0_1a2b3c4d/src/aunit.ads`
+   beside `crate/alire.toml`, and
+   `cl/systems/alexandria-20240503-8514d8e/alexandria.asd` beside
+   `cl/ocicl.csv`, while `report/output/summary.md`, `tools/lib/helper.cr`,
+   `web/packages/app.fs`, `docs/alire/intro.md` and
+   `game/systems/physics.lisp` do.
 2. An unreadable subdirectory is skipped without failing the scan.

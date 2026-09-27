@@ -77,6 +77,10 @@ const (
 	// Alire is the ada plugin's island of Alire crates; the community index is
 	// a git repository of release manifests, read as files.
 	Alire = "alire"
+	// Quicklisp is the commonlisp plugin's island of Quicklisp projects; a
+	// dist's system index (systems.txt) lists every system with its
+	// dependencies as one text file.
+	Quicklisp = "quicklisp"
 )
 
 // public is where each ecosystem's packages come from unless something says otherwise.
@@ -115,6 +119,9 @@ var public = map[string]string{
 	// The community index's branch for the index format Alire 2 reads; its
 	// manifests are served one by one.
 	Alire: "https://raw.githubusercontent.com/alire-project/alire-index/stable-1.4.0",
+	// The Quicklisp dist's current distinfo; a dated version's is beside it
+	// (quicklisp/<version>/distinfo.txt).
+	Quicklisp: "https://beta.quicklisp.org/dist/quicklisp.txt",
 }
 
 // Clojars is the Maven repository Clojure's libraries are published to. Leiningen,
