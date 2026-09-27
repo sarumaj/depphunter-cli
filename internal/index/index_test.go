@@ -112,6 +112,8 @@ func TestDiscoverReadsEveryEcosystem(t *testing.T) {
 		"pom.xml":            `<project><repositories><repository><url>https://maven.internal/releases</url></repository></repositories></project>`,
 		".cargo/config.toml": "[source.corp]\nregistry = \"https://crates.internal/index\"\n",
 		".yarnrc.yml":        "npmRegistryServer: \"https://yarn.internal/npm\"\n",
+		"composer.json": `{"repositories": [{"type": "vcs", "url": "https://github.com/acme/fork"},
+			{"type": "composer", "url": "https://satis.internal"}, {"packagist.org": false}]}`,
 	})
 	c := Discover(files, env(map[string]string{"GOPROXY": "https://goproxy.internal,direct"}), "")
 
@@ -123,6 +125,7 @@ func TestDiscoverReadsEveryEcosystem(t *testing.T) {
 		{Cargo, "https://crates.internal/index"},
 		{NPM, "https://yarn.internal/npm"},
 		{Go, "https://goproxy.internal"},
+		{Composer, "https://satis.internal"}, // a VCS repository is not an index
 	} {
 		if idx, _ := c.For(tt.eco, "pkg"); idx != tt.want {
 			t.Errorf("%s: got %s, want %s", tt.eco, idx, tt.want)
@@ -337,6 +340,32 @@ index = "https://zzz.example/index"
 		})
 		if first != "https://corp.example/index" {
 			t.Fatalf("crates.io resolves from %s, want the source replace-with names", first)
+		}
+	}
+}
+
+// Composer's global config.json is read from COMPOSER_HOME and both usual homes, in
+// the list and the object form of "repositories".
+//
+// Verifies: REQ-SUP-015
+func TestReadsComposerConfigFromTheMachine(t *testing.T) {
+	for _, dir := range [][]string{{".config", "composer"}, {".composer"}, {"custom-home"}} {
+		home := t.TempDir()
+		path := filepath.Join(append([]string{home}, dir...)...)
+		if err := os.MkdirAll(path, 0o755); err != nil {
+			t.Fatal(err)
+		}
+		cfg := `{"repositories": {"corp": {"type": "composer", "url": "https://packagist.corp"}, "packagist.org": false}}`
+		if err := os.WriteFile(filepath.Join(path, "config.json"), []byte(cfg), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		vars := map[string]string{}
+		if dir[0] == "custom-home" {
+			vars["COMPOSER_HOME"] = path
+		}
+		c := Discover(nil, env(vars), home)
+		if idx, known := c.For(Composer, "acme/billing"); idx != "https://packagist.corp" || !known {
+			t.Errorf("%s: got %s (known %v), want the machine's repository, known", filepath.Join(dir...), idx, known)
 		}
 	}
 }

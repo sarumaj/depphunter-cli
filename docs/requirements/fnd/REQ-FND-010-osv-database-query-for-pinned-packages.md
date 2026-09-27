@@ -14,8 +14,9 @@ verification:
 
 With `--online`, the system **shall** ask the OSV database about every external
 package the map pins to a version in the ecosystems Go, npm, PyPI, crates.io,
-Maven, NuGet, GitHub Actions and Conan (as `ConanCenter`), and place each
-matched advisory on its package with its fixed version.
+Maven, NuGet, GitHub Actions, Conan (as `ConanCenter`) and Composer (as
+`Packagist`, a version's leading `v` dropped), and place each matched advisory
+on its package with its fixed version.
 
 ## Rationale
 

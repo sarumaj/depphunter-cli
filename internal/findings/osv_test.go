@@ -5,6 +5,8 @@ import (
 	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
+	"sort"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -169,6 +171,41 @@ func TestOSVAsksConanCenterForConanPackages(t *testing.T) {
 	})
 	if len(asked) != 1 || asked[0] != "ConanCenter zlib 1.2.13" {
 		t.Errorf("asked %q, want only ConanCenter zlib 1.2.13", asked)
+	}
+}
+
+// A Composer package is asked about as Packagist's, and a lock's "v6.4.2" as 6.4.2.
+//
+// Verifies: REQ-FND-010, REQ-PHP-009
+func TestOSVAsksPackagistForComposerPackages(t *testing.T) {
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Queries []struct {
+				Package struct{ Name, Ecosystem string } `json:"package"`
+				Version string                           `json:"version"`
+			} `json:"queries"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		out := struct {
+			Results []batchResult `json:"results"`
+		}{}
+		for _, q := range body.Queries {
+			asked = append(asked, q.Package.Ecosystem+" "+q.Package.Name+" "+q.Version)
+			out.Results = append(out.Results, batchResult{})
+		}
+		json.NewEncoder(w).Encode(out)
+	}))
+	defer srv.Close()
+	o := &OSV{http: srv.Client(), cache: store.New(t.TempDir(), time.Hour), API: srv.URL}
+	o.Query(context.Background(), []Package{
+		{Ecosystem: "composer", Name: "symfony/http-foundation", Version: "v6.4.2"},
+		{Ecosystem: "composer", Name: "monolog/monolog", Version: "3.5.0"},
+	})
+	sort.Strings(asked)
+	want := []string{"Packagist monolog/monolog 3.5.0", "Packagist symfony/http-foundation 6.4.2"}
+	if !reflect.DeepEqual(asked, want) {
+		t.Errorf("asked %q, want %q", asked, want)
 	}
 }
 

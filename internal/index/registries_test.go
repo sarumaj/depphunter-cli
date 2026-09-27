@@ -5,9 +5,12 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"reflect"
 	"strings"
 	"testing"
+	"time"
 
+	"github.com/sarumaj/depphunter-cli/internal/auth"
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 )
 
@@ -254,5 +257,87 @@ func TestOCIUnansweredChallengeSaysUnauthorized(t *testing.T) {
 	_, err := c.ociGet(context.Background(), srv.URL, "library/app", srv.URL+"/v2/library/app/manifests/1", "application/json")
 	if err == nil || !strings.Contains(err.Error(), "Unauthorized") {
 		t.Errorf("got %v, want an Unauthorized error", err)
+	}
+}
+
+// stubComposer serves a Composer repository: packages.json naming where each
+// package's metadata is, and minified Composer 2 metadata for one package.
+func stubComposer(t *testing.T) (*httptest.Server, *[]string) {
+	t.Helper()
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Path)
+		switch r.URL.Path {
+		case "/composer/packages.json":
+			w.Write([]byte(`{"packages":[],"metadata-url":"/composer/p2/%package%.json"}`))
+		case "/composer/p2/monolog/monolog.json":
+			// Newest first; each entry only says what changed from the one above.
+			fmt.Fprint(w, `{"minified":"composer/2.0","packages":{"monolog/monolog":[
+				{"name":"monolog/monolog","version":"3.6.0","require":{"php":">=8.1","psr/log":"^2.0 || ^3.0"}},
+				{"version":"3.5.0"},
+				{"version":"2.9.1","require":{"php":">=7.2","psr/log":"^1.0.1 || ^2.0 || ^3.0","ext-json":"*"}},
+				{"version":"1.0.0","require":"__unset"}
+			]}}`)
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	t.Cleanup(srv.Close)
+	return srv, &asked
+}
+
+// Verifies: REQ-SUP-044
+func TestComposerDependencies(t *testing.T) {
+	srv, asked := stubComposer(t)
+	c := clientFor(t, Composer, srv.URL+"/composer", "")
+	for _, tt := range []struct {
+		version string
+		want    []lang.Target
+	}{
+		// An inherited require, the platform (php, ext-json) left out.
+		{"3.5.0", []lang.Target{{Ecosystem: Composer, Package: "psr/log", Version: "^2.0 || ^3.0"}}},
+		{"v2.9.1", []lang.Target{{Ecosystem: Composer, Package: "psr/log", Version: "^1.0.1 || ^2.0 || ^3.0"}}},
+		// A range names no version: the newest answers.
+		{"^3.0", []lang.Target{{Ecosystem: Composer, Package: "psr/log", Version: "^2.0 || ^3.0"}}},
+		{"1.0.0", nil}, // "__unset": nothing required
+	} {
+		got := c.Dependencies(lang.Target{Ecosystem: Composer, Package: "monolog/monolog", Version: tt.version})
+		if len(got) == 0 && len(tt.want) == 0 {
+			continue
+		}
+		if !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("%s: got %+v, want %+v", tt.version, got, tt.want)
+		}
+	}
+	// packages.json is asked once for the repository, not once per package.
+	n := 0
+	for _, p := range *asked {
+		if p == "/composer/packages.json" {
+			n++
+		}
+	}
+	if n != 1 {
+		t.Errorf("packages.json asked %d times: %v", n, *asked)
+	}
+}
+
+// Verifies: REQ-SUP-044
+func TestPackagistIsAskedDirectly(t *testing.T) {
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Path)
+		if r.URL.Path != "/p2/log/log.json" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		fmt.Fprint(w, `{"packages":{"log/log":[{"version":"3.0.1","require":{"php":">=8.0.0"}}]}}`)
+	}))
+	defer srv.Close()
+	public[Composer] = srv.URL
+	t.Cleanup(func() { public[Composer] = "https://repo.packagist.org" })
+	c := NewClient(New(), t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
+	got := c.Dependencies(lang.Target{Ecosystem: Composer, Package: "Log/Log", Version: "3.0.1"})
+	if len(got) != 0 || !reflect.DeepEqual(asked, []string{"/p2/log/log.json"}) {
+		t.Errorf("asked %v, got %+v; want one request for the lower-case name and no packages", asked, got)
 	}
 }

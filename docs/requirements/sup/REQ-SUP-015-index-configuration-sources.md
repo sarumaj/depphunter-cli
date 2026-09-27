@@ -15,13 +15,15 @@ verification:
 The system **shall** read index configuration from this machine:
 `NPM_CONFIG_REGISTRY`, `PIP_INDEX_URL`, `PIP_EXTRA_INDEX_URL`, `GOPROXY`
 (without `direct` and `off`), `~/.npmrc`, `~/.config/pip/pip.conf`,
-`~/.pip/pip.conf`, `~/.cargo/config.toml`, the mirrors of `~/.m2/settings.xml`
-and `~/.nuget/NuGet/NuGet.Config` and `~/.config/NuGet/NuGet.Config`.
+`~/.pip/pip.conf`, `~/.cargo/config.toml`, the mirrors of `~/.m2/settings.xml`,
+`~/.nuget/NuGet/NuGet.Config`, `~/.config/NuGet/NuGet.Config`, and the
+`composer` repositories of Composer's `config.json` in `COMPOSER_HOME`,
+`~/.config/composer` and `~/.composer`.
 
 The system **shall** read index configuration from the repository: `.npmrc`,
 `.yarnrc.yml`, `pip.conf`, `pip.ini`, `requirements*.txt`, the Poetry and uv
-indexes of `pyproject.toml`, `NuGet.config`, the repositories of `pom.xml` and
-`.cargo/config.toml`.
+indexes of `pyproject.toml`, `NuGet.config`, the repositories of `pom.xml`,
+`.cargo/config.toml` and the `composer` repositories of `composer.json`.
 
 ## Rationale
 
