@@ -1,0 +1,22 @@
+[profile.default]
+src = "src"
+out = "out"
+libs = ["lib", "dependencies"]
+remappings = [
+    "@oz/=lib/openzeppelin-contracts/contracts/",
+    "src/:util/=src/utils/",
+    "test/:util/=test/helpers/",
+    "gone/=src/missing/",
+]
+
+[profile.ci]
+remappings = ["@oz/=lib/openzeppelin-contracts/contracts/", "ci-only/=lib/ci-only/"]
+
+[dependencies]
+"@openzeppelin-contracts" = "5.0.2"
+solady = { version = "0.0.200", git = "https://github.com/Vectorized/solady.git", rev = "0123456789abcdef0123456789abcdef01234567" }
+"@uniswap-v3" = "^1.0.0"
+internal-kit = { version = "1.2.0", git = "https://git.example.com/team/kit.git", branch = "main" }
+
+[soldeer]
+remappings_generate = true

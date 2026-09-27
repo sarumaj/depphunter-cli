@@ -581,3 +581,52 @@ func (lock *packageLock) versions() map[string]string {
 	}
 	return out
 }
+
+// Packages is what a project's package.json and lock files say about npm
+// packages, for plugins of languages whose sources import them too: a Hardhat
+// project's Solidity reads @openzeppelin/contracts from node_modules as Node.js
+// would, and its imports belong on the npm package JavaScript imports.
+//
+// Implements: REQ-SOLIDITY-008
+type Packages struct{ r *resolver }
+
+// ReadPackages reads the package.json and lock files (package-lock.json,
+// yarn.lock, pnpm-lock.yaml) of the project.
+func ReadPackages(all []*scan.File) *Packages { return &Packages{r: newResolver(all)} }
+
+// Package resolves a bare specifier ("@scope/name/sub/path") that file
+// imports: to the file or directory of a workspace package the project builds,
+// or to the npm package a package.json above the file declares, pinned by the
+// nearest lock file as JavaScript's imports are. ok is false when nothing
+// declares the package.
+func (p *Packages) Package(spec, file string) (lang.Target, bool) {
+	pkg, sub := splitPackage(spec)
+	if pkg == "" {
+		return lang.Target{}, false
+	}
+	if dir, ok := p.r.byName[pkg]; ok {
+		if sub != "" {
+			if t, ok := p.r.probe(path.Join(dir, sub)); ok {
+				return t, true
+			}
+		}
+		return lang.Target{Local: dir}, true
+	}
+	t, declared := p.r.declared(pkg, path.Dir(file))
+	if !declared {
+		return lang.Target{}, false
+	}
+	t.Ecosystem, t.Package = ecoNPM, pkg
+	return t, true
+}
+
+// Dependencies is the lock files' answer for an npm package, as the JavaScript
+// resolver gives it.
+func (p *Packages) Dependencies(t lang.Target) []lang.Target { return p.r.Dependencies(t) }
+
+// PackageName splits an npm specifier into its package name: "@scope/name"
+// or "name".
+func PackageName(spec string) string {
+	pkg, _ := splitPackage(spec)
+	return pkg
+}

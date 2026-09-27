@@ -41,6 +41,8 @@ extensions (`.f90`, `.f95`, `.f03`, `.f08`, `.f18`, `.f`, `.for`, `.ftn`,
 GPR), Racket's `.rkt`, `.rktl` and `.rktd`, Scribble's `.scrbl` and
 Scheme's `.scm` and `.ss`, Common Lisp's `.lisp`, `.lsp`, `.cl` and `.asd`,
 Qlot's `qlfile` and `qlfile.lock` (Qlot) and ocicl's `ocicl.csv` (ocicl),
+Solidity's `.sol`, Foundry's `foundry.toml` and `remappings.txt` (Foundry)
+and Soldeer's `soldeer.lock` (Soldeer),
 the shells' and direnv's startup files (`.bashrc`,
 `.zshrc`, `.profile`, `.envrc` and the others of REQ-SHELL-001), and the
 Dockerfile names of REQ-DOCKER-001), or, for a file neither names, from a
@@ -144,3 +146,5 @@ Objective-C from MATLAB, Mercury and C.
     are Common Lisp, `qlfile` and `qlfile.lock` are Qlot and `ocicl.csv` is
     ocicl; `.cl` files starting `__kernel void`, `#pragma OPENCL` or
     `#include` are OpenCL.
+16. `src/Counter.sol` is Solidity, `foundry.toml` and `remappings.txt`
+    are Foundry and `soldeer.lock` is Soldeer.
