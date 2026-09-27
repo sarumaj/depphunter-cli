@@ -159,12 +159,14 @@ func walkFiles(ctx context.Context, root string) ([]string, error) {
 // manifest sits next to them: the PureScript compiler's output/ beside a
 // spago.yaml or spago.dhall, the shards shards installs into lib/ beside a
 // shard.yml, Paket's packages/ and paket-files/ beside a paket.dependencies,
-// Alire's alire/ beside an alire.toml and ocicl's systems/ beside an
-// ocicl.csv.
+// Alire's alire/ beside an alire.toml, ocicl's systems/ beside an
+// ocicl.csv, Foundry's lib/, dependencies/ (Soldeer's), out/ and cache/
+// beside a foundry.toml, and Hardhat's artifacts/, cache/ and
+// typechain-types/ beside a hardhat.config.*.
 // Elsewhere an output/, lib/ or packages/ directory may well be source.
 var generatedBeside = map[string][]string{
 	"output": {"spago.yaml", "spago.dhall"},
-	"lib":    {"shard.yml"},
+	"lib":    {"shard.yml", "foundry.toml"},
 	// Paket installs packages into packages/ and fetches remote files into
 	// paket-files/ beside paket.dependencies.
 	"packages":    {"paket.dependencies"},
@@ -174,6 +176,15 @@ var generatedBeside = map[string][]string{
 	"alire": {"alire.toml"},
 	// ocicl downloads the systems it installs into systems/ beside ocicl.csv.
 	"systems": {"ocicl.csv"},
+	// Foundry installs libraries into lib/ (git submodules) and Soldeer its
+	// dependencies into dependencies/; forge builds into out/ and cache/.
+	// Hardhat compiles into artifacts/ and cache/ and TypeChain writes
+	// typechain-types/.
+	"dependencies":    {"foundry.toml"},
+	"out":             {"foundry.toml"},
+	"cache":           {"foundry.toml", "hardhat.config.js", "hardhat.config.ts", "hardhat.config.cjs", "hardhat.config.mjs", "hardhat.config.cts", "hardhat.config.mts"},
+	"artifacts":       {"hardhat.config.js", "hardhat.config.ts", "hardhat.config.cjs", "hardhat.config.mjs", "hardhat.config.cts", "hardhat.config.mts"},
+	"typechain-types": {"hardhat.config.js", "hardhat.config.ts", "hardhat.config.cjs", "hardhat.config.mjs", "hardhat.config.cts", "hardhat.config.mts"},
 }
 
 // besideManifest reports whether the directory name in dir is such a directory.

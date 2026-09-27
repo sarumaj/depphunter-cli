@@ -205,6 +205,7 @@ code. The page served is identical in both cases.
   [Ada, GPR and Alire](#ada-gpr-and-alire) ·
   [Racket and raco](#racket-and-raco) ·
   [Common Lisp and Quicklisp](#common-lisp-and-quicklisp) ·
+  [Solidity, Foundry and Hardhat](#solidity-foundry-and-hardhat) ·
   [Interface definitions](#interface-definitions) ·
   [Shell scripts](#shell-scripts) ·
   [Documentation](#documentation) ·
@@ -825,10 +826,11 @@ CocoaPods, Carthage, LuaRocks, Wally, CPAN, Zig, Bazel modules and repositories
 install are asked about as such), Nix flake inputs, nixpkgs packages, Elm
 packages, PureScript packages, Crystal shards, the GitHub, git and HTTP
 dependencies Paket fetches, dub packages, fpm packages, haxelib libraries,
-Alire crates, Racket packages or Quicklisp projects. Floating packages are
-not queried,
-since they resolve to a different version on the next installation. Answers are
-cached for six hours. `--no-vulns` disables all of this.
+Alire crates, Racket packages, Quicklisp projects, Soldeer packages or git
+submodules (a Hardhat project's npm packages are asked about as npm).
+Floating packages are not queried, since they resolve to a different version
+on the next installation. Answers are cached for six hours. `--no-vulns`
+disables all of this.
 
 Viewed from above, every building carrying findings bears a **pin**, colored by
 the most severe of them and growing taller with their number, so that the red
@@ -946,6 +948,8 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | Alire crates        | `alire.lock`, `=1.2.3` or a bare `1.2.3` (exact in Alire), a pin to a git `commit` or a `version`, a `path` pin (in the repository)                          | `^`, `~`, `>=`, `/=`, `*` and `&` combinations, a pin to a git `branch` or without a commit, a `path` pin elsewhere                |
 | Racket packages     | a git source's `#<commit>`, a `#:checksum` (raco keeps no lock file)                                                                                         | a `#:version` (a minimum), no version, a git branch; a version tag is shown, neither                                               |
 | Quicklisp           | `qlfile.lock`, a dist version (`ql x 2023-10-21`, `ql :all`, the lock's dist for every project), a git `:ref` commit, an `ocicl.csv` digest                  | `:latest`, a git `:branch` or no ref, `(:version x "1.2")` (a minimum), a project without a qlfile; a git `:tag` is shown, neither |
+| Soldeer             | `soldeer.lock`, an exact `"5.0.2"` in `foundry.toml`, a git `rev` commit                                                                                     | a version requirement (`^1.0.0`), a git `branch` or no ref; a git `tag` is shown, neither                                          |
+| Git submodules      | the commit git records for the submodule (its gitlink)                                                                                                       | no recorded commit (a `.gitmodules` `branch` is shown as the version)                                                              |
 
 A package a shell script installs (`pip install`, `npm install -g`, `go
 install`, `cargo install`, `gem install`) follows its ecosystem's row; one
@@ -1043,8 +1047,10 @@ neither lix pins nor haxelib installed (lib.haxe.org offers no JSON API to
 ask), nor Racket packages (raco keeps no lock file, and neither installed
 packages nor the package catalog are read). Quicklisp projects need
 `--online` too: `qlfile.lock` and `ocicl.csv` are flat lists, and what Qlot
-installed into `.qlot/` is not read. A Terraform provider depends on
-nothing.
+installed into `.qlot/` is not read. A git submodule of a Foundry project
+depends on the submodules of its own `.gitmodules` when it is checked out;
+Soldeer packages are not followed (`soldeer.lock` is flat, and Soldeer's
+registry is not asked). A Terraform provider depends on nothing.
 
 The side panel presents these as a **tree**: every row under *Depends on* and
 *Used by* expands into that node's own dependencies, and so on recursively.
@@ -1232,8 +1238,8 @@ pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`
 `buf:`, `cmake-fetch:`, `pkg-config:`, `cocoapods:`, `carthage:`, `luarocks:`,
 `wally:`, `cpan:`, `opam:`, `julia:`, `zig:`, `bazel:`, `bazel-repo:`, `nix:`,
 `nixpkgs:`, `elm:`, `purescript:`, `shards:`, `paket:`, `dub:`, `fpm:`,
-`fortran-external:`, `haxelib:`, `alire:`, `raco:` or `quicklisp:` —
-restricts it to that ecosystem.
+`fortran-external:`, `haxelib:`, `alire:`, `raco:`, `quicklisp:`,
+`soldeer:` or `git-submodule:` — restricts it to that ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
 to whatever is configured here**, so a Go project whose machine is already
@@ -2004,6 +2010,45 @@ specializers, `defclass`, `define-condition`, `defstruct`, `deftype`,
 Macros are not expanded, and OSV has no Common Lisp ecosystem, so
 Quicklisp projects are not checked for advisories.
 
+### Solidity, Foundry and Hardhat
+
+Solidity contracts (`.sol`) are built by Foundry, whose libraries are git
+submodules under `lib/` (or Soldeer packages under `dependencies/`), or by
+Hardhat, whose libraries are npm packages in `node_modules`. depphunter reads
+`foundry.toml`, `remappings.txt`, `soldeer.lock`, the `.gitmodules` beside a
+`foundry.toml` and the npm manifests without running solc, forge or Hardhat;
+what `lib/`, `dependencies/`, `out/` and `cache/` beside a `foundry.toml`, and
+`artifacts/`, `cache/` and `typechain-types/` beside a `hardhat.config.*`
+hold is not read:
+
+- **Imports** resolve as solc does: `./` and `../` paths are files; else the
+  project's remappings (`foundry.toml`'s, every profile's, then
+  `remappings.txt`'s; `context:prefix=target` applies to files under the
+  context, the longest context then the longest prefix wins) map the path;
+  for a prefix neither lists, the remappings Foundry infers (`dep/` =
+  `lib/dep/src/` or `lib/dep/`) and Soldeer generates (`name-version/` =
+  `dependencies/name-version/`) apply. A path into a library is the library,
+  even when its files are on disk. Otherwise an npm package a `package.json`
+  declares (`@openzeppelin/contracts/...`, `hardhat/console.sol`) is that
+  package, and a path from the project's root (`src/Counter.sol`,
+  `contracts/Token.sol`) its file. What nothing resolves is an unresolved
+  package named by its first segment (an npm package outside Foundry).
+- **Git submodules** form the **Git submodules** island, named by their
+  repository (`github.com/foundry-rs/forge-std`) and pinned by the commit git
+  records for them, with the `.gitmodules` branch as requested; a
+  checked-out submodule's own submodules are its dependencies.
+- **Soldeer packages** form the **Soldeer packages** island: `foundry.toml`'s
+  `[dependencies]` pinned by `soldeer.lock`, else by an exact version or a
+  git commit `rev`.
+- **npm packages** of Hardhat projects are JavaScript's: one node for a
+  package both a contract and a script import, versioned by the lock files.
+
+Contracts, interfaces and libraries, with their functions, modifiers,
+events, errors, structs, enums, value types and constants, and a file's free
+functions and constants are the symbols; imports in comments, NatSpec,
+strings and `assembly` blocks are not read. OSV has no Solidity ecosystem,
+so Soldeer packages and git submodules are not checked for advisories.
+
 ### Interface definitions
 
 Protocol Buffers definitions are shared between services and languages, and
@@ -2186,6 +2231,7 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | Ada                     | `ada_language_server`                                                                        |
 | Racket                  | `racket -l racket-langserver`                                                                |
 | Common Lisp             | `cl-lsp`                                                                                     |
+| Solidity                | `nomicfoundation-solidity-language-server --stdio` or `solidity-ls --stdio`                  |
 | Fortran                 | `fortls`                                                                                     |
 
 The servers run in the background once the map is displayed — gopls requires
@@ -2241,6 +2287,7 @@ The JSON and GraphML exports include the reference edges.
 | Ada                     | `with` clauses to the file declaring the unit (the source directories of the file's projects first), a body to its spec, `separate (P)` to the parent body, a child to its parent; others to the predefined units, the crate Alire fetched that has them, a declared crate they spell or a curated table; `.gpr` files' `with`, `Source_Dirs` and `Main`, and `alire.toml`'s dependencies, pins and project files                                                                                                                                  | Alire crates, Ada predefined units                                         |
 | Racket                  | `#lang`, `require` in every form (`only-in`, `for-syntax`, `submod`, `lib`, `file`, `planet`, `multi-in`), `require/typed`, `include`, `load`, Scribble's `@(require ...)` and `include-section`; relative paths to files, collection paths to the repository's collections (packages' `info.rkt`, multi-collection packages, `collects/`), else the base collections, a curated table or the `info.rkt` `deps` they spell; `info.rkt` `deps` and `build-deps`                                                                                     | Racket packages, Racket base collections                                   |
 | Common Lisp             | `.asd` `defsystem` components (modules and `:pathname`) and `:depends-on` (local `.asd`, secondary and package-inferred systems, the implementation, else the Quicklisp project), `defpackage` `:use`/`:import-from`/`:local-nicknames`, `in-package` and `pkg:sym` to the file defining the package or the declared system it belongs to, `ql:quickload`, `asdf:load-system`, `require`, `load`; `qlfile`, `qlfile.lock` and `ocicl.csv` entries                                                                                                  | Quicklisp projects, Common Lisp built-ins                                  |
+| Solidity                | `import` in every form to files by relative path, the remappings of `foundry.toml` and `remappings.txt` (with contexts) and those Foundry and Soldeer infer, npm packages a `package.json` declares, else the project's root; libraries under `lib/` (git submodules by `.gitmodules`, pinned by the recorded commit) and `dependencies/` (Soldeer, pinned by `soldeer.lock`); `foundry.toml` remappings and dependencies, `remappings.txt`, `soldeer.lock` and `.gitmodules` entries                                                              | Soldeer packages, Git submodules, npm                                      |
 | PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                                                                                                                                                                                                                                                                                                  | PowerShell Gallery, built-in modules                                       |
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                                                                                                                                                                                                                                                       | GitHub Actions, GitLab CI, Container images                                |
 | Protocol Buffers        | `import` (`public`, `weak`) under the import roots of `buf.work.yaml` and `buf.yaml` (v1 and v2), else the repository root, `proto/`, `protos/`, `api/`, `src/main/proto/` and the importer's directories, else a unique project file ending in the path; modules by `buf.yaml` `deps` and `buf.lock` and a table of common protos; `buf.gen.yaml` remote plugins                                                                                                                                                                                  | Buf Schema Registry, Protobuf well-known types                             |
@@ -2799,6 +2846,10 @@ tree-sitter grammar took 30 ms per file and parsed a fifth of the files
 measured with errors. See
 [Common Lisp and Quicklisp](#common-lisp-and-quicklisp).
 
+Solidity is read by a small scanner: the tree-sitter grammar parsed every
+file measured correctly but took 7 to 28 ms per file on average. See
+[Solidity, Foundry and Hardhat](#solidity-foundry-and-hardhat).
+
 Protocol Buffers definitions are read by a small scanner: the tree-sitter
 grammar took 2.4 to 3 ms per file and failed on every file using editions.
 See [Interface definitions](#interface-definitions).
@@ -2826,7 +2877,8 @@ files, Julia, Zig and `build.zig.zon`, Clojure and its EDN manifests, Bazel's
 Starlark files, Nix expressions, Gleam, Elm and PureScript modules, spago's
 Dhall files, Crystal, F# and Paket's files, D and `dub.sdl`, Fortran, Haxe
 and its build files, Ada and GNAT project files, Racket, Scribble and
-`info.rkt`, Common Lisp and its Qlot and ocicl files, Dockerfiles, the
+`info.rkt`, Common Lisp and its Qlot and ocicl files, Solidity and
+Foundry's `remappings.txt` and `.gitmodules`, Dockerfiles, the
 markup of Vue, Svelte and Astro components, R Markdown chunks and C preprocessor
 directives small built-in scanners — so the binary continues to cross-compile
 without a C toolchain.

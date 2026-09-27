@@ -34,7 +34,7 @@ repository's own files cannot answer.
    flake inputs and nixpkgs packages, Elm and PureScript packages, Crystal
    shards, Paket's GitHub, git and HTTP dependencies, dub packages, fpm
    packages, haxelib libraries, Alire crates, Racket packages, Quicklisp
-   projects) is not asked about.
+   projects, Soldeer packages, git submodules) is not asked about.
 
 ## Notes
 

@@ -142,6 +142,7 @@ The server **shall** ...
 | `ada`        | The Ada plugin: specs and bodies, GNAT project files, alire.toml, Alire's lock file and fetched crates. |
 | `racket`     | The Racket plugin: modules, Scribble documents, info.rkt packages and collections, raco packages.       |
 | `commonlisp` | The Common Lisp plugin: sources, ASDF systems, packages, Qlot's qlfile and lock, and ocicl.csv.         |
+| `solidity`   | The Solidity plugin: imports, remappings, git submodules, Soldeer packages and Hardhat's npm packages.  |
 | `terraform`  | The Terraform and OpenTofu plugin, lock files, Terragrunt and the module registries.                    |
 | `proto`      | The Protocol Buffers plugin, Buf's configuration and lock files and the Buf Schema Registry.            |
 | `shell`      | The shell script plugin (sh, Bash, zsh, bats), direnv and packages scripts install.                     |
@@ -356,6 +357,13 @@ requirements of type `limitation` in their scopes:
   branches, installed dependencies (`.qlot/`, ocicl's `systems/`) are not
   read, and a package no file of the repository defines is attributed by
   the declared systems' names and a curated table.
+- Solidity is read without running solc, forge, Soldeer or Hardhat:
+  remappings from the environment or a command line and a Hardhat
+  configuration's own settings are not known, Foundry's remapping inference
+  is followed for `lib/<dep>/src` and one nested level only, a submodule's
+  commit comes from git's index, and neither a submodule's nor a Soldeer
+  package's own imports or dependencies are read beyond a checked-out
+  submodule's `.gitmodules`.
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

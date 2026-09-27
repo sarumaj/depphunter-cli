@@ -151,6 +151,11 @@ var Servers = []Server{
 	// cl-lsp answers references for Common Lisp over stdio; it loads each
 	// opened file's system in its own Lisp image, so a first answer may take a
 	// while.
+	// Nomic Foundation's server (Hardhat's) reads Foundry and Hardhat projects
+	// alike; solidity-ls is Juan Blanco's server of the VS Code extension. Both
+	// compile the project before answering, so a first answer may take a while.
+	{Name: "solidity", Open: true, Exts: map[string]string{".sol": "solidity"},
+		Commands: [][]string{{"nomicfoundation-solidity-language-server", "--stdio"}, {"solidity-ls", "--stdio"}}},
 	{Name: "commonlisp", Open: true, Exts: map[string]string{".lisp": "lisp", ".lsp": "lisp", ".cl": "lisp", ".asd": "lisp"}, Commands: [][]string{{"cl-lsp"}}},
 	{Name: "fortran", Open: true, Exts: map[string]string{".f90": "fortran", ".f95": "fortran", ".f03": "fortran", ".f08": "fortran", ".f18": "fortran", ".f": "fortran", ".for": "fortran", ".ftn": "fortran", ".f77": "fortran", ".fpp": "fortran"}, Commands: [][]string{{"fortls"}}},
 	// neocmakelsp and cmake-language-server both answer references for CMake's

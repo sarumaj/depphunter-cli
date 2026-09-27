@@ -40,7 +40,9 @@ const (
 // included, are asked about as NuGet), nor dub packages (OSV has no D ecosystem)
 // nor fpm packages (no Fortran ecosystem either) nor haxelib libraries (nor a
 // Haxe one) nor Alire crates (nor an Ada one) nor Racket packages (nor a
-// Racket one) nor Quicklisp projects (nor a Common Lisp one).
+// Racket one) nor Quicklisp projects (nor a Common Lisp one) nor Soldeer
+// packages and git submodules (no Solidity ecosystem; the npm packages of
+// Hardhat projects are asked about as npm).
 //
 // Implements: REQ-FND-010
 var osvEcosystems = map[string]string{

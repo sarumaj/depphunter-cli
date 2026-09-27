@@ -1,0 +1,11 @@
+[submodule "lib/forge-std"]
+	path = lib/forge-std
+	url = https://github.com/Foundry-rs/forge-std
+	branch = v1
+[submodule "lib/openzeppelin-contracts"]
+	path = lib/openzeppelin-contracts
+	url = git@github.com:OpenZeppelin/openzeppelin-contracts.git
+[submodule "lib/vault"]
+	path = lib/vault
+	url = https://git.example.com/team/vault.git
+	branch = develop

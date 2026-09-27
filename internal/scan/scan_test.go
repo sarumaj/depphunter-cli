@@ -76,8 +76,11 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 // shards installed, packages/ and paket-files/ beside a paket.dependencies
 // what Paket installed, alire/ beside an alire.toml what Alire keeps (its
 // lock file and the crates it fetched) and systems/ beside an ocicl.csv the
-// systems ocicl downloaded; another output/, lib/, packages/, alire/ or
-// systems/ directory is kept.
+// systems ocicl downloaded, lib/, dependencies/, out/ and cache/ beside a
+// foundry.toml what Foundry and Soldeer installed and forge built, and
+// artifacts/, cache/ and typechain-types/ beside a hardhat.config.* what
+// Hardhat compiled; another output/, lib/, packages/, alire/, systems/,
+// cache/ or artifacts/ directory is kept.
 //
 // Verifies: REQ-LANG-018
 func TestScanSkipsGeneratedBesideManifest(t *testing.T) {
@@ -102,6 +105,18 @@ func TestScanSkipsGeneratedBesideManifest(t *testing.T) {
 		"cl/ocicl.csv":        "alexandria, ghcr.io/ocicl/alexandria@sha256:ab, alexandria-20240503-8514d8e/alexandria.asd\n",
 		"cl/systems/alexandria-20240503-8514d8e/alexandria.asd": "(defsystem \"alexandria\")\n",
 		"game/systems/physics.lisp":                             "(defun step ())\n",
+		"sol/foundry.toml":                                      "[profile.default]\n",
+		"sol/lib/forge-std/src/Test.sol":                        "contract Test {}\n",
+		"sol/dependencies/forge-std-1.9.2/src/Test.sol":         "contract Test {}\n",
+		"sol/out/Counter.sol/Counter.json":                      "{}\n",
+		"sol/cache/solidity-files-cache.json":                   "{}\n",
+		"sol/src/Counter.sol":                                   "contract Counter {}\n",
+		"hh/hardhat.config.ts":                                  "export default {};\n",
+		"hh/artifacts/contracts/Token.sol/Token.json":           "{}\n",
+		"hh/cache/solidity-files-cache.json":                    "{}\n",
+		"hh/typechain-types/index.ts":                           "export {};\n",
+		"site/cache/page.html":                                  "<p>kept</p>\n",
+		"site/artifacts/report.md":                              "# kept\n",
 	} {
 		abs := filepath.Join(root, p)
 		os.MkdirAll(filepath.Dir(abs), 0o755)
@@ -116,7 +131,8 @@ func TestScanSkipsGeneratedBesideManifest(t *testing.T) {
 		paths = append(paths, f.Path)
 	}
 	want := []string{"app/spago.yaml", "app/src/Main.purs", "cl/ocicl.csv", "crate/alire.toml", "docs/alire/intro.md", "fs/paket.dependencies",
-		"game/systems/physics.lisp", "legacy/spago.dhall", "report/output/summary.md", "shop/shard.yml", "tools/lib/helper.cr", "web/packages/app.fs"}
+		"game/systems/physics.lisp", "hh/hardhat.config.ts", "legacy/spago.dhall", "report/output/summary.md", "shop/shard.yml",
+		"site/artifacts/report.md", "site/cache/page.html", "sol/foundry.toml", "sol/src/Counter.sol", "tools/lib/helper.cr", "web/packages/app.fs"}
 	if !reflect.DeepEqual(paths, want) {
 		t.Errorf("got %v, want %v", paths, want)
 	}

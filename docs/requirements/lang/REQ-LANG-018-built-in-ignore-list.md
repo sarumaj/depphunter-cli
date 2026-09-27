@@ -26,9 +26,14 @@ writes beside Racket modules) and `.qlot` (what Qlot installs), an
 directory beside a `shard.yml` (what shards installed), `packages` and
 `paket-files` directories beside a `paket.dependencies` (what Paket
 installed and downloaded), an `alire` directory beside an `alire.toml`
-(Alire's lock file and the crates it fetched), and a `systems` directory
-beside an `ocicl.csv` (the systems ocicl downloaded); an `output`, `lib`,
-`packages`, `alire` or `systems` directory elsewhere is kept.
+(Alire's lock file and the crates it fetched), a `systems` directory
+beside an `ocicl.csv` (the systems ocicl downloaded), `lib`,
+`dependencies`, `out` and `cache` directories beside a `foundry.toml` (the
+libraries Foundry and Soldeer installed, forge's build output), and
+`artifacts`, `cache` and `typechain-types` directories beside a
+`hardhat.config.*` (Hardhat's build output, TypeChain's bindings); an
+`output`, `lib`, `packages`, `alire`, `systems`, `dependencies`, `out`,
+`cache`, `artifacts` or `typechain-types` directory elsewhere is kept.
 
 ## Rationale
 
@@ -59,7 +64,14 @@ caches and build output.
    `crate/alire/cache/dependencies/aunit_24.0.0_1a2b3c4d/src/aunit.ads`
    beside `crate/alire.toml`, and
    `cl/systems/alexandria-20240503-8514d8e/alexandria.asd` beside
-   `cl/ocicl.csv`, while `report/output/summary.md`, `tools/lib/helper.cr`,
-   `web/packages/app.fs`, `docs/alire/intro.md` and
-   `game/systems/physics.lisp` do.
+   `cl/ocicl.csv`, `sol/lib/forge-std/src/Test.sol`,
+   `sol/dependencies/forge-std-1.9.2/src/Test.sol`,
+   `sol/out/Counter.sol/Counter.json` and
+   `sol/cache/solidity-files-cache.json` beside `sol/foundry.toml`, and
+   `hh/artifacts/contracts/Token.sol/Token.json`,
+   `hh/cache/solidity-files-cache.json` and `hh/typechain-types/index.ts`
+   beside `hh/hardhat.config.ts`, while `report/output/summary.md`,
+   `tools/lib/helper.cr`, `web/packages/app.fs`, `docs/alire/intro.md`,
+   `game/systems/physics.lisp`, `site/cache/page.html` and
+   `site/artifacts/report.md` do.
 2. An unreadable subdirectory is skipped without failing the scan.

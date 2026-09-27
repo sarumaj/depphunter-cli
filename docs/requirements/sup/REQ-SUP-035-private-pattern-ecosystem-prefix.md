@@ -45,8 +45,9 @@ inputs and pinned sources) and `nixpkgs` (nixpkgs packages), Elm's
 (GitHub, git and HTTP dependencies), D's `dub`, Fortran's `fpm` and
 `fortran-external` (modules no project or known package provides),
 Haxe's `haxelib`, Alire's `alire`, Racket's `raco` (catalog, git and
-PLaneT packages), and Common Lisp's `quicklisp` (Quicklisp projects and
-Qlot's git sources).
+PLaneT packages), Common Lisp's `quicklisp` (Quicklisp projects and
+Qlot's git sources), and Solidity's `soldeer` (Soldeer packages) and
+`git-submodule` (git submodules, named by repository).
 
 A Clojure dependency is a Maven package named `group:artifact`; a `maven:`
 (or unscoped) pattern matches it by its group (`maven:com.acme.*` matches

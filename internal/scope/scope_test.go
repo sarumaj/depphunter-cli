@@ -357,3 +357,18 @@ func TestAQuicklispPatternKeepsToQuicklisp(t *testing.T) {
 		t.Error("a quicklisp-scoped pattern did not keep to its ecosystem")
 	}
 }
+
+// Soldeer packages are named by their dependency names and git submodules by
+// their repositories; a pattern scoped to either keeps to it.
+//
+// Verifies: REQ-SUP-035
+func TestSolidityPatternsKeepToTheirEcosystems(t *testing.T) {
+	p := New([]string{"soldeer:@acme-*", "git-submodule:git.acme.dev/*"})
+	if !p.Match("soldeer", "@acme-vault") || p.Match("npm", "@acme-vault") || p.Match("soldeer", "forge-std") {
+		t.Error("a soldeer-scoped pattern did not keep to its ecosystem")
+	}
+	if !p.Match("git-submodule", "git.acme.dev/vault") || p.Match("soldeer", "git.acme.dev/vault") ||
+		p.Match("git-submodule", "github.com/foundry-rs/forge-std") {
+		t.Error("a git-submodule-scoped pattern did not keep to its ecosystem")
+	}
+}
