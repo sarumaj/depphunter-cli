@@ -1283,3 +1283,52 @@ func TestDiscoverReadsBazelrc(t *testing.T) {
 		t.Error("BazelCentral")
 	}
 }
+
+// Verifies: REQ-SUP-058
+func TestElmDependencies(t *testing.T) {
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Path)
+		switch r.URL.Path {
+		case "/mirror/packages/elm/html/releases.json":
+			w.Write([]byte(`{"1.0.0": 1534000000, "1.0.1": 1700000000, "2.0.0": 1800000000}`))
+		case "/mirror/packages/elm/html/1.0.0/elm.json", "/mirror/packages/elm/html/1.0.1/elm.json":
+			w.Write([]byte(`{"type": "package", "name": "elm/html", "version": "1.0.0",
+"exposed-modules": ["Html", "Html.Attributes"],
+"dependencies": {"elm/core": "1.0.0 <= v < 2.0.0", "elm/json": "1.0.0 <= v < 2.0.0", "elm/virtual-dom": "1.0.0 <= v < 2.0.0"},
+"test-dependencies": {"elm-explorations/test": "2.0.0 <= v < 3.0.0"}}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	c := clientFor(t, Elm, srv.URL+"/mirror/", "")
+	want := []lang.Target{
+		{Ecosystem: Elm, Package: "elm/core", Version: "1.0.0 <= v < 2.0.0"},
+		{Ecosystem: Elm, Package: "elm/json", Version: "1.0.0 <= v < 2.0.0"},
+		{Ecosystem: Elm, Package: "elm/virtual-dom", Version: "1.0.0 <= v < 2.0.0"},
+	}
+	// An exact version is asked for directly; test-dependencies are left out.
+	if got := c.Dependencies(lang.Target{Ecosystem: Elm, Package: "elm/html", Version: "1.0.0"}); !reflect.DeepEqual(got, want) {
+		t.Errorf("1.0.0: got %+v, want %+v", got, want)
+	}
+	if len(asked) != 1 || asked[0] != "/mirror/packages/elm/html/1.0.0/elm.json" {
+		t.Errorf("asked %v, want the version's elm.json only", asked)
+	}
+	// A range: the newest release it admits (1.0.1, not 2.0.0).
+	asked = nil
+	if got := c.Dependencies(lang.Target{Ecosystem: Elm, Package: "elm/html", Version: "1.0.0 <= v < 2.0.0"}); !reflect.DeepEqual(got, want) {
+		t.Errorf("range: got %+v, want %+v", got, want)
+	}
+	if want := []string{"/mirror/packages/elm/html/releases.json", "/mirror/packages/elm/html/1.0.1/elm.json"}; !reflect.DeepEqual(asked, want) {
+		t.Errorf("asked %v, want %v", asked, want)
+	}
+	// Not an author/name: nothing is asked.
+	asked = nil
+	if got := c.Dependencies(lang.Target{Ecosystem: Elm, Package: "../x", Version: "1.0.0"}); got != nil || len(asked) != 0 {
+		t.Errorf("bad name: got %+v, asked %v", got, asked)
+	}
+	if idx, known := New().For(Elm, "elm/html"); idx != "https://package.elm-lang.org" || !known {
+		t.Errorf("public index %q %v", idx, known)
+	}
+}

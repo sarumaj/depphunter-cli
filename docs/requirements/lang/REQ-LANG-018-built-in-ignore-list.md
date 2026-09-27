@@ -19,7 +19,7 @@ When git cannot list the files, the system **shall** walk the directory tree and
 `.gradle`, `.tox`, `.mypy_cache`, `.build`, `.dart_tool`, `_build`,
 `dist-newstyle`, `.stack-work`, `.terraform`, `.terragrunt-cache`,
 `lua_modules`, `_opam`, `.zig-cache`, `zig-cache`, `zig-out`, `zig-pkg`,
-`.cpcache` and `.shadow-cljs`.
+`.cpcache`, `.shadow-cljs` and `elm-stuff`.
 
 ## Rationale
 
@@ -34,6 +34,7 @@ caches and build output.
    `.stack-work/dist/x/Paths_shop.hs`, `.terraform/modules/vpc/main.tf`,
    `.terragrunt-cache/a/b/main.tf`, `_opam/lib/lwt/lwt.mli`,
    `.zig-cache/o/1/cimport.zig`, `zig-out/bin/gen.zig` and
-   `zig-pkg/x-0.1.0-AAAA/build.zig.zon`, `.cpcache/1234.basis` and
-   `.shadow-cljs/builds/app/x.edn` do not appear in the graph.
+   `zig-pkg/x-0.1.0-AAAA/build.zig.zon`, `.cpcache/1234.basis`,
+   `.shadow-cljs/builds/app/x.edn` and `elm-stuff/0.19.1/Main.elm` do not
+   appear in the graph.
 2. An unreadable subdirectory is skipped without failing the scan.

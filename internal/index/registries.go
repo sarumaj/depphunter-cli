@@ -2035,3 +2035,105 @@ func (c *Client) bazelModule(ctx context.Context, index string, t lang.Target) (
 	}
 	return out, nil
 }
+
+// ---------------------------------------------------------------- Elm
+
+// elmPackage reads an Elm package's dependencies from package.elm-lang.org (or a
+// server laid out like it): <server>/packages/<author>/<name>/<version>/elm.json
+// for the version the target names, else the newest that releases.json lists and
+// the target's range ("1.0.0 <= v < 2.0.0") admits. The package's dependencies
+// are ranges, and are returned as written; test-dependencies are left out.
+//
+// Implements: REQ-SUP-058
+func (c *Client) elmPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+	author, name, _ := strings.Cut(t.Package, "/")
+	if !elmName.MatchString(t.Package) || strings.Contains(t.Package, "..") {
+		return nil, fmt.Errorf("not an Elm package name: %q", t.Package)
+	}
+	base := strings.TrimRight(index, "/") + "/packages/" + url.PathEscape(author) + "/" + url.PathEscape(name) + "/"
+	version := strings.TrimSpace(t.Version)
+	if _, exact := elmVersion(version); !exact {
+		body, err := c.get(ctx, base+"releases.json")
+		if err != nil {
+			return nil, err
+		}
+		var releases map[string]int64 // version -> publication time
+		if err := json.Unmarshal(body, &releases); err != nil {
+			return nil, err
+		}
+		lo, hi, ranged := elmRange(version)
+		best, bestV := "", [3]int{}
+		for v := range releases {
+			parsed, ok := elmVersion(v)
+			if ok && (!ranged || elmAdmits(lo, hi, parsed)) && (best == "" || elmLess(bestV, parsed)) {
+				best, bestV = v, parsed
+			}
+		}
+		if best == "" {
+			return nil, nil
+		}
+		version = best
+	}
+	body, err := c.get(ctx, base+url.PathEscape(version)+"/elm.json")
+	if err != nil {
+		return nil, err
+	}
+	var doc struct {
+		Dependencies map[string]string `json:"dependencies"`
+	}
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return nil, err
+	}
+	out := make([]dep, 0, len(doc.Dependencies))
+	for n, v := range doc.Dependencies {
+		out = append(out, dep{Name: n, Version: v})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// elmName is an Elm package name: author/name.
+var elmName = regexp.MustCompile(`^[A-Za-z0-9_-]+/[A-Za-z0-9_.-]+$`)
+
+// elmVersion parses an Elm package version, always major.minor.patch.
+func elmVersion(s string) ([3]int, bool) {
+	var v [3]int
+	parts := strings.Split(s, ".")
+	if len(parts) != 3 {
+		return v, false
+	}
+	for i, p := range parts {
+		n, err := strconv.Atoi(p)
+		if err != nil || n < 0 || p == "" || p[0] == '+' {
+			return v, false
+		}
+		v[i] = n
+	}
+	return v, true
+}
+
+func elmLess(a, b [3]int) bool { return slices.Compare(a[:], b[:]) < 0 }
+
+// elmBound is one side of an Elm constraint; strict for `<`.
+type elmBound struct {
+	v      [3]int
+	strict bool
+}
+
+// elmRange parses an Elm constraint, "1.0.0 <= v < 2.0.0" (either side < or <=).
+func elmRange(s string) (lo, hi elmBound, ok bool) {
+	f := strings.Fields(s)
+	if len(f) != 5 || f[2] != "v" || f[1] != "<" && f[1] != "<=" || f[3] != "<" && f[3] != "<=" {
+		return lo, hi, false
+	}
+	a, ok1 := elmVersion(f[0])
+	b, ok2 := elmVersion(f[4])
+	return elmBound{a, f[1] == "<"}, elmBound{b, f[3] == "<"}, ok1 && ok2
+}
+
+func elmAdmits(lo, hi elmBound, v [3]int) bool {
+	if elmLess(v, lo.v) || lo.strict && v == lo.v {
+		return false
+	}
+	return elmLess(v, hi.v) || !hi.strict && v == hi.v
+}

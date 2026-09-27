@@ -117,6 +117,9 @@ var Servers = []Server{
 	// The Gleam compiler serves the language server itself (gleam lsp), from the
 	// package's gleam.toml.
 	{Name: "gleam", Open: true, Exts: map[string]string{".gleam": "gleam"}, Commands: [][]string{{"gleam", "lsp"}}},
+	// elm-language-server answers references for Elm modules from the nearest
+	// elm.json.
+	{Name: "elm", Open: true, Exts: map[string]string{".elm": "elm"}, Commands: [][]string{{"elm-language-server", "--stdio"}}},
 	// neocmakelsp and cmake-language-server both answer references for CMake's
 	// functions, macros and variables; a CMakeLists.txt is known by its name.
 	{Name: "cmake", Open: true, Exts: map[string]string{".cmake": "cmake"}, Names: map[string]string{"CMakeLists.txt": "cmake"},

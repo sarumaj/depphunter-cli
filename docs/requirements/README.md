@@ -134,6 +134,7 @@ The server **shall** ...
 | `bazel`     | The Bazel plugin: BUILD, .bzl, MODULE.bazel and WORKSPACE files, registries and hub repositories.     |
 | `nix`       | The Nix plugin: expressions, flakes and flake.lock, niv and npins pins, and nixpkgs packages.         |
 | `gleam`     | The Gleam plugin: modules, gleam.toml and manifest.toml, as Hex packages.                             |
+| `elm`       | The Elm plugin: modules, elm.json, installed packages in ELM_HOME and the package site.               |
 | `terraform` | The Terraform and OpenTofu plugin, lock files, Terragrunt and the module registries.                  |
 | `proto`     | The Protocol Buffers plugin, Buf's configuration and lock files and the Buf Schema Registry.          |
 | `shell`     | The shell script plugin (sh, Bash, zsh, bats), direnv and packages scripts install.                   |
@@ -300,6 +301,9 @@ requirements of type `limitation` in their scopes:
   gleam.toml or manifest.toml declares are named by their first segment
   unless gleam downloaded it into build/packages, pre-1.0 `if erlang { }`
   blocks are not read, and an Elixir module named in `@external` is dropped.
+- Elm is read without running elm: a module of a package that is not
+  installed in ELM_HOME, not in the curated module table and not spelled by
+  a listed package's name is dropped, and `elm-tooling.json` is not read.
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

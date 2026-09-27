@@ -64,6 +64,9 @@ const (
 	// Bazel is the bazel plugin's island of Bzlmod modules; a registry (the Bazel
 	// Central Registry by default) serves each version's MODULE.bazel as a file.
 	Bazel = "bazel"
+	// Elm is the elm plugin's island of packages, named author/name; the package
+	// site serves each version's elm.json and a package's releases as files.
+	Elm = "elm"
 )
 
 // public is where each ecosystem's packages come from unless something says otherwise.
@@ -94,6 +97,7 @@ var public = map[string]string{
 	// The General registry; pkg.julialang.org serves registries only as tarballs.
 	Julia: "https://raw.githubusercontent.com/JuliaRegistries/General/master",
 	Bazel: "https://bcr.bazel.build",
+	Elm:   "https://package.elm-lang.org",
 }
 
 // Clojars is the Maven repository Clojure's libraries are published to. Leiningen,

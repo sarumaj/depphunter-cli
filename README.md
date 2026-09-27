@@ -198,7 +198,7 @@ code. The page served is identical in both cases.
   [The resolution report](#the-resolution-report) ·
   [CI pipelines](#ci-pipelines) ·
   [Infrastructure as code](#infrastructure-as-code) ·
-  [Nix](#nix) · [Gleam](#gleam) ·
+  [Nix](#nix) · [Gleam](#gleam) · [Elm](#elm) ·
   [Interface definitions](#interface-definitions) ·
   [Shell scripts](#shell-scripts) ·
   [Documentation](#documentation) ·
@@ -816,8 +816,8 @@ Bioconductor, Hackage, opam and Julia; OSV
 has no ecosystem for Terraform modules and providers, Buf Schema Registry
 modules, CocoaPods, Carthage, LuaRocks, Wally, CPAN, Zig, Bazel modules and
 repositories (the Maven, PyPI, Go, npm and crates.io packages Bazel's module
-extensions install are asked about as such), Nix flake inputs or nixpkgs
-packages. Floating packages
+extensions install are asked about as such), Nix flake inputs, nixpkgs
+packages or Elm packages. Floating packages
 are not queried, since they resolve to a different version on the next
 installation. Answers are cached for six hours.
 `--no-vulns` disables all of this.
@@ -928,6 +928,7 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | Bazel modules       | `MODULE.bazel.lock`, a `bazel_dep` version, `single_version_override`, an override's commit or `integrity`   | no version; a `git_override` branch; a `git_override` tag is shown, neither                                       |
 | Bazel repositories  | an `http_archive` `sha256` or `integrity`, a `git_repository` commit, an archive of a commit                 | a branch (archive or `branch =`), no ref and no hash; a tag is shown, neither                                     |
 | Nix                 | `flake.lock`, a commit (`rev=`, `/<commit>`) or `narHash` in the reference, niv and npins pins               | a branch (`nixos-24.05`, `refs/heads/`), a channel, `<nixpkgs>`, a registry name, no ref; a tag is shown, neither |
+| Elm                 | an application's `elm.json` (exact versions of direct, indirect and test dependencies)                       | a package's `elm.json` ranges (`1.0.0 <= v < 2.0.0`)                                                              |
 
 A package a shell script installs (`pip install`, `npm install -g`, `go
 install`, `cargo install`, `gem install`) follows its ecosystem's row; one
@@ -968,6 +969,7 @@ and the analysis remains offline.
 | `MODULE.bazel.lock` (before Bazel 7.2)    | the resolved module graph (`moduleDepGraph`)       |
 | `maven_install.json` (rules_jvm_external) | each artifact's `dependencies`                     |
 | `flake.lock` (versions 5 to 7)            | each input's own `inputs`, `follows` resolved      |
+| `elm.json` of packages in `ELM_HOME`      | an installed Elm package's `dependencies`          |
 
 Packages added in this way are marked **transitive**, meaning that no file in
 the repository imports them. Edges between packages are of kind `depends`, as
@@ -986,7 +988,9 @@ registry modules, pods no `Podfile.lock` records, rocks (`luarocks.lock` is a
 flat list), CPAN distributions no `cpanfile.snapshot` records, opam
 packages no `dune.lock/` records (an `*.opam.locked` is a flat list) and Julia
 packages no `Manifest.toml` records, Gleam packages no `manifest.toml`
-records, Maven artifacts of Java, Kotlin, Scala
+records, Elm packages the compiler has not installed in `ELM_HOME` (an
+application's `elm.json` lists indirect packages flat), Maven artifacts of
+Java, Kotlin, Scala
 and Clojure builds (Maven, Gradle without its lock files, sbt, tools.deps and
 Leiningen), and Bazel modules (a lock file since Bazel 7.2 records versions
 only) — require `--online`, described below; the PowerShell Gallery, vcpkg,
@@ -1080,6 +1084,7 @@ ecosystems whose graph is held outside the repository:
 | Julia                  | `<registry>/<L>/<Name>/Versions.toml`, then `Deps.toml` and `Compat.toml` (General, or a depot registry on GitHub)                                                                          | the dependencies of the pinned or newest admitted release, with their compat ranges, without `julia` |
 | Maven (group:artifact) | `<repository>/<group path>/<artifact>/<version>/<artifact>-<version>.pom` and its parents, the version from `maven-metadata.xml` when unpinned; Clojars after Central for a Clojure project | its compile and runtime dependencies, excluding optional ones                                        |
 | Bazel modules          | `<registry>/modules/<name>/<version>/MODULE.bazel`, the newest version not yanked from `metadata.json` when unversioned (the Bazel Central Registry, or a `.bazelrc` `--registry`)          | its `bazel_dep`s, excluding dev dependencies                                                         |
+| Elm                    | `<site>/packages/<author>/<name>/<version>/elm.json`, the newest release a range admits from `releases.json` when unversioned (package.elm-lang.org)                                        | its `dependencies` as ranges, excluding test dependencies                                            |
 
 A container image has no dependency list. What it has is the image it was built
 on, which is the source of its unpatched vulnerabilities, and that is what is
@@ -1181,8 +1186,8 @@ pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`
 `conan:`, `composer:`, `rubygems:`, `swiftpm:`, `pub:`, `hex:`, `cran:`,
 `bioconductor:`, `hackage:`, `terraform-module:`, `terraform-provider:`,
 `buf:`, `cmake-fetch:`, `pkg-config:`, `cocoapods:`, `carthage:`, `luarocks:`,
-`wally:`, `cpan:`, `opam:`, `julia:`, `zig:`, `bazel:`, `bazel-repo:`, `nix:`
-or `nixpkgs:` — restricts it to that ecosystem.
+`wally:`, `cpan:`, `opam:`, `julia:`, `zig:`, `bazel:`, `bazel-repo:`, `nix:`,
+`nixpkgs:` or `elm:` — restricts it to that ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
 to whatever is configured here**, so a Go project whose machine is already
@@ -1487,6 +1492,38 @@ Functions, constants, types and their constructors (`Order.Cancelled`) are
 the symbols. Elixir and Erlang code calling a compiled Gleam module
 (`:gleam@list.map`, `gleam@list:map`) reaches the same file or package.
 
+### Elm
+
+Elm applications record the exact version of every package they install, and
+packages declare ranges; the **Elm packages** island names them
+`author/name`, as `elm.json` and package.elm-lang.org do. depphunter reads
+`.elm` modules and `elm.json`, without running elm; `elm-stuff/` is not read:
+
+- **Modules**: `import A.B` (with or without `as` and `exposing`) is an edge
+  to `A/B.elm` under the source directories of the project the file belongs
+  to: an application's `source-directories`, a package's `src/`, and
+  `tests/` for elm-test. An examples application listing `../src` reaches
+  the library's files; when several `elm.json` files list a file, the one
+  whose own directory holds it comes first.
+- **Packages**: a module of a package the compiler installed in `ELM_HOME`
+  (else `~/.elm`) is that package, by its `exposed-modules`. Without it,
+  elm/core's modules (`Dict`, `List`, `Task`, ...) are `elm/core`, a
+  versioned package like any other, and other modules go to the listed
+  package a curated table (`Html` elm/html, `Html.Styled` rtfeldman/elm-css,
+  `Json.Decode.Pipeline` NoRedInk/elm-json-decode-pipeline) or the package's
+  own name (`List.Extra` elm-community/list-extra) names. A module nothing
+  names is dropped: its name does not say which author published it. The
+  modules Elm imports by default are not edges.
+- **Manifests**: every package `elm.json` lists — direct, indirect and test
+  dependencies alike — is an import of it, and each source directory an edge
+  to that directory. An application's exact versions pin; a package's ranges
+  (`1.0.0 <= v < 2.0.0`) float. `--resolve-depth` follows the `elm.json` of
+  packages installed in `ELM_HOME`, and `--online` asks package.elm-lang.org.
+
+Functions and values, types and type aliases, the constructors of custom types
+(`Msg.Clicked`), ports and `infix` operators are the symbols. OSV has no Elm
+ecosystem, so Elm packages are not checked for advisories.
+
 ### Interface definitions
 
 Protocol Buffers definitions are shared between services and languages, and
@@ -1660,6 +1697,7 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | Bazel (Starlark)        | `starpls server`, `bazel-lsp` or `bzl lsp serve`                                             |
 | Nix                     | `nil` or `nixd`                                                                              |
 | Gleam                   | `gleam lsp`                                                                                  |
+| Elm                     | `elm-language-server --stdio`                                                                |
 
 The servers run in the background once the map is displayed — gopls requires
 approximately 7 s for this repository — within the budget set by
@@ -1704,6 +1742,7 @@ The JSON and GraphML exports include the reference edges.
 | Bazel                   | `load()` and label attributes (`srcs`, `hdrs`, `deps`, `data`, ...) to files and to the BUILD file of each package, `glob()` expanded within the package; other repositories by `MODULE.bazel` (`bazel_dep`, overrides, `MODULE.bazel.lock`), WORKSPACE and `.bzl` repository rules (`http_archive`, `git_repository`, `local_repository`, `go_repository`), and the hub repositories of rules_jvm_external, rules_python, Gazelle, rules_js and rules_rust                                                          | Bazel modules and repositories, Maven, PyPI, Go modules, npm, crates.io    |
 | Nix                     | `import`, `callPackage` and NixOS module `imports` of paths (a directory is its `default.nix`), other path literals; flake inputs (`github:`, `gitlab:`, `git+https:`, tarballs, `path:`, registry names, `follows`) pinned by `flake.lock`, `inputs.x`; `<nixpkgs>`; niv and npins sources; `builtins.fetchTarball`/`fetchGit`/`fetchTree`; nixpkgs attributes in `buildInputs`, `nativeBuildInputs`, `packages`, `systemPackages`                                                                                  | Nix flakes and sources, Nixpkgs                                            |
 | Gleam                   | `import` (with unqualified lists and aliases) to the `src/`, `test/` and `dev/` modules of the package, of path dependencies and of `build/packages` when on disk; `gleam/*` to `gleam_stdlib`, `gleam_erlang`, `gleam_otp` and the like, other modules to the package their leading segments name; `@external` Erlang modules (compiled Gleam modules, `.erl` files, OTP, packages) and JavaScript files or npm packages; packages by `gleam.toml` and `manifest.toml`, whose dependencies and packages are imports | Hex, Erlang/OTP, npm                                                       |
+| Elm                     | `import` to `A/B.elm` under the source directories of every `elm.json` listing the file (an application's `source-directories`, a package's `src/`, `tests/` for elm-test), kernel modules to their `.js`; other modules to the package whose installed `elm.json` in `ELM_HOME` exposes them, elm/core's modules to `elm/core`, else a curated module table or the listed package the module spells; packages by `elm.json`, whose dependencies are imports                                                         | Elm packages                                                               |
 | PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                                                                                                                                                                                                                                                                    | PowerShell Gallery, built-in modules                                       |
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                                                                                                                                                                                                                         | GitHub Actions, GitLab CI, Container images                                |
 | Protocol Buffers        | `import` (`public`, `weak`) under the import roots of `buf.work.yaml` and `buf.yaml` (v1 and v2), else the repository root, `proto/`, `protos/`, `api/`, `src/main/proto/` and the importer's directories, else a unique project file ending in the path; modules by `buf.yaml` `deps` and `buf.lock` and a table of common protos; `buf.gen.yaml` remote plugins                                                                                                                                                    | Buf Schema Registry, Protobuf well-known types                             |
@@ -2217,6 +2256,10 @@ Gleam modules are read by a small lexer: the tree-sitter grammar parsed 207 of
 209 files measured correctly but took 4.9 ms per file, and everything needed
 is token-level. See [Gleam](#gleam).
 
+Elm modules are read by a small lexer too: the tree-sitter grammar parsed 411
+of 412 files measured correctly but took 4 to 7 ms per file, and Elm's layout
+rule puts every top-level declaration in column 0. See [Elm](#elm).
+
 Protocol Buffers definitions are read by a small scanner: the tree-sitter
 grammar took 2.4 to 3 ms per file and failed on every file using editions.
 See [Interface definitions](#interface-definitions).
@@ -2241,10 +2284,10 @@ Dart, Elixir, Erlang, R, Haskell, HCL, Protocol Buffers, shell scripts, CMake
 files, Swift, Objective-C, CocoaPods and Carthage manifests, Lua, Luau, Teal and
 LuaRocks files, Perl and its CPAN manifests, OCaml, dune and opam files, Julia,
 Zig and `build.zig.zon`, Clojure and its EDN manifests, Bazel's Starlark files,
-Nix expressions, Gleam modules, Dockerfiles, the markup of Vue, Svelte and
-Astro components, R Markdown chunks and C preprocessor directives small
-built-in scanners — so the binary continues to cross-compile without a C
-toolchain.
+Nix expressions, Gleam and Elm modules, Dockerfiles, the markup of Vue,
+Svelte and Astro components, R Markdown chunks and C preprocessor directives
+small built-in scanners — so the binary continues to cross-compile without a
+C toolchain.
 
 ## Security
 

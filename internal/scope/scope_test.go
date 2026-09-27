@@ -244,3 +244,13 @@ func TestANixPatternKeepsToNix(t *testing.T) {
 		t.Error("a nix-scoped pattern did not keep to its ecosystem")
 	}
 }
+
+// Elm packages are named author/name; an elm-scoped pattern keeps to them.
+//
+// Verifies: REQ-SUP-035
+func TestAnElmPatternKeepsToElm(t *testing.T) {
+	p := New([]string{"elm:acme/*"})
+	if !p.Match("elm", "acme/elm-widgets") || p.Match("npm", "acme/elm-widgets") || p.Match("elm", "elm/html") {
+		t.Error("an elm-scoped pattern did not keep to its ecosystem")
+	}
+}
