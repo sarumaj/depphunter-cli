@@ -910,6 +910,7 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | Terraform modules   | a registry `version` of `1.2.3` or `= 1.2.3`, a git `ref` commit                                             | `~>` and other ranges, no version, a git tag or branch, no ref, an archive                |
 | Terraform providers | `.terraform.lock.hcl` (the root module's, for the modules it calls), a single exact constraint               | `~>`, `>=` and other constraints, no constraint                                           |
 | Buf Schema Registry | `buf.lock`, a commit ref (`:0123…`), a plugin's exact version                                                | a label, tag or branch ref, no ref, a plugin without a version                            |
+| CMake FetchContent  | a `GIT_TAG` commit, a `URL_HASH`, an archive of a commit                                                     | a branch `GIT_TAG` (`main`, `origin/…`), no `GIT_TAG`, a download without a hash          |
 
 A package a shell script installs (`pip install`, `npm install -g`, `go
 install`, `cargo install`, `gem install`) follows its ecosystem's row; one
@@ -960,7 +961,8 @@ packages no lock records, Swift packages that SwiftPM has not checked out
 under `.build` (`Package.resolved` is flat as well) and Terraform modules
 fetched from git or an archive are not resolved beyond the first level at
 present, and neither are Buf Schema Registry modules: `buf.lock` is a flat
-list, and the registry's API is not a package index depphunter asks. A
+list, and the registry's API is not a package index depphunter asks. Content
+a CMake build fetches is not resolved beyond the first level either. A
 Terraform provider depends on nothing.
 
 The side panel presents these as a **tree**: every row under *Depends on* and
@@ -1116,8 +1118,8 @@ Maven group (`com.acme.*`) and a registry path (`harbor.corp/*`). Prefixing a
 pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`,
 `crates:`, `actions:`, `gitlab-ci:`, `psgallery:`, `c-external:`, `vcpkg:`,
 `conan:`, `composer:`, `rubygems:`, `swiftpm:`, `pub:`, `hex:`, `cran:`,
-`bioconductor:`, `hackage:`, `terraform-module:`, `terraform-provider:` or
-`buf:` — restricts it to that ecosystem.
+`bioconductor:`, `hackage:`, `terraform-module:`, `terraform-provider:`,
+`buf:`, `cmake-fetch:` or `pkg-config:` — restricts it to that ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
 to whatever is configured here**, so a Go project whose machine is already
@@ -1506,6 +1508,7 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | Terraform / OpenTofu    | `terraform-ls serve` or `tofu-ls serve`                        |
 | Protocol Buffers        | `buf lsp serve`, `bufls serve` or `protols`                    |
 | Shell (sh, Bash, bats)  | `bash-language-server start`                                   |
+| CMake                   | `neocmakelsp --stdio` or `cmake-language-server`               |
 
 The servers run in the background once the map is displayed — gopls requires
 approximately 7 s for this repository — within the budget set by
@@ -1531,6 +1534,7 @@ The JSON and GraphML exports include the reference edges.
 | Scala                   | source files by the package they declare (any directory; Java files by path), `build.sbt` (`%`, `%%`, versions held in a `val`), the Java manifests                                                                                                                                                                                                                              | Maven, Scala and Java standard libraries                                   |
 | C#                      | namespaces to project folders (`RootNamespace` + folder), `PackageReference`, `Directory.Packages.props`                                                                                                                                                                                                                                                                         | NuGet, .NET base library                                                   |
 | C / C++                 | `#include` beside the includer, the include paths of `compile_commands.json` (`-I`, `-iquote`, `-isystem`, `/I`), `include/` and `src/`, and a unique project file ending in the included path; libraries by `vcpkg.json`, `conanfile.txt`, `conanfile.py` and `conan.lock`                                                                                                      | vcpkg, Conan, C/C++ external, C and C++ standard libraries, system headers |
+| CMake                   | `add_subdirectory`, `include` of files and of modules on `CMAKE_MODULE_PATH`, target sources, `configure_file` templates, presets; `find_package` as the includes resolve, FetchContent, ExternalProject, CPM.cmake, `pkg_check_modules`                                                                                                                                         | vcpkg, Conan, C/C++ external, fetched content, pkg-config, CMake modules   |
 | PHP                     | `use` statements (grouped, `function`, `const`) and fully qualified names in code, same-namespace `extends`/`implements`, `require`/`include` of spelled-out paths; project files by what they declare and `composer.json` PSR-4/PSR-0; packages by the autoload prefixes of `composer.lock` or `installed.json`                                                                 | Packagist, PHP standard library                                            |
 | Ruby                    | `require`/`require_relative`/`load`/`autoload` of spelled-out paths on a guessed load path (`lib`, `test`, `spec`, gemspec require paths, path gems); gems by `Gemfile`, gemspecs and `Gemfile.lock`, whose `gem` lines are imports; Rails constants by Zeitwerk naming                                                                                                          | RubyGems, Ruby standard library                                            |
 | Swift                   | `import` (every `#if` branch); `Package.swift` targets to their directories, else a directory named after the module; packages by `Package.swift`, `Package.resolved` and Xcode's `project.pbxproj`, products first, whose `.package` lines are imports; types used across a module's files                                                                                      | Swift packages, Swift standard library, Apple SDKs                         |
@@ -1643,6 +1647,40 @@ override: a `builtin-baseline` fixes versions through the registry's history,
 which the repository does not carry, so a port without a version is then
 neither pinned nor floating, while without a baseline it floats. Everything
 else stays in C/C++ external, without a version.
+
+CMake builds — `CMakeLists.txt`, `*.cmake`, `*.cmake.in` package configuration
+templates and `CMakePresets.json`/`CMakeUserPresets.json` — tie the build to
+the code and the libraries. `add_subdirectory(dir)` is an edge to
+`dir/CMakeLists.txt`; `include()` of a path to that file, of a module name to
+`Name.cmake` on `CMAKE_MODULE_PATH` (as `set()` and `list(APPEND)` in the file
+and the `CMakeLists.txt` above it build it), else to a module CMake ships
+(`FetchContent`, `GNUInstallDirs`, `CTest`, the `Check*` modules) in a hidden
+**CMake modules** island; the sources of `add_library()`, `add_executable()`
+and `target_sources()` and `configure_file()`'s template are edges to those
+files; presets' `include` and `toolchainFile` too. Paths are evaluated from
+the file's variables, those the `CMakeLists.txt` files above it set, and
+`CMAKE_CURRENT_SOURCE_DIR`, `CMAKE_CURRENT_LIST_DIR`, `CMAKE_SOURCE_DIR`,
+`PROJECT_SOURCE_DIR` and `<Project>_SOURCE_DIR`; conditions and loops are not
+evaluated, and binary-directory, environment and configure-time values are not
+followed. `find_package(X)` lands where an `#include` of X's headers lands, so
+the build file and the sources meet on one node: a vcpkg or Conan package the
+manifests declare, else the C/C++ external library named after the include
+directory (`ZLIB` is `zlib`, `nlohmann_json` is `nlohmann`, `Eigen3` is
+`Eigen`, each Boost and Qt component on its own: `Qt6 Widgets` is
+`QtWidgets`). Before that fallback come a project of that name in the
+repository, the project's own `FindX.cmake`, and content it fetches under that
+name; CMake's find modules for tools and the platform (`Threads`, `OpenMP`,
+`Python3`, `Git`, `Doxygen`, `CUDAToolkit`) are CMake modules.
+`FetchContent_Declare()`, `ExternalProject_Add()` and CPM.cmake's
+`CPMAddPackage()` (`"gh:owner/repo@1.2.3"` or keywords) are packages of the
+**CMake fetched content** island named by repository or download URL
+(`github.com/google/googletest`; a GitHub release asset or archive by its
+repository and ref), and `FetchContent_MakeAvailable(name)` links to the
+declaration. A `GIT_TAG` commit or a `URL_HASH` pins; a tag is shown but can be
+moved, so it neither pins nor floats; a branch or no tag floats.
+`pkg_check_modules()` modules are the **pkg-config modules** island. Targets,
+functions, macros, options, cache variables, projects and presets become
+symbols.
 
 PHP files (`.php`, `.phtml`, `.inc`) are read for their `use` statements,
 grouped ones (`use App\{A, B as C}`) and `use function`/`use const`
@@ -1800,14 +1838,17 @@ Shell scripts are read by a small scanner: the tree-sitter bash grammar took
 2.7 to 3.6 ms per file, about twenty times longer, and failed on two thirds of
 the zsh files measured. See [Shell scripts](#shell-scripts).
 
+CMake files are read by a small scanner: the tree-sitter cmake grammar parsed
+every file measured correctly but took 6.4 ms per file on average.
+
 Files in other languages appear on the map without dependency edges. Parsing
 uses a pure-Go tree-sitter runtime for JavaScript/TypeScript, Python, Rust,
 Java, Kotlin, Scala, C, C++, PHP, Ruby and Swift; Go uses the standard library's
 own parser, CI, Compose and Buf files a YAML parser, and C#, PowerShell,
 Markdown, Dart, Elixir, Erlang, R, Haskell, HCL, Protocol Buffers, shell
-scripts, Dockerfiles, the markup of Vue, Svelte and Astro components, R
-Markdown chunks and C preprocessor directives small built-in scanners — so the
-binary continues to cross-compile without a C toolchain.
+scripts, CMake files, Dockerfiles, the markup of Vue, Svelte and Astro
+components, R Markdown chunks and C preprocessor directives small built-in
+scanners — so the binary continues to cross-compile without a C toolchain.
 
 ## Security
 

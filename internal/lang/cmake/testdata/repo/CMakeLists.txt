@@ -1,0 +1,37 @@
+cmake_minimum_required(VERSION 3.24)
+project(Shop VERSION 1.4.0 LANGUAGES CXX)
+
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_CURRENT_SOURCE_DIR}/cmake")
+set(SHOP_INCLUDE ${PROJECT_SOURCE_DIR}/include)
+set(SHOP_TOOLS tools)
+
+include(FetchContent)
+include(GNUInstallDirs)
+include(Warnings)
+include(cmake/Deps.cmake)
+include(NotAnywhere OPTIONAL)
+
+option(SHOP_TESTS "Build the tests" ON)
+set(SHOP_LOG_LEVEL "info" CACHE STRING "Default log level")
+
+#[[ find_package(Commented) ]]
+# find_package(AlsoCommented)
+find_package(Threads REQUIRED)
+find_package(fmt 10 CONFIG REQUIRED)
+find_package(ZLIB)
+find_package(Boost 1.80 REQUIRED COMPONENTS filesystem system)
+find_package(OpenSSL REQUIRED)
+find_package(Qt6 REQUIRED COMPONENTS Core Widgets)
+find_package(nlohmann_json 3.11 QUIET)
+find_package(Eigen3 NO_MODULE)
+find_package(Catch2 3)
+find_package(PkgConfig REQUIRED)
+pkg_check_modules(GLIB REQUIRED IMPORTED_TARGET glib-2.0>=2.40 gio-2.0)
+
+add_subdirectory(src)
+add_subdirectory(${SHOP_TOOLS})
+if(SHOP_TESTS)
+  add_subdirectory(tests)
+endif()
+add_subdirectory(missing)
+configure_file(config.h.in "${CMAKE_CURRENT_BINARY_DIR}/config.h" @ONLY)

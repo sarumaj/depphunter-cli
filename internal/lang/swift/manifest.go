@@ -6,6 +6,8 @@ import (
 	"sort"
 	"strconv"
 	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang"
 )
 
 // Package.swift is Swift code, but its dependencies and targets are written as calls
@@ -436,31 +438,10 @@ func identity(location string) string {
 }
 
 // packageName is how a package at a URL is named on the map, and to OSV (ecosystem
-// SwiftURL) and Trivy: the URL without scheme, user and ".git", host in lower case -
-// https://github.com/apple/swift-nio.git and git@github.com:apple/swift-nio are both
-// github.com/apple/swift-nio.
+// SwiftURL) and Trivy: lang.RepoName's spelling of the URL.
 //
 // Implements: REQ-SWIFT-006
-func packageName(url string) string {
-	s := strings.TrimSpace(url)
-	if i := strings.Index(s, "://"); i >= 0 {
-		s = s[i+3:]
-	} else if at, rest, ok := strings.Cut(s, "@"); ok && !strings.Contains(at, "/") {
-		s = strings.Replace(rest, ":", "/", 1) // scp-like git@host:owner/repo
-	}
-	if at, rest, ok := strings.Cut(s, "@"); ok && !strings.Contains(at, "/") {
-		s = rest // https://user@host/...
-	}
-	s = strings.TrimSuffix(strings.TrimRight(s, "/"), ".git")
-	host, rest, _ := strings.Cut(s, "/")
-	if h, _, ok := strings.Cut(host, ":"); ok { // a port
-		host = h
-	}
-	if rest == "" {
-		return strings.ToLower(host)
-	}
-	return strings.ToLower(host) + "/" + rest
-}
+func packageName(url string) string { return lang.RepoName(url) }
 
 var (
 	pbxObject = regexp.MustCompile(`(?m)^\s*([0-9A-Fa-f]{24})\b[^=\n]*=\s*\{\s*isa\s*=\s*(XCRemoteSwiftPackageReference|XCLocalSwiftPackageReference|XCSwiftPackageProductDependency)\s*;`)

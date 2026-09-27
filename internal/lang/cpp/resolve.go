@@ -72,10 +72,7 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 	if imp.Name == quoted && (!strings.Contains(name, "/") || strings.HasPrefix(name, ".")) {
 		return lang.Target{}
 	}
-	if p := r.pkgs.match(file, name); p != nil {
-		return p.target()
-	}
-	return lang.Target{Ecosystem: ecoExternal, Package: library(name), Unresolved: true}
+	return Packages{r.pkgs}.Library(file, name)
 }
 
 // Dependencies implements lang.Transitive from a Conan 1 conan.lock's graph.

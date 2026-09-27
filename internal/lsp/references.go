@@ -25,8 +25,11 @@ import (
 // Server describes a language server: the files it answers for and the commands that
 // start it, tried in order.
 type Server struct {
-	Name     string
-	Exts     map[string]string // file extension -> LSP languageId
+	Name string
+	Exts map[string]string // file extension -> LSP languageId
+	// Names are the files the server answers for by name rather than extension
+	// (CMakeLists.txt), with their languageId.
+	Names    map[string]string
 	Commands [][]string
 	// Open sends every file with didOpen first; some servers only know opened files.
 	Open bool
@@ -80,6 +83,20 @@ var Servers = []Server{
 	// has no zsh support, so zsh files are left out.
 	{Name: "bash", Open: true, Exts: map[string]string{".sh": "shellscript", ".bash": "shellscript", ".ksh": "shellscript", ".bats": "shellscript", ".envrc": "shellscript"},
 		Commands: [][]string{{"bash-language-server", "start"}}},
+	// neocmakelsp and cmake-language-server both answer references for CMake's
+	// functions, macros and variables; a CMakeLists.txt is known by its name.
+	{Name: "cmake", Open: true, Exts: map[string]string{".cmake": "cmake"}, Names: map[string]string{"CMakeLists.txt": "cmake"},
+		Commands: [][]string{{"neocmakelsp", "--stdio"}, {"cmake-language-server"}}},
+}
+
+// languageID is the languageId the server gives the file at p, and whether it
+// answers for it at all.
+func (s Server) languageID(p string) (string, bool) {
+	if id, ok := s.Names[path.Base(p)]; ok {
+		return id, true
+	}
+	id, ok := s.Exts[strings.ToLower(path.Ext(p))]
+	return id, ok
 }
 
 type Options struct {
@@ -169,7 +186,7 @@ func References(ctx context.Context, g *graph.Graph, opts Options) (*Result, err
 	for _, srv := range Servers {
 		var paths []string
 		for p := range files {
-			if _, ok := srv.Exts[strings.ToLower(path.Ext(p))]; ok {
+			if _, ok := srv.languageID(p); ok {
 				paths = append(paths, p)
 			}
 		}
@@ -289,8 +306,9 @@ func runServer(ctx context.Context, srv Server, argv []string, opts Options, pat
 			continue
 		}
 		if srv.Open {
+			id, _ := srv.languageID(p)
 			c.notify("textDocument/didOpen", map[string]any{"textDocument": map[string]any{
-				"uri": fileURI(filepath.Join(opts.Root, p)), "languageId": srv.Exts[strings.ToLower(path.Ext(p))],
+				"uri": fileURI(filepath.Join(opts.Root, p)), "languageId": id,
 				"version": 1, "text": string(data),
 			}})
 		}

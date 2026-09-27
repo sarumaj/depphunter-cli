@@ -1,0 +1,6 @@
+project(shop_tests)
+find_package(Shop REQUIRED)
+find_package(GTest)
+include(GoogleTest)
+include(CTest)
+add_executable(shop_tests test_main.cpp ${PROJECT_SOURCE_DIR}/test_cart.cpp ${CMAKE_SOURCE_DIR}/src/util.cpp)

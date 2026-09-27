@@ -30,7 +30,9 @@ installed; Terraform, OpenTofu and variable files) and Buf's language server,
 bufls or protols (`buf lsp serve`, `bufls serve` or `protols`, first
 installed; Protocol Buffers) and bash-language-server
 (`bash-language-server start`; `.sh`, `.bash`, `.ksh`, `.bats` and `.envrc`
-files, not zsh), skipping a server that is not installed.
+files, not zsh) and neocmakelsp or cmake-language-server (`neocmakelsp
+--stdio` or `cmake-language-server`, first installed; `CMakeLists.txt` by
+name and `.cmake` files), skipping a server that is not installed.
 
 ## Rationale
 
@@ -43,3 +45,5 @@ ecosystem, and they are already installed where the ecosystem is used.
    `gopls`.
 2. A server that is not on `PATH` (or in the Go binary directories, for gopls)
    is logged as skipped and the run continues.
+3. The CMake server answers for `src/CMakeLists.txt` and `cmake/Deps.cmake` as
+   `cmake`, and not for `notes.txt`.

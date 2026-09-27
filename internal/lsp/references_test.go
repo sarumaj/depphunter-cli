@@ -114,3 +114,18 @@ func TestURIs(t *testing.T) {
 		t.Error("paths outside the root must be rejected")
 	}
 }
+
+// Verifies: REQ-LSP-002
+func TestServerByName(t *testing.T) {
+	var cmake Server
+	for _, s := range Servers {
+		if s.Name == "cmake" {
+			cmake = s
+		}
+	}
+	for p, want := range map[string]bool{"src/CMakeLists.txt": true, "cmake/Deps.cmake": true, "notes.txt": false} {
+		if id, ok := cmake.languageID(p); ok != want || (ok && id != "cmake") {
+			t.Errorf("%s: %q, %v", p, id, ok)
+		}
+	}
+}

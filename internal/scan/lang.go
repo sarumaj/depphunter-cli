@@ -25,13 +25,13 @@ var byExt = map[string]string{
 	".json": "JSON", ".yaml": "YAML", ".yml": "YAML", ".toml": "TOML", ".xml": "XML",
 	".md": "Markdown", ".mdx": "Markdown", ".rst": "reStructuredText", ".txt": "Text",
 	".sql": "SQL", ".proto": "Protobuf", ".graphql": "GraphQL", ".tf": "Terraform",
-	".tofu": "OpenTofu", ".tfvars": "Terraform", ".hcl": "HCL",
+	".tofu": "OpenTofu", ".tfvars": "Terraform", ".hcl": "HCL", ".cmake": "CMake",
 }
 
 var byName = map[string]string{
 	"Makefile": "Make", "go.mod": "Go", "go.sum": "Go",
-	"CMakeLists.txt": "CMake", "Jenkinsfile": "Groovy",
-	"Gemfile": "Ruby", "Rakefile": "Ruby", "Guardfile": "Ruby", "Capfile": "Ruby",
+	"CMakeLists.txt": "CMake", "CMakePresets.json": "CMake", "CMakeUserPresets.json": "CMake",
+	"Jenkinsfile": "Groovy", "Gemfile": "Ruby", "Rakefile": "Ruby", "Guardfile": "Ruby", "Capfile": "Ruby",
 	"rebar.config": "Erlang", "rebar.lock": "Erlang", "mix.lock": "Elixir",
 	"DESCRIPTION": "R", "NAMESPACE": "R", "renv.lock": "R", "packrat.lock": "R",
 	"cabal.project": "Cabal", "cabal.project.freeze": "Cabal", "cabal.project.local": "Cabal",
@@ -56,6 +56,9 @@ func Language(p string) string {
 	}
 	if strings.HasSuffix(base, ".app.src") {
 		return "Erlang" // an OTP application resource file
+	}
+	if strings.HasSuffix(strings.ToLower(base), ".cmake.in") {
+		return "CMake" // a package configuration template
 	}
 	if strings.HasSuffix(base, ".tf.json") || strings.HasSuffix(base, ".tfvars.json") {
 		return "Terraform" // Terraform's JSON syntax
