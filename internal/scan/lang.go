@@ -36,6 +36,7 @@ var byName = map[string]string{
 	"cabal.project": "Cabal", "cabal.project.freeze": "Cabal", "cabal.project.local": "Cabal",
 	"stack.yaml": "Haskell", "stack.yaml.lock": "Haskell", "package.yaml": "Haskell",
 	".terraform.lock.hcl": "Terraform", "terragrunt.hcl": "Terragrunt",
+	"buf.yaml": "Buf", "buf.work.yaml": "Buf", "buf.lock": "Buf", "buf.gen.yaml": "Buf",
 }
 
 // Language guesses a file's language from its name; "" means unknown.

@@ -72,6 +72,10 @@ var Servers = []Server{
 	// terraform-ls serves OpenTofu files as well; tofu-ls is OpenTofu's fork of it.
 	{Name: "terraform", Open: true, Exts: map[string]string{".tf": "terraform", ".tofu": "opentofu", ".tfvars": "terraform-vars"},
 		Commands: [][]string{{"terraform-ls", "serve"}, {"tofu-ls", "serve"}}},
+	// buf lsp serve is Buf's own server (buf 1.43 and later); bufls is its former
+	// standalone release, protols a community server that needs no Buf configuration.
+	{Name: "proto", Open: true, Exts: map[string]string{".proto": "proto"},
+		Commands: [][]string{{"buf", "lsp", "serve"}, {"bufls", "serve"}, {"protols"}}},
 }
 
 type Options struct {

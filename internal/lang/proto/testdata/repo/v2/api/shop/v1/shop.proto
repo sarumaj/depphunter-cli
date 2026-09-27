@@ -1,0 +1,14 @@
+edition = "2023";
+
+package acme.shop.v1;
+
+import "buf/validate/validate.proto";
+import "protoc-gen-openapiv2/options/annotations.proto";
+import "google/type/money.proto";
+import "audit/v1/audit.proto";
+import "payments/v1/pay.proto";
+
+message Order {
+  string id = 1 [(buf.validate.field).string.min_len = 1];
+  google.type.Money price = 2;
+}

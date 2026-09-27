@@ -1,0 +1,9 @@
+version: v2
+plugins:
+  - remote: buf.build/protocolbuffers/go:v1.34.1
+    out: gen
+  - local: protoc-gen-go-grpc
+    out: gen
+inputs:
+  - directory: api
+  - module: buf.build/acme/other:main

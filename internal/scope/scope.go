@@ -133,7 +133,7 @@ var ecosystems = map[string]bool{
 	"nuget": true, "oci": true, "actions": true, "gitlab-ci": true, "powershell": true,
 	"psgallery": true, "c-external": true, "vcpkg": true, "conan": true, "composer": true,
 	"rubygems": true, "swiftpm": true, "pub": true, "hex": true, "cran": true, "bioconductor": true,
-	"hackage": true, "terraform-module": true, "terraform-provider": true,
+	"hackage": true, "terraform-module": true, "terraform-provider": true, "buf": true,
 }
 
 func isEcosystem(s string) bool { return ecosystems[strings.ToLower(s)] }

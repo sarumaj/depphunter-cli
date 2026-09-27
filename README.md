@@ -198,6 +198,7 @@ code. The page served is identical in both cases.
   [The resolution report](#the-resolution-report) ·
   [CI pipelines](#ci-pipelines) ·
   [Infrastructure as code](#infrastructure-as-code) ·
+  [Interface definitions](#interface-definitions) ·
   [Documentation](#documentation) ·
   [Symbol references](#symbol-references) · [Languages](#languages)
 - [Security](#security) · [Contributing](#contributing) · [License](#license)
@@ -809,7 +810,8 @@ packages each, followed by the advisories it matched — covering Go, npm, PyPI,
 crates.io, Maven, NuGet, GitHub Actions, Conan (as OSV's ConanCenter; vcpkg has
 no OSV ecosystem), Composer (as Packagist), RubyGems, Swift packages (as
 SwiftURL, by URL), pub, Hex, CRAN, Bioconductor and Hackage; OSV has no
-ecosystem for Terraform modules and providers. Floating packages are not
+ecosystem for Terraform modules and providers or for Buf Schema Registry
+modules. Floating packages are not
 queried, since they resolve to a different version on the next installation.
 Answers are cached for six hours.
 `--no-vulns` disables all of this.
@@ -906,6 +908,7 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | Hackage             | cabal's `plan.json`, `cabal.project.freeze`, `stack.yaml.lock`, `extra-deps`, `==1.2.3`, a repository commit | `^>=` and other ranges, no version, a repository tag or branch                            |
 | Terraform modules   | a registry `version` of `1.2.3` or `= 1.2.3`, a git `ref` commit                                             | `~>` and other ranges, no version, a git tag or branch, no ref, an archive                |
 | Terraform providers | `.terraform.lock.hcl` (the root module's, for the modules it calls), a single exact constraint               | `~>`, `>=` and other constraints, no constraint                                           |
+| Buf Schema Registry | `buf.lock`, a commit ref (`:0123…`), a plugin's exact version                                                | a label, tag or branch ref, no ref, a plugin without a version                            |
 
 The JSON and GraphML exports carry `requested` and `floating` per package.
 
@@ -951,7 +954,9 @@ PowerShell Gallery, vcpkg, Conan 2 (whose lock is a flat list), Bioconductor
 packages no lock records, Swift packages that SwiftPM has not checked out
 under `.build` (`Package.resolved` is flat as well) and Terraform modules
 fetched from git or an archive are not resolved beyond the first level at
-present. A Terraform provider depends on nothing.
+present, and neither are Buf Schema Registry modules: `buf.lock` is a flat
+list, and the registry's API is not a package index depphunter asks. A
+Terraform provider depends on nothing.
 
 The side panel presents these as a **tree**: every row under *Depends on* and
 *Used by* expands into that node's own dependencies, and so on recursively.
@@ -1106,8 +1111,8 @@ Maven group (`com.acme.*`) and a registry path (`harbor.corp/*`). Prefixing a
 pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`,
 `crates:`, `actions:`, `gitlab-ci:`, `psgallery:`, `c-external:`, `vcpkg:`,
 `conan:`, `composer:`, `rubygems:`, `swiftpm:`, `pub:`, `hex:`, `cran:`,
-`bioconductor:`, `hackage:`, `terraform-module:` or `terraform-provider:` —
-restricts it to that ecosystem.
+`bioconductor:`, `hackage:`, `terraform-module:`, `terraform-provider:` or
+`buf:` — restricts it to that ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
 to whatever is configured here**, so a Go project whose machine is already
@@ -1334,6 +1339,47 @@ configurations become the file's symbols. Only a commit pins a git module; a
 registry module is pinned by an exact `version`. Nothing is evaluated, so a
 source or version computed from variables is not followed.
 
+### Interface definitions
+
+Protocol Buffers definitions are shared between services and languages, and
+the protos they import from elsewhere — Google's API annotations, validation
+rules, gRPC-Gateway's OpenAPI options — are dependencies no language manifest
+records. depphunter reads `.proto` files and Buf's `buf.yaml`, `buf.work.yaml`,
+`buf.lock` and generation templates (`buf.gen.yaml`, `buf.gen.*.yaml`):
+
+- **Imports**: `import`, `import public` and `import weak` name a file
+  relative to an import root. The roots are those Buf's configuration
+  declares — the directories of a `buf.work.yaml`, the module paths of a v2
+  `buf.yaml`, a v1 `buf.yaml`'s own directory — and, where no Buf
+  configuration applies, the ones protoc is usually given: the repository
+  root, `proto/`, `protos/`, `api/`, `src/main/proto/` and the importer's
+  directory and its ancestors. Failing those, an import resolves to the only
+  project file whose path ends in it (a copy under `third_party/`).
+- **Well-known types**: `google/protobuf/*.proto` (`timestamp.proto`,
+  `descriptor.proto` and the rest that protoc and buf ship) form a hidden
+  **Protobuf well-known types** island.
+- **Buf Schema Registry**: an import the project does not have resolves to the
+  module `buf.yaml` declares in `deps` (or `buf.lock` records) that provides
+  it, in the **Buf Schema Registry** island, named
+  `buf.build/owner/repository`. A short table knows where common protos come
+  from — `google/api/` and `google/type/` from
+  `buf.build/googleapis/googleapis`, `validate/` from protoc-gen-validate,
+  `buf/validate/` from protovalidate, `protoc-gen-openapiv2/` from
+  grpc-gateway, `gogoproto/` from gogo — so a protoc project that declares
+  nothing still names the module, marked unresolved; any other missing import
+  is unresolved under its first directory.
+- **Buf's files**: `deps`, lock entries, remote plugins
+  (`buf.build/protocolbuffers/go:v1.35.1`) and module inputs are packages of
+  that island; workspace directories and module paths are edges to those
+  directories.
+
+Messages (nested ones as `Outer.Inner`), enums, services, their rpc methods
+(`Service.Method`), `extend` blocks, oneofs and the package become the file's
+symbols. protoc's `-I` flags in a Makefile or script are not read, and a type
+used from another file needs no edge of its own: protobuf requires importing
+the file that declares it. Only `buf.lock`'s commit, or a commit given as the
+ref, pins a module.
+
 ### Documentation
 
 A README that links to `CONTRIBUTING.md` depends on that file, and one that
@@ -1414,6 +1460,7 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | R                       | `R --slave -e languageserver::run()`                           |
 | Haskell                 | `haskell-language-server-wrapper` or `haskell-language-server` |
 | Terraform / OpenTofu    | `terraform-ls serve` or `tofu-ls serve`                        |
+| Protocol Buffers        | `buf lsp serve`, `bufls serve` or `protols`                    |
 
 The servers run in the background once the map is displayed — gopls requires
 approximately 7 s for this repository — within the budget set by
@@ -1448,6 +1495,7 @@ The JSON and GraphML exports include the reference edges.
 | Haskell                 | `import` (every CPP branch, PackageImports, `{-# SOURCE #-}`); modules to the files whose headers declare them (the importer's package, its project's and its dependencies' local packages), Happy/Alex sources by path; packages by `.cabal`, `package.yaml`, `cabal.project`, `stack.yaml`, the freeze file, `stack.yaml.lock` and `plan.json`, whose dependencies are imports | Hackage, GHC libraries                                                     |
 | PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                                                                                                                                | PowerShell Gallery, built-in modules                                       |
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                                                                                     | GitHub Actions, GitLab CI, Container images                                |
+| Protocol Buffers        | `import` (`public`, `weak`) under the import roots of `buf.work.yaml` and `buf.yaml` (v1 and v2), else the repository root, `proto/`, `protos/`, `api/`, `src/main/proto/` and the importer's directories, else a unique project file ending in the path; modules by `buf.yaml` `deps` and `buf.lock` and a table of common protos; `buf.gen.yaml` remote plugins                | Buf Schema Registry, Protobuf well-known types                             |
 | Terraform / OpenTofu    | `module` sources to local directories, registry and remote modules; `required_providers`, `provider` blocks and resource type prefixes to providers, pinned by `.terraform.lock.hcl`; references to what other files of the module declare; `file()`/`templatefile()` paths; Terragrunt `source`, `dependency` and `find_in_parent_folders()`                                    | Terraform modules, Terraform providers                                     |
 | Dockerfile / Compose    | `FROM`, `COPY --from`, `RUN --mount from=` and `# syntax=` with `ARG` defaults expanded and stages told apart; Compose `image:`, and `build:` to the Dockerfile in the repository                                                                                                                                                                                                | Container images                                                           |
 | Markdown                | links to files and directories in the repository (inline, reference, autolink, and the `href` and `src` of raw HTML); headings become the file's symbols                                                                                                                                                                                                                         | *(none: a link is not a package)*                                          |
@@ -1698,14 +1746,18 @@ Terragrunt configurations are read by a small HCL scanner: the tree-sitter
 grammar parsed every file measured correctly but was about twenty times
 slower. See [Infrastructure as code](#infrastructure-as-code).
 
+Protocol Buffers definitions are read by a small scanner: the tree-sitter
+grammar took 2.4 to 3 ms per file and failed on every file using editions.
+See [Interface definitions](#interface-definitions).
+
 Files in other languages appear on the map without dependency edges. Parsing
 uses a pure-Go tree-sitter runtime for JavaScript/TypeScript, Python, Rust,
 Java, Kotlin, Scala, C, C++, PHP, Ruby and Swift; Go uses the standard library's
-own parser, CI and Compose files a YAML parser, and C#, PowerShell, Markdown,
-Dart, Elixir, Erlang, R, Haskell, HCL, Dockerfiles, the markup of Vue, Svelte
-and Astro components, R Markdown chunks and C preprocessor directives small
-built-in scanners — so the binary continues to cross-compile without a C
-toolchain.
+own parser, CI, Compose and Buf files a YAML parser, and C#, PowerShell,
+Markdown, Dart, Elixir, Erlang, R, Haskell, HCL, Protocol Buffers,
+Dockerfiles, the markup of Vue, Svelte and Astro components, R Markdown chunks
+and C preprocessor directives small built-in scanners — so the binary
+continues to cross-compile without a C toolchain.
 
 ## Security
 
