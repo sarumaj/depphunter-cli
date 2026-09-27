@@ -84,6 +84,11 @@ var Servers = []Server{
 	// has no zsh support, so zsh files are left out.
 	{Name: "bash", Open: true, Exts: map[string]string{".sh": "shellscript", ".bash": "shellscript", ".ksh": "shellscript", ".bats": "shellscript", ".envrc": "shellscript"},
 		Commands: [][]string{{"bash-language-server", "start"}}},
+	// lua-language-server (LuaLS) reads Lua and LuaJIT; Luau needs luau-lsp, whose
+	// server is its lsp subcommand. Teal's teal-language-server is left out: it
+	// answers no references.
+	{Name: "lua", Open: true, Exts: map[string]string{".lua": "lua"}, Commands: [][]string{{"lua-language-server"}}},
+	{Name: "luau", Open: true, Exts: map[string]string{".luau": "luau"}, Commands: [][]string{{"luau-lsp", "lsp"}}},
 	// neocmakelsp and cmake-language-server both answer references for CMake's
 	// functions, macros and variables; a CMakeLists.txt is known by its name.
 	{Name: "cmake", Open: true, Exts: map[string]string{".cmake": "cmake"}, Names: map[string]string{"CMakeLists.txt": "cmake"},

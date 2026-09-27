@@ -43,6 +43,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang/java"
 	"github.com/sarumaj/depphunter-cli/internal/lang/javascript"
 	"github.com/sarumaj/depphunter-cli/internal/lang/kotlin"
+	"github.com/sarumaj/depphunter-cli/internal/lang/lua"
 	"github.com/sarumaj/depphunter-cli/internal/lang/markdown"
 	"github.com/sarumaj/depphunter-cli/internal/lang/objc"
 	"github.com/sarumaj/depphunter-cli/internal/lang/php"
@@ -167,7 +168,7 @@ func run(ctx context.Context, cfg config.Config) error {
 		Scan: scan.Options{Exclude: cfg.Exclude, MaxFileSize: cfg.MaxFileSize},
 		Plugins: []lang.Plugin{
 			golang.Plugin{}, javascript.Plugin{}, python.Plugin{Interpreter: cfg.Python, Getenv: os.Getenv}, rust.Plugin{}, java.Plugin{},
-			kotlin.Plugin{}, scala.Plugin{}, csharp.Plugin{}, cpp.Plugin{}, cmake.Plugin{}, php.Plugin{}, ruby.Plugin{}, swift.Plugin{}, objc.Plugin{}, dart.Plugin{}, beam.Plugin{}, r.Plugin{}, haskell.Plugin{}, powershell.Plugin{}, ci.Plugin{}, docker.Plugin{}, terraform.Plugin{}, proto.Plugin{}, shell.Plugin{}, markdown.Plugin{},
+			kotlin.Plugin{}, scala.Plugin{}, csharp.Plugin{}, cpp.Plugin{}, cmake.Plugin{}, php.Plugin{}, ruby.Plugin{}, swift.Plugin{}, objc.Plugin{}, dart.Plugin{}, beam.Plugin{}, r.Plugin{}, haskell.Plugin{}, lua.Plugin{}, powershell.Plugin{}, ci.Plugin{}, docker.Plugin{}, terraform.Plugin{}, proto.Plugin{}, shell.Plugin{}, markdown.Plugin{},
 		},
 		Cache:        c,
 		ResolveDepth: cfg.ResolveDepth,

@@ -15,6 +15,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"gopkg.in/yaml.v3"
 
+	"github.com/sarumaj/depphunter-cli/internal/lang/luarocks"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
@@ -119,8 +120,19 @@ func (c *Config) machine(env func(string) string, home string) {
 			parseCabalRepositories(data, add)
 		}
 	}
+	// The LuaRocks configuration file LUAROCKS_CONFIG names replaces the user's.
+	if f := env("LUAROCKS_CONFIG"); f != "" {
+		if data, err := os.ReadFile(f); err == nil {
+			parseLuaRocksConfig(data, add)
+		}
+	}
 	if home == "" {
 		return
+	}
+	for _, v := range []string{"5.1", "5.2", "5.3", "5.4"} {
+		if data, err := os.ReadFile(filepath.Join(home, ".luarocks", "config-"+v+".lua")); err == nil {
+			parseLuaRocksConfig(data, add)
+		}
 	}
 	for _, f := range []struct {
 		path  string
@@ -203,6 +215,8 @@ func (c *Config) project(files []*scan.File) {
 			parsePodfile(data, add)
 		case base == "podfile.lock":
 			parsePodfileLock(data, add)
+		case strings.HasPrefix(base, "config-") && strings.HasSuffix(base, ".lua") && path.Base(path.Dir(f.Path)) == ".luarocks":
+			parseLuaRocksConfig(data, add) // what luarocks init writes for the project
 		}
 	}
 }
@@ -713,6 +727,19 @@ func parsePodfileLock(data []byte, add func(eco, url, scope string)) {
 		for _, name := range doc.Repos[repo] {
 			root, _, _ := strings.Cut(name, "/")
 			add(CocoaPods, repo, root)
+		}
+	}
+}
+
+// parseLuaRocksConfig reads the rocks servers of a LuaRocks configuration file
+// (rocks_servers, in order). luarocks.org itself is the public index and is not
+// recorded.
+//
+// Implements: REQ-SUP-052
+func parseLuaRocksConfig(data []byte, add func(eco, url, scope string)) {
+	for _, s := range luarocks.Servers(data) {
+		if !LuaRocksItself(s) {
+			add(LuaRocks, s, "")
 		}
 	}
 }

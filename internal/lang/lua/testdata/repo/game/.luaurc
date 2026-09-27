@@ -1,0 +1,4 @@
+{
+  // aliases for string requires
+  "aliases": { "Shared": "src/shared", },
+}

@@ -105,6 +105,11 @@ func TestAPatternMayNameItsEcosystem(t *testing.T) {
 		!p.Match("carthage", "github.com/acme/Net") || p.Match("swiftpm", "github.com/acme/Net") {
 		t.Error("cocoapods- and carthage-scoped patterns did not keep to their ecosystems")
 	}
+	p = New([]string{"luarocks:acme-*", "wally:acme/*"})
+	if !p.Match("luarocks", "acme-http") || p.Match("npm", "acme-http") || p.Match("luarocks", "penlight") ||
+		!p.Match("wally", "acme/net") || p.Match("luarocks", "acme/net") {
+		t.Error("luarocks- and wally-scoped patterns did not keep to their ecosystems")
+	}
 	// The prefix is recognized whatever its case, and must then match as well.
 	p = New([]string{"NPM:@acme/*"})
 	if !p.Match("npm", "@acme/widgets") {

@@ -22,7 +22,8 @@ Haskell's `cabal.project`, `stack.yaml` and `package.yaml`, Terraform's
 `CMakeLists.txt`, `*.cmake.in`, `CMakePresets.json` and
 `CMakeUserPresets.json`, CocoaPods' `Podfile`, `Podfile.lock` and
 `*.podspec`, Carthage's `Cartfile`, `Cartfile.private` and
-`Cartfile.resolved`, the shells' and direnv's startup files (`.bashrc`,
+`Cartfile.resolved`, LuaRocks' `luarocks.lock`, luacheck's `.luacheckrc` and
+busted's `.busted`, the shells' and direnv's startup files (`.bashrc`,
 `.zshrc`, `.profile`, `.envrc` and the others of REQ-SHELL-001), and the
 Dockerfile names of REQ-DOCKER-001), or, for a file neither names, from a
 `#!` line running a shell (REQ-SHELL-001), and **shall** leave the language

@@ -17,7 +17,8 @@ When git cannot list the files, the system **shall** walk the directory tree and
 `.svn`, `node_modules`, `vendor`, `dist`, `build`, `target`, `bin`, `obj`,
 `.venv`, `venv`, `__pycache__`, `.idea`, `.vscode`, `.next`, `.cache`,
 `.gradle`, `.tox`, `.mypy_cache`, `.build`, `.dart_tool`, `_build`,
-`dist-newstyle`, `.stack-work`, `.terraform`, `.terragrunt-cache`.
+`dist-newstyle`, `.stack-work`, `.terraform`, `.terragrunt-cache`,
+`lua_modules`.
 
 ## Rationale
 

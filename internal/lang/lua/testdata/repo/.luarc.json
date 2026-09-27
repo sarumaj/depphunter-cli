@@ -1,0 +1,4 @@
+{
+  "workspace.library": ["third_party/lib", "$VIMRUNTIME/lua"],
+  "runtime": { "path": ["?.lua", "?/init.lua"] }
+}

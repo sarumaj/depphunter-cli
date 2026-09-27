@@ -1,6 +1,8 @@
 package index
 
 import (
+	"archive/zip"
+	"bytes"
 	"cmp"
 	"context"
 	"crypto/md5"
@@ -8,6 +10,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"fmt"
+	"io"
 	"maps"
 	"net/http"
 	"net/url"
@@ -18,6 +21,7 @@ import (
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/luarocks"
 )
 
 // The ecosystems whose transitive dependencies are read from a registry rather than
@@ -1424,4 +1428,94 @@ func (s podSpec) defaults() []string {
 		return []string{one}
 	}
 	return nil
+}
+
+// ---------------------------------------------------------------- LuaRocks
+
+// luarocksRock reads a rock's dependencies from a rocks server, as the luarocks
+// client does: the server's manifest (manifest-5.1.zip, else manifest-5.1, read once
+// per server) lists every rock's versions, and <server>/<rock>-<version>.rockspec is
+// one release's rockspec. A locked version with its revision ("1.14.0-3") is fetched
+// as it is; otherwise the newest release the constraint allows (an exact version
+// being == that version) is taken from the manifest. The dependencies are the
+// rockspec's run-time ones, every platform's, without lua itself; "== 1.2" is the
+// bare, pinned version.
+//
+// Implements: REQ-SUP-052
+func (c *Client) luarocksRock(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+	base := strings.TrimRight(index, "/")
+	version := strings.TrimSpace(t.Version)
+	if !t.Pinned || !strings.Contains(version, "-") {
+		versions, err := c.rocksManifest(ctx, base)
+		if err != nil {
+			return nil, err
+		}
+		constraint := version
+		if t.Pinned {
+			constraint = "== " + version
+		}
+		if version = luarocks.Newest(versions[strings.ToLower(t.Package)], constraint); version == "" {
+			return nil, nil // not on this server, or nothing it serves is allowed
+		}
+	}
+	body, err := c.accept(ctx, base+"/"+url.PathEscape(strings.ToLower(t.Package)+"-"+version)+".rockspec", "text/plain, */*")
+	if err != nil {
+		return nil, err
+	}
+	var out []dep
+	seen := map[string]bool{}
+	for _, d := range luarocks.ReadRockspec(body).Deps {
+		if d.Section != "dependencies" || d.Name == "lua" || seen[d.Name] {
+			continue
+		}
+		seen[d.Name] = true
+		v := d.Constraint
+		if exact, ok := luarocks.Exact(v); ok {
+			v = exact
+		}
+		out = append(out, dep{Name: d.Name, Version: v})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// maxManifest bounds a rocks server manifest once unzipped; luarocks.org's is a few
+// megabytes.
+const maxManifest = 64 << 20
+
+// rocksManifest reads a rocks server's manifest once: the zipped one the luarocks
+// client prefers, else the plain one.
+func (c *Client) rocksManifest(ctx context.Context, base string) (map[string][]string, error) {
+	c.mu.Lock()
+	m, ok := c.rocks[base]
+	c.mu.Unlock()
+	if ok {
+		return m, nil
+	}
+	var src []byte
+	if zipped, err := c.accept(ctx, base+"/manifest-5.1.zip", "application/zip, */*"); err == nil {
+		if zr, err := zip.NewReader(bytes.NewReader(zipped), int64(len(zipped))); err == nil {
+			for _, f := range zr.File {
+				if f.Name != "manifest-5.1" {
+					continue
+				}
+				if rc, err := f.Open(); err == nil {
+					src, _ = io.ReadAll(io.LimitReader(rc, maxManifest))
+					rc.Close()
+				}
+			}
+		}
+	}
+	if src == nil {
+		plain, err := c.accept(ctx, base+"/manifest-5.1", "text/plain, */*")
+		if err != nil {
+			return nil, err
+		}
+		src = plain
+	}
+	m = luarocks.ReadManifest(src)
+	c.mu.Lock()
+	c.rocks[base] = m
+	c.mu.Unlock()
+	return m, nil
 }
