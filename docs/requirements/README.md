@@ -132,6 +132,7 @@ The server **shall** ...
 | `zig`       | The Zig plugin, build.zig's module wiring and build.zig.zon packages.                                 |
 | `clojure`   | The Clojure, ClojureScript and babashka plugin, deps.edn, Leiningen, shadow-cljs, bb.edn and Clojars. |
 | `bazel`     | The Bazel plugin: BUILD, .bzl, MODULE.bazel and WORKSPACE files, registries and hub repositories.     |
+| `nix`       | The Nix plugin: expressions, flakes and flake.lock, niv and npins pins, and nixpkgs packages.         |
 | `terraform` | The Terraform and OpenTofu plugin, lock files, Terragrunt and the module registries.                  |
 | `proto`     | The Protocol Buffers plugin, Buf's configuration and lock files and the Buf Schema Registry.          |
 | `shell`     | The shell script plugin (sh, Bash, zsh, bats), direnv and packages scripts install.                   |
@@ -290,6 +291,10 @@ requirements of type `limitation` in their scopes:
   pip, Go, npm and crates hubs are not run, a version minimal version
   selection raised is known only from `MODULE.bazel.lock`, and no
   vulnerability database covers Bazel modules or WORKSPACE downloads.
+- Nix is read without evaluating it: computed paths, imports of computed
+  values, overlays and module options are not followed, nixpkgs packages are
+  known only by name and only in package lists, and there is no Nix registry,
+  OSV ecosystem or Trivy package type to ask about flake inputs.
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

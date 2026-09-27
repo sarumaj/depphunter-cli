@@ -111,6 +111,9 @@ var Servers = []Server{
 	// zls answers references for Zig sources; it reads build.zig for the modules
 	// and packages the build wires.
 	{Name: "zig", Open: true, Exts: map[string]string{".zig": "zig"}, Commands: [][]string{{"zls"}}},
+	// nil and nixd both answer references for Nix expressions; nixd evaluates the
+	// flake or NIX_PATH it is configured for.
+	{Name: "nix", Open: true, Exts: map[string]string{".nix": "nix"}, Commands: [][]string{{"nil"}, {"nixd"}}},
 	// neocmakelsp and cmake-language-server both answer references for CMake's
 	// functions, macros and variables; a CMakeLists.txt is known by its name.
 	{Name: "cmake", Open: true, Exts: map[string]string{".cmake": "cmake"}, Names: map[string]string{"CMakeLists.txt": "cmake"},

@@ -232,3 +232,15 @@ func TestABazelPatternKeepsToBazel(t *testing.T) {
 		t.Error("a bazel-scoped pattern did not keep to its ecosystem")
 	}
 }
+
+// Flake inputs are named by their URL and nixpkgs packages by their attribute; a
+// pattern scoped to either keeps to its island.
+//
+// Verifies: REQ-SUP-035
+func TestANixPatternKeepsToNix(t *testing.T) {
+	p := New([]string{"nix:git.acme.example/*", "nixpkgs:acme-*"})
+	if !p.Match("nix", "git.acme.example/infra/flakes") || p.Match("zig", "git.acme.example/infra/flakes") ||
+		!p.Match("nixpkgs", "acme-cli") || p.Match("nix", "acme-cli") || p.Match("nixpkgs", "hello") {
+		t.Error("a nix-scoped pattern did not keep to its ecosystem")
+	}
+}
