@@ -191,3 +191,13 @@ func TestAJuliaPatternKeepsToJulia(t *testing.T) {
 		t.Error("a julia-scoped pattern did not keep to its ecosystem")
 	}
 }
+
+// Zig packages are named by their URL; a pattern scoped to zig keeps to them.
+//
+// Verifies: REQ-SUP-035
+func TestAZigPatternKeepsToZig(t *testing.T) {
+	p := New([]string{"zig:git.acme.example/*"})
+	if !p.Match("zig", "git.acme.example/tools/zlog") || p.Match("npm", "git.acme.example/tools/zlog") || p.Match("zig", "github.com/ziglibs/known-folders") {
+		t.Error("a zig-scoped pattern did not keep to its ecosystem")
+	}
+}

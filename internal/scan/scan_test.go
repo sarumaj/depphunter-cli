@@ -26,6 +26,10 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 		".terraform/modules/vpc/main.tf":     "variable \"x\" {}\n",
 		".terragrunt-cache/a/b/main.tf":      "variable \"x\" {}\n",
 		"_opam/lib/lwt/lwt.mli":              "val return : 'a -> 'a t\n",
+		".zig-cache/o/1/cimport.zig":         "pub const x = 1;\n",
+		"zig-cache/h/timestamp.zig":          "pub const x = 1;\n",
+		"zig-out/bin/gen.zig":                "pub const x = 1;\n",
+		"zig-pkg/x-0.1.0-AAAA/build.zig.zon": ".{}\n",
 		"img.bin":                            "\x00\x01\x02",
 	}
 	for p, c := range files {

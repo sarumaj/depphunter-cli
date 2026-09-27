@@ -1,0 +1,35 @@
+.{
+    .name = .shop,
+    .version = "0.3.0",
+    .fingerprint = 0x9c1f2e3d4b5a6978,
+    .minimum_zig_version = "0.14.0",
+    .dependencies = .{
+        // A GitHub archive of a commit, verified by its hash.
+        .known_folders = .{
+            .url = "https://github.com/ziglibs/known-folders/archive/6da0d0c41b78b9ed2d34fa364fcb81b5ebece6c4.tar.gz",
+            .hash = "known_folders-0.0.0-Fy-PJiDLAAB98m3uYUzatrTb2mO2fpvwx2zpSroEtfbO",
+        },
+        // A git URL resolved to a commit, requested at a tag.
+        .vaxis = .{
+            .url = "git+https://github.com/rockorager/libvaxis.git?ref=v0.5.1#dc0a228a5544988d4a920cfb40be9cd28db41423",
+            .hash = "vaxis-0.5.1-BWNV_H4dCQBnmZnU7xLGbUBqnC_TFeD3ELTa6-v4rMFy",
+        },
+        // A tag archive on Codeberg without a hash.
+        .zf = .{ .url = "https://codeberg.org/natecraddock/zf/archive/0.10.3.tar.gz" },
+        // A branch archive without a hash floats.
+        .zeit = .{ .url = "https://github.com/rockorager/zeit/archive/refs/heads/main.tar.gz" },
+        // A GitLab archive of a tag with a legacy hash.
+        .ziglyph = .{
+            .url = "https://gitlab.com/dude_the_builder/ziglyph/-/archive/v0.11.1/ziglyph-v0.11.1.tar.gz",
+            .hash = "12208b23d1eb6dcb929e85346524db8f8b8aa1401bdf8a97dee1e0cfb55da8d5fb42",
+        },
+        // A mirror download named by its hash, fetched only when used.
+        .tracy = .{
+            .url = "https://deps.example.org/N-V-__8AAOncKwEm1F9c5LrT7HMNmRMYX8-fAoqpc6YyTu9X.tar.gz",
+            .hash = "N-V-__8AAOncKwEm1F9c5LrT7HMNmRMYX8-fAoqpc6YyTu9X",
+            .lazy = true,
+        },
+        .utils = .{ .path = "libs/utils" },
+    },
+    .paths = .{ "build.zig", "build.zig.zon", "src" },
+}

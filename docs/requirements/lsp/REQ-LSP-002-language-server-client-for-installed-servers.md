@@ -40,7 +40,8 @@ Perl::LanguageServer (`perlnavigator --stdio`, `pls` or `perl
 `.pm`, `.t` and `.psgi` files) and ocaml-lsp-server (`ocamllsp`; `.ml`,
 `.mli`, `.mll` and `.mly` files) and LanguageServer.jl (`julia
 --startup-file=no --history-file=no -e "using LanguageServer; runserver()"`;
-`.jl` files), skipping a server that is not installed.
+`.jl` files) and zls (`zls`; `.zig` files), skipping a server that is not
+installed.
 
 ## Rationale
 
