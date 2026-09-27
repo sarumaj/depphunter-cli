@@ -31,7 +31,8 @@ repository's own files cannot answer.
 1. A pinned package with a known advisory yields a vulnerability finding on that
    package.
 2. A package of an ecosystem OSV does not cover (PowerShell Gallery, container
-   images, vcpkg, CocoaPods, Carthage, LuaRocks, Wally) is not asked about.
+   images, vcpkg, CocoaPods, Carthage, LuaRocks, Wally, CPAN) is not asked
+   about.
 
 ## Notes
 

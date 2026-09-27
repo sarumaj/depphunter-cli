@@ -22,6 +22,7 @@ import (
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/luarocks"
+	"github.com/sarumaj/depphunter-cli/internal/store"
 )
 
 // The ecosystems whose transitive dependencies are read from a registry rather than
@@ -1518,4 +1519,101 @@ func (c *Client) rocksManifest(ctx context.Context, base string) (map[string][]s
 	c.rocks[base] = m
 	c.mu.Unlock()
 	return m, nil
+}
+
+// ---------------------------------------------------------------- CPAN
+
+// cpanDistribution reads a distribution's dependencies from the MetaCPAN API:
+// <api>/v1/release/<distribution> is its latest release, whose `dependency` list
+// names modules by phase and relationship. The run-time requirements are kept,
+// without perl itself; each module becomes the distribution
+// <api>/v1/module/<module> says provides it (asked once per module and cached),
+// and a module only perl provides is left out. A version is a minimum, shown as
+// ">= 1.2" and never pinned.
+//
+// Implements: REQ-SUP-053
+func (c *Client) cpanDistribution(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+	base := strings.TrimRight(index, "/")
+	body, err := c.get(ctx, base+"/v1/release/"+url.PathEscape(t.Package))
+	if err != nil {
+		return nil, err
+	}
+	var rel struct {
+		Distribution string `json:"distribution"`
+		Dependency   []struct {
+			Module       string `json:"module"`
+			Version      any    `json:"version"`
+			Phase        string `json:"phase"`
+			Relationship string `json:"relationship"`
+		} `json:"dependency"`
+	}
+	if err := json.Unmarshal(body, &rel); err != nil {
+		return nil, err
+	}
+	var out []dep
+	seen := map[string]bool{t.Package: true, rel.Distribution: true}
+	for _, d := range rel.Dependency {
+		if d.Phase != "runtime" || d.Relationship != "requires" || d.Module == "perl" {
+			continue
+		}
+		dist, err := c.cpanModule(ctx, base, d.Module)
+		if err != nil {
+			return nil, err
+		}
+		if dist == "" || dist == "perl" || seen[dist] {
+			continue // perl's own module, or one already answered
+		}
+		seen[dist] = true
+		v := strings.TrimSpace(fmt.Sprint(d.Version))
+		if d.Version == nil || strings.Trim(v, "0.") == "" {
+			v = ""
+		} else if v[0] >= '0' && v[0] <= '9' || v[0] == 'v' {
+			v = ">= " + v
+		}
+		out = append(out, dep{Name: dist, Version: v})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// cpanModule is the distribution providing a module, as MetaCPAN's module endpoint
+// says; "" for a module it does not know.
+func (c *Client) cpanModule(ctx context.Context, base, module string) (string, error) {
+	key := "cpan-module|" + base + "|" + module
+	c.mu.Lock()
+	dist, ok := c.cpanModules[key]
+	c.mu.Unlock()
+	if ok {
+		return dist, nil
+	}
+	if d, ok := store.Get[string](c.cache, key); ok {
+		return d, nil
+	}
+	resp, err := c.do(ctx, base+"/v1/module/"+url.PathEscape(module), "application/json", "")
+	if err != nil {
+		return "", err
+	}
+	defer resp.Body.Close()
+	switch resp.StatusCode {
+	case http.StatusOK:
+		body, err := readLimited(resp)
+		if err != nil {
+			return "", err
+		}
+		var m struct {
+			Distribution string `json:"distribution"`
+		}
+		if err := json.Unmarshal(body, &m); err != nil {
+			return "", err
+		}
+		dist = m.Distribution
+	case http.StatusNotFound:
+	default:
+		return "", fmt.Errorf("%s/v1/module/%s: %s", base, module, resp.Status)
+	}
+	c.mu.Lock()
+	c.cpanModules[key] = dist
+	c.mu.Unlock()
+	c.cache.Put(key, dist)
+	return dist, nil
 }

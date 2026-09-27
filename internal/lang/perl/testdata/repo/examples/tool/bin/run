@@ -1,0 +1,5 @@
+#!/usr/bin/env perl
+use Mojo::File qw(curfile);
+use lib curfile->dirname->sibling('modules')->to_string;
+use Tool;
+Tool::go();

@@ -51,6 +51,9 @@ const (
 	// LuaRocks is the lua plugin's island of rocks; its public index is the
 	// luarocks.org rocks server.
 	LuaRocks = "luarocks"
+	// CPAN is the perl plugin's island of distributions; they are read from the
+	// MetaCPAN API, which describes every CPAN release.
+	CPAN = "cpan"
 )
 
 // public is where each ecosystem's packages come from unless something says otherwise.
@@ -74,6 +77,7 @@ var public = map[string]string{
 	TerraformModule: "https://registry.terraform.io",
 	CocoaPods:       "https://cdn.cocoapods.org",
 	LuaRocks:        "https://luarocks.org",
+	CPAN:            "https://fastapi.metacpan.org",
 }
 
 // HackageItself reports whether a repository URL is Hackage (any scheme, with or

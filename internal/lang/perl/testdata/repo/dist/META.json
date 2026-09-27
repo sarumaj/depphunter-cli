@@ -1,0 +1,17 @@
+{
+   "name" : "Acme-Widget",
+   "meta-spec" : { "version" : 2 },
+   "prereqs" : {
+      "runtime" : {
+         "requires" : {
+            "Moo" : "0",
+            "perl" : "5.010"
+         }
+      },
+      "test" : {
+         "requires" : {
+            "Test::Fatal" : "0.016"
+         }
+      }
+   }
+}

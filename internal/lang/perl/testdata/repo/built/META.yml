@@ -1,0 +1,7 @@
+---
+name: Acme-Built
+requires:
+  Path::Tiny: 0.100
+  perl: 5.008
+build_requires:
+  Test::More: 0

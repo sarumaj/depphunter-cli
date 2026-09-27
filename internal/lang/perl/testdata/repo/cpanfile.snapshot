@@ -1,0 +1,55 @@
+# carton snapshot format: version 1.0
+DISTRIBUTIONS
+  HTTP-Message-6.45
+    pathname: O/OA/OALDERS/HTTP-Message-6.45.tar.gz
+    provides:
+      HTTP::Headers 6.45
+      HTTP::Message 6.45
+      HTTP::Request 6.45
+    requirements:
+      ExtUtils::MakeMaker 0
+      URI 1.10
+      perl 5.008001
+  Moose-2.2206
+    pathname: E/ET/ETHER/Moose-2.2206.tar.gz
+    provides:
+      Class::MOP 2.2206
+      Moose 2.2206
+      Moose::Role 2.2206
+    requirements:
+      Carp 1.22
+      Scalar::Util 1.19
+      Try::Tiny 0.17
+  Plack-1.0050
+    pathname: M/MI/MIYAGAWA/Plack-1.0050.tar.gz
+    provides:
+      Plack 1.0050
+      Plack::Builder undef
+      Plack::Request 1.0050
+    requirements:
+      HTTP::Message 5.814
+      Try::Tiny 0
+      Carp 0
+      Hash::MultiValue 0.05
+      perl 5.012000
+  Scalar-List-Utils-1.63
+    pathname: P/PE/PEVANS/Scalar-List-Utils-1.63.tar.gz
+    provides:
+      List::Util 1.63
+      Scalar::Util 1.63
+    requirements:
+      ExtUtils::MakeMaker 0
+  Try-Tiny-0.31
+    pathname: E/ET/ETHER/Try-Tiny-0.31.tar.gz
+    provides:
+      Try::Tiny 0.31
+    requirements:
+      Carp 0
+  libwww-perl-6.72
+    pathname: O/OA/OALDERS/libwww-perl-6.72.tar.gz
+    provides:
+      LWP 6.72
+      LWP::UserAgent 6.72
+    requirements:
+      HTTP::Message 6.18
+      Try::Tiny 0

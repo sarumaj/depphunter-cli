@@ -47,6 +47,10 @@ type Client struct {
 	// rocks is what each rocks server's manifest lists: rock -> versions, one
 	// request per server rather than one per rock.
 	rocks map[string]map[string][]string
+	// cpanModules is which distribution provides each module, per MetaCPAN API: a
+	// release lists the modules it requires, and the map's packages are
+	// distributions.
+	cpanModules map[string]string
 	// rep is the report this run is writing, if anybody is reading it. It is set per
 	// analysis - one client serves every re-analysis in --watch - so it is guarded
 	// like the rest.
@@ -78,17 +82,18 @@ func (c *Client) report(l trace.Lookup) {
 func NewClient(cfg *Config, dir string, ttl, timeout time.Duration,
 	credentials *auth.Store, private *scope.Private) *Client {
 	return &Client{
-		cfg:     cfg,
-		http:    &http.Client{Timeout: timeout},
-		cache:   store.New(dir, ttl),
-		auth:    credentials,
-		private: private,
-		timeout: timeout,
-		seen:    map[string][]lang.Target{},
-		failed:  map[string]time.Time{},
-		feeds:   map[string]string{},
-		repos:   map[string]map[string][]dep{},
-		rocks:   map[string]map[string][]string{},
+		cfg:         cfg,
+		http:        &http.Client{Timeout: timeout},
+		cache:       store.New(dir, ttl),
+		auth:        credentials,
+		private:     private,
+		timeout:     timeout,
+		seen:        map[string][]lang.Target{},
+		failed:      map[string]time.Time{},
+		feeds:       map[string]string{},
+		repos:       map[string]map[string][]dep{},
+		rocks:       map[string]map[string][]string{},
+		cpanModules: map[string]string{},
 	}
 }
 
@@ -234,6 +239,8 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		deps, err = c.cocoapodsPod(ctx, index, t)
 	case LuaRocks:
 		deps, err = c.luarocksRock(ctx, index, t)
+	case CPAN:
+		deps, err = c.cpanDistribution(ctx, index, t)
 	default:
 		// Maven is the one that cannot be asked. A POM is addressed by group *and*
 		// artifact, and the Java plugin puts only the group on the map (an import

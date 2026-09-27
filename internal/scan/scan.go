@@ -195,17 +195,28 @@ func measure(f *File, maxSize int64) {
 	if f.Lang == "TypeScript" && strings.EqualFold(path.Ext(f.Path), ".ts") && xmlDocument(head) {
 		f.Lang = "XML"
 	}
+	f.Interpreter = interpreter(head)
 	// ".m" is MATLAB's and Mercury's too, and ".h" C's: Objective-C says which by
-	// its keywords and directives, within the head already read.
+	// its keywords and directives, within the head already read. ".pl" is
+	// Prolog's too, and ".t" is Perl's only by convention: Perl says which by its
+	// #! line and statements.
 	switch ext := strings.ToLower(path.Ext(f.Path)); {
 	case ext == ".m" && f.Lang == "Objective-C" && !objcMarker(head, true):
 		f.Lang = notObjC(head)
 	case ext == ".h" && f.Lang == "C" && objcMarker(head, false):
 		f.Lang = "Objective-C"
+	case ext == ".pl" && f.Lang == "Perl" && !PerlInterpreter(f.Interpreter) && !perlMarker(head) && prologClause(head):
+		f.Lang = "Prolog"
+	case ext == ".t" && f.Lang == "Perl" && !PerlInterpreter(f.Interpreter) && !perlMarker(head):
+		f.Lang = ""
 	}
-	// An extensionless script is labelled by the shell its "#!" line runs.
-	if f.Interpreter = interpreter(head); f.Lang == "" && ShellInterpreter(f.Interpreter) {
+	// A script without a language is labelled by the shell or perl its "#!" line
+	// runs.
+	switch {
+	case f.Lang == "" && ShellInterpreter(f.Interpreter):
 		f.Lang = "Shell"
+	case f.Lang == "" && PerlInterpreter(f.Interpreter):
+		f.Lang = "Perl"
 	}
 	var lines, last int
 	buf := make([]byte, 32*1024)
