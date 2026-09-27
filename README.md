@@ -199,7 +199,7 @@ code. The page served is identical in both cases.
   [CI pipelines](#ci-pipelines) ·
   [Infrastructure as code](#infrastructure-as-code) ·
   [Nix](#nix) · [Gleam](#gleam) · [Elm](#elm) · [PureScript](#purescript) ·
-  [Crystal](#crystal) ·
+  [Crystal](#crystal) · [F# and Paket](#f-and-paket) ·
   [Interface definitions](#interface-definitions) ·
   [Shell scripts](#shell-scripts) ·
   [Documentation](#documentation) ·
@@ -810,18 +810,18 @@ govulncheck finds no call into is capped at low.
 Under `--online`, depphunter additionally queries [OSV](https://osv.dev) for
 every external package the map pins to a version — batched queries of 500
 packages each, followed by the advisories it matched — covering Go, npm, PyPI,
-crates.io, Maven, NuGet, GitHub Actions, Conan (as OSV's ConanCenter; vcpkg has
-no OSV ecosystem), Composer (as Packagist), RubyGems, Swift packages (as
-SwiftURL, by URL), pub, Hex (Elixir, Erlang and Gleam packages alike), CRAN,
-Bioconductor, Hackage, opam and Julia; OSV
-has no ecosystem for Terraform modules and providers, Buf Schema Registry
-modules, CocoaPods, Carthage, LuaRocks, Wally, CPAN, Zig, Bazel modules and
-repositories (the Maven, PyPI, Go, npm and crates.io packages Bazel's module
-extensions install are asked about as such), Nix flake inputs, nixpkgs
-packages, Elm packages, PureScript packages or Crystal shards. Floating
-packages are not queried, since they resolve to a different version on the next
-installation. Answers are cached for six hours.
-`--no-vulns` disables all of this.
+crates.io, Maven, NuGet (C# and F# packages alike), GitHub Actions, Conan (as
+OSV's ConanCenter; vcpkg has no OSV ecosystem), Composer (as Packagist),
+RubyGems, Swift packages (as SwiftURL, by URL), pub, Hex (Elixir, Erlang and
+Gleam packages alike), CRAN, Bioconductor, Hackage, opam and Julia; OSV has no
+ecosystem for Terraform modules and providers, Buf Schema Registry modules,
+CocoaPods, Carthage, LuaRocks, Wally, CPAN, Zig, Bazel modules and repositories
+(the Maven, PyPI, Go, npm and crates.io packages Bazel's module extensions
+install are asked about as such), Nix flake inputs, nixpkgs packages, Elm
+packages, PureScript packages, Crystal shards or the GitHub, git and HTTP
+dependencies Paket fetches. Floating packages are not queried, since they
+resolve to a different version on the next installation. Answers are cached for
+six hours. `--no-vulns` disables all of this.
 
 Viewed from above, every building carrying findings bears a **pin**, colored by
 the most severe of them and growing taller with their number, so that the red
@@ -899,7 +899,8 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | crates.io           | `Cargo.lock`, a script's `cargo install x@1.2.3`                                                             | the manifest alone, where `"1.2.3"` denotes `^1.2.3`                                                              |
 | PyPI                | `poetry.lock`, `uv.lock`, `pdm.lock`, `Pipfile.lock`, `==1.2.3`                                              | `>=`, `~=`, `^` and other ranges                                                                                  |
 | Maven               | a plain version, `[1.2.3]`                                                                                   | ranges, `LATEST`, `RELEASE`, `-SNAPSHOT`, dynamic `1.+` and `latest.*`, unexpanded `${…}`                         |
-| NuGet               | an exact version, `[1.2.3]`                                                                                  | wildcards (`2.*`) and ranges                                                                                      |
+| NuGet               | an exact version, `[1.2.3]`, Paket's `= 1.2.3`, `paket.lock`, `packages.lock.json`                           | wildcards (`2.*`) and ranges, Paket's `~>` and `>=`, no version in Paket or `#r`                                  |
+| Paket remote files  | `paket.lock`'s commit, a commit in `paket.dependencies`                                                      | a branch, tag or tag range, no ref, every HTTP file                                                               |
 | PowerShell Gallery  | `RequiredVersion`                                                                                            | `ModuleVersion`, which is a minimum                                                                               |
 | GitHub Actions      | a full commit SHA                                                                                            | tags, branches, or no ref                                                                                         |
 | GitLab CI includes  | a commit                                                                                                     | tags, branches, templates, remote includes, or no ref                                                             |
@@ -985,37 +986,35 @@ remain a single building, so an edge between packages is an edge between names.
 A Python package that no lock file gives edges for (`Pipfile.lock` records none)
 falls back to the installed environment (see [Languages](#languages)).
 Ecosystems that keep the dependency graph outside the repository — Go modules,
-NuGet, container images, a Composer, Bundler, Mix or R project that commits no
-lock, pub, whose `pubspec.lock` is a flat list, rebar3, whose `rebar.lock`
-records only a depth, and a Haskell project without cabal's build plan on disk
-(`cabal.project.freeze` and `stack.yaml.lock` list versions only), Terraform
-registry modules, pods no `Podfile.lock` records, rocks (`luarocks.lock` is a
-flat list), CPAN distributions no `cpanfile.snapshot` records, opam
-packages no `dune.lock/` records (an `*.opam.locked` is a flat list) and Julia
-packages no `Manifest.toml` records, Gleam packages no `manifest.toml`
-records, Elm packages the compiler has not installed in `ELM_HOME` (an
-application's `elm.json` lists indirect packages flat), PureScript packages
-no `spago.lock` records (a `spago.dhall` project's package set is remote),
-Maven artifacts of
-Java, Kotlin, Scala
-and Clojure builds (Maven, Gradle without its lock files, sbt, tools.deps and
-Leiningen), and Bazel modules (a lock file since Bazel 7.2 records versions
-only) — require `--online`, described below; the PowerShell Gallery, vcpkg,
-Conan 2
-(whose lock is a flat list), Bioconductor packages no lock records, Swift
-packages that SwiftPM has not checked out under `.build`
-(`Package.resolved` is flat as well) and Terraform modules fetched from git or
-an archive are not resolved beyond the first level at present, and neither are
-Buf Schema Registry modules: `buf.lock` is a flat list, and the registry's API
-is not a package index depphunter asks. Content a CMake build fetches is not
-resolved beyond the first level either, nor are Carthage dependencies
-(`Cartfile.resolved` is flat), Wally packages no `wally.lock` records and Zig
-packages Zig has not fetched into `zig-pkg/` or its global cache (there is no
-Zig registry for `--online` to ask), nor Bazel's WORKSPACE repositories, nor
-niv and npins sources (their `sources.json` is flat), nor Crystal shards
-shards has not installed into `lib/` (`shard.lock` is flat, and shards are
-git repositories with no index to ask). A Terraform provider
-depends on nothing.
+NuGet packages no `paket.lock` or `packages.lock.json` records (both record the
+graph, and answer offline), container images, a Composer, Bundler, Mix or R
+project that commits no lock, pub, whose `pubspec.lock` is a flat list, rebar3,
+whose `rebar.lock` records only a depth, and a Haskell project without cabal's
+build plan on disk (`cabal.project.freeze` and `stack.yaml.lock` list versions
+only), Terraform registry modules, pods no `Podfile.lock` records, rocks
+(`luarocks.lock` is a flat list), CPAN distributions no `cpanfile.snapshot`
+records, opam packages no `dune.lock/` records (an `*.opam.locked` is a flat
+list) and Julia packages no `Manifest.toml` records, Gleam packages no
+`manifest.toml` records, Elm packages the compiler has not installed in
+`ELM_HOME` (an application's `elm.json` lists indirect packages flat),
+PureScript packages no `spago.lock` records (a `spago.dhall` project's package
+set is remote), Maven artifacts of Java, Kotlin, Scala and Clojure builds
+(Maven, Gradle without its lock files, sbt, tools.deps and Leiningen), and Bazel
+modules (a lock file since Bazel 7.2 records versions only) — require
+`--online`, described below; the PowerShell Gallery, vcpkg, Conan 2 (whose lock
+is a flat list), Bioconductor packages no lock records, Swift packages that
+SwiftPM has not checked out under `.build` (`Package.resolved` is flat as well)
+and Terraform modules fetched from git or an archive are not resolved beyond the
+first level at present, and neither are Buf Schema Registry modules: `buf.lock`
+is a flat list, and the registry's API is not a package index depphunter asks.
+Content a CMake build fetches is not resolved beyond the first level either, nor
+are Carthage dependencies (`Cartfile.resolved` is flat), Wally packages no
+`wally.lock` records and Zig packages Zig has not fetched into `zig-pkg/` or its
+global cache (there is no Zig registry for `--online` to ask), nor Bazel's
+WORKSPACE repositories, nor niv and npins sources (their `sources.json` is
+flat), nor Crystal shards shards has not installed into `lib/` (`shard.lock` is
+flat, and shards are git repositories with no index to ask), nor the GitHub, git
+and HTTP files Paket fetches. A Terraform provider depends on nothing.
 
 The side panel presents these as a **tree**: every row under *Depends on* and
 *Used by* expands into that node's own dependencies, and so on recursively.
@@ -1032,7 +1031,9 @@ Every external package records the index it comes from. depphunter reads both
 the index configuration present on this machine and the configuration the
 repository carries — `.npmrc`, including `@scope:registry`; `.yarnrc.yml`;
 `pip.conf` and a requirements file's `--index-url`; Poetry and uv sources in
-`pyproject.toml`; `NuGet.config`; a POM's `<repositories>` and the `maven`
+`pyproject.toml`; `NuGet.config` and the `source` lines of
+`paket.dependencies` and feeds of `paket.lock` (nuget.org itself and
+directories aside); a POM's `<repositories>` and the `maven`
 repositories of Gradle build and settings scripts (not those of
 `pluginManagement` or `buildscript`), other than Maven Central; the mirrors in
 `~/.m2/settings.xml`; `.cargo/config.toml`; the `composer` repositories of
@@ -1197,7 +1198,7 @@ pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`
 `bioconductor:`, `hackage:`, `terraform-module:`, `terraform-provider:`,
 `buf:`, `cmake-fetch:`, `pkg-config:`, `cocoapods:`, `carthage:`, `luarocks:`,
 `wally:`, `cpan:`, `opam:`, `julia:`, `zig:`, `bazel:`, `bazel-repo:`, `nix:`,
-`nixpkgs:`, `elm:`, `purescript:` or `shards:` — restricts it to that
+`nixpkgs:`, `elm:`, `purescript:`, `shards:` or `paket:` — restricts it to that
 ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
@@ -1618,6 +1619,59 @@ macros, constants, aliases, `record`s and the attributes of `getter` and
 `@[Link("ssl")]` libraries are not mapped. OSV has no Crystal ecosystem, so
 shards are not checked for advisories.
 
+### F# and Paket
+
+F# projects get their packages from NuGet, through `<PackageReference>`
+items or through Paket. depphunter reads `.fs`, `.fsi` and `.fsx` files,
+`.fsproj` files and Paket's `paket.dependencies`, `paket.lock` and
+`paket.references` without running the compiler, MSBuild or Paket. F# and
+C# share one NuGet reader, so a package both languages use is one building
+of the **NuGet** island; FSharp.Core is a NuGet package like any other
+(the SDK references it implicitly), not part of the hidden **.NET base
+library**. A `.fs` file that is a GLSL fragment shader or Forth is told
+apart by its first lines and not read as F#; what Paket installed
+(`packages/` and `paket-files/` beside `paket.dependencies`) and FAKE's
+`.fake/` cache are not read either:
+
+- **Compile order**: a project compiles its files in the order its
+  `.fsproj` lists them (`<Compile Include>` items are edges of the project
+  file), and a file can only use what earlier files declare. `open X.Y`,
+  `open type X.Y`, a module abbreviation (`module P = Shop.Pricing`) and a
+  qualified name in code (`Cart.add`, `Shop.Domain.Cart.empty`) are edges to
+  the files declaring that namespace, module or type - as written or
+  relative to the enclosing namespaces and what is opened, an `[<AutoOpen>]`
+  module's contents also under its parent - among the earlier files of the
+  project and the files of the projects it references
+  (`<ProjectReference>`, C# projects too). A name only later files declare
+  is dropped.
+- **Packages**: an `open` no project file declares goes to a script's
+  `#r "nuget: ..."` package, a declared package whose id prefixes the
+  namespace (or extends it: `Fake.Core` is `Fake.Core.Target`),
+  FSharp.Core (`Microsoft.FSharp.*`, `FSharp.Collections`,
+  `FSharp.Control`, ...), the .NET base library (`System.*`,
+  `Microsoft.*`) or an unresolved package. `<PackageReference>` items,
+  `Directory.Packages.props` versions and the packages of
+  `paket.references` are imports, and so is every line of
+  `paket.dependencies` and every entry of `paket.lock`.
+- **Paket**: `paket.lock` pins (the `paket.dependencies` constraint is
+  the requested version) and records the graph between packages, which
+  `--resolve-depth` follows offline; without it Paket's `= 1.2.3` and bare
+  versions pin and `~>` and `>=` float. GitHub, gist, git and HTTP
+  dependencies form a **Paket git, GitHub and HTTP sources** island named
+  by where they come from (`github.com/fsharp/FAKE`), pinned by the locked
+  commit. Each directory with a `paket.dependencies` is a root of its own.
+- **Scripts**: `#load` is an edge to the script (relative to the file or
+  an `#I` directory), `#r "nuget: X, 1.2.3"` a package (pinned when
+  exact), `#r` of an assembly Paket installed under `packages/` that
+  package, of a framework assembly (`System.Xml.Linq`) the base library;
+  other assemblies are dropped.
+
+Namespaces, modules (with their nested modules), `let` bindings, types
+with their members, exceptions and the `val`s of signature files are the
+symbols. Unqualified names an `open` brings in are not linked (that needs
+the compiler), MSBuild conditions are ignored, and an F# `open` of a C#
+project's namespace is not linked to it.
+
 ### Interface definitions
 
 Protocol Buffers definitions are shared between services and languages, and
@@ -1768,6 +1822,7 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | Kotlin                  | `kotlin-language-server`                                                                     |
 | Scala                   | `metals`                                                                                     |
 | C#                      | `csharp-ls`                                                                                  |
+| F#                      | `fsautocomplete --adaptive-lsp-server-enabled`                                               |
 | C / C++ / Objective-C   | `clangd`                                                                                     |
 | PHP                     | `intelephense` or `phpactor`                                                                 |
 | Ruby                    | `ruby-lsp` or `solargraph`                                                                   |
@@ -1800,7 +1855,7 @@ approximately 7 s for this repository — within the budget set by
 `--lsp-timeout`; results are cached until the map's files, symbols or imports
 change, or a different set of language servers is installed. Servers that index
 slowly, rust-analyzer, jdtls, metals, clangd and the PHP, Ruby, Swift, Elixir,
-Erlang, Haskell, Julia and Clojure servers in particular, may answer before
+Erlang, Haskell, Julia, Clojure and F# servers in particular, may answer before
 indexing has finished, so a first run can report fewer references than a later
 one. The legend's **Imports / References** switch then determines what the
 selection arcs and the side panel show: for a function, what it uses and what
@@ -1818,7 +1873,8 @@ The JSON and GraphML exports include the reference edges.
 | Java                    | source files by package path (any source root), `pom.xml` (properties, dependency management), Gradle scripts (string and map notation) and version catalogs, sbt builds; imports to the declared `group:artifact` shipping the package                                                                                                                                                                                                                                                                                                            | Maven, Java standard library                                               |
 | Kotlin                  | source files by the package they declare (any directory; Java files by path), the Java manifests                                                                                                                                                                                                                                                                                                                                                                                                                                                   | Maven, Kotlin and Java standard libraries                                  |
 | Scala                   | source files by the package they declare (any directory; Java files by path), `build.sbt` (`%`, `%%` with the `scalaVersion` suffix, versions held in a `val`), the Java manifests                                                                                                                                                                                                                                                                                                                                                                 | Maven, Scala and Java standard libraries                                   |
-| C#                      | namespaces to project folders (`RootNamespace` + folder), `PackageReference`, `Directory.Packages.props`                                                                                                                                                                                                                                                                                                                                                                                                                                           | NuGet, .NET base library                                                   |
+| C#                      | namespaces to project folders (`RootNamespace` + folder), `PackageReference`, `Directory.Packages.props`, and the packages of `.fsproj` files, Paket and `packages.lock.json` through the NuGet reader shared with F#                                                                                                                                                                                                                                                                                                                              | NuGet, .NET base library                                                   |
+| F#                      | `open` and qualified names to the files declaring the namespace, module or type, earlier in the `.fsproj` compile order or in a referenced project; `<Compile>`, `<ProjectReference>`, `<PackageReference>`; `paket.dependencies` / `paket.lock` / `paket.references` (groups, GitHub, git and HTTP files); `#load` and `#r "nuget: ..."` in scripts                                                                                                                                                                                               | NuGet, .NET base library, Paket git, GitHub and HTTP sources               |
 | C / C++                 | `#include` beside the includer, the include paths of `compile_commands.json` (`-I`, `-iquote`, `-isystem`, `/I`), `include/` and `src/`, and a unique project file ending in the included path; libraries by `vcpkg.json`, `conanfile.txt`, `conanfile.py` and `conan.lock`                                                                                                                                                                                                                                                                        | vcpkg, Conan, C/C++ external, C and C++ standard libraries, system headers |
 | CMake                   | `add_subdirectory`, `include` of files and of modules on `CMAKE_MODULE_PATH`, target sources, `configure_file` templates, presets; `find_package` as the includes resolve, FetchContent, ExternalProject, CPM.cmake, `pkg_check_modules`                                                                                                                                                                                                                                                                                                           | vcpkg, Conan, C/C++ external, fetched content, pkg-config, CMake modules   |
 | PHP                     | `use` statements (grouped, `function`, `const`) and fully qualified names in code, same-namespace `extends`/`implements`, `require`/`include` of spelled-out paths; project files by what they declare and `composer.json` PSR-4/PSR-0; packages by the autoload prefixes of `composer.lock` or `installed.json`                                                                                                                                                                                                                                   | Packagist, PHP standard library                                            |
@@ -2367,6 +2423,11 @@ Crystal is read by a small lexer too: the tree-sitter grammar took 6 to 25
 ms per file and parsed 259 of the 715 files measured with errors. See
 [Crystal](#crystal).
 
+F# is read by a small lexer and an indentation-based scanner: the tree-sitter
+grammar took 55 to 816 ms per file (17.9 s for one), parsed 25 of the 97
+files measured with errors and did not finish FSharp.Core's sources within
+15 minutes. See [F# and Paket](#f-and-paket).
+
 Protocol Buffers definitions are read by a small scanner: the tree-sitter
 grammar took 2.4 to 3 ms per file and failed on every file using editions.
 See [Interface definitions](#interface-definitions).
@@ -2387,15 +2448,15 @@ Files in other languages appear on the map without dependency edges. Parsing
 uses a pure-Go tree-sitter runtime for JavaScript/TypeScript, Python, Rust,
 Java, Kotlin, Scala, PHP and Ruby; Go uses the standard library's own parser,
 CI, Compose, Buf and shards files a YAML parser, and C, C++, C#, PowerShell,
-Markdown,
-Dart, Elixir, Erlang, R, Haskell, HCL, Protocol Buffers, shell scripts, CMake
-files, Swift, Objective-C, CocoaPods and Carthage manifests, Lua, Luau, Teal and
-LuaRocks files, Perl and its CPAN manifests, OCaml, dune and opam files, Julia,
-Zig and `build.zig.zon`, Clojure and its EDN manifests, Bazel's Starlark files,
-Nix expressions, Gleam, Elm and PureScript modules, spago's Dhall files,
-Crystal, Dockerfiles, the markup of Vue, Svelte and Astro components, R Markdown
-chunks and C preprocessor directives small built-in scanners — so the binary
-continues to cross-compile without a C toolchain.
+Markdown, Dart, Elixir, Erlang, R, Haskell, HCL, Protocol Buffers, shell
+scripts, CMake files, Swift, Objective-C, CocoaPods and Carthage manifests, Lua,
+Luau, Teal and LuaRocks files, Perl and its CPAN manifests, OCaml, dune and opam
+files, Julia, Zig and `build.zig.zon`, Clojure and its EDN manifests, Bazel's
+Starlark files, Nix expressions, Gleam, Elm and PureScript modules, spago's
+Dhall files, Crystal, F# and Paket's files, Dockerfiles, the markup of Vue,
+Svelte and Astro components, R Markdown chunks and C preprocessor directives
+small built-in scanners — so the binary continues to cross-compile without a C
+toolchain.
 
 ## Security
 

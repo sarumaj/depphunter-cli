@@ -17,8 +17,9 @@ input and output (sourcegraph/jsonrpc2), each installed language server for the
 files it covers: gopls (Go), typescript-language-server (TypeScript,
 JavaScript), pyright, basedpyright or pylsp (Python, first installed),
 rust-analyzer (Rust), jdtls (Java), kotlin-language-server (Kotlin), metals
-(Scala), csharp-ls (C#), clangd (C, C++, Objective-C and Objective-C++),
-intelephense or phpactor (PHP,
+(Scala), csharp-ls (C#), FsAutoComplete (`fsautocomplete
+--adaptive-lsp-server-enabled`; `.fs`, `.fsi` and `.fsx` files), clangd (C,
+C++, Objective-C and Objective-C++), intelephense or phpactor (PHP,
 first installed), ruby-lsp or solargraph (Ruby, first installed),
 sourcekit-lsp (Swift), `dart language-server` (Dart), elixir-ls
 (`elixir-ls` or `language_server.sh`), Lexical or Next LS (Elixir, first

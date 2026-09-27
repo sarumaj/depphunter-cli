@@ -1,6 +1,7 @@
 package csharp
 
 import (
+	"bytes"
 	"encoding/xml"
 	"os"
 	"path"
@@ -8,6 +9,7 @@ import (
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/nuget"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
@@ -17,45 +19,25 @@ type project struct {
 }
 
 type resolver struct {
-	projects []project        // longest root namespace first
-	csDirs   map[string]bool  // directories holding C# files
-	packages map[string]nuget // lower-case NuGet package id -> package
+	projects     []project       // longest root namespace first
+	csDirs       map[string]bool // directories holding C# files
+	*nuget.Store                 // packages, versions and what the lock files say they depend on
 }
-
-// nuget is a referenced package: its id as first written, and its version.
-type nuget struct{ id, version string }
 
 type msbuild struct {
 	Groups []struct {
 		RootNamespace string `xml:"RootNamespace"`
 		AssemblyName  string `xml:"AssemblyName"`
 	} `xml:"PropertyGroup"`
-	Items []struct {
-		Refs     []packageRef `xml:"PackageReference"`
-		Versions []packageRef `xml:"PackageVersion"`
-	} `xml:"ItemGroup"`
 }
 
-type packageRef struct {
-	Include      string `xml:"Include,attr"`
-	Version      string `xml:"Version,attr"`
-	VersionChild string `xml:"Version"`
-}
-
-func (p packageRef) version() string {
-	if p.Version != "" {
-		return p.Version
-	}
-	return strings.TrimSpace(p.VersionChild)
-}
-
-// NuGet ids are case-insensitive, so both maps are keyed by the lower-case id: a
+// Packages come from the nuget package, which the F# plugin reads the same way, so a
+// package both languages use is one node. NuGet ids are case-insensitive: a
 // reference to serilog takes the central version of Serilog.
 //
 // Implements: REQ-CS-001, REQ-CS-002, REQ-CS-003, REQ-CS-004
 func newResolver(all []*scan.File) *resolver {
-	r := &resolver{csDirs: map[string]bool{}, packages: map[string]nuget{}}
-	central := map[string]string{} // Directory.Packages.props, by lower-case id
+	r := &resolver{csDirs: map[string]bool{}, Store: nuget.Read(all)}
 	for _, f := range all {
 		base := path.Base(f.Path)
 		switch {
@@ -66,49 +48,27 @@ func newResolver(all []*scan.File) *resolver {
 					break
 				}
 			}
-		case strings.HasSuffix(base, ".csproj") || base == "Directory.Packages.props":
+		case strings.HasSuffix(base, ".csproj"):
 			data, err := os.ReadFile(f.Abs)
 			if err != nil {
 				continue
 			}
 			var doc msbuild
-			if xml.Unmarshal(data, &doc) != nil {
+			if xml.Unmarshal(bytes.TrimPrefix(data, []byte("\xef\xbb\xbf")), &doc) != nil {
 				continue
 			}
-			for _, ig := range doc.Items {
-				for _, p := range ig.Versions {
-					central[strings.ToLower(p.Include)] = p.version()
-				}
-				for _, p := range ig.Refs {
-					if p.Include != "" {
-						key, id := strings.ToLower(p.Include), p.Include
-						if have, ok := r.packages[key]; ok {
-							id = have.id
-						}
-						r.packages[key] = nuget{id: id, version: p.version()}
-					}
+			root := strings.TrimSuffix(base, ".csproj")
+			for _, g := range doc.Groups {
+				if g.AssemblyName != "" {
+					root = g.AssemblyName
 				}
 			}
-			if strings.HasSuffix(base, ".csproj") {
-				root := strings.TrimSuffix(base, ".csproj")
-				for _, g := range doc.Groups {
-					if g.AssemblyName != "" {
-						root = g.AssemblyName
-					}
+			for _, g := range doc.Groups {
+				if g.RootNamespace != "" {
+					root = g.RootNamespace
 				}
-				for _, g := range doc.Groups {
-					if g.RootNamespace != "" {
-						root = g.RootNamespace
-					}
-				}
-				r.projects = append(r.projects, project{dir: path.Dir(f.Path), root: root})
 			}
-		}
-	}
-	for key, p := range r.packages {
-		if p.version == "" {
-			p.version = central[key]
-			r.packages[key] = p
+			r.projects = append(r.projects, project{dir: path.Dir(f.Path), root: root})
 		}
 	}
 	sort.Slice(r.projects, func(i, j int) bool { return len(r.projects[i].root) > len(r.projects[j].root) })
@@ -144,23 +104,5 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 			}
 		}
 	}
-	best := "" // NuGet ids are case-insensitive: the xunit package provides Xunit.*
-	for key := range r.packages {
-		if _, ok := within(strings.ToLower(ns), key); ok && len(key) > len(best) {
-			best = key
-		}
-	}
-	if best != "" {
-		// A PackageReference version is a minimum, but restore installs exactly it
-		// when it exists: the versions that move are the wildcards and the ranges.
-		p := r.packages[best]
-		return lang.Target{Ecosystem: ecoNuGet, Package: p.id, Version: p.version, Pinned: lang.Pinned(p.version)}
-	}
-	segments := strings.Split(ns, ".")
-	top := strings.Join(segments[:min(2, len(segments))], ".")
-	switch segments[0] {
-	case "System", "Microsoft", "Windows":
-		return lang.Target{Ecosystem: ecoDotnet, Package: top}
-	}
-	return lang.Target{Ecosystem: ecoNuGet, Package: top, Unresolved: true}
+	return r.Namespace(ns)
 }

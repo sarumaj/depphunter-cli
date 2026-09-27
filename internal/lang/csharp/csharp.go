@@ -1,7 +1,8 @@
 // Package csharp analyzes C#. `using` directives name namespaces, which resolve to
 // project folders by the MSBuild convention (root namespace + folder path), to NuGet
-// packages from PackageReference / Directory.Packages.props (longest package id that
-// prefixes the namespace, case-insensitively), or to the .NET base library.
+// packages (longest package id that prefixes the namespace, case-insensitively) as
+// internal/lang/nuget reads them for C# and F# alike - PackageReference,
+// Directory.Packages.props, Paket, packages.lock.json - or to the .NET base library.
 //
 // Parsing uses the statement scanner in scan.go: the pure-Go tree-sitter C# grammar
 // took 24 s for Serilog's 216 files (8 s for one 59 KB file), while usings and
@@ -12,12 +13,8 @@ import (
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/nuget"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
-)
-
-const (
-	ecoNuGet  = "nuget"
-	ecoDotnet = "dotnet"
 )
 
 // Implements: REQ-CS-008
@@ -27,10 +24,7 @@ func (Plugin) Name() string             { return "csharp" }
 func (Plugin) Version() int             { return 1 }
 func (Plugin) Claims(f *scan.File) bool { return strings.HasSuffix(f.Path, ".cs") && !f.Binary }
 func (Plugin) Ecosystems() []lang.Ecosystem {
-	return []lang.Ecosystem{
-		{ID: ecoNuGet, Name: "NuGet"},
-		{ID: ecoDotnet, Name: ".NET base library", Std: true},
-	}
+	return nuget.Ecosystems()
 }
 
 func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {

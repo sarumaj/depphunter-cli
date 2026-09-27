@@ -55,7 +55,7 @@ var defaultIgnore = map[string]bool{
 	".terraform": true, ".terragrunt-cache": true, "lua_modules": true, "_opam": true,
 	".zig-cache": true, "zig-cache": true, "zig-out": true, "zig-pkg": true,
 	".cpcache": true, ".shadow-cljs": true, "elm-stuff": true, ".spago": true, "bower_components": true,
-	".crystal": true,
+	".crystal": true, ".fake": true,
 }
 
 func Scan(ctx context.Context, root string, opts Options) ([]*File, error) {
@@ -157,11 +157,16 @@ func walkFiles(ctx context.Context, root string) ([]string, error) {
 
 // generatedBeside names directories that hold what a tool wrote only when its
 // manifest sits next to them: the PureScript compiler's output/ beside a
-// spago.yaml or spago.dhall, and the shards shards installs into lib/ beside a
-// shard.yml. Elsewhere an output/ or lib/ directory may well be source.
+// spago.yaml or spago.dhall, the shards shards installs into lib/ beside a
+// shard.yml, and Paket's packages/ and paket-files/ beside a paket.dependencies.
+// Elsewhere an output/, lib/ or packages/ directory may well be source.
 var generatedBeside = map[string][]string{
 	"output": {"spago.yaml", "spago.dhall"},
 	"lib":    {"shard.yml"},
+	// Paket installs packages into packages/ and fetches remote files into
+	// paket-files/ beside paket.dependencies.
+	"packages":    {"paket.dependencies"},
+	"paket-files": {"paket.dependencies"},
 }
 
 // besideManifest reports whether the directory name in dir is such a directory.
@@ -223,7 +228,7 @@ func measure(f *File, maxSize int64) {
 	// ".m" is MATLAB's and Mercury's too, and ".h" C's: Objective-C says which by
 	// its keywords and directives, within the head already read. ".pl" is
 	// Prolog's too, and ".t" is Perl's only by convention: Perl says which by its
-	// #! line and statements.
+	// #! line and statements. ".fs" is F#'s, a GLSL fragment shader's and Forth's.
 	switch ext := strings.ToLower(path.Ext(f.Path)); {
 	case ext == ".m" && f.Lang == "Objective-C" && !objcMarker(head, true):
 		f.Lang = notObjC(head)
@@ -233,6 +238,10 @@ func measure(f *File, maxSize int64) {
 		f.Lang = "Prolog"
 	case ext == ".t" && f.Lang == "Perl" && !PerlInterpreter(f.Interpreter) && !perlMarker(head):
 		f.Lang = ""
+	case ext == ".fs" && f.Lang == "F#" && glslSource(head):
+		f.Lang = "GLSL"
+	case ext == ".fs" && f.Lang == "F#" && forthSource(head):
+		f.Lang = "Forth"
 	}
 	// A script without a language is labelled by the shell or perl its "#!" line
 	// runs.

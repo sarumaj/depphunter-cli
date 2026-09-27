@@ -276,3 +276,14 @@ func TestAShardsPatternKeepsToShards(t *testing.T) {
 		t.Error("a shards-scoped pattern did not keep to its ecosystem")
 	}
 }
+
+// Paket's GitHub, git and HTTP dependencies are named by their URL; a
+// paket-scoped pattern keeps to them.
+//
+// Verifies: REQ-SUP-035
+func TestAPaketPatternKeepsToPaket(t *testing.T) {
+	p := New([]string{"paket:github.com/acme/*"})
+	if !p.Match("paket", "github.com/acme/shared") || p.Match("nuget", "github.com/acme/shared") || p.Match("paket", "github.com/fsharp/FAKE") {
+		t.Error("a paket-scoped pattern did not keep to its ecosystem")
+	}
+}

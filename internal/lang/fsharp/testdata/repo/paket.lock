@@ -1,0 +1,34 @@
+STORAGE: NONE
+RESTRICTION: == net8.0
+NUGET
+  remote: https://api.nuget.org/v3/index.json
+    Argu (6.1.1)
+      FSharp.Core (>= 4.3.2)
+      System.Configuration.ConfigurationManager (>= 4.4)
+    Expecto (10.2.1)
+      FSharp.Core (>= 7.0.200)
+      Mono.Cecil (>= 0.11.4 < 1.0)
+    Fake.Core.Target (6.0.0)
+      FSharp.Core (>= 6.0.3)
+    FsCheck (2.16.6)
+      FSharp.Core (>= 4.2.3)
+    FSharp.Core (8.0.400)
+    Mono.Cecil (0.11.5)
+    System.Configuration.ConfigurationManager (8.0.0)
+GITHUB
+  remote: fsharp/FAKE
+    src/app/FakeLib/Globbing/Globbing.fs (0341a2e614eb2a7f34607cec914eb0ed83ce9add)
+  remote: forki/FsUnit
+    FsUnit.fs (7623fc13439f0e60bd05c1ed3b5f6dcb937fe468)
+GIT
+  remote: https://github.com/fsprojects/Chessie.git
+     (1f23b1caeb1f87e750abc96a25109376771dd090)
+HTTP
+  remote: http://www.fssnip.net/raw/1M/test1.fs
+    test1.fs
+
+GROUP Build
+RESTRICTION: >= net461
+NUGET
+  remote: https://api.nuget.org/v3/index.json
+    FAKE (4.64.18)

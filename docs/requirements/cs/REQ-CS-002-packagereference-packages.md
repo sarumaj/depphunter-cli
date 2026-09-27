@@ -12,8 +12,11 @@ verification:
 
 ## Statement
 
-The C# plugin **shall** read every `<PackageReference>` of every `.csproj`, with
-its version from the `Version` attribute or a `<Version>` child element, and
+The C# plugin **shall** read every `<PackageReference>` of every `.csproj` (and,
+through the reader it shares with F#, of every `.fsproj`, `.vbproj` and
+`Directory.Build.props`, and the packages Paket's files and
+`packages.lock.json` name: REQ-FSHARP-008), with its version from the
+`Version` attribute or a `<Version>` child element, and
 **shall** resolve a namespace to the NuGet package whose id is the longest one
 equal to or a prefix of the namespace; a namespace no package or project claims
 **shall** go to the .NET base library when it starts with `System`, `Microsoft`

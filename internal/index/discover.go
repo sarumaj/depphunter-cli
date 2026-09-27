@@ -19,6 +19,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/edn"
 	"github.com/sarumaj/depphunter-cli/internal/lang/luarocks"
+	"github.com/sarumaj/depphunter-cli/internal/lang/nuget"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
@@ -217,6 +218,10 @@ func (c *Config) project(files []*scan.File) {
 			parsePyproject(data, add)
 		case base == "nuget.config":
 			parseNuGetConfig(data, add)
+		case base == "paket.dependencies":
+			parsePaketSources(data, add)
+		case base == "paket.lock":
+			parsePaketLock(data, add)
 		case base == "pom.xml":
 			parsePom(data, add)
 		case base == "build.gradle", base == "build.gradle.kts", base == "settings.gradle", base == "settings.gradle.kts":
@@ -425,6 +430,43 @@ func parseNuGetConfig(data []byte, add func(eco, url, scope string)) {
 	for _, s := range doc.PackageSources.Add {
 		add(NuGet, s.Value, "")
 	}
+}
+
+// parsePaketSources reads the NuGet feeds paket.dependencies names in its `source`
+// lines (every group's). A directory source is no index, and nuget.org (Paket
+// projects often still name its retired v2 API) is the public index already.
+//
+// Implements: REQ-FSHARP-010
+func parsePaketSources(data []byte, add func(eco, url, scope string)) {
+	_, sources := nuget.ParseDependencies(data)
+	for _, s := range sources {
+		addPaketFeed(s.URL, add)
+	}
+}
+
+// parsePaketLock reads the feeds paket.lock resolved its NuGet packages from (the
+// `remote:` lines of its NUGET sections).
+//
+// Implements: REQ-FSHARP-010
+func parsePaketLock(data []byte, add func(eco, url, scope string)) {
+	seen := map[string]bool{}
+	for _, l := range nuget.ParseLock(data) {
+		if l.Kind == "nuget" && !seen[l.Remote] {
+			seen[l.Remote] = true
+			addPaketFeed(l.Remote, add)
+		}
+	}
+}
+
+func addPaketFeed(feed string, add func(eco, url, scope string)) {
+	u, err := url.Parse(strings.Trim(feed, `"`))
+	if err != nil || u.Scheme != "https" && u.Scheme != "http" {
+		return
+	}
+	if h := strings.ToLower(u.Hostname()); h == "nuget.org" || strings.HasSuffix(h, ".nuget.org") {
+		return
+	}
+	add(NuGet, u.String(), "")
 }
 
 // parsePom reads the repositories a Maven project declares.
