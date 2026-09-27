@@ -1,0 +1,4 @@
+#!/usr/bin/env racket
+#lang racket/base
+(require "../main.rkt" racket/cmdline)
+(define (run-cli) (command-line #:args () (void)))

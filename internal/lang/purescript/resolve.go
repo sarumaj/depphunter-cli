@@ -370,17 +370,17 @@ func matchAny(globs []string, p string) bool {
 }
 
 func globMatch(glob, p string) bool {
-	return matchSegs(strings.Split(glob, "/"), strings.Split(p, "/"), 0)
+	return matchSegments(strings.Split(glob, "/"), strings.Split(p, "/"), 0)
 }
 
-func matchSegs(g, p []string, depth int) bool {
+func matchSegments(g, p []string, depth int) bool {
 	for len(g) > 0 {
 		if g[0] == "**" {
 			if depth > 8 {
 				return false
 			}
 			for k := 0; k <= len(p); k++ {
-				if matchSegs(g[1:], p[k:], depth+1) {
+				if matchSegments(g[1:], p[k:], depth+1) {
 					return true
 				}
 			}
@@ -548,7 +548,7 @@ func (r *resolver) declares(p *project, name string) bool {
 // web-html, Data.Maybe maybe, Effect.Aff aff. The run ending furthest wins; it
 // returns the package and where the run ends.
 func spelled(mod string, p *project, declared func(string) bool) (string, int) {
-	segs := strings.Split(mod, ".")
+	segments := strings.Split(mod, ".")
 	names := map[string]string{} // folded -> name
 	add := func(name string) {
 		if f := fold(name); f != "" && declared(name) {
@@ -569,12 +569,12 @@ func spelled(mod string, p *project, declared func(string) bool) (string, int) {
 		}
 	}
 	best, end := "", 0
-	for start := 0; start <= 1 && start < len(segs); start++ {
-		if start == 1 && !namespaces[segs[0]] {
+	for start := 0; start <= 1 && start < len(segments); start++ {
+		if start == 1 && !namespaces[segments[0]] {
 			break
 		}
-		for k := len(segs); k > start && k > end; k-- {
-			if name, ok := names[fold(strings.Join(segs[start:k], ""))]; ok {
+		for k := len(segments); k > start && k > end; k-- {
+			if name, ok := names[fold(strings.Join(segments[start:k], ""))]; ok {
 				best, end = name, k
 				break
 			}

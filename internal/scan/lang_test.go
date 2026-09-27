@@ -2,7 +2,7 @@ package scan
 
 import "testing"
 
-// Verifies: REQ-LANG-015, REQ-DOCKER-001, REQ-SHELL-001, REQ-OBJC-001, REQ-LUA-001, REQ-PERL-001, REQ-OCAML-001, REQ-JULIA-001, REQ-ZIG-001, REQ-NIX-001, REQ-FORTRAN-001, REQ-HAXE-001, REQ-ADA-001
+// Verifies: REQ-LANG-015, REQ-DOCKER-001, REQ-SHELL-001, REQ-OBJC-001, REQ-LUA-001, REQ-PERL-001, REQ-OCAML-001, REQ-JULIA-001, REQ-ZIG-001, REQ-NIX-001, REQ-FORTRAN-001, REQ-HAXE-001, REQ-ADA-001, REQ-RACKET-001
 func TestLanguageByName(t *testing.T) {
 	for p, want := range map[string]string{
 		"a.go":                           "Go",
@@ -97,6 +97,12 @@ func TestLanguageByName(t *testing.T) {
 		"legacy/SHOP.ADA":                "Ada",
 		"shop.gpr":                       "GPR",
 		"alire.toml":                     "TOML",
+		"shop/main.rkt":                  "Racket",
+		"tests/load-me.rktl":             "Racket",
+		"data/prices.rktd":               "Racket",
+		"docs/manual.scrbl":              "Scribble",
+		"chez/main.ss":                   "Scheme",
+		"guile/hello.scm":                "Scheme",
 		"source/shop/app.d":              "D",
 		"import/shop/cart.di":            "D",
 		"dub.sdl":                        "SDLang",

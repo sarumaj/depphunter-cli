@@ -144,6 +144,10 @@ var Servers = []Server{
 	// .gpr at the root, or alire.toml's), so a repository with several may get
 	// fewer answers.
 	{Name: "ada", Open: true, Exts: map[string]string{".ads": "ada", ".adb": "ada", ".ada": "ada"}, Commands: [][]string{{"ada_language_server"}}},
+	// racket-langserver answers references for Racket modules over stdio,
+	// started as a module of an installed Racket; it expands each opened
+	// file, so a first answer may take a while.
+	{Name: "racket", Open: true, Exts: map[string]string{".rkt": "racket", ".rktl": "racket", ".scrbl": "racket"}, Commands: [][]string{{"racket", "-l", "racket-langserver"}}},
 	{Name: "fortran", Open: true, Exts: map[string]string{".f90": "fortran", ".f95": "fortran", ".f03": "fortran", ".f08": "fortran", ".f18": "fortran", ".f": "fortran", ".for": "fortran", ".ftn": "fortran", ".f77": "fortran", ".fpp": "fortran"}, Commands: [][]string{{"fortls"}}},
 	// neocmakelsp and cmake-language-server both answer references for CMake's
 	// functions, macros and variables; a CMakeLists.txt is known by its name.

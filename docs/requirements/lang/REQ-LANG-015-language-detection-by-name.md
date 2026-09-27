@@ -39,12 +39,13 @@ dub's `dub.sdl` (SDLang; `.d` and `.di` files are D), Fortran's
 extensions (`.f90`, `.f95`, `.f03`, `.f08`, `.f18`, `.f`, `.for`, `.ftn`,
 `.f77`, `.fpp` and fypp's `.fypp`, in either case), Haxe's `.hx` and
 `.hxml`, Ada's `.ads`, `.adb` and `.ada` and GNAT's project files (`.gpr`,
-GPR),
+GPR), Racket's `.rkt`, `.rktl` and `.rktd`, Scribble's `.scrbl` and
+Scheme's `.scm` and `.ss`,
 the shells' and direnv's startup files (`.bashrc`,
 `.zshrc`, `.profile`, `.envrc` and the others of REQ-SHELL-001), and the
 Dockerfile names of REQ-DOCKER-001), or, for a file neither names, from a
-`#!` line running a shell (REQ-SHELL-001), perl (REQ-PERL-001) or babashka
-(`bb`, Clojure: REQ-CLOJURE-001), and
+`#!` line running a shell (REQ-SHELL-001), perl (REQ-PERL-001), babashka
+(`bb`, Clojure: REQ-CLOJURE-001) or racket (Racket: REQ-RACKET-001), and
 **shall** leave the language empty when none is known. A `.ts` file whose
 first bytes, after an optional byte order mark and whitespace, are an XML
 declaration (`<?xml`) or a document type (`<!DOCTYPE`) is a Qt Linguist
@@ -62,7 +63,10 @@ head is a make dependency file (a first line `target: prerequisites`)
 running dtrace) **shall** be DTrace, rather than D (REQ-DLANG-001). A `.f`
 or `.for` file whose head shows Forth (a `\` comment line or a `: name ... ;`
 definition in column 1) **shall** be Forth, rather than Fortran
-(REQ-FORTRAN-001).
+(REQ-FORTRAN-001). A `.scm` or `.ss` file whose first line, after an
+optional `#!` line, blank lines and `;` comments, is a `#lang` line (or
+`#!racket/base`, not `#!r6rs`) **shall** be Racket rather than Scheme
+(REQ-RACKET-001).
 
 ## Rationale
 
@@ -126,3 +130,9 @@ Objective-C from MATLAB, Mercury and C.
     are Haxe, and `haxelib.json` is JSON.
 13. `src/shop-cart.ads`, `src/shop-cart.adb` and `legacy/SHOP.ADA` are
     Ada, `shop.gpr` is GPR and `alire.toml` is TOML.
+14. `shop/main.rkt`, `tests/load-me.rktl` and `data/prices.rktd` are
+    Racket, `docs/manual.scrbl` is Scribble and `chez/main.ss` and
+    `guile/hello.scm` are Scheme; a `.scm` starting `#lang racket` after a
+    comment, `.ss` files starting `#!/usr/bin/env racket` then `#lang` or
+    `#!racket/base`, and an extensionless file whose `#!` line runs racket
+    are Racket, and a `.scm` starting `#!r6rs` stays Scheme.

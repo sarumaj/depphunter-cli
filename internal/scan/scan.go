@@ -55,7 +55,7 @@ var defaultIgnore = map[string]bool{
 	".terraform": true, ".terragrunt-cache": true, "lua_modules": true, "_opam": true,
 	".zig-cache": true, "zig-cache": true, "zig-out": true, "zig-pkg": true,
 	".cpcache": true, ".shadow-cljs": true, "elm-stuff": true, ".spago": true, "bower_components": true,
-	".crystal": true, ".fake": true, ".dub": true, ".haxelib": true,
+	".crystal": true, ".fake": true, ".dub": true, ".haxelib": true, "compiled": true,
 }
 
 func Scan(ctx context.Context, root string, opts Options) ([]*File, error) {
@@ -233,7 +233,8 @@ func measure(f *File, maxSize int64) {
 	// Prolog's too, and ".t" is Perl's only by convention: Perl says which by its
 	// #! line and statements. ".fs" is F#'s, a GLSL fragment shader's and Forth's.
 	// ".d" is D's, a make dependency file's and a DTrace script's. ".f" and ".for"
-	// are fixed-form Fortran's and sometimes Forth's.
+	// are fixed-form Fortran's and sometimes Forth's. ".scm" and ".ss" are
+	// Scheme's, and Racket's when a #lang line starts them.
 	switch ext := strings.ToLower(path.Ext(f.Path)); {
 	case ext == ".m" && f.Lang == "Objective-C" && !objcMarker(head, true):
 		f.Lang = notObjC(head)
@@ -253,6 +254,8 @@ func measure(f *File, maxSize int64) {
 		f.Lang = "Make"
 	case ext == ".d" && f.Lang == "D" && (f.Interpreter == "dtrace" || dtraceSource(head)):
 		f.Lang = "DTrace"
+	case (ext == ".scm" || ext == ".ss") && f.Lang == "Scheme" && racketSource(head):
+		f.Lang = "Racket"
 	}
 	// A script without a language is labelled by the shell or perl its "#!" line
 	// runs.
@@ -263,6 +266,8 @@ func measure(f *File, maxSize int64) {
 		f.Lang = "Perl"
 	case f.Lang == "" && f.Interpreter == "bb":
 		f.Lang = "Clojure" // a babashka script
+	case f.Lang == "" && f.Interpreter == "racket":
+		f.Lang = "Racket"
 	}
 	var lines, last int
 	buf := make([]byte, 32*1024)

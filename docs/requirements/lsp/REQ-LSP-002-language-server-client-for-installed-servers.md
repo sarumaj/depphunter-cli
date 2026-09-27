@@ -52,9 +52,10 @@ purescript-language-server (`purescript-language-server --stdio`; `.purs`
 files), crystalline (`crystalline`; `.cr` files), serve-d (`serve-d`;
 `.d` and `.di` files), fortls (`fortls`; `.f90`, `.f95`, `.f03`, `.f08`,
 `.f18`, `.f`, `.for`, `.ftn`, `.f77` and `.fpp` files in either case),
-the Haxe language server (`haxe-language-server`; `.hx` files) and the Ada
-Language Server (`ada_language_server`; `.ads`, `.adb` and `.ada` files),
-skipping a server that is not installed.
+the Haxe language server (`haxe-language-server`; `.hx` files), the Ada
+Language Server (`ada_language_server`; `.ads`, `.adb` and `.ada` files)
+and racket-langserver (`racket -l racket-langserver`; `.rkt`, `.rktl` and
+`.scrbl` files), skipping a server that is not installed.
 
 ## Rationale
 

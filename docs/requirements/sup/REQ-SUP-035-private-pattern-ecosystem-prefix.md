@@ -45,7 +45,8 @@ inputs and pinned sources) and `nixpkgs` (nixpkgs packages), Elm's
 `elm`, PureScript's `purescript`, Crystal's `shards`, Paket's `paket`
 (GitHub, git and HTTP dependencies), D's `dub`, Fortran's `fpm` and
 `fortran-external` (modules no project or known package provides),
-Haxe's `haxelib`, and Alire's `alire`.
+Haxe's `haxelib`, Alire's `alire`, and Racket's `raco` (catalog, git and
+PLaneT packages).
 
 A Clojure dependency is a Maven package named `group:artifact`; a `maven:`
 (or unscoped) pattern matches it by its group (`maven:com.acme.*` matches
