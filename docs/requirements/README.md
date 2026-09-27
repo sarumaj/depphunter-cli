@@ -119,6 +119,7 @@ The server **shall** ...
 | `php`    | The PHP plugin and Composer.                                                                   |
 | `ruby`   | The Ruby plugin and Bundler.                                                                   |
 | `swift`  | The Swift plugin, SwiftPM and Xcode's package references.                                      |
+| `dart`   | The Dart plugin, Flutter and pub.                                                              |
 | `ps`     | The PowerShell plugin.                                                                         |
 | `ci`     | The continuous-integration plugin (GitHub Actions, GitLab CI, container images).               |
 | `docker` | The Dockerfile and Compose plugin, and the container-image references it shares with `ci`.     |
@@ -206,6 +207,9 @@ requirements of type `limitation` in their scopes:
   has no package-to-package edges without a checkout, type references are
   matched by name, and files the grammar cannot fully parse give partial
   results.
+- Dart is read without running pub: generated files that are not committed are
+  not seen, and `pubspec.lock` has no package-to-package edges, so only
+  `--online` walks past the first level.
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

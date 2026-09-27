@@ -1,0 +1,5 @@
+name: a
+
+dependencies:
+  b: ^1.0.0
+  c: ^1.0.0

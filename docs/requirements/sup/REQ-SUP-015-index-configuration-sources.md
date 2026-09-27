@@ -19,15 +19,17 @@ The system **shall** read index configuration from this machine:
 `~/.nuget/NuGet/NuGet.Config`, `~/.config/NuGet/NuGet.Config`, and the
 `composer` repositories of Composer's `config.json` in `COMPOSER_HOME`,
 `~/.config/composer` and `~/.composer`, Bundler's rubygems.org mirror
-(`BUNDLE_MIRROR__RUBYGEMS__ORG`, `~/.bundle/config`) and the sources of
-`~/.gemrc`.
+(`BUNDLE_MIRROR__RUBYGEMS__ORG`, `~/.bundle/config`), the sources of
+`~/.gemrc` and pub's `PUB_HOSTED_URL`.
 
 The system **shall** read index configuration from the repository: `.npmrc`,
 `.yarnrc.yml`, `pip.conf`, `pip.ini`, `requirements*.txt`, the Poetry and uv
 indexes of `pyproject.toml`, `NuGet.config`, the repositories of `pom.xml`,
 `.cargo/config.toml`, the `composer` repositories of `composer.json`, the
 `source` lines of a `Gemfile` (a `source ... do` block serving only the gems
-inside it) and the GEM remotes of `Gemfile.lock`.
+inside it), the GEM remotes of `Gemfile.lock`, the `hosted:` servers of a
+`pubspec.yaml` or `pubspec_overrides.yaml` (each serving its package) and the
+servers other than pub.dev that `pubspec.lock` resolved packages from.
 
 ## Rationale
 

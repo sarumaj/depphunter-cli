@@ -384,3 +384,47 @@ func TestRubyGemsDependencies(t *testing.T) {
 		t.Errorf("asked %v, want the compact index", asked)
 	}
 }
+
+// Verifies: REQ-SUP-046
+func TestPubDependencies(t *testing.T) {
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Path+" "+r.Header.Get("Accept"))
+		if r.URL.Path != "/private/api/packages/http" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Write([]byte(`{"name":"http",
+"latest":{"version":"1.2.0","pubspec":{"name":"http","dependencies":{"async":"^2.5.0","meta":null,"web":">=0.5.0 <2.0.0","flutter":{"sdk":"flutter"}},"dev_dependencies":{"test":"^1.21.0"}}},
+"versions":[
+ {"version":"1.1.0","pubspec":{"name":"http","dependencies":{"async":"^2.5.0","http_parser":{"hosted":"https://pub.dev","version":"4.0.2"}}}},
+ {"version":"1.2.0","pubspec":{"name":"http","dependencies":{"async":"^2.5.0","meta":null,"web":">=0.5.0 <2.0.0","flutter":{"sdk":"flutter"}}}}]}`))
+	}))
+	defer srv.Close()
+	c := clientFor(t, Pub, srv.URL+"/private/", "")
+	for _, tt := range []struct {
+		version string
+		want    []lang.Target
+	}{
+		// The version asked for; a bare version is pinned.
+		{"1.1.0", []lang.Target{
+			{Ecosystem: Pub, Package: "async", Version: "^2.5.0"},
+			{Ecosystem: Pub, Package: "http_parser", Version: "4.0.2", Pinned: true},
+		}},
+		// A constraint names no version: the latest answers, without its SDK and
+		// dev dependencies.
+		{"^1.0.0", []lang.Target{
+			{Ecosystem: Pub, Package: "async", Version: "^2.5.0"},
+			{Ecosystem: Pub, Package: "meta"},
+			{Ecosystem: Pub, Package: "web", Version: ">=0.5.0 <2.0.0"},
+		}},
+	} {
+		got := c.Dependencies(lang.Target{Ecosystem: Pub, Package: "http", Version: tt.version})
+		if !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("%s: got %+v, want %+v", tt.version, got, tt.want)
+		}
+	}
+	if len(asked) == 0 || asked[0] != "/private/api/packages/http application/vnd.pub.v2+json" {
+		t.Errorf("asked %v, want the package API", asked)
+	}
+}

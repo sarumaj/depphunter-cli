@@ -460,3 +460,58 @@ func TestReadsRubyGemsConfigFromTheMachine(t *testing.T) {
 		}
 	}
 }
+
+// A pubspec's hosted dependency names the server that serves it, and so does a
+// package pubspec.lock resolved from somewhere other than pub.dev; PUB_HOSTED_URL is
+// this machine's, and trusted.
+//
+// Verifies: REQ-SUP-015, REQ-SUP-046
+func TestDiscoverReadsPubServers(t *testing.T) {
+	files := write(t, map[string]string{
+		"app/pubspec.yaml": `name: app
+dependencies:
+  http: ^1.2.0
+  acme_auth:
+    hosted: https://pub.corp.test
+    version: ^1.0.0
+dev_dependencies:
+  acme_lints:
+    hosted:
+      name: acme_lints
+      url: https://lints.corp.test
+`,
+		"app/pubspec.lock": `packages:
+  http:
+    dependency: "direct main"
+    description:
+      name: http
+      url: "https://pub.dev"
+    source: hosted
+    version: "1.2.1"
+  vendor_kit:
+    dependency: transitive
+    description:
+      name: vendor_kit
+      url: "https://vendor.corp.test/"
+    source: hosted
+    version: "2.0.0"
+`,
+	})
+	c := Discover(files, env(nil), "")
+	for pkg, want := range map[string]string{
+		"acme_auth":  "https://pub.corp.test",
+		"acme_lints": "https://lints.corp.test",
+		"vendor_kit": "https://vendor.corp.test",
+	} {
+		if idx, known := c.For(Pub, pkg); idx != want || known {
+			t.Errorf("%s: got %s (known %v), want %s, unknown", pkg, idx, known, want)
+		}
+	}
+	if idx, known := c.For(Pub, "http"); idx != "https://pub.dev" || !known {
+		t.Errorf("http: got %s (known %v), want pub.dev", idx, known)
+	}
+	c = Discover(nil, env(map[string]string{"PUB_HOSTED_URL": "https://pub.mirror.test"}), "")
+	if idx, known := c.For(Pub, "http"); idx != "https://pub.mirror.test" || !known {
+		t.Errorf("PUB_HOSTED_URL: got %s (known %v)", idx, known)
+	}
+}

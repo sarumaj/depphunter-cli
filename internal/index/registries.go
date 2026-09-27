@@ -420,6 +420,59 @@ func (c *Client) rubygemsPackage(ctx context.Context, index string, t lang.Targe
 	return out, nil
 }
 
+// ---------------------------------------------------------------- pub
+
+// pubPackage reads a package's dependencies from a pub server's package API
+// (<server>/api/packages/<name>), which pub.dev and every server implementing the
+// hosted-repository protocol serve: each version with its pubspec. The version asked
+// for answers, else the latest. Its `dependencies` count - not dev_dependencies - each
+// with its constraint; an SDK package (flutter) comes from no server, and a git or
+// path dependency of a published package cannot occur.
+//
+// Implements: REQ-SUP-046
+func (c *Client) pubPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+	body, err := c.accept(ctx, strings.TrimRight(index, "/")+"/api/packages/"+t.Package, "application/vnd.pub.v2+json")
+	if err != nil {
+		return nil, err
+	}
+	type version struct {
+		Version string `json:"version"`
+		Pubspec struct {
+			Dependencies map[string]any `json:"dependencies"`
+		} `json:"pubspec"`
+	}
+	var doc struct {
+		Latest   version   `json:"latest"`
+		Versions []version `json:"versions"`
+	}
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return nil, err
+	}
+	chosen := doc.Latest
+	for _, v := range doc.Versions {
+		if v.Version == strings.TrimSpace(t.Version) {
+			chosen = v
+		}
+	}
+	var out []dep
+	for name, spec := range chosen.Pubspec.Dependencies {
+		switch s := spec.(type) {
+		case nil:
+			out = append(out, dep{Name: name})
+		case string:
+			out = append(out, dep{Name: name, Version: s})
+		case map[string]any:
+			if _, sdk := s["sdk"]; sdk {
+				continue
+			}
+			v, _ := s["version"].(string)
+			out = append(out, dep{Name: name, Version: v})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
 // ---------------------------------------------------------------- OCI
 
 // The media types a registry may answer a manifest request with: the OCI ones and
