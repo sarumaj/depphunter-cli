@@ -1,0 +1,13 @@
+{
+    "version": "0.5",
+    "requires": [
+        "zlib/1.2.13#97d5730b529b4224045fe7090592d4c1%1692672717.049",
+        "spdlog/1.12.0#0e39058a4bc1d2d6e0f0fa1a4b64e1c4%1694000000.0",
+        "nlohmann_json/3.11.2#a35423bb6e1eb8f931423557e282c7ed%1666619820.488",
+        "fmt/10.1.1#a8ea9ba9dd6ef9d0f1e2e9e2e6c9d8f0%1694000000.0"
+    ],
+    "build_requires": [
+        "cmake/3.27.1#e8b1e30bd3fb0d6e2e8b7a0c8d9e7f11%1693000000.0"
+    ],
+    "python_requires": []
+}

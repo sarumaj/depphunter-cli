@@ -14,8 +14,8 @@ verification:
 
 With `--online`, the system **shall** ask the OSV database about every external
 package the map pins to a version in the ecosystems Go, npm, PyPI, crates.io,
-Maven, NuGet and GitHub Actions, and place each matched advisory on its package
-with its fixed version.
+Maven, NuGet, GitHub Actions and Conan (as `ConanCenter`), and place each
+matched advisory on its package with its fixed version.
 
 ## Rationale
 
@@ -27,7 +27,7 @@ repository's own files cannot answer.
 1. A pinned package with a known advisory yields a vulnerability finding on that
    package.
 2. A package of an ecosystem OSV does not cover (PowerShell Gallery, container
-   images) is not asked about.
+   images, vcpkg) is not asked about.
 
 ## Notes
 

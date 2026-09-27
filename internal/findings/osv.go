@@ -38,6 +38,7 @@ var osvEcosystems = map[string]string{
 	"maven":   "Maven",
 	"nuget":   "NuGet",
 	"actions": "GitHub Actions",
+	"conan":   "ConanCenter", // vcpkg has no OSV ecosystem
 }
 
 // Package is one thing to ask the database about: a dependency pinned to a version.

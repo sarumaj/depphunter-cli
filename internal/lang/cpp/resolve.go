@@ -16,11 +16,12 @@ type resolver struct {
 	files  map[string]bool     // every project file
 	byBase map[string][]string // file name -> the project files so named
 	db     *compileDB
+	pkgs   *packages // what vcpkg and Conan manifests declare
 }
 
 // Implements: REQ-CPP-004
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, byBase: map[string][]string{}, db: readCompileDB(root, all)}
+	r := &resolver{files: map[string]bool{}, byBase: map[string][]string{}, db: readCompileDB(root, all), pkgs: readPackages(all)}
 	for _, f := range all {
 		r.files[f.Path] = true
 		base := path.Base(f.Path)
@@ -29,10 +30,10 @@ func newResolver(root string, all []*scan.File) *resolver {
 	return r
 }
 
-// Resolve follows an include to a project file, a standard or system header, or a
-// third-party library.
+// Resolve follows an include to a project file, a standard or system header, a
+// package a vcpkg or Conan manifest declares, or else a third-party library.
 //
-// Implements: REQ-CPP-004, REQ-CPP-005, REQ-CPP-006
+// Implements: REQ-CPP-004, REQ-CPP-005, REQ-CPP-006, REQ-CPP-012
 func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 	name := strings.ReplaceAll(imp.Module, `\`, "/")
 	if name == "" || path.IsAbs(name) || (len(name) > 1 && name[1] == ':') {
@@ -71,8 +72,16 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 	if imp.Name == quoted && (!strings.Contains(name, "/") || strings.HasPrefix(name, ".")) {
 		return lang.Target{}
 	}
+	if p := r.pkgs.match(file, name); p != nil {
+		return p.target()
+	}
 	return lang.Target{Ecosystem: ecoExternal, Package: library(name), Unresolved: true}
 }
+
+// Dependencies implements lang.Transitive from a Conan 1 conan.lock's graph.
+//
+// Implements: REQ-CPP-011
+func (r *resolver) Dependencies(t lang.Target) []lang.Target { return r.pkgs.Dependencies(t) }
 
 // bySuffix finds the project file whose path ends in the include ("foo/bar.h" in
 // libs/foo/bar.h): the only one, or else the one closest to the includer when that

@@ -12,8 +12,9 @@ verification:
 
 ## Statement
 
-The C/C++ plugin **shall** assign an include that is neither a project file
-nor a standard or system header to the `c-external` ecosystem, unresolved,
+The C/C++ plugin **shall** assign an include that is neither a project file,
+a standard or system header nor a declared vcpkg or Conan package
+(REQ-CPP-012) to the `c-external` ecosystem, unresolved,
 named after the include's first directory (`<boost/asio.hpp>` is `boost`) or,
 for a bare header, its name without the extension (`<zlib.h>` is `zlib`). A
 quoted include of a bare name or a relative path that the project does not
@@ -33,5 +34,5 @@ directory named after it. A quoted bare name the project lacks (`config.h`,
 
 ## Notes
 
-No package manager (vcpkg, Conan) is read yet, so no library carries a
-version.
+Libraries that a vcpkg or Conan manifest declares carry their version and
+pinning (REQ-CPP-009 to REQ-CPP-012); the rest carry none.

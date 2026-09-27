@@ -536,6 +536,7 @@ var trivyEcosystems = map[string]string{
 	"cargo": "crates",
 	"pom":   "maven", "gradle": "maven", "jar": "maven",
 	"nuget": "nuget", "dotnet-core": "nuget",
+	"conan": "conan",
 }
 
 // trivyPath keeps the target of a scan that has one: a lock file or a Dockerfile is a

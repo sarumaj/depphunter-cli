@@ -189,6 +189,9 @@ requirements of type `limitation` in their scopes:
   read, so an image reference that depends on one is left as written.
 - C and C++ preprocessor conditions other than a literal 0 or 1 are not
   evaluated, so the includes of every platform branch are recorded.
+- vcpkg and Conan manifests are read as text: a `conanfile.py` is not run, the
+  versions a vcpkg baseline selects are not known, and headers are matched to
+  packages by name.
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

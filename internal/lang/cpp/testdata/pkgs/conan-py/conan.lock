@@ -1,0 +1,20 @@
+{
+    "graph_lock": {
+        "nodes": {
+            "0": {
+                "path": "conanfile.py",
+                "requires": ["1", "2", "3", "4"],
+                "build_requires": ["5"],
+                "context": "host"
+            },
+            "1": {"ref": "openssl/1.1.1t", "requires": ["2"], "context": "host"},
+            "2": {"ref": "zlib/1.2.13#97d5730b529b4224045fe7090592d4c1", "context": "host"},
+            "3": {"ref": "libcurl/8.4.0", "requires": ["1", "2"], "context": "host"},
+            "4": {"ref": "catch2/3.4.0", "context": "host"},
+            "5": {"ref": "cmake/3.27.1", "context": "build"}
+        },
+        "revisions_enabled": true
+    },
+    "version": "0.4",
+    "profile_host": "[settings]\narch=x86_64\nos=Linux\n"
+}
