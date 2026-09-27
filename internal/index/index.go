@@ -36,6 +36,9 @@ const (
 	// Hex is Elixir's and Erlang's, as Mix and rebar3 install from it; its index
 	// is hex.pm's API.
 	Hex = "hex"
+	// CRAN is R's, as install.packages and renv install from it; its package
+	// metadata is read from crandb (see cranPackage).
+	CRAN = "cran"
 )
 
 // public is where each ecosystem's packages come from unless something says otherwise.
@@ -52,6 +55,33 @@ var public = map[string]string{
 	RubyGems: "https://rubygems.org",
 	Pub:      "https://pub.dev",
 	Hex:      "https://hex.pm/api",
+	CRAN:     "https://cloud.r-project.org",
+}
+
+// CRANMirror reports whether an R repository URL is CRAN itself - cloud.r-project.org,
+// cran.r-project.org and its *.r-project.org mirrors, RStudio's - or Posit Package
+// Manager's copy of it, which renv projects name as often as CRAN. Such a repository
+// is the public index, not one the repository brings along, and its packages are what
+// crandb describes. Other mirrors are not guessed from their names: an internal
+// repository called cran.corp.example would have its packages named to crandb.
+//
+// Implements: REQ-SUP-048
+func CRANMirror(index string) bool {
+	u, err := url.Parse(strings.TrimSpace(index))
+	if err != nil {
+		return false
+	}
+	host := strings.ToLower(u.Hostname())
+	switch {
+	case host == "cran.rstudio.com", host == "r-project.org", strings.HasSuffix(host, ".r-project.org"):
+		return true
+	case host == "packagemanager.posit.co", host == "packagemanager.rstudio.com", host == "p3m.dev":
+		// Posit Package Manager serves CRAN as /cran/<snapshot> and CRAN with
+		// Bioconductor as /all/<snapshot>.
+		seg := strings.Split(strings.Trim(u.Path, "/"), "/")[0]
+		return seg == "cran" || seg == "all"
+	}
+	return false
 }
 
 // Where an index was learned from. It decides nothing on its own - Trusted does

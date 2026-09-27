@@ -1,0 +1,37 @@
+{
+  "R": {
+    "Version": "4.4.1",
+    "Repositories": [
+      {"Name": "CRAN", "URL": "https://cloud.r-project.org"},
+      {"Name": "internal", "URL": "https://cran.corp.example/latest"}
+    ]
+  },
+  "Bioconductor": {"Version": "3.19"},
+  "Packages": {
+    "dplyr": {
+      "Package": "dplyr", "Version": "1.1.4", "Source": "Repository", "Repository": "CRAN",
+      "Requirements": ["R", "R6", "cli", "generics", "glue", "lifecycle", "magrittr", "methods", "rlang", "tibble", "utils"]
+    },
+    "R6": {"Package": "R6", "Version": "2.5.1", "Source": "Repository", "Repository": "CRAN", "Requirements": ["R"]},
+    "rlang": {"Package": "rlang", "Version": "1.1.4", "Source": "Repository", "Repository": "CRAN", "Requirements": ["R", "utils"]},
+    "glue": {"Package": "glue", "Version": "1.7.0", "Source": "Repository", "Repository": "CRAN", "Requirements": ["R", "methods"]},
+    "readr": {
+      "Package": "readr", "Version": "2.1.5", "Source": "Repository", "Repository": "internal",
+      "Imports": ["R (>= 3.6)", "cli (>= 3.2.0)", "tibble", "MASS"]
+    },
+    "MASS": {"Package": "MASS", "Version": "7.3-60.2", "Source": "Repository", "Repository": "CRAN", "Requirements": ["R", "grDevices", "stats"]},
+    "cli": {"Package": "cli", "Version": "3.6.3", "Source": "Repository", "Repository": "CRAN"},
+    "DESeq2": {"Package": "DESeq2", "Version": "1.44.0", "Source": "Bioconductor", "Requirements": ["S4Vectors", "ggplot2"]},
+    "S4Vectors": {"Package": "S4Vectors", "Version": "0.42.1", "Source": "Bioconductor"},
+    "tidyr": {
+      "Package": "tidyr", "Version": "1.3.1.9000", "Source": "GitHub", "RemoteType": "github",
+      "RemoteHost": "api.github.com", "RemoteUsername": "tidyverse", "RemoteRepo": "tidyr",
+      "RemoteRef": "main", "RemoteSha": "5c6f7e2d9a1b0c3d4e5f60718293a4b5c6d7e8f9"
+    },
+    "mylocal": {"Package": "mylocal", "Version": "0.1.0", "Source": "Local", "RemoteUrl": "~/src/mylocal"},
+    "here": {"Package": "here", "Version": "1.0.1", "Source": "Repository", "Repository": "CRAN"},
+    "box": {"Package": "box", "Version": "1.2.0", "Source": "Repository", "Repository": "CRAN"},
+    "pacman": {"Package": "pacman", "Version": "0.5.1", "Source": "Repository", "Repository": "CRAN"},
+    "stringr": {"Package": "stringr", "Version": "1.5.1", "Source": "Repository", "Repository": "CRAN"}
+  }
+}

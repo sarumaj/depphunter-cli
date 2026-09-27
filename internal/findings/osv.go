@@ -44,6 +44,10 @@ var osvEcosystems = map[string]string{
 	"swiftpm":  "SwiftURL", // packages are named by their URL, as OSV names them
 	"pub":      "Pub",
 	"hex":      "Hex",
+	"cran":     "CRAN",
+	// A Bioconductor package is its own ecosystem in OSV: the same name on CRAN
+	// would be another package.
+	"bioconductor": "Bioconductor",
 }
 
 // Package is one thing to ask the database about: a dependency pinned to a version.

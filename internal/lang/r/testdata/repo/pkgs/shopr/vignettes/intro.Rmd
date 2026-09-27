@@ -1,0 +1,29 @@
+---
+title: "Intro"
+output: rmarkdown::html_vignette
+---
+
+```{r setup, include = FALSE}
+library(shopr)
+library(knitr)
+```
+
+Some prose with `library(notcode)` inline.
+
+````markdown
+```{r}
+library(shown_not_run)
+```
+````
+
+```{python}
+import pandas
+```
+
+```{r plot, echo=FALSE}
+library(ggplot2)
+plot_total <- function(cart) ggplot(data.frame(t = total(cart)))
+```
+
+```{r, child = "details.Rmd"}
+```

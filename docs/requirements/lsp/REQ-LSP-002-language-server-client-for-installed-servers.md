@@ -21,8 +21,9 @@ rust-analyzer (Rust), jdtls (Java), kotlin-language-server (Kotlin), metals
 first installed), ruby-lsp or solargraph (Ruby, first installed),
 sourcekit-lsp (Swift), `dart language-server` (Dart), elixir-ls
 (`elixir-ls` or `language_server.sh`), Lexical or Next LS (Elixir, first
-installed) and ELP or erlang_ls (Erlang, first installed), skipping a server
-that is not installed.
+installed), ELP or erlang_ls (Erlang, first installed) and the R
+languageserver package (`R --slave -e languageserver::run()`, R and R
+Markdown), skipping a server that is not installed.
 
 ## Rationale
 

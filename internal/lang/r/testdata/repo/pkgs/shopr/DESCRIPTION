@@ -1,0 +1,21 @@
+Package: shopr
+Title: A Shopping Cart
+Version: 0.1.0
+Depends:
+    R (>= 4.1),
+    methods
+Imports:
+    dplyr (>= 1.1.0),
+    rlang,
+    R6 (== 2.5.1),
+    MASS,
+    localhelper,
+    BiocGenerics,
+    glue
+Suggests:
+    testthat (>= 3.0.0),
+    knitr
+LinkingTo: Rcpp
+Remotes:
+    tidyverse/glue@0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+biocViews: Software

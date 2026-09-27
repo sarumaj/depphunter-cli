@@ -806,9 +806,9 @@ every external package the map pins to a version — batched queries of 500
 packages each, followed by the advisories it matched — covering Go, npm, PyPI,
 crates.io, Maven, NuGet, GitHub Actions, Conan (as OSV's ConanCenter; vcpkg has
 no OSV ecosystem), Composer (as Packagist), RubyGems, Swift packages (as
-SwiftURL, by URL), pub and Hex. Floating packages are not queried, since they
-resolve to a different version on the next installation. Answers are cached
-for six hours.
+SwiftURL, by URL), pub, Hex, CRAN and Bioconductor. Floating packages are not
+queried, since they resolve to a different version on the next installation.
+Answers are cached for six hours.
 `--no-vulns` disables all of this.
 
 Viewed from above, every building carrying findings bears a **pin**, colored by
@@ -899,6 +899,7 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | Swift packages     | `Package.resolved`, `exact:`, a bare `"1.2.3"`, `revision:`                  | `from:`, `.upToNextMajor`, `.upToNextMinor`, ranges, `branch:`                            |
 | pub                | `pubspec.lock` (a git package by its commit), a bare `1.2.3`, a git commit   | `^`, ranges, `any`, no constraint, a git branch or tag                                    |
 | Hex                | `mix.lock`, `rebar.lock`, a bare `1.2.3`, `== 1.2.3`, a git `ref` commit     | `~>`, `>=`, `or` and `and` requirements, a git branch or tag                              |
+| CRAN, Bioconductor | `renv.lock`, `packrat.lock` (a GitHub package by its commit), `(== 1.2.3)`   | `(>= 1.2)`, no version, a `Remotes` branch or tag                                         |
 
 The JSON and GraphML exports carry `requested` and `floating` per package.
 
@@ -923,6 +924,7 @@ and the analysis remains offline.
 | `Gemfile.lock`                       | the dependencies listed under each spec          |
 | `.build/checkouts/*/Package.swift`   | the checked-out package's `.package` lines       |
 | `mix.lock`                           | each Hex package's requirements                  |
+| `renv.lock`, `packrat/packrat.lock`  | each R package's requirements                    |
 
 Packages added in this way are marked **transitive**, meaning that no file in
 the repository imports them. Edges between packages are of kind `depends`, as
@@ -933,12 +935,13 @@ remain a single building, so an edge between packages is an edge between names.
 A Python package that no lock file gives edges for (`Pipfile.lock` records
 none) falls back to the installed environment (see [Languages](#languages)).
 Ecosystems that keep the dependency graph outside the repository — Go modules,
-NuGet, container images, a Composer, Bundler or Mix library that commits no
+NuGet, container images, a Composer, Bundler, Mix or R project that commits no
 lock, pub, whose `pubspec.lock` is a flat list, and rebar3, whose `rebar.lock`
 records only a depth — require `--online`, described below; Maven, the
-PowerShell Gallery, vcpkg, Conan 2 (whose lock is a flat list) and Swift
-packages that SwiftPM has not checked out under `.build` (`Package.resolved`
-is flat as well) are not resolved beyond the first level at present.
+PowerShell Gallery, vcpkg, Conan 2 (whose lock is a flat list), Bioconductor
+packages no lock records and Swift packages that SwiftPM has not checked out
+under `.build` (`Package.resolved` is flat as well) are not resolved beyond the
+first level at present.
 
 The side panel presents these as a **tree**: every row under *Depends on* and
 *Used by* expands into that node's own dependencies, and so on recursively.
@@ -961,7 +964,10 @@ repository carries — `.npmrc`, including `@scope:registry`; `.yarnrc.yml`;
 lines (a `source ... do` block serves only its gems), `Gemfile.lock`'s
 remotes, `~/.gemrc` and Bundler's rubygems.org mirror; a `pubspec.yaml`'s
 `hosted:` servers, the servers `pubspec.lock` resolved from and
-`PUB_HOSTED_URL`; `HEX_API_URL`; and `GOPROXY` — and the
+`PUB_HOSTED_URL`; `HEX_API_URL`; the repositories of `renv.lock` other than
+CRAN and Posit Package Manager (each serving the packages recorded from it),
+`options(repos = ...)` in `.Rprofile` and `~/.Rprofile`, and
+`RENV_CONFIG_REPOS_OVERRIDE`; and `GOPROXY` — and the
 side panel names the index each package resolves from. A container image
 requires no configuration, since `ghcr.io/org/app` names its registry directly.
 
@@ -976,18 +982,19 @@ takes. No request is ever made to such an index, unless it is vouched for with
 repository does not record, which is how `--resolve-depth` reaches the
 ecosystems whose graph is held outside the repository:
 
-| Ecosystem | asked for                                                                 | answer                                           |
-|-----------|---------------------------------------------------------------------------|--------------------------------------------------|
-| Go        | `<proxy>/<module>/@v/<version>.mod`                                       | its direct (non-`// indirect`) `require` entries |
-| npm       | `<registry>/<package>/<version>`, or `/latest` when unpinned              | its `dependencies`                               |
-| PyPI      | `<host>/pypi/<name>/<version>/json`, or `/pypi/<name>/json` when unpinned | `requires_dist`, excluding extras                |
-| crates.io | `<index>/<se>/<rd>/<name>`, sparse index                                  | its normal `deps`, excluding optional ones       |
-| NuGet     | `<feed>/<id>/<version>/<id>.nuspec`                                       | `<dependencies>`, both flat and by group         |
-| OCI       | the manifest, then its config blob                                        | the **base image** it was built on               |
-| Composer  | `<repository>/p2/<vendor>/<name>.json` (`metadata-url` elsewhere)         | the version's `require`, excluding the platform  |
-| RubyGems  | `<server>/info/<name>`, the compact index Bundler reads                   | the version's runtime dependencies               |
-| pub       | `<server>/api/packages/<name>`, the package API pub reads                 | the version's (or latest's) `dependencies`       |
-| Hex       | `<api>/packages/<name>`, then `/releases/<version>` (or latest stable)    | its requirements, excluding optional ones        |
+| Ecosystem | asked for                                                                   | answer                                                          |
+|-----------|-----------------------------------------------------------------------------|-----------------------------------------------------------------|
+| Go        | `<proxy>/<module>/@v/<version>.mod`                                         | its direct (non-`// indirect`) `require` entries                |
+| npm       | `<registry>/<package>/<version>`, or `/latest` when unpinned                | its `dependencies`                                              |
+| PyPI      | `<host>/pypi/<name>/<version>/json`, or `/pypi/<name>/json` when unpinned   | `requires_dist`, excluding extras                               |
+| crates.io | `<index>/<se>/<rd>/<name>`, sparse index                                    | its normal `deps`, excluding optional ones                      |
+| NuGet     | `<feed>/<id>/<version>/<id>.nuspec`                                         | `<dependencies>`, both flat and by group                        |
+| OCI       | the manifest, then its config blob                                          | the **base image** it was built on                              |
+| Composer  | `<repository>/p2/<vendor>/<name>.json` (`metadata-url` elsewhere)           | the version's `require`, excluding the platform                 |
+| RubyGems  | `<server>/info/<name>`, the compact index Bundler reads                     | the version's runtime dependencies                              |
+| pub       | `<server>/api/packages/<name>`, the package API pub reads                   | the version's (or latest's) `dependencies`                      |
+| Hex       | `<api>/packages/<name>`, then `/releases/<version>` (or latest stable)      | its requirements, excluding optional ones                       |
+| CRAN      | crandb's `/<name>/<version>` (or current); `src/contrib/PACKAGES` elsewhere | `Depends`, `Imports` and `LinkingTo`, without R's base packages |
 
 A container image has no dependency list. What it has is the image it was built
 on, which is the source of its unpatched vulnerabilities, and that is what is
@@ -1077,8 +1084,8 @@ leading path elements match it, so that `corp.example/*` covers
 Maven group (`com.acme.*`) and a registry path (`harbor.corp/*`). Prefixing a
 pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`,
 `crates:`, `actions:`, `gitlab-ci:`, `psgallery:`, `c-external:`, `vcpkg:`,
-`conan:`, `composer:`, `rubygems:`, `swiftpm:`, `pub:` or `hex:` — restricts
-it to that ecosystem.
+`conan:`, `composer:`, `rubygems:`, `swiftpm:`, `pub:`, `hex:`, `cran:` or
+`bioconductor:` — restricts it to that ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
 to whatever is configured here**, so a Go project whose machine is already
@@ -1349,6 +1356,7 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | Dart                    | `dart language-server`                                       |
 | Elixir                  | `elixir-ls` (or `language_server.sh`), `lexical` or `nextls` |
 | Erlang                  | `elp` or `erlang_ls`                                         |
+| R                       | `R --slave -e languageserver::run()`                         |
 
 The servers run in the background once the map is displayed — gopls requires
 approximately 7 s for this repository — within the budget set by
@@ -1379,6 +1387,7 @@ exports include the reference edges.
 | Swift                   | `import` (every `#if` branch); `Package.swift` targets to their directories, else a directory named after the module; packages by `Package.swift`, `Package.resolved` and Xcode's `project.pbxproj`, products first, whose `.package` lines are imports; types used across a module's files                      | Swift packages, Swift standard library, Apple SDKs                         |
 | Dart                    | `import`, `export` (every configurable URI), `part` and `part of`; relative URIs, `package:` URIs to a package's own `lib/`, path dependencies, pub workspace members and melos packages; packages by `pubspec.yaml` and `pubspec.lock`, whose dependencies are imports                                          | pub, Dart SDK libraries, Flutter SDK                                       |
 | Elixir / Erlang         | Elixir `alias`/`import`/`require`/`use` and every module reference, Erlang remote calls, `-behaviour`, `-include`/`-include_lib`; modules to the files defining them (umbrella apps too); packages by `mix.exs`, `rebar.config`, `mix.lock` and `rebar.lock`, whose dependencies are imports                     | Hex, Elixir standard library, Erlang/OTP                                   |
+| R                       | `library`/`require`/`requireNamespace`/`loadNamespace`, `pkg::`, pacman, `box::use`, roxygen `@import`; `source()` paths, knitr children; calls to a package's own functions across its files; packages by `DESCRIPTION`, `NAMESPACE`, `renv.lock` and `packrat.lock`, whose dependencies are imports            | CRAN, Bioconductor, R base packages                                        |
 | PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                                                                | PowerShell Gallery, built-in modules                                       |
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                     | GitHub Actions, GitLab CI, Container images                                |
 | Dockerfile / Compose    | `FROM`, `COPY --from`, `RUN --mount from=` and `# syntax=` with `ARG` defaults expanded and stages told apart; Compose `image:`, and `build:` to the Dockerfile in the repository                                                                                                                                | Container images                                                           |
@@ -1592,13 +1601,29 @@ requirements give the edges between packages. Manifest dependencies and an
 read by small lexers: the tree-sitter grammars were slower and lost Erlang
 files to macros in patterns.
 
+R scripts, packages and the R chunks of R Markdown and Quarto documents are
+read for `library()`, `require()`, `requireNamespace()`, `loadNamespace()`,
+`pacman::p_load()`, `box::use()`, every `pkg::` qualifier and roxygen
+`@import` tags, and for the files `source()` (with `here::here()` or
+`file.path()`), `box::use(./module)`, `targets::tar_source()` and a knitr
+`child` pull in. A package name resolves to the importing package's own `R/`
+directory, another package of the repository, R's base packages (and a
+recommended package such as MASS or survival that the project neither declares
+nor locks) as a hidden island, and otherwise to CRAN or Bioconductor as
+`renv.lock` or `packrat.lock` pins it or the nearest `DESCRIPTION` declares
+it. Files of one package import nothing from each other, so a call to a
+function the package defines links the calling file to the defining one.
+`DESCRIPTION` and `NAMESPACE` are imports of what they list. R is read by a
+small lexer; the tree-sitter grammar parsed well but was about nine times
+slower.
+
 Files in other languages appear on the map without dependency edges. Parsing
 uses a pure-Go tree-sitter runtime for JavaScript/TypeScript, Python, Rust,
 Java, Kotlin, Scala, C, C++, PHP, Ruby and Swift; Go uses the standard library's
 own parser, CI and Compose files a YAML parser, and C#, PowerShell, Markdown,
-Dart, Elixir, Erlang, Dockerfiles, the markup of Vue, Svelte and Astro
-components and C preprocessor directives small built-in scanners — so the
-binary continues to cross-compile without a C toolchain.
+Dart, Elixir, Erlang, R, Dockerfiles, the markup of Vue, Svelte and Astro
+components, R Markdown chunks and C preprocessor directives small built-in
+scanners — so the binary continues to cross-compile without a C toolchain.
 
 ## Security
 

@@ -93,6 +93,21 @@ func (c *Config) machine(env func(string) string, home string) {
 	// The Hex API Mix and rebar3 talk to instead of hex.pm's. HEX_MIRROR is not read:
 	// a mirror serves the repository's signed protobuf files, not this API.
 	add(Hex, env("HEX_API_URL"), "")
+	// The repositories renv restores from instead of those renv.lock records, and the
+	// R profile R reads first, which is where options(repos = ...) usually lives.
+	for _, u := range strings.FieldsFunc(env("RENV_CONFIG_REPOS_OVERRIDE"), func(r rune) bool { return r == ';' || r == ',' }) {
+		if k, v, ok := strings.Cut(u, "="); ok && !strings.Contains(k, "/") {
+			u = v // CRAN=https://...
+		}
+		if u = strings.TrimSpace(u); !CRANMirror(u) {
+			add(CRAN, u, "")
+		}
+	}
+	if p := env("R_PROFILE_USER"); p != "" {
+		if data, err := os.ReadFile(p); err == nil {
+			parseRprofile(data, add)
+		}
+	}
 	if home == "" {
 		return
 	}
@@ -113,6 +128,7 @@ func (c *Config) machine(env func(string) string, home string) {
 		{filepath.Join(home, ".composer", "config.json"), parseComposer},
 		{filepath.Join(home, ".gemrc"), parseGemrc},
 		{filepath.Join(home, ".bundle", "config"), parseBundleConfig},
+		{filepath.Join(home, ".Rprofile"), parseRprofile},
 	} {
 		if data, err := os.ReadFile(f.path); err == nil {
 			f.parse(data, add)
@@ -162,6 +178,10 @@ func (c *Config) project(files []*scan.File) {
 			parsePubspec(data, add)
 		case base == "pubspec.lock":
 			parsePubspecLock(data, add)
+		case base == "renv.lock":
+			parseRenvLock(data, add)
+		case base == ".rprofile" || base == "rprofile.site":
+			parseRprofile(data, add)
 		case base == "config.toml" && strings.HasSuffix(path.Dir(f.Path), ".cargo"):
 			parseCargoConfig(data, add)
 		}
@@ -519,6 +539,79 @@ func parsePubspecLock(data []byte, add func(eco, url, scope string)) {
 		}
 		if u = strings.TrimRight(u, "/"); u != public[Pub] && u != "https://pub.dartlang.org" {
 			add(Pub, u, name)
+		}
+	}
+}
+
+// parseRenvLock reads the repositories renv.lock records (R.Repositories, by name) and
+// scopes each to the packages installed from it. CRAN and its mirrors, Posit Package
+// Manager's included, are the public index and are not recorded.
+//
+// Implements: REQ-SUP-015, REQ-SUP-048
+func parseRenvLock(data []byte, add func(eco, url, scope string)) {
+	var doc struct {
+		R struct {
+			Repositories []struct{ Name, URL string }
+		}
+		Packages map[string]struct{ Package, Repository string }
+	}
+	if json.Unmarshal(data, &doc) != nil {
+		return
+	}
+	repos := map[string]string{}
+	for _, r := range doc.R.Repositories {
+		repos[r.Name] = r.URL
+	}
+	names := slices.Sorted(maps.Keys(doc.Packages))
+	for _, key := range names {
+		p := doc.Packages[key]
+		u, ok := repos[p.Repository]
+		if !ok && strings.Contains(p.Repository, "://") {
+			u = p.Repository
+		}
+		if u != "" && !CRANMirror(u) && !strings.Contains(strings.ToLower(p.Repository), "bioc") {
+			name := p.Package
+			if name == "" {
+				name = key
+			}
+			add(CRAN, u, name)
+		}
+	}
+}
+
+var (
+	rReposArg = regexp.MustCompile(`\brepos\s*=\s*`)
+	rURL      = regexp.MustCompile(`["'](https?://[^"'\s]+)["']`)
+)
+
+// parseRprofile reads the literal repository URLs of options(repos = ...) in an R
+// profile: repos = "url" or repos = c(CRAN = "url", internal = "url").
+//
+// Implements: REQ-SUP-015, REQ-SUP-048
+func parseRprofile(data []byte, add func(eco, url, scope string)) {
+	src := string(data)
+	for _, loc := range rReposArg.FindAllStringIndex(src, -1) {
+		rest := src[loc[1]:]
+		end := len(rest)
+		if strings.HasPrefix(rest, "c(") {
+			depth := 0
+			for i, r := range rest {
+				if r == '(' {
+					depth++
+				} else if r == ')' {
+					if depth--; depth == 0 {
+						end = i + 1
+						break
+					}
+				}
+			}
+		} else if i := strings.IndexAny(rest, ",)\n"); i >= 0 {
+			end = i
+		}
+		for _, m := range rURL.FindAllStringSubmatch(rest[:end], -1) {
+			if !CRANMirror(m[1]) {
+				add(CRAN, m[1], "")
+			}
 		}
 	}
 }

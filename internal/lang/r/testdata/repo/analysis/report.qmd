@@ -1,0 +1,11 @@
+---
+title: Report
+---
+
+{{< include _setup.qmd >}}
+
+```{r}
+#| label: load
+source("R/load.R")
+d <- load_data("x.csv")
+```
