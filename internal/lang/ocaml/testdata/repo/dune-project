@@ -1,0 +1,25 @@
+(lang dune 3.10)
+(name shop)
+(generate_opam_files true)
+
+; The library and its command-line tool.
+(package
+ (name shop)
+ (depends
+  (ocaml (>= 4.14))
+  dune
+  (lwt (and (>= 5.6) (< 6)))
+  (yojson (= 2.1.0))
+  (alcotest :with-test)
+  (ppx_deriving (>= 5.0))
+  fmt
+  logs
+  #;(ignored (>= 1.0))
+  conf-libev))
+
+(package
+ (name shop-cli)
+ (depends
+  (shop (= :version))
+  cmdliner
+  re))

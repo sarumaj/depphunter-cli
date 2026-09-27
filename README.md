@@ -810,7 +810,7 @@ every external package the map pins to a version — batched queries of 500
 packages each, followed by the advisories it matched — covering Go, npm, PyPI,
 crates.io, Maven, NuGet, GitHub Actions, Conan (as OSV's ConanCenter; vcpkg has
 no OSV ecosystem), Composer (as Packagist), RubyGems, Swift packages (as
-SwiftURL, by URL), pub, Hex, CRAN, Bioconductor and Hackage; OSV has no
+SwiftURL, by URL), pub, Hex, CRAN, Bioconductor, Hackage and opam; OSV has no
 ecosystem for Terraform modules and providers, Buf Schema Registry modules,
 CocoaPods, Carthage, LuaRocks, Wally or CPAN. Floating packages are not
 queried, since they resolve to a different version on the next installation.
@@ -916,6 +916,7 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | LuaRocks            | `luarocks.lock`, `== 1.2.3` or a bare `1.2.3` in a rockspec (LuaRocks reads it as `==`)                      | `~>`, `>=` and other constraints, no version                                              |
 | Wally               | `wally.lock`, `=1.2.3`                                                                                       | a bare `1.2.3` (a caret range in Wally), `^1`, other ranges                               |
 | CPAN                | `cpanfile.snapshot` (Carton), `== 1.2` in a `cpanfile` or META prerequisites                                 | a bare `1.2` (a minimum in CPAN::Meta), `>= 1, < 2` and other ranges, `0` or no version   |
+| opam                | `*.opam.locked`, `dune.lock/`, `{= "1.2"}` or `(= 1.2)`, a `pin-depends` commit                              | `>= 5.6 & < 6` and other ranges, no constraint, a `pin-depends` branch or tag             |
 
 A package a shell script installs (`pip install`, `npm install -g`, `go
 install`, `cargo install`, `gem install`) follows its ecosystem's row; one
@@ -931,24 +932,25 @@ what those packages themselves require: `1` adds one level, `2` adds two, and
 comes from the lock files the repository already carries; nothing is fetched,
 and the analysis remains offline.
 
-| Lock file                            | gives                                              |
-|--------------------------------------|----------------------------------------------------|
-| `package-lock.json` (v1-v3)          | every installed package and what it requires       |
-| `pnpm-lock.yaml` (v5-v9)             | `packages:` and, since v9, `snapshots:`            |
-| `yarn.lock` (classic)                | each entry's resolved version and `dependencies`   |
-| `Cargo.lock`                         | `dependencies` per crate                           |
-| `uv.lock`, `poetry.lock`, `pdm.lock` | each distribution's own requirements               |
-| an installed Python environment      | each distribution's `Requires-Dist`                |
-| `conan.lock` (Conan 1, `graph_lock`) | the `requires` of each node                        |
-| `composer.lock`, `installed.json`    | each package's `require`, without the platform     |
-| `Gemfile.lock`                       | the dependencies listed under each spec            |
-| `.build/checkouts/*/Package.swift`   | the checked-out package's `.package` lines         |
-| `mix.lock`                           | each Hex package's requirements                    |
-| `renv.lock`, `packrat/packrat.lock`  | each R package's requirements                      |
-| `dist-newstyle/cache/plan.json`      | what each package of cabal's build plan depends on |
-| `Podfile.lock`                       | the pods each pod's specs depend on                |
-| `wally.lock`                         | each Wally package's dependencies                  |
-| `cpanfile.snapshot` (Carton)         | each distribution's `requirements`                 |
+| Lock file                              | gives                                              |
+|----------------------------------------|----------------------------------------------------|
+| `package-lock.json` (v1-v3)            | every installed package and what it requires       |
+| `pnpm-lock.yaml` (v5-v9)               | `packages:` and, since v9, `snapshots:`            |
+| `yarn.lock` (classic)                  | each entry's resolved version and `dependencies`   |
+| `Cargo.lock`                           | `dependencies` per crate                           |
+| `uv.lock`, `poetry.lock`, `pdm.lock`   | each distribution's own requirements               |
+| an installed Python environment        | each distribution's `Requires-Dist`                |
+| `conan.lock` (Conan 1, `graph_lock`)   | the `requires` of each node                        |
+| `composer.lock`, `installed.json`      | each package's `require`, without the platform     |
+| `Gemfile.lock`                         | the dependencies listed under each spec            |
+| `.build/checkouts/*/Package.swift`     | the checked-out package's `.package` lines         |
+| `mix.lock`                             | each Hex package's requirements                    |
+| `renv.lock`, `packrat/packrat.lock`    | each R package's requirements                      |
+| `dist-newstyle/cache/plan.json`        | what each package of cabal's build plan depends on |
+| `Podfile.lock`                         | the pods each pod's specs depend on                |
+| `wally.lock`                           | each Wally package's dependencies                  |
+| `cpanfile.snapshot` (Carton)           | each distribution's `requirements`                 |
+| `dune.lock/` (dune package management) | each package's `depends`                           |
 
 Packages added in this way are marked **transitive**, meaning that no file in
 the repository imports them. Edges between packages are of kind `depends`, as
@@ -964,7 +966,8 @@ lock, pub, whose `pubspec.lock` is a flat list, rebar3, whose `rebar.lock`
 records only a depth, and a Haskell project without cabal's build plan on disk
 (`cabal.project.freeze` and `stack.yaml.lock` list versions only), Terraform
 registry modules, pods no `Podfile.lock` records, rocks (`luarocks.lock` is a
-flat list) and CPAN distributions no `cpanfile.snapshot` records — require
+flat list), CPAN distributions no `cpanfile.snapshot` records and opam
+packages no `dune.lock/` records (an `*.opam.locked` is a flat list) — require
 `--online`, described below; Maven, the PowerShell Gallery,
 vcpkg, Conan 2 (whose lock is a flat list), Bioconductor packages no lock
 records, Swift packages that SwiftPM has not checked out under `.build`
@@ -1042,6 +1045,7 @@ ecosystems whose graph is held outside the repository:
 | CocoaPods         | `<cdn>/Specs/<a>/<b>/<c>/<pod>/<version>/<pod>.podspec.json` (newest: the shard's version list)                     | its and its default subspecs' `dependencies`                                                     |
 | LuaRocks          | `<server>/<rock>-<version>.rockspec`, versions from `<server>/manifest-5.1.zip` (read once)                         | its run-time `dependencies`, without `lua`                                                       |
 | CPAN              | MetaCPAN's `<api>/v1/release/<distribution>` (the latest release), then `/v1/module/<module>` per dependency (once) | its run-time requirements as distributions, without perl's own modules                           |
+| opam              | `<repository>/packages/<name>/<name>.<version>/opam`, opam-repository's files (a pinned version only)               | its `depends`, without the compiler and what only tests or documentation need                    |
 
 A container image has no dependency list. What it has is the image it was built
 on, which is the source of its unpatched vulnerabilities, and that is what is
@@ -1138,7 +1142,7 @@ pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`
 `conan:`, `composer:`, `rubygems:`, `swiftpm:`, `pub:`, `hex:`, `cran:`,
 `bioconductor:`, `hackage:`, `terraform-module:`, `terraform-provider:`,
 `buf:`, `cmake-fetch:`, `pkg-config:`, `cocoapods:`, `carthage:`, `luarocks:`,
-`wally:` or `cpan:` — restricts it to that ecosystem.
+`wally:`, `cpan:` or `opam:` — restricts it to that ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
 to whatever is configured here**, so a Go project whose machine is already
@@ -1531,6 +1535,7 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | Lua                     | `lua-language-server`                                                                        |
 | Luau                    | `luau-lsp lsp`                                                                               |
 | Perl                    | `perlnavigator --stdio`, `pls` or `perl -MPerl::LanguageServer -e Perl::LanguageServer::run` |
+| OCaml                   | `ocamllsp`                                                                                   |
 
 The servers run in the background once the map is displayed — gopls requires
 approximately 7 s for this repository — within the budget set by
@@ -1567,6 +1572,7 @@ The JSON and GraphML exports include the reference edges.
 | Haskell                 | `import` (every CPP branch, PackageImports, `{-# SOURCE #-}`); modules to the files whose headers declare them (the importer's package, its project's and its dependencies' local packages), Happy/Alex sources by path; packages by `.cabal`, `package.yaml`, `cabal.project`, `stack.yaml`, the freeze file, `stack.yaml.lock` and `plan.json`, whose dependencies are imports                                                                                                                                | Hackage, GHC libraries                                                     |
 | Lua / Luau / Teal       | `require` (a string, `pcall(require, …)`, Luau paths and `.luaurc` aliases, Roblox instances), `dofile`/`loadfile`; modules to files by a rockspec's `build.modules`, else `?.lua`/`?/init.lua` under the file's directories and their `lua/`, `src/` and `lib/` and `.luarc.json`'s roots; Roblox instances through Rojo projects; rocks by rockspecs and `luarocks.lock`, Wally packages by `wally.toml` and `wally.lock`, whose dependencies are imports                                                     | LuaRocks, Wally, Lua standard library, Lua host runtimes                   |
 | Perl                    | `use`/`no`/`require` (and in a string `eval`), `use parent`/`use base`, Moose's `with`/`extends`, Corinna's `:isa`, `require`/`do` of files; modules to `Foo/Bar.pm` under `use lib` (literal, FindBin, `__FILE__`, Mojo::File and Path::Tiny chains), the distribution's `lib/` and `t/lib`, each `lib/` above the file, else a file declaring the package; distributions by `cpanfile.snapshot`, `cpanfile`, `META.json`/`META.yml`, `Makefile.PL`, `Build.PL` and `dist.ini`, whose requirements are imports | CPAN, Perl core modules                                                    |
+| OCaml                   | module paths (`Foo.bar`, `open`, `include`, `module M = Foo`, functor arguments), `#require`; modules to the files of the importer's dune library, executable or test (`include_subdirs`, `modules`), to what an opened module of the project declares and to local libraries (`Lib.Module` of a wrapped one); libraries and packages by `dune` files, `dune-project`, `*.opam`, `*.opam.locked` and `dune.lock/`, whose dependencies are imports                                                               | opam, OCaml standard library                                               |
 | PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                                                                                                                                                                                                                                                               | PowerShell Gallery, built-in modules                                       |
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                                                                                                                                                                                                                    | GitHub Actions, GitLab CI, Container images                                |
 | Protocol Buffers        | `import` (`public`, `weak`) under the import roots of `buf.work.yaml` and `buf.yaml` (v1 and v2), else the repository root, `proto/`, `protos/`, `api/`, `src/main/proto/` and the importer's directories, else a unique project file ending in the path; modules by `buf.yaml` `deps` and `buf.lock` and a table of common protos; `buf.gen.yaml` remote plugins                                                                                                                                               | Buf Schema Registry, Protobuf well-known types                             |
@@ -1920,6 +1926,25 @@ are the files' symbols. Perl is read by a small lexer that knows POD,
 here-documents and quote-like operators; the tree-sitter grammar took 5 to
 23 ms per file and failed on 3 to 6% of the files measured.
 
+OCaml files (`.ml`, `.mli`, ocamllex's `.mll` and Menhir's `.mly`) have no
+imports: they name modules, and dune decides what a name means. Every module
+path a file names (`Foo.bar`, `open Foo`, `include Foo`, `module M = Foo`, a
+functor's argument; not a constructor such as `Some x`) resolves to the file
+of the module in the same dune library, executable or test (its directory,
+the tree `include_subdirs` adds, the modules its `modules` field selects), to
+what a module of the project the file opens declares (`open Import`), to a
+library of the repository the component uses (`Shop.Cart` of a wrapped
+library, any module of an unwrapped one), to OCaml's standard library (a
+hidden island; `List` after `open Core` is Core's), or to the opam package of
+a library the component's `libraries` names (`lwt.unix` is lwt, `Lwt_io` is
+lwt's). dune's `libraries` and ppx rewriters, dune-project's and opam files'
+dependencies and `pin-depends` are imports of what they name, pinned by
+`*.opam.locked`, dune's `dune.lock/`, `{= "1.2"}` or a pinned commit. The
+top-level `let`s, types, modules, exceptions, classes and `val`s, and dune's
+libraries and executables, are the symbols. OCaml is read by a small lexer;
+the tree-sitter grammar took 3.7 to 7 ms per file and failed on 2 to 11% of
+the files measured.
+
 Terraform and OpenTofu configurations, variable files, lock files and
 Terragrunt configurations are read by a small HCL scanner: the tree-sitter
 grammar parsed every file measured correctly but was about twenty times
@@ -1942,7 +1967,8 @@ Java, Kotlin, Scala, C, C++, PHP and Ruby; Go uses the standard library's own
 parser, CI, Compose and Buf files a YAML parser, and C#, PowerShell, Markdown,
 Dart, Elixir, Erlang, R, Haskell, HCL, Protocol Buffers, shell scripts, CMake
 files, Swift, Objective-C, CocoaPods and Carthage manifests, Lua, Luau, Teal
-and LuaRocks files, Perl and its CPAN manifests, Dockerfiles, the markup of
+and LuaRocks files, Perl and its CPAN manifests, OCaml, dune and opam
+files, Dockerfiles, the markup of
 Vue, Svelte and Astro components, R Markdown chunks and C preprocessor
 directives small built-in scanners — so the binary continues to cross-compile
 without a C toolchain.

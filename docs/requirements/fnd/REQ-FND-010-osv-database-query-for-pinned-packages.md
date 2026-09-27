@@ -17,9 +17,9 @@ package the map pins to a version in the ecosystems Go, npm, PyPI, crates.io,
 Maven, NuGet, GitHub Actions, Conan (as `ConanCenter`), Composer (as
 `Packagist`, a version's leading `v` dropped), RubyGems, Swift packages (as
 `SwiftURL`, by the URL they are named after), pub (as `Pub`), Hex (as `Hex`),
-CRAN (as `CRAN`), Bioconductor (as `Bioconductor`) and Hackage (as
-`Hackage`), and place each matched advisory on its package with its fixed
-version.
+CRAN (as `CRAN`), Bioconductor (as `Bioconductor`), Hackage (as
+`Hackage`) and opam (as `opam`), and place each matched advisory on its
+package with its fixed version.
 
 ## Rationale
 

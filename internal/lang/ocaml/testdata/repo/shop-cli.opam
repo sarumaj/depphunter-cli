@@ -1,0 +1,11 @@
+opam-version: "2.0"
+depends: [
+  "dune" {>= "3.10"}
+  "shop" {= version}
+  "cmdliner"
+  "re"
+]
+pin-depends: [
+  ["cmdliner.dev" "git+https://github.com/dbuenzli/cmdliner.git#0123456789abcdef0123456789abcdef01234567"]
+  ["re.dev" "git+https://github.com/ocaml/ocaml-re.git#main"]
+]

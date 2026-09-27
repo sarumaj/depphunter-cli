@@ -25,6 +25,7 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 		".stack-work/dist/x/Paths_shop.hs":   "module Paths_shop where\n",
 		".terraform/modules/vpc/main.tf":     "variable \"x\" {}\n",
 		".terragrunt-cache/a/b/main.tf":      "variable \"x\" {}\n",
+		"_opam/lib/lwt/lwt.mli":              "val return : 'a -> 'a t\n",
 		"img.bin":                            "\x00\x01\x02",
 	}
 	for p, c := range files {

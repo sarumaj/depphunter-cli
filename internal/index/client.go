@@ -15,6 +15,7 @@ import (
 
 	"github.com/sarumaj/depphunter-cli/internal/auth"
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/opam"
 	"github.com/sarumaj/depphunter-cli/internal/scope"
 	"github.com/sarumaj/depphunter-cli/internal/store"
 	"github.com/sarumaj/depphunter-cli/internal/trace"
@@ -192,7 +193,7 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 	if deps, ok := store.Get[[]dep](c.cache, key); ok {
 		return answer{deps: c.targets(t.Ecosystem, deps), source: trace.FromCache}, nil
 	}
-	if t.Ecosystem == Go && t.Version == "" {
+	if t.Ecosystem == Go && t.Version == "" || t.Ecosystem == Opam && !opam.ExactVersion(t.Version) {
 		// A module proxy serves a go.mod for one version; without one there is no
 		// document to ask for. Said here rather than deeper down so the report can
 		// say it, instead of recording an empty answer that looks like "no
@@ -241,6 +242,8 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		deps, err = c.luarocksRock(ctx, index, t)
 	case CPAN:
 		deps, err = c.cpanDistribution(ctx, index, t)
+	case Opam:
+		deps, err = c.opamPackage(ctx, index, t)
 	default:
 		// Maven is the one that cannot be asked. A POM is addressed by group *and*
 		// artifact, and the Java plugin puts only the group on the map (an import

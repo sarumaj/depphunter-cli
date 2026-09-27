@@ -18,7 +18,7 @@ When git cannot list the files, the system **shall** walk the directory tree and
 `.venv`, `venv`, `__pycache__`, `.idea`, `.vscode`, `.next`, `.cache`,
 `.gradle`, `.tox`, `.mypy_cache`, `.build`, `.dart_tool`, `_build`,
 `dist-newstyle`, `.stack-work`, `.terraform`, `.terragrunt-cache`,
-`lua_modules`.
+`lua_modules`, `_opam`.
 
 ## Rationale
 
@@ -30,6 +30,7 @@ caches and build output.
 1. Outside a git repository, `node_modules/x/i.js`,
    `.build/checkouts/nio/Package.swift`, `.dart_tool/package_config.json`,
    `_build/dev/lib/shop/ebin/shop.app`, `dist-newstyle/cache/plan.json` and
-   `.stack-work/dist/x/Paths_shop.hs`, `.terraform/modules/vpc/main.tf` and
-   `.terragrunt-cache/a/b/main.tf` do not appear in the graph.
+   `.stack-work/dist/x/Paths_shop.hs`, `.terraform/modules/vpc/main.tf`,
+   `.terragrunt-cache/a/b/main.tf` and `_opam/lib/lwt/lwt.mli` do not
+   appear in the graph.
 2. An unreadable subdirectory is skipped without failing the scan.
