@@ -55,6 +55,7 @@ var Servers = []Server{
 		Commands: [][]string{{"intelephense", "--stdio"}, {"phpactor", "language-server"}}},
 	{Name: "ruby", Open: true, Exts: map[string]string{".rb": "ruby", ".rake": "ruby", ".gemspec": "ruby", ".ru": "ruby"},
 		Commands: [][]string{{"ruby-lsp"}, {"solargraph", "stdio"}}},
+	{Name: "sourcekit-lsp", Open: true, Exts: map[string]string{".swift": "swift"}, Commands: [][]string{{"sourcekit-lsp"}}},
 }
 
 type Options struct {

@@ -118,6 +118,7 @@ The server **shall** ...
 | `cpp`    | The C and C++ plugin.                                                                          |
 | `php`    | The PHP plugin and Composer.                                                                   |
 | `ruby`   | The Ruby plugin and Bundler.                                                                   |
+| `swift`  | The Swift plugin, SwiftPM and Xcode's package references.                                      |
 | `ps`     | The PowerShell plugin.                                                                         |
 | `ci`     | The continuous-integration plugin (GitHub Actions, GitLab CI, container images).               |
 | `docker` | The Dockerfile and Compose plugin, and the container-image references it shares with `ci`.     |
@@ -200,6 +201,11 @@ requirements of type `limitation` in their scopes:
 - Ruby is read without running Bundler: run-time `$LOAD_PATH` changes and
   computed requires are not followed, constants resolve only in Rails
   applications, and a require of an undeclared gem is named by heuristics.
+- Swift is read without running SwiftPM or Xcode: an Xcode project's targets
+  are not read (module directories are guessed by name), `Package.resolved`
+  has no package-to-package edges without a checkout, type references are
+  matched by name, and files the grammar cannot fully parse give partial
+  results.
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

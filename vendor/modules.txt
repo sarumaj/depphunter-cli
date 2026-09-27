@@ -38,6 +38,7 @@ github.com/odvcencio/gotreesitter/grammars/ruby
 github.com/odvcencio/gotreesitter/grammars/runtime
 github.com/odvcencio/gotreesitter/grammars/rust
 github.com/odvcencio/gotreesitter/grammars/scala
+github.com/odvcencio/gotreesitter/grammars/swift
 github.com/odvcencio/gotreesitter/grammars/tsx
 github.com/odvcencio/gotreesitter/grammars/typescript
 github.com/odvcencio/gotreesitter/internal/luapattern

@@ -803,11 +803,11 @@ govulncheck finds no call into is capped at low.
 
 Under `--online`, depphunter additionally queries [OSV](https://osv.dev) for
 every external package the map pins to a version — batched queries of 500
-packages each, followed by the advisories it matched — covering Go,
-npm, PyPI, crates.io, Maven, NuGet, GitHub Actions, Conan (as OSV's
-ConanCenter; vcpkg has no OSV ecosystem), Composer (as Packagist) and
-RubyGems. Floating packages are not queried, since they resolve to a different
-version on the next installation. Answers are cached for six hours.
+packages each, followed by the advisories it matched — covering Go, npm, PyPI,
+crates.io, Maven, NuGet, GitHub Actions, Conan (as OSV's ConanCenter; vcpkg has
+no OSV ecosystem), Composer (as Packagist), RubyGems and Swift packages (as
+SwiftURL, by URL). Floating packages are not queried, since they resolve to a
+different version on the next installation. Answers are cached for six hours.
 `--no-vulns` disables all of this.
 
 Viewed from above, every building carrying findings bears a **pin**, colored by
@@ -895,6 +895,7 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | Conan              | an exact reference (`zlib/1.2.13`), `conan.lock`                             | a version range (`[>=1.0 <2]`, `[~1.2]`)                                                  |
 | Composer           | `composer.lock`, `installed.json`, a bare `1.2.3` or `1.2`, `dev-main#<sha>` | `^`, `~`, `*`, `1.2.*`, alternatives, ranges and branches                                 |
 | RubyGems           | `Gemfile.lock` (a git gem by its revision), a bare `1.2.3`, `= 1.2.3`        | `~>`, `>=`, `<`, `!=`, several requirements, no version                                   |
+| Swift packages     | `Package.resolved`, `exact:`, a bare `"1.2.3"`, `revision:`                  | `from:`, `.upToNextMajor`, `.upToNextMinor`, ranges, `branch:`                            |
 
 The JSON and GraphML exports carry `requested` and `floating` per package.
 
@@ -917,6 +918,7 @@ and the analysis remains offline.
 | `conan.lock` (Conan 1, `graph_lock`) | the `requires` of each node                      |
 | `composer.lock`, `installed.json`    | each package's `require`, without the platform   |
 | `Gemfile.lock`                       | the dependencies listed under each spec          |
+| `.build/checkouts/*/Package.swift`   | the checked-out package's `.package` lines       |
 
 Packages added in this way are marked **transitive**, meaning that no file in
 the repository imports them. Edges between packages are of kind `depends`, as
@@ -929,8 +931,9 @@ none) falls back to the installed environment (see [Languages](#languages)).
 Ecosystems that keep the dependency graph outside the repository — Go modules,
 NuGet, container images and a Composer or Bundler library that commits no lock
 — require `--online`, described below; Maven, the
-PowerShell Gallery, vcpkg and Conan 2 (whose lock is a flat list) are not
-resolved beyond the first level at present.
+PowerShell Gallery, vcpkg, Conan 2 (whose lock is a flat list) and Swift
+packages that SwiftPM has not checked out under `.build` (`Package.resolved`
+is flat as well) are not resolved beyond the first level at present.
 
 The side panel presents these as a **tree**: every row under *Depends on* and
 *Used by* expands into that node's own dependencies, and so on recursively.
@@ -1065,7 +1068,8 @@ leading path elements match it, so that `corp.example/*` covers
 Maven group (`com.acme.*`) and a registry path (`harbor.corp/*`). Prefixing a
 pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`,
 `crates:`, `actions:`, `gitlab-ci:`, `psgallery:`, `c-external:`, `vcpkg:`,
-`conan:`, `composer:` or `rubygems:` — restricts it to that ecosystem.
+`conan:`, `composer:`, `rubygems:` or `swiftpm:` — restricts it to that
+ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
 to whatever is configured here**, so a Go project whose machine is already
@@ -1332,15 +1336,16 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | C / C++                 | `clangd`                                                   |
 | PHP                     | `intelephense` or `phpactor`                               |
 | Ruby                    | `ruby-lsp` or `solargraph`                                 |
+| Swift                   | `sourcekit-lsp`                                            |
 
 The servers run in the background once the map is displayed — gopls requires
 approximately 7 s for this repository — within the budget set by
 `--lsp-timeout`; results are cached until the map's files, symbols or imports
 change, or a different set of language servers is installed. Servers that index
-slowly, rust-analyzer, jdtls, metals, clangd and the PHP and Ruby servers in
-particular, may answer before indexing has finished, so a first run can report
-fewer references than a later one. The legend's **Imports / References** switch
-then determines what the selection arcs and the side panel show: for a
+slowly, rust-analyzer, jdtls, metals, clangd and the PHP, Ruby and Swift servers
+in particular, may answer before indexing has finished, so a first run can
+report fewer references than a later one. The legend's **Imports / References**
+switch then determines what the selection arcs and the side panel show: for a
 function, what it uses and what uses it. The JSON and GraphML exports include
 the reference edges.
 
@@ -1359,6 +1364,7 @@ the reference edges.
 | C / C++                 | `#include` beside the includer, the include paths of `compile_commands.json` (`-I`, `-iquote`, `-isystem`, `/I`), `include/` and `src/`, and a unique project file ending in the included path; libraries by `vcpkg.json`, `conanfile.txt`, `conanfile.py` and `conan.lock`                                      | vcpkg, Conan, C/C++ external, C and C++ standard libraries, system headers |
 | PHP                     | `use` statements (grouped, `function`, `const`) and fully qualified names in code, same-namespace `extends`/`implements`, `require`/`include` of spelled-out paths; project files by what they declare and `composer.json` PSR-4/PSR-0; packages by the autoload prefixes of `composer.lock` or `installed.json` | Packagist, PHP standard library                                            |
 | Ruby                    | `require`/`require_relative`/`load`/`autoload` of spelled-out paths on a guessed load path (`lib`, `test`, `spec`, gemspec require paths, path gems); gems by `Gemfile`, gemspecs and `Gemfile.lock`, whose `gem` lines are imports; Rails constants by Zeitwerk naming                                          | RubyGems, Ruby standard library                                            |
+| Swift                   | `import` (every `#if` branch); `Package.swift` targets to their directories, else a directory named after the module; packages by `Package.swift`, `Package.resolved` and Xcode's `project.pbxproj`, products first, whose `.package` lines are imports; types used across a module's files                      | Swift packages, Swift standard library, Apple SDKs                         |
 | PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                                                                | PowerShell Gallery, built-in modules                                       |
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                     | GitHub Actions, GitLab CI, Container images                                |
 | Dockerfile / Compose    | `FROM`, `COPY --from`, `RUN --mount from=` and `# syntax=` with `ARG` defaults expanded and stages told apart; Compose `image:`, and `build:` to the Dockerfile in the repository                                                                                                                                | Container images                                                           |
@@ -1511,10 +1517,31 @@ from - every `app/*` directory and its `concerns` are roots, `lib` too under
 `autoload_lib` - trying the modules around the reference innermost first, so
 models, controllers and concerns are connected without a `require`.
 
+Swift files are read for `import` declarations, with every branch of an `#if`
+block read, since each is built on some platform. A module the project builds
+resolves to its sources' directory: a target of any `Package.swift` at its
+`path:` or `Sources/<name>` (`Tests/<name>` for tests), or, for an Xcode
+project, whose targets are not read, a directory named after the module. The
+toolchain's modules (`Foundation`, `XCTest`, `Glibc`) form a Swift standard
+library island and Apple's frameworks (`SwiftUI`, `UIKit`, `Combine`) an Apple
+SDKs island. Any other module is looked up among the packages the project
+declares: the product a target takes from a package
+(`.product(name: "NIOCore", package: "swift-nio")`, or an Xcode product
+dependency), a table of well-known modules (`Logging` is swift-log), then the
+package whose name the module's name spells (`Collections` is
+swift-collections); a module nothing declares is shown unresolved. A package
+is named by its URL without scheme or `.git` (`github.com/apple/swift-nio`),
+the name OSV and Trivy use. `Package.resolved` (beside `Package.swift` or in
+an Xcode project's `xcshareddata/swiftpm`) pins the packages it holds, and a
+`Package.swift`'s `.package` lines are imports of what they declare. Since a
+module's files see each other's declarations without imports, the type names
+a file uses connect it to the file of its module, or of a project module it
+imports, that declares them.
+
 Files in other languages appear on the map without dependency edges. Parsing
 uses a pure-Go tree-sitter runtime for JavaScript/TypeScript, Python, Rust,
-Java, Kotlin, Scala, C, C++, PHP and Ruby; Go uses the standard library's own
-parser, CI and Compose files a YAML parser, and C#, PowerShell, Markdown,
+Java, Kotlin, Scala, C, C++, PHP, Ruby and Swift; Go uses the standard library's
+own parser, CI and Compose files a YAML parser, and C#, PowerShell, Markdown,
 Dockerfiles, the markup of Vue, Svelte and Astro components and C preprocessor
 directives small built-in scanners — so the binary continues to cross-compile
 without a C toolchain.

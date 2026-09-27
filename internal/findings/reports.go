@@ -539,6 +539,7 @@ var trivyEcosystems = map[string]string{
 	"conan":    "conan",
 	"composer": "composer", "composer-vendor": "composer",
 	"bundler": "rubygems", "gemspec": "rubygems",
+	"swift": "swiftpm",
 }
 
 // trivyPath keeps the target of a scan that has one: a lock file or a Dockerfile is a
