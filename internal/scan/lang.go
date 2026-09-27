@@ -10,7 +10,7 @@ var byExt = map[string]string{
 	".js": "JavaScript", ".mjs": "JavaScript", ".cjs": "JavaScript", ".jsx": "JavaScript",
 	".ts": "TypeScript", ".mts": "TypeScript", ".cts": "TypeScript", ".tsx": "TypeScript",
 	".py": "Python", ".pyi": "Python",
-	".rs": "Rust", ".java": "Java", ".kt": "Kotlin", ".kts": "Kotlin", ".scala": "Scala",
+	".rs": "Rust", ".java": "Java", ".kt": "Kotlin", ".kts": "Kotlin", ".scala": "Scala", ".sc": "Scala",
 	".cs": "C#", ".fs": "F#", ".vb": "Visual Basic",
 	".c": "C", ".h": "C", ".cc": "C++", ".cpp": "C++", ".cxx": "C++", ".hpp": "C++", ".hh": "C++",
 	".m": "Objective-C", ".swift": "Swift", ".dart": "Dart",

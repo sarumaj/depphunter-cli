@@ -43,6 +43,9 @@ var Servers = []Server{
 		Commands: [][]string{{"pyright-langserver", "--stdio"}, {"basedpyright-langserver", "--stdio"}, {"pylsp"}}},
 	{Name: "rust-analyzer", Exts: map[string]string{".rs": "rust"}, Commands: [][]string{{"rust-analyzer"}}},
 	{Name: "jdtls", Open: true, Exts: map[string]string{".java": "java"}, Commands: [][]string{{"jdtls"}}},
+	{Name: "kotlin-language-server", Open: true, Exts: map[string]string{".kt": "kotlin", ".kts": "kotlin"},
+		Commands: [][]string{{"kotlin-language-server"}}},
+	{Name: "metals", Open: true, Exts: map[string]string{".scala": "scala", ".sc": "scala"}, Commands: [][]string{{"metals"}}},
 	{Name: "csharp-ls", Open: true, Exts: map[string]string{".cs": "csharp"}, Commands: [][]string{{"csharp-ls"}}},
 }
 
