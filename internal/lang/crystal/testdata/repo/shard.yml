@@ -1,0 +1,35 @@
+name: shop
+version: 0.1.0
+
+targets:
+  shop:
+    main: src/shop.cr
+
+dependencies:
+  kemal:
+    github: kemalcr/kemal
+    version: ~> 1.4
+  db:
+    github: crystal-lang/crystal-db
+    version: 0.13.1
+  radix:
+    github: luislavena/radix
+    branch: master
+  markd:
+    github: icyleaf/markd
+    commit: 5e5a4a4f7c3e8f3d0f9b7e2a3c1d4b6a8e9f0a1b
+  crinja:
+    gitlab: straight-shoota/crinja
+    tag: v0.8.1
+  internal:
+    git: https://git.acme.internal/shop/internal.git
+    version: ">= 1.0"
+  crystal-sqlite3:
+    github: crystal-lang/crystal-sqlite3
+  widgets:
+    path: libs/widgets
+
+development_dependencies:
+  spectator:
+    gitlab: arctic-fox/spectator
+    version: ~> 0.12

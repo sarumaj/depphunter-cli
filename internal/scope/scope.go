@@ -145,7 +145,7 @@ var ecosystems = map[string]bool{
 	"psgallery": true, "c-external": true, "vcpkg": true, "conan": true, "composer": true,
 	"rubygems": true, "swiftpm": true, "pub": true, "hex": true, "cran": true, "bioconductor": true,
 	"hackage": true, "terraform-module": true, "terraform-provider": true, "buf": true,
-	"cmake-fetch": true, "pkg-config": true, "cocoapods": true, "carthage": true, "luarocks": true, "wally": true, "cpan": true, "opam": true, "julia": true, "zig": true, "bazel": true, "bazel-repo": true, "nix": true, "nixpkgs": true, "elm": true, "purescript": true,
+	"cmake-fetch": true, "pkg-config": true, "cocoapods": true, "carthage": true, "luarocks": true, "wally": true, "cpan": true, "opam": true, "julia": true, "zig": true, "bazel": true, "bazel-repo": true, "nix": true, "nixpkgs": true, "elm": true, "purescript": true, "shards": true,
 }
 
 func isEcosystem(s string) bool { return ecosystems[strings.ToLower(s)] }

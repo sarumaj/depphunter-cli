@@ -19,9 +19,11 @@ When git cannot list the files, the system **shall** walk the directory tree and
 `.gradle`, `.tox`, `.mypy_cache`, `.build`, `.dart_tool`, `_build`,
 `dist-newstyle`, `.stack-work`, `.terraform`, `.terragrunt-cache`,
 `lua_modules`, `_opam`, `.zig-cache`, `zig-cache`, `zig-out`, `zig-pkg`,
-`.cpcache`, `.shadow-cljs`, `elm-stuff`, `.spago` and `bower_components`,
-and an `output` directory beside a `spago.yaml` or `spago.dhall` (what the
-PureScript compiler wrote; an `output` directory elsewhere is kept).
+`.cpcache`, `.shadow-cljs`, `elm-stuff`, `.spago`, `bower_components` and
+`.crystal`, an `output` directory beside a `spago.yaml` or `spago.dhall`
+(what the PureScript compiler wrote) and a `lib` directory beside a
+`shard.yml` (what shards installed); an `output` or `lib` directory
+elsewhere is kept.
 
 ## Rationale
 
@@ -38,8 +40,10 @@ caches and build output.
    `.zig-cache/o/1/cimport.zig`, `zig-out/bin/gen.zig` and
    `zig-pkg/x-0.1.0-AAAA/build.zig.zon`, `.cpcache/1234.basis`,
    `.shadow-cljs/builds/app/x.edn`, `elm-stuff/0.19.1/Main.elm`,
-   `.spago/p/prelude-6.0.1/src/Prelude.purs` and
-   `bower_components/purescript-maybe/src/Data/Maybe.purs` do not appear in
-   the graph, nor does `app/output/Main/index.js` beside `app/spago.yaml`,
-   while `report/output/summary.md` does.
+   `.spago/p/prelude-6.0.1/src/Prelude.purs`,
+   `bower_components/purescript-maybe/src/Data/Maybe.purs` and
+   `.crystal/cache/macro.cr` do not appear in the graph, nor do
+   `app/output/Main/index.js` beside `app/spago.yaml` and
+   `shop/lib/kemal/src/kemal.cr` beside `shop/shard.yml`, while
+   `report/output/summary.md` and `tools/lib/helper.cr` do.
 2. An unreadable subdirectory is skipped without failing the scan.

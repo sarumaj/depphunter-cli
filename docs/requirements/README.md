@@ -136,6 +136,7 @@ The server **shall** ...
 | `gleam`      | The Gleam plugin: modules, gleam.toml and manifest.toml, as Hex packages.                             |
 | `elm`        | The Elm plugin: modules, elm.json, installed packages in ELM_HOME and the package site.               |
 | `purescript` | The PureScript plugin: modules, spago.yaml, spago.lock, spago.dhall, packages.dhall and bower.json.   |
+| `crystal`    | The Crystal plugin: requires, shard.yml, shard.lock, shard.override.yml and shards installed in lib/. |
 | `terraform`  | The Terraform and OpenTofu plugin, lock files, Terragrunt and the module registries.                  |
 | `proto`      | The Protocol Buffers plugin, Buf's configuration and lock files and the Buf Schema Registry.          |
 | `shell`      | The shell script plugin (sh, Bash, zsh, bats), direnv and packages scripts install.                   |
@@ -309,6 +310,10 @@ requirements of type `limitation` in their scopes:
   not installed in `.spago/`, not in the curated table and not spelled by a
   listed package's name is dropped, a package set's versions are not known
   offline, and Dhall beyond records, lists and merges is not evaluated.
+- Crystal is read without running the compiler or shards: methods and
+  requires a macro writes are not read, only the first branch of a macro
+  `{% if %}` decides the nesting after it, `CRYSTAL_PATH` is not read and
+  `@[Link]` libraries are not mapped.
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

@@ -55,6 +55,7 @@ var defaultIgnore = map[string]bool{
 	".terraform": true, ".terragrunt-cache": true, "lua_modules": true, "_opam": true,
 	".zig-cache": true, "zig-cache": true, "zig-out": true, "zig-pkg": true,
 	".cpcache": true, ".shadow-cljs": true, "elm-stuff": true, ".spago": true, "bower_components": true,
+	".crystal": true,
 }
 
 func Scan(ctx context.Context, root string, opts Options) ([]*File, error) {
@@ -140,7 +141,7 @@ func walkFiles(ctx context.Context, root string) ([]string, error) {
 			return err
 		}
 		if d.IsDir() {
-			if p != root && (defaultIgnore[d.Name()] || d.Name() == "output" && spagoOutput(filepath.Dir(p))) {
+			if p != root && (defaultIgnore[d.Name()] || besideManifest(d.Name(), filepath.Dir(p))) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -154,13 +155,20 @@ func walkFiles(ctx context.Context, root string) ([]string, error) {
 	return paths, err
 }
 
-// spagoOutput reports whether dir is a PureScript project, whose output/ holds
-// what the compiler wrote: it has a spago.yaml or spago.dhall. Elsewhere an
-// output/ directory may well be source.
+// generatedBeside names directories that hold what a tool wrote only when its
+// manifest sits next to them: the PureScript compiler's output/ beside a
+// spago.yaml or spago.dhall, and the shards shards installs into lib/ beside a
+// shard.yml. Elsewhere an output/ or lib/ directory may well be source.
+var generatedBeside = map[string][]string{
+	"output": {"spago.yaml", "spago.dhall"},
+	"lib":    {"shard.yml"},
+}
+
+// besideManifest reports whether the directory name in dir is such a directory.
 //
 // Implements: REQ-LANG-018
-func spagoOutput(dir string) bool {
-	for _, m := range []string{"spago.yaml", "spago.dhall"} {
+func besideManifest(name, dir string) bool {
+	for _, m := range generatedBeside[name] {
 		if _, err := os.Stat(filepath.Join(dir, m)); err == nil {
 			return true
 		}

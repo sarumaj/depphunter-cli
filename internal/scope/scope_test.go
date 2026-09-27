@@ -265,3 +265,14 @@ func TestAPureScriptPatternKeepsToPureScript(t *testing.T) {
 		t.Error("a purescript-scoped pattern did not keep to its ecosystem")
 	}
 }
+
+// Crystal shards are named as shard.yml names them; a shards-scoped pattern
+// keeps to them.
+//
+// Verifies: REQ-SUP-035
+func TestAShardsPatternKeepsToShards(t *testing.T) {
+	p := New([]string{"shards:acme_*"})
+	if !p.Match("shards", "acme_billing") || p.Match("rubygems", "acme_billing") || p.Match("shards", "kemal") {
+		t.Error("a shards-scoped pattern did not keep to its ecosystem")
+	}
+}

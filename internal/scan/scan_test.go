@@ -35,7 +35,8 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 		"elm-stuff/0.19.1/Main.elm":                             "module Main exposing (main)\n",
 		".spago/p/prelude-6.0.1/src/Prelude.purs":               "module Prelude where\n",
 		"bower_components/purescript-maybe/src/Data/Maybe.purs": "module Data.Maybe where\n",
-		"img.bin": "\x00\x01\x02",
+		".crystal/cache/macro.cr":                               "module M\nend\n",
+		"img.bin":                                               "\x00\x01\x02",
 	}
 	for p, c := range files {
 		abs := filepath.Join(root, p)
@@ -65,11 +66,11 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 	}
 }
 
-// A PureScript project's output/ is what the compiler wrote; another output/
-// directory is kept.
+// A PureScript project's output/ is what the compiler wrote, and a shard's lib/
+// what shards installed; another output/ or lib/ directory is kept.
 //
 // Verifies: REQ-LANG-018
-func TestScanSkipsSpagoOutput(t *testing.T) {
+func TestScanSkipsGeneratedBesideManifest(t *testing.T) {
 	root := t.TempDir()
 	for p, c := range map[string]string{
 		"app/spago.yaml":              "package:\n  name: app\n",
@@ -78,6 +79,9 @@ func TestScanSkipsSpagoOutput(t *testing.T) {
 		"legacy/spago.dhall":          "{ name = \"legacy\", dependencies = [] : List Text, sources = [] : List Text }\n",
 		"legacy/output/Main/index.js": "export const main = 1;\n",
 		"report/output/summary.md":    "# kept\n",
+		"shop/shard.yml":              "name: shop\n",
+		"shop/lib/kemal/src/kemal.cr": "module Kemal\nend\n",
+		"tools/lib/helper.cr":         "module Helper\nend\n",
 	} {
 		abs := filepath.Join(root, p)
 		os.MkdirAll(filepath.Dir(abs), 0o755)
@@ -91,7 +95,8 @@ func TestScanSkipsSpagoOutput(t *testing.T) {
 	for _, f := range got {
 		paths = append(paths, f.Path)
 	}
-	want := []string{"app/spago.yaml", "app/src/Main.purs", "legacy/spago.dhall", "report/output/summary.md"}
+	want := []string{"app/spago.yaml", "app/src/Main.purs", "legacy/spago.dhall", "report/output/summary.md",
+		"shop/shard.yml", "tools/lib/helper.cr"}
 	if !reflect.DeepEqual(paths, want) {
 		t.Errorf("got %v, want %v", paths, want)
 	}

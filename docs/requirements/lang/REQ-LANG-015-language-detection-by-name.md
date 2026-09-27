@@ -32,7 +32,8 @@ Clojure's `project.clj`, `build.boot`, `deps.edn`, `bb.edn` and
 `shadow-cljs.edn`, Bazel's `BUILD`, `WORKSPACE`, `WORKSPACE.bzlmod`
 (Starlark, as `.bzl` and `.bazel` files are) and `MODULE.bazel.lock`
 (JSON), Nix's `flake.lock` (Nix, as `.nix` files are), Gleam's `gleam.toml`
-(Gleam, as `.gleam` files are),
+(Gleam, as `.gleam` files are), shards' `shard.lock` (YAML, as `shard.yml`
+is),
 the shells' and direnv's startup files (`.bashrc`,
 `.zshrc`, `.profile`, `.envrc` and the others of REQ-SHELL-001), and the
 Dockerfile names of REQ-DOCKER-001), or, for a file neither names, from a
@@ -90,3 +91,5 @@ Objective-C from MATLAB, Mercury and C.
    `Manifest.toml`, `Manifest-v1.11.toml`, `JuliaManifest-v1.12.toml` and
    `Artifacts.toml` are Julia.
 7. `nix/modules/default.nix` and `flake.lock` are Nix.
+8. `src/shop/cart.cr` is Crystal, and `shard.yml` and `shard.lock` are
+   YAML.

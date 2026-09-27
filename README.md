@@ -199,6 +199,7 @@ code. The page served is identical in both cases.
   [CI pipelines](#ci-pipelines) ·
   [Infrastructure as code](#infrastructure-as-code) ·
   [Nix](#nix) · [Gleam](#gleam) · [Elm](#elm) · [PureScript](#purescript) ·
+  [Crystal](#crystal) ·
   [Interface definitions](#interface-definitions) ·
   [Shell scripts](#shell-scripts) ·
   [Documentation](#documentation) ·
@@ -389,7 +390,7 @@ set.
 | `GET /api/export?format=&ui=`                          | `json`, `graphml`, `dot` or `html`; `ui` is the view (JSON) an `html` export opens with                                      |
 | `GET /api/resolution?format=`                          | how the dependencies were resolved: `json` (default), `md` or `text`                                                         |
 | `GET /api/events`                                      | Server-Sent Events: `graph`, `history`, `references`, `findings`, `selection`, `backpack`                                    |
-| `GET /api/session`                                     | the state shared between clients: the selected node and the backpack                                                         |
+| -----------------------------                          | -------------------------------------------------------------------------------------------                                  |
 | `POST /api/selection`                                  | `{"id": "f:src/main.go", "origin": "…"}`; the map follows                                                                    |
 | `GET /api/backpack?format=`                            | the collected findings as `json`, `csv` or `md`                                                                              |
 | `PUT /api/backpack`                                    | `{"items": [...], "origin": "…"}`; replaces the contents                                                                     |
@@ -817,8 +818,8 @@ has no ecosystem for Terraform modules and providers, Buf Schema Registry
 modules, CocoaPods, Carthage, LuaRocks, Wally, CPAN, Zig, Bazel modules and
 repositories (the Maven, PyPI, Go, npm and crates.io packages Bazel's module
 extensions install are asked about as such), Nix flake inputs, nixpkgs
-packages, Elm packages or PureScript packages. Floating packages
-are not queried, since they resolve to a different version on the next
+packages, Elm packages, PureScript packages or Crystal shards. Floating
+packages are not queried, since they resolve to a different version on the next
 installation. Answers are cached for six hours.
 `--no-vulns` disables all of this.
 
@@ -930,6 +931,7 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | Nix                 | `flake.lock`, a commit (`rev=`, `/<commit>`) or `narHash` in the reference, niv and npins pins               | a branch (`nixos-24.05`, `refs/heads/`), a channel, `<nixpkgs>`, a registry name, no ref; a tag is shown, neither |
 | Elm                 | an application's `elm.json` (exact versions of direct, indirect and test dependencies)                       | a package's `elm.json` ranges (`1.0.0 <= v < 2.0.0`)                                                              |
 | PureScript          | `spago.lock`, a registry version in `extraPackages`, a git commit (`ref`, a `packages.dhall` `version`)      | `>=7.0.0 <8.0.0` and bower's `^6.0.0`, no package set; a package set's name or a git tag is shown, neither        |
+| Crystal shards      | `shard.lock`, a `commit:`, a path dependency (in the repository)                                             | `~>`, `>=` and other ranges, a `branch:`, no requirement; a `tag:` or an exact `version:` is shown, neither       |
 
 A package a shell script installs (`pip install`, `npm install -g`, `go
 install`, `cargo install`, `gem install`) follows its ecosystem's row; one
@@ -972,6 +974,7 @@ and the analysis remains offline.
 | `flake.lock` (versions 5 to 7)            | each input's own `inputs`, `follows` resolved      |
 | `elm.json` of packages in `ELM_HOME`      | an installed Elm package's `dependencies`          |
 | `spago.lock` (PureScript)                 | each package's `dependencies`                      |
+| `lib/<shard>/shard.yml` (shards)          | an installed shard's `dependencies`                |
 
 Packages added in this way are marked **transitive**, meaning that no file in
 the repository imports them. Edges between packages are of kind `depends`, as
@@ -1009,7 +1012,9 @@ resolved beyond the first level either, nor are Carthage dependencies
 (`Cartfile.resolved` is flat), Wally packages no `wally.lock` records and Zig
 packages Zig has not fetched into `zig-pkg/` or its global cache (there is no
 Zig registry for `--online` to ask), nor Bazel's WORKSPACE repositories, nor
-niv and npins sources (their `sources.json` is flat). A Terraform provider
+niv and npins sources (their `sources.json` is flat), nor Crystal shards
+shards has not installed into `lib/` (`shard.lock` is flat, and shards are
+git repositories with no index to ask). A Terraform provider
 depends on nothing.
 
 The side panel presents these as a **tree**: every row under *Depends on* and
@@ -1192,7 +1197,8 @@ pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`
 `bioconductor:`, `hackage:`, `terraform-module:`, `terraform-provider:`,
 `buf:`, `cmake-fetch:`, `pkg-config:`, `cocoapods:`, `carthage:`, `luarocks:`,
 `wally:`, `cpan:`, `opam:`, `julia:`, `zig:`, `bazel:`, `bazel-repo:`, `nix:`,
-`nixpkgs:`, `elm:` or `purescript:` — restricts it to that ecosystem.
+`nixpkgs:`, `elm:`, `purescript:` or `shards:` — restricts it to that
+ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
 to whatever is configured here**, so a Go project whose machine is already
@@ -1570,6 +1576,48 @@ type synonyms, classes with their members, named instances, foreign imports
 and `infix` operators are the symbols. OSV has no PureScript ecosystem, so
 PureScript packages are not checked for advisories.
 
+### Crystal
+
+Crystal applications and libraries get their shards from git repositories
+through shards; the **Crystal shards** island names each shard as
+`shard.yml` does (`kemal`, `db`), the name `require` and `lib/` use.
+depphunter reads `.cr` files, `shard.yml`, `shard.lock` and
+`shard.override.yml` without running the compiler or shards; `lib/` beside a
+`shard.yml`, where shards installs, is not read as source (a `lib/`
+directory elsewhere is), and neither is the compiler's `.crystal/` cache:
+
+- **Requires**: `require "./x"` and `require "../x"` are edges to `x.cr`
+  (or `x/x.cr`) relative to the file; `require "./dir/*"` to each `.cr`
+  file of `dir` and `require "./dir/**"` to each below it. A require by
+  name is looked up the way the compiler's `CRYSTAL_PATH` does: a shard
+  installed in `lib/` (the directory is the shard), then the project's own
+  files (a shard requiring itself by name, as its specs and `bin/`
+  templates do; Crystal's standard library requiring itself from `src/`),
+  then a shard the manifests name, then the standard library by its first
+  segment (`json`, `http/client`, `digest/sha256`: a hidden **Crystal
+  standard library** island), then a declared shard spelled with `-`/`_`
+  or a `crystal-` prefix (`sqlite3` is `crystal-sqlite3`). Other names are
+  unresolved shards named by their first segment.
+- **Manifests**: every dependency and development dependency of a
+  `shard.yml` (`github:`, `gitlab:`, `bitbucket:`, `codeberg:`, `git:`,
+  `path:`) is an import of it, and every target's `main:` file an edge; a
+  `shard.override.yml` replaces the entries it names. `shard.lock` pins
+  (`1.2.3`, `0.3.1+git.commit.<sha>`), with the requirement as the
+  requested version; without it a `commit:` pins, a `tag:` or an exact
+  `version:` is shown, neither pinned nor floating (a tag can be moved),
+  and a `branch:`, a range and no requirement float. A shard from a git
+  server other than GitHub, GitLab, Bitbucket, Codeberg or sourcehut
+  carries its URL as its origin, and a path dependency is an edge to its
+  directory. `--resolve-depth` follows the `shard.yml` of shards installed
+  in `lib/`; there is no index for `--online`.
+
+Modules, classes, structs, enums, libs (C bindings with their `fun`s,
+structs and unions), annotations, methods (`Owner.name`, as in Ruby),
+macros, constants, aliases, `record`s and the attributes of `getter` and
+`property` are the symbols; what a macro defines is not, and
+`@[Link("ssl")]` libraries are not mapped. OSV has no Crystal ecosystem, so
+shards are not checked for advisories.
+
 ### Interface definitions
 
 Protocol Buffers definitions are shared between services and languages, and
@@ -1745,6 +1793,7 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | Gleam                   | `gleam lsp`                                                                                  |
 | Elm                     | `elm-language-server --stdio`                                                                |
 | PureScript              | `purescript-language-server --stdio`                                                         |
+| Crystal                 | `crystalline`                                                                                |
 
 The servers run in the background once the map is displayed — gopls requires
 approximately 7 s for this repository — within the budget set by
@@ -1791,6 +1840,7 @@ The JSON and GraphML exports include the reference edges.
 | Gleam                   | `import` (with unqualified lists and aliases) to the `src/`, `test/` and `dev/` modules of the package, of path dependencies and of `build/packages` when on disk; `gleam/*` to `gleam_stdlib`, `gleam_erlang`, `gleam_otp` and the like, other modules to the package their leading segments name; `@external` Erlang modules (compiled Gleam modules, `.erl` files, OTP, packages) and JavaScript files or npm packages; packages by `gleam.toml` and `manifest.toml`, whose dependencies and packages are imports                               | Hex, Erlang/OTP, npm                                                       |
 | Elm                     | `import` to `A/B.elm` under the source directories of every `elm.json` listing the file (an application's `source-directories`, a package's `src/`, `tests/` for elm-test), kernel modules to their `.js`; other modules to the package whose installed `elm.json` in `ELM_HOME` exposes them, elm/core's modules to `elm/core`, else a curated module table or the listed package the module spells; packages by `elm.json`, whose dependencies are imports                                                                                       | Elm packages                                                               |
 | PureScript              | `import` to the file declaring the module in the importing package's sources (`src/` and `test/` of a `spago.yaml` package, a `spago.dhall`'s `sources`), then its workspace's; `foreign import` to the `.js` beside the module; Prim modules to the compiler's built-ins; other modules to the package spago installed in `.spago/` that provides them, else a curated module table or the listed package the module spells; packages by `spago.yaml`, `spago.lock`, `spago.dhall`, `packages.dhall` and `bower.json`, whose packages are imports | PureScript packages, PureScript built-ins                                  |
+| Crystal                 | `require` of relative paths and globs (`./dir/*`, `./dir/**`) to files; by name through `lib/` (the installed shard), the project's own `src/` and shard name, the standard library, then the shards of `shard.yml` / `shard.lock` / `shard.override.yml`, whose dependencies and targets' `main:` files are imports                                                                                                                                                                                                                               | Crystal shards, Crystal standard library                                   |
 | PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                                                                                                                                                                                                                                                                                                  | PowerShell Gallery, built-in modules                                       |
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                                                                                                                                                                                                                                                       | GitHub Actions, GitLab CI, Container images                                |
 | Protocol Buffers        | `import` (`public`, `weak`) under the import roots of `buf.work.yaml` and `buf.yaml` (v1 and v2), else the repository root, `proto/`, `protos/`, `api/`, `src/main/proto/` and the importer's directories, else a unique project file ending in the path; modules by `buf.yaml` `deps` and `buf.lock` and a table of common protos; `buf.gen.yaml` remote plugins                                                                                                                                                                                  | Buf Schema Registry, Protobuf well-known types                             |
@@ -2313,6 +2363,10 @@ took 86 ms per file and parsed 87 of the 380 files measured with errors.
 `spago.dhall` and `packages.dhall` are read by a small Dhall evaluator. See
 [PureScript](#purescript).
 
+Crystal is read by a small lexer too: the tree-sitter grammar took 6 to 25
+ms per file and parsed 259 of the 715 files measured with errors. See
+[Crystal](#crystal).
+
 Protocol Buffers definitions are read by a small scanner: the tree-sitter
 grammar took 2.4 to 3 ms per file and failed on every file using editions.
 See [Interface definitions](#interface-definitions).
@@ -2332,13 +2386,14 @@ errors, and grpc's generated protobuf tables ran each into the parse bound,
 Files in other languages appear on the map without dependency edges. Parsing
 uses a pure-Go tree-sitter runtime for JavaScript/TypeScript, Python, Rust,
 Java, Kotlin, Scala, PHP and Ruby; Go uses the standard library's own parser,
-CI, Compose and Buf files a YAML parser, and C, C++, C#, PowerShell, Markdown,
+CI, Compose, Buf and shards files a YAML parser, and C, C++, C#, PowerShell,
+Markdown,
 Dart, Elixir, Erlang, R, Haskell, HCL, Protocol Buffers, shell scripts, CMake
 files, Swift, Objective-C, CocoaPods and Carthage manifests, Lua, Luau, Teal and
 LuaRocks files, Perl and its CPAN manifests, OCaml, dune and opam files, Julia,
 Zig and `build.zig.zon`, Clojure and its EDN manifests, Bazel's Starlark files,
 Nix expressions, Gleam, Elm and PureScript modules, spago's Dhall files,
-Dockerfiles, the markup of Vue, Svelte and Astro components, R Markdown
+Crystal, Dockerfiles, the markup of Vue, Svelte and Astro components, R Markdown
 chunks and C preprocessor directives small built-in scanners — so the binary
 continues to cross-compile without a C toolchain.
 
