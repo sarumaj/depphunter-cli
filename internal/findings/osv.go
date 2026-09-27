@@ -54,6 +54,9 @@ var osvEcosystems = map[string]string{
 	// Haskell packages are Hackage's; GHC's own libraries (haskell-std) would be OSV's
 	// GHC ecosystem, but standard libraries are not asked about.
 	"hackage": "Hackage",
+	// OCaml packages are opam-repository's; the compiler's own libraries (ocaml-std)
+	// are not asked about.
+	"opam": "opam",
 }
 
 // Package is one thing to ask the database about: a dependency pinned to a version.

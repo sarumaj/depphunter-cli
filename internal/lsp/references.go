@@ -94,6 +94,11 @@ var Servers = []Server{
 	// initialize fails, is logged, and the server is passed over.
 	{Name: "perl", Open: true, Exts: map[string]string{".pl": "perl", ".pm": "perl", ".t": "perl", ".psgi": "perl"},
 		Commands: [][]string{{"perlnavigator", "--stdio"}, {"pls"}, {"perl", "-MPerl::LanguageServer", "-e", "Perl::LanguageServer::run"}}},
+	// ocaml-lsp-server answers for implementations, interfaces and the ocamllex and
+	// Menhir sources merlin reads; it needs the project built once for dune's
+	// metadata.
+	{Name: "ocaml", Open: true, Exts: map[string]string{".ml": "ocaml", ".mli": "ocaml.interface", ".mll": "ocaml.ocamllex", ".mly": "ocaml.menhir"},
+		Commands: [][]string{{"ocamllsp"}}},
 	// neocmakelsp and cmake-language-server both answer references for CMake's
 	// functions, macros and variables; a CMakeLists.txt is known by its name.
 	{Name: "cmake", Open: true, Exts: map[string]string{".cmake": "cmake"}, Names: map[string]string{"CMakeLists.txt": "cmake"},

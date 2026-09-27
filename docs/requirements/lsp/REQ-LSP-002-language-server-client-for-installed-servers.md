@@ -37,7 +37,8 @@ name and `.cmake` files) and lua-language-server (`lua-language-server`, Lua)
 and luau-lsp (`luau-lsp lsp`, Luau) and Perl Navigator, PLS or
 Perl::LanguageServer (`perlnavigator --stdio`, `pls` or `perl
 -MPerl::LanguageServer -e Perl::LanguageServer::run`, first installed; `.pl`,
-`.pm`, `.t` and `.psgi` files), skipping a server that is not installed.
+`.pm`, `.t` and `.psgi` files) and ocaml-lsp-server (`ocamllsp`; `.ml`,
+`.mli`, `.mll` and `.mly` files), skipping a server that is not installed.
 
 ## Rationale
 

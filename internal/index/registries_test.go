@@ -871,3 +871,53 @@ func TestCPANDependencies(t *testing.T) {
 		t.Errorf("default index: %s (known %v)", idx, known)
 	}
 }
+
+// An opam repository serves each version's description as a file: its depends,
+// without the compiler and with-test/with-doc dependencies, are the answer; {=
+// "1.2"} pins, a range is kept as written. A package without a pinned version is
+// not asked about.
+//
+// Verifies: REQ-SUP-054
+func TestOpamDependencies(t *testing.T) {
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Path)
+		if r.URL.Path != "/packages/lwt/lwt.5.9.1/opam" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Write([]byte(`opam-version: "2.0"
+depends: [
+  "dune" {>= "3.8"}
+  "ocaml" {>= "4.08"}
+  "base-threads"
+  "cppo" {build & >= "1.1.0"}
+  "ocplib-endian" {= "1.2"}
+  "ounit2" {with-test}
+  "odoc" {with-doc}
+  "cppo"
+]
+depopts: ["base-threads" "base-unix" "conf-libev"]
+`))
+	}))
+	defer srv.Close()
+	c := clientFor(t, Opam, srv.URL, "")
+	got := c.Dependencies(lang.Target{Ecosystem: Opam, Package: "lwt", Version: "5.9.1", Pinned: true})
+	want := []lang.Target{
+		{Ecosystem: Opam, Package: "cppo", Version: ">= 1.1.0"},
+		{Ecosystem: Opam, Package: "dune", Version: ">= 3.8"},
+		{Ecosystem: Opam, Package: "ocplib-endian", Version: "1.2", Pinned: true},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+	if got := c.Dependencies(lang.Target{Ecosystem: Opam, Package: "fmt", Version: ">= 0.9"}); len(got) != 0 {
+		t.Errorf("a range was asked about: %+v", got)
+	}
+	if !reflect.DeepEqual(asked, []string{"/packages/lwt/lwt.5.9.1/opam"}) {
+		t.Errorf("asked %v", asked)
+	}
+	if idx, known := Discover(nil, env(nil), "").For(Opam, "lwt"); idx != "https://raw.githubusercontent.com/ocaml/opam-repository/master" || !known {
+		t.Errorf("default index: %s (known %v)", idx, known)
+	}
+}

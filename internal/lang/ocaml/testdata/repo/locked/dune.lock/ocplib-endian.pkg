@@ -1,0 +1,2 @@
+(version 1.2)
+(depends (all_platforms (dune ocaml cppo)))

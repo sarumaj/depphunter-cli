@@ -1,0 +1,6 @@
+(executable
+ (name main)
+ (public_name shop)
+ (package shop-cli)
+ (libraries shop cmdliner re str unix)
+ (flags (:standard -open Shop)))

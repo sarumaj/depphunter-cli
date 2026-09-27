@@ -114,6 +114,10 @@ func TestAPatternMayNameItsEcosystem(t *testing.T) {
 	if !p.Match("cpan", "Acme-Widget") || p.Match("npm", "Acme-Widget") || p.Match("cpan", "Moose") {
 		t.Error("a cpan-scoped pattern did not keep to its ecosystem")
 	}
+	p = New([]string{"opam:acme-*"})
+	if !p.Match("opam", "acme-shop") || p.Match("npm", "acme-shop") || p.Match("opam", "lwt") {
+		t.Error("an opam-scoped pattern did not keep to its ecosystem")
+	}
 	// The prefix is recognized whatever its case, and must then match as well.
 	p = New([]string{"NPM:@acme/*"})
 	if !p.Match("npm", "@acme/widgets") {

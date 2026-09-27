@@ -1,0 +1,4 @@
+(version 5.9.1)
+(build (run dune build -p %{pkg-self:name}))
+(depends dune ocaml cppo ocplib-endian)
+(source (fetch (url https://github.com/ocsigen/lwt/archive/5.9.1.tar.gz)))

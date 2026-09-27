@@ -1,0 +1,4 @@
+(test
+ (name test_shop)
+ (libraries shop alcotest yojson)
+ (modules test_shop))

@@ -2,7 +2,7 @@ package scan
 
 import "testing"
 
-// Verifies: REQ-LANG-015, REQ-DOCKER-001, REQ-SHELL-001, REQ-OBJC-001, REQ-LUA-001, REQ-PERL-001
+// Verifies: REQ-LANG-015, REQ-DOCKER-001, REQ-SHELL-001, REQ-OBJC-001, REQ-LUA-001, REQ-PERL-001, REQ-OCAML-001
 func TestLanguageByName(t *testing.T) {
 	for p, want := range map[string]string{
 		"a.go":                           "Go",
@@ -56,6 +56,14 @@ func TestLanguageByName(t *testing.T) {
 		"cpanfile":                       "Perl",
 		"cpanfile.snapshot":              "Carton",
 		"dist.ini":                       "Dist::Zilla",
+		"lib/cart.ml":                    "OCaml",
+		"lib/cart.mli":                   "OCaml",
+		"lib/lexer.mll":                  "OCaml",
+		"lib/parser.mly":                 "Menhir",
+		"lib/dune":                       "Dune",
+		"dune-project":                   "Dune",
+		"shop.opam":                      "opam",
+		"shop.opam.locked":               "opam",
 		"Cartfile.resolved":              "Carthage",
 		"Sources/Store.mm":               "Objective-C++",
 		"cmake/Deps.cmake":               "CMake",

@@ -1,0 +1,14 @@
+(library
+ (name shop)
+ (public_name shop)
+ (libraries lwt lwt.unix yojson fmt.tty logs.fmt shop_core qual
+  (select backend.ml from
+   (unix -> backend.unix.ml)
+   (-> backend.default.ml)))
+ (preprocess
+  (pps ppx_deriving.show -- -deriving-flag)))
+
+(menhir
+ (modules parser))
+
+(ocamllex lexer)

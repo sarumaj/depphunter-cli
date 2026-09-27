@@ -54,6 +54,9 @@ const (
 	// CPAN is the perl plugin's island of distributions; they are read from the
 	// MetaCPAN API, which describes every CPAN release.
 	CPAN = "cpan"
+	// Opam is the ocaml plugin's island of opam packages; opam-repository's
+	// package descriptions are read from its git repository as files.
+	Opam = "opam"
 )
 
 // public is where each ecosystem's packages come from unless something says otherwise.
@@ -78,6 +81,9 @@ var public = map[string]string{
 	CocoaPods:       "https://cdn.cocoapods.org",
 	LuaRocks:        "https://luarocks.org",
 	CPAN:            "https://fastapi.metacpan.org",
+	// opam.ocaml.org serves opam-repository as an archive and its /packages pages
+	// as HTML; the repository's own files are served one by one here.
+	Opam: "https://raw.githubusercontent.com/ocaml/opam-repository/master",
 }
 
 // HackageItself reports whether a repository URL is Hackage (any scheme, with or

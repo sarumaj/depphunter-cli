@@ -127,6 +127,7 @@ The server **shall** ...
 | `haskell`   | The Haskell plugin, cabal, hpack, stack and Hackage.                                           |
 | `lua`       | The Lua, Luau and Teal plugin, LuaRocks (rockspecs, luarocks.lock), Wally and Rojo projects.   |
 | `perl`      | The Perl plugin, CPAN manifests, Carton's snapshot and MetaCPAN.                               |
+| `ocaml`     | The OCaml plugin, dune, opam manifests and locks, and opam-repository.                         |
 | `terraform` | The Terraform and OpenTofu plugin, lock files, Terragrunt and the module registries.           |
 | `proto`     | The Protocol Buffers plugin, Buf's configuration and lock files and the Buf Schema Registry.   |
 | `shell`     | The shell script plugin (sh, Bash, zsh, bats), direnv and packages scripts install.            |
@@ -261,6 +262,11 @@ requirements of type `limitation` in their scopes:
   a curated table and the module's name, `--online` reads the latest release's
   dependencies whatever version is pinned, and no vulnerability database
   covers CPAN.
+- OCaml is read without building: names brought into scope by opening a
+  submodule or a package's module, by includes of packages or by ppx
+  rewriters are not followed, a package's modules are matched by name, dune
+  rules are not run, and `--online` reads opam-repository only for packages
+  pinned to a version.
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

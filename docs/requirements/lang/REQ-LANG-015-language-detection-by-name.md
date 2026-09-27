@@ -24,7 +24,9 @@ Haskell's `cabal.project`, `stack.yaml` and `package.yaml`, Terraform's
 `*.podspec`, Carthage's `Cartfile`, `Cartfile.private` and
 `Cartfile.resolved`, LuaRocks' `luarocks.lock`, luacheck's `.luacheckrc` and
 busted's `.busted`, Perl's `cpanfile`, Carton's `cpanfile.snapshot` and
-Dist::Zilla's `dist.ini`, the shells' and direnv's startup files (`.bashrc`,
+Dist::Zilla's `dist.ini`, dune's `dune`, `dune-project` and
+`dune-workspace`, opam's `opam`, `opam.locked` and `*.opam.locked`, the
+shells' and direnv's startup files (`.bashrc`,
 `.zshrc`, `.profile`, `.envrc` and the others of REQ-SHELL-001), and the
 Dockerfile names of REQ-DOCKER-001), or, for a file neither names, from a
 `#!` line running a shell (REQ-SHELL-001) or perl (REQ-PERL-001), and
@@ -73,3 +75,6 @@ Objective-C from MATLAB, Mercury and C.
 4. `ios/Podfile` and `Shop.podspec` are Ruby, `Podfile.lock` YAML,
    `Cartfile` Carthage and `Store.mm` Objective-C++; a `.m` file of MATLAB
    code is MATLAB and one declaring `:- module` Mercury.
+5. `lib/cart.ml`, `lib/cart.mli` and `lib/lexer.mll` are OCaml,
+   `lib/parser.mly` is Menhir, `lib/dune` and `dune-project` are Dune, and
+   `shop.opam` and `shop.opam.locked` are opam.

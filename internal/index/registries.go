@@ -22,6 +22,7 @@ import (
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/luarocks"
+	"github.com/sarumaj/depphunter-cli/internal/lang/opam"
 	"github.com/sarumaj/depphunter-cli/internal/store"
 )
 
@@ -1616,4 +1617,39 @@ func (c *Client) cpanModule(ctx context.Context, base, module string) (string, e
 	c.mu.Unlock()
 	c.cache.Put(key, dist)
 	return dist, nil
+}
+
+// ---------------------------------------------------------------- opam
+
+// opamPackage reads a package's dependencies from an opam repository laid out as
+// files: <repository>/packages/<name>/<name>.<version>/opam, which needs the
+// version (a pinned one; a range is not asked about). The dependencies are its
+// depends without the compiler and what only tests, documentation or development
+// need; a dependency written {= "1.2"} is that version, else its constraint as
+// written.
+//
+// Implements: REQ-SUP-054
+func (c *Client) opamPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+	name, version := url.PathEscape(t.Package), url.PathEscape(strings.TrimSpace(t.Version))
+	body, err := c.accept(ctx, strings.TrimRight(index, "/")+"/packages/"+name+"/"+name+"."+version+"/opam", "text/plain")
+	if err != nil {
+		return nil, err
+	}
+	var out []dep
+	seen := map[string]bool{t.Package: true}
+	for _, d := range opam.Read(body).Depends {
+		if seen[d.Name] || opam.Compiler(d.Name) || slices.ContainsFunc(d.Flags, func(f string) bool {
+			return f == "with-test" || f == "with-doc" || f == "with-dev-setup" || f == "dev"
+		}) {
+			continue
+		}
+		seen[d.Name] = true
+		v := d.Exact
+		if v == "" {
+			v = d.Constraint
+		}
+		out = append(out, dep{Name: d.Name, Version: v})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
 }
