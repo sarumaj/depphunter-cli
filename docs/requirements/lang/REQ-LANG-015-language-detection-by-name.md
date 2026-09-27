@@ -25,8 +25,10 @@ Haskell's `cabal.project`, `stack.yaml` and `package.yaml`, Terraform's
 `Cartfile.resolved`, LuaRocks' `luarocks.lock`, luacheck's `.luacheckrc` and
 busted's `.busted`, Perl's `cpanfile`, Carton's `cpanfile.snapshot` and
 Dist::Zilla's `dist.ini`, dune's `dune`, `dune-project` and
-`dune-workspace`, opam's `opam`, `opam.locked` and `*.opam.locked`, the
-shells' and direnv's startup files (`.bashrc`,
+`dune-workspace`, opam's `opam`, `opam.locked` and `*.opam.locked`, Julia
+Pkg's `Project.toml`, `JuliaProject.toml`, `Manifest.toml`,
+`JuliaManifest.toml`, versioned `Manifest-vX.Y.toml` and `Artifacts.toml`,
+the shells' and direnv's startup files (`.bashrc`,
 `.zshrc`, `.profile`, `.envrc` and the others of REQ-SHELL-001), and the
 Dockerfile names of REQ-DOCKER-001), or, for a file neither names, from a
 `#!` line running a shell (REQ-SHELL-001) or perl (REQ-PERL-001), and
@@ -78,3 +80,6 @@ Objective-C from MATLAB, Mercury and C.
 5. `lib/cart.ml`, `lib/cart.mli` and `lib/lexer.mll` are OCaml,
    `lib/parser.mly` is Menhir, `lib/dune` and `dune-project` are Dune, and
    `shop.opam` and `shop.opam.locked` are opam.
+6. `src/Shop.jl`, `Project.toml`, `docs/JuliaProject.toml`,
+   `Manifest.toml`, `Manifest-v1.11.toml`, `JuliaManifest-v1.12.toml` and
+   `Artifacts.toml` are Julia.

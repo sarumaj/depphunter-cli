@@ -1,0 +1,6 @@
+manifest_format = "2.0"
+
+[[deps.DataFrames]]
+git-tree-sha1 = "0000000000000000000000000000000000000001"
+uuid = "a93c6f00-e57d-5684-b7b6-d8193f3e46c0"
+version = "1.6.0"

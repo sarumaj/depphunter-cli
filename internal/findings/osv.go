@@ -57,6 +57,9 @@ var osvEcosystems = map[string]string{
 	// OCaml packages are opam-repository's; the compiler's own libraries (ocaml-std)
 	// are not asked about.
 	"opam": "opam",
+	// Julia packages are the General registry's (by name, as OSV's Julia ecosystem
+	// names them); Julia's standard libraries (julia-std) are not asked about.
+	"julia": "Julia",
 }
 
 // Package is one thing to ask the database about: a dependency pinned to a version.

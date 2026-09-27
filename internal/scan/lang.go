@@ -36,6 +36,8 @@ var byName = map[string]string{
 	"cpanfile": "Perl", "cpanfile.snapshot": "Carton", "dist.ini": "Dist::Zilla",
 	"luarocks.lock": "Lua", ".luacheckrc": "Lua", ".busted": "Lua",
 	"DESCRIPTION": "R", "NAMESPACE": "R", "renv.lock": "R", "packrat.lock": "R",
+	"Project.toml": "Julia", "JuliaProject.toml": "Julia", "Manifest.toml": "Julia", "JuliaManifest.toml": "Julia",
+	"Artifacts.toml": "Julia", "JuliaArtifacts.toml": "Julia",
 	"dune": "Dune", "dune-project": "Dune", "dune-workspace": "Dune", "opam": "opam", "opam.locked": "opam",
 	"cabal.project": "Cabal", "cabal.project.freeze": "Cabal", "cabal.project.local": "Cabal",
 	"stack.yaml": "Haskell", "stack.yaml.lock": "Haskell", "package.yaml": "Haskell",
@@ -63,6 +65,9 @@ func Language(p string) string {
 	}
 	if strings.HasSuffix(strings.ToLower(base), ".cmake.in") {
 		return "CMake" // a package configuration template
+	}
+	if strings.HasPrefix(strings.TrimPrefix(base, "Julia"), "Manifest-v") && strings.HasSuffix(base, ".toml") {
+		return "Julia" // a manifest for one Julia version: Manifest-v1.11.toml
 	}
 	if strings.HasSuffix(base, ".opam.locked") {
 		return "opam" // what opam lock writes

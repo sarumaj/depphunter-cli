@@ -128,6 +128,7 @@ The server **shall** ...
 | `lua`       | The Lua, Luau and Teal plugin, LuaRocks (rockspecs, luarocks.lock), Wally and Rojo projects.   |
 | `perl`      | The Perl plugin, CPAN manifests, Carton's snapshot and MetaCPAN.                               |
 | `ocaml`     | The OCaml plugin, dune, opam manifests and locks, and opam-repository.                         |
+| `julia`     | The Julia plugin, Pkg's projects, manifests and artifacts, and the General registry.           |
 | `terraform` | The Terraform and OpenTofu plugin, lock files, Terragrunt and the module registries.           |
 | `proto`     | The Protocol Buffers plugin, Buf's configuration and lock files and the Buf Schema Registry.   |
 | `shell`     | The shell script plugin (sh, Bash, zsh, bats), direnv and packages scripts install.            |
@@ -267,6 +268,11 @@ requirements of type `limitation` in their scopes:
   rewriters are not followed, a package's modules are matched by name, dune
   rules are not run, and `--online` reads opam-repository only for packages
   pinned to a version.
+- Julia is read without running Julia: includes of computed paths,
+  `LOAD_PATH` changes and `@eval`-generated modules are not followed,
+  `import A.b` is read as a module path, a version is not resolved without a
+  manifest, and registries other than General are known only when installed
+  in a depot and hosted on GitHub.
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

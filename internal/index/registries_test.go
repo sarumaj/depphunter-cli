@@ -9,6 +9,8 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
 	"reflect"
 	"strings"
 	"testing"
@@ -919,5 +921,141 @@ depopts: ["base-threads" "base-unix" "conf-libev"]
 	}
 	if idx, known := Discover(nil, env(nil), "").For(Opam, "lwt"); idx != "https://raw.githubusercontent.com/ocaml/opam-repository/master" || !known {
 		t.Errorf("default index: %s (known %v)", idx, known)
+	}
+}
+
+// A Julia registry serves each package's files: Versions.toml picks the version (the
+// pinned one, else the newest the compat range admits, never a yanked one), and the
+// sections of Deps.toml and Compat.toml whose range keys hold for it are the answer.
+// Standard libraries are julia-std, julia itself is left out, and a registry other
+// than General says where its packages are in its Registry.toml.
+//
+// Verifies: REQ-SUP-055
+func TestJuliaDependencies(t *testing.T) {
+	var asked []string
+	files := map[string]string{
+		"/Registry.toml": `name = "Corp"
+uuid = "11111111-2222-3333-4444-555555555555"
+repo = "https://github.com/acme/CorpRegistry.git"
+
+[packages]
+682c06a0-de6a-54ab-a142-c8b1cf79cde6 = { name = "JSON", path = "J/JSON" }
+`,
+		"/J/JSON/Versions.toml": `["0.20.0"]
+git-tree-sha1 = "a"
+
+["0.21.3"]
+git-tree-sha1 = "b"
+
+["0.21.4"]
+git-tree-sha1 = "c"
+
+["1.0.0"]
+git-tree-sha1 = "d"
+yanked = true
+`,
+		"/J/JSON/Deps.toml": `[0]
+Mmap = "a63ad114-7e13-5084-954f-fe012c677804"
+
+["0 - 0.20"]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+["0.21 - 0"]
+Dates = "ade2ca70-3891-5945-98fb-dc099432e06a"
+Parsers = "69de0a69-1ddd-5017-9359-2bf0b02dc9f0"
+
+["0.21.4 - 0"]
+PrecompileTools = "aea7be01-6a6a-4083-8856-8a6e6704d82a"
+`,
+		"/J/JSON/Compat.toml": `[0]
+julia = ["0.7", "1"]
+
+["0.21 - 0.21.3"]
+Parsers = "0.0.0-1"
+
+["0.21.4 - 0"]
+Parsers = ["1-2", "3"]
+PrecompileTools = "1.2.1"
+`,
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Path)
+		body, ok := files[r.URL.Path]
+		if !ok {
+			http.NotFound(w, r)
+			return
+		}
+		w.Write([]byte(body))
+	}))
+	defer srv.Close()
+	c := clientFor(t, Julia, srv.URL, "")
+	want := []lang.Target{
+		{Ecosystem: "julia-std", Package: "Dates"},
+		{Ecosystem: "julia-std", Package: "Mmap"},
+		{Ecosystem: Julia, Package: "Parsers", Version: "1 - 2, 3"},
+		{Ecosystem: Julia, Package: "PrecompileTools", Version: "1.2.1", Pinned: true},
+	}
+	if got := c.Dependencies(lang.Target{Ecosystem: Julia, Package: "JSON", Version: "0.21.4", Pinned: true}); !reflect.DeepEqual(got, want) {
+		t.Errorf("0.21.4: got %+v, want %+v", got, want)
+	}
+	// A compat range and no version at all both come to 0.21.4: 1.0.0 is yanked.
+	for _, v := range []string{"0.21", ""} {
+		if got := c.Dependencies(lang.Target{Ecosystem: Julia, Package: "JSON", Version: v}); !reflect.DeepEqual(got, want) {
+			t.Errorf("%q: got %+v, want %+v", v, got, want)
+		}
+	}
+	got := c.Dependencies(lang.Target{Ecosystem: Julia, Package: "JSON", Version: "0.21.3", Pinned: true})
+	if want := []lang.Target{
+		{Ecosystem: "julia-std", Package: "Dates"},
+		{Ecosystem: "julia-std", Package: "Mmap"},
+		{Ecosystem: Julia, Package: "Parsers", Version: "0.0.0 - 1"},
+	}; !reflect.DeepEqual(got, want) {
+		t.Errorf("0.21.3: got %+v, want %+v", got, want)
+	}
+	if n := strings.Count(strings.Join(asked, " "), "/Registry.toml"); n != 1 {
+		t.Errorf("Registry.toml asked %d times: %v", n, asked)
+	}
+	if idx, known := Discover(nil, env(nil), "").For(Julia, "JSON"); idx != "https://raw.githubusercontent.com/JuliaRegistries/General/master" || !known {
+		t.Errorf("default index: %s (known %v)", idx, known)
+	}
+}
+
+// A registry installed in a Julia depot, other than General, serves the packages it
+// lists from its GitHub repository's files; the others stay with General.
+//
+// Verifies: REQ-SUP-055
+func TestJuliaRegistryDiscovery(t *testing.T) {
+	home := t.TempDir()
+	for name, body := range map[string]string{
+		"General": `name = "General"
+repo = "https://github.com/JuliaRegistries/General.git"
+[packages]
+682c06a0-de6a-54ab-a142-c8b1cf79cde6 = { name = "JSON", path = "J/JSON" }
+`,
+		"Corp": `name = "Corp"
+repo = "git@gitlab.corp.test:acme/registry.git"
+`,
+		"Acme": `name = "Acme"
+repo = "https://github.com/acme/AcmeRegistry.git"
+[packages]
+11111111-1111-1111-1111-111111111111 = { name = "AcmeBilling", path = "A/AcmeBilling" }
+`,
+	} {
+		dir := filepath.Join(home, ".julia", "registries", name)
+		os.MkdirAll(dir, 0o755)
+		os.WriteFile(filepath.Join(dir, "Registry.toml"), []byte(body), 0o644)
+	}
+	cfg := Discover(nil, env(nil), home)
+	if idx, known := cfg.For(Julia, "AcmeBilling"); idx != "https://raw.githubusercontent.com/acme/AcmeRegistry/HEAD" || !known {
+		t.Errorf("AcmeBilling: %s (known %v)", idx, known)
+	}
+	if idx, _ := cfg.For(Julia, "JSON"); idx != "https://raw.githubusercontent.com/JuliaRegistries/General/master" {
+		t.Errorf("JSON: %s", idx)
+	}
+	// JULIA_DEPOT_PATH replaces the default depot.
+	other := t.TempDir()
+	cfg = Discover(nil, env(map[string]string{"JULIA_DEPOT_PATH": other}), home)
+	if idx, _ := cfg.For(Julia, "AcmeBilling"); idx != "https://raw.githubusercontent.com/JuliaRegistries/General/master" {
+		t.Errorf("depot path not followed: %s", idx)
 	}
 }

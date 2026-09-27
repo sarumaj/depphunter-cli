@@ -2,7 +2,7 @@ package scan
 
 import "testing"
 
-// Verifies: REQ-LANG-015, REQ-DOCKER-001, REQ-SHELL-001, REQ-OBJC-001, REQ-LUA-001, REQ-PERL-001, REQ-OCAML-001
+// Verifies: REQ-LANG-015, REQ-DOCKER-001, REQ-SHELL-001, REQ-OBJC-001, REQ-LUA-001, REQ-PERL-001, REQ-OCAML-001, REQ-JULIA-001
 func TestLanguageByName(t *testing.T) {
 	for p, want := range map[string]string{
 		"a.go":                           "Go",
@@ -64,6 +64,13 @@ func TestLanguageByName(t *testing.T) {
 		"dune-project":                   "Dune",
 		"shop.opam":                      "opam",
 		"shop.opam.locked":               "opam",
+		"src/Shop.jl":                    "Julia",
+		"Project.toml":                   "Julia",
+		"docs/JuliaProject.toml":         "Julia",
+		"Manifest.toml":                  "Julia",
+		"Manifest-v1.11.toml":            "Julia",
+		"JuliaManifest-v1.12.toml":       "Julia",
+		"Artifacts.toml":                 "Julia",
 		"Cartfile.resolved":              "Carthage",
 		"Sources/Store.mm":               "Objective-C++",
 		"cmake/Deps.cmake":               "CMake",
