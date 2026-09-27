@@ -1,6 +1,8 @@
 // Package javascript analyzes JavaScript and TypeScript with tree-sitter and resolves
 // imports through relative paths, tsconfig/jsconfig "paths", workspace packages,
-// package.json dependencies and package-lock.json versions.
+// package.json dependencies and package-lock.json versions. Vue, Svelte and Astro
+// components belong to the same ecosystem: their script blocks are read with the
+// same grammars and resolved by the same resolver (component.go).
 package javascript
 
 import (
@@ -83,7 +85,10 @@ type Plugin struct{}
 
 func (Plugin) Name() string { return "javascript" }
 
-func (Plugin) Claims(f *scan.File) bool { return grammarFor(f.Path) != nil && !f.Binary }
+// Implements: REQ-JS-012
+func (Plugin) Claims(f *scan.File) bool {
+	return (grammarFor(f.Path) != nil || component(f.Path)) && !f.Binary
+}
 
 // Implements: REQ-JS-005
 func (Plugin) Ecosystems() []lang.Ecosystem {
@@ -93,17 +98,29 @@ func (Plugin) Ecosystems() []lang.Ecosystem {
 	}
 }
 
-func (Plugin) Version() int { return 1 }
+func (Plugin) Version() int { return 2 }
 
 func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 	return newResolver(all), nil
 }
 
-// Implements: REQ-JS-001, REQ-JS-011, REQ-LANG-024
+// Implements: REQ-JS-001, REQ-JS-011, REQ-JS-012, REQ-LANG-024
 func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 	ex := &lang.Extraction{}
 	var symbols lang.SymbolSet
-	err := grammarFor(f.Path).Matches(src, func(m treesitter.Match) {
+	var err error
+	if g := grammarFor(f.Path); g != nil {
+		err = extract(g, src, ex, &symbols)
+	} else {
+		err = extractComponent(f.Path, src, ex, &symbols)
+	}
+	ex.Symbols = symbols.List()
+	return ex, err
+}
+
+// extract adds the imports and top-level definitions g finds in src.
+func extract(g *treesitter.Grammar, src []byte, ex *lang.Extraction, symbols *lang.SymbolSet) error {
+	return g.Matches(src, func(m treesitter.Match) {
 		for _, c := range m {
 			switch {
 			case c.Name == "import":
@@ -123,6 +140,4 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 			}
 		}
 	})
-	ex.Symbols = symbols.List()
-	return ex, err
 }

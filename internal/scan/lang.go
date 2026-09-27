@@ -19,7 +19,7 @@ var byExt = map[string]string{
 	".zig": "Zig", ".nim": "Nim", ".jl": "Julia",
 	".sh": "Shell", ".bash": "Shell", ".zsh": "Shell", ".ps1": "PowerShell", ".psm1": "PowerShell", ".psd1": "PowerShell",
 	".html": "HTML", ".htm": "HTML", ".css": "CSS", ".scss": "CSS", ".sass": "CSS", ".less": "CSS",
-	".vue": "Vue", ".svelte": "Svelte",
+	".vue": "Vue", ".svelte": "Svelte", ".astro": "Astro",
 	".json": "JSON", ".yaml": "YAML", ".yml": "YAML", ".toml": "TOML", ".xml": "XML",
 	".md": "Markdown", ".mdx": "Markdown", ".rst": "reStructuredText", ".txt": "Text",
 	".sql": "SQL", ".proto": "Protobuf", ".graphql": "GraphQL", ".tf": "Terraform",

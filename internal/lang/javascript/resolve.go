@@ -27,8 +27,10 @@ func init() {
 	// cSpell: enable
 }
 
-// Extensions tried, in order, for extension-less specifiers (TypeScript's order first).
-var probeExts = []string{".ts", ".tsx", ".d.ts", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts", ".json"}
+// Extensions tried, in order, for extension-less specifiers (TypeScript's order
+// first). ".vue" comes last: Vue CLI and webpack setups resolve "./Button" to
+// Button.vue, and nothing else is found under that name when it applies.
+var probeExts = []string{".ts", ".tsx", ".d.ts", ".js", ".jsx", ".mjs", ".cjs", ".mts", ".cts", ".json", ".vue"}
 
 type resolver struct {
 	files   map[string]bool
@@ -37,6 +39,7 @@ type resolver struct {
 	locks   map[string]map[string]string // package-lock.json dir -> package -> exact version
 	byName  map[string]string            // workspace package name -> its directory
 	configs map[string]*tsconfig         // directory -> effective tsconfig/jsconfig
+	kits    map[string]bool              // directories holding a SvelteKit svelte.config
 	tree    *tree                        // what the lock files say the packages need
 }
 
@@ -54,7 +57,7 @@ func newResolver(all []*scan.File) *resolver {
 	r := &resolver{
 		files: map[string]bool{}, dirs: map[string]bool{}, deps: map[string]map[string]string{},
 		locks: map[string]map[string]string{}, byName: map[string]string{}, configs: map[string]*tsconfig{},
-		tree: newTree(),
+		kits: map[string]bool{}, tree: newTree(),
 	}
 	byPath := map[string]*scan.File{}
 	for _, f := range all {
@@ -68,6 +71,8 @@ func newResolver(all []*scan.File) *resolver {
 	for _, f := range all {
 		dir := path.Dir(f.Path)
 		switch path.Base(f.Path) {
+		case "svelte.config.js", "svelte.config.mjs", "svelte.config.cjs", "svelte.config.ts":
+			r.kits[dir] = true
 		case "package.json":
 			var pj struct {
 				Name                                                                  string
@@ -176,13 +181,39 @@ func (r *resolver) resolve(spec, from string) lang.Target {
 		}
 		return lang.Target{Local: packageDir}
 	}
+	if t, ok := r.svelteKit(spec, dir); ok {
+		return t
+	}
 	// Bundler aliases and package.json "imports" we cannot see: not an npm package.
-	if strings.HasPrefix(spec, "~") || strings.HasPrefix(spec, "#") || strings.HasPrefix(spec, "@/") {
+	// Neither is anything with a "$" or ":", which an npm name cannot hold: the
+	// modules a framework generates, as SvelteKit's $app and $env, Astro's
+	// astro:content and Vite's virtual: plugins.
+	if strings.ContainsAny(spec, "$:") || strings.HasPrefix(spec, "~") || strings.HasPrefix(spec, "#") || strings.HasPrefix(spec, "@/") {
 		return lang.Target{}
 	}
 	t, declared := r.declared(pkg, dir)
 	t.Ecosystem, t.Package, t.Unresolved = ecoNPM, pkg, !declared
 	return t
+}
+
+// svelteKit resolves SvelteKit's $lib alias to src/lib beside the nearest
+// svelte.config, the directory the framework points it at unless configured
+// otherwise.
+//
+// Implements: REQ-JS-015
+func (r *resolver) svelteKit(spec, dir string) (lang.Target, bool) {
+	rest, ok := strings.CutPrefix(spec, "$lib")
+	if !ok || rest != "" && rest[0] != '/' {
+		return lang.Target{}, false
+	}
+	for d := dir; ; d = path.Dir(d) {
+		if r.kits[d] {
+			return r.probe(path.Join(d, "src/lib", rest))
+		}
+		if d == "." {
+			return lang.Target{}, false
+		}
+	}
 }
 
 // splitPackage splits "@scope/name/sub/path" into "@scope/name" and "sub/path".

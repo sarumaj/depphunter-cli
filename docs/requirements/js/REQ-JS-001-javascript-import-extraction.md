@@ -17,7 +17,8 @@ extensions `.js`, `.jsx`, `.mjs`, `.cjs`, `.ts`, `.mts`, `.cts` and `.tsx`,
 parse each with the matching grammar (JavaScript, TypeScript or TSX), and
 extract as imports the module specifiers of `import` declarations, `export …
 from` declarations, `require("…")` calls, dynamic `import("…")` calls and
-TypeScript `import x = require("…")`.
+TypeScript `import x = require("…")`. Vue, Svelte and Astro components are
+read the same way, block by block (REQ-JS-012).
 
 ## Rationale
 

@@ -3,6 +3,7 @@ package javascript
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"testing"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
@@ -179,6 +180,153 @@ func TestPnpmKeys(t *testing.T) {
 		name, version := pnpmKey(c.key)
 		if name != c.name || version != c.version {
 			t.Errorf("%s: got %q %q, want %q %q", c.key, name, version, c.name, c.version)
+		}
+	}
+}
+
+// Verifies: REQ-JS-002, REQ-JS-006, REQ-JS-012, REQ-JS-013
+func TestComponentImports(t *testing.T) {
+	res := analyze(t)
+	vue := lang.Target{Ecosystem: "npm", Package: "vue", Unresolved: true}
+	// Both script blocks count; none of the <script> text in the template, the
+	// comment, the mustache or the style does.
+	langtest.CheckImports(t, res["src/ui/Counter.vue"], map[string]lang.Target{
+		"vue":           vue,
+		"./Child.vue":   {Local: "src/ui/Child.vue"},
+		"@app/lib/math": {Local: "src/lib/math.ts"},
+		"chalk":         {Ecosystem: "npm", Package: "chalk", Version: "^5.3.0"},
+	})
+	langtest.CheckImports(t, res["src/ui/Child.vue"], map[string]lang.Target{
+		"./child.ts": {Local: "src/ui/child.ts"},
+	})
+	// The module script and the instance script; not the scripts in <svelte:head>,
+	// in an attribute or in an expression.
+	langtest.CheckImports(t, res["src/ui/Widget.svelte"], map[string]lang.Target{
+		"./types":       {Local: "src/ui/types.ts"},
+		"./Counter.vue": {Local: "src/ui/Counter.vue"},
+		"svelte":        {Ecosystem: "npm", Package: "svelte", Unresolved: true},
+	})
+	// The frontmatter and the processed template scripts; inline and data scripts
+	// are left as written by Astro.
+	langtest.CheckImports(t, res["src/pages/index.astro"], map[string]lang.Target{
+		"../ui/Widget.svelte": {Local: "src/ui/Widget.svelte"},
+		"node:path":           {Ecosystem: "node", Package: "path"},
+		"@app/lib/math":       {Local: "src/lib/math.ts"},
+		"astro:content":       {},
+		"react":               {Ecosystem: "npm", Package: "react", Version: "18.3.1", Requested: "^18.2.0", Pinned: true},
+		"../ui/child.ts":      {Local: "src/ui/child.ts"},
+	})
+	// Components are imported by their full name from JavaScript and TypeScript.
+	langtest.CheckImports(t, res["src/ui/main.ts"], map[string]lang.Target{
+		"./Counter.vue":        {Local: "src/ui/Counter.vue"},
+		"./Widget.svelte":      {Local: "src/ui/Widget.svelte"},
+		"../pages/index.astro": {Local: "src/pages/index.astro"},
+		"./Counter":            {Local: "src/ui/Counter.vue"},
+	})
+}
+
+// TestComponentLines checks that what a block declares and imports is placed on
+// the component's own lines, not the block's.
+//
+// Verifies: REQ-JS-012, REQ-JS-014
+func TestComponentLines(t *testing.T) {
+	res := analyze(t)
+	lines := map[string]int{}
+	for _, file := range []string{"src/ui/Counter.vue", "src/ui/Child.vue", "src/pages/index.astro"} {
+		for _, im := range res[file].Imports {
+			lines[file+" "+im.Spec] = im.Line
+		}
+	}
+	for key, want := range map[string]int{
+		"src/ui/Counter.vue ./Child.vue":       18,
+		"src/ui/Counter.vue chalk":             20,
+		"src/ui/Child.vue ./child.ts":          2,
+		"src/pages/index.astro node:path":      3,
+		"src/pages/index.astro react":          18,
+		"src/pages/index.astro ../ui/child.ts": 22,
+	} {
+		if lines[key] != want {
+			t.Errorf("%s: line %d, want %d", key, lines[key], want)
+		}
+	}
+	symbolLines := map[string]int{}
+	for _, s := range res["src/ui/Counter.vue"].Symbols {
+		symbolLines[s.Name] = s.Line
+	}
+	if symbolLines["increment"] != 24 || symbolLines["Counter"] != 1 {
+		t.Errorf("Counter.vue symbols at %v, want increment on 24 and the component on 1", symbolLines)
+	}
+}
+
+// Verifies: REQ-JS-014
+func TestComponentSymbols(t *testing.T) {
+	res := analyze(t)
+	for file, want := range map[string]map[string]string{
+		"src/ui/Counter.vue":   {"Counter": "component", "count": "var", "closing": "var", "increment": "func"},
+		"src/ui/Child.vue":     {"Child": "component"},
+		"src/ui/Widget.svelte": {"Widget": "component", "preload": "func", "name": "var", "greet": "func"},
+		// Destructured names (const { title } = Astro.props) are not symbols, as
+		// in any script.
+		"src/pages/index.astro": {"index": "component", "heading": "func"},
+	} {
+		if got := langtest.Symbols(t, res[file]); !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: symbols %v, want %v", file, got, want)
+		}
+	}
+}
+
+// Verifies: REQ-JS-015, REQ-JS-006
+func TestSvelteKitAliases(t *testing.T) {
+	res := langtest.Analyze(t, Plugin{}, "testdata/sveltekit")
+	langtest.CheckImports(t, res["src/routes/+page.svelte"], map[string]lang.Target{
+		"$lib":                {Local: "src/lib/index.ts"},
+		"$lib/format":         {Local: "src/lib/format.ts"},
+		"$app/navigation":     {},
+		"$env/dynamic/public": {},
+		"@sveltejs/kit":       {Ecosystem: "npm", Package: "@sveltejs/kit", Version: "^2.0.0"},
+	})
+}
+
+// TestComponentScanner covers blocks the fixtures do not: other script languages,
+// data blocks, and components cut off anywhere - the scanner must neither panic
+// nor read past the end.
+//
+// Verifies: REQ-JS-012, REQ-JS-013
+func TestComponentScanner(t *testing.T) {
+	blocks := func(ext, src string) []string {
+		var out []string
+		for _, s := range componentScripts(ext, []byte(src)) {
+			out = append(out, src[s.start:s.end]+"|"+s.src)
+		}
+		return out
+	}
+	for _, c := range []struct {
+		ext, src string
+		want     []string
+	}{
+		{".vue", `<script lang="coffee">x = 1</script><script>a</script>`, []string{"a|"}},
+		{".vue", `<script type="text/x-template">t</script><SCRIPT LANG="TS">b</Script >`, []string{"b|"}},
+		{".vue", `<script setup lang="ts" generic="T extends Record<string, any>">c</script>`, []string{"c|"}},
+		{".svelte", `<script>d</scripts></script>`, []string{"d</scripts>|"}},
+		{".svelte", "<p>{'}'}</p><script>e</script>", []string{"e|"}},
+		{".astro", "\n---\nf\n---\n<script src=\"./g.ts\" />", []string{"f\n|", "|./g.ts"}},
+		{".astro", "<p>no frontmatter</p><script>h</script>", []string{"h|"}},
+	} {
+		if got := blocks(c.ext, c.src); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s %q: blocks %q, want %q", c.ext, c.src, got, c.want)
+		}
+	}
+	for _, file := range []string{"testdata/repo/src/ui/Counter.vue", "testdata/repo/src/ui/Widget.svelte", "testdata/repo/src/pages/index.astro"} {
+		src, err := os.ReadFile(file)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for n := range src {
+			for _, s := range componentScripts(filepath.Ext(file), src[:n]) {
+				if s.start > s.end || s.end > n {
+					t.Fatalf("%s cut at %d: block %d..%d", file, n, s.start, s.end)
+				}
+			}
 		}
 	}
 }
