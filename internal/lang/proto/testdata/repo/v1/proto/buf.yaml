@@ -1,0 +1,9 @@
+version: v1
+name: buf.build/acme/billing
+deps:
+  - buf.build/googleapis/googleapis
+  - buf.build/envoyproxy/protoc-gen-validate:v1.0.4
+  - buf.build/acme/payments
+lint:
+  use:
+    - DEFAULT

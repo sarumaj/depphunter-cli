@@ -1,0 +1,13 @@
+syntax = "proto3";
+
+package com.acme;
+
+import "com/acme/items.proto";
+import "google/protobuf/any.proto";
+import "gogoproto/gogo.proto";
+import "common/v1/types.proto";
+import "mystery/v1/thing.proto";
+
+message Order {
+  repeated Item items = 1;
+}

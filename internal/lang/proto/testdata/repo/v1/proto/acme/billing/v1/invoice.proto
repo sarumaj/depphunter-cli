@@ -1,0 +1,53 @@
+// Invoices.
+syntax = "proto3";
+
+package acme.billing.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/api/annotations.proto";
+import "validate/validate.proto";
+import "acme/billing/v1/money.proto";
+import "common/v1/types.proto";
+import "payments/v1/pay.proto";
+import weak "acme/billing/v1/legacy.proto";
+
+option go_package = "example.com/billing/v1;billingv1";
+option (common.v1.file_meta) = { owner: "billing" tags: ["a", "b"] };
+
+/* A message, a field named message
+   and a nested enum. */
+message Invoice {
+  string id = 1 [(validate.rules).string = {min_len: 1}];
+  string message = 2;
+  Money total = 3;
+  google.protobuf.Timestamp issued = 4;
+
+  message Line {
+    string sku = 1;
+    enum Kind {
+      KIND_UNSPECIFIED = 0;
+      KIND_GOODS = 1 [(common.v1.label) = "goods"];
+    }
+  }
+
+  oneof payer {
+    string account = 5;
+    string card = 6;
+  }
+}
+
+enum Status {
+  STATUS_UNSPECIFIED = 0;
+}
+
+service InvoiceService {
+  option (common.v1.service_meta) = { tier: 1 };
+  rpc GetInvoice(GetInvoiceRequest) returns (Invoice) {
+    option (google.api.http) = { get: "/v1/{id=invoices/*}" };
+  }
+  rpc ListInvoices(stream GetInvoiceRequest) returns (stream Invoice);
+}
+
+message GetInvoiceRequest {
+  string id = 1;
+}

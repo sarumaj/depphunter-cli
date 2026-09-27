@@ -26,8 +26,9 @@ languageserver package (`R --slave -e languageserver::run()`, R and R
 Markdown) and haskell-language-server (`haskell-language-server-wrapper
 --lsp` or `haskell-language-server --lsp`, Haskell and literate Haskell) and
 terraform-ls or tofu-ls (`terraform-ls serve` or `tofu-ls serve`, first
-installed; Terraform, OpenTofu and variable files), skipping a server that is
-not installed.
+installed; Terraform, OpenTofu and variable files) and Buf's language server,
+bufls or protols (`buf lsp serve`, `bufls serve` or `protols`, first
+installed; Protocol Buffers), skipping a server that is not installed.
 
 ## Rationale
 

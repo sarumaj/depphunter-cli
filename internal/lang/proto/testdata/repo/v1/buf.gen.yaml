@@ -1,0 +1,8 @@
+version: v1
+plugins:
+  - plugin: buf.build/protocolbuffers/go:v1.31.0
+    out: gen/go
+  - plugin: go-grpc
+    out: gen/go
+  - remote: buf.build/grpc/go
+    out: gen/go

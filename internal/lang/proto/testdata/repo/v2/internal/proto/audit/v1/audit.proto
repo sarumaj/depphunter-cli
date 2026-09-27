@@ -1,0 +1,14 @@
+syntax = "proto2";
+
+package audit.v1;
+
+import "google/protobuf/descriptor.proto";
+
+message Entry {
+  optional group Actor = 1 {
+    optional string name = 2;
+  }
+  extend google.protobuf.MessageOptions {
+    optional bool audited = 51000;
+  }
+}

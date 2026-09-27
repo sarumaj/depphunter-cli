@@ -17,7 +17,8 @@ case-insensitively, or from well-known file names (for example `Dockerfile`,
 `Makefile`, `go.mod`, `Gemfile`, `Rakefile`, `rebar.config`, an OTP
 `*.app.src`, R's `DESCRIPTION`, `NAMESPACE`, `renv.lock` and `packrat.lock`,
 Haskell's `cabal.project`, `stack.yaml` and `package.yaml`, Terraform's
-`.terraform.lock.hcl` and `*.tf.json`, Terragrunt's `terragrunt.hcl`, and the
+`.terraform.lock.hcl` and `*.tf.json`, Terragrunt's `terragrunt.hcl`, Buf's
+`buf.yaml`, `buf.work.yaml`, `buf.lock` and `buf.gen.yaml`, and the
 Dockerfile names of REQ-DOCKER-001), and
 **shall** leave the language empty when neither is known.
 
@@ -37,5 +38,7 @@ colors and filters.
    `doc/Tutorial.lhs` and `stack.yaml` are Haskell, `shop.cabal` and
    `cabal.project` are Cabal; `infra/main.tf`, `main.tf.json`, `prod.tfvars`
    and `.terraform.lock.hcl` are Terraform, `main.tofu` is OpenTofu,
-   `terragrunt.hcl` is Terragrunt and `root.hcl` is HCL.
+   `terragrunt.hcl` is Terragrunt and `root.hcl` is HCL; `shop.proto` is
+   Protobuf and `buf.yaml`, `buf.work.yaml`, `buf.lock` and `buf.gen.yaml`
+   are Buf.
 2. A file with an unknown extension has no `lang`.

@@ -1,0 +1,9 @@
+syntax = "proto3";
+
+package com.acme;
+
+import "shared.proto";
+
+message Item {
+  Shared shared = 1;
+}

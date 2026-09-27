@@ -124,6 +124,7 @@ The server **shall** ...
 | `r`         | The R plugin, R Markdown and Quarto documents, renv, packrat, CRAN and Bioconductor.           |
 | `haskell`   | The Haskell plugin, cabal, hpack, stack and Hackage.                                           |
 | `terraform` | The Terraform and OpenTofu plugin, lock files, Terragrunt and the module registries.           |
+| `proto`     | The Protocol Buffers plugin, Buf's configuration and lock files and the Buf Schema Registry.   |
 | `ps`        | The PowerShell plugin.                                                                         |
 | `ci`        | The continuous-integration plugin (GitHub Actions, GitLab CI, container images).               |
 | `docker`    | The Dockerfile and Compose plugin, and the container-image references it shares with `ci`.     |
@@ -230,6 +231,10 @@ requirements of type `limitation` in their scopes:
   expressions are not evaluated, so only literal module sources, paths and
   versions resolve, and no vulnerability database covers Terraform modules or
   providers.
+- Protocol Buffers are read without protoc or buf: protoc's `-I` flags in
+  build scripts are not read (conventional roots stand in for them), and the
+  Buf Schema Registry is not asked about a module's dependencies; no
+  vulnerability database covers its modules.
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

@@ -1,0 +1,14 @@
+syntax = "proto3";
+
+package common.v1;
+
+import "google/protobuf/descriptor.proto";
+
+extend google.protobuf.FileOptions {
+  Meta file_meta = 50000;
+}
+
+message Meta {
+  string owner = 1;
+  repeated string tags = 2;
+}
