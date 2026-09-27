@@ -364,6 +364,8 @@ requirements of type `limitation` in their scopes:
   commit comes from git's index, and neither a submodule's nor a Soldeer
   package's own imports or dependencies are read beyond a checked-out
   submodule's `.gitmodules`.
+- Bun's binary `bun.lockb` is not read: without a `bun.lock` or a `yarn.lock`
+  beside it, a Bun project's npm packages keep their declared ranges.
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

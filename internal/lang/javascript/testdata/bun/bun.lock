@@ -1,0 +1,60 @@
+{
+  "lockfileVersion": 1,
+  "workspaces": {
+    "": {
+      "name": "bun-app",
+      "dependencies": {
+        "@scope/tool": "^1.0.0",
+        "aliased": "npm:real-name@^3.0.0",
+        "forge-std": "github:foundry-rs/forge-std#v1.9.4",
+        "react": "^18.2.0",
+        "tarball-pkg": "https://example.com/tarball-pkg-1.0.0.tgz",
+        "ui": "workspace:*",
+      },
+      "devDependencies": {
+        "typescript": "^5.4.0",
+      },
+    },
+    "packages/ui": {
+      "name": "ui",
+      "dependencies": {
+        "@scope/tool": "^1.1.0",
+        "react": "^17.0.0",
+      },
+    },
+  },
+  /* Bun writes no comments; a person editing the file might. */
+  "trustedDependencies": [
+    "forge-std",
+  ],
+  "overrides": {
+    "js-tokens": "4.0.0",
+  },
+  "packages": {
+    "@scope/dep": ["@scope/dep@2.1.0", "", {}, "sha512-dep2"],
+
+    "@scope/tool": ["@scope/tool@1.2.0", "", { "dependencies": { "@scope/dep": "^1.0.0", "loose-envify": "^1.4.0" } }, "sha512-tool"],
+
+    "aliased": ["real-name@3.0.1", "", {}, "sha512-alias"],
+
+    "forge-std": ["forge-std@github:foundry-rs/forge-std#1eea5ba", {}, "foundry-rs-forge-std-1eea5ba"],
+
+    "js-tokens": ["js-tokens@4.0.0", "", {}, "sha512-tokens"],
+
+    "loose-envify": ["loose-envify@1.4.0", "", { "dependencies": { "js-tokens": "^3.0.0 || ^4.0.0" }, "bin": { "loose-envify": "cli.js" } }, "sha512-envify"],
+
+    "object-assign": ["object-assign@4.1.1", "", {}, "sha512-assign"],
+
+    "react": ["react@18.3.1", "", { "dependencies": { "loose-envify": "^1.1.0" } }, "sha512-react18"],
+
+    "tarball-pkg": ["tarball-pkg@https://example.com/tarball-pkg-1.0.0.tgz", { "dependencies": { "js-tokens": "^4.0.0" } }],
+
+    "typescript": ["typescript@5.4.5", "", { "bin": { "tsc": "bin/tsc", "tsserver": "bin/tsserver" } }, "sha512-ts"],
+
+    "ui": ["ui@workspace:packages/ui"],
+
+    "@scope/tool/@scope/dep": ["@scope/dep@1.0.3", "", {}, "sha512-dep1"],
+
+    "ui/react": ["react@17.0.2", "", { "dependencies": { "loose-envify": "^1.1.0", "object-assign": "^4.1.1" } }, "sha512-react17"],
+  }
+}

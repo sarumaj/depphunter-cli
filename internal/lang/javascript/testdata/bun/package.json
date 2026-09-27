@@ -1,0 +1,13 @@
+{
+  "name": "bun-app",
+  "workspaces": ["packages/*"],
+  "dependencies": {
+    "react": "^18.2.0",
+    "@scope/tool": "^1.0.0",
+    "forge-std": "github:foundry-rs/forge-std#v1.9.4",
+    "aliased": "npm:real-name@^3.0.0",
+    "tarball-pkg": "https://example.com/tarball-pkg-1.0.0.tgz",
+    "ui": "workspace:*"
+  },
+  "devDependencies": { "typescript": "^5.4.0" }
+}

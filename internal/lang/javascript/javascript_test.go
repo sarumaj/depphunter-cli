@@ -372,3 +372,166 @@ func TestQtLinguistTranslationsNotClaimed(t *testing.T) {
 		t.Errorf("claimed %v, want %v", got, want)
 	}
 }
+
+// testdata/bun: a Bun workspace whose bun.lock holds registry packages (scoped
+// and not), a react that the ui workspace has installed under itself at another
+// major version, a GitHub dependency at a commit, an npm alias, a tarball, a
+// workspace entry, trailing commas and a comment.
+//
+// Verifies: REQ-JS-016
+func TestBunLock(t *testing.T) {
+	npm := func(pkg, version, requested string) lang.Target {
+		return lang.Target{Ecosystem: "npm", Package: pkg, Version: version, Requested: requested, Pinned: true}
+	}
+	res := langtest.Analyze(t, Plugin{}, "testdata/bun")
+	langtest.CheckImports(t, res["index.js"], map[string]lang.Target{
+		"react":           npm("react", "18.3.1", "^18.2.0"),
+		"@scope/tool/sub": npm("@scope/tool", "1.2.0", "^1.0.0"),
+		// The lock names the commit Bun fetched for the tag package.json asks for.
+		"forge-std": npm("forge-std", "github:foundry-rs/forge-std#1eea5ba", "github:foundry-rs/forge-std#v1.9.4"),
+		"aliased":   npm("aliased", "3.0.1", "npm:real-name@^3.0.0"),
+		// A tarball names no version: the URL package.json gives is all there is.
+		"tarball-pkg": {Ecosystem: "npm", Package: "tarball-pkg", Version: "https://example.com/tarball-pkg-1.0.0.tgz"},
+		"ui":          {Local: "packages/ui"},
+		// Hoisted in the lock but declared by nobody.
+		"object-assign": {Ecosystem: "npm", Package: "object-assign", Unresolved: true},
+	})
+	langtest.CheckImports(t, res["packages/ui/index.js"], map[string]lang.Target{
+		// "ui/react" is installed under the workspace: it wins over the hoisted 18.
+		"react":       npm("react", "17.0.2", "^17.0.0"),
+		"@scope/tool": npm("@scope/tool", "1.2.0", "^1.1.0"),
+	})
+}
+
+// TestBunLockTree checks the edges --resolve-depth follows out of bun.lock, and
+// that a package installed under its dependent answers for that dependent.
+//
+// Verifies: REQ-SUP-009, REQ-JS-016
+func TestBunLockTree(t *testing.T) {
+	r, err := (Plugin{}).Resolver("testdata/bun", langtest.Files(t, "testdata/bun"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := r.(lang.Transitive)
+	deps := func(pkg string) map[string]lang.Target {
+		out := map[string]lang.Target{}
+		for _, d := range tr.Dependencies(lang.Target{Ecosystem: "npm", Package: pkg}) {
+			out[d.Package] = d
+		}
+		return out
+	}
+	pinned := func(pkg, version string) lang.Target {
+		return lang.Target{Ecosystem: "npm", Package: pkg, Version: version, Pinned: true}
+	}
+	for _, c := range []struct {
+		pkg  string
+		want map[string]lang.Target
+	}{
+		// ui's react 17 adds object-assign to the one react node.
+		{"react", map[string]lang.Target{"loose-envify": pinned("loose-envify", "1.4.0"), "object-assign": pinned("object-assign", "4.1.1")}},
+		// @scope/dep 1.0.3 sits under @scope/tool; the hoisted one is 2.1.0.
+		{"@scope/tool", map[string]lang.Target{"@scope/dep": pinned("@scope/dep", "1.0.3"), "loose-envify": pinned("loose-envify", "1.4.0")}},
+		{"loose-envify", map[string]lang.Target{"js-tokens": pinned("js-tokens", "4.0.0")}},
+		{"tarball-pkg", map[string]lang.Target{"js-tokens": pinned("js-tokens", "4.0.0")}},
+		{"forge-std", map[string]lang.Target{}},
+	} {
+		if got := deps(c.pkg); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s depends on %+v, want %+v", c.pkg, got, c.want)
+		}
+	}
+}
+
+// TestBunLockPrecedence: beside package-lock.json, bun.lock only answers for what
+// the other lock does not hold, so reading it never changes an earlier answer.
+//
+// Verifies: REQ-JS-016
+func TestBunLockPrecedence(t *testing.T) {
+	dir := t.TempDir()
+	for name, body := range map[string]string{
+		"package.json":      `{"dependencies":{"react":"^18.2.0","chalk":"^5.3.0"}}`,
+		"package-lock.json": `{"lockfileVersion":3,"packages":{"":{},"node_modules/react":{"version":"18.2.0"}}}`,
+		"bun.lock": `{"lockfileVersion":1,"workspaces":{"":{"dependencies":{"react":"^18.2.0","chalk":"^5.3.0",},},},
+			"packages":{"react":["react@18.3.1","",{},"sha512-a"],"chalk":["chalk@5.3.0","",{},"sha512-b"],},}`,
+		"index.js": "import 'react';\nimport 'chalk';\n",
+	} {
+		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	langtest.CheckImports(t, langtest.Analyze(t, Plugin{}, dir)["index.js"], map[string]lang.Target{
+		"react": {Ecosystem: "npm", Package: "react", Version: "18.2.0", Requested: "^18.2.0", Pinned: true},
+		"chalk": {Ecosystem: "npm", Package: "chalk", Version: "5.3.0", Requested: "^5.3.0", Pinned: true},
+	})
+}
+
+// TestBunLockShapes covers the pieces of a bun.lock read one at a time, and
+// input that is not a bun.lock at all.
+//
+// Verifies: REQ-JS-016
+func TestBunLockShapes(t *testing.T) {
+	for _, c := range []struct{ key, parent, name string }{
+		{"react", "", "react"},
+		{"@scope/tool", "", "@scope/tool"},
+		{"ui/react", "ui", "react"},
+		{"@scope/tool/@scope/dep", "@scope/tool", "@scope/dep"},
+		{"@a/b/c/@d/e", "@a/b/c", "@d/e"},
+	} {
+		if parent, name := bunKey(c.key); parent != c.parent || name != c.name {
+			t.Errorf("bunKey(%q) = %q %q, want %q %q", c.key, parent, name, c.parent, c.name)
+		}
+	}
+	for _, c := range []struct{ ident, version string }{
+		{"react@18.3.1", "18.3.1"},
+		{"@scope/tool@1.2.0-beta.1", "1.2.0-beta.1"},
+		{"forge-std@github:foundry-rs/forge-std#1eea5ba", "github:foundry-rs/forge-std#1eea5ba"},
+		{"x@git+https://github.com/o/x.git#0123456789abcdef0123456789abcdef01234567", "git+https://github.com/o/x.git#0123456789abcdef0123456789abcdef01234567"},
+		// A git resolution to anything but a commit, and the project's own packages, pin nothing.
+		{"x@github:o/x#main", ""},
+		{"x@github:o/x", ""},
+		{"ui@workspace:packages/ui", ""},
+		{"linked@link:linked", ""},
+		{"folder@file:../folder", ""},
+		{"@solidjs/start@https://pkg.pr.new/@solidjs/start@dfb2020", ""},
+		{"@x", ""},
+		{"", ""},
+	} {
+		if got := bunVersion(bunResolution(c.ident)); got != c.version {
+			t.Errorf("%q: version %q, want %q", c.ident, got, c.version)
+		}
+	}
+	for _, bad := range []string{"", "{", `{"packages":[]}`, `{"workspaces":{"":{"dependencies":{"a":1}}}}`} {
+		if _, err := readBunLock([]byte(bad)); err == nil {
+			t.Errorf("%q read as a bun.lock", bad)
+		}
+	}
+	// Entries of another shape are skipped, not guessed at.
+	lock, err := readBunLock([]byte(`{"packages":{"a":"a@1.0.0","b":[],"c":[1],"d":["d@1.0.0",[],"x",{"dependencies":{"e":"^1"}}],"":["@1"]}}`))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := lock.entries()
+	want := map[string]bunEntry{"d": {name: "d", version: "1.0.0", deps: []string{"e"}}}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("entries %+v, want %+v", got, want)
+	}
+}
+
+// TestBunLockTruncated feeds every prefix of the fixture's bun.lock through the
+// reader: a cut file is an error or a smaller lock, never a panic.
+//
+// Verifies: REQ-JS-016
+func TestBunLockTruncated(t *testing.T) {
+	data, err := os.ReadFile("testdata/bun/bun.lock")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := range data {
+		lock, err := readBunLock(data[:i])
+		if err != nil {
+			continue
+		}
+		entries := lock.entries()
+		lock.versions(entries)
+		newTree().addBunTree(entries)
+	}
+}
