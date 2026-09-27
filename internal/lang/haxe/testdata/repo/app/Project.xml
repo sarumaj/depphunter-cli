@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<project>
+	<meta title="Shop" package="com.acme.shop" version="1.0.0" company="Acme" />
+	<app main="app.Main" path="Export" file="Shop" />
+	<source path="source" />
+	<classpath name="extra" />
+	<haxelib name="openfl" version="9.3.0" />
+	<haxelib name="flixel" />
+	<haxelib name="${custom-backend}" if="custom-backend" />
+	<log warn="Haxe is too old" if="${${haxe} < 3.4.3}" />
+	<include path="shared.xml" />
+	<!-- <haxelib name="commented" /> -->
+	<section if="html5">
+		<haxelib name='howler' version="2.2.0" if="html5" />
+	</section>
+</project>

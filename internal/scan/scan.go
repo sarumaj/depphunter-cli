@@ -55,7 +55,7 @@ var defaultIgnore = map[string]bool{
 	".terraform": true, ".terragrunt-cache": true, "lua_modules": true, "_opam": true,
 	".zig-cache": true, "zig-cache": true, "zig-out": true, "zig-pkg": true,
 	".cpcache": true, ".shadow-cljs": true, "elm-stuff": true, ".spago": true, "bower_components": true,
-	".crystal": true, ".fake": true, ".dub": true,
+	".crystal": true, ".fake": true, ".dub": true, ".haxelib": true,
 }
 
 func Scan(ctx context.Context, root string, opts Options) ([]*File, error) {

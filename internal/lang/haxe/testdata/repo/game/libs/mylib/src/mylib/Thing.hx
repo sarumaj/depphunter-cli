@@ -1,0 +1,3 @@
+package mylib;
+
+class Thing {}

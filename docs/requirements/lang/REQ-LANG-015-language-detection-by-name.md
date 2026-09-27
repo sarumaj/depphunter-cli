@@ -37,7 +37,8 @@ is), Paket's `paket.dependencies`, `paket.lock` and `paket.references`
 (Paket; `.fs`, `.fsi`, `.fsx`, `.fsscript` and `.fsproj` files are F#),
 dub's `dub.sdl` (SDLang; `.d` and `.di` files are D), Fortran's
 extensions (`.f90`, `.f95`, `.f03`, `.f08`, `.f18`, `.f`, `.for`, `.ftn`,
-`.f77`, `.fpp` and fypp's `.fypp`, in either case),
+`.f77`, `.fpp` and fypp's `.fypp`, in either case), Haxe's `.hx` and
+`.hxml`,
 the shells' and direnv's startup files (`.bashrc`,
 `.zshrc`, `.profile`, `.envrc` and the others of REQ-SHELL-001), and the
 Dockerfile names of REQ-DOCKER-001), or, for a file neither names, from a
@@ -120,3 +121,5 @@ Objective-C from MATLAB, Mercury and C.
     `legacy/old.for` and `src/sort.fypp` are Fortran and `fpm.toml` is
     TOML; a `.f` file starting with a `\` comment and a `.for` file starting
     `: cube` are Forth.
+12. `src/shop/Main.hx`, `build.hxml` and `haxe_libraries/tink_core.hxml`
+    are Haxe, and `haxelib.json` is JSON.

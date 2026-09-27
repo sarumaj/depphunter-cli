@@ -1,0 +1,13 @@
+{
+	"name": "shop",
+	"version": "1.0.0",
+	"classPath": "src",
+	"dependencies": {
+		"lime": "",
+		"openfl": "9.2.0",
+		"thx.core": "0.44.0",
+		"fancy": "git:https://git.acme.dev/fancy.git#0123456789abcdef0123456789abcdef01234567",
+		"tagged": "git:https://github.com/acme/tagged#v1.2.0",
+		"branchy": "git:https://github.com/acme/branchy#main"
+	}
+}

@@ -1,0 +1,2 @@
+-cp ${SCOPE_DIR}/libs/mylib/src
+-D mylib=0.1.0
