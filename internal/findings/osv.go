@@ -37,7 +37,8 @@ const (
 // or PureScript packages (OSV has no Elm or PureScript ecosystem), nor Crystal
 // shards (OSV has no Crystal ecosystem), nor the files and repositories Paket
 // fetches from GitHub, git servers and HTTP (F# and C# NuGet packages, Paket's
-// included, are asked about as NuGet), nor dub packages (OSV has no D ecosystem).
+// included, are asked about as NuGet), nor dub packages (OSV has no D ecosystem)
+// nor fpm packages (no Fortran ecosystem either).
 //
 // Implements: REQ-FND-010
 var osvEcosystems = map[string]string{

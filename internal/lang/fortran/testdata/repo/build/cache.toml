@@ -1,0 +1,20 @@
+[shop]
+proj-dir = "."
+
+[fancy]
+version = "0.3.0"
+proj-dir = "build/dependencies/fancy"
+git = "https://git.acme.corp/fortran/fancy.git"
+rev = "0123456789abcdef0123456789abcdef01234567"
+
+[json-fortran]
+version = "8.3.0"
+proj-dir = "build/dependencies/json-fortran"
+git = "https://github.com/jacobwilliams/json-fortran"
+rev = "89abcdef0123456789abcdef0123456789abcdef"
+
+[leftpad]
+version = "1.0.0"
+proj-dir = "build/dependencies/leftpad"
+git = "https://github.com/acme/leftpad"
+rev = "fedcba9876543210fedcba9876543210fedcba98"

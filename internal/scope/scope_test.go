@@ -298,3 +298,18 @@ func TestADubPatternKeepsToDub(t *testing.T) {
 		t.Error("a dub-scoped pattern did not keep to its ecosystem")
 	}
 }
+
+// fpm packages are named by their dependency keys and modules no project
+// provides by their module names; patterns scoped to fpm and fortran-external
+// keep to them.
+//
+// Verifies: REQ-SUP-035
+func TestAnFpmPatternKeepsToFpm(t *testing.T) {
+	p := New([]string{"fpm:acme-*", "fortran-external:acme_*"})
+	if !p.Match("fpm", "acme-solvers") || p.Match("dub", "acme-solvers") || p.Match("fpm", "stdlib") {
+		t.Error("an fpm-scoped pattern did not keep to its ecosystem")
+	}
+	if !p.Match("fortran-external", "acme_mesh") || p.Match("fpm", "acme_mesh") {
+		t.Error("a fortran-external-scoped pattern did not keep to its ecosystem")
+	}
+}

@@ -527,3 +527,37 @@ func TestScanTellsDFromDepfilesAndDTrace(t *testing.T) {
 		}
 	}
 }
+
+// ".f" and ".for" are fixed-form Fortran's and sometimes Forth's: Forth's \
+// comments and colon definitions say which. A Fortran comment line starts with
+// C, * or ! and code starts in column 7.
+//
+// Verifies: REQ-LANG-015, REQ-FORTRAN-001
+func TestScanTellsFortranFromForth(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"legacy/dgemm.f":  "C     Level 3 BLAS.\n      SUBROUTINE DGEMM(A)\n      END\n",
+		"legacy/star.for": "*     A comment.\n      PROGRAM MAIN\n      END\n",
+		"legacy/free.f":   "module free_f\nend module free_f\n",
+		"forth/words.f":   "\\ A Forth vocabulary.\n: square dup * ;\n",
+		"forth/defs.for":  ": cube dup dup * * ;\n",
+	}
+	for p, c := range files {
+		abs := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(abs), 0o755)
+		os.WriteFile(abs, []byte(c), 0o644)
+	}
+	got, err := Scan(context.Background(), root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"legacy/dgemm.f": "Fortran", "legacy/star.for": "Fortran", "legacy/free.f": "Fortran",
+		"forth/words.f": "Forth", "forth/defs.for": "Forth",
+	}
+	for _, f := range got {
+		if f.Lang != want[f.Path] {
+			t.Errorf("%s: lang %q, want %q", f.Path, f.Lang, want[f.Path])
+		}
+	}
+}

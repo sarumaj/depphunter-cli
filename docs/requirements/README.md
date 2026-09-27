@@ -139,6 +139,7 @@ The server **shall** ...
 | `crystal`    | The Crystal plugin: requires, shard.yml, shard.lock, shard.override.yml and shards installed in lib/. |
 | `fsharp`     | The F# plugin: sources and scripts, .fsproj compile order, Paket, and NuGet shared with C#.           |
 | `dlang`      | The D plugin: modules, dub.json, dub.sdl, dub.selections.json and packages dub fetched.               |
+| `fortran`    | The Fortran plugin: free and fixed form, fypp, fpm.toml and dependencies fpm fetched.                 |
 | `terraform`  | The Terraform and OpenTofu plugin, lock files, Terragrunt and the module registries.                  |
 | `proto`      | The Protocol Buffers plugin, Buf's configuration and lock files and the Buf Schema Registry.          |
 | `shell`      | The shell script plugin (sh, Bash, zsh, bats), direnv and packages scripts install.                   |
@@ -326,6 +327,11 @@ requirements of type `limitation` in their scopes:
   or the declared package it spells, every platform's settings count at
   once, dub's settings (`registryUrls`) are not read, and a string import
   needs a literal path.
+- Fortran is read without running the compiler, the C preprocessor, fypp or
+  fpm: every `#if` branch counts, fypp templates are not expanded (so
+  generated module names are unknown), a module of a package fpm has not
+  fetched is attributed by a curated table or the declared name it spells,
+  and fpm's registry is not asked (no `--online`).
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

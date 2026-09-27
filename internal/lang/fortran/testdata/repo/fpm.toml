@@ -1,0 +1,35 @@
+name = "shop"
+version = "0.1.0"
+
+[library]
+source-dir = "src"
+include-dir = ["include"]
+
+[build]
+external-modules = ["netcdf", "vendor_mod"]
+link = ["lapack"]
+
+[dependencies]
+stdlib = "*"
+openmp = "*"
+mpi = "*"
+json-fortran = { git = "https://github.com/jacobwilliams/json-fortran", tag = "8.3.0" }
+toml-f.git = "https://github.com/toml-f/toml-f"
+toml-f.rev = "d7b892b1d074b7cfc5d75c3e0eb36ebc1f7958c1"
+fancy = { git = "https://git.acme.corp/fortran/fancy.git", branch = "main" }
+widgets = { path = "libs/widgets" }
+plotter = { namespace = "fortran-lang", v = "1.2.0" }
+gone = { path = "../gone" }
+
+[dev-dependencies]
+test-drive = { git = "https://github.com/fortran-lang/test-drive" }
+
+[[executable]]
+name = "shop"
+source-dir = "app"
+main = "main.f90"
+
+[[test]]
+name = "unit"
+source-dir = "test"
+main = "check.f90"

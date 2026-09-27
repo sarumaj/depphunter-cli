@@ -35,7 +35,9 @@ Clojure's `project.clj`, `build.boot`, `deps.edn`, `bb.edn` and
 (Gleam, as `.gleam` files are), shards' `shard.lock` (YAML, as `shard.yml`
 is), Paket's `paket.dependencies`, `paket.lock` and `paket.references`
 (Paket; `.fs`, `.fsi`, `.fsx`, `.fsscript` and `.fsproj` files are F#),
-dub's `dub.sdl` (SDLang; `.d` and `.di` files are D),
+dub's `dub.sdl` (SDLang; `.d` and `.di` files are D), Fortran's
+extensions (`.f90`, `.f95`, `.f03`, `.f08`, `.f18`, `.f`, `.for`, `.ftn`,
+`.f77`, `.fpp` and fypp's `.fypp`, in either case),
 the shells' and direnv's startup files (`.bashrc`,
 `.zshrc`, `.profile`, `.envrc` and the others of REQ-SHELL-001), and the
 Dockerfile names of REQ-DOCKER-001), or, for a file neither names, from a
@@ -55,7 +57,10 @@ Forth **shall** be Forth, rather than F# (REQ-FSHARP-001). A `.d` file whose
 head is a make dependency file (a first line `target: prerequisites`)
 **shall** be Make, and one whose head shows DTrace (a probe description, a
 `provider` block, `#pragma D`, a C preprocessor directive or a `#!` line
-running dtrace) **shall** be DTrace, rather than D (REQ-DLANG-001).
+running dtrace) **shall** be DTrace, rather than D (REQ-DLANG-001). A `.f`
+or `.for` file whose head shows Forth (a `\` comment line or a `: name ... ;`
+definition in column 1) **shall** be Forth, rather than Fortran
+(REQ-FORTRAN-001).
 
 ## Rationale
 
@@ -111,3 +116,7 @@ Objective-C from MATLAB, Mercury and C.
     `syscall::open:entry`, `dtrace:::BEGIN`, `#pragma D option quiet` or
     `provider shop {` is DTrace, and one starting `import std.stdio :
     writeln;` or `@safe:` stays D.
+11. `src/shop.f90`, `src/cart.F90`, `legacy/dgemm.f`, `legacy/DGEMV.F`,
+    `legacy/old.for` and `src/sort.fypp` are Fortran and `fpm.toml` is
+    TOML; a `.f` file starting with a `\` comment and a `.for` file starting
+    `: cube` are Forth.
