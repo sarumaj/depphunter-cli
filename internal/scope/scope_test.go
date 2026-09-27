@@ -73,6 +73,10 @@ func TestAPatternMayNameItsEcosystem(t *testing.T) {
 	if !p.Match("swiftpm", "github.com/acme/private-kit") || p.Match("swiftpm", "github.com/apple/swift-nio") || p.Match("npm", "github.com/acme/private-kit") {
 		t.Error("a swiftpm-scoped pattern did not keep to its ecosystem and owner")
 	}
+	p = New([]string{"hex:acme_*"})
+	if !p.Match("hex", "acme_auth") || p.Match("pub", "acme_auth") || p.Match("hex", "plug") {
+		t.Error("a hex-scoped pattern did not keep to its ecosystem")
+	}
 	p = New([]string{"pub:acme_*"})
 	if !p.Match("pub", "acme_auth") || p.Match("npm", "acme_auth") || p.Match("pub", "http") {
 		t.Error("a pub-scoped pattern did not keep to its ecosystem")

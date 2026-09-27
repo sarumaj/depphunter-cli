@@ -48,7 +48,7 @@ var defaultIgnore = map[string]bool{
 	"dist": true, "build": true, "target": true, "bin": true, "obj": true,
 	".venv": true, "venv": true, "__pycache__": true, ".idea": true, ".vscode": true,
 	".next": true, ".cache": true, ".gradle": true, ".tox": true, ".mypy_cache": true,
-	".build": true, ".dart_tool": true,
+	".build": true, ".dart_tool": true, "_build": true,
 }
 
 func Scan(ctx context.Context, root string, opts Options) ([]*File, error) {

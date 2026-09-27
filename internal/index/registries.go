@@ -1,6 +1,7 @@
 package index
 
 import (
+	"cmp"
 	"context"
 	"encoding/json"
 	"encoding/xml"
@@ -468,6 +469,68 @@ func (c *Client) pubPackage(ctx context.Context, index string, t lang.Target) ([
 			v, _ := s["version"].(string)
 			out = append(out, dep{Name: name, Version: v})
 		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// ---------------------------------------------------------------- Hex
+
+// hexPackage reads a Hex package's dependencies from the Hex API: the package
+// (<api>/packages/<name>) says which releases exist and which is the latest stable
+// one, and the release asked for - else that one - lists its requirements
+// (<api>/packages/<name>/releases/<version>), keyed by package name. Optional
+// requirements are left out: they are installed only when something else asks.
+//
+// Implements: REQ-SUP-047
+func (c *Client) hexPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+	base := strings.TrimRight(index, "/") + "/packages/" + url.PathEscape(t.Package)
+	body, err := c.accept(ctx, base, "application/json")
+	if err != nil {
+		return nil, err
+	}
+	var pkg struct {
+		Latest    string `json:"latest_stable_version"`
+		LatestAny string `json:"latest_version"`
+		Releases  []struct {
+			Version string `json:"version"`
+		} `json:"releases"`
+	}
+	if err := json.Unmarshal(body, &pkg); err != nil {
+		return nil, err
+	}
+	version := cmp.Or(pkg.Latest, pkg.LatestAny)
+	for _, r := range pkg.Releases {
+		if r.Version == strings.TrimSpace(t.Version) {
+			version = r.Version
+		}
+	}
+	if version == "" {
+		return nil, nil
+	}
+	body, err = c.accept(ctx, base+"/releases/"+url.PathEscape(version), "application/json")
+	if err != nil {
+		return nil, err
+	}
+	var rel struct {
+		Requirements map[string]struct {
+			Requirement string `json:"requirement"`
+			Optional    bool   `json:"optional"`
+		} `json:"requirements"`
+	}
+	if err := json.Unmarshal(body, &rel); err != nil {
+		return nil, err
+	}
+	var out []dep
+	for name, r := range rel.Requirements {
+		if r.Optional {
+			continue
+		}
+		v := strings.TrimSpace(r.Requirement)
+		if exact, ok := strings.CutPrefix(v, "=="); ok && !strings.ContainsAny(strings.TrimSpace(exact), " ") {
+			v = strings.TrimSpace(exact) // one version: pinned, as lang.Pinned reads it
+		}
+		out = append(out, dep{Name: name, Version: v})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil

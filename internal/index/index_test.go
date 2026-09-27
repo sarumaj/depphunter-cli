@@ -515,3 +515,17 @@ dev_dependencies:
 		t.Errorf("PUB_HOSTED_URL: got %s (known %v)", idx, known)
 	}
 }
+
+// HEX_API_URL is the Hex API this machine's Mix and rebar3 use, and trusted;
+// without it, hex.pm's.
+//
+// Verifies: REQ-SUP-015, REQ-SUP-047
+func TestDiscoverReadsHexAPI(t *testing.T) {
+	if idx, known := Discover(nil, env(nil), "").For(Hex, "plug"); idx != "https://hex.pm/api" || !known {
+		t.Errorf("default: got %s (known %v)", idx, known)
+	}
+	c := Discover(nil, env(map[string]string{"HEX_API_URL": "https://hex.corp.test/api", "HEX_MIRROR": "https://mirror.test"}), "")
+	if idx, known := c.For(Hex, "plug"); idx != "https://hex.corp.test/api" || !known {
+		t.Errorf("HEX_API_URL: got %s (known %v)", idx, known)
+	}
+}

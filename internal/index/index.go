@@ -33,6 +33,9 @@ const (
 	RubyGems = "rubygems"
 	// Pub is Dart's and Flutter's; its public index is pub.dev.
 	Pub = "pub"
+	// Hex is Elixir's and Erlang's, as Mix and rebar3 install from it; its index
+	// is hex.pm's API.
+	Hex = "hex"
 )
 
 // public is where each ecosystem's packages come from unless something says otherwise.
@@ -48,6 +51,7 @@ var public = map[string]string{
 	Composer: "https://repo.packagist.org",
 	RubyGems: "https://rubygems.org",
 	Pub:      "https://pub.dev",
+	Hex:      "https://hex.pm/api",
 }
 
 // Where an index was learned from. It decides nothing on its own - Trusted does

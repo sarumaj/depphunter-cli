@@ -806,7 +806,7 @@ every external package the map pins to a version — batched queries of 500
 packages each, followed by the advisories it matched — covering Go, npm, PyPI,
 crates.io, Maven, NuGet, GitHub Actions, Conan (as OSV's ConanCenter; vcpkg has
 no OSV ecosystem), Composer (as Packagist), RubyGems, Swift packages (as
-SwiftURL, by URL) and pub. Floating packages are not queried, since they
+SwiftURL, by URL), pub and Hex. Floating packages are not queried, since they
 resolve to a different version on the next installation. Answers are cached
 for six hours.
 `--no-vulns` disables all of this.
@@ -898,6 +898,7 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | RubyGems           | `Gemfile.lock` (a git gem by its revision), a bare `1.2.3`, `= 1.2.3`        | `~>`, `>=`, `<`, `!=`, several requirements, no version                                   |
 | Swift packages     | `Package.resolved`, `exact:`, a bare `"1.2.3"`, `revision:`                  | `from:`, `.upToNextMajor`, `.upToNextMinor`, ranges, `branch:`                            |
 | pub                | `pubspec.lock` (a git package by its commit), a bare `1.2.3`, a git commit   | `^`, ranges, `any`, no constraint, a git branch or tag                                    |
+| Hex                | `mix.lock`, `rebar.lock`, a bare `1.2.3`, `== 1.2.3`, a git `ref` commit     | `~>`, `>=`, `or` and `and` requirements, a git branch or tag                              |
 
 The JSON and GraphML exports carry `requested` and `floating` per package.
 
@@ -921,6 +922,7 @@ and the analysis remains offline.
 | `composer.lock`, `installed.json`    | each package's `require`, without the platform   |
 | `Gemfile.lock`                       | the dependencies listed under each spec          |
 | `.build/checkouts/*/Package.swift`   | the checked-out package's `.package` lines       |
+| `mix.lock`                           | each Hex package's requirements                  |
 
 Packages added in this way are marked **transitive**, meaning that no file in
 the repository imports them. Edges between packages are of kind `depends`, as
@@ -931,9 +933,9 @@ remain a single building, so an edge between packages is an edge between names.
 A Python package that no lock file gives edges for (`Pipfile.lock` records
 none) falls back to the installed environment (see [Languages](#languages)).
 Ecosystems that keep the dependency graph outside the repository — Go modules,
-NuGet, container images, a Composer or Bundler library that commits no lock and
-pub, whose `pubspec.lock` is a flat list — require `--online`, described below;
-Maven, the
+NuGet, container images, a Composer, Bundler or Mix library that commits no
+lock, pub, whose `pubspec.lock` is a flat list, and rebar3, whose `rebar.lock`
+records only a depth — require `--online`, described below; Maven, the
 PowerShell Gallery, vcpkg, Conan 2 (whose lock is a flat list) and Swift
 packages that SwiftPM has not checked out under `.build` (`Package.resolved`
 is flat as well) are not resolved beyond the first level at present.
@@ -959,7 +961,7 @@ repository carries — `.npmrc`, including `@scope:registry`; `.yarnrc.yml`;
 lines (a `source ... do` block serves only its gems), `Gemfile.lock`'s
 remotes, `~/.gemrc` and Bundler's rubygems.org mirror; a `pubspec.yaml`'s
 `hosted:` servers, the servers `pubspec.lock` resolved from and
-`PUB_HOSTED_URL`; and `GOPROXY` — and the
+`PUB_HOSTED_URL`; `HEX_API_URL`; and `GOPROXY` — and the
 side panel names the index each package resolves from. A container image
 requires no configuration, since `ghcr.io/org/app` names its registry directly.
 
@@ -985,6 +987,7 @@ ecosystems whose graph is held outside the repository:
 | Composer  | `<repository>/p2/<vendor>/<name>.json` (`metadata-url` elsewhere)         | the version's `require`, excluding the platform  |
 | RubyGems  | `<server>/info/<name>`, the compact index Bundler reads                   | the version's runtime dependencies               |
 | pub       | `<server>/api/packages/<name>`, the package API pub reads                 | the version's (or latest's) `dependencies`       |
+| Hex       | `<api>/packages/<name>`, then `/releases/<version>` (or latest stable)    | its requirements, excluding optional ones        |
 
 A container image has no dependency list. What it has is the image it was built
 on, which is the source of its unpatched vulnerabilities, and that is what is
@@ -1074,8 +1077,8 @@ leading path elements match it, so that `corp.example/*` covers
 Maven group (`com.acme.*`) and a registry path (`harbor.corp/*`). Prefixing a
 pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`,
 `crates:`, `actions:`, `gitlab-ci:`, `psgallery:`, `c-external:`, `vcpkg:`,
-`conan:`, `composer:`, `rubygems:`, `swiftpm:` or `pub:` — restricts it to that
-ecosystem.
+`conan:`, `composer:`, `rubygems:`, `swiftpm:`, `pub:` or `hex:` — restricts
+it to that ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
 to whatever is configured here**, so a Go project whose machine is already
@@ -1329,32 +1332,34 @@ Imports establish which files depend on which. Under `--lsp`, depphunter
 additionally queries language servers for which symbols use which. It uses the
 servers found on `PATH`, and the `go install` locations for gopls:
 
-| Language                | Server                                                     |
-|-------------------------|------------------------------------------------------------|
-| Go                      | `gopls`                                                    |
-| JavaScript / TypeScript | `typescript-language-server`                               |
-| Python                  | `pyright-langserver`, `basedpyright-langserver` or `pylsp` |
-| Rust                    | `rust-analyzer`                                            |
-| Java                    | `jdtls`                                                    |
-| Kotlin                  | `kotlin-language-server`                                   |
-| Scala                   | `metals`                                                   |
-| C#                      | `csharp-ls`                                                |
-| C / C++                 | `clangd`                                                   |
-| PHP                     | `intelephense` or `phpactor`                               |
-| Ruby                    | `ruby-lsp` or `solargraph`                                 |
-| Swift                   | `sourcekit-lsp`                                            |
-| Dart                    | `dart language-server`                                     |
+| Language                | Server                                                       |
+|-------------------------|--------------------------------------------------------------|
+| Go                      | `gopls`                                                      |
+| JavaScript / TypeScript | `typescript-language-server`                                 |
+| Python                  | `pyright-langserver`, `basedpyright-langserver` or `pylsp`   |
+| Rust                    | `rust-analyzer`                                              |
+| Java                    | `jdtls`                                                      |
+| Kotlin                  | `kotlin-language-server`                                     |
+| Scala                   | `metals`                                                     |
+| C#                      | `csharp-ls`                                                  |
+| C / C++                 | `clangd`                                                     |
+| PHP                     | `intelephense` or `phpactor`                                 |
+| Ruby                    | `ruby-lsp` or `solargraph`                                   |
+| Swift                   | `sourcekit-lsp`                                              |
+| Dart                    | `dart language-server`                                       |
+| Elixir                  | `elixir-ls` (or `language_server.sh`), `lexical` or `nextls` |
+| Erlang                  | `elp` or `erlang_ls`                                         |
 
 The servers run in the background once the map is displayed — gopls requires
 approximately 7 s for this repository — within the budget set by
 `--lsp-timeout`; results are cached until the map's files, symbols or imports
 change, or a different set of language servers is installed. Servers that index
-slowly, rust-analyzer, jdtls, metals, clangd and the PHP, Ruby and Swift servers
-in particular, may answer before indexing has finished, so a first run can
-report fewer references than a later one. The legend's **Imports / References**
-switch then determines what the selection arcs and the side panel show: for a
-function, what it uses and what uses it. The JSON and GraphML exports include
-the reference edges.
+slowly, rust-analyzer, jdtls, metals, clangd and the PHP, Ruby, Swift, Elixir
+and Erlang servers in particular, may answer before indexing has finished, so a
+first run can report fewer references than a later one. The legend's **Imports
+/ References** switch then determines what the selection arcs and the side
+panel show: for a function, what it uses and what uses it. The JSON and GraphML
+exports include the reference edges.
 
 ### Languages
 
@@ -1373,6 +1378,7 @@ the reference edges.
 | Ruby                    | `require`/`require_relative`/`load`/`autoload` of spelled-out paths on a guessed load path (`lib`, `test`, `spec`, gemspec require paths, path gems); gems by `Gemfile`, gemspecs and `Gemfile.lock`, whose `gem` lines are imports; Rails constants by Zeitwerk naming                                          | RubyGems, Ruby standard library                                            |
 | Swift                   | `import` (every `#if` branch); `Package.swift` targets to their directories, else a directory named after the module; packages by `Package.swift`, `Package.resolved` and Xcode's `project.pbxproj`, products first, whose `.package` lines are imports; types used across a module's files                      | Swift packages, Swift standard library, Apple SDKs                         |
 | Dart                    | `import`, `export` (every configurable URI), `part` and `part of`; relative URIs, `package:` URIs to a package's own `lib/`, path dependencies, pub workspace members and melos packages; packages by `pubspec.yaml` and `pubspec.lock`, whose dependencies are imports                                          | pub, Dart SDK libraries, Flutter SDK                                       |
+| Elixir / Erlang         | Elixir `alias`/`import`/`require`/`use` and every module reference, Erlang remote calls, `-behaviour`, `-include`/`-include_lib`; modules to the files defining them (umbrella apps too); packages by `mix.exs`, `rebar.config`, `mix.lock` and `rebar.lock`, whose dependencies are imports                     | Hex, Elixir standard library, Erlang/OTP                                   |
 | PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                                                                | PowerShell Gallery, built-in modules                                       |
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                     | GitHub Actions, GitLab CI, Container images                                |
 | Dockerfile / Compose    | `FROM`, `COPY --from`, `RUN --mount from=` and `# syntax=` with `ARG` defaults expanded and stages told apart; Compose `image:`, and `build:` to the Dockerfile in the repository                                                                                                                                | Container images                                                           |
@@ -1563,13 +1569,36 @@ members imports of their pubspecs. Dart is read by a small scanner rather than
 the tree-sitter grammar, which on real Flutter code was slow and failed on one
 file in ten.
 
+<!-- cSpell: words behaviour -->
+Elixir files are read for the modules they name — in `alias` (including
+`alias Foo.{A, B}` and `__MODULE__`), `import`, `require` and `use`, and in any
+other reference: a remote call, a struct, a behaviour — expanded through the
+aliases in effect, those that the quote blocks of a used module of the project
+inject (`use MyAppWeb, :controller`) and a Phoenix router's `scope` alias; and
+for the Erlang modules they call (`:ets.new`). Erlang files are read for
+`-include`, `-include_lib`, `-behaviour`, `-import` and remote calls
+(`mod:fun`). A module resolves to the file that defines it — every
+`defmodule` in the repository, umbrella applications included, and
+`<module>.erl` — or, when the project defines only a prefix of it (generated
+route helpers), to that prefix's file. Elixir's own modules form an Elixir
+standard library island and OTP's modules and applications an Erlang/OTP
+island. Any other module is attributed to a Hex package: the one that defines
+it under `deps/` or `_build/` when those are on disk, else the package a
+curated table or its name prefix names among those `mix.exs` and `rebar.config`
+declare and `mix.lock` and `rebar.lock` lock (`Phoenix.LiveView` to
+`phoenix_live_view`, `cowboy_req` to `cowboy`). The locks pin, and `mix.lock`'s
+requirements give the edges between packages. Manifest dependencies and an
+`.app.src`'s applications are imports of what they name. Both languages are
+read by small lexers: the tree-sitter grammars were slower and lost Erlang
+files to macros in patterns.
+
 Files in other languages appear on the map without dependency edges. Parsing
 uses a pure-Go tree-sitter runtime for JavaScript/TypeScript, Python, Rust,
 Java, Kotlin, Scala, C, C++, PHP, Ruby and Swift; Go uses the standard library's
 own parser, CI and Compose files a YAML parser, and C#, PowerShell, Markdown,
-Dart, Dockerfiles, the markup of Vue, Svelte and Astro components and C
-preprocessor directives small built-in scanners — so the binary continues to
-cross-compile without a C toolchain.
+Dart, Elixir, Erlang, Dockerfiles, the markup of Vue, Svelte and Astro
+components and C preprocessor directives small built-in scanners — so the
+binary continues to cross-compile without a C toolchain.
 
 ## Security
 

@@ -57,6 +57,10 @@ var Servers = []Server{
 		Commands: [][]string{{"ruby-lsp"}, {"solargraph", "stdio"}}},
 	{Name: "sourcekit-lsp", Open: true, Exts: map[string]string{".swift": "swift"}, Commands: [][]string{{"sourcekit-lsp"}}},
 	{Name: "dart", Open: true, Exts: map[string]string{".dart": "dart"}, Commands: [][]string{{"dart", "language-server", "--protocol=lsp"}}},
+	{Name: "elixir", Open: true, Exts: map[string]string{".ex": "elixir", ".exs": "elixir"},
+		Commands: [][]string{{"elixir-ls"}, {"language_server.sh"}, {"lexical"}, {"nextls", "--stdio"}}},
+	{Name: "erlang", Open: true, Exts: map[string]string{".erl": "erlang", ".hrl": "erlang"},
+		Commands: [][]string{{"elp", "server"}, {"erlang_ls"}}},
 }
 
 type Options struct {
@@ -124,14 +128,7 @@ func References(ctx context.Context, g *graph.Graph, opts Options) (*Result, err
 		}
 		p := strings.TrimPrefix(n.Parent, "f:")
 		if f := files[p]; f != nil {
-			name := n.Name
-			if i := strings.LastIndex(name, "."); i >= 0 {
-				name = name[i+1:] // Type.method -> method
-			}
-			if i := strings.Index(name, "@"); i >= 0 {
-				name = name[:i] // init@12 -> init
-			}
-			f.symbols = append(f.symbols, symbol{id: n.ID, name: name, line: n.Line})
+			f.symbols = append(f.symbols, symbol{id: n.ID, name: symbolWord(n.Name), line: n.Line})
 		}
 	}
 	for _, f := range files {
@@ -424,6 +421,36 @@ var wordCache sync.Map // name -> *regexp.Regexp
 // column in UTF-16 code units, the unit LSP positions use by default.
 //
 // Implements: REQ-LSP-008
+// symbolWord is the word a symbol's name is written as on its line:
+// Type.method -> method, init@12 -> init, and an Elixir or Erlang function's
+// Mod.fun/2 -> fun.
+//
+// Implements: REQ-LSP-003
+func symbolWord(name string) string {
+	if i := strings.LastIndex(name, "@"); i > 0 && allDigits(name[i+1:]) {
+		name = name[:i]
+	}
+	if i := strings.LastIndex(name, "/"); i > 0 && allDigits(name[i+1:]) {
+		name = name[:i]
+	}
+	if i := strings.LastIndex(name, "."); i >= 0 {
+		name = name[i+1:]
+	}
+	if i := strings.Index(name, "@"); i >= 0 {
+		name = name[:i]
+	}
+	return name
+}
+
+func allDigits(s string) bool {
+	for _, c := range s {
+		if c < '0' || c > '9' {
+			return false
+		}
+	}
+	return s != ""
+}
+
 func nameColumn(line, name string) (int, bool) {
 	re, ok := wordCache.Load(name)
 	if !ok {

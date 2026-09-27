@@ -428,3 +428,53 @@ func TestPubDependencies(t *testing.T) {
 		t.Errorf("asked %v, want the package API", asked)
 	}
 }
+
+// Verifies: REQ-SUP-047
+func TestHexDependencies(t *testing.T) {
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Path+" "+r.Header.Get("Accept"))
+		switch r.URL.Path {
+		case "/api/packages/plug":
+			w.Write([]byte(`{"name":"plug","latest_version":"1.17.0-rc.0","latest_stable_version":"1.16.1",
+"releases":[{"version":"1.17.0-rc.0"},{"version":"1.16.1"},{"version":"1.15.0"}]}`))
+		case "/api/packages/plug/releases/1.15.0":
+			w.Write([]byte(`{"version":"1.15.0","requirements":{
+"mime":{"app":"mime","optional":false,"requirement":"~> 1.0 or ~> 2.0"},
+"plug_crypto":{"app":"plug_crypto","optional":false,"requirement":"== 2.0.0"}}}`))
+		case "/api/packages/plug/releases/1.16.1":
+			w.Write([]byte(`{"version":"1.16.1","requirements":{
+"mime":{"app":"mime","optional":false,"requirement":"~> 2.0"},
+"telemetry":{"app":"telemetry","optional":false,"requirement":"~> 0.4.3 or ~> 1.0"},
+"jason":{"app":"jason","optional":true,"requirement":"~> 1.0"}}}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	c := clientFor(t, Hex, srv.URL+"/api", "")
+	for _, tt := range []struct {
+		version string
+		want    []lang.Target
+	}{
+		// The release asked for; an exact requirement is pinned.
+		{"1.15.0", []lang.Target{
+			{Ecosystem: Hex, Package: "mime", Version: "~> 1.0 or ~> 2.0"},
+			{Ecosystem: Hex, Package: "plug_crypto", Version: "2.0.0", Pinned: true},
+		}},
+		// A requirement names no release: the latest stable one answers, without
+		// its optional requirements.
+		{"~> 1.14", []lang.Target{
+			{Ecosystem: Hex, Package: "mime", Version: "~> 2.0"},
+			{Ecosystem: Hex, Package: "telemetry", Version: "~> 0.4.3 or ~> 1.0"},
+		}},
+	} {
+		got := c.Dependencies(lang.Target{Ecosystem: Hex, Package: "plug", Version: tt.version})
+		if !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("%s: got %+v, want %+v", tt.version, got, tt.want)
+		}
+	}
+	if len(asked) == 0 || asked[0] != "/api/packages/plug application/json" {
+		t.Errorf("asked %v, want the package first", asked)
+	}
+}

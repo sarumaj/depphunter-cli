@@ -1,0 +1,4 @@
+-record(state, {port = 8080 :: integer(), name}).
+-define(TIMEOUT, 5000).
+-define(LOG(Msg), logger:info(Msg)).
+-type port_number() :: 1..65535.

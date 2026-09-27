@@ -19,8 +19,10 @@ JavaScript), pyright, basedpyright or pylsp (Python, first installed),
 rust-analyzer (Rust), jdtls (Java), kotlin-language-server (Kotlin), metals
 (Scala), csharp-ls (C#), clangd (C, C++), intelephense or phpactor (PHP,
 first installed), ruby-lsp or solargraph (Ruby, first installed),
-sourcekit-lsp (Swift) and `dart language-server` (Dart), skipping a server that
-is not installed.
+sourcekit-lsp (Swift), `dart language-server` (Dart), elixir-ls
+(`elixir-ls` or `language_server.sh`), Lexical or Next LS (Elixir, first
+installed) and ELP or erlang_ls (Erlang, first installed), skipping a server
+that is not installed.
 
 ## Rationale
 

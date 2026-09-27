@@ -16,7 +16,7 @@ var byExt = map[string]string{
 	".hxx": "C++", ".h++": "C++", ".ipp": "C++", ".inl": "C++",
 	".m": "Objective-C", ".swift": "Swift", ".dart": "Dart",
 	".rb": "Ruby", ".rake": "Ruby", ".gemspec": "Ruby", ".ru": "Ruby", ".php": "PHP", ".phtml": "PHP", ".pl": "Perl", ".lua": "Lua", ".r": "R",
-	".ex": "Elixir", ".exs": "Elixir", ".erl": "Erlang", ".hs": "Haskell", ".clj": "Clojure",
+	".ex": "Elixir", ".exs": "Elixir", ".erl": "Erlang", ".hrl": "Erlang", ".hs": "Haskell", ".clj": "Clojure",
 	".zig": "Zig", ".nim": "Nim", ".jl": "Julia",
 	".sh": "Shell", ".bash": "Shell", ".zsh": "Shell", ".ps1": "PowerShell", ".psm1": "PowerShell", ".psd1": "PowerShell",
 	".html": "HTML", ".htm": "HTML", ".css": "CSS", ".scss": "CSS", ".sass": "CSS", ".less": "CSS",
@@ -30,6 +30,7 @@ var byName = map[string]string{
 	"Makefile": "Make", "go.mod": "Go", "go.sum": "Go",
 	"CMakeLists.txt": "CMake", "Jenkinsfile": "Groovy",
 	"Gemfile": "Ruby", "Rakefile": "Ruby", "Guardfile": "Ruby", "Capfile": "Ruby",
+	"rebar.config": "Erlang", "rebar.lock": "Erlang", "mix.lock": "Elixir",
 }
 
 // Language guesses a file's language from its name; "" means unknown.
@@ -42,6 +43,9 @@ func Language(p string) string {
 	}
 	if Dockerfile(p) {
 		return "Docker"
+	}
+	if strings.HasSuffix(base, ".app.src") {
+		return "Erlang" // an OTP application resource file
 	}
 	return byExt[strings.ToLower(path.Ext(base))]
 }

@@ -20,7 +20,7 @@ The system **shall** read index configuration from this machine:
 `composer` repositories of Composer's `config.json` in `COMPOSER_HOME`,
 `~/.config/composer` and `~/.composer`, Bundler's rubygems.org mirror
 (`BUNDLE_MIRROR__RUBYGEMS__ORG`, `~/.bundle/config`), the sources of
-`~/.gemrc` and pub's `PUB_HOSTED_URL`.
+`~/.gemrc`, pub's `PUB_HOSTED_URL` and the Hex API of `HEX_API_URL`.
 
 The system **shall** read index configuration from the repository: `.npmrc`,
 `.yarnrc.yml`, `pip.conf`, `pip.ini`, `requirements*.txt`, the Poetry and uv

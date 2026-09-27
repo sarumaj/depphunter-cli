@@ -90,6 +90,9 @@ func (c *Config) machine(env func(string) string, home string) {
 	add(RubyGems, env("BUNDLE_MIRROR__RUBYGEMS__ORG"), "")
 	// The server dart pub and flutter pub get install from instead of pub.dev.
 	add(Pub, env("PUB_HOSTED_URL"), "")
+	// The Hex API Mix and rebar3 talk to instead of hex.pm's. HEX_MIRROR is not read:
+	// a mirror serves the repository's signed protobuf files, not this API.
+	add(Hex, env("HEX_API_URL"), "")
 	if home == "" {
 		return
 	}
