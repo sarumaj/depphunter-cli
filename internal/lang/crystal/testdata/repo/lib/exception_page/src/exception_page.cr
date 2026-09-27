@@ -1,0 +1,2 @@
+module ExceptionPage
+end

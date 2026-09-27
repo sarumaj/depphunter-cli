@@ -1,0 +1,25 @@
+version: 2.0
+shards:
+  crystal-sqlite3:
+    git: https://github.com/crystal-lang/crystal-sqlite3.git
+    version: 0.21.0
+
+  db:
+    git: https://github.com/crystal-lang/crystal-db.git
+    version: 0.13.1
+
+  exception_page:
+    git: https://github.com/crystal-loot/exception_page.git
+    version: 0.4.1
+
+  kemal:
+    git: https://github.com/kemalcr/kemal.git
+    version: 1.4.0
+
+  spectator:
+    git: https://gitlab.com/arctic-fox/spectator.git
+    version: 0.12.1+git.commit.0a1b2c3d4e5f60718293a4b5c6d7e8f901234567
+
+  widgets:
+    path: libs/widgets
+    version: 0.2.0

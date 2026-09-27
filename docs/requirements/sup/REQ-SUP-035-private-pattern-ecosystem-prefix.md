@@ -42,7 +42,7 @@ Buf Schema Registry's `buf`, CMake's `cmake-fetch` and `pkg-config`,
 `cpan`, OCaml's `opam`, Julia's `julia`, Zig's `zig`, Bazel's `bazel`
 (modules) and `bazel-repo` (WORKSPACE downloads), Nix's `nix` (flake
 inputs and pinned sources) and `nixpkgs` (nixpkgs packages), Elm's
-`elm`, and PureScript's `purescript`.
+`elm`, PureScript's `purescript`, and Crystal's `shards`.
 
 A Clojure dependency is a Maven package named `group:artifact`; a `maven:`
 (or unscoped) pattern matches it by its group (`maven:com.acme.*` matches

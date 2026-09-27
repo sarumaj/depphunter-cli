@@ -123,6 +123,9 @@ var Servers = []Server{
 	// purescript-language-server answers references for PureScript modules from
 	// the project's spago build output.
 	{Name: "purescript", Open: true, Exts: map[string]string{".purs": "purescript"}, Commands: [][]string{{"purescript-language-server", "--stdio"}}},
+	// crystalline answers references for Crystal from the shard's entry point
+	// (shard.yml targets), over stdio.
+	{Name: "crystal", Open: true, Exts: map[string]string{".cr": "crystal"}, Commands: [][]string{{"crystalline"}}},
 	// neocmakelsp and cmake-language-server both answer references for CMake's
 	// functions, macros and variables; a CMakeLists.txt is known by its name.
 	{Name: "cmake", Open: true, Exts: map[string]string{".cmake": "cmake"}, Names: map[string]string{"CMakeLists.txt": "cmake"},
