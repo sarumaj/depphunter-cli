@@ -16,10 +16,13 @@ import (
 type tree struct {
 	deps   map[string]map[string]bool
 	locked map[string]string // package -> a version some lock file pinned it to
+	// "parent/dep" -> the version of dep installed under parent rather than
+	// hoisted ("" when that copy pins nothing), where a lock file says so.
+	nested map[string]string
 }
 
 func newTree() *tree {
-	return &tree{deps: map[string]map[string]bool{}, locked: map[string]string{}}
+	return &tree{deps: map[string]map[string]bool{}, locked: map[string]string{}, nested: map[string]string{}}
 }
 
 func (t *tree) add(pkg string, deps ...string) {
@@ -47,7 +50,10 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 	}
 	var out []lang.Target
 	for dep := range r.tree.deps[t.Package] {
-		version := r.tree.locked[dep]
+		version, ok := r.tree.nested[t.Package+"/"+dep]
+		if !ok {
+			version = r.tree.locked[dep]
+		}
 		out = append(out, lang.Target{
 			Ecosystem: ecoNPM, Package: dep, Version: version,
 			// It is in a lock file, which is what pins an npm package.

@@ -1,6 +1,7 @@
 // Package javascript analyzes JavaScript and TypeScript with tree-sitter and resolves
 // imports through relative paths, tsconfig/jsconfig "paths", workspace packages,
-// package.json dependencies and package-lock.json versions. Vue, Svelte and Astro
+// package.json dependencies and the versions of package-lock.json, yarn.lock,
+// pnpm-lock.yaml and bun.lock (bun.go). Vue, Svelte and Astro
 // components belong to the same ecosystem: their script blocks are read with the
 // same grammars and resolved by the same resolver (component.go).
 package javascript

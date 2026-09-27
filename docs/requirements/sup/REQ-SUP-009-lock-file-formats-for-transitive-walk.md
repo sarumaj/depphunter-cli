@@ -13,7 +13,8 @@ verification:
 
 The walker **shall** read package-to-package dependencies from
 `package-lock.json` versions 1 to 3, `pnpm-lock.yaml` versions 5 to 9, classic
-`yarn.lock`, `Cargo.lock`, `uv.lock`, `poetry.lock`, `pdm.lock`,
+`yarn.lock`, `bun.lock` (a package installed under another, `a/b`, being
+what `a` requires), `Cargo.lock`, `uv.lock`, `poetry.lock`, `pdm.lock`,
 `composer.lock` (or, without one, `vendor/composer/installed.json`),
 `Gemfile.lock` and, for Swift packages, the manifests SwiftPM checked out
 under `.build/checkouts` pinned by `Package.resolved`.

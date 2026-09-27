@@ -36,7 +36,7 @@ type resolver struct {
 	files   map[string]bool
 	dirs    map[string]bool
 	deps    map[string]map[string]string // package.json dir -> dependency -> version range
-	locks   map[string]map[string]string // package-lock.json dir -> package -> exact version
+	locks   map[string]map[string]string // lock file (or importer) dir -> package -> exact version
 	byName  map[string]string            // workspace package name -> its directory
 	configs map[string]*tsconfig         // directory -> effective tsconfig/jsconfig
 	kits    map[string]bool              // directories holding a SvelteKit svelte.config
@@ -68,6 +68,8 @@ func newResolver(all []*scan.File) *resolver {
 		}
 	}
 	yarn := map[string]yarnDescriptors{} // yarn.lock dir -> its descriptors
+	var bunDirs []string                 // bun.lock dirs, in path order
+	buns := map[string]*bunLock{}
 	for _, f := range all {
 		dir := path.Dir(f.Path)
 		switch path.Base(f.Path) {
@@ -115,6 +117,15 @@ func newResolver(all []*scan.File) *resolver {
 				r.addLock(path.Join(dir, importer), versions)
 			}
 			r.tree.addPnpmTree(&lock)
+		case "bun.lock":
+			data, err := os.ReadFile(f.Abs)
+			if err != nil {
+				continue
+			}
+			if lock, err := readBunLock(data); err == nil {
+				bunDirs = append(bunDirs, dir)
+				buns[dir] = lock
+			}
 		}
 	}
 	// yarn.lock keys are "name@range": pin each declared range of the packages below.
@@ -132,6 +143,17 @@ func newResolver(all []*scan.File) *resolver {
 			}
 			r.addLock(pkgDir, pinned)
 		}
+	}
+	// bun.lock comes last: beside another lock file it only answers for what that
+	// one does not, so adding Bun's lock never changes a version another gave.
+	// Implements: REQ-JS-016
+	for _, dir := range bunDirs {
+		lock := buns[dir]
+		entries := lock.entries()
+		for importer, versions := range lock.versions(entries) {
+			r.addLock(path.Join(dir, importer), versions)
+		}
+		r.tree.addBunTree(entries)
 	}
 	// tsconfig.json wins over jsconfig.json in the same directory.
 	for _, name := range []string{"jsconfig.json", "tsconfig.json"} {
@@ -305,8 +327,10 @@ func (r *resolver) viaConfig(c *tsconfig, spec string) (lang.Target, bool) {
 }
 
 // declared looks up pkg in the nearest package.json files that declare it, preferring
-// the exact version from the nearest package-lock.json: the range in package.json is
-// what was asked for, the lock is what is installed.
+// the exact version from the nearest lock file: the range in package.json is what
+// was asked for, the lock is what is installed. Where several lock files sit in one
+// directory, the first to answer wins, in the order package-lock.json,
+// pnpm-lock.yaml, yarn.lock, bun.lock.
 //
 // Implements: REQ-JS-006, REQ-JS-007, REQ-JS-010
 func (r *resolver) declared(pkg, dir string) (lang.Target, bool) {
@@ -591,7 +615,7 @@ func (lock *packageLock) versions() map[string]string {
 type Packages struct{ r *resolver }
 
 // ReadPackages reads the package.json and lock files (package-lock.json,
-// yarn.lock, pnpm-lock.yaml) of the project.
+// pnpm-lock.yaml, yarn.lock, bun.lock) of the project.
 func ReadPackages(all []*scan.File) *Packages { return &Packages{r: newResolver(all)} }
 
 // Package resolves a bare specifier ("@scope/name/sub/path") that file
