@@ -38,3 +38,8 @@ start with its groupId (`com.fasterxml.jackson.databind` comes from
    `org.junit.Test` matches `junit` through the known-mismatch table.
 5. When several artifacts of one group are declared at different versions, the
    group carries no version.
+
+## Notes
+
+A last, weaker rule matches an artifactId's first word
+([REQ-SCALA-005](../scala/REQ-SCALA-005-groups-found-by-artifact-first-word.md)).

@@ -12,8 +12,9 @@ verification:
 
 ## Statement
 
-Language servers that index slowly (rust-analyzer, jdtls) **may** answer before
-indexing finishes and so return fewer references within the time budget.
+Language servers that index slowly (rust-analyzer, jdtls, metals) **may**
+answer before indexing finishes and so return fewer references within the time
+budget.
 
 ## Rationale
 

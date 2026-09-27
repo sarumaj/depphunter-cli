@@ -26,6 +26,8 @@ that a pattern reads without evaluating the build script.
 
 1. `implementation("com.squareup.okhttp3:okhttp:4.12.0")` declares group
    `com.squareup.okhttp3` at version `4.12.0`.
+2. `implementation("io.ktor:ktor-client-core:2.3.+")` declares group `io.ktor`
+   at the dynamic version `2.3.+`.
 
 ## Notes
 

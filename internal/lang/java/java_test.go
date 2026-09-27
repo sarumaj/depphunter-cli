@@ -1,6 +1,7 @@
 package java
 
 import (
+	"strings"
 	"testing"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
@@ -45,4 +46,57 @@ func TestSymbols(t *testing.T) {
 		"App": "class", "App.main": "method", "App.helper": "method", "Service": "interface",
 		"Mode": "enum", "Mode.weight": "method", "Point": "record",
 	})
+}
+
+// Verifies: REQ-JAVA-008
+func TestPinnedMaven(t *testing.T) {
+	for v, want := range map[string]bool{
+		"6.1.0": true, "33.0.0-jre": true, "1.2.3.RELEASE": true, "[1.2.3]": true,
+		"": false, "[1.7,2.0)": false, "LATEST": false, "RELEASE": false, "1.0-SNAPSHOT": false,
+		"${undefined}": false, "$ktorVersion": false,
+		// Gradle's and Ivy's (sbt's) dynamic versions.
+		"1.+": false, "2.3.+": false, "+": false, "latest.release": false, "latest.integration": false,
+	} {
+		if got := pinnedMaven(v); got != want {
+			t.Errorf("pinnedMaven(%q) = %v, want %v", v, got, want)
+		}
+	}
+}
+
+// Verifies: REQ-KT-003, REQ-KT-005, REQ-SCALA-003
+func TestDeclarations(t *testing.T) {
+	src := `/*
+ * package not.this
+ */
+@file:JvmName("Tools")
+
+package com.example
+package tools
+
+import a.b.C
+
+// class NotThis
+private[tools] final case class Box(v: Int)
+sealed trait Shape
+object Registry:
+  def lookup = 1
+  class Nested
+enum Color:
+  case Red
+fun <T> List<T>.second(): T = this[1]
+fun String.shout() = uppercase()
+internal fun interface Action { fun run() }
+const val MAX = 1
+typealias Name = String
+val (a, b) = pair
+package object util
+`
+	pkg, names := declarations([]byte(src))
+	if pkg != "com.example.tools" {
+		t.Errorf("package %q, want com.example.tools", pkg)
+	}
+	want := []string{"Box", "Shape", "Registry", "Color", "second", "shout", "Action", "MAX", "Name", "util"}
+	if strings.Join(names, " ") != strings.Join(want, " ") {
+		t.Errorf("names %v, want %v", names, want)
+	}
 }

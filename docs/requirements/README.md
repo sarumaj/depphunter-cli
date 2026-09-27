@@ -112,6 +112,8 @@ The server **shall** ...
 | `py`    | The Python plugin.                                                                             |
 | `rs`    | The Rust plugin.                                                                               |
 | `java`  | The Java plugin.                                                                               |
+| `kt`    | The Kotlin plugin.                                                                             |
+| `scala` | The Scala plugin.                                                                              |
 | `cs`    | The C# plugin.                                                                                 |
 | `ps`    | The PowerShell plugin.                                                                         |
 | `ci`    | The continuous-integration plugin (GitHub Actions, GitLab CI, container images).               |
@@ -176,6 +178,9 @@ requirements of type `limitation` in their scopes:
 - Java imports name packages rather than artifacts, so Maven dependencies are
   matched heuristically and an index cannot be asked what a Maven package
   depends on.
+- Kotlin and Scala declarations are read from the text of their files, so a
+  definition that does not begin in the first column cannot be imported from
+  another file.
 - GitHub Actions references from github.com and from GitHub Enterprise are one
   ecosystem.
 - pip's keyring is not consulted for credentials.

@@ -48,7 +48,7 @@ func (Plugin) Ecosystems() []lang.Ecosystem {
 }
 
 func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
-	return newResolver(all), nil
+	return newResolver(all, Language{}), nil
 }
 
 func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {

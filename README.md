@@ -877,18 +877,18 @@ labelled **⚠ floating** in the side panel, and marked in its tooltip. Where a
 lock file resolved a range, the panel reports both: `4.3.1`, requested as
 `^4.2.0`.
 
-| Ecosystem          | pinned by                                                            | floats on                                                   |
-|--------------------|----------------------------------------------------------------------|-------------------------------------------------------------|
-| Go modules         | the version in `go.mod`, which the build selects                     | — (a `require` always names a version)                      |
-| npm                | `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, an exact `1.2.3` | any range, including `1.2`, which denotes 1.2.x             |
-| crates.io          | `Cargo.lock`                                                         | the manifest alone, where `"1.2.3"` denotes `^1.2.3`        |
-| PyPI               | `poetry.lock`, `uv.lock`, `pdm.lock`, `Pipfile.lock`, `==1.2.3`      | `>=`, `~=`, `^` and other ranges                            |
-| Maven              | a plain version, `[1.2.3]`                                           | ranges, `LATEST`, `RELEASE`, `-SNAPSHOT`, unexpanded `${…}` |
-| NuGet              | an exact version, `[1.2.3]`                                          | wildcards (`2.*`) and ranges                                |
-| PowerShell Gallery | `RequiredVersion`                                                    | `ModuleVersion`, which is a minimum                         |
-| GitHub Actions     | a full commit SHA                                                    | tags, branches, or no ref                                   |
-| GitLab CI includes | a commit                                                             | tags, branches, templates, remote includes, or no ref       |
-| Container images   | an `@sha256:` digest                                                 | tags                                                        |
+| Ecosystem          | pinned by                                                            | floats on                                                                                 |
+|--------------------|----------------------------------------------------------------------|-------------------------------------------------------------------------------------------|
+| Go modules         | the version in `go.mod`, which the build selects                     | — (a `require` always names a version)                                                    |
+| npm                | `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, an exact `1.2.3` | any range, including `1.2`, which denotes 1.2.x                                           |
+| crates.io          | `Cargo.lock`                                                         | the manifest alone, where `"1.2.3"` denotes `^1.2.3`                                      |
+| PyPI               | `poetry.lock`, `uv.lock`, `pdm.lock`, `Pipfile.lock`, `==1.2.3`      | `>=`, `~=`, `^` and other ranges                                                          |
+| Maven              | a plain version, `[1.2.3]`                                           | ranges, `LATEST`, `RELEASE`, `-SNAPSHOT`, dynamic `1.+` and `latest.*`, unexpanded `${…}` |
+| NuGet              | an exact version, `[1.2.3]`                                          | wildcards (`2.*`) and ranges                                                              |
+| PowerShell Gallery | `RequiredVersion`                                                    | `ModuleVersion`, which is a minimum                                                       |
+| GitHub Actions     | a full commit SHA                                                    | tags, branches, or no ref                                                                 |
+| GitLab CI includes | a commit                                                             | tags, branches, templates, remote includes, or no ref                                     |
+| Container images   | an `@sha256:` digest                                                 | tags                                                                                      |
 
 The JSON and GraphML exports carry `requested` and `floating` per package.
 
@@ -1278,17 +1278,19 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | Python                  | `pyright-langserver`, `basedpyright-langserver` or `pylsp` |
 | Rust                    | `rust-analyzer`                                            |
 | Java                    | `jdtls`                                                    |
+| Kotlin                  | `kotlin-language-server`                                   |
+| Scala                   | `metals`                                                   |
 | C#                      | `csharp-ls`                                                |
 
 The servers run in the background once the map is displayed — gopls requires
 approximately 7 s for this repository — within the budget set by
 `--lsp-timeout`; results are cached until the map's files, symbols or imports
 change, or a different set of language servers is installed. Servers that index
-slowly, rust-analyzer and jdtls in particular, may answer before indexing has
-finished, so a first run can report fewer references than a later one. The
-legend's **Imports / References** switch then determines what the selection arcs
-and the side panel show: for a function, what it uses and what uses it. The JSON
-and GraphML exports include the reference edges.
+slowly, rust-analyzer, jdtls and metals in particular, may answer before
+indexing has finished, so a first run can report fewer references than a later
+one. The legend's **Imports / References** switch then determines what the
+selection arcs and the side panel show: for a function, what it uses and what
+uses it. The JSON and GraphML exports include the reference edges.
 
 ### Languages
 
@@ -1298,7 +1300,9 @@ and GraphML exports include the reference edges.
 | JavaScript / TypeScript | relative paths, `tsconfig`/`jsconfig` `paths`, workspaces, `package.json` + `package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`                                                                            | npm, Node.js built-ins                      |
 | Python                  | relative imports, `src/` layouts, requirements files, `setup.cfg`, literal `setup.py` lists, `pyproject.toml`, `Pipfile`, `poetry.lock`/`uv.lock`/`pdm.lock`/`Pipfile.lock`, installed environments (below) | PyPI, Python standard library               |
 | Rust                    | the module tree (`crate::`, `self::`, `super::`, `mod x;`), workspace and path crates, `Cargo.toml` (renamed and workspace dependencies) + `Cargo.lock`                                                     | crates.io, Rust standard library            |
-| Java                    | source files by package path (any source root), `pom.xml` (properties, dependency management), Gradle scripts and version catalogs                                                                          | Maven, Java standard library                |
+| Java                    | source files by package path (any source root), `pom.xml` (properties, dependency management), Gradle scripts and version catalogs, sbt builds                                                              | Maven, Java standard library                |
+| Kotlin                  | source files by the package they declare (any directory; Java files by path), the Java manifests                                                                                                            | Maven, Kotlin and Java standard libraries   |
+| Scala                   | source files by the package they declare (any directory; Java files by path), `build.sbt` (`%`, `%%`, versions held in a `val`), the Java manifests                                                         | Maven, Scala and Java standard libraries    |
 | C#                      | namespaces to project folders (`RootNamespace` + folder), `PackageReference`, `Directory.Packages.props`                                                                                                    | NuGet, .NET base library                    |
 | PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                           | PowerShell Gallery, built-in modules        |
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                | GitHub Actions, GitLab CI, Container images |
@@ -1328,11 +1332,28 @@ group identifiers by prefix, by shared leading segments, by artifact name, and
 by a short table of well-known exceptions such as Guava, JUnit 4 and Lombok.
 Imports that cannot be matched are shown as unresolved.
 
+Kotlin and Scala share Java's resolution: the same manifests, the same Maven
+islands, the same pinning rule, and the JDK. A Kotlin or Scala file need not sit
+in a directory named after its package, so each is found by the `package` it
+declares and the definitions starting in its first column; this index serves all
+three languages, so a Java class may import a Kotlin one and the reverse.
+`kotlin.*` and `scala.*` form their own standard-library islands; `kotlinx.*`
+and the modules split from the Scala library, such as `scala.xml`, are ordinary
+Maven dependencies. Scala imports are relative, so each is tried against the
+packages around the file first, then against `scala._` unless a dependency owns
+that root (`io.circe` is not `scala.io`); an import of a value's members
+(`import builder._`) is not a dependency and is dropped, as is an import of a
+class in the default package, which Gradle scripts declare. An artifact's first
+word also names its group, since Scala libraries are imported by it
+(`cats.effect` from `org.typelevel:cats-effect`). sbt's `%%` appends the Scala
+version to an artifact's name, but the map shows groups, so it is read as `%`
+and `scalaVersion` is not consulted.
+
 Files in other languages appear on the map without dependency edges. Parsing
-uses a pure-Go tree-sitter runtime for JavaScript/TypeScript, Python, Rust and
-Java; Go uses the standard library's own parser, CI files a YAML parser, and C#,
-PowerShell and Markdown small built-in scanners — so the binary continues to
-cross-compile without a C toolchain.
+uses a pure-Go tree-sitter runtime for JavaScript/TypeScript, Python, Rust,
+Java, Kotlin and Scala; Go uses the standard library's own parser, CI files a
+YAML parser, and C#, PowerShell and Markdown small built-in scanners — so the
+binary continues to cross-compile without a C toolchain.
 
 ## Security
 
