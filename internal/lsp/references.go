@@ -115,6 +115,11 @@ var Servers = []Server{
 	// functions, macros and variables; a CMakeLists.txt is known by its name.
 	{Name: "cmake", Open: true, Exts: map[string]string{".cmake": "cmake"}, Names: map[string]string{"CMakeLists.txt": "cmake"},
 		Commands: [][]string{{"neocmakelsp", "--stdio"}, {"cmake-language-server"}}},
+	// starpls, bazel-lsp and bzl answer references for Bazel's Starlark: BUILD and
+	// WORKSPACE files are known by their names, the rest by .bzl and .bazel.
+	{Name: "starlark", Open: true, Exts: map[string]string{".bzl": "starlark", ".bazel": "starlark"},
+		Names:    map[string]string{"BUILD": "starlark", "WORKSPACE": "starlark", "WORKSPACE.bzlmod": "starlark"},
+		Commands: [][]string{{"starpls", "server"}, {"bazel-lsp"}, {"bzl", "lsp", "serve"}}},
 }
 
 // languageID is the languageId the server gives the file at p, and whether it
@@ -499,6 +504,10 @@ func symbolWord(name string) string {
 	}
 	if i := strings.LastIndex(name, "@"); i > 0 && allDigits(name[i+1:]) {
 		name = name[:i]
+	}
+	// A Bazel target is //pkg:name; its name is the word (name = "shop").
+	if strings.HasPrefix(name, "//") {
+		return name[strings.LastIndex(name, ":")+1:]
 	}
 	if i := strings.LastIndex(name, "/"); i > 0 && allDigits(name[i+1:]) {
 		name = name[:i]

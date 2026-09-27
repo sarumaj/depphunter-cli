@@ -1179,3 +1179,73 @@ func TestClojureRepositoryDiscovery(t *testing.T) {
 		t.Error("MavenPublic")
 	}
 }
+
+// A Bazel registry serves each module version's MODULE.bazel: its bazel_deps
+// without the dev ones are the dependencies, at the versions they name. A module
+// without a version is asked at the newest version metadata.json lists that is not
+// yanked.
+//
+// Verifies: REQ-SUP-057
+func TestBazelDependencies(t *testing.T) {
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Path)
+		switch r.URL.Path {
+		case "/modules/rules_go/0.50.1/MODULE.bazel", "/modules/rules_go/0.51.0/MODULE.bazel":
+			w.Write([]byte(`module(name = "rules_go", version = "0.50.1")
+
+bazel_dep(name = "bazel_features", version = "1.9.1")
+bazel_dep(name = "platforms", version = "0.0.4")
+bazel_dep(name = "protobuf", version = "3.19.2", repo_name = "com_google_protobuf")
+bazel_dep(name = "gazelle", version = "0.36.0", dev_dependency = True)
+`))
+		case "/modules/rules_go/metadata.json":
+			w.Write([]byte(`{"versions": ["0.50.1", "0.51.0", "0.52.0"], "yanked_versions": {"0.52.0": "broken"}}`))
+		default:
+			http.NotFound(w, r)
+		}
+	}))
+	defer srv.Close()
+	c := clientFor(t, Bazel, srv.URL, "")
+	got := c.Dependencies(lang.Target{Ecosystem: Bazel, Package: "rules_go", Version: "0.50.1", Pinned: true})
+	want := []lang.Target{
+		{Ecosystem: Bazel, Package: "bazel_features", Version: "1.9.1", Pinned: true},
+		{Ecosystem: Bazel, Package: "platforms", Version: "0.0.4", Pinned: true},
+		{Ecosystem: Bazel, Package: "protobuf", Version: "3.19.2", Pinned: true},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+	c = clientFor(t, Bazel, srv.URL, "")
+	if got := c.Dependencies(lang.Target{Ecosystem: Bazel, Package: "rules_go", Floating: true}); len(got) != 3 {
+		t.Errorf("unversioned: %+v", got)
+	}
+	if want := []string{"/modules/rules_go/0.50.1/MODULE.bazel", "/modules/rules_go/metadata.json", "/modules/rules_go/0.51.0/MODULE.bazel"}; !reflect.DeepEqual(asked, want) {
+		t.Errorf("asked %v, want %v", asked, want)
+	}
+	if idx, known := Discover(nil, env(nil), "").For(Bazel, "rules_go"); idx != "https://bcr.bazel.build" || !known {
+		t.Errorf("default index: %s (known %v)", idx, known)
+	}
+}
+
+// A .bazelrc names registries with --registry; the Bazel Central Registry itself
+// and file:// registries are not recorded, and one only the repository names is not
+// trusted.
+//
+// Verifies: REQ-SUP-015, REQ-SUP-057
+func TestDiscoverReadsBazelrc(t *testing.T) {
+	files := write(t, map[string]string{
+		".bazelrc": "# registries\ncommon --registry=https://bcr.bazel.build/\ncommon --registry=https://registry.corp.test/bazel # ours\nbuild --registry=file:///opt/registry\n",
+	})
+	if idx, known := Discover(files, env(nil), "").For(Bazel, "rules_go"); idx != "https://registry.corp.test/bazel" || known {
+		t.Errorf("project: got %s (known %v)", idx, known)
+	}
+	home := t.TempDir()
+	os.WriteFile(filepath.Join(home, ".bazelrc"), []byte("common --registry https://mirror.corp.test\n"), 0o644)
+	if idx, known := Discover(nil, env(nil), home).For(Bazel, "rules_go"); idx != "https://mirror.corp.test" || !known {
+		t.Errorf("home: got %s (known %v)", idx, known)
+	}
+	if !BazelCentral("https://bcr.bazel.build/") || BazelCentral("https://registry.corp.test") {
+		t.Error("BazelCentral")
+	}
+}

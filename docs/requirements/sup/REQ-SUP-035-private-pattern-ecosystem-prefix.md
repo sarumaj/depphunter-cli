@@ -39,7 +39,8 @@ Elixir's and Erlang's `hex`, R's `cran` and `bioconductor`, Haskell's
 `hackage`, Terraform's `terraform-module` and `terraform-provider`, the
 Buf Schema Registry's `buf`, CMake's `cmake-fetch` and `pkg-config`,
 `cocoapods` and `carthage`, Lua's `luarocks` and `wally`, Perl's
-`cpan`, OCaml's `opam`, Julia's `julia`, and Zig's `zig`.
+`cpan`, OCaml's `opam`, Julia's `julia`, Zig's `zig`, and Bazel's `bazel`
+(modules) and `bazel-repo` (WORKSPACE downloads).
 
 A Clojure dependency is a Maven package named `group:artifact`; a `maven:`
 (or unscoped) pattern matches it by its group (`maven:com.acme.*` matches

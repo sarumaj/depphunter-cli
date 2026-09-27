@@ -41,8 +41,10 @@ Perl::LanguageServer (`perlnavigator --stdio`, `pls` or `perl
 `.mli`, `.mll` and `.mly` files) and LanguageServer.jl (`julia
 --startup-file=no --history-file=no -e "using LanguageServer; runserver()"`;
 `.jl` files) and zls (`zls`; `.zig` files) and clojure-lsp (`clojure-lsp`;
-`.clj`, `.cljs`, `.cljc` and `.bb` files), skipping a server that is not
-installed.
+`.clj`, `.cljs`, `.cljc` and `.bb` files) and starpls, bazel-lsp or bzl
+(`starpls server`, `bazel-lsp` or `bzl lsp serve`, first installed; `BUILD`,
+`WORKSPACE` and `WORKSPACE.bzlmod` by name, `.bzl` and `.bazel` files),
+skipping a server that is not installed.
 
 ## Rationale
 

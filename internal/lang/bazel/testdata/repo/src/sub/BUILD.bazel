@@ -1,0 +1,5 @@
+cc_library(
+    name = "sub",
+    hdrs = ["sub.h"],
+    deps = ["//src:util"],
+)

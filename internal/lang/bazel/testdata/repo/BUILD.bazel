@@ -1,0 +1,6 @@
+exports_files(["go.mod"])
+
+alias(
+    name = "shop",
+    actual = "//src:shop",
+)

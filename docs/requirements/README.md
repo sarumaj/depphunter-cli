@@ -131,6 +131,7 @@ The server **shall** ...
 | `julia`     | The Julia plugin, Pkg's projects, manifests and artifacts, and the General registry.                  |
 | `zig`       | The Zig plugin, build.zig's module wiring and build.zig.zon packages.                                 |
 | `clojure`   | The Clojure, ClojureScript and babashka plugin, deps.edn, Leiningen, shadow-cljs, bb.edn and Clojars. |
+| `bazel`     | The Bazel plugin: BUILD, .bzl, MODULE.bazel and WORKSPACE files, registries and hub repositories.     |
 | `terraform` | The Terraform and OpenTofu plugin, lock files, Terragrunt and the module registries.                  |
 | `proto`     | The Protocol Buffers plugin, Buf's configuration and lock files and the Buf Schema Registry.          |
 | `shell`     | The shell script plugin (sh, Bash, zsh, bats), direnv and packages scripts install.                   |
@@ -284,6 +285,11 @@ requirements of type `limitation` in their scopes:
   namespaces and classes are attributed to artifacts by a table and naming
   rules, and there is no lock file, so a dependency's own dependencies need
   `--online` (Maven POMs; Clojars after Maven Central).
+- Bazel is read without running Bazel: macros are not expanded, computed
+  labels and URLs are not evaluated, module extensions other than the Maven,
+  pip, Go, npm and crates hubs are not run, a version minimal version
+  selection raised is known only from `MODULE.bazel.lock`, and no
+  vulnerability database covers Bazel modules or WORKSPACE downloads.
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

@@ -215,3 +215,15 @@ func TestAMavenPatternMatchesGroupAndArtifact(t *testing.T) {
 		t.Error("a bare group did not match its artifacts")
 	}
 }
+
+// Bazel modules are named by the registry, WORKSPACE downloads by their URL; a
+// pattern scoped to either keeps to its island.
+//
+// Verifies: REQ-SUP-035
+func TestABazelPatternKeepsToBazel(t *testing.T) {
+	p := New([]string{"bazel:acme_*", "bazel-repo:git.acme.example/*"})
+	if !p.Match("bazel", "acme_rules") || p.Match("npm", "acme_rules") || p.Match("bazel", "rules_go") ||
+		!p.Match("bazel-repo", "git.acme.example/tools/zlib") || p.Match("bazel", "git.acme.example/tools/zlib") {
+		t.Error("a bazel-scoped pattern did not keep to its ecosystem")
+	}
+}

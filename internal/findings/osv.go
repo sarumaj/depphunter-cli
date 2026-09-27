@@ -30,7 +30,9 @@ const (
 // no OSV counterpart, and guessing one would invent findings. Neither CocoaPods nor
 // Carthage is an OSV ecosystem, so pods are not asked about; nor are LuaRocks and
 // Wally, so rocks and Wally packages are not either, nor CPAN (OSV's ecosystem list
-// has none for Perl), so CPAN distributions are not, nor Zig packages.
+// has none for Perl), so CPAN distributions are not, nor Zig packages, nor Bazel
+// modules and WORKSPACE downloads (the Maven, PyPI, Go, npm and crates.io packages
+// Bazel's module extensions install are asked about under their own ecosystems).
 //
 // Implements: REQ-FND-010
 var osvEcosystems = map[string]string{

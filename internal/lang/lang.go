@@ -81,6 +81,15 @@ type Transitive interface {
 	Dependencies(t Target) []Target
 }
 
+// Expander is the optional part of a Resolver that turns one raw import into
+// several resolved ones: a Bazel glob() names every file of its package it
+// matches. ok false leaves the import to Resolve.
+//
+// Implements: REQ-BAZEL-005
+type Expander interface {
+	Expand(file string, imp RawImport) (imports []Import, ok bool)
+}
+
 // Installed is the optional part of a Transitive that says when its answer comes from
 // what an environment has installed rather than from a lock file, which the
 // resolution report tells apart.
@@ -144,10 +153,17 @@ func ClassOf(p Plugin, f *scan.File) string {
 	return class
 }
 
-// Apply resolves an extraction's imports.
+// Apply resolves an extraction's imports, expanding those an Expander takes.
 func Apply(r Resolver, file string, ex *Extraction) *FileResult {
 	res := &FileResult{Symbols: ex.Symbols}
+	exp, _ := r.(Expander)
 	for _, im := range ex.Imports {
+		if exp != nil {
+			if more, ok := exp.Expand(file, im); ok {
+				res.Imports = append(res.Imports, more...)
+				continue
+			}
+		}
 		res.Imports = append(res.Imports, Import{Spec: im.Spec, Line: im.Line, Target: r.Resolve(file, im)})
 	}
 	return res

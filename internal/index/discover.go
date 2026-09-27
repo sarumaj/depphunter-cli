@@ -177,6 +177,7 @@ func (c *Config) machine(env func(string) string, home string) {
 		{filepath.Join(home, ".bundle", "config"), parseBundleConfig},
 		{filepath.Join(home, ".Rprofile"), parseRprofile},
 		{filepath.Join(home, ".config", "cabal", "config"), parseCabalRepositories},
+		{filepath.Join(home, ".bazelrc"), parseBazelrc},
 		{filepath.Join(home, ".cabal", "config"), parseCabalRepositories},
 	} {
 		if data, err := os.ReadFile(f.path); err == nil {
@@ -242,6 +243,8 @@ func (c *Config) project(files []*scan.File) {
 			parsePodfile(data, add)
 		case base == "podfile.lock":
 			parsePodfileLock(data, add)
+		case base == ".bazelrc" || strings.HasSuffix(base, ".bazelrc"):
+			parseBazelrc(data, add)
 		case strings.HasPrefix(base, "config-") && strings.HasSuffix(base, ".lua") && path.Base(path.Dir(f.Path)) == ".luarocks":
 			parseLuaRocksConfig(data, add) // what luarocks init writes for the project
 		}
@@ -858,5 +861,31 @@ func parseJuliaRegistry(data []byte, add func(eco, url, scope string)) {
 	sort.Strings(names)
 	for _, n := range names {
 		add(Julia, base, n)
+	}
+}
+
+// parseBazelrc reads the registries a .bazelrc names (--registry=URL, in any
+// command's section, in order). The Bazel Central Registry itself is the public
+// index, and a file:// registry cannot be asked over the network: neither is added.
+//
+// Implements: REQ-SUP-057
+func parseBazelrc(data []byte, add func(eco, url, scope string)) {
+	for _, line := range strings.Split(string(data), "\n") {
+		fields := strings.Fields(line)
+		if len(fields) == 0 || strings.HasPrefix(fields[0], "#") {
+			continue
+		}
+		for i, f := range fields {
+			if strings.HasPrefix(f, "#") {
+				break
+			}
+			u, ok := strings.CutPrefix(f, "--registry=")
+			if !ok && f == "--registry" && i+1 < len(fields) {
+				u, ok = fields[i+1], true
+			}
+			if u = strings.Trim(u, `"'`); ok && strings.HasPrefix(u, "http") && !BazelCentral(u) {
+				add(Bazel, u, "")
+			}
+		}
 	}
 }

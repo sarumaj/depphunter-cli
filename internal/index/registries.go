@@ -26,6 +26,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang/juliapkg"
 	"github.com/sarumaj/depphunter-cli/internal/lang/luarocks"
 	"github.com/sarumaj/depphunter-cli/internal/lang/opam"
+	"github.com/sarumaj/depphunter-cli/internal/lang/starlark"
 	"github.com/sarumaj/depphunter-cli/internal/store"
 )
 
@@ -1975,6 +1976,62 @@ func (c *Client) mavenArtifact(ctx context.Context, index string, t lang.Target)
 			ver = managed[d.GroupID+":"+d.ArtifactID]
 		}
 		out = append(out, dep{Name: name, Version: expand(ver)})
+	}
+	return out, nil
+}
+
+// ---------------------------------------------------------------- Bazel
+
+// bazelModule reads a module's dependencies from a Bazel registry laid out as files
+// (the Bazel Central Registry, or one a .bazelrc names with --registry):
+// <registry>/modules/<name>/<version>/MODULE.bazel, the version the target names,
+// else the newest metadata.json lists that is not yanked. Its bazel_dep calls are
+// the dependencies, without dev_dependency ones, each at the version it names:
+// minimal version selection makes that the version the module needs at least.
+//
+// Implements: REQ-SUP-057
+func (c *Client) bazelModule(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+	base := strings.TrimRight(index, "/") + "/modules/" + url.PathEscape(t.Package) + "/"
+	version := strings.TrimSpace(t.Version)
+	if version == "" {
+		body, err := c.get(ctx, base+"metadata.json")
+		if err != nil {
+			return nil, err
+		}
+		var meta struct {
+			Versions       []string          `json:"versions"`
+			YankedVersions map[string]string `json:"yanked_versions"`
+		}
+		if err := json.Unmarshal(body, &meta); err != nil {
+			return nil, err
+		}
+		for i := len(meta.Versions) - 1; i >= 0; i-- { // listed oldest first
+			if _, yanked := meta.YankedVersions[meta.Versions[i]]; !yanked {
+				version = meta.Versions[i]
+				break
+			}
+		}
+		if version == "" {
+			return nil, nil
+		}
+	}
+	body, err := c.accept(ctx, base+url.PathEscape(version)+"/MODULE.bazel", "text/plain")
+	if err != nil {
+		return nil, err
+	}
+	var out []dep
+	seen := map[string]bool{}
+	for _, st := range starlark.Parse(body).Stmts {
+		n := st.X
+		if st.Def != "" || n.Callee() != "bazel_dep" {
+			continue
+		}
+		name := n.KwStr("name")
+		if dev := n.Kw("dev_dependency"); name == "" || seen[name] || dev != nil && dev.Name() == "True" {
+			continue
+		}
+		seen[name] = true
+		out = append(out, dep{Name: name, Version: n.KwStr("version")})
 	}
 	return out, nil
 }

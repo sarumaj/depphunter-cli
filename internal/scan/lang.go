@@ -26,11 +26,13 @@ var byExt = map[string]string{
 	".md": "Markdown", ".mdx": "Markdown", ".rst": "reStructuredText", ".txt": "Text",
 	".sql": "SQL", ".proto": "Protobuf", ".graphql": "GraphQL", ".tf": "Terraform",
 	".tofu": "OpenTofu", ".tfvars": "Terraform", ".hcl": "HCL", ".cmake": "CMake",
+	".bzl": "Starlark", ".bazel": "Starlark",
 }
 
 var byName = map[string]string{
 	"Makefile": "Make", "go.mod": "Go", "go.sum": "Go",
 	"CMakeLists.txt": "CMake", "CMakePresets.json": "CMake", "CMakeUserPresets.json": "CMake",
+	"BUILD": "Starlark", "WORKSPACE": "Starlark", "WORKSPACE.bzlmod": "Starlark", "MODULE.bazel.lock": "JSON",
 	"Jenkinsfile": "Groovy", "Gemfile": "Ruby", "Rakefile": "Ruby", "Guardfile": "Ruby", "Capfile": "Ruby",
 	"rebar.config": "Erlang", "rebar.lock": "Erlang", "mix.lock": "Elixir",
 	"cpanfile": "Perl", "cpanfile.snapshot": "Carton", "dist.ini": "Dist::Zilla",

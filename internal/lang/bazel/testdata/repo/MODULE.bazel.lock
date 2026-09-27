@@ -1,0 +1,13 @@
+{
+  "lockFileVersion": 11,
+  "registryFileHashes": {
+    "https://bcr.bazel.build/bazel_registry.json": "8a28",
+    "https://bcr.bazel.build/modules/rules_go/0.41.0/MODULE.bazel": "aa",
+    "https://bcr.bazel.build/modules/rules_go/0.50.1/MODULE.bazel": "bb",
+    "https://bcr.bazel.build/modules/rules_cc/0.0.9/MODULE.bazel": "cc",
+    "https://bcr.bazel.build/modules/rules_cc/0.0.10/MODULE.bazel": "dd",
+    "https://bcr.bazel.build/modules/rules_cc/0.0.10-rc1/MODULE.bazel": "ee"
+  },
+  "selectedYankedVersions": {},
+  "moduleExtensions": {}
+}

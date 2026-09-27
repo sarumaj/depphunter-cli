@@ -1,0 +1,85 @@
+load("@rules_cc//cc:defs.bzl", "cc_library", "cc_test")
+load("@pypi//:requirements.bzl", "requirement")
+load("@rules_jvm_external//:defs.bzl", "artifact")
+load("//tools:defs.bzl", "shop_macro")
+load(":local.bzl", "LOCAL")
+
+package(default_visibility = ["//visibility:public"])
+
+cc_library(
+    name = "shop",
+    srcs = glob(
+        ["*.cc"],
+        exclude = ["*_test.cc"],
+    ),
+    hdrs = glob(["**/*.h"]),
+    copts = ["-Wall"],
+    deps = [
+        ":util",
+        "//lib",
+        "//lib:helpers",
+        "@//lib:helpers.cc",
+        "@shop_repo//lib:lib",
+        "@com_google_protobuf//:protobuf",
+        "@abseil-cpp//absl/strings",
+        "@shop_api//:api",
+        "@@rules_go+//go/runfiles",
+        "@bazel_tools//tools/cpp:toolchain",
+        "@unknown_repo//:thing",
+        "@shop_tools//:bin",
+    ] + select({
+        "@platforms//os:linux": ["@googletest//:gtest"],
+        "//conditions:default": [],
+    }),
+)
+
+cc_library(
+    name = "util",
+    hdrs = ["shop.h"],
+)
+
+cc_test(
+    name = "shop_test",
+    srcs = ["shop_test.cc"],
+    deps = [":shop"],
+)
+
+py_binary(
+    name = "tool",
+    srcs = ["tool.py"],
+    data = ["$(location :util)"],
+    deps = [
+        requirement("requests"),
+        "@pypi//pyyaml",
+        "@pypi//typing_extensions:pkg",
+        "@pypi//missing",
+    ],
+)
+
+java_library(
+    name = "java",
+    srcs = ["Shop.java"],
+    deps = [
+        "@maven//:com_google_guava_guava",
+        "@maven//:org_slf4j_slf4j_api",
+        "@maven//:not_declared",
+        artifact("junit:junit"),
+    ],
+)
+
+go_library(
+    name = "go_default_library",
+    srcs = ["shop.go"],
+    deps = [
+        "@com_github_pkg_errors//:errors",
+        "@org_golang_x_sys//unix",
+    ],
+)
+
+rust_library(
+    name = "rs",
+    srcs = ["lib.rs"],
+    deps = ["@crates//:serde", "@crates//:anyhow"],
+)
+
+shop_macro(name = "generated")

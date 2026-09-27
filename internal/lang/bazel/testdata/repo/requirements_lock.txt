@@ -1,0 +1,6 @@
+# pip-compile output
+PyYAML==6.0.1 \
+    --hash=sha256:abc
+requests==2.32.3 \
+    --hash=sha256:def
+typing-extensions==4.12.2

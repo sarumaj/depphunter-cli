@@ -100,6 +100,7 @@ func TestSymbolWord(t *testing.T) {
 		"Shop.Cart.new/1@30": "new", "start/2": "start", "fail!/0": "fail!", "a/b": "a/b",
 		"Cart.initWithItems:total:": "initWithItems", "Cart.load": "load", "Cart.count@9": "count",
 		"NSString(Shop)": "NSString", "(<+>)": "(<+>)", "area :circle": "area", "area [:x.y]": "area",
+		"//src:shop": "shop", "//:shop@12": "shop", "//a/b.c:x.y": "x.y",
 	} {
 		if got := symbolWord(name); got != want {
 			t.Errorf("%s: got %q, want %q", name, got, want)
@@ -114,6 +115,21 @@ func TestURIs(t *testing.T) {
 	}
 	if _, ok := relPath(root, "file:///usr/lib/go/src/fmt/print.go"); ok {
 		t.Error("paths outside the root must be rejected")
+	}
+}
+
+// Verifies: REQ-LSP-002
+func TestStarlarkServerByName(t *testing.T) {
+	var star Server
+	for _, s := range Servers {
+		if s.Name == "starlark" {
+			star = s
+		}
+	}
+	for p, want := range map[string]bool{"src/BUILD": true, "BUILD.bazel": true, "MODULE.bazel": true, "defs.bzl": true, "WORKSPACE": true, "BUILD.txt": false} {
+		if id, ok := star.languageID(p); ok != want || (ok && id != "starlark") {
+			t.Errorf("%s: %q, %v", p, id, ok)
+		}
 	}
 }
 
