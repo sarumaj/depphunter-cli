@@ -74,6 +74,9 @@ const (
 	// Dub is the d plugin's island of dub packages; the registry's API serves each
 	// package's versions with their recipes.
 	Dub = "dub"
+	// Alire is the ada plugin's island of Alire crates; the community index is
+	// a git repository of release manifests, read as files.
+	Alire = "alire"
 )
 
 // public is where each ecosystem's packages come from unless something says otherwise.
@@ -109,6 +112,9 @@ var public = map[string]string{
 	// registry-index (the manifests) are read below it.
 	PureScript: "https://raw.githubusercontent.com/purescript",
 	Dub:        "https://code.dlang.org",
+	// The community index's branch for the index format Alire 2 reads; its
+	// manifests are served one by one.
+	Alire: "https://raw.githubusercontent.com/alire-project/alire-index/stable-1.4.0",
 }
 
 // Clojars is the Maven repository Clojure's libraries are published to. Leiningen,

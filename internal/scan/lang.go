@@ -22,6 +22,7 @@ var byExt = map[string]string{
 	".zig": "Zig", ".zon": "Zig", ".nix": "Nix", ".gleam": "Gleam", ".elm": "Elm", ".purs": "PureScript", ".dhall": "Dhall", ".cr": "Crystal", ".d": "D", ".di": "D", ".nim": "Nim", ".jl": "Julia",
 	".f90": "Fortran", ".f95": "Fortran", ".f03": "Fortran", ".f08": "Fortran", ".f18": "Fortran", ".f": "Fortran", ".for": "Fortran",
 	".ftn": "Fortran", ".f77": "Fortran", ".fpp": "Fortran", ".fypp": "Fortran", ".hx": "Haxe", ".hxml": "Haxe",
+	".ads": "Ada", ".adb": "Ada", ".ada": "Ada", ".gpr": "GPR",
 	".sh": "Shell", ".bash": "Shell", ".zsh": "Shell", ".ksh": "Shell", ".bats": "Shell", ".zsh-theme": "Shell", ".ps1": "PowerShell", ".psm1": "PowerShell", ".psd1": "PowerShell",
 	".html": "HTML", ".htm": "HTML", ".css": "CSS", ".scss": "CSS", ".sass": "CSS", ".less": "CSS",
 	".vue": "Vue", ".svelte": "Svelte", ".astro": "Astro",

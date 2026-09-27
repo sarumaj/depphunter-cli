@@ -1,0 +1,3 @@
+project AUnit is
+   for Source_Dirs use ("include");
+end AUnit;

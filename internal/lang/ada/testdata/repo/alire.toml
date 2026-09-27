@@ -1,0 +1,25 @@
+name = "shop"
+version = "1.0.0"
+description = "A shop"
+project-files = ["shop.gpr"]
+
+[[depends-on]]
+aunit = "^24.0"
+gnatcoll = "^25"
+xmlada = "=24.0.0"
+utilada = "*"
+templates_parser = "~24.0"
+ada_toml = "~0.5"
+widgets = "*"
+
+[[depends-on]]
+[depends-on.'case(os)'.windows]
+win32ada = "*"
+
+[[pins]]
+ada_toml = { url = "https://github.com/pmderodat/ada-toml", commit = "669eacabc8cad45b89b0bfc34d99b4334d66bebd" }
+widgets = { path = "libs/widgets" }
+
+[pins.acme_log]
+url = "https://git.acme.dev/acme_log.git"
+branch = "main"

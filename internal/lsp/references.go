@@ -139,6 +139,11 @@ var Servers = []Server{
 	// references for Haxe modules; it compiles with the first .hxml it finds
 	// (build.hxml), so a project with none may get no answers.
 	{Name: "haxe", Open: true, Exts: map[string]string{".hx": "haxe"}, Commands: [][]string{{"haxe-language-server"}}},
+	// The Ada Language Server answers references for Ada units and their
+	// declarations over stdio; it loads the project file it finds (a single
+	// .gpr at the root, or alire.toml's), so a repository with several may get
+	// fewer answers.
+	{Name: "ada", Open: true, Exts: map[string]string{".ads": "ada", ".adb": "ada", ".ada": "ada"}, Commands: [][]string{{"ada_language_server"}}},
 	{Name: "fortran", Open: true, Exts: map[string]string{".f90": "fortran", ".f95": "fortran", ".f03": "fortran", ".f08": "fortran", ".f18": "fortran", ".f": "fortran", ".for": "fortran", ".ftn": "fortran", ".f77": "fortran", ".fpp": "fortran"}, Commands: [][]string{{"fortls"}}},
 	// neocmakelsp and cmake-language-server both answer references for CMake's
 	// functions, macros and variables; a CMakeLists.txt is known by its name.

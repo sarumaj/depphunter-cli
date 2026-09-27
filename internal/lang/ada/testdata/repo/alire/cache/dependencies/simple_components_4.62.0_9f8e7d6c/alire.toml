@@ -1,0 +1,6 @@
+name = "simple_components"
+version = "4.62.0"
+
+[[depends-on]]
+strings_edit = "^4.0"
+tables = "=1.14.0"

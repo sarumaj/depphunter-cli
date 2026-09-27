@@ -38,7 +38,8 @@ is), Paket's `paket.dependencies`, `paket.lock` and `paket.references`
 dub's `dub.sdl` (SDLang; `.d` and `.di` files are D), Fortran's
 extensions (`.f90`, `.f95`, `.f03`, `.f08`, `.f18`, `.f`, `.for`, `.ftn`,
 `.f77`, `.fpp` and fypp's `.fypp`, in either case), Haxe's `.hx` and
-`.hxml`,
+`.hxml`, Ada's `.ads`, `.adb` and `.ada` and GNAT's project files (`.gpr`,
+GPR),
 the shells' and direnv's startup files (`.bashrc`,
 `.zshrc`, `.profile`, `.envrc` and the others of REQ-SHELL-001), and the
 Dockerfile names of REQ-DOCKER-001), or, for a file neither names, from a
@@ -123,3 +124,5 @@ Objective-C from MATLAB, Mercury and C.
     `: cube` are Forth.
 12. `src/shop/Main.hx`, `build.hxml` and `haxe_libraries/tink_core.hxml`
     are Haxe, and `haxelib.json` is JSON.
+13. `src/shop-cart.ads`, `src/shop-cart.adb` and `legacy/SHOP.ADA` are
+    Ada, `shop.gpr` is GPR and `alire.toml` is TOML.

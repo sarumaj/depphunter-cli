@@ -1,0 +1,55 @@
+# THIS FILE IS GENERATED. DO NOT EDIT.
+
+[solution]
+[solution.context]
+solved = true
+[[solution.state]]
+crate = "aunit"
+fulfilment = "solved"
+pinned = false
+transitivity = "direct"
+versions = "^24.0"
+[solution.state.release]
+name = "aunit"
+version = "24.0.0"
+[[solution.state]]
+crate = "gnatcoll"
+fulfilment = "solved"
+pinned = false
+transitivity = "direct"
+versions = "^25"
+[solution.state.release]
+name = "gnatcoll"
+version = "25.0.0"
+[[solution.state.release.depends-on]]
+libgpr = "^25"
+[solution.state.release.origin]
+url = "git+https://github.com/AdaCore/gnatcoll-core.git"
+commit = "40cb993cc0bdd84bd7c4d5ff0438380751497c16"
+[[solution.state]]
+crate = "libgpr"
+fulfilment = "solved"
+pinned = false
+transitivity = "indirect"
+versions = "^25"
+[solution.state.release]
+name = "libgpr"
+version = "25.0.1"
+[[solution.state]]
+crate = "templates_parser"
+fulfilment = "solved"
+pinned = false
+transitivity = "direct"
+versions = "~24.0"
+[solution.state.release]
+name = "templates_parser"
+version = "24.0.0"
+[[solution.state]]
+crate = "widgets"
+fulfilment = "linked"
+pinned = false
+transitivity = "direct"
+versions = "*"
+[solution.state.link]
+path = "libs/widgets"
+lockfiled = true
