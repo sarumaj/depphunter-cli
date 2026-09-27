@@ -1,0 +1,4 @@
+name "tools"
+dependency "shop" path=".."
+dependency "colorize" version="~>1.0"
+stringImportPaths "res"

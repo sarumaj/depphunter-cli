@@ -199,7 +199,7 @@ code. The page served is identical in both cases.
   [CI pipelines](#ci-pipelines) ·
   [Infrastructure as code](#infrastructure-as-code) ·
   [Nix](#nix) · [Gleam](#gleam) · [Elm](#elm) · [PureScript](#purescript) ·
-  [Crystal](#crystal) · [F# and Paket](#f-and-paket) ·
+  [Crystal](#crystal) · [F# and Paket](#f-and-paket) · [D and dub](#d-and-dub) ·
   [Interface definitions](#interface-definitions) ·
   [Shell scripts](#shell-scripts) ·
   [Documentation](#documentation) ·
@@ -818,10 +818,10 @@ ecosystem for Terraform modules and providers, Buf Schema Registry modules,
 CocoaPods, Carthage, LuaRocks, Wally, CPAN, Zig, Bazel modules and repositories
 (the Maven, PyPI, Go, npm and crates.io packages Bazel's module extensions
 install are asked about as such), Nix flake inputs, nixpkgs packages, Elm
-packages, PureScript packages, Crystal shards or the GitHub, git and HTTP
-dependencies Paket fetches. Floating packages are not queried, since they
-resolve to a different version on the next installation. Answers are cached for
-six hours. `--no-vulns` disables all of this.
+packages, PureScript packages, Crystal shards, the GitHub, git and HTTP
+dependencies Paket fetches or dub packages. Floating packages are not queried,
+since they resolve to a different version on the next installation. Answers are
+cached for six hours. `--no-vulns` disables all of this.
 
 Viewed from above, every building carrying findings bears a **pin**, colored by
 the most severe of them and growing taller with their number, so that the red
@@ -933,6 +933,7 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | Elm                 | an application's `elm.json` (exact versions of direct, indirect and test dependencies)                       | a package's `elm.json` ranges (`1.0.0 <= v < 2.0.0`)                                                              |
 | PureScript          | `spago.lock`, a registry version in `extraPackages`, a git commit (`ref`, a `packages.dhall` `version`)      | `>=7.0.0 <8.0.0` and bower's `^6.0.0`, no package set; a package set's name or a git tag is shown, neither        |
 | Crystal shards      | `shard.lock`, a `commit:`, a path dependency (in the repository)                                             | `~>`, `>=` and other ranges, a `branch:`, no requirement; a `tag:` or an exact `version:` is shown, neither       |
+| dub                 | `dub.selections.json`, `==1.2.3` or a bare `1.2.3` (exact in dub), a `repository` at a commit, a `path`      | `~>`, `^`, `>=` and other ranges, `*`, a `~branch`, no version                                                    |
 
 A package a shell script installs (`pip install`, `npm install -g`, `go
 install`, `cargo install`, `gem install`) follows its ecosystem's row; one
@@ -976,6 +977,7 @@ and the analysis remains offline.
 | `elm.json` of packages in `ELM_HOME`      | an installed Elm package's `dependencies`          |
 | `spago.lock` (PureScript)                 | each package's `dependencies`                      |
 | `lib/<shard>/shard.yml` (shards)          | an installed shard's `dependencies`                |
+| recipes of packages dub fetched           | a fetched dub package's `dependencies`             |
 
 Packages added in this way are marked **transitive**, meaning that no file in
 the repository imports them. Edges between packages are of kind `depends`, as
@@ -998,23 +1000,25 @@ list) and Julia packages no `Manifest.toml` records, Gleam packages no
 `manifest.toml` records, Elm packages the compiler has not installed in
 `ELM_HOME` (an application's `elm.json` lists indirect packages flat),
 PureScript packages no `spago.lock` records (a `spago.dhall` project's package
-set is remote), Maven artifacts of Java, Kotlin, Scala and Clojure builds
-(Maven, Gradle without its lock files, sbt, tools.deps and Leiningen), and Bazel
-modules (a lock file since Bazel 7.2 records versions only) — require
-`--online`, described below; the PowerShell Gallery, vcpkg, Conan 2 (whose lock
-is a flat list), Bioconductor packages no lock records, Swift packages that
-SwiftPM has not checked out under `.build` (`Package.resolved` is flat as well)
-and Terraform modules fetched from git or an archive are not resolved beyond the
-first level at present, and neither are Buf Schema Registry modules: `buf.lock`
-is a flat list, and the registry's API is not a package index depphunter asks.
-Content a CMake build fetches is not resolved beyond the first level either, nor
-are Carthage dependencies (`Cartfile.resolved` is flat), Wally packages no
-`wally.lock` records and Zig packages Zig has not fetched into `zig-pkg/` or its
-global cache (there is no Zig registry for `--online` to ask), nor Bazel's
-WORKSPACE repositories, nor niv and npins sources (their `sources.json` is
-flat), nor Crystal shards shards has not installed into `lib/` (`shard.lock` is
-flat, and shards are git repositories with no index to ask), nor the GitHub, git
-and HTTP files Paket fetches. A Terraform provider depends on nothing.
+set is remote), dub packages dub has not fetched onto this machine
+(`dub.selections.json` is a flat list), Maven artifacts of Java, Kotlin, Scala
+and Clojure builds (Maven, Gradle without its lock files, sbt, tools.deps and
+Leiningen), and Bazel modules (a lock file since Bazel 7.2 records versions
+only) — require `--online`, described below; the PowerShell Gallery, vcpkg,
+Conan 2 (whose lock is a flat list), Bioconductor packages no lock records,
+Swift packages that SwiftPM has not checked out under `.build`
+(`Package.resolved` is flat as well) and Terraform modules fetched from git or
+an archive are not resolved beyond the first level at present, and neither are
+Buf Schema Registry modules: `buf.lock` is a flat list, and the registry's API
+is not a package index depphunter asks. Content a CMake build fetches is not
+resolved beyond the first level either, nor are Carthage dependencies
+(`Cartfile.resolved` is flat), Wally packages no `wally.lock` records and Zig
+packages Zig has not fetched into `zig-pkg/` or its global cache (there is no
+Zig registry for `--online` to ask), nor Bazel's WORKSPACE repositories, nor niv
+and npins sources (their `sources.json` is flat), nor Crystal shards shards has
+not installed into `lib/` (`shard.lock` is flat, and shards are git repositories
+with no index to ask), nor the GitHub, git and HTTP files Paket fetches. A
+Terraform provider depends on nothing.
 
 The side panel presents these as a **tree**: every row under *Depends on* and
 *Used by* expands into that node's own dependencies, and so on recursively.
@@ -1096,6 +1100,7 @@ ecosystems whose graph is held outside the repository:
 | Bazel modules          | `<registry>/modules/<name>/<version>/MODULE.bazel`, the newest version not yanked from `metadata.json` when unversioned (the Bazel Central Registry, or a `.bazelrc` `--registry`)                                        | its `bazel_dep`s, excluding dev dependencies                                                         |
 | Elm                    | `<site>/packages/<author>/<name>/<version>/elm.json`, the newest release a range admits from `releases.json` when unversioned (package.elm-lang.org)                                                                      | its `dependencies` as ranges, excluding test dependencies                                            |
 | PureScript             | `<owner>/registry-index/main/<shard>/<name>` (a JSON manifest per line), the newest version a range admits from `<owner>/registry/main/metadata/<name>.json` when unversioned (the registry on raw.githubusercontent.com) | its `dependencies` as ranges                                                                         |
+| dub                    | `<registry>/api/packages/<name>/<version>/info`, the newest release a specification admits from `<registry>/api/packages/<name>/info` when not exact (code.dlang.org)                                                     | its, its sub-packages' and its default configuration's dependencies, not optional or path ones       |
 
 A container image has no dependency list. What it has is the image it was built
 on, which is the source of its unpatched vulnerabilities, and that is what is
@@ -1198,8 +1203,8 @@ pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`
 `bioconductor:`, `hackage:`, `terraform-module:`, `terraform-provider:`,
 `buf:`, `cmake-fetch:`, `pkg-config:`, `cocoapods:`, `carthage:`, `luarocks:`,
 `wally:`, `cpan:`, `opam:`, `julia:`, `zig:`, `bazel:`, `bazel-repo:`, `nix:`,
-`nixpkgs:`, `elm:`, `purescript:`, `shards:` or `paket:` — restricts it to that
-ecosystem.
+`nixpkgs:`, `elm:`, `purescript:`, `shards:`, `paket:` or `dub:` — restricts it
+to that ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
 to whatever is configured here**, so a Go project whose machine is already
@@ -1672,6 +1677,54 @@ symbols. Unqualified names an `open` brings in are not linked (that needs
 the compiler), MSBuild conditions are ignored, and an F# `open` of a C#
 project's namespace is not linked to it.
 
+### D and dub
+
+D applications and libraries get their packages from the dub registry
+through dub; the **dub packages** island names each package as the registry
+publishes it (`vibe-d`, `mir-algorithm`), a sub-package (`vibe-d:http`)
+by its base package. depphunter reads `.d` and `.di` files, `dub.json`,
+`dub.sdl` and `dub.selections.json` without running the compiler or dub. A
+`.d` file that is a make dependency file (`app.o: app.d ...`, as gcc -MD and
+dmd -makedeps write) or a DTrace script is told apart by its first lines
+and not read as D, and dub's `.dub/` directory is not read:
+
+- **Imports**: `import a.b.c;` (lists, renamed, selective, `static` and
+  `public` imports, and imports inside functions) is an edge to `a/b/c.d`
+  or `a/b/c/package.d` under the import directories of the file's dub
+  package (`importPaths` and `sourcePaths`, else `source/` or `src/`) and of
+  the repository's packages it depends on (sub-packages, path
+  dependencies), else under the file's own directory and its ancestors (so
+  Phobos' and druntime's own modules link in their repositories).
+  `import("file")` (and `mixin(import("file"))`) is an edge to the file
+  under `stringImportPaths` (`views/` by default). Nothing in comments,
+  strings, token strings `q{ }` or after `__EOF__` is read.
+- **Packages**: druntime's and Phobos' modules (`core.*`, `std.*`,
+  `etc.c.*`, `object`) are a hidden **D runtime and standard library**
+  island. Another module goes to the package dub fetched onto this machine
+  that has it (`.dub/packages`, `$DUB_HOME`, `$DPATH` or `~/.dub/packages`),
+  else to the declared package its leading segments spell (`mir.random` is
+  `mir-random`, `unit_threaded` `unit-threaded`) or a curated table names
+  (`vibe.*` is vibe-d, or vibe-core, vibe-http, ... when declared,
+  `arsd.dom` arsd-official), else to an unresolved package named by the
+  table or the module's first segment.
+- **Recipes**: every dependency of `dub.json` or `dub.sdl` - its
+  configurations' and inline sub-packages' too - is an import of it, a
+  sub-package directory an edge to it, and a single-file package's
+  `/+ dub.sdl: +/` recipe an import of its module. `dub.selections.json`
+  pins (with the recipe's specification as the requested version; a
+  `repository` entry by its commit, with the repository as origin);
+  without it `==1.2.3` and a bare `1.2.3`, which dub reads as exact, pin,
+  and `~>`, `^`, `>=`, `*` and `~branch` float. A `path` dependency is an
+  edge to its directory. `--resolve-depth` follows the recipes of packages
+  dub fetched; `--online` asks the registry (code.dlang.org).
+
+Modules, classes, structs, interfaces, unions, enums, templates and mixin
+templates (nested ones qualified), functions and members (`Owner.name`,
+`Owner.this`), aliases and top-level manifest constants are the symbols.
+What a `mixin` generates is not read, every `version` and `static if`
+branch counts, and OSV has no D ecosystem, so dub packages are not checked
+for advisories.
+
 ### Interface definitions
 
 Protocol Buffers definitions are shared between services and languages, and
@@ -1849,6 +1902,7 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | Elm                     | `elm-language-server --stdio`                                                                |
 | PureScript              | `purescript-language-server --stdio`                                                         |
 | Crystal                 | `crystalline`                                                                                |
+| D                       | `serve-d`                                                                                    |
 
 The servers run in the background once the map is displayed — gopls requires
 approximately 7 s for this repository — within the budget set by
@@ -1897,6 +1951,7 @@ The JSON and GraphML exports include the reference edges.
 | Elm                     | `import` to `A/B.elm` under the source directories of every `elm.json` listing the file (an application's `source-directories`, a package's `src/`, `tests/` for elm-test), kernel modules to their `.js`; other modules to the package whose installed `elm.json` in `ELM_HOME` exposes them, elm/core's modules to `elm/core`, else a curated module table or the listed package the module spells; packages by `elm.json`, whose dependencies are imports                                                                                       | Elm packages                                                               |
 | PureScript              | `import` to the file declaring the module in the importing package's sources (`src/` and `test/` of a `spago.yaml` package, a `spago.dhall`'s `sources`), then its workspace's; `foreign import` to the `.js` beside the module; Prim modules to the compiler's built-ins; other modules to the package spago installed in `.spago/` that provides them, else a curated module table or the listed package the module spells; packages by `spago.yaml`, `spago.lock`, `spago.dhall`, `packages.dhall` and `bower.json`, whose packages are imports | PureScript packages, PureScript built-ins                                  |
 | Crystal                 | `require` of relative paths and globs (`./dir/*`, `./dir/**`) to files; by name through `lib/` (the installed shard), the project's own `src/` and shard name, the standard library, then the shards of `shard.yml` / `shard.lock` / `shard.override.yml`, whose dependencies and targets' `main:` files are imports                                                                                                                                                                                                                               | Crystal shards, Crystal standard library                                   |
+| D                       | `import` to `a/b.d` or `a/b/package.d` under the `importPaths`/`sourcePaths` (`source/`, `src/`) of the file's dub package and the repository packages it depends on, else its ancestors; `import("file")` under `stringImportPaths` (`views/`); other modules to the package dub fetched, a declared package they spell or a curated table; `dub.json`, `dub.sdl`, `dub.selections.json` and single-file recipes, whose dependencies are imports                                                                                                  | dub packages, D runtime and standard library                               |
 | PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                                                                                                                                                                                                                                                                                                  | PowerShell Gallery, built-in modules                                       |
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                                                                                                                                                                                                                                                       | GitHub Actions, GitLab CI, Container images                                |
 | Protocol Buffers        | `import` (`public`, `weak`) under the import roots of `buf.work.yaml` and `buf.yaml` (v1 and v2), else the repository root, `proto/`, `protos/`, `api/`, `src/main/proto/` and the importer's directories, else a unique project file ending in the path; modules by `buf.yaml` `deps` and `buf.lock` and a table of common protos; `buf.gen.yaml` remote plugins                                                                                                                                                                                  | Buf Schema Registry, Protobuf well-known types                             |
@@ -2428,6 +2483,10 @@ grammar took 55 to 816 ms per file (17.9 s for one), parsed 25 of the 97
 files measured with errors and did not finish FSharp.Core's sources within
 15 minutes. See [F# and Paket](#f-and-paket).
 
+D is read by a small lexer too: the tree-sitter grammar took 27 to 71 ms per
+file (1.1 s for one) and parsed 27 of the 563 files measured with errors.
+`dub.sdl` is read by a small SDLang reader. See [D and dub](#d-and-dub).
+
 Protocol Buffers definitions are read by a small scanner: the tree-sitter
 grammar took 2.4 to 3 ms per file and failed on every file using editions.
 See [Interface definitions](#interface-definitions).
@@ -2453,10 +2512,10 @@ scripts, CMake files, Swift, Objective-C, CocoaPods and Carthage manifests, Lua,
 Luau, Teal and LuaRocks files, Perl and its CPAN manifests, OCaml, dune and opam
 files, Julia, Zig and `build.zig.zon`, Clojure and its EDN manifests, Bazel's
 Starlark files, Nix expressions, Gleam, Elm and PureScript modules, spago's
-Dhall files, Crystal, F# and Paket's files, Dockerfiles, the markup of Vue,
-Svelte and Astro components, R Markdown chunks and C preprocessor directives
-small built-in scanners — so the binary continues to cross-compile without a C
-toolchain.
+Dhall files, Crystal, F# and Paket's files, D and `dub.sdl`, Dockerfiles, the
+markup of Vue, Svelte and Astro components, R Markdown chunks and C preprocessor
+directives small built-in scanners — so the binary continues to cross-compile
+without a C toolchain.
 
 ## Security
 

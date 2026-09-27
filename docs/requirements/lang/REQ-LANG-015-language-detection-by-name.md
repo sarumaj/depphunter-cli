@@ -35,6 +35,7 @@ Clojure's `project.clj`, `build.boot`, `deps.edn`, `bb.edn` and
 (Gleam, as `.gleam` files are), shards' `shard.lock` (YAML, as `shard.yml`
 is), Paket's `paket.dependencies`, `paket.lock` and `paket.references`
 (Paket; `.fs`, `.fsi`, `.fsx`, `.fsscript` and `.fsproj` files are F#),
+dub's `dub.sdl` (SDLang; `.d` and `.di` files are D),
 the shells' and direnv's startup files (`.bashrc`,
 `.zshrc`, `.profile`, `.envrc` and the others of REQ-SHELL-001), and the
 Dockerfile names of REQ-DOCKER-001), or, for a file neither names, from a
@@ -50,7 +51,11 @@ file whose head shows Objective-C **shall** be Objective-C rather than C
 and nothing of Perl **shall** be Prolog, and a `.t` file whose head shows
 nothing of Perl **shall** have no language (REQ-PERL-001). A `.fs` file whose
 head shows a GLSL fragment shader **shall** be GLSL, and one whose head shows
-Forth **shall** be Forth, rather than F# (REQ-FSHARP-001).
+Forth **shall** be Forth, rather than F# (REQ-FSHARP-001). A `.d` file whose
+head is a make dependency file (a first line `target: prerequisites`)
+**shall** be Make, and one whose head shows DTrace (a probe description, a
+`provider` block, `#pragma D`, a C preprocessor directive or a `#!` line
+running dtrace) **shall** be DTrace, rather than D (REQ-DLANG-001).
 
 ## Rationale
 
@@ -100,3 +105,9 @@ Objective-C from MATLAB, Mercury and C.
    `paket.dependencies`, `paket.lock` and `src/paket.references` are Paket,
    `shaders/blur.fs` starting `#version 330 core` is GLSL and
    `forth/hello.fs` starting with a `\` comment is Forth.
+10. `source/shop/app.d` and `import/shop/cart.di` are D, `dub.sdl` is
+    SDLang and `dub.json` and `dub.selections.json` are JSON; a `.d` file
+    starting `app.o: source/app.d \` is Make, one starting
+    `syscall::open:entry`, `dtrace:::BEGIN`, `#pragma D option quiet` or
+    `provider shop {` is DTrace, and one starting `import std.stdio :
+    writeln;` or `@safe:` stays D.

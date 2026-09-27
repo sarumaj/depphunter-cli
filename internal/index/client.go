@@ -256,6 +256,8 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		deps, err = c.elmPackage(ctx, index, t)
 	case PureScript:
 		deps, err = c.purescriptPackage(ctx, index, t)
+	case Dub:
+		deps, err = c.dubPackage(ctx, index, t)
 	case Maven:
 		if !strings.Contains(t.Package, ":") {
 			// A name without an artifact cannot be asked: a POM is addressed by

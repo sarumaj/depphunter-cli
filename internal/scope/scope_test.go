@@ -287,3 +287,14 @@ func TestAPaketPatternKeepsToPaket(t *testing.T) {
 		t.Error("a paket-scoped pattern did not keep to its ecosystem")
 	}
 }
+
+// dub packages are named as their recipes name them; a dub-scoped pattern keeps
+// to them.
+//
+// Verifies: REQ-SUP-035
+func TestADubPatternKeepsToDub(t *testing.T) {
+	p := New([]string{"dub:acme-*"})
+	if !p.Match("dub", "acme-billing") || p.Match("npm", "acme-billing") || p.Match("dub", "vibe-d") {
+		t.Error("a dub-scoped pattern did not keep to its ecosystem")
+	}
+}

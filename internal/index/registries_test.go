@@ -1391,3 +1391,75 @@ func TestPureScriptDependencies(t *testing.T) {
 		t.Errorf("public index %q %v", idx, known)
 	}
 }
+
+// Verifies: REQ-SUP-060
+func TestDubDependencies(t *testing.T) {
+	var asked []string
+	version := func(v string) string {
+		return `{"version": "` + v + `", "name": "vibe-d", "date": "2023-01-01T00:00:00Z",
+"dependencies": {"vibe-d:http": "*", ":utils": "*", "diet-ng": "~>1.8", "libevent": {"version": "~>2.0", "optional": true},
+"local": {"path": "../local"}},
+"subPackages": [{"name": "http", "dependencies": {"vibe-http": {"version": ">=1.0.0 <2.0.0"}, "vibe-d:utils": "*"}}],
+"configurations": [{"name": "default", "dependencies": {"eventcore": "~>0.9.20"}}, {"name": "other", "dependencies": {"libasync": "~>0.8"}}]}`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Path)
+		switch r.URL.Path {
+		case "/reg/api/packages/vibe-d/0.9.7/info":
+			w.Write([]byte(version("0.9.7")))
+		case "/reg/api/packages/vibe-d/info":
+			w.Write([]byte(`{"name": "vibe-d", "versions": [` + version("0.9.6") + `,` + version("0.9.8") + `,` +
+				version("0.10.0") + `,` + version("0.9.9-beta.1") + `,` + version("~master") + `]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	c := clientFor(t, Dub, srv.URL+"/reg/", "")
+	want := []lang.Target{
+		{Ecosystem: Dub, Package: "diet-ng", Version: "~>1.8"},
+		{Ecosystem: Dub, Package: "eventcore", Version: "~>0.9.20"},
+		{Ecosystem: Dub, Package: "vibe-http", Version: ">=1.0.0 <2.0.0"},
+	}
+	// An exact version is asked for directly; the package's own sub-packages,
+	// optional and path dependencies and the other configurations are left out.
+	if got := c.Dependencies(lang.Target{Ecosystem: Dub, Package: "vibe-d", Version: "0.9.7", Pinned: true}); !reflect.DeepEqual(got, want) {
+		t.Errorf("0.9.7: got %+v, want %+v", got, want)
+	}
+	if !reflect.DeepEqual(asked, []string{"/reg/api/packages/vibe-d/0.9.7/info"}) {
+		t.Errorf("asked %v", asked)
+	}
+	// ~>0.9.5 admits 0.9.8, not 0.10.0 nor the pre-release or the branch.
+	asked = nil
+	if got := c.Dependencies(lang.Target{Ecosystem: Dub, Package: "vibe-d", Version: "~>0.9.5", Floating: true}); !reflect.DeepEqual(got, want) {
+		t.Errorf("range: got %+v, want %+v", got, want)
+	}
+	if !reflect.DeepEqual(asked, []string{"/reg/api/packages/vibe-d/info"}) {
+		t.Errorf("asked %v", asked)
+	}
+	// Not a dub package name: nothing is asked.
+	asked = nil
+	if got := c.Dependencies(lang.Target{Ecosystem: Dub, Package: "../x", Version: "1.0.0"}); got != nil || len(asked) != 0 {
+		t.Errorf("bad name: got %+v, asked %v", got, asked)
+	}
+	if idx, known := New().For(Dub, "vibe-d"); idx != "https://code.dlang.org" || !known {
+		t.Errorf("public index %q %v", idx, known)
+	}
+	for spec, want := range map[string]map[[3]int]bool{
+		"~>0.9.5":          {{0, 9, 5}: true, {0, 9, 9}: true, {0, 10, 0}: false, {0, 9, 4}: false},
+		"~>1.2":            {{1, 2, 0}: true, {1, 9, 0}: true, {2, 0, 0}: false},
+		"^0.3.1":           {{0, 3, 1}: true, {0, 4, 0}: false},
+		"^1.3.1":           {{1, 9, 0}: true, {2, 0, 0}: false},
+		"==1.2.3":          {{1, 2, 3}: true, {1, 2, 4}: false},
+		"1.2.3":            {{1, 2, 3}: true, {1, 2, 4}: false},
+		">=1.0.0 <2.0.0-0": {{1, 5, 0}: true, {2, 0, 0}: false, {0, 9, 0}: false},
+		"*":                {{7, 0, 0}: true},
+		"~master":          {{1, 0, 0}: false},
+	} {
+		for v, ok := range want {
+			if dubAdmits(spec, v) != ok {
+				t.Errorf("dubAdmits(%q, %v) != %v", spec, v, ok)
+			}
+		}
+	}
+}

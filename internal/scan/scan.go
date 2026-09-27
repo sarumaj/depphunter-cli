@@ -55,7 +55,7 @@ var defaultIgnore = map[string]bool{
 	".terraform": true, ".terragrunt-cache": true, "lua_modules": true, "_opam": true,
 	".zig-cache": true, "zig-cache": true, "zig-out": true, "zig-pkg": true,
 	".cpcache": true, ".shadow-cljs": true, "elm-stuff": true, ".spago": true, "bower_components": true,
-	".crystal": true, ".fake": true,
+	".crystal": true, ".fake": true, ".dub": true,
 }
 
 func Scan(ctx context.Context, root string, opts Options) ([]*File, error) {
@@ -229,6 +229,7 @@ func measure(f *File, maxSize int64) {
 	// its keywords and directives, within the head already read. ".pl" is
 	// Prolog's too, and ".t" is Perl's only by convention: Perl says which by its
 	// #! line and statements. ".fs" is F#'s, a GLSL fragment shader's and Forth's.
+	// ".d" is D's, a make dependency file's and a DTrace script's.
 	switch ext := strings.ToLower(path.Ext(f.Path)); {
 	case ext == ".m" && f.Lang == "Objective-C" && !objcMarker(head, true):
 		f.Lang = notObjC(head)
@@ -242,6 +243,10 @@ func measure(f *File, maxSize int64) {
 		f.Lang = "GLSL"
 	case ext == ".fs" && f.Lang == "F#" && forthSource(head):
 		f.Lang = "Forth"
+	case ext == ".d" && f.Lang == "D" && dependencyFile(head):
+		f.Lang = "Make"
+	case ext == ".d" && f.Lang == "D" && (f.Interpreter == "dtrace" || dtraceSource(head)):
+		f.Lang = "DTrace"
 	}
 	// A script without a language is labelled by the shell or perl its "#!" line
 	// runs.

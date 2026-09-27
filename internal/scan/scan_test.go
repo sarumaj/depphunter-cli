@@ -37,7 +37,8 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 		"bower_components/purescript-maybe/src/Data/Maybe.purs": "module Data.Maybe where\n",
 		".crystal/cache/macro.cr":                               "module M\nend\n",
 		".fake/build.fsx/intellisense.fsx":                      "#r \"x.dll\"\n",
-		"img.bin":                                               "\x00\x01\x02",
+		".dub/packages/leftpad/1.0.0/leftpad/source/leftpad.d":  "module leftpad;\n",
+		"img.bin": "\x00\x01\x02",
 	}
 	for p, c := range files {
 		abs := filepath.Join(root, p)
@@ -469,6 +470,56 @@ func TestScanTellsFSharpFromShaders(t *testing.T) {
 		"shaders/blur.fs": "GLSL", "shaders/old.fs": "GLSL", "shaders/bare.fs": "GLSL",
 		"forth/hello.fs": "Forth", "forth/square.fs": "Forth",
 		"paket.dependencies": "Paket", "paket.lock": "Paket", "src/paket.references": "Paket",
+	}
+	for _, f := range got {
+		if f.Lang != want[f.Path] {
+			t.Errorf("%s: lang %q, want %q", f.Path, f.Lang, want[f.Path])
+		}
+	}
+}
+
+// ".d" is D's, a make dependency file's (gcc -MD, dmd -makedeps) and a DTrace
+// script's: a first line `target: prerequisites`, or a probe description, a
+// provider block, #pragma D or a C preprocessor directive, say which. A D module
+// whose first line imports with bindings (`import std.stdio : writeln;`) or is
+// an attribute label (`@safe:`) stays D.
+//
+// Verifies: REQ-LANG-015, REQ-DLANG-001
+func TestScanTellsDFromDepfilesAndDTrace(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"source/app.d":      "module app;\n\nimport std.stdio;\n",
+		"source/bind.d":     "import std.stdio : writeln;\n",
+		"source/safe.d":     "@safe:\nvoid f() {}\n",
+		"source/private.d":  "private:\nvoid f() {}\n",
+		"source/label.di":   "module label;\n",
+		"source/script.d":   "#!/usr/bin/env rdmd\nimport std.stdio;\nvoid main() {}\n",
+		"deps/app.d":        "app.o: source/app.d /usr/include/dmd/phobos/std/stdio.d \\\n source/bind.d\n",
+		"deps/two.d":        "a.o b.o: a.c\n",
+		"dtrace/open.d":     "#!/usr/sbin/dtrace -s\nsyscall::open:entry { trace(copyinstr(arg0)); }\n",
+		"dtrace/begin.d":    "dtrace:::BEGIN\n{\n  printf(\"hi\");\n}\n",
+		"dtrace/pragma.d":   "#pragma D option quiet\nprofile-97 { @[execname] = count(); }\n",
+		"dtrace/provider.d": "provider shop {\n\tprobe order__placed(int);\n};\n",
+		"dtrace/pid.d":      "pid$target::malloc:entry\n/arg0 > 100/\n{ }\n",
+	}
+	for p, c := range files {
+		abs := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(abs), 0o755)
+		os.WriteFile(abs, []byte(c), 0o644)
+	}
+	got, err := Scan(context.Background(), root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"source/app.d": "D", "source/bind.d": "D", "source/safe.d": "D", "source/private.d": "D",
+		"source/label.di": "D", "source/script.d": "D",
+		"deps/app.d": "Make", "deps/two.d": "Make",
+		"dtrace/open.d": "DTrace", "dtrace/begin.d": "DTrace", "dtrace/pragma.d": "DTrace",
+		"dtrace/provider.d": "DTrace", "dtrace/pid.d": "DTrace",
+	}
+	if len(got) != len(want) {
+		t.Errorf("scanned %d files, want %d", len(got), len(want))
 	}
 	for _, f := range got {
 		if f.Lang != want[f.Path] {
