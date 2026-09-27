@@ -43,6 +43,14 @@ type resolver struct {
 	gov      map[string][]*project       // directory -> its governing projects
 	byStem   map[string][]string         // source path without its extension -> sources
 	memo     sync.Map                    // resolutions shared by the files of a directory
+	classes  sync.Map                    // governing project dirs -> *classMatcher
+}
+
+// classMatcher is the Java plugin's artifact matcher over the Maven artifacts a set
+// of governing projects declares, built on first use.
+type classMatcher struct {
+	once sync.Once
+	arts *java.Artifacts
 }
 
 func newResolver(_ string, all []*scan.File) *resolver {
@@ -710,8 +718,14 @@ func (r *resolver) npm(file, spec string, onlyDeclared bool) lang.Target {
 
 // class resolves an imported class: the JDK's, Clojure's own clojure.lang, the
 // Closure Library's, a record or type of a project namespace, a Java file of the
-// project, a declared artifact whose group is the class's package prefix. Anything
-// else is dropped: a class names no artifact.
+// project; then a Maven artifact as the Java plugin matches a Java import to one
+// (java.Artifacts: a known or name-derived package prefix, or the group) - a
+// declared artifact, or one of its group arriving with a declared one at their
+// shared version (jackson-annotations beside jackson-databind); then a declared
+// artifact whose coordinates spell the class's package (classScore) or whose
+// namespace the package is (a library's deftype). Anything else is dropped rather
+// than named unresolved as Java would: classes of transitive jars are imported
+// routinely (quartzite's org.quartz), and a guessed node for each would be noise.
 //
 // Implements: REQ-CLOJURE-006
 func (r *resolver) class(file, cls string) lang.Target {
@@ -747,6 +761,9 @@ func (r *resolver) resolveClass(file, cls string) lang.Target {
 			return lang.Target{Local: p}
 		}
 	}
+	if t, ok := r.javaArtifact(cls, gov); ok {
+		return t
+	}
 	best, bestScore := "", 0
 	var bestProj *project
 	for _, p := range gov {
@@ -766,6 +783,51 @@ func (r *resolver) resolveClass(file, cls string) lang.Target {
 		}
 	}
 	return lang.Target{}
+}
+
+// javaArtifact matches a class to a Maven artifact by the Java plugin's rules, over
+// the artifacts the governing projects declare. A declared artifact is the first
+// governing project's coordinate (its version, pin, git origin or local root); an
+// artifact arriving with its group has the version its group's declared artifacts
+// share.
+//
+// Implements: REQ-CLOJURE-006
+func (r *resolver) javaArtifact(cls string, gov []*project) (lang.Target, bool) {
+	if len(gov) == 0 {
+		return lang.Target{}, false
+	}
+	dirs := make([]string, len(gov))
+	for i, p := range gov {
+		dirs[i] = p.dir
+	}
+	v, _ := r.classes.LoadOrStore(strings.Join(dirs, "\x00"), &classMatcher{})
+	cm := v.(*classMatcher)
+	cm.once.Do(func() {
+		// Clojure's own root packages are no artifact's: org.clojure/clojure does not
+		// ship clojure.core.async's deftypes.
+		cm.arts = java.NewArtifacts(java.Language{Prefixes: []string{"clojure.", "cljs."}})
+		for _, p := range gov {
+			for _, ga := range p.order {
+				g, a, _ := strings.Cut(ga, ":")
+				cm.arts.Declare(g, a, p.deps[ga].version)
+			}
+		}
+		cm.arts.Finish()
+	})
+	m, ok := cm.arts.Match(cls)
+	if !ok {
+		return lang.Target{}, false
+	}
+	if !m.Virtual {
+		for _, p := range gov {
+			if c, ok := p.deps[m.Name]; ok {
+				return r.coordTarget(p.dir, c), true
+			}
+		}
+	}
+	pinned := lang.PinnedMaven(m.Version)
+	return lang.Target{Ecosystem: ecoMaven, Package: m.Name, Version: m.Version, Pinned: pinned,
+		Floating: m.Version != "" && !pinned}, true
 }
 
 // classScore rates how well a declared artifact's coordinates match a Java class:

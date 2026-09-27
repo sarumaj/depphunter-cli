@@ -218,6 +218,9 @@ func (l Language) root(p string) bool {
 // under reports whether spec is the package p or inside it.
 func under(spec, p string) bool { return spec == p || strings.HasPrefix(spec, p+".") }
 
+// prefixScore is the least score of a package prefix match.
+const prefixScore = 1000
+
 // score rates how well an artifact matches an import. A package prefix - one of the
 // artifact's own, or its group - is worth its length in segments, the artifact's
 // own winning a tie with the group; only without any prefix do the weaker rules
@@ -229,7 +232,7 @@ func (a *artifact) score(spec string, segments []string) int {
 	best := 0
 	for _, p := range a.prefixes {
 		if under(spec, p) {
-			best = max(best, 1000+10*(strings.Count(p, ".")+1)+1)
+			best = max(best, prefixScore+10*(strings.Count(p, ".")+1)+1)
 		}
 	}
 	if a.virtual {
@@ -237,7 +240,7 @@ func (a *artifact) score(spec string, segments []string) int {
 	}
 	gs := strings.Split(a.group, ".")
 	if under(spec, a.group) {
-		best = max(best, 1000+10*len(gs))
+		best = max(best, prefixScore+10*len(gs))
 	}
 	if best > 0 {
 		return best
@@ -258,12 +261,15 @@ func (a *artifact) score(spec string, segments []string) int {
 }
 
 // better breaks a tie between two artifacts matching an import equally well: the
-// one more of whose words the import spells (io.ktor.client.engine.cio is
+// one whose group names the import's root package, then the one more of whose words the import spells (io.ktor.client.engine.cio is
 // ktor-client-cio's, not ktor-client-core's), then the family's main artifact - the
 // one named after its group alone (spring-boot), else one ending in core, api or
 // common (cats-core, not cats-effect, for cats.syntax) - then a declared artifact
 // over one that arrives with it, then the shorter name, then the name.
 func better(a, b *artifact, segments []string) bool {
+	if oa, ob := ownsRoot(a, segments), ownsRoot(b, segments); oa != ob {
+		return oa
+	}
 	if ha, hb := hits(a, segments), hits(b, segments); ha != hb {
 		return ha > hb
 	}
@@ -277,6 +283,13 @@ func better(a, b *artifact, segments []string) bool {
 		return len(a.name) < len(b.name)
 	}
 	return a.key() < b.key()
+}
+
+// ownsRoot reports whether the import's root package is a segment of the
+// artifact's group: liquibase.Liquibase is org.liquibase's, not that of an extension
+// named after it (com.github.blagerweij:liquibase-sessionlock).
+func ownsRoot(a *artifact, segments []string) bool {
+	return namesGroup(segments[0], strings.Split(a.group, "."))
 }
 
 func hits(a *artifact, segments []string) int {
@@ -321,14 +334,7 @@ func (r *resolver) artifactOf(spec string, wildcard bool) lang.Target {
 		return t.(lang.Target)
 	}
 	segments := strings.Split(spec, ".")
-	var best *artifact
-	bestScore := 0
-	for _, a := range r.candidates {
-		s := a.score(spec, segments)
-		if s > bestScore || s == bestScore && s > 0 && better(a, best, segments) {
-			best, bestScore = a, s
-		}
-	}
+	best, _ := r.best(spec, segments)
 	var t lang.Target
 	if best != nil {
 		t = lang.Target{Ecosystem: ecoMaven, Package: best.key(), Version: best.version, Pinned: pinnedMaven(best.version)}
@@ -337,6 +343,50 @@ func (r *resolver) artifactOf(spec string, wildcard bool) lang.Target {
 	}
 	r.memo.Store(key, t)
 	return t
+}
+
+// best is the candidate matching an import best (score, then better), with its
+// score; nil when none matches at all, or when the table places the import in an
+// artifact no candidate is, by a prefix at least as long as the best candidate's:
+// com.google.common.jimfs is com.google.jimfs:jimfs's even with only Guava
+// (com.google.common) declared.
+func (m *maven) best(spec string, segments []string) (*artifact, int) {
+	var best *artifact
+	bestScore := 0
+	for _, a := range m.candidates {
+		s := a.score(spec, segments)
+		if s > bestScore || s == bestScore && s > 0 && better(a, best, segments) {
+			best, bestScore = a, s
+		}
+	}
+	for n := len(segments); n >= 1 && best != nil; n-- {
+		ga, ok := knownArtifacts[strings.Join(segments[:n], ".")]
+		if !ok {
+			continue
+		}
+		if bestScore <= prefixScore+10*n+1 && !m.candidate(ga) {
+			return nil, 0
+		}
+		break
+	}
+	return best, bestScore
+}
+
+// candidate reports whether a table entry's group:artifact (a base name) is among
+// the candidates, whatever Scala suffix it carries there.
+func (m *maven) candidate(ga string) bool {
+	group, base, _ := strings.Cut(ga, ":")
+	for _, a := range m.groups[group] {
+		if a.base == base {
+			return true
+		}
+	}
+	for _, a := range m.candidates {
+		if a.virtual && a.group == group && a.base == base {
+			return true
+		}
+	}
+	return false
 }
 
 // guessArtifact names an artifact nothing declares: the table's, else a guess from

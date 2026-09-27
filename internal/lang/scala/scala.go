@@ -71,7 +71,7 @@ var language = java.Language{
 type Plugin struct{}
 
 func (Plugin) Name() string { return "scala" }
-func (Plugin) Version() int { return 2 }
+func (Plugin) Version() int { return 3 }
 func (Plugin) Claims(f *scan.File) bool {
 	return (strings.HasSuffix(f.Path, ".scala") || strings.HasSuffix(f.Path, ".sc")) && !f.Binary
 }

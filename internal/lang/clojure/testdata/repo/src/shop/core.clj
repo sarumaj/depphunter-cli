@@ -25,7 +25,11 @@
            [shop.model.cart Cart]
            shop.Native
            clojure.lang.IFn
-           com.example.Nothing))
+           com.example.Nothing
+           (com.google.common.collect ImmutableList)
+           com.fasterxml.jackson.annotation.JsonProperty
+           com.google.common.jimfs.Jimfs
+           org.quartz.JobKey))
 
 (defn- helper [x] x)
 

@@ -10,7 +10,8 @@
 // that provides it - Clojars is a Maven repository, so Clojure's libraries share the
 // Java plugins' maven island. :import names Java classes: the JDK's go to the jdk
 // island, a record or type of the project to its file, others to a declared
-// artifact by group. A ClojureScript string require is an npm package.
+// artifact as the Java plugin matches a Java import to one (java.Artifacts). A
+// ClojureScript string require is an npm package.
 //
 // Clojure is read by a reader of its own (internal/lang/edn), not the vendored
 // tree-sitter grammar (REQ-CLOJURE-011).
@@ -43,7 +44,7 @@ var ignoredDirs = map[string]bool{".cpcache": true, ".shadow-cljs": true, ".lsp"
 type Plugin struct{}
 
 func (Plugin) Name() string { return "clojure" }
-func (Plugin) Version() int { return 1 }
+func (Plugin) Version() int { return 2 }
 
 // Claims takes Clojure sources, the manifests, other .edn files (claimed as data:
 // they declare nothing) and babashka scripts without an extension.

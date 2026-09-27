@@ -61,8 +61,16 @@ func TestNamespaces(t *testing.T) {
 		"shop.Native":                     {Local: "java/shop/Native.java"},
 		"clojure.lang.IFn":                stdNS("clojure.lang"),
 		"com.example.Nothing":             {},
-		"clojure.set":                     stdNS("clojure.set"), // top-level (require '[...])
-		`(load "core_extra")`:             {Local: "src/shop/core_extra.clj"},
+		// Classes of Maven artifacts, matched as the Java plugin matches imports: the
+		// table's package (com.google.common is Guava's), an artifact arriving with a
+		// declared one of its group at their shared version; a class of a jar only a
+		// dependency brings, or one the table places in an undeclared artifact, is dropped.
+		"com.google.common.collect.ImmutableList":       mvn("com.google.guava:guava", "33.0.0-jre"),
+		"com.fasterxml.jackson.annotation.JsonProperty": mvn("com.fasterxml.jackson.core:jackson-annotations", "2.17.0"),
+		"com.google.common.jimfs.Jimfs":                 {},
+		"org.quartz.JobKey":                             {},
+		"clojure.set":                                   stdNS("clojure.set"), // top-level (require '[...])
+		`(load "core_extra")`:                           {Local: "src/shop/core_extra.clj"},
 		// shop.alias-only (:as-alias) loads nothing; #_ discards shop.never.
 	})
 	// Reader conditionals: every branch is read, spliced or not; the .cljc's
@@ -148,10 +156,12 @@ func TestManifests(t *testing.T) {
 		"io.github.acme/widgets":            widgets,
 		"io.github.acme/gadgets": {Ecosystem: ecoMaven, Package: "io.github.acme:gadgets", Version: "v0.3",
 			Origin: "https://github.com/acme/gadgets.git"}, // a tag alone: neither pinned nor floating
-		"acme/shared":                    {Local: "libs/shared/deps.edn"},
-		"org.eclipse.jetty/jetty-server": mvn("org.eclipse.jetty:jetty-server", "11.0.18"),
-		"lambdaisland/kaocha":            mvn("lambdaisland:kaocha", "1.87.1366"),
-		"integrant/repl":                 mvn("integrant:repl", "0.3.3"),
+		"acme/shared":                                 {Local: "libs/shared/deps.edn"},
+		"org.eclipse.jetty/jetty-server":              mvn("org.eclipse.jetty:jetty-server", "11.0.18"),
+		"com.google.guava/guava":                      mvn("com.google.guava:guava", "33.0.0-jre"),
+		"com.fasterxml.jackson.core/jackson-databind": mvn("com.fasterxml.jackson.core:jackson-databind", "2.17.0"),
+		"lambdaisland/kaocha":                         mvn("lambdaisland:kaocha", "1.87.1366"),
+		"integrant/repl":                              mvn("integrant:repl", "0.3.3"),
 	})
 	langtest.CheckImports(t, res["lein/project.clj"], map[string]lang.Target{
 		"org.clojure/clojure": mvn("org.clojure:clojure", "1.10.3"),

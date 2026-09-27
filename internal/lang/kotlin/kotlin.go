@@ -53,7 +53,7 @@ var language = java.Language{Std: ecoStd, Prefixes: []string{"kotlin."}}
 type Plugin struct{}
 
 func (Plugin) Name() string { return "kotlin" }
-func (Plugin) Version() int { return 2 }
+func (Plugin) Version() int { return 3 }
 func (Plugin) Claims(f *scan.File) bool {
 	return (strings.HasSuffix(f.Path, ".kt") || strings.HasSuffix(f.Path, ".kts")) && !f.Binary
 }
