@@ -1,6 +1,5 @@
 ---
 id: REQ-EXP-005
-uuid: a371d2e0-0845-4097-a8f9-844b86cd2238
 title: Export menu in the UI
 scope: exp
 type: functional

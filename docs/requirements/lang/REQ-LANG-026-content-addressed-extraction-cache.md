@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-026
-uuid: 2dab280c-7a85-42ee-8a6c-89b2ecfddc91
 title: Content-addressed extraction cache
 scope: lang
 type: functional

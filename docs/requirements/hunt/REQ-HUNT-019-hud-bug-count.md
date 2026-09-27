@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-019
-uuid: 43f5653f-2967-47d5-a1a3-e9b0254be731
 title: HUD counts the bugs
 scope: hunt
 type: functional

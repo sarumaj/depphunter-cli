@@ -1,6 +1,5 @@
 ---
 id: REQ-SHELL-009
-uuid: 36d0b377-76ef-41b2-85a5-4fabe6fb71b0
 title: Paths below environment directories
 scope: shell
 type: functional

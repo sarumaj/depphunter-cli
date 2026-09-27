@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-010
-uuid: 4762bdcf-e4e3-47f6-a7fb-39a9a7253a06
 title: Backpack view lists the catch
 scope: ext
 type: functional

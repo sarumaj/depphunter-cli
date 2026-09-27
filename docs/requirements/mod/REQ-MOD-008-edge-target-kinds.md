@@ -1,6 +1,5 @@
 ---
 id: REQ-MOD-008
-uuid: 1627564a-f1d2-4bc5-b737-a1e177f1b87d
 title: Edge target kinds
 scope: mod
 type: interface

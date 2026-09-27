@@ -1,6 +1,5 @@
 ---
 id: REQ-WATCH-006
-uuid: c3d0980b-b8f4-4749-8e3d-f27a0c1e03db
 title: Changed files highlighted after an update
 scope: watch
 type: functional

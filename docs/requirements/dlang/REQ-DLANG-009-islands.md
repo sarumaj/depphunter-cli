@@ -1,6 +1,5 @@
 ---
 id: REQ-DLANG-009
-uuid: ec498272-55cb-48c4-b137-4f4deb62d616
 title: Islands
 scope: dlang
 type: functional

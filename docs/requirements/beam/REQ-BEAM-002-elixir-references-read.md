@@ -1,6 +1,5 @@
 ---
 id: REQ-BEAM-002
-uuid: 8f300cd9-d73b-4ca1-8ab0-eed791386bbd
 title: Elixir module references read
 scope: beam
 type: functional

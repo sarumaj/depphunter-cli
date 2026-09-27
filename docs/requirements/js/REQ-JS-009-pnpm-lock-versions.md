@@ -1,6 +1,5 @@
 ---
 id: REQ-JS-009
-uuid: c237fca0-85ec-4873-91e5-33a3f64fe238
 title: pnpm-lock.yaml versions
 scope: js
 type: functional

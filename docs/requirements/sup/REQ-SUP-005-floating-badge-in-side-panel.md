@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-005
-uuid: bc72d638-fec3-4b72-885f-0e4809abd23f
 title: Floating badge in the side panel
 scope: sup
 type: functional

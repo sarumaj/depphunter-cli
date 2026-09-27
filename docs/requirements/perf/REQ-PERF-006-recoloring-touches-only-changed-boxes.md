@@ -1,6 +1,5 @@
 ---
 id: REQ-PERF-006
-uuid: 2d0b307d-8234-4b17-866d-b0cab2b7c9d4
 title: Recoloring touches only changed boxes
 scope: perf
 type: non-functional

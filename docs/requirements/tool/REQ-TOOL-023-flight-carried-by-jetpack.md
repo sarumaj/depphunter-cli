@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-023
-uuid: af6d0135-6256-45f9-a5db-f57e6a4994f4
 title: Flight is carried by the jet backpack
 scope: tool
 type: functional

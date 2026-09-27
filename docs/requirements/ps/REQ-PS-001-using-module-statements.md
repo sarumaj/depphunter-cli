@@ -1,6 +1,5 @@
 ---
 id: REQ-PS-001
-uuid: 3fef345b-7506-45ae-91c1-c123046aa6fd
 title: using module statements
 scope: ps
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-006
-uuid: 64b9d022-0053-41e4-a815-132d7c90ecda
 title: Each tool has its own aim helper
 scope: tool
 type: functional

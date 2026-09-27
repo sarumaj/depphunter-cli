@@ -1,6 +1,5 @@
 ---
 id: REQ-CRYSTAL-006
-uuid: 2c2dd58c-5057-4a8f-b8cf-535c9f64d290
 title: Pinning
 scope: crystal
 type: functional

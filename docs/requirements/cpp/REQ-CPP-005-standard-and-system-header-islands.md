@@ -1,6 +1,5 @@
 ---
 id: REQ-CPP-005
-uuid: 6b268883-c65c-4667-b096-ff4f5b1a1827
 title: Standard and system header islands
 scope: cpp
 type: functional

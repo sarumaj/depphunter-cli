@@ -1,6 +1,5 @@
 ---
 id: REQ-RS-004
-uuid: a8594d7f-bde0-45eb-a5df-c0a66e429109
 title: Workspace and path dependencies resolve locally
 scope: rs
 type: functional

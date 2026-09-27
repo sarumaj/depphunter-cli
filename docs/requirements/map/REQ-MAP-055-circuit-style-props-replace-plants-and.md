@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-055
-uuid: 0f202a15-af10-4a7c-99af-bb031da5e330
 title: Circuit style props replace plants and lamps
 scope: map
 type: functional

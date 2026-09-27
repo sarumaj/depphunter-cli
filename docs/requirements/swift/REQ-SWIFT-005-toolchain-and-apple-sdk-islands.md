@@ -1,6 +1,5 @@
 ---
 id: REQ-SWIFT-005
-uuid: 47f600c0-ced5-404b-9854-933eafa73be5
 title: Swift toolchain and Apple SDK islands
 scope: swift
 type: functional

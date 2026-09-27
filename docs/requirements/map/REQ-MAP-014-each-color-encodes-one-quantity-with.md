@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-014
-uuid: 81250cfa-d807-4f35-bc4e-7cda237ced59
 title: Each color encodes one quantity with a legend
 scope: map
 type: functional

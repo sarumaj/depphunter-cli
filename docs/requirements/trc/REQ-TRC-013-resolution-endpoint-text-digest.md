@@ -1,6 +1,5 @@
 ---
 id: REQ-TRC-013
-uuid: 245306b5-f862-42d7-86b5-33abb1d7f458
 title: Resolution report as a text digest
 scope: trc
 type: interface

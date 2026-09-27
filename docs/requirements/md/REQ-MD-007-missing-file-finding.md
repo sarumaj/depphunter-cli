@@ -1,6 +1,5 @@
 ---
 id: REQ-MD-007
-uuid: 74da1e51-daeb-42a8-b65c-a6a0e1244ab4
 title: Missing link target finding
 scope: md
 type: functional

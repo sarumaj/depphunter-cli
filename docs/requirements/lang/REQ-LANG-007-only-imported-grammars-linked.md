@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-007
-uuid: f9f1a82b-98f3-47b6-aa8d-a03fe0356801
 title: Only imported grammars linked
 scope: lang
 type: constraint

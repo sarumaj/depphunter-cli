@@ -1,6 +1,5 @@
 ---
 id: REQ-NIX-010
-uuid: 367abff5-c3be-4240-808b-423a1c827857
 title: Read without evaluating Nix
 scope: nix
 type: limitation

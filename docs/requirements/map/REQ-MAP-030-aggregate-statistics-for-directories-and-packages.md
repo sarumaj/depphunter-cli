@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-030
-uuid: e2521c1a-5d1f-4dca-86fa-5a7422943956
 title: Aggregate statistics for directories and packages
 scope: map
 type: functional

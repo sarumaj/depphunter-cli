@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-005
-uuid: 8ab9a11b-8aed-4412-b81d-e107e7c0ab12
 title: Jump height
 scope: walk
 type: functional

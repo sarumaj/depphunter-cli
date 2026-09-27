@@ -1,6 +1,5 @@
 ---
 id: REQ-RS-001
-uuid: dc7d6cb2-a3bb-4a14-a10b-986d8b52429b
 title: Use trees expanded to import paths
 scope: rs
 type: functional

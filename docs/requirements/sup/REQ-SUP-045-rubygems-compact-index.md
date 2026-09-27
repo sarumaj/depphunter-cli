@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-045
-uuid: 3b329a39-e5b3-4231-8d58-ca175ad0d290
 title: RubyGems dependencies from the compact index
 scope: sup
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-024
-uuid: 3b8e15f7-20db-45c0-bc06-9160355abec8
 title: Help and search free the pointer
 scope: walk
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-FND-011
-uuid: a5a40805-d279-472d-990c-1a5c159f7cfb
 title: One batched query and only matched advisories
 scope: fnd
 type: functional

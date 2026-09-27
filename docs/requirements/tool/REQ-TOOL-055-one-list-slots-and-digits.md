@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-055
-uuid: 4e826779-e6e7-40f0-baae-535b241fc9b6
 title: One list for HUD slots and digits
 scope: tool
 type: constraint

@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-003
-uuid: 12e4bc58-73d3-4f9a-ab63-6511a1f10ad6
 title: Tool choice saved with the view
 scope: tool
 type: functional

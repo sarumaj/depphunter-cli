@@ -1,6 +1,5 @@
 ---
 id: REQ-ZIG-004
-uuid: ee30008e-4125-4156-b544-cf217781f58a
 title: Files and the compilation root
 scope: zig
 type: functional

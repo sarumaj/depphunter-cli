@@ -1,6 +1,5 @@
 ---
 id: REQ-JS-006
-uuid: 5b53ed1c-2578-47e5-84c0-abdd1d3a590f
 title: npm package resolution
 scope: js
 type: functional

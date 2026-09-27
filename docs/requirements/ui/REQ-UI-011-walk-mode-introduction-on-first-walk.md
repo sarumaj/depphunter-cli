@@ -1,6 +1,5 @@
 ---
 id: REQ-UI-011
-uuid: 2913e0e1-8465-4594-89ee-5a2cb96c5a27
 title: Walk-mode introduction on first walk
 scope: ui
 type: functional

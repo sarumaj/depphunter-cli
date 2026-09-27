@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-029
-uuid: c3a568ee-d6c9-4952-b135-05725685255f
 title: Stopping a server closes its tab
 scope: ext
 type: functional

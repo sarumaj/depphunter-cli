@@ -1,6 +1,5 @@
 ---
 id: REQ-PROTO-004
-uuid: 7e4ad904-960f-4a0e-aea1-edd071b218b0
 title: Import roots and the well-known types
 scope: proto
 type: functional

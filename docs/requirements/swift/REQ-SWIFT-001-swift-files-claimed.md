@@ -1,6 +1,5 @@
 ---
 id: REQ-SWIFT-001
-uuid: a32f1b14-3a3d-4f54-9c3a-3f660e3a8321
 title: Swift files claimed
 scope: swift
 type: functional

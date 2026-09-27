@@ -1,6 +1,5 @@
 ---
 id: REQ-SHELL-001
-uuid: 24339815-0712-4303-8e79-4423564e0fc1
 title: Shell scripts claimed
 scope: shell
 type: functional

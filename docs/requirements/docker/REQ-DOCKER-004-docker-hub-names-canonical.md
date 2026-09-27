@@ -1,6 +1,5 @@
 ---
 id: REQ-DOCKER-004
-uuid: c6250cda-cff8-419d-a407-e66a780fab73
 title: Docker Hub image names canonical
 scope: docker
 type: functional

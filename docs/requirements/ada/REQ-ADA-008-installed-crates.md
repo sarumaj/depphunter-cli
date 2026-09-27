@@ -1,6 +1,5 @@
 ---
 id: REQ-ADA-008
-uuid: 917ae96e-c7d2-46bc-890c-7f908dff736d
 title: Installed crates and transitive dependencies
 scope: ada
 type: functional

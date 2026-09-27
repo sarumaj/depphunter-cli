@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-021
-uuid: 4d20c04e-d11e-4547-a9f5-7b3f8fbc231b
 title: Primary and secondary tools
 scope: tool
 type: functional

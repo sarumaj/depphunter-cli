@@ -1,6 +1,5 @@
 ---
 id: REQ-DLANG-007
-uuid: 3b0f090b-6d8a-4cbf-8938-c1431ae0bd8a
 title: Modules to packages
 scope: dlang
 type: functional

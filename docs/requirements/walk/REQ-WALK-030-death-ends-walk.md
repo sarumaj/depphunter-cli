@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-030
-uuid: 2b3bb94f-c74d-4ca4-98d0-a904ac8642a7
 title: Death ends the walk and keeps the backpack
 scope: walk
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-EXP-002
-uuid: eea110bb-016f-4c7e-822b-e23d60f5e69f
 title: GraphML graph export
 scope: exp
 type: functional

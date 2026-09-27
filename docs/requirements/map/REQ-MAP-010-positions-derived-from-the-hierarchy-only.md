@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-010
-uuid: f7f1798c-adfa-4afc-bee9-e35ebf1ae65d
 title: Positions derived from the hierarchy only
 scope: map
 type: constraint

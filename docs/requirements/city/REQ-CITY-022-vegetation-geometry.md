@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-022
-uuid: d9e0a537-87f4-4b15-91aa-ff8cd5a3db01
 title: Vegetation as geometry
 scope: city
 type: functional

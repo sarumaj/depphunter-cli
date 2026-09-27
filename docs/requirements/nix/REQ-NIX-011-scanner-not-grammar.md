@@ -1,6 +1,5 @@
 ---
 id: REQ-NIX-011
-uuid: d60ce800-b093-4b2d-bd40-47b7d5f02f4f
 title: Read by a scanner, not the grammar
 scope: nix
 type: constraint

@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-025
-uuid: 357117a5-2c7a-4a41-9fd2-fc395e2659a2
 title: Open in editor uses this editor
 scope: ext
 type: functional

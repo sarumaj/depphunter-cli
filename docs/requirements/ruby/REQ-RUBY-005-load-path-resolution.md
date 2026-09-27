@@ -1,6 +1,5 @@
 ---
 id: REQ-RUBY-005
-uuid: d48aecda-5e1e-450e-9611-aec269bdc374
 title: Requires resolved on a guessed load path
 scope: ruby
 type: functional

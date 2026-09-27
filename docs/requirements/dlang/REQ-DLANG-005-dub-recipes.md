@@ -1,6 +1,5 @@
 ---
 id: REQ-DLANG-005
-uuid: b7fc87c7-3dd7-4390-be45-56a8cd73afb9
 title: dub recipes
 scope: dlang
 type: functional

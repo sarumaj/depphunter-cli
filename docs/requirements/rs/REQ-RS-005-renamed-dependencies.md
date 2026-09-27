@@ -1,6 +1,5 @@
 ---
 id: REQ-RS-005
-uuid: 44deb02e-5946-4fd1-838e-9bc84063a3b8
 title: Renamed Cargo dependencies
 scope: rs
 type: functional

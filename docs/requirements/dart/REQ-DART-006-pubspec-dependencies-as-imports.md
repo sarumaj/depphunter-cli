@@ -1,6 +1,5 @@
 ---
 id: REQ-DART-006
-uuid: 2e7b62d3-3374-47aa-8885-017f665a2632
 title: pubspec dependencies read and shown as imports
 scope: dart
 type: functional

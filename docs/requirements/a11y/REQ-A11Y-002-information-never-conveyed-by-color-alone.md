@@ -1,6 +1,5 @@
 ---
 id: REQ-A11Y-002
-uuid: 81b45423-5d9c-412f-afb0-cb812ad52b13
 title: Information never conveyed by color alone
 scope: a11y
 type: non-functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-SRV-003
-uuid: d47194d9-e753-44e4-88a4-e3c5f90c7999
 title: Source file endpoint
 scope: srv
 type: functional

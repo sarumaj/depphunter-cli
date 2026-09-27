@@ -1,6 +1,5 @@
 ---
 id: REQ-JAVA-007
-uuid: 3251b611-d90d-420a-af16-15c8d901c0bd
 title: Imports matched to declared artifacts
 scope: java
 type: functional

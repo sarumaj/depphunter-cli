@@ -1,6 +1,5 @@
 ---
 id: REQ-SHELL-008
-uuid: 96c8f662-676d-4103-8aab-5178f0a10ef5
 title: Pinning rule for installed packages
 scope: shell
 type: functional

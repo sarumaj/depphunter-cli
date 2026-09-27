@@ -1,6 +1,5 @@
 ---
 id: REQ-UI-007
-uuid: 6d69eada-32e5-4cf9-a69e-b8e7879bf136
 title: Unavailable storage treated as seen
 scope: ui
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-LUA-001
-uuid: 44ff1b8d-699e-400b-955f-f2bf4b7a5869
 title: Lua, Luau and Teal files and their manifests claimed
 scope: lua
 type: functional

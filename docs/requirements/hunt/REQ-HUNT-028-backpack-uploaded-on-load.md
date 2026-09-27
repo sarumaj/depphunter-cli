@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-028
-uuid: 92111417-1301-4275-86bf-361f6ce15b73
 title: Page uploads the backpack as it loads
 scope: hunt
 type: functional

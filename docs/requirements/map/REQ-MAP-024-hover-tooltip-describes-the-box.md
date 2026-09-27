@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-024
-uuid: f4097f24-187b-4b5f-b9bf-06d632cc7791
 title: Hover tooltip describes the box
 scope: map
 type: functional

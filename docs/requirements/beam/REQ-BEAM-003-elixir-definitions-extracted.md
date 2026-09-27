@@ -1,6 +1,5 @@
 ---
 id: REQ-BEAM-003
-uuid: fee588d6-e7b8-43f4-9880-21fa2433e8fb
 title: Elixir definitions extracted
 scope: beam
 type: functional

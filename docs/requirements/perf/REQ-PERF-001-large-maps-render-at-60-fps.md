@@ -1,6 +1,5 @@
 ---
 id: REQ-PERF-001
-uuid: 42dcc373-fb7b-457a-baaf-79a5d3991044
 title: Large maps render at 60 fps
 scope: perf
 type: non-functional

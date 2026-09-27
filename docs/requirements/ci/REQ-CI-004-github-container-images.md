@@ -1,6 +1,5 @@
 ---
 id: REQ-CI-004
-uuid: 58bba5ab-80c0-4697-919c-a2cdf27b0bba
 title: Container images of GitHub workflows and actions
 scope: ci
 type: functional

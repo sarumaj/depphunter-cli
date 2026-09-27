@@ -1,6 +1,5 @@
 ---
 id: REQ-CI-010
-uuid: a8bbf970-e2e7-4dbd-b4a7-07fcd33cd668
 title: CI jobs become symbols
 scope: ci
 type: functional

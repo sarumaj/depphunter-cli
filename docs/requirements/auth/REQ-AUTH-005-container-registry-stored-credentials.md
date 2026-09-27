@@ -1,6 +1,5 @@
 ---
 id: REQ-AUTH-005
-uuid: b7bc73c6-e46f-4b58-877b-a01b22d9873d
 title: Stored container registry credentials
 scope: auth
 type: functional

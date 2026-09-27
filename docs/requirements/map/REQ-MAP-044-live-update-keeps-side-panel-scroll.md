@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-044
-uuid: 197ff909-fb71-4c08-b591-1bdb76e535e5
 title: Live update keeps side panel scroll position
 scope: map
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-005
-uuid: e36ec176-0827-44c0-bc30-ca2aec17dad0
 title: Repeated node on a branch shown once and closed
 scope: ext
 type: functional

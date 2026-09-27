@@ -1,6 +1,5 @@
 ---
 id: REQ-CI-005
-uuid: bd2db582-c374-4d16-a79b-436d31c4bba9
 title: GitLab include forms
 scope: ci
 type: functional

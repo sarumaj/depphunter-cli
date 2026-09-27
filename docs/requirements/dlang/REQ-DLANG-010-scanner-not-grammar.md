@@ -1,6 +1,5 @@
 ---
 id: REQ-DLANG-010
-uuid: ae4e8571-192d-46cf-9d02-b00890470c16
 title: Read by a scanner, not the grammar
 scope: dlang
 type: constraint

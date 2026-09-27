@@ -1,6 +1,5 @@
 ---
 id: REQ-BEAM-011
-uuid: 7c0f48a7-9c70-4b56-995e-15ff99123aad
 title: Hex pinning rule
 scope: beam
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-RS-003
-uuid: e2de9b31-df92-4b7b-acfb-f9674dc0db0a
 title: Mod declarations depend on their files
 scope: rs
 type: functional

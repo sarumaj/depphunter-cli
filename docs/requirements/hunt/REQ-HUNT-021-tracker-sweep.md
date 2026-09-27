@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-021
-uuid: 5875a0df-3991-444b-8020-25566e35a62c
 title: Tracker centred on and turning with the walker
 scope: hunt
 type: functional

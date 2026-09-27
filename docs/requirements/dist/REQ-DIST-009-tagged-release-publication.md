@@ -1,6 +1,5 @@
 ---
 id: REQ-DIST-009
-uuid: e96de81e-382f-49ed-b07f-f2f26f1cd29f
 title: Releases published from tags
 scope: dist
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-SCALA-001
-uuid: cfea3ce7-fdbc-4568-81be-2354081c4b5a
 title: Scala imports and definitions extracted
 scope: scala
 type: functional

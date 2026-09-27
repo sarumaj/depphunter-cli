@@ -1,6 +1,5 @@
 ---
 id: REQ-SCALA-006
-uuid: d093459b-e6be-48eb-aae6-2d00141cf5a7
 title: Maven dependencies shared with Java
 scope: scala
 type: functional

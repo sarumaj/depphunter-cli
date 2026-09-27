@@ -1,6 +1,5 @@
 ---
 id: REQ-CLI-004
-uuid: 8f817aa1-7023-4d45-bf8a-99bc6dd44391
 title: Short form -o of --output
 scope: cli
 type: interface

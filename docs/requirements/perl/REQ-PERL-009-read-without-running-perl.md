@@ -1,6 +1,5 @@
 ---
 id: REQ-PERL-009
-uuid: b750426b-b3e4-4e9c-b2ee-64cdf174bbdb
 title: Perl read without running perl
 scope: perl
 type: limitation

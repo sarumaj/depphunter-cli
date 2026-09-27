@@ -1,6 +1,5 @@
 ---
 id: REQ-CMAKE-006
-uuid: a0ed1a00-ed2d-47cb-902a-d56e3b12b168
 title: find_package attributed like the includes
 scope: cmake
 type: functional

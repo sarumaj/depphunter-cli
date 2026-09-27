@@ -1,6 +1,5 @@
 ---
 id: REQ-UI-010
-uuid: 9bbc18cd-923c-452a-9d06-68e06352ba00
 title: Help leads back to the introduction
 scope: ui
 type: functional

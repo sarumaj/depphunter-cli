@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-002
-uuid: d644d0c4-bc46-4194-9895-635ee340545b
 title: Animated gesture for using a tool
 scope: tool
 type: functional

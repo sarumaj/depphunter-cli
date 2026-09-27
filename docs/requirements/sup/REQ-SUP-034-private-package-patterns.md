@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-034
-uuid: 64b07075-3f3f-489c-8f4a-4669d03b4ae9
 title: Private package patterns
 scope: sup
 type: functional

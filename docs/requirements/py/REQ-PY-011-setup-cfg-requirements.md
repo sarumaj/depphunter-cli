@@ -1,6 +1,5 @@
 ---
 id: REQ-PY-011
-uuid: 0bab7c97-0202-41d6-ae97-e687bfa594b5
 title: setup.cfg requirements
 scope: py
 type: functional

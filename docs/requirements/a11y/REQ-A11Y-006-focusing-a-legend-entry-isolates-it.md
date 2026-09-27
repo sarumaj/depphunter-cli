@@ -1,6 +1,5 @@
 ---
 id: REQ-A11Y-006
-uuid: 803bfc54-ee09-46f3-9cfe-fc22acbba9b7
 title: Focusing a legend entry isolates it
 scope: a11y
 type: functional

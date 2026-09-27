@@ -1,6 +1,5 @@
 ---
 id: REQ-OCAML-008
-uuid: 96801899-edb8-4c64-bd8f-0bcdce1417d0
 title: Packages resolved and pinned
 scope: ocaml
 type: functional

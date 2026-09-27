@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-016
-uuid: 64e5ad1f-c2fa-439b-ac71-aaa5e0af96e0
 title: Pan and zoom the map view
 scope: map
 type: functional

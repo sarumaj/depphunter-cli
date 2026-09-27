@@ -1,6 +1,5 @@
 ---
 id: REQ-PROTO-007
-uuid: 7fd2027c-1822-4de5-983e-966a1385fc7b
 title: Buf configuration entries as imports
 scope: proto
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-053
-uuid: 3b463007-6ac8-4038-83d3-de23d4768b17
 title: Circuit style draws chip packages
 scope: map
 type: functional

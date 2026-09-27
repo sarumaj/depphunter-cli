@@ -1,6 +1,5 @@
 ---
 id: REQ-DLANG-011
-uuid: c2d64180-59ef-477e-8145-50b282bfb790
 title: Read without the compiler or dub
 scope: dlang
 type: limitation

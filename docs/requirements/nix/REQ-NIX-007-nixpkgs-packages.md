@@ -1,6 +1,5 @@
 ---
 id: REQ-NIX-007
-uuid: 2aa2fc84-6350-4072-ba82-1e436567135c
 title: Nixpkgs packages
 scope: nix
 type: functional

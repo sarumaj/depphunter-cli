@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-004
-uuid: 5b8768d2-45ed-4da7-88b8-bc9bc4057387
 title: Beacon colored by the worst finding
 scope: hunt
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-BAZEL-009
-uuid: edac2691-52ee-452d-8a27-383ff1f01725
 title: Hub repositories of other ecosystems
 scope: bazel
 type: functional

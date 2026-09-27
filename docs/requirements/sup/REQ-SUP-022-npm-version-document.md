@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-022
-uuid: f0be78d1-d168-4a7f-b018-f51b0b61c660
 title: npm dependencies from the version document
 scope: sup
 type: functional

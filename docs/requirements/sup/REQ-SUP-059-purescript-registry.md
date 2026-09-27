@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-059
-uuid: e726dd98-fc98-4cf8-83fd-76d2e819b432
 title: The PureScript registry for package dependencies
 scope: sup
 type: functional

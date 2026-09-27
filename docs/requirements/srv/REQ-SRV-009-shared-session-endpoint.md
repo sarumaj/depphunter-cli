@@ -1,6 +1,5 @@
 ---
 id: REQ-SRV-009
-uuid: ec9711b1-f62a-4596-85bb-2e0d1f7b48bd
 title: Shared session endpoint
 scope: srv
 type: functional

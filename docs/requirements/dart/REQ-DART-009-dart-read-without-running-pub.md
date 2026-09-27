@@ -1,6 +1,5 @@
 ---
 id: REQ-DART-009
-uuid: 2fe8c4c1-a007-4715-bd26-6469f87002a1
 title: Dart read without running pub
 scope: dart
 type: limitation

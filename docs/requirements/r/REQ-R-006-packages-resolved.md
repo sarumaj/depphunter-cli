@@ -1,6 +1,5 @@
 ---
 id: REQ-R-006
-uuid: f72b8aba-2347-48bf-befd-14ec879c0e2a
 title: Package names resolved to the repository and to R
 scope: r
 type: functional

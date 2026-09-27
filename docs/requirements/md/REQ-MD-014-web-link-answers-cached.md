@@ -1,6 +1,5 @@
 ---
 id: REQ-MD-014
-uuid: af7ecd75-ad29-4234-adcd-f4146d935b24
 title: Web link answers cached for a day
 scope: md
 type: functional

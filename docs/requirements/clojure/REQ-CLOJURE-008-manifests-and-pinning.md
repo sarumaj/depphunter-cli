@@ -1,6 +1,5 @@
 ---
 id: REQ-CLOJURE-008
-uuid: b4d7d741-4256-4790-9c80-d018e823da4e
 title: Manifests read, artifacts named and pinned
 scope: clojure
 type: functional

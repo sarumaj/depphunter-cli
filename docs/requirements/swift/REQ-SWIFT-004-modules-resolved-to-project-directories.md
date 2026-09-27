@@ -1,6 +1,5 @@
 ---
 id: REQ-SWIFT-004
-uuid: f6779530-a41a-4e1b-9541-ef041ed8b596
 title: Modules resolved to project directories
 scope: swift
 type: functional

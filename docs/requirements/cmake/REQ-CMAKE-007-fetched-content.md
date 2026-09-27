@@ -1,6 +1,5 @@
 ---
 id: REQ-CMAKE-007
-uuid: a443c288-ca92-489c-9d38-8f307843b687
 title: Fetched content
 scope: cmake
 type: functional

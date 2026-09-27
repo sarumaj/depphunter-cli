@@ -1,6 +1,5 @@
 ---
 id: REQ-SWIFT-003
-uuid: c4460808-ef1d-4b53-b19a-f6bb975de643
 title: Swift definitions extracted
 scope: swift
 type: functional

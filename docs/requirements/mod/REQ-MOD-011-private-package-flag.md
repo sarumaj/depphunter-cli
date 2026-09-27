@@ -1,6 +1,5 @@
 ---
 id: REQ-MOD-011
-uuid: 16fc0891-cdfd-43fe-9462-afd906ae322a
 title: Private package flag
 scope: mod
 type: interface

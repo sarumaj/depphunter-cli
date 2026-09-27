@@ -1,6 +1,5 @@
 ---
 id: REQ-DLANG-004
-uuid: 645ae498-2c6b-445e-a6ee-20dc5193ebf2
 title: Imports resolved to files
 scope: dlang
 type: functional

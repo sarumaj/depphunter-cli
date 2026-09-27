@@ -1,6 +1,5 @@
 ---
 id: REQ-FND-013
-uuid: 98f980d4-59db-48a0-a9e3-0c1fccedae9d
 title: Floating packages not asked about
 scope: fnd
 type: functional

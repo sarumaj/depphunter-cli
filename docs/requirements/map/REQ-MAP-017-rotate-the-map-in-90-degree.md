@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-017
-uuid: 809c0b21-3b94-45db-9239-c744be3953cc
 title: Rotate the map in 90-degree steps
 scope: map
 type: functional

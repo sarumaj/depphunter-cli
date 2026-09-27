@@ -1,6 +1,5 @@
 ---
 id: REQ-CI-006
-uuid: 43a7036b-8029-4758-b91f-20e484e703c0
 title: Includes triggered by bridge jobs
 scope: ci
 type: functional

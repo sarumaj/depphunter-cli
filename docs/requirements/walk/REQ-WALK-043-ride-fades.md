@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-043
-uuid: 1c8edb61-cca1-4593-b84d-c43856a24fbb
 title: View ride fades in and out
 scope: walk
 type: functional

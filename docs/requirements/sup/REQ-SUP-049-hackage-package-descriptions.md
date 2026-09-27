@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-049
-uuid: f6b691f3-d905-4714-9c85-e7915fd29149
 title: Haskell package dependencies from Hackage
 scope: sup
 type: functional

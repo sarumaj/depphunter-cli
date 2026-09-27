@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-001
-uuid: 8dd49e14-57b9-4e95-bafa-6ceb50780e35
 title: Repository root drawn as the mainland
 scope: map
 type: functional

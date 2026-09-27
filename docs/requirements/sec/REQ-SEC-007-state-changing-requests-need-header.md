@@ -1,6 +1,5 @@
 ---
 id: REQ-SEC-007
-uuid: 9399637a-ac49-4c2b-bee4-27af6a69973f
 title: State-changing requests need a custom header
 scope: sec
 type: non-functional

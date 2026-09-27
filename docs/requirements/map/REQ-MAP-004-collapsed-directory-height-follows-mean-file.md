@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-004
-uuid: 0e13c98f-acd8-4c98-b499-0d0cb1abca87
 title: Collapsed directory height follows mean file size
 scope: map
 type: functional

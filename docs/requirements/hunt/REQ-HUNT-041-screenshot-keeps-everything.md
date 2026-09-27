@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-041
-uuid: fa0f1681-4d12-402e-b590-a2e524929a08
 title: Screenshots keep the whole screen
 scope: hunt
 type: functional

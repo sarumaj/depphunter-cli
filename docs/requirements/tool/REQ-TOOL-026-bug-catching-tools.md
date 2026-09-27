@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-026
-uuid: 37fb720a-9844-43d1-8da0-e3a4ef0839db
 title: Tools that catch bugs
 scope: tool
 type: functional

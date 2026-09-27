@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-011
-uuid: c726d371-c5f5-4233-93ee-40b42e72088d
 title: Mouse look and pointer glitch filter
 scope: walk
 type: functional

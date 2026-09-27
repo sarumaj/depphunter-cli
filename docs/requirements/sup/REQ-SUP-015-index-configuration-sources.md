@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-015
-uuid: c673880b-26de-4e0b-91eb-2b17d72748a3
 title: Index configuration sources
 scope: sup
 type: functional

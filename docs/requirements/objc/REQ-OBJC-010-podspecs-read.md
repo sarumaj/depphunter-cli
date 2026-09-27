@@ -1,6 +1,5 @@
 ---
 id: REQ-OBJC-010
-uuid: a0f50f3d-6d15-4446-90d4-7190d8d08a57
 title: Podspecs read as library manifests
 scope: objc
 type: functional

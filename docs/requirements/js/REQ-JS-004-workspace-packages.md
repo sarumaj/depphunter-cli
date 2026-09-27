@@ -1,6 +1,5 @@
 ---
 id: REQ-JS-004
-uuid: c4b3af13-ad9f-4ab3-b307-4f7e12222539
 title: Workspace packages
 scope: js
 type: functional

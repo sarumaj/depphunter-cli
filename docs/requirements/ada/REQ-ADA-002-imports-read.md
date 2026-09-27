@@ -1,6 +1,5 @@
 ---
 id: REQ-ADA-002
-uuid: 9824d163-60d1-4f10-bbd7-0cec21d619e5
 title: With clauses and what a unit's name implies
 scope: ada
 type: functional

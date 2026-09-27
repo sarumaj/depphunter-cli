@@ -1,6 +1,5 @@
 ---
 id: REQ-OBJC-004
-uuid: 61810dcd-3599-4fd5-ad38-889469029620
 title: Includes resolved as C includes
 scope: objc
 type: functional

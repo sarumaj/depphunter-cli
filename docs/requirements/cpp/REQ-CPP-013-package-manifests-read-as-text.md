@@ -1,6 +1,5 @@
 ---
 id: REQ-CPP-013
-uuid: 308e1949-7296-4441-8e16-65b1111f6334
 title: Package manifests read as text
 scope: cpp
 type: limitation

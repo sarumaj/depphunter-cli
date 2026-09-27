@@ -1,6 +1,5 @@
 ---
 id: REQ-WATCH-002
-uuid: f80f663c-3ec8-4fb1-abfc-756c155165ea
 title: Debounced re-analysis
 scope: watch
 type: functional

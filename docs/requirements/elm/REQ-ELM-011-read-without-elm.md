@@ -1,6 +1,5 @@
 ---
 id: REQ-ELM-011
-uuid: 6e150bab-c617-4d76-8f79-f69c28df3034
 title: Read without running elm
 scope: elm
 type: limitation

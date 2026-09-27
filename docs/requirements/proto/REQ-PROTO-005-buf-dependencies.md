@@ -1,6 +1,5 @@
 ---
 id: REQ-PROTO-005
-uuid: 67877837-321d-4ba6-99ad-3364c18bba2b
 title: Imports from Buf Schema Registry dependencies
 scope: proto
 type: functional

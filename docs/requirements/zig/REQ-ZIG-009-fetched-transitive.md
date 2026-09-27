@@ -1,6 +1,5 @@
 ---
 id: REQ-ZIG-009
-uuid: 0d0945e4-c0db-423a-948d-76b09f00d762
 title: Dependencies of fetched packages
 scope: zig
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-GLEAM-009
-uuid: a364f54a-88cb-444f-9294-32c910be2be6
 title: One Hex island with Elixir and Erlang
 scope: gleam
 type: functional

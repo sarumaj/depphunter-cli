@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-020
-uuid: 43972229-9fc0-4199-b504-e452bba7e5ff
 title: Selection outline placement and occlusion
 scope: walk
 type: functional

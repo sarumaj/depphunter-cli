@@ -1,6 +1,5 @@
 ---
 id: REQ-ZIG-001
-uuid: 98600a2d-ce83-4c80-96f3-c34a1cd5c263
 title: Files claimed
 scope: zig
 type: functional

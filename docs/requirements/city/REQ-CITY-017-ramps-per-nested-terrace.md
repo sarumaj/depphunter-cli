@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-017
-uuid: 83bef331-4763-4c69-84d4-34d2dae350d5
 title: A ramp for every nested terrace
 scope: city
 type: functional

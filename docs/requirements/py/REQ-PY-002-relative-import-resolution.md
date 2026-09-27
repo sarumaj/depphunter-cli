@@ -1,6 +1,5 @@
 ---
 id: REQ-PY-002
-uuid: 1e9b1ae3-ef9a-4868-9290-c670eeaeea4f
 title: Relative import resolution
 scope: py
 type: functional

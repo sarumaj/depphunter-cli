@@ -1,6 +1,5 @@
 ---
 id: REQ-PS-009
-uuid: 434f1a25-a4af-41cc-8f54-7a7ed8827471
 title: PowerShell scanner instead of tree-sitter
 scope: ps
 type: constraint

@@ -1,6 +1,5 @@
 ---
 id: REQ-DLANG-001
-uuid: 051654a6-52af-4b08-af2c-613a959eed05
 title: Files claimed
 scope: dlang
 type: functional

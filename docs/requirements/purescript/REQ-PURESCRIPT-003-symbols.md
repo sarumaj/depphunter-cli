@@ -1,6 +1,5 @@
 ---
 id: REQ-PURESCRIPT-003
-uuid: 3af2d0f6-fab0-4df3-93ce-43396d4c68cc
 title: Symbols
 scope: purescript
 type: functional

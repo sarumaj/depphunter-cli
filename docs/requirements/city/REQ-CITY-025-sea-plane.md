@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-025
-uuid: 2a477065-d666-45c5-9bb8-6a9636c725ff
 title: Sea around the isometric map
 scope: city
 type: functional

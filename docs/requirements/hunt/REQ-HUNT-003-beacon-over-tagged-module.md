@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-003
-uuid: 51d5b198-dac4-41c9-a01f-fdf581392ee8
 title: Beacon over every tagged module
 scope: hunt
 type: functional

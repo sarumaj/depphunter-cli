@@ -1,6 +1,5 @@
 ---
 id: REQ-HAXE-002
-uuid: dcead2cb-d40e-4ee0-8484-fa6ce0fe81ce
 title: Imports read
 scope: haxe
 type: functional

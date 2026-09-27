@@ -1,6 +1,5 @@
 ---
 id: REQ-HAXE-011
-uuid: 97a2dbba-ab9d-4717-bf34-0471de313f19
 title: Read without the compiler
 scope: haxe
 type: limitation

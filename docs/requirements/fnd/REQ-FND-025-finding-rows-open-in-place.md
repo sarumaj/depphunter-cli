@@ -1,6 +1,5 @@
 ---
 id: REQ-FND-025
-uuid: b9692c8d-65d3-4a49-bbc1-63abf3f0c71e
 title: Finding rows open in place
 scope: fnd
 type: functional

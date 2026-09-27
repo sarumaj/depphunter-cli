@@ -1,6 +1,5 @@
 ---
 id: REQ-HIST-002
-uuid: 6147cf30-c060-4cd8-b3cc-e4bb05b9bdae
 title: Commit limit for the history
 scope: hist
 type: functional

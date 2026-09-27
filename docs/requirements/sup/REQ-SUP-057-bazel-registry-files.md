@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-057
-uuid: f51bfa71-9e37-4a20-9b20-20c0cb921b52
 title: Bazel registries for module dependencies
 scope: sup
 type: functional

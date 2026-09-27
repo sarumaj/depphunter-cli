@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-036
-uuid: 98feb8ad-21bb-446c-89ca-530404e11f68
 title: Photographs live for the session only
 scope: hunt
 type: constraint

@@ -1,6 +1,5 @@
 ---
 id: REQ-PHP-008
-uuid: e699259a-abfc-42a1-b4ab-35e937f8a7d7
 title: Namespaces mapped to packages by the lock
 scope: php
 type: functional

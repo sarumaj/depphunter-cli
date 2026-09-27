@@ -1,6 +1,5 @@
 ---
 id: REQ-GLEAM-007
-uuid: 8cff48db-d33c-488c-b794-39fe3fcf6969
 title: External functions resolved
 scope: gleam
 type: functional

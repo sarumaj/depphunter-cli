@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-062
-uuid: e39c235d-add7-4235-bb59-d6f1ea6e6e77
 title: Walker held while the wheel is up
 scope: tool
 type: functional

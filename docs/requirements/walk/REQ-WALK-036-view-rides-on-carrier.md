@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-036
-uuid: 927883a3-4f44-448d-9f73-4d9dad45d0e9
 title: View rides only on what carries it
 scope: walk
 type: functional

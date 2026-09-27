@@ -1,6 +1,5 @@
 ---
 id: REQ-CI-013
-uuid: 43df0dbe-ee9b-4a27-afa3-70d32ecd01e4
 title: Unversioned CI references flagged floating
 scope: ci
 type: functional

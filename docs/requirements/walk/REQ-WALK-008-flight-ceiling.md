@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-008
-uuid: b3cba739-aab2-495c-8ae3-5bc5d032a2fc
 title: Flight ceiling above the tallest box
 scope: walk
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-GLEAM-010
-uuid: ad765e4c-1df8-4f66-a1ef-fe5bc8fbc24b
 title: Read by a scanner, not the grammar
 scope: gleam
 type: constraint

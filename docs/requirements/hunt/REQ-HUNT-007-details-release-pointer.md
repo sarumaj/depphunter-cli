@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-007
-uuid: 36e075da-b525-4d45-bf7a-76f7b0a7ed09
 title: Opening details frees the pointer
 scope: hunt
 type: functional

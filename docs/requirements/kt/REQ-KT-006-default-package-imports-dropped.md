@@ -1,6 +1,5 @@
 ---
 id: REQ-KT-006
-uuid: 3b9c1c36-ba71-4263-90a8-c04a53a01eb2
 title: Imports of the default package dropped
 scope: kt
 type: functional

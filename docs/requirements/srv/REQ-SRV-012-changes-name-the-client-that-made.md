@@ -1,6 +1,5 @@
 ---
 id: REQ-SRV-012
-uuid: 764918c8-7060-4f20-a60c-d7d18801538e
 title: Changes name the client that made them
 scope: srv
 type: functional

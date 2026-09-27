@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-022
-uuid: 44594887-2761-4685-b7a6-0a338dfc1513
 title: Bugs as severity-colored dots on the tracker
 scope: hunt
 type: functional

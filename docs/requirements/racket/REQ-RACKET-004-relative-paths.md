@@ -1,6 +1,5 @@
 ---
 id: REQ-RACKET-004
-uuid: 035ae872-2275-409d-a902-b7a3d9c4b934
 title: Relative paths resolved to files
 scope: racket
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-LUA-002
-uuid: c62db057-115b-49bd-a0c0-0d2a235538ae
 title: Requires read
 scope: lua
 type: functional

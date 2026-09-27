@@ -1,6 +1,5 @@
 ---
 id: REQ-FORTRAN-008
-uuid: e400cc2a-7081-4ebd-badb-9a7cd22efbef
 title: Dependencies fpm fetched
 scope: fortran
 type: functional

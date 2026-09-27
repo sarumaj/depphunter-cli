@@ -1,6 +1,5 @@
 ---
 id: REQ-DOCKER-001
-uuid: ccd95049-7ddf-403a-b15e-e3fc1f9e62ee
 title: Dockerfiles and Compose files claimed
 scope: docker
 type: functional

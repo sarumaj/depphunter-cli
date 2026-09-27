@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-011
-uuid: eb5a21ca-8eaf-4830-a5ed-988cc9c7ea37
 title: Fist closes with graded joints
 scope: tool
 type: functional

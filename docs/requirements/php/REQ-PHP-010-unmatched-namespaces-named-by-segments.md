@@ -1,6 +1,5 @@
 ---
 id: REQ-PHP-010
-uuid: 9cd7a537-85cc-41d2-a31a-779d48a352c6
 title: Unmatched namespaces named by their segments
 scope: php
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-CFG-016
-uuid: 305efcbd-c2e0-45b9-bb20-d648a8c75f27
 title: View settings seeded by --ui-default
 scope: cfg
 type: functional

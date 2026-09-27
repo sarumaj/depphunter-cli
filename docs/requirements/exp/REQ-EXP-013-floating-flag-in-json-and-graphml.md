@@ -1,6 +1,5 @@
 ---
 id: REQ-EXP-013
-uuid: c9faf7b8-a28f-4721-9fa4-7443e3e5e563
 title: Floating flag in JSON and GraphML exports
 scope: exp
 type: functional

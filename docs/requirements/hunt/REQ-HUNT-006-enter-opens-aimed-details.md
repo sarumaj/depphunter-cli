@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-006
-uuid: 5b3dd685-4234-4038-8c39-5710e5c22301
 title: Enter shows details of the aimed module
 scope: hunt
 type: functional

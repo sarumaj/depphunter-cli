@@ -1,6 +1,5 @@
 ---
 id: REQ-UI-012
-uuid: 242cb600-085d-4069-92a9-2ce74b62369d
 title: Walk introduction remembered separately
 scope: ui
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-028
-uuid: 386a6484-80aa-4d68-b3a6-8e04d89d20b8
 title: Walker height follows the bridge arch
 scope: city
 type: functional

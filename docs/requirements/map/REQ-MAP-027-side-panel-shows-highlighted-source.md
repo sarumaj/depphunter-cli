@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-027
-uuid: b2da7207-4871-4890-929b-0948c6963234
 title: Side panel shows highlighted source
 scope: map
 type: functional

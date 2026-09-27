@@ -1,6 +1,5 @@
 ---
 id: REQ-MOD-006
-uuid: 7d5fb51c-31a6-4540-a2b6-21833565b6b3
 title: Import edges
 scope: mod
 type: interface

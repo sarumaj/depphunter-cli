@@ -1,6 +1,5 @@
 ---
 id: REQ-PY-009
-uuid: 6afa1755-87a4-466d-998d-925af491b9ce
 title: Python lock file versions
 scope: py
 type: functional

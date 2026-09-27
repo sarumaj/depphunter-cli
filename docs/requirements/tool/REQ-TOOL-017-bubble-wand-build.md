@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-017
-uuid: f6e45bca-abfb-494e-bb83-fb99dae51f23
 title: Bubble wand built to standard
 scope: tool
 type: functional

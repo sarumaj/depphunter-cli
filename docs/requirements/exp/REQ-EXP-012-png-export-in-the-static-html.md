@@ -1,6 +1,5 @@
 ---
 id: REQ-EXP-012
-uuid: ad4eee94-a5fd-4f47-aa25-fe915fdeb646
 title: PNG export in the static HTML export
 scope: exp
 type: functional

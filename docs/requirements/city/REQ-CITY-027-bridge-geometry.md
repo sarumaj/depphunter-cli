@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-027
-uuid: f49ffc2c-b821-4e28-9c9d-0e1092c646e5
 title: Bridge construction
 scope: city
 type: functional

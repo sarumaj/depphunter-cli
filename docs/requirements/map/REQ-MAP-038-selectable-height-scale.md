@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-038
-uuid: c32cba07-d2da-4086-b0d7-29b1161c43fb
 title: Selectable height scale
 scope: map
 type: functional

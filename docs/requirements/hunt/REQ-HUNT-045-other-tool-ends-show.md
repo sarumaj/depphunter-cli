@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-045
-uuid: b0018f73-06ff-4c0e-b10b-d73b2faaec47
 title: Reaching for a tool ends the showing
 scope: hunt
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-OBJC-007
-uuid: 6f4c6b36-7c27-4b86-8bb2-4b31e2225418
 title: Podfile pods read as imports
 scope: objc
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-SRV-017
-uuid: 21360c23-59c6-4653-b678-7ee9d4c606d2
 title: Reconnecting client asks again only when needed
 scope: srv
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-041
-uuid: eb02873d-b7e0-4ca2-8d1f-57957db51002
 title: Labels at both ends of selection arcs
 scope: map
 type: functional

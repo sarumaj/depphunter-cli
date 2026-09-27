@@ -1,6 +1,5 @@
 ---
 id: REQ-FSHARP-001
-uuid: 9f1e207c-577c-4721-8141-529c19b3758b
 title: F# files claimed
 scope: fsharp
 type: functional

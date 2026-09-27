@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-023
-uuid: 24e433f9-752f-42ca-bd92-54cc3476cf1a
 title: Tags-style symbol queries
 scope: lang
 type: functional

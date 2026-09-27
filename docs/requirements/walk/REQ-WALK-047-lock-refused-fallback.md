@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-047
-uuid: 1aed0935-2b94-49cc-aded-eaa1220ff868
 title: Walking where pointer lock is refused
 scope: walk
 type: functional

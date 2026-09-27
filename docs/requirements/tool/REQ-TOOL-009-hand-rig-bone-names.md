@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-009
-uuid: 8c52f2c9-6616-4823-914f-cf77c1147de5
 title: Hand rig posed by bone name
 scope: tool
 type: interface

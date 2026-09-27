@@ -1,6 +1,5 @@
 ---
 id: REQ-HASKELL-011
-uuid: 32a77ea6-7449-4cf4-a5d0-608cd21b4c00
 title: Haskell read without GHC
 scope: haskell
 type: limitation

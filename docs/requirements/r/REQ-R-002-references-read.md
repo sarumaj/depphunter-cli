@@ -1,6 +1,5 @@
 ---
 id: REQ-R-002
-uuid: 9a382554-6018-439a-b43b-900212752739
 title: Package and file references read
 scope: r
 type: functional

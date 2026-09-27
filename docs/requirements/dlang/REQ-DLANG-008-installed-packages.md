@@ -1,6 +1,5 @@
 ---
 id: REQ-DLANG-008
-uuid: 134583b9-8640-40eb-8814-b67d89fb19a7
 title: Installed packages
 scope: dlang
 type: functional

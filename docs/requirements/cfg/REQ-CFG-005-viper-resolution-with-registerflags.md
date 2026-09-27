@@ -1,6 +1,5 @@
 ---
 id: REQ-CFG-005
-uuid: ef418e59-b990-41b3-8758-398e90d07f4e
 title: Flags declared and resolved by the config package
 scope: cfg
 type: constraint

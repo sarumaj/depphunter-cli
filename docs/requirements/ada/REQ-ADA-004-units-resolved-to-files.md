@@ -1,6 +1,5 @@
 ---
 id: REQ-ADA-004
-uuid: 907bf1d1-f8db-4cfa-9fc2-8dfde58db9b8
 title: Units resolved to files
 scope: ada
 type: functional

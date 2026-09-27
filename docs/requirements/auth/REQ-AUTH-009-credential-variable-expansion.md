@@ -1,6 +1,5 @@
 ---
 id: REQ-AUTH-009
-uuid: 0b52daea-dd09-455b-b920-3e0473854625
 title: Environment references in credentials
 scope: auth
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-044
-uuid: 44e7641b-3ae7-479a-8512-bcf069109031
 title: A shown photograph goes back down
 scope: hunt
 type: functional

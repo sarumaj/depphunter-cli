@@ -1,6 +1,5 @@
 ---
 id: REQ-CFG-015
-uuid: 7000f135-cbec-4f61-93a4-14d35d9b2d53
 title: Saved settings survive a reload
 scope: cfg
 type: functional

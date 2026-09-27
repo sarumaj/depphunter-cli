@@ -1,6 +1,5 @@
 ---
 id: REQ-HASKELL-005
-uuid: 977429d9-48c6-4db9-abd5-68802a4930f5
 title: Package descriptions and projects as imports
 scope: haskell
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-FND-020
-uuid: 256ca82e-4770-4d87-b623-36da599f6e2e
 title: Findings placed where they belong
 scope: fnd
 type: functional

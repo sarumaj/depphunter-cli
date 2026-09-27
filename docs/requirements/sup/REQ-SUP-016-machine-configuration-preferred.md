@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-016
-uuid: 5ac379e0-de78-43d9-96e7-58d33815da26
 title: Machine configuration is preferred
 scope: sup
 type: functional

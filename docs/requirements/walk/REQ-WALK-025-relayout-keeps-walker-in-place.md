@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-025
-uuid: a011d239-706f-46df-b864-578bbfb96726
 title: Relayout keeps the walker in place
 scope: walk
 type: functional

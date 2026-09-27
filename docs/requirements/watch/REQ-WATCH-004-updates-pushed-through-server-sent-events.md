@@ -1,6 +1,5 @@
 ---
 id: REQ-WATCH-004
-uuid: 73040059-f89d-4906-ba9a-9b2a86a71cdc
 title: Updates pushed through Server-Sent Events
 scope: watch
 type: functional

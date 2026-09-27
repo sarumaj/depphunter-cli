@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-002
-uuid: cafcde6b-3430-4443-a3a1-0b37572dcfd5
 title: Import extraction
 scope: lang
 type: interface

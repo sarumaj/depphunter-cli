@@ -1,6 +1,5 @@
 ---
 id: REQ-CLOJURE-005
-uuid: fb50d56b-08aa-42a3-a46c-006952a3722f
 title: Clojure's standard library
 scope: clojure
 type: functional

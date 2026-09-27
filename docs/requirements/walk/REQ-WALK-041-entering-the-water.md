@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-041
-uuid: 14c2cd68-503f-406e-9fb6-ea871993025f
 title: Entering the water from a shore or a deck
 scope: walk
 type: functional

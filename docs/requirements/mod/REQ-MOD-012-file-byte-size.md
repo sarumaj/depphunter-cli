@@ -1,6 +1,5 @@
 ---
 id: REQ-MOD-012
-uuid: e225996f-c4df-4068-ab55-1f47b9cfa736
 title: File size in bytes
 scope: mod
 type: interface

@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-067
-uuid: 768285e0-b4ab-48c4-ace9-b0871e1ed312
 title: Grapple holds only near a roof's edge
 scope: tool
 type: functional

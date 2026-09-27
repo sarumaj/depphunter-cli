@@ -1,6 +1,5 @@
 ---
 id: REQ-UI-003
-uuid: fa32fd16-d10b-4b26-9212-c89e2b4198cf
 title: Clicking the stopped indicator retries
 scope: ui
 type: functional

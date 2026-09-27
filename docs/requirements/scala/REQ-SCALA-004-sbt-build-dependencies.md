@@ -1,6 +1,5 @@
 ---
 id: REQ-SCALA-004
-uuid: 046cc599-b708-4b2e-bc7b-0efe018b96f5
 title: sbt build dependencies
 scope: scala
 type: functional

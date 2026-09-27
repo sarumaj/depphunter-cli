@@ -1,6 +1,5 @@
 ---
 id: REQ-CLOJURE-007
-uuid: 864b3504-aa27-4493-aed0-f7563baa982f
 title: Namespaces to declared artifacts
 scope: clojure
 type: functional

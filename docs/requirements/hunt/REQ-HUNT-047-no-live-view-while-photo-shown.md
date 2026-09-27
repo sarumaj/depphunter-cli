@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-047
-uuid: 3eec0af8-fd11-47e8-be29-55c2657230e8
 title: No live-view pass while a photograph is up
 scope: hunt
 type: non-functional

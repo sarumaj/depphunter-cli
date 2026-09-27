@@ -1,6 +1,5 @@
 ---
 id: REQ-TRC-011
-uuid: fa08a57d-1f59-4396-a3da-8e08fe66bfe6
 title: Resolution report as JSON
 scope: trc
 type: interface

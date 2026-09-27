@@ -1,6 +1,5 @@
 ---
 id: REQ-FND-024
-uuid: ab4c765d-525c-4a2d-ad36-1a353dcfdb25
 title: Side panel lists findings worst first
 scope: fnd
 type: functional

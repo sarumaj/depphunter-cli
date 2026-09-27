@@ -1,6 +1,5 @@
 ---
 id: REQ-PURESCRIPT-010
-uuid: d5ee562a-467d-48e7-9bbd-b2d99f7d6ac6
 title: Read by a scanner, not the grammar
 scope: purescript
 type: constraint

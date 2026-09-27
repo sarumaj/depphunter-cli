@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-004
-uuid: 935d03c1-0336-49dd-8b92-7394b3ca9ed7
 title: Import resolution targets
 scope: lang
 type: interface

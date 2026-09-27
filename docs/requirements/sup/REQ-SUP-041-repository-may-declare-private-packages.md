@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-041
-uuid: e7293a4b-27e5-412c-9dd1-f8153e580acf
 title: A repository may declare its packages private
 scope: sup
 type: functional

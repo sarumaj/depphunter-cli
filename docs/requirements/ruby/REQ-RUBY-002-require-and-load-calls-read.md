@@ -1,6 +1,5 @@
 ---
 id: REQ-RUBY-002
-uuid: bfb04cad-c435-40ff-bd88-aac7131f0812
 title: Require, load and autoload calls read
 scope: ruby
 type: functional

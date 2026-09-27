@@ -1,6 +1,5 @@
 ---
 id: REQ-SEC-009
-uuid: aa668897-de92-423b-b9c0-a67115cf1574
 title: Editor run without a shell
 scope: sec
 type: non-functional

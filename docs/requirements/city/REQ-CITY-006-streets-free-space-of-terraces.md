@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-006
-uuid: a122a785-e222-47f2-b491-2bb14c4f8065
 title: Streets as the free space of terrace tops
 scope: city
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-RACKET-001
-uuid: d56e36aa-ea35-480a-8aaf-e93db72eee1a
 title: Files claimed
 scope: racket
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-022
-uuid: f6828320-8008-462b-a02b-0dd92a5eb0dc
 title: Fixed hosting arguments
 scope: ext
 type: interface

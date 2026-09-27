@@ -1,6 +1,5 @@
 ---
 id: REQ-HIST-005
-uuid: d2a08a62-32cb-4a1b-948d-29300f194c4e
 title: History cached per HEAD
 scope: hist
 type: functional

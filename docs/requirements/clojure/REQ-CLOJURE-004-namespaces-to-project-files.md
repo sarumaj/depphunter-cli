@@ -1,6 +1,5 @@
 ---
 id: REQ-CLOJURE-004
-uuid: 87a3f39b-da53-45cb-9b0b-12600b77285b
 title: Namespaces to project files
 scope: clojure
 type: functional

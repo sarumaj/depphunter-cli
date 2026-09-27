@@ -1,6 +1,5 @@
 ---
 id: REQ-CPP-003
-uuid: dc9b77b9-6584-4819-b87c-653a11996243
 title: Definitions extracted
 scope: cpp
 type: functional

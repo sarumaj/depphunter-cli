@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-006
-uuid: 8234dd2e-d12d-477f-a881-21673a332c13
 title: Floating flag in JSON and GraphML
 scope: sup
 type: interface

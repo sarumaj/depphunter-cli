@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-006
-uuid: 301a1ab2-8006-4d96-90ed-41fad1a4c100
 title: Collisions and step height on the flat layout
 scope: walk
 type: functional

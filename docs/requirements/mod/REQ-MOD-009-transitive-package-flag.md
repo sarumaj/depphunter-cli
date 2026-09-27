@@ -1,6 +1,5 @@
 ---
 id: REQ-MOD-009
-uuid: 370b5858-6428-4e24-9fdc-46b14aa175da
 title: Transitive package flag
 scope: mod
 type: interface

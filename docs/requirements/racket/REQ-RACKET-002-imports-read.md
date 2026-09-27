@@ -1,6 +1,5 @@
 ---
 id: REQ-RACKET-002
-uuid: 6172f45e-43ff-4173-bc83-cf14e976cb41
 title: Imports read
 scope: racket
 type: functional

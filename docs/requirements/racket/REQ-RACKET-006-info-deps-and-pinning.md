@@ -1,6 +1,5 @@
 ---
 id: REQ-RACKET-006
-uuid: ce657b3d-4b7c-4b2e-b7dc-5ece2166d8ba
 title: info.rkt dependencies and pinning
 scope: racket
 type: functional

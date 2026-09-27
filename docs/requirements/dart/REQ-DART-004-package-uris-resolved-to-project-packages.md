@@ -1,6 +1,5 @@
 ---
 id: REQ-DART-004
-uuid: 7d28ad91-cdae-4769-a380-5128dee5e1ba
 title: package: URIs resolved to project packages
 scope: dart
 type: functional

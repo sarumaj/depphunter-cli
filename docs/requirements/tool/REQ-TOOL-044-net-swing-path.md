@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-044
-uuid: 5405b7b3-4bf3-4732-b180-73bf11512a75
 title: Butterfly net swing path
 scope: tool
 type: functional

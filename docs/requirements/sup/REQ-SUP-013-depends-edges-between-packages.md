@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-013
-uuid: 01e59710-92c9-4239-9fda-34bbd59f831a
 title: Package-to-package edges
 scope: sup
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-CI-009
-uuid: 16712378-74fb-4186-bad5-1f87781d3b0a
 title: Local CI paths resolve inside the repository
 scope: ci
 type: functional

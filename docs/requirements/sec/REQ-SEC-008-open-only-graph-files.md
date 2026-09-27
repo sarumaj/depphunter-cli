@@ -1,6 +1,5 @@
 ---
 id: REQ-SEC-008
-uuid: c6288e5f-f6c4-4869-b249-89bd0200bbee
 title: Open in editor only for graph files
 scope: sec
 type: non-functional

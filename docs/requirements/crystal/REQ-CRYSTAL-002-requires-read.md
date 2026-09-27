@@ -1,6 +1,5 @@
 ---
 id: REQ-CRYSTAL-002
-uuid: 7f543612-9dae-4caa-8d50-17d628007048
 title: Requires read
 scope: crystal
 type: functional

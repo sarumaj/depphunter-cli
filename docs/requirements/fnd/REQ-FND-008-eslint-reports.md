@@ -1,6 +1,5 @@
 ---
 id: REQ-FND-008
-uuid: 854eeffb-a9b3-4c27-b697-eca9a8976f0c
 title: eslint reports
 scope: fnd
 type: functional

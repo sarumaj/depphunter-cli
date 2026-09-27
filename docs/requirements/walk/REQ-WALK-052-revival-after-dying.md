@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-052
-uuid: ed1686e8-440a-40c1-9eed-dc6b3ff1770c
 title: Getting up after dying
 scope: walk
 type: functional

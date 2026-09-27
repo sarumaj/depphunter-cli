@@ -1,6 +1,5 @@
 ---
 id: REQ-HIST-006
-uuid: b63b1b21-2d2b-4089-96fa-64acb7e11095
 title: History follows renames
 scope: hist
 type: functional

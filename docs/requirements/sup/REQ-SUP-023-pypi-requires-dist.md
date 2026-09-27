@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-023
-uuid: 12c6e336-6b36-46a7-9c20-96625b124865
 title: PyPI dependencies from requires-dist
 scope: sup
 type: functional

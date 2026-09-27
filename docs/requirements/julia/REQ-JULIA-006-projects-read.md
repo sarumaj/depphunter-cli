@@ -1,6 +1,5 @@
 ---
 id: REQ-JULIA-006
-uuid: 256f616a-a57c-4bcd-bd61-da5dd68cdb3e
 title: Project.toml read
 scope: julia
 type: functional

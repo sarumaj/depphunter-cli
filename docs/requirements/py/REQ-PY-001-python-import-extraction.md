@@ -1,6 +1,5 @@
 ---
 id: REQ-PY-001
-uuid: 7fc69519-d07b-4f11-88fb-451605efaad8
 title: Python import extraction
 scope: py
 type: functional

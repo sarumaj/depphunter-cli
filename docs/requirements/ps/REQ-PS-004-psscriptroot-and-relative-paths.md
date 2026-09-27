@@ -1,6 +1,5 @@
 ---
 id: REQ-PS-004
-uuid: 939fd945-89ef-4b76-b461-f51cb2553862
 title: Script paths relative to the script
 scope: ps
 type: functional

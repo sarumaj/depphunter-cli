@@ -1,6 +1,5 @@
 ---
 id: REQ-PURESCRIPT-001
-uuid: 37cc4029-cad2-4f2e-9b08-f172963cfa8f
 title: PureScript files claimed
 scope: purescript
 type: functional

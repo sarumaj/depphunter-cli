@@ -1,6 +1,5 @@
 ---
 id: REQ-OCAML-007
-uuid: 7ee57198-f498-435a-b597-7a988354fce6
 title: opam manifests read
 scope: ocaml
 type: functional

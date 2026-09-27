@@ -1,6 +1,5 @@
 ---
 id: REQ-ZIG-011
-uuid: c9fd7e26-1778-4434-9f0f-db4b7db5aad1
 title: Zig read without running Zig
 scope: zig
 type: limitation

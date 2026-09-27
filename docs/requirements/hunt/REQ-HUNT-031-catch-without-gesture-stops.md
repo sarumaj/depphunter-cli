@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-031
-uuid: 304d2674-0368-44d9-b4f2-76214ed22f9a
 title: A catch without a gesture stops the bug
 scope: hunt
 type: functional

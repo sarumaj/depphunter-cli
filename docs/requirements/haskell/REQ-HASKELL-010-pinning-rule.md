@@ -1,6 +1,5 @@
 ---
 id: REQ-HASKELL-010
-uuid: 6e1601de-63e3-4210-bdf8-15ca803930c7
 title: Hackage pinning rule
 scope: haskell
 type: functional

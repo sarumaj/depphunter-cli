@@ -1,6 +1,5 @@
 ---
 id: REQ-AUTH-007
-uuid: a7c57b13-97e5-4245-a9a8-b34362efa86a
 title: Credential helper constraints
 scope: auth
 type: constraint

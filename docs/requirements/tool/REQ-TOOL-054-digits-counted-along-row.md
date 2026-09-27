@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-054
-uuid: 509d60b1-17e7-4ea1-b3a2-d34003d678a6
 title: Digit keys counted along the row
 scope: tool
 type: functional

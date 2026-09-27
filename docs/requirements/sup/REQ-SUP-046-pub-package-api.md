@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-046
-uuid: 3a2306b0-fe67-4b82-b6cd-fa9a0cf544a0
 title: pub dependencies from the package API
 scope: sup
 type: functional

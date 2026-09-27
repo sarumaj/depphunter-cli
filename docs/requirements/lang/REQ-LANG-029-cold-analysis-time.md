@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-029
-uuid: 6f087598-abb9-4a34-bdb4-3fc7476887c6
 title: Cold analysis time
 scope: lang
 type: non-functional

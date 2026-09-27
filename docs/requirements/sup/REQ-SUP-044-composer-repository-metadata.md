@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-044
-uuid: 71b02472-0a68-4482-8a21-a8ded20b10c1
 title: Composer dependencies from repository metadata
 scope: sup
 type: functional

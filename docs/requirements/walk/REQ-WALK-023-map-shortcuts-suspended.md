@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-023
-uuid: 7b0c0406-530a-4143-8ab9-de75443a4229
 title: Map shortcuts suspended in walk mode
 scope: walk
 type: functional

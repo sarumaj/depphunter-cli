@@ -1,6 +1,5 @@
 ---
 id: REQ-RUBY-008
-uuid: dd9c8638-dd51-4e68-89be-21de368a9354
 title: Gemfile.lock read
 scope: ruby
 type: functional

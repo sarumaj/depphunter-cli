@@ -1,6 +1,5 @@
 ---
 id: REQ-LSP-007
-uuid: eabd76a4-e12b-4117-9d28-69cd9dba7fa8
 title: Imports and References switch
 scope: lsp
 type: functional

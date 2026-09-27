@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-018
-uuid: e7ebe8ce-67f7-437f-b3b0-9148ea3b8735
 title: Appearance settings passed as seeds
 scope: ext
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-LSP-001
-uuid: a80d7e3c-fc22-41a3-9820-0e28b5efc39c
 title: Symbol references are opt-in
 scope: lsp
 type: functional

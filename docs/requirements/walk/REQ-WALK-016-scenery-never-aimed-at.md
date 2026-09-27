@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-016
-uuid: 583bc7e1-caba-421d-b81a-f68e577c9749
 title: Shore and block underfoot are never aimed at
 scope: walk
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-020
-uuid: 71a7cdb2-848a-4c80-83d5-9ed8522faaa1
 title: Where the map opens
 scope: ext
 type: functional

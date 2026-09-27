@@ -1,6 +1,5 @@
 ---
 id: REQ-FSHARP-006
-uuid: 97ff524e-e355-490c-9ee5-248892e74dcc
 title: paket.dependencies and paket.references
 scope: fsharp
 type: functional

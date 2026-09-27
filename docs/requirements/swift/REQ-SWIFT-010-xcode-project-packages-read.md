@@ -1,6 +1,5 @@
 ---
 id: REQ-SWIFT-010
-uuid: 9c46c5b5-6c7e-4a7d-89c1-aaf01d67c6b3
 title: Xcode project packages read
 scope: swift
 type: functional

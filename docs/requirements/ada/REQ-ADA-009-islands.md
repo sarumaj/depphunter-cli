@@ -1,6 +1,5 @@
 ---
 id: REQ-ADA-009
-uuid: db7afbbd-3e38-4151-b88e-bc6dbf5b1989
 title: Islands
 scope: ada
 type: functional

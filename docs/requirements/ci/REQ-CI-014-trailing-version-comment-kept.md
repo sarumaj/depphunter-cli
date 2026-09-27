@@ -1,6 +1,5 @@
 ---
 id: REQ-CI-014
-uuid: 48ad5fc2-e82f-4399-903f-b59390272c64
 title: Version comment of a commit-pinned reference
 scope: ci
 type: functional

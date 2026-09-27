@@ -1,6 +1,5 @@
 ---
 id: REQ-EXP-008
-uuid: 85533120-17fb-4db1-af4c-72383f93f54e
 title: Static HTML export opens from file URLs
 scope: exp
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-JULIA-011
-uuid: 1350612a-c5ab-45e9-9103-be2d68a7a79f
 title: Read by a scanner, not the grammar
 scope: julia
 type: constraint

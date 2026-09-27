@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-013
-uuid: e2410747-79c9-448c-9d06-512474957059
 title: Collapsed node aggregates descendant edges
 scope: map
 type: functional

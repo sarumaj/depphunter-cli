@@ -1,6 +1,5 @@
 ---
 id: REQ-FORTRAN-001
-uuid: ae58171e-53fd-4919-8d0d-801f24125e70
 title: Files claimed
 scope: fortran
 type: functional

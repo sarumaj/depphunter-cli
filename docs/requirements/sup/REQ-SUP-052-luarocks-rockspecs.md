@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-052
-uuid: 3d2016d6-0102-4194-bb14-e75761be4977
 title: Rock dependencies from a rocks server
 scope: sup
 type: functional

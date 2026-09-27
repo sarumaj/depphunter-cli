@@ -1,6 +1,5 @@
 ---
 id: REQ-WATCH-005
-uuid: 174cf7b3-673e-4c40-b754-110e5107fb43
 title: View state kept across a live update
 scope: watch
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-SCALA-003
-uuid: e0f640fa-bb73-4f40-aeeb-fd402f6b52b3
 title: Project sources found by declared package
 scope: scala
 type: functional

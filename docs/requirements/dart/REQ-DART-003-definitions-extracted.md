@@ -1,6 +1,5 @@
 ---
 id: REQ-DART-003
-uuid: a42cd88d-6167-4607-975c-87781bea376a
 title: Dart definitions extracted
 scope: dart
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-015
-uuid: 230a6a29-f5f1-4f49-bf73-137bc07901ae
 title: Isometric orthographic camera
 scope: map
 type: functional

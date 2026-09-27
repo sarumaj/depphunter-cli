@@ -1,6 +1,5 @@
 ---
 id: REQ-SRV-004
-uuid: 06218b37-cdae-44b8-8358-9e12e19544fd
 title: Configuration endpoint
 scope: srv
 type: functional

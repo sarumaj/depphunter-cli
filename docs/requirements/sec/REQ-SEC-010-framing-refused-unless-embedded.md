@@ -1,6 +1,5 @@
 ---
 id: REQ-SEC-010
-uuid: d045c211-de66-45b3-ac26-e520bbfc7a26
 title: Framing refused unless an embedding origin is named
 scope: sec
 type: functional

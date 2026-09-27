@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-017
-uuid: 8ff0abf0-a7ef-4750-9ade-85b3b261b518
 title: Git ignore rules respected
 scope: lang
 type: functional

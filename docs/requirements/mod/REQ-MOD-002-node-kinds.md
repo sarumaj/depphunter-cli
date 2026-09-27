@@ -1,6 +1,5 @@
 ---
 id: REQ-MOD-002
-uuid: 1ba83628-1874-44aa-bbf0-bb99b9d1d8d4
 title: Node kinds
 scope: mod
 type: interface

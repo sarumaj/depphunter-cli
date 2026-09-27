@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-019
-uuid: 93e53f32-785d-4d7a-80d6-73082acd7bff
 title: Which binary is launched
 scope: ext
 type: functional

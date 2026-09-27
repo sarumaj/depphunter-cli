@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-008
-uuid: 61ea6235-2d26-4fa9-8119-1430ef32876c
 title: Single tree-sitter adapter
 scope: lang
 type: constraint

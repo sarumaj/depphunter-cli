@@ -1,6 +1,5 @@
 ---
 id: REQ-PERF-003
-uuid: fe6756de-a479-4614-b19a-408f83c13770
 title: Labels throttled while walking
 scope: perf
 type: non-functional

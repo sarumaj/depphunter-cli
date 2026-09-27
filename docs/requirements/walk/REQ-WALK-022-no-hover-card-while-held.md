@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-022
-uuid: 5a515b13-63b2-4400-8906-d6dee6af1be8
 title: No hover card while the walker is held
 scope: walk
 type: functional

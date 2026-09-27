@@ -1,6 +1,5 @@
 ---
 id: REQ-GLEAM-008
-uuid: 2f647b0b-13b2-4ddf-89b8-83173af82b1f
 title: Hex pinning rule
 scope: gleam
 type: functional

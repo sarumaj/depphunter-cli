@@ -1,6 +1,5 @@
 ---
 id: REQ-CLI-009
-uuid: 976fa25f-cb85-4e7e-804f-6fb748dae1be
 title: Log written to stdout
 scope: cli
 type: interface

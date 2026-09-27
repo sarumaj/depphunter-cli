@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-039
-uuid: d5951510-1652-4d1b-ac73-f4356739b86d
 title: Winded until a quarter is back
 scope: walk
 type: functional

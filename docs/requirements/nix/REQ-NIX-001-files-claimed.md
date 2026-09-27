@@ -1,6 +1,5 @@
 ---
 id: REQ-NIX-001
-uuid: b18cf6ca-0fe9-4732-b2b9-84e1492da11c
 title: Files claimed
 scope: nix
 type: functional

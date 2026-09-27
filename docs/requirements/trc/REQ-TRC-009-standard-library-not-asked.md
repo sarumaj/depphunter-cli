@@ -1,6 +1,5 @@
 ---
 id: REQ-TRC-009
-uuid: 27ca5a62-5dea-4619-9e35-1612975244c0
 title: A standard library is not asked about
 scope: trc
 type: functional

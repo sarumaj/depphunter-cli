@@ -1,6 +1,5 @@
 ---
 id: REQ-EXP-007
-uuid: 72a3c072-966d-4d78-8edb-9df7a1870eda
 title: Static HTML export embeds data within limits
 scope: exp
 type: functional

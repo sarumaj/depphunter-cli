@@ -1,6 +1,5 @@
 ---
 id: REQ-PERF-007
-uuid: f7841909-de73-4e3a-86f7-221031742997
 title: CSS colors parsed once per pass
 scope: perf
 type: non-functional

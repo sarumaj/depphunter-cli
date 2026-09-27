@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-009
-uuid: dd7e21c6-78c8-4f37-9cd4-2b4ca9d4a284
 title: Import arcs join visible representatives
 scope: map
 type: functional

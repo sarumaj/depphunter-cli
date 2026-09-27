@@ -1,6 +1,5 @@
 ---
 id: REQ-TERRAFORM-002
-uuid: 31eaf906-847b-4500-b66e-ba941bbbc330
 title: Module calls and providers as imports
 scope: terraform
 type: functional

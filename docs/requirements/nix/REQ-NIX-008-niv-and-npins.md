@@ -1,6 +1,5 @@
 ---
 id: REQ-NIX-008
-uuid: 05786c14-2105-4ede-a103-ec410d1bfd71
 title: niv and npins
 scope: nix
 type: functional

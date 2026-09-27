@@ -1,6 +1,5 @@
 ---
 id: REQ-FND-010
-uuid: 21c9421d-0c2d-4613-81a3-a0308bc04e8a
 title: OSV database query for pinned packages
 scope: fnd
 type: functional

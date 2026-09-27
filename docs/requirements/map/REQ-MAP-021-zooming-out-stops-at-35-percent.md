@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-021
-uuid: e5898bc4-9672-4858-9fd1-c07d2cef1b5b
 title: Zooming out stops at 35 percent
 scope: map
 type: functional

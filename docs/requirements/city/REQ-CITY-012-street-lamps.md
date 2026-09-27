@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-012
-uuid: 11f31a3a-20ca-4d7e-a298-b947b81f9b23
 title: Street lamps along terrace edges
 scope: city
 type: functional

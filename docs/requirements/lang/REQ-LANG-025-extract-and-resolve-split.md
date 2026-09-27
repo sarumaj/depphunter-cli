@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-025
-uuid: 1c51bc1e-0034-47a8-83b4-0d7a4afa7a82
 title: Extract and resolve split
 scope: lang
 type: interface

@@ -1,6 +1,5 @@
 ---
 id: REQ-OBJC-001
-uuid: 6d028053-528e-45b4-9311-8fd845670d07
 title: Objective-C files and CocoaPods and Carthage manifests claimed
 scope: objc
 type: functional

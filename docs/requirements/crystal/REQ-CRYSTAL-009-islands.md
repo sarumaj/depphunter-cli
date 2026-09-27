@@ -1,6 +1,5 @@
 ---
 id: REQ-CRYSTAL-009
-uuid: dbf7a749-0bdb-4cfd-831b-3a10c994012e
 title: The shards and standard library islands
 scope: crystal
 type: functional

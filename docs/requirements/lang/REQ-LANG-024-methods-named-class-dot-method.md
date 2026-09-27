@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-024
-uuid: 054d6dc1-ec80-4e40-919a-0449644d2b1c
 title: Methods named Class.method
 scope: lang
 type: functional

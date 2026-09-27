@@ -1,6 +1,5 @@
 ---
 id: REQ-TRC-007
-uuid: 6a24e4c8-c81e-421b-9ebd-a29699a3377a
 title: Each request URL and status kept
 scope: trc
 type: functional

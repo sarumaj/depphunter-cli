@@ -1,6 +1,5 @@
 ---
 id: REQ-CMAKE-003
-uuid: 1a7e289e-ba90-4349-a387-dc0b9577a615
 title: Variables evaluated
 scope: cmake
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-NIX-006
-uuid: 00c63e26-32f5-44ed-8a20-50c2ae82c2a7
 title: Pinning without a lock
 scope: nix
 type: functional

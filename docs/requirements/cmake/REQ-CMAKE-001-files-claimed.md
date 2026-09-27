@@ -1,6 +1,5 @@
 ---
 id: REQ-CMAKE-001
-uuid: e90ca03d-8b53-4479-9e19-0e474db52e46
 title: CMake files claimed
 scope: cmake
 type: functional

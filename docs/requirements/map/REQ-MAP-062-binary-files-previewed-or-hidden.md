@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-062
-uuid: 9be5fb39-700a-469b-87d3-0f8ffee5965f
 title: Binary files previewed or kept hidden
 scope: map
 type: functional

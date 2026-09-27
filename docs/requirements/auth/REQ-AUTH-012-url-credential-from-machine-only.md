@@ -1,6 +1,5 @@
 ---
 id: REQ-AUTH-012
-uuid: 6183f40f-be7e-4274-924c-78f7c63d6a51
 title: URL credentials from this machine only
 scope: auth
 type: constraint

@@ -1,6 +1,5 @@
 ---
 id: REQ-SCALA-007
-uuid: b5b6914e-e4ca-4824-8711-cd4f9045baee
 title: Imports relative to the enclosing packages
 scope: scala
 type: functional

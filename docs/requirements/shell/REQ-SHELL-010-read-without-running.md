@@ -1,6 +1,5 @@
 ---
 id: REQ-SHELL-010
-uuid: cef84665-b2d7-471b-9f08-96cda1052028
 title: Shell scripts read without running them
 scope: shell
 type: limitation

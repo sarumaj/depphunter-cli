@@ -1,6 +1,5 @@
 ---
 id: REQ-DIST-005
-uuid: 5d396b23-38ca-44b4-bee4-984e0ef26ce0
 title: Permissive licenses of vendored libraries
 scope: dist
 type: constraint

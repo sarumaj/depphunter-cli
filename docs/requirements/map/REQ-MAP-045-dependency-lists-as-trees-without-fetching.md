@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-045
-uuid: 310b9324-65c7-4206-87c1-3e94d916c41a
 title: Dependency lists as trees without fetching
 scope: map
 type: functional

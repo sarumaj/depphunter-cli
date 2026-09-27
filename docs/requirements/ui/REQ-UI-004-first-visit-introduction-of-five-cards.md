@@ -1,6 +1,5 @@
 ---
 id: REQ-UI-004
-uuid: 1c1cfde4-201f-43c2-9db4-32066bb943af
 title: First-visit introduction of five cards
 scope: ui
 type: functional

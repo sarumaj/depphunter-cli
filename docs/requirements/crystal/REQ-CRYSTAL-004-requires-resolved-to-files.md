@@ -1,6 +1,5 @@
 ---
 id: REQ-CRYSTAL-004
-uuid: 99d04704-99cc-44d2-b76b-0c1cd2d3f077
 title: Requires resolved to files
 scope: crystal
 type: functional

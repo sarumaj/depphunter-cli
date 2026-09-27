@@ -1,6 +1,5 @@
 ---
 id: REQ-LSP-002
-uuid: e7a78549-1eeb-4bd7-b888-cb250d7f1223
 title: Language server client for installed servers
 scope: lsp
 type: functional

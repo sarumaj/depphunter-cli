@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-037
-uuid: c7365a9f-32cd-4dda-a422-90fa4ca809ba
 title: Color by language, size or git history
 scope: map
 type: functional

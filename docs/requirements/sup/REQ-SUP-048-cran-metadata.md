@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-048
-uuid: 998ba75b-ccb0-4e1a-a4ea-606a2f04be57
 title: R package dependencies from crandb and CRAN-like repositories
 scope: sup
 type: functional

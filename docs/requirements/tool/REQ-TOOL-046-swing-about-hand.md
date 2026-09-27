@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-046
-uuid: 7051f523-4459-40fd-a2e7-33710a2d04c5
 title: Tools swung about the hand
 scope: tool
 type: functional

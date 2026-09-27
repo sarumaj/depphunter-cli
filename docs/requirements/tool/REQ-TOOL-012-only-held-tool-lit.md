@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-012
-uuid: e975a287-9c6c-4474-a26d-bdcdd457abc6
 title: Only the held tool is lit
 scope: tool
 type: functional

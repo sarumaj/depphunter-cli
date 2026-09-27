@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-034
-uuid: f3651e30-8348-463d-a034-19bc2f6342f1
 title: Backpack, export and save from the street
 scope: walk
 type: functional

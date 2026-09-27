@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-053
-uuid: bf79616f-714f-4ce4-b9f9-f9971ff90968
 title: CPAN distribution dependencies from MetaCPAN
 scope: sup
 type: functional

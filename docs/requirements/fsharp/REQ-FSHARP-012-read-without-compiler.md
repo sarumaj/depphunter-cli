@@ -1,6 +1,5 @@
 ---
 id: REQ-FSHARP-012
-uuid: 359d4ced-6bf1-4ffb-b49a-fd49c6d253d7
 title: Read without the compiler
 scope: fsharp
 type: limitation

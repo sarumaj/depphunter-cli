@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-004
-uuid: a24a001d-a878-4556-9e4f-a829d539d695
 title: A tool carries what it throws
 scope: tool
 type: functional

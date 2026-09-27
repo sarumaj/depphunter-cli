@@ -1,6 +1,5 @@
 ---
 id: REQ-JAVA-012
-uuid: 20d3612a-c87a-4860-9055-18b820787c42
 title: Maven packages named group:artifact
 scope: java
 type: functional

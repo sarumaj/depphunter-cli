@@ -1,6 +1,5 @@
 ---
 id: REQ-BAZEL-012
-uuid: dbce1eed-f893-45f4-8321-24f9a032c0eb
 title: Read by a scanner, not the grammar
 scope: bazel
 type: constraint

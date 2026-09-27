@@ -1,6 +1,5 @@
 ---
 id: REQ-CMAKE-008
-uuid: 139ef5d0-4b77-4ecd-99e7-e3c79f2c4e7f
 title: CMake symbols
 scope: cmake
 type: functional

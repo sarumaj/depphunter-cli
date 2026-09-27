@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-032
-uuid: 7863a046-4fcf-4c42-887f-08ed1977f338
 title: Index answers are cached for a day
 scope: sup
 type: non-functional

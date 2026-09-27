@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-008
-uuid: 4e490854-c4a9-48fe-bfb7-ba2f5ab00c9b
 title: Transitive resolution level by level
 scope: sup
 type: functional

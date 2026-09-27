@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-012
-uuid: 7fd14c1c-4ee2-44ed-aa54-03647055d21c
 title: Severity carried by the bug shape
 scope: hunt
 type: functional

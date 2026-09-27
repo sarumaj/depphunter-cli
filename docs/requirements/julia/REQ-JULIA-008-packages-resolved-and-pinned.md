@@ -1,6 +1,5 @@
 ---
 id: REQ-JULIA-008
-uuid: a0be5ef7-e6bf-469c-b083-5fee28e2218e
 title: Packages resolved and pinned
 scope: julia
 type: functional

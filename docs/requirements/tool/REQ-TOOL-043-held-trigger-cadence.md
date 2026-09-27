@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-043
-uuid: f8141e6c-d413-447a-b3c9-61bbbad80cdd
 title: Held trigger only for nail gun and extinguisher
 scope: tool
 type: functional

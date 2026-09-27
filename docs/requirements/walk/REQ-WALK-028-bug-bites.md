@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-028
-uuid: 5e60d2ba-dc5c-469d-847f-697e994460ed
 title: Bug bites
 scope: walk
 type: functional

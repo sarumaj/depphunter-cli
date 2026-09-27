@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-048
-uuid: b3ce8059-284a-428f-945e-4504dc43cc93
 title: HUD text readable over any street
 scope: hunt
 type: non-functional

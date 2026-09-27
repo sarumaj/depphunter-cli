@@ -1,6 +1,5 @@
 ---
 id: REQ-CLOJURE-010
-uuid: d93b80a3-9328-4671-9f77-ba7dc08e01ea
 title: Clojure read without running it
 scope: clojure
 type: limitation

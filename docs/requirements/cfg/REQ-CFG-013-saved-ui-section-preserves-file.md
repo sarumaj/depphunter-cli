@@ -1,6 +1,5 @@
 ---
 id: REQ-CFG-013
-uuid: c9b125cf-5327-4bf8-8ff5-78475a438854
 title: Save preserves the rest of the config file
 scope: cfg
 type: functional

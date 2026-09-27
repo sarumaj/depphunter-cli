@@ -1,6 +1,5 @@
 ---
 id: REQ-OBJC-003
-uuid: e94e1314-2e46-479d-bc40-f43d1ef2afdd
 title: Objective-C definitions extracted
 scope: objc
 type: functional

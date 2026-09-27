@@ -1,6 +1,5 @@
 ---
 id: REQ-SWIFT-013
-uuid: dc217df7-ffc4-4f72-83ac-14a9fcd5bca7
 title: Swift read without running SwiftPM
 scope: swift
 type: limitation

@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-014
-uuid: 00356273-c6bc-462d-b2af-e6f38c20566c
 title: Left button uses the primary tool
 scope: walk
 type: functional

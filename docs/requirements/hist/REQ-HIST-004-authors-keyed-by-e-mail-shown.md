@@ -1,6 +1,5 @@
 ---
 id: REQ-HIST-004
-uuid: 12d1f930-19ab-4667-be66-e8bf8136e74f
 title: Authors keyed by e-mail, shown by name
 scope: hist
 type: functional

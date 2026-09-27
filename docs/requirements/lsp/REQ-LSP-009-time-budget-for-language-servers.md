@@ -1,6 +1,5 @@
 ---
 id: REQ-LSP-009
-uuid: 4b997ff5-abeb-4141-877f-b1336918c8e6
 title: Time budget for language servers
 scope: lsp
 type: functional

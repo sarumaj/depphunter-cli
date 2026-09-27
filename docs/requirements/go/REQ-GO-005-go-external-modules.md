@@ -1,6 +1,5 @@
 ---
 id: REQ-GO-005
-uuid: e2473dab-8a80-4c9e-8add-5fb5b6c40fe0
 title: Go external modules
 scope: go
 type: functional

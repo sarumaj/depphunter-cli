@@ -1,6 +1,5 @@
 ---
 id: REQ-HAXE-001
-uuid: 6e399561-9fa6-455a-9b44-fdea637789cb
 title: Files claimed
 scope: haxe
 type: functional

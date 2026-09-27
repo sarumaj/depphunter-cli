@@ -1,6 +1,5 @@
 ---
 id: REQ-AUTH-001
-uuid: c8b95e62-4896-46d5-8fef-395100e06034
 title: npm per-registry credentials
 scope: auth
 type: functional

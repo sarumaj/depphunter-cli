@@ -1,6 +1,5 @@
 ---
 id: REQ-BAZEL-010
-uuid: 3a9586b3-deb4-425f-ad1f-b277d9b8c521
 title: Bazel's own repositories
 scope: bazel
 type: functional

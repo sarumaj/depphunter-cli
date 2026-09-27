@@ -1,6 +1,5 @@
 ---
 id: REQ-FND-012
-uuid: 2bbe4905-4103-43f0-bd80-8d3d0f76ef58
 title: OSV answers cached for six hours
 scope: fnd
 type: functional

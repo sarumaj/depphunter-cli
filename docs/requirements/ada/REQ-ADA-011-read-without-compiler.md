@@ -1,6 +1,5 @@
 ---
 id: REQ-ADA-011
-uuid: 8d8d7be8-7a6b-4c74-8c33-7fb5f876ab92
 title: Read without the compiler or alr
 scope: ada
 type: limitation

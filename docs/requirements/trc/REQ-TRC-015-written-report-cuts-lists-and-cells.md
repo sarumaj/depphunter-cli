@@ -1,6 +1,5 @@
 ---
 id: REQ-TRC-015
-uuid: c24926e0-44d5-4ee0-b5f2-ef79a16af844
 title: Long lists and cells are cut
 scope: trc
 type: non-functional

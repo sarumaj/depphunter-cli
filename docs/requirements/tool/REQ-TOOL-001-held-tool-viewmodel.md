@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-001
-uuid: d566706c-95eb-44e5-8c2d-04af862aabd4
 title: Tool held in front of the walk camera
 scope: tool
 type: functional

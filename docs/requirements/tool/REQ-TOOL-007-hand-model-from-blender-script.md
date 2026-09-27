@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-007
-uuid: 2b12cd40-e966-4783-9e37-de854d015b2f
 title: Hand model prepared by a committed script
 scope: tool
 type: constraint

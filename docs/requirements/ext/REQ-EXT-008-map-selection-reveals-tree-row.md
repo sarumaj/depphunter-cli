@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-008
-uuid: f0e80ace-0ce8-4399-b84b-2c2643e878f5
 title: Map selection reveals the tree row
 scope: ext
 type: functional

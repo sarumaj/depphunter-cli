@@ -1,6 +1,5 @@
 ---
 id: REQ-SEC-001
-uuid: b8723f62-de1c-4ef6-ab40-7f92b6e08c03
 title: Loopback bind by default
 scope: sec
 type: non-functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-HASKELL-006
-uuid: f80a3d0f-695e-40db-9e06-27771e8c170f
 title: Modules resolved to the files declaring them
 scope: haskell
 type: functional

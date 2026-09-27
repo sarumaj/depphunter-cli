@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-030
-uuid: d6387299-82ac-420e-af5d-19df25152f94
 title: Status bar item while serving
 scope: ext
 type: functional

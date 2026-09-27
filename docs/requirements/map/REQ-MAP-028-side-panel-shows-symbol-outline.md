@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-028
-uuid: dcbb4543-2f3d-4426-b685-49da9e168225
 title: Side panel shows symbol outline
 scope: map
 type: functional

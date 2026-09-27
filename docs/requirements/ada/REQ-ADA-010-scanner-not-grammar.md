@@ -1,6 +1,5 @@
 ---
 id: REQ-ADA-010
-uuid: cc6e1c2f-fab3-40cd-adec-2f211a43fea2
 title: Read by a scanner, not the grammar
 scope: ada
 type: constraint

@@ -1,6 +1,5 @@
 ---
 id: REQ-AUTH-010
-uuid: 7751338c-f945-4916-a61a-2f09686549e7
 title: An encrypted password is not sent
 scope: auth
 type: constraint

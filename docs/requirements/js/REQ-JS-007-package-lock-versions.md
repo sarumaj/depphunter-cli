@@ -1,6 +1,5 @@
 ---
 id: REQ-JS-007
-uuid: 53f1fa49-08bc-439e-aa19-37184e97a988
 title: package-lock.json versions
 scope: js
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-025
-uuid: 3746bbec-26f6-4eca-a31e-31a3f84dc93f
 title: Selection dims everything outside its focus
 scope: map
 type: functional

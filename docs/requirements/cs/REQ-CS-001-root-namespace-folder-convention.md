@@ -1,6 +1,5 @@
 ---
 id: REQ-CS-001
-uuid: 82926835-d262-457b-8f5a-15f644388ddf
 title: Namespaces resolve by root namespace and folder
 scope: cs
 type: functional

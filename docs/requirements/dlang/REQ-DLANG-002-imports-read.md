@@ -1,6 +1,5 @@
 ---
 id: REQ-DLANG-002
-uuid: 29e7092e-2b59-4301-b3af-fd596b6305f9
 title: Imports read
 scope: dlang
 type: functional

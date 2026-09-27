@@ -1,6 +1,5 @@
 ---
 id: REQ-PROTO-001
-uuid: d9136548-07f3-42ac-99ee-355b5fe5a024
 title: Protocol Buffers and Buf files claimed
 scope: proto
 type: functional

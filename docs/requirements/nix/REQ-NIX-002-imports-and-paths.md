@@ -1,6 +1,5 @@
 ---
 id: REQ-NIX-002
-uuid: 928e9328-e4a8-4e53-9b0f-54e8bcd206dd
 title: Imports and paths
 scope: nix
 type: functional

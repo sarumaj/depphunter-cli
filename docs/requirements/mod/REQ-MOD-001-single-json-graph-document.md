@@ -1,6 +1,5 @@
 ---
 id: REQ-MOD-001
-uuid: 94d60dbd-5586-4e08-8d6a-a91844e8e166
 title: Single JSON graph document
 scope: mod
 type: interface

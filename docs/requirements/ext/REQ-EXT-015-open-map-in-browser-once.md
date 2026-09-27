@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-015
-uuid: b036bf9c-1250-42c0-b601-e6f037e86534
 title: Map opened in the browser once
 scope: ext
 type: functional

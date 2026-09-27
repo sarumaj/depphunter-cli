@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-043
-uuid: 705f712f-6277-41fa-93ea-d142a2e50dfd
 title: Raised photograph fills the view
 scope: hunt
 type: functional

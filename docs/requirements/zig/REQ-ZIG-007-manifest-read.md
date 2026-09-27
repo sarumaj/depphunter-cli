@@ -1,6 +1,5 @@
 ---
 id: REQ-ZIG-007
-uuid: 9fdbd49e-34e1-4ff7-8de7-ddbed39d2df6
 title: build.zig.zon read
 scope: zig
 type: functional

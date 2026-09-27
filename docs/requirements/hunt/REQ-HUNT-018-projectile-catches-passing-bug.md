@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-018
-uuid: 33d8da66-6da3-45bc-91ba-dc765ac1a708
 title: Projectiles catch bugs they pass through
 scope: hunt
 type: functional

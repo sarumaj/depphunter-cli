@@ -1,6 +1,5 @@
 ---
 id: REQ-TRC-001
-uuid: 2378bd67-899c-4e29-8963-36d35189f80d
 title: One resolution report per analysis
 scope: trc
 type: functional

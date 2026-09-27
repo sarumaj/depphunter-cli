@@ -1,6 +1,5 @@
 ---
 id: REQ-BAZEL-001
-uuid: a6708289-4cf7-444b-a1ec-e1be0771e1fb
 title: Bazel files claimed
 scope: bazel
 type: functional

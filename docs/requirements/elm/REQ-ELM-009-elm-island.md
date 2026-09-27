@@ -1,6 +1,5 @@
 ---
 id: REQ-ELM-009
-uuid: 0412224c-2198-4467-bfa0-fdfeb27e1bf5
 title: The elm island
 scope: elm
 type: functional

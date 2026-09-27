@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-016
-uuid: 1f6bcc41-377c-44a9-9ac0-c97d3abec32a
 title: Resolution report rendered by the server
 scope: ext
 type: functional

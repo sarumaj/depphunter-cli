@@ -1,6 +1,5 @@
 ---
 id: REQ-DOCKER-003
-uuid: 3f2c8db1-1678-4994-a29b-6b3ade67cfe7
 title: Build arguments expanded, unknown values left unresolved
 scope: docker
 type: functional

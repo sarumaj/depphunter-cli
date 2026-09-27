@@ -1,6 +1,5 @@
 ---
 id: REQ-FSHARP-005
-uuid: b2eb74e0-6923-4b3c-bc29-e223128c618b
 title: Project files
 scope: fsharp
 type: functional

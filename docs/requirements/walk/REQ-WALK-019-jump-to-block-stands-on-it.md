@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-019
-uuid: 8ec9ee83-5f24-48ce-bce7-45f0fc4371e4
 title: Jumping to a directory stands the walker on its block
 scope: walk
 type: functional

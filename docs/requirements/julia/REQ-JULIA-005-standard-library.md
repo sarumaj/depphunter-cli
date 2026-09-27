@@ -1,6 +1,5 @@
 ---
 id: REQ-JULIA-005
-uuid: 7ed55c81-f4f8-4eda-96bc-f2fd7ffbf6f9
 title: Standard library
 scope: julia
 type: functional

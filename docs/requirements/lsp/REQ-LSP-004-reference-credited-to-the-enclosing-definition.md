@@ -1,6 +1,5 @@
 ---
 id: REQ-LSP-004
-uuid: dade0ca6-4aff-419f-91c0-ca5b7bef89b2
 title: Reference credited to the enclosing definition
 scope: lsp
 type: functional

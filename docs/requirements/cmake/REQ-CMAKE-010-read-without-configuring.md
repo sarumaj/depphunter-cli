@@ -1,6 +1,5 @@
 ---
 id: REQ-CMAKE-010
-uuid: cc322d7a-a29b-40c8-b94f-b60418e37bce
 title: CMake files read without configuring
 scope: cmake
 type: limitation

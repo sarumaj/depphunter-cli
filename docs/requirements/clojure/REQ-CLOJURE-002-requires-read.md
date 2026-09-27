@@ -1,6 +1,5 @@
 ---
 id: REQ-CLOJURE-002
-uuid: 4b15ae40-b797-47c7-833f-36e939ef51ff
 title: Requires, imports and loads read
 scope: clojure
 type: functional

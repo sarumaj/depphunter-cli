@@ -1,6 +1,5 @@
 ---
 id: REQ-LUA-005
-uuid: 12604cce-18a2-475b-aea9-4201257927b3
 title: Standard library and host runtimes
 scope: lua
 type: functional

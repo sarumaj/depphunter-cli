@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-026
-uuid: dd9267d0-0656-41f0-b51e-97e10d9e0862
 title: Base image from the manifest and config blob
 scope: sup
 type: functional

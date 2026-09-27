@@ -1,6 +1,5 @@
 ---
 id: REQ-CLI-001
-uuid: ecc29afb-ca8c-43fc-b469-70cd97f6fc83
 title: Analyze a directory and serve its map
 scope: cli
 type: functional

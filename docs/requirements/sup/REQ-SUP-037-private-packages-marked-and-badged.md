@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-037
-uuid: 2b4dc5dd-36ac-41af-ad94-6bc681eb0c84
 title: Private packages are marked
 scope: sup
 type: functional

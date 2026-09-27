@@ -1,6 +1,5 @@
 ---
 id: REQ-ELM-002
-uuid: 0df51a2c-3fda-4688-96b9-6c56f75a6b68
 title: Imports read
 scope: elm
 type: functional

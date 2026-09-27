@@ -1,6 +1,5 @@
 ---
 id: REQ-PERF-005
-uuid: ee237615-8601-4dbf-be7b-68dabc79a481
 title: Darts dropped on relayout
 scope: perf
 type: non-functional

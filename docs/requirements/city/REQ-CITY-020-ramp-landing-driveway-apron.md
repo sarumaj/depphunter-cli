@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-020
-uuid: 41e4b23e-3e0a-4921-8c7e-9b6e93ee6388
 title: Ramp landing, driveway and apron
 scope: city
 type: functional

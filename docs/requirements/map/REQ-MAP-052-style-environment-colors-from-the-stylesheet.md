@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-052
-uuid: 30fa69af-68bc-4d45-b6e2-cd886a97741f
 title: Style environment colors from the stylesheet
 scope: map
 type: functional

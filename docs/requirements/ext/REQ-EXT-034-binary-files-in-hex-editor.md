@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-034
-uuid: 8cf023c1-d788-42d7-88c2-11865f918a3c
 title: Binary files open in a hex editor
 scope: ext
 type: functional

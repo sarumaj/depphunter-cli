@@ -1,6 +1,5 @@
 ---
 id: REQ-DIST-002
-uuid: db81a740-4fd4-4853-a1ba-d534335417fe
 title: Frontend embedded in the binary
 scope: dist
 type: non-functional

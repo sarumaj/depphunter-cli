@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-001
-uuid: 3c5b55c9-d09b-4ee8-bcc9-be813e76afbb
 title: Walk mode toggle
 scope: walk
 type: functional

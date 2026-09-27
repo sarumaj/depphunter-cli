@@ -1,6 +1,5 @@
 ---
 id: REQ-ZIG-006
-uuid: 1d496449-a4ce-4be3-b49a-274b57429980
 title: Modules wired by build.zig
 scope: zig
 type: functional

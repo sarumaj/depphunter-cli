@@ -1,6 +1,5 @@
 ---
 id: REQ-MD-001
-uuid: c11f2dc4-cfb5-4948-bc34-86341c394843
 title: Markdown links to repository files become edges
 scope: md
 type: functional

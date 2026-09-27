@@ -1,6 +1,5 @@
 ---
 id: REQ-DART-007
-uuid: b5e5b316-ed76-4d04-b3e0-3bb3ea61b365
 title: pubspec.lock read
 scope: dart
 type: functional

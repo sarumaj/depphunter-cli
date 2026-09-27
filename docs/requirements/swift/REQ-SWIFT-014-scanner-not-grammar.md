@@ -1,6 +1,5 @@
 ---
 id: REQ-SWIFT-014
-uuid: 6e06f3bb-2ab0-47c0-9588-3813c8bd1a6e
 title: Read by a scanner, not the grammar
 scope: swift
 type: constraint

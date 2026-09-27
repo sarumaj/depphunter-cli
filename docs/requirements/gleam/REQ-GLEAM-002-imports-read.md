@@ -1,6 +1,5 @@
 ---
 id: REQ-GLEAM-002
-uuid: ab81da35-6afa-46a9-b163-45db66bc2d46
 title: Imports read
 scope: gleam
 type: functional

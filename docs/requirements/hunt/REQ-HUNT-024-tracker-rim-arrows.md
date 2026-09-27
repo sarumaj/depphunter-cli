@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-024
-uuid: a4f4bbaf-af81-4b29-8812-4cba4008e829
 title: Out-of-range bugs as rim arrows
 scope: hunt
 type: functional

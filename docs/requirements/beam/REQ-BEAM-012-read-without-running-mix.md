@@ -1,6 +1,5 @@
 ---
 id: REQ-BEAM-012
-uuid: e2d7a761-4f8a-4df2-ad6c-a1671c80afae
 title: BEAM read without running Mix or rebar3
 scope: beam
 type: limitation

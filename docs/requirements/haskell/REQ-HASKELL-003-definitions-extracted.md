@@ -1,6 +1,5 @@
 ---
 id: REQ-HASKELL-003
-uuid: b3ff995d-0db3-40c8-b5bb-a327dfd745ac
 title: Top-level definitions extracted
 scope: haskell
 type: functional

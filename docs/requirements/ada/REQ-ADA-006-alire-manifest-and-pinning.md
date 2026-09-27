@@ -1,6 +1,5 @@
 ---
 id: REQ-ADA-006
-uuid: e1bb2d01-85cc-4e48-8cfe-5a1b2ec21922
 title: Alire manifests and pinning
 scope: ada
 type: functional

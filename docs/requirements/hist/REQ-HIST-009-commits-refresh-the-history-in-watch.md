@@ -1,6 +1,5 @@
 ---
 id: REQ-HIST-009
-uuid: 15dcc2d5-97fc-452e-a5cf-4a938d1d1587
 title: Commits refresh the history in watch mode
 scope: hist
 type: functional

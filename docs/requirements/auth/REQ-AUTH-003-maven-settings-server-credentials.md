@@ -1,6 +1,5 @@
 ---
 id: REQ-AUTH-003
-uuid: a6b0d6a5-e9ff-4374-bef4-00111d31db34
 title: Maven server credentials
 scope: auth
 type: functional

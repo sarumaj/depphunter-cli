@@ -1,6 +1,5 @@
 ---
 id: REQ-GLEAM-011
-uuid: aaf9bd50-5f34-43a1-bc64-67188ce40489
 title: Read without running gleam
 scope: gleam
 type: limitation

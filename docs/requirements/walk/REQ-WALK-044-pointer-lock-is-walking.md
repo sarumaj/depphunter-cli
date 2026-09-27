@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-044
-uuid: 928bce46-7175-4e1a-975b-858caa936977
 title: Pointer lock state decides walking
 scope: walk
 type: functional

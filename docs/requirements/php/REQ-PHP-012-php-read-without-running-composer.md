@@ -1,6 +1,5 @@
 ---
 id: REQ-PHP-012
-uuid: 28b6a424-d3f3-49bb-a146-fe93a18e7ec9
 title: PHP read without running Composer
 scope: php
 type: limitation

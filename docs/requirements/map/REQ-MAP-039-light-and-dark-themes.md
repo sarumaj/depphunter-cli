@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-039
-uuid: bfece4ad-ce6d-410e-b3bc-43335603bc6c
 title: Light and dark themes
 scope: map
 type: functional

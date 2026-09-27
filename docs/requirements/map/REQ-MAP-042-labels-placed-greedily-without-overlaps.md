@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-042
-uuid: ce4f45f4-df29-4cb6-8512-dce1ed3b928c
 title: Labels placed greedily without overlaps
 scope: map
 type: functional

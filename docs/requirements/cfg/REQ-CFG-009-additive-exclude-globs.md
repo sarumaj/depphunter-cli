@@ -1,6 +1,5 @@
 ---
 id: REQ-CFG-009
-uuid: aa7f6b14-c96d-4361-8400-6d2c0791a898
 title: Exclude globs add up
 scope: cfg
 type: functional

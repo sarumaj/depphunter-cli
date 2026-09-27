@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-043
-uuid: 6aecf06c-948d-464a-928f-b34dc1c1ddae
 title: Terrace children packed with potpack
 scope: map
 type: functional

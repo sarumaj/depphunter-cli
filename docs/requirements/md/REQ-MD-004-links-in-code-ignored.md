@@ -1,6 +1,5 @@
 ---
 id: REQ-MD-004
-uuid: f743ebea-218a-4d56-925f-8875e54f93dd
 title: Links in code are not followed
 scope: md
 type: functional

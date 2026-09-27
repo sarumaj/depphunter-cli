@@ -1,6 +1,5 @@
 ---
 id: REQ-ADA-007
-uuid: 633667c9-3824-4588-98d0-fa9c50ce04f4
 title: Units attributed to crates
 scope: ada
 type: functional

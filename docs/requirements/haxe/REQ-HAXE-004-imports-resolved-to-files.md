@@ -1,6 +1,5 @@
 ---
 id: REQ-HAXE-004
-uuid: ef3057c1-ea02-4662-b13c-7339079132a6
 title: Imports resolved to files
 scope: haxe
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-052
-uuid: e7994020-d981-4862-b87a-d2a3faa29816
 title: Jet tank outlasts the skimmers
 scope: tool
 type: functional

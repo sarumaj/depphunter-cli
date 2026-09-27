@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-016
-uuid: 662a8f3d-6c71-4e33-aecb-98a60ba0b581
 title: Camera built to standard
 scope: tool
 type: functional

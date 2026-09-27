@@ -1,6 +1,5 @@
 ---
 id: REQ-CFG-011
-uuid: 90c02192-389e-434f-a638-aff1835d5716
 title: View settings apply live
 scope: cfg
 type: functional

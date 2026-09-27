@@ -1,6 +1,5 @@
 ---
 id: REQ-PY-003
-uuid: 8c62b367-259d-435b-a516-bfa6e928c81e
 title: Python project roots
 scope: py
 type: functional

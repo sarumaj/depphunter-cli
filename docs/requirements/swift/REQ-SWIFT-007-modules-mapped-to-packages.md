@@ -1,6 +1,5 @@
 ---
 id: REQ-SWIFT-007
-uuid: 741bfd51-4717-44b9-91d0-37873445ee18
 title: Modules mapped to packages
 scope: swift
 type: functional

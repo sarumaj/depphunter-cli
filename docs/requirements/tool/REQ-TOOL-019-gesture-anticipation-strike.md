@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-019
-uuid: 02af4f1b-8ee1-4886-91f3-c667a009aaa7
 title: Gestures with anticipation and follow-through
 scope: tool
 type: functional

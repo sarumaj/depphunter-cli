@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-010
-uuid: bcad0788-6c4f-43c7-b527-8f389ec3aa36
 title: Hand model loaded once, cloned per hand
 scope: tool
 type: non-functional

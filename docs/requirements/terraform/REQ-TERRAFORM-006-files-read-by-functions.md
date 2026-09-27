@@ -1,6 +1,5 @@
 ---
 id: REQ-TERRAFORM-006
-uuid: 2285cb60-bf75-4b82-b82b-81312511bdc5
 title: Files read by functions
 scope: terraform
 type: functional

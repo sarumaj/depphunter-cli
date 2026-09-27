@@ -1,6 +1,5 @@
 ---
 id: REQ-PS-007
-uuid: f69f4a32-6a8b-4186-bbbc-d1a7fec28dd8
 title: Module names resolve to project modules
 scope: ps
 type: functional

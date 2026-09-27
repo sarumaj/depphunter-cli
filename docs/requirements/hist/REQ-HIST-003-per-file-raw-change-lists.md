@@ -1,6 +1,5 @@
 ---
 id: REQ-HIST-003
-uuid: be85aa7a-fc78-49c3-ad87-6c22e37b45d8
 title: Per-file raw change lists
 scope: hist
 type: functional

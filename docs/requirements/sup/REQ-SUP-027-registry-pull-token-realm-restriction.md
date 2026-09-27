@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-027
-uuid: 55e2fb92-3870-4b15-a873-81e093786706
 title: Pull-token challenge realm
 scope: sup
 type: constraint

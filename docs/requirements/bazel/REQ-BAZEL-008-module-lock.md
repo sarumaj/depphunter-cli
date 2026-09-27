@@ -1,6 +1,5 @@
 ---
 id: REQ-BAZEL-008
-uuid: 1f9d4d27-d2f2-42f3-8598-33464c51117f
 title: MODULE.bazel.lock read
 scope: bazel
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-MD-008
-uuid: de1fe7f3-02f2-4fa6-9da6-832a33776c02
 title: Missing fragment heading finding
 scope: md
 type: functional

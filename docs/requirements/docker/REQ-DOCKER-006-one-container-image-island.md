@@ -1,6 +1,5 @@
 ---
 id: REQ-DOCKER-006
-uuid: 14c25bd7-6d7d-4175-b371-187f3d575a8d
 title: One container-image island shared with CI
 scope: docker
 type: functional

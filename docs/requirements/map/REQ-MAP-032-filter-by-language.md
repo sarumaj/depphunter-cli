@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-032
-uuid: 35fe2426-8af8-435c-a899-b80c33b87355
 title: Filter by language
 scope: map
 type: functional

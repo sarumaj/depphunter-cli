@@ -1,6 +1,5 @@
 ---
 id: REQ-R-011
-uuid: b401d00e-7935-4c71-9731-a3811824e919
 title: R read without running R
 scope: r
 type: limitation

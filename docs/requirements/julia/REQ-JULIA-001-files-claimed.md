@@ -1,6 +1,5 @@
 ---
 id: REQ-JULIA-001
-uuid: 8feb36e2-edef-46ce-952e-68766aca1080
 title: Files claimed
 scope: julia
 type: functional

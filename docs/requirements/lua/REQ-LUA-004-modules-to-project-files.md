@@ -1,6 +1,5 @@
 ---
 id: REQ-LUA-004
-uuid: a7c34f48-870f-4008-8d4a-a6c844e38ef5
 title: Modules resolved to project files
 scope: lua
 type: functional

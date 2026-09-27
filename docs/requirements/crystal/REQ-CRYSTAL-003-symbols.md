@@ -1,6 +1,5 @@
 ---
 id: REQ-CRYSTAL-003
-uuid: 43577167-a33f-4c95-aa14-502ede6d41c6
 title: Symbols
 scope: crystal
 type: functional

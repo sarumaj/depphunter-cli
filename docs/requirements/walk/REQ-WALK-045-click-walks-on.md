@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-045
-uuid: 2c2c513e-404c-4bca-96b6-3ffde808883a
 title: A click on the map walks on
 scope: walk
 type: functional

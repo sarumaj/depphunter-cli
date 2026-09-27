@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-050
-uuid: db0dcb68-9545-460f-9dd4-f77be9ed3d8d
 title: An empty tool stays stopped until it has refilled
 scope: tool
 type: functional

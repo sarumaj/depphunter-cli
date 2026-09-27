@@ -1,6 +1,5 @@
 ---
 id: REQ-LSP-008
-uuid: fcd59876-0f8a-49f7-a8cd-7bd0f0525efd
 title: Positions sent in UTF-16 code units
 scope: lsp
 type: functional

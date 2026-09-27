@@ -1,6 +1,5 @@
 ---
 id: REQ-PERL-005
-uuid: 3bdb2581-d8b6-42d4-bfa2-008660bc3310
 title: Core modules
 scope: perl
 type: functional

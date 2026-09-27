@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-034
-uuid: 64aa749e-b04b-4dd8-b3d2-f7caeaa2441e
 title: Off-hand line goes where the view points
 scope: tool
 type: functional

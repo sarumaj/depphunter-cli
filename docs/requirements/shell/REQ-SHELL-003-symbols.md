@@ -1,6 +1,5 @@
 ---
 id: REQ-SHELL-003
-uuid: 83419de4-d84f-46ac-b90f-d98985cad971
 title: Shell functions, aliases and variables as symbols
 scope: shell
 type: functional

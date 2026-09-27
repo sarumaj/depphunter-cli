@@ -1,6 +1,5 @@
 ---
 id: REQ-OBJC-005
-uuid: 9aff778f-2964-4967-820c-980986ad7391
 title: Apple frameworks in the apple-sdk island
 scope: objc
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-002
-uuid: 321f3aef-bfd6-429f-a715-f17e439fd584
 title: City look in both views
 scope: city
 type: functional

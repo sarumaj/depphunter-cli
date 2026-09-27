@@ -1,6 +1,5 @@
 ---
 id: REQ-FND-018
-uuid: 6486b368-790c-471d-af8b-c6f31af8d575
 title: One severity scale from CVSS vectors
 scope: fnd
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-020
-uuid: 3d8d85d6-10e5-4f55-b8b6-415775ce665b
 title: Camera target clamped to the map
 scope: map
 type: functional

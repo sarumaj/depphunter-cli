@@ -1,6 +1,5 @@
 ---
 id: REQ-DIST-010
-uuid: 29cc3107-4c9d-4c6f-8287-4188a16d18f1
 title: CI tests on Linux, macOS and Windows
 scope: dist
 type: non-functional

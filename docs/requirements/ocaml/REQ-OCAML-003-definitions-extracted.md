@@ -1,6 +1,5 @@
 ---
 id: REQ-OCAML-003
-uuid: a6e076c4-7c17-4e41-87a8-07ae4d2dfb05
 title: Definitions extracted
 scope: ocaml
 type: functional

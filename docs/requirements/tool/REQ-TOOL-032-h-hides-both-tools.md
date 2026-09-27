@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-032
-uuid: 5abd6b3b-9ce9-41fe-9b31-01caa8237a15
 title: H stows both hands
 scope: tool
 type: functional

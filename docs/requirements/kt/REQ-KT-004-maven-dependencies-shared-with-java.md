@@ -1,6 +1,5 @@
 ---
 id: REQ-KT-004
-uuid: a821d470-e190-442b-bc2b-f4c1ed407aba
 title: Maven dependencies shared with Java
 scope: kt
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-002
-uuid: 3a571246-b379-404d-aa97-c3b500e5d7fd
 title: Panel follows the map opened last
 scope: ext
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-HAXE-003
-uuid: b3c727fe-bef7-4bda-9fb6-c85a7641e57a
 title: Symbols
 scope: haxe
 type: functional

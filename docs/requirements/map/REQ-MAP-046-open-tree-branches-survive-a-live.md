@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-046
-uuid: 775c2ba9-e12e-4aeb-85f4-432eaece05e3
 title: Open tree branches survive a live update
 scope: map
 type: functional

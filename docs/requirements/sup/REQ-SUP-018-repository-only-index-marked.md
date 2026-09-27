@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-018
-uuid: 5f10bdde-22a9-4efa-b2b7-d15b7600a337
 title: A repository-only index is marked
 scope: sup
 type: functional

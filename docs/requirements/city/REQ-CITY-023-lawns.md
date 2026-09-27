@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-023
-uuid: ed6aed4a-d3ee-44bb-b270-66b9765e6013
 title: Lawns
 scope: city
 type: functional

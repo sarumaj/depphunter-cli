@@ -1,6 +1,5 @@
 ---
 id: REQ-HIST-010
-uuid: 1ab37952-69bc-43bd-991c-23d0e0687bf0
 title: History color modes computed in the browser
 scope: hist
 type: functional

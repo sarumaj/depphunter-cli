@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-039
-uuid: e75af76b-880a-498d-a1e8-397179fe0fbe
 title: Projectiles are unlit
 scope: tool
 type: constraint

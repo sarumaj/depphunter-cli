@@ -1,6 +1,5 @@
 ---
 id: REQ-FSHARP-011
-uuid: 7e5412bd-1b85-497e-9fb4-afdd796df18c
 title: Read by a scanner, not the grammar
 scope: fsharp
 type: constraint

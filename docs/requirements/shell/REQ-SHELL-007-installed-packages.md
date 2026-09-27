@@ -1,6 +1,5 @@
 ---
 id: REQ-SHELL-007
-uuid: b3a5440d-ede9-4601-82b5-8b2cd3cec4b5
 title: Packages installed by scripts
 scope: shell
 type: functional

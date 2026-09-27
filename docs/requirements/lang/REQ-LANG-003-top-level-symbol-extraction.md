@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-003
-uuid: 1dd5d8cd-8308-4956-863a-ae264b11c363
 title: Top-level symbol extraction
 scope: lang
 type: interface

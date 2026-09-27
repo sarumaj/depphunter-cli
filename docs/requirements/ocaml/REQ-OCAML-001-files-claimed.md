@@ -1,6 +1,5 @@
 ---
 id: REQ-OCAML-001
-uuid: 0f22b860-2c71-4505-a3f5-7ec100c1c9f9
 title: Files claimed
 scope: ocaml
 type: functional

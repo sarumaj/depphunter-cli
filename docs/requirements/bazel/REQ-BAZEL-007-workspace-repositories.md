@@ -1,6 +1,5 @@
 ---
 id: REQ-BAZEL-007
-uuid: 1592f410-4f04-41ea-84b6-676798472d67
 title: WORKSPACE repositories
 scope: bazel
 type: functional

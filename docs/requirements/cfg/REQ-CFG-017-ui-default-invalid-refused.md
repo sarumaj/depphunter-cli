@@ -1,6 +1,5 @@
 ---
 id: REQ-CFG-017
-uuid: 266eccb1-2e28-480d-829a-469d106c4135
 title: Unparseable --ui-default refused
 scope: cfg
 type: functional

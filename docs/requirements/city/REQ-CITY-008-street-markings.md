@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-008
-uuid: 61b407c4-c184-41c0-b6c9-09d0f83931a1
 title: Street markings between facing obstacles
 scope: city
 type: functional

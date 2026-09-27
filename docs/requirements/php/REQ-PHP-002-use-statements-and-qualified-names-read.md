@@ -1,6 +1,5 @@
 ---
 id: REQ-PHP-002
-uuid: 22564daf-011b-4cba-a1f5-d3baa7af72d6
 title: Use statements and qualified names read
 scope: php
 type: functional

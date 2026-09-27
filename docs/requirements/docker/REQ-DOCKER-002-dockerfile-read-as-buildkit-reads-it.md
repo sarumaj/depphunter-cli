@@ -1,6 +1,5 @@
 ---
 id: REQ-DOCKER-002
-uuid: f2146325-5508-410b-ab58-fdb1b871e2fe
 title: Dockerfile read as BuildKit reads it
 scope: docker
 type: functional

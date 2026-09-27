@@ -1,6 +1,5 @@
 ---
 id: REQ-BEAM-009
-uuid: 1b133614-6e69-4812-b454-e80b94b85a09
 title: Manifest dependencies as imports
 scope: beam
 type: functional

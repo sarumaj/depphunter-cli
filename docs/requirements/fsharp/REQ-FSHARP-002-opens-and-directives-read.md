@@ -1,6 +1,5 @@
 ---
 id: REQ-FSHARP-002
-uuid: ace1c8f0-f71c-4912-9887-2b54d67e882f
 title: Opens, qualified names and script directives read
 scope: fsharp
 type: functional

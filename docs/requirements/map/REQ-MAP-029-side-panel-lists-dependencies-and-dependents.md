@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-029
-uuid: 43778530-2a25-4523-bb80-8c8d2240e5b7
 title: Side panel lists dependencies and dependents
 scope: map
 type: functional

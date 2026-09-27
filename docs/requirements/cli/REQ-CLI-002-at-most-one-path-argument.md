@@ -1,6 +1,5 @@
 ---
 id: REQ-CLI-002
-uuid: 718d6ea5-25ac-44ec-84cb-e8c6f9959c85
 title: At most one path argument
 scope: cli
 type: interface

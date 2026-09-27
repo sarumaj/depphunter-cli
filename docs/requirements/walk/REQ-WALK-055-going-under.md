@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-055
-uuid: 5a21049b-8870-474c-b591-fb21b046958f
 title: Drowning is seen as going under
 scope: walk
 type: functional

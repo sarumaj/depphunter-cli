@@ -1,6 +1,5 @@
 ---
 id: REQ-JS-008
-uuid: 19e9505d-872d-4376-9db6-a731e4005c4e
 title: yarn.lock versions
 scope: js
 type: functional

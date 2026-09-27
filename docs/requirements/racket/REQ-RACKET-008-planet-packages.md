@@ -1,6 +1,5 @@
 ---
 id: REQ-RACKET-008
-uuid: 22596a83-b590-4b2f-a94a-3097c7fb0311
 title: PLaneT packages
 scope: racket
 type: functional

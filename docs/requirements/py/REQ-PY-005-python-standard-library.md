@@ -1,6 +1,5 @@
 ---
 id: REQ-PY-005
-uuid: 7c69900d-b442-4774-8f70-49d1bac10b03
 title: Python standard library
 scope: py
 type: functional

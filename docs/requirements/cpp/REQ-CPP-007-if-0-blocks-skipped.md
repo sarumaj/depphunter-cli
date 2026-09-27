@@ -1,6 +1,5 @@
 ---
 id: REQ-CPP-007
-uuid: 573c8713-be6a-4d88-8c8c-ee97185ffd59
 title: #if 0 blocks skipped
 scope: cpp
 type: functional

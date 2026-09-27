@@ -1,6 +1,5 @@
 ---
 id: REQ-OBJC-006
-uuid: 44992036-bca7-47bd-9b08-42eb3e9c489d
 title: Framework headers and modules attributed to pods
 scope: objc
 type: functional

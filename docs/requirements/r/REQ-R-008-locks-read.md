@@ -1,6 +1,5 @@
 ---
 id: REQ-R-008
-uuid: 9b95c034-a6c6-42da-a2ac-70e46b51e0a4
 title: renv.lock and packrat.lock read
 scope: r
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-048
-uuid: 9bb0323b-bd10-43ec-9c41-2f016eb15d57
 title: Cycles shown once more and left closed
 scope: map
 type: functional

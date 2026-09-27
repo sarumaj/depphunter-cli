@@ -1,6 +1,5 @@
 ---
 id: REQ-PHP-006
-uuid: be547581-c765-44b0-b23f-8bb2629718fc
 title: PHP built-ins island
 scope: php
 type: functional

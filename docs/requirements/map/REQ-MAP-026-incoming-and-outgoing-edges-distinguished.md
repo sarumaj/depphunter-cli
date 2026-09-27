@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-026
-uuid: 2f98b571-a2b0-480b-9eed-309fa373cb10
 title: Incoming and outgoing edges distinguished
 scope: map
 type: functional

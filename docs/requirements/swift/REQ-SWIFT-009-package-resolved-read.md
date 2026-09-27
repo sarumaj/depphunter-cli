@@ -1,6 +1,5 @@
 ---
 id: REQ-SWIFT-009
-uuid: fdce36f9-2146-49c9-93a1-b4ab8273cf69
 title: Package.resolved read
 scope: swift
 type: functional

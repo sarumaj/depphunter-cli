@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-035
-uuid: 920ba664-64d4-4c67-8539-24cbf1547b84
 title: Packages hidden with the files importing them
 scope: map
 type: functional

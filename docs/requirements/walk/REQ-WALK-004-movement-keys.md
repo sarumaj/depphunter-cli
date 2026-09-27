@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-004
-uuid: 4e187fc5-1b3a-4102-921d-28aaa9064553
 title: Walking movement keys
 scope: walk
 type: functional

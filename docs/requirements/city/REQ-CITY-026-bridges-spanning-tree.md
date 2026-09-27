@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-026
-uuid: 24885505-0fa5-4692-ad94-3029107f288f
 title: Bridges link every island
 scope: city
 type: functional

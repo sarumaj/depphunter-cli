@@ -1,6 +1,5 @@
 ---
 id: REQ-DIST-001
-uuid: fdf5eb5f-85b4-481a-9bdd-ecfa70329ece
 title: Single static binary per platform
 scope: dist
 type: non-functional

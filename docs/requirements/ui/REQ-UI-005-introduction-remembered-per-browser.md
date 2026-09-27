@@ -1,6 +1,5 @@
 ---
 id: REQ-UI-005
-uuid: f1863dd7-db1c-4941-98da-5d50d2a3d687
 title: Introduction remembered per browser
 scope: ui
 type: functional

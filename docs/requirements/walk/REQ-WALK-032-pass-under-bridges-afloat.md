@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-032
-uuid: 133d4cb1-ef1a-4a98-898f-535cc3cbc792
 title: Passing under a bridge on the water
 scope: walk
 type: functional

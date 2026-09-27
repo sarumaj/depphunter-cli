@@ -1,6 +1,5 @@
 ---
 id: REQ-KT-002
-uuid: e6e5c502-d052-4ea0-b2b9-605a62c253c2
 title: Kotlin standard library island
 scope: kt
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-030
-uuid: 79ebc547-8142-4ce0-b3ff-ba7433840f13
 title: A catch looks like the tool that made it
 scope: hunt
 type: functional

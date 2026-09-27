@@ -1,6 +1,5 @@
 ---
 id: REQ-NIX-003
-uuid: 9ab79f07-1737-4547-860f-8159b5e39528
 title: Symbols
 scope: nix
 type: functional

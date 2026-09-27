@@ -1,6 +1,5 @@
 ---
 id: REQ-CFG-010
-uuid: e5fe596f-fe0d-42e6-9377-7911ef081d19
 title: Project config cannot set the editor
 scope: cfg
 type: constraint

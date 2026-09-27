@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-031
-uuid: d8eb3ae0-8c48-483a-b1ac-e045daecf43f
 title: Both hands keep their own gesture
 scope: tool
 type: functional

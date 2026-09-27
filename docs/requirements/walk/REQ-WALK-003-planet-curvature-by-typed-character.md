@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-003
-uuid: 517021ba-a3a6-4a12-a1aa-ae8d147a0f70
 title: Planet curvature keys by typed character
 scope: walk
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-OBJC-008
-uuid: eb5cc981-dc66-493f-8049-8c627687e26b
 title: Podfile.lock versions and dependency graph
 scope: objc
 type: functional

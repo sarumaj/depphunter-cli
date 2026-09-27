@@ -1,6 +1,5 @@
 ---
 id: REQ-DIST-018
-uuid: bb33f3dc-052b-4890-b6c1-3d8e1e452d49
 title: Automated dependency updates
 scope: dist
 type: non-functional

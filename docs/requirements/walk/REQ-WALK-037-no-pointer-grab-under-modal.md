@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-037
-uuid: cd20a84a-b6d4-4e65-93a1-cac9e85d5902
 title: No pointer grab under a modal
 scope: walk
 type: functional

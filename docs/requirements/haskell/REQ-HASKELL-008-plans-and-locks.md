@@ -1,6 +1,5 @@
 ---
 id: REQ-HASKELL-008
-uuid: bc4547a9-0658-40c6-ae88-91eb89a50333
 title: Build plans, freeze files and stack locks read
 scope: haskell
 type: functional

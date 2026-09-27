@@ -1,6 +1,5 @@
 ---
 id: REQ-UI-008
-uuid: 412e4f84-fa0d-4715-8504-7be7a9c18cdb
 title: Help laid out as reference
 scope: ui
 type: functional

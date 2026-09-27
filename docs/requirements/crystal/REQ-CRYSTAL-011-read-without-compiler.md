@@ -1,6 +1,5 @@
 ---
 id: REQ-CRYSTAL-011
-uuid: 95a76cea-0452-443a-9292-cc1bfcbea315
 title: Read without the compiler or shards
 scope: crystal
 type: limitation

@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-016
-uuid: e93f3d04-a55b-4b46-a37f-d8060cdb551b
 title: Caught findings go into the backpack
 scope: hunt
 type: functional

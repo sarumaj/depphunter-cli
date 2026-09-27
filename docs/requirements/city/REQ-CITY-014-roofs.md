@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-014
-uuid: 3f0c43be-1fe8-4c09-9883-04e49d560fe7
 title: Roofs
 scope: city
 type: functional

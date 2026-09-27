@@ -1,6 +1,5 @@
 ---
 id: REQ-DIST-016
-uuid: 8350cc9b-6fbf-4b59-9b6f-9b4a575a031b
 title: Established Go libraries
 scope: dist
 type: constraint

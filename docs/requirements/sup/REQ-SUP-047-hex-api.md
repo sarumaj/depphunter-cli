@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-047
-uuid: abe77337-c8c2-47a0-b3a1-f6efdf2fdeac
 title: Hex dependencies from the Hex API
 scope: sup
 type: functional

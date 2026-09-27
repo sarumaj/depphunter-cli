@@ -1,6 +1,5 @@
 ---
 id: REQ-CLOJURE-006
-uuid: b3658345-6591-41b0-9ab1-a126d289ff63
 title: Java classes imported
 scope: clojure
 type: functional

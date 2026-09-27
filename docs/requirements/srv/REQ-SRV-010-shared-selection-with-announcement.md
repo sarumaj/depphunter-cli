@@ -1,6 +1,5 @@
 ---
 id: REQ-SRV-010
-uuid: f3b16e9e-2a32-4646-9876-a326637c76af
 title: Shared selection with announcement
 scope: srv
 type: functional

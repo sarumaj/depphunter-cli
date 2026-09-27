@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-017
-uuid: 2eeb80a2-23d4-42c0-9fe3-ae2eafc37578
 title: A container reference names its registry
 scope: sup
 type: functional

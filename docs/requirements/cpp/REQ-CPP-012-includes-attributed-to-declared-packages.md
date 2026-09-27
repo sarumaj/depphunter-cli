@@ -1,6 +1,5 @@
 ---
 id: REQ-CPP-012
-uuid: 3d8661e3-bcce-4d30-a566-0c2b41279727
 title: Includes attributed to declared packages
 scope: cpp
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-060
-uuid: 8fe0b46e-e9e2-4449-9adf-78fdb2d7f285
 title: Unread files state their size
 scope: map
 type: functional

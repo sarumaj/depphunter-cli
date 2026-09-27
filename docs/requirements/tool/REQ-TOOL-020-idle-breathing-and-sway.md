@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-020
-uuid: 4a1fcdcf-cef3-4076-a9b1-20ad92b92052
 title: Held tool breathes and sways
 scope: tool
 type: functional

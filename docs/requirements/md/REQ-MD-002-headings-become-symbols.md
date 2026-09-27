@@ -1,6 +1,5 @@
 ---
 id: REQ-MD-002
-uuid: 426c024d-be35-41cf-a5e1-2d70f26a7e65
 title: Headings become document symbols
 scope: md
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-HIST-001
-uuid: 4a606e89-a831-44f0-b275-4ab9c148735d
 title: Single git log pass over the analyzed directory
 scope: hist
 type: functional

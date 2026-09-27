@@ -1,6 +1,5 @@
 ---
 id: REQ-CMAKE-002
-uuid: 8c55e79e-01ec-4471-bb03-7e1adf226c17
 title: CMake files read by a scanner
 scope: cmake
 type: functional

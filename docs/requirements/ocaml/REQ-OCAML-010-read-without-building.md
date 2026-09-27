@@ -1,6 +1,5 @@
 ---
 id: REQ-OCAML-010
-uuid: cc1d2042-369b-416b-9a3c-d4653d5e6e54
 title: OCaml read without building
 scope: ocaml
 type: limitation

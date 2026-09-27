@@ -1,6 +1,5 @@
 ---
 id: REQ-RS-002
-uuid: 242f923e-fe55-4aae-bdad-1a3f9d1ae837
 title: Module paths resolve to module files
 scope: rs
 type: functional

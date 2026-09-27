@@ -1,6 +1,5 @@
 ---
 id: REQ-TERRAFORM-010
-uuid: 2d31fad4-0e26-4888-9d10-cd4f2b0794a4
 title: Terragrunt configurations
 scope: terraform
 type: functional

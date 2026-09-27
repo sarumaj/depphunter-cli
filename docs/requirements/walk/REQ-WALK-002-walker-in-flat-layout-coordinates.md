@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-002
-uuid: 9c412998-d4c6-48e9-b24a-13536b909bcd
 title: Walker in flat layout coordinates, bent by the renderer
 scope: walk
 type: constraint

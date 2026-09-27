@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-022
-uuid: e859e08a-35d8-4aee-a7ae-6d2fd870d590
 title: Expand and collapse one node
 scope: map
 type: functional

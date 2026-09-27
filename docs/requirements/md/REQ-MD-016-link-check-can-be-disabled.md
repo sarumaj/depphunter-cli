@@ -1,6 +1,5 @@
 ---
 id: REQ-MD-016
-uuid: 8d3f7718-a010-43b4-98b1-9dd131801cb1
 title: Link check can be turned off
 scope: md
 type: functional

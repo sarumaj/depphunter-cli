@@ -1,6 +1,5 @@
 ---
 id: REQ-CI-002
-uuid: 7b63621c-5ce3-4fb6-b60e-73ed0077c7fd
 title: Workflow and composite action steps
 scope: ci
 type: functional

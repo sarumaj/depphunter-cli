@@ -1,6 +1,5 @@
 ---
 id: REQ-FORTRAN-011
-uuid: 11e2ceee-85cf-47c1-9d26-963ac5ab8cdb
 title: Read without the compiler or fpm
 scope: fortran
 type: limitation

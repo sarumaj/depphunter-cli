@@ -1,6 +1,5 @@
 ---
 id: REQ-TRC-005
-uuid: 9ff69f6e-52b2-4773-b225-e3c7c52894a2
 title: Who answered each question
 scope: trc
 type: functional

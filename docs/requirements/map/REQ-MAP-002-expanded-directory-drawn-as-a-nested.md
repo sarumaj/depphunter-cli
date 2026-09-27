@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-002
-uuid: 0bbaf7f3-0c06-44c9-bbce-b118f363d6ae
 title: Expanded directory drawn as a nested terrace
 scope: map
 type: functional

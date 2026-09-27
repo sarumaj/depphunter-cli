@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-015
-uuid: 9f6b2863-9ad2-4014-8bcf-9a98e9b80235
 title: Buttons read from mouse events
 scope: walk
 type: constraint

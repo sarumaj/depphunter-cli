@@ -1,6 +1,5 @@
 ---
 id: REQ-CFG-002
-uuid: 482fbc25-1282-4cd8-99e0-44a46ca1ace7
 title: User config file location
 scope: cfg
 type: interface

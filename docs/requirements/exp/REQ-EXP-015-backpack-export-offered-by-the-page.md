@@ -1,6 +1,5 @@
 ---
 id: REQ-EXP-015
-uuid: 6b6a716d-67ac-4e23-a478-9f2c2f7fd48b
 title: Backpack export offered by the page
 scope: exp
 type: functional

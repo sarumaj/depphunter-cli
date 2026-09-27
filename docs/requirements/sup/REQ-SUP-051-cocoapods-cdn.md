@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-051
-uuid: a3333664-9579-4f57-9d43-352fd69bed7a
 title: Pod dependencies from the CocoaPods CDN
 scope: sup
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-ELM-004
-uuid: 65e3164c-3f6a-4e49-b46f-e0278d5e93b8
 title: Modules resolved to files
 scope: elm
 type: functional

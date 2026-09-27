@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-007
-uuid: a56b312b-b239-426a-bdf7-2ca39d1fdc09
 title: Requested specifier kept beside the version
 scope: sup
 type: functional

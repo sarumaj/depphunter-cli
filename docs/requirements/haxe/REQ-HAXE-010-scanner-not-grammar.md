@@ -1,6 +1,5 @@
 ---
 id: REQ-HAXE-010
-uuid: 61fd3e06-8cd4-42d1-8725-3ef11828428f
 title: Read by a scanner, not the grammar
 scope: haxe
 type: constraint

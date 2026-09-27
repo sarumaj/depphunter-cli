@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-007
-uuid: fcead37f-922a-405c-942b-16b68309661b
 title: External ecosystem drawn as a separate island
 scope: map
 type: functional

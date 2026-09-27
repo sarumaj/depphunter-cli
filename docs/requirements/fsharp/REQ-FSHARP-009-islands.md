@@ -1,6 +1,5 @@
 ---
 id: REQ-FSHARP-009
-uuid: c00e62f0-69ea-4125-8a02-a38b3656d444
 title: NuGet, .NET and Paket islands
 scope: fsharp
 type: functional

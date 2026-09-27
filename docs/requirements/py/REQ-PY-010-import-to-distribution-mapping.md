@@ -1,6 +1,5 @@
 ---
 id: REQ-PY-010
-uuid: 744e0fd1-98a7-4c04-a716-d37bedaca916
 title: Import to distribution mapping
 scope: py
 type: functional

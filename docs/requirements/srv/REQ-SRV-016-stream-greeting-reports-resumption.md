@@ -1,6 +1,5 @@
 ---
 id: REQ-SRV-016
-uuid: 2fc95064-f771-43a8-92eb-ed538aac688d
 title: Stream greeting reports resumption
 scope: srv
 type: functional

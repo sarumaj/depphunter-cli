@@ -1,6 +1,5 @@
 ---
 id: REQ-UI-001
-uuid: 61edfb8e-baf2-4936-baa8-d8bcd484d806
 title: Toolbar menus open above panel and tooltip
 scope: ui
 type: functional

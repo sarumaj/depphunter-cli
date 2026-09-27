@@ -1,6 +1,5 @@
 ---
 id: REQ-JS-002
-uuid: 5039f77b-a745-4886-b116-d3bf6a1acf09
 title: Relative specifier resolution
 scope: js
 type: functional

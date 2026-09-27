@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-022
-uuid: 59fd0ae8-70eb-4c75-b787-67fe33007f36
 title: Files over the size limit not opened
 scope: lang
 type: functional

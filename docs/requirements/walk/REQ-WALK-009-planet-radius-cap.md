@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-009
-uuid: 24182103-3831-4fbb-8f36-17c7b6f22f7d
 title: Planet radius bounds
 scope: walk
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-030
-uuid: a91ae44a-65ca-4fd6-87bd-6420116b574a
 title: Lock files are asked first
 scope: sup
 type: functional

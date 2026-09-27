@@ -1,6 +1,5 @@
 ---
 id: REQ-JULIA-007
-uuid: 189a13e7-0439-4c1c-b937-455d223a06e1
 title: Manifests read
 scope: julia
 type: functional

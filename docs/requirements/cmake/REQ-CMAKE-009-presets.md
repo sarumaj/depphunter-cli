@@ -1,6 +1,5 @@
 ---
 id: REQ-CMAKE-009
-uuid: 386cee32-6d04-4ab2-afdc-de3a84754273
 title: Presets files
 scope: cmake
 type: functional

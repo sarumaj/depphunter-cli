@@ -1,6 +1,5 @@
 ---
 id: REQ-DART-001
-uuid: ce32a72b-a93d-4158-bbcd-c01b432cfa48
 title: Dart files and pubspecs claimed
 scope: dart
 type: functional

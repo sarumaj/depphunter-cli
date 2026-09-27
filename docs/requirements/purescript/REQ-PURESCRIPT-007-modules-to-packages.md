@@ -1,6 +1,5 @@
 ---
 id: REQ-PURESCRIPT-007
-uuid: f3ee8132-f57d-46c8-bd6e-1fd84404b5b9
 title: Modules resolved to packages
 scope: purescript
 type: functional

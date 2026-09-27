@@ -1,6 +1,5 @@
 ---
 id: REQ-TERRAFORM-011
-uuid: b6b0fc27-9433-480c-a590-e1712c4f28df
 title: Terraform read without Terraform
 scope: terraform
 type: limitation

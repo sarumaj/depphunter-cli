@@ -1,6 +1,5 @@
 ---
 id: REQ-ZIG-005
-uuid: 3b2366ab-2c4c-4e93-8236-405d6dafb68a
 title: Standard library
 scope: zig
 type: functional

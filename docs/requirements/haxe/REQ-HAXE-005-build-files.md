@@ -1,6 +1,5 @@
 ---
 id: REQ-HAXE-005
-uuid: bd9fb297-73d1-4ffe-b8a1-51991d8d724e
 title: Build files
 scope: haxe
 type: functional

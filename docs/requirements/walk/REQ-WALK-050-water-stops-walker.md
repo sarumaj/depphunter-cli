@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-050
-uuid: e5f95508-b7f8-4f80-82ce-1c368c690a3d
 title: Water stops a walker on foot
 scope: walk
 type: functional

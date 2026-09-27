@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-042
-uuid: 26a3db51-6e35-47d2-b674-4304394f7dfc
 title: Vouching for a repository index
 scope: sup
 type: functional
