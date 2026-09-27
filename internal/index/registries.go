@@ -23,6 +23,7 @@ import (
 	"github.com/BurntSushi/toml"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/ada"
 	"github.com/sarumaj/depphunter-cli/internal/lang/juliapkg"
 	"github.com/sarumaj/depphunter-cli/internal/lang/luarocks"
 	"github.com/sarumaj/depphunter-cli/internal/lang/opam"
@@ -2452,4 +2453,50 @@ func dubAdmits(spec string, v [3]int) bool {
 		}
 	}
 	return true
+}
+
+// ---------------------------------------------------------------- alire
+
+// alireCrate reads an Alire crate's dependencies from the community index,
+// a git repository of release manifests served as files:
+// <index>/index/<first two letters>/<crate>/<crate>-<version>.toml. A file
+// server cannot list a crate's releases, so only an exact version (a lock
+// file's, an =1.2.3 constraint's) is asked about. The dependencies are the
+// release's depends-on, every alternative of a case(...) expression counted,
+// an exact constraint shown as its version and a range as written.
+//
+// Implements: REQ-SUP-061
+func (c *Client) alireCrate(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+	name := t.Package
+	if !alireName.MatchString(name) {
+		return nil, fmt.Errorf("not an Alire crate name: %q", name)
+	}
+	version, _ := ada.ExactVersion(t.Version)
+	body, err := c.accept(ctx, strings.TrimRight(index, "/")+"/index/"+name[:2]+"/"+name+"/"+name+"-"+url.PathEscape(version)+".toml", "text/plain")
+	if err != nil {
+		return nil, err
+	}
+	var out []dep
+	for n, constraint := range ada.Dependencies(body) {
+		if n == name {
+			continue
+		}
+		if v, ok := ada.ExactVersion(constraint); ok {
+			constraint = v
+		}
+		out = append(out, dep{Name: n, Version: constraint})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// alireName is an Alire crate name: lower-case letters, digits and _, at
+// least three characters, starting with a letter.
+var alireName = regexp.MustCompile(`^[a-z][a-z0-9_]{2,63}$`)
+
+// alireExact reports whether an Alire target names one release the index has
+// a manifest for.
+func alireExact(v string) bool {
+	_, ok := ada.ExactVersion(v)
+	return ok
 }

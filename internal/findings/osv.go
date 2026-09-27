@@ -39,7 +39,7 @@ const (
 // fetches from GitHub, git servers and HTTP (F# and C# NuGet packages, Paket's
 // included, are asked about as NuGet), nor dub packages (OSV has no D ecosystem)
 // nor fpm packages (no Fortran ecosystem either) nor haxelib libraries (nor a
-// Haxe one).
+// Haxe one) nor Alire crates (nor an Ada one).
 //
 // Implements: REQ-FND-010
 var osvEcosystems = map[string]string{

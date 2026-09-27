@@ -1463,3 +1463,62 @@ func TestDubDependencies(t *testing.T) {
 		}
 	}
 }
+
+// The Alire community index serves each release's manifest as a file: an exact
+// version is asked for at index/<first two letters>/<crate>/<crate>-<version>.toml
+// and its depends-on (every case(...) alternative) is the answer, an exact
+// constraint pinned; a range, a branch or a commit is not asked about, since a
+// file server cannot list a crate's releases.
+//
+// Verifies: REQ-SUP-061
+func TestAlireDependencies(t *testing.T) {
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Path)
+		if r.URL.Path != "/idx/index/aw/aws/aws-25.2.0.toml" {
+			http.NotFound(w, r)
+			return
+		}
+		w.Write([]byte(`name = "aws"
+version = "25.2.0"
+project-files = ["aws.gpr"]
+
+[[depends-on]]
+xmlada = "~25.0.0"
+gnatcoll = "=25.0.0"
+make = "*"
+
+[[depends-on]]
+[depends-on.'case(os)'.windows]
+winsock = "^1.0"
+
+[origin]
+url = "https://github.com/AdaCore/aws/releases/download/v25.2.0/aws.zip"
+`))
+	}))
+	defer srv.Close()
+	c := clientFor(t, Alire, srv.URL+"/idx/", "")
+	want := []lang.Target{
+		{Ecosystem: Alire, Package: "gnatcoll", Version: "25.0.0", Pinned: true},
+		{Ecosystem: Alire, Package: "make", Version: "*"},
+		{Ecosystem: Alire, Package: "winsock", Version: "^1.0"},
+		{Ecosystem: Alire, Package: "xmlada", Version: "~25.0.0"},
+	}
+	if got := c.Dependencies(lang.Target{Ecosystem: Alire, Package: "aws", Version: "25.2.0", Pinned: true}); !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+	for _, v := range []string{"^25.0", "73d99ae1ff2f5210dc41c2ea7afebe600f9e9916", "main", ""} {
+		if got := c.Dependencies(lang.Target{Ecosystem: Alire, Package: "aws", Version: v}); len(got) != 0 {
+			t.Errorf("%q was asked about: %+v", v, got)
+		}
+	}
+	if got := c.Dependencies(lang.Target{Ecosystem: Alire, Package: "../x", Version: "1.0.0"}); len(got) != 0 {
+		t.Errorf("bad name: %+v", got)
+	}
+	if !reflect.DeepEqual(asked, []string{"/idx/index/aw/aws/aws-25.2.0.toml"}) {
+		t.Errorf("asked %v", asked)
+	}
+	if idx, known := New().For(Alire, "aws"); idx != "https://raw.githubusercontent.com/alire-project/alire-index/stable-1.4.0" || !known {
+		t.Errorf("public index %q %v", idx, known)
+	}
+}

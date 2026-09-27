@@ -324,3 +324,14 @@ func TestAHaxelibPatternKeepsToHaxelib(t *testing.T) {
 		t.Error("a haxelib-scoped pattern did not keep to its ecosystem")
 	}
 }
+
+// Alire crates are named by their crate names; an alire-scoped pattern keeps to
+// them.
+//
+// Verifies: REQ-SUP-035
+func TestAnAlirePatternKeepsToAlire(t *testing.T) {
+	p := New([]string{"alire:acme_*"})
+	if !p.Match("alire", "acme_tools") || p.Match("haxelib", "acme_tools") || p.Match("alire", "aunit") {
+		t.Error("an alire-scoped pattern did not keep to its ecosystem")
+	}
+}

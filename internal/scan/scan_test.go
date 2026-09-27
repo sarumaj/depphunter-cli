@@ -70,8 +70,10 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 }
 
 // A PureScript project's output/ is what the compiler wrote, a shard's lib/ what
-// shards installed, and packages/ and paket-files/ beside a paket.dependencies
-// what Paket installed; another output/, lib/ or packages/ directory is kept.
+// shards installed, packages/ and paket-files/ beside a paket.dependencies
+// what Paket installed, and alire/ beside an alire.toml what Alire keeps (its
+// lock file and the crates it fetched); another output/, lib/, packages/ or
+// alire/ directory is kept.
 //
 // Verifies: REQ-LANG-018
 func TestScanSkipsGeneratedBesideManifest(t *testing.T) {
@@ -90,6 +92,9 @@ func TestScanSkipsGeneratedBesideManifest(t *testing.T) {
 		"fs/packages/Argu/tools/x.fsx":           "let x = 1\n",
 		"fs/paket-files/fsharp/FAKE/Globbing.fs": "module Globbing\n",
 		"web/packages/app.fs":                    "module App\n",
+		"crate/alire.toml":                       "name = \"crate\"\n",
+		"crate/alire/cache/dependencies/aunit_24.0.0_1a2b3c4d/src/aunit.ads": "package AUnit is\nend AUnit;\n",
+		"docs/alire/intro.md": "# kept\n",
 	} {
 		abs := filepath.Join(root, p)
 		os.MkdirAll(filepath.Dir(abs), 0o755)
@@ -103,7 +108,7 @@ func TestScanSkipsGeneratedBesideManifest(t *testing.T) {
 	for _, f := range got {
 		paths = append(paths, f.Path)
 	}
-	want := []string{"app/spago.yaml", "app/src/Main.purs", "fs/paket.dependencies", "legacy/spago.dhall",
+	want := []string{"app/spago.yaml", "app/src/Main.purs", "crate/alire.toml", "docs/alire/intro.md", "fs/paket.dependencies", "legacy/spago.dhall",
 		"report/output/summary.md", "shop/shard.yml", "tools/lib/helper.cr", "web/packages/app.fs"}
 	if !reflect.DeepEqual(paths, want) {
 		t.Errorf("got %v, want %v", paths, want)

@@ -197,7 +197,7 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 	if deps, ok := store.Get[[]dep](c.cache, key); ok {
 		return answer{deps: c.targets(t.Ecosystem, deps), source: trace.FromCache}, nil
 	}
-	if t.Ecosystem == Go && t.Version == "" || t.Ecosystem == Opam && !opam.ExactVersion(t.Version) {
+	if t.Ecosystem == Go && t.Version == "" || t.Ecosystem == Opam && !opam.ExactVersion(t.Version) || t.Ecosystem == Alire && !alireExact(t.Version) {
 		// A module proxy serves a go.mod for one version; without one there is no
 		// document to ask for. Said here rather than deeper down so the report can
 		// say it, instead of recording an empty answer that looks like "no
@@ -258,6 +258,8 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		deps, err = c.purescriptPackage(ctx, index, t)
 	case Dub:
 		deps, err = c.dubPackage(ctx, index, t)
+	case Alire:
+		deps, err = c.alireCrate(ctx, index, t)
 	case Maven:
 		if !strings.Contains(t.Package, ":") {
 			// A name without an artifact cannot be asked: a POM is addressed by

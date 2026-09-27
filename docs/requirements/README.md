@@ -99,73 +99,74 @@ The server **shall** ...
 
 ### Scopes
 
-| Scope        | Area                                                                                                  |
-|--------------|-------------------------------------------------------------------------------------------------------|
-| `cli`        | The command, its flags, arguments, help, version, logging and exit behavior.                          |
-| `cfg`        | Configuration sources, precedence, environment variables and saved view settings.                     |
-| `sec`        | Security of the local server and of executed commands.                                                |
-| `dist`       | Distribution, licensing, release engineering, CI and dependency maintenance.                          |
-| `mod`        | The graph data model exchanged between analysis, UI, exports and extension.                           |
-| `lang`       | The language plugin contract, file scanning, extraction cache and analysis pipeline.                  |
-| `go`         | The Go plugin.                                                                                        |
-| `js`         | The JavaScript and TypeScript plugin, with Vue, Svelte and Astro components.                          |
-| `py`         | The Python plugin.                                                                                    |
-| `rs`         | The Rust plugin.                                                                                      |
-| `java`       | The Java plugin.                                                                                      |
-| `kt`         | The Kotlin plugin.                                                                                    |
-| `scala`      | The Scala plugin.                                                                                     |
-| `cs`         | The C# plugin.                                                                                        |
-| `cpp`        | The C and C++ plugin.                                                                                 |
-| `cmake`      | The CMake plugin, presets, content fetched (FetchContent, ExternalProject, CPM), pkg-config.          |
-| `php`        | The PHP plugin and Composer.                                                                          |
-| `ruby`       | The Ruby plugin and Bundler.                                                                          |
-| `swift`      | The Swift plugin, SwiftPM and Xcode's package references.                                             |
-| `objc`       | The Objective-C plugin, CocoaPods (Podfile, Podfile.lock, podspecs) and Carthage.                     |
-| `dart`       | The Dart plugin, Flutter and pub.                                                                     |
-| `beam`       | The Elixir and Erlang plugin, Mix, rebar3 and Hex.                                                    |
-| `r`          | The R plugin, R Markdown and Quarto documents, renv, packrat, CRAN and Bioconductor.                  |
-| `haskell`    | The Haskell plugin, cabal, hpack, stack and Hackage.                                                  |
-| `lua`        | The Lua, Luau and Teal plugin, LuaRocks (rockspecs, luarocks.lock), Wally and Rojo projects.          |
-| `perl`       | The Perl plugin, CPAN manifests, Carton's snapshot and MetaCPAN.                                      |
-| `ocaml`      | The OCaml plugin, dune, opam manifests and locks, and opam-repository.                                |
-| `julia`      | The Julia plugin, Pkg's projects, manifests and artifacts, and the General registry.                  |
-| `zig`        | The Zig plugin, build.zig's module wiring and build.zig.zon packages.                                 |
-| `clojure`    | The Clojure, ClojureScript and babashka plugin, deps.edn, Leiningen, shadow-cljs, bb.edn and Clojars. |
-| `bazel`      | The Bazel plugin: BUILD, .bzl, MODULE.bazel and WORKSPACE files, registries and hub repositories.     |
-| `nix`        | The Nix plugin: expressions, flakes and flake.lock, niv and npins pins, and nixpkgs packages.         |
-| `gleam`      | The Gleam plugin: modules, gleam.toml and manifest.toml, as Hex packages.                             |
-| `elm`        | The Elm plugin: modules, elm.json, installed packages in ELM_HOME and the package site.               |
-| `purescript` | The PureScript plugin: modules, spago.yaml, spago.lock, spago.dhall, packages.dhall and bower.json.   |
-| `crystal`    | The Crystal plugin: requires, shard.yml, shard.lock, shard.override.yml and shards installed in lib/. |
-| `fsharp`     | The F# plugin: sources and scripts, .fsproj compile order, Paket, and NuGet shared with C#.           |
-| `dlang`      | The D plugin: modules, dub.json, dub.sdl, dub.selections.json and packages dub fetched.               |
-| `fortran`    | The Fortran plugin: free and fixed form, fypp, fpm.toml and dependencies fpm fetched.                 |
-| `haxe`       | The Haxe plugin: modules, .hxml, haxelib.json, lix pins, Lime project files and installed haxelibs.   |
-| `terraform`  | The Terraform and OpenTofu plugin, lock files, Terragrunt and the module registries.                  |
-| `proto`      | The Protocol Buffers plugin, Buf's configuration and lock files and the Buf Schema Registry.          |
-| `shell`      | The shell script plugin (sh, Bash, zsh, bats), direnv and packages scripts install.                   |
-| `ps`         | The PowerShell plugin.                                                                                |
-| `ci`         | The continuous-integration plugin (GitHub Actions, GitLab CI, container images).                      |
-| `docker`     | The Dockerfile and Compose plugin, and the container-image references it shares with `ci`.            |
-| `md`         | Markdown documents as dependencies, and broken-link findings.                                         |
-| `sup`        | Supply chain: pinning, transitive resolution, package indexes, private packages.                      |
-| `auth`       | Registry credentials.                                                                                 |
-| `trc`        | The resolution report.                                                                                |
-| `fnd`        | Findings from scanner reports and the vulnerability database.                                         |
-| `hist`       | The git history overlay.                                                                              |
-| `lsp`        | Symbol references through language servers.                                                           |
-| `srv`        | The local HTTP API and the event stream.                                                              |
-| `watch`      | Watch mode and incremental re-analysis.                                                               |
-| `exp`        | Exports: JSON, DOT, GraphML, HTML, PNG and the backpack.                                              |
-| `map`        | The isometric map: layout, navigation, selection, side panel, search, filters, colors, styles.        |
-| `ui`         | Page-level behavior: introductions, help, reconnection, menus.                                        |
-| `a11y`       | Accessibility.                                                                                        |
-| `perf`       | Performance.                                                                                          |
-| `walk`       | Walk mode: movement, camera, pointer capture, planet, water, health and wind.                         |
-| `city`       | The procedural city shared by both views: streets, ramps, bridges, vegetation, facades.               |
-| `tool`       | Walk-mode tools, hands, gestures, projectiles, the tool row and the wheel.                            |
-| `hunt`       | The dependency hunt: tagging, bugs, catches, beacons, tracker, backpack, photographs, HUD.            |
-| `ext`        | The VS Code extension.                                                                                |
+| Scope        | Area                                                                                                    |
+|--------------|---------------------------------------------------------------------------------------------------------|
+| `cli`        | The command, its flags, arguments, help, version, logging and exit behavior.                            |
+| `cfg`        | Configuration sources, precedence, environment variables and saved view settings.                       |
+| `sec`        | Security of the local server and of executed commands.                                                  |
+| `dist`       | Distribution, licensing, release engineering, CI and dependency maintenance.                            |
+| `mod`        | The graph data model exchanged between analysis, UI, exports and extension.                             |
+| `lang`       | The language plugin contract, file scanning, extraction cache and analysis pipeline.                    |
+| `go`         | The Go plugin.                                                                                          |
+| `js`         | The JavaScript and TypeScript plugin, with Vue, Svelte and Astro components.                            |
+| `py`         | The Python plugin.                                                                                      |
+| `rs`         | The Rust plugin.                                                                                        |
+| `java`       | The Java plugin.                                                                                        |
+| `kt`         | The Kotlin plugin.                                                                                      |
+| `scala`      | The Scala plugin.                                                                                       |
+| `cs`         | The C# plugin.                                                                                          |
+| `cpp`        | The C and C++ plugin.                                                                                   |
+| `cmake`      | The CMake plugin, presets, content fetched (FetchContent, ExternalProject, CPM), pkg-config.            |
+| `php`        | The PHP plugin and Composer.                                                                            |
+| `ruby`       | The Ruby plugin and Bundler.                                                                            |
+| `swift`      | The Swift plugin, SwiftPM and Xcode's package references.                                               |
+| `objc`       | The Objective-C plugin, CocoaPods (Podfile, Podfile.lock, podspecs) and Carthage.                       |
+| `dart`       | The Dart plugin, Flutter and pub.                                                                       |
+| `beam`       | The Elixir and Erlang plugin, Mix, rebar3 and Hex.                                                      |
+| `r`          | The R plugin, R Markdown and Quarto documents, renv, packrat, CRAN and Bioconductor.                    |
+| `haskell`    | The Haskell plugin, cabal, hpack, stack and Hackage.                                                    |
+| `lua`        | The Lua, Luau and Teal plugin, LuaRocks (rockspecs, luarocks.lock), Wally and Rojo projects.            |
+| `perl`       | The Perl plugin, CPAN manifests, Carton's snapshot and MetaCPAN.                                        |
+| `ocaml`      | The OCaml plugin, dune, opam manifests and locks, and opam-repository.                                  |
+| `julia`      | The Julia plugin, Pkg's projects, manifests and artifacts, and the General registry.                    |
+| `zig`        | The Zig plugin, build.zig's module wiring and build.zig.zon packages.                                   |
+| `clojure`    | The Clojure, ClojureScript and babashka plugin, deps.edn, Leiningen, shadow-cljs, bb.edn and Clojars.   |
+| `bazel`      | The Bazel plugin: BUILD, .bzl, MODULE.bazel and WORKSPACE files, registries and hub repositories.       |
+| `nix`        | The Nix plugin: expressions, flakes and flake.lock, niv and npins pins, and nixpkgs packages.           |
+| `gleam`      | The Gleam plugin: modules, gleam.toml and manifest.toml, as Hex packages.                               |
+| `elm`        | The Elm plugin: modules, elm.json, installed packages in ELM_HOME and the package site.                 |
+| `purescript` | The PureScript plugin: modules, spago.yaml, spago.lock, spago.dhall, packages.dhall and bower.json.     |
+| `crystal`    | The Crystal plugin: requires, shard.yml, shard.lock, shard.override.yml and shards installed in lib/.   |
+| `fsharp`     | The F# plugin: sources and scripts, .fsproj compile order, Paket, and NuGet shared with C#.             |
+| `dlang`      | The D plugin: modules, dub.json, dub.sdl, dub.selections.json and packages dub fetched.                 |
+| `fortran`    | The Fortran plugin: free and fixed form, fypp, fpm.toml and dependencies fpm fetched.                   |
+| `haxe`       | The Haxe plugin: modules, .hxml, haxelib.json, lix pins, Lime project files and installed haxelibs.     |
+| `ada`        | The Ada plugin: specs and bodies, GNAT project files, alire.toml, Alire's lock file and fetched crates. |
+| `terraform`  | The Terraform and OpenTofu plugin, lock files, Terragrunt and the module registries.                    |
+| `proto`      | The Protocol Buffers plugin, Buf's configuration and lock files and the Buf Schema Registry.            |
+| `shell`      | The shell script plugin (sh, Bash, zsh, bats), direnv and packages scripts install.                     |
+| `ps`         | The PowerShell plugin.                                                                                  |
+| `ci`         | The continuous-integration plugin (GitHub Actions, GitLab CI, container images).                        |
+| `docker`     | The Dockerfile and Compose plugin, and the container-image references it shares with `ci`.              |
+| `md`         | Markdown documents as dependencies, and broken-link findings.                                           |
+| `sup`        | Supply chain: pinning, transitive resolution, package indexes, private packages.                        |
+| `auth`       | Registry credentials.                                                                                   |
+| `trc`        | The resolution report.                                                                                  |
+| `fnd`        | Findings from scanner reports and the vulnerability database.                                           |
+| `hist`       | The git history overlay.                                                                                |
+| `lsp`        | Symbol references through language servers.                                                             |
+| `srv`        | The local HTTP API and the event stream.                                                                |
+| `watch`      | Watch mode and incremental re-analysis.                                                                 |
+| `exp`        | Exports: JSON, DOT, GraphML, HTML, PNG and the backpack.                                                |
+| `map`        | The isometric map: layout, navigation, selection, side panel, search, filters, colors, styles.          |
+| `ui`         | Page-level behavior: introductions, help, reconnection, menus.                                          |
+| `a11y`       | Accessibility.                                                                                          |
+| `perf`       | Performance.                                                                                            |
+| `walk`       | Walk mode: movement, camera, pointer capture, planet, water, health and wind.                           |
+| `city`       | The procedural city shared by both views: streets, ramps, bridges, vegetation, facades.                 |
+| `tool`       | Walk-mode tools, hands, gestures, projectiles, the tool row and the wheel.                              |
+| `hunt`       | The dependency hunt: tagging, bugs, catches, beacons, tracker, backpack, photographs, HUD.              |
+| `ext`        | The VS Code extension.                                                                                  |
 
 ## Traceability
 
@@ -338,6 +339,12 @@ requirements of type `limitation` in their scopes:
   module's file, same-package types used without an import and `import.hx`
   are not linked, a library that is not installed is attributed by declared
   names and a curated table, and lib.haxe.org is not asked (no `--online`).
+- Ada is read without running GNAT, GPRbuild or alr: only the first branch
+  of a gnatprep `#if` is read, project files are not evaluated (every case
+  alternative counts), units generated at build time are dropped or
+  unresolved, a unit of a crate Alire has not fetched is attributed by
+  declared names and a curated table, and `--online` asks the community
+  index only about exact versions.
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

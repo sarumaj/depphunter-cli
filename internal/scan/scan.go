@@ -167,6 +167,9 @@ var generatedBeside = map[string][]string{
 	// paket-files/ beside paket.dependencies.
 	"packages":    {"paket.dependencies"},
 	"paket-files": {"paket.dependencies"},
+	// Alire keeps its lock file, build cache and the crates it fetches in
+	// alire/ beside alire.toml.
+	"alire": {"alire.toml"},
 }
 
 // besideManifest reports whether the directory name in dir is such a directory.
