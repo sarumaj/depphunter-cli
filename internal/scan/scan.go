@@ -49,6 +49,7 @@ var defaultIgnore = map[string]bool{
 	".venv": true, "venv": true, "__pycache__": true, ".idea": true, ".vscode": true,
 	".next": true, ".cache": true, ".gradle": true, ".tox": true, ".mypy_cache": true,
 	".build": true, ".dart_tool": true, "_build": true, "dist-newstyle": true, ".stack-work": true,
+	".terraform": true, ".terragrunt-cache": true,
 }
 
 func Scan(ctx context.Context, root string, opts Options) ([]*File, error) {

@@ -620,3 +620,71 @@ func TestHackageDependencies(t *testing.T) {
 		t.Errorf("asked %v, want %v", asked, want)
 	}
 }
+
+// A Terraform registry module is asked for its versions (the modules.v1 path read
+// from the registry's service discovery document): the version asked for, else the
+// newest release its constraint allows, answers with the providers and registry
+// modules its root module - or the submodule named after // - requires. Providers
+// are their own island; git and local module sources are left out.
+//
+// Verifies: REQ-SUP-050
+func TestTerraformModuleDependencies(t *testing.T) {
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Path)
+		switch r.URL.Path {
+		case "/.well-known/terraform.json":
+			w.Write([]byte(`{"modules.v1":"/api/registry/v1/modules/","providers.v1":"/api/registry/v1/providers/"}`))
+		case "/api/registry/v1/modules/acme/vpc/aws/versions":
+			w.Write([]byte(`{"modules":[{"source":"acme/vpc/aws","versions":[
+				{"version":"5.1.0","root":{"providers":[{"name":"aws","namespace":"hashicorp","source":"hashicorp/aws","version":">= 5.0"}],"dependencies":[]}},
+				{"version":"5.2.0","root":{"providers":[{"name":"aws","namespace":"hashicorp","source":"registry.terraform.io/hashicorp/aws","version":">= 5.20"},{"name":"random","version":""}],
+					"dependencies":[{"name":"labels","source":"cloudposse/label/null","version":"= 0.25.0"},{"name":"local","source":"./modules/x","version":""},{"name":"git","source":"git::https://example.com/m.git","version":""}]},
+				 "submodules":[{"path":"modules/endpoints","providers":[{"name":"aws","namespace":"hashicorp","source":"hashicorp/aws","version":">= 5.1"}],"dependencies":[]}]},
+				{"version":"6.0.0","root":{"providers":[{"name":"aws","source":"hashicorp/aws","version":">= 6.0"}]}},
+				{"version":"5.3.0-beta1","root":{"providers":[]}}]}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	c := clientFor(t, TerraformModule, srv.URL, "")
+	got := c.Dependencies(lang.Target{Ecosystem: TerraformModule, Package: "acme/vpc/aws", Version: "~> 5.1"})
+	want := []lang.Target{
+		{Ecosystem: TerraformModule, Package: "cloudposse/label/null", Version: "0.25.0", Pinned: true},
+		{Ecosystem: "terraform-provider", Package: "hashicorp/aws", Version: ">= 5.20"},
+		{Ecosystem: "terraform-provider", Package: "hashicorp/random"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("~> 5.1: got %+v, want %+v", got, want)
+	}
+	got = c.Dependencies(lang.Target{Ecosystem: TerraformModule, Package: "acme/vpc/aws//modules/endpoints", Version: "5.2.0", Pinned: true})
+	if want := []lang.Target{{Ecosystem: "terraform-provider", Package: "hashicorp/aws", Version: ">= 5.1"}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("submodule: got %+v, want %+v", got, want)
+	}
+	got = c.Dependencies(lang.Target{Ecosystem: TerraformModule, Package: "acme/vpc/aws", Floating: true})
+	if want := []lang.Target{{Ecosystem: "terraform-provider", Package: "hashicorp/aws", Version: ">= 6.0"}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("no version: got %+v, want %+v", got, want)
+	}
+	// Service discovery is asked once per registry.
+	if want := []string{"/.well-known/terraform.json", "/api/registry/v1/modules/acme/vpc/aws/versions",
+		"/api/registry/v1/modules/acme/vpc/aws/versions", "/api/registry/v1/modules/acme/vpc/aws/versions"}; !reflect.DeepEqual(asked, want) {
+		t.Errorf("asked %v, want %v", asked, want)
+	}
+}
+
+// Verifies: REQ-SUP-050
+func TestTerraformConstraints(t *testing.T) {
+	for _, tc := range []struct {
+		constraint, version string
+		want                bool
+	}{
+		{"", "1.0.0", true}, {"1.2.3", "1.2.3", true}, {"= 1.2.3", "1.2.4", false},
+		{"~> 1.2", "1.9.0", true}, {"~> 1.2", "2.0.0", false}, {"~> 1.2.0", "1.2.9", true}, {"~> 1.2.0", "1.3.0", false},
+		{">= 4.0, < 6.0", "5.10.0", true}, {">= 4.0, < 6.0", "6.0.0", false}, {"!= 1.0.0", "1.0.0", false},
+	} {
+		if got := terraformAllows(tc.constraint, tc.version); got != tc.want {
+			t.Errorf("%q allows %s: got %v", tc.constraint, tc.version, got)
+		}
+	}
+}

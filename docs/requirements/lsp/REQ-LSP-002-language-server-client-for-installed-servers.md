@@ -24,8 +24,10 @@ sourcekit-lsp (Swift), `dart language-server` (Dart), elixir-ls
 installed), ELP or erlang_ls (Erlang, first installed), the R
 languageserver package (`R --slave -e languageserver::run()`, R and R
 Markdown) and haskell-language-server (`haskell-language-server-wrapper
---lsp` or `haskell-language-server --lsp`, Haskell and literate Haskell),
-skipping a server that is not installed.
+--lsp` or `haskell-language-server --lsp`, Haskell and literate Haskell) and
+terraform-ls or tofu-ls (`terraform-ls serve` or `tofu-ls serve`, first
+installed; Terraform, OpenTofu and variable files), skipping a server that is
+not installed.
 
 ## Rationale
 

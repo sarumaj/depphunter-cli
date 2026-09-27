@@ -224,6 +224,8 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		deps, err = c.cranPackage(ctx, index, t)
 	case Hackage:
 		deps, err = c.hackagePackage(ctx, index, t)
+	case TerraformModule:
+		deps, err = c.terraformModule(ctx, index, t)
 	default:
 		// Maven is the one that cannot be asked. A POM is addressed by group *and*
 		// artifact, and the Java plugin puts only the group on the map (an import
@@ -277,9 +279,13 @@ func (l *requestLog) taken() []trace.Request {
 func (c *Client) targets(eco string, deps []dep) []lang.Target {
 	out := make([]lang.Target, 0, len(deps))
 	for _, d := range deps {
+		e := eco
+		if d.Eco != "" {
+			e = d.Eco
+		}
 		out = append(out, lang.Target{
-			Ecosystem: eco, Package: d.Name, Version: d.Version,
-			Pinned: d.Pinned(eco),
+			Ecosystem: e, Package: d.Name, Version: d.Version,
+			Pinned: d.Pinned(e),
 		})
 	}
 	return out
@@ -464,6 +470,9 @@ func requirementConstraint(req, name string) string {
 type dep struct {
 	Name    string `json:"n"`
 	Version string `json:"v,omitempty"`
+	// Eco is the dependency's ecosystem when it is not the package's own: a Terraform
+	// module requires providers as well as modules.
+	Eco string `json:"e,omitempty"`
 }
 
 // Pinned reports whether the version this index gave fixes one release. A Go module

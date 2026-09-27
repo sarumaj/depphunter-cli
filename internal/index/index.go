@@ -41,6 +41,10 @@ const (
 	CRAN = "cran"
 	// Hackage is Haskell's, as cabal and stack install from it.
 	Hackage = "hackage"
+	// TerraformModule is the Terraform plugin's island of modules; the public
+	// Terraform Registry serves them, and a module named with a host is served by
+	// that host's registry (see For).
+	TerraformModule = "terraform-module"
 )
 
 // public is where each ecosystem's packages come from unless something says otherwise.
@@ -59,6 +63,9 @@ var public = map[string]string{
 	Hex:      "https://hex.pm/api",
 	CRAN:     "https://cloud.r-project.org",
 	Hackage:  "https://hackage.haskell.org",
+	// Terraform's public registry; OpenTofu's registry.opentofu.org serves the same
+	// namespaces, and the plugin names modules of either without a host.
+	TerraformModule: "https://registry.terraform.io",
 }
 
 // HackageItself reports whether a repository URL is Hackage (any scheme, with or
@@ -278,6 +285,15 @@ func (c *Config) For(eco, pkg string) (index string, known bool) {
 		return registry, registry == public[OCI] || c.trusted[registry] || c.trusted[host] ||
 			c.credentials.Registry(host)
 	}
+	if eco == TerraformModule {
+		// A module address carries its registry's host when it is not the public
+		// one (app.terraform.io/acme/vpc/aws): that host serves it, and it is known
+		// when this machine's Terraform configuration names it.
+		if host := terraformHost(pkg); host != "" {
+			registry := "https://" + host
+			return registry, c.trusted[registry] || c.trusted[host] || c.credentials.TerraformHost(host)
+		}
+	}
 	scoped, plain := Source{}, Source{}
 	for _, s := range c.sources[eco] {
 		switch {
@@ -311,6 +327,16 @@ func matches(eco, scope, pkg string) bool {
 		return pkg == scope || strings.HasPrefix(pkg, scope+".")
 	}
 	return strings.EqualFold(scope, pkg)
+}
+
+// terraformHost is the registry host a module address names ("" for the public
+// registry): the first of four segments before any //subdirectory.
+func terraformHost(pkg string) string {
+	addr, _, _ := strings.Cut(pkg, "//")
+	if parts := strings.Split(addr, "/"); len(parts) == 4 {
+		return parts[0]
+	}
+	return ""
 }
 
 // ociRegistry reads the registry out of an image reference. A first segment with a dot

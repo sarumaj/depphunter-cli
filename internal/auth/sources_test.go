@@ -242,3 +242,34 @@ func TestDockerConfigIsReadFromDisk(t *testing.T) {
 		t.Errorf("got %q", got)
 	}
 }
+
+// Terraform's and OpenTofu's registry tokens: credentials blocks of the CLI
+// configuration (TF_CLI_CONFIG_FILE instead of ~/.terraformrc when set),
+// credentials.tfrc.json from terraform login, and TF_TOKEN_<host> variables for the
+// hosts named and HCP Terraform. A host block names a host without a token.
+//
+// Verifies: REQ-AUTH-015
+func TestTerraformTokens(t *testing.T) {
+	home := t.TempDir()
+	os.WriteFile(filepath.Join(home, ".terraformrc"), []byte("# CLI config\ncredentials \"tf.corp.test\" {\n  token = \"rc-token\"\n}\n\nhost \"mirror.corp-x.test\" {\n  services = {}\n}\n"), 0o644)
+	os.MkdirAll(filepath.Join(home, ".terraform.d"), 0o755)
+	os.WriteFile(filepath.Join(home, ".terraform.d", "credentials.tfrc.json"), []byte(`{"credentials":{"login.corp.test":{"token":"login-token"}}}`), 0o644)
+	c := Read(home, func(k string) string {
+		return map[string]string{"TF_TOKEN_app_terraform_io": "hcp-token", "TF_TOKEN_mirror_corp__x_test": "env-token"}[k]
+	})
+	for host, want := range map[string]string{"tf.corp.test": "rc-token", "login.corp.test": "login-token",
+		"app.terraform.io": "hcp-token", "mirror.corp-x.test": "env-token"} {
+		if c.bearer[host] != want || !c.TerraformHost(host) {
+			t.Errorf("%s: token %q, known %v", host, c.bearer[host], c.TerraformHost(host))
+		}
+	}
+	if c.TerraformHost("registry.corp.test") {
+		t.Error("a host nothing names is known")
+	}
+	cfg := filepath.Join(t.TempDir(), "cli.tfrc")
+	os.WriteFile(cfg, []byte("credentials \"only.corp.test\" { token = \"cfg-token\" }\n"), 0o644)
+	c = Read(home, func(k string) string { return map[string]string{"TF_CLI_CONFIG_FILE": cfg}[k] })
+	if c.bearer["only.corp.test"] != "cfg-token" || c.TerraformHost("tf.corp.test") {
+		t.Errorf("TF_CLI_CONFIG_FILE was not read instead of ~/.terraformrc: %v", c.bearer)
+	}
+}

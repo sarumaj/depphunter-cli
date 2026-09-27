@@ -82,6 +82,11 @@ func TestAPatternMayNameItsEcosystem(t *testing.T) {
 	if !p.Match("hackage", "acme-json") || p.Match("npm", "acme-json") || p.Match("hackage", "aeson") {
 		t.Error("a hackage-scoped pattern did not keep to its ecosystem")
 	}
+	p = New([]string{"terraform-module:acme/*", "terraform-provider:acme/*"})
+	if !p.Match("terraform-module", "acme/vpc/aws") || !p.Match("terraform-provider", "acme/cloud") ||
+		p.Match("npm", "acme/vpc") || p.Match("terraform-module", "terraform-aws-modules/vpc/aws") {
+		t.Error("terraform-module- and terraform-provider-scoped patterns did not keep to their ecosystems")
+	}
 	p = New([]string{"hex:acme_*"})
 	if !p.Match("hex", "acme_auth") || p.Match("pub", "acme_auth") || p.Match("hex", "plug") {
 		t.Error("a hex-scoped pattern did not keep to its ecosystem")

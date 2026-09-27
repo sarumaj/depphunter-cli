@@ -1,0 +1,26 @@
+{
+  "terraform": {
+    "required_providers": {
+      "cloudflare": {
+        "source": "cloudflare/cloudflare",
+        "version": ">= 4.0, < 5.0"
+      }
+    }
+  },
+  "variable": {
+    "domain": {}
+  },
+  "resource": {
+    "cloudflare_record": {
+      "www": {
+        "name": "${var.domain}",
+        "zone_id": "${cloudflare_zone.main.id}"
+      }
+    }
+  },
+  "module": {
+    "cdn": {
+      "source": "../cdn"
+    }
+  }
+}

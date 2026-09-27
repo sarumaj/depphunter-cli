@@ -622,3 +622,28 @@ func TestDiscoverReadsCabalRepositories(t *testing.T) {
 		t.Errorf("CABAL_DIR: got %s (known %v)", idx, known)
 	}
 }
+
+// A module named with its registry's host is served by that host, which is known when
+// this machine's Terraform configuration names it or the user vouches for it; a
+// module of the public registries has no host in its name.
+//
+// Verifies: REQ-SUP-050
+func TestTerraformModuleRegistryFromTheName(t *testing.T) {
+	home := t.TempDir()
+	os.WriteFile(filepath.Join(home, ".terraformrc"), []byte("credentials \"tf.corp.test\" {\n  token = \"secret\"\n}\n"), 0o644)
+	c := Discover(nil, env(nil), home)
+	c.Credentials(auth.Read(home, env(nil)))
+	if idx, known := c.For(TerraformModule, "terraform-aws-modules/vpc/aws"); idx != "https://registry.terraform.io" || !known {
+		t.Errorf("public: got %s (known %v)", idx, known)
+	}
+	if idx, known := c.For(TerraformModule, "tf.corp.test/acme/vpc/aws//modules/x"); idx != "https://tf.corp.test" || !known {
+		t.Errorf("configured host: got %s (known %v)", idx, known)
+	}
+	if idx, known := c.For(TerraformModule, "tf.other.test/acme/vpc/aws"); idx != "https://tf.other.test" || known {
+		t.Errorf("unknown host: got %s (known %v)", idx, known)
+	}
+	c.Trust([]string{"https://tf.other.test"})
+	if _, known := c.For(TerraformModule, "tf.other.test/acme/vpc/aws"); !known {
+		t.Error("--trust-index did not vouch for a Terraform registry host")
+	}
+}

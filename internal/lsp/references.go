@@ -69,6 +69,9 @@ var Servers = []Server{
 	// The wrapper picks the server binary built for the project's GHC version.
 	{Name: "haskell", Open: true, Exts: map[string]string{".hs": "haskell", ".lhs": "lhaskell"},
 		Commands: [][]string{{"haskell-language-server-wrapper", "--lsp"}, {"haskell-language-server", "--lsp"}}},
+	// terraform-ls serves OpenTofu files as well; tofu-ls is OpenTofu's fork of it.
+	{Name: "terraform", Open: true, Exts: map[string]string{".tf": "terraform", ".tofu": "opentofu", ".tfvars": "terraform-vars"},
+		Commands: [][]string{{"terraform-ls", "serve"}, {"tofu-ls", "serve"}}},
 }
 
 type Options struct {

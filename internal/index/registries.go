@@ -838,6 +838,237 @@ func cabalLibraryDepends(src []byte, self string) []dep {
 	return out
 }
 
+// ---------------------------------------------------------------- Terraform Registry
+
+// terraformModule reads what a registry module requires from the Terraform module
+// registry protocol: <modules.v1>/<namespace>/<name>/<provider>/versions lists every
+// published version with the providers and modules its root module (and each
+// submodule) declares. The version asked for is taken when the target names one,
+// else the newest release its constraint allows. The modules.v1 path is found by
+// service discovery (/.well-known/terraform.json) on any registry but the public one.
+// Providers depend on nothing, so only modules are asked about.
+//
+// Implements: REQ-SUP-050
+func (c *Client) terraformModule(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+	addr, sub, _ := strings.Cut(t.Package, "//")
+	parts := strings.Split(addr, "/")
+	if len(parts) == 4 {
+		parts = parts[1:]
+	}
+	if len(parts) != 3 {
+		return nil, fmt.Errorf("%s: not a registry module address", t.Package)
+	}
+	base, err := c.terraformService(ctx, index, "modules.v1")
+	if err != nil {
+		return nil, err
+	}
+	for i := range parts {
+		parts[i] = url.PathEscape(parts[i])
+	}
+	body, err := c.get(ctx, base+strings.Join(parts, "/")+"/versions")
+	if err != nil {
+		return nil, err
+	}
+	type module struct {
+		Path      string `json:"path"`
+		Providers []struct {
+			Name, Namespace, Source, Version string
+		} `json:"providers"`
+		Dependencies []struct {
+			Name, Source, Version string
+		} `json:"dependencies"`
+	}
+	var doc struct {
+		Modules []struct {
+			Versions []struct {
+				Version    string   `json:"version"`
+				Root       module   `json:"root"`
+				Submodules []module `json:"submodules"`
+			} `json:"versions"`
+		} `json:"modules"`
+	}
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return nil, err
+	}
+	if len(doc.Modules) == 0 {
+		return nil, nil
+	}
+	versions := doc.Modules[0].Versions
+	want := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(t.Version), "="))
+	chosen := -1
+	for i, v := range versions {
+		if v.Version == want {
+			chosen = i
+			break
+		}
+		if strings.Contains(v.Version, "-") || !terraformAllows(t.Version, v.Version) {
+			continue // a pre-release is only taken by name
+		}
+		if chosen < 0 || compareVersions(v.Version, versions[chosen].Version) > 0 {
+			chosen = i
+		}
+	}
+	if chosen < 0 {
+		return nil, nil
+	}
+	m := versions[chosen].Root
+	if sub = strings.Trim(sub, "/"); sub != "" {
+		m = module{}
+		for _, s := range versions[chosen].Submodules {
+			if strings.Trim(s.Path, "/") == sub {
+				m = s
+			}
+		}
+	}
+	var out []dep
+	seen := map[string]bool{}
+	for _, p := range m.Providers {
+		src := p.Source
+		if src == "" {
+			ns := p.Namespace
+			if ns == "" {
+				ns = "hashicorp"
+			}
+			src = ns + "/" + p.Name
+		}
+		src = terraformName(src)
+		if src == "" || strings.HasPrefix(src, "terraform.io/builtin/") || seen["p "+src] {
+			continue
+		}
+		seen["p "+src] = true
+		out = append(out, dep{Name: src, Version: terraformVersion(p.Version), Eco: "terraform-provider"})
+	}
+	for _, d := range m.Dependencies {
+		name := terraformName(d.Source)
+		if name == "" || seen["m "+name] || strings.Count(strings.SplitN(name, "//", 2)[0], "/") < 2 {
+			continue // local paths and git sources name no registry module
+		}
+		seen["m "+name] = true
+		out = append(out, dep{Name: name, Version: terraformVersion(d.Version)})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Eco+out[i].Name < out[j].Eco+out[j].Name })
+	return out, nil
+}
+
+// terraformService finds where a registry serves one of its services, as Terraform
+// does: the public registry's are known, any other host's are read from its
+// /.well-known/terraform.json (a path relative to the host, or a URL). The answer
+// is remembered per registry.
+func (c *Client) terraformService(ctx context.Context, index, service string) (string, error) {
+	index = strings.TrimRight(index, "/")
+	if index == public[TerraformModule] {
+		return index + "/v1/modules/", nil
+	}
+	key := "terraform " + index + " " + service
+	c.mu.Lock()
+	base, ok := c.feeds[key]
+	c.mu.Unlock()
+	if ok {
+		return base, nil
+	}
+	body, err := c.get(ctx, index+"/.well-known/terraform.json")
+	if err != nil {
+		return "", err
+	}
+	var doc map[string]any
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return "", err
+	}
+	s, _ := doc[service].(string)
+	if s == "" {
+		return "", fmt.Errorf("%s does not serve %s", index, service)
+	}
+	ref, err := url.Parse(s)
+	if err != nil {
+		return "", err
+	}
+	root, err := url.Parse(index + "/")
+	if err != nil {
+		return "", err
+	}
+	base = root.ResolveReference(ref).String()
+	if !strings.HasSuffix(base, "/") {
+		base += "/"
+	}
+	c.mu.Lock()
+	c.feeds[key] = base
+	c.mu.Unlock()
+	return base, nil
+}
+
+// terraformName normalizes a registry address the way the Terraform plugin names
+// it: lower case, the public Terraform and OpenTofu registries' hosts dropped. Local
+// paths and addresses go-getter fetches are not registry addresses: "".
+func terraformName(s string) string {
+	s = strings.ToLower(strings.TrimSpace(s))
+	if s == "" || strings.Contains(s, "::") || strings.Contains(s, "://") || strings.HasPrefix(s, ".") ||
+		strings.HasPrefix(s, "github.com/") || strings.HasPrefix(s, "bitbucket.org/") || strings.Contains(s, "?") {
+		return ""
+	}
+	for _, host := range []string{"registry.terraform.io/", "registry.opentofu.org/"} {
+		s = strings.TrimPrefix(s, host)
+	}
+	return s
+}
+
+// terraformVersion writes a constraint allowing one version as that version, as
+// the plugin does ("= 1.2.3" is 1.2.3).
+func terraformVersion(c string) string {
+	v := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(c), "="))
+	if lang.Pinned(v) && !strings.ContainsAny(v, ", ") {
+		return v
+	}
+	return strings.TrimSpace(c)
+}
+
+// terraformAllows reports whether version v meets a Terraform version constraint:
+// comma-separated =, !=, >, >=, <, <= and ~> (the rightmost given part may grow:
+// "~> 1.2" is >= 1.2, < 2.0; "~> 1.2.0" is >= 1.2.0, < 1.3.0). No constraint allows
+// every version.
+func terraformAllows(constraint, v string) bool {
+	for _, c := range strings.Split(constraint, ",") {
+		c = strings.TrimSpace(c)
+		if c == "" {
+			continue
+		}
+		op := ""
+		for _, o := range []string{"~>", ">=", "<=", "!=", ">", "<", "="} {
+			if strings.HasPrefix(c, o) {
+				op, c = o, strings.TrimSpace(c[len(o):])
+				break
+			}
+		}
+		cmp := compareVersions(v, c)
+		ok := true
+		switch op {
+		case "", "=":
+			ok = cmp == 0
+		case "!=":
+			ok = cmp != 0
+		case ">":
+			ok = cmp > 0
+		case ">=":
+			ok = cmp >= 0
+		case "<":
+			ok = cmp < 0
+		case "<=":
+			ok = cmp <= 0
+		case "~>":
+			parts := strings.Split(c, ".")
+			if len(parts) > 1 {
+				parts = parts[:len(parts)-1]
+			}
+			n, _ := strconv.Atoi(parts[len(parts)-1])
+			parts[len(parts)-1] = strconv.Itoa(n + 1)
+			ok = cmp >= 0 && compareVersions(v, strings.Join(parts, ".")) < 0
+		}
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
+
 // ---------------------------------------------------------------- OCI
 
 // The media types a registry may answer a manifest request with: the OCI ones and
