@@ -32,7 +32,8 @@ const (
 // Wally, so rocks and Wally packages are not either, nor CPAN (OSV's ecosystem list
 // has none for Perl), so CPAN distributions are not, nor Zig packages, nor Bazel
 // modules and WORKSPACE downloads (the Maven, PyPI, Go, npm and crates.io packages
-// Bazel's module extensions install are asked about under their own ecosystems).
+// Bazel's module extensions install are asked about under their own ecosystems),
+// nor flake inputs and nixpkgs packages (OSV has no Nix ecosystem).
 //
 // Implements: REQ-FND-010
 var osvEcosystems = map[string]string{

@@ -31,7 +31,7 @@ Pkg's `Project.toml`, `JuliaProject.toml`, `Manifest.toml`,
 Clojure's `project.clj`, `build.boot`, `deps.edn`, `bb.edn` and
 `shadow-cljs.edn`, Bazel's `BUILD`, `WORKSPACE`, `WORKSPACE.bzlmod`
 (Starlark, as `.bzl` and `.bazel` files are) and `MODULE.bazel.lock`
-(JSON),
+(JSON), Nix's `flake.lock` (Nix, as `.nix` files are),
 the shells' and direnv's startup files (`.bashrc`,
 `.zshrc`, `.profile`, `.envrc` and the others of REQ-SHELL-001), and the
 Dockerfile names of REQ-DOCKER-001), or, for a file neither names, from a
@@ -88,3 +88,4 @@ Objective-C from MATLAB, Mercury and C.
 6. `src/Shop.jl`, `Project.toml`, `docs/JuliaProject.toml`,
    `Manifest.toml`, `Manifest-v1.11.toml`, `JuliaManifest-v1.12.toml` and
    `Artifacts.toml` are Julia.
+7. `nix/modules/default.nix` and `flake.lock` are Nix.

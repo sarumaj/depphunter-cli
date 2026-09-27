@@ -1,0 +1,29 @@
+{
+  "pins": {
+    "nixpkgs": {
+      "type": "Channel",
+      "name": "nixos-24.05",
+      "url": "https://releases.nixos.org/nixos/24.05/nixos-24.05.1234.abcdef0/nixexprs.tar.xz",
+      "hash": "0f0mm8f1c09dbyqy5mc0r0m4k9sp7xnbnw8ym00j60qwc0d2j3xs"
+    },
+    "lix": {
+      "type": "Git",
+      "repository": { "type": "Git", "url": "https://git.lix.systems/lix-project/lix.git" },
+      "branch": "main",
+      "revision": "9876543210abcdef9876543210abcdef98765432",
+      "url": null,
+      "hash": "1ssss8f1c09dbyqy5mc0r0m4k9sp7xnbnw8ym00j60qwc0d2j3xs"
+    },
+    "treefmt": {
+      "type": "GitRelease",
+      "repository": { "type": "GitHub", "owner": "numtide", "repo": "treefmt-nix" },
+      "pre_releases": false,
+      "version_upper_bound": null,
+      "version": "v2.1.0",
+      "revision": "1111111111222222222233333333334444444444",
+      "url": "https://api.github.com/repos/numtide/treefmt-nix/tarball/v2.1.0",
+      "hash": "0aaaa8f1c09dbyqy5mc0r0m4k9sp7xnbnw8ym00j60qwc0d2j3xs"
+    }
+  },
+  "version": 5
+}

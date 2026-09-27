@@ -198,6 +198,7 @@ code. The page served is identical in both cases.
   [The resolution report](#the-resolution-report) ·
   [CI pipelines](#ci-pipelines) ·
   [Infrastructure as code](#infrastructure-as-code) ·
+  [Nix](#nix) ·
   [Interface definitions](#interface-definitions) ·
   [Shell scripts](#shell-scripts) ·
   [Documentation](#documentation) ·
@@ -812,9 +813,10 @@ crates.io, Maven, NuGet, GitHub Actions, Conan (as OSV's ConanCenter; vcpkg has
 no OSV ecosystem), Composer (as Packagist), RubyGems, Swift packages (as
 SwiftURL, by URL), pub, Hex, CRAN, Bioconductor, Hackage, opam and Julia; OSV
 has no ecosystem for Terraform modules and providers, Buf Schema Registry
-modules, CocoaPods, Carthage, LuaRocks, Wally, CPAN, Zig or Bazel modules and
+modules, CocoaPods, Carthage, LuaRocks, Wally, CPAN, Zig, Bazel modules and
 repositories (the Maven, PyPI, Go, npm and crates.io packages Bazel's module
-extensions install are asked about as such). Floating packages
+extensions install are asked about as such), Nix flake inputs or nixpkgs
+packages. Floating packages
 are not queried, since they resolve to a different version on the next
 installation. Answers are cached for six hours.
 `--no-vulns` disables all of this.
@@ -888,42 +890,43 @@ labelled **⚠ floating** in the side panel, and marked in its tooltip. Where a
 lock file resolved a range, the panel reports both: `4.3.1`, requested as
 `^4.2.0`.
 
-| Ecosystem           | pinned by                                                                                                    | floats on                                                                                 |
-|---------------------|--------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------|
-| Go modules          | the version in `go.mod`, which the build selects; a script's `go install x@v1.2.3`                           | — (a `require` always names a version); a script's `@latest` or `@v1.2`                   |
-| npm                 | `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, an exact `1.2.3`                                         | any range, including `1.2`, which denotes 1.2.x                                           |
-| crates.io           | `Cargo.lock`, a script's `cargo install x@1.2.3`                                                             | the manifest alone, where `"1.2.3"` denotes `^1.2.3`                                      |
-| PyPI                | `poetry.lock`, `uv.lock`, `pdm.lock`, `Pipfile.lock`, `==1.2.3`                                              | `>=`, `~=`, `^` and other ranges                                                          |
-| Maven               | a plain version, `[1.2.3]`                                                                                   | ranges, `LATEST`, `RELEASE`, `-SNAPSHOT`, dynamic `1.+` and `latest.*`, unexpanded `${…}` |
-| NuGet               | an exact version, `[1.2.3]`                                                                                  | wildcards (`2.*`) and ranges                                                              |
-| PowerShell Gallery  | `RequiredVersion`                                                                                            | `ModuleVersion`, which is a minimum                                                       |
-| GitHub Actions      | a full commit SHA                                                                                            | tags, branches, or no ref                                                                 |
-| GitLab CI includes  | a commit                                                                                                     | tags, branches, templates, remote includes, or no ref                                     |
-| Container images    | an `@sha256:` digest                                                                                         | tags                                                                                      |
-| vcpkg               | an `overrides` entry                                                                                         | `version>=`, which is a minimum; no version and no baseline                               |
-| Conan               | an exact reference (`zlib/1.2.13`), `conan.lock`                                                             | a version range (`[>=1.0 <2]`, `[~1.2]`)                                                  |
-| Composer            | `composer.lock`, `installed.json`, a bare `1.2.3` or `1.2`, `dev-main#<sha>`                                 | `^`, `~`, `*`, `1.2.*`, alternatives, ranges and branches                                 |
-| RubyGems            | `Gemfile.lock` (a git gem by its revision), a bare `1.2.3`, `= 1.2.3`                                        | `~>`, `>=`, `<`, `!=`, several requirements, no version                                   |
-| Swift packages      | `Package.resolved`, `exact:`, a bare `"1.2.3"`, `revision:`                                                  | `from:`, `.upToNextMajor`, `.upToNextMinor`, ranges, `branch:`                            |
-| pub                 | `pubspec.lock` (a git package by its commit), a bare `1.2.3`, a git commit                                   | `^`, ranges, `any`, no constraint, a git branch or tag                                    |
-| Hex                 | `mix.lock`, `rebar.lock`, a bare `1.2.3`, `== 1.2.3`, a git `ref` commit                                     | `~>`, `>=`, `or` and `and` requirements, a git branch or tag                              |
-| CRAN, Bioconductor  | `renv.lock`, `packrat.lock` (a GitHub package by its commit), `(== 1.2.3)`                                   | `(>= 1.2)`, no version, a `Remotes` branch or tag                                         |
-| Hackage             | cabal's `plan.json`, `cabal.project.freeze`, `stack.yaml.lock`, `extra-deps`, `==1.2.3`, a repository commit | `^>=` and other ranges, no version, a repository tag or branch                            |
-| Terraform modules   | a registry `version` of `1.2.3` or `= 1.2.3`, a git `ref` commit                                             | `~>` and other ranges, no version, a git tag or branch, no ref, an archive                |
-| Terraform providers | `.terraform.lock.hcl` (the root module's, for the modules it calls), a single exact constraint               | `~>`, `>=` and other constraints, no constraint                                           |
-| Buf Schema Registry | `buf.lock`, a commit ref (`:0123…`), a plugin's exact version                                                | a label, tag or branch ref, no ref, a plugin without a version                            |
-| CMake FetchContent  | a `GIT_TAG` commit, a `URL_HASH`, an archive of a commit                                                     | a branch `GIT_TAG` (`main`, `origin/…`), no `GIT_TAG`, a download without a hash          |
-| CocoaPods           | `Podfile.lock` (a git pod by its checkout commit), a bare `'1.2.3'`, `'= 1.2.3'`, a `:commit`                | `~>`, `>=` and other ranges, no version, a `:branch`, a git pod without a reference       |
-| Carthage            | `Cartfile.resolved`, `== 1.2.3`, a quoted commit                                                             | `~>`, `>=`, no requirement                                                                |
-| LuaRocks            | `luarocks.lock`, `== 1.2.3` or a bare `1.2.3` in a rockspec (LuaRocks reads it as `==`)                      | `~>`, `>=` and other constraints, no version                                              |
-| Wally               | `wally.lock`, `=1.2.3`                                                                                       | a bare `1.2.3` (a caret range in Wally), `^1`, other ranges                               |
-| CPAN                | `cpanfile.snapshot` (Carton), `== 1.2` in a `cpanfile` or META prerequisites                                 | a bare `1.2` (a minimum in CPAN::Meta), `>= 1, < 2` and other ranges, `0` or no version   |
-| opam                | `*.opam.locked`, `dune.lock/`, `{= "1.2"}` or `(= 1.2)`, a `pin-depends` commit                              | `>= 5.6 & < 6` and other ranges, no constraint, a `pin-depends` branch or tag             |
-| Julia               | `Manifest.toml` (and `Manifest-v1.11.toml`), `=1.2.3` in `[compat]`, a `[sources]` commit `rev`              | a bare `1.2` (a caret range in Pkg), `~1.2`, `>= 1`, `1.2 - 1.5`, no `[compat]` entry     |
-| Zig                 | a `.hash` in `build.zig.zon` (Zig verifies the download), a commit in the URL                                | a branch archive (`refs/heads/`), a URL without a ref or hash; a tag is shown, neither    |
-| Clojure (Maven)     | an exact `:mvn/version` or Leiningen version (Maven's rule), a full `:git/sha`                               | `RELEASE`, `LATEST`, ranges, snapshots; a `:git/tag` alone is shown, neither              |
-| Bazel modules       | `MODULE.bazel.lock`, a `bazel_dep` version, `single_version_override`, an override's commit or `integrity`   | no version; a `git_override` branch; a `git_override` tag is shown, neither               |
-| Bazel repositories  | an `http_archive` `sha256` or `integrity`, a `git_repository` commit, an archive of a commit                 | a branch (archive or `branch =`), no ref and no hash; a tag is shown, neither             |
+| Ecosystem           | pinned by                                                                                                    | floats on                                                                                                         |
+|---------------------|--------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------|
+| Go modules          | the version in `go.mod`, which the build selects; a script's `go install x@v1.2.3`                           | — (a `require` always names a version); a script's `@latest` or `@v1.2`                                           |
+| npm                 | `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, an exact `1.2.3`                                         | any range, including `1.2`, which denotes 1.2.x                                                                   |
+| crates.io           | `Cargo.lock`, a script's `cargo install x@1.2.3`                                                             | the manifest alone, where `"1.2.3"` denotes `^1.2.3`                                                              |
+| PyPI                | `poetry.lock`, `uv.lock`, `pdm.lock`, `Pipfile.lock`, `==1.2.3`                                              | `>=`, `~=`, `^` and other ranges                                                                                  |
+| Maven               | a plain version, `[1.2.3]`                                                                                   | ranges, `LATEST`, `RELEASE`, `-SNAPSHOT`, dynamic `1.+` and `latest.*`, unexpanded `${…}`                         |
+| NuGet               | an exact version, `[1.2.3]`                                                                                  | wildcards (`2.*`) and ranges                                                                                      |
+| PowerShell Gallery  | `RequiredVersion`                                                                                            | `ModuleVersion`, which is a minimum                                                                               |
+| GitHub Actions      | a full commit SHA                                                                                            | tags, branches, or no ref                                                                                         |
+| GitLab CI includes  | a commit                                                                                                     | tags, branches, templates, remote includes, or no ref                                                             |
+| Container images    | an `@sha256:` digest                                                                                         | tags                                                                                                              |
+| vcpkg               | an `overrides` entry                                                                                         | `version>=`, which is a minimum; no version and no baseline                                                       |
+| Conan               | an exact reference (`zlib/1.2.13`), `conan.lock`                                                             | a version range (`[>=1.0 <2]`, `[~1.2]`)                                                                          |
+| Composer            | `composer.lock`, `installed.json`, a bare `1.2.3` or `1.2`, `dev-main#<sha>`                                 | `^`, `~`, `*`, `1.2.*`, alternatives, ranges and branches                                                         |
+| RubyGems            | `Gemfile.lock` (a git gem by its revision), a bare `1.2.3`, `= 1.2.3`                                        | `~>`, `>=`, `<`, `!=`, several requirements, no version                                                           |
+| Swift packages      | `Package.resolved`, `exact:`, a bare `"1.2.3"`, `revision:`                                                  | `from:`, `.upToNextMajor`, `.upToNextMinor`, ranges, `branch:`                                                    |
+| pub                 | `pubspec.lock` (a git package by its commit), a bare `1.2.3`, a git commit                                   | `^`, ranges, `any`, no constraint, a git branch or tag                                                            |
+| Hex                 | `mix.lock`, `rebar.lock`, a bare `1.2.3`, `== 1.2.3`, a git `ref` commit                                     | `~>`, `>=`, `or` and `and` requirements, a git branch or tag                                                      |
+| CRAN, Bioconductor  | `renv.lock`, `packrat.lock` (a GitHub package by its commit), `(== 1.2.3)`                                   | `(>= 1.2)`, no version, a `Remotes` branch or tag                                                                 |
+| Hackage             | cabal's `plan.json`, `cabal.project.freeze`, `stack.yaml.lock`, `extra-deps`, `==1.2.3`, a repository commit | `^>=` and other ranges, no version, a repository tag or branch                                                    |
+| Terraform modules   | a registry `version` of `1.2.3` or `= 1.2.3`, a git `ref` commit                                             | `~>` and other ranges, no version, a git tag or branch, no ref, an archive                                        |
+| Terraform providers | `.terraform.lock.hcl` (the root module's, for the modules it calls), a single exact constraint               | `~>`, `>=` and other constraints, no constraint                                                                   |
+| Buf Schema Registry | `buf.lock`, a commit ref (`:0123…`), a plugin's exact version                                                | a label, tag or branch ref, no ref, a plugin without a version                                                    |
+| CMake FetchContent  | a `GIT_TAG` commit, a `URL_HASH`, an archive of a commit                                                     | a branch `GIT_TAG` (`main`, `origin/…`), no `GIT_TAG`, a download without a hash                                  |
+| CocoaPods           | `Podfile.lock` (a git pod by its checkout commit), a bare `'1.2.3'`, `'= 1.2.3'`, a `:commit`                | `~>`, `>=` and other ranges, no version, a `:branch`, a git pod without a reference                               |
+| Carthage            | `Cartfile.resolved`, `== 1.2.3`, a quoted commit                                                             | `~>`, `>=`, no requirement                                                                                        |
+| LuaRocks            | `luarocks.lock`, `== 1.2.3` or a bare `1.2.3` in a rockspec (LuaRocks reads it as `==`)                      | `~>`, `>=` and other constraints, no version                                                                      |
+| Wally               | `wally.lock`, `=1.2.3`                                                                                       | a bare `1.2.3` (a caret range in Wally), `^1`, other ranges                                                       |
+| CPAN                | `cpanfile.snapshot` (Carton), `== 1.2` in a `cpanfile` or META prerequisites                                 | a bare `1.2` (a minimum in CPAN::Meta), `>= 1, < 2` and other ranges, `0` or no version                           |
+| opam                | `*.opam.locked`, `dune.lock/`, `{= "1.2"}` or `(= 1.2)`, a `pin-depends` commit                              | `>= 5.6 & < 6` and other ranges, no constraint, a `pin-depends` branch or tag                                     |
+| Julia               | `Manifest.toml` (and `Manifest-v1.11.toml`), `=1.2.3` in `[compat]`, a `[sources]` commit `rev`              | a bare `1.2` (a caret range in Pkg), `~1.2`, `>= 1`, `1.2 - 1.5`, no `[compat]` entry                             |
+| Zig                 | a `.hash` in `build.zig.zon` (Zig verifies the download), a commit in the URL                                | a branch archive (`refs/heads/`), a URL without a ref or hash; a tag is shown, neither                            |
+| Clojure (Maven)     | an exact `:mvn/version` or Leiningen version (Maven's rule), a full `:git/sha`                               | `RELEASE`, `LATEST`, ranges, snapshots; a `:git/tag` alone is shown, neither                                      |
+| Bazel modules       | `MODULE.bazel.lock`, a `bazel_dep` version, `single_version_override`, an override's commit or `integrity`   | no version; a `git_override` branch; a `git_override` tag is shown, neither                                       |
+| Bazel repositories  | an `http_archive` `sha256` or `integrity`, a `git_repository` commit, an archive of a commit                 | a branch (archive or `branch =`), no ref and no hash; a tag is shown, neither                                     |
+| Nix                 | `flake.lock`, a commit (`rev=`, `/<commit>`) or `narHash` in the reference, niv and npins pins               | a branch (`nixos-24.05`, `refs/heads/`), a channel, `<nixpkgs>`, a registry name, no ref; a tag is shown, neither |
 
 A package a shell script installs (`pip install`, `npm install -g`, `go
 install`, `cargo install`, `gem install`) follows its ecosystem's row; one
@@ -962,6 +965,7 @@ and the analysis remains offline.
 | `zig-pkg/<hash>/` or Zig's global cache   | a fetched package's own `build.zig.zon`            |
 | `MODULE.bazel.lock` (before Bazel 7.2)    | the resolved module graph (`moduleDepGraph`)       |
 | `maven_install.json` (rules_jvm_external) | each artifact's `dependencies`                     |
+| `flake.lock` (versions 5 to 7)            | each input's own `inputs`, `follows` resolved      |
 
 Packages added in this way are marked **transitive**, meaning that no file in
 the repository imports them. Edges between packages are of kind `depends`, as
@@ -993,8 +997,9 @@ is not a package index depphunter asks. Content a CMake build fetches is not
 resolved beyond the first level either, nor are Carthage dependencies
 (`Cartfile.resolved` is flat), Wally packages no `wally.lock` records and Zig
 packages Zig has not fetched into `zig-pkg/` or its global cache (there is no
-Zig registry for `--online` to ask), nor Bazel's WORKSPACE repositories. A
-Terraform provider depends on nothing.
+Zig registry for `--online` to ask), nor Bazel's WORKSPACE repositories, nor
+niv and npins sources (their `sources.json` is flat). A Terraform provider
+depends on nothing.
 
 The side panel presents these as a **tree**: every row under *Depends on* and
 *Used by* expands into that node's own dependencies, and so on recursively.
@@ -1173,8 +1178,8 @@ pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`
 `conan:`, `composer:`, `rubygems:`, `swiftpm:`, `pub:`, `hex:`, `cran:`,
 `bioconductor:`, `hackage:`, `terraform-module:`, `terraform-provider:`,
 `buf:`, `cmake-fetch:`, `pkg-config:`, `cocoapods:`, `carthage:`, `luarocks:`,
-`wally:`, `cpan:`, `opam:`, `julia:`, `zig:`, `bazel:` or `bazel-repo:` —
-restricts it to that ecosystem.
+`wally:`, `cpan:`, `opam:`, `julia:`, `zig:`, `bazel:`, `bazel-repo:`, `nix:`
+or `nixpkgs:` — restricts it to that ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
 to whatever is configured here**, so a Go project whose machine is already
@@ -1401,6 +1406,51 @@ configurations become the file's symbols. Only a commit pins a git module; a
 registry module is pinned by an exact `version`. Nothing is evaluated, so a
 source or version computed from variables is not followed.
 
+### Nix
+
+A Nix project states how it is built, what it builds with and which
+revision of nixpkgs everything comes from. depphunter reads `.nix` files,
+flakes (`flake.nix` and `flake.lock`) and the pins of niv
+(`nix/sources.json`) and npins (`npins/sources.json`), without evaluating
+anything:
+
+- **Files**: `import ./x.nix`, `callPackage ./x { }` and a NixOS module's
+  `imports = [ ./a.nix ./b ]` are edges to the file, a directory meaning its
+  `default.nix`; any other relative path (`builtins.readFile ./VERSION`,
+  `src = ./src`, `"${./script.sh}"`) is an edge to that file or directory.
+  Text inside strings is not read, interpolations are.
+- **Flake inputs**: each input of `flake.nix` is a package of the **Nix flakes
+  and sources** island named by its URL: `github:NixOS/nixpkgs/nixos-24.05` is
+  `github.com/nixos/nixpkgs` (GitHub names in lower case), `gitlab:`,
+  `sourcehut:`, `git+https://…` and archives by their repository, FlakeHub by
+  `flakehub.com/f/owner/repo`. `flake.lock` pins them at the locked commit
+  (shown shortened, `ad57eef`), with the branch or tag asked for as the
+  requested version; its nodes' own inputs, `follows` resolved, are what
+  `--resolve-depth` follows. A `path:` input is an edge to that flake, a
+  `follows` the followed input, and `inputs.x` in a module the flake's input.
+- **Registry names and channels**: `<nixpkgs>`, `flake:nixpkgs` and an
+  `outputs` argument no input declares name the **registry alias** (`nixpkgs`)
+  rather than what each machine's `NIX_PATH` or flake registry makes of it, so
+  they float. A NixOS channel's tarball is `nixpkgs` at that channel.
+- **niv and npins**: each source is a package pinned by its revision or hash,
+  and `sources.nixpkgs` (or `pins.nixpkgs`) in a file that imported the
+  loader is an edge to it. `builtins.fetchTarball`, `fetchGit`, `fetchTree`
+  and `getFlake` with literal arguments are named the same way.
+- **Nixpkgs packages**: the attributes in `buildInputs`,
+  `nativeBuildInputs`, `propagatedBuildInputs`, `checkInputs`, `packages`
+  (`mkShell`, `home.packages`) and `environment.systemPackages` - `pkgs.jq`,
+  `with pkgs; [ openssl zlib ]`, the arguments of a `callPackage`-style file -
+  are packages of the **Nixpkgs** island, versioned and pinned by the
+  project's nixpkgs input (or niv's or npins' `nixpkgs`). Inside nixpkgs
+  itself they are its `pkgs/by-name` files.
+
+Top-level `let` bindings and the attributes a file returns (paths cut at two
+names) are the symbols, and a flake's outputs (`packages.default`,
+`nixosModules.default`). The pinning rule is the one used elsewhere: a lock,
+a commit or a content hash pins, a tag neither pins nor floats, a branch or
+nothing floats. There is no Nix package index for `--online` to ask, and no
+vulnerability database covers Nix.
+
 ### Interface definitions
 
 Protocol Buffers definitions are shared between services and languages, and
@@ -1572,6 +1622,7 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | Zig                     | `zls`                                                                                        |
 | Clojure                 | `clojure-lsp`                                                                                |
 | Bazel (Starlark)        | `starpls server`, `bazel-lsp` or `bzl lsp serve`                                             |
+| Nix                     | `nil` or `nixd`                                                                              |
 
 The servers run in the background once the map is displayed — gopls requires
 approximately 7 s for this repository — within the budget set by
@@ -1614,6 +1665,7 @@ The JSON and GraphML exports include the reference edges.
 | Zig                     | `@import` of files (`@embedFile` too), `std`/`builtin`, `root` (the compilation's root source file) and module names to what `build.zig` wires (`b.addModule`, `b.createModule`, `.imports`, `addImport`, a dependency's `.module()`), else the `build.zig.zon` dependency of that name; `b.path()` in build code; `@cInclude` as C includes; packages by `build.zig.zon` (named by URL, pinned by `.hash`), whose dependencies are imports                                                                     | Zig, Zig standard library, C/C++ islands                                   |
 | Clojure                 | `ns` `:require`/`:use`/`:import`, top-level `require`/`import`/`load` (prefix lists, every reader-conditional branch) to files under the source paths of `deps.edn`, `project.clj`, `shadow-cljs.edn`, `bb.edn` (`a.b-c` is `a/b_c.clj`), `:local/root` projects, Clojure's own namespaces, artifacts the manifests declare (a table and naming rules), JDK classes; npm strings in ClojureScript                                                                                                               | Maven, Clojure standard library, JDK, npm, Node.js built-ins               |
 | Bazel                   | `load()` and label attributes (`srcs`, `hdrs`, `deps`, `data`, ...) to files and to the BUILD file of each package, `glob()` expanded within the package; other repositories by `MODULE.bazel` (`bazel_dep`, overrides, `MODULE.bazel.lock`), WORKSPACE and `.bzl` repository rules (`http_archive`, `git_repository`, `local_repository`, `go_repository`), and the hub repositories of rules_jvm_external, rules_python, Gazelle, rules_js and rules_rust                                                     | Bazel modules and repositories, Maven, PyPI, Go modules, npm, crates.io    |
+| Nix                     | `import`, `callPackage` and NixOS module `imports` of paths (a directory is its `default.nix`), other path literals; flake inputs (`github:`, `gitlab:`, `git+https:`, tarballs, `path:`, registry names, `follows`) pinned by `flake.lock`, `inputs.x`; `<nixpkgs>`; niv and npins sources; `builtins.fetchTarball`/`fetchGit`/`fetchTree`; nixpkgs attributes in `buildInputs`, `nativeBuildInputs`, `packages`, `systemPackages`                                                                             | Nix flakes and sources, Nixpkgs                                            |
 | PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                                                                                                                                                                                                                                                               | PowerShell Gallery, built-in modules                                       |
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                                                                                                                                                                                                                    | GitHub Actions, GitLab CI, Container images                                |
 | Protocol Buffers        | `import` (`public`, `weak`) under the import roots of `buf.work.yaml` and `buf.yaml` (v1 and v2), else the repository root, `proto/`, `protos/`, `api/`, `src/main/proto/` and the importer's directories, else a unique project file ending in the path; modules by `buf.yaml` `deps` and `buf.lock` and a table of common protos; `buf.gen.yaml` remote plugins                                                                                                                                               | Buf Schema Registry, Protobuf well-known types                             |
@@ -2119,6 +2171,10 @@ Terragrunt configurations are read by a small HCL scanner: the tree-sitter
 grammar parsed every file measured correctly but was about twenty times
 slower. See [Infrastructure as code](#infrastructure-as-code).
 
+Nix expressions are read by a small lexer and parser: the tree-sitter grammar
+parsed almost every file measured correctly but took 1.9 ms per file, and 12 s
+for nixpkgs' `python-packages.nix` alone. See [Nix](#nix).
+
 Protocol Buffers definitions are read by a small scanner: the tree-sitter
 grammar took 2.4 to 3 ms per file and failed on every file using editions.
 See [Interface definitions](#interface-definitions).
@@ -2143,9 +2199,9 @@ Dart, Elixir, Erlang, R, Haskell, HCL, Protocol Buffers, shell scripts, CMake
 files, Swift, Objective-C, CocoaPods and Carthage manifests, Lua, Luau, Teal and
 LuaRocks files, Perl and its CPAN manifests, OCaml, dune and opam files, Julia,
 Zig and `build.zig.zon`, Clojure and its EDN manifests, Bazel's Starlark files,
-Dockerfiles, the markup of Vue, Svelte and Astro components, R Markdown chunks
-and C preprocessor directives small built-in scanners — so the binary continues
-to cross-compile without a C toolchain.
+Nix expressions, Dockerfiles, the markup of Vue, Svelte and Astro components, R
+Markdown chunks and C preprocessor directives small built-in scanners — so the
+binary continues to cross-compile without a C toolchain.
 
 ## Security
 
