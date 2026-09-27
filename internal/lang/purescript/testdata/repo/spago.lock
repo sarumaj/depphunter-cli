@@ -1,0 +1,68 @@
+workspace:
+  packages:
+    shop:
+      path: ./
+      dependencies:
+        - aff
+        - prelude
+    widgets:
+      path: packages/widgets
+      dependencies:
+        - prelude
+  package_set:
+    address:
+      registry: 60.0.0
+  extra_packages: {}
+packages:
+  aff:
+    type: registry
+    version: 7.1.0
+    integrity: sha256-7hOC6uQO9XBAI5FD8F33ChLjFAiZVfd4BJMqlMh7TNU=
+    dependencies:
+      - effect
+      - prelude
+  arrays:
+    type: registry
+    version: 7.3.0
+    integrity: sha256-tmcklBlc/muUtUfr9RapdCPwnlQeB3aSrC4dK85gQlc=
+    dependencies:
+      - prelude
+  effect:
+    type: registry
+    version: 4.0.0
+    integrity: sha256-eBtZu+HZcMa5HilvI6kaDyVX3ji8p0W9MGKy2K4T6+M=
+    dependencies:
+      - prelude
+  halogen:
+    type: registry
+    version: 7.0.0
+    integrity: sha256-ZAmj+J3bMpcL4Tyi7ppBP7VdX5k9gMnpMdYhVvKGtWM=
+    dependencies:
+      - aff
+      - prelude
+  maybe:
+    type: registry
+    version: 6.0.0
+    integrity: sha256-5wV8+XJsMZ7aZI3M6sxgeQ4ztwwutn8OQvkPOdXiZDo=
+    dependencies:
+      - prelude
+  prelude:
+    type: registry
+    version: 6.0.1
+    integrity: sha256-o8p6SLYmVPqzXZhQFd2hGAWEwBoXl1swxLG/scpJ0V0=
+    dependencies: []
+  registry-lib:
+    type: git
+    url: https://github.com/purescript/registry-dev.git
+    rev: 3e8af27822b9d1ac8bfb158cdad08bcf6e6ec8be
+    subdir: lib
+    dependencies:
+      - aff
+      - prelude
+  spec:
+    type: registry
+    version: 7.6.0
+    integrity: sha256-+merGdQbL9zWONbnt8S8J9afGJ59MQqGtS0qSd3yu4I=
+    dependencies:
+      - aff
+      - prelude

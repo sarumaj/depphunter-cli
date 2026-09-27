@@ -34,7 +34,7 @@ const (
 // modules and WORKSPACE downloads (the Maven, PyPI, Go, npm and crates.io packages
 // Bazel's module extensions install are asked about under their own ecosystems),
 // nor flake inputs and nixpkgs packages (OSV has no Nix ecosystem), nor Elm
-// packages (OSV has no Elm ecosystem).
+// or PureScript packages (OSV has no Elm or PureScript ecosystem).
 //
 // Implements: REQ-FND-010
 var osvEcosystems = map[string]string{

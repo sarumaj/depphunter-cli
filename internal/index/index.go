@@ -67,6 +67,10 @@ const (
 	// Elm is the elm plugin's island of packages, named author/name; the package
 	// site serves each version's elm.json and a package's releases as files.
 	Elm = "elm"
+	// PureScript is the purescript plugin's island of registry packages; the
+	// registry's metadata and its index of manifests are git repositories read
+	// as files.
+	PureScript = "purescript"
 )
 
 // public is where each ecosystem's packages come from unless something says otherwise.
@@ -98,6 +102,9 @@ var public = map[string]string{
 	Julia: "https://raw.githubusercontent.com/JuliaRegistries/General/master",
 	Bazel: "https://bcr.bazel.build",
 	Elm:   "https://package.elm-lang.org",
+	// The owner of the registry's repositories: registry (metadata/) and
+	// registry-index (the manifests) are read below it.
+	PureScript: "https://raw.githubusercontent.com/purescript",
 }
 
 // Clojars is the Maven repository Clojure's libraries are published to. Leiningen,

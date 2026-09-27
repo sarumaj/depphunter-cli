@@ -45,9 +45,10 @@ Perl::LanguageServer (`perlnavigator --stdio`, `pls` or `perl
 (`starpls server`, `bazel-lsp` or `bzl lsp serve`, first installed; `BUILD`,
 `WORKSPACE` and `WORKSPACE.bzlmod` by name, `.bzl` and `.bazel` files)
 and nil or nixd (`nil` or `nixd`, first installed; `.nix` files), the
-Gleam compiler's language server (`gleam lsp`; `.gleam` files) and
-elm-language-server (`elm-language-server --stdio`; `.elm` files), skipping
-a server that is not installed.
+Gleam compiler's language server (`gleam lsp`; `.gleam` files),
+elm-language-server (`elm-language-server --stdio`; `.elm` files) and
+purescript-language-server (`purescript-language-server --stdio`; `.purs`
+files), skipping a server that is not installed.
 
 ## Rationale
 

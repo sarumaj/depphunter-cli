@@ -1,0 +1,5 @@
+package:
+  name: widgets
+  dependencies:
+    - prelude
+    - web-html
