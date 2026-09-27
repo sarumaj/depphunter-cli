@@ -812,7 +812,7 @@ crates.io, Maven, NuGet, GitHub Actions, Conan (as OSV's ConanCenter; vcpkg has
 no OSV ecosystem), Composer (as Packagist), RubyGems, Swift packages (as
 SwiftURL, by URL), pub, Hex, CRAN, Bioconductor and Hackage; OSV has no
 ecosystem for Terraform modules and providers, Buf Schema Registry modules,
-CocoaPods or Carthage. Floating packages are not
+CocoaPods, Carthage, LuaRocks or Wally. Floating packages are not
 queried, since they resolve to a different version on the next installation.
 Answers are cached for six hours.
 `--no-vulns` disables all of this.
@@ -913,6 +913,8 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | CMake FetchContent  | a `GIT_TAG` commit, a `URL_HASH`, an archive of a commit                                                     | a branch `GIT_TAG` (`main`, `origin/…`), no `GIT_TAG`, a download without a hash          |
 | CocoaPods           | `Podfile.lock` (a git pod by its checkout commit), a bare `'1.2.3'`, `'= 1.2.3'`, a `:commit`                | `~>`, `>=` and other ranges, no version, a `:branch`, a git pod without a reference       |
 | Carthage            | `Cartfile.resolved`, `== 1.2.3`, a quoted commit                                                             | `~>`, `>=`, no requirement                                                                |
+| LuaRocks            | `luarocks.lock`, `== 1.2.3` or a bare `1.2.3` in a rockspec (LuaRocks reads it as `==`)                      | `~>`, `>=` and other constraints, no version                                              |
+| Wally               | `wally.lock`, `=1.2.3`                                                                                       | a bare `1.2.3` (a caret range in Wally), `^1`, other ranges                               |
 
 A package a shell script installs (`pip install`, `npm install -g`, `go
 install`, `cargo install`, `gem install`) follows its ecosystem's row; one
@@ -944,6 +946,7 @@ and the analysis remains offline.
 | `renv.lock`, `packrat/packrat.lock`  | each R package's requirements                      |
 | `dist-newstyle/cache/plan.json`      | what each package of cabal's build plan depends on |
 | `Podfile.lock`                       | the pods each pod's specs depend on                |
+| `wally.lock`                         | each Wally package's dependencies                  |
 
 Packages added in this way are marked **transitive**, meaning that no file in
 the repository imports them. Edges between packages are of kind `depends`, as
@@ -951,24 +954,24 @@ distinct from the `import` edges that originate at a file, so that the count of
 files importing a package remains exactly that. Two versions of one package
 remain a single building, so an edge between packages is an edge between names.
 
-A Python package that no lock file gives edges for (`Pipfile.lock` records
-none) falls back to the installed environment (see [Languages](#languages)).
+A Python package that no lock file gives edges for (`Pipfile.lock` records none)
+falls back to the installed environment (see [Languages](#languages)).
 Ecosystems that keep the dependency graph outside the repository — Go modules,
 NuGet, container images, a Composer, Bundler, Mix or R project that commits no
 lock, pub, whose `pubspec.lock` is a flat list, rebar3, whose `rebar.lock`
 records only a depth, and a Haskell project without cabal's build plan on disk
-(`cabal.project.freeze` and `stack.yaml.lock` list versions only),
-Terraform registry modules and pods no `Podfile.lock` records — require
-`--online`, described below; Maven, the
-PowerShell Gallery, vcpkg, Conan 2 (whose lock is a flat list), Bioconductor
-packages no lock records, Swift packages that SwiftPM has not checked out
-under `.build` (`Package.resolved` is flat as well) and Terraform modules
-fetched from git or an archive are not resolved beyond the first level at
-present, and neither are Buf Schema Registry modules: `buf.lock` is a flat
-list, and the registry's API is not a package index depphunter asks. Content
-a CMake build fetches is not resolved beyond the first level either, nor are
-Carthage dependencies (`Cartfile.resolved` is flat). A Terraform provider
-depends on nothing.
+(`cabal.project.freeze` and `stack.yaml.lock` list versions only), Terraform
+registry modules, pods no `Podfile.lock` records and rocks (`luarocks.lock` is a
+flat list) — require `--online`, described below; Maven, the PowerShell Gallery,
+vcpkg, Conan 2 (whose lock is a flat list), Bioconductor packages no lock
+records, Swift packages that SwiftPM has not checked out under `.build`
+(`Package.resolved` is flat as well) and Terraform modules fetched from git or
+an archive are not resolved beyond the first level at present, and neither are
+Buf Schema Registry modules: `buf.lock` is a flat list, and the registry's API
+is not a package index depphunter asks. Content a CMake build fetches is not
+resolved beyond the first level either, nor are Carthage dependencies
+(`Cartfile.resolved` is flat) and Wally packages no `wally.lock` records. A
+Terraform provider depends on nothing.
 
 The side panel presents these as a **tree**: every row under *Depends on* and
 *Used by* expands into that node's own dependencies, and so on recursively.
@@ -998,7 +1001,9 @@ CRAN and Posit Package Manager (each serving the packages recorded from it),
 of cabal's own configuration (`~/.cabal/config`, `~/.config/cabal/config`,
 `CABAL_CONFIG`, `CABAL_DIR`) other than Hackage itself; a `Podfile`'s `source`
 lines and the spec repositories of `Podfile.lock` (each serving the pods
-installed from it) other than CocoaPods' own; and `GOPROXY` — and the
+installed from it) other than CocoaPods' own; the `rocks_servers` of a
+project's `.luarocks/config-5.x.lua`, of `~/.luarocks/config-5.x.lua` and of
+`LUAROCKS_CONFIG` other than luarocks.org; and `GOPROXY` — and the
 side panel names the index each package resolves from. A container image
 requires no configuration, since `ghcr.io/org/app` names its registry directly,
 and neither does a Terraform module: `app.terraform.io/acme/vpc/aws` names its
@@ -1032,6 +1037,7 @@ ecosystems whose graph is held outside the repository:
 | Hackage           | `<server>/package/<name>/preferred`, then `/package/<name>-<version>/<name>.cabal` (or newest)    | its libraries' `build-depends`, without GHC's own packages                                       |
 | Terraform modules | `<modules.v1>/<namespace>/<name>/<provider>/versions` (service discovery off the public registry) | the providers and registry modules of the version asked for, or the newest its constraint allows |
 | CocoaPods         | `<cdn>/Specs/<a>/<b>/<c>/<pod>/<version>/<pod>.podspec.json` (newest: the shard's version list)   | its and its default subspecs' `dependencies`                                                     |
+| LuaRocks          | `<server>/<rock>-<version>.rockspec`, versions from `<server>/manifest-5.1.zip` (read once)       | its run-time `dependencies`, without `lua`                                                       |
 
 A container image has no dependency list. What it has is the image it was built
 on, which is the source of its unpatched vulnerabilities, and that is what is
@@ -1127,8 +1133,8 @@ pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`
 `crates:`, `actions:`, `gitlab-ci:`, `psgallery:`, `c-external:`, `vcpkg:`,
 `conan:`, `composer:`, `rubygems:`, `swiftpm:`, `pub:`, `hex:`, `cran:`,
 `bioconductor:`, `hackage:`, `terraform-module:`, `terraform-provider:`,
-`buf:`, `cmake-fetch:`, `pkg-config:`, `cocoapods:` or `carthage:` — restricts
-it to that ecosystem.
+`buf:`, `cmake-fetch:`, `pkg-config:`, `cocoapods:`, `carthage:`, `luarocks:`
+or `wally:` — restricts it to that ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
 to whatever is configured here**, so a Go project whose machine is already
@@ -1518,6 +1524,8 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | Protocol Buffers        | `buf lsp serve`, `bufls serve` or `protols`                    |
 | Shell (sh, Bash, bats)  | `bash-language-server start`                                   |
 | CMake                   | `neocmakelsp --stdio` or `cmake-language-server`               |
+| Lua                     | `lua-language-server`                                          |
+| Luau                    | `luau-lsp lsp`                                                 |
 
 The servers run in the background once the map is displayed — gopls requires
 approximately 7 s for this repository — within the budget set by
@@ -1532,33 +1540,34 @@ The JSON and GraphML exports include the reference edges.
 
 ### Languages
 
-| Ecosystem               | Imports resolved through                                                                                                                                                                                                                                                                                                                                                         | Islands                                                                    |
-|-------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------|
-| Go                      | every `go.mod` (multi-module, local `replace`)                                                                                                                                                                                                                                                                                                                                   | Go modules, Go standard library                                            |
-| JavaScript / TypeScript | relative paths, `tsconfig`/`jsconfig` `paths`, workspaces, `package.json` + `package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`; also the scripts of Vue, Svelte and Astro components, and SvelteKit's `$lib`                                                                                                                                                                   | npm, Node.js built-ins                                                     |
-| Python                  | relative imports, `src/` layouts, requirements files, `setup.cfg`, literal `setup.py` lists, `pyproject.toml`, `Pipfile`, `poetry.lock`/`uv.lock`/`pdm.lock`/`Pipfile.lock`, installed environments (below)                                                                                                                                                                      | PyPI, Python standard library                                              |
-| Rust                    | the module tree (`crate::`, `self::`, `super::`, `mod x;`), workspace and path crates, `Cargo.toml` (renamed and workspace dependencies) + `Cargo.lock`                                                                                                                                                                                                                          | crates.io, Rust standard library                                           |
-| Java                    | source files by package path (any source root), `pom.xml` (properties, dependency management), Gradle scripts and version catalogs, sbt builds                                                                                                                                                                                                                                   | Maven, Java standard library                                               |
-| Kotlin                  | source files by the package they declare (any directory; Java files by path), the Java manifests                                                                                                                                                                                                                                                                                 | Maven, Kotlin and Java standard libraries                                  |
-| Scala                   | source files by the package they declare (any directory; Java files by path), `build.sbt` (`%`, `%%`, versions held in a `val`), the Java manifests                                                                                                                                                                                                                              | Maven, Scala and Java standard libraries                                   |
-| C#                      | namespaces to project folders (`RootNamespace` + folder), `PackageReference`, `Directory.Packages.props`                                                                                                                                                                                                                                                                         | NuGet, .NET base library                                                   |
-| C / C++                 | `#include` beside the includer, the include paths of `compile_commands.json` (`-I`, `-iquote`, `-isystem`, `/I`), `include/` and `src/`, and a unique project file ending in the included path; libraries by `vcpkg.json`, `conanfile.txt`, `conanfile.py` and `conan.lock`                                                                                                      | vcpkg, Conan, C/C++ external, C and C++ standard libraries, system headers |
-| CMake                   | `add_subdirectory`, `include` of files and of modules on `CMAKE_MODULE_PATH`, target sources, `configure_file` templates, presets; `find_package` as the includes resolve, FetchContent, ExternalProject, CPM.cmake, `pkg_check_modules`                                                                                                                                         | vcpkg, Conan, C/C++ external, fetched content, pkg-config, CMake modules   |
-| PHP                     | `use` statements (grouped, `function`, `const`) and fully qualified names in code, same-namespace `extends`/`implements`, `require`/`include` of spelled-out paths; project files by what they declare and `composer.json` PSR-4/PSR-0; packages by the autoload prefixes of `composer.lock` or `installed.json`                                                                 | Packagist, PHP standard library                                            |
-| Ruby                    | `require`/`require_relative`/`load`/`autoload` of spelled-out paths on a guessed load path (`lib`, `test`, `spec`, gemspec require paths, path gems); gems by `Gemfile`, gemspecs and `Gemfile.lock`, whose `gem` lines are imports; Rails constants by Zeitwerk naming                                                                                                          | RubyGems, Ruby standard library                                            |
-| Swift                   | `import` (every `#if` branch); `Package.swift` targets to their directories, else a directory named after the module; packages by `Package.swift`, `Package.resolved` and Xcode's `project.pbxproj`, products first, whose `.package` lines are imports; types used across a module's files                                                                                      | Swift packages, Swift standard library, Apple SDKs                         |
-| Objective-C             | `#import`/`#include` as C includes (beside the file, `compile_commands.json`, `include/` and `src/`, a unique file ending in it), `@import`; framework headers and modules to pods by `Podfile`, `Podfile.lock` and podspecs, or to Carthage by `Cartfile` and `Cartfile.resolved`, whose entries are imports; headers under `Pods/` and `Carthage/` to their dependency         | CocoaPods, Carthage, Apple SDKs, C/C++ islands                             |
-| Dart                    | `import`, `export` (every configurable URI), `part` and `part of`; relative URIs, `package:` URIs to a package's own `lib/`, path dependencies, pub workspace members and melos packages; packages by `pubspec.yaml` and `pubspec.lock`, whose dependencies are imports                                                                                                          | pub, Dart SDK libraries, Flutter SDK                                       |
-| Elixir / Erlang         | Elixir `alias`/`import`/`require`/`use` and every module reference, Erlang remote calls, `-behaviour`, `-include`/`-include_lib`; modules to the files defining them (umbrella apps too); packages by `mix.exs`, `rebar.config`, `mix.lock` and `rebar.lock`, whose dependencies are imports                                                                                     | Hex, Elixir standard library, Erlang/OTP                                   |
-| R                       | `library`/`require`/`requireNamespace`/`loadNamespace`, `pkg::`, pacman, `box::use`, roxygen `@import`; `source()` paths, knitr children; calls to a package's own functions across its files; packages by `DESCRIPTION`, `NAMESPACE`, `renv.lock` and `packrat.lock`, whose dependencies are imports                                                                            | CRAN, Bioconductor, R base packages                                        |
-| Haskell                 | `import` (every CPP branch, PackageImports, `{-# SOURCE #-}`); modules to the files whose headers declare them (the importer's package, its project's and its dependencies' local packages), Happy/Alex sources by path; packages by `.cabal`, `package.yaml`, `cabal.project`, `stack.yaml`, the freeze file, `stack.yaml.lock` and `plan.json`, whose dependencies are imports | Hackage, GHC libraries                                                     |
-| PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                                                                                                                                | PowerShell Gallery, built-in modules                                       |
-| CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                                                                                     | GitHub Actions, GitLab CI, Container images                                |
-| Protocol Buffers        | `import` (`public`, `weak`) under the import roots of `buf.work.yaml` and `buf.yaml` (v1 and v2), else the repository root, `proto/`, `protos/`, `api/`, `src/main/proto/` and the importer's directories, else a unique project file ending in the path; modules by `buf.yaml` `deps` and `buf.lock` and a table of common protos; `buf.gen.yaml` remote plugins                | Buf Schema Registry, Protobuf well-known types                             |
-| Terraform / OpenTofu    | `module` sources to local directories, registry and remote modules; `required_providers`, `provider` blocks and resource type prefixes to providers, pinned by `.terraform.lock.hcl`; references to what other files of the module declare; `file()`/`templatefile()` paths; Terragrunt `source`, `dependency` and `find_in_parent_folders()`                                    | Terraform modules, Terraform providers                                     |
-| Shell scripts           | `source`/`.` and scripts run by path or interpreter, with `$(dirname "$0")`, `${BASH_SOURCE%/*}`, `SCRIPT_DIR` variables, zsh's `${0:A:h}` and `git rev-parse --show-toplevel` evaluated; direnv `source_env`/`source_up`/`dotenv`, bats `load`; packages installed with pip, npm, pnpm, yarn, `go install`, `cargo install` and `gem install`                                   | PyPI, npm, Go modules, crates.io, RubyGems                                 |
-| Dockerfile / Compose    | `FROM`, `COPY --from`, `RUN --mount from=` and `# syntax=` with `ARG` defaults expanded and stages told apart; Compose `image:`, and `build:` to the Dockerfile in the repository                                                                                                                                                                                                | Container images                                                           |
-| Markdown                | links to files and directories in the repository (inline, reference, autolink, and the `href` and `src` of raw HTML); headings become the file's symbols                                                                                                                                                                                                                         | *(none: a link is not a package)*                                          |
+| Ecosystem               | Imports resolved through                                                                                                                                                                                                                                                                                                                                                                                                                                    | Islands                                                                    |
+|-------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------|
+| Go                      | every `go.mod` (multi-module, local `replace`)                                                                                                                                                                                                                                                                                                                                                                                                              | Go modules, Go standard library                                            |
+| JavaScript / TypeScript | relative paths, `tsconfig`/`jsconfig` `paths`, workspaces, `package.json` + `package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`; also the scripts of Vue, Svelte and Astro components, and SvelteKit's `$lib`                                                                                                                                                                                                                                              | npm, Node.js built-ins                                                     |
+| Python                  | relative imports, `src/` layouts, requirements files, `setup.cfg`, literal `setup.py` lists, `pyproject.toml`, `Pipfile`, `poetry.lock`/`uv.lock`/`pdm.lock`/`Pipfile.lock`, installed environments (below)                                                                                                                                                                                                                                                 | PyPI, Python standard library                                              |
+| Rust                    | the module tree (`crate::`, `self::`, `super::`, `mod x;`), workspace and path crates, `Cargo.toml` (renamed and workspace dependencies) + `Cargo.lock`                                                                                                                                                                                                                                                                                                     | crates.io, Rust standard library                                           |
+| Java                    | source files by package path (any source root), `pom.xml` (properties, dependency management), Gradle scripts and version catalogs, sbt builds                                                                                                                                                                                                                                                                                                              | Maven, Java standard library                                               |
+| Kotlin                  | source files by the package they declare (any directory; Java files by path), the Java manifests                                                                                                                                                                                                                                                                                                                                                            | Maven, Kotlin and Java standard libraries                                  |
+| Scala                   | source files by the package they declare (any directory; Java files by path), `build.sbt` (`%`, `%%`, versions held in a `val`), the Java manifests                                                                                                                                                                                                                                                                                                         | Maven, Scala and Java standard libraries                                   |
+| C#                      | namespaces to project folders (`RootNamespace` + folder), `PackageReference`, `Directory.Packages.props`                                                                                                                                                                                                                                                                                                                                                    | NuGet, .NET base library                                                   |
+| C / C++                 | `#include` beside the includer, the include paths of `compile_commands.json` (`-I`, `-iquote`, `-isystem`, `/I`), `include/` and `src/`, and a unique project file ending in the included path; libraries by `vcpkg.json`, `conanfile.txt`, `conanfile.py` and `conan.lock`                                                                                                                                                                                 | vcpkg, Conan, C/C++ external, C and C++ standard libraries, system headers |
+| CMake                   | `add_subdirectory`, `include` of files and of modules on `CMAKE_MODULE_PATH`, target sources, `configure_file` templates, presets; `find_package` as the includes resolve, FetchContent, ExternalProject, CPM.cmake, `pkg_check_modules`                                                                                                                                                                                                                    | vcpkg, Conan, C/C++ external, fetched content, pkg-config, CMake modules   |
+| PHP                     | `use` statements (grouped, `function`, `const`) and fully qualified names in code, same-namespace `extends`/`implements`, `require`/`include` of spelled-out paths; project files by what they declare and `composer.json` PSR-4/PSR-0; packages by the autoload prefixes of `composer.lock` or `installed.json`                                                                                                                                            | Packagist, PHP standard library                                            |
+| Ruby                    | `require`/`require_relative`/`load`/`autoload` of spelled-out paths on a guessed load path (`lib`, `test`, `spec`, gemspec require paths, path gems); gems by `Gemfile`, gemspecs and `Gemfile.lock`, whose `gem` lines are imports; Rails constants by Zeitwerk naming                                                                                                                                                                                     | RubyGems, Ruby standard library                                            |
+| Swift                   | `import` (every `#if` branch); `Package.swift` targets to their directories, else a directory named after the module; packages by `Package.swift`, `Package.resolved` and Xcode's `project.pbxproj`, products first, whose `.package` lines are imports; types used across a module's files                                                                                                                                                                 | Swift packages, Swift standard library, Apple SDKs                         |
+| Objective-C             | `#import`/`#include` as C includes (beside the file, `compile_commands.json`, `include/` and `src/`, a unique file ending in it), `@import`; framework headers and modules to pods by `Podfile`, `Podfile.lock` and podspecs, or to Carthage by `Cartfile` and `Cartfile.resolved`, whose entries are imports; headers under `Pods/` and `Carthage/` to their dependency                                                                                    | CocoaPods, Carthage, Apple SDKs, C/C++ islands                             |
+| Dart                    | `import`, `export` (every configurable URI), `part` and `part of`; relative URIs, `package:` URIs to a package's own `lib/`, path dependencies, pub workspace members and melos packages; packages by `pubspec.yaml` and `pubspec.lock`, whose dependencies are imports                                                                                                                                                                                     | pub, Dart SDK libraries, Flutter SDK                                       |
+| Elixir / Erlang         | Elixir `alias`/`import`/`require`/`use` and every module reference, Erlang remote calls, `-behaviour`, `-include`/`-include_lib`; modules to the files defining them (umbrella apps too); packages by `mix.exs`, `rebar.config`, `mix.lock` and `rebar.lock`, whose dependencies are imports                                                                                                                                                                | Hex, Elixir standard library, Erlang/OTP                                   |
+| R                       | `library`/`require`/`requireNamespace`/`loadNamespace`, `pkg::`, pacman, `box::use`, roxygen `@import`; `source()` paths, knitr children; calls to a package's own functions across its files; packages by `DESCRIPTION`, `NAMESPACE`, `renv.lock` and `packrat.lock`, whose dependencies are imports                                                                                                                                                       | CRAN, Bioconductor, R base packages                                        |
+| Haskell                 | `import` (every CPP branch, PackageImports, `{-# SOURCE #-}`); modules to the files whose headers declare them (the importer's package, its project's and its dependencies' local packages), Happy/Alex sources by path; packages by `.cabal`, `package.yaml`, `cabal.project`, `stack.yaml`, the freeze file, `stack.yaml.lock` and `plan.json`, whose dependencies are imports                                                                            | Hackage, GHC libraries                                                     |
+| Lua / Luau / Teal       | `require` (a string, `pcall(require, …)`, Luau paths and `.luaurc` aliases, Roblox instances), `dofile`/`loadfile`; modules to files by a rockspec's `build.modules`, else `?.lua`/`?/init.lua` under the file's directories and their `lua/`, `src/` and `lib/` and `.luarc.json`'s roots; Roblox instances through Rojo projects; rocks by rockspecs and `luarocks.lock`, Wally packages by `wally.toml` and `wally.lock`, whose dependencies are imports | LuaRocks, Wally, Lua standard library, Lua host runtimes                   |
+| PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                                                                                                                                                                                                           | PowerShell Gallery, built-in modules                                       |
+| CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                                                                                                                                                                | GitHub Actions, GitLab CI, Container images                                |
+| Protocol Buffers        | `import` (`public`, `weak`) under the import roots of `buf.work.yaml` and `buf.yaml` (v1 and v2), else the repository root, `proto/`, `protos/`, `api/`, `src/main/proto/` and the importer's directories, else a unique project file ending in the path; modules by `buf.yaml` `deps` and `buf.lock` and a table of common protos; `buf.gen.yaml` remote plugins                                                                                           | Buf Schema Registry, Protobuf well-known types                             |
+| Terraform / OpenTofu    | `module` sources to local directories, registry and remote modules; `required_providers`, `provider` blocks and resource type prefixes to providers, pinned by `.terraform.lock.hcl`; references to what other files of the module declare; `file()`/`templatefile()` paths; Terragrunt `source`, `dependency` and `find_in_parent_folders()`                                                                                                               | Terraform modules, Terraform providers                                     |
+| Shell scripts           | `source`/`.` and scripts run by path or interpreter, with `$(dirname "$0")`, `${BASH_SOURCE%/*}`, `SCRIPT_DIR` variables, zsh's `${0:A:h}` and `git rev-parse --show-toplevel` evaluated; direnv `source_env`/`source_up`/`dotenv`, bats `load`; packages installed with pip, npm, pnpm, yarn, `go install`, `cargo install` and `gem install`                                                                                                              | PyPI, npm, Go modules, crates.io, RubyGems                                 |
+| Dockerfile / Compose    | `FROM`, `COPY --from`, `RUN --mount from=` and `# syntax=` with `ARG` defaults expanded and stages told apart; Compose `image:`, and `build:` to the Dockerfile in the repository                                                                                                                                                                                                                                                                           | Container images                                                           |
+| Markdown                | links to files and directories in the repository (inline, reference, autolink, and the `href` and `src` of raw HTML); headings become the file's symbols                                                                                                                                                                                                                                                                                                    | *(none: a link is not a package)*                                          |
 
 Python packages that no index has - an in-house package installed from a
 directory, a wheel file or a Git repository - are resolved from what a Python
@@ -1864,6 +1873,26 @@ its version is not known offline. `build-depends`, hpack dependencies,
 they name. Haskell is read by a small lexer; the tree-sitter grammar was
 several times slower and lost 18% of the files measured to CPP and extensions.
 
+Lua, LuaJIT, Luau (Roblox's, in `.luau` and `.lua` files) and Teal files are
+read for their `require` calls, `dofile` and `loadfile`. A module resolves to
+the file a rockspec's `build.modules` maps it to, else to `?.lua` or
+`?/init.lua` under the requiring file's directory, each directory above it and
+their `lua/` (a Neovim plugin's), `src/` and `lib/`, then `.luarc.json`'s
+library; the standard library and LuaJIT's modules are a hidden island, and so
+are the modules host programs provide (Neovim's `vim.*`, LÖVE's `love.*`,
+OpenResty's `ngx.*` and bundled `resty.*` libraries, Lune's `@lune/*`).
+Anything else is a rock, found among what the rockspecs declare and
+`luarocks.lock` pins by a curated table (`lfs` is luafilesystem, `ssl` luasec)
+and the usual spellings of its name. Roblox's `require(script.Parent.X)` and
+`game:GetService("ReplicatedStorage").Shared.X` are placed as Rojo builds the
+game from its project files, Luau's `require("./x")`, `"@self/x"` and
+`.luaurc` aliases by path, and a path through a `Packages` folder to the Wally
+package `wally.toml` names so. Rockspec dependencies and `wally.toml` entries
+are imports of what they name, and the top-level functions, methods, module
+tables, exported fields and Luau and Teal types are the files' symbols. Lua is
+read by a small lexer; the tree-sitter grammar took 3 to 5 ms per file and
+failed on Roblox's `.lua` files, which are Luau.
+
 Terraform and OpenTofu configurations, variable files, lock files and
 Terragrunt configurations are read by a small HCL scanner: the tree-sitter
 grammar parsed every file measured correctly but was about twenty times
@@ -1885,10 +1914,10 @@ uses a pure-Go tree-sitter runtime for JavaScript/TypeScript, Python, Rust,
 Java, Kotlin, Scala, C, C++, PHP and Ruby; Go uses the standard library's own
 parser, CI, Compose and Buf files a YAML parser, and C#, PowerShell, Markdown,
 Dart, Elixir, Erlang, R, Haskell, HCL, Protocol Buffers, shell scripts, CMake
-files, Swift, Objective-C, CocoaPods and Carthage manifests,
-Dockerfiles, the markup of Vue, Svelte and Astro components, R Markdown chunks
-and C preprocessor directives small built-in scanners — so the binary continues
-to cross-compile without a C toolchain.
+files, Swift, Objective-C, CocoaPods and Carthage manifests, Lua, Luau, Teal
+and LuaRocks files, Dockerfiles, the markup of Vue, Svelte and Astro
+components, R Markdown chunks and C preprocessor directives small built-in
+scanners — so the binary continues to cross-compile without a C toolchain.
 
 ## Security
 

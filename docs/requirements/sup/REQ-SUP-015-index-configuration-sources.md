@@ -24,7 +24,8 @@ The system **shall** read index configuration from this machine:
 `RENV_CONFIG_REPOS_OVERRIDE` and the `options(repos = ...)` of `~/.Rprofile`
 and `R_PROFILE_USER`, and the `repository` stanzas of cabal's configuration
 (`CABAL_CONFIG`, `$CABAL_DIR/config`, `~/.config/cabal/config`,
-`~/.cabal/config`).
+`~/.cabal/config`), and the `rocks_servers` of LuaRocks' configuration
+(`LUAROCKS_CONFIG`, `~/.luarocks/config-5.x.lua`).
 
 The system **shall** read index configuration from the repository: `.npmrc`,
 `.yarnrc.yml`, `pip.conf`, `pip.ini`, `requirements*.txt`, the Poetry and uv
@@ -36,8 +37,9 @@ inside it), the GEM remotes of `Gemfile.lock`, the `hosted:` servers of a
 servers other than pub.dev that `pubspec.lock` resolved packages from, the
 repositories other than CRAN of `renv.lock` (each serving the packages
 recorded from it), the `options(repos = ...)` of `.Rprofile` and
-`Rprofile.site`, and the `repository` stanzas other than Hackage of
-`cabal.project` and `cabal.project.local`.
+`Rprofile.site`, the `repository` stanzas other than Hackage of
+`cabal.project` and `cabal.project.local`, and the `rocks_servers` other than
+luarocks.org of a project's `.luarocks/config-5.x.lua`.
 
 ## Rationale
 

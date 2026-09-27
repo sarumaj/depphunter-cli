@@ -125,6 +125,7 @@ The server **shall** ...
 | `beam`      | The Elixir and Erlang plugin, Mix, rebar3 and Hex.                                             |
 | `r`         | The R plugin, R Markdown and Quarto documents, renv, packrat, CRAN and Bioconductor.           |
 | `haskell`   | The Haskell plugin, cabal, hpack, stack and Hackage.                                           |
+| `lua`       | The Lua, Luau and Teal plugin, LuaRocks (rockspecs, luarocks.lock), Wally and Rojo projects.   |
 | `terraform` | The Terraform and OpenTofu plugin, lock files, Terragrunt and the module registries.           |
 | `proto`     | The Protocol Buffers plugin, Buf's configuration and lock files and the Buf Schema Registry.   |
 | `shell`     | The shell script plugin (sh, Bash, zsh, bats), direnv and packages scripts install.            |
@@ -249,6 +250,11 @@ requirements of type `limitation` in their scopes:
   calls are not evaluated, values computed at configure time (fetched
   content's source directories, binary directories) are unknown, and sources'
   includes of fetched content are not attributed to the fetched package.
+- Lua is read without running Lua, LuaRocks or Rojo: `package.path` set at run
+  time is not read (modules are found under conventional roots), computed
+  requires and instances created at run time are not followed, an undeclared
+  rock is named by a curated table and heuristics, `luarocks.lock` has no
+  rock-to-rock edges, and no vulnerability database covers LuaRocks or Wally.
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

@@ -1,6 +1,8 @@
 package index
 
 import (
+	"archive/zip"
+	"bytes"
 	"context"
 	"crypto/md5"
 	"encoding/hex"
@@ -736,5 +738,77 @@ func TestCocoaPodsDependencies(t *testing.T) {
 		"/all_pods_versions_" + strings.ReplaceAll(shard, "/", "_") + ".txt",
 		"/Specs/" + shard + "/AcmeKit/1.10.0/AcmeKit.podspec.json"}; !reflect.DeepEqual(asked, want) {
 		t.Errorf("asked %v, want %v", asked, want)
+	}
+}
+
+// A rocks server is asked for its manifest once (zipped; the plain one when there is
+// no zip), then for the rockspec of the version asked for - a locked one with its
+// revision directly, else the newest the constraint allows. Its run-time
+// dependencies answer, without lua; "== x" pins.
+//
+// Verifies: REQ-SUP-052
+func TestLuaRocksDependencies(t *testing.T) {
+	manifest := `repository = {
+   ["acme-http"] = {
+      ["1.2.0-1"] = { { arch = "rockspec" } },
+      ["1.10.0-2"] = { { arch = "rockspec" }, { arch = "all" } },
+      ["2.0.0-1"] = { { arch = "rockspec" } },
+      ["scm-1"] = { { arch = "rockspec" } },
+   },
+}`
+	var buf bytes.Buffer
+	zw := zip.NewWriter(&buf)
+	w, _ := zw.Create("manifest-5.1")
+	w.Write([]byte(manifest))
+	zw.Close()
+	rockspec := func(deps string) []byte {
+		return []byte("package = 'acme-http'\ndependencies = { " + deps + " }\ntest_dependencies = { 'busted' }\n")
+	}
+	for _, zipped := range []bool{true, false} {
+		var asked []string
+		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			asked = append(asked, r.URL.Path)
+			switch r.URL.Path {
+			case "/manifest-5.1.zip":
+				if !zipped {
+					w.WriteHeader(http.StatusNotFound)
+					return
+				}
+				w.Write(buf.Bytes())
+			case "/manifest-5.1":
+				w.Write([]byte(manifest))
+			case "/acme-http-1.10.0-2.rockspec":
+				w.Write(rockspec(`"lua >= 5.1", "luasocket == 3.1.0", "penlight ~> 1.5", platforms = { unix = { "luaposix" } }`))
+			case "/acme-http-1.2.0-1.rockspec":
+				w.Write(rockspec(`"lua-cjson"`))
+			default:
+				w.WriteHeader(http.StatusNotFound)
+			}
+		}))
+		c := clientFor(t, LuaRocks, srv.URL, "")
+		got := c.Dependencies(lang.Target{Ecosystem: LuaRocks, Package: "acme-http", Version: "~> 1.10"})
+		want := []lang.Target{
+			{Ecosystem: LuaRocks, Package: "luaposix"},
+			{Ecosystem: LuaRocks, Package: "luasocket", Version: "3.1.0", Pinned: true},
+			{Ecosystem: LuaRocks, Package: "penlight", Version: "~> 1.5"},
+		}
+		if !reflect.DeepEqual(got, want) {
+			t.Errorf("zipped %v: got %+v, want %+v", zipped, got, want)
+		}
+		got = c.Dependencies(lang.Target{Ecosystem: LuaRocks, Package: "acme-http", Version: "1.2.0-1", Pinned: true})
+		if want := []lang.Target{{Ecosystem: LuaRocks, Package: "lua-cjson"}}; !reflect.DeepEqual(got, want) {
+			t.Errorf("locked: got %+v, want %+v", got, want)
+		}
+		if got := c.Dependencies(lang.Target{Ecosystem: LuaRocks, Package: "absent"}); len(got) != 0 {
+			t.Errorf("absent: %+v", got)
+		}
+		wantAsked := []string{"/manifest-5.1.zip", "/acme-http-1.10.0-2.rockspec", "/acme-http-1.2.0-1.rockspec"}
+		if !zipped {
+			wantAsked = []string{"/manifest-5.1.zip", "/manifest-5.1", "/acme-http-1.10.0-2.rockspec", "/acme-http-1.2.0-1.rockspec"}
+		}
+		if !reflect.DeepEqual(asked, wantAsked) {
+			t.Errorf("zipped %v: asked %v", zipped, asked)
+		}
+		srv.Close()
 	}
 }

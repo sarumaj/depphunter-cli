@@ -48,6 +48,9 @@ const (
 	// CocoaPods is the objc plugin's island of pods; its public index is the
 	// CocoaPods CDN, which serves the trunk spec repository as files.
 	CocoaPods = "cocoapods"
+	// LuaRocks is the lua plugin's island of rocks; its public index is the
+	// luarocks.org rocks server.
+	LuaRocks = "luarocks"
 )
 
 // public is where each ecosystem's packages come from unless something says otherwise.
@@ -70,6 +73,7 @@ var public = map[string]string{
 	// namespaces, and the plugin names modules of either without a host.
 	TerraformModule: "https://registry.terraform.io",
 	CocoaPods:       "https://cdn.cocoapods.org",
+	LuaRocks:        "https://luarocks.org",
 }
 
 // HackageItself reports whether a repository URL is Hackage (any scheme, with or
@@ -93,6 +97,16 @@ func CocoaPodsTrunk(repo string) bool {
 		return true
 	}
 	return false
+}
+
+// LuaRocksItself reports whether a rocks server a LuaRocks configuration names is
+// luarocks.org itself (its root or its /dev and /manifests/<user> manifests): the
+// public index, not one the repository or machine brings along.
+//
+// Implements: REQ-SUP-052
+func LuaRocksItself(server string) bool {
+	u, err := url.Parse(strings.TrimSpace(server))
+	return err == nil && strings.EqualFold(u.Hostname(), "luarocks.org")
 }
 
 // CRANMirror reports whether an R repository URL is CRAN itself - cloud.r-project.org,

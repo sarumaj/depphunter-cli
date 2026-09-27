@@ -44,6 +44,9 @@ type Client struct {
 	// repos is what the PACKAGES file of each CRAN-like repository lists: one
 	// request per repository rather than one per package.
 	repos map[string]map[string][]dep
+	// rocks is what each rocks server's manifest lists: rock -> versions, one
+	// request per server rather than one per rock.
+	rocks map[string]map[string][]string
 	// rep is the report this run is writing, if anybody is reading it. It is set per
 	// analysis - one client serves every re-analysis in --watch - so it is guarded
 	// like the rest.
@@ -85,6 +88,7 @@ func NewClient(cfg *Config, dir string, ttl, timeout time.Duration,
 		failed:  map[string]time.Time{},
 		feeds:   map[string]string{},
 		repos:   map[string]map[string][]dep{},
+		rocks:   map[string]map[string][]string{},
 	}
 }
 
@@ -228,6 +232,8 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		deps, err = c.terraformModule(ctx, index, t)
 	case CocoaPods:
 		deps, err = c.cocoapodsPod(ctx, index, t)
+	case LuaRocks:
+		deps, err = c.luarocksRock(ctx, index, t)
 	default:
 		// Maven is the one that cannot be asked. A POM is addressed by group *and*
 		// artifact, and the Java plugin puts only the group on the map (an import

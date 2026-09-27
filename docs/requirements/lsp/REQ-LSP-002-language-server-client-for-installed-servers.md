@@ -33,7 +33,9 @@ installed; Protocol Buffers) and bash-language-server
 (`bash-language-server start`; `.sh`, `.bash`, `.ksh`, `.bats` and `.envrc`
 files, not zsh) and neocmakelsp or cmake-language-server (`neocmakelsp
 --stdio` or `cmake-language-server`, first installed; `CMakeLists.txt` by
-name and `.cmake` files), skipping a server that is not installed.
+name and `.cmake` files) and lua-language-server (`lua-language-server`, Lua)
+and luau-lsp (`luau-lsp lsp`, Luau), skipping a server that is not
+installed.
 
 ## Rationale
 

@@ -680,3 +680,34 @@ func TestDiscoverReadsCocoaPodsSources(t *testing.T) {
 		}
 	}
 }
+
+// A project's .luarocks/config-5.x.lua names the repository's rocks servers;
+// LUAROCKS_CONFIG and ~/.luarocks/config-5.x.lua this machine's. luarocks.org itself
+// is not recorded.
+//
+// Verifies: REQ-SUP-015, REQ-SUP-052
+func TestDiscoverReadsLuaRocksConfig(t *testing.T) {
+	files := write(t, map[string]string{
+		".luarocks/config-5.1.lua": `rocks_servers = { "https://luarocks.org", "https://rocks.corp.test/" }`,
+	})
+	if idx, known := Discover(files, env(nil), "").For(LuaRocks, "penlight"); idx != "https://rocks.corp.test" || known {
+		t.Errorf("project: got %s (known %v)", idx, known)
+	}
+	if idx, known := Discover(nil, env(nil), "").For(LuaRocks, "penlight"); idx != "https://luarocks.org" || !known {
+		t.Errorf("default: got %s (known %v)", idx, known)
+	}
+	home := t.TempDir()
+	os.MkdirAll(filepath.Join(home, ".luarocks"), 0o755)
+	os.WriteFile(filepath.Join(home, ".luarocks", "config-5.4.lua"), []byte("rocks_servers = {\n  { 'https://mirror.corp.test' },\n}\n"), 0o644)
+	if idx, known := Discover(nil, env(nil), home).For(LuaRocks, "penlight"); idx != "https://mirror.corp.test" || !known {
+		t.Errorf("home: got %s (known %v)", idx, known)
+	}
+	cfg := filepath.Join(t.TempDir(), "config.lua")
+	os.WriteFile(cfg, []byte(`rocks_servers = { "https://rocks.env.test" }`), 0o644)
+	if idx, known := Discover(nil, env(map[string]string{"LUAROCKS_CONFIG": cfg}), "").For(LuaRocks, "penlight"); idx != "https://rocks.env.test" || !known {
+		t.Errorf("LUAROCKS_CONFIG: got %s (known %v)", idx, known)
+	}
+	if !LuaRocksItself("https://luarocks.org/dev") || LuaRocksItself("https://rocks.corp.test") {
+		t.Error("LuaRocksItself")
+	}
+}
