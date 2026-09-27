@@ -23,6 +23,7 @@ var byExt = map[string]string{
 	".f90": "Fortran", ".f95": "Fortran", ".f03": "Fortran", ".f08": "Fortran", ".f18": "Fortran", ".f": "Fortran", ".for": "Fortran",
 	".ftn": "Fortran", ".f77": "Fortran", ".fpp": "Fortran", ".fypp": "Fortran", ".hx": "Haxe", ".hxml": "Haxe",
 	".ads": "Ada", ".adb": "Ada", ".ada": "Ada", ".gpr": "GPR",
+	".rkt": "Racket", ".rktl": "Racket", ".rktd": "Racket", ".scrbl": "Scribble", ".scm": "Scheme", ".ss": "Scheme",
 	".sh": "Shell", ".bash": "Shell", ".zsh": "Shell", ".ksh": "Shell", ".bats": "Shell", ".zsh-theme": "Shell", ".ps1": "PowerShell", ".psm1": "PowerShell", ".psd1": "PowerShell",
 	".html": "HTML", ".htm": "HTML", ".css": "CSS", ".scss": "CSS", ".sass": "CSS", ".less": "CSS",
 	".vue": "Vue", ".svelte": "Svelte", ".astro": "Astro",
@@ -204,6 +205,27 @@ func forthSource(head []byte) bool {
 		}
 		if bytes.HasPrefix(line, []byte(": ")) && bytes.HasSuffix(line, []byte(" ;")) {
 			return true
+		}
+	}
+	return false
+}
+
+// racketSource reports whether a Scheme file (.scm, .ss) is a Racket module:
+// its first line, after a #! line, blank lines and ; comments, is a #lang line.
+// Chez Scheme, Guile and R6RS/R7RS programs have none.
+//
+// Implements: REQ-LANG-015, REQ-RACKET-001
+func racketSource(head []byte) bool {
+	for i, line := range bytes.Split(head, []byte("\n")) {
+		line = bytes.TrimSpace(line)
+		switch {
+		case i == 0 && bytes.HasPrefix(line, []byte("#!")) && !bytes.HasPrefix(line, []byte("#!r6rs")):
+			if len(line) > 2 && line[2] != '/' && line[2] != ' ' {
+				return true // #!racket/base is #lang racket/base
+			}
+		case len(line) == 0, line[0] == ';':
+		default:
+			return bytes.HasPrefix(line, []byte("#lang ")) || bytes.HasPrefix(line, []byte("#lang\t"))
 		}
 	}
 	return false

@@ -20,7 +20,8 @@ When git cannot list the files, the system **shall** walk the directory tree and
 `dist-newstyle`, `.stack-work`, `.terraform`, `.terragrunt-cache`,
 `lua_modules`, `_opam`, `.zig-cache`, `zig-cache`, `zig-out`, `zig-pkg`,
 `.cpcache`, `.shadow-cljs`, `elm-stuff`, `.spago`, `bower_components` and
-`.crystal`, `.fake`, `.dub` and `.haxelib`, an `output` directory beside a
+`.crystal`, `.fake`, `.dub`, `.haxelib` and `compiled` (what `raco make`
+writes beside Racket modules), an `output` directory beside a
 `spago.yaml` or `spago.dhall` (what the PureScript compiler wrote), a `lib`
 directory beside a `shard.yml` (what shards installed), `packages` and
 `paket-files` directories beside a `paket.dependencies` (what Paket
@@ -46,8 +47,9 @@ caches and build output.
    `.spago/p/prelude-6.0.1/src/Prelude.purs`,
    `bower_components/purescript-maybe/src/Data/Maybe.purs` and
    `.crystal/cache/macro.cr`, `.fake/build.fsx/intellisense.fsx` and
-   `.dub/packages/leftpad/1.0.0/leftpad/source/leftpad.d` and
-   `.haxelib/format/3,5,0/format/png/Reader.hx` do not
+   `.dub/packages/leftpad/1.0.0/leftpad/source/leftpad.d`,
+   `.haxelib/format/3,5,0/format/png/Reader.hx`, `compiled/main_rkt.dep`
+   and `src/compiled/errortrace/main_rkt.dep` do not
    appear in the graph, nor do `app/output/Main/index.js` beside
    `app/spago.yaml`, `shop/lib/kemal/src/kemal.cr` beside `shop/shard.yml`,
    `fs/packages/Argu/tools/x.fsx` and

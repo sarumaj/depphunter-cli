@@ -203,6 +203,7 @@ code. The page served is identical in both cases.
   [Fortran and fpm](#fortran-and-fpm) ·
   [Haxe and haxelib](#haxe-and-haxelib) ·
   [Ada, GPR and Alire](#ada-gpr-and-alire) ·
+  [Racket and raco](#racket-and-raco) ·
   [Interface definitions](#interface-definitions) ·
   [Shell scripts](#shell-scripts) ·
   [Documentation](#documentation) ·
@@ -822,8 +823,8 @@ CocoaPods, Carthage, LuaRocks, Wally, CPAN, Zig, Bazel modules and repositories
 (the Maven, PyPI, Go, npm and crates.io packages Bazel's module extensions
 install are asked about as such), Nix flake inputs, nixpkgs packages, Elm
 packages, PureScript packages, Crystal shards, the GitHub, git and HTTP
-dependencies Paket fetches, dub packages, fpm packages, haxelib libraries or
-Alire crates. Floating packages are not queried,
+dependencies Paket fetches, dub packages, fpm packages, haxelib libraries,
+Alire crates or Racket packages. Floating packages are not queried,
 since they resolve to a different version on the next installation. Answers are
 cached for six hours. `--no-vulns` disables all of this.
 
@@ -941,6 +942,7 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | fpm                 | a git `rev`, a registry dependency's `v`, a `path`                                                                                                           | a git `branch` or no ref, a registry dependency without `v`, a metapackage's `"*"`; a git `tag` is shown, neither   |
 | haxelib             | a lix pin (`haxe_libraries/<name>.hxml`: a haxelib version or a git commit), `-lib x:1.2.3`, an exact `haxelib.json` or `<haxelib version>`, a `git:` commit | no version, a git branch or a bare git URL; a git tag or a lix tag is shown, neither                                |
 | Alire crates        | `alire.lock`, `=1.2.3` or a bare `1.2.3` (exact in Alire), a pin to a git `commit` or a `version`, a `path` pin (in the repository)                          | `^`, `~`, `>=`, `/=`, `*` and `&` combinations, a pin to a git `branch` or without a commit, a `path` pin elsewhere |
+| Racket packages     | a git source's `#<commit>`, a `#:checksum` (raco keeps no lock file)                                                                                         | a `#:version` (a minimum), no version, a git branch; a version tag is shown, neither                                |
 
 A package a shell script installs (`pip install`, `npm install -g`, `go
 install`, `cargo install`, `gem install`) follows its ecosystem's row; one
@@ -1035,7 +1037,9 @@ with no index to ask), nor the GitHub, git and HTTP files Paket fetches, nor
 fpm packages fpm has not fetched into `build/dependencies/` (fpm keeps no lock
 file, and its registry has no dependency API), nor haxelib libraries that
 neither lix pins nor haxelib installed (lib.haxe.org offers no JSON API to
-ask). A Terraform provider depends on nothing.
+ask), nor Racket packages (raco keeps no lock file, and neither installed
+packages nor the package catalog are read). A Terraform provider depends on
+nothing.
 
 The side panel presents these as a **tree**: every row under *Depends on* and
 *Used by* expands into that node's own dependencies, and so on recursively.
@@ -1222,8 +1226,8 @@ pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`
 `buf:`, `cmake-fetch:`, `pkg-config:`, `cocoapods:`, `carthage:`, `luarocks:`,
 `wally:`, `cpan:`, `opam:`, `julia:`, `zig:`, `bazel:`, `bazel-repo:`, `nix:`,
 `nixpkgs:`, `elm:`, `purescript:`, `shards:`, `paket:`, `dub:`, `fpm:`,
-`fortran-external:`, `haxelib:` or `alire:` — restricts it to that
-ecosystem.
+`fortran-external:`, `haxelib:`, `alire:` or `raco:` — restricts it to
+that ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
 to whatever is configured here**, so a Go project whose machine is already
@@ -1896,6 +1900,56 @@ for tagged types, `struct` for records, `interface`, `enum`, `task`,
 are not evaluated, units generated at build time are unresolved, and OSV has
 no Ada ecosystem, so Alire crates are not checked for advisories.
 
+### Racket and raco
+
+Racket modules (`.rkt`, `.rktl` load files, `.scrbl` Scribble documents)
+start with a `#lang` line and `require` other modules by a relative path
+(`"util.rkt"`) or a collection path (`racket/list`: the file `list.rkt` of
+the collection `racket`); raco installs the catalog packages that provide
+collections, named in a package's `info.rkt`. The **Racket packages** island
+names each package as raco does (`rackunit-lib`, `gui-lib`, a git source by
+its repository or `?path=` name). depphunter reads modules and `info.rkt`
+without running Racket or raco; `.rktd` data files are claimed with nothing
+to link, a `.scm` or `.ss` file only when a `#lang` line starts it (else it
+is Chez Scheme, Guile or R6RS), and nothing in a `compiled/` directory:
+
+- **Modules**: the `#lang` line (each meta-language such as `at-exp`, and the
+  language's `lang/reader.rkt` or module), `#reader`, and at module level
+  (submodules and `begin` included) `require` in every form (`only-in`,
+  `except-in`, `prefix-in`, `rename-in`, `for-syntax`, `for-label`,
+  `for-meta`, `submod`, `lib`, `file`, `planet`, `multi-in`, `path-up`),
+  Typed Racket's `require/typed` family, `lazy-require`, `include`, `load`,
+  and Scribble's `@(require ...)` and `include-section`. Comments (`;`,
+  nested `#| |#`, `#;` datum comments, `@;`), strings, here strings,
+  regexps, characters, quoted data and Scribble text are not read.
+- **Resolution**: a relative path is an edge to the file (a `.ss` path to
+  the `.rkt` beside it); a collection path to the repository's collection
+  when one has the file: the directory of a package's `info.rkt` (its
+  `collection`, else the package's name), every directory of a
+  multi-collection package (`(define collection 'multi)`) and of a
+  `collects/` tree, so monorepos such as racket/racket and typed-racket link
+  across packages. Else the base collections (`racket/*`, `syntax/*`,
+  `net/url`, `json`, `data/queue`, ...) are a hidden **Racket base
+  collections** island; other collections go to the package a curated table
+  of the main distribution names (`rackunit` is rackunit-lib, `typed/racket`
+  typed-racket-lib, `racket/gui` gui-lib, `net/smtp` net-lib) or the
+  declared package the collection spells (`rebellion`, `acme-log` for
+  acme-log-lib), else to an unresolved package named by the collection. The
+  declared packages are those of the file's own package.
+- **Packages**: `info.rkt`'s `deps` and `build-deps` are imports (a package of
+  the repository is an edge to its `info.rkt`). raco keeps no lock file: a
+  git source's `#<commit>` and a `#:checksum` pin, a version tag is shown,
+  and a branch, a `#:version` (a minimum) and no version float. A git server
+  other than the public forges is the package's origin; a PLaneT module path
+  is a `planet/owner/pkg` package.
+
+Module-level definitions are the symbols (`define` as func or var, `class`
+values with their `define/public` methods, `struct`, macros, Typed Racket's
+`define-type`, and `module` submodules with their definitions as
+`sub.name`). Macros are not expanded, the package catalog is not asked (no
+`--online`) and installed packages are not read, and OSV has no Racket
+ecosystem, so Racket packages are not checked for advisories.
+
 ### Interface definitions
 
 Protocol Buffers definitions are shared between services and languages, and
@@ -2076,6 +2130,7 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | D                       | `serve-d`                                                                                    |
 | Haxe                    | `haxe-language-server`                                                                       |
 | Ada                     | `ada_language_server`                                                                        |
+| Racket                  | `racket -l racket-langserver`                                                                |
 | Fortran                 | `fortls`                                                                                     |
 
 The servers run in the background once the map is displayed — gopls requires
@@ -2129,6 +2184,7 @@ The JSON and GraphML exports include the reference edges.
 | Fortran                 | `use` to the file that defines the module (any build system, case-insensitive), submodules to their parent; `include`/`#include` beside the file or in `include-dir`; other modules to the package fpm fetched, a declared package they spell, the C library (MPI, HDF5, NetCDF) or a curated table; `fpm.toml` dependencies are imports                                                                                                                                                                                                           | fpm packages, Fortran external modules, Fortran intrinsic modules          |
 | Haxe                    | `import`, `using` and qualified names in code to the module's file, found by the package every module declares (sub-types to their module, `a.b.*` to every module of the package); others to the standard library, the library haxelib or lix installed that has them, a declared library they spell or a curated table; `.hxml`, `haxelib.json`, lix pins and Lime `Project.xml` files, whose libraries, class paths and main classes are imports                                                                                                | haxelib libraries, Haxe standard library                                   |
 | Ada                     | `with` clauses to the file declaring the unit (the source directories of the file's projects first), a body to its spec, `separate (P)` to the parent body, a child to its parent; others to the predefined units, the crate Alire fetched that has them, a declared crate they spell or a curated table; `.gpr` files' `with`, `Source_Dirs` and `Main`, and `alire.toml`'s dependencies, pins and project files                                                                                                                                  | Alire crates, Ada predefined units                                         |
+| Racket                  | `#lang`, `require` in every form (`only-in`, `for-syntax`, `submod`, `lib`, `file`, `planet`, `multi-in`), `require/typed`, `include`, `load`, Scribble's `@(require ...)` and `include-section`; relative paths to files, collection paths to the repository's collections (packages' `info.rkt`, multi-collection packages, `collects/`), else the base collections, a curated table or the `info.rkt` `deps` they spell; `info.rkt` `deps` and `build-deps`                                                                                     | Racket packages, Racket base collections                                   |
 | PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                                                                                                                                                                                                                                                                                                  | PowerShell Gallery, built-in modules                                       |
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                                                                                                                                                                                                                                                       | GitHub Actions, GitLab CI, Container images                                |
 | Protocol Buffers        | `import` (`public`, `weak`) under the import roots of `buf.work.yaml` and `buf.yaml` (v1 and v2), else the repository root, `proto/`, `protos/`, `api/`, `src/main/proto/` and the importer's directories, else a unique project file ending in the path; modules by `buf.yaml` `deps` and `buf.lock` and a table of common protos; `buf.gen.yaml` remote plugins                                                                                                                                                                                  | Buf Schema Registry, Protobuf well-known types                             |
@@ -2678,6 +2734,10 @@ tree-sitter grammar parses Ada well, but at 5 to 8 ms per file it took forty
 times as long as the scanner, and the resolver reads every source's unit
 besides. See [Ada, GPR and Alire](#ada-gpr-and-alire).
 
+Racket, Scribble documents and `info.rkt` are read by a small reader: the
+tree-sitter grammar parses Racket well but took 3.6 to 5.8 ms per file, and
+it does not read Scribble's `@`-forms. See [Racket and raco](#racket-and-raco).
+
 Protocol Buffers definitions are read by a small scanner: the tree-sitter
 grammar took 2.4 to 3 ms per file and failed on every file using editions.
 See [Interface definitions](#interface-definitions).
@@ -2704,7 +2764,8 @@ Luau, Teal and LuaRocks files, Perl and its CPAN manifests, OCaml, dune and opam
 files, Julia, Zig and `build.zig.zon`, Clojure and its EDN manifests, Bazel's
 Starlark files, Nix expressions, Gleam, Elm and PureScript modules, spago's
 Dhall files, Crystal, F# and Paket's files, D and `dub.sdl`, Fortran, Haxe
-and its build files, Ada and GNAT project files, Dockerfiles, the
+and its build files, Ada and GNAT project files, Racket, Scribble and
+`info.rkt`, Dockerfiles, the
 markup of Vue, Svelte and Astro components, R Markdown chunks and C preprocessor
 directives small built-in scanners — so the binary continues to cross-compile
 without a C toolchain.

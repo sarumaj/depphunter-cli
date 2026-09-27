@@ -587,16 +587,16 @@ func (r *sourceReader) path(i int) {
 		return // inside a path read from its start
 	}
 	ctx := r.modAt[i]
-	var segs []string
+	var segments []string
 	j := i
 	for j < len(r.tokens) && r.tokens[j].k == tUpper {
 		if r.is(j+1, tOp, ".") {
-			segs = append(segs, r.tokens[j].s)
+			segments = append(segments, r.tokens[j].s)
 			j += 2
 			continue
 		}
 		if ctx {
-			segs = append(segs, r.tokens[j].s)
+			segments = append(segments, r.tokens[j].s)
 			j++
 		}
 		break
@@ -609,14 +609,14 @@ func (r *sourceReader) path(i int) {
 			r.modAt[j+2] = true
 		}
 	}
-	if len(segs) == 0 {
+	if len(segments) == 0 {
 		return
 	}
 	// Foo__Bar is how dune names a wrapped library's module Foo.Bar.
-	if a, b, ok := strings.Cut(segs[0], "__"); ok && a != "" && b != "" {
-		segs = append([]string{a, strings.ToUpper(b[:1]) + b[1:]}, segs[1:]...)
+	if a, b, ok := strings.Cut(segments[0], "__"); ok && a != "" && b != "" {
+		segments = append([]string{a, strings.ToUpper(b[:1]) + b[1:]}, segments[1:]...)
 	}
-	if r.declared[segs[0]] {
+	if r.declared[segments[0]] {
 		return
 	}
 	kind := kindModule
@@ -629,7 +629,7 @@ func (r *sourceReader) path(i int) {
 	} else if r.is(k, tLower, "include") {
 		kind = kindInclude
 	}
-	module := strings.Join(segs[:min(2, len(segs))], ".")
+	module := strings.Join(segments[:min(2, len(segments))], ".")
 	if kind == kindOpen {
 		r.opens = append(r.opens, module)
 	}

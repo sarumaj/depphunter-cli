@@ -434,10 +434,10 @@ func (r *resolver) unit(file, u string) lang.Target {
 	}
 	scope := r.scope(file)
 	// the crate Alire fetched that has the unit, else its nearest parent unit
-	segs := strings.Split(u, ".")
-	for k := len(segs); k > 0; k-- {
+	segments := strings.Split(u, ".")
+	for k := len(segments); k > 0; k-- {
 		for _, c := range scope {
-			if name, ok := c.units[strings.Join(segs[:k], ".")]; ok {
+			if name, ok := c.units[strings.Join(segments[:k], ".")]; ok {
 				return r.crate(c, name)
 			}
 		}
@@ -522,9 +522,9 @@ func (c *crateDir) knows(name string) bool {
 // an _ada or ada suffix (TOML is ada_toml, URI uri_ada, ANSI ansiada) or a lib
 // prefix (libgpr).
 func spellsCrate(unit, crate string) int {
-	segs := strings.Split(unit, ".")
-	for k := len(segs); k > 0; k-- {
-		s := strings.Join(segs[:k], "_")
+	segments := strings.Split(unit, ".")
+	for k := len(segments); k > 0; k-- {
+		s := strings.Join(segments[:k], "_")
 		switch crate {
 		case s, s + "_ada", "ada_" + s, s + "ada", "lib" + s:
 			return k

@@ -268,12 +268,12 @@ func (r *resolver) main(file, mod string) lang.Target {
 // local is the repository's file of the module an import names (the longest
 // leading module path: a.b.C.D is the type D of a.b.C), the one nearest the
 // importing file when several class paths have it.
-func (r *resolver) local(file string, segs []string) string {
-	for n := len(segs); n >= 1; n-- {
-		if !upper(segs[n-1]) {
+func (r *resolver) local(file string, segments []string) string {
+	for n := len(segments); n >= 1; n-- {
+		if !upper(segments[n-1]) {
 			continue
 		}
-		if list := r.mods[strings.Join(segs[:n], ".")]; len(list) > 0 {
+		if list := r.mods[strings.Join(segments[:n], ".")]; len(list) > 0 {
 			return nearest(file, list)
 		}
 	}
@@ -312,32 +312,32 @@ func common(a, b string) int {
 // Implements: REQ-HAXE-004, REQ-HAXE-007
 func (r *resolver) module(file, mod string, ref bool) lang.Target {
 	wild := strings.HasSuffix(mod, ".*")
-	segs := strings.Split(strings.TrimSuffix(mod, ".*"), ".")
-	if segs[0] == "std" && len(segs) > 1 {
-		segs = segs[1:] // std.Any, std.format.Data: from the root package
+	segments := strings.Split(strings.TrimSuffix(mod, ".*"), ".")
+	if segments[0] == "std" && len(segments) > 1 {
+		segments = segments[1:] // std.Any, std.format.Data: from the root package
 	}
-	if f := r.local(file, segs); f != "" {
+	if f := r.local(file, segments); f != "" {
 		if f == file {
 			return lang.Target{}
 		}
 		return lang.Target{Local: f}
 	}
 	if wild {
-		if list := r.pkgs[strings.Join(segs, ".")]; len(list) > 0 && segs[0] != "" {
+		if list := r.pkgs[strings.Join(segments, ".")]; len(list) > 0 && segments[0] != "" {
 			return lang.Target{Local: path.Dir(nearest(file, list))}
 		}
 	}
-	if name := r.installedFor(file, segs, wild); name != "" {
+	if name := r.installedFor(file, segments, wild); name != "" {
 		return r.library(file, name)
 	}
-	lib, k, std := table(segs)
+	lib, k, std := table(segments)
 	decls := r.declared(file)
-	spelled, ks := spell(decls, segs)
+	spelled, ks := spell(decls, segments)
 	if spelled != "" && ks > k {
 		return r.library(file, spelled)
 	}
 	if std {
-		return lang.Target{Ecosystem: ecoStd, Package: stdName(segs)}
+		return lang.Target{Ecosystem: ecoStd, Package: stdName(segments)}
 	}
 	if lib != "" {
 		for _, d := range decls {
@@ -348,7 +348,7 @@ func (r *resolver) module(file, mod string, ref bool) lang.Target {
 		if r.known(file, lib) {
 			return r.library(file, lib)
 		}
-		if ref || r.firsts[segs[0]] {
+		if ref || r.firsts[segments[0]] {
 			return lang.Target{}
 		}
 		return lang.Target{Ecosystem: ecoHaxelib, Package: lib, Unresolved: true}
@@ -356,10 +356,10 @@ func (r *resolver) module(file, mod string, ref bool) lang.Target {
 	if spelled != "" {
 		return r.library(file, spelled)
 	}
-	if ref || len(segs) == 1 || r.firsts[segs[0]] || !lower(segs[0]) {
+	if ref || len(segments) == 1 || r.firsts[segments[0]] || !lower(segments[0]) {
 		return lang.Target{} // the repository's own module, missing; or no package at all
 	}
-	return lang.Target{Ecosystem: ecoHaxelib, Package: segs[0], Unresolved: true}
+	return lang.Target{Ecosystem: ecoHaxelib, Package: segments[0], Unresolved: true}
 }
 
 // library is the haxelib library a module belongs to; nothing when that is
@@ -374,14 +374,14 @@ func (r *resolver) library(file, name string) lang.Target {
 // spell is the declared library the leading package segments of a module
 // spell (tink.core is tink_core, thx.promise thx.promise, hxnodejs hxnodejs)
 // and how many segments it took, longest first.
-func spell(decls []decl, segs []string) (string, int) {
+func spell(decls []decl, segments []string) (string, int) {
 	pk := 0
-	for pk < len(segs) && lower(segs[pk]) {
+	for pk < len(segments) && lower(segments[pk]) {
 		pk++
 	}
 	for n := pk; n >= 1; n-- {
 		for _, sep := range []string{"_", "-", ".", ""} {
-			want := strings.ToLower(strings.Join(segs[:n], sep))
+			want := strings.ToLower(strings.Join(segments[:n], sep))
 			for _, d := range decls {
 				if strings.ToLower(d.name) == want {
 					return d.name, n
@@ -555,8 +555,8 @@ func (r *resolver) Expand(file string, imp lang.RawImport) ([]lang.Import, bool)
 		return nil, false
 	}
 	pkg := strings.TrimSuffix(imp.Module, ".*")
-	segs := strings.Split(pkg, ".")
-	if upper(segs[len(segs)-1]) || r.local(file, segs) != "" {
+	segments := strings.Split(pkg, ".")
+	if upper(segments[len(segments)-1]) || r.local(file, segments) != "" {
 		return nil, false // a module's fields: import a.b.C.*
 	}
 	list := r.pkgs[pkg]
@@ -670,21 +670,21 @@ func (r *resolver) exists(p string) bool {
 
 // installedFor is the library installed for a file (lix's cache, a haxelib
 // repository) whose class path has the module, "" when none has.
-func (r *resolver) installedFor(file string, segs []string, wild bool) string {
+func (r *resolver) installedFor(file string, segments []string, wild bool) string {
 	try := func(cps []string) bool {
 		for _, cp := range cps {
-			if wild && r.exists(filepath.Join(cp, filepath.Join(segs...))) {
+			if wild && r.exists(filepath.Join(cp, filepath.Join(segments...))) {
 				return true
 			}
-			for n := len(segs); n >= 1; n-- {
-				if upper(segs[n-1]) && r.exists(filepath.Join(cp, filepath.Join(segs[:n]...)+".hx")) {
+			for n := len(segments); n >= 1; n-- {
+				if upper(segments[n-1]) && r.exists(filepath.Join(cp, filepath.Join(segments[:n]...)+".hx")) {
 					return true
 				}
 			}
 		}
 		return false
 	}
-	if len(segs) > maxSegs {
+	if len(segments) > maxSegments {
 		return ""
 	}
 	seen := map[string]bool{}

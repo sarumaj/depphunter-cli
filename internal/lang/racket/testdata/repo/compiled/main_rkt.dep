@@ -1,0 +1,1 @@
+((#"8.12" racket (#"hash" . "x")) (indirect collects #"racket/base.rkt"))

@@ -17,21 +17,21 @@ string_builder string_tree uri`)
 //
 // Implements: REQ-GLEAM-004, REQ-GLEAM-009
 func GleamPackage(module string, known func(string) bool) (name string, ok bool) {
-	segs := strings.Split(module, "/")
-	for k := len(segs); k > 0; k-- {
-		if name := strings.Join(segs[:k], "_"); known(name) {
+	segments := strings.Split(module, "/")
+	for k := len(segments); k > 0; k-- {
+		if name := strings.Join(segments[:k], "_"); known(name) {
 			return name, true
 		}
 	}
-	name = segs[0]
-	if segs[0] == "gleam" && len(segs) > 1 {
+	name = segments[0]
+	if segments[0] == "gleam" && len(segments) > 1 {
 		switch {
-		case gleamStdlib[segs[1]]:
+		case gleamStdlib[segments[1]]:
 			name = "gleam_stdlib"
-		case segs[1] == "community" && len(segs) > 2:
-			name = "gleam_community_" + segs[2]
+		case segments[1] == "community" && len(segments) > 2:
+			name = "gleam_community_" + segments[2]
 		default:
-			name = "gleam_" + segs[1]
+			name = "gleam_" + segments[1]
 		}
 	}
 	return name, known(name)
@@ -44,10 +44,10 @@ func gleamModule(file string) (string, bool) {
 	if !ok {
 		return "", false
 	}
-	segs := strings.Split(rest, "/")
-	for i := len(segs) - 2; i >= 0; i-- {
-		if s := segs[i]; s == "src" || s == "test" || s == "dev" {
-			return strings.Join(segs[i+1:], "/"), true
+	segments := strings.Split(rest, "/")
+	for i := len(segments) - 2; i >= 0; i-- {
+		if s := segments[i]; s == "src" || s == "test" || s == "dev" {
+			return strings.Join(segments[i+1:], "/"), true
 		}
 	}
 	return "", false

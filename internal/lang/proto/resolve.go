@@ -344,14 +344,14 @@ func (sc scope) match(name string) *dep {
 	first = fold(first)
 	var byRepo, byOwner []*dep
 	for i := range sc.deps {
-		segs := strings.Split(sc.deps[i].name, "/")
-		if len(segs) < 3 {
+		segments := strings.Split(sc.deps[i].name, "/")
+		if len(segments) < 3 {
 			continue
 		}
-		if fold(segs[len(segs)-1]) == first {
+		if fold(segments[len(segments)-1]) == first {
 			byRepo = append(byRepo, &sc.deps[i])
 		}
-		if fold(segs[len(segs)-2]) == first {
+		if fold(segments[len(segments)-2]) == first {
 			byOwner = append(byOwner, &sc.deps[i])
 		}
 	}

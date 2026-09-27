@@ -28,7 +28,7 @@ const (
 const (
 	maxDepth      = 256 // frames tracked; deeper braces are only counted
 	maxConditions = 64  // nested #if snapshots
-	maxSegs       = 64  // segments of a dotted path; longer ones are not names
+	maxSegments   = 64  // segments of a dotted path; longer ones are not names
 )
 
 type frame struct {
@@ -232,14 +232,14 @@ func extractSource(src []byte) *lang.Extraction {
 			if !moduleLevel() {
 				continue
 			}
-			var segs []string
+			var segments []string
 			j := i + 1
 			for {
 				if at(j).kind == tIdent {
-					segs = append(segs, at(j).text)
+					segments = append(segments, at(j).text)
 					j++
-				} else if isP(j, "*") && len(segs) > 0 {
-					segs = append(segs, "*")
+				} else if isP(j, "*") && len(segments) > 0 {
+					segments = append(segments, "*")
 					j++
 					break
 				} else {
@@ -250,7 +250,7 @@ func extractSource(src []byte) *lang.Extraction {
 				}
 				j++
 			}
-			if len(segs) == 0 || len(segs) > maxSegs {
+			if len(segments) == 0 || len(segments) > maxSegments {
 				i = j - 1
 				continue
 			}
@@ -261,7 +261,7 @@ func extractSource(src []byte) *lang.Extraction {
 			if isP(j, ";") {
 				i = j
 			}
-			p := strings.Join(segs, ".")
+			p := strings.Join(segments, ".")
 			kind := kindImport
 			if t.text == "using" {
 				kind = kindUsing
@@ -320,26 +320,26 @@ func extractSource(src []byte) *lang.Extraction {
 		if !lower(t.text) || notPackage[t.text] || !isP(i+1, ".") {
 			continue
 		}
-		segs := []string{t.text}
+		segments := []string{t.text}
 		j := i
 		for isP(j+1, ".") && at(j+2).kind == tIdent {
 			j += 2
-			segs = append(segs, at(j).text)
+			segments = append(segments, at(j).text)
 			if upper(at(j).text) {
 				break
 			}
 		}
-		n := len(segs)
-		if !upper(segs[n-1]) || n > maxSegs || n == 2 && constant(segs[1]) {
+		n := len(segments)
+		if !upper(segments[n-1]) || n > maxSegments || n == 2 && constant(segments[1]) {
 			i = j
 			continue
 		}
 		if isP(j+1, ".") && upper(at(j+2).text) {
-			segs = append(segs, at(j+2).text) // a sub-type: haxe.macro.Expr.ExprDef
+			segments = append(segments, at(j+2).text) // a sub-type: haxe.macro.Expr.ExprDef
 			j += 2
 		}
 		i = j
-		p := strings.Join(segs, ".")
+		p := strings.Join(segments, ".")
 		if !seenMod[p] {
 			seenMod[p] = true
 			refs = append(refs, lang.RawImport{Spec: p, Module: p, Name: kindRef, Line: t.line})
@@ -387,16 +387,16 @@ func readPackage(src []byte) string {
 	if !ok || t.kind != tIdent || t.text != "package" {
 		return ""
 	}
-	var segs []string
+	var segments []string
 	for {
 		t, ok = l.next()
 		if !ok || t.kind != tIdent {
 			break
 		}
-		segs = append(segs, t.text)
+		segments = append(segments, t.text)
 		if t, ok = l.next(); !ok || t.kind != tPunct || t.text != "." {
 			break
 		}
 	}
-	return strings.Join(segs, ".")
+	return strings.Join(segments, ".")
 }

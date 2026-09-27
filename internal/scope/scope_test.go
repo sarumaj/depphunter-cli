@@ -335,3 +335,14 @@ func TestAnAlirePatternKeepsToAlire(t *testing.T) {
 		t.Error("an alire-scoped pattern did not keep to its ecosystem")
 	}
 }
+
+// Racket packages are named by their catalog names; a raco-scoped pattern
+// keeps to them.
+//
+// Verifies: REQ-SUP-035
+func TestARacoPatternKeepsToRaco(t *testing.T) {
+	p := New([]string{"raco:acme-*"})
+	if !p.Match("raco", "acme-log-lib") || p.Match("alire", "acme-log-lib") || p.Match("raco", "rackunit-lib") {
+		t.Error("a raco-scoped pattern did not keep to its ecosystem")
+	}
+}

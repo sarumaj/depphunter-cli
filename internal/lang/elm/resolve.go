@@ -283,15 +283,15 @@ func segments(pkg, mod string) int {
 // NoRedInk/elm-json-decode-pipeline. It returns the package and how many
 // segments matched.
 func spelled(p *project, mod string) (string, int) {
-	segs := strings.Split(mod, ".")
+	segments := strings.Split(mod, ".")
 	best, n := "", 0
 	for _, name := range sortedKeys(p.m.deps) {
 		f := foldPackage(name)
 		if f == "" {
 			continue
 		}
-		for k := len(segs); k > n; k-- {
-			if fold(strings.Join(segs[:k], "")) == f {
+		for k := len(segments); k > n; k-- {
+			if fold(strings.Join(segments[:k], "")) == f {
 				best, n = name, k
 				break
 			}

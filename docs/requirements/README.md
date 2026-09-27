@@ -142,6 +142,7 @@ The server **shall** ...
 | `fortran`    | The Fortran plugin: free and fixed form, fypp, fpm.toml and dependencies fpm fetched.                   |
 | `haxe`       | The Haxe plugin: modules, .hxml, haxelib.json, lix pins, Lime project files and installed haxelibs.     |
 | `ada`        | The Ada plugin: specs and bodies, GNAT project files, alire.toml, Alire's lock file and fetched crates. |
+| `racket`     | The Racket plugin: modules, Scribble documents, info.rkt packages and collections, raco packages.       |
 | `terraform`  | The Terraform and OpenTofu plugin, lock files, Terragrunt and the module registries.                    |
 | `proto`      | The Protocol Buffers plugin, Buf's configuration and lock files and the Buf Schema Registry.            |
 | `shell`      | The shell script plugin (sh, Bash, zsh, bats), direnv and packages scripts install.                     |
@@ -345,6 +346,12 @@ requirements of type `limitation` in their scopes:
   unresolved, a unit of a crate Alire has not fetched is attributed by
   declared names and a curated table, and `--online` asks the community
   index only about exact versions.
+- Racket is read without running Racket or raco: macros are not expanded,
+  `info.rkt` is not evaluated, raco keeps no lock file (only a checksum or a
+  git commit pins), a collection no file of the repository has is
+  attributed by the base collections, a curated table and the declared
+  packages' names, and neither the package catalog nor installed packages
+  are read (no `--online`, no `--resolve-depth`).
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

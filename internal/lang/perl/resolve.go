@@ -35,13 +35,13 @@ type resolver struct {
 //
 // Implements: REQ-PERL-001
 func ignored(p string) bool {
-	segs := strings.Split(p, "/")
-	for i, seg := range segs {
+	segments := strings.Split(p, "/")
+	for i, seg := range segments {
 		if seg == "blib" {
 			return true
 		}
-		if seg == "local" && i+1 < len(segs) && (segs[i+1] == "bin" || segs[i+1] == "man" || segs[i+1] == "cache" ||
-			segs[i+1] == "lib" && i+2 < len(segs) && segs[i+2] == "perl5") {
+		if seg == "local" && i+1 < len(segments) && (segments[i+1] == "bin" || segments[i+1] == "man" || segments[i+1] == "cache" ||
+			segments[i+1] == "lib" && i+2 < len(segments) && segments[i+2] == "perl5") {
 			return true
 		}
 	}
@@ -84,9 +84,9 @@ func newResolver(root string, all []*scan.File, p Plugin) *resolver {
 			continue
 		}
 		if strings.HasSuffix(f.Path, ".pm") {
-			segs := strings.Split(f.Path, "/")
-			for i := range segs {
-				key := strings.Join(segs[i:], "/")
+			segments := strings.Split(f.Path, "/")
+			for i := range segments {
+				key := strings.Join(segments[i:], "/")
 				r.suffixes[key] = append(r.suffixes[key], f.Path)
 			}
 		}
@@ -356,16 +356,16 @@ func versioned(v string) bool {
 // (Plack::Request is Plack's). version, when set, is the requirement being resolved
 // (a manifest's own line).
 func (r *resolver) declared(gov []*project, m, version string) (lang.Target, bool) {
-	segs := strings.Split(m, "::")
+	segments := strings.Split(m, "::")
 	for _, pr := range gov {
 		if pr.snap == nil {
 			continue
 		}
-		for k := len(segs); k >= 1; k-- {
-			if k < len(segs) && walkStop[segs[k-1]] {
+		for k := len(segments); k >= 1; k-- {
+			if k < len(segments) && walkStop[segments[k-1]] {
 				break
 			}
-			if d, ok := pr.snap.provides[strings.Join(segs[:k], "::")]; ok {
+			if d, ok := pr.snap.provides[strings.Join(segments[:k], "::")]; ok {
 				return r.target(gov, d, m, version), true
 			}
 		}

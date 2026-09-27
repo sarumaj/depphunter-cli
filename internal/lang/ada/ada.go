@@ -73,8 +73,8 @@ func (Plugin) Claims(f *scan.File) bool {
 // generated reports whether f lies in an alire/ directory beside an
 // alire.toml or an obj/ directory beside a .gpr.
 func generated(f *scan.File) bool {
-	segs := strings.Split(f.Path, "/")
-	for i, s := range segs[:len(segs)-1] {
+	segments := strings.Split(f.Path, "/")
+	for i, s := range segments[:len(segments)-1] {
 		if s != "alire" && s != "obj" {
 			continue
 		}
@@ -82,7 +82,7 @@ func generated(f *scan.File) bool {
 			continue
 		}
 		base := f.Abs[:len(f.Abs)-len(f.Path)]
-		dir := filepath.Join(base, filepath.FromSlash(strings.Join(segs[:i], "/")))
+		dir := filepath.Join(base, filepath.FromSlash(strings.Join(segments[:i], "/")))
 		if s == "alire" && hasFile(dir, "alire.toml") || s == "obj" && hasFile(dir, "*.gpr") {
 			return true
 		}

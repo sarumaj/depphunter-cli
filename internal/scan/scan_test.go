@@ -39,7 +39,9 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 		".fake/build.fsx/intellisense.fsx":                      "#r \"x.dll\"\n",
 		".dub/packages/leftpad/1.0.0/leftpad/source/leftpad.d":  "module leftpad;\n",
 		".haxelib/format/3,5,0/format/png/Reader.hx":            "package format.png;\n",
-		"img.bin": "\x00\x01\x02",
+		"compiled/main_rkt.dep":                                 "((#\"8.12\" racket))\n",
+		"src/compiled/errortrace/main_rkt.dep":                  "((#\"8.12\" racket))\n",
+		"img.bin":                                               "\x00\x01\x02",
 	}
 	for p, c := range files {
 		abs := filepath.Join(root, p)
@@ -560,6 +562,45 @@ func TestScanTellsFortranFromForth(t *testing.T) {
 	want := map[string]string{
 		"legacy/dgemm.f": "Fortran", "legacy/star.for": "Fortran", "legacy/free.f": "Fortran",
 		"forth/words.f": "Forth", "forth/defs.for": "Forth",
+	}
+	for _, f := range got {
+		if f.Lang != want[f.Path] {
+			t.Errorf("%s: lang %q, want %q", f.Path, f.Lang, want[f.Path])
+		}
+	}
+}
+
+// ".scm" and ".ss" are Scheme's (Chez Scheme, Guile, R6RS programs), and
+// Racket's when a #lang line (after a #! line, blank lines and comments)
+// starts them; a script without an extension that racket runs is Racket.
+//
+// Verifies: REQ-LANG-015, REQ-RACKET-001
+func TestScanTellsRacketFromScheme(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"chez/main.ss":      "(import (chezscheme))\n(display \"hi\")\n",
+		"guile/hello.scm":   "(define-module (hello))\n",
+		"r6rs/lib.scm":      "#!r6rs\n(library (lib) (export) (import (rnrs)))\n",
+		"racket/legacy.scm": "; old code\n\n#lang racket\n(define x 1)\n",
+		"racket/shell.ss":   "#!/usr/bin/env racket\n#lang racket/base\n",
+		"racket/short.ss":   "#!racket/base\n(define y 2)\n",
+		"racket/main.rkt":   "#lang racket/base\n",
+		"docs/guide.scrbl":  "#lang scribble/manual\n",
+		"bin/shop":          "#!/usr/bin/env racket\n#lang racket/base\n",
+	}
+	for p, c := range files {
+		abs := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(abs), 0o755)
+		os.WriteFile(abs, []byte(c), 0o644)
+	}
+	got, err := Scan(context.Background(), root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"chez/main.ss": "Scheme", "guile/hello.scm": "Scheme", "r6rs/lib.scm": "Scheme",
+		"racket/legacy.scm": "Racket", "racket/shell.ss": "Racket", "racket/short.ss": "Racket",
+		"racket/main.rkt": "Racket", "docs/guide.scrbl": "Scribble", "bin/shop": "Racket",
 	}
 	for _, f := range got {
 		if f.Lang != want[f.Path] {
