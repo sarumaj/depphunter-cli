@@ -7,6 +7,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"sort"
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
@@ -235,6 +236,126 @@ func (c *Client) nugetVersion(ctx context.Context, base, id, want string) (strin
 		newest = doc.Versions[len(doc.Versions)-1]
 	}
 	return strings.ToLower(newest), nil
+}
+
+// ---------------------------------------------------------------- Composer
+
+// composerPackage reads a package's requirements from a Composer repository's
+// metadata (Composer 2's /p2/<vendor>/<name>.json): every tagged version with its
+// require, newest first. Packagist's own address is known; any other repository
+// (Private Packagist, Satis, a proxy) names it as "metadata-url" in its
+// packages.json, which is asked once per run.
+//
+// Implements: REQ-SUP-044
+func (c *Client) composerPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+	pattern, err := c.composerMetadataURL(ctx, index)
+	if err != nil || pattern == "" {
+		return nil, err
+	}
+	name := strings.ToLower(t.Package)
+	body, err := c.get(ctx, strings.ReplaceAll(pattern, "%package%", name))
+	if err != nil {
+		return nil, err
+	}
+	var doc struct {
+		Packages map[string][]map[string]json.RawMessage `json:"packages"`
+	}
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return nil, err
+	}
+	versions := expandComposer(doc.Packages[name])
+	if len(versions) == 0 {
+		return nil, nil
+	}
+	chosen := versions[0] // the newest: what an unpinned requirement installs today
+	want := strings.TrimPrefix(strings.TrimSpace(t.Version), "v")
+	for _, v := range versions {
+		var version string
+		if json.Unmarshal(v["version"], &version) == nil && want != "" && strings.TrimPrefix(version, "v") == want {
+			chosen = v
+			break
+		}
+	}
+	var require map[string]string
+	if raw, ok := chosen["require"]; ok {
+		_ = json.Unmarshal(raw, &require) // "__unset" or a broken entry: nothing required
+	}
+	out := make([]dep, 0, len(require))
+	for name, constraint := range require {
+		if strings.Contains(name, "/") { // php, ext-*, lib-* are the platform
+			out = append(out, dep{Name: name, Version: constraint})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// expandComposer undoes Composer 2's minified metadata: each version lists only what
+// differs from the one before it, and "__unset" removes a key.
+func expandComposer(versions []map[string]json.RawMessage) []map[string]json.RawMessage {
+	out := make([]map[string]json.RawMessage, 0, len(versions))
+	current := map[string]json.RawMessage{}
+	for _, v := range versions {
+		next := make(map[string]json.RawMessage, len(current)+len(v))
+		for k, val := range current {
+			next[k] = val
+		}
+		for k, val := range v {
+			if string(val) == `"__unset"` {
+				delete(next, k)
+			} else {
+				next[k] = val
+			}
+		}
+		out = append(out, next)
+		current = next
+	}
+	return out
+}
+
+// composerMetadataURL is where a Composer repository serves one package's metadata,
+// with %package% for the name, and remembers the answer.
+func (c *Client) composerMetadataURL(ctx context.Context, index string) (string, error) {
+	if index == public[Composer] {
+		return index + "/p2/%package%.json", nil
+	}
+	key := Composer + " " + index
+	c.mu.Lock()
+	pattern, ok := c.feeds[key]
+	c.mu.Unlock()
+	if ok {
+		return pattern, nil
+	}
+	body, err := c.get(ctx, index+"/packages.json")
+	if err != nil {
+		return "", err
+	}
+	var doc struct {
+		MetadataURL string `json:"metadata-url"`
+	}
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return "", err
+	}
+	// Relative to the repository's host, as Composer reads it. Not url.Parse: the
+	// placeholder is not a valid escape.
+	switch m := doc.MetadataURL; {
+	case m == "":
+	case strings.HasPrefix(m, "https://"), strings.HasPrefix(m, "http://"):
+		pattern = m
+	case strings.HasPrefix(m, "/"):
+		if u, err := url.Parse(index); err == nil {
+			pattern = u.Scheme + "://" + u.Host + m
+		}
+	default:
+		pattern = index + "/" + m
+	}
+	c.mu.Lock()
+	if c.feeds == nil {
+		c.feeds = map[string]string{}
+	}
+	c.feeds[key] = pattern
+	c.mu.Unlock()
+	return pattern, nil
 }
 
 // ---------------------------------------------------------------- OCI

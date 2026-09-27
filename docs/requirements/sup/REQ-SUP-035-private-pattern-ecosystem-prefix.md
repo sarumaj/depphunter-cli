@@ -33,4 +33,5 @@ The PowerShell Gallery's ecosystem id `psgallery` was missing from the prefixes,
 so `psgallery:Acme.*` was read as a name for every ecosystem; it is now one of
 them.
 
-The C/C++ package managers' ids `vcpkg` and `conan` are prefixes as well.
+The C/C++ package managers' ids `vcpkg` and `conan` are prefixes as well, and
+so is PHP's `composer`.

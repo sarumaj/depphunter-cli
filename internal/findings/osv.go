@@ -31,14 +31,15 @@ const (
 //
 // Implements: REQ-FND-010
 var osvEcosystems = map[string]string{
-	"go":      "Go",
-	"npm":     "npm",
-	"pypi":    "PyPI",
-	"crates":  "crates.io",
-	"maven":   "Maven",
-	"nuget":   "NuGet",
-	"actions": "GitHub Actions",
-	"conan":   "ConanCenter", // vcpkg has no OSV ecosystem
+	"go":       "Go",
+	"npm":      "npm",
+	"pypi":     "PyPI",
+	"crates":   "crates.io",
+	"maven":    "Maven",
+	"nuget":    "NuGet",
+	"actions":  "GitHub Actions",
+	"conan":    "ConanCenter", // vcpkg has no OSV ecosystem
+	"composer": "Packagist",
 }
 
 // Package is one thing to ask the database about: a dependency pinned to a version.
@@ -292,11 +293,19 @@ func (o *OSV) base() string {
 	return osvAPI
 }
 
-// osvVersion spells a version the way the database does.
+// osvVersion spells a version the way the database does. A Composer lock keeps a
+// tag's "v" (symfony/http-foundation v6.4.2); Packagist advisories name 6.4.2.
+//
+// Implements: REQ-FND-010
 func osvVersion(ecosystem, v string) string {
-	if ecosystem == "go" {
+	switch ecosystem {
+	case "go":
 		v = strings.TrimSuffix(v, "+incompatible")
 		v = strings.TrimPrefix(v, "v")
+	case "composer":
+		if len(v) > 1 && v[0] == 'v' && v[1] >= '0' && v[1] <= '9' {
+			v = v[1:]
+		}
 	}
 	return v
 }

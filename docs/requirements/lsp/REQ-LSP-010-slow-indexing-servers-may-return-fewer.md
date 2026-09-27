@@ -12,7 +12,8 @@ verification:
 
 ## Statement
 
-Language servers that index slowly (rust-analyzer, jdtls, metals, clangd)
+Language servers that index slowly (rust-analyzer, jdtls, metals, clangd,
+intelephense, phpactor)
 **may** answer before indexing finishes and so return fewer references within
 the time budget.
 

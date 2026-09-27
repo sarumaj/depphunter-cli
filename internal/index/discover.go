@@ -1,6 +1,7 @@
 package index
 
 import (
+	"encoding/json"
 	"encoding/xml"
 	"maps"
 	"os"
@@ -76,6 +77,13 @@ func (c *Config) machine(env func(string) string, home string) {
 			add(Go, p, "")
 		}
 	}
+	// Composer's global configuration lives in COMPOSER_HOME, whose default depends on
+	// the platform; both usual places are read below.
+	if dir := env("COMPOSER_HOME"); dir != "" {
+		if data, err := os.ReadFile(filepath.Join(dir, "config.json")); err == nil {
+			parseComposer(data, add)
+		}
+	}
 	if home == "" {
 		return
 	}
@@ -92,6 +100,8 @@ func (c *Config) machine(env func(string) string, home string) {
 		// credentials are read from, so a feed with a password is also a feed.
 		{filepath.Join(home, ".nuget", "NuGet", "NuGet.Config"), parseNuGetConfig},
 		{filepath.Join(home, ".config", "NuGet", "NuGet.Config"), parseNuGetConfig},
+		{filepath.Join(home, ".config", "composer", "config.json"), parseComposer},
+		{filepath.Join(home, ".composer", "config.json"), parseComposer},
 	} {
 		if data, err := os.ReadFile(f.path); err == nil {
 			f.parse(data, add)
@@ -131,6 +141,8 @@ func (c *Config) project(files []*scan.File) {
 			parseNuGetConfig(data, add)
 		case base == "pom.xml":
 			parsePom(data, add)
+		case base == "composer.json":
+			parseComposer(data, add)
 		case base == "config.toml" && strings.HasSuffix(path.Dir(f.Path), ".cargo"):
 			parseCargoConfig(data, add)
 		}
@@ -324,6 +336,40 @@ func parsePom(data []byte, add func(eco, url, scope string)) {
 	}
 	for _, r := range doc.Repositories.Repository {
 		add(Maven, strings.TrimSpace(r.URL), "")
+	}
+}
+
+// parseComposer reads the Composer repositories a composer.json or Composer's global
+// config.json declares: those of type "composer" (Private Packagist, Satis, a
+// Repman or Nexus proxy) are package indexes. A VCS, path or inline package
+// repository is not an index, and `"packagist.org": false` names none. The list form
+// and the object form (keyed by name) are both read, in order and by name.
+func parseComposer(data []byte, add func(eco, url, scope string)) {
+	var doc struct {
+		Repositories json.RawMessage `json:"repositories"`
+	}
+	if json.Unmarshal(data, &doc) != nil || len(doc.Repositories) == 0 {
+		return
+	}
+	type repository struct {
+		Type string `json:"type"`
+		URL  string `json:"url"`
+	}
+	var repos []json.RawMessage
+	if json.Unmarshal(doc.Repositories, &repos) != nil {
+		var named map[string]json.RawMessage
+		if json.Unmarshal(doc.Repositories, &named) != nil {
+			return
+		}
+		for _, key := range slices.Sorted(maps.Keys(named)) {
+			repos = append(repos, named[key])
+		}
+	}
+	for _, raw := range repos {
+		var r repository
+		if json.Unmarshal(raw, &r) == nil && r.Type == "composer" {
+			add(Composer, strings.TrimSpace(r.URL), "")
+		}
 	}
 }
 

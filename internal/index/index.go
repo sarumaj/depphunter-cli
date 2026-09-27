@@ -27,6 +27,8 @@ const (
 	Maven = "maven"
 	NuGet = "nuget"
 	OCI   = "oci"
+	// Composer is PHP's; its public index is Packagist.
+	Composer = "composer"
 )
 
 // public is where each ecosystem's packages come from unless something says otherwise.
@@ -38,6 +40,8 @@ var public = map[string]string{
 	Maven: "https://repo.maven.apache.org/maven2",
 	NuGet: "https://api.nuget.org/v3/index.json",
 	OCI:   "https://registry-1.docker.io",
+	// Composer: the metadata host Composer itself reads; packagist.org is its website.
+	Composer: "https://repo.packagist.org",
 }
 
 // Where an index was learned from. It decides nothing on its own - Trusted does

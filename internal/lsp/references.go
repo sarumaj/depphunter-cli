@@ -51,6 +51,8 @@ var Servers = []Server{
 		".c": "c", ".h": "cpp", ".cc": "cpp", ".cpp": "cpp", ".cxx": "cpp", ".c++": "cpp",
 		".hpp": "cpp", ".hh": "cpp", ".hxx": "cpp", ".h++": "cpp", ".ipp": "cpp", ".inl": "cpp",
 	}, Commands: [][]string{{"clangd"}}},
+	{Name: "php", Open: true, Exts: map[string]string{".php": "php", ".phtml": "php", ".inc": "php"},
+		Commands: [][]string{{"intelephense", "--stdio"}, {"phpactor", "language-server"}}},
 }
 
 type Options struct {

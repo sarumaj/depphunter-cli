@@ -116,6 +116,7 @@ The server **shall** ...
 | `scala`  | The Scala plugin.                                                                              |
 | `cs`     | The C# plugin.                                                                                 |
 | `cpp`    | The C and C++ plugin.                                                                          |
+| `php`    | The PHP plugin and Composer.                                                                   |
 | `ps`     | The PowerShell plugin.                                                                         |
 | `ci`     | The continuous-integration plugin (GitHub Actions, GitLab CI, container images).               |
 | `docker` | The Dockerfile and Compose plugin, and the container-image references it shares with `ci`.     |
@@ -192,6 +193,9 @@ requirements of type `limitation` in their scopes:
 - vcpkg and Conan manifests are read as text: a `conanfile.py` is not run, the
   versions a vcpkg baseline selects are not known, and headers are matched to
   packages by name.
+- PHP is read without running Composer: autoloaders, `files` helpers and
+  include paths configured at run time are not evaluated, and a package that
+  autoloads only by classmap is matched to a namespace by name.
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

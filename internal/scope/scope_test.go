@@ -60,6 +60,11 @@ func TestAPatternMayNameItsEcosystem(t *testing.T) {
 	if !p.Match("vcpkg", "acme-core") || !p.Match("conan", "corp-net") || p.Match("conan", "acme-core") {
 		t.Error("vcpkg- and conan-scoped patterns did not keep to their ecosystems")
 	}
+	// Composer packages are vendor/name: the vendor is the leading element.
+	p = New([]string{"composer:acme/*"})
+	if !p.Match("composer", "acme/billing") || p.Match("npm", "acme/billing") || p.Match("composer", "acmex/billing") {
+		t.Error("a composer-scoped pattern did not keep to its ecosystem and vendor")
+	}
 	// The prefix is recognized whatever its case, and must then match as well.
 	p = New([]string{"NPM:@acme/*"})
 	if !p.Match("npm", "@acme/widgets") {

@@ -7,6 +7,7 @@ func TestLanguageByName(t *testing.T) {
 	for p, want := range map[string]string{
 		"a.go":                           "Go",
 		"x.py":                           "Python",
+		"views/home.phtml":               "PHP",
 		"Dockerfile":                     "Docker",
 		"build/Containerfile":            "Docker",
 		"Dockerfile.dev":                 "Docker",

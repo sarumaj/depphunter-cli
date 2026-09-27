@@ -376,7 +376,7 @@ requires the header `X-Depphunter-Request: 1`, which a cross-site page cannot
 set.
 
 | Endpoint                                               | What it is                                                                                                                   |
-| ------------------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------- |
+|--------------------------------------------------------|------------------------------------------------------------------------------------------------------------------------------|
 | `GET /api/graph`                                       | the graph document: nodes, symbols and edges                                                                                 |
 | `GET /api/config`                                      | the view the map opens with, and the server's capabilities                                                                   |
 | `GET /api/file?path=`                                  | the source of a file present on the map, and of no other file; `415` for a binary file, naming its type; `&as=raw` its bytes |
@@ -679,7 +679,7 @@ walker may travel 3 units out over the water and 12 units above the tallest
 building.
 
 |                           |                                                                                                                   |
-| ------------------------- | ----------------------------------------------------------------------------------------------------------------- |
+|---------------------------|-------------------------------------------------------------------------------------------------------------------|
 | Drag / right-drag / wheel | pan, orbit, zoom                                                                                                  |
 | Click / double-click      | select, expand or collapse; double-click on open ground enters walk mode                                          |
 | Middle-drag               | zoom                                                                                                              |
@@ -711,7 +711,7 @@ building.
 In walk mode:
 
 |                         |                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            |
-| ----------------------- | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+|-------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
 | Mouse                   | look. The pointer is captured at the reticle; `Esc` releases it and a click on the map captures it again. Where it cannot be captured at all — a frame that withholds the pointer lock — walk mode reports this once, and a click then uses the tool rather than requesting the lock again                                                                                                                                                                                                                                                                                                                 |
 | `R`                     | the tool wheel: every tool at once, the primary ones down its right side and the secondary ones down its left, with an empty left hand at the bottom. Hold `R`, point with the mouse and release; or tap `R` to leave it up and take what is under the cursor with `R`, `Enter` or a click. `Esc`, the right button, or releasing with the cursor still in the middle changes nothing. While it is up the walker is held where they stand and the city behind it is blurred: nothing moves them, spends a tank or bites them, so changing hands costs no time. Pointing at a tool already in hand keeps it |
 | `1` `2` `3`             | select a secondary tool, or press the same key again to put it down. Only one is carried at a time                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                         |
@@ -804,8 +804,9 @@ govulncheck finds no call into is capped at low.
 Under `--online`, depphunter additionally queries [OSV](https://osv.dev) for
 every external package the map pins to a version — batched queries of 500
 packages each, followed by the advisories it matched — covering Go,
-npm, PyPI, crates.io, Maven, NuGet, GitHub Actions and Conan (as OSV's
-ConanCenter; vcpkg has no OSV ecosystem). Floating packages are not
+npm, PyPI, crates.io, Maven, NuGet, GitHub Actions, Conan (as OSV's
+ConanCenter; vcpkg has no OSV ecosystem) and Composer (as Packagist). Floating
+packages are not
 queried, since they resolve to a different version on the next installation.
 Answers are cached for six hours. `--no-vulns` disables all of this.
 
@@ -878,20 +879,21 @@ labelled **⚠ floating** in the side panel, and marked in its tooltip. Where a
 lock file resolved a range, the panel reports both: `4.3.1`, requested as
 `^4.2.0`.
 
-| Ecosystem          | pinned by                                                            | floats on                                                                                 |
-|--------------------|----------------------------------------------------------------------|-------------------------------------------------------------------------------------------|
-| Go modules         | the version in `go.mod`, which the build selects                     | — (a `require` always names a version)                                                    |
-| npm                | `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, an exact `1.2.3` | any range, including `1.2`, which denotes 1.2.x                                           |
-| crates.io          | `Cargo.lock`                                                         | the manifest alone, where `"1.2.3"` denotes `^1.2.3`                                      |
-| PyPI               | `poetry.lock`, `uv.lock`, `pdm.lock`, `Pipfile.lock`, `==1.2.3`      | `>=`, `~=`, `^` and other ranges                                                          |
-| Maven              | a plain version, `[1.2.3]`                                           | ranges, `LATEST`, `RELEASE`, `-SNAPSHOT`, dynamic `1.+` and `latest.*`, unexpanded `${…}` |
-| NuGet              | an exact version, `[1.2.3]`                                          | wildcards (`2.*`) and ranges                                                              |
-| PowerShell Gallery | `RequiredVersion`                                                    | `ModuleVersion`, which is a minimum                                                       |
-| GitHub Actions     | a full commit SHA                                                    | tags, branches, or no ref                                                                 |
-| GitLab CI includes | a commit                                                             | tags, branches, templates, remote includes, or no ref                                     |
-| Container images   | an `@sha256:` digest                                                 | tags                                                                                      |
-| vcpkg              | an `overrides` entry                                                 | `version>=`, which is a minimum; no version and no baseline                               |
-| Conan              | an exact reference (`zlib/1.2.13`), `conan.lock`                     | a version range (`[>=1.0 <2]`, `[~1.2]`)                                                  |
+| Ecosystem          | pinned by                                                                    | floats on                                                                                 |
+|--------------------|------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------|
+| Go modules         | the version in `go.mod`, which the build selects                             | — (a `require` always names a version)                                                    |
+| npm                | `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, an exact `1.2.3`         | any range, including `1.2`, which denotes 1.2.x                                           |
+| crates.io          | `Cargo.lock`                                                                 | the manifest alone, where `"1.2.3"` denotes `^1.2.3`                                      |
+| PyPI               | `poetry.lock`, `uv.lock`, `pdm.lock`, `Pipfile.lock`, `==1.2.3`              | `>=`, `~=`, `^` and other ranges                                                          |
+| Maven              | a plain version, `[1.2.3]`                                                   | ranges, `LATEST`, `RELEASE`, `-SNAPSHOT`, dynamic `1.+` and `latest.*`, unexpanded `${…}` |
+| NuGet              | an exact version, `[1.2.3]`                                                  | wildcards (`2.*`) and ranges                                                              |
+| PowerShell Gallery | `RequiredVersion`                                                            | `ModuleVersion`, which is a minimum                                                       |
+| GitHub Actions     | a full commit SHA                                                            | tags, branches, or no ref                                                                 |
+| GitLab CI includes | a commit                                                                     | tags, branches, templates, remote includes, or no ref                                     |
+| Container images   | an `@sha256:` digest                                                         | tags                                                                                      |
+| vcpkg              | an `overrides` entry                                                         | `version>=`, which is a minimum; no version and no baseline                               |
+| Conan              | an exact reference (`zlib/1.2.13`), `conan.lock`                             | a version range (`[>=1.0 <2]`, `[~1.2]`)                                                  |
+| Composer           | `composer.lock`, `installed.json`, a bare `1.2.3` or `1.2`, `dev-main#<sha>` | `^`, `~`, `*`, `1.2.*`, alternatives, ranges and branches                                 |
 
 The JSON and GraphML exports carry `requested` and `floating` per package.
 
@@ -912,6 +914,7 @@ and the analysis remains offline.
 | `uv.lock`, `poetry.lock`, `pdm.lock` | each distribution's own requirements             |
 | an installed Python environment      | each distribution's `Requires-Dist`              |
 | `conan.lock` (Conan 1, `graph_lock`) | the `requires` of each node                      |
+| `composer.lock`, `installed.json`    | each package's `require`, without the platform   |
 
 Packages added in this way are marked **transitive**, meaning that no file in
 the repository imports them. Edges between packages are of kind `depends`, as
@@ -922,7 +925,8 @@ remain a single building, so an edge between packages is an edge between names.
 A Python package that no lock file gives edges for (`Pipfile.lock` records
 none) falls back to the installed environment (see [Languages](#languages)).
 Ecosystems that keep the dependency graph outside the repository — Go modules,
-NuGet and container images — require `--online`, described below; Maven, the
+NuGet, container images and a Composer library that commits no lock — require
+`--online`, described below; Maven, the
 PowerShell Gallery, vcpkg and Conan 2 (whose lock is a flat list) are not
 resolved beyond the first level at present.
 
@@ -942,9 +946,10 @@ the index configuration present on this machine and the configuration the
 repository carries — `.npmrc`, including `@scope:registry`; `.yarnrc.yml`;
 `pip.conf` and a requirements file's `--index-url`; Poetry and uv sources in
 `pyproject.toml`; `NuGet.config`; a POM's `<repositories>`; the mirrors in
-`~/.m2/settings.xml`; `.cargo/config.toml`; and `GOPROXY` — and the side panel
-names the index each package resolves from. A container image requires no
-configuration, since `ghcr.io/org/app` names its registry directly.
+`~/.m2/settings.xml`; `.cargo/config.toml`; the `composer` repositories of
+`composer.json` and of Composer's own `config.json`; and `GOPROXY` — and the
+side panel names the index each package resolves from. A container image
+requires no configuration, since `ghcr.io/org/app` names its registry directly.
 
 The two sources are not treated alike. An index named by **this machine's** own
 configuration is trusted. One that appears only in the repository is recorded
@@ -965,6 +970,7 @@ ecosystems whose graph is held outside the repository:
 | crates.io | `<index>/<se>/<rd>/<name>`, sparse index                                  | its normal `deps`, excluding optional ones       |
 | NuGet     | `<feed>/<id>/<version>/<id>.nuspec`                                       | `<dependencies>`, both flat and by group         |
 | OCI       | the manifest, then its config blob                                        | the **base image** it was built on               |
+| Composer  | `<repository>/p2/<vendor>/<name>.json` (`metadata-url` elsewhere)         | the version's `require`, excluding the platform  |
 
 A container image has no dependency list. What it has is the image it was built
 on, which is the source of its unpatched vulnerabilities, and that is what is
@@ -1053,8 +1059,8 @@ leading path elements match it, so that `corp.example/*` covers
 `corp.example/team/billing`. It applies equally to an npm scope (`@acme/*`), a
 Maven group (`com.acme.*`) and a registry path (`harbor.corp/*`). Prefixing a
 pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`,
-`crates:`, `actions:`, `gitlab-ci:`, `psgallery:`, `c-external:`, `vcpkg:` or
-`conan:` — restricts it to that ecosystem.
+`crates:`, `actions:`, `gitlab-ci:`, `psgallery:`, `c-external:`, `vcpkg:`,
+`conan:` or `composer:` — restricts it to that ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
 to whatever is configured here**, so a Go project whose machine is already
@@ -1319,34 +1325,37 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | Scala                   | `metals`                                                   |
 | C#                      | `csharp-ls`                                                |
 | C / C++                 | `clangd`                                                   |
+| PHP                     | `intelephense` or `phpactor`                               |
 
 The servers run in the background once the map is displayed — gopls requires
 approximately 7 s for this repository — within the budget set by
 `--lsp-timeout`; results are cached until the map's files, symbols or imports
 change, or a different set of language servers is installed. Servers that index
-slowly, rust-analyzer, jdtls, metals and clangd in particular, may answer before
-indexing has finished, so a first run can report fewer references than a later
-one. The legend's **Imports / References** switch then determines what the
-selection arcs and the side panel show: for a function, what it uses and what
-uses it. The JSON and GraphML exports include the reference edges.
+slowly, rust-analyzer, jdtls, metals, clangd and the PHP servers in particular,
+may answer before indexing has finished, so a first run can report fewer
+references than a later one. The legend's **Imports / References** switch then
+determines what the selection arcs and the side panel show: for a function,
+what it uses and what uses it. The JSON and GraphML exports include the
+reference edges.
 
 ### Languages
 
-| Ecosystem               | Imports resolved through                                                                                                                                                                                                                                                    | Islands                                                                    |
-|-------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------|
-| Go                      | every `go.mod` (multi-module, local `replace`)                                                                                                                                                                                                                              | Go modules, Go standard library                                            |
-| JavaScript / TypeScript | relative paths, `tsconfig`/`jsconfig` `paths`, workspaces, `package.json` + `package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`; also the scripts of Vue, Svelte and Astro components, and SvelteKit's `$lib`                                                              | npm, Node.js built-ins                                                     |
-| Python                  | relative imports, `src/` layouts, requirements files, `setup.cfg`, literal `setup.py` lists, `pyproject.toml`, `Pipfile`, `poetry.lock`/`uv.lock`/`pdm.lock`/`Pipfile.lock`, installed environments (below)                                                                 | PyPI, Python standard library                                              |
-| Rust                    | the module tree (`crate::`, `self::`, `super::`, `mod x;`), workspace and path crates, `Cargo.toml` (renamed and workspace dependencies) + `Cargo.lock`                                                                                                                     | crates.io, Rust standard library                                           |
-| Java                    | source files by package path (any source root), `pom.xml` (properties, dependency management), Gradle scripts and version catalogs, sbt builds                                                                                                                              | Maven, Java standard library                                               |
-| Kotlin                  | source files by the package they declare (any directory; Java files by path), the Java manifests                                                                                                                                                                            | Maven, Kotlin and Java standard libraries                                  |
-| Scala                   | source files by the package they declare (any directory; Java files by path), `build.sbt` (`%`, `%%`, versions held in a `val`), the Java manifests                                                                                                                         | Maven, Scala and Java standard libraries                                   |
-| C#                      | namespaces to project folders (`RootNamespace` + folder), `PackageReference`, `Directory.Packages.props`                                                                                                                                                                    | NuGet, .NET base library                                                   |
-| C / C++                 | `#include` beside the includer, the include paths of `compile_commands.json` (`-I`, `-iquote`, `-isystem`, `/I`), `include/` and `src/`, and a unique project file ending in the included path; libraries by `vcpkg.json`, `conanfile.txt`, `conanfile.py` and `conan.lock` | vcpkg, Conan, C/C++ external, C and C++ standard libraries, system headers |
-| PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                           | PowerShell Gallery, built-in modules                                       |
-| CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                | GitHub Actions, GitLab CI, Container images                                |
-| Dockerfile / Compose    | `FROM`, `COPY --from`, `RUN --mount from=` and `# syntax=` with `ARG` defaults expanded and stages told apart; Compose `image:`, and `build:` to the Dockerfile in the repository                                                                                           | Container images                                                           |
-| Markdown                | links to files and directories in the repository (inline, reference, autolink, and the `href` and `src` of raw HTML); headings become the file's symbols                                                                                                                    | *(none: a link is not a package)*                                          |
+| Ecosystem               | Imports resolved through                                                                                                                                                                                                                                                                                         | Islands                                                                    |
+|-------------------------|------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|----------------------------------------------------------------------------|
+| Go                      | every `go.mod` (multi-module, local `replace`)                                                                                                                                                                                                                                                                   | Go modules, Go standard library                                            |
+| JavaScript / TypeScript | relative paths, `tsconfig`/`jsconfig` `paths`, workspaces, `package.json` + `package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`; also the scripts of Vue, Svelte and Astro components, and SvelteKit's `$lib`                                                                                                   | npm, Node.js built-ins                                                     |
+| Python                  | relative imports, `src/` layouts, requirements files, `setup.cfg`, literal `setup.py` lists, `pyproject.toml`, `Pipfile`, `poetry.lock`/`uv.lock`/`pdm.lock`/`Pipfile.lock`, installed environments (below)                                                                                                      | PyPI, Python standard library                                              |
+| Rust                    | the module tree (`crate::`, `self::`, `super::`, `mod x;`), workspace and path crates, `Cargo.toml` (renamed and workspace dependencies) + `Cargo.lock`                                                                                                                                                          | crates.io, Rust standard library                                           |
+| Java                    | source files by package path (any source root), `pom.xml` (properties, dependency management), Gradle scripts and version catalogs, sbt builds                                                                                                                                                                   | Maven, Java standard library                                               |
+| Kotlin                  | source files by the package they declare (any directory; Java files by path), the Java manifests                                                                                                                                                                                                                 | Maven, Kotlin and Java standard libraries                                  |
+| Scala                   | source files by the package they declare (any directory; Java files by path), `build.sbt` (`%`, `%%`, versions held in a `val`), the Java manifests                                                                                                                                                              | Maven, Scala and Java standard libraries                                   |
+| C#                      | namespaces to project folders (`RootNamespace` + folder), `PackageReference`, `Directory.Packages.props`                                                                                                                                                                                                         | NuGet, .NET base library                                                   |
+| C / C++                 | `#include` beside the includer, the include paths of `compile_commands.json` (`-I`, `-iquote`, `-isystem`, `/I`), `include/` and `src/`, and a unique project file ending in the included path; libraries by `vcpkg.json`, `conanfile.txt`, `conanfile.py` and `conan.lock`                                      | vcpkg, Conan, C/C++ external, C and C++ standard libraries, system headers |
+| PHP                     | `use` statements (grouped, `function`, `const`) and fully qualified names in code, same-namespace `extends`/`implements`, `require`/`include` of spelled-out paths; project files by what they declare and `composer.json` PSR-4/PSR-0; packages by the autoload prefixes of `composer.lock` or `installed.json` | Packagist, PHP standard library                                            |
+| PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                                                                | PowerShell Gallery, built-in modules                                       |
+| CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                     | GitHub Actions, GitLab CI, Container images                                |
+| Dockerfile / Compose    | `FROM`, `COPY --from`, `RUN --mount from=` and `# syntax=` with `ARG` defaults expanded and stages told apart; Compose `image:`, and `build:` to the Dockerfile in the repository                                                                                                                                | Container images                                                           |
+| Markdown                | links to files and directories in the repository (inline, reference, autolink, and the `href` and `src` of raw HTML); headings become the file's symbols                                                                                                                                                         | *(none: a link is not a package)*                                          |
 
 Python packages that no index has - an in-house package installed from a
 directory, a wheel file or a Git repository - are resolved from what a Python
@@ -1446,11 +1455,38 @@ which the repository does not carry, so a port without a version is then
 neither pinned nor floating, while without a baseline it floats. Everything
 else stays in C/C++ external, without a version.
 
+PHP files (`.php`, `.phtml`, `.inc`) are read for their `use` statements,
+grouped ones (`use App\{A, B as C}`) and `use function`/`use const`
+included, and for the classes code names: those of `new`, `X::`, `extends`,
+`implements`, a trait `use` and `catch`, qualified as PHP qualifies them (the
+file's namespace, then its aliases), and fully qualified function calls
+(`\f()`). A `require` or `include` counts when its path is spelled out:
+string literals, `__DIR__`, `dirname(__FILE__)` and `dirname(__DIR__, n)`
+joined with `.`; a relative path is looked up beside the file, then at the
+project roots, as PHP's include path would. A name resolves to the project file
+that declares it - read from every PHP file's `namespace` and definitions, so
+classmaps and projects without Composer work - or by the PSR-4 and PSR-0 rules
+of each `composer.json` (a path repository's package counts as the project's
+own); then to PHP itself, grouped by extension (`Exception` is `core`,
+`DateTime` is `date`, `PDO` is `pdo`); then to the Composer package whose
+autoload prefix it falls under, which `composer.lock` records for every
+installed package (`Symfony\Component\HttpFoundation\` is
+`symfony/http-foundation`), or `vendor/composer/installed.json` where there is
+no lock. The platform requirements (`php`, `ext-*`, `lib-*`) are not
+packages. A namespace no prefix claims goes to the declared package its
+segments name (`PHPUnit` is `phpunit/phpunit`, `Psr\Http\Message` is
+`psr/http-message`), or else is shown unresolved under the name its first two
+segments suggest. Composer reads a bare version as exact, so `1.2.3` pins even
+without a lock; the lock pins everything it holds and gives
+`--resolve-depth` its edges. A global function nobody here defines (a
+framework helper loaded by a `files` autoload) is dropped, since its package
+cannot be told from its name.
+
 Files in other languages appear on the map without dependency edges. Parsing
 uses a pure-Go tree-sitter runtime for JavaScript/TypeScript, Python, Rust,
-Java, Kotlin, Scala, C and C++; Go uses the standard library's own parser, CI
-and Compose files a YAML parser, and C#, PowerShell, Markdown, Dockerfiles, the
-markup of Vue, Svelte and Astro components and C preprocessor directives small
+Java, Kotlin, Scala, C, C++ and PHP; Go uses the standard library's own parser,
+CI and Compose files a YAML parser, and C#, PowerShell, Markdown, Dockerfiles,
+the markup of Vue, Svelte and Astro components and C preprocessor directives small
 built-in scanners — so the binary continues to cross-compile without a C
 toolchain.
 

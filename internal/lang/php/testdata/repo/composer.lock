@@ -1,0 +1,54 @@
+{
+    "_readme": ["This file locks the dependencies of your project to a known state"],
+    "content-hash": "0123456789abcdef",
+    "packages": [
+        {
+            "name": "acme/tools",
+            "version": "dev-main",
+            "dist": {"type": "path", "url": "packages/tools", "reference": "abc"},
+            "autoload": {"psr-4": {"Acme\\Tools\\": "src/"}}
+        },
+        {
+            "name": "guzzlehttp/guzzle",
+            "version": "7.8.1",
+            "require": {"php": "^7.2.5 || ^8.0", "ext-json": "*", "psr/log": "^1.0 || ^2.0 || ^3.0"},
+            "autoload": {"psr-4": {"GuzzleHttp\\": "src/"}, "files": ["src/functions_include.php"]}
+        },
+        {
+            "name": "monolog/monolog",
+            "version": "3.5.0",
+            "require": {"php": ">=8.1", "psr/log": "^2.0 || ^3.0"},
+            "autoload": {"psr-4": {"Monolog\\": "src/Monolog"}}
+        },
+        {
+            "name": "psr/log",
+            "version": "3.0.0",
+            "require": {"php": ">=8.0.0"},
+            "autoload": {"psr-4": {"Psr\\Log\\": "src"}}
+        },
+        {
+            "name": "symfony/http-foundation",
+            "version": "v6.4.2",
+            "require": {"php": ">=8.1", "symfony/polyfill-mbstring": "~1.1"},
+            "autoload": {"psr-4": {"Symfony\\Component\\HttpFoundation\\": ""}}
+        },
+        {
+            "name": "symfony/polyfill-mbstring",
+            "version": "v1.28.0",
+            "autoload": {"psr-4": {"Symfony\\Polyfill\\Mbstring\\": ""}, "files": ["bootstrap.php"]}
+        }
+    ],
+    "packages-dev": [
+        {
+            "name": "mockery/mockery",
+            "version": "1.6.7",
+            "autoload": {"psr-0": {"Mockery": "library/"}}
+        },
+        {
+            "name": "phpunit/phpunit",
+            "version": "10.5.5",
+            "require": {"php": ">=8.1", "sebastian/diff": "^5.0"},
+            "autoload": {"classmap": ["src/"]}
+        }
+    ]
+}
