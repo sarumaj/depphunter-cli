@@ -1,0 +1,12 @@
+name: shop_workspace
+publish_to: none
+
+environment:
+  sdk: ^3.6.0
+
+workspace:
+  - packages/shop_core
+  - packages/shop_utils
+
+dev_dependencies:
+  lints: ^3.0.0

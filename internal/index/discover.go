@@ -13,6 +13,7 @@ import (
 	"strings"
 
 	"github.com/BurntSushi/toml"
+	"gopkg.in/yaml.v3"
 
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
@@ -87,6 +88,8 @@ func (c *Config) machine(env func(string) string, home string) {
 	}
 	// Bundler's mirror of rubygems.org, from the environment.
 	add(RubyGems, env("BUNDLE_MIRROR__RUBYGEMS__ORG"), "")
+	// The server dart pub and flutter pub get install from instead of pub.dev.
+	add(Pub, env("PUB_HOSTED_URL"), "")
 	if home == "" {
 		return
 	}
@@ -152,6 +155,10 @@ func (c *Config) project(files []*scan.File) {
 			parseGemfile(data, add)
 		case base == "gemfile.lock" || base == "gems.locked":
 			parseGemfileLock(data, add)
+		case base == "pubspec.yaml" || base == "pubspec_overrides.yaml":
+			parsePubspec(data, add)
+		case base == "pubspec.lock":
+			parsePubspecLock(data, add)
 		case base == "config.toml" && strings.HasSuffix(path.Dir(f.Path), ".cargo"):
 			parseCargoConfig(data, add)
 		}
@@ -461,6 +468,55 @@ func parseBundleConfig(data []byte, add func(eco, url, scope string)) {
 			continue
 		}
 		add(RubyGems, strings.Trim(strings.TrimSpace(value), `"'`), "")
+	}
+}
+
+// parsePubspec reads the servers a pubspec names for its hosted dependencies, each
+// serving only the package it is written for: `hosted: <url>`, or the older
+// `hosted: {name, url}`.
+func parsePubspec(data []byte, add func(eco, url, scope string)) {
+	var doc map[string]any
+	if yaml.Unmarshal(data, &doc) != nil {
+		return
+	}
+	for _, section := range []string{"dependencies", "dev_dependencies", "dependency_overrides"} {
+		deps, _ := doc[section].(map[string]any)
+		for _, name := range slices.Sorted(maps.Keys(deps)) {
+			d, _ := deps[name].(map[string]any)
+			switch h := d["hosted"].(type) {
+			case string:
+				add(Pub, h, name)
+			case map[string]any:
+				if u, ok := h["url"].(string); ok {
+					add(Pub, u, name)
+				}
+			}
+		}
+	}
+}
+
+// parsePubspecLock reads the servers pubspec.lock resolved hosted packages from,
+// other than pub.dev (and its former name), each serving the packages locked from it.
+func parsePubspecLock(data []byte, add func(eco, url, scope string)) {
+	var doc struct {
+		Packages map[string]struct {
+			Source      string `yaml:"source"`
+			Description any    `yaml:"description"`
+		} `yaml:"packages"`
+	}
+	if yaml.Unmarshal(data, &doc) != nil {
+		return
+	}
+	for _, name := range slices.Sorted(maps.Keys(doc.Packages)) {
+		p := doc.Packages[name]
+		d, _ := p.Description.(map[string]any)
+		u, _ := d["url"].(string)
+		if p.Source != "hosted" || u == "" {
+			continue
+		}
+		if u = strings.TrimRight(u, "/"); u != public[Pub] && u != "https://pub.dartlang.org" {
+			add(Pub, u, name)
+		}
 	}
 }
 

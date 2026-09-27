@@ -191,7 +191,7 @@ Go libraries (all pure Go, so every target cross-compiles with
 | [odvcencio/gotreesitter](https://github.com/odvcencio/gotreesitter) | tree-sitter runtime and grammars for JS/TS, Python, Rust, Java, Kotlin, Scala, C, C++, PHP, Ruby, Swift |
 | [golang.org/x/mod](https://pkg.go.dev/golang.org/x/mod)             | parsing `go.mod`                                                                                        |
 | [BurntSushi/toml](https://github.com/BurntSushi/toml)               | `pyproject.toml`, `Cargo.toml`, Gradle version catalogs, TOML lockfiles                                 |
-| [gopkg.in/yaml.v3](https://pkg.go.dev/gopkg.in/yaml.v3)             | config files (comment-preserving save), `pnpm-lock.yaml`                                                |
+| [gopkg.in/yaml.v3](https://pkg.go.dev/gopkg.in/yaml.v3)             | config files (comment-preserving save), `pnpm-lock.yaml`, `pubspec.yaml`, `pubspec.lock`                |
 | [tidwall/jsonc](https://github.com/tidwall/jsonc)                   | `tsconfig.json` / `jsconfig.json` with comments                                                         |
 | [fsnotify/fsnotify](https://github.com/fsnotify/fsnotify)           | `--watch`                                                                                               |
 | [sourcegraph/jsonrpc2](https://github.com/sourcegraph/jsonrpc2)     | talking to language servers (`--lsp`)                                                                   |

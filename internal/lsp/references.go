@@ -56,6 +56,7 @@ var Servers = []Server{
 	{Name: "ruby", Open: true, Exts: map[string]string{".rb": "ruby", ".rake": "ruby", ".gemspec": "ruby", ".ru": "ruby"},
 		Commands: [][]string{{"ruby-lsp"}, {"solargraph", "stdio"}}},
 	{Name: "sourcekit-lsp", Open: true, Exts: map[string]string{".swift": "swift"}, Commands: [][]string{{"sourcekit-lsp"}}},
+	{Name: "dart", Open: true, Exts: map[string]string{".dart": "dart"}, Commands: [][]string{{"dart", "language-server", "--protocol=lsp"}}},
 }
 
 type Options struct {

@@ -31,6 +31,8 @@ const (
 	Composer = "composer"
 	// RubyGems is Ruby's, as Bundler installs from it.
 	RubyGems = "rubygems"
+	// Pub is Dart's and Flutter's; its public index is pub.dev.
+	Pub = "pub"
 )
 
 // public is where each ecosystem's packages come from unless something says otherwise.
@@ -45,6 +47,7 @@ var public = map[string]string{
 	// Composer: the metadata host Composer itself reads; packagist.org is its website.
 	Composer: "https://repo.packagist.org",
 	RubyGems: "https://rubygems.org",
+	Pub:      "https://pub.dev",
 }
 
 // Where an index was learned from. It decides nothing on its own - Trusted does

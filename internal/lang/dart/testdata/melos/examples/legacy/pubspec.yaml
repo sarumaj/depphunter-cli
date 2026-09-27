@@ -1,0 +1,4 @@
+name: legacy
+
+dependencies:
+  a: ^1.0.0

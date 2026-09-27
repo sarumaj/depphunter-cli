@@ -805,9 +805,10 @@ Under `--online`, depphunter additionally queries [OSV](https://osv.dev) for
 every external package the map pins to a version — batched queries of 500
 packages each, followed by the advisories it matched — covering Go, npm, PyPI,
 crates.io, Maven, NuGet, GitHub Actions, Conan (as OSV's ConanCenter; vcpkg has
-no OSV ecosystem), Composer (as Packagist), RubyGems and Swift packages (as
-SwiftURL, by URL). Floating packages are not queried, since they resolve to a
-different version on the next installation. Answers are cached for six hours.
+no OSV ecosystem), Composer (as Packagist), RubyGems, Swift packages (as
+SwiftURL, by URL) and pub. Floating packages are not queried, since they
+resolve to a different version on the next installation. Answers are cached
+for six hours.
 `--no-vulns` disables all of this.
 
 Viewed from above, every building carrying findings bears a **pin**, colored by
@@ -896,6 +897,7 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | Composer           | `composer.lock`, `installed.json`, a bare `1.2.3` or `1.2`, `dev-main#<sha>` | `^`, `~`, `*`, `1.2.*`, alternatives, ranges and branches                                 |
 | RubyGems           | `Gemfile.lock` (a git gem by its revision), a bare `1.2.3`, `= 1.2.3`        | `~>`, `>=`, `<`, `!=`, several requirements, no version                                   |
 | Swift packages     | `Package.resolved`, `exact:`, a bare `"1.2.3"`, `revision:`                  | `from:`, `.upToNextMajor`, `.upToNextMinor`, ranges, `branch:`                            |
+| pub                | `pubspec.lock` (a git package by its commit), a bare `1.2.3`, a git commit   | `^`, ranges, `any`, no constraint, a git branch or tag                                    |
 
 The JSON and GraphML exports carry `requested` and `floating` per package.
 
@@ -929,8 +931,9 @@ remain a single building, so an edge between packages is an edge between names.
 A Python package that no lock file gives edges for (`Pipfile.lock` records
 none) falls back to the installed environment (see [Languages](#languages)).
 Ecosystems that keep the dependency graph outside the repository — Go modules,
-NuGet, container images and a Composer or Bundler library that commits no lock
-— require `--online`, described below; Maven, the
+NuGet, container images, a Composer or Bundler library that commits no lock and
+pub, whose `pubspec.lock` is a flat list — require `--online`, described below;
+Maven, the
 PowerShell Gallery, vcpkg, Conan 2 (whose lock is a flat list) and Swift
 packages that SwiftPM has not checked out under `.build` (`Package.resolved`
 is flat as well) are not resolved beyond the first level at present.
@@ -954,7 +957,9 @@ repository carries — `.npmrc`, including `@scope:registry`; `.yarnrc.yml`;
 `~/.m2/settings.xml`; `.cargo/config.toml`; the `composer` repositories of
 `composer.json` and of Composer's own `config.json`; a `Gemfile`'s `source`
 lines (a `source ... do` block serves only its gems), `Gemfile.lock`'s
-remotes, `~/.gemrc` and Bundler's rubygems.org mirror; and `GOPROXY` — and the
+remotes, `~/.gemrc` and Bundler's rubygems.org mirror; a `pubspec.yaml`'s
+`hosted:` servers, the servers `pubspec.lock` resolved from and
+`PUB_HOSTED_URL`; and `GOPROXY` — and the
 side panel names the index each package resolves from. A container image
 requires no configuration, since `ghcr.io/org/app` names its registry directly.
 
@@ -979,6 +984,7 @@ ecosystems whose graph is held outside the repository:
 | OCI       | the manifest, then its config blob                                        | the **base image** it was built on               |
 | Composer  | `<repository>/p2/<vendor>/<name>.json` (`metadata-url` elsewhere)         | the version's `require`, excluding the platform  |
 | RubyGems  | `<server>/info/<name>`, the compact index Bundler reads                   | the version's runtime dependencies               |
+| pub       | `<server>/api/packages/<name>`, the package API pub reads                 | the version's (or latest's) `dependencies`       |
 
 A container image has no dependency list. What it has is the image it was built
 on, which is the source of its unpatched vulnerabilities, and that is what is
@@ -1068,7 +1074,7 @@ leading path elements match it, so that `corp.example/*` covers
 Maven group (`com.acme.*`) and a registry path (`harbor.corp/*`). Prefixing a
 pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`,
 `crates:`, `actions:`, `gitlab-ci:`, `psgallery:`, `c-external:`, `vcpkg:`,
-`conan:`, `composer:`, `rubygems:` or `swiftpm:` — restricts it to that
+`conan:`, `composer:`, `rubygems:`, `swiftpm:` or `pub:` — restricts it to that
 ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
@@ -1337,6 +1343,7 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | PHP                     | `intelephense` or `phpactor`                               |
 | Ruby                    | `ruby-lsp` or `solargraph`                                 |
 | Swift                   | `sourcekit-lsp`                                            |
+| Dart                    | `dart language-server`                                     |
 
 The servers run in the background once the map is displayed — gopls requires
 approximately 7 s for this repository — within the budget set by
@@ -1365,6 +1372,7 @@ the reference edges.
 | PHP                     | `use` statements (grouped, `function`, `const`) and fully qualified names in code, same-namespace `extends`/`implements`, `require`/`include` of spelled-out paths; project files by what they declare and `composer.json` PSR-4/PSR-0; packages by the autoload prefixes of `composer.lock` or `installed.json` | Packagist, PHP standard library                                            |
 | Ruby                    | `require`/`require_relative`/`load`/`autoload` of spelled-out paths on a guessed load path (`lib`, `test`, `spec`, gemspec require paths, path gems); gems by `Gemfile`, gemspecs and `Gemfile.lock`, whose `gem` lines are imports; Rails constants by Zeitwerk naming                                          | RubyGems, Ruby standard library                                            |
 | Swift                   | `import` (every `#if` branch); `Package.swift` targets to their directories, else a directory named after the module; packages by `Package.swift`, `Package.resolved` and Xcode's `project.pbxproj`, products first, whose `.package` lines are imports; types used across a module's files                      | Swift packages, Swift standard library, Apple SDKs                         |
+| Dart                    | `import`, `export` (every configurable URI), `part` and `part of`; relative URIs, `package:` URIs to a package's own `lib/`, path dependencies, pub workspace members and melos packages; packages by `pubspec.yaml` and `pubspec.lock`, whose dependencies are imports                                          | pub, Dart SDK libraries, Flutter SDK                                       |
 | PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                                                                | PowerShell Gallery, built-in modules                                       |
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                     | GitHub Actions, GitLab CI, Container images                                |
 | Dockerfile / Compose    | `FROM`, `COPY --from`, `RUN --mount from=` and `# syntax=` with `ARG` defaults expanded and stages told apart; Compose `image:`, and `build:` to the Dockerfile in the repository                                                                                                                                | Container images                                                           |
@@ -1538,13 +1546,30 @@ module's files see each other's declarations without imports, the type names
 a file uses connect it to the file of its module, or of a project module it
 imports, that declares them.
 
+Dart files are read for their `import`, `export`, `part` and `part of`
+directives; a conditional import contributes every URI it names (`if
+(dart.library.io) 'io.dart'`), since each is compiled on some platform. A
+relative URI resolves against the file, and `package:<name>/<path>` to
+`lib/<path>` of the package named: the file's own (the nearest
+`pubspec.yaml`), a path dependency or override (`pubspec_overrides.yaml`
+included), a path package of `pubspec.lock`, a member of the same pub workspace
+or a package of the same melos repository. Any other package comes from pub,
+as `pubspec.lock` (read from disk when git-ignored; a workspace member's is
+the root's) pins it or as `pubspec.yaml` declares it; `dart:` libraries form
+a Dart SDK island and Flutter's own packages (`flutter`, `flutter_test`,
+`flutter_localizations`, anything taken `sdk: flutter`) a Flutter SDK island.
+A pubspec's dependencies are imports of what they declare, and a workspace's
+members imports of their pubspecs. Dart is read by a small scanner rather than
+the tree-sitter grammar, which on real Flutter code was slow and failed on one
+file in ten.
+
 Files in other languages appear on the map without dependency edges. Parsing
 uses a pure-Go tree-sitter runtime for JavaScript/TypeScript, Python, Rust,
 Java, Kotlin, Scala, C, C++, PHP, Ruby and Swift; Go uses the standard library's
 own parser, CI and Compose files a YAML parser, and C#, PowerShell, Markdown,
-Dockerfiles, the markup of Vue, Svelte and Astro components and C preprocessor
-directives small built-in scanners — so the binary continues to cross-compile
-without a C toolchain.
+Dart, Dockerfiles, the markup of Vue, Svelte and Astro components and C
+preprocessor directives small built-in scanners — so the binary continues to
+cross-compile without a C toolchain.
 
 ## Security
 

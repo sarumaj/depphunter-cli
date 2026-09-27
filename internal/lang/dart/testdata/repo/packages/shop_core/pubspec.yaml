@@ -1,0 +1,10 @@
+name: shop_core
+version: 1.0.0
+resolution: workspace
+
+environment:
+  sdk: ^3.6.0
+
+dependencies:
+  collection: ^1.18.0
+  shop_utils: ^1.0.0

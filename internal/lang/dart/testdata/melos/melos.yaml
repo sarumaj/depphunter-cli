@@ -1,0 +1,6 @@
+name: tools
+packages:
+  - packages/*
+  - examples/**
+ignore:
+  - examples/legacy
