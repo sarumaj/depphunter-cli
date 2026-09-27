@@ -115,6 +115,7 @@ The server **shall** ...
 | `kt`     | The Kotlin plugin.                                                                             |
 | `scala`  | The Scala plugin.                                                                              |
 | `cs`     | The C# plugin.                                                                                 |
+| `cpp`    | The C and C++ plugin.                                                                          |
 | `ps`     | The PowerShell plugin.                                                                         |
 | `ci`     | The continuous-integration plugin (GitHub Actions, GitLab CI, container images).               |
 | `docker` | The Dockerfile and Compose plugin, and the container-image references it shares with `ci`.     |
@@ -186,6 +187,8 @@ requirements of type `limitation` in their scopes:
   ecosystem.
 - Build arguments, environment variables and Compose `.env` files are not
   read, so an image reference that depends on one is left as written.
+- C and C++ preprocessor conditions other than a literal 0 or 1 are not
+  evaluated, so the includes of every platform branch are recorded.
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

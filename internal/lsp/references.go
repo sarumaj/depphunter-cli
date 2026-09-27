@@ -47,6 +47,10 @@ var Servers = []Server{
 		Commands: [][]string{{"kotlin-language-server"}}},
 	{Name: "metals", Open: true, Exts: map[string]string{".scala": "scala", ".sc": "scala"}, Commands: [][]string{{"metals"}}},
 	{Name: "csharp-ls", Open: true, Exts: map[string]string{".cs": "csharp"}, Commands: [][]string{{"csharp-ls"}}},
+	{Name: "clangd", Open: true, Exts: map[string]string{
+		".c": "c", ".h": "cpp", ".cc": "cpp", ".cpp": "cpp", ".cxx": "cpp", ".c++": "cpp",
+		".hpp": "cpp", ".hh": "cpp", ".hxx": "cpp", ".h++": "cpp", ".ipp": "cpp", ".inl": "cpp",
+	}, Commands: [][]string{{"clangd"}}},
 }
 
 type Options struct {

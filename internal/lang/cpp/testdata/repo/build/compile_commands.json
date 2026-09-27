@@ -1,0 +1,12 @@
+[
+  {
+    "directory": ".",
+    "file": "../src/main.cpp",
+    "arguments": ["c++", "-std=c++20", "-I../include", "-isystem", "../third_party/fmt/include", "-I/usr/local/include", "-c", "../src/main.cpp"]
+  },
+  {
+    "directory": ".",
+    "file": "../lib/util.c",
+    "command": "cc -DNAME=\"a b\" -I ../lib/include -c ../lib/util.c"
+  }
+]
