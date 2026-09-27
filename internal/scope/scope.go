@@ -131,7 +131,7 @@ func FromGoEnv(env func(string) string) []string {
 var ecosystems = map[string]bool{
 	"go": true, "npm": true, "pypi": true, "crates": true, "maven": true,
 	"nuget": true, "oci": true, "actions": true, "gitlab-ci": true, "powershell": true,
-	"psgallery": true,
+	"psgallery": true, "c-external": true,
 }
 
 func isEcosystem(s string) bool { return ecosystems[strings.ToLower(s)] }

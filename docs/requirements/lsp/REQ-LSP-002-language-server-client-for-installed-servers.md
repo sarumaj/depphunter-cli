@@ -17,7 +17,8 @@ input and output (sourcegraph/jsonrpc2), each installed language server for the
 files it covers: gopls (Go), typescript-language-server (TypeScript,
 JavaScript), pyright, basedpyright or pylsp (Python, first installed),
 rust-analyzer (Rust), jdtls (Java), kotlin-language-server (Kotlin), metals
-(Scala) and csharp-ls (C#), skipping a server that is not installed.
+(Scala), csharp-ls (C#) and clangd (C, C++), skipping a server that is not
+installed.
 
 ## Rationale
 

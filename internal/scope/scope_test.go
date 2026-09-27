@@ -51,6 +51,11 @@ func TestAPatternMayNameItsEcosystem(t *testing.T) {
 	if p.Match("nuget", "Acme.Tools") {
 		t.Error("a psgallery-scoped pattern matched a NuGet package")
 	}
+	// So is the island of C and C++ libraries no manifest declares.
+	p = New([]string{"c-external:acme*"})
+	if !p.Match("c-external", "acmecore") || p.Match("npm", "acmecore") {
+		t.Error("a c-external-scoped pattern did not keep to that ecosystem")
+	}
 	// The prefix is recognized whatever its case, and must then match as well.
 	p = New([]string{"NPM:@acme/*"})
 	if !p.Match("npm", "@acme/widgets") {

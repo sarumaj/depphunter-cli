@@ -141,3 +141,24 @@ func (c Capture) SiblingFieldType(field string) string {
 	}
 	return ""
 }
+
+// Scope is one ancestor of a capture: its node type and the text of its "name" field
+// ("" when it has none).
+type Scope struct {
+	Type string
+	Name string
+}
+
+// Scopes returns the capture's ancestors, innermost first, e.g. the classes and
+// namespaces around a C++ method, or the function body a declaration sits in.
+func (c Capture) Scopes() []Scope {
+	var out []Scope
+	for n := c.node.Parent(); n != nil; n = n.Parent() {
+		s := Scope{Type: n.Type(c.g.lang)}
+		if f := n.ChildByFieldName("name", c.g.lang); f != nil {
+			s.Name = f.Text(c.src)
+		}
+		out = append(out, s)
+	}
+	return out
+}
