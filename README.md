@@ -1764,6 +1764,8 @@ module's files see each other's declarations without imports, the type names
 a file uses connect it to the file of its module, or of a project module it
 imports, that declares them. A module no SwiftPM manifest provides may be a pod
 or a Carthage framework: an app's Podfile or Cartfile is read for it too.
+Swift is read by a small scanner: the tree-sitter grammar failed on about one
+file in seven and spent up to three seconds on each of them.
 
 Objective-C sources (`.m`, `.mm`, and `.h` files that show Objective-C in
 their first lines: `#import`, `@interface`, `@protocol`, `@class`) share the
@@ -1880,10 +1882,10 @@ every file measured correctly but took 6.4 ms per file on average.
 
 Files in other languages appear on the map without dependency edges. Parsing
 uses a pure-Go tree-sitter runtime for JavaScript/TypeScript, Python, Rust,
-Java, Kotlin, Scala, C, C++, PHP, Ruby and Swift; Go uses the standard library's
-own parser, CI, Compose and Buf files a YAML parser, and C#, PowerShell,
-Markdown, Dart, Elixir, Erlang, R, Haskell, HCL, Protocol Buffers, shell
-scripts, CMake files, Objective-C, CocoaPods and Carthage manifests,
+Java, Kotlin, Scala, C, C++, PHP and Ruby; Go uses the standard library's own
+parser, CI, Compose and Buf files a YAML parser, and C#, PowerShell, Markdown,
+Dart, Elixir, Erlang, R, Haskell, HCL, Protocol Buffers, shell scripts, CMake
+files, Swift, Objective-C, CocoaPods and Carthage manifests,
 Dockerfiles, the markup of Vue, Svelte and Astro components, R Markdown chunks
 and C preprocessor directives small built-in scanners — so the binary continues
 to cross-compile without a C toolchain.

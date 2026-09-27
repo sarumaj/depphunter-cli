@@ -1,5 +1,6 @@
-// Package swift analyzes Swift with tree-sitter. `import` statements name modules,
-// which resolve to the directories of the project's own targets (Package.swift,
+// Package swift analyzes Swift with a scanner (lex.go, decls.go). `import`
+// statements name modules, which resolve to the directories of the project's own
+// targets (Package.swift,
 // else a directory named after the module), to the Swift toolchain's libraries and
 // Apple's SDK frameworks (modules.go), or to the Swift package providing them, read
 // from Package.swift, Package.resolved and Xcode projects (manifest.go). A
@@ -9,18 +10,13 @@
 package swift
 
 import (
-	"bytes"
 	"cmp"
 	"path"
-	"regexp"
 	"slices"
 	"strings"
 
-	"github.com/odvcencio/gotreesitter/grammars/swift"
-
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/cocoapods"
-	"github.com/sarumaj/depphunter-cli/internal/lang/treesitter"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
@@ -30,32 +26,11 @@ const (
 	ecoApple   = "apple-sdk"
 )
 
-// @import is an import declaration (its text parsed in Go); @kind/@def.type a type
-// declaration (class, struct, enum, actor or extension); @def.<kind> another
-// definition; @ref a type name the code uses. Where a definition sits is read from
-// its ancestors.
-const query = `
-(import_declaration) @import
-
-(class_declaration declaration_kind: _ @kind name: _ @def.type)
-(protocol_declaration name: (type_identifier) @def.protocol)
-(protocol_function_declaration name: (simple_identifier) @def.method)
-(function_declaration name: (simple_identifier) @def.func)
-(init_declaration "init" @def.init)
-(typealias_declaration name: (type_identifier) @def.alias)
-(property_declaration name: (pattern) @def.property)
-
-(user_type) @ref
-(call_expression (simple_identifier) @ref)
-`
-
-var grammar = treesitter.MustGrammar("swift", swift.Language(), query)
-
 // Implements: REQ-SWIFT-001
 type Plugin struct{}
 
 func (Plugin) Name() string { return "swift" }
-func (Plugin) Version() int { return 1 }
+func (Plugin) Version() int { return 2 }
 
 // Claims takes every Swift source, Package.swift and its versioned variants
 // (Package@swift-5.9.swift) included, except what SwiftPM checked out under .build.
@@ -92,82 +67,25 @@ const (
 	kindType   = "type"   // a type name the code uses; Name is "type:<imported modules>"
 )
 
-// Implements: REQ-SWIFT-002, REQ-SWIFT-003, REQ-SWIFT-006, REQ-SWIFT-011
+// Implements: REQ-SWIFT-002, REQ-SWIFT-003, REQ-SWIFT-006, REQ-SWIFT-011, REQ-SWIFT-014
 func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
-	ex := &lang.Extraction{}
-	var symbols lang.SymbolSet
-	type ref struct {
-		name string
-		line int
-	}
-	var refs []ref
-	declared := map[string]bool{}
+	p := parse(src)
+	ex := &lang.Extraction{Imports: p.imports}
 	var modules []string
-	err := grammar.Matches(prepare(src), func(m treesitter.Match) {
-		for _, c := range m {
-			switch c.Name {
-			case "import":
-				if imp, ok := parseImport(c.Text); ok {
-					imp.Line = c.Line
-					ex.Imports = append(ex.Imports, imp)
-					modules = append(modules, imp.Module)
-				}
-			case "ref":
-				if name := typeName(c.Text); name != "" {
-					refs = append(refs, ref{name, c.Line})
-				}
-			case "def.type":
-				kind, _ := m.Get("kind")
-				owner, inBody := owner(c.Scopes(), true)
-				if inBody {
-					continue
-				}
-				name := typePath(c.Text)
-				if kind != "extension" {
-					declared[name] = true
-				}
-				symbols.Add(qualify(owner, name), typeKinds[kind], c.Line)
-			case "def.protocol", "def.alias":
-				owner, inBody := owner(c.Scopes(), true)
-				if inBody {
-					continue
-				}
-				declared[c.Text] = true
-				symbols.Add(qualify(owner, c.Text), map[string]string{"def.protocol": "interface", "def.alias": "type"}[c.Name], c.Line)
-			case "def.func", "def.method":
-				switch owner, inBody := owner(c.Scopes(), true); {
-				case inBody:
-				case owner != "":
-					symbols.Add(owner+"."+c.Text, "method", c.Line)
-				default:
-					symbols.Add(c.Text, "func", c.Line)
-				}
-			case "def.init":
-				if owner, inBody := owner(c.Scopes(), true); !inBody && owner != "" {
-					symbols.Add(owner+".init", "method", c.Line)
-				}
-			case "def.property":
-				if !isIdent(c.Text) {
-					continue // a tuple pattern: let (a, b) = ...
-				}
-				switch owner, inBody := owner(c.Scopes(), true); {
-				case inBody:
-				case owner != "":
-					symbols.Add(owner+"."+c.Text, "property", c.Line)
-				default:
-					symbols.Add(c.Text, "var", c.Line)
-				}
-			}
-		}
-	})
+	for _, imp := range p.imports {
+		modules = append(modules, imp.Module)
+	}
 	if manifest(src) {
 		ex.Imports = append(ex.Imports, packageImports(string(src))...)
 	}
+	// The type uses: each name once, at its first line, unless the file declares
+	// it outside a body.
+	refs := p.refs
 	slices.SortFunc(refs, func(a, b ref) int { return cmp.Or(cmp.Compare(a.line, b.line), cmp.Compare(a.name, b.name)) })
 	seen := map[string]bool{}
 	scope := kindType + ":" + strings.Join(modules, ",")
 	for _, r := range refs {
-		if seen[r.name] || declared[r.name] {
+		if seen[r.name] || p.declared[r.name] {
 			continue
 		}
 		seen[r.name] = true
@@ -176,11 +94,11 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 	slices.SortStableFunc(ex.Imports, func(a, b lang.RawImport) int {
 		return cmp.Or(cmp.Compare(a.Line, b.Line), cmp.Compare(a.Spec, b.Spec))
 	})
-	ex.Symbols = symbols.List()
-	return ex, err
+	ex.Symbols = p.symbols.List()
+	return ex, nil
 }
 
-// typeKinds names the symbol kinds of a class_declaration by its keyword.
+// typeKinds names the symbol kinds of a type declaration by its keyword.
 var typeKinds = map[string]string{
 	"class": "class", "actor": "class", "struct": "type", "enum": "type", "extension": "extension",
 }
@@ -226,63 +144,6 @@ func directive(line []byte) bool {
 	}
 	return false
 }
-
-// prepare rewrites what the grammar misreads, keeping every line and column:
-//
-//   - #if/#elseif/#else/#endif lines become spaces. The grammar does not know them
-//     where declarations are expected, and its error recovery then drops what they
-//     guard (`#else` + `import AppKit` became one error node). With the lines gone
-//     every branch is read: each is code the project builds somewhere.
-//   - A freestanding macro starting a line (`#expect(x)`, `#Preview { }`) becomes a
-//     call (`_expect(x)`): after another statement the grammar fails on it, and
-//     a tree with errors costs the parser a retry ladder that takes seconds for a
-//     test file of a few hundred lines.
-//   - Swift 6.2's `unsafe` expression marker (`unsafe Array($0)`) becomes spaces:
-//     the grammar predates it.
-//
-// Implements: REQ-SWIFT-002
-func prepare(src []byte) []byte {
-	src = unsafeExpr.ReplaceAllFunc(src, func(m []byte) []byte {
-		i := bytes.LastIndex(m, []byte("unsafe"))
-		out := append([]byte(nil), m...)
-		copy(out[i:], "      ")
-		return out
-	})
-	var out []byte
-	start := 0
-	for i := 0; i <= len(src); i++ {
-		if i < len(src) && src[i] != '\n' {
-			continue
-		}
-		line := src[start:i]
-		j := 0
-		for j < len(line) && (line[j] == ' ' || line[j] == '\t') {
-			j++
-		}
-		if j+1 < len(line) && line[j] == '#' && (line[j+1] == '_' || line[j+1] >= 'a' && line[j+1] <= 'z' || line[j+1] >= 'A' && line[j+1] <= 'Z') {
-			if out == nil {
-				out = append([]byte(nil), src...)
-			}
-			if directive(line) {
-				for k := start; k < i; k++ {
-					if out[k] != '\r' {
-						out[k] = ' '
-					}
-				}
-			} else {
-				out[start+j] = '_'
-			}
-		}
-		start = i + 1
-	}
-	if out == nil {
-		return src
-	}
-	return out
-}
-
-// unsafeExpr is `unsafe` where an expression starts, followed by one.
-var unsafeExpr = regexp.MustCompile(`(?m)(?:^|[{(\[=,:]|\breturn|\btry|\bawait|\bin)[ \t]*unsafe[ \t]+[A-Za-z_(&\[$]`)
 
 // importKinds are the declaration kinds an import may single out
 // (`import struct Collections.Deque`).
@@ -363,32 +224,6 @@ func isIdent(s string) bool {
 		}
 	}
 	return true
-}
-
-// bodies are the nodes whose declarations are local: nobody else can name them.
-var bodies = set("function_body", "computed_property", "lambda_literal", "statements",
-	"computed_getter", "computed_setter", "computed_modify", "willset_didset_block",
-	"subscript_declaration", "deinit_declaration")
-
-// owner reads the type a definition belongs to from its ancestors: the types and
-// extensions around it joined with ".", and whether it sits in a body, where it is
-// nobody's to name. A definition's own node is its first ancestor and is skipped
-// when self is set.
-func owner(scopes []treesitter.Scope, self bool) (string, bool) {
-	var outer []string
-	for i, s := range scopes {
-		if i == 0 && self {
-			continue
-		}
-		switch {
-		case bodies[s.Type]:
-			return "", true
-		case s.Type == "class_declaration" || s.Type == "protocol_declaration":
-			outer = append(outer, typePath(s.Name))
-		}
-	}
-	slices.Reverse(outer)
-	return strings.Join(outer, "."), false
 }
 
 // typePath is a declared or extended type's name without generic arguments or

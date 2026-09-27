@@ -17,11 +17,14 @@ manifest's computed values and conditionals are not evaluated, an Xcode
 project's targets and their source files are not read (module directories
 are guessed by name), `Package.resolved` gives no package-to-package edges
 without a checkout, a module no product, table entry or name match
-attributes is unresolved, type references are matched by name only (no
-overloads, nested types or generics), and files the grammar cannot fully
-parse (about one in ten in real projects: new syntax, complex generic
-operator declarations) yield what the partial tree holds, at up to the
-3-second parse bound. No package index is asked with `--online`.
+attributes is unresolved, and type references are matched by name only (no
+overloads, nested types or generics). The scanner (REQ-SWIFT-014) does not
+type-check: a generic type in an expression with a single argument before a
+call or closure (`Box<Int>(x)`, `Stream<T> { }`) and a type after an
+arithmetic or prefix operator (`x + Int(y)`, `try! Foo()`) are not recorded
+as type uses, as the grammar it replaced read them, macros are not expanded,
+and a `/` that could divide is not read as a regex literal. No package index
+is asked with `--online`.
 
 ## Rationale
 
