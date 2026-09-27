@@ -250,6 +250,8 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		deps, err = c.opamPackage(ctx, index, t)
 	case Julia:
 		deps, err = c.juliaPackage(ctx, index, t)
+	case Bazel:
+		deps, err = c.bazelModule(ctx, index, t)
 	case Maven:
 		if !strings.Contains(t.Package, ":") {
 			// A Maven group cannot be asked. A POM is addressed by group *and*
@@ -511,6 +513,9 @@ type dep struct {
 func (d dep) Pinned(eco string) bool {
 	if eco == Maven {
 		return lang.PinnedMaven(d.Version) // 1.2.3.RELEASE is one release, [1.0,2.0) is not
+	}
+	if eco == Bazel {
+		return d.Version != "" // a registry's version is one release, whatever its shape (1.2.0.bcr.1)
 	}
 	if eco == NPM || eco == Julia {
 		// A registry's compat "1" is every 1.x; only a whole "1.2.3" is one release.

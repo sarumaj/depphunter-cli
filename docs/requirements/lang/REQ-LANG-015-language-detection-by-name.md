@@ -29,7 +29,9 @@ Dist::Zilla's `dist.ini`, dune's `dune`, `dune-project` and
 Pkg's `Project.toml`, `JuliaProject.toml`, `Manifest.toml`,
 `JuliaManifest.toml`, versioned `Manifest-vX.Y.toml` and `Artifacts.toml`,
 Clojure's `project.clj`, `build.boot`, `deps.edn`, `bb.edn` and
-`shadow-cljs.edn`,
+`shadow-cljs.edn`, Bazel's `BUILD`, `WORKSPACE`, `WORKSPACE.bzlmod`
+(Starlark, as `.bzl` and `.bazel` files are) and `MODULE.bazel.lock`
+(JSON),
 the shells' and direnv's startup files (`.bashrc`,
 `.zshrc`, `.profile`, `.envrc` and the others of REQ-SHELL-001), and the
 Dockerfile names of REQ-DOCKER-001), or, for a file neither names, from a

@@ -1,0 +1,12 @@
+load("@npm//:defs.bzl", "npm_link_all_packages")
+
+npm_link_all_packages(name = "node_modules")
+
+js_library(
+    name = "app",
+    srcs = ["app.js"],
+    deps = [
+        ":node_modules/lodash",
+        "@npm//@types/node",
+    ],
+)

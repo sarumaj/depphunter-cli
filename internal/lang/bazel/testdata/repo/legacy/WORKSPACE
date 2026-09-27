@@ -1,0 +1,52 @@
+workspace(name = "legacy")
+
+load("@bazel_tools//tools/build_defs/repo:http.bzl", "http_archive")
+load("@bazel_tools//tools/build_defs/repo:git.bzl", "git_repository")
+load("//:deps.bzl", "legacy_deps")
+
+http_archive(
+    name = "io_bazel_rules_go",
+    sha256 = "f4a9314518ca6acfa16cc4ab43b0b8ce1e4ea64b81c38d8a3772883f153346b8",
+    urls = [
+        "https://mirror.bazel.build/github.com/bazelbuild/rules_go/releases/download/v0.50.1/rules_go-v0.50.1.zip",
+        "https://github.com/bazelbuild/rules_go/releases/download/v0.50.1/rules_go-v0.50.1.zip",
+    ],
+)
+
+http_archive(
+    name = "zlib",
+    build_file = "//third_party:zlib.BUILD",
+    strip_prefix = "zlib-1.3.1",
+    urls = ["https://zlib.net/zlib-1.3.1.tar.gz"],
+)
+
+http_archive(
+    name = "unpinned",
+    urls = ["https://github.com/acme/unpinned/archive/refs/heads/main.zip"],
+)
+
+git_repository(
+    name = "com_github_gflags_gflags",
+    remote = "https://github.com/gflags/gflags.git",
+    tag = "v2.2.2",
+)
+
+git_repository(
+    name = "floating",
+    remote = "git@github.com:acme/floating.git",
+    branch = "main",
+)
+
+local_repository(
+    name = "vendored",
+    path = "third_party/vendored",
+)
+
+load("@rules_jvm_external//:defs.bzl", "maven_install")
+
+maven_install(
+    artifacts = ["com.squareup.okhttp3:okhttp:4.12.0"],
+    repositories = ["https://repo1.maven.org/maven2"],
+)
+
+legacy_deps()

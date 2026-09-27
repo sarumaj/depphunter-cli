@@ -61,6 +61,9 @@ const (
 	// files (Versions.toml, Deps.toml, Compat.toml) are read from its git
 	// repository.
 	Julia = "julia"
+	// Bazel is the bazel plugin's island of Bzlmod modules; a registry (the Bazel
+	// Central Registry by default) serves each version's MODULE.bazel as a file.
+	Bazel = "bazel"
 )
 
 // public is where each ecosystem's packages come from unless something says otherwise.
@@ -90,6 +93,7 @@ var public = map[string]string{
 	Opam: "https://raw.githubusercontent.com/ocaml/opam-repository/master",
 	// The General registry; pkg.julialang.org serves registries only as tarballs.
 	Julia: "https://raw.githubusercontent.com/JuliaRegistries/General/master",
+	Bazel: "https://bcr.bazel.build",
 }
 
 // Clojars is the Maven repository Clojure's libraries are published to. Leiningen,
@@ -118,6 +122,15 @@ func MavenPublic(repo string) bool {
 		return strings.HasPrefix(u.Path, "/repo")
 	}
 	return false
+}
+
+// BazelCentral reports whether a registry a .bazelrc names is the Bazel Central
+// Registry itself: the public index, not one the repository brings along.
+//
+// Implements: REQ-SUP-057
+func BazelCentral(registry string) bool {
+	u, err := url.Parse(strings.TrimSpace(registry))
+	return err == nil && strings.EqualFold(u.Hostname(), "bcr.bazel.build")
 }
 
 // HackageItself reports whether a repository URL is Hackage (any scheme, with or

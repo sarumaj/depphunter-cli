@@ -812,7 +812,9 @@ crates.io, Maven, NuGet, GitHub Actions, Conan (as OSV's ConanCenter; vcpkg has
 no OSV ecosystem), Composer (as Packagist), RubyGems, Swift packages (as
 SwiftURL, by URL), pub, Hex, CRAN, Bioconductor, Hackage, opam and Julia; OSV
 has no ecosystem for Terraform modules and providers, Buf Schema Registry
-modules, CocoaPods, Carthage, LuaRocks, Wally, CPAN or Zig. Floating packages
+modules, CocoaPods, Carthage, LuaRocks, Wally, CPAN, Zig or Bazel modules and
+repositories (the Maven, PyPI, Go, npm and crates.io packages Bazel's module
+extensions install are asked about as such). Floating packages
 are not queried, since they resolve to a different version on the next
 installation. Answers are cached for six hours.
 `--no-vulns` disables all of this.
@@ -920,6 +922,8 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | Julia               | `Manifest.toml` (and `Manifest-v1.11.toml`), `=1.2.3` in `[compat]`, a `[sources]` commit `rev`              | a bare `1.2` (a caret range in Pkg), `~1.2`, `>= 1`, `1.2 - 1.5`, no `[compat]` entry     |
 | Zig                 | a `.hash` in `build.zig.zon` (Zig verifies the download), a commit in the URL                                | a branch archive (`refs/heads/`), a URL without a ref or hash; a tag is shown, neither    |
 | Clojure (Maven)     | an exact `:mvn/version` or Leiningen version (Maven's rule), a full `:git/sha`                               | `RELEASE`, `LATEST`, ranges, snapshots; a `:git/tag` alone is shown, neither              |
+| Bazel modules       | `MODULE.bazel.lock`, a `bazel_dep` version, `single_version_override`, an override's commit or `integrity`   | no version; a `git_override` branch; a `git_override` tag is shown, neither               |
+| Bazel repositories  | an `http_archive` `sha256` or `integrity`, a `git_repository` commit, an archive of a commit                 | a branch (archive or `branch =`), no ref and no hash; a tag is shown, neither             |
 
 A package a shell script installs (`pip install`, `npm install -g`, `go
 install`, `cargo install`, `gem install`) follows its ecosystem's row; one
@@ -935,27 +939,29 @@ what those packages themselves require: `1` adds one level, `2` adds two, and
 comes from the lock files the repository already carries; nothing is fetched,
 and the analysis remains offline.
 
-| Lock file                                | gives                                              |
-|------------------------------------------|----------------------------------------------------|
-| `package-lock.json` (v1-v3)              | every installed package and what it requires       |
-| `pnpm-lock.yaml` (v5-v9)                 | `packages:` and, since v9, `snapshots:`            |
-| `yarn.lock` (classic)                    | each entry's resolved version and `dependencies`   |
-| `Cargo.lock`                             | `dependencies` per crate                           |
-| `uv.lock`, `poetry.lock`, `pdm.lock`     | each distribution's own requirements               |
-| an installed Python environment          | each distribution's `Requires-Dist`                |
-| `conan.lock` (Conan 1, `graph_lock`)     | the `requires` of each node                        |
-| `composer.lock`, `installed.json`        | each package's `require`, without the platform     |
-| `Gemfile.lock`                           | the dependencies listed under each spec            |
-| `.build/checkouts/*/Package.swift`       | the checked-out package's `.package` lines         |
-| `mix.lock`                               | each Hex package's requirements                    |
-| `renv.lock`, `packrat/packrat.lock`      | each R package's requirements                      |
-| `dist-newstyle/cache/plan.json`          | what each package of cabal's build plan depends on |
-| `Podfile.lock`                           | the pods each pod's specs depend on                |
-| `wally.lock`                             | each Wally package's dependencies                  |
-| `cpanfile.snapshot` (Carton)             | each distribution's `requirements`                 |
-| `dune.lock/` (dune package management)   | each package's `depends`                           |
-| `Manifest.toml` (Julia, formats 1 and 2) | each package's `deps`                              |
-| `zig-pkg/<hash>/` or Zig's global cache  | a fetched package's own `build.zig.zon`            |
+| Lock file                                 | gives                                              |
+|-------------------------------------------|----------------------------------------------------|
+| `package-lock.json` (v1-v3)               | every installed package and what it requires       |
+| `pnpm-lock.yaml` (v5-v9)                  | `packages:` and, since v9, `snapshots:`            |
+| `yarn.lock` (classic)                     | each entry's resolved version and `dependencies`   |
+| `Cargo.lock`                              | `dependencies` per crate                           |
+| `uv.lock`, `poetry.lock`, `pdm.lock`      | each distribution's own requirements               |
+| an installed Python environment           | each distribution's `Requires-Dist`                |
+| `conan.lock` (Conan 1, `graph_lock`)      | the `requires` of each node                        |
+| `composer.lock`, `installed.json`         | each package's `require`, without the platform     |
+| `Gemfile.lock`                            | the dependencies listed under each spec            |
+| `.build/checkouts/*/Package.swift`        | the checked-out package's `.package` lines         |
+| `mix.lock`                                | each Hex package's requirements                    |
+| `renv.lock`, `packrat/packrat.lock`       | each R package's requirements                      |
+| `dist-newstyle/cache/plan.json`           | what each package of cabal's build plan depends on |
+| `Podfile.lock`                            | the pods each pod's specs depend on                |
+| `wally.lock`                              | each Wally package's dependencies                  |
+| `cpanfile.snapshot` (Carton)              | each distribution's `requirements`                 |
+| `dune.lock/` (dune package management)    | each package's `depends`                           |
+| `Manifest.toml` (Julia, formats 1 and 2)  | each package's `deps`                              |
+| `zig-pkg/<hash>/` or Zig's global cache   | a fetched package's own `build.zig.zon`            |
+| `MODULE.bazel.lock` (before Bazel 7.2)    | the resolved module graph (`moduleDepGraph`)       |
+| `maven_install.json` (rules_jvm_external) | each artifact's `dependencies`                     |
 
 Packages added in this way are marked **transitive**, meaning that no file in
 the repository imports them. Edges between packages are of kind `depends`, as
@@ -973,8 +979,9 @@ records only a depth, and a Haskell project without cabal's build plan on disk
 registry modules, pods no `Podfile.lock` records, rocks (`luarocks.lock` is a
 flat list), CPAN distributions no `cpanfile.snapshot` records, opam
 packages no `dune.lock/` records (an `*.opam.locked` is a flat list) and Julia
-packages no `Manifest.toml` records, and Clojure's Maven artifacts (neither
-tools.deps nor Leiningen writes a lock) — require `--online`, described below;
+packages no `Manifest.toml` records, Clojure's Maven artifacts (neither
+tools.deps nor Leiningen writes a lock), and Bazel modules (a lock file since
+Bazel 7.2 records versions only) — require `--online`, described below;
 Maven groups (Java, Kotlin and Scala), the PowerShell Gallery, vcpkg, Conan 2
 (whose lock is a flat list), Bioconductor packages no lock records, Swift
 packages that SwiftPM has not checked out under `.build`
@@ -985,7 +992,8 @@ is not a package index depphunter asks. Content a CMake build fetches is not
 resolved beyond the first level either, nor are Carthage dependencies
 (`Cartfile.resolved` is flat), Wally packages no `wally.lock` records and Zig
 packages Zig has not fetched into `zig-pkg/` or its global cache (there is no
-Zig registry for `--online` to ask). A Terraform provider depends on nothing.
+Zig registry for `--online` to ask), nor Bazel's WORKSPACE repositories. A
+Terraform provider depends on nothing.
 
 The side panel presents these as a **tree**: every row under *Depends on* and
 *Used by* expands into that node's own dependencies, and so on recursively.
@@ -1020,7 +1028,8 @@ project's `.luarocks/config-5.x.lua`, of `~/.luarocks/config-5.x.lua` and of
 `LUAROCKS_CONFIG` other than luarocks.org; the Maven repositories of a
 `deps.edn` or `bb.edn` (`:mvn/repos`), a `project.clj` or `build.boot`
 (`:repositories`) and a `shadow-cljs.edn` other than Maven Central and
-Clojars; and `GOPROXY` — and the
+Clojars; the `--registry` lines of a `.bazelrc` and `~/.bazelrc` other than
+the Bazel Central Registry; and `GOPROXY` — and the
 side panel names the index each package resolves from. A container image
 requires no configuration, since `ghcr.io/org/app` names its registry directly,
 and neither does a Terraform module: `app.terraform.io/acme/vpc/aws` names its
@@ -1059,6 +1068,7 @@ ecosystems whose graph is held outside the repository:
 | opam                   | `<repository>/packages/<name>/<name>.<version>/opam`, opam-repository's files (a pinned version only)                                                                                       | its `depends`, without the compiler and what only tests or documentation need                        |
 | Julia                  | `<registry>/<L>/<Name>/Versions.toml`, then `Deps.toml` and `Compat.toml` (General, or a depot registry on GitHub)                                                                          | the dependencies of the pinned or newest admitted release, with their compat ranges, without `julia` |
 | Maven (group:artifact) | `<repository>/<group path>/<artifact>/<version>/<artifact>-<version>.pom` and its parents, the version from `maven-metadata.xml` when unpinned; Clojars after Central for a Clojure project | its compile and runtime dependencies, excluding optional ones                                        |
+| Bazel modules          | `<registry>/modules/<name>/<version>/MODULE.bazel`, the newest version not yanked from `metadata.json` when unversioned (the Bazel Central Registry, or a `.bazelrc` `--registry`)          | its `bazel_dep`s, excluding dev dependencies                                                         |
 
 A container image has no dependency list. What it has is the image it was built
 on, which is the source of its unpatched vulnerabilities, and that is what is
@@ -1160,8 +1170,8 @@ pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`
 `conan:`, `composer:`, `rubygems:`, `swiftpm:`, `pub:`, `hex:`, `cran:`,
 `bioconductor:`, `hackage:`, `terraform-module:`, `terraform-provider:`,
 `buf:`, `cmake-fetch:`, `pkg-config:`, `cocoapods:`, `carthage:`, `luarocks:`,
-`wally:`, `cpan:`, `opam:`, `julia:` or `zig:` — restricts it to that
-ecosystem.
+`wally:`, `cpan:`, `opam:`, `julia:`, `zig:`, `bazel:` or `bazel-repo:` —
+restricts it to that ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
 to whatever is configured here**, so a Go project whose machine is already
@@ -1558,6 +1568,7 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | Julia                   | `julia --startup-file=no --history-file=no -e "using LanguageServer; runserver()"`           |
 | Zig                     | `zls`                                                                                        |
 | Clojure                 | `clojure-lsp`                                                                                |
+| Bazel (Starlark)        | `starpls server`, `bazel-lsp` or `bzl lsp serve`                                             |
 
 The servers run in the background once the map is displayed — gopls requires
 approximately 7 s for this repository — within the budget set by
@@ -1599,6 +1610,7 @@ The JSON and GraphML exports include the reference edges.
 | Julia                   | `using`/`import` (relative `.Sub`/`..Parent` through the `include` graph), `include`/`includet` (`joinpath(@__DIR__, …)`); the package's own `src/Name.jl` and submodules, local packages by UUID, `[sources]` or a manifest `path`; packages by `Project.toml` (`[deps]`, `[weakdeps]`, `[extras]`, `[compat]`, `[extensions]`, `[workspace]`) and `Manifest.toml`, whose entries are imports                                                                                                                  | Julia, Julia standard library                                              |
 | Zig                     | `@import` of files (`@embedFile` too), `std`/`builtin`, `root` (the compilation's root source file) and module names to what `build.zig` wires (`b.addModule`, `b.createModule`, `.imports`, `addImport`, a dependency's `.module()`), else the `build.zig.zon` dependency of that name; `b.path()` in build code; `@cInclude` as C includes; packages by `build.zig.zon` (named by URL, pinned by `.hash`), whose dependencies are imports                                                                     | Zig, Zig standard library, C/C++ islands                                   |
 | Clojure                 | `ns` `:require`/`:use`/`:import`, top-level `require`/`import`/`load` (prefix lists, every reader-conditional branch) to files under the source paths of `deps.edn`, `project.clj`, `shadow-cljs.edn`, `bb.edn` (`a.b-c` is `a/b_c.clj`), `:local/root` projects, Clojure's own namespaces, artifacts the manifests declare (a table and naming rules), JDK classes; npm strings in ClojureScript                                                                                                               | Maven, Clojure standard library, JDK, npm, Node.js built-ins               |
+| Bazel                   | `load()` and label attributes (`srcs`, `hdrs`, `deps`, `data`, ...) to files and to the BUILD file of each package, `glob()` expanded within the package; other repositories by `MODULE.bazel` (`bazel_dep`, overrides, `MODULE.bazel.lock`), WORKSPACE and `.bzl` repository rules (`http_archive`, `git_repository`, `local_repository`, `go_repository`), and the hub repositories of rules_jvm_external, rules_python, Gazelle, rules_js and rules_rust                                                     | Bazel modules and repositories, Maven, PyPI, Go modules, npm, crates.io    |
 | PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                                                                                                                                                                                                                                                               | PowerShell Gallery, built-in modules                                       |
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                                                                                                                                                                                                                    | GitHub Actions, GitLab CI, Container images                                |
 | Protocol Buffers        | `import` (`public`, `weak`) under the import roots of `buf.work.yaml` and `buf.yaml` (v1 and v2), else the repository root, `proto/`, `protos/`, `api/`, `src/main/proto/` and the importer's directories, else a unique project file ending in the path; modules by `buf.yaml` `deps` and `buf.lock` and a table of common protos; `buf.gen.yaml` remote plugins                                                                                                                                               | Buf Schema Registry, Protobuf well-known types                             |
@@ -2043,6 +2055,35 @@ dependencies by their lib name with their repository as origin, and
 and `deftest` are the symbols. Clojure is read by a small reader; the
 tree-sitter grammar took 3.7 to 6.6 ms per file (28 s for metabase).
 
+Bazel's BUILD, `.bzl`, `MODULE.bazel` and WORKSPACE files are Starlark. A
+`load()` and the labels of a target's label attributes (`srcs`, `hdrs`,
+`data`, `deps`, `runtime_deps`, `exports`, `proto` and any attribute ending
+in `deps`) name files of the repository - `"util.cc"`, `":util"`,
+`"//lib:helpers"`, `"@//lib"` - which resolve to the file, else to the BUILD
+file of the package (a rule, or a file a rule generates); `glob()` is
+expanded against the package's files, not descending into subpackages. A
+label of another repository (`@repo//pkg:x`) resolves to what declares it: a
+`bazel_dep` in `MODULE.bazel` - a module of the Bazel Central Registry at the
+version `MODULE.bazel.lock` selected or the one declared, or what a
+`single_version_override`, `git_override`, `archive_override` or
+`local_path_override` puts in its place - a WORKSPACE (or `.bzl` macro)
+`http_archive` named by its URL and pinned by its `sha256`, a
+`git_repository`, a `local_repository` directory, or the hub repository of a
+module extension: `@maven//:com_google_guava_guava` and `artifact()` are the
+Maven artifact `com.google.guava:guava` at the version `maven_install.json`
+pins, `@pypi//requests` and `requirement("requests")` the PyPI distribution
+of the requirements lock, `@com_github_pkg_errors//:errors` the Go module
+`go_deps` read from `go.mod`, `//:node_modules/lodash` (rules_js) the npm
+package `pnpm-lock.yaml` resolved, `@crates//:serde` the crate of
+`Cargo.lock` - the same packages the other plugins name, so they meet on one
+island. Repositories Bazel provides (`@bazel_tools`, `@local_config_cc`) are
+hidden; one nothing declares is an unresolved module. `MODULE.bazel`'s and
+WORKSPACE's declarations are imports themselves. Targets (`//pkg:name`,
+kind = the rule or macro), `.bzl` functions, rules, providers and globals,
+and the module's name are the symbols. Macros are not expanded. Starlark is
+read by a small scanner; the tree-sitter grammar took 2.2 to 7.2 ms per file
+(4.6 s for envoy's 1981 files).
+
 Terraform and OpenTofu configurations, variable files, lock files and
 Terragrunt configurations are read by a small HCL scanner: the tree-sitter
 grammar parsed every file measured correctly but was about twenty times
@@ -2067,7 +2108,7 @@ Dart, Elixir, Erlang, R, Haskell, HCL, Protocol Buffers, shell scripts, CMake
 files, Swift, Objective-C, CocoaPods and Carthage manifests, Lua, Luau, Teal
 and LuaRocks files, Perl and its CPAN manifests, OCaml, dune and opam
 files, Julia, Zig and `build.zig.zon`, Clojure and its EDN manifests,
-Dockerfiles, the markup of
+Bazel's Starlark files, Dockerfiles, the markup of
 Vue, Svelte and Astro components, R Markdown chunks and C preprocessor
 directives small built-in scanners — so the binary continues to cross-compile
 without a C toolchain.
