@@ -8,7 +8,9 @@ import (
 	"fmt"
 	"net/http"
 	"net/url"
+	"regexp"
 	"sort"
+	"strconv"
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
@@ -666,6 +668,174 @@ func (c *Client) cranRepo(ctx context.Context, index string) (map[string][]dep, 
 	c.repos[index] = pkgs
 	c.mu.Unlock()
 	return pkgs, nil
+}
+
+// ---------------------------------------------------------------- Hackage
+
+// hackageStd are the packages that come with GHC: the compiler's own library and
+// runtime, not dependencies to follow (the Haskell plugin's haskell-std island).
+var hackageStd = map[string]bool{
+	"base": true, "ghc-prim": true, "ghc": true, "template-haskell": true, "integer-gmp": true,
+	"ghc-bignum": true, "ghc-boot": true, "ghc-boot-th": true, "ghc-heap": true, "rts": true,
+	"ghc-internal": true, "ghc-experimental": true, "integer-simple": true,
+}
+
+// hackagePackage reads a Haskell package's dependencies from a Hackage server: the
+// package's preferred versions (<server>/package/<name>/preferred, JSON) say which
+// releases exist, and the release asked for - else the newest normal one - has its
+// package description read (<server>/package/<name>-<version>/<name>.cabal, the
+// latest revision). The dependencies are the build-depends of its libraries and of
+// the common stanzas they import, conditional blocks included, without GHC's own
+// packages and the package's own sublibraries.
+//
+// Implements: REQ-SUP-049
+func (c *Client) hackagePackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+	base := strings.TrimRight(index, "/") + "/package/"
+	body, err := c.accept(ctx, base+url.PathEscape(t.Package)+"/preferred", "application/json")
+	if err != nil {
+		return nil, err
+	}
+	var pref struct {
+		Normal []string `json:"normal-version"`
+	}
+	if err := json.Unmarshal(body, &pref); err != nil {
+		return nil, err
+	}
+	version := ""
+	for _, v := range pref.Normal {
+		if v == strings.TrimSpace(t.Version) {
+			version = v
+			break
+		}
+		if version == "" || compareVersions(v, version) > 0 {
+			version = v
+		}
+	}
+	if version == "" {
+		return nil, nil
+	}
+	id := url.PathEscape(t.Package + "-" + version)
+	body, err = c.accept(ctx, base+id+"/"+url.PathEscape(t.Package)+".cabal", "text/plain")
+	if err != nil {
+		return nil, err
+	}
+	return cabalLibraryDepends(body, t.Package), nil
+}
+
+// compareVersions orders two dotted numeric versions (1.10 after 1.9).
+func compareVersions(a, b string) int {
+	as, bs := strings.Split(a, "."), strings.Split(b, ".")
+	for i := 0; i < len(as) || i < len(bs); i++ {
+		var x, y int
+		if i < len(as) {
+			x, _ = strconv.Atoi(as[i])
+		}
+		if i < len(bs) {
+			y, _ = strconv.Atoi(bs[i])
+		}
+		if x != y {
+			return x - y
+		}
+	}
+	return 0
+}
+
+// sublibs is a dependency's list of sublibraries: pkg:{a, b}.
+var sublibs = regexp.MustCompile(`:\s*\{[^}]*\}`)
+
+// cabalLibraryDepends reads the build-depends of a .cabal file's library stanzas
+// (named sublibraries too) and of the common stanzas they import. A requirement
+// written ==1.2.3 is the bare version, as the plugin writes a pin.
+func cabalLibraryDepends(src []byte, self string) []dep {
+	type stanza struct {
+		kind, name string
+		deps       []string
+		imports    []string
+	}
+	var stanzas []*stanza
+	var cur *stanza
+	field, fieldIndent := "", 0
+	for _, line := range strings.Split(strings.ReplaceAll(string(src), "\r\n", "\n"), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "--") {
+			continue
+		}
+		indent := len(line) - len(strings.TrimLeft(line, " \t"))
+		if indent == 0 {
+			kind, name, _ := strings.Cut(strings.ToLower(trimmed), " ")
+			cur = &stanza{kind: kind, name: strings.TrimSpace(name)}
+			stanzas = append(stanzas, cur)
+			field = ""
+			continue
+		}
+		if cur == nil {
+			continue
+		}
+		if field != "" && indent > fieldIndent {
+			if field == "build-depends" {
+				cur.deps = append(cur.deps, trimmed)
+			}
+			continue
+		}
+		field = ""
+		k, v, ok := strings.Cut(trimmed, ":")
+		if !ok || strings.ContainsAny(k, " (") {
+			continue // an if/else line
+		}
+		switch k = strings.ToLower(strings.TrimSpace(k)); k {
+		case "build-depends":
+			field, fieldIndent = k, indent
+			cur.deps = append(cur.deps, v)
+		case "import":
+			cur.imports = append(cur.imports, strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' })...)
+		}
+	}
+	commons := map[string]*stanza{}
+	for _, s := range stanzas {
+		if s.kind == "common" {
+			commons[s.name] = s
+		}
+	}
+	var out []dep
+	seen := map[string]bool{}
+	var add func(s *stanza, via map[string]bool)
+	add = func(s *stanza, via map[string]bool) {
+		for _, entry := range strings.Split(sublibs.ReplaceAllString(strings.Join(s.deps, ","), ""), ",") {
+			entry = strings.Join(strings.Fields(entry), " ")
+			i := strings.IndexAny(entry, " <>=^:")
+			name, req := entry, ""
+			if i >= 0 {
+				name, req = entry[:i], strings.TrimSpace(entry[i:])
+			}
+			if strings.HasPrefix(req, ":") { // pkg:sublib or pkg:{a, b}
+				req = strings.TrimSpace(strings.TrimLeft(req[strings.IndexAny(req+" ", " <>=^"):], " "))
+			}
+			if name == "" || name == self || hackageStd[name] || seen[name] {
+				continue
+			}
+			seen[name] = true
+			if v, ok := strings.CutPrefix(req, "=="); ok && lang.Pinned(strings.TrimSpace(v)) {
+				req = strings.TrimSpace(v)
+			}
+			if req == "-any" || req == ">=0" {
+				req = ""
+			}
+			out = append(out, dep{Name: name, Version: req})
+		}
+		for _, name := range s.imports {
+			if cm := commons[name]; cm != nil && !via[name] {
+				via[name] = true
+				add(cm, via)
+			}
+		}
+	}
+	for _, s := range stanzas {
+		if s.kind == "library" {
+			add(s, map[string]bool{})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out
 }
 
 // ---------------------------------------------------------------- OCI

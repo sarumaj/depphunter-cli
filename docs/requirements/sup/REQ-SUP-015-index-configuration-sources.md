@@ -20,9 +20,11 @@ The system **shall** read index configuration from this machine:
 `composer` repositories of Composer's `config.json` in `COMPOSER_HOME`,
 `~/.config/composer` and `~/.composer`, Bundler's rubygems.org mirror
 (`BUNDLE_MIRROR__RUBYGEMS__ORG`, `~/.bundle/config`), the sources of
-`~/.gemrc`, pub's `PUB_HOSTED_URL`, the Hex API of `HEX_API_URL`, and R's
+`~/.gemrc`, pub's `PUB_HOSTED_URL`, the Hex API of `HEX_API_URL`, R's
 `RENV_CONFIG_REPOS_OVERRIDE` and the `options(repos = ...)` of `~/.Rprofile`
-and `R_PROFILE_USER`.
+and `R_PROFILE_USER`, and the `repository` stanzas of cabal's configuration
+(`CABAL_CONFIG`, `$CABAL_DIR/config`, `~/.config/cabal/config`,
+`~/.cabal/config`).
 
 The system **shall** read index configuration from the repository: `.npmrc`,
 `.yarnrc.yml`, `pip.conf`, `pip.ini`, `requirements*.txt`, the Poetry and uv
@@ -33,8 +35,9 @@ inside it), the GEM remotes of `Gemfile.lock`, the `hosted:` servers of a
 `pubspec.yaml` or `pubspec_overrides.yaml` (each serving its package), the
 servers other than pub.dev that `pubspec.lock` resolved packages from, the
 repositories other than CRAN of `renv.lock` (each serving the packages
-recorded from it) and the `options(repos = ...)` of `.Rprofile` and
-`Rprofile.site`.
+recorded from it), the `options(repos = ...)` of `.Rprofile` and
+`Rprofile.site`, and the `repository` stanzas other than Hackage of
+`cabal.project` and `cabal.project.local`.
 
 ## Rationale
 

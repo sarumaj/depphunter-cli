@@ -1,0 +1,9 @@
+resolver: lts-22.43
+packages:
+- .
+extra-deps:
+- acme-missiles-0.3@sha256:2ba66a092a32593880a87fb00f3213762d7bca65a687d45965778deb8694c5d1,613
+- git: https://github.com/acme/left-pad-hs
+  commit: 0123456789abcdef0123456789abcdef01234567
+- github: acme/unlocked-hs
+  commit: main

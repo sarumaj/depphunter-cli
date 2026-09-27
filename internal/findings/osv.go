@@ -48,6 +48,9 @@ var osvEcosystems = map[string]string{
 	// A Bioconductor package is its own ecosystem in OSV: the same name on CRAN
 	// would be another package.
 	"bioconductor": "Bioconductor",
+	// Haskell packages are Hackage's; GHC's own libraries (haskell-std) would be OSV's
+	// GHC ecosystem, but standard libraries are not asked about.
+	"hackage": "Hackage",
 }
 
 // Package is one thing to ask the database about: a dependency pinned to a version.

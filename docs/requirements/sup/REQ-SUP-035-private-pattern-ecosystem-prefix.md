@@ -35,4 +35,5 @@ them.
 
 The C/C++ package managers' ids `vcpkg` and `conan` are prefixes as well, and
 so are PHP's `composer`, Ruby's `rubygems`, Swift's `swiftpm`, Dart's `pub`,
-Elixir's and Erlang's `hex` and R's `cran` and `bioconductor`.
+Elixir's and Erlang's `hex`, R's `cran` and `bioconductor` and Haskell's
+`hackage`.

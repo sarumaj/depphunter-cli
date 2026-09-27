@@ -222,6 +222,8 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		deps, err = c.hexPackage(ctx, index, t)
 	case CRAN:
 		deps, err = c.cranPackage(ctx, index, t)
+	case Hackage:
+		deps, err = c.hackagePackage(ctx, index, t)
 	default:
 		// Maven is the one that cannot be asked. A POM is addressed by group *and*
 		// artifact, and the Java plugin puts only the group on the map (an import

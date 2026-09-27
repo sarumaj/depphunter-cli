@@ -17,6 +17,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang/dart"
 	"github.com/sarumaj/depphunter-cli/internal/lang/docker"
 	"github.com/sarumaj/depphunter-cli/internal/lang/golang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/haskell"
 	"github.com/sarumaj/depphunter-cli/internal/lang/java"
 	"github.com/sarumaj/depphunter-cli/internal/lang/javascript"
 	"github.com/sarumaj/depphunter-cli/internal/lang/kotlin"
@@ -100,7 +101,7 @@ func BenchmarkColdAnalysis(b *testing.B) {
 	writeReferenceProject(b, root, referenceFiles)
 	plugins := []lang.Plugin{
 		golang.Plugin{}, javascript.Plugin{}, python.Plugin{}, rust.Plugin{}, java.Plugin{},
-		kotlin.Plugin{}, scala.Plugin{}, csharp.Plugin{}, cpp.Plugin{}, php.Plugin{}, ruby.Plugin{}, swift.Plugin{}, dart.Plugin{}, beam.Plugin{}, r.Plugin{}, powershell.Plugin{}, ci.Plugin{}, docker.Plugin{}, markdown.Plugin{},
+		kotlin.Plugin{}, scala.Plugin{}, csharp.Plugin{}, cpp.Plugin{}, php.Plugin{}, ruby.Plugin{}, swift.Plugin{}, dart.Plugin{}, beam.Plugin{}, r.Plugin{}, haskell.Plugin{}, powershell.Plugin{}, ci.Plugin{}, docker.Plugin{}, markdown.Plugin{},
 	}
 	b.ResetTimer()
 	cpu := cpuSeconds()

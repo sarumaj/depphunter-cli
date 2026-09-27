@@ -186,21 +186,21 @@ depphunter nor a network.
 Go libraries (all pure Go, so every target cross-compiles with
 `CGO_ENABLED=0`):
 
-| Library                                                             | Used for                                                                                                |
-|---------------------------------------------------------------------|---------------------------------------------------------------------------------------------------------|
-| [odvcencio/gotreesitter](https://github.com/odvcencio/gotreesitter) | tree-sitter runtime and grammars for JS/TS, Python, Rust, Java, Kotlin, Scala, C, C++, PHP, Ruby, Swift |
-| [golang.org/x/mod](https://pkg.go.dev/golang.org/x/mod)             | parsing `go.mod`                                                                                        |
-| [BurntSushi/toml](https://github.com/BurntSushi/toml)               | `pyproject.toml`, `Cargo.toml`, Gradle version catalogs, TOML lockfiles                                 |
-| [gopkg.in/yaml.v3](https://pkg.go.dev/gopkg.in/yaml.v3)             | config files (comment-preserving save), `pnpm-lock.yaml`, `pubspec.yaml`, `pubspec.lock`                |
-| [tidwall/jsonc](https://github.com/tidwall/jsonc)                   | `tsconfig.json` / `jsconfig.json` with comments                                                         |
-| [fsnotify/fsnotify](https://github.com/fsnotify/fsnotify)           | `--watch`                                                                                               |
-| [sourcegraph/jsonrpc2](https://github.com/sourcegraph/jsonrpc2)     | talking to language servers (`--lsp`)                                                                   |
-| [golang.org/x/sync](https://pkg.go.dev/golang.org/x/sync)           | bounded parallel scanning, parsing and LSP requests                                                     |
-| [emicklei/dot](https://github.com/emicklei/dot)                     | DOT export                                                                                              |
-| [kballard/go-shellquote](https://github.com/kballard/go-shellquote) | splitting editor command templates without a shell                                                      |
-| [cli/browser](https://github.com/cli/browser)                       | opening the default browser                                                                             |
-| [spf13/cobra](https://github.com/spf13/cobra)                       | the command line: flags, help, version                                                                  |
-| [spf13/viper](https://github.com/spf13/viper)                       | layering defaults, config files, environment and flags                                                  |
+| Library                                                             | Used for                                                                                                                                  |
+|---------------------------------------------------------------------|-------------------------------------------------------------------------------------------------------------------------------------------|
+| [odvcencio/gotreesitter](https://github.com/odvcencio/gotreesitter) | tree-sitter runtime and grammars for JS/TS, Python, Rust, Java, Kotlin, Scala, C, C++, PHP, Ruby, Swift                                   |
+| [golang.org/x/mod](https://pkg.go.dev/golang.org/x/mod)             | parsing `go.mod`                                                                                                                          |
+| [BurntSushi/toml](https://github.com/BurntSushi/toml)               | `pyproject.toml`, `Cargo.toml`, Gradle version catalogs, TOML lockfiles                                                                   |
+| [gopkg.in/yaml.v3](https://pkg.go.dev/gopkg.in/yaml.v3)             | config files (comment-preserving save), `pnpm-lock.yaml`, `pubspec.yaml`, `pubspec.lock`, `package.yaml`, `stack.yaml`, `stack.yaml.lock` |
+| [tidwall/jsonc](https://github.com/tidwall/jsonc)                   | `tsconfig.json` / `jsconfig.json` with comments                                                                                           |
+| [fsnotify/fsnotify](https://github.com/fsnotify/fsnotify)           | `--watch`                                                                                                                                 |
+| [sourcegraph/jsonrpc2](https://github.com/sourcegraph/jsonrpc2)     | talking to language servers (`--lsp`)                                                                                                     |
+| [golang.org/x/sync](https://pkg.go.dev/golang.org/x/sync)           | bounded parallel scanning, parsing and LSP requests                                                                                       |
+| [emicklei/dot](https://github.com/emicklei/dot)                     | DOT export                                                                                                                                |
+| [kballard/go-shellquote](https://github.com/kballard/go-shellquote) | splitting editor command templates without a shell                                                                                        |
+| [cli/browser](https://github.com/cli/browser)                       | opening the default browser                                                                                                               |
+| [spf13/cobra](https://github.com/spf13/cobra)                       | the command line: flags, help, version                                                                                                    |
+| [spf13/viper](https://github.com/spf13/viper)                       | layering defaults, config files, environment and flags                                                                                    |
 
 Go itself provides `go/parser` for Go sources, `net/http` for the server and
 `embed` for the UI. The browser UI vendors, in
