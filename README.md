@@ -805,10 +805,10 @@ Under `--online`, depphunter additionally queries [OSV](https://osv.dev) for
 every external package the map pins to a version — batched queries of 500
 packages each, followed by the advisories it matched — covering Go,
 npm, PyPI, crates.io, Maven, NuGet, GitHub Actions, Conan (as OSV's
-ConanCenter; vcpkg has no OSV ecosystem) and Composer (as Packagist). Floating
-packages are not
-queried, since they resolve to a different version on the next installation.
-Answers are cached for six hours. `--no-vulns` disables all of this.
+ConanCenter; vcpkg has no OSV ecosystem), Composer (as Packagist) and
+RubyGems. Floating packages are not queried, since they resolve to a different
+version on the next installation. Answers are cached for six hours.
+`--no-vulns` disables all of this.
 
 Viewed from above, every building carrying findings bears a **pin**, colored by
 the most severe of them and growing taller with their number, so that the red
@@ -894,6 +894,7 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | vcpkg              | an `overrides` entry                                                         | `version>=`, which is a minimum; no version and no baseline                               |
 | Conan              | an exact reference (`zlib/1.2.13`), `conan.lock`                             | a version range (`[>=1.0 <2]`, `[~1.2]`)                                                  |
 | Composer           | `composer.lock`, `installed.json`, a bare `1.2.3` or `1.2`, `dev-main#<sha>` | `^`, `~`, `*`, `1.2.*`, alternatives, ranges and branches                                 |
+| RubyGems           | `Gemfile.lock` (a git gem by its revision), a bare `1.2.3`, `= 1.2.3`        | `~>`, `>=`, `<`, `!=`, several requirements, no version                                   |
 
 The JSON and GraphML exports carry `requested` and `floating` per package.
 
@@ -915,6 +916,7 @@ and the analysis remains offline.
 | an installed Python environment      | each distribution's `Requires-Dist`              |
 | `conan.lock` (Conan 1, `graph_lock`) | the `requires` of each node                      |
 | `composer.lock`, `installed.json`    | each package's `require`, without the platform   |
+| `Gemfile.lock`                       | the dependencies listed under each spec          |
 
 Packages added in this way are marked **transitive**, meaning that no file in
 the repository imports them. Edges between packages are of kind `depends`, as
@@ -925,8 +927,8 @@ remain a single building, so an edge between packages is an edge between names.
 A Python package that no lock file gives edges for (`Pipfile.lock` records
 none) falls back to the installed environment (see [Languages](#languages)).
 Ecosystems that keep the dependency graph outside the repository — Go modules,
-NuGet, container images and a Composer library that commits no lock — require
-`--online`, described below; Maven, the
+NuGet, container images and a Composer or Bundler library that commits no lock
+— require `--online`, described below; Maven, the
 PowerShell Gallery, vcpkg and Conan 2 (whose lock is a flat list) are not
 resolved beyond the first level at present.
 
@@ -947,7 +949,9 @@ repository carries — `.npmrc`, including `@scope:registry`; `.yarnrc.yml`;
 `pip.conf` and a requirements file's `--index-url`; Poetry and uv sources in
 `pyproject.toml`; `NuGet.config`; a POM's `<repositories>`; the mirrors in
 `~/.m2/settings.xml`; `.cargo/config.toml`; the `composer` repositories of
-`composer.json` and of Composer's own `config.json`; and `GOPROXY` — and the
+`composer.json` and of Composer's own `config.json`; a `Gemfile`'s `source`
+lines (a `source ... do` block serves only its gems), `Gemfile.lock`'s
+remotes, `~/.gemrc` and Bundler's rubygems.org mirror; and `GOPROXY` — and the
 side panel names the index each package resolves from. A container image
 requires no configuration, since `ghcr.io/org/app` names its registry directly.
 
@@ -971,6 +975,7 @@ ecosystems whose graph is held outside the repository:
 | NuGet     | `<feed>/<id>/<version>/<id>.nuspec`                                       | `<dependencies>`, both flat and by group         |
 | OCI       | the manifest, then its config blob                                        | the **base image** it was built on               |
 | Composer  | `<repository>/p2/<vendor>/<name>.json` (`metadata-url` elsewhere)         | the version's `require`, excluding the platform  |
+| RubyGems  | `<server>/info/<name>`, the compact index Bundler reads                   | the version's runtime dependencies               |
 
 A container image has no dependency list. What it has is the image it was built
 on, which is the source of its unpatched vulnerabilities, and that is what is
@@ -1060,7 +1065,7 @@ leading path elements match it, so that `corp.example/*` covers
 Maven group (`com.acme.*`) and a registry path (`harbor.corp/*`). Prefixing a
 pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`,
 `crates:`, `actions:`, `gitlab-ci:`, `psgallery:`, `c-external:`, `vcpkg:`,
-`conan:` or `composer:` — restricts it to that ecosystem.
+`conan:`, `composer:` or `rubygems:` — restricts it to that ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
 to whatever is configured here**, so a Go project whose machine is already
@@ -1326,17 +1331,18 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | C#                      | `csharp-ls`                                                |
 | C / C++                 | `clangd`                                                   |
 | PHP                     | `intelephense` or `phpactor`                               |
+| Ruby                    | `ruby-lsp` or `solargraph`                                 |
 
 The servers run in the background once the map is displayed — gopls requires
 approximately 7 s for this repository — within the budget set by
 `--lsp-timeout`; results are cached until the map's files, symbols or imports
 change, or a different set of language servers is installed. Servers that index
-slowly, rust-analyzer, jdtls, metals, clangd and the PHP servers in particular,
-may answer before indexing has finished, so a first run can report fewer
-references than a later one. The legend's **Imports / References** switch then
-determines what the selection arcs and the side panel show: for a function,
-what it uses and what uses it. The JSON and GraphML exports include the
-reference edges.
+slowly, rust-analyzer, jdtls, metals, clangd and the PHP and Ruby servers in
+particular, may answer before indexing has finished, so a first run can report
+fewer references than a later one. The legend's **Imports / References** switch
+then determines what the selection arcs and the side panel show: for a
+function, what it uses and what uses it. The JSON and GraphML exports include
+the reference edges.
 
 ### Languages
 
@@ -1352,6 +1358,7 @@ reference edges.
 | C#                      | namespaces to project folders (`RootNamespace` + folder), `PackageReference`, `Directory.Packages.props`                                                                                                                                                                                                         | NuGet, .NET base library                                                   |
 | C / C++                 | `#include` beside the includer, the include paths of `compile_commands.json` (`-I`, `-iquote`, `-isystem`, `/I`), `include/` and `src/`, and a unique project file ending in the included path; libraries by `vcpkg.json`, `conanfile.txt`, `conanfile.py` and `conan.lock`                                      | vcpkg, Conan, C/C++ external, C and C++ standard libraries, system headers |
 | PHP                     | `use` statements (grouped, `function`, `const`) and fully qualified names in code, same-namespace `extends`/`implements`, `require`/`include` of spelled-out paths; project files by what they declare and `composer.json` PSR-4/PSR-0; packages by the autoload prefixes of `composer.lock` or `installed.json` | Packagist, PHP standard library                                            |
+| Ruby                    | `require`/`require_relative`/`load`/`autoload` of spelled-out paths on a guessed load path (`lib`, `test`, `spec`, gemspec require paths, path gems); gems by `Gemfile`, gemspecs and `Gemfile.lock`, whose `gem` lines are imports; Rails constants by Zeitwerk naming                                          | RubyGems, Ruby standard library                                            |
 | PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                                                                | PowerShell Gallery, built-in modules                                       |
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                     | GitHub Actions, GitLab CI, Container images                                |
 | Dockerfile / Compose    | `FROM`, `COPY --from`, `RUN --mount from=` and `# syntax=` with `ARG` defaults expanded and stages told apart; Compose `image:`, and `build:` to the Dockerfile in the repository                                                                                                                                | Container images                                                           |
@@ -1482,13 +1489,35 @@ without a lock; the lock pins everything it holds and gives
 framework helper loaded by a `files` autoload) is dropped, since its package
 cannot be told from its name.
 
+Ruby files (`.rb`, `.rake`, `.gemspec`, `.ru`, and `Gemfile`, `Rakefile`,
+`Guardfile`, `Capfile`) are read for `require`, `require_relative`, `load` and
+`autoload` whose path is spelled out: string literals, `__dir__`,
+`File.dirname(__FILE__)`, `File.expand_path(path, base)`, `File.join` and `+`.
+A `require` is looked up on the load path Bundler, Rake and RSpec would set
+up: the `lib`, `test` and `spec` directories of the file's directory and those
+above it, every gemspec's require paths, the `lib` of path gems, and a Rails
+application's `app/*`; then in Ruby itself (`json`, `set`, `net/http`, `yaml`
+as `psych`), unless the project declares or locks that library as a gem, and
+then to a gem: `active_support` is `activesupport`, `rails` is `railties`,
+`rspec/core` is `rspec-core`, and a path nothing declares is shown unresolved
+under its first segment. A `Gemfile`'s `gem` lines and a gemspec's
+`add_dependency` calls are imports of what they declare, since a Rails
+application's gems are loaded by `Bundler.require` and seldom required by
+name; a gem the repository builds itself is its gemspec. `Gemfile.lock` pins
+every gem it holds (a git gem by its revision) and gives `--resolve-depth` its
+edges; without it a bare `1.2.3` or `= 1.2.3` pins. In a Rails application
+(`config/application.rb`), constants resolve to the files Zeitwerk loads them
+from - every `app/*` directory and its `concerns` are roots, `lib` too under
+`autoload_lib` - trying the modules around the reference innermost first, so
+models, controllers and concerns are connected without a `require`.
+
 Files in other languages appear on the map without dependency edges. Parsing
 uses a pure-Go tree-sitter runtime for JavaScript/TypeScript, Python, Rust,
-Java, Kotlin, Scala, C, C++ and PHP; Go uses the standard library's own parser,
-CI and Compose files a YAML parser, and C#, PowerShell, Markdown, Dockerfiles,
-the markup of Vue, Svelte and Astro components and C preprocessor directives small
-built-in scanners — so the binary continues to cross-compile without a C
-toolchain.
+Java, Kotlin, Scala, C, C++, PHP and Ruby; Go uses the standard library's own
+parser, CI and Compose files a YAML parser, and C#, PowerShell, Markdown,
+Dockerfiles, the markup of Vue, Svelte and Astro components and C preprocessor
+directives small built-in scanners — so the binary continues to cross-compile
+without a C toolchain.
 
 ## Security
 

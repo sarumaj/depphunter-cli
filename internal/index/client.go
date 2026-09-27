@@ -210,6 +210,8 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		deps, err = c.ociBase(ctx, index, t)
 	case Composer:
 		deps, err = c.composerPackage(ctx, index, t)
+	case RubyGems:
+		deps, err = c.rubygemsPackage(ctx, index, t)
 	default:
 		// Maven is the one that cannot be asked. A POM is addressed by group *and*
 		// artifact, and the Java plugin puts only the group on the map (an import

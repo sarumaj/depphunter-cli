@@ -14,8 +14,9 @@ verification:
 
 The walker **shall** read package-to-package dependencies from
 `package-lock.json` versions 1 to 3, `pnpm-lock.yaml` versions 5 to 9, classic
-`yarn.lock`, `Cargo.lock`, `uv.lock`, `poetry.lock`, `pdm.lock` and
-`composer.lock` (or, without one, `vendor/composer/installed.json`).
+`yarn.lock`, `Cargo.lock`, `uv.lock`, `poetry.lock`, `pdm.lock`,
+`composer.lock` (or, without one, `vendor/composer/installed.json`) and
+`Gemfile.lock`.
 
 ## Rationale
 

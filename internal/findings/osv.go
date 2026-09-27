@@ -40,6 +40,7 @@ var osvEcosystems = map[string]string{
 	"actions":  "GitHub Actions",
 	"conan":    "ConanCenter", // vcpkg has no OSV ecosystem
 	"composer": "Packagist",
+	"rubygems": "RubyGems",
 }
 
 // Package is one thing to ask the database about: a dependency pinned to a version.

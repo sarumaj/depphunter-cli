@@ -390,3 +390,73 @@ func TestReadsNuGetConfigFromBothUserLocations(t *testing.T) {
 		}
 	}
 }
+
+// A Gemfile's source serves every gem and a source block only the gems inside it; a
+// second GEM remote of Gemfile.lock serves the gems locked under it.
+//
+// Verifies: REQ-SUP-015, REQ-SUP-045
+func TestDiscoverReadsBundlerSources(t *testing.T) {
+	files := write(t, map[string]string{
+		"Gemfile": `source "https://gems.corp.test"
+
+gem "rails"
+
+source "https://private.corp.test" do
+  gem "acme-auth"
+end
+gem "pg"
+`,
+		"engine/Gemfile.lock": `GEM
+  remote: https://gems.corp.test/
+  specs:
+    rails (7.1.2)
+
+GEM
+  remote: https://vendor.corp.test/
+  specs:
+    vendor-kit (1.0.0)
+      rails (>= 7)
+
+DEPENDENCIES
+  vendor-kit!
+`,
+	})
+	c := Discover(files, env(nil), "")
+	for pkg, want := range map[string]string{
+		"rails":      "https://gems.corp.test",
+		"pg":         "https://gems.corp.test", // after the block: the global source again
+		"acme-auth":  "https://private.corp.test",
+		"vendor-kit": "https://vendor.corp.test",
+	} {
+		if idx, known := c.For(RubyGems, pkg); idx != want || known {
+			t.Errorf("%s: got %s (known %v), want %s, unknown", pkg, idx, known, want)
+		}
+	}
+}
+
+// Bundler's rubygems.org mirror (environment or ~/.bundle/config) and ~/.gemrc's
+// sources are this machine's, and trusted.
+//
+// Verifies: REQ-SUP-015
+func TestReadsRubyGemsConfigFromTheMachine(t *testing.T) {
+	c := Discover(nil, env(map[string]string{"BUNDLE_MIRROR__RUBYGEMS__ORG": "https://mirror.env.test"}), "")
+	if idx, known := c.For(RubyGems, "rack"); idx != "https://mirror.env.test" || !known {
+		t.Errorf("environment mirror: got %s (known %v)", idx, known)
+	}
+	for file, content := range map[string]string{
+		".gemrc":         "---\n:backtrace: false\n:sources:\n- https://gems.home.test/\n:update_sources: true\n",
+		".bundle/config": "---\nBUNDLE_MIRROR__HTTPS://RUBYGEMS__ORG/: \"https://gems.home.test\"\n",
+	} {
+		home := t.TempDir()
+		if err := os.MkdirAll(filepath.Dir(filepath.Join(home, file)), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(filepath.Join(home, file), []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		c := Discover(nil, env(nil), home)
+		if idx, known := c.For(RubyGems, "rack"); idx != "https://gems.home.test" || !known {
+			t.Errorf("%s: got %s (known %v), want the machine's source, known", file, idx, known)
+		}
+	}
+}

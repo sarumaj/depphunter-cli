@@ -53,6 +53,8 @@ var Servers = []Server{
 	}, Commands: [][]string{{"clangd"}}},
 	{Name: "php", Open: true, Exts: map[string]string{".php": "php", ".phtml": "php", ".inc": "php"},
 		Commands: [][]string{{"intelephense", "--stdio"}, {"phpactor", "language-server"}}},
+	{Name: "ruby", Open: true, Exts: map[string]string{".rb": "ruby", ".rake": "ruby", ".gemspec": "ruby", ".ru": "ruby"},
+		Commands: [][]string{{"ruby-lsp"}, {"solargraph", "stdio"}}},
 }
 
 type Options struct {

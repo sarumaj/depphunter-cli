@@ -34,6 +34,7 @@ github.com/odvcencio/gotreesitter/grammars/javascript
 github.com/odvcencio/gotreesitter/grammars/kotlin
 github.com/odvcencio/gotreesitter/grammars/php
 github.com/odvcencio/gotreesitter/grammars/python
+github.com/odvcencio/gotreesitter/grammars/ruby
 github.com/odvcencio/gotreesitter/grammars/runtime
 github.com/odvcencio/gotreesitter/grammars/rust
 github.com/odvcencio/gotreesitter/grammars/scala

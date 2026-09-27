@@ -1,0 +1,19 @@
+source "https://rubygems.org"
+
+ruby "3.2.2"
+
+gem "rails", "~> 7.1.0"
+gem "pg", "1.5.4"
+gem "puma", ">= 5.0"
+gem "sidekiq" # no version, and locked
+gem "devise", github: "heartcombo/devise", ref: "0123456789abcdef0123456789abcdef01234567"
+gem "billing", path: "gems/billing"
+
+group :development, :test do
+  gem "rspec-rails", "~> 6.0",
+    require: false
+end
+
+source "https://gems.acme.test" do
+  gem "acme-auth"
+end

@@ -1,0 +1,221 @@
+package ruby
+
+import (
+	"regexp"
+	"strings"
+)
+
+// splitArgs splits a call's argument list at the commas outside strings and
+// brackets, its parentheses and `#` comments taken off.
+func splitArgs(s string) []string {
+	s = strings.TrimSpace(s)
+	if strings.HasPrefix(s, "(") && strings.HasSuffix(s, ")") {
+		s = s[1 : len(s)-1]
+	}
+	var parts []string
+	var cur strings.Builder
+	depth := 0
+	var quote byte
+	for i := 0; i < len(s); i++ {
+		c := s[i]
+		switch {
+		case quote != 0:
+			cur.WriteByte(c)
+			if c == '\\' && i+1 < len(s) {
+				i++
+				cur.WriteByte(s[i])
+			} else if c == quote {
+				quote = 0
+			}
+			continue
+		case c == '\'' || c == '"':
+			quote = c
+		case c == '#':
+			for i < len(s) && s[i] != '\n' {
+				i++
+			}
+			continue
+		case c == '(' || c == '[' || c == '{':
+			depth++
+		case c == ')' || c == ']' || c == '}':
+			depth--
+		case c == ',' && depth == 0:
+			parts = append(parts, strings.TrimSpace(cur.String()))
+			cur.Reset()
+			continue
+		}
+		cur.WriteByte(c)
+	}
+	if last := strings.TrimSpace(cur.String()); last != "" || len(parts) > 0 {
+		parts = append(parts, last)
+	}
+	return parts
+}
+
+// literal reads a string literal without interpolation: 'x', "x", %q(x), %(x).
+func literal(s string) (string, bool) {
+	s = strings.TrimSpace(s)
+	if len(s) >= 2 {
+		switch q := s[0]; {
+		case q == '\'' && s[len(s)-1] == '\'':
+			return s[1 : len(s)-1], !strings.Contains(s[1:len(s)-1], "'")
+		case q == '"' && s[len(s)-1] == '"':
+			inner := s[1 : len(s)-1]
+			return inner, !strings.ContainsAny(inner, `"\`) && !strings.Contains(inner, "#{")
+		}
+	}
+	for _, open := range []string{"%q(", "%Q(", "%("} {
+		if inner, ok := strings.CutPrefix(s, open); ok && strings.HasSuffix(inner, ")") {
+			inner = inner[:len(inner)-1]
+			return inner, !strings.ContainsAny(inner, "()") && !strings.Contains(inner, "#{")
+		}
+	}
+	return "", false
+}
+
+var optionKey = regexp.MustCompile(`^(?::([a-z_]+)\s*=>|([a-z_]+):)\s*`)
+
+// option reads a keyword argument whose value is a string literal: `path: "x"` or
+// `:path => "x"`.
+func option(args []string, key string) (string, bool) {
+	for _, a := range args {
+		m := optionKey.FindStringSubmatch(a)
+		if m == nil || m[1]+m[2] != key {
+			continue
+		}
+		return literal(a[len(m[0]):])
+	}
+	return "", false
+}
+
+// options lists every keyword argument with a string literal value.
+func options(args []string) map[string]string {
+	out := map[string]string{}
+	for _, a := range args {
+		if m := optionKey.FindStringSubmatch(a); m != nil {
+			if v, ok := literal(a[len(m[0]):]); ok {
+				out[m[1]+m[2]] = v
+			}
+		}
+	}
+	return out
+}
+
+// dirOfFile are the expressions naming the directory of the file they are in.
+var dirOfFile = map[string]bool{
+	"__dir__": true, "File.dirname(__FILE__)": true, "File.dirname __FILE__": true,
+	"File.expand_path(File.dirname(__FILE__))": true, "File.expand_path(__dir__)": true,
+}
+
+// evalPath evaluates the path a require or load names, when the file spells it out:
+// string literals, __dir__ and File.dirname(__FILE__) (also interpolated at the
+// start of a string), File.expand_path(path, base), File.join and `+`. A path
+// relative to the file comes back as "__DIR__/..." - the file itself, as a base
+// File.expand_path takes, as "__DIR__/_" - and is cleaned by the resolver, which
+// knows the directory. Anything else (a variable, a method call) is not evaluated.
+//
+// Implements: REQ-RUBY-002
+func evalPath(expr string) (string, bool) {
+	expr = strings.TrimSpace(expr)
+	for strings.HasPrefix(expr, "(") && strings.HasSuffix(expr, ")") && balanced(expr[1:len(expr)-1]) {
+		expr = strings.TrimSpace(expr[1 : len(expr)-1])
+	}
+	if s, ok := literal(expr); ok {
+		return s, s != ""
+	}
+	if dirOfFile[strings.Join(strings.Fields(expr), " ")] {
+		return "__DIR__", true
+	}
+	if expr == "__FILE__" {
+		return "__DIR__/_", true
+	}
+	if strings.HasPrefix(expr, `"#{`) && strings.HasSuffix(expr, `"`) {
+		inner := expr[3 : len(expr)-1]
+		if i := strings.Index(inner, "}"); i > 0 && dirOfFile[inner[:i]] {
+			if rest, ok := literal(`"` + inner[i+1:] + `"`); ok {
+				return "__DIR__" + rest, true
+			}
+		}
+		return "", false
+	}
+	if parts := splitTop(expr, '+'); len(parts) > 1 {
+		var out strings.Builder
+		for _, p := range parts {
+			s, ok := evalPath(p)
+			if !ok {
+				return "", false
+			}
+			out.WriteString(s)
+		}
+		return out.String(), true
+	}
+	for _, fn := range []string{"File.expand_path", "File.join", "::File.expand_path", "::File.join"} {
+		rest, ok := strings.CutPrefix(expr, fn)
+		if !ok {
+			continue
+		}
+		args := splitArgs(rest)
+		var vals []string
+		for _, a := range args {
+			v, ok := evalPath(a)
+			if !ok {
+				return "", false
+			}
+			vals = append(vals, v)
+		}
+		switch {
+		case len(vals) == 0:
+			return "", false
+		case strings.HasSuffix(fn, "join"):
+			return strings.Join(vals, "/"), true
+		case len(vals) == 1:
+			return vals[0], true
+		case len(vals) == 2 && strings.HasPrefix(vals[1], "__DIR__"):
+			return vals[1] + "/" + vals[0], true
+		}
+		return "", false
+	}
+	return "", false
+}
+
+// splitTop splits an expression at an operator outside strings and brackets.
+func splitTop(s string, op byte) []string {
+	var parts []string
+	depth, start := 0, 0
+	var quote byte
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; {
+		case quote != 0:
+			if c == '\\' {
+				i++
+			} else if c == quote {
+				quote = 0
+			}
+		case c == '\'' || c == '"':
+			quote = c
+		case c == '(' || c == '[':
+			depth++
+		case c == ')' || c == ']':
+			depth--
+		case c == op && depth == 0:
+			parts = append(parts, s[start:i])
+			start = i + 1
+		}
+	}
+	return append(parts, s[start:])
+}
+
+func balanced(s string) bool {
+	depth := 0
+	for _, c := range s {
+		switch c {
+		case '(':
+			depth++
+		case ')':
+			if depth--; depth < 0 {
+				return false
+			}
+		}
+	}
+	return depth == 0
+}

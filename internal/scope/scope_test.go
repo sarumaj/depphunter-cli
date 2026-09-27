@@ -65,6 +65,10 @@ func TestAPatternMayNameItsEcosystem(t *testing.T) {
 	if !p.Match("composer", "acme/billing") || p.Match("npm", "acme/billing") || p.Match("composer", "acmex/billing") {
 		t.Error("a composer-scoped pattern did not keep to its ecosystem and vendor")
 	}
+	p = New([]string{"rubygems:acme-*"})
+	if !p.Match("rubygems", "acme-auth") || p.Match("npm", "acme-auth") || p.Match("rubygems", "rails") {
+		t.Error("a rubygems-scoped pattern did not keep to its ecosystem")
+	}
 	// The prefix is recognized whatever its case, and must then match as well.
 	p = New([]string{"NPM:@acme/*"})
 	if !p.Match("npm", "@acme/widgets") {
