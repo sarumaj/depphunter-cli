@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-024
-uuid: 49640102-9bd9-49d8-ba3d-54b9bdee1043
 title: Using the jet backpack is a burst
 scope: tool
 type: functional

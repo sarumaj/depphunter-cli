@@ -1,6 +1,5 @@
 ---
 id: REQ-BAZEL-006
-uuid: 06662295-1d7b-4c33-88ac-26ea808559cd
 title: Bazel modules named and pinned
 scope: bazel
 type: functional

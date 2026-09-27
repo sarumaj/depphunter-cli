@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-037
-uuid: 1474c7d5-f973-421e-a2f8-b11785a216aa
 title: No floating parts on a tool
 scope: tool
 type: constraint

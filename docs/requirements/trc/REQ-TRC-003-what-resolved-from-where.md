@@ -1,6 +1,5 @@
 ---
 id: REQ-TRC-003
-uuid: 4f8aeaca-46c0-4864-b9d4-5dd3996dc2a8
 title: What resolved from which index
 scope: trc
 type: functional

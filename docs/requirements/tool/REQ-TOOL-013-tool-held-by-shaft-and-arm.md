@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-013
-uuid: 089023e4-9929-401a-ad54-76f3eaa342c0
 title: Tool held by shaft and arm directions
 scope: tool
 type: functional

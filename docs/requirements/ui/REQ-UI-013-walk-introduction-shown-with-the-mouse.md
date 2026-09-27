@@ -1,6 +1,5 @@
 ---
 id: REQ-UI-013
-uuid: fb63a7db-2bf2-4ed5-9f03-d98251f6fc0d
 title: Walk introduction shown with the mouse free
 scope: ui
 type: functional

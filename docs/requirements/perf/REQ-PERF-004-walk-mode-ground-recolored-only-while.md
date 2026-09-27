@@ -1,6 +1,5 @@
 ---
 id: REQ-PERF-004
-uuid: 24dae790-f0c2-4fb3-9c3f-bb7218638857
 title: Walk-mode ground recolored only while walking
 scope: perf
 type: non-functional

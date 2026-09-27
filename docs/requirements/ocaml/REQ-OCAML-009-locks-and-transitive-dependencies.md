@@ -1,6 +1,5 @@
 ---
 id: REQ-OCAML-009
-uuid: 3ad6aa92-f562-43bb-a19f-7a360635bd7e
 title: Locks and transitive dependencies
 scope: ocaml
 type: functional

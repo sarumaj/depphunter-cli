@@ -1,6 +1,5 @@
 ---
 id: REQ-OBJC-013
-uuid: ae886a54-317c-46e4-bcaa-a4befae456eb
 title: Read by a scanner, not the grammar
 scope: objc
 type: constraint

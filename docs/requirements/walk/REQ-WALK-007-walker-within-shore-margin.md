@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-007
-uuid: 8dee6ff5-73dd-4904-bf45-e6f3b5c4df06
 title: Walker stays within 3 units of the outermost shore
 scope: walk
 type: functional

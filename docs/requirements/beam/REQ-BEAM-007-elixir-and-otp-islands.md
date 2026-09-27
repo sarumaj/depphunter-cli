@@ -1,6 +1,5 @@
 ---
 id: REQ-BEAM-007
-uuid: 101b282a-a733-4880-aeb2-b277afad8331
 title: Elixir and OTP islands
 scope: beam
 type: functional

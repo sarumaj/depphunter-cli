@@ -1,6 +1,5 @@
 ---
 id: REQ-PERF-008
-uuid: c2840360-b284-4420-bf90-af7e93274715
 title: Walker ground height from a spatial grid
 scope: perf
 type: non-functional

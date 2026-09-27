@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-029
-uuid: 0c94786e-ee07-41a4-a819-ca5d2815cf50
 title: Separate triggers for each hand
 scope: tool
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-OBJC-009
-uuid: 1f1f1852-9cd5-4315-85f2-a8663b5a4c3c
 title: CocoaPods pinning rule
 scope: objc
 type: functional

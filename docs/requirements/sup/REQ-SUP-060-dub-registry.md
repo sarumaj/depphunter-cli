@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-060
-uuid: a1901392-25a9-497b-95d1-f32aa4197763
 title: The dub registry for package dependencies
 scope: sup
 type: functional

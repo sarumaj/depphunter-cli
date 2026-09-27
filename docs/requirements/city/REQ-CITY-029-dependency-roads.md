@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-029
-uuid: e8091f31-f101-433b-b64e-4d22760fa658
 title: Dependency roads
 scope: city
 type: functional

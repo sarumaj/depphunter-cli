@@ -1,6 +1,5 @@
 ---
 id: REQ-CS-004
-uuid: d124a026-6e41-49fa-a7cb-c7e61693547f
 title: Case-insensitive NuGet package ids
 scope: cs
 type: functional

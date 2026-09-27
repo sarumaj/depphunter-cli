@@ -1,6 +1,5 @@
 ---
 id: REQ-PS-010
-uuid: 94a2a944-36f4-425d-86aa-da2f6420e0cf
 title: RequiredVersion pins, ModuleVersion is a minimum
 scope: ps
 type: functional

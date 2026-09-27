@@ -1,6 +1,5 @@
 ---
 id: REQ-AUTH-008
-uuid: 0066273e-0ee1-4fee-8f73-af5a6047d681
 title: Cargo registry tokens
 scope: auth
 type: functional

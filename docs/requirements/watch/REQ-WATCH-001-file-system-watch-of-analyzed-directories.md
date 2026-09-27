@@ -1,6 +1,5 @@
 ---
 id: REQ-WATCH-001
-uuid: 08336ab3-59bb-4d6b-b95b-fceee511d8ce
 title: File-system watch of analyzed directories
 scope: watch
 type: functional

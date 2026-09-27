@@ -1,6 +1,5 @@
 ---
 id: REQ-CI-003
-uuid: bb68cb7d-f25a-4686-bb79-6c83c779c887
 title: Reusable workflows
 scope: ci
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-023
-uuid: efca4ae6-f97a-4abd-8218-8416104b7d09
 title: Tagged modules as rings on the tracker
 scope: hunt
 type: functional

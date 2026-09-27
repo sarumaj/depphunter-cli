@@ -1,6 +1,5 @@
 ---
 id: REQ-CI-008
-uuid: 13331fa3-0cbb-48ef-902e-424042b3a586
 title: Three CI ecosystems
 scope: ci
 type: interface

@@ -1,6 +1,5 @@
 ---
 id: REQ-PS-006
-uuid: 0c2abe76-2c86-48b2-b32d-544000a03438
 title: Module manifest dependencies
 scope: ps
 type: functional

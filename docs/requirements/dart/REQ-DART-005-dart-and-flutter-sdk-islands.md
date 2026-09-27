@@ -1,6 +1,5 @@
 ---
 id: REQ-DART-005
-uuid: 96746f6b-ed95-4587-a45f-27c80def9d3b
 title: Dart SDK libraries and Flutter SDK islands
 scope: dart
 type: functional

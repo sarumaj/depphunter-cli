@@ -1,6 +1,5 @@
 ---
 id: REQ-TRC-010
-uuid: b4b641d5-7b29-47ca-a740-ffc525c25cdd
 title: Explain writes the digest to the log
 scope: trc
 type: interface

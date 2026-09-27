@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-007
-uuid: 675cce99-e803-4ce0-abcc-1ed9ca6bfec8
 title: Row picked in the panel selects the building
 scope: ext
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-DLANG-006
-uuid: aa56511f-95da-412d-b701-fc28dca72c0c
 title: Selections and pinning
 scope: dlang
 type: functional

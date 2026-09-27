@@ -1,6 +1,5 @@
 ---
 id: REQ-CLI-010
-uuid: f0b77203-b55f-4c26-8d7d-6b8b252939c6
 title: Log moves aside for an export on stdout
 scope: cli
 type: interface

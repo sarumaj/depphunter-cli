@@ -1,6 +1,5 @@
 ---
 id: REQ-SRV-015
-uuid: 0d785aa6-9631-4615-968d-6370e8d7c0a9
 title: Event stream announcements carry an id
 scope: srv
 type: functional

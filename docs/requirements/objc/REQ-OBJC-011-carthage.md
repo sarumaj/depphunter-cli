@@ -1,6 +1,5 @@
 ---
 id: REQ-OBJC-011
-uuid: 24a13801-8cb5-48ba-ad22-e1742592e26d
 title: Carthage dependencies
 scope: objc
 type: functional

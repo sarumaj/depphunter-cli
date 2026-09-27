@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-049
-uuid: 6cdb03ad-769a-4e21-9cfe-e207096a7b29
 title: Right button and E expand or collapse
 scope: walk
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-EXP-003
-uuid: 8e4bb14b-9bc5-43ef-8928-c1630ca96727
 title: DOT dependency graph export
 scope: exp
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-TRC-006
-uuid: 01b1f6eb-719a-4142-9f53-106c4b6296c8
 title: Distinct reasons for no answer
 scope: trc
 type: functional

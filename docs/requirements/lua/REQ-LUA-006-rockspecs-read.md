@@ -1,6 +1,5 @@
 ---
 id: REQ-LUA-006
-uuid: 74d4edd2-c1de-41c1-9943-df7dab35e1d9
 title: Rockspecs read as imports
 scope: lua
 type: functional

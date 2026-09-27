@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-030
-uuid: 6ee1a125-cfa5-4091-b86c-56622afbac9c
 title: Sky and planet water in walk mode
 scope: city
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-009
-uuid: 5d687775-afad-493d-a6a1-30bb399e8ca7
 title: Tag result reported in the HUD
 scope: hunt
 type: functional

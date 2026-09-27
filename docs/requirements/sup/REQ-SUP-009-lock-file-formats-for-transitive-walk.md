@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-009
-uuid: a17a7ea2-4bd4-4cb3-b486-eff9535d32f7
 title: Lock files read for the transitive walk
 scope: sup
 type: functional

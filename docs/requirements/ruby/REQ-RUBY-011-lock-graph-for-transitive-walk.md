@@ -1,6 +1,5 @@
 ---
 id: REQ-RUBY-011
-uuid: b091591a-a892-42b9-9f73-eb045dba62ef
 title: Gemfile.lock graph for the transitive walk
 scope: ruby
 type: functional

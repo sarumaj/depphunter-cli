@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-011
-uuid: 08fdc362-6684-41a9-a6da-2907915f39ec
 title: Bugs colored by severity
 scope: hunt
 type: functional

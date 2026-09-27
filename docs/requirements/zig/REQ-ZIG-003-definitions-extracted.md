@@ -1,6 +1,5 @@
 ---
 id: REQ-ZIG-003
-uuid: 9b556d02-5855-4b41-b543-692d128709b6
 title: Definitions extracted
 scope: zig
 type: functional

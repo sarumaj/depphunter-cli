@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-014
-uuid: 79e5c32b-29a5-461a-a1c6-889cd47ed6d0
 title: Crosshair names the bug it is on
 scope: hunt
 type: functional

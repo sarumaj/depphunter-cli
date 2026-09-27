@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-001
-uuid: a493581e-29b9-4d7a-8443-312908243d28
 title: Procedural city look modulating data colors
 scope: city
 type: functional

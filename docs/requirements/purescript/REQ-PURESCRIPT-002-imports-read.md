@@ -1,6 +1,5 @@
 ---
 id: REQ-PURESCRIPT-002
-uuid: a223d7d2-c70a-4704-b58e-246367dd93af
 title: Imports read
 scope: purescript
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-FND-007
-uuid: fbe0dc3c-5435-4b0f-81cd-bce47463b9d2
 title: golangci-lint reports
 scope: fnd
 type: functional

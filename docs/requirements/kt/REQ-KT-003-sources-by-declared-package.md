@@ -1,6 +1,5 @@
 ---
 id: REQ-KT-003
-uuid: 854a7b37-1276-47af-8288-30d9341eb979
 title: Project sources found by declared package
 scope: kt
 type: functional

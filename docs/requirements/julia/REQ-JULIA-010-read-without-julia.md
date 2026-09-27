@@ -1,6 +1,5 @@
 ---
 id: REQ-JULIA-010
-uuid: 908818ae-3491-450c-903b-bfd60a7087c2
 title: Julia read without running Julia
 scope: julia
 type: limitation

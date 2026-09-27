@@ -1,6 +1,5 @@
 ---
 id: REQ-UI-002
-uuid: 5a88ad9b-a306-449c-aba1-c5880f5c018f
 title: Reconnection gives up after four attempts
 scope: ui
 type: functional

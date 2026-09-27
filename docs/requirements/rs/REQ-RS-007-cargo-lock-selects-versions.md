@@ -1,6 +1,5 @@
 ---
 id: REQ-RS-007
-uuid: 66eed579-e699-4c8d-b26e-65b4e0635571
 title: Cargo.lock selects the version in use
 scope: rs
 type: functional

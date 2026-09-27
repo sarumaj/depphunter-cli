@@ -1,6 +1,5 @@
 ---
 id: REQ-SHELL-006
-uuid: 31d7f8ad-9373-46d4-9428-c15404cbb5e6
 title: direnv and bats commands
 scope: shell
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-LUA-010
-uuid: baa87a29-a443-4db8-9df4-bb3bacee593d
 title: Luau and Roblox requires resolved
 scope: lua
 type: functional

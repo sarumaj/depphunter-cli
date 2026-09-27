@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-001
-uuid: 408ceb7d-79f9-4429-ab98-66dd7411380a
 title: Plugins claim files
 scope: lang
 type: interface

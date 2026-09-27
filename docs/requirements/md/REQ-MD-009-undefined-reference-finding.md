@@ -1,6 +1,5 @@
 ---
 id: REQ-MD-009
-uuid: cae317ad-8e3e-49c7-9d90-959a7ea9d3dd
 title: Undefined reference finding
 scope: md
 type: functional

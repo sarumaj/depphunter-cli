@@ -1,6 +1,5 @@
 ---
 id: REQ-MD-003
-uuid: ac0cd2da-1bd1-41c6-85c5-cff857d35fe0
 title: Recognized Markdown link forms
 scope: md
 type: functional

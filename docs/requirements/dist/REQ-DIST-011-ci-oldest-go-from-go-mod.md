@@ -1,6 +1,5 @@
 ---
 id: REQ-DIST-011
-uuid: cf658557-55a7-42bb-98fa-11ea027abba7
 title: CI on the oldest supported Go
 scope: dist
 type: non-functional

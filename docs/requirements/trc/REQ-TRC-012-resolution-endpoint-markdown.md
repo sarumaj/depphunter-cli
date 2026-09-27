@@ -1,6 +1,5 @@
 ---
 id: REQ-TRC-012
-uuid: 489e6071-ae0e-4fb9-a6e9-dfda06cc0919
 title: Resolution report as a document
 scope: trc
 type: interface

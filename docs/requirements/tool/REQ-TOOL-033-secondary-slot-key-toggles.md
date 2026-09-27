@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-033
-uuid: 37c89b0f-72e9-4e65-b84f-cacf2ec22f0f
 title: Secondary slot key puts it down
 scope: tool
 type: functional

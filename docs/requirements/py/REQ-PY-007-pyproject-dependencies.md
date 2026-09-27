@@ -1,6 +1,5 @@
 ---
 id: REQ-PY-007
-uuid: 48bfb92c-a6eb-41d7-a723-e4662ab6a612
 title: pyproject.toml dependencies
 scope: py
 type: functional

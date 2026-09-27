@@ -1,6 +1,5 @@
 ---
 id: REQ-PURESCRIPT-011
-uuid: 4c04afe5-6251-4925-85ee-dc4b799482df
 title: Read without running spago
 scope: purescript
 type: limitation

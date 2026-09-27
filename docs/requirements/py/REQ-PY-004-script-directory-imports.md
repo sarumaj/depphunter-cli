@@ -1,6 +1,5 @@
 ---
 id: REQ-PY-004
-uuid: 382cad61-6d22-4110-a839-6ff35e472a67
 title: Script directory imports
 scope: py
 type: functional

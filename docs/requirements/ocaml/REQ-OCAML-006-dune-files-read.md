@@ -1,6 +1,5 @@
 ---
 id: REQ-OCAML-006
-uuid: cccabe15-fedd-442d-a6a2-39f2255fcdf6
 title: dune files read
 scope: ocaml
 type: functional

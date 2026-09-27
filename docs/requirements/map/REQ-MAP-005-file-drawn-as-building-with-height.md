@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-005
-uuid: ff543e2f-a0c1-49ac-81cf-999a61e906a4
 title: File drawn as building with height from lines
 scope: map
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-001
-uuid: e82395d9-3ead-417d-83be-67ac37922d02
 title: Activity-bar container with three views
 scope: ext
 type: interface

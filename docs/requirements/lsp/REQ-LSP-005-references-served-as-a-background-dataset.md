@@ -1,6 +1,5 @@
 ---
 id: REQ-LSP-005
-uuid: f79b50d1-2dcd-4ba3-8a06-817e6b757767
 title: References served as a background dataset
 scope: lsp
 type: functional

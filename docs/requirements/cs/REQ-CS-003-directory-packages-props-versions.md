@@ -1,6 +1,5 @@
 ---
 id: REQ-CS-003
-uuid: 8462a63c-6727-48e8-9a38-be91a140bb99
 title: Central versions from Directory.Packages.props
 scope: cs
 type: functional

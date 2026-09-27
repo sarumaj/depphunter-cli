@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-009
-uuid: 711dccdf-31f2-45aa-a0c7-fa8d54759e6b
 title: Changes name the client that made them
 scope: ext
 type: interface

@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-004
-uuid: 24244c66-965f-4a92-98a0-0c7cc9daf6e0
 title: Floating packages are drawn apart
 scope: sup
 type: functional

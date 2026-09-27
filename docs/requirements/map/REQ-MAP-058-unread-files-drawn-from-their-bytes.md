@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-058
-uuid: 6935bc40-6568-4a6a-818f-04077d54db7a
 title: Unread files drawn from their bytes
 scope: map
 type: functional

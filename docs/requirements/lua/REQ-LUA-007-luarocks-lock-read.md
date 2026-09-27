@@ -1,6 +1,5 @@
 ---
 id: REQ-LUA-007
-uuid: 5106ad08-bbae-40c0-b7bd-9e0ce41f0977
 title: luarocks.lock read
 scope: lua
 type: functional

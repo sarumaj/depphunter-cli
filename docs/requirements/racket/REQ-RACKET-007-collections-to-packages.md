@@ -1,6 +1,5 @@
 ---
 id: REQ-RACKET-007
-uuid: f124d963-930e-4382-8260-4940e95d269c
 title: Collections to packages
 scope: racket
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-TRC-008
-uuid: 6c8f7991-16eb-4962-8862-0db4c9f399b9
 title: Ecosystems not walked are recorded
 scope: trc
 type: functional

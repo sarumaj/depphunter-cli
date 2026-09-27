@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-014
-uuid: 2b3a92bb-51b1-4dcb-871d-1d15a30bcae7
 title: Graph export from the editor
 scope: ext
 type: functional

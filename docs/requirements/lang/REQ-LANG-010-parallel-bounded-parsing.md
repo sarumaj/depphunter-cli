@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-010
-uuid: 2c289fde-8db5-4f42-9f30-e49e04ddd861
 title: Parallel bounded parsing
 scope: lang
 type: non-functional

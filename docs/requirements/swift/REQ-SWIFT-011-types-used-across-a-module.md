@@ -1,6 +1,5 @@
 ---
 id: REQ-SWIFT-011
-uuid: 0e0d3c36-0e49-4d83-885d-5748e4f58c27
 title: Types used across a module's files
 scope: swift
 type: functional

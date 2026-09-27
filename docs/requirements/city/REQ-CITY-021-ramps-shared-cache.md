@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-021
-uuid: b7b5b335-47ee-4be5-89e7-47177f482411
 title: Ramps computed once per layout
 scope: city
 type: non-functional

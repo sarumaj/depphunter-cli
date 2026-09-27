@@ -1,6 +1,5 @@
 ---
 id: REQ-OBJC-002
-uuid: e9ef01c2-1ce3-44b3-9f5d-6edc08efa7fa
 title: #import, #include and @import read
 scope: objc
 type: functional

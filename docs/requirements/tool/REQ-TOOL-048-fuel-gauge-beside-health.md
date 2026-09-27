@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-048
-uuid: f628c070-6756-4c3b-a670-b7623cde3d1a
 title: Tank gauge beside the health bar
 scope: tool
 type: functional

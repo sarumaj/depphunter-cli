@@ -1,6 +1,5 @@
 ---
 id: REQ-HAXE-006
-uuid: 99d1136b-53ef-4bb9-be5b-daf61ccab768
 title: Library versions and pinning
 scope: haxe
 type: functional

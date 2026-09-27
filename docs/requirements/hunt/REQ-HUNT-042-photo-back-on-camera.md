@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-042
-uuid: b7fa64ea-9442-44c0-8da6-7d351d8c79b5
 title: A photograph put back on the camera
 scope: hunt
 type: functional

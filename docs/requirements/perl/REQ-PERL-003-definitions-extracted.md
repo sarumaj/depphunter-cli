@@ -1,6 +1,5 @@
 ---
 id: REQ-PERL-003
-uuid: 476f7f11-1ae8-42ca-9eb6-484ce59c1b6f
 title: Definitions extracted
 scope: perl
 type: functional

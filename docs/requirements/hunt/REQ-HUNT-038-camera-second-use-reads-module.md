@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-038
-uuid: bb988c8a-8c44-403e-abac-1e72d321317a
 title: Camera on a tagged module reads it
 scope: hunt
 type: functional

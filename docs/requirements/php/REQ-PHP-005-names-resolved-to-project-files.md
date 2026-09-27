@@ -1,6 +1,5 @@
 ---
 id: REQ-PHP-005
-uuid: fd3530e4-c5ef-43a5-beb5-6764ba41c2d7
 title: Names resolved to project files
 scope: php
 type: functional

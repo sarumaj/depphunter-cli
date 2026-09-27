@@ -1,6 +1,5 @@
 ---
 id: REQ-PHP-001
-uuid: 8ae91cd7-6201-45cd-9775-b2e4c8584d69
 title: PHP files claimed
 scope: php
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-CPP-006
-uuid: 02fb2b61-3b46-4041-a0c0-204e4ee7fe4c
 title: Third-party libraries by first directory
 scope: cpp
 type: functional

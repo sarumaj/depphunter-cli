@@ -1,6 +1,5 @@
 ---
 id: REQ-FORTRAN-010
-uuid: d5752b90-7b4a-46a9-b952-1250e0f349fb
 title: Read by a scanner, not the grammar
 scope: fortran
 type: constraint

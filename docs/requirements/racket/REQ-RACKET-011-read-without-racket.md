@@ -1,6 +1,5 @@
 ---
 id: REQ-RACKET-011
-uuid: 99135e5c-3222-42ad-b810-8b7cf526c432
 title: Read without Racket or raco
 scope: racket
 type: limitation

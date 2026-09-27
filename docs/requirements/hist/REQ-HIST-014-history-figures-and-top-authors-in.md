@@ -1,6 +1,5 @@
 ---
 id: REQ-HIST-014
-uuid: 71513134-500c-4cc0-b558-54926d94251d
 title: History figures and top authors in tooltip and panel
 scope: hist
 type: functional

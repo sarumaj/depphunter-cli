@@ -1,6 +1,5 @@
 ---
 id: REQ-FORTRAN-002
-uuid: 8bba3b47-b35c-4c0a-be38-ab51be145a97
 title: Statements and imports read
 scope: fortran
 type: functional

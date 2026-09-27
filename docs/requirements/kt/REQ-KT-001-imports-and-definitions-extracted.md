@@ -1,6 +1,5 @@
 ---
 id: REQ-KT-001
-uuid: ed55f77d-8421-459f-8684-841cabc95b1d
 title: Kotlin imports and definitions extracted
 scope: kt
 type: functional

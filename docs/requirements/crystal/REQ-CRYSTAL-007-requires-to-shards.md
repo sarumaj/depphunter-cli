@@ -1,6 +1,5 @@
 ---
 id: REQ-CRYSTAL-007
-uuid: 45f2d042-78b1-42b0-a960-58baefa3342e
 title: Requires resolved to shards and the standard library
 scope: crystal
 type: functional

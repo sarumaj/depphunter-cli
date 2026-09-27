@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-015
-uuid: 938c55d0-f066-4280-87ab-f1e080beaef0
 title: Language detection by name
 scope: lang
 type: functional

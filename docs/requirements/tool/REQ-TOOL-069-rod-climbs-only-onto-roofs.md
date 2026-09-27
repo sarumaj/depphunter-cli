@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-069
-uuid: ec0cf988-6354-408f-9251-8fc2d6ac4b83
 title: Fishing rod climbs only from a cast onto a roof
 scope: tool
 type: functional

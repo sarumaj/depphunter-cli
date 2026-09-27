@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-025
-uuid: f4498574-3db5-48c3-860f-545bdbe81667
 title: Water skimmers make water walkable
 scope: tool
 type: functional

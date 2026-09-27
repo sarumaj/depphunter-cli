@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-035
-uuid: 7fdcaa91-e1cf-4055-9d61-a041d7231e69
 title: Photographs saved one at a time
 scope: hunt
 type: functional

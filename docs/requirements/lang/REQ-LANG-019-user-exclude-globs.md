@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-019
-uuid: ca4f706f-d421-4d16-ade4-28accea7396f
 title: User exclude globs
 scope: lang
 type: functional

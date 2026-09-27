@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-011
-uuid: 687a27f0-88ac-432a-a36c-307a6c1717f3
 title: Finding dropped in the panel leaves the map
 scope: ext
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-GLEAM-004
-uuid: 3c42424c-9153-494a-aa39-91ff95f4f8b3
 title: Modules resolved to files and packages
 scope: gleam
 type: functional

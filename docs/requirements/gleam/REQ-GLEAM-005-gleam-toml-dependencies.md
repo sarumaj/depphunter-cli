@@ -1,6 +1,5 @@
 ---
 id: REQ-GLEAM-005
-uuid: 48e575ee-bb46-4274-9876-ed67d9e0efab
 title: gleam.toml dependencies as imports
 scope: gleam
 type: functional

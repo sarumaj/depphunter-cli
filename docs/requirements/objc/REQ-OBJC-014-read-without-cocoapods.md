@@ -1,6 +1,5 @@
 ---
 id: REQ-OBJC-014
-uuid: 00b8f72c-b5e3-41c3-a839-ab1b71600e82
 title: Objective-C read without Xcode or CocoaPods
 scope: objc
 type: limitation

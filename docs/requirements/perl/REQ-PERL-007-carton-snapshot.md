@@ -1,6 +1,5 @@
 ---
 id: REQ-PERL-007
-uuid: 26de562d-f24a-4665-b241-6e598b6b7427
 title: Carton snapshot read
 scope: perl
 type: functional

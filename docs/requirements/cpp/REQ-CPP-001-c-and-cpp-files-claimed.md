@@ -1,6 +1,5 @@
 ---
 id: REQ-CPP-001
-uuid: a2a5e2e6-0371-4508-812d-9198cf71bb94
 title: C and C++ files claimed
 scope: cpp
 type: functional

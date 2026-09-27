@@ -1,6 +1,5 @@
 ---
 id: REQ-BEAM-006
-uuid: 95750f5d-fff9-4049-9a19-bc8222c0ab15
 title: Modules resolved to project files
 scope: beam
 type: functional

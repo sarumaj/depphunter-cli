@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-029
-uuid: 6bf53ef5-80b7-441c-bc46-35e5070e73cc
 title: Backpack raises the health ceiling
 scope: walk
 type: functional

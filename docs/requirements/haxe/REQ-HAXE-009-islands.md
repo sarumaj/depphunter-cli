@@ -1,6 +1,5 @@
 ---
 id: REQ-HAXE-009
-uuid: 923d1c94-1394-42ae-8c9a-8ddbc67a58ba
 title: Islands
 scope: haxe
 type: functional

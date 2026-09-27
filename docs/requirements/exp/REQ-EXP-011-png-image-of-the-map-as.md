@@ -1,6 +1,5 @@
 ---
 id: REQ-EXP-011
-uuid: e5f427e3-d8c8-4377-a2bd-b57ba5d62f56
 title: PNG image of the map as shown
 scope: exp
 type: functional

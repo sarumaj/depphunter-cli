@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-051
-uuid: 2f7d42e4-ab55-488b-b2f5-d072c04d284c
 title: Data colors independent of style
 scope: map
 type: functional

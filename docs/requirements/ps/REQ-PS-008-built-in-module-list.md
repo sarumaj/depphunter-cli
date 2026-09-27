@@ -1,6 +1,5 @@
 ---
 id: REQ-PS-008
-uuid: 0619baff-03b2-4ef7-b82d-0cf5ea4e1d2c
 title: Built-in PowerShell modules
 scope: ps
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-GLEAM-001
-uuid: a42946bb-0139-4690-acbc-797e740bbac4
 title: Files claimed
 scope: gleam
 type: functional

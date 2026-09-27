@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-010
-uuid: 8809bca4-e689-4c18-9751-baf416790540
 title: A bug patrols the building of each finding
 scope: hunt
 type: functional

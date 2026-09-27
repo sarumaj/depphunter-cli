@@ -1,6 +1,5 @@
 ---
 id: REQ-PHP-003
-uuid: 5997912f-9ad9-4369-a908-d28256072314
 title: Definitions extracted
 scope: php
 type: functional

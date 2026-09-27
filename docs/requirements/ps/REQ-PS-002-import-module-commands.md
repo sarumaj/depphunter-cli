@@ -1,6 +1,5 @@
 ---
 id: REQ-PS-002
-uuid: 08688207-dfed-48d7-afc1-17fdf3cb34f8
 title: Import-Module commands
 scope: ps
 type: functional

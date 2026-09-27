@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-011
-uuid: 5b099658-d5c3-48e3-8d9f-83d56c110bc7
 title: Optional transitive interface
 scope: sup
 type: interface

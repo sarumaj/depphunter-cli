@@ -1,6 +1,5 @@
 ---
 id: REQ-GO-006
-uuid: 5f8a92bb-63f7-4eba-a129-a1711a32bc81
 title: go.mod version pins
 scope: go
 type: functional

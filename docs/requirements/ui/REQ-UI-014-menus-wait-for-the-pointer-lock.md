@@ -1,6 +1,5 @@
 ---
 id: REQ-UI-014
-uuid: cdfe5067-037b-4f95-8d21-0d0dfe425746
 title: Menus wait for the pointer lock release
 scope: ui
 type: functional

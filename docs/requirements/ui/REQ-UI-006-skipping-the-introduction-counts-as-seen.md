@@ -1,6 +1,5 @@
 ---
 id: REQ-UI-006
-uuid: ce1bfb7c-ca97-432e-983a-9abd54543370
 title: Skipping the introduction counts as seen
 scope: ui
 type: functional

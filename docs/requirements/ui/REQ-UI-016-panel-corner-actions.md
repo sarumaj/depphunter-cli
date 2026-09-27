@@ -1,6 +1,5 @@
 ---
 id: REQ-UI-016
-uuid: 97bbfed7-e346-4c4b-8a95-2c0e290d293c
 title: The panel's actions are pinned in its corner
 scope: ui
 type: functional

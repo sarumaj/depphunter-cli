@@ -1,6 +1,5 @@
 ---
 id: REQ-R-009
-uuid: 1654645e-bfd7-431d-a7e3-6585ae2ea778
 title: CRAN pinning rule
 scope: r
 type: functional

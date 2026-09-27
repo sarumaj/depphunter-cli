@@ -1,6 +1,5 @@
 ---
 id: REQ-SWIFT-006
-uuid: 2721c5d9-6e36-4f1c-9da4-ef3065dd4582
 title: Package manifest dependencies as imports
 scope: swift
 type: functional

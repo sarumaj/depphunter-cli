@@ -1,6 +1,5 @@
 ---
 id: REQ-JS-013
-uuid: f1c87120-372e-4c83-ba55-e9636f29d2a1
 title: A component's script src is an import
 scope: js
 type: functional

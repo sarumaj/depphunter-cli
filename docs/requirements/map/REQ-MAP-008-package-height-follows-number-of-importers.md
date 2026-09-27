@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-008
-uuid: 7fa2dd23-8e84-4b84-b3a8-44b0e326c691
 title: Package height follows number of importers
 scope: map
 type: functional

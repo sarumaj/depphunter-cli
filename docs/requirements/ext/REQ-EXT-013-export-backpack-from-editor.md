@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-013
-uuid: e1a1b83a-0dae-4498-8076-d104ec7bd82f
 title: Backpack export from the editor
 scope: ext
 type: functional

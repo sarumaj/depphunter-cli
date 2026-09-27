@@ -1,6 +1,5 @@
 ---
 id: REQ-SEC-004
-uuid: 23288be2-2b3a-480f-aaca-a0d8f6792bfa
 title: Requests without the token refused
 scope: sec
 type: non-functional

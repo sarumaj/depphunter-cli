@@ -1,6 +1,5 @@
 ---
 id: REQ-CFG-012
-uuid: a2cbbbe0-c145-4962-bd3a-b1803f2150bf
 title: Save writes the view to the project config
 scope: cfg
 type: functional

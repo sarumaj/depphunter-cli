@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-029
-uuid: baa2afce-15f1-4075-947b-6b3287c70557
 title: The version travels with a dependency
 scope: sup
 type: functional

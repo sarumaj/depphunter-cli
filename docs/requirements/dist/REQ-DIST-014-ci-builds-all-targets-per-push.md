@@ -1,6 +1,5 @@
 ---
 id: REQ-DIST-014
-uuid: 64078407-3c22-45a7-85a5-5c8c7c992508
 title: CI builds every release target
 scope: dist
 type: non-functional

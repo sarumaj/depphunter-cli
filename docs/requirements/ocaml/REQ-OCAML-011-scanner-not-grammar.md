@@ -1,6 +1,5 @@
 ---
 id: REQ-OCAML-011
-uuid: 967d505b-2ec7-4dd0-9c40-bf4bb97599c8
 title: Read by a scanner, not the grammar
 scope: ocaml
 type: constraint

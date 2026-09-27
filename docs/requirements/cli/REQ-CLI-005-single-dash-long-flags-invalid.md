@@ -1,6 +1,5 @@
 ---
 id: REQ-CLI-005
-uuid: 91ed1b8b-1107-4eea-95e8-7ed46252b674
 title: Single-dash long flags rejected
 scope: cli
 type: interface

@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-001
-uuid: 91b3c296-8f5e-4be8-a191-28ada5b1f6bf
 title: Pin status of every external package
 scope: sup
 type: functional

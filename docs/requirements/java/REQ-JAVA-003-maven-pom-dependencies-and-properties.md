@@ -1,6 +1,5 @@
 ---
 id: REQ-JAVA-003
-uuid: ac87dae2-be0b-4e4f-a872-50c0c6a4e852
 title: Maven POM dependencies with properties
 scope: java
 type: functional

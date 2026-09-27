@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-019
-uuid: 98778b3a-2f09-4f1c-8eb7-7e3d0f2c658b
 title: Ramp markings and parapet
 scope: city
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-012
-uuid: 53f4773f-822f-426d-86d6-d2ce2d7ad779
 title: Transitive packages are marked
 scope: sup
 type: functional

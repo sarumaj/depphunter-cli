@@ -30,9 +30,8 @@ const ENUMS = {
 };
 // Verification kinds that a test in the repository can carry out.
 const AUTOMATED = new Set(['unit', 'integration', 'ui', 'extension']);
-const REQUIRED = ['id', 'uuid', 'title', 'scope', 'type', 'priority', 'status', 'verification'];
+const REQUIRED = ['id', 'title', 'scope', 'type', 'priority', 'status', 'verification'];
 const ID = /^REQ-[A-Z0-9]+-\d{3}$/;
-const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/;
 const ANNOTATION = /\b(Implements|Verifies):\s*(REQ-[A-Z0-9]+-\d{3}(?:\s*,\s*REQ-[A-Z0-9]+-\d{3})*)/g;
 // Paths never annotated: third-party code, fixtures and the specification itself.
 const SKIP = [/(^|\/)vendor\//, /(^|\/)node_modules\//, /(^|\/)testdata\//, /^docs\//, /^tools\/reqtrace\.mjs$/];
@@ -93,7 +92,7 @@ function loadRequirements() {
       for (const key of REQUIRED) if (fm[key] === undefined) fail(`${file}: missing ${key}`);
       if (!ID.test(fm.id ?? '')) fail(`${file}: malformed id ${fm.id}`);
       else if (!name.startsWith(`${fm.id}-`)) fail(`${file}: file name does not start with ${fm.id}-`);
-      if (!UUID.test(fm.uuid ?? '')) fail(`${file}: malformed uuid ${fm.uuid}`);
+      if (fm.uuid !== undefined) fail(`${file}: uuid is obsolete; requirements are identified by id`);
       if (fm.scope !== scope) fail(`${file}: scope ${fm.scope} is not its directory ${scope}`);
       if (fm.id && fm.scope && !fm.id.startsWith(`REQ-${fm.scope.toUpperCase()}-`)) {
         fail(`${file}: id ${fm.id} does not carry the scope prefix REQ-${fm.scope.toUpperCase()}-`);
@@ -110,11 +109,9 @@ function loadRequirements() {
   }
   const seen = new Map();
   for (const r of requirements) {
-    for (const key of ['id', 'uuid']) {
-      const k = `${key}:${r[key]}`;
-      if (seen.has(k)) fail(`${r.file}: ${key} ${r[key]} also used by ${seen.get(k)}`);
-      else seen.set(k, r.file);
-    }
+    const k = `id:${r.id}`;
+    if (seen.has(k)) fail(`${r.file}: id ${r.id} also used by ${seen.get(k)}`);
+    else seen.set(k, r.file);
   }
   for (const r of requirements) {
     for (const s of r.superseded_by) if (!seen.has(`id:${s}`)) fail(`${r.file}: superseded_by names unknown ${s}`);
@@ -250,9 +247,9 @@ function render(requirements) {
     const rows = [];
     for (const r of requirements.filter((x) => x.scope === s)) {
       const status = r.superseded_by.length ? `${r.status} by ${r.superseded_by.join(', ')}` : r.status;
-      rows.push([`[${r.id}](${link(REQ_DIR, r.file)})`, `\`${r.uuid}\``, cell(r.title), r.type, status, r.verification.join(', '), r.impl.map(loc).join('<br>') || '—', r.tests.map(loc).join('<br>') || '—']);
+      rows.push([`[${r.id}](${link(REQ_DIR, r.file)})`, cell(r.title), r.type, status, r.verification.join(', '), r.impl.map(loc).join('<br>') || '—', r.tests.map(loc).join('<br>') || '—']);
     }
-    out.push(...table(['ID', 'UUID', 'Title', 'Type', 'Status', 'Verification', 'Implemented in', 'Verified by'], rows), '');
+    out.push(...table(['ID', 'Title', 'Type', 'Status', 'Verification', 'Implemented in', 'Verified by'], rows), '');
   }
   return out.join('\n');
 }

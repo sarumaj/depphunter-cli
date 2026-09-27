@@ -1,6 +1,5 @@
 ---
 id: REQ-CI-015
-uuid: 80afd2eb-e717-49c8-bdc8-d7c9cf09a611
 title: GitHub.com and GHE actions share one ecosystem
 scope: ci
 type: limitation

@@ -1,6 +1,5 @@
 ---
 id: REQ-NIX-004
-uuid: d41607f1-e62f-42ec-8664-50f905492044
 title: Flake inputs named by URL
 scope: nix
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-034
-uuid: 7249e9a6-c4df-48c7-a607-d37dd751cc60
 title: Filter by path globs
 scope: map
 type: functional

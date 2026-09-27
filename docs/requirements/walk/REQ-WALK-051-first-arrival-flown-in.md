@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-051
-uuid: f09279b2-7989-4664-9cf6-949be20fc66e
 title: First arrival flown in
 scope: walk
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-ZIG-002
-uuid: 52919ed3-95dc-47db-8559-8510ddfe424b
 title: Imports read
 scope: zig
 type: functional

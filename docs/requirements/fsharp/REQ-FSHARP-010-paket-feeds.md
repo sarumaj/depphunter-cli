@@ -1,6 +1,5 @@
 ---
 id: REQ-FSHARP-010
-uuid: 3d6e0d2f-22c8-468a-b01f-40d0e0335d3b
 title: Paket feeds discovered
 scope: fsharp
 type: functional

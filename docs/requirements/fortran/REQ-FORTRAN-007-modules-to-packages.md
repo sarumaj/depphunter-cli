@@ -1,6 +1,5 @@
 ---
 id: REQ-FORTRAN-007
-uuid: 60d9d217-79c9-41b6-9846-2cb83a31fc13
 title: Modules resolved to packages
 scope: fortran
 type: functional

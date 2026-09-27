@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-023
-uuid: f4fb0e2d-b0a6-4cdd-ac28-c61db823034c
 title: Expand or collapse everything to a depth
 scope: map
 type: functional

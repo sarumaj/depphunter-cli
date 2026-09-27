@@ -1,6 +1,5 @@
 ---
 id: REQ-CRYSTAL-001
-uuid: ee652ba1-2fe0-4fcb-86c0-f1586b4f0680
 title: Crystal files claimed
 scope: crystal
 type: functional

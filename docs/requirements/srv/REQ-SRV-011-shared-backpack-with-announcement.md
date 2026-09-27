@@ -1,6 +1,5 @@
 ---
 id: REQ-SRV-011
-uuid: ffc4a51d-afab-49b7-9af1-ed6c849579f3
 title: Shared backpack with announcement
 scope: srv
 type: functional

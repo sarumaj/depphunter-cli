@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-016
-uuid: 65800e94-b9c0-4822-9f06-bfce650d8f8d
 title: Street lookup grid
 scope: city
 type: non-functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-DOCKER-005
-uuid: 5fd27c14-6047-4689-8dad-a1894ba6b544
 title: Images of a Dockerfile, stages told apart
 scope: docker
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-CI-012
-uuid: e3af0b73-29ee-445e-b102-fea33aa92c30
 title: Only a digest pins a container image
 scope: ci
 type: functional

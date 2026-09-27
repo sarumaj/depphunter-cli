@@ -1,6 +1,5 @@
 ---
 id: REQ-PROTO-008
-uuid: e0c586ec-ddd1-4340-a703-f25bfab8dc83
 title: Buf Schema Registry pinning rule
 scope: proto
 type: functional

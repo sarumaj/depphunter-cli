@@ -1,6 +1,5 @@
 ---
 id: REQ-DIST-008
-uuid: ada6a56a-a64e-4988-9824-23c39adef67e
 title: Stripped release binaries built with the current Go
 scope: dist
 type: non-functional

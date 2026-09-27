@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-040
-uuid: 4fa0b77d-0e58-46eb-8fb3-adf842e98d4e
 title: A private package is not sent to the vulnerability database
 scope: sup
 type: constraint

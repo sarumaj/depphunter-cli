@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-018
-uuid: 58fd56e3-c4f9-45e9-8cea-7268b6bd5069
 title: Built-in ignore list
 scope: lang
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-021
-uuid: 853dd8e7-ba33-4b8a-9338-c008575bd0cc
 title: Walker held still while reading
 scope: walk
 type: functional

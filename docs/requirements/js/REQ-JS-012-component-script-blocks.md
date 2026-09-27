@@ -1,6 +1,5 @@
 ---
 id: REQ-JS-012
-uuid: 08c6da66-104c-4970-bd02-24bf9e412345
 title: Vue, Svelte and Astro script blocks
 scope: js
 type: functional

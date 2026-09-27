@@ -1,6 +1,5 @@
 ---
 id: REQ-A11Y-001
-uuid: bae6e51f-6e58-4df7-bd28-227ce0cdf0de
 title: Color-blind-safe categorical palette
 scope: a11y
 type: non-functional

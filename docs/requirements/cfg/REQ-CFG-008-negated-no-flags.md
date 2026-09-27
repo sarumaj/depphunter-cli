@@ -1,6 +1,5 @@
 ---
 id: REQ-CFG-008
-uuid: a7dba8db-0f0b-4213-aec6-cae1aed38d37
 title: Flags that turn settings off
 scope: cfg
 type: interface

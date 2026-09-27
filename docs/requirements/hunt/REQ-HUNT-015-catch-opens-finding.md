@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-015
-uuid: d28cdc31-06fb-4808-8b92-0bf180ce4405
 title: Catching a bug opens its finding
 scope: hunt
 type: functional

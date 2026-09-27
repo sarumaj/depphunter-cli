@@ -1,6 +1,5 @@
 ---
 id: REQ-CLI-006
-uuid: dd97a584-30dd-4afe-9f5e-6e157b19a3d7
 title: Help with description and examples
 scope: cli
 type: interface

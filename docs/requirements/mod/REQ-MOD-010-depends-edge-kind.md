@@ -1,6 +1,5 @@
 ---
 id: REQ-MOD-010
-uuid: f3c61d80-5fd6-4251-af88-c1797cb38fe2
 title: Depends edge kind
 scope: mod
 type: interface

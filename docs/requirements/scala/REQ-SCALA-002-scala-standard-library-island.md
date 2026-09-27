@@ -1,6 +1,5 @@
 ---
 id: REQ-SCALA-002
-uuid: 63e50456-654d-42de-a0a3-c739da98c3f5
 title: Scala standard library island
 scope: scala
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-PY-014
-uuid: 8e8d2fba-e0ce-48b9-b611-ae90ff3e150b
 title: Python symbol extraction
 scope: py
 type: functional

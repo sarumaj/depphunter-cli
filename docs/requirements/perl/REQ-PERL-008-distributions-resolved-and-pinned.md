@@ -1,6 +1,5 @@
 ---
 id: REQ-PERL-008
-uuid: e725b795-2c9a-48ac-aebd-5a7b317ca266
 title: Distributions resolved, named and pinned
 scope: perl
 type: functional

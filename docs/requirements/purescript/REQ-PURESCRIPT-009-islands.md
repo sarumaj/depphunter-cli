@@ -1,6 +1,5 @@
 ---
 id: REQ-PURESCRIPT-009
-uuid: 98cfb3dd-a629-48ce-b92d-14e680f7788d
 title: PureScript islands
 scope: purescript
 type: functional

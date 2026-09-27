@@ -1,6 +1,5 @@
 ---
 id: REQ-SHELL-004
-uuid: 9e9bdd26-5fd9-4290-8abf-d4a93dd6d152
 title: Sourced files
 scope: shell
 type: functional

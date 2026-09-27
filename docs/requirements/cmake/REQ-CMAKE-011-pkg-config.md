@@ -1,6 +1,5 @@
 ---
 id: REQ-CMAKE-011
-uuid: fa6ed2f0-e562-4bb2-8a81-2a6485819053
 title: pkg-config modules
 scope: cmake
 type: functional

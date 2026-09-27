@@ -1,6 +1,5 @@
 ---
 id: REQ-CFG-004
-uuid: d59b35e5-2984-482a-bd22-a698aeba2216
 title: Config files merged key by key
 scope: cfg
 type: functional

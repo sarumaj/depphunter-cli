@@ -1,6 +1,5 @@
 ---
 id: REQ-R-004
-uuid: 4135ea7f-f3c2-4264-b85a-516ab3269e3b
 title: R Markdown and Quarto chunks read
 scope: r
 type: functional

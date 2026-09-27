@@ -1,6 +1,5 @@
 ---
 id: REQ-ZIG-012
-uuid: 897c7582-01a9-47a8-af7e-a1d5633a3b19
 title: Read by a scanner, not the grammar
 scope: zig
 type: constraint

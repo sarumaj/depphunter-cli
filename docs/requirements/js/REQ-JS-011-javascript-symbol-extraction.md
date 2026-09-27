@@ -1,6 +1,5 @@
 ---
 id: REQ-JS-011
-uuid: 1fb5241c-211b-43d6-a7b6-301b8baa7f40
 title: JavaScript and TypeScript symbols
 scope: js
 type: functional

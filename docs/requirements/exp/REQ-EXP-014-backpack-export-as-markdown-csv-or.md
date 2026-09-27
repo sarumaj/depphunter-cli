@@ -1,6 +1,5 @@
 ---
 id: REQ-EXP-014
-uuid: 3e0c74f4-9bd6-4beb-9329-7f8ae8a5e385
 title: Backpack export as Markdown, CSV or JSON
 scope: exp
 type: functional

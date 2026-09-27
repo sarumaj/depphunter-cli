@@ -1,6 +1,5 @@
 ---
 id: REQ-JAVA-009
-uuid: 281b51ec-4de5-447c-9a8d-dbdcc0ba386e
 title: Heuristic Maven matching; unmatched unresolved
 scope: java
 type: limitation

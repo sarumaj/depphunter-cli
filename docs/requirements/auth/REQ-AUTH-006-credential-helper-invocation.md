@@ -1,6 +1,5 @@
 ---
 id: REQ-AUTH-006
-uuid: 2c6300f8-ebc4-4dd7-bdba-10c54244eaec
 title: Container credential helpers
 scope: auth
 type: functional

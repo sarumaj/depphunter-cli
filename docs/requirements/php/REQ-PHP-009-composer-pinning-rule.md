@@ -1,6 +1,5 @@
 ---
 id: REQ-PHP-009
-uuid: 1f7af54c-2c8d-484d-b141-ecc8564958d8
 title: Composer pinning rule
 scope: php
 type: functional

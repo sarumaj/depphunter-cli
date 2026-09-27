@@ -1,6 +1,5 @@
 ---
 id: REQ-CLOJURE-001
-uuid: 6c6d49f9-710d-4cea-9193-831efd8bed7b
 title: Files claimed
 scope: clojure
 type: functional

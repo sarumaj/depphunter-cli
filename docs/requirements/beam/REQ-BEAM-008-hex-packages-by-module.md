@@ -1,6 +1,5 @@
 ---
 id: REQ-BEAM-008
-uuid: 6ec7132a-d6df-4c40-835a-715c6a25f27d
 title: Hex packages found by module name
 scope: beam
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-003
-uuid: 6950e8f8-d871-4f07-928c-105dc1ab1dae
 title: A lock file pins what it resolves
 scope: sup
 type: functional

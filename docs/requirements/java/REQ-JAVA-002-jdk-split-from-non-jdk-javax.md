@@ -1,6 +1,5 @@
 ---
 id: REQ-JAVA-002
-uuid: d34de3ce-316b-4cb4-86f8-b029255a4a89
 title: JDK packages split from non-JDK javax
 scope: java
 type: functional

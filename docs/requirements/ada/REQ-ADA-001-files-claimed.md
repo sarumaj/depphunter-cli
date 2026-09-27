@@ -1,6 +1,5 @@
 ---
 id: REQ-ADA-001
-uuid: edf512ac-41af-4160-915b-51c5db542829
 title: Files claimed
 scope: ada
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-SEC-006
-uuid: afb75983-384a-4c79-bc26-1eb08b89b6cf
 title: Only graph files served
 scope: sec
 type: non-functional

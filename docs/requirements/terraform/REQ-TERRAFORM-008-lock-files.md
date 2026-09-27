@@ -1,6 +1,5 @@
 ---
 id: REQ-TERRAFORM-008
-uuid: 01ef863c-b86f-4fba-a180-91ec54751a3c
 title: Dependency lock files
 scope: terraform
 type: functional

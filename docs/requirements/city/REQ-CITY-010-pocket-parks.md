@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-010
-uuid: 2532109a-86ad-4b77-87ef-390618008d00
 title: Parks with paths
 scope: city
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-RUBY-001
-uuid: 0668db84-d4d7-4589-8ff8-b953d4f82bb7
 title: Ruby files claimed
 scope: ruby
 type: functional

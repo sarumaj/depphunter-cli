@@ -1,6 +1,5 @@
 ---
 id: REQ-NIX-009
-uuid: c8133fb7-4ee6-462f-af4d-63e8302ef17b
 title: Channels
 scope: nix
 type: functional

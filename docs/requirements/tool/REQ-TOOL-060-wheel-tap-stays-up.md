@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-060
-uuid: b4497d91-ff4b-4d51-b69c-310dcb940829
 title: Tapped wheel stays up to be read
 scope: tool
 type: functional

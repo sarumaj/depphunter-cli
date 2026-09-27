@@ -1,6 +1,5 @@
 ---
 id: REQ-EXP-010
-uuid: e64946e4-0fb6-48e1-bd4d-4c24ca7a9d9f
 title: Command-line HTML export uses the configured view
 scope: exp
 type: functional

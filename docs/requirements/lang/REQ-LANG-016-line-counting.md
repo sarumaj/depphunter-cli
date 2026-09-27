@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-016
-uuid: e0ad451d-a537-4f03-8251-ae9a0989c845
 title: Line counting
 scope: lang
 type: functional

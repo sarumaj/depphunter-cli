@@ -1,6 +1,5 @@
 ---
 id: REQ-RACKET-003
-uuid: 094c18f1-9f5a-4f02-b6a9-39829b13c5e6
 title: Symbols
 scope: racket
 type: functional

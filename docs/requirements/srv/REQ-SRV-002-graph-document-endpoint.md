@@ -1,6 +1,5 @@
 ---
 id: REQ-SRV-002
-uuid: 0e7b075b-02c4-411f-8eda-d63eb4a0df1e
 title: Graph document endpoint
 scope: srv
 type: functional

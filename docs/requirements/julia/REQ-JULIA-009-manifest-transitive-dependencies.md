@@ -1,6 +1,5 @@
 ---
 id: REQ-JULIA-009
-uuid: f84a2664-5523-4d29-afcc-051aae898e98
 title: Manifests answer --resolve-depth
 scope: julia
 type: functional

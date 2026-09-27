@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-008
-uuid: e753c679-5fec-4210-abbf-12881c939e96
 title: Details panel never opens on its own
 scope: hunt
 type: functional

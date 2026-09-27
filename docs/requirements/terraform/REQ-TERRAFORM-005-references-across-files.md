@@ -1,6 +1,5 @@
 ---
 id: REQ-TERRAFORM-005
-uuid: bdd7a033-2e2f-46a9-ae11-acb1a482331d
 title: References across the files of a module
 scope: terraform
 type: functional

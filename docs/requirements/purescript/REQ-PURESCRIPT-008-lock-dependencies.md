@@ -1,6 +1,5 @@
 ---
 id: REQ-PURESCRIPT-008
-uuid: 1a11e3fc-3bc3-4708-9766-3c430e6a3717
 title: Dependencies from spago.lock
 scope: purescript
 type: functional

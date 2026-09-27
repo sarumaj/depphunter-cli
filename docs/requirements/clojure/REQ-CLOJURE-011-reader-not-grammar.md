@@ -1,6 +1,5 @@
 ---
 id: REQ-CLOJURE-011
-uuid: 9f89b995-cc17-4acd-8d8b-6dc8d8b65ce1
 title: Read by a reader, not the grammar
 scope: clojure
 type: constraint

@@ -1,6 +1,5 @@
 ---
 id: REQ-MD-005
-uuid: 0941af27-14b7-415c-a8a9-64e634b58626
 title: No island for external hosts
 scope: md
 type: constraint

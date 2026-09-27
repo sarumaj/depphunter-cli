@@ -1,6 +1,5 @@
 ---
 id: REQ-CPP-010
-uuid: 05f53e36-1c20-45fc-bb1e-c0844d995937
 title: Conan manifests read
 scope: cpp
 type: functional

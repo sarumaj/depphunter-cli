@@ -1,6 +1,5 @@
 ---
 id: REQ-TRC-002
-uuid: 84e0357f-d3b5-4966-8a36-acb14ef5403b
 title: Indexes known, with provenance and trust
 scope: trc
 type: functional

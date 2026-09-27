@@ -1,6 +1,5 @@
 ---
 id: REQ-GLEAM-003
-uuid: 9dffb684-332b-4e47-9788-ea2b83b7658f
 title: Definitions extracted
 scope: gleam
 type: functional

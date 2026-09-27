@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-029
-uuid: 44e397a2-52b8-4b78-b8d1-99a541b835da
 title: A finding dropped in the panel leaves the map
 scope: hunt
 type: functional

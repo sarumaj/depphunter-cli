@@ -1,6 +1,5 @@
 ---
 id: REQ-PERL-006
-uuid: 812ab48d-388e-4152-83be-6dfef6559eed
 title: Manifests read
 scope: perl
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-014
-uuid: 53f35796-5d49-4667-97c5-b3a7af06fabe
 title: Fishing rod built to standard
 scope: tool
 type: functional

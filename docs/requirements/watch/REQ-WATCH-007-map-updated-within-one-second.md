@@ -1,6 +1,5 @@
 ---
 id: REQ-WATCH-007
-uuid: 2a120c3c-e04d-41a6-bddd-ec7819d1b489
 title: Map updated within one second
 scope: watch
 type: non-functional

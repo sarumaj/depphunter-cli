@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-043
-uuid: bf76dabb-71fc-46a7-bb8c-56ca44416d64
 title: Only the user may vouch for an index
 scope: sup
 type: constraint

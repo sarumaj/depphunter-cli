@@ -1,6 +1,5 @@
 ---
 id: REQ-UI-009
-uuid: 65970202-dbe8-4890-be40-df1b90df3fe4
 title: Help describes every tool on its own
 scope: ui
 type: functional

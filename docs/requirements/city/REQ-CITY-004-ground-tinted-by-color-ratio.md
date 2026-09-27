@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-004
-uuid: 063ebabb-9ecd-4ca7-aba9-49ef465a4d97
 title: Streets and lawns tinted by the box color ratio
 scope: city
 type: functional

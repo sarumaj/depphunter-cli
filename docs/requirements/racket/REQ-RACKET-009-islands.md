@@ -1,6 +1,5 @@
 ---
 id: REQ-RACKET-009
-uuid: c1922d3f-2026-4972-beb0-9f8a859dadc4
 title: Islands
 scope: racket
 type: functional

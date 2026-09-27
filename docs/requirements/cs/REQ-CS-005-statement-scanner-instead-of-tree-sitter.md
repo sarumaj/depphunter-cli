@@ -1,6 +1,5 @@
 ---
 id: REQ-CS-005
-uuid: 5a596c01-8d7b-403b-a5f6-a83b62d90bd5
 title: C# statement scanner instead of tree-sitter
 scope: cs
 type: constraint

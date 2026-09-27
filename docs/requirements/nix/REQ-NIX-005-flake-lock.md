@@ -1,6 +1,5 @@
 ---
 id: REQ-NIX-005
-uuid: ccf7c3e2-481d-4be6-9d38-9312be2384c9
 title: flake.lock pins and transitive inputs
 scope: nix
 type: functional

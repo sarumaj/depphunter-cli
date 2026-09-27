@@ -1,6 +1,5 @@
 ---
 id: REQ-SHELL-002
-uuid: 8da3d8e7-6e77-4843-9cf5-30fb7a4c12ab
 title: Shell scripts read as the shell reads them
 scope: shell
 type: functional

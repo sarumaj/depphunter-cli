@@ -1,6 +1,5 @@
 ---
 id: REQ-AUTH-013
-uuid: 464c87bf-30ae-45db-bafa-3bcda69b7254
 title: URL credentials are never recorded
 scope: auth
 type: constraint

@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-017
-uuid: 7447b8aa-4a8b-43ff-88ee-32bf2a85a92b
 title: Fog thins with altitude
 scope: walk
 type: functional

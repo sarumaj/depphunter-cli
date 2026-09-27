@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-053
-uuid: d961b1bb-1808-4ebd-9730-45f85d69c6f2
 title: Tool row laid out by hand
 scope: tool
 type: functional

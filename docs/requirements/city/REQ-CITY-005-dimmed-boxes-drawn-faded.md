@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-005
-uuid: a3faa85f-8c27-4c9c-b978-acc88f4a4978
 title: Dimmed boxes drawn faded
 scope: city
 type: functional

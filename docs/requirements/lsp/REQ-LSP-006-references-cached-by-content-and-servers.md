@@ -1,6 +1,5 @@
 ---
 id: REQ-LSP-006
-uuid: 665ddf49-ff3c-4499-82f1-14856ad7ecbd
 title: References cached by content and servers
 scope: lsp
 type: functional

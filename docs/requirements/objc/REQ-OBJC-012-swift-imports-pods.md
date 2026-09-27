@@ -1,6 +1,5 @@
 ---
 id: REQ-OBJC-012
-uuid: 34b3c71b-27ce-4a7f-93c4-f3da9632d743
 title: Swift imports of pods
 scope: objc
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-011
-uuid: 9866b8ed-a35f-4597-8f61-00ad0e52deed
 title: Per-file parse time bound
 scope: lang
 type: non-functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-CS-006
-uuid: aaf4d369-49b4-4412-bd23-4679dd5be657
 title: Interpolation holes of C# strings walked
 scope: cs
 type: functional

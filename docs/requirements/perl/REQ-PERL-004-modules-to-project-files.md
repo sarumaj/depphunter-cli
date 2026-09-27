@@ -1,6 +1,5 @@
 ---
 id: REQ-PERL-004
-uuid: 08f6bcf9-37aa-48d2-bd17-45da7e6305b5
 title: Modules to project files
 scope: perl
 type: functional

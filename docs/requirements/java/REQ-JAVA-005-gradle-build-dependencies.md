@@ -1,6 +1,5 @@
 ---
 id: REQ-JAVA-005
-uuid: e7c29456-d90d-488a-9356-3469f60bb107
 title: Gradle build file dependencies
 scope: java
 type: functional

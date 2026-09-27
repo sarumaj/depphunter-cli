@@ -1,6 +1,5 @@
 ---
 id: REQ-PROTO-006
-uuid: 19211059-8344-4b20-992c-fa4d31619727
 title: Well-known third-party protos
 scope: proto
 type: functional

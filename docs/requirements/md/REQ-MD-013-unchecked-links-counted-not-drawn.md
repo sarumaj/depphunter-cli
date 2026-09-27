@@ -1,6 +1,5 @@
 ---
 id: REQ-MD-013
-uuid: 8b273f31-6d3f-4196-890c-6958d58b17e6
 title: Uncheckable web links counted, not drawn
 scope: md
 type: functional

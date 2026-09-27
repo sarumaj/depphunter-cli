@@ -1,6 +1,5 @@
 ---
 id: REQ-CPP-014
-uuid: 231e545b-b7ad-420e-abe7-fa85274bfd4b
 title: Read by a scanner, not the grammar
 scope: cpp
 type: constraint

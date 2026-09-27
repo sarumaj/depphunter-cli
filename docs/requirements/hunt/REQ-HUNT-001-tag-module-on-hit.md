@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-001
-uuid: 0c2dd0a1-6f33-4666-b500-3cd9ef254f21
 title: Tagging a module by hitting it
 scope: hunt
 type: functional

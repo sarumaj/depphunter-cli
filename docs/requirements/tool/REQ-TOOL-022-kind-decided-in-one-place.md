@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-022
-uuid: a39943d1-0ecb-4332-8291-0372775c388b
 title: Tool kind decided in one place
 scope: tool
 type: functional

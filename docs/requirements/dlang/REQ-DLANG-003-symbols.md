@@ -1,6 +1,5 @@
 ---
 id: REQ-DLANG-003
-uuid: 1ad06838-46ec-4c3d-9272-ec7fbef2e612
 title: Declarations extracted
 scope: dlang
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-012
-uuid: fb2f1fad-508c-4af2-a646-7866da470794
 title: Edges drawn only for the selection
 scope: map
 type: functional

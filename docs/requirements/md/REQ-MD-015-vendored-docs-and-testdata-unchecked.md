@@ -1,6 +1,5 @@
 ---
 id: REQ-MD-015
-uuid: b436c774-50f2-4c93-a884-c4c3d81a1e80
 title: Vendored docs and testdata not checked
 scope: md
 type: functional

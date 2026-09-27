@@ -1,6 +1,5 @@
 ---
 id: REQ-CPP-008
-uuid: 8c17b716-77c0-4490-b255-a51738fe4138
 title: Preprocessor conditions not evaluated
 scope: cpp
 type: limitation

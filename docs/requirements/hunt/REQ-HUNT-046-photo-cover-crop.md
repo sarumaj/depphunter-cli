@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-046
-uuid: d7d55206-bc85-4628-a1e3-a2d42a424ab3
 title: Photographs fitted to the screen by cropping
 scope: hunt
 type: functional

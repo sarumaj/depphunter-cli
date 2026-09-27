@@ -1,6 +1,5 @@
 ---
 id: REQ-MOD-013
-uuid: 5c9c5140-7e19-4168-9579-7d95519ab671
 title: Generated TypeScript declaration
 scope: mod
 type: constraint

@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-003
-uuid: 92f16487-6ea0-43aa-9383-75152be10d03
 title: Collapsed directory footprint follows file count
 scope: map
 type: functional

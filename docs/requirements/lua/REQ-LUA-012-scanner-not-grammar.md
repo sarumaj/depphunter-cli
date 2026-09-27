@@ -1,6 +1,5 @@
 ---
 id: REQ-LUA-012
-uuid: ba762e87-f388-4859-8432-0c001d0f88da
 title: Read by a scanner, not the grammar
 scope: lua
 type: constraint

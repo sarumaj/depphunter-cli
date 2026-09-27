@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-033
-uuid: a9eb071d-ba8a-45e9-8a4a-74ae7bbced20
 title: Filter by island
 scope: map
 type: functional

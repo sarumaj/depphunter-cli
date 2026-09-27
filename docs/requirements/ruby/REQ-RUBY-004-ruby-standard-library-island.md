@@ -1,6 +1,5 @@
 ---
 id: REQ-RUBY-004
-uuid: 760a347a-bf44-49e3-ad46-212f07b5e881
 title: Ruby standard library island
 scope: ruby
 type: functional

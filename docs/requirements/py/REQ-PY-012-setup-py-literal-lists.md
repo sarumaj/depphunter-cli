@@ -1,6 +1,5 @@
 ---
 id: REQ-PY-012
-uuid: 1eb5ca2e-f311-4cda-92e1-c6f810102565
 title: setup.py literal lists
 scope: py
 type: functional

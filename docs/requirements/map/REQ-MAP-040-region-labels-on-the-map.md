@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-040
-uuid: 566789ee-0b9f-4b2e-933f-699d1e782707
 title: Region labels on the map
 scope: map
 type: functional

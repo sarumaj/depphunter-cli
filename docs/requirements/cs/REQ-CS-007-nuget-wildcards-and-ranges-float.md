@@ -1,6 +1,5 @@
 ---
 id: REQ-CS-007
-uuid: 6f397e3c-fbc5-4f4e-a081-be2724babdcb
 title: NuGet wildcards and ranges float
 scope: cs
 type: functional

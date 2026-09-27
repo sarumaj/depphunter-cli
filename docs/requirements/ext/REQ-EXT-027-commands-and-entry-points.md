@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-027
-uuid: 8346b8f1-53dd-41ea-9e74-1e2dc0ee82e7
 title: Commands and entry points
 scope: ext
 type: interface

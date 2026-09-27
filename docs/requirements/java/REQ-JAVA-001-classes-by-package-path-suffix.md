@@ -1,6 +1,5 @@
 ---
 id: REQ-JAVA-001
-uuid: 47ff05fa-286f-4edd-90d1-8ea437472179
 title: Project classes found by package-path suffix
 scope: java
 type: functional

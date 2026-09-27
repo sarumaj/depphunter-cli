@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-018
-uuid: 3fe0201b-d551-4643-a026-616306f0a061
 title: Optional free orbit of the map view
 scope: map
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-SRV-007
-uuid: 061366c3-5406-433a-bb4e-327253a7f38a
 title: Editor template parsing without a shell
 scope: srv
 type: functional

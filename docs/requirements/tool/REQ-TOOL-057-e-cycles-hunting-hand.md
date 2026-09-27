@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-057
-uuid: 1c740a9b-cee4-4f41-8052-7391940a497a
 title: E cycles the hunting hand
 scope: tool
 type: functional

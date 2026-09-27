@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-036
-uuid: 480a2ed8-7a9f-4e48-b9f4-3d7137db249a
 title: Language colors stable under filtering
 scope: map
 type: functional

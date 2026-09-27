@@ -1,6 +1,5 @@
 ---
 id: REQ-BAZEL-003
-uuid: 87d9ab47-593a-4637-9b54-9dad4069cc67
 title: Labels to project files
 scope: bazel
 type: functional

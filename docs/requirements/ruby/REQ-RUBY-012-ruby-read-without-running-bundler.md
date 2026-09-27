@@ -1,6 +1,5 @@
 ---
 id: REQ-RUBY-012
-uuid: 81dc86ea-7366-4b3c-acb9-08dd242ef390
 title: Ruby read without running Bundler
 scope: ruby
 type: limitation

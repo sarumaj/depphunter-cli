@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-006
-uuid: 5d017f12-c883-4d53-92de-926178105756
 title: Pure-Go tree-sitter runtime
 scope: lang
 type: constraint

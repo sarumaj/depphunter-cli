@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-031
-uuid: c5780565-a0a0-4b21-9ee4-3c96fc84e8d4
 title: Restart offered on settings change
 scope: ext
 type: functional

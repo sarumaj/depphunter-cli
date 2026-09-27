@@ -1,6 +1,5 @@
 ---
 id: REQ-PHP-011
-uuid: 53220415-d70f-4b12-9660-913901d8530e
 title: Lock graph for the transitive walk
 scope: php
 type: functional

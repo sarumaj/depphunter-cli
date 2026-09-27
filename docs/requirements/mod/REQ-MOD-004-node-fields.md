@@ -1,6 +1,5 @@
 ---
 id: REQ-MOD-004
-uuid: c58324a6-af74-4740-8832-f590503e94c5
 title: Node fields
 scope: mod
 type: interface

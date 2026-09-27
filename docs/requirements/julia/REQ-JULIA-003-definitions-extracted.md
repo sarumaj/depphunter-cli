@@ -1,6 +1,5 @@
 ---
 id: REQ-JULIA-003
-uuid: 675dff62-0c33-4f12-abc8-1b549fb4d8cd
 title: Definitions extracted
 scope: julia
 type: functional

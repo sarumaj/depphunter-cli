@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-012
-uuid: a0b2dd2f-2b2e-4102-b47e-1f2128622453
 title: Backpack entry selects its node
 scope: ext
 type: functional

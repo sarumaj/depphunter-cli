@@ -1,6 +1,5 @@
 ---
 id: REQ-MOD-007
-uuid: 0d056947-85b1-4f64-b20d-00ed7277a62f
 title: Reference edge kind
 scope: mod
 type: interface

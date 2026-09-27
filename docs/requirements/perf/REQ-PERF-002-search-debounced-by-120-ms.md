@@ -1,6 +1,5 @@
 ---
 id: REQ-PERF-002
-uuid: 87406726-a0d8-44a5-84ea-6fcf573d681e
 title: Search debounced by 120 ms
 scope: perf
 type: non-functional

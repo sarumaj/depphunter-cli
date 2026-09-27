@@ -1,6 +1,5 @@
 ---
 id: REQ-JS-015
-uuid: 1c264dd4-f806-449a-a1b1-4ea045238d16
 title: SvelteKit $lib alias
 scope: js
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-049
-uuid: ddab0321-0365-4985-ac74-5279a2a5d492
 title: Three selectable map styles
 scope: map
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-EXP-009
-uuid: 39164a09-5db0-430d-a34a-04e303de4f81
 title: Browser HTML export carries the view on screen
 scope: exp
 type: functional

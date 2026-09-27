@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-011
-uuid: dc30d2a9-de46-4457-8136-1c6ae9d921c8
 title: Stairs on terrace sides
 scope: city
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-PY-013
-uuid: 588faa79-1a73-4480-a5fc-bffc287074c0
 title: Python pin semantics
 scope: py
 type: functional

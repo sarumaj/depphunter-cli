@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-033
-uuid: e2696a49-e39c-445c-9ddb-4ab8706d5e91
 title: Index requests carry the host's credential
 scope: sup
 type: functional

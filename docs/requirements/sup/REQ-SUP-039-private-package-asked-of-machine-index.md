@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-039
-uuid: 4744ec41-6bef-4d51-a35b-e6988248b285
 title: A private package is asked of the machine's index
 scope: sup
 type: functional

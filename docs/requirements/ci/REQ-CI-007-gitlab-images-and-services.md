@@ -1,6 +1,5 @@
 ---
 id: REQ-CI-007
-uuid: 475bffa4-ba5b-4ee4-aadd-7ea47f669540
 title: Images and services of GitLab pipelines
 scope: ci
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-AUTH-004
-uuid: 4dedcc9b-a4f5-4ee6-ab98-3ec205ba28d0
 title: NuGet package source credentials
 scope: auth
 type: functional

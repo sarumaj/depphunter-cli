@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-038
-uuid: 27c23def-3941-44b0-8b90-f2811e4c0109
 title: What a tool throws leaves along the view
 scope: tool
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-CLOJURE-009
-uuid: 85b216d1-7edb-4145-a72f-c43c5393fecc
 title: ClojureScript npm requires
 scope: clojure
 type: functional

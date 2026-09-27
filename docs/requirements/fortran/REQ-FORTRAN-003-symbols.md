@@ -1,6 +1,5 @@
 ---
 id: REQ-FORTRAN-003
-uuid: 512da356-d1af-400c-8ccb-034f491034a9
 title: Symbols
 scope: fortran
 type: functional

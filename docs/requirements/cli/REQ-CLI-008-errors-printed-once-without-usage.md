@@ -1,6 +1,5 @@
 ---
 id: REQ-CLI-008
-uuid: ab22bcc0-c242-47ae-8a14-3707bbd52b89
 title: Errors printed once without usage
 scope: cli
 type: interface

@@ -1,6 +1,5 @@
 ---
 id: REQ-SWIFT-002
-uuid: 8da78e86-6553-4361-b6cc-77267436ead0
 title: Import declarations read
 scope: swift
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-011
-uuid: c9cbca0f-f7a4-4f30-9455-ea339595448d
 title: Islands ring the mainland
 scope: map
 type: functional

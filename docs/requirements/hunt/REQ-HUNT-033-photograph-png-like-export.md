@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-033
-uuid: 9e7f231f-69b2-4db6-b2d8-6781bea2bb78
 title: Photographs are PNGs like the image export
 scope: hunt
 type: functional

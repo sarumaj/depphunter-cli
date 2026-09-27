@@ -1,6 +1,5 @@
 ---
 id: REQ-ADA-005
-uuid: 404610d9-c74d-4d95-93ad-41ae8ba22de7
 title: GNAT project files
 scope: ada
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-PS-003
-uuid: dad267c0-ba6e-4425-ad91-494a15f081dc
 title: Dot-sourced and invoked scripts
 scope: ps
 type: functional

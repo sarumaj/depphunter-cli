@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-032
-uuid: d6b87fb2-5895-49bd-9a9f-4e8ba861b53a
 title: Extension packaged per platform and published
 scope: ext
 type: functional

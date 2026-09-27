@@ -1,6 +1,5 @@
 ---
 id: REQ-TERRAFORM-003
-uuid: ccde8b96-b93b-454a-8fef-d5c4e04c9f2c
 title: Declarations as symbols
 scope: terraform
 type: functional

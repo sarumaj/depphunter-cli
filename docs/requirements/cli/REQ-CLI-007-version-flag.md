@@ -1,6 +1,5 @@
 ---
 id: REQ-CLI-007
-uuid: a110c9de-27f2-499c-a8e9-5811df47fefa
 title: Version flag
 scope: cli
 type: interface

@@ -1,6 +1,5 @@
 ---
 id: REQ-A11Y-004
-uuid: dfd17545-570a-47e1-be81-cfe1f9217bac
 title: Panel lists and breadcrumbs keyboard operable
 scope: a11y
 type: functional

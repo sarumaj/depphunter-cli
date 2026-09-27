@@ -1,6 +1,5 @@
 ---
 id: REQ-CFG-007
-uuid: 79b6ec8c-4681-46c1-bc39-c8cfb2fb747a
 title: Invalid setting values rejected
 scope: cfg
 type: functional

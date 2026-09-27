@@ -1,6 +1,5 @@
 ---
 id: REQ-CPP-009
-uuid: 8db4d65c-b779-49bc-8f90-1341e1585be4
 title: vcpkg manifests read
 scope: cpp
 type: functional

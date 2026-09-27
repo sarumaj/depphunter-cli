@@ -1,6 +1,5 @@
 ---
 id: REQ-CRYSTAL-005
-uuid: 96b4ee62-b4ee-4cc8-95fd-5c4ebeb9a823
 title: shard.yml and shard.override.yml
 scope: crystal
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-FORTRAN-009
-uuid: 02d4d250-2dca-4d1f-9d48-aaa656184907
 title: Islands
 scope: fortran
 type: functional

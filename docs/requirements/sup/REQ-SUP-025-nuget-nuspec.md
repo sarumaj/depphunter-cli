@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-025
-uuid: 1e4d5ece-788b-4ffd-99a3-1a375a2babed
 title: NuGet dependencies from the nuspec
 scope: sup
 type: functional

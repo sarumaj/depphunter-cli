@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-003
-uuid: 5394e8ef-db5b-4c16-805f-7e2c5d3b8e61
 title: Dependency tree mirrors the graph document
 scope: ext
 type: functional

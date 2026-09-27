@@ -1,6 +1,5 @@
 ---
 id: REQ-DIST-012
-uuid: 154a710d-d707-4081-aefe-43f5a57204d3
 title: CI lint checks
 scope: dist
 type: non-functional

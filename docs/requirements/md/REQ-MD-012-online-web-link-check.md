@@ -1,6 +1,5 @@
 ---
 id: REQ-MD-012
-uuid: 07315723-3965-4294-ba4c-b8ff5a064fac
 title: Web links checked only online, 404 and 410 only
 scope: md
 type: functional

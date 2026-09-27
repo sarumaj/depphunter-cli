@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-020
-uuid: ff3c1f6e-d8e3-461c-9fe5-e2b0fbf985b2
 title: Online mode asks trusted indexes
 scope: sup
 type: functional

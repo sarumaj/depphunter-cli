@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-038
-uuid: 32189637-7db0-4855-ae01-c32b17633f17
 title: Wind gauge for running and jumping
 scope: walk
 type: functional

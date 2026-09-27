@@ -1,6 +1,5 @@
 ---
 id: REQ-SEC-003
-uuid: 113796ea-2871-4689-8920-36eefce09076
 title: Token exchanged for a cookie
 scope: sec
 type: non-functional

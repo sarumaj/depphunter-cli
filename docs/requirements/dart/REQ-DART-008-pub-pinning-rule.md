@@ -1,6 +1,5 @@
 ---
 id: REQ-DART-008
-uuid: b96a833d-5941-42cd-8230-d351772bd866
 title: pub pinning rule
 scope: dart
 type: functional

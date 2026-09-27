@@ -1,6 +1,5 @@
 ---
 id: REQ-AUTH-015
-uuid: 1da5a7af-e0aa-4334-ae88-79527363e5ae
 title: Terraform registry tokens
 scope: auth
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-HIST-015
-uuid: 8276f438-2af3-42f0-bcca-07f676519a6a
 title: HTML export embeds the history
 scope: hist
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-013
-uuid: 5110d139-a813-4e1c-87a6-c6cbcb052120
 title: Wheel zooms the walk view
 scope: walk
 type: functional

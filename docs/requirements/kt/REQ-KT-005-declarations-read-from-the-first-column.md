@@ -1,6 +1,5 @@
 ---
 id: REQ-KT-005
-uuid: 47b61007-6259-4a6d-9dd8-a939524c1e3f
 title: Declarations read from the first column
 scope: kt
 type: limitation

@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-024
-uuid: d9a2c71e-448a-4931-bbfa-be487dd3fda2
 title: Settings passed as command-line flags
 scope: ext
 type: interface

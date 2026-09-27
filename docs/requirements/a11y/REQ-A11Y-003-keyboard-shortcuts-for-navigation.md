@@ -1,6 +1,5 @@
 ---
 id: REQ-A11Y-003
-uuid: aab167ce-c02f-4fe4-9f28-9d6e6d5611c1
 title: Keyboard shortcuts for navigation
 scope: a11y
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-RUBY-009
-uuid: 631376a4-e624-40de-b570-aca2b621ae3a
 title: RubyGems pinning rule
 scope: ruby
 type: functional

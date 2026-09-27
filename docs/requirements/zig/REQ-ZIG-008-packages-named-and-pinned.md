@@ -1,6 +1,5 @@
 ---
 id: REQ-ZIG-008
-uuid: 31086f06-b94a-4477-a7e0-8eaff8e8d19d
 title: Packages named and pinned
 scope: zig
 type: functional

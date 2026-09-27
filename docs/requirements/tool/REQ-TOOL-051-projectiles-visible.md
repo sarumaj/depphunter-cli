@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-051
-uuid: 919e03c9-c15d-4fc8-950e-f8b1d4ecf71b
 title: Projectiles visible in flight
 scope: tool
 type: non-functional

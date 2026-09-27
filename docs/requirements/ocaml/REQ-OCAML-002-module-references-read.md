@@ -1,6 +1,5 @@
 ---
 id: REQ-OCAML-002
-uuid: 91a21701-1305-45cd-95ed-1624ef95eeb5
 title: Module references read
 scope: ocaml
 type: functional

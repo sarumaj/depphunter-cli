@@ -1,6 +1,5 @@
 ---
 id: REQ-HASKELL-001
-uuid: 6d222d38-7510-475b-bd9d-426491a227f4
 title: Haskell sources, package descriptions and projects claimed
 scope: haskell
 type: functional

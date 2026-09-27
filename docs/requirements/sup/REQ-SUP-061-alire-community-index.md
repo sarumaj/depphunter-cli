@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-061
-uuid: 339d1dcc-046c-4024-a934-8c1bb47fa67a
 title: The Alire community index for crate dependencies
 scope: sup
 type: functional

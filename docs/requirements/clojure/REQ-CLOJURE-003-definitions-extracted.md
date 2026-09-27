@@ -1,6 +1,5 @@
 ---
 id: REQ-CLOJURE-003
-uuid: 3e0977d9-490c-491f-a54f-161861d88771
 title: Definitions extracted
 scope: clojure
 type: functional

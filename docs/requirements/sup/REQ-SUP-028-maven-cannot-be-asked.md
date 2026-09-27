@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-028
-uuid: e44c9d80-57e8-49aa-852d-27e174d3d899
 title: Maven index cannot be asked
 scope: sup
 type: limitation

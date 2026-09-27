@@ -1,6 +1,5 @@
 ---
 id: REQ-PY-015
-uuid: b3b4f942-c3d4-46a7-845f-025cf832ca10
 title: Installed packages no index has
 scope: py
 type: functional

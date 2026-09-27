@@ -1,6 +1,5 @@
 ---
 id: REQ-CS-002
-uuid: 5e363ea9-3182-4b3f-9df6-9a136821eed3
 title: NuGet packages from PackageReference
 scope: cs
 type: functional

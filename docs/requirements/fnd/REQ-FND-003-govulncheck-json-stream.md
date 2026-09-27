@@ -1,6 +1,5 @@
 ---
 id: REQ-FND-003
-uuid: 43bf59fb-b66f-4239-aca5-2c703ad8df7a
 title: govulncheck JSON stream
 scope: fnd
 type: functional

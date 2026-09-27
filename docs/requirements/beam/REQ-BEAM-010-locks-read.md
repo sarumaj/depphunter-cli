@@ -1,6 +1,5 @@
 ---
 id: REQ-BEAM-010
-uuid: 5c8488c8-4ad4-4f9a-b11b-94cf82fbbebc
 title: mix.lock and rebar.lock read
 scope: beam
 type: functional

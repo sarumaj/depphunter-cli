@@ -1,6 +1,5 @@
 ---
 id: REQ-PS-005
-uuid: 9601fd70-002a-4d5f-8b2e-ca0d77a84fb4
 title: #Requires -Modules declarations
 scope: ps
 type: functional

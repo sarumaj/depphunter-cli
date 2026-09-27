@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-006
-uuid: 32a21045-8a29-4ff7-800d-84072e5faa8d
 title: Expanded file drawn as plateau of symbols
 scope: map
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-HIST-011
-uuid: 076b2f2d-ac1a-4275-b667-c1618c8afac5
 title: Since slider without requests
 scope: hist
 type: functional

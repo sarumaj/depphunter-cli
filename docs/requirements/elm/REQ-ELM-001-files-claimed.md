@@ -1,6 +1,5 @@
 ---
 id: REQ-ELM-001
-uuid: 96b3e1cd-c20d-4f1f-8f3d-807c17f79456
 title: Elm files claimed
 scope: elm
 type: functional

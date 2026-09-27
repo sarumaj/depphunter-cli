@@ -1,6 +1,5 @@
 ---
 id: REQ-DOCKER-007
-uuid: 819a2f7a-39cc-4c1b-b7e8-eb2cc5db768a
 title: Compose services' images and builds
 scope: docker
 type: functional

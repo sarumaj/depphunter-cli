@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-042
-uuid: 4b4ddc56-4243-4d2e-9b95-ebb7cae67cc4
 title: Animation advanced by frame delta
 scope: walk
 type: constraint

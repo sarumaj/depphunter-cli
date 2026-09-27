@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-027
-uuid: c854c996-439f-4188-937e-788b39b2ac83
 title: Backpack kept in the browser per repository
 scope: hunt
 type: functional

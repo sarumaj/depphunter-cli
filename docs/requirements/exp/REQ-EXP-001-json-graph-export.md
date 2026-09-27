@@ -1,6 +1,5 @@
 ---
 id: REQ-EXP-001
-uuid: c5b9e397-6f6b-4313-ad71-4c2ff121a307
 title: JSON graph export
 scope: exp
 type: functional

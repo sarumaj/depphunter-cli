@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-023
-uuid: 86642645-d813-49b7-919c-88ce100484ee
 title: Map address taken from the server output
 scope: ext
 type: functional

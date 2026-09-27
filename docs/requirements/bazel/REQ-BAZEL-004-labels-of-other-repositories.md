@@ -1,6 +1,5 @@
 ---
 id: REQ-BAZEL-004
-uuid: 5ac68c77-db4c-4a90-afe0-3bbb290b3c80
 title: Labels of other repositories
 scope: bazel
 type: functional

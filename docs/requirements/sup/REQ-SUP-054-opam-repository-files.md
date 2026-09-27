@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-054
-uuid: 49f300f5-9d80-4f05-bce5-4c70fbf96327
 title: opam package dependencies from opam-repository
 scope: sup
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-037
-uuid: 9744b727-4fb1-4ccc-9988-b4c40b0a3bc4
 title: Every camera use keeps a frame
 scope: hunt
 type: functional

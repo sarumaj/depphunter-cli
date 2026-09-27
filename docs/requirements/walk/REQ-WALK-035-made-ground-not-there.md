@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-035
-uuid: 8cea30c4-db81-49e8-be7e-794e0db44396
 title: Ground off the end of a deck is not ground
 scope: walk
 type: functional

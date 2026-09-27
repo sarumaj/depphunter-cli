@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-027
-uuid: 94ad5073-e630-4e78-a425-e25eba746277
 title: Cached runs resolve current manifests
 scope: lang
 type: functional

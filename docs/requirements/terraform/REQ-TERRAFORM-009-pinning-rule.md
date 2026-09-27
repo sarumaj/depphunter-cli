@@ -1,6 +1,5 @@
 ---
 id: REQ-TERRAFORM-009
-uuid: 1f6e9e86-6e79-4bd5-885a-f0d3175df220
 title: Pinning rule for modules and providers
 scope: terraform
 type: functional

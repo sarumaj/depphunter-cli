@@ -1,6 +1,5 @@
 ---
 id: REQ-DIST-004
-uuid: 79227a53-95f0-4094-bcd9-525e9b039b4f
 title: BSD 3-Clause license
 scope: dist
 type: constraint

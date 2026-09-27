@@ -1,6 +1,5 @@
 ---
 id: REQ-CI-011
-uuid: 8af93d73-bc77-48af-a6ea-e38f11e24e04
 title: Only a commit pins a CI reference
 scope: ci
 type: functional

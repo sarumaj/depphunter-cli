@@ -1,6 +1,5 @@
 ---
 id: REQ-PY-006
-uuid: 460c407c-bb46-4bac-9c76-643c1266d74a
 title: Requirements files
 scope: py
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-DIST-019
-uuid: e269d2f8-76a9-4583-bbae-1afb9e6e8bd3
 title: mapstructure at least v2.4.0
 scope: dist
 type: constraint

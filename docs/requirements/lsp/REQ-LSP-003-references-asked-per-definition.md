@@ -1,6 +1,5 @@
 ---
 id: REQ-LSP-003
-uuid: 82029ad4-bfbc-4066-a08f-9823eaf2dcbb
 title: References asked per definition
 scope: lsp
 type: functional

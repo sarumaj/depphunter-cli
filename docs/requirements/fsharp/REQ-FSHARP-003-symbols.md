@@ -1,6 +1,5 @@
 ---
 id: REQ-FSHARP-003
-uuid: 44a14550-3e72-410e-b0f1-be0bc79b433a
 title: Declarations by the offside rule
 scope: fsharp
 type: functional

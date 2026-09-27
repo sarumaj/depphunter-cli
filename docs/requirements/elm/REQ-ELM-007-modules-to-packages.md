@@ -1,6 +1,5 @@
 ---
 id: REQ-ELM-007
-uuid: bb5d2957-e2f8-4b92-856b-4b945ce44030
 title: Modules resolved to packages
 scope: elm
 type: functional

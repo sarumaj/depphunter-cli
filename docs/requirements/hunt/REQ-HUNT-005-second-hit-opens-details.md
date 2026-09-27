@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-005
-uuid: 940618d0-fe80-4ea9-9dcf-4962c6c81fd0
 title: Second hit on a tagged module shows details
 scope: hunt
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-056
-uuid: 1ddfd2f8-7f09-4e0b-82f2-84ef9e50c201
 title: Maven POMs for group:artifact packages
 scope: sup
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-GO-001
-uuid: 4601fb57-a8fb-41c0-a641-03c72ccfea20
 title: Go import extraction
 scope: go
 type: functional

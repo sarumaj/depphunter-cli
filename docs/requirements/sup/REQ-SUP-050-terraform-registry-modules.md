@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-050
-uuid: 38909a7f-2843-4992-ab84-72cc1e6c4068
 title: Terraform module dependencies from a module registry
 scope: sup
 type: functional

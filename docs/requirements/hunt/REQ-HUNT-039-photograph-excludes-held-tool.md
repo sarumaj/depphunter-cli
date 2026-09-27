@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-039
-uuid: 7083f05f-8bf3-49ec-8b55-3c3cdb1dd1f8
 title: Photographs leave out the camera and hand
 scope: hunt
 type: functional

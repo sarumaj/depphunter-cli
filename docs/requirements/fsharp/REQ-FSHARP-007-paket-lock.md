@@ -1,6 +1,5 @@
 ---
 id: REQ-FSHARP-007
-uuid: 17b70a53-b503-425a-b366-372af32c935d
 title: paket.lock pins and dependencies
 scope: fsharp
 type: functional

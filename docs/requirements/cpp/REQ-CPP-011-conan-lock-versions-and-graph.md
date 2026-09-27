@@ -1,6 +1,5 @@
 ---
 id: REQ-CPP-011
-uuid: 3e754f6d-c5a3-4d22-8a99-702131201162
 title: conan.lock versions and graph
 scope: cpp
 type: functional

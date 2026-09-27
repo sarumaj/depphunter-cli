@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-002
-uuid: 0dd5db7f-ef06-4eed-907d-1a9b0b4710cb
 title: Modules-tagged counter in the HUD
 scope: hunt
 type: functional

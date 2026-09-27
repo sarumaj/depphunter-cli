@@ -1,6 +1,5 @@
 ---
 id: REQ-ELM-005
-uuid: 31c9ddf2-cdab-479e-ad38-67613201c125
 title: elm.json dependencies and source directories
 scope: elm
 type: functional

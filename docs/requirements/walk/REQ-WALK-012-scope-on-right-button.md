@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-012
-uuid: 1aa48709-461c-42df-9839-77a0d099691e
 title: Scope on the right mouse button
 scope: walk
 type: functional

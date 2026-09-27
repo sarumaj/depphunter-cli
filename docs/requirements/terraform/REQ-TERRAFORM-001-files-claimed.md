@@ -1,6 +1,5 @@
 ---
 id: REQ-TERRAFORM-001
-uuid: 2307b9ac-b7bc-4ab8-b737-0ba58bbfcf3d
 title: Terraform, OpenTofu and Terragrunt files claimed
 scope: terraform
 type: functional

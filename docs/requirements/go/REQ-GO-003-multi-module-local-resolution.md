@@ -1,6 +1,5 @@
 ---
 id: REQ-GO-003
-uuid: 30cdbade-eed1-4c90-9c05-65f71f18d78a
 title: Multi-module local resolution
 scope: go
 type: functional

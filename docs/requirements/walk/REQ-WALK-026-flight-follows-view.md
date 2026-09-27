@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-026
-uuid: e4218929-037b-440e-96a3-89a2737c992e
 title: Flight follows the view
 scope: walk
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-FND-019
-uuid: e13ca763-6dc1-4359-8065-01393ff816ba
 title: Linter errors capped at medium
 scope: fnd
 type: functional

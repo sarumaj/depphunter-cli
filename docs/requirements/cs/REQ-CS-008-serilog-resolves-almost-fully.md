@@ -1,6 +1,5 @@
 ---
 id: REQ-CS-008
-uuid: b4df6a1b-ae1e-40ea-81d8-8cf30000e7e4
 title: Serilog resolves with one unresolved dependency
 scope: cs
 type: non-functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-CFG-014
-uuid: 62586e1a-7e66-4643-a8d5-165fe5a2c057
 title: Saved settings validated
 scope: cfg
 type: functional

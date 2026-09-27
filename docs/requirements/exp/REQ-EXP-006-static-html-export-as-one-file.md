@@ -1,6 +1,5 @@
 ---
 id: REQ-EXP-006
-uuid: 679b9dbb-a6e1-410a-be89-f29d10f6731c
 title: Static HTML export as one file
 scope: exp
 type: functional

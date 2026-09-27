@@ -1,6 +1,5 @@
 ---
 id: REQ-JAVA-010
-uuid: 0356d869-7465-4f64-9e86-25be4f32c4f6
 title: Maven artifacts asked for their POMs
 scope: java
 type: functional

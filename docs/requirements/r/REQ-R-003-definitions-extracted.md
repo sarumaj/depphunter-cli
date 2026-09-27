@@ -1,6 +1,5 @@
 ---
 id: REQ-R-003
-uuid: c81a9f46-6087-4e72-853b-5b70fd6d1938
 title: R definitions extracted
 scope: r
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-ZIG-010
-uuid: ae061c21-4b92-4b7d-9dca-422dcf69c440
 title: C headers of @cImport
 scope: zig
 type: functional

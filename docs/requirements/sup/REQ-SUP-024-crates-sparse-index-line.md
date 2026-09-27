@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-024
-uuid: a8a25b03-0cbe-4d30-8ebe-4c7ec26cbd0a
 title: Crate dependencies from the sparse index
 scope: sup
 type: functional

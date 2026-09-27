@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-064
-uuid: 8dbb09a7-b5fe-4cd5-a2c4-6818129a0fb1
 title: Wheel keeps a tool already in hand
 scope: tool
 type: functional

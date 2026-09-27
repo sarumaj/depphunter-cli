@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-013
-uuid: b3044c65-7936-4d5f-9137-887ad15b3b0a
 title: Building facades
 scope: city
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-JS-005
-uuid: af83e9aa-3ec3-44ce-8750-b5cabd3eaf16
 title: Node.js built-in modules
 scope: js
 type: functional

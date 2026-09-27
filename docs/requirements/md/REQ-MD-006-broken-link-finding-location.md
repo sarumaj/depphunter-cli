@@ -1,6 +1,5 @@
 ---
 id: REQ-MD-006
-uuid: 814e2f48-8287-41c6-97a7-48339441fbb1
 title: Broken link finding carries line and column
 scope: md
 type: functional

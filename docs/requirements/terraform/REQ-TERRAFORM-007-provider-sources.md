@@ -1,6 +1,5 @@
 ---
 id: REQ-TERRAFORM-007
-uuid: 29286448-f2bb-4735-9ce9-c8acd6d58048
 title: Provider sources
 scope: terraform
 type: functional

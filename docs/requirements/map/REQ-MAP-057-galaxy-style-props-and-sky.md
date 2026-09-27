@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-057
-uuid: 7d207422-c193-4614-a16f-ce1445c3c770
 title: Galaxy style props and sky
 scope: map
 type: functional

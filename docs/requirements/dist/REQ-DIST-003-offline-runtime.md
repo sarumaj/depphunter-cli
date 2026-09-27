@@ -1,6 +1,5 @@
 ---
 id: REQ-DIST-003
-uuid: c96c358e-3f39-49e3-a142-0c7f527b8a04
 title: No Node.js or network at runtime
 scope: dist
 type: non-functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-020
-uuid: 7ca20f05-4a82-4b10-926e-6e6156879e5f
 title: Bugs of hidden buildings on nearest drawn one
 scope: hunt
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-031
-uuid: cc8ec15d-c55f-42e9-baa2-902d6b677aca
 title: Drowning without floats
 scope: walk
 type: functional

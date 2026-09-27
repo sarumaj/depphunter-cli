@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-040
-uuid: 67f78167-1dcd-466e-8be6-76a3efce32a9
 title: Photographs leave out selection and arcs
 scope: hunt
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-047
-uuid: fa65e8b3-e2f3-486a-85a5-020b10edf2a7
 title: Arrow keys open and close tree rows
 scope: map
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-SRV-006
-uuid: ec66b25a-35b0-4626-ae92-672c42c5052b
 title: Editor command detection
 scope: srv
 type: functional

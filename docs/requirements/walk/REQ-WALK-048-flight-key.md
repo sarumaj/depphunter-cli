@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-048
-uuid: 65d1de64-cc5e-4f4b-a627-d5db121d9322
 title: Flight toggle key
 scope: walk
 type: functional

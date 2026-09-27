@@ -1,6 +1,5 @@
 ---
 id: REQ-FND-004
-uuid: 7451c197-1d88-4cf3-a868-f7a1a198d7c1
 title: npm audit reports of both generations
 scope: fnd
 type: functional

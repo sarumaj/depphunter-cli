@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-028
-uuid: 34d87c17-a2ff-4c0d-8a97-53968c3d2b96
 title: One tool of each kind, one to a hand
 scope: tool
 type: functional

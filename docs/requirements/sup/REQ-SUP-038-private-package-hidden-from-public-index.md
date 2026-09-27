@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-038
-uuid: 8d43a9a2-befb-402f-a56d-6581ffc12ac2
 title: A private package is not named to a public index
 scope: sup
 type: constraint

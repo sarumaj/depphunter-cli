@@ -1,6 +1,5 @@
 ---
 id: REQ-TRC-014
-uuid: 5f3d90b2-ff8f-4f49-ae85-97bbacaa840a
 title: Bounded recording
 scope: trc
 type: non-functional

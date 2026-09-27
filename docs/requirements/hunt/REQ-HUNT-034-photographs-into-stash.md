@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-034
-uuid: b243661b-aa92-4c4e-badb-42ddbb0534a0
 title: Photographs kept in a captioned stash
 scope: hunt
 type: functional

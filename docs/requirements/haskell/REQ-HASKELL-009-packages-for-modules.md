@@ -1,6 +1,5 @@
 ---
 id: REQ-HASKELL-009
-uuid: 7cceb1e7-03a6-4899-bb83-0970c946e954
 title: Packages found for modules
 scope: haskell
 type: functional

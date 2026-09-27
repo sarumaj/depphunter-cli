@@ -1,6 +1,5 @@
 ---
 id: REQ-OCAML-004
-uuid: 01ed1c39-3caa-4ae9-8962-b5619769a706
 title: Modules resolved to project files
 scope: ocaml
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-018
-uuid: 0f9672bc-96bb-4c57-a03e-0e01f053edaf
 title: Walker height follows a ramp
 scope: city
 type: functional

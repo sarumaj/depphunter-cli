@@ -1,6 +1,5 @@
 ---
 id: REQ-ELM-006
-uuid: 35956870-e9d5-435b-92a4-38dbb0b7d48c
 title: Pinning
 scope: elm
 type: functional

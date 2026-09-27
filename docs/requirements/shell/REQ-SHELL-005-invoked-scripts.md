@@ -1,6 +1,5 @@
 ---
 id: REQ-SHELL-005
-uuid: a2615b65-c156-4fa9-b6e2-7af6cd0cb067
 title: Scripts a script runs
 scope: shell
 type: functional

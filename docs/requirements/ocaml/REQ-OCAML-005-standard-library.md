@@ -1,6 +1,5 @@
 ---
 id: REQ-OCAML-005
-uuid: e4197c68-faf2-4ef0-b980-9058ecad25fa
 title: Standard library
 scope: ocaml
 type: functional

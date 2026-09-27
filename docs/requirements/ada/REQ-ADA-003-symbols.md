@@ -1,6 +1,5 @@
 ---
 id: REQ-ADA-003
-uuid: cdbd1f3a-4c5a-4fe0-8e62-edc0668b85ad
 title: Symbols
 scope: ada
 type: functional

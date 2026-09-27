@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-019
-uuid: 7493f4b1-75ec-463b-9888-3590979593e9
 title: Fit and reset view actions
 scope: map
 type: functional

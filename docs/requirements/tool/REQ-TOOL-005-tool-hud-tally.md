@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-005
-uuid: f86bbd9e-7ebd-4610-bdc2-97d6ec88c8fa
 title: Each tool names its act and its tally
 scope: tool
 type: functional

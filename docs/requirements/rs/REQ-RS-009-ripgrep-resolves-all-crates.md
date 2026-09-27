@@ -1,6 +1,5 @@
 ---
 id: REQ-RS-009
-uuid: c95b860b-1f7e-400c-b70d-8310b11c1ded
 title: ripgrep resolves without unresolved crates
 scope: rs
 type: non-functional

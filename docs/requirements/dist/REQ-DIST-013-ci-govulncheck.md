@@ -1,6 +1,5 @@
 ---
 id: REQ-DIST-013
-uuid: 1144993c-7c61-4057-903a-e0ff50261bb8
 title: CI vulnerability check
 scope: dist
 type: non-functional

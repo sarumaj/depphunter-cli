@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-008
-uuid: e6588af7-dcac-41ae-9e47-3bef93d864ed
 title: Hand model prepared from a pinned upstream hand
 scope: tool
 type: constraint

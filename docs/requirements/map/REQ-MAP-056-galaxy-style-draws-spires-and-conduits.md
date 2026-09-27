@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-056
-uuid: 61b7c59e-ad5e-4cd6-8e4b-d6ad98f946c0
 title: Galaxy style draws spires and conduits
 scope: map
 type: functional

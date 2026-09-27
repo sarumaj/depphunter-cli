@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-007
-uuid: fb1b6c83-716c-4563-8bf7-799719a5f211
 title: Sidewalks with curbs
 scope: city
 type: functional

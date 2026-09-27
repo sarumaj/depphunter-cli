@@ -1,6 +1,5 @@
 ---
 id: REQ-JAVA-008
-uuid: 08ca76c9-3c85-4135-9a12-1b9d29e0d6d3
 title: Maven pins a plain version, not a snapshot
 scope: java
 type: functional

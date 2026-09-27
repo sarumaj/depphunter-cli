@@ -1,6 +1,5 @@
 ---
 id: REQ-ELM-008
-uuid: c42192eb-5c22-48bd-a909-09187dc07d02
 title: Dependencies of installed packages
 scope: elm
 type: functional

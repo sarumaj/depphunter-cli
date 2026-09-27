@@ -1,6 +1,5 @@
 ---
 id: REQ-SWIFT-012
-uuid: f799e38b-5619-4d46-881a-b15d41809321
 title: Checkouts for the transitive walk
 scope: swift
 type: functional

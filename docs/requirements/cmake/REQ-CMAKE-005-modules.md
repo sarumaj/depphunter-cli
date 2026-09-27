@@ -1,6 +1,5 @@
 ---
 id: REQ-CMAKE-005
-uuid: 63a77254-2587-4c29-95e6-65da244d4a29
 title: Modules on CMAKE_MODULE_PATH and CMake's own
 scope: cmake
 type: functional

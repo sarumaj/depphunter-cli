@@ -1,6 +1,5 @@
 ---
 id: REQ-FSHARP-004
-uuid: 21a776bf-31ee-48ed-8798-b3c909a3e7b5
 title: Opens and names resolved in compile order
 scope: fsharp
 type: functional

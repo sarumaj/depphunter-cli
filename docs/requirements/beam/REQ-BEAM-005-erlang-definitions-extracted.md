@@ -1,6 +1,5 @@
 ---
 id: REQ-BEAM-005
-uuid: 8c9a6a26-f215-415b-9b34-6ebd2e33076a
 title: Erlang definitions extracted
 scope: beam
 type: functional

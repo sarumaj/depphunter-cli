@@ -1,6 +1,5 @@
 ---
 id: REQ-CI-001
-uuid: 228fb20e-145d-41a9-a8b6-ab13459e52f9
 title: CI configuration files are analyzed
 scope: ci
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-053
-uuid: d03d0ccf-4e7c-4c71-9b0a-609a7c1c1711
 title: What is being looked at stays in focus
 scope: walk
 type: functional

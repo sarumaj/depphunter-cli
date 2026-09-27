@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-012
-uuid: 07203f58-46d1-4c82-bde3-ffe655edcd95
 title: Oversized and minified files skipped
 scope: lang
 type: functional

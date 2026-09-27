@@ -1,6 +1,5 @@
 ---
 id: REQ-RUBY-007
-uuid: 53b44c82-d1ca-4d5c-8cf4-b02ae9a408df
 title: Gemfile and gemspec declarations read
 scope: ruby
 type: functional

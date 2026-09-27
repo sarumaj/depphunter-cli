@@ -1,6 +1,5 @@
 ---
 id: REQ-HASKELL-007
-uuid: e0852476-80e5-41d0-8e12-3ab8913c2945
 title: Projects read
 scope: haskell
 type: functional

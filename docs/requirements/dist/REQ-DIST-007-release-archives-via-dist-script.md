@@ -1,6 +1,5 @@
 ---
 id: REQ-DIST-007
-uuid: b3686f3a-bcf2-4aed-ae8f-453eedd80997
 title: Release archives built by scripts/dist.sh
 scope: dist
 type: functional

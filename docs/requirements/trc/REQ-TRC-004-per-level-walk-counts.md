@@ -1,6 +1,5 @@
 ---
 id: REQ-TRC-004
-uuid: bd38b6a3-5f3c-45e8-a753-ae3908afc5fb
 title: Counts per ecosystem and level
 scope: trc
 type: functional

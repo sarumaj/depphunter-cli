@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-027
-uuid: 659f0c46-5985-43e4-b977-0b0137f0676b
 title: Fall damage
 scope: walk
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-PERL-001
-uuid: f5933ba9-ffcf-4017-921e-d9182f2f0229
 title: Files claimed
 scope: perl
 type: functional

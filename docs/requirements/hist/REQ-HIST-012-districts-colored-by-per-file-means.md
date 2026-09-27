@@ -1,6 +1,5 @@
 ---
 id: REQ-HIST-012
-uuid: e8943437-7457-4f73-882d-0ae4841f2794
 title: Districts colored by per-file means
 scope: hist
 type: functional

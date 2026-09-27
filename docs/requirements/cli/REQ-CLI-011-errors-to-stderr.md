@@ -1,6 +1,5 @@
 ---
 id: REQ-CLI-011
-uuid: 886edaa4-b13e-461d-bcf6-f82a2c003259
 title: Errors written to stderr
 scope: cli
 type: interface

@@ -1,6 +1,5 @@
 ---
 id: REQ-R-010
-uuid: acf692d2-bdb9-4627-8773-87cd8edac74d
 title: Calls linked within a package or project
 scope: r
 type: functional

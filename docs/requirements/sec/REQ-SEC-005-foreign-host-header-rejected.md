@@ -1,6 +1,5 @@
 ---
 id: REQ-SEC-005
-uuid: 97683a1f-fdc6-4c4f-8c42-4abcb9ea4477
 title: Foreign Host header rejected
 scope: sec
 type: non-functional

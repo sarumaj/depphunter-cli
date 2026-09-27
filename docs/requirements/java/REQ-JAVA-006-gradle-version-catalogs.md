@@ -1,6 +1,5 @@
 ---
 id: REQ-JAVA-006
-uuid: e83cd2d8-f8a7-49c5-81d9-9bf983498a86
 title: Gradle version catalogs
 scope: java
 type: functional

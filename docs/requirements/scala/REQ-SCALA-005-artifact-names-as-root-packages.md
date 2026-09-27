@@ -1,6 +1,5 @@
 ---
 id: REQ-SCALA-005
-uuid: bf1db734-aff0-426c-bf26-8c82280c4a58
 title: Artifact names as root packages
 scope: scala
 type: functional

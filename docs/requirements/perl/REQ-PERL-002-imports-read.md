@@ -1,6 +1,5 @@
 ---
 id: REQ-PERL-002
-uuid: 2b9f94de-cc7d-4371-aa16-7dada5bc1f14
 title: Imports read
 scope: perl
 type: functional

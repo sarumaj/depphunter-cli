@@ -1,6 +1,5 @@
 ---
 id: REQ-LUA-011
-uuid: 5bd56316-4a99-41f1-bf14-5a24f1d5daec
 title: Read without running Lua, LuaRocks or Rojo
 scope: lua
 type: limitation

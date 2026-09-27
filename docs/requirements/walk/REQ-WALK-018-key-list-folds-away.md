@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-018
-uuid: 024f9582-3e37-493d-9ee0-b5bf0837f44c
 title: Key list folds away while moving
 scope: walk
 type: functional

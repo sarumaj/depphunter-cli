@@ -1,6 +1,5 @@
 ---
 id: REQ-SRV-013
-uuid: fe27f89a-61e0-4264-a258-e56f223e8c42
 title: Graph entity tag from the content fingerprint
 scope: srv
 type: functional

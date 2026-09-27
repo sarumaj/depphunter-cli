@@ -2,8 +2,8 @@
 
 This directory holds the normative requirements of depphunter. Each requirement
 is a single file, written in formal language, identified by a human-readable
-identifier and a UUID, and traced to the source code that implements it and the
-tests that verify it.
+identifier, and traced to the source code that implements it and the tests that
+verify it.
 
 ## Purpose and scope of the product
 
@@ -42,7 +42,6 @@ named `<ID>-<slug>.md`, and follows [TEMPLATE.md](TEMPLATE.md):
 ```markdown
 ---
 id: REQ-SRV-004
-uuid: 5b0e5c8e-6f0c-4a39-9a2e-0d8e1f1d8c7a
 title: Graph document carries an entity tag
 scope: srv
 type: functional
@@ -75,7 +74,6 @@ The server **shall** ...
 | Field           | Meaning                                                                                 |
 |-----------------|-----------------------------------------------------------------------------------------|
 | `id`            | `REQ-<SCOPE>-<NNN>`. Stable, never reused. Used in code annotations.                    |
-| `uuid`          | Random (version 4) UUID. Immutable, survives a renumbering or a move to another scope.  |
 | `title`         | A short noun phrase naming the capability or constraint.                                |
 | `scope`         | The functional area; one of the scopes below, equal to the directory name.              |
 | `type`          | `functional`, `non-functional`, `interface`, `constraint` or `limitation`.              |
@@ -199,8 +197,8 @@ release target.
 writes [TRACEABILITY.md](TRACEABILITY.md): for each requirement, where it is
 implemented and where it is verified. `node scripts/reqtrace.mjs --check` fails
 when an annotation names an unknown requirement, when a requirement file is
-malformed or duplicates an identifier or a UUID, or when TRACEABILITY.md is out
-of date.
+malformed, duplicates an identifier or still carries the obsolete `uuid` field,
+or when TRACEABILITY.md is out of date.
 
 ## Known limitations
 

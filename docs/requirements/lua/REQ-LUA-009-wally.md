@@ -1,6 +1,5 @@
 ---
 id: REQ-LUA-009
-uuid: f320659d-ce03-4bc0-9b0e-61d9fc581d36
 title: Wally packages
 scope: lua
 type: functional

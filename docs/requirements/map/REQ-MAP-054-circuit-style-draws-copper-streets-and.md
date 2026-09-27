@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-054
-uuid: 1459412d-b269-4519-b5bd-6215ab2a8ab5
 title: Circuit style draws copper streets and board
 scope: map
 type: functional

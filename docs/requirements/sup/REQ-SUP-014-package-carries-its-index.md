@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-014
-uuid: 857bebda-a922-4330-9fe2-475ebd492410
 title: Every package carries its index
 scope: sup
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-LUA-003
-uuid: 1c6db901-2b88-48dc-9193-3fd59eb69906
 title: Definitions extracted
 scope: lua
 type: functional

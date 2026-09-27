@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-021
-uuid: 1d801d5d-ab22-43db-90d6-304c60f4f98f
 title: Map tab frame without a sandbox
 scope: ext
 type: constraint

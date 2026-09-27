@@ -1,6 +1,5 @@
 ---
 id: REQ-LUA-008
-uuid: fa6d1f51-ab33-4674-a028-bf0874fbed8f
 title: Rocks resolved and pinned
 scope: lua
 type: functional

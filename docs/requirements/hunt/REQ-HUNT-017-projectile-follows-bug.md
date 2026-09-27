@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-017
-uuid: 703bc6cb-3fc6-4bc4-bb53-41a8a8cc18f4
 title: Projectiles follow a walking bug
 scope: hunt
 type: functional

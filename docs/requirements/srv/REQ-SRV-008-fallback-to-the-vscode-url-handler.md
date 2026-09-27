@@ -1,6 +1,5 @@
 ---
 id: REQ-SRV-008
-uuid: 2de0e32c-6409-4626-a169-adcfca74550e
 title: Fallback to the vscode URL handler
 scope: srv
 type: functional

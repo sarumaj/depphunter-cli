@@ -1,6 +1,5 @@
 ---
 id: REQ-JAVA-011
-uuid: 34bca490-b2ef-48eb-aa99-821f8eb734f1
 title: gson resolves with few unresolved imports
 scope: java
 type: non-functional

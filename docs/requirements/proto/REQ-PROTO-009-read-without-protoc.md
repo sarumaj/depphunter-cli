@@ -1,6 +1,5 @@
 ---
 id: REQ-PROTO-009
-uuid: a55b1ddd-7ce4-4e07-acc3-8fb54b3201cc
 title: Protocol Buffers read without protoc or buf
 scope: proto
 type: limitation

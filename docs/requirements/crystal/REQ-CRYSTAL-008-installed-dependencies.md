@@ -1,6 +1,5 @@
 ---
 id: REQ-CRYSTAL-008
-uuid: d3b0354d-9b8a-4bf7-8115-0a501c33de6d
 title: Installed shards' dependencies
 scope: crystal
 type: functional

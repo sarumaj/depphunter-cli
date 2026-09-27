@@ -1,6 +1,5 @@
 ---
 id: REQ-JS-014
-uuid: 0387387f-ff6f-46bc-a498-e64221b9febc
 title: Components are symbols
 scope: js
 type: functional

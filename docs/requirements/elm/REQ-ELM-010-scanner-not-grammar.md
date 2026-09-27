@@ -1,6 +1,5 @@
 ---
 id: REQ-ELM-010
-uuid: 1b37f592-ce63-42cf-8593-a1771201af94
 title: Read by a scanner, not the grammar
 scope: elm
 type: constraint

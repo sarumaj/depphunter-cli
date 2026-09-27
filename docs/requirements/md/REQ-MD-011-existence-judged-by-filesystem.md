@@ -1,6 +1,5 @@
 ---
 id: REQ-MD-011
-uuid: 735ff7e2-6956-49bc-93cc-6c65696c8969
 title: Link targets judged by the filesystem
 scope: md
 type: functional

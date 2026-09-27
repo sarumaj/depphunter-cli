@@ -1,6 +1,5 @@
 ---
 id: REQ-FND-009
-uuid: 468e7e11-9eba-4ead-9a48-061d2ae586af
 title: Report format recognized from content
 scope: fnd
 type: functional

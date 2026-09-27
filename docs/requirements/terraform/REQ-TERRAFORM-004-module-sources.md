@@ -1,6 +1,5 @@
 ---
 id: REQ-TERRAFORM-004
-uuid: 4b10c559-e027-436f-9fdd-eeaac5c0a939
 title: Module sources resolved
 scope: terraform
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-BAZEL-005
-uuid: 5a7e7544-63c0-40af-b8c2-dfbd289b32c1
 title: Globs expanded within the package
 scope: bazel
 type: functional

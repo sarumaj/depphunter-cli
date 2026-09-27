@@ -1,6 +1,5 @@
 ---
 id: REQ-HASKELL-004
-uuid: 44956d7c-932a-4496-957f-a0ccb68e944c
 title: Package descriptions read
 scope: haskell
 type: functional

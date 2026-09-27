@@ -1,6 +1,5 @@
 ---
 id: REQ-RUBY-006
-uuid: 025c2ddc-f90c-4d31-b24b-397715983445
 title: Require paths mapped to gems
 scope: ruby
 type: functional

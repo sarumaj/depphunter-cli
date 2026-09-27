@@ -1,6 +1,5 @@
 ---
 id: REQ-CFG-003
-uuid: 6765ba21-e5eb-4167-8205-22e89b9d51f9
 title: Project config file
 scope: cfg
 type: interface

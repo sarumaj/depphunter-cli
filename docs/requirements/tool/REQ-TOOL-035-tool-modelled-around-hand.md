@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-035
-uuid: e993b7a9-5f7c-49d6-83d4-2791f953c86e
 title: Tools modelled around the hand
 scope: tool
 type: constraint

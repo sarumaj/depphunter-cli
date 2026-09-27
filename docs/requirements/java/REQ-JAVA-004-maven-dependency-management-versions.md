@@ -1,6 +1,5 @@
 ---
 id: REQ-JAVA-004
-uuid: 37d08989-2a67-4883-9429-8fa98ce221d0
 title: Maven dependencyManagement versions
 scope: java
 type: functional

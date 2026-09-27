@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-009
-uuid: 9469a08c-4720-4c32-856a-6e142e859953
 title: Alternative parsers permitted
 scope: lang
 type: constraint

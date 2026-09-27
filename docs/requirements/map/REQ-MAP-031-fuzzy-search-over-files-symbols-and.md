@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-031
-uuid: fdc61e25-e5d8-49c6-b9f6-31ddded6d635
 title: Fuzzy search over files, symbols and packages
 scope: map
 type: functional

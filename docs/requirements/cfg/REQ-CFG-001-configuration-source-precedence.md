@@ -1,6 +1,5 @@
 ---
 id: REQ-CFG-001
-uuid: c1283457-7b45-4120-99aa-691b7ef09ea6
 title: Precedence of configuration sources
 scope: cfg
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-PROTO-002
-uuid: 1ccb5b80-e1b7-434c-9f2a-2f35b18e07ef
 title: Protocol Buffers imports
 scope: proto
 type: functional

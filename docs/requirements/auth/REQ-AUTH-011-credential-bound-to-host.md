@@ -1,6 +1,5 @@
 ---
 id: REQ-AUTH-011
-uuid: f86d224b-c880-411a-9f15-5ed0c25b2206
 title: A credential goes only to its host
 scope: auth
 type: constraint

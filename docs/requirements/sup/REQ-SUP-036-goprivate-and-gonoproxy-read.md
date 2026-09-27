@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-036
-uuid: c3889f97-877f-4398-b03c-7d7d2330f7f9
 title: GOPRIVATE and GONOPROXY are read
 scope: sup
 type: functional

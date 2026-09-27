@@ -1,6 +1,5 @@
 ---
 id: REQ-GLEAM-006
-uuid: 79a788bf-29dd-48e5-a8df-f9f296f3aedf
 title: manifest.toml read
 scope: gleam
 type: functional

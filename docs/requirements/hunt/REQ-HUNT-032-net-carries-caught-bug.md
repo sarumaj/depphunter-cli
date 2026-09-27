@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-032
-uuid: 1fdd4669-33f3-484e-9217-1ccc74d9722f
 title: A netted bug is carried by the net
 scope: hunt
 type: functional

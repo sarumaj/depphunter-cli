@@ -1,6 +1,5 @@
 ---
 id: REQ-HIST-007
-uuid: d969d8c2-cd39-4f31-9016-09ec418f0dc6
 title: History read in the background
 scope: hist
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-HAXE-007
-uuid: 5dcf95ce-7e06-456a-95b6-f15afcd1b8f1
 title: Modules to libraries
 scope: haxe
 type: functional

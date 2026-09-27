@@ -1,6 +1,5 @@
 ---
 id: REQ-PROTO-003
-uuid: 45309764-3789-4344-89ad-a77833fdc7b5
 title: Protocol Buffers declarations as symbols
 scope: proto
 type: functional

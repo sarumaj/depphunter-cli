@@ -1,6 +1,5 @@
 ---
 id: REQ-JS-003
-uuid: 2f330a41-2551-436c-84bf-cc3deb123e75
 title: tsconfig and jsconfig paths
 scope: js
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-RUBY-010
-uuid: e04dbb5c-9fa4-4f22-9a8c-0e3ee5993f79
 title: Rails constants resolved by Zeitwerk naming
 scope: ruby
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-040
-uuid: a41bbbe6-3052-466f-8eb4-95c23a2f1810
 title: Climbing out of the water
 scope: walk
 type: functional

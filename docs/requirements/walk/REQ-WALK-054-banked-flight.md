@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-054
-uuid: 24deb973-8609-4c9e-a432-6402af6cc44c
 title: The view banks in flight
 scope: walk
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-GO-002
-uuid: 94c61ff0-fd5d-4326-934f-fb1e27e8a4e7
 title: Go symbol extraction
 scope: go
 type: functional

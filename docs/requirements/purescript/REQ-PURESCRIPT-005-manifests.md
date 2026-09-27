@@ -1,6 +1,5 @@
 ---
 id: REQ-PURESCRIPT-005
-uuid: 910870da-d743-4ee7-9ee7-3df17dcdd662
 title: Manifests read
 scope: purescript
 type: functional

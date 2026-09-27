@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-002
-uuid: fe1f0c1d-b8f9-4e62-b148-456b0e148168
 title: Pinning follows the ecosystem rule
 scope: sup
 type: constraint

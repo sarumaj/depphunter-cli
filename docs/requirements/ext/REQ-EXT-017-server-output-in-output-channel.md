@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-017
-uuid: ab5d5947-67f2-4e69-b02b-3fdbca1fa3a9
 title: Server output in the output channel
 scope: ext
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-AUTH-002
-uuid: 2ddf4e2f-b30a-4b02-bae6-03bc9b55b2f7
 title: netrc credentials
 scope: auth
 type: functional

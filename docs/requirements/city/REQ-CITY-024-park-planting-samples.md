@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-024
-uuid: 3cb1e874-f32b-4f16-96d4-e569159de4b5
 title: Park planting sampled off paths
 scope: city
 type: non-functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-RUBY-003
-uuid: 2c3e2df6-ce73-4192-9b37-f68584a2209f
 title: Ruby definitions extracted
 scope: ruby
 type: functional

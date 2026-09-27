@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-061
-uuid: 96c61dc7-05c2-47fb-8dac-0e57102a8674
 title: Height scale set by counted lines only
 scope: map
 type: functional

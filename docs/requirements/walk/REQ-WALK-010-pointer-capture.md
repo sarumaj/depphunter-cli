@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-010
-uuid: b0a68046-83bb-4d9d-902e-16ac8a1c6767
 title: Pointer capture on entering walk mode
 scope: walk
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-003
-uuid: e0a1c722-f689-441c-a3ab-466eb18b2c67
 title: Detail fades by pixel footprint
 scope: city
 type: non-functional

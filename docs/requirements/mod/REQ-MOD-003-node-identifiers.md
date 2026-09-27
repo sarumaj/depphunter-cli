@@ -1,6 +1,5 @@
 ---
 id: REQ-MOD-003
-uuid: 1955e9e3-4d08-4962-82af-09e43f086a7a
 title: Node identifiers
 scope: mod
 type: interface

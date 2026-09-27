@@ -1,6 +1,5 @@
 ---
 id: REQ-JULIA-004
-uuid: e3845064-0bdc-4e84-a2eb-7184a4b0700d
 title: Modules resolved to project files
 scope: julia
 type: functional

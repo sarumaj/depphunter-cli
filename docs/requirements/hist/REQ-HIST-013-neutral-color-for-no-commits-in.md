@@ -1,6 +1,5 @@
 ---
 id: REQ-HIST-013
-uuid: 2b2bd05d-d8b2-47bb-b9ce-d24e5d9fe3f7
 title: Neutral color for no commits in range
 scope: hist
 type: functional

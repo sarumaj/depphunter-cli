@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-019
-uuid: d0846d32-4991-4fff-b152-e35d22cbd45f
 title: A repository-only index is never fetched from
 scope: sup
 type: constraint

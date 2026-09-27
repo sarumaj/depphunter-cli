@@ -1,6 +1,5 @@
 ---
 id: REQ-FORTRAN-004
-uuid: 69c8abb6-04ed-45f4-b8e6-c4db4a8ce0b0
 title: Modules resolved to files
 scope: fortran
 type: functional

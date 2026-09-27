@@ -1,6 +1,5 @@
 ---
 id: REQ-HIST-008
-uuid: f0e90f34-4a8b-49b6-a548-a46de761b63f
 title: History availability announced
 scope: hist
 type: functional

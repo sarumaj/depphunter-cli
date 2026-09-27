@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-021
-uuid: d3d35ce1-5522-4eb1-8f0c-bb94c816a8fa
 title: Binary files not read
 scope: lang
 type: functional

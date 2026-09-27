@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-055
-uuid: 1e7892ed-635d-49a8-bbf2-34b4c661dbb2
 title: Julia package dependencies from a registry's files
 scope: sup
 type: functional

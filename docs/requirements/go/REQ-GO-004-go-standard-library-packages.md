@@ -1,6 +1,5 @@
 ---
 id: REQ-GO-004
-uuid: effdc9f3-2ef1-47d1-a0d6-0e70a58a1d1a
 title: Go standard-library packages
 scope: go
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-058
-uuid: 0f7482ad-fa41-4a44-b140-aace13fd768e
 title: Tool wheel laid out by hand
 scope: tool
 type: functional

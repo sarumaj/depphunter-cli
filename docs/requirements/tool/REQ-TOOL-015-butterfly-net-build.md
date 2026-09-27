@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-015
-uuid: 87a9f26c-f98c-463b-8ff1-d3854fe9069e
 title: Butterfly net built to standard
 scope: tool
 type: functional

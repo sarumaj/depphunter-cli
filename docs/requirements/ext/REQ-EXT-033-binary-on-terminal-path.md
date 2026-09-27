@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-033
-uuid: f69b5349-b392-43b4-9249-055d4097df3d
 title: The binary on the terminals' PATH
 scope: ext
 type: functional

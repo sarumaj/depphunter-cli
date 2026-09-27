@@ -1,6 +1,5 @@
 ---
 id: REQ-CPP-004
-uuid: 78d03bfe-8933-455e-b635-2b2b25e34816
 title: Includes resolved to project files
 scope: cpp
 type: functional

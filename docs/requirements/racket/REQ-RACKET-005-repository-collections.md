@@ -1,6 +1,5 @@
 ---
 id: REQ-RACKET-005
-uuid: 10ddb8b4-d9d8-41f2-a8c7-cb67da7f91bd
 title: Collections of the repository
 scope: racket
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-SRV-014
-uuid: bb96c5ea-c58a-4b7a-a3d9-2145f8230067
 title: Graph revalidated rather than uncached
 scope: srv
 type: functional

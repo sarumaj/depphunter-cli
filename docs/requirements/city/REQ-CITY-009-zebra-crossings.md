@@ -1,6 +1,5 @@
 ---
 id: REQ-CITY-009
-uuid: 7e93bc09-f5b7-41df-b4ac-95d54942aff8
 title: Zebra crossings on long streets
 scope: city
 type: functional

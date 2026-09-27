@@ -1,6 +1,5 @@
 ---
 id: REQ-DART-002
-uuid: 693e2159-a51a-460f-9376-8e3b58ae5033
 title: Import, export and part directives read
 scope: dart
 type: functional

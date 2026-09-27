@@ -1,6 +1,5 @@
 ---
 id: REQ-SWIFT-008
-uuid: bc1068f9-09d8-4f7b-8a0e-66f16a13edc8
 title: SwiftPM pinning rule
 scope: swift
 type: functional

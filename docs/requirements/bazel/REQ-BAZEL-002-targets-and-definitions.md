@@ -1,6 +1,5 @@
 ---
 id: REQ-BAZEL-002
-uuid: 665c2d6a-cb4b-4844-88f1-c09a0294f0f3
 title: Targets and definitions extracted
 scope: bazel
 type: functional

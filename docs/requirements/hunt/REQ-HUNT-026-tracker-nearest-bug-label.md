@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-026
-uuid: b9ed8a1d-a360-4a49-bf6f-3dba13ed34d2
 title: Distance and finding of the nearest bug
 scope: hunt
 type: functional

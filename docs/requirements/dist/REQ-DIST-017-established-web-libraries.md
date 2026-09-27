@@ -1,6 +1,5 @@
 ---
 id: REQ-DIST-017
-uuid: 91adf9c6-0044-401e-ad59-ed51dcbf9e99
 title: Established web libraries
 scope: dist
 type: constraint

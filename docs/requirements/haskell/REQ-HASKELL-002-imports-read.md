@@ -1,6 +1,5 @@
 ---
 id: REQ-HASKELL-002
-uuid: 824ae9bc-787a-4db2-a870-2336f5d54389
 title: Import declarations read
 scope: haskell
 type: functional

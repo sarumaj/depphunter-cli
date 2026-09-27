@@ -1,6 +1,5 @@
 ---
 id: REQ-PHP-004
-uuid: e58e7c0a-c20b-4d91-8a44-59b92dba7bd2
 title: Require and include paths resolved
 scope: php
 type: functional

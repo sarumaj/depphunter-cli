@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-028
-uuid: febe5dfd-cca6-47f5-bf95-a8415511f209
 title: Maps view lists folders and servers
 scope: ext
 type: functional

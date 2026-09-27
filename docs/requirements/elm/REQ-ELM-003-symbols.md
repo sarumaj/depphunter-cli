@@ -1,6 +1,5 @@
 ---
 id: REQ-ELM-003
-uuid: d406adbc-43c8-4da8-b09b-84dd09f5b3f0
 title: Symbols
 scope: elm
 type: functional

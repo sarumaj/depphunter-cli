@@ -1,6 +1,5 @@
 ---
 id: REQ-FND-021
-uuid: 2ca55f25-af50-47c2-8ce1-9bca366d8cfe
 title: Directory badge with the worst finding below
 scope: fnd
 type: functional

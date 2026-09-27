@@ -1,6 +1,5 @@
 ---
 id: REQ-UI-015
-uuid: 206c2718-8b90-4b9f-aee2-3d574b047e58
 title: The details can be maximized
 scope: ui
 type: functional

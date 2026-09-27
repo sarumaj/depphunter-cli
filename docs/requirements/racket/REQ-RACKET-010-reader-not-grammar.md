@@ -1,6 +1,5 @@
 ---
 id: REQ-RACKET-010
-uuid: 640a21c0-7eb7-44a3-a360-b92d562cb5ce
 title: Read by a reader, not the grammar
 scope: racket
 type: constraint

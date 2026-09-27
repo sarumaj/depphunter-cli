@@ -1,6 +1,5 @@
 ---
 id: REQ-BAZEL-011
-uuid: 66f91232-0a93-4f77-9d72-9e411a496651
 title: Bazel read without running Bazel
 scope: bazel
 type: limitation

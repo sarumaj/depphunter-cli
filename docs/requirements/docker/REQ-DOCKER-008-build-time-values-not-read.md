@@ -1,6 +1,5 @@
 ---
 id: REQ-DOCKER-008
-uuid: 5460db48-e975-419c-8ad6-264e56de126d
 title: Build-time values and remote Compose files not read
 scope: docker
 type: limitation

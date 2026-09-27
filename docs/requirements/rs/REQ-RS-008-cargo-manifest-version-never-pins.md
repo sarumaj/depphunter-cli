@@ -1,6 +1,5 @@
 ---
 id: REQ-RS-008
-uuid: a9d79da2-cf2b-49dd-a057-66dba1a86170
 title: A Cargo.toml version alone never pins
 scope: rs
 type: functional

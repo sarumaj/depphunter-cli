@@ -1,6 +1,5 @@
 ---
 id: REQ-DIST-006
-uuid: dddd8809-ba7c-44f2-84b1-35d287a01d4e
 title: License notices in the release archives
 scope: dist
 type: constraint

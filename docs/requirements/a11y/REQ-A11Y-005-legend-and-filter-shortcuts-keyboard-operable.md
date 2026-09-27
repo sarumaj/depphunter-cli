@@ -1,6 +1,5 @@
 ---
 id: REQ-A11Y-005
-uuid: 22c0b9dd-a99f-4a34-b8e4-de9c1c309543
 title: Legend and filter shortcuts keyboard operable
 scope: a11y
 type: functional

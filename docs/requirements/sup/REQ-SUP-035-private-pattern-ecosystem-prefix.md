@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-035
-uuid: 4e05c56f-451a-4e91-b9fa-4bf391b9fe43
 title: Ecosystem prefix on a pattern
 scope: sup
 type: functional

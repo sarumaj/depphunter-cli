@@ -1,6 +1,5 @@
 ---
 id: REQ-FSHARP-008
-uuid: 8f5f9902-12ff-4d24-8a36-0f9cb9e893ea
 title: NuGet packages shared with C#
 scope: fsharp
 type: functional

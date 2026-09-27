@@ -1,6 +1,5 @@
 ---
 id: REQ-CLI-003
-uuid: f86db6ed-6a91-49b1-b841-cdf97a7048b6
 title: POSIX flag syntax
 scope: cli
 type: interface

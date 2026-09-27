@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-005
-uuid: 1c16edb2-f3ed-43e6-83bf-e5e753e14a52
 title: Ecosystem declaration
 scope: lang
 type: interface

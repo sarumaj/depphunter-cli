@@ -1,6 +1,5 @@
 ---
 id: REQ-FND-023
-uuid: 4e43791e-186c-4361-8aed-cd6f7f328442
 title: Findings refreshed in watch mode
 scope: fnd
 type: functional

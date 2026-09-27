@@ -1,6 +1,5 @@
 ---
 id: REQ-PY-008
-uuid: 8bcff2ff-6e34-46e1-8840-34597d5cb867
 title: Pipfile dependencies
 scope: py
 type: functional

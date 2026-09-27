@@ -1,6 +1,5 @@
 ---
 id: REQ-CMAKE-004
-uuid: 92f0e902-9604-4ebe-acaf-9265eb03582b
 title: Subdirectories, included files and sources
 scope: cmake
 type: functional

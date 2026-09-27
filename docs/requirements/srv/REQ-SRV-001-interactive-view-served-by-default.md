@@ -1,6 +1,5 @@
 ---
 id: REQ-SRV-001
-uuid: af61b069-d569-40f8-9fbf-05f1bfa55f21
 title: Interactive view served by default
 scope: srv
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-010
-uuid: cf573347-f10b-48e3-9fe3-cafba0413b11
 title: The offline walk fetches nothing
 scope: sup
 type: constraint

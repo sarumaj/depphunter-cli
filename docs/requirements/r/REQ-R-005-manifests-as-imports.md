@@ -1,6 +1,5 @@
 ---
 id: REQ-R-005
-uuid: 5b187295-aa9c-4645-b8c7-e6c1768f4043
 title: DESCRIPTION and NAMESPACE imports
 scope: r
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-JS-001
-uuid: c4a383ff-0dee-4337-b492-dff512433a45
 title: JavaScript and TypeScript import extraction
 scope: js
 type: functional

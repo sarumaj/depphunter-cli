@@ -1,6 +1,5 @@
 ---
 id: REQ-CRYSTAL-010
-uuid: 6f949973-8c2f-4c6b-90e3-34fe9cbff0f5
 title: Read by a scanner, not the grammar
 scope: crystal
 type: constraint

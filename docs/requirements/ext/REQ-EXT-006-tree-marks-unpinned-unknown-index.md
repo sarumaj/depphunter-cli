@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-006
-uuid: 5ff574df-8891-4b13-9c37-a57180689ae4
 title: Tree marks unpinned and unvouched packages
 scope: ext
 type: functional

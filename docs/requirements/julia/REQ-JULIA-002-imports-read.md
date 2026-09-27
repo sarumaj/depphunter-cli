@@ -1,6 +1,5 @@
 ---
 id: REQ-JULIA-002
-uuid: f548dcf6-44d1-4e0f-991c-20cdcc168bd3
 title: using, import and include read
 scope: julia
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-050
-uuid: 26fddb39-652c-4eea-914e-278cce9b80c4
 title: Styles share all geometry
 scope: map
 type: constraint

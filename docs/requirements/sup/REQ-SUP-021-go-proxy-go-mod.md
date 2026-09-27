@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-021
-uuid: 13b21353-eb44-4e68-9776-c34567b45f41
 title: Go dependencies from the module proxy
 scope: sup
 type: functional

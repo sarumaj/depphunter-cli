@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-004
-uuid: a579b046-cf8d-41b5-9db0-afb0017913bb
 title: Tree rows expand without requests
 scope: ext
 type: non-functional

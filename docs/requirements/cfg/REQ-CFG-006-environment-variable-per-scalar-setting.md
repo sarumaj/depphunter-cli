@@ -1,6 +1,5 @@
 ---
 id: REQ-CFG-006
-uuid: a3959387-e4e0-499d-b34e-8b1979b94941
 title: Environment variable for every scalar setting
 scope: cfg
 type: interface

@@ -1,6 +1,5 @@
 ---
 id: REQ-FND-005
-uuid: 904f6932-1bde-4850-ad7a-868d9293b4d0
 title: Trivy vulnerabilities, misconfigurations and secrets
 scope: fnd
 type: functional

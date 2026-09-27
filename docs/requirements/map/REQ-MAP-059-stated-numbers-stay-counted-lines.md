@@ -1,6 +1,5 @@
 ---
 id: REQ-MAP-059
-uuid: 52d771e4-c33b-4983-8b3d-951f61adc23d
 title: Stated numbers stay counted lines
 scope: map
 type: functional

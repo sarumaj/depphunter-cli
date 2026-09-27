@@ -1,6 +1,5 @@
 ---
 id: REQ-EXP-004
-uuid: 943e4d82-619b-4c61-91b3-96bfb1e77f96
 title: Export from the command line
 scope: exp
 type: functional

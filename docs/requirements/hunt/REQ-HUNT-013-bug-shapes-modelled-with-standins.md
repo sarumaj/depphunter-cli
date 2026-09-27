@@ -1,6 +1,5 @@
 ---
 id: REQ-HUNT-013
-uuid: 6ca3cb94-76ce-4be2-82e3-cd2fbd700c2b
 title: Bug shapes modelled in Blender with stand-ins
 scope: hunt
 type: constraint

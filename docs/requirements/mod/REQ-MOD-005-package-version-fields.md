@@ -1,6 +1,5 @@
 ---
 id: REQ-MOD-005
-uuid: 5b807f0f-4e9b-4f00-ac12-1f9fbc893815
 title: Package version fields
 scope: mod
 type: interface

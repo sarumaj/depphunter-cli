@@ -1,6 +1,5 @@
 ---
 id: REQ-RS-006
-uuid: 7ec92bf7-14d9-4d9d-bc80-9daf15f7f5fe
 title: Workspace-inherited Cargo dependencies
 scope: rs
 type: functional

@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-046
-uuid: 7c94ea77-82d2-4550-95f1-c0bab2baf950
 title: Page keeps its keys while the walker is held
 scope: walk
 type: functional

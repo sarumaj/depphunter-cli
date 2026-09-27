@@ -1,6 +1,5 @@
 ---
 id: REQ-PERL-010
-uuid: bb7d18bc-30a0-405a-a85e-cffa7338a02d
 title: Read by a scanner, not the grammar
 scope: perl
 type: constraint

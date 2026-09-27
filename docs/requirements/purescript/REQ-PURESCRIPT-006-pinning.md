@@ -1,6 +1,5 @@
 ---
 id: REQ-PURESCRIPT-006
-uuid: 64d4b0fe-3619-449b-941a-5d9bfff0cac2
 title: Pinning
 scope: purescript
 type: functional

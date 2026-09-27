@@ -1,6 +1,5 @@
 ---
 id: REQ-TOOL-068
-uuid: 1223d171-2f3f-4da8-82f4-dab1363496a6
 title: Fishing rod holds on a wall only by chance
 scope: tool
 type: functional

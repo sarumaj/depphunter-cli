@@ -1,6 +1,5 @@
 ---
 id: REQ-LSP-010
-uuid: 5c2f6391-42b5-4eea-a56c-60e7ed1d5ef0
 title: Slow-indexing servers may return fewer references
 scope: lsp
 type: limitation

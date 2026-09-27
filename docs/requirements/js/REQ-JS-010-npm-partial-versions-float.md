@@ -1,6 +1,5 @@
 ---
 id: REQ-JS-010
-uuid: 89a93622-b66d-4bae-a48a-aecbded027f1
 title: npm partial versions float
 scope: js
 type: functional

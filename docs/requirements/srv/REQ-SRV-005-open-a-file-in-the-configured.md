@@ -1,6 +1,5 @@
 ---
 id: REQ-SRV-005
-uuid: 1a28bd6f-05ec-407e-83e3-8b9a3cf4efc8
 title: Open a file in the configured editor
 scope: srv
 type: functional

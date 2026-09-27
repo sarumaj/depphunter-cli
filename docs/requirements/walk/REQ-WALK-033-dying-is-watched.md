@@ -1,6 +1,5 @@
 ---
 id: REQ-WALK-033
-uuid: 2dd8ef60-8b4d-452f-b9c7-c6c155851f44
 title: Dying is watched
 scope: walk
 type: functional

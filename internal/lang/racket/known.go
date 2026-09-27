@@ -72,14 +72,14 @@ func init() {
 // package provides.
 //
 // Implements: REQ-RACKET-007
-func baseModule(segs []string) bool {
-	if !baseTops[segs[0]] {
+func baseModule(segments []string) bool {
+	if !baseTops[segments[0]] {
 		return false
 	}
-	if len(segs) == 1 {
-		return baseSet[segs[0]+"/main"]
+	if len(segments) == 1 {
+		return baseSet[segments[0]+"/main"]
 	}
-	return segs[1] == "private" || baseSet[segs[0]+"/"+segs[1]]
+	return segments[1] == "private" || baseSet[segments[0]+"/"+segments[1]]
 }
 
 // knownCollections maps collection paths (the longest listed prefix of a
@@ -121,9 +121,9 @@ var knownCollections = map[string]string{
 
 // knownPackage returns the catalog package of a module path from
 // knownCollections: the longest listed prefix.
-func knownPackage(segs []string) string {
-	for k := min(len(segs), 3); k > 0; k-- {
-		if p, ok := knownCollections[strings.Join(segs[:k], "/")]; ok {
+func knownPackage(segments []string) string {
+	for k := min(len(segments), 3); k > 0; k-- {
+		if p, ok := knownCollections[strings.Join(segments[:k], "/")]; ok {
 			return p
 		}
 	}

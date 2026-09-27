@@ -1,6 +1,5 @@
 ---
 id: REQ-EXT-026
-uuid: 8006fc50-a7a7-400c-9ea8-ae9e5269181d
 title: One server per folder
 scope: ext
 type: functional

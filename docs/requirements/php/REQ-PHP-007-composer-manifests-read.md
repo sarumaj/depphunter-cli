@@ -1,6 +1,5 @@
 ---
 id: REQ-PHP-007
-uuid: 4d56cbe0-41d9-4f27-9cd7-5c4503ce003d
 title: Composer manifests read
 scope: php
 type: functional

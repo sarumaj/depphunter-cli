@@ -1,6 +1,5 @@
 ---
 id: REQ-BEAM-004
-uuid: b6649390-789e-46a1-a7dd-c41adfe33d6a
 title: Erlang attributes and calls read
 scope: beam
 type: functional

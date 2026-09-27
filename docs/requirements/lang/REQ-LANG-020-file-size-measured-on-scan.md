@@ -1,6 +1,5 @@
 ---
 id: REQ-LANG-020
-uuid: f365f3c0-4233-491d-9fbe-9541a3994ee1
 title: File size measured on scan
 scope: lang
 type: functional

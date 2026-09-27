@@ -1,6 +1,5 @@
 ---
 id: REQ-BEAM-001
-uuid: abdaf733-02ec-485c-8db3-7fb34725cbbc
 title: Elixir, Erlang and their manifests claimed
 scope: beam
 type: functional

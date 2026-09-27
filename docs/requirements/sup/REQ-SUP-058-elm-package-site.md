@@ -1,6 +1,5 @@
 ---
 id: REQ-SUP-058
-uuid: 36818175-cb62-4495-8232-13aba2e05a00
 title: The Elm package site for package dependencies
 scope: sup
 type: functional
