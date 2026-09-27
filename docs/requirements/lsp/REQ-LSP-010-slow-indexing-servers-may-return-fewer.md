@@ -13,7 +13,7 @@ verification:
 ## Statement
 
 Language servers that index slowly (rust-analyzer, jdtls, metals, clangd,
-intelephense, phpactor, ruby-lsp, solargraph)
+intelephense, phpactor, ruby-lsp, solargraph, sourcekit-lsp)
 **may** answer before indexing finishes and so return fewer references within
 the time budget.
 

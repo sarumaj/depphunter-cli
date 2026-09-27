@@ -14,11 +14,12 @@ import (
 func TestScanMeasuresAndExcludes(t *testing.T) {
 	root := t.TempDir()
 	files := map[string]string{
-		"a.go":                "package a\n\nfunc A() {}\n",
-		"no_newline.py":       "x = 1\ny = 2",
-		"gen/skip.go":         "package gen\n",
-		"node_modules/x/i.js": "ignored by default when git is unavailable\n",
-		"img.bin":             "\x00\x01\x02",
+		"a.go":                               "package a\n\nfunc A() {}\n",
+		"no_newline.py":                      "x = 1\ny = 2",
+		"gen/skip.go":                        "package gen\n",
+		"node_modules/x/i.js":                "ignored by default when git is unavailable\n",
+		".build/checkouts/nio/Package.swift": "// SwiftPM's build directory\n",
+		"img.bin":                            "\x00\x01\x02",
 	}
 	for p, c := range files {
 		abs := filepath.Join(root, p)

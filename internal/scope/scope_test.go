@@ -69,6 +69,10 @@ func TestAPatternMayNameItsEcosystem(t *testing.T) {
 	if !p.Match("rubygems", "acme-auth") || p.Match("npm", "acme-auth") || p.Match("rubygems", "rails") {
 		t.Error("a rubygems-scoped pattern did not keep to its ecosystem")
 	}
+	p = New([]string{"swiftpm:github.com/acme/*"})
+	if !p.Match("swiftpm", "github.com/acme/private-kit") || p.Match("swiftpm", "github.com/apple/swift-nio") || p.Match("npm", "github.com/acme/private-kit") {
+		t.Error("a swiftpm-scoped pattern did not keep to its ecosystem and owner")
+	}
 	// The prefix is recognized whatever its case, and must then match as well.
 	p = New([]string{"NPM:@acme/*"})
 	if !p.Match("npm", "@acme/widgets") {

@@ -25,6 +25,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang/ruby"
 	"github.com/sarumaj/depphunter-cli/internal/lang/rust"
 	"github.com/sarumaj/depphunter-cli/internal/lang/scala"
+	"github.com/sarumaj/depphunter-cli/internal/lang/swift"
 )
 
 // referenceFiles is the size of the reference project REQ-LANG-029 is stated for.
@@ -96,7 +97,7 @@ func BenchmarkColdAnalysis(b *testing.B) {
 	writeReferenceProject(b, root, referenceFiles)
 	plugins := []lang.Plugin{
 		golang.Plugin{}, javascript.Plugin{}, python.Plugin{}, rust.Plugin{}, java.Plugin{},
-		kotlin.Plugin{}, scala.Plugin{}, csharp.Plugin{}, cpp.Plugin{}, php.Plugin{}, ruby.Plugin{}, powershell.Plugin{}, ci.Plugin{}, docker.Plugin{}, markdown.Plugin{},
+		kotlin.Plugin{}, scala.Plugin{}, csharp.Plugin{}, cpp.Plugin{}, php.Plugin{}, ruby.Plugin{}, swift.Plugin{}, powershell.Plugin{}, ci.Plugin{}, docker.Plugin{}, markdown.Plugin{},
 	}
 	b.ResetTimer()
 	cpu := cpuSeconds()
