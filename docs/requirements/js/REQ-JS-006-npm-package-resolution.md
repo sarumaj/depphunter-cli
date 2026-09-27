@@ -34,4 +34,7 @@ installs from.
 ## Notes
 
 Specifiers beginning with `~`, `#` or `@/` (bundler aliases and package
-`imports`) and URLs are dropped rather than treated as npm packages.
+`imports`), specifiers containing `$` or `:`, which no npm name may hold (the
+modules frameworks generate: SvelteKit's `$app` and `$env`, and `$lib` unless
+REQ-JS-015 resolves it, Astro's `astro:content`, Vite's `virtual:` modules), and
+URLs are dropped rather than treated as npm packages.

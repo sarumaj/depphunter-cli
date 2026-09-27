@@ -206,7 +206,7 @@ export function representative(byNode, n) {
 
 function symbolHeight(sym) {
   switch (sym.symbolKind) {
-    case 'type': case 'class': case 'interface': return 1.1;
+    case 'type': case 'class': case 'interface': case 'component': return 1.1;
     case 'func': case 'method': case 'function': return 0.7;
     default: return 0.35;
   }

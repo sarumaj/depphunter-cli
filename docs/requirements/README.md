@@ -108,7 +108,7 @@ The server **shall** ...
 | `mod`    | The graph data model exchanged between analysis, UI, exports and extension.                    |
 | `lang`   | The language plugin contract, file scanning, extraction cache and analysis pipeline.           |
 | `go`     | The Go plugin.                                                                                 |
-| `js`     | The JavaScript and TypeScript plugin.                                                          |
+| `js`     | The JavaScript and TypeScript plugin, with Vue, Svelte and Astro components.                   |
 | `py`     | The Python plugin.                                                                             |
 | `rs`     | The Rust plugin.                                                                               |
 | `java`   | The Java plugin.                                                                               |

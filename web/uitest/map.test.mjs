@@ -178,14 +178,16 @@ describe('files', () => {
 
   // Verifies: REQ-MAP-006
   it('open into a plateau with one block per symbol, as tall as its kind', () => {
-    const { model, L } = draw(repo(), { expanded: ['d:lib', 'f:lib/l1.go'] });
+    const graph = repo();
+    graph.nodes.push(sym('lib/l1.go', 'View', 'component')); // a Vue, Svelte or Astro component
+    const { model, L } = draw(graph, { expanded: ['d:lib', 'f:lib/l1.go'] });
     const plateau = L.byNode.get('f:lib/l1.go');
     assert.equal(plateau.kind, 'terrace');
     assert.ok(!L.boxes.some(b => b.node.id === 'f:lib/l1.go' && b.kind === 'building'), 'the building is still there');
     const blocks = L.boxes.filter(b => b.kind === 'symbol');
     assert.equal(blocks.length, model.byId.get('f:lib/l1.go').children.length);
     const height = Object.fromEntries(blocks.map(b => [b.node.name, b.h]));
-    assert.deepEqual(height, { Store: 1.1, Open: 0.7, Close: 0.7, limit: 0.35 });
+    assert.deepEqual(height, { Store: 1.1, Open: 0.7, Close: 0.7, limit: 0.35, View: 1.1 });
     for (const b of blocks) {
       assert.ok(within(b, plateau), `${b.node.name} is off its plateau`);
       near(b.y, plateau.y + plateau.h, `${b.node.name} is not on the plateau`);

@@ -1326,20 +1326,20 @@ uses it. The JSON and GraphML exports include the reference edges.
 
 ### Languages
 
-| Ecosystem               | Imports resolved through                                                                                                                                                                                    | Islands                                     |
-|-------------------------|-------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------|
-| Go                      | every `go.mod` (multi-module, local `replace`)                                                                                                                                                              | Go modules, Go standard library             |
-| JavaScript / TypeScript | relative paths, `tsconfig`/`jsconfig` `paths`, workspaces, `package.json` + `package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`                                                                            | npm, Node.js built-ins                      |
-| Python                  | relative imports, `src/` layouts, requirements files, `setup.cfg`, literal `setup.py` lists, `pyproject.toml`, `Pipfile`, `poetry.lock`/`uv.lock`/`pdm.lock`/`Pipfile.lock`, installed environments (below) | PyPI, Python standard library               |
-| Rust                    | the module tree (`crate::`, `self::`, `super::`, `mod x;`), workspace and path crates, `Cargo.toml` (renamed and workspace dependencies) + `Cargo.lock`                                                     | crates.io, Rust standard library            |
-| Java                    | source files by package path (any source root), `pom.xml` (properties, dependency management), Gradle scripts and version catalogs, sbt builds                                                              | Maven, Java standard library                |
-| Kotlin                  | source files by the package they declare (any directory; Java files by path), the Java manifests                                                                                                            | Maven, Kotlin and Java standard libraries   |
-| Scala                   | source files by the package they declare (any directory; Java files by path), `build.sbt` (`%`, `%%`, versions held in a `val`), the Java manifests                                                         | Maven, Scala and Java standard libraries    |
-| C#                      | namespaces to project folders (`RootNamespace` + folder), `PackageReference`, `Directory.Packages.props`                                                                                                    | NuGet, .NET base library                    |
-| PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                           | PowerShell Gallery, built-in modules        |
-| CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                | GitHub Actions, GitLab CI, Container images |
-| Dockerfile / Compose    | `FROM`, `COPY --from`, `RUN --mount from=` and `# syntax=` with `ARG` defaults expanded and stages told apart; Compose `image:`, and `build:` to the Dockerfile in the repository                           | Container images                            |
-| Markdown                | links to files and directories in the repository (inline, reference, autolink, and the `href` and `src` of raw HTML); headings become the file's symbols                                                    | *(none: a link is not a package)*           |
+| Ecosystem               | Imports resolved through                                                                                                                                                                                       | Islands                                     |
+|-------------------------|----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|---------------------------------------------|
+| Go                      | every `go.mod` (multi-module, local `replace`)                                                                                                                                                                 | Go modules, Go standard library             |
+| JavaScript / TypeScript | relative paths, `tsconfig`/`jsconfig` `paths`, workspaces, `package.json` + `package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`; also the scripts of Vue, Svelte and Astro components, and SvelteKit's `$lib` | npm, Node.js built-ins                      |
+| Python                  | relative imports, `src/` layouts, requirements files, `setup.cfg`, literal `setup.py` lists, `pyproject.toml`, `Pipfile`, `poetry.lock`/`uv.lock`/`pdm.lock`/`Pipfile.lock`, installed environments (below)    | PyPI, Python standard library               |
+| Rust                    | the module tree (`crate::`, `self::`, `super::`, `mod x;`), workspace and path crates, `Cargo.toml` (renamed and workspace dependencies) + `Cargo.lock`                                                        | crates.io, Rust standard library            |
+| Java                    | source files by package path (any source root), `pom.xml` (properties, dependency management), Gradle scripts and version catalogs, sbt builds                                                                 | Maven, Java standard library                |
+| Kotlin                  | source files by the package they declare (any directory; Java files by path), the Java manifests                                                                                                               | Maven, Kotlin and Java standard libraries   |
+| Scala                   | source files by the package they declare (any directory; Java files by path), `build.sbt` (`%`, `%%`, versions held in a `val`), the Java manifests                                                            | Maven, Scala and Java standard libraries    |
+| C#                      | namespaces to project folders (`RootNamespace` + folder), `PackageReference`, `Directory.Packages.props`                                                                                                       | NuGet, .NET base library                    |
+| PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                              | PowerShell Gallery, built-in modules        |
+| CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                   | GitHub Actions, GitLab CI, Container images |
+| Dockerfile / Compose    | `FROM`, `COPY --from`, `RUN --mount from=` and `# syntax=` with `ARG` defaults expanded and stages told apart; Compose `image:`, and `build:` to the Dockerfile in the repository                              | Container images                            |
+| Markdown                | links to files and directories in the repository (inline, reference, autolink, and the `href` and `src` of raw HTML); headings become the file's symbols                                                       | *(none: a link is not a package)*           |
 
 Python packages that no index has - an in-house package installed from a
 directory, a wheel file or a Git repository - are resolved from what a Python
@@ -1365,6 +1365,16 @@ group identifiers by prefix, by shared leading segments, by artifact name, and
 by a short table of well-known exceptions such as Guava, JUnit 4 and Lombok.
 Imports that cannot be matched are shown as unresolved.
 
+Vue, Svelte and Astro components are part of the JavaScript/TypeScript
+ecosystem: the code in each component's `<script>` blocks (`<script setup>`,
+Svelte's module script) and in an Astro component's `---` frontmatter is read as
+JavaScript or TypeScript, by its `lang`, and resolved like any other; a
+`<script src>` is an import too, and a component imported from a script, as
+`./Button.vue`, is an edge to that file. Scripts that are markup rather than the
+component's code - inside a Vue `<template>` or `<svelte:head>`, or an Astro
+script left inline - are not read, nor is `@import` in a `<style>`. Each
+component is a symbol named after its file, beside its functions and constants.
+
 Kotlin and Scala share Java's resolution: the same manifests, the same Maven
 islands, the same pinning rule, and the JDK. A Kotlin or Scala file need not sit
 in a directory named after its package, so each is found by the `package` it
@@ -1385,9 +1395,9 @@ and `scalaVersion` is not consulted.
 Files in other languages appear on the map without dependency edges. Parsing
 uses a pure-Go tree-sitter runtime for JavaScript/TypeScript, Python, Rust,
 Java, Kotlin and Scala; Go uses the standard library's own parser, CI and
-Compose files a YAML parser, and C#, PowerShell, Markdown and Dockerfiles small
-built-in scanners — so the binary continues to cross-compile without a C
-toolchain.
+Compose files a YAML parser, and C#, PowerShell, Markdown, Dockerfiles and the
+markup of Vue, Svelte and Astro components small built-in scanners — so the
+binary continues to cross-compile without a C toolchain.
 
 ## Security
 

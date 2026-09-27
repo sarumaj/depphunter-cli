@@ -1,0 +1,24 @@
+---
+import Widget from '../ui/Widget.svelte'
+import path from 'node:path'
+import { add } from '@app/lib/math'
+import { getCollection } from 'astro:content'
+
+const { title } = Astro.props
+function heading(s: string) {
+  return s.toUpperCase()
+}
+---
+<html>
+  <body>
+    {/* <script>import 'in-comment'</script> */}
+    <h1>{heading(title)}</h1>
+    <Widget name="x" />
+    <script>
+      import react from 'react'
+    </script>
+    <script is:inline>import 'inline-script'</script>
+    <script type="application/ld+json">{"@context": "https://schema.org"}</script>
+    <script src="../ui/child.ts"></script>
+  </body>
+</html>
