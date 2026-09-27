@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+DIR=$(dirname "$(readlink -f "$0")")
+source "$DIR/lib/common.sh"
+targets=(one two "three )")
+for f in "$DIR"/lib/*.sh; do
+  source "$f"
+done
+if [[ -n "${x:-}" && -f ./x ]]; then :; fi
+"$DIR"/../scripts/lib/log.bash
+deploy_main() { :; }

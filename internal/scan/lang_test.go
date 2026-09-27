@@ -2,7 +2,7 @@ package scan
 
 import "testing"
 
-// Verifies: REQ-LANG-015, REQ-DOCKER-001
+// Verifies: REQ-LANG-015, REQ-DOCKER-001, REQ-SHELL-001
 func TestLanguageByName(t *testing.T) {
 	for p, want := range map[string]string{
 		"a.go":                           "Go",
@@ -39,6 +39,12 @@ func TestLanguageByName(t *testing.T) {
 		"proto/buf.lock":                 "Buf",
 		"buf.work.yaml":                  "Buf",
 		"buf.gen.yaml":                   "Buf",
+		"scripts/build.sh":               "Shell",
+		"test/app.bats":                  "Shell",
+		"themes/robbyrussell.zsh-theme":  "Shell",
+		".envrc":                         "Shell",
+		"home/.zshrc":                    "Shell",
+		".bash_profile":                  "Shell",
 		"Dockerfile":                     "Docker",
 		"build/Containerfile":            "Docker",
 		"Dockerfile.dev":                 "Docker",
