@@ -20,10 +20,11 @@ When git cannot list the files, the system **shall** walk the directory tree and
 `dist-newstyle`, `.stack-work`, `.terraform`, `.terragrunt-cache`,
 `lua_modules`, `_opam`, `.zig-cache`, `zig-cache`, `zig-out`, `zig-pkg`,
 `.cpcache`, `.shadow-cljs`, `elm-stuff`, `.spago`, `bower_components` and
-`.crystal`, an `output` directory beside a `spago.yaml` or `spago.dhall`
-(what the PureScript compiler wrote) and a `lib` directory beside a
-`shard.yml` (what shards installed); an `output` or `lib` directory
-elsewhere is kept.
+`.crystal` and `.fake`, an `output` directory beside a `spago.yaml` or
+`spago.dhall` (what the PureScript compiler wrote), a `lib` directory beside
+a `shard.yml` (what shards installed), and `packages` and `paket-files`
+directories beside a `paket.dependencies` (what Paket installed and
+downloaded); an `output`, `lib` or `packages` directory elsewhere is kept.
 
 ## Rationale
 
@@ -42,8 +43,11 @@ caches and build output.
    `.shadow-cljs/builds/app/x.edn`, `elm-stuff/0.19.1/Main.elm`,
    `.spago/p/prelude-6.0.1/src/Prelude.purs`,
    `bower_components/purescript-maybe/src/Data/Maybe.purs` and
-   `.crystal/cache/macro.cr` do not appear in the graph, nor do
-   `app/output/Main/index.js` beside `app/spago.yaml` and
-   `shop/lib/kemal/src/kemal.cr` beside `shop/shard.yml`, while
-   `report/output/summary.md` and `tools/lib/helper.cr` do.
+   `.crystal/cache/macro.cr` and `.fake/build.fsx/intellisense.fsx` do not
+   appear in the graph, nor do `app/output/Main/index.js` beside
+   `app/spago.yaml`, `shop/lib/kemal/src/kemal.cr` beside `shop/shard.yml`,
+   and `fs/packages/Argu/tools/x.fsx` and
+   `fs/paket-files/fsharp/FAKE/Globbing.fs` beside `fs/paket.dependencies`,
+   while `report/output/summary.md`, `tools/lib/helper.cr` and
+   `web/packages/app.fs` do.
 2. An unreadable subdirectory is skipped without failing the scan.

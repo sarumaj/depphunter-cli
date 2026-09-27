@@ -36,6 +36,7 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 		".spago/p/prelude-6.0.1/src/Prelude.purs":               "module Prelude where\n",
 		"bower_components/purescript-maybe/src/Data/Maybe.purs": "module Data.Maybe where\n",
 		".crystal/cache/macro.cr":                               "module M\nend\n",
+		".fake/build.fsx/intellisense.fsx":                      "#r \"x.dll\"\n",
 		"img.bin":                                               "\x00\x01\x02",
 	}
 	for p, c := range files {
@@ -66,22 +67,27 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 	}
 }
 
-// A PureScript project's output/ is what the compiler wrote, and a shard's lib/
-// what shards installed; another output/ or lib/ directory is kept.
+// A PureScript project's output/ is what the compiler wrote, a shard's lib/ what
+// shards installed, and packages/ and paket-files/ beside a paket.dependencies
+// what Paket installed; another output/, lib/ or packages/ directory is kept.
 //
 // Verifies: REQ-LANG-018
 func TestScanSkipsGeneratedBesideManifest(t *testing.T) {
 	root := t.TempDir()
 	for p, c := range map[string]string{
-		"app/spago.yaml":              "package:\n  name: app\n",
-		"app/src/Main.purs":           "module Main where\n",
-		"app/output/Main/index.js":    "export const main = 1;\n",
-		"legacy/spago.dhall":          "{ name = \"legacy\", dependencies = [] : List Text, sources = [] : List Text }\n",
-		"legacy/output/Main/index.js": "export const main = 1;\n",
-		"report/output/summary.md":    "# kept\n",
-		"shop/shard.yml":              "name: shop\n",
-		"shop/lib/kemal/src/kemal.cr": "module Kemal\nend\n",
-		"tools/lib/helper.cr":         "module Helper\nend\n",
+		"app/spago.yaml":                         "package:\n  name: app\n",
+		"app/src/Main.purs":                      "module Main where\n",
+		"app/output/Main/index.js":               "export const main = 1;\n",
+		"legacy/spago.dhall":                     "{ name = \"legacy\", dependencies = [] : List Text, sources = [] : List Text }\n",
+		"legacy/output/Main/index.js":            "export const main = 1;\n",
+		"report/output/summary.md":               "# kept\n",
+		"shop/shard.yml":                         "name: shop\n",
+		"shop/lib/kemal/src/kemal.cr":            "module Kemal\nend\n",
+		"tools/lib/helper.cr":                    "module Helper\nend\n",
+		"fs/paket.dependencies":                  "nuget Argu\n",
+		"fs/packages/Argu/tools/x.fsx":           "let x = 1\n",
+		"fs/paket-files/fsharp/FAKE/Globbing.fs": "module Globbing\n",
+		"web/packages/app.fs":                    "module App\n",
 	} {
 		abs := filepath.Join(root, p)
 		os.MkdirAll(filepath.Dir(abs), 0o755)
@@ -95,8 +101,8 @@ func TestScanSkipsGeneratedBesideManifest(t *testing.T) {
 	for _, f := range got {
 		paths = append(paths, f.Path)
 	}
-	want := []string{"app/spago.yaml", "app/src/Main.purs", "legacy/spago.dhall", "report/output/summary.md",
-		"shop/shard.yml", "tools/lib/helper.cr"}
+	want := []string{"app/spago.yaml", "app/src/Main.purs", "fs/paket.dependencies", "legacy/spago.dhall",
+		"report/output/summary.md", "shop/shard.yml", "tools/lib/helper.cr", "web/packages/app.fs"}
 	if !reflect.DeepEqual(paths, want) {
 		t.Errorf("got %v, want %v", paths, want)
 	}
@@ -420,6 +426,49 @@ func TestScanTellsPerl(t *testing.T) {
 		"script/shop": "Perl", "script/raku": "", "script/bbtool": "Clojure", "cgi-bin/index.cgi": "Perl",
 		"lib/Shop.pm": "Perl", "app.psgi": "Perl", "cpanfile": "Perl", "cpanfile.snapshot": "Carton",
 		"dist.ini": "Dist::Zilla", "Makefile.PL": "Perl",
+	}
+	for _, f := range got {
+		if f.Lang != want[f.Path] {
+			t.Errorf("%s: lang %q, want %q", f.Path, f.Lang, want[f.Path])
+		}
+	}
+}
+
+// ".fs" is F#'s, a GLSL fragment shader's and Forth's: a shader's #version,
+// uniform or void main, and Forth's \ comments and colon definitions, say which.
+// F#'s own directives (#if, #load, #r) and a comment mentioning main do not.
+//
+// Verifies: REQ-LANG-015, REQ-FSHARP-001
+func TestScanTellsFSharpFromShaders(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"src/Cart.fs":          "module Shop.Cart\n\n#if DEBUG\nopen System.Diagnostics\n#endif\n// void main() is C\nlet total = 0\n",
+		"src/Types.fs":         "\xef\xbb\xbfnamespace Shop\n\ntype Item = { Sku: string }\n",
+		"shaders/blur.fs":      "#version 330 core\nout vec4 color;\nvoid main() { color = vec4(1.0); }\n",
+		"shaders/old.fs":       "precision mediump float;\nuniform sampler2D tex;\nvoid main() { gl_FragColor = texture2D(tex, vec2(0.0)); }\n",
+		"shaders/bare.fs":      "void main()\n{\n    gl_FragColor = vec4(1.0);\n}\n",
+		"forth/hello.fs":       "\\ greet\n: hello .\" Hello\" cr ;\n",
+		"forth/square.fs":      ": square ( n -- n^2 ) dup * ;\n",
+		"scripts/build.fsx":    "#r \"nuget: Fake.Core.Target\"\nopen Fake.Core\n",
+		"src/Shop.fsproj":      "<Project Sdk=\"Microsoft.NET.Sdk\" />\n",
+		"paket.dependencies":   "nuget Argu\n",
+		"paket.lock":           "NUGET\n",
+		"src/paket.references": "Argu\n",
+	}
+	for p, c := range files {
+		abs := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(abs), 0o755)
+		os.WriteFile(abs, []byte(c), 0o644)
+	}
+	got, err := Scan(context.Background(), root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"src/Cart.fs": "F#", "src/Types.fs": "F#", "scripts/build.fsx": "F#", "src/Shop.fsproj": "F#",
+		"shaders/blur.fs": "GLSL", "shaders/old.fs": "GLSL", "shaders/bare.fs": "GLSL",
+		"forth/hello.fs": "Forth", "forth/square.fs": "Forth",
+		"paket.dependencies": "Paket", "paket.lock": "Paket", "src/paket.references": "Paket",
 	}
 	for _, f := range got {
 		if f.Lang != want[f.Path] {

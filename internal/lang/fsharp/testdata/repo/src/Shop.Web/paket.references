@@ -1,0 +1,8 @@
+FSharp.Core
+Argu
+Unknown.Package copy_local: false
+
+group Build
+  FAKE
+
+File: Globbing.fs Common

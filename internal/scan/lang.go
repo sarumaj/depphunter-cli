@@ -12,7 +12,7 @@ var byExt = map[string]string{
 	".ts": "TypeScript", ".mts": "TypeScript", ".cts": "TypeScript", ".tsx": "TypeScript",
 	".py": "Python", ".pyi": "Python",
 	".rs": "Rust", ".java": "Java", ".kt": "Kotlin", ".kts": "Kotlin", ".scala": "Scala", ".sc": "Scala",
-	".cs": "C#", ".fs": "F#", ".vb": "Visual Basic",
+	".cs": "C#", ".fs": "F#", ".fsi": "F#", ".fsx": "F#", ".fsscript": "F#", ".fsproj": "F#", ".vb": "Visual Basic",
 	".c": "C", ".h": "C", ".cc": "C++", ".cpp": "C++", ".cxx": "C++", ".c++": "C++", ".hpp": "C++", ".hh": "C++",
 	".hxx": "C++", ".h++": "C++", ".ipp": "C++", ".inl": "C++",
 	".m": "Objective-C", ".mm": "Objective-C++", ".podspec": "Ruby", ".swift": "Swift", ".dart": "Dart",
@@ -36,6 +36,7 @@ var byName = map[string]string{
 	"Jenkinsfile": "Groovy", "Gemfile": "Ruby", "Rakefile": "Ruby", "Guardfile": "Ruby", "Capfile": "Ruby",
 	"rebar.config": "Erlang", "rebar.lock": "Erlang", "mix.lock": "Elixir",
 	"cpanfile": "Perl", "cpanfile.snapshot": "Carton", "dist.ini": "Dist::Zilla",
+	"paket.dependencies": "Paket", "paket.lock": "Paket", "paket.references": "Paket",
 	"luarocks.lock": "Lua", ".luacheckrc": "Lua", ".busted": "Lua",
 	"DESCRIPTION": "R", "NAMESPACE": "R", "renv.lock": "R", "packrat.lock": "R",
 	"Project.toml": "Julia", "JuliaProject.toml": "Julia", "Manifest.toml": "Julia", "JuliaManifest.toml": "Julia",
@@ -163,6 +164,45 @@ func notObjC(head []byte) string {
 		}
 	}
 	return "MATLAB"
+}
+
+// glslSource reports whether a ".fs" file's head is a GLSL fragment shader, which
+// shares the extension with F#: a #version, #extension, #define, #include or
+// #pragma line, a precision/uniform/varying/attribute/layout declaration, void main
+// or a gl_ variable. F# writes none of them: its only directives are #if, #else,
+// #endif, #nowarn, #light, #line, #load, #r and #I, and void is reserved.
+//
+// Implements: REQ-LANG-015, REQ-FSHARP-001
+func glslSource(head []byte) bool {
+	for _, line := range bytes.Split(head, []byte("\n")) {
+		line = bytes.TrimLeft(line, " \t\xef\xbb\xbf")
+		for _, p := range []string{"#version", "#extension", "#define", "#include", "#pragma", "#ifdef", "#ifndef", "precision ", "uniform ", "varying ", "attribute ", "layout(", "layout (", "void main"} {
+			if bytes.HasPrefix(line, []byte(p)) {
+				return true
+			}
+		}
+		if bytes.Contains(line, []byte("gl_FragColor")) || bytes.Contains(line, []byte("gl_FragCoord")) {
+			return true
+		}
+	}
+	return false
+}
+
+// forthSource reports whether a ".fs" file's head is Forth: a line starting with
+// a `\` comment, or a colon definition (": name ... ;") in the first column.
+//
+// Implements: REQ-LANG-015, REQ-FSHARP-001
+func forthSource(head []byte) bool {
+	for _, line := range bytes.Split(head, []byte("\n")) {
+		line = bytes.TrimRight(line, " \t\r")
+		if bytes.Equal(bytes.TrimLeft(line, " \t"), []byte("\\")) || bytes.HasPrefix(bytes.TrimLeft(line, " \t"), []byte("\\ ")) {
+			return true
+		}
+		if bytes.HasPrefix(line, []byte(": ")) && bytes.HasSuffix(line, []byte(" ;")) {
+			return true
+		}
+	}
+	return false
 }
 
 // perlMarker reports whether a line of a file's head starts as only Perl (among the

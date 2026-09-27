@@ -50,6 +50,10 @@ var Servers = []Server{
 		Commands: [][]string{{"kotlin-language-server"}}},
 	{Name: "metals", Open: true, Exts: map[string]string{".scala": "scala", ".sc": "scala"}, Commands: [][]string{{"metals"}}},
 	{Name: "csharp-ls", Open: true, Exts: map[string]string{".cs": "csharp"}, Commands: [][]string{{"csharp-ls"}}},
+	// FsAutoComplete answers references for F# sources and scripts; it loads the
+	// .fsproj projects (their compile order) first, which takes a while.
+	{Name: "fsharp", Open: true, Exts: map[string]string{".fs": "fsharp", ".fsi": "fsharp", ".fsx": "fsharp"},
+		Commands: [][]string{{"fsautocomplete", "--adaptive-lsp-server-enabled"}}},
 	{Name: "clangd", Open: true, Exts: map[string]string{
 		".c": "c", ".h": "cpp", ".cc": "cpp", ".cpp": "cpp", ".cxx": "cpp", ".c++": "cpp",
 		".hpp": "cpp", ".hh": "cpp", ".hxx": "cpp", ".h++": "cpp", ".ipp": "cpp", ".inl": "cpp",

@@ -137,6 +137,7 @@ The server **shall** ...
 | `elm`        | The Elm plugin: modules, elm.json, installed packages in ELM_HOME and the package site.               |
 | `purescript` | The PureScript plugin: modules, spago.yaml, spago.lock, spago.dhall, packages.dhall and bower.json.   |
 | `crystal`    | The Crystal plugin: requires, shard.yml, shard.lock, shard.override.yml and shards installed in lib/. |
+| `fsharp`     | The F# plugin: sources and scripts, .fsproj compile order, Paket, and NuGet shared with C#.           |
 | `terraform`  | The Terraform and OpenTofu plugin, lock files, Terragrunt and the module registries.                  |
 | `proto`      | The Protocol Buffers plugin, Buf's configuration and lock files and the Buf Schema Registry.          |
 | `shell`      | The shell script plugin (sh, Bash, zsh, bats), direnv and packages scripts install.                   |
@@ -314,6 +315,10 @@ requirements of type `limitation` in their scopes:
   requires a macro writes are not read, only the first branch of a macro
   `{% if %}` decides the nesting after it, `CRYSTAL_PATH` is not read and
   `@[Link]` libraries are not mapped.
+- F# is read without type checking or MSBuild evaluation: unqualified names
+  an `open` or an `[<AutoOpen>]` module brings in are not linked, MSBuild
+  conditions are ignored, an F# `open` of a C# project's namespace is not
+  linked to it, and `#r` of an assembly outside the repository is dropped.
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

@@ -28,5 +28,6 @@ namespaces.
 ## Notes
 
 The package map and the central version lookup are keyed by the lower-case id,
-so two spellings of one id are one package, named as first written, and a
-reference takes the central version whatever its case. A test covers it.
+so two spellings of one id are one package, named as a lock file records it or
+else as first written, and a reference takes the central version whatever its
+case. A test covers it; the F# plugin reads the same map (REQ-FSHARP-008).

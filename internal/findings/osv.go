@@ -35,7 +35,9 @@ const (
 // Bazel's module extensions install are asked about under their own ecosystems),
 // nor flake inputs and nixpkgs packages (OSV has no Nix ecosystem), nor Elm
 // or PureScript packages (OSV has no Elm or PureScript ecosystem), nor Crystal
-// shards (OSV has no Crystal ecosystem).
+// shards (OSV has no Crystal ecosystem), nor the files and repositories Paket
+// fetches from GitHub, git servers and HTTP (F# and C# NuGet packages, Paket's
+// included, are asked about as NuGet).
 //
 // Implements: REQ-FND-010
 var osvEcosystems = map[string]string{

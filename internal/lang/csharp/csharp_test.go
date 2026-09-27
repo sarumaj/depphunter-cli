@@ -66,8 +66,8 @@ func TestPackageIdsIgnoreCase(t *testing.T) {
 	}
 	r := newResolver(all)
 	// Two spellings of one id are one package, and it takes the central version.
-	if len(r.packages) != 1 {
-		t.Errorf("packages: %v", r.packages)
+	if t1, ok := r.Package("", "", "NEWTONSOFT.JSON"); !ok || t1.Package != r.ID("newtonsoft.json") {
+		t.Errorf("one package: %+v %s", t1, r.ID("newtonsoft.json"))
 	}
 	got := r.Resolve("a/Program.cs", lang.RawImport{Module: "Newtonsoft.Json.Linq"})
 	if got.Ecosystem != "nuget" || !strings.EqualFold(got.Package, "Newtonsoft.Json") || got.Version != "13.0.3" || !got.Pinned {

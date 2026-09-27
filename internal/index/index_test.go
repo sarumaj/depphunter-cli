@@ -103,6 +103,25 @@ func TestAScopedSourceBeatsTheMachinesUnscopedOne(t *testing.T) {
 	}
 }
 
+// Paket names its feeds in paket.dependencies (per group) and paket.lock; a
+// directory and nuget.org itself are not recorded.
+//
+// Verifies: REQ-FSHARP-010
+func TestDiscoverReadsPaketFeeds(t *testing.T) {
+	files := write(t, map[string]string{
+		"paket.dependencies": "source https://www.nuget.org/api/v2\nsource ./local-packages\nnuget Argu\n\ngroup Build\n  source https://nuget.pkg.example.com/acme/index.json username: \"x\" password: \"%TOKEN%\"\n  nuget FAKE\n",
+		"sub/paket.lock":     "NUGET\n  remote: https://feed.internal/v3/index.json\n    Argu (6.1.1)\n",
+	})
+	c := Discover(files, env(nil), "")
+	var got []string
+	for _, s := range c.Sources(NuGet) {
+		got = append(got, s.URL)
+	}
+	if want := []string{"https://nuget.pkg.example.com/acme/index.json", "https://feed.internal/v3/index.json"}; strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("paket feeds %v, want %v", got, want)
+	}
+}
+
 // Verifies: REQ-SUP-015
 func TestDiscoverReadsEveryEcosystem(t *testing.T) {
 	files := write(t, map[string]string{

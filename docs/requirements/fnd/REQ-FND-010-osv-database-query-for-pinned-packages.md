@@ -33,7 +33,7 @@ repository's own files cannot answer.
 2. A package of an ecosystem OSV does not cover (PowerShell Gallery, container
    images, vcpkg, CocoaPods, Carthage, LuaRocks, Wally, CPAN, Zig, Nix
    flake inputs and nixpkgs packages, Elm and PureScript packages, Crystal
-   shards) is not asked about.
+   shards, Paket's GitHub, git and HTTP dependencies) is not asked about.
 
 ## Notes
 

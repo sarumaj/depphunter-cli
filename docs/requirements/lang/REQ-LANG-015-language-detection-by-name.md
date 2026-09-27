@@ -33,7 +33,8 @@ Clojure's `project.clj`, `build.boot`, `deps.edn`, `bb.edn` and
 (Starlark, as `.bzl` and `.bazel` files are) and `MODULE.bazel.lock`
 (JSON), Nix's `flake.lock` (Nix, as `.nix` files are), Gleam's `gleam.toml`
 (Gleam, as `.gleam` files are), shards' `shard.lock` (YAML, as `shard.yml`
-is),
+is), Paket's `paket.dependencies`, `paket.lock` and `paket.references`
+(Paket; `.fs`, `.fsi`, `.fsx`, `.fsscript` and `.fsproj` files are F#),
 the shells' and direnv's startup files (`.bashrc`,
 `.zshrc`, `.profile`, `.envrc` and the others of REQ-SHELL-001), and the
 Dockerfile names of REQ-DOCKER-001), or, for a file neither names, from a
@@ -47,7 +48,9 @@ Objective-C only when its head shows it, else MATLAB or Mercury, and a `.h`
 file whose head shows Objective-C **shall** be Objective-C rather than C
 (REQ-OBJC-001); `.mm` is Objective-C++. A `.pl` file whose head shows Prolog
 and nothing of Perl **shall** be Prolog, and a `.t` file whose head shows
-nothing of Perl **shall** have no language (REQ-PERL-001).
+nothing of Perl **shall** have no language (REQ-PERL-001). A `.fs` file whose
+head shows a GLSL fragment shader **shall** be GLSL, and one whose head shows
+Forth **shall** be Forth, rather than F# (REQ-FSHARP-001).
 
 ## Rationale
 
@@ -93,3 +96,7 @@ Objective-C from MATLAB, Mercury and C.
 7. `nix/modules/default.nix` and `flake.lock` are Nix.
 8. `src/shop/cart.cr` is Crystal, and `shard.yml` and `shard.lock` are
    YAML.
+9. `src/Cart.fs`, `scripts/build.fsx` and `src/Shop.fsproj` are F#,
+   `paket.dependencies`, `paket.lock` and `src/paket.references` are Paket,
+   `shaders/blur.fs` starting `#version 330 core` is GLSL and
+   `forth/hello.fs` starting with a `\` comment is Forth.

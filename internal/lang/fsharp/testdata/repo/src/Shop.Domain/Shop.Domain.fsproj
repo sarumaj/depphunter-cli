@@ -1,0 +1,22 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0</TargetFramework>
+  </PropertyGroup>
+  <ItemGroup>
+    <Compile Include="..\..\paket-files\fsharp\FAKE\src\app\FakeLib\Globbing\Globbing.fs">
+      <Paket>True</Paket>
+      <Link>paket-files/Globbing.fs</Link>
+    </Compile>
+    <Compile Include="Types.fs" />
+    <Compile Include="Pricing.fsi" />
+    <Compile Include="Pricing.fs" />
+    <Compile Include="Cart.fs" />
+    <Compile Include="Later.fs" />
+    <Compile Include="$(GeneratedDir)\Version.fs" />
+  </ItemGroup>
+  <ItemGroup>
+    <PackageReference Include="Newtonsoft.Json" />
+    <PackageReference Update="FSharp.Core" Version="8.0.400" />
+  </ItemGroup>
+</Project>

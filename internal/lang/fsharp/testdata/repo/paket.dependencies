@@ -1,0 +1,18 @@
+source https://api.nuget.org/v3/index.json
+source https://nuget.pkg.example.com/acme/index.json
+storage: none
+
+nuget FSharp.Core ~> 8.0
+nuget Argu >= 6.1 redirects: force
+nuget Expecto 10.2.1 // exact: pinned without a lock too
+nuget FsCheck = 2.16.6
+nuget Fake.Core.Target
+
+github fsharp/FAKE:0341a2e614eb2a7f34607cec914eb0ed83ce9add src/app/FakeLib/Globbing/Globbing.fs
+github forki/FsUnit FsUnit.fs
+git https://github.com/fsprojects/Chessie.git master
+http http://www.fssnip.net/raw/1M/test1.fs
+
+group Build
+  source https://api.nuget.org/v3/index.json
+  nuget FAKE < 5
