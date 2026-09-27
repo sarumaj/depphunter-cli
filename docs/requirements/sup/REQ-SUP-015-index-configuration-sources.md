@@ -20,7 +20,9 @@ The system **shall** read index configuration from this machine:
 `composer` repositories of Composer's `config.json` in `COMPOSER_HOME`,
 `~/.config/composer` and `~/.composer`, Bundler's rubygems.org mirror
 (`BUNDLE_MIRROR__RUBYGEMS__ORG`, `~/.bundle/config`), the sources of
-`~/.gemrc`, pub's `PUB_HOSTED_URL` and the Hex API of `HEX_API_URL`.
+`~/.gemrc`, pub's `PUB_HOSTED_URL`, the Hex API of `HEX_API_URL`, and R's
+`RENV_CONFIG_REPOS_OVERRIDE` and the `options(repos = ...)` of `~/.Rprofile`
+and `R_PROFILE_USER`.
 
 The system **shall** read index configuration from the repository: `.npmrc`,
 `.yarnrc.yml`, `pip.conf`, `pip.ini`, `requirements*.txt`, the Poetry and uv
@@ -28,8 +30,11 @@ indexes of `pyproject.toml`, `NuGet.config`, the repositories of `pom.xml`,
 `.cargo/config.toml`, the `composer` repositories of `composer.json`, the
 `source` lines of a `Gemfile` (a `source ... do` block serving only the gems
 inside it), the GEM remotes of `Gemfile.lock`, the `hosted:` servers of a
-`pubspec.yaml` or `pubspec_overrides.yaml` (each serving its package) and the
-servers other than pub.dev that `pubspec.lock` resolved packages from.
+`pubspec.yaml` or `pubspec_overrides.yaml` (each serving its package), the
+servers other than pub.dev that `pubspec.lock` resolved packages from, the
+repositories other than CRAN of `renv.lock` (each serving the packages
+recorded from it) and the `options(repos = ...)` of `.Rprofile` and
+`Rprofile.site`.
 
 ## Rationale
 

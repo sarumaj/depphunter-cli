@@ -478,3 +478,91 @@ func TestHexDependencies(t *testing.T) {
 		t.Errorf("asked %v, want the package first", asked)
 	}
 }
+
+// CRAN and its mirrors are asked through crandb: the release asked for, else the
+// current one; R and its base packages are not dependencies.
+//
+// Verifies: REQ-SUP-048
+func TestCRANDependencies(t *testing.T) {
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Path)
+		switch r.URL.Path {
+		case "/dplyr/1.1.4":
+			w.Write([]byte(`{"Package":"dplyr","Version":"1.1.4",
+"Depends":{"R":">= 3.5.0"},
+"Imports":{"cli":">= 3.4.0","generics":"*","methods":"*","R6":"*","vctrs":">= 0.6.4"}}`))
+		case "/dplyr":
+			w.Write([]byte(`{"Package":"dplyr","Version":"1.1.5","Imports":{"cli":">= 3.6.0"},"LinkingTo":{"cpp11":"== 0.4.7"}}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	old := crandbAPI
+	crandbAPI = srv.URL
+	t.Cleanup(func() { crandbAPI = old })
+	c := clientFor(t, CRAN, "https://cloud.r-project.org", "")
+	for _, tt := range []struct {
+		version string
+		want    []lang.Target
+	}{
+		{"1.1.4", []lang.Target{
+			{Ecosystem: CRAN, Package: "R6"},
+			{Ecosystem: CRAN, Package: "cli", Version: ">= 3.4.0"},
+			{Ecosystem: CRAN, Package: "generics"},
+			{Ecosystem: CRAN, Package: "vctrs", Version: ">= 0.6.4"},
+		}},
+		// A requirement names no release; crandb does not know 1.0.99 either.
+		{">= 1.1.0", []lang.Target{
+			{Ecosystem: CRAN, Package: "cli", Version: ">= 3.6.0"},
+			{Ecosystem: CRAN, Package: "cpp11", Version: "0.4.7", Pinned: true},
+		}},
+		{"1.0.99", []lang.Target{
+			{Ecosystem: CRAN, Package: "cli", Version: ">= 3.6.0"},
+			{Ecosystem: CRAN, Package: "cpp11", Version: "0.4.7", Pinned: true},
+		}},
+	} {
+		got := c.Dependencies(lang.Target{Ecosystem: CRAN, Package: "dplyr", Version: tt.version})
+		if !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("%s: got %+v, want %+v", tt.version, got, tt.want)
+		}
+	}
+	if want := []string{"/dplyr/1.1.4", "/dplyr", "/dplyr/1.0.99", "/dplyr"}; !reflect.DeepEqual(asked, want) {
+		t.Errorf("asked %v, want %v", asked, want)
+	}
+}
+
+// Any other R repository is asked for its src/contrib/PACKAGES, once for all of its
+// packages.
+//
+// Verifies: REQ-SUP-048
+func TestCRANLikeRepositoryDependencies(t *testing.T) {
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Path)
+		if r.URL.Path != "/drat/src/contrib/PACKAGES" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Write([]byte("Package: acmeR\nVersion: 0.3.0\nDepends: R (>= 4.0), methods\nImports: dplyr (>= 1.1.0),\n    jsonlite\nLinkingTo: Rcpp\n\n" +
+			"Package: acmeUtils\nVersion: 1.0.0\n"))
+	}))
+	defer srv.Close()
+	c := clientFor(t, CRAN, srv.URL+"/drat", "")
+	got := c.Dependencies(lang.Target{Ecosystem: CRAN, Package: "acmeR", Version: "0.3.0"})
+	want := []lang.Target{
+		{Ecosystem: CRAN, Package: "Rcpp"},
+		{Ecosystem: CRAN, Package: "dplyr", Version: ">= 1.1.0"},
+		{Ecosystem: CRAN, Package: "jsonlite"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("got %+v, want %+v", got, want)
+	}
+	if got := c.Dependencies(lang.Target{Ecosystem: CRAN, Package: "acmeUtils", Version: "1.0.0"}); len(got) != 0 {
+		t.Errorf("acmeUtils: got %+v, want none", got)
+	}
+	if want := []string{"/drat/src/contrib/PACKAGES"}; !reflect.DeepEqual(asked, want) {
+		t.Errorf("asked %v, want %v", asked, want)
+	}
+}

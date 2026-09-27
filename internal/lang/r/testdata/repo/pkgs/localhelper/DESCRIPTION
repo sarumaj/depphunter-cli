@@ -1,0 +1,3 @@
+Package: localhelper
+Version: 0.0.1
+Imports: shopr

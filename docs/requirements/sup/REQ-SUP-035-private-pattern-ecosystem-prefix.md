@@ -34,5 +34,5 @@ so `psgallery:Acme.*` was read as a name for every ecosystem; it is now one of
 them.
 
 The C/C++ package managers' ids `vcpkg` and `conan` are prefixes as well, and
-so are PHP's `composer`, Ruby's `rubygems`, Swift's `swiftpm`, Dart's `pub`
-and Elixir's and Erlang's `hex`.
+so are PHP's `composer`, Ruby's `rubygems`, Swift's `swiftpm`, Dart's `pub`,
+Elixir's and Erlang's `hex` and R's `cran` and `bioconductor`.

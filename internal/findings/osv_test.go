@@ -332,6 +332,41 @@ func TestOSVAsksHexForBeamPackages(t *testing.T) {
 	}
 }
 
+// An R package is asked about in OSV's CRAN ecosystem, a Bioconductor package in
+// OSV's Bioconductor ecosystem, each by the version renv.lock pins.
+//
+// Verifies: REQ-FND-010, REQ-R-007, REQ-R-009
+func TestOSVAsksCRANAndBioconductorForRPackages(t *testing.T) {
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Queries []struct {
+				Package struct{ Name, Ecosystem string } `json:"package"`
+				Version string                           `json:"version"`
+			} `json:"queries"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		out := struct {
+			Results []batchResult `json:"results"`
+		}{}
+		for _, q := range body.Queries {
+			asked = append(asked, q.Package.Ecosystem+" "+q.Package.Name+" "+q.Version)
+			out.Results = append(out.Results, batchResult{})
+		}
+		json.NewEncoder(w).Encode(out)
+	}))
+	defer srv.Close()
+	o := &OSV{http: srv.Client(), cache: store.New(t.TempDir(), time.Hour), API: srv.URL}
+	o.Query(context.Background(), []Package{
+		{Ecosystem: "cran", Name: "readxl", Version: "1.4.3"},
+		{Ecosystem: "bioconductor", Name: "DESeq2", Version: "1.44.0"},
+	})
+	sort.Strings(asked)
+	if want := []string{"Bioconductor DESeq2 1.44.0", "CRAN readxl 1.4.3"}; !reflect.DeepEqual(asked, want) {
+		t.Errorf("asked %q, want %q", asked, want)
+	}
+}
+
 // An advisory that fixes two release lines separately suggests the fix on the line in
 // use, not whichever the advisory happens to list first.
 func TestOSVSuggestsTheFixOnTheLineInUse(t *testing.T) {

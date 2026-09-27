@@ -61,6 +61,11 @@ var Servers = []Server{
 		Commands: [][]string{{"elixir-ls"}, {"language_server.sh"}, {"lexical"}, {"nextls", "--stdio"}}},
 	{Name: "erlang", Open: true, Exts: map[string]string{".erl": "erlang", ".hrl": "erlang"},
 		Commands: [][]string{{"elp", "server"}, {"erlang_ls"}}},
+	// The languageserver package runs inside R. R on PATH does not mean the package
+	// is installed; when it is not, R exits, initialize fails, and the failure is
+	// logged and the server passed over.
+	{Name: "r", Open: true, Exts: map[string]string{".r": "r", ".rmd": "rmd"},
+		Commands: [][]string{{"R", "--slave", "-e", "languageserver::run()"}}},
 }
 
 type Options struct {

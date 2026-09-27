@@ -536,6 +536,138 @@ func (c *Client) hexPackage(ctx context.Context, index string, t lang.Target) ([
 	return out, nil
 }
 
+// ---------------------------------------------------------------- CRAN
+
+// crandbAPI serves CRAN's package metadata as JSON: <api>/<name> for the current
+// release, <api>/<name>/<version> for any earlier one. CRAN itself publishes only
+// the PACKAGES file of every package's current release.
+var crandbAPI = "https://crandb.r-pkg.org"
+
+// rBase are the packages of priority "base": part of R itself, never installed from
+// a repository, so not dependencies to follow.
+var rBase = map[string]bool{
+	"R": true, "base": true, "compiler": true, "datasets": true, "grDevices": true, "graphics": true,
+	"grid": true, "methods": true, "parallel": true, "splines": true, "stats": true, "stats4": true,
+	"tcltk": true, "tools": true, "utils": true,
+}
+
+// cranPackage reads an R package's dependencies - Depends, Imports and LinkingTo,
+// without R and its base packages - from crandb when the index is CRAN or a mirror
+// of it (the version asked for when it names one release, else the current one), and
+// from the repository's src/contrib/PACKAGES file otherwise: the index every
+// CRAN-like repository (drat, r-universe, an internal one) serves, read once.
+//
+// Implements: REQ-SUP-048
+func (c *Client) cranPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+	if !CRANMirror(index) {
+		pkgs, err := c.cranRepo(ctx, index)
+		if err != nil {
+			return nil, err
+		}
+		return pkgs[t.Package], nil
+	}
+	base := strings.TrimRight(crandbAPI, "/") + "/" + url.PathEscape(t.Package)
+	var body []byte
+	var err error
+	if v := strings.TrimSpace(t.Version); lang.Pinned(v) {
+		body, err = c.get(ctx, base+"/"+url.PathEscape(v))
+	}
+	if body == nil {
+		// No release named, or crandb does not have it: the current one answers.
+		if body, err = c.get(ctx, base); err != nil {
+			return nil, err
+		}
+	}
+	var doc struct {
+		Depends, Imports, LinkingTo map[string]string
+	}
+	if err := json.Unmarshal(body, &doc); err != nil {
+		return nil, err
+	}
+	var out []dep
+	seen := map[string]bool{}
+	for _, field := range []map[string]string{doc.Depends, doc.Imports, doc.LinkingTo} {
+		for name, req := range field {
+			if rBase[name] || seen[name] {
+				continue
+			}
+			seen[name] = true
+			out = append(out, dep{Name: name, Version: rRequirement(req)})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// rRequirement writes an R version requirement as the R plugin does: "*" is none,
+// "== 1.2" the bare version (pinned), anything else ">= 1.2".
+func rRequirement(req string) string {
+	req = strings.Join(strings.Fields(strings.Trim(strings.TrimSpace(req), "()")), " ")
+	if req == "*" {
+		return ""
+	}
+	if v, ok := strings.CutPrefix(req, "=="); ok {
+		return strings.TrimSpace(v)
+	}
+	return req
+}
+
+// cranRepo reads a CRAN-like repository's src/contrib/PACKAGES: one DCF record per
+// package, with its Depends, Imports and LinkingTo.
+func (c *Client) cranRepo(ctx context.Context, index string) (map[string][]dep, error) {
+	c.mu.Lock()
+	pkgs, ok := c.repos[index]
+	c.mu.Unlock()
+	if ok {
+		return pkgs, nil
+	}
+	body, err := c.accept(ctx, strings.TrimRight(index, "/")+"/src/contrib/PACKAGES", "text/plain")
+	if err != nil {
+		return nil, err
+	}
+	pkgs = map[string][]dep{}
+	for _, rec := range strings.Split(strings.ReplaceAll(string(body), "\r\n", "\n"), "\n\n") {
+		fields := map[string]string{}
+		last := ""
+		for _, line := range strings.Split(rec, "\n") {
+			if line == "" {
+				continue
+			}
+			if line[0] == ' ' || line[0] == '\t' {
+				fields[last] += " " + strings.TrimSpace(line)
+				continue
+			}
+			if k, v, ok := strings.Cut(line, ":"); ok {
+				last = k
+				fields[k] = strings.TrimSpace(v)
+			}
+		}
+		name := fields["Package"]
+		if name == "" {
+			continue
+		}
+		var out []dep
+		seen := map[string]bool{}
+		for _, f := range []string{"Depends", "Imports", "LinkingTo"} {
+			for _, entry := range strings.Split(fields[f], ",") {
+				n, req, _ := strings.Cut(strings.TrimSpace(entry), "(")
+				n = strings.TrimSpace(n)
+				if n == "" || rBase[n] || seen[n] {
+					continue
+				}
+				seen[n] = true
+				out = append(out, dep{Name: n, Version: rRequirement(req)})
+			}
+		}
+		sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+		pkgs[name] = out
+	}
+	c.mu.Lock()
+	c.repos[index] = pkgs
+	c.mu.Unlock()
+	return pkgs, nil
+}
+
 // ---------------------------------------------------------------- OCI
 
 // The media types a registry may answer a manifest request with: the OCI ones and

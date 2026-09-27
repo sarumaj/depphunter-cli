@@ -529,3 +529,67 @@ func TestDiscoverReadsHexAPI(t *testing.T) {
 		t.Errorf("HEX_API_URL: got %s (known %v)", idx, known)
 	}
 }
+
+// renv.lock's repositories are the repository's, each scoped to the packages
+// installed from it; CRAN and Posit Package Manager are the public index. An
+// options(repos = ...) in the project's .Rprofile is the repository's as well; in
+// the user's ~/.Rprofile, R_PROFILE_USER or RENV_CONFIG_REPOS_OVERRIDE it is this
+// machine's.
+//
+// Verifies: REQ-SUP-015, REQ-SUP-048
+func TestDiscoverReadsRRepositories(t *testing.T) {
+	files := write(t, map[string]string{
+		"renv.lock": `{"R": {"Version": "4.4.1", "Repositories": [
+  {"Name": "CRAN", "URL": "https://cloud.r-project.org"},
+  {"Name": "PPM", "URL": "https://packagemanager.posit.co/cran/latest"},
+  {"Name": "internal", "URL": "https://cran.corp.test/latest"}]},
+ "Packages": {
+  "dplyr": {"Package": "dplyr", "Version": "1.1.4", "Source": "Repository", "Repository": "PPM"},
+  "acmeR": {"Package": "acmeR", "Version": "0.3.0", "Source": "Repository", "Repository": "internal"}}}`,
+		"sub/.Rprofile": `options(repos = c(CRAN = "https://cran.rstudio.com", drat = "https://acme.github.io/drat"))`,
+	})
+	c := Discover(files, env(nil), "")
+	for pkg, want := range map[string]string{
+		"acmeR": "https://cran.corp.test/latest",
+		"dplyr": "https://acme.github.io/drat",
+	} {
+		if idx, known := c.For(CRAN, pkg); idx != want || known {
+			t.Errorf("%s: got %s (known %v), want %s, unknown", pkg, idx, known, want)
+		}
+	}
+	if idx, known := Discover(nil, env(nil), "").For(CRAN, "dplyr"); idx != "https://cloud.r-project.org" || !known {
+		t.Errorf("default: got %s (known %v)", idx, known)
+	}
+
+	home := t.TempDir()
+	os.WriteFile(filepath.Join(home, ".Rprofile"), []byte(`local({
+  options(repos = "https://r.corp.test")
+})`), 0o644)
+	if idx, known := Discover(nil, env(nil), home).For(CRAN, "dplyr"); idx != "https://r.corp.test" || !known {
+		t.Errorf("~/.Rprofile: got %s (known %v)", idx, known)
+	}
+	c = Discover(nil, env(map[string]string{"RENV_CONFIG_REPOS_OVERRIDE": "CRAN=https://mirror.corp.test/cran"}), "")
+	if idx, known := c.For(CRAN, "dplyr"); idx != "https://mirror.corp.test/cran" || !known {
+		t.Errorf("RENV_CONFIG_REPOS_OVERRIDE: got %s (known %v)", idx, known)
+	}
+}
+
+// Verifies: REQ-SUP-048
+func TestCRANMirror(t *testing.T) {
+	for u, want := range map[string]bool{
+		"https://cloud.r-project.org":                                   true,
+		"https://cran.r-project.org/":                                   true,
+		"https://cran.rstudio.com":                                      true,
+		"https://cran.uni-muenster.de":                                  false,
+		"https://packagemanager.posit.co/cran/latest":                   true,
+		"https://packagemanager.rstudio.com/all/__linux__/jammy/latest": true,
+		"https://packagemanager.posit.co/bioconductor":                  false,
+		"https://acme.r-universe.dev":                                   false,
+		"https://cran.corp.test/latest":                                 false,
+		"https://r.corp.test":                                           false,
+	} {
+		if got := CRANMirror(u); got != want {
+			t.Errorf("%s: got %v, want %v", u, got, want)
+		}
+	}
+}

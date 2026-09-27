@@ -121,6 +121,7 @@ The server **shall** ...
 | `swift`  | The Swift plugin, SwiftPM and Xcode's package references.                                      |
 | `dart`   | The Dart plugin, Flutter and pub.                                                              |
 | `beam`   | The Elixir and Erlang plugin, Mix, rebar3 and Hex.                                             |
+| `r`      | The R plugin, R Markdown and Quarto documents, renv, packrat, CRAN and Bioconductor.           |
 | `ps`     | The PowerShell plugin.                                                                         |
 | `ci`     | The continuous-integration plugin (GitHub Actions, GitLab CI, container images).               |
 | `docker` | The Dockerfile and Compose plugin, and the container-image references it shares with `ci`.     |
@@ -215,6 +216,10 @@ requirements of type `limitation` in their scopes:
   modules that macros define and aliases a package's `__using__` injects are
   not known, calls through variables are not seen, and `rebar.lock` has no
   package-to-package edges.
+- R is read without running R: package names and paths computed at run time,
+  definitions inside blocks and calls through variables are not seen, calls
+  are linked by name, and a Bioconductor package no lock marks is recognized
+  only from a curated table.
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

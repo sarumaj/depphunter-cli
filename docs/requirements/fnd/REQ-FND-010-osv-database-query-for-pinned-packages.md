@@ -16,8 +16,9 @@ With `--online`, the system **shall** ask the OSV database about every external
 package the map pins to a version in the ecosystems Go, npm, PyPI, crates.io,
 Maven, NuGet, GitHub Actions, Conan (as `ConanCenter`), Composer (as
 `Packagist`, a version's leading `v` dropped), RubyGems, Swift packages (as
-`SwiftURL`, by the URL they are named after), pub (as `Pub`) and Hex (as
-`Hex`), and place each matched advisory on its package with its fixed version.
+`SwiftURL`, by the URL they are named after), pub (as `Pub`), Hex (as `Hex`),
+CRAN (as `CRAN`) and Bioconductor (as `Bioconductor`), and place each matched
+advisory on its package with its fixed version.
 
 ## Rationale
 

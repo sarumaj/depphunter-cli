@@ -1,0 +1,18 @@
+PackratFormat: 1.4
+PackratVersion: 0.9.2
+RVersion: 4.2.0
+Repos: CRAN=https://cloud.r-project.org
+
+Package: jsonlite
+Source: CRAN
+Version: 1.8.8
+Hash: 1234
+
+Package: httr
+Source: github
+Version: 1.4.7.9000
+GithubRepo: httr
+GithubUsername: r-lib
+GithubRef: main
+GithubSHA1: 9f8e7d6c5b4a39281706f5e4d3c2b1a098765432
+Requires: curl, jsonlite, mime

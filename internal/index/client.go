@@ -41,6 +41,9 @@ type Client struct {
 	// feeds is what a NuGet service index resolved to: the same answer for every
 	// package on that feed, and one request rather than one per package.
 	feeds map[string]string
+	// repos is what the PACKAGES file of each CRAN-like repository lists: one
+	// request per repository rather than one per package.
+	repos map[string]map[string][]dep
 	// rep is the report this run is writing, if anybody is reading it. It is set per
 	// analysis - one client serves every re-analysis in --watch - so it is guarded
 	// like the rest.
@@ -81,6 +84,7 @@ func NewClient(cfg *Config, dir string, ttl, timeout time.Duration,
 		seen:    map[string][]lang.Target{},
 		failed:  map[string]time.Time{},
 		feeds:   map[string]string{},
+		repos:   map[string]map[string][]dep{},
 	}
 }
 
@@ -216,6 +220,8 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		deps, err = c.pubPackage(ctx, index, t)
 	case Hex:
 		deps, err = c.hexPackage(ctx, index, t)
+	case CRAN:
+		deps, err = c.cranPackage(ctx, index, t)
 	default:
 		// Maven is the one that cannot be asked. A POM is addressed by group *and*
 		// artifact, and the Java plugin puts only the group on the map (an import
