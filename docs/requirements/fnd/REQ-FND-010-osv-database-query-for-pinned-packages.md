@@ -34,7 +34,7 @@ repository's own files cannot answer.
    images, vcpkg, CocoaPods, Carthage, LuaRocks, Wally, CPAN, Zig, Nix
    flake inputs and nixpkgs packages, Elm and PureScript packages, Crystal
    shards, Paket's GitHub, git and HTTP dependencies, dub packages, fpm
-   packages) is not asked about.
+   packages, haxelib libraries) is not asked about.
 
 ## Notes
 

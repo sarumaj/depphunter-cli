@@ -135,6 +135,10 @@ var Servers = []Server{
 	{Name: "d", Open: true, Exts: map[string]string{".d": "d", ".di": "d"}, Commands: [][]string{{"serve-d"}}},
 	// fortls answers references for Fortran modules and procedures across the
 	// project's sources (free and fixed form), over stdio.
+	// The Haxe language server (vshaxe's, run as haxe-language-server) answers
+	// references for Haxe modules; it compiles with the first .hxml it finds
+	// (build.hxml), so a project with none may get no answers.
+	{Name: "haxe", Open: true, Exts: map[string]string{".hx": "haxe"}, Commands: [][]string{{"haxe-language-server"}}},
 	{Name: "fortran", Open: true, Exts: map[string]string{".f90": "fortran", ".f95": "fortran", ".f03": "fortran", ".f08": "fortran", ".f18": "fortran", ".f": "fortran", ".for": "fortran", ".ftn": "fortran", ".f77": "fortran", ".fpp": "fortran"}, Commands: [][]string{{"fortls"}}},
 	// neocmakelsp and cmake-language-server both answer references for CMake's
 	// functions, macros and variables; a CMakeLists.txt is known by its name.

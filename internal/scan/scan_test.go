@@ -38,6 +38,7 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 		".crystal/cache/macro.cr":                               "module M\nend\n",
 		".fake/build.fsx/intellisense.fsx":                      "#r \"x.dll\"\n",
 		".dub/packages/leftpad/1.0.0/leftpad/source/leftpad.d":  "module leftpad;\n",
+		".haxelib/format/3,5,0/format/png/Reader.hx":            "package format.png;\n",
 		"img.bin": "\x00\x01\x02",
 	}
 	for p, c := range files {

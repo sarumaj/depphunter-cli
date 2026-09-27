@@ -1,0 +1,3 @@
+# @install: lix --silent download "git:https://git.acme.dev/acmeapi.git#main" into acmeapi/0.3.0/git/main
+-cp ${HAXE_LIBCACHE}/acmeapi/0.3.0/git/main/src
+-D acmeapi=0.3.0

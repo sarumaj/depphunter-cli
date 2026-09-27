@@ -1,0 +1,25 @@
+# Build the shop for JavaScript, then its tests and a C++ binary.
+-cp src
+--class-path shared
+-lib openfl:9.2.0
+-lib tink_core
+--library hxnodejs
+-main shop.Main
+-D analyzer-optimize
+-resource assets/banner.txt@banner
+--macro shop.macros.Build.run()
+--each
+
+-js bin/shop.js
+
+--next
+
+-lib utest:1.13.2
+-cp test
+shop.util.Money
+common.hxml
+
+--next
+
+-cpp bin/cpp
+-lib hxcpp

@@ -27,6 +27,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang/gleam"
 	"github.com/sarumaj/depphunter-cli/internal/lang/golang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/haskell"
+	"github.com/sarumaj/depphunter-cli/internal/lang/haxe"
 	"github.com/sarumaj/depphunter-cli/internal/lang/java"
 	"github.com/sarumaj/depphunter-cli/internal/lang/javascript"
 	"github.com/sarumaj/depphunter-cli/internal/lang/julia"
@@ -121,7 +122,7 @@ func BenchmarkColdAnalysis(b *testing.B) {
 	writeReferenceProject(b, root, referenceFiles)
 	plugins := []lang.Plugin{
 		golang.Plugin{}, javascript.Plugin{}, python.Plugin{}, rust.Plugin{}, java.Plugin{},
-		kotlin.Plugin{}, scala.Plugin{}, csharp.Plugin{}, fsharp.Plugin{}, cpp.Plugin{}, cmake.Plugin{}, php.Plugin{}, ruby.Plugin{}, swift.Plugin{}, objc.Plugin{}, dart.Plugin{}, beam.Plugin{}, r.Plugin{}, haskell.Plugin{}, lua.Plugin{}, perl.Plugin{}, ocaml.Plugin{}, julia.Plugin{}, zig.Plugin{}, clojure.Plugin{}, bazel.Plugin{}, nix.Plugin{}, gleam.Plugin{}, elm.Plugin{}, purescript.Plugin{}, crystal.Plugin{}, dlang.Plugin{}, fortran.Plugin{}, powershell.Plugin{}, ci.Plugin{}, docker.Plugin{}, terraform.Plugin{}, proto.Plugin{}, shell.Plugin{}, markdown.Plugin{},
+		kotlin.Plugin{}, scala.Plugin{}, csharp.Plugin{}, fsharp.Plugin{}, cpp.Plugin{}, cmake.Plugin{}, php.Plugin{}, ruby.Plugin{}, swift.Plugin{}, objc.Plugin{}, dart.Plugin{}, beam.Plugin{}, r.Plugin{}, haskell.Plugin{}, lua.Plugin{}, perl.Plugin{}, ocaml.Plugin{}, julia.Plugin{}, zig.Plugin{}, clojure.Plugin{}, bazel.Plugin{}, nix.Plugin{}, gleam.Plugin{}, elm.Plugin{}, purescript.Plugin{}, crystal.Plugin{}, dlang.Plugin{}, fortran.Plugin{}, haxe.Plugin{}, powershell.Plugin{}, ci.Plugin{}, docker.Plugin{}, terraform.Plugin{}, proto.Plugin{}, shell.Plugin{}, markdown.Plugin{},
 	}
 	b.ResetTimer()
 	cpu := cpuSeconds()

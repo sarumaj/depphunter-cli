@@ -140,6 +140,7 @@ The server **shall** ...
 | `fsharp`     | The F# plugin: sources and scripts, .fsproj compile order, Paket, and NuGet shared with C#.           |
 | `dlang`      | The D plugin: modules, dub.json, dub.sdl, dub.selections.json and packages dub fetched.               |
 | `fortran`    | The Fortran plugin: free and fixed form, fypp, fpm.toml and dependencies fpm fetched.                 |
+| `haxe`       | The Haxe plugin: modules, .hxml, haxelib.json, lix pins, Lime project files and installed haxelibs.   |
 | `terraform`  | The Terraform and OpenTofu plugin, lock files, Terragrunt and the module registries.                  |
 | `proto`      | The Protocol Buffers plugin, Buf's configuration and lock files and the Buf Schema Registry.          |
 | `shell`      | The shell script plugin (sh, Bash, zsh, bats), direnv and packages scripts install.                   |
@@ -332,6 +333,11 @@ requirements of type `limitation` in their scopes:
   generated module names are unknown), a module of a package fpm has not
   fetched is attributed by a curated table or the declared name it spells,
   and fpm's registry is not asked (no `--online`).
+- Haxe is read without running the compiler, haxelib or lix: every `#if`
+  branch counts, macros are not run, a qualified name links only to a
+  module's file, same-package types used without an import and `import.hx`
+  are not linked, a library that is not installed is attributed by declared
+  names and a curated table, and lib.haxe.org is not asked (no `--online`).
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

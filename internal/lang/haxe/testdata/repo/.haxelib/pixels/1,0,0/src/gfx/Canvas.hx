@@ -1,0 +1,3 @@
+package gfx;
+
+class Canvas {}

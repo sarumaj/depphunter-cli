@@ -313,3 +313,14 @@ func TestAnFpmPatternKeepsToFpm(t *testing.T) {
 		t.Error("a fortran-external-scoped pattern did not keep to its ecosystem")
 	}
 }
+
+// haxelib libraries are named by their haxelib names; a haxelib-scoped pattern
+// keeps to them.
+//
+// Verifies: REQ-SUP-035
+func TestAHaxelibPatternKeepsToHaxelib(t *testing.T) {
+	p := New([]string{"haxelib:acme_*"})
+	if !p.Match("haxelib", "acme_tools") || p.Match("dub", "acme_tools") || p.Match("haxelib", "openfl") {
+		t.Error("a haxelib-scoped pattern did not keep to its ecosystem")
+	}
+}

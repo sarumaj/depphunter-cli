@@ -21,7 +21,7 @@ var byExt = map[string]string{
 	".ex": "Elixir", ".exs": "Elixir", ".erl": "Erlang", ".hrl": "Erlang", ".ml": "OCaml", ".mli": "OCaml", ".mll": "OCaml", ".mly": "Menhir", ".opam": "opam", ".hs": "Haskell", ".lhs": "Haskell", ".hs-boot": "Haskell", ".hsc": "Haskell", ".cabal": "Cabal", ".clj": "Clojure", ".cljc": "Clojure", ".cljs": "ClojureScript", ".bb": "Clojure", ".edn": "EDN",
 	".zig": "Zig", ".zon": "Zig", ".nix": "Nix", ".gleam": "Gleam", ".elm": "Elm", ".purs": "PureScript", ".dhall": "Dhall", ".cr": "Crystal", ".d": "D", ".di": "D", ".nim": "Nim", ".jl": "Julia",
 	".f90": "Fortran", ".f95": "Fortran", ".f03": "Fortran", ".f08": "Fortran", ".f18": "Fortran", ".f": "Fortran", ".for": "Fortran",
-	".ftn": "Fortran", ".f77": "Fortran", ".fpp": "Fortran", ".fypp": "Fortran",
+	".ftn": "Fortran", ".f77": "Fortran", ".fpp": "Fortran", ".fypp": "Fortran", ".hx": "Haxe", ".hxml": "Haxe",
 	".sh": "Shell", ".bash": "Shell", ".zsh": "Shell", ".ksh": "Shell", ".bats": "Shell", ".zsh-theme": "Shell", ".ps1": "PowerShell", ".psm1": "PowerShell", ".psd1": "PowerShell",
 	".html": "HTML", ".htm": "HTML", ".css": "CSS", ".scss": "CSS", ".sass": "CSS", ".less": "CSS",
 	".vue": "Vue", ".svelte": "Svelte", ".astro": "Astro",
