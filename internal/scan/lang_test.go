@@ -78,6 +78,8 @@ func TestLanguageByName(t *testing.T) {
 		"src/app/router.gleam":           "Gleam",
 		"gleam.toml":                     "Gleam",
 		"manifest.toml":                  "TOML",
+		"src/Shop/Cart.elm":              "Elm",
+		"elm.json":                       "JSON",
 		"src/shop/core.clj":              "Clojure",
 		"src/shop/common.cljc":           "Clojure",
 		"src/shop/ui.cljs":               "ClojureScript",

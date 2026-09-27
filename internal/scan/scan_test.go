@@ -32,6 +32,7 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 		"zig-pkg/x-0.1.0-AAAA/build.zig.zon": ".{}\n",
 		".cpcache/1234.basis":                "{}\n",
 		".shadow-cljs/builds/app/x.edn":      "{}\n",
+		"elm-stuff/0.19.1/Main.elm":          "module Main exposing (main)\n",
 		"img.bin":                            "\x00\x01\x02",
 	}
 	for p, c := range files {

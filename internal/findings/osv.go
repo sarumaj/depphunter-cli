@@ -33,7 +33,8 @@ const (
 // has none for Perl), so CPAN distributions are not, nor Zig packages, nor Bazel
 // modules and WORKSPACE downloads (the Maven, PyPI, Go, npm and crates.io packages
 // Bazel's module extensions install are asked about under their own ecosystems),
-// nor flake inputs and nixpkgs packages (OSV has no Nix ecosystem).
+// nor flake inputs and nixpkgs packages (OSV has no Nix ecosystem), nor Elm
+// packages (OSV has no Elm ecosystem).
 //
 // Implements: REQ-FND-010
 var osvEcosystems = map[string]string{
