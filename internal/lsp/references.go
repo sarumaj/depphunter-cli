@@ -133,6 +133,9 @@ var Servers = []Server{
 	// serve-d answers references for D modules from the dub package around them,
 	// over stdio.
 	{Name: "d", Open: true, Exts: map[string]string{".d": "d", ".di": "d"}, Commands: [][]string{{"serve-d"}}},
+	// fortls answers references for Fortran modules and procedures across the
+	// project's sources (free and fixed form), over stdio.
+	{Name: "fortran", Open: true, Exts: map[string]string{".f90": "fortran", ".f95": "fortran", ".f03": "fortran", ".f08": "fortran", ".f18": "fortran", ".f": "fortran", ".for": "fortran", ".ftn": "fortran", ".f77": "fortran", ".fpp": "fortran"}, Commands: [][]string{{"fortls"}}},
 	// neocmakelsp and cmake-language-server both answer references for CMake's
 	// functions, macros and variables; a CMakeLists.txt is known by its name.
 	{Name: "cmake", Open: true, Exts: map[string]string{".cmake": "cmake"}, Names: map[string]string{"CMakeLists.txt": "cmake"},

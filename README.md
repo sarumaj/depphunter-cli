@@ -200,6 +200,7 @@ code. The page served is identical in both cases.
   [Infrastructure as code](#infrastructure-as-code) ·
   [Nix](#nix) · [Gleam](#gleam) · [Elm](#elm) · [PureScript](#purescript) ·
   [Crystal](#crystal) · [F# and Paket](#f-and-paket) · [D and dub](#d-and-dub) ·
+  [Fortran and fpm](#fortran-and-fpm) ·
   [Interface definitions](#interface-definitions) ·
   [Shell scripts](#shell-scripts) ·
   [Documentation](#documentation) ·
@@ -819,7 +820,8 @@ CocoaPods, Carthage, LuaRocks, Wally, CPAN, Zig, Bazel modules and repositories
 (the Maven, PyPI, Go, npm and crates.io packages Bazel's module extensions
 install are asked about as such), Nix flake inputs, nixpkgs packages, Elm
 packages, PureScript packages, Crystal shards, the GitHub, git and HTTP
-dependencies Paket fetches or dub packages. Floating packages are not queried,
+dependencies Paket fetches, dub packages or fpm packages. Floating packages are
+not queried,
 since they resolve to a different version on the next installation. Answers are
 cached for six hours. `--no-vulns` disables all of this.
 
@@ -934,6 +936,7 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | PureScript          | `spago.lock`, a registry version in `extraPackages`, a git commit (`ref`, a `packages.dhall` `version`)      | `>=7.0.0 <8.0.0` and bower's `^6.0.0`, no package set; a package set's name or a git tag is shown, neither        |
 | Crystal shards      | `shard.lock`, a `commit:`, a path dependency (in the repository)                                             | `~>`, `>=` and other ranges, a `branch:`, no requirement; a `tag:` or an exact `version:` is shown, neither       |
 | dub                 | `dub.selections.json`, `==1.2.3` or a bare `1.2.3` (exact in dub), a `repository` at a commit, a `path`      | `~>`, `^`, `>=` and other ranges, `*`, a `~branch`, no version                                                    |
+| fpm                 | a git `rev`, a registry dependency's `v`, a `path`                                                           | a git `branch` or no ref, a registry dependency without `v`, a metapackage's `"*"`; a git `tag` is shown, neither |
 
 A package a shell script installs (`pip install`, `npm install -g`, `go
 install`, `cargo install`, `gem install`) follows its ecosystem's row; one
@@ -978,6 +981,7 @@ and the analysis remains offline.
 | `spago.lock` (PureScript)                 | each package's `dependencies`                      |
 | `lib/<shard>/shard.yml` (shards)          | an installed shard's `dependencies`                |
 | recipes of packages dub fetched           | a fetched dub package's `dependencies`             |
+| `build/dependencies/<name>/fpm.toml`      | a fetched fpm package's `dependencies`             |
 
 Packages added in this way are marked **transitive**, meaning that no file in
 the repository imports them. Edges between packages are of kind `depends`, as
@@ -1017,8 +1021,10 @@ packages Zig has not fetched into `zig-pkg/` or its global cache (there is no
 Zig registry for `--online` to ask), nor Bazel's WORKSPACE repositories, nor niv
 and npins sources (their `sources.json` is flat), nor Crystal shards shards has
 not installed into `lib/` (`shard.lock` is flat, and shards are git repositories
-with no index to ask), nor the GitHub, git and HTTP files Paket fetches. A
-Terraform provider depends on nothing.
+with no index to ask), nor the GitHub, git and HTTP files Paket fetches, nor
+fpm packages fpm has not fetched into `build/dependencies/` (fpm keeps no lock
+file, and its registry has no dependency API). A Terraform provider depends on
+nothing.
 
 The side panel presents these as a **tree**: every row under *Depends on* and
 *Used by* expands into that node's own dependencies, and so on recursively.
@@ -1203,8 +1209,8 @@ pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`
 `bioconductor:`, `hackage:`, `terraform-module:`, `terraform-provider:`,
 `buf:`, `cmake-fetch:`, `pkg-config:`, `cocoapods:`, `carthage:`, `luarocks:`,
 `wally:`, `cpan:`, `opam:`, `julia:`, `zig:`, `bazel:`, `bazel-repo:`, `nix:`,
-`nixpkgs:`, `elm:`, `purescript:`, `shards:`, `paket:` or `dub:` — restricts it
-to that ecosystem.
+`nixpkgs:`, `elm:`, `purescript:`, `shards:`, `paket:`, `dub:`, `fpm:` or
+`fortran-external:` — restricts it to that ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
 to whatever is configured here**, so a Go project whose machine is already
@@ -1725,6 +1731,54 @@ What a `mixin` generates is not read, every `version` and `static if`
 branch counts, and OSV has no D ecosystem, so dub packages are not checked
 for advisories.
 
+### Fortran and fpm
+
+Most Fortran is built by CMake or Make, and newer libraries by the Fortran
+Package Manager (fpm), which fetches git and registry packages; the **fpm
+packages** island names each by its dependency key in `fpm.toml`
+(`json-fortran`, `toml-f`, `stdlib`). depphunter reads free-form (`.f90`,
+`.F90`, `.f03`, `.f08`, ...) and fixed-form (`.f`, `.for`, `.f77`, `.F`, ...)
+sources, fypp templates (`.fypp`) and `fpm.toml` without running the compiler,
+the C preprocessor, fypp or fpm. A `.f` or `.for` file that is Forth is told
+apart by its first lines, and fpm's `build/` directory is not read as source:
+
+- **Modules**: `use m` (`use, intrinsic ::`, `only:` lists and renames) is an
+  edge to the file that defines `module m`, found by name (case-insensitive)
+  among all the project's sources, whatever the build system; a submodule is
+  an edge to its parent module's or parent submodule's file. Intrinsic
+  modules (`iso_fortran_env`, `iso_c_binding`, `ieee_*`, `omp_lib` as
+  `openmp`, `openacc`) are a hidden **Fortran intrinsic modules** island;
+  `mpi`, `mpi_f08`, `hdf5`, `netcdf`, PETSc, FFTW and MKL modules are the C
+  libraries `#include <mpi.h>` names too, on the **C/C++ external** island.
+  Another module goes to the dependency fpm fetched into `build/dependencies/`
+  that defines it, else to the declared dependency its name spells
+  (`json_module` is json-fortran, `tomlf` toml-f, `stdlib_kinds` stdlib), a
+  module `[build] external-modules` lists (the **Fortran external modules**
+  island), a curated table's package, else an unresolved module of that
+  island. Nothing in comments or strings is read, `!$` OpenMP lines are, and
+  every `#ifdef` branch counts.
+- **Includes**: `include 'file'`, `#include "file"` and fypp's `#:include`
+  are edges to the file beside the includer, else in fpm's `include-dir` or
+  an ancestor's `include/`; `mpif.h` and `fftw3.f03` go to their C library.
+- **fpm.toml**: every dependency (`[dependencies]`, `[dev-dependencies]`,
+  features' and programs' own) is an import of it. A git `rev` pins, a `tag`
+  is shown, neither pinned nor floating, and a `branch` or no ref floats; a
+  registry dependency's `v` pins; a metapackage (`stdlib = "*"`) floats,
+  `openmp` is the intrinsic modules and `mpi`, `hdf5`, `netcdf` and `blas`
+  the C libraries. A git server other than the public forges is the
+  package's origin. fpm keeps no lock file: what `build/cache.toml` records
+  it fetched is shown as the version, and `--resolve-depth` follows the
+  `fpm.toml` of what it fetched into `build/dependencies/`. `path`
+  dependencies, `[library] source-dir` and programs' `main` files are edges.
+
+Modules, submodules, programs, block data, derived types, generic interfaces
+and functions and subroutines (`Module.proc`, with any prefix: `pure
+elemental real(dp) function`) are the symbols; interface bodies are not.
+fypp templates are not expanded (names such as `${k}$` are skipped), old-style
+`external` procedures and `call` statements are not linked, and OSV has no
+Fortran ecosystem and fpm's registry no dependency API, so fpm packages are
+neither checked for advisories nor asked about by `--online`.
+
 ### Interface definitions
 
 Protocol Buffers definitions are shared between services and languages, and
@@ -1903,6 +1957,7 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | PureScript              | `purescript-language-server --stdio`                                                         |
 | Crystal                 | `crystalline`                                                                                |
 | D                       | `serve-d`                                                                                    |
+| Fortran                 | `fortls`                                                                                     |
 
 The servers run in the background once the map is displayed — gopls requires
 approximately 7 s for this repository — within the budget set by
@@ -1952,6 +2007,7 @@ The JSON and GraphML exports include the reference edges.
 | PureScript              | `import` to the file declaring the module in the importing package's sources (`src/` and `test/` of a `spago.yaml` package, a `spago.dhall`'s `sources`), then its workspace's; `foreign import` to the `.js` beside the module; Prim modules to the compiler's built-ins; other modules to the package spago installed in `.spago/` that provides them, else a curated module table or the listed package the module spells; packages by `spago.yaml`, `spago.lock`, `spago.dhall`, `packages.dhall` and `bower.json`, whose packages are imports | PureScript packages, PureScript built-ins                                  |
 | Crystal                 | `require` of relative paths and globs (`./dir/*`, `./dir/**`) to files; by name through `lib/` (the installed shard), the project's own `src/` and shard name, the standard library, then the shards of `shard.yml` / `shard.lock` / `shard.override.yml`, whose dependencies and targets' `main:` files are imports                                                                                                                                                                                                                               | Crystal shards, Crystal standard library                                   |
 | D                       | `import` to `a/b.d` or `a/b/package.d` under the `importPaths`/`sourcePaths` (`source/`, `src/`) of the file's dub package and the repository packages it depends on, else its ancestors; `import("file")` under `stringImportPaths` (`views/`); other modules to the package dub fetched, a declared package they spell or a curated table; `dub.json`, `dub.sdl`, `dub.selections.json` and single-file recipes, whose dependencies are imports                                                                                                  | dub packages, D runtime and standard library                               |
+| Fortran                 | `use` to the file that defines the module (any build system, case-insensitive), submodules to their parent; `include`/`#include` beside the file or in `include-dir`; other modules to the package fpm fetched, a declared package they spell, the C library (MPI, HDF5, NetCDF) or a curated table; `fpm.toml` dependencies are imports                                                                                                                                                                                                           | fpm packages, Fortran external modules, Fortran intrinsic modules          |
 | PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                                                                                                                                                                                                                                                                                                  | PowerShell Gallery, built-in modules                                       |
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                                                                                                                                                                                                                                                       | GitHub Actions, GitLab CI, Container images                                |
 | Protocol Buffers        | `import` (`public`, `weak`) under the import roots of `buf.work.yaml` and `buf.yaml` (v1 and v2), else the repository root, `proto/`, `protos/`, `api/`, `src/main/proto/` and the importer's directories, else a unique project file ending in the path; modules by `buf.yaml` `deps` and `buf.lock` and a table of common protos; `buf.gen.yaml` remote plugins                                                                                                                                                                                  | Buf Schema Registry, Protobuf well-known types                             |
@@ -2487,6 +2543,11 @@ D is read by a small lexer too: the tree-sitter grammar took 27 to 71 ms per
 file (1.1 s for one) and parsed 27 of the 563 files measured with errors.
 `dub.sdl` is read by a small SDLang reader. See [D and dub](#d-and-dub).
 
+Fortran is read by a small statement reader, in free and fixed form: the
+tree-sitter grammar reads free form only (2099 of LAPACK's 2141 fixed-form
+files parsed with errors) and took 47 ms per file on json-fortran (2.1 s for
+one). See [Fortran and fpm](#fortran-and-fpm).
+
 Protocol Buffers definitions are read by a small scanner: the tree-sitter
 grammar took 2.4 to 3 ms per file and failed on every file using editions.
 See [Interface definitions](#interface-definitions).
@@ -2512,7 +2573,8 @@ scripts, CMake files, Swift, Objective-C, CocoaPods and Carthage manifests, Lua,
 Luau, Teal and LuaRocks files, Perl and its CPAN manifests, OCaml, dune and opam
 files, Julia, Zig and `build.zig.zon`, Clojure and its EDN manifests, Bazel's
 Starlark files, Nix expressions, Gleam, Elm and PureScript modules, spago's
-Dhall files, Crystal, F# and Paket's files, D and `dub.sdl`, Dockerfiles, the
+Dhall files, Crystal, F# and Paket's files, D and `dub.sdl`, Fortran,
+Dockerfiles, the
 markup of Vue, Svelte and Astro components, R Markdown chunks and C preprocessor
 directives small built-in scanners — so the binary continues to cross-compile
 without a C toolchain.

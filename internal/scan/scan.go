@@ -229,7 +229,8 @@ func measure(f *File, maxSize int64) {
 	// its keywords and directives, within the head already read. ".pl" is
 	// Prolog's too, and ".t" is Perl's only by convention: Perl says which by its
 	// #! line and statements. ".fs" is F#'s, a GLSL fragment shader's and Forth's.
-	// ".d" is D's, a make dependency file's and a DTrace script's.
+	// ".d" is D's, a make dependency file's and a DTrace script's. ".f" and ".for"
+	// are fixed-form Fortran's and sometimes Forth's.
 	switch ext := strings.ToLower(path.Ext(f.Path)); {
 	case ext == ".m" && f.Lang == "Objective-C" && !objcMarker(head, true):
 		f.Lang = notObjC(head)
@@ -242,6 +243,8 @@ func measure(f *File, maxSize int64) {
 	case ext == ".fs" && f.Lang == "F#" && glslSource(head):
 		f.Lang = "GLSL"
 	case ext == ".fs" && f.Lang == "F#" && forthSource(head):
+		f.Lang = "Forth"
+	case (ext == ".f" || ext == ".for") && f.Lang == "Fortran" && forthSource(head):
 		f.Lang = "Forth"
 	case ext == ".d" && f.Lang == "D" && dependencyFile(head):
 		f.Lang = "Make"

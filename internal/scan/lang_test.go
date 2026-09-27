@@ -2,7 +2,7 @@ package scan
 
 import "testing"
 
-// Verifies: REQ-LANG-015, REQ-DOCKER-001, REQ-SHELL-001, REQ-OBJC-001, REQ-LUA-001, REQ-PERL-001, REQ-OCAML-001, REQ-JULIA-001, REQ-ZIG-001, REQ-NIX-001
+// Verifies: REQ-LANG-015, REQ-DOCKER-001, REQ-SHELL-001, REQ-OBJC-001, REQ-LUA-001, REQ-PERL-001, REQ-OCAML-001, REQ-JULIA-001, REQ-ZIG-001, REQ-NIX-001, REQ-FORTRAN-001
 func TestLanguageByName(t *testing.T) {
 	for p, want := range map[string]string{
 		"a.go":                           "Go",
@@ -79,6 +79,15 @@ func TestLanguageByName(t *testing.T) {
 		"gleam.toml":                     "Gleam",
 		"manifest.toml":                  "TOML",
 		"src/Shop/Cart.elm":              "Elm",
+		"src/shop.f90":                   "Fortran",
+		"src/cart.F90":                   "Fortran",
+		"src/stats.f08":                  "Fortran",
+		"legacy/dgemm.f":                 "Fortran",
+		"legacy/DGEMV.F":                 "Fortran",
+		"legacy/old.for":                 "Fortran",
+		"legacy/old.f77":                 "Fortran",
+		"src/sort.fypp":                  "Fortran",
+		"fpm.toml":                       "TOML",
 		"source/shop/app.d":              "D",
 		"import/shop/cart.di":            "D",
 		"dub.sdl":                        "SDLang",

@@ -1,0 +1,2 @@
+      INTEGER NMAX
+      PARAMETER (NMAX = 64)
