@@ -26,7 +26,7 @@ var byExt = map[string]string{
 }
 
 var byName = map[string]string{
-	"Dockerfile": "Docker", "Makefile": "Make", "go.mod": "Go", "go.sum": "Go",
+	"Makefile": "Make", "go.mod": "Go", "go.sum": "Go",
 	"CMakeLists.txt": "CMake", "Jenkinsfile": "Groovy",
 }
 
@@ -38,5 +38,29 @@ func Language(p string) string {
 	if l, ok := byName[base]; ok {
 		return l
 	}
+	if Dockerfile(p) {
+		return "Docker"
+	}
 	return byExt[strings.ToLower(path.Ext(base))]
+}
+
+// Dockerfile reports whether a file is a container build file by the names the
+// tools look for or are commonly pointed at with -f: Dockerfile and Containerfile,
+// a variant named after them (Dockerfile.dev), and one named for what it builds
+// (api.Dockerfile). Case does not matter: build tools on a case-insensitive file
+// system find a "dockerfile" as well. An ignore file kept beside a Dockerfile
+// (Dockerfile.dockerignore) is not one.
+//
+// Implements: REQ-LANG-015, REQ-DOCKER-001
+func Dockerfile(p string) bool {
+	base := strings.ToLower(path.Base(p))
+	if strings.HasSuffix(base, ".dockerignore") {
+		return false
+	}
+	for _, name := range []string{"dockerfile", "containerfile"} {
+		if base == name || strings.HasPrefix(base, name+".") || strings.HasSuffix(base, "."+name) {
+			return true
+		}
+	}
+	return false
 }

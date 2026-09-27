@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/oci"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
@@ -32,7 +33,7 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 	case kindLocal:
 		return r.local(imp.Module)
 	case kindImage:
-		return image(imp.Module)
+		return oci.Image(imp.Module)
 	case kindAction, kindWorkflow:
 		return action(imp.Module, requested)
 	case kindProject:
@@ -108,31 +109,6 @@ func action(ref, requested string) lang.Target {
 		t.Requested = requested
 	}
 	return t
-}
-
-// image resolves a container reference, "[registry/]name[:tag][@digest]". A tag is
-// republished whenever its owner likes, so only a digest pins an image.
-//
-// Implements: REQ-CI-012, REQ-CI-013
-func image(ref string) lang.Target {
-	name, digest, hasDigest := strings.Cut(ref, "@")
-	tag := ""
-	// A colon in the registry part is a port, not a tag: "localhost:5000/img".
-	if i := strings.LastIndex(name, ":"); i >= 0 && !strings.Contains(name[i:], "/") {
-		name, tag = name[:i], name[i+1:]
-	}
-	if name == "" {
-		return lang.Target{}
-	}
-	switch {
-	case hasDigest:
-		return lang.Target{Ecosystem: ecoOCI, Package: name, Version: digest, Requested: tag, Pinned: lang.Pinned(digest)}
-	case tag == "":
-		// No tag at all means whatever :latest is today, the loosest reference there
-		// is; it names no version, so none is made up for it.
-		return lang.Target{Ecosystem: ecoOCI, Package: name, Floating: true}
-	}
-	return lang.Target{Ecosystem: ecoOCI, Package: name, Version: tag}
 }
 
 // remoteName shortens a remote include's URL to host and path, which is what names it

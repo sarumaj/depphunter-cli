@@ -14,7 +14,8 @@ verification:
 
 The CI plugin **shall** place its external dependencies in three ecosystems,
 drawn as the islands "GitHub Actions" (`actions`), "GitLab CI" (`gitlab-ci`) and
-"Container images" (`oci`), the last shared by images from either platform.
+"Container images" (`oci`), the last shared by images from either platform
+and with the docker plugin (REQ-DOCKER-006).
 
 ## Rationale
 

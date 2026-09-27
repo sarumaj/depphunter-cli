@@ -12,6 +12,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/ci"
 	"github.com/sarumaj/depphunter-cli/internal/lang/csharp"
+	"github.com/sarumaj/depphunter-cli/internal/lang/docker"
 	"github.com/sarumaj/depphunter-cli/internal/lang/golang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/java"
 	"github.com/sarumaj/depphunter-cli/internal/lang/javascript"
@@ -92,7 +93,7 @@ func BenchmarkColdAnalysis(b *testing.B) {
 	writeReferenceProject(b, root, referenceFiles)
 	plugins := []lang.Plugin{
 		golang.Plugin{}, javascript.Plugin{}, python.Plugin{}, rust.Plugin{}, java.Plugin{},
-		kotlin.Plugin{}, scala.Plugin{}, csharp.Plugin{}, powershell.Plugin{}, ci.Plugin{}, markdown.Plugin{},
+		kotlin.Plugin{}, scala.Plugin{}, csharp.Plugin{}, powershell.Plugin{}, ci.Plugin{}, docker.Plugin{}, markdown.Plugin{},
 	}
 	b.ResetTimer()
 	cpu := cpuSeconds()

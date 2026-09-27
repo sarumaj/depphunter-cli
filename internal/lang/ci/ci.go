@@ -17,13 +17,13 @@ import (
 	"gopkg.in/yaml.v3"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/oci"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
 const (
 	ecoActions = "actions"
 	ecoGitLab  = "gitlab-ci"
-	ecoOCI     = "oci"
 )
 
 // Import kinds, carried in RawImport.Name so the resolver knows how to read Module.
@@ -74,7 +74,7 @@ func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
 		{ID: ecoActions, Name: "GitHub Actions"},
 		{ID: ecoGitLab, Name: "GitLab CI"},
-		{ID: ecoOCI, Name: "Container images"},
+		oci.Island, // shared with the docker plugin
 	}
 }
 
