@@ -14,18 +14,17 @@ verification:
 
 The C/C++ plugin **shall** analyze files ending in `.c`, `.h`, `.cc`, `.cpp`,
 `.cxx`, `.c++`, `.hpp`, `.hh`, `.hxx`, `.h++`, `.ipp` and `.inl` (in any
-case), parsing `.c` files with the C grammar and every other one, `.h`
-included, with the C++ grammar, except a `.h` file the scan labels
-Objective-C (REQ-OBJC-001).
+case), reading `.c` files as C and every other one, `.h` included, as C++,
+except a `.h` file the scan labels Objective-C (REQ-OBJC-001).
 
 ## Rationale
 
 C and C++ files include each other, so one plugin with one resolver maps
 both. A `.h` file may be either language and its extraction may depend only
-on its content and extension; the C++ grammar reads nearly all C headers, while
-the C grammar reads none of the classes, namespaces and templates of a C++
-header. A `.c` file is C, where `new` or `class` is an ordinary name that the
-C++ grammar would not read.
+on its content and extension; reading C++ covers nearly all C headers, while
+reading C would miss the classes, namespaces and templates of a C++ header. A
+`.c` file is C, where `new` or `class` is an ordinary name that C++ would not
+read.
 
 ## Acceptance criteria
 

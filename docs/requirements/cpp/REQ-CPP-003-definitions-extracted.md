@@ -35,4 +35,7 @@ parse as functions named `TEST`.
 2. `typedef void (*callback_t)(int);` gives the type `callback_t`.
 3. `#ifndef UTIL_H` / `#define UTIL_H` gives no symbol; `#define APP_MAX(a, b)`
    gives the macro `APP_MAX`.
-4. `std::string s(nullptr);` in a function body gives no symbol.
+4. `std::string s(nullptr);` in a function body gives no symbol, nor does
+   `std::atomic<int> g(0);` at file scope.
+5. `class API_EXPORT Widget final : public Base<int> {` gives the class
+   `Widget`; `explicit operator bool() const` gives no symbol.

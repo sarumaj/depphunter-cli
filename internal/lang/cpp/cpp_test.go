@@ -1,12 +1,15 @@
 package cpp
 
 import (
+	"os"
 	"reflect"
 	"strings"
 	"testing"
+	"time"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/langtest"
+	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
 // testdata/repo: a CMake-style project whose build/compile_commands.json gives
@@ -180,6 +183,111 @@ func TestStandard(t *testing.T) {
 	} {
 		if got := standard(name); got != want {
 			t.Errorf("%s: got %q, want %q", name, got, want)
+		}
+	}
+}
+
+// symbolsOf extracts src as a file with the given extension.
+func symbolsOf(t *testing.T, ext, src string) map[string]string {
+	t.Helper()
+	ex, err := Plugin{}.Extract(&scan.File{Path: "x" + ext}, []byte(src))
+	if err != nil {
+		t.Fatal(err)
+	}
+	got := map[string]string{}
+	for _, s := range ex.Symbols {
+		got[s.Name] = s.Kind
+	}
+	return got
+}
+
+// The scanner's reading of constructs a declaration scanner can get wrong; each
+// case was found comparing it with the tree-sitter grammars it replaced.
+//
+// Verifies: REQ-CPP-003, REQ-CPP-014
+func TestScanner(t *testing.T) {
+	// cSpell: disable
+	for _, tc := range []struct {
+		name, ext, src string
+		want           map[string]string
+	}{
+		{"macro lines before a namespace", ".h", "namespace absl {\nABSL_NAMESPACE_BEGIN\nnamespace internal {\nint f();\n}\nABSL_NAMESPACE_END\n}\n",
+			map[string]string{"absl": "namespace", "internal": "namespace", "f": "func"}},
+		{"export macro and bases", ".hpp", "class API_EXPORT Widget final : public Base<int>, private Other {\n public:\n  Widget() : a_{1}, b_(2) {}\n  ~Widget() override = default;\n  Q_OBJECT\n public slots:\n  void onClick();\n};\n",
+			map[string]string{"Widget": "class", "Widget.Widget": "method", "Widget.~Widget": "method", "Widget.onClick": "method"}},
+		{"operators", ".hpp", "struct V {\n  bool operator==(const V&) const;\n  int operator()(int) const { return 0; }\n  explicit operator bool() const { return true; }\n};\nV operator\"\"_v(unsigned long long);\ntemplate <class T> Box<T>& Box<T>::operator=(const Box&) { return *this; }\n",
+			map[string]string{"V": "struct", "V.operator==": "method", "V.operator()": "method", "operator\"\"_v": "func", "Box.operator=": "method"}},
+		{"variables are not functions", ".cc", "std::atomic<Tracker*> g_tracker(nullptr);\nstatic Foo g_foo(1, 2);\nstruct stat st;\nauto cb = [](int x) { return x; };\nconst Options kDefaults = Options().WithDomains(Arbitrary());\nint real(int x);\n",
+			map[string]string{"real": "func"}},
+		{"function heads in #if branches", ".c", "#ifdef WIN32\nint open_file(const wchar_t *p) {\n#else\nint open_file(const char *p) {\n#endif\n  return 0;\n}\nint after(void) { return 1; }\n",
+			map[string]string{"open_file": "func", "after": "func"}},
+		{"extern C and typedefs", ".h", "#ifdef __cplusplus\nextern \"C\" {\n#endif\ntypedef double(BigOFunc)(int);\ntypedef struct { int x; } point_t, *point_p;\ntypedef enum color { RED } color_t;\ntypedef std::map<int, int> Map;\nstruct vtable {\n  void (*destroy)(void*);\n};\n#ifdef __cplusplus\n}\n#endif\n",
+			map[string]string{"BigOFunc": "type", "point_t": "type", "point_p": "type", "color": "enum", "color_t": "type", "Map": "type", "vtable": "struct", "vtable.(*destroy)": "method"}},
+		{"macro-made names and test macros", ".c", "UPB_INLINE bool UPB_PRIVATE(_upb_IsPrint)(unsigned char ch) { return ch > 31; }\nTEST(Suite, Case) { }\nDEFINE_flag(verbose);\n",
+			map[string]string{"UPB_PRIVATE(_upb_IsPrint)": "func"}},
+		{"C names that are C++ keywords", ".c", "struct list *new(int class) { return 0; }\nint delete_all(struct list *new) { return 0; }\n",
+			map[string]string{"new": "func", "delete_all": "func"}},
+		{"trailing return and templates", ".hpp", "namespace a::b {\ntemplate <typename T, typename = std::enable_if_t<(sizeof(T) > 4)>>\nauto twice(T v) -> decltype(v + v) { return v + v; }\nusing Id = std::uint64_t;\nenum class Mode : std::uint8_t { Fast, Safe };\n}\n",
+			map[string]string{"a.b": "namespace", "twice": "func", "Id": "type", "Mode": "enum"}},
+		{"defines", ".h", "#ifndef GUARD_H\n#define GUARD_H\n#define ON\n#define MAX(a, b) ((a) > (b) ? (a) : (b))\nvoid f() {\n#define LOCAL 1\n}\n#endif\n",
+			map[string]string{"ON": "macro", "MAX": "macro", "f": "func"}},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			if got := symbolsOf(t, tc.ext, tc.src); !reflect.DeepEqual(got, tc.want) {
+				t.Errorf("got %v, want %v", got, tc.want)
+			}
+		})
+	}
+	// cSpell: enable
+}
+
+// A generated descriptor table, a long initializer of character literals, is
+// stepped over in one pass: the C grammar needed more than the 3 s parse bound
+// for each of 79 such files in grpc.
+//
+// Verifies: REQ-CPP-014
+func TestGeneratedTables(t *testing.T) {
+	var b strings.Builder
+	b.WriteString("#include \"upb/reflection/def.h\"\nstatic const char descriptor[200000] = {\n")
+	for i := 0; i < 200000; i++ {
+		b.WriteString("'\\036', 'a', ")
+	}
+	b.WriteString("\n};\n_upb_DefPool_Init init = {deps, &layout, \"x.proto\"};\nconst upb_MessageDef* x_getmsgdef(upb_DefPool* s) { return 0; }\n")
+	start := time.Now()
+	ex, err := Plugin{}.Extract(&scan.File{Path: "x.upbdefs.c"}, []byte(b.String()))
+	if err != nil || len(ex.Imports) != 1 || len(ex.Symbols) != 1 || ex.Symbols[0].Name != "x_getmsgdef" {
+		t.Fatalf("got %+v, %v", ex, err)
+	}
+	if d := time.Since(start); d > 2*time.Second {
+		t.Errorf("took %v", d)
+	}
+}
+
+// Extraction returns for any input: every prefix of the fixtures and runs of
+// unfinished constructs.
+//
+// Verifies: REQ-CPP-014
+func TestTruncated(t *testing.T) {
+	var srcs []string
+	for _, p := range []string{"testdata/repo/src/main.cpp", "testdata/repo/include/app/app.hpp", "testdata/repo/lib/util.c"} {
+		b, err := os.ReadFile(p)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for i := range b {
+			srcs = append(srcs, string(b[:i]))
+		}
+	}
+	for _, run := range []string{"{", "}", "(", ")", "<", ">", "template<", "namespace a {", "class A {", "struct A : ",
+		"operator", "::", "f(x)", "typedef ", "/*", "\"", "R\"x(", "'", "#if X\n", "#else\n", "#endif\n", "#define X \\\n",
+		"extern \"C\" {", "A::A() : a(1), ", "auto f() -> a<", "enum class E : ", "FOO(x)\n", "~", "= {"} {
+		srcs = append(srcs, strings.Repeat(run, 3000))
+	}
+	for _, src := range srcs {
+		for _, ext := range []string{".c", ".hpp"} {
+			if _, err := (Plugin{}).Extract(&scan.File{Path: "x" + ext}, []byte(src)); err != nil {
+				t.Fatal(err)
+			}
 		}
 	}
 }
