@@ -39,6 +39,8 @@ const (
 	// CRAN is R's, as install.packages and renv install from it; its package
 	// metadata is read from crandb (see cranPackage).
 	CRAN = "cran"
+	// Hackage is Haskell's, as cabal and stack install from it.
+	Hackage = "hackage"
 )
 
 // public is where each ecosystem's packages come from unless something says otherwise.
@@ -56,6 +58,15 @@ var public = map[string]string{
 	Pub:      "https://pub.dev",
 	Hex:      "https://hex.pm/api",
 	CRAN:     "https://cloud.r-project.org",
+	Hackage:  "https://hackage.haskell.org",
+}
+
+// HackageItself reports whether a repository URL is Hackage (any scheme, with or
+// without a trailing slash), which cabal configurations name as often as they name a
+// mirror: it is the public index, not one the repository brings along.
+func HackageItself(index string) bool {
+	u, err := url.Parse(strings.TrimSpace(index))
+	return err == nil && strings.EqualFold(u.Hostname(), "hackage.haskell.org")
 }
 
 // CRANMirror reports whether an R repository URL is CRAN itself - cloud.r-project.org,

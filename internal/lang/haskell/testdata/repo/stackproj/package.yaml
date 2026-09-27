@@ -1,0 +1,21 @@
+name: stackproj
+version: 0.1.0.0
+
+dependencies:
+- base >= 4.7 && < 5
+- text
+
+library:
+  source-dirs: src
+  dependencies:
+  - acme-missiles
+  - left-pad
+  - name: unlocked-hs
+
+executables:
+  stackproj-exe:
+    main: Main.hs
+    source-dirs: app
+    dependencies:
+      stackproj: {}
+      filepath: ">= 1.4"

@@ -16,7 +16,8 @@ The system **shall** determine a file's language from its extension,
 case-insensitively, or from well-known file names (for example `Dockerfile`,
 `Makefile`, `go.mod`, `Gemfile`, `Rakefile`, `rebar.config`, an OTP
 `*.app.src`, R's `DESCRIPTION`, `NAMESPACE`, `renv.lock` and `packrat.lock`,
-and the Dockerfile names of REQ-DOCKER-001), and
+Haskell's `cabal.project`, `stack.yaml` and `package.yaml`, and the
+Dockerfile names of REQ-DOCKER-001), and
 **shall** leave the language empty when neither is known.
 
 ## Rationale
@@ -31,5 +32,7 @@ colors and filters.
    `lib/tasks/db.rake` and `app.gemspec` are Ruby; `mix.exs` is Elixir,
    `include/state.hrl`, `rebar.config` and `src/shop.app.src` are Erlang;
    `R/cart.R`, `DESCRIPTION` and `renv.lock` are R, `vignettes/intro.Rmd` is
-   R Markdown and `report.qmd` is Quarto.
+   R Markdown and `report.qmd` is Quarto; `src/Data/Shop.hs`, `.hs-boot`,
+   `doc/Tutorial.lhs` and `stack.yaml` are Haskell, `shop.cabal` and
+   `cabal.project` are Cabal.
 2. A file with an unknown extension has no `lang`.

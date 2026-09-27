@@ -66,6 +66,9 @@ var Servers = []Server{
 	// logged and the server passed over.
 	{Name: "r", Open: true, Exts: map[string]string{".r": "r", ".rmd": "rmd"},
 		Commands: [][]string{{"R", "--slave", "-e", "languageserver::run()"}}},
+	// The wrapper picks the server binary built for the project's GHC version.
+	{Name: "haskell", Open: true, Exts: map[string]string{".hs": "haskell", ".lhs": "lhaskell"},
+		Commands: [][]string{{"haskell-language-server-wrapper", "--lsp"}, {"haskell-language-server", "--lsp"}}},
 }
 
 type Options struct {

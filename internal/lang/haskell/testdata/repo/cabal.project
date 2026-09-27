@@ -1,0 +1,17 @@
+packages: shop-core
+          shop-app/
+
+constraints: hashable ==1.4.4.0,
+             vector >=0.13
+
+source-repository-package
+  type: git
+  location: https://github.com/snoyberg/conduit.git
+  tag: 6b98f070fea09a3bf0a5d0897a2e27e3aa91c8fe
+  subdir: conduit
+
+if os(windows)
+  source-repository-package
+    type: git
+    location: https://github.com/acme/win-console
+    tag: v1.2

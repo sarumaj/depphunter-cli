@@ -1,0 +1,37 @@
+cabal-version: 3.0
+name:          shop-core
+version:       0.1.0
+build-type:    Custom
+
+custom-setup
+  setup-depends: base >=4 && <5, Cabal >=3.10
+
+common deps
+  build-depends:
+      base >=4.16 && <5
+    , containers
+
+library
+  import:          deps
+  hs-source-dirs:  src
+  exposed-modules: Shop.Cart
+                   Shop.Types
+  other-modules:   Shop.Parser
+                   Paths_shop_core
+  build-depends:
+      aeson ^>=2.2
+    , mtl >=2.2 && <2.4
+    , text
+    , hashable
+    , deepseq ==1.4.8.1
+    , http-client
+    , hermes-json:{hermes-json} >=0.6
+  if flag(dev)
+    build-depends: template-haskell
+
+test-suite spec
+  import:         deps
+  type:           exitcode-stdio-1.0
+  hs-source-dirs: test
+  main-is:        Spec.hs
+  build-depends:  shop-core, hspec, QuickCheck == 2.14.3

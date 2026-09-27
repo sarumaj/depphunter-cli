@@ -1,0 +1,8 @@
+cabal-version: 2.4
+name:          shop-app
+version:       0.1.0
+
+executable shop
+  main-is:        Main.hs
+  hs-source-dirs: app
+  build-depends:  base, shop-core, optparse-applicative, conduit, win-console

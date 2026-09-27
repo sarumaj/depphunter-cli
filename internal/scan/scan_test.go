@@ -21,6 +21,8 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 		".build/checkouts/nio/Package.swift": "// SwiftPM's build directory\n",
 		".dart_tool/package_config.json":     "{}\n",
 		"_build/dev/lib/shop/ebin/shop.app":  "{application, shop, []}.\n",
+		"dist-newstyle/cache/plan.json":      "{}\n",
+		".stack-work/dist/x/Paths_shop.hs":   "module Paths_shop where\n",
 		"img.bin":                            "\x00\x01\x02",
 	}
 	for p, c := range files {

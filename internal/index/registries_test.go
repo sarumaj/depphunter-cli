@@ -566,3 +566,57 @@ func TestCRANLikeRepositoryDependencies(t *testing.T) {
 		t.Errorf("asked %v, want %v", asked, want)
 	}
 }
+
+// A Hackage package is asked for its preferred versions, then for the package
+// description of the version asked for (else the newest normal one): the
+// build-depends of its libraries and the common stanzas they import, without GHC's own
+// packages and the package's sublibraries; ==x pins.
+//
+// Verifies: REQ-SUP-049
+func TestHackageDependencies(t *testing.T) {
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Path)
+		switch r.URL.Path {
+		case "/package/acme-json/preferred":
+			if r.Header.Get("Accept") != "application/json" {
+				w.WriteHeader(http.StatusNotAcceptable)
+				return
+			}
+			w.Write([]byte(`{"normal-version":["1.10.0","1.9.2","1.2.0"],"deprecated-version":["1.11.0"]}`))
+		case "/package/acme-json-1.2.0/acme-json.cabal":
+			w.Write([]byte("cabal-version: 3.0\nname: acme-json\nversion: 1.2.0\n\n" +
+				"common deps\n  build-depends: containers ^>=0.6\n\n" +
+				"library\n  import: deps\n  build-depends:\n      base >=4.14 && <5\n    , text ==2.0.2\n" +
+				"    , acme-json:internal\n  if flag(fast)\n    build-depends: vector\n\n" +
+				"library internal\n  build-depends: bytestring, template-haskell\n\n" +
+				"test-suite spec\n  build-depends: hspec\n"))
+		case "/package/acme-json-1.10.0/acme-json.cabal":
+			w.Write([]byte("name: acme-json\nlibrary\n  build-depends: base, aeson:{aeson, attoparsec-aeson} >=2.2\n"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	c := clientFor(t, Hackage, srv.URL, "")
+	got := c.Dependencies(lang.Target{Ecosystem: Hackage, Package: "acme-json", Version: "1.2.0", Pinned: true})
+	want := []lang.Target{
+		{Ecosystem: Hackage, Package: "bytestring"},
+		{Ecosystem: Hackage, Package: "containers", Version: "^>=0.6"},
+		{Ecosystem: Hackage, Package: "text", Version: "2.0.2", Pinned: true},
+		{Ecosystem: Hackage, Package: "vector"},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("1.2.0: got %+v, want %+v", got, want)
+	}
+	// A range names no release: the newest normal version (1.10.0, not 1.9.2 and not
+	// the deprecated 1.11.0) answers.
+	got = c.Dependencies(lang.Target{Ecosystem: Hackage, Package: "acme-json", Version: ">=1.2"})
+	if want := []lang.Target{{Ecosystem: Hackage, Package: "aeson", Version: ">=2.2"}}; !reflect.DeepEqual(got, want) {
+		t.Errorf(">=1.2: got %+v, want %+v", got, want)
+	}
+	if want := []string{"/package/acme-json/preferred", "/package/acme-json-1.2.0/acme-json.cabal",
+		"/package/acme-json/preferred", "/package/acme-json-1.10.0/acme-json.cabal"}; !reflect.DeepEqual(asked, want) {
+		t.Errorf("asked %v, want %v", asked, want)
+	}
+}

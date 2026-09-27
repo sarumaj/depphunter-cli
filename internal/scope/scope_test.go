@@ -78,6 +78,10 @@ func TestAPatternMayNameItsEcosystem(t *testing.T) {
 		!p.Match("bioconductor", "AcmeBioSeq") || p.Match("cran", "AcmeBioSeq") {
 		t.Error("cran- and bioconductor-scoped patterns did not keep to their ecosystems")
 	}
+	p = New([]string{"hackage:acme-*"})
+	if !p.Match("hackage", "acme-json") || p.Match("npm", "acme-json") || p.Match("hackage", "aeson") {
+		t.Error("a hackage-scoped pattern did not keep to its ecosystem")
+	}
 	p = New([]string{"hex:acme_*"})
 	if !p.Match("hex", "acme_auth") || p.Match("pub", "acme_auth") || p.Match("hex", "plug") {
 		t.Error("a hex-scoped pattern did not keep to its ecosystem")

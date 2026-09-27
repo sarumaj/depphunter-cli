@@ -108,6 +108,17 @@ func (c *Config) machine(env func(string) string, home string) {
 			parseRprofile(data, add)
 		}
 	}
+	// cabal's configuration: CABAL_CONFIG names the file, CABAL_DIR the directory
+	// holding it; else ~/.config/cabal/config (XDG) or ~/.cabal/config below.
+	if f := env("CABAL_CONFIG"); f != "" {
+		if data, err := os.ReadFile(f); err == nil {
+			parseCabalRepositories(data, add)
+		}
+	} else if dir := env("CABAL_DIR"); dir != "" {
+		if data, err := os.ReadFile(filepath.Join(dir, "config")); err == nil {
+			parseCabalRepositories(data, add)
+		}
+	}
 	if home == "" {
 		return
 	}
@@ -129,6 +140,8 @@ func (c *Config) machine(env func(string) string, home string) {
 		{filepath.Join(home, ".gemrc"), parseGemrc},
 		{filepath.Join(home, ".bundle", "config"), parseBundleConfig},
 		{filepath.Join(home, ".Rprofile"), parseRprofile},
+		{filepath.Join(home, ".config", "cabal", "config"), parseCabalRepositories},
+		{filepath.Join(home, ".cabal", "config"), parseCabalRepositories},
 	} {
 		if data, err := os.ReadFile(f.path); err == nil {
 			f.parse(data, add)
@@ -182,6 +195,8 @@ func (c *Config) project(files []*scan.File) {
 			parseRenvLock(data, add)
 		case base == ".rprofile" || base == "rprofile.site":
 			parseRprofile(data, add)
+		case base == "cabal.project" || base == "cabal.project.local":
+			parseCabalRepositories(data, add)
 		case base == "config.toml" && strings.HasSuffix(path.Dir(f.Path), ".cargo"):
 			parseCargoConfig(data, add)
 		}
@@ -611,6 +626,31 @@ func parseRprofile(data []byte, add func(eco, url, scope string)) {
 		for _, m := range rURL.FindAllStringSubmatch(rest[:end], -1) {
 			if !CRANMirror(m[1]) {
 				add(CRAN, m[1], "")
+			}
+		}
+	}
+}
+
+// parseCabalRepositories reads the repository stanzas of a cabal configuration or
+// cabal.project ("repository name" with an indented "url:"). Hackage itself is the
+// public index and is not recorded; any other repository (a mirror, head.hackage, a
+// company's) serves every package, as cabal asks each configured repository.
+//
+// Implements: REQ-SUP-015, REQ-SUP-049
+func parseCabalRepositories(data []byte, add func(eco, url, scope string)) {
+	in := false
+	for _, line := range strings.Split(string(data), "\n") {
+		trimmed := strings.TrimSpace(line)
+		if trimmed == "" || strings.HasPrefix(trimmed, "--") {
+			continue
+		}
+		if line[0] != ' ' && line[0] != '\t' {
+			in = strings.HasPrefix(trimmed, "repository ")
+			continue
+		}
+		if k, v, ok := strings.Cut(trimmed, ":"); in && ok && strings.EqualFold(strings.TrimSpace(k), "url") {
+			if u := strings.TrimSpace(v); u != "" && !HackageItself(u) {
+				add(Hackage, u, "")
 			}
 		}
 	}

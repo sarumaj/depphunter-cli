@@ -593,3 +593,32 @@ func TestCRANMirror(t *testing.T) {
 		}
 	}
 }
+
+// A repository stanza of cabal.project is the repository's index, Hackage itself is
+// not recorded; one in ~/.cabal/config, ~/.config/cabal/config or the file
+// CABAL_CONFIG or CABAL_DIR names is this machine's.
+//
+// Verifies: REQ-SUP-015, REQ-SUP-049
+func TestDiscoverReadsCabalRepositories(t *testing.T) {
+	files := write(t, map[string]string{
+		"cabal.project": "packages: .\n\nrepository hackage.haskell.org\n  url: http://hackage.haskell.org/\n\n" +
+			"repository head.hackage.ghc.haskell.org\n   url: https://ghc.gitlab.haskell.org/head.hackage/\n   secure: True\n",
+	})
+	if idx, known := Discover(files, env(nil), "").For(Hackage, "aeson"); idx != "https://ghc.gitlab.haskell.org/head.hackage" || known {
+		t.Errorf("cabal.project: got %s (known %v)", idx, known)
+	}
+	if idx, known := Discover(nil, env(nil), "").For(Hackage, "aeson"); idx != "https://hackage.haskell.org" || !known {
+		t.Errorf("default: got %s (known %v)", idx, known)
+	}
+	home := t.TempDir()
+	os.MkdirAll(filepath.Join(home, ".cabal"), 0o755)
+	os.WriteFile(filepath.Join(home, ".cabal", "config"), []byte("-- comment\nrepository hackage.haskell.org\n  url: https://hackage.mirror.corp.test/\n\nremote-repo-cache: /x\n"), 0o644)
+	if idx, known := Discover(nil, env(nil), home).For(Hackage, "aeson"); idx != "https://hackage.mirror.corp.test" || !known {
+		t.Errorf("~/.cabal/config: got %s (known %v)", idx, known)
+	}
+	dir := t.TempDir()
+	os.WriteFile(filepath.Join(dir, "config"), []byte("repository corp\n  url: https://hackage.corp.test\n"), 0o644)
+	if idx, known := Discover(nil, env(map[string]string{"CABAL_DIR": dir}), "").For(Hackage, "aeson"); idx != "https://hackage.corp.test" || !known {
+		t.Errorf("CABAL_DIR: got %s (known %v)", idx, known)
+	}
+}
