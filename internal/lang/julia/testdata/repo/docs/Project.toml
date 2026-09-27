@@ -1,0 +1,9 @@
+[deps]
+Documenter = "e30172f5-a6a5-5a46-863b-614d45cd2de4"
+Shop = "5a3c7e61-1b2f-4c8e-9d61-0f5e2b7c4a11"
+
+[compat]
+Documenter = "~1.2"
+
+[sources]
+Shop = {path = ".."}

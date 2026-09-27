@@ -18,8 +18,8 @@ Maven, NuGet, GitHub Actions, Conan (as `ConanCenter`), Composer (as
 `Packagist`, a version's leading `v` dropped), RubyGems, Swift packages (as
 `SwiftURL`, by the URL they are named after), pub (as `Pub`), Hex (as `Hex`),
 CRAN (as `CRAN`), Bioconductor (as `Bioconductor`), Hackage (as
-`Hackage`) and opam (as `opam`), and place each matched advisory on its
-package with its fixed version.
+`Hackage`), opam (as `opam`) and Julia (as `Julia`), and place each
+matched advisory on its package with its fixed version.
 
 ## Rationale
 

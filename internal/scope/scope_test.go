@@ -180,3 +180,14 @@ func TestReadsWhatTheMachineAlreadySaysAboutGo(t *testing.T) {
 		t.Error("GOPRIVATE reached beyond Go")
 	}
 }
+
+// Julia packages are the julia ecosystem's; the standard library is not an
+// ecosystem a pattern can name.
+//
+// Verifies: REQ-SUP-035
+func TestAJuliaPatternKeepsToJulia(t *testing.T) {
+	p := New([]string{"julia:Acme*"})
+	if !p.Match("julia", "AcmeBilling") || p.Match("npm", "AcmeBilling") || p.Match("julia", "DataFrames") {
+		t.Error("a julia-scoped pattern did not keep to its ecosystem")
+	}
+}

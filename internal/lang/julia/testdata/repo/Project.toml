@@ -1,0 +1,30 @@
+name = "Shop"
+uuid = "5a3c7e61-1b2f-4c8e-9d61-0f5e2b7c4a11"
+authors = ["Shop Team"]
+version = "0.3.0"
+
+[deps]
+HTTP = "cd3eb016-35fb-5094-929b-558a96fad6f3"
+JSON = "682c06a0-de6a-54ab-a142-c8b1cf79cde6"
+LinearAlgebra = "37e2e46d-f89d-539d-b4ee-838fcccc9c8e"
+Statistics = "10745b16-79ce-11e8-11f9-7d13ad32a3b2"
+Utils = "8f1e0d2c-3b4a-4c5d-8e6f-7a8b9c0d1e2f"
+CairoPlot = "0a1b2c3d-4e5f-4a6b-8c7d-9e0f1a2b3c4d"
+
+[weakdeps]
+Plots = "91a5bcdd-55d7-5caf-9e0b-520d859cae80"
+
+[extensions]
+ShopPlotsExt = "Plots"
+
+[compat]
+HTTP = "=1.10.8"
+JSON = "0.21"
+Plots = "1"
+julia = "1.10"
+
+[extras]
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
+
+[targets]
+test = ["Test"]

@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"encoding/xml"
 	"maps"
+	"net/url"
 	"os"
 	"path"
 	"path/filepath"
@@ -124,6 +125,28 @@ func (c *Config) machine(env func(string) string, home string) {
 	if f := env("LUAROCKS_CONFIG"); f != "" {
 		if data, err := os.ReadFile(f); err == nil {
 			parseLuaRocksConfig(data, add)
+		}
+	}
+	// Julia registries installed in the depots (JULIA_DEPOT_PATH, else ~/.julia)
+	// besides General. JULIA_PKG_SERVER is not read: a package server serves
+	// registries as tarballs, not as the files asked for here.
+	depots := []string{}
+	for _, d := range filepath.SplitList(env("JULIA_DEPOT_PATH")) {
+		if d == "" {
+			d = filepath.Join(home, ".julia")
+		}
+		depots = append(depots, d)
+	}
+	if len(depots) == 0 && home != "" {
+		depots = []string{filepath.Join(home, ".julia")}
+	}
+	for _, d := range depots {
+		files, _ := filepath.Glob(filepath.Join(d, "registries", "*", "Registry.toml"))
+		sort.Strings(files)
+		for _, f := range files {
+			if data, err := os.ReadFile(f); err == nil {
+				parseJuliaRegistry(data, add)
+			}
 		}
 	}
 	if home == "" {
@@ -741,5 +764,35 @@ func parseLuaRocksConfig(data []byte, add func(eco, url, scope string)) {
 		if !LuaRocksItself(s) {
 			add(LuaRocks, s, "")
 		}
+	}
+}
+
+// parseJuliaRegistry reads an installed Julia registry's Registry.toml: a registry
+// other than General whose repository is on GitHub serves its files at
+// raw.githubusercontent.com, and serves the packages it lists (each a scoped
+// source, since Pkg looks a package up in every registry by its UUID).
+//
+// Implements: REQ-SUP-055
+func parseJuliaRegistry(data []byte, add func(eco, url, scope string)) {
+	var reg juliaRegistry
+	if _, err := toml.Decode(string(data), &reg); err != nil || reg.Name == "General" {
+		return
+	}
+	u, err := url.Parse(strings.TrimSpace(reg.Repo))
+	if err != nil || !strings.EqualFold(u.Hostname(), "github.com") {
+		return
+	}
+	repo := strings.TrimSuffix(strings.Trim(u.Path, "/"), ".git")
+	if strings.Count(repo, "/") != 1 {
+		return
+	}
+	base := "https://raw.githubusercontent.com/" + repo + "/HEAD"
+	names := make([]string, 0, len(reg.Packages))
+	for _, p := range reg.Packages {
+		names = append(names, p.Name)
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		add(Julia, base, n)
 	}
 }

@@ -429,6 +429,37 @@ func TestOSVAsksOpamForOCamlPackages(t *testing.T) {
 	}
 }
 
+// A Julia package is asked about in OSV's Julia ecosystem by its name and the version
+// its manifest pins.
+//
+// Verifies: REQ-FND-010, REQ-JULIA-008
+func TestOSVAsksJuliaForJuliaPackages(t *testing.T) {
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body struct {
+			Queries []struct {
+				Package struct{ Name, Ecosystem string } `json:"package"`
+				Version string                           `json:"version"`
+			} `json:"queries"`
+		}
+		json.NewDecoder(r.Body).Decode(&body)
+		out := struct {
+			Results []batchResult `json:"results"`
+		}{}
+		for _, q := range body.Queries {
+			asked = append(asked, q.Package.Ecosystem+" "+q.Package.Name+" "+q.Version)
+			out.Results = append(out.Results, batchResult{})
+		}
+		json.NewEncoder(w).Encode(out)
+	}))
+	defer srv.Close()
+	o := &OSV{http: srv.Client(), cache: store.New(t.TempDir(), time.Hour), API: srv.URL}
+	o.Query(context.Background(), []Package{{Ecosystem: "julia", Name: "HTTP", Version: "1.10.8"}, {Ecosystem: "julia-std", Name: "Dates", Version: "1.11.0"}})
+	if want := []string{"Julia HTTP 1.10.8"}; !reflect.DeepEqual(asked, want) {
+		t.Errorf("asked %q, want %q", asked, want)
+	}
+}
+
 // An advisory that fixes two release lines separately suggests the fix on the line in
 // use, not whichever the advisory happens to list first.
 func TestOSVSuggestsTheFixOnTheLineInUse(t *testing.T) {

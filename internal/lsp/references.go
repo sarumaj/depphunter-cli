@@ -97,6 +97,11 @@ var Servers = []Server{
 	// ocaml-lsp-server answers for implementations, interfaces and the ocamllex and
 	// Menhir sources merlin reads; it needs the project built once for dune's
 	// metadata.
+	// LanguageServer.jl runs inside julia; julia on PATH without the package
+	// installed fails initialize, which is logged, and the server is passed over.
+	// It indexes the environment's packages first, which takes a while.
+	{Name: "julia", Open: true, Exts: map[string]string{".jl": "julia"},
+		Commands: [][]string{{"julia", "--startup-file=no", "--history-file=no", "-e", "using LanguageServer; runserver()"}}},
 	{Name: "ocaml", Open: true, Exts: map[string]string{".ml": "ocaml", ".mli": "ocaml.interface", ".mll": "ocaml.ocamllex", ".mly": "ocaml.menhir"},
 		Commands: [][]string{{"ocamllsp"}}},
 	// neocmakelsp and cmake-language-server both answer references for CMake's

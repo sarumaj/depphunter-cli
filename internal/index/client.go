@@ -52,6 +52,9 @@ type Client struct {
 	// release lists the modules it requires, and the map's packages are
 	// distributions.
 	cpanModules map[string]string
+	// juliaDirs is where each package's files are in a Julia registry other than
+	// General, from its Registry.toml: one request per registry.
+	juliaDirs map[string]map[string]string
 	// rep is the report this run is writing, if anybody is reading it. It is set per
 	// analysis - one client serves every re-analysis in --watch - so it is guarded
 	// like the rest.
@@ -95,6 +98,7 @@ func NewClient(cfg *Config, dir string, ttl, timeout time.Duration,
 		repos:       map[string]map[string][]dep{},
 		rocks:       map[string]map[string][]string{},
 		cpanModules: map[string]string{},
+		juliaDirs:   map[string]map[string]string{},
 	}
 }
 
@@ -244,6 +248,8 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		deps, err = c.cpanDistribution(ctx, index, t)
 	case Opam:
 		deps, err = c.opamPackage(ctx, index, t)
+	case Julia:
+		deps, err = c.juliaPackage(ctx, index, t)
 	default:
 		// Maven is the one that cannot be asked. A POM is addressed by group *and*
 		// artifact, and the Java plugin puts only the group on the map (an import
@@ -497,7 +503,8 @@ type dep struct {
 // proxy answers with the exact version the build selects; npm and PyPI answer with
 // the constraint the package asked for, which usually does not.
 func (d dep) Pinned(eco string) bool {
-	if eco == NPM {
+	if eco == NPM || eco == Julia {
+		// A registry's compat "1" is every 1.x; only a whole "1.2.3" is one release.
 		return lang.PinnedSemver(d.Version)
 	}
 	return lang.Pinned(d.Version)

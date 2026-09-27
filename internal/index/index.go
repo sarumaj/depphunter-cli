@@ -57,6 +57,10 @@ const (
 	// Opam is the ocaml plugin's island of opam packages; opam-repository's
 	// package descriptions are read from its git repository as files.
 	Opam = "opam"
+	// Julia is the julia plugin's island of Pkg packages; a registry's package
+	// files (Versions.toml, Deps.toml, Compat.toml) are read from its git
+	// repository.
+	Julia = "julia"
 )
 
 // public is where each ecosystem's packages come from unless something says otherwise.
@@ -84,6 +88,8 @@ var public = map[string]string{
 	// opam.ocaml.org serves opam-repository as an archive and its /packages pages
 	// as HTML; the repository's own files are served one by one here.
 	Opam: "https://raw.githubusercontent.com/ocaml/opam-repository/master",
+	// The General registry; pkg.julialang.org serves registries only as tarballs.
+	Julia: "https://raw.githubusercontent.com/JuliaRegistries/General/master",
 }
 
 // HackageItself reports whether a repository URL is Hackage (any scheme, with or

@@ -542,6 +542,7 @@ var trivyEcosystems = map[string]string{
 	"swift": "swiftpm",
 	"pub":   "pub",
 	"hex":   "hex",
+	"julia": "julia", // Trivy reads Julia's Manifest.toml
 }
 
 // trivyPath keeps the target of a scan that has one: a lock file or a Dockerfile is a
