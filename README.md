@@ -196,7 +196,9 @@ code. The page served is identical in both cases.
   [Package indexes](#package-indexes) ·
   [Private dependencies](#private-and-internal-dependencies) ·
   [The resolution report](#the-resolution-report) ·
-  [CI pipelines](#ci-pipelines) · [Documentation](#documentation) ·
+  [CI pipelines](#ci-pipelines) ·
+  [Infrastructure as code](#infrastructure-as-code) ·
+  [Documentation](#documentation) ·
   [Symbol references](#symbol-references) · [Languages](#languages)
 - [Security](#security) · [Contributing](#contributing) · [License](#license)
 
@@ -806,9 +808,10 @@ every external package the map pins to a version — batched queries of 500
 packages each, followed by the advisories it matched — covering Go, npm, PyPI,
 crates.io, Maven, NuGet, GitHub Actions, Conan (as OSV's ConanCenter; vcpkg has
 no OSV ecosystem), Composer (as Packagist), RubyGems, Swift packages (as
-SwiftURL, by URL), pub, Hex, CRAN, Bioconductor and Hackage. Floating
-packages are not queried, since they resolve to a different version on the
-next installation. Answers are cached for six hours.
+SwiftURL, by URL), pub, Hex, CRAN, Bioconductor and Hackage; OSV has no
+ecosystem for Terraform modules and providers. Floating packages are not
+queried, since they resolve to a different version on the next installation.
+Answers are cached for six hours.
 `--no-vulns` disables all of this.
 
 Viewed from above, every building carrying findings bears a **pin**, colored by
@@ -880,27 +883,29 @@ labelled **⚠ floating** in the side panel, and marked in its tooltip. Where a
 lock file resolved a range, the panel reports both: `4.3.1`, requested as
 `^4.2.0`.
 
-| Ecosystem          | pinned by                                                                                                    | floats on                                                                                 |
-|--------------------|--------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------|
-| Go modules         | the version in `go.mod`, which the build selects                                                             | — (a `require` always names a version)                                                    |
-| npm                | `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, an exact `1.2.3`                                         | any range, including `1.2`, which denotes 1.2.x                                           |
-| crates.io          | `Cargo.lock`                                                                                                 | the manifest alone, where `"1.2.3"` denotes `^1.2.3`                                      |
-| PyPI               | `poetry.lock`, `uv.lock`, `pdm.lock`, `Pipfile.lock`, `==1.2.3`                                              | `>=`, `~=`, `^` and other ranges                                                          |
-| Maven              | a plain version, `[1.2.3]`                                                                                   | ranges, `LATEST`, `RELEASE`, `-SNAPSHOT`, dynamic `1.+` and `latest.*`, unexpanded `${…}` |
-| NuGet              | an exact version, `[1.2.3]`                                                                                  | wildcards (`2.*`) and ranges                                                              |
-| PowerShell Gallery | `RequiredVersion`                                                                                            | `ModuleVersion`, which is a minimum                                                       |
-| GitHub Actions     | a full commit SHA                                                                                            | tags, branches, or no ref                                                                 |
-| GitLab CI includes | a commit                                                                                                     | tags, branches, templates, remote includes, or no ref                                     |
-| Container images   | an `@sha256:` digest                                                                                         | tags                                                                                      |
-| vcpkg              | an `overrides` entry                                                                                         | `version>=`, which is a minimum; no version and no baseline                               |
-| Conan              | an exact reference (`zlib/1.2.13`), `conan.lock`                                                             | a version range (`[>=1.0 <2]`, `[~1.2]`)                                                  |
-| Composer           | `composer.lock`, `installed.json`, a bare `1.2.3` or `1.2`, `dev-main#<sha>`                                 | `^`, `~`, `*`, `1.2.*`, alternatives, ranges and branches                                 |
-| RubyGems           | `Gemfile.lock` (a git gem by its revision), a bare `1.2.3`, `= 1.2.3`                                        | `~>`, `>=`, `<`, `!=`, several requirements, no version                                   |
-| Swift packages     | `Package.resolved`, `exact:`, a bare `"1.2.3"`, `revision:`                                                  | `from:`, `.upToNextMajor`, `.upToNextMinor`, ranges, `branch:`                            |
-| pub                | `pubspec.lock` (a git package by its commit), a bare `1.2.3`, a git commit                                   | `^`, ranges, `any`, no constraint, a git branch or tag                                    |
-| Hex                | `mix.lock`, `rebar.lock`, a bare `1.2.3`, `== 1.2.3`, a git `ref` commit                                     | `~>`, `>=`, `or` and `and` requirements, a git branch or tag                              |
-| CRAN, Bioconductor | `renv.lock`, `packrat.lock` (a GitHub package by its commit), `(== 1.2.3)`                                   | `(>= 1.2)`, no version, a `Remotes` branch or tag                                         |
-| Hackage            | cabal's `plan.json`, `cabal.project.freeze`, `stack.yaml.lock`, `extra-deps`, `==1.2.3`, a repository commit | `^>=` and other ranges, no version, a repository tag or branch                            |
+| Ecosystem           | pinned by                                                                                                    | floats on                                                                                 |
+|---------------------|--------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------|
+| Go modules          | the version in `go.mod`, which the build selects                                                             | — (a `require` always names a version)                                                    |
+| npm                 | `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, an exact `1.2.3`                                         | any range, including `1.2`, which denotes 1.2.x                                           |
+| crates.io           | `Cargo.lock`                                                                                                 | the manifest alone, where `"1.2.3"` denotes `^1.2.3`                                      |
+| PyPI                | `poetry.lock`, `uv.lock`, `pdm.lock`, `Pipfile.lock`, `==1.2.3`                                              | `>=`, `~=`, `^` and other ranges                                                          |
+| Maven               | a plain version, `[1.2.3]`                                                                                   | ranges, `LATEST`, `RELEASE`, `-SNAPSHOT`, dynamic `1.+` and `latest.*`, unexpanded `${…}` |
+| NuGet               | an exact version, `[1.2.3]`                                                                                  | wildcards (`2.*`) and ranges                                                              |
+| PowerShell Gallery  | `RequiredVersion`                                                                                            | `ModuleVersion`, which is a minimum                                                       |
+| GitHub Actions      | a full commit SHA                                                                                            | tags, branches, or no ref                                                                 |
+| GitLab CI includes  | a commit                                                                                                     | tags, branches, templates, remote includes, or no ref                                     |
+| Container images    | an `@sha256:` digest                                                                                         | tags                                                                                      |
+| vcpkg               | an `overrides` entry                                                                                         | `version>=`, which is a minimum; no version and no baseline                               |
+| Conan               | an exact reference (`zlib/1.2.13`), `conan.lock`                                                             | a version range (`[>=1.0 <2]`, `[~1.2]`)                                                  |
+| Composer            | `composer.lock`, `installed.json`, a bare `1.2.3` or `1.2`, `dev-main#<sha>`                                 | `^`, `~`, `*`, `1.2.*`, alternatives, ranges and branches                                 |
+| RubyGems            | `Gemfile.lock` (a git gem by its revision), a bare `1.2.3`, `= 1.2.3`                                        | `~>`, `>=`, `<`, `!=`, several requirements, no version                                   |
+| Swift packages      | `Package.resolved`, `exact:`, a bare `"1.2.3"`, `revision:`                                                  | `from:`, `.upToNextMajor`, `.upToNextMinor`, ranges, `branch:`                            |
+| pub                 | `pubspec.lock` (a git package by its commit), a bare `1.2.3`, a git commit                                   | `^`, ranges, `any`, no constraint, a git branch or tag                                    |
+| Hex                 | `mix.lock`, `rebar.lock`, a bare `1.2.3`, `== 1.2.3`, a git `ref` commit                                     | `~>`, `>=`, `or` and `and` requirements, a git branch or tag                              |
+| CRAN, Bioconductor  | `renv.lock`, `packrat.lock` (a GitHub package by its commit), `(== 1.2.3)`                                   | `(>= 1.2)`, no version, a `Remotes` branch or tag                                         |
+| Hackage             | cabal's `plan.json`, `cabal.project.freeze`, `stack.yaml.lock`, `extra-deps`, `==1.2.3`, a repository commit | `^>=` and other ranges, no version, a repository tag or branch                            |
+| Terraform modules   | a registry `version` of `1.2.3` or `= 1.2.3`, a git `ref` commit                                             | `~>` and other ranges, no version, a git tag or branch, no ref, an archive                |
+| Terraform providers | `.terraform.lock.hcl` (the root module's, for the modules it calls), a single exact constraint               | `~>`, `>=` and other constraints, no constraint                                           |
 
 The JSON and GraphML exports carry `requested` and `floating` per package.
 
@@ -940,12 +945,13 @@ Ecosystems that keep the dependency graph outside the repository — Go modules,
 NuGet, container images, a Composer, Bundler, Mix or R project that commits no
 lock, pub, whose `pubspec.lock` is a flat list, rebar3, whose `rebar.lock`
 records only a depth, and a Haskell project without cabal's build plan on disk
-(`cabal.project.freeze` and `stack.yaml.lock` list versions only) — require
-`--online`, described below; Maven, the
+(`cabal.project.freeze` and `stack.yaml.lock` list versions only), and
+Terraform registry modules — require `--online`, described below; Maven, the
 PowerShell Gallery, vcpkg, Conan 2 (whose lock is a flat list), Bioconductor
-packages no lock records and Swift packages that SwiftPM has not checked out
-under `.build` (`Package.resolved` is flat as well) are not resolved beyond the
-first level at present.
+packages no lock records, Swift packages that SwiftPM has not checked out
+under `.build` (`Package.resolved` is flat as well) and Terraform modules
+fetched from git or an archive are not resolved beyond the first level at
+present. A Terraform provider depends on nothing.
 
 The side panel presents these as a **tree**: every row under *Depends on* and
 *Used by* expands into that node's own dependencies, and so on recursively.
@@ -975,7 +981,10 @@ CRAN and Posit Package Manager (each serving the packages recorded from it),
 of cabal's own configuration (`~/.cabal/config`, `~/.config/cabal/config`,
 `CABAL_CONFIG`, `CABAL_DIR`) other than Hackage itself; and `GOPROXY` — and the
 side panel names the index each package resolves from. A container image
-requires no configuration, since `ghcr.io/org/app` names its registry directly.
+requires no configuration, since `ghcr.io/org/app` names its registry directly,
+and neither does a Terraform module: `app.terraform.io/acme/vpc/aws` names its
+registry, which is trusted when Terraform's CLI configuration names the host
+(see [Authenticated registries](#authenticated-registries)).
 
 The two sources are not treated alike. An index named by **this machine's** own
 configuration is trusted. One that appears only in the repository is recorded
@@ -988,20 +997,21 @@ takes. No request is ever made to such an index, unless it is vouched for with
 repository does not record, which is how `--resolve-depth` reaches the
 ecosystems whose graph is held outside the repository:
 
-| Ecosystem | asked for                                                                                      | answer                                                          |
-|-----------|------------------------------------------------------------------------------------------------|-----------------------------------------------------------------|
-| Go        | `<proxy>/<module>/@v/<version>.mod`                                                            | its direct (non-`// indirect`) `require` entries                |
-| npm       | `<registry>/<package>/<version>`, or `/latest` when unpinned                                   | its `dependencies`                                              |
-| PyPI      | `<host>/pypi/<name>/<version>/json`, or `/pypi/<name>/json` when unpinned                      | `requires_dist`, excluding extras                               |
-| crates.io | `<index>/<se>/<rd>/<name>`, sparse index                                                       | its normal `deps`, excluding optional ones                      |
-| NuGet     | `<feed>/<id>/<version>/<id>.nuspec`                                                            | `<dependencies>`, both flat and by group                        |
-| OCI       | the manifest, then its config blob                                                             | the **base image** it was built on                              |
-| Composer  | `<repository>/p2/<vendor>/<name>.json` (`metadata-url` elsewhere)                              | the version's `require`, excluding the platform                 |
-| RubyGems  | `<server>/info/<name>`, the compact index Bundler reads                                        | the version's runtime dependencies                              |
-| pub       | `<server>/api/packages/<name>`, the package API pub reads                                      | the version's (or latest's) `dependencies`                      |
-| Hex       | `<api>/packages/<name>`, then `/releases/<version>` (or latest stable)                         | its requirements, excluding optional ones                       |
-| CRAN      | crandb's `/<name>/<version>` (or current); `src/contrib/PACKAGES` elsewhere                    | `Depends`, `Imports` and `LinkingTo`, without R's base packages |
-| Hackage   | `<server>/package/<name>/preferred`, then `/package/<name>-<version>/<name>.cabal` (or newest) | its libraries' `build-depends`, without GHC's own packages      |
+| Ecosystem         | asked for                                                                                         | answer                                                                                           |
+|-------------------|---------------------------------------------------------------------------------------------------|--------------------------------------------------------------------------------------------------|
+| Go                | `<proxy>/<module>/@v/<version>.mod`                                                               | its direct (non-`// indirect`) `require` entries                                                 |
+| npm               | `<registry>/<package>/<version>`, or `/latest` when unpinned                                      | its `dependencies`                                                                               |
+| PyPI              | `<host>/pypi/<name>/<version>/json`, or `/pypi/<name>/json` when unpinned                         | `requires_dist`, excluding extras                                                                |
+| crates.io         | `<index>/<se>/<rd>/<name>`, sparse index                                                          | its normal `deps`, excluding optional ones                                                       |
+| NuGet             | `<feed>/<id>/<version>/<id>.nuspec`                                                               | `<dependencies>`, both flat and by group                                                         |
+| OCI               | the manifest, then its config blob                                                                | the **base image** it was built on                                                               |
+| Composer          | `<repository>/p2/<vendor>/<name>.json` (`metadata-url` elsewhere)                                 | the version's `require`, excluding the platform                                                  |
+| RubyGems          | `<server>/info/<name>`, the compact index Bundler reads                                           | the version's runtime dependencies                                                               |
+| pub               | `<server>/api/packages/<name>`, the package API pub reads                                         | the version's (or latest's) `dependencies`                                                       |
+| Hex               | `<api>/packages/<name>`, then `/releases/<version>` (or latest stable)                            | its requirements, excluding optional ones                                                        |
+| CRAN              | crandb's `/<name>/<version>` (or current); `src/contrib/PACKAGES` elsewhere                       | `Depends`, `Imports` and `LinkingTo`, without R's base packages                                  |
+| Hackage           | `<server>/package/<name>/preferred`, then `/package/<name>-<version>/<name>.cabal` (or newest)    | its libraries' `build-depends`, without GHC's own packages                                       |
+| Terraform modules | `<modules.v1>/<namespace>/<name>/<provider>/versions` (service discovery off the public registry) | the providers and registry modules of the version asked for, or the newest its constraint allows |
 
 A container image has no dependency list. What it has is the image it was built
 on, which is the source of its unpatched vulnerabilities, and that is what is
@@ -1038,10 +1048,14 @@ written for and to no other.
 | `~/.config/containers/auth.json`                              | the same, for Podman and Skopeo                                                                                   |
 | `~/.cargo/credentials.toml`                                   | a token per registry, matched to its index through `~/.cargo/config.toml` (legacy `credentials` and `config` too) |
 | `CARGO_REGISTRIES_<NAME>_TOKEN`, `CARGO_REGISTRY_TOKEN`       | the same token supplied by a pipeline instead                                                                     |
+| `~/.terraformrc`, `~/.tofurc`, `TF_CLI_CONFIG_FILE`           | Terraform's and OpenTofu's `credentials "<host>"` tokens; a `host` block names a registry without one             |
+| `~/.terraform.d/credentials.tfrc.json`                        | the tokens `terraform login` stores (OpenTofu's under `~/.config/opentofu`)                                       |
+| `TF_TOKEN_<host>`                                             | a token supplied by a pipeline, for HCP Terraform and the hosts named above                                       |
 | the index URL itself                                          | `https://user:password@host/simple`, as a private pip or Cargo mirror is set                                      |
 
 Between them these cover Nexus, Artifactory, Azure Artifacts, ProGet, GitHub
-Packages, Harbor, GHCR and a private crate registry.
+Packages, Harbor, GHCR, a private crate registry and a private Terraform
+registry.
 
 In `~/.npmrc`, `settings.xml` and `NuGet.Config`, a value that is exactly
 `${NAME}`, `${env.NAME}` or `%NAME%` is read from the environment, so a password
@@ -1092,7 +1106,8 @@ Maven group (`com.acme.*`) and a registry path (`harbor.corp/*`). Prefixing a
 pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`,
 `crates:`, `actions:`, `gitlab-ci:`, `psgallery:`, `c-external:`, `vcpkg:`,
 `conan:`, `composer:`, `rubygems:`, `swiftpm:`, `pub:`, `hex:`, `cran:`,
-`bioconductor:` or `hackage:` — restricts it to that ecosystem.
+`bioconductor:`, `hackage:`, `terraform-module:` or `terraform-provider:` —
+restricts it to that ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
 to whatever is configured here**, so a Go project whose machine is already
@@ -1286,6 +1301,39 @@ and the same base-image lookup under `--online`. Docker Hub's long names
 (`docker.io/library/nginx`) are shortened to the name used everywhere else
 (`nginx`), so one image is one building however it is written.
 
+### Infrastructure as code
+
+A Terraform or OpenTofu configuration installs modules and providers that
+execute with the credentials of the cloud it manages, and none of them appears
+in a package manifest. depphunter reads `.tf` and `.tofu` files (and their
+`.tf.json` form), `.tfvars` files, `.terraform.lock.hcl` and Terragrunt's
+`.hcl` files. A module is a directory, and its files are read together:
+
+- **Modules**: a `module` block's `source`. A local path (`./modules/vpc`)
+  is an edge to that directory; a registry address
+  (`terraform-aws-modules/vpc/aws`, with a host for a private registry and
+  `//subdir` for a submodule) and anything fetched from git, a web server or a
+  bucket (`git::https://…?ref=v1.2.0`, `github.com/org/repo//sub`) join the
+  **Terraform modules** island, the latter named by the normalized URL.
+- **Providers**: `required_providers` entries, `provider` blocks and, where a
+  module declares nothing, the provider a resource type implies
+  (`aws_instance` uses `hashicorp/aws`), in the **Terraform providers**
+  island. The lock file pins them for its module and the modules it calls.
+  `registry.terraform.io/` and `registry.opentofu.org/` are dropped from
+  names, since both registries serve the same namespaces.
+- **Inside a module**: `var.x`, `local.x`, `module.x`, `data.t.n` and
+  `aws_instance.web` link the referring file to the file declaring them, and
+  `file()` and `templatefile()` with a literal path link to the file read.
+- **Terragrunt**: the `terraform` block's `source` (with the locals of an
+  included file substituted, as in Gruntwork's `_envcommon` layout),
+  `dependency` and `dependencies` paths, and what `find_in_parent_folders()`
+  finds.
+
+Resources, data sources, modules, variables, outputs, locals and provider
+configurations become the file's symbols. Only a commit pins a git module; a
+registry module is pinned by an exact `version`. Nothing is evaluated, so a
+source or version computed from variables is not followed.
+
 ### Documentation
 
 A README that links to `CONTRIBUTING.md` depends on that file, and one that
@@ -1365,6 +1413,7 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | Erlang                  | `elp` or `erlang_ls`                                           |
 | R                       | `R --slave -e languageserver::run()`                           |
 | Haskell                 | `haskell-language-server-wrapper` or `haskell-language-server` |
+| Terraform / OpenTofu    | `terraform-ls serve` or `tofu-ls serve`                        |
 
 The servers run in the background once the map is displayed — gopls requires
 approximately 7 s for this repository — within the budget set by
@@ -1399,6 +1448,7 @@ The JSON and GraphML exports include the reference edges.
 | Haskell                 | `import` (every CPP branch, PackageImports, `{-# SOURCE #-}`); modules to the files whose headers declare them (the importer's package, its project's and its dependencies' local packages), Happy/Alex sources by path; packages by `.cabal`, `package.yaml`, `cabal.project`, `stack.yaml`, the freeze file, `stack.yaml.lock` and `plan.json`, whose dependencies are imports | Hackage, GHC libraries                                                     |
 | PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                                                                                                                                | PowerShell Gallery, built-in modules                                       |
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                                                                                     | GitHub Actions, GitLab CI, Container images                                |
+| Terraform / OpenTofu    | `module` sources to local directories, registry and remote modules; `required_providers`, `provider` blocks and resource type prefixes to providers, pinned by `.terraform.lock.hcl`; references to what other files of the module declare; `file()`/`templatefile()` paths; Terragrunt `source`, `dependency` and `find_in_parent_folders()`                                    | Terraform modules, Terraform providers                                     |
 | Dockerfile / Compose    | `FROM`, `COPY --from`, `RUN --mount from=` and `# syntax=` with `ARG` defaults expanded and stages told apart; Compose `image:`, and `build:` to the Dockerfile in the repository                                                                                                                                                                                                | Container images                                                           |
 | Markdown                | links to files and directories in the repository (inline, reference, autolink, and the `href` and `src` of raw HTML); headings become the file's symbols                                                                                                                                                                                                                         | *(none: a link is not a package)*                                          |
 
@@ -1643,12 +1693,17 @@ its version is not known offline. `build-depends`, hpack dependencies,
 they name. Haskell is read by a small lexer; the tree-sitter grammar was
 several times slower and lost 18% of the files measured to CPP and extensions.
 
+Terraform and OpenTofu configurations, variable files, lock files and
+Terragrunt configurations are read by a small HCL scanner: the tree-sitter
+grammar parsed every file measured correctly but was about twenty times
+slower. See [Infrastructure as code](#infrastructure-as-code).
+
 Files in other languages appear on the map without dependency edges. Parsing
 uses a pure-Go tree-sitter runtime for JavaScript/TypeScript, Python, Rust,
 Java, Kotlin, Scala, C, C++, PHP, Ruby and Swift; Go uses the standard library's
 own parser, CI and Compose files a YAML parser, and C#, PowerShell, Markdown,
-Dart, Elixir, Erlang, R, Haskell, Dockerfiles, the markup of Vue, Svelte and
-Astro components, R Markdown chunks and C preprocessor directives small
+Dart, Elixir, Erlang, R, Haskell, HCL, Dockerfiles, the markup of Vue, Svelte
+and Astro components, R Markdown chunks and C preprocessor directives small
 built-in scanners — so the binary continues to cross-compile without a C
 toolchain.
 

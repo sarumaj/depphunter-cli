@@ -35,6 +35,9 @@ type Store struct {
 	// registries holds the container registries this machine's own configuration
 	// names, with or without a credential; see Registry.
 	registries map[string]bool
+	// terraform holds the Terraform registry hosts this machine's CLI configuration
+	// names; see TerraformHost.
+	terraform map[string]bool
 }
 
 // Read collects the credentials from the files and variables the package managers of

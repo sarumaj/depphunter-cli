@@ -16,7 +16,8 @@ The system **shall** determine a file's language from its extension,
 case-insensitively, or from well-known file names (for example `Dockerfile`,
 `Makefile`, `go.mod`, `Gemfile`, `Rakefile`, `rebar.config`, an OTP
 `*.app.src`, R's `DESCRIPTION`, `NAMESPACE`, `renv.lock` and `packrat.lock`,
-Haskell's `cabal.project`, `stack.yaml` and `package.yaml`, and the
+Haskell's `cabal.project`, `stack.yaml` and `package.yaml`, Terraform's
+`.terraform.lock.hcl` and `*.tf.json`, Terragrunt's `terragrunt.hcl`, and the
 Dockerfile names of REQ-DOCKER-001), and
 **shall** leave the language empty when neither is known.
 
@@ -34,5 +35,7 @@ colors and filters.
    `R/cart.R`, `DESCRIPTION` and `renv.lock` are R, `vignettes/intro.Rmd` is
    R Markdown and `report.qmd` is Quarto; `src/Data/Shop.hs`, `.hs-boot`,
    `doc/Tutorial.lhs` and `stack.yaml` are Haskell, `shop.cabal` and
-   `cabal.project` are Cabal.
+   `cabal.project` are Cabal; `infra/main.tf`, `main.tf.json`, `prod.tfvars`
+   and `.terraform.lock.hcl` are Terraform, `main.tofu` is OpenTofu,
+   `terragrunt.hcl` is Terragrunt and `root.hcl` is HCL.
 2. A file with an unknown extension has no `lang`.

@@ -23,6 +23,8 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 		"_build/dev/lib/shop/ebin/shop.app":  "{application, shop, []}.\n",
 		"dist-newstyle/cache/plan.json":      "{}\n",
 		".stack-work/dist/x/Paths_shop.hs":   "module Paths_shop where\n",
+		".terraform/modules/vpc/main.tf":     "variable \"x\" {}\n",
+		".terragrunt-cache/a/b/main.tf":      "variable \"x\" {}\n",
 		"img.bin":                            "\x00\x01\x02",
 	}
 	for p, c := range files {

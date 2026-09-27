@@ -24,6 +24,7 @@ var byExt = map[string]string{
 	".json": "JSON", ".yaml": "YAML", ".yml": "YAML", ".toml": "TOML", ".xml": "XML",
 	".md": "Markdown", ".mdx": "Markdown", ".rst": "reStructuredText", ".txt": "Text",
 	".sql": "SQL", ".proto": "Protobuf", ".graphql": "GraphQL", ".tf": "Terraform",
+	".tofu": "OpenTofu", ".tfvars": "Terraform", ".hcl": "HCL",
 }
 
 var byName = map[string]string{
@@ -34,6 +35,7 @@ var byName = map[string]string{
 	"DESCRIPTION": "R", "NAMESPACE": "R", "renv.lock": "R", "packrat.lock": "R",
 	"cabal.project": "Cabal", "cabal.project.freeze": "Cabal", "cabal.project.local": "Cabal",
 	"stack.yaml": "Haskell", "stack.yaml.lock": "Haskell", "package.yaml": "Haskell",
+	".terraform.lock.hcl": "Terraform", "terragrunt.hcl": "Terragrunt",
 }
 
 // Language guesses a file's language from its name; "" means unknown.
@@ -49,6 +51,9 @@ func Language(p string) string {
 	}
 	if strings.HasSuffix(base, ".app.src") {
 		return "Erlang" // an OTP application resource file
+	}
+	if strings.HasSuffix(base, ".tf.json") || strings.HasSuffix(base, ".tfvars.json") {
+		return "Terraform" // Terraform's JSON syntax
 	}
 	return byExt[strings.ToLower(path.Ext(base))]
 }
