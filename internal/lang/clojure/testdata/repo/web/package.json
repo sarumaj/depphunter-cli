@@ -1,0 +1,5 @@
+{
+  "name": "shop-web",
+  "dependencies": {"react": "18.2.0", "@mui/material": "^5.15.0", "left-pad": "1.3.0"},
+  "devDependencies": {"shadow-cljs": "2.26.2"}
+}

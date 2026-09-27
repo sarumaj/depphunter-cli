@@ -1815,3 +1815,166 @@ func juliaRegistryPaths(body []byte) map[string]string {
 	}
 	return out
 }
+
+// ---------------------------------------------------------------- Maven
+
+// mavenPOM is what a POM says about a release's dependencies: its own, its parent's
+// (inherited), the versions dependencyManagement fixes and the properties both use.
+type mavenPOM struct {
+	GroupID string `xml:"groupId"`
+	Version string `xml:"version"`
+	Parent  struct {
+		GroupID    string `xml:"groupId"`
+		ArtifactID string `xml:"artifactId"`
+		Version    string `xml:"version"`
+	} `xml:"parent"`
+	Properties struct {
+		Items []struct {
+			XMLName xml.Name
+			Value   string `xml:",chardata"`
+		} `xml:",any"`
+	} `xml:"properties"`
+	Deps    []mavenDep `xml:"dependencies>dependency"`
+	Managed []mavenDep `xml:"dependencyManagement>dependencies>dependency"`
+}
+
+type mavenDep struct {
+	GroupID    string `xml:"groupId"`
+	ArtifactID string `xml:"artifactId"`
+	Version    string `xml:"version"`
+	Scope      string `xml:"scope"`
+	Optional   string `xml:"optional"`
+}
+
+var mavenProperty = regexp.MustCompile(`\$\{([^}]+)\}`)
+
+// mavenArtifact reads what a Maven artifact depends on from its POM. It is asked only
+// of packages named group:artifact - the Clojure plugin's, and those of reports - as a
+// POM is addressed by both. The version is the one pinned, else the release
+// maven-metadata.xml names. The POM's dependencies in the compile and runtime scopes
+// that are not optional are the answer, with those its parent POMs declare (read up
+// to four levels), versions filled from dependencyManagement and properties along
+// that chain; a version still unknown is left empty. When the index is Maven Central
+// and the repository has a Clojure manifest, Clojars is asked after it, as Clojure's
+// tools do.
+//
+// Implements: REQ-SUP-056
+func (c *Client) mavenArtifact(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+	group, artifact, _ := strings.Cut(t.Package, ":")
+	repos := []string{index}
+	if index == public[Maven] && c.cfg.clojure {
+		repos = append(repos, clojarsURL)
+	}
+	fetch := func(g, a, file string) ([]byte, string, error) {
+		var last error
+		for _, r := range repos {
+			body, err := c.accept(ctx, fmt.Sprintf("%s/%s/%s/%s", r, strings.ReplaceAll(g, ".", "/"), a, file), "application/xml")
+			if err == nil {
+				return body, r, nil
+			}
+			last = err
+		}
+		return nil, "", last
+	}
+	version := t.Version
+	if !lang.PinnedMaven(version) {
+		body, _, err := fetch(group, artifact, "maven-metadata.xml")
+		if err != nil {
+			return nil, err
+		}
+		var meta struct {
+			Versioning struct {
+				Release  string   `xml:"release"`
+				Latest   string   `xml:"latest"`
+				Versions []string `xml:"versions>version"`
+			} `xml:"versioning"`
+		}
+		if err := xml.Unmarshal(body, &meta); err != nil {
+			return nil, err
+		}
+		v := meta.Versioning
+		version = cmp.Or(v.Release, v.Latest)
+		if version == "" && len(v.Versions) > 0 {
+			version = v.Versions[len(v.Versions)-1]
+		}
+		if version == "" {
+			return nil, fmt.Errorf("%s: no release in maven-metadata.xml", t.Package)
+		}
+	}
+	props := map[string]string{}
+	managed := map[string]string{}
+	var deps []mavenDep
+	g, a, v := group, artifact, version
+	for level := 0; level < 5 && a != ""; level++ {
+		body, repo, err := fetch(g, a, fmt.Sprintf("%s/%s-%s.pom", v, a, v))
+		if err != nil {
+			if level == 0 {
+				return nil, err
+			}
+			break // a parent nobody serves: what the child says is still the answer
+		}
+		repos = []string{repo} // a parent lives where its child does
+		var pom mavenPOM
+		if err := xml.Unmarshal(body, &pom); err != nil {
+			if level == 0 {
+				return nil, err
+			}
+			break
+		}
+		setDefault := func(k, val string) {
+			if _, ok := props[k]; !ok && val != "" {
+				props[k] = val
+			}
+		}
+		for _, p := range pom.Properties.Items {
+			setDefault(p.XMLName.Local, strings.TrimSpace(p.Value))
+		}
+		if level == 0 {
+			setDefault("project.version", cmp.Or(pom.Version, pom.Parent.Version))
+			setDefault("project.groupId", cmp.Or(pom.GroupID, pom.Parent.GroupID))
+			setDefault("version", cmp.Or(pom.Version, pom.Parent.Version))
+		}
+		setDefault("project.parent.version", pom.Parent.Version)
+		for _, d := range pom.Managed {
+			if k := d.GroupID + ":" + d.ArtifactID; managed[k] == "" && d.Scope != "import" {
+				managed[k] = d.Version
+			}
+		}
+		deps = append(deps, pom.Deps...)
+		g, a, v = pom.Parent.GroupID, pom.Parent.ArtifactID, pom.Parent.Version
+	}
+	expand := func(s string) string {
+		for i := 0; i < 5 && strings.Contains(s, "${"); i++ {
+			s = mavenProperty.ReplaceAllStringFunc(s, func(m string) string {
+				if val, ok := props[m[2:len(m)-1]]; ok {
+					return val
+				}
+				return m
+			})
+		}
+		if strings.Contains(s, "${") {
+			return ""
+		}
+		return strings.TrimSpace(s)
+	}
+	var out []dep
+	seen := map[string]bool{}
+	for _, d := range deps {
+		switch strings.TrimSpace(d.Scope) {
+		case "", "compile", "runtime":
+		default:
+			continue // test, provided, system, import
+		}
+		name := expand(d.GroupID) + ":" + expand(d.ArtifactID)
+		if strings.TrimSpace(d.Optional) == "true" || seen[name] || strings.HasPrefix(name, ":") || strings.HasSuffix(name, ":") {
+			continue
+		}
+		seen[name] = true
+		ver := d.Version
+		if ver == "" {
+			ver = managed[d.GroupID+":"+d.ArtifactID]
+		}
+		out = append(out, dep{Name: name, Version: expand(ver)})
+	}
+	return out, nil
+}

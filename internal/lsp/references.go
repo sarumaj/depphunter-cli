@@ -104,6 +104,10 @@ var Servers = []Server{
 		Commands: [][]string{{"julia", "--startup-file=no", "--history-file=no", "-e", "using LanguageServer; runserver()"}}},
 	{Name: "ocaml", Open: true, Exts: map[string]string{".ml": "ocaml", ".mli": "ocaml.interface", ".mll": "ocaml.ocamllex", ".mly": "ocaml.menhir"},
 		Commands: [][]string{{"ocamllsp"}}},
+	// clojure-lsp serves Clojure, ClojureScript and babashka alike (it analyzes the
+	// classpath tools.deps or Leiningen computes, so it indexes a while first).
+	{Name: "clojure", Open: true, Exts: map[string]string{".clj": "clojure", ".cljs": "clojure", ".cljc": "clojure", ".bb": "clojure"},
+		Commands: [][]string{{"clojure-lsp"}}},
 	// zls answers references for Zig sources; it reads build.zig for the modules
 	// and packages the build wires.
 	{Name: "zig", Open: true, Exts: map[string]string{".zig": "zig"}, Commands: [][]string{{"zls"}}},
@@ -488,6 +492,11 @@ var wordCache sync.Map // name -> *regexp.Regexp
 //
 // Implements: REQ-LSP-003
 func symbolWord(name string) string {
+	// A Clojure defmethod is the multimethod's name and its dispatch value
+	// ("area :circle"): the name is the word.
+	if i := strings.IndexByte(name, ' '); i > 0 {
+		name = name[:i]
+	}
 	if i := strings.LastIndex(name, "@"); i > 0 && allDigits(name[i+1:]) {
 		name = name[:i]
 	}

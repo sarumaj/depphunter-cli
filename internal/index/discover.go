@@ -16,6 +16,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"gopkg.in/yaml.v3"
 
+	"github.com/sarumaj/depphunter-cli/internal/lang/edn"
 	"github.com/sarumaj/depphunter-cli/internal/lang/luarocks"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
@@ -216,6 +217,9 @@ func (c *Config) project(files []*scan.File) {
 			parseNuGetConfig(data, add)
 		case base == "pom.xml":
 			parsePom(data, add)
+		case base == "deps.edn", base == "bb.edn", base == "shadow-cljs.edn", base == "project.clj", base == "build.boot":
+			c.clojure = true
+			parseClojureRepos(base, data, add)
 		case base == "composer.json":
 			parseComposer(data, add)
 		case f.Path == "Gemfile" || strings.HasSuffix(f.Path, "/Gemfile") || base == "gems.rb":
@@ -431,6 +435,66 @@ func parsePom(data []byte, add func(eco, url, scope string)) {
 	}
 	for _, r := range doc.Repositories.Repository {
 		add(Maven, strings.TrimSpace(r.URL), "")
+	}
+}
+
+// parseClojureRepos reads the Maven repositories a Clojure manifest declares:
+// deps.edn's and bb.edn's :mvn/repos, Leiningen's and Boot's :repositories,
+// shadow-cljs's :repositories or :maven {:repositories}. Maven Central and Clojars
+// are the public indexes and are not recorded as the repository's.
+//
+// Implements: REQ-SUP-056
+func parseClojureRepos(base string, data []byte, add func(eco, url, scope string)) {
+	forms := edn.Read(data)
+	var repos []*edn.Node
+	switch base {
+	case "deps.edn", "bb.edn", "shadow-cljs.edn":
+		if len(forms) > 0 {
+			top := forms[0]
+			repos = append(repos, top.Get("mvn/repos"), top.Get("repositories"))
+			if mv := top.Get("maven"); mv != nil {
+				repos = append(repos, mv.Get("repositories"))
+			}
+		}
+	case "project.clj", "build.boot":
+		for _, f := range forms {
+			if h := f.Head(); h != "defproject" && h != "set-env!" {
+				continue
+			}
+			for i := 1; i+1 < len(f.Kids); i++ {
+				if k := f.Kids[i]; k.Kind == edn.Keyword && k.Text == "repositories" {
+					repos = append(repos, edn.Unquote(f.Kids[i+1]))
+				}
+			}
+		}
+	}
+	for _, r := range repos {
+		if r == nil {
+			continue
+		}
+		// {"name" {:url "..."}}, {"name" "url"}, [["name" "url"]], [["name" {:url "..."}]]
+		var values []*edn.Node
+		switch r.Kind {
+		case edn.Map:
+			for i := 1; i < len(r.Kids); i += 2 {
+				values = append(values, r.Kids[i])
+			}
+		case edn.Vector, edn.List:
+			for _, e := range r.Kids {
+				if len(e.Kids) == 2 {
+					values = append(values, e.Kids[1])
+				}
+			}
+		}
+		for _, v := range values {
+			u := v
+			if v.Kind == edn.Map {
+				u = v.Get("url")
+			}
+			if u != nil && u.Kind == edn.String && !MavenPublic(u.Text) {
+				add(Maven, strings.TrimSpace(u.Text), "")
+			}
+		}
 	}
 }
 

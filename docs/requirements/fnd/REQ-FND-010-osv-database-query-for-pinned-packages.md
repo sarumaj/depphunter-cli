@@ -37,3 +37,7 @@ repository's own files cannot answer.
 ## Notes
 
 Packages declared private (scope `sup`) are not asked about either.
+
+A Clojure dependency is on the Maven island as `group:artifact`, the name OSV's
+Maven ecosystem uses, so its pinned versions are asked about like any other
+Maven package's.

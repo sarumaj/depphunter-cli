@@ -1,0 +1,19 @@
+;; The shop: tools.deps with aliases, a git dependency, a local project and a
+;; repository of its own.
+{:paths ["src" "resources"]
+ :deps {org.clojure/clojure {:mvn/version "1.11.1"}
+        cheshire/cheshire {:mvn/version "5.12.0"}
+        ring/ring-core {:mvn/version "1.11.0"}
+        com.github.seancorfield/next.jdbc {:mvn/version "1.3.909"}
+        metosin/reitit-ring {:mvn/version "0.7.0"}
+        com.taoensso/timbre {:mvn/version "RELEASE"}
+        org.clojure/core.async {:mvn/version "[1.6,2.0)"}
+        io.github.acme/widgets {:git/tag "v1.2.0" :git/sha "0123456789abcdef0123456789abcdef01234567"}
+        io.github.acme/gadgets {:git/tag "v0.3"}
+        acme/shared {:local/root "libs/shared"}
+        org.eclipse.jetty/jetty-server ^:antq/exclude {:mvn/version "11.0.18"}}
+ :aliases {:test {:extra-paths ["test"]
+                  :extra-deps {lambdaisland/kaocha {:mvn/version "1.87.1366"}}}
+           :dev {:extra-deps {integrant/repl {:mvn/version "0.3.3"}
+                              cheshire/cheshire {:mvn/version "5.11.0"}}}}
+ :mvn/repos {"acme" {:url "https://maven.acme.example/releases"}}}

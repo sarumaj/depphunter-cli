@@ -79,11 +79,21 @@ func (p *Private) Match(eco, name string) bool {
 	if p == nil || name == "" {
 		return false
 	}
-	if p.any != "" && module.MatchPrefixPatterns(p.any, name) {
-		return true
+	names := []string{name}
+	if group, artifact, ok := strings.Cut(name, ":"); ok && eco == "maven" {
+		// The Clojure plugin names group:artifact; a pattern names a group
+		// ("com.acme.*" matches com.acme.billing:api) or group.artifact.
+		names = append(names, group, group+"."+artifact)
 	}
-	globs := p.byEco[eco]
-	return globs != "" && module.MatchPrefixPatterns(globs, name)
+	for _, n := range names {
+		if p.any != "" && module.MatchPrefixPatterns(p.any, n) {
+			return true
+		}
+		if globs := p.byEco[eco]; globs != "" && module.MatchPrefixPatterns(globs, n) {
+			return true
+		}
+	}
+	return false
 }
 
 // Empty reports whether nothing was declared private, which is the ordinary case for

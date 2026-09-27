@@ -28,10 +28,13 @@ Dist::Zilla's `dist.ini`, dune's `dune`, `dune-project` and
 `dune-workspace`, opam's `opam`, `opam.locked` and `*.opam.locked`, Julia
 Pkg's `Project.toml`, `JuliaProject.toml`, `Manifest.toml`,
 `JuliaManifest.toml`, versioned `Manifest-vX.Y.toml` and `Artifacts.toml`,
+Clojure's `project.clj`, `build.boot`, `deps.edn`, `bb.edn` and
+`shadow-cljs.edn`,
 the shells' and direnv's startup files (`.bashrc`,
 `.zshrc`, `.profile`, `.envrc` and the others of REQ-SHELL-001), and the
 Dockerfile names of REQ-DOCKER-001), or, for a file neither names, from a
-`#!` line running a shell (REQ-SHELL-001) or perl (REQ-PERL-001), and
+`#!` line running a shell (REQ-SHELL-001), perl (REQ-PERL-001) or babashka
+(`bb`, Clojure: REQ-CLOJURE-001), and
 **shall** leave the language empty when none is known. A `.ts` file whose
 first bytes, after an optional byte order mark and whitespace, are an XML
 declaration (`<?xml`) or a document type (`<!DOCTYPE`) is a Qt Linguist

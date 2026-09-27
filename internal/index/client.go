@@ -250,12 +250,18 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		deps, err = c.opamPackage(ctx, index, t)
 	case Julia:
 		deps, err = c.juliaPackage(ctx, index, t)
+	case Maven:
+		if !strings.Contains(t.Package, ":") {
+			// A Maven group cannot be asked. A POM is addressed by group *and*
+			// artifact, and the Java plugins put only the group on the map (an
+			// import names a package, and a package does not say which artifact
+			// ships it), so there is no document to request. Saying nothing beats
+			// guessing an artifact. The Clojure plugin names group:artifact.
+			// Implements: REQ-JAVA-010, REQ-SUP-028
+			return answer{source: trace.NoAnswer, reason: trace.ReasonUnsupported}, nil
+		}
+		deps, err = c.mavenArtifact(ctx, index, t)
 	default:
-		// Maven is the one that cannot be asked. A POM is addressed by group *and*
-		// artifact, and the Java plugin puts only the group on the map (an import
-		// names a package, and a package does not say which artifact ships it), so
-		// there is no document to request. Saying nothing beats guessing an artifact.
-		// Implements: REQ-JAVA-010, REQ-SUP-028
 		return answer{source: trace.NoAnswer, reason: trace.ReasonUnsupported}, nil
 	}
 	if err != nil {
@@ -503,6 +509,9 @@ type dep struct {
 // proxy answers with the exact version the build selects; npm and PyPI answer with
 // the constraint the package asked for, which usually does not.
 func (d dep) Pinned(eco string) bool {
+	if eco == Maven {
+		return lang.PinnedMaven(d.Version) // 1.2.3.RELEASE is one release, [1.0,2.0) is not
+	}
 	if eco == NPM || eco == Julia {
 		// A registry's compat "1" is every 1.x; only a whole "1.2.3" is one release.
 		return lang.PinnedSemver(d.Version)

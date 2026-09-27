@@ -201,3 +201,17 @@ func TestAZigPatternKeepsToZig(t *testing.T) {
 		t.Error("a zig-scoped pattern did not keep to its ecosystem")
 	}
 }
+
+// A Clojure dependency on the Maven island is group:artifact; a Maven pattern names
+// its group, as it does a Java package's.
+//
+// Verifies: REQ-SUP-035
+func TestAMavenPatternMatchesGroupAndArtifact(t *testing.T) {
+	p := New([]string{"maven:com.acme.*"})
+	if !p.Match("maven", "com.acme.billing:api") || !p.Match("maven", "com.acme:billing") || p.Match("maven", "cheshire:cheshire") {
+		t.Error("a Maven group pattern did not match group:artifact names")
+	}
+	if !New([]string{"acme"}).Match("maven", "acme:shared") {
+		t.Error("a bare group did not match its artifacts")
+	}
+}

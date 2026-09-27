@@ -225,10 +225,8 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 	if r.lang.covers(spec) {
 		return r.lang.stdTarget(segments, wildcard)
 	}
-	for _, p := range jdkPrefixes {
-		if strings.HasPrefix(spec+".", p) || strings.HasPrefix(spec, p) {
-			return lang.Target{Ecosystem: ecoJDK, Package: strings.Join(segments[:min(2, len(segments))], ".")}
-		}
+	if t, ok := JDK(spec); ok {
+		return t
 	}
 	if p := r.local(segments, wildcard); p != "" {
 		return lang.Target{Local: p}
@@ -280,27 +278,25 @@ func (r *resolver) local(segments []string, wildcard bool) string {
 	return ""
 }
 
-// pinnedMaven reports whether a Maven version names one artifact. A plain version
-// does, whatever its shape (Spring writes 1.2.3.RELEASE); a range, the LATEST and
-// RELEASE keywords, Gradle's and Ivy's dynamic versions (1.+, latest.release), an
-// unexpanded property and a snapshot - republished under the same name - do not.
+// pinnedMaven is Maven's pin rule (lang.PinnedMaven), shared with the Clojure plugin
+// and the index client, which name Maven artifacts too.
 //
 // Implements: REQ-JAVA-008
-func pinnedMaven(v string) bool {
-	v = strings.TrimSpace(v)
-	switch {
-	case v == "", strings.Contains(v, "$"), strings.Contains(v, "+"):
-		return false
-	case strings.HasPrefix(strings.ToLower(v), "latest."):
-		return false
-	case strings.HasPrefix(v, "["), strings.HasPrefix(v, "("):
-		return lang.Pinned(v) // "[1.2.3]" is one version, "[1.0,2.0)" is not
-	case strings.EqualFold(v, "LATEST"), strings.EqualFold(v, "RELEASE"):
-		return false
-	case strings.HasSuffix(strings.ToUpper(v), "-SNAPSHOT"):
-		return false
+func pinnedMaven(v string) bool { return lang.PinnedMaven(v) }
+
+// JDK places a Java package or class name on the JDK island, if the JDK ships it:
+// java.util.Date is the package java.util there. Other JVM languages' imports of Java
+// classes (Clojure's :import) resolve through it.
+//
+// Implements: REQ-JAVA-002, REQ-CLOJURE-006
+func JDK(spec string) (lang.Target, bool) {
+	for _, p := range jdkPrefixes {
+		if strings.HasPrefix(spec+".", p) || strings.HasPrefix(spec, p) {
+			segments := strings.Split(spec, ".")
+			return lang.Target{Ecosystem: ecoJDK, Package: strings.Join(segments[:min(2, len(segments))], ".")}, true
+		}
 	}
-	return true
+	return lang.Target{}, false
 }
 
 // group finds the declared groupId an import belongs to: the longest groupId that is a

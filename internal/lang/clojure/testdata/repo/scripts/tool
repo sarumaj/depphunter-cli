@@ -1,0 +1,4 @@
+#!/usr/bin/env bb
+(require (quote [babashka.process :refer [shell]]))
+(load-file "scripts/release.bb")
+(shell "ls")
