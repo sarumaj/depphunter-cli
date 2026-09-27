@@ -37,4 +37,5 @@ The C/C++ package managers' ids `vcpkg` and `conan` are prefixes as well, and
 so are PHP's `composer`, Ruby's `rubygems`, Swift's `swiftpm`, Dart's `pub`,
 Elixir's and Erlang's `hex`, R's `cran` and `bioconductor`, Haskell's
 `hackage`, Terraform's `terraform-module` and `terraform-provider`, the
-Buf Schema Registry's `buf`, and CMake's `cmake-fetch` and `pkg-config`.
+Buf Schema Registry's `buf`, CMake's `cmake-fetch` and `pkg-config`, and
+`cocoapods` and `carthage`.

@@ -2,6 +2,8 @@ package index
 
 import (
 	"context"
+	"crypto/md5"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -686,5 +688,53 @@ func TestTerraformConstraints(t *testing.T) {
 		if got := terraformAllows(tc.constraint, tc.version); got != tc.want {
 			t.Errorf("%q allows %s: got %v", tc.constraint, tc.version, got)
 		}
+	}
+}
+
+// A pod is looked up on the CocoaPods CDN by the MD5 shard of its name: the version
+// asked for, else the newest release that is not a pre-release and that the
+// requirement allows (from the shard's version list), answers with its podspec's dependencies - the root spec's and its
+// default subspec's, not the pod's own subspecs or the other subspecs'; "= x" pins.
+//
+// Verifies: REQ-SUP-051
+func TestCocoaPodsDependencies(t *testing.T) {
+	sum := md5.Sum([]byte("AcmeKit"))
+	h := hex.EncodeToString(sum[:])
+	shard := h[0:1] + "/" + h[1:2] + "/" + h[2:3]
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Path)
+		switch r.URL.Path {
+		case "/all_pods_versions_" + strings.ReplaceAll(shard, "/", "_") + ".txt":
+			w.Write([]byte("AcmeKitty/9.0.0\nAcmeKit/1.2.0/1.9.0/1.10.0/2.0.0-beta.1/2.1.0\n"))
+		case "/Specs/" + shard + "/AcmeKit/1.2.0/AcmeKit.podspec.json":
+			w.Write([]byte(`{"name":"AcmeKit","version":"1.2.0","dependencies":{"AFNetworking":["~> 4.0"]},
+				"default_subspecs":"Core","subspecs":[
+				{"name":"Core","dependencies":{"AcmeKit/Base":[],"Mantle/extobjc":["= 2.2.0"]}},
+				{"name":"Extras","dependencies":{"PromiseKit":[]}}]}`))
+		case "/Specs/" + shard + "/AcmeKit/1.10.0/AcmeKit.podspec.json":
+			w.Write([]byte(`{"name":"AcmeKit","version":"1.10.0","subspecs":[{"name":"A","dependencies":{"SDWebImage/Core":[">= 5.0", "< 6.0"]}}]}`))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	c := clientFor(t, CocoaPods, srv.URL, "")
+	got := c.Dependencies(lang.Target{Ecosystem: CocoaPods, Package: "AcmeKit", Version: "1.2.0", Pinned: true})
+	want := []lang.Target{
+		{Ecosystem: CocoaPods, Package: "AFNetworking", Version: "~> 4.0"},
+		{Ecosystem: CocoaPods, Package: "Mantle", Version: "2.2.0", Pinned: true},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("1.2.0: got %+v, want %+v", got, want)
+	}
+	got = c.Dependencies(lang.Target{Ecosystem: CocoaPods, Package: "AcmeKit", Version: "~> 1.0", Floating: true})
+	if want := []lang.Target{{Ecosystem: CocoaPods, Package: "SDWebImage", Version: ">= 5.0, < 6.0"}}; !reflect.DeepEqual(got, want) {
+		t.Errorf("~> 1.0: got %+v, want %+v", got, want)
+	}
+	if want := []string{"/Specs/" + shard + "/AcmeKit/1.2.0/AcmeKit.podspec.json",
+		"/all_pods_versions_" + strings.ReplaceAll(shard, "/", "_") + ".txt",
+		"/Specs/" + shard + "/AcmeKit/1.10.0/AcmeKit.podspec.json"}; !reflect.DeepEqual(asked, want) {
+		t.Errorf("asked %v, want %v", asked, want)
 	}
 }

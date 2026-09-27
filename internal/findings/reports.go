@@ -538,7 +538,7 @@ var trivyEcosystems = map[string]string{
 	"nuget": "nuget", "dotnet-core": "nuget",
 	"conan":    "conan",
 	"composer": "composer", "composer-vendor": "composer",
-	"bundler": "rubygems", "gemspec": "rubygems",
+	"bundler": "rubygems", "gemspec": "rubygems", "cocoapods": "cocoapods",
 	"swift": "swiftpm",
 	"pub":   "pub",
 	"hex":   "hex",

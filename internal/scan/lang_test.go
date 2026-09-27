@@ -2,7 +2,7 @@ package scan
 
 import "testing"
 
-// Verifies: REQ-LANG-015, REQ-DOCKER-001, REQ-SHELL-001
+// Verifies: REQ-LANG-015, REQ-DOCKER-001, REQ-SHELL-001, REQ-OBJC-001
 func TestLanguageByName(t *testing.T) {
 	for p, want := range map[string]string{
 		"a.go":                           "Go",
@@ -40,6 +40,13 @@ func TestLanguageByName(t *testing.T) {
 		"buf.work.yaml":                  "Buf",
 		"buf.gen.yaml":                   "Buf",
 		"CMakeLists.txt":                 "CMake",
+		"ios/Podfile":                    "Ruby",
+		"ios/Podfile.lock":               "YAML",
+		"Shop.podspec":                   "Ruby",
+		"Shop.podspec.json":              "JSON",
+		"Cartfile":                       "Carthage",
+		"Cartfile.resolved":              "Carthage",
+		"Sources/Store.mm":               "Objective-C++",
 		"cmake/Deps.cmake":               "CMake",
 		"cmake/shopConfig.cmake.in":      "CMake",
 		"CMakePresets.json":              "CMake",

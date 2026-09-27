@@ -53,6 +53,7 @@ var Servers = []Server{
 	{Name: "clangd", Open: true, Exts: map[string]string{
 		".c": "c", ".h": "cpp", ".cc": "cpp", ".cpp": "cpp", ".cxx": "cpp", ".c++": "cpp",
 		".hpp": "cpp", ".hh": "cpp", ".hxx": "cpp", ".h++": "cpp", ".ipp": "cpp", ".inl": "cpp",
+		".m": "objective-c", ".mm": "objective-cpp",
 	}, Commands: [][]string{{"clangd"}}},
 	{Name: "php", Open: true, Exts: map[string]string{".php": "php", ".phtml": "php", ".inc": "php"},
 		Commands: [][]string{{"intelephense", "--stdio"}, {"phpactor", "language-server"}}},
@@ -459,8 +460,8 @@ var wordCache sync.Map // name -> *regexp.Regexp
 //
 // Implements: REQ-LSP-008
 // symbolWord is the word a symbol's name is written as on its line:
-// Type.method -> method, init@12 -> init, and an Elixir or Erlang function's
-// Mod.fun/2 -> fun.
+// Type.method -> method, init@12 -> init, an Elixir or Erlang function's
+// Mod.fun/2 -> fun, and an Objective-C method's Class.a:b: -> a.
 //
 // Implements: REQ-LSP-003
 func symbolWord(name string) string {
@@ -474,6 +475,12 @@ func symbolWord(name string) string {
 		name = name[i+1:]
 	}
 	if i := strings.Index(name, "@"); i >= 0 {
+		name = name[:i]
+	}
+	// An Objective-C selector is written in parts; its first is on the line
+	// (initWithFrame:style: -> initWithFrame), and a category is its class's name
+	// with the category's after it (NSString(Shop) -> NSString).
+	if i := strings.IndexAny(name, ":("); i > 0 {
 		name = name[:i]
 	}
 	return name

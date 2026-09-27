@@ -1,0 +1,91 @@
+PODS:
+  - AcmeKit (1.0.0)
+  - AFNetworking (4.0.1):
+    - AFNetworking/NSURLSession (= 4.0.1)
+    - AFNetworking/Reachability (= 4.0.1)
+  - AFNetworking/NSURLSession (4.0.1):
+    - AFNetworking/Reachability
+  - AFNetworking/Reachability (4.0.1)
+  - Alamofire (5.8.1)
+  - Firebase/Analytics (10.0.0):
+    - Firebase/Core
+  - Firebase/Core (10.0.0):
+    - Firebase/CoreOnly
+    - FirebaseAnalytics (~> 10.0.0)
+  - Firebase/CoreOnly (10.0.0):
+    - FirebaseCore (= 10.0.0)
+  - FirebaseAnalytics (10.0.0):
+    - FirebaseCore (~> 10.0)
+    - GoogleUtilities/AppDelegateSwizzler (~> 7.8)
+  - FirebaseCore (10.0.0):
+    - GoogleUtilities/Logger (~> 7.8)
+  - GoogleUtilities/AppDelegateSwizzler (7.11.0):
+    - GoogleUtilities/Logger
+  - GoogleUtilities/Logger (7.11.0)
+  - GRDB.swift (6.24.0):
+    - GRDB.swift/standard (= 6.24.0)
+  - GRDB.swift/standard (6.24.0)
+  - LocalKit (0.1.0):
+    - AFNetworking/NSURLSession (~> 4.0)
+  - Lottie (4.4.0)
+  - Masonry (1.1.0)
+  - OCMock (3.9.1)
+  - SDWebImage (5.18.0):
+    - SDWebImage/Core (= 5.18.0)
+  - SDWebImage/Core (5.18.0)
+
+DEPENDENCIES:
+  - AcmeKit (from `https://github.com/acme/AcmeKit.git`, branch `main`)
+  - AFNetworking (~> 4.0)
+  - Alamofire (from `https://github.com/Alamofire/Alamofire.git`, tag `5.8.1`)
+  - Firebase/Analytics
+  - GRDB.swift
+  - LocalKit (from `LocalKit`)
+  - Lottie (from `https://github.com/airbnb/lottie-ios.git`, commit `0123456789abcdef0123456789abcdef01234567`)
+  - Masonry (= 1.1.0)
+  - OCMock (>= 3.0)
+  - SDWebImage (= 5.18.0)
+
+SPEC REPOS:
+  https://github.com/acme/Specs.git:
+    - Masonry
+  trunk:
+    - AFNetworking
+    - Firebase
+    - FirebaseAnalytics
+    - FirebaseCore
+    - GoogleUtilities
+    - GRDB.swift
+    - OCMock
+    - SDWebImage
+
+EXTERNAL SOURCES:
+  AcmeKit:
+    :branch: main
+    :git: https://github.com/acme/AcmeKit.git
+  Alamofire:
+    :git: https://github.com/Alamofire/Alamofire.git
+    :tag: 5.8.1
+  LocalKit:
+    :path: LocalKit
+  Lottie:
+    :commit: 0123456789abcdef0123456789abcdef01234567
+    :git: https://github.com/airbnb/lottie-ios.git
+
+CHECKOUT OPTIONS:
+  AcmeKit:
+    :commit: 89abcdef0123456789abcdef0123456789abcdef
+    :git: https://github.com/acme/AcmeKit.git
+  Alamofire:
+    :git: https://github.com/Alamofire/Alamofire.git
+    :tag: 5.8.1
+  Lottie:
+    :commit: 0123456789abcdef0123456789abcdef01234567
+    :git: https://github.com/airbnb/lottie-ios.git
+
+SPEC CHECKSUMS:
+  AFNetworking: 3bd23d814e976cd148d7d44c3ab78017b744cd58
+
+PODFILE CHECKSUM: 0000000000000000000000000000000000000000
+
+COCOAPODS: 1.15.2

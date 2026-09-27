@@ -15,7 +15,7 @@ var byExt = map[string]string{
 	".cs": "C#", ".fs": "F#", ".vb": "Visual Basic",
 	".c": "C", ".h": "C", ".cc": "C++", ".cpp": "C++", ".cxx": "C++", ".c++": "C++", ".hpp": "C++", ".hh": "C++",
 	".hxx": "C++", ".h++": "C++", ".ipp": "C++", ".inl": "C++",
-	".m": "Objective-C", ".swift": "Swift", ".dart": "Dart",
+	".m": "Objective-C", ".mm": "Objective-C++", ".podspec": "Ruby", ".swift": "Swift", ".dart": "Dart",
 	".rb": "Ruby", ".rake": "Ruby", ".gemspec": "Ruby", ".ru": "Ruby", ".php": "PHP", ".phtml": "PHP", ".pl": "Perl", ".lua": "Lua", ".r": "R", ".rmd": "R Markdown", ".qmd": "Quarto", ".rprofile": "R",
 	".ex": "Elixir", ".exs": "Elixir", ".erl": "Erlang", ".hrl": "Erlang", ".hs": "Haskell", ".lhs": "Haskell", ".hs-boot": "Haskell", ".hsc": "Haskell", ".cabal": "Cabal", ".clj": "Clojure",
 	".zig": "Zig", ".nim": "Nim", ".jl": "Julia",
@@ -37,6 +37,7 @@ var byName = map[string]string{
 	"cabal.project": "Cabal", "cabal.project.freeze": "Cabal", "cabal.project.local": "Cabal",
 	"stack.yaml": "Haskell", "stack.yaml.lock": "Haskell", "package.yaml": "Haskell",
 	".terraform.lock.hcl": "Terraform", "terragrunt.hcl": "Terragrunt",
+	"Podfile": "Ruby", "Podfile.lock": "YAML", "Cartfile": "Carthage", "Cartfile.private": "Carthage", "Cartfile.resolved": "Carthage",
 	"buf.yaml": "Buf", "buf.work.yaml": "Buf", "buf.lock": "Buf", "buf.gen.yaml": "Buf",
 	".envrc": "Shell", ".profile": "Shell", ".bashrc": "Shell", ".bash_profile": "Shell",
 	".bash_login": "Shell", ".bash_logout": "Shell", ".bash_aliases": "Shell", ".zshrc": "Shell",
@@ -96,6 +97,58 @@ func Dockerfile(p string) bool {
 func xmlDocument(head []byte) bool {
 	head = bytes.TrimLeft(bytes.TrimPrefix(head, []byte("\xef\xbb\xbf")), " \t\r\n")
 	return bytes.HasPrefix(head, []byte("<?xml")) || bytes.HasPrefix(head, []byte("<!DOCTYPE"))
+}
+
+// objcMarker reports whether a line of a file's head starts with what only
+// Objective-C (among the languages sharing ".h" and ".m") writes: a keyword of its
+// own (@interface, @implementation, @protocol, @class, @import, @end) or `#import`.
+// With preprocessor reports whether any preprocessor directive or a `//` comment
+// counts too: a ".m" file is Objective-C when it has one, since neither MATLAB nor
+// Mercury writes one, while a ".h" file with only those is a C header.
+//
+// Implements: REQ-LANG-015, REQ-OBJC-001
+func objcMarker(head []byte, preprocessor bool) bool {
+	for len(head) > 0 {
+		line := head
+		if i := bytes.IndexByte(head, '\n'); i >= 0 {
+			line, head = head[:i], head[i+1:]
+		} else {
+			head = nil
+		}
+		line = bytes.TrimLeft(line, " \t\xef\xbb\xbf")
+		switch {
+		case len(line) < 2:
+		case line[0] == '@':
+			for _, kw := range []string{"interface", "implementation", "protocol", "class", "import", "end"} {
+				if rest, ok := bytes.CutPrefix(line[1:], []byte(kw)); ok && (len(rest) == 0 || !identByte(rest[0])) {
+					return true
+				}
+			}
+		case line[0] == '#':
+			d := bytes.TrimLeft(line[1:], " \t")
+			if preprocessor || bytes.HasPrefix(d, []byte("import")) {
+				return true
+			}
+		case preprocessor && line[0] == '/' && line[1] == '/':
+			return true
+		}
+	}
+	return false
+}
+
+func identByte(c byte) bool {
+	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
+}
+
+// notObjC names what a ".m" file without any Objective-C marker is: Mercury when a
+// line starts with a declaration (":- module"), else MATLAB.
+func notObjC(head []byte) string {
+	for _, line := range bytes.Split(head, []byte("\n")) {
+		if bytes.HasPrefix(bytes.TrimSpace(line), []byte(":-")) {
+			return "Mercury"
+		}
+	}
+	return "MATLAB"
 }
 
 // shells are the interpreters whose scripts are shell scripts.

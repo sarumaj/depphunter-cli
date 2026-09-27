@@ -86,8 +86,13 @@ type Plugin struct{}
 
 func (Plugin) Name() string { return "cpp" }
 func (Plugin) Version() int { return 1 }
+
+// Claims takes the C and C++ files, except a ".h" the scan found to be an
+// Objective-C header (REQ-LANG-015), which the objc plugin reads.
+//
+// Implements: REQ-CPP-001, REQ-OBJC-001
 func (Plugin) Claims(f *scan.File) bool {
-	return exts[strings.ToLower(path.Ext(f.Path))] && !f.Binary
+	return exts[strings.ToLower(path.Ext(f.Path))] && !f.Binary && f.Lang != "Objective-C"
 }
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return append(PackageEcosystems(), []lang.Ecosystem{

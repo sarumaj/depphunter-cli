@@ -28,4 +28,6 @@ complete usage graph.
    packages and a function in a variable declaration are all found
    (TestGoplsReferences).
 2. A symbol is looked up by the word it is written as: `Type.method` as
-   `method`, `init@12` as `init`, an Elixir `Shop.Cart.total/2` as `total`.
+   `method`, `init@12` as `init`, an Elixir `Shop.Cart.total/2` as `total`,
+   an Objective-C `Cart.initWithItems:total:` as `initWithItems` and a
+   category `NSString(Shop)` as `NSString`.

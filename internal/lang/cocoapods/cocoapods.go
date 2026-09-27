@@ -1,0 +1,671 @@
+// Package cocoapods reads the dependency managers of Apple platform projects that
+// are not SwiftPM: CocoaPods (Podfile, Podfile.lock, podspecs) and Carthage
+// (Cartfile, Cartfile.resolved). It is shared by the objc plugin, whose headers and
+// modules come from pods, and the swift plugin, whose `import Alamofire` may too.
+//
+// A pod is named by its root name (the subspec "Firebase/Analytics" is Firebase)
+// and a Carthage dependency by its repository URL as lang.RepoName spells it
+// (github.com/Alamofire/Alamofire), as the swiftpm island names packages.
+package cocoapods
+
+import (
+	"os"
+	"path"
+	"path/filepath"
+	"sort"
+	"strings"
+
+	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/scan"
+)
+
+// Ecosystem ids.
+const (
+	Ecosystem = "cocoapods"
+	Carthage  = "carthage"
+)
+
+// Ecosystems are the islands pods and Carthage dependencies land on, as every plugin
+// using this package declares them.
+func Ecosystems() []lang.Ecosystem {
+	return []lang.Ecosystem{
+		{ID: Ecosystem, Name: "CocoaPods"},
+		{ID: Carthage, Name: "Carthage"},
+	}
+}
+
+// Kind is what a manifest file is, by its name: "podfile", "podspec",
+// "podspec.json", "cartfile", or "" for none.
+func Kind(p string) string {
+	base := path.Base(p)
+	switch {
+	case base == "Podfile":
+		return "podfile"
+	case strings.HasSuffix(base, ".podspec"):
+		return "podspec"
+	case strings.HasSuffix(base, ".podspec.json"):
+		return "podspec.json"
+	case base == "Cartfile", base == "Cartfile.private":
+		return "cartfile"
+	}
+	return ""
+}
+
+// Deps reads the dependency lines of a manifest of the given kind, for the plugin's
+// imports: a Podfile's pods, a podspec's dependencies, a Cartfile's entries.
+//
+// Implements: REQ-OBJC-007, REQ-OBJC-010, REQ-OBJC-011
+func Deps(kind string, src []byte) []Dep {
+	switch kind {
+	case "podfile":
+		return readPodfile(string(src)).deps
+	case "podspec":
+		return readPodspec(string(src)).lines
+	case "podspec.json":
+		return readPodspecJSON(string(src)).lines
+	case "cartfile":
+		var out []Dep
+		for _, c := range readCartfile(string(src)) {
+			out = append(out, Dep{Spec: c.kind + ` "` + c.source + `"`, Name: CartfileModule(c.kind, c.source), Line: c.line})
+		}
+		return out
+	}
+	return nil
+}
+
+// CartfileModule is how a Cartfile dependency travels in RawImport.Module:
+// "carthage:" and its package name.
+func CartfileModule(kind, source string) string { return "carthage:" + cartName(kind, source) }
+
+// cartName names a Carthage dependency: `github "owner/repo"` is
+// github.com/owner/repo, a URL (git, binary, a GitHub Enterprise github) is itself
+// as lang.RepoName spells it.
+func cartName(kind, source string) string {
+	if kind == "github" && !strings.Contains(source, "://") && strings.Count(source, "/") == 1 {
+		return "github.com/" + source
+	}
+	return lang.RepoName(source)
+}
+
+// project is what one directory's manifests say.
+type project struct {
+	dir      string
+	podfile  bool
+	declared map[string]*decl   // root name -> the first declaration
+	locks    map[string]*locked // root name -> Podfile.lock
+	carts    map[string]*cart   // package -> Cartfile entry
+	pins     map[string]*cart   // package -> Cartfile.resolved entry
+}
+
+// Index is what the project's CocoaPods and Carthage manifests say, per directory.
+type Index struct {
+	projects []*project        // shallowest first
+	own      map[string]string // pod name built here (podspec name, module name) -> podspec path
+	dirs     map[string]bool
+	files    map[string]bool
+}
+
+// Read reads the manifests among the scanned files; a Podfile.lock or
+// Cartfile.resolved the scan left out (git-ignored) is read from disk beside its
+// Podfile or Cartfile.
+//
+// Implements: REQ-OBJC-007, REQ-OBJC-008, REQ-OBJC-010, REQ-OBJC-011
+func Read(root string, all []*scan.File) *Index {
+	x := &Index{own: map[string]string{}, dirs: map[string]bool{}, files: map[string]bool{}}
+	byDir := map[string]*project{}
+	get := func(dir string) *project {
+		p := byDir[dir]
+		if p == nil {
+			p = &project{dir: dir, declared: map[string]*decl{}, locks: map[string]*locked{},
+				carts: map[string]*cart{}, pins: map[string]*cart{}}
+			byDir[dir] = p
+		}
+		return p
+	}
+	sorted := append([]*scan.File(nil), all...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Path < sorted[j].Path })
+	abs := map[string]string{}
+	for _, f := range sorted {
+		abs[f.Path] = f.Abs
+		x.files[f.Path] = true
+		for d := path.Dir(f.Path); d != "." && !x.dirs[d]; d = path.Dir(d) {
+			x.dirs[d] = true
+		}
+	}
+	read := func(rel string) (string, bool) {
+		a, ok := abs[rel]
+		if !ok {
+			if root == "" {
+				return "", false
+			}
+			a = filepath.Join(root, filepath.FromSlash(rel))
+		}
+		fi, err := os.Stat(a)
+		if err != nil || fi.IsDir() || fi.Size() > lang.MaxParseSize {
+			return "", false
+		}
+		b, err := os.ReadFile(a)
+		return string(b), err == nil
+	}
+	for _, f := range sorted {
+		if f.Binary || vendored(f.Path) {
+			continue
+		}
+		dir := path.Dir(f.Path)
+		switch Kind(f.Path) {
+		case "podfile":
+			src, _ := read(f.Path)
+			p := get(dir)
+			p.podfile = true
+			for _, d := range readPodfile(src).pods {
+				p.declare(d)
+			}
+			if lock, ok := read(path.Join(dir, "Podfile.lock")); ok {
+				p.locks, _ = readLock([]byte(lock))
+				if p.locks == nil {
+					p.locks = map[string]*locked{}
+				}
+			}
+		case "podspec", "podspec.json":
+			src, _ := read(f.Path)
+			spec := readPodspec(src)
+			if Kind(f.Path) == "podspec.json" {
+				spec = readPodspecJSON(src)
+			}
+			if spec.name == "" {
+				continue
+			}
+			for _, n := range []string{spec.name, spec.module} {
+				if n != "" {
+					if _, dup := x.own[n]; !dup {
+						x.own[n] = f.Path
+					}
+				}
+			}
+			p := get(dir)
+			for _, d := range spec.deps {
+				if Root(d.name) != spec.name {
+					p.declare(d)
+				}
+			}
+		case "cartfile":
+			src, _ := read(f.Path)
+			p := get(dir)
+			for _, c := range readCartfile(src) {
+				if _, ok := p.carts[c.name]; !ok {
+					c := c
+					p.carts[c.name] = &c
+				}
+			}
+			if lock, ok := read(path.Join(dir, "Cartfile.resolved")); ok {
+				for _, c := range readCartfile(lock) {
+					c := c
+					p.pins[c.name] = &c
+				}
+			}
+		}
+	}
+	for _, p := range byDir {
+		x.projects = append(x.projects, p)
+	}
+	sort.Slice(x.projects, func(i, j int) bool {
+		a, b := x.projects[i].dir, x.projects[j].dir
+		if depth(a) != depth(b) {
+			return depth(a) < depth(b)
+		}
+		return a < b
+	})
+	return x
+}
+
+func (p *project) declare(d *decl) {
+	if _, ok := p.declared[Root(d.name)]; !ok {
+		p.declared[Root(d.name)] = d
+	}
+}
+
+func depth(dir string) int {
+	if dir == "." {
+		return 0
+	}
+	return strings.Count(dir, "/") + 1
+}
+
+// vendored reports whether a path is inside a dependency checkout: CocoaPods' Pods
+// directory, Carthage's Checkouts and Build.
+func vendored(p string) bool {
+	for _, seg := range strings.Split(path.Dir(p), "/") {
+		if seg == "Pods" || seg == "Carthage" {
+			return true
+		}
+	}
+	return false
+}
+
+// projectsOf lists the manifest directories over a file, nearest first; a file under
+// none takes every one, shallowest first.
+func (x *Index) projectsOf(file string) []*project {
+	var out []*project
+	for i := len(x.projects) - 1; i >= 0; i-- {
+		if p := x.projects[i]; p.dir == "." || strings.HasPrefix(file, p.dir+"/") {
+			out = append(out, p)
+		}
+	}
+	if len(out) == 0 {
+		return x.projects
+	}
+	return out
+}
+
+// Governed reports whether any CocoaPods or Carthage manifest covers a file, which
+// makes a framework header no manifest names an unresolved pod rather than an
+// unknown C library.
+func (x *Index) Governed(file string) bool {
+	for _, p := range x.projectsOf(file) {
+		if p.podfile || len(p.declared) > 0 || len(p.locks) > 0 {
+			return true
+		}
+	}
+	return false
+}
+
+// Pod is the target of a pod a manifest over file names (a Podfile's `pod` line, a
+// podspec's dependency): pinned by the nearest Podfile.lock holding it, else as the
+// nearest declaration asks, a path pod being its directory or podspec. A pod the
+// repository builds itself, named from its own podspec, is dropped.
+//
+// Implements: REQ-OBJC-009
+func (x *Index) Pod(file, name string) lang.Target {
+	root := Root(name)
+	if spec, ok := x.own[root]; ok && strings.Contains(Kind(file), "podspec") && path.Dir(spec) == path.Dir(file) {
+		return lang.Target{} // a podspec's own subspec
+	}
+	return x.target(file, x.projectsOf(file), root)
+}
+
+// target resolves a root pod name in the given projects.
+func (x *Index) target(file string, projects []*project, root string) lang.Target {
+	var d *decl
+	var dp *project
+	for _, p := range projects {
+		if dd, ok := p.declared[root]; ok {
+			d, dp = dd, p
+			break
+		}
+	}
+	var l *locked
+	var lp *project
+	for _, p := range projects {
+		if ll, ok := p.locks[root]; ok {
+			l, lp = ll, p
+			break
+		}
+	}
+	if d != nil && d.path != "" {
+		return x.local(path.Join(dp.dir, d.path), root)
+	}
+	if l != nil && l.path != "" {
+		return x.local(path.Join(lp.dir, l.path), root)
+	}
+	t := lang.Target{Ecosystem: Ecosystem, Package: root}
+	switch {
+	case l != nil:
+		t.Version, t.Pinned = l.version, l.version != ""
+		git, tag, branch, commit := l.git, l.tag, l.branch, l.commit
+		if git == "" && d != nil {
+			git, tag, branch, commit = d.git, d.tag, d.branch, d.commit
+		}
+		switch {
+		case git != "":
+			t.Origin = git
+			gitPin(&t, tag, branch, commit)
+		case l.podspec != "" || (d != nil && d.podspec != ""):
+			t.Origin = "podspec:" + path.Join(lp.dir, first(l.podspec, podspecOf(d)))
+		}
+		if d != nil && d.reqs != "" && d.reqs != t.Version {
+			if v, ok := exact(d.reqs); !ok || v != t.Version {
+				t.Requested = d.reqs
+			}
+		}
+	case d != nil:
+		switch {
+		case d.git != "":
+			t.Origin = d.git
+			gitPin(&t, d.tag, d.branch, d.commit)
+		case d.podspec != "":
+			t.Origin = "podspec:" + path.Join(dp.dir, d.podspec)
+			requirement(&t, d.reqs)
+		default:
+			requirement(&t, d.reqs)
+		}
+	default:
+		if spec, ok := x.own[root]; ok {
+			return lang.Target{Local: spec}
+		}
+		t.Unresolved = true
+	}
+	return t
+}
+
+func podspecOf(d *decl) string {
+	if d == nil {
+		return ""
+	}
+	return d.podspec
+}
+
+func first(a, b string) string {
+	if a != "" {
+		return a
+	}
+	return b
+}
+
+// gitPin applies the git rule: a commit pins, a tag is shown but moves when its
+// owner moves it (neither pinned nor floating), a branch or nothing floats.
+//
+// Implements: REQ-OBJC-009
+func gitPin(t *lang.Target, tag, branch, commit string) {
+	switch {
+	case commit != "":
+		t.Version, t.Pinned, t.Floating = commit, true, false
+	case tag != "":
+		t.Version, t.Pinned, t.Floating = tag, false, false
+	case branch != "":
+		t.Version, t.Pinned, t.Floating = branch, false, true
+	default:
+		t.Pinned, t.Floating = false, true
+	}
+}
+
+// requirement applies a declared requirement: one exact version ("1.2.3", "= 1.2.3")
+// pins and is shown bare; an optimistic or open range ("~> 1.2", ">= 1.0") floats;
+// none floats.
+//
+// Implements: REQ-OBJC-009
+func requirement(t *lang.Target, reqs string) {
+	if v, ok := exact(reqs); ok {
+		t.Version, t.Pinned = v, true
+		return
+	}
+	t.Version, t.Floating = reqs, true
+}
+
+// exact reads a requirement naming one version.
+func exact(req string) (string, bool) {
+	v := strings.TrimSpace(req)
+	if strings.Contains(v, ",") {
+		return "", false
+	}
+	if rest, ok := strings.CutPrefix(v, "="); ok {
+		v = strings.TrimSpace(rest)
+	}
+	return v, v != "" && lang.Pinned(v)
+}
+
+// local is a path pod: its podspec (Name.podspec or .podspec.json) when the
+// directory has one, else the directory; nothing when neither is in the project.
+func (x *Index) local(p, root string) lang.Target {
+	p = path.Clean(p)
+	if strings.HasPrefix(p, "../") || p == ".." || path.IsAbs(p) {
+		return lang.Target{}
+	}
+	if x.files[p] {
+		return lang.Target{Local: p}
+	}
+	for _, name := range []string{root + ".podspec", root + ".podspec.json"} {
+		if f := path.Join(p, name); x.files[f] {
+			return lang.Target{Local: f}
+		}
+	}
+	if x.dirs[p] {
+		return lang.Target{Local: p}
+	}
+	return lang.Target{}
+}
+
+// Dependencies implements lang.Transitive from Podfile.lock: what each pod's specs
+// depend on, pinned by the same lock.
+//
+// Implements: REQ-OBJC-008
+func (x *Index) Dependencies(t lang.Target) []lang.Target {
+	if t.Ecosystem != Ecosystem {
+		return nil
+	}
+	for _, p := range x.projects {
+		l, ok := p.locks[t.Package]
+		if !ok || l.version == "" {
+			continue
+		}
+		var out []lang.Target
+		for _, dep := range l.deps {
+			if d := x.target("", []*project{p}, dep); d.Package != "" {
+				out = append(out, d)
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+// Module attributes a module or a framework header's directory (<AFNetworking/..>,
+// `@import Firebase;`, Swift's `import Alamofire`) to a pod or a Carthage dependency
+// the manifests over file declare or lock, by name: the pod's own name, its module
+// spelling (libPhoneNumber-iOS is libPhoneNumber_iOS), the module name a known pod
+// goes by (GRDB is GRDB.swift's), or its name without a platform suffix (lottie-ios
+// is Lottie). A Carthage dependency is matched by its repository's name.
+//
+// Implements: REQ-OBJC-006, REQ-OBJC-011, REQ-OBJC-012
+func (x *Index) Module(file, module string) (lang.Target, bool) {
+	if module == "" {
+		return lang.Target{}, false
+	}
+	projects := x.projectsOf(file)
+	want := fold(module)
+	names := append([]string{module}, moduleAliases[module]...)
+	for _, p := range projects {
+		for _, n := range names {
+			if p.has(n) {
+				return x.target(file, projects, n), true
+			}
+		}
+	}
+	for _, p := range projects {
+		for _, n := range p.names() {
+			if podMatches(n, want) {
+				return x.target(file, projects, n), true
+			}
+		}
+	}
+	for _, p := range projects {
+		if c := p.cart(want); c != "" {
+			return p.cartTarget(c), true
+		}
+	}
+	if spec, ok := x.own[module]; ok {
+		return lang.Target{Local: spec}, true
+	}
+	return lang.Target{}, false
+}
+
+func (p *project) has(root string) bool {
+	_, d := p.declared[root]
+	_, l := p.locks[root]
+	return d || l
+}
+
+// names are the root pods a project declares or locks, sorted.
+func (p *project) names() []string {
+	seen := map[string]bool{}
+	var out []string
+	for n := range p.declared {
+		seen[n] = true
+		out = append(out, n)
+	}
+	for n := range p.locks {
+		if !seen[n] {
+			out = append(out, n)
+		}
+	}
+	sort.Strings(out)
+	return out
+}
+
+// podMatches reports whether a pod goes by a (folded) module name.
+func podMatches(pod, want string) bool {
+	f := fold(pod)
+	return f == want || trimPlatform(f) == want || f == "lib"+want
+}
+
+// trimPlatform takes the suffix off a folded pod name that says which language or
+// platform it is for: GRDB.swift, lottie-ios, ReactiveObjC's kin.
+func trimPlatform(f string) string {
+	for _, suffix := range []string{"swift", "ios", "objc", "osx"} {
+		if t := strings.TrimSuffix(f, suffix); t != f && len(t) >= 3 {
+			return t
+		}
+	}
+	return f
+}
+
+// fold reduces a name to lower-case letters and digits.
+func fold(s string) string {
+	var b strings.Builder
+	for _, c := range strings.ToLower(s) {
+		if c >= 'a' && c <= 'z' || c >= '0' && c <= '9' {
+			b.WriteRune(c)
+		}
+	}
+	return b.String()
+}
+
+// cart finds the Carthage dependency (declared or resolved) whose repository is
+// named like a module.
+func (p *project) cart(want string) string {
+	var names []string
+	for n := range p.carts {
+		names = append(names, n)
+	}
+	for n := range p.pins {
+		if _, ok := p.carts[n]; !ok {
+			names = append(names, n)
+		}
+	}
+	sort.Strings(names)
+	for _, n := range names {
+		base := fold(strings.TrimSuffix(path.Base(n), ".json"))
+		if base == want || trimPlatform(base) == want {
+			return n
+		}
+	}
+	return ""
+}
+
+// cartTarget applies Carthage's pins: Cartfile.resolved fixes the version; else
+// `== 1.2` pins, `~>` and `>=` float, a quoted git reference pins when it is a
+// commit and is shown otherwise, and nothing floats.
+//
+// Implements: REQ-OBJC-011
+func (p *project) cartTarget(name string) lang.Target {
+	t := lang.Target{Ecosystem: Carthage, Package: name}
+	c := p.carts[name]
+	if pin, ok := p.pins[name]; ok && pin.req != "" {
+		t.Version, t.Pinned = pin.req, true
+		if c != nil && c.req != "" && c.req != pin.req {
+			t.Requested = c.req
+		}
+		return t
+	}
+	if c == nil || c.req == "" {
+		t.Floating = true
+		return t
+	}
+	switch {
+	case c.ref && lang.Commit(c.req):
+		t.Version, t.Pinned = c.req, true
+	case c.ref:
+		t.Version = c.req
+	case strings.HasPrefix(c.req, "=="):
+		t.Version = strings.TrimSpace(strings.TrimPrefix(c.req, "=="))
+		t.Pinned = lang.Pinned(t.Version)
+		t.Floating = !t.Pinned
+	default:
+		t.Version, t.Floating = c.req, true
+	}
+	return t
+}
+
+// Cart is the target of a Cartfile entry, by its package name, in the projects over
+// file.
+func (x *Index) Cart(file, name string) lang.Target {
+	for _, p := range x.projectsOf(file) {
+		if _, ok := p.carts[name]; ok {
+			return p.cartTarget(name)
+		}
+		if _, ok := p.pins[name]; ok {
+			return p.cartTarget(name)
+		}
+	}
+	return lang.Target{Ecosystem: Carthage, Package: name, Floating: true}
+}
+
+// Vendored attributes a project file inside a dependency checkout to its
+// dependency: Pods/<Name>/..., Pods/Headers/Public/<Name>/... are the pod Name,
+// Carthage/Checkouts/<repo>/... and Carthage/Build/.../<Name>.framework/... the
+// Carthage dependency of that name. A header found there is the pod's, not the
+// project's own code.
+//
+// Implements: REQ-OBJC-006
+func (x *Index) Vendored(file, local string) (lang.Target, bool) {
+	segs := strings.Split(local, "/")
+	for i, s := range segs {
+		switch s {
+		case "Pods":
+			if i+1 >= len(segs)-1 {
+				return lang.Target{}, false
+			}
+			name := segs[i+1]
+			if name == "Headers" && i+3 < len(segs)-1 {
+				name = segs[i+3] // Headers/Public/<Name>/x.h
+			}
+			if name == "Headers" || name == "Target Support Files" || strings.HasPrefix(name, "Pods") || strings.HasSuffix(name, ".xcodeproj") {
+				return lang.Target{}, false
+			}
+			return x.target(file, x.projectsOf(file), name), true
+		case "Carthage":
+			name := ""
+			if i+2 < len(segs) && segs[i+1] == "Checkouts" {
+				name = segs[i+2]
+			} else {
+				for _, s := range segs[i+1 : len(segs)-1] {
+					if n, ok := strings.CutSuffix(s, ".framework"); ok {
+						name = n
+					} else if n, ok := strings.CutSuffix(s, ".xcframework"); ok {
+						name = n
+					}
+				}
+			}
+			if name == "" || i+2 >= len(segs) {
+				return lang.Target{}, false
+			}
+			for _, p := range x.projectsOf(file) {
+				if c := p.cart(fold(name)); c != "" {
+					return p.cartTarget(c), true
+				}
+			}
+			return lang.Target{Ecosystem: Carthage, Package: name, Unresolved: true}, true
+		}
+	}
+	return lang.Target{}, false
+}
+
+// Sources are the spec repositories a Podfile names with `source` (for the index
+// discovery).
+func Sources(src []byte) []string { return readPodfile(string(src)).sources }
+
+// SpecRepos reads a Podfile.lock's SPEC REPOS: repository -> the pods installed from
+// it. "trunk" is CocoaPods' own.
+func SpecRepos(src []byte) map[string][]string {
+	_, repos := readLock(src)
+	return repos
+}

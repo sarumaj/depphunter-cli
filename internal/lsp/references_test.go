@@ -98,6 +98,8 @@ func TestSymbolWord(t *testing.T) {
 	for name, want := range map[string]string{
 		"Server.Start": "Start", "init@12": "init", "Shop.Cart.total/2": "total",
 		"Shop.Cart.new/1@30": "new", "start/2": "start", "fail!/0": "fail!", "a/b": "a/b",
+		"Cart.initWithItems:total:": "initWithItems", "Cart.load": "load", "Cart.count@9": "count",
+		"NSString(Shop)": "NSString", "(<+>)": "(<+>)",
 	} {
 		if got := symbolWord(name); got != want {
 			t.Errorf("%s: got %q, want %q", name, got, want)

@@ -45,6 +45,9 @@ const (
 	// Terraform Registry serves them, and a module named with a host is served by
 	// that host's registry (see For).
 	TerraformModule = "terraform-module"
+	// CocoaPods is the objc plugin's island of pods; its public index is the
+	// CocoaPods CDN, which serves the trunk spec repository as files.
+	CocoaPods = "cocoapods"
 )
 
 // public is where each ecosystem's packages come from unless something says otherwise.
@@ -66,6 +69,7 @@ var public = map[string]string{
 	// Terraform's public registry; OpenTofu's registry.opentofu.org serves the same
 	// namespaces, and the plugin names modules of either without a host.
 	TerraformModule: "https://registry.terraform.io",
+	CocoaPods:       "https://cdn.cocoapods.org",
 }
 
 // HackageItself reports whether a repository URL is Hackage (any scheme, with or
@@ -74,6 +78,21 @@ var public = map[string]string{
 func HackageItself(index string) bool {
 	u, err := url.Parse(strings.TrimSpace(index))
 	return err == nil && strings.EqualFold(u.Hostname(), "hackage.haskell.org")
+}
+
+// CocoaPodsTrunk reports whether a spec repository a Podfile or Podfile.lock names is
+// CocoaPods' own public one: the CDN, the trunk spec repository on GitHub it serves,
+// or "trunk" as Podfile.lock calls it. It is the public index, not one the
+// repository brings along.
+//
+// Implements: REQ-SUP-051
+func CocoaPodsTrunk(repo string) bool {
+	r := strings.TrimSuffix(strings.TrimRight(strings.ToLower(strings.TrimSpace(repo)), "/"), ".git")
+	switch r {
+	case "trunk", "https://cdn.cocoapods.org", "https://github.com/cocoapods/specs", "git@github.com:cocoapods/specs":
+		return true
+	}
+	return false
 }
 
 // CRANMirror reports whether an R repository URL is CRAN itself - cloud.r-project.org,

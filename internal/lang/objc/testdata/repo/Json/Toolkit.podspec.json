@@ -1,0 +1,15 @@
+{
+  "name": "Toolkit",
+  "version": "1.0.0",
+  "dependencies": {
+    "SDWebImage": ["~> 5.0"]
+  },
+  "subspecs": [
+    {
+      "name": "Logging",
+      "dependencies": {
+        "CocoaLumberjack": ["= 3.8.0"]
+      }
+    }
+  ]
+}

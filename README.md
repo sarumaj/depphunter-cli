@@ -811,8 +811,8 @@ packages each, followed by the advisories it matched — covering Go, npm, PyPI,
 crates.io, Maven, NuGet, GitHub Actions, Conan (as OSV's ConanCenter; vcpkg has
 no OSV ecosystem), Composer (as Packagist), RubyGems, Swift packages (as
 SwiftURL, by URL), pub, Hex, CRAN, Bioconductor and Hackage; OSV has no
-ecosystem for Terraform modules and providers or for Buf Schema Registry
-modules. Floating packages are not
+ecosystem for Terraform modules and providers, Buf Schema Registry modules,
+CocoaPods or Carthage. Floating packages are not
 queried, since they resolve to a different version on the next installation.
 Answers are cached for six hours.
 `--no-vulns` disables all of this.
@@ -911,6 +911,8 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | Terraform providers | `.terraform.lock.hcl` (the root module's, for the modules it calls), a single exact constraint               | `~>`, `>=` and other constraints, no constraint                                           |
 | Buf Schema Registry | `buf.lock`, a commit ref (`:0123…`), a plugin's exact version                                                | a label, tag or branch ref, no ref, a plugin without a version                            |
 | CMake FetchContent  | a `GIT_TAG` commit, a `URL_HASH`, an archive of a commit                                                     | a branch `GIT_TAG` (`main`, `origin/…`), no `GIT_TAG`, a download without a hash          |
+| CocoaPods           | `Podfile.lock` (a git pod by its checkout commit), a bare `'1.2.3'`, `'= 1.2.3'`, a `:commit`                | `~>`, `>=` and other ranges, no version, a `:branch`, a git pod without a reference       |
+| Carthage            | `Cartfile.resolved`, `== 1.2.3`, a quoted commit                                                             | `~>`, `>=`, no requirement                                                                |
 
 A package a shell script installs (`pip install`, `npm install -g`, `go
 install`, `cargo install`, `gem install`) follows its ecosystem's row; one
@@ -941,6 +943,7 @@ and the analysis remains offline.
 | `mix.lock`                           | each Hex package's requirements                    |
 | `renv.lock`, `packrat/packrat.lock`  | each R package's requirements                      |
 | `dist-newstyle/cache/plan.json`      | what each package of cabal's build plan depends on |
+| `Podfile.lock`                       | the pods each pod's specs depend on                |
 
 Packages added in this way are marked **transitive**, meaning that no file in
 the repository imports them. Edges between packages are of kind `depends`, as
@@ -954,16 +957,18 @@ Ecosystems that keep the dependency graph outside the repository — Go modules,
 NuGet, container images, a Composer, Bundler, Mix or R project that commits no
 lock, pub, whose `pubspec.lock` is a flat list, rebar3, whose `rebar.lock`
 records only a depth, and a Haskell project without cabal's build plan on disk
-(`cabal.project.freeze` and `stack.yaml.lock` list versions only), and
-Terraform registry modules — require `--online`, described below; Maven, the
+(`cabal.project.freeze` and `stack.yaml.lock` list versions only),
+Terraform registry modules and pods no `Podfile.lock` records — require
+`--online`, described below; Maven, the
 PowerShell Gallery, vcpkg, Conan 2 (whose lock is a flat list), Bioconductor
 packages no lock records, Swift packages that SwiftPM has not checked out
 under `.build` (`Package.resolved` is flat as well) and Terraform modules
 fetched from git or an archive are not resolved beyond the first level at
 present, and neither are Buf Schema Registry modules: `buf.lock` is a flat
 list, and the registry's API is not a package index depphunter asks. Content
-a CMake build fetches is not resolved beyond the first level either. A
-Terraform provider depends on nothing.
+a CMake build fetches is not resolved beyond the first level either, nor are
+Carthage dependencies (`Cartfile.resolved` is flat). A Terraform provider
+depends on nothing.
 
 The side panel presents these as a **tree**: every row under *Depends on* and
 *Used by* expands into that node's own dependencies, and so on recursively.
@@ -991,7 +996,9 @@ CRAN and Posit Package Manager (each serving the packages recorded from it),
 `options(repos = ...)` in `.Rprofile` and `~/.Rprofile`, and
 `RENV_CONFIG_REPOS_OVERRIDE`; the `repository` stanzas of `cabal.project` and
 of cabal's own configuration (`~/.cabal/config`, `~/.config/cabal/config`,
-`CABAL_CONFIG`, `CABAL_DIR`) other than Hackage itself; and `GOPROXY` — and the
+`CABAL_CONFIG`, `CABAL_DIR`) other than Hackage itself; a `Podfile`'s `source`
+lines and the spec repositories of `Podfile.lock` (each serving the pods
+installed from it) other than CocoaPods' own; and `GOPROXY` — and the
 side panel names the index each package resolves from. A container image
 requires no configuration, since `ghcr.io/org/app` names its registry directly,
 and neither does a Terraform module: `app.terraform.io/acme/vpc/aws` names its
@@ -1024,6 +1031,7 @@ ecosystems whose graph is held outside the repository:
 | CRAN              | crandb's `/<name>/<version>` (or current); `src/contrib/PACKAGES` elsewhere                       | `Depends`, `Imports` and `LinkingTo`, without R's base packages                                  |
 | Hackage           | `<server>/package/<name>/preferred`, then `/package/<name>-<version>/<name>.cabal` (or newest)    | its libraries' `build-depends`, without GHC's own packages                                       |
 | Terraform modules | `<modules.v1>/<namespace>/<name>/<provider>/versions` (service discovery off the public registry) | the providers and registry modules of the version asked for, or the newest its constraint allows |
+| CocoaPods         | `<cdn>/Specs/<a>/<b>/<c>/<pod>/<version>/<pod>.podspec.json` (newest: the shard's version list)   | its and its default subspecs' `dependencies`                                                     |
 
 A container image has no dependency list. What it has is the image it was built
 on, which is the source of its unpatched vulnerabilities, and that is what is
@@ -1119,7 +1127,8 @@ pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`
 `crates:`, `actions:`, `gitlab-ci:`, `psgallery:`, `c-external:`, `vcpkg:`,
 `conan:`, `composer:`, `rubygems:`, `swiftpm:`, `pub:`, `hex:`, `cran:`,
 `bioconductor:`, `hackage:`, `terraform-module:`, `terraform-provider:`,
-`buf:`, `cmake-fetch:` or `pkg-config:` — restricts it to that ecosystem.
+`buf:`, `cmake-fetch:`, `pkg-config:`, `cocoapods:` or `carthage:` — restricts
+it to that ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
 to whatever is configured here**, so a Go project whose machine is already
@@ -1496,7 +1505,7 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | Kotlin                  | `kotlin-language-server`                                       |
 | Scala                   | `metals`                                                       |
 | C#                      | `csharp-ls`                                                    |
-| C / C++                 | `clangd`                                                       |
+| C / C++ / Objective-C   | `clangd`                                                       |
 | PHP                     | `intelephense` or `phpactor`                                   |
 | Ruby                    | `ruby-lsp` or `solargraph`                                     |
 | Swift                   | `sourcekit-lsp`                                                |
@@ -1538,6 +1547,7 @@ The JSON and GraphML exports include the reference edges.
 | PHP                     | `use` statements (grouped, `function`, `const`) and fully qualified names in code, same-namespace `extends`/`implements`, `require`/`include` of spelled-out paths; project files by what they declare and `composer.json` PSR-4/PSR-0; packages by the autoload prefixes of `composer.lock` or `installed.json`                                                                 | Packagist, PHP standard library                                            |
 | Ruby                    | `require`/`require_relative`/`load`/`autoload` of spelled-out paths on a guessed load path (`lib`, `test`, `spec`, gemspec require paths, path gems); gems by `Gemfile`, gemspecs and `Gemfile.lock`, whose `gem` lines are imports; Rails constants by Zeitwerk naming                                                                                                          | RubyGems, Ruby standard library                                            |
 | Swift                   | `import` (every `#if` branch); `Package.swift` targets to their directories, else a directory named after the module; packages by `Package.swift`, `Package.resolved` and Xcode's `project.pbxproj`, products first, whose `.package` lines are imports; types used across a module's files                                                                                      | Swift packages, Swift standard library, Apple SDKs                         |
+| Objective-C             | `#import`/`#include` as C includes (beside the file, `compile_commands.json`, `include/` and `src/`, a unique file ending in it), `@import`; framework headers and modules to pods by `Podfile`, `Podfile.lock` and podspecs, or to Carthage by `Cartfile` and `Cartfile.resolved`, whose entries are imports; headers under `Pods/` and `Carthage/` to their dependency         | CocoaPods, Carthage, Apple SDKs, C/C++ islands                             |
 | Dart                    | `import`, `export` (every configurable URI), `part` and `part of`; relative URIs, `package:` URIs to a package's own `lib/`, path dependencies, pub workspace members and melos packages; packages by `pubspec.yaml` and `pubspec.lock`, whose dependencies are imports                                                                                                          | pub, Dart SDK libraries, Flutter SDK                                       |
 | Elixir / Erlang         | Elixir `alias`/`import`/`require`/`use` and every module reference, Erlang remote calls, `-behaviour`, `-include`/`-include_lib`; modules to the files defining them (umbrella apps too); packages by `mix.exs`, `rebar.config`, `mix.lock` and `rebar.lock`, whose dependencies are imports                                                                                     | Hex, Elixir standard library, Erlang/OTP                                   |
 | R                       | `library`/`require`/`requireNamespace`/`loadNamespace`, `pkg::`, pacman, `box::use`, roxygen `@import`; `source()` paths, knitr children; calls to a package's own functions across its files; packages by `DESCRIPTION`, `NAMESPACE`, `renv.lock` and `packrat.lock`, whose dependencies are imports                                                                            | CRAN, Bioconductor, R base packages                                        |
@@ -1752,7 +1762,32 @@ an Xcode project's `xcshareddata/swiftpm`) pins the packages it holds, and a
 `Package.swift`'s `.package` lines are imports of what they declare. Since a
 module's files see each other's declarations without imports, the type names
 a file uses connect it to the file of its module, or of a project module it
-imports, that declares them.
+imports, that declares them. A module no SwiftPM manifest provides may be a pod
+or a Carthage framework: an app's Podfile or Cartfile is read for it too.
+
+Objective-C sources (`.m`, `.mm`, and `.h` files that show Objective-C in
+their first lines: `#import`, `@interface`, `@protocol`, `@class`) share the
+C/C++ plugin's include reading and resolution, `#import` included; a `.h`
+file without those stays C or C++, and a `.m` file without a preprocessor
+line, a `//` comment or an Objective-C keyword is MATLAB (or Mercury, by its
+`:-` declarations) and is not read. An include or `@import` of an Apple
+framework (`<UIKit/UIKit.h>`, `<objc/runtime.h>`) goes to the Apple SDKs
+island Swift uses. A framework header of a pod (`<AFNetworking/AFNetworking.h>`,
+`<SDWebImage/UIImageView+WebCache.h>`), a module (`@import Firebase;`) and a
+bare header named like a pod (`"Masonry.h"`) resolve to the pod the nearest
+`Podfile` or podspec declares or `Podfile.lock` pins, matched by name, its
+module spelling (`libPhoneNumber_iOS`), without a platform suffix
+(`lottie-ios` is `Lottie`) or by a table of modules named otherwise (`GRDB` is
+`GRDB.swift`'s); a header found in a committed `Pods/` directory is its pod's,
+not the project's. A `pod` line's subspec (`Firebase/Analytics`) is its pod,
+`:path` pods are the project's own directories, and `Podfile.lock` gives every
+pod's version and what it depends on. `Cartfile` entries are the Carthage
+island, named by repository as Swift packages are (`github.com/Mantle/Mantle`)
+and pinned by `Cartfile.resolved`. Classes, categories (`NSString(Shop)`),
+protocols, methods by selector (`Cart.addItem:count:`), properties, C
+functions, `NS_ENUM`s, typedefs, constants and macros are symbols. Objective-C
+is read by a small scanner: the tree-sitter grammar took 19 to 36 ms per file
+and failed on one file in twenty.
 
 Dart files are read for their `import`, `export`, `part` and `part of`
 directives; a conditional import contributes every URI it names (`if
@@ -1848,9 +1883,10 @@ uses a pure-Go tree-sitter runtime for JavaScript/TypeScript, Python, Rust,
 Java, Kotlin, Scala, C, C++, PHP, Ruby and Swift; Go uses the standard library's
 own parser, CI, Compose and Buf files a YAML parser, and C#, PowerShell,
 Markdown, Dart, Elixir, Erlang, R, Haskell, HCL, Protocol Buffers, shell
-scripts, CMake files, Dockerfiles, the markup of Vue, Svelte and Astro
-components, R Markdown chunks and C preprocessor directives small built-in
-scanners — so the binary continues to cross-compile without a C toolchain.
+scripts, CMake files, Objective-C, CocoaPods and Carthage manifests,
+Dockerfiles, the markup of Vue, Svelte and Astro components, R Markdown chunks
+and C preprocessor directives small built-in scanners — so the binary continues
+to cross-compile without a C toolchain.
 
 ## Security
 

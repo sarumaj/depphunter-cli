@@ -30,3 +30,10 @@ frameworks it uses.
 
 1. `import Foundation` and `import XCTest` go to `swift-std`; `import
    SwiftUI` and `import Combine` go to `apple-sdk`.
+
+## Notes
+
+The objc plugin shares the framework list and the island (REQ-OBJC-005);
+older frameworks Objective-C still imports (AddressBook, AssetsLibrary,
+Twitter...) and Darwin modules (`notify`, `zlib`, `Compression`, `XPC`) were
+added to it.
