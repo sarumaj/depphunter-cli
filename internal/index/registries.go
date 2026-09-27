@@ -358,6 +358,68 @@ func (c *Client) composerMetadataURL(ctx context.Context, index string) (string,
 	return pattern, nil
 }
 
+// ---------------------------------------------------------------- RubyGems
+
+// rubygemsPackage reads a gem's runtime dependencies from the compact index Bundler
+// itself reads (/info/<name>): one line per published version and platform, "1.2.3
+// dep:>= 1&< 2,other:~> 3|checksum:...". rubygems.org serves it, and so do the
+// servers Bundler is pointed at (Gemfury, Artifactory, Gemstash). The line of the
+// version asked for answers, the platform-independent one first; without a version,
+// the newest release (the last line that is neither a pre-release nor for one
+// platform only) does.
+//
+// Implements: REQ-SUP-045
+func (c *Client) rubygemsPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+	body, err := c.accept(ctx, strings.TrimRight(index, "/")+"/info/"+t.Package, "text/plain, */*")
+	if err != nil {
+		return nil, err
+	}
+	want := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(t.Version), "="))
+	var newest, exact, exactPlatform string
+	for _, line := range strings.Split(string(body), "\n") {
+		version, rest, ok := strings.Cut(strings.TrimSpace(line), " ")
+		if !ok || line == "---" {
+			continue
+		}
+		plain, platform, _ := strings.Cut(version, "-")
+		switch {
+		case plain == want && platform == "":
+			exact = rest
+		case plain == want && exactPlatform == "":
+			exactPlatform = rest
+		}
+		if platform == "" && !strings.ContainsAny(plain, "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ") {
+			newest = rest
+		}
+	}
+	chosen := exact
+	if chosen == "" {
+		chosen = exactPlatform
+	}
+	if chosen == "" {
+		chosen = newest
+	}
+	deps, _, _ := strings.Cut(chosen, "|")
+	var out []dep
+	for _, d := range strings.Split(deps, ",") {
+		name, req, ok := strings.Cut(strings.TrimSpace(d), ":")
+		if !ok || name == "" {
+			continue
+		}
+		reqs := strings.Split(req, "&")
+		for i := range reqs {
+			reqs[i] = strings.TrimSpace(reqs[i])
+		}
+		version := strings.Join(reqs, ", ")
+		if exact, ok := strings.CutPrefix(version, "= "); ok && !strings.Contains(exact, ",") {
+			version = exact // one version: pinned, as lang.Pinned reads it
+		}
+		out = append(out, dep{Name: name, Version: version})
+	}
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
 // ---------------------------------------------------------------- OCI
 
 // The media types a registry may answer a manifest request with: the OCI ones and

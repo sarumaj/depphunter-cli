@@ -29,6 +29,8 @@ const (
 	OCI   = "oci"
 	// Composer is PHP's; its public index is Packagist.
 	Composer = "composer"
+	// RubyGems is Ruby's, as Bundler installs from it.
+	RubyGems = "rubygems"
 )
 
 // public is where each ecosystem's packages come from unless something says otherwise.
@@ -42,6 +44,7 @@ var public = map[string]string{
 	OCI:   "https://registry-1.docker.io",
 	// Composer: the metadata host Composer itself reads; packagist.org is its website.
 	Composer: "https://repo.packagist.org",
+	RubyGems: "https://rubygems.org",
 }
 
 // Where an index was learned from. It decides nothing on its own - Trusted does

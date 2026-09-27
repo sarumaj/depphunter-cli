@@ -7,6 +7,7 @@ import (
 	"os"
 	"path"
 	"path/filepath"
+	"regexp"
 	"slices"
 	"sort"
 	"strings"
@@ -84,6 +85,8 @@ func (c *Config) machine(env func(string) string, home string) {
 			parseComposer(data, add)
 		}
 	}
+	// Bundler's mirror of rubygems.org, from the environment.
+	add(RubyGems, env("BUNDLE_MIRROR__RUBYGEMS__ORG"), "")
 	if home == "" {
 		return
 	}
@@ -102,6 +105,8 @@ func (c *Config) machine(env func(string) string, home string) {
 		{filepath.Join(home, ".config", "NuGet", "NuGet.Config"), parseNuGetConfig},
 		{filepath.Join(home, ".config", "composer", "config.json"), parseComposer},
 		{filepath.Join(home, ".composer", "config.json"), parseComposer},
+		{filepath.Join(home, ".gemrc"), parseGemrc},
+		{filepath.Join(home, ".bundle", "config"), parseBundleConfig},
 	} {
 		if data, err := os.ReadFile(f.path); err == nil {
 			f.parse(data, add)
@@ -143,6 +148,10 @@ func (c *Config) project(files []*scan.File) {
 			parsePom(data, add)
 		case base == "composer.json":
 			parseComposer(data, add)
+		case f.Path == "Gemfile" || strings.HasSuffix(f.Path, "/Gemfile") || base == "gems.rb":
+			parseGemfile(data, add)
+		case base == "gemfile.lock" || base == "gems.locked":
+			parseGemfileLock(data, add)
 		case base == "config.toml" && strings.HasSuffix(path.Dir(f.Path), ".cargo"):
 			parseCargoConfig(data, add)
 		}
@@ -370,6 +379,88 @@ func parseComposer(data []byte, add func(eco, url, scope string)) {
 		if json.Unmarshal(raw, &r) == nil && r.Type == "composer" {
 			add(Composer, strings.TrimSpace(r.URL), "")
 		}
+	}
+}
+
+var (
+	gemSource = regexp.MustCompile(`^(\s*)source\s*\(?\s*["']([^"']+)["']\s*\)?\s*(do\b)?`)
+	gemDecl   = regexp.MustCompile(`^\s*gem\s*\(?\s*["']([^"']+)["']`)
+	blockEnd  = regexp.MustCompile(`^(\s*)end\b`)
+)
+
+// parseGemfile reads the gem servers a Gemfile names: a `source` line serves every
+// gem, a `source ... do` block only the gems declared inside it.
+func parseGemfile(data []byte, add func(eco, url, scope string)) {
+	block, indent := "", ""
+	for _, line := range strings.Split(string(data), "\n") {
+		if m := gemSource.FindStringSubmatch(line); m != nil {
+			if m[3] == "" {
+				add(RubyGems, m[2], "")
+			} else {
+				block, indent = m[2], m[1]
+			}
+			continue
+		}
+		if block == "" {
+			continue
+		}
+		if m := blockEnd.FindStringSubmatch(line); m != nil && m[1] == indent {
+			block = ""
+		} else if m := gemDecl.FindStringSubmatch(line); m != nil {
+			add(RubyGems, block, m[1])
+		}
+	}
+}
+
+// parseGemfileLock reads the remotes of Gemfile.lock's GEM sections. The first serves
+// everything; a later one - a private server beside rubygems.org - only the gems
+// locked under it.
+func parseGemfileLock(data []byte, add func(eco, url, scope string)) {
+	first, remote, gem := "", "", false
+	for _, line := range strings.Split(string(data), "\n") {
+		switch {
+		case line != "" && line[0] != ' ':
+			gem, remote = strings.TrimSpace(line) == "GEM", ""
+		case !gem:
+		case strings.HasPrefix(line, "  remote: "):
+			remote = strings.TrimSpace(strings.TrimPrefix(line, "  remote: "))
+			if first == "" {
+				first = remote
+				add(RubyGems, remote, "")
+			}
+		case remote != "" && remote != first && strings.HasPrefix(line, "    ") && !strings.HasPrefix(line, "     "):
+			if name, _, ok := strings.Cut(strings.TrimSpace(line), " "); ok {
+				add(RubyGems, remote, name)
+			}
+		}
+	}
+}
+
+// parseGemrc reads the sources of a ~/.gemrc (YAML: ":sources:" and a list).
+func parseGemrc(data []byte, add func(eco, url, scope string)) {
+	in := false
+	for _, line := range strings.Split(string(data), "\n") {
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(trimmed, ":sources:"):
+			in = true
+		case in && strings.HasPrefix(trimmed, "- "):
+			add(RubyGems, strings.Trim(strings.TrimSpace(trimmed[2:]), `"'`), "")
+		case trimmed != "":
+			in = false
+		}
+	}
+}
+
+// parseBundleConfig reads Bundler's mirror of rubygems.org from ~/.bundle/config
+// (BUNDLE_MIRROR__RUBYGEMS__ORG, or the URL form of the key).
+func parseBundleConfig(data []byte, add func(eco, url, scope string)) {
+	for _, line := range strings.Split(string(data), "\n") {
+		key, value, ok := strings.Cut(line, ": ")
+		if !ok || !strings.HasPrefix(key, "BUNDLE_MIRROR__") || !strings.Contains(strings.ToUpper(key), "RUBYGEMS__ORG") {
+			continue
+		}
+		add(RubyGems, strings.Trim(strings.TrimSpace(value), `"'`), "")
 	}
 }
 

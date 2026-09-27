@@ -1,0 +1,4 @@
+require_relative "config/application"
+
+load "lib/tasks/seed.rake"
+Rails.application.load_tasks

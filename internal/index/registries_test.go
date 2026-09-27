@@ -341,3 +341,46 @@ func TestPackagistIsAskedDirectly(t *testing.T) {
 		t.Errorf("asked %v, got %+v; want one request for the lower-case name and no packages", asked, got)
 	}
 }
+
+// Verifies: REQ-SUP-045
+func TestRubyGemsDependencies(t *testing.T) {
+	var asked []string
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Path)
+		if r.URL.Path != "/private/info/sinatra" {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Write([]byte("---\n" +
+			"3.0.0 rack:~> 2.2&>= 2.2.4,tilt:~> 2.0|checksum:aa,ruby:>= 2.6.0\n" +
+			"4.0.0 mustermann:~> 3.0,rack:< 4&>= 3.0,rack-protection:= 4.0.0|checksum:bb\n" +
+			"4.0.0-java rack:< 4|checksum:cc\n" +
+			"4.1.0.beta1 rack:>= 3.1|checksum:dd\n"))
+	}))
+	defer srv.Close()
+	c := clientFor(t, RubyGems, srv.URL+"/private/", "")
+	for _, tt := range []struct {
+		version string
+		want    []lang.Target
+	}{
+		{"3.0.0", []lang.Target{
+			{Ecosystem: RubyGems, Package: "rack", Version: "~> 2.2, >= 2.2.4"},
+			{Ecosystem: RubyGems, Package: "tilt", Version: "~> 2.0"},
+		}},
+		// No version: the newest release, not the pre-release nor a platform's build;
+		// "= 4.0.0" is one version, and pinned.
+		{"~> 4.0", []lang.Target{
+			{Ecosystem: RubyGems, Package: "mustermann", Version: "~> 3.0"},
+			{Ecosystem: RubyGems, Package: "rack", Version: "< 4, >= 3.0"},
+			{Ecosystem: RubyGems, Package: "rack-protection", Version: "4.0.0", Pinned: true},
+		}},
+	} {
+		got := c.Dependencies(lang.Target{Ecosystem: RubyGems, Package: "sinatra", Version: tt.version})
+		if !reflect.DeepEqual(got, tt.want) {
+			t.Errorf("%s: got %+v, want %+v", tt.version, got, tt.want)
+		}
+	}
+	if len(asked) == 0 || asked[0] != "/private/info/sinatra" {
+		t.Errorf("asked %v, want the compact index", asked)
+	}
+}
