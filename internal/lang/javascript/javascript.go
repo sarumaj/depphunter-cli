@@ -85,9 +85,13 @@ type Plugin struct{}
 
 func (Plugin) Name() string { return "javascript" }
 
-// Implements: REQ-JS-012
+// Claims leaves out a ".ts" file the scan found to be XML (a Qt Linguist
+// translation): the TypeScript grammar would spend the whole parse bound on it and
+// find nothing.
+//
+// Implements: REQ-JS-001, REQ-JS-012
 func (Plugin) Claims(f *scan.File) bool {
-	return (grammarFor(f.Path) != nil || component(f.Path)) && !f.Binary
+	return (grammarFor(f.Path) != nil || component(f.Path)) && !f.Binary && f.Lang != "XML"
 }
 
 // Implements: REQ-JS-005

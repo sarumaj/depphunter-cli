@@ -1,13 +1,18 @@
 package javascript
 
 import (
+	"context"
+	"fmt"
 	"os"
 	"path/filepath"
 	"reflect"
+	"sort"
+	"strings"
 	"testing"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/langtest"
+	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
 // testdata/repo: a TypeScript app with tsconfig paths (inherited baseUrl, JSONC),
@@ -328,5 +333,42 @@ func TestComponentScanner(t *testing.T) {
 				}
 			}
 		}
+	}
+}
+
+// Qt projects keep their translations in ".ts" files (Qt Linguist XML). Parsed as
+// TypeScript, each one ran into the per-file parse bound (REQ-LANG-011) and
+// yielded nothing: flameshot's 49 translations took 39 s of a 40 s analysis. They
+// must not reach the plugin at all.
+//
+// Verifies: REQ-JS-001
+func TestQtLinguistTranslationsNotClaimed(t *testing.T) {
+	root := t.TempDir()
+	var ts strings.Builder
+	ts.WriteString("<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!DOCTYPE TS>\n<TS version=\"2.1\" language=\"de\">\n<context>\n    <name>Main</name>\n")
+	for i := 0; i < 500; i++ {
+		fmt.Fprintf(&ts, "    <message>\n        <location filename=\"../../src/main.cpp\" line=\"%d\"/>\n        <source>Save &amp; close</source>\n        <translation>Speichern &amp; schließen</translation>\n    </message>\n", i)
+	}
+	ts.WriteString("</context>\n</TS>\n")
+	for p, c := range map[string]string{
+		"data/translations/app_de.ts": ts.String(),
+		"src/app.ts":                  "import './util';\n",
+		"src/util.ts":                 "export const x = 1;\n",
+	} {
+		abs := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(abs), 0o755)
+		os.WriteFile(abs, []byte(c), 0o644)
+	}
+	files, err := scan.Scan(context.Background(), root, scan.Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var got []string
+	for _, f := range lang.Claimed(Plugin{}, files) {
+		got = append(got, f.Path)
+	}
+	sort.Strings(got)
+	if want := []string{"src/app.ts", "src/util.ts"}; !reflect.DeepEqual(got, want) {
+		t.Errorf("claimed %v, want %v", got, want)
 	}
 }

@@ -190,6 +190,11 @@ func measure(f *File, maxSize int64) {
 		f.Binary = true
 		return
 	}
+	// Qt Linguist keeps its translations in .ts files too: XML, which the
+	// TypeScript grammar can only fail on, slowly (REQ-LANG-011's bound each).
+	if f.Lang == "TypeScript" && strings.EqualFold(path.Ext(f.Path), ".ts") && xmlDocument(head) {
+		f.Lang = "XML"
+	}
 	// An extensionless script is labelled by the shell its "#!" line runs.
 	if f.Interpreter = interpreter(head); f.Lang == "" && ShellInterpreter(f.Interpreter) {
 		f.Lang = "Shell"
