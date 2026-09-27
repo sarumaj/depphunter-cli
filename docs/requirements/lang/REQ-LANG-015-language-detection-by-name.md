@@ -18,14 +18,18 @@ case-insensitively, or from well-known file names (for example `Dockerfile`,
 `*.app.src`, R's `DESCRIPTION`, `NAMESPACE`, `renv.lock` and `packrat.lock`,
 Haskell's `cabal.project`, `stack.yaml` and `package.yaml`, Terraform's
 `.terraform.lock.hcl` and `*.tf.json`, Terragrunt's `terragrunt.hcl`, Buf's
-`buf.yaml`, `buf.work.yaml`, `buf.lock` and `buf.gen.yaml`, and the
-Dockerfile names of REQ-DOCKER-001), and
-**shall** leave the language empty when neither is known.
+`buf.yaml`, `buf.work.yaml`, `buf.lock` and `buf.gen.yaml`, the shells'
+and direnv's startup files (`.bashrc`, `.zshrc`, `.profile`, `.envrc` and
+the others of REQ-SHELL-001), and the Dockerfile names of REQ-DOCKER-001),
+or, for a file neither names, from a `#!` line running a shell
+(REQ-SHELL-001), and **shall** leave the language empty when none is known.
 
 ## Rationale
 
 Detecting by name needs no reading of the file and is enough for the language
-colors and filters.
+colors and filters. An extensionless script says what it is only in its `#!`
+line, which the scan reads from the bytes it already peeks at to tell binary
+files apart.
 
 ## Acceptance criteria
 
@@ -40,5 +44,8 @@ colors and filters.
    and `.terraform.lock.hcl` are Terraform, `main.tofu` is OpenTofu,
    `terragrunt.hcl` is Terragrunt and `root.hcl` is HCL; `shop.proto` is
    Protobuf and `buf.yaml`, `buf.work.yaml`, `buf.lock` and `buf.gen.yaml`
-   are Buf.
+   are Buf; `scripts/build.sh`, `test/app.bats`, a `.zsh-theme`, `.envrc`,
+   `.zshrc` and `.bash_profile` are Shell, and so is an extensionless file
+   starting `#!/usr/bin/env -S bash -e` or `#! /bin/sh`, while one starting
+   `#!/usr/bin/python3` has no language and `lib/x.py` stays Python.
 2. A file with an unknown extension has no `lang`.

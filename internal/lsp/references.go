@@ -76,6 +76,10 @@ var Servers = []Server{
 	// standalone release, protols a community server that needs no Buf configuration.
 	{Name: "proto", Open: true, Exts: map[string]string{".proto": "proto"},
 		Commands: [][]string{{"buf", "lsp", "serve"}, {"bufls", "serve"}, {"protols"}}},
+	// bash-language-server serves sh and Bash (and bats, which it reads as Bash); it
+	// has no zsh support, so zsh files are left out.
+	{Name: "bash", Open: true, Exts: map[string]string{".sh": "shellscript", ".bash": "shellscript", ".ksh": "shellscript", ".bats": "shellscript", ".envrc": "shellscript"},
+		Commands: [][]string{{"bash-language-server", "start"}}},
 }
 
 type Options struct {

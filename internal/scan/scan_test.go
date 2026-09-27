@@ -200,3 +200,41 @@ func TestScanMeasuresEveryFilesSize(t *testing.T) {
 		}
 	}
 }
+
+// A script without an extension is labelled by the shell its "#!" line runs, read
+// through env; other interpreters are recorded but label nothing.
+//
+// Verifies: REQ-LANG-015, REQ-SHELL-001
+func TestScanReadsShebangs(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"bin/deploy":   "#!/usr/bin/env -S bash -e\necho hi\n",
+		"bin/install":  "#! /bin/sh\n",
+		"bin/tool":     "#!/usr/bin/python3\nprint(1)\n",
+		"lib/x.py":     "#!/bin/sh\n",
+		"README":       "no shebang\n",
+		"bin/env-only": "#!/usr/bin/env\n",
+	}
+	for p, c := range files {
+		abs := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(abs), 0o755)
+		os.WriteFile(abs, []byte(c), 0o644)
+	}
+	got, err := Scan(context.Background(), root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string][2]string{
+		"bin/deploy":   {"bash", "Shell"},
+		"bin/install":  {"sh", "Shell"},
+		"bin/tool":     {"python3", ""},
+		"lib/x.py":     {"sh", "Python"},
+		"README":       {"", ""},
+		"bin/env-only": {"", ""},
+	}
+	for _, f := range got {
+		if w := want[f.Path]; f.Interpreter != w[0] || f.Lang != w[1] {
+			t.Errorf("%s: interpreter %q, lang %q; want %q, %q", f.Path, f.Interpreter, f.Lang, w[0], w[1])
+		}
+	}
+}

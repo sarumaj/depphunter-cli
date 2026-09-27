@@ -199,6 +199,7 @@ code. The page served is identical in both cases.
   [CI pipelines](#ci-pipelines) ·
   [Infrastructure as code](#infrastructure-as-code) ·
   [Interface definitions](#interface-definitions) ·
+  [Shell scripts](#shell-scripts) ·
   [Documentation](#documentation) ·
   [Symbol references](#symbol-references) · [Languages](#languages)
 - [Security](#security) · [Contributing](#contributing) · [License](#license)
@@ -887,9 +888,9 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 
 | Ecosystem           | pinned by                                                                                                    | floats on                                                                                 |
 |---------------------|--------------------------------------------------------------------------------------------------------------|-------------------------------------------------------------------------------------------|
-| Go modules          | the version in `go.mod`, which the build selects                                                             | — (a `require` always names a version)                                                    |
+| Go modules          | the version in `go.mod`, which the build selects; a script's `go install x@v1.2.3`                           | — (a `require` always names a version); a script's `@latest` or `@v1.2`                   |
 | npm                 | `package-lock.json`, `yarn.lock`, `pnpm-lock.yaml`, an exact `1.2.3`                                         | any range, including `1.2`, which denotes 1.2.x                                           |
-| crates.io           | `Cargo.lock`                                                                                                 | the manifest alone, where `"1.2.3"` denotes `^1.2.3`                                      |
+| crates.io           | `Cargo.lock`, a script's `cargo install x@1.2.3`                                                             | the manifest alone, where `"1.2.3"` denotes `^1.2.3`                                      |
 | PyPI                | `poetry.lock`, `uv.lock`, `pdm.lock`, `Pipfile.lock`, `==1.2.3`                                              | `>=`, `~=`, `^` and other ranges                                                          |
 | Maven               | a plain version, `[1.2.3]`                                                                                   | ranges, `LATEST`, `RELEASE`, `-SNAPSHOT`, dynamic `1.+` and `latest.*`, unexpanded `${…}` |
 | NuGet               | an exact version, `[1.2.3]`                                                                                  | wildcards (`2.*`) and ranges                                                              |
@@ -909,6 +910,10 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | Terraform modules   | a registry `version` of `1.2.3` or `= 1.2.3`, a git `ref` commit                                             | `~>` and other ranges, no version, a git tag or branch, no ref, an archive                |
 | Terraform providers | `.terraform.lock.hcl` (the root module's, for the modules it calls), a single exact constraint               | `~>`, `>=` and other constraints, no constraint                                           |
 | Buf Schema Registry | `buf.lock`, a commit ref (`:0123…`), a plugin's exact version                                                | a label, tag or branch ref, no ref, a plugin without a version                            |
+
+A package a shell script installs (`pip install`, `npm install -g`, `go
+install`, `cargo install`, `gem install`) follows its ecosystem's row; one
+installed without a version, or at `latest`, floats.
 
 The JSON and GraphML exports carry `requested` and `floating` per package.
 
@@ -1380,6 +1385,45 @@ used from another file needs no edge of its own: protobuf requires importing
 the file that declares it. Only `buf.lock`'s commit, or a commit given as the
 ref, pins a module.
 
+### Shell scripts
+
+Build, CI, install and deployment scripts decide what runs as much as any
+manifest, and they call each other. depphunter reads shell scripts — `.sh`,
+`.bash`, `.zsh`, `.ksh`, `.bats`, Oh My Zsh's `.zsh-theme`, the shells'
+startup files (`.bashrc`, `.zshrc`, `.profile` and the rest), direnv's
+`.envrc`, and any file without an extension whose `#!` line runs `sh`, `bash`,
+`zsh`, `dash`, `ksh`, `mksh` or `ash`, directly or through `env`:
+
+- **Sourced files**: `source` and `.`, with the path worked out from what the
+  file says — literals, variables it assigned earlier, and the idioms for the
+  script's own directory: `$(dirname "$0")`, `${BASH_SOURCE%/*}`,
+  `SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"`, zsh's
+  `${0:A:h}`. `$(git rev-parse --show-toplevel)` is the repository root. A
+  bare relative path is relative to the working directory, which a script
+  cannot know; it is looked up beside the script, then at the root.
+- **Scripts it runs**: a command that is a path (`./build.sh`,
+  `"$DIR/deploy"`, also after `exec`, `env`, `sudo` or `time`), and the script
+  an interpreter is handed (`bash x.sh`, `python3 tools/gen.py`,
+  `node x.js`).
+- **Paths below the environment**: `"$PLUGIN_PATH/common/functions"`, where
+  the variable comes from whatever runs the script, resolves to the one
+  project file ending in `common/functions` (two elements at least).
+- **direnv and bats**: `source_env`, `source_up` and `dotenv` in an `.envrc`;
+  `load` in a bats test.
+- **Installed packages**: `pip install` (and `python -m pip`, uv, pipx),
+  `npm install`/`pnpm add`/`yarn add`, `go install pkg@version`,
+  `cargo install` and `gem install` add packages to the PyPI, npm, Go modules,
+  crates.io and RubyGems islands the manifests use, under the same pinning
+  rules, so vulnerability lookups and private patterns cover them;
+  `pip install -r requirements.txt` is an edge to that file.
+
+Functions, bats tests, aliases, and the exported, read-only and upper-case
+variables a script sets at its top level become its symbols. Nothing is run:
+a path under `~` or `$HOME`, one computed in a loop or by `eval`, or from a
+variable another file sets is not followed, and packages installed with
+`apt-get`, `apk`, `brew` or another system package manager are not read, as
+no island holds them.
+
 ### Documentation
 
 A README that links to `CONTRIBUTING.md` depends on that file, and one that
@@ -1461,6 +1505,7 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | Haskell                 | `haskell-language-server-wrapper` or `haskell-language-server` |
 | Terraform / OpenTofu    | `terraform-ls serve` or `tofu-ls serve`                        |
 | Protocol Buffers        | `buf lsp serve`, `bufls serve` or `protols`                    |
+| Shell (sh, Bash, bats)  | `bash-language-server start`                                   |
 
 The servers run in the background once the map is displayed — gopls requires
 approximately 7 s for this repository — within the budget set by
@@ -1497,6 +1542,7 @@ The JSON and GraphML exports include the reference edges.
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                                                                                     | GitHub Actions, GitLab CI, Container images                                |
 | Protocol Buffers        | `import` (`public`, `weak`) under the import roots of `buf.work.yaml` and `buf.yaml` (v1 and v2), else the repository root, `proto/`, `protos/`, `api/`, `src/main/proto/` and the importer's directories, else a unique project file ending in the path; modules by `buf.yaml` `deps` and `buf.lock` and a table of common protos; `buf.gen.yaml` remote plugins                | Buf Schema Registry, Protobuf well-known types                             |
 | Terraform / OpenTofu    | `module` sources to local directories, registry and remote modules; `required_providers`, `provider` blocks and resource type prefixes to providers, pinned by `.terraform.lock.hcl`; references to what other files of the module declare; `file()`/`templatefile()` paths; Terragrunt `source`, `dependency` and `find_in_parent_folders()`                                    | Terraform modules, Terraform providers                                     |
+| Shell scripts           | `source`/`.` and scripts run by path or interpreter, with `$(dirname "$0")`, `${BASH_SOURCE%/*}`, `SCRIPT_DIR` variables, zsh's `${0:A:h}` and `git rev-parse --show-toplevel` evaluated; direnv `source_env`/`source_up`/`dotenv`, bats `load`; packages installed with pip, npm, pnpm, yarn, `go install`, `cargo install` and `gem install`                                   | PyPI, npm, Go modules, crates.io, RubyGems                                 |
 | Dockerfile / Compose    | `FROM`, `COPY --from`, `RUN --mount from=` and `# syntax=` with `ARG` defaults expanded and stages told apart; Compose `image:`, and `build:` to the Dockerfile in the repository                                                                                                                                                                                                | Container images                                                           |
 | Markdown                | links to files and directories in the repository (inline, reference, autolink, and the `href` and `src` of raw HTML); headings become the file's symbols                                                                                                                                                                                                                         | *(none: a link is not a package)*                                          |
 
@@ -1750,14 +1796,18 @@ Protocol Buffers definitions are read by a small scanner: the tree-sitter
 grammar took 2.4 to 3 ms per file and failed on every file using editions.
 See [Interface definitions](#interface-definitions).
 
+Shell scripts are read by a small scanner: the tree-sitter bash grammar took
+2.7 to 3.6 ms per file, about twenty times longer, and failed on two thirds of
+the zsh files measured. See [Shell scripts](#shell-scripts).
+
 Files in other languages appear on the map without dependency edges. Parsing
 uses a pure-Go tree-sitter runtime for JavaScript/TypeScript, Python, Rust,
 Java, Kotlin, Scala, C, C++, PHP, Ruby and Swift; Go uses the standard library's
 own parser, CI, Compose and Buf files a YAML parser, and C#, PowerShell,
-Markdown, Dart, Elixir, Erlang, R, Haskell, HCL, Protocol Buffers,
-Dockerfiles, the markup of Vue, Svelte and Astro components, R Markdown chunks
-and C preprocessor directives small built-in scanners — so the binary
-continues to cross-compile without a C toolchain.
+Markdown, Dart, Elixir, Erlang, R, Haskell, HCL, Protocol Buffers, shell
+scripts, Dockerfiles, the markup of Vue, Svelte and Astro components, R
+Markdown chunks and C preprocessor directives small built-in scanners — so the
+binary continues to cross-compile without a C toolchain.
 
 ## Security
 

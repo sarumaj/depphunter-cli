@@ -1,6 +1,7 @@
 package scan
 
 import (
+	"bytes"
 	"path"
 	"strings"
 )
@@ -18,7 +19,7 @@ var byExt = map[string]string{
 	".rb": "Ruby", ".rake": "Ruby", ".gemspec": "Ruby", ".ru": "Ruby", ".php": "PHP", ".phtml": "PHP", ".pl": "Perl", ".lua": "Lua", ".r": "R", ".rmd": "R Markdown", ".qmd": "Quarto", ".rprofile": "R",
 	".ex": "Elixir", ".exs": "Elixir", ".erl": "Erlang", ".hrl": "Erlang", ".hs": "Haskell", ".lhs": "Haskell", ".hs-boot": "Haskell", ".hsc": "Haskell", ".cabal": "Cabal", ".clj": "Clojure",
 	".zig": "Zig", ".nim": "Nim", ".jl": "Julia",
-	".sh": "Shell", ".bash": "Shell", ".zsh": "Shell", ".ps1": "PowerShell", ".psm1": "PowerShell", ".psd1": "PowerShell",
+	".sh": "Shell", ".bash": "Shell", ".zsh": "Shell", ".ksh": "Shell", ".bats": "Shell", ".zsh-theme": "Shell", ".ps1": "PowerShell", ".psm1": "PowerShell", ".psd1": "PowerShell",
 	".html": "HTML", ".htm": "HTML", ".css": "CSS", ".scss": "CSS", ".sass": "CSS", ".less": "CSS",
 	".vue": "Vue", ".svelte": "Svelte", ".astro": "Astro",
 	".json": "JSON", ".yaml": "YAML", ".yml": "YAML", ".toml": "TOML", ".xml": "XML",
@@ -37,6 +38,9 @@ var byName = map[string]string{
 	"stack.yaml": "Haskell", "stack.yaml.lock": "Haskell", "package.yaml": "Haskell",
 	".terraform.lock.hcl": "Terraform", "terragrunt.hcl": "Terragrunt",
 	"buf.yaml": "Buf", "buf.work.yaml": "Buf", "buf.lock": "Buf", "buf.gen.yaml": "Buf",
+	".envrc": "Shell", ".profile": "Shell", ".bashrc": "Shell", ".bash_profile": "Shell",
+	".bash_login": "Shell", ".bash_logout": "Shell", ".bash_aliases": "Shell", ".zshrc": "Shell",
+	".zshenv": "Shell", ".zprofile": "Shell", ".zlogin": "Shell", ".zlogout": "Shell", ".kshrc": "Shell",
 }
 
 // Language guesses a file's language from its name; "" means unknown.
@@ -78,4 +82,42 @@ func Dockerfile(p string) bool {
 		}
 	}
 	return false
+}
+
+// shells are the interpreters whose scripts are shell scripts.
+var shells = map[string]bool{"sh": true, "bash": true, "zsh": true, "dash": true, "ksh": true, "mksh": true, "ash": true}
+
+// ShellInterpreter reports whether a "#!" line's program runs a shell script.
+//
+// Implements: REQ-SHELL-001
+func ShellInterpreter(name string) bool { return shells[name] }
+
+// interpreter reads the program a file's "#!" line names: its base name, or for
+// "#!/usr/bin/env [-S] [NAME=value...] prog" the program env runs. Only the first
+// line counts, and nothing is read beyond what measure has already peeked at.
+//
+// Implements: REQ-LANG-015, REQ-SHELL-001
+func interpreter(head []byte) string {
+	if !bytes.HasPrefix(head, []byte("#!")) {
+		return ""
+	}
+	line := head[2:]
+	if i := bytes.IndexByte(line, '\n'); i >= 0 {
+		line = line[:i]
+	}
+	fields := strings.Fields(string(line))
+	if len(fields) == 0 {
+		return ""
+	}
+	prog := path.Base(fields[0])
+	if prog != "env" {
+		return prog
+	}
+	for _, f := range fields[1:] {
+		if strings.HasPrefix(f, "-") || strings.Contains(f, "=") {
+			continue // -S, -i, NAME=value
+		}
+		return path.Base(f)
+	}
+	return ""
 }

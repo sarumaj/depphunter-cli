@@ -32,6 +32,9 @@ type File struct {
 	// TooLarge says the file is over Options.MaxFileSize, which promises it is not
 	// read: not measured here, and not parsed by any plugin.
 	TooLarge bool
+	// Interpreter is the program a script's "#!" line runs ("bash", "python3"), read
+	// through /usr/bin/env; "" when the file has no such line.
+	Interpreter string
 }
 
 type Options struct {
@@ -182,9 +185,14 @@ func measure(f *File, maxSize int64) {
 	defer fh.Close()
 
 	r := bufio.NewReader(fh)
-	if head, _ := r.Peek(8000); bytes.IndexByte(head, 0) >= 0 {
+	head, _ := r.Peek(8000)
+	if bytes.IndexByte(head, 0) >= 0 {
 		f.Binary = true
 		return
+	}
+	// An extensionless script is labelled by the shell its "#!" line runs.
+	if f.Interpreter = interpreter(head); f.Lang == "" && ShellInterpreter(f.Interpreter) {
+		f.Lang = "Shell"
 	}
 	var lines, last int
 	buf := make([]byte, 32*1024)

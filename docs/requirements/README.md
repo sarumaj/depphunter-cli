@@ -125,6 +125,7 @@ The server **shall** ...
 | `haskell`   | The Haskell plugin, cabal, hpack, stack and Hackage.                                           |
 | `terraform` | The Terraform and OpenTofu plugin, lock files, Terragrunt and the module registries.           |
 | `proto`     | The Protocol Buffers plugin, Buf's configuration and lock files and the Buf Schema Registry.   |
+| `shell`     | The shell script plugin (sh, Bash, zsh, bats), direnv and packages scripts install.            |
 | `ps`        | The PowerShell plugin.                                                                         |
 | `ci`        | The continuous-integration plugin (GitHub Actions, GitLab CI, container images).               |
 | `docker`    | The Dockerfile and Compose plugin, and the container-image references it shares with `ci`.     |
@@ -235,6 +236,10 @@ requirements of type `limitation` in their scopes:
   build scripts are not read (conventional roots stand in for them), and the
   Buf Schema Registry is not asked about a module's dependencies; no
   vulnerability database covers its modules.
+- Shell scripts are read without running them: only paths the file itself
+  determines are followed (not loops over globs, `eval` or variables set in
+  another file), the working directory is guessed, and packages installed with
+  system package managers (`apt-get`, `apk`, `brew`) are not read.
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.
