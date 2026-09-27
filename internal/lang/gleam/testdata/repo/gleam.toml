@@ -1,0 +1,20 @@
+name = "shop"
+version = "1.0.0"
+target = "erlang"
+
+description = "A shop"
+repository = { type = "github", user = "acme", repo = "shop" }
+
+[dependencies]
+gleam_stdlib = ">= 0.34.0 and < 2.0.0"
+gleam_erlang = "~> 0.25"
+gleam_otp = ">= 0.10.0 and < 1.0.0"
+gleam_http = "== 3.6.0"
+gleam_json = "~> 1.0"
+lustre = ">= 4.0.0 and < 5.0.0"
+mist = "1.2.0"
+inventory = { path = "libs/inventory" }
+glitch = { git = "https://github.com/acme/glitch.git", ref = "main" }
+
+[dev-dependencies]
+gleeunit = "~> 1.0"

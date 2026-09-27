@@ -394,3 +394,10 @@ func hexPinned(req string) (string, bool) {
 	}
 	return s, true
 }
+
+// HexPinned is the Hex pinning rule for a requirement written without a lock:
+// "== 1.2.3" and a bare "1.2.3" pin that version, anything else is kept as
+// written and not pinned. The Gleam plugin shares it.
+//
+// Implements: REQ-BEAM-011
+func HexPinned(req string) (string, bool) { return hexPinned(req) }

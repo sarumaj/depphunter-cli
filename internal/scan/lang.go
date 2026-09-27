@@ -18,7 +18,7 @@ var byExt = map[string]string{
 	".m": "Objective-C", ".mm": "Objective-C++", ".podspec": "Ruby", ".swift": "Swift", ".dart": "Dart",
 	".rb": "Ruby", ".rake": "Ruby", ".gemspec": "Ruby", ".ru": "Ruby", ".php": "PHP", ".phtml": "PHP", ".pl": "Perl", ".pm": "Perl", ".t": "Perl", ".psgi": "Perl", ".lua": "Lua", ".luau": "Luau", ".tl": "Teal", ".rockspec": "Lua", ".r": "R", ".rmd": "R Markdown", ".qmd": "Quarto", ".rprofile": "R",
 	".ex": "Elixir", ".exs": "Elixir", ".erl": "Erlang", ".hrl": "Erlang", ".ml": "OCaml", ".mli": "OCaml", ".mll": "OCaml", ".mly": "Menhir", ".opam": "opam", ".hs": "Haskell", ".lhs": "Haskell", ".hs-boot": "Haskell", ".hsc": "Haskell", ".cabal": "Cabal", ".clj": "Clojure", ".cljc": "Clojure", ".cljs": "ClojureScript", ".bb": "Clojure", ".edn": "EDN",
-	".zig": "Zig", ".zon": "Zig", ".nix": "Nix", ".nim": "Nim", ".jl": "Julia",
+	".zig": "Zig", ".zon": "Zig", ".nix": "Nix", ".gleam": "Gleam", ".nim": "Nim", ".jl": "Julia",
 	".sh": "Shell", ".bash": "Shell", ".zsh": "Shell", ".ksh": "Shell", ".bats": "Shell", ".zsh-theme": "Shell", ".ps1": "PowerShell", ".psm1": "PowerShell", ".psd1": "PowerShell",
 	".html": "HTML", ".htm": "HTML", ".css": "CSS", ".scss": "CSS", ".sass": "CSS", ".less": "CSS",
 	".vue": "Vue", ".svelte": "Svelte", ".astro": "Astro",
@@ -32,7 +32,7 @@ var byExt = map[string]string{
 var byName = map[string]string{
 	"Makefile": "Make", "go.mod": "Go", "go.sum": "Go",
 	"CMakeLists.txt": "CMake", "CMakePresets.json": "CMake", "CMakeUserPresets.json": "CMake",
-	"BUILD": "Starlark", "WORKSPACE": "Starlark", "WORKSPACE.bzlmod": "Starlark", "MODULE.bazel.lock": "JSON", "flake.lock": "Nix",
+	"BUILD": "Starlark", "WORKSPACE": "Starlark", "WORKSPACE.bzlmod": "Starlark", "MODULE.bazel.lock": "JSON", "flake.lock": "Nix", "gleam.toml": "Gleam",
 	"Jenkinsfile": "Groovy", "Gemfile": "Ruby", "Rakefile": "Ruby", "Guardfile": "Ruby", "Capfile": "Ruby",
 	"rebar.config": "Erlang", "rebar.lock": "Erlang", "mix.lock": "Elixir",
 	"cpanfile": "Perl", "cpanfile.snapshot": "Carton", "dist.ini": "Dist::Zilla",

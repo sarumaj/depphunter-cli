@@ -24,24 +24,26 @@ type project struct {
 }
 
 type resolver struct {
-	files    map[string]bool
-	dirs     map[string]bool
-	exMods   map[string]string // Elixir module -> defining file
-	exRoots  map[string]bool   // first segments of the project's Elixir modules
-	erlMods  map[string]string // Erlang module -> file
-	appFiles map[string]string // application -> its .app.src, mix.exs or rebar.config
-	appDirs  map[string]string // application -> its directory
-	projects []*project        // deepest first
-	locks    []map[string]*locked
-	depMods  map[string]string // module -> application, from deps/ and _build/ on disk
-	injected map[string]*injection
+	files     map[string]bool
+	dirs      map[string]bool
+	exMods    map[string]string // Elixir module -> defining file
+	exRoots   map[string]bool   // first segments of the project's Elixir modules
+	erlMods   map[string]string // Erlang module -> file
+	appFiles  map[string]string // application -> its .app.src, mix.exs or rebar.config
+	appDirs   map[string]string // application -> its directory
+	projects  []*project        // deepest first
+	locks     []map[string]*locked
+	depMods   map[string]string // module -> application, from deps/ and _build/ on disk
+	injected  map[string]*injection
+	gleamMods map[string]string // Gleam module (gleam/list) -> its .gleam file
 }
 
 // Implements: REQ-BEAM-006, REQ-BEAM-008, REQ-BEAM-010, REQ-BEAM-012
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{files: map[string]bool{}, dirs: map[string]bool{}, exMods: map[string]string{},
 		exRoots: map[string]bool{}, erlMods: map[string]string{}, appFiles: map[string]string{},
-		appDirs: map[string]string{}, depMods: map[string]string{}, injected: map[string]*injection{}}
+		appDirs: map[string]string{}, depMods: map[string]string{}, injected: map[string]*injection{},
+		gleamMods: map[string]string{}}
 	abs := map[string]string{}
 	var files []*scan.File
 	for _, f := range all {
@@ -49,6 +51,11 @@ func newResolver(root string, all []*scan.File) *resolver {
 		abs[f.Path] = f.Abs
 		for d := path.Dir(f.Path); d != "." && !r.dirs[d]; d = path.Dir(d) {
 			r.dirs[d] = true
+		}
+		if m, ok := gleamModule(f.Path); ok {
+			if prev, dup := r.gleamMods[m]; !dup || f.Path < prev {
+				r.gleamMods[m] = f.Path
+			}
 		}
 		if (Plugin{}).Claims(f) && !f.TooLarge && f.Size <= lang.MaxParseSize {
 			files = append(files, f)
@@ -460,6 +467,9 @@ func (r *resolver) erlangModule(file, mod string) lang.Target {
 		return r.elixirModule(file, rest)
 	}
 	p := r.projectOf(file)
+	if strings.Contains(mod, "@") {
+		return r.gleamModule(p, strings.ReplaceAll(mod, "@", "/"))
+	}
 	if app, ok := r.depMods[mod]; ok {
 		return r.hexTarget(p, app)
 	}
@@ -497,6 +507,22 @@ func (r *resolver) erlangModule(file, mod string) lang.Target {
 	name := mod
 	if alias != "" {
 		name = erlangAliases[alias]
+	}
+	return lang.Target{Ecosystem: ecoHex, Package: name, Unresolved: true}
+}
+
+// gleamModule resolves an Erlang reference to a compiled Gleam module
+// (gleam@list is gleam/list): to the project's .gleam file, else to the Hex
+// package the Gleam plugin names it by.
+//
+// Implements: REQ-GLEAM-009
+func (r *resolver) gleamModule(p *project, mod string) lang.Target {
+	if f, ok := r.gleamMods[mod]; ok {
+		return lang.Target{Local: f}
+	}
+	name, known := GleamPackage(mod, p.knows)
+	if known {
+		return r.hexTarget(p, p.known[fold(name)])
 	}
 	return lang.Target{Ecosystem: ecoHex, Package: name, Unresolved: true}
 }

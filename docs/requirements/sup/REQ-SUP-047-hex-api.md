@@ -16,7 +16,8 @@ The index client **shall** read a Hex package's dependencies from the Hex API
 (`https://hex.pm/api` unless `HEX_API_URL` names another): the package
 (`<api>/packages/<name>`) for its releases and latest stable release, then the
 release asked for, or else that one (`<api>/packages/<name>/releases/<v>`), its
-non-optional requirements keyed by package name.
+non-optional requirements keyed by package name. Gleam packages are Hex
+packages and are asked the same way (REQ-GLEAM-009).
 
 ## Rationale
 

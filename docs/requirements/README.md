@@ -133,6 +133,7 @@ The server **shall** ...
 | `clojure`   | The Clojure, ClojureScript and babashka plugin, deps.edn, Leiningen, shadow-cljs, bb.edn and Clojars. |
 | `bazel`     | The Bazel plugin: BUILD, .bzl, MODULE.bazel and WORKSPACE files, registries and hub repositories.     |
 | `nix`       | The Nix plugin: expressions, flakes and flake.lock, niv and npins pins, and nixpkgs packages.         |
+| `gleam`     | The Gleam plugin: modules, gleam.toml and manifest.toml, as Hex packages.                             |
 | `terraform` | The Terraform and OpenTofu plugin, lock files, Terragrunt and the module registries.                  |
 | `proto`     | The Protocol Buffers plugin, Buf's configuration and lock files and the Buf Schema Registry.          |
 | `shell`     | The shell script plugin (sh, Bash, zsh, bats), direnv and packages scripts install.                   |
@@ -295,6 +296,10 @@ requirements of type `limitation` in their scopes:
   values, overlays and module options are not followed, nixpkgs packages are
   known only by name and only in package lists, and there is no Nix registry,
   OSV ecosystem or Trivy package type to ask about flake inputs.
+- Gleam is read without running gleam: modules of a package that no
+  gleam.toml or manifest.toml declares are named by their first segment
+  unless gleam downloaded it into build/packages, pre-1.0 `if erlang { }`
+  blocks are not read, and an Elixir module named in `@external` is dropped.
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.
