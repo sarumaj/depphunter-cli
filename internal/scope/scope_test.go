@@ -202,8 +202,8 @@ func TestAZigPatternKeepsToZig(t *testing.T) {
 	}
 }
 
-// A Clojure dependency on the Maven island is group:artifact; a Maven pattern names
-// its group, as it does a Java package's.
+// A package on the Maven island is group:artifact (Java, Kotlin, Scala, Clojure and
+// Bazel alike); a Maven pattern names its group, or one artifact.
 //
 // Verifies: REQ-SUP-035
 func TestAMavenPatternMatchesGroupAndArtifact(t *testing.T) {
@@ -213,6 +213,11 @@ func TestAMavenPatternMatchesGroupAndArtifact(t *testing.T) {
 	}
 	if !New([]string{"acme"}).Match("maven", "acme:shared") {
 		t.Error("a bare group did not match its artifacts")
+	}
+	// One artifact, as Java, Kotlin and Scala imports are named too.
+	one := New([]string{"maven:com.acme:lib"})
+	if !one.Match("maven", "com.acme:lib") || one.Match("maven", "com.acme:lib-extra") || one.Match("maven", "com.acme:other") {
+		t.Error("an artifact pattern did not keep to its artifact")
 	}
 }
 

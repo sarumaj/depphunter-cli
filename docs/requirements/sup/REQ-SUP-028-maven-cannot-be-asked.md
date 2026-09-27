@@ -12,23 +12,24 @@ verification:
 
 ## Statement
 
-The index client **shall not** ask a Maven repository what a package named by
-its group alone depends on, and **shall** record the question as unanswerable
-for this ecosystem. A package named `group:artifact` is asked
+The index client **shall not** ask a Maven repository what a package named
+without an artifact depends on, and **shall** record the question as
+unanswerable for this ecosystem. A package named `group:artifact` is asked
 (REQ-SUP-056).
 
 ## Rationale
 
-A POM is addressed by group and artifact, and a package on the map is a group:
-there is no document to request, and guessing an artifact is worse than saying
-nothing.
+A POM is addressed by group and artifact. Every plugin names Maven packages
+`group:artifact`; what can still lack an artifact is a Bazel hub target that no
+artifact list or lock file names (`maven:<escaped_name>`, REQ-BAZEL-011), and
+guessing an artifact for it is worse than saying nothing.
 
 ## Acceptance criteria
 
-1. With `--online`, a Maven package produces no request and the report says the
-   ecosystem's index cannot be asked.
+1. With `--online`, a Maven package named without an artifact produces no
+   request and the report says the ecosystem's index cannot be asked.
 
 ## Notes
 
-The underlying limitation, that Java imports name packages rather than
-artifacts, is specified by scope [`java`](../java/).
+Until the Java, Kotlin and Scala plugins named Maven packages by artifact
+(REQ-JAVA-012), this applied to all of their packages.

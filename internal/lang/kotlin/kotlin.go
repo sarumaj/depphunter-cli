@@ -1,7 +1,7 @@
 // Package kotlin analyzes Kotlin with tree-sitter. Its imports resolve the way Java's
 // do, through the Java resolver: to project sources (Kotlin and Scala by the package
-// they declare, Java by path), to the JDK, and to Maven groups declared by Gradle,
-// Maven or sbt builds. Only the Kotlin standard library is its own.
+// they declare, Java by path), to the JDK, and to Maven artifacts declared by
+// Gradle, Maven or sbt builds. Only the Kotlin standard library is its own.
 package kotlin
 
 import (
@@ -53,7 +53,7 @@ var language = java.Language{Std: ecoStd, Prefixes: []string{"kotlin."}}
 type Plugin struct{}
 
 func (Plugin) Name() string { return "kotlin" }
-func (Plugin) Version() int { return 1 }
+func (Plugin) Version() int { return 2 }
 func (Plugin) Claims(f *scan.File) bool {
 	return (strings.HasSuffix(f.Path, ".kt") || strings.HasSuffix(f.Path, ".kts")) && !f.Binary
 }

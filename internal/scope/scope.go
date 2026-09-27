@@ -81,8 +81,9 @@ func (p *Private) Match(eco, name string) bool {
 	}
 	names := []string{name}
 	if group, artifact, ok := strings.Cut(name, ":"); ok && eco == "maven" {
-		// The Clojure plugin names group:artifact; a pattern names a group
-		// ("com.acme.*" matches com.acme.billing:api) or group.artifact.
+		// Maven packages are named group:artifact; a pattern names one
+		// ("com.acme:lib"), a group ("com.acme.*" matches com.acme.billing:api)
+		// or group.artifact.
 		names = append(names, group, group+"."+artifact)
 	}
 	for _, n := range names {

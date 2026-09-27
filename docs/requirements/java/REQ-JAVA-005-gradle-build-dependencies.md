@@ -13,23 +13,28 @@ verification:
 ## Statement
 
 The Java plugin **shall** read dependencies written as
-`"group:artifact[:version]"` strings from `build.gradle` and `build.gradle.kts`,
-and **shall** take a top-level `group = "…"` assignment as a group of the
-project.
+`"group:artifact[:version]"` strings and in the map notation
+(`group: 'g', name: 'a', version: 'v'`, or `group = "g", name = "a"` in the
+Kotlin DSL) from `build.gradle` and `build.gradle.kts`, Kotlin Multiplatform
+source sets included, and **shall** take a top-level `group = "…"` assignment as
+a group of the project.
 
 ## Rationale
 
-Gradle is the other main Java build tool; its dependency notation is a string
+Gradle is the other main Java build tool; its dependency notations are strings
 that a pattern reads without evaluating the build script.
 
 ## Acceptance criteria
 
-1. `implementation("com.squareup.okhttp3:okhttp:4.12.0")` declares group
-   `com.squareup.okhttp3` at version `4.12.0`.
-2. `implementation("io.ktor:ktor-client-core:2.3.+")` declares group `io.ktor`
-   at the dynamic version `2.3.+`.
+1. `implementation("com.squareup.okhttp3:okhttp:4.12.0")` declares the artifact
+   `com.squareup.okhttp3:okhttp` at version `4.12.0`.
+2. `implementation("io.ktor:ktor-client-core:2.3.+")` declares
+   `io.ktor:ktor-client-core` at the dynamic version `2.3.+`.
+3. `implementation group: 'io.ktor', name: 'ktor-client-core', version:
+   '2.3.12'` declares `io.ktor:ktor-client-core` at `2.3.12`.
 
 ## Notes
 
 The build script is not evaluated: dependencies computed in code, or whose
-coordinates are built from variables, are not seen.
+coordinates are built from variables, are not seen. Gradle lock files
+(`gradle.lockfile`) are not read.

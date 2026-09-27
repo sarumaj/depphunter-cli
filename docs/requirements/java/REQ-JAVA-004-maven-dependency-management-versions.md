@@ -13,7 +13,7 @@ verification:
 ## Statement
 
 The Java plugin **shall** take the version of a POM dependency that declares
-none from the `<dependencyManagement>` entry of the same groupId.
+none from the `<dependencyManagement>` entry of the same `group:artifact`.
 
 ## Rationale
 
@@ -23,9 +23,11 @@ place; a dependency without its managed version would have none.
 ## Acceptance criteria
 
 1. A `junit-jupiter` dependency without a version and a managed
-   `org.junit.jupiter` version `5.10.2` resolves to version `5.10.2`.
+   `org.junit.jupiter:junit-jupiter` version `5.10.2` resolves to version
+   `5.10.2`.
 
 ## Notes
 
 Managed versions are read from the same POM only; parent POMs and imported BOMs
-are not followed.
+are not followed. Before Maven packages were named by artifact, a managed entry
+applied to every dependency of its groupId.

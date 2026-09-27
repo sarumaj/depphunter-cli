@@ -16,6 +16,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"gopkg.in/yaml.v3"
 
+	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/edn"
 	"github.com/sarumaj/depphunter-cli/internal/lang/luarocks"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
@@ -218,6 +219,8 @@ func (c *Config) project(files []*scan.File) {
 			parseNuGetConfig(data, add)
 		case base == "pom.xml":
 			parsePom(data, add)
+		case base == "build.gradle", base == "build.gradle.kts", base == "settings.gradle", base == "settings.gradle.kts":
+			parseGradleRepos(data, add)
 		case base == "deps.edn", base == "bb.edn", base == "shadow-cljs.edn", base == "project.clj", base == "build.boot":
 			c.clojure = true
 			parseClojureRepos(base, data, add)
@@ -433,11 +436,58 @@ func parsePom(data []byte, add func(eco, url, scope string)) {
 			} `xml:"repository"`
 		} `xml:"repositories"`
 	}
-	if xml.Unmarshal(data, &doc) != nil {
+	if lang.UnmarshalXML(data, &doc) != nil {
 		return
 	}
 	for _, r := range doc.Repositories.Repository {
-		add(Maven, strings.TrimSpace(r.URL), "")
+		if u := strings.TrimSpace(r.URL); !MavenPublic(u) {
+			add(Maven, u, "")
+		}
+	}
+}
+
+var (
+	// gradleRepo is a maven repository of a Gradle script: maven("url"),
+	// maven(url = "url"), maven { url "url" }, maven { url = uri("url") } and
+	// maven { setUrl("url") }.
+	gradleRepo = regexp.MustCompile(`\bmaven\s*(?:\(\s*(?:url\s*=\s*)?(?:uri\(\s*)?["']([^"']+)["']|` +
+		`\{[^{}]*?\b(?:url|setUrl)\s*(?:=\s*|\(\s*)?(?:uri\(\s*)?["']([^"']+)["'])`)
+	// gradleOwnBlock opens a block whose repositories serve Gradle itself - its
+	// plugins, the build script's classpath - rather than the code.
+	gradleOwnBlock = regexp.MustCompile(`\b(?:pluginManagement|buildscript)\s*\{`)
+)
+
+// parseGradleRepos reads the Maven repositories a Gradle build or settings script
+// declares, other than Maven Central. mavenCentral(), google() and mavenLocal()
+// name no repository of the project's own, and the repositories of
+// pluginManagement and buildscript blocks serve Gradle's plugins, not the code.
+//
+// Implements: REQ-SUP-015, REQ-SUP-056
+func parseGradleRepos(data []byte, add func(eco, url, scope string)) {
+	src := string(data)
+	for {
+		loc := gradleOwnBlock.FindStringIndex(src)
+		if loc == nil {
+			break
+		}
+		depth, end := 1, len(src)
+		for i := loc[1]; i < len(src); i++ {
+			if src[i] == '{' {
+				depth++
+			} else if src[i] == '}' {
+				if depth--; depth == 0 {
+					end = i + 1
+					break
+				}
+			}
+		}
+		src = src[:loc[0]] + src[end:]
+	}
+	for _, m := range gradleRepo.FindAllStringSubmatch(src, -1) {
+		u := strings.TrimSpace(m[1] + m[2])
+		if strings.HasPrefix(u, "http") && !MavenPublic(u) {
+			add(Maven, u, "")
+		}
 	}
 }
 

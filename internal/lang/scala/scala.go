@@ -1,7 +1,7 @@
 // Package scala analyzes Scala 2 and 3 with tree-sitter. Its imports resolve the way
 // Java's do, through the Java resolver: to project sources (Scala and Kotlin by the
-// package they declare, Java by path), to the JDK, and to Maven groups declared by
-// sbt, Gradle or Maven builds. Only the Scala standard library is its own.
+// package they declare, Java by path), to the JDK, and to Maven artifacts declared
+// by sbt, Gradle or Maven builds. Only the Scala standard library is its own.
 package scala
 
 import (
@@ -71,7 +71,7 @@ var language = java.Language{
 type Plugin struct{}
 
 func (Plugin) Name() string { return "scala" }
-func (Plugin) Version() int { return 1 }
+func (Plugin) Version() int { return 2 }
 func (Plugin) Claims(f *scan.File) bool {
 	return (strings.HasSuffix(f.Path, ".scala") || strings.HasSuffix(f.Path, ".sc")) && !f.Binary
 }

@@ -1,6 +1,7 @@
 package java
 
 import (
+	"cmp"
 	"encoding/xml"
 	"maps"
 	"os"
@@ -25,29 +26,6 @@ var jdkPrefixes = []string{
 	"javax.management", "javax.imageio", "javax.sound", "javax.print", "javax.script",
 	"javax.security", "javax.tools", "javax.lang.model", "javax.annotation.processing",
 	"javax.accessibility", "javax.rmi", "javax.transaction.xa",
-}
-
-// knownGroups maps packages of popular libraries to their groupId where the two share
-// too little for group() to connect them. Used only when that group is declared.
-//
-// Implements: REQ-JAVA-007
-var knownGroups = map[string]string{
-	"com.google.common":     "com.google.guava",
-	"com.google.thirdparty": "com.google.guava",
-	"org.junit":             "junit", // JUnit 4; JUnit 5 is org.junit.jupiter by prefix
-	"junit":                 "junit",
-	"lombok":                "org.projectlombok",
-	"org.mockito":           "org.mockito",
-	"reactor":               "io.projectreactor",
-	"io.reactivex":          "io.reactivex.rxjava3",
-	// Modules split out of the Scala library, published apart from it.
-	"scala.xml":                 "org.scala-lang.modules",
-	"scala.util.parsing":        "org.scala-lang.modules",
-	"scala.collection.parallel": "org.scala-lang.modules",
-	"scala.swing":               "org.scala-lang.modules",
-	"scala.async":               "org.scala-lang.modules",
-	"scala.scalajs":             "org.scala-js",
-	"scala.scalanative":         "org.scala-native",
 }
 
 // Language is what another JVM language adds to Java's resolution. The JDK is
@@ -101,13 +79,8 @@ type resolver struct {
 	lang   Language
 	byName map[string][]string // "User.java" -> project paths
 	dirs   []string            // directories holding Java files, sorted
-	groups map[string]string   // Maven groupId -> version ("" when artifacts differ)
-	alias  map[string]string   // artifactId or last groupId segment -> groupId
-	// words maps the first word of an artifactId to its groupId, the weakest of the
-	// hints: Scala libraries name their packages after it (cats.effect from
-	// org.typelevel:cats-effect, akka.actor from com.typesafe.akka:akka-actor).
-	words map[string]string
-	own   []string // groupIds of the project itself
+	maven                      // the declared Maven artifacts (maven.go)
+	own    []string            // groupIds of the project itself
 	// Kotlin and Scala declarations (sources.go): fully qualified name -> files,
 	// and package -> files; and the package each such file declares.
 	decls, packages map[string][]string
@@ -118,8 +91,8 @@ type resolver struct {
 }
 
 // NewResolver is the Java resolver for another JVM language: its imports reach the
-// same project sources (Java, Kotlin and Scala alike) and the same Maven groups, read
-// from the same manifests; only what l describes differs.
+// same project sources (Java, Kotlin and Scala alike) and the same Maven artifacts,
+// read from the same manifests; only what l describes differs.
 //
 // Implements: REQ-KT-004, REQ-SCALA-006
 func NewResolver(all []*scan.File, l Language) lang.Resolver {
@@ -128,11 +101,11 @@ func NewResolver(all []*scan.File, l Language) lang.Resolver {
 
 func newResolver(all []*scan.File, l Language) *resolver {
 	r := &resolver{
-		lang: l, byName: map[string][]string{}, groups: map[string]string{}, alias: map[string]string{},
-		words: map[string]string{}, decls: map[string][]string{}, packages: map[string][]string{},
-		filePkg: map[string]string{},
+		lang: l, byName: map[string][]string{}, maven: maven{artifacts: map[string]*artifact{}},
+		decls: map[string][]string{}, packages: map[string][]string{}, filePkg: map[string]string{},
 	}
 	dirs := map[string]bool{}
+	var sbt []*scan.File
 	for _, f := range all {
 		base := path.Base(f.Path)
 		switch {
@@ -149,9 +122,11 @@ func newResolver(all []*scan.File, l Language) *resolver {
 			r.readCatalog(f.Abs)
 		case strings.HasSuffix(base, ".sbt") && path.Base(path.Dir(f.Path)) != "project":
 			// project/*.sbt configures sbt itself (its plugins), not the code.
-			r.readSBT(f.Abs)
+			sbt = append(sbt, f)
 		}
 	}
+	r.readSBTs(sbt)
+	r.finish(l)
 	for d := range dirs {
 		r.dirs = append(r.dirs, d)
 	}
@@ -170,33 +145,6 @@ func newResolver(all []*scan.File, l Language) *resolver {
 	}
 	return r
 }
-
-// Implements: REQ-JAVA-007, REQ-SCALA-005
-func (r *resolver) addGroup(group, artifact, version string) {
-	if group == "" {
-		return
-	}
-	artifact = scalaSuffix.ReplaceAllString(artifact, "")
-	for _, a := range []string{artifact, group[strings.LastIndex(group, ".")+1:]} {
-		if a != "" {
-			r.alias[a] = group
-		}
-	}
-	if w, _, ok := strings.Cut(artifact, "-"); ok && w != "" {
-		if old, seen := r.words[w]; !seen || group < old { // the same answer in any file order
-			r.words[w] = group
-		}
-	}
-	if old, ok := r.groups[group]; ok && old != version {
-		version = "" // several artifacts of one group at different versions
-	}
-	r.groups[group] = version
-}
-
-// scalaSuffix is the Scala version sbt appends to an artifact built for several
-// (cats-effect_2.13, zio_3, a Scala.js build's _sjs1_3). The groups are what the map
-// shows, so the suffix only gets in the way of reading the artifact's name.
-var scalaSuffix = regexp.MustCompile(`(_(sjs|native)[\d.]+)?_[23](\.\d+)?$`)
 
 // Implements: REQ-JAVA-001, REQ-JAVA-002, REQ-JAVA-003, REQ-JAVA-009, REQ-KT-002, REQ-KT-003
 // Implements: REQ-KT-006, REQ-SCALA-002, REQ-SCALA-003, REQ-SCALA-007
@@ -242,11 +190,7 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 			return lang.Target{} // the project's own (e.g. generated) code we cannot see
 		}
 	}
-	if g, ok := r.group(spec); ok {
-		v := r.groups[g]
-		return lang.Target{Ecosystem: ecoMaven, Package: g, Version: v, Pinned: pinnedMaven(v)}
-	}
-	return lang.Target{Ecosystem: ecoMaven, Package: strings.Join(segments[:max(1, min(3, len(segments)-1))], "."), Unresolved: true}
+	return r.artifactOf(spec, wildcard)
 }
 
 // local finds the project file or directory an import names: a Java class by its
@@ -299,63 +243,6 @@ func JDK(spec string) (lang.Target, bool) {
 	return lang.Target{}, false
 }
 
-// group finds the declared groupId an import belongs to: the longest groupId that is a
-// package prefix, else the one sharing the most leading segments (at least three, or
-// all of a shorter groupId) - com.fasterxml.jackson.databind comes from the group
-// com.fasterxml.jackson.core - else a group whose artifactId or last segment names
-// the import's first package segment (okhttp3.* from com.squareup.okhttp3), else one
-// whose artifactId begins with that segment (cats.* from org.typelevel:cats-effect).
-//
-// Implements: REQ-JAVA-007, REQ-SCALA-005
-func (r *resolver) group(spec string) (string, bool) {
-	best, bestScore := "", 0
-	segments := strings.Split(spec, ".")
-	for g := range r.groups {
-		gs := strings.Split(g, ".")
-		score := 0
-		if spec == g || strings.HasPrefix(spec, g+".") {
-			score = 100 + len(gs)
-		} else {
-			common := 0
-			for common < len(gs) && common < len(segments) && gs[common] == segments[common] {
-				common++
-			}
-			if common >= min(3, len(gs)) {
-				score = common
-			}
-		}
-		if score > bestScore || (score == bestScore && score > 0 && g < best) {
-			best, bestScore = g, score
-		}
-	}
-	if bestScore > 0 {
-		return best, true
-	}
-	for pkg, g := range knownGroups {
-		if _, declared := r.groups[g]; declared && (spec == pkg || strings.HasPrefix(spec, pkg+".")) {
-			return g, true
-		}
-	}
-	for _, s := range segments[:min(2, len(segments))] { // okhttp3.*, org.junit.*
-		if g, ok := r.alias[s]; ok {
-			return g, true
-		}
-	}
-	// The language's own root is the first word of many artifacts (scala-xml,
-	// scala-reflect) and tells none of them apart.
-	for _, p := range r.lang.Prefixes {
-		if strings.HasPrefix(spec+".", p) {
-			return "", false
-		}
-	}
-	for _, s := range segments[:min(2, len(segments))] { // cats.effect.*, akka.actor.*
-		if g, ok := r.words[s]; ok {
-			return g, true
-		}
-	}
-	return "", false
-}
-
 // ---------------------------------------------------------------- manifests
 
 type pomDep struct {
@@ -387,7 +274,7 @@ func (r *resolver) readPOM(abs string) {
 		Deps    []pomDep `xml:"dependencies>dependency"`
 		Managed []pomDep `xml:"dependencyManagement>dependencies>dependency"`
 	}
-	if xml.Unmarshal(data, &pom) != nil {
+	if lang.UnmarshalXML(data, &pom) != nil {
 		return
 	}
 	group := pom.GroupID
@@ -402,30 +289,34 @@ func (r *resolver) readPOM(abs string) {
 		props[p.XMLName.Local] = strings.TrimSpace(p.Value)
 	}
 	expand := func(s string) string {
-		return property.ReplaceAllStringFunc(s, func(m string) string {
+		return strings.TrimSpace(property.ReplaceAllStringFunc(s, func(m string) string {
 			if v, ok := props[m[2:len(m)-1]]; ok {
 				return v
 			}
 			return m
-		})
+		}))
 	}
 	managed := map[string]string{}
 	for _, d := range pom.Managed {
-		managed[expand(d.GroupID)] = expand(d.Version)
+		managed[expand(d.GroupID)+":"+expand(d.ArtifactID)] = expand(d.Version)
 	}
 	for _, d := range pom.Deps {
-		g, v := expand(d.GroupID), expand(d.Version)
+		g, a, v := expand(d.GroupID), expand(d.ArtifactID), expand(d.Version)
 		if v == "" {
-			v = managed[g]
+			v = managed[g+":"+a]
 		}
 		if g != group {
-			r.addGroup(g, expand(d.ArtifactID), v)
+			r.addArtifact(g, a, v)
 		}
 	}
 }
 
 var (
-	gradleDep   = regexp.MustCompile(`["']([\w.\-]+):([\w.\-]+)(?::([\w.\-$+]+))?["']`)
+	gradleDep = regexp.MustCompile(`["']([\w.\-]+):([\w.\-]+)(?::([\w.\-$+{}\[\](),]+))?["']`)
+	// The map notation: group: 'g', name: 'a', version: 'v' (Groovy) or
+	// group = "g", name = "a", version = "v" (Kotlin DSL).
+	gradleMap = regexp.MustCompile(`group\s*[:=]\s*["']([\w.\-]+)["']\s*,\s*name\s*[:=]\s*["']([\w.\-]+)["']` +
+		`(?:\s*,\s*version\s*[:=]\s*["']([^"']*)["'])?`)
 	gradleGroup = regexp.MustCompile(`(?m)^\s*group\s*=\s*["']([\w.\-]+)["']`)
 )
 
@@ -439,46 +330,96 @@ func (r *resolver) readGradle(abs string) {
 		r.own = append(r.own, string(m[1]))
 	}
 	for _, m := range gradleDep.FindAllSubmatch(data, -1) {
-		r.addGroup(string(m[1]), string(m[2]), string(m[3]))
+		r.addArtifact(string(m[1]), string(m[2]), string(m[3]))
+	}
+	for _, m := range gradleMap.FindAllSubmatch(data, -1) {
+		r.addArtifact(string(m[1]), string(m[2]), string(m[3]))
 	}
 }
 
 var (
 	// "org" %% "name" % "1.2.3", where the version may be a val of the build.
-	sbtDep = regexp.MustCompile(`"([\w.\-]+)"\s*%{1,3}\s*"([\w.\-]+)"(?:\s*%\s*(?:"([^"]*)"|(\w+)))?`)
-	sbtVal = regexp.MustCompile(`(?m)^\s*(?:lazy\s+)?val\s+(\w+)\s*=\s*"([^"]*)"`)
-	sbtOrg = regexp.MustCompile(`(?m)^\s*(?:ThisBuild\s*/\s*)?organization\s*:=\s*"([\w.\-]+)"`)
+	sbtDep   = regexp.MustCompile(`"([\w.\-]+)"\s*(%{1,3})\s*"([\w.\-]+)"(?:\s*%\s*(?:"([^"]*)"|(\w+)))?`)
+	sbtVal   = regexp.MustCompile(`(?m)^\s*(?:lazy\s+)?val\s+(\w+)\s*=\s*"([^"]*)"`)
+	sbtOrg   = regexp.MustCompile(`(?m)^\s*(?:ThisBuild\s*/\s*)?organization\s*:=\s*"([\w.\-]+)"`)
+	sbtScala = regexp.MustCompile(`(?m)^\s*(?:ThisBuild\s*/\s*)?scalaVersion(?:\s+in\s+ThisBuild)?\s*:=\s*(?:"([^"]+)"|(\w+))`)
 )
 
-// readSBT reads an sbt build's dependencies. `%%` (and Scala.js's `%%%`) would have
-// sbt append the Scala binary version to the artifact - cats-effect_3 - but the map
-// shows groups, not artifacts, so all three read as `%` and the artifact keeps the
-// name it is written with; scalaVersion is not consulted.
+// readSBTs reads the dependencies of sbt builds. `%%` (and Scala.js's `%%%`) has
+// sbt append the Scala binary version to the artifact - cats-effect_3 - which is
+// the name Maven Central, OSV and the POM know it by, so it is appended here from
+// the build's scalaVersion: the file's own, else the one of the build file nearest
+// the root. Without a scalaVersion the artifact keeps the name it is written with.
+// `%%%` is read as `%%`: the platform suffix of a Scala.js build (_sjs1_3) depends on
+// the project, which the build is not evaluated to learn.
 //
 // Implements: REQ-SCALA-004
-func (r *resolver) readSBT(abs string) {
-	data, err := os.ReadFile(abs)
-	if err != nil {
-		return
+func (r *resolver) readSBTs(files []*scan.File) {
+	sort.Slice(files, func(i, j int) bool {
+		di, dj := strings.Count(files[i].Path, "/"), strings.Count(files[j].Path, "/")
+		return di < dj || di == dj && files[i].Path < files[j].Path
+	})
+	type build struct {
+		data  []byte
+		vals  map[string]string
+		scala string
 	}
-	vals := map[string]string{}
-	for _, m := range sbtVal.FindAllSubmatch(data, -1) {
-		vals[string(m[1])] = string(m[2])
-	}
-	for _, m := range sbtOrg.FindAllSubmatch(data, -1) {
-		r.own = append(r.own, string(m[1]))
-	}
-	for _, m := range sbtDep.FindAllSubmatch(data, -1) {
-		version := string(m[3])
-		if len(m[4]) > 0 {
-			version = vals[string(m[4])] // "" when it is no val of this file (Test, a setting)
+	var builds []build
+	global := ""
+	for _, f := range files {
+		data, err := os.ReadFile(f.Abs)
+		if err != nil {
+			continue
 		}
-		r.addGroup(string(m[1]), string(m[2]), version)
+		b := build{data: data, vals: map[string]string{}}
+		for _, m := range sbtVal.FindAllSubmatch(data, -1) {
+			b.vals[string(m[1])] = string(m[2])
+		}
+		if m := sbtScala.FindSubmatch(data); m != nil {
+			b.scala = string(m[1])
+			if len(m[2]) > 0 {
+				b.scala = b.vals[string(m[2])]
+			}
+		}
+		if global == "" {
+			global = b.scala
+		}
+		builds = append(builds, b)
+	}
+	for _, b := range builds {
+		for _, m := range sbtOrg.FindAllSubmatch(b.data, -1) {
+			r.own = append(r.own, string(m[1]))
+		}
+		suffix := scalaBinary(cmp.Or(b.scala, global))
+		for _, m := range sbtDep.FindAllSubmatch(b.data, -1) {
+			version := string(m[4])
+			if len(m[5]) > 0 {
+				version = b.vals[string(m[5])] // "" when it is no val of this file (Test, a setting)
+			}
+			name := string(m[3])
+			if len(m[2]) > 1 && suffix != "" && !scalaSuffix.MatchString(name) {
+				name += "_" + suffix
+			}
+			r.addArtifact(string(m[1]), name, version)
+		}
 	}
 }
 
+// scalaBinary is the binary version sbt's %% appends for a Scala version: 3 for any
+// Scala 3, 2.13 for 2.13.x; "" when it cannot tell.
+func scalaBinary(v string) string {
+	switch parts := strings.Split(v, "."); {
+	case len(parts) >= 2 && parts[0] == "3":
+		return "3"
+	case len(parts) >= 3 && parts[0] == "2":
+		return parts[0] + "." + parts[1]
+	}
+	return ""
+}
+
 // readCatalog reads a Gradle version catalog: [libraries] entries as "g:a:v" or
-// { module = "g:a", version = "1" | version.ref = "name" }.
+// { module = "g:a" | group = "g", name = "a", version = "1" | version.ref = "name" |
+// version = { strictly | require | prefer = "1" } }.
 //
 // Implements: REQ-JAVA-006
 func (r *resolver) readCatalog(abs string) {
@@ -489,6 +430,19 @@ func (r *resolver) readCatalog(abs string) {
 	if _, err := toml.DecodeFile(abs, &cat); err != nil {
 		return
 	}
+	rich := func(v any) string {
+		switch v := v.(type) {
+		case string:
+			return v
+		case map[string]any:
+			for _, k := range []string{"strictly", "require", "prefer"} {
+				if s, ok := v[k].(string); ok {
+					return s
+				}
+			}
+		}
+		return ""
+	}
 	for _, lib := range cat.Libraries {
 		switch v := lib.(type) {
 		case string:
@@ -498,7 +452,7 @@ func (r *resolver) readCatalog(abs string) {
 				if len(parts) > 2 {
 					ver = parts[2]
 				}
-				r.addGroup(parts[0], parts[1], ver)
+				r.addArtifact(parts[0], parts[1], ver)
 			}
 		case map[string]any:
 			group, _ := v["group"].(string)
@@ -506,16 +460,13 @@ func (r *resolver) readCatalog(abs string) {
 			if mod, ok := v["module"].(string); ok {
 				group, artifact, _ = strings.Cut(mod, ":")
 			}
-			ver := ""
-			switch vv := v["version"].(type) {
-			case string:
-				ver = vv
-			case map[string]any:
+			ver := rich(v["version"])
+			if vv, ok := v["version"].(map[string]any); ok {
 				if ref, ok := vv["ref"].(string); ok {
-					ver, _ = cat.Versions[ref].(string)
+					ver = rich(cat.Versions[ref])
 				}
 			}
-			r.addGroup(group, artifact, ver)
+			r.addArtifact(group, artifact, ver)
 		}
 	}
 }

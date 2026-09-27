@@ -238,8 +238,8 @@ func TestSplitChallenge(t *testing.T) {
 
 // Verifies: REQ-SUP-028
 func TestMavenIsNotAsked(t *testing.T) {
-	// A Maven package on the map is a group, and a POM needs a group and an artifact:
-	// there is nothing to request, and nothing should be requested.
+	// A POM needs a group and an artifact: a Maven name without an artifact (a Bazel
+	// hub target no artifact list names) has nothing to request.
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("asked the Maven repository for %s", r.URL.Path)
 		w.WriteHeader(http.StatusNotFound)
@@ -1062,7 +1062,7 @@ repo = "https://github.com/acme/AcmeRegistry.git"
 	}
 }
 
-// A Maven artifact named group:artifact (the Clojure plugin's) is read from its POM:
+// A Maven artifact named group:artifact is read from its POM:
 // the release maven-metadata.xml names when nothing pins it, compile and runtime
 // dependencies that are not optional, versions from properties and from the parent
 // POM's dependencyManagement, and the parent's own dependencies. With a Clojure
@@ -1129,7 +1129,8 @@ func TestMavenArtifactDependencies(t *testing.T) {
 	if !slices.Contains(asked, "clojars /cheshire/cheshire/5.12.0/cheshire-5.12.0.pom") {
 		t.Errorf("Clojars not asked: %v", asked)
 	}
-	// Without a Clojure manifest Clojars is not asked; a group alone is never asked.
+	// Without a Clojure manifest Clojars is not asked; a name without an artifact is
+	// never asked.
 	asked = nil
 	cfg.clojure = false
 	c = NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
@@ -1139,6 +1140,39 @@ func TestMavenArtifactDependencies(t *testing.T) {
 		if strings.HasPrefix(a, "clojars") || strings.Contains(a, "slf4j") {
 			t.Errorf("asked %s", a)
 		}
+	}
+}
+
+// A Java, Kotlin or Scala import's artifact is group:artifact too, so its POM is
+// read from Maven Central like any other - Clojars stays out of it without a
+// Clojure manifest - also when the POM declares a Latin-1 encoding.
+//
+// Verifies: REQ-JAVA-010, REQ-SUP-056
+func TestJavaArtifactIsAskedOfCentral(t *testing.T) {
+	var asked []string
+	central := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Path)
+		if r.URL.Path == "/com/google/guava/guava/33.0.0-jre/guava-33.0.0-jre.pom" {
+			// Declared Latin-1, as many POMs are, with a Latin-1 byte in it.
+			w.Write([]byte("<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n<project><name>Guava \xe9</name>" + `<dependencies>
+ <dependency><groupId>com.google.guava</groupId><artifactId>failureaccess</artifactId><version>1.0.2</version></dependency>
+ <dependency><groupId>org.checkerframework</groupId><artifactId>checker-qual</artifactId><version>3.41.0</version></dependency>
+</dependencies></project>`))
+			return
+		}
+		w.WriteHeader(http.StatusNotFound)
+	}))
+	t.Cleanup(central.Close)
+	defer func(central string) { public[Maven] = central }(public[Maven])
+	public[Maven] = central.URL
+	c := NewClient(New(), t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
+	got := c.Dependencies(lang.Target{Ecosystem: Maven, Package: "com.google.guava:guava", Version: "33.0.0-jre", Pinned: true})
+	want := []lang.Target{
+		{Ecosystem: Maven, Package: "com.google.guava:failureaccess", Version: "1.0.2", Pinned: true},
+		{Ecosystem: Maven, Package: "org.checkerframework:checker-qual", Version: "3.41.0", Pinned: true},
+	}
+	if !reflect.DeepEqual(got, want) {
+		t.Errorf("guava: got %+v, want %+v (asked %v)", got, want, asked)
 	}
 }
 

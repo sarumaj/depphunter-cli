@@ -29,17 +29,19 @@ and `R_PROFILE_USER`, and the `repository` stanzas of cabal's configuration
 
 The system **shall** read index configuration from the repository: `.npmrc`,
 `.yarnrc.yml`, `pip.conf`, `pip.ini`, `requirements*.txt`, the Poetry and uv
-indexes of `pyproject.toml`, `NuGet.config`, the repositories of `pom.xml`,
-`.cargo/config.toml`, the `composer` repositories of `composer.json`, the
-`source` lines of a `Gemfile` (a `source ... do` block serving only the gems
-inside it), the GEM remotes of `Gemfile.lock`, the `hosted:` servers of a
-`pubspec.yaml` or `pubspec_overrides.yaml` (each serving its package), the
-servers other than pub.dev that `pubspec.lock` resolved packages from, the
-repositories other than CRAN of `renv.lock` (each serving the packages
-recorded from it), the `options(repos = ...)` of `.Rprofile` and
-`Rprofile.site`, the `repository` stanzas other than Hackage of
-`cabal.project` and `cabal.project.local`, and the `rocks_servers` other than
-luarocks.org of a project's `.luarocks/config-5.x.lua`.
+indexes of `pyproject.toml`, `NuGet.config`, the repositories other than Maven
+Central of `pom.xml` and of Gradle build and settings scripts (outside
+`pluginManagement` and `buildscript`), `.cargo/config.toml`, the `composer`
+repositories of `composer.json`, the `source` lines of a `Gemfile` (a `source
+... do` block serving only the gems inside it), the GEM remotes of
+`Gemfile.lock`, the `hosted:` servers of a `pubspec.yaml` or
+`pubspec_overrides.yaml` (each serving its package), the servers other than
+pub.dev that `pubspec.lock` resolved packages from, the repositories other than
+CRAN of `renv.lock` (each serving the packages recorded from it), the
+`options(repos = ...)` of `.Rprofile` and `Rprofile.site`, the `repository`
+stanzas other than Hackage of `cabal.project` and `cabal.project.local`, and the
+`rocks_servers` other than luarocks.org of a project's
+`.luarocks/config-5.x.lua`.
 
 ## Rationale
 
