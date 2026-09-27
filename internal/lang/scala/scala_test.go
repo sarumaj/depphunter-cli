@@ -21,31 +21,33 @@ func TestResolution(t *testing.T) {
 	// cSpell: disable
 	res := analyze(t)["src/main/scala/com/example/app/Main.scala"]
 	std := func(pkg string) lang.Target { return lang.Target{Ecosystem: "scala-std", Package: pkg} }
-	cats := lang.Target{Ecosystem: "maven", Package: "org.typelevel", Version: "3.5.4", Pinned: true}
-	akka := lang.Target{Ecosystem: "maven", Package: "com.typesafe.akka", Version: "2.8.5", Pinned: true}
+	// scalaVersion 3.3.3: %% appends _3 to the artifact.
+	cats := lang.Target{Ecosystem: "maven", Package: "org.typelevel:cats-effect_3", Version: "3.5.4", Pinned: true}
+	akka := lang.Target{Ecosystem: "maven", Package: "com.typesafe.akka:akka-actor-typed_3", Version: "2.8.5", Pinned: true}
 	model := lang.Target{Local: "src/main/scala/domain.scala"}
 	langtest.CheckImports(t, res, map[string]lang.Target{
 		"import scala.collection.mutable":                std("scala.collection"),
 		"import scala.concurrent.Future":                 std("scala.concurrent"),
 		"import scala.concurrent.ExecutionContext => EC": std("scala.concurrent"),
 		"import scala.util.Try":                          std("scala.util"),
-		"import scala.xml.Elem":                          {Ecosystem: "maven", Package: "org.scala-lang.modules", Version: "2.2.0", Pinned: true},
+		"import scala.xml.Elem":                          {Ecosystem: "maven", Package: "org.scala-lang.modules:scala-xml_3", Version: "2.2.0", Pinned: true},
 		// Not declared: scala-xml's first word does not claim it.
-		"import scala.scalajs.js":                   {Ecosystem: "maven", Package: "scala.scalajs", Unresolved: true},
-		"import java.time.Instant":                  {Ecosystem: "jdk", Package: "java.time"},
-		"import cats.effect._":                      cats,
-		"import cats.syntax.all.*":                  cats,
-		"import io.circe.given":                     {Ecosystem: "maven", Package: "io.circe", Version: "0.14.+"},
+		"import scala.scalajs.js":  {Ecosystem: "maven", Package: "org.scala-js:scalajs-library", Unresolved: true},
+		"import java.time.Instant": {Ecosystem: "jdk", Package: "java.time"},
+		"import cats.effect._":     cats,
+		// In cats-core, which comes with cats-effect.
+		"import cats.syntax.all.*":                  {Ecosystem: "maven", Package: "org.typelevel:cats-core_3", Version: "3.5.4", Pinned: true},
+		"import io.circe.given":                     {Ecosystem: "maven", Package: "io.circe:circe-core_3", Version: "0.14.+"},
 		"import akka.actor.typed.ActorSystem as AS": akka,
 		"import akka.actor.typed._":                 akka,
 		"import com.example.app.model.User":         model,
 		"import com.example.app.model.Order":        model,
 		"import com.example.app.util._":             {Local: "src/main/scala/com/example/app/util"},
-		"import com.google.common.base.Strings":     {Ecosystem: "maven", Package: "com.google.guava", Version: "33.0.0-jre", Pinned: true},
+		"import com.google.common.base.Strings":     {Ecosystem: "maven", Package: "com.google.guava:guava", Version: "33.0.0-jre", Pinned: true},
 		"import org.acme.Tools":                     {Local: "src/main/kotlin/org/acme/Tools.kt"},
-		"import org.scalatest.flatspec.AnyFlatSpec": {Ecosystem: "maven", Package: "org.scalatest", Version: "3.2.18", Pinned: true},
+		"import org.scalatest.flatspec.AnyFlatSpec": {Ecosystem: "maven", Package: "org.scalatest:scalatest_3", Version: "3.2.18", Pinned: true},
 		// project/plugins.sbt configures sbt, not the code.
-		"import com.github.sbt.git.GitPlugin": {Ecosystem: "maven", Package: "com.github.sbt", Unresolved: true},
+		"import com.github.sbt.git.GitPlugin": {Ecosystem: "maven", Package: "com.github.sbt:sbt", Unresolved: true},
 		"import com.example.generated.Gen":    {},
 		// Imports are relative: to the packages around the file, then to scala._ -
 		// though not where a dependency owns the root (io.circe above).

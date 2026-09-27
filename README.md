@@ -979,10 +979,11 @@ records only a depth, and a Haskell project without cabal's build plan on disk
 registry modules, pods no `Podfile.lock` records, rocks (`luarocks.lock` is a
 flat list), CPAN distributions no `cpanfile.snapshot` records, opam
 packages no `dune.lock/` records (an `*.opam.locked` is a flat list) and Julia
-packages no `Manifest.toml` records, Clojure's Maven artifacts (neither
-tools.deps nor Leiningen writes a lock), and Bazel modules (a lock file since
-Bazel 7.2 records versions only) — require `--online`, described below;
-Maven groups (Java, Kotlin and Scala), the PowerShell Gallery, vcpkg, Conan 2
+packages no `Manifest.toml` records, Maven artifacts of Java, Kotlin, Scala
+and Clojure builds (Maven, Gradle without its lock files, sbt, tools.deps and
+Leiningen), and Bazel modules (a lock file since Bazel 7.2 records versions
+only) — require `--online`, described below; the PowerShell Gallery, vcpkg,
+Conan 2
 (whose lock is a flat list), Bioconductor packages no lock records, Swift
 packages that SwiftPM has not checked out under `.build`
 (`Package.resolved` is flat as well) and Terraform modules fetched from git or
@@ -1010,7 +1011,9 @@ Every external package records the index it comes from. depphunter reads both
 the index configuration present on this machine and the configuration the
 repository carries — `.npmrc`, including `@scope:registry`; `.yarnrc.yml`;
 `pip.conf` and a requirements file's `--index-url`; Poetry and uv sources in
-`pyproject.toml`; `NuGet.config`; a POM's `<repositories>`; the mirrors in
+`pyproject.toml`; `NuGet.config`; a POM's `<repositories>` and the `maven`
+repositories of Gradle build and settings scripts (not those of
+`pluginManagement` or `buildscript`), other than Maven Central; the mirrors in
 `~/.m2/settings.xml`; `.cargo/config.toml`; the `composer` repositories of
 `composer.json` and of Composer's own `config.json`; a `Gemfile`'s `source`
 lines (a `source ... do` block serves only its gems), `Gemfile.lock`'s
@@ -1080,13 +1083,12 @@ No layers are downloaded. A registry requiring a pull token is given the
 opportunity to say so, and the token endpoint it names is followed only over
 HTTPS, or back to the registry's own host.
 
-The PowerShell Gallery is not queried, and neither is a Maven package the Java,
-Kotlin or Scala plugins name: an import names a package, a package does not
-identify the artifact that ships it, and a POM is addressed by group *and*
-artifact. A Clojure dependency names both (`cheshire:cheshire`), so its POM is
-read; Clojars, where Clojure's libraries are published, is asked after Maven
-Central whenever the repository has a Clojure manifest, as Leiningen and
-tools.deps do without being told to.
+The PowerShell Gallery is not queried. Every Maven package on the map names its
+artifact (`com.google.guava:guava`, `cheshire:cheshire`), so its POM is read,
+whichever plugin placed it there; only a Bazel hub target that no artifact
+list names is not asked about. Clojars, where Clojure's libraries are
+published, is asked after Maven Central whenever the repository has a Clojure
+manifest, as Leiningen and tools.deps do without being told to.
 
 Lock files take precedence: an index is queried only where the repository is
 silent, and an entire level of the walk is queried at once rather than one
@@ -1163,8 +1165,9 @@ depphunter --private 'corp.example/*' --private 'npm:@acme/*' .
 A pattern is a glob with `GOPRIVATE`'s semantics: it matches a package whose
 leading path elements match it, so that `corp.example/*` covers
 `corp.example/team/billing`. It applies equally to an npm scope (`@acme/*`), a
-Maven group (`com.acme.*`, which also covers a Clojure dependency
-`com.acme.billing:api`) and a registry path (`harbor.corp/*`). Prefixing a
+Maven group (`com.acme.*`, which covers the artifact `com.acme.billing:api`;
+`maven:com.acme:lib` names one artifact) and a registry path
+(`harbor.corp/*`). Prefixing a
 pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`,
 `crates:`, `actions:`, `gitlab-ci:`, `psgallery:`, `c-external:`, `vcpkg:`,
 `conan:`, `composer:`, `rubygems:`, `swiftpm:`, `pub:`, `hex:`, `cran:`,
@@ -1590,9 +1593,9 @@ The JSON and GraphML exports include the reference edges.
 | JavaScript / TypeScript | relative paths, `tsconfig`/`jsconfig` `paths`, workspaces, `package.json` + `package-lock.json` / `yarn.lock` / `pnpm-lock.yaml`; also the scripts of Vue, Svelte and Astro components, and SvelteKit's `$lib`                                                                                                                                                                                                                                                                                                  | npm, Node.js built-ins                                                     |
 | Python                  | relative imports, `src/` layouts, requirements files, `setup.cfg`, literal `setup.py` lists, `pyproject.toml`, `Pipfile`, `poetry.lock`/`uv.lock`/`pdm.lock`/`Pipfile.lock`, installed environments (below)                                                                                                                                                                                                                                                                                                     | PyPI, Python standard library                                              |
 | Rust                    | the module tree (`crate::`, `self::`, `super::`, `mod x;`), workspace and path crates, `Cargo.toml` (renamed and workspace dependencies) + `Cargo.lock`                                                                                                                                                                                                                                                                                                                                                         | crates.io, Rust standard library                                           |
-| Java                    | source files by package path (any source root), `pom.xml` (properties, dependency management), Gradle scripts and version catalogs, sbt builds                                                                                                                                                                                                                                                                                                                                                                  | Maven, Java standard library                                               |
+| Java                    | source files by package path (any source root), `pom.xml` (properties, dependency management), Gradle scripts (string and map notation) and version catalogs, sbt builds; imports to the declared `group:artifact` shipping the package                                                                                                                                                                                                                                                                         | Maven, Java standard library                                               |
 | Kotlin                  | source files by the package they declare (any directory; Java files by path), the Java manifests                                                                                                                                                                                                                                                                                                                                                                                                                | Maven, Kotlin and Java standard libraries                                  |
-| Scala                   | source files by the package they declare (any directory; Java files by path), `build.sbt` (`%`, `%%`, versions held in a `val`), the Java manifests                                                                                                                                                                                                                                                                                                                                                             | Maven, Scala and Java standard libraries                                   |
+| Scala                   | source files by the package they declare (any directory; Java files by path), `build.sbt` (`%`, `%%` with the `scalaVersion` suffix, versions held in a `val`), the Java manifests                                                                                                                                                                                                                                                                                                                              | Maven, Scala and Java standard libraries                                   |
 | C#                      | namespaces to project folders (`RootNamespace` + folder), `PackageReference`, `Directory.Packages.props`                                                                                                                                                                                                                                                                                                                                                                                                        | NuGet, .NET base library                                                   |
 | C / C++                 | `#include` beside the includer, the include paths of `compile_commands.json` (`-I`, `-iquote`, `-isystem`, `/I`), `include/` and `src/`, and a unique project file ending in the included path; libraries by `vcpkg.json`, `conanfile.txt`, `conanfile.py` and `conan.lock`                                                                                                                                                                                                                                     | vcpkg, Conan, C/C++ external, C and C++ standard libraries, system headers |
 | CMake                   | `add_subdirectory`, `include` of files and of modules on `CMAKE_MODULE_PATH`, target sources, `configure_file` templates, presets; `find_package` as the includes resolve, FetchContent, ExternalProject, CPM.cmake, `pkg_check_modules`                                                                                                                                                                                                                                                                        | vcpkg, Conan, C/C++ external, fetched content, pkg-config, CMake modules   |
@@ -1638,10 +1641,26 @@ index-installed distribution provides but no manifest declares remains
 unresolved, but under that distribution's name. The extension has no setting for
 this; pass `--python` through `depphunter.args`.
 
-Java imports name packages rather than artifacts, so they are matched to Maven
-group identifiers by prefix, by shared leading segments, by artifact name, and
-by a short table of well-known exceptions such as Guava, JUnit 4 and Lombok.
-Imports that cannot be matched are shown as unresolved.
+Java imports name packages rather than artifacts, so each is matched to the
+declared Maven artifact that ships it, and the package is named
+`group:artifact` — as POMs, Maven Central, OSV and Trivy name it, and as the
+Clojure and Bazel plugins do, so a library several builds reach is one
+building. The longest package prefix wins: one from a table of well-known
+libraries (`com.google.common` is `com.google.guava:guava`,
+`org.apache.commons.io` is `commons-io:commons-io`, `okhttp3` is
+`com.squareup.okhttp3:okhttp`), one the artifact's name suggests
+(`org.springframework:spring-context` gives `org.springframework.context`,
+`com.fasterxml.jackson.core:jackson-databind` gives
+`com.fasterxml.jackson.databind`, `cats-effect` gives `cats.effect`), or its
+group. Among several artifacts of one group, the one whose name the import
+spells wins (`io.ktor.client.engine.cio` is `ktor-client-cio`), then the
+family's main one (`spring-boot`, a `-core`). A table artifact the build does
+not declare still matches when another of its group is declared, since it
+comes with it: `com.fasterxml.jackson.annotation` is `jackson-annotations`
+beside `jackson-databind`, at its version, and a Spring Boot starter brings
+`spring-boot`. An import nothing declared matches is unresolved, named after
+the table's artifact (`javax.servlet:javax.servlet-api`) or guessed from its
+package (`net.sf.saxon.s9api` becomes `net.sf.saxon:saxon`).
 
 Vue, Svelte and Astro components are part of the JavaScript/TypeScript
 ecosystem: the code in each component's `<script>` blocks (`<script setup>`,
@@ -1666,11 +1685,13 @@ Maven dependencies. Scala imports are relative, so each is tried against the
 packages around the file first, then against `scala._` unless a dependency owns
 that root (`io.circe` is not `scala.io`); an import of a value's members
 (`import builder._`) is not a dependency and is dropped, as is an import of a
-class in the default package, which Gradle scripts declare. An artifact's first
-word also names its group, since Scala libraries are imported by it
-(`cats.effect` from `org.typelevel:cats-effect`). sbt's `%%` appends the Scala
-version to an artifact's name, but the map shows groups, so it is read as `%`
-and `scalaVersion` is not consulted.
+class in the default package, which Gradle scripts declare. sbt's `%%` appends
+the Scala binary version to an artifact's name, as Maven Central publishes it:
+with `scalaVersion := "3.3.3"`, `"org.typelevel" %% "cats-effect"` is
+`org.typelevel:cats-effect_3` (a `val` holding the version works too; the
+file's own `scalaVersion`, else the root build's). Without a `scalaVersion` the
+name stays as written, and `%%%` is read as `%%`, since the Scala.js or Native
+platform suffix depends on the project.
 
 C and C++ are one plugin, since their files include each other: `.c` files are
 parsed as C and every other extension (`.h`, `.cc`, `.cpp`, `.cxx`, `.c++`,

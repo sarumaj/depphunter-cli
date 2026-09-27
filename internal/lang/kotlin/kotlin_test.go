@@ -21,7 +21,7 @@ func TestResolution(t *testing.T) {
 	// cSpell: disable
 	res := analyze(t)["src/main/kotlin/com/example/app/App.kt"]
 	langtest.CheckImports(t, res, map[string]lang.Target{
-		"import kotlinx.coroutines.launch": {Ecosystem: "maven", Package: "org.jetbrains.kotlinx", Version: "1.8.0", Pinned: true},
+		"import kotlinx.coroutines.launch": {Ecosystem: "maven", Package: "org.jetbrains.kotlinx:kotlinx-coroutines-core", Version: "1.8.0", Pinned: true},
 		"import kotlin.collections.List":   {Ecosystem: "kotlin-std", Package: "kotlin.collections"},
 		"import kotlin.math.*":             {Ecosystem: "kotlin-std", Package: "kotlin.math"},
 		// A function of the root package belongs to it.
@@ -34,9 +34,9 @@ func TestResolution(t *testing.T) {
 		"import com.example.legacy.Legacy":  {Local: "legacy/src/main/scala/Legacy.scala"},
 		"import org.acme.net.Client":        {Local: "lib/src/main/java/org/acme/net/Client.java"},
 		// A Gradle dynamic version moves with every release.
-		"import io.ktor.client.HttpClient":               {Ecosystem: "maven", Package: "io.ktor", Version: "2.3.+"},
-		"import okhttp3.OkHttpClient as Http":            {Ecosystem: "maven", Package: "com.squareup.okhttp3", Version: "4.12.0", Pinned: true},
-		"import com.google.common.collect.ImmutableList": {Ecosystem: "maven", Package: "com.google.guava", Version: "33.0.0-jre", Pinned: true},
+		"import io.ktor.client.HttpClient":               {Ecosystem: "maven", Package: "io.ktor:ktor-client-core", Version: "2.3.+"},
+		"import okhttp3.OkHttpClient as Http":            {Ecosystem: "maven", Package: "com.squareup.okhttp3:okhttp", Version: "4.12.0", Pinned: true},
+		"import com.google.common.collect.ImmutableList": {Ecosystem: "maven", Package: "com.google.guava:guava", Version: "33.0.0-jre", Pinned: true},
 		"import com.example.generated.Gen":               {},
 	})
 	// cSpell: enable

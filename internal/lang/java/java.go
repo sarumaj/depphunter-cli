@@ -1,7 +1,7 @@
 // Package java analyzes Java with tree-sitter. Imports resolve to project sources by
-// package path (any source root: src/main/java, src, …), to the JDK, or to Maven /
-// Gradle dependencies matched by groupId, since Java imports name packages, not
-// artifacts.
+// package path (any source root: src/main/java, src, …), to the JDK, or to the Maven
+// artifact (group:artifact) a Maven, Gradle or sbt build declares that ships the
+// imported package (maven.go), since Java imports name packages, not artifacts.
 package java
 
 import (
@@ -38,7 +38,7 @@ var grammar = treesitter.MustGrammar("java", java.Language(), query)
 type Plugin struct{}
 
 func (Plugin) Name() string             { return "java" }
-func (Plugin) Version() int             { return 1 }
+func (Plugin) Version() int             { return 2 }
 func (Plugin) Claims(f *scan.File) bool { return strings.HasSuffix(f.Path, ".java") && !f.Binary }
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{

@@ -711,3 +711,46 @@ func TestDiscoverReadsLuaRocksConfig(t *testing.T) {
 		t.Error("LuaRocksItself")
 	}
 }
+
+// Gradle scripts name their repositories in several notations; Maven Central and
+// the repositories that serve Gradle's own plugins are not the project's, and a POM
+// naming Central is no source of its own either.
+//
+// Verifies: REQ-SUP-015, REQ-SUP-056
+func TestDiscoverReadsGradleRepositories(t *testing.T) {
+	files := write(t, map[string]string{
+		"settings.gradle.kts": `pluginManagement {
+    repositories {
+        gradlePluginPortal()
+        maven { url = uri("https://plugins.internal/maven") }
+    }
+}
+dependencyResolutionManagement {
+    repositories {
+        mavenCentral()
+        google()
+        maven("https://kts.internal/releases")
+        maven { url = uri("https://repo1.maven.org/maven2") }
+    }
+}`,
+		"lib/build.gradle": `buildscript { repositories { maven { url 'https://classpath.internal/' } } }
+repositories {
+    maven { url 'https://groovy.internal/maven' }
+    maven {
+        name = "corp"
+        setUrl("https://seturl.internal/maven")
+    }
+    mavenLocal()
+}`,
+		"pom.xml": `<project><repositories><repository><url>https://repo.maven.apache.org/maven2</url></repository></repositories></project>`,
+	})
+	c := Discover(files, env(nil), "")
+	var got []string
+	for _, s := range c.Sources(Maven) {
+		got = append(got, s.URL)
+	}
+	want := []string{"https://groovy.internal/maven", "https://seturl.internal/maven", "https://kts.internal/releases"}
+	if strings.Join(got, " ") != strings.Join(want, " ") {
+		t.Errorf("maven sources %v, want %v", got, want)
+	}
+}

@@ -254,12 +254,12 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		deps, err = c.bazelModule(ctx, index, t)
 	case Maven:
 		if !strings.Contains(t.Package, ":") {
-			// A Maven group cannot be asked. A POM is addressed by group *and*
-			// artifact, and the Java plugins put only the group on the map (an
-			// import names a package, and a package does not say which artifact
-			// ships it), so there is no document to request. Saying nothing beats
-			// guessing an artifact. The Clojure plugin names group:artifact.
-			// Implements: REQ-JAVA-010, REQ-SUP-028
+			// A name without an artifact cannot be asked: a POM is addressed by
+			// group *and* artifact. Every plugin names Maven packages
+			// group:artifact; what is left is a Bazel hub target that no
+			// artifact list or lock file names (maven:<escaped_name>). Saying
+			// nothing beats guessing an artifact.
+			// Implements: REQ-SUP-028
 			return answer{source: trace.NoAnswer, reason: trace.ReasonUnsupported}, nil
 		}
 		deps, err = c.mavenArtifact(ctx, index, t)

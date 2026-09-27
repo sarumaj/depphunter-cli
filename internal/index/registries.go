@@ -1850,8 +1850,8 @@ type mavenDep struct {
 var mavenProperty = regexp.MustCompile(`\$\{([^}]+)\}`)
 
 // mavenArtifact reads what a Maven artifact depends on from its POM. It is asked only
-// of packages named group:artifact - the Clojure plugin's, and those of reports - as a
-// POM is addressed by both. The version is the one pinned, else the release
+// of packages named group:artifact - which is how the Java, Kotlin, Scala, Clojure
+// and Bazel plugins name them - as a POM is addressed by both. The version is the one pinned, else the release
 // maven-metadata.xml names. The POM's dependencies in the compile and runtime scopes
 // that are not optional are the answer, with those its parent POMs declare (read up
 // to four levels), versions filled from dependencyManagement and properties along
@@ -1859,7 +1859,7 @@ var mavenProperty = regexp.MustCompile(`\$\{([^}]+)\}`)
 // and the repository has a Clojure manifest, Clojars is asked after it, as Clojure's
 // tools do.
 //
-// Implements: REQ-SUP-056
+// Implements: REQ-SUP-056, REQ-JAVA-010
 func (c *Client) mavenArtifact(ctx context.Context, index string, t lang.Target) ([]dep, error) {
 	group, artifact, _ := strings.Cut(t.Package, ":")
 	repos := []string{index}
@@ -1890,7 +1890,7 @@ func (c *Client) mavenArtifact(ctx context.Context, index string, t lang.Target)
 				Versions []string `xml:"versions>version"`
 			} `xml:"versioning"`
 		}
-		if err := xml.Unmarshal(body, &meta); err != nil {
+		if err := lang.UnmarshalXML(body, &meta); err != nil {
 			return nil, err
 		}
 		v := meta.Versioning
@@ -1916,7 +1916,7 @@ func (c *Client) mavenArtifact(ctx context.Context, index string, t lang.Target)
 		}
 		repos = []string{repo} // a parent lives where its child does
 		var pom mavenPOM
-		if err := xml.Unmarshal(body, &pom); err != nil {
+		if err := lang.UnmarshalXML(body, &pom); err != nil {
 			if level == 0 {
 				return nil, err
 			}

@@ -196,9 +196,9 @@ of date.
 The following limitations are part of the specification and are recorded as
 requirements of type `limitation` in their scopes:
 
-- Java imports name packages rather than artifacts, so Maven dependencies are
-  matched heuristically and an index cannot be asked what a Maven package
-  depends on.
+- Java imports name packages rather than artifacts, so the Maven artifact an
+  import comes from is found heuristically (package prefixes, naming rules and
+  a table of well-known libraries).
 - Kotlin and Scala declarations are read from the text of their files, so a
   definition that does not begin in the first column cannot be imported from
   another file.

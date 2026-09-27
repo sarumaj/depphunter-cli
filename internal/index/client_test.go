@@ -256,7 +256,7 @@ func TestAPrivatePackageIsStillAskedOfTheCompanysOwnIndex(t *testing.T) {
 // of these answer nothing, and on the map a package nothing answered for looks
 // exactly like one that depends on nothing; the report is where they are told apart.
 //
-// Verifies: REQ-JAVA-010, REQ-SUP-028, REQ-SUP-029, REQ-TRC-005, REQ-TRC-006, REQ-TRC-007
+// Verifies: REQ-SUP-028, REQ-SUP-029, REQ-TRC-005, REQ-TRC-006, REQ-TRC-007
 func TestTheReportSaysWhoAnswered(t *testing.T) {
 	srv, _ := stubIndex(t)
 	// The stub stands in for the Go ecosystem's public index, which is what makes

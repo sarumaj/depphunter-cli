@@ -425,7 +425,7 @@ func matches(eco, scope, pkg string) bool {
 	case NPM:
 		return strings.HasPrefix(pkg, scope+"/")
 	case Maven:
-		// A Clojure plugin's package is group:artifact; the scope is a group prefix.
+		// A Maven package is group:artifact; the scope is a group prefix.
 		group, _, _ := strings.Cut(pkg, ":")
 		return group == scope || strings.HasPrefix(group, scope+".")
 	}

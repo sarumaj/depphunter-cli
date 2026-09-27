@@ -31,5 +31,5 @@ artifacts a build declares and pins.
 2. `import kotlin.math.*` resolves to package `kotlin.math`, and
    `import kotlin.require` to package `kotlin`.
 3. `import java.util.UUID` resolves to `jdk`, package `java.util`.
-4. `import kotlinx.coroutines.launch` resolves to the Maven group
-   `org.jetbrains.kotlinx` declared by the build.
+4. `import kotlinx.coroutines.launch` resolves to the Maven artifact
+   `org.jetbrains.kotlinx:kotlinx-coroutines-core` declared by the build.
