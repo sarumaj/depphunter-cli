@@ -43,6 +43,7 @@ var osvEcosystems = map[string]string{
 	"rubygems": "RubyGems",
 	"swiftpm":  "SwiftURL", // packages are named by their URL, as OSV names them
 	"pub":      "Pub",
+	"hex":      "Hex",
 }
 
 // Package is one thing to ask the database about: a dependency pinned to a version.

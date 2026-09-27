@@ -214,6 +214,8 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		deps, err = c.rubygemsPackage(ctx, index, t)
 	case Pub:
 		deps, err = c.pubPackage(ctx, index, t)
+	case Hex:
+		deps, err = c.hexPackage(ctx, index, t)
 	default:
 		// Maven is the one that cannot be asked. A POM is addressed by group *and*
 		// artifact, and the Java plugin puts only the group on the map (an import

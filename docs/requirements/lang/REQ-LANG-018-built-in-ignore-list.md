@@ -16,7 +16,7 @@ When git cannot list the files, the system **shall** walk the directory tree and
 **shall** skip directories with the built-in ignored names: `.git`, `.hg`,
 `.svn`, `node_modules`, `vendor`, `dist`, `build`, `target`, `bin`, `obj`,
 `.venv`, `venv`, `__pycache__`, `.idea`, `.vscode`, `.next`, `.cache`,
-`.gradle`, `.tox`, `.mypy_cache`, `.build`, `.dart_tool`.
+`.gradle`, `.tox`, `.mypy_cache`, `.build`, `.dart_tool`, `_build`.
 
 ## Rationale
 
@@ -26,6 +26,6 @@ caches and build output.
 ## Acceptance criteria
 
 1. Outside a git repository, `node_modules/x/i.js`,
-   `.build/checkouts/nio/Package.swift` and `.dart_tool/package_config.json`
-   do not appear in the graph.
+   `.build/checkouts/nio/Package.swift`, `.dart_tool/package_config.json` and
+   `_build/dev/lib/shop/ebin/shop.app` do not appear in the graph.
 2. An unreadable subdirectory is skipped without failing the scan.

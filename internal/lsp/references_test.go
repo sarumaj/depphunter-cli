@@ -91,6 +91,20 @@ func TestNameColumn(t *testing.T) {
 	}
 }
 
+// A symbol is looked up on its line by the word it is written as.
+//
+// Verifies: REQ-LSP-003
+func TestSymbolWord(t *testing.T) {
+	for name, want := range map[string]string{
+		"Server.Start": "Start", "init@12": "init", "Shop.Cart.total/2": "total",
+		"Shop.Cart.new/1@30": "new", "start/2": "start", "fail!/0": "fail!", "a/b": "a/b",
+	} {
+		if got := symbolWord(name); got != want {
+			t.Errorf("%s: got %q, want %q", name, got, want)
+		}
+	}
+}
+
 func TestURIs(t *testing.T) {
 	root := filepath.FromSlash("/work/repo")
 	if rel, ok := relPath(root, fileURI(filepath.Join(root, "a b", "c.go"))); !ok || rel != "a b/c.go" {

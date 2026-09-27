@@ -1,0 +1,8 @@
+{application, erl_app,
+ [{description, "An OTP application"},
+  {vsn, "0.1.0"},
+  {registered, []},
+  {mod, {erl_app, []}},
+  {applications, [kernel, stdlib, crypto, sasl, cowboy, jsx, local_dep]},
+  {env, []}
+ ]}.

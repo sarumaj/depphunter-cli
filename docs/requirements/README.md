@@ -120,6 +120,7 @@ The server **shall** ...
 | `ruby`   | The Ruby plugin and Bundler.                                                                   |
 | `swift`  | The Swift plugin, SwiftPM and Xcode's package references.                                      |
 | `dart`   | The Dart plugin, Flutter and pub.                                                              |
+| `beam`   | The Elixir and Erlang plugin, Mix, rebar3 and Hex.                                             |
 | `ps`     | The PowerShell plugin.                                                                         |
 | `ci`     | The continuous-integration plugin (GitHub Actions, GitLab CI, container images).               |
 | `docker` | The Dockerfile and Compose plugin, and the container-image references it shares with `ci`.     |
@@ -210,6 +211,10 @@ requirements of type `limitation` in their scopes:
 - Dart is read without running pub: generated files that are not committed are
   not seen, and `pubspec.lock` has no package-to-package edges, so only
   `--online` walks past the first level.
+- Elixir and Erlang are read without running Mix, rebar3 or the compiler:
+  modules that macros define and aliases a package's `__using__` injects are
+  not known, calls through variables are not seen, and `rebar.lock` has no
+  package-to-package edges.
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

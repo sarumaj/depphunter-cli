@@ -8,6 +8,7 @@ priority: must
 status: implemented
 verification:
   - integration
+  - unit
 ---
 
 ## Statement
@@ -26,3 +27,5 @@ complete usage graph.
 1. References to a method, a type in a composite literal, a function across
    packages and a function in a variable declaration are all found
    (TestGoplsReferences).
+2. A symbol is looked up by the word it is written as: `Type.method` as
+   `method`, `init@12` as `init`, an Elixir `Shop.Cart.total/2` as `total`.

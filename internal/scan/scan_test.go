@@ -20,6 +20,7 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 		"node_modules/x/i.js":                "ignored by default when git is unavailable\n",
 		".build/checkouts/nio/Package.swift": "// SwiftPM's build directory\n",
 		".dart_tool/package_config.json":     "{}\n",
+		"_build/dev/lib/shop/ebin/shop.app":  "{application, shop, []}.\n",
 		"img.bin":                            "\x00\x01\x02",
 	}
 	for p, c := range files {
