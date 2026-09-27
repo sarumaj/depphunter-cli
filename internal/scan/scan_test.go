@@ -14,34 +14,35 @@ import (
 func TestScanMeasuresAndExcludes(t *testing.T) {
 	root := t.TempDir()
 	files := map[string]string{
-		"a.go":                                                  "package a\n\nfunc A() {}\n",
-		"no_newline.py":                                         "x = 1\ny = 2",
-		"gen/skip.go":                                           "package gen\n",
-		"node_modules/x/i.js":                                   "ignored by default when git is unavailable\n",
-		".build/checkouts/nio/Package.swift":                    "// SwiftPM's build directory\n",
-		".dart_tool/package_config.json":                        "{}\n",
-		"_build/dev/lib/shop/ebin/shop.app":                     "{application, shop, []}.\n",
-		"dist-newstyle/cache/plan.json":                         "{}\n",
-		".stack-work/dist/x/Paths_shop.hs":                      "module Paths_shop where\n",
-		".terraform/modules/vpc/main.tf":                        "variable \"x\" {}\n",
-		".terragrunt-cache/a/b/main.tf":                         "variable \"x\" {}\n",
-		"_opam/lib/lwt/lwt.mli":                                 "val return : 'a -> 'a t\n",
-		".zig-cache/o/1/cimport.zig":                            "pub const x = 1;\n",
-		"zig-cache/h/timestamp.zig":                             "pub const x = 1;\n",
-		"zig-out/bin/gen.zig":                                   "pub const x = 1;\n",
-		"zig-pkg/x-0.1.0-AAAA/build.zig.zon":                    ".{}\n",
-		".cpcache/1234.basis":                                   "{}\n",
-		".shadow-cljs/builds/app/x.edn":                         "{}\n",
-		"elm-stuff/0.19.1/Main.elm":                             "module Main exposing (main)\n",
-		".spago/p/prelude-6.0.1/src/Prelude.purs":               "module Prelude where\n",
-		"bower_components/purescript-maybe/src/Data/Maybe.purs": "module Data.Maybe where\n",
-		".crystal/cache/macro.cr":                               "module M\nend\n",
-		".fake/build.fsx/intellisense.fsx":                      "#r \"x.dll\"\n",
-		".dub/packages/leftpad/1.0.0/leftpad/source/leftpad.d":  "module leftpad;\n",
-		".haxelib/format/3,5,0/format/png/Reader.hx":            "package format.png;\n",
-		"compiled/main_rkt.dep":                                 "((#\"8.12\" racket))\n",
-		"src/compiled/errortrace/main_rkt.dep":                  "((#\"8.12\" racket))\n",
-		"img.bin":                                               "\x00\x01\x02",
+		"a.go":                                                   "package a\n\nfunc A() {}\n",
+		"no_newline.py":                                          "x = 1\ny = 2",
+		"gen/skip.go":                                            "package gen\n",
+		"node_modules/x/i.js":                                    "ignored by default when git is unavailable\n",
+		".build/checkouts/nio/Package.swift":                     "// SwiftPM's build directory\n",
+		".dart_tool/package_config.json":                         "{}\n",
+		"_build/dev/lib/shop/ebin/shop.app":                      "{application, shop, []}.\n",
+		"dist-newstyle/cache/plan.json":                          "{}\n",
+		".stack-work/dist/x/Paths_shop.hs":                       "module Paths_shop where\n",
+		".terraform/modules/vpc/main.tf":                         "variable \"x\" {}\n",
+		".terragrunt-cache/a/b/main.tf":                          "variable \"x\" {}\n",
+		"_opam/lib/lwt/lwt.mli":                                  "val return : 'a -> 'a t\n",
+		".zig-cache/o/1/cimport.zig":                             "pub const x = 1;\n",
+		"zig-cache/h/timestamp.zig":                              "pub const x = 1;\n",
+		"zig-out/bin/gen.zig":                                    "pub const x = 1;\n",
+		"zig-pkg/x-0.1.0-AAAA/build.zig.zon":                     ".{}\n",
+		".cpcache/1234.basis":                                    "{}\n",
+		".shadow-cljs/builds/app/x.edn":                          "{}\n",
+		"elm-stuff/0.19.1/Main.elm":                              "module Main exposing (main)\n",
+		".spago/p/prelude-6.0.1/src/Prelude.purs":                "module Prelude where\n",
+		"bower_components/purescript-maybe/src/Data/Maybe.purs":  "module Data.Maybe where\n",
+		".crystal/cache/macro.cr":                                "module M\nend\n",
+		".fake/build.fsx/intellisense.fsx":                       "#r \"x.dll\"\n",
+		".dub/packages/leftpad/1.0.0/leftpad/source/leftpad.d":   "module leftpad;\n",
+		".haxelib/format/3,5,0/format/png/Reader.hx":             "package format.png;\n",
+		"compiled/main_rkt.dep":                                  "((#\"8.12\" racket))\n",
+		"src/compiled/errortrace/main_rkt.dep":                   "((#\"8.12\" racket))\n",
+		".qlot/dists/quicklisp/software/alexandria/package.lisp": "(defpackage :alexandria)\n",
+		"img.bin": "\x00\x01\x02",
 	}
 	for p, c := range files {
 		abs := filepath.Join(root, p)
@@ -73,9 +74,10 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 
 // A PureScript project's output/ is what the compiler wrote, a shard's lib/ what
 // shards installed, packages/ and paket-files/ beside a paket.dependencies
-// what Paket installed, and alire/ beside an alire.toml what Alire keeps (its
-// lock file and the crates it fetched); another output/, lib/, packages/ or
-// alire/ directory is kept.
+// what Paket installed, alire/ beside an alire.toml what Alire keeps (its
+// lock file and the crates it fetched) and systems/ beside an ocicl.csv the
+// systems ocicl downloaded; another output/, lib/, packages/, alire/ or
+// systems/ directory is kept.
 //
 // Verifies: REQ-LANG-018
 func TestScanSkipsGeneratedBesideManifest(t *testing.T) {
@@ -97,6 +99,9 @@ func TestScanSkipsGeneratedBesideManifest(t *testing.T) {
 		"crate/alire.toml":                       "name = \"crate\"\n",
 		"crate/alire/cache/dependencies/aunit_24.0.0_1a2b3c4d/src/aunit.ads": "package AUnit is\nend AUnit;\n",
 		"docs/alire/intro.md": "# kept\n",
+		"cl/ocicl.csv":        "alexandria, ghcr.io/ocicl/alexandria@sha256:ab, alexandria-20240503-8514d8e/alexandria.asd\n",
+		"cl/systems/alexandria-20240503-8514d8e/alexandria.asd": "(defsystem \"alexandria\")\n",
+		"game/systems/physics.lisp":                             "(defun step ())\n",
 	} {
 		abs := filepath.Join(root, p)
 		os.MkdirAll(filepath.Dir(abs), 0o755)
@@ -110,8 +115,8 @@ func TestScanSkipsGeneratedBesideManifest(t *testing.T) {
 	for _, f := range got {
 		paths = append(paths, f.Path)
 	}
-	want := []string{"app/spago.yaml", "app/src/Main.purs", "crate/alire.toml", "docs/alire/intro.md", "fs/paket.dependencies", "legacy/spago.dhall",
-		"report/output/summary.md", "shop/shard.yml", "tools/lib/helper.cr", "web/packages/app.fs"}
+	want := []string{"app/spago.yaml", "app/src/Main.purs", "cl/ocicl.csv", "crate/alire.toml", "docs/alire/intro.md", "fs/paket.dependencies",
+		"game/systems/physics.lisp", "legacy/spago.dhall", "report/output/summary.md", "shop/shard.yml", "tools/lib/helper.cr", "web/packages/app.fs"}
 	if !reflect.DeepEqual(paths, want) {
 		t.Errorf("got %v, want %v", paths, want)
 	}
@@ -601,6 +606,46 @@ func TestScanTellsRacketFromScheme(t *testing.T) {
 		"chez/main.ss": "Scheme", "guile/hello.scm": "Scheme", "r6rs/lib.scm": "Scheme",
 		"racket/legacy.scm": "Racket", "racket/shell.ss": "Racket", "racket/short.ss": "Racket",
 		"racket/main.rkt": "Racket", "docs/guide.scrbl": "Scribble", "bin/shop": "Racket",
+	}
+	for _, f := range got {
+		if f.Lang != want[f.Path] {
+			t.Errorf("%s: lang %q, want %q", f.Path, f.Lang, want[f.Path])
+		}
+	}
+}
+
+// ".cl" is Common Lisp's, and OpenCL's when its head has a preprocessor line
+// or a kernel declaration.
+//
+// Verifies: REQ-LANG-015, REQ-COMMONLISP-001
+func TestScanTellsOpenCLFromLisp(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"lisp/old.cl":       ";;; -*- Mode: Lisp -*-\n(in-package :shop)\n#+sbcl (defun f ())\n",
+		"lisp/reader.cl":    "#|\n  block comment\n|#\n(defpackage :x)\n",
+		"kernels/add.cl":    "__kernel void add(__global const float *a) {}\n",
+		"kernels/pragma.cl": "#pragma OPENCL EXTENSION cl_khr_fp64 : enable\n",
+		"kernels/inc.cl":    "#include \"common.h\"\nkernel void k() {}\n",
+		"src/main.lisp":     "(defun main ())\n",
+		"src/old.lsp":       "(defun c:hello ())\n",
+		"shop.asd":          "(defsystem \"shop\")\n",
+		"qlfile":            "ql alexandria :latest\n",
+		"qlfile.lock":       "(\"alexandria\" . (:class qlot/source/ql:source-ql))\n",
+		"ocicl.csv":         "alexandria, ghcr.io/ocicl/alexandria@sha256:ab\n",
+	}
+	for p, c := range files {
+		abs := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(abs), 0o755)
+		os.WriteFile(abs, []byte(c), 0o644)
+	}
+	got, err := Scan(context.Background(), root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"lisp/old.cl": "Common Lisp", "lisp/reader.cl": "Common Lisp", "kernels/add.cl": "OpenCL", "kernels/pragma.cl": "OpenCL",
+		"kernels/inc.cl": "OpenCL", "src/main.lisp": "Common Lisp", "src/old.lsp": "Common Lisp", "shop.asd": "Common Lisp",
+		"qlfile": "Qlot", "qlfile.lock": "Qlot", "ocicl.csv": "ocicl",
 	}
 	for _, f := range got {
 		if f.Lang != want[f.Path] {

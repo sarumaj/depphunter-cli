@@ -1,0 +1,10 @@
+#!/usr/bin/env -S sbcl --script
+(load "~/quicklisp/setup.lisp")
+(load "helpers.lisp")
+(ql:quickload '(:shop :unknown-lib) :silent t)
+(asdf:load-system :shop/tests)
+(asdf:operate 'asdf:load-op "shop/core")
+(require :sb-posix)
+(require :gray-streams)
+(require "streamc.fasl")
+(ql:quickload "cl-ppcre-unicode")

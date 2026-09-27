@@ -1,0 +1,1 @@
+(defun vendored () t)

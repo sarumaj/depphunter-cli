@@ -346,3 +346,14 @@ func TestARacoPatternKeepsToRaco(t *testing.T) {
 		t.Error("a raco-scoped pattern did not keep to its ecosystem")
 	}
 }
+
+// Quicklisp projects are named by their project names (a git source by its
+// repository); a quicklisp-scoped pattern keeps to them.
+//
+// Verifies: REQ-SUP-035
+func TestAQuicklispPatternKeepsToQuicklisp(t *testing.T) {
+	p := New([]string{"quicklisp:acme-*"})
+	if !p.Match("quicklisp", "acme-log") || p.Match("raco", "acme-log") || p.Match("quicklisp", "alexandria") {
+		t.Error("a quicklisp-scoped pattern did not keep to its ecosystem")
+	}
+}

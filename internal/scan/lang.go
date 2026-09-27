@@ -23,6 +23,7 @@ var byExt = map[string]string{
 	".f90": "Fortran", ".f95": "Fortran", ".f03": "Fortran", ".f08": "Fortran", ".f18": "Fortran", ".f": "Fortran", ".for": "Fortran",
 	".ftn": "Fortran", ".f77": "Fortran", ".fpp": "Fortran", ".fypp": "Fortran", ".hx": "Haxe", ".hxml": "Haxe",
 	".ads": "Ada", ".adb": "Ada", ".ada": "Ada", ".gpr": "GPR",
+	".lisp": "Common Lisp", ".lsp": "Common Lisp", ".cl": "Common Lisp", ".asd": "Common Lisp",
 	".rkt": "Racket", ".rktl": "Racket", ".rktd": "Racket", ".scrbl": "Scribble", ".scm": "Scheme", ".ss": "Scheme",
 	".sh": "Shell", ".bash": "Shell", ".zsh": "Shell", ".ksh": "Shell", ".bats": "Shell", ".zsh-theme": "Shell", ".ps1": "PowerShell", ".psm1": "PowerShell", ".psd1": "PowerShell",
 	".html": "HTML", ".htm": "HTML", ".css": "CSS", ".scss": "CSS", ".sass": "CSS", ".less": "CSS",
@@ -41,6 +42,7 @@ var byName = map[string]string{
 	"Jenkinsfile": "Groovy", "Gemfile": "Ruby", "Rakefile": "Ruby", "Guardfile": "Ruby", "Capfile": "Ruby",
 	"rebar.config": "Erlang", "rebar.lock": "Erlang", "mix.lock": "Elixir",
 	"cpanfile": "Perl", "cpanfile.snapshot": "Carton", "dist.ini": "Dist::Zilla",
+	"qlfile": "Qlot", "qlfile.lock": "Qlot", "ocicl.csv": "ocicl",
 	"dub.sdl": "SDLang", "paket.dependencies": "Paket", "paket.lock": "Paket", "paket.references": "Paket",
 	"luarocks.lock": "Lua", ".luacheckrc": "Lua", ".busted": "Lua",
 	"DESCRIPTION": "R", "NAMESPACE": "R", "renv.lock": "R", "packrat.lock": "R",
@@ -226,6 +228,27 @@ func racketSource(head []byte) bool {
 		case len(line) == 0, line[0] == ';':
 		default:
 			return bytes.HasPrefix(line, []byte("#lang ")) || bytes.HasPrefix(line, []byte("#lang\t"))
+		}
+	}
+	return false
+}
+
+// openclSource reports whether a ".cl" file is an OpenCL C kernel rather than
+// Common Lisp: a line of its head starts with a preprocessor directive (Lisp's
+// # reader macros are never followed by a word such as include or pragma) or
+// it declares a kernel (__kernel, kernel void, __global).
+//
+// Implements: REQ-LANG-015, REQ-COMMONLISP-001
+func openclSource(head []byte) bool {
+	if bytes.Contains(head, []byte("__kernel")) || bytes.Contains(head, []byte("__global")) || bytes.Contains(head, []byte("kernel void")) {
+		return true
+	}
+	for _, line := range bytes.Split(head, []byte("\n")) {
+		line = bytes.TrimLeft(line, " \t\xef\xbb\xbf")
+		for _, d := range []string{"#include", "#define", "#pragma", "#ifdef", "#ifndef", "#if ", "#endif"} {
+			if bytes.HasPrefix(line, []byte(d)) {
+				return true
+			}
 		}
 	}
 	return false

@@ -1,0 +1,8 @@
+# The shop's dependencies; the lock pins them.
+ql alexandria :latest
+ql cl-ppcre 2023-06-18
+github fukamachi/dexador :branch master
+git str https://github.com/vindarel/cl-str.git :tag 0.21
+git tree-sitter-cl https://git.acme.dev/lisp/tree-sitter-cl.git
+local shop-vendor third_party/shop-vendor
+dist http://dist.ultralisp.org/

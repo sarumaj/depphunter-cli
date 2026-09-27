@@ -1,0 +1,8 @@
+ql :all 2022-01-01
+ql fiveam :latest
+github foo/bar :ref 89abcdef0123456789abcdef0123456789abcdef
+github acme/widgets :tag v1.2
+git gitlib https://gitlab.com/x/gitlib.git :branch dev
+http yason http://netzhansa.com/yason.tar.gz 0123456789abcdef0123456789abcdef
+ultralisp cl-foo
+local shop-vendor ../third_party/shop-vendor
