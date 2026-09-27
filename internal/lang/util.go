@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"os"
 	"runtime"
+	"strings"
 	"sync"
 
 	"golang.org/x/sync/errgroup"
@@ -91,4 +92,32 @@ func Parseable(f *scan.File, src []byte) bool {
 	}
 	lines := max(f.LOC, 1)
 	return !(len(src) > 20_000 && len(src)/lines > 250)
+}
+
+// RepoName names a repository or download by its URL: without scheme, user and
+// ".git", the host in lower case and without a port -
+// https://github.com/apple/swift-nio.git and git@github.com:apple/swift-nio are
+// both github.com/apple/swift-nio. SwiftPM packages and CMake's fetched content are
+// named so.
+//
+// Implements: REQ-SWIFT-006, REQ-CMAKE-007
+func RepoName(url string) string {
+	s := strings.TrimSpace(url)
+	if i := strings.Index(s, "://"); i >= 0 {
+		s = s[i+3:]
+	} else if at, rest, ok := strings.Cut(s, "@"); ok && !strings.Contains(at, "/") {
+		s = strings.Replace(rest, ":", "/", 1) // scp-like git@host:owner/repo
+	}
+	if at, rest, ok := strings.Cut(s, "@"); ok && !strings.Contains(at, "/") {
+		s = rest // https://user@host/...
+	}
+	s = strings.TrimSuffix(strings.TrimRight(s, "/"), ".git")
+	host, rest, _ := strings.Cut(s, "/")
+	if h, _, ok := strings.Cut(host, ":"); ok { // a port
+		host = h
+	}
+	if rest == "" {
+		return strings.ToLower(host)
+	}
+	return strings.ToLower(host) + "/" + rest
 }

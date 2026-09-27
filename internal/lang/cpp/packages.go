@@ -507,19 +507,18 @@ func candidates(include string) []string {
 	return out
 }
 
-// match finds the declared package an include belongs to: in the manifests
-// nearest to the file first, the most specific candidate name first. A file with
-// no manifest above it at all is looked up in the project's other manifests,
-// since a project is often several directories built together under one
-// manifest (src/app/conanfile.txt beside src/core/); a file under a manifest
-// keeps to its own.
+// matchNames finds the declared package an include belongs to by its candidate
+// names: in the manifests nearest to the file first, the most specific candidate
+// name first. A file with no manifest above it at all is looked up in the
+// project's other manifests, since a project is often several directories built
+// together under one manifest (src/app/conanfile.txt beside src/core/); a file
+// under a manifest keeps to its own.
 //
 // Implements: REQ-CPP-012
-func (p *packages) match(file, include string) *pkg {
+func (p *packages) matchNames(file string, names []string) *pkg {
 	if len(p.dirs) == 0 {
 		return nil
 	}
-	names := candidates(include)
 	in := func(dir string) *pkg {
 		for _, n := range names {
 			if list := p.dirs[dir][n]; len(list) > 0 {
@@ -547,4 +546,41 @@ func (p *packages) match(file, include string) *pkg {
 		}
 	}
 	return nil
+}
+
+// Packages is what the project's vcpkg and Conan manifests declare, for the plugins
+// of C and C++ build systems, whose libraries must land on the nodes the includes
+// of the sources land on.
+type Packages struct{ p *packages }
+
+// ReadPackages reads the vcpkg and Conan manifests of the project.
+func ReadPackages(all []*scan.File) Packages { return Packages{readPackages(all)} }
+
+// Library is what a third-party include (<boost/asio.hpp>, <zlib.h>) is attributed
+// to from file: the package a manifest over it declares - tried by the include's
+// candidate names, then by extra names (another spelling of the library) - or else,
+// unresolved, the c-external library named after the include (REQ-CPP-006).
+//
+// Implements: REQ-CPP-006, REQ-CPP-012, REQ-CMAKE-006
+func (p Packages) Library(file, include string, extra ...string) lang.Target {
+	names := candidates(include)
+	for _, e := range extra {
+		if n := normName(e); !slices.Contains(names, n) {
+			names = append(names, n)
+		}
+	}
+	if d := p.p.matchNames(file, names); d != nil {
+		return d.target()
+	}
+	return lang.Target{Ecosystem: ecoExternal, Package: library(include), Unresolved: true}
+}
+
+// PackageEcosystems are the islands Library attributes libraries to, as the cpp
+// plugin declares them.
+func PackageEcosystems() []lang.Ecosystem {
+	return []lang.Ecosystem{
+		{ID: ecoVcpkg, Name: "vcpkg"},
+		{ID: ecoConan, Name: "Conan"},
+		{ID: ecoExternal, Name: "C/C++ external"},
+	}
 }

@@ -90,14 +90,11 @@ func (Plugin) Claims(f *scan.File) bool {
 	return exts[strings.ToLower(path.Ext(f.Path))] && !f.Binary
 }
 func (Plugin) Ecosystems() []lang.Ecosystem {
-	return []lang.Ecosystem{
-		{ID: ecoVcpkg, Name: "vcpkg"},
-		{ID: ecoConan, Name: "Conan"},
-		{ID: ecoExternal, Name: "C/C++ external"},
+	return append(PackageEcosystems(), []lang.Ecosystem{
 		{ID: ecoCStd, Name: "C standard library", Std: true},
 		{ID: ecoCppStd, Name: "C++ standard library", Std: true},
 		{ID: ecoSystem, Name: "System headers", Std: true},
-	}
+	}...)
 }
 
 func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {

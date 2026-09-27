@@ -116,6 +116,7 @@ The server **shall** ...
 | `scala`     | The Scala plugin.                                                                              |
 | `cs`        | The C# plugin.                                                                                 |
 | `cpp`       | The C and C++ plugin.                                                                          |
+| `cmake`     | The CMake plugin, presets, content fetched (FetchContent, ExternalProject, CPM), pkg-config.   |
 | `php`       | The PHP plugin and Composer.                                                                   |
 | `ruby`      | The Ruby plugin and Bundler.                                                                   |
 | `swift`     | The Swift plugin, SwiftPM and Xcode's package references.                                      |
@@ -240,6 +241,10 @@ requirements of type `limitation` in their scopes:
   determines are followed (not loops over globs, `eval` or variables set in
   another file), the working directory is guessed, and packages installed with
   system package managers (`apt-get`, `apk`, `brew`) are not read.
+- CMake files are read without configuring: conditions, loops and function
+  calls are not evaluated, values computed at configure time (fetched
+  content's source directories, binary directories) are unknown, and sources'
+  includes of fetched content are not attributed to the fetched package.
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

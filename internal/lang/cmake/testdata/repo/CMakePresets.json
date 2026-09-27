@@ -1,0 +1,17 @@
+{
+  "version": 6,
+  "include": ["presets/base.json"],
+  "configurePresets": [
+    {
+      "name": "default",
+      "binaryDir": "${sourceDir}/build",
+      "toolchainFile": "${sourceDir}/cmake/toolchain.cmake"
+    },
+    {
+      "name": "vcpkg",
+      "inherits": "default",
+      "toolchainFile": "$env{VCPKG_ROOT}/scripts/buildsystems/vcpkg.cmake"
+    }
+  ],
+  "buildPresets": [{"name": "default", "configurePreset": "default"}]
+}
