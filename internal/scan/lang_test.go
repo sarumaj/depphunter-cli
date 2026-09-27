@@ -2,7 +2,7 @@ package scan
 
 import "testing"
 
-// Verifies: REQ-LANG-015, REQ-DOCKER-001, REQ-SHELL-001, REQ-OBJC-001, REQ-LUA-001, REQ-PERL-001, REQ-OCAML-001, REQ-JULIA-001
+// Verifies: REQ-LANG-015, REQ-DOCKER-001, REQ-SHELL-001, REQ-OBJC-001, REQ-LUA-001, REQ-PERL-001, REQ-OCAML-001, REQ-JULIA-001, REQ-ZIG-001
 func TestLanguageByName(t *testing.T) {
 	for p, want := range map[string]string{
 		"a.go":                           "Go",
@@ -71,6 +71,8 @@ func TestLanguageByName(t *testing.T) {
 		"Manifest-v1.11.toml":            "Julia",
 		"JuliaManifest-v1.12.toml":       "Julia",
 		"Artifacts.toml":                 "Julia",
+		"src/main.zig":                   "Zig",
+		"build.zig.zon":                  "Zig",
 		"Cartfile.resolved":              "Carthage",
 		"Sources/Store.mm":               "Objective-C++",
 		"cmake/Deps.cmake":               "CMake",

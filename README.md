@@ -812,9 +812,9 @@ crates.io, Maven, NuGet, GitHub Actions, Conan (as OSV's ConanCenter; vcpkg has
 no OSV ecosystem), Composer (as Packagist), RubyGems, Swift packages (as
 SwiftURL, by URL), pub, Hex, CRAN, Bioconductor, Hackage, opam and Julia; OSV
 has no ecosystem for Terraform modules and providers, Buf Schema Registry
-modules, CocoaPods, Carthage, LuaRocks, Wally or CPAN. Floating packages are not
-queried, since they resolve to a different version on the next installation.
-Answers are cached for six hours.
+modules, CocoaPods, Carthage, LuaRocks, Wally, CPAN or Zig. Floating packages
+are not queried, since they resolve to a different version on the next
+installation. Answers are cached for six hours.
 `--no-vulns` disables all of this.
 
 Viewed from above, every building carrying findings bears a **pin**, colored by
@@ -918,6 +918,7 @@ lock file resolved a range, the panel reports both: `4.3.1`, requested as
 | CPAN                | `cpanfile.snapshot` (Carton), `== 1.2` in a `cpanfile` or META prerequisites                                 | a bare `1.2` (a minimum in CPAN::Meta), `>= 1, < 2` and other ranges, `0` or no version   |
 | opam                | `*.opam.locked`, `dune.lock/`, `{= "1.2"}` or `(= 1.2)`, a `pin-depends` commit                              | `>= 5.6 & < 6` and other ranges, no constraint, a `pin-depends` branch or tag             |
 | Julia               | `Manifest.toml` (and `Manifest-v1.11.toml`), `=1.2.3` in `[compat]`, a `[sources]` commit `rev`              | a bare `1.2` (a caret range in Pkg), `~1.2`, `>= 1`, `1.2 - 1.5`, no `[compat]` entry     |
+| Zig                 | a `.hash` in `build.zig.zon` (Zig verifies the download), a commit in the URL                                | a branch archive (`refs/heads/`), a URL without a ref or hash; a tag is shown, neither    |
 
 A package a shell script installs (`pip install`, `npm install -g`, `go
 install`, `cargo install`, `gem install`) follows its ecosystem's row; one
@@ -953,6 +954,7 @@ and the analysis remains offline.
 | `cpanfile.snapshot` (Carton)             | each distribution's `requirements`                 |
 | `dune.lock/` (dune package management)   | each package's `depends`                           |
 | `Manifest.toml` (Julia, formats 1 and 2) | each package's `deps`                              |
+| `zig-pkg/<hash>/` or Zig's global cache  | a fetched package's own `build.zig.zon`            |
 
 Packages added in this way are marked **transitive**, meaning that no file in
 the repository imports them. Edges between packages are of kind `depends`, as
@@ -979,8 +981,9 @@ an archive are not resolved beyond the first level at present, and neither are
 Buf Schema Registry modules: `buf.lock` is a flat list, and the registry's API
 is not a package index depphunter asks. Content a CMake build fetches is not
 resolved beyond the first level either, nor are Carthage dependencies
-(`Cartfile.resolved` is flat) and Wally packages no `wally.lock` records. A
-Terraform provider depends on nothing.
+(`Cartfile.resolved` is flat), Wally packages no `wally.lock` records and Zig
+packages Zig has not fetched into `zig-pkg/` or its global cache (there is no
+Zig registry for `--online` to ask). A Terraform provider depends on nothing.
 
 The side panel presents these as a **tree**: every row under *Depends on* and
 *Used by* expands into that node's own dependencies, and so on recursively.
@@ -1146,7 +1149,8 @@ pattern with an ecosystem — `npm:`, `go:`, `maven:`, `nuget:`, `oci:`, `pypi:`
 `conan:`, `composer:`, `rubygems:`, `swiftpm:`, `pub:`, `hex:`, `cran:`,
 `bioconductor:`, `hackage:`, `terraform-module:`, `terraform-provider:`,
 `buf:`, `cmake-fetch:`, `pkg-config:`, `cocoapods:`, `carthage:`, `luarocks:`,
-`wally:`, `cpan:`, `opam:` or `julia:` — restricts it to that ecosystem.
+`wally:`, `cpan:`, `opam:`, `julia:` or `zig:` — restricts it to that
+ecosystem.
 
 **`GOPRIVATE`, `GONOPROXY`, `GONOSUMDB` and `GONOSUMCHECK` are read in addition
 to whatever is configured here**, so a Go project whose machine is already
@@ -1541,6 +1545,7 @@ servers found on `PATH`, and the `go install` locations for gopls:
 | Perl                    | `perlnavigator --stdio`, `pls` or `perl -MPerl::LanguageServer -e Perl::LanguageServer::run` |
 | OCaml                   | `ocamllsp`                                                                                   |
 | Julia                   | `julia --startup-file=no --history-file=no -e "using LanguageServer; runserver()"`           |
+| Zig                     | `zls`                                                                                        |
 
 The servers run in the background once the map is displayed — gopls requires
 approximately 7 s for this repository — within the budget set by
@@ -1579,6 +1584,7 @@ The JSON and GraphML exports include the reference edges.
 | Perl                    | `use`/`no`/`require` (and in a string `eval`), `use parent`/`use base`, Moose's `with`/`extends`, Corinna's `:isa`, `require`/`do` of files; modules to `Foo/Bar.pm` under `use lib` (literal, FindBin, `__FILE__`, Mojo::File and Path::Tiny chains), the distribution's `lib/` and `t/lib`, each `lib/` above the file, else a file declaring the package; distributions by `cpanfile.snapshot`, `cpanfile`, `META.json`/`META.yml`, `Makefile.PL`, `Build.PL` and `dist.ini`, whose requirements are imports | CPAN, Perl core modules                                                    |
 | OCaml                   | module paths (`Foo.bar`, `open`, `include`, `module M = Foo`, functor arguments), `#require`; modules to the files of the importer's dune library, executable or test (`include_subdirs`, `modules`), to what an opened module of the project declares and to local libraries (`Lib.Module` of a wrapped one); libraries and packages by `dune` files, `dune-project`, `*.opam`, `*.opam.locked` and `dune.lock/`, whose dependencies are imports                                                               | opam, OCaml standard library                                               |
 | Julia                   | `using`/`import` (relative `.Sub`/`..Parent` through the `include` graph), `include`/`includet` (`joinpath(@__DIR__, …)`); the package's own `src/Name.jl` and submodules, local packages by UUID, `[sources]` or a manifest `path`; packages by `Project.toml` (`[deps]`, `[weakdeps]`, `[extras]`, `[compat]`, `[extensions]`, `[workspace]`) and `Manifest.toml`, whose entries are imports                                                                                                                  | Julia, Julia standard library                                              |
+| Zig                     | `@import` of files (`@embedFile` too), `std`/`builtin`, `root` (the compilation's root source file) and module names to what `build.zig` wires (`b.addModule`, `b.createModule`, `.imports`, `addImport`, a dependency's `.module()`), else the `build.zig.zon` dependency of that name; `b.path()` in build code; `@cInclude` as C includes; packages by `build.zig.zon` (named by URL, pinned by `.hash`), whose dependencies are imports                                                                     | Zig, Zig standard library, C/C++ islands                                   |
 | PowerShell              | `using module`, `Import-Module`, dot-sourced and `&`-invoked scripts (`$PSScriptRoot`), `#Requires -Modules`, module manifests (`RequiredModules`, `RootModule`, `NestedModules`)                                                                                                                                                                                                                                                                                                                               | PowerShell Gallery, built-in modules                                       |
 | CI pipelines            | GitHub workflows and composite actions (`uses:`, reusable workflows, `container:`, `services:`), GitLab pipelines (every `include:` form, components, `image:`, `services:`)                                                                                                                                                                                                                                                                                                                                    | GitHub Actions, GitLab CI, Container images                                |
 | Protocol Buffers        | `import` (`public`, `weak`) under the import roots of `buf.work.yaml` and `buf.yaml` (v1 and v2), else the repository root, `proto/`, `protos/`, `api/`, `src/main/proto/` and the importer's directories, else a unique project file ending in the path; modules by `buf.yaml` `deps` and `buf.lock` and a table of common protos; `buf.gen.yaml` remote plugins                                                                                                                                               | Buf Schema Registry, Protobuf well-known types                             |
@@ -1971,6 +1977,27 @@ enums at the top level of modules are the symbols. Julia is read by a small
 lexer; the tree-sitter grammar took 21 to 314 ms per file and failed on 6
 to 28% of the files measured.
 
+Zig files (`.zig`) name files, the standard library and modules with
+`@import`. A path (`"cli/args.zig"`) and `@embedFile` are relative to the
+importing file, `std` and `builtin` are the hidden standard library, and
+`root` is the root source file of the compilation that reaches the file. A
+module name resolves through the package's build code, read without running
+it: `b.addModule` and `b.createModule` with a `root_source_file`, `.imports`
+lists, `addImport` and `addAnonymousImport` (and Zig 0.11's `step.addModule`),
+followed through variables, `if (...) |dep|` captures, struct fields and
+function returns, to a project file, a `build.zig.zon` dependency's
+`.module()` or a generated options module, which is dropped; unwired, it is
+the dependency of that name. `b.path()` in build code is an edge to the file,
+`b.dependency()` to the package. `@cInclude` inside `@cImport` resolves as a C
+`#include` does. `build.zig.zon`'s dependencies are imports: a `.path` is a
+directory of the repository, a `.url` a package named after its repository
+(`github.com/ziglibs/known-folders`, from an archive or a `git+https` URL)
+with the URL's commit or tag as its version, pinned by its `.hash`. Functions,
+tests, containers (with their members as `Type.member`), constants and
+variables at the top level are the symbols. Zig is read by a small lexer; the
+tree-sitter grammar took 8 to 14 ms per file and failed on up to 7% of the
+files measured.
+
 Terraform and OpenTofu configurations, variable files, lock files and
 Terragrunt configurations are read by a small HCL scanner: the tree-sitter
 grammar parsed every file measured correctly but was about twenty times
@@ -1994,7 +2021,7 @@ parser, CI, Compose and Buf files a YAML parser, and C#, PowerShell, Markdown,
 Dart, Elixir, Erlang, R, Haskell, HCL, Protocol Buffers, shell scripts, CMake
 files, Swift, Objective-C, CocoaPods and Carthage manifests, Lua, Luau, Teal
 and LuaRocks files, Perl and its CPAN manifests, OCaml, dune and opam
-files, Julia, Dockerfiles, the markup of
+files, Julia, Zig and `build.zig.zon`, Dockerfiles, the markup of
 Vue, Svelte and Astro components, R Markdown chunks and C preprocessor
 directives small built-in scanners — so the binary continues to cross-compile
 without a C toolchain.

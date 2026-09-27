@@ -104,6 +104,9 @@ var Servers = []Server{
 		Commands: [][]string{{"julia", "--startup-file=no", "--history-file=no", "-e", "using LanguageServer; runserver()"}}},
 	{Name: "ocaml", Open: true, Exts: map[string]string{".ml": "ocaml", ".mli": "ocaml.interface", ".mll": "ocaml.ocamllex", ".mly": "ocaml.menhir"},
 		Commands: [][]string{{"ocamllsp"}}},
+	// zls answers references for Zig sources; it reads build.zig for the modules
+	// and packages the build wires.
+	{Name: "zig", Open: true, Exts: map[string]string{".zig": "zig"}, Commands: [][]string{{"zls"}}},
 	// neocmakelsp and cmake-language-server both answer references for CMake's
 	// functions, macros and variables; a CMakeLists.txt is known by its name.
 	{Name: "cmake", Open: true, Exts: map[string]string{".cmake": "cmake"}, Names: map[string]string{"CMakeLists.txt": "cmake"},

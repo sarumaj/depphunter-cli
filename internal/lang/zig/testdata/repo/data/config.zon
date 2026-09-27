@@ -1,0 +1,1 @@
+.{ .name = "not a package", .dependencies = .{ .x = .{ .path = "y" } } }

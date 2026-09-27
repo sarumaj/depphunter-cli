@@ -129,6 +129,7 @@ The server **shall** ...
 | `perl`      | The Perl plugin, CPAN manifests, Carton's snapshot and MetaCPAN.                               |
 | `ocaml`     | The OCaml plugin, dune, opam manifests and locks, and opam-repository.                         |
 | `julia`     | The Julia plugin, Pkg's projects, manifests and artifacts, and the General registry.           |
+| `zig`       | The Zig plugin, build.zig's module wiring and build.zig.zon packages.                          |
 | `terraform` | The Terraform and OpenTofu plugin, lock files, Terragrunt and the module registries.           |
 | `proto`     | The Protocol Buffers plugin, Buf's configuration and lock files and the Buf Schema Registry.   |
 | `shell`     | The shell script plugin (sh, Bash, zsh, bats), direnv and packages scripts install.            |
@@ -273,6 +274,10 @@ requirements of type `limitation` in their scopes:
   `import A.b` is read as a module path, a version is not resolved without a
   manifest, and registries other than General are known only when installed
   in a depot and hosted on GitHub.
+- Zig is read without running the compiler or the build: import names wired
+  in loops, by helpers of other packages or to generated modules are dropped,
+  there is no Zig registry for `--online`, and no vulnerability database
+  covers Zig packages.
 - pip's keyring is not consulted for credentials.
 - Language servers that index slowly may return fewer references within the
   time budget.

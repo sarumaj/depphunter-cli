@@ -18,7 +18,8 @@ When git cannot list the files, the system **shall** walk the directory tree and
 `.venv`, `venv`, `__pycache__`, `.idea`, `.vscode`, `.next`, `.cache`,
 `.gradle`, `.tox`, `.mypy_cache`, `.build`, `.dart_tool`, `_build`,
 `dist-newstyle`, `.stack-work`, `.terraform`, `.terragrunt-cache`,
-`lua_modules`, `_opam`.
+`lua_modules`, `_opam`, `.zig-cache`, `zig-cache`, `zig-out` and
+`zig-pkg`.
 
 ## Rationale
 
@@ -31,6 +32,7 @@ caches and build output.
    `.build/checkouts/nio/Package.swift`, `.dart_tool/package_config.json`,
    `_build/dev/lib/shop/ebin/shop.app`, `dist-newstyle/cache/plan.json` and
    `.stack-work/dist/x/Paths_shop.hs`, `.terraform/modules/vpc/main.tf`,
-   `.terragrunt-cache/a/b/main.tf` and `_opam/lib/lwt/lwt.mli` do not
-   appear in the graph.
+   `.terragrunt-cache/a/b/main.tf`, `_opam/lib/lwt/lwt.mli`,
+   `.zig-cache/o/1/cimport.zig`, `zig-out/bin/gen.zig` and
+   `zig-pkg/x-0.1.0-AAAA/build.zig.zon` do not appear in the graph.
 2. An unreadable subdirectory is skipped without failing the scan.
