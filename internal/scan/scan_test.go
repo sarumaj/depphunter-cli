@@ -238,3 +238,46 @@ func TestScanReadsShebangs(t *testing.T) {
 		}
 	}
 }
+
+// A Qt Linguist translation shares TypeScript's ".ts" extension; its XML
+// declaration or document type says which one a file is.
+//
+// Verifies: REQ-LANG-015
+func TestScanTellsQtLinguistFromTypeScript(t *testing.T) {
+	root := t.TempDir()
+	files := map[string]string{
+		"src/app.ts":           "import { x } from './x';\n",
+		"src/cast.ts":          "<Shape>thing;\n",
+		"i18n/app_de.ts":       "<?xml version=\"1.0\" encoding=\"utf-8\"?>\n<!DOCTYPE TS>\n<TS version=\"2.1\" language=\"de\">\n</TS>\n",
+		"i18n/app_fr.ts":       "\xef\xbb\xbf\n<!DOCTYPE TS><TS version=\"2.0\"></TS>\n",
+		"i18n/notes.tsx":       "<?xml version=\"1.0\"?>\n",
+		"i18n/app_de.ts.xml":   "<?xml version=\"1.0\"?>\n",
+		"src/component.mts":    "export const a = 1;\n",
+		"src/declarations.cts": "<?xml version=\"1.0\"?>\n",
+	}
+	for p, c := range files {
+		abs := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(abs), 0o755)
+		os.WriteFile(abs, []byte(c), 0o644)
+	}
+	got, err := Scan(context.Background(), root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	want := map[string]string{
+		"src/app.ts":     "TypeScript",
+		"src/cast.ts":    "TypeScript",
+		"i18n/app_de.ts": "XML",
+		"i18n/app_fr.ts": "XML",
+		// Only ".ts" is shared with Qt Linguist; the others keep their name's word.
+		"i18n/notes.tsx":       "TypeScript",
+		"i18n/app_de.ts.xml":   "XML",
+		"src/component.mts":    "TypeScript",
+		"src/declarations.cts": "TypeScript",
+	}
+	for _, f := range got {
+		if f.Lang != want[f.Path] {
+			t.Errorf("%s: lang %q, want %q", f.Path, f.Lang, want[f.Path])
+		}
+	}
+}

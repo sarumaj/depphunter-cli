@@ -1583,6 +1583,8 @@ JavaScript or TypeScript, by its `lang`, and resolved like any other; a
 component's code - inside a Vue `<template>` or `<svelte:head>`, or an Astro
 script left inline - are not read, nor is `@import` in a `<style>`. Each
 component is a symbol named after its file, beside its functions and constants.
+A `.ts` file that opens with an XML declaration or document type is a Qt
+Linguist translation, not TypeScript: it is labelled XML and not parsed.
 
 Kotlin and Scala share Java's resolution: the same manifests, the same Maven
 islands, the same pinning rule, and the JDK. A Kotlin or Scala file need not sit

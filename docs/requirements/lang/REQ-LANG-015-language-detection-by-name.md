@@ -24,14 +24,18 @@ Haskell's `cabal.project`, `stack.yaml` and `package.yaml`, Terraform's
 `.zshrc`, `.profile`, `.envrc` and the others of REQ-SHELL-001), and the
 Dockerfile names of REQ-DOCKER-001), or, for a file neither names, from a
 `#!` line running a shell (REQ-SHELL-001), and **shall** leave the language
-empty when none is known.
+empty when none is known. A `.ts` file whose first bytes, after an optional
+byte order mark and whitespace, are an XML declaration (`<?xml`) or a document
+type (`<!DOCTYPE`) is a Qt Linguist translation and **shall** be XML rather than
+TypeScript.
 
 ## Rationale
 
 Detecting by name needs no reading of the file and is enough for the language
 colors and filters. An extensionless script says what it is only in its `#!`
 line, which the scan reads from the bytes it already peeks at to tell binary
-files apart.
+files apart. Qt Linguist shares TypeScript's `.ts` extension; the same bytes
+tell the two apart, since neither opening is valid TypeScript.
 
 ## Acceptance criteria
 
@@ -53,3 +57,6 @@ files apart.
    while one starting `#!/usr/bin/python3` has no language and `lib/x.py`
    stays Python.
 2. A file with an unknown extension has no `lang`.
+3. A `.ts` file starting `<?xml version="1.0" encoding="utf-8"?>` or, after a
+   byte order mark, `<!DOCTYPE TS>` is XML; one starting `<Shape>thing;` and a
+   `.tsx`, `.mts` or `.cts` file starting `<?xml` stay TypeScript.

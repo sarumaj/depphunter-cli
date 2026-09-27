@@ -87,6 +87,17 @@ func Dockerfile(p string) bool {
 	return false
 }
 
+// xmlDocument reports whether a file's first bytes open an XML document: an XML
+// declaration or a document type, after an optional byte order mark and
+// whitespace. Neither is valid in any language the extensions map to, so a
+// ".ts" file that starts so is a Qt Linguist translation, not TypeScript.
+//
+// Implements: REQ-LANG-015
+func xmlDocument(head []byte) bool {
+	head = bytes.TrimLeft(bytes.TrimPrefix(head, []byte("\xef\xbb\xbf")), " \t\r\n")
+	return bytes.HasPrefix(head, []byte("<?xml")) || bytes.HasPrefix(head, []byte("<!DOCTYPE"))
+}
+
 // shells are the interpreters whose scripts are shell scripts.
 var shells = map[string]bool{"sh": true, "bash": true, "zsh": true, "dash": true, "ksh": true, "mksh": true, "ash": true}
 
