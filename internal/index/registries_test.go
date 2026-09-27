@@ -1332,3 +1332,62 @@ func TestElmDependencies(t *testing.T) {
 		t.Errorf("public index %q %v", idx, known)
 	}
 }
+
+// Verifies: REQ-SUP-059
+func TestPureScriptDependencies(t *testing.T) {
+	var asked []string
+	manifest := func(v, deps string) string {
+		return `{"name":"aff","version":"` + v + `","license":"Apache-2.0","location":{"githubOwner":"purescript-contrib","githubRepo":"purescript-aff"},"ref":"v` + v + `","dependencies":{` + deps + `}}`
+	}
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		asked = append(asked, r.URL.Path)
+		switch r.URL.Path {
+		case "/mirror/registry/main/metadata/aff.json":
+			w.Write([]byte(`{"location": {}, "published": {"7.0.0": {"ref": "v7.0.0"}, "7.1.0": {"ref": "v7.1.0"}, "8.0.0": {"ref": "v8.0.0"}}, "unpublished": {}}`))
+		case "/mirror/registry-index/main/3/a/aff":
+			w.Write([]byte(manifest("7.0.0", `"prelude":">=6.0.0 <7.0.0"`) + "\n" +
+				manifest("7.1.0", `"prelude":">=6.0.0 <7.0.0","effect":">=4.0.0 <5.0.0"`) + "\n" +
+				manifest("8.0.0", `"prelude":">=6.0.0 <7.0.0","effect":">=4.0.0 <5.0.0","st":">=6.0.0 <7.0.0"`) + "\n"))
+		default:
+			w.WriteHeader(http.StatusNotFound)
+		}
+	}))
+	defer srv.Close()
+	c := clientFor(t, PureScript, srv.URL+"/mirror/", "")
+	want := []lang.Target{
+		{Ecosystem: PureScript, Package: "effect", Version: ">=4.0.0 <5.0.0"},
+		{Ecosystem: PureScript, Package: "prelude", Version: ">=6.0.0 <7.0.0"},
+	}
+	// An exact version is read from the index alone.
+	if got := c.Dependencies(lang.Target{Ecosystem: PureScript, Package: "aff", Version: "7.1.0", Pinned: true}); !reflect.DeepEqual(got, want) {
+		t.Errorf("7.1.0: got %+v, want %+v", got, want)
+	}
+	if len(asked) != 1 || asked[0] != "/mirror/registry-index/main/3/a/aff" {
+		t.Errorf("asked %v, want the index file only", asked)
+	}
+	// A range: the newest published version it admits (7.1.0, not 8.0.0).
+	asked = nil
+	if got := c.Dependencies(lang.Target{Ecosystem: PureScript, Package: "aff", Version: ">=7.0.0 <8.0.0"}); !reflect.DeepEqual(got, want) {
+		t.Errorf("range: got %+v, want %+v", got, want)
+	}
+	if want := []string{"/mirror/registry/main/metadata/aff.json", "/mirror/registry-index/main/3/a/aff"}; !reflect.DeepEqual(asked, want) {
+		t.Errorf("asked %v, want %v", asked, want)
+	}
+	// A package set's name says no version: the newest.
+	if got := c.Dependencies(lang.Target{Ecosystem: PureScript, Package: "aff", Version: "registry 60.0.0"}); len(got) != 3 {
+		t.Errorf("package set: got %+v, want 8.0.0's three", got)
+	}
+	// Not a registry name (a git package named by its repository): nothing is asked.
+	asked = nil
+	if got := c.Dependencies(lang.Target{Ecosystem: PureScript, Package: "../x", Version: "1.0.0"}); got != nil || len(asked) != 0 {
+		t.Errorf("bad name: got %+v, asked %v", got, asked)
+	}
+	for name, want := range map[string]string{"a": "1", "st": "2", "aff": "3/a", "prelude": "pr/el", "halogen-vdom": "ha/lo"} {
+		if got := purescriptShard(name); got != want {
+			t.Errorf("shard %s: %s, want %s", name, got, want)
+		}
+	}
+	if idx, known := New().For(PureScript, "aff"); idx != "https://raw.githubusercontent.com/purescript" || !known {
+		t.Errorf("public index %q %v", idx, known)
+	}
+}

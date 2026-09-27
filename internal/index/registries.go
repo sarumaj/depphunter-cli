@@ -2137,3 +2137,121 @@ func elmAdmits(lo, hi elmBound, v [3]int) bool {
 	}
 	return elmLess(v, hi.v) || !hi.strict && v == hi.v
 }
+
+// ---------------------------------------------------------------- PureScript
+
+// purescriptPackage reads a PureScript registry package's dependencies from the
+// registry's repositories as files: the manifest of the version the target
+// names from registry-index/main/<shard>/<name> (one JSON manifest per line,
+// sharded like crates.io's index: 1/, 2/, 3/<first letter>/, else the first two
+// letters and the next two), else of the newest version published in
+// registry/main/metadata/<name>.json that the target's range (">=6.0.0 <7.0.0")
+// admits - the newest of all when it names a package set rather than a
+// version. The dependencies are ranges, returned as written.
+//
+// Implements: REQ-SUP-059
+func (c *Client) purescriptPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+	name := t.Package
+	if !purescriptName.MatchString(name) {
+		return nil, fmt.Errorf("not a PureScript registry package name: %q", name)
+	}
+	base := strings.TrimRight(index, "/")
+	version := strings.TrimPrefix(strings.TrimSpace(t.Version), "v")
+	if _, exact := purescriptVersion(version); !exact {
+		body, err := c.get(ctx, base+"/registry/main/metadata/"+name+".json")
+		if err != nil {
+			return nil, err
+		}
+		var meta struct {
+			Published map[string]json.RawMessage `json:"published"`
+		}
+		if err := json.Unmarshal(body, &meta); err != nil {
+			return nil, err
+		}
+		best, bestV := "", [3]int{}
+		for v := range meta.Published {
+			parsed, ok := purescriptVersion(v)
+			if ok && purescriptAdmits(t.Version, parsed) && (best == "" || elmLess(bestV, parsed)) {
+				best, bestV = v, parsed
+			}
+		}
+		if best == "" {
+			return nil, nil
+		}
+		version = best
+	}
+	body, err := c.get(ctx, base+"/registry-index/main/"+purescriptShard(name)+"/"+name)
+	if err != nil {
+		return nil, err
+	}
+	for _, line := range strings.Split(string(body), "\n") {
+		var m struct {
+			Version      string            `json:"version"`
+			Dependencies map[string]string `json:"dependencies"`
+		}
+		if json.Unmarshal([]byte(line), &m) != nil || m.Version != version {
+			continue
+		}
+		out := make([]dep, 0, len(m.Dependencies))
+		for n, v := range m.Dependencies {
+			out = append(out, dep{Name: n, Version: v})
+		}
+		sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+		return out, nil
+	}
+	return nil, nil
+}
+
+// purescriptName is a registry package name: lower-case letters, digits and
+// single dashes.
+var purescriptName = regexp.MustCompile(`^[a-z0-9]+(-[a-z0-9]+)*$`)
+
+// purescriptShard is the directory of a package's file in the registry index.
+func purescriptShard(name string) string {
+	switch len(name) {
+	case 1, 2:
+		return strconv.Itoa(len(name))
+	case 3:
+		return "3/" + name[:1]
+	}
+	return name[:2] + "/" + name[2:4]
+}
+
+// purescriptVersion parses a registry version, always major.minor.patch.
+func purescriptVersion(s string) ([3]int, bool) { return elmVersion(s) }
+
+// purescriptAdmits reports whether a version satisfies a registry range
+// (">=6.0.0 <7.0.0"); anything that is not a range (a package set's name, no
+// version) admits every version.
+func purescriptAdmits(rng string, v [3]int) bool {
+	f := strings.Fields(rng)
+	if len(f) == 0 || !strings.ContainsAny(f[0], "<>=") {
+		return true
+	}
+	for _, c := range f {
+		op := strings.TrimRight(c, "0123456789.")
+		b, ok := purescriptVersion(strings.TrimPrefix(c, op))
+		if !ok {
+			return true
+		}
+		n := slices.Compare(v[:], b[:])
+		switch op {
+		case ">=":
+			ok = n >= 0
+		case ">":
+			ok = n > 0
+		case "<":
+			ok = n < 0
+		case "<=":
+			ok = n <= 0
+		case "==", "=":
+			ok = n == 0
+		default:
+			ok = true
+		}
+		if !ok {
+			return false
+		}
+	}
+	return true
+}

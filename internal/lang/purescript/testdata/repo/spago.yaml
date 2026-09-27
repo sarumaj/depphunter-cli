@@ -1,0 +1,35 @@
+package:
+  name: shop
+  dependencies:
+    - aff: ">=7.0.0 <8.0.0"
+    - arrays
+    - console
+    - effect
+    - halogen
+    - maybe
+    - node-fs: ">=9.0.0 <10.0.0"
+    - ordered-collections
+    - prelude
+    - registry-lib
+    - acme-glitter
+    - widgets
+  test:
+    main: Test.Main
+    dependencies:
+      - spec
+workspace:
+  packageSet:
+    registry: 60.0.0
+  extraPackages:
+    registry-lib:
+      git: https://github.com/purescript/registry-dev.git
+      ref: 3e8af27822b9d1ac8bfb158cdad08bcf6e6ec8be
+      subdir: lib
+      dependencies:
+        - prelude
+    acme-glitter:
+      git: https://github.com/acme/purescript-glitter.git
+      ref: v2.0.0
+    json-codecs: 4.0.0
+    vendored:
+      path: vendor-libs/vendored

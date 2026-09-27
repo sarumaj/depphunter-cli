@@ -14,26 +14,28 @@ import (
 func TestScanMeasuresAndExcludes(t *testing.T) {
 	root := t.TempDir()
 	files := map[string]string{
-		"a.go":                               "package a\n\nfunc A() {}\n",
-		"no_newline.py":                      "x = 1\ny = 2",
-		"gen/skip.go":                        "package gen\n",
-		"node_modules/x/i.js":                "ignored by default when git is unavailable\n",
-		".build/checkouts/nio/Package.swift": "// SwiftPM's build directory\n",
-		".dart_tool/package_config.json":     "{}\n",
-		"_build/dev/lib/shop/ebin/shop.app":  "{application, shop, []}.\n",
-		"dist-newstyle/cache/plan.json":      "{}\n",
-		".stack-work/dist/x/Paths_shop.hs":   "module Paths_shop where\n",
-		".terraform/modules/vpc/main.tf":     "variable \"x\" {}\n",
-		".terragrunt-cache/a/b/main.tf":      "variable \"x\" {}\n",
-		"_opam/lib/lwt/lwt.mli":              "val return : 'a -> 'a t\n",
-		".zig-cache/o/1/cimport.zig":         "pub const x = 1;\n",
-		"zig-cache/h/timestamp.zig":          "pub const x = 1;\n",
-		"zig-out/bin/gen.zig":                "pub const x = 1;\n",
-		"zig-pkg/x-0.1.0-AAAA/build.zig.zon": ".{}\n",
-		".cpcache/1234.basis":                "{}\n",
-		".shadow-cljs/builds/app/x.edn":      "{}\n",
-		"elm-stuff/0.19.1/Main.elm":          "module Main exposing (main)\n",
-		"img.bin":                            "\x00\x01\x02",
+		"a.go":                                                  "package a\n\nfunc A() {}\n",
+		"no_newline.py":                                         "x = 1\ny = 2",
+		"gen/skip.go":                                           "package gen\n",
+		"node_modules/x/i.js":                                   "ignored by default when git is unavailable\n",
+		".build/checkouts/nio/Package.swift":                    "// SwiftPM's build directory\n",
+		".dart_tool/package_config.json":                        "{}\n",
+		"_build/dev/lib/shop/ebin/shop.app":                     "{application, shop, []}.\n",
+		"dist-newstyle/cache/plan.json":                         "{}\n",
+		".stack-work/dist/x/Paths_shop.hs":                      "module Paths_shop where\n",
+		".terraform/modules/vpc/main.tf":                        "variable \"x\" {}\n",
+		".terragrunt-cache/a/b/main.tf":                         "variable \"x\" {}\n",
+		"_opam/lib/lwt/lwt.mli":                                 "val return : 'a -> 'a t\n",
+		".zig-cache/o/1/cimport.zig":                            "pub const x = 1;\n",
+		"zig-cache/h/timestamp.zig":                             "pub const x = 1;\n",
+		"zig-out/bin/gen.zig":                                   "pub const x = 1;\n",
+		"zig-pkg/x-0.1.0-AAAA/build.zig.zon":                    ".{}\n",
+		".cpcache/1234.basis":                                   "{}\n",
+		".shadow-cljs/builds/app/x.edn":                         "{}\n",
+		"elm-stuff/0.19.1/Main.elm":                             "module Main exposing (main)\n",
+		".spago/p/prelude-6.0.1/src/Prelude.purs":               "module Prelude where\n",
+		"bower_components/purescript-maybe/src/Data/Maybe.purs": "module Data.Maybe where\n",
+		"img.bin": "\x00\x01\x02",
 	}
 	for p, c := range files {
 		abs := filepath.Join(root, p)
@@ -60,6 +62,38 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 	}
 	if f := byPath["img.bin"]; !f.Binary || f.LOC != 0 {
 		t.Errorf("img.bin: %+v", f)
+	}
+}
+
+// A PureScript project's output/ is what the compiler wrote; another output/
+// directory is kept.
+//
+// Verifies: REQ-LANG-018
+func TestScanSkipsSpagoOutput(t *testing.T) {
+	root := t.TempDir()
+	for p, c := range map[string]string{
+		"app/spago.yaml":              "package:\n  name: app\n",
+		"app/src/Main.purs":           "module Main where\n",
+		"app/output/Main/index.js":    "export const main = 1;\n",
+		"legacy/spago.dhall":          "{ name = \"legacy\", dependencies = [] : List Text, sources = [] : List Text }\n",
+		"legacy/output/Main/index.js": "export const main = 1;\n",
+		"report/output/summary.md":    "# kept\n",
+	} {
+		abs := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(abs), 0o755)
+		os.WriteFile(abs, []byte(c), 0o644)
+	}
+	got, err := Scan(context.Background(), root, Options{})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var paths []string
+	for _, f := range got {
+		paths = append(paths, f.Path)
+	}
+	want := []string{"app/spago.yaml", "app/src/Main.purs", "legacy/spago.dhall", "report/output/summary.md"}
+	if !reflect.DeepEqual(paths, want) {
+		t.Errorf("got %v, want %v", paths, want)
 	}
 }
 

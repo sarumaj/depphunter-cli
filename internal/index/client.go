@@ -254,6 +254,8 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 		deps, err = c.bazelModule(ctx, index, t)
 	case Elm:
 		deps, err = c.elmPackage(ctx, index, t)
+	case PureScript:
+		deps, err = c.purescriptPackage(ctx, index, t)
 	case Maven:
 		if !strings.Contains(t.Package, ":") {
 			// A name without an artifact cannot be asked: a POM is addressed by
@@ -519,9 +521,9 @@ func (d dep) Pinned(eco string) bool {
 	if eco == Bazel {
 		return d.Version != "" // a registry's version is one release, whatever its shape (1.2.0.bcr.1)
 	}
-	if eco == NPM || eco == Julia || eco == Elm {
+	if eco == NPM || eco == Julia || eco == Elm || eco == PureScript {
 		// A registry's compat "1" is every 1.x; only a whole "1.2.3" is one release
-		// (an Elm package's dependencies are always ranges).
+		// (Elm and PureScript packages' dependencies are always ranges).
 		return lang.PinnedSemver(d.Version)
 	}
 	return lang.Pinned(d.Version)

@@ -1,0 +1,11 @@
+{
+  "name": "purescript-shop",
+  "dependencies": {
+    "purescript-prelude": "^v6.0.0",
+    "purescript-halogen-subscriptions": "https://github.com/purescript-halogen/purescript-halogen-subscriptions.git#^2.0.0",
+    "left-pad": "^1.0.0"
+  },
+  "devDependencies": {
+    "purescript-spec": "7.0.0"
+  }
+}

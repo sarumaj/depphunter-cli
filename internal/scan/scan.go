@@ -54,7 +54,7 @@ var defaultIgnore = map[string]bool{
 	".build": true, ".dart_tool": true, "_build": true, "dist-newstyle": true, ".stack-work": true,
 	".terraform": true, ".terragrunt-cache": true, "lua_modules": true, "_opam": true,
 	".zig-cache": true, "zig-cache": true, "zig-out": true, "zig-pkg": true,
-	".cpcache": true, ".shadow-cljs": true, "elm-stuff": true,
+	".cpcache": true, ".shadow-cljs": true, "elm-stuff": true, ".spago": true, "bower_components": true,
 }
 
 func Scan(ctx context.Context, root string, opts Options) ([]*File, error) {
@@ -140,7 +140,7 @@ func walkFiles(ctx context.Context, root string) ([]string, error) {
 			return err
 		}
 		if d.IsDir() {
-			if p != root && defaultIgnore[d.Name()] {
+			if p != root && (defaultIgnore[d.Name()] || d.Name() == "output" && spagoOutput(filepath.Dir(p))) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -152,6 +152,20 @@ func walkFiles(ctx context.Context, root string) ([]string, error) {
 		return nil
 	})
 	return paths, err
+}
+
+// spagoOutput reports whether dir is a PureScript project, whose output/ holds
+// what the compiler wrote: it has a spago.yaml or spago.dhall. Elsewhere an
+// output/ directory may well be source.
+//
+// Implements: REQ-LANG-018
+func spagoOutput(dir string) bool {
+	for _, m := range []string{"spago.yaml", "spago.dhall"} {
+		if _, err := os.Stat(filepath.Join(dir, m)); err == nil {
+			return true
+		}
+	}
+	return false
 }
 
 // Implements: REQ-LANG-019

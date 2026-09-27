@@ -254,3 +254,14 @@ func TestAnElmPatternKeepsToElm(t *testing.T) {
 		t.Error("an elm-scoped pattern did not keep to its ecosystem")
 	}
 }
+
+// PureScript registry packages are named as the registry names them; a
+// purescript-scoped pattern keeps to them.
+//
+// Verifies: REQ-SUP-035
+func TestAPureScriptPatternKeepsToPureScript(t *testing.T) {
+	p := New([]string{"purescript:acme-*"})
+	if !p.Match("purescript", "acme-widgets") || p.Match("npm", "acme-widgets") || p.Match("purescript", "halogen") {
+		t.Error("a purescript-scoped pattern did not keep to its ecosystem")
+	}
+}
