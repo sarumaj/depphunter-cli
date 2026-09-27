@@ -1,0 +1,12 @@
+name "widgets"
+description "Widgets" // a comment
+dependency "dyaml" version="~>0.9"
+dependency "bindbc-sdl" version="~>1.4" \
+	optional=true
+# a comment
+configuration "default" {
+	dependency "taggedalgebraic" version=">=0.11.0 <0.12.0"
+}
+buildType "debug-extra" {
+	buildOptions "debugMode" "debugInfo"
+}

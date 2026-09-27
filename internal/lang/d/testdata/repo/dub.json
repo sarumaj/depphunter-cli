@@ -1,0 +1,32 @@
+{
+	"name": "shop",
+	"description": "A shop",
+	"dependencies": {
+		"vibe-d": "~>0.9.5",
+		"dyaml": "==0.9.2",
+		"mir-algorithm": ">=3.0.0",
+		"silly": {"version": "~>1.1", "optional": true},
+		"widgets": {"path": "libs/widgets"},
+		"fancy": {"repository": "git+https://github.com/acme/fancy.git", "version": "0123456789abcdef0123456789abcdef01234567"},
+		"unit-threaded": "2.1.0",
+		"arsd-official:dom": "~>11.0",
+		"eventcore": "*",
+		":cli": "*"
+	},
+	"subPackages": [
+		{
+			"name": "cli",
+			"sourcePaths": ["cli"],
+			"importPaths": ["cli"],
+			"dependencies": {"shop": "*", "darg": "~>0.1"}
+		},
+		"tools/"
+	],
+	"configurations": [
+		{"name": "app", "targetType": "executable"},
+		{"name": "web", "dependencies": {"requests": "~>2.0"}}
+	],
+	"buildTypes": {
+		"profile": {"buildOptions": ["profile"]}
+	}
+}

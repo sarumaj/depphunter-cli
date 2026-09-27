@@ -3,6 +3,7 @@ package scan
 import (
 	"bytes"
 	"path"
+	"regexp"
 	"strings"
 )
 
@@ -18,7 +19,7 @@ var byExt = map[string]string{
 	".m": "Objective-C", ".mm": "Objective-C++", ".podspec": "Ruby", ".swift": "Swift", ".dart": "Dart",
 	".rb": "Ruby", ".rake": "Ruby", ".gemspec": "Ruby", ".ru": "Ruby", ".php": "PHP", ".phtml": "PHP", ".pl": "Perl", ".pm": "Perl", ".t": "Perl", ".psgi": "Perl", ".lua": "Lua", ".luau": "Luau", ".tl": "Teal", ".rockspec": "Lua", ".r": "R", ".rmd": "R Markdown", ".qmd": "Quarto", ".rprofile": "R",
 	".ex": "Elixir", ".exs": "Elixir", ".erl": "Erlang", ".hrl": "Erlang", ".ml": "OCaml", ".mli": "OCaml", ".mll": "OCaml", ".mly": "Menhir", ".opam": "opam", ".hs": "Haskell", ".lhs": "Haskell", ".hs-boot": "Haskell", ".hsc": "Haskell", ".cabal": "Cabal", ".clj": "Clojure", ".cljc": "Clojure", ".cljs": "ClojureScript", ".bb": "Clojure", ".edn": "EDN",
-	".zig": "Zig", ".zon": "Zig", ".nix": "Nix", ".gleam": "Gleam", ".elm": "Elm", ".purs": "PureScript", ".dhall": "Dhall", ".cr": "Crystal", ".nim": "Nim", ".jl": "Julia",
+	".zig": "Zig", ".zon": "Zig", ".nix": "Nix", ".gleam": "Gleam", ".elm": "Elm", ".purs": "PureScript", ".dhall": "Dhall", ".cr": "Crystal", ".d": "D", ".di": "D", ".nim": "Nim", ".jl": "Julia",
 	".sh": "Shell", ".bash": "Shell", ".zsh": "Shell", ".ksh": "Shell", ".bats": "Shell", ".zsh-theme": "Shell", ".ps1": "PowerShell", ".psm1": "PowerShell", ".psd1": "PowerShell",
 	".html": "HTML", ".htm": "HTML", ".css": "CSS", ".scss": "CSS", ".sass": "CSS", ".less": "CSS",
 	".vue": "Vue", ".svelte": "Svelte", ".astro": "Astro",
@@ -36,7 +37,7 @@ var byName = map[string]string{
 	"Jenkinsfile": "Groovy", "Gemfile": "Ruby", "Rakefile": "Ruby", "Guardfile": "Ruby", "Capfile": "Ruby",
 	"rebar.config": "Erlang", "rebar.lock": "Erlang", "mix.lock": "Elixir",
 	"cpanfile": "Perl", "cpanfile.snapshot": "Carton", "dist.ini": "Dist::Zilla",
-	"paket.dependencies": "Paket", "paket.lock": "Paket", "paket.references": "Paket",
+	"dub.sdl": "SDLang", "paket.dependencies": "Paket", "paket.lock": "Paket", "paket.references": "Paket",
 	"luarocks.lock": "Lua", ".luacheckrc": "Lua", ".busted": "Lua",
 	"DESCRIPTION": "R", "NAMESPACE": "R", "renv.lock": "R", "packrat.lock": "R",
 	"Project.toml": "Julia", "JuliaProject.toml": "Julia", "Manifest.toml": "Julia", "JuliaManifest.toml": "Julia",
@@ -204,6 +205,61 @@ func forthSource(head []byte) bool {
 	}
 	return false
 }
+
+// dependencyFile reports whether a ".d" file's head is a make dependency file,
+// which gcc -MD, clang -MD and dmd -makedeps write beside objects: its first line
+// is `target: prerequisites`, paths without D's punctuation. A D module's first
+// line is a comment, a module or import declaration, an attribute or a
+// declaration; `import std.stdio : writeln;` has a keyword and a semicolon.
+//
+// Implements: REQ-LANG-015, REQ-DLANG-001
+func dependencyFile(head []byte) bool {
+	for _, line := range bytes.Split(head, []byte("\n")) {
+		line = bytes.TrimSpace(line)
+		if len(line) == 0 {
+			continue
+		}
+		target, rest, ok := bytes.Cut(line, []byte(":"))
+		if !ok || len(bytes.TrimSpace(target)) == 0 || bytes.ContainsAny(target, "(){};=\"'@`,") ||
+			bytes.ContainsAny(rest, ";(){}=\"'") || bytes.HasPrefix(line, []byte("/")) && len(line) > 1 && (line[1] == '/' || line[1] == '*' || line[1] == '+') {
+			return false
+		}
+		switch first := string(bytes.Fields(target)[0]); first {
+		case "import", "module", "public", "private", "protected", "package", "export", "static", "extern",
+			"shared", "version", "debug", "else", "case", "default":
+			return false
+		}
+		return len(rest) == 0 || rest[0] == ' ' || rest[0] == '\t' || rest[0] == '\\'
+	}
+	return false
+}
+
+// dtraceSource reports whether a ".d" file's head is a DTrace script or a USDT
+// provider definition: a #pragma D line, a C preprocessor directive (D has
+// none), a `provider name {` block, or a probe description such as
+// syscall::open:entry or dtrace:::BEGIN at the start of a line.
+//
+// Implements: REQ-LANG-015, REQ-DLANG-001
+func dtraceSource(head []byte) bool {
+	for _, line := range bytes.Split(head, []byte("\n")) {
+		line = bytes.TrimSpace(line)
+		for _, p := range []string{"#pragma D", "#include", "#define", "#if", "#endif"} {
+			if bytes.HasPrefix(line, []byte(p)) {
+				return true
+			}
+		}
+		if probeDescription.Match(line) || providerBlock.Match(line) || string(line) == "BEGIN" || string(line) == "END" {
+			return true
+		}
+	}
+	return false
+}
+
+// providerBlock starts a USDT provider definition: provider name {.
+var providerBlock = regexp.MustCompile(`^provider\s+[A-Za-z_]\w*\s*(\{|$)`)
+
+// probeDescription is provider:module:function:name at the start of a line.
+var probeDescription = regexp.MustCompile(`^[A-Za-z0-9_$*-]*:[A-Za-z0-9_$*.-]*:[A-Za-z0-9_$*.-]*:[A-Za-z0-9_*-]*(\s|$|,|/|\{)`)
 
 // perlMarker reports whether a line of a file's head starts as only Perl (among the
 // languages sharing ".pl" and ".t") starts one: use, no, require, package, sub, my,

@@ -71,6 +71,9 @@ const (
 	// registry's metadata and its index of manifests are git repositories read
 	// as files.
 	PureScript = "purescript"
+	// Dub is the d plugin's island of dub packages; the registry's API serves each
+	// package's versions with their recipes.
+	Dub = "dub"
 )
 
 // public is where each ecosystem's packages come from unless something says otherwise.
@@ -105,6 +108,7 @@ var public = map[string]string{
 	// The owner of the registry's repositories: registry (metadata/) and
 	// registry-index (the manifests) are read below it.
 	PureScript: "https://raw.githubusercontent.com/purescript",
+	Dub:        "https://code.dlang.org",
 }
 
 // Clojars is the Maven repository Clojure's libraries are published to. Leiningen,

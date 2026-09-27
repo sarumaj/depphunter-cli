@@ -20,7 +20,7 @@ When git cannot list the files, the system **shall** walk the directory tree and
 `dist-newstyle`, `.stack-work`, `.terraform`, `.terragrunt-cache`,
 `lua_modules`, `_opam`, `.zig-cache`, `zig-cache`, `zig-out`, `zig-pkg`,
 `.cpcache`, `.shadow-cljs`, `elm-stuff`, `.spago`, `bower_components` and
-`.crystal` and `.fake`, an `output` directory beside a `spago.yaml` or
+`.crystal`, `.fake` and `.dub`, an `output` directory beside a `spago.yaml` or
 `spago.dhall` (what the PureScript compiler wrote), a `lib` directory beside
 a `shard.yml` (what shards installed), and `packages` and `paket-files`
 directories beside a `paket.dependencies` (what Paket installed and
@@ -43,7 +43,8 @@ caches and build output.
    `.shadow-cljs/builds/app/x.edn`, `elm-stuff/0.19.1/Main.elm`,
    `.spago/p/prelude-6.0.1/src/Prelude.purs`,
    `bower_components/purescript-maybe/src/Data/Maybe.purs` and
-   `.crystal/cache/macro.cr` and `.fake/build.fsx/intellisense.fsx` do not
+   `.crystal/cache/macro.cr`, `.fake/build.fsx/intellisense.fsx` and
+   `.dub/packages/leftpad/1.0.0/leftpad/source/leftpad.d` do not
    appear in the graph, nor do `app/output/Main/index.js` beside
    `app/spago.yaml`, `shop/lib/kemal/src/kemal.cr` beside `shop/shard.yml`,
    and `fs/packages/Argu/tools/x.fsx` and

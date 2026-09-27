@@ -130,6 +130,9 @@ var Servers = []Server{
 	// crystalline answers references for Crystal from the shard's entry point
 	// (shard.yml targets), over stdio.
 	{Name: "crystal", Open: true, Exts: map[string]string{".cr": "crystal"}, Commands: [][]string{{"crystalline"}}},
+	// serve-d answers references for D modules from the dub package around them,
+	// over stdio.
+	{Name: "d", Open: true, Exts: map[string]string{".d": "d", ".di": "d"}, Commands: [][]string{{"serve-d"}}},
 	// neocmakelsp and cmake-language-server both answer references for CMake's
 	// functions, macros and variables; a CMakeLists.txt is known by its name.
 	{Name: "cmake", Open: true, Exts: map[string]string{".cmake": "cmake"}, Names: map[string]string{"CMakeLists.txt": "cmake"},

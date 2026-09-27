@@ -2255,3 +2255,201 @@ func purescriptAdmits(rng string, v [3]int) bool {
 	}
 	return true
 }
+
+// ---------------------------------------------------------------- dub
+
+// dubPackage reads a dub package's dependencies from a dub registry's API
+// (code.dlang.org by default): <registry>/api/packages/<name>/<version>/info for
+// the version the target names, else <registry>/api/packages/<name>/info and the
+// newest release the target's specification (~>0.9.5, ^1.2.0, >=1.0.0 <2.0.0,
+// *) admits. A version's info is its recipe: the dependencies of the package, of
+// its sub-packages and of its first (default) configuration are returned as the
+// specifications they are, under their base package's name; optional ones,
+// path dependencies and the package's own sub-packages are left out.
+//
+// Implements: REQ-SUP-060
+func (c *Client) dubPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+	name := t.Package
+	if !dubName.MatchString(name) {
+		return nil, fmt.Errorf("not a dub package name: %q", name)
+	}
+	base := strings.TrimRight(index, "/") + "/api/packages/" + url.PathEscape(name)
+	version := strings.TrimPrefix(strings.TrimSpace(t.Version), "==")
+	var info map[string]json.RawMessage
+	if _, exact := dubVersion(version); exact && !strings.Contains(version, "-") {
+		body, err := c.get(ctx, base+"/"+url.PathEscape(version)+"/info")
+		if err != nil {
+			return nil, err
+		}
+		if err := json.Unmarshal(body, &info); err != nil {
+			return nil, err
+		}
+	} else {
+		body, err := c.get(ctx, base+"/info")
+		if err != nil {
+			return nil, err
+		}
+		var pkg struct {
+			Versions []map[string]json.RawMessage `json:"versions"`
+		}
+		if err := json.Unmarshal(body, &pkg); err != nil {
+			return nil, err
+		}
+		best, bestV := -1, [3]int{}
+		for i, v := range pkg.Versions {
+			var s string
+			json.Unmarshal(v["version"], &s)
+			parsed, ok := dubVersion(s)
+			if !ok || strings.ContainsAny(s, "-+") && s != version || !dubAdmits(version, parsed) {
+				continue
+			}
+			if best < 0 || elmLess(bestV, parsed) {
+				best, bestV = i, parsed
+			}
+		}
+		if best < 0 {
+			return nil, nil
+		}
+		info = pkg.Versions[best]
+	}
+	seen := map[string]bool{name: true}
+	var out []dep
+	var collect func(recipe map[string]json.RawMessage, depth int)
+	collect = func(recipe map[string]json.RawMessage, depth int) {
+		var deps map[string]json.RawMessage
+		json.Unmarshal(recipe["dependencies"], &deps)
+		for _, n := range slices.Sorted(maps.Keys(deps)) {
+			b, _, _ := strings.Cut(n, ":")
+			if b == "" || seen[b] {
+				continue // the package's own sub-packages
+			}
+			var spec string
+			if json.Unmarshal(deps[n], &spec) != nil {
+				var o struct {
+					Version  string `json:"version"`
+					Path     string `json:"path"`
+					Optional bool   `json:"optional"`
+				}
+				if json.Unmarshal(deps[n], &o) != nil || o.Optional || o.Path != "" {
+					continue
+				}
+				spec = o.Version
+			}
+			seen[b] = true
+			out = append(out, dep{Name: b, Version: strings.TrimSpace(spec)})
+		}
+		if depth > 0 {
+			return
+		}
+		var subs []json.RawMessage
+		json.Unmarshal(recipe["subPackages"], &subs)
+		for _, raw := range subs {
+			var sub map[string]json.RawMessage
+			if json.Unmarshal(raw, &sub) == nil {
+				collect(sub, depth+1)
+			}
+		}
+		var configs []map[string]json.RawMessage
+		if json.Unmarshal(recipe["configurations"], &configs) == nil && len(configs) > 0 {
+			collect(configs[0], depth+1)
+		}
+	}
+	collect(info, 0)
+	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
+	return out, nil
+}
+
+// dubName is a dub package name: lower-case letters, digits, - and _.
+var dubName = regexp.MustCompile(`^[a-z0-9_][a-z0-9_.-]*$`)
+
+// dubVersion parses a release's major.minor.patch, ignoring a pre-release or
+// build suffix.
+func dubVersion(s string) ([3]int, bool) {
+	s = strings.TrimPrefix(s, "v")
+	if i := strings.IndexAny(s, "-+"); i >= 0 {
+		s = s[:i]
+	}
+	return elmVersion(s)
+}
+
+// dubAdmits reports whether a release satisfies a dub version specification:
+// ~>1.2.3 (>=1.2.3 <1.3.0), ~>1.2 (>=1.2.0 <2.0.0), ^1.2.3, ==1.2.3 or a bare
+// 1.2.3, comparisons joined by spaces (>=1.0.0 <2.0.0), and * or nothing (any
+// release). A branch (~master) admits no release.
+func dubAdmits(spec string, v [3]int) bool {
+	spec = strings.TrimSpace(spec)
+	if spec == "" || spec == "*" {
+		return true
+	}
+	bound := func(s string) ([3]int, int, bool) {
+		parts := strings.Split(strings.SplitN(strings.SplitN(s, "-", 2)[0], "+", 2)[0], ".")
+		var b [3]int
+		if len(parts) > 3 {
+			return b, 0, false
+		}
+		for i, p := range parts {
+			n, err := strconv.Atoi(p)
+			if err != nil || n < 0 {
+				return b, 0, false
+			}
+			b[i] = n
+		}
+		return b, len(parts), true
+	}
+	cmp := func(a, b [3]int) int { return slices.Compare(a[:], b[:]) }
+	switch {
+	case strings.HasPrefix(spec, "~>"):
+		lo, n, ok := bound(strings.TrimSpace(spec[2:]))
+		if !ok {
+			return false
+		}
+		hi := lo
+		switch n {
+		case 1:
+			hi = [3]int{lo[0] + 1, 0, 0}
+		case 2:
+			hi = [3]int{lo[0] + 1, 0, 0}
+		default:
+			hi = [3]int{lo[0], lo[1] + 1, 0}
+		}
+		return cmp(v, lo) >= 0 && cmp(v, hi) < 0
+	case strings.HasPrefix(spec, "^"):
+		lo, _, ok := bound(strings.TrimSpace(spec[1:]))
+		if !ok {
+			return false
+		}
+		hi := [3]int{lo[0] + 1, 0, 0}
+		if lo[0] == 0 {
+			hi = [3]int{0, lo[1] + 1, 0}
+		}
+		return cmp(v, lo) >= 0 && cmp(v, hi) < 0
+	case strings.HasPrefix(spec, "~"):
+		return false
+	}
+	for _, c := range strings.Fields(spec) {
+		op := strings.TrimRight(c, "0123456789.-+abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+		b, _, ok := bound(strings.TrimPrefix(c, op))
+		if !ok {
+			return false
+		}
+		n := cmp(v, b)
+		switch op {
+		case ">=":
+			ok = n >= 0
+		case ">":
+			ok = n > 0
+		case "<":
+			ok = n < 0
+		case "<=":
+			ok = n <= 0
+		case "==", "":
+			ok = n == 0
+		default:
+			ok = false
+		}
+		if !ok {
+			return false
+		}
+	}
+	return true
+}
