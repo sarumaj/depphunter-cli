@@ -16,6 +16,7 @@ import (
 	"github.com/BurntSushi/toml"
 	"gopkg.in/yaml.v3"
 
+	"github.com/sarumaj/depphunter-cli/internal/auth"
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/edn"
 	"github.com/sarumaj/depphunter-cli/internal/lang/luarocks"
@@ -176,7 +177,7 @@ func (c *Config) machine(env func(string) string, home string) {
 		{filepath.Join(home, ".config", "composer", "config.json"), parseComposer},
 		{filepath.Join(home, ".composer", "config.json"), parseComposer},
 		{filepath.Join(home, ".gemrc"), plain(parseGemrc)},
-		{filepath.Join(home, ".bundle", "config"), plain(parseBundleConfig)},
+		{auth.BundlerConfig(home, env), plain(parseBundleConfig)},
 		{filepath.Join(home, ".Rprofile"), plain(parseRprofile)},
 		{filepath.Join(home, ".config", "cabal", "config"), plain(parseCabalRepositories)},
 		{filepath.Join(home, ".bazelrc"), plain(parseBazelrc)},
@@ -885,8 +886,10 @@ func parseGemrc(data []byte, add func(eco, url, scope string)) {
 	}
 }
 
-// parseBundleConfig reads Bundler's mirror of rubygems.org from ~/.bundle/config
-// (BUNDLE_MIRROR__RUBYGEMS__ORG, or the URL form of the key).
+// parseBundleConfig reads Bundler's mirror of rubygems.org from the user's config
+// (~/.bundle/config, or where BUNDLE_USER_CONFIG or BUNDLE_USER_HOME put it:
+// BUNDLE_MIRROR__RUBYGEMS__ORG, or the URL form of the key). Its credentials are
+// read by internal/auth.
 func parseBundleConfig(data []byte, add func(eco, url, scope string)) {
 	for _, line := range strings.Split(string(data), "\n") {
 		key, value, ok := strings.Cut(line, ": ")
