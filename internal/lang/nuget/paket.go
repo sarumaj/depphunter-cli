@@ -27,6 +27,11 @@ type Dependency struct {
 // Source is a `source` line of paket.dependencies: a NuGet feed (or a directory).
 type Source struct {
 	Group, URL string
+	// Username and Password are the line's `username:` and `password:` options as
+	// written, quotes removed: literal, or a `%NAME%` reference to the environment.
+	Username, Password string
+	// AuthType is the `authtype:` option ("basic", "ntlm"), "" when not given.
+	AuthType string
 }
 
 // ParseDependencies reads paket.dependencies: nuget, clitool, github, gist, git and
@@ -49,7 +54,11 @@ func ParseDependencies(src []byte) (deps []Dependency, sources []Source) {
 			}
 		case "source":
 			if len(f) > 1 {
-				sources = append(sources, Source{Group: group, URL: f[1]})
+				s := Source{Group: group, URL: f[1]}
+				_, rest, _ := strings.Cut(text, f[1])
+				opts := sourceOptions(rest)
+				s.Username, s.Password, s.AuthType = opts["username"], opts["password"], opts["authtype"]
+				sources = append(sources, s)
 			}
 		case "nuget", "clitool":
 			if len(f) < 2 {
@@ -83,6 +92,26 @@ func ParseDependencies(src []byte) (deps []Dependency, sources []Source) {
 		}
 	}
 	return deps, sources
+}
+
+// sourceOptions reads the `name: value` options after a source's URL, a value in
+// double quotes or a single word.
+func sourceOptions(rest string) map[string]string {
+	out := map[string]string{}
+	for {
+		rest = strings.TrimSpace(rest)
+		name, value, ok := strings.Cut(rest, ":")
+		if !ok || name == "" || strings.ContainsAny(name, " \t\"") {
+			return out
+		}
+		value = strings.TrimSpace(value)
+		if v, ok := strings.CutPrefix(value, `"`); ok {
+			value, rest, _ = strings.Cut(v, `"`)
+		} else {
+			value, rest, _ = strings.Cut(value, " ")
+		}
+		out[strings.ToLower(name)] = value
+	}
 }
 
 // stripComment drops a `//` or `#` comment. A `//` right after a `:` is part of a

@@ -34,7 +34,10 @@ next index only when one answers that it does not have the package (HTTP 404
 or 410, or an answer that does not list it), or after any failure of a
 `GOPROXY` entry followed by `|`. Any other failure **shall** end the question.
 
-A scoped source covering the package, a Cargo alternative registry, and the
+A scoped source covering the package, the NuGet sources a
+`packageSourceMapping` pattern maps the package to
+([REQ-SUP-065](REQ-SUP-065-nuget-configuration-layers-and-source-mapping.md)),
+a Cargo alternative registry, and the
 host an image or Terraform module names **shall** serve the package alone,
 with no fallback. A Cargo alternative registry **shall** serve only the crates
 that declare it (`registry = "<name>"` in `Cargo.toml`, or its index URL as
@@ -46,8 +49,9 @@ skipped rather than asked, and a package that no index the client may ask has
 **shall** be attributed to it and marked. A package matching a private
 pattern **shall not** be asked of a public index at any position of the list.
 
-Composer's `"packagist.org": false`, a NuGet `<clear/>` (unless the same file
-names nuget.org), and a set `GOPROXY` **shall** switch the public default off;
+Composer's `"packagist.org": false`, a NuGet configuration that leaves
+nuget.org out (a `<clear/>` no closer entry for nuget.org follows, or a
+disabled nuget.org), and a set `GOPROXY` **shall** switch the public default off;
 `GOPROXY` entries after `direct` or `off` are not reached.
 
 ## Rationale

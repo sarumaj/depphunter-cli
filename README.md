@@ -1139,7 +1139,7 @@ and platform paths:
 | Go         | the environment, else the go env file (`GOENV`, else `go/env` in the user configuration directory; `GOENV=off` for none), for `GOPROXY`, `GOPRIVATE`, `GONOPROXY` and `GONOSUMDB`                                                                                                                                                                                                                                                               |
 | containers | `REGISTRY_AUTH_FILE` alone when set; else `$XDG_RUNTIME_DIR/containers/auth.json` (Linux; `~/.config/containers/auth.json` elsewhere), `$XDG_CONFIG_HOME/containers/auth.json`, and Docker's `config.json` in `DOCKER_CONFIG`, else `~/.docker`; the first file holding a registry's credential wins, as in containers-auth.json(5)                                                                                                             |
 | netrc      | `NETRC`; else `~/_netrc` on Windows when it exists; else `~/.netrc`                                                                                                                                                                                                                                                                                                                                                                             |
-| NuGet      | `%APPDATA%\NuGet\NuGet.Config` on Windows; elsewhere `~/.nuget/NuGet/NuGet.Config` and `~/.config/NuGet/NuGet.Config`                                                                                                                                                                                                                                                                                                                           |
+| NuGet      | `%APPDATA%\NuGet\NuGet.Config` on Windows; elsewhere `~/.nuget/NuGet/NuGet.Config` and `~/.config/NuGet/NuGet.Config`; then the machine-wide `*.config` files of `NuGet\Config` under `%ProgramFiles(x86)%` on Windows, else under `NUGET_COMMON_APPLICATION_DATA`, `/Library/Application Support` (macOS) or `/etc/opt` (Linux)                                                                                                                |
 | Composer   | one home, for repositories and credentials alike: `COMPOSER_HOME`; `%APPDATA%\Composer` on Windows; else the first that exists of `$XDG_CONFIG_HOME/composer` (`~/.config/composer`) and `~/.composer`                                                                                                                                                                                                                                          |
 | Bundler    | `BUNDLE_USER_CONFIG`; else `config` in `BUNDLE_USER_HOME`; else `~/.bundle/config`                                                                                                                                                                                                                                                                                                                                                              |
 | Maven      | `~/.m2/settings.xml`, then `conf/settings.xml` under `MAVEN_HOME`, else `M2_HOME` (the user's file wins); `-s` and `MAVEN_ARGS` are not followed                                                                                                                                                                                                                                                                                                |
@@ -1169,7 +1169,7 @@ default or is asked **beside** it:
 | PyPI                          | `index-url`, `PIP_INDEX_URL`, `-i`; a Poetry source that is primary; a uv index with `default = true`                                                                                                                                                                                                                      | `extra-index-url`, `PIP_EXTRA_INDEX_URL`; a supplemental Poetry source; any other uv index                                                                                                                                                                                                                                       |
 | Maven                         | a `settings.xml` mirror of `central`; a mirror of `*` or `external:*` (or one without `mirrorOf`), which stands in for every repository; a settings profile or Clojure repository with the id `central`; `COURSIER_REPOSITORIES` and, under `-Dsbt.override.build.repos=true`, `~/.sbt/repositories`, lists asked in order | a POM's `<repositories>`, Gradle's `maven { url … }` (a build's or an init script's), sbt's `resolvers`, Clojure's `:mvn/repos` and `:repositories` (a project's or the user's), an active settings profile's repositories, `~/.sbt/repositories`, a mirror of any other repository; Clojars after Central for a Clojure project |
 | Composer                      | nothing: `"packagist.org": false` switches Packagist off                                                                                                                                                                                                                                                                   | every `composer` repository                                                                                                                                                                                                                                                                                                      |
-| NuGet                         | nothing: a `<clear/>` switches nuget.org off unless the same file names it again                                                                                                                                                                                                                                           | every feed                                                                                                                                                                                                                                                                                                                       |
+| NuGet                         | nothing: nuget.org is off when the merged configuration leaves it out (a `<clear/>` with no closer entry for it, or it disabled)                                                                                                                                                                                           | every enabled feed                                                                                                                                                                                                                                                                                                               |
 | Go                            | `GOPROXY`: its proxies are asked in order, and proxy.golang.org only if it is on the list                                                                                                                                                                                                                                  | —                                                                                                                                                                                                                                                                                                                                |
 | crates.io                     | `[source.crates-io] replace-with` (followed to the end of the chain)                                                                                                                                                                                                                                                       | —                                                                                                                                                                                                                                                                                                                                |
 | npm and every other ecosystem | the first unscoped source found (npm's `registry`)                                                                                                                                                                                                                                                                         | —                                                                                                                                                                                                                                                                                                                                |
@@ -1185,15 +1185,28 @@ go command also passes over on any failure. `GOPROXY` entries after `direct`
 or `off` are not reached, and `GOPROXY=direct` or `GOPROXY=off` leaves no proxy
 to ask.
 
-Three kinds of source are **authoritative** and have no fallback: a scoped
-source that covers the package (an npm `@scope:registry`, a Gemfile `source`
-block, a pubspec's `hosted:` server, a package pinned to an explicit Poetry or
-uv index), a Cargo alternative registry, and the host an image or Terraform
-module names. A package missing from one of them is not looked for on the
-public index, which is exactly where a dependency-confusion attack would plant
-it. A Cargo registry of `[registries.<name>]` serves only the crates that
-declare it — `registry = "<name>"` in `Cargo.toml`, or its index as
-`Cargo.lock`'s `source` — and every other crate stays with crates.io.
+Four kinds of source are **authoritative** and have no fallback: a scoped source
+that covers the package (an npm `@scope:registry`, a Gemfile `source` block, a
+pubspec's `hosted:` server, a package pinned to an explicit Poetry or uv index),
+the NuGet feeds `packageSourceMapping` maps the package to, a Cargo alternative
+registry, and the host an image or Terraform module names. A package missing
+from one of them is not looked for on the public index, which is exactly where a
+dependency-confusion attack would plant it. A Cargo registry of
+`[registries.<name>]` serves only the crates that declare it —
+`registry = "<name>"` in `Cargo.toml`, or its index as `Cargo.lock`'s
+`source` — and every other crate stays with crates.io.
+
+NuGet's configuration files are merged as NuGet merges them: the machine-wide
+files, the user's `NuGet.Config`, then the repository's `nuget.config` files (a
+deeper one over a shallower one), a closer file's entry replacing the same key
+and a `<clear/>` dropping everything before it — so a repository's `<clear/>`
+drops this machine's feeds as well. A feed `<disabledPackageSources>` disables
+is not asked. Under `<packageSourceMapping>`, a package is asked only of the
+feeds mapped to its most specific pattern — an exact id over `Contoso.*`, a
+longer prefix over a shorter one, `*` last — so `Contoso.Billing` mapped to
+the company feed is never named to nuget.org, even when the feed lacks it. A
+package no pattern covers is asked of every feed and nuget.org as usual, where
+NuGet itself would refuse it; Paket's feeds are not mapped.
 
 A source asked beside the public default does not decide where a package is
 drawn from until something is asked: a repository's `--extra-index-url` no
@@ -1269,7 +1282,10 @@ written for and to no other.
 | npm's user and global npmrc, `npm_config_//<host>/:<field>` | `_authToken`, `_auth`, and `username` with `_password`, per registry                                           |
 | `~/.netrc` (`NETRC`; `~/_netrc` on Windows)                 | the machine/login/password triples git, curl, Go and pip already read                                          |
 | Maven's `settings.xml` (`~/.m2`, `MAVEN_HOME`)              | each `<server>`, matched to a `<mirror>`, profile `<repository>` or user `deps.edn` repository                 |
-| the user's `NuGet.Config` (`%APPDATA%\NuGet` on Windows)    | `<packageSourceCredentials>` (`ClearTextPassword`), matched to its `<packageSources>` entry                    |
+| the user's and machine-wide `NuGet.Config`                  | `<packageSourceCredentials>` (`ClearTextPassword`), matched to its enabled `<packageSources>` entry            |
+| `NuGetPackageSourceCredentials_<source>`                    | `Username=...;Password=...` for a source those files name, over its file entry                                 |
+| `VSS_NUGET_EXTERNAL_FEED_ENDPOINTS`                         | the Azure Artifacts credential provider's endpoint passwords                                                   |
+| `%NAME%` in a repository `nuget.config` or Paket `source`   | a pipeline secret for a repository feed, only when vouched for (below)                                         |
 | `~/.docker/config.json` (`DOCKER_CONFIG`)                   | stored `auths`, and the helpers named by `credsStore` and `credHelpers`                                        |
 | `containers/auth.json`, `REGISTRY_AUTH_FILE`                | the same, for Podman and Skopeo                                                                                |
 | `credentials.toml` in `CARGO_HOME` (`~/.cargo`)             | a token per registry, matched to its index through `config.toml` there (legacy `credentials` and `config` too) |
@@ -1307,6 +1323,19 @@ document recommends sharing. Only a URL supplied by this machine's own
 configuration contributes a credential; one supplied by the repository is
 stripped and discarded, since a repository able to supply a credential would
 also be choosing where it is sent.
+
+A pipeline usually keeps the repository's `nuget.config` or
+`paket.dependencies` naming the company feed and supplies the secret in a
+variable: a `password: "%NAME%"` on a Paket `source` line, a
+`ClearTextPassword` of `%NAME%`, or a `NuGetPackageSourceCredentials_<source>`
+variable for a source only the repository defines. The secret is this
+machine's but the address is the repository's, so it is sent only to a feed on
+the host of a NuGet source this machine configures, or one vouched for with
+[`--trust-index`](#vouching-for-an-internal-index); a password written out in
+the repository is discarded. A NuGet credential for `pkgs.dev.azure.com`, which
+every Azure DevOps organization shares, serves only its organization's path.
+NuGet's Windows-encrypted `Password` and Paket's encrypted credential store
+(`paket config add-credentials`) are not read.
 
 Composer's home is the one Composer itself uses: `COMPOSER_HOME` when set, else
 `$XDG_CONFIG_HOME/composer` (`~/.config/composer`) or `~/.composer`, whichever

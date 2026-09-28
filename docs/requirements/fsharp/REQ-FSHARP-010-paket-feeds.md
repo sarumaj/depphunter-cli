@@ -31,5 +31,9 @@ A Paket project names its private feeds in its Paket files, not in
 
 ## Notes
 
-Paket's credentials (`username:`/`password:` on a source line, `paket
-config add-credentials`) are not read.
+A source line's `username:`, `password:` and `authtype:` are read; the
+password is sent only when it is a `%NAME%` reference and the feed is vouched
+for ([REQ-AUTH-023](../auth/REQ-AUTH-023-repository-feed-credentials-from-the-environment.md)).
+Paket's encrypted credential store (`paket config add-credentials`) is not
+read. Paket sources are not NuGet sources for `packageSourceMapping`
+([REQ-SUP-065](../sup/REQ-SUP-065-nuget-configuration-layers-and-source-mapping.md)).

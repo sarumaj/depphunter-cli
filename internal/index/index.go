@@ -16,6 +16,7 @@ import (
 
 	"github.com/sarumaj/depphunter-cli/internal/auth"
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/nuget"
 	"github.com/sarumaj/depphunter-cli/internal/trace"
 	"github.com/sarumaj/depphunter-cli/internal/userconf"
 )
@@ -284,6 +285,9 @@ type Source struct {
 	// Origin is where the source was learned from, for the resolution report. It is
 	// one of the Origin constants above.
 	Origin string
+	// nugetKey is the key of a NuGet.Config package source: such sources are
+	// recomputed from the merged configuration on every discovery (applyNuGet).
+	nugetKey string
 }
 
 // Config is the index configuration of one analysis: what this machine knows, and
@@ -311,6 +315,13 @@ type Config struct {
 	// package is attributed to the source that would serve it rather than to a
 	// public index it is never named to.
 	private func(eco, pkg string) bool
+	// m is the machine whose configuration was read: its environment supplies the
+	// secrets a repository's feed configuration refers to (see lend).
+	m userconf.Machine
+	// nugetMachine are this machine's NuGet.Config files, closest first; nuget is
+	// what they say merged with the repository's (applyNuGet).
+	nugetMachine []nuget.ConfigFile
+	nuget        nuget.Settings
 }
 
 func New() *Config {
@@ -533,6 +544,8 @@ type candidate struct {
 //   - An OCI image or a Terraform module named with a host is served by that host.
 //   - A crate that names a Cargo registry (lang.Target.Registry) is served by that
 //     registry alone; a registry serves no other crate.
+//   - A NuGet package a packageSourceMapping pattern covers is served by the
+//     sources mapped to its most specific pattern alone (possibly none).
 //   - A scoped source that covers the package (an npm scope, a gem's source block, a
 //     pubspec's hosted server) serves it alone. It is authoritative: a package
 //     missing from it is not looked for on the public index, which is what a
@@ -588,6 +601,13 @@ func (c *Config) candidates(eco, pkg, registry string) []candidate {
 			return one(Source{URL: want})
 		}
 		return nil // a registry no configuration defines: Cargo itself would fail
+	}
+	if eco == NuGet {
+		// packageSourceMapping: a package a pattern covers is asked of the
+		// sources mapped to the most specific pattern alone.
+		if keys, ok := c.nuget.Route(pkg); ok {
+			return c.nugetRouted(keys)
+		}
 	}
 	for _, s := range c.sources[eco] {
 		if s.Scope != "" && s.Registry == "" && matches(eco, s.Scope, pkg) {

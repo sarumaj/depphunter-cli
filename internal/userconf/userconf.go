@@ -402,6 +402,67 @@ func (m Machine) NuGetConfigs() []string {
 	}
 }
 
+// NuGetMachineConfigs are NuGet's machine-wide configuration files, farther than the
+// user's: every *.config in %ProgramFiles(x86)%\NuGet\Config on Windows (the
+// 64-bit %ProgramFiles% without it); elsewhere (and on a Windows with neither set)
+// in NuGet/Config under NUGET_COMMON_APPLICATION_DATA, else /Library/Application
+// Support on macOS and /etc/opt on Linux. They are listed in name order.
+//
+// Implements: REQ-SUP-064
+func (m Machine) NuGetMachineConfigs() []string {
+	programFiles := m.Env("ProgramFiles(x86)")
+	if programFiles == "" {
+		programFiles = m.Env("ProgramFiles")
+	}
+	var dir string
+	switch {
+	case m.GOOS == "windows" && programFiles != "":
+		dir = join(programFiles, "NuGet", "Config")
+	case m.Env("NUGET_COMMON_APPLICATION_DATA") != "":
+		dir = join(m.Env("NUGET_COMMON_APPLICATION_DATA"), "NuGet", "Config")
+	case m.GOOS == "darwin":
+		dir = system("Library", "Application Support", "NuGet", "Config")
+	default:
+		dir = system("etc", "opt", "NuGet", "Config")
+	}
+	if dir == "" {
+		return nil
+	}
+	entries, _ := os.ReadDir(dir)
+	var out []string
+	for _, e := range entries {
+		if !e.IsDir() && strings.EqualFold(filepath.Ext(e.Name()), ".config") {
+			out = append(out, filepath.Join(dir, e.Name()))
+		}
+	}
+	return out
+}
+
+// nugetCredentialPrefix begins the variables NuGet reads a source's credential from,
+// NuGetPackageSourceCredentials_<source name>.
+const nugetCredentialPrefix = "NuGetPackageSourceCredentials_"
+
+// NuGetCredentialVars are the NuGetPackageSourceCredentials_<source> variables, by
+// source name lower-cased. NuGet appends the source name as it is; the prefix and the
+// name are matched without regard to case, as on Windows, and of two variables for
+// one source the first in name order is taken.
+//
+// Implements: REQ-AUTH-022
+func (m Machine) NuGetCredentialVars() map[string]string {
+	out := map[string]string{}
+	n := len(nugetCredentialPrefix)
+	for _, name := range m.names(func(s string) bool { return len(s) > n && strings.EqualFold(s[:n], nugetCredentialPrefix) }) {
+		key := strings.ToLower(name[n:])
+		if _, done := out[key]; done {
+			continue
+		}
+		if v := m.Env(name); v != "" {
+			out[key] = v
+		}
+	}
+	return out
+}
+
 // ---------------------------------------------------------------- Composer
 
 // ComposerHome is the one directory Composer takes for its home: COMPOSER_HOME when

@@ -261,7 +261,7 @@ loop:
 			parts++
 			p.i += 2
 		case p.is(0, ":") && parts > 0:
-			sel.WriteString(":")
+			sel.WriteRune(':')
 			p.i++
 		case t.kind == tIdent && parts == 0 && sel.Len() == 0:
 			sel.WriteString(t.text)

@@ -2,7 +2,6 @@ package index
 
 import (
 	"encoding/json"
-	"encoding/xml"
 	"maps"
 	"net/url"
 	"os"
@@ -110,11 +109,18 @@ func (c *Config) machine(m userconf.Machine) {
 	read(m.CargoFile("config"), func(data []byte, k sink) { cargoConfig(data, k, cargoEnv) })
 	// Composer's global configuration, in the one home Composer takes.
 	read(join(m.ComposerHome(), "config.json"), parseComposer)
-	for _, name := range m.NuGetConfigs() {
-		// The places the dotnet CLI keeps the user's NuGet.Config, the same the
-		// credentials are read from, so a feed with a password is also a feed.
-		read(name, parseNuGetConfig)
+	// NuGet: the user's NuGet.Config, then the machine-wide ones, the same the
+	// credentials are read from, so a feed with a password is also a feed. They
+	// are merged with the repository's nuget.config files (see applyNuGet).
+	c.m, c.nugetMachine = m, nil
+	for _, name := range append(m.NuGetConfigs(), m.NuGetMachineConfigs()...) {
+		if data, err := os.ReadFile(name); err == nil {
+			if f, ok := nuget.ParseConfig(data); ok {
+				c.nugetMachine = append(c.nugetMachine, f)
+			}
+		}
 	}
+	c.applyNuGet(nil)
 	// Bundler's mirror of rubygems.org, from the environment and the user's config.
 	add(RubyGems, env("BUNDLE_MIRROR__RUBYGEMS__ORG"), "")
 	read(m.BundlerConfig(), plain(parseBundleConfig))
@@ -316,8 +322,14 @@ func (c *Config) project(files []*scan.File) {
 	// would draw differently each time.
 	ordered := append([]*scan.File(nil), files...)
 	sort.Slice(ordered, func(i, j int) bool { return ordered[i].Path < ordered[j].Path })
+	// The repository's nuget.config files are merged with this machine's before
+	// anything else names a NuGet feed, so a feed both name stays this machine's.
+	c.applyNuGet(projectNuGet(ordered))
 	for _, f := range ordered {
 		base := strings.ToLower(path.Base(f.Path))
+		if base == "nuget.config" {
+			continue
+		}
 		data, err := os.ReadFile(f.Abs)
 		if err != nil {
 			continue
@@ -333,10 +345,9 @@ func (c *Config) project(files []*scan.File) {
 			parseRequirements(data, k)
 		case base == "pyproject.toml":
 			parsePyproject(data, k)
-		case base == "nuget.config":
-			parseNuGetConfig(data, k)
 		case base == "paket.dependencies":
 			parsePaketSources(data, k)
+			c.lendPaket(data)
 		case base == "paket.lock":
 			parsePaketLock(data, k)
 		case base == "pom.xml":
@@ -638,45 +649,6 @@ func cargoConfig(data []byte, k sink, env map[string]string) {
 	}
 }
 
-// nugetEntry is NuGet's <add key="…" value="…" />, which is how a config names both a
-// package source and a credential.
-type nugetEntry struct {
-	Key   string `xml:"key,attr"`
-	Value string `xml:"value,attr"`
-}
-
-// nugetSources is the <packageSources> block: the feeds a config declares, which
-// auth.go reads for the same reason this does.
-type nugetSources struct {
-	Add []nugetEntry `xml:"add"`
-}
-
-// parseNuGetConfig reads the package sources of a NuGet configuration. NuGet asks
-// every source it has for a package, nuget.org among them, so each feed is asked
-// beside the public default - unless the config's <packageSources> starts with
-// <clear/>, which drops what other configs (and so nuget.org) contributed. A feed
-// on nuget.org itself is the public default; a local folder is no index.
-//
-// Implements: REQ-SUP-015, REQ-SUP-063
-func parseNuGetConfig(data []byte, k sink) {
-	var doc struct {
-		PackageSources struct {
-			nugetSources
-			Clear *struct{} `xml:"clear"`
-		} `xml:"packageSources"`
-	}
-	if xml.Unmarshal(data, &doc) != nil {
-		return
-	}
-	official := false
-	for _, s := range doc.PackageSources.Add {
-		official = addNuGetFeed(s.Value, k) || official
-	}
-	if doc.PackageSources.Clear != nil && !official {
-		k.off(NuGet)
-	}
-}
-
 // parsePaketSources reads the NuGet feeds paket.dependencies names in its `source`
 // lines (every group's). A directory source is no index, and nuget.org (Paket
 // projects often still name its retired v2 API) is the public index already.
@@ -703,19 +675,23 @@ func parsePaketLock(data []byte, k sink) {
 	}
 }
 
-// addNuGetFeed records a feed asked beside nuget.org, and reports whether the feed
-// is nuget.org itself (by any of its addresses): the public default, which is not
-// recorded again.
-func addNuGetFeed(feed string, k sink) (official bool) {
-	u, err := url.Parse(strings.TrimSpace(strings.Trim(feed, `"`)))
-	if err != nil || u.Scheme != "https" && u.Scheme != "http" {
-		return false
+// addNuGetFeed records a feed asked beside nuget.org, unless the feed is nuget.org
+// itself (by any of its addresses): the public default, which is not recorded again.
+func addNuGetFeed(feed string, k sink) {
+	if u, official, ok := nugetFeed(feed); ok && !official {
+		k.extra(NuGet, u)
 	}
-	if h := strings.ToLower(u.Hostname()); h == "nuget.org" || strings.HasSuffix(h, ".nuget.org") {
-		return true
+}
+
+// nugetFeed reads a NuGet source's value: ok for an http(s) feed (a local folder is
+// no index), official for nuget.org itself, by any of its addresses.
+func nugetFeed(feed string) (u string, official, ok bool) {
+	p, err := url.Parse(strings.TrimSpace(strings.Trim(feed, `"`)))
+	if err != nil || p.Scheme != "https" && p.Scheme != "http" {
+		return "", false, false
 	}
-	k.extra(NuGet, u.String())
-	return false
+	h := strings.ToLower(p.Hostname())
+	return p.String(), h == "nuget.org" || strings.HasSuffix(h, ".nuget.org"), true
 }
 
 // parsePom reads the repositories a Maven project declares. Maven asks them before

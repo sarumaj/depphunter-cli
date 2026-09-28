@@ -29,7 +29,9 @@ environment:
 - Cargo: `credentials` (else `credentials.toml`) and `config` (else
   `config.toml`) in `CARGO_HOME`, else `~/.cargo`, and the registries
   `CARGO_REGISTRIES_<NAME>_INDEX` defines.
-- NuGet: `%APPDATA%\NuGet\NuGet.Config` on Windows.
+- NuGet: `%APPDATA%\NuGet\NuGet.Config` on Windows, and the machine-wide
+  files index discovery reads
+  ([REQ-SUP-064](../sup/REQ-SUP-064-tool-configuration-locations.md)).
 - Composer: the same single home index discovery reads.
 - Maven: `~/.m2/settings.xml`, then `conf/settings.xml` under `MAVEN_HOME`,
   else `M2_HOME`; the Clojure CLI's `deps.edn` in `CLJ_CONFIG`, else

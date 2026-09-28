@@ -58,7 +58,7 @@ func TestMavenServerCredentialsFindTheirHost(t *testing.T) {
 func TestNuGetFeedCredentialsFindTheirHost(t *testing.T) {
 	t.Setenv("AZ_PAT", "a-token")
 	c := &Store{bearer: map[string]string{}, basic: map[string]string{}}
-	c.readNuGetConfig([]byte(`<?xml version="1.0"?>
+	c.readNuGetConfigs([][]byte{[]byte(`<?xml version="1.0"?>
 <configuration>
   <packageSources>
     <add key="Company Feed" value="https://pkgs.dev.azure.com/acme/_packaging/feed/nuget/v3/index.json" />
@@ -75,12 +75,16 @@ func TestNuGetFeedCredentialsFindTheirHost(t *testing.T) {
       <add key="Password" value="encrypted-and-useless-here" />
     </proget>
   </packageSourceCredentials>
-</configuration>`))
+</configuration>`)}, nil)
 
 	// A source key with a space is escaped into the element name; the value may come
-	// from the environment.
-	if got := c.basic["pkgs.dev.azure.com"]; got != "build:a-token" {
-		t.Errorf("pkgs.dev.azure.com: %q", got)
+	// from the environment. On pkgs.dev.azure.com, which every Azure DevOps
+	// organization shares, it serves the organization's path only.
+	if got := authorization(t, c, "https://pkgs.dev.azure.com/acme/_packaging/0f3a/nuget/v3/flat2/x/index.json"); got != basicHeader("build:a-token") {
+		t.Errorf("pkgs.dev.azure.com/acme: %q", got)
+	}
+	if got := authorization(t, c, "https://pkgs.dev.azure.com/other/_packaging/feed/nuget/v3/index.json"); got != "" {
+		t.Errorf("another organization got acme's credential: %q", got)
 	}
 	// A Windows-encrypted password cannot be decrypted here, so it is left alone
 	// rather than sent as itself.
@@ -171,4 +175,100 @@ func TestFromURLWhileApplying(t *testing.T) {
 		c.Apply(req)
 	}
 	<-done
+}
+
+// NuGet's files merge like NuGet merges them, so a user file's credential serves a
+// machine-wide file's source; a NuGetPackageSourceCredentials_ variable wins over
+// the file and serves only the source of its name; a disabled source, a variable
+// for a source no file names, and a credential limited to other than basic give
+// nothing.
+//
+// Verifies: REQ-AUTH-004, REQ-AUTH-022
+func TestNuGetCredentialLayersAndVariables(t *testing.T) {
+	c := &Store{bearer: map[string]string{}, basic: map[string]string{}}
+	c.readNuGetConfigs([][]byte{
+		[]byte(`<configuration>
+  <packageSourceCredentials>
+    <vendor><add key="Username" value="u"/><add key="ClearTextPassword" value="file"/></vendor>
+    <corp><add key="Username" value="u"/><add key="ClearTextPassword" value="file"/></corp>
+    <ntlm><add key="Username" value="u"/><add key="ClearTextPassword" value="p"/><add key="ValidAuthenticationTypes" value="negotiate"/></ntlm>
+  </packageSourceCredentials>
+  <disabledPackageSources><add key="off" value="true"/></disabledPackageSources>
+</configuration>`),
+		[]byte(`<configuration><packageSources>
+  <add key="vendor" value="https://vendor.example/v3/index.json"/><add key="corp" value="https://corp.example:8443/v3/index.json"/>
+  <add key="off" value="https://off.example/v3/index.json"/><add key="ntlm" value="https://ntlm.example/v3/index.json"/>
+</packageSources></configuration>`),
+	}, map[string]string{
+		"corp":    "Username=ci;Password=env",
+		"off":     "Username=ci;Password=env",
+		"unnamed": "Username=ci;Password=env",
+	})
+	for u, want := range map[string]string{
+		"https://vendor.example/x":    basicHeader("u:file"),
+		"https://corp.example:8443/x": basicHeader("ci:env"),
+		"https://corp.example/x":      "",
+		"https://off.example/x":       "",
+		"https://ntlm.example/x":      "",
+	} {
+		if got := authorization(t, c, u); got != want {
+			t.Errorf("%s: %q, want %q", u, got, want)
+		}
+	}
+	if len(c.basic) != 2 {
+		t.Errorf("filed %v", c.basic)
+	}
+}
+
+// VSS_NUGET_EXTERNAL_FEED_ENDPOINTS gives each endpoint its password: on
+// pkgs.dev.azure.com for the organization's path only, elsewhere for the host.
+//
+// Verifies: REQ-AUTH-022
+func TestVSSExternalFeedEndpoints(t *testing.T) {
+	c := &Store{bearer: map[string]string{}, basic: map[string]string{}}
+	c.readVSSEndpoints(`{"endpointCredentials":[
+  {"endpoint":"https://pkgs.dev.azure.com/acme/_packaging/feed/nuget/v3/index.json","password":"pat-1"},
+  {"endpoint":"https://pkgs.dev.azure.com/beta/proj/_packaging/f/nuget/v3/index.json","username":"b","password":"pat-2"},
+  {"endpoint":"https://nexus.corp/repository/nuget/index.json","username":"n","password":"pat-3"},
+  {"endpoint":"https://nopass.corp/index.json","username":"n"}]}`)
+	for u, want := range map[string]string{
+		"https://pkgs.dev.azure.com/acme/_packaging/0f3a/nuget/v3/flat2/x/index.json": basicHeader(":pat-1"),
+		"https://pkgs.dev.azure.com/beta/0b1c/_packaging/f/nuget/v3/flat2/":           basicHeader("b:pat-2"),
+		"https://pkgs.dev.azure.com/evil/_packaging/feed/nuget/v3/index.json":         "",
+		"https://pkgs.dev.azure.com/acmecorp/_packaging/feed/nuget/v3/index.json":     "",
+		"https://nexus.corp/any/path":                                                 basicHeader("n:pat-3"),
+		"https://nopass.corp/index.json":                                              "",
+	} {
+		if got := authorization(t, c, u); got != want {
+			t.Errorf("%s: %q, want %q", u, got, want)
+		}
+	}
+	c.readVSSEndpoints(`not json`)
+	c.readVSSEndpoints(``)
+}
+
+// Lend gives a feed the credential only when its host has none of its own.
+//
+// Verifies: REQ-AUTH-023
+func TestLendKeepsTheMachinesCredential(t *testing.T) {
+	c := &Store{bearer: map[string]string{"token.corp": "t"}, basic: map[string]string{"mine.corp": "me:mine"}}
+	c.Lend("https://mine.corp/v3/index.json", "ci", "lent")
+	c.Lend("https://token.corp/v3/index.json", "ci", "lent")
+	c.Lend("https://free.corp/v3/index.json", "ci", "lent")
+	c.Lend("https://empty.corp/v3/index.json", "ci", "")
+	c.Lend("https://pkgs.dev.azure.com/acme/_packaging/f/nuget/v3/index.json", "", "pat")
+	for u, want := range map[string]string{
+		"https://mine.corp/x":                     basicHeader("me:mine"),
+		"https://token.corp/x":                    "Bearer t",
+		"https://free.corp/x":                     basicHeader("ci:lent"),
+		"https://empty.corp/x":                    "",
+		"https://pkgs.dev.azure.com/acme/x":       basicHeader(":pat"),
+		"https://pkgs.dev.azure.com/someone-else": "",
+	} {
+		if got := authorization(t, c, u); got != want {
+			t.Errorf("%s: %q, want %q", u, got, want)
+		}
+	}
+	var nilStore *Store
+	nilStore.Lend("https://x.corp", "a", "b")
 }

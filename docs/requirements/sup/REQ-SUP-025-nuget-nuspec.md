@@ -28,6 +28,8 @@ the same for every package on the feed and is kept for the run.
 
 ## Notes
 
-Every configured feed is asked, before nuget.org
-([REQ-SUP-063](REQ-SUP-063-additive-sources-fall-back-to-the-public-index.md));
+Every enabled feed is asked, before nuget.org
+([REQ-SUP-063](REQ-SUP-063-additive-sources-fall-back-to-the-public-index.md)),
+unless `packageSourceMapping` maps the package
+([REQ-SUP-065](REQ-SUP-065-nuget-configuration-layers-and-source-mapping.md));
 a feed that lists no version of the package passes it on to the next.
