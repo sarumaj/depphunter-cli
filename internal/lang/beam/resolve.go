@@ -1,6 +1,7 @@
 package beam
 
 import (
+	"cmp"
 	"os"
 	"path"
 	"path/filepath"
@@ -21,6 +22,13 @@ type project struct {
 	lock   map[string]*locked     // its own lock, or the nearest enclosing project's
 	parent *project               // the enclosing project (an umbrella)
 	known  map[string]string      // fold(app) -> app: what it declares and what its lock holds
+	mix    bool                   // a mix.exs using Mix.Project: Mix, not rebar3, fetches
+	// rebar is the rebarRegistry of its rebar.config, for a rebar3 project.
+	rebar *string
+	// registry is the lang.Target.Registry of the Hex packages it gets from no
+	// repository it names: rebar3's repositories, from the outermost rebar3
+	// project it is part of. Mix's are hex.pm's unless a package names another.
+	registry string
 }
 
 type resolver struct {
@@ -108,6 +116,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 			}
 			if base == "mix.exs" && er.mixProject() {
 				p := proj(dir)
+				p.mix = true
 				app, _ := mixProjectInfo(er.tokens)
 				if app != "" {
 					p.app = app
@@ -125,7 +134,10 @@ func newResolver(root string, all []*scan.File) *resolver {
 			}
 		case base == "rebar.config":
 			p := proj(dir)
-			for _, d := range rebarDeps(erlForms(src)) {
+			forms := erlForms(src)
+			registry := rebarRegistry(forms)
+			p.rebar = &registry
+			for _, d := range rebarDeps(forms) {
 				if p.deps[d.app] == nil {
 					p.deps[d.app] = d
 				}
@@ -179,6 +191,16 @@ func newResolver(root string, all []*scan.File) *resolver {
 			if _, ok := p.known[fold(app)]; !ok {
 				p.known[fold(app)] = app
 			}
+		}
+		// rebar3 takes its repositories from the project it runs in, the outermost
+		// one; a rebar.config beside a Mix project's mix.exs is Mix's to read.
+		for q := p; q != nil; q = q.parent {
+			if q.rebar != nil && !q.mix {
+				p.registry = *q.rebar
+			}
+		}
+		if p.mix {
+			p.registry = ""
 		}
 		if root != "" {
 			r.readInstalled(root, p.dir)
@@ -648,13 +670,17 @@ func (r *resolver) application(file, app string) lang.Target {
 // and a git one at its commit; without it, "== 1.2.3" and a bare version pin, a git
 // ref that is a commit pins, and requirements, branches and tags float. A package
 // of a private organization (organization: or repo: in mix.exs, its repository in
-// mix.lock) names that repository as its Registry.
+// mix.lock) names that repository as its Registry; a rebar3 project's package the
+// repositories rebar3 asks (rebarRegistry).
 //
 // Implements: REQ-BEAM-010, REQ-BEAM-011, REQ-BEAM-013
 func (r *resolver) hexTarget(p *project, app string) lang.Target {
 	d := p.declared(app)
 	if l := p.lock[app]; l != nil {
 		t := lockTarget(l)
+		if t.Origin == "" && t.Registry == "" {
+			t.Registry = p.registry
+		}
 		if d != nil && t.Origin == "" && d.req != "" && d.req != l.version {
 			if v, _ := hexPinned(d.req); v != l.version {
 				t.Requested = d.req
@@ -678,7 +704,7 @@ func (r *resolver) hexTarget(p *project, app string) lang.Target {
 	default:
 		t.Version, t.Pinned = hexPinned(d.req)
 		t.Floating = d.req == ""
-		t.Registry = d.repo
+		t.Registry = cmp.Or(d.repo, p.registry)
 	}
 	return t
 }

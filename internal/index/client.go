@@ -166,12 +166,22 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 			untrusted = k.url
 		}
 	}
-	if t.Ecosystem == Hex && t.Registry != "" && len(asked) > 0 && !c.auth.Authorizes(asked[0].url+"/packages/"+url.PathEscape(t.Package)) {
-		// A private organization's package answers only to its key: asked without
-		// one, hex.pm would say "not found", which reads as a package that does not
-		// exist. Say what is missing instead, and ask nobody else.
-		// Implements: REQ-SUP-047
-		l.Index, l.Reason = asked[0].url, trace.ReasonNoKey
+	// A private organization's package answers only to its key: asked without one,
+	// hex.pm would say "not found", which reads as a package that does not exist -
+	// and a later repository in rebar3's order would be asked about a name the
+	// organization's may hold. The question stops at the first organization this
+	// machine has no key for: nobody after it is asked, and when nobody before it
+	// has the package, the report says what is missing.
+	// Implements: REQ-SUP-047, REQ-BEAM-013
+	var noKey string
+	for i, k := range asked {
+		if k.keyed && !c.auth.Authorizes(k.url+"/packages/"+url.PathEscape(t.Package)) {
+			noKey, asked = k.url, asked[:i]
+			break
+		}
+	}
+	if noKey != "" && len(asked) == 0 {
+		l.Index, l.Reason = noKey, trace.ReasonNoKey
 		c.report(l)
 		return nil
 	}
@@ -204,6 +214,9 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 	switch {
 	case err == nil:
 		c.locate(t, index, true)
+	case notFound(err) && noKey != "":
+		a = answer{source: trace.NoAnswer, reason: trace.ReasonNoKey, requests: a.requests}
+		l.Index = noKey
 	case notFound(err) && untrusted != "":
 		// Nowhere this machine may ask has it: it can only have come from the
 		// index the repository names, which is what the map and the report say.

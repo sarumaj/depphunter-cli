@@ -67,3 +67,86 @@ end
 		t.Errorf("billing: %+v\nwant %+v", got, want)
 	}
 }
+
+// rebar3 records no repository for a package, in rebar.config's deps or in
+// rebar.lock, and asks the repositories its configuration names in order, then
+// hex.pm's: a rebar3 project's Hex packages, locked or not, name that order as
+// their Registry - the project's {hex, [{repos, ...}]} and "*" for the machine's
+// and hex.pm's after them, or the replacing list alone. An umbrella's
+// applications take the root's; a Mix project's packages are Mix's, even beside a
+// rebar.config or inside a rebar3 project's directory (organization: and mix.lock
+// decide there); git and path dependencies name none.
+//
+// Verifies: REQ-BEAM-013
+func TestRebar3OrganizationRepositories(t *testing.T) {
+	root := t.TempDir()
+	for name, body := range map[string]string{
+		"shop/rebar.config": `{deps, [billing, {jsx, "~> 3.1"}, {meck, {git, "https://github.com/eproxus/meck.git", {tag, "0.9.2"}}}]}.
+{hex, [{repos, [#{name => <<"hexpm:acme">>, repo_key => <<"k">>}]}, {doc, #{provider => edoc}}]}.
+`,
+		"shop/rebar.lock": `{"1.2.0",
+[{<<"billing">>,{pkg,<<"billing">>,<<"1.2.0">>},0},
+ {<<"ledger">>,{pkg,<<"ledger">>,<<"2.0.1">>},1}]}.
+[{pkg_hash,[{<<"billing">>, <<"AB">>},{<<"ledger">>, <<"CD">>}]}].
+`,
+		"shop/apps/api/rebar.config":    `{deps, [{cowboy, "2.10.0"}]}.` + "\n",
+		"shop/apps/api/src/api.app.src": `{application, api, [{applications, [kernel, cowboy]}]}.` + "\n",
+		"shop/tools/mix.exs": `defmodule Tools.MixProject do
+  use Mix.Project
+  def project, do: [app: :tools, deps: [{:credo, "~> 1.7"}]]
+end
+`,
+		"replaced/rebar.config": `{deps, [billing]}.
+{hex, [{repos, replace, [#{name => <<"hexpm:acme">>}, #{name => <<"hexpm">>}]}]}.
+`,
+		"hexonly/rebar.config": `{deps, [jsx]}.
+{hex, [{repos, replace, [#{name => <<"hexpm">>}]}]}.
+`,
+		"mixed/mix.exs": `defmodule Mixed.MixProject do
+  use Mix.Project
+  def project, do: [app: :mixed, deps: [{:jsx, "~> 3.1"}]]
+end
+`,
+		"mixed/rebar.config": `{deps, [jsx]}.
+{hex, [{repos, [#{name => <<"hexpm:acme">>}]}]}.
+`,
+	} {
+		p := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(p), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(p, []byte(body), 0o600); err != nil {
+			t.Fatal(err)
+		}
+	}
+	r := newResolver(root, langtest.Files(t, root))
+	for _, tc := range []struct {
+		file, app string
+		want      lang.Target
+	}{
+		{"shop/rebar.config", "billing", lang.Target{Ecosystem: ecoHex, Package: "billing", Version: "1.2.0", Pinned: true, Registry: "hexpm:acme,*"}},
+		{"shop/rebar.config", "ledger", lang.Target{Ecosystem: ecoHex, Package: "ledger", Version: "2.0.1", Pinned: true, Registry: "hexpm:acme,*"}},
+		{"shop/rebar.config", "jsx", lang.Target{Ecosystem: ecoHex, Package: "jsx", Version: "~> 3.1", Registry: "hexpm:acme,*"}},
+		{"shop/rebar.config", "meck", lang.Target{Ecosystem: ecoHex, Package: "meck", Version: "0.9.2", Floating: true, Origin: "https://github.com/eproxus/meck.git"}},
+		{"shop/apps/api/rebar.config", "cowboy", lang.Target{Ecosystem: ecoHex, Package: "cowboy", Version: "2.10.0", Pinned: true, Registry: "hexpm:acme,*"}},
+		{"replaced/rebar.config", "billing", lang.Target{Ecosystem: ecoHex, Package: "billing", Floating: true, Registry: "hexpm:acme,hexpm"}},
+		{"hexonly/rebar.config", "jsx", lang.Target{Ecosystem: ecoHex, Package: "jsx", Floating: true}},
+		{"shop/tools/mix.exs", "credo", lang.Target{Ecosystem: ecoHex, Package: "credo", Version: "~> 1.7"}},
+		{"mixed/mix.exs", "jsx", lang.Target{Ecosystem: ecoHex, Package: "jsx", Version: "~> 3.1"}},
+	} {
+		if got := r.dependency(tc.file, tc.app); got != tc.want {
+			t.Errorf("%s %s: %+v\nwant %+v", tc.file, tc.app, got, tc.want)
+		}
+	}
+	for src, want := range map[string]string{
+		`{deps, []}.`: "*",
+		`{hex, [{repos, [#{name => <<"hexpm:a">>}]}, {repos, [#{name => "hexpm:b"}]}]}.`: "hexpm:a,hexpm:b,*",
+		`{hex, [{repos, [#{name => <<"hexpm">>}]}]}.`:                                    "hexpm,*",
+		`{hex, [{repos, replace, []}]}.`:                                                 "-",
+		`{hex, [{repos, [#{name => <<"a,b">>}]}]}.`:                                      "*",
+	} {
+		if got := rebarRegistry(erlForms([]byte(src))); got != want {
+			t.Errorf("%s: %q, want %q", src, got, want)
+		}
+	}
+}

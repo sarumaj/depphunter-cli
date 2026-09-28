@@ -1162,6 +1162,7 @@ and platform paths:
 | Clojure    | `deps.edn` in `CLJ_CONFIG`, else `$XDG_CONFIG_HOME/clojure` when that is set, else `~/.clojure`; Leiningen's `profiles.clj` in `LEIN_HOME`, else `~/.lein`                                                                                                                                                                                                                                                                                      |
 | Dart       | `pub-tokens.json` in `%APPDATA%\dart` on Windows, `~/Library/Application Support/dart` on macOS, else `$XDG_CONFIG_HOME/dart` (`~/.config/dart`)                                                                                                                                                                                                                                                                                                |
 | Hex        | `HEX_API_URL`, `HEX_API`, `HEX_API_KEY`, `HEX_REPOS_KEY`; `hex.config` in `HEX_HOME`, else `$XDG_CONFIG_HOME/hex` (`~/.config/hex`) under `MIX_XDG=1`, else `~/.hex`                                                                                                                                                                                                                                                                            |
+| rebar3     | `{hex, [{repos, ...}]}` of `rebar.config` in `.config/rebar3` under `REBAR_GLOBAL_CONFIG_DIR`, else the home directory; `hex.config` there, under `REBAR_CACHE_DIR` when only that is set                                                                                                                                                                                                                                                       |
 
 Nothing is read from the repository through these variables' defaults; they
 only say where this machine's own files are.
@@ -1358,6 +1359,7 @@ written for and to no other.
 | `gradle.properties` in `GRADLE_USER_HOME`                   | `<name>Username` and `<name>Password` for an init script's `maven { name = "<name>" … }`                       |
 | `pub-tokens.json` in Dart's configuration directory         | `dart pub token add` tokens (or the variable an `env` entry names), per hosted URL                             |
 | `HEX_API_KEY`, `hex.config` (`HEX_HOME`, `~/.hex`)          | the Hex user key, `api_key` or OAuth token; each `hexpm:<org>` `auth_key`; `HEX_REPOS_KEY`                     |
+| rebar3's `hex.config` (`~/.config/rebar3`)                  | `hexpm` `api_key`, `$oauth` token; each `hexpm:<org>` `api_key` and `repo_key`                                 |
 | the index URL itself                                        | `https://user:password@host/simple`, as a private pip or Cargo mirror is set                                   |
 
 Between them these cover Nexus, Artifactory, Azure Artifacts, ProGet, GitHub
@@ -1405,8 +1407,23 @@ The requirements of an organization's package are asked of the organization
 too, since the API does not say which repository each is in; `mix.lock`,
 which does, answers first. A repository with a URL of its own (a mini_repo,
 `HEX_MIRROR`) serves Hex's protobuf registry, not the API, and is not asked;
-neither is a rebar3 dependency's repository read, nor the encrypted keys of
-older Hex versions.
+nor are the encrypted keys of older Hex versions read.
+
+rebar3 records no repository for a package — not in `rebar.config`'s deps,
+not in `rebar.lock` — and asks the repositories its configuration names in
+order: `{hex, [{repos, [#{name => <<"hexpm:acme">>}]}]}` in the project's
+`rebar.config`, then in the global `~/.config/rebar3/rebar.config`, then
+hex.pm's public packages, unless the first entry is `{repos, replace,
+[...]}`. A rebar3 project's Hex packages are asked in that same order, each
+repository only when the ones before it lack the package: one found in an
+organization is never named to the public side, while one no organization has
+is looked for on hex.pm, as rebar3 would fetch it from there. The question
+stops at an organization this machine has no key for (the report says so) and
+at a repository with no API. Keys also come from rebar3's
+`~/.config/rebar3/hex.config`: a repository's own `api_key` first, `hexpm`'s
+`api_key` or the `$oauth` token of `rebar3 hex user auth` as the user's
+(after Mix's), and each `hexpm:<org>` `repo_key` that `rebar3 hex organization
+auth` stores for its organization alone.
 
 In `~/.npmrc`, `settings.xml` and `NuGet.Config`, a value that is exactly
 `${NAME}`, `${env.NAME}` or `%NAME%` is read from the environment, so a password

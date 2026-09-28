@@ -47,7 +47,9 @@ environment:
 - pub: `pub-tokens.json` in Dart's configuration directory
   ([REQ-AUTH-027](REQ-AUTH-027-pub-tokens.md)).
 - Hex: `hex.config` in `HEX_HOME`, the XDG directory under `MIX_XDG`, else
-  `~/.hex`, and Hex's variables
+  `~/.hex`; rebar3's `.config/rebar3/hex.config` under
+  `REBAR_GLOBAL_CONFIG_DIR`, else `REBAR_CACHE_DIR`, else the home directory;
+  and Hex's variables
   ([REQ-AUTH-028](REQ-AUTH-028-hex-keys.md)).
 
 ## Rationale

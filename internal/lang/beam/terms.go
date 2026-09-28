@@ -139,7 +139,8 @@ func (p *termParser) value() term {
 	case t.kind == tPunct && t.val == "{":
 		p.i++
 		v = term{kind: 't', line: line, items: p.seq("}")}
-	case t.kind == tPunct && t.val == "%" && p.i+1 < len(p.tokens) && p.tokens[p.i+1].val == "{":
+	case t.kind == tPunct && (t.val == "%" || t.val == "#" && p.erl) && p.i+1 < len(p.tokens) && p.tokens[p.i+1].val == "{":
+		// Elixir's %{...} and Erlang's #{...}
 		p.i += 2
 		v = term{kind: 'm', line: line, items: p.seq("}")}
 	case t.kind == tPunct && t.val == "<<" && p.erl:

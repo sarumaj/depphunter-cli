@@ -1,6 +1,7 @@
 package userconf
 
 import (
+	"cmp"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -67,8 +68,12 @@ type HexToken struct {
 	Expires int64
 }
 
-// HexRepo is one repository of hex.config's $repos.
+// HexRepo is one repository of hex.config's $repos, or of rebar3's hex.config.
 type HexRepo struct {
+	// APIKey is an API key for this repository alone (rebar3's api_key).
+	APIKey string
+	// AuthKey is Mix's auth_key, rebar3's repo_key: the key
+	// `mix hex.organization auth` or `rebar3 hex organization auth` stores.
 	AuthKey string
 	OAuth   HexToken
 }
@@ -142,7 +147,7 @@ func hexToken(t erlTerm) HexToken {
 	access, _ := t.get("access_token")
 	expires, _ := t.get("expires_at")
 	n, _ := strconv.ParseInt(expires.text(), 10, 64)
-	return HexToken{Access: access.text(), Expires: n}
+	return HexToken{Access: access.binary(), Expires: n}
 }
 
 // ---------------------------------------------------------------- Erlang terms
@@ -157,6 +162,15 @@ type erlTerm struct {
 // text is the atom, string, binary or number a term holds, "" for anything else.
 func (t erlTerm) text() string {
 	if t.kind == 'a' || t.kind == 's' || t.kind == 'n' {
+		return t.s
+	}
+	return ""
+}
+
+// binary is the string or binary a term holds, "" for anything else: rebar3 writes
+// an absent key as the atom undefined.
+func (t erlTerm) binary() string {
+	if t.kind == 's' {
 		return t.s
 	}
 	return ""
@@ -398,4 +412,128 @@ func (p *erlParser) number() (erlTerm, bool) {
 		}
 	}
 	return erlTerm{kind: 'n', s: strings.ReplaceAll(p.src[start:p.i], "_", "")}, true
+}
+
+// ---------------------------------------------------------------- rebar3
+
+// Rebar3GlobalConfig is the rebar.config rebar3 reads for every project, in
+// .config/rebar3 under REBAR_GLOBAL_CONFIG_DIR, else the home directory.
+//
+// Implements: REQ-SUP-064, REQ-BEAM-013
+func (m Machine) Rebar3GlobalConfig() string {
+	return join(cmp.Or(m.Env("REBAR_GLOBAL_CONFIG_DIR"), m.Home), ".config", "rebar3", "rebar.config")
+}
+
+// Rebar3HexConfig is the hex.config rebar3 and its hex plugin keep repository keys
+// and tokens in: .config/rebar3 under REBAR_GLOBAL_CONFIG_DIR, else REBAR_CACHE_DIR
+// (rebar3 makes that its global directory once the project is loaded), else the
+// home directory.
+//
+// Implements: REQ-SUP-064, REQ-AUTH-028
+func (m Machine) Rebar3HexConfig() string {
+	return join(cmp.Or(m.Env("REBAR_GLOBAL_CONFIG_DIR"), m.Env("REBAR_CACHE_DIR"), m.Home), ".config", "rebar3", "hex.config")
+}
+
+// ReadRebar3HexRepos reads the Hex repositories the global rebar.config names in
+// {hex, [{repos, [#{name => <<"hexpm:acme">>}, ...]}]}, in its order, and whether
+// its first repos entry is {repos, replace, [...]}: without replace rebar3 asks
+// hex.pm's public repository ("hexpm") after them.
+//
+// Implements: REQ-BEAM-013
+func (m Machine) ReadRebar3HexRepos() (repos []string, replace bool) {
+	name := m.Rebar3GlobalConfig()
+	if name == "" {
+		return nil, false
+	}
+	data, err := os.ReadFile(name)
+	if err != nil {
+		return nil, false
+	}
+	return ParseRebar3HexRepos(data)
+}
+
+// ParseRebar3HexRepos reads the repos entries of a rebar.config's {hex, Options}:
+// the repository names in order, and whether the first entry replaces the default.
+//
+// Implements: REQ-BEAM-013
+func ParseRebar3HexRepos(data []byte) (repos []string, replace bool) {
+	first := true
+	for _, form := range parseErlangTerms(string(data)) {
+		if form.kind != 't' || len(form.items) != 2 || form.items[0].kind != 'a' || form.items[0].s != "hex" {
+			continue
+		}
+		for _, opt := range form.items[1].items {
+			if opt.kind != 't' || len(opt.items) < 2 || opt.items[0].kind != 'a' || opt.items[0].s != "repos" {
+				continue
+			}
+			list := opt.items[len(opt.items)-1]
+			if first {
+				replace = len(opt.items) == 3 && opt.items[1].kind == 'a' && opt.items[1].s == "replace"
+				first = false
+			}
+			for _, r := range list.items {
+				if n, ok := r.get("name"); ok && n.text() != "" {
+					repos = append(repos, n.text())
+				}
+			}
+		}
+	}
+	return repos, replace
+}
+
+// ReadRebar3HexConfig reads rebar3's hex.config (Rebar3HexConfig): one map from a
+// repository name to what authenticates to it,
+//
+//	#{<<"hexpm">> => #{api_key => <<"...">>},
+//	  <<"hexpm:acme">> => #{name => <<"hexpm:acme">>, repo_key => <<"...">>},
+//	  <<"$oauth">> => #{access_token => <<"...">>, expires_at => 1893456000}}.
+//
+// as the same HexConfig Mix's is read into: hexpm's api_key is APIKey, $oauth (the
+// token `rebar3 hex user auth` stores) is OAuth, and each repository's api_key,
+// repo_key (auth_key when it has none) and oauth_token are its Repos entry.
+//
+// Implements: REQ-AUTH-028
+func (m Machine) ReadRebar3HexConfig() HexConfig {
+	name := m.Rebar3HexConfig()
+	if name == "" {
+		return HexConfig{}
+	}
+	data, err := os.ReadFile(name)
+	if err != nil {
+		return HexConfig{}
+	}
+	return ParseRebar3HexConfig(data)
+}
+
+// ParseRebar3HexConfig reads the map of rebar3's hex.config (see ReadRebar3HexConfig).
+//
+// Implements: REQ-AUTH-028
+func ParseRebar3HexConfig(data []byte) HexConfig {
+	out := HexConfig{Repos: map[string]HexRepo{}}
+	forms := parseErlangTerms(string(data))
+	if len(forms) == 0 || forms[0].kind != 'm' {
+		return out
+	}
+	m := forms[0]
+	for i := 0; i+1 < len(m.items); i += 2 {
+		name, repo := m.items[i].text(), m.items[i+1]
+		if name == "" || repo.kind != 'm' {
+			continue
+		}
+		if name == "$oauth" {
+			out.OAuth = hexToken(repo)
+			continue
+		}
+		apiKey, _ := repo.get("api_key")
+		key, _ := repo.get("repo_key")
+		if key.binary() == "" {
+			key, _ = repo.get("auth_key")
+		}
+		token, _ := repo.get("oauth_token")
+		out.Repos[name] = HexRepo{APIKey: apiKey.binary(), AuthKey: key.binary(), OAuth: hexToken(token)}
+		if name == "hexpm" {
+			out.APIKey = apiKey.binary()
+		}
+	}
+	return out
 }

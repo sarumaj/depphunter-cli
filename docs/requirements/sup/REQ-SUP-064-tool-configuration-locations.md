@@ -74,7 +74,9 @@ tool looks for it, reading the variables from the machine's environment only:
   `$XDG_CONFIG_HOME/dart` (`~/.config/dart`).
 - Hex: `HEX_API_URL`, then `HEX_API`, then the `api_url` of `hex.config` in
   `HEX_HOME`, else `$XDG_CONFIG_HOME/hex` (`~/.config/hex`) under `MIX_XDG=1`
-  or `true`, else `~/.hex`.
+  or `true`, else `~/.hex`. rebar3's Hex repositories: the `{hex, [{repos,
+  ...}]}` of its global `rebar.config`, `.config/rebar3/rebar.config` under
+  `REBAR_GLOBAL_CONFIG_DIR`, else the home directory.
 
 ## Rationale
 
@@ -108,6 +110,8 @@ fixed `$HOME` paths missed the feed the machine actually uses.
 10. Dart's configuration directory and Hex's home follow `XDG_CONFIG_HOME`,
     `MIX_XDG`, `HEX_HOME` and the platform, and `HEX_API_URL` wins over
     `HEX_API`, which wins over `hex.config`.
+11. rebar3's global `rebar.config` follows `REBAR_GLOBAL_CONFIG_DIR`, and its
+    `hex.config` `REBAR_GLOBAL_CONFIG_DIR`, then `REBAR_CACHE_DIR`.
 
 ## Notes
 

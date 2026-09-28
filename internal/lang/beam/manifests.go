@@ -1,6 +1,7 @@
 package beam
 
 import (
+	"slices"
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
@@ -355,6 +356,50 @@ func rebarDep(t term) *dependency {
 		d.req = "" // rebar2's version regex beside a git source says nothing
 	}
 	return d
+}
+
+// rebarRegistry is the lang.Target.Registry of a rebar3 project's Hex packages: the
+// Hex repositories rebar3 asks, in its order, as internal/index reads it. rebar3
+// records no repository for a package, in rebar.config's deps or in rebar.lock
+// ({pkg, Name, Vsn} and a hash); it asks the repositories its configuration names
+// - {hex, [{repos, [#{name => <<"hexpm:acme">>}]}]}, the project's and then the
+// global rebar.config's - and then hex.pm's public one ("hexpm"), unless the first
+// repos entry is {repos, replace, [...]}. "*" stands for what the machine's
+// configuration adds; "" is hex.pm's alone; "-" none at all.
+//
+// Implements: REQ-BEAM-013
+func rebarRegistry(forms []term) string {
+	var repos []string
+	replace, first := false, true
+	for _, f := range forms {
+		if f.kind != 't' || !f.at(0).isAtom("hex") {
+			continue
+		}
+		for _, opt := range f.at(1).items {
+			if opt.kind != 't' || !opt.at(0).isAtom("repos") {
+				continue
+			}
+			if first {
+				replace = len(opt.items) == 3 && opt.at(1).isAtom("replace")
+				first = false
+			}
+			for _, r := range opt.at(len(opt.items) - 1).items {
+				if n, ok := r.opt("name"); ok && n.text() != "" && !strings.Contains(n.text(), ",") {
+					repos = append(repos, strings.TrimSpace(n.text()))
+				}
+			}
+		}
+	}
+	switch {
+	case !replace:
+		repos = append(repos, "*")
+	case len(repos) == 0:
+		return "-" // replaced by none: no repository, so nothing is asked
+	}
+	if !slices.ContainsFunc(repos, func(r string) bool { return r != "hexpm" }) {
+		return ""
+	}
+	return strings.Join(repos, ",")
 }
 
 // rebarConfigImports makes a rebar.config's deps imports of what they declare.

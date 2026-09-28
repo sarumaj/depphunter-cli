@@ -15,11 +15,12 @@ import (
 // rebar.lock and a _build module file: nested and multi aliases, __MODULE__,
 // aliases a used module's quote injects, a Phoenix router scope, protocols and
 // their implementations, Erlang calls from Elixir and back, includes, and manifest
-// dependencies and applications as imports.
+// dependencies and applications as imports. The rebar3 application's Hex packages
+// are asked of the repositories rebar3 would ask (Registry "*": none of its own).
 //
 // Verifies: REQ-BEAM-001, REQ-BEAM-002, REQ-BEAM-003, REQ-BEAM-004, REQ-BEAM-005
 // Verifies: REQ-BEAM-006, REQ-BEAM-007, REQ-BEAM-008, REQ-BEAM-009, REQ-BEAM-010
-// Verifies: REQ-BEAM-011
+// Verifies: REQ-BEAM-011, REQ-BEAM-013
 func TestUmbrellaAndRebarApp(t *testing.T) {
 	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
 	imports := map[string]map[string]lang.Target{
@@ -108,34 +109,34 @@ func TestUmbrellaAndRebarApp(t *testing.T) {
 			"logger": {Ecosystem: ecoOTP, Package: "logger"},
 		},
 		"erl/rebar.config": {
-			"{cowboy, \"2.10.0\"}":                       {Ecosystem: ecoHex, Package: "cowboy", Version: "2.10.0", Pinned: true},
-			"{jsx, \"~> 3.1\"}":                          {Ecosystem: ecoHex, Package: "jsx", Version: "3.1.0", Requested: "~> 3.1", Pinned: true},
-			"erlware_commons":                            {Ecosystem: ecoHex, Package: "erlware_commons", Version: "1.7.0", Pinned: true},
-			"{hackney_fork, \"1.20.1\", {pkg, hackney}}": {Ecosystem: ecoHex, Package: "hackney", Version: "1.20.1", Pinned: true},
+			"{cowboy, \"2.10.0\"}":                       {Ecosystem: ecoHex, Package: "cowboy", Version: "2.10.0", Pinned: true, Registry: "*"},
+			"{jsx, \"~> 3.1\"}":                          {Ecosystem: ecoHex, Package: "jsx", Version: "3.1.0", Requested: "~> 3.1", Pinned: true, Registry: "*"},
+			"erlware_commons":                            {Ecosystem: ecoHex, Package: "erlware_commons", Version: "1.7.0", Pinned: true, Registry: "*"},
+			"{hackney_fork, \"1.20.1\", {pkg, hackney}}": {Ecosystem: ecoHex, Package: "hackney", Version: "1.20.1", Pinned: true, Registry: "*"},
 			"{meck, {git, \"https://github.com/eproxus/meck.git\", {ref, \"4ecc1ae9089edc6977e8c8c4cd41081513cc5590\"}}}": {Ecosystem: ecoHex, Package: "meck", Version: "4ecc1ae9089edc6977e8c8c4cd41081513cc5590", Pinned: true, Origin: "https://github.com/eproxus/meck.git"},
 			"{recon, {git, \"https://github.com/ferd/recon.git\", {branch, \"master\"}}}":                                 {Ecosystem: ecoHex, Package: "recon", Version: "master", Floating: true, Origin: "https://github.com/ferd/recon.git"},
-			"{proper, \"1.4.0\"}": {Ecosystem: ecoHex, Package: "proper", Version: "1.4.0", Pinned: true},
+			"{proper, \"1.4.0\"}": {Ecosystem: ecoHex, Package: "proper", Version: "1.4.0", Pinned: true, Registry: "*"},
 		},
 		"erl/src/erl_app.app.src": {
 			"application kernel":    {Ecosystem: ecoOTP, Package: "kernel"},
 			"application stdlib":    {Ecosystem: ecoOTP, Package: "stdlib"},
 			"application crypto":    {Ecosystem: ecoOTP, Package: "crypto"},
 			"application sasl":      {Ecosystem: ecoOTP, Package: "sasl"},
-			"application cowboy":    {Ecosystem: ecoHex, Package: "cowboy", Version: "2.10.0", Pinned: true},
-			"application jsx":       {Ecosystem: ecoHex, Package: "jsx", Version: "3.1.0", Requested: "~> 3.1", Pinned: true},
+			"application cowboy":    {Ecosystem: ecoHex, Package: "cowboy", Version: "2.10.0", Pinned: true, Registry: "*"},
+			"application jsx":       {Ecosystem: ecoHex, Package: "jsx", Version: "3.1.0", Requested: "~> 3.1", Pinned: true, Registry: "*"},
 			"application local_dep": {Ecosystem: ecoHex, Package: "local_dep", Unresolved: true},
 		},
 		"erl/src/erl_app.erl": { // cSpell: words behaviour
 			"-behaviour(application)":                         {Ecosystem: ecoOTP, Package: "application"},
 			"-include(\"erl_app.hrl\")":                       {Local: "erl/include/erl_app.hrl"},
 			"-include_lib(\"kernel/include/logger.hrl\")":     {Ecosystem: ecoOTP, Package: "kernel"},
-			"-include_lib(\"cowlib/include/cow_inline.hrl\")": {Ecosystem: ecoHex, Package: "cowlib", Version: "2.12.1", Pinned: true},
+			"-include_lib(\"cowlib/include/cow_inline.hrl\")": {Ecosystem: ecoHex, Package: "cowlib", Version: "2.12.1", Pinned: true, Registry: "*"},
 			"-include_lib(\"erl_app/include/erl_app.hrl\")":   {Local: "erl/include/erl_app.hrl"},
 			"-include(\"generated.hrl\")":                     {},
-			"cowboy_router":                                   {Ecosystem: ecoHex, Package: "cowboy", Version: "2.10.0", Pinned: true},
-			"cowboy":                                          {Ecosystem: ecoHex, Package: "cowboy", Version: "2.10.0", Pinned: true},
-			"jsx":                                             {Ecosystem: ecoHex, Package: "jsx", Version: "3.1.0", Requested: "~> 3.1", Pinned: true},
-			"ec_file":                                         {Ecosystem: ecoHex, Package: "erlware_commons", Version: "1.7.0", Pinned: true},
+			"cowboy_router":                                   {Ecosystem: ecoHex, Package: "cowboy", Version: "2.10.0", Pinned: true, Registry: "*"},
+			"cowboy":                                          {Ecosystem: ecoHex, Package: "cowboy", Version: "2.10.0", Pinned: true, Registry: "*"},
+			"jsx":                                             {Ecosystem: ecoHex, Package: "jsx", Version: "3.1.0", Requested: "~> 3.1", Pinned: true, Registry: "*"},
+			"ec_file":                                         {Ecosystem: ecoHex, Package: "erlware_commons", Version: "1.7.0", Pinned: true, Registry: "*"},
 			"crypto":                                          {Ecosystem: ecoOTP, Package: "crypto"},
 			"erl_worker":                                      {Local: "erl/src/erl_worker.erl"},
 			"lists":                                           {Ecosystem: ecoOTP, Package: "lists"},
@@ -144,7 +145,7 @@ func TestUmbrellaAndRebarApp(t *testing.T) {
 		},
 		"erl/src/erl_handler.erl": {
 			"-include(\"erl_app.hrl\")": {Local: "erl/include/erl_app.hrl"},
-			"cowboy_req":                {Ecosystem: ecoHex, Package: "cowboy", Version: "2.10.0", Pinned: true},
+			"cowboy_req":                {Ecosystem: ecoHex, Package: "cowboy", Version: "2.10.0", Pinned: true, Registry: "*"},
 		},
 		"erl/src/erl_worker.erl": {
 			"-behaviour(gen_server)": {Ecosystem: ecoOTP, Package: "gen_server"},
