@@ -18,7 +18,8 @@ Maven, NuGet, GitHub Actions, Conan (as `ConanCenter`), Composer (as
 `SwiftURL`, by the URL they are named after), pub (as `Pub`), Hex (as `Hex`),
 CRAN (as `CRAN`), Bioconductor (as `Bioconductor`), Hackage (as
 `Hackage`), opam (as `opam`) and Julia (as `Julia`), and place each
-matched advisory on its package with its fixed version.
+matched advisory on its package with its fixed version. A package pinned to a
+git commit is additionally asked about by that commit (REQ-FND-026).
 
 ## Rationale
 
@@ -36,7 +37,8 @@ repository's own files cannot answer.
    packages, haxelib libraries, Alire crates, Racket packages, Quicklisp
    projects, Soldeer packages, git submodules, nimble packages,
    jsonnet-bundler packages, CUE modules, Dhall packages, Puppet modules)
-   is not asked about.
+   is not asked about by name and version; one pinned to a full git commit
+   on a public forge is asked about by that commit alone (REQ-FND-026).
 
 ## Notes
 

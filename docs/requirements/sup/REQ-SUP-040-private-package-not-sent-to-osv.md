@@ -25,4 +25,7 @@ The query would hand the name and version of internal code to a third party.
 
 ## Notes
 
-The OSV query itself is specified by scope [`fnd`](../fnd/).
+The OSV query itself is specified by scope [`fnd`](../fnd/). A package
+private only for having been installed from a git repository on a public
+forge, and matched by no private pattern, is asked about by its commit alone
+(REQ-FND-026): the commit discloses nothing the forge does not publish.

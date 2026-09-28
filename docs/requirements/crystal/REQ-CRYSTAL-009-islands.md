@@ -14,7 +14,9 @@ verification:
 Shards **shall** form the `shards` island ("Crystal shards") and the
 standard library the hidden `crystal-std` island ("Crystal standard
 library"); `shards:` **shall** be a private-pattern prefix. Shards
-**shall not** be asked about in OSV, which has no Crystal ecosystem, nor
+**shall not** be asked about by name and version in OSV, which has no
+Crystal ecosystem (a shard locked to a full commit is asked about by that
+commit, REQ-FND-026), nor
 mapped from Trivy, which has no Crystal package type, and `--online` has no
 index to ask (shards are git repositories; shardbox.org offers no
 dependency API). crystalline serves `--lsp` references for `.cr` files

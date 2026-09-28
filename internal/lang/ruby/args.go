@@ -186,9 +186,10 @@ func splitTop(s string, op byte) []string {
 	for i := 0; i < len(s); i++ {
 		switch c := s[i]; {
 		case quote != 0:
-			if c == '\\' {
+			switch c {
+			case '\\':
 				i++
-			} else if c == quote {
+			case quote:
 				quote = 0
 			}
 		case c == '\'' || c == '"':

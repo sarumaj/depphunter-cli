@@ -21,7 +21,7 @@ type declaration struct {
 	name        string
 	requirement string // "~> 7.0, >= 7.0.4"; "" for any version
 	origin      string // git: or path: source
-	commit      bool   // origin pinned to a commit (ref: a full SHA)
+	commit      string // the full SHA a git origin is pinned to (ref:), else ""
 }
 
 // spec is a gem Gemfile.lock records.
@@ -29,7 +29,7 @@ type spec struct {
 	name, version string
 	deps          map[string]string // name -> requirement
 	origin        string            // remote of a GIT or PATH section; "" for a gem server
-	commit        bool              // GIT section with a revision
+	commit        string            // a GIT section's revision, when it is a full SHA
 	path          bool              // PATH section: the gem's code is on disk
 }
 
@@ -125,7 +125,9 @@ func readGemfile(src string, read func(rel string) (string, bool)) (decls []*dec
 		case opts["github"] != "":
 			d.origin = "https://github.com/" + opts["github"] + ".git"
 		}
-		d.commit = d.origin != "" && lang.Commit(opts["ref"])
+		if d.origin != "" && lang.Commit(opts["ref"]) {
+			d.commit = opts["ref"]
+		}
 		decls = append(decls, d)
 	}
 	return decls, gemspecDirs
@@ -137,9 +139,10 @@ func stripComment(line string) string {
 	for i := 0; i < len(line); i++ {
 		switch c := line[i]; {
 		case quote != 0:
-			if c == '\\' {
+			switch c {
+			case '\\':
 				i++
-			} else if c == quote {
+			case quote:
 				quote = 0
 			}
 		case c == '\'' || c == '"':
@@ -247,7 +250,10 @@ func readLock(src string) (map[string]*spec, map[string]string) {
 				cur = &spec{name: m[1], version: platformless(m[2]), deps: map[string]string{}}
 				switch section {
 				case "GIT":
-					cur.origin, cur.commit = remote, lang.Commit(revision)
+					cur.origin = remote
+					if lang.Commit(revision) {
+						cur.commit = revision
+					}
 				case "PATH":
 					cur.origin, cur.path = remote, true
 				}
@@ -280,7 +286,7 @@ func platformless(v string) string {
 // version exactly ("1.2.3" or "= 1.2.3"), and a gem declared without any version
 // floats.
 //
-// Implements: REQ-RUBY-009
+// Implements: REQ-RUBY-009, REQ-FND-026
 func (p *project) target(name string) lang.Target {
 	key := strings.ToLower(name)
 	d := p.declared[key]
@@ -290,7 +296,10 @@ func (p *project) target(name string) lang.Target {
 		case s.path:
 			t.Origin, t.Pinned = "path:"+s.origin, false
 		case s.origin != "":
-			t.Origin, t.Pinned = s.origin, s.commit
+			t.Origin, t.Pinned = s.origin, s.commit != ""
+			if s.commit != "" {
+				t.Git = s.origin + "#" + s.commit
+			}
 		}
 		if d != nil && d.requirement != "" && d.requirement != s.version && d.requirement != "= "+s.version {
 			t.Requested = d.requirement
@@ -303,7 +312,10 @@ func (p *project) target(name string) lang.Target {
 	t := lang.Target{Ecosystem: ecoGems, Package: d.name, Version: d.requirement, Origin: d.origin}
 	switch {
 	case d.origin != "":
-		t.Pinned, t.Floating = d.commit, !d.commit
+		t.Pinned, t.Floating = d.commit != "", d.commit == ""
+		if d.commit != "" {
+			t.Git = d.origin + "#" + d.commit
+		}
 	default:
 		t.Version, t.Pinned = exactVersion(d.requirement)
 		t.Floating = d.requirement == ""

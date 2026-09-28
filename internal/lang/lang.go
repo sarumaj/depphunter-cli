@@ -64,6 +64,12 @@ type Target struct {
 	// index - a local directory, an archive, a VCS URL - which is how a package no
 	// index has is known at all. Nothing so marked is named to an index.
 	Origin string
+	// Git is the git checkout the package was built from, "<repository URL>#<full
+	// commit>", when Version shows something else: a gem's or a crate's release, a
+	// commit shortened for display. The vulnerability database is asked about the
+	// commit (see GitPin); it names nothing to an index and does not make the
+	// package private.
+	Git string
 	// Registry is the alternative registry a package is published to when its
 	// manifest or lock file names one: a Cargo registry's name (`registry =
 	// "corp"`) or its index URL (Cargo.lock's `source = "registry+<url>"`). Only

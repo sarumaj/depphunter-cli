@@ -35,7 +35,7 @@ func check(t *testing.T, root string, imports map[string]map[string]lang.Target,
 // lock, the Gemfile's own declarations, and constants Zeitwerk would autoload.
 //
 // Verifies: REQ-RUBY-001, REQ-RUBY-002, REQ-RUBY-003, REQ-RUBY-004, REQ-RUBY-005
-// Verifies: REQ-RUBY-006, REQ-RUBY-007, REQ-RUBY-008, REQ-RUBY-009, REQ-RUBY-010
+// Verifies: REQ-RUBY-006, REQ-RUBY-007, REQ-RUBY-008, REQ-RUBY-009, REQ-RUBY-010, REQ-FND-026
 func TestRailsApplication(t *testing.T) {
 	check(t, "testdata/repo", map[string]map[string]lang.Target{
 		"Gemfile": {
@@ -43,7 +43,7 @@ func TestRailsApplication(t *testing.T) {
 			`gem "pg", "1.5.4"`:       {Ecosystem: ecoGems, Package: "pg", Version: "1.5.4", Pinned: true},
 			`gem "puma", ">= 5.0"`:    {Ecosystem: ecoGems, Package: "puma", Version: "6.4.0", Requested: ">= 5.0", Pinned: true},
 			`gem "sidekiq"`:           {Ecosystem: ecoGems, Package: "sidekiq", Version: "7.2.0", Pinned: true},
-			`gem "devise", github: "heartcombo/devise", ref: "0123456789abcdef0123456789abcdef01234567"`: {Ecosystem: ecoGems, Package: "devise", Version: "4.9.3", Pinned: true, Origin: "https://github.com/heartcombo/devise.git"},
+			`gem "devise", github: "heartcombo/devise", ref: "0123456789abcdef0123456789abcdef01234567"`: {Ecosystem: ecoGems, Package: "devise", Version: "4.9.3", Pinned: true, Origin: "https://github.com/heartcombo/devise.git", Git: "https://github.com/heartcombo/devise.git#0123456789abcdef0123456789abcdef01234567"},
 			`gem "billing", path: "gems/billing"`:                                                        {Local: "gems/billing/billing.gemspec"},
 			`gem "rspec-rails", "~> 6.0", require: false`:                                                {Ecosystem: ecoGems, Package: "rspec-rails", Version: "6.1.0", Requested: "~> 6.0", Pinned: true},
 			`gem "acme-auth"`: {Ecosystem: ecoGems, Package: "acme-auth", Version: "2.0.1", Pinned: true},

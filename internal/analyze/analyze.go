@@ -483,6 +483,9 @@ func (b *builder) target(t lang.Target, ecosystems map[string]lang.Ecosystem) st
 	if n.Version == "" {
 		n.Version = t.Version
 	}
+	if n.Git == "" {
+		n.Git = t.Git
+	}
 	if n.Requested == "" {
 		n.Requested = t.Requested
 	}

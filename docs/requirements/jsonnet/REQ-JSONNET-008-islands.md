@@ -12,8 +12,10 @@ verification:
 ## Statement
 
 jsonnet-bundler packages **shall** form the "jsonnet-bundler packages"
-island, with `jsonnet-bundler:` as a private-pattern prefix. No
-vulnerability database and no registry **shall** be asked about them.
+island, with `jsonnet-bundler:` as a private-pattern prefix. No registry
+**shall** be asked about them, and the vulnerability database only about the
+commit a lock pins one to, when its repository is on a public forge
+(REQ-FND-026).
 
 ## Rationale
 

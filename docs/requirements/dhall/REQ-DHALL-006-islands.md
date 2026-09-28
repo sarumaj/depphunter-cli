@@ -12,8 +12,10 @@ verification:
 ## Statement
 
 Remote Dhall imports **shall** form the "Dhall packages" island, with
-`dhall:` as a private-pattern prefix. No vulnerability database and no
-registry **shall** be asked about them.
+`dhall:` as a private-pattern prefix. No registry **shall** be asked about
+them, and the vulnerability database only about the commit an import's URL
+names, when it names a full one of a repository on a public forge
+(REQ-FND-026).
 
 ## Rationale
 

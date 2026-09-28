@@ -22,7 +22,7 @@ import (
 // file using both. examples/nolock is a flake without a lock.
 
 var (
-	nixpkgs = lang.Target{Ecosystem: ecoNix, Package: "github.com/nixos/nixpkgs", Version: "ad57eef", Requested: "nixos-24.05", Pinned: true}
+	nixpkgs = lang.Target{Ecosystem: ecoNix, Package: "github.com/nixos/nixpkgs", Version: "ad57eef", Requested: "nixos-24.05", Pinned: true, Git: "https://github.com/NixOS/nixpkgs#ad57eef4ef0659193044870c731987a6df5cf56b"}
 	channel = lang.Target{Ecosystem: ecoNix, Package: "nixpkgs", Floating: true}
 )
 
@@ -35,19 +35,19 @@ func TestFlakeInputs(t *testing.T) {
 	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
 	langtest.CheckImports(t, res["flake.nix"], map[string]lang.Target{
 		"inputs.nixpkgs":      nixpkgs,
-		"inputs.flake-utils":  {Ecosystem: ecoNix, Package: "github.com/numtide/flake-utils", Version: "b1d9ab7", Pinned: true},
-		"inputs.home-manager": {Ecosystem: ecoNix, Package: "github.com/nix-community/home-manager", Version: "5d15142", Requested: "release-24.05", Pinned: true},
-		"inputs.foo":          {Ecosystem: ecoNix, Package: "git.example.org/team/foo", Version: "0123456", Pinned: true},
+		"inputs.flake-utils":  {Ecosystem: ecoNix, Package: "github.com/numtide/flake-utils", Version: "b1d9ab7", Pinned: true, Git: "https://github.com/numtide/flake-utils#b1d9ab70662946ef0850d488da1c9019f3a9752a"},
+		"inputs.home-manager": {Ecosystem: ecoNix, Package: "github.com/nix-community/home-manager", Version: "5d15142", Requested: "release-24.05", Pinned: true, Git: "https://github.com/nix-community/home-manager#5d151429e1e79107acf6d06dcc5ace4e642ec239"},
+		"inputs.foo":          {Ecosystem: ecoNix, Package: "git.example.org/team/foo", Version: "0123456", Pinned: true, Git: "https://git.example.org/team/foo#0123456789abcdef0123456789abcdef01234567"},
 		"inputs.bar":          {Local: "sub/flake.nix"},
 		"inputs.baz":          {Ecosystem: ecoNix, Package: "example.org/downloads/baz", Version: "1.2", Pinned: true},
-		"inputs.tagged":       {Ecosystem: ecoNix, Package: "gitlab.com/acme/tools", Version: "cafebab", Requested: "v1.4.0", Pinned: true},
+		"inputs.tagged":       {Ecosystem: ecoNix, Package: "gitlab.com/acme/tools", Version: "cafebab", Requested: "v1.4.0", Pinned: true, Git: "https://gitlab.com/acme/tools#cafebabecafebabecafebabecafebabecafebabe"},
 		// flake:nixpkgs is the registry's alias, whatever the lock resolved it to.
-		"inputs.registry": {Ecosystem: ecoNix, Package: "nixpkgs", Version: "bfb7a88", Requested: "nixos-unstable", Pinned: true},
-		"inputs.typed":    {Ecosystem: ecoNix, Package: "github.com/acme/typed", Version: "deadbee", Requested: "dev", Pinned: true},
+		"inputs.registry": {Ecosystem: ecoNix, Package: "nixpkgs", Version: "bfb7a88", Requested: "nixos-unstable", Pinned: true, Git: "https://github.com/NixOS/nixpkgs#bfb7a882678e518398ce9a31a881538679f6f092"},
+		"inputs.typed":    {Ecosystem: ecoNix, Package: "github.com/acme/typed", Version: "deadbee", Requested: "dev", Pinned: true, Git: "https://github.com/acme/typed#deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"},
 		"inputs.same":     nixpkgs, // follows: the followed input, no node of its own
 		"inputs.hub":      {Ecosystem: ecoNix, Package: "flakehub.com/f/NixOS/nixpkgs", Version: "9d29cd2", Requested: "0.1.*", Pinned: true},
 		// An outputs argument without an input: the registry's "systems".
-		"inputs.systems": {Ecosystem: ecoNix, Package: "systems", Version: "da67096", Pinned: true},
+		"inputs.systems": {Ecosystem: ecoNix, Package: "systems", Version: "da67096", Pinned: true, Git: "https://github.com/nix-systems/default#da67096a3b9bf56a91d16901293e51ba5b49a27e"},
 		"./overlays":     {Local: "overlays/default.nix"},
 		"./pkgs/hello":   {Local: "pkgs/hello/default.nix"},
 		"./shell.nix":    {Local: "shell.nix"},
@@ -58,7 +58,7 @@ func TestFlakeInputs(t *testing.T) {
 	// hash pins, a tag neither.
 	langtest.CheckImports(t, res["examples/nolock/flake.nix"], map[string]lang.Target{
 		"inputs.nixpkgs": {Ecosystem: ecoNix, Package: "github.com/nixos/nixpkgs", Version: "nixos-24.05", Floating: true},
-		"inputs.commit":  {Ecosystem: ecoNix, Package: "github.com/acme/commit", Version: "0123456", Pinned: true},
+		"inputs.commit":  {Ecosystem: ecoNix, Package: "github.com/acme/commit", Version: "0123456", Pinned: true, Git: "https://github.com/acme/commit#0123456789abcdef0123456789abcdef01234567"},
 		"inputs.tag":     {Ecosystem: ecoNix, Package: "github.com/acme/tag", Version: "v2.0.1"},
 		"inputs.hashed":  {Ecosystem: ecoNix, Package: "example.org/hashed", Version: "sha256-AAAAAAAAAAAA", Pinned: true},
 		"inputs.ssh":     {Ecosystem: ecoNix, Package: "github.com/acme/private", Version: "main", Floating: true},
@@ -80,22 +80,22 @@ func TestFlakeInputs(t *testing.T) {
 	})
 }
 
-// Verifies: REQ-NIX-005
+// Verifies: REQ-NIX-005, REQ-FND-026
 func TestFlakeLock(t *testing.T) {
 	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
 	langtest.CheckImports(t, res["flake.lock"], map[string]lang.Target{
 		"bar":          {Local: "sub/flake.nix"},
 		"baz":          {Ecosystem: ecoNix, Package: "example.org/downloads/baz", Version: "1.2", Pinned: true},
-		"flake-utils":  {Ecosystem: ecoNix, Package: "github.com/numtide/flake-utils", Version: "b1d9ab7", Pinned: true},
-		"foo":          {Ecosystem: ecoNix, Package: "git.example.org/team/foo", Version: "0123456", Pinned: true},
-		"home-manager": {Ecosystem: ecoNix, Package: "github.com/nix-community/home-manager", Version: "5d15142", Requested: "release-24.05", Pinned: true},
+		"flake-utils":  {Ecosystem: ecoNix, Package: "github.com/numtide/flake-utils", Version: "b1d9ab7", Pinned: true, Git: "https://github.com/numtide/flake-utils#b1d9ab70662946ef0850d488da1c9019f3a9752a"},
+		"foo":          {Ecosystem: ecoNix, Package: "git.example.org/team/foo", Version: "0123456", Pinned: true, Git: "https://git.example.org/team/foo#0123456789abcdef0123456789abcdef01234567"},
+		"home-manager": {Ecosystem: ecoNix, Package: "github.com/nix-community/home-manager", Version: "5d15142", Requested: "release-24.05", Pinned: true, Git: "https://github.com/nix-community/home-manager#5d151429e1e79107acf6d06dcc5ace4e642ec239"},
 		"hub":          {Ecosystem: ecoNix, Package: "flakehub.com/f/NixOS/nixpkgs", Version: "9d29cd2", Requested: "0.1.*", Pinned: true},
 		"nixpkgs":      nixpkgs,
-		"registry":     {Ecosystem: ecoNix, Package: "nixpkgs", Version: "bfb7a88", Requested: "nixos-unstable", Pinned: true},
-		"systems":      {Ecosystem: ecoNix, Package: "github.com/nix-systems/default", Version: "da67096", Pinned: true},
-		"systems_2":    {Ecosystem: ecoNix, Package: "systems", Version: "da67096", Pinned: true},
-		"tagged":       {Ecosystem: ecoNix, Package: "gitlab.com/acme/tools", Version: "cafebab", Requested: "v1.4.0", Pinned: true},
-		"typed":        {Ecosystem: ecoNix, Package: "github.com/acme/typed", Version: "deadbee", Requested: "dev", Pinned: true},
+		"registry":     {Ecosystem: ecoNix, Package: "nixpkgs", Version: "bfb7a88", Requested: "nixos-unstable", Pinned: true, Git: "https://github.com/NixOS/nixpkgs#bfb7a882678e518398ce9a31a881538679f6f092"},
+		"systems":      {Ecosystem: ecoNix, Package: "github.com/nix-systems/default", Version: "da67096", Pinned: true, Git: "https://github.com/nix-systems/default#da67096a3b9bf56a91d16901293e51ba5b49a27e"},
+		"systems_2":    {Ecosystem: ecoNix, Package: "systems", Version: "da67096", Pinned: true, Git: "https://github.com/nix-systems/default#da67096a3b9bf56a91d16901293e51ba5b49a27e"},
+		"tagged":       {Ecosystem: ecoNix, Package: "gitlab.com/acme/tools", Version: "cafebab", Requested: "v1.4.0", Pinned: true, Git: "https://gitlab.com/acme/tools#cafebabecafebabecafebabecafebabecafebabe"},
+		"typed":        {Ecosystem: ecoNix, Package: "github.com/acme/typed", Version: "deadbee", Requested: "dev", Pinned: true, Git: "https://github.com/acme/typed#deadbeefdeadbeefdeadbeefdeadbeefdeadbeef"},
 	})
 	if got := res["flake.lock"].Imports[0].Line; got != 3 {
 		t.Errorf("bar's line: got %d, want 3", got)
@@ -104,7 +104,7 @@ func TestFlakeLock(t *testing.T) {
 	// --resolve-depth: each node's inputs, follows taken to the node they name.
 	r := newResolver(langtest.Files(t, "testdata/repo"))
 	for name, want := range map[string][]lang.Target{
-		"flake-utils":  {{Ecosystem: ecoNix, Package: "github.com/nix-systems/default", Version: "da67096", Pinned: true}},
+		"flake-utils":  {{Ecosystem: ecoNix, Package: "github.com/nix-systems/default", Version: "da67096", Pinned: true, Git: "https://github.com/nix-systems/default#da67096a3b9bf56a91d16901293e51ba5b49a27e"}},
 		"home-manager": {nixpkgs},
 		"foo":          {nixpkgs},
 		"nixpkgs":      nil,
@@ -134,7 +134,7 @@ func TestImportsAndPaths(t *testing.T) {
 		"vim":                pkg("vim"),
 		"git":                pkg("git"),
 		"pkgs.htop":          pkg("htop"),
-		"inputs.foo":         {Ecosystem: ecoNix, Package: "git.example.org/team/foo", Version: "0123456", Pinned: true},
+		"inputs.foo":         {Ecosystem: ecoNix, Package: "git.example.org/team/foo", Version: "0123456", Pinned: true, Git: "https://git.example.org/team/foo#0123456789abcdef0123456789abcdef01234567"},
 		"../lib/VERSION":     {Local: "lib/VERSION"},
 	})
 	// callPackage's formals are packages; a let-bound derivation and a function's
@@ -166,8 +166,8 @@ func TestImportsAndPaths(t *testing.T) {
 // Verifies: REQ-NIX-008, REQ-NIX-006, REQ-NIX-010
 func TestPins(t *testing.T) {
 	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	hm := lang.Target{Ecosystem: ecoNix, Package: "github.com/nix-community/home-manager", Version: "a1b2c3d", Requested: "release-24.05", Pinned: true}
-	nivNixpkgs := lang.Target{Ecosystem: ecoNix, Package: "github.com/nixos/nixpkgs", Version: "fedcba9", Requested: "nixos-23.11", Pinned: true}
+	hm := lang.Target{Ecosystem: ecoNix, Package: "github.com/nix-community/home-manager", Version: "a1b2c3d", Requested: "release-24.05", Pinned: true, Git: "https://github.com/nix-community/home-manager#a1b2c3d4e5f60718293a4b5c6d7e8f9012345678"}
+	nivNixpkgs := lang.Target{Ecosystem: ecoNix, Package: "github.com/nixos/nixpkgs", Version: "fedcba9", Requested: "nixos-23.11", Pinned: true, Git: "https://github.com/NixOS/nixpkgs#fedcba9876543210fedcba9876543210fedcba98"}
 	release := lang.Target{Ecosystem: ecoNix, Package: "nixpkgs", Version: "nixos-24.05.1234.abcdef0", Requested: "nixos-24.05", Pinned: true}
 	langtest.CheckImports(t, res["nix/sources.json"], map[string]lang.Target{
 		"home-manager": hm,
@@ -176,8 +176,8 @@ func TestPins(t *testing.T) {
 	})
 	langtest.CheckImports(t, res["npins/sources.json"], map[string]lang.Target{
 		"nixpkgs": release,
-		"lix":     {Ecosystem: ecoNix, Package: "git.lix.systems/lix-project/lix", Version: "9876543", Requested: "main", Pinned: true},
-		"treefmt": {Ecosystem: ecoNix, Package: "github.com/numtide/treefmt-nix", Version: "1111111", Requested: "v2.1.0", Pinned: true},
+		"lix":     {Ecosystem: ecoNix, Package: "git.lix.systems/lix-project/lix", Version: "9876543", Requested: "main", Pinned: true, Git: "https://git.lix.systems/lix-project/lix.git#9876543210abcdef9876543210abcdef98765432"},
+		"treefmt": {Ecosystem: ecoNix, Package: "github.com/numtide/treefmt-nix", Version: "1111111", Requested: "v2.1.0", Pinned: true, Git: "https://github.com/numtide/treefmt-nix#1111111111222222222233333333334444444444"},
 	})
 	// sources.x and pins.x through the loaders' bindings, and the fetchers.
 	langtest.CheckImports(t, res["legacy.nix"], map[string]lang.Target{
@@ -298,7 +298,7 @@ func TestReferences(t *testing.T) {
 	for s, want := range map[string]lang.Target{
 		"github:NixOS/nixpkgs":                                    {Ecosystem: ecoNix, Package: "github.com/nixos/nixpkgs", Floating: true},
 		"github:NixOS/nixpkgs?ref=nixos-24.05":                    {Ecosystem: ecoNix, Package: "github.com/nixos/nixpkgs", Version: "nixos-24.05", Floating: true},
-		"github:o/r?rev=0123456789abcdef0123456789abcdef01234567": {Ecosystem: ecoNix, Package: "github.com/o/r", Version: "0123456", Pinned: true},
+		"github:o/r?rev=0123456789abcdef0123456789abcdef01234567": {Ecosystem: ecoNix, Package: "github.com/o/r", Version: "0123456", Pinned: true, Git: "https://github.com/o/r#0123456789abcdef0123456789abcdef01234567"},
 		"github:o/r/v1.2.3":                                       {Ecosystem: ecoNix, Package: "github.com/o/r", Version: "v1.2.3"},
 		"github:o/r?host=github.example.com":                      {Ecosystem: ecoNix, Package: "github.example.com/o/r", Floating: true},
 		"gitlab:group%2Fsub/repo":                                 {Ecosystem: ecoNix, Package: "gitlab.com/group/sub/repo", Floating: true},

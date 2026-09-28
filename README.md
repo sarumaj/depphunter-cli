@@ -695,35 +695,37 @@ point where the map occupies roughly a third of the view. In walk mode the
 walker may travel 3 units out over the water and 12 units above the tallest
 building.
 
-|                           |                                                                                                                   |
-|---------------------------|-------------------------------------------------------------------------------------------------------------------|
-| Drag / right-drag / wheel | pan, orbit, zoom                                                                                                  |
-| Click / double-click      | select, expand or collapse; double-click on open ground enters walk mode                                          |
-| Middle-drag               | zoom                                                                                                              |
-| `Enter`, `Backspace`      | expand or collapse the selection, select parent                                                                   |
-| `→` `←` in the panel      | expand or collapse a dependency row                                                                               |
-| `Enter` while reading     | close the details and resume                                                                                      |
-| `E` `Q` in walk mode      | the next tool for the right hand, the left hand                                                                   |
-| `Q` `E`                   | rotate by 90°                                                                                                     |
-| `Home`                    | fit the map to the view                                                                                           |
-| `R`                       | reset the view                                                                                                    |
-| `+` `-`                   | expand or collapse one level throughout                                                                           |
-| `/`                       | search files, symbols and packages                                                                                |
-| `O`                       | open the selected file in the editor                                                                              |
-| `P`                       | write the map to a PNG image                                                                                      |
-| Legend click              | show or hide a language                                                                                           |
-| Pin click                 | read the findings recorded on a building                                                                          |
-| `⤢` in the details        | maximize the details over the map, or put them back beside it; remembered for the next file                       |
-| Find in the details       | search a file's source: every match highlighted, `Enter`/`Shift+Enter` or `↓`/`↑` step through them, `Esc` clears |
-| `+` beside a finding      | add it to the backpack                                                                                            |
-| `B`                       | open the backpack                                                                                                 |
-| `G`                       | open the photographs the camera has taken; from the street each can be put up on the camera and looked at there   |
-| `X`                       | open the export menu                                                                                              |
-| `K`                       | save settings to the config file                                                                                  |
-| The figure                | the walker's last position in walk mode                                                                           |
-| `Esc`                     | close the photographs or the backpack, or clear the selection                                                     |
-| `V`                       | enter walk mode                                                                                                   |
-| `?`                       | show all the controls                                                                                             |
+|                           |                                                                          |
+|---------------------------|--------------------------------------------------------------------------|
+| Drag / right-drag / wheel | pan, orbit, zoom                                                         |
+| Click / double-click      | select, expand or collapse; double-click on open ground enters walk mode |
+| Middle-drag               | zoom                                                                     |
+| `Enter`, `Backspace`      | expand or collapse the selection, select parent                          |
+| `→` `←` in the panel      | expand or collapse a dependency row                                      |
+| `Enter` while reading     | close the details and resume                                             |
+| `E` `Q` in walk mode      | the next tool for the right hand, the left hand                          |
+| `Q` `E`                   | rotate by 90°                                                            |
+| `Home`                    | fit the map to the view                                                  |
+| `R`                       | reset the view                                                           |
+| `+` `-`                   | expand or collapse one level throughout                                  |
+| `/`                       | search files, symbols and packages                                       |
+| `O`                       | open the selected file in the editor                                     |
+| `P`                       | write the map to a PNG image                                             |
+| Legend click              | show or hide a language                                                  |
+| Pin click                 | read the findings recorded on a building                                 |
+
+|                      |                                                                                                                   |
+|----------------------|-------------------------------------------------------------------------------------------------------------------|
+| Find in the details  | search a file's source: every match highlighted, `Enter`/`Shift+Enter` or `↓`/`↑` step through them, `Esc` clears |
+| `+` beside a finding | add it to the backpack                                                                                            |
+| `B`                  | open the backpack                                                                                                 |
+| `G`                  | open the photographs the camera has taken; from the street each can be put up on the camera and looked at there   |
+| `X`                  | open the export menu                                                                                              |
+| `K`                  | save settings to the config file                                                                                  |
+| The figure           | the walker's last position in walk mode                                                                           |
+| `Esc`                | close the photographs or the backpack, or clear the selection                                                     |
+| `V`                  | enter walk mode                                                              ^                                    |
+| `?`                  | show all the controls                                                                                             |
 
 In walk mode:
 
@@ -835,7 +837,40 @@ Alire crates, Racket packages, Quicklisp projects, Soldeer packages, git
 submodules (a Hardhat project's npm packages are asked about as npm),
 nimble packages, jsonnet-bundler packages, CUE modules (the Go modules CUE
 definitions were generated from are asked about as Go), Dhall packages or
-Puppet modules.
+Puppet modules by name and version.
+
+A package fixed to a full git commit (40 hex digits, or 64 for SHA-256) is also
+asked about by that commit — OSV matches a commit against the repositories and
+commit ranges its advisories record, whatever the ecosystem — in the same
+batch, so the git dependencies of the ecosystems above get an answer after all.
+The commit is read from:
+
+| Pin                                                                 | Ecosystems                                                                                                                                                                                                                                                                                                                                                                                             |
+|---------------------------------------------------------------------|--------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| a version that is a full commit                                     | Carthage, Zig, Paket GitHub and git files, CMake `FetchContent`, Terraform git module sources, SwiftPM revisions, git submodules, jsonnet-bundler, dub, fpm, nimble, haxelib, Alire, Quicklisp, Soldeer, CocoaPods, Bazel `git_override`/`git_repository`, Puppet git modules, PureScript git packages, and the git dependencies of mix, rebar3, Gleam, CRAN remotes, Hackage, opam, Clojure and Julia |
+| `<version>+git.commit.<sha>`                                        | Crystal shards                                                                                                                                                                                                                                                                                                                                                                                         |
+| `github:owner/repo#<sha>`, `git+<url>#<sha>`                        | npm                                                                                                                                                                                                                                                                                                                                                                                                    |
+| `dev-<branch>#<sha>`, and a composer.lock branch's source reference | Composer                                                                                                                                                                                                                                                                                                                                                                                               |
+| the lock's `GIT` section revision                                   | Bundler                                                                                                                                                                                                                                                                                                                                                                                                |
+| the Cargo.lock source `git+<url>#<sha>`                             | Cargo                                                                                                                                                                                                                                                                                                                                                                                                  |
+| a direct reference `name @ git+<url>@<sha>` (which now pins)        | PyPI                                                                                                                                                                                                                                                                                                                                                                                                   |
+| the locked `rev` (the map shows it shortened)                       | Nix flake inputs, niv and npins                                                                                                                                                                                                                                                                                                                                                                        |
+
+Only a commit of a repository on a public forge (github.com, gitlab.com,
+bitbucket.org, codeberg.org, sr.ht) is sent — or, for shards, Alire, haxelib,
+Soldeer, fpm, nimble and Quicklisp packages that name no repository, one their
+plugin found on a public forge (a repository elsewhere is recorded as the
+package's origin and makes it private). Nothing a `--private` pattern or
+`GOPRIVATE` matches, by package name or by repository, is sent. A package that
+is private only because it was installed from a public repository instead of an
+index (a mix git dependency, a Bundler `GIT` gem) is asked about by its commit
+alone, never by its name and version, and a version that is itself a git
+reference is not sent as a version. A shortened commit (Bun's seven digits) is
+not a pin OSV can be asked about. What a commit matched is reported by
+**OSV (git commit)**, with the fixed commit of the advisory's range for that
+repository; an advisory the package's name and version already returned, under
+its id or an alias, is shown once.
+
 Floating packages are not queried, since they resolve to a different version
 on the next installation. Answers are cached for six hours. `--no-vulns`
 disables all of this.
@@ -1609,8 +1644,11 @@ configured requires no further setting.
 
 A package matched in this way is drawn with a **private** label, is never named
 to that ecosystem's public index, and is never sent to the vulnerability
-database. It is still queried against an index *this machine* configures, since
-an internal registry already knows of it, so a private registry continues to
+database — neither its name and version nor, when it is a git dependency, its
+commit (a pattern matching its repository, `github.com/acme/*`, keeps the
+commit back too). It is still queried against an index *this machine*
+configures, since an internal registry already knows of it, so a private
+registry continues to
 answer for what its packages depend on — whether it replaces the public index
 or is asked beside it (an extra pip index, a NuGet feed). A private package that
 such an index does not have is not looked for on the public one, and one whose
@@ -1902,7 +1940,9 @@ top-level definitions (`#Name`) and fields are the symbols.
 
 OSV has no Jsonnet or CUE ecosystem, jsonnet-bundler has no registry, and
 CUE's central registry is an OCI registry that `--online` does not read, so
-neither kind of package is asked about.
+neither kind of package is asked about by name and version; a jsonnet-bundler
+package locked to a commit of a repository on a public forge is asked about by
+that commit.
 
 ### Dhall, Puppet and Rego
 
@@ -1964,7 +2004,9 @@ in; data no policy declares (JSON documents, bundles) is dropped, since
 OPA has no package manager. The package, rules and functions are the
 symbols.
 
-OSV has no Dhall or Puppet Forge ecosystem and Dhall has no registry.
+OSV has no Dhall or Puppet Forge ecosystem and Dhall has no registry; only a
+Dhall import URL or a git-fetched Puppet module naming a full commit of a
+repository on a public forge is asked about, by that commit.
 The Puppet Forge's API was not reachable when this was written, so
 `--online` asks nothing about Puppet modules either.
 
@@ -2076,7 +2118,8 @@ names) are the symbols, and a flake's outputs (`packages.default`,
 `nixosModules.default`). The pinning rule is the one used elsewhere: a lock,
 a commit or a content hash pins, a tag neither pins nor floats, a branch or
 nothing floats. There is no Nix package index for `--online` to ask, and no
-vulnerability database covers Nix.
+vulnerability database covers Nix by name; a flake input, niv or npins source
+locked to a git commit on a public forge is asked about by that commit.
 
 ### Gleam
 
@@ -2182,7 +2225,8 @@ without running spago; `.spago/` is not read as source, and neither is
 Values and functions, `data` and `newtype` types with their constructors,
 type synonyms, classes with their members, named instances, foreign imports
 and `infix` operators are the symbols. OSV has no PureScript ecosystem, so
-PureScript packages are not checked for advisories.
+PureScript packages are checked for advisories only by the commit a git
+package is pinned to.
 
 ### Crystal
 
@@ -2224,7 +2268,7 @@ structs and unions), annotations, methods (`Owner.name`, as in Ruby),
 macros, constants, aliases, `record`s and the attributes of `getter` and
 `property` are the symbols; what a macro defines is not, and
 `@[Link("ssl")]` libraries are not mapped. OSV has no Crystal ecosystem, so
-shards are not checked for advisories.
+shards are checked for advisories only by the commit shard.lock pins them to.
 
 ### F# and Paket
 
@@ -2324,8 +2368,8 @@ Modules, classes, structs, interfaces, unions, enums, templates and mixin
 templates (nested ones qualified), functions and members (`Owner.name`,
 `Owner.this`), aliases and top-level manifest constants are the symbols.
 What a `mixin` generates is not read, every `version` and `static if`
-branch counts, and OSV has no D ecosystem, so dub packages are not checked
-for advisories.
+branch counts, and OSV has no D ecosystem, so dub packages are checked for
+advisories only by the commit a git dependency is pinned to.
 
 ### Fortran and fpm
 
@@ -2373,7 +2417,8 @@ elemental real(dp) function`) are the symbols; interface bodies are not.
 fypp templates are not expanded (names such as `${k}$` are skipped), old-style
 `external` procedures and `call` statements are not linked, and OSV has no
 Fortran ecosystem and fpm's registry no dependency API, so fpm packages are
-neither checked for advisories nor asked about by `--online`.
+not asked about by `--online` and are checked for advisories only by the
+commit a git dependency is pinned to.
 
 ### Haxe and haxelib
 
@@ -2423,8 +2468,9 @@ Types (`class`, `interface`, `enum`, `enum abstract`, `abstract`,
 `typedef`), their functions (`Type.name`) and module-level functions and
 variables are the symbols. Macros are not run, same-package types used
 without an import are not linked, and OSV has no Haxe ecosystem and
-lib.haxe.org no JSON API, so haxelib libraries are neither checked for
-advisories nor asked about by `--online`.
+lib.haxe.org no JSON API, so haxelib libraries are not asked about by
+`--online` and are checked for advisories only by the commit a git library is
+pinned to.
 
 ### Ada, GPR and Alire
 
@@ -2477,7 +2523,8 @@ Library units, the packages, subprograms (`Unit.Name`) and types (`class`
 for tagged types, `struct` for records, `interface`, `enum`, `task`,
 `protected`) of packages, and subunits are the symbols. Scenario variables
 are not evaluated, units generated at build time are unresolved, and OSV has
-no Ada ecosystem, so Alire crates are not checked for advisories.
+no Ada ecosystem, so Alire crates are checked for advisories only by the
+commit a git pin names.
 
 ### Racket and raco
 
@@ -2575,7 +2622,8 @@ symbols (`defun`, `defmacro`, `defgeneric`, `defmethod` named with its
 specializers, `defclass`, `define-condition`, `defstruct`, `deftype`,
 `defvar`, `defparameter`, `defconstant`, `defpackage`, `defsystem`).
 Macros are not expanded, and OSV has no Common Lisp ecosystem, so
-Quicklisp projects are not checked for advisories.
+Quicklisp projects are checked for advisories only by the commit a Qlot or
+ocicl git source is locked to.
 
 ### Solidity, Foundry and Hardhat
 
@@ -2614,7 +2662,8 @@ Contracts, interfaces and libraries, with their functions, modifiers,
 events, errors, structs, enums, value types and constants, and a file's free
 functions and constants are the symbols; imports in comments, NatSpec,
 strings and `assembly` blocks are not read. OSV has no Solidity ecosystem,
-so Soldeer packages and git submodules are not checked for advisories.
+so Soldeer packages and git submodules are checked for advisories only by the
+commit they are pinned to, when their repository is on a public forge.
 
 ### Nim and nimble
 
@@ -2659,7 +2708,8 @@ Top-level routines (`proc`, `func`, `method`, `iterator`, `converter`,
 `template`, `macro`), types (objects as classes, concepts as interfaces,
 enums), constants and variables are the symbols; imports in comments,
 strings and routine bodies are not read. OSV has no Nim ecosystem, so
-nimble packages are not checked for advisories, and the official package
+nimble packages are checked for advisories only by the commit a lock pins
+them to, and the official package
 list has no versions or dependencies to ask for `--online`.
 
 ### Interface definitions

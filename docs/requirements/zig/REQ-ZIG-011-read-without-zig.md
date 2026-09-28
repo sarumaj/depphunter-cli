@@ -18,7 +18,9 @@ a tuple), by helper functions of other files or packages (a `translate_c`
 helper's `addImportToModule`), or wired to generated modules are dropped, as
 are compile steps whose roots are computed. `.paths` is read and not linked.
 There is no Zig registry: `--online` looks nothing up, OSV has no Zig
-ecosystem and Trivy no Zig package type, so no advisories are asked for.
+ecosystem and Trivy no Zig package type, so a package is asked about only by
+its commit, when its URL names a full commit of a repository on a public
+forge (REQ-FND-026); an archive URL without one is not asked about.
 
 ## Rationale
 

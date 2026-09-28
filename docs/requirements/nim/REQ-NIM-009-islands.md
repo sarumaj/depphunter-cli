@@ -14,7 +14,9 @@ verification:
 Nimble packages **shall** form the `nimble` island ("Nimble packages") and
 the standard library the hidden `nim-std` island ("Nim standard library");
 `nimble:` **shall** be a private-pattern prefix. Nimble packages **shall
-not** be asked about in OSV, which has no Nim ecosystem, nor mapped from
+not** be asked about by name and version in OSV, which has no Nim ecosystem
+(one locked to a full commit is asked about by that commit, REQ-FND-026),
+nor mapped from
 Trivy, which has no Nim package type, and `--online` has no index to ask:
 the official package list (nim-lang/packages' `packages.json`) maps names
 to repositories but has no versions or dependencies. nimlangserver or

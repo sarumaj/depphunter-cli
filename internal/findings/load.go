@@ -4,6 +4,7 @@ import (
 	"context"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 )
 
@@ -33,7 +34,7 @@ type Options struct {
 // pinned packages. A report that will not parse is not fatal: the rest of the map is
 // still worth having, and the set says it is incomplete.
 //
-// Implements: REQ-FND-001, REQ-FND-016
+// Implements: REQ-FND-001, REQ-FND-016, REQ-FND-026
 func Collect(ctx context.Context, o Options) *Set {
 	set := &Set{}
 	logFormat := o.Logf
@@ -77,7 +78,20 @@ func Collect(ctx context.Context, o Options) *Set {
 		if len(found) > 0 {
 			logFormat("findings: %d from the OSV database", len(found))
 		}
-		set.Add("osv", found)
+		// What a package's commit matched is reported under its own source, so the
+		// panel says which question found it.
+		byName, byCommit := []*Finding{}, []*Finding{}
+		for _, f := range found {
+			if f.Source == SourceCommit {
+				byCommit = append(byCommit, f)
+			} else {
+				byName = append(byName, f)
+			}
+		}
+		set.Add("osv", byName)
+		if slices.ContainsFunc(o.Packages, func(p Package) bool { return p.Commit != "" }) {
+			set.Add(SourceCommit, byCommit)
+		}
 	}
 
 	set.Localize(o.Root)
