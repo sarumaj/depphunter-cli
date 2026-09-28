@@ -31,9 +31,10 @@ func newResolver(root string, all []*scan.File) *resolver {
 }
 
 // Resolve follows an include to a project file, a standard or system header, a
-// package a vcpkg or Conan manifest declares, or else a third-party library.
+// header of a GPU toolkit or the Metal SDK, a package a vcpkg or Conan manifest
+// declares, or else a third-party library.
 //
-// Implements: REQ-CPP-004, REQ-CPP-005, REQ-CPP-006, REQ-CPP-012
+// Implements: REQ-CPP-004, REQ-CPP-005, REQ-CPP-006, REQ-CPP-012, REQ-CPP-016
 func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 	return r.resolve(file, imp, nil)
 }
@@ -47,10 +48,10 @@ type Includes struct{ r *resolver }
 func NewIncludes(root string, all []*scan.File) Includes { return Includes{newResolver(root, all)} }
 
 // Resolve is the cpp plugin's resolution, with external asked about a header that is
-// neither the project's nor a standard or system header before it is dropped (a
-// quoted bare name) or attributed to vcpkg, Conan or c-external.
+// neither the project's nor a standard, system or GPU toolkit header before it is
+// dropped (a quoted bare name) or attributed to vcpkg, Conan or c-external.
 //
-// Implements: REQ-OBJC-004
+// Implements: REQ-OBJC-004, REQ-SHADER-004
 func (in Includes) Resolve(file string, imp lang.RawImport, external func(name string, quoted bool) (lang.Target, bool)) lang.Target {
 	return in.r.resolve(file, imp, external)
 }
@@ -92,6 +93,9 @@ func (r *resolver) resolve(file string, imp lang.RawImport, external func(name s
 	}
 	if std != "" {
 		return lang.Target{Ecosystem: std, Package: name}
+	}
+	if t, ok := sdk(name); ok {
+		return t
 	}
 	if external != nil {
 		if t, ok := external(name, imp.Name == quoted); ok {

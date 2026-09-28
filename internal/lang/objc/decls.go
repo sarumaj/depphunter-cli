@@ -256,7 +256,8 @@ loop:
 		t := p.tok(0)
 		switch {
 		case t.kind == tIdent && !strings.HasPrefix(t.text, "@") && p.is(1, ":"):
-			sel.WriteString(t.text + ":")
+			sel.WriteString(t.text)
+			sel.WriteRune(':')
 			parts++
 			p.i += 2
 		case p.is(0, ":") && parts > 0:

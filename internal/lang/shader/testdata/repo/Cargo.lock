@@ -1,0 +1,19 @@
+version = 3
+
+[[package]]
+name = "bevy"
+version = "0.14.2"
+dependencies = ["bevy_internal"]
+
+[[package]]
+name = "bevy_pbr"
+version = "0.14.2"
+
+[[package]]
+name = "fx"
+version = "0.1.0"
+
+[[package]]
+name = "game"
+version = "0.1.0"
+dependencies = ["bevy", "fx"]

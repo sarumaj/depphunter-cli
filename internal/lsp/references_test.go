@@ -147,3 +147,29 @@ func TestServerByName(t *testing.T) {
 		}
 	}
 }
+
+// The shading languages have servers of their own; CUDA, Metal and OpenCL headers
+// are clangd's.
+//
+// Verifies: REQ-LSP-002
+func TestShaderServers(t *testing.T) {
+	want := map[string][2]string{
+		"shaders/pbr.frag": {"glsl_analyzer", "glsl"}, "Shaders/Common.hlsli": {"shader-language-server", "hlsl"},
+		"assets/pbr.wgsl": {"wgsl-analyzer", "wgsl"}, "src/view.wesl": {"wgsl-analyzer", "wesl"},
+		"kernels/add.cu": {"clangd", "cuda-cpp"}, "Shaders.metal": {"clangd", "metal"}, "common.clh": {"clangd", "opencl"},
+	}
+	for p, w := range want {
+		found := false
+		for _, s := range Servers {
+			if id, ok := s.languageID(p); ok {
+				found = true
+				if s.Name != w[0] || id != w[1] {
+					t.Errorf("%s: %s %q, want %s %q", p, s.Name, id, w[0], w[1])
+				}
+			}
+		}
+		if !found {
+			t.Errorf("%s: no server", p)
+		}
+	}
+}

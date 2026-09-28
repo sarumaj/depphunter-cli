@@ -40,6 +40,15 @@ func Preprocess(src []byte) (includes []lang.RawImport, dead []bool) {
 	return scanDirectives(src, true)
 }
 
+// Directives is preprocess for the shading languages that borrow C's preprocessor
+// (the shader plugin: GLSL, HLSL): the includes of the live branches and the dead
+// lines.
+//
+// Implements: REQ-SHADER-002
+func Directives(src []byte) (includes []lang.RawImport, dead []bool) {
+	return scanDirectives(src, false)
+}
+
 // Quoted is the RawImport.Name of a quoted include ("x.h"); an angle include has
 // another.
 const Quoted = quoted

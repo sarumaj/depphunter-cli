@@ -2,7 +2,7 @@ package scan
 
 import "testing"
 
-// Verifies: REQ-LANG-015, REQ-DOCKER-001, REQ-SHELL-001, REQ-OBJC-001, REQ-LUA-001, REQ-PERL-001, REQ-OCAML-001, REQ-JULIA-001, REQ-ZIG-001, REQ-NIX-001, REQ-FORTRAN-001, REQ-HAXE-001, REQ-ADA-001, REQ-RACKET-001, REQ-COMMONLISP-001, REQ-SOLIDITY-001, REQ-NIM-001, REQ-JSONNET-001, REQ-CUE-001, REQ-PUPPET-001, REQ-REGO-001
+// Verifies: REQ-LANG-015, REQ-DOCKER-001, REQ-SHELL-001, REQ-OBJC-001, REQ-LUA-001, REQ-PERL-001, REQ-OCAML-001, REQ-JULIA-001, REQ-ZIG-001, REQ-NIX-001, REQ-FORTRAN-001, REQ-HAXE-001, REQ-ADA-001, REQ-RACKET-001, REQ-COMMONLISP-001, REQ-SOLIDITY-001, REQ-NIM-001, REQ-JSONNET-001, REQ-CUE-001, REQ-PUPPET-001, REQ-REGO-001, REQ-SHADER-001, REQ-CPP-015
 func TestLanguageByName(t *testing.T) {
 	for p, want := range map[string]string{
 		"a.go":                           "Go",
@@ -129,6 +129,18 @@ func TestLanguageByName(t *testing.T) {
 		"Puppetfile":                     "Puppet",
 		"policy/deny.rego":               "Rego",
 		"types/Deployment.dhall":         "Dhall",
+		"shaders/pbr.frag":               "GLSL",
+		"shaders/cull.comp":              "GLSL",
+		"shaders/hit.rchit":              "GLSL",
+		"Shaders/Common.hlsli":           "HLSL",
+		"Shaders/Private/Common.ush":     "HLSL",
+		"effects/blur.fx":                "HLSL",
+		"assets/shaders/pbr.wgsl":        "WGSL",
+		"src/render/view.wesl":           "WESL",
+		"kernels/add.cu":                 "CUDA",
+		"kernels/add.cuh":                "CUDA",
+		"shaders/Shaders.metal":          "Metal",
+		"kernels/common.clh":             "OpenCL",
 		"source/shop/app.d":              "D",
 		"import/shop/cart.di":            "D",
 		"dub.sdl":                        "SDLang",

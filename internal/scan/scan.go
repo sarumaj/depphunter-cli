@@ -277,7 +277,8 @@ func measure(f *File, maxSize int64) {
 	// ".d" is D's, a make dependency file's and a DTrace script's. ".f" and ".for"
 	// are fixed-form Fortran's and sometimes Forth's. ".scm" and ".ss" are
 	// Scheme's, and Racket's when a #lang line starts them. ".cl" is Common
-	// Lisp's and OpenCL's.
+	// Lisp's and OpenCL's. ".vs", ".gs", ".mesh" and ".task" are GLSL's when a
+	// directive or declaration of GLSL starts a line.
 	switch ext := strings.ToLower(path.Ext(f.Path)); {
 	case ext == ".m" && f.Lang == "Objective-C" && !objcMarker(head, true):
 		f.Lang = notObjC(head)
@@ -301,6 +302,8 @@ func measure(f *File, maxSize int64) {
 		f.Lang = "Racket"
 	case ext == ".cl" && f.Lang == "Common Lisp" && openclSource(head):
 		f.Lang = "OpenCL"
+	case (ext == ".vs" || ext == ".gs" || ext == ".mesh" || ext == ".task") && f.Lang == "" && glslSource(head):
+		f.Lang = "GLSL"
 	}
 	// A script without a language is labelled by the shell or perl its "#!" line
 	// runs.

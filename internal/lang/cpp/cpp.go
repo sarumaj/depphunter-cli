@@ -1,5 +1,8 @@
 // Package cpp analyzes C and C++ with one plugin, since their files include each
 // other freely: a C++ source includes a C header, both share one include path.
+// The C and C++ dialects of GPU programming are read the same way: CUDA (.cu,
+// .cuh) and Metal (.metal) as C++, OpenCL C kernels (.cl the scan labels OpenCL,
+// .clh) as C; their toolkits' headers are islands of their own (gpu.go).
 // Definitions are read by a hand-written scanner (lex.go, decls.go) rather than a
 // grammar: a tolerant recursive descent over the declaration contexts that steps
 // over function bodies. .c files are read as C, where `class`, `new` and
@@ -23,6 +26,7 @@ import (
 	"strings"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
+	"github.com/sarumaj/depphunter-cli/internal/lang/swift"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
@@ -39,26 +43,49 @@ const (
 var exts = map[string]bool{
 	".c": true, ".h": true, ".cc": true, ".cpp": true, ".cxx": true, ".c++": true,
 	".hpp": true, ".hh": true, ".hxx": true, ".h++": true, ".ipp": true, ".inl": true,
+	".cu": true, ".cuh": true, ".metal": true, ".clh": true,
 }
+
+// cExts are the extensions read as C rather than C++: C, and OpenCL C, whose kernels
+// may use C++ keywords as names.
+var cExts = map[string]bool{".c": true, ".cl": true, ".clh": true}
 
 // Implements: REQ-CPP-001
 type Plugin struct{}
 
 func (Plugin) Name() string { return "cpp" }
-func (Plugin) Version() int { return 2 }
+func (Plugin) Version() int { return 3 }
 
 // Claims takes the C and C++ files, except a ".h" the scan found to be an
-// Objective-C header (REQ-LANG-015), which the objc plugin reads.
+// Objective-C header (REQ-LANG-015), which the objc plugin reads, and the CUDA,
+// Metal and OpenCL sources: a ".cl" file only when the scan found an OpenCL kernel
+// in it, Common Lisp's otherwise.
 //
-// Implements: REQ-CPP-001, REQ-OBJC-001
+// Implements: REQ-CPP-001, REQ-OBJC-001, REQ-CPP-015
 func (Plugin) Claims(f *scan.File) bool {
-	return exts[strings.ToLower(path.Ext(f.Path))] && !f.Binary && f.Lang != "Objective-C"
+	if f.Binary {
+		return false
+	}
+	ext := strings.ToLower(path.Ext(f.Path))
+	if ext == ".cl" {
+		return f.Lang == "OpenCL"
+	}
+	return exts[ext] && f.Lang != "Objective-C"
 }
+
+// Ecosystems: the package managers', the standard and system headers', and the GPU
+// toolkits' islands. Apple's SDKs are the swift plugin's island, which Metal's
+// headers belong to.
+//
+// Implements: REQ-CPP-016
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return append(PackageEcosystems(), []lang.Ecosystem{
 		{ID: ecoCStd, Name: "C standard library", Std: true},
 		{ID: ecoCppStd, Name: "C++ standard library", Std: true},
 		{ID: ecoSystem, Name: "System headers", Std: true},
+		{ID: ecoCUDA, Name: "CUDA Toolkit", Std: true},
+		{ID: ecoOpenCL, Name: "OpenCL headers", Std: true},
+		{ID: swift.AppleEcosystem, Name: "Apple SDKs", Std: true},
 	}...)
 }
 
@@ -75,7 +102,7 @@ type def struct {
 // Implements: REQ-CPP-001, REQ-CPP-003, REQ-CPP-007
 func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 	includes, dead := preprocess(src)
-	cplus := !strings.EqualFold(path.Ext(f.Path), ".c")
+	cplus := !cExts[strings.ToLower(path.Ext(f.Path))]
 	return &lang.Extraction{Imports: includes, Symbols: symbols(scanDefinitions(src, dead, cplus))}, nil
 }
 

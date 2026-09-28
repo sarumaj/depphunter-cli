@@ -23,7 +23,6 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/cocoapods"
 	"github.com/sarumaj/depphunter-cli/internal/lang/cpp"
-	"github.com/sarumaj/depphunter-cli/internal/lang/swift"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
@@ -66,8 +65,8 @@ func (Plugin) Claims(f *scan.File) bool {
 func (Plugin) Class(f *scan.File) string { return cocoapods.Kind(f.Path) }
 
 func (Plugin) Ecosystems() []lang.Ecosystem {
-	eco := append(cocoapods.Ecosystems(), lang.Ecosystem{ID: swift.AppleEcosystem, Name: "Apple SDKs", Std: true})
-	return append(eco, cpp.Plugin{}.Ecosystems()...)
+	// The cpp plugin's islands include the Apple SDKs (Metal's headers).
+	return append(cocoapods.Ecosystems(), cpp.Plugin{}.Ecosystems()...)
 }
 
 func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {

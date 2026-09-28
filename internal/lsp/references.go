@@ -58,6 +58,7 @@ var Servers = []Server{
 		".c": "c", ".h": "cpp", ".cc": "cpp", ".cpp": "cpp", ".cxx": "cpp", ".c++": "cpp",
 		".hpp": "cpp", ".hh": "cpp", ".hxx": "cpp", ".h++": "cpp", ".ipp": "cpp", ".inl": "cpp",
 		".m": "objective-c", ".mm": "objective-cpp",
+		".cu": "cuda-cpp", ".cuh": "cuda-cpp", ".metal": "metal", ".clh": "opencl",
 	}, Commands: [][]string{{"clangd"}}},
 	{Name: "php", Open: true, Exts: map[string]string{".php": "php", ".phtml": "php", ".inc": "php"},
 		Commands: [][]string{{"intelephense", "--stdio"}, {"phpactor", "language-server"}}},
@@ -183,6 +184,16 @@ var Servers = []Server{
 	{Name: "starlark", Open: true, Exts: map[string]string{".bzl": "starlark", ".bazel": "starlark"},
 		Names:    map[string]string{"BUILD": "starlark", "WORKSPACE": "starlark", "WORKSPACE.bzlmod": "starlark"},
 		Commands: [][]string{{"starpls", "server"}, {"bazel-lsp"}, {"bzl", "lsp", "serve"}}},
+	{Name: "glsl_analyzer", Open: true, Exts: map[string]string{
+		".glsl": "glsl", ".vert": "glsl", ".frag": "glsl", ".geom": "glsl", ".tesc": "glsl", ".tese": "glsl",
+		".comp": "glsl", ".rgen": "glsl", ".rchit": "glsl", ".rahit": "glsl", ".rmiss": "glsl", ".rint": "glsl",
+		".rcall": "glsl", ".vsh": "glsl", ".fsh": "glsl",
+	}, Commands: [][]string{{"glsl_analyzer"}}},
+	{Name: "shader-language-server", Open: true, Exts: map[string]string{
+		".hlsl": "hlsl", ".hlsli": "hlsl", ".fx": "hlsl", ".fxh": "hlsl", ".usf": "hlsl", ".ush": "hlsl",
+	}, Commands: [][]string{{"shader-language-server"}}},
+	{Name: "wgsl-analyzer", Open: true, Exts: map[string]string{".wgsl": "wgsl", ".wesl": "wesl"},
+		Commands: [][]string{{"wgsl-analyzer"}, {"wgsl_analyzer"}}},
 }
 
 // languageID is the languageId the server gives the file at p, and whether it

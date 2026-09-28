@@ -14,7 +14,8 @@ verification:
 The C/C++ plugin **shall** analyze files ending in `.c`, `.h`, `.cc`, `.cpp`,
 `.cxx`, `.c++`, `.hpp`, `.hh`, `.hxx`, `.h++`, `.ipp` and `.inl` (in any
 case), reading `.c` files as C and every other one, `.h` included, as C++,
-except a `.h` file the scan labels Objective-C (REQ-OBJC-001).
+except a `.h` file the scan labels Objective-C (REQ-OBJC-001). The GPU
+dialects of C and C++ are claimed too (REQ-CPP-015).
 
 ## Rationale
 

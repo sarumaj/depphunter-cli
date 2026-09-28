@@ -19,7 +19,7 @@ const maxDepth = 200
 // `extern "C"` blocks, class bodies) that steps over function bodies, initializers
 // and anything else it does not recognise by bracket matching.
 type scanner struct {
-	toks       []token
+	tokens     []token
 	pos        int
 	cplus      bool
 	defs       []def
@@ -30,10 +30,10 @@ type scanner struct {
 }
 
 func (s *scanner) at(i int) token {
-	if i < 0 || i >= len(s.toks) {
+	if i < 0 || i >= len(s.tokens) {
 		return token{kind: -1}
 	}
-	return s.toks[i]
+	return s.tokens[i]
 }
 
 // is reports whether the token at i is the punctuation or keyword text.
@@ -48,8 +48,8 @@ func (s *scanner) ident(i int) bool { return s.at(i).kind == tIdent }
 // three bracket kinds together so a stray closer cannot run away with the scan.
 func (s *scanner) skipGroup(i int) int {
 	depth := 0
-	for ; i < len(s.toks); i++ {
-		t := s.toks[i]
+	for ; i < len(s.tokens); i++ {
+		t := s.tokens[i]
 		if t.kind != tPunct || len(t.text) != 1 {
 			continue
 		}
@@ -63,7 +63,7 @@ func (s *scanner) skipGroup(i int) int {
 			}
 		}
 	}
-	return len(s.toks)
+	return len(s.tokens)
 }
 
 // skipBody steps over a function body (or a block) at i and remembers its range:
@@ -85,8 +85,8 @@ func (s *scanner) angle(i int) int {
 		s.angles = map[int]int{}
 	}
 	var open []int
-	for j := i; j < len(s.toks); j++ {
-		t := s.toks[j]
+	for j := i; j < len(s.tokens); j++ {
+		t := s.tokens[j]
 		if t.kind != tPunct {
 			continue
 		}
@@ -144,11 +144,15 @@ var cplusOnly = map[string]bool{
 
 // attribute are the words taking a parenthesized argument that never name
 // anything: attributes, specifiers, assertions.
+//
+// Implements: REQ-CPP-015
 var attribute = map[string]bool{
 	"__attribute__": true, "__attribute": true, "__declspec": true, "alignas": true, "_Alignas": true,
 	"decltype": true, "typeof": true, "__typeof__": true, "__typeof": true, "_Atomic": true,
 	"static_assert": true, "_Static_assert": true, "__pragma": true, "_Pragma": true, "noexcept": true,
 	"throw": true, "asm": true, "__asm__": true, "__asm": true, "explicit": true, "requires": true,
+	// CUDA's launch attributes: __launch_bounds__(THREADS) __global__ void k().
+	"__launch_bounds__": true, "__cluster_dims__": true, "__maxnreg__": true,
 }
 
 // scanDefinitions reads the definitions of a C (cplus false) or C++ source whose
@@ -156,10 +160,10 @@ var attribute = map[string]bool{
 //
 // Implements: REQ-CPP-003, REQ-CPP-014
 func scanDefinitions(src []byte, dead []bool, cplus bool) []def {
-	toks, dirs := lex(string(src), dead, cplus)
-	toks, dirs = selectBranches(toks, dirs)
-	s := &scanner{toks: toks, cplus: cplus, namespaces: map[string]bool{}}
-	for s.pos < len(s.toks) {
+	tokens, dirs := lex(string(src), dead, cplus)
+	tokens, dirs = selectBranches(tokens, dirs)
+	s := &scanner{tokens: tokens, cplus: cplus, namespaces: map[string]bool{}}
+	for s.pos < len(s.tokens) {
 		s.decls(nil, false)
 	}
 	s.macros(dirs)
@@ -168,8 +172,8 @@ func scanDefinitions(src []byte, dead []bool, cplus bool) []def {
 
 // decls reads declarations until the '}' closing the body (inBody) or the end.
 func (s *scanner) decls(owner []string, inBody bool) {
-	for s.pos < len(s.toks) {
-		t := s.toks[s.pos]
+	for s.pos < len(s.tokens) {
+		t := s.tokens[s.pos]
 		switch {
 		case t.kind == tPunct && t.text == "}":
 			s.pos++
@@ -180,7 +184,7 @@ func (s *scanner) decls(owner []string, inBody bool) {
 			s.pos++
 		case t.kind == tPunct && t.text == "{":
 			// A block where a declaration belongs: a statement at file scope, or a
-			// body whose head the scanner did not recognise.
+			// body whose head the scanner did not recognize.
 			s.pos = s.skipBody(s.pos)
 		case s.cplus && t.text == "namespace" && t.kind == tIdent:
 			s.namespace(owner)
@@ -243,8 +247,8 @@ func (s *scanner) namespace(owner []string) {
 	s.pos++ // namespace
 	var name strings.Builder
 	line := 0
-	for s.pos < len(s.toks) {
-		t := s.toks[s.pos]
+	for s.pos < len(s.tokens) {
+		t := s.tokens[s.pos]
 		switch {
 		case t.kind == tIdent && attribute[t.text] && s.is(s.pos+1, "("):
 			s.pos = s.skipGroup(s.pos + 1)
@@ -302,15 +306,15 @@ func (s *scanner) statement(owner []string) {
 	typedef := false
 	if s.cplus && s.is(s.pos, "using") {
 		if s.ident(s.pos+1) && s.is(s.pos+2, "=") {
-			name := s.toks[s.pos+1]
+			name := s.tokens[s.pos+1]
 			s.defs = append(s.defs, def{withOwner(owner, name.text), "type", name.line, false})
 		}
 		s.pos = s.skipTo(s.pos)
 		return
 	}
 	declStart := s.pos
-	for s.pos < len(s.toks) {
-		t := s.toks[s.pos]
+	for s.pos < len(s.tokens) {
+		t := s.tokens[s.pos]
 		if t.kind == tPunct {
 			switch t.text {
 			case ";":
@@ -397,13 +401,13 @@ func (s *scanner) statement(owner []string) {
 // on a later line.
 func (s *scanner) skipMacroLines() bool {
 	skipped := false
-	for s.ident(s.pos) && upper.MatchString(s.toks[s.pos].text) {
+	for s.ident(s.pos) && upper.MatchString(s.tokens[s.pos].text) {
 		end := s.pos + 1
 		if s.is(end, "(") {
 			end = s.skipGroup(end)
 		}
 		next := s.at(end)
-		if next.kind < 0 || next.line <= s.toks[end-1].line {
+		if next.kind < 0 || next.line <= s.tokens[end-1].line {
 			return skipped
 		}
 		switch next.text {
@@ -419,8 +423,8 @@ func (s *scanner) skipMacroLines() bool {
 // skipTo returns the index after the ';' ending the statement at i, stepping over
 // bracket groups; a '}' of the enclosing body ends it too (not consumed).
 func (s *scanner) skipTo(i int) int {
-	for i < len(s.toks) {
-		t := s.toks[i]
+	for i < len(s.tokens) {
+		t := s.tokens[i]
 		if t.kind == tPunct {
 			switch t.text {
 			case ";":
@@ -440,8 +444,8 @@ func (s *scanner) skipTo(i int) int {
 // initializer steps over an initializer from i to the ',' or ';' after it (not
 // consumed).
 func (s *scanner) initializer(i int) int {
-	for i < len(s.toks) {
-		t := s.toks[i]
+	for i < len(s.tokens) {
+		t := s.tokens[i]
 		if t.kind == tPunct {
 			switch t.text {
 			case ";", ",", "}":
@@ -468,15 +472,15 @@ func (s *scanner) initializer(i int) int {
 // without one (an elaborated type, a forward declaration) the declaration goes on
 // after the name.
 func (s *scanner) record(owner []string) bool {
-	kw := s.toks[s.pos]
+	kw := s.tokens[s.pos]
 	j := s.pos + 1
 	if kw.text == "enum" && (s.is(j, "class") || s.is(j, "struct")) {
 		j++
 	}
 	var name strings.Builder
 	line := 0
-	for j < len(s.toks) {
-		t := s.toks[j]
+	for j < len(s.tokens) {
+		t := s.tokens[j]
 		switch {
 		case s.is(j, "[") && s.is(j+1, "["):
 			j = s.skipGroup(j)
@@ -516,8 +520,8 @@ func (s *scanner) record(owner []string) bool {
 	if s.is(j, ":") {
 		// Bases, or an enum's underlying type.
 		k := j + 1
-		for ; k < len(s.toks); k++ {
-			t := s.toks[k]
+		for ; k < len(s.tokens); k++ {
+			t := s.tokens[k]
 			if t.kind != tPunct {
 				continue
 			}
@@ -585,7 +589,7 @@ func (s *scanner) typedefs(owner []string, from, to int) {
 func (s *scanner) declarator(from, to int) (string, int) {
 	var last token
 	for i := from; i < to; i++ {
-		t := s.toks[i]
+		t := s.tokens[i]
 		switch {
 		case t.text == "(" && t.kind == tPunct:
 			end := s.skipGroup(i)
@@ -594,8 +598,8 @@ func (s *scanner) declarator(from, to int) (string, int) {
 			single := end == i+3 && s.ident(i+1) && (s.is(end, "(") || s.is(end, "["))
 			if last.text == "" || single || s.is(i+1, "*") || s.is(i+1, "&") || s.is(i+1, "^") || callingConvention[s.at(i+1).text] {
 				for k := i + 1; k < end-1; k++ {
-					if s.ident(k) && !callingConvention[s.toks[k].text] && !qualifier[s.toks[k].text] {
-						return s.toks[k].text, s.toks[k].line
+					if s.ident(k) && !callingConvention[s.tokens[k].text] && !qualifier[s.tokens[k].text] {
+						return s.tokens[k].text, s.tokens[k].line
 					}
 				}
 			}
@@ -685,14 +689,14 @@ func (s *scanner) operator(owner []string, start int) bool {
 		op.WriteString("[]")
 		j += 2
 	case s.at(j).kind == tString:
-		op.WriteString(s.toks[j].text)
+		op.WriteString(s.tokens[j].text)
 		j++
 		if s.ident(j) {
-			op.WriteString(s.toks[j].text)
+			op.WriteString(s.tokens[j].text)
 			j++
 		}
 	case s.is(j, "new") || s.is(j, "delete") || s.is(j, "co_await"):
-		op.WriteString(s.toks[j].text)
+		op.WriteString(s.tokens[j].text)
 		j++
 		if s.is(j, "[") && s.is(j+1, "]") {
 			op.WriteString("[]")
@@ -701,7 +705,7 @@ func (s *scanner) operator(owner []string, start int) bool {
 	case s.ident(j):
 		// A conversion operator (operator bool): its declaration declares no
 		// symbol, but its body must still be stepped over.
-		for j < len(s.toks) && !s.is(j, "(") && !s.is(j, ";") && !s.is(j, "{") && !s.is(j, "}") {
+		for j < len(s.tokens) && !s.is(j, "(") && !s.is(j, ";") && !s.is(j, "{") && !s.is(j, "}") {
 			if s.is(j, "<") {
 				if end := s.angle(j); end > 0 {
 					j = end
@@ -717,8 +721,8 @@ func (s *scanner) operator(owner []string, start int) bool {
 		s.pos = j
 		return s.afterParams(owner, "", 0, j, false)
 	default:
-		for s.at(j).kind == tPunct && s.toks[j].text != "(" && j < kw+4 {
-			op.WriteString(s.toks[j].text)
+		for s.at(j).kind == tPunct && s.tokens[j].text != "(" && j < kw+4 {
+			op.WriteString(s.tokens[j].text)
 			j++
 		}
 	}
@@ -727,7 +731,7 @@ func (s *scanner) operator(owner []string, start int) bool {
 		return false
 	}
 	// The name: a qualifier before the keyword (Foo<T>::operator==).
-	prefix, line, first := "", s.toks[kw].line, kw
+	prefix, line, first := "", s.tokens[kw].line, kw
 	if s.is(kw-1, "::") {
 		if q, l, f, ok := s.nameBefore(kw-1, start); ok {
 			prefix, line, first = q+"::", l, f
@@ -744,25 +748,25 @@ func (s *scanner) nameBefore(open, start int) (string, int, int, bool) {
 	if j < start {
 		return "", 0, 0, false
 	}
-	t := s.toks[j]
+	t := s.tokens[j]
 	if t.kind == tPunct && t.text == ")" {
 		// (*name)(params): a pointer to a function, named as written, as a parser
 		// names it; NAME(x)(params): a name a macro makes.
 		k := j - 1
 		if k-2 >= start && s.ident(k) && (s.is(k-1, "*") || s.is(k-1, "&")) && s.is(k-2, "(") {
-			return "(" + s.toks[k-1].text + s.toks[k].text + ")", s.toks[k].line, k - 2, true
+			return "(" + s.tokens[k-1].text + s.tokens[k].text + ")", s.tokens[k].line, k - 2, true
 		}
 		for k = j - 1; k > start && !s.is(k, "("); k-- {
 			if !s.ident(k) && !s.is(k, ",") {
 				return "", 0, 0, false
 			}
 		}
-		if k-1 >= start && s.ident(k-1) && upper.MatchString(s.toks[k-1].text) {
+		if k-1 >= start && s.ident(k-1) && upper.MatchString(s.tokens[k-1].text) {
 			var b strings.Builder
 			for i := k - 1; i < open; i++ {
-				b.WriteString(s.toks[i].text)
+				b.WriteString(s.tokens[i].text)
 			}
-			return b.String(), s.toks[k-1].line, k - 1, true
+			return b.String(), s.tokens[k-1].line, k - 1, true
 		}
 		return "", 0, 0, false
 	}
@@ -793,7 +797,7 @@ func (s *scanner) nameBefore(open, start int) (string, int, int, bool) {
 		default:
 			return "", 0, 0, false
 		}
-		if w := s.toks[j].text; notDeclarator[w] && (s.cplus || !cplusOnly[w]) {
+		if w := s.tokens[j].text; notDeclarator[w] && (s.cplus || !cplusOnly[w]) {
 			return "", 0, 0, false
 		}
 		if s.is(j-1, "~") {
@@ -815,9 +819,9 @@ func (s *scanner) nameBefore(open, start int) (string, int, int, bool) {
 	var b strings.Builder
 	line := 0
 	for k := j; k < end; k++ {
-		b.WriteString(s.toks[k].text)
+		b.WriteString(s.tokens[k].text)
 		if s.ident(k) {
-			line = s.toks[k].line
+			line = s.tokens[k].line
 		}
 	}
 	return b.String(), line, j, true
@@ -828,8 +832,8 @@ func (s *scanner) nameBefore(open, start int) (string, int, int, bool) {
 // of a declaration.
 func (s *scanner) afterParams(owner []string, name string, line, open int, untyped bool) bool {
 	i := s.skipGroup(open)
-	for n := 0; i < len(s.toks) && n < maxTrailing; n++ {
-		t := s.toks[i]
+	for n := 0; i < len(s.tokens) && n < maxTrailing; n++ {
+		t := s.tokens[i]
 		if t.kind == tIdent {
 			switch {
 			case t.text == "try":
@@ -916,8 +920,8 @@ func (s *scanner) afterParams(owner []string, name string, line, open int, untyp
 
 // trailingReturn steps over a trailing return type from i to the body, ';' or '='.
 func (s *scanner) trailingReturn(i int) int {
-	for i < len(s.toks) {
-		t := s.toks[i]
+	for i < len(s.tokens) {
+		t := s.tokens[i]
 		if t.kind == tPunct {
 			switch t.text {
 			case "{", ";", "=", "}":
@@ -939,8 +943,8 @@ func (s *scanner) trailingReturn(i int) int {
 
 // ctorInit steps over a constructor's member initializers to its body.
 func (s *scanner) ctorInit(i int) int {
-	for i < len(s.toks) {
-		t := s.toks[i]
+	for i < len(s.tokens) {
+		t := s.tokens[i]
 		if t.kind == tPunct {
 			switch t.text {
 			case "{":
