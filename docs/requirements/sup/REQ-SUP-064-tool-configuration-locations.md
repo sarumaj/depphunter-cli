@@ -86,6 +86,13 @@ tool looks for it, reading the variables from the machine's environment only:
   `%ProgramData%\dub` on Windows, else `/etc/dub` and `/var/lib/dub`.
 - Quicklisp: the `distinfo.txt` of each dist in `~/quicklisp/dists`.
 - Bazel: `~/.bazelrc` and the files it imports.
+- cpanm and Carton: `PERL_CPANM_OPT` and `PERL_CARTON_MIRROR`
+  ([REQ-SUP-053](REQ-SUP-053-metacpan-releases.md)).
+- opam: its root, `OPAMROOT`, else `%LOCALAPPDATA%\opam` on Windows, else
+  `~/.opam` ([REQ-SUP-054](REQ-SUP-054-opam-repository-files.md)).
+- Alire: its settings, `ALIRE_SETTINGS_DIR` (Alire 1: `ALR_CONFIG`), else
+  `%USERPROFILE%\.config\alire` on Windows, else `$XDG_CONFIG_HOME/alire`
+  (`~/.config/alire`) ([REQ-SUP-061](REQ-SUP-061-alire-community-index.md)).
 
 ## Rationale
 
@@ -125,6 +132,9 @@ fixed `$HOME` paths missed the feed the machine actually uses.
     through to `~/.dub` on a Windows without it), its system settings
     `%ProgramData%` or `/etc/dub` and `/var/lib/dub`; `~/quicklisp`'s dists
     are listed by name.
+13. opam's root follows `OPAMROOT` and `%LOCALAPPDATA%` on Windows; Alire's
+    settings follow `ALIRE_SETTINGS_DIR`, `ALR_CONFIG`, `XDG_CONFIG_HOME` and
+    the Windows home.
 
 ## Notes
 

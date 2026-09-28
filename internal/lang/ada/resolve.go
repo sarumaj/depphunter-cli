@@ -57,6 +57,7 @@ type resolver struct {
 
 // Implements: REQ-ADA-004, REQ-ADA-005, REQ-ADA-006, REQ-ADA-008
 func newResolver(root string, all []*scan.File) *resolver {
+	_ = root
 	r := &resolver{
 		files: map[string]bool{}, dirs: map[string]bool{}, byBase: map[string][]string{},
 		specs: map[string][]string{}, bodies: map[string][]string{}, roots: map[string]bool{},

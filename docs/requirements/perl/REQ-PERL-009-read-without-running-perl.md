@@ -17,7 +17,8 @@ loaded by computed names, and code in `BEGIN` blocks or source filters are
 not followed; a module's distribution without a snapshot is named by a
 curated table and its name, so a module shipped in a differently named
 distribution that the project does not declare gets a wrong name; `--online`
-reads the latest release's dependencies whatever version is pinned, and no
+reads a release's dependencies from MetaCPAN only, so a distribution a
+DarkPAN mirror alone has shows none (its archive is not downloaded), and no
 vulnerability database covers CPAN.
 
 ## Rationale

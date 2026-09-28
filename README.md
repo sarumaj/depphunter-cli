@@ -1082,8 +1082,7 @@ list) and Julia packages no `Manifest.toml` records, Gleam packages no
 PureScript packages no `spago.lock` records (a `spago.dhall` project's package
 set is remote), dub packages dub has not fetched onto this machine
 (`dub.selections.json` is a flat list), Alire crates no `alire.lock` records
-and Alire has not fetched (only an exact version can be asked of the
-community index), Maven artifacts of Java, Kotlin, Scala
+and Alire has not fetched, Maven artifacts of Java, Kotlin, Scala
 and Clojure builds (Maven, Gradle without its lock files, sbt, tools.deps and
 Leiningen), and Bazel modules (a lock file since Bazel 7.2 records versions
 only) — require `--online`, described below; the PowerShell Gallery, vcpkg,
@@ -1166,7 +1165,10 @@ project's `.luarocks/config-5.x.lua`, of `~/.luarocks/config-5.x.lua` and of
 of dub's `settings.json` (`registryUrls`) and of a `dub.settings.json`, asked
 before code.dlang.org; the dists a `qlfile` adds (`dist`, and the Ultralisp
 dist of an `ultralisp` line) and those installed in `~/quicklisp`, asked
-before the Quicklisp dist; the Maven repositories of a
+before the Quicklisp dist; the CPAN mirrors cpanm (`PERL_CPANM_OPT`'s
+`--mirror` under `--mirror-only`) and Carton (`PERL_CARTON_MIRROR`) install
+from; the repositories of opam's current switch and a dune-workspace's
+`repository` stanzas; the indexes alr uses; the Maven repositories of a
 `deps.edn` or `bb.edn` (`:mvn/repos`), a `project.clj` or `build.boot`
 (`:repositories`) and a `shadow-cljs.edn` other than Maven Central and
 Clojars; the `--registry` lines of a `.bazelrc` and `~/.bazelrc`, and of the
@@ -1214,6 +1216,9 @@ and platform paths:
 | dub        | `DUB_REGISTRY`; `settings.json` in `DUB_HOME`, else `dub` under `DPATH`, else `%APPDATA%\dub` on Windows, else `~/.dub`; then `%ProgramData%\dub` on Windows, else `/etc/dub` and `/var/lib/dub`; its `skipRegistry` too                                                                                                                                                                                                                        |
 | Quicklisp  | the `distinfo-subscription-url` of each dist installed in `~/quicklisp/dists`                                                                                                                                                                                                                                                                                                                                                                   |
 | Bazel      | `~/.bazelrc` and the files its `import` and `try-import` lines name (not `%workspace%` ones)                                                                                                                                                                                                                                                                                                                                                    |
+| cpanm      | `PERL_CPANM_OPT` (its `--mirror`, `--mirror-only` and `--from`), `PERL_CARTON_MIRROR`                                                                                                                                                                                                                                                                                                                                                           |
+| opam       | `OPAMROOT`, else `%LOCALAPPDATA%\opam` on Windows, else `~/.opam`: `repo/repos-config`, the root's `config` and the current switch's (`OPAMSWITCH`) `switch-config`, and the repository copies in `repo/`                                                                                                                                                                                                                                       |
+| Alire      | `ALIRE_SETTINGS_DIR` (Alire 1: `ALR_CONFIG`), else `%USERPROFILE%\.config\alire` on Windows, else `$XDG_CONFIG_HOME/alire` (`~/.config/alire`): `indexes/<name>/index.toml` and the checkout beside it                                                                                                                                                                                                                                          |
 
 Nothing is read from the repository through these variables' defaults; they
 only say where this machine's own files are.
@@ -1238,6 +1243,9 @@ default or is asked **beside** it:
 | Composer                      | nothing: `"packagist.org": false` switches Packagist off                                                                                                                                                                                                                                                                   | every `composer` repository                                                                                                                                                                                                                                                                                                      |
 | NuGet                         | nothing: nuget.org is off when the merged configuration leaves it out (a `<clear/>` with no closer entry for it, or it disabled)                                                                                                                                                                                           | every enabled feed                                                                                                                                                                                                                                                                                                               |
 | Go                            | `GOPROXY`: its proxies are asked in order, and proxy.golang.org only if it is on the list                                                                                                                                                                                                                                  | —                                                                                                                                                                                                                                                                                                                                |
+| CPAN                          | cpanm's `--mirror` list under `--mirror-only` or `--from`, asked in order, MetaCPAN only when a public CPAN mirror is on it                                                                                                                                                                                                | `PERL_CARTON_MIRROR`                                                                                                                                                                                                                                                                                                             |
+| opam                          | the repositories of the opam switch, asked in its order of priority, opam-repository only when it is one of them; a dune-workspace `lock_dir`'s `repositories`, likewise                                                                                                                                                   | a dune-workspace's `repository` stanzas when no `lock_dir` lists any                                                                                                                                                                                                                                                             |
+| Alire                         | alr's indexes, asked by priority, the community index only when it is one of them                                                                                                                                                                                                                                          | —                                                                                                                                                                                                                                                                                                                                |
 | crates.io                     | `[source.crates-io] replace-with` (followed to the end of the chain)                                                                                                                                                                                                                                                       | —                                                                                                                                                                                                                                                                                                                                |
 | npm and every other ecosystem | the first unscoped source found (npm's `registry`, then Yarn's `npmRegistryServer`, `~/.yarnrc`'s `registry` and Bun's `[install] registry`)                                                                                                                                                                               | —                                                                                                                                                                                                                                                                                                                                |
 
@@ -1277,6 +1285,26 @@ report names the mirror that answered. `unqualified-search-registries`,
 `short-name-mode` and short-name aliases are not applied, since the map names
 every Docker Hub image the short way however it was written, and Docker itself
 searches no list. A location is asked over https even when `insecure = true`.
+
+A CPAN mirror — a DarkPAN, a Pinto or OrePAN2 repository, a minicpan
+directory — is read from its `modules/02packages.details.txt.gz`, once: a
+distribution it does not list is asked of the next index, as cpanm does.
+The archives are not downloaded, so a distribution it lists is given the
+dependencies of the same release on MetaCPAN (by the author its path names);
+one MetaCPAN does not describe is shown without dependencies, with a
+`no-release` note. A distribution a private pattern covers is not named to
+MetaCPAN, which is why a DarkPAN's own distributions belong under
+`--private` patterns. opam and alr keep a copy of every repository and index
+they use (`~/.opam/repo/<name>` or its `.tar.gz`,
+`~/.config/alire/indexes/<name>/repo`), and that copy is read instead of the
+network: it lists a package's versions, which a file server cannot, and it
+holds private repositories whatever serves them. A range is answered by the
+newest version it admits — in opam's version order, or Alire's semantic
+versioning — without either tool's solver. Without a copy, opam-repository
+and the Alire community index are listed through GitHub's contents API
+(60 requests an hour without a credential for api.github.com in the netrc);
+another repository served over HTTP is asked only about pinned versions, and
+one only git serves is not read (a `no-copy` note says so).
 
 Five kinds of source are **authoritative** and have no fallback: a scoped source
 that covers the package (an npm `@scope:registry`, a Gemfile `source` block, a
@@ -1352,15 +1380,15 @@ ecosystems whose graph is held outside the repository:
 | Terraform modules      | `<modules.v1>/<namespace>/<name>/<provider>/versions` (service discovery off the public registry)                                                                                                                                 | the providers and registry modules of the version asked for, or the newest its constraint allows                 |
 | CocoaPods              | `<cdn>/Specs/<a>/<b>/<c>/<pod>/<version>/<pod>.podspec.json` (newest: the shard's version list)                                                                                                                                   | its and its default subspecs' `dependencies`                                                                     |
 | LuaRocks               | `<server>/<rock>-<version>.rockspec`, versions from `<server>/manifest-5.1.zip` (read once)                                                                                                                                       | its run-time `dependencies`, without `lua`                                                                       |
-| CPAN                   | MetaCPAN's `<api>/v1/release/<distribution>` (the latest release), then `/v1/module/<module>` per dependency (once)                                                                                                               | its run-time requirements as distributions, without perl's own modules                                           |
-| opam                   | `<repository>/packages/<name>/<name>.<version>/opam`, opam-repository's files (a pinned version only)                                                                                                                             | its `depends`, without the compiler and what only tests or documentation need                                    |
+| CPAN                   | MetaCPAN's `<api>/v1/release/<AUTHOR>/<name>` (as `cpanfile.snapshot` records) or `/_search` for a pinned version, else `/v1/release/<distribution>`; `/v1/module/<module>` per dependency; a mirror's 02packages first           | its run-time requirements as distributions, without perl's own modules                                           |
+| opam                   | `<repository>/packages/<name>/<name>.<version>/opam`, from opam's copy of the repository, else over HTTP; for a range, the newest version admitted, listed by the copy (opam-repository: GitHub's contents API)                   | its `depends`, without the compiler and what only tests or documentation need                                    |
 | Julia                  | `<registry>/<L>/<Name>/Versions.toml`, then `Deps.toml` and `Compat.toml` (General, or a depot registry on GitHub)                                                                                                                | the dependencies of the pinned or newest admitted release, with their compat ranges, without `julia`             |
 | Maven (group:artifact) | `<repository>/<group path>/<artifact>/<version>/<artifact>-<version>.pom` and its parents, the version from `maven-metadata.xml` when unpinned; Clojars after Central for a Clojure project                                       | its compile and runtime dependencies, excluding optional ones                                                    |
 | Bazel modules          | `<registry>/modules/<name>/<version>/MODULE.bazel`, the newest version not yanked from `metadata.json` when unversioned (the Bazel Central Registry, or a `.bazelrc` `--registry`)                                                | its `bazel_dep`s, excluding dev dependencies                                                                     |
 | Elm                    | `<site>/packages/<author>/<name>/<version>/elm.json`, the newest release a range admits from `releases.json` when unversioned (package.elm-lang.org)                                                                              | its `dependencies` as ranges, excluding test dependencies                                                        |
 | PureScript             | `<owner>/registry-index/main/<shard>/<name>` (a JSON manifest per line), the newest version a range admits from `<owner>/registry/main/metadata/<name>.json` when unversioned (the registry on raw.githubusercontent.com)         | its `dependencies` as ranges                                                                                     |
 | dub                    | `<registry>/api/packages/<name>/<version>/info`, the newest release a specification admits from `<registry>/api/packages/<name>/info` when not exact (`DUB_REGISTRY` and the settings' `registryUrls` first, then code.dlang.org) | its, its sub-packages' and its default configuration's dependencies, not optional or path ones                   |
-| Alire crates           | `<index>/index/<first two letters>/<crate>/<crate>-<version>.toml`, the community index's release manifest (alire-index's `stable-1.4.0` branch; an exact version only)                                                           | its `depends-on`, every `case(...)` alternative                                                                  |
+| Alire crates           | `<index>/index/<first two letters>/<crate>/<crate>-<version>.toml`, from alr's checkout, else over HTTP (alire-index's `stable-1.4.0`); for a range, the newest release admitted, listed likewise (see opam)                      | its `depends-on`, every `case(...)` alternative                                                                  |
 | Quicklisp              | the dist's distinfo (`quicklisp.txt`, or `<dist>/<version>/distinfo.txt` for a dist version), then the `systems.txt` it names (read once); a qlfile's or `~/quicklisp`'s other dists first                                        | the dependencies of the project's own systems, each named by its project, without ASDF, UIOP and SBCL's contribs |
 
 A container image has no dependency list. What it has is the image it was built
@@ -1772,7 +1800,9 @@ The report records six things:
   organization with no key on this machine (`no-key`) or whose API refused the
   key (`forbidden`, an organization key without `api:read`); and a NuGet
   package no `packageSourceMapping` pattern covers, which NuGet itself would
-  not restore (`unmapped`); and
+  not restore (`unmapped`); a CPAN release MetaCPAN does not describe
+  (`no-release`); and an opam repository or Alire index only git serves,
+  with no copy on this machine (`no-copy`); and
 - **the questions nothing answered** — every package for which no answer was
   obtained, with the reason: no lock file covers it; its index is named only by
   the repository; it is private and its index is the public one; the proxy
@@ -2550,8 +2580,9 @@ a build's `obj/` beside a project file are not read as source:
   `alire/cache/pins/`, and those the manifest names in Alire 2's shared cache
   (`~/.cache/alire/releases`), say which crate has a unit or ships a project
   file; `--resolve-depth` follows the lock file's solution, else a fetched
-  crate's `alire.toml`, and `--online` reads the community index's manifest
-  of an exact version.
+  crate's `alire.toml`, and `--online` reads the release manifest of an exact
+  version, or of the newest release a range admits, from the indexes alr
+  uses (see [Package indexes](#package-indexes)).
 
 Library units, the packages, subprograms (`Unit.Name`) and types (`class`
 for tagged types, `struct` for records, `interface`, `enum`, `task`,

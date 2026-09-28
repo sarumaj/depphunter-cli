@@ -554,6 +554,33 @@ func extractWorkspace(src []byte) *lang.Extraction {
 	return &lang.Extraction{Symbols: set.List()}
 }
 
+// WorkspaceRepositories reads the opam repositories a dune-workspace gives
+// dune's package management: the `(repository (name x) (url u))` stanzas, in
+// the order written, and the `(repositories ...)` of its first `lock_dir` that
+// has one - the names the lock is solved against, in order - with listed
+// false when no lock_dir lists any (dune's default is then `overlay` and
+// `upstream`).
+//
+// Implements: REQ-SUP-054
+func WorkspaceRepositories(src []byte) (defined []opam.Repository, order []string, listed bool) {
+	for _, s := range parseSexps(src) {
+		switch s.head() {
+		case "repository":
+			if r := (opam.Repository{Name: s.value("name"), URL: s.value("url")}); r.Name != "" && r.URL != "" {
+				defined = append(defined, r)
+			}
+		case "lock_dir":
+			if f := s.field("repositories"); f != nil && !listed {
+				listed = true
+				for _, a := range f.atoms() {
+					order = append(order, a.atom)
+				}
+			}
+		}
+	}
+	return defined, order, listed
+}
+
 // opamPackageName is the package an opam file describes: foo.opam and
 // foo.opam.locked describe foo, a file named opam its name field or directory.
 func opamPackageName(p string, f *opam.File) string {

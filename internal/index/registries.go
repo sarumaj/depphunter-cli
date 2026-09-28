@@ -30,6 +30,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang/opam"
 	"github.com/sarumaj/depphunter-cli/internal/lang/starlark"
 	"github.com/sarumaj/depphunter-cli/internal/store"
+	"github.com/sarumaj/depphunter-cli/internal/trace"
 )
 
 // The ecosystems whose transitive dependencies are read from a registry rather than
@@ -1610,9 +1611,14 @@ func (c *Client) rocksManifest(ctx context.Context, base string) (map[string][]s
 
 // ---------------------------------------------------------------- CPAN
 
-// cpanDistribution reads a distribution's dependencies from the MetaCPAN API:
-// <api>/v1/release/<distribution> is its latest release, whose `dependency` list
-// names modules by phase and relationship. The run-time requirements are kept,
+// cpanDistribution reads a distribution's dependencies from the MetaCPAN API. A
+// distribution at one version is that release: <api>/v1/release/<AUTHOR>/<name>
+// when the repository's cpanfile.snapshot says which author's archive it is,
+// else the release <api>/v1/release/_search finds by distribution and version
+// (the latest release, with a note, when MetaCPAN has no such version); any
+// other is <api>/v1/release/<distribution>, its latest release. An index other
+// than MetaCPAN is a CPAN mirror (cpanMirror). The release's `dependency` list
+// names modules by phase and relationship; the run-time requirements are kept,
 // without perl itself; each module becomes the distribution
 // <api>/v1/module/<module> says provides it (asked once per module and cached),
 // and a module only perl provides is left out. A version is a minimum, shown as
@@ -1621,24 +1627,93 @@ func (c *Client) rocksManifest(ctx context.Context, base string) (map[string][]s
 // Implements: REQ-SUP-053
 func (c *Client) cpanDistribution(ctx context.Context, index string, t lang.Target) ([]dep, error) {
 	base := strings.TrimRight(index, "/")
-	body, err := c.get(ctx, base+"/v1/release/"+url.PathEscape(t.Package))
+	if base != c.cfg.publicURL(CPAN) {
+		return c.cpanMirror(ctx, base, t)
+	}
+	var rel *cpanRelease
+	var err error
+	version := strings.TrimSpace(t.Version)
+	switch {
+	case !cpanVersion.MatchString(version):
+		rel, err = c.cpanRelease(ctx, base+"/v1/release/"+url.PathEscape(t.Package))
+	case c.cfg.cpanArchive(t.Package, version) != "":
+		author, name := cpanArchive(c.cfg.cpanArchive(t.Package, version))
+		rel, err = c.cpanRelease(ctx, base+"/v1/release/"+url.PathEscape(author)+"/"+url.PathEscape(name))
+	default:
+		rel, err = c.cpanSearch(ctx, base, t.Package, version)
+		if err == nil && rel == nil {
+			// Implements: REQ-TRC-017
+			c.note(trace.NoteNoRelease, "MetaCPAN has no release "+t.Package+"-"+version+
+				": the dependencies shown are those of its latest release")
+			rel, err = c.cpanRelease(ctx, base+"/v1/release/"+url.PathEscape(t.Package))
+		}
+	}
 	if err != nil {
 		return nil, err
 	}
-	var rel struct {
-		Distribution string `json:"distribution"`
-		Dependency   []struct {
-			Module       string `json:"module"`
-			Version      any    `json:"version"`
-			Phase        string `json:"phase"`
-			Relationship string `json:"relationship"`
-		} `json:"dependency"`
+	return c.cpanDeps(ctx, base, t.Package, rel)
+}
+
+// cpanVersion is a distribution version that names one release: 1.0050,
+// v2.1.3, 0.31_01, 1.2-TRIAL.
+var cpanVersion = regexp.MustCompile(`^v?[0-9][0-9._]*(?:-TRIAL)?$`)
+
+// cpanRelease is what MetaCPAN says about a release.
+type cpanRelease struct {
+	Distribution string `json:"distribution"`
+	Dependency   []struct {
+		Module       string `json:"module"`
+		Version      any    `json:"version"`
+		Phase        string `json:"phase"`
+		Relationship string `json:"relationship"`
+	} `json:"dependency"`
+}
+
+// cpanRelease reads one of MetaCPAN's release documents.
+func (c *Client) cpanRelease(ctx context.Context, address string) (*cpanRelease, error) {
+	body, err := c.get(ctx, address)
+	if err != nil {
+		return nil, err
 	}
+	var rel cpanRelease
 	if err := json.Unmarshal(body, &rel); err != nil {
 		return nil, err
 	}
+	return &rel, nil
+}
+
+// cpanSearch finds a distribution's release at one version with MetaCPAN's
+// release search (an Elasticsearch query string); nil when there is none.
+//
+// Implements: REQ-SUP-053
+func (c *Client) cpanSearch(ctx context.Context, base, dist, version string) (*cpanRelease, error) {
+	q := url.Values{"q": {`distribution:"` + dist + `" AND version:"` + version + `"`}, "size": {"1"}}
+	body, err := c.get(ctx, base+"/v1/release/_search?"+q.Encode())
+	if err != nil {
+		return nil, err
+	}
+	var found struct {
+		Hits struct {
+			Hits []struct {
+				Source cpanRelease `json:"_source"`
+			} `json:"hits"`
+		} `json:"hits"`
+	}
+	if err := json.Unmarshal(body, &found); err != nil {
+		return nil, err
+	}
+	for _, h := range found.Hits.Hits {
+		if h.Source.Distribution == dist {
+			return &h.Source, nil
+		}
+	}
+	return nil, nil
+}
+
+// cpanDeps is a release's run-time requirements as distributions.
+func (c *Client) cpanDeps(ctx context.Context, base, dist string, rel *cpanRelease) ([]dep, error) {
 	var out []dep
-	seen := map[string]bool{t.Package: true, rel.Distribution: true}
+	seen := map[string]bool{dist: true, rel.Distribution: true}
 	for _, d := range rel.Dependency {
 		if d.Phase != "runtime" || d.Relationship != "requires" || d.Module == "perl" {
 			continue
@@ -1651,13 +1726,7 @@ func (c *Client) cpanDistribution(ctx context.Context, index string, t lang.Targ
 			continue // perl's own module, or one already answered
 		}
 		seen[dist] = true
-		v := strings.TrimSpace(fmt.Sprint(d.Version))
-		if d.Version == nil || strings.Trim(v, "0.") == "" {
-			v = ""
-		} else if v[0] >= '0' && v[0] <= '9' || v[0] == 'v' {
-			v = ">= " + v
-		}
-		out = append(out, dep{Name: dist, Version: v})
+		out = append(out, dep{Name: dist, Version: cpanMinimum(d.Version)})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
@@ -1707,17 +1776,34 @@ func (c *Client) cpanModule(ctx context.Context, base, module string) (string, e
 
 // ---------------------------------------------------------------- opam
 
-// opamPackage reads a package's dependencies from an opam repository laid out as
-// files: <repository>/packages/<name>/<name>.<version>/opam, which needs the
-// version (a pinned one; a range is not asked about). The dependencies are its
-// depends without the compiler and what only tests, documentation or development
-// need; a dependency written {= "1.2"} is that version, else its constraint as
-// written.
+// opamPackage reads a package's dependencies from an opam repository:
+// packages/<name>/<name>.<version>/opam, from the copy opam keeps of it on this
+// machine, else over HTTP. A version that is not exact (a range, or none) is the
+// newest the repository lists that it admits (opam's version order): listed from
+// the copy, or for opam-repository itself through GitHub's contents API; a
+// repository that can do neither is not asked about it (see lookup). The
+// dependencies are its depends without the compiler and what only tests,
+// documentation or development need; a dependency written {= "1.2"} is that
+// version, else its constraint as written.
 //
 // Implements: REQ-SUP-054
 func (c *Client) opamPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
-	name, version := url.PathEscape(t.Package), url.PathEscape(strings.TrimSpace(t.Version))
-	body, err := c.accept(ctx, strings.TrimRight(index, "/")+"/packages/"+name+"/"+name+"."+version+"/opam", "text/plain")
+	name := t.Package
+	if !opamName.MatchString(name) {
+		return nil, fmt.Errorf("not an opam package name: %q", name)
+	}
+	repo, err := c.opamRepo(ctx, strings.TrimRight(index, "/"))
+	if err != nil {
+		return nil, err
+	}
+	version := strings.TrimSpace(t.Version)
+	if !opam.ExactVersion(version) {
+		versions, err := repo.versions(name)
+		if version, err = release(versions, err, func(vs []string) string { return opam.Newest(vs, version) }); err != nil {
+			return nil, err
+		}
+	}
+	body, err := repo.read(name, version)
 	if err != nil {
 		return nil, err
 	}
@@ -2525,13 +2611,16 @@ func dubAdmits(spec string, v [3]int) bool {
 
 // ---------------------------------------------------------------- alire
 
-// alireCrate reads an Alire crate's dependencies from the community index,
-// a git repository of release manifests served as files:
-// <index>/index/<first two letters>/<crate>/<crate>-<version>.toml. A file
-// server cannot list a crate's releases, so only an exact version (a lock
-// file's, an =1.2.3 constraint's) is asked about. The dependencies are the
-// release's depends-on, every alternative of a case(...) expression counted,
-// an exact constraint shown as its version and a range as written.
+// alireCrate reads an Alire crate's dependencies from an Alire index, a git
+// repository of release manifests: <index>/<first two letters>/<crate>/
+// <crate>-<version>.toml, from the checkout alr keeps of it on this machine,
+// else over HTTP (the community index's `index/` directory). A constraint that
+// is not one version is answered by the newest release it admits (Alire's
+// semantic versioning, a release before a pre-release): listed from the
+// checkout, or for the community index through GitHub's contents API; an index
+// that can do neither is not asked about it (see lookup). The dependencies are
+// the release's depends-on, every alternative of a case(...) expression
+// counted, an exact constraint shown as its version and a range as written.
 //
 // Implements: REQ-SUP-061
 func (c *Client) alireCrate(ctx context.Context, index string, t lang.Target) ([]dep, error) {
@@ -2539,8 +2628,18 @@ func (c *Client) alireCrate(ctx context.Context, index string, t lang.Target) ([
 	if !alireName.MatchString(name) {
 		return nil, fmt.Errorf("not an Alire crate name: %q", name)
 	}
-	version, _ := ada.ExactVersion(t.Version)
-	body, err := c.accept(ctx, strings.TrimRight(index, "/")+"/index/"+name[:2]+"/"+name+"/"+name+"-"+url.PathEscape(version)+".toml", "text/plain")
+	ix, err := c.alireIndex(ctx, strings.TrimRight(index, "/"))
+	if err != nil {
+		return nil, err
+	}
+	version, exact := ada.ExactVersion(t.Version)
+	if !exact {
+		versions, err := ix.versions(name)
+		if version, err = release(versions, err, func(vs []string) string { return ada.Newest(vs, t.Version) }); err != nil {
+			return nil, err
+		}
+	}
+	body, err := ix.read(name, version)
 	if err != nil {
 		return nil, err
 	}

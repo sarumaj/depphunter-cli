@@ -17,8 +17,11 @@ evaluated (every case alternative counts, other projects' attributes and
 `GPR_PROJECT_PATH` are unknown), a unit generated at build time (Alire's
 `<crate>_config`, wsdl2aws output) is dropped or unresolved, a unit of a
 crate Alire has not fetched is attributed by declared names and a curated
-table, and only an exact version is asked of the community index with
-`--online` (a file server cannot list a crate's releases).
+table, and with `--online` alr's solver is not run: a range stands for the
+newest release it admits in an index alr keeps a checkout of or GitHub
+lists, and only an exact version is asked of an index served over HTTP
+otherwise (a file server cannot list a crate's releases;
+[REQ-SUP-061](../sup/REQ-SUP-061-alire-community-index.md)).
 
 ## Rationale
 

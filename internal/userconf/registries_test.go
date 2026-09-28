@@ -58,3 +58,36 @@ func TestQuicklispDists(t *testing.T) {
 		t.Errorf("no home: %v", got)
 	}
 }
+
+// opam's root is OPAMROOT, else %LOCALAPPDATA%\opam on Windows, else ~/.opam;
+// Alire's settings are ALIRE_SETTINGS_DIR's (ALR_CONFIG's for Alire 1), else
+// %USERPROFILE%\.config\alire on Windows, else $XDG_CONFIG_HOME/alire
+// (~/.config/alire).
+//
+// Verifies: REQ-SUP-064
+func TestOpamAndAlireLocations(t *testing.T) {
+	home, dir, local, xdg := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
+	for _, tc := range []struct {
+		goos        string
+		vars        map[string]string
+		opam, alire string
+	}{
+		{"linux", nil, filepath.Join(home, ".opam"), filepath.Join(home, ".config", "alire")},
+		{"darwin", map[string]string{"XDG_CONFIG_HOME": xdg}, filepath.Join(home, ".opam"), filepath.Join(xdg, "alire")},
+		{"linux", map[string]string{"OPAMROOT": dir, "ALIRE_SETTINGS_DIR": dir, "ALR_CONFIG": local}, dir, dir},
+		{"linux", map[string]string{"ALR_CONFIG": local}, filepath.Join(home, ".opam"), local},
+		{"windows", map[string]string{"LOCALAPPDATA": local, "XDG_CONFIG_HOME": xdg}, filepath.Join(local, "opam"), filepath.Join(home, ".config", "alire")},
+		{"windows", nil, filepath.Join(home, ".opam"), filepath.Join(home, ".config", "alire")},
+	} {
+		m := machine(t, home, tc.goos, tc.vars)
+		if got := m.OpamRoot(); got != tc.opam {
+			t.Errorf("%s %v: opam root %s, want %s", tc.goos, tc.vars, got, tc.opam)
+		}
+		if got := m.AlireSettingsDir(); got != tc.alire {
+			t.Errorf("%s %v: alire settings %s, want %s", tc.goos, tc.vars, got, tc.alire)
+		}
+	}
+	if m := machine(t, "", "linux", nil); m.OpamRoot() != "" || m.AlireSettingsDir() != "" {
+		t.Error("no home, no paths")
+	}
+}

@@ -99,6 +99,12 @@ const (
 	// NoteUnmapped is a package a source mapping covers no pattern of, which the
 	// package manager itself would refuse to install.
 	NoteUnmapped = "unmapped"
+	// NoteNoRelease is a release the index does not describe: another release's
+	// dependencies are shown, or none.
+	NoteNoRelease = "no-release"
+	// NoteNoCopy is a repository of package descriptions that is read only from a
+	// copy on this machine's disk, and has none.
+	NoteNoCopy = "no-copy"
 )
 
 // Note is something a resolver or the index client knows about the run that no

@@ -281,14 +281,15 @@ requirements of type `limitation` in their scopes:
   rock-to-rock edges, and no vulnerability database covers LuaRocks or Wally.
 - Perl is read without running perl: `@INC` changed at run time and computed
   module names are not followed, a distribution without a snapshot is named by
-  a curated table and the module's name, `--online` reads the latest release's
-  dependencies whatever version is pinned, and no vulnerability database
-  covers CPAN.
+  a curated table and the module's name, `--online` reads dependencies from
+  MetaCPAN only (a distribution only a DarkPAN has shows none), and no
+  vulnerability database covers CPAN.
 - OCaml is read without building: names brought into scope by opening a
   submodule or a package's module, by includes of packages or by ppx
   rewriters are not followed, a package's modules are matched by name, dune
-  rules are not run, and `--online` reads opam-repository only for packages
-  pinned to a version.
+  rules are not run, and `--online` takes the newest version a range admits
+  (opam's solver is not run), asking a repository served over HTTP that this
+  machine keeps no copy of only about pinned versions.
 - Julia is read without running Julia: includes of computed paths,
   `LOAD_PATH` changes and `@eval`-generated modules are not followed,
   `import A.b` is read as a module path, a version is not resolved without a
@@ -350,8 +351,9 @@ requirements of type `limitation` in their scopes:
   of a gnatprep `#if` is read, project files are not evaluated (every case
   alternative counts), units generated at build time are dropped or
   unresolved, a unit of a crate Alire has not fetched is attributed by
-  declared names and a curated table, and `--online` asks the community
-  index only about exact versions.
+  declared names and a curated table, and `--online` takes the newest
+  release a range admits (alr's solver is not run), asking an index served
+  over HTTP that alr keeps no checkout of only about exact versions.
 - Racket is read without running Racket or raco: macros are not expanded,
   `info.rkt` is not evaluated, raco keeps no lock file (only a checksum or a
   git commit pins), a collection no file of the repository has is

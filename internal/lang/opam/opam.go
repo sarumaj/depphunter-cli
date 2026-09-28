@@ -195,8 +195,31 @@ func identByte(c byte) bool {
 
 // Read reads a description. It returns a result for any input.
 func Read(src []byte) *File {
-	tokens := lex(src)
 	f := &File{}
+	fields(lex(src), func(name string, value []token) {
+		switch name {
+		case "name":
+			if len(value) > 0 && value[0].k == tString {
+				f.Name = value[0].s
+			}
+		case "version":
+			if len(value) > 0 && value[0].k == tString {
+				f.Version = value[0].s
+			}
+		case "depends":
+			f.Depends = formula(value)
+		case "depopts":
+			f.Depopts = formula(value)
+		case "pin-depends":
+			f.Pins = pins(value)
+		}
+	})
+	return f
+}
+
+// fields hands each top-level field of a file in opam's format to fn with its
+// value, which runs to the next field or section at the top level.
+func fields(tokens []token, fn func(name string, value []token)) {
 	depth := 0
 	for i := 0; i < len(tokens); i++ {
 		t := tokens[i]
@@ -212,7 +235,6 @@ func Read(src []byte) *File {
 		if depth != 0 || t.k != tIdent || i+1 >= len(tokens) || !punct(tokens[i+1], ":") {
 			continue
 		}
-		// A field: its value runs to the next field or section at the top level.
 		j := i + 2
 		for d := 0; j < len(tokens); j++ {
 			u := tokens[j]
@@ -232,26 +254,58 @@ func Read(src []byte) *File {
 				break
 			}
 		}
-		value := tokens[i+2 : min(j, len(tokens))]
-		switch t.s {
-		case "name":
-			if len(value) > 0 && value[0].k == tString {
-				f.Name = value[0].s
-			}
-		case "version":
-			if len(value) > 0 && value[0].k == tString {
-				f.Version = value[0].s
-			}
-		case "depends":
-			f.Depends = formula(value)
-		case "depopts":
-			f.Depopts = formula(value)
-		case "pin-depends":
-			f.Pins = pins(value)
-		}
+		fn(t.s, tokens[i+2:min(j, len(tokens))])
 		i = j - 1
 	}
-	return f
+}
+
+// Repository is an entry of opam's `repositories:` field: a name, and in the
+// root's repo/repos-config the URL opam fetches it from.
+type Repository struct {
+	Name, URL string
+}
+
+// Repositories reads the `repositories:` field of an opam configuration file:
+// repo/repos-config's `"name" {"url" ...}` entries, or the names the root's
+// config and a switch's switch-config list (a single string or a list), in the
+// order written - the order of priority.
+func Repositories(src []byte) []Repository {
+	var out []Repository
+	fields(lex(src), func(name string, value []token) {
+		if name != "repositories" {
+			return
+		}
+		for i := 0; i < len(value); i++ {
+			if value[i].k != tString {
+				continue
+			}
+			r := Repository{Name: value[i].s}
+			if i+1 < len(value) && punct(value[i+1], "{") {
+				end := closing(value, i+1)
+				for _, u := range value[i+2 : min(end, len(value))] {
+					if u.k == tString {
+						r.URL = u.s
+						break
+					}
+				}
+				i = end
+			}
+			out = append(out, r)
+		}
+	})
+	return out
+}
+
+// String is the value of a top-level field holding one string (the root
+// config's `switch:`), or "".
+func String(src []byte, field string) string {
+	out := ""
+	fields(lex(src), func(name string, value []token) {
+		if name == field && out == "" && len(value) > 0 && value[0].k == tString {
+			out = value[0].s
+		}
+	})
+	return out
 }
 
 // formula reads the packages of a dependency formula: every string outside a

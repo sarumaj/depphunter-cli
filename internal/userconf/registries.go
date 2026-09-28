@@ -62,3 +62,42 @@ func (m Machine) QuicklispDists() []string {
 	sort.Strings(files)
 	return files
 }
+
+// ---------------------------------------------------------------- opam
+
+// OpamRoot is opam's root directory, which holds its configuration and a copy
+// of every repository it has fetched: `OPAMROOT`; else %LOCALAPPDATA%\opam on
+// Windows (opam 2.2's default) when %LOCALAPPDATA% is set; else ~/.opam.
+//
+// Implements: REQ-SUP-064
+func (m Machine) OpamRoot() string {
+	if dir := m.Env("OPAMROOT"); dir != "" {
+		return dir
+	}
+	if m.GOOS == "windows" {
+		if dir := m.Env("LOCALAPPDATA"); dir != "" {
+			return filepath.Join(dir, "opam")
+		}
+	}
+	return join(m.Home, ".opam")
+}
+
+// ---------------------------------------------------------------- Alire
+
+// AlireSettingsDir is where Alire keeps its settings and its indexes:
+// `ALIRE_SETTINGS_DIR` (Alire 2), else `ALR_CONFIG` (Alire 1); else
+// %USERPROFILE%\.config\alire on Windows, else $XDG_CONFIG_HOME/alire
+// (~/.config/alire).
+//
+// Implements: REQ-SUP-064
+func (m Machine) AlireSettingsDir() string {
+	for _, v := range []string{"ALIRE_SETTINGS_DIR", "ALR_CONFIG"} {
+		if dir := m.Env(v); dir != "" {
+			return dir
+		}
+	}
+	if m.GOOS == "windows" {
+		return join(m.Home, ".config", "alire")
+	}
+	return join(m.xdgConfigHome(), "alire")
+}
