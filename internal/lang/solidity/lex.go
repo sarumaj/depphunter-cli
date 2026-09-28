@@ -33,7 +33,7 @@ func identPart(c byte) bool { return identStart(c) || c >= '0' && c <= '9' }
 // Implements: REQ-SOLIDITY-002, REQ-SOLIDITY-010
 func lex(src []byte) []token {
 	s := string(src) // one copy; every token's text is a slice of it
-	toks := make([]token, 0, len(s)/5+16)
+	tokens := make([]token, 0, len(s)/5+16)
 	line := 1
 	for i := 0; i < len(s); {
 		c := s[i]
@@ -68,7 +68,7 @@ func lex(src []byte) []token {
 				}
 				j++
 			}
-			toks = append(toks, token{kind: tString, text: s[i+1 : min(j, len(s))], line: start})
+			tokens = append(tokens, token{kind: tString, text: s[i+1 : min(j, len(s))], line: start})
 			i = j
 			if i < len(s) && s[i] == c {
 				i++
@@ -84,19 +84,19 @@ func lex(src []byte) []token {
 				i = j
 				continue
 			}
-			toks = append(toks, token{kind: tIdent, text: s[i:j], line: line})
+			tokens = append(tokens, token{kind: tIdent, text: s[i:j], line: line})
 			i = j
 		case c >= '0' && c <= '9':
 			j := i + 1
 			for j < len(s) && (identPart(s[j]) || s[j] == '.' && j+1 < len(s) && s[j+1] >= '0' && s[j+1] <= '9') {
 				j++
 			}
-			toks = append(toks, token{kind: tNumber, text: s[i:j], line: line})
+			tokens = append(tokens, token{kind: tNumber, text: s[i:j], line: line})
 			i = j
 		default:
-			toks = append(toks, token{kind: tPunct, text: s[i : i+1], line: line})
+			tokens = append(tokens, token{kind: tPunct, text: s[i : i+1], line: line})
 			i++
 		}
 	}
-	return toks
+	return tokens
 }

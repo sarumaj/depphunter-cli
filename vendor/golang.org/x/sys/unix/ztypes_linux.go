@@ -507,8 +507,8 @@ type TCPInfo struct {
 	Segs_in              uint32
 	Notsent_bytes        uint32
 	Min_rtt              uint32
-	Data_segs_in         uint32
-	Data_segs_out        uint32
+	Data_segments_in     uint32
+	Data_segments_out    uint32
 	Delivery_rate        uint64
 	Busy_time            uint64
 	Rwnd_limited         uint64

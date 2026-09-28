@@ -617,16 +617,16 @@ func (x *Index) Cart(file, name string) lang.Target {
 //
 // Implements: REQ-OBJC-006
 func (x *Index) Vendored(file, local string) (lang.Target, bool) {
-	segs := strings.Split(local, "/")
-	for i, s := range segs {
+	segments := strings.Split(local, "/")
+	for i, s := range segments {
 		switch s {
 		case "Pods":
-			if i+1 >= len(segs)-1 {
+			if i+1 >= len(segments)-1 {
 				return lang.Target{}, false
 			}
-			name := segs[i+1]
-			if name == "Headers" && i+3 < len(segs)-1 {
-				name = segs[i+3] // Headers/Public/<Name>/x.h
+			name := segments[i+1]
+			if name == "Headers" && i+3 < len(segments)-1 {
+				name = segments[i+3] // Headers/Public/<Name>/x.h
 			}
 			if name == "Headers" || name == "Target Support Files" || strings.HasPrefix(name, "Pods") || strings.HasSuffix(name, ".xcodeproj") {
 				return lang.Target{}, false
@@ -634,10 +634,10 @@ func (x *Index) Vendored(file, local string) (lang.Target, bool) {
 			return x.target(file, x.projectsOf(file), name), true
 		case "Carthage":
 			name := ""
-			if i+2 < len(segs) && segs[i+1] == "Checkouts" {
-				name = segs[i+2]
+			if i+2 < len(segments) && segments[i+1] == "Checkouts" {
+				name = segments[i+2]
 			} else {
-				for _, s := range segs[i+1 : len(segs)-1] {
+				for _, s := range segments[i+1 : len(segments)-1] {
 					if n, ok := strings.CutSuffix(s, ".framework"); ok {
 						name = n
 					} else if n, ok := strings.CutSuffix(s, ".xcframework"); ok {
@@ -645,7 +645,7 @@ func (x *Index) Vendored(file, local string) (lang.Target, bool) {
 					}
 				}
 			}
-			if name == "" || i+2 >= len(segs) {
+			if name == "" || i+2 >= len(segments) {
 				return lang.Target{}, false
 			}
 			for _, p := range x.projectsOf(file) {

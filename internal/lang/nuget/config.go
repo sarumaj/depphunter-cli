@@ -182,6 +182,10 @@ func (s Settings) Lookup(key string) (Feed, bool) {
 // Enabled reports whether <disabledPackageSources> leaves a source key enabled.
 func (s Settings) Enabled(key string) bool { return !s.disabled[strings.ToLower(key)] }
 
+// Mapped reports whether a packageSourceMapping is in force: NuGet then restores
+// only packages some pattern covers.
+func (s Settings) Mapped() bool { return len(s.mapping) > 0 }
+
 // Route is <packageSourceMapping> for one package id: the keys of the sources whose
 // pattern for it is the most specific - an exact id over any prefix, a longer prefix
 // (`Contoso.*`) over a shorter one, and `*` last - in the order of Feeds (keys no

@@ -31,7 +31,11 @@ type resolver struct {
 	pkgs      map[string]*pkg   // by directory
 	erlFiles  map[string]string // Erlang module -> the .erl file defining it
 	installed map[string]string // package dir + "\x00" + module -> Hex package, from build/packages
+	lang.NoteList
 }
+
+// The notes a resolver keeps reach --explain only through lang.Noter.
+var _ lang.Noter = (*resolver)(nil)
 
 // Implements: REQ-GLEAM-004, REQ-GLEAM-005, REQ-GLEAM-006
 func newResolver(root string, all []*scan.File) *resolver {
@@ -76,6 +80,10 @@ func newResolver(root string, all []*scan.File) *resolver {
 			}
 			if src, ok := read(path.Join(dir, "manifest.toml")); ok {
 				if p.manifest = readManifest(src); p.manifest != nil {
+					// Implements: REQ-TRC-017
+					if _, listed := abs[path.Join(dir, "manifest.toml")]; !listed {
+						r.NoteIgnored(path.Join(dir, "manifest.toml"))
+					}
 					for _, l := range p.manifest.packages {
 						if l.otpApp != "" {
 							p.otpApps[l.otpApp] = l.name
@@ -135,14 +143,14 @@ func (r *resolver) locate(file string) (dir, rootDir, module string) {
 			break
 		}
 	}
-	segs := strings.Split(file, "/")
-	for i := len(segs) - 2; i >= 0; i-- {
-		if s := segs[i]; s == "src" || s == "test" || s == "dev" {
+	segments := strings.Split(file, "/")
+	for i := len(segments) - 2; i >= 0; i-- {
+		if s := segments[i]; s == "src" || s == "test" || s == "dev" {
 			dir := "."
 			if i > 0 {
-				dir = strings.Join(segs[:i], "/")
+				dir = strings.Join(segments[:i], "/")
 			}
-			return dir, s, strings.TrimSuffix(strings.Join(segs[i+1:], "/"), ".gleam")
+			return dir, s, strings.TrimSuffix(strings.Join(segments[i+1:], "/"), ".gleam")
 		}
 	}
 	return "", "", ""
@@ -270,8 +278,8 @@ func (r *resolver) module(file, mod string) lang.Target {
 	if known {
 		return r.hexTarget(p, name)
 	}
-	segs := strings.Split(mod, "/")
-	if name == p.name || segs[0] == p.name {
+	segments := strings.Split(mod, "/")
+	if name == p.name || segments[0] == p.name {
 		return lang.Target{} // its own namespace: a module it does not have
 	}
 	return lang.Target{Ecosystem: ecoHex, Package: name, Unresolved: true}

@@ -431,7 +431,7 @@ func (r *resolver) module(file, module string) lang.Target {
 	if name, ok := r.installed[module]; ok {
 		return lang.Target{Ecosystem: ecoDub, Package: name}
 	}
-	segs := strings.Split(module, ".")
+	segments := strings.Split(module, ".")
 	var declared []string
 	if p != nil {
 		declared = r.declared(p)
@@ -439,8 +439,8 @@ func (r *resolver) module(file, module string) lang.Target {
 	// A declared package spelled by the module's leading segments (mir.random is
 	// mir-random), or the one a curated table names.
 	spelled, k := "", 0
-	for n := len(segs); n >= 1 && spelled == ""; n-- {
-		want := fold(strings.Join(segs[:n], "_"))
+	for n := len(segments); n >= 1 && spelled == ""; n-- {
+		want := fold(strings.Join(segments[:n], "_"))
 		for _, name := range declared {
 			for _, s := range spellings(base(name)) {
 				if s == want {
@@ -453,9 +453,9 @@ func (r *resolver) module(file, module string) lang.Target {
 			}
 		}
 	}
-	cands, tk := table(module)
-	if cands != nil && tk >= k {
-		for _, c := range cands {
+	candidates, tk := table(module)
+	if candidates != nil && tk >= k {
+		for _, c := range candidates {
 			for _, name := range declared {
 				if base(name) == c {
 					return r.dubTarget(p, c)
@@ -463,27 +463,27 @@ func (r *resolver) module(file, module string) lang.Target {
 			}
 		}
 		if spelled == "" {
-			if p != nil && r.own(p, cands[0]) {
+			if p != nil && r.own(p, candidates[0]) {
 				// The package's own prefix, but not its file: mir-algorithm's
 				// mir.exception is mir-core's.
-				if name := startsLike(declared, segs[0]); name != "" {
+				if name := startsLike(declared, segments[0]); name != "" {
 					return r.dubTarget(p, name)
 				}
 				return lang.Target{}
 			}
-			return lang.Target{Ecosystem: ecoDub, Package: cands[0], Unresolved: true}
+			return lang.Target{Ecosystem: ecoDub, Package: candidates[0], Unresolved: true}
 		}
 	}
 	if spelled != "" {
 		return r.dubTarget(p, spelled)
 	}
-	if name := startsLike(declared, segs[0]); name != "" {
+	if name := startsLike(declared, segments[0]); name != "" {
 		return r.dubTarget(p, name)
 	}
-	if p != nil && r.own(p, segs[0]) {
+	if p != nil && r.own(p, segments[0]) {
 		return lang.Target{} // the package's own module, missing
 	}
-	return lang.Target{Ecosystem: ecoDub, Package: segs[0], Unresolved: true}
+	return lang.Target{Ecosystem: ecoDub, Package: segments[0], Unresolved: true}
 }
 
 // startsLike is the one declared package whose name starts with a module's

@@ -28,8 +28,12 @@ alone, with this machine's key
 packages; its requirements, which the API does not place in a repository,
 **shall** be taken to be the organization's as well. Without a key for the
 organization it **shall** not be asked, and the resolution report **shall**
-say that the key is missing. A package of any other repository **shall** be
-asked of no index.
+say that the key is missing, per package and once as a note naming the
+organization and what provides a key; an organization whose API answers 403
+to the key sent (an organization key with only the repository permission)
+**shall** be noted with how to make a key it accepts
+([REQ-TRC-017](../trc/REQ-TRC-017-resolver-notes.md)). A package of any other
+repository **shall** be asked of no index.
 
 A package whose registry lists several repositories (a rebar3 project's,
 [REQ-BEAM-013](../beam/REQ-BEAM-013-hex-organization-packages.md)) **shall**

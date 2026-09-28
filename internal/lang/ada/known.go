@@ -17,17 +17,17 @@ var stdUnits = map[string]bool{
 // stdPackage is the ada-std package of a predefined unit: its first two
 // segments (ada.containers for Ada.Containers.Vectors), in lower case.
 func stdPackage(unit string) (string, bool) {
-	segs := strings.Split(unit, ".")
-	if len(segs) == 1 && stdUnits[unit] {
+	segments := strings.Split(unit, ".")
+	if len(segments) == 1 && stdUnits[unit] {
 		return unit, true
 	}
-	if !stdRoots[segs[0]] {
+	if !stdRoots[segments[0]] {
 		return "", false
 	}
-	if len(segs) > 2 {
-		segs = segs[:2]
+	if len(segments) > 2 {
+		segments = segments[:2]
 	}
-	return strings.Join(segs, "."), true
+	return strings.Join(segments, "."), true
 }
 
 // knownCrates maps unit prefixes (lower case) to the Alire crate that provides
@@ -127,9 +127,9 @@ var knownProjects = map[string]string{
 // knownCrate is the table's crate for a unit and the number of segments the
 // matching prefix has.
 func knownCrate(unit string) (string, int) {
-	segs := strings.Split(unit, ".")
-	for k := len(segs); k > 0; k-- {
-		if c, ok := knownCrates[strings.Join(segs[:k], ".")]; ok {
+	segments := strings.Split(unit, ".")
+	for k := len(segments); k > 0; k-- {
+		if c, ok := knownCrates[strings.Join(segments[:k], ".")]; ok {
 			return c, k
 		}
 	}

@@ -6,6 +6,7 @@ import (
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
+	"github.com/sarumaj/depphunter-cli/internal/trace"
 )
 
 // conventional are the directories an include is looked up in when nothing says
@@ -18,6 +19,9 @@ type resolver struct {
 	db     *compileDB
 	pkgs   *packages // what vcpkg and Conan manifests declare
 }
+
+// The notes a resolver keeps reach --explain only through lang.Noter.
+var _ lang.Noter = (*resolver)(nil)
 
 // Implements: REQ-CPP-004
 func newResolver(root string, all []*scan.File) *resolver {
@@ -114,6 +118,19 @@ func (r *resolver) resolve(file string, imp lang.RawImport, external func(name s
 //
 // Implements: REQ-CPP-011
 func (r *resolver) Dependencies(t lang.Target) []lang.Target { return r.pkgs.Dependencies(t) }
+
+// Notes implements lang.Noter: a Conan 2 lock pins versions and records no edges,
+// and nothing past it is asked of any index either.
+//
+// Implements: REQ-CPP-011, REQ-TRC-017
+func (r *resolver) Notes() []trace.Note {
+	var out []trace.Note
+	for _, f := range r.pkgs.flat {
+		out = append(out, trace.Note{File: f, Code: trace.NoteFlat, Message: "a Conan 2 lock pins versions but " +
+			"records no edges, and no index is asked for Conan: --resolve-depth adds nothing past the packages it pins"})
+	}
+	return out
+}
 
 // bySuffix finds the project file whose path ends in the include ("foo/bar.h" in
 // libs/foo/bar.h): the only one, or else the one closest to the includer when that

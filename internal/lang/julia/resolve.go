@@ -358,22 +358,22 @@ func (r *resolver) governing(file string) []*project {
 // ones to the package, a declared dependency or the standard library.
 func (r *resolver) module(file, within, spec string) lang.Target {
 	dots := len(spec) - len(strings.TrimLeft(spec, "."))
-	segs := splitModule(spec[dots:])
+	segments := splitModule(spec[dots:])
 	if dots > 0 {
-		return r.relative(file, within, dots, segs)
+		return r.relative(file, within, dots, segments)
 	}
-	if len(segs) == 0 {
+	if len(segments) == 0 {
 		return lang.Target{}
 	}
-	first := segs[0]
+	first := segments[0]
 	switch first {
 	case "Base", "Core":
 		return std(first)
 	case "Main":
 		// The session's module: Main.TestUtilities is a module some script
 		// defined at its top level.
-		for n := len(segs); n >= 2; n-- {
-			if f := r.moduleFile(strings.Join(segs[1:n], "."), file); f != "" {
+		for n := len(segments); n >= 2; n-- {
+			if f := r.moduleFile(strings.Join(segments[1:n], "."), file); f != "" {
 				return local(f, file)
 			}
 		}
@@ -381,13 +381,13 @@ func (r *resolver) module(file, within, spec string) lang.Target {
 	}
 	for _, p := range r.ancestors(file) {
 		if p.name == first {
-			return r.local(p, segs, file)
+			return r.local(p, segments, file)
 		}
 	}
 	gov := r.governing(file)
 	for _, p := range gov {
 		if uuid, ok := p.deps[first]; ok {
-			return r.declared(p, first, uuid, segs, file)
+			return r.declared(p, first, uuid, segments, file)
 		}
 	}
 	if juliapkg.Stdlib(first) {
@@ -395,7 +395,7 @@ func (r *resolver) module(file, within, spec string) lang.Target {
 	}
 	for _, p := range gov {
 		if e := p.manifest.find(first, ""); e != nil {
-			return r.entry(p.manifest, e, segs, file)
+			return r.entry(p.manifest, e, segments, file)
 		}
 	}
 	if ps := r.byName[first]; len(ps) > 0 {
@@ -405,7 +405,7 @@ func (r *resolver) module(file, within, spec string) lang.Target {
 				best = p
 			}
 		}
-		return r.local(best, segs, file)
+		return r.local(best, segments, file)
 	}
 	// A module defined at the top of a script's session (include("x.jl") then
 	// using X without the dot): the file defining it.
@@ -414,7 +414,7 @@ func (r *resolver) module(file, within, spec string) lang.Target {
 	}
 	for _, p := range r.projects {
 		if uuid, ok := p.deps[first]; ok {
-			return r.declared(p, first, uuid, segs, file)
+			return r.declared(p, first, uuid, segments, file)
 		}
 	}
 	return lang.Target{Ecosystem: ecoJulia, Package: first, Unresolved: true, Floating: true}
@@ -422,7 +422,7 @@ func (r *resolver) module(file, within, spec string) lang.Target {
 
 // relative resolves using .Sub / ..Parent.X: one dot is the module the statement
 // is in, each further dot its parent.
-func (r *resolver) relative(file, within string, dots int, segs []string) lang.Target {
+func (r *resolver) relative(file, within string, dots int, segments []string) lang.Target {
 	base := splitModule(joinModule(r.ctx[file], within))
 	// A package's top module is its own parent, and Main is Main's: going up
 	// stops there (Documenter.HTMLWriter's using ...DOM is Documenter.DOM).
@@ -431,9 +431,9 @@ func (r *resolver) relative(file, within string, dots int, segs []string) lang.T
 		n = min(1, len(base))
 	}
 	base = base[:n]
-	try := func(base, segs []string) (lang.Target, bool) {
-		for n := len(segs); n >= 0; n-- {
-			key := strings.Join(append(append([]string{}, base...), segs[:n]...), ".")
+	try := func(base, segments []string) (lang.Target, bool) {
+		for n := len(segments); n >= 0; n-- {
+			key := strings.Join(append(append([]string{}, base...), segments[:n]...), ".")
 			if key == "" {
 				continue
 			}
@@ -446,16 +446,16 @@ func (r *resolver) relative(file, within string, dots int, segs []string) lang.T
 		}
 		return lang.Target{}, false
 	}
-	if t, ok := try(base, segs); ok && len(segs) > 0 {
+	if t, ok := try(base, segments); ok && len(segments) > 0 {
 		return t
 	}
 	// A module's own name is bound inside it: using ..Shop from Shop.Sub is Shop.
-	if len(base) > 0 && len(segs) > 0 && base[len(base)-1] == segs[0] {
-		if t, ok := try(base, segs[1:]); ok {
+	if len(base) > 0 && len(segments) > 0 && base[len(base)-1] == segments[0] {
+		if t, ok := try(base, segments[1:]); ok {
 			return t
 		}
 	}
-	if len(segs) == 0 {
+	if len(segments) == 0 {
 		t, _ := try(base, nil)
 		return t
 	}
@@ -464,14 +464,14 @@ func (r *resolver) relative(file, within string, dots int, segs []string) lang.T
 
 // local resolves a module path of a package in the repository: a submodule to the
 // file defining it, else the package's entry file src/Name.jl, else its directory.
-func (r *resolver) local(p *project, segs []string, file string) lang.Target {
+func (r *resolver) local(p *project, segments []string, file string) lang.Target {
 	name := p.name
-	if name == "" && len(segs) > 0 {
-		name = segs[0]
+	if name == "" && len(segments) > 0 {
+		name = segments[0]
 	}
 	entry := path.Join(p.dir, "src", name+".jl")
-	for n := len(segs); n >= 2; n-- {
-		if f := r.moduleFile(strings.Join(segs[:n], "."), entry); f != "" && strings.HasPrefix(f, prefixOf(p.dir)) {
+	for n := len(segments); n >= 2; n-- {
+		if f := r.moduleFile(strings.Join(segments[:n], "."), entry); f != "" && strings.HasPrefix(f, prefixOf(p.dir)) {
 			return local(f, file)
 		}
 	}
@@ -497,12 +497,12 @@ func prefixOf(dir string) string {
 // declared resolves a dependency a project declares: a [sources] path or URL, the
 // manifest's entry, a package of the repository with that UUID, the standard
 // library, else the registry package floating on its [compat] entry.
-func (r *resolver) declared(p *project, name, uuid string, segs []string, file string) lang.Target {
+func (r *resolver) declared(p *project, name, uuid string, segments []string, file string) lang.Target {
 	if s, ok := p.sources[name]; ok {
 		if s.path != "" {
 			d := path.Join(p.dir, s.path)
 			if lp := r.byDir[d]; lp != nil {
-				return r.local(lp, segs, file)
+				return r.local(lp, segments, file)
 			}
 			if r.dirs[d] {
 				return lang.Target{Local: d}
@@ -515,7 +515,7 @@ func (r *resolver) declared(p *project, name, uuid string, segs []string, file s
 		}
 	}
 	if e := p.manifest.find(name, uuid); e != nil {
-		t := r.entry(p.manifest, e, segs, file)
+		t := r.entry(p.manifest, e, segments, file)
 		if c := p.compat[name]; c != "" && t.Pinned && c != t.Version && c != "="+t.Version {
 			t.Requested = c
 		}
@@ -523,7 +523,7 @@ func (r *resolver) declared(p *project, name, uuid string, segs []string, file s
 	}
 	if uuid != "" {
 		if lps := r.byUUID[uuid]; len(lps) > 0 {
-			return r.local(lps[0], segs, file)
+			return r.local(lps[0], segments, file)
 		}
 	}
 	if juliapkg.Stdlib(name) {
@@ -552,11 +552,11 @@ func compatTarget(name, compat string) lang.Target {
 // entry is what a manifest says a package is: a developed directory, a standard
 // library (no git-tree-sha1: shipped with Julia, not installed from a registry), or
 // a package pinned to its version.
-func (r *resolver) entry(m *manifest, e *entry, segs []string, file string) lang.Target {
+func (r *resolver) entry(m *manifest, e *entry, segments []string, file string) lang.Target {
 	if e.path != "" {
 		d := path.Join(m.dir, e.path)
 		if lp := r.byDir[d]; lp != nil {
-			return r.local(lp, segs, file)
+			return r.local(lp, segments, file)
 		}
 		if r.dirs[d] {
 			return lang.Target{Local: d}

@@ -8,6 +8,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
+	"path"
 	"regexp"
 	"strings"
 	"sync"
@@ -90,6 +91,17 @@ func (c *Client) report(l trace.Lookup) {
 	r := c.rep
 	c.mu.Unlock()
 	r.Add(l)
+}
+
+// note records what the report should say once rather than per question, if anybody
+// is listening. The plugin is the walk's.
+//
+// Implements: REQ-TRC-017
+func (c *Client) note(code, message string) {
+	c.mu.Lock()
+	r := c.rep
+	c.mu.Unlock()
+	r.Note(trace.Note{Code: code, Message: message})
 }
 
 // NewClient prepares the client. dir holds the cached answers; ttl is how long one
@@ -185,6 +197,9 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 			break
 		}
 	}
+	if noKey != "" {
+		c.note(trace.NoteNoKey, noHexKey(noKey))
+	}
 	if noKey != "" && len(asked) == 0 {
 		l.Index, l.Reason = noKey, trace.ReasonNoKey
 		c.report(l)
@@ -271,6 +286,12 @@ func (c *Client) ask(t lang.Target, asked []candidate) (answer, string, error) {
 		var a answer
 		index = k.url
 		a, err = c.lookup(t, k.url)
+		if k.keyed && forbidden(err) {
+			// Implements: REQ-SUP-047, REQ-TRC-017
+			c.note(trace.NoteForbidden, "Hex organization "+path.Base(k.url)+" refused the key sent to "+k.url+
+				" (403): a key made by `mix hex.organization auth` without `--key` holds only the repository "+
+				"permission, and the API needs api:read - use a user key or one generated with --permission api:read")
+		}
 		requests = append(requests, a.requests...)
 		a.requests = requests
 		if err == nil {
@@ -542,6 +563,19 @@ func notFound(err error) bool {
 		return s.code == http.StatusNotFound || s.code == http.StatusGone
 	}
 	return errors.Is(err, errAbsent)
+}
+
+// forbidden reports whether an index refused the credentials it was sent (403).
+func forbidden(err error) bool {
+	var s *statusError
+	return errors.As(err, &s) && s.code == http.StatusForbidden
+}
+
+// noHexKey is the note for a Hex organization this machine holds no key for.
+func noHexKey(repo string) string {
+	return "no key on this machine for Hex organization " + path.Base(repo) + " (" + repo + "): its packages " +
+		"are not asked; `mix hex.organization auth " + path.Base(repo) + " --key KEY`, a user key " +
+		"(HEX_API_KEY, `mix hex.user auth`) or HEX_REPOS_KEY provides one"
 }
 
 // readLimited reads an answer, and no more of it than any of this has any use for.

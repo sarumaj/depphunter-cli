@@ -33,7 +33,10 @@ only of the enabled sources mapped to its most specific pattern (an exact id
 over any prefix, a longer `Prefix.*` over a shorter one, `*` last; ids and
 patterns compared without regard to case), and never of another index, the
 public one included. A package mapped only to sources that are disabled or
-undefined **shall** be asked of no index.
+undefined **shall** be asked of no index. A package no pattern covers is asked
+as without a mapping, and **shall** be noted in the resolution report, since
+NuGet itself would not restore it
+([REQ-TRC-017](../trc/REQ-TRC-017-resolver-notes.md)).
 
 ## Rationale
 

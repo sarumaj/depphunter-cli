@@ -30,28 +30,28 @@ type directive struct {
 // lexer turns a C or C++ source into tokens and directives. Lines the preprocessor
 // scan found dead (#if 0) contribute nothing.
 type lexer struct {
-	src   string
-	i     int
-	line  int
-	dead  []bool
-	toks  []token
-	dirs  []directive
-	bol   bool // only whitespace since the last newline
-	cplus bool
+	src    string
+	i      int
+	line   int
+	dead   []bool
+	tokens []token
+	dirs   []directive
+	bol    bool // only whitespace since the last newline
+	cplus  bool
 }
 
 func lex(src string, dead []bool, cplus bool) ([]token, []directive) {
 	l := &lexer{src: src, line: 1, dead: dead, bol: true, cplus: cplus}
-	l.toks = make([]token, 0, len(src)/6) // about one token in six bytes of C++
+	l.tokens = make([]token, 0, len(src)/6) // about one token in six bytes of C++
 	l.run()
-	return l.toks, l.dirs
+	return l.tokens, l.dirs
 }
 
 func (l *lexer) deadLine(line int) bool { return line < len(l.dead) && l.dead[line] }
 
 func (l *lexer) emit(kind int, start, line int) {
 	if !l.deadLine(line) {
-		l.toks = append(l.toks, token{kind: kind, text: l.src[start:l.i], line: line})
+		l.tokens = append(l.tokens, token{kind: kind, text: l.src[start:l.i], line: line})
 	}
 }
 
@@ -267,7 +267,7 @@ func (l *lexer) directive() {
 	if j := strings.IndexAny(text, " \t<\"(!"); j >= 0 {
 		word = text[:j]
 	}
-	l.dirs = append(l.dirs, directive{word: word, rest: strings.TrimSpace(text[len(word):]), line: line, at: len(l.toks)})
+	l.dirs = append(l.dirs, directive{word: word, rest: strings.TrimSpace(text[len(word):]), line: line, at: len(l.tokens)})
 }
 
 // selectBranches picks the tokens of conditional groups the scanner reads. A
@@ -286,15 +286,15 @@ func (l *lexer) directive() {
 // branches does.
 //
 // Implements: REQ-CPP-014
-func selectBranches(toks []token, dirs []directive) ([]token, []directive) {
+func selectBranches(tokens []token, dirs []directive) ([]token, []directive) {
 	type branch struct{ from, to int }
 	type group struct{ branches []branch }
 	var stack []*group
-	drop := make([]bool, len(toks)+1)
+	drop := make([]bool, len(tokens)+1)
 	any := false
-	// braces[i] is the brace balance of toks[:i].
-	braces := make([]int, len(toks)+1)
-	for i, t := range toks {
+	// braces[i] is the brace balance of tokens[:i].
+	braces := make([]int, len(tokens)+1)
+	for i, t := range tokens {
 		braces[i+1] = braces[i]
 		if t.kind == tPunct && t.text == "{" {
 			braces[i+1]++
@@ -343,17 +343,17 @@ func selectBranches(toks []token, dirs []directive) ([]token, []directive) {
 		}
 	}
 	if !any {
-		return toks, dirs
+		return tokens, dirs
 	}
-	index := make([]int, len(toks)+1)
+	index := make([]int, len(tokens)+1)
 	var kept []token
-	for i, t := range toks {
+	for i, t := range tokens {
 		index[i] = len(kept)
 		if !drop[i] {
 			kept = append(kept, t)
 		}
 	}
-	index[len(toks)] = len(kept)
+	index[len(tokens)] = len(kept)
 	for i := range dirs {
 		dirs[i].at = index[dirs[i].at]
 	}

@@ -11,6 +11,7 @@ import (
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
+	"github.com/sarumaj/depphunter-cli/internal/trace"
 )
 
 // Implements: REQ-JS-005
@@ -41,7 +42,11 @@ type resolver struct {
 	configs map[string]*tsconfig         // directory -> effective tsconfig/jsconfig
 	kits    map[string]bool              // directories holding a SvelteKit svelte.config
 	tree    *tree                        // what the lock files say the packages need
+	lang.NoteList
 }
+
+// The notes a resolver keeps reach --explain only through lang.Noter.
+var _ lang.Noter = (*resolver)(nil)
 
 type tsconfig struct {
 	baseURL string // project-relative; "" when unset
@@ -123,6 +128,13 @@ func newResolver(all []*scan.File) *resolver {
 				r.addLock(path.Join(dir, importer), versions)
 			}
 			r.tree.addPnpmTree(&lock)
+		case "bun.lockb":
+			// Implements: REQ-JS-017, REQ-TRC-017
+			if !r.files[path.Join(dir, "bun.lock")] && !r.files[path.Join(dir, "yarn.lock")] {
+				r.Note(f.Path, trace.NoteUnread, "Bun's binary lock file is not read: nothing here pins "+
+					"what it installed or records its edges; `bun install --save-text-lockfile` writes bun.lock, "+
+					"which is read")
+			}
 		case "bun.lock":
 			data, err := os.ReadFile(f.Abs)
 			if err != nil {

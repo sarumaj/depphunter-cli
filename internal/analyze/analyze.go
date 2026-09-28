@@ -2,6 +2,7 @@
 package analyze
 
 import (
+	"cmp"
 	"context"
 	"fmt"
 	"path"
@@ -183,6 +184,13 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 			// dependencies", and the report is where the difference is kept.
 			opts.Trace.Skip(p.Name(),
 				"the repository records no dependency graph for it, and --online was not given")
+		}
+		// Implements: REQ-TRC-017
+		if n, ok := r.(lang.Noter); ok {
+			for _, note := range n.Notes() {
+				note.Plugin = cmp.Or(note.Plugin, p.Name())
+				opts.Trace.Note(note)
+			}
 		}
 	}
 	b.relocate(opts.Registry)

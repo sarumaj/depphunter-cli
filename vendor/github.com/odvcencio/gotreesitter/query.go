@@ -662,24 +662,24 @@ func (q *Query) executeNodeIntoBuffer(root *Node, lang *Language, source []byte,
 
 func (q *Query) rootPatternCandidates(sym Symbol) []int {
 	if int(sym) < len(q.rootCandidatesDense) {
-		if cands := q.rootCandidatesDense[sym]; cands != nil {
-			return cands
+		if candidates := q.rootCandidatesDense[sym]; candidates != nil {
+			return candidates
 		}
 	}
-	if cands, ok := q.rootCandidatesBySymbol[sym]; ok {
-		return cands
+	if candidates, ok := q.rootCandidatesBySymbol[sym]; ok {
+		return candidates
 	}
 	return q.rootFallbackCandidates
 }
 
 func (q *Query) postorderPatternCandidates(sym Symbol) []int {
 	if int(sym) < len(q.postCandidatesDense) {
-		if cands := q.postCandidatesDense[sym]; cands != nil {
-			return cands
+		if candidates := q.postCandidatesDense[sym]; candidates != nil {
+			return candidates
 		}
 	}
-	if cands, ok := q.postCandidatesBySymbol[sym]; ok {
-		return cands
+	if candidates, ok := q.postCandidatesBySymbol[sym]; ok {
+		return candidates
 	}
 	return q.postFallbackCandidates
 }

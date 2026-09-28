@@ -11,6 +11,7 @@ import (
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
+	"github.com/sarumaj/depphunter-cli/internal/trace"
 )
 
 // project is a Mix or rebar3 project of the repository: a directory with a mix.exs
@@ -44,7 +45,11 @@ type resolver struct {
 	depMods   map[string]string // module -> application, from deps/ and _build/ on disk
 	injected  map[string]*injection
 	gleamMods map[string]string // Gleam module (gleam/list) -> its .gleam file
+	lang.NoteList
 }
+
+// The notes a resolver keeps reach --explain only through lang.Noter.
+var _ lang.Noter = (*resolver)(nil)
 
 // Implements: REQ-BEAM-006, REQ-BEAM-008, REQ-BEAM-010, REQ-BEAM-012
 func newResolver(root string, all []*scan.File) *resolver {
@@ -165,15 +170,32 @@ func newResolver(root string, all []*scan.File) *resolver {
 		// mix.lock and rebar.lock are committed by applications and git-ignored by
 		// libraries; what is on disk is what was resolved.
 		lock := map[string]*locked{}
-		if src, ok := read(path.Join(p.dir, "rebar.lock")); ok {
+		rebarLock, mixLock := path.Join(p.dir, "rebar.lock"), path.Join(p.dir, "mix.lock")
+		rebarLocked, mixLocked := 0, 0
+		if src, ok := read(rebarLock); ok {
 			for k, v := range readRebarLock(src) {
 				lock[k] = v
+				rebarLocked++
 			}
 		}
-		if src, ok := read(path.Join(p.dir, "mix.lock")); ok {
+		if src, ok := read(mixLock); ok {
 			for k, v := range readMixLock(src) {
 				lock[k] = v
+				mixLocked++
 			}
+		}
+		// Implements: REQ-BEAM-010, REQ-TRC-017
+		for _, l := range []struct {
+			file string
+			n    int
+		}{{rebarLock, rebarLocked}, {mixLock, mixLocked}} {
+			if _, listed := abs[l.file]; l.n > 0 && !listed {
+				r.NoteIgnored(l.file)
+			}
+		}
+		if rebarLocked > 0 && mixLocked == 0 {
+			r.Note(rebarLock, trace.NoteFlat, "rebar.lock pins versions but records no edges, only a depth: "+
+				"offline, --resolve-depth adds nothing past the packages it pins (--online asks Hex)")
 		}
 		if len(lock) > 0 {
 			p.lock = lock

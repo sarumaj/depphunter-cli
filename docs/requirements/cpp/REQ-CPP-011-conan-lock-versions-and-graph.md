@@ -17,8 +17,11 @@ Conan 2 form (`requires`, `build_requires` lists) and the Conan 1 form
 to the locked version, with a different declared version as the requested
 one, and a package only the lock holds **shall** count as declared, pinned.
 The edges of a Conan 1 lock **shall** answer what a Conan package depends on
-for `--resolve-depth`. With `--online`, pinned Conan packages **shall** be
-asked about in OSV's `ConanCenter` ecosystem.
+for `--resolve-depth`; a Conan 2 lock, which has none, **shall** be noted as
+flat in the resolution report
+([REQ-TRC-017](../trc/REQ-TRC-017-resolver-notes.md)). With `--online`,
+pinned Conan packages **shall** be asked about in OSV's `ConanCenter`
+ecosystem.
 
 ## Rationale
 

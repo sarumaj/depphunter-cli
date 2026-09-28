@@ -17,7 +17,10 @@ older bare list; `{pkg, Name, Version}` and `{git, Url, {ref, Sha}}`) from
 disk beside every `mix.exs` and `rebar.config`, a project without one using
 the enclosing project's (an umbrella's), and answer `--resolve-depth` from the
 requirements `mix.lock` records for each Hex package; `rebar.lock` records only
-a depth, no edges.
+a depth, no edges. A `rebar.lock` without a `mix.lock` beside it **shall** be
+noted as flat in the resolution report, and a lock read from disk because the
+scan left it out as such
+([REQ-TRC-017](../trc/REQ-TRC-017-resolver-notes.md)).
 
 ## Rationale
 

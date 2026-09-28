@@ -59,10 +59,10 @@ func (p Plugin) Claims(f *scan.File) bool {
 // build/packages/ (downloaded sources) or build/dev/, build/prod/, build/lsp/
 // (compiled output). A build/ directory of any other layout is left alone.
 func inBuild(p string) bool {
-	segs := strings.Split(p, "/")
-	for i := 0; i+2 < len(segs); i++ {
-		if segs[i] == "build" {
-			switch segs[i+1] {
+	segments := strings.Split(p, "/")
+	for i := 0; i+2 < len(segments); i++ {
+		if segments[i] == "build" {
+			switch segments[i+1] {
 			case "packages", "dev", "prod", "lsp":
 				return true
 			}

@@ -63,15 +63,15 @@ func (Plugin) Claims(f *scan.File) bool {
 
 // downloaded reports whether f lies where Paket or FAKE put what they fetched.
 func downloaded(f *scan.File) bool {
-	segs := strings.Split(f.Path, "/")
-	for i, s := range segs[:len(segs)-1] {
+	segments := strings.Split(f.Path, "/")
+	for i, s := range segments[:len(segments)-1] {
 		switch s {
 		case "paket-files", ".fake", ".paket":
 			return true
 		case "packages":
 			if f.Abs != "" && strings.HasSuffix(filepath.ToSlash(f.Abs), f.Path) {
 				base := f.Abs[:len(f.Abs)-len(f.Path)]
-				if hasPaket(filepath.Join(base, filepath.FromSlash(strings.Join(segs[:i], "/")))) {
+				if hasPaket(filepath.Join(base, filepath.FromSlash(strings.Join(segments[:i], "/")))) {
 					return true
 				}
 			}

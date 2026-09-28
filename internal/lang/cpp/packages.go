@@ -46,6 +46,9 @@ type packages struct {
 	// tree is what a Conan 1 conan.lock (graph_lock) says each "name/version"
 	// requires. A Conan 2 lock is a flat list and gives no edges.
 	tree map[string][]lang.Target
+	// flat are the Conan 2 locks that pinned something, for the note that says
+	// they give no edges.
+	flat []string
 }
 
 // normName folds the spellings one library goes by in vcpkg, Conan and its include
@@ -90,7 +93,10 @@ func readPackages(all []*scan.File) *packages {
 			conan = append(conan, readConanfilePy(src)...)
 		}
 		if src, ok := files["conan.lock"]; ok {
-			conan = p.lock(src, conan)
+			var flat bool
+			if conan, flat = p.lock(src, conan); flat {
+				p.flat = append(p.flat, path.Join(dir, "conan.lock"))
+			}
 		}
 		byName := map[string][]*pkg{}
 		for _, list := range [][]*pkg{vcpkg, conan} {
@@ -376,10 +382,11 @@ func stripPyComments(s string) string {
 // version replaces a range, and what the lock holds beyond them (the libraries
 // the declared ones need) is installed too and so declared. It reads Conan 2
 // locks ("requires", "build_requires" lists) and Conan 1 locks ("graph_lock"
-// nodes), whose edges it also keeps for the transitive walk.
+// nodes), whose edges it also keeps for the transitive walk. flat is a Conan 2
+// lock that pinned something: it has no edges to keep.
 //
 // Implements: REQ-CPP-011
-func (p *packages) lock(src []byte, declared []*pkg) []*pkg {
+func (p *packages) lock(src []byte, declared []*pkg) (_ []*pkg, flat bool) {
 	var l struct {
 		GraphLock *struct {
 			Nodes map[string]struct {
@@ -394,7 +401,7 @@ func (p *packages) lock(src []byte, declared []*pkg) []*pkg {
 		PythonRequires []string `json:"python_requires"`
 	}
 	if json.Unmarshal(src, &l) != nil {
-		return declared
+		return declared, false
 	}
 	var locked []*pkg
 	for _, ref := range append(l.Requires, l.BuildRequires...) {
@@ -444,7 +451,7 @@ func (p *packages) lock(src []byte, declared []*pkg) []*pkg {
 			declared = append(declared, d)
 		}
 	}
-	return declared
+	return declared, l.GraphLock == nil && len(locked) > 0
 }
 
 // Dependencies implements lang.Transitive for Conan packages a Conan 1 lock gives

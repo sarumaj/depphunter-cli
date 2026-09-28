@@ -12,6 +12,7 @@
 package trace
 
 import (
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -76,6 +77,42 @@ const maxLookups = 20000
 //
 // Implements: REQ-TRC-015
 const maxListed = 50
+
+// What a Note is about. A code names the kind of silence, so a reader - or a
+// test - can pick out one kind without matching the sentence.
+//
+// Implements: REQ-TRC-017
+const (
+	// NoteUnread is a lock file the repository keeps that nothing here reads.
+	NoteUnread = "lock-unread"
+	// NoteFlat is a lock file that pins versions but records no edges: offline, the
+	// walk past the packages it pins adds nothing.
+	NoteFlat = "lock-flat"
+	// NoteIgnored is a lock file the scan left out (git-ignored or excluded) that a
+	// resolver read from disk anyway.
+	NoteIgnored = "lock-ignored"
+	// NoteNoKey is a private registry this machine holds no key for.
+	NoteNoKey = "no-key"
+	// NoteForbidden is a private registry that refused the key it was sent.
+	NoteForbidden = "forbidden"
+	// NoteUnmapped is a package a source mapping covers no pattern of, which the
+	// package manager itself would refuse to install.
+	NoteUnmapped = "unmapped"
+)
+
+// Note is something a resolver or the index client knows about the run that no
+// single question shows: a lock file that is there but not read, one that pins
+// versions and records no edges, a key an organization's registry refused. Without
+// it these look, on the map and in the report, like packages with no dependencies.
+//
+// Implements: REQ-TRC-017
+type Note struct {
+	Plugin string `json:"plugin"`
+	// File is the project file the note is about, when it is about one.
+	File    string `json:"file,omitempty"`
+	Code    string `json:"code"`
+	Message string `json:"message"`
+}
 
 // Source is one index the run knew about, and how it came to know.
 //
@@ -196,6 +233,7 @@ type Report struct {
 	Levels  []Level  `json:"levels,omitempty"`
 	Skipped []Skip   `json:"skipped,omitempty"`
 	Lookups []Lookup `json:"lookups,omitempty"`
+	Notes   []Note   `json:"notes,omitempty"`
 	// Dropped counts the questions past maxLookups: counted in Totals, not kept here.
 	Dropped int    `json:"dropped,omitempty"`
 	Totals  Totals `json:"totals"`
@@ -263,6 +301,26 @@ func (r *Report) Skip(plugin, reason string) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.Skipped = append(r.Skipped, Skip{Plugin: plugin, Reason: reason})
+}
+
+// Note records what a resolver or an index had to say. Plugin defaults to the plugin
+// whose walk is under way; the same note given twice is kept once.
+//
+// Implements: REQ-TRC-017
+func (r *Report) Note(n Note) {
+	if r == nil || n.Message == "" {
+		return
+	}
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if n.Plugin == "" {
+		n.Plugin = r.plugin
+	}
+	// A note is about a file or a registry, not a question: an index that refuses
+	// a key refuses it for every package asked of it, and says so once.
+	if !slices.Contains(r.Notes, n) {
+		r.Notes = append(r.Notes, n)
+	}
 }
 
 // Add records one question. The level and the plugin are the walk's, not the
@@ -373,6 +431,8 @@ func (r *Report) Finish() {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.GeneratedAt = time.Now().UTC()
+	// Implements: REQ-TRC-017
+	sort.Slice(r.Notes, func(i, j int) bool { return noteLess(r.Notes[i], r.Notes[j]) })
 	sort.SliceStable(r.Lookups, func(i, j int) bool {
 		a, b := r.Lookups[i], r.Lookups[j]
 		switch {
@@ -437,4 +497,19 @@ func (r *Report) Unanswered() []Lookup {
 		return len(out[i].Requests) > len(out[j].Requests)
 	})
 	return out
+}
+
+// noteLess orders notes by plugin, file, code and message, so a report lists them
+// the same way whichever worker gave them first.
+func noteLess(a, b Note) bool {
+	switch {
+	case a.Plugin != b.Plugin:
+		return a.Plugin < b.Plugin
+	case a.File != b.File:
+		return a.File < b.File
+	case a.Code != b.Code:
+		return a.Code < b.Code
+	default:
+		return a.Message < b.Message
+	}
 }

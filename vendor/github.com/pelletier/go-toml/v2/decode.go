@@ -177,7 +177,7 @@ var float64pow10 = [...]float64{
 // those conditions float64(significand) * 10^exp (or / 10^-exp) is the exact,
 // correctly-rounded result, identical to strconv.ParseFloat. It returns
 // ok=false (deferring to strconv) for underscores, hexadecimal floats, large
-// significands or exponents, and any other shape.
+// significandidates or exponents, and any other shape.
 func fastParseFloat(b []byte) (float64, bool) {
 	i := 0
 	neg := false

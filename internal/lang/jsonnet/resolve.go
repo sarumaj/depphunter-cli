@@ -185,14 +185,14 @@ func (r *resolver) source(file, mod string) lang.Target {
 		return lang.Target{}
 	}
 	chain := r.scope(file)
-	cands := []string{path.Join(path.Dir(file), mod)}
+	candidates := []string{path.Join(path.Dir(file), mod)}
 	for _, p := range chain {
-		cands = append(cands, path.Join(p.dir, "vendor", mod), path.Join(p.dir, "lib", mod))
+		candidates = append(candidates, path.Join(p.dir, "vendor", mod), path.Join(p.dir, "lib", mod))
 	}
 	for _, j := range r.jpath {
-		cands = append(cands, path.Join(j, mod))
+		candidates = append(candidates, path.Join(j, mod))
 	}
-	for _, c := range cands {
+	for _, c := range candidates {
 		if c == ".." || strings.HasPrefix(c, "../") {
 			continue
 		}
@@ -305,11 +305,11 @@ var forges = map[string]bool{"github.com": true, "gitlab.com": true, "bitbucket.
 // its repository (host/owner/repo on a forge, else host/first), a legacy
 // path by its first element. A bare file name is dropped.
 func guess(mod string) lang.Target {
-	segs := strings.Split(mod, "/")
-	if len(segs) < 2 {
+	segments := strings.Split(mod, "/")
+	if len(segments) < 2 {
 		return lang.Target{}
 	}
-	dirs := segs[:len(segs)-1]
+	dirs := segments[:len(segments)-1]
 	name := dirs[0]
 	if strings.Contains(dirs[0], ".") {
 		n := 2

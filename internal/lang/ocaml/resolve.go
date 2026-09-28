@@ -11,6 +11,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/opam"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
+	"github.com/sarumaj/depphunter-cli/internal/trace"
 )
 
 // component is a dune library, executable or test - or, for sources no dune stanza
@@ -55,7 +56,13 @@ type resolver struct {
 	// exports are the modules a file opened somewhere declares at its top level,
 	// and the modules it includes: what `open Import` brings into scope.
 	exports map[string]*exports
+	// flat are the opam lock files that pinned something: they record no edges.
+	flat []string
+	lang.NoteList
 }
+
+// The notes a resolver keeps reach --explain only through lang.Noter.
+var _ lang.Noter = (*resolver)(nil)
 
 type exports struct {
 	modules  map[string]bool
@@ -144,6 +151,14 @@ func newResolver(root string, all []*scan.File) *resolver {
 	for _, s := range r.sets {
 		r.readDuneLock(root, s)
 	}
+	// Implements: REQ-OCAML-009, REQ-TRC-017
+	for _, f := range r.flat {
+		if len(r.lock) == 0 {
+			r.Note(f, trace.NoteFlat, "opam's lock pins versions but records no edges, and no dune.lock "+
+				"directory is on disk: offline, --resolve-depth adds nothing past the packages it pins "+
+				"(--online asks opam-repository)")
+		}
+	}
 	sort.Slice(r.sets, func(i, j int) bool {
 		di, dj := depth(r.sets[i].dir), depth(r.sets[j].dir)
 		if di != dj {
@@ -217,10 +232,15 @@ func (r *resolver) readManifest(f *scan.File) {
 		}
 	case classLock:
 		o := opam.Read(src)
+		pinned := false
 		for _, d := range o.Depends {
 			if d.Exact != "" {
 				s.locked[d.Name] = d.Exact
+				pinned = true
 			}
+		}
+		if pinned {
+			r.flat = append(r.flat, f.Path)
 		}
 		for _, p := range o.Pins {
 			addPin(p)
@@ -673,8 +693,8 @@ func (r *resolver) manifestDep(file, pkg, constraint string) lang.Target {
 // path nothing in reach explains is dropped.
 //
 // Implements: REQ-OCAML-004, REQ-OCAML-005, REQ-OCAML-008, REQ-OCAML-010
-func (r *resolver) module(file string, segs []string, opens []string) lang.Target {
-	first := segs[0]
+func (r *resolver) module(file string, segments []string, opens []string) lang.Target {
+	first := segments[0]
 	if first == moduleName(file) {
 		return lang.Target{}
 	}
@@ -683,8 +703,8 @@ func (r *resolver) module(file string, segs []string, opens []string) lang.Targe
 		c = &component{dir: path.Dir(file)}
 	}
 	// 1. The component's own modules.
-	if len(segs) > 1 {
-		if p, ok := c.modules[first+"."+segs[1]]; ok {
+	if len(segments) > 1 {
+		if p, ok := c.modules[first+"."+segments[1]]; ok {
 			return local(p)
 		}
 	}
@@ -719,7 +739,7 @@ func (r *resolver) module(file string, segs []string, opens []string) lang.Targe
 	// 3. Libraries of the repository the component uses.
 	for _, name := range c.libs {
 		if l := r.libs[name]; l != nil {
-			if t, ok := r.inLibrary(l, segs); ok {
+			if t, ok := r.inLibrary(l, segments); ok {
 				return t
 			}
 		}
@@ -746,7 +766,7 @@ func (r *resolver) module(file string, segs []string, opens []string) lang.Targe
 	}
 	// 6. A library or module of the repository the component does not declare.
 	if l := r.libByMain[first]; l != nil {
-		if t, ok := r.inLibrary(l, segs); ok {
+		if t, ok := r.inLibrary(l, segments); ok {
 			return t
 		}
 	}
@@ -798,11 +818,11 @@ func qualifier(top, dir string) string {
 	if top == "." {
 		rel = dir
 	}
-	var segs []string
+	var segments []string
 	for _, s := range strings.Split(rel, "/") {
-		segs = append(segs, capitalize(s))
+		segments = append(segments, capitalize(s))
 	}
-	return strings.Join(segs, ".")
+	return strings.Join(segments, ".")
 }
 
 func local(p string) lang.Target { return lang.Target{Local: p} }
@@ -829,10 +849,10 @@ func (r *resolver) localFile(c *component, m string) string {
 // inLibrary resolves a path through a library of the repository: Lib.Module to the
 // module's file (wrapped), Lib to its main module's file or its dune file, and a
 // module of an unwrapped library to its file.
-func (r *resolver) inLibrary(l *component, segs []string) (lang.Target, bool) {
-	if segs[0] == l.main {
-		if len(segs) > 1 && l.wrapped {
-			if p, ok := l.modules[segs[1]]; ok {
+func (r *resolver) inLibrary(l *component, segments []string) (lang.Target, bool) {
+	if segments[0] == l.main {
+		if len(segments) > 1 && l.wrapped {
+			if p, ok := l.modules[segments[1]]; ok {
 				return local(p), true
 			}
 		}
@@ -842,7 +862,7 @@ func (r *resolver) inLibrary(l *component, segs []string) (lang.Target, bool) {
 		return lang.Target{Local: l.dune}, true
 	}
 	if !l.wrapped {
-		if p, ok := l.modules[segs[0]]; ok {
+		if p, ok := l.modules[segments[0]]; ok {
 			return local(p), true
 		}
 	}

@@ -573,14 +573,14 @@ func (s *Store) RemoteFile(file string) (lang.Target, bool) {
 // RemoteRepo is the Paket remote a path under paket-files/ comes from:
 // paket-files/<owner>/<repo>/... for GitHub, paket-files/<host>/<path>... otherwise.
 func (s *Store) RemoteRepo(rel string) (lang.Target, bool) {
-	segs := strings.Split(rel, "/")
+	segments := strings.Split(rel, "/")
 	for _, n := range s.order {
 		r := s.remotes[n]
 		parts := strings.Split(n, "/")
 		switch {
-		case len(segs) >= 2 && len(parts) == 3 && (r.kind == "github" || r.kind == "gist") && strings.EqualFold(segs[0], parts[1]) && strings.EqualFold(segs[1], parts[2]):
+		case len(segments) >= 2 && len(parts) == 3 && (r.kind == "github" || r.kind == "gist") && strings.EqualFold(segments[0], parts[1]) && strings.EqualFold(segments[1], parts[2]):
 			return s.remoteTarget(r)
-		case len(segs) >= 3 && len(parts) >= 3 && strings.EqualFold(segs[0], parts[0]) && strings.EqualFold(segs[1], parts[1]) && strings.EqualFold(segs[2], parts[2]):
+		case len(segments) >= 3 && len(parts) >= 3 && strings.EqualFold(segments[0], parts[0]) && strings.EqualFold(segments[1], parts[1]) && strings.EqualFold(segments[2], parts[2]):
 			return s.remoteTarget(r)
 		}
 	}

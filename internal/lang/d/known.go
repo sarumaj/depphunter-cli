@@ -10,17 +10,17 @@ import "strings"
 //
 // Implements: REQ-DLANG-007
 func stdPackage(module string) string {
-	segs := strings.Split(module, ".")
-	switch segs[0] {
+	segments := strings.Split(module, ".")
+	switch segments[0] {
 	case "object":
-		if len(segs) == 1 {
+		if len(segments) == 1 {
 			return "object"
 		}
 	case "std", "core", "etc", "ldc", "gcc":
-		if len(segs) == 1 {
-			return segs[0]
+		if len(segments) == 1 {
+			return segments[0]
 		}
-		return segs[0] + "." + segs[1]
+		return segments[0] + "." + segments[1]
 	}
 	return ""
 }
@@ -170,15 +170,15 @@ var known = map[string][]string{
 //
 // Implements: REQ-DLANG-011
 func table(module string) ([]string, int) {
-	segs := strings.Split(module, ".")
-	for k := len(segs); k >= 1; k-- {
-		if c, ok := known[strings.Join(segs[:k], ".")]; ok {
+	segments := strings.Split(module, ".")
+	for k := len(segments); k >= 1; k-- {
+		if c, ok := known[strings.Join(segments[:k], ".")]; ok {
 			return c, k
 		}
 	}
 	// bindbc.<x> and derelict.<x> are published as bindbc-<x> and derelict-<x>.
-	if len(segs) >= 2 && (segs[0] == "bindbc" || segs[0] == "derelict") {
-		return []string{segs[0] + "-" + segs[1]}, 2
+	if len(segments) >= 2 && (segments[0] == "bindbc" || segments[0] == "derelict") {
+		return []string{segments[0] + "-" + segments[1]}, 2
 	}
 	return nil, 0
 }

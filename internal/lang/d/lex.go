@@ -26,10 +26,10 @@ type token struct {
 }
 
 type lexer struct {
-	s    string
-	i    int
-	line int
-	toks []token
+	s      string
+	i      int
+	line   int
+	tokens []token
 	// tokDepth is the brace depth inside a token string q{ ... }: its tokens are
 	// counted, not emitted, and the whole is one string token.
 	tokDepth int
@@ -41,7 +41,7 @@ type lexer struct {
 // Implements: REQ-DLANG-010
 func lex(src []byte) []token {
 	s := strings.TrimPrefix(string(src), "\xef\xbb\xbf")
-	l := &lexer{s: s, line: 1, toks: make([]token, 0, len(s)/6)}
+	l := &lexer{s: s, line: 1, tokens: make([]token, 0, len(s)/6)}
 	if strings.HasPrefix(s, "#!") {
 		l.skipLine()
 	}
@@ -50,7 +50,7 @@ func lex(src []byte) []token {
 		l.tokDepth = 0
 		l.emitAt(kString, "", l.tokLine, false)
 	}
-	return l.toks
+	return l.tokens
 }
 
 func (l *lexer) emit(k kind, text string) { l.emitAt(k, text, l.line, false) }
@@ -64,13 +64,13 @@ func (l *lexer) emitAt(k kind, text string, line int, value bool) {
 			case "}":
 				l.tokDepth--
 				if l.tokDepth == 0 {
-					l.toks = append(l.toks, token{kind: kString, line: l.tokLine})
+					l.tokens = append(l.tokens, token{kind: kString, line: l.tokLine})
 				}
 			}
 		}
 		return
 	}
-	l.toks = append(l.toks, token{kind: k, text: text, line: line, value: value})
+	l.tokens = append(l.tokens, token{kind: k, text: text, line: line, value: value})
 }
 
 func (l *lexer) skipLine() {

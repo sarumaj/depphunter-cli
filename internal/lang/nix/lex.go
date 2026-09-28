@@ -43,11 +43,11 @@ type mode struct {
 }
 
 type lexer struct {
-	src   string
-	i     int
-	line  int
-	modes []mode
-	toks  []token
+	src    string
+	i      int
+	line   int
+	modes  []mode
+	tokens []token
 	// noPath and noURI remember where a failed path or URI look-ahead ended: a
 	// later start inside the same run of characters would fail the same way, and
 	// retrying would be quadratic on a long a.b.c.d... chain.
@@ -63,7 +63,7 @@ func lex(src []byte) []token {
 	if len(s) >= 3 && s[:3] == "\xef\xbb\xbf" {
 		s = s[3:]
 	}
-	l := &lexer{src: s, line: 1, toks: make([]token, 0, len(s)/5+8)}
+	l := &lexer{src: s, line: 1, tokens: make([]token, 0, len(s)/5+8)}
 	for l.i < len(l.src) {
 		if n := len(l.modes); n > 0 {
 			switch l.modes[n-1].kind {
@@ -88,11 +88,11 @@ func lex(src []byte) []token {
 			l.emit(tInterpEnd, "")
 		}
 	}
-	l.toks = append(l.toks, token{kind: tEOF, line: l.line})
-	return l.toks
+	l.tokens = append(l.tokens, token{kind: tEOF, line: l.line})
+	return l.tokens
 }
 
-func (l *lexer) emit(k tokKind, text string) { l.toks = append(l.toks, token{k, text, l.line}) }
+func (l *lexer) emit(k tokKind, text string) { l.tokens = append(l.tokens, token{k, text, l.line}) }
 
 func (l *lexer) push(k byte) bool {
 	if len(l.modes) >= maxModes {
@@ -360,7 +360,7 @@ func (l *lexer) str(kind byte) {
 	start := l.line
 	flush := func() {
 		if len(b) > 0 {
-			l.toks = append(l.toks, token{tStrText, string(b), start})
+			l.tokens = append(l.tokens, token{tStrText, string(b), start})
 		}
 	}
 	for l.i < len(l.src) {

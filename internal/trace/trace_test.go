@@ -1,6 +1,7 @@
 package trace
 
 import (
+	"encoding/json"
 	"strings"
 	"testing"
 	"time"
@@ -259,5 +260,75 @@ func TestRecordingIsBoundedButCountsEverything(t *testing.T) {
 	}
 	if want := "123 further questions were counted but not kept: the detail stops at 20000."; !strings.Contains(b.String(), want) {
 		t.Errorf("the report does not say what it dropped:\n%s", b.String())
+	}
+}
+
+// Notes are kept once each, filed under the walk's plugin when they name none, and
+// listed in the same order however they arrived; nil records nothing.
+//
+// Verifies: REQ-TRC-017
+func TestNotesAreDedupedAndOrdered(t *testing.T) {
+	var none *Report
+	none.Note(Note{Code: NoteFlat, Message: "x"})
+
+	r := New(1, true, nil, nil)
+	r.Enter("beam", 0)
+	r.Note(Note{Code: NoteForbidden, Message: "refused"})
+	r.Note(Note{Code: NoteForbidden, Message: "refused"}) // every package of the org says it
+	r.Note(Note{Plugin: "swift", File: "Package.resolved", Code: NoteFlat, Message: "flat"})
+	r.Note(Note{Plugin: "beam", File: "rebar.lock", Code: NoteFlat, Message: "flat"})
+	r.Note(Note{Plugin: "beam", File: "rebar.lock", Code: NoteIgnored, Message: "ignored"})
+	r.Note(Note{Plugin: "beam", Code: NoteFlat}) // no message, nothing to say
+	r.Finish()
+	want := []Note{
+		{Plugin: "beam", Code: NoteForbidden, Message: "refused"},
+		{Plugin: "beam", File: "rebar.lock", Code: NoteFlat, Message: "flat"},
+		{Plugin: "beam", File: "rebar.lock", Code: NoteIgnored, Message: "ignored"},
+		{Plugin: "swift", File: "Package.resolved", Code: NoteFlat, Message: "flat"},
+	}
+	if len(r.Notes) != len(want) {
+		t.Fatalf("notes %+v", r.Notes)
+	}
+	for i := range want {
+		if r.Notes[i] != want[i] {
+			t.Errorf("note %d = %+v, want %+v", i, r.Notes[i], want[i])
+		}
+	}
+}
+
+// Every rendering carries the notes: the digest one to a line and whole, the
+// Markdown as a table, the JSON under "notes".
+//
+// Verifies: REQ-TRC-017, REQ-TRC-011, REQ-TRC-012, REQ-TRC-013
+func TestNotesAreRendered(t *testing.T) {
+	r := sample()
+	long := "rebar.lock pins versions but records no edges, only a depth: offline, --resolve-depth adds nothing"
+	r.Note(Note{Plugin: "beam", File: "rebar.lock", Code: NoteFlat, Message: long})
+	r.Finish()
+	var text, md strings.Builder
+	if err := r.Text(&text); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(text.String(), "what the resolvers noticed\n  beam rebar.lock (lock-flat): "+long+"\n") {
+		t.Errorf("text:\n%s", text.String())
+	}
+	if err := r.Markdown(&md); err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(md.String(), "## What the resolvers noticed\n\n| plugin | file | what | note |\n|---|---|---|---|\n| beam | rebar.lock | lock-flat | "+long+" |\n") {
+		t.Errorf("markdown:\n%s", md.String())
+	}
+	data, err := json.Marshal(r)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !strings.Contains(string(data), `"notes":[{"plugin":"beam","file":"rebar.lock","code":"lock-flat","message":"`) {
+		t.Errorf("json: %s", data)
+	}
+
+	// Without notes, no heading.
+	text.Reset()
+	if err := sample().Text(&text); err != nil || strings.Contains(text.String(), "noticed") {
+		t.Errorf("a report without notes has the heading: %v\n%s", err, text.String())
 	}
 }

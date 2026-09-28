@@ -4,7 +4,10 @@ package langtest
 
 import (
 	"context"
+	"os"
+	"path/filepath"
 	"reflect"
+	"slices"
 	"testing"
 
 	"github.com/sarumaj/depphunter-cli/internal/lang"
@@ -85,4 +88,40 @@ func CheckSymbols(t *testing.T, res *lang.FileResult, want map[string]string) {
 	if got := Symbols(t, res); !reflect.DeepEqual(got, want) {
 		t.Errorf("symbols: got %v, want %v", got, want)
 	}
+}
+
+// Write puts files (slash-separated path -> content) under a new temporary root.
+func Write(t *testing.T, files map[string]string) string {
+	t.Helper()
+	root := t.TempDir()
+	for p, content := range files {
+		abs := filepath.Join(root, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+			t.Fatal(err)
+		}
+		if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
+			t.Fatal(err)
+		}
+	}
+	return root
+}
+
+// Without is files less the ones at paths: what a scan lists when git ignores them.
+func Without(files []*scan.File, paths ...string) []*scan.File {
+	return slices.DeleteFunc(slices.Clone(files), func(f *scan.File) bool { return slices.Contains(paths, f.Path) })
+}
+
+// Notes lists what a resolver noted for --explain as "file code" lines, sorted;
+// nil when it implements no lang.Noter.
+func Notes(r lang.Resolver) []string {
+	n, ok := r.(lang.Noter)
+	if !ok {
+		return nil
+	}
+	var out []string
+	for _, note := range n.Notes() {
+		out = append(out, note.File+" "+note.Code)
+	}
+	slices.Sort(out)
+	return out
 }

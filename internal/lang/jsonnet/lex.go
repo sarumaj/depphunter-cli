@@ -25,7 +25,7 @@ type token struct {
 // Implements: REQ-JSONNET-009
 func lex(src []byte) []token {
 	s := string(src)
-	toks := make([]token, 0, len(s)/6)
+	tokens := make([]token, 0, len(s)/6)
 	line := 1
 	i := 0
 	for i < len(s) {
@@ -53,40 +53,40 @@ func lex(src []byte) []token {
 			start := line
 			v, j := quoted(s, i+1, c)
 			line += strings.Count(s[i:j], "\n")
-			toks = append(toks, token{tString, v, start})
+			tokens = append(tokens, token{tString, v, start})
 			i = j
 		case c == '@' && i+1 < len(s) && (s[i+1] == '"' || s[i+1] == '\''):
 			start := line
 			v, j := verbatim(s, i+2, s[i+1])
 			line += strings.Count(s[i:j], "\n")
-			toks = append(toks, token{tString, v, start})
+			tokens = append(tokens, token{tString, v, start})
 			i = j
 		case c == '|' && strings.HasPrefix(s[i:], "|||"):
 			start := line
 			v, j := textBlock(s, i+3)
 			line += strings.Count(s[i:j], "\n")
-			toks = append(toks, token{tString, v, start})
+			tokens = append(tokens, token{tString, v, start})
 			i = j
 		case c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z':
 			j := i + 1
 			for j < len(s) && identByte(s[j]) {
 				j++
 			}
-			toks = append(toks, token{tIdent, s[i:j], line})
+			tokens = append(tokens, token{tIdent, s[i:j], line})
 			i = j
 		case c >= '0' && c <= '9':
 			j := i + 1
 			for j < len(s) && (identByte(s[j]) || s[j] == '.' || (s[j] == '-' || s[j] == '+') && (s[j-1] == 'e' || s[j-1] == 'E')) {
 				j++
 			}
-			toks = append(toks, token{tNumber, s[i:j], line})
+			tokens = append(tokens, token{tNumber, s[i:j], line})
 			i = j
 		default:
-			toks = append(toks, token{tPunct, s[i : i+1], line})
+			tokens = append(tokens, token{tPunct, s[i : i+1], line})
 			i++
 		}
 	}
-	return toks
+	return tokens
 }
 
 func identByte(c byte) bool {
@@ -189,10 +189,10 @@ func textBlock(s string, i int) (string, int) {
 // match pairs each opening bracket with its closer (-1 when unclosed). A
 // closer only closes an opener within the 8 innermost open brackets, so a
 // stray closer does not unwind the whole file.
-func match(toks []token) []int {
-	m := make([]int, len(toks))
+func match(tokens []token) []int {
+	m := make([]int, len(tokens))
 	var stack []int
-	for i, t := range toks {
+	for i, t := range tokens {
 		m[i] = -1
 		if t.kind != tPunct {
 			continue
@@ -208,7 +208,7 @@ func match(toks []token) []int {
 				open = "["
 			}
 			for k := len(stack) - 1; k >= 0 && k >= len(stack)-8; k-- {
-				if toks[stack[k]].text == open {
+				if tokens[stack[k]].text == open {
 					m[stack[k]] = i
 					m[i] = stack[k]
 					stack = stack[:k]
