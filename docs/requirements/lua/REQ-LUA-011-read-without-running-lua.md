@@ -18,9 +18,8 @@ roots; requires of computed names, requires through `require` stored in
 another variable, and Roblox instances created or moved at run time are not
 followed; a module no rockspec declares is matched to a rock by a curated
 table and name heuristics; C modules without a rockspec entry are not
-found; `luarocks.lock` has no rock-to-rock edges, so only `--online` walks
-past the first level of rocks; and no vulnerability database covers LuaRocks
-or Wally (OSV has neither ecosystem).
+found; and no vulnerability database covers LuaRocks or Wally (OSV has
+neither ecosystem).
 
 ## Rationale
 

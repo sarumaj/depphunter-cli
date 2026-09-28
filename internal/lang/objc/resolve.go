@@ -193,15 +193,14 @@ func (r *resolver) module(file, m string) lang.Target {
 	return r.inc.Library(file, m+"/"+m+".h")
 }
 
-// Dependencies implements lang.Transitive: Podfile.lock's graph, and Conan's.
+// Dependencies implements lang.Transitive: Podfile.lock's graph, and what the
+// checkouts of Carthage dependencies declare.
 //
-// Implements: REQ-OBJC-008
-func (r *resolver) Dependencies(t lang.Target) []lang.Target {
-	if t.Ecosystem == cocoapods.Ecosystem {
-		return r.pods.Dependencies(t)
-	}
-	return nil
-}
+// Implements: REQ-OBJC-008, REQ-OBJC-011
+func (r *resolver) Dependencies(t lang.Target) []lang.Target { return r.pods.Dependencies(t) }
+
+// Installed says a Carthage dependency's dependencies come from its checkout.
+func (r *resolver) Installed(t lang.Target) bool { return r.pods.Installed(t) }
 
 // nearest picks the directory sharing the longest path prefix with the file.
 func nearest(file string, dirs []string) string {

@@ -43,7 +43,17 @@ type resolver struct {
 	// models are the model projects (default.project.json whose tree is not a
 	// DataModel) by directory: a $path naming that directory builds its tree.
 	models map[string]*rojoNode
+	// trees are the LuaRocks trees installed in the repository (lua_modules/,
+	// .luarocks/), the root's first, each by rock name.
+	trees []map[string]*installedRock
 	lang.NoteList
+}
+
+// installedRock is a rock installed in a tree: its version and the rockspec
+// LuaRocks keeps beside it.
+type installedRock struct {
+	version string
+	spec    *luarocks.Rockspec
 }
 
 // The notes a resolver keeps reach --explain only through lang.Noter.
@@ -133,7 +143,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 					r.NoteIgnored(lock)
 				}
 				r.Note(lock, trace.NoteFlat, "luarocks.lock pins versions but records no edges: offline, "+
-					"--resolve-depth adds nothing past the rocks it pins (--online asks the rocks servers)")
+					"--resolve-depth follows only rocks installed in lua_modules/ or .luarocks/ (--online asks the rocks servers)")
 			}
 		}
 		locks[dir] = l
@@ -169,6 +179,20 @@ func newResolver(root string, all []*scan.File) *resolver {
 		return depth(r.rockspecs[i].dir) < depth(r.rockspecs[j].dir) ||
 			depth(r.rockspecs[i].dir) == depth(r.rockspecs[j].dir) && r.rockspecs[i].path < r.rockspecs[j].path
 	})
+	seen, dirs := map[string]bool{}, []string{"."}
+	for _, rs := range r.rockspecs {
+		dirs = append(dirs, rs.dir)
+	}
+	for _, dir := range dirs {
+		for _, tree := range []string{"lua_modules", ".luarocks"} {
+			if t := path.Join(dir, tree); !seen[t] {
+				seen[t] = true
+				if rocks := readTree(filepath.Join(root, filepath.FromSlash(t))); len(rocks) > 0 {
+					r.trees = append(r.trees, rocks)
+				}
+			}
+		}
+	}
 	for _, p := range wallies {
 		b, ok := read(p)
 		if !ok {
@@ -224,6 +248,37 @@ func newResolver(root string, all []*scan.File) *resolver {
 		walk(tree, "game")
 	}
 	return r
+}
+
+// readTree reads the rocks installed in a LuaRocks tree:
+// lib/luarocks/rocks-<lua version>/<rock>/<version>/<rock>-<version>.rockspec.
+// Of two versions of a rock the newer is kept.
+//
+// Implements: REQ-LUA-013
+func readTree(tree string) map[string]*installedRock {
+	out := map[string]*installedRock{}
+	base := filepath.Join(tree, "lib", "luarocks")
+	luas, _ := os.ReadDir(base)
+	for _, l := range luas {
+		if !l.IsDir() || !strings.HasPrefix(l.Name(), "rocks-") {
+			continue
+		}
+		rocks, _ := os.ReadDir(filepath.Join(base, l.Name()))
+		for _, rock := range rocks {
+			versions, _ := os.ReadDir(filepath.Join(base, l.Name(), rock.Name()))
+			for _, v := range versions {
+				name, version := rock.Name(), v.Name()
+				if old := out[name]; old != nil && luarocks.Compare(old.version, version) >= 0 {
+					continue
+				}
+				spec := filepath.Join(base, l.Name(), name, version, name+"-"+version+".rockspec")
+				if b, err := os.ReadFile(spec); err == nil && len(b) <= lang.MaxParseSize {
+					out[name] = &installedRock{version: version, spec: luarocks.ReadRockspec(b)}
+				}
+			}
+		}
+	}
+	return out
 }
 
 func depth(dir string) int {
@@ -745,10 +800,14 @@ func (r *resolver) instanceOf(fs string) string {
 }
 
 // Dependencies answers --resolve-depth for Wally packages from wally.lock, which
-// records every locked package's dependencies. luarocks.lock records none.
+// records every locked package's dependencies, and for rocks from what a LuaRocks
+// tree of the repository has installed. luarocks.lock records none.
 //
-// Implements: REQ-LUA-009
+// Implements: REQ-LUA-009, REQ-LUA-013
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
+	if t.Ecosystem == ecoRocks {
+		return r.installedDependencies(t)
+	}
 	if t.Ecosystem != ecoWally {
 		return nil
 	}
@@ -768,4 +827,46 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 		return out
 	}
 	return nil
+}
+
+// installedDependencies is what the rockspec of an installed rock requires (its
+// dependencies, not its build or test dependencies, nor Lua itself), from the
+// first tree holding the rock; each is pinned to the version that tree holds.
+//
+// Implements: REQ-LUA-013
+func (r *resolver) installedDependencies(t lang.Target) []lang.Target {
+	for _, tree := range r.trees {
+		rock := tree[t.Package]
+		if rock == nil {
+			continue
+		}
+		out := []lang.Target{}
+		seen := map[string]bool{}
+		for _, d := range rock.spec.Deps {
+			if d.Section != "dependencies" || d.Name == "lua" || seen[d.Name] {
+				continue
+			}
+			seen[d.Name] = true
+			locked := ""
+			if dep := tree[d.Name]; dep != nil {
+				locked = dep.version
+			}
+			out = append(out, rockTarget(d.Name, d.Constraint, locked))
+		}
+		return out
+	}
+	return nil
+}
+
+// Installed reports whether a rock's dependencies come from a LuaRocks tree.
+func (r *resolver) Installed(t lang.Target) bool {
+	if t.Ecosystem != ecoRocks {
+		return false
+	}
+	for _, tree := range r.trees {
+		if tree[t.Package] != nil {
+			return true
+		}
+	}
+	return false
 }

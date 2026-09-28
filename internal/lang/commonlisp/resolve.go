@@ -3,8 +3,11 @@ package commonlisp
 import (
 	"bytes"
 	"context"
+	"io/fs"
 	"os"
 	"path"
+	"path/filepath"
+	"slices"
 	"sort"
 	"strings"
 	"sync"
@@ -54,6 +57,17 @@ type resolver struct {
 	pins       map[string]*pins
 	pinDirs    []string // shallowest first
 	declared   sync.Map // file -> *declaration
+	// installed are the systems Qlot installed into .qlot/ and ocicl into
+	// systems/, by name, and installedNames their names, sorted.
+	installed      map[string]*installedSystem
+	installedNames []string
+}
+
+// installedSystem is a system Qlot or ocicl installed: the systems it depends
+// on and the pins of the directory it was installed for.
+type installedSystem struct {
+	deps []string
+	pins *pins
 }
 
 // declaration is what a file's systems declare: the systems they depend on
@@ -104,15 +118,17 @@ func readable(f *scan.File) bool {
 }
 
 // newResolver reads the repository's .asd files for its systems, the
-// sources defining packages for the package index, and the qlfile, lock and
-// ocicl.csv files for pins.
+// sources defining packages for the package index, the qlfile, lock and
+// ocicl.csv files for pins, and the .asd files of what Qlot and ocicl
+// installed beside them.
 //
-// Implements: REQ-COMMONLISP-005, REQ-COMMONLISP-006, REQ-COMMONLISP-011
-func newResolver(all []*scan.File) *resolver {
+// Implements: REQ-COMMONLISP-005, REQ-COMMONLISP-006, REQ-COMMONLISP-011, REQ-COMMONLISP-012
+func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{
 		files: map[string]bool{}, dirs: map[string]bool{}, systems: map[string]*sysRef{},
 		fileSystems: map[string][]*sysRef{}, asdDirs: map[string][]*sysRef{},
 		packages: map[string][]string{}, nicknames: map[string]map[string]string{}, stems: map[string][]string{}, registered: map[string]string{}, pins: map[string]*pins{},
+		installed: map[string]*installedSystem{},
 	}
 	var asds, sources []*scan.File
 	for _, f := range all {
@@ -192,8 +208,104 @@ func newResolver(all []*scan.File) *resolver {
 		}
 		return r.pinDirs[i] < r.pinDirs[j]
 	})
+	for _, d := range r.pinDirs {
+		if root == "" {
+			break
+		}
+		p, base := r.pins[d], filepath.Join(root, filepath.FromSlash(d))
+		if len(p.ql) > 0 || len(p.lock) > 0 {
+			r.readInstalled(filepath.Join(base, ".qlot", "dists"), p)
+		}
+		if len(p.ocicl) > 0 {
+			r.readInstalled(filepath.Join(base, "systems"), p)
+		}
+	}
+	for n := range r.installed {
+		r.installedNames = append(r.installedNames, n)
+	}
+	sort.Strings(r.installedNames)
 	return r
 }
+
+// maxInstalledFiles bounds the files looked at in one installed tree.
+const maxInstalledFiles = 100_000
+
+// readInstalled reads the .asd files under a tree Qlot or ocicl installed
+// (.qlot/dists/<dist>/software/<release>/, systems/<release>/): each system's
+// :depends-on and :defsystem-depends-on, not its weak dependencies or the
+// implementation modules it requires. A system already read is kept.
+//
+// Implements: REQ-COMMONLISP-012
+func (r *resolver) readInstalled(dir string, p *pins) {
+	n := 0
+	filepath.WalkDir(dir, func(f string, e fs.DirEntry, err error) error {
+		if n++; err != nil || n > maxInstalledFiles {
+			return nil
+		}
+		if e.IsDir() || !strings.EqualFold(filepath.Ext(f), ".asd") {
+			return nil
+		}
+		if info, err := e.Info(); err != nil || info.Size() > lang.MaxParseSize {
+			return nil
+		}
+		src, err := os.ReadFile(f)
+		if err != nil {
+			return nil
+		}
+		for _, s := range read(src).systems {
+			if r.installed[s.name] != nil {
+				continue
+			}
+			in := &installedSystem{pins: p}
+			for _, d := range s.deps {
+				if !d.require && d.option != "weakly-depends-on" {
+					in.deps = append(in.deps, d.name)
+				}
+			}
+			r.installed[s.name] = in
+		}
+		return nil
+	})
+}
+
+// Dependencies is what a Quicklisp project Qlot or ocicl installed depends
+// on: the projects of the systems its primary system (named like the project,
+// or like a git source's repository) depends on, pinned as the pins it was
+// installed for say.
+//
+// Implements: REQ-COMMONLISP-012
+func (r *resolver) Dependencies(t lang.Target) []lang.Target {
+	if t.Ecosystem != ecoQuicklisp {
+		return nil
+	}
+	name := path.Base(t.Package)
+	for _, n := range r.installedNames {
+		if r.installed[name] != nil {
+			break
+		}
+		if !strings.Contains(n, "/") && projectOf(n) == t.Package {
+			name = n
+		}
+	}
+	s := r.installed[name]
+	if s == nil {
+		return nil
+	}
+	out := []lang.Target{}
+	seen := map[string]bool{t.Package: true, projectOf(name): true} // its own secondary systems
+	for _, d := range s.deps {
+		dt := r.systemTarget("", d, "", s.pins)
+		if dt.Ecosystem == ecoQuicklisp && !seen[dt.Package] {
+			seen[dt.Package] = true
+			out = append(out, dt)
+		}
+	}
+	return out
+}
+
+// Installed says a project's dependencies come from what Qlot or ocicl
+// installed.
+func (r *resolver) Installed(t lang.Target) bool { return t.Ecosystem == ecoQuicklisp }
 
 // index records the packages a file defines.
 func (r *resolver) index(file string, in *info) {
@@ -611,6 +723,9 @@ func (r *resolver) declarationOf(file string) *declaration {
 	}
 	// What a system of the repository depends on is loaded with the
 	// systems depending on it: the closure through local systems counts.
+	// refs is a copy: appending to r.all or r.asdDirs' slices would write
+	// into memory other files' resolutions read.
+	refs = slices.Clone(refs)
 	seen := map[*sysRef]bool{}
 	for len(refs) > 0 && len(seen) < 4096 {
 		ref := refs[0]

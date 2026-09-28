@@ -293,6 +293,54 @@ func TestDependencies(t *testing.T) {
 	}
 }
 
+// Without a spago.lock, the manifests of what spago installed answer: halogen's
+// spago.yaml (not its test dependencies), aff's purs.json, a git package's
+// spago.yaml under its ref, and in a spago 0.20 project console's spago.dhall.
+// Each dependency spago installed too is pinned to what it installed; one it
+// did not is left to the package set. A manifest that is not one says nothing.
+//
+// Verifies: REQ-PURESCRIPT-008
+func TestInstalledDependencies(t *testing.T) {
+	const commit = "0123456789abcdef0123456789abcdef01234567"
+	files := map[string]string{
+		"spago.yaml": "package:\n  name: app\n  dependencies:\n    - halogen\n" +
+			"workspace:\n  packageSet:\n    registry: 60.0.0\n",
+		".spago/p/halogen-7.0.0/spago.yaml": "package:\n  name: halogen\n  dependencies:\n    - aff\n    - prelude: \">=6.0.0 <7.0.0\"\n" +
+			"    - dom-indexed\n  test:\n    main: Test.Main\n    dependencies:\n      - spec\n",
+		".spago/p/aff-7.1.0/purs.json":             `{"name": "aff", "version": "7.1.0", "dependencies": {"prelude": ">=6.0.0 <7.0.0"}}`,
+		".spago/p/prelude-6.0.1/purs.json":         `{"name": "prelude", "version": "6.0.1", "dependencies": {}}`,
+		".spago/p/hooks/" + commit + "/spago.yaml": "package:\n  name: hooks\n  dependencies:\n    - halogen\n",
+		"legacy/spago.dhall":                       `{ name = "legacy", dependencies = [ "console" ], packages = ./packages.dhall, sources = [ "src/**/*.purs" ] }`,
+		"legacy/.spago/console/v6.1.0/spago.dhall": `{ name = "console", dependencies = [ "effect", "prelude" ], packages = ./packages.dhall, sources = [ "src/**/*.purs" ] }`,
+	}
+	root := langtest.Write(t, files)
+	r := newResolver(root, langtest.Files(t, root))
+	halogen := pinned("halogen", "7.0.0")
+	for _, c := range []struct {
+		t    lang.Target
+		want []lang.Target
+	}{
+		{halogen, []lang.Target{pinned("aff", "7.1.0"), pinned("prelude", "6.0.1"), inSet("dom-indexed", set)}},
+		{pinned("aff", "7.1.0"), []lang.Target{pinned("prelude", "6.0.1")}},
+		{lang.Target{Ecosystem: ecoPureScript, Package: "hooks"}, []lang.Target{halogen}},
+		{lang.Target{Ecosystem: ecoPureScript, Package: "console"}, []lang.Target{
+			{Ecosystem: ecoPureScript, Package: "effect", Floating: true}, {Ecosystem: ecoPureScript, Package: "prelude", Floating: true}}},
+	} {
+		if got := r.Dependencies(c.t); !reflect.DeepEqual(got, c.want) || !r.Installed(c.t) {
+			t.Errorf("%s: got %+v, want %+v", c.t.Package, got, c.want)
+		}
+	}
+	if r.Installed(inSet("dom-indexed", set)) {
+		t.Error("dom-indexed is not installed")
+	}
+
+	files[".spago/p/halogen-7.0.0/spago.yaml"] = "package: [[[ \x00"
+	root = langtest.Write(t, files)
+	if got := newResolver(root, langtest.Files(t, root)).Dependencies(halogen); got != nil {
+		t.Errorf("garbage spago.yaml: %+v", got)
+	}
+}
+
 // Verifies: REQ-PURESCRIPT-001
 func TestClaims(t *testing.T) {
 	for p, want := range map[string]bool{

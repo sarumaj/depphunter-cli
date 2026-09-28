@@ -96,7 +96,7 @@ func (Plugin) Ecosystems() []lang.Ecosystem {
 }
 
 func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
-	return newResolver(all), nil
+	return newResolver(root, all), nil
 }
 
 // Implements: REQ-COMMONLISP-002, REQ-COMMONLISP-003, REQ-COMMONLISP-006

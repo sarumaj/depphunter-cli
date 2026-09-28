@@ -8,6 +8,8 @@ import (
 	"strings"
 	"sync"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 	"github.com/sarumaj/depphunter-cli/internal/lang/dhall"
 	"github.com/sarumaj/depphunter-cli/internal/scan"
@@ -22,6 +24,16 @@ type workspace struct {
 	extra  map[string]*extraPackage
 	lock   *spagoLock
 	locals map[string]string // the workspace's own packages -> their manifest
+	// installed is what spago installed into the workspace's .spago/, by name.
+	installed map[string]*installedPackage
+}
+
+// installedPackage is a package spago installed: its version (or git ref) and
+// the dependencies its own manifest lists.
+type installedPackage struct {
+	version string
+	pinned  bool
+	deps    []string
 }
 
 // project is one PureScript package of the repository: a spago.yaml package, a
@@ -72,6 +84,11 @@ func newResolver(root string, all []*scan.File) *resolver {
 	r.readYAML(all)
 	r.readDhall(all)
 	r.readBower(all)
+	if root != "" {
+		for _, ws := range r.workspaces() {
+			ws.installed = readSpagoInstalled(filepath.Join(root, filepath.FromSlash(ws.dir), ".spago"))
+		}
+	}
 	sort.Slice(r.projects, func(i, j int) bool {
 		a, b := r.projects[i], r.projects[j]
 		if a.dir != b.dir {
@@ -801,6 +818,91 @@ func readInstalled(spago, bower string) map[string]string {
 	return mods
 }
 
+// readSpagoInstalled reads the manifests of the packages spago installed into a
+// .spago/ directory: spago 0.93's p/<name>-<version>/ (a registry version, which
+// pins) and p/<name>/<ref>/ (a git ref, pinned when a commit), spago 0.20's
+// <name>/<version>/. A package without a manifest it can read is left out.
+//
+// Implements: REQ-PURESCRIPT-008
+func readSpagoInstalled(spago string) map[string]*installedPackage {
+	out := map[string]*installedPackage{}
+	add := func(name, version string, pinned bool, dir string) bool {
+		if out[name] != nil {
+			return true
+		}
+		deps, ok := manifestDeps(dir)
+		if ok {
+			out[name] = &installedPackage{version: version, pinned: pinned, deps: deps}
+		}
+		return ok
+	}
+	entries, _ := os.ReadDir(filepath.Join(spago, "p"))
+	for _, e := range entries {
+		dir := filepath.Join(spago, "p", e.Name())
+		if !e.IsDir() {
+			continue
+		}
+		if name, version, ok := splitNameVersion(e.Name()); ok && add(name, version, true, dir) {
+			continue
+		}
+		refs, _ := os.ReadDir(dir)
+		for _, ref := range refs {
+			if ref.IsDir() && add(e.Name(), ref.Name(), lang.Commit(ref.Name()), filepath.Join(dir, ref.Name())) {
+				break
+			}
+		}
+	}
+	entries, _ = os.ReadDir(spago)
+	for _, e := range entries {
+		if !e.IsDir() || e.Name() == "p" {
+			continue
+		}
+		vers, _ := os.ReadDir(filepath.Join(spago, e.Name()))
+		for _, v := range vers {
+			if v.IsDir() && add(e.Name(), v.Name(), lang.Commit(v.Name()), filepath.Join(spago, e.Name(), v.Name())) {
+				break
+			}
+		}
+	}
+	return out
+}
+
+// manifestDeps are the dependencies an installed package's manifest lists (not
+// its test dependencies): spago.yaml's, else spago.dhall's, else the registry's
+// purs.json's. ok is false when it has none of them readable.
+func manifestDeps(dir string) (deps []string, ok bool) {
+	read := func(name string) []byte {
+		src, err := os.ReadFile(filepath.Join(dir, name))
+		if err != nil || len(src) > lang.MaxParseSize {
+			return nil
+		}
+		return src
+	}
+	if m := readSpagoYAML(read("spago.yaml")); m != nil && m.isPackage {
+		for _, d := range m.deps {
+			if !d.test {
+				deps = append(deps, d.name)
+			}
+		}
+		return deps, true
+	}
+	if src := read("spago.dhall"); src != nil {
+		if v := dhall.Eval(src, ".", nil); dhallConfig(v) {
+			for _, t := range v.Field("dependencies").Texts() {
+				deps = append(deps, t.Text)
+			}
+			return deps, true
+		}
+	}
+	if m := yamlGet(yamlDoc(read("purs.json")), "dependencies"); m != nil && m.Kind == yaml.MappingNode {
+		for i := 0; i+1 < len(m.Content); i += 2 {
+			deps = append(deps, m.Content[i].Value)
+		}
+		return deps, true
+	}
+	return nil, false
+}
+
 // splitNameVersion splits spago's name-version directory (web-html-4.1.0).
 func splitNameVersion(s string) (name, version string, ok bool) {
 	for i := len(s) - 1; i > 0; i-- {
@@ -813,30 +915,50 @@ func splitNameVersion(s string) (name, version string, ok bool) {
 
 // Dependencies implements lang.Transitive from what the repository records: a
 // spago.lock entry's dependencies, pinned by that lock, else the dependencies an
-// extra package (spago.yaml extraPackages, a packages.dhall override) lists.
+// extra package (spago.yaml extraPackages, a packages.dhall override) lists, else
+// those the manifest of the package spago installed lists.
 //
 // Implements: REQ-PURESCRIPT-008
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
+	deps, _ := r.dependencies(t)
+	return deps
+}
+
+// Installed reports whether a package's dependencies come from what spago
+// installed.
+func (r *resolver) Installed(t lang.Target) bool {
+	_, installed := r.dependencies(t)
+	return installed
+}
+
+// dependencies answers for Dependencies and says whether the answer came from
+// what spago installed.
+func (r *resolver) dependencies(t lang.Target) (deps []lang.Target, installed bool) {
 	if t.Ecosystem != ecoPureScript || t.Package == "" {
-		return nil
+		return nil, false
 	}
 	for _, ws := range r.workspaces() {
 		if ws.lock != nil {
 			for _, name := range sortedKeys(ws.lock.packages) {
 				l := ws.lock.packages[name]
 				if name == t.Package && l.url == "" || l.url != "" && gitName(l.url, l.subdir) == t.Package {
-					return r.depTargets(ws, l.dependencies)
+					return r.depTargets(ws, l.dependencies), false
 				}
 			}
 		}
 		for _, name := range sortedKeys(ws.extra) {
 			e := ws.extra[name]
 			if e.hasDeps && (name == t.Package && e.git == "" || e.git != "" && gitName(e.git, e.subdir) == t.Package) {
-				return r.depTargets(ws, e.dependencies)
+				return r.depTargets(ws, e.dependencies), false
 			}
 		}
 	}
-	return nil
+	for _, ws := range r.workspaces() {
+		if p := ws.installed[t.Package]; p != nil {
+			return r.depTargets(ws, p.deps), true
+		}
+	}
+	return nil, false
 }
 
 func (r *resolver) depTargets(ws *workspace, names []string) []lang.Target {
@@ -844,6 +966,8 @@ func (r *resolver) depTargets(ws *workspace, names []string) []lang.Target {
 	for _, n := range names {
 		if t := r.fromWorkspace(ws, n, ""); t.Package != "" {
 			out = append(out, t)
+		} else if p := ws.installed[n]; p != nil && t.Local == "" {
+			out = append(out, lang.Target{Ecosystem: ecoPureScript, Package: n, Version: p.version, Pinned: p.pinned})
 		} else if t.Local == "" {
 			out = append(out, lang.Target{Ecosystem: ecoPureScript, Package: n, Version: ws.set, Floating: ws.set == ""})
 		}

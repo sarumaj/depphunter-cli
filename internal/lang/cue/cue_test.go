@@ -3,6 +3,7 @@ package cue
 import (
 	"os"
 	"path/filepath"
+	"reflect"
 	"strings"
 	"testing"
 	"time"
@@ -201,5 +202,48 @@ func TestTruncated(t *testing.T) {
 		if d := time.Since(start); d > 2*time.Second {
 			t.Errorf("%q x %d: %v", unit, 200_000/len(unit), d)
 		}
+	}
+}
+
+// A module dependency depends on what its own module.cue in cue's module cache
+// lists (the path escaped: !acme is Acme), at the version the repository's
+// module.cue selects when it lists the module too. $CUE_CACHE_DIR names the
+// cache. A module the cache does not hold, one without an exact version, and a
+// module.cue that is not CUE say nothing.
+//
+// Verifies: REQ-CUE-011
+func TestModuleCache(t *testing.T) {
+	root := langtest.Write(t, map[string]string{
+		"cue.mod/module.cue": "module: \"example.com/app@v0\"\nlanguage: version: \"v0.9.0\"\ndeps: {\n" +
+			"\t\"github.com/Acme/lib@v0\": v: \"v0.2.0\"\n\t\"cue.dev/x/k8s.io@v0\": v: \"v0.5.0\"\n}\n",
+		"app.cue": "package app\n",
+	})
+	cache := langtest.Write(t, map[string]string{
+		"mod/extract/github.com/!acme/lib@v0.2.0/cue.mod/module.cue": "module: \"github.com/Acme/lib@v0\"\ndeps: {\n" +
+			"\t\"cue.dev/x/k8s.io@v0\": v: \"v0.4.0\"\n\t\"github.com/other/util@v0\": v: \"v0.1.0\"\n}\n",
+		"mod/extract/github.com/other/util@v0.1.0/cue.mod/module.cue": "{{{{ \x00",
+	})
+	t.Setenv("CUE_CACHE_DIR", cache)
+	res, err := Plugin{}.Resolver(root, langtest.Files(t, root))
+	if err != nil {
+		t.Fatal(err)
+	}
+	r := res.(*resolver)
+	lib := lang.Target{Ecosystem: ecoCUE, Package: "github.com/Acme/lib", Version: "v0.2.0", Pinned: true}
+	util := lang.Target{Ecosystem: ecoCUE, Package: "github.com/other/util", Version: "v0.1.0", Pinned: true}
+	if got, want := r.Dependencies(lib), []lang.Target{k8sReg, util}; !reflect.DeepEqual(got, want) || !r.Installed(lib) {
+		t.Errorf("lib depends on %+v, want %+v", got, want)
+	}
+	for _, t2 := range []lang.Target{util, k8sReg, {Ecosystem: ecoCUE, Package: "github.com/Acme/lib", Floating: true}} {
+		if got := r.Dependencies(t2); got != nil {
+			t.Errorf("%s depends on %+v", t2.Package, got)
+		}
+	}
+	if got := newResolver(root, langtest.Files(t, root), "").Dependencies(lib); got != nil {
+		t.Errorf("no cache: %+v", got)
+	}
+	t.Setenv("CUE_CACHE_DIR", "")
+	if dir, err := os.UserCacheDir(); err == nil && cacheDir() != filepath.Join(dir, "cue") {
+		t.Errorf("cache dir %q, want cue/ in %q", cacheDir(), dir)
 	}
 }

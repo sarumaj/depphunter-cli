@@ -18,6 +18,7 @@ import (
 	"io"
 	"os"
 	"path"
+	"path/filepath"
 	"sort"
 	"strings"
 
@@ -85,7 +86,19 @@ func (Plugin) Ecosystems() []lang.Ecosystem {
 }
 
 func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
-	return newResolver(root, all), nil
+	return newResolver(root, all, cacheDir()), nil
+}
+
+// cacheDir is where cue keeps the modules it fetched: $CUE_CACHE_DIR, else cue/ in
+// the user's cache directory.
+func cacheDir() string {
+	if dir := os.Getenv("CUE_CACHE_DIR"); dir != "" {
+		return dir
+	}
+	if dir, err := os.UserCacheDir(); err == nil {
+		return filepath.Join(dir, "cue")
+	}
+	return ""
 }
 
 // Implements: REQ-CUE-002, REQ-CUE-003, REQ-CUE-005

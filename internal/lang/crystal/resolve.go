@@ -122,10 +122,20 @@ func depth(dir string) int {
 
 // readInstalled lists what shards installed into lib/: each directory (or the
 // symlink shards makes for a path dependency) is a shard of that name, with the
-// shard.yml it ships.
+// shard.yml it ships. lib/.shards.info, in shard.lock's format, records the
+// version of each: it stands in for the lock where shard.lock does not name a
+// shard (a library commits none; a shard only a dependency needs is often left
+// out of an older one).
 //
 // Implements: REQ-CRYSTAL-008
 func (p *project) readInstalled(lib string) {
+	if data, err := os.ReadFile(filepath.Join(lib, ".shards.info")); err == nil && len(data) <= lang.MaxParseSize {
+		for name, l := range readLock(data) {
+			if p.lock[name] == nil {
+				p.lock[name] = l
+			}
+		}
+	}
 	entries, err := os.ReadDir(lib)
 	if err != nil {
 		return
@@ -540,7 +550,8 @@ const maxGlob = 5000
 
 // Dependencies lists what a shard installed into lib/ depends on, from the
 // shard.yml it ships: shard.lock is flat, so without lib/ nothing is known
-// offline. Each is pinned as the installing project's lock pins it.
+// offline. Each is pinned as the installing project's lock (or, for a shard
+// it does not name, lib/.shards.info) pins it.
 //
 // Implements: REQ-CRYSTAL-008
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {

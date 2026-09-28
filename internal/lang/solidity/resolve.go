@@ -97,6 +97,9 @@ type project struct {
 	remaps  []remapping // explicit first, then inferred
 	deps    map[string]soldeerDep
 	locked  map[string]lockEntry
+	// installed is what Soldeer installed into dependencies/, by directory:
+	// each package's own [dependencies] and soldeer.lock.
+	installed map[string]*project
 }
 
 func (p *project) soldeer() bool { return len(p.deps) > 0 || len(p.locked) > 0 }
@@ -198,6 +201,9 @@ func newResolver(root string, all []*scan.File) *resolver {
 			for _, e := range readSoldeerLock(data) {
 				p.locked[e.name] = e
 			}
+		}
+		if p.soldeer() {
+			p.installed = readInstalled(filepath.Join(root, filepath.FromSlash(join(dir, "dependencies"))))
 		}
 	}
 	r.readSubmodules(gitmodules)
@@ -694,8 +700,8 @@ func public(url string) bool {
 }
 
 // Dependencies answers for npm packages from the lock files, as the
-// JavaScript resolver does, and for a submodule that is checked out from its
-// own .gitmodules.
+// JavaScript resolver does, for a submodule that is checked out from its
+// own .gitmodules, and for a Soldeer package from what it installed.
 //
 // Implements: REQ-SOLIDITY-006, REQ-SOLIDITY-008
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
@@ -704,6 +710,8 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 		if r.npm != nil {
 			return r.npm.Dependencies(t)
 		}
+	case ecoSoldeer:
+		return r.soldeerDependencies(t)
 	case ecoGit:
 		var out []lang.Target
 		seen := map[string]bool{}
@@ -723,5 +731,89 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 	return nil
 }
 
-// Installed says a submodule's dependencies come from its checkout.
-func (r *resolver) Installed(t lang.Target) bool { return t.Ecosystem == ecoGit }
+// Installed says a submodule's dependencies come from its checkout, and a Soldeer
+// package's from what Soldeer installed.
+func (r *resolver) Installed(t lang.Target) bool {
+	return t.Ecosystem == ecoGit || t.Ecosystem == ecoSoldeer
+}
+
+// readInstalled reads what Soldeer installed into a dependencies/ directory:
+// the foundry.toml [dependencies] and soldeer.lock each <name>-<version>/
+// directory ships.
+//
+// Implements: REQ-SOLIDITY-007
+func readInstalled(dir string) map[string]*project {
+	entries, _ := os.ReadDir(dir)
+	out := map[string]*project{}
+	for _, e := range entries {
+		if !e.IsDir() {
+			continue
+		}
+		sub := &project{dir: e.Name(), deps: map[string]soldeerDep{}, locked: map[string]lockEntry{}}
+		read := func(name string) []byte {
+			data, err := os.ReadFile(filepath.Join(dir, e.Name(), name))
+			if err != nil || len(data) > lang.MaxParseSize {
+				return nil
+			}
+			return data
+		}
+		if c, ok := readFoundry(read("foundry.toml")); ok {
+			for _, d := range c.deps {
+				sub.deps[d.name] = d
+			}
+		}
+		for _, l := range readSoldeerLock(read("soldeer.lock")) {
+			sub.locked[l.name] = l
+		}
+		out[e.Name()] = sub
+	}
+	return out
+}
+
+// soldeerDependencies is what the Soldeer package t, installed into a project's
+// dependencies/<name>-<version>/ (the directory of t's version first), depends
+// on: its own [dependencies] and soldeer.lock entries, pinned as the project
+// pins them when it names them too, else as the package's own files do.
+//
+// Implements: REQ-SOLIDITY-007
+func (r *resolver) soldeerDependencies(t lang.Target) []lang.Target {
+	for _, d := range sortedKeys(r.projects) {
+		p := r.projects[d]
+		sub := p.installed[t.Package+"-"+t.Version]
+		for _, dir := range sortedKeys(p.installed) {
+			if sub != nil {
+				break
+			}
+			if p.soldeerName(dir) == t.Package {
+				sub = p.installed[dir]
+			}
+		}
+		if sub == nil {
+			continue
+		}
+		names := keys(sub.deps)
+		for n := range sub.locked {
+			names[n] = true
+		}
+		var out []lang.Target
+		for _, n := range sortedKeys(names) {
+			_, declared := p.deps[n]
+			if _, locked := p.locked[n]; declared || locked {
+				out = append(out, p.soldeerTarget(n))
+			} else {
+				out = append(out, sub.soldeerTarget(n))
+			}
+		}
+		return out
+	}
+	return nil
+}
+
+func sortedKeys[V any](m map[string]V) []string {
+	out := make([]string, 0, len(m))
+	for k := range m {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
