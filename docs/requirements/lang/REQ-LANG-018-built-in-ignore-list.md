@@ -36,8 +36,10 @@ libraries Foundry and Soldeer installed, forge's build output), and
 `hardhat.config.*` (Hardhat's build output, TypeChain's bindings), and a
 `deps` directory beside a `.nimble` file, an `atlas.config` or an
 `atlas.workspace`, or holding an `atlas.config` (the packages Atlas
-cloned); an `output`, `lib`, `packages`, `alire`, `systems`,
-`dependencies`, `out`, `cache`, `artifacts`, `typechain-types` or `deps`
+cloned), and `pkg`, `gen` and `usr` directories beside a `module.cue`
+(CUE's vendored modules and generated definitions in `cue.mod`); an
+`output`, `lib`, `packages`, `alire`, `systems`, `dependencies`, `out`,
+`cache`, `artifacts`, `typechain-types`, `deps`, `pkg`, `gen` or `usr`
 directory elsewhere is kept.
 
 ## Rationale
@@ -79,8 +81,11 @@ caches and build output.
    `hh/cache/solidity-files-cache.json` and `hh/typechain-types/index.ts`
    beside `hh/hardhat.config.ts`, `nim/deps/malebolgia/malebolgia.nimble`
    beside `nim/shop.nimble` and `atl/deps/sat/sat.nim` in a `deps` holding
-   an `atlas.config`, while `report/output/summary.md`,
+   an `atlas.config`, `cue/cue.mod/gen/k8s.io/api/core/v1/types_go_gen.cue`
+   and `cue/cue.mod/pkg/github.com/a/b/b.cue` beside
+   `cue/cue.mod/module.cue`, while `report/output/summary.md`,
    `tools/lib/helper.cr`, `web/packages/app.fs`, `docs/alire/intro.md`,
    `game/systems/physics.lisp`, `site/cache/page.html`,
-   `site/artifacts/report.md` and `make/deps/app.d` do.
+   `site/artifacts/report.md`, `make/deps/app.d` and `web/pkg/api/api.go`
+   do.
 2. An unreadable subdirectory is skipped without failing the scan.

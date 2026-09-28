@@ -43,7 +43,8 @@ const (
 // Racket one) nor Quicklisp projects (nor a Common Lisp one) nor Soldeer
 // packages and git submodules (no Solidity ecosystem; the npm packages of
 // Hardhat projects are asked about as npm) nor nimble packages (no Nim
-// ecosystem).
+// ecosystem) nor jsonnet-bundler packages and CUE modules (neither has an
+// ecosystem; Go packages CUE was generated from are asked about as Go).
 //
 // Implements: REQ-FND-010
 var osvEcosystems = map[string]string{
