@@ -430,6 +430,69 @@ func TestRubyGemsDependencies(t *testing.T) {
 	}
 }
 
+// A private gem server - Gemfury, Artifactory, GitHub Packages, Sidekiq Pro's - is
+// asked with the credential Bundler keeps for its host: a BUNDLE_<HOST> variable,
+// or ~/.bundle/config, where the mirror of rubygems.org may be set too.
+//
+// Verifies: REQ-SUP-045, REQ-AUTH-018
+func TestRubyGemsServerWithBundlerCredentials(t *testing.T) {
+	var refused int
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if user, pass, ok := r.BasicAuth(); !ok || user != "gem@user" || pass != "s3cr3t" {
+			refused++
+			w.WriteHeader(http.StatusUnauthorized)
+			return
+		}
+		if !strings.HasSuffix(r.URL.Path, "/info/sidekiq-pro") {
+			w.WriteHeader(http.StatusNotFound)
+			return
+		}
+		w.Write([]byte("---\n7.3.0 sidekiq:>= 7.3.0|checksum:aa\n"))
+	}))
+	t.Cleanup(srv.Close)
+	target := lang.Target{Ecosystem: RubyGems, Package: "sidekiq-pro", Version: "7.3.0"}
+
+	// From the environment, as a pipeline sets it: 127.0.0.1 is BUNDLE_127__0__0__1.
+	t.Setenv("BUNDLE_127__0__0__1", "gem%40user:s3cr3t")
+	bundleEnv := func(k string) string {
+		if strings.HasPrefix(k, "BUNDLE_") {
+			return os.Getenv(k)
+		}
+		return ""
+	}
+	cfg := New()
+	cfg.Add(RubyGems, Source{URL: srv.URL + "/private/", Trusted: true})
+	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, auth.Read(t.TempDir(), bundleEnv), nil)
+	if got := names(c.Dependencies(target)); !reflect.DeepEqual(got, []string{"sidekiq"}) {
+		t.Errorf("environment: got %v, want sidekiq", got)
+	}
+	if refused != 0 {
+		t.Errorf("%d requests went without the credential", refused)
+	}
+
+	// From ~/.bundle/config, the server being the mirror of rubygems.org it names.
+	os.Unsetenv("BUNDLE_127__0__0__1")
+	home := t.TempDir()
+	if err := os.MkdirAll(filepath.Join(home, ".bundle"), 0o755); err != nil {
+		t.Fatal(err)
+	}
+	config := fmt.Sprintf("---\nBUNDLE_MIRROR__HTTPS://RUBYGEMS__ORG/: %q\nBUNDLE_127__0__0__1: \"gem%%40user:s3cr3t\"\n", srv.URL+"/mirror")
+	if err := os.WriteFile(filepath.Join(home, ".bundle", "config"), []byte(config), 0o600); err != nil {
+		t.Fatal(err)
+	}
+	d := NewDiscoverer(env(nil), home)
+	c = NewClient(d.Config(), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, env(nil)), nil)
+	d.Discover(nil)
+	if got := names(c.Dependencies(target)); !reflect.DeepEqual(got, []string{"sidekiq"}) || refused != 0 {
+		t.Errorf("config mirror: got %v (%d refused), want sidekiq", got, refused)
+	}
+
+	// Without either the server refuses, which proves the header was what let it in.
+	if got := clientFor(t, RubyGems, srv.URL+"/private/", t.TempDir()).Dependencies(target); len(got) != 0 || refused == 0 {
+		t.Errorf("got %v without the credential", names(got))
+	}
+}
+
 // Verifies: REQ-SUP-046
 func TestPubDependencies(t *testing.T) {
 	var asked []string

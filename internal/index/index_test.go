@@ -368,6 +368,36 @@ func TestARepositorysComposerCredentialsAreDiscarded(t *testing.T) {
 	}
 }
 
+// A repository that names a gem server may not also supply its password: neither
+// the .bundle/config beside its Gemfile nor a user:password in a Gemfile source is
+// sent to that host.
+//
+// Verifies: REQ-AUTH-012, REQ-AUTH-019
+func TestARepositorysBundlerCredentialsAreDiscarded(t *testing.T) {
+	store := auth.Read(t.TempDir(), env(nil))
+	d := NewDiscoverer(env(nil), "")
+	d.Config().Credentials(store)
+	cfg := d.Discover(write(t, map[string]string{
+		"Gemfile": "source \"https://gems.corp.test\"\n" +
+			"source \"https://repo:leak@private.corp.test\" do\n  gem \"acme\"\nend\n",
+		".bundle/config": "---\nBUNDLE_GEMS__CORP__TEST: \"repo:leak\"\nBUNDLE_PRIVATE__CORP__TEST: \"repo:leak\"\n",
+	}))
+	var urls []string
+	for _, s := range cfg.Report() {
+		urls = append(urls, s.URL)
+	}
+	if !slices.Contains(urls, "https://gems.corp.test") || !slices.Contains(urls, "https://private.corp.test") {
+		t.Fatalf("the Gemfile's sources were not recorded: %v", urls)
+	}
+	for _, raw := range []string{"https://gems.corp.test/info/rack", "https://private.corp.test/info/acme"} {
+		req, _ := http.NewRequest(http.MethodGet, raw, nil)
+		store.Apply(req)
+		if got := req.Header.Get("Authorization"); got != "" {
+			t.Errorf("%s: a credential the repository supplied was sent: %q", raw, got)
+		}
+	}
+}
+
 // Under --watch the repository is read again on every analysis: an index taken out of
 // it is gone from the next map, and one only this machine names stays.
 //

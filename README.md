@@ -1247,11 +1247,14 @@ written for and to no other.
 | `TF_TOKEN_<host>`                                             | a token supplied by a pipeline, for HCP Terraform and the hosts named above                                       |
 | `auth.json` in Composer's home                                | `http-basic`, `bearer`, `gitlab-token`, `gitlab-oauth`, `github-oauth`, per host                                  |
 | `COMPOSER_AUTH`                                               | the same keys supplied by a pipeline, merged host by host over `auth.json`                                        |
+| `~/.bundle/config`                                            | Bundler's `BUNDLE_<HOST>` credentials (`user:password`, or a token), per host or source URL                       |
+| `BUNDLE_<HOST>`                                               | the same credential supplied by a pipeline, over the file's                                                       |
 | the index URL itself                                          | `https://user:password@host/simple`, as a private pip or Cargo mirror is set                                      |
 
 Between them these cover Nexus, Artifactory, Azure Artifacts, ProGet, GitHub
 Packages, Harbor, GHCR, a private crate registry, a private Terraform
-registry, and Private Packagist, Satis, Repman and GitLab's Composer registry.
+registry, Private Packagist, Satis, Repman and GitLab's Composer registry, and
+Gemfury and the commercial gem servers Bundler is pointed at.
 
 In `~/.npmrc`, `settings.xml` and `NuGet.Config`, a value that is exactly
 `${NAME}`, `${env.NAME}` or `%NAME%` is read from the environment, so a password
@@ -1280,6 +1283,18 @@ of these, the one Composer loads last wins, `bearer` over `http-basic`.
 Composer exchanges for a token on every run. The `auth.json` beside a
 repository's `composer.json`, and the `"config"` of a `composer.json`, belong to
 the repository and are never read.
+
+Bundler names a credential after its server: `bundle config set --global
+gems.example.com user:password` writes `BUNDLE_GEMS__EXAMPLE__COM`, the host
+upper-cased with `.` as `__` and `-` as `___`, and a pipeline sets the same
+variable. The user's config is `BUNDLE_USER_CONFIG`, else `config` in
+`BUNDLE_USER_HOME`, else `~/.bundle/config`; a variable replaces the file's
+entry. A key may also be a source URL
+(`BUNDLE_HTTPS://RUBYGEMS__PKG__GITHUB__COM/ACME/`), filed under its host; a
+host key wins over it. The value goes out as Basic credentials, both halves
+URL-unescaped as Bundler does; a bare token is the user name with an empty
+password. The application's `.bundle/config`, beside the `Gemfile` or wherever
+`BUNDLE_APP_CONFIG` points, belongs to the repository and is never read.
 
 Most container registries no longer store a credential in `config.json`; they
 name a helper instead, and depphunter runs it as `docker login` does —
