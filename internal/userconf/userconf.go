@@ -26,37 +26,37 @@ var SystemRoot = string(filepath.Separator)
 var Platform = runtime.GOOS
 
 // Machine is the user whose configuration is read: the home directory, the
-// environment and the platform. The environment is read through Env only; Environ
+// environment and the platform. The environment is read through Environment only; Environ
 // only lists the names, for the variables whose names cannot be known in advance, so
-// an Env that answers nothing reads nothing.
+// an Environment that answers nothing reads nothing.
 type Machine struct {
-	Home    string
-	Env     func(string) string
-	GOOS    string
-	Environ func() []string
+	Home        string
+	Environment func(string) string
+	GOOS        string
+	Environ     func() []string
 }
 
 // New is the machine depphunter runs on.
-func New(home string, env func(string) string) Machine {
-	if env == nil {
-		env = func(string) string { return "" }
+func New(home string, environment func(string) string) Machine {
+	if environment == nil {
+		environment = func(string) string { return "" }
 	}
-	return Machine{Home: home, Env: env, GOOS: Platform, Environ: os.Environ}
+	return Machine{Home: home, Environment: environment, GOOS: Platform, Environ: os.Environ}
 }
 
 // join is filepath.Join, or "" when base is: a path under a directory nobody named
 // is no path at all.
-func join(base string, elem ...string) string {
+func join(base string, element ...string) string {
 	if base == "" {
 		return ""
 	}
-	return filepath.Join(append([]string{base}, elem...)...)
+	return filepath.Join(append([]string{base}, element...)...)
 }
 
 // system is an absolute system-wide path under SystemRoot.
-func system(elem ...string) string { return join(SystemRoot, elem...) }
+func system(element ...string) string { return join(SystemRoot, element...) }
 
-func isDir(path string) bool {
+func isDirectory(path string) bool {
 	info, err := os.Stat(path)
 	return err == nil && info.IsDir()
 }
@@ -72,8 +72,8 @@ func (m Machine) names(match func(string) bool) []string {
 		return nil
 	}
 	var out []string
-	for _, kv := range m.Environ() {
-		if name, _, _ := strings.Cut(kv, "="); name != "" && match(name) {
+	for _, keyValue := range m.Environ() {
+		if name, _, _ := strings.Cut(keyValue, "="); name != "" && match(name) {
 			out = append(out, name)
 		}
 	}
@@ -81,19 +81,19 @@ func (m Machine) names(match func(string) bool) []string {
 	return out
 }
 
-// ConfigDir is os.UserConfigDir for this machine: %APPDATA% on Windows,
+// ConfigDirectory is os.UserConfigDir for this machine: %APPDATA% on Windows,
 // ~/Library/Application Support on macOS, else $XDG_CONFIG_HOME when it is absolute
 // or ~/.config.
 //
 // Implements: REQ-SUP-064
-func (m Machine) ConfigDir() string {
+func (m Machine) ConfigDirectory() string {
 	switch m.GOOS {
 	case "windows":
-		return m.Env("APPDATA")
+		return m.Environment("APPDATA")
 	case "darwin", "ios":
 		return join(m.Home, "Library", "Application Support")
 	}
-	if xdg := m.Env("XDG_CONFIG_HOME"); filepath.IsAbs(xdg) {
+	if xdg := m.Environment("XDG_CONFIG_HOME"); filepath.IsAbs(xdg) {
 		return xdg
 	}
 	return join(m.Home, ".config")
@@ -102,7 +102,7 @@ func (m Machine) ConfigDir() string {
 // xdgConfigHome is $XDG_CONFIG_HOME, else ~/.config, as the tools that follow the
 // XDG layout on every platform (Composer, Podman, pip on Linux) take it.
 func (m Machine) xdgConfigHome() string {
-	if xdg := m.Env("XDG_CONFIG_HOME"); xdg != "" {
+	if xdg := m.Environment("XDG_CONFIG_HOME"); xdg != "" {
 		return xdg
 	}
 	return join(m.Home, ".config")
@@ -114,8 +114,8 @@ func (m Machine) xdgConfigHome() string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) CargoHome() string {
-	if dir := m.Env("CARGO_HOME"); dir != "" {
-		return dir
+	if directory := m.Environment("CARGO_HOME"); directory != "" {
+		return directory
 	}
 	return join(m.Home, ".cargo")
 }
@@ -126,14 +126,14 @@ func (m Machine) CargoHome() string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) CargoFile(name string) string {
-	dir := m.CargoHome()
-	if dir == "" {
+	directory := m.CargoHome()
+	if directory == "" {
 		return ""
 	}
-	if legacy := filepath.Join(dir, name); isFile(legacy) {
+	if legacy := filepath.Join(directory, name); isFile(legacy) {
 		return legacy
 	}
-	return filepath.Join(dir, name+".toml")
+	return filepath.Join(directory, name+".toml")
 }
 
 // CargoRegistryName is the form a registry name takes in Cargo's variables, and in
@@ -153,7 +153,7 @@ func (m Machine) CargoRegistries() map[string]string {
 		return strings.HasPrefix(n, "CARGO_REGISTRIES_") && strings.HasSuffix(n, "_INDEX")
 	}) {
 		registry := strings.TrimSuffix(strings.TrimPrefix(name, "CARGO_REGISTRIES_"), "_INDEX")
-		if v := strings.TrimSpace(m.Env(name)); registry != "" && v != "" {
+		if v := strings.TrimSpace(m.Environment(name)); registry != "" && v != "" {
 			out[registry] = v
 		}
 	}
@@ -162,16 +162,16 @@ func (m Machine) CargoRegistries() map[string]string {
 
 // ---------------------------------------------------------------- npm
 
-// NpmEnv is the npm configuration set in the environment, by key. npm takes every
+// NpmEnvironment is the npm configuration set in the environment, by key. npm takes every
 // variable whose name starts with npm_config_ in any case, the rest of the name lower
 // case with "_" as "-" (except a leading one, and except in a //host/:field key,
 // which is kept as written). Of two spellings of one key the lower-case one wins.
 //
 // Implements: REQ-SUP-064
-func (m Machine) NpmEnv() map[string]string {
+func (m Machine) NpmEnvironment() map[string]string {
 	const prefix = "npm_config_"
 	names := m.names(func(n string) bool { return len(n) > len(prefix) && strings.EqualFold(n[:len(prefix)], prefix) })
-	// The keys depphunter asks for, in the two usual spellings, so that an Env
+	// The keys depphunter asks for, in the two usual spellings, so that an Environment
 	// without a listing of the environment still answers them.
 	for _, key := range []string{"registry", "userconfig", "globalconfig", "prefix"} {
 		names = append(names, "NPM_CONFIG_"+strings.ToUpper(key), prefix+key)
@@ -182,7 +182,7 @@ func (m Machine) NpmEnv() map[string]string {
 	})
 	out := map[string]string{}
 	for _, name := range names {
-		v := m.Env(name)
+		v := m.Environment(name)
 		if v == "" {
 			continue
 		}
@@ -201,7 +201,7 @@ func (m Machine) NpmEnv() map[string]string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) NpmUserConfig() string {
-	if f := m.NpmEnv()["userconfig"]; f != "" {
+	if f := m.NpmEnvironment()["userconfig"]; f != "" {
 		return f
 	}
 	return join(m.Home, ".npmrc")
@@ -213,11 +213,11 @@ func (m Machine) NpmUserConfig() string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) NpmGlobalConfig() string {
-	env := m.NpmEnv()
-	if f := env["globalconfig"]; f != "" {
+	environment := m.NpmEnvironment()
+	if f := environment["globalconfig"]; f != "" {
 		return f
 	}
-	return join(env["prefix"], "etc", "npmrc")
+	return join(environment["prefix"], "etc", "npmrc")
 }
 
 // YarnRCFilename is the name Yarn Berry gives its configuration files, in the
@@ -225,7 +225,7 @@ func (m Machine) NpmGlobalConfig() string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) YarnRCFilename() string {
-	if name := m.Env("YARN_RC_FILENAME"); name != "" && !strings.ContainsAny(name, `/\`) {
+	if name := m.Environment("YARN_RC_FILENAME"); name != "" && !strings.ContainsAny(name, `/\`) {
 		return name
 	}
 	return ".yarnrc.yml"
@@ -246,7 +246,7 @@ func (m Machine) YarnClassicConfig() string { return join(m.Home, ".yarnrc") }
 //
 // Implements: REQ-SUP-064
 func (m Machine) BunConfig() string {
-	if xdg := m.Env("XDG_CONFIG_HOME"); xdg != "" && isFile(filepath.Join(xdg, ".bunfig.toml")) {
+	if xdg := m.Environment("XDG_CONFIG_HOME"); xdg != "" && isFile(filepath.Join(xdg, ".bunfig.toml")) {
 		return filepath.Join(xdg, ".bunfig.toml")
 	}
 	return join(m.Home, ".bunfig.toml")
@@ -263,8 +263,8 @@ func (m Machine) BunConfig() string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) PipConfigFiles() (files []string, ok bool) {
-	env := m.Env("PIP_CONFIG_FILE")
-	if env == "/dev/null" && m.GOOS != "windows" || m.GOOS == "windows" && strings.EqualFold(env, "nul") {
+	environment := m.Environment("PIP_CONFIG_FILE")
+	if environment == "/dev/null" && m.GOOS != "windows" || m.GOOS == "windows" && strings.EqualFold(environment, "nul") {
 		return nil, false
 	}
 	base := "pip.conf"
@@ -273,20 +273,20 @@ func (m Machine) PipConfigFiles() (files []string, ok bool) {
 	}
 	switch m.GOOS {
 	case "windows":
-		files = append(files, join(m.Env("ProgramData"), "pip", base))
+		files = append(files, join(m.Environment("ProgramData"), "pip", base))
 	case "darwin", "ios":
 		files = append(files, system("Library", "Application Support", "pip", base))
 	default:
-		dirs := m.Env("XDG_CONFIG_DIRS")
-		if dirs == "" {
+		directories := m.Environment("XDG_CONFIG_DIRS")
+		if directories == "" {
 			files = append(files, system("etc", "xdg", "pip", base))
 		}
-		for _, d := range filepath.SplitList(dirs) {
+		for _, d := range filepath.SplitList(directories) {
 			files = append(files, join(d, "pip", base))
 		}
 		files = append(files, system("etc", base))
 	}
-	if env == "" || !isFile(env) {
+	if environment == "" || !isFile(environment) {
 		legacy := ".pip"
 		if m.GOOS == "windows" {
 			legacy = "pip"
@@ -295,10 +295,10 @@ func (m Machine) PipConfigFiles() (files []string, ok bool) {
 		var user string
 		switch m.GOOS {
 		case "windows":
-			user = join(m.Env("APPDATA"), "pip")
+			user = join(m.Environment("APPDATA"), "pip")
 		case "darwin", "ios":
 			// pip keeps to ~/.config/pip on macOS until Application Support/pip exists.
-			if user = join(m.Home, "Library", "Application Support", "pip"); !isDir(user) {
+			if user = join(m.Home, "Library", "Application Support", "pip"); !isDirectory(user) {
 				user = join(m.Home, ".config", "pip")
 			}
 		default:
@@ -306,8 +306,8 @@ func (m Machine) PipConfigFiles() (files []string, ok bool) {
 		}
 		files = append(files, join(user, base))
 	}
-	if env != "" {
-		files = append(files, env)
+	if environment != "" {
+		files = append(files, environment)
 	}
 	return files, true
 }
@@ -323,7 +323,7 @@ func (m Machine) PipConfigFiles() (files []string, ok bool) {
 //
 // Implements: REQ-AUTH-020
 func (m Machine) ContainerAuthFiles() []string {
-	if f := m.Env("REGISTRY_AUTH_FILE"); f != "" {
+	if f := m.Environment("REGISTRY_AUTH_FILE"); f != "" {
 		return []string{f}
 	}
 	var files []string
@@ -333,13 +333,13 @@ func (m Machine) ContainerAuthFiles() []string {
 		}
 	}
 	if m.GOOS == "linux" {
-		add(join(m.Env("XDG_RUNTIME_DIR"), "containers", "auth.json"))
+		add(join(m.Environment("XDG_RUNTIME_DIR"), "containers", "auth.json"))
 	} else {
 		add(join(m.Home, ".config", "containers", "auth.json"))
 	}
 	add(join(m.xdgConfigHome(), "containers", "auth.json"))
-	if dir := m.Env("DOCKER_CONFIG"); dir != "" {
-		add(filepath.Join(dir, "config.json"))
+	if directory := m.Environment("DOCKER_CONFIG"); directory != "" {
+		add(filepath.Join(directory, "config.json"))
 	} else {
 		add(join(m.Home, ".docker", "config.json"))
 	}
@@ -362,7 +362,7 @@ func contains(list []string, s string) bool {
 //
 // Implements: REQ-AUTH-002
 func (m Machine) Netrc() string {
-	if f := m.Env("NETRC"); f != "" {
+	if f := m.Environment("NETRC"); f != "" {
 		return f
 	}
 	if m.GOOS == "windows" {
@@ -375,30 +375,30 @@ func (m Machine) Netrc() string {
 
 // ---------------------------------------------------------------- Go
 
-// GoEnvFile is the file `go env -w` writes: $GOENV, none when that is "off", else
+// GoEnvironmentFile is the file `go env -w` writes: $GOENV, none when that is "off", else
 // go/env in the user config directory.
 //
 // Implements: REQ-SUP-064
-func (m Machine) GoEnvFile() string {
-	switch f := m.Env("GOENV"); f {
+func (m Machine) GoEnvironmentFile() string {
+	switch f := m.Environment("GOENV"); f {
 	case "off":
 		return ""
 	case "":
-		return join(m.ConfigDir(), "go", "env")
+		return join(m.ConfigDirectory(), "go", "env")
 	default:
 		return f
 	}
 }
 
-// GoEnv is a Go setting as the go command reads it: the process environment when the
-// variable is set and not empty, else the go env file.
+// GoEnvironment is a Go setting as the go command reads it: the process environment when the
+// variable is set and not empty, else the go environment file.
 //
 // Implements: REQ-SUP-064, REQ-SUP-036
-func (m Machine) GoEnv(key string) string {
-	if v := m.Env(key); v != "" {
+func (m Machine) GoEnvironment(key string) string {
+	if v := m.Environment(key); v != "" {
 		return v
 	}
-	f := m.GoEnvFile()
+	f := m.GoEnvironmentFile()
 	if f == "" {
 		return ""
 	}
@@ -427,7 +427,7 @@ func (m Machine) GoEnv(key string) string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) NuGetConfigs() []string {
-	if f := join(m.Env("APPDATA"), "NuGet", "NuGet.Config"); f != "" && m.GOOS == "windows" {
+	if f := join(m.Environment("APPDATA"), "NuGet", "NuGet.Config"); f != "" && m.GOOS == "windows" {
 		return []string{f}
 	}
 	if m.Home == "" {
@@ -447,29 +447,29 @@ func (m Machine) NuGetConfigs() []string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) NuGetMachineConfigs() []string {
-	programFiles := m.Env("ProgramFiles(x86)")
+	programFiles := m.Environment("ProgramFiles(x86)")
 	if programFiles == "" {
-		programFiles = m.Env("ProgramFiles")
+		programFiles = m.Environment("ProgramFiles")
 	}
-	var dir string
+	var directory string
 	switch {
 	case m.GOOS == "windows" && programFiles != "":
-		dir = join(programFiles, "NuGet", "Config")
-	case m.Env("NUGET_COMMON_APPLICATION_DATA") != "":
-		dir = join(m.Env("NUGET_COMMON_APPLICATION_DATA"), "NuGet", "Config")
+		directory = join(programFiles, "NuGet", "Config")
+	case m.Environment("NUGET_COMMON_APPLICATION_DATA") != "":
+		directory = join(m.Environment("NUGET_COMMON_APPLICATION_DATA"), "NuGet", "Config")
 	case m.GOOS == "darwin":
-		dir = system("Library", "Application Support", "NuGet", "Config")
+		directory = system("Library", "Application Support", "NuGet", "Config")
 	default:
-		dir = system("etc", "opt", "NuGet", "Config")
+		directory = system("etc", "opt", "NuGet", "Config")
 	}
-	if dir == "" {
+	if directory == "" {
 		return nil
 	}
-	entries, _ := os.ReadDir(dir)
+	entries, _ := os.ReadDir(directory)
 	var out []string
 	for _, e := range entries {
 		if !e.IsDir() && strings.EqualFold(filepath.Ext(e.Name()), ".config") {
-			out = append(out, filepath.Join(dir, e.Name()))
+			out = append(out, filepath.Join(directory, e.Name()))
 		}
 	}
 	return out
@@ -479,13 +479,13 @@ func (m Machine) NuGetMachineConfigs() []string {
 // NuGetPackageSourceCredentials_<source name>.
 const nugetCredentialPrefix = "NuGetPackageSourceCredentials_"
 
-// NuGetCredentialVars are the NuGetPackageSourceCredentials_<source> variables, by
+// NuGetCredentialVariables are the NuGetPackageSourceCredentials_<source> variables, by
 // source name lower-cased. NuGet appends the source name as it is; the prefix and the
 // name are matched without regard to case, as on Windows, and of two variables for
 // one source the first in name order is taken.
 //
 // Implements: REQ-AUTH-022
-func (m Machine) NuGetCredentialVars() map[string]string {
+func (m Machine) NuGetCredentialVariables() map[string]string {
 	out := map[string]string{}
 	n := len(nugetCredentialPrefix)
 	for _, name := range m.names(func(s string) bool { return len(s) > n && strings.EqualFold(s[:n], nugetCredentialPrefix) }) {
@@ -493,7 +493,7 @@ func (m Machine) NuGetCredentialVars() map[string]string {
 		if _, done := out[key]; done {
 			continue
 		}
-		if v := m.Env(name); v != "" {
+		if v := m.Environment(name); v != "" {
 			out[key] = v
 		}
 	}
@@ -509,15 +509,15 @@ func (m Machine) NuGetCredentialVars() map[string]string {
 //
 // Implements: REQ-SUP-064, REQ-AUTH-016
 func (m Machine) ComposerHome() string {
-	if dir := m.Env("COMPOSER_HOME"); dir != "" {
-		return dir
+	if directory := m.Environment("COMPOSER_HOME"); directory != "" {
+		return directory
 	}
-	if dir := m.Env("APPDATA"); dir != "" && m.GOOS == "windows" {
-		return filepath.Join(dir, "Composer")
+	if directory := m.Environment("APPDATA"); directory != "" && m.GOOS == "windows" {
+		return filepath.Join(directory, "Composer")
 	}
-	for _, dir := range []string{join(m.xdgConfigHome(), "composer"), join(m.Home, ".composer")} {
-		if dir != "" && isDir(dir) {
-			return dir
+	for _, directory := range []string{join(m.xdgConfigHome(), "composer"), join(m.Home, ".composer")} {
+		if directory != "" && isDirectory(directory) {
+			return directory
 		}
 	}
 	return ""
@@ -530,11 +530,11 @@ func (m Machine) ComposerHome() string {
 //
 // Implements: REQ-AUTH-018, REQ-SUP-015
 func (m Machine) BundlerConfig() string {
-	if f := m.Env("BUNDLE_USER_CONFIG"); f != "" {
+	if f := m.Environment("BUNDLE_USER_CONFIG"); f != "" {
 		return f
 	}
-	if dir := m.Env("BUNDLE_USER_HOME"); dir != "" {
-		return filepath.Join(dir, "config")
+	if directory := m.Environment("BUNDLE_USER_HOME"); directory != "" {
+		return filepath.Join(directory, "config")
 	}
 	return join(m.Home, ".bundle", "config")
 }

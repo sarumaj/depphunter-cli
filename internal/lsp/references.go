@@ -25,8 +25,8 @@ import (
 // Server describes a language server: the files it answers for and the commands that
 // start it, tried in order.
 type Server struct {
-	Name string
-	Exts map[string]string // file extension -> LSP languageId
+	Name       string
+	Extensions map[string]string // file extension -> LSP languageId
 	// Names are the files the server answers for by name rather than extension
 	// (CMakeLists.txt), with their languageId.
 	Names    map[string]string
@@ -37,67 +37,67 @@ type Server struct {
 
 // Implements: REQ-LSP-002
 var Servers = []Server{
-	{Name: "gopls", Exts: map[string]string{".go": "go"}, Commands: [][]string{{"gopls"}}},
-	{Name: "typescript-language-server", Open: true, Exts: map[string]string{
+	{Name: "gopls", Extensions: map[string]string{".go": "go"}, Commands: [][]string{{"gopls"}}},
+	{Name: "typescript-language-server", Open: true, Extensions: map[string]string{
 		".ts": "typescript", ".mts": "typescript", ".cts": "typescript", ".tsx": "typescriptreact",
 		".js": "javascript", ".mjs": "javascript", ".cjs": "javascript", ".jsx": "javascriptreact",
 	}, Commands: [][]string{{"typescript-language-server", "--stdio"}}},
-	{Name: "python", Open: true, Exts: map[string]string{".py": "python", ".pyi": "python"},
+	{Name: "python", Open: true, Extensions: map[string]string{".py": "python", ".pyi": "python"},
 		Commands: [][]string{{"pyright-langserver", "--stdio"}, {"basedpyright-langserver", "--stdio"}, {"pylsp"}}},
-	{Name: "rust-analyzer", Exts: map[string]string{".rs": "rust"}, Commands: [][]string{{"rust-analyzer"}}},
-	{Name: "jdtls", Open: true, Exts: map[string]string{".java": "java"}, Commands: [][]string{{"jdtls"}}},
-	{Name: "kotlin-language-server", Open: true, Exts: map[string]string{".kt": "kotlin", ".kts": "kotlin"},
+	{Name: "rust-analyzer", Extensions: map[string]string{".rs": "rust"}, Commands: [][]string{{"rust-analyzer"}}},
+	{Name: "jdtls", Open: true, Extensions: map[string]string{".java": "java"}, Commands: [][]string{{"jdtls"}}},
+	{Name: "kotlin-language-server", Open: true, Extensions: map[string]string{".kt": "kotlin", ".kts": "kotlin"},
 		Commands: [][]string{{"kotlin-language-server"}}},
-	{Name: "metals", Open: true, Exts: map[string]string{".scala": "scala", ".sc": "scala"}, Commands: [][]string{{"metals"}}},
-	{Name: "csharp-ls", Open: true, Exts: map[string]string{".cs": "csharp"}, Commands: [][]string{{"csharp-ls"}}},
+	{Name: "metals", Open: true, Extensions: map[string]string{".scala": "scala", ".sc": "scala"}, Commands: [][]string{{"metals"}}},
+	{Name: "csharp-ls", Open: true, Extensions: map[string]string{".cs": "csharp"}, Commands: [][]string{{"csharp-ls"}}},
 	// FsAutoComplete answers references for F# sources and scripts; it loads the
 	// .fsproj projects (their compile order) first, which takes a while.
-	{Name: "fsharp", Open: true, Exts: map[string]string{".fs": "fsharp", ".fsi": "fsharp", ".fsx": "fsharp"},
+	{Name: "fsharp", Open: true, Extensions: map[string]string{".fs": "fsharp", ".fsi": "fsharp", ".fsx": "fsharp"},
 		Commands: [][]string{{"fsautocomplete", "--adaptive-lsp-server-enabled"}}},
-	{Name: "clangd", Open: true, Exts: map[string]string{
+	{Name: "clangd", Open: true, Extensions: map[string]string{
 		".c": "c", ".h": "cpp", ".cc": "cpp", ".cpp": "cpp", ".cxx": "cpp", ".c++": "cpp",
 		".hpp": "cpp", ".hh": "cpp", ".hxx": "cpp", ".h++": "cpp", ".ipp": "cpp", ".inl": "cpp",
 		".m": "objective-c", ".mm": "objective-cpp",
 		".cu": "cuda-cpp", ".cuh": "cuda-cpp", ".metal": "metal", ".clh": "opencl",
 	}, Commands: [][]string{{"clangd"}}},
-	{Name: "php", Open: true, Exts: map[string]string{".php": "php", ".phtml": "php", ".inc": "php"},
+	{Name: "php", Open: true, Extensions: map[string]string{".php": "php", ".phtml": "php", ".inc": "php"},
 		Commands: [][]string{{"intelephense", "--stdio"}, {"phpactor", "language-server"}}},
-	{Name: "ruby", Open: true, Exts: map[string]string{".rb": "ruby", ".rake": "ruby", ".gemspec": "ruby", ".ru": "ruby"},
+	{Name: "ruby", Open: true, Extensions: map[string]string{".rb": "ruby", ".rake": "ruby", ".gemspec": "ruby", ".ru": "ruby"},
 		Commands: [][]string{{"ruby-lsp"}, {"solargraph", "stdio"}}},
-	{Name: "sourcekit-lsp", Open: true, Exts: map[string]string{".swift": "swift"}, Commands: [][]string{{"sourcekit-lsp"}}},
-	{Name: "dart", Open: true, Exts: map[string]string{".dart": "dart"}, Commands: [][]string{{"dart", "language-server", "--protocol=lsp"}}},
-	{Name: "elixir", Open: true, Exts: map[string]string{".ex": "elixir", ".exs": "elixir"},
+	{Name: "sourcekit-lsp", Open: true, Extensions: map[string]string{".swift": "swift"}, Commands: [][]string{{"sourcekit-lsp"}}},
+	{Name: "dart", Open: true, Extensions: map[string]string{".dart": "dart"}, Commands: [][]string{{"dart", "language-server", "--protocol=lsp"}}},
+	{Name: "elixir", Open: true, Extensions: map[string]string{".ex": "elixir", ".exs": "elixir"},
 		Commands: [][]string{{"elixir-ls"}, {"language_server.sh"}, {"lexical"}, {"nextls", "--stdio"}}},
-	{Name: "erlang", Open: true, Exts: map[string]string{".erl": "erlang", ".hrl": "erlang"},
+	{Name: "erlang", Open: true, Extensions: map[string]string{".erl": "erlang", ".hrl": "erlang"},
 		Commands: [][]string{{"elp", "server"}, {"erlang_ls"}}},
 	// The languageserver package runs inside R. R on PATH does not mean the package
 	// is installed; when it is not, R exits, initialize fails, and the failure is
 	// logged and the server passed over.
-	{Name: "r", Open: true, Exts: map[string]string{".r": "r", ".rmd": "rmd"},
+	{Name: "r", Open: true, Extensions: map[string]string{".r": "r", ".rmd": "rmd"},
 		Commands: [][]string{{"R", "--slave", "-e", "languageserver::run()"}}},
 	// The wrapper picks the server binary built for the project's GHC version.
-	{Name: "haskell", Open: true, Exts: map[string]string{".hs": "haskell", ".lhs": "lhaskell"},
+	{Name: "haskell", Open: true, Extensions: map[string]string{".hs": "haskell", ".lhs": "lhaskell"},
 		Commands: [][]string{{"haskell-language-server-wrapper", "--lsp"}, {"haskell-language-server", "--lsp"}}},
 	// terraform-ls serves OpenTofu files as well; tofu-ls is OpenTofu's fork of it.
-	{Name: "terraform", Open: true, Exts: map[string]string{".tf": "terraform", ".tofu": "opentofu", ".tfvars": "terraform-vars"},
+	{Name: "terraform", Open: true, Extensions: map[string]string{".tf": "terraform", ".tofu": "opentofu", ".tfvars": "terraform-vars"},
 		Commands: [][]string{{"terraform-ls", "serve"}, {"tofu-ls", "serve"}}},
 	// buf lsp serve is Buf's own server (buf 1.43 and later); bufls is its former
 	// standalone release, protols a community server that needs no Buf configuration.
-	{Name: "proto", Open: true, Exts: map[string]string{".proto": "proto"},
+	{Name: "proto", Open: true, Extensions: map[string]string{".proto": "proto"},
 		Commands: [][]string{{"buf", "lsp", "serve"}, {"bufls", "serve"}, {"protols"}}},
 	// bash-language-server serves sh and Bash (and bats, which it reads as Bash); it
 	// has no zsh support, so zsh files are left out.
-	{Name: "bash", Open: true, Exts: map[string]string{".sh": "shellscript", ".bash": "shellscript", ".ksh": "shellscript", ".bats": "shellscript", ".envrc": "shellscript"},
+	{Name: "bash", Open: true, Extensions: map[string]string{".sh": "shellscript", ".bash": "shellscript", ".ksh": "shellscript", ".bats": "shellscript", ".envrc": "shellscript"},
 		Commands: [][]string{{"bash-language-server", "start"}}},
 	// lua-language-server (LuaLS) reads Lua and LuaJIT; Luau needs luau-lsp, whose
 	// server is its lsp subcommand. Teal's teal-language-server is left out: it
 	// answers no references.
-	{Name: "lua", Open: true, Exts: map[string]string{".lua": "lua"}, Commands: [][]string{{"lua-language-server"}}},
-	{Name: "luau", Open: true, Exts: map[string]string{".luau": "luau"}, Commands: [][]string{{"luau-lsp", "lsp"}}},
+	{Name: "lua", Open: true, Extensions: map[string]string{".lua": "lua"}, Commands: [][]string{{"lua-language-server"}}},
+	{Name: "luau", Open: true, Extensions: map[string]string{".luau": "luau"}, Commands: [][]string{{"luau-lsp", "lsp"}}},
 	// Perl Navigator and PLS are standalone servers; Perl::LanguageServer runs inside
 	// perl, which is on PATH wherever Perl is, so without the module installed its
 	// initialize fails, is logged, and the server is passed over.
-	{Name: "perl", Open: true, Exts: map[string]string{".pl": "perl", ".pm": "perl", ".t": "perl", ".psgi": "perl"},
+	{Name: "perl", Open: true, Extensions: map[string]string{".pl": "perl", ".pm": "perl", ".t": "perl", ".psgi": "perl"},
 		Commands: [][]string{{"perlnavigator", "--stdio"}, {"pls"}, {"perl", "-MPerl::LanguageServer", "-e", "Perl::LanguageServer::run"}}},
 	// ocaml-lsp-server answers for implementations, interfaces and the ocamllex and
 	// Menhir sources merlin reads; it needs the project built once for dune's
@@ -105,94 +105,94 @@ var Servers = []Server{
 	// LanguageServer.jl runs inside julia; julia on PATH without the package
 	// installed fails initialize, which is logged, and the server is passed over.
 	// It indexes the environment's packages first, which takes a while.
-	{Name: "julia", Open: true, Exts: map[string]string{".jl": "julia"},
+	{Name: "julia", Open: true, Extensions: map[string]string{".jl": "julia"},
 		Commands: [][]string{{"julia", "--startup-file=no", "--history-file=no", "-e", "using LanguageServer; runserver()"}}},
-	{Name: "ocaml", Open: true, Exts: map[string]string{".ml": "ocaml", ".mli": "ocaml.interface", ".mll": "ocaml.ocamllex", ".mly": "ocaml.menhir"},
+	{Name: "ocaml", Open: true, Extensions: map[string]string{".ml": "ocaml", ".mli": "ocaml.interface", ".mll": "ocaml.ocamllex", ".mly": "ocaml.menhir"},
 		Commands: [][]string{{"ocamllsp"}}},
 	// clojure-lsp serves Clojure, ClojureScript and babashka alike (it analyzes the
 	// classpath tools.deps or Leiningen computes, so it indexes a while first).
-	{Name: "clojure", Open: true, Exts: map[string]string{".clj": "clojure", ".cljs": "clojure", ".cljc": "clojure", ".bb": "clojure"},
+	{Name: "clojure", Open: true, Extensions: map[string]string{".clj": "clojure", ".cljs": "clojure", ".cljc": "clojure", ".bb": "clojure"},
 		Commands: [][]string{{"clojure-lsp"}}},
 	// zls answers references for Zig sources; it reads build.zig for the modules
 	// and packages the build wires.
-	{Name: "zig", Open: true, Exts: map[string]string{".zig": "zig"}, Commands: [][]string{{"zls"}}},
+	{Name: "zig", Open: true, Extensions: map[string]string{".zig": "zig"}, Commands: [][]string{{"zls"}}},
 	// nil and nixd both answer references for Nix expressions; nixd evaluates the
 	// flake or NIX_PATH it is configured for.
-	{Name: "nix", Open: true, Exts: map[string]string{".nix": "nix"}, Commands: [][]string{{"nil"}, {"nixd"}}},
+	{Name: "nix", Open: true, Extensions: map[string]string{".nix": "nix"}, Commands: [][]string{{"nil"}, {"nixd"}}},
 	// The Gleam compiler serves the language server itself (gleam lsp), from the
 	// package's gleam.toml.
-	{Name: "gleam", Open: true, Exts: map[string]string{".gleam": "gleam"}, Commands: [][]string{{"gleam", "lsp"}}},
+	{Name: "gleam", Open: true, Extensions: map[string]string{".gleam": "gleam"}, Commands: [][]string{{"gleam", "lsp"}}},
 	// elm-language-server answers references for Elm modules from the nearest
 	// elm.json.
-	{Name: "elm", Open: true, Exts: map[string]string{".elm": "elm"}, Commands: [][]string{{"elm-language-server", "--stdio"}}},
+	{Name: "elm", Open: true, Extensions: map[string]string{".elm": "elm"}, Commands: [][]string{{"elm-language-server", "--stdio"}}},
 	// purescript-language-server answers references for PureScript modules from
 	// the project's spago build output.
-	{Name: "purescript", Open: true, Exts: map[string]string{".purs": "purescript"}, Commands: [][]string{{"purescript-language-server", "--stdio"}}},
+	{Name: "purescript", Open: true, Extensions: map[string]string{".purs": "purescript"}, Commands: [][]string{{"purescript-language-server", "--stdio"}}},
 	// crystalline answers references for Crystal from the shard's entry point
 	// (shard.yml targets), over stdio.
-	{Name: "crystal", Open: true, Exts: map[string]string{".cr": "crystal"}, Commands: [][]string{{"crystalline"}}},
+	{Name: "crystal", Open: true, Extensions: map[string]string{".cr": "crystal"}, Commands: [][]string{{"crystalline"}}},
 	// serve-d answers references for D modules from the dub package around them,
 	// over stdio.
-	{Name: "d", Open: true, Exts: map[string]string{".d": "d", ".di": "d"}, Commands: [][]string{{"serve-d"}}},
+	{Name: "d", Open: true, Extensions: map[string]string{".d": "d", ".di": "d"}, Commands: [][]string{{"serve-d"}}},
 	// fortls answers references for Fortran modules and procedures across the
 	// project's sources (free and fixed form), over stdio.
 	// The Haxe language server (vshaxe's, run as haxe-language-server) answers
 	// references for Haxe modules; it compiles with the first .hxml it finds
 	// (build.hxml), so a project with none may get no answers.
-	{Name: "haxe", Open: true, Exts: map[string]string{".hx": "haxe"}, Commands: [][]string{{"haxe-language-server"}}},
+	{Name: "haxe", Open: true, Extensions: map[string]string{".hx": "haxe"}, Commands: [][]string{{"haxe-language-server"}}},
 	// The Ada Language Server answers references for Ada units and their
 	// declarations over stdio; it loads the project file it finds (a single
 	// .gpr at the root, or alire.toml's), so a repository with several may get
 	// fewer answers.
-	{Name: "ada", Open: true, Exts: map[string]string{".ads": "ada", ".adb": "ada", ".ada": "ada"}, Commands: [][]string{{"ada_language_server"}}},
+	{Name: "ada", Open: true, Extensions: map[string]string{".ads": "ada", ".adb": "ada", ".ada": "ada"}, Commands: [][]string{{"ada_language_server"}}},
 	// racket-langserver answers references for Racket modules over stdio,
 	// started as a module of an installed Racket; it expands each opened
 	// file, so a first answer may take a while.
-	{Name: "racket", Open: true, Exts: map[string]string{".rkt": "racket", ".rktl": "racket", ".scrbl": "racket"}, Commands: [][]string{{"racket", "-l", "racket-langserver"}}},
+	{Name: "racket", Open: true, Extensions: map[string]string{".rkt": "racket", ".rktl": "racket", ".scrbl": "racket"}, Commands: [][]string{{"racket", "-l", "racket-langserver"}}},
 	// cl-lsp answers references for Common Lisp over stdio; it loads each
 	// opened file's system in its own Lisp image, so a first answer may take a
 	// while.
 	// Nomic Foundation's server (Hardhat's) reads Foundry and Hardhat projects
 	// alike; solidity-ls is Juan Blanco's server of the VS Code extension. Both
 	// compile the project before answering, so a first answer may take a while.
-	{Name: "solidity", Open: true, Exts: map[string]string{".sol": "solidity"},
+	{Name: "solidity", Open: true, Extensions: map[string]string{".sol": "solidity"},
 		Commands: [][]string{{"nomicfoundation-solidity-language-server", "--stdio"}, {"solidity-ls", "--stdio"}}},
-	{Name: "commonlisp", Open: true, Exts: map[string]string{".lisp": "lisp", ".lsp": "lisp", ".cl": "lisp", ".asd": "lisp"}, Commands: [][]string{{"cl-lsp"}}},
+	{Name: "commonlisp", Open: true, Extensions: map[string]string{".lisp": "lisp", ".lsp": "lisp", ".cl": "lisp", ".asd": "lisp"}, Commands: [][]string{{"cl-lsp"}}},
 	// nimlangserver (the Nim team's) and nimlsp both answer references for Nim
 	// modules over stdio; nimlangserver starts nimsuggest per project, so a
 	// first answer may take a while.
-	{Name: "nim", Open: true, Exts: map[string]string{".nim": "nim", ".nims": "nim", ".nimble": "nim"},
+	{Name: "nim", Open: true, Extensions: map[string]string{".nim": "nim", ".nims": "nim", ".nimble": "nim"},
 		Commands: [][]string{{"nimlangserver"}, {"nimlsp"}}},
 	// jsonnet-language-server (Grafana's) answers references for Jsonnet and
 	// libsonnet files; `cue lsp` is CUE's own server, part of the cue command.
-	{Name: "jsonnet", Open: true, Exts: map[string]string{".jsonnet": "jsonnet", ".libsonnet": "jsonnet"},
+	{Name: "jsonnet", Open: true, Extensions: map[string]string{".jsonnet": "jsonnet", ".libsonnet": "jsonnet"},
 		Commands: [][]string{{"jsonnet-language-server"}}},
-	{Name: "cue", Open: true, Exts: map[string]string{".cue": "cue"}, Commands: [][]string{{"cue", "lsp"}}},
+	{Name: "cue", Open: true, Extensions: map[string]string{".cue": "cue"}, Commands: [][]string{{"cue", "lsp"}}},
 	// dhall-lsp-server (from dhall-haskell), Puppet Editor Services'
 	// puppet-languageserver and Regal's language server (Styra's Rego linter,
 	// on OPA's parser) answer references for their languages.
-	{Name: "dhall", Open: true, Exts: map[string]string{".dhall": "dhall"}, Commands: [][]string{{"dhall-lsp-server"}}},
-	{Name: "puppet", Open: true, Exts: map[string]string{".pp": "puppet"}, Commands: [][]string{{"puppet-languageserver", "--stdio"}}},
-	{Name: "rego", Open: true, Exts: map[string]string{".rego": "rego"}, Commands: [][]string{{"regal", "language-server"}}},
-	{Name: "fortran", Open: true, Exts: map[string]string{".f90": "fortran", ".f95": "fortran", ".f03": "fortran", ".f08": "fortran", ".f18": "fortran", ".f": "fortran", ".for": "fortran", ".ftn": "fortran", ".f77": "fortran", ".fpp": "fortran"}, Commands: [][]string{{"fortls"}}},
+	{Name: "dhall", Open: true, Extensions: map[string]string{".dhall": "dhall"}, Commands: [][]string{{"dhall-lsp-server"}}},
+	{Name: "puppet", Open: true, Extensions: map[string]string{".pp": "puppet"}, Commands: [][]string{{"puppet-languageserver", "--stdio"}}},
+	{Name: "rego", Open: true, Extensions: map[string]string{".rego": "rego"}, Commands: [][]string{{"regal", "language-server"}}},
+	{Name: "fortran", Open: true, Extensions: map[string]string{".f90": "fortran", ".f95": "fortran", ".f03": "fortran", ".f08": "fortran", ".f18": "fortran", ".f": "fortran", ".for": "fortran", ".ftn": "fortran", ".f77": "fortran", ".fpp": "fortran"}, Commands: [][]string{{"fortls"}}},
 	// neocmakelsp and cmake-language-server both answer references for CMake's
 	// functions, macros and variables; a CMakeLists.txt is known by its name.
-	{Name: "cmake", Open: true, Exts: map[string]string{".cmake": "cmake"}, Names: map[string]string{"CMakeLists.txt": "cmake"},
+	{Name: "cmake", Open: true, Extensions: map[string]string{".cmake": "cmake"}, Names: map[string]string{"CMakeLists.txt": "cmake"},
 		Commands: [][]string{{"neocmakelsp", "--stdio"}, {"cmake-language-server"}}},
 	// starpls, bazel-lsp and bzl answer references for Bazel's Starlark: BUILD and
 	// WORKSPACE files are known by their names, the rest by .bzl and .bazel.
-	{Name: "starlark", Open: true, Exts: map[string]string{".bzl": "starlark", ".bazel": "starlark"},
+	{Name: "starlark", Open: true, Extensions: map[string]string{".bzl": "starlark", ".bazel": "starlark"},
 		Names:    map[string]string{"BUILD": "starlark", "WORKSPACE": "starlark", "WORKSPACE.bzlmod": "starlark"},
 		Commands: [][]string{{"starpls", "server"}, {"bazel-lsp"}, {"bzl", "lsp", "serve"}}},
-	{Name: "glsl_analyzer", Open: true, Exts: map[string]string{
+	{Name: "glsl_analyzer", Open: true, Extensions: map[string]string{
 		".glsl": "glsl", ".vert": "glsl", ".frag": "glsl", ".geom": "glsl", ".tesc": "glsl", ".tese": "glsl",
 		".comp": "glsl", ".rgen": "glsl", ".rchit": "glsl", ".rahit": "glsl", ".rmiss": "glsl", ".rint": "glsl",
 		".rcall": "glsl", ".vsh": "glsl", ".fsh": "glsl",
 	}, Commands: [][]string{{"glsl_analyzer"}}},
-	{Name: "shader-language-server", Open: true, Exts: map[string]string{
+	{Name: "shader-language-server", Open: true, Extensions: map[string]string{
 		".hlsl": "hlsl", ".hlsli": "hlsl", ".fx": "hlsl", ".fxh": "hlsl", ".usf": "hlsl", ".ush": "hlsl",
 	}, Commands: [][]string{{"shader-language-server"}}},
-	{Name: "wgsl-analyzer", Open: true, Exts: map[string]string{".wgsl": "wgsl", ".wesl": "wesl"},
+	{Name: "wgsl-analyzer", Open: true, Extensions: map[string]string{".wgsl": "wgsl", ".wesl": "wesl"},
 		Commands: [][]string{{"wgsl-analyzer"}, {"wgsl_analyzer"}}},
 }
 
@@ -202,7 +202,7 @@ func (s Server) languageID(p string) (string, bool) {
 	if id, ok := s.Names[path.Base(p)]; ok {
 		return id, true
 	}
-	id, ok := s.Exts[strings.ToLower(path.Ext(p))]
+	id, ok := s.Extensions[strings.ToLower(path.Ext(p))]
 	return id, ok
 }
 
@@ -211,7 +211,7 @@ type Options struct {
 	Timeout  time.Duration // overall budget; on expiry the references found so far are kept
 	Parallel int           // requests in flight per server
 	LookPath func(string) (string, error)
-	Logf     func(format string, args ...any)
+	Logf     func(format string, arguments ...any)
 }
 
 type Result struct {
@@ -243,19 +243,19 @@ type span struct {
 // is referenced.
 //
 // Implements: REQ-LSP-002, REQ-LSP-009, REQ-LSP-010
-func References(ctx context.Context, g *graph.Graph, opts Options) (*Result, error) {
-	if opts.Parallel <= 0 {
-		opts.Parallel = max(2, runtime.NumCPU()/2)
+func References(ctx context.Context, g *graph.Graph, options Options) (*Result, error) {
+	if options.Parallel <= 0 {
+		options.Parallel = max(2, runtime.NumCPU()/2)
 	}
-	if opts.LookPath == nil {
-		opts.LookPath = exec.LookPath
+	if options.LookPath == nil {
+		options.LookPath = exec.LookPath
 	}
-	if opts.Logf == nil {
-		opts.Logf = func(string, ...any) {}
+	if options.Logf == nil {
+		options.Logf = func(string, ...any) {}
 	}
-	if opts.Timeout > 0 {
+	if options.Timeout > 0 {
 		var cancel context.CancelFunc
-		ctx, cancel = context.WithTimeout(ctx, opts.Timeout)
+		ctx, cancel = context.WithTimeout(ctx, options.Timeout)
 		defer cancel()
 	}
 
@@ -278,7 +278,7 @@ func References(ctx context.Context, g *graph.Graph, opts Options) (*Result, err
 		sort.Slice(f.symbols, func(i, j int) bool { return f.symbols[i].line < f.symbols[j].line })
 	}
 
-	res := &Result{}
+	result := &Result{}
 	seen := map[[2]string]bool{}
 	var mu sync.Mutex
 	add := func(from, to string) {
@@ -286,48 +286,48 @@ func References(ctx context.Context, g *graph.Graph, opts Options) (*Result, err
 		defer mu.Unlock()
 		if from != to && !seen[[2]string{from, to}] {
 			seen[[2]string{from, to}] = true
-			res.Edges = append(res.Edges, &graph.Edge{From: from, To: to, Kind: graph.EdgeReference})
+			result.Edges = append(result.Edges, &graph.Edge{From: from, To: to, Kind: graph.EdgeReference})
 		}
 	}
 
-	for _, srv := range Servers {
+	for _, server := range Servers {
 		var paths []string
 		for p := range files {
-			if _, ok := srv.languageID(p); ok {
+			if _, ok := server.languageID(p); ok {
 				paths = append(paths, p)
 			}
 		}
 		if len(paths) == 0 {
 			continue
 		}
-		argv := srv.command(opts.LookPath)
+		argv := server.command(options.LookPath)
 		if argv == nil {
-			opts.Logf("references: no %s on PATH, skipping %d files", srv.Name, len(paths))
+			options.Logf("references: no %s on PATH, skipping %d files", server.Name, len(paths))
 			continue
 		}
 		sort.Strings(paths)
 		start := time.Now()
-		n, err := runServer(ctx, srv, argv, opts, paths, files, add)
-		res.Queried += n
+		n, err := runServer(ctx, server, argv, options, paths, files, add)
+		result.Queried += n
 		if errors.Is(err, context.DeadlineExceeded) {
-			res.Partial = true
-			opts.Logf("references: time budget used up during %s; results are partial", srv.Name)
+			result.Partial = true
+			options.Logf("references: time budget used up during %s; results are partial", server.Name)
 			break
 		}
 		if err != nil {
-			opts.Logf("references: %s: %v", srv.Name, err)
+			options.Logf("references: %s: %v", server.Name, err)
 			continue
 		}
-		res.Servers = append(res.Servers, srv.Name)
-		opts.Logf("references: %s answered %d definitions in %s", srv.Name, n, time.Since(start).Round(time.Millisecond))
+		result.Servers = append(result.Servers, server.Name)
+		options.Logf("references: %s answered %d definitions in %s", server.Name, n, time.Since(start).Round(time.Millisecond))
 	}
-	sort.Slice(res.Edges, func(i, j int) bool {
-		if res.Edges[i].From != res.Edges[j].From {
-			return res.Edges[i].From < res.Edges[j].From
+	sort.Slice(result.Edges, func(i, j int) bool {
+		if result.Edges[i].From != result.Edges[j].From {
+			return result.Edges[i].From < result.Edges[j].From
 		}
-		return res.Edges[i].To < res.Edges[j].To
+		return result.Edges[i].To < result.Edges[j].To
 	})
-	return res, ctx.Err()
+	return result, ctx.Err()
 }
 
 func (s Server) command(lookPath func(string) (string, error)) []string {
@@ -348,18 +348,18 @@ func goBin(name string) string {
 	if runtime.GOOS == "windows" {
 		name += ".exe"
 	}
-	var dirs []string
+	var directories []string
 	if d := os.Getenv("GOBIN"); d != "" {
-		dirs = append(dirs, d)
+		directories = append(directories, d)
 	}
 	for _, d := range filepath.SplitList(os.Getenv("GOPATH")) {
-		dirs = append(dirs, filepath.Join(d, "bin"))
+		directories = append(directories, filepath.Join(d, "bin"))
 	}
 	if home, err := os.UserHomeDir(); err == nil {
-		dirs = append(dirs, filepath.Join(home, "go", "bin"))
+		directories = append(directories, filepath.Join(home, "go", "bin"))
 	}
-	for _, d := range dirs {
-		if st, err := os.Stat(filepath.Join(d, name)); err == nil && !st.IsDir() {
+	for _, d := range directories {
+		if fileInfo, err := os.Stat(filepath.Join(d, name)); err == nil && !fileInfo.IsDir() {
 			return filepath.Join(d, name)
 		}
 	}
@@ -367,9 +367,9 @@ func goBin(name string) string {
 }
 
 // Implements: REQ-LSP-003
-func runServer(ctx context.Context, srv Server, argv []string, opts Options, paths []string,
+func runServer(ctx context.Context, server Server, argv []string, options Options, paths []string,
 	files map[string]*fileInfo, add func(from, to string)) (int, error) {
-	c, err := start(ctx, opts.Root, argv)
+	c, err := start(ctx, options.Root, argv)
 	if err != nil {
 		return 0, err
 	}
@@ -379,13 +379,13 @@ func runServer(ctx context.Context, srv Server, argv []string, opts Options, pat
 		c.shutdown(stop)
 	}()
 
-	rootURI := fileURI(opts.Root)
+	rootURI := fileURI(options.Root)
 	var init struct{}
 	if err := c.call(ctx, "initialize", map[string]any{
 		"processId":        os.Getpid(),
 		"rootUri":          rootURI,
-		"rootPath":         opts.Root,
-		"workspaceFolders": []map[string]string{{"uri": rootURI, "name": filepath.Base(opts.Root)}},
+		"rootPath":         options.Root,
+		"workspaceFolders": []map[string]string{{"uri": rootURI, "name": filepath.Base(options.Root)}},
 		"capabilities": map[string]any{
 			"textDocument": map[string]any{
 				"references":      map[string]any{},
@@ -402,38 +402,38 @@ func runServer(ctx context.Context, srv Server, argv []string, opts Options, pat
 	}
 
 	type query struct {
-		file string
-		sym  symbol
-		col  int
+		file   string
+		symbol symbol
+		column int
 	}
 	var queries []query
 	for _, p := range paths {
-		data, err := os.ReadFile(filepath.Join(opts.Root, filepath.FromSlash(p)))
+		data, err := os.ReadFile(filepath.Join(options.Root, filepath.FromSlash(p)))
 		if err != nil {
 			continue
 		}
-		if srv.Open {
-			id, _ := srv.languageID(p)
+		if server.Open {
+			id, _ := server.languageID(p)
 			c.notify("textDocument/didOpen", map[string]any{"textDocument": map[string]any{
-				"uri": fileURI(filepath.Join(opts.Root, p)), "languageId": id,
+				"uri": fileURI(filepath.Join(options.Root, p)), "languageId": id,
 				"version": 1, "text": string(data),
 			}})
 		}
 		lines := strings.Split(string(data), "\n")
-		files[p].spans = documentSpans(ctx, c, fileURI(filepath.Join(opts.Root, p)), files[p].symbols)
+		files[p].spans = documentSpans(ctx, c, fileURI(filepath.Join(options.Root, p)), files[p].symbols)
 		for _, s := range files[p].symbols {
 			if s.line < 1 || s.line > len(lines) {
 				continue
 			}
-			if col, ok := nameColumn(lines[s.line-1], s.name); ok {
-				queries = append(queries, query{p, s, col})
+			if column, ok := nameColumn(lines[s.line-1], s.name); ok {
+				queries = append(queries, query{p, s, column})
 			}
 		}
 	}
 
 	// The first request also waits for the server to load the workspace.
 	var g errgroup.Group
-	g.SetLimit(opts.Parallel)
+	g.SetLimit(options.Parallel)
 	var firstErr error
 	var errOnce sync.Once
 	sent := 0
@@ -443,27 +443,27 @@ func runServer(ctx context.Context, srv Server, argv []string, opts Options, pat
 		}
 		sent++
 		g.Go(func() error {
-			var locs []struct {
+			var locations []struct {
 				URI   string `json:"uri"`
 				Range struct {
 					Start struct{ Line int } `json:"start"`
 				} `json:"range"`
 			}
 			err := c.call(ctx, "textDocument/references", map[string]any{
-				"textDocument": map[string]string{"uri": fileURI(filepath.Join(opts.Root, q.file))},
-				"position":     map[string]int{"line": q.sym.line - 1, "character": q.col},
+				"textDocument": map[string]string{"uri": fileURI(filepath.Join(options.Root, q.file))},
+				"position":     map[string]int{"line": q.symbol.line - 1, "character": q.column},
 				"context":      map[string]bool{"includeDeclaration": false},
-			}, &locs)
+			}, &locations)
 			if err != nil {
 				if ctx.Err() == nil {
 					errOnce.Do(func() { firstErr = err })
 				}
 				return nil
 			}
-			for _, l := range locs {
-				if rel, ok := relPath(opts.Root, l.URI); ok {
-					if f := files[rel]; f != nil {
-						add(f.enclosing(l.Range.Start.Line+1), q.sym.id)
+			for _, l := range locations {
+				if relative, ok := relativePath(options.Root, l.URI); ok {
+					if f := files[relative]; f != nil {
+						add(f.enclosing(l.Range.Start.Line+1), q.symbol.id)
 					}
 				}
 			}
@@ -475,7 +475,7 @@ func runServer(ctx context.Context, srv Server, argv []string, opts Options, pat
 		return sent, ctx.Err()
 	}
 	if sent > 0 && firstErr != nil && len(queries) > 0 {
-		opts.Logf("references: %s: some requests failed, first: %v", srv.Name, firstErr)
+		options.Logf("references: %s: some requests failed, first: %v", server.Name, firstErr)
 	}
 	return sent, nil
 }
@@ -530,17 +530,17 @@ func documentSpans(ctx context.Context, c *client, uri string, symbols []symbol)
 	}
 	extent := map[int]int{} // definition line (1-based) -> last line
 	var walk func([]documentSymbol)
-	walk = func(ds []documentSymbol) {
-		for _, d := range ds {
-			full, sel := d.Range, d.SelectionRange
+	walk = func(symbols []documentSymbol) {
+		for _, d := range symbols {
+			full, selection := d.Range, d.SelectionRange
 			if full == nil && d.Location != nil {
 				full = &d.Location.Range
 			}
 			if full != nil {
-				if sel == nil {
-					sel = full
+				if selection == nil {
+					selection = full
 				}
-				for _, l := range []int{sel.Start.Line + 1, full.Start.Line + 1} {
+				for _, l := range []int{selection.Start.Line + 1, full.Start.Line + 1} {
 					if full.End.Line+1 > extent[l] {
 						extent[l] = full.End.Line + 1
 					}
@@ -630,7 +630,7 @@ func fileURI(p string) string {
 	return (&url.URL{Scheme: "file", Path: p}).String()
 }
 
-func relPath(root, uri string) (string, bool) {
+func relativePath(root, uri string) (string, bool) {
 	u, err := url.Parse(uri)
 	if err != nil || u.Scheme != "file" {
 		return "", false
@@ -639,9 +639,9 @@ func relPath(root, uri string) (string, bool) {
 	if len(p) > 2 && p[0] == '/' && p[2] == ':' {
 		p = p[1:] // /C:/x -> C:/x
 	}
-	rel, err := filepath.Rel(root, filepath.FromSlash(p))
-	if err != nil || strings.HasPrefix(rel, "..") {
+	relative, err := filepath.Rel(root, filepath.FromSlash(p))
+	if err != nil || strings.HasPrefix(relative, "..") {
 		return "", false
 	}
-	return filepath.ToSlash(rel), true
+	return filepath.ToSlash(relative), true
 }

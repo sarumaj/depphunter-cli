@@ -12,7 +12,7 @@ verification:
 ## Statement
 
 At rest in the raised pose, the camera's screen **shall** be square on to the
-eye, centred on the line of sight, cover about nine tenths of the view's height,
+eye, centered on the line of sight, cover about nine tenths of the view's height,
 and have no part of the tool nearer the eye than the screen; the arm **shall**
 run past the eye and be clipped there.
 
@@ -23,7 +23,7 @@ slant, and anything nearer than the screen is cut by the near plane.
 
 ## Acceptance criteria
 
-1. The screen's centre is within 0.004 of the line of sight.
+1. The screen's center is within 0.004 of the line of sight.
 2. The screen's normal is within 3 degrees of the view direction.
 3. The screen covers more than 80 % and at most 100 % of the view's height.
 4. No part of the tool is nearer than 1.4 times the near plane distance.

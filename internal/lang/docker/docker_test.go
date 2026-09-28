@@ -20,14 +20,14 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 	return langtest.Analyze(t, Plugin{}, "testdata/repo")
 }
 
-func image(pkg, version string) lang.Target {
-	return lang.Target{Ecosystem: "oci", Package: pkg, Version: version}
+func image(packageName, version string) lang.Target {
+	return lang.Target{Ecosystem: "oci", Package: packageName, Version: version}
 }
 
 // Verifies: REQ-DOCKER-002, REQ-DOCKER-003, REQ-DOCKER-004, REQ-DOCKER-005, REQ-DOCKER-006
 func TestDockerfile(t *testing.T) {
-	res := analyze(t)["Dockerfile"]
-	langtest.CheckImports(t, res, map[string]lang.Target{
+	result := analyze(t)["Dockerfile"]
+	langtest.CheckImports(t, result, map[string]lang.Target{
 		// The frontend BuildKit pulls to read the file is an image like any other.
 		"# syntax=docker/dockerfile:1.7": image("docker/dockerfile", "1.7"),
 		// Defaults of ARGs declared before the first FROM are expanded.
@@ -47,12 +47,12 @@ func TestDockerfile(t *testing.T) {
 		// Not here: stage references (build, 0, Runtime, web), scratch, and the
 		// heredoc's text.
 	})
-	langtest.CheckSymbols(t, res, map[string]string{
+	langtest.CheckSymbols(t, result, map[string]string{
 		"Build": "stage", "web": "stage", "tools": "stage", "runtime": "stage",
 	})
 	lines := map[string]int{}
-	for _, im := range res.Imports {
-		lines[im.Spec] = im.Line
+	for _, imported := range result.Imports {
+		lines[imported.Spec] = imported.Line
 	}
 	if lines["RUN --mount from=alpine:3.20"] != 9 || lines["FROM docker.io/library/debian:bookworm-slim"] != 24 {
 		t.Errorf("an instruction is reported on the line it starts on: %v", lines)
@@ -61,8 +61,8 @@ func TestDockerfile(t *testing.T) {
 
 // Verifies: REQ-DOCKER-003, REQ-DOCKER-004, REQ-DOCKER-005, REQ-DOCKER-006, REQ-DOCKER-007
 func TestCompose(t *testing.T) {
-	res := analyze(t)["compose.yaml"]
-	langtest.CheckImports(t, res, map[string]lang.Target{
+	result := analyze(t)["compose.yaml"]
+	langtest.CheckImports(t, result, map[string]lang.Target{
 		// Built services point at their Dockerfile; web's image: is the tag it gets.
 		"build: Dockerfile":                    {Local: "Dockerfile"},
 		"build: api/api.Dockerfile":            {Local: "api/api.Dockerfile"},
@@ -75,7 +75,7 @@ func TestCompose(t *testing.T) {
 		// A context that is not in the repository is dropped; so is a missing file.
 		"build: nowhere/Dockerfile": {},
 	})
-	langtest.CheckSymbols(t, res, map[string]string{
+	langtest.CheckSymbols(t, result, map[string]string{
 		"web": "service", "api": "service", "db": "service", "cache": "service", "proxy": "service",
 		"worker": "service", "inline": "service", "remote": "service", "missing": "service",
 	})
@@ -116,9 +116,9 @@ func TestClaims(t *testing.T) {
 
 // Verifies: REQ-DOCKER-001
 func TestTheKindOfFileIsPartOfTheCacheKey(t *testing.T) {
-	src := []byte("services: {}\n")
+	source := []byte("services: {}\n")
 	key := func(p string) string {
-		return cache.Key(Plugin{}.Name(), Plugin{}.Version(), lang.ClassOf(Plugin{}, &scan.File{Path: p}), src)
+		return cache.Key(Plugin{}.Name(), Plugin{}.Version(), lang.ClassOf(Plugin{}, &scan.File{Path: p}), source)
 	}
 	if key("Dockerfile.yml") == key("compose.yml") {
 		t.Error("a Dockerfile and a Compose file share a cache entry")
@@ -127,7 +127,7 @@ func TestTheKindOfFileIsPartOfTheCacheKey(t *testing.T) {
 
 // Verifies: REQ-DOCKER-002
 func TestInstructions(t *testing.T) {
-	src := "# escape=`\r\n" +
+	source := "# escape=`\r\n" +
 		"from alpine:3 `\r\n" +
 		"  as base\r\n" +
 		"RUN <<-EOF cat > /a\n\tFROM inside:heredoc\n\tEOF\n" +
@@ -135,7 +135,7 @@ func TestInstructions(t *testing.T) {
 		"FROM base\n" +
 		"RUN cat <<NEVER\n" + // never terminated: not a heredoc after all
 		"COPY --from=busybox / /\n"
-	got, _ := instructions([]byte(src))
+	got, _ := instructions([]byte(source))
 	var keywords []string
 	for _, in := range got {
 		keywords = append(keywords, in.keyword)
@@ -144,14 +144,14 @@ func TestInstructions(t *testing.T) {
 	if !reflect.DeepEqual(keywords, want) {
 		t.Fatalf("got %v, want %v", keywords, want)
 	}
-	if got[0].args != "alpine:3 as base" || got[0].line != 2 || got[3].line != 8 {
+	if got[0].arguments != "alpine:3 as base" || got[0].line != 2 || got[3].line != 8 {
 		t.Errorf("instructions: %+v", got)
 	}
 }
 
 // Verifies: REQ-DOCKER-003
 func TestExpand(t *testing.T) {
-	vars := map[string]string{"A": "a", "EMPTY": ""}
+	variables := map[string]string{"A": "a", "EMPTY": ""}
 	for _, c := range []struct {
 		in, want string
 		ok       bool
@@ -164,7 +164,7 @@ func TestExpand(t *testing.T) {
 		{"${UNSET:?required}", "${UNSET:?required}", false},
 		{`\$A`, "$A", true},
 	} {
-		if got, ok := expand(c.in, vars, false); got != c.want || ok != c.ok {
+		if got, ok := expand(c.in, variables, false); got != c.want || ok != c.ok {
 			t.Errorf("%s: got %q %v, want %q %v", c.in, got, ok, c.want, c.ok)
 		}
 	}

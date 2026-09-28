@@ -30,12 +30,12 @@ func machineJVM(m userconf.Machine, k sink) {
 	mavenSettings(k, settings...)
 	for _, name := range m.GradleInitScripts() {
 		if data, err := os.ReadFile(name); err == nil {
-			parseGradleRepos(data, k)
+			parseGradleRepositories(data, k)
 		}
 	}
-	if dir := m.ClojureConfigDir(); dir != "" {
-		if data, err := os.ReadFile(join(dir, "deps.edn")); err == nil {
-			parseClojureRepos("deps.edn", data, k)
+	if directory := m.ClojureConfigDirectory(); directory != "" {
+		if data, err := os.ReadFile(join(directory, "deps.edn")); err == nil {
+			parseClojureRepositories("deps.edn", data, k)
 		}
 	}
 	if name := m.LeinProfiles(); name != "" {
@@ -45,10 +45,10 @@ func machineJVM(m userconf.Machine, k sink) {
 	}
 	if name := m.SbtRepositories(); name != "" {
 		if data, err := os.ReadFile(name); err == nil {
-			parseSbtRepositories(data, m.SbtOverrideBuildRepos(), k)
+			parseSbtRepositories(data, m.SbtOverrideBuildRepositories(), k)
 		}
 	}
-	parseCoursierRepositories(m.Env("COURSIER_REPOSITORIES"), k)
+	parseCoursierRepositories(m.Environment("COURSIER_REPOSITORIES"), k)
 }
 
 // mavenSettingsDoc is what is read of one Maven settings.xml.
@@ -163,7 +163,7 @@ func mavenSettings(k sink, files ...[]byte) {
 func parseLeinProfiles(data []byte, k sink) {
 	for _, top := range edn.Read(data) {
 		if user := top.Get("user"); user != nil {
-			clojureRepos(edn.Unquote(user.Get("repositories")), k)
+			clojureRepositories(edn.Unquote(user.Get("repositories")), k)
 		}
 	}
 }
@@ -189,9 +189,9 @@ var (
 //
 // Implements: REQ-SUP-015, REQ-SUP-063
 func parseSbtResolvers(data []byte, k sink) {
-	src := string(data)
-	for _, loc := range sbtResolvers.FindAllStringIndex(src, -1) {
-		setting := sbtSetting(src[loc[1]:])
+	source := string(data)
+	for _, span := range sbtResolvers.FindAllStringIndex(source, -1) {
+		setting := sbtSetting(source[span[1]:])
 		var urls []string
 		for _, m := range sbtAt.FindAllStringSubmatch(setting, -1) {
 			urls = append(urls, m[1])
@@ -212,16 +212,16 @@ func parseSbtResolvers(data []byte, k sink) {
 	}
 }
 
-// sbtSetting is the expression that starts src: up to the end of its line, or
+// sbtSetting is the expression that starts source: up to the end of its line, or
 // further while a bracket is open or the line ends in an operator, and never past
 // the bracket or comma that closes the setting inside `.settings(...)`.
-func sbtSetting(src string) string {
+func sbtSetting(source string) string {
 	depth := 0
-	for i := 0; i < len(src); i++ {
-		switch c := src[i]; c {
+	for i := 0; i < len(source); i++ {
+		switch c := source[i]; c {
 		case '"':
-			for i++; i < len(src) && src[i] != '"'; i++ {
-				if src[i] == '\\' {
+			for i++; i < len(source) && source[i] != '"'; i++ {
+				if source[i] == '\\' {
 					i++
 				}
 			}
@@ -229,21 +229,21 @@ func sbtSetting(src string) string {
 			depth++
 		case ')', ']', '}':
 			if depth--; depth < 0 {
-				return src[:i]
+				return source[:i]
 			}
 		case ',':
 			if depth == 0 {
-				return src[:i]
+				return source[:i]
 			}
 		case '\n':
 			if depth == 0 {
-				if line := strings.TrimSpace(src[:i]); line != "" && !strings.HasSuffix(line, "+") && !strings.HasSuffix(line, "=") {
-					return src[:i]
+				if line := strings.TrimSpace(source[:i]); line != "" && !strings.HasSuffix(line, "+") && !strings.HasSuffix(line, "=") {
+					return source[:i]
 				}
 			}
 		}
 	}
-	return src
+	return source
 }
 
 // parseSbtRepositories reads the [repositories] of sbt's repositories file: the

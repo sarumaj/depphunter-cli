@@ -15,7 +15,7 @@ import (
 // its project files.
 type manifest struct {
 	name, version string
-	deps          map[string]*dependency
+	dependencies  map[string]*dependency
 	pins          map[string]*pin
 	projectFiles  []item
 }
@@ -30,28 +30,28 @@ type dependency struct {
 type pin struct {
 	name                               string
 	path, url, commit, branch, version string
-	subdir                             string
+	subdirectory                       string
 	line                               int
 }
 
 // readManifest reads an alire.toml.
 //
 // Implements: REQ-ADA-006
-func readManifest(src []byte) *manifest {
-	m := &manifest{deps: map[string]*dependency{}, pins: map[string]*pin{}}
+func readManifest(source []byte) *manifest {
+	m := &manifest{dependencies: map[string]*dependency{}, pins: map[string]*pin{}}
 	var raw map[string]any
-	if _, err := toml.Decode(string(src), &raw); err != nil {
+	if _, err := toml.Decode(string(source), &raw); err != nil {
 		return m
 	}
-	lines := keyLines(src)
+	lines := keyLines(source)
 	m.name, _ = raw["name"].(string)
 	m.name = strings.ToLower(strings.TrimSpace(m.name))
 	m.version, _ = raw["version"].(string)
 	eachTable(raw["depends-on"], func(t map[string]any) {
 		dependsOn(t, func(name, constraint string) {
 			name = strings.ToLower(name)
-			if _, ok := m.deps[name]; !ok {
-				m.deps[name] = &dependency{name: name, constraint: strings.TrimSpace(constraint), line: lines.find("depends-on", name)}
+			if _, ok := m.dependencies[name]; !ok {
+				m.dependencies[name] = &dependency{name: name, constraint: strings.TrimSpace(constraint), line: lines.find("depends-on", name)}
 			}
 		})
 	})
@@ -64,11 +64,11 @@ func readManifest(src []byte) *manifest {
 			p := &pin{name: name, line: lines.find("pins", name)}
 			switch v := v.(type) {
 			case map[string]any:
-				str := func(k string) string {
+				stringField := func(k string) string {
 					s, _ := v[k].(string)
 					return strings.TrimSpace(s)
 				}
-				p.path, p.url, p.commit, p.branch, p.version, p.subdir = str("path"), str("url"), str("commit"), str("branch"), str("version"), str("subdir")
+				p.path, p.url, p.commit, p.branch, p.version, p.subdirectory = stringField("path"), stringField("url"), stringField("commit"), stringField("branch"), stringField("version"), stringField("subdir")
 			case string:
 				p.version = strings.TrimSpace(v)
 			}
@@ -81,19 +81,19 @@ func readManifest(src []byte) *manifest {
 	return m
 }
 
-// eachTable calls fn for a table or each table of an array of tables.
-func eachTable(v any, fn func(map[string]any)) {
+// eachTable calls function for a table or each table of an array of tables.
+func eachTable(v any, function func(map[string]any)) {
 	switch v := v.(type) {
 	case map[string]any:
-		fn(v)
+		function(v)
 	case []map[string]any:
 		for _, t := range v {
-			fn(t)
+			function(t)
 		}
 	case []any:
 		for _, x := range v {
 			if t, ok := x.(map[string]any); ok {
-				fn(t)
+				function(t)
 			}
 		}
 	}
@@ -101,38 +101,38 @@ func eachTable(v any, fn func(map[string]any)) {
 
 // dependsOn walks a depends-on table: crate = "constraint" entries, and every
 // alternative of 'case(os)' and similar expressions.
-func dependsOn(t map[string]any, fn func(name, constraint string)) {
+func dependsOn(t map[string]any, function func(name, constraint string)) {
 	for _, k := range sortedKeys(t) {
 		switch v := t[k].(type) {
 		case string:
-			fn(k, v)
+			function(k, v)
 		case map[string]any:
 			if strings.HasPrefix(k, "case(") {
-				for _, alt := range sortedKeys(v) {
-					if at, ok := v[alt].(map[string]any); ok {
-						dependsOn(at, fn)
+				for _, alternative := range sortedKeys(v) {
+					if at, ok := v[alternative].(map[string]any); ok {
+						dependsOn(at, function)
 					}
 				}
 			} else if s, ok := v["version"].(string); ok {
-				fn(k, s)
+				function(k, s)
 			}
 		}
 	}
 }
 
-// strings_ calls fn for every string in v, looking into arrays and case(...)
+// strings_ calls function for every string in v, looking into arrays and case(...)
 // tables.
-func strings_(v any, fn func(string)) {
+func strings_(v any, function func(string)) {
 	switch v := v.(type) {
 	case string:
-		fn(v)
+		function(v)
 	case []any:
 		for _, x := range v {
-			strings_(x, fn)
+			strings_(x, function)
 		}
 	case map[string]any:
 		for _, k := range sortedKeys(v) {
-			strings_(v[k], fn)
+			strings_(v[k], function)
 		}
 	}
 }
@@ -159,10 +159,10 @@ var (
 	keyRe    = regexp.MustCompile(`^\s*("[^"]*"|'[^']*'|[A-Za-z0-9_.\-]+)\s*=`)
 )
 
-func keyLines(src []byte) lineIndex {
+func keyLines(source []byte) lineIndex {
 	var out lineIndex
 	section := ""
-	for n, line := range strings.Split(string(src), "\n") {
+	for n, line := range strings.Split(string(source), "\n") {
 		if m := headerRe.FindStringSubmatch(line); m != nil {
 			section = strings.ReplaceAll(strings.ReplaceAll(m[1], `"`, ""), "'", "")
 			out = append(out, keyLine{section: section, line: n + 1})
@@ -195,32 +195,32 @@ func (x lineIndex) find(prefix, key string) int {
 // crates it pins without depending on them, and its project files.
 //
 // Implements: REQ-ADA-006
-func extractManifest(src []byte) *lang.Extraction {
-	m := readManifest(src)
-	ex := &lang.Extraction{}
-	for _, name := range sortedKeys(m.deps) {
-		d := m.deps[name]
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: name, Module: name, Name: kindDep, Line: d.line})
+func extractManifest(source []byte) *lang.Extraction {
+	m := readManifest(source)
+	extraction := &lang.Extraction{}
+	for _, name := range sortedKeys(m.dependencies) {
+		d := m.dependencies[name]
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: name, Module: name, Name: kindDependency, Line: d.line})
 	}
 	for _, name := range sortedKeys(m.pins) {
-		if _, ok := m.deps[name]; !ok {
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: name, Module: name, Name: kindPin, Line: m.pins[name].line})
+		if _, ok := m.dependencies[name]; !ok {
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: name, Module: name, Name: kindPin, Line: m.pins[name].line})
 		}
 	}
 	for _, f := range m.projectFiles {
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: f.s, Module: f.s, Name: kindProjectFile, Line: f.line})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: f.s, Module: f.s, Name: kindProjectFile, Line: f.line})
 	}
-	sort.SliceStable(ex.Imports, func(i, j int) bool { return ex.Imports[i].Line < ex.Imports[j].Line })
+	sort.SliceStable(extraction.Imports, func(i, j int) bool { return extraction.Imports[i].Line < extraction.Imports[j].Line })
 	if m.name != "" {
-		var syms lang.SymbolSet
-		syms.Add(m.name, "crate", lines1(src, "name"))
-		ex.Symbols = syms.List()
+		var symbols lang.SymbolSet
+		symbols.Add(m.name, "crate", lines1(source, "name"))
+		extraction.Symbols = symbols.List()
 	}
-	return ex
+	return extraction
 }
 
-func lines1(src []byte, key string) int {
-	return keyLines(src).find("", key)
+func lines1(source []byte, key string) int {
+	return keyLines(source).find("", key)
 }
 
 // lockState is a crate of an Alire lock file's solution.
@@ -228,7 +228,7 @@ type lockState struct {
 	crate, versions, version string // versions: the constraint solved for
 	linkPath, linkURL        string
 	linkCommit, linkBranch   string
-	deps                     []string // the crates its release depends on
+	dependencies             []string // the crates its release depends on
 	constraints              map[string]string
 }
 
@@ -238,44 +238,44 @@ type lockState struct {
 // alire/alire.lock; earlier versions wrote it beside alire.toml.
 //
 // Implements: REQ-ADA-006, REQ-ADA-008
-func readLock(src []byte) map[string]*lockState {
+func readLock(source []byte) map[string]*lockState {
 	out := map[string]*lockState{}
 	var raw map[string]any
-	if _, err := toml.Decode(string(src), &raw); err != nil {
+	if _, err := toml.Decode(string(source), &raw); err != nil {
 		return out
 	}
 	sol, _ := raw["solution"].(map[string]any)
 	eachTable(sol["state"], func(t map[string]any) {
-		str := func(m map[string]any, k string) string {
+		stringField := func(m map[string]any, k string) string {
 			s, _ := m[k].(string)
 			return strings.TrimSpace(s)
 		}
-		st := &lockState{crate: strings.ToLower(str(t, "crate")), versions: str(t, "versions"), constraints: map[string]string{}}
-		if st.crate == "" {
+		state := &lockState{crate: strings.ToLower(stringField(t, "crate")), versions: stringField(t, "versions"), constraints: map[string]string{}}
+		if state.crate == "" {
 			return
 		}
 		if link, ok := t["link"].(map[string]any); ok {
-			st.linkPath, st.linkURL, st.linkCommit, st.linkBranch = str(link, "path"), str(link, "url"), str(link, "commit"), str(link, "branch")
+			state.linkPath, state.linkURL, state.linkCommit, state.linkBranch = stringField(link, "path"), stringField(link, "url"), stringField(link, "commit"), stringField(link, "branch")
 		}
-		if rel, ok := t["release"].(map[string]any); ok {
-			if _, named := rel["version"]; !named {
+		if relative, ok := t["release"].(map[string]any); ok {
+			if _, named := relative["version"]; !named {
 				// [solution.state.release.<crate>]
-				if inner, ok := rel[st.crate].(map[string]any); ok {
-					rel = inner
+				if inner, ok := relative[state.crate].(map[string]any); ok {
+					relative = inner
 				}
 			}
-			st.version = str(rel, "version")
-			eachTable(rel["depends-on"], func(d map[string]any) {
+			state.version = stringField(relative, "version")
+			eachTable(relative["depends-on"], func(d map[string]any) {
 				dependsOn(d, func(name, c string) {
 					name = strings.ToLower(name)
-					if _, ok := st.constraints[name]; !ok {
-						st.constraints[name] = strings.TrimSpace(c)
-						st.deps = append(st.deps, name)
+					if _, ok := state.constraints[name]; !ok {
+						state.constraints[name] = strings.TrimSpace(c)
+						state.dependencies = append(state.dependencies, name)
 					}
 				})
 			})
 		}
-		out[st.crate] = st
+		out[state.crate] = state
 	})
 	return out
 }
@@ -301,9 +301,9 @@ func ExactVersion(c string) (string, bool) { return exactVersion(c) }
 // Dependencies lists what a crate manifest (an alire.toml, or a release's
 // manifest in the community index) depends on: each crate with its
 // constraint, every alternative of a case(...) expression counted.
-func Dependencies(src []byte) map[string]string {
+func Dependencies(source []byte) map[string]string {
 	out := map[string]string{}
-	for name, d := range readManifest(src).deps {
+	for name, d := range readManifest(source).dependencies {
 		out[name] = d.constraint
 	}
 	return out

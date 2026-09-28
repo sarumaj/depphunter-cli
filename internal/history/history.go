@@ -45,17 +45,17 @@ func Head(ctx context.Context, root string) (string, error) {
 	return strings.TrimSpace(string(out)), nil
 }
 
-// GitDirs returns the directories whose changes signal a new HEAD: the git directory
+// GitDirectories returns the directories whose changes signal a new HEAD: the git directory
 // (HEAD, packed-refs) and refs/heads (branch tips). Nil outside a work tree.
 //
 // Implements: REQ-HIST-009
-func GitDirs(ctx context.Context, root string) []string {
+func GitDirectories(ctx context.Context, root string) []string {
 	out, err := exec.CommandContext(ctx, "git", "-C", root, "rev-parse", "--absolute-git-dir").Output()
 	if err != nil {
 		return nil
 	}
-	dir := strings.TrimSpace(string(out))
-	return []string{dir, filepath.Join(dir, "refs", "heads")}
+	directory := strings.TrimSpace(string(out))
+	return []string{directory, filepath.Join(directory, "refs", "heads")}
 }
 
 // Collect reads at most maxCommits non-merge commits reachable from HEAD. Paths are
@@ -69,16 +69,16 @@ func Collect(ctx context.Context, root string, maxCommits int) (*History, error)
 		return nil, err
 	}
 	// \x1e starts a commit header; \x1f separates its fields.
-	cmd := exec.CommandContext(ctx, "git", "-C", root, "log", "--no-merges", "-M", "--relative",
+	command := exec.CommandContext(ctx, "git", "-C", root, "log", "--no-merges", "-M", "--relative",
 		"--numstat", "--format=%x1e%at%x1f%aN%x1f%aE", "-n", strconv.Itoa(maxCommits+1), "HEAD",
 		"--", ".") // only commits touching root; --relative alone still lists the others
-	stdout, err := cmd.StdoutPipe()
+	stdout, err := command.StdoutPipe()
 	if err != nil {
 		return nil, err
 	}
 	var stderr bytes.Buffer
-	cmd.Stderr = &stderr
-	if err := cmd.Start(); err != nil {
+	command.Stderr = &stderr
+	if err := command.Start(); err != nil {
 		return nil, err
 	}
 
@@ -94,10 +94,10 @@ func Collect(ctx context.Context, root string, maxCommits int) (*History, error)
 		return p
 	}
 	var when, author int64
-	sc := bufio.NewScanner(stdout)
-	sc.Buffer(make([]byte, 64<<10), 16<<20)
-	for sc.Scan() {
-		line := sc.Text()
+	scanner := bufio.NewScanner(stdout)
+	scanner.Buffer(make([]byte, 64<<10), 16<<20)
+	for scanner.Scan() {
+		line := scanner.Text()
 		if strings.HasPrefix(line, "\x1e") {
 			if h.Commits == maxCommits {
 				h.Truncated = true
@@ -113,13 +113,13 @@ func Collect(ctx context.Context, root string, maxCommits int) (*History, error)
 			if key == "" {
 				key = fields[1]
 			}
-			idx, ok := authors[key]
+			index, ok := authors[key]
 			if !ok {
-				idx = len(h.Authors)
-				authors[key] = idx
+				index = len(h.Authors)
+				authors[key] = index
 				h.Authors = append(h.Authors, fields[1])
 			}
-			author = int64(idx)
+			author = int64(index)
 			continue
 		}
 		// numstat: "added<TAB>deleted<TAB>path"; binary files show "-".
@@ -136,17 +136,17 @@ func Collect(ctx context.Context, root string, maxCommits int) (*History, error)
 		}
 		h.Files[path] = append(h.Files[path], Change{when, author, added, deleted, int64(h.Commits - 1)})
 	}
-	if err := sc.Err(); err != nil {
-		cmd.Process.Kill()
-		cmd.Wait()
+	if err := scanner.Err(); err != nil {
+		command.Process.Kill()
+		command.Wait()
 		return nil, err
 	}
 	if h.Truncated {
-		cmd.Process.Kill() // we stopped reading early on purpose
-		cmd.Wait()
+		command.Process.Kill() // we stopped reading early on purpose
+		command.Wait()
 		return h, nil
 	}
-	if err := cmd.Wait(); err != nil {
+	if err := command.Wait(); err != nil {
 		if ctx.Err() != nil {
 			return nil, ctx.Err()
 		}
@@ -192,9 +192,9 @@ func unquote(p string) string {
 func (h *History) Only(paths map[string]bool) *History {
 	c := *h
 	c.Files = make(map[string][]Change, len(paths))
-	for p, ch := range h.Files {
+	for p, changes := range h.Files {
 		if paths[p] {
-			c.Files[p] = ch
+			c.Files[p] = changes
 		}
 	}
 	return &c
@@ -203,26 +203,26 @@ func (h *History) Only(paths map[string]bool) *History {
 // ---------------------------------------------------------------- cache
 
 // cacheFile names the cached history of root at head, read with a commit limit.
-func cacheFile(dir, root, head string, maxCommits int) string {
+func cacheFile(directory, root, head string, maxCommits int) string {
 	sum := sha256.Sum256([]byte(root))
-	return filepath.Join(dir, fmt.Sprintf("%s-history-%s-%d.json.gz", hex.EncodeToString(sum[:12]), head, maxCommits))
+	return filepath.Join(directory, fmt.Sprintf("%s-history-%s-%d.json.gz", hex.EncodeToString(sum[:12]), head, maxCommits))
 }
 
-// Cached returns the history of root at HEAD, collecting and caching it in dir when
+// Cached returns the history of root at HEAD, collecting and caching it in directory when
 // needed. Histories of older HEADs of the same project are removed.
 //
 // Implements: REQ-HIST-005
-func Cached(ctx context.Context, dir, root string, maxCommits int) (*History, error) {
+func Cached(ctx context.Context, directory, root string, maxCommits int) (*History, error) {
 	head, err := Head(ctx, root)
 	if err != nil {
 		return nil, err
 	}
-	file := cacheFile(dir, root, head, maxCommits)
+	file := cacheFile(directory, root, head, maxCommits)
 	if f, err := os.Open(file); err == nil {
 		defer f.Close()
-		if zr, err := gzip.NewReader(f); err == nil {
+		if gzipReader, err := gzip.NewReader(f); err == nil {
 			var h History
-			if json.NewDecoder(zr).Decode(&h) == nil && h.Head == head {
+			if json.NewDecoder(gzipReader).Decode(&h) == nil && h.Head == head {
 				return &h, nil
 			}
 		}
@@ -231,27 +231,27 @@ func Cached(ctx context.Context, dir, root string, maxCommits int) (*History, er
 	if err != nil {
 		return nil, err
 	}
-	if dir != "" {
-		save(dir, root, file, h)
+	if directory != "" {
+		save(directory, root, file, h)
 	}
 	return h, nil
 }
 
-func save(dir, root, file string, h *History) {
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+func save(directory, root, file string, h *History) {
+	if err := os.MkdirAll(directory, 0o755); err != nil {
 		return
 	}
-	old, _ := filepath.Glob(strings.Replace(cacheFile(dir, root, "*", 0), "-0.json.gz", "-*.json.gz", 1))
+	old, _ := filepath.Glob(strings.Replace(cacheFile(directory, root, "*", 0), "-0.json.gz", "-*.json.gz", 1))
 	for _, o := range old {
 		os.Remove(o)
 	}
-	var buf bytes.Buffer
-	zw := gzip.NewWriter(&buf)
-	if json.NewEncoder(zw).Encode(h) != nil || zw.Close() != nil {
+	var buffer bytes.Buffer
+	gzipWriter := gzip.NewWriter(&buffer)
+	if json.NewEncoder(gzipWriter).Encode(h) != nil || gzipWriter.Close() != nil {
 		return
 	}
-	tmp := file + ".tmp"
-	if os.WriteFile(tmp, buf.Bytes(), 0o644) == nil {
-		os.Rename(tmp, file)
+	temporary := file + ".tmp"
+	if os.WriteFile(temporary, buffer.Bytes(), 0o644) == nil {
+		os.Rename(temporary, file)
 	}
 }

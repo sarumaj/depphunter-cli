@@ -79,7 +79,7 @@ func readXcode(all []*scan.File) *xcodePaths {
 		if scanned.Binary || scanned.TooLarge {
 			continue
 		}
-		absolute[scanned.Path] = scanned.Abs
+		absolute[scanned.Path] = scanned.AbsolutePath
 		switch {
 		case path.Base(scanned.Path) == "project.pbxproj" && strings.HasSuffix(path.Dir(scanned.Path), ".xcodeproj"):
 			projectFiles = append(projectFiles, scanned.Path)

@@ -29,9 +29,9 @@ func projectNuGet(files []*scan.File) []nuget.ConfigFile {
 	})
 	var out []nuget.ConfigFile
 	for _, f := range found {
-		if data, err := os.ReadFile(f.Abs); err == nil {
-			if cfg, ok := nuget.ParseConfig(data); ok {
-				out = append(out, cfg)
+		if data, err := os.ReadFile(f.AbsolutePath); err == nil {
+			if config, ok := nuget.ParseConfig(data); ok {
+				out = append(out, config)
 			}
 		}
 	}
@@ -61,11 +61,11 @@ func (c *Config) applyNuGet(project []nuget.ConfigFile) {
 		if !ok || official || !s.Enabled(f.Key) {
 			continue
 		}
-		src := Source{URL: u, Kind: Additive, nugetKey: f.Key, Origin: OriginProject}
+		source := Source{URL: u, Kind: Additive, nugetKey: f.Key, Origin: OriginProject}
 		if f.Layer >= len(project) {
-			src.Trusted, src.Origin = true, OriginMachine
+			source.Trusted, source.Origin = true, OriginMachine
 		}
-		c.Add(NuGet, src)
+		c.Add(NuGet, source)
 	}
 	if nugetOff(s) {
 		origin := OriginProject
@@ -154,23 +154,23 @@ func (c *Config) recorded(u string) string {
 //
 // Implements: REQ-AUTH-023
 func (c *Config) lendNuGet(s nuget.Settings, project int) {
-	vars := c.m.NuGetCredentialVars()
+	variables := c.m.NuGetCredentialVariables()
 	for _, f := range s.Feeds {
 		if f.Layer >= project || !s.Enabled(f.Key) {
 			continue
 		}
 		key := strings.ToLower(f.Key)
-		if user, pass, ok := nuget.EnvCredential(vars[key]); ok {
+		if user, pass, ok := nuget.EnvironmentCredential(variables[key]); ok {
 			c.lend(f.URL, user, pass)
 			continue
 		}
-		cred, ok := s.Credentials[key]
-		if !ok || !cred.Basic() {
+		credential, ok := s.Credentials[key]
+		if !ok || !credential.Basic() {
 			continue
 		}
-		user, _ := c.fromEnv(cred.Username)
-		pass, ref := c.fromEnv(cred.ClearTextPassword)
-		if ref || cred.Layer >= project {
+		user, _ := c.fromEnvironment(credential.Username)
+		pass, reference := c.fromEnvironment(credential.ClearTextPassword)
+		if reference || credential.Layer >= project {
 			c.lend(f.URL, user, pass)
 		}
 	}
@@ -188,23 +188,23 @@ func (c *Config) lendPaket(data []byte) {
 		if s.AuthType != "" && !strings.EqualFold(s.AuthType, "basic") {
 			continue
 		}
-		if pass, ref := c.fromEnv(s.Password); ref {
-			user, _ := c.fromEnv(s.Username)
+		if pass, reference := c.fromEnvironment(s.Password); reference {
+			user, _ := c.fromEnvironment(s.Username)
 			c.lend(strings.Trim(s.URL, `"`), user, pass)
 		}
 	}
 }
 
-// fromEnv resolves a value that is exactly %NAME% from this machine's environment
+// fromEnvironment resolves a value that is exactly %NAME% from this machine's environment
 // (ref true); any other value is returned as written.
-func (c *Config) fromEnv(v string) (value string, ref bool) {
+func (c *Config) fromEnvironment(v string) (value string, reference bool) {
 	v = strings.TrimSpace(v)
 	name, ok := strings.CutPrefix(v, "%")
 	if name, ok2 := strings.CutSuffix(name, "%"); ok && ok2 && name != "" && !strings.Contains(name, "%") {
-		if c.m.Env == nil {
+		if c.m.Environment == nil {
 			return "", true
 		}
-		return c.m.Env(name), true
+		return c.m.Environment(name), true
 	}
 	return v, false
 }
@@ -233,11 +233,11 @@ func (c *Config) lend(feed, user, pass string) {
 // the user did with --trust-index (by URL or host), or this machine's own
 // configuration names a source of the ecosystem on the feed's host (for PyPI, a
 // Poetry repository or an explicit uv index there counts too).
-func (c *Config) vouched(eco, feed string, u *url.URL) bool {
-	if c.trusted[c.recorded(feed)] || c.trusted[u.Host] || eco == PyPI && c.py.hosts[strings.ToLower(u.Host)] {
+func (c *Config) vouched(ecosystem, feed string, u *url.URL) bool {
+	if c.trusted[c.recorded(feed)] || c.trusted[u.Host] || ecosystem == PyPI && c.py.hosts[strings.ToLower(u.Host)] {
 		return true
 	}
-	for _, s := range c.sources[eco] {
+	for _, s := range c.sources[ecosystem] {
 		if m, err := url.Parse(s.URL); err == nil && s.Trusted && strings.EqualFold(m.Host, u.Host) {
 			return true
 		}

@@ -7,7 +7,7 @@ import (
 	"strings"
 )
 
-var byExt = map[string]string{
+var byExtension = map[string]string{
 	".go": "Go",
 	".js": "JavaScript", ".mjs": "JavaScript", ".cjs": "JavaScript", ".jsx": "JavaScript",
 	".ts": "TypeScript", ".mts": "TypeScript", ".cts": "TypeScript", ".tsx": "TypeScript",
@@ -91,7 +91,7 @@ func Language(p string) string {
 	if strings.HasSuffix(base, ".tf.json") || strings.HasSuffix(base, ".tfvars.json") {
 		return "Terraform" // Terraform's JSON syntax
 	}
-	return byExt[strings.ToLower(path.Ext(base))]
+	return byExtension[strings.ToLower(path.Ext(base))]
 }
 
 // Dockerfile reports whether a file is a container build file by the names the
@@ -146,8 +146,8 @@ func objcMarker(head []byte, preprocessor bool) bool {
 		switch {
 		case len(line) < 2:
 		case line[0] == '@':
-			for _, kw := range []string{"interface", "implementation", "protocol", "class", "import", "end"} {
-				if rest, ok := bytes.CutPrefix(line[1:], []byte(kw)); ok && (len(rest) == 0 || !identByte(rest[0])) {
+			for _, keyword := range []string{"interface", "implementation", "protocol", "class", "import", "end"} {
+				if rest, ok := bytes.CutPrefix(line[1:], []byte(keyword)); ok && (len(rest) == 0 || !identifierByte(rest[0])) {
 					return true
 				}
 			}
@@ -163,7 +163,7 @@ func objcMarker(head []byte, preprocessor bool) bool {
 	return false
 }
 
-func identByte(c byte) bool {
+func identifierByte(c byte) bool {
 	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
 }
 
@@ -324,8 +324,8 @@ var probeDescription = regexp.MustCompile(`^[A-Za-z0-9_$*-]*:[A-Za-z0-9_$*.-]*:[
 func perlMarker(head []byte) bool {
 	for _, line := range bytes.Split(head, []byte("\n")) {
 		line = bytes.TrimLeft(line, " \t\xef\xbb\xbf")
-		for _, kw := range []string{"use ", "no ", "require ", "package ", "sub ", "my ", "our ", "local ", "BEGIN", "=pod", "=head", "=encoding"} {
-			if bytes.HasPrefix(line, []byte(kw)) {
+		for _, keyword := range []string{"use ", "no ", "require ", "package ", "sub ", "my ", "our ", "local ", "BEGIN", "=pod", "=head", "=encoding"} {
+			if bytes.HasPrefix(line, []byte(keyword)) {
 				return true
 			}
 		}
@@ -384,9 +384,9 @@ func interpreter(head []byte) string {
 	if len(fields) == 0 {
 		return ""
 	}
-	prog := path.Base(fields[0])
-	if prog != "env" {
-		return prog
+	program := path.Base(fields[0])
+	if program != "env" {
+		return program
 	}
 	for _, f := range fields[1:] {
 		if strings.HasPrefix(f, "-") || strings.Contains(f, "=") {

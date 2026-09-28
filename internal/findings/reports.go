@@ -100,10 +100,10 @@ func readGovulncheck(data []byte) ([]*Finding, error) {
 	hits := map[string]*hit{}
 	var order []string
 
-	dec := json.NewDecoder(bytes.NewReader(data))
+	decoder := json.NewDecoder(bytes.NewReader(data))
 	for {
 		var m message
-		if err := dec.Decode(&m); err == io.EOF {
+		if err := decoder.Decode(&m); err == io.EOF {
 			break
 		} else if err != nil {
 			return nil, err
@@ -225,9 +225,9 @@ func readOSVScanner(data []byte) ([]*Finding, error) {
 	var out []*Finding
 	for _, r := range doc.Results {
 		for _, p := range r.Packages {
-			pkg := Package{Ecosystem: ourEcosystem(p.Package.Ecosystem), Name: p.Package.Name, Version: p.Package.Version}
+			reportedPackage := Package{Ecosystem: ourEcosystem(p.Package.Ecosystem), Name: p.Package.Name, Version: p.Package.Version}
 			for _, e := range p.Vulnerabilities {
-				f := e.finding(pkg)
+				f := e.finding(reportedPackage)
 				f.Source = "osv-scanner"
 				f.Path = r.Source.Path
 				out = append(out, f)
@@ -300,7 +300,7 @@ func readNPMAudit(data []byte) ([]*Finding, error) {
 			out = append(out, &Finding{
 				Kind:      KindVulnerability,
 				Source:    "npm-audit",
-				Ref:       advisoryRef(a.URL, a.Source.String()),
+				Reference: advisoryReference(a.URL, a.Source.String()),
 				Severity:  severity(first(a.Severity, v.Severity)),
 				Title:     trim(a.Title, 200),
 				Detail:    npmDetail(a.Range, a.CWE, nil),
@@ -317,7 +317,7 @@ func readNPMAudit(data []byte) ([]*Finding, error) {
 		out = append(out, &Finding{
 			Kind:      KindVulnerability,
 			Source:    "npm-audit",
-			Ref:       "npm:" + name,
+			Reference: "npm:" + name,
 			Severity:  severity(v.Severity),
 			Title:     "Depends on a vulnerable package",
 			Detail:    npmDetail(v.Range, nil, indirect),
@@ -389,14 +389,14 @@ func readNPMAuditV6(data []byte) ([]*Finding, error) {
 		if len(a.Findings) > 0 {
 			version = a.Findings[0].Version
 		}
-		ref := advisoryRef(a.URL, a.ID.String())
+		reference := advisoryReference(a.URL, a.ID.String())
 		if len(a.CVES) > 0 {
-			ref = a.CVES[0]
+			reference = a.CVES[0]
 		}
 		out = append(out, &Finding{
 			Kind:      KindVulnerability,
 			Source:    "npm-audit",
-			Ref:       ref,
+			Reference: reference,
 			Severity:  severity(a.Severity),
 			Title:     trim(a.Title, 200),
 			Detail:    trim(a.Overview, 1200),
@@ -410,9 +410,9 @@ func readNPMAuditV6(data []byte) ([]*Finding, error) {
 	return out, nil
 }
 
-// advisoryRef names an advisory: its GHSA id when the URL carries one, else the
+// advisoryReference names an advisory: its GHSA id when the URL carries one, else the
 // numeric id npm gave it.
-func advisoryRef(url, id string) string {
+func advisoryReference(url, id string) string {
 	if i := strings.LastIndex(url, "/GHSA-"); i >= 0 {
 		return url[i+1:]
 	}
@@ -436,7 +436,7 @@ func readTrivy(data []byte) ([]*Finding, error) {
 			Class           string `json:"Class"`
 			Vulnerabilities []struct {
 				VulnerabilityID  string `json:"VulnerabilityID"`
-				PkgName          string `json:"PkgName"`
+				PackageName      string `json:"PkgName"`
 				InstalledVersion string `json:"InstalledVersion"`
 				FixedVersion     string `json:"FixedVersion"`
 				Severity         string `json:"Severity"`
@@ -469,15 +469,15 @@ func readTrivy(data []byte) ([]*Finding, error) {
 	}
 	var out []*Finding
 	for _, r := range doc.Results {
-		eco := trivyEcosystems[r.Type]
+		ecosystem := trivyEcosystems[r.Type]
 		for _, v := range r.Vulnerabilities {
-			sev := severity(v.Severity)
+			level := severity(v.Severity)
 			// Trivy carries the advisory's own CVSS vectors: they say more than the
 			// one word its distribution chose.
 			for _, source := range []string{"nvd", "ghsa", "redhat"} {
-				if vec := v.CVSS[source].V3Vector; vec != "" {
-					if score, ok := scoreCVSS(vec); ok {
-						sev = severityOfScore(score)
+				if vector := v.CVSS[source].V3Vector; vector != "" {
+					if score, ok := scoreCVSS(vector); ok {
+						level = severityOfScore(score)
 						break
 					}
 				}
@@ -485,41 +485,41 @@ func readTrivy(data []byte) ([]*Finding, error) {
 			out = append(out, &Finding{
 				Kind:      KindVulnerability,
 				Source:    "trivy",
-				Ref:       v.VulnerabilityID,
-				Severity:  sev,
+				Reference: v.VulnerabilityID,
+				Severity:  level,
 				Title:     trim(first(v.Title, v.VulnerabilityID), 200),
 				Detail:    trim(v.Description, 1200),
 				URL:       v.PrimaryURL,
 				Path:      trivyPath(r.Class, r.Target),
-				Ecosystem: eco,
-				Package:   v.PkgName,
+				Ecosystem: ecosystem,
+				Package:   v.PackageName,
 				Version:   v.InstalledVersion,
 				Fixed:     v.FixedVersion,
 			})
 		}
 		for _, m := range r.Misconfigurations {
 			out = append(out, &Finding{
-				Kind:     KindLint,
-				Source:   "trivy",
-				Ref:      m.ID,
-				Severity: severity(m.Severity),
-				Title:    trim(first(m.Title, m.ID), 200),
-				Detail:   trim(first(m.Message, m.Description), 1200),
-				URL:      m.PrimaryURL,
-				Path:     r.Target,
-				Line:     m.CauseMetadata.StartLine,
+				Kind:      KindLint,
+				Source:    "trivy",
+				Reference: m.ID,
+				Severity:  severity(m.Severity),
+				Title:     trim(first(m.Title, m.ID), 200),
+				Detail:    trim(first(m.Message, m.Description), 1200),
+				URL:       m.PrimaryURL,
+				Path:      r.Target,
+				Line:      m.CauseMetadata.StartLine,
 			})
 		}
 		for _, s := range r.Secrets {
 			out = append(out, &Finding{
-				Kind:     KindLint,
-				Source:   "trivy",
-				Ref:      s.RuleID,
-				Severity: severity(s.Severity),
-				Title:    trim(first(s.Title, s.RuleID), 200),
-				Detail:   "A secret was found in this file. The value itself is not reported here.",
-				Path:     r.Target,
-				Line:     s.StartLine,
+				Kind:      KindLint,
+				Source:    "trivy",
+				Reference: s.RuleID,
+				Severity:  severity(s.Severity),
+				Title:     trim(first(s.Title, s.RuleID), 200),
+				Detail:    "A secret was found in this file. The value itself is not reported here.",
+				Path:      r.Target,
+				Line:      s.StartLine,
 			})
 		}
 	}
@@ -568,7 +568,7 @@ func readGolangCI(data []byte) ([]*Finding, error) {
 			FromLinter string `json:"FromLinter"`
 			Text       string `json:"Text"`
 			Severity   string `json:"Severity"`
-			Pos        struct {
+			Position   struct {
 				Filename string `json:"Filename"`
 				Line     int    `json:"Line"`
 				Column   int    `json:"Column"`
@@ -581,14 +581,14 @@ func readGolangCI(data []byte) ([]*Finding, error) {
 	var out []*Finding
 	for _, i := range doc.Issues {
 		out = append(out, &Finding{
-			Kind:     KindLint,
-			Source:   "golangci-lint",
-			Ref:      i.FromLinter,
-			Severity: lintSeverity(i.Severity, Medium),
-			Title:    trim(i.Text, 200),
-			Path:     i.Pos.Filename,
-			Line:     i.Pos.Line,
-			Column:   i.Pos.Column,
+			Kind:      KindLint,
+			Source:    "golangci-lint",
+			Reference: i.FromLinter,
+			Severity:  lintSeverity(i.Severity, Medium),
+			Title:     trim(i.Text, 200),
+			Path:      i.Position.Filename,
+			Line:      i.Position.Line,
+			Column:    i.Position.Column,
 		})
 	}
 	return out, nil
@@ -614,19 +614,19 @@ func readESLint(data []byte) ([]*Finding, error) {
 	var out []*Finding
 	for _, f := range doc {
 		for _, m := range f.Messages {
-			sev := Low
+			severity := Low
 			if m.Severity >= 2 {
-				sev = Medium
+				severity = Medium
 			}
 			out = append(out, &Finding{
-				Kind:     KindLint,
-				Source:   "eslint",
-				Ref:      first(m.RuleID, "eslint"),
-				Severity: sev,
-				Title:    trim(m.Message, 200),
-				Path:     f.FilePath,
-				Line:     m.Line,
-				Column:   m.Column,
+				Kind:      KindLint,
+				Source:    "eslint",
+				Reference: first(m.RuleID, "eslint"),
+				Severity:  severity,
+				Title:     trim(m.Message, 200),
+				Path:      f.FilePath,
+				Line:      m.Line,
+				Column:    m.Column,
 			})
 		}
 	}
@@ -652,8 +652,8 @@ func lintSeverity(s string, fallback Severity) Severity {
 	return fallback
 }
 
-func first(vs ...string) string {
-	for _, v := range vs {
+func first(values ...string) string {
+	for _, v := range values {
 		if v != "" {
 			return v
 		}

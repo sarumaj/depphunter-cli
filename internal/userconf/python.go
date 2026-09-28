@@ -12,7 +12,7 @@ import (
 //
 // Implements: REQ-SUP-064
 func (m Machine) UVNoConfig() bool {
-	switch strings.ToLower(strings.TrimSpace(m.Env("UV_NO_CONFIG"))) {
+	switch strings.ToLower(strings.TrimSpace(m.Environment("UV_NO_CONFIG"))) {
 	case "1", "true", "yes", "on", "y", "t":
 		return true
 	}
@@ -31,21 +31,21 @@ func (m Machine) UVConfigFiles() []string {
 	if m.UVNoConfig() {
 		return nil
 	}
-	if f := m.Env("UV_CONFIG_FILE"); f != "" {
+	if f := m.Environment("UV_CONFIG_FILE"); f != "" {
 		return []string{f}
 	}
 	var files []string
-	if m.GOOS == "windows" && m.Env("APPDATA") != "" {
-		files = append(files, join(m.Env("APPDATA"), "uv", "uv.toml"))
+	if m.GOOS == "windows" && m.Environment("APPDATA") != "" {
+		files = append(files, join(m.Environment("APPDATA"), "uv", "uv.toml"))
 	} else {
 		files = append(files, join(m.xdgConfigHome(), "uv", "uv.toml"))
 	}
 	switch {
-	case m.GOOS == "windows" && m.Env("ProgramData") != "":
-		files = append(files, join(m.Env("ProgramData"), "uv", "uv.toml"))
+	case m.GOOS == "windows" && m.Environment("ProgramData") != "":
+		files = append(files, join(m.Environment("ProgramData"), "uv", "uv.toml"))
 	case m.GOOS != "windows":
 		system := system("etc", "uv", "uv.toml")
-		for _, d := range filepath.SplitList(m.Env("XDG_CONFIG_DIRS")) {
+		for _, d := range filepath.SplitList(m.Environment("XDG_CONFIG_DIRS")) {
 			if f := join(d, "uv", "uv.toml"); f != "" && isFile(f) {
 				system = f
 				break
@@ -61,40 +61,40 @@ func (m Machine) UVConfigFiles() []string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) UVProjectConfig() bool {
-	return !m.UVNoConfig() && m.Env("UV_CONFIG_FILE") == ""
+	return !m.UVNoConfig() && m.Environment("UV_CONFIG_FILE") == ""
 }
 
 // ---------------------------------------------------------------- Poetry
 
-// PoetryConfigDir is the directory of Poetry's config.toml and auth.toml:
+// PoetryConfigDirectory is the directory of Poetry's config.toml and auth.toml:
 // POETRY_CONFIG_DIR; %APPDATA%\pypoetry on Windows; ~/Library/Application
 // Support/pypoetry on macOS; else $XDG_CONFIG_HOME/pypoetry (~/.config/pypoetry).
 //
 // Implements: REQ-SUP-064
-func (m Machine) PoetryConfigDir() string {
-	if dir := m.Env("POETRY_CONFIG_DIR"); dir != "" {
-		return dir
+func (m Machine) PoetryConfigDirectory() string {
+	if directory := m.Environment("POETRY_CONFIG_DIR"); directory != "" {
+		return directory
 	}
 	switch {
-	case m.GOOS == "windows" && m.Env("APPDATA") != "":
-		return join(m.Env("APPDATA"), "pypoetry")
+	case m.GOOS == "windows" && m.Environment("APPDATA") != "":
+		return join(m.Environment("APPDATA"), "pypoetry")
 	case m.GOOS == "darwin" || m.GOOS == "ios":
 		return join(m.Home, "Library", "Application Support", "pypoetry")
 	}
 	return join(m.xdgConfigHome(), "pypoetry")
 }
 
-// PoetryRepositoryVars are the repositories the POETRY_REPOSITORIES_<NAME>_URL
+// PoetryRepositoryVariables are the repositories the POETRY_REPOSITORIES_<NAME>_URL
 // variables define, by <NAME>.
 //
 // Implements: REQ-SUP-064
-func (m Machine) PoetryRepositoryVars() map[string]string {
+func (m Machine) PoetryRepositoryVariables() map[string]string {
 	const prefix, suffix = "POETRY_REPOSITORIES_", "_URL"
 	out := map[string]string{}
 	for _, name := range m.names(func(n string) bool {
 		return len(n) > len(prefix)+len(suffix) && strings.HasPrefix(n, prefix) && strings.HasSuffix(n, suffix)
 	}) {
-		if v := m.Env(name); v != "" {
+		if v := m.Environment(name); v != "" {
 			out[name[len(prefix):len(name)-len(suffix)]] = v
 		}
 	}
@@ -109,12 +109,12 @@ func (m Machine) PoetryRepositoryVars() map[string]string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) PDMConfigFile() string {
-	if f := m.Env("PDM_CONFIG_FILE"); f != "" {
+	if f := m.Environment("PDM_CONFIG_FILE"); f != "" {
 		return f
 	}
 	switch {
-	case m.GOOS == "windows" && m.Env("LOCALAPPDATA") != "":
-		return join(m.Env("LOCALAPPDATA"), "pdm", "pdm", "config.toml")
+	case m.GOOS == "windows" && m.Environment("LOCALAPPDATA") != "":
+		return join(m.Environment("LOCALAPPDATA"), "pdm", "pdm", "config.toml")
 	case m.GOOS == "darwin" || m.GOOS == "ios":
 		return join(m.Home, "Library", "Application Support", "pdm", "config.toml")
 	}

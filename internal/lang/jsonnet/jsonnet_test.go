@@ -26,22 +26,22 @@ func TestMain(m *testing.M) {
 }
 
 var (
-	ksonnet = lang.Target{Ecosystem: ecoJB, Package: "github.com/grafana/jsonnet-libs/ksonnet-util",
+	ksonnet = lang.Target{Ecosystem: ecosystemJB, Package: "github.com/grafana/jsonnet-libs/ksonnet-util",
 		Version: "10b0fbc6f6bffbf774067de9c07982bf8454a211", Requested: "master", Pinned: true}
-	k8s = lang.Target{Ecosystem: ecoJB, Package: "github.com/jsonnet-libs/k8s-libsonnet/1.29",
+	k8s = lang.Target{Ecosystem: ecosystemJB, Package: "github.com/jsonnet-libs/k8s-libsonnet/1.29",
 		Version: "f8efa81cf15257bd151b97e31599e20b2ba5311b", Requested: "main", Pinned: true}
-	docUtil = lang.Target{Ecosystem: ecoJB, Package: "github.com/jsonnet-libs/docsonnet/doc-util",
+	docUtil = lang.Target{Ecosystem: ecosystemJB, Package: "github.com/jsonnet-libs/docsonnet/doc-util",
 		Version: "6ac6c69685b8c29c54515448eaca583da2d88150", Pinned: true}
-	nodeMixin = lang.Target{Ecosystem: ecoJB, Package: "github.com/prometheus/node_exporter/docs/node-mixin", Version: "v1.8.0"}
-	acme      = lang.Target{Ecosystem: ecoJB, Package: "git.acme.internal/ops/libs",
+	nodeMixin = lang.Target{Ecosystem: ecosystemJB, Package: "github.com/prometheus/node_exporter/docs/node-mixin", Version: "v1.8.0"}
+	acme      = lang.Target{Ecosystem: ecosystemJB, Package: "git.acme.internal/ops/libs",
 		Version: "0123456789abcdef0123456789abcdef01234567", Pinned: true, Origin: "git@git.acme.internal:ops/libs.git"}
-	branchy = lang.Target{Ecosystem: ecoJB, Package: "github.com/acme/branchy", Version: "main", Floating: true}
+	branchy = lang.Target{Ecosystem: ecosystemJB, Package: "github.com/acme/branchy", Version: "main", Floating: true}
 )
 
 // Verifies: REQ-JSONNET-002, REQ-JSONNET-004, REQ-JSONNET-006, REQ-JSONNET-010
 func TestImports(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	langtest.CheckImports(t, res["environments/prod/main.jsonnet"], map[string]lang.Target{
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	langtest.CheckImports(t, results["environments/prod/main.jsonnet"], map[string]lang.Target{
 		"ksonnet-util/kausal.libsonnet":                               ksonnet, // legacy link in vendor/
 		"github.com/grafana/jsonnet-libs/ksonnet-util/util.libsonnet": ksonnet, // full path in vendor/
 		"github.com/jsonnet-libs/k8s-libsonnet/1.29/main.libsonnet":   k8s,     // not installed: the manifest
@@ -53,8 +53,8 @@ func TestImports(t *testing.T) {
 		"shared/lib.libsonnet":                                      {Local: "libs/shared/lib.libsonnet"}, // a local source
 		"libs/secrets.libsonnet":                                    acme,
 		"branchy/b.libsonnet":                                       branchy,
-		"github.com/unknown/thing/x.libsonnet":                      {Ecosystem: ecoJB, Package: "github.com/unknown/thing", Unresolved: true},
-		"mystery/x.libsonnet":                                       {Ecosystem: ecoJB, Package: "mystery", Unresolved: true},
+		"github.com/unknown/thing/x.libsonnet":                      {Ecosystem: ecosystemJB, Package: "github.com/unknown/thing", Unresolved: true},
+		"mystery/x.libsonnet":                                       {Ecosystem: ecosystemJB, Package: "mystery", Unresolved: true},
 		"missing.libsonnet":                                         {},
 		"./gone.libsonnet":                                          {},
 		"extra.libsonnet":                                           {Local: "third_party/jpath/extra.libsonnet"},
@@ -66,13 +66,13 @@ func TestImports(t *testing.T) {
 	// link as a plain file) nothing is installed for it, and its own
 	// manifest answers.
 	viaVendor := ksonnet
-	if fi, err := os.Lstat("testdata/repo/vendor/ksonnet-util"); err != nil || fi.Mode()&os.ModeSymlink == 0 {
+	if fileInfo, err := os.Lstat("testdata/repo/vendor/ksonnet-util"); err != nil || fileInfo.Mode()&os.ModeSymlink == 0 {
 		viaVendor.Requested = "v1.0"
 	}
-	langtest.CheckImports(t, res["mixin/mixin.libsonnet"], map[string]lang.Target{
+	langtest.CheckImports(t, results["mixin/mixin.libsonnet"], map[string]lang.Target{
 		"ksonnet-util/kausal.libsonnet": viaVendor,
 	})
-	for p := range res {
+	for p := range results {
 		if strings.HasPrefix(p, "vendor/") {
 			t.Errorf("%s: what jb installed was analyzed", p)
 		}
@@ -81,8 +81,8 @@ func TestImports(t *testing.T) {
 
 // Verifies: REQ-JSONNET-005, REQ-JSONNET-006
 func TestManifests(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	langtest.CheckImports(t, res["jsonnetfile.json"], map[string]lang.Target{
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	langtest.CheckImports(t, results["jsonnetfile.json"], map[string]lang.Target{
 		"github.com/grafana/jsonnet-libs/ksonnet-util":        ksonnet,
 		"github.com/jsonnet-libs/k8s-libsonnet/1.29":          k8s,
 		"github.com/prometheus/node_exporter/docs/node-mixin": nodeMixin,
@@ -90,7 +90,7 @@ func TestManifests(t *testing.T) {
 		"github.com/acme/branchy":                             branchy,
 		"libs/shared":                                         {Local: "libs/shared"},
 	})
-	langtest.CheckImports(t, res["jsonnetfile.lock.json"], map[string]lang.Target{
+	langtest.CheckImports(t, results["jsonnetfile.lock.json"], map[string]lang.Target{
 		"github.com/grafana/jsonnet-libs/ksonnet-util": ksonnet,
 		"github.com/jsonnet-libs/k8s-libsonnet/1.29":   k8s,
 		"github.com/jsonnet-libs/docsonnet/doc-util":   docUtil,
@@ -100,19 +100,19 @@ func TestManifests(t *testing.T) {
 	// A nested project without a lock is installed by the one above it.
 	nested := ksonnet
 	nested.Requested = "v1.0"
-	langtest.CheckImports(t, res["mixin/jsonnetfile.json"], map[string]lang.Target{
+	langtest.CheckImports(t, results["mixin/jsonnetfile.json"], map[string]lang.Target{
 		"github.com/grafana/jsonnet-libs/ksonnet-util": nested,
 	})
-	deps, legacy := readJsonnetfile([]byte(`{"dependencies": [{"source": {"git": {"remote": "https://github.com/a/b"}}}], "legacyImports": false}`))
-	if len(deps) != 1 || legacy || deps[0].legacy() != "b" || deps[0].pkg() != "github.com/a/b" {
-		t.Errorf("readJsonnetfile: %+v %v", deps, legacy)
+	dependencies, legacy := readJsonnetfile([]byte(`{"dependencies": [{"source": {"git": {"remote": "https://github.com/a/b"}}}], "legacyImports": false}`))
+	if len(dependencies) != 1 || legacy || dependencies[0].legacy() != "b" || dependencies[0].packageName() != "github.com/a/b" {
+		t.Errorf("readJsonnetfile: %+v %v", dependencies, legacy)
 	}
 }
 
 // Verifies: REQ-JSONNET-006
 func TestPinRule(t *testing.T) {
 	r := &resolver{}
-	p := &project{dir: "."}
+	p := &project{directory: "."}
 	for v, want := range map[string]lang.Target{
 		"0123456789abcdef0123456789abcdef01234567": {Version: "0123456789abcdef0123456789abcdef01234567", Pinned: true},
 		"v1.2.3":       {Version: "v1.2.3"},
@@ -122,9 +122,9 @@ func TestPinRule(t *testing.T) {
 		"release-0.14": {Version: "release-0.14", Floating: true},
 		"":             {Floating: true},
 	} {
-		d := &dep{remote: "https://github.com/a/b", version: v}
-		p.deps = []*dep{d}
-		want.Ecosystem, want.Package = ecoJB, "github.com/a/b"
+		d := &dependency{remote: "https://github.com/a/b", version: v}
+		p.dependencies = []*dependency{d}
+		want.Ecosystem, want.Package = ecosystemJB, "github.com/a/b"
 		if got := r.target(p, d); got != want {
 			t.Errorf("%q: got %+v, want %+v", v, got, want)
 		}
@@ -133,8 +133,8 @@ func TestPinRule(t *testing.T) {
 
 // Verifies: REQ-JSONNET-003
 func TestSymbols(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	langtest.CheckSymbols(t, res["environments/prod/main.jsonnet"], map[string]string{
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	langtest.CheckSymbols(t, results["environments/prod/main.jsonnet"], map[string]string{
 		"kausal": "var", "util": "var", "k": "var", "k8s": "var", "doc": "var", "node": "var",
 		"utils": "var", "params": "var", "shared": "var", "secrets": "var", "branchy": "var",
 		"unknown": "var", "mystery": "var", "missing": "var", "gone": "var", "extra": "var",
@@ -143,13 +143,13 @@ func TestSymbols(t *testing.T) {
 		"hidden": "field", "plus": "field", "inner": "field", "fn": "func", "asFunction": "func",
 		"again": "field", "extended": "field",
 	})
-	langtest.CheckSymbols(t, res["environments/prod/app.libsonnet"], map[string]string{"service": "field"})
-	langtest.CheckSymbols(t, res["jsonnetfile.json"], map[string]string{})
+	langtest.CheckSymbols(t, results["environments/prod/app.libsonnet"], map[string]string{"service": "field"})
+	langtest.CheckSymbols(t, results["jsonnetfile.json"], map[string]string{})
 }
 
 // Verifies: REQ-JSONNET-002, REQ-JSONNET-009
 func TestLiteralsHideCode(t *testing.T) {
-	src := []byte(`// import "a.libsonnet"
+	source := []byte(`// import "a.libsonnet"
 # import "b.libsonnet"
 /* import "c.libsonnet"
    import "d.libsonnet" */
@@ -163,17 +163,17 @@ local real = import "real.libsonnet";
 local str = importstr @'dir\file.txt';
 { x: import "inside.libsonnet" }
 `)
-	ex := extractSource(src)
+	extraction := extractSource(source)
 	var got []string
-	for _, im := range ex.Imports {
-		got = append(got, im.Spec)
+	for _, rawImport := range extraction.Imports {
+		got = append(got, rawImport.Spec)
 	}
 	want := []string{"real.libsonnet", `importstr dir\file.txt`, "inside.libsonnet"}
 	if strings.Join(got, "|") != strings.Join(want, "|") {
 		t.Errorf("got %q, want %q", got, want)
 	}
-	if ex.Imports[0].Line != 11 {
-		t.Errorf("line: got %d, want 11", ex.Imports[0].Line)
+	if extraction.Imports[0].Line != 11 {
+		t.Errorf("line: got %d, want 11", extraction.Imports[0].Line)
 	}
 }
 
@@ -190,11 +190,11 @@ func TestClaims(t *testing.T) {
 		"app/README.md":                              "x",
 		"app/vendor/github.com/a/b/jsonnetfile.json": "{}",
 	} {
-		abs := filepath.Join(root, filepath.FromSlash(p))
-		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		absolute := filepath.Join(root, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(abs, []byte(c), 0o644); err != nil {
+		if err := os.WriteFile(absolute, []byte(c), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -208,7 +208,7 @@ func TestClaims(t *testing.T) {
 		"app/package.json":                           false,
 		"app/README.md":                              false,
 	} {
-		f := &scan.File{Path: p, Abs: filepath.Join(root, filepath.FromSlash(p))}
+		f := &scan.File{Path: p, AbsolutePath: filepath.Join(root, filepath.FromSlash(p))}
 		if got := (Plugin{}).Claims(f); got != want {
 			t.Errorf("%s: got %v, want %v", p, got, want)
 		}
@@ -226,7 +226,7 @@ func TestDependencies(t *testing.T) {
 	locked.Requested = "master"
 	want := []lang.Target{
 		locked,
-		{Ecosystem: ecoJB, Package: "github.com/jsonnet-libs/xtd", Version: "master", Floating: true},
+		{Ecosystem: ecosystemJB, Package: "github.com/jsonnet-libs/xtd", Version: "master", Floating: true},
 	}
 	if len(got) != len(want) {
 		t.Fatalf("got %+v", got)
@@ -243,9 +243,9 @@ func TestDependencies(t *testing.T) {
 
 // Verifies: REQ-JSONNET-008
 func TestIslands(t *testing.T) {
-	ecos := (Plugin{}).Ecosystems()
-	if len(ecos) != 1 || ecos[0].ID != ecoJB || ecos[0].Std {
-		t.Errorf("got %+v", ecos)
+	ecosystems := (Plugin{}).Ecosystems()
+	if len(ecosystems) != 1 || ecosystems[0].ID != ecosystemJB || ecosystems[0].Std {
+		t.Errorf("got %+v", ecosystems)
 	}
 }
 
@@ -254,25 +254,25 @@ func TestIslands(t *testing.T) {
 //
 // Verifies: REQ-JSONNET-009
 func TestTruncated(t *testing.T) {
-	var srcs [][]byte
+	var sources [][]byte
 	filepath.Walk("testdata", func(p string, info os.FileInfo, err error) error {
 		if err == nil && !info.IsDir() {
 			if b, err := os.ReadFile(p); err == nil {
-				srcs = append(srcs, b)
+				sources = append(sources, b)
 			}
 		}
 		return nil
 	})
-	for _, src := range srcs {
-		for i := 0; i <= len(src); i++ {
-			extractSource(src[:i])
-			readJsonnetfile(src[:i])
+	for _, source := range sources {
+		for i := 0; i <= len(source); i++ {
+			extractSource(source[:i])
+			readJsonnetfile(source[:i])
 		}
 	}
 	for _, unit := range []string{"{", "[", "(", "}", ")", "local a = ", "local f(", "{ a: ", "|||\n  x\n", "'", "\"", "@'", "/*", "import ", "{ [x]: ", "a+: ", "\\"} {
-		src := []byte(strings.Repeat(unit, 200_000/len(unit)))
+		source := []byte(strings.Repeat(unit, 200_000/len(unit)))
 		start := time.Now()
-		extractSource(src)
+		extractSource(source)
 		if d := time.Since(start); d > 2*time.Second {
 			t.Errorf("%q x %d: %v", unit, 200_000/len(unit), d)
 		}

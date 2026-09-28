@@ -62,10 +62,10 @@ export function seatsOf(index, model) {
   const seats = [];
   for (const f of index?.all || []) {
     if (!reachable(f)) continue;
-    const pkg = f.package ? model.byId.get(`p:${f.ecosystem}:${f.package}`) : null;
+    const packageNode = f.package ? model.byId.get(`p:${f.ecosystem}:${f.package}`) : null;
     const file = f.path ? model.byId.get(`f:${f.path}`) : null;
-    if (!pkg && !file) continue;
-    seats.push({ f, pkg, file, from: (pkg || file).id, into: (file || pkg).id });
+    if (!packageNode && !file) continue;
+    seats.push({ f, pkg: packageNode, file, from: (packageNode || file).id, into: (file || packageNode).id });
   }
   return seats;
 }
@@ -126,9 +126,9 @@ export class Fires {
    * A second of fire. Everything alight gets hotter; anything hot enough and old
    * enough passes the fire to the next building along.
    */
-  step(dt) {
+  step(deltaTime) {
     for (const [id, left] of this.cooled) {
-      const t = left - dt;
+      const t = left - deltaTime;
       if (t <= 0) this.cooled.delete(id); else this.cooled.set(id, t);
     }
     // Collected first: igniting inside the walk would let one building light another
@@ -136,10 +136,10 @@ export class Fires {
     // whole map in one tick is not a front at all.
     const next = [];
     for (const [id, fire] of this.lit) {
-      fire.heat = Math.min(1, fire.heat + CATCHES * dt);
-      fire.since += dt;
+      fire.heat = Math.min(1, fire.heat + CATCHES * deltaTime);
+      fire.since += deltaTime;
       if (fire.heat < SPREADS_AT) continue;
-      fire.spreadAt += dt;
+      fire.spreadAt += deltaTime;
       if (fire.spreadAt < SPREADS_EVERY) continue;
       fire.spreadAt = 0;
       for (const to of this.onward(id, fire)) next.push([to, fire.seat]);
@@ -180,10 +180,10 @@ export class Fires {
    * the dependency actually does, and a walker who works that out has learned the one
    * thing this whole business is for.
    */
-  douse(id, dt) {
+  douse(id, deltaTime) {
     const fire = this.lit.get(id);
     if (!fire) return null;
-    fire.heat -= DOUSES * dt;
+    fire.heat -= DOUSES * deltaTime;
     if (fire.heat > 0) return 'cooling';
     const seat = fire.seat;
     const atSource = id === seat.from;

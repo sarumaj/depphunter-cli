@@ -12,7 +12,7 @@ import (
 
 // Dep is one dependency of a rockspec: "penlight ~> 1.5" is Name penlight,
 // Constraint "~> 1.5".
-type Dep struct {
+type Dependency struct {
 	Name       string
 	Constraint string
 	Section    string // dependencies, build_dependencies or test_dependencies
@@ -30,10 +30,10 @@ type Module struct {
 
 // Rockspec is what a rockspec declares about its rock.
 type Rockspec struct {
-	Package string
-	Version string
-	Deps    []Dep
-	Modules []Module
+	Package      string
+	Version      string
+	Dependencies []Dependency
+	Modules      []Module
 }
 
 // sections are the dependency tables of a rockspec (rockspec_format 3.0 added the
@@ -44,27 +44,27 @@ var sections = []string{"dependencies", "build_dependencies", "test_dependencies
 // which platform the map is drawn for is not known.
 //
 // Implements: REQ-LUA-006
-func ReadRockspec(src []byte) *Rockspec {
-	c := Eval(src)
-	r := &Rockspec{Package: c.Globals["package"].Str, Version: c.Globals["version"].Str}
-	for _, sec := range sections {
-		for _, v := range platformLists(c.Globals[sec]) {
-			name, constraint := ParseDep(v.Str)
+func ReadRockspec(source []byte) *Rockspec {
+	c := Eval(source)
+	r := &Rockspec{Package: c.Globals["package"].Text, Version: c.Globals["version"].Text}
+	for _, section := range sections {
+		for _, v := range platformLists(c.Globals[section]) {
+			name, constraint := ParseDependency(v.Text)
 			if name != "" {
-				r.Deps = append(r.Deps, Dep{Name: name, Constraint: constraint, Section: sec, Spec: v.Str, Line: v.Line})
+				r.Dependencies = append(r.Dependencies, Dependency{Name: name, Constraint: constraint, Section: section, Spec: v.Text, Line: v.Line})
 			}
 		}
 	}
 	build := c.Globals["build"]
 	tables := []Value{build.Path("modules"), build.Path("install", "lua")}
-	if p := build.Path("platforms"); p.Kind == Tab {
+	if p := build.Path("platforms"); p.Kind == TableValue {
 		for _, f := range p.Table.Fields {
 			tables = append(tables, f.Value.Path("modules"), f.Value.Path("install", "lua"))
 		}
 	}
 	seen := map[string]bool{}
 	for _, t := range tables {
-		if t.Kind != Tab {
+		if t.Kind != TableValue {
 			continue
 		}
 		for _, f := range t.Table.Fields {
@@ -81,7 +81,7 @@ func ReadRockspec(src []byte) *Rockspec {
 // tables (dependencies = { "a", platforms = { unix = { "b" } } }).
 func platformLists(v Value) []Value {
 	out := v.Strings()
-	if p := v.Path("platforms"); p.Kind == Tab {
+	if p := v.Path("platforms"); p.Kind == TableValue {
 		for _, f := range p.Table.Fields {
 			out = append(out, f.Value.Strings()...)
 		}
@@ -93,25 +93,25 @@ func platformLists(v Value) []Value {
 // module, the first source of a C module.
 func moduleFile(v Value) string {
 	switch v.Kind {
-	case Str:
-		return v.Str
-	case Tab:
-		if s := v.Path("sources"); s.Kind == Str {
-			return s.Str
+	case StringValue:
+		return v.Text
+	case TableValue:
+		if s := v.Path("sources"); s.Kind == StringValue {
+			return s.Text
 		} else if l := s.Strings(); len(l) > 0 {
-			return l[0].Str
+			return l[0].Text
 		}
 		if l := v.Strings(); len(l) > 0 {
-			return l[0].Str
+			return l[0].Text
 		}
 	}
 	return ""
 }
 
-// ParseDep splits a dependency string into the rock's name and its version
+// ParseDependency splits a dependency string into the rock's name and its version
 // constraints: "lua-cjson >= 2.1, < 3" -> ("lua-cjson", ">= 2.1, < 3"). Names are
 // matched in lower case by LuaRocks and are returned so.
-func ParseDep(s string) (name, constraint string) {
+func ParseDependency(s string) (name, constraint string) {
 	s = strings.TrimSpace(s)
 	i := strings.IndexFunc(s, func(r rune) bool {
 		return r == ' ' || r == '\t' || r == '<' || r == '>' || r == '=' || r == '~' || r == '!'
@@ -142,19 +142,19 @@ func Exact(constraint string) (string, bool) {
 // the versions `luarocks build --pin` installed, keyed by rock name.
 //
 // Implements: REQ-LUA-007
-func ReadLock(src []byte) map[string]string {
-	c := Eval(src)
-	deps := c.Return.Path("dependencies")
-	if deps.Kind != Tab {
-		deps = c.Globals["dependencies"]
+func ReadLock(source []byte) map[string]string {
+	c := Eval(source)
+	dependencies := c.Return.Path("dependencies")
+	if dependencies.Kind != TableValue {
+		dependencies = c.Globals["dependencies"]
 	}
 	out := map[string]string{}
-	if deps.Kind != Tab {
+	if dependencies.Kind != TableValue {
 		return out
 	}
-	for _, f := range deps.Table.Fields {
-		if f.Value.Kind == Str {
-			out[strings.ToLower(f.Key)] = f.Value.Str
+	for _, f := range dependencies.Table.Fields {
+		if f.Value.Kind == StringValue {
+			out[strings.ToLower(f.Key)] = f.Value.Text
 		}
 	}
 	return out
@@ -162,22 +162,22 @@ func ReadLock(src []byte) map[string]string {
 
 // ReadManifest reads a rocks server's manifest (manifest-5.1): the versions (with
 // their revision, "1.14.0-3") of every rock it serves a rockspec for.
-func ReadManifest(src []byte) map[string][]string {
-	repo := Eval(src).Globals["repository"]
+func ReadManifest(source []byte) map[string][]string {
+	repository := Eval(source).Globals["repository"]
 	out := map[string][]string{}
-	if repo.Kind != Tab {
+	if repository.Kind != TableValue {
 		return out
 	}
-	for _, rock := range repo.Table.Fields {
-		if rock.Value.Kind != Tab {
+	for _, rock := range repository.Table.Fields {
+		if rock.Value.Kind != TableValue {
 			continue
 		}
 		for _, v := range rock.Value.Table.Fields {
-			if v.Value.Kind != Tab {
+			if v.Value.Kind != TableValue {
 				continue
 			}
 			for _, arch := range v.Value.Table.List {
-				if arch.Path("arch").Str == "rockspec" {
+				if arch.Path("arch").Text == "rockspec" {
 					out[rock.Key] = append(out[rock.Key], v.Key)
 					break
 				}
@@ -190,15 +190,15 @@ func ReadManifest(src []byte) map[string][]string {
 // Servers reads the rocks servers a LuaRocks configuration file names
 // (rocks_servers = { "https://…", { "https://mirror", "https://other" } }), in
 // order, a group's first entry first.
-func Servers(src []byte) []string {
-	c := Eval(src)
+func Servers(source []byte) []string {
+	c := Eval(source)
 	var out []string
 	var walk func(v Value)
 	walk = func(v Value) {
 		switch v.Kind {
-		case Str:
-			out = append(out, v.Str)
-		case Tab:
+		case StringValue:
+			out = append(out, v.Text)
+		case TableValue:
 			for _, e := range v.Table.List {
 				walk(e)
 			}
@@ -229,14 +229,14 @@ func splitRevision(v string) (string, string) {
 }
 
 func compareParts(a, b string) int {
-	as, bs := strings.FieldsFunc(a, isSep), strings.FieldsFunc(b, isSep)
-	for i := 0; i < len(as) || i < len(bs); i++ {
+	aParts, bParts := strings.FieldsFunc(a, isSeparator), strings.FieldsFunc(b, isSeparator)
+	for i := 0; i < len(aParts) || i < len(bParts); i++ {
 		x, y := "0", "0"
-		if i < len(as) {
-			x = as[i]
+		if i < len(aParts) {
+			x = aParts[i]
 		}
-		if i < len(bs) {
-			y = bs[i]
+		if i < len(bParts) {
+			y = bParts[i]
 		}
 		if c := comparePart(x, y); c != 0 {
 			return c
@@ -245,7 +245,7 @@ func compareParts(a, b string) int {
 	return 0
 }
 
-func isSep(r rune) bool { return r == '.' || r == '_' || r == '-' }
+func isSeparator(r rune) bool { return r == '.' || r == '_' || r == '-' }
 
 // comparePart compares one dot-separated part: numbers numerically, "scm"/"dev"
 // above any number, a number with a suffix (0rc1) below the bare number.
@@ -295,21 +295,21 @@ func Satisfies(version, constraint string) bool {
 		if c == "" {
 			continue
 		}
-		op := ""
+		operator := ""
 		for _, o := range []string{"==", "~=", ">=", "<=", "~>", "!=", ">", "<", "="} {
 			if strings.HasPrefix(c, o) {
-				op = o
+				operator = o
 				break
 			}
 		}
-		want := strings.TrimSpace(c[len(op):])
+		want := strings.TrimSpace(c[len(operator):])
 		cmp := Compare(version, want)
 		if _, rev := splitRevision(want); rev == "" { // no revision asked for: any will do
 			v, _ := splitRevision(version)
 			cmp = compareParts(v, want)
 		}
 		ok := false
-		switch op {
+		switch operator {
 		case "", "==", "=":
 			ok = cmp == 0
 		case "~=", "!=":
@@ -324,10 +324,10 @@ func Satisfies(version, constraint string) bool {
 			ok = cmp < 0
 		case "~>":
 			v, _ := splitRevision(version)
-			vs, ws := strings.FieldsFunc(v, isSep), strings.FieldsFunc(want, isSep)
-			ok = len(vs) >= len(ws)
-			for i := 0; ok && i < len(ws); i++ {
-				ok = comparePart(vs[i], ws[i]) == 0
+			haveParts, wantParts := strings.FieldsFunc(v, isSeparator), strings.FieldsFunc(want, isSeparator)
+			ok = len(haveParts) >= len(wantParts)
+			for i := 0; ok && i < len(wantParts); i++ {
+				ok = comparePart(haveParts[i], wantParts[i]) == 0
 			}
 		}
 		if !ok {
@@ -340,10 +340,10 @@ func Satisfies(version, constraint string) bool {
 // Newest is the newest of versions meeting a constraint, releases before "scm" and
 // "dev" builds; "" when none does.
 func Newest(versions []string, constraint string) string {
-	vs := append([]string(nil), versions...)
-	sort.SliceStable(vs, func(i, j int) bool { return Compare(vs[i], vs[j]) > 0 })
+	sorted := append([]string(nil), versions...)
+	sort.SliceStable(sorted, func(i, j int) bool { return Compare(sorted[i], sorted[j]) > 0 })
 	fallback := ""
-	for _, v := range vs {
+	for _, v := range sorted {
 		if !Satisfies(v, constraint) {
 			continue
 		}

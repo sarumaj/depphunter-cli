@@ -6,11 +6,11 @@ import (
 )
 
 // A value of build code, as far as the build graph needs it.
-type val struct {
-	kind byte   // 0 unknown, 'f' a file, 'm' a module, 'd' a dependency, 'c' a compile step, 'g' generated
-	path string // 'f': the file; 'm', 'c': the root source file ("" when generated)
-	dep  string // 'd': the build.zig.zon dependency
-	mod  string // 'd': the module asked of it (dep.module("x")); "" for the dependency itself
+type value struct {
+	kind       byte   // 0 unknown, 'f' a file, 'm' a module, 'd' a dependency, 'c' a compile step, 'g' generated
+	path       string // 'f': the file; 'm', 'c': the root source file ("" when generated)
+	dependency string // 'd': the build.zig.zon dependency
+	module     string // 'd': the module asked of it (dep.module("x")); "" for the dependency itself
 }
 
 // croot is the root source file of a compilation: @import("root") in the files it
@@ -22,8 +22,8 @@ type croot struct {
 
 // buildFacts is what the build code of one package wires up.
 type buildFacts struct {
-	wires   map[string][]val  // import name -> what it was wired to, in source order
-	exports map[string]string // b.addModule name -> root source file
+	wires   map[string][]value // import name -> what it was wired to, in source order
+	exports map[string]string  // b.addModule name -> root source file
 	roots   []croot
 }
 
@@ -36,7 +36,7 @@ const (
 )
 
 func newFacts() *buildFacts {
-	return &buildFacts{wires: map[string][]val{}, exports: map[string]string{}}
+	return &buildFacts{wires: map[string][]value{}, exports: map[string]string{}}
 }
 
 // compileSteps are the Build functions whose options name a compilation's root.
@@ -59,22 +59,22 @@ var (
 // follow is unknown.
 type evaluator struct {
 	*source
-	root   string // the build root the file's b.path() is relative to
-	open   []int  // innermost enclosing bracket of each token
-	fns    map[string]val
-	binds  map[string]val
-	facts  *buildFacts
-	record bool
-	depth  int
+	root      string // the build root the file's b.path() is relative to
+	open      []int  // innermost enclosing bracket of each token
+	functions map[string]value
+	binds     map[string]value
+	facts     *buildFacts
+	record    bool
+	depth     int
 }
 
 // evalBuild reads one file of a package's build code (build.zig, or a file it
 // imports holding build logic) into facts.
 //
 // Implements: REQ-ZIG-006
-func evalBuild(src []byte, root string, facts *buildFacts) {
-	tokens := lex(src)
-	e := &evaluator{source: &source{tokens: tokens, m: match(tokens)}, root: root, fns: map[string]val{}, facts: facts}
+func evalBuild(content []byte, root string, facts *buildFacts) {
+	tokens := lex(content)
+	e := &evaluator{source: &source{tokens: tokens, m: match(tokens)}, root: root, functions: map[string]value{}, facts: facts}
 	e.open = make([]int, len(tokens))
 	var stack []int
 	for i := range tokens {
@@ -96,26 +96,26 @@ func evalBuild(src []byte, root string, facts *buildFacts) {
 	e.walk()
 }
 
-type fnRange struct {
+type functionRange struct {
 	name       string
 	start, end int
 }
 
 // walk visits every token once, in source order, keeping bindings current.
 func (e *evaluator) walk() {
-	e.binds = map[string]val{}
-	var fns []fnRange
+	e.binds = map[string]value{}
+	var functions []functionRange
 	for i := 0; i < len(e.tokens); i++ {
-		for len(fns) > 0 && i >= fns[len(fns)-1].end {
-			fns = fns[:len(fns)-1]
+		for len(functions) > 0 && i >= functions[len(functions)-1].end {
+			functions = functions[:len(functions)-1]
 		}
 		t := e.tokens[i]
 		switch t.kind {
-		case tIdent:
-		case tPunct:
-			if t.text == "|" && i+2 < len(e.tokens) && e.tokens[i+1].kind == tIdent && e.punct(i+2, "|") && e.punct(i-1, ")") {
+		case tIdentifier:
+		case tPunctuation:
+			if t.text == "|" && i+2 < len(e.tokens) && e.tokens[i+1].kind == tIdentifier && e.punctuation(i+2, "|") && e.punctuation(i-1, ")") {
 				// if (b.lazyDependency("x", .{})) |dep| - bind the capture.
-				if o := e.m[i-1]; o > 0 && e.at(o-1, tIdent, "if") || o > 0 && e.at(o-1, tIdent, "while") {
+				if o := e.m[i-1]; o > 0 && e.at(o-1, tIdentifier, "if") || o > 0 && e.at(o-1, tIdentifier, "while") {
 					if v := e.eval(o+1, i-1); v.kind != 0 {
 						e.binds[e.tokens[i+1].text] = v
 					}
@@ -127,45 +127,45 @@ func (e *evaluator) walk() {
 		}
 		switch t.text {
 		case "fn":
-			if i+2 < len(e.tokens) && e.tokens[i+1].kind == tIdent && e.punct(i+2, "(") {
-				if body := e.fnBody(i + 2); body > 0 {
-					fns = append(fns, fnRange{e.tokens[i+1].text, body, e.m[body]})
+			if i+2 < len(e.tokens) && e.tokens[i+1].kind == tIdentifier && e.punctuation(i+2, "(") {
+				if body := e.functionBody(i + 2); body > 0 {
+					functions = append(functions, functionRange{e.tokens[i+1].text, body, e.m[body]})
 				}
 			}
 		case "const", "var":
-			if i+1 < len(e.tokens) && e.tokens[i+1].kind == tIdent {
+			if i+1 < len(e.tokens) && e.tokens[i+1].kind == tIdentifier {
 				e.bind(e.tokens[i+1].text, i+2)
 			}
 		case "return":
-			if len(fns) > 0 {
+			if len(functions) > 0 {
 				if v := e.eval(i+1, len(e.tokens)); v.kind != 0 {
-					e.fns[fns[len(fns)-1].name] = v
+					e.functions[functions[len(functions)-1].name] = v
 				}
 			}
 		default:
 			switch {
-			case e.punct(i-1, ".") && e.punct(i+1, "=") && e.at(i-2, tPunct, "{") || e.punct(i-1, ".") && e.punct(i+1, "=") && e.punct(i-2, ","):
+			case e.punctuation(i-1, ".") && e.punctuation(i+1, "=") && e.at(i-2, tPunctuation, "{") || e.punctuation(i-1, ".") && e.punctuation(i+1, "=") && e.punctuation(i-2, ","):
 				e.field(i)
-			case e.punct(i+1, "=") && (i == 0 || e.punct(i-1, ";") || e.punct(i-1, "{") || e.punct(i-1, "}")):
+			case e.punctuation(i+1, "=") && (i == 0 || e.punctuation(i-1, ";") || e.punctuation(i-1, "{") || e.punctuation(i-1, "}")):
 				e.bind(t.text, i+1) // x = ...;
-			case e.punct(i-1, ".") && e.punct(i+1, "=") && e.at(i-2, tIdent, "self"):
+			case e.punctuation(i-1, ".") && e.punctuation(i+1, "=") && e.at(i-2, tIdentifier, "self"):
 				e.bindTo("."+t.text, i+2)
-			case e.punct(i+1, "(") && e.record:
+			case e.punctuation(i+1, "(") && e.record:
 				e.call(i)
 			}
 		}
 	}
 }
 
-// fnBody returns the index of a function's body brace, given its parameter list.
-func (e *evaluator) fnBody(params int) int {
-	i := e.skip(params)
+// functionBody returns the index of a function's body brace, given its parameter list.
+func (e *evaluator) functionBody(parameters int) int {
+	i := e.skip(parameters)
 	for end := min(len(e.tokens), i+maxScan); i < end; {
 		t := e.tokens[i]
-		if t.kind == tPunct && t.text == ";" {
+		if t.kind == tPunctuation && t.text == ";" {
 			return -1
 		}
-		if t.kind == tPunct && t.text == "{" {
+		if t.kind == tPunctuation && t.text == "{" {
 			if e.typeBody(i) {
 				i = e.skip(i)
 				continue
@@ -183,11 +183,11 @@ func (e *evaluator) fnBody(params int) int {
 // bind evaluates the declaration or assignment whose type or = follows at i.
 func (e *evaluator) bind(name string, i int) {
 	end := min(len(e.tokens), i+maxScan)
-	eq := e.until(i, end, "=", ";", "}", ")")
-	if !e.punct(eq, "=") {
+	equalsAt := e.until(i, end, "=", ";", "}", ")")
+	if !e.punctuation(equalsAt, "=") {
 		return
 	}
-	e.bindTo(name, eq+1)
+	e.bindTo(name, equalsAt+1)
 }
 
 // bindTo binds name to the value from i. The value's chain ends by itself, so it is
@@ -205,16 +205,16 @@ func (e *evaluator) bindTo(name string, i int) {
 // binds ".name" so deps.name reads it back.
 func (e *evaluator) field(i int) {
 	name := e.tokens[i].text
-	grp := e.open[i]
-	if grp < 0 || e.m[grp] < grp {
+	group := e.open[i]
+	if group < 0 || e.m[group] < group {
 		return // not inside a closed struct literal
 	}
-	end := e.m[grp]
-	if name == "name" && e.str(i+2) && (e.punct(i+3, ",") || e.punct(i+3, "}")) {
+	end := e.m[group]
+	if name == "name" && e.isString(i+2) && (e.punctuation(i+3, ",") || e.punctuation(i+3, "}")) {
 		if e.record {
 			// .module = m beside it, before or after, in the same literal.
-			for j := grp + 1; j < end && j < grp+maxScan; j = e.skip(j) {
-				if e.at(j, tIdent, "module") && e.punct(j-1, ".") && e.punct(j+1, "=") {
+			for j := group + 1; j < end && j < group+maxScan; j = e.skip(j) {
+				if e.at(j, tIdentifier, "module") && e.punctuation(j-1, ".") && e.punctuation(j+1, "=") {
 					e.wire(e.tokens[i+2].text, e.eval(j+2, end))
 					break
 				}
@@ -227,14 +227,14 @@ func (e *evaluator) field(i int) {
 	}
 }
 
-func (e *evaluator) wire(name string, v val) {
+func (e *evaluator) wire(name string, v value) {
 	if e.record && name != "" && len(e.facts.wires[name]) < maxWires {
 		e.facts.wires[name] = append(e.facts.wires[name], v)
 	}
 }
 
-// args returns the argument ranges of the call whose parenthesis is at p.
-func (e *evaluator) args(p int) [][2]int {
+// arguments returns the argument ranges of the call whose parenthesis is at p.
+func (e *evaluator) arguments(p int) [][2]int {
 	end := e.m[p]
 	if end < 0 {
 		return nil
@@ -258,42 +258,42 @@ func (e *evaluator) call(i int) {
 	if !wiring[name] && !compileSteps[name] {
 		return
 	}
-	args := e.args(i + 1)
-	named := len(args) >= 1 && e.str(args[0][0]) && args[0][1] == args[0][0]+1
+	arguments := e.arguments(i + 1)
+	named := len(arguments) >= 1 && e.isString(arguments[0][0]) && arguments[0][1] == arguments[0][0]+1
 	switch {
-	case name == "addImport" && named && len(args) >= 2:
-		e.wire(e.tokens[args[0][0]].text, e.eval(args[1][0], args[1][1]))
-	case name == "addAnonymousImport" && named && len(args) >= 2:
-		e.wire(e.tokens[args[0][0]].text, e.module(args[1][0], args[1][1]))
+	case name == "addImport" && named && len(arguments) >= 2:
+		e.wire(e.tokens[arguments[0][0]].text, e.eval(arguments[1][0], arguments[1][1]))
+	case name == "addAnonymousImport" && named && len(arguments) >= 2:
+		e.wire(e.tokens[arguments[0][0]].text, e.module(arguments[1][0], arguments[1][1]))
 	case (name == "addOptions" || name == "addOptionsModule") && named:
-		e.wire(e.tokens[args[0][0]].text, val{kind: 'g'})
-	case name == "addModule" && named && len(args) >= 2:
-		if e.punct(args[1][0], ".") && e.punct(args[1][0]+1, "{") {
-			if v := e.module(args[1][0], args[1][1]); v.path != "" {
-				if _, ok := e.facts.exports[e.tokens[args[0][0]].text]; !ok {
-					e.facts.exports[e.tokens[args[0][0]].text] = v.path
+		e.wire(e.tokens[arguments[0][0]].text, value{kind: 'g'})
+	case name == "addModule" && named && len(arguments) >= 2:
+		if e.punctuation(arguments[1][0], ".") && e.punctuation(arguments[1][0]+1, "{") {
+			if v := e.module(arguments[1][0], arguments[1][1]); v.path != "" {
+				if _, ok := e.facts.exports[e.tokens[arguments[0][0]].text]; !ok {
+					e.facts.exports[e.tokens[arguments[0][0]].text] = v.path
 				}
 			}
 		} else {
-			e.wire(e.tokens[args[0][0]].text, e.eval(args[1][0], args[1][1]))
+			e.wire(e.tokens[arguments[0][0]].text, e.eval(arguments[1][0], arguments[1][1]))
 		}
-	case compileSteps[name] && len(args) >= 1:
-		if v := e.compile(args[0][0], args[0][1]); v.path != "" {
+	case compileSteps[name] && len(arguments) >= 1:
+		if v := e.compile(arguments[0][0], arguments[0][1]); v.path != "" {
 			e.facts.roots = append(e.facts.roots, croot{file: v.path, test: name == "addTest"})
 		}
 	}
 }
 
-// optField finds .name = value at the top level of the struct literal in [i, end)
+// optionField finds .name = value at the top level of the struct literal in [i, end)
 // and returns the value's range.
-func (e *evaluator) optField(i, end int, names ...string) (int, int, bool) {
+func (e *evaluator) optionField(i, end int, names ...string) (int, int, bool) {
 	for ; i < end; i++ {
-		if !e.punct(i, "{") || e.m[i] < 0 {
+		if !e.punctuation(i, "{") || e.m[i] < 0 {
 			continue
 		}
 		close := e.m[i]
 		for j := i + 1; j < close; j = e.skip(j) {
-			if e.punct(j, ".") && j+2 < close && e.tokens[j+1].kind == tIdent && e.punct(j+2, "=") {
+			if e.punctuation(j, ".") && j+2 < close && e.tokens[j+1].kind == tIdentifier && e.punctuation(j+2, "=") {
 				for _, n := range names {
 					if e.tokens[j+1].text == n {
 						return j + 3, e.until(j+3, close, ","), true
@@ -308,139 +308,139 @@ func (e *evaluator) optField(i, end int, names ...string) (int, int, bool) {
 
 // module is the module described by options in [i, end): its root source file, or
 // generated without one.
-func (e *evaluator) module(i, end int) val {
-	if a, b, ok := e.optField(i, end, "root_source_file", "source_file"); ok {
+func (e *evaluator) module(i, end int) value {
+	if a, b, ok := e.optionField(i, end, "root_source_file", "source_file"); ok {
 		if v := e.eval(a, b); v.kind == 'f' {
-			return val{kind: 'm', path: v.path}
+			return value{kind: 'm', path: v.path}
 		}
-		return val{kind: 'm'} // a generated file
+		return value{kind: 'm'} // a generated file
 	}
-	return val{kind: 'm'}
+	return value{kind: 'm'}
 }
 
 // compile is the compile step described by options in [i, end), with its root
 // module's source file.
-func (e *evaluator) compile(i, end int) val {
-	if a, b, ok := e.optField(i, end, "root_module"); ok {
+func (e *evaluator) compile(i, end int) value {
+	if a, b, ok := e.optionField(i, end, "root_module"); ok {
 		v := e.eval(a, b)
-		return val{kind: 'c', path: v.path}
+		return value{kind: 'c', path: v.path}
 	}
-	if a, b, ok := e.optField(i, end, "root_source_file"); ok {
+	if a, b, ok := e.optionField(i, end, "root_source_file"); ok {
 		if v := e.eval(a, b); v.kind == 'f' {
-			return val{kind: 'c', path: v.path}
+			return value{kind: 'c', path: v.path}
 		}
 	}
-	return val{kind: 'c'}
+	return value{kind: 'c'}
 }
 
 // file is a path of the build root.
-func (e *evaluator) file(p string) val {
+func (e *evaluator) file(p string) value {
 	if p == "" || strings.HasPrefix(p, "/") {
-		return val{}
+		return value{}
 	}
-	return val{kind: 'f', path: path.Clean(path.Join(e.root, p))}
+	return value{kind: 'f', path: path.Clean(path.Join(e.root, p))}
 }
 
 // eval evaluates the expression in [i, end): a postfix chain from an identifier, a
 // call, a struct literal or a parenthesized expression.
-func (e *evaluator) eval(i, end int) val {
+func (e *evaluator) eval(i, end int) value {
 	if e.depth > 16 {
-		return val{}
+		return value{}
 	}
 	e.depth++
 	defer func() { e.depth-- }()
-	for i < end && e.tokens[i].kind == tPunct && (e.tokens[i].text == "&" || e.tokens[i].text == "(" && e.m[i] == end-1) {
+	for i < end && e.tokens[i].kind == tPunctuation && (e.tokens[i].text == "&" || e.tokens[i].text == "(" && e.m[i] == end-1) {
 		if e.tokens[i].text == "(" {
 			end--
 		}
 		i++
 	}
-	for i < end && e.at(i, tIdent, "try") {
+	for i < end && e.at(i, tIdentifier, "try") {
 		i++
 	}
 	if i >= end {
-		return val{}
+		return value{}
 	}
-	var cur val
+	var current value
 	head := ""
 	t := e.tokens[i]
 	switch {
-	case t.kind == tIdent && e.punct(i+1, "(") && e.m[i+1] > 0:
-		cur = e.fns[t.text]
+	case t.kind == tIdentifier && e.punctuation(i+1, "(") && e.m[i+1] > 0:
+		current = e.functions[t.text]
 		i = e.m[i+1] + 1
-	case t.kind == tIdent:
+	case t.kind == tIdentifier:
 		head = t.text
-		cur = e.binds[t.text]
+		current = e.binds[t.text]
 		i++
-	case e.punct(i, ".") && e.punct(i+1, "{"):
-		if a, b, ok := e.optField(i, end, "path"); ok && e.str(a) && b == a+1 {
+	case e.punctuation(i, ".") && e.punctuation(i+1, "{"):
+		if a, b, ok := e.optionField(i, end, "path"); ok && e.isString(a) && b == a+1 {
 			return e.file(e.tokens[a].text)
 		}
-		if a, b, ok := e.optField(i, end, "src_path"); ok {
-			if c, d, ok := e.optField(a, b, "sub_path"); ok && e.str(c) && d == c+1 {
+		if a, b, ok := e.optionField(i, end, "src_path"); ok {
+			if c, d, ok := e.optionField(a, b, "sub_path"); ok && e.isString(c) && d == c+1 {
 				return e.file(e.tokens[c].text)
 			}
 		}
-		return val{}
+		return value{}
 	default:
-		return val{}
+		return value{}
 	}
 	for n := 0; i < end; n++ {
-		if e.punct(i, ".?") {
+		if e.punctuation(i, ".?") {
 			i++
 			continue
 		}
-		if !e.punct(i, ".") || i+1 >= end || e.tokens[i+1].kind != tIdent {
+		if !e.punctuation(i, ".") || i+1 >= end || e.tokens[i+1].kind != tIdentifier {
 			break
 		}
 		name := e.tokens[i+1].text
-		if !e.punct(i+2, "(") || e.m[i+2] < 0 {
+		if !e.punctuation(i+2, "(") || e.m[i+2] < 0 {
 			// A field: a compile step's root module, or deps.x bound by .x = ...
 			switch {
-			case name == "root_module" && cur.kind == 'c':
-				cur = val{kind: 'm', path: cur.path}
-			case cur.kind == 0:
-				cur = e.binds["."+name]
+			case name == "root_module" && current.kind == 'c':
+				current = value{kind: 'm', path: current.path}
+			case current.kind == 0:
+				current = e.binds["."+name]
 			default:
-				cur = val{}
+				current = value{}
 			}
 			i += 2
 			continue
 		}
 		p := i + 2
-		var args [][2]int
+		var arguments [][2]int
 		if chained[name] || compileSteps[name] {
-			args = e.args(p)
+			arguments = e.arguments(p)
 		}
-		str := ""
-		if len(args) > 0 && e.str(args[0][0]) && args[0][1] == args[0][0]+1 {
-			str = e.tokens[args[0][0]].text
+		literal := ""
+		if len(arguments) > 0 && e.isString(arguments[0][0]) && arguments[0][1] == arguments[0][0]+1 {
+			literal = e.tokens[arguments[0][0]].text
 		}
 		switch {
-		case (name == "dependency" || name == "lazyDependency") && str != "":
-			cur = val{kind: 'd', dep: str}
-		case name == "module" && cur.kind == 'd' && cur.mod == "" && str != "":
-			cur.mod = str
-		case name == "path" && n == 0 && (head == "b" || head == "builder") && str != "" && args[0][1] == args[0][0]+1:
-			cur = e.file(str)
-		case name == "createModule" || name == "addModule" && len(args) >= 2:
-			if len(args) == 0 {
-				cur = val{kind: 'g'} // options.createModule()
+		case (name == "dependency" || name == "lazyDependency") && literal != "":
+			current = value{kind: 'd', dependency: literal}
+		case name == "module" && current.kind == 'd' && current.module == "" && literal != "":
+			current.module = literal
+		case name == "path" && n == 0 && (head == "b" || head == "builder") && literal != "" && arguments[0][1] == arguments[0][0]+1:
+			current = e.file(literal)
+		case name == "createModule" || name == "addModule" && len(arguments) >= 2:
+			if len(arguments) == 0 {
+				current = value{kind: 'g'} // options.createModule()
 				break
 			}
-			a := args[len(args)-1]
-			cur = e.module(a[0], a[1])
-			if cur.path == "" {
-				cur = val{kind: 'g'}
+			a := arguments[len(arguments)-1]
+			current = e.module(a[0], a[1])
+			if current.path == "" {
+				current = value{kind: 'g'}
 			}
 		case name == "addOptions":
-			cur = val{kind: 'g'}
-		case compileSteps[name] && len(args) >= 1:
-			cur = e.compile(args[0][0], args[0][1])
+			current = value{kind: 'g'}
+		case compileSteps[name] && len(arguments) >= 1:
+			current = e.compile(arguments[0][0], arguments[0][1])
 		default:
-			cur = val{}
+			current = value{}
 		}
 		i = e.m[p] + 1
 	}
-	return cur
+	return current
 }

@@ -22,14 +22,14 @@ import (
 // Verifies: REQ-SUP-009, REQ-SUP-013
 func TestJavaScriptLockTreesOffline(t *testing.T) {
 	for _, c := range []struct {
-		dir      string
-		fsevents bool
+		directory string
+		fsevents  bool
 	}{
 		{"npm-v3", false}, {"npm-v1", false}, {"berry", true},
 		{"pnpm-v9", true}, {"pnpm-v6", true}, {"pnpm-v5", true},
 	} {
-		t.Run(c.dir, func(t *testing.T) {
-			root := "../lang/javascript/testdata/locktree/" + c.dir
+		t.Run(c.directory, func(t *testing.T) {
+			root := "../lang/javascript/testdata/locktree/" + c.directory
 			g, _, err := Run(context.Background(), root, Options{Plugins: []lang.Plugin{javascript.Plugin{}}, ResolveDepth: -1})
 			if err != nil {
 				t.Fatal(err)

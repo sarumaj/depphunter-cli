@@ -31,7 +31,7 @@ describe('how big a file is', () => {
   // Verifies: REQ-MAP-058, REQ-MAP-060
   it('falls back to bytes for a file nothing read', () => {
     // The case this exists for: a model, an image, anything over the size limit. It
-    // has to come out as a building with a storey on it rather than the bare floor
+    // has to come out as a building with a story on it rather than the bare floor
     // every one of them shared while lines were the only measure.
     const blob = file('bug.glb', { bytes: 4_200_000 });
     assert.equal(unread(blob), true);

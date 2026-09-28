@@ -57,7 +57,7 @@ type simpleFile struct {
 // host's or path's credential, or none.
 //
 // Implements: REQ-SUP-067
-func (c *Client) pypiSimple(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) pypiSimple(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	page := strings.TrimRight(index, "/") + "/" + pypiName(t.Package) + "/"
 	files, err := c.simpleFiles(ctx, page)
 	if err != nil {
@@ -90,20 +90,20 @@ func (c *Client) pypiSimple(ctx context.Context, index string, t lang.Target) ([
 
 // simpleFiles reads a project page, in whichever form the index answered with.
 func (c *Client) simpleFiles(ctx context.Context, page string) ([]simpleFile, error) {
-	resp, err := c.do(ctx, page, simpleAccept, "")
+	response, err := c.do(ctx, page, simpleAccept, "")
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, &statusError{url: page, status: resp.Status, code: resp.StatusCode}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, &statusError{url: page, status: response.Status, code: response.StatusCode}
 	}
-	body, err := readLimited(resp)
+	body, err := readLimited(response)
 	if err != nil {
 		return nil, err
 	}
-	base := resp.Request.URL // relative links are relative to where the page was served
-	media, _, _ := mime.ParseMediaType(resp.Header.Get("Content-Type"))
+	base := response.Request.URL // relative links are relative to where the page was served
+	media, _, _ := mime.ParseMediaType(response.Header.Get("Content-Type"))
 	if strings.HasSuffix(media, "+json") || media == "application/json" {
 		return simpleJSON(body, base)
 	}
@@ -130,16 +130,16 @@ func simpleJSON(body []byte, base *url.URL) ([]simpleFile, error) {
 		if err != nil {
 			continue
 		}
-		meta := f.CoreMetadata
-		if len(meta) == 0 {
-			meta = f.DistInfoMetadata // the name before PEP 714
+		coreMetadata := f.CoreMetadata
+		if len(coreMetadata) == 0 {
+			coreMetadata = f.DistInfoMetadata // the name before PEP 714
 		}
 		file := simpleFile{name: f.Filename, url: u.String(), yanked: truthy(f.Yanked)}
 		var hashes map[string]string
-		if json.Unmarshal(meta, &hashes) == nil && hashes != nil {
+		if json.Unmarshal(coreMetadata, &hashes) == nil && hashes != nil {
 			file.metadata, file.hashes = true, hashes
 		} else {
-			file.metadata = truthy(meta)
+			file.metadata = truthy(coreMetadata)
 		}
 		out = append(out, file)
 	}
@@ -173,8 +173,8 @@ func simpleHTML(body []byte, base *url.URL) []simpleFile {
 	}
 	var out []simpleFile
 	for _, m := range anchorTag.FindAllSubmatch(body, -1) {
-		attrs := attributes(m[1])
-		href, ok := attrs["href"]
+		attributeList := attributes(m[1])
+		href, ok := attributeList["href"]
 		if !ok {
 			continue
 		}
@@ -186,14 +186,14 @@ func simpleHTML(body []byte, base *url.URL) []simpleFile {
 		if file.name == "" {
 			file.name, _ = url.PathUnescape(path.Base(u.Path))
 		}
-		_, file.yanked = attrs["data-yanked"]
-		meta, ok := attrs["data-core-metadata"]
+		_, file.yanked = attributeList["data-yanked"]
+		coreMetadata, ok := attributeList["data-core-metadata"]
 		if !ok {
-			meta, ok = attrs["data-dist-info-metadata"]
+			coreMetadata, ok = attributeList["data-dist-info-metadata"]
 		}
-		if ok && !strings.EqualFold(meta, "false") {
+		if ok && !strings.EqualFold(coreMetadata, "false") {
 			file.metadata = true
-			if name, value, ok := strings.Cut(meta, "="); ok {
+			if name, value, ok := strings.Cut(coreMetadata, "="); ok {
 				file.hashes = map[string]string{strings.ToLower(name): value}
 			}
 		}
@@ -227,8 +227,8 @@ func metadataURL(file string) string {
 // release that is neither yanked nor a pre-release - a pre-release only when there
 // is nothing else, as pip does. Files come back in the order their metadata is
 // worth trying: advertised metadata first, then wheels before source archives.
-func pickRelease(files []simpleFile, pkg, want string) (string, []simpleFile) {
-	name := pypiName(pkg)
+func pickRelease(files []simpleFile, packageName, want string) (string, []simpleFile) {
+	name := pypiName(packageName)
 	type release struct {
 		file    simpleFile
 		version string
@@ -249,9 +249,9 @@ func pickRelease(files []simpleFile, pkg, want string) (string, []simpleFile) {
 		version = strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(want), "=="))
 		target, targetOK = parsePEP440(version)
 	} else {
-		for _, pre := range []bool{false, true} {
+		for _, allowPrerelease := range []bool{false, true} {
 			for _, r := range all {
-				if r.ok && !r.file.yanked && (pre || !r.v.prerelease()) && (!targetOK || r.v.compare(target) > 0) {
+				if r.ok && !r.file.yanked && (allowPrerelease || !r.v.prerelease()) && (!targetOK || r.v.compare(target) > 0) {
 					version, target, targetOK = r.version, r.v, true
 				}
 			}
@@ -350,11 +350,11 @@ func metadataRequires(body []byte) []string {
 // pep440 is a version as PEP 440 orders them. The local label (+ubuntu1) plays no
 // part in picking a release, and is dropped.
 type pep440 struct {
-	epoch   int
-	release []int
-	pre     [2]int // kind (-1 a dev release of a final, 0 a, 1 b, 2 rc, 3 none) and number
-	post    int    // -1 for none
-	dev     int    // math.MaxInt for none
+	epoch          int
+	release        []int
+	prereleaseKind [2]int // kind (-1 a dev release of a final, 0 a, 1 b, 2 rc, 3 none) and number
+	post           int    // -1 for none
+	dev            int    // math.MaxInt for none
 }
 
 // pep440Pattern is PEP 440's own, with its alternative spellings.
@@ -370,7 +370,7 @@ func parsePEP440(s string) (v pep440, ok bool) {
 	if m == nil {
 		return v, false
 	}
-	num := func(s string) int {
+	number := func(s string) int {
 		if s == "" {
 			return 0
 		}
@@ -381,31 +381,31 @@ func parsePEP440(s string) (v pep440, ok bool) {
 		return n
 	}
 	ok = true
-	v.epoch = num(m[1])
+	v.epoch = number(m[1])
 	for _, part := range strings.Split(m[2], ".") {
-		v.release = append(v.release, num(part))
+		v.release = append(v.release, number(part))
 	}
 	switch strings.ToLower(m[3]) {
 	case "":
-		v.pre[0] = 3
+		v.prereleaseKind[0] = 3
 	case "a", "alpha":
-		v.pre = [2]int{0, num(m[4])}
+		v.prereleaseKind = [2]int{0, number(m[4])}
 	case "b", "beta":
-		v.pre = [2]int{1, num(m[4])}
+		v.prereleaseKind = [2]int{1, number(m[4])}
 	default:
-		v.pre = [2]int{2, num(m[4])}
+		v.prereleaseKind = [2]int{2, number(m[4])}
 	}
 	v.post, v.dev = -1, math.MaxInt
 	switch {
 	case m[5] != "":
-		v.post = num(m[5])
+		v.post = number(m[5])
 	case m[6] != "":
-		v.post = num(m[7])
+		v.post = number(m[7])
 	}
 	if m[8] != "" {
-		v.dev = num(m[9])
-		if v.pre[0] == 3 && v.post < 0 {
-			v.pre[0] = -1 // 1.0.dev1 comes before 1.0a1
+		v.dev = number(m[9])
+		if v.prereleaseKind[0] == 3 && v.post < 0 {
+			v.prereleaseKind[0] = -1 // 1.0.dev1 comes before 1.0a1
 		}
 	}
 	return v, ok
@@ -413,7 +413,7 @@ func parsePEP440(s string) (v pep440, ok bool) {
 
 // prerelease reports whether the version is an alpha, beta, candidate or
 // development release.
-func (v pep440) prerelease() bool { return v.pre[0] != 3 || v.dev != math.MaxInt }
+func (v pep440) prerelease() bool { return v.prereleaseKind[0] != 3 || v.dev != math.MaxInt }
 
 // compare orders two versions as PEP 440 does: 1.0.dev1 < 1.0a1 < 1.0 < 1.0.post1,
 // and 1.0 == 1.0.0.
@@ -433,7 +433,7 @@ func (v pep440) compare(w pep440) int {
 			return cmp.Compare(x, y)
 		}
 	}
-	for _, d := range [...][2]int{{v.pre[0], w.pre[0]}, {v.pre[1], w.pre[1]}, {v.post, w.post}, {v.dev, w.dev}} {
+	for _, d := range [...][2]int{{v.prereleaseKind[0], w.prereleaseKind[0]}, {v.prereleaseKind[1], w.prereleaseKind[1]}, {v.post, w.post}, {v.dev, w.dev}} {
 		if d[0] != d[1] {
 			return cmp.Compare(d[0], d[1])
 		}

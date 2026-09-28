@@ -24,20 +24,20 @@ import (
 // Verifies: REQ-OCAML-001, REQ-OCAML-002, REQ-OCAML-003, REQ-OCAML-004, REQ-OCAML-005, REQ-OCAML-006
 // Verifies: REQ-OCAML-007, REQ-OCAML-008, REQ-OCAML-009
 func TestDuneProject(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	cmdliner := lang.Target{Ecosystem: ecoOpam, Package: "cmdliner", Version: "0123456789abcdef0123456789abcdef01234567", Origin: "https://github.com/dbuenzli/cmdliner.git", Pinned: true}
-	re := lang.Target{Ecosystem: ecoOpam, Package: "re", Version: "main", Origin: "https://github.com/ocaml/ocaml-re.git", Floating: true}
-	lwt := lang.Target{Ecosystem: ecoOpam, Package: "lwt", Version: "5.7.0", Requested: ">= 5.6 & < 6", Pinned: true}
-	yojson := lang.Target{Ecosystem: ecoOpam, Package: "yojson", Version: "2.1.0", Pinned: true}
-	fmt := lang.Target{Ecosystem: ecoOpam, Package: "fmt", Version: "0.9.0", Pinned: true}
-	logs := lang.Target{Ecosystem: ecoOpam, Package: "logs", Version: "0.7.0", Pinned: true}
-	ppxDeriving := lang.Target{Ecosystem: ecoOpam, Package: "ppx_deriving", Version: "5.2.1", Requested: ">= 5.0", Pinned: true}
-	alcotest := lang.Target{Ecosystem: ecoOpam, Package: "alcotest", Floating: true}
-	base := lang.Target{Ecosystem: ecoOpam, Package: "base", Unresolved: true}
-	lockedLwt := lang.Target{Ecosystem: ecoOpam, Package: "lwt", Version: "5.9.1", Pinned: true}
-	stdlib := lang.Target{Ecosystem: ecoStd, Package: "stdlib"}
-	unix := lang.Target{Ecosystem: ecoStd, Package: "unix"}
-	str := lang.Target{Ecosystem: ecoStd, Package: "str"}
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	cmdliner := lang.Target{Ecosystem: ecosystemOpam, Package: "cmdliner", Version: "0123456789abcdef0123456789abcdef01234567", Origin: "https://github.com/dbuenzli/cmdliner.git", Pinned: true}
+	re := lang.Target{Ecosystem: ecosystemOpam, Package: "re", Version: "main", Origin: "https://github.com/ocaml/ocaml-re.git", Floating: true}
+	lwt := lang.Target{Ecosystem: ecosystemOpam, Package: "lwt", Version: "5.7.0", Requested: ">= 5.6 & < 6", Pinned: true}
+	yojson := lang.Target{Ecosystem: ecosystemOpam, Package: "yojson", Version: "2.1.0", Pinned: true}
+	fmt := lang.Target{Ecosystem: ecosystemOpam, Package: "fmt", Version: "0.9.0", Pinned: true}
+	logs := lang.Target{Ecosystem: ecosystemOpam, Package: "logs", Version: "0.7.0", Pinned: true}
+	ppxDeriving := lang.Target{Ecosystem: ecosystemOpam, Package: "ppx_deriving", Version: "5.2.1", Requested: ">= 5.0", Pinned: true}
+	alcotest := lang.Target{Ecosystem: ecosystemOpam, Package: "alcotest", Floating: true}
+	base := lang.Target{Ecosystem: ecosystemOpam, Package: "base", Unresolved: true}
+	lockedLwt := lang.Target{Ecosystem: ecosystemOpam, Package: "lwt", Version: "5.9.1", Pinned: true}
+	stdlib := lang.Target{Ecosystem: ecosystemStd, Package: "stdlib"}
+	unix := lang.Target{Ecosystem: ecosystemStd, Package: "unix"}
+	str := lang.Target{Ecosystem: ecosystemStd, Package: "str"}
 	imports := map[string]map[string]lang.Target{
 		"bin/dune": {
 			"libraries: shop":     {Local: "lib/dune"},
@@ -65,14 +65,14 @@ func TestDuneProject(t *testing.T) {
 			"String":    base,
 		},
 		"dune-project": {
-			"depends: dune":         {Ecosystem: ecoOpam, Package: "dune", Floating: true},
+			"depends: dune":         {Ecosystem: ecosystemOpam, Package: "dune", Floating: true},
 			"depends: lwt":          lwt,
 			"depends: yojson":       yojson,
 			"depends: alcotest":     alcotest,
 			"depends: ppx_deriving": ppxDeriving,
 			"depends: fmt":          fmt,
 			"depends: logs":         logs,
-			"depends: conf-libev":   {Ecosystem: ecoOpam, Package: "conf-libev", Floating: true},
+			"depends: conf-libev":   {Ecosystem: ecosystemOpam, Package: "conf-libev", Floating: true},
 			"depends: shop":         {Local: "shop.opam"},
 			"depends: cmdliner":     cmdliner,
 			"depends: re":           re,
@@ -153,7 +153,7 @@ func TestDuneProject(t *testing.T) {
 			"Yojson.Safe":           yojson,
 		},
 		"shop-cli.opam": {
-			"depends: dune":         {Ecosystem: ecoOpam, Package: "dune", Version: ">= 3.10", Floating: true},
+			"depends: dune":         {Ecosystem: ecosystemOpam, Package: "dune", Version: ">= 3.10", Floating: true},
 			"depends: shop":         {Local: "shop.opam"},
 			"depends: cmdliner":     cmdliner,
 			"depends: re":           re,
@@ -161,22 +161,22 @@ func TestDuneProject(t *testing.T) {
 			"pin-depends: re":       re,
 		},
 		"shop.opam": {
-			"depends: dune":         {Ecosystem: ecoOpam, Package: "dune", Version: ">= 3.10", Floating: true},
+			"depends: dune":         {Ecosystem: ecosystemOpam, Package: "dune", Version: ">= 3.10", Floating: true},
 			"depends: lwt":          lwt,
 			"depends: yojson":       yojson,
 			"depends: alcotest":     alcotest,
 			"depends: ppx_deriving": ppxDeriving,
 			"depends: fmt":          fmt,
 			"depends: logs":         logs,
-			"depends: conf-libev":   {Ecosystem: ecoOpam, Package: "conf-libev", Floating: true},
-			"depopts: graphics":     {Ecosystem: ecoOpam, Package: "graphics", Floating: true},
+			"depends: conf-libev":   {Ecosystem: ecosystemOpam, Package: "conf-libev", Floating: true},
+			"depopts: graphics":     {Ecosystem: ecosystemOpam, Package: "graphics", Floating: true},
 		},
 		"shop.opam.locked": {
-			"depends: lwt":           {Ecosystem: ecoOpam, Package: "lwt", Version: "5.7.0", Pinned: true},
+			"depends: lwt":           {Ecosystem: ecosystemOpam, Package: "lwt", Version: "5.7.0", Pinned: true},
 			"depends: fmt":           fmt,
 			"depends: logs":          logs,
-			"depends: ppx_deriving":  {Ecosystem: ecoOpam, Package: "ppx_deriving", Version: "5.2.1", Pinned: true},
-			"depends: ocplib-endian": {Ecosystem: ecoOpam, Package: "ocplib-endian", Version: "1.2", Pinned: true},
+			"depends: ppx_deriving":  {Ecosystem: ecosystemOpam, Package: "ppx_deriving", Version: "5.2.1", Pinned: true},
+			"depends: ocplib-endian": {Ecosystem: ecosystemOpam, Package: "ocplib-endian", Version: "1.2", Pinned: true},
 		},
 		"test/dune": {
 			"libraries: shop":     {Local: "lib/dune"},
@@ -188,18 +188,18 @@ func TestDuneProject(t *testing.T) {
 			"Shop.Price":  {Local: "lib/price.ml"},
 			"Shop.Cart":   {Local: "lib/cart.ml"},
 			"Yojson.Safe": yojson,
-			"QCheck.Gen":  {Ecosystem: ecoOpam, Package: "qcheck-core", Unresolved: true},
+			"QCheck.Gen":  {Ecosystem: ecosystemOpam, Package: "qcheck-core", Unresolved: true},
 		},
 	}
-	if len(res) != len(imports) {
+	if len(results) != len(imports) {
 		var got []string
-		for f := range res {
+		for f := range results {
 			got = append(got, f)
 		}
-		t.Errorf("analyzed %d files, want %d: %v", len(res), len(imports), got)
+		t.Errorf("analyzed %d files, want %d: %v", len(results), len(imports), got)
 	}
 	for file, want := range imports {
-		langtest.CheckImports(t, res[file], want)
+		langtest.CheckImports(t, results[file], want)
 	}
 	symbols := map[string]map[string]string{
 		"bin/dune":               {"executable main": "component"},
@@ -233,9 +233,9 @@ func TestDuneProject(t *testing.T) {
 		"test/test_shop.ml":      {"test_total": "function"},
 	}
 	for file, want := range symbols {
-		langtest.CheckSymbols(t, res[file], want)
+		langtest.CheckSymbols(t, results[file], want)
 	}
-	for _, s := range res["lib/cart.ml"].Symbols {
+	for _, s := range results["lib/cart.ml"].Symbols {
 		if s.Name == "Id.next" && s.Line != 34 {
 			t.Errorf("Id.next at line %d, want 34", s.Line)
 		}
@@ -248,26 +248,26 @@ func TestDuneProject(t *testing.T) {
 // Verifies: REQ-OCAML-009
 func TestDuneLockDependencies(t *testing.T) {
 	r := newResolver("testdata/repo", langtest.Files(t, "testdata/repo"))
-	for _, tt := range []struct {
-		pkg  lang.Target
-		want []lang.Target
+	for _, test := range []struct {
+		packageTarget lang.Target
+		want          []lang.Target
 	}{
-		{lang.Target{Ecosystem: ecoOpam, Package: "lwt", Version: "5.9.1"}, []lang.Target{
-			{Ecosystem: ecoOpam, Package: "cppo", Version: "1.8.0", Pinned: true},
-			{Ecosystem: ecoOpam, Package: "dune", Version: "3.17.2", Pinned: true},
-			{Ecosystem: ecoOpam, Package: "ocplib-endian", Version: "1.2", Pinned: true},
+		{lang.Target{Ecosystem: ecosystemOpam, Package: "lwt", Version: "5.9.1"}, []lang.Target{
+			{Ecosystem: ecosystemOpam, Package: "cppo", Version: "1.8.0", Pinned: true},
+			{Ecosystem: ecosystemOpam, Package: "dune", Version: "3.17.2", Pinned: true},
+			{Ecosystem: ecosystemOpam, Package: "ocplib-endian", Version: "1.2", Pinned: true},
 		}},
-		{lang.Target{Ecosystem: ecoOpam, Package: "ocplib-endian", Version: "1.2"}, []lang.Target{
-			{Ecosystem: ecoOpam, Package: "cppo", Version: "1.8.0", Pinned: true},
-			{Ecosystem: ecoOpam, Package: "dune", Version: "3.17.2", Pinned: true},
+		{lang.Target{Ecosystem: ecosystemOpam, Package: "ocplib-endian", Version: "1.2"}, []lang.Target{
+			{Ecosystem: ecosystemOpam, Package: "cppo", Version: "1.8.0", Pinned: true},
+			{Ecosystem: ecosystemOpam, Package: "dune", Version: "3.17.2", Pinned: true},
 		}},
 		// Another version than the lock's, and opam's own flat locks, answer nothing.
-		{lang.Target{Ecosystem: ecoOpam, Package: "lwt", Version: "5.7.0"}, nil},
-		{lang.Target{Ecosystem: ecoOpam, Package: "fmt", Version: "0.9.0"}, nil},
-		{lang.Target{Ecosystem: ecoStd, Package: "unix"}, nil},
+		{lang.Target{Ecosystem: ecosystemOpam, Package: "lwt", Version: "5.7.0"}, nil},
+		{lang.Target{Ecosystem: ecosystemOpam, Package: "fmt", Version: "0.9.0"}, nil},
+		{lang.Target{Ecosystem: ecosystemStd, Package: "unix"}, nil},
 	} {
-		if got := r.Dependencies(tt.pkg); !reflect.DeepEqual(got, tt.want) {
-			t.Errorf("%s %s: got %+v, want %+v", tt.pkg.Package, tt.pkg.Version, got, tt.want)
+		if got := r.Dependencies(test.packageTarget); !reflect.DeepEqual(got, test.want) {
+			t.Errorf("%s %s: got %+v, want %+v", test.packageTarget.Package, test.packageTarget.Version, got, test.want)
 		}
 	}
 }
@@ -279,7 +279,7 @@ func TestDuneLockDependencies(t *testing.T) {
 //
 // Verifies: REQ-OCAML-002, REQ-OCAML-003, REQ-OCAML-010, REQ-OCAML-011
 func TestScannerHidesNonCode(t *testing.T) {
-	src := "(* outer (* In.nested *) \"*)\" In.comment *)\n" +
+	source := "(* outer (* In.nested *) \"*)\" In.comment *)\n" +
 		"let s = \"In.string \\\" still\" and c = '\"' and d = '\\'' \n" +
 		"let q = {|In.quoted|} ^ {sql|In.Sql |sql} ^ {%ext|In.Ext|}\n" +
 		"#if FOO\n" +
@@ -299,13 +299,13 @@ func TestScannerHidesNonCode(t *testing.T) {
 		"let r = r.Real.Field.x\n" +
 		"let%expect_test \"t\" = Real.Test.run ()\n" +
 		"let u = Real__Wrapped.x\n"
-	ex, err := Plugin{}.Extract(&scan.File{Path: "m.ml"}, []byte(src))
+	extraction, err := Plugin{}.Extract(&scan.File{Path: "m.ml"}, []byte(source))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var specs []string
-	for _, im := range ex.Imports {
-		specs = append(specs, im.Spec)
+	for _, rawImport := range extraction.Imports {
+		specs = append(specs, rawImport.Spec)
 	}
 	// Real.Sig and Real.S are module types: the module is Real.
 	want := []string{"Real.One", "Real.Two", "Real", "Real.Make", "Real.Arg", "Real.Packed", "Real.Field", "Real.Test", "Real.Wrapped"}
@@ -313,7 +313,7 @@ func TestScannerHidesNonCode(t *testing.T) {
 		t.Errorf("imports %q, want %q", specs, want)
 	}
 	var names []string
-	for _, s := range ex.Symbols {
+	for _, s := range extraction.Symbols {
 		names = append(names, s.Name+" "+s.Kind)
 	}
 	wantSymbols := []string{"s value", "c value", "d value", "q value", "from_if value", "from_else value", "v value", "k value",
@@ -322,10 +322,10 @@ func TestScannerHidesNonCode(t *testing.T) {
 		t.Errorf("symbols %q, want %q", names, wantSymbols)
 	}
 	grammar := "%{ open Ast %}\n/* it's Not.Code */\n%token <Tok.t> A\n%%\nmain: | A { Ast.x } // don't Read.This\n"
-	ex, _ = Plugin{}.Extract(&scan.File{Path: "p.mly"}, []byte(grammar))
+	extraction, _ = Plugin{}.Extract(&scan.File{Path: "p.mly"}, []byte(grammar))
 	specs = nil
-	for _, im := range ex.Imports {
-		specs = append(specs, im.Spec)
+	for _, rawImport := range extraction.Imports {
+		specs = append(specs, rawImport.Spec)
 	}
 	if want := []string{"open Ast", "Tok"}; !reflect.DeepEqual(specs, want) {
 		t.Errorf("grammar imports %q, want %q", specs, want)
@@ -364,8 +364,8 @@ func TestClaims(t *testing.T) {
 //
 // Verifies: REQ-OCAML-006
 func TestSexps(t *testing.T) {
-	src := "; line\n#| block (library) |#\n(library #;(name hidden) (name \"a\\\"b\") (libraries x\n  y))\n(executable (name"
-	got := parseSexps([]byte(src))
+	source := "; line\n#| block (library) |#\n(library #;(name hidden) (name \"a\\\"b\") (libraries x\n  y))\n(executable (name"
+	got := parseSexps([]byte(source))
 	if len(got) != 2 || got[0].value("name") != "a\"b" || len(got[0].field("libraries").atoms()) != 2 ||
 		got[0].field("libraries").atoms()[1].line != 4 || got[1].head() != "executable" {
 		t.Errorf("parsed %+v", got)
@@ -389,15 +389,15 @@ func TestTruncated(t *testing.T) {
 		"module", "module type", "let (", "type (", "class [", "val (", "[%%x", "[@", "{", "Foo.", "open!"} {
 		sources = append(sources, []byte("open A\n"+s))
 	}
-	for _, src := range sources {
-		for i := 0; i <= len(src); i++ {
-			for _, ext := range []string{".ml", ".mll", ".mly"} {
-				readSource(src[:i], ext)
+	for _, source := range sources {
+		for i := 0; i <= len(source); i++ {
+			for _, extension := range []string{".ml", ".mll", ".mly"} {
+				readSource(source[:i], extension)
 			}
-			extractDune(src[:i])
-			extractDuneProject(src[:i])
-			extractWorkspace(src[:i])
-			extractOpam(src[:i])
+			extractDune(source[:i])
+			extractDuneProject(source[:i])
+			extractWorkspace(source[:i])
+			extractOpam(source[:i])
 		}
 	}
 	deep := strings.Repeat("([{ struct begin sig object do ", 100000) + "open A"
@@ -411,7 +411,7 @@ func TestTruncated(t *testing.T) {
 //
 // Verifies: REQ-SUP-054
 func TestWorkspaceRepositories(t *testing.T) {
-	src := []byte(`(lang dune 3.16)
+	source := []byte(`(lang dune 3.16)
 ; a comment
 (repository (name corp) (url git+https://git.corp/opam.git))
 (repository (name "local") (url file:///srv/opam))
@@ -419,7 +419,7 @@ func TestWorkspaceRepositories(t *testing.T) {
 (lock_dir (path dune.lock) (repositories corp :standard))
 (lock_dir (path other.lock) (repositories upstream))
 `)
-	defined, order, listed := WorkspaceRepositories(src)
+	defined, order, listed := WorkspaceRepositories(source)
 	want := []opam.Repository{{Name: "corp", URL: "git+https://git.corp/opam.git"}, {Name: "local", URL: "file:///srv/opam"}}
 	if !reflect.DeepEqual(defined, want) || !reflect.DeepEqual(order, []string{"corp", ":standard"}) || !listed {
 		t.Errorf("got %+v %v %v", defined, order, listed)

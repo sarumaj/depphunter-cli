@@ -43,7 +43,7 @@ import (
 // here; a mirror already names its index and is used as given.
 //
 // Implements: REQ-SUP-024
-func (c *Client) cargoCrate(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) cargoCrate(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	return c.cargoSparse(ctx, cargoIndex(index), t)
 }
 
@@ -60,18 +60,18 @@ func cargoIndex(index string) string {
 
 // cargoSparse reads the last line of a crate's sparse-index file, which is its newest
 // published version, or the line for the version asked for.
-func (c *Client) cargoSparse(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) cargoSparse(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	body, err := c.accept(ctx, index+"/"+sparsePath(t.Package), "text/plain, */*")
 	if err != nil {
 		return nil, err
 	}
 	type line struct {
-		Vers string `json:"vers"`
-		Deps []struct {
-			Name     string `json:"name"`
-			Req      string `json:"req"`
-			Kind     string `json:"kind"`
-			Optional bool   `json:"optional"`
+		Versions     string `json:"vers"`
+		Dependencies []struct {
+			Name        string `json:"name"`
+			Requirement string `json:"req"`
+			Kind        string `json:"kind"`
+			Optional    bool   `json:"optional"`
 			// Registry is the index of a dependency published elsewhere than
 			// the crate itself (a crate of an alternative registry depending
 			// on crates.io).
@@ -88,7 +88,7 @@ func (c *Client) cargoSparse(ctx context.Context, index string, t lang.Target) (
 		if json.Unmarshal([]byte(raw), &l) != nil || l.Yanked {
 			continue
 		}
-		if t.Version != "" && l.Vers == strings.TrimPrefix(t.Version, "v") {
+		if t.Version != "" && l.Versions == strings.TrimPrefix(t.Version, "v") {
 			best = &l
 			break
 		}
@@ -97,19 +97,19 @@ func (c *Client) cargoSparse(ctx context.Context, index string, t lang.Target) (
 	if best == nil {
 		return nil, nil
 	}
-	var out []dep
-	for _, d := range best.Deps {
+	var out []dependency
+	for _, d := range best.Dependencies {
 		if d.Kind != "" && d.Kind != "normal" || d.Optional {
 			continue
 		}
-		out = append(out, dep{Name: d.Name, Version: d.Req, Registry: cargoDepRegistry(d.Registry)})
+		out = append(out, dependency{Name: d.Name, Version: d.Requirement, Registry: cargoDependencyRegistry(d.Registry)})
 	}
 	return out, nil
 }
 
-// cargoDepRegistry is what a sparse index line says about where a dependency is
+// cargoDependencyRegistry is what a sparse index line says about where a dependency is
 // published, as dep.Registry keeps it.
-func cargoDepRegistry(index string) string {
+func cargoDependencyRegistry(index string) string {
 	switch u := cargoRegistryURL(index); u {
 	case "":
 		return ""
@@ -143,7 +143,7 @@ func sparsePath(name string) string {
 // That answer is the same for every package on the feed and is kept for the run.
 //
 // Implements: REQ-SUP-025
-func (c *Client) nugetPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) nugetPackage(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	base, err := c.nugetBase(ctx, index)
 	if err != nil || base == "" {
 		return nil, err
@@ -165,9 +165,9 @@ func (c *Client) nugetPackage(ctx context.Context, index string, t lang.Target) 
 			Dependencies struct {
 				// A nuspec lists dependencies either flat or grouped by target
 				// framework, and plenty list both.
-				Direct []nuspecDep `xml:"dependency"`
+				Direct []nuspecDependency `xml:"dependency"`
 				Groups []struct {
-					Dependency []nuspecDep `xml:"dependency"`
+					Dependency []nuspecDependency `xml:"dependency"`
 				} `xml:"group"`
 			} `xml:"dependencies"`
 		} `xml:"metadata"`
@@ -176,14 +176,14 @@ func (c *Client) nugetPackage(ctx context.Context, index string, t lang.Target) 
 		return nil, err
 	}
 	seen := map[string]bool{}
-	var out []dep
-	add := func(list []nuspecDep) {
+	var out []dependency
+	add := func(list []nuspecDependency) {
 		for _, d := range list {
 			if d.ID == "" || seen[strings.ToLower(d.ID)] {
 				continue
 			}
 			seen[strings.ToLower(d.ID)] = true
-			out = append(out, dep{Name: d.ID, Version: d.Version})
+			out = append(out, dependency{Name: d.ID, Version: d.Version})
 		}
 	}
 	add(doc.Metadata.Dependencies.Direct)
@@ -193,7 +193,7 @@ func (c *Client) nugetPackage(ctx context.Context, index string, t lang.Target) 
 	return out, nil
 }
 
-type nuspecDep struct {
+type nuspecDependency struct {
 	ID      string `xml:"id,attr"`
 	Version string `xml:"version,attr"`
 }
@@ -284,7 +284,7 @@ func (c *Client) nugetVersion(ctx context.Context, base, id, want string) (strin
 // packages.json, which is asked once per run.
 //
 // Implements: REQ-SUP-044
-func (c *Client) composerPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) composerPackage(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	pattern, err := c.composerMetadataURL(ctx, index)
 	if err != nil || pattern == "" {
 		return nil, err
@@ -317,10 +317,10 @@ func (c *Client) composerPackage(ctx context.Context, index string, t lang.Targe
 	if raw, ok := chosen["require"]; ok {
 		_ = json.Unmarshal(raw, &require) // "__unset" or a broken entry: nothing required
 	}
-	out := make([]dep, 0, len(require))
+	out := make([]dependency, 0, len(require))
 	for name, constraint := range require {
 		if strings.Contains(name, "/") { // php, ext-*, lib-* are the platform
-			out = append(out, dep{Name: name, Version: constraint})
+			out = append(out, dependency{Name: name, Version: constraint})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
@@ -334,14 +334,14 @@ func expandComposer(versions []map[string]json.RawMessage) []map[string]json.Raw
 	current := map[string]json.RawMessage{}
 	for _, v := range versions {
 		next := make(map[string]json.RawMessage, len(current)+len(v))
-		for k, val := range current {
-			next[k] = val
+		for k, value := range current {
+			next[k] = value
 		}
-		for k, val := range v {
-			if string(val) == `"__unset"` {
+		for k, value := range v {
+			if string(value) == `"__unset"` {
 				delete(next, k)
 			} else {
-				next[k] = val
+				next[k] = value
 			}
 		}
 		out = append(out, next)
@@ -406,7 +406,7 @@ func (c *Client) composerMetadataURL(ctx context.Context, index string) (string,
 // platform only) does.
 //
 // Implements: REQ-SUP-045
-func (c *Client) rubygemsPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) rubygemsPackage(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	body, err := c.accept(ctx, strings.TrimRight(index, "/")+"/info/"+t.Package, "text/plain, */*")
 	if err != nil {
 		return nil, err
@@ -436,22 +436,22 @@ func (c *Client) rubygemsPackage(ctx context.Context, index string, t lang.Targe
 	if chosen == "" {
 		chosen = newest
 	}
-	deps, _, _ := strings.Cut(chosen, "|")
-	var out []dep
-	for _, d := range strings.Split(deps, ",") {
-		name, req, ok := strings.Cut(strings.TrimSpace(d), ":")
+	dependencies, _, _ := strings.Cut(chosen, "|")
+	var out []dependency
+	for _, d := range strings.Split(dependencies, ",") {
+		name, requirement, ok := strings.Cut(strings.TrimSpace(d), ":")
 		if !ok || name == "" {
 			continue
 		}
-		reqs := strings.Split(req, "&")
-		for i := range reqs {
-			reqs[i] = strings.TrimSpace(reqs[i])
+		requirements := strings.Split(requirement, "&")
+		for i := range requirements {
+			requirements[i] = strings.TrimSpace(requirements[i])
 		}
-		version := strings.Join(reqs, ", ")
+		version := strings.Join(requirements, ", ")
 		if exact, ok := strings.CutPrefix(version, "= "); ok && !strings.Contains(exact, ",") {
 			version = exact // one version: pinned, as lang.Pinned reads it
 		}
-		out = append(out, dep{Name: name, Version: version})
+		out = append(out, dependency{Name: name, Version: version})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
@@ -467,7 +467,7 @@ func (c *Client) rubygemsPackage(ctx context.Context, index string, t lang.Targe
 // path dependency of a published package cannot occur.
 //
 // Implements: REQ-SUP-046
-func (c *Client) pubPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) pubPackage(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	body, err := c.accept(ctx, strings.TrimRight(index, "/")+"/api/packages/"+t.Package, "application/vnd.pub.v2+json")
 	if err != nil {
 		return nil, err
@@ -491,19 +491,19 @@ func (c *Client) pubPackage(ctx context.Context, index string, t lang.Target) ([
 			chosen = v
 		}
 	}
-	var out []dep
+	var out []dependency
 	for name, spec := range chosen.Pubspec.Dependencies {
 		switch s := spec.(type) {
 		case nil:
-			out = append(out, dep{Name: name})
+			out = append(out, dependency{Name: name})
 		case string:
-			out = append(out, dep{Name: name, Version: s})
+			out = append(out, dependency{Name: name, Version: s})
 		case map[string]any:
 			if _, sdk := s["sdk"]; sdk {
 				continue
 			}
 			v, _ := s["version"].(string)
-			out = append(out, dep{Name: name, Version: v})
+			out = append(out, dependency{Name: name, Version: v})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
@@ -519,24 +519,24 @@ func (c *Client) pubPackage(ctx context.Context, index string, t lang.Target) ([
 // requirements are left out: they are installed only when something else asks.
 //
 // Implements: REQ-SUP-047
-func (c *Client) hexPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) hexPackage(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	base := strings.TrimRight(index, "/") + "/packages/" + url.PathEscape(t.Package)
 	body, err := c.accept(ctx, base, "application/json")
 	if err != nil {
 		return nil, err
 	}
-	var pkg struct {
+	var packageName struct {
 		Latest    string `json:"latest_stable_version"`
 		LatestAny string `json:"latest_version"`
 		Releases  []struct {
 			Version string `json:"version"`
 		} `json:"releases"`
 	}
-	if err := json.Unmarshal(body, &pkg); err != nil {
+	if err := json.Unmarshal(body, &packageName); err != nil {
 		return nil, err
 	}
-	version := cmp.Or(pkg.Latest, pkg.LatestAny)
-	for _, r := range pkg.Releases {
+	version := cmp.Or(packageName.Latest, packageName.LatestAny)
+	for _, r := range packageName.Releases {
 		if r.Version == strings.TrimSpace(t.Version) {
 			version = r.Version
 		}
@@ -548,17 +548,17 @@ func (c *Client) hexPackage(ctx context.Context, index string, t lang.Target) ([
 	if err != nil {
 		return nil, err
 	}
-	var rel struct {
+	var release struct {
 		Requirements map[string]struct {
 			Requirement string `json:"requirement"`
 			Optional    bool   `json:"optional"`
 		} `json:"requirements"`
 	}
-	if err := json.Unmarshal(body, &rel); err != nil {
+	if err := json.Unmarshal(body, &release); err != nil {
 		return nil, err
 	}
-	var out []dep
-	for name, r := range rel.Requirements {
+	var out []dependency
+	for name, r := range release.Requirements {
 		if r.Optional {
 			continue
 		}
@@ -566,7 +566,7 @@ func (c *Client) hexPackage(ctx context.Context, index string, t lang.Target) ([
 		if exact, ok := strings.CutPrefix(v, "=="); ok && !strings.ContainsAny(strings.TrimSpace(exact), " ") {
 			v = strings.TrimSpace(exact) // one version: pinned, as lang.Pinned reads it
 		}
-		out = append(out, dep{Name: name, Version: v})
+		out = append(out, dependency{Name: name, Version: v})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
@@ -594,13 +594,13 @@ var rBase = map[string]bool{
 // CRAN-like repository (drat, r-universe, an internal one) serves, read once.
 //
 // Implements: REQ-SUP-048
-func (c *Client) cranPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) cranPackage(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	if !CRANMirror(index) {
-		pkgs, err := c.cranRepo(ctx, index)
+		packages, err := c.cranRepository(ctx, index)
 		if err != nil {
 			return nil, err
 		}
-		return pkgs[t.Package], nil
+		return packages[t.Package], nil
 	}
 	base := strings.TrimRight(crandbAPI, "/") + "/" + url.PathEscape(t.Package)
 	var body []byte
@@ -621,15 +621,15 @@ func (c *Client) cranPackage(ctx context.Context, index string, t lang.Target) (
 	if err := json.Unmarshal(body, &doc); err != nil {
 		return nil, err
 	}
-	var out []dep
+	var out []dependency
 	seen := map[string]bool{}
 	for _, field := range []map[string]string{doc.Depends, doc.Imports, doc.LinkingTo} {
-		for name, req := range field {
+		for name, requirement := range field {
 			if rBase[name] || seen[name] {
 				continue
 			}
 			seen[name] = true
-			out = append(out, dep{Name: name, Version: rRequirement(req)})
+			out = append(out, dependency{Name: name, Version: rRequirement(requirement)})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
@@ -638,35 +638,35 @@ func (c *Client) cranPackage(ctx context.Context, index string, t lang.Target) (
 
 // rRequirement writes an R version requirement as the R plugin does: "*" is none,
 // "== 1.2" the bare version (pinned), anything else ">= 1.2".
-func rRequirement(req string) string {
-	req = strings.Join(strings.Fields(strings.Trim(strings.TrimSpace(req), "()")), " ")
-	if req == "*" {
+func rRequirement(requirement string) string {
+	requirement = strings.Join(strings.Fields(strings.Trim(strings.TrimSpace(requirement), "()")), " ")
+	if requirement == "*" {
 		return ""
 	}
-	if v, ok := strings.CutPrefix(req, "=="); ok {
+	if v, ok := strings.CutPrefix(requirement, "=="); ok {
 		return strings.TrimSpace(v)
 	}
-	return req
+	return requirement
 }
 
-// cranRepo reads a CRAN-like repository's src/contrib/PACKAGES: one DCF record per
+// cranRepository reads a CRAN-like repository's src/contrib/PACKAGES: one DCF record per
 // package, with its Depends, Imports and LinkingTo.
-func (c *Client) cranRepo(ctx context.Context, index string) (map[string][]dep, error) {
+func (c *Client) cranRepository(ctx context.Context, index string) (map[string][]dependency, error) {
 	c.mu.Lock()
-	pkgs, ok := c.repos[index]
+	packages, ok := c.repositories[index]
 	c.mu.Unlock()
 	if ok {
-		return pkgs, nil
+		return packages, nil
 	}
 	body, err := c.accept(ctx, strings.TrimRight(index, "/")+"/src/contrib/PACKAGES", "text/plain")
 	if err != nil {
 		return nil, err
 	}
-	pkgs = map[string][]dep{}
-	for _, rec := range strings.Split(strings.ReplaceAll(string(body), "\r\n", "\n"), "\n\n") {
+	packages = map[string][]dependency{}
+	for _, record := range strings.Split(strings.ReplaceAll(string(body), "\r\n", "\n"), "\n\n") {
 		fields := map[string]string{}
 		last := ""
-		for _, line := range strings.Split(rec, "\n") {
+		for _, line := range strings.Split(record, "\n") {
 			if line == "" {
 				continue
 			}
@@ -683,26 +683,26 @@ func (c *Client) cranRepo(ctx context.Context, index string) (map[string][]dep, 
 		if name == "" {
 			continue
 		}
-		var out []dep
+		var out []dependency
 		seen := map[string]bool{}
 		for _, f := range []string{"Depends", "Imports", "LinkingTo"} {
 			for _, entry := range strings.Split(fields[f], ",") {
-				n, req, _ := strings.Cut(strings.TrimSpace(entry), "(")
+				n, requirement, _ := strings.Cut(strings.TrimSpace(entry), "(")
 				n = strings.TrimSpace(n)
 				if n == "" || rBase[n] || seen[n] {
 					continue
 				}
 				seen[n] = true
-				out = append(out, dep{Name: n, Version: rRequirement(req)})
+				out = append(out, dependency{Name: n, Version: rRequirement(requirement)})
 			}
 		}
 		sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
-		pkgs[name] = out
+		packages[name] = out
 	}
 	c.mu.Lock()
-	c.repos[index] = pkgs
+	c.repositories[index] = packages
 	c.mu.Unlock()
-	return pkgs, nil
+	return packages, nil
 }
 
 // bioconductorPackage reads a Bioconductor package's dependencies from its release's
@@ -712,19 +712,19 @@ func (c *Client) cranRepo(ctx context.Context, index string) (map[string][]dep, 
 // from.
 //
 // Implements: REQ-SUP-048
-func (c *Client) bioconductorPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
-	pkgs, err := c.cranRepo(ctx, index)
+func (c *Client) bioconductorPackage(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
+	packages, err := c.cranRepository(ctx, index)
 	if err != nil {
 		return nil, err
 	}
-	deps, ok := pkgs[t.Package]
+	dependencies, ok := packages[t.Package]
 	if !ok {
 		return nil, errAbsent
 	}
-	out := make([]dep, 0, len(deps))
-	for _, d := range deps {
-		if _, bioc := pkgs[d.Name]; !bioc {
-			d.Eco = CRAN
+	out := make([]dependency, 0, len(dependencies))
+	for _, d := range dependencies {
+		if _, bioc := packages[d.Name]; !bioc {
+			d.Ecosystem = CRAN
 		}
 		out = append(out, d)
 	}
@@ -750,20 +750,20 @@ var hackageStd = map[string]bool{
 // packages and the package's own sublibraries.
 //
 // Implements: REQ-SUP-049
-func (c *Client) hackagePackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) hackagePackage(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	base := strings.TrimRight(index, "/") + "/package/"
 	body, err := c.accept(ctx, base+url.PathEscape(t.Package)+"/preferred", "application/json")
 	if err != nil {
 		return nil, err
 	}
-	var pref struct {
+	var preference struct {
 		Normal []string `json:"normal-version"`
 	}
-	if err := json.Unmarshal(body, &pref); err != nil {
+	if err := json.Unmarshal(body, &preference); err != nil {
 		return nil, err
 	}
 	version := ""
-	for _, v := range pref.Normal {
+	for _, v := range preference.Normal {
 		if v == strings.TrimSpace(t.Version) {
 			version = v
 			break
@@ -785,14 +785,14 @@ func (c *Client) hackagePackage(ctx context.Context, index string, t lang.Target
 
 // compareVersions orders two dotted numeric versions (1.10 after 1.9).
 func compareVersions(a, b string) int {
-	as, bs := strings.Split(a, "."), strings.Split(b, ".")
-	for i := 0; i < len(as) || i < len(bs); i++ {
+	aParts, bParts := strings.Split(a, "."), strings.Split(b, ".")
+	for i := 0; i < len(aParts) || i < len(bParts); i++ {
 		var x, y int
-		if i < len(as) {
-			x, _ = strconv.Atoi(as[i])
+		if i < len(aParts) {
+			x, _ = strconv.Atoi(aParts[i])
 		}
-		if i < len(bs) {
-			y, _ = strconv.Atoi(bs[i])
+		if i < len(bParts) {
+			y, _ = strconv.Atoi(bParts[i])
 		}
 		if x != y {
 			return x - y
@@ -807,16 +807,16 @@ var sublibs = regexp.MustCompile(`:\s*\{[^}]*\}`)
 // cabalLibraryDepends reads the build-depends of a .cabal file's library stanzas
 // (named sublibraries too) and of the common stanzas they import. A requirement
 // written ==1.2.3 is the bare version, as the plugin writes a pin.
-func cabalLibraryDepends(src []byte, self string) []dep {
+func cabalLibraryDepends(source []byte, self string) []dependency {
 	type stanza struct {
-		kind, name string
-		deps       []string
-		imports    []string
+		kind, name   string
+		dependencies []string
+		imports      []string
 	}
 	var stanzas []*stanza
-	var cur *stanza
+	var current *stanza
 	field, fieldIndent := "", 0
-	for _, line := range strings.Split(strings.ReplaceAll(string(src), "\r\n", "\n"), "\n") {
+	for _, line := range strings.Split(strings.ReplaceAll(string(source), "\r\n", "\n"), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if trimmed == "" || strings.HasPrefix(trimmed, "--") {
 			continue
@@ -824,17 +824,17 @@ func cabalLibraryDepends(src []byte, self string) []dep {
 		indent := len(line) - len(strings.TrimLeft(line, " \t"))
 		if indent == 0 {
 			kind, name, _ := strings.Cut(strings.ToLower(trimmed), " ")
-			cur = &stanza{kind: kind, name: strings.TrimSpace(name)}
-			stanzas = append(stanzas, cur)
+			current = &stanza{kind: kind, name: strings.TrimSpace(name)}
+			stanzas = append(stanzas, current)
 			field = ""
 			continue
 		}
-		if cur == nil {
+		if current == nil {
 			continue
 		}
 		if field != "" && indent > fieldIndent {
 			if field == "build-depends" {
-				cur.deps = append(cur.deps, trimmed)
+				current.dependencies = append(current.dependencies, trimmed)
 			}
 			continue
 		}
@@ -846,9 +846,9 @@ func cabalLibraryDepends(src []byte, self string) []dep {
 		switch k = strings.ToLower(strings.TrimSpace(k)); k {
 		case "build-depends":
 			field, fieldIndent = k, indent
-			cur.deps = append(cur.deps, v)
+			current.dependencies = append(current.dependencies, v)
 		case "import":
-			cur.imports = append(cur.imports, strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' })...)
+			current.imports = append(current.imports, strings.FieldsFunc(v, func(r rune) bool { return r == ',' || r == ' ' })...)
 		}
 	}
 	commons := map[string]*stanza{}
@@ -857,36 +857,36 @@ func cabalLibraryDepends(src []byte, self string) []dep {
 			commons[s.name] = s
 		}
 	}
-	var out []dep
+	var out []dependency
 	seen := map[string]bool{}
 	var add func(s *stanza, via map[string]bool)
 	add = func(s *stanza, via map[string]bool) {
-		for _, entry := range strings.Split(sublibs.ReplaceAllString(strings.Join(s.deps, ","), ""), ",") {
+		for _, entry := range strings.Split(sublibs.ReplaceAllString(strings.Join(s.dependencies, ","), ""), ",") {
 			entry = strings.Join(strings.Fields(entry), " ")
 			i := strings.IndexAny(entry, " <>=^:")
-			name, req := entry, ""
+			name, requirement := entry, ""
 			if i >= 0 {
-				name, req = entry[:i], strings.TrimSpace(entry[i:])
+				name, requirement = entry[:i], strings.TrimSpace(entry[i:])
 			}
-			if strings.HasPrefix(req, ":") { // pkg:sublib or pkg:{a, b}
-				req = strings.TrimSpace(strings.TrimLeft(req[strings.IndexAny(req+" ", " <>=^"):], " "))
+			if strings.HasPrefix(requirement, ":") { // pkg:sublib or pkg:{a, b}
+				requirement = strings.TrimSpace(strings.TrimLeft(requirement[strings.IndexAny(requirement+" ", " <>=^"):], " "))
 			}
 			if name == "" || name == self || hackageStd[name] || seen[name] {
 				continue
 			}
 			seen[name] = true
-			if v, ok := strings.CutPrefix(req, "=="); ok && lang.Pinned(strings.TrimSpace(v)) {
-				req = strings.TrimSpace(v)
+			if v, ok := strings.CutPrefix(requirement, "=="); ok && lang.Pinned(strings.TrimSpace(v)) {
+				requirement = strings.TrimSpace(v)
 			}
-			if req == "-any" || req == ">=0" {
-				req = ""
+			if requirement == "-any" || requirement == ">=0" {
+				requirement = ""
 			}
-			out = append(out, dep{Name: name, Version: req})
+			out = append(out, dependency{Name: name, Version: requirement})
 		}
 		for _, name := range s.imports {
-			if cm := commons[name]; cm != nil && !via[name] {
+			if common := commons[name]; common != nil && !via[name] {
 				via[name] = true
-				add(cm, via)
+				add(common, via)
 			}
 		}
 	}
@@ -910,9 +910,9 @@ func cabalLibraryDepends(src []byte, self string) []dep {
 // Providers depend on nothing, so only modules are asked about.
 //
 // Implements: REQ-SUP-050
-func (c *Client) terraformModule(ctx context.Context, index string, t lang.Target) ([]dep, error) {
-	addr, sub, _ := strings.Cut(t.Package, "//")
-	parts := strings.Split(addr, "/")
+func (c *Client) terraformModule(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
+	address, subdirectory, _ := strings.Cut(t.Package, "//")
+	parts := strings.Split(address, "/")
 	if len(parts) == 4 {
 		parts = parts[1:]
 	}
@@ -973,31 +973,31 @@ func (c *Client) terraformModule(ctx context.Context, index string, t lang.Targe
 		return nil, nil
 	}
 	m := versions[chosen].Root
-	if sub = strings.Trim(sub, "/"); sub != "" {
+	if subdirectory = strings.Trim(subdirectory, "/"); subdirectory != "" {
 		m = module{}
 		for _, s := range versions[chosen].Submodules {
-			if strings.Trim(s.Path, "/") == sub {
+			if strings.Trim(s.Path, "/") == subdirectory {
 				m = s
 			}
 		}
 	}
-	var out []dep
+	var out []dependency
 	seen := map[string]bool{}
 	for _, p := range m.Providers {
-		src := p.Source
-		if src == "" {
-			ns := p.Namespace
-			if ns == "" {
-				ns = "hashicorp"
+		source := p.Source
+		if source == "" {
+			namespace := p.Namespace
+			if namespace == "" {
+				namespace = "hashicorp"
 			}
-			src = ns + "/" + p.Name
+			source = namespace + "/" + p.Name
 		}
-		src = terraformName(src)
-		if src == "" || strings.HasPrefix(src, "terraform.io/builtin/") || seen["p "+src] {
+		source = terraformName(source)
+		if source == "" || strings.HasPrefix(source, "terraform.io/builtin/") || seen["p "+source] {
 			continue
 		}
-		seen["p "+src] = true
-		out = append(out, dep{Name: src, Version: terraformVersion(p.Version), Eco: "terraform-provider"})
+		seen["p "+source] = true
+		out = append(out, dependency{Name: source, Version: terraformVersion(p.Version), Ecosystem: "terraform-provider"})
 	}
 	for _, d := range m.Dependencies {
 		name := terraformName(d.Source)
@@ -1005,9 +1005,9 @@ func (c *Client) terraformModule(ctx context.Context, index string, t lang.Targe
 			continue // local paths and git sources name no registry module
 		}
 		seen["m "+name] = true
-		out = append(out, dep{Name: name, Version: terraformVersion(d.Version)})
+		out = append(out, dependency{Name: name, Version: terraformVersion(d.Version)})
 	}
-	sort.Slice(out, func(i, j int) bool { return out[i].Eco+out[i].Name < out[j].Eco+out[j].Name })
+	sort.Slice(out, func(i, j int) bool { return out[i].Ecosystem+out[i].Name < out[j].Ecosystem+out[j].Name })
 	return out, nil
 }
 
@@ -1039,7 +1039,7 @@ func (c *Client) terraformService(ctx context.Context, index, service string) (s
 	if s == "" {
 		return "", fmt.Errorf("%s does not serve %s", index, service)
 	}
-	ref, err := url.Parse(s)
+	reference, err := url.Parse(s)
 	if err != nil {
 		return "", err
 	}
@@ -1047,7 +1047,7 @@ func (c *Client) terraformService(ctx context.Context, index, service string) (s
 	if err != nil {
 		return "", err
 	}
-	base = root.ResolveReference(ref).String()
+	base = root.ResolveReference(reference).String()
 	if !strings.HasSuffix(base, "/") {
 		base += "/"
 	}
@@ -1092,16 +1092,16 @@ func terraformAllows(constraint, v string) bool {
 		if c == "" {
 			continue
 		}
-		op := ""
+		operator := ""
 		for _, o := range []string{"~>", ">=", "<=", "!=", ">", "<", "="} {
 			if strings.HasPrefix(c, o) {
-				op, c = o, strings.TrimSpace(c[len(o):])
+				operator, c = o, strings.TrimSpace(c[len(o):])
 				break
 			}
 		}
 		cmp := compareVersions(v, c)
 		ok := true
-		switch op {
+		switch operator {
 		case "", "=":
 			ok = cmp == 0
 		case "!=":
@@ -1148,15 +1148,15 @@ const ociAccept = "application/vnd.oci.image.manifest.v1+json," +
 // manifest, one more for a multi-platform index, and the config blob.
 //
 // Implements: REQ-SUP-026
-func (c *Client) ociBase(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) ociBase(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	// A mirror serves the image under a repository of its own (registries.conf
 	// rewrites the name); index stands for the pair.
-	index, repo := c.cfg.ociRoute(t.Package, t.Version, index)
-	ref := t.Version
-	if ref == "" {
-		ref = "latest"
+	index, repository := c.config.ociRoute(t.Package, t.Version, index)
+	reference := t.Version
+	if reference == "" {
+		reference = "latest"
 	}
-	manifest, err := c.ociFetch(ctx, index, repo, ref, ociAccept)
+	manifest, err := c.ociFetch(ctx, index, repository, reference, ociAccept)
 	if err != nil {
 		return nil, err
 	}
@@ -1177,7 +1177,7 @@ func (c *Client) ociBase(ctx context.Context, index string, t lang.Target) ([]de
 		return nil, err
 	}
 	if base := ociBaseOf(doc.Annotations); base.Name != "" {
-		return []dep{base}, nil
+		return []dependency{base}, nil
 	}
 	// A multi-platform index points at one manifest per platform, and the base image
 	// is the same in all of them: whichever comes first will do, with linux/amd64
@@ -1190,7 +1190,7 @@ func (c *Client) ociBase(ctx context.Context, index string, t lang.Target) ([]de
 				break
 			}
 		}
-		if manifest, err = c.ociFetch(ctx, index, repo, pick, ociAccept); err != nil {
+		if manifest, err = c.ociFetch(ctx, index, repository, pick, ociAccept); err != nil {
 			return nil, err
 		}
 		doc.Config.Digest, doc.Annotations, doc.Manifests = "", nil, nil
@@ -1198,13 +1198,13 @@ func (c *Client) ociBase(ctx context.Context, index string, t lang.Target) ([]de
 			return nil, err
 		}
 		if base := ociBaseOf(doc.Annotations); base.Name != "" {
-			return []dep{base}, nil
+			return []dependency{base}, nil
 		}
 	}
 	if doc.Config.Digest == "" {
 		return nil, nil
 	}
-	blob, err := c.ociBlob(ctx, index, repo, doc.Config.Digest)
+	blob, err := c.ociBlob(ctx, index, repository, doc.Config.Digest)
 	if err != nil {
 		return nil, err
 	}
@@ -1217,7 +1217,7 @@ func (c *Client) ociBase(ctx context.Context, index string, t lang.Target) ([]de
 		return nil, err
 	}
 	if base := ociBaseOf(config.Config.Labels); base.Name != "" {
-		return []dep{base}, nil
+		return []dependency{base}, nil
 	}
 	return nil, nil
 }
@@ -1225,10 +1225,10 @@ func (c *Client) ociBase(ctx context.Context, index string, t lang.Target) ([]de
 // ociBaseOf reads the standard base-image keys out of annotations or labels. The
 // digest is preferred over the tag where both are given: a tag moves, a digest is the
 // image that was actually built on.
-func ociBaseOf(kv map[string]string) dep {
-	name := strings.TrimSpace(kv["org.opencontainers.image.base.name"])
+func ociBaseOf(keyValue map[string]string) dependency {
+	name := strings.TrimSpace(keyValue["org.opencontainers.image.base.name"])
 	if name == "" {
-		return dep{}
+		return dependency{}
 	}
 	image, tag := name, ""
 	if i := strings.LastIndex(name, "@"); i > 0 {
@@ -1236,13 +1236,13 @@ func ociBaseOf(kv map[string]string) dep {
 	} else if i := strings.LastIndex(name, ":"); i > 0 && !strings.Contains(name[i:], "/") {
 		image, tag = name[:i], name[i+1:]
 	}
-	if digest := strings.TrimSpace(kv["org.opencontainers.image.base.digest"]); digest != "" {
+	if digest := strings.TrimSpace(keyValue["org.opencontainers.image.base.digest"]); digest != "" {
 		tag = digest
 	}
 	if tag == "" {
 		tag = "latest"
 	}
-	return dep{Name: image, Version: tag}
+	return dependency{Name: image, Version: tag}
 }
 
 // ociRepository is the path part of an image reference, as a registry's API wants it:
@@ -1258,26 +1258,26 @@ func ociRepository(image string) string {
 	return image
 }
 
-func (c *Client) ociFetch(ctx context.Context, index, repo, ref, accept string) ([]byte, error) {
-	return c.ociGet(ctx, index, repo, fmt.Sprintf("%s/v2/%s/manifests/%s", index, repo, ref), accept)
+func (c *Client) ociFetch(ctx context.Context, index, repository, reference, accept string) ([]byte, error) {
+	return c.ociGet(ctx, index, repository, fmt.Sprintf("%s/v2/%s/manifests/%s", index, repository, reference), accept)
 }
 
-func (c *Client) ociBlob(ctx context.Context, index, repo, digest string) ([]byte, error) {
-	return c.ociGet(ctx, index, repo, fmt.Sprintf("%s/v2/%s/blobs/%s", index, repo, digest), "application/json, */*")
+func (c *Client) ociBlob(ctx context.Context, index, repository, digest string) ([]byte, error) {
+	return c.ociGet(ctx, index, repository, fmt.Sprintf("%s/v2/%s/blobs/%s", index, repository, digest), "application/json, */*")
 }
 
 // ociGet performs one registry request, answering the pull-token challenge a registry
 // sends when it will not serve anonymously without one. Only the token the registry
 // itself points at is asked for, and it is used for this request alone.
-func (c *Client) ociGet(ctx context.Context, index, repo, address, accept string) ([]byte, error) {
-	resp, err := c.do(ctx, address, accept, "")
+func (c *Client) ociGet(ctx context.Context, index, repository, address, accept string) ([]byte, error) {
+	response, err := c.do(ctx, address, accept, "")
 	if err != nil {
 		return nil, err
 	}
-	if resp.StatusCode == http.StatusUnauthorized {
-		challenge := resp.Header.Get("Www-Authenticate")
-		resp.Body.Close()
-		token, err := c.ociToken(ctx, index, repo, challenge)
+	if response.StatusCode == http.StatusUnauthorized {
+		challenge := response.Header.Get("Www-Authenticate")
+		response.Body.Close()
+		token, err := c.ociToken(ctx, index, repository, challenge)
 		if err != nil {
 			return nil, err
 		}
@@ -1285,16 +1285,16 @@ func (c *Client) ociGet(ctx context.Context, index, repo, address, accept string
 			// No challenge this client can answer: the registry refused.
 			return nil, fmt.Errorf("%s: %s", address, http.StatusText(http.StatusUnauthorized))
 		}
-		if resp, err = c.do(ctx, address, accept, token); err != nil {
+		if response, err = c.do(ctx, address, accept, token); err != nil {
 			return nil, err
 		}
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
 		// Typed, so that a registry's 404 reads as "not found" (notFound).
-		return nil, &statusError{url: address, status: resp.Status, code: resp.StatusCode}
+		return nil, &statusError{url: address, status: response.Status, code: response.StatusCode}
 	}
-	return readLimited(resp)
+	return readLimited(response)
 }
 
 // ociToken asks for the pull token a registry's challenge describes.
@@ -1314,13 +1314,13 @@ func (c *Client) ociGet(ctx context.Context, index, repo, address, accept string
 // credential, and a challenge is the registry's word, not the user's.
 //
 // Implements: REQ-SUP-027, REQ-AUTH-030
-func (c *Client) ociToken(ctx context.Context, index, repo, challenge string) (string, error) {
-	scheme, params, ok := strings.Cut(challenge, " ")
+func (c *Client) ociToken(ctx context.Context, index, repository, challenge string) (string, error) {
+	scheme, parameters, ok := strings.Cut(challenge, " ")
 	if !ok || !strings.EqualFold(scheme, "Bearer") {
 		return "", nil
 	}
 	fields := map[string]string{}
-	for _, part := range splitChallenge(params) {
+	for _, part := range splitChallenge(parameters) {
 		if k, v, ok := strings.Cut(part, "="); ok {
 			fields[strings.ToLower(strings.TrimSpace(k))] = strings.Trim(strings.TrimSpace(v), `"`)
 		}
@@ -1342,7 +1342,7 @@ func (c *Client) ociToken(ctx context.Context, index, repo, challenge string) (s
 	}
 	scope := fields["scope"]
 	if scope == "" {
-		scope = "repository:" + repo + ":pull"
+		scope = "repository:" + repository + ":pull"
 	}
 	var body []byte
 	registry, _ := url.Parse(index)
@@ -1389,19 +1389,19 @@ func (c *Client) identityFor(registry *url.URL) string {
 
 // splitChallenge splits a challenge's comma-separated parameters, leaving the commas
 // that are inside a quoted scope where they are.
-func splitChallenge(params string) []string {
+func splitChallenge(parameters string) []string {
 	var out []string
 	quoted, start := false, 0
-	for i, r := range params {
+	for i, r := range parameters {
 		switch {
 		case r == '"':
 			quoted = !quoted
 		case r == ',' && !quoted:
-			out = append(out, params[start:i])
+			out = append(out, parameters[start:i])
 			start = i + 1
 		}
 	}
-	return append(out, params[start:])
+	return append(out, parameters[start:])
 }
 
 // ---------------------------------------------------------------- CocoaPods
@@ -1417,7 +1417,7 @@ func splitChallenge(params string) []string {
 // specs and the pod's own subspecs; "= 1.2.3" is the bare, pinned version.
 //
 // Implements: REQ-SUP-051
-func (c *Client) cocoapodsPod(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) cocoapodsPod(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	sum := md5.Sum([]byte(t.Package))
 	h := hex.EncodeToString(sum[:])
 	shard := []string{h[0:1], h[1:2], h[2:3]}
@@ -1456,8 +1456,8 @@ func (c *Client) cocoapodsPod(ctx context.Context, index string, t lang.Target) 
 			return nil, nil
 		}
 	}
-	esc := url.PathEscape(t.Package)
-	body, err := c.get(ctx, base+"/Specs/"+strings.Join(shard, "/")+"/"+esc+"/"+url.PathEscape(version)+"/"+esc+".podspec.json")
+	escape := url.PathEscape(t.Package)
+	body, err := c.get(ctx, base+"/Specs/"+strings.Join(shard, "/")+"/"+escape+"/"+url.PathEscape(version)+"/"+escape+".podspec.json")
 	if err != nil {
 		return nil, err
 	}
@@ -1466,7 +1466,7 @@ func (c *Client) cocoapodsPod(ctx context.Context, index string, t lang.Target) 
 		return nil, err
 	}
 	seen := map[string]bool{}
-	var out []dep
+	var out []dependency
 	walk := func(s podSpec) {
 		for _, name := range slices.Sorted(maps.Keys(s.Dependencies)) {
 			root, _, _ := strings.Cut(name, "/")
@@ -1474,11 +1474,11 @@ func (c *Client) cocoapodsPod(ctx context.Context, index string, t lang.Target) 
 				continue
 			}
 			seen[root] = true
-			req := strings.Join(s.Dependencies[name], ", ")
-			if v, ok := strings.CutPrefix(req, "= "); ok && lang.Pinned(v) {
-				req = v
+			requirement := strings.Join(s.Dependencies[name], ", ")
+			if v, ok := strings.CutPrefix(requirement, "= "); ok && lang.Pinned(v) {
+				requirement = v
 			}
-			out = append(out, dep{Name: root, Version: req})
+			out = append(out, dependency{Name: root, Version: requirement})
 		}
 	}
 	walk(spec)
@@ -1486,9 +1486,9 @@ func (c *Client) cocoapodsPod(ctx context.Context, index string, t lang.Target) 
 	for _, d := range spec.defaults() {
 		defaults[d] = true
 	}
-	for _, sub := range spec.Subspecs {
-		if len(defaults) == 0 || defaults[sub.Name] {
-			walk(sub)
+	for _, subspec := range spec.Subspecs {
+		if len(defaults) == 0 || defaults[subspec.Name] {
+			walk(subspec)
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
@@ -1528,7 +1528,7 @@ func (s podSpec) defaults() []string {
 // bare, pinned version.
 //
 // Implements: REQ-SUP-052
-func (c *Client) luarocksRock(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) luarocksRock(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	base := strings.TrimRight(index, "/")
 	version := strings.TrimSpace(t.Version)
 	if !t.Pinned || !strings.Contains(version, "-") {
@@ -1548,9 +1548,9 @@ func (c *Client) luarocksRock(ctx context.Context, index string, t lang.Target) 
 	if err != nil {
 		return nil, err
 	}
-	var out []dep
+	var out []dependency
 	seen := map[string]bool{}
-	for _, d := range luarocks.ReadRockspec(body).Deps {
+	for _, d := range luarocks.ReadRockspec(body).Dependencies {
 		if d.Section != "dependencies" || d.Name == "lua" || seen[d.Name] {
 			continue
 		}
@@ -1559,7 +1559,7 @@ func (c *Client) luarocksRock(ctx context.Context, index string, t lang.Target) 
 		if exact, ok := luarocks.Exact(v); ok {
 			v = exact
 		}
-		out = append(out, dep{Name: d.Name, Version: v})
+		out = append(out, dependency{Name: d.Name, Version: v})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
@@ -1578,28 +1578,28 @@ func (c *Client) rocksManifest(ctx context.Context, base string) (map[string][]s
 	if ok {
 		return m, nil
 	}
-	var src []byte
+	var source []byte
 	if zipped, err := c.accept(ctx, base+"/manifest-5.1.zip", "application/zip, */*"); err == nil {
-		if zr, err := zip.NewReader(bytes.NewReader(zipped), int64(len(zipped))); err == nil {
-			for _, f := range zr.File {
+		if zipReader, err := zip.NewReader(bytes.NewReader(zipped), int64(len(zipped))); err == nil {
+			for _, f := range zipReader.File {
 				if f.Name != "manifest-5.1" {
 					continue
 				}
 				if rc, err := f.Open(); err == nil {
-					src, _ = io.ReadAll(io.LimitReader(rc, maxManifest))
+					source, _ = io.ReadAll(io.LimitReader(rc, maxManifest))
 					rc.Close()
 				}
 			}
 		}
 	}
-	if src == nil {
+	if source == nil {
 		plain, err := c.accept(ctx, base+"/manifest-5.1", "text/plain, */*")
 		if err != nil {
 			return nil, err
 		}
-		src = plain
+		source = plain
 	}
-	m = luarocks.ReadManifest(src)
+	m = luarocks.ReadManifest(source)
 	c.mu.Lock()
 	c.rocks[base] = m
 	c.mu.Unlock()
@@ -1622,33 +1622,33 @@ func (c *Client) rocksManifest(ctx context.Context, base string) (map[string][]s
 // ">= 1.2" and never pinned.
 //
 // Implements: REQ-SUP-053
-func (c *Client) cpanDistribution(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) cpanDistribution(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	base := strings.TrimRight(index, "/")
-	if base != c.cfg.publicURL(CPAN) {
+	if base != c.config.publicURL(CPAN) {
 		return c.cpanMirror(ctx, base, t)
 	}
-	var rel *cpanRelease
+	var relative *cpanRelease
 	var err error
 	version := strings.TrimSpace(t.Version)
 	switch {
 	case !cpanVersion.MatchString(version):
-		rel, err = c.cpanRelease(ctx, base+"/v1/release/"+url.PathEscape(t.Package))
-	case c.cfg.cpanArchive(t.Package, version) != "":
-		author, name := cpanArchive(c.cfg.cpanArchive(t.Package, version))
-		rel, err = c.cpanRelease(ctx, base+"/v1/release/"+url.PathEscape(author)+"/"+url.PathEscape(name))
+		relative, err = c.cpanRelease(ctx, base+"/v1/release/"+url.PathEscape(t.Package))
+	case c.config.cpanArchive(t.Package, version) != "":
+		author, name := cpanArchive(c.config.cpanArchive(t.Package, version))
+		relative, err = c.cpanRelease(ctx, base+"/v1/release/"+url.PathEscape(author)+"/"+url.PathEscape(name))
 	default:
-		rel, err = c.cpanSearch(ctx, base, t.Package, version)
-		if err == nil && rel == nil {
+		relative, err = c.cpanSearch(ctx, base, t.Package, version)
+		if err == nil && relative == nil {
 			// Implements: REQ-TRC-017
 			c.note(trace.NoteNoRelease, "MetaCPAN has no release "+t.Package+"-"+version+
 				": the dependencies shown are those of its latest release")
-			rel, err = c.cpanRelease(ctx, base+"/v1/release/"+url.PathEscape(t.Package))
+			relative, err = c.cpanRelease(ctx, base+"/v1/release/"+url.PathEscape(t.Package))
 		}
 	}
 	if err != nil {
 		return nil, err
 	}
-	return c.cpanDeps(ctx, base, t.Package, rel)
+	return c.cpanDependencies(ctx, base, t.Package, relative)
 }
 
 // cpanVersion is a distribution version that names one release: 1.0050,
@@ -1672,11 +1672,11 @@ func (c *Client) cpanRelease(ctx context.Context, address string) (*cpanRelease,
 	if err != nil {
 		return nil, err
 	}
-	var rel cpanRelease
-	if err := json.Unmarshal(body, &rel); err != nil {
+	var relative cpanRelease
+	if err := json.Unmarshal(body, &relative); err != nil {
 		return nil, err
 	}
-	return &rel, nil
+	return &relative, nil
 }
 
 // cpanSearch finds a distribution's release at one version with MetaCPAN's
@@ -1707,11 +1707,11 @@ func (c *Client) cpanSearch(ctx context.Context, base, dist, version string) (*c
 	return nil, nil
 }
 
-// cpanDeps is a release's run-time requirements as distributions.
-func (c *Client) cpanDeps(ctx context.Context, base, dist string, rel *cpanRelease) ([]dep, error) {
-	var out []dep
-	seen := map[string]bool{dist: true, rel.Distribution: true}
-	for _, d := range rel.Dependency {
+// cpanDependencies is a release's run-time requirements as distributions.
+func (c *Client) cpanDependencies(ctx context.Context, base, dist string, relative *cpanRelease) ([]dependency, error) {
+	var out []dependency
+	seen := map[string]bool{dist: true, relative.Distribution: true}
+	for _, d := range relative.Dependency {
 		if d.Phase != "runtime" || d.Relationship != "requires" || d.Module == "perl" {
 			continue
 		}
@@ -1723,7 +1723,7 @@ func (c *Client) cpanDeps(ctx context.Context, base, dist string, rel *cpanRelea
 			continue // perl's own module, or one already answered
 		}
 		seen[dist] = true
-		out = append(out, dep{Name: dist, Version: cpanMinimum(d.Version)})
+		out = append(out, dependency{Name: dist, Version: cpanMinimum(d.Version)})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
@@ -1742,14 +1742,14 @@ func (c *Client) cpanModule(ctx context.Context, base, module string) (string, e
 	if d, ok := store.Get[string](c.cache, key); ok {
 		return d, nil
 	}
-	resp, err := c.do(ctx, base+"/v1/module/"+url.PathEscape(module), "application/json", "")
+	response, err := c.do(ctx, base+"/v1/module/"+url.PathEscape(module), "application/json", "")
 	if err != nil {
 		return "", err
 	}
-	defer resp.Body.Close()
-	switch resp.StatusCode {
+	defer response.Body.Close()
+	switch response.StatusCode {
 	case http.StatusOK:
-		body, err := readLimited(resp)
+		body, err := readLimited(response)
 		if err != nil {
 			return "", err
 		}
@@ -1762,7 +1762,7 @@ func (c *Client) cpanModule(ctx context.Context, base, module string) (string, e
 		dist = m.Distribution
 	case http.StatusNotFound:
 	default:
-		return "", fmt.Errorf("%s/v1/module/%s: %s", base, module, resp.Status)
+		return "", fmt.Errorf("%s/v1/module/%s: %s", base, module, response.Status)
 	}
 	c.mu.Lock()
 	c.cpanModules[key] = dist
@@ -1784,27 +1784,27 @@ func (c *Client) cpanModule(ctx context.Context, base, module string) (string, e
 // version, else its constraint as written.
 //
 // Implements: REQ-SUP-054
-func (c *Client) opamPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) opamPackage(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	name := t.Package
 	if !opamName.MatchString(name) {
 		return nil, fmt.Errorf("not an opam package name: %q", name)
 	}
-	repo, err := c.opamRepo(ctx, strings.TrimRight(index, "/"))
+	repository, err := c.opamRepository(ctx, strings.TrimRight(index, "/"))
 	if err != nil {
 		return nil, err
 	}
 	version := strings.TrimSpace(t.Version)
 	if !opam.ExactVersion(version) {
-		versions, err := repo.versions(name)
-		if version, err = release(versions, err, func(vs []string) string { return opam.Newest(vs, version) }); err != nil {
+		versions, err := repository.versions(name)
+		if version, err = release(versions, err, func(available []string) string { return opam.Newest(available, version) }); err != nil {
 			return nil, err
 		}
 	}
-	body, err := repo.read(name, version)
+	body, err := repository.read(name, version)
 	if err != nil {
 		return nil, err
 	}
-	var out []dep
+	var out []dependency
 	seen := map[string]bool{t.Package: true}
 	for _, d := range opam.Read(body).Depends {
 		if seen[d.Name] || opam.Compiler(d.Name) || slices.ContainsFunc(d.Flags, func(f string) bool {
@@ -1817,7 +1817,7 @@ func (c *Client) opamPackage(ctx context.Context, index string, t lang.Target) (
 		if v == "" {
 			v = d.Constraint
 		}
-		out = append(out, dep{Name: d.Name, Version: v})
+		out = append(out, dependency{Name: d.Name, Version: v})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
@@ -1841,11 +1841,11 @@ type mavenPOM struct {
 			Value   string `xml:",chardata"`
 		} `xml:",any"`
 	} `xml:"properties"`
-	Deps    []mavenDep `xml:"dependencies>dependency"`
-	Managed []mavenDep `xml:"dependencyManagement>dependencies>dependency"`
+	Dependencies []mavenDependency `xml:"dependencies>dependency"`
+	Managed      []mavenDependency `xml:"dependencyManagement>dependencies>dependency"`
 }
 
-type mavenDep struct {
+type mavenDependency struct {
 	GroupID    string `xml:"groupId"`
 	ArtifactID string `xml:"artifactId"`
 	Version    string `xml:"version"`
@@ -1866,7 +1866,7 @@ var mavenProperty = regexp.MustCompile(`\$\{([^}]+)\}`)
 // one of the indexes Config.candidates lists).
 //
 // Implements: REQ-SUP-056, REQ-JAVA-010
-func (c *Client) mavenArtifact(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) mavenArtifact(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	group, artifact, _ := strings.Cut(t.Package, ":")
 	fetch := func(g, a, file string) ([]byte, error) {
 		return c.accept(ctx, fmt.Sprintf("%s/%s/%s/%s", index, strings.ReplaceAll(g, ".", "/"), a, file), "application/xml")
@@ -1877,17 +1877,17 @@ func (c *Client) mavenArtifact(ctx context.Context, index string, t lang.Target)
 		if err != nil {
 			return nil, err
 		}
-		var meta struct {
+		var metadata struct {
 			Versioning struct {
 				Release  string   `xml:"release"`
 				Latest   string   `xml:"latest"`
 				Versions []string `xml:"versions>version"`
 			} `xml:"versioning"`
 		}
-		if err := lang.UnmarshalXML(body, &meta); err != nil {
+		if err := lang.UnmarshalXML(body, &metadata); err != nil {
 			return nil, err
 		}
-		v := meta.Versioning
+		v := metadata.Versioning
 		version = cmp.Or(v.Release, v.Latest)
 		if version == "" && len(v.Versions) > 0 {
 			version = v.Versions[len(v.Versions)-1]
@@ -1898,7 +1898,7 @@ func (c *Client) mavenArtifact(ctx context.Context, index string, t lang.Target)
 	}
 	props := map[string]string{}
 	managed := map[string]string{}
-	var deps []mavenDep
+	var dependencies []mavenDependency
 	g, a, v := group, artifact, version
 	for level := 0; level < 5 && a != ""; level++ {
 		body, err := fetch(g, a, fmt.Sprintf("%s/%s-%s.pom", v, a, v))
@@ -1915,9 +1915,9 @@ func (c *Client) mavenArtifact(ctx context.Context, index string, t lang.Target)
 			}
 			break
 		}
-		setDefault := func(k, val string) {
-			if _, ok := props[k]; !ok && val != "" {
-				props[k] = val
+		setDefault := func(k, value string) {
+			if _, ok := props[k]; !ok && value != "" {
+				props[k] = value
 			}
 		}
 		for _, p := range pom.Properties.Items {
@@ -1934,14 +1934,14 @@ func (c *Client) mavenArtifact(ctx context.Context, index string, t lang.Target)
 				managed[k] = d.Version
 			}
 		}
-		deps = append(deps, pom.Deps...)
+		dependencies = append(dependencies, pom.Dependencies...)
 		g, a, v = pom.Parent.GroupID, pom.Parent.ArtifactID, pom.Parent.Version
 	}
 	expand := func(s string) string {
 		for i := 0; i < 5 && strings.Contains(s, "${"); i++ {
 			s = mavenProperty.ReplaceAllStringFunc(s, func(m string) string {
-				if val, ok := props[m[2:len(m)-1]]; ok {
-					return val
+				if value, ok := props[m[2:len(m)-1]]; ok {
+					return value
 				}
 				return m
 			})
@@ -1951,9 +1951,9 @@ func (c *Client) mavenArtifact(ctx context.Context, index string, t lang.Target)
 		}
 		return strings.TrimSpace(s)
 	}
-	var out []dep
+	var out []dependency
 	seen := map[string]bool{}
-	for _, d := range deps {
+	for _, d := range dependencies {
 		switch strings.TrimSpace(d.Scope) {
 		case "", "compile", "runtime":
 		default:
@@ -1964,11 +1964,11 @@ func (c *Client) mavenArtifact(ctx context.Context, index string, t lang.Target)
 			continue
 		}
 		seen[name] = true
-		ver := d.Version
-		if ver == "" {
-			ver = managed[d.GroupID+":"+d.ArtifactID]
+		version := d.Version
+		if version == "" {
+			version = managed[d.GroupID+":"+d.ArtifactID]
 		}
-		out = append(out, dep{Name: name, Version: expand(ver)})
+		out = append(out, dependency{Name: name, Version: expand(version)})
 	}
 	return out, nil
 }
@@ -1995,7 +1995,7 @@ func bazelHelperNote(index, scope string) string {
 // minimal version selection makes that the version the module needs at least.
 //
 // Implements: REQ-SUP-057
-func (c *Client) bazelModule(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) bazelModule(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	base := strings.TrimRight(index, "/") + "/modules/" + url.PathEscape(t.Package) + "/"
 	version := strings.TrimSpace(t.Version)
 	if version == "" {
@@ -2003,16 +2003,16 @@ func (c *Client) bazelModule(ctx context.Context, index string, t lang.Target) (
 		if err != nil {
 			return nil, err
 		}
-		var meta struct {
+		var metadata struct {
 			Versions       []string          `json:"versions"`
 			YankedVersions map[string]string `json:"yanked_versions"`
 		}
-		if err := json.Unmarshal(body, &meta); err != nil {
+		if err := json.Unmarshal(body, &metadata); err != nil {
 			return nil, err
 		}
-		for i := len(meta.Versions) - 1; i >= 0; i-- { // listed oldest first
-			if _, yanked := meta.YankedVersions[meta.Versions[i]]; !yanked {
-				version = meta.Versions[i]
+		for i := len(metadata.Versions) - 1; i >= 0; i-- { // listed oldest first
+			if _, yanked := metadata.YankedVersions[metadata.Versions[i]]; !yanked {
+				version = metadata.Versions[i]
 				break
 			}
 		}
@@ -2024,19 +2024,19 @@ func (c *Client) bazelModule(ctx context.Context, index string, t lang.Target) (
 	if err != nil {
 		return nil, err
 	}
-	var out []dep
+	var out []dependency
 	seen := map[string]bool{}
-	for _, st := range starlark.Parse(body).Stmts {
-		n := st.X
-		if st.Def != "" || n.Callee() != "bazel_dep" {
+	for _, statement := range starlark.Parse(body).Statements {
+		n := statement.X
+		if statement.Definition != "" || n.Callee() != "bazel_dep" {
 			continue
 		}
-		name := n.KwStr("name")
-		if dev := n.Kw("dev_dependency"); name == "" || seen[name] || dev != nil && dev.Name() == "True" {
+		name := n.KeywordString("name")
+		if dev := n.Keyword("dev_dependency"); name == "" || seen[name] || dev != nil && dev.Name() == "True" {
 			continue
 		}
 		seen[name] = true
-		out = append(out, dep{Name: name, Version: n.KwStr("version")})
+		out = append(out, dependency{Name: name, Version: n.KeywordString("version")})
 	}
 	return out, nil
 }
@@ -2050,7 +2050,7 @@ func (c *Client) bazelModule(ctx context.Context, index string, t lang.Target) (
 // are ranges, and are returned as written; test-dependencies are left out.
 //
 // Implements: REQ-SUP-058
-func (c *Client) elmPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) elmPackage(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	author, name, _ := strings.Cut(t.Package, "/")
 	if !elmName.MatchString(t.Package) || strings.Contains(t.Package, "..") {
 		return nil, fmt.Errorf("not an Elm package name: %q", t.Package)
@@ -2066,11 +2066,11 @@ func (c *Client) elmPackage(ctx context.Context, index string, t lang.Target) ([
 		if err := json.Unmarshal(body, &releases); err != nil {
 			return nil, err
 		}
-		lo, hi, ranged := elmRange(version)
+		low, high, ranged := elmRange(version)
 		best, bestV := "", [3]int{}
 		for v := range releases {
 			parsed, ok := elmVersion(v)
-			if ok && (!ranged || elmAdmits(lo, hi, parsed)) && (best == "" || elmLess(bestV, parsed)) {
+			if ok && (!ranged || elmAdmits(low, high, parsed)) && (best == "" || elmLess(bestV, parsed)) {
 				best, bestV = v, parsed
 			}
 		}
@@ -2089,9 +2089,9 @@ func (c *Client) elmPackage(ctx context.Context, index string, t lang.Target) ([
 	if err := json.Unmarshal(body, &doc); err != nil {
 		return nil, err
 	}
-	out := make([]dep, 0, len(doc.Dependencies))
+	out := make([]dependency, 0, len(doc.Dependencies))
 	for n, v := range doc.Dependencies {
-		out = append(out, dep{Name: n, Version: v})
+		out = append(out, dependency{Name: n, Version: v})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
@@ -2126,21 +2126,21 @@ type elmBound struct {
 }
 
 // elmRange parses an Elm constraint, "1.0.0 <= v < 2.0.0" (either side < or <=).
-func elmRange(s string) (lo, hi elmBound, ok bool) {
+func elmRange(s string) (low, high elmBound, ok bool) {
 	f := strings.Fields(s)
 	if len(f) != 5 || f[2] != "v" || f[1] != "<" && f[1] != "<=" || f[3] != "<" && f[3] != "<=" {
-		return lo, hi, false
+		return low, high, false
 	}
 	a, ok1 := elmVersion(f[0])
 	b, ok2 := elmVersion(f[4])
 	return elmBound{a, f[1] == "<"}, elmBound{b, f[3] == "<"}, ok1 && ok2
 }
 
-func elmAdmits(lo, hi elmBound, v [3]int) bool {
-	if elmLess(v, lo.v) || lo.strict && v == lo.v {
+func elmAdmits(low, high elmBound, v [3]int) bool {
+	if elmLess(v, low.v) || low.strict && v == low.v {
 		return false
 	}
-	return elmLess(v, hi.v) || !hi.strict && v == hi.v
+	return elmLess(v, high.v) || !high.strict && v == high.v
 }
 
 // ---------------------------------------------------------------- PureScript
@@ -2155,7 +2155,7 @@ func elmAdmits(lo, hi elmBound, v [3]int) bool {
 // version. The dependencies are ranges, returned as written.
 //
 // Implements: REQ-SUP-059
-func (c *Client) purescriptPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) purescriptPackage(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	name := t.Package
 	if !purescriptName.MatchString(name) {
 		return nil, fmt.Errorf("not a PureScript registry package name: %q", name)
@@ -2167,14 +2167,14 @@ func (c *Client) purescriptPackage(ctx context.Context, index string, t lang.Tar
 		if err != nil {
 			return nil, err
 		}
-		var meta struct {
+		var metadata struct {
 			Published map[string]json.RawMessage `json:"published"`
 		}
-		if err := json.Unmarshal(body, &meta); err != nil {
+		if err := json.Unmarshal(body, &metadata); err != nil {
 			return nil, err
 		}
 		best, bestV := "", [3]int{}
-		for v := range meta.Published {
+		for v := range metadata.Published {
 			parsed, ok := purescriptVersion(v)
 			if ok && purescriptAdmits(t.Version, parsed) && (best == "" || elmLess(bestV, parsed)) {
 				best, bestV = v, parsed
@@ -2197,9 +2197,9 @@ func (c *Client) purescriptPackage(ctx context.Context, index string, t lang.Tar
 		if json.Unmarshal([]byte(line), &m) != nil || m.Version != version {
 			continue
 		}
-		out := make([]dep, 0, len(m.Dependencies))
+		out := make([]dependency, 0, len(m.Dependencies))
 		for n, v := range m.Dependencies {
-			out = append(out, dep{Name: n, Version: v})
+			out = append(out, dependency{Name: n, Version: v})
 		}
 		sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 		return out, nil
@@ -2228,19 +2228,19 @@ func purescriptVersion(s string) ([3]int, bool) { return elmVersion(s) }
 // purescriptAdmits reports whether a version satisfies a registry range
 // (">=6.0.0 <7.0.0"); anything that is not a range (a package set's name, no
 // version) admits every version.
-func purescriptAdmits(rng string, v [3]int) bool {
-	f := strings.Fields(rng)
+func purescriptAdmits(versionRange string, v [3]int) bool {
+	f := strings.Fields(versionRange)
 	if len(f) == 0 || !strings.ContainsAny(f[0], "<>=") {
 		return true
 	}
 	for _, c := range f {
-		op := strings.TrimRight(c, "0123456789.")
-		b, ok := purescriptVersion(strings.TrimPrefix(c, op))
+		operator := strings.TrimRight(c, "0123456789.")
+		b, ok := purescriptVersion(strings.TrimPrefix(c, operator))
 		if !ok {
 			return true
 		}
 		n := slices.Compare(v[:], b[:])
-		switch op {
+		switch operator {
 		case ">=":
 			ok = n >= 0
 		case ">":
@@ -2273,7 +2273,7 @@ func purescriptAdmits(rng string, v [3]int) bool {
 // path dependencies and the package's own sub-packages are left out.
 //
 // Implements: REQ-SUP-060
-func (c *Client) dubPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) dubPackage(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	name := t.Package
 	if !dubName.MatchString(name) {
 		return nil, fmt.Errorf("not a dub package name: %q", name)
@@ -2294,14 +2294,14 @@ func (c *Client) dubPackage(ctx context.Context, index string, t lang.Target) ([
 		if err != nil {
 			return nil, err
 		}
-		var pkg struct {
+		var packageName struct {
 			Versions []map[string]json.RawMessage `json:"versions"`
 		}
-		if err := json.Unmarshal(body, &pkg); err != nil {
+		if err := json.Unmarshal(body, &packageName); err != nil {
 			return nil, err
 		}
 		best, bestV := -1, [3]int{}
-		for i, v := range pkg.Versions {
+		for i, v := range packageName.Versions {
 			var s string
 			json.Unmarshal(v["version"], &s)
 			parsed, ok := dubVersion(s)
@@ -2315,33 +2315,33 @@ func (c *Client) dubPackage(ctx context.Context, index string, t lang.Target) ([
 		if best < 0 {
 			return nil, nil
 		}
-		info = pkg.Versions[best]
+		info = packageName.Versions[best]
 	}
 	seen := map[string]bool{name: true}
-	var out []dep
+	var out []dependency
 	var collect func(recipe map[string]json.RawMessage, depth int)
 	collect = func(recipe map[string]json.RawMessage, depth int) {
-		var deps map[string]json.RawMessage
-		json.Unmarshal(recipe["dependencies"], &deps)
-		for _, n := range slices.Sorted(maps.Keys(deps)) {
+		var dependencies map[string]json.RawMessage
+		json.Unmarshal(recipe["dependencies"], &dependencies)
+		for _, n := range slices.Sorted(maps.Keys(dependencies)) {
 			b, _, _ := strings.Cut(n, ":")
 			if b == "" || seen[b] {
 				continue // the package's own sub-packages
 			}
 			var spec string
-			if json.Unmarshal(deps[n], &spec) != nil {
+			if json.Unmarshal(dependencies[n], &spec) != nil {
 				var o struct {
 					Version  string `json:"version"`
 					Path     string `json:"path"`
 					Optional bool   `json:"optional"`
 				}
-				if json.Unmarshal(deps[n], &o) != nil || o.Optional || o.Path != "" {
+				if json.Unmarshal(dependencies[n], &o) != nil || o.Optional || o.Path != "" {
 					continue
 				}
 				spec = o.Version
 			}
 			seen[b] = true
-			out = append(out, dep{Name: b, Version: strings.TrimSpace(spec)})
+			out = append(out, dependency{Name: b, Version: strings.TrimSpace(spec)})
 		}
 		if depth > 0 {
 			return
@@ -2349,9 +2349,9 @@ func (c *Client) dubPackage(ctx context.Context, index string, t lang.Target) ([
 		var subs []json.RawMessage
 		json.Unmarshal(recipe["subPackages"], &subs)
 		for _, raw := range subs {
-			var sub map[string]json.RawMessage
-			if json.Unmarshal(raw, &sub) == nil {
-				collect(sub, depth+1)
+			var nested map[string]json.RawMessage
+			if json.Unmarshal(raw, &nested) == nil {
+				collect(nested, depth+1)
 			}
 		}
 		var configs []map[string]json.RawMessage
@@ -2404,41 +2404,41 @@ func dubAdmits(spec string, v [3]int) bool {
 	cmp := func(a, b [3]int) int { return slices.Compare(a[:], b[:]) }
 	switch {
 	case strings.HasPrefix(spec, "~>"):
-		lo, n, ok := bound(strings.TrimSpace(spec[2:]))
+		low, n, ok := bound(strings.TrimSpace(spec[2:]))
 		if !ok {
 			return false
 		}
-		hi := lo
+		high := low
 		switch n {
 		case 1:
-			hi = [3]int{lo[0] + 1, 0, 0}
+			high = [3]int{low[0] + 1, 0, 0}
 		case 2:
-			hi = [3]int{lo[0] + 1, 0, 0}
+			high = [3]int{low[0] + 1, 0, 0}
 		default:
-			hi = [3]int{lo[0], lo[1] + 1, 0}
+			high = [3]int{low[0], low[1] + 1, 0}
 		}
-		return cmp(v, lo) >= 0 && cmp(v, hi) < 0
+		return cmp(v, low) >= 0 && cmp(v, high) < 0
 	case strings.HasPrefix(spec, "^"):
-		lo, _, ok := bound(strings.TrimSpace(spec[1:]))
+		low, _, ok := bound(strings.TrimSpace(spec[1:]))
 		if !ok {
 			return false
 		}
-		hi := [3]int{lo[0] + 1, 0, 0}
-		if lo[0] == 0 {
-			hi = [3]int{0, lo[1] + 1, 0}
+		high := [3]int{low[0] + 1, 0, 0}
+		if low[0] == 0 {
+			high = [3]int{0, low[1] + 1, 0}
 		}
-		return cmp(v, lo) >= 0 && cmp(v, hi) < 0
+		return cmp(v, low) >= 0 && cmp(v, high) < 0
 	case strings.HasPrefix(spec, "~"):
 		return false
 	}
 	for _, c := range strings.Fields(spec) {
-		op := strings.TrimRight(c, "0123456789.-+abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
-		b, _, ok := bound(strings.TrimPrefix(c, op))
+		operator := strings.TrimRight(c, "0123456789.-+abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ")
+		b, _, ok := bound(strings.TrimPrefix(c, operator))
 		if !ok {
 			return false
 		}
 		n := cmp(v, b)
-		switch op {
+		switch operator {
 		case ">=":
 			ok = n >= 0
 		case ">":
@@ -2473,27 +2473,27 @@ func dubAdmits(spec string, v [3]int) bool {
 // counted, an exact constraint shown as its version and a range as written.
 //
 // Implements: REQ-SUP-061
-func (c *Client) alireCrate(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) alireCrate(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	name := t.Package
 	if !alireName.MatchString(name) {
 		return nil, fmt.Errorf("not an Alire crate name: %q", name)
 	}
-	ix, err := c.alireIndex(ctx, strings.TrimRight(index, "/"))
+	alire, err := c.alireIndex(ctx, strings.TrimRight(index, "/"))
 	if err != nil {
 		return nil, err
 	}
 	version, exact := ada.ExactVersion(t.Version)
 	if !exact {
-		versions, err := ix.versions(name)
-		if version, err = release(versions, err, func(vs []string) string { return ada.Newest(vs, t.Version) }); err != nil {
+		versions, err := alire.versions(name)
+		if version, err = release(versions, err, func(available []string) string { return ada.Newest(available, t.Version) }); err != nil {
 			return nil, err
 		}
 	}
-	body, err := ix.read(name, version)
+	body, err := alire.read(name, version)
 	if err != nil {
 		return nil, err
 	}
-	var out []dep
+	var out []dependency
 	for n, constraint := range ada.Dependencies(body) {
 		if n == name {
 			continue
@@ -2501,7 +2501,7 @@ func (c *Client) alireCrate(ctx context.Context, index string, t lang.Target) ([
 		if v, ok := ada.ExactVersion(constraint); ok {
 			constraint = v
 		}
-		out = append(out, dep{Name: n, Version: constraint})
+		out = append(out, dependency{Name: n, Version: constraint})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
@@ -2528,8 +2528,8 @@ type qlIndex struct {
 }
 
 type qlSystem struct {
-	name, file string
-	deps       []string
+	name, file   string
+	dependencies []string
 }
 
 // quicklispProject reads a Quicklisp project's dependencies from its dist's
@@ -2543,7 +2543,7 @@ type qlSystem struct {
 // version answers with its dependencies at that same dist version.
 //
 // Implements: REQ-SUP-062
-func (c *Client) quicklispProject(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) quicklispProject(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	name := t.Package
 	if !quicklispName.MatchString(name) {
 		return nil, fmt.Errorf("not a Quicklisp project name: %q", name)
@@ -2552,11 +2552,11 @@ func (c *Client) quicklispProject(ctx context.Context, index string, t lang.Targ
 	if quicklispDated(t.Version) {
 		distinfo = strings.TrimSuffix(index, ".txt") + "/" + t.Version + "/distinfo.txt"
 	}
-	idx, err := c.quicklispIndex(ctx, distinfo)
+	distIndex, err := c.quicklispIndex(ctx, distinfo)
 	if err != nil {
 		return nil, err
 	}
-	systems := idx.projects[name]
+	systems := distIndex.projects[name]
 	if len(systems) == 0 {
 		// Not this dist's: the next dist may have it.
 		return nil, fmt.Errorf("%s: no project %q: %w", distinfo, name, errAbsent)
@@ -2579,13 +2579,13 @@ func (c *Client) quicklispProject(ctx context.Context, index string, t lang.Targ
 		version = t.Version
 	}
 	seen := map[string]bool{}
-	var out []dep
+	var out []dependency
 	for _, s := range own {
-		for _, d := range s.deps {
+		for _, d := range s.dependencies {
 			if d == "asdf" || d == "uiop" || strings.HasPrefix(d, "sb-") {
 				continue
 			}
-			p := idx.project[d]
+			p := distIndex.project[d]
 			if p == "" {
 				p = d
 			}
@@ -2593,7 +2593,7 @@ func (c *Client) quicklispProject(ctx context.Context, index string, t lang.Targ
 				continue
 			}
 			seen[p] = true
-			out = append(out, dep{Name: p, Version: version})
+			out = append(out, dependency{Name: p, Version: version})
 		}
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
@@ -2612,25 +2612,25 @@ type qlFailure struct {
 // Implements: REQ-SUP-062
 func (c *Client) quicklispIndex(ctx context.Context, distinfo string) (*qlIndex, error) {
 	c.mu.Lock()
-	idx, ok := c.qlSystems[distinfo]
+	index, ok := c.qlSystems[distinfo]
 	failed, gave := c.qlFailed[distinfo]
 	c.mu.Unlock()
 	if ok {
-		return idx, nil
+		return index, nil
 	}
 	if gave && time.Since(failed.at) < failRetry {
 		return nil, failed.err
 	}
-	idx, err := c.readQuicklispIndex(ctx, distinfo)
+	index, err := c.readQuicklispIndex(ctx, distinfo)
 	c.mu.Lock()
 	if err != nil {
 		c.qlFailed[distinfo] = qlFailure{err, time.Now()}
 	} else {
 		delete(c.qlFailed, distinfo)
-		c.qlSystems[distinfo] = idx
+		c.qlSystems[distinfo] = index
 	}
 	c.mu.Unlock()
-	return idx, err
+	return index, err
 }
 
 // readQuicklispIndex reads a distinfo and the system index it names.
@@ -2652,19 +2652,19 @@ func (c *Client) readQuicklispIndex(ctx context.Context, distinfo string) (*qlIn
 	if err != nil {
 		return nil, err
 	}
-	idx := &qlIndex{projects: map[string][]qlSystem{}, project: map[string]string{}}
+	index := &qlIndex{projects: map[string][]qlSystem{}, project: map[string]string{}}
 	for _, line := range strings.Split(string(body), "\n") {
 		f := strings.Fields(line)
 		if len(f) < 3 || strings.HasPrefix(f[0], "#") {
 			continue
 		}
-		s := qlSystem{file: f[1], name: f[2], deps: f[3:]}
-		idx.projects[f[0]] = append(idx.projects[f[0]], s)
-		if _, dup := idx.project[s.name]; !dup {
-			idx.project[s.name] = f[0]
+		s := qlSystem{file: f[1], name: f[2], dependencies: f[3:]}
+		index.projects[f[0]] = append(index.projects[f[0]], s)
+		if _, duplicate := index.project[s.name]; !duplicate {
+			index.project[s.name] = f[0]
 		}
 	}
-	return idx, nil
+	return index, nil
 }
 
 // quicklispName is a Quicklisp project name: what a dist's directories are

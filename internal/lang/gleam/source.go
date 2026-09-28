@@ -8,36 +8,36 @@ import (
 
 // Import kinds, carried in RawImport.Name.
 const (
-	kindModule = "module" // import a/b/c
-	kindErlang = "erlang" // @external(erlang, "mod", "fun")
-	kindJS     = "js"     // @external(javascript, "./ffi.mjs", "fun")
-	kindDep    = "dep"    // a gleam.toml dependency
-	kindLocked = "locked" // a manifest.toml package
+	kindModule     = "module" // import a/b/c
+	kindErlang     = "erlang" // @external(erlang, "mod", "fun")
+	kindJS         = "js"     // @external(javascript, "./ffi.mjs", "fun")
+	kindDependency = "dep"    // a gleam.toml dependency
+	kindLocked     = "locked" // a manifest.toml package
 )
 
-type tokKind uint8
+type tokenKind uint8
 
 const (
-	tIdent  tokKind = iota // lower-case name, keyword or discard
-	tUpper                 // Upper-case name: a type or constructor
-	tString                // "..." with the quotes stripped, escapes kept
-	tPunct                 // one or two punctuation bytes
-	tOther                 // numbers and anything else
+	tIdentifier  tokenKind = iota // lower-case name, keyword or discard
+	tUpper                        // Upper-case name: a type or constructor
+	tString                       // "..." with the quotes stripped, escapes kept
+	tPunctuation                  // one or two punctuation bytes
+	tOther                        // numbers and anything else
 )
 
 type token struct {
-	kind tokKind
+	kind tokenKind
 	text string
 	line int
 }
 
 // lex splits Gleam source into tokens. Comments (//, ///, ////) are dropped;
 // strings may span lines and end at an unescaped quote or at the end of input.
-// Token texts are slices of one string copy of src.
+// Token texts are slices of one string copy of source.
 //
 // Implements: REQ-GLEAM-010
-func lex(src []byte) []token {
-	s := string(src)
+func lex(source []byte) []token {
+	s := string(source)
 	var out []token
 	line := 1
 	for i := 0; i < len(s); {
@@ -71,7 +71,7 @@ func lex(src []byte) []token {
 			for j < len(s) && isWord(s[j]) {
 				j++
 			}
-			out = append(out, token{tIdent, s[i:j], line})
+			out = append(out, token{tIdentifier, s[i:j], line})
 			i = j
 		case c >= 'A' && c <= 'Z':
 			j := i + 1
@@ -88,10 +88,10 @@ func lex(src []byte) []token {
 			out = append(out, token{tOther, s[i:j], line})
 			i = j
 		case c == '-' && i+1 < len(s) && s[i+1] == '>', c == '.' && i+1 < len(s) && s[i+1] == '.':
-			out = append(out, token{tPunct, s[i : i+2], line})
+			out = append(out, token{tPunctuation, s[i : i+2], line})
 			i += 2
 		case c < 0x80:
-			out = append(out, token{tPunct, s[i : i+1], line})
+			out = append(out, token{tPunctuation, s[i : i+1], line})
 			i++
 		default:
 			i++ // a byte of a UTF-8 sequence outside strings: not Gleam
@@ -112,9 +112,9 @@ func isWord(c byte) bool {
 // never take the depth below zero, so a stray one costs nothing.
 //
 // Implements: REQ-GLEAM-002, REQ-GLEAM-003, REQ-GLEAM-004, REQ-GLEAM-010
-func extractSource(src []byte) *lang.Extraction {
-	tokens := lex(src)
-	ex := &lang.Extraction{}
+func extractSource(source []byte) *lang.Extraction {
+	tokens := lex(source)
+	extraction := &lang.Extraction{}
 	var symbols lang.SymbolSet
 	seen := map[string]bool{}
 	addImport := func(kind, spec, module string, line int) {
@@ -123,7 +123,7 @@ func extractSource(src []byte) *lang.Extraction {
 			return
 		}
 		seen[key] = true
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
 	}
 	depth := 0
 	typeBody := -1 // depth inside the current custom type's braces, else -1
@@ -135,9 +135,9 @@ func extractSource(src []byte) *lang.Extraction {
 		return token{kind: tOther}
 	}
 	for i := 0; i < len(tokens); i++ {
-		tk := tokens[i]
-		if tk.kind == tPunct {
-			switch tk.text {
+		token := tokens[i]
+		if token.kind == tPunctuation {
+			switch token.text {
 			case "{", "(", "[":
 				depth++
 			case "}", ")", "]":
@@ -149,7 +149,7 @@ func extractSource(src []byte) *lang.Extraction {
 				}
 			case "@":
 				if depth == 0 {
-					if n := at(i + 1); n.kind == tIdent && n.text == "external" && at(i+2).text == "(" {
+					if n := at(i + 1); n.kind == tIdentifier && n.text == "external" && at(i+2).text == "(" {
 						target, module := at(i+3), at(i+5)
 						if at(i+4).text == "," && module.kind == tString {
 							switch target.text {
@@ -164,22 +164,22 @@ func extractSource(src []byte) *lang.Extraction {
 			}
 			continue
 		}
-		if typeBody >= 0 && depth == typeBody && tk.kind == tUpper && at(i-1).text != "." {
-			symbols.Add(owner+"."+tk.text, "constructor", tk.line)
+		if typeBody >= 0 && depth == typeBody && token.kind == tUpper && at(i-1).text != "." {
+			symbols.Add(owner+"."+token.text, "constructor", token.line)
 			continue
 		}
-		if depth != 0 || tk.kind != tIdent {
+		if depth != 0 || token.kind != tIdentifier {
 			continue
 		}
-		switch tk.text {
+		switch token.text {
 		case "import":
 			i = readImport(tokens, i+1, addImport) - 1 // the loop's i++ lands after the import
 		case "fn":
-			if n := at(i + 1); n.kind == tIdent {
+			if n := at(i + 1); n.kind == tIdentifier {
 				symbols.Add(n.text, "func", n.line)
 			}
 		case "const":
-			if n := at(i + 1); n.kind == tIdent {
+			if n := at(i + 1); n.kind == tIdentifier {
 				symbols.Add(n.text, "const", n.line)
 			}
 		case "type":
@@ -193,7 +193,7 @@ func extractSource(src []byte) *lang.Extraction {
 			j := i + 2
 			if at(j).text == "(" {
 				for d := 0; j < len(tokens); j++ {
-					if tokens[j].kind != tPunct {
+					if tokens[j].kind != tPunctuation {
 						continue
 					}
 					if tokens[j].text == "(" {
@@ -206,12 +206,12 @@ func extractSource(src []byte) *lang.Extraction {
 					}
 				}
 			}
-			if t := at(j); t.kind == tPunct && t.text == "{" {
+			if t := at(j); t.kind == tPunctuation && t.text == "{" {
 				typeBody, owner = depth+1, n.text
 			}
 		case "external":
 			// Gleam before 0.30: external fn f(a) -> b = "module" "function"
-			if at(i+1).text != "fn" || at(i+2).kind != tIdent {
+			if at(i+1).text != "fn" || at(i+2).kind != tIdentifier {
 				continue
 			}
 			symbols.Add(at(i+2).text, "func", at(i+2).line)
@@ -236,21 +236,21 @@ func extractSource(src []byte) *lang.Extraction {
 			}
 		}
 	}
-	ex.Symbols = symbols.List()
-	return ex
+	extraction.Symbols = symbols.List()
+	return extraction
 }
 
 // readImport reads `a/b/c`, an optional `.{type T, f as g}` list and an optional
 // `as name` after an import keyword, and returns the index of the next token.
 func readImport(tokens []token, i int, add func(kind, spec, module string, line int)) int {
-	if i >= len(tokens) || tokens[i].kind != tIdent {
+	if i >= len(tokens) || tokens[i].kind != tIdentifier {
 		return i
 	}
 	line := tokens[i].line
 	var b strings.Builder
 	b.WriteString(tokens[i].text)
 	i++
-	for i+1 < len(tokens) && tokens[i].text == "/" && tokens[i+1].kind == tIdent && tokens[i+1].line == tokens[i].line {
+	for i+1 < len(tokens) && tokens[i].text == "/" && tokens[i+1].kind == tIdentifier && tokens[i+1].line == tokens[i].line {
 		b.WriteByte('/')
 		b.WriteString(tokens[i+1].text)
 		i += 2
@@ -261,7 +261,7 @@ func readImport(tokens []token, i int, add func(kind, spec, module string, line 
 		// The unqualified list holds names, `type`, `as` and commas and ends at the
 		// first }. A keyword that starts a definition means it was never closed.
 		for i += 2; i < len(tokens) && tokens[i].text != "}"; i++ {
-			if t := tokens[i]; t.kind == tIdent && (t.text == "import" || t.text == "pub" || t.text == "fn" || t.text == "const") || t.text == "@" {
+			if t := tokens[i]; t.kind == tIdentifier && (t.text == "import" || t.text == "pub" || t.text == "fn" || t.text == "const") || t.text == "@" {
 				return i
 			}
 		}

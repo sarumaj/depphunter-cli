@@ -14,7 +14,7 @@
 // without putting either down. Nothing a secondary tool does can tag or catch, which
 // is what hits() below is for, and the HUD keeps the two rows apart.
 //
-// The hand and the forearm are a rigged model (hands.js, modelled by scripts/hand.py in
+// The hand and the forearm are a rigged model (hands.js, modeled by scripts/hand.py in
 // Blender); the tools themselves are built here. Both are lit, which nothing else on
 // the map is: the walk camera carries its own lights, and they reach only what it
 // holds, because every other material in the scene is unlit.
@@ -70,9 +70,9 @@ import { handModel, closeHand, closeFinger, setWrist, loadHands, handsReady } fr
  *
  * Implements: REQ-TOOL-012
  */
-function part(geo, color, opts) {
+function part(geo, color, options) {
   return new THREE.Mesh(geo, new THREE.MeshPhongMaterial({
-    color, shininess: 22, specular: 0x1b1b1b, ...opts,
+    color, shininess: 22, specular: 0x1b1b1b, ...options,
   }));
 }
 
@@ -85,13 +85,13 @@ function part(geo, color, opts) {
  *
  * Implements: REQ-TOOL-039, REQ-TOOL-040
  */
-function flying(scene, geo, color, opts) {
-  return new THREE.Mesh(geo, scene.bendable(new THREE.MeshBasicMaterial({ color, ...opts })));
+function flying(scene, geo, color, options) {
+  return new THREE.Mesh(geo, scene.bendable(new THREE.MeshBasicMaterial({ color, ...options })));
 }
 
 /** A tube between two points, for anything in flight that has a shaft. */
-function flyingRod(scene, r0, r1, len, color) {
-  return flying(scene, new THREE.CylinderGeometry(r0, r1, len, 12), color);
+function flyingRod(scene, r0, r1, rodLength, color) {
+  return flying(scene, new THREE.CylinderGeometry(r0, r1, rodLength, 12), color);
 }
 
 // The camera's screen, which is what a photograph put up on it has to be fitted to.
@@ -147,8 +147,8 @@ function bagOf(parent, r, depth) {
 }
 
 // A tube between two points, for rod blanks, handles and strap runs.
-function rodPart(r0, r1, len, color) {
-  return part(new THREE.CylinderGeometry(r0, r1, len, 12), color);
+function rodPart(r0, r1, rodLength, color) {
+  return part(new THREE.CylinderGeometry(r0, r1, rodLength, 12), color);
 }
 
 // The axis a cylinder is built along, for linkPart below.
@@ -168,11 +168,11 @@ const ALONG = new THREE.Vector3(0, 1, 0);
  */
 function linkPart(from, to, r, color) {
   const run = new THREE.Vector3().subVectors(to, from);
-  const len = run.length();
-  const tube = rodPart(r, r, len, color);
+  const runLength = run.length();
+  const tube = rodPart(r, r, runLength, color);
   tube.position.copy(from).addScaledVector(run, 0.5);
   tube.quaternion.setFromUnitVectors(ALONG, run.normalize());
-  tube.userData.len = len;
+  tube.userData.len = runLength;
   return tube;
 }
 
@@ -394,11 +394,11 @@ export function restTool(vm) {
 // These are solved rather than chosen. The rotation is the camera body's own turn
 // (`body`) undone, which is what leaves the screen facing the eye instead of twenty
 // degrees off it; the position is what puts the middle of that screen on the line of
-// sight three centimetres out, where it covers nine tenths of the view's height and
+// sight three centimeters out, where it covers nine tenths of the view's height and
 // two thirds of its width - the picture edge to edge, with the body's own edges past
 // the corners of the frame. Nothing of the tool comes nearer than the screen, so
 // nothing is cut open by the near plane; the arm leaves the frame at the bottom
-// corner and runs past the eye, which is what it was modelled long enough to do.
+// corner and runs past the eye, which is what it was modeled long enough to do.
 const STUDY = { x: 0.0028, y: 0.0464, z: -0.0114, rx: -0.06, ry: 0.3, rz: -0.04 };
 const STUDY_AT = new THREE.Vector3();
 
@@ -437,10 +437,10 @@ export function studyTool(vm, u) {
  *
  * Implements: REQ-WALK-042, REQ-TOOL-020
  */
-function idle(vm, now, pace = 0, dt = 0) {
+function idle(vm, now, pace = 0, deltaTime = 0) {
   const t = now / 1000;
   const step = vm.userData.step =
-    ((vm.userData.step || 0) + dt * 6.2 * Math.max(0.6, pace)) % (4 * Math.PI);
+    ((vm.userData.step || 0) + deltaTime * 6.2 * Math.max(0.6, pace)) % (4 * Math.PI);
   const breathe = Math.sin(t * 1.15) * 0.006;
   vm.position.y = (vm.userData.restY ?? REST.y) + breathe + Math.abs(Math.sin(step)) * 0.016 * pace - 0.008 * pace;
   vm.position.x = REST.x + Math.sin(step * 0.5) * 0.02 * pace;
@@ -456,7 +456,7 @@ function idle(vm, now, pace = 0, dt = 0) {
  * A viewmodel's origin is where the group sits in front of the camera, which is a
  * point in mid-air a little inboard of the fist; a gesture written as a rotation of
  * that group swings everything around that point. For a tool held in the fist that is
- * near enough, but a net is half a metre of shaft with the head on the far end, and
+ * near enough, but a net is half a meter of shaft with the head on the far end, and
  * an arc about a point that far inboard turns the head into the pivot and the hand
  * into the thing going round it - which is the wrong way up entirely.
  *
@@ -613,7 +613,7 @@ const rod = {
   // a point the sensible thing is to walk. On a wall it always skips off (walk.js
   // holds). So it climbs from the hunting hand, which leaves the other free for the
   // jet or the skimmers, but it wants a clean shot at the roof where the grapple
-  // forgives two storeys of facade.
+  // forgives two stories of facade.
   reel: { speed: 11, stop: 0.25, max: 28, onto: true, roof: true },
 };
 
@@ -649,7 +649,7 @@ const net = {
       net.add(ferrule);
 
       // The head, built so the shaft runs into the rim rather than through the middle
-      // of the mouth. A hoop centred on the shaft's axis is a landing net looked at
+      // of the mouth. A hoop centered on the shaft's axis is a landing net looked at
       // down its handle; a butterfly net's hoop stands in the line of the shaft, and
       // the stick ends where the rim begins. That is one group and one offset: the
       // mouth is turned a quarter so its plane contains the shaft, and lifted by its
@@ -691,7 +691,7 @@ const net = {
    * turns over with it so the mouth leads the whole way down.
    *
    * It turns about the hand (aboutHand), which is what makes it a swing rather than a
-   * net held still while the arm is carried around it: the head is half a metre out on
+   * net held still while the arm is carried around it: the head is half a meter out on
    * the end of the shaft, and it is the head that has to travel.
    *
    * Implements: REQ-TOOL-044, REQ-TOOL-046
@@ -746,7 +746,7 @@ const camera = {
       cam.position.set(this.body.x, this.body.y, this.body.z);
       cam.rotation.set(this.body.rx, this.body.ry, this.body.rz);
       g.add(cam);
-      // A camera modelled at the size of a real one is more than one hand can hold at
+      // A camera modeled at the size of a real one is more than one hand can hold at
       // the scale the walker is: the body is drawn a little smaller than life, and the
       // hand goes on the grip where the shrinking leaves it.
       const shell = new THREE.Group();
@@ -855,10 +855,10 @@ const camera = {
    *
    * Implements: REQ-HUNT-047
    */
-  live(vm, scene, lens) {
+  live(vm, scene, lengths) {
     const screen = vm.getObjectByName('screen');
     if (!screen) return;
-    const texture = vm.userData.photo || scene.film(lens);
+    const texture = vm.userData.photo || scene.film(lengths);
     if (screen.material.map !== texture) {
       screen.material.map = texture;
       screen.material.color.set('#ffffff');
@@ -900,7 +900,7 @@ const bubbles = {
       wand.add(stick);
 
       // The head is placed at the tip of the stick, and the ring is lifted inside it by
-      // its own radius so the bottom of the rim sits on that tip. Centred on the tip
+      // its own radius so the bottom of the rim sits on that tip. Centered on the tip
       // instead - which is what it was - the stick runs through the middle of the ring
       // and out the far side, and the thing reads as a ring threaded onto a stick
       // rather than a wand with a ring on the end of it.
@@ -1046,7 +1046,7 @@ const extinguisher = {
       body.add(label);
 
       // The hose out of the valve, and the horn on the end of it. Both run forward:
-      // the tool is modelled with its shaft along +y because that is what the fist
+      // the tool is modeled with its shaft along +y because that is what the fist
       // closes on (SWUNG), which leaves +z pointing down the view - so a horn that is
       // to throw foam where the walker is looking is turned onto +z and left there.
       const hose = rodPart(0.012, 0.012, 0.13, '#1d2024');
@@ -1077,7 +1077,7 @@ const extinguisher = {
     vm.rotation.z = REST.rz - k * 0.1;
     grip(vm, 0.4 + k * 0.5);
   },
-  // A gout of foam: three lumps of it, off centre, that swell as they fly.
+  // A gout of foam: three lumps of it, off center, that swell as they fly.
   projectile(scene) {
     const g = new THREE.Group();
     const skin = { transparent: true, opacity: 0.55, depthWrite: false };
@@ -1117,7 +1117,7 @@ const dart = {
   viewmodel() {
     return viewmodel(g => {
       const gun = armed(g, this, tool => { tool.name = 'gun'; });
-      // The launcher is modelled about its barrel, the way one would be drawn; this
+      // The launcher is modeled about its barrel, the way one would be drawn; this
       // hangs the whole thing off the pistol grip, which is the part a fist closes on.
       const frame = new THREE.Group();
       frame.position.set(0, 0.045, -0.01);
@@ -1155,9 +1155,9 @@ const dart = {
       bell.rotation.x = Math.PI / 2;
       bell.position.set(0, 0.115, -0.31);
       frame.add(bell);
-      const lens = part(new THREE.CircleGeometry(0.026, 14), '#7fb8ff');
-      lens.position.set(0, 0.115, -0.333);
-      frame.add(lens);
+      const lengths = part(new THREE.CircleGeometry(0.026, 14), '#7fb8ff');
+      lengths.position.set(0, 0.115, -0.333);
+      frame.add(lengths);
       for (const z of [-0.14, -0.26]) {
         frame.add(part(new THREE.BoxGeometry(0.016, 0.04, 0.018).translate(0, 0.085, z), '#2b3138'));
       }
@@ -1347,7 +1347,7 @@ const grapple = {
       const frame = new THREE.Group();
       frame.position.set(0, 0.045, -0.01);
       gun.add(frame);
-      // A stubby launcher in the matt grey of issued kit, with the drum of line on
+      // A stubby launcher in the matte gray of issued kit, with the drum of line on
       // its side - which is the part that says what this does.
       frame.add(part(new THREE.BoxGeometry(0.07, 0.085, 0.15).translate(0, 0.055, -0.08), '#3c444d'));
       const barrel = rodPart(0.034, 0.036, 0.22, '#2b3138');
@@ -1541,7 +1541,7 @@ const jetpack = {
    * which is what makes it read as something being blown out rather than a cone that
    * changes size. It says the pack is running without anything having to be pressed.
    */
-  live(vm, scene, lens, now = performance.now()) {
+  live(vm, scene, lengths, now = performance.now()) {
     const flame = vm.getObjectByName('flame'), core = vm.getObjectByName('core');
     const wash = vm.getObjectByName('wash'), flare = vm.getObjectByName('flare');
     if (!flame) return;

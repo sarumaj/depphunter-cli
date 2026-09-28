@@ -18,12 +18,12 @@ func init() {
 		CamlinternalLazy CamlinternalMod CamlinternalOO Std_exit`) {
 		stdModules[m] = "stdlib"
 	}
-	for m, lib := range map[string]string{
+	for m, library := range map[string]string{
 		"Unix": "unix", "UnixLabels": "unix", "Str": "str", "Thread": "threads", "Event": "threads",
 		"ThreadUnix": "threads", "Dynlink": "dynlink", "Runtime_events": "runtime_events",
 		"Graphics": "graphics", "Num": "num", "Big_int": "num", "Ratio": "num", "Arith_status": "num",
 	} {
-		stdModules[m] = lib
+		stdModules[m] = library
 	}
 }
 
@@ -35,11 +35,11 @@ var stdLibraries = map[string]bool{
 	"std_exit": true, "ocaml": true,
 }
 
-// compilerLibs are the modules of compiler-libs a program reads OCaml with. Many
+// compilerLibraries are the modules of compiler-libs a program reads OCaml with. Many
 // projects have modules of these names of their own, so they are the standard
 // library only for a component that uses compiler-libs, and ppxlib's (which
 // re-exports them) for one that uses ppxlib.
-var compilerLibs = map[string]bool{}
+var compilerLibraries = map[string]bool{}
 
 func init() {
 	for _, m := range strings.Fields(`Parsetree Asttypes Ast_helper Ast_mapper Ast_iterator Location
@@ -47,7 +47,7 @@ func init() {
 		Path Predef Printtyp Clflags Compenv Compmisc Config Misc Warnings Toploop Topdirs Outcometree
 		Docstrings Builtin_attributes Lambda Cmi_format Cmt_format Load_path Persistent_env Tast_iterator
 		Tast_mapper Untypeast Btype Ctype Oprint Main_args`) {
-		compilerLibs[m] = true
+		compilerLibraries[m] = true
 	}
 }
 
@@ -133,11 +133,11 @@ var folder = strings.NewReplacer("-", "_", ".", "_")
 
 // libraryPackage is the opam package providing a findlib library: the part before
 // the first dot, unless the table says otherwise. "" is the compiler's own.
-func libraryPackage(lib string) string {
-	if p, ok := libraryPackages[lib]; ok {
+func libraryPackage(library string) string {
+	if p, ok := libraryPackages[library]; ok {
 		return p
 	}
-	first, _, _ := strings.Cut(lib, ".")
+	first, _, _ := strings.Cut(library, ".")
 	if stdLibraries[first] {
 		return ""
 	}
@@ -148,8 +148,8 @@ func libraryPackage(lib string) string {
 }
 
 // stdLibrary is the standard library a findlib library is part of, "" if none.
-func stdLibrary(lib string) string {
-	first, _, _ := strings.Cut(lib, ".")
+func stdLibrary(library string) string {
+	first, _, _ := strings.Cut(library, ".")
 	if stdLibraries[first] {
 		return first
 	}
@@ -159,26 +159,26 @@ func stdLibrary(lib string) string {
 // provides reports how well a library provides a module: 2 for a match by name
 // (the library's main module, Lwt_unix of lwt.unix), 1 for a module prefixed by
 // the package's name (Lwt_io of lwt.unix), 0 for none.
-func provides(lib, module string) int {
-	pkg := libraryPackage(lib)
-	if pkg == "" {
+func provides(library, module string) int {
+	packageName := libraryPackage(library)
+	if packageName == "" {
 		return 0
 	}
 	if p, ok := modulePackages[module]; ok {
-		if p == pkg {
+		if p == packageName {
 			return 2
 		}
 		return 0
 	}
 	m := fold(module)
-	last := lib
-	if i := strings.LastIndexByte(lib, '.'); i >= 0 {
-		last = lib[i+1:]
+	last := library
+	if i := strings.LastIndexByte(library, '.'); i >= 0 {
+		last = library[i+1:]
 	}
-	if m == fold(lib) || m == fold(last) || m == fold(pkg) {
+	if m == fold(library) || m == fold(last) || m == fold(packageName) {
 		return 2
 	}
-	if strings.HasPrefix(m, fold(pkg)+"_") {
+	if strings.HasPrefix(m, fold(packageName)+"_") {
 		return 1
 	}
 	return 0

@@ -54,21 +54,21 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-MD-001, REQ-MD-002
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
-	ex := &lang.Extraction{}
-	for _, l := range Links(src) {
-		if l.Dest == "" {
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
+	extraction := &lang.Extraction{}
+	for _, l := range Links(source) {
+		if l.Destination == "" {
 			continue // a reference with no definition: nothing to point at
 		}
-		ex.Imports = append(ex.Imports, lang.RawImport{
-			Spec: trim(l.Spec, 120), Module: l.Dest, Line: l.Line,
+		extraction.Imports = append(extraction.Imports, lang.RawImport{
+			Spec: trim(l.Spec, 120), Module: l.Destination, Line: l.Line,
 		})
 	}
 	// Headings are the document's symbols. Two sections may be called the same thing,
 	// and a symbol's name is what identifies it within its file, so a repeat is
 	// numbered the way a renderer numbers its anchor.
 	seen := map[string]int{}
-	for _, h := range Headings(src) {
+	for _, h := range Headings(source) {
 		name := plain(h.Text)
 		if name == "" {
 			continue
@@ -77,9 +77,9 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 			name += " (" + strconv.Itoa(n+1) + ")"
 		}
 		seen[plain(h.Text)]++
-		ex.Symbols = append(ex.Symbols, lang.Symbol{Name: name, Kind: heading(h.Level), Line: h.Line})
+		extraction.Symbols = append(extraction.Symbols, lang.Symbol{Name: name, Kind: heading(h.Level), Line: h.Line})
 	}
-	return ex, nil
+	return extraction, nil
 }
 
 // heading names a level the way the side panel can show it.

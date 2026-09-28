@@ -46,22 +46,22 @@ end
 	}
 	r := newResolver(root, langtest.Files(t, root))
 	for app, want := range map[string]lang.Target{
-		"billing": {Ecosystem: ecoHex, Package: "billing", Version: "1.2.0", Requested: "~> 1.0", Pinned: true, Registry: "hexpm:acme"},
-		"ledger":  {Ecosystem: ecoHex, Package: "ledger", Version: "2.0.1", Requested: "~> 2.0", Pinned: true, Registry: "hexpm:acme"},
-		"vault":   {Ecosystem: ecoHex, Package: "vault", Version: "~> 0.1", Registry: "hexpm:acme"},
-		"mini":    {Ecosystem: ecoHex, Package: "mini", Version: "~> 0.1", Registry: "mini_repo"},
-		"plug":    {Ecosystem: ecoHex, Package: "plug", Version: "~> 1.16"},
-		"jason":   {Ecosystem: ecoHex, Package: "jason", Version: "1.4.1", Requested: "~> 1.4", Pinned: true},
+		"billing": {Ecosystem: ecosystemHex, Package: "billing", Version: "1.2.0", Requested: "~> 1.0", Pinned: true, Registry: "hexpm:acme"},
+		"ledger":  {Ecosystem: ecosystemHex, Package: "ledger", Version: "2.0.1", Requested: "~> 2.0", Pinned: true, Registry: "hexpm:acme"},
+		"vault":   {Ecosystem: ecosystemHex, Package: "vault", Version: "~> 0.1", Registry: "hexpm:acme"},
+		"mini":    {Ecosystem: ecosystemHex, Package: "mini", Version: "~> 0.1", Registry: "mini_repo"},
+		"plug":    {Ecosystem: ecosystemHex, Package: "plug", Version: "~> 1.16"},
+		"jason":   {Ecosystem: ecosystemHex, Package: "jason", Version: "1.4.1", Requested: "~> 1.4", Pinned: true},
 	} {
 		if got := r.dependency("mix.exs", app); got != want {
 			t.Errorf("%s: %+v\nwant %+v", app, got, want)
 		}
 	}
-	got := r.Dependencies(lang.Target{Ecosystem: ecoHex, Package: "billing", Version: "1.2.0", Registry: "hexpm:acme"})
+	got := r.Dependencies(lang.Target{Ecosystem: ecosystemHex, Package: "billing", Version: "1.2.0", Registry: "hexpm:acme"})
 	want := []lang.Target{
-		{Ecosystem: ecoHex, Package: "audit", Version: "~> 0.3", Registry: "hexpm:acme"},
-		{Ecosystem: ecoHex, Package: "jason", Version: "1.4.1", Requested: "~> 1.0", Pinned: true},
-		{Ecosystem: ecoHex, Package: "ledger", Version: "2.0.1", Requested: "~> 2.0", Pinned: true, Registry: "hexpm:acme"},
+		{Ecosystem: ecosystemHex, Package: "audit", Version: "~> 0.3", Registry: "hexpm:acme"},
+		{Ecosystem: ecosystemHex, Package: "jason", Version: "1.4.1", Requested: "~> 1.0", Pinned: true},
+		{Ecosystem: ecosystemHex, Package: "ledger", Version: "2.0.1", Requested: "~> 2.0", Pinned: true, Registry: "hexpm:acme"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("billing: %+v\nwant %+v", got, want)
@@ -120,33 +120,33 @@ end
 		}
 	}
 	r := newResolver(root, langtest.Files(t, root))
-	for _, tc := range []struct {
+	for _, testCase := range []struct {
 		file, app string
 		want      lang.Target
 	}{
-		{"shop/rebar.config", "billing", lang.Target{Ecosystem: ecoHex, Package: "billing", Version: "1.2.0", Pinned: true, Registry: "hexpm:acme,*"}},
-		{"shop/rebar.config", "ledger", lang.Target{Ecosystem: ecoHex, Package: "ledger", Version: "2.0.1", Pinned: true, Registry: "hexpm:acme,*"}},
-		{"shop/rebar.config", "jsx", lang.Target{Ecosystem: ecoHex, Package: "jsx", Version: "~> 3.1", Registry: "hexpm:acme,*"}},
-		{"shop/rebar.config", "meck", lang.Target{Ecosystem: ecoHex, Package: "meck", Version: "0.9.2", Floating: true, Origin: "https://github.com/eproxus/meck.git"}},
-		{"shop/apps/api/rebar.config", "cowboy", lang.Target{Ecosystem: ecoHex, Package: "cowboy", Version: "2.10.0", Pinned: true, Registry: "hexpm:acme,*"}},
-		{"replaced/rebar.config", "billing", lang.Target{Ecosystem: ecoHex, Package: "billing", Floating: true, Registry: "hexpm:acme,hexpm"}},
-		{"hexonly/rebar.config", "jsx", lang.Target{Ecosystem: ecoHex, Package: "jsx", Floating: true}},
-		{"shop/tools/mix.exs", "credo", lang.Target{Ecosystem: ecoHex, Package: "credo", Version: "~> 1.7"}},
-		{"mixed/mix.exs", "jsx", lang.Target{Ecosystem: ecoHex, Package: "jsx", Version: "~> 3.1"}},
+		{"shop/rebar.config", "billing", lang.Target{Ecosystem: ecosystemHex, Package: "billing", Version: "1.2.0", Pinned: true, Registry: "hexpm:acme,*"}},
+		{"shop/rebar.config", "ledger", lang.Target{Ecosystem: ecosystemHex, Package: "ledger", Version: "2.0.1", Pinned: true, Registry: "hexpm:acme,*"}},
+		{"shop/rebar.config", "jsx", lang.Target{Ecosystem: ecosystemHex, Package: "jsx", Version: "~> 3.1", Registry: "hexpm:acme,*"}},
+		{"shop/rebar.config", "meck", lang.Target{Ecosystem: ecosystemHex, Package: "meck", Version: "0.9.2", Floating: true, Origin: "https://github.com/eproxus/meck.git"}},
+		{"shop/apps/api/rebar.config", "cowboy", lang.Target{Ecosystem: ecosystemHex, Package: "cowboy", Version: "2.10.0", Pinned: true, Registry: "hexpm:acme,*"}},
+		{"replaced/rebar.config", "billing", lang.Target{Ecosystem: ecosystemHex, Package: "billing", Floating: true, Registry: "hexpm:acme,hexpm"}},
+		{"hexonly/rebar.config", "jsx", lang.Target{Ecosystem: ecosystemHex, Package: "jsx", Floating: true}},
+		{"shop/tools/mix.exs", "credo", lang.Target{Ecosystem: ecosystemHex, Package: "credo", Version: "~> 1.7"}},
+		{"mixed/mix.exs", "jsx", lang.Target{Ecosystem: ecosystemHex, Package: "jsx", Version: "~> 3.1"}},
 	} {
-		if got := r.dependency(tc.file, tc.app); got != tc.want {
-			t.Errorf("%s %s: %+v\nwant %+v", tc.file, tc.app, got, tc.want)
+		if got := r.dependency(testCase.file, testCase.app); got != testCase.want {
+			t.Errorf("%s %s: %+v\nwant %+v", testCase.file, testCase.app, got, testCase.want)
 		}
 	}
-	for src, want := range map[string]string{
+	for source, want := range map[string]string{
 		`{deps, []}.`: "*",
 		`{hex, [{repos, [#{name => <<"hexpm:a">>}]}, {repos, [#{name => "hexpm:b"}]}]}.`: "hexpm:a,hexpm:b,*",
 		`{hex, [{repos, [#{name => <<"hexpm">>}]}]}.`:                                    "hexpm,*",
 		`{hex, [{repos, replace, []}]}.`:                                                 "-",
 		`{hex, [{repos, [#{name => <<"a,b">>}]}]}.`:                                      "*",
 	} {
-		if got := rebarRegistry(erlForms([]byte(src))); got != want {
-			t.Errorf("%s: %q, want %q", src, got, want)
+		if got := rebarRegistry(erlForms([]byte(source))); got != want {
+			t.Errorf("%s: %q, want %q", source, got, want)
 		}
 	}
 }

@@ -22,11 +22,11 @@ import (
 func writeProject(t *testing.T, root string, files map[string]string) {
 	t.Helper()
 	for p, c := range files {
-		abs := filepath.Join(root, p)
-		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		absolute := filepath.Join(root, p)
+		if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(abs, []byte(c), 0o644); err != nil {
+		if err := os.WriteFile(absolute, []byte(c), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -44,7 +44,7 @@ func canonical(t *testing.T, g *graph.Graph) string {
 
 // Verifies: REQ-MOD-003, REQ-MOD-008, REQ-LANG-026, REQ-LANG-028
 func TestCacheSkipsUnchangedFiles(t *testing.T) {
-	root, cacheDir := t.TempDir(), t.TempDir()
+	root, cacheDirectory := t.TempDir(), t.TempDir()
 	writeProject(t, root, map[string]string{
 		"go.mod":       "module example.com/m\n\ngo 1.22\n",
 		"main.go":      "package main\n\nimport \"example.com/m/util\"\n\nfunc main() { util.Do() }\n",
@@ -52,33 +52,33 @@ func TestCacheSkipsUnchangedFiles(t *testing.T) {
 	})
 	run := func() (*graph.Graph, Stats) {
 		t.Helper()
-		c := cache.Open(cacheDir, root)
-		g, st, err := Run(context.Background(), root, Options{Plugins: []lang.Plugin{golang.Plugin{}}, Cache: c})
+		c := cache.Open(cacheDirectory, root)
+		g, stats, err := Run(context.Background(), root, Options{Plugins: []lang.Plugin{golang.Plugin{}}, Cache: c})
 		if err != nil {
 			t.Fatal(err)
 		}
 		if err := c.Save(); err != nil {
 			t.Fatal(err)
 		}
-		return g, st
+		return g, stats
 	}
 
-	g1, st := run()
-	if st.Parsed != 2 || st.Cached != 0 {
-		t.Fatalf("cold run: %+v", st)
+	g1, stats := run()
+	if stats.Parsed != 2 || stats.Cached != 0 {
+		t.Fatalf("cold run: %+v", stats)
 	}
-	g2, st := run()
-	if st.Parsed != 0 || st.Cached != 2 {
-		t.Fatalf("warm run: %+v", st)
+	g2, stats := run()
+	if stats.Parsed != 0 || stats.Cached != 2 {
+		t.Fatalf("warm run: %+v", stats)
 	}
 	if canonical(t, g1) != canonical(t, g2) {
 		t.Error("cached run produced a different graph")
 	}
 
 	writeProject(t, root, map[string]string{"util/util.go": "package util\n\nimport \"fmt\"\n\nfunc Do() { fmt.Println() }\n"})
-	g3, st := run()
-	if st.Parsed != 1 || st.Cached != 1 {
-		t.Fatalf("after edit: %+v", st)
+	g3, stats := run()
+	if stats.Parsed != 1 || stats.Cached != 1 {
+		t.Fatalf("after edit: %+v", stats)
 	}
 	found := false
 	for _, e := range g3.Edges {
@@ -92,9 +92,9 @@ func TestCacheSkipsUnchangedFiles(t *testing.T) {
 func TestNilCache(t *testing.T) {
 	root := t.TempDir()
 	writeProject(t, root, map[string]string{"a.go": "package a\n"})
-	_, st, err := Run(context.Background(), root, Options{Plugins: []lang.Plugin{golang.Plugin{}}})
-	if err != nil || st.Parsed != 1 {
-		t.Fatalf("stats %+v, err %v", st, err)
+	_, stats, err := Run(context.Background(), root, Options{Plugins: []lang.Plugin{golang.Plugin{}}})
+	if err != nil || stats.Parsed != 1 {
+		t.Fatalf("stats %+v, err %v", stats, err)
 	}
 }
 
@@ -109,9 +109,9 @@ func (fakePlugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{{ID: "fake-eco", Name: "Fake"}}
 }
 
-func (fakePlugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (fakePlugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	e := &lang.Extraction{}
-	for i, line := range strings.Split(string(src), "\n") {
+	for i, line := range strings.Split(string(source), "\n") {
 		if spec := strings.TrimSpace(line); spec != "" {
 			e.Imports = append(e.Imports, lang.RawImport{Spec: spec, Module: spec, Line: i + 1})
 		}
@@ -125,8 +125,8 @@ func (p fakePlugin) Resolver(root string, all []*scan.File) (lang.Resolver, erro
 
 type fakeResolver fakePlugin
 
-func (r fakeResolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	return r.targets[imp.Module]
+func (r fakeResolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	return r.targets[rawImport.Module]
 }
 
 // TestPackageVersions checks what the builder makes of the versions its plugins
@@ -156,8 +156,8 @@ func TestPackageVersions(t *testing.T) {
 		byID[n.ID] = n
 	}
 	for _, c := range []struct {
-		pkg, version, requested string
-		floating                bool
+		packageName, version, requested string
+		floating                        bool
 	}{
 		{"pinned", "1.2.3", "^1.2.0", false},
 		{"floating", "^2.0.0", "", true},
@@ -166,14 +166,14 @@ func TestPackageVersions(t *testing.T) {
 		{"unknown", "", "", false},
 		{"moving", "", "", true},
 	} {
-		n := byID[graph.PackageID("fake-eco", c.pkg)]
+		n := byID[graph.PackageID("fake-eco", c.packageName)]
 		if n == nil {
-			t.Errorf("%s: no package node", c.pkg)
+			t.Errorf("%s: no package node", c.packageName)
 			continue
 		}
 		if n.Version != c.version || n.Requested != c.requested || n.Floating != c.floating {
 			t.Errorf("%s: version %q requested %q floating %v, want %q %q %v",
-				c.pkg, n.Version, n.Requested, n.Floating, c.version, c.requested, c.floating)
+				c.packageName, n.Version, n.Requested, n.Floating, c.version, c.requested, c.floating)
 		}
 	}
 }
@@ -182,8 +182,8 @@ func TestPackageVersions(t *testing.T) {
 // without a lock file: direct -> middle -> deep, and deep needs nothing.
 func (r fakeResolver) Dependencies(t lang.Target) []lang.Target {
 	next := map[string]string{"direct": "middle", "middle": "deep"}
-	if dep, ok := next[t.Package]; ok {
-		return []lang.Target{{Ecosystem: "fake-eco", Package: dep, Version: "1.0.0", Pinned: true}}
+	if dependency, ok := next[t.Package]; ok {
+		return []lang.Target{{Ecosystem: "fake-eco", Package: dependency, Version: "1.0.0", Pinned: true}}
 	}
 	return nil
 }
@@ -264,11 +264,11 @@ func TestResolveDepthEdges(t *testing.T) {
 // without a real configuration on disk.
 type fakeIndexes struct{ index string }
 
-func (f fakeIndexes) For(eco, pkg string) (string, bool) {
-	if eco != "fake-eco" {
+func (f fakeIndexes) For(ecosystem, packageName string) (string, bool) {
+	if ecosystem != "fake-eco" {
 		return "", false
 	}
-	if pkg == "public" {
+	if packageName == "public" {
 		return "https://public.example", true
 	}
 	return f.index, false
@@ -313,8 +313,8 @@ type locatingRegistry map[string][2]string
 
 func (r locatingRegistry) Dependencies(lang.Target) []lang.Target { return nil }
 
-func (r locatingRegistry) Located(eco, pkg string) (string, bool, bool) {
-	l, ok := r[pkg]
+func (r locatingRegistry) Located(ecosystem, packageName string) (string, bool, bool) {
+	l, ok := r[packageName]
 	return l[0], l[1] == "known", ok
 }
 
@@ -368,7 +368,9 @@ func TestPackagesAreMarkedAsTheOrganizationsOwn(t *testing.T) {
 	}}
 	g, _, err := Run(context.Background(), root, Options{
 		Plugins: []lang.Plugin{p},
-		Private: func(eco, pkg string) bool { return eco == "fake-eco" && pkg == "corp.example/lib" },
+		Private: func(ecosystem, packageName string) bool {
+			return ecosystem == "fake-eco" && packageName == "corp.example/lib"
+		},
 	})
 	if err != nil {
 		t.Fatal(err)
@@ -426,28 +428,28 @@ func TestResolutionReport(t *testing.T) {
 	p := fakePlugin{targets: map[string]lang.Target{
 		"direct": {Ecosystem: "fake-eco", Package: "direct", Version: "2.0.0", Pinned: true},
 	}}
-	rep := trace.New(-1, false, []string{"corp.example/*"}, nil)
-	if _, st, err := Run(context.Background(), root, Options{
-		Plugins: []lang.Plugin{p}, ResolveDepth: -1, Trace: rep,
+	report := trace.New(-1, false, []string{"corp.example/*"}, nil)
+	if _, stats, err := Run(context.Background(), root, Options{
+		Plugins: []lang.Plugin{p}, ResolveDepth: -1, Trace: report,
 	}); err != nil {
 		t.Fatal(err)
-	} else if st.Resolution != rep {
+	} else if stats.Resolution != report {
 		t.Error("the stats did not hand back the report the run was given")
 	}
 
-	if len(rep.Levels) != 3 {
-		t.Fatalf("levels: %+v", rep.Levels)
+	if len(report.Levels) != 3 {
+		t.Fatalf("levels: %+v", report.Levels)
 	}
 	// One package known to start with, which answers with one more, which answers
 	// with one more again - and a last round that finds the end of the chain.
 	for i, want := range []struct{ asked, answered, added int }{{1, 1, 1}, {1, 1, 1}, {1, 0, 0}} {
-		got := rep.Levels[i]
+		got := report.Levels[i]
 		if got.Asked != want.asked || got.Answered != want.answered || got.Added != want.added {
 			t.Errorf("level %d: %+v, want asked %d answered %d added %d", i, got, want.asked, want.answered, want.added)
 		}
 	}
 	answered := map[string]trace.Answer{}
-	for _, l := range rep.Lookups {
+	for _, l := range report.Lookups {
 		answered[l.Package] = l.Answer
 	}
 	// The resolver is the repository's own answer, and "deep" needs nothing - which
@@ -458,8 +460,8 @@ func TestResolutionReport(t *testing.T) {
 	if answered["deep"] != trace.NoAnswer {
 		t.Errorf("a package nothing could answer for is recorded as %q", answered["deep"])
 	}
-	if rep.Totals.FromLock != 2 || rep.Totals.Unanswered != 1 {
-		t.Errorf("totals: %+v", rep.Totals)
+	if report.Totals.FromLock != 2 || report.Totals.Unanswered != 1 {
+		t.Errorf("totals: %+v", report.Totals)
 	}
 }
 
@@ -476,19 +478,19 @@ func TestResolutionReportSkips(t *testing.T) {
 	std := stdPlugin{fakePlugin{targets: map[string]lang.Target{
 		"direct": {Ecosystem: "std-eco", Package: "direct", Version: "1.0.0", Pinned: true},
 	}}}
-	rep := trace.New(1, false, nil, nil)
+	report := trace.New(1, false, nil, nil)
 	if _, _, err := Run(context.Background(), root, Options{
-		Plugins: []lang.Plugin{silent, std}, ResolveDepth: 1, Trace: rep,
+		Plugins: []lang.Plugin{silent, std}, ResolveDepth: 1, Trace: report,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if len(rep.Skipped) != 1 || rep.Skipped[0].Plugin != "quiet" {
-		t.Errorf("skipped: %+v", rep.Skipped)
+	if len(report.Skipped) != 1 || report.Skipped[0].Plugin != "quiet" {
+		t.Errorf("skipped: %+v", report.Skipped)
 	}
 	// The standard library's plugin can answer, so its walk is not skipped - but the
 	// walk finds nothing to ask about, so it asks nothing.
-	if rep.Totals.Asked != 0 {
-		t.Errorf("a standard library was asked about: %+v", rep.Lookups)
+	if report.Totals.Asked != 0 {
+		t.Errorf("a standard library was asked about: %+v", report.Lookups)
 	}
 }
 
@@ -505,8 +507,8 @@ func (quietPlugin) Resolver(string, []*scan.File) (lang.Resolver, error) {
 
 type quietResolver struct{}
 
-func (quietResolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	return lang.Target{Ecosystem: "quiet-eco", Package: imp.Module, Version: "1.0.0", Pinned: true}
+func (quietResolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	return lang.Target{Ecosystem: "quiet-eco", Package: rawImport.Module, Version: "1.0.0", Pinned: true}
 }
 
 // counting answers like fakeResolver and counts how often each package is asked about.
@@ -535,23 +537,23 @@ func TestTheWalkAsksAboutEachPackageOnce(t *testing.T) {
 	if _, _, err := Run(context.Background(), root, Options{Plugins: []lang.Plugin{noLocks{p}}, Registry: c, ResolveDepth: -1}); err != nil {
 		t.Fatal(err)
 	}
-	for pkg, n := range c.asked {
+	for packageName, n := range c.asked {
 		if n != 1 {
-			t.Errorf("%s was asked about %d times", pkg, n)
+			t.Errorf("%s was asked about %d times", packageName, n)
 		}
 	}
 }
 
 // Verifies: REQ-SUP-031
-func TestTheWalkStopsWhenCancelled(t *testing.T) {
+func TestTheWalkStopsWhenCanceled(t *testing.T) {
 	root := t.TempDir()
 	writeProject(t, root, map[string]string{"a.fake": "direct\n"})
 	p := fakePlugin{targets: map[string]lang.Target{
 		"direct": {Ecosystem: "fake-eco", Package: "direct", Version: "2.0.0", Pinned: true},
 	}}
 	ctx, cancel := context.WithCancel(context.Background())
-	// Cancelled while the first level is being asked about, as Ctrl+C would be.
-	stop := transitiveFunc(func(t lang.Target) []lang.Target {
+	// Canceled while the first level is being asked about, as Ctrl+C would be.
+	stop := transitiveFunction(func(t lang.Target) []lang.Target {
 		cancel()
 		return fakeResolver{}.Dependencies(t)
 	})
@@ -561,9 +563,9 @@ func TestTheWalkStopsWhenCancelled(t *testing.T) {
 	}
 }
 
-type transitiveFunc func(lang.Target) []lang.Target
+type transitiveFunction func(lang.Target) []lang.Target
 
-func (f transitiveFunc) Dependencies(t lang.Target) []lang.Target { return f(t) }
+func (f transitiveFunction) Dependencies(t lang.Target) []lang.Target { return f(t) }
 
 // noLocks is a fakePlugin whose resolver records no dependency graph, so what the
 // walk asks goes to the Registry alone.
@@ -575,8 +577,8 @@ func (p noLocks) Resolver(root string, all []*scan.File) (lang.Resolver, error) 
 
 type onlyResolve struct{ r fakeResolver }
 
-func (o onlyResolve) Resolve(file string, imp lang.RawImport) lang.Target {
-	return o.r.Resolve(file, imp)
+func (o onlyResolve) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	return o.r.Resolve(file, rawImport)
 }
 
 // byID indexes a graph's nodes.
@@ -627,7 +629,7 @@ func TestTheGraphIsOneJSONDocument(t *testing.T) {
 	}
 	var stamp string
 	json.Unmarshal(doc["generatedAt"], &stamp)
-	if ts, err := time.Parse(time.RFC3339, stamp); err != nil || ts.Location() != time.UTC {
+	if parsed, err := time.Parse(time.RFC3339, stamp); err != nil || parsed.Location() != time.UTC {
 		t.Errorf("generatedAt %q is not an RFC 3339 UTC timestamp (%v)", stamp, err)
 	}
 	// An empty directory: the root alone, and no edges - an empty array, not null.
@@ -652,12 +654,12 @@ func TestNodeKindsAndFields(t *testing.T) {
 	for _, n := range g.Nodes {
 		kinds[n.Kind] = true
 		switch n.Kind {
-		case graph.KindDir, graph.KindFile, graph.KindSymbol, graph.KindEcosystem, graph.KindPackage:
+		case graph.KindDirectory, graph.KindFile, graph.KindSymbol, graph.KindEcosystem, graph.KindPackage:
 		default:
 			t.Errorf("%s: kind %q is none of the five", n.ID, n.Kind)
 		}
 		// Only the root directory and the ecosystems stand on their own.
-		standalone := n.Kind == graph.KindEcosystem || n.ID == graph.DirID(".")
+		standalone := n.Kind == graph.KindEcosystem || n.ID == graph.DirectoryID(".")
 		if standalone != (n.Parent == "") {
 			t.Errorf("%s: parent %q", n.ID, n.Parent)
 		} else if n.Parent != "" && nodes[n.Parent] == nil {
@@ -676,8 +678,8 @@ func TestNodeKindsAndFields(t *testing.T) {
 	if len(kinds) != 5 {
 		t.Errorf("kinds %v, want all five", kinds)
 	}
-	if f := nodes[graph.FileID("main.go")]; f.Path != "main.go" || f.Lang != "Go" || f.LOC != 9 {
-		t.Errorf("main.go: path %q lang %q loc %d", f.Path, f.Lang, f.LOC)
+	if f := nodes[graph.FileID("main.go")]; f.Path != "main.go" || f.Language != "Go" || f.LOC != 9 {
+		t.Errorf("main.go: path %q lang %q loc %d", f.Path, f.Language, f.LOC)
 	}
 	if s := nodes[graph.SymbolID("main.go", "main")]; s == nil || s.SymbolKind == "" || s.Line != 9 {
 		t.Errorf("symbol main: %+v, want a kind and line 9", s)
@@ -728,15 +730,15 @@ func TestEveryFileIsANodeWithItsSize(t *testing.T) {
 		}
 	}
 	for p, want := range map[string]struct {
-		lang string
-		loc  int
+		language    string
+		linesOfCode int
 	}{
 		"README.md": {"Markdown", 3}, "Makefile": {"Make", 2}, "site.css": {"CSS", 1},
 		"logo.bin": {"", 0},   // binary: no lines counted
 		"huge.go":  {"Go", 0}, // over --max-file-size: not read
 	} {
-		if n := nodes[graph.FileID(p)]; n != nil && (n.Lang != want.lang || n.LOC != want.loc) {
-			t.Errorf("%s: lang %q loc %d, want %q %d", p, n.Lang, n.LOC, want.lang, want.loc)
+		if n := nodes[graph.FileID(p)]; n != nil && (n.Language != want.language || n.LOC != want.linesOfCode) {
+			t.Errorf("%s: lang %q loc %d, want %q %d", p, n.Language, n.LOC, want.language, want.linesOfCode)
 		}
 	}
 	from := map[string]int{}
@@ -758,19 +760,19 @@ func TestEveryFileIsANodeWithItsSize(t *testing.T) {
 //
 // Verifies: REQ-LANG-027
 func TestCachedRunsResolveAgainstTheCurrentManifest(t *testing.T) {
-	root, cacheDir := t.TempDir(), t.TempDir()
+	root, cacheDirectory := t.TempDir(), t.TempDir()
 	writeProject(t, root, goProject)
 	run := func() (*graph.Graph, Stats) {
 		t.Helper()
-		c := cache.Open(cacheDir, root)
-		g, st, err := Run(context.Background(), root, Options{Plugins: []lang.Plugin{golang.Plugin{}}, Cache: c})
+		c := cache.Open(cacheDirectory, root)
+		g, stats, err := Run(context.Background(), root, Options{Plugins: []lang.Plugin{golang.Plugin{}}, Cache: c})
 		if err != nil {
 			t.Fatal(err)
 		}
 		if err := c.Save(); err != nil {
 			t.Fatal(err)
 		}
-		return g, st
+		return g, stats
 	}
 	version := func(g *graph.Graph) string {
 		if n := byID(g)[graph.PackageID("go", "github.com/acme/lib")]; n != nil {
@@ -786,9 +788,9 @@ func TestCachedRunsResolveAgainstTheCurrentManifest(t *testing.T) {
 	writeProject(t, root, map[string]string{
 		"go.mod": strings.Replace(goProject["go.mod"], "v1.0.0", "v1.2.0", 1),
 	})
-	g, st := run()
-	if st.Parsed != 0 || st.Cached != 1 {
-		t.Errorf("second run: %+v, want main.go from the cache", st)
+	g, stats := run()
+	if stats.Parsed != 0 || stats.Cached != 1 {
+		t.Errorf("second run: %+v, want main.go from the cache", stats)
 	}
 	if v := version(g); v != "v1.2.0" {
 		t.Errorf("second run: version %s, want the one go.mod names now", v)

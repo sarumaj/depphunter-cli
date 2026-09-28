@@ -224,7 +224,7 @@ The trees and bushes follow the same arrangement. `scripts/props.py` takes a CC0
 low-poly nature pack, separates each model into trunk and crown so that the two
 can be colored and tinted independently, decimates it to a cost several thousand
 instances can bear, and writes `web/static/props.glb`. The beetle representing a
-finding is modelled rather than sourced, since neither pack contains an insect:
+finding is modeled rather than sourced, since neither pack contains an insect:
 `scripts/bug.py` writes `web/static/bug.glb`, with wing cases that take the
 severity's color, a dark head and thorax, and six independently animated
 legs.
@@ -269,7 +269,7 @@ window and run **Developer: Reload Window** (Ctrl/Cmd+R). That is the entire
 edit-and-run cycle.
 
 Reloading terminates the extension host, which terminates the `depphunter` it
-started, so the next invocation analyses again from a warm cache. No state
+started, so the next invocation analyzes again from a warm cache. No state
 persists between runs.
 
 ### Breakpoints

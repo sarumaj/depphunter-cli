@@ -27,19 +27,19 @@ import (
 // repository); app/ an OpenFL project (Project.xml including shared.xml);
 // docs/project.xml is another tool's file of that name.
 
-func std(name string) lang.Target { return lang.Target{Ecosystem: ecoStd, Package: name} }
+func std(name string) lang.Target { return lang.Target{Ecosystem: ecosystemStd, Package: name} }
 
 var (
-	openfl92   = lang.Target{Ecosystem: ecoHaxelib, Package: "openfl", Version: "9.2.0", Pinned: true}
-	tinkCore   = lang.Target{Ecosystem: ecoHaxelib, Package: "tink_core", Floating: true}
-	tinkCore21 = lang.Target{Ecosystem: ecoHaxelib, Package: "tink_core", Version: "2.1.1", Pinned: true}
-	unittest   = lang.Target{Ecosystem: ecoHaxelib, Package: "tink_unittest", Version: "28ed02beb6986bfff15073c5a9b000dc3f3fcc11", Pinned: true}
-	testrunner = lang.Target{Ecosystem: ecoHaxelib, Package: "tink_testrunner", Version: "v0.9.0"}
-	acmeapi    = lang.Target{Ecosystem: ecoHaxelib, Package: "acmeapi", Version: "main", Floating: true, Origin: "https://git.acme.dev/acmeapi.git"}
-	format     = lang.Target{Ecosystem: ecoHaxelib, Package: "format", Version: "3.5.0", Floating: true}
-	thxCore    = lang.Target{Ecosystem: ecoHaxelib, Package: "thx.core", Version: "0.44.0", Pinned: true}
-	utest      = lang.Target{Ecosystem: ecoHaxelib, Package: "utest", Version: "1.13.2", Pinned: true}
-	hxnodejs   = lang.Target{Ecosystem: ecoHaxelib, Package: "hxnodejs", Floating: true}
+	openfl92   = lang.Target{Ecosystem: ecosystemHaxelib, Package: "openfl", Version: "9.2.0", Pinned: true}
+	tinkCore   = lang.Target{Ecosystem: ecosystemHaxelib, Package: "tink_core", Floating: true}
+	tinkCore21 = lang.Target{Ecosystem: ecosystemHaxelib, Package: "tink_core", Version: "2.1.1", Pinned: true}
+	unittest   = lang.Target{Ecosystem: ecosystemHaxelib, Package: "tink_unittest", Version: "28ed02beb6986bfff15073c5a9b000dc3f3fcc11", Pinned: true}
+	testrunner = lang.Target{Ecosystem: ecosystemHaxelib, Package: "tink_testrunner", Version: "v0.9.0"}
+	acmeapi    = lang.Target{Ecosystem: ecosystemHaxelib, Package: "acmeapi", Version: "main", Floating: true, Origin: "https://git.acme.dev/acmeapi.git"}
+	format     = lang.Target{Ecosystem: ecosystemHaxelib, Package: "format", Version: "3.5.0", Floating: true}
+	thxCore    = lang.Target{Ecosystem: ecosystemHaxelib, Package: "thx.core", Version: "0.44.0", Pinned: true}
+	utest      = lang.Target{Ecosystem: ecosystemHaxelib, Package: "utest", Version: "1.13.2", Pinned: true}
+	hxnodejs   = lang.Target{Ecosystem: ecosystemHaxelib, Package: "hxnodejs", Floating: true}
 )
 
 var importHx = lang.Target{Local: "src/import.hx"}
@@ -53,8 +53,8 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 
 // Verifies: REQ-HAXE-002, REQ-HAXE-004, REQ-HAXE-006, REQ-HAXE-007, REQ-HAXE-008, REQ-HAXE-011
 func TestImports(t *testing.T) {
-	res := analyze(t)
-	langtest.CheckImports(t, res["src/shop/Main.hx"], map[string]lang.Target{
+	results := analyze(t)
+	langtest.CheckImports(t, results["src/shop/Main.hx"], map[string]lang.Target{
 		"shop.model.Cart":                        {Local: "src/shop/model/Cart.hx"},
 		"shop.model.Cart.CartItem":               {Local: "src/shop/model/Cart.hx"}, // a sub-type of the module
 		"shop.util.* (src/shop/util/Money.hx)":   {Local: "src/shop/util/Money.hx"}, // every module of the package
@@ -68,12 +68,12 @@ func TestImports(t *testing.T) {
 		"shop.util.Strings":                      {Local: "src/shop/util/Strings.hx"},
 		"openfl.display.Sprite":                  openfl92,
 		"tink.core.Future":                       tinkCore,
-		"thx.Arrays":                             thxCore,                                                                      // the table's thx -> thx.core, declared
-		"format.png.Reader":                      format,                                                                       // installed in .haxelib/, declared
-		"gfx.Canvas":                             {Ecosystem: ecoHaxelib, Package: "pixels", Version: "1.0.0", Floating: true}, // installed only
-		"js.node.Fs":                             hxnodejs,                                                                     // taken out of std by the table
-		"haxe.ui.Toolkit":                        {Ecosystem: ecoHaxelib, Package: "haxeui-core", Unresolved: true},
-		"mystery.Thing":                          {Ecosystem: ecoHaxelib, Package: "mystery", Unresolved: true},
+		"thx.Arrays":                             thxCore,                                                                            // the table's thx -> thx.core, declared
+		"format.png.Reader":                      format,                                                                             // installed in .haxelib/, declared
+		"gfx.Canvas":                             {Ecosystem: ecosystemHaxelib, Package: "pixels", Version: "1.0.0", Floating: true}, // installed only
+		"js.node.Fs":                             hxnodejs,                                                                           // taken out of std by the table
+		"haxe.ui.Toolkit":                        {Ecosystem: ecosystemHaxelib, Package: "haxeui-core", Unresolved: true},
+		"mystery.Thing":                          {Ecosystem: ecosystemHaxelib, Package: "mystery", Unresolved: true},
 		"shop.Gone":                              {}, // the repository's own package, missing
 		"std.Math":                               std("Math"),
 		"Config":                                 {Local: "shared/Config.hx"},
@@ -85,30 +85,30 @@ func TestImports(t *testing.T) {
 		"flash.display.Sprite":                   std("flash.display"),
 		"import.hx (src/import.hx)":              importHx, // what it imports applies here
 	})
-	langtest.CheckImports(t, res["src/shop/model/Cart.hx"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/shop/model/Cart.hx"], map[string]lang.Target{
 		"shop.util.Money":           {Local: "src/shop/util/Money.hx"},
 		"import.hx (src/import.hx)": importHx,
 	})
-	langtest.CheckImports(t, res["src/import.hx"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/import.hx"], map[string]lang.Target{
 		"shop.util.Strings": {Local: "src/shop/util/Strings.hx"},
 	})
-	langtest.CheckImports(t, res["test/TestAll.hx"], map[string]lang.Target{
+	langtest.CheckImports(t, results["test/TestAll.hx"], map[string]lang.Target{
 		"utest.Assert":    utest,
 		"shop.model.Cart": {Local: "src/shop/model/Cart.hx"},
 	})
-	langtest.CheckImports(t, res["game/src/Game.hx"], map[string]lang.Target{
+	langtest.CheckImports(t, results["game/src/Game.hx"], map[string]lang.Target{
 		"tink.core.Future":       tinkCore21, // lix pins it
 		"tink.unit.Assert":       unittest,
 		"tink.testrunner.Runner": testrunner,
 		"mylib.Thing":            {Local: "game/libs/mylib/src/mylib/Thing.hx"},
 		"acmeapi.Client":         acmeapi,
 	})
-	langtest.CheckImports(t, res["app/source/app/Main.hx"], map[string]lang.Target{
-		"flixel.FlxG":           {Ecosystem: ecoHaxelib, Package: "flixel", Floating: true},
-		"openfl.display.Sprite": {Ecosystem: ecoHaxelib, Package: "openfl", Version: "9.3.0", Pinned: true}, // the nearest project file
-		"motion.Actuate":        {Ecosystem: ecoHaxelib, Package: "actuate", Floating: true},                // declared in the included shared.xml
+	langtest.CheckImports(t, results["app/source/app/Main.hx"], map[string]lang.Target{
+		"flixel.FlxG":           {Ecosystem: ecosystemHaxelib, Package: "flixel", Floating: true},
+		"openfl.display.Sprite": {Ecosystem: ecosystemHaxelib, Package: "openfl", Version: "9.3.0", Pinned: true}, // the nearest project file
+		"motion.Actuate":        {Ecosystem: ecosystemHaxelib, Package: "actuate", Floating: true},                // declared in the included shared.xml
 	})
-	langtest.CheckImports(t, res["src/shop/macros/Build.hx"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/shop/macros/Build.hx"], map[string]lang.Target{
 		"haxe.macro.Context":        std("haxe.macro"),
 		"import.hx (src/import.hx)": importHx, // src/ is its class path
 	})
@@ -116,8 +116,8 @@ func TestImports(t *testing.T) {
 
 // Verifies: REQ-HAXE-005, REQ-HAXE-006
 func TestManifests(t *testing.T) {
-	res := analyze(t)
-	langtest.CheckImports(t, res["build.hxml"], map[string]lang.Target{
+	results := analyze(t)
+	langtest.CheckImports(t, results["build.hxml"], map[string]lang.Target{
 		"-cp src":                            {Local: "src"},
 		"--class-path shared":                {Local: "shared"},
 		"-lib openfl:9.2.0":                  openfl92,
@@ -130,19 +130,19 @@ func TestManifests(t *testing.T) {
 		"-cp test":                           {Local: "test"},
 		"shop.util.Money":                    {Local: "src/shop/util/Money.hx"}, // a root module
 		"common.hxml":                        {Local: "common.hxml"},
-		"-lib hxcpp":                         {Ecosystem: ecoHaxelib, Package: "hxcpp", Floating: true},
+		"-lib hxcpp":                         {Ecosystem: ecosystemHaxelib, Package: "hxcpp", Floating: true},
 	})
-	langtest.CheckImports(t, res["common.hxml"], map[string]lang.Target{"-lib format": format})
-	langtest.CheckImports(t, res["haxelib.json"], map[string]lang.Target{
-		"lime":          {Ecosystem: ecoHaxelib, Package: "lime", Floating: true},
+	langtest.CheckImports(t, results["common.hxml"], map[string]lang.Target{"-lib format": format})
+	langtest.CheckImports(t, results["haxelib.json"], map[string]lang.Target{
+		"lime":          {Ecosystem: ecosystemHaxelib, Package: "lime", Floating: true},
 		"openfl":        openfl92,
 		"thx.core":      thxCore,
-		"fancy":         {Ecosystem: ecoHaxelib, Package: "fancy", Version: "0123456789abcdef0123456789abcdef01234567", Pinned: true, Origin: "https://git.acme.dev/fancy.git"},
-		"tagged":        {Ecosystem: ecoHaxelib, Package: "tagged", Version: "v1.2.0"},
-		"branchy":       {Ecosystem: ecoHaxelib, Package: "branchy", Version: "main", Floating: true},
+		"fancy":         {Ecosystem: ecosystemHaxelib, Package: "fancy", Version: "0123456789abcdef0123456789abcdef01234567", Pinned: true, Origin: "https://git.acme.dev/fancy.git"},
+		"tagged":        {Ecosystem: ecosystemHaxelib, Package: "tagged", Version: "v1.2.0"},
+		"branchy":       {Ecosystem: ecosystemHaxelib, Package: "branchy", Version: "main", Floating: true},
 		"classPath src": {Local: "src"},
 	})
-	langtest.CheckImports(t, res["game/build.hxml"], map[string]lang.Target{
+	langtest.CheckImports(t, results["game/build.hxml"], map[string]lang.Target{
 		"-cp src":            {Local: "game/src"},
 		"-lib tink_core":     tinkCore21,
 		"-lib tink_unittest": unittest,
@@ -157,16 +157,16 @@ func TestManifests(t *testing.T) {
 		"game/haxe_libraries/mylib.hxml":           {Local: "game/libs/mylib/src"},
 	} {
 		name := strings.TrimSuffix(filepath.Base(file), ".hxml")
-		langtest.CheckImports(t, res[file], map[string]lang.Target{name: want})
+		langtest.CheckImports(t, results[file], map[string]lang.Target{name: want})
 	}
-	langtest.CheckImports(t, res["app/Project.xml"], map[string]lang.Target{
+	langtest.CheckImports(t, results["app/Project.xml"], map[string]lang.Target{
 		"main app.Main":      {Local: "app/source/app/Main.hx"},
 		"source source":      {Local: "app/source"},
 		"classpath extra":    {Local: "app/extra"},
-		"openfl":             {Ecosystem: ecoHaxelib, Package: "openfl", Version: "9.3.0", Pinned: true},
-		"flixel":             {Ecosystem: ecoHaxelib, Package: "flixel", Floating: true},
+		"openfl":             {Ecosystem: ecosystemHaxelib, Package: "openfl", Version: "9.3.0", Pinned: true},
+		"flixel":             {Ecosystem: ecosystemHaxelib, Package: "flixel", Floating: true},
 		"include shared.xml": {Local: "app/shared.xml"},
-		"howler":             {Ecosystem: ecoHaxelib, Package: "howler", Version: "2.2.0", Pinned: true},
+		"howler":             {Ecosystem: ecosystemHaxelib, Package: "howler", Version: "2.2.0", Pinned: true},
 	})
 }
 
@@ -187,7 +187,7 @@ func TestPinRule(t *testing.T) {
 			t.Errorf("%q: %+v, want %+v", v, got, want)
 		}
 	}
-	for url, want := range map[string]lixLib{
+	for url, want := range map[string]lixLibrary{
 		"haxelib:/format#3.7.0": {version: "3.7.0", pinned: true},
 		"haxelib:ansi#1.0.0":    {version: "1.0.0", pinned: true},
 		"gh://github.com/a/b#0123456789abcdef0123456789abcdef01234567": {version: "0123456789abcdef0123456789abcdef01234567", pinned: true},
@@ -196,7 +196,7 @@ func TestPinRule(t *testing.T) {
 		"https://example.org/b-1.0.0.zip":                              {version: "1.0.0", origin: "https://example.org/b-1.0.0.zip"},
 		"":                                                             {version: "1.0.0", floating: true},
 	} {
-		var got lixLib
+		var got lixLibrary
 		readInstall(&got, url, "1.0.0")
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("%q: %+v, want %+v", url, got, want)
@@ -206,8 +206,8 @@ func TestPinRule(t *testing.T) {
 
 // Verifies: REQ-HAXE-003
 func TestSymbols(t *testing.T) {
-	res := analyze(t)
-	langtest.CheckSymbols(t, res["src/shop/Main.hx"], map[string]string{
+	results := analyze(t)
+	langtest.CheckSymbols(t, results["src/shop/Main.hx"], map[string]string{
 		"Main": "class", "Main.new": "method", "Main.main": "method", "Main.helper": "method",
 		"Extra": "class", "Extra.run": "method", // one class over both #if branches
 		"Service": "interface", "Service.call": "method", "Service.stop": "method",
@@ -216,16 +216,16 @@ func TestSymbols(t *testing.T) {
 		"Options": "typedef", "Base": "class", "Base.run": "method",
 		"helperAtModuleLevel": "func", "VERSION": "var",
 	})
-	langtest.CheckSymbols(t, res["src/shop/model/Cart.hx"], map[string]string{
+	langtest.CheckSymbols(t, results["src/shop/model/Cart.hx"], map[string]string{
 		"Cart": "class", "Cart.new": "method", "Cart.total": "method", "CartItem": "class", "Items": "typedef",
 	})
-	langtest.CheckSymbols(t, res["src/shop/macros/Build.hx"], map[string]string{"Build": "class", "Build.run": "method"})
-	langtest.CheckSymbols(t, res["build.hxml"], map[string]string{})
+	langtest.CheckSymbols(t, results["src/shop/macros/Build.hx"], map[string]string{"Build": "class", "Build.run": "method"})
+	langtest.CheckSymbols(t, results["build.hxml"], map[string]string{})
 }
 
 // Verifies: REQ-HAXE-002, REQ-HAXE-010
 func TestLiteralsHideCode(t *testing.T) {
-	src := `package a.b;
+	source := `package a.b;
 // import fake.Line;
 /* import fake.Block;
    import fake.Block2; */
@@ -245,20 +245,20 @@ class A {
 }
 import real.Three;
 `
-	ex := extractSource([]byte(src))
+	extraction := extractSource([]byte(source))
 	var got []string
-	for _, im := range ex.Imports {
-		got = append(got, im.Name+" "+im.Module)
+	for _, rawImport := range extraction.Imports {
+		got = append(got, rawImport.Name+" "+rawImport.Module)
 	}
 	want := []string{"import real.One", "import real.Three", "ref real.pkg.Two", "import.hx "}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("imports %q, want %q", got, want)
 	}
-	if pkg := readPackage([]byte("/* licence */\n// x\npackage   a.b.c ;\nimport x.Y;")); pkg != "a.b.c" {
-		t.Errorf("package %q", pkg)
+	if packageName := readPackage([]byte("/* license */\n// x\npackage   a.b.c ;\nimport x.Y;")); packageName != "a.b.c" {
+		t.Errorf("package %q", packageName)
 	}
-	if pkg := readPackage([]byte("import x.Y;\npackage a;")); pkg != "" {
-		t.Errorf("package after an import: %q", pkg)
+	if packageName := readPackage([]byte("import x.Y;\npackage a;")); packageName != "" {
+		t.Errorf("package after an import: %q", packageName)
 	}
 }
 
@@ -285,14 +285,14 @@ func TestClaims(t *testing.T) {
 	if classes["game/haxe_libraries/mylib.hxml"] != "lix:mylib.hxml" || classes["build.hxml"] != "hxml" {
 		t.Errorf("classes %v", classes)
 	}
-	for _, src := range []string{
+	for _, source := range []string{
 		`<?xml version="1.0"?><project name="x"><target name="build"/></project>`, // Ant
 		`<project xmlns="http://maven.apache.org/POM/4.0.0"><modelVersion>4.0.0</modelVersion></project>`,
 		`<Project Sdk="Microsoft.NET.Sdk"><ItemGroup><Compile Include="a.fs"/></ItemGroup></Project>`,
 		`<!-- <project><haxelib name="x"/></project> --><component/>`,
 	} {
-		if limeProject([]byte(src)) {
-			t.Errorf("%s: read as a Lime project", src)
+		if limeProject([]byte(source)) {
+			t.Errorf("%s: read as a Lime project", source)
 		}
 	}
 	if !limeProject([]byte("<?xml version=\"1.0\"?>\n<!-- c -->\n<project>\n<haxelib name=\"openfl\"/></project>")) {
@@ -303,18 +303,18 @@ func TestClaims(t *testing.T) {
 // Verifies: REQ-HAXE-005
 func TestHXML(t *testing.T) {
 	h := readHXML([]byte("# comment\n-cp\nsrc\n--cwd sub\n-cp lib\n-L  a:1.0.0\n-lib ${X}\n-D a=b\n--next\nMain\n-js ::OUT::/x.js\n-cp ::TEMPLATE::\n"))
-	if !reflect.DeepEqual(h.cps, []string{"src", "sub/lib"}) {
-		t.Errorf("class paths %q", h.cps)
+	if !reflect.DeepEqual(h.classPaths, []string{"src", "sub/lib"}) {
+		t.Errorf("class paths %q", h.classPaths)
 	}
-	if len(h.libs) != 1 || h.libs[0] != (hxmlLib{"a", "1.0.0", 6}) {
-		t.Errorf("libs %+v", h.libs)
+	if len(h.libraries) != 1 || h.libraries[0] != (hxmlLibrary{"a", "1.0.0", 6}) {
+		t.Errorf("libs %+v", h.libraries)
 	}
-	if h.defs["a"] != "b" {
-		t.Errorf("defines %v", h.defs)
+	if h.defines["a"] != "b" {
+		t.Errorf("defines %v", h.defines)
 	}
 	var specs []string
-	for _, im := range h.imps {
-		specs = append(specs, im.Spec)
+	for _, rawImport := range h.rawImports {
+		specs = append(specs, rawImport.Spec)
 	}
 	if want := []string{"-cp src", "-cp lib", "-L a:1.0.0", "Main"}; !reflect.DeepEqual(specs, want) {
 		t.Errorf("imports %q, want %q", specs, want)
@@ -323,69 +323,69 @@ func TestHXML(t *testing.T) {
 
 // installHaxelib lays out a global haxelib repository: format 3.7.0 (current)
 // and 3.5.0, a library in development (.dev) and one named in capitals.
-func installHaxelib(t *testing.T) (repo, dev string) {
-	repo, dev = t.TempDir(), t.TempDir()
+func installHaxelib(t *testing.T) (repository, dev string) {
+	repository, dev = t.TempDir(), t.TempDir()
 	write := func(root, p, content string) {
-		abs := filepath.Join(root, filepath.FromSlash(p))
-		os.MkdirAll(filepath.Dir(abs), 0o755)
-		os.WriteFile(abs, []byte(content), 0o644)
+		absolute := filepath.Join(root, filepath.FromSlash(p))
+		os.MkdirAll(filepath.Dir(absolute), 0o755)
+		os.WriteFile(absolute, []byte(content), 0o644)
 	}
-	write(repo, "format/.current", "3.7.0\n")
-	write(repo, "format/3,7,0/haxelib.json", `{"name": "format", "classPath": "", "dependencies": {"hxcpp": "", "tink_core": "2.1.1"}}`)
-	write(repo, "format/3,7,0/format/zip/Reader.hx", "package format.zip;\nclass Reader {}\n")
-	write(repo, "format/3,5,0/format/old/Gone.hx", "package format.old;\nclass Gone {}\n")
-	write(repo, "HxWidgets/.current", "1.0.0")
-	write(repo, "HxWidgets/1,0,0/src/wx/Frame.hx", "package wx;\nclass Frame {}\n")
-	write(repo, "HxWidgets/1,0,0/haxelib.json", `{"name": "hxWidgets", "classPath": "src"}`)
-	write(repo, "devlib/.dev", dev)
+	write(repository, "format/.current", "3.7.0\n")
+	write(repository, "format/3,7,0/haxelib.json", `{"name": "format", "classPath": "", "dependencies": {"hxcpp": "", "tink_core": "2.1.1"}}`)
+	write(repository, "format/3,7,0/format/zip/Reader.hx", "package format.zip;\nclass Reader {}\n")
+	write(repository, "format/3,5,0/format/old/Gone.hx", "package format.old;\nclass Gone {}\n")
+	write(repository, "HxWidgets/.current", "1.0.0")
+	write(repository, "HxWidgets/1,0,0/src/wx/Frame.hx", "package wx;\nclass Frame {}\n")
+	write(repository, "HxWidgets/1,0,0/haxelib.json", `{"name": "hxWidgets", "classPath": "src"}`)
+	write(repository, "devlib/.dev", dev)
 	write(dev, "haxelib.json", `{"name": "devlib", "classPath": "src"}`)
 	write(dev, "src/dev/Tool.hx", "package dev;\nclass Tool {}\n")
-	return repo, dev
+	return repository, dev
 }
 
 // Verifies: REQ-HAXE-008
 func TestInstalledLibraries(t *testing.T) {
 	root := t.TempDir()
 	write := func(p, content string) {
-		abs := filepath.Join(root, filepath.FromSlash(p))
-		os.MkdirAll(filepath.Dir(abs), 0o755)
-		os.WriteFile(abs, []byte(content), 0o644)
+		absolute := filepath.Join(root, filepath.FromSlash(p))
+		os.MkdirAll(filepath.Dir(absolute), 0o755)
+		os.WriteFile(absolute, []byte(content), 0o644)
 	}
 	write("build.hxml", "-cp src\n-lib format\n-lib hxwidgets\n-lib devlib\n")
 	write("src/Main.hx", "import format.zip.Reader;\n")
 	write("lix/haxe_libraries/coolib.hxml", "# @install: lix --silent download \"haxelib:/coolib#0.2.0\" into coolib/0.2.0/haxelib\n-lib tink_core\n-cp ${HAXE_LIBCACHE}/coolib/0.2.0/haxelib/src\n")
 	write("lix/haxe_libraries/tink_core.hxml", "# @install: lix --silent download \"haxelib:/tink_core#2.1.1\" into tink_core/2.1.1/haxelib\n")
 	write("lix/src/App.hx", "import cool.Thing;\n")
-	repo, _ := installHaxelib(t)
+	repository, _ := installHaxelib(t)
 	cache := t.TempDir()
 	os.MkdirAll(filepath.Join(cache, "coolib/0.2.0/haxelib/src/cool"), 0o755)
 	os.WriteFile(filepath.Join(cache, "coolib/0.2.0/haxelib/src/cool/Thing.hx"), []byte("package cool;\nclass Thing {}\n"), 0o644)
-	env := map[string]string{"HAXELIB_PATH": repo, "HAXE_LIBCACHE": cache}
-	r := newResolver(root, langtest.Files(t, root), func(k string) string { return env[k] })
-	imp := func(file, m string) lang.Target { return r.Resolve(file, lang.RawImport{Module: m, Name: kindImport}) }
-	fmt37 := lang.Target{Ecosystem: ecoHaxelib, Package: "format", Version: "3.7.0", Floating: true}
+	environment := map[string]string{"HAXELIB_PATH": repository, "HAXE_LIBCACHE": cache}
+	r := newResolver(root, langtest.Files(t, root), func(k string) string { return environment[k] })
+	resolveImport := func(file, m string) lang.Target { return r.Resolve(file, lang.RawImport{Module: m, Name: kindImport}) }
+	fmt37 := lang.Target{Ecosystem: ecosystemHaxelib, Package: "format", Version: "3.7.0", Floating: true}
 	for m, want := range map[string]lang.Target{
 		"format.zip.Reader": fmt37,
 		"format.old.Gone":   fmt37, // not in the version in use; the table's name
-		"wx.Frame":          {Ecosystem: ecoHaxelib, Package: "hxwidgets", Version: "1.0.0", Floating: true},
-		"dev.Tool":          {Ecosystem: ecoHaxelib, Package: "devlib", Version: "dev", Floating: true},
+		"wx.Frame":          {Ecosystem: ecosystemHaxelib, Package: "hxwidgets", Version: "1.0.0", Floating: true},
+		"dev.Tool":          {Ecosystem: ecosystemHaxelib, Package: "devlib", Version: "dev", Floating: true},
 	} {
-		if got := imp("src/Main.hx", m); got != want {
+		if got := resolveImport("src/Main.hx", m); got != want {
 			t.Errorf("%s: %+v, want %+v", m, got, want)
 		}
 	}
-	coolib := lang.Target{Ecosystem: ecoHaxelib, Package: "coolib", Version: "0.2.0", Pinned: true}
-	if got := imp("lix/src/App.hx", "cool.Thing"); got != coolib {
+	coolib := lang.Target{Ecosystem: ecosystemHaxelib, Package: "coolib", Version: "0.2.0", Pinned: true}
+	if got := resolveImport("lix/src/App.hx", "cool.Thing"); got != coolib {
 		t.Errorf("lix cache: %+v", got)
 	}
 	want := []lang.Target{
-		{Ecosystem: ecoHaxelib, Package: "hxcpp", Floating: true},
-		{Ecosystem: ecoHaxelib, Package: "tink_core", Version: "2.1.1", Pinned: true},
+		{Ecosystem: ecosystemHaxelib, Package: "hxcpp", Floating: true},
+		{Ecosystem: ecosystemHaxelib, Package: "tink_core", Version: "2.1.1", Pinned: true},
 	}
 	if got := r.Dependencies(fmt37); !reflect.DeepEqual(got, want) {
 		t.Errorf("format dependencies %+v", got)
 	}
-	if got := r.Dependencies(coolib); !reflect.DeepEqual(got, []lang.Target{{Ecosystem: ecoHaxelib, Package: "tink_core", Version: "2.1.1", Pinned: true}}) {
+	if got := r.Dependencies(coolib); !reflect.DeepEqual(got, []lang.Target{{Ecosystem: ecosystemHaxelib, Package: "tink_core", Version: "2.1.1", Pinned: true}}) {
 		t.Errorf("coolib dependencies %+v", got)
 	}
 	if !r.Installed(fmt37) || r.Installed(coolib) {
@@ -393,12 +393,12 @@ func TestInstalledLibraries(t *testing.T) {
 	}
 	// Nothing installed: the table and the declared names decide.
 	empty := t.TempDir()
-	env = map[string]string{"HAXELIB_PATH": empty, "HAXE_LIBCACHE": empty}
-	r = newResolver(root, langtest.Files(t, root), func(k string) string { return env[k] })
-	if got := imp("src/Main.hx", "wx.Frame"); got != (lang.Target{Ecosystem: ecoHaxelib, Package: "wx", Unresolved: true}) {
+	environment = map[string]string{"HAXELIB_PATH": empty, "HAXE_LIBCACHE": empty}
+	r = newResolver(root, langtest.Files(t, root), func(k string) string { return environment[k] })
+	if got := resolveImport("src/Main.hx", "wx.Frame"); got != (lang.Target{Ecosystem: ecosystemHaxelib, Package: "wx", Unresolved: true}) {
 		t.Errorf("not installed: %+v", got)
 	}
-	if got := imp("src/Main.hx", "format.zip.Reader"); got != (lang.Target{Ecosystem: ecoHaxelib, Package: "format", Floating: true}) {
+	if got := resolveImport("src/Main.hx", "format.zip.Reader"); got != (lang.Target{Ecosystem: ecosystemHaxelib, Package: "format", Floating: true}) {
 		t.Errorf("declared, not installed: %+v", got)
 	}
 }
@@ -416,33 +416,33 @@ func TestTruncated(t *testing.T) {
 		return nil
 	})
 	for _, p := range files {
-		src, err := os.ReadFile(p)
+		source, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatal(err)
 		}
 		f := &scan.File{Path: strings.TrimPrefix(filepath.ToSlash(p), "testdata/repo/")}
-		for i := 0; i <= len(src); i++ {
-			if _, err := (Plugin{}).Extract(f, src[:i]); err != nil {
+		for i := 0; i <= len(source); i++ {
+			if _, err := (Plugin{}).Extract(f, source[:i]); err != nil {
 				t.Fatal(err)
 			}
-			extractSource(src[:i])
-			readPackage(src[:i])
-			readHXML(src[:i])
-			readProject(src[:i])
-			readHaxelib(src[:i])
+			extractSource(source[:i])
+			readPackage(source[:i])
+			readHXML(source[:i])
+			readProject(source[:i])
+			readHaxelib(source[:i])
 		}
 	}
 	for _, unit := range []string{"{", "}", "(", ")", "[", "<", ">", "\"", "'", "'${", "${", "}'", "~/", "/*", "//x\n",
 		"#if ", "#if (", "#else ", "#end ", "#elseif x ", "@:", "@:a(", "import ", "import a.", "a.", "a.B.", "using ",
 		"class A ", "class A<", "enum abstract ", "function f() ", "function ", "var x ", "typedef T = ", "package ",
 		"\\", "é", "<project>", "<haxelib name=\"", "<!--", "-cp ", "-lib x\n", "--macro a.B.c()\n", "=", ";"} {
-		src := []byte(strings.Repeat(unit, 200_000/len(unit)+1))
+		source := []byte(strings.Repeat(unit, 200_000/len(unit)+1))
 		start := time.Now()
-		extractSource(src)
-		readHXML(src)
-		readProject(append([]byte("<project><haxelib/>"), src...))
+		extractSource(source)
+		readHXML(source)
+		readProject(append([]byte("<project><haxelib/>"), source...))
 		if d := time.Since(start); d > 5*time.Second {
-			t.Errorf("%q x %d: %v", unit, len(src)/len(unit), d)
+			t.Errorf("%q x %d: %v", unit, len(source)/len(unit), d)
 		}
 	}
 }
@@ -453,13 +453,13 @@ func TestIslands(t *testing.T) {
 	for _, e := range (Plugin{}).Ecosystems() {
 		ids[e.ID] = e.Std
 	}
-	if std, ok := ids[ecoStd]; !ok || !std || len(ids) != 2 || ids[ecoHaxelib] {
+	if std, ok := ids[ecosystemStd]; !ok || !std || len(ids) != 2 || ids[ecosystemHaxelib] {
 		t.Fatalf("ecosystems: %v", ids)
 	}
 	for f, r := range analyze(t) {
-		for _, im := range r.Imports {
-			if e := im.Target.Ecosystem; e != "" && e != ecoHaxelib && e != ecoStd {
-				t.Errorf("%s: %s -> %s", f, im.Spec, e)
+		for _, imported := range r.Imports {
+			if e := imported.Target.Ecosystem; e != "" && e != ecosystemHaxelib && e != ecosystemStd {
+				t.Errorf("%s: %s -> %s", f, imported.Spec, e)
 			}
 		}
 	}
@@ -484,17 +484,17 @@ func TestImportHx(t *testing.T) {
 		"odd/D.hx":          "package x.y;\nclass D {}\n",
 		"lone/E.hx":         "class E {}\n",
 	})
-	res := langtest.Analyze(t, Plugin{}, root)
-	langtest.CheckImports(t, res["src/a/b/C.hx"], map[string]lang.Target{
+	results := langtest.Analyze(t, Plugin{}, root)
+	langtest.CheckImports(t, results["src/a/b/C.hx"], map[string]lang.Target{
 		"import.hx (src/a/b/import.hx)": {Local: "src/a/b/import.hx"},
 		"import.hx (src/a/import.hx)":   {Local: "src/a/import.hx"},
 		"import.hx (src/import.hx)":     {Local: "src/import.hx"},
 	})
-	langtest.CheckImports(t, res["odd/D.hx"], map[string]lang.Target{
+	langtest.CheckImports(t, results["odd/D.hx"], map[string]lang.Target{
 		"import.hx (odd/import.hx)": {Local: "odd/import.hx"},
 	})
-	langtest.CheckImports(t, res["lone/E.hx"], map[string]lang.Target{})
-	langtest.CheckImports(t, res["src/a/import.hx"], map[string]lang.Target{
+	langtest.CheckImports(t, results["lone/E.hx"], map[string]lang.Target{})
+	langtest.CheckImports(t, results["src/a/import.hx"], map[string]lang.Target{
 		"a.b.C": {Local: "src/a/b/C.hx"},
 	})
 }

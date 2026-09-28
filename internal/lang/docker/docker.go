@@ -55,11 +55,11 @@ func (Plugin) Claims(f *scan.File) bool {
 // composeFile reports whether p is named as a Compose file.
 func composeFile(p string) bool {
 	base := strings.ToLower(path.Base(p))
-	ext := path.Ext(base)
-	if ext != ".yml" && ext != ".yaml" {
+	extension := path.Ext(base)
+	if extension != ".yml" && extension != ".yaml" {
 		return false
 	}
-	stem := strings.TrimSuffix(base, ext)
+	stem := strings.TrimSuffix(base, extension)
 	return stem == "compose" || strings.HasPrefix(stem, "compose.") || strings.HasPrefix(stem, "docker-compose")
 }
 
@@ -85,9 +85,9 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-DOCKER-001
-func (p Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (p Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	if p.Class(f) == classDockerfile {
-		return extractDockerfile(src), nil
+		return extractDockerfile(source), nil
 	}
-	return extractCompose(src), nil
+	return extractCompose(source), nil
 }

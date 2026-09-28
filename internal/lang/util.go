@@ -46,12 +46,12 @@ func (s *SymbolSet) Add(name, kind string, line int) {
 
 func (s *SymbolSet) List() []Symbol { return s.list }
 
-// ForEachFile reads each file and calls fn from NumCPU goroutines. Files that cannot
-// be read, are too large, or look minified are skipped. fn must be safe for
+// ForEachFile reads each file and calls function from NumCPU goroutines. Files that cannot
+// be read, are too large, or look minified are skipped. function must be safe for
 // concurrent use; the returned map collects its non-nil results.
 //
 // Implements: REQ-DIST-016, REQ-LANG-010, REQ-LANG-012, REQ-LANG-021, REQ-LANG-022
-func ForEachFile(ctx context.Context, files []*scan.File, fn func(f *scan.File, src []byte) *FileResult) map[string]*FileResult {
+func ForEachFile(ctx context.Context, files []*scan.File, function func(f *scan.File, source []byte) *FileResult) map[string]*FileResult {
 	results := make(map[string]*FileResult, len(files))
 	var mu sync.Mutex
 	var g errgroup.Group
@@ -66,13 +66,13 @@ func ForEachFile(ctx context.Context, files []*scan.File, fn func(f *scan.File, 
 			continue
 		}
 		g.Go(func() error {
-			src, err := os.ReadFile(f.Abs)
-			if err != nil || !Parseable(f, src) {
+			source, err := os.ReadFile(f.AbsolutePath)
+			if err != nil || !Parseable(f, source) {
 				return nil
 			}
-			if res := fn(f, src); res != nil {
+			if result := function(f, source); result != nil {
 				mu.Lock()
-				results[f.Path] = res
+				results[f.Path] = result
 				mu.Unlock()
 			}
 			return nil
@@ -86,22 +86,22 @@ func ForEachFile(ctx context.Context, files []*scan.File, fn func(f *scan.File, 
 // structure (bundled code) says nothing about the project.
 //
 // Implements: REQ-LANG-012
-func Parseable(f *scan.File, src []byte) bool {
-	if len(src) > MaxParseSize || f.Binary {
+func Parseable(f *scan.File, source []byte) bool {
+	if len(source) > MaxParseSize || f.Binary {
 		return false
 	}
 	lines := max(f.LOC, 1)
-	return !(len(src) > 20_000 && len(src)/lines > 250)
+	return !(len(source) > 20_000 && len(source)/lines > 250)
 }
 
-// RepoName names a repository or download by its URL: without scheme, user and
+// RepositoryName names a repository or download by its URL: without scheme, user and
 // ".git", the host in lower case and without a port -
 // https://github.com/apple/swift-nio.git and git@github.com:apple/swift-nio are
 // both github.com/apple/swift-nio. SwiftPM packages and CMake's fetched content are
 // named so.
 //
 // Implements: REQ-SWIFT-006, REQ-CMAKE-007
-func RepoName(url string) string {
+func RepositoryName(url string) string {
 	s := strings.TrimSpace(url)
 	if i := strings.Index(s, "://"); i >= 0 {
 		s = s[i+3:]

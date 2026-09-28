@@ -28,7 +28,7 @@ import (
 
 // environ lists the process environment. The names of Bundler's variables cannot be
 // derived from anything else, so they are listed from here; their values are still
-// read through the env Read was given, and a nil env reads none.
+// read through the environment Read was given, and a nil environment reads none.
 var environ = os.Environ
 
 // bundlerHostName is what a decoded host key may be: a host name, a port after it
@@ -61,7 +61,7 @@ func bundlerSetting(host string) bool {
 //
 // Implements: REQ-AUTH-018, REQ-AUTH-019, REQ-AUTH-011
 func (c *Store) readBundler(m userconf.Machine) {
-	env := m.Env
+	environment := m.Environment
 	settings := map[string]string{}
 	if data, err := os.ReadFile(m.BundlerConfig()); err == nil {
 		var doc map[string]any
@@ -73,12 +73,12 @@ func (c *Store) readBundler(m userconf.Machine) {
 			}
 		}
 	}
-	for _, kv := range environ() {
-		name, _, _ := strings.Cut(kv, "=")
+	for _, keyValue := range environ() {
+		name, _, _ := strings.Cut(keyValue, "=")
 		if !strings.HasPrefix(name, "BUNDLE_") {
 			continue
 		}
-		if v := env(name); v != "" {
+		if v := environment(name); v != "" {
 			settings[strings.ToUpper(name)] = v
 		}
 	}

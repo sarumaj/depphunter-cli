@@ -13,8 +13,8 @@ import (
 
 // protocRoot is a directory a build script passes to protoc with -I or --proto_path.
 type protocRoot struct {
-	script string // the directory of the script
-	dir    string // the import root, from the repository root
+	script    string // the directory of the script
+	directory string // the import root, from the repository root
 }
 
 // buildScript reports whether a file is one that runs protoc in a build: a Makefile,
@@ -39,8 +39,8 @@ var assignment = regexp.MustCompile(`^\s*(?:export\s+)?([A-Za-z_][A-Za-z0-9_]*)\
 // reference is a use of a variable: $(NAME), ${NAME} or $NAME.
 var reference = regexp.MustCompile(`\$\(([A-Za-z_][A-Za-z0-9_]*)\)|\$\{([A-Za-z_][A-Za-z0-9_]*)\}|\$([A-Za-z_][A-Za-z0-9_]*)`)
 
-// cwd are the variables and commands that name the directory a script runs in.
-var cwd = []string{"$(CURDIR)", "$(PWD)", "${PWD}", "$PWD", "$(pwd)", "${CURDIR}", "`pwd`", "$(shell pwd)"}
+// workingDirectory are the variables and commands that name the directory a script runs in.
+var workingDirectory = []string{"$(CURDIR)", "$(PWD)", "${PWD}", "$PWD", "$(pwd)", "${CURDIR}", "`pwd`", "$(shell pwd)"}
 
 // readProtocRoots finds the import roots the repository's build scripts give protoc:
 // -I<dir>, -I <dir>, -I=<dir>, --proto_path=<dir> and --proto_path <dir> (a list
@@ -51,20 +51,20 @@ var cwd = []string{"$(CURDIR)", "$(PWD)", "${PWD}", "$PWD", "$(pwd)", "${CURDIR}
 // are often run from).
 //
 // Implements: REQ-PROTO-004
-func readProtocRoots(all []*scan.File, dirs map[string]bool) []protocRoot {
+func readProtocRoots(all []*scan.File, directories map[string]bool) []protocRoot {
 	var out []protocRoot
 	for _, f := range all {
 		if !buildScript(f.Path) || f.Binary || f.TooLarge || f.Size > lang.MaxParseSize {
 			continue
 		}
-		src, err := os.ReadFile(f.Abs)
-		if err != nil || !strings.Contains(string(src), "protoc") && !strings.Contains(string(src), "proto_path") {
+		source, err := os.ReadFile(f.AbsolutePath)
+		if err != nil || !strings.Contains(string(source), "protoc") && !strings.Contains(string(source), "proto_path") {
 			continue
 		}
 		script := path.Dir(f.Path)
-		for _, d := range protocFlags(string(src)) {
+		for _, d := range protocFlags(string(source)) {
 			for _, p := range []string{path.Join(script, d), path.Clean(d)} {
-				if dirs[p] && p != ".." && !strings.HasPrefix(p, "../") {
+				if directories[p] && p != ".." && !strings.HasPrefix(p, "../") {
 					if r := (protocRoot{script, p}); !slices.Contains(out, r) {
 						out = append(out, r)
 					}
@@ -79,18 +79,18 @@ func readProtocRoots(all []*scan.File, dirs map[string]bool) []protocRoot {
 // protocFlags lists the directories a script's -I and --proto_path flags name, as
 // written relative to the directory it runs in; absolute ones and ones a variable
 // the script does not set is left in are dropped.
-func protocFlags(src string) []string {
-	src = strings.NewReplacer("\\\r\n", " ", "\\\n", " ").Replace(src)
-	lines := strings.Split(src, "\n")
-	vars := map[string]string{}
+func protocFlags(source string) []string {
+	source = strings.NewReplacer("\\\r\n", " ", "\\\n", " ").Replace(source)
+	lines := strings.Split(source, "\n")
+	variables := map[string]string{}
 	for _, line := range lines {
 		if m := assignment.FindStringSubmatch(line); m != nil {
-			vars[m[1]] = strings.TrimSpace(vars[m[1]] + " " + m[2])
+			variables[m[1]] = strings.TrimSpace(variables[m[1]] + " " + m[2])
 		}
 	}
 	var out []string
 	for _, line := range lines {
-		line = expandVars(line, vars)
+		line = expandVariables(line, variables)
 		fields := strings.Fields(line)
 		for i := 0; i < len(fields); i++ {
 			f := strings.Trim(fields[i], `"'`)
@@ -123,10 +123,10 @@ func protocFlags(src string) []string {
 	return out
 }
 
-// expandVars replaces what names the current directory with ".", and the variables
-// set in vars with their values, a few levels deep.
-func expandVars(line string, vars map[string]string) string {
-	for _, c := range cwd {
+// expandVariables replaces what names the current directory with ".", and the variables
+// set in variables with their values, a few levels deep.
+func expandVariables(line string, variables map[string]string) string {
+	for _, c := range workingDirectory {
 		line = strings.ReplaceAll(line, c+"/", "")
 		line = strings.ReplaceAll(line, c, ".")
 	}
@@ -134,12 +134,12 @@ func expandVars(line string, vars map[string]string) string {
 		if !strings.Contains(line, "$") {
 			break
 		}
-		line = reference.ReplaceAllStringFunc(line, func(ref string) string {
-			m := reference.FindStringSubmatch(ref)
-			if v, ok := vars[m[1]+m[2]+m[3]]; ok {
+		line = reference.ReplaceAllStringFunc(line, func(match string) string {
+			m := reference.FindStringSubmatch(match)
+			if v, ok := variables[m[1]+m[2]+m[3]]; ok {
 				return v
 			}
-			return ref
+			return match
 		})
 	}
 	return line
@@ -151,8 +151,8 @@ func (r *resolver) protocRootsFor(file string) []string {
 	var near, far []string
 	for d := path.Dir(file); ; d = path.Dir(d) {
 		for _, root := range r.protoc {
-			if root.script == d && !slices.Contains(near, root.dir) {
-				near = append(near, root.dir)
+			if root.script == d && !slices.Contains(near, root.directory) {
+				near = append(near, root.directory)
 			}
 		}
 		if d == "." || d == "/" {
@@ -160,8 +160,8 @@ func (r *resolver) protocRootsFor(file string) []string {
 		}
 	}
 	for _, root := range r.protoc {
-		if !slices.Contains(near, root.dir) && !slices.Contains(far, root.dir) {
-			far = append(far, root.dir)
+		if !slices.Contains(near, root.directory) && !slices.Contains(far, root.directory) {
+			far = append(far, root.directory)
 		}
 	}
 	return append(near, far...)

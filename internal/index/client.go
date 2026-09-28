@@ -31,7 +31,7 @@ import (
 // against indexes this machine's own configuration names: an index a repository
 // points at is never fetched from, however plainly it asks.
 type Client struct {
-	cfg     *Config
+	config  *Config
 	http    *http.Client
 	cache   *store.Store
 	auth    *auth.Store
@@ -47,9 +47,9 @@ type Client struct {
 	// feeds is what a NuGet service index resolved to: the same answer for every
 	// package on that feed, and one request rather than one per package.
 	feeds map[string]string
-	// repos is what the PACKAGES file of each CRAN-like repository lists: one
+	// repositories is what the PACKAGES file of each CRAN-like repository lists: one
 	// request per repository rather than one per package.
-	repos map[string]map[string][]dep
+	repositories map[string]map[string][]dependency
 	// rocks is what each rocks server's manifest lists: rock -> versions, one
 	// request per server rather than one per rock.
 	rocks map[string]map[string][]string
@@ -78,10 +78,10 @@ type Client struct {
 	qlFailed map[string]qlFailure
 	// located is where each package asked about was found (see Located).
 	located map[string]located
-	// rep is the report this run is writing, if anybody is reading it. It is set per
+	// resolutionReport is the report this run is writing, if anybody is reading it. It is set per
 	// analysis - one client serves every re-analysis in --watch - so it is guarded
 	// like the rest.
-	rep *trace.Report
+	resolutionReport *trace.Report
 }
 
 // Trace points the client at the report of the analysis now running. Passing nil
@@ -92,13 +92,13 @@ func (c *Client) Trace(r *trace.Report) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.rep = r
+	c.resolutionReport = r
 }
 
 // report records one question, if anybody is listening.
 func (c *Client) report(l trace.Lookup) {
 	c.mu.Lock()
-	r := c.rep
+	r := c.resolutionReport
 	c.mu.Unlock()
 	r.Add(l)
 }
@@ -109,32 +109,32 @@ func (c *Client) report(l trace.Lookup) {
 // Implements: REQ-TRC-017
 func (c *Client) note(code, message string) {
 	c.mu.Lock()
-	r := c.rep
+	r := c.resolutionReport
 	c.mu.Unlock()
 	r.Note(trace.Note{Code: code, Message: message})
 }
 
-// NewClient prepares the client. dir holds the cached answers; ttl is how long one
+// NewClient prepares the client. directory holds the cached answers; ttl is how long one
 // stays usable; credentials are what this machine holds for its indexes, and private
 // names the packages that must not be asked of a public index.
-func NewClient(cfg *Config, dir string, ttl, timeout time.Duration,
+func NewClient(config *Config, directory string, ttl, timeout time.Duration,
 	credentials *auth.Store, private *scope.Private) *Client {
 	return &Client{
-		cfg:         cfg,
-		http:        &http.Client{Timeout: timeout},
-		cache:       store.New(dir, ttl),
-		auth:        credentials,
-		private:     private,
-		timeout:     timeout,
-		seen:        map[string][]lang.Target{},
-		failed:      map[string]time.Time{},
-		feeds:       map[string]string{},
-		repos:       map[string]map[string][]dep{},
-		rocks:       map[string]map[string][]string{},
-		cpanModules: map[string]string{},
-		qlSystems:   map[string]*qlIndex{},
-		qlFailed:    map[string]qlFailure{},
-		located:     map[string]located{},
+		config:       config,
+		http:         &http.Client{Timeout: timeout},
+		cache:        store.New(directory, ttl),
+		auth:         credentials,
+		private:      private,
+		timeout:      timeout,
+		seen:         map[string][]lang.Target{},
+		failed:       map[string]time.Time{},
+		feeds:        map[string]string{},
+		repositories: map[string]map[string][]dependency{},
+		rocks:        map[string]map[string][]string{},
+		cpanModules:  map[string]string{},
+		qlSystems:    map[string]*qlIndex{},
+		qlFailed:     map[string]qlFailure{},
+		located:      map[string]located{},
 	}
 }
 
@@ -156,9 +156,9 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 		c.report(l)
 		return nil
 	}
-	candidates := c.cfg.candidatesFor(t)
+	candidates := c.config.candidatesFor(t)
 	// Implements: REQ-SUP-065, REQ-TRC-017
-	if t.Ecosystem == NuGet && c.cfg.nugetUnmapped(t.Package) {
+	if t.Ecosystem == NuGet && c.config.nugetUnmapped(t.Package) {
 		c.note(trace.NoteUnmapped, "NuGet.Config's packageSourceMapping covers no pattern of "+t.Package+
 			": NuGet itself would not restore it (NU1100), depphunter asks the sources in their usual order")
 	}
@@ -169,7 +169,7 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 	if c.private.Match(t.Ecosystem, t.Package) {
 		kept := candidates[:0:0]
 		for _, k := range candidates {
-			if !c.cfg.Public(t.Ecosystem, k.url) {
+			if !c.config.Public(t.Ecosystem, k.url) {
 				kept = append(kept, k)
 			}
 		}
@@ -184,7 +184,7 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 		l.Reason = trace.ReasonNoIndex
 		// Implements: REQ-SUP-068
 		if t.Ecosystem == OCI {
-			if _, blocked := c.cfg.ociEndpoints(t.Package, t.Version); blocked {
+			if _, blocked := c.config.ociEndpoints(t.Package, t.Version); blocked {
 				l.Reason = trace.ReasonBlocked
 			}
 		}
@@ -234,7 +234,7 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 	if t.Ecosystem == Bazel {
 		for _, k := range asked {
 			if u, err := url.Parse(k.url); err == nil {
-				if scope, ok := c.cfg.bazelHelperFor(u.Hostname()); ok {
+				if scope, ok := c.config.bazelHelperFor(u.Hostname()); ok {
 					// Implements: REQ-BAZEL-011, REQ-TRC-017
 					c.note(trace.NoteHelperNotRun, bazelHelperNote(k.url, scope))
 				}
@@ -253,7 +253,7 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 		if at, _, found := c.Located(t.Ecosystem, t.Package); found {
 			l.Index = at
 		}
-		l.Answer, l.Deps = trace.FromMemo, len(cached)
+		l.Answer, l.Dependencies = trace.FromMemo, len(cached)
 		c.report(l)
 		return cached
 	}
@@ -280,7 +280,7 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 		// the whole of what the report has to say about this package.
 		a = answer{source: trace.NoAnswer, reason: err.Error(), requests: a.requests}
 	}
-	l.Answer, l.Deps, l.Reason = a.source, len(a.deps), a.reason
+	l.Answer, l.Dependencies, l.Reason = a.source, len(a.dependencies), a.reason
 	l.Requests, l.Millis = a.requests, time.Since(start).Milliseconds()
 	c.report(l)
 	c.mu.Lock()
@@ -288,10 +288,10 @@ func (c *Client) Dependencies(t lang.Target) []lang.Target {
 		c.failed[key] = time.Now()
 	} else {
 		delete(c.failed, key)
-		c.seen[key] = a.deps
+		c.seen[key] = a.dependencies
 	}
 	c.mu.Unlock()
-	return a.deps
+	return a.dependencies
 }
 
 // ask puts the question to each index in turn and returns the first answer, with the
@@ -355,13 +355,13 @@ type located struct {
 // indexes has a package.
 //
 // Implements: REQ-SUP-018, REQ-SUP-063
-func (c *Client) Located(eco, pkg string) (index string, known, ok bool) {
+func (c *Client) Located(ecosystem, packageName string) (index string, known, ok bool) {
 	if c == nil {
 		return "", false, false
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	l, ok := c.located[eco+" "+pkg]
+	l, ok := c.located[ecosystem+" "+packageName]
 	return l.index, l.known, ok
 }
 
@@ -374,10 +374,10 @@ const failRetry = 5 * time.Minute
 // answer is what one question came to: the dependencies, who provided them, and -
 // when nobody did - why, with whatever went over the network on the way.
 type answer struct {
-	deps     []lang.Target
-	source   trace.Answer
-	reason   string
-	requests []trace.Request
+	dependencies []lang.Target
+	source       trace.Answer
+	reason       string
+	requests     []trace.Request
 }
 
 // cacheKey is where an index's answer about a package is kept on disk. A Julia
@@ -392,11 +392,11 @@ func cacheKey(t lang.Target, index string) string {
 
 // cached is an index's answer from the disk cache, if it has one.
 func (c *Client) cached(t lang.Target, index string) (answer, bool) {
-	deps, ok := store.Get[[]dep](c.cache, cacheKey(t, index))
+	dependencies, ok := store.Get[[]dependency](c.cache, cacheKey(t, index))
 	if !ok {
 		return answer{}, false
 	}
-	return answer{deps: c.targets(t, deps), source: trace.FromCache}, true
+	return answer{dependencies: c.targets(t, dependencies), source: trace.FromCache}, true
 }
 
 // lookup answers from the cache when it can, and from the index when it must.
@@ -424,59 +424,59 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 	made := &requestLog{}
 	ctx = context.WithValue(ctx, requestLogKey{}, made)
 
-	var deps []dep
+	var dependencies []dependency
 	var err error
 	switch t.Ecosystem {
 	case Go:
-		deps, err = c.goModule(context.WithValue(ctx, goRequestKey{}, true), index, t)
+		dependencies, err = c.goModule(context.WithValue(ctx, goRequestKey{}, true), index, t)
 	case NPM:
-		deps, err = c.npmPackage(ctx, index, t)
+		dependencies, err = c.npmPackage(ctx, index, t)
 	case PyPI:
-		deps, err = c.pypiDistribution(ctx, index, t)
+		dependencies, err = c.pypiDistribution(ctx, index, t)
 	case Cargo:
-		deps, err = c.cargoCrate(ctx, index, t)
+		dependencies, err = c.cargoCrate(ctx, index, t)
 	case NuGet:
-		deps, err = c.nugetPackage(ctx, index, t)
+		dependencies, err = c.nugetPackage(ctx, index, t)
 	case OCI:
-		deps, err = c.ociBase(ctx, index, t)
+		dependencies, err = c.ociBase(ctx, index, t)
 	case Composer:
-		deps, err = c.composerPackage(ctx, index, t)
+		dependencies, err = c.composerPackage(ctx, index, t)
 	case RubyGems:
-		deps, err = c.rubygemsPackage(ctx, index, t)
+		dependencies, err = c.rubygemsPackage(ctx, index, t)
 	case Pub:
-		deps, err = c.pubPackage(ctx, index, t)
+		dependencies, err = c.pubPackage(ctx, index, t)
 	case Hex:
-		deps, err = c.hexPackage(ctx, index, t)
+		dependencies, err = c.hexPackage(ctx, index, t)
 	case CRAN:
-		deps, err = c.cranPackage(ctx, index, t)
+		dependencies, err = c.cranPackage(ctx, index, t)
 	case Bioconductor:
-		deps, err = c.bioconductorPackage(ctx, index, t)
+		dependencies, err = c.bioconductorPackage(ctx, index, t)
 	case Hackage:
-		deps, err = c.hackagePackage(ctx, index, t)
+		dependencies, err = c.hackagePackage(ctx, index, t)
 	case TerraformModule:
-		deps, err = c.terraformModule(ctx, index, t)
+		dependencies, err = c.terraformModule(ctx, index, t)
 	case CocoaPods:
-		deps, err = c.cocoapodsPod(ctx, index, t)
+		dependencies, err = c.cocoapodsPod(ctx, index, t)
 	case LuaRocks:
-		deps, err = c.luarocksRock(ctx, index, t)
+		dependencies, err = c.luarocksRock(ctx, index, t)
 	case CPAN:
-		deps, err = c.cpanDistribution(ctx, index, t)
+		dependencies, err = c.cpanDistribution(ctx, index, t)
 	case Opam:
-		deps, err = c.opamPackage(ctx, index, t)
+		dependencies, err = c.opamPackage(ctx, index, t)
 	case Julia:
-		deps, err = c.juliaPackage(ctx, index, t)
+		dependencies, err = c.juliaPackage(ctx, index, t)
 	case Bazel:
-		deps, err = c.bazelModule(ctx, index, t)
+		dependencies, err = c.bazelModule(ctx, index, t)
 	case Elm:
-		deps, err = c.elmPackage(ctx, index, t)
+		dependencies, err = c.elmPackage(ctx, index, t)
 	case PureScript:
-		deps, err = c.purescriptPackage(ctx, index, t)
+		dependencies, err = c.purescriptPackage(ctx, index, t)
 	case Dub:
-		deps, err = c.dubPackage(ctx, index, t)
+		dependencies, err = c.dubPackage(ctx, index, t)
 	case Alire:
-		deps, err = c.alireCrate(ctx, index, t)
+		dependencies, err = c.alireCrate(ctx, index, t)
 	case Quicklisp:
-		deps, err = c.quicklispProject(ctx, index, t)
+		dependencies, err = c.quicklispProject(ctx, index, t)
 	case Maven:
 		if !strings.Contains(t.Package, ":") {
 			// A name without an artifact cannot be asked: a POM is addressed by
@@ -487,15 +487,15 @@ func (c *Client) lookup(t lang.Target, index string) (answer, error) {
 			// Implements: REQ-SUP-028
 			return answer{source: trace.NoAnswer, reason: trace.ReasonUnsupported}, nil
 		}
-		deps, err = c.mavenArtifact(ctx, index, t)
+		dependencies, err = c.mavenArtifact(ctx, index, t)
 	default:
 		return answer{source: trace.NoAnswer, reason: trace.ReasonUnsupported}, nil
 	}
 	if err != nil {
 		return answer{requests: made.taken()}, err
 	}
-	c.cache.Put(key, deps)
-	return answer{deps: c.targets(t, deps), source: trace.FromIndex, requests: made.taken()}, nil
+	c.cache.Put(key, dependencies)
+	return answer{dependencies: c.targets(t, dependencies), source: trace.FromIndex, requests: made.taken()}, nil
 }
 
 // requestLog collects what one question sent, in the order it sent it. The ecosystem
@@ -536,12 +536,12 @@ func (l *requestLog) taken() []trace.Request {
 // unless the index names another (see cargoSparse).
 //
 // Implements: REQ-SUP-029, REQ-SUP-063
-func (c *Client) targets(from lang.Target, deps []dep) []lang.Target {
-	out := make([]lang.Target, 0, len(deps))
-	for _, d := range deps {
+func (c *Client) targets(from lang.Target, dependencies []dependency) []lang.Target {
+	out := make([]lang.Target, 0, len(dependencies))
+	for _, d := range dependencies {
 		e := from.Ecosystem
-		if d.Eco != "" {
-			e = d.Eco
+		if d.Ecosystem != "" {
+			e = d.Ecosystem
 		}
 		out = append(out, lang.Target{
 			Ecosystem: e, Package: d.Name, Version: d.Version,
@@ -566,15 +566,15 @@ func (c *Client) get(ctx context.Context, url string) ([]byte, error) {
 // accept is get for the answers that are not JSON: a nuspec, a sparse index line, an
 // image manifest that has to name the media types it will take.
 func (c *Client) accept(ctx context.Context, url, media string) ([]byte, error) {
-	resp, err := c.do(ctx, url, media, "")
+	response, err := c.do(ctx, url, media, "")
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, &statusError{url: url, status: resp.Status, code: resp.StatusCode}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, &statusError{url: url, status: response.Status, code: response.StatusCode}
 	}
-	return readLimited(resp)
+	return readLimited(response)
 }
 
 // statusError is an index's answer other than 200 OK.
@@ -610,15 +610,15 @@ func forbidden(err error) bool {
 }
 
 // noHexKey is the note for a Hex organization this machine holds no key for.
-func noHexKey(repo string) string {
-	return "no key on this machine for Hex organization " + path.Base(repo) + " (" + repo + "): its packages " +
-		"are not asked; `mix hex.organization auth " + path.Base(repo) + " --key KEY`, a user key " +
+func noHexKey(repository string) string {
+	return "no key on this machine for Hex organization " + path.Base(repository) + " (" + repository + "): its packages " +
+		"are not asked; `mix hex.organization auth " + path.Base(repository) + " --key KEY`, a user key " +
 		"(HEX_API_KEY, `mix hex.user auth`) or HEX_REPOS_KEY provides one"
 }
 
 // readLimited reads an answer, and no more of it than any of this has any use for.
-func readLimited(resp *http.Response) ([]byte, error) {
-	return io.ReadAll(io.LimitReader(resp.Body, maxBody))
+func readLimited(response *http.Response) ([]byte, error) {
+	return io.ReadAll(io.LimitReader(response.Body, maxBody))
 }
 
 // do makes one request and hands back the response unread. bearer, when given, is
@@ -627,19 +627,19 @@ func readLimited(resp *http.Response) ([]byte, error) {
 //
 // Implements: REQ-SUP-033, REQ-TRC-007
 func (c *Client) do(ctx context.Context, url, media, bearer string) (*http.Response, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Accept", media)
+	request.Header.Set("Accept", media)
 	if bearer != "" {
-		req.Header.Set("Authorization", "Bearer "+bearer)
+		request.Header.Set("Authorization", "Bearer "+bearer)
 	} else if goRequest, _ := ctx.Value(goRequestKey{}).(bool); goRequest {
-		c.auth.ApplyGo(req)
+		c.auth.ApplyGo(request)
 	} else {
-		c.auth.Apply(req)
+		c.auth.Apply(request)
 	}
-	return c.send(ctx, req, url)
+	return c.send(ctx, request, url)
 }
 
 // goRequestKey marks the context of a question the go command would ask a module
@@ -651,38 +651,38 @@ type goRequestKey struct{}
 //
 // Implements: REQ-AUTH-030
 func (c *Client) postForm(ctx context.Context, address string, form url.Values) ([]byte, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, address, strings.NewReader(form.Encode()))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, address, strings.NewReader(form.Encode()))
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
-	req.Header.Set("Accept", "application/json")
-	resp, err := c.send(ctx, req, address)
+	request.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	request.Header.Set("Accept", "application/json")
+	response, err := c.send(ctx, request, address)
 	if err != nil {
 		return nil, err
 	}
-	defer resp.Body.Close()
-	if resp.StatusCode != http.StatusOK {
-		return nil, &statusError{url: address, status: resp.Status, code: resp.StatusCode}
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		return nil, &statusError{url: address, status: response.Status, code: response.StatusCode}
 	}
-	return readLimited(resp)
+	return readLimited(response)
 }
 
 // send sends one request as depphunter, recording it for the report under address.
-func (c *Client) send(ctx context.Context, req *http.Request, address string) (*http.Response, error) {
-	req.Header.Set("User-Agent", userAgent)
+func (c *Client) send(ctx context.Context, request *http.Request, address string) (*http.Response, error) {
+	request.Header.Set("User-Agent", userAgent)
 	made, _ := ctx.Value(requestLogKey{}).(*requestLog)
 	start := time.Now()
-	resp, err := c.http.Do(req)
+	response, err := c.http.Do(request)
 	status := "ok"
 	switch {
 	case err != nil:
 		status = err.Error()
-	case resp != nil:
-		status = resp.Status
+	case response != nil:
+		status = response.Status
 	}
 	made.add(trace.Request{URL: address, Status: status, Millis: time.Since(start).Milliseconds()})
-	return resp, err
+	return response, err
 }
 
 // goModule reads a module's own requirements from its go.mod, which a module proxy
@@ -691,7 +691,7 @@ func (c *Client) send(ctx context.Context, req *http.Request, address string) (*
 // empty answer.
 //
 // Implements: REQ-SUP-021
-func (c *Client) goModule(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) goModule(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	escaped, err := module.EscapePath(t.Package)
 	if err != nil {
 		return nil, err
@@ -710,10 +710,10 @@ func (c *Client) goModule(ctx context.Context, index string, t lang.Target) ([]d
 	if err != nil {
 		return nil, err
 	}
-	var out []dep
+	var out []dependency
 	for _, r := range f.Require {
 		if !r.Indirect { // the proxy's go.mod lists what this module itself needs
-			out = append(out, dep{Name: r.Mod.Path, Version: r.Mod.Version})
+			out = append(out, dependency{Name: r.Mod.Path, Version: r.Mod.Version})
 		}
 	}
 	return out, nil
@@ -722,7 +722,7 @@ func (c *Client) goModule(ctx context.Context, index string, t lang.Target) ([]d
 // npmPackage reads a version's dependencies from the registry.
 //
 // Implements: REQ-SUP-022
-func (c *Client) npmPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) npmPackage(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	version := t.Version
 	if !lang.PinnedSemver(version) {
 		version = "latest" // a range names no document to ask for
@@ -737,11 +737,11 @@ func (c *Client) npmPackage(ctx context.Context, index string, t lang.Target) ([
 	if err := json.Unmarshal(body, &doc); err != nil {
 		return nil, err
 	}
-	out := make([]dep, 0, len(doc.Dependencies))
+	out := make([]dependency, 0, len(doc.Dependencies))
 	for name, constraint := range doc.Dependencies {
 		// A range is what the package asked for; it is not a version, and the next
 		// request falls back to the current one.
-		out = append(out, dep{Name: name, Version: constraint})
+		out = append(out, dependency{Name: name, Version: constraint})
 	}
 	return out, nil
 }
@@ -751,7 +751,7 @@ func (c *Client) npmPackage(ctx context.Context, index string, t lang.Target) ([
 // API instead (pypiSimple); PyPI itself has the JSON API, and is not asked twice.
 //
 // Implements: REQ-SUP-023, REQ-SUP-067
-func (c *Client) pypiDistribution(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) pypiDistribution(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	host := strings.TrimSuffix(strings.TrimSuffix(index, "/simple"), "/simple/")
 	url := fmt.Sprintf("%s/pypi/%s/json", host, t.Package)
 	if lang.Pinned(t.Version) {
@@ -767,7 +767,7 @@ func (c *Client) pypiDistribution(ctx context.Context, index string, t lang.Targ
 		err = json.Unmarshal(body, &doc)
 	}
 	var syntax *json.SyntaxError
-	if (notFound(err) || errors.As(err, &syntax)) && !c.cfg.Public(PyPI, index) {
+	if (notFound(err) || errors.As(err, &syntax)) && !c.config.Public(PyPI, index) {
 		return c.pypiSimple(ctx, index, t)
 	}
 	if err != nil {
@@ -783,14 +783,14 @@ var extraMarker = regexp.MustCompile(`\bextra\s*==`)
 // (>=2017.4.17)" is one; anything guarded by an extra is installed only when that
 // extra is asked for, and is left out. Other environment markers are kept: the
 // platform the map is drawn for is not known.
-func requiresDist(reqs []string) []dep {
-	var out []dep
-	for _, req := range reqs {
-		if extraMarker.MatchString(req) {
+func requiresDist(requirements []string) []dependency {
+	var out []dependency
+	for _, requirement := range requirements {
+		if extraMarker.MatchString(requirement) {
 			continue
 		}
-		if name := requirementName(req); name != "" {
-			out = append(out, dep{Name: name, Version: requirementConstraint(req, name)})
+		if name := requirementName(requirement); name != "" {
+			out = append(out, dependency{Name: name, Version: requirementConstraint(requirement, name)})
 		}
 	}
 	return out
@@ -798,8 +798,8 @@ func requiresDist(reqs []string) []dep {
 
 // requirementConstraint is what a requirement asks for, without its name, markers or
 // brackets: "certifi (>=2017.4.17)" asks for ">=2017.4.17".
-func requirementConstraint(req, name string) string {
-	rest := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(req), name))
+func requirementConstraint(requirement, name string) string {
+	rest := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(requirement), name))
 	if i := strings.Index(rest, ";"); i >= 0 {
 		rest = rest[:i]
 	}
@@ -812,13 +812,13 @@ func requirementConstraint(req, name string) string {
 	return strings.TrimSpace(rest)
 }
 
-// dep is one dependency an index reported, with whatever it said about its version.
-type dep struct {
+// dependency is one dependency an index reported, with whatever it said about its version.
+type dependency struct {
 	Name    string `json:"n"`
 	Version string `json:"v,omitempty"`
-	// Eco is the dependency's ecosystem when it is not the package's own: a Terraform
+	// Ecosystem is the dependency's ecosystem when it is not the package's own: a Terraform
 	// module requires providers as well as modules.
-	Eco string `json:"e,omitempty"`
+	Ecosystem string `json:"e,omitempty"`
 	// Registry is where a crate's dependency is published, as a Cargo index line
 	// says it: "" for the registry of the crate itself, crates.io for crates.io,
 	// else the other registry's index URL. A Julia package's dependency's UUID.
@@ -828,7 +828,7 @@ type dep struct {
 // registry is the lang.Target.Registry of a dependency of from.
 //
 // Implements: REQ-SUP-047
-func (d dep) registry(from lang.Target) string {
+func (d dependency) registry(from lang.Target) string {
 	switch {
 	case from.Ecosystem == Hex:
 		// The Hex API does not say which repository a requirement is in; the
@@ -854,14 +854,14 @@ const cratesIO = "crates.io"
 // Pinned reports whether the version this index gave fixes one release. A Go module
 // proxy answers with the exact version the build selects; npm and PyPI answer with
 // the constraint the package asked for, which usually does not.
-func (d dep) Pinned(eco string) bool {
-	if eco == Maven {
+func (d dependency) Pinned(ecosystem string) bool {
+	if ecosystem == Maven {
 		return lang.PinnedMaven(d.Version) // 1.2.3.RELEASE is one release, [1.0,2.0) is not
 	}
-	if eco == Bazel {
+	if ecosystem == Bazel {
 		return d.Version != "" // a registry's version is one release, whatever its shape (1.2.0.bcr.1)
 	}
-	if eco == NPM || eco == Julia || eco == Elm || eco == PureScript {
+	if ecosystem == NPM || ecosystem == Julia || ecosystem == Elm || ecosystem == PureScript {
 		// A registry's compat "1" is every 1.x; only a whole "1.2.3" is one release
 		// (Elm and PureScript packages' dependencies are always ranges).
 		return lang.PinnedSemver(d.Version)
@@ -870,9 +870,9 @@ func (d dep) Pinned(eco string) bool {
 }
 
 // requirementName takes the distribution name off the front of a requirement.
-func requirementName(req string) string {
-	if i := strings.IndexAny(req, " <>=!~[;("); i >= 0 {
-		req = req[:i]
+func requirementName(requirement string) string {
+	if i := strings.IndexAny(requirement, " <>=!~[;("); i >= 0 {
+		requirement = requirement[:i]
 	}
-	return strings.TrimSpace(req)
+	return strings.TrimSpace(requirement)
 }

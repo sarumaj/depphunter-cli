@@ -29,8 +29,8 @@ import (
 )
 
 const (
-	ecoNimble = "nimble"
-	ecoStd    = "nim-std"
+	ecosystemNimble = "nimble"
+	ecosystemStd    = "nim-std"
 )
 
 // The files told apart by name.
@@ -38,7 +38,7 @@ const (
 	classNimble = "nimble:" // + the package file's name without .nimble
 	classLock   = "nimble.lock"
 	classAtlas  = "atlas.lock"
-	classCfg    = "cfg"
+	classConfig = "cfg"
 )
 
 // Implements: REQ-NIM-001
@@ -84,7 +84,7 @@ func class(p string) string {
 	case base == "atlas.lock":
 		return classAtlas
 	case base == "nim.cfg", strings.HasSuffix(base, ".nim.cfg"):
-		return classCfg
+		return classConfig
 	}
 	return ""
 }
@@ -93,14 +93,14 @@ func class(p string) string {
 // directory beside a .nimble file or an Atlas configuration.
 func ignored(f *scan.File) bool {
 	segments := strings.Split(f.Path, "/")
-	abs := filepath.ToSlash(f.Abs)
-	rooted := f.Abs != "" && strings.HasSuffix(abs, f.Path)
+	absolute := filepath.ToSlash(f.AbsolutePath)
+	rooted := f.AbsolutePath != "" && strings.HasSuffix(absolute, f.Path)
 	for i, s := range segments[:len(segments)-1] {
 		switch s {
 		case "nimbledeps", "nimcache":
 			return true
 		case "deps":
-			if rooted && atlasDeps(filepath.FromSlash(abs[:len(abs)-len(f.Path)]+strings.Join(segments[:i], "/"))) {
+			if rooted && atlasDependencies(filepath.FromSlash(absolute[:len(absolute)-len(f.Path)]+strings.Join(segments[:i], "/"))) {
 				return true
 			}
 		}
@@ -108,16 +108,16 @@ func ignored(f *scan.File) bool {
 	return false
 }
 
-var depsMemo sync.Map // absolute directory -> bool: its deps/ is what Atlas cloned
+var dependenciesMemo sync.Map // absolute directory -> bool: its deps/ is what Atlas cloned
 
-// atlasDeps reports whether dir's deps/ holds installed packages: dir has a
+// atlasDependencies reports whether dir's deps/ holds installed packages: directory has a
 // .nimble file or an atlas.config, or deps/ has Atlas's atlas.config.
-func atlasDeps(dir string) bool {
-	if v, ok := depsMemo.Load(dir); ok {
+func atlasDependencies(directory string) bool {
+	if v, ok := dependenciesMemo.Load(directory); ok {
 		return v.(bool)
 	}
 	found := false
-	if entries, err := os.ReadDir(dir); err == nil {
+	if entries, err := os.ReadDir(directory); err == nil {
 		for _, e := range entries {
 			if n := e.Name(); strings.HasSuffix(n, ".nimble") || n == "atlas.config" || n == "atlas.workspace" {
 				found = true
@@ -126,18 +126,18 @@ func atlasDeps(dir string) bool {
 		}
 	}
 	if !found {
-		_, err := os.Stat(filepath.Join(dir, "deps", "atlas.config"))
+		_, err := os.Stat(filepath.Join(directory, "deps", "atlas.config"))
 		found = err == nil
 	}
-	depsMemo.Store(dir, found)
+	dependenciesMemo.Store(directory, found)
 	return found
 }
 
 // Implements: REQ-NIM-009
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoNimble, Name: "Nimble packages"},
-		{ID: ecoStd, Name: "Nim standard library", Std: true},
+		{ID: ecosystemNimble, Name: "Nimble packages"},
+		{ID: ecosystemStd, Name: "Nim standard library", Std: true},
 	}
 }
 
@@ -146,25 +146,25 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-NIM-002, REQ-NIM-003, REQ-NIM-004, REQ-NIM-005, REQ-NIM-006
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	switch c := class(f.Path); {
 	case c == classLock:
-		return extractLock(readNimbleLock(src), kindLock), nil
+		return extractLock(readNimbleLock(source), kindLock), nil
 	case c == classAtlas:
-		return extractLock(readAtlasLock(src), kindAtlas), nil
-	case c == classCfg:
-		ex := &lang.Extraction{}
-		addPaths(ex, readCfg(src))
-		return ex, nil
+		return extractLock(readAtlasLock(source), kindAtlas), nil
+	case c == classConfig:
+		extraction := &lang.Extraction{}
+		addPaths(extraction, readConfig(source))
+		return extraction, nil
 	case strings.HasPrefix(c, classNimble):
-		return extractNimble(src, strings.TrimPrefix(c, classNimble)), nil
+		return extractNimble(source, strings.TrimPrefix(c, classNimble)), nil
 	}
-	s := scanSource(src)
-	ex := &lang.Extraction{Imports: s.imports, Symbols: s.symbols.List()}
+	s := scanSource(source)
+	extraction := &lang.Extraction{Imports: s.imports, Symbols: s.symbols.List()}
 	if path.Ext(f.Path) == ".nims" {
-		addPaths(ex, s.paths())
+		addPaths(extraction, s.paths())
 	}
-	return ex, nil
+	return extraction, nil
 }
 
 // extractNimble reads a .nimble file: its NimScript imports and symbols, the
@@ -172,16 +172,16 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 // as an edge to its main module, and each --path.
 //
 // Implements: REQ-NIM-005
-func extractNimble(src []byte, base string) *lang.Extraction {
-	s := scanSource(src)
-	n := readNimble(src, base)
-	ex := &lang.Extraction{Imports: s.imports}
+func extractNimble(source []byte, base string) *lang.Extraction {
+	s := scanSource(source)
+	n := readNimble(source, base)
+	extraction := &lang.Extraction{Imports: s.imports}
 	var symbols lang.SymbolSet
 	symbols.Add(n.name, "package", 1)
-	for _, sym := range s.symbols.List() {
-		symbols.Add(sym.Name, sym.Kind, sym.Line)
+	for _, symbol := range s.symbols.List() {
+		symbols.Add(symbol.Name, symbol.Kind, symbol.Line)
 	}
-	ex.Symbols = symbols.List()
+	extraction.Symbols = symbols.List()
 	seen := map[string]bool{}
 	for _, r := range s.requirements() {
 		// Old nimble files list several requirements in one string.
@@ -195,26 +195,26 @@ func extractNimble(src []byte, base string) *lang.Extraction {
 				continue
 			}
 			seen[spec] = true
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: part, Name: kindRequire, Line: r.line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: part, Name: kindRequire, Line: r.line})
 		}
 	}
 	for _, b := range n.bins {
 		if spec := "bin: " + b; !seen[spec] {
 			seen[spec] = true
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: b, Name: kindBin, Line: n.binLine})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: b, Name: kindBin, Line: n.binLine})
 		}
 	}
-	addPaths(ex, s.paths())
-	return ex
+	addPaths(extraction, s.paths())
+	return extraction
 }
 
-func addPaths(ex *lang.Extraction, paths []pathSwitch) {
+func addPaths(extraction *lang.Extraction, paths []pathSwitch) {
 	seen := map[string]bool{}
 	for _, p := range paths {
 		spec := "--path:" + p.value
 		if !seen[spec] {
 			seen[spec] = true
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: p.value, Name: kindPath, Line: p.line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: p.value, Name: kindPath, Line: p.line})
 		}
 	}
 }
@@ -223,13 +223,13 @@ func addPaths(ex *lang.Extraction, paths []pathSwitch) {
 // is on the map even when no module imports it.
 //
 // Implements: REQ-NIM-006
-func extractLock(pkgs []*locked, kind string) *lang.Extraction {
-	ex := &lang.Extraction{}
-	for _, p := range pkgs {
+func extractLock(packages []*locked, kind string) *lang.Extraction {
+	extraction := &lang.Extraction{}
+	for _, p := range packages {
 		if strings.EqualFold(p.name, "nim") {
 			continue
 		}
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: p.name, Module: p.name, Name: kind, Line: p.line})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: p.name, Module: p.name, Name: kind, Line: p.line})
 	}
-	return ex
+	return extraction
 }

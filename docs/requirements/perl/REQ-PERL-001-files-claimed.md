@@ -20,9 +20,9 @@ what Carton installs into a project (`local/lib/perl5`, `local/bin`) and a
 build's `blib/`. A `.pl` file without a perl `#!` line or a line starting as
 only Perl starts one (`use`, `no`, `require`, `package`, `sub`, `my`,
 `our`, `local`, `BEGIN`, POD) that holds a Prolog directive (`:-`) or clause
-(`head(X) :- ...`, `a --> ...`) **shall** be labelled Prolog and not
+(`head(X) :- ...`, `a --> ...`) **shall** be labeled Prolog and not
 claimed; a `.t` file with neither **shall** have no language and not be
-claimed. `cpanfile.snapshot` is labelled Carton and read by the resolver, not
+claimed. `cpanfile.snapshot` is labeled Carton and read by the resolver, not
 claimed. The manifests' kinds **shall** be part of the cache key.
 
 ## Rationale
@@ -33,7 +33,7 @@ read from the head the scanner already peeks at.
 
 ## Acceptance criteria
 
-1. `prolog/family.pl` (`:- module(...)`) is labelled Prolog and not claimed;
+1. `prolog/family.pl` (`:- module(...)`) is labeled Prolog and not claimed;
    `templates/page.t` is not claimed; `script/shop` (`#!/usr/bin/env perl`)
    and `index.cgi` (`#!/usr/bin/perl5.36.0`) are Perl; a perl6 script is not.
 2. `local/lib/perl5/Plack.pm` and `cpanfile.snapshot` are not claimed.

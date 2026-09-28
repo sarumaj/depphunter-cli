@@ -32,20 +32,20 @@ import (
 // And it lets the browser skip all of it. Every file carries an ETag over what is
 // actually served, so a reload is a 304 and no bytes at all.
 type assets struct {
-	fsys  fs.FS
-	mu    sync.RWMutex
-	cache map[string]*asset
+	fileSystem fs.FS
+	mu         sync.RWMutex
+	cache      map[string]*asset
 }
 
 type asset struct {
-	body  []byte // as served: minified, where that means anything
-	gz    []byte // ... and compressed, or nil when compression did not pay
-	etag  string
-	ctype string
+	body    []byte // as served: minified, where that means anything
+	gzipped []byte // ... and compressed, or nil when compression did not pay
+	etag    string
+	ctype   string
 }
 
-func newAssets(fsys fs.FS) *assets {
-	return &assets{fsys: fsys, cache: map[string]*asset{}}
+func newAssets(fileSystem fs.FS) *assets {
+	return &assets{fileSystem: fileSystem, cache: map[string]*asset{}}
 }
 
 func (a *assets) ServeHTTP(w http.ResponseWriter, r *http.Request) {
@@ -70,9 +70,9 @@ func (a *assets) ServeHTTP(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	body := f.body
-	if f.gz != nil && strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
+	if f.gzipped != nil && strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 		h.Set("Content-Encoding", "gzip")
-		body = f.gz
+		body = f.gzipped
 	}
 	h.Set("Content-Length", strconv.Itoa(len(body)))
 	w.Write(body) // a HEAD request drops it again, which is the whole of HEAD here
@@ -89,7 +89,7 @@ func (a *assets) load(name string) (*asset, error) {
 	if !fs.ValidPath(name) {
 		return nil, fs.ErrNotExist
 	}
-	raw, err := fs.ReadFile(a.fsys, name)
+	raw, err := fs.ReadFile(a.fileSystem, name)
 	if err != nil {
 		return nil, err
 	}
@@ -104,8 +104,8 @@ func (a *assets) load(name string) (*asset, error) {
 	}
 	sum := sha256.Sum256(f.body)
 	f.etag = `"` + base64.RawURLEncoding.EncodeToString(sum[:12]) + `"`
-	if gz := compress(f.body); len(gz) < len(f.body)*9/10 {
-		f.gz = gz
+	if gzipped := compress(f.body); len(gzipped) < len(f.body)*9/10 {
+		f.gzipped = gzipped
 	}
 	a.mu.Lock()
 	a.cache[name] = f
@@ -114,18 +114,18 @@ func (a *assets) load(name string) (*asset, error) {
 }
 
 func compress(b []byte) []byte {
-	var buf bytes.Buffer
-	zw, err := gzip.NewWriterLevel(&buf, gzip.BestCompression)
+	var buffer bytes.Buffer
+	gzipWriter, err := gzip.NewWriterLevel(&buffer, gzip.BestCompression)
 	if err != nil {
 		return nil
 	}
-	if _, err := zw.Write(b); err != nil {
+	if _, err := gzipWriter.Write(b); err != nil {
 		return nil
 	}
-	if err := zw.Close(); err != nil {
+	if err := gzipWriter.Close(); err != nil {
 		return nil
 	}
-	return buf.Bytes()
+	return buffer.Bytes()
 }
 
 // contentType names a file's type. Go's table knows the web ones; the model format

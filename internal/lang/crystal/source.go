@@ -8,19 +8,19 @@ import (
 
 // Import kinds, in RawImport.Name.
 const (
-	kindRequire  = "require"
-	kindDep      = "dep"
-	kindDevDep   = "dev"
-	kindLocked   = "locked"
-	kindOverride = "override"
-	kindMain     = "main"
+	kindRequire       = "require"
+	kindDependency    = "dep"
+	kindDevDependency = "dev"
+	kindLocked        = "locked"
+	kindOverride      = "override"
+	kindMain          = "main"
 )
 
 // frame is an open block: a type body (module, class, struct, enum, lib,
 // annotation, union), a def or fun, a macro, any other block that `end` closes,
 // or a bracket.
 type frame struct {
-	kind byte   // 't' type, 'l' lib, 'e' enum, 'd' def, 'm' macro, 'b' block, or the bracket
+	kind byte   // 't' type, 'l' lib, 'e' enum, 'd' definition, 'm' macro, 'b' block, or the bracket
 	name string // a type's qualified name
 }
 
@@ -40,9 +40,9 @@ type parser struct {
 	recordDo   int
 	recordName string
 	// macroIfs are the open {% if %} / {% for %} / {% begin %} tags.
-	macroIfs []macroIf
-	symbols  lang.SymbolSet
-	ex       *lang.Extraction
+	macroIfs   []macroIf
+	symbols    lang.SymbolSet
+	extraction *lang.Extraction
 }
 
 // macroIf is an open macro block. For an {% if %} or {% unless %} it holds the
@@ -51,7 +51,7 @@ type parser struct {
 // branches such as `{% if x %} def f(a : T) {% else %} def f(a) {% end %}`
 // each open a body the one `end` below closes.
 type macroIf struct {
-	cond        bool
+	condition   bool
 	before      []frame
 	beforeExtra int
 	first       []frame
@@ -62,16 +62,16 @@ type macroIf struct {
 // extractSource reads a Crystal file: its requires and what it defines.
 //
 // Implements: REQ-CRYSTAL-002, REQ-CRYSTAL-003, REQ-CRYSTAL-011
-func extractSource(src []byte) *lang.Extraction {
-	p := &parser{tokens: lex(src), ex: &lang.Extraction{}, recordDo: -1}
+func extractSource(source []byte) *lang.Extraction {
+	p := &parser{tokens: lex(source), extraction: &lang.Extraction{}, recordDo: -1}
 	p.run()
-	p.ex.Symbols = p.symbols.List()
-	return p.ex
+	p.extraction.Symbols = p.symbols.List()
+	return p.extraction
 }
 
-func (p *parser) tok(i int) token {
+func (p *parser) token(i int) token {
 	if i < 0 || i >= len(p.tokens) {
-		return token{kind: kPunct}
+		return token{kind: kPunctuation}
 	}
 	return p.tokens[i]
 }
@@ -112,7 +112,7 @@ func isBracket(k byte) bool { return k == '(' || k == '[' || k == '{' }
 
 // owner is the qualified name of the type whose body the parser is in, and
 // whether that is a place declarations are made: the top level or a type body,
-// not a def, a block, a macro or brackets.
+// not a definition, a block, a macro or brackets.
 func (p *parser) owner() (string, byte, bool) {
 	if p.extra > 0 {
 		return "", 0, false
@@ -149,15 +149,15 @@ func (p *parser) inMacro() bool {
 // typed name.
 func (p *parser) keyword(i int) bool {
 	t := p.tokens[i]
-	if t.kind != kIdent || t.label {
+	if t.kind != kIdentifier || t.label {
 		return false
 	}
 	// A variable or parameter may be called def or macro: `getter def : Def?`.
-	if n := p.tok(i + 1); n.kind == kPunct && n.text == ":" {
+	if n := p.token(i + 1); n.kind == kPunctuation && n.text == ":" {
 		return false
 	}
-	prev := p.tok(i - 1)
-	return !(prev.kind == kPunct && (prev.text == "." || prev.text == "&." || prev.text == "::"))
+	previous := p.token(i - 1)
+	return !(previous.kind == kPunctuation && (previous.text == "." || previous.text == "&." || previous.text == "::"))
 }
 
 // opensIf reports whether an if, unless, while or until at i starts a block
@@ -167,15 +167,15 @@ func (p *parser) opensIf(i int) bool {
 	if i == 0 || t.first {
 		return true
 	}
-	prev := p.tokens[i-1]
-	switch prev.kind {
-	case kPunct:
+	previous := p.tokens[i-1]
+	switch previous.kind {
+	case kPunctuation:
 		// x[i]? if y: a ? written against its operand is a method's, not a ternary.
-		return prev.text != ")" && prev.text != "]" && prev.text != "}" && !(prev.text == "?" && !prev.space)
+		return previous.text != ")" && previous.text != "]" && previous.text != "}" && !(previous.text == "?" && !previous.space)
 	case kMacro:
 		return true
-	case kIdent:
-		switch prev.text {
+	case kIdentifier:
+		switch previous.text {
 		case "then", "else", "do", "begin", "ensure":
 			return p.keyword(i - 1)
 		}
@@ -187,7 +187,7 @@ func (p *parser) run() {
 	for i := 0; i < len(p.tokens); i++ {
 		t := p.tokens[i]
 		switch t.kind {
-		case kPunct:
+		case kPunctuation:
 			switch t.text {
 			case "(", "[", "{":
 				p.push(frame{kind: t.text[0]})
@@ -199,13 +199,13 @@ func (p *parser) run() {
 				p.closeBracket('{')
 			}
 			continue
-		case kConst:
+		case kConstant:
 			p.constant(i)
 			continue
 		case kMacro:
 			p.macroTag(t.text)
 			continue
-		case kIdent:
+		case kIdentifier:
 		default:
 			continue
 		}
@@ -214,18 +214,18 @@ func (p *parser) run() {
 		}
 		switch t.text {
 		case "require":
-			if n := p.tok(i + 1); n.kind == kString && !n.interpolate && n.text != "" && !strings.Contains(n.text, "{{") {
-				p.ex.Imports = append(p.ex.Imports, lang.RawImport{Spec: n.text, Module: n.text, Name: kindRequire, Line: t.line})
+			if n := p.token(i + 1); n.kind == kString && !n.interpolate && n.text != "" && !strings.Contains(n.text, "{{") {
+				p.extraction.Imports = append(p.extraction.Imports, lang.RawImport{Spec: n.text, Module: n.text, Name: kindRequire, Line: t.line})
 				i++
 			}
 		case "module", "class", "struct", "enum", "lib", "annotation", "union":
-			i = p.typeDecl(i)
+			i = p.typeDeclaration(i)
 		case "def":
-			i = p.def(i)
+			i = p.definition(i)
 		case "fun":
 			i = p.fun(i)
 		case "macro":
-			i = p.macroDef(i)
+			i = p.macroDefinition(i)
 		case "if", "unless", "while", "until":
 			if p.opensIf(i) {
 				p.push(frame{kind: 'b'})
@@ -239,7 +239,7 @@ func (p *parser) run() {
 		case "case", "begin":
 			p.push(frame{kind: 'b'})
 		case "select":
-			if p.tok(i + 1).first {
+			if p.token(i + 1).first {
 				p.push(frame{kind: 'b'})
 			}
 		case "end":
@@ -264,14 +264,14 @@ func (p *parser) macroTag(text string) {
 	switch word {
 	case "if", "unless":
 		if len(p.macroIfs) < maxStack {
-			p.macroIfs = append(p.macroIfs, macroIf{cond: true, before: append([]frame(nil), p.stack...), beforeExtra: p.extra})
+			p.macroIfs = append(p.macroIfs, macroIf{condition: true, before: append([]frame(nil), p.stack...), beforeExtra: p.extra})
 		}
 	case "for", "begin", "verbatim":
 		if len(p.macroIfs) < maxStack {
 			p.macroIfs = append(p.macroIfs, macroIf{})
 		}
 	case "else", "elsif":
-		if n := len(p.macroIfs); n > 0 && p.macroIfs[n-1].cond {
+		if n := len(p.macroIfs); n > 0 && p.macroIfs[n-1].condition {
 			m := &p.macroIfs[n-1]
 			if !m.branched {
 				m.first, m.firstExtra, m.branched = p.stack, p.extra, true
@@ -305,17 +305,17 @@ func qualify(owner, name string) string {
 func (p *parser) path(i int) (string, int) {
 	var b strings.Builder
 	j := i
-	if t := p.tok(j); t.kind == kPunct && t.text == "::" {
+	if t := p.token(j); t.kind == kPunctuation && t.text == "::" {
 		b.WriteString("::")
 		j++
 	}
 	for {
-		t := p.tok(j)
-		if t.kind != kConst {
+		t := p.token(j)
+		if t.kind != kConstant {
 			return "", i
 		}
 		b.WriteString(t.text)
-		if n := p.tok(j + 1); n.kind == kPunct && n.text == "::" && p.tok(j+2).kind == kConst && !n.space {
+		if n := p.token(j + 1); n.kind == kPunctuation && n.text == "::" && p.token(j+2).kind == kConstant && !n.space {
 			b.WriteString("::")
 			j += 2
 			continue
@@ -324,14 +324,14 @@ func (p *parser) path(i int) (string, int) {
 	}
 }
 
-// typeDecl reads `class A::B`, `module M`, `lib LibC`, `enum E : UInt8` and the
+// typeDeclaration reads `class A::B`, `module M`, `lib LibC`, `enum E : UInt8` and the
 // others; the body is a new frame. A keyword followed by no name (`{{name}}` is
 // one) still opens a body when a macro expression names it.
-func (p *parser) typeDecl(i int) int {
-	kw := p.tokens[i].text
+func (p *parser) typeDeclaration(i int) int {
+	keyword := p.tokens[i].text
 	name, last := p.path(i + 1)
 	if name == "" {
-		if p.tok(i+1).kind == kExpand {
+		if p.token(i+1).kind == kExpand {
 			p.push(frame{kind: 't'})
 			return i + 1
 		}
@@ -342,15 +342,15 @@ func (p *parser) typeDecl(i int) int {
 	if !p.inMacro() {
 		owner, ownerKind, ok = p.owner()
 	}
-	if kw == "union" && ownerKind != 'l' {
+	if keyword == "union" && ownerKind != 'l' {
 		return i // a method called union
 	}
 	full := qualify(owner, name)
 	if ok {
-		p.symbols.Add(full, kw, p.tokens[i].line)
+		p.symbols.Add(full, keyword, p.tokens[i].line)
 	}
 	k := byte('t')
-	switch kw {
+	switch keyword {
 	case "lib":
 		k = 'l'
 	case "enum":
@@ -360,12 +360,12 @@ func (p *parser) typeDecl(i int) int {
 	return last
 }
 
-// def reads a method definition: its name (an operator, a setter `x=`, `self.x`)
+// definition reads a method definition: its name (an operator, a setter `x=`, `self.x`)
 // and, unless it is abstract, the body it opens.
-func (p *parser) def(i int) int {
-	abstract := p.tok(i-1).kind == kIdent && p.tok(i-1).text == "abstract"
+func (p *parser) definition(i int) int {
+	abstract := p.token(i-1).kind == kIdentifier && p.token(i-1).text == "abstract"
 	j := i + 1
-	if t, n := p.tok(j), p.tok(j+1); (t.text == "self" || t.kind == kConst) && n.kind == kPunct && n.text == "." {
+	if t, n := p.token(j), p.token(j+1); (t.text == "self" || t.kind == kConstant) && n.kind == kPunctuation && n.text == "." {
 		j += 2
 	}
 	name, last := p.methodName(j)
@@ -383,23 +383,23 @@ func (p *parser) def(i int) int {
 	return last
 }
 
-// methodName reads the name of a def at j: an identifier (with ? or !), a setter
+// methodName reads the name of a definition at j: an identifier (with ? or !), a setter
 // (name followed directly by =), an operator, [] / []= / []?, or a backtick.
 func (p *parser) methodName(j int) (string, int) {
-	t := p.tok(j)
+	t := p.token(j)
 	switch t.kind {
-	case kIdent, kConst:
-		if n := p.tok(j + 1); n.kind == kPunct && n.text == "=" && !n.space {
-			if a := p.tok(j + 2); a.kind == kPunct && a.text == "(" && !a.space {
+	case kIdentifier, kConstant:
+		if n := p.token(j + 1); n.kind == kPunctuation && n.text == "=" && !n.space {
+			if a := p.token(j + 2); a.kind == kPunctuation && a.text == "(" && !a.space {
 				return t.text + "=", j + 1
 			}
 		}
 		return t.text, j
-	case kPunct:
+	case kPunctuation:
 		if t.text == "[" {
-			if n := p.tok(j + 1); n.kind == kPunct && n.text == "]" {
+			if n := p.token(j + 1); n.kind == kPunctuation && n.text == "]" {
 				name, last := "[]", j+1
-				if a := p.tok(j + 2); a.kind == kPunct && (a.text == "=" || a.text == "?") && !a.space {
+				if a := p.token(j + 2); a.kind == kPunctuation && (a.text == "=" || a.text == "?") && !a.space {
 					name, last = "[]"+a.text, j+2
 				}
 				return name, last
@@ -422,8 +422,8 @@ func (p *parser) methodName(j int) (string, int) {
 // function with a body outside one.
 func (p *parser) fun(i int) int {
 	owner, k, ok := p.owner()
-	t := p.tok(i + 1)
-	if t.kind != kIdent && t.kind != kConst {
+	t := p.token(i + 1)
+	if t.kind != kIdentifier && t.kind != kConstant {
 		return i
 	}
 	if ok && !p.inMacro() {
@@ -439,11 +439,11 @@ func (p *parser) fun(i int) int {
 	return i + 1
 }
 
-// macroDef reads a macro definition; its body is a template, not code of the file.
-func (p *parser) macroDef(i int) int {
-	t := p.tok(i + 1)
+// macroDefinition reads a macro definition; its body is a template, not code of the file.
+func (p *parser) macroDefinition(i int) int {
+	t := p.token(i + 1)
 	owner, _, ok := p.owner()
-	if ok && (t.kind == kIdent || t.kind == kConst) && !p.inMacro() {
+	if ok && (t.kind == kIdentifier || t.kind == kConstant) && !p.inMacro() {
 		name := t.text
 		if owner != "" {
 			name = owner + "." + name
@@ -451,7 +451,7 @@ func (p *parser) macroDef(i int) int {
 		p.symbols.Add(name, "macro", p.tokens[i].line)
 	}
 	p.push(frame{kind: 'm'})
-	if t.kind == kIdent || t.kind == kConst {
+	if t.kind == kIdentifier || t.kind == kConstant {
 		return i + 1
 	}
 	return i
@@ -464,7 +464,7 @@ func (p *parser) constant(i int) {
 	if !p.statementStart(i) {
 		return
 	}
-	if n := p.tok(i + 1); n.kind != kPunct || n.text != "=" {
+	if n := p.token(i + 1); n.kind != kPunctuation || n.text != "=" {
 		return
 	}
 	owner, k, ok := p.owner()
@@ -479,9 +479,9 @@ func (p *parser) statementStart(i int) bool {
 	if i == 0 || p.tokens[i].first {
 		return true
 	}
-	prev := p.tokens[i-1]
-	return prev.kind == kMacro || prev.kind == kPunct && prev.text == ";" ||
-		prev.kind == kIdent && (prev.text == "private" || prev.text == "protected")
+	previous := p.tokens[i-1]
+	return previous.kind == kMacro || previous.kind == kPunctuation && previous.text == ";" ||
+		previous.kind == kIdentifier && (previous.text == "private" || previous.text == "protected")
 }
 
 // alias reads `alias Name = T`, a lib's `type Name = T` and `record Name, ...`
@@ -491,8 +491,8 @@ func (p *parser) alias(i int) {
 	if !p.statementStart(i) {
 		return
 	}
-	n := p.tok(i + 1)
-	if n.kind != kConst {
+	n := p.token(i + 1)
+	if n.kind != kConstant {
 		return
 	}
 	owner, k, ok := p.owner()
@@ -512,11 +512,11 @@ func (p *parser) alias(i int) {
 		depth := 0
 		for j := i + 2; j < len(p.tokens) && j < i+512 && !p.tokens[j].first; j++ {
 			switch c := p.tokens[j]; {
-			case c.kind == kPunct && (c.text == "(" || c.text == "[" || c.text == "{"):
+			case c.kind == kPunctuation && (c.text == "(" || c.text == "[" || c.text == "{"):
 				depth++
-			case c.kind == kPunct && (c.text == ")" || c.text == "]" || c.text == "}"):
+			case c.kind == kPunctuation && (c.text == ")" || c.text == "]" || c.text == "}"):
 				depth--
-			case depth == 0 && c.kind == kIdent && c.text == "do":
+			case depth == 0 && c.kind == kIdentifier && c.text == "do":
 				p.recordDo, p.recordName = j, qualify(owner, n.text)
 			}
 		}
@@ -535,7 +535,7 @@ func (p *parser) accessors(i int) {
 		return
 	}
 	j := i + 1
-	if n := p.tok(j); n.kind == kPunct && n.text == "(" && !n.space {
+	if n := p.token(j); n.kind == kPunctuation && n.text == "(" && !n.space {
 		j++
 	}
 	depth := 0
@@ -546,13 +546,13 @@ func (p *parser) accessors(i int) {
 			return
 		}
 		switch {
-		case want && depth == 0 && (n.kind == kIdent || n.kind == kConst):
+		case want && depth == 0 && (n.kind == kIdentifier || n.kind == kConstant):
 			p.symbols.Add(owner+"."+n.text, "attr", t.line)
 			want = false
-		case want && depth == 0 && n.kind == kVar && strings.HasPrefix(n.text, "@") && !strings.HasPrefix(n.text, "@@"):
+		case want && depth == 0 && n.kind == kVariable && strings.HasPrefix(n.text, "@") && !strings.HasPrefix(n.text, "@@"):
 			p.symbols.Add(owner+"."+n.text[1:], "attr", t.line)
 			want = false
-		case n.kind == kPunct:
+		case n.kind == kPunctuation:
 			switch n.text {
 			case "(", "[", "{":
 				depth++

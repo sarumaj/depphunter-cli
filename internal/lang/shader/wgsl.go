@@ -23,8 +23,8 @@ const (
 // import statements and the module-scope declarations.
 //
 // Implements: REQ-SHADER-005
-func extractWGSL(src []byte) *lang.Extraction {
-	tokens, imports := lexWGSL(src)
+func extractWGSL(source []byte) *lang.Extraction {
+	tokens, imports := lexWGSL(source)
 	var set lang.SymbolSet
 	i := 0
 	for i < len(tokens) {
@@ -32,14 +32,14 @@ func extractWGSL(src []byte) *lang.Extraction {
 		switch {
 		case t.is("@"): // an attribute: @vertex, @group(0), @if(FLAG)
 			i++
-			if i < len(tokens) && tokens[i].kind == tIdent {
+			if i < len(tokens) && tokens[i].kind == tIdentifier {
 				i++
 			}
 			if i < len(tokens) && tokens[i].is("(") {
-				i = skipParens(tokens, i)
+				i = skipParentheses(tokens, i)
 			}
 			continue
-		case t.kind != tIdent:
+		case t.kind != tIdentifier:
 			i++
 			continue
 		}
@@ -55,7 +55,7 @@ func extractWGSL(src []byte) *lang.Extraction {
 			if t.text == "struct" {
 				kind = "struct"
 			}
-			if i+1 < len(tokens) && tokens[i+1].kind == tIdent {
+			if i+1 < len(tokens) && tokens[i+1].kind == tIdentifier {
 				set.Add(tokens[i+1].text, kind, tokens[i+1].line)
 			}
 			i = skipBody(tokens, i+1)
@@ -67,7 +67,7 @@ func extractWGSL(src []byte) *lang.Extraction {
 				}
 				j++
 			}
-			if j < len(tokens) && tokens[j].kind == tIdent {
+			if j < len(tokens) && tokens[j].kind == tIdentifier {
 				kind := map[string]string{"var": "var", "const": "const", "override": "const", "alias": "type"}[t.text]
 				set.Add(tokens[j].text, kind, tokens[j].line)
 			}
@@ -79,9 +79,9 @@ func extractWGSL(src []byte) *lang.Extraction {
 	return &lang.Extraction{Imports: imports, Symbols: set.List()}
 }
 
-// declStarts are the keywords starting a module-scope declaration: a statement
+// declarationStarts are the keywords starting a module-scope declaration: a statement
 // missing its ';' ends before the next one.
-var declStarts = map[string]bool{
+var declarationStarts = map[string]bool{
 	"fn": true, "struct": true, "var": true, "const": true, "override": true, "alias": true,
 	"import": true, "enable": true, "requires": true, "diagnostic": true, "const_assert": true,
 }
@@ -99,7 +99,7 @@ func statementEnd(tokens []token, i int) int {
 			nest = max(nest-1, 0)
 		case nest == 0 && t.is(";"):
 			return i + 1
-		case nest == 0 && t.kind == tIdent && declStarts[t.text]:
+		case nest == 0 && t.kind == tIdentifier && declarationStarts[t.text]:
 			return i
 		}
 	}
@@ -109,7 +109,7 @@ func statementEnd(tokens []token, i int) int {
 // skipBody steps past a declaration's body in braces: a function's or a struct's.
 func skipBody(tokens []token, i int) int {
 	for i < len(tokens) && !tokens[i].is("{") && !tokens[i].is(";") {
-		if tokens[i].kind == tIdent && declStarts[tokens[i].text] {
+		if tokens[i].kind == tIdentifier && declarationStarts[tokens[i].text] {
 			return i
 		}
 		i++
@@ -132,7 +132,7 @@ func skipBody(tokens []token, i int) int {
 	return i
 }
 
-func skipParens(tokens []token, i int) int {
+func skipParentheses(tokens []token, i int) int {
 	nest := 0
 	for ; i < len(tokens); i++ {
 		switch {
@@ -157,7 +157,7 @@ func importPaths(tokens []token) []string {
 	i := 0
 	for i < len(tokens) {
 		i = importTree(tokens, i, "", 0, &out)
-		for i < len(tokens) && tokens[i].kind == tIdent && tokens[i].text == "as" {
+		for i < len(tokens) && tokens[i].kind == tIdentifier && tokens[i].text == "as" {
 			i += 2
 		}
 		if i >= len(tokens) || !tokens[i].is(",") {
@@ -176,7 +176,7 @@ func importTree(tokens []token, i int, prefix string, depth int, out *[]string) 
 	for i < len(tokens) {
 		t := tokens[i]
 		switch {
-		case t.kind == tIdent && (i == start || tokens[i-1].is("::")):
+		case t.kind == tIdentifier && (i == start || tokens[i-1].is("::")):
 			path = join(path, t.text)
 		case t.kind == tString && i == start && prefix == "":
 			path = `"` + t.text + `"`
@@ -188,7 +188,7 @@ func importTree(tokens []token, i int, prefix string, depth int, out *[]string) 
 					return len(tokens)
 				}
 				next := importTree(tokens, i, path, depth+1, out)
-				for next < len(tokens) && tokens[next].kind == tIdent && tokens[next].text == "as" {
+				for next < len(tokens) && tokens[next].kind == tIdentifier && tokens[next].text == "as" {
 					next += 2
 				}
 				if next < len(tokens) && tokens[next].is(",") {
@@ -214,69 +214,69 @@ func importTree(tokens []token, i int, prefix string, depth int, out *[]string) 
 	return i
 }
 
-func join(prefix, seg string) string {
+func join(prefix, segment string) string {
 	if prefix == "" {
-		return seg
+		return segment
 	}
-	return prefix + "::" + seg
+	return prefix + "::" + segment
 }
 
 // lexWGSL splits a WGSL source into tokens and reads naga_oil's directives: an
 // #import (continued over lines while its braces are open) becomes imports,
 // #define_import_path and the conditionals (#ifdef, #else ...) are dropped - both
 // branches of a conditional are read. Block comments nest, as WGSL's do.
-func lexWGSL(src []byte) ([]token, []lang.RawImport) { return lexTokens(src, true) }
+func lexWGSL(source []byte) ([]token, []lang.RawImport) { return lexTokens(source, true) }
 
 // lexTokens is lexWGSL; directives false reads a directive's own text.
-func lexTokens(src []byte, directives bool) ([]token, []lang.RawImport) {
+func lexTokens(source []byte, directives bool) ([]token, []lang.RawImport) {
 	var tokens []token
 	var imports []lang.RawImport
-	line, bol := 1, true
-	for i := 0; i < len(src); {
-		c := src[i]
+	line, lineStart := 1, true
+	for i := 0; i < len(source); {
+		c := source[i]
 		switch {
 		case c == '\n':
-			line, bol = line+1, true
+			line, lineStart = line+1, true
 			i++
 			continue
 		case c == ' ' || c == '\t' || c == '\r' || c == '\f' || c == '\v':
 			i++
 			continue
-		case c == '#' && bol && directives:
+		case c == '#' && lineStart && directives:
 			start, at := i, line
-			i = lineEnd(src, i)
-			word, rest := directive(string(src[start:i]))
+			i = lineEnd(source, i)
+			word, rest := directive(string(source[start:i]))
 			if word != "import" {
 				continue
 			}
 			// The directive goes on while its braces are open.
 			text := rest
-			for lines := 0; strings.Count(text, "{") > strings.Count(text, "}") && i < len(src) && lines < 64; lines++ {
-				next := lineEnd(src, i+1)
-				text += " " + stripLineComment(string(src[i+1:next]))
+			for lines := 0; strings.Count(text, "{") > strings.Count(text, "}") && i < len(source) && lines < 64; lines++ {
+				next := lineEnd(source, i+1)
+				text += " " + stripLineComment(string(source[i+1:next]))
 				line++
 				i = next
 			}
-			ts, _ := lexTokens([]byte(text), false)
-			for _, p := range importPaths(ts) {
+			tokens, _ := lexTokens([]byte(text), false)
+			for _, p := range importPaths(tokens) {
 				imports = append(imports, lang.RawImport{Spec: "#import " + p, Module: p, Name: nagaImport, Line: at})
 			}
 			continue
-		case c == '/' && i+1 < len(src) && src[i+1] == '/':
-			i = lineEnd(src, i)
+		case c == '/' && i+1 < len(source) && source[i+1] == '/':
+			i = lineEnd(source, i)
 			continue
-		case c == '/' && i+1 < len(src) && src[i+1] == '*':
+		case c == '/' && i+1 < len(source) && source[i+1] == '*':
 			depth := 0
-			for i < len(src) {
+			for i < len(source) {
 				switch {
-				case src[i] == '/' && i+1 < len(src) && src[i+1] == '*':
+				case source[i] == '/' && i+1 < len(source) && source[i+1] == '*':
 					depth++
 					i += 2
-				case src[i] == '*' && i+1 < len(src) && src[i+1] == '/':
+				case source[i] == '*' && i+1 < len(source) && source[i+1] == '/':
 					depth--
 					i += 2
 				default:
-					if src[i] == '\n' {
+					if source[i] == '\n' {
 						line++
 					}
 					i++
@@ -287,41 +287,41 @@ func lexTokens(src []byte, directives bool) ([]token, []lang.RawImport) {
 			}
 			continue
 		}
-		bol = false
+		lineStart = false
 		start, at := i, line
 		switch {
-		case identStart(c) || c >= 0x80:
-			for i < len(src) && (identByte(src[i]) || src[i] >= 0x80) {
+		case identifierStart(c) || c >= 0x80:
+			for i < len(source) && (identifierByte(source[i]) || source[i] >= 0x80) {
 				i++
 			}
-			tokens = append(tokens, token{tIdent, string(src[start:i]), at})
+			tokens = append(tokens, token{tIdentifier, string(source[start:i]), at})
 		case c >= '0' && c <= '9':
-			for i < len(src) && (identByte(src[i]) || src[i] == '.') {
+			for i < len(source) && (identifierByte(source[i]) || source[i] == '.') {
 				i++
 			}
-			tokens = append(tokens, token{tNumber, string(src[start:i]), at})
+			tokens = append(tokens, token{tNumber, string(source[start:i]), at})
 		case c == '"':
 			i++
-			for i < len(src) && src[i] != '"' && src[i] != '\n' {
+			for i < len(source) && source[i] != '"' && source[i] != '\n' {
 				i++
 			}
-			tokens = append(tokens, token{tString, string(src[start+1 : i]), at})
-			if i < len(src) && src[i] == '"' {
+			tokens = append(tokens, token{tString, string(source[start+1 : i]), at})
+			if i < len(source) && source[i] == '"' {
 				i++
 			}
-		case c == ':' && i+1 < len(src) && src[i+1] == ':':
+		case c == ':' && i+1 < len(source) && source[i+1] == ':':
 			i += 2
-			tokens = append(tokens, token{tPunct, "::", at})
+			tokens = append(tokens, token{tPunctuation, "::", at})
 		default:
 			i++
-			tokens = append(tokens, token{tPunct, string(c), at})
+			tokens = append(tokens, token{tPunctuation, string(c), at})
 		}
 	}
 	return tokens, imports
 }
 
-func lineEnd(src []byte, i int) int {
-	for i < len(src) && src[i] != '\n' {
+func lineEnd(source []byte, i int) int {
+	for i < len(source) && source[i] != '\n' {
 		i++
 	}
 	return i

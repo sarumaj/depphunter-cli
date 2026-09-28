@@ -26,18 +26,18 @@ import (
 )
 
 const (
-	ecoModule   = "terraform-module"
-	ecoProvider = "terraform-provider"
+	ecosystemModule   = "terraform-module"
+	ecosystemProvider = "terraform-provider"
 )
 
 // The kinds of file, as Class names them.
 const (
-	classConfig     = "config"     // .tf, .tofu
-	classJSON       = "json"       // .tf.json, .tofu.json
-	classVars       = "vars"       // .tfvars
-	classVarsJSON   = "vars-json"  // .tfvars.json
-	classLock       = "lock"       // .terraform.lock.hcl
-	classTerragrunt = "terragrunt" // any other .hcl
+	classConfig        = "config"     // .tf, .tofu
+	classJSON          = "json"       // .tf.json, .tofu.json
+	classVariables     = "vars"       // .tfvars
+	classVariablesJSON = "vars-json"  // .tfvars.json
+	classLock          = "lock"       // .terraform.lock.hcl
+	classTerragrunt    = "terragrunt" // any other .hcl
 )
 
 // Implements: REQ-TERRAFORM-001
@@ -55,9 +55,9 @@ func fileClass(p string) string {
 	case strings.HasSuffix(base, ".tf.json") || strings.HasSuffix(base, ".tofu.json"):
 		return classJSON
 	case strings.HasSuffix(base, ".tfvars"):
-		return classVars
+		return classVariables
 	case strings.HasSuffix(base, ".tfvars.json"):
-		return classVarsJSON
+		return classVariablesJSON
 	case base == ".terraform.lock.hcl":
 		return classLock
 	case strings.HasSuffix(base, ".hcl") && !strings.HasSuffix(base, ".pkr.hcl") && !strings.HasSuffix(base, ".nomad.hcl"):
@@ -68,8 +68,8 @@ func fileClass(p string) string {
 
 // ignored is where Terraform and Terragrunt keep what they download.
 func ignored(p string) bool {
-	for _, seg := range strings.Split(p, "/") {
-		if seg == ".terraform" || seg == ".terragrunt-cache" {
+	for _, segment := range strings.Split(p, "/") {
+		if segment == ".terraform" || segment == ".terragrunt-cache" {
 			return true
 		}
 	}
@@ -95,8 +95,8 @@ func (Plugin) Class(f *scan.File) string { return fileClass(f.Path) }
 // Implements: REQ-TERRAFORM-004, REQ-TERRAFORM-007
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoModule, Name: "Terraform modules"},
-		{ID: ecoProvider, Name: "Terraform providers"},
+		{ID: ecosystemModule, Name: "Terraform modules"},
+		{ID: ecosystemProvider, Name: "Terraform providers"},
 	}
 }
 
@@ -105,22 +105,22 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-TERRAFORM-001, REQ-TERRAFORM-011
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
-	return read(fileClass(f.Path), src).extraction(), nil
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
+	return read(fileClass(f.Path), source).extraction(), nil
 }
 
-func read(class string, src []byte) *fileInfo {
+func read(class string, source []byte) *fileInfo {
 	switch class {
 	case classJSON:
-		return readModule(parseJSON(src))
-	case classVars:
-		return readVars(parse(src))
-	case classVarsJSON:
-		return readVars(parseJSONVars(src))
+		return readModule(parseJSON(source))
+	case classVariables:
+		return readVariables(parse(source))
+	case classVariablesJSON:
+		return readVariables(parseJSONVariables(source))
 	case classLock:
-		return readLock(parse(src))
+		return readLock(parse(source))
 	case classTerragrunt:
-		return readTerragrunt(parse(src))
+		return readTerragrunt(parse(source))
 	}
-	return readModule(parse(src))
+	return readModule(parse(source))
 }

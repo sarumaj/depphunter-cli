@@ -9,18 +9,18 @@ import (
 	"gopkg.in/yaml.v3"
 )
 
-// decl is one pod a Podfile or a podspec declares, under its root name (the part
+// declaration is one pod a Podfile or a podspec declares, under its root name (the part
 // before a "/": the subspec "Firebase/Analytics" is the pod Firebase).
-type decl struct {
-	name string // as written, subspec included
-	reqs string // version requirements, joined with ", "
+type declaration struct {
+	name         string // as written, subspec included
+	requirements string // version requirements, joined with ", "
 	// Where the pod comes from when not from a spec repository.
 	git, tag, branch, commit string
 	path, podspec            string // relative to the Podfile's directory
 }
 
-// Dep is one dependency line of a manifest, for the plugin's imports.
-type Dep struct {
+// Dependency is one dependency line of a manifest, for the plugin's imports.
+type Dependency struct {
 	Spec string // as shown: pod 'Firebase/Analytics'
 	Name string // as written: Firebase/Analytics, or a Carthage source
 	Line int
@@ -35,35 +35,35 @@ func Root(name string) string {
 // statements reads a Ruby file (Podfile, podspec) as statements: comments stripped
 // outside strings, a line ending in "," or "\" or with an open bracket joined with
 // the next. Each carries its first line's number.
-func statements(src string) []stmt {
-	var out []stmt
-	var cur strings.Builder
+func statements(source string) []statement {
+	var out []statement
+	var current strings.Builder
 	start, depth := 0, 0
-	for i, line := range strings.Split(strings.ReplaceAll(src, "\r\n", "\n"), "\n") {
+	for i, line := range strings.Split(strings.ReplaceAll(source, "\r\n", "\n"), "\n") {
 		code, d := stripRuby(line)
-		if cur.Len() == 0 {
+		if current.Len() == 0 {
 			start = i + 1
 		}
-		cur.WriteString(code)
-		cur.WriteByte(' ')
+		current.WriteString(code)
+		current.WriteByte(' ')
 		depth += d
 		t := strings.TrimSpace(code)
 		if depth > 0 || strings.HasSuffix(t, ",") || strings.HasSuffix(t, "\\") {
 			continue
 		}
-		if s := strings.TrimSpace(cur.String()); s != "" {
-			out = append(out, stmt{s, start})
+		if s := strings.TrimSpace(current.String()); s != "" {
+			out = append(out, statement{s, start})
 		}
-		cur.Reset()
+		current.Reset()
 		depth = 0
 	}
-	if s := strings.TrimSpace(cur.String()); s != "" {
-		out = append(out, stmt{s, start})
+	if s := strings.TrimSpace(current.String()); s != "" {
+		out = append(out, statement{s, start})
 	}
 	return out
 }
 
-type stmt struct {
+type statement struct {
 	text string
 	line int
 }
@@ -105,11 +105,11 @@ func call(s, name string) ([]string, bool) {
 	if strings.HasPrefix(rest, "(") && strings.HasSuffix(rest, ")") {
 		rest = rest[1 : len(rest)-1]
 	}
-	return splitArgs(rest), true
+	return splitArguments(rest), true
 }
 
-// splitArgs splits Ruby arguments at the commas outside strings and brackets.
-func splitArgs(s string) []string {
+// splitArguments splits Ruby arguments at the commas outside strings and brackets.
+func splitArguments(s string) []string {
 	var out []string
 	depth, start := 0, 0
 	for i := 0; i < len(s); i++ {
@@ -166,13 +166,13 @@ func option(a string) (key, value string, ok bool) {
 	return key, value, key != ""
 }
 
-// podArgs reads the arguments after a pod's name: requirement strings and the
+// podArguments reads the arguments after a pod's name: requirement strings and the
 // options saying where it comes from.
-func podArgs(d *decl, args []string) {
-	var reqs []string
-	for _, a := range args {
+func podArguments(d *declaration, arguments []string) {
+	var requirements []string
+	for _, a := range arguments {
 		if v, ok := literal(a); ok {
-			reqs = append(reqs, strings.Join(strings.Fields(v), " "))
+			requirements = append(requirements, strings.Join(strings.Fields(v), " "))
 			continue
 		}
 		k, v, ok := option(a)
@@ -195,41 +195,41 @@ func podArgs(d *decl, args []string) {
 			d.podspec = s
 		}
 	}
-	d.reqs = strings.Join(reqs, ", ")
+	d.requirements = strings.Join(requirements, ", ")
 }
 
 // podfile is what a Podfile declares.
 type podfile struct {
-	pods    []*decl
-	deps    []Dep
-	sources []string
+	pods         []*declaration
+	dependencies []Dependency
+	sources      []string
 }
 
 // readPodfile reads a Podfile's `pod` and `source` statements, wherever they are
 // (targets, abstract targets, methods).
 //
 // Implements: REQ-OBJC-007
-func readPodfile(src string) podfile {
+func readPodfile(source string) podfile {
 	var out podfile
-	for _, s := range statements(src) {
-		if args, ok := call(s.text, "source"); ok && len(args) == 1 {
-			if u, ok := literal(args[0]); ok {
+	for _, s := range statements(source) {
+		if arguments, ok := call(s.text, "source"); ok && len(arguments) == 1 {
+			if u, ok := literal(arguments[0]); ok {
 				out.sources = append(out.sources, u)
 			}
 			continue
 		}
-		args, ok := call(s.text, "pod")
-		if !ok || len(args) == 0 {
+		arguments, ok := call(s.text, "pod")
+		if !ok || len(arguments) == 0 {
 			continue
 		}
-		name, ok := literal(args[0])
+		name, ok := literal(arguments[0])
 		if !ok || name == "" {
 			continue
 		}
-		d := &decl{name: name}
-		podArgs(d, args[1:])
+		d := &declaration{name: name}
+		podArguments(d, arguments[1:])
 		out.pods = append(out.pods, d)
-		out.deps = append(out.deps, Dep{Spec: "pod '" + name + "'", Name: name, Line: s.line})
+		out.dependencies = append(out.dependencies, Dependency{Spec: "pod '" + name + "'", Name: name, Line: s.line})
 	}
 	return out
 }
@@ -238,22 +238,22 @@ func readPodfile(src string) podfile {
 // dependencies, subspecs' and test specs' included.
 type podspec struct {
 	name, module string
-	deps         []*decl
-	lines        []Dep
+	dependencies []*declaration
+	lines        []Dependency
 }
 
 var (
-	specName   = regexp.MustCompile(`^\w+\.name\s*=\s*(['"])([^'"]+)['"]`)
-	specModule = regexp.MustCompile(`^\w+\.module_name\s*=\s*(['"])([^'"]+)['"]`)
-	specDep    = regexp.MustCompile(`^\w+\.dependency\b`)
+	specName       = regexp.MustCompile(`^\w+\.name\s*=\s*(['"])([^'"]+)['"]`)
+	specModule     = regexp.MustCompile(`^\w+\.module_name\s*=\s*(['"])([^'"]+)['"]`)
+	specDependency = regexp.MustCompile(`^\w+\.dependency\b`)
 )
 
 // readPodspec reads a Ruby podspec's name, module_name and `dependency` calls.
 //
 // Implements: REQ-OBJC-010
-func readPodspec(src string) podspec {
+func readPodspec(source string) podspec {
 	var out podspec
-	for _, s := range statements(src) {
+	for _, s := range statements(source) {
 		if m := specName.FindStringSubmatch(s.text); m != nil && out.name == "" {
 			out.name = m[2]
 			continue
@@ -262,19 +262,19 @@ func readPodspec(src string) podspec {
 			out.module = m[2]
 			continue
 		}
-		if loc := specDep.FindStringIndex(s.text); loc != nil {
-			args, ok := call(s.text[strings.Index(s.text, "dependency"):], "dependency")
-			if !ok || len(args) == 0 {
+		if span := specDependency.FindStringIndex(s.text); span != nil {
+			arguments, ok := call(s.text[strings.Index(s.text, "dependency"):], "dependency")
+			if !ok || len(arguments) == 0 {
 				continue
 			}
-			name, ok := literal(args[0])
+			name, ok := literal(arguments[0])
 			if !ok || name == "" {
 				continue
 			}
-			d := &decl{name: name}
-			podArgs(d, args[1:])
-			out.deps = append(out.deps, d)
-			out.lines = append(out.lines, Dep{Spec: "dependency '" + name + "'", Name: name, Line: s.line})
+			d := &declaration{name: name}
+			podArguments(d, arguments[1:])
+			out.dependencies = append(out.dependencies, d)
+			out.lines = append(out.lines, Dependency{Spec: "dependency '" + name + "'", Name: name, Line: s.line})
 		}
 	}
 	return out
@@ -293,9 +293,9 @@ type jsonSpec struct {
 // lines of its dependencies are where their names first occur.
 //
 // Implements: REQ-OBJC-010
-func readPodspecJSON(src string) podspec {
+func readPodspecJSON(source string) podspec {
 	var doc jsonSpec
-	if json.Unmarshal([]byte(src), &doc) != nil {
+	if json.Unmarshal([]byte(source), &doc) != nil {
 		return podspec{}
 	}
 	out := podspec{name: doc.Name, module: doc.ModuleName}
@@ -312,33 +312,33 @@ func readPodspecJSON(src string) podspec {
 				continue
 			}
 			seen[n] = true
-			out.deps = append(out.deps, &decl{name: n, reqs: strings.Join(s.Dependencies[n], ", ")})
-			out.lines = append(out.lines, Dep{Spec: "dependency '" + n + "'", Name: n, Line: lineOf(src, `"`+n+`"`)})
+			out.dependencies = append(out.dependencies, &declaration{name: n, requirements: strings.Join(s.Dependencies[n], ", ")})
+			out.lines = append(out.lines, Dependency{Spec: "dependency '" + n + "'", Name: n, Line: lineOf(source, `"`+n+`"`)})
 		}
-		for _, sub := range s.Subspecs {
-			walk(sub)
+		for _, subspec := range s.Subspecs {
+			walk(subspec)
 		}
-		for _, sub := range s.Testspecs {
-			walk(sub)
+		for _, subspec := range s.Testspecs {
+			walk(subspec)
 		}
 	}
 	walk(doc)
 	return out
 }
 
-func lineOf(src, needle string) int {
-	i := strings.Index(src, needle)
+func lineOf(source, needle string) int {
+	i := strings.Index(source, needle)
 	if i < 0 {
 		return 1
 	}
-	return strings.Count(src[:i], "\n") + 1
+	return strings.Count(source[:i], "\n") + 1
 }
 
 // locked is one root pod in a Podfile.lock.
 type locked struct {
-	version string
-	deps    []string // root names of what its specs depend on
-	repo    string   // the spec repository it was installed from ("trunk" or a URL)
+	version      string
+	dependencies []string // root names of what its specs depend on
+	repository   string   // the spec repository it was installed from ("trunk" or a URL)
 	// EXTERNAL SOURCES and CHECKOUT OPTIONS: where it was installed from instead.
 	git, tag, branch, commit string
 	path, podspec            string
@@ -355,14 +355,14 @@ func podLine(s string) (name, version string) {
 // with what was checked out (EXTERNAL SOURCES, CHECKOUT OPTIONS).
 //
 // Implements: REQ-OBJC-008
-func readLock(src []byte) (map[string]*locked, map[string][]string) {
+func readLock(source []byte) (map[string]*locked, map[string][]string) {
 	var doc struct {
-		Pods     []any                        `yaml:"PODS"`
-		Repos    map[string][]string          `yaml:"SPEC REPOS"`
-		External map[string]map[string]string `yaml:"EXTERNAL SOURCES"`
-		Checkout map[string]map[string]string `yaml:"CHECKOUT OPTIONS"`
+		Pods         []any                        `yaml:"PODS"`
+		Repositories map[string][]string          `yaml:"SPEC REPOS"`
+		External     map[string]map[string]string `yaml:"EXTERNAL SOURCES"`
+		Checkout     map[string]map[string]string `yaml:"CHECKOUT OPTIONS"`
 	}
-	if yaml.Unmarshal(src, &doc) != nil {
+	if yaml.Unmarshal(source, &doc) != nil {
 		return nil, nil
 	}
 	out := map[string]*locked{}
@@ -375,64 +375,64 @@ func readLock(src []byte) (map[string]*locked, map[string][]string) {
 		}
 		return l
 	}
-	addDeps := func(l *locked, self string, deps []any) {
-		for _, d := range deps {
+	addDependencies := func(l *locked, self string, dependencies []any) {
+		for _, d := range dependencies {
 			s, _ := d.(string)
 			n, _ := podLine(s)
-			if r := Root(n); r != "" && r != self && !contains(l.deps, r) {
-				l.deps = append(l.deps, r)
+			if r := Root(n); r != "" && r != self && !contains(l.dependencies, r) {
+				l.dependencies = append(l.dependencies, r)
 			}
 		}
 	}
 	for _, p := range doc.Pods {
 		switch v := p.(type) {
 		case string:
-			n, ver := podLine(v)
+			n, version := podLine(v)
 			if l := get(n); l.version == "" {
-				l.version = ver
+				l.version = version
 			}
 		case map[string]any:
-			for k, deps := range v {
-				n, ver := podLine(k)
+			for k, dependencies := range v {
+				n, version := podLine(k)
 				l := get(n)
 				if l.version == "" {
-					l.version = ver
+					l.version = version
 				}
-				list, _ := deps.([]any)
-				addDeps(l, Root(n), list)
+				list, _ := dependencies.([]any)
+				addDependencies(l, Root(n), list)
 			}
 		}
 	}
 	for _, l := range out {
-		sort.Strings(l.deps)
+		sort.Strings(l.dependencies)
 	}
-	for repo, names := range doc.Repos {
+	for repository, names := range doc.Repositories {
 		for _, n := range names {
 			if l := out[Root(n)]; l != nil {
-				l.repo = repo
+				l.repository = repository
 			}
 		}
 	}
-	for n, opts := range doc.External {
+	for n, options := range doc.External {
 		if l := out[Root(n)]; l != nil {
-			l.git, l.tag, l.branch, l.commit = opts[":git"], opts[":tag"], opts[":branch"], opts[":commit"]
-			l.path, l.podspec = opts[":path"], opts[":podspec"]
+			l.git, l.tag, l.branch, l.commit = options[":git"], options[":tag"], options[":branch"], options[":commit"]
+			l.path, l.podspec = options[":path"], options[":podspec"]
 		}
 	}
-	for n, opts := range doc.Checkout {
+	for n, options := range doc.Checkout {
 		if l := out[Root(n)]; l != nil {
-			if opts[":git"] != "" {
-				l.git = opts[":git"]
+			if options[":git"] != "" {
+				l.git = options[":git"]
 			}
-			if opts[":commit"] != "" {
-				l.commit = opts[":commit"]
+			if options[":commit"] != "" {
+				l.commit = options[":commit"]
 			}
-			if opts[":tag"] != "" {
-				l.tag = opts[":tag"]
+			if options[":tag"] != "" {
+				l.tag = options[":tag"]
 			}
 		}
 	}
-	return out, doc.Repos
+	return out, doc.Repositories
 }
 
 func contains(list []string, s string) bool {
@@ -446,12 +446,12 @@ func contains(list []string, s string) bool {
 
 // cart is one dependency of a Cartfile or Cartfile.resolved.
 type cart struct {
-	kind   string // github, git or binary
-	source string // as written: owner/repo, a URL
-	name   string // the package: its URL as lang.RepoName spells it
-	req    string // requirement: == 1.0, ~> 1.0, >= 1.0 or a quoted git ref
-	ref    bool   // req is a git reference ("branch", "tag", a commit)
-	line   int
+	kind        string // github, git or binary
+	source      string // as written: owner/repo, a URL
+	name        string // the package: its URL as lang.RepoName spells it
+	requirement string // requirement: == 1.0, ~> 1.0, >= 1.0 or a quoted git ref
+	reference   bool   // requirement is a git reference ("branch", "tag", a commit)
+	line        int
 }
 
 var cartLine = regexp.MustCompile(`^(github|git|binary)\s+"([^"]+)"\s*(.*)$`)
@@ -459,9 +459,9 @@ var cartLine = regexp.MustCompile(`^(github|git|binary)\s+"([^"]+)"\s*(.*)$`)
 // readCartfile reads a Cartfile, Cartfile.private or Cartfile.resolved.
 //
 // Implements: REQ-OBJC-011
-func readCartfile(src string) []cart {
+func readCartfile(source string) []cart {
 	var out []cart
-	for i, line := range strings.Split(strings.ReplaceAll(src, "\r\n", "\n"), "\n") {
+	for i, line := range strings.Split(strings.ReplaceAll(source, "\r\n", "\n"), "\n") {
 		code, _ := stripRuby(line)
 		m := cartLine.FindStringSubmatch(strings.TrimSpace(code))
 		if m == nil {
@@ -469,11 +469,11 @@ func readCartfile(src string) []cart {
 		}
 		c := cart{kind: m[1], source: m[2], line: i + 1}
 		c.name = cartName(c.kind, c.source)
-		req := strings.TrimSpace(m[3])
-		if v, ok := literal(req); ok {
-			c.req, c.ref = v, true
+		requirement := strings.TrimSpace(m[3])
+		if v, ok := literal(requirement); ok {
+			c.requirement, c.reference = v, true
 		} else {
-			c.req = strings.Join(strings.Fields(req), " ")
+			c.requirement = strings.Join(strings.Fields(requirement), " ")
 		}
 		out = append(out, c)
 	}

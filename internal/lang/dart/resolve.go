@@ -23,29 +23,29 @@ var flutterSDK = map[string]bool{
 	"flutter_web_plugins": true, "integration_test": true, "sky_engine": true,
 }
 
-// pkg is a pub package of the repository.
-type pkg struct {
-	dir     string
-	spec    *pubspec
-	deps    map[string]*dependency // by name; an override replaces the declaration
-	lock    map[string]*locked     // its own pubspec.lock, or its workspace's
-	lockDir string
-	root    *pkg // the pub workspace this package is a member of
-	melos   []*melosRepo
+// pubPackage is a pub package of the repository.
+type pubPackage struct {
+	directory     string
+	spec          *pubspec
+	dependencies  map[string]*dependency // by name; an override replaces the declaration
+	lock          map[string]*locked     // its own pubspec.lock, or its workspace's
+	lockDirectory string
+	root          *pubPackage // the pub workspace this package is a member of
+	melos         []*melosRepository
 }
 
-// melosRepo is a melos repository: the packages its globs select are linked to each
+// melosRepository is a melos repository: the packages its globs select are linked to each
 // other by `melos bootstrap`, whatever versions their pubspecs ask for.
-type melosRepo struct {
-	dir     string
-	include []string
-	exclude []string
+type melosRepository struct {
+	directory string
+	include   []string
+	exclude   []string
 }
 
 type resolver struct {
-	files map[string]bool
-	dirs  map[string]bool
-	pkgs  []*pkg // deepest first
+	files       map[string]bool
+	directories map[string]bool
+	packages    []*pubPackage // deepest first
 	lang.NoteList
 }
 
@@ -54,14 +54,14 @@ var _ lang.Noter = (*resolver)(nil)
 
 // Implements: REQ-DART-004, REQ-DART-006, REQ-DART-007, REQ-DART-009
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, dirs: map[string]bool{}}
-	abs := map[string]string{}
+	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}}
+	absolute := map[string]string{}
 	var pubspecs, melos []string
 	for _, f := range all {
 		r.files[f.Path] = true
-		abs[f.Path] = f.Abs
-		for d := path.Dir(f.Path); d != "." && !r.dirs[d]; d = path.Dir(d) {
-			r.dirs[d] = true
+		absolute[f.Path] = f.AbsolutePath
+		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
+			r.directories[d] = true
 		}
 		if (Plugin{}).Claims(f) && path.Base(f.Path) == "pubspec.yaml" {
 			pubspecs = append(pubspecs, f.Path)
@@ -74,62 +74,62 @@ func newResolver(root string, all []*scan.File) *resolver {
 	sort.Strings(melos)
 	// pubspec.lock and pubspec_overrides.yaml are git-ignored as often as not; what is
 	// on disk beside a pubspec is what pub resolved with.
-	read := func(rel string) ([]byte, bool) {
-		if a, ok := abs[rel]; ok {
+	read := func(relative string) ([]byte, bool) {
+		if a, ok := absolute[relative]; ok {
 			data, err := os.ReadFile(a)
 			return data, err == nil
 		}
-		if root == "" || !inside(rel) {
+		if root == "" || !inside(relative) {
 			return nil, false
 		}
-		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
 		return data, err == nil
 	}
-	byDir := map[string]*pkg{}
+	byDirectory := map[string]*pubPackage{}
 	for _, f := range pubspecs {
-		src, _ := read(f)
-		spec, err := readPubspec(src)
+		source, _ := read(f)
+		spec, err := readPubspec(source)
 		if err != nil {
 			continue
 		}
-		p := &pkg{dir: path.Dir(f), spec: spec, deps: map[string]*dependency{}}
+		p := &pubPackage{directory: path.Dir(f), spec: spec, dependencies: map[string]*dependency{}}
 		for _, section := range []string{"dev_dependencies", "dependencies", "dependency_overrides"} {
-			for _, d := range spec.deps {
+			for _, d := range spec.dependencies {
 				if d.section == section {
-					p.deps[d.name] = d
+					p.dependencies[d.name] = d
 				}
 			}
 		}
-		if src, ok := read(path.Join(p.dir, "pubspec_overrides.yaml")); ok {
-			if o, err := readPubspec(src); err == nil {
-				for _, d := range o.deps {
-					p.deps[d.name] = d
+		if source, ok := read(path.Join(p.directory, "pubspec_overrides.yaml")); ok {
+			if o, err := readPubspec(source); err == nil {
+				for _, d := range o.dependencies {
+					p.dependencies[d.name] = d
 				}
 			}
 		}
-		if src, ok := read(path.Join(p.dir, "pubspec.lock")); ok {
-			p.lock, p.lockDir = readLock(src), p.dir
+		if source, ok := read(path.Join(p.directory, "pubspec.lock")); ok {
+			p.lock, p.lockDirectory = readLock(source), p.directory
 			// Implements: REQ-DART-007, REQ-TRC-017
-			if lock := path.Join(p.dir, "pubspec.lock"); len(p.lock) > 0 {
-				if _, listed := abs[lock]; !listed {
+			if lock := path.Join(p.directory, "pubspec.lock"); len(p.lock) > 0 {
+				if _, listed := absolute[lock]; !listed {
 					r.NoteIgnored(lock)
 				}
 				r.Note(lock, trace.NoteFlat, "pubspec.lock pins versions but records no edges: offline, "+
 					"--resolve-depth adds nothing past the packages it pins (--online asks pub)")
 			}
 		}
-		byDir[p.dir] = p
-		r.pkgs = append(r.pkgs, p)
+		byDirectory[p.directory] = p
+		r.packages = append(r.packages, p)
 	}
 	// A pub workspace: the root lists its members, which resolve together against
 	// the root's pubspec.lock.
-	for _, p := range r.pkgs {
+	for _, p := range r.packages {
 		for _, m := range p.spec.workspace {
-			for _, q := range r.pkgs {
-				if q != p && q.root == nil && globMatch(strings.TrimSuffix(path.Join(p.dir, m), "/"), q.dir) {
+			for _, q := range r.packages {
+				if q != p && q.root == nil && globMatch(strings.TrimSuffix(path.Join(p.directory, m), "/"), q.directory) {
 					q.root = p
 					if q.lock == nil {
-						q.lock, q.lockDir = p.lock, p.lockDir
+						q.lock, q.lockDirectory = p.lock, p.lockDirectory
 					}
 				}
 			}
@@ -137,38 +137,38 @@ func newResolver(root string, all []*scan.File) *resolver {
 	}
 	// melos: melos.yaml's packages globs, or melos 7's `melos:` section in the root
 	// pubspec (whose packages are then its workspace, already read above).
-	var repos []*melosRepo
+	var repositories []*melosRepository
 	for _, f := range melos {
-		src, _ := read(f)
+		source, _ := read(f)
 		var doc struct {
 			Packages []string `yaml:"packages"`
 			Ignore   []string `yaml:"ignore"`
 		}
-		if yaml.Unmarshal(src, &doc) == nil && len(doc.Packages) > 0 {
-			repos = append(repos, &melosRepo{dir: path.Dir(f), include: doc.Packages, exclude: doc.Ignore})
+		if yaml.Unmarshal(source, &doc) == nil && len(doc.Packages) > 0 {
+			repositories = append(repositories, &melosRepository{directory: path.Dir(f), include: doc.Packages, exclude: doc.Ignore})
 		}
 	}
-	for _, p := range r.pkgs {
-		if p.spec.melos && len(p.spec.melosPkgs) > 0 {
-			repos = append(repos, &melosRepo{dir: p.dir, include: p.spec.melosPkgs})
+	for _, p := range r.packages {
+		if p.spec.melos && len(p.spec.melosPackages) > 0 {
+			repositories = append(repositories, &melosRepository{directory: p.directory, include: p.spec.melosPackages})
 		}
 	}
-	for _, m := range repos {
-		for _, p := range r.pkgs {
-			if m.has(p.dir) {
+	for _, m := range repositories {
+		for _, p := range r.packages {
+			if m.has(p.directory) {
 				p.melos = append(p.melos, m)
 			}
 		}
 	}
-	sort.SliceStable(r.pkgs, func(i, j int) bool { return depth(r.pkgs[i].dir) > depth(r.pkgs[j].dir) })
+	sort.SliceStable(r.packages, func(i, j int) bool { return depth(r.packages[i].directory) > depth(r.packages[j].directory) })
 	return r
 }
 
 // has reports whether a package directory is one of the repository's.
-func (m *melosRepo) has(dir string) bool {
+func (m *melosRepository) has(directory string) bool {
 	match := func(globs []string) bool {
 		for _, g := range globs {
-			if globMatch(strings.TrimSuffix(path.Join(m.dir, g), "/"), dir) {
+			if globMatch(strings.TrimSuffix(path.Join(m.directory, g), "/"), directory) {
 				return true
 			}
 		}
@@ -202,20 +202,20 @@ func matchSegments(p, n []string) bool {
 	return ok && matchSegments(p[1:], n[1:])
 }
 
-func depth(dir string) int {
-	if dir == "." {
+func depth(directory string) int {
+	if directory == "." {
 		return 0
 	}
-	return strings.Count(dir, "/") + 1
+	return strings.Count(directory, "/") + 1
 }
 
 // inside reports whether a cleaned relative path stays in the repository.
 func inside(p string) bool { return p != ".." && !strings.HasPrefix(p, "../") && !path.IsAbs(p) }
 
-// pkgOf is the package a file belongs to: the nearest pubspec.yaml above it.
-func (r *resolver) pkgOf(file string) *pkg {
-	for _, p := range r.pkgs {
-		if p.dir == "." || strings.HasPrefix(file, p.dir+"/") {
+// packageOf is the package a file belongs to: the nearest pubspec.yaml above it.
+func (r *resolver) packageOf(file string) *pubPackage {
+	for _, p := range r.packages {
+		if p.directory == "." || strings.HasPrefix(file, p.directory+"/") {
 			return p
 		}
 	}
@@ -223,33 +223,33 @@ func (r *resolver) pkgOf(file string) *pkg {
 }
 
 // Implements: REQ-DART-002, REQ-DART-004, REQ-DART-005, REQ-DART-006, REQ-DART-008
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	kind, _, _ := strings.Cut(imp.Name, ":")
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	kind, _, _ := strings.Cut(rawImport.Name, ":")
 	switch kind {
 	case kindMember:
-		if f := path.Join(path.Dir(file), imp.Module, "pubspec.yaml"); r.files[f] {
+		if f := path.Join(path.Dir(file), rawImport.Module, "pubspec.yaml"); r.files[f] {
 			return lang.Target{Local: f}
 		}
 		return lang.Target{}
-	case kindDep:
-		p := r.pkgOf(file)
-		if dir, ok := r.localPackage(p, imp.Module); ok {
-			if f := path.Join(dir, "pubspec.yaml"); r.files[f] {
+	case kindDependency:
+		p := r.packageOf(file)
+		if directory, ok := r.localPackage(p, rawImport.Module); ok {
+			if f := path.Join(directory, "pubspec.yaml"); r.files[f] {
 				return lang.Target{Local: f}
 			}
-			return r.localDir(dir)
+			return r.localDirectory(directory)
 		}
-		return r.external(p, imp.Module)
+		return r.external(p, rawImport.Module)
 	}
-	u := imp.Module
+	u := rawImport.Module
 	if rest, ok := strings.CutPrefix(u, "dart:"); ok {
-		return lang.Target{Ecosystem: ecoStd, Package: "dart:" + rest}
+		return lang.Target{Ecosystem: ecosystemStd, Package: "dart:" + rest}
 	}
 	if rest, ok := strings.CutPrefix(u, "package:"); ok {
-		name, sub, _ := strings.Cut(rest, "/")
-		p := r.pkgOf(file)
-		if dir, ok := r.localPackage(p, name); ok {
-			return r.lib(dir, sub)
+		name, subpath, _ := strings.Cut(rest, "/")
+		p := r.packageOf(file)
+		if directory, ok := r.localPackage(p, name); ok {
+			return r.library(directory, subpath)
 		}
 		if name == "flutter_gen" {
 			return lang.Target{} // Flutter's synthetic package, generated under .dart_tool
@@ -265,24 +265,24 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 	return lang.Target{} // a generated part (x.g.dart) that is not committed
 }
 
-// lib is the file a package: URI names in a local package's lib/ directory, or when
+// library is the file a package: URI names in a local package's lib/ directory, or when
 // it is missing (generated, not committed), the directory itself.
-func (r *resolver) lib(dir, sub string) lang.Target {
-	if f := path.Join(dir, "lib", sub); r.files[f] {
+func (r *resolver) library(directory, subpath string) lang.Target {
+	if f := path.Join(directory, "lib", subpath); r.files[f] {
 		return lang.Target{Local: f}
 	}
-	if t := r.localDir(path.Join(dir, "lib")); t.Local != "" {
+	if t := r.localDirectory(path.Join(directory, "lib")); t.Local != "" {
 		return t
 	}
-	if f := path.Join(dir, "pubspec.yaml"); r.files[f] {
+	if f := path.Join(directory, "pubspec.yaml"); r.files[f] {
 		return lang.Target{Local: f}
 	}
-	return r.localDir(dir)
+	return r.localDirectory(directory)
 }
 
-func (r *resolver) localDir(dir string) lang.Target {
-	if r.dirs[dir] {
-		return lang.Target{Local: dir}
+func (r *resolver) localDirectory(directory string) lang.Target {
+	if r.directories[directory] {
+		return lang.Target{Local: directory}
 	}
 	return lang.Target{}
 }
@@ -294,41 +294,41 @@ func (r *resolver) localDir(dir string) lang.Target {
 // the repository holds one of that name.
 //
 // Implements: REQ-DART-004
-func (r *resolver) localPackage(p *pkg, name string) (string, bool) {
+func (r *resolver) localPackage(p *pubPackage, name string) (string, bool) {
 	if p == nil {
 		return "", false
 	}
 	if p.spec.name == name {
-		return p.dir, true
+		return p.directory, true
 	}
-	for _, q := range []*pkg{p, p.root} {
+	for _, q := range []*pubPackage{p, p.root} {
 		if q == nil {
 			continue
 		}
-		if d := q.deps[name]; d != nil && d.source == "path" {
-			if dir := path.Join(q.dir, d.path); inside(dir) {
-				return dir, true
+		if d := q.dependencies[name]; d != nil && d.source == "path" {
+			if directory := path.Join(q.directory, d.path); inside(directory) {
+				return directory, true
 			}
 		}
 	}
 	if l := p.lock[name]; l != nil && l.source == "path" && l.relative {
-		if dir := path.Join(p.lockDir, filepath.ToSlash(l.path)); inside(dir) {
-			return dir, true
+		if directory := path.Join(p.lockDirectory, filepath.ToSlash(l.path)); inside(directory) {
+			return directory, true
 		}
 	}
 	root := p.root
 	if root == nil && len(p.spec.workspace) > 0 {
 		root = p
 	}
-	for _, q := range r.pkgs {
+	for _, q := range r.packages {
 		if root != nil && (q == root || q.root == root) && q.spec.name == name {
-			return q.dir, true
+			return q.directory, true
 		}
 	}
 	for _, m := range p.melos {
-		for _, q := range r.pkgs {
-			if q.spec.name == name && m.has(q.dir) {
-				return q.dir, true
+		for _, q := range r.packages {
+			if q.spec.name == name && m.has(q.directory) {
+				return q.directory, true
 			}
 		}
 	}
@@ -343,27 +343,27 @@ func (r *resolver) localPackage(p *pkg, name string) (string, bool) {
 // `any` and a branch float.
 //
 // Implements: REQ-DART-005, REQ-DART-007, REQ-DART-008
-func (r *resolver) external(p *pkg, name string) lang.Target {
+func (r *resolver) external(p *pubPackage, name string) lang.Target {
 	if p == nil {
 		if flutterSDK[name] {
-			return lang.Target{Ecosystem: ecoFlutter, Package: name}
+			return lang.Target{Ecosystem: ecosystemFlutter, Package: name}
 		}
-		return lang.Target{Ecosystem: ecoPub, Package: name, Unresolved: true}
+		return lang.Target{Ecosystem: ecosystemPub, Package: name, Unresolved: true}
 	}
-	d := p.deps[name]
+	d := p.dependencies[name]
 	if d == nil && p.root != nil {
-		d = p.root.deps[name]
+		d = p.root.dependencies[name]
 	}
 	if flutterSDK[name] || d != nil && d.source == "sdk" {
-		return lang.Target{Ecosystem: ecoFlutter, Package: name}
+		return lang.Target{Ecosystem: ecosystemFlutter, Package: name}
 	}
 	if l := p.lock[name]; l != nil {
-		t := lang.Target{Ecosystem: ecoPub, Package: name, Version: l.version}
+		t := lang.Target{Ecosystem: ecosystemPub, Package: name, Version: l.version}
 		switch l.source {
 		case "sdk":
-			return lang.Target{Ecosystem: ecoFlutter, Package: name}
+			return lang.Target{Ecosystem: ecosystemFlutter, Package: name}
 		case "git":
-			t.Origin, t.Pinned = l.url, lang.Commit(l.resolvedRef)
+			t.Origin, t.Pinned = l.url, lang.Commit(l.resolvedReference)
 		case "path":
 			t.Origin = "path:" + filepath.ToSlash(l.path)
 		default:
@@ -375,13 +375,13 @@ func (r *resolver) external(p *pkg, name string) lang.Target {
 		return t
 	}
 	if d == nil {
-		return lang.Target{Ecosystem: ecoPub, Package: name, Unresolved: true}
+		return lang.Target{Ecosystem: ecosystemPub, Package: name, Unresolved: true}
 	}
-	t := lang.Target{Ecosystem: ecoPub, Package: name, Version: d.constraint}
+	t := lang.Target{Ecosystem: ecosystemPub, Package: name, Version: d.constraint}
 	switch d.source {
 	case "git":
-		t.Origin, t.Version = d.url, d.ref
-		t.Pinned = lang.Commit(d.ref)
+		t.Origin, t.Version = d.url, d.reference
+		t.Pinned = lang.Commit(d.reference)
 		t.Floating = !t.Pinned
 	case "path":
 		t.Origin = "path:" + d.path

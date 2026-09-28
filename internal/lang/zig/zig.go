@@ -24,13 +24,13 @@ import (
 )
 
 const (
-	ecoZig = "zig"
-	ecoStd = "zig-std"
+	ecosystemZig = "zig"
+	ecosystemStd = "zig-std"
 )
 
-// ignoredDirs are Zig's build output and package caches: zig-out, the local cache
+// ignoredDirectories are Zig's build output and package caches: zig-out, the local cache
 // (.zig-cache, zig-cache before 0.13) and fetched packages (zig-pkg since 0.16).
-var ignoredDirs = map[string]bool{".zig-cache": true, "zig-cache": true, "zig-out": true, "zig-pkg": true}
+var ignoredDirectories = map[string]bool{".zig-cache": true, "zig-cache": true, "zig-out": true, "zig-pkg": true}
 
 // Implements: REQ-ZIG-001
 type Plugin struct{}
@@ -43,16 +43,16 @@ func (Plugin) Version() int { return 1 }
 //
 // Implements: REQ-ZIG-001
 func (Plugin) Claims(f *scan.File) bool {
-	ext := path.Ext(f.Path)
-	return (ext == ".zig" || ext == ".zon") && !f.Binary && !skipped(f.Path)
+	extension := path.Ext(f.Path)
+	return (extension == ".zig" || extension == ".zon") && !f.Binary && !skipped(f.Path)
 }
 
 // Ecosystems: Zig packages, the standard library, and the islands a C header
 // included through @cImport lands on.
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return append([]lang.Ecosystem{
-		{ID: ecoZig, Name: "Zig"},
-		{ID: ecoStd, Name: "Zig standard library", Std: true},
+		{ID: ecosystemZig, Name: "Zig"},
+		{ID: ecosystemStd, Name: "Zig standard library", Std: true},
 	}, cpp.Plugin{}.Ecosystems()...)
 }
 
@@ -75,17 +75,17 @@ func (Plugin) Class(f *scan.File) string {
 // declarations.
 //
 // Implements: REQ-ZIG-002, REQ-ZIG-003, REQ-ZIG-007
-func (p Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (p Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	if path.Ext(f.Path) == ".zon" {
 		if p.Class(f) != "manifest" {
 			return &lang.Extraction{Symbols: []lang.Symbol{}}, nil
 		}
-		return extractZon(src), nil
+		return extractZon(source), nil
 	}
-	s := readSource(src)
-	syms := s.symbols.List()
-	if syms == nil {
-		syms = []lang.Symbol{}
+	s := readSource(source)
+	symbols := s.symbols.List()
+	if symbols == nil {
+		symbols = []lang.Symbol{}
 	}
-	return &lang.Extraction{Imports: s.imports, Symbols: syms}, nil
+	return &lang.Extraction{Imports: s.imports, Symbols: symbols}, nil
 }

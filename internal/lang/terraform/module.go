@@ -9,34 +9,34 @@ import (
 
 // Import kinds, carried in RawImport.Name (before a "|" and what follows it).
 const (
-	kindModule   = "module"   // a module call; Name "module|<version constraint>"
-	kindProvider = "provider" // a provider by its local name in the module
-	kindRef      = "ref"      // var.x, local.x, module.x, data.t.n, t.n
-	kindFile     = "file"     // a path read by file() or templatefile()
-	kindLock     = "lock"     // a provider address in .terraform.lock.hcl
-	kindTGSource = "tgsource" // Terragrunt's terraform { source }
-	kindTGDep    = "tgdep"    // a Terragrunt dependency's config_path
-	kindTGParent = "tgparent" // find_in_parent_folders("x"): Name "tgparent|<rest of the path>"
+	kindModule       = "module"   // a module call; Name "module|<version constraint>"
+	kindProvider     = "provider" // a provider by its local name in the module
+	kindReference    = "ref"      // var.x, local.x, module.x, data.t.n, t.n
+	kindFile         = "file"     // a path read by file() or templatefile()
+	kindLock         = "lock"     // a provider address in .terraform.lock.hcl
+	kindTGSource     = "tgsource" // Terragrunt's terraform { source }
+	kindTGDependency = "tgdep"    // a Terragrunt dependency's config_path
+	kindTGParent     = "tgparent" // find_in_parent_folders("x"): Name "tgparent|<rest of the path>"
 )
 
 // fileInfo is what one Terraform file says: its symbols and imports, and what the
 // resolver needs of every file of a module (the providers it requires).
 type fileInfo struct {
-	symbols   lang.SymbolSet
-	imports   []lang.RawImport
-	seen      map[string]bool
-	providers map[string]providerReq // local name -> requirement
-	tg        *tgConfig              // a Terragrunt configuration's locals and includes
+	symbols    lang.SymbolSet
+	imports    []lang.RawImport
+	seen       map[string]bool
+	providers  map[string]providerRequirement // local name -> requirement
+	terragrunt *tgConfig                      // a Terragrunt configuration's locals and includes
 }
 
-type providerReq struct {
+type providerRequirement struct {
 	source     string // as written, "" for a legacy requirement without one
 	constraint string
 	line       int
 }
 
 func newFileInfo() *fileInfo {
-	return &fileInfo{seen: map[string]bool{}, providers: map[string]providerReq{}}
+	return &fileInfo{seen: map[string]bool{}, providers: map[string]providerRequirement{}}
 }
 
 func (fi *fileInfo) add(spec, module, name string, line int) {
@@ -63,92 +63,92 @@ const builtin = "terraform"
 //
 // Implements: REQ-TERRAFORM-002, REQ-TERRAFORM-003, REQ-TERRAFORM-005, REQ-TERRAFORM-006
 func readModule(root *block) *fileInfo {
-	fi := newFileInfo()
+	fileInfo := newFileInfo()
 	own := map[string]bool{}
 	used := map[string]string{} // provider local name -> first resource type using it
 	usedLine := map[string]int{}
-	use := func(local, typ string, line int) {
+	use := func(local, typeName string, line int) {
 		if _, ok := used[local]; !ok && local != "" {
-			used[local], usedLine[local] = typ, line
+			used[local], usedLine[local] = typeName, line
 		}
 	}
 	for _, b := range root.blocks {
 		switch {
-		case (b.typ == "resource" || b.typ == "data" || b.typ == "ephemeral") && len(b.labels) == 2:
+		case (b.typeName == "resource" || b.typeName == "data" || b.typeName == "ephemeral") && len(b.labels) == 2:
 			name := b.labels[0] + "." + b.labels[1]
-			if b.typ != "resource" {
-				name = b.typ + "." + name
+			if b.typeName != "resource" {
+				name = b.typeName + "." + name
 			}
-			fi.symbols.Add(name, b.typ, b.line)
+			fileInfo.symbols.Add(name, b.typeName, b.line)
 			own[name] = true
 			local := providerPrefix(b.labels[0])
-			if a, ok := b.get("provider"); ok && len(a.expr) > 0 && a.expr[0].kind == tIdent {
-				local = a.expr[0].text // provider = aws.west
+			if a, ok := b.get("provider"); ok && len(a.expression) > 0 && a.expression[0].kind == tIdentifier {
+				local = a.expression[0].text // provider = aws.west
 			}
 			use(local, b.labels[0], b.line)
-		case b.typ == "module" && len(b.labels) == 1:
+		case b.typeName == "module" && len(b.labels) == 1:
 			name := "module." + b.labels[0]
-			fi.symbols.Add(name, "module", b.line)
+			fileInfo.symbols.Add(name, "module", b.line)
 			own[name] = true
-			src, _ := b.get("source")
+			source, _ := b.get("source")
 			version := ""
 			if a, ok := b.get("version"); ok {
-				version, _ = literal(a.expr)
+				version, _ = literal(a.expression)
 			}
-			if s, ok := literal(src.expr); ok {
-				fi.add("module \""+b.labels[0]+"\"", s, kindModule+"|"+version, b.line)
+			if s, ok := literal(source.expression); ok {
+				fileInfo.add("module \""+b.labels[0]+"\"", s, kindModule+"|"+version, b.line)
 			}
-		case b.typ == "variable" && len(b.labels) == 1:
-			fi.symbols.Add("var."+b.labels[0], "variable", b.line)
+		case b.typeName == "variable" && len(b.labels) == 1:
+			fileInfo.symbols.Add("var."+b.labels[0], "variable", b.line)
 			own["var."+b.labels[0]] = true
-		case b.typ == "output" && len(b.labels) == 1:
-			fi.symbols.Add("output."+b.labels[0], "output", b.line)
-		case b.typ == "check" && len(b.labels) == 1:
-			fi.symbols.Add("check."+b.labels[0], "check", b.line)
-		case b.typ == "locals":
-			for _, a := range b.attrs {
-				fi.symbols.Add("local."+a.name, "local", a.line)
+		case b.typeName == "output" && len(b.labels) == 1:
+			fileInfo.symbols.Add("output."+b.labels[0], "output", b.line)
+		case b.typeName == "check" && len(b.labels) == 1:
+			fileInfo.symbols.Add("check."+b.labels[0], "check", b.line)
+		case b.typeName == "locals":
+			for _, a := range b.attributes {
+				fileInfo.symbols.Add("local."+a.name, "local", a.line)
 				own["local."+a.name] = true
 			}
-		case b.typ == "provider" && len(b.labels) == 1:
+		case b.typeName == "provider" && len(b.labels) == 1:
 			name := "provider." + b.labels[0]
 			if a, ok := b.get("alias"); ok {
-				if alias, ok := literal(a.expr); ok {
+				if alias, ok := literal(a.expression); ok {
 					name += "." + alias
 				}
 			}
-			fi.symbols.Add(name, "provider", b.line)
+			fileInfo.symbols.Add(name, "provider", b.line)
 			if a, ok := b.get("version"); ok { // before Terraform 0.13
-				if c, ok := literal(a.expr); ok {
-					if r, have := fi.providers[b.labels[0]]; !have || r.constraint == "" {
-						fi.providers[b.labels[0]] = providerReq{source: r.source, constraint: c, line: a.line}
+				if c, ok := literal(a.expression); ok {
+					if r, have := fileInfo.providers[b.labels[0]]; !have || r.constraint == "" {
+						fileInfo.providers[b.labels[0]] = providerRequirement{source: r.source, constraint: c, line: a.line}
 					}
 				}
 			}
 			if b.labels[0] != builtin {
-				fi.add("provider \""+b.labels[0]+"\"", b.labels[0], kindProvider, b.line)
+				fileInfo.add("provider \""+b.labels[0]+"\"", b.labels[0], kindProvider, b.line)
 			}
-		case b.typ == "terraform":
+		case b.typeName == "terraform":
 			for _, rp := range b.blocks {
-				if rp.typ != "required_providers" {
+				if rp.typeName != "required_providers" {
 					continue
 				}
-				for _, a := range rp.attrs {
-					req := providerReq{line: a.line}
-					if c, ok := literal(a.expr); ok { // aws = "~> 2.0", before 0.13
-						req.constraint = c
+				for _, a := range rp.attributes {
+					requirement := providerRequirement{line: a.line}
+					if c, ok := literal(a.expression); ok { // aws = "~> 2.0", before 0.13
+						requirement.constraint = c
 					}
-					for _, it := range object(a.expr) {
+					for _, it := range object(a.expression) {
 						switch it.key {
 						case "source":
-							req.source, _ = literal(it.val)
+							requirement.source, _ = literal(it.value)
 						case "version":
-							req.constraint, _ = literal(it.val)
+							requirement.constraint, _ = literal(it.value)
 						}
 					}
-					fi.providers[a.name] = req
+					fileInfo.providers[a.name] = requirement
 					if a.name != builtin {
-						fi.add("required_providers "+a.name, a.name, kindProvider, a.line)
+						fileInfo.add("required_providers "+a.name, a.name, kindProvider, a.line)
 					}
 				}
 			}
@@ -156,23 +156,23 @@ func readModule(root *block) *fileInfo {
 	}
 	locals := sortedKeys(used)
 	for _, local := range locals {
-		if local == builtin || fi.seen["required_providers "+local] || fi.seen["provider \""+local+"\""] {
+		if local == builtin || fileInfo.seen["required_providers "+local] || fileInfo.seen["provider \""+local+"\""] {
 			continue
 		}
-		fi.add("provider "+local+" ("+used[local]+")", local, kindProvider, usedLine[local])
+		fileInfo.add("provider "+local+" ("+used[local]+")", local, kindProvider, usedLine[local])
 	}
 	iters := iterators(root)
 	for _, b := range root.blocks {
-		switch b.typ {
+		switch b.typeName {
 		case "moved", "removed", "import", "terraform":
 			continue // addresses of what was or will be, not uses
 		}
-		scanBlock(b, func(expr []tok) {
-			references(expr, own, iters, fi)
-			fileReads(expr, fi)
+		scanBlock(b, func(expression []token) {
+			references(expression, own, iters, fileInfo)
+			fileReads(expression, fileInfo)
 		})
 	}
-	return fi
+	return fileInfo
 }
 
 // iterators are the names a file binds to values in expressions: for expressions'
@@ -182,19 +182,19 @@ func iterators(root *block) map[string]bool {
 	out := map[string]bool{}
 	var visit func(b *block)
 	visit = func(b *block) {
-		if b.typ == "dynamic" && len(b.labels) == 1 {
+		if b.typeName == "dynamic" && len(b.labels) == 1 {
 			out[b.labels[0]] = true
-			if a, ok := b.get("iterator"); ok && len(a.expr) == 1 && a.expr[0].kind == tIdent {
-				out[a.expr[0].text] = true
+			if a, ok := b.get("iterator"); ok && len(a.expression) == 1 && a.expression[0].kind == tIdentifier {
+				out[a.expression[0].text] = true
 			}
 		}
-		for _, a := range b.attrs {
-			walk(a.expr, func(tokens []tok, i int) {
-				if tokens[i].kind != tIdent || tokens[i].text != "for" {
+		for _, a := range b.attributes {
+			walk(a.expression, func(tokens []token, i int) {
+				if tokens[i].kind != tIdentifier || tokens[i].text != "for" {
 					return
 				}
 				for j := i + 1; j < len(tokens) && j <= i+3; j++ {
-					if tokens[j].kind == tIdent && tokens[j].text != "in" {
+					if tokens[j].kind == tIdentifier && tokens[j].text != "in" {
 						out[tokens[j].text] = true
 					} else if !tokens[j].is(",") {
 						break
@@ -212,19 +212,19 @@ func iterators(root *block) map[string]bool {
 
 // providerPrefix is the provider local name a resource type implies: the part
 // before its first underscore (aws_instance: aws).
-func providerPrefix(typ string) string {
-	if i := strings.IndexByte(typ, '_'); i > 0 {
-		return typ[:i]
+func providerPrefix(typeName string) string {
+	if i := strings.IndexByte(typeName, '_'); i > 0 {
+		return typeName[:i]
 	}
-	return typ
+	return typeName
 }
 
-func scanBlock(b *block, fn func([]tok)) {
-	for _, a := range b.attrs {
-		fn(a.expr)
+func scanBlock(b *block, function func([]token)) {
+	for _, a := range b.attributes {
+		function(a.expression)
 	}
 	for _, c := range b.blocks {
-		scanBlock(c, fn)
+		scanBlock(c, function)
 	}
 }
 
@@ -234,10 +234,10 @@ func scanBlock(b *block, fn func([]tok)) {
 // declarations).
 //
 // Implements: REQ-TERRAFORM-005
-func references(expr []tok, own, iters map[string]bool, fi *fileInfo) {
-	walk(expr, func(tokens []tok, i int) {
+func references(expression []token, own, iters map[string]bool, info *fileInfo) {
+	walk(expression, func(tokens []token, i int) {
 		t := tokens[i]
-		if t.kind != tIdent || i+2 >= len(tokens) || !tokens[i+1].is(".") || tokens[i+2].kind != tIdent {
+		if t.kind != tIdentifier || i+2 >= len(tokens) || !tokens[i+1].is(".") || tokens[i+2].kind != tIdentifier {
 			return
 		}
 		if i > 0 && (tokens[i-1].is(".") || tokens[i-1].is("::")) {
@@ -248,7 +248,7 @@ func references(expr []tok, own, iters map[string]bool, fi *fileInfo) {
 		case "var", "local", "module":
 			name = t.text + "." + tokens[i+2].text
 		case "data", "ephemeral":
-			if i+4 < len(tokens) && tokens[i+3].is(".") && tokens[i+4].kind == tIdent {
+			if i+4 < len(tokens) && tokens[i+3].is(".") && tokens[i+4].kind == tIdentifier {
 				name = t.text + "." + tokens[i+2].text + "." + tokens[i+4].text
 			}
 		default:
@@ -257,13 +257,13 @@ func references(expr []tok, own, iters map[string]bool, fi *fileInfo) {
 			}
 		}
 		if name != "" && !own[name] {
-			fi.add(name, name, kindRef, t.line)
+			info.add(name, name, kindReference, t.line)
 		}
 	})
 }
 
-// fileFuncs read a file by path.
-var fileFuncs = map[string]bool{
+// fileFunctions read a file by path.
+var fileFunctions = map[string]bool{
 	"file": true, "templatefile": true, "filebase64": true, "filemd5": true, "filesha1": true,
 	"filesha256": true, "filesha512": true, "filebase64sha256": true, "filebase64sha512": true,
 }
@@ -273,10 +273,10 @@ var fileFuncs = map[string]bool{
 // own directory, which they are for a root module).
 //
 // Implements: REQ-TERRAFORM-006
-func fileReads(expr []tok, fi *fileInfo) {
-	walk(expr, func(tokens []tok, i int) {
+func fileReads(expression []token, info *fileInfo) {
+	walk(expression, func(tokens []token, i int) {
 		t := tokens[i]
-		if t.kind != tIdent || !fileFuncs[t.text] || i+2 >= len(tokens) || !tokens[i+1].is("(") || tokens[i+2].kind != tString {
+		if t.kind != tIdentifier || !fileFunctions[t.text] || i+2 >= len(tokens) || !tokens[i+1].is("(") || tokens[i+2].kind != tString {
 			return
 		}
 		if i > 0 && (tokens[i-1].is(".") || tokens[i-1].is("::")) {
@@ -286,7 +286,7 @@ func fileReads(expr []tok, fi *fileInfo) {
 		if !ok {
 			return
 		}
-		fi.add(t.text+"(\""+tokens[i+2].text+"\")", p, kindFile, t.line)
+		info.add(t.text+"(\""+tokens[i+2].text+"\")", p, kindFile, t.line)
 	})
 }
 
@@ -305,15 +305,15 @@ func modulePath(s string) (string, bool) {
 	return s, true
 }
 
-// readVars reads a .tfvars file: the variables it sets.
+// readVariables reads a .tfvars file: the variables it sets.
 //
 // Implements: REQ-TERRAFORM-003
-func readVars(root *block) *fileInfo {
-	fi := newFileInfo()
-	for _, a := range root.attrs {
-		fi.symbols.Add(a.name, "value", a.line)
+func readVariables(root *block) *fileInfo {
+	fileInfo := newFileInfo()
+	for _, a := range root.attributes {
+		fileInfo.symbols.Add(a.name, "value", a.line)
 	}
-	return fi
+	return fileInfo
 }
 
 // readLock reads .terraform.lock.hcl: every provider it locks is an import of that
@@ -321,30 +321,30 @@ func readVars(root *block) *fileInfo {
 //
 // Implements: REQ-TERRAFORM-008
 func readLock(root *block) *fileInfo {
-	fi := newFileInfo()
+	fileInfo := newFileInfo()
 	for _, l := range lockEntries(root) {
-		fi.add("provider \""+l.addr+"\"", l.addr, kindLock, l.line)
+		fileInfo.add("provider \""+l.address+"\"", l.address, kindLock, l.line)
 	}
-	return fi
+	return fileInfo
 }
 
 type lockEntry struct {
-	addr, version, constraints string
-	line                       int
+	address, version, constraints string
+	line                          int
 }
 
 func lockEntries(root *block) []lockEntry {
 	var out []lockEntry
 	for _, b := range root.blocks {
-		if b.typ != "provider" || len(b.labels) != 1 {
+		if b.typeName != "provider" || len(b.labels) != 1 {
 			continue
 		}
-		e := lockEntry{addr: b.labels[0], line: b.line}
+		e := lockEntry{address: b.labels[0], line: b.line}
 		if a, ok := b.get("version"); ok {
-			e.version, _ = literal(a.expr)
+			e.version, _ = literal(a.expression)
 		}
 		if a, ok := b.get("constraints"); ok {
-			e.constraints, _ = literal(a.expr)
+			e.constraints, _ = literal(a.expression)
 		}
 		out = append(out, e)
 	}

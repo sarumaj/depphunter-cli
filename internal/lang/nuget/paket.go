@@ -17,7 +17,7 @@ type Dependency struct {
 	// (git, http).
 	Name string
 	// Constraint is the version constraint of a nuget line ("~> 1.2", "= 1.2.3", ""),
-	// or the ref of a remote one (a branch, tag, commit or tag range).
+	// or the reference of a remote one (a branch, tag, commit or tag range).
 	Constraint string
 	File       string // the file a github/gist/http line takes, if it names one
 	Line       int
@@ -38,16 +38,16 @@ type Source struct {
 // http lines per group, and the sources.
 //
 // Implements: REQ-FSHARP-006
-func ParseDependencies(src []byte) (deps []Dependency, sources []Source) {
+func ParseDependencies(source []byte) (dependencies []Dependency, sources []Source) {
 	group := MainGroup
-	for i, raw := range strings.Split(string(src), "\n") {
+	for i, raw := range strings.Split(string(source), "\n") {
 		line := stripComment(raw)
 		f := strings.Fields(line)
 		if len(f) == 0 {
 			continue
 		}
 		text := strings.TrimSpace(line)
-		switch kw := strings.ToLower(f[0]); kw {
+		switch keyword := strings.ToLower(f[0]); keyword {
 		case "group":
 			if len(f) > 1 {
 				group = f[1]
@@ -56,42 +56,42 @@ func ParseDependencies(src []byte) (deps []Dependency, sources []Source) {
 			if len(f) > 1 {
 				s := Source{Group: group, URL: f[1]}
 				_, rest, _ := strings.Cut(text, f[1])
-				opts := sourceOptions(rest)
-				s.Username, s.Password, s.AuthType = opts["username"], opts["password"], opts["authtype"]
+				options := sourceOptions(rest)
+				s.Username, s.Password, s.AuthType = options["username"], options["password"], options["authtype"]
 				sources = append(sources, s)
 			}
 		case "nuget", "clitool":
 			if len(f) < 2 {
 				continue
 			}
-			deps = append(deps, Dependency{Group: group, Kind: "nuget", Name: f[1], Constraint: constraint(f[2:]), Line: i + 1, Text: text})
+			dependencies = append(dependencies, Dependency{Group: group, Kind: "nuget", Name: f[1], Constraint: constraint(f[2:]), Line: i + 1, Text: text})
 		case "github", "gist":
 			if len(f) < 2 {
 				continue
 			}
-			name, ref, _ := strings.Cut(f[1], ":")
-			d := Dependency{Group: group, Kind: kw, Name: name, Constraint: ref, Line: i + 1, Text: text}
+			name, reference, _ := strings.Cut(f[1], ":")
+			d := Dependency{Group: group, Kind: keyword, Name: name, Constraint: reference, Line: i + 1, Text: text}
 			if len(f) > 2 && !strings.Contains(f[2], ":") {
 				d.File = f[2]
 			}
-			deps = append(deps, d)
+			dependencies = append(dependencies, d)
 		case "git":
 			if len(f) < 2 {
 				continue
 			}
-			deps = append(deps, Dependency{Group: group, Kind: kw, Name: f[1], Constraint: constraint(f[2:]), Line: i + 1, Text: text})
+			dependencies = append(dependencies, Dependency{Group: group, Kind: keyword, Name: f[1], Constraint: constraint(f[2:]), Line: i + 1, Text: text})
 		case "http":
 			if len(f) < 2 {
 				continue
 			}
-			d := Dependency{Group: group, Kind: kw, Name: f[1], Line: i + 1, Text: text}
+			d := Dependency{Group: group, Kind: keyword, Name: f[1], Line: i + 1, Text: text}
 			if len(f) > 2 && !strings.Contains(f[2], ":") {
 				d.File = f[2]
 			}
-			deps = append(deps, d)
+			dependencies = append(dependencies, d)
 		}
 	}
-	return deps, sources
+	return dependencies, sources
 }
 
 // sourceOptions reads the `name: value` options after a source's URL, a value in
@@ -176,8 +176,8 @@ func PaketVersion(c string) (version string, pinned bool) {
 
 func versionStart(v string) bool { return v != "" && v[0] >= '0' && v[0] <= '9' }
 
-// LockDep is a dependency line under a locked package: `FSharp.Core (>= 4.3.2)`.
-type LockDep struct{ Name, Constraint string }
+// LockDependency is a dependency line under a locked package: `FSharp.Core (>= 4.3.2)`.
+type LockDependency struct{ Name, Constraint string }
 
 // Locked is one resolved entry of paket.lock.
 type Locked struct {
@@ -185,12 +185,12 @@ type Locked struct {
 	Kind  string // nuget, github, gist, git, http
 	// Remote is the feed of a nuget entry, owner/repo of a github or gist entry, and
 	// the URL of a git or http entry.
-	Remote  string
-	Name    string // package id (nuget), file path (github, gist, http), "" (git)
-	Version string // resolved version (nuget) or commit (github, git)
-	Line    int
-	Deps    []LockDep
-	indent  int
+	Remote       string
+	Name         string // package id (nuget), file path (github, gist, http), "" (git)
+	Version      string // resolved version (nuget) or commit (github, git)
+	Line         int
+	Dependencies []LockDependency
+	indent       int
 }
 
 // ParseLock reads paket.lock: per group (GROUP lines) its NUGET, GITHUB, GIST, GIT
@@ -198,10 +198,10 @@ type Locked struct {
 // lines.
 //
 // Implements: REQ-FSHARP-007
-func ParseLock(src []byte) []Locked {
+func ParseLock(source []byte) []Locked {
 	var out []Locked
 	group, section, remote := MainGroup, "", ""
-	for i, raw := range strings.Split(string(src), "\n") {
+	for i, raw := range strings.Split(string(source), "\n") {
 		raw = strings.TrimRight(strings.TrimPrefix(raw, "\xef\xbb\xbf"), "\r")
 		text := strings.TrimSpace(raw)
 		if text == "" {
@@ -237,7 +237,7 @@ func ParseLock(src []byte) []Locked {
 			if strings.Contains(text, ":") && !strings.Contains(text, "(") && section != "nuget" {
 				continue // build: "..." options of a git entry
 			}
-			out[n-1].Deps = append(out[n-1].Deps, LockDep{Name: name, Constraint: version})
+			out[n-1].Dependencies = append(out[n-1].Dependencies, LockDependency{Name: name, Constraint: version})
 			continue
 		}
 		if name == "" && version == "" {
@@ -278,10 +278,10 @@ type Reference struct {
 // ParseReferences reads a project's paket.references.
 //
 // Implements: REQ-FSHARP-006
-func ParseReferences(src []byte) []Reference {
+func ParseReferences(source []byte) []Reference {
 	var out []Reference
 	group := MainGroup
-	for i, raw := range strings.Split(string(src), "\n") {
+	for i, raw := range strings.Split(string(source), "\n") {
 		line := strings.TrimSpace(stripComment(raw))
 		if line == "" {
 			continue
@@ -335,5 +335,5 @@ func RemoteName(kind, name string) string {
 	if strings.HasPrefix(name, "file:") || !strings.Contains(name, "/") && !strings.Contains(name, ":") {
 		return ""
 	}
-	return lang.RepoName(name)
+	return lang.RepositoryName(name)
 }

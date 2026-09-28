@@ -53,31 +53,31 @@ func SaveUI(file string, ui UI) error {
 		set(section, fresh.Content[i].Value, fresh.Content[i+1])
 	}
 
-	var buf bytes.Buffer
-	enc := yaml.NewEncoder(&buf)
-	enc.SetIndent(2)
-	if err := enc.Encode(&doc); err != nil {
+	var buffer bytes.Buffer
+	encoder := yaml.NewEncoder(&buffer)
+	encoder.SetIndent(2)
+	if err := encoder.Encode(&doc); err != nil {
 		return err
 	}
-	out := buf.Bytes()
-	tmp, err := os.CreateTemp(filepath.Dir(file), ".depphunter-*.yaml")
+	out := buffer.Bytes()
+	temporary, err := os.CreateTemp(filepath.Dir(file), ".depphunter-*.yaml")
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
-	if _, err := tmp.Write(out); err != nil {
-		tmp.Close()
+	defer os.Remove(temporary.Name())
+	if _, err := temporary.Write(out); err != nil {
+		temporary.Close()
 		return err
 	}
-	if err := tmp.Close(); err != nil {
+	if err := temporary.Close(); err != nil {
 		return err
 	}
-	if st, err := os.Stat(file); err == nil {
-		os.Chmod(tmp.Name(), st.Mode().Perm())
+	if fileInfo, err := os.Stat(file); err == nil {
+		os.Chmod(temporary.Name(), fileInfo.Mode().Perm())
 	} else {
-		os.Chmod(tmp.Name(), 0o644)
+		os.Chmod(temporary.Name(), 0o644)
 	}
-	return os.Rename(tmp.Name(), file)
+	return os.Rename(temporary.Name(), file)
 }
 
 func lookup(m *yaml.Node, key string) *yaml.Node {

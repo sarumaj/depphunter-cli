@@ -17,11 +17,11 @@ import (
 )
 
 type Watcher struct {
-	w       *fsnotify.Watcher
-	watched map[string]bool
-	dirs    map[string]bool // directories in which every change counts
-	files   map[string]bool // single files that count in the directories holding them
-	warned  bool
+	w           *fsnotify.Watcher
+	watched     map[string]bool
+	directories map[string]bool // directories in which every change counts
+	files       map[string]bool // single files that count in the directories holding them
+	warned      bool
 }
 
 func New() (*Watcher, error) {
@@ -30,28 +30,28 @@ func New() (*Watcher, error) {
 		return nil, err
 	}
 	return &Watcher{
-		w:       w,
-		watched: map[string]bool{},
-		dirs:    map[string]bool{},
-		files:   map[string]bool{},
+		w:           w,
+		watched:     map[string]bool{},
+		directories: map[string]bool{},
+		files:       map[string]bool{},
 	}, nil
 }
 
-// Sync makes the watched set equal to dirs, plus the directories holding files (all
-// absolute paths). A change anywhere in dirs is a change; in a directory watched only
+// Sync makes the watched set equal to directories, plus the directories holding files (all
+// absolute paths). A change anywhere in directories is a change; in a directory watched only
 // because it holds one of files, only those files are.
 //
 // Implements: REQ-WATCH-001
-func (w *Watcher) Sync(dirs, files []string) {
-	want := make(map[string]bool, len(dirs)+len(files))
-	w.dirs = make(map[string]bool, len(dirs))
+func (w *Watcher) Sync(directories, files []string) {
+	want := make(map[string]bool, len(directories)+len(files))
+	w.directories = make(map[string]bool, len(directories))
 	w.files = make(map[string]bool, len(files))
 	for _, f := range files {
 		w.files[f] = true
 		want[filepath.Dir(f)] = true
 	}
-	for _, d := range dirs {
-		w.dirs[d] = true
+	for _, d := range directories {
+		w.directories[d] = true
 		want[d] = true
 	}
 	for d := range want {
@@ -85,7 +85,7 @@ func (w *Watcher) counts(name string) bool {
 	if scratch(filepath.Base(name)) {
 		return false
 	}
-	return w.dirs[filepath.Dir(name)] || w.files[name]
+	return w.directories[filepath.Dir(name)] || w.files[name]
 }
 
 // scratch reports whether a file name is one an editor writes beside the file being
@@ -125,14 +125,14 @@ func (w *Watcher) Run(ctx context.Context, debounce time.Duration, onChange func
 		select {
 		case <-ctx.Done():
 			return
-		case ev, ok := <-w.w.Events:
+		case event, ok := <-w.w.Events:
 			if !ok {
 				return
 			}
-			if ev.Op == fsnotify.Chmod {
+			if event.Op == fsnotify.Chmod {
 				continue // metadata only; contents did not change
 			}
-			if !w.counts(ev.Name) {
+			if !w.counts(event.Name) {
 				continue
 			}
 			if first.IsZero() {

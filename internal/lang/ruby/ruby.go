@@ -21,15 +21,15 @@ import (
 )
 
 const (
-	ecoGems = "rubygems"
-	ecoStd  = "ruby-std"
+	ecosystemGems = "rubygems"
+	ecosystemStd  = "ruby-std"
 )
 
-// exts are the extensions the plugin claims: Ruby, Rake tasks, gem specifications
+// extensions are the extensions the plugin claims: Ruby, Rake tasks, gem specifications
 // and Rack configurations.
 //
 // Implements: REQ-RUBY-001
-var exts = map[string]bool{".rb": true, ".rake": true, ".gemspec": true, ".ru": true}
+var extensions = map[string]bool{".rb": true, ".rake": true, ".gemspec": true, ".ru": true}
 
 // names are the Ruby files known by their name alone: Bundler's, Rake's, Guard's and
 // Capistrano's.
@@ -70,13 +70,13 @@ func (Plugin) Version() int { return 1 }
 
 // Implements: REQ-RUBY-001
 func (Plugin) Claims(f *scan.File) bool {
-	return !f.Binary && (exts[strings.ToLower(path.Ext(f.Path))] || names[path.Base(f.Path)])
+	return !f.Binary && (extensions[strings.ToLower(path.Ext(f.Path))] || names[path.Base(f.Path)])
 }
 
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoGems, Name: "RubyGems"},
-		{ID: ecoStd, Name: "Ruby standard library", Std: true},
+		{ID: ecosystemGems, Name: "RubyGems"},
+		{ID: ecosystemStd, Name: "Ruby standard library", Std: true},
 	}
 }
 
@@ -92,33 +92,33 @@ const (
 	kindGem      = "gem"      // a gem named in a Gemfile, a gemspec or by Kernel#gem
 	kindGemPath  = "gempath"  // a gem the Gemfile takes from a directory (path:)
 	kindGemspec  = "gemspec"  // the Gemfile's gemspec directive: the gemspec in a directory
-	kindConst    = "const"    // a constant, looked up the way Zeitwerk would; Name is "const:<nesting>"
+	kindConstant = "const"    // a constant, looked up the way Zeitwerk would; Name is "const:<nesting>"
 )
 
-// ref is a constant used in code, kept with the modules around it.
-type ref struct {
+// reference is a constant used in code, kept with the modules around it.
+type reference struct {
 	text, nesting string
 	line          int
 }
 
 // Implements: REQ-RUBY-002, REQ-RUBY-003, REQ-RUBY-010
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
-	ex := &lang.Extraction{}
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
+	extraction := &lang.Extraction{}
 	var symbols lang.SymbolSet
-	var refs []ref
-	err := grammar.Matches(src, func(m treesitter.Match) {
-		if fn, ok := m.Get("fn"); ok {
-			args, _ := m.Get("args")
-			recv, hasRecv := m.Get("recv")
-			if imp, ok := callImport(fn, recv, hasRecv, args); ok {
-				imp.Line = m[0].Line
-				imp.Spec = callSpec(fn, recv, hasRecv, args)
-				ex.Imports = append(ex.Imports, imp)
+	var references []reference
+	err := grammar.Matches(source, func(m treesitter.Match) {
+		if function, ok := m.Get("fn"); ok {
+			arguments, _ := m.Get("args")
+			receiver, hasReceiver := m.Get("recv")
+			if rawImport, ok := callImport(function, receiver, hasReceiver, arguments); ok {
+				rawImport.Line = m[0].Line
+				rawImport.Spec = callSpec(function, receiver, hasReceiver, arguments)
+				extraction.Imports = append(extraction.Imports, rawImport)
 			}
 			return
 		}
-		if fn, ok := m.Get("attr"); ok {
-			if strings.HasPrefix(fn, "attr_") || fn == "attr" {
+		if function, ok := m.Get("attr"); ok {
+			if strings.HasPrefix(function, "attr_") || function == "attr" {
 				c := m[len(m)-1]
 				if owner, inBody := owner(c.Scopes(), false); !inBody && owner != "" {
 					symbols.Add(owner+"."+strings.TrimPrefix(c.Text, ":"), "attr", c.Line)
@@ -130,10 +130,10 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 			switch c.Name {
 			case "bare":
 				if c.Text == "gemspec" {
-					ex.Imports = append(ex.Imports, lang.RawImport{Spec: "gemspec", Module: "__DIR__", Name: kindGemspec, Line: c.Line})
+					extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "gemspec", Module: "__DIR__", Name: kindGemspec, Line: c.Line})
 				}
 			case "ref":
-				refs = append(refs, ref{c.Text, nesting(c.Scopes()), c.Line})
+				references = append(references, reference{c.Text, nesting(c.Scopes()), c.Line})
 			case "def.module", "def.class":
 				outer, inBody := owner(c.Scopes(), true)
 				if !inBody {
@@ -148,14 +148,14 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 					symbols.Add(c.Text, "func", c.Line)
 				}
 			case "def.smethod":
-				obj, _ := m.Get("obj")
+				object, _ := m.Get("obj")
 				outer, inBody := owner(c.Scopes(), true)
 				switch {
 				case inBody:
-				case obj == "self" && outer != "":
+				case object == "self" && outer != "":
 					symbols.Add(outer+"."+c.Text, "method", c.Line)
-				case obj != "self" && isConstant(obj):
-					symbols.Add(obj+"."+c.Text, "method", c.Line)
+				case object != "self" && isConstant(object):
+					symbols.Add(object+"."+c.Text, "method", c.Line)
 				}
 			case "def.const":
 				if outer, inBody := owner(c.Scopes(), false); !inBody {
@@ -165,29 +165,29 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 		}
 	})
 	seen := map[string]bool{}
-	for _, r := range refs {
+	for _, r := range references {
 		key := r.nesting + " " + r.text
 		if seen[key] {
 			continue
 		}
 		seen[key] = true
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: r.text, Module: r.text, Name: kindConst + ":" + r.nesting, Line: r.line})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: r.text, Module: r.text, Name: kindConstant + ":" + r.nesting, Line: r.line})
 	}
-	slices.SortStableFunc(ex.Imports, func(a, b lang.RawImport) int {
+	slices.SortStableFunc(extraction.Imports, func(a, b lang.RawImport) int {
 		return cmp.Or(cmp.Compare(a.Line, b.Line), cmp.Compare(a.Spec, b.Spec))
 	})
-	ex.Symbols = symbols.List()
-	return ex, err
+	extraction.Symbols = symbols.List()
+	return extraction, err
 }
 
 // callSpec is how a call is shown: as written, its whitespace collapsed.
-func callSpec(fn, recv string, hasRecv bool, args string) string {
-	s := fn + " " + strings.Join(strings.Fields(args), " ")
-	if strings.HasPrefix(args, "(") {
-		s = fn + strings.Join(strings.Fields(args), " ")
+func callSpec(function, receiver string, hasReceiver bool, arguments string) string {
+	s := function + " " + strings.Join(strings.Fields(arguments), " ")
+	if strings.HasPrefix(arguments, "(") {
+		s = function + strings.Join(strings.Fields(arguments), " ")
 	}
-	if hasRecv {
-		s = recv + "." + s
+	if hasReceiver {
+		s = receiver + "." + s
 	}
 	return s
 }
@@ -197,36 +197,36 @@ func callSpec(fn, recv string, hasRecv bool, args string) string {
 // spelled out (a variable, a computed string) imports nothing that can be known.
 //
 // Implements: REQ-RUBY-002, REQ-RUBY-007
-func callImport(fn, recv string, hasRecv bool, args string) (lang.RawImport, bool) {
-	list := splitArgs(args)
-	kernel := !hasRecv || recv == "Kernel"
+func callImport(function, receiver string, hasReceiver bool, arguments string) (lang.RawImport, bool) {
+	list := splitArguments(arguments)
+	kernel := !hasReceiver || receiver == "Kernel"
 	switch {
-	case kernel && (fn == "require" || fn == "require_dependency") && len(list) == 1:
+	case kernel && (function == "require" || function == "require_dependency") && len(list) == 1:
 		if p, ok := evalPath(list[0]); ok {
 			if strings.HasPrefix(p, "__DIR__") {
 				return lang.RawImport{Module: p, Name: kindRelative}, true
 			}
 			return lang.RawImport{Module: p, Name: kindRequire}, true
 		}
-	case kernel && fn == "require_relative" && len(list) == 1:
+	case kernel && function == "require_relative" && len(list) == 1:
 		if p, ok := evalPath(list[0]); ok {
 			if !strings.HasPrefix(p, "__DIR__") {
 				p = "__DIR__/" + p
 			}
 			return lang.RawImport{Module: p, Name: kindRelative}, true
 		}
-	case kernel && fn == "load" && len(list) >= 1:
+	case kernel && function == "load" && len(list) >= 1:
 		if p, ok := evalPath(list[0]); ok {
 			return lang.RawImport{Module: p, Name: kindLoad}, true
 		}
-	case fn == "autoload" && len(list) == 2:
+	case function == "autoload" && len(list) == 2:
 		if p, ok := evalPath(list[1]); ok {
 			if strings.HasPrefix(p, "__DIR__") {
 				return lang.RawImport{Module: p, Name: kindRelative}, true
 			}
 			return lang.RawImport{Module: p, Name: kindRequire}, true
 		}
-	case !hasRecv && fn == "gem" && len(list) >= 1:
+	case !hasReceiver && function == "gem" && len(list) >= 1:
 		name, ok := literal(list[0])
 		if !ok || name == "" {
 			return lang.RawImport{}, false
@@ -235,10 +235,10 @@ func callImport(fn, recv string, hasRecv bool, args string) (lang.RawImport, boo
 			return lang.RawImport{Module: "__DIR__/" + p, Name: kindGemPath}, true
 		}
 		return lang.RawImport{Module: name, Name: kindGem}, true
-	case !hasRecv && fn == "gemspec":
+	case !hasReceiver && function == "gemspec":
 		p, _ := option(list, "path")
 		return lang.RawImport{Module: strings.TrimSuffix("__DIR__/"+p, "/"), Name: kindGemspec}, true
-	case hasRecv && dependencyCall[fn] && len(list) >= 1:
+	case hasReceiver && dependencyCall[function] && len(list) >= 1:
 		if name, ok := literal(list[0]); ok && name != "" {
 			return lang.RawImport{Module: name, Name: kindGem}, true
 		}

@@ -39,7 +39,7 @@ func TestCargoIndex(t *testing.T) {
 
 // Verifies: REQ-SUP-024
 func TestCargoDependenciesFromSparseIndex(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if r.URL.Path != "/se/rd/serde" {
 			w.WriteHeader(http.StatusNotFound)
 			return
@@ -47,9 +47,9 @@ func TestCargoDependenciesFromSparseIndex(t *testing.T) {
 		fmt.Fprint(w, `{"name":"serde","vers":"1.0.1","deps":[{"name":"old","req":"^1","kind":"normal"},{"name":"opt","req":"^1","kind":"normal","optional":true}]}`+"\n")
 		fmt.Fprint(w, `{"name":"serde","vers":"1.0.2","deps":[{"name":"new","req":"^1","kind":"normal"},{"name":"bench","req":"^1","kind":"dev"}]}`+"\n")
 	}))
-	t.Cleanup(srv.Close)
+	t.Cleanup(server.Close)
 
-	c := clientFor(t, Cargo, srv.URL, "")
+	c := clientFor(t, Cargo, server.URL, "")
 	// Asked for the version that is there, the line for that version answers - and
 	// an optional dependency is a feature nobody asked for, and a dev one is the
 	// test harness, so neither is on it.
@@ -75,7 +75,7 @@ func TestCargoSparseRegistryRequiringAuth(t *testing.T) {
 	var mu sync.Mutex
 	var asked []string
 	want := map[string]string{"/raw/index/": "raw-token", "/jfrog/index/": "Bearer jfrog-token", "/mirror/": ""}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		asked = append(asked, r.URL.Path+" "+r.Header.Get("Authorization"))
 		mu.Unlock()
@@ -101,7 +101,7 @@ func TestCargoSparseRegistryRequiringAuth(t *testing.T) {
 		}
 		w.WriteHeader(http.StatusNotFound)
 	}))
-	t.Cleanup(srv.Close)
+	t.Cleanup(server.Close)
 	home := t.TempDir()
 	cargo := filepath.Join(home, ".cargo")
 	if err := os.MkdirAll(cargo, 0o755); err != nil {
@@ -114,7 +114,7 @@ mirror = { index = "sparse+%[1]s/mirror/" }
 
 [source.crates-io]
 replace-with = "mirror"
-`, srv.URL)
+`, server.URL)
 	credentials := `[registry]
 token = "cio-token"
 
@@ -129,11 +129,11 @@ token = "Bearer jfrog-token"
 			t.Fatal(err)
 		}
 	}
-	cfg := Discover(nil, env(nil), home)
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, env(nil)), nil)
-	for _, reg := range []string{"raw", "jfrog"} {
-		if got := names(c.Dependencies(lang.Target{Ecosystem: Cargo, Package: "billing", Version: "1.0.0", Registry: reg})); !slices.Equal(got, []string{"ledger"}) {
-			t.Errorf("%s: billing answered %v", reg, got)
+	discovered := Discover(nil, environment(nil), home)
+	c := NewClient(discovered, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(nil)), nil)
+	for _, registrySpec := range []string{"raw", "jfrog"} {
+		if got := names(c.Dependencies(lang.Target{Ecosystem: Cargo, Package: "billing", Version: "1.0.0", Registry: registrySpec})); !slices.Equal(got, []string{"ledger"}) {
+			t.Errorf("%s: billing answered %v", registrySpec, got)
 		}
 	}
 	if got := names(c.Dependencies(lang.Target{Ecosystem: Cargo, Package: "serde", Version: "1.0.0"})); len(got) != 0 {
@@ -176,7 +176,7 @@ func TestSparsePath(t *testing.T) {
 func stubNuGet(t *testing.T) *httptest.Server {
 	t.Helper()
 	var base string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/v3/index.json":
 			fmt.Fprintf(w, `{"resources":[
@@ -195,15 +195,15 @@ func stubNuGet(t *testing.T) *httptest.Server {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
-	base = srv.URL
-	t.Cleanup(srv.Close)
-	return srv
+	base = server.URL
+	t.Cleanup(server.Close)
+	return server
 }
 
 // Verifies: REQ-SUP-025
 func TestNuGetDependencies(t *testing.T) {
-	srv := stubNuGet(t)
-	c := clientFor(t, NuGet, srv.URL+"/v3/index.json", "")
+	server := stubNuGet(t)
+	c := clientFor(t, NuGet, server.URL+"/v3/index.json", "")
 	got := names(c.Dependencies(lang.Target{Ecosystem: NuGet, Package: "Serilog", Version: "3.1.1"}))
 	// Flat and grouped dependencies both count, and the same package named in two
 	// framework groups is one dependency.
@@ -221,7 +221,7 @@ func stubRegistry(t *testing.T, manifest, blob string) (*httptest.Server, *[]str
 	t.Helper()
 	var asked []string
 	var base string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked = append(asked, r.URL.Path)
 		if r.URL.Path == "/token" {
 			fmt.Fprint(w, `{"token":"pull-token"}`)
@@ -242,24 +242,24 @@ func stubRegistry(t *testing.T, manifest, blob string) (*httptest.Server, *[]str
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
-	base = srv.URL
+	base = server.URL
 	// An image reference carries its own registry, so a configured source cannot
 	// point the client at the stub: the default one has to, for the length of the test.
-	public[OCI] = srv.URL
+	public[OCI] = server.URL
 	t.Cleanup(func() { public[OCI] = "https://registry-1.docker.io" })
-	t.Cleanup(srv.Close)
-	return srv, &asked
+	t.Cleanup(server.Close)
+	return server, &asked
 }
 
 // Verifies: REQ-SUP-026, REQ-SUP-027
 func TestOCIBaseFromConfigLabel(t *testing.T) {
-	srv, asked := stubRegistry(t,
+	server, asked := stubRegistry(t,
 		`{"config":{"digest":"sha256:cfg"}}`,
 		`{"config":{"Labels":{"org.opencontainers.image.base.name":"docker.io/library/debian:12-slim"}}}`)
-	c := clientFor(t, OCI, srv.URL, "")
-	deps := c.Dependencies(lang.Target{Ecosystem: OCI, Package: "app", Version: "1.2"})
-	if len(deps) != 1 || deps[0].Package != "docker.io/library/debian" || deps[0].Version != "12-slim" {
-		t.Fatalf("got %+v, want the base image the config labels name", deps)
+	c := clientFor(t, OCI, server.URL, "")
+	dependencies := c.Dependencies(lang.Target{Ecosystem: OCI, Package: "app", Version: "1.2"})
+	if len(dependencies) != 1 || dependencies[0].Package != "docker.io/library/debian" || dependencies[0].Version != "12-slim" {
+		t.Fatalf("got %+v, want the base image the config labels name", dependencies)
 	}
 	// The token challenge was answered rather than given up on.
 	for _, want := range []string{"/token", "/v2/library/app/blobs/sha256:cfg"} {
@@ -277,13 +277,13 @@ func TestOCIBaseFromConfigLabel(t *testing.T) {
 func TestOCIBaseFromManifestAnnotation(t *testing.T) {
 	// An annotation on the manifest says it outright, and the digest beside it is
 	// what was actually built on, so the tag is not what travels.
-	srv, asked := stubRegistry(t, `{"config":{"digest":"sha256:cfg"},"annotations":{
+	server, asked := stubRegistry(t, `{"config":{"digest":"sha256:cfg"},"annotations":{
 		"org.opencontainers.image.base.name":"alpine:3.19",
 		"org.opencontainers.image.base.digest":"sha256:abc"}}`, `{}`)
-	c := clientFor(t, OCI, srv.URL, "")
-	deps := c.Dependencies(lang.Target{Ecosystem: OCI, Package: "app", Version: "1.2"})
-	if len(deps) != 1 || deps[0].Package != "alpine" || deps[0].Version != "sha256:abc" {
-		t.Fatalf("got %+v, want the annotated base image at its digest", deps)
+	c := clientFor(t, OCI, server.URL, "")
+	dependencies := c.Dependencies(lang.Target{Ecosystem: OCI, Package: "app", Version: "1.2"})
+	if len(dependencies) != 1 || dependencies[0].Package != "alpine" || dependencies[0].Version != "sha256:abc" {
+		t.Fatalf("got %+v, want the annotated base image at its digest", dependencies)
 	}
 	for _, path := range *asked {
 		if path == "/v2/library/app/blobs/sha256:cfg" {
@@ -297,8 +297,8 @@ func TestOCIBaseFromManifestAnnotation(t *testing.T) {
 //
 // Verifies: REQ-CI-013
 func TestOCIUntaggedImageAsksForLatest(t *testing.T) {
-	srv, asked := stubRegistry(t, `{}`, `{}`)
-	c := clientFor(t, OCI, srv.URL, "")
+	server, asked := stubRegistry(t, `{}`, `{}`)
+	c := clientFor(t, OCI, server.URL, "")
 	c.Dependencies(lang.Target{Ecosystem: OCI, Package: "app", Floating: true})
 	found := false
 	for _, path := range *asked {
@@ -334,14 +334,14 @@ func TestSplitChallenge(t *testing.T) {
 func TestMavenIsNotAsked(t *testing.T) {
 	// A POM needs a group and an artifact: a Maven name without an artifact (a Bazel
 	// hub target no artifact list names) has nothing to request.
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		t.Errorf("asked the Maven repository for %s", r.URL.Path)
 		w.WriteHeader(http.StatusNotFound)
 	}))
-	t.Cleanup(srv.Close)
-	c := clientFor(t, Maven, srv.URL, "")
-	if deps := c.Dependencies(lang.Target{Ecosystem: Maven, Package: "org.slf4j", Version: "2.0.9"}); len(deps) != 0 {
-		t.Errorf("got %v", names(deps))
+	t.Cleanup(server.Close)
+	c := clientFor(t, Maven, server.URL, "")
+	if dependencies := c.Dependencies(lang.Target{Ecosystem: Maven, Package: "org.slf4j", Version: "2.0.9"}); len(dependencies) != 0 {
+		t.Errorf("got %v", names(dependencies))
 	}
 }
 
@@ -350,13 +350,13 @@ func TestMavenIsNotAsked(t *testing.T) {
 //
 // Verifies: REQ-SUP-027, REQ-TRC-007
 func TestOCIUnansweredChallengeSaysUnauthorized(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Www-Authenticate", `Basic realm="registry"`)
 		w.WriteHeader(http.StatusUnauthorized)
 	}))
-	t.Cleanup(srv.Close)
-	c := clientFor(t, OCI, srv.URL, "")
-	_, err := c.ociGet(context.Background(), srv.URL, "library/app", srv.URL+"/v2/library/app/manifests/1", "application/json")
+	t.Cleanup(server.Close)
+	c := clientFor(t, OCI, server.URL, "")
+	_, err := c.ociGet(context.Background(), server.URL, "library/app", server.URL+"/v2/library/app/manifests/1", "application/json")
 	if err == nil || !strings.Contains(err.Error(), "Unauthorized") {
 		t.Errorf("got %v, want an Unauthorized error", err)
 	}
@@ -367,7 +367,7 @@ func TestOCIUnansweredChallengeSaysUnauthorized(t *testing.T) {
 func stubComposer(t *testing.T) (*httptest.Server, *[]string) {
 	t.Helper()
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked = append(asked, r.URL.Path)
 		switch r.URL.Path {
 		case "/composer/packages.json":
@@ -384,15 +384,15 @@ func stubComposer(t *testing.T) (*httptest.Server, *[]string) {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
-	t.Cleanup(srv.Close)
-	return srv, &asked
+	t.Cleanup(server.Close)
+	return server, &asked
 }
 
 // Verifies: REQ-SUP-044
 func TestComposerDependencies(t *testing.T) {
-	srv, asked := stubComposer(t)
-	c := clientFor(t, Composer, srv.URL+"/composer", "")
-	for _, tt := range []struct {
+	server, asked := stubComposer(t)
+	c := clientFor(t, Composer, server.URL+"/composer", "")
+	for _, test := range []struct {
 		version string
 		want    []lang.Target
 	}{
@@ -403,12 +403,12 @@ func TestComposerDependencies(t *testing.T) {
 		{"^3.0", []lang.Target{{Ecosystem: Composer, Package: "psr/log", Version: "^2.0 || ^3.0"}}},
 		{"1.0.0", nil}, // "__unset": nothing required
 	} {
-		got := c.Dependencies(lang.Target{Ecosystem: Composer, Package: "monolog/monolog", Version: tt.version})
-		if len(got) == 0 && len(tt.want) == 0 {
+		got := c.Dependencies(lang.Target{Ecosystem: Composer, Package: "monolog/monolog", Version: test.version})
+		if len(got) == 0 && len(test.want) == 0 {
 			continue
 		}
-		if !reflect.DeepEqual(got, tt.want) {
-			t.Errorf("%s: got %+v, want %+v", tt.version, got, tt.want)
+		if !reflect.DeepEqual(got, test.want) {
+			t.Errorf("%s: got %+v, want %+v", test.version, got, test.want)
 		}
 	}
 	// packages.json is asked once for the repository, not once per package.
@@ -430,7 +430,7 @@ func TestComposerDependencies(t *testing.T) {
 func TestComposerRepositoryWithMachineCredentials(t *testing.T) {
 	stub, _ := stubComposer(t)
 	var refused int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if user, pass, ok := r.BasicAuth(); !ok || user != "token" || pass != "pp-secret" {
 			refused++
 			w.WriteHeader(http.StatusUnauthorized)
@@ -438,9 +438,9 @@ func TestComposerRepositoryWithMachineCredentials(t *testing.T) {
 		}
 		stub.Config.Handler.ServeHTTP(w, r)
 	}))
-	t.Cleanup(srv.Close)
+	t.Cleanup(server.Close)
 	home := t.TempDir()
-	doc := fmt.Sprintf(`{"http-basic": {%q: {"username": "token", "password": "pp-secret"}}}`, srv.Listener.Addr().String())
+	doc := fmt.Sprintf(`{"http-basic": {%q: {"username": "token", "password": "pp-secret"}}}`, server.Listener.Addr().String())
 	if err := os.MkdirAll(filepath.Join(home, ".composer"), 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -448,14 +448,14 @@ func TestComposerRepositoryWithMachineCredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	target := lang.Target{Ecosystem: Composer, Package: "monolog/monolog", Version: "3.5.0"}
-	if got := names(clientFor(t, Composer, srv.URL+"/composer", home).Dependencies(target)); len(got) != 1 {
+	if got := names(clientFor(t, Composer, server.URL+"/composer", home).Dependencies(target)); len(got) != 1 {
 		t.Errorf("got %v with the credential, want psr/log", got)
 	}
 	if refused != 0 {
 		t.Errorf("%d requests went without the credential", refused)
 	}
 	// Without it the repository refuses, which proves the header was what let it in.
-	if got := clientFor(t, Composer, srv.URL+"/composer", t.TempDir()).Dependencies(target); len(got) != 0 {
+	if got := clientFor(t, Composer, server.URL+"/composer", t.TempDir()).Dependencies(target); len(got) != 0 {
 		t.Errorf("got %v without the credential", names(got))
 	}
 }
@@ -463,7 +463,7 @@ func TestComposerRepositoryWithMachineCredentials(t *testing.T) {
 // Verifies: REQ-SUP-044
 func TestPackagistIsAskedDirectly(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked = append(asked, r.URL.Path)
 		if r.URL.Path != "/p2/log/log.json" {
 			w.WriteHeader(http.StatusNotFound)
@@ -471,8 +471,8 @@ func TestPackagistIsAskedDirectly(t *testing.T) {
 		}
 		fmt.Fprint(w, `{"packages":{"log/log":[{"version":"3.0.1","require":{"php":">=8.0.0"}}]}}`)
 	}))
-	defer srv.Close()
-	public[Composer] = srv.URL
+	defer server.Close()
+	public[Composer] = server.URL
 	t.Cleanup(func() { public[Composer] = "https://repo.packagist.org" })
 	c := NewClient(New(), t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
 	got := c.Dependencies(lang.Target{Ecosystem: Composer, Package: "Log/Log", Version: "3.0.1"})
@@ -484,7 +484,7 @@ func TestPackagistIsAskedDirectly(t *testing.T) {
 // Verifies: REQ-SUP-045
 func TestRubyGemsDependencies(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked = append(asked, r.URL.Path)
 		if r.URL.Path != "/private/info/sinatra" {
 			w.WriteHeader(http.StatusNotFound)
@@ -496,9 +496,9 @@ func TestRubyGemsDependencies(t *testing.T) {
 			"4.0.0-java rack:< 4|checksum:cc\n" +
 			"4.1.0.beta1 rack:>= 3.1|checksum:dd\n"))
 	}))
-	defer srv.Close()
-	c := clientFor(t, RubyGems, srv.URL+"/private/", "")
-	for _, tt := range []struct {
+	defer server.Close()
+	c := clientFor(t, RubyGems, server.URL+"/private/", "")
+	for _, test := range []struct {
 		version string
 		want    []lang.Target
 	}{
@@ -514,9 +514,9 @@ func TestRubyGemsDependencies(t *testing.T) {
 			{Ecosystem: RubyGems, Package: "rack-protection", Version: "4.0.0", Pinned: true},
 		}},
 	} {
-		got := c.Dependencies(lang.Target{Ecosystem: RubyGems, Package: "sinatra", Version: tt.version})
-		if !reflect.DeepEqual(got, tt.want) {
-			t.Errorf("%s: got %+v, want %+v", tt.version, got, tt.want)
+		got := c.Dependencies(lang.Target{Ecosystem: RubyGems, Package: "sinatra", Version: test.version})
+		if !reflect.DeepEqual(got, test.want) {
+			t.Errorf("%s: got %+v, want %+v", test.version, got, test.want)
 		}
 	}
 	if len(asked) == 0 || asked[0] != "/private/info/sinatra" {
@@ -531,7 +531,7 @@ func TestRubyGemsDependencies(t *testing.T) {
 // Verifies: REQ-SUP-045, REQ-AUTH-018
 func TestRubyGemsServerWithBundlerCredentials(t *testing.T) {
 	var refused int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if user, pass, ok := r.BasicAuth(); !ok || user != "gem@user" || pass != "s3cr3t" {
 			refused++
 			w.WriteHeader(http.StatusUnauthorized)
@@ -543,20 +543,20 @@ func TestRubyGemsServerWithBundlerCredentials(t *testing.T) {
 		}
 		w.Write([]byte("---\n7.3.0 sidekiq:>= 7.3.0|checksum:aa\n"))
 	}))
-	t.Cleanup(srv.Close)
+	t.Cleanup(server.Close)
 	target := lang.Target{Ecosystem: RubyGems, Package: "sidekiq-pro", Version: "7.3.0"}
 
 	// From the environment, as a pipeline sets it: 127.0.0.1 is BUNDLE_127__0__0__1.
 	t.Setenv("BUNDLE_127__0__0__1", "gem%40user:s3cr3t")
-	bundleEnv := func(k string) string {
+	bundleEnvironment := func(k string) string {
 		if strings.HasPrefix(k, "BUNDLE_") {
 			return os.Getenv(k)
 		}
 		return ""
 	}
-	cfg := New()
-	cfg.Add(RubyGems, Source{URL: srv.URL + "/private/", Trusted: true})
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, auth.Read(t.TempDir(), bundleEnv), nil)
+	configured := New()
+	configured.Add(RubyGems, Source{URL: server.URL + "/private/", Trusted: true})
+	c := NewClient(configured, t.TempDir(), time.Hour, 5*time.Second, auth.Read(t.TempDir(), bundleEnvironment), nil)
 	if got := names(c.Dependencies(target)); !reflect.DeepEqual(got, []string{"sidekiq"}) {
 		t.Errorf("environment: got %v, want sidekiq", got)
 	}
@@ -570,19 +570,19 @@ func TestRubyGemsServerWithBundlerCredentials(t *testing.T) {
 	if err := os.MkdirAll(filepath.Join(home, ".bundle"), 0o755); err != nil {
 		t.Fatal(err)
 	}
-	config := fmt.Sprintf("---\nBUNDLE_MIRROR__HTTPS://RUBYGEMS__ORG/: %q\nBUNDLE_127__0__0__1: \"gem%%40user:s3cr3t\"\n", srv.URL+"/mirror")
+	config := fmt.Sprintf("---\nBUNDLE_MIRROR__HTTPS://RUBYGEMS__ORG/: %q\nBUNDLE_127__0__0__1: \"gem%%40user:s3cr3t\"\n", server.URL+"/mirror")
 	if err := os.WriteFile(filepath.Join(home, ".bundle", "config"), []byte(config), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	d := NewDiscoverer(env(nil), home)
-	c = NewClient(d.Config(), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, env(nil)), nil)
+	d := NewDiscoverer(environment(nil), home)
+	c = NewClient(d.Config(), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(nil)), nil)
 	d.Discover(nil)
 	if got := names(c.Dependencies(target)); !reflect.DeepEqual(got, []string{"sidekiq"}) || refused != 0 {
 		t.Errorf("config mirror: got %v (%d refused), want sidekiq", got, refused)
 	}
 
 	// Without either the server refuses, which proves the header was what let it in.
-	if got := clientFor(t, RubyGems, srv.URL+"/private/", t.TempDir()).Dependencies(target); len(got) != 0 || refused == 0 {
+	if got := clientFor(t, RubyGems, server.URL+"/private/", t.TempDir()).Dependencies(target); len(got) != 0 || refused == 0 {
 		t.Errorf("got %v without the credential", names(got))
 	}
 }
@@ -590,7 +590,7 @@ func TestRubyGemsServerWithBundlerCredentials(t *testing.T) {
 // Verifies: REQ-SUP-046
 func TestPubDependencies(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked = append(asked, r.URL.Path+" "+r.Header.Get("Accept"))
 		if r.URL.Path != "/private/api/packages/http" {
 			w.WriteHeader(http.StatusNotFound)
@@ -602,9 +602,9 @@ func TestPubDependencies(t *testing.T) {
  {"version":"1.1.0","pubspec":{"name":"http","dependencies":{"async":"^2.5.0","http_parser":{"hosted":"https://pub.dev","version":"4.0.2"}}}},
  {"version":"1.2.0","pubspec":{"name":"http","dependencies":{"async":"^2.5.0","meta":null,"web":">=0.5.0 <2.0.0","flutter":{"sdk":"flutter"}}}}]}`))
 	}))
-	defer srv.Close()
-	c := clientFor(t, Pub, srv.URL+"/private/", "")
-	for _, tt := range []struct {
+	defer server.Close()
+	c := clientFor(t, Pub, server.URL+"/private/", "")
+	for _, test := range []struct {
 		version string
 		want    []lang.Target
 	}{
@@ -621,9 +621,9 @@ func TestPubDependencies(t *testing.T) {
 			{Ecosystem: Pub, Package: "web", Version: ">=0.5.0 <2.0.0"},
 		}},
 	} {
-		got := c.Dependencies(lang.Target{Ecosystem: Pub, Package: "http", Version: tt.version})
-		if !reflect.DeepEqual(got, tt.want) {
-			t.Errorf("%s: got %+v, want %+v", tt.version, got, tt.want)
+		got := c.Dependencies(lang.Target{Ecosystem: Pub, Package: "http", Version: test.version})
+		if !reflect.DeepEqual(got, test.want) {
+			t.Errorf("%s: got %+v, want %+v", test.version, got, test.want)
 		}
 	}
 	if len(asked) == 0 || asked[0] != "/private/api/packages/http application/vnd.pub.v2+json" {
@@ -634,7 +634,7 @@ func TestPubDependencies(t *testing.T) {
 // Verifies: REQ-SUP-047
 func TestHexDependencies(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked = append(asked, r.URL.Path+" "+r.Header.Get("Accept"))
 		switch r.URL.Path {
 		case "/api/packages/plug":
@@ -653,9 +653,9 @@ func TestHexDependencies(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
-	defer srv.Close()
-	c := clientFor(t, Hex, srv.URL+"/api", "")
-	for _, tt := range []struct {
+	defer server.Close()
+	c := clientFor(t, Hex, server.URL+"/api", "")
+	for _, test := range []struct {
 		version string
 		want    []lang.Target
 	}{
@@ -671,9 +671,9 @@ func TestHexDependencies(t *testing.T) {
 			{Ecosystem: Hex, Package: "telemetry", Version: "~> 0.4.3 or ~> 1.0"},
 		}},
 	} {
-		got := c.Dependencies(lang.Target{Ecosystem: Hex, Package: "plug", Version: tt.version})
-		if !reflect.DeepEqual(got, tt.want) {
-			t.Errorf("%s: got %+v, want %+v", tt.version, got, tt.want)
+		got := c.Dependencies(lang.Target{Ecosystem: Hex, Package: "plug", Version: test.version})
+		if !reflect.DeepEqual(got, test.want) {
+			t.Errorf("%s: got %+v, want %+v", test.version, got, test.want)
 		}
 	}
 	if len(asked) == 0 || asked[0] != "/api/packages/plug application/json" {
@@ -687,7 +687,7 @@ func TestHexDependencies(t *testing.T) {
 // Verifies: REQ-SUP-048
 func TestCRANDependencies(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked = append(asked, r.URL.Path)
 		switch r.URL.Path {
 		case "/dplyr/1.1.4":
@@ -700,12 +700,12 @@ func TestCRANDependencies(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
-	defer srv.Close()
+	defer server.Close()
 	old := crandbAPI
-	crandbAPI = srv.URL
+	crandbAPI = server.URL
 	t.Cleanup(func() { crandbAPI = old })
 	c := clientFor(t, CRAN, "https://cloud.r-project.org", "")
-	for _, tt := range []struct {
+	for _, test := range []struct {
 		version string
 		want    []lang.Target
 	}{
@@ -725,9 +725,9 @@ func TestCRANDependencies(t *testing.T) {
 			{Ecosystem: CRAN, Package: "cpp11", Version: "0.4.7", Pinned: true},
 		}},
 	} {
-		got := c.Dependencies(lang.Target{Ecosystem: CRAN, Package: "dplyr", Version: tt.version})
-		if !reflect.DeepEqual(got, tt.want) {
-			t.Errorf("%s: got %+v, want %+v", tt.version, got, tt.want)
+		got := c.Dependencies(lang.Target{Ecosystem: CRAN, Package: "dplyr", Version: test.version})
+		if !reflect.DeepEqual(got, test.want) {
+			t.Errorf("%s: got %+v, want %+v", test.version, got, test.want)
 		}
 	}
 	if want := []string{"/dplyr/1.1.4", "/dplyr", "/dplyr/1.0.99", "/dplyr"}; !reflect.DeepEqual(asked, want) {
@@ -741,7 +741,7 @@ func TestCRANDependencies(t *testing.T) {
 // Verifies: REQ-SUP-048
 func TestCRANLikeRepositoryDependencies(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked = append(asked, r.URL.Path)
 		if r.URL.Path != "/drat/src/contrib/PACKAGES" {
 			w.WriteHeader(http.StatusNotFound)
@@ -750,8 +750,8 @@ func TestCRANLikeRepositoryDependencies(t *testing.T) {
 		w.Write([]byte("Package: acmeR\nVersion: 0.3.0\nDepends: R (>= 4.0), methods\nImports: dplyr (>= 1.1.0),\n    jsonlite\nLinkingTo: Rcpp\n\n" +
 			"Package: acmeUtils\nVersion: 1.0.0\n"))
 	}))
-	defer srv.Close()
-	c := clientFor(t, CRAN, srv.URL+"/drat", "")
+	defer server.Close()
+	c := clientFor(t, CRAN, server.URL+"/drat", "")
 	got := c.Dependencies(lang.Target{Ecosystem: CRAN, Package: "acmeR", Version: "0.3.0"})
 	want := []lang.Target{
 		{Ecosystem: CRAN, Package: "Rcpp"},
@@ -777,7 +777,7 @@ func TestCRANLikeRepositoryDependencies(t *testing.T) {
 // Verifies: REQ-SUP-049
 func TestHackageDependencies(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked = append(asked, r.URL.Path)
 		switch r.URL.Path {
 		case "/package/acme-json/preferred":
@@ -799,8 +799,8 @@ func TestHackageDependencies(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
-	defer srv.Close()
-	c := clientFor(t, Hackage, srv.URL, "")
+	defer server.Close()
+	c := clientFor(t, Hackage, server.URL, "")
 	got := c.Dependencies(lang.Target{Ecosystem: Hackage, Package: "acme-json", Version: "1.2.0", Pinned: true})
 	want := []lang.Target{
 		{Ecosystem: Hackage, Package: "bytestring"},
@@ -832,7 +832,7 @@ func TestHackageDependencies(t *testing.T) {
 // Verifies: REQ-SUP-050
 func TestTerraformModuleDependencies(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked = append(asked, r.URL.Path)
 		switch r.URL.Path {
 		case "/.well-known/terraform.json":
@@ -849,8 +849,8 @@ func TestTerraformModuleDependencies(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
-	defer srv.Close()
-	c := clientFor(t, TerraformModule, srv.URL, "")
+	defer server.Close()
+	c := clientFor(t, TerraformModule, server.URL, "")
 	got := c.Dependencies(lang.Target{Ecosystem: TerraformModule, Package: "acme/vpc/aws", Version: "~> 5.1"})
 	want := []lang.Target{
 		{Ecosystem: TerraformModule, Package: "cloudposse/label/null", Version: "0.25.0", Pinned: true},
@@ -877,7 +877,7 @@ func TestTerraformModuleDependencies(t *testing.T) {
 
 // Verifies: REQ-SUP-050
 func TestTerraformConstraints(t *testing.T) {
-	for _, tc := range []struct {
+	for _, testCase := range []struct {
 		constraint, version string
 		want                bool
 	}{
@@ -885,8 +885,8 @@ func TestTerraformConstraints(t *testing.T) {
 		{"~> 1.2", "1.9.0", true}, {"~> 1.2", "2.0.0", false}, {"~> 1.2.0", "1.2.9", true}, {"~> 1.2.0", "1.3.0", false},
 		{">= 4.0, < 6.0", "5.10.0", true}, {">= 4.0, < 6.0", "6.0.0", false}, {"!= 1.0.0", "1.0.0", false},
 	} {
-		if got := terraformAllows(tc.constraint, tc.version); got != tc.want {
-			t.Errorf("%q allows %s: got %v", tc.constraint, tc.version, got)
+		if got := terraformAllows(testCase.constraint, testCase.version); got != testCase.want {
+			t.Errorf("%q allows %s: got %v", testCase.constraint, testCase.version, got)
 		}
 	}
 }
@@ -902,7 +902,7 @@ func TestCocoaPodsDependencies(t *testing.T) {
 	h := hex.EncodeToString(sum[:])
 	shard := h[0:1] + "/" + h[1:2] + "/" + h[2:3]
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked = append(asked, r.URL.Path)
 		switch r.URL.Path {
 		case "/all_pods_versions_" + strings.ReplaceAll(shard, "/", "_") + ".txt":
@@ -918,8 +918,8 @@ func TestCocoaPodsDependencies(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
-	defer srv.Close()
-	c := clientFor(t, CocoaPods, srv.URL, "")
+	defer server.Close()
+	c := clientFor(t, CocoaPods, server.URL, "")
 	got := c.Dependencies(lang.Target{Ecosystem: CocoaPods, Package: "AcmeKit", Version: "1.2.0", Pinned: true})
 	want := []lang.Target{
 		{Ecosystem: CocoaPods, Package: "AFNetworking", Version: "~> 4.0"},
@@ -954,17 +954,17 @@ func TestLuaRocksDependencies(t *testing.T) {
       ["scm-1"] = { { arch = "rockspec" } },
    },
 }`
-	var buf bytes.Buffer
-	zw := zip.NewWriter(&buf)
-	w, _ := zw.Create("manifest-5.1")
+	var buffer bytes.Buffer
+	zipWriter := zip.NewWriter(&buffer)
+	w, _ := zipWriter.Create("manifest-5.1")
 	w.Write([]byte(manifest))
-	zw.Close()
-	rockspec := func(deps string) []byte {
-		return []byte("package = 'acme-http'\ndependencies = { " + deps + " }\ntest_dependencies = { 'busted' }\n")
+	zipWriter.Close()
+	rockspec := func(dependencies string) []byte {
+		return []byte("package = 'acme-http'\ndependencies = { " + dependencies + " }\ntest_dependencies = { 'busted' }\n")
 	}
 	for _, zipped := range []bool{true, false} {
 		var asked []string
-		srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			asked = append(asked, r.URL.Path)
 			switch r.URL.Path {
 			case "/manifest-5.1.zip":
@@ -972,7 +972,7 @@ func TestLuaRocksDependencies(t *testing.T) {
 					w.WriteHeader(http.StatusNotFound)
 					return
 				}
-				w.Write(buf.Bytes())
+				w.Write(buffer.Bytes())
 			case "/manifest-5.1":
 				w.Write([]byte(manifest))
 			case "/acme-http-1.10.0-2.rockspec":
@@ -983,7 +983,7 @@ func TestLuaRocksDependencies(t *testing.T) {
 				w.WriteHeader(http.StatusNotFound)
 			}
 		}))
-		c := clientFor(t, LuaRocks, srv.URL, "")
+		c := clientFor(t, LuaRocks, server.URL, "")
 		got := c.Dependencies(lang.Target{Ecosystem: LuaRocks, Package: "acme-http", Version: "~> 1.10"})
 		want := []lang.Target{
 			{Ecosystem: LuaRocks, Package: "luaposix"},
@@ -1007,7 +1007,7 @@ func TestLuaRocksDependencies(t *testing.T) {
 		if !reflect.DeepEqual(asked, wantAsked) {
 			t.Errorf("zipped %v: asked %v", zipped, asked)
 		}
-		srv.Close()
+		server.Close()
 	}
 }
 
@@ -1019,11 +1019,11 @@ func TestLuaRocksDependencies(t *testing.T) {
 //
 // Verifies: REQ-SUP-053
 func TestCPANDependencies(t *testing.T) {
-	if idx, known := Discover(nil, env(nil), "").For(CPAN, "Plack"); idx != "https://fastapi.metacpan.org" || !known {
-		t.Errorf("default index: %s (known %v)", idx, known)
+	if index, known := Discover(nil, environment(nil), "").For(CPAN, "Plack"); index != "https://fastapi.metacpan.org" || !known {
+		t.Errorf("default index: %s (known %v)", index, known)
 	}
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked = append(asked, r.URL.Path)
 		switch r.URL.Path {
 		case "/v1/release/Plack":
@@ -1050,8 +1050,8 @@ func TestCPANDependencies(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
-	defer srv.Close()
-	c := publicClient(t, CPAN, srv.URL, nil)
+	defer server.Close()
+	c := publicClient(t, CPAN, server.URL, nil)
 	got := c.Dependencies(lang.Target{Ecosystem: CPAN, Package: "Plack", Version: ">= 1.0047"})
 	want := []lang.Target{
 		{Ecosystem: CPAN, Package: "HTTP-Message", Version: ">= 5.814"},
@@ -1078,7 +1078,7 @@ func TestCPANDependencies(t *testing.T) {
 // Verifies: REQ-SUP-054
 func TestOpamDependencies(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked = append(asked, r.URL.Path)
 		if r.URL.Path != "/packages/lwt/lwt.5.9.1/opam" {
 			http.NotFound(w, r)
@@ -1098,8 +1098,8 @@ depends: [
 depopts: ["base-threads" "base-unix" "conf-libev"]
 `))
 	}))
-	defer srv.Close()
-	c := clientFor(t, Opam, srv.URL, "")
+	defer server.Close()
+	c := clientFor(t, Opam, server.URL, "")
 	got := c.Dependencies(lang.Target{Ecosystem: Opam, Package: "lwt", Version: "5.9.1", Pinned: true})
 	want := []lang.Target{
 		{Ecosystem: Opam, Package: "cppo", Version: ">= 1.1.0"},
@@ -1115,8 +1115,8 @@ depopts: ["base-threads" "base-unix" "conf-libev"]
 	if !reflect.DeepEqual(asked, []string{"/packages/lwt/lwt.5.9.1/opam"}) {
 		t.Errorf("asked %v", asked)
 	}
-	if idx, known := Discover(nil, env(nil), "").For(Opam, "lwt"); idx != "https://raw.githubusercontent.com/ocaml/opam-repository/master" || !known {
-		t.Errorf("default index: %s (known %v)", idx, known)
+	if index, known := Discover(nil, environment(nil), "").For(Opam, "lwt"); index != "https://raw.githubusercontent.com/ocaml/opam-repository/master" || !known {
+		t.Errorf("default index: %s (known %v)", index, known)
 	}
 }
 
@@ -1175,7 +1175,7 @@ Parsers = ["1-2", "3"]
 PrecompileTools = "1.2.1"
 `,
 	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked = append(asked, r.URL.Path)
 		body, ok := files[r.URL.Path]
 		if !ok {
@@ -1184,8 +1184,8 @@ PrecompileTools = "1.2.1"
 		}
 		w.Write([]byte(body))
 	}))
-	defer srv.Close()
-	c := clientFor(t, Julia, srv.URL, "")
+	defer server.Close()
+	c := clientFor(t, Julia, server.URL, "")
 	want := []lang.Target{
 		{Ecosystem: "julia-std", Package: "Dates"},
 		{Ecosystem: "julia-std", Package: "Mmap"},
@@ -1212,8 +1212,8 @@ PrecompileTools = "1.2.1"
 	if n := strings.Count(strings.Join(asked, " "), "/Registry.toml"); n != 1 {
 		t.Errorf("Registry.toml asked %d times: %v", n, asked)
 	}
-	if idx, known := Discover(nil, env(nil), "").For(Julia, "JSON"); idx != "https://raw.githubusercontent.com/JuliaRegistries/General/master" || !known {
-		t.Errorf("default index: %s (known %v)", idx, known)
+	if index, known := Discover(nil, environment(nil), "").For(Julia, "JSON"); index != "https://raw.githubusercontent.com/JuliaRegistries/General/master" || !known {
+		t.Errorf("default index: %s (known %v)", index, known)
 	}
 }
 
@@ -1242,25 +1242,25 @@ repo = "https://github.com/acme/AcmeRegistry.git"
 11111111-1111-1111-1111-111111111111 = { name = "AcmeBilling", path = "A/AcmeBilling" }
 `,
 	} {
-		dir := filepath.Join(home, ".julia", "registries", name)
-		os.MkdirAll(dir, 0o755)
-		os.WriteFile(filepath.Join(dir, "Registry.toml"), []byte(body), 0o644)
+		directory := filepath.Join(home, ".julia", "registries", name)
+		os.MkdirAll(directory, 0o755)
+		os.WriteFile(filepath.Join(directory, "Registry.toml"), []byte(body), 0o644)
 	}
-	cfg := Discover(nil, env(nil), home)
-	if idx, known := cfg.For(Julia, "AcmeBilling"); idx != "https://raw.githubusercontent.com/acme/AcmeRegistry/HEAD" || !known {
-		t.Errorf("AcmeBilling: %s (known %v)", idx, known)
+	config := Discover(nil, environment(nil), home)
+	if index, known := config.For(Julia, "AcmeBilling"); index != "https://raw.githubusercontent.com/acme/AcmeRegistry/HEAD" || !known {
+		t.Errorf("AcmeBilling: %s (known %v)", index, known)
 	}
-	if idx, _ := cfg.For(Julia, "JSON"); idx != "https://raw.githubusercontent.com/JuliaRegistries/General/master" {
-		t.Errorf("JSON: %s", idx)
+	if index, _ := config.For(Julia, "JSON"); index != "https://raw.githubusercontent.com/JuliaRegistries/General/master" {
+		t.Errorf("JSON: %s", index)
 	}
-	if idx, known := cfg.For(Julia, "CorpLedger"); idx != "ssh://gitlab.corp.test/acme/registry.git" || !known {
-		t.Errorf("CorpLedger: %s (known %v)", idx, known)
+	if index, known := config.For(Julia, "CorpLedger"); index != "ssh://gitlab.corp.test/acme/registry.git" || !known {
+		t.Errorf("CorpLedger: %s (known %v)", index, known)
 	}
 	// JULIA_DEPOT_PATH replaces the default depot.
 	other := t.TempDir()
-	cfg = Discover(nil, env(map[string]string{"JULIA_DEPOT_PATH": other}), home)
-	if idx, _ := cfg.For(Julia, "AcmeBilling"); idx != "https://raw.githubusercontent.com/JuliaRegistries/General/master" {
-		t.Errorf("depot path not followed: %s", idx)
+	config = Discover(nil, environment(map[string]string{"JULIA_DEPOT_PATH": other}), home)
+	if index, _ := config.For(Julia, "AcmeBilling"); index != "https://raw.githubusercontent.com/JuliaRegistries/General/master" {
+		t.Errorf("depot path not followed: %s", index)
 	}
 }
 
@@ -1311,9 +1311,9 @@ func TestMavenArtifactDependencies(t *testing.T) {
 	defer func(central, clojars string) { public[Maven], clojarsURL = central, clojars }(public[Maven], clojarsURL)
 	public[Maven], clojarsURL = central.URL, clojars.URL
 
-	cfg := New()
-	cfg.clojure = true
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
+	config := New()
+	config.clojure = true
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
 	got := c.Dependencies(lang.Target{Ecosystem: Maven, Package: "org.clojure:clojure", Version: "1.11.1", Pinned: true})
 	want := []lang.Target{
 		{Ecosystem: Maven, Package: "org.clojure:spec.alpha", Version: "0.3.218", Pinned: true},
@@ -1334,8 +1334,8 @@ func TestMavenArtifactDependencies(t *testing.T) {
 	// Without a Clojure manifest Clojars is not asked; a name without an artifact is
 	// never asked.
 	asked = nil
-	cfg.clojure = false
-	c = NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
+	config.clojure = false
+	c = NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
 	c.Dependencies(lang.Target{Ecosystem: Maven, Package: "cheshire:cheshire", Version: "5.12.0", Pinned: true})
 	c.Dependencies(lang.Target{Ecosystem: Maven, Package: "org.slf4j", Version: "2.0.9", Pinned: true})
 	for _, a := range asked {
@@ -1380,20 +1380,20 @@ func TestJavaArtifactIsAskedOfCentral(t *testing.T) {
 
 // Verifies: REQ-SUP-056
 func TestClojureRepositoryDiscovery(t *testing.T) {
-	dir := t.TempDir()
+	directory := t.TempDir()
 	write := func(name, body string) *scan.File {
-		p := filepath.Join(dir, name)
+		p := filepath.Join(directory, name)
 		os.MkdirAll(filepath.Dir(p), 0o755)
 		os.WriteFile(p, []byte(body), 0o644)
-		return &scan.File{Path: name, Abs: p}
+		return &scan.File{Path: name, AbsolutePath: p}
 	}
 	files := []*scan.File{
 		write("deps.edn", `{:mvn/repos {"central" {:url "https://repo1.maven.org/maven2/"} "acme" {:url "https://maven.acme.example/releases"}}}`),
 		write("lein/project.clj", `(defproject a "1" :repositories [["clojars" "https://repo.clojars.org/"] ["corp" {:url "https://nexus.corp.example/repo"}]])`),
 	}
-	cfg := Discover(files, env(nil), "")
+	config := Discover(files, environment(nil), "")
 	var urls []string
-	for _, s := range cfg.Sources(Maven) {
+	for _, s := range config.Sources(Maven) {
 		urls = append(urls, s.URL)
 		if s.Trusted {
 			t.Errorf("%s is trusted", s.URL)
@@ -1403,7 +1403,7 @@ func TestClojureRepositoryDiscovery(t *testing.T) {
 		t.Errorf("sources %v", urls)
 	}
 	var report []string
-	for _, s := range cfg.Report() {
+	for _, s := range config.Report() {
 		if s.Ecosystem == Maven && s.Origin == OriginPublic {
 			report = append(report, s.URL)
 		}
@@ -1424,7 +1424,7 @@ func TestClojureRepositoryDiscovery(t *testing.T) {
 // Verifies: REQ-SUP-057
 func TestBazelDependencies(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked = append(asked, r.URL.Path)
 		switch r.URL.Path {
 		case "/modules/rules_go/0.50.1/MODULE.bazel", "/modules/rules_go/0.51.0/MODULE.bazel":
@@ -1441,8 +1441,8 @@ bazel_dep(name = "gazelle", version = "0.36.0", dev_dependency = True)
 			http.NotFound(w, r)
 		}
 	}))
-	defer srv.Close()
-	c := clientFor(t, Bazel, srv.URL, "")
+	defer server.Close()
+	c := clientFor(t, Bazel, server.URL, "")
 	got := c.Dependencies(lang.Target{Ecosystem: Bazel, Package: "rules_go", Version: "0.50.1", Pinned: true})
 	want := []lang.Target{
 		{Ecosystem: Bazel, Package: "bazel_features", Version: "1.9.1", Pinned: true},
@@ -1452,15 +1452,15 @@ bazel_dep(name = "gazelle", version = "0.36.0", dev_dependency = True)
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
-	c = clientFor(t, Bazel, srv.URL, "")
+	c = clientFor(t, Bazel, server.URL, "")
 	if got := c.Dependencies(lang.Target{Ecosystem: Bazel, Package: "rules_go", Floating: true}); len(got) != 3 {
 		t.Errorf("unversioned: %+v", got)
 	}
 	if want := []string{"/modules/rules_go/0.50.1/MODULE.bazel", "/modules/rules_go/metadata.json", "/modules/rules_go/0.51.0/MODULE.bazel"}; !reflect.DeepEqual(asked, want) {
 		t.Errorf("asked %v, want %v", asked, want)
 	}
-	if idx, known := Discover(nil, env(nil), "").For(Bazel, "rules_go"); idx != "https://bcr.bazel.build" || !known {
-		t.Errorf("default index: %s (known %v)", idx, known)
+	if index, known := Discover(nil, environment(nil), "").For(Bazel, "rules_go"); index != "https://bcr.bazel.build" || !known {
+		t.Errorf("default index: %s (known %v)", index, known)
 	}
 }
 
@@ -1473,13 +1473,13 @@ func TestDiscoverReadsBazelrc(t *testing.T) {
 	files := write(t, map[string]string{
 		".bazelrc": "# registries\ncommon --registry=https://bcr.bazel.build/\ncommon --registry=https://registry.corp.test/bazel # ours\nbuild --registry=file:///opt/registry\n",
 	})
-	if idx, known := Discover(files, env(nil), "").For(Bazel, "rules_go"); idx != "https://registry.corp.test/bazel" || known {
-		t.Errorf("project: got %s (known %v)", idx, known)
+	if index, known := Discover(files, environment(nil), "").For(Bazel, "rules_go"); index != "https://registry.corp.test/bazel" || known {
+		t.Errorf("project: got %s (known %v)", index, known)
 	}
 	home := t.TempDir()
 	os.WriteFile(filepath.Join(home, ".bazelrc"), []byte("common --registry https://mirror.corp.test\n"), 0o644)
-	if idx, known := Discover(nil, env(nil), home).For(Bazel, "rules_go"); idx != "https://mirror.corp.test" || !known {
-		t.Errorf("home: got %s (known %v)", idx, known)
+	if index, known := Discover(nil, environment(nil), home).For(Bazel, "rules_go"); index != "https://mirror.corp.test" || !known {
+		t.Errorf("home: got %s (known %v)", index, known)
 	}
 	if !BazelCentral("https://bcr.bazel.build/") || BazelCentral("https://registry.corp.test") {
 		t.Error("BazelCentral")
@@ -1508,11 +1508,11 @@ func TestDiscoverFollowsBazelrcImports(t *testing.T) {
 		"tools/local.rc":   "build --registry https://local.corp.test\n",
 		"tools/seven.rc":   "common --registry=https://seven.corp.test\n",
 	})
-	root := strings.TrimSuffix(files[0].Abs, filepath.FromSlash(files[0].Path))
+	root := strings.TrimSuffix(files[0].AbsolutePath, filepath.FromSlash(files[0].Path))
 	os.WriteFile(filepath.Join(root, "user.bazelrc"), []byte("common --registry=https://user.corp.test\n"), 0o644)
 	os.WriteFile(filepath.Join(filepath.Dir(filepath.Clean(root)), "outside.bazelrc"), []byte("common --registry=https://outside.corp.test\n"), 0o644)
 	var got []string
-	for _, s := range Discover(files, env(nil), "").Sources(Bazel) {
+	for _, s := range Discover(files, environment(nil), "").Sources(Bazel) {
 		got = append(got, fmt.Sprintf("%s %v", s.URL, s.Trusted))
 	}
 	want := []string{
@@ -1527,7 +1527,7 @@ func TestDiscoverFollowsBazelrcImports(t *testing.T) {
 	os.WriteFile(filepath.Join(home, ".bazelrc"), []byte("try-import %workspace%.bazelrc.ws\nimport .bazelrc.corp\n"), 0o644)
 	os.WriteFile(filepath.Join(home, ".bazelrc.corp"), []byte("common --registry=https://mirror.corp.test\n"), 0o644)
 	os.WriteFile(filepath.Join(home, ".bazelrc.ws"), []byte("common --registry=https://workspace.corp.test\n"), 0o644)
-	if got := sources(Discover(nil, env(nil), home), Bazel); !reflect.DeepEqual(got, []string{"https://mirror.corp.test"}) {
+	if got := sources(Discover(nil, environment(nil), home), Bazel); !reflect.DeepEqual(got, []string{"https://mirror.corp.test"}) {
 		t.Errorf("home: got %v, want the imported mirror alone", got)
 	}
 }
@@ -1535,7 +1535,7 @@ func TestDiscoverFollowsBazelrcImports(t *testing.T) {
 // Verifies: REQ-SUP-058
 func TestElmDependencies(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked = append(asked, r.URL.Path)
 		switch r.URL.Path {
 		case "/mirror/packages/elm/html/releases.json":
@@ -1549,8 +1549,8 @@ func TestElmDependencies(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
-	defer srv.Close()
-	c := clientFor(t, Elm, srv.URL+"/mirror/", "")
+	defer server.Close()
+	c := clientFor(t, Elm, server.URL+"/mirror/", "")
 	want := []lang.Target{
 		{Ecosystem: Elm, Package: "elm/core", Version: "1.0.0 <= v < 2.0.0"},
 		{Ecosystem: Elm, Package: "elm/json", Version: "1.0.0 <= v < 2.0.0"},
@@ -1576,18 +1576,18 @@ func TestElmDependencies(t *testing.T) {
 	if got := c.Dependencies(lang.Target{Ecosystem: Elm, Package: "../x", Version: "1.0.0"}); got != nil || len(asked) != 0 {
 		t.Errorf("bad name: got %+v, asked %v", got, asked)
 	}
-	if idx, known := New().For(Elm, "elm/html"); idx != "https://package.elm-lang.org" || !known {
-		t.Errorf("public index %q %v", idx, known)
+	if index, known := New().For(Elm, "elm/html"); index != "https://package.elm-lang.org" || !known {
+		t.Errorf("public index %q %v", index, known)
 	}
 }
 
 // Verifies: REQ-SUP-059
 func TestPureScriptDependencies(t *testing.T) {
 	var asked []string
-	manifest := func(v, deps string) string {
-		return `{"name":"aff","version":"` + v + `","license":"Apache-2.0","location":{"githubOwner":"purescript-contrib","githubRepo":"purescript-aff"},"ref":"v` + v + `","dependencies":{` + deps + `}}`
+	manifest := func(v, dependencies string) string {
+		return `{"name":"aff","version":"` + v + `","license":"Apache-2.0","location":{"githubOwner":"purescript-contrib","githubRepo":"purescript-aff"},"ref":"v` + v + `","dependencies":{` + dependencies + `}}`
 	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked = append(asked, r.URL.Path)
 		switch r.URL.Path {
 		case "/mirror/registry/main/metadata/aff.json":
@@ -1600,8 +1600,8 @@ func TestPureScriptDependencies(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
-	defer srv.Close()
-	c := clientFor(t, PureScript, srv.URL+"/mirror/", "")
+	defer server.Close()
+	c := clientFor(t, PureScript, server.URL+"/mirror/", "")
 	want := []lang.Target{
 		{Ecosystem: PureScript, Package: "effect", Version: ">=4.0.0 <5.0.0"},
 		{Ecosystem: PureScript, Package: "prelude", Version: ">=6.0.0 <7.0.0"},
@@ -1635,8 +1635,8 @@ func TestPureScriptDependencies(t *testing.T) {
 			t.Errorf("shard %s: %s, want %s", name, got, want)
 		}
 	}
-	if idx, known := New().For(PureScript, "aff"); idx != "https://raw.githubusercontent.com/purescript" || !known {
-		t.Errorf("public index %q %v", idx, known)
+	if index, known := New().For(PureScript, "aff"); index != "https://raw.githubusercontent.com/purescript" || !known {
+		t.Errorf("public index %q %v", index, known)
 	}
 }
 
@@ -1650,7 +1650,7 @@ func TestDubDependencies(t *testing.T) {
 "subPackages": [{"name": "http", "dependencies": {"vibe-http": {"version": ">=1.0.0 <2.0.0"}, "vibe-d:utils": "*"}}],
 "configurations": [{"name": "default", "dependencies": {"eventcore": "~>0.9.20"}}, {"name": "other", "dependencies": {"libasync": "~>0.8"}}]}`
 	}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked = append(asked, r.URL.Path)
 		switch r.URL.Path {
 		case "/reg/api/packages/vibe-d/0.9.7/info":
@@ -1662,8 +1662,8 @@ func TestDubDependencies(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
-	defer srv.Close()
-	c := clientFor(t, Dub, srv.URL+"/reg/", "")
+	defer server.Close()
+	c := clientFor(t, Dub, server.URL+"/reg/", "")
 	want := []lang.Target{
 		{Ecosystem: Dub, Package: "diet-ng", Version: "~>1.8"},
 		{Ecosystem: Dub, Package: "eventcore", Version: "~>0.9.20"},
@@ -1690,8 +1690,8 @@ func TestDubDependencies(t *testing.T) {
 	if got := c.Dependencies(lang.Target{Ecosystem: Dub, Package: "../x", Version: "1.0.0"}); got != nil || len(asked) != 0 {
 		t.Errorf("bad name: got %+v, asked %v", got, asked)
 	}
-	if idx, known := New().For(Dub, "vibe-d"); idx != "https://code.dlang.org" || !known {
-		t.Errorf("public index %q %v", idx, known)
+	if index, known := New().For(Dub, "vibe-d"); index != "https://code.dlang.org" || !known {
+		t.Errorf("public index %q %v", index, known)
 	}
 	for spec, want := range map[string]map[[3]int]bool{
 		"~>0.9.5":          {{0, 9, 5}: true, {0, 9, 9}: true, {0, 10, 0}: false, {0, 9, 4}: false},
@@ -1721,7 +1721,7 @@ func TestDubDependencies(t *testing.T) {
 // Verifies: REQ-SUP-061
 func TestAlireDependencies(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked = append(asked, r.URL.Path)
 		if r.URL.Path != "/idx/index/aw/aws/aws-25.2.0.toml" {
 			http.NotFound(w, r)
@@ -1744,8 +1744,8 @@ winsock = "^1.0"
 url = "https://github.com/AdaCore/aws/releases/download/v25.2.0/aws.zip"
 `))
 	}))
-	defer srv.Close()
-	c := clientFor(t, Alire, srv.URL+"/idx/", "")
+	defer server.Close()
+	c := clientFor(t, Alire, server.URL+"/idx/", "")
 	want := []lang.Target{
 		{Ecosystem: Alire, Package: "gnatcoll", Version: "25.0.0", Pinned: true},
 		{Ecosystem: Alire, Package: "make", Version: "*"},
@@ -1766,8 +1766,8 @@ url = "https://github.com/AdaCore/aws/releases/download/v25.2.0/aws.zip"
 	if !reflect.DeepEqual(asked, []string{"/idx/index/aw/aws/aws-25.2.0.toml"}) {
 		t.Errorf("asked %v", asked)
 	}
-	if idx, known := New().For(Alire, "aws"); idx != "https://raw.githubusercontent.com/alire-project/alire-index/stable-1.4.0" || !known {
-		t.Errorf("public index %q %v", idx, known)
+	if index, known := New().For(Alire, "aws"); index != "https://raw.githubusercontent.com/alire-project/alire-index/stable-1.4.0" || !known {
+		t.Errorf("public index %q %v", index, known)
 	}
 }
 
@@ -1793,7 +1793,7 @@ babel babel-streams babel-streams babel trivial-gray-streams
 iolib iolib.base iolib.base alexandria
 iolib iolib.asdf iolib.asdf asdf
 `
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked = append(asked, r.URL.Path)
 		switch r.URL.Path {
 		case "/dist/quicklisp.txt":
@@ -1806,8 +1806,8 @@ iolib iolib.asdf iolib.asdf asdf
 			http.NotFound(w, r)
 		}
 	}))
-	defer srv.Close()
-	c := clientFor(t, Quicklisp, srv.URL+"/dist/quicklisp.txt", "")
+	defer server.Close()
+	c := clientFor(t, Quicklisp, server.URL+"/dist/quicklisp.txt", "")
 	want := []lang.Target{
 		{Ecosystem: Quicklisp, Package: "alexandria"},
 		{Ecosystem: Quicklisp, Package: "babel"},
@@ -1841,8 +1841,8 @@ iolib iolib.asdf iolib.asdf asdf
 	if !reflect.DeepEqual(asked, wantAsked) {
 		t.Errorf("asked %v\nwant %v", asked, wantAsked)
 	}
-	if idx, known := New().For(Quicklisp, "alexandria"); idx != "https://beta.quicklisp.org/dist/quicklisp.txt" || !known {
-		t.Errorf("public index %q %v", idx, known)
+	if index, known := New().For(Quicklisp, "alexandria"); index != "https://beta.quicklisp.org/dist/quicklisp.txt" || !known {
+		t.Errorf("public index %q %v", index, known)
 	}
 }
 
@@ -1853,7 +1853,7 @@ iolib iolib.asdf iolib.asdf asdf
 // Verifies: REQ-SUP-048
 func TestBioconductorDependencies(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked = append(asked, r.URL.Path)
 		switch r.URL.Path {
 		case "/3.18/bioc/src/contrib/PACKAGES", "/release/bioc/src/contrib/PACKAGES":
@@ -1863,22 +1863,22 @@ func TestBioconductorDependencies(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
-	defer srv.Close()
+	defer server.Close()
 	old := bioconductorPackages
-	bioconductorPackages = srv.URL
+	bioconductorPackages = server.URL
 	t.Cleanup(func() { bioconductorPackages = old })
 
 	lock := `{"R": {"Version": "4.3.2", "Repositories": [{"Name": "CRAN", "URL": "https://cloud.r-project.org"}]},
 "Bioconductor": {"Version": "3.18"},
 "Packages": {"DESeq2": {"Package": "DESeq2", "Version": "1.42.0", "Source": "Bioconductor"}}}`
-	cfg := Discover(write(t, map[string]string{"renv.lock": lock}), env(nil), "")
-	if idx, known := cfg.For(Bioconductor, "DESeq2"); idx != srv.URL+"/3.18/bioc" || !known {
-		t.Errorf("attributed to %s (known %v), want the 3.18 release", idx, known)
+	config := Discover(write(t, map[string]string{"renv.lock": lock}), environment(nil), "")
+	if index, known := config.For(Bioconductor, "DESeq2"); index != server.URL+"/3.18/bioc" || !known {
+		t.Errorf("attributed to %s (known %v), want the 3.18 release", index, known)
 	}
-	if !cfg.Public(Bioconductor, srv.URL+"/3.18/bioc") {
+	if !config.Public(Bioconductor, server.URL+"/3.18/bioc") {
 		t.Error("the release's repository is Bioconductor's public index")
 	}
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
 	want := []lang.Target{
 		{Ecosystem: Bioconductor, Package: "BiocGenerics", Version: ">= 0.7.5"},
 		{Ecosystem: CRAN, Package: "Rcpp", Version: ">= 0.11.0"},
@@ -1898,8 +1898,8 @@ func TestBioconductorDependencies(t *testing.T) {
 
 	// Without a recorded release the current one is asked.
 	asked = nil
-	cfg = Discover(write(t, map[string]string{"renv.lock": `{"Bioconductor": {"Version": "../x"}, "Packages": {}}`}), env(nil), "")
-	c = NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
+	config = Discover(write(t, map[string]string{"renv.lock": `{"Bioconductor": {"Version": "../x"}, "Packages": {}}`}), environment(nil), "")
+	c = NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
 	if got := c.Dependencies(lang.Target{Ecosystem: Bioconductor, Package: "S4Vectors"}); len(got) != 1 {
 		t.Errorf("current release: got %+v", got)
 	}

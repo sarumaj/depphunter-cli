@@ -98,17 +98,17 @@ var projectPrefixes = []struct{ prefix, project string }{
 // system (ironclad/digests/sha256) is its primary system's, then the tables.
 //
 // Implements: REQ-COMMONLISP-007
-func projectOf(sys string) string {
-	primary, _, _ := strings.Cut(sys, "/")
-	if p, ok := knownProjects[sys]; ok {
+func projectOf(system string) string {
+	primary, _, _ := strings.Cut(system, "/")
+	if p, ok := knownProjects[system]; ok {
 		return p
 	}
 	if p, ok := knownProjects[primary]; ok {
 		return p
 	}
-	for _, pp := range projectPrefixes {
-		if strings.HasPrefix(primary, pp.prefix) && primary != pp.project {
-			return pp.project
+	for _, projectPrefix := range projectPrefixes {
+		if strings.HasPrefix(primary, projectPrefix.prefix) && primary != projectPrefix.project {
+			return projectPrefix.project
 		}
 	}
 	return primary
@@ -117,8 +117,8 @@ func projectOf(sys string) string {
 // packageSystem is the system a curated table names for a package: the
 // package itself, then its dotted or slashed prefixes (lack.request is
 // lack's, trivia.level2 trivia's).
-func packageSystem(pkg string) (string, bool) {
-	for p := pkg; p != ""; {
+func packageSystem(packageName string) (string, bool) {
+	for p := packageName; p != ""; {
 		if s, ok := knownPackages[p]; ok {
 			return s, true
 		}
@@ -137,8 +137,8 @@ func packageSystem(pkg string) (string, bool) {
 // ships, and the Quicklisp client.
 //
 // Implements: REQ-COMMONLISP-008
-func stdPackage(pkg string) (string, bool) {
-	first, _, _ := strings.Cut(pkg, "/")
+func stdPackage(packageName string) (string, bool) {
+	first, _, _ := strings.Cut(packageName, "/")
 	switch first {
 	case "cl", "common-lisp", "cl-user", "common-lisp-user", "keyword":
 		return "common-lisp", true
@@ -167,17 +167,17 @@ func stdPackage(pkg string) (string, bool) {
 
 // stdSystem is the cl-std node of a system an implementation provides:
 // ASDF and UIOP, and SBCL's contrib modules (sb-posix, sb-bsd-sockets ...).
-func stdSystem(sys string) (string, bool) {
-	switch sys {
+func stdSystem(system string) (string, bool) {
+	switch system {
 	case "asdf", "uiop", "asdf-package-system":
-		if sys == "asdf-package-system" {
+		if system == "asdf-package-system" {
 			return "asdf", true
 		}
-		return sys, true
+		return system, true
 	case "quicklisp":
 		return "quicklisp", true
 	}
-	if strings.HasPrefix(sys, "sb-") {
+	if strings.HasPrefix(system, "sb-") {
 		return "sbcl", true
 	}
 	return "", false

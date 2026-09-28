@@ -138,10 +138,10 @@ describe('depphunter.open', { skip: available() ? false : 'no depphunter binary 
 
   // Verifies: REQ-EXT-022
   it('serves the map at the address it handed over', async () => {
-    const res = await fetch(address);
-    assert.strictEqual(res.status, 200);
+    const response = await fetch(address);
+    assert.strictEqual(response.status, 200);
     // --embed, without which the editor's browser could not show the page at all.
-    const csp = res.headers.get('content-security-policy');
+    const csp = response.headers.get('content-security-policy');
     assert.match(csp, /frame-ancestors /);
     // Every frame above the page has to be named, not only the one holding it: the
     // built-in browser is the editor's window framing a webview framing the page

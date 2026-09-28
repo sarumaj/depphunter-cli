@@ -36,11 +36,11 @@ func hostLike(s string) bool {
 
 // moduleSource is what a module source address names.
 type moduleSource struct {
-	local   string // a directory relative to the calling module ("./x", "../x")
-	pkg     string // a registry module's or remote module's name
-	ref     string // the git ref or the version a tfr:// address asks for
-	origin  string // where a remote module is fetched from
-	archive bool   // a remote module that is not a git or hg repository
+	local       string // a directory relative to the calling module ("./x", "../x")
+	packageName string // a registry module's or remote module's name
+	reference   string // the git reference or the version a tfr:// address asks for
+	origin      string // where a remote module is fetched from
+	archive     bool   // a remote module that is not a git or hg repository
 }
 
 // parseSource reads a module source address: a local path, a registry address
@@ -58,30 +58,30 @@ func parseSource(s string) (moduleSource, bool) {
 		return moduleSource{local: s}, true
 	}
 	if rest, ok := strings.CutPrefix(s, "tfr://"); ok {
-		addr, query, _ := strings.Cut(rest, "?")
+		address, query, _ := strings.Cut(rest, "?")
 		q, _ := url.ParseQuery(query)
-		host, path, _ := strings.Cut(addr, "/")
-		if pkg, ok := registryModule(path); ok {
+		host, path, _ := strings.Cut(address, "/")
+		if packageName, ok := registryModule(path); ok {
 			if h := registryHost(host); h != "" {
-				pkg = h + "/" + pkg
+				packageName = h + "/" + packageName
 			}
-			return moduleSource{pkg: pkg, ref: q.Get("version")}, true
+			return moduleSource{packageName: packageName, reference: q.Get("version")}, true
 		}
 		return moduleSource{}, false
 	}
 	if !strings.Contains(s, "::") && !strings.Contains(s, "://") && !strings.HasPrefix(s, "/") {
 		parts := strings.SplitN(strings.SplitN(s, "//", 2)[0], "/", 4)
 		if len(parts) == 4 && hostLike(parts[0]) {
-			if pkg, ok := registryModule(s[len(parts[0])+1:]); ok {
+			if packageName, ok := registryModule(s[len(parts[0])+1:]); ok {
 				if h := registryHost(parts[0]); h != "" {
-					pkg = h + "/" + pkg
+					packageName = h + "/" + packageName
 				}
-				return moduleSource{pkg: pkg}, true
+				return moduleSource{packageName: packageName}, true
 			}
 		}
 		if len(parts) == 3 {
-			if pkg, ok := registryModule(s); ok {
-				return moduleSource{pkg: pkg}, true
+			if packageName, ok := registryModule(s); ok {
+				return moduleSource{packageName: packageName}, true
 			}
 		}
 	}
@@ -91,8 +91,8 @@ func parseSource(s string) (moduleSource, bool) {
 // registryModule reads namespace/name/provider[//subdir], lower-casing the name
 // (registries match names without regard to case).
 func registryModule(s string) (string, bool) {
-	addr, sub, hasSub := strings.Cut(s, "//")
-	parts := strings.Split(addr, "/")
+	address, subdirectory, hasSub := strings.Cut(s, "//")
+	parts := strings.Split(address, "/")
 	if len(parts) != 3 {
 		return "", false
 	}
@@ -101,9 +101,9 @@ func registryModule(s string) (string, bool) {
 			return "", false
 		}
 	}
-	name := strings.ToLower(addr)
-	if hasSub && strings.Trim(sub, "/") != "" {
-		name += "//" + strings.Trim(sub, "/")
+	name := strings.ToLower(address)
+	if hasSub && strings.Trim(subdirectory, "/") != "" {
+		name += "//" + strings.Trim(subdirectory, "/")
 	}
 	return name, true
 }
@@ -116,20 +116,20 @@ func remoteSource(s string) (moduleSource, bool) {
 	if i := strings.Index(s, "::"); i > 0 && !strings.ContainsAny(s[:i], "/:") {
 		getter, s = strings.ToLower(s[:i]), s[i+2:]
 	}
-	addr, query, _ := strings.Cut(s, "?")
+	address, query, _ := strings.Cut(s, "?")
 	q, _ := url.ParseQuery(query)
-	origin := addr
+	origin := address
 	host, rest := "", ""
-	if m := scpLike.FindStringSubmatch(addr); m != nil && !strings.Contains(addr, "://") {
+	if m := scpLike.FindStringSubmatch(address); m != nil && !strings.Contains(address, "://") {
 		host, rest = m[1], m[2]
 	} else {
-		if _, after, ok := strings.Cut(addr, "://"); ok {
-			addr = after
+		if _, after, ok := strings.Cut(address, "://"); ok {
+			address = after
 		}
-		if at := strings.IndexByte(addr, '@'); at >= 0 && at < strings.IndexByte(addr+"/", '/') {
-			addr = addr[at+1:]
+		if at := strings.IndexByte(address, '@'); at >= 0 && at < strings.IndexByte(address+"/", '/') {
+			address = address[at+1:]
 		}
-		host, rest, _ = strings.Cut(addr, "/")
+		host, rest, _ = strings.Cut(address, "/")
 		if i := strings.IndexByte(host, ':'); i >= 0 && getter != "s3" {
 			host = host[:i] // a port, or ssh's user@host:port
 		}
@@ -137,13 +137,13 @@ func remoteSource(s string) (moduleSource, bool) {
 	if host == "" || rest == "" || !hostLike(host) {
 		return moduleSource{}, false
 	}
-	repo, sub, _ := strings.Cut(rest, "//")
-	repo = strings.TrimSuffix(strings.TrimSuffix(repo, "/"), ".git")
-	name := strings.ToLower(host) + "/" + repo
-	if sub = strings.Trim(sub, "/"); sub != "" {
-		name += "//" + sub
+	repository, subdirectory, _ := strings.Cut(rest, "//")
+	repository = strings.TrimSuffix(strings.TrimSuffix(repository, "/"), ".git")
+	name := strings.ToLower(host) + "/" + repository
+	if subdirectory = strings.Trim(subdirectory, "/"); subdirectory != "" {
+		name += "//" + subdirectory
 	}
-	lower := strings.ToLower(repo)
+	lower := strings.ToLower(repository)
 	archive := getter == "s3" || getter == "gcs" || getter == "http" || getter == "https" ||
 		q.Get("archive") != "" || strings.HasSuffix(lower, ".zip") || strings.HasSuffix(lower, ".tar.gz") ||
 		strings.HasSuffix(lower, ".tgz") || strings.HasSuffix(lower, ".tar.bz2") || strings.HasSuffix(lower, ".tar.xz")
@@ -153,7 +153,7 @@ func remoteSource(s string) (moduleSource, bool) {
 		// real location from the page: its name here is the address itself.
 		archive = true
 	}
-	return moduleSource{pkg: name, ref: q.Get("ref"), origin: getter + prefixIf(getter) + origin, archive: archive}, true
+	return moduleSource{packageName: name, reference: q.Get("ref"), origin: getter + prefixIf(getter) + origin, archive: archive}, true
 }
 
 func prefixIf(getter string) string {

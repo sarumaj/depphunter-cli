@@ -18,32 +18,32 @@ import (
 // project is what the manifests of one directory declare together: a deps.edn beside
 // a shadow-cljs.edn, a bb.edn and a package.json is one project.
 type project struct {
-	dir     string   // "." for the repository's root
-	files   []string // its manifests, sorted
-	name    string   // its own artifact (Leiningen's defproject)
-	roots   []string // source paths, repository-relative
-	deps    map[string]coord
-	order   []string          // artifacts in declaration order
-	npm     map[string]string // package.json and deps.cljs npm dependencies
-	bb      bool              // a bb.edn is among its manifests
-	bbRoots []string          // bb.edn's :paths, repository-relative
-	other   bool              // a manifest other than bb.edn is
-	local   []string          // directories of its :local/root dependencies
+	directory    string   // "." for the repository's root
+	files        []string // its manifests, sorted
+	name         string   // its own artifact (Leiningen's defproject)
+	roots        []string // source paths, repository-relative
+	dependencies map[string]coordinate
+	order        []string          // artifacts in declaration order
+	npm          map[string]string // package.json and deps.cljs npm dependencies
+	bb           bool              // a bb.edn is among its manifests
+	bbRoots      []string          // bb.edn's :paths, repository-relative
+	other        bool              // a manifest other than bb.edn is
+	local        []string          // directories of its :local/root dependencies
 }
 
 type resolver struct {
-	files    map[string]bool
-	projects map[string]*project
-	dirs     []string                    // project directories, shallowest first
-	byNS     map[string][]string         // namespace -> the files declaring it
-	byJava   map[string][]string         // "Name.java" -> project paths
-	coords   map[string]map[string]coord // manifest path -> lib -> its coordinate
-	roots    map[string]bool             // first segments of the project's namespaces
-	named    map[string]*project         // own artifact -> project (defproject names)
-	gov      map[string][]*project       // directory -> its governing projects
-	byStem   map[string][]string         // source path without its extension -> sources
-	memo     sync.Map                    // resolutions shared by the files of a directory
-	classes  sync.Map                    // governing project dirs -> *classMatcher
+	files             map[string]bool
+	projects          map[string]*project
+	directories       []string                         // project directories, shallowest first
+	byNS              map[string][]string              // namespace -> the files declaring it
+	byJava            map[string][]string              // "Name.java" -> project paths
+	coordinates       map[string]map[string]coordinate // manifest path -> lib -> its coordinate
+	roots             map[string]bool                  // first segments of the project's namespaces
+	named             map[string]*project              // own artifact -> project (defproject names)
+	governingProjects map[string][]*project            // directory -> its governing projects
+	byStem            map[string][]string              // source path without its extension -> sources
+	memo              sync.Map                         // resolutions shared by the files of a directory
+	classes           sync.Map                         // governing project dirs -> *classMatcher
 }
 
 // classMatcher is the Java plugin's artifact matcher over the Maven artifacts a set
@@ -56,74 +56,74 @@ type classMatcher struct {
 func newResolver(_ string, all []*scan.File) *resolver {
 	r := &resolver{
 		files: map[string]bool{}, projects: map[string]*project{}, byNS: map[string][]string{},
-		byJava: map[string][]string{}, coords: map[string]map[string]coord{}, roots: map[string]bool{},
+		byJava: map[string][]string{}, coordinates: map[string]map[string]coordinate{}, roots: map[string]bool{},
 		byStem: map[string][]string{},
 	}
-	proj := func(dir string) *project {
-		p := r.projects[dir]
+	projectAt := func(directory string) *project {
+		p := r.projects[directory]
 		if p == nil {
-			p = &project{dir: dir, deps: map[string]coord{}, npm: map[string]string{}}
-			r.projects[dir] = p
+			p = &project{directory: directory, dependencies: map[string]coordinate{}, npm: map[string]string{}}
+			r.projects[directory] = p
 		}
 		return p
 	}
 	readable := func(f *scan.File) bool { return !f.Binary && !f.TooLarge && f.Size <= lang.MaxParseSize }
 	for _, f := range all {
 		r.files[f.Path] = true
-		base, dir := path.Base(f.Path), path.Dir(f.Path)
+		base, directory := path.Base(f.Path), path.Dir(f.Path)
 		switch {
 		case !readable(f) || skipped(f.Path):
 		case manifestNames[base]:
-			src, err := os.ReadFile(f.Abs)
+			source, err := os.ReadFile(f.AbsolutePath)
 			if err != nil {
 				continue
 			}
-			r.addManifest(proj(dir), f.Path, readManifest(base, src))
+			r.addManifest(projectAt(directory), f.Path, readManifest(base, source))
 		case base == "package.json" || base == "deps.cljs":
-			if src, err := os.ReadFile(f.Abs); err == nil {
-				readNPM(proj(dir), base, src)
+			if source, err := os.ReadFile(f.AbsolutePath); err == nil {
+				readNPM(projectAt(directory), base, source)
 			}
-		case sourceExts[path.Ext(base)] || f.Interpreter == "bb" && scan.Language(f.Path) == "":
-			if src, err := os.ReadFile(f.Abs); err == nil {
+		case sourceExtensions[path.Ext(base)] || f.Interpreter == "bb" && scan.Language(f.Path) == "":
+			if source, err := os.ReadFile(f.AbsolutePath); err == nil {
 				stem := strings.TrimSuffix(f.Path, path.Ext(f.Path))
 				r.byStem[stem] = append(r.byStem[stem], f.Path)
-				if ns := nsName(src); ns != "" {
-					r.byNS[ns] = append(r.byNS[ns], f.Path)
-					seg, _, _ := strings.Cut(ns, ".")
-					r.roots[seg] = true
+				if namespace := namespaceName(source); namespace != "" {
+					r.byNS[namespace] = append(r.byNS[namespace], f.Path)
+					segment, _, _ := strings.Cut(namespace, ".")
+					r.roots[segment] = true
 				}
 			}
 		case strings.HasSuffix(base, ".java"):
 			r.byJava[base] = append(r.byJava[base], f.Path)
 		}
 	}
-	for dir, p := range r.projects {
+	for directory, p := range r.projects {
 		// A directory with only a package.json is no Clojure project.
 		if len(p.files) == 0 {
-			delete(r.projects, dir)
+			delete(r.projects, directory)
 			continue
 		}
-		r.dirs = append(r.dirs, dir)
+		r.directories = append(r.directories, directory)
 		sort.Strings(p.files)
 	}
-	sort.Slice(r.dirs, func(i, j int) bool {
-		a, b := r.dirs[i], r.dirs[j]
-		if da, db := depth(a), depth(b); da != db {
-			return da < db
+	sort.Slice(r.directories, func(i, j int) bool {
+		a, b := r.directories[i], r.directories[j]
+		if da, database := depth(a), depth(b); da != database {
+			return da < database
 		}
 		return a < b
 	})
 	for _, files := range r.byNS {
 		sort.Strings(files)
 	}
-	r.gov = map[string][]*project{}
+	r.governingProjects = map[string][]*project{}
 	for _, f := range all {
-		if d := path.Dir(f.Path); r.gov[d] == nil {
-			r.gov[d] = r.governingDir(d)
+		if d := path.Dir(f.Path); r.governingProjects[d] == nil {
+			r.governingProjects[d] = r.governingDirectory(d)
 		}
 	}
 	r.named = map[string]*project{}
-	for _, d := range r.dirs {
+	for _, d := range r.directories {
 		if p := r.projects[d]; p.name != "" && r.named[p.name] == nil {
 			r.named[p.name] = p
 		}
@@ -131,11 +131,11 @@ func newResolver(_ string, all []*scan.File) *resolver {
 	return r
 }
 
-func depth(dir string) int {
-	if dir == "." {
+func depth(directory string) int {
+	if directory == "." {
 		return 0
 	}
-	return strings.Count(dir, "/") + 1
+	return strings.Count(directory, "/") + 1
 }
 
 func (r *resolver) addManifest(p *project, file string, m *manifest) {
@@ -143,7 +143,7 @@ func (r *resolver) addManifest(p *project, file string, m *manifest) {
 	if m.kind == bbEdn {
 		p.bb = true
 		for _, root := range m.paths {
-			p.bbRoots = append(p.bbRoots, path.Join(p.dir, root))
+			p.bbRoots = append(p.bbRoots, path.Join(p.directory, root))
 		}
 	} else {
 		p.other = true
@@ -152,27 +152,27 @@ func (r *resolver) addManifest(p *project, file string, m *manifest) {
 		p.name = artifact(m.name)
 	}
 	for _, root := range m.paths {
-		root = path.Join(p.dir, root)
+		root = path.Join(p.directory, root)
 		if !strings.HasPrefix(root, "../") && root != ".." && !contains(p.roots, root) {
 			p.roots = append(p.roots, root)
 		}
 	}
-	libs := map[string]coord{}
-	for _, d := range m.deps {
-		if _, ok := libs[d.lib]; !ok {
-			libs[d.lib] = d
+	libraries := map[string]coordinate{}
+	for _, d := range m.dependencies {
+		if _, ok := libraries[d.library]; !ok {
+			libraries[d.library] = d
 		}
-		a := artifact(d.lib)
-		if _, ok := p.deps[a]; ok || d.plugin {
+		a := artifact(d.library)
+		if _, ok := p.dependencies[a]; ok || d.plugin {
 			continue // a plugin extends the build tool, not the code's classpath
 		}
-		p.deps[a] = d
+		p.dependencies[a] = d
 		p.order = append(p.order, a)
 		if d.local != "" {
-			p.local = append(p.local, path.Join(p.dir, d.local))
+			p.local = append(p.local, path.Join(p.directory, d.local))
 		}
 	}
-	r.coords[file] = libs
+	r.coordinates[file] = libraries
 }
 
 func contains(list []string, s string) bool {
@@ -186,13 +186,13 @@ func contains(list []string, s string) bool {
 
 // readNPM reads the npm dependencies ClojureScript builds install: package.json's
 // dependencies and devDependencies, a library's deps.cljs :npm-deps.
-func readNPM(p *project, base string, src []byte) {
+func readNPM(p *project, base string, source []byte) {
 	if base == "deps.cljs" {
-		forms := edn.Read(src)
+		forms := edn.Read(source)
 		if len(forms) > 0 {
-			if deps := forms[0].Get("npm-deps"); deps != nil && deps.Kind == edn.Map {
-				for i := 0; i+1 < len(deps.Kids); i += 2 {
-					k, v := deps.Kids[i], deps.Kids[i+1]
+			if dependencies := forms[0].Get("npm-deps"); dependencies != nil && dependencies.Kind == edn.Map {
+				for i := 0; i+1 < len(dependencies.Kids); i += 2 {
+					k, v := dependencies.Kids[i], dependencies.Kids[i+1]
 					if (k.Kind == edn.String || k.Kind == edn.Symbol || k.Kind == edn.Keyword) && v.Kind == edn.String {
 						if _, ok := p.npm[k.Text]; !ok {
 							p.npm[k.Text] = v.Text
@@ -203,14 +203,14 @@ func readNPM(p *project, base string, src []byte) {
 		}
 		return
 	}
-	var pkg struct {
+	var packageName struct {
 		Dependencies    map[string]string `json:"dependencies"`
 		DevDependencies map[string]string `json:"devDependencies"`
 	}
-	if json.Unmarshal(src, &pkg) != nil {
+	if json.Unmarshal(source, &packageName) != nil {
 		return
 	}
-	for _, m := range []map[string]string{pkg.Dependencies, pkg.DevDependencies} {
+	for _, m := range []map[string]string{packageName.Dependencies, packageName.DevDependencies} {
 		for k, v := range m {
 			if _, ok := p.npm[k]; !ok {
 				p.npm[k] = v
@@ -225,35 +225,35 @@ func readNPM(p *project, base string, src []byte) {
 //
 // Implements: REQ-CLOJURE-004
 func (r *resolver) governing(file string) []*project {
-	if gov, ok := r.gov[path.Dir(file)]; ok {
-		return gov
+	if governing, ok := r.governingProjects[path.Dir(file)]; ok {
+		return governing
 	}
-	return r.governingDir(path.Dir(file))
+	return r.governingDirectory(path.Dir(file))
 }
 
-func (r *resolver) governingDir(start string) []*project {
+func (r *resolver) governingDirectory(start string) []*project {
 	var out []*project
 	seen := map[string]bool{}
-	var visit func(dir string, hops int)
-	visit = func(dir string, hops int) {
-		p := r.projects[dir]
-		if p == nil || seen[dir] || hops > 8 {
+	var visit func(directory string, hops int)
+	visit = func(directory string, hops int) {
+		p := r.projects[directory]
+		if p == nil || seen[directory] || hops > 8 {
 			return
 		}
-		seen[dir] = true
+		seen[directory] = true
 		out = append(out, p)
 		for _, l := range p.local {
 			visit(l, hops+1)
 		}
 	}
-	for dir := start; ; dir = path.Dir(dir) {
-		visit(dir, 0)
-		if dir == "." || dir == "/" {
+	for directory := start; ; directory = path.Dir(directory) {
+		visit(directory, 0)
+		if directory == "." || directory == "/" {
 			break
 		}
 	}
 	if len(out) == 0 {
-		for _, d := range r.dirs {
+		for _, d := range r.directories {
 			out = append(out, r.projects[d])
 		}
 	}
@@ -261,42 +261,42 @@ func (r *resolver) governingDir(start string) []*project {
 }
 
 // Implements: REQ-CLOJURE-004, REQ-CLOJURE-005, REQ-CLOJURE-006, REQ-CLOJURE-007
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	kind, _, _ := strings.Cut(imp.Name, ":")
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	kind, _, _ := strings.Cut(rawImport.Name, ":")
 	switch kind {
-	case kindDep, kindPlugin:
-		c, ok := r.coords[file][imp.Module]
+	case kindDependency, kindPlugin:
+		c, ok := r.coordinates[file][rawImport.Module]
 		if !ok {
 			return lang.Target{}
 		}
-		return r.coordTarget(path.Dir(file), c)
+		return r.coordinateTarget(path.Dir(file), c)
 	case kindNS:
-		return r.namespace(file, imp.Module)
+		return r.namespace(file, rawImport.Module)
 	case kindNPM:
-		return r.npm(file, imp.Module, false)
+		return r.npm(file, rawImport.Module, false)
 	case kindClass:
-		return r.class(file, imp.Module)
+		return r.class(file, rawImport.Module)
 	case kindLoad, kindLoadFile:
-		return r.load(file, imp.Module, kind == kindLoadFile)
+		return r.load(file, rawImport.Module, kind == kindLoadFile)
 	}
 	return lang.Target{}
 }
 
-// coordTarget is where a manifest's coordinate points: a project directory for
+// coordinateTarget is where a manifest's coordinate points: a project directory for
 // :local/root, a Maven artifact otherwise - pinned by an exact version, or for a git
 // dependency by a full :git/sha (a tag alone pins nothing: it can be moved).
 //
 // Implements: REQ-CLOJURE-008
-func (r *resolver) coordTarget(dir string, c coord) lang.Target {
+func (r *resolver) coordinateTarget(directory string, c coordinate) lang.Target {
 	switch {
 	case c.local != "":
-		p := path.Join(dir, c.local)
+		p := path.Join(directory, c.local)
 		if q := r.projects[p]; q != nil {
 			return lang.Target{Local: q.files[0]}
 		}
 		return lang.Target{}
 	case c.gitURL != "":
-		t := lang.Target{Ecosystem: ecoMaven, Package: artifact(c.lib), Origin: c.gitURL}
+		t := lang.Target{Ecosystem: ecosystemMaven, Package: artifact(c.library), Origin: c.gitURL}
 		switch {
 		case c.sha != "":
 			t.Version, t.Pinned = c.sha, lang.Commit(c.sha)
@@ -310,18 +310,18 @@ func (r *resolver) coordTarget(dir string, c coord) lang.Target {
 		}
 		return t
 	}
-	if q := r.named[artifact(c.lib)]; q != nil {
+	if q := r.named[artifact(c.library)]; q != nil {
 		return lang.Target{Local: q.files[0]} // built in this repository (a Leiningen monorepo)
 	}
 	pinned := lang.PinnedMaven(c.version)
-	return lang.Target{Ecosystem: ecoMaven, Package: artifact(c.lib), Version: c.version, Pinned: pinned,
+	return lang.Target{Ecosystem: ecosystemMaven, Package: artifact(c.library), Version: c.version, Pinned: pinned,
 		Floating: c.version != "" && !pinned}
 }
 
-// extPrefs are the source extensions a file of a platform loads, preferred first:
+// extensionPreferences are the source extensions a file of a platform loads, preferred first:
 // Clojure .clj, ClojureScript .cljs (and .clj for its macros), both .cljc (and a
 // .cljc's reader conditionals reach either platform's files), babashka .bb.
-func extPrefs(file string) []string {
+func extensionPreferences(file string) []string {
 	switch path.Ext(file) {
 	case ".cljs":
 		return []string{".cljs", ".cljc", ".clj"} // .clj: a namespace of macros
@@ -334,21 +334,21 @@ func extPrefs(file string) []string {
 }
 
 // localNS finds the project file defining a namespace: a.b-c at a/b_c.<ext> under
-// a governing project's source paths, else any file whose ns form declares it.
+// a governing project's source paths, else any file whose namespace form declares it.
 //
 // Implements: REQ-CLOJURE-004
-func (r *resolver) localNS(file, ns string, gov []*project) string {
-	exts := extPrefs(file)
-	rel := strings.ReplaceAll(strings.ReplaceAll(ns, ".", "/"), "-", "_")
-	for _, p := range gov {
+func (r *resolver) localNS(file, namespace string, governing []*project) string {
+	extensions := extensionPreferences(file)
+	relative := strings.ReplaceAll(strings.ReplaceAll(namespace, ".", "/"), "-", "_")
+	for _, p := range governing {
 		for _, root := range p.roots {
-			stem := rel
+			stem := relative
 			if root != "." {
-				stem = root + "/" + rel
+				stem = root + "/" + relative
 			}
 			if files := r.byStem[stem]; files != nil {
-				for _, ext := range exts {
-					if c := stem + ext; c != file && contains(files, c) {
+				for _, extension := range extensions {
+					if c := stem + extension; c != file && contains(files, c) {
 						return c
 					}
 				}
@@ -356,21 +356,21 @@ func (r *resolver) localNS(file, ns string, gov []*project) string {
 		}
 	}
 	best, bestRank := "", 1<<30
-	for _, c := range r.byNS[ns] {
+	for _, c := range r.byNS[namespace] {
 		if c == file {
 			continue
 		}
-		rank := len(exts)
-		for i, ext := range exts {
-			if strings.HasSuffix(c, ext) {
+		rank := len(extensions)
+		for i, extension := range extensions {
+			if strings.HasSuffix(c, extension) {
 				rank = i
 			}
 		}
-		if rank == len(exts) && path.Ext(c) != "" {
+		if rank == len(extensions) && path.Ext(c) != "" {
 			continue // another platform's file
 		}
 		rank *= 4
-		if !under(c, gov) {
+		if !under(c, governing) {
 			rank += 2
 		}
 		if rank < bestRank {
@@ -380,9 +380,9 @@ func (r *resolver) localNS(file, ns string, gov []*project) string {
 	return best
 }
 
-func under(file string, gov []*project) bool {
-	for _, p := range gov {
-		if p.dir == "." || strings.HasPrefix(file, p.dir+"/") {
+func under(file string, governing []*project) bool {
+	for _, p := range governing {
+		if p.directory == "." || strings.HasPrefix(file, p.directory+"/") {
 			return true
 		}
 	}
@@ -394,21 +394,21 @@ func under(file string, gov []*project) bool {
 // ClojureScript clojure.spec.alpha, which is cljs.spec.alpha there.
 //
 // Implements: REQ-CLOJURE-005
-func std(file, ns string) (string, bool) {
+func std(file, namespace string) (string, bool) {
 	switch {
-	case clojureStd[ns]:
-		return ns, true
-	case ns == "goog" || strings.HasPrefix(ns, "goog."):
+	case clojureStd[namespace]:
+		return namespace, true
+	case namespace == "goog" || strings.HasPrefix(namespace, "goog."):
 		return "goog", true
-	case strings.HasPrefix(ns, "cljs."):
-		for k := ns; k != ""; k = parentNS(k) {
+	case strings.HasPrefix(namespace, "cljs."):
+		for k := namespace; k != ""; k = parentNS(k) {
 			if _, ok := cljsNotStd[k]; ok {
 				return "", false
 			}
 		}
-		return ns, true
-	case path.Ext(file) == ".cljs" && strings.HasPrefix(ns, "clojure.spec."):
-		return ns, true
+		return namespace, true
+	case path.Ext(file) == ".cljs" && strings.HasPrefix(namespace, "clojure.spec."):
+		return namespace, true
 	}
 	return "", false
 }
@@ -417,14 +417,14 @@ func std(file, ns string) (string, bool) {
 // classpath, declared or not.
 var clojureOwn = map[string]bool{"org.clojure:spec.alpha": true, "org.clojure:core.specs.alpha": true}
 
-func (r *resolver) bbContext(file string, gov []*project) bool {
+func (r *resolver) bbContext(file string, governing []*project) bool {
 	switch {
 	case path.Ext(file) == ".bb", path.Base(file) == bbEdn, path.Ext(file) == "":
 		return true
-	case len(gov) > 0 && gov[0].bb && !gov[0].other:
+	case len(governing) > 0 && governing[0].bb && !governing[0].other:
 		return true
 	}
-	for _, p := range gov {
+	for _, p := range governing {
 		for _, root := range p.bbRoots {
 			if strings.HasPrefix(file, root+"/") {
 				return true // on bb.edn's :paths: babashka runs it
@@ -437,80 +437,80 @@ func (r *resolver) bbContext(file string, gov []*project) bool {
 // namespace resolves a required namespace.
 //
 // Implements: REQ-CLOJURE-004, REQ-CLOJURE-005, REQ-CLOJURE-007
-func (r *resolver) namespace(file, ns string) lang.Target {
-	if contains(r.byNS[ns], file) {
+func (r *resolver) namespace(file, namespace string) lang.Target {
+	if contains(r.byNS[namespace], file) {
 		// Its own namespace: in ClojureScript, the macros of the same name (a .clj
 		// beside the .cljs, or the .cljc itself, which is no edge).
-		if p := r.localNS(file, ns, r.governing(file)); p != "" {
+		if p := r.localNS(file, namespace, r.governing(file)); p != "" {
 			return lang.Target{Local: p}
 		}
 		return lang.Target{}
 	}
 	// Everything below depends on the file's directory, extension and name only
-	// through the governing projects, extPrefs and bbContext.
-	key := path.Dir(file) + "|" + path.Ext(file) + "|" + strconv.FormatBool(path.Base(file) == bbEdn) + "|" + ns
+	// through the governing projects, extensionPreferences and bbContext.
+	key := path.Dir(file) + "|" + path.Ext(file) + "|" + strconv.FormatBool(path.Base(file) == bbEdn) + "|" + namespace
 	if t, ok := r.memo.Load(key); ok {
 		return t.(lang.Target)
 	}
-	t := r.resolveNS(file, ns)
+	t := r.resolveNS(file, namespace)
 	r.memo.Store(key, t)
 	return t
 }
 
-func (r *resolver) resolveNS(file, ns string) lang.Target {
-	gov := r.governing(file)
-	if p := r.localNS(file, ns, gov); p != "" {
+func (r *resolver) resolveNS(file, namespace string) lang.Target {
+	governing := r.governing(file)
+	if p := r.localNS(file, namespace, governing); p != "" {
 		return lang.Target{Local: p}
 	}
-	if pkg, ok := std(file, ns); ok {
-		return lang.Target{Ecosystem: ecoStd, Package: pkg}
+	if packageName, ok := std(file, namespace); ok {
+		return lang.Target{Ecosystem: ecosystemStd, Package: packageName}
 	}
-	a := contrib(ns)
+	a := contrib(namespace)
 	if a == "" {
-		a = known(ns)
+		a = known(namespace)
 	}
 	if clojureOwn[a] {
-		if t, ok := r.lookup(a, gov); ok {
+		if t, ok := r.lookup(a, governing); ok {
 			return t
 		}
-		return lang.Target{Ecosystem: ecoMaven, Package: a}
+		return lang.Target{Ecosystem: ecosystemMaven, Package: a}
 	}
-	if t, ok := r.declared(ns, gov, 50); ok {
+	if t, ok := r.declared(namespace, governing, 50); ok {
 		return t
 	}
-	if r.bbContext(file, gov) {
+	if r.bbContext(file, governing) {
 		for _, b := range babashkaBuiltins {
-			if ns == strings.TrimSuffix(b, ".") || strings.HasSuffix(b, ".") && strings.HasPrefix(ns, b) {
-				return lang.Target{Ecosystem: ecoStd, Package: "babashka"}
+			if namespace == strings.TrimSuffix(b, ".") || strings.HasSuffix(b, ".") && strings.HasPrefix(namespace, b) {
+				return lang.Target{Ecosystem: ecosystemStd, Package: "babashka"}
 			}
 		}
 	}
-	if ext := path.Ext(file); ext == ".cljs" || ext == ".cljc" {
-		if t := r.npm(file, ns, true); t.Package != "" {
+	if extension := path.Ext(file); extension == ".cljs" || extension == ".cljc" {
+		if t := r.npm(file, namespace, true); t.Package != "" {
 			return t // shadow-cljs: (:require [react :as r]) names the npm package
 		}
 	}
-	seg, _, _ := strings.Cut(ns, ".")
-	if a == "" && !r.roots[seg] {
+	segment, _, _ := strings.Cut(namespace, ".")
+	if a == "" && !r.roots[segment] {
 		// Only the group's name in common (datomic.api from com.datomic/datomic-pro):
 		// not for a namespace the table knows, nor one under the project's own root.
-		if t, ok := r.declared(ns, gov, 1); ok {
+		if t, ok := r.declared(namespace, governing, 1); ok {
 			return t
 		}
 	}
-	if r.roots[seg] && a == "" {
+	if r.roots[segment] && a == "" {
 		return lang.Target{} // the project's own namespace, not in the repository (generated, removed)
 	}
 	if a == "" {
-		a = guess(ns)
+		a = guess(namespace)
 	}
-	return lang.Target{Ecosystem: ecoMaven, Package: a, Unresolved: true}
+	return lang.Target{Ecosystem: ecosystemMaven, Package: a, Unresolved: true}
 }
 
 // guess names the artifact of a namespace nothing declares and no table knows:
 // com.climate.claypoole is com.climate:claypoole, foo.core foo:foo.
-func guess(ns string) string {
-	segments := strings.Split(ns, ".")
+func guess(namespace string) string {
+	segments := strings.Split(namespace, ".")
 	switch segments[0] {
 	case "com", "org", "net", "io", "me", "dev", "tech", "ai", "co", "de", "nl", "se", "fi", "ch", "uk":
 		if len(segments) >= 3 {
@@ -521,10 +521,10 @@ func guess(ns string) string {
 }
 
 // lookup is a governing project's declaration of an artifact.
-func (r *resolver) lookup(a string, gov []*project) (lang.Target, bool) {
-	for _, p := range gov {
-		if c, ok := p.deps[a]; ok {
-			return r.coordTarget(p.dir, c), true
+func (r *resolver) lookup(a string, governing []*project) (lang.Target, bool) {
+	for _, p := range governing {
+		if c, ok := p.dependencies[a]; ok {
+			return r.coordinateTarget(p.directory, c), true
 		}
 	}
 	return lang.Target{}, false
@@ -536,30 +536,30 @@ func (r *resolver) lookup(a string, gov []*project) (lang.Target, bool) {
 // are never matched by name: their namespaces are the std island's.
 //
 // Implements: REQ-CLOJURE-007
-func (r *resolver) declared(ns string, gov []*project, min int) (lang.Target, bool) {
-	for _, a := range []string{contrib(ns), known(ns)} {
+func (r *resolver) declared(namespace string, governing []*project, min int) (lang.Target, bool) {
+	for _, a := range []string{contrib(namespace), known(namespace)} {
 		if a != "" {
-			if t, ok := r.lookup(a, gov); ok {
+			if t, ok := r.lookup(a, governing); ok {
 				return t, true
 			}
 		}
 	}
 	best, bestScore := "", 0
-	var bestProj *project
-	for _, p := range gov {
+	var bestProject *project
+	for _, p := range governing {
 		for _, a := range p.order {
 			if a == p.name || a == "org.clojure:clojure" || a == "org.clojure:clojurescript" {
 				continue
 			}
-			if s := score(ns, a); s > bestScore || s == bestScore && s > 0 && a < best && bestProj == p {
-				best, bestScore, bestProj = a, s, p
+			if s := score(namespace, a); s > bestScore || s == bestScore && s > 0 && a < best && bestProject == p {
+				best, bestScore, bestProject = a, s, p
 			}
 		}
 	}
 	if bestScore < min || bestScore == 0 {
 		return lang.Target{}, false
 	}
-	return r.coordTarget(bestProj.dir, bestProj.deps[best]), true
+	return r.coordinateTarget(bestProject.directory, bestProject.dependencies[best]), true
 }
 
 // genericNames are artifact names too common as namespace segments to identify one.
@@ -602,9 +602,9 @@ func fold(s string) string {
 //   - the first segment is the group's last segment and the second is generic or
 //     the artifact carries the group's name (datomic.api from
 //     com.datomic/datomic-pro): 10, 12 for the group's main artifact.
-func score(ns, art string) int {
+func score(namespace, art string) int {
 	g, a, _ := strings.Cut(art, ":")
-	segments := strings.Split(ns, ".")
+	segments := strings.Split(namespace, ".")
 	fa := fold(a)
 	for k := len(segments); k >= 1; k-- {
 		if fold(strings.Join(segments[:k], ".")) == fa {
@@ -639,16 +639,16 @@ func score(ns, art string) int {
 		}
 	}
 	words := strings.FieldsFunc(a, func(c rune) bool { return c == '-' || c == '.' || c == '_' })
-	nsWords := map[string]bool{}
+	namespaceWords := map[string]bool{}
 	for _, s := range segments {
 		for _, w := range strings.FieldsFunc(s, func(c rune) bool { return c == '-' || c == '_' }) {
-			nsWords[w] = true
+			namespaceWords[w] = true
 		}
 	}
-	if len(words) > 1 && strings.HasPrefix(ns, words[0]) {
+	if len(words) > 1 && strings.HasPrefix(namespace, words[0]) {
 		all := true
 		for _, w := range words {
-			all = all && nsWords[w]
+			all = all && namespaceWords[w]
 		}
 		if all {
 			return 50 + len(words)
@@ -694,26 +694,26 @@ func (r *resolver) npm(file, spec string, onlyDeclared bool) lang.Target {
 			return lang.Target{}
 		}
 		p := path.Join(path.Dir(file), spec)
-		for _, ext := range []string{"", ".js", ".mjs", ".cjs", ".ts", "/index.js"} {
-			if r.files[p+ext] {
-				return lang.Target{Local: p + ext}
+		for _, extension := range []string{"", ".js", ".mjs", ".cjs", ".ts", "/index.js"} {
+			if r.files[p+extension] {
+				return lang.Target{Local: p + extension}
 			}
 		}
 		return lang.Target{}
 	}
 	name := npmName(strings.TrimPrefix(spec, "node:"))
 	if !onlyDeclared && (strings.HasPrefix(spec, "node:") || jsBuiltins[name]) {
-		return lang.Target{Ecosystem: ecoNode, Package: name}
+		return lang.Target{Ecosystem: ecosystemNode, Package: name}
 	}
 	for _, p := range r.governing(file) {
 		if v, ok := p.npm[name]; ok {
-			return lang.Target{Ecosystem: ecoNPM, Package: name, Version: v, Pinned: lang.PinnedSemver(v)}
+			return lang.Target{Ecosystem: ecosystemNPM, Package: name, Version: v, Pinned: lang.PinnedSemver(v)}
 		}
 	}
 	if onlyDeclared {
 		return lang.Target{}
 	}
-	return lang.Target{Ecosystem: ecoNPM, Package: name, Unresolved: true}
+	return lang.Target{Ecosystem: ecosystemNPM, Package: name, Unresolved: true}
 }
 
 // class resolves an imported class: the JDK's, Clojure's own clojure.lang, the
@@ -728,57 +728,57 @@ func (r *resolver) npm(file, spec string, onlyDeclared bool) lang.Target {
 // routinely (quartzite's org.quartz), and a guessed node for each would be noise.
 //
 // Implements: REQ-CLOJURE-006
-func (r *resolver) class(file, cls string) lang.Target {
-	key := "class|" + path.Dir(file) + "|" + path.Ext(file) + "|" + cls
+func (r *resolver) class(file, class string) lang.Target {
+	key := "class|" + path.Dir(file) + "|" + path.Ext(file) + "|" + class
 	if t, ok := r.memo.Load(key); ok {
 		return t.(lang.Target)
 	}
-	t := r.resolveClass(file, cls)
+	t := r.resolveClass(file, class)
 	r.memo.Store(key, t)
 	return t
 }
 
-func (r *resolver) resolveClass(file, cls string) lang.Target {
-	if t, ok := java.JDK(cls); ok {
+func (r *resolver) resolveClass(file, class string) lang.Target {
+	if t, ok := java.JDK(class); ok {
 		return t
 	}
 	switch {
-	case strings.HasPrefix(cls, "clojure.lang."):
-		return lang.Target{Ecosystem: ecoStd, Package: "clojure.lang"}
-	case strings.HasPrefix(cls, "goog."):
-		return lang.Target{Ecosystem: ecoStd, Package: "goog"}
+	case strings.HasPrefix(class, "clojure.lang."):
+		return lang.Target{Ecosystem: ecosystemStd, Package: "clojure.lang"}
+	case strings.HasPrefix(class, "goog."):
+		return lang.Target{Ecosystem: ecosystemStd, Package: "goog"}
 	}
-	pkg, name := parentNS(cls), cls[strings.LastIndexByte(cls, '.')+1:]
-	gov := r.governing(file)
-	if pkg != "" {
-		if p := r.localNS(file, strings.ReplaceAll(pkg, "_", "-"), gov); p != "" {
+	packageName, name := parentNS(class), class[strings.LastIndexByte(class, '.')+1:]
+	governing := r.governing(file)
+	if packageName != "" {
+		if p := r.localNS(file, strings.ReplaceAll(packageName, "_", "-"), governing); p != "" {
 			return lang.Target{Local: p} // deftype/defrecord compile to classes of their namespace
 		}
 	}
-	rel := strings.ReplaceAll(cls, ".", "/") + ".java"
+	relative := strings.ReplaceAll(class, ".", "/") + ".java"
 	for _, p := range r.byJava[name+".java"] {
-		if p == rel || strings.HasSuffix(p, "/"+rel) {
+		if p == relative || strings.HasSuffix(p, "/"+relative) {
 			return lang.Target{Local: p}
 		}
 	}
-	if t, ok := r.javaArtifact(cls, gov); ok {
+	if t, ok := r.javaArtifact(class, governing); ok {
 		return t
 	}
 	best, bestScore := "", 0
-	var bestProj *project
-	for _, p := range gov {
+	var bestProject *project
+	for _, p := range governing {
 		for _, a := range p.order {
-			if s := classScore(cls, a); s > bestScore || s == bestScore && s > 0 && bestProj == p && a < best {
-				best, bestScore, bestProj = a, s, p
+			if s := classScore(class, a); s > bestScore || s == bestScore && s > 0 && bestProject == p && a < best {
+				best, bestScore, bestProject = a, s, p
 			}
 		}
 	}
 	if bestScore > 0 {
-		return r.coordTarget(bestProj.dir, bestProj.deps[best])
+		return r.coordinateTarget(bestProject.directory, bestProject.dependencies[best])
 	}
 	// A class a library's deftype or defrecord compiles to (methodical.interface.Cache).
-	if pkg != "" {
-		if t, ok := r.declared(strings.ReplaceAll(pkg, "_", "-"), gov, 50); ok {
+	if packageName != "" {
+		if t, ok := r.declared(strings.ReplaceAll(packageName, "_", "-"), governing, 50); ok {
 			return t
 		}
 	}
@@ -792,41 +792,41 @@ func (r *resolver) resolveClass(file, cls string) lang.Target {
 // share.
 //
 // Implements: REQ-CLOJURE-006
-func (r *resolver) javaArtifact(cls string, gov []*project) (lang.Target, bool) {
-	if len(gov) == 0 {
+func (r *resolver) javaArtifact(class string, governing []*project) (lang.Target, bool) {
+	if len(governing) == 0 {
 		return lang.Target{}, false
 	}
-	dirs := make([]string, len(gov))
-	for i, p := range gov {
-		dirs[i] = p.dir
+	directories := make([]string, len(governing))
+	for i, p := range governing {
+		directories[i] = p.directory
 	}
-	v, _ := r.classes.LoadOrStore(strings.Join(dirs, "\x00"), &classMatcher{})
-	cm := v.(*classMatcher)
-	cm.once.Do(func() {
+	v, _ := r.classes.LoadOrStore(strings.Join(directories, "\x00"), &classMatcher{})
+	matcher := v.(*classMatcher)
+	matcher.once.Do(func() {
 		// Clojure's own root packages are no artifact's: org.clojure/clojure does not
 		// ship clojure.core.async's deftypes.
-		cm.arts = java.NewArtifacts(java.Language{Prefixes: []string{"clojure.", "cljs."}})
-		for _, p := range gov {
-			for _, ga := range p.order {
-				g, a, _ := strings.Cut(ga, ":")
-				cm.arts.Declare(g, a, p.deps[ga].version)
+		matcher.arts = java.NewArtifacts(java.Language{Prefixes: []string{"clojure.", "cljs."}})
+		for _, p := range governing {
+			for _, groupArtifact := range p.order {
+				g, a, _ := strings.Cut(groupArtifact, ":")
+				matcher.arts.Declare(g, a, p.dependencies[groupArtifact].version)
 			}
 		}
-		cm.arts.Finish()
+		matcher.arts.Finish()
 	})
-	m, ok := cm.arts.Match(cls)
+	m, ok := matcher.arts.Match(class)
 	if !ok {
 		return lang.Target{}, false
 	}
 	if !m.Virtual {
-		for _, p := range gov {
-			if c, ok := p.deps[m.Name]; ok {
-				return r.coordTarget(p.dir, c), true
+		for _, p := range governing {
+			if c, ok := p.dependencies[m.Name]; ok {
+				return r.coordinateTarget(p.directory, c), true
 			}
 		}
 	}
 	pinned := lang.PinnedMaven(m.Version)
-	return lang.Target{Ecosystem: ecoMaven, Package: m.Name, Version: m.Version, Pinned: pinned,
+	return lang.Target{Ecosystem: ecosystemMaven, Package: m.Name, Version: m.Version, Pinned: pinned,
 		Floating: m.Version != "" && !pinned}, true
 }
 
@@ -839,37 +839,37 @@ func (r *resolver) javaArtifact(cls string, gov []*project) (lang.Target, bool) 
 // org.liquibase/liquibase-core) or the artifact one of its first three package
 // segments (org.h2 from com.h2database/h2); then +2 for each word of the artifact the class
 // names and -3 for each it does not. 0 when nothing connects them.
-func classScore(cls, art string) int {
+func classScore(class, art string) int {
 	g, a, _ := strings.Cut(art, ":")
-	cs, gs := strings.Split(cls, "."), strings.Split(g, ".")
-	pkg := cs[:len(cs)-1]
+	classParts, groupParts := strings.Split(class, "."), strings.Split(g, ".")
+	packageName := classParts[:len(classParts)-1]
 	score := 0
 	if fa := fold(a); !genericNames[a] && !classGeneric[a] {
-		for k := 0; k < len(pkg); k++ {
-			if k+2 <= len(pkg) && fold(pkg[k]+pkg[k+1]) == fa {
+		for k := 0; k < len(packageName); k++ {
+			if k+2 <= len(packageName) && fold(packageName[k]+packageName[k+1]) == fa {
 				score = 40
-			} else if fold(pkg[k]) == fa && k < 3 {
+			} else if fold(packageName[k]) == fa && k < 3 {
 				score = max(score, 5)
 			}
 		}
 	}
 	common := 0
-	for common < len(gs) && common < len(pkg) && (gs[common] == pkg[common] || strings.HasPrefix(gs[common], pkg[common]+"-")) {
+	for common < len(groupParts) && common < len(packageName) && (groupParts[common] == packageName[common] || strings.HasPrefix(groupParts[common], packageName[common]+"-")) {
 		common++
 	}
 	switch {
-	case common == len(gs):
+	case common == len(groupParts):
 		score = max(score, 10*common+5)
 	case common >= 3:
 		score = max(score, 10*common)
-	case len(pkg) > 0 && pkg[0] == gs[len(gs)-1]:
+	case len(packageName) > 0 && packageName[0] == groupParts[len(groupParts)-1]:
 		score = max(score, 5)
 	}
 	if score == 0 {
 		return 0
 	}
 	segments := map[string]bool{}
-	for _, s := range pkg {
+	for _, s := range packageName {
 		segments[strings.ToLower(s)] = true
 	}
 	for _, w := range strings.FieldsFunc(a, func(c rune) bool { return c == '-' || c == '.' }) {
@@ -889,15 +889,15 @@ func classScore(cls, art string) int {
 // Implements: REQ-CLOJURE-002
 func (r *resolver) load(file, p string, isFile bool) lang.Target {
 	var bases []string
-	gov := r.governing(file)
+	governing := r.governing(file)
 	switch {
 	case isFile:
-		for _, g := range gov {
-			bases = append(bases, path.Join(g.dir, p))
+		for _, g := range governing {
+			bases = append(bases, path.Join(g.directory, p))
 		}
 		bases = append(bases, path.Join(path.Dir(file), p), path.Clean(p))
 	case strings.HasPrefix(p, "/"):
-		for _, g := range gov {
+		for _, g := range governing {
 			for _, root := range g.roots {
 				bases = append(bases, path.Join(root, p))
 			}
@@ -906,8 +906,8 @@ func (r *resolver) load(file, p string, isFile bool) lang.Target {
 		bases = append(bases, path.Join(path.Dir(file), p))
 	}
 	for _, b := range bases {
-		for _, ext := range []string{"", ".clj", ".cljc", ".cljs", ".bb"} {
-			if c := b + ext; r.files[c] && c != file {
+		for _, extension := range []string{"", ".clj", ".cljc", ".cljs", ".bb"} {
+			if c := b + extension; r.files[c] && c != file {
 				return lang.Target{Local: c}
 			}
 		}

@@ -9,21 +9,21 @@ import (
 
 // Import kinds, in RawImport.Name.
 const (
-	kindRequire = "require" // a module name: require("a.b")
-	kindPath    = "path"    // a Luau require by path: "./x", "@self/x", "@alias/x"
-	kindRoblox  = "roblox"  // a Roblox instance: require(script.Parent.X), Module "script/../X"
-	kindFile    = "file"    // dofile / loadfile of a literal path
-	kindDep     = "dep"     // a rockspec dependency; Name "dep:<constraint>"
-	kindModule  = "module"  // a rockspec build.modules entry; Module "<module>\n<file>"
-	kindWally   = "wally"   // a wally.toml dependency; Name "wally:<requirement>"
-	kindRojo    = "rojo"    // a Rojo project's $path
+	kindRequire    = "require" // a module name: require("a.b")
+	kindPath       = "path"    // a Luau require by path: "./x", "@self/x", "@alias/x"
+	kindRoblox     = "roblox"  // a Roblox instance: require(script.Parent.X), Module "script/../X"
+	kindFile       = "file"    // dofile / loadfile of a literal path
+	kindDependency = "dep"     // a rockspec dependency; Name "dep:<constraint>"
+	kindModule     = "module"  // a rockspec build.modules entry; Module "<module>\n<file>"
+	kindWally      = "wally"   // a wally.toml dependency; Name "wally:<requirement>"
+	kindRojo       = "rojo"    // a Rojo project's $path
 )
 
 // scanner walks a Lua source's tokens once, keeping just enough structure - block
 // nesting, bracket depth, the instance paths local variables hold - to tell a
 // top-level definition from a nested one and to read what require is given.
 type scanner struct {
-	src       []byte
+	source    []byte
 	tokens    []luarocks.Token
 	teal      bool
 	blocks    []byte // 'f' function body, 'b' other block, 'r' repeat, 'R' Teal record body
@@ -41,8 +41,8 @@ type scanner struct {
 // readSource extracts a Lua, Luau or Teal file's definitions and requires.
 //
 // Implements: REQ-LUA-002, REQ-LUA-003, REQ-LUA-012
-func readSource(src []byte, teal bool) *lang.Extraction {
-	s := &scanner{src: src, tokens: luarocks.Lex(src), teal: teal, aliases: map[string][]string{},
+func readSource(source []byte, teal bool) *lang.Extraction {
+	s := &scanner{source: source, tokens: luarocks.Lex(source), teal: teal, aliases: map[string][]string{},
 		defined: map[string]bool{}}
 	for i := 0; i < len(s.tokens); i++ {
 		s.step(i)
@@ -79,7 +79,7 @@ func (s *scanner) top() bool { return s.functions == 0 && s.br == 0 }
 
 func (s *scanner) step(i int) {
 	t := s.at(i)
-	if t.Kind == luarocks.Punct {
+	if t.Kind == luarocks.Punctuation {
 		switch t.Text {
 		case "(", "{", "[":
 			s.br++
@@ -93,11 +93,11 @@ func (s *scanner) step(i int) {
 	if t.Kind != luarocks.Name {
 		return
 	}
-	prev := s.at(i - 1)
-	member := prev.Is(".") || prev.Is(":")
+	previous := s.at(i - 1)
+	member := previous.Is(".") || previous.Is(":")
 	switch t.Text {
 	case "function":
-		if s.teal && (inRecord(s.blocks) || prev.Is(":") || prev.Is("->") || prev.Is("=") && s.typeAt > 0 && i-s.typeAt < 12) {
+		if s.teal && (inRecord(s.blocks) || previous.Is(":") || previous.Is("->") || previous.Is("=") && s.typeAt > 0 && i-s.typeAt < 12) {
 			return // a Teal function type, which has no body
 		}
 		if s.functions == 0 && s.at(i+1).Kind == luarocks.Name {
@@ -111,7 +111,7 @@ func (s *scanner) step(i int) {
 			s.push(map[string]byte{"do": 'b', "repeat": 'r'}[t.Text])
 		}
 	case "if":
-		if !member && !expressionIf(prev) {
+		if !member && !expressionIf(previous) {
 			s.push('b')
 		}
 	case "end", "until":
@@ -137,12 +137,12 @@ func (s *scanner) step(i int) {
 	case "local", "global":
 		s.local(i)
 	case "require", "dofile", "loadfile":
-		if !member && !prev.Is("function") && !prev.Is("local") {
+		if !member && !previous.Is("function") && !previous.Is("local") {
 			s.call(i)
 		}
 	default:
-		if s.top() && !member && !keywords[t.Text] && !prev.Is("for") && !prev.Is(",") && !prev.Is("<") &&
-			!prev.Is("local") && !prev.Is("global") && !prev.Is("type") && !inRecord(s.blocks) {
+		if s.top() && !member && !keywords[t.Text] && !previous.Is("for") && !previous.Is(",") && !previous.Is("<") &&
+			!previous.Is("local") && !previous.Is("global") && !previous.Is("type") && !inRecord(s.blocks) {
 			s.assignment(i)
 		}
 	}
@@ -155,19 +155,19 @@ var keywords = map[string]bool{
 	"then": true, "true": true, "until": true, "while": true, "continue": true, "export": true,
 }
 
-// expressionIf reports whether an if after prev is Luau's if-expression
+// expressionIf reports whether an if after previous is Luau's if-expression
 // (x = if a then b else c), which has no end: it follows an operator, an opening
 // bracket, a comma or return.
-func expressionIf(prev luarocks.Token) bool {
-	switch prev.Kind {
-	case luarocks.Punct:
-		switch prev.Text {
+func expressionIf(previous luarocks.Token) bool {
+	switch previous.Kind {
+	case luarocks.Punctuation:
+		switch previous.Text {
 		case ")", "]", "}", ";", "::":
 			return false
 		}
 		return true
 	case luarocks.Name:
-		switch prev.Text {
+		switch previous.Text {
 		case "return", "and", "or", "not", "in":
 			return true
 		}
@@ -178,8 +178,8 @@ func expressionIf(prev luarocks.Token) bool {
 // tealBlock reports whether a Teal record/interface/enum keyword opens a body
 // closed by end: after local/global/=, or naming a nested type in a record body.
 func (s *scanner) tealBlock(i int) bool {
-	prev, next := s.at(i-1), s.at(i+1)
-	if prev.Is("local") || prev.Is("global") || prev.Is("=") {
+	previous, next := s.at(i-1), s.at(i+1)
+	if previous.Is("local") || previous.Is("global") || previous.Is("=") {
 		return true
 	}
 	return inRecord(s.blocks) && next.Kind == luarocks.Name && !next.Is("end")
@@ -303,25 +303,25 @@ func (s *scanner) assignment(i int) {
 // string literal, or for require a Roblox instance path; and pcall(require, "x").
 func (s *scanner) call(i int) {
 	t := s.at(i)
-	fn := t.Text
-	start, arg, end := i, i+1, i+1
+	function := t.Text
+	start, argument, end := i, i+1, i+1
 	if s.at(i + 1).Is("(") {
-		arg = i + 2
+		argument = i + 2
 		end = i + 3
 		if !s.at(end).Is(")") {
 			end = -1
 		}
 	}
-	if fn == "require" && s.at(i-1).Is("(") && s.at(i-2).Is("pcall") && s.at(i+1).Is(",") && s.at(i+2).Kind == luarocks.String {
+	if function == "require" && s.at(i-1).Is("(") && s.at(i-2).Is("pcall") && s.at(i+1).Is(",") && s.at(i+2).Kind == luarocks.String {
 		if !s.at(i + 3).Is(")") {
 			return // a name computed from the string
 		}
-		start, arg, end = i-2, i+2, i+3
+		start, argument, end = i-2, i+2, i+3
 	}
-	a := s.at(arg)
+	a := s.at(argument)
 	if a.Kind == luarocks.String && end >= 0 {
 		spec := s.text(start, end)
-		if fn != "require" {
+		if function != "require" {
 			s.imports = append(s.imports, lang.RawImport{Spec: spec, Module: a.Text, Name: kindFile, Line: t.Line})
 			return
 		}
@@ -332,7 +332,7 @@ func (s *scanner) call(i int) {
 		s.imports = append(s.imports, lang.RawImport{Spec: spec, Module: a.Text, Name: kind, Line: t.Line})
 		return
 	}
-	if fn == "require" && s.at(i+1).Is("(") {
+	if function == "require" && s.at(i+1).Is("(") {
 		if path, e, ok := s.instancePath(i + 2); ok && s.at(e).Is(")") {
 			s.imports = append(s.imports, lang.RawImport{Spec: s.text(i, e), Module: strings.Join(path, "/"), Name: kindRoblox, Line: t.Line})
 		}
@@ -342,10 +342,10 @@ func (s *scanner) call(i int) {
 // text is the source from token a through token b, its whitespace collapsed.
 func (s *scanner) text(a, b int) string {
 	from, to := s.at(a).Start, s.at(b).End
-	if from > to || to > len(s.src) {
+	if from > to || to > len(s.source) {
 		return ""
 	}
-	return strings.Join(strings.Fields(string(s.src[from:to])), " ")
+	return strings.Join(strings.Fields(string(s.source[from:to])), " ")
 }
 
 // instancePath reads a Roblox instance expression from j: script, game, workspace

@@ -25,46 +25,46 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/trace"
 )
 
-func start(t *testing.T, mods ...func(*config.Config)) (*Server, string, string) {
+func start(t *testing.T, modules ...func(*config.Config)) (*Server, string, string) {
 	t.Helper()
 	root := t.TempDir()
 	os.WriteFile(filepath.Join(root, "a.go"), []byte("package a\n"), 0o644)
 	os.WriteFile(filepath.Join(root, "secret.txt"), []byte("not in graph"), 0o644)
 
-	cfg := config.Default()
-	cfg.Root = root
-	for _, m := range mods {
-		m(&cfg)
+	settings := config.Default()
+	settings.Root = root
+	for _, m := range modules {
+		m(&settings)
 	}
 	g := &graph.Graph{Nodes: []*graph.Node{{ID: graph.FileID("a.go"), Kind: graph.KindFile, Path: "a.go"}}}
-	s, err := New(cfg, g, fstest.MapFS{"index.html": {Data: []byte("<!doctype html>ui")}})
+	s, err := New(settings, g, fstest.MapFS{"index.html": {Data: []byte("<!doctype html>ui")}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	ln, url, err := s.Listen("127.0.0.1:0")
+	line, url, err := s.Listen("127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := &httptest.Server{Listener: ln, Config: &http.Server{Handler: s.Handler()}}
-	srv.Start()
-	t.Cleanup(srv.Close)
+	server := &httptest.Server{Listener: line, Config: &http.Server{Handler: s.Handler()}}
+	server.Start()
+	t.Cleanup(server.Close)
 	t.Cleanup(s.Close) // runs first: ends event streams so srv.Close does not wait on them
 	return s, url, strings.TrimSuffix(url[:strings.Index(url, "?")], "/")
 }
 
-func get(t *testing.T, c *http.Client, url string, mod func(*http.Request)) (int, string) {
+func get(t *testing.T, c *http.Client, url string, module func(*http.Request)) (int, string) {
 	t.Helper()
-	req, _ := http.NewRequest(http.MethodGet, url, nil)
-	if mod != nil {
-		mod(req)
+	request, _ := http.NewRequest(http.MethodGet, url, nil)
+	if module != nil {
+		module(request)
 	}
-	res, err := c.Do(req)
+	response, err := c.Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
-	b, _ := io.ReadAll(res.Body)
-	return res.StatusCode, string(b)
+	defer response.Body.Close()
+	b, _ := io.ReadAll(response.Body)
+	return response.StatusCode, string(b)
 }
 
 // Verifies: REQ-SEC-002, REQ-SEC-003, REQ-SEC-004
@@ -142,16 +142,16 @@ func login(t *testing.T, url string) *http.Client {
 func TestUpdatePushesEvents(t *testing.T) {
 	s, url, base := start(t)
 	c := login(t, url)
-	res, err := c.Get(base + "/api/events")
+	response, err := c.Get(base + "/api/events")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	defer response.Body.Close()
 	events := make(chan string, 4)
 	go func() {
-		sc := bufio.NewScanner(res.Body)
-		for sc.Scan() {
-			if line := sc.Text(); strings.HasPrefix(line, "data: ") {
+		scanner := bufio.NewScanner(response.Body)
+		for scanner.Scan() {
+			if line := scanner.Text(); strings.HasPrefix(line, "data: ") {
 				events <- line
 			}
 		}
@@ -223,16 +223,16 @@ func TestOpenInEditor(t *testing.T) {
 	})
 	c := login(t, url)
 	post := func(body string, header bool) int {
-		req, _ := http.NewRequest(http.MethodPost, base+"/api/open", strings.NewReader(body))
+		request, _ := http.NewRequest(http.MethodPost, base+"/api/open", strings.NewReader(body))
 		if header {
-			req.Header.Set(requestHeader, "1")
+			request.Header.Set(requestHeader, "1")
 		}
-		res, err := c.Do(req)
+		response, err := c.Do(request)
 		if err != nil {
 			t.Fatal(err)
 		}
-		res.Body.Close()
-		return res.StatusCode
+		response.Body.Close()
+		return response.StatusCode
 	}
 	if code := post(`{"path":"a.go","line":3}`, false); code != http.StatusForbidden {
 		t.Errorf("without CSRF header: %d", code)
@@ -259,16 +259,16 @@ func TestSaveSettings(t *testing.T) {
 	_, url, base := start(t, func(c *config.Config) { c.ConfigFile = file })
 	c := login(t, url)
 	post := func(body string, header bool) int {
-		req, _ := http.NewRequest(http.MethodPost, base+"/api/settings", strings.NewReader(body))
+		request, _ := http.NewRequest(http.MethodPost, base+"/api/settings", strings.NewReader(body))
 		if header {
-			req.Header.Set(requestHeader, "1")
+			request.Header.Set(requestHeader, "1")
 		}
-		res, err := c.Do(req)
+		response, err := c.Do(request)
 		if err != nil {
 			t.Fatal(err)
 		}
-		res.Body.Close()
-		return res.StatusCode
+		response.Body.Close()
+		return response.StatusCode
 	}
 	good := `{"theme":"dark","style":"galaxy","colorBy":"size","heightScale":"log","expandDepth":2,"hideLanguages":["Go"]}`
 	if code := post(good, false); code != http.StatusForbidden {
@@ -309,16 +309,16 @@ func TestHistoryLifecycle(t *testing.T) {
 		t.Errorf("while reading: %d, want 202", code)
 	}
 
-	res, err := c.Get(base + "/api/events")
+	response, err := c.Get(base + "/api/events")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	defer response.Body.Close()
 	events := make(chan string, 4)
 	go func() {
-		sc := bufio.NewScanner(res.Body)
-		for sc.Scan() {
-			if line := sc.Text(); strings.HasPrefix(line, "event: ") {
+		scanner := bufio.NewScanner(response.Body)
+		for scanner.Scan() {
+			if line := scanner.Text(); strings.HasPrefix(line, "event: ") {
 				events <- strings.TrimPrefix(line, "event: ")
 			}
 		}
@@ -342,12 +342,12 @@ func TestHistoryLifecycle(t *testing.T) {
 		t.Errorf("history: %d %s", code, body)
 	}
 	// A page loaded again revalidates rather than downloading it all again.
-	res, err = c.Get(base + "/api/history")
+	response, err = c.Get(base + "/api/history")
 	if err != nil {
 		t.Fatal(err)
 	}
-	res.Body.Close()
-	etag := res.Header.Get("ETag")
+	response.Body.Close()
+	etag := response.Header.Get("ETag")
 	if etag == "" {
 		t.Fatal("the history carries no entity tag")
 	}
@@ -373,12 +373,12 @@ func embedded(t *testing.T) (string, string, string) {
 
 func headers(t *testing.T, url string) http.Header {
 	t.Helper()
-	res, err := http.Get(url)
+	response, err := http.Get(url)
 	if err != nil {
 		t.Fatal(err)
 	}
-	res.Body.Close()
-	return res.Header
+	response.Body.Close()
+	return response.Header
 }
 
 // Verifies: REQ-SEC-010
@@ -389,7 +389,7 @@ func TestEmbedAllowsTheFrameItWasTold(t *testing.T) {
 		t.Errorf("embed CSP: %q", got)
 	}
 	if got := h.Get("X-Frame-Options"); got != "" {
-		// It has no syntax for naming an origin that browsers still honour, so in
+		// It has no syntax for naming an origin that browsers still honor, so in
 		// embed mode it can only be absent; the CSP above is the whole of the answer.
 		t.Errorf("X-Frame-Options in embed mode: %q", got)
 	}
@@ -407,18 +407,18 @@ func TestEmbedAllowsTheFrameItWasTold(t *testing.T) {
 func TestEmbedKeepsTheTokenInTheAddress(t *testing.T) {
 	token, url, base := embedded(t)
 	// No redirect and no cookie: the page needs the token where it can read it.
-	res, err := (&http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
+	response, err := (&http.Client{CheckRedirect: func(*http.Request, []*http.Request) error {
 		return http.ErrUseLastResponse
 	}}).Get(url)
 	if err != nil {
 		t.Fatal(err)
 	}
-	res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		t.Errorf("document: got %d, want 200", res.StatusCode)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Errorf("document: got %d, want 200", response.StatusCode)
 	}
-	if len(res.Cookies()) != 0 {
-		t.Errorf("embed mode set a cookie: %v", res.Cookies())
+	if len(response.Cookies()) != 0 {
+		t.Errorf("embed mode set a cookie: %v", response.Cookies())
 	}
 
 	// The token is taken from a header, and from the query for what cannot set one.
@@ -462,19 +462,19 @@ func TestEmbedServesTheInterfaceButNotTheProject(t *testing.T) {
 // Verifies: REQ-SEC-007
 func TestEmbedStillRefusesAWriteWithoutTheRequestHeader(t *testing.T) {
 	token, _, base := embedded(t)
-	req, _ := http.NewRequest(http.MethodPost, base+"/api/settings", strings.NewReader("{}"))
-	req.Header.Set(tokenHeader, token)
-	res, err := http.DefaultClient.Do(req)
+	request, _ := http.NewRequest(http.MethodPost, base+"/api/settings", strings.NewReader("{}"))
+	request.Header.Set(tokenHeader, token)
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
-	res.Body.Close()
-	if res.StatusCode != http.StatusForbidden {
-		t.Errorf("POST without %s: got %d, want 403", requestHeader, res.StatusCode)
+	response.Body.Close()
+	if response.StatusCode != http.StatusForbidden {
+		t.Errorf("POST without %s: got %d, want 403", requestHeader, response.StatusCode)
 	}
 }
 
-// The document the server hands out is assembled rather than marshalled from the
+// The document the server hands out is assembled rather than marshaled from the
 // graph, so that the nodes and the edges are encoded once instead of twice (see
 // newSnapshot). That makes it possible to add a field to graph.Graph and quietly stop
 // serving it, which is what this is here to catch.
@@ -485,13 +485,13 @@ func TestServedGraphMatchesTheDocument(t *testing.T) {
 		Root:        "repo",
 		GeneratedAt: time.Date(2024, 5, 4, 3, 2, 1, 0, time.UTC),
 		Nodes: []*graph.Node{
-			{ID: "f:a.go", Kind: graph.KindFile, Name: "a.go", Path: "a.go", Lang: "Go", LOC: 12},
+			{ID: "f:a.go", Kind: graph.KindFile, Name: "a.go", Path: "a.go", Language: "Go", LOC: 12},
 			{ID: "p:go:example.com/x", Kind: graph.KindPackage, Name: "example.com/x", Version: "v1.2.3",
 				Requested: "v1.2", Floating: true, Transitive: true, Index: "https://proxy.golang.org", IndexUnknown: true},
 		},
 		Edges: []*graph.Edge{{From: "f:a.go", To: "p:go:example.com/x", Kind: graph.EdgeImport, Line: 3}},
 	}
-	sn, err := newSnapshot(g, 1)
+	snapshot, err := newSnapshot(g, 1)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -499,8 +499,8 @@ func TestServedGraphMatchesTheDocument(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if string(sn.json) != string(want) {
-		t.Errorf("the served document is not the graph:\n got %s\nwant %s", sn.json, want)
+	if string(snapshot.json) != string(want) {
+		t.Errorf("the served document is not the graph:\n got %s\nwant %s", snapshot.json, want)
 	}
 
 	// And the fingerprint is of what the map is of, not of when it was made: the same
@@ -511,7 +511,7 @@ func TestServedGraphMatchesTheDocument(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if again.fingerprint != sn.fingerprint {
+	if again.fingerprint != snapshot.fingerprint {
 		t.Error("a later run of the same analysis fingerprinted differently")
 	}
 }
@@ -521,29 +521,29 @@ func TestGraphAnswersNotModifiedForWhatTheClientHolds(t *testing.T) {
 	s, url, base := start(t)
 	c := login(t, url)
 
-	res, err := c.Get(base + "/api/graph")
+	response, err := c.Get(base + "/api/graph")
 	if err != nil {
 		t.Fatal(err)
 	}
-	res.Body.Close()
-	etag := res.Header.Get("ETag")
+	response.Body.Close()
+	etag := response.Header.Get("ETag")
 	if etag == "" {
 		t.Fatal("no ETag on the graph")
 	}
 	// A validator is no use to a client that was told not to keep the document.
-	if cc := res.Header.Get("Cache-Control"); cc == "no-store" {
+	if cc := response.Header.Get("Cache-Control"); cc == "no-store" {
 		t.Errorf("Cache-Control %q forbids the store an ETag is for", cc)
 	}
 
 	ask := func(match string) int {
-		req, _ := http.NewRequest(http.MethodGet, base+"/api/graph", nil)
-		req.Header.Set("If-None-Match", match)
-		res, err := c.Do(req)
+		request, _ := http.NewRequest(http.MethodGet, base+"/api/graph", nil)
+		request.Header.Set("If-None-Match", match)
+		response, err := c.Do(request)
 		if err != nil {
 			t.Fatal(err)
 		}
-		res.Body.Close()
-		return res.StatusCode
+		response.Body.Close()
+		return response.StatusCode
 	}
 	if code := ask(etag); code != http.StatusNotModified {
 		t.Errorf("holding the current graph: %d", code)
@@ -587,30 +587,30 @@ func TestAReconnectingStreamIsToldWhetherItMissedAnything(t *testing.T) {
 	s, url, base := start(t)
 	c := login(t, url)
 
-	hello := func(lastID string) (seq uint64, wasResumed bool) {
-		req, _ := http.NewRequest(http.MethodGet, base+"/api/events", nil)
+	hello := func(lastID string) (sequence uint64, wasResumed bool) {
+		request, _ := http.NewRequest(http.MethodGet, base+"/api/events", nil)
 		if lastID != "" {
-			req.Header.Set("Last-Event-ID", lastID)
+			request.Header.Set("Last-Event-ID", lastID)
 		}
-		res, err := c.Do(req)
+		response, err := c.Do(request)
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer res.Body.Close()
-		sc := bufio.NewScanner(res.Body)
-		for sc.Scan() {
-			data, ok := strings.CutPrefix(sc.Text(), "data: ")
+		defer response.Body.Close()
+		scanner := bufio.NewScanner(response.Body)
+		for scanner.Scan() {
+			data, ok := strings.CutPrefix(scanner.Text(), "data: ")
 			if !ok {
 				continue
 			}
 			var h struct {
-				Seq     uint64 `json:"seq"`
-				Resumed bool   `json:"resumed"`
+				Sequence uint64 `json:"seq"`
+				Resumed  bool   `json:"resumed"`
 			}
 			if err := json.Unmarshal([]byte(data), &h); err != nil {
 				t.Fatal(err)
 			}
-			return h.Seq, h.Resumed
+			return h.Sequence, h.Resumed
 		}
 		t.Fatal("no greeting")
 		return 0, false
@@ -618,9 +618,9 @@ func TestAReconnectingStreamIsToldWhetherItMissedAnything(t *testing.T) {
 
 	// Nothing has been announced yet, and a client with no id to hand back has
 	// nothing to resume.
-	seq, wasResumed := hello("")
-	if seq != 0 || wasResumed {
-		t.Fatalf("first connection: seq %d resumed %v", seq, wasResumed)
+	sequence, wasResumed := hello("")
+	if sequence != 0 || wasResumed {
+		t.Fatalf("first connection: seq %d resumed %v", sequence, wasResumed)
 	}
 	// Handing back the id it last saw says it is still current.
 	if _, wasResumed = hello("0"); !wasResumed {
@@ -632,15 +632,15 @@ func TestAReconnectingStreamIsToldWhetherItMissedAnything(t *testing.T) {
 	if _, err := s.Update(g, nil); err != nil {
 		t.Fatal(err)
 	}
-	seq, wasResumed = hello("0")
+	sequence, wasResumed = hello("0")
 	if wasResumed {
 		t.Error("a client that slept through an announcement was told it was up to date")
 	}
-	if seq == 0 {
+	if sequence == 0 {
 		t.Error("the sequence did not move when something was announced")
 	}
 	// ... and once it has caught up it is current again.
-	if _, wasResumed = hello(strconv.FormatUint(seq, 10)); !wasResumed {
+	if _, wasResumed = hello(strconv.FormatUint(sequence, 10)); !wasResumed {
 		t.Error("a caught-up client was not resumed")
 	}
 	// Nonsense is not a resume.
@@ -653,16 +653,16 @@ func TestAReconnectingStreamIsToldWhetherItMissedAnything(t *testing.T) {
 func TestEventsCarryTheirIdSoAClientCanResume(t *testing.T) {
 	s, url, base := start(t)
 	c := login(t, url)
-	res, err := c.Get(base + "/api/events")
+	response, err := c.Get(base + "/api/events")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer res.Body.Close()
+	defer response.Body.Close()
 	lines := make(chan string, 16)
 	go func() {
-		sc := bufio.NewScanner(res.Body)
-		for sc.Scan() {
-			lines <- sc.Text()
+		scanner := bufio.NewScanner(response.Body)
+		for scanner.Scan() {
+			lines <- scanner.Text()
 		}
 	}()
 	next := func() string {
@@ -705,13 +705,13 @@ func TestResolutionReportIsServedInThreeShapes(t *testing.T) {
 		t.Errorf("with no report: %d, want 404", code)
 	}
 
-	rep := trace.New(2, true, []string{"corp.example/*"}, nil)
-	rep.Enter("go", 0)
-	rep.Add(trace.Lookup{Ecosystem: "go", Package: "corp.example/billing", Version: "v1.0.0",
+	report := trace.New(2, true, []string{"corp.example/*"}, nil)
+	report.Enter("go", 0)
+	report.Add(trace.Lookup{Ecosystem: "go", Package: "corp.example/billing", Version: "v1.0.0",
 		Answer: trace.NoAnswer, Reason: trace.ReasonPrivate, Index: "https://proxy.golang.org"})
-	rep.Done(1, 0, 0, 0, time.Millisecond)
-	rep.Finish()
-	s.SetResolution(rep)
+	report.Done(1, 0, 0, 0, time.Millisecond)
+	report.Finish()
+	s.SetResolution(report)
 
 	code, body := get(t, c, base+"/api/resolution", nil)
 	if code != http.StatusOK {
@@ -758,7 +758,7 @@ func TestResolutionReportIsServedInThreeShapes(t *testing.T) {
 func TestHTMLExportCarriesTheViewOnScreen(t *testing.T) {
 	_, url, base := start(t) // configured theme: auto
 	c := login(t, url)
-	data := func(body string) (cfg struct {
+	data := func(body string) (config struct {
 		Theme  string `json:"theme"`
 		Style  string `json:"style"`
 		Static bool   `json:"static"`
@@ -776,10 +776,10 @@ func TestHTMLExportCarriesTheViewOnScreen(t *testing.T) {
 		if err := json.Unmarshal([]byte(rest[:strings.Index(rest, "</script>")]), &doc); err != nil {
 			t.Fatal(err)
 		}
-		if err := json.Unmarshal(doc.Config, &cfg); err != nil {
+		if err := json.Unmarshal(doc.Config, &config); err != nil {
 			t.Fatal(err)
 		}
-		return cfg
+		return config
 	}
 
 	code, body := get(t, c, base+"/api/export?format=html", nil)
@@ -803,16 +803,16 @@ func TestHTMLExportCarriesTheViewOnScreen(t *testing.T) {
 // the greeting.
 func lazyEvents(t *testing.T, c *http.Client, base string) <-chan string {
 	t.Helper()
-	res, err := c.Get(base + "/api/events")
+	response, err := c.Get(base + "/api/events")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { res.Body.Close() })
+	t.Cleanup(func() { response.Body.Close() })
 	events := make(chan string, 8)
 	go func() {
-		sc := bufio.NewScanner(res.Body)
-		for sc.Scan() {
-			if line := sc.Text(); strings.HasPrefix(line, "event: ") {
+		scanner := bufio.NewScanner(response.Body)
+		for scanner.Scan() {
+			if line := scanner.Text(); strings.HasPrefix(line, "event: ") {
 				events <- strings.TrimPrefix(line, "event: ")
 			}
 		}
@@ -857,7 +857,7 @@ func TestFindingsLifecycle(t *testing.T) {
 
 	set := func() *findings.Set {
 		return &findings.Set{Sources: []string{"govulncheck"}, Partial: true, Findings: []*findings.Finding{
-			{ID: "f1", Kind: "vuln", Source: "govulncheck", Ref: "GO-2024-0001", Title: "bad", Path: "a.go"}}}
+			{ID: "f1", Kind: "vuln", Source: "govulncheck", Reference: "GO-2024-0001", Title: "bad", Path: "a.go"}}}
 	}
 	if err := s.SetFindings(set()); err != nil {
 		t.Fatal(err)
@@ -900,9 +900,9 @@ func TestReferencesLifecycle(t *testing.T) {
 	}
 	events := lazyEvents(t, c, base)
 
-	refs := &References{Servers: []string{"gopls"}, Edges: []*graph.Edge{
+	references := &References{Servers: []string{"gopls"}, Edges: []*graph.Edge{
 		{From: "s:a.go#A", To: graph.FileID("a.go"), Kind: graph.EdgeReference}}}
-	if err := s.SetReferences(refs); err != nil {
+	if err := s.SetReferences(references); err != nil {
 		t.Fatal(err)
 	}
 	expectEvent(t, events, "references")
@@ -936,66 +936,66 @@ func TestFileServesBytesOnlyWhenAskedAndSandboxed(t *testing.T) {
 		os.WriteFile(filepath.Join(root, name), data, 0o644)
 		nodes = append(nodes, &graph.Node{ID: graph.FileID(name), Kind: graph.KindFile, Path: name})
 	}
-	cfg := config.Default()
-	cfg.Root = root
-	s, err := New(cfg, &graph.Graph{Nodes: nodes}, fstest.MapFS{"index.html": {Data: []byte("ui")}})
+	settings := config.Default()
+	settings.Root = root
+	s, err := New(settings, &graph.Graph{Nodes: nodes}, fstest.MapFS{"index.html": {Data: []byte("ui")}})
 	if err != nil {
 		t.Fatal(err)
 	}
-	ln, url, err := s.Listen("127.0.0.1:0")
+	line, url, err := s.Listen("127.0.0.1:0")
 	if err != nil {
 		t.Fatal(err)
 	}
-	srv := &httptest.Server{Listener: ln, Config: &http.Server{Handler: s.Handler()}}
-	srv.Start()
-	t.Cleanup(srv.Close)
+	server := &httptest.Server{Listener: line, Config: &http.Server{Handler: s.Handler()}}
+	server.Start()
+	t.Cleanup(server.Close)
 	t.Cleanup(s.Close)
 	base := strings.TrimSuffix(url[:strings.Index(url, "?")], "/")
 	c := login(t, url)
-	fetch := func(query string, mod func(*http.Request)) *http.Response {
+	fetch := func(query string, module func(*http.Request)) *http.Response {
 		t.Helper()
-		req, _ := http.NewRequest(http.MethodGet, base+"/api/file?"+query, nil)
-		if mod != nil {
-			mod(req)
+		request, _ := http.NewRequest(http.MethodGet, base+"/api/file?"+query, nil)
+		if module != nil {
+			module(request)
 		}
-		res, err := c.Do(req)
+		response, err := c.Do(request)
 		if err != nil {
 			t.Fatal(err)
 		}
-		t.Cleanup(func() { res.Body.Close() })
-		return res
+		t.Cleanup(func() { response.Body.Close() })
+		return response
 	}
 
 	// Text is served as text, as it always was.
-	if res := fetch("path=a.go", nil); res.StatusCode != http.StatusOK || !strings.HasPrefix(res.Header.Get("Content-Type"), "text/plain") {
-		t.Errorf("source: %d %s", res.StatusCode, res.Header.Get("Content-Type"))
+	if response := fetch("path=a.go", nil); response.StatusCode != http.StatusOK || !strings.HasPrefix(response.Header.Get("Content-Type"), "text/plain") {
+		t.Errorf("source: %d %s", response.StatusCode, response.Header.Get("Content-Type"))
 	}
 	// Binary asked for as text: refused, and said what it is.
 	for name, want := range map[string]string{"logo.png": "image/png", "pack.zip": "application/octet-stream"} {
-		res := fetch("path="+name, nil)
-		if res.StatusCode != http.StatusUnsupportedMediaType || res.Header.Get(binaryHeader) != want {
-			t.Errorf("%s as text: %d, %s %q", name, res.StatusCode, binaryHeader, res.Header.Get(binaryHeader))
+		response := fetch("path="+name, nil)
+		if response.StatusCode != http.StatusUnsupportedMediaType || response.Header.Get(binaryHeader) != want {
+			t.Errorf("%s as text: %d, %s %q", name, response.StatusCode, binaryHeader, response.Header.Get(binaryHeader))
 		}
 	}
 	// Asked for raw: a picture as a picture, anything else as bytes, both sandboxed.
 	for name, want := range map[string]string{"logo.png": "image/png", "pack.zip": "application/octet-stream", "a.go": "application/octet-stream"} {
-		res := fetch("as=raw&path="+name, nil)
-		body, _ := io.ReadAll(res.Body)
-		if res.StatusCode != http.StatusOK || res.Header.Get("Content-Type") != want || !bytes.Equal(body, files[name]) {
-			t.Errorf("%s raw: %d %s, %d bytes", name, res.StatusCode, res.Header.Get("Content-Type"), len(body))
+		response := fetch("as=raw&path="+name, nil)
+		body, _ := io.ReadAll(response.Body)
+		if response.StatusCode != http.StatusOK || response.Header.Get("Content-Type") != want || !bytes.Equal(body, files[name]) {
+			t.Errorf("%s raw: %d %s, %d bytes", name, response.StatusCode, response.Header.Get("Content-Type"), len(body))
 		}
-		if csp := res.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "sandbox") || !strings.Contains(csp, "default-src 'none'") {
+		if csp := response.Header.Get("Content-Security-Policy"); !strings.Contains(csp, "sandbox") || !strings.Contains(csp, "default-src 'none'") {
 			t.Errorf("%s raw is not sandboxed: %q", name, csp)
 		}
 	}
 	// A range, which is how the panel reads only the start of a large binary file.
-	res := fetch("as=raw&path=pack.zip", func(r *http.Request) { r.Header.Set("Range", "bytes=0-3") })
-	if body, _ := io.ReadAll(res.Body); res.StatusCode != http.StatusPartialContent || string(body) != "PK\x03\x04" {
-		t.Errorf("range: %d %q", res.StatusCode, body)
+	response := fetch("as=raw&path=pack.zip", func(r *http.Request) { r.Header.Set("Range", "bytes=0-3") })
+	if body, _ := io.ReadAll(response.Body); response.StatusCode != http.StatusPartialContent || string(body) != "PK\x03\x04" {
+		t.Errorf("range: %d %q", response.StatusCode, body)
 	}
 	// And still nothing outside the graph, raw or not.
-	if res := fetch("as=raw&path=../secret", nil); res.StatusCode != http.StatusNotFound {
-		t.Errorf("outside the graph, raw: %d", res.StatusCode)
+	if response := fetch("as=raw&path=../secret", nil); response.StatusCode != http.StatusNotFound {
+		t.Errorf("outside the graph, raw: %d", response.StatusCode)
 	}
 }
 
@@ -1010,21 +1010,21 @@ func TestOpenInAHexEditor(t *testing.T) {
 	})
 	c := login(t, url)
 	post := func(body string) *http.Response {
-		req, _ := http.NewRequest(http.MethodPost, base+"/api/open", strings.NewReader(body))
-		req.Header.Set(requestHeader, "1")
-		res, err := c.Do(req)
+		request, _ := http.NewRequest(http.MethodPost, base+"/api/open", strings.NewReader(body))
+		request.Header.Set(requestHeader, "1")
+		response, err := c.Do(request)
 		if err != nil {
 			t.Fatal(err)
 		}
-		res.Body.Close()
-		return res
+		response.Body.Close()
+		return response
 	}
 
 	// Nothing that opens hex editors is listening: the editor opens it as it is,
 	// and the answer says so.
-	res := post(`{"path":"a.go","line":1,"hex":true}`)
-	if res.StatusCode != http.StatusNoContent || res.Header.Get(openedHeader) != "as-is" {
-		t.Fatalf("no hexer: %d %q", res.StatusCode, res.Header.Get(openedHeader))
+	response := post(`{"path":"a.go","line":1,"hex":true}`)
+	if response.StatusCode != http.StatusNoContent || response.Header.Get(openedHeader) != "as-is" {
+		t.Fatalf("no hexer: %d %q", response.StatusCode, response.Header.Get(openedHeader))
 	}
 	// The editor runs in the background: wait for it, both to know it did open the
 	// file and so that it cannot write its marker after the marker is cleared below.
@@ -1043,11 +1043,11 @@ func TestOpenInAHexEditor(t *testing.T) {
 		t.Fatal(err)
 	}
 	defer page.Body.Close()
-	ext, err := c.Get(base + "/api/events?opens=hex")
+	extension, err := c.Get(base + "/api/events?opens=hex")
 	if err != nil {
 		t.Fatal(err)
 	}
-	defer ext.Body.Close()
+	defer extension.Body.Close()
 	lines := func(r io.Reader) <-chan string {
 		out := make(chan string, 16)
 		go func() {
@@ -1059,7 +1059,7 @@ func TestOpenInAHexEditor(t *testing.T) {
 		}()
 		return out
 	}
-	fromPage, fromExt := lines(page.Body), lines(ext.Body)
+	fromPage, fromExtension := lines(page.Body), lines(extension.Body)
 	waitFor := func(from <-chan string, want string, d time.Duration) bool {
 		deadline := time.After(d)
 		for {
@@ -1076,16 +1076,16 @@ func TestOpenInAHexEditor(t *testing.T) {
 			}
 		}
 	}
-	for _, from := range []<-chan string{fromPage, fromExt} {
+	for _, from := range []<-chan string{fromPage, fromExtension} {
 		if !waitFor(from, "event: hello", 2*time.Second) {
 			t.Fatal("a stream never said hello")
 		}
 	}
 	os.Remove(marker)
-	if res := post(`{"path":"a.go","line":1,"hex":true}`); res.StatusCode != http.StatusAccepted {
-		t.Fatalf("with a hexer listening: %d", res.StatusCode)
+	if response := post(`{"path":"a.go","line":1,"hex":true}`); response.StatusCode != http.StatusAccepted {
+		t.Fatalf("with a hexer listening: %d", response.StatusCode)
 	}
-	if !waitFor(fromExt, `"path":"a.go"`, 2*time.Second) {
+	if !waitFor(fromExtension, `"path":"a.go"`, 2*time.Second) {
 		t.Error("the extension was not handed the file")
 	}
 	if waitFor(fromPage, "event: open", 300*time.Millisecond) {
@@ -1096,7 +1096,7 @@ func TestOpenInAHexEditor(t *testing.T) {
 		t.Error("the editor opened it as well as the hex editor")
 	}
 	// Still nothing off the map, hex or not.
-	if res := post(`{"path":"secret.txt","hex":true}`); res.StatusCode != http.StatusNotFound {
-		t.Errorf("off the map, hex: %d", res.StatusCode)
+	if response := post(`{"path":"secret.txt","hex":true}`); response.StatusCode != http.StatusNotFound {
+		t.Errorf("off the map, hex: %d", response.StatusCode)
 	}
 }

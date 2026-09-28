@@ -24,13 +24,13 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
-// ecoPureScript is the island of registry packages, named as the PureScript
+// ecosystemPureScript is the island of registry packages, named as the PureScript
 // registry and spago name them (prelude, halogen); packages installed from git
 // are named by their repository.
-const ecoPureScript = "purescript"
+const ecosystemPureScript = "purescript"
 
-// ecoStd is the island of the compiler's built-in Prim modules.
-const ecoStd = "purescript-std"
+// ecosystemStd is the island of the compiler's built-in Prim modules.
+const ecosystemStd = "purescript-std"
 
 // Classes of the files the plugin claims besides modules.
 const (
@@ -98,8 +98,8 @@ func (Plugin) Class(f *scan.File) string {
 // Implements: REQ-PURESCRIPT-009
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoPureScript, Name: "PureScript packages"},
-		{ID: ecoStd, Name: "PureScript built-ins", Std: true},
+		{ID: ecosystemPureScript, Name: "PureScript packages"},
+		{ID: ecosystemStd, Name: "PureScript built-ins", Std: true},
 	}
 }
 
@@ -108,18 +108,18 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-PURESCRIPT-002, REQ-PURESCRIPT-003, REQ-PURESCRIPT-005
-func (p Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (p Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	switch p.Class(f) {
 	case classYAML:
-		return extractSpagoYAML(src), nil
+		return extractSpagoYAML(source), nil
 	case classLock:
-		return extractLock(src), nil
+		return extractLock(source), nil
 	case classSet:
-		return extractDhall(src, true), nil
+		return extractDhall(source, true), nil
 	case classDhall:
-		return extractDhall(src, false), nil
+		return extractDhall(source, false), nil
 	case classBower:
-		return extractBower(src), nil
+		return extractBower(source), nil
 	}
-	return extractSource(src), nil
+	return extractSource(source), nil
 }

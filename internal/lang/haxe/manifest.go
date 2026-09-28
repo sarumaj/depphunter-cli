@@ -11,8 +11,8 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 )
 
-// hxmlArg is one argument of an .hxml file with the line it is on.
-type hxmlArg struct {
+// hxmlArgument is one argument of an .hxml file with the line it is on.
+type hxmlArgument struct {
 	text string
 	line int
 }
@@ -32,23 +32,23 @@ var valueFlags = map[string]bool{
 	"--custom-target": true, "--hxb": true, "--hxb-lib": true, "--neko-lib-path": true,
 }
 
-// hxmlArgs splits an .hxml file into arguments as the compiler does: a line
+// hxmlArguments splits an .hxml file into arguments as the compiler does: a line
 // starting with - is a flag and, after its first blank, its value; any other
 // line is one argument; # starts a comment line.
-func hxmlArgs(src []byte) []hxmlArg {
-	var out []hxmlArg
-	for n, line := range strings.Split(string(src), "\n") {
+func hxmlArguments(source []byte) []hxmlArgument {
+	var out []hxmlArgument
+	for n, line := range strings.Split(string(source), "\n") {
 		s := strings.TrimSpace(line)
 		if s == "" || s[0] == '#' {
 			continue
 		}
 		if s[0] == '-' {
 			if i := strings.IndexAny(s, " \t"); i > 0 {
-				out = append(out, hxmlArg{s[:i], n + 1}, hxmlArg{strings.TrimSpace(s[i+1:]), n + 1})
+				out = append(out, hxmlArgument{s[:i], n + 1}, hxmlArgument{strings.TrimSpace(s[i+1:]), n + 1})
 				continue
 			}
 		}
-		out = append(out, hxmlArg{s, n + 1})
+		out = append(out, hxmlArgument{s, n + 1})
 	}
 	return out
 }
@@ -57,15 +57,15 @@ func hxmlArgs(src []byte) []hxmlArg {
 // the file, after --cwd), libraries, main classes, root modules and the .hxml
 // files it includes, over all its --next sections.
 type hxml struct {
-	cps  []string
-	libs []hxmlLib
-	defs map[string]string // -D name=value
+	classPaths []string
+	libraries  []hxmlLibrary
+	defines    map[string]string // -D name=value
 	// install is lix's `# @install: lix download "<url>" into <dir>` line.
-	install string
-	imps    []lang.RawImport
+	install    string
+	rawImports []lang.RawImport
 }
 
-type hxmlLib struct {
+type hxmlLibrary struct {
 	name, version string
 	line          int
 }
@@ -75,25 +75,25 @@ var installLine = regexp.MustCompile(`^#\s*@install:\s*lix\b.*?\bdownload\s+"?([
 // readHXML reads an .hxml file.
 //
 // Implements: REQ-HAXE-005
-func readHXML(src []byte) *hxml {
-	h := &hxml{defs: map[string]string{}}
-	for _, line := range strings.SplitN(string(src), "\n", 64) {
+func readHXML(source []byte) *hxml {
+	h := &hxml{defines: map[string]string{}}
+	for _, line := range strings.SplitN(string(source), "\n", 64) {
 		if m := installLine.FindStringSubmatch(strings.TrimSpace(line)); m != nil {
 			h.install = m[1]
 			break
 		}
 	}
-	args := hxmlArgs(src)
-	cwd := ""
+	arguments := hxmlArguments(source)
+	workingDirectory := ""
 	add := func(spec, module, kind string, line int) {
-		h.imps = append(h.imps, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
+		h.rawImports = append(h.rawImports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
 	}
-	for i := 0; i < len(args); i++ {
-		a := args[i]
+	for i := 0; i < len(arguments); i++ {
+		a := arguments[i]
 		if !strings.HasPrefix(a.text, "-") {
 			switch {
 			case strings.HasSuffix(a.text, ".hxml"):
-				add(a.text, path.Join(cwd, a.text), kindHXML, a.line)
+				add(a.text, path.Join(workingDirectory, a.text), kindHXML, a.line)
 			case dotted(a.text):
 				add(a.text, a.text, kindMain, a.line) // a root module to compile
 			}
@@ -103,44 +103,44 @@ func readHXML(src []byte) *hxml {
 		if !valueFlags[flag] {
 			continue
 		}
-		if i+1 >= len(args) {
+		if i+1 >= len(arguments) {
 			break
 		}
 		i++
-		v := args[i].text
+		v := arguments[i].text
 		if strings.Contains(v, "::") {
 			continue // a template's placeholder: -cp ::OUTPUT_DIR::/haxe
 		}
 		switch flag {
 		case "-C", "--cwd":
-			cwd = path.Join(cwd, v)
+			workingDirectory = path.Join(workingDirectory, v)
 		case "-cp", "-p", "--class-path":
-			h.cps = append(h.cps, path.Join(cwd, v))
-			add(flag+" "+v, path.Join(cwd, v), kindCP, a.line)
+			h.classPaths = append(h.classPaths, path.Join(workingDirectory, v))
+			add(flag+" "+v, path.Join(workingDirectory, v), kindCP, a.line)
 		case "-lib", "-L", "--library":
 			name, version, _ := strings.Cut(v, ":")
 			if name == "" || strings.ContainsAny(name, "${} ") {
 				continue
 			}
-			h.libs = append(h.libs, hxmlLib{name, version, a.line})
-			add(flag+" "+v, v, kindLib, a.line)
+			h.libraries = append(h.libraries, hxmlLibrary{name, version, a.line})
+			add(flag+" "+v, v, kindLibrary, a.line)
 		case "-main", "-m", "--main", "--run":
 			if dotted(v) {
 				add(flag+" "+v, v, kindMain, a.line)
 			}
 		case "-D", "--define":
 			name, value, _ := strings.Cut(v, "=")
-			h.defs[name] = value
+			h.defines[name] = value
 		case "-resource", "--resource", "-r":
 			file, _, _ := strings.Cut(v, "@")
 			if file != "" && !strings.Contains(file, "$") {
-				add(flag+" "+v, path.Join(cwd, file), kindFile, a.line)
+				add(flag+" "+v, path.Join(workingDirectory, file), kindFile, a.line)
 			}
 		case "--macro":
 			// A macro call names classes: openfl.utils.Macro.include().
-			for _, im := range extractSource([]byte(v)).Imports {
-				if im.Name == kindRef {
-					add(flag+" "+im.Module, im.Module, kindRef, a.line)
+			for _, rawImport := range extractSource([]byte(v)).Imports {
+				if rawImport.Name == kindReference {
+					add(flag+" "+rawImport.Module, rawImport.Module, kindReference, a.line)
 				}
 			}
 		}
@@ -153,12 +153,12 @@ func dotted(s string) bool {
 	if s == "" {
 		return false
 	}
-	for _, seg := range strings.Split(s, ".") {
-		if seg == "" || !isIdentStart(seg[0]) || seg[0] == '$' {
+	for _, segment := range strings.Split(s, ".") {
+		if segment == "" || !isIdentifierStart(segment[0]) || segment[0] == '$' {
 			return false
 		}
-		for i := 0; i < len(seg); i++ {
-			if !isIdentChar(seg[i]) {
+		for i := 0; i < len(segment); i++ {
+			if !isIdentifierCharacter(segment[i]) {
 				return false
 			}
 		}
@@ -169,17 +169,17 @@ func dotted(s string) bool {
 // extractHXML turns an .hxml file into imports: its libraries, class paths,
 // main classes, root modules, resources, included .hxml files and the classes
 // its --macro calls name.
-func extractHXML(src []byte) *lang.Extraction {
-	return &lang.Extraction{Imports: readHXML(src).imps}
+func extractHXML(source []byte) *lang.Extraction {
+	return &lang.Extraction{Imports: readHXML(source).rawImports}
 }
 
 // extractLix is the library a lix haxe_libraries/<name>.hxml pins: the file's
 // own name.
-func extractLix(name string, src []byte) *lang.Extraction {
-	h := readHXML(src)
+func extractLix(name string, source []byte) *lang.Extraction {
+	h := readHXML(source)
 	line := 1
 	if h.install != "" {
-		for n, l := range strings.Split(string(src), "\n") {
+		for n, l := range strings.Split(string(source), "\n") {
 			if strings.Contains(l, "@install") {
 				line = n + 1
 				break
@@ -197,7 +197,7 @@ type haxelibJSON struct {
 	Dependencies map[string]any `json:"dependencies"`
 }
 
-type dep struct {
+type dependency struct {
 	name, version string
 	line          int
 }
@@ -206,49 +206,49 @@ type dep struct {
 // dependencies in the order written.
 //
 // Implements: REQ-HAXE-005
-func readHaxelib(src []byte) (h haxelibJSON, deps []dep, ok bool) {
-	if json.Unmarshal(src, &h) != nil {
+func readHaxelib(source []byte) (h haxelibJSON, dependencies []dependency, ok bool) {
+	if json.Unmarshal(source, &h) != nil {
 		return h, nil, false
 	}
-	text := string(src)
-	depsAt := strings.Index(text, `"dependencies"`)
+	text := string(source)
+	dependenciesAt := strings.Index(text, `"dependencies"`)
 	for name, v := range h.Dependencies {
 		s, _ := v.(string)
 		line := 0
-		if depsAt >= 0 {
-			if i := strings.Index(text[depsAt:], `"`+name+`"`); i >= 0 {
-				line = 1 + strings.Count(text[:depsAt+i], "\n")
+		if dependenciesAt >= 0 {
+			if i := strings.Index(text[dependenciesAt:], `"`+name+`"`); i >= 0 {
+				line = 1 + strings.Count(text[:dependenciesAt+i], "\n")
 			}
 		}
-		deps = append(deps, dep{name, strings.TrimSpace(s), line})
+		dependencies = append(dependencies, dependency{name, strings.TrimSpace(s), line})
 	}
-	sort.Slice(deps, func(i, j int) bool {
-		if deps[i].line != deps[j].line {
-			return deps[i].line < deps[j].line
+	sort.Slice(dependencies, func(i, j int) bool {
+		if dependencies[i].line != dependencies[j].line {
+			return dependencies[i].line < dependencies[j].line
 		}
-		return deps[i].name < deps[j].name
+		return dependencies[i].name < dependencies[j].name
 	})
-	return h, deps, true
+	return h, dependencies, true
 }
 
-func extractHaxelib(src []byte) *lang.Extraction {
-	h, deps, ok := readHaxelib(src)
-	ex := &lang.Extraction{}
+func extractHaxelib(source []byte) *lang.Extraction {
+	h, dependencies, ok := readHaxelib(source)
+	extraction := &lang.Extraction{}
 	if !ok {
-		return ex
+		return extraction
 	}
-	for _, d := range deps {
+	for _, d := range dependencies {
 		m := d.name
 		if d.version != "" {
 			m += ":" + d.version
 		}
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: d.name, Module: m, Name: kindLib, Line: d.line})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: d.name, Module: m, Name: kindLibrary, Line: d.line})
 	}
-	if cp := strings.TrimSpace(h.ClassPath); cp != "" {
-		line := 1 + strings.Count(string(src[:max(0, bytes.Index(src, []byte(`"classPath"`)))]), "\n")
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: "classPath " + cp, Module: cp, Name: kindCP, Line: line})
+	if classPath := strings.TrimSpace(h.ClassPath); classPath != "" {
+		line := 1 + strings.Count(string(source[:max(0, bytes.Index(source, []byte(`"classPath"`)))]), "\n")
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "classPath " + classPath, Module: classPath, Name: kindCP, Line: line})
 	}
-	return ex
+	return extraction
 }
 
 // limeProject reports whether an XML file is a Lime/OpenFL project file: its
@@ -257,35 +257,37 @@ func extractHaxelib(src []byte) *lang.Extraction {
 // tool is not.
 //
 // Implements: REQ-HAXE-001
-func limeProject(src []byte) bool {
+func limeProject(source []byte) bool {
 	root := ""
-	xmlTags(src, func(name string, _ map[string]string, _ int) bool {
+	xmlTags(source, func(name string, _ map[string]string, _ int) bool {
 		root = name
 		return false
 	})
 	if root != "project" && root != "extension" {
 		return false
 	}
-	return bytes.Contains(src, []byte("<haxelib")) || bytes.Contains(src, []byte("<source")) ||
-		bytes.Contains(src, []byte("<classpath")) || bytes.Contains(src, []byte("<include haxelib"))
+	return bytes.Contains(source, []byte("<haxelib")) || bytes.Contains(source, []byte("<source")) ||
+		bytes.Contains(source, []byte("<classpath")) || bytes.Contains(source, []byte("<include haxelib"))
 }
 
 var entities = strings.NewReplacer("&amp;", "&", "&lt;", "<", "&gt;", ">", "&quot;", `"`, "&apos;", "'")
 
-func xmlNameChar(c byte) bool { return isIdentChar(c) || c == '-' || c == ':' || c == '.' }
+func xmlNameCharacter(c byte) bool {
+	return isIdentifierCharacter(c) || c == '-' || c == ':' || c == '.'
+}
 
-// xmlTags calls fn with every start tag's name, attributes and line, in order,
-// until fn returns false. It is a tag scanner, not a parser: project files
+// xmlTags calls function with every start tag's name, attributes and line, in order,
+// until function returns false. It is a tag scanner, not a parser: project files
 // hold what XML forbids (if="${a < b}"), which Lime reads anyway.
-func xmlTags(src []byte, fn func(name string, attrs map[string]string, line int) bool) {
+func xmlTags(source []byte, function func(name string, attributes map[string]string, line int) bool) {
 	i, line, counted := 0, 1, 0
-	for i < len(src) {
-		j := bytes.IndexByte(src[i:], '<')
+	for i < len(source) {
+		j := bytes.IndexByte(source[i:], '<')
 		if j < 0 {
 			return
 		}
 		i += j
-		rest := src[i:]
+		rest := source[i:]
 		switch {
 		case bytes.HasPrefix(rest, []byte("<!--")):
 			k := bytes.Index(rest[4:], []byte("-->"))
@@ -303,72 +305,72 @@ func xmlTags(src []byte, fn func(name string, attrs map[string]string, line int)
 			continue
 		}
 		n := i + 1
-		for n < len(src) && xmlNameChar(src[n]) {
+		for n < len(source) && xmlNameCharacter(source[n]) {
 			n++
 		}
 		if n == i+1 {
 			i++
 			continue
 		}
-		name := string(src[i+1 : n])
-		attrs := map[string]string{}
+		name := string(source[i+1 : n])
+		attributes := map[string]string{}
 		k := n
-		for k < len(src) {
-			c := src[k]
+		for k < len(source) {
+			c := source[k]
 			if c == '>' {
 				k++
 				break
 			}
 			a := k
-			for k < len(src) && xmlNameChar(src[k]) {
+			for k < len(source) && xmlNameCharacter(source[k]) {
 				k++
 			}
 			if k == a {
 				k++ // a blank, a / or a stray character
 				continue
 			}
-			key := string(src[a:k])
-			for k < len(src) && (src[k] == ' ' || src[k] == '\t' || src[k] == '\n' || src[k] == '\r') {
+			key := string(source[a:k])
+			for k < len(source) && (source[k] == ' ' || source[k] == '\t' || source[k] == '\n' || source[k] == '\r') {
 				k++
 			}
-			if k >= len(src) || src[k] != '=' {
-				attrs[key] = ""
+			if k >= len(source) || source[k] != '=' {
+				attributes[key] = ""
 				continue
 			}
 			k++
-			for k < len(src) && (src[k] == ' ' || src[k] == '\t' || src[k] == '\n' || src[k] == '\r') {
+			for k < len(source) && (source[k] == ' ' || source[k] == '\t' || source[k] == '\n' || source[k] == '\r') {
 				k++
 			}
-			if k < len(src) && (src[k] == '"' || src[k] == '\'') {
-				q := src[k]
-				e := bytes.IndexByte(src[k+1:], q)
+			if k < len(source) && (source[k] == '"' || source[k] == '\'') {
+				q := source[k]
+				e := bytes.IndexByte(source[k+1:], q)
 				if e < 0 {
-					e = len(src) - k - 1
+					e = len(source) - k - 1
 				}
-				attrs[key] = entities.Replace(string(src[k+1 : k+1+e]))
+				attributes[key] = entities.Replace(string(source[k+1 : k+1+e]))
 				k += e + 2
 			} else {
 				v := k
-				for k < len(src) && src[k] != '>' && src[k] != ' ' && src[k] != '\t' && src[k] != '\n' && src[k] != '/' {
+				for k < len(source) && source[k] != '>' && source[k] != ' ' && source[k] != '\t' && source[k] != '\n' && source[k] != '/' {
 					k++
 				}
-				attrs[key] = string(src[v:k])
+				attributes[key] = string(source[v:k])
 			}
 		}
-		line += bytes.Count(src[counted:i], []byte("\n"))
+		line += bytes.Count(source[counted:i], []byte("\n"))
 		counted = i
-		if !fn(name, attrs, line) {
+		if !function(name, attributes, line) {
 			return
 		}
-		i = min(k, len(src))
+		i = min(k, len(source))
 	}
 }
 
 // project is what a Lime/OpenFL project file declares.
 type project struct {
-	libs    []dep
-	sources []string
-	imps    []lang.RawImport
+	libraries  []dependency
+	sources    []string
+	rawImports []lang.RawImport
 }
 
 // readProject reads a Lime/OpenFL project file: <haxelib name version>,
@@ -377,50 +379,50 @@ type project struct {
 // are skipped.
 //
 // Implements: REQ-HAXE-005
-func readProject(src []byte) *project {
+func readProject(source []byte) *project {
 	p := &project{}
-	if !limeProject(src) {
+	if !limeProject(source) {
 		return p
 	}
 	add := func(spec, module, kind string, line int) {
-		p.imps = append(p.imps, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
+		p.rawImports = append(p.rawImports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
 	}
-	xmlTags(src, func(tag string, attrs map[string]string, line int) bool {
-		attr := func(name string) string {
-			if v := strings.TrimSpace(attrs[name]); !strings.Contains(v, "$") && !strings.Contains(v, "::") {
+	xmlTags(source, func(tag string, attributes map[string]string, line int) bool {
+		attribute := func(name string) string {
+			if v := strings.TrimSpace(attributes[name]); !strings.Contains(v, "$") && !strings.Contains(v, "::") {
 				return v
 			}
 			return ""
 		}
 		switch tag {
 		case "haxelib":
-			if n := attr("name"); n != "" {
-				v := attr("version")
-				p.libs = append(p.libs, dep{n, v, line})
+			if n := attribute("name"); n != "" {
+				v := attribute("version")
+				p.libraries = append(p.libraries, dependency{n, v, line})
 				m := n
 				if v != "" {
 					m += ":" + v
 				}
-				add(n, m, kindLib, line)
+				add(n, m, kindLibrary, line)
 			}
 		case "include":
-			if n := attr("haxelib"); n != "" {
-				p.libs = append(p.libs, dep{n, "", line})
-				add(n, n, kindLib, line)
-			} else if f := attr("path"); f != "" {
+			if n := attribute("haxelib"); n != "" {
+				p.libraries = append(p.libraries, dependency{n, "", line})
+				add(n, n, kindLibrary, line)
+			} else if f := attribute("path"); f != "" {
 				add("include "+f, f, kindFile, line)
 			}
 		case "source", "classpath":
-			f := attr("path")
+			f := attribute("path")
 			if f == "" {
-				f = attr("name")
+				f = attribute("name")
 			}
 			if f != "" {
 				p.sources = append(p.sources, f)
 				add(tag+" "+f, f, kindCP, line)
 			}
 		case "app":
-			if m := attr("main"); dotted(m) {
+			if m := attribute("main"); dotted(m) {
 				add("main "+m, m, kindMain, line)
 			}
 		}
@@ -429,6 +431,6 @@ func readProject(src []byte) *project {
 	return p
 }
 
-func extractProject(src []byte) *lang.Extraction {
-	return &lang.Extraction{Imports: readProject(src).imps}
+func extractProject(source []byte) *lang.Extraction {
+	return &lang.Extraction{Imports: readProject(source).rawImports}
 }

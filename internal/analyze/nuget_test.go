@@ -61,11 +61,11 @@ func TestOneNuGetNodeAcrossCSharpAndFSharp(t *testing.T) {
 	if n := byID(g)[id]; n.Version != "13.0.3" || n.Floating {
 		t.Errorf("version %q floating %v, want 13.0.3 pinned", n.Version, n.Floating)
 	}
-	ref := false
+	reference := false
 	for _, e := range g.Edges {
-		ref = ref || e.From == graph.FileID("App/App.fsproj") && e.To == graph.FileID("Core/Core.csproj")
+		reference = reference || e.From == graph.FileID("App/App.fsproj") && e.To == graph.FileID("Core/Core.csproj")
 	}
-	if !ref {
+	if !reference {
 		t.Error("App.fsproj has no edge to Core.csproj")
 	}
 }

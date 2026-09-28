@@ -162,7 +162,7 @@ func TestPackageBlocksResolve(t *testing.T) {
 		t.Errorf("a member at column 0 was indexed: %+v", got["org.x.Member"])
 	}
 	r := newResolver(langtest.Files(t, langtest.Write(t, files)), scala)
-	if relative := r.filePkg["src/blocks.scala"]; relative != "com.acme" {
+	if relative := r.filePackage["src/blocks.scala"]; relative != "com.acme" {
 		t.Errorf("imports of blocks.scala relative to %q, want com.acme", relative)
 	}
 }

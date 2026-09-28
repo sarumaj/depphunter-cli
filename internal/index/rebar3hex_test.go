@@ -15,27 +15,27 @@ import (
 
 // rebar3Client writes rebar3's global rebar.config and hex.config (when not empty)
 // in a home directory and returns a client whose Hex API is the stub's, with the
-// environment vars on top.
-func rebar3Client(t *testing.T, stub *hexStub, global, hexConfig string, vars map[string]string) *Client {
+// environment variables on top.
+func rebar3Client(t *testing.T, stub *hexStub, global, hexConfig string, variables map[string]string) *Client {
 	t.Helper()
 	home := t.TempDir()
-	dir := filepath.Join(home, ".config", "rebar3")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	directory := filepath.Join(home, ".config", "rebar3")
+	if err := os.MkdirAll(directory, 0o755); err != nil {
 		t.Fatal(err)
 	}
 	for name, body := range map[string]string{"rebar.config": global, "hex.config": hexConfig} {
 		if body == "" {
 			continue
 		}
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(body), 0o600); err != nil {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(body), 0o600); err != nil {
 			t.Fatal(err)
 		}
 	}
 	all := map[string]string{"HEX_API_URL": stub.URL + "/api"}
-	for k, v := range vars {
+	for k, v := range variables {
 		all[k] = v
 	}
-	return NewClient(Discover(nil, env(all), home), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, env(all)), nil)
+	return NewClient(Discover(nil, environment(all), home), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(all)), nil)
 }
 
 // paths are the stub's requests since before, without their Authorization.
@@ -67,11 +67,11 @@ func TestRebar3OrganizationRepositories(t *testing.T) {
 	c := rebar3Client(t, stub, global, "", key)
 
 	billing := lang.Target{Ecosystem: Hex, Package: "billing", Version: "1.2.0", Registry: "hexpm:acme,*"}
-	deps := c.Dependencies(billing)
-	if got := names(deps); !slices.Equal(got, []string{"jason", "ledger"}) {
+	dependencies := c.Dependencies(billing)
+	if got := names(dependencies); !slices.Equal(got, []string{"jason", "ledger"}) {
 		t.Fatalf("billing: %v (asked %v)", got, stub.requests())
 	}
-	for _, d := range deps {
+	for _, d := range dependencies {
 		if d.Registry != billing.Registry {
 			t.Errorf("%s: registry %q", d.Package, d.Registry)
 		}
@@ -107,9 +107,9 @@ func TestRebar3OrganizationRepositories(t *testing.T) {
 	}
 
 	// No key: nothing after the organization is asked, and the report says why.
-	for _, tc := range []struct {
-		registry, pkg string
-		asked         []string
+	for _, testCase := range []struct {
+		registry, packageName string
+		asked                 []string
 	}{
 		{"hexpm:acme,*", "billing", nil},
 		{"hexpm:acme,*", "jason", nil},
@@ -117,12 +117,12 @@ func TestRebar3OrganizationRepositories(t *testing.T) {
 	} {
 		c = rebar3Client(t, stub, global, "", nil)
 		before = len(stub.requests())
-		if got, l := ask(t, c, lang.Target{Ecosystem: Hex, Package: tc.pkg, Version: "1.2.0", Registry: tc.registry}); len(got) != 0 ||
+		if got, l := ask(t, c, lang.Target{Ecosystem: Hex, Package: testCase.packageName, Version: "1.2.0", Registry: testCase.registry}); len(got) != 0 ||
 			l.Reason != trace.ReasonNoKey || l.Index != stub.URL+"/api/repos/acme" {
-			t.Errorf("%s %s without a key: %v, %q at %s", tc.registry, tc.pkg, got, l.Reason, l.Index)
+			t.Errorf("%s %s without a key: %v, %q at %s", testCase.registry, testCase.packageName, got, l.Reason, l.Index)
 		}
-		if got := paths(stub, before); !slices.Equal(got, tc.asked) {
-			t.Errorf("%s %s without a key: asked %v", tc.registry, tc.pkg, got)
+		if got := paths(stub, before); !slices.Equal(got, testCase.asked) {
+			t.Errorf("%s %s without a key: asked %v", testCase.registry, testCase.packageName, got)
 		}
 	}
 

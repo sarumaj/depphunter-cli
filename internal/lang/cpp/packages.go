@@ -16,22 +16,22 @@ import (
 // The package managers whose manifests turn a third-party include into a declared
 // package: vcpkg (vcpkg.json) and Conan (conanfile.txt, conanfile.py, conan.lock).
 const (
-	ecoVcpkg = "vcpkg"
-	ecoConan = "conan"
+	ecosystemVcpkg = "vcpkg"
+	ecosystemConan = "conan"
 )
 
-// pkg is one library a vcpkg or Conan manifest declares, or a conan.lock holds.
-type pkg struct {
-	eco, name string
-	version   string // exact when pinned; else the minimum or range declared
-	requested string // what the manifest asked for when a lock or override fixed it
-	pinned    bool
-	floating  bool // names no version, and nothing fixes one
+// declaredPackage is one library a vcpkg or Conan manifest declares, or a conan.lock holds.
+type declaredPackage struct {
+	ecosystem, name string
+	version         string // exact when pinned; else the minimum or range declared
+	requested       string // what the manifest asked for when a lock or override fixed it
+	pinned          bool
+	floating        bool // names no version, and nothing fixes one
 }
 
-func (p *pkg) target() lang.Target {
+func (p *declaredPackage) target() lang.Target {
 	return lang.Target{
-		Ecosystem: p.eco, Package: p.name, Version: p.version, Requested: p.requested,
+		Ecosystem: p.ecosystem, Package: p.name, Version: p.version, Requested: p.requested,
 		Pinned: p.pinned, Floating: p.floating,
 	}
 }
@@ -39,7 +39,7 @@ func (p *pkg) target() lang.Target {
 // packages are the libraries declared per directory holding a manifest; a source
 // sees those of the directories above it, the nearest first.
 type packages struct {
-	dirs map[string]map[string][]*pkg // dir -> normalized name -> vcpkg first, then Conan
+	directories map[string]map[string][]*declaredPackage // dir -> normalized name -> vcpkg first, then Conan
 	// order is every manifest directory, shallowest first, then by name: where the
 	// includes of a file under no manifest are looked for.
 	order []string
@@ -53,9 +53,9 @@ type packages struct {
 	fetched []Fetched
 }
 
-// normName folds the spellings one library goes by in vcpkg, Conan and its include
+// normalizeName folds the spellings one library goes by in vcpkg, Conan and its include
 // directory: case, and "_" for "-" (nlohmann_json, nlohmann-json).
-func normName(s string) string {
+func normalizeName(s string) string {
 	return strings.ReplaceAll(strings.ToLower(strings.TrimSpace(s)), "_", "-")
 }
 
@@ -66,50 +66,50 @@ var manifestNames = []string{"vcpkg-configuration.json", "vcpkg.json", "conanfil
 
 // Implements: REQ-CPP-009, REQ-CPP-010, REQ-CPP-011
 func readPackages(all []*scan.File) *packages {
-	p := &packages{dirs: map[string]map[string][]*pkg{}, tree: map[string][]lang.Target{}}
-	byDir := map[string]map[string][]byte{}
+	p := &packages{directories: map[string]map[string][]*declaredPackage{}, tree: map[string][]lang.Target{}}
+	byDirectory := map[string]map[string][]byte{}
 	for _, f := range all {
 		base := path.Base(f.Path)
 		if !isManifest(base) || f.Binary || f.TooLarge || f.Size > lang.MaxParseSize {
 			continue
 		}
-		src, err := os.ReadFile(f.Abs)
+		source, err := os.ReadFile(f.AbsolutePath)
 		if err != nil {
 			continue
 		}
-		dir := path.Dir(f.Path)
-		if byDir[dir] == nil {
-			byDir[dir] = map[string][]byte{}
+		directory := path.Dir(f.Path)
+		if byDirectory[directory] == nil {
+			byDirectory[directory] = map[string][]byte{}
 		}
-		byDir[dir][base] = src
+		byDirectory[directory][base] = source
 	}
-	for dir, files := range byDir {
-		var vcpkg, conan []*pkg
-		if src, ok := files["vcpkg.json"]; ok {
-			vcpkg = readVcpkg(src, files["vcpkg-configuration.json"])
+	for directory, files := range byDirectory {
+		var vcpkg, conan []*declaredPackage
+		if source, ok := files["vcpkg.json"]; ok {
+			vcpkg = readVcpkg(source, files["vcpkg-configuration.json"])
 		}
-		if src, ok := files["conanfile.txt"]; ok {
-			conan = append(conan, readConanfileTxt(src)...)
+		if source, ok := files["conanfile.txt"]; ok {
+			conan = append(conan, readConanfileTxt(source)...)
 		}
-		if src, ok := files["conanfile.py"]; ok {
-			conan = append(conan, readConanfilePy(src)...)
+		if source, ok := files["conanfile.py"]; ok {
+			conan = append(conan, readConanfilePy(source)...)
 		}
-		if src, ok := files["conan.lock"]; ok {
+		if source, ok := files["conan.lock"]; ok {
 			var flat bool
-			if conan, flat = p.lock(src, conan); flat {
-				p.flat = append(p.flat, path.Join(dir, "conan.lock"))
+			if conan, flat = p.lock(source, conan); flat {
+				p.flat = append(p.flat, path.Join(directory, "conan.lock"))
 			}
 		}
-		byName := map[string][]*pkg{}
-		for _, list := range [][]*pkg{vcpkg, conan} {
+		byName := map[string][]*declaredPackage{}
+		for _, list := range [][]*declaredPackage{vcpkg, conan} {
 			for _, d := range list {
-				key := normName(d.name)
+				key := normalizeName(d.name)
 				byName[key] = append(byName[key], d)
 			}
 		}
 		if len(byName) > 0 {
-			p.dirs[dir] = byName
-			p.order = append(p.order, dir)
+			p.directories[directory] = byName
+			p.order = append(p.order, directory)
 		}
 	}
 	slices.SortFunc(p.order, func(a, b string) int {
@@ -165,7 +165,7 @@ func (c *vcpkgConfig) baseline(port string) bool {
 // version exactly, which is the only thing that pins one (see REQ-CPP-009).
 //
 // Implements: REQ-CPP-009
-func readVcpkg(src, config []byte) []*pkg {
+func readVcpkg(source, config []byte) []*declaredPackage {
 	var m struct {
 		Dependencies []json.RawMessage `json:"dependencies"`
 		// A feature's dependencies are installed when the feature is chosen,
@@ -181,14 +181,14 @@ func readVcpkg(src, config []byte) []*pkg {
 		BuiltinBaseline string       `json:"builtin-baseline"`
 		Configuration   *vcpkgConfig `json:"vcpkg-configuration"`
 	}
-	if json.Unmarshal(src, &m) != nil {
+	if json.Unmarshal(source, &m) != nil {
 		return nil
 	}
-	cfg := m.Configuration
+	configuration := m.Configuration
 	if len(config) > 0 {
 		var c vcpkgConfig
 		if json.Unmarshal(config, &c) == nil {
-			cfg = &c
+			configuration = &c
 		}
 	}
 	overrides := map[string]string{}
@@ -200,18 +200,18 @@ func readVcpkg(src, config []byte) []*pkg {
 			}
 		}
 	}
-	deps := m.Dependencies
+	dependencies := m.Dependencies
 	for _, name := range slices.Sorted(maps.Keys(m.Features)) {
 		var f struct {
 			Dependencies []json.RawMessage `json:"dependencies"`
 		}
 		if json.Unmarshal(m.Features[name], &f) == nil {
-			deps = append(deps, f.Dependencies...)
+			dependencies = append(dependencies, f.Dependencies...)
 		}
 	}
-	var out []*pkg
+	var out []*declaredPackage
 	seen := map[string]bool{}
-	for _, raw := range deps {
+	for _, raw := range dependencies {
 		var name, minimum string
 		if json.Unmarshal(raw, &name) != nil {
 			var d struct {
@@ -227,13 +227,13 @@ func readVcpkg(src, config []byte) []*pkg {
 			continue
 		}
 		seen[name] = true
-		d := &pkg{eco: ecoVcpkg, name: name}
+		d := &declaredPackage{ecosystem: ecosystemVcpkg, name: name}
 		if minimum != "" {
 			d.version = ">=" + minimum
 		}
 		if v, ok := overrides[name]; ok {
 			d.requested, d.version, d.pinned = d.version, v, true
-		} else if minimum == "" && m.BuiltinBaseline == "" && !cfg.baseline(name) {
+		} else if minimum == "" && m.BuiltinBaseline == "" && !configuration.baseline(name) {
 			// No version, and no baseline to take one from: whatever the vcpkg
 			// checkout that builds it has.
 			d.floating = true
@@ -243,14 +243,14 @@ func readVcpkg(src, config []byte) []*pkg {
 	return out
 }
 
-// conanRef splits a Conan reference, name/version@user/channel#revision (a Conan
+// conanReference splits a Conan reference, name/version@user/channel#revision (a Conan
 // 2 lock appends %timestamp), into its name and version.
-func conanRef(ref string) (name, version string, ok bool) {
-	ref = strings.TrimSpace(ref)
-	ref, _, _ = strings.Cut(ref, "#")
-	ref, _, _ = strings.Cut(ref, "%")
-	ref, _, _ = strings.Cut(ref, "@")
-	name, version, ok = strings.Cut(ref, "/")
+func conanReference(reference string) (name, version string, ok bool) {
+	reference = strings.TrimSpace(reference)
+	reference, _, _ = strings.Cut(reference, "#")
+	reference, _, _ = strings.Cut(reference, "%")
+	reference, _, _ = strings.Cut(reference, "@")
+	name, version, ok = strings.Cut(reference, "/")
 	name, version = strings.TrimSpace(name), strings.TrimSpace(version)
 	if !ok || name == "" || version == "" || strings.ContainsAny(name, " {}$\"'") || strings.ContainsAny(version, "{}$\"'") {
 		return "", "", false
@@ -258,33 +258,33 @@ func conanRef(ref string) (name, version string, ok bool) {
 	return name, version, true
 }
 
-// conanPkg is a declared reference: an exact version pins it, a range in
+// conanPackage is a declared reference: an exact version pins it, a range in
 // brackets ([>=1.0 <2], [~1.2]) floats until a lock resolves it.
 //
 // Implements: REQ-CPP-010
-func conanPkg(ref string) *pkg {
-	name, version, ok := conanRef(ref)
+func conanPackage(reference string) *declaredPackage {
+	name, version, ok := conanReference(reference)
 	if !ok {
 		return nil
 	}
-	return &pkg{eco: ecoConan, name: name, version: version, pinned: !strings.HasPrefix(version, "[")}
+	return &declaredPackage{ecosystem: ecosystemConan, name: name, version: version, pinned: !strings.HasPrefix(version, "[")}
 }
 
 // readConanfileTxt reads the references under [requires], [tool_requires],
 // [build_requires] and [test_requires].
 //
 // Implements: REQ-CPP-010
-func readConanfileTxt(src []byte) []*pkg {
-	var out []*pkg
+func readConanfileTxt(source []byte) []*declaredPackage {
+	var out []*declaredPackage
 	section := ""
-	for _, line := range strings.Split(string(src), "\n") {
+	for _, line := range strings.Split(string(source), "\n") {
 		line = strings.TrimSpace(line)
 		switch {
 		case line == "" || strings.HasPrefix(line, "#"):
 		case strings.HasPrefix(line, "[") && strings.HasSuffix(line, "]"):
 			section = strings.Trim(line, "[] ")
 		case section == "requires" || section == "tool_requires" || section == "build_requires" || section == "test_requires":
-			if d := conanPkg(line); d != nil {
+			if d := conanPackage(line); d != nil {
 				out = append(out, d)
 			}
 		}
@@ -297,8 +297,8 @@ var (
 	// first argument when it is a plain string literal (an f-string is not).
 	conanCall = regexp.MustCompile(`self\.(?:requires|tool_requires|build_requires|test_requires)\(\s*["']([^"']+)["']`)
 	// requires = "a/1", "b/2" or a list or tuple, possibly over several lines.
-	conanAttr = regexp.MustCompile(`(?m)^[ \t]*(?:requires|tool_requires|build_requires|test_requires)[ \t]*=[ \t]*`)
-	pyString  = regexp.MustCompile(`"([^"\n]*)"|'([^'\n]*)'`)
+	conanAttribute = regexp.MustCompile(`(?m)^[ \t]*(?:requires|tool_requires|build_requires|test_requires)[ \t]*=[ \t]*`)
+	pyString       = regexp.MustCompile(`"([^"\n]*)"|'([^'\n]*)'`)
 )
 
 // readConanfilePy reads the string literals a conanfile.py requires with, in
@@ -308,19 +308,19 @@ var (
 // whatever the condition.
 //
 // Implements: REQ-CPP-010, REQ-CPP-013
-func readConanfilePy(src []byte) []*pkg {
-	text := stripPyComments(string(src))
-	var out []*pkg
-	add := func(ref string) {
-		if d := conanPkg(ref); d != nil {
+func readConanfilePy(source []byte) []*declaredPackage {
+	text := stripPyComments(string(source))
+	var out []*declaredPackage
+	add := func(reference string) {
+		if d := conanPackage(reference); d != nil {
 			out = append(out, d)
 		}
 	}
 	for _, m := range conanCall.FindAllStringSubmatch(text, -1) {
 		add(m[1])
 	}
-	for _, loc := range conanAttr.FindAllStringIndex(text, -1) {
-		for _, m := range pyString.FindAllStringSubmatch(pyValue(text[loc[1]:]), -1) {
+	for _, span := range conanAttribute.FindAllStringIndex(text, -1) {
+		for _, m := range pyString.FindAllStringSubmatch(pyValue(text[span[1]:]), -1) {
 			add(m[1] + m[2])
 		}
 	}
@@ -388,11 +388,11 @@ func stripPyComments(s string) string {
 // lock that pinned something: it has no edges to keep.
 //
 // Implements: REQ-CPP-011
-func (p *packages) lock(src []byte, declared []*pkg) (_ []*pkg, flat bool) {
+func (p *packages) lock(source []byte, declared []*declaredPackage) (_ []*declaredPackage, flat bool) {
 	var l struct {
 		GraphLock *struct {
 			Nodes map[string]struct {
-				Ref           string   `json:"ref"`
+				Reference     string   `json:"ref"`
 				Path          string   `json:"path"`
 				Requires      []string `json:"requires"`
 				BuildRequires []string `json:"build_requires"`
@@ -402,12 +402,12 @@ func (p *packages) lock(src []byte, declared []*pkg) (_ []*pkg, flat bool) {
 		BuildRequires  []string `json:"build_requires"`
 		PythonRequires []string `json:"python_requires"`
 	}
-	if json.Unmarshal(src, &l) != nil {
+	if json.Unmarshal(source, &l) != nil {
 		return declared, false
 	}
-	var locked []*pkg
-	for _, ref := range append(l.Requires, l.BuildRequires...) {
-		if d := conanPkg(ref); d != nil && d.pinned {
+	var locked []*declaredPackage
+	for _, reference := range append(l.Requires, l.BuildRequires...) {
+		if d := conanPackage(reference); d != nil && d.pinned {
 			locked = append(locked, d)
 		}
 	}
@@ -420,36 +420,36 @@ func (p *packages) lock(src []byte, declared []*pkg) (_ []*pkg, flat bool) {
 			if n.Path != "" { // the consumer: the conanfile itself
 				continue
 			}
-			d := conanPkg(n.Ref)
+			d := conanPackage(n.Reference)
 			if d == nil || !d.pinned {
 				continue
 			}
 			locked = append(locked, d)
 			key := d.name + "/" + d.version
-			for _, req := range append(n.Requires, n.BuildRequires...) {
-				if dep := conanPkg(l.GraphLock.Nodes[req].Ref); dep != nil {
-					p.tree[key] = append(p.tree[key], dep.target())
+			for _, requirement := range append(n.Requires, n.BuildRequires...) {
+				if dependency := conanPackage(l.GraphLock.Nodes[requirement].Reference); dependency != nil {
+					p.tree[key] = append(p.tree[key], dependency.target())
 				}
 			}
 		}
 	}
-	byName := map[string]*pkg{}
+	byName := map[string]*declaredPackage{}
 	for _, d := range locked {
-		if byName[normName(d.name)] == nil {
-			byName[normName(d.name)] = d
+		if byName[normalizeName(d.name)] == nil {
+			byName[normalizeName(d.name)] = d
 		}
 	}
 	for _, d := range declared {
-		if v := byName[normName(d.name)]; v != nil {
+		if v := byName[normalizeName(d.name)]; v != nil {
 			if v.version != d.version {
 				d.requested, d.version = d.version, v.version
 			}
 			d.pinned = true
-			delete(byName, normName(d.name))
+			delete(byName, normalizeName(d.name))
 		}
 	}
 	for _, d := range locked { // in the lock's order, once each
-		if byName[normName(d.name)] == d {
+		if byName[normalizeName(d.name)] == d {
 			declared = append(declared, d)
 		}
 	}
@@ -461,14 +461,14 @@ func (p *packages) lock(src []byte, declared []*pkg) (_ []*pkg, flat bool) {
 //
 // Implements: REQ-CPP-011
 func (p *packages) Dependencies(t lang.Target) []lang.Target {
-	if t.Ecosystem != ecoConan {
+	if t.Ecosystem != ecosystemConan {
 		return nil
 	}
 	return p.tree[t.Package+"/"+t.Version]
 }
 
 // headerAliases name the packages that provide an include directory (or a bare
-// header's name) other than the one named like it, as normName spells both. Only
+// header's name) other than the one named like it, as normalizeName spells both. Only
 // the well-known cases: anything else must be named like its headers.
 //
 // Implements: REQ-CPP-012
@@ -497,20 +497,20 @@ var headerAliases = map[string][]string{
 // <uv.h> is libuv); and for a Qt module's directory (<QtCore/QString>) its own
 // port, then Qt's base.
 func candidates(include string) []string {
-	lib := normName(library(include))
+	libraryName := normalizeName(library(include))
 	var out []string
-	if lib == "boost" {
+	if libraryName == "boost" {
 		if _, rest, ok := strings.Cut(include, "/"); ok {
 			second, _, _ := strings.Cut(rest, "/")
-			out = append(out, "boost-"+normName(strings.TrimSuffix(second, path.Ext(second))))
+			out = append(out, "boost-"+normalizeName(strings.TrimSuffix(second, path.Ext(second))))
 		}
 	}
-	out = append(out, lib)
-	out = append(out, headerAliases[lib]...)
-	if !strings.HasPrefix(lib, "lib") {
-		out = append(out, "lib"+lib)
+	out = append(out, libraryName)
+	out = append(out, headerAliases[libraryName]...)
+	if !strings.HasPrefix(libraryName, "lib") {
+		out = append(out, "lib"+libraryName)
 	}
-	if strings.HasPrefix(include, "Qt") && len(lib) > 2 {
+	if strings.HasPrefix(include, "Qt") && len(libraryName) > 2 {
 		out = append(out, "qtbase", "qt5-base", "qt6", "qt5", "qt")
 	}
 	return out
@@ -524,33 +524,33 @@ func candidates(include string) []string {
 // under a manifest keeps to its own.
 //
 // Implements: REQ-CPP-012
-func (p *packages) matchNames(file string, names []string) *pkg {
-	if len(p.dirs) == 0 {
+func (p *packages) matchNames(file string, names []string) *declaredPackage {
+	if len(p.directories) == 0 {
 		return nil
 	}
-	in := func(dir string) *pkg {
+	in := func(directory string) *declaredPackage {
 		for _, n := range names {
-			if list := p.dirs[dir][n]; len(list) > 0 {
+			if list := p.directories[directory][n]; len(list) > 0 {
 				return list[0]
 			}
 		}
 		return nil
 	}
 	governed := false
-	for dir := path.Dir(file); ; dir = path.Dir(dir) {
-		if d := in(dir); d != nil {
+	for directory := path.Dir(file); ; directory = path.Dir(directory) {
+		if d := in(directory); d != nil {
 			return d
 		}
-		governed = governed || p.dirs[dir] != nil
-		if dir == "." || dir == "/" {
+		governed = governed || p.directories[directory] != nil
+		if directory == "." || directory == "/" {
 			break
 		}
 	}
 	if governed {
 		return nil
 	}
-	for _, dir := range p.order {
-		if d := in(dir); d != nil {
+	for _, directory := range p.order {
+		if d := in(directory); d != nil {
 			return d
 		}
 	}
@@ -575,7 +575,7 @@ func ReadPackages(all []*scan.File) Packages { return Packages{readPackages(all)
 func (p Packages) Library(file, include string, extra ...string) lang.Target {
 	names := candidates(include)
 	for _, e := range extra {
-		if n := normName(e); !slices.Contains(names, n) {
+		if n := normalizeName(e); !slices.Contains(names, n) {
 			names = append(names, n)
 		}
 	}
@@ -585,15 +585,15 @@ func (p Packages) Library(file, include string, extra ...string) lang.Target {
 	if f := p.p.fetchedFor(file, names); f != nil {
 		return f.Target
 	}
-	return lang.Target{Ecosystem: ecoExternal, Package: library(include), Unresolved: true}
+	return lang.Target{Ecosystem: ecosystemExternal, Package: library(include), Unresolved: true}
 }
 
 // PackageEcosystems are the islands Library attributes libraries to, as the cpp
 // plugin declares them.
 func PackageEcosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoVcpkg, Name: "vcpkg"},
-		{ID: ecoConan, Name: "Conan"},
-		{ID: ecoExternal, Name: "C/C++ external"},
+		{ID: ecosystemVcpkg, Name: "vcpkg"},
+		{ID: ecosystemConan, Name: "Conan"},
+		{ID: ecosystemExternal, Name: "C/C++ external"},
 	}
 }

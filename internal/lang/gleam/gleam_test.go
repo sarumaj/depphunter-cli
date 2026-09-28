@@ -24,18 +24,18 @@ var (
 	stdlib = hex("gleam_stdlib", "0.40.0", ">= 0.34.0 and < 2.0.0")
 	erlang = hex("gleam_erlang", "0.25.0", "~> 0.25")
 	otp    = hex("gleam_otp", "0.10.0", ">= 0.10.0 and < 1.0.0")
-	glitch = lang.Target{Ecosystem: ecoHex, Package: "glitch", Version: "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
+	glitch = lang.Target{Ecosystem: ecosystemHex, Package: "glitch", Version: "4b825dc642cb6eb9a060e54bf8d69288fbee4904",
 		Requested: "main", Origin: "https://github.com/acme/glitch.git", Pinned: true}
 )
 
 func hex(name, version, requested string) lang.Target {
-	return lang.Target{Ecosystem: ecoHex, Package: name, Version: version, Requested: requested, Pinned: true}
+	return lang.Target{Ecosystem: ecosystemHex, Package: name, Version: version, Requested: requested, Pinned: true}
 }
 
 // Verifies: REQ-GLEAM-002, REQ-GLEAM-004, REQ-GLEAM-011
 func TestModules(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	langtest.CheckImports(t, res["src/shop.gleam"], map[string]lang.Target{
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	langtest.CheckImports(t, results["src/shop.gleam"], map[string]lang.Target{
 		"gleam":                {}, // the prelude
 		"gleam/dict":           stdlib,
 		"gleam/erlang/process": erlang,
@@ -48,12 +48,12 @@ func TestModules(t *testing.T) {
 		"inventory/stock":      {Local: "libs/inventory/src/inventory/stock.gleam"},
 		"lustre/element":       hex("lustre", "4.3.0", ">= 4.0.0 and < 5.0.0"),
 		"mist":                 hex("mist", "1.2.0", ""),
-		"nothere/thing":        {Ecosystem: ecoHex, Package: "nothere", Unresolved: true},
-		"gleam/community/ansi": {Ecosystem: ecoHex, Package: "gleam_community_ansi", Unresolved: true},
+		"nothere/thing":        {Ecosystem: ecosystemHex, Package: "nothere", Unresolved: true},
+		"gleam/community/ansi": {Ecosystem: ecosystemHex, Package: "gleam_community_ansi", Unresolved: true},
 		"shop/cart":            {Local: "src/shop/cart.gleam"},
 		"shop/missing":         {}, // its own namespace
 	})
-	langtest.CheckImports(t, res["test/shop_test.gleam"], map[string]lang.Target{
+	langtest.CheckImports(t, results["test/shop_test.gleam"], map[string]lang.Target{
 		"gleeunit":         hex("gleeunit", "1.2.0", "~> 1.0"),
 		"gleeunit/should":  hex("gleeunit", "1.2.0", "~> 1.0"),
 		"helpers":          {Local: "test/helpers.gleam"},
@@ -61,15 +61,15 @@ func TestModules(t *testing.T) {
 		"shop/cart":        {Local: "src/shop/cart.gleam"},
 		"support/fixtures": {Local: "dev/support/fixtures.gleam"},
 	})
-	langtest.CheckImports(t, res["dev/support/fixtures.gleam"], map[string]lang.Target{"shop/cart": {Local: "src/shop/cart.gleam"}})
+	langtest.CheckImports(t, results["dev/support/fixtures.gleam"], map[string]lang.Target{"shop/cart": {Local: "src/shop/cart.gleam"}})
 	// A path dependency's own modules; its gleam_stdlib is not locked.
-	langtest.CheckImports(t, res["libs/inventory/src/inventory/stock.gleam"], map[string]lang.Target{
-		"gleam/int": {Ecosystem: ecoHex, Package: "gleam_stdlib", Version: ">= 0.34.0 and < 2.0.0"},
+	langtest.CheckImports(t, results["libs/inventory/src/inventory/stock.gleam"], map[string]lang.Target{
+		"gleam/int": {Ecosystem: ecosystemHex, Package: "gleam_stdlib", Version: ">= 0.34.0 and < 2.0.0"},
 		"inventory": {Local: "libs/inventory/src/inventory.gleam"},
 	})
 	pinnedStdlib := hex("gleam_stdlib", "0.40.0", "")
-	langtest.CheckImports(t, res["tools/cli/src/cli.gleam"], map[string]lang.Target{
-		"argv":          {Ecosystem: ecoHex, Package: "argv", Version: "~> 1.0"},
+	langtest.CheckImports(t, results["tools/cli/src/cli.gleam"], map[string]lang.Target{
+		"argv":          {Ecosystem: ecosystemHex, Package: "argv", Version: "~> 1.0"},
 		"birl/duration": hex("birl", "1.7.1", ""),
 		"gleam/io":      pinnedStdlib,
 		"gleam/string":  pinnedStdlib,
@@ -80,35 +80,35 @@ func TestModules(t *testing.T) {
 
 // Verifies: REQ-GLEAM-007, REQ-GLEAM-011
 func TestExternals(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	langtest.CheckImports(t, res["src/shop/ffi.gleam"], map[string]lang.Target{
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	langtest.CheckImports(t, results["src/shop/ffi.gleam"], map[string]lang.Target{
 		"erlang:shop_ffi":                   {Local: "src/shop_ffi.erl"},
 		"./ffi_helpers.mjs":                 {Local: "src/shop/ffi_helpers.mjs"},
-		"erlang:os":                         {Ecosystem: ecoOTP, Package: "os"},
+		"erlang:os":                         {Ecosystem: ecosystemOTP, Package: "os"},
 		"erlang:gleam_stdlib":               stdlib,
 		"erlang:gleam@list":                 stdlib, // a compiled Gleam module
 		"erlang:hpack":                      hex("hpack_erl", "0.3.0", ""),
 		"erlang:gleam_otp_external":         otp,
 		"erlang:Elixir.Jason":               {},
-		"erlang:made_up_nif":                {Ecosystem: ecoHex, Package: "made_up_nif", Unresolved: true},
+		"erlang:made_up_nif":                {Ecosystem: ecosystemHex, Package: "made_up_nif", Unresolved: true},
 		"../../gleam_stdlib/gleam/list.mjs": stdlib, // out of the package: another package's output
-		"react":                             {Ecosystem: ecoNPM, Package: "react", Version: "18.3.1", Pinned: true},
-		"left-pad":                          {Ecosystem: ecoNPM, Package: "left-pad", Unresolved: true},
+		"react":                             {Ecosystem: ecosystemNPM, Package: "react", Version: "18.3.1", Pinned: true},
+		"left-pad":                          {Ecosystem: ecosystemNPM, Package: "left-pad", Unresolved: true},
 	})
-	langtest.CheckImports(t, res["src/shop/cart.gleam"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/shop/cart.gleam"], map[string]lang.Target{
 		"gleam/option":    stdlib,
 		"../shop_ffi.mjs": {Local: "src/shop_ffi.mjs"},
 	})
 	// Gleam before 0.30: external fn with the module as a string.
-	langtest.CheckImports(t, res["src/legacy.gleam"], map[string]lang.Target{
-		"erlang:erlang":    {Ecosystem: ecoOTP, Package: "erlang"},
+	langtest.CheckImports(t, results["src/legacy.gleam"], map[string]lang.Target{
+		"erlang:erlang":    {Ecosystem: ecosystemOTP, Package: "erlang"},
 		"./legacy_ffi.mjs": {Local: "src/legacy_ffi.mjs"},
 	})
 }
 
 // Verifies: REQ-GLEAM-003
 func TestSymbols(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
 	for file, want := range map[string]map[string]string{
 		"src/shop.gleam": {"Order": "type", "Order.Order": "constructor", "Order.Cancelled": "constructor",
 			"Token": "type", "Token.Token": "constructor", "Stock": "type", "version": "const", "greeting": "const",
@@ -117,12 +117,12 @@ func TestSymbols(t *testing.T) {
 		"src/legacy.gleam":    {"Pid": "type", "system_time": "func", "log": "func"},
 		"gleam.toml":          {"shop": "package"},
 	} {
-		if got := langtest.Symbols(t, res[file]); !reflect.DeepEqual(got, want) {
+		if got := langtest.Symbols(t, results[file]); !reflect.DeepEqual(got, want) {
 			t.Errorf("%s: symbols %v, want %v", file, got, want)
 		}
 	}
 	lines := map[string]int{}
-	for _, s := range res["src/shop.gleam"].Symbols {
+	for _, s := range results["src/shop.gleam"].Symbols {
 		lines[s.Name] = s.Line
 	}
 	if lines["Order"] != 23 || lines["Order.Cancelled"] != 26 || lines["main"] != 40 {
@@ -132,8 +132,8 @@ func TestSymbols(t *testing.T) {
 
 // Verifies: REQ-GLEAM-005, REQ-GLEAM-006, REQ-GLEAM-008
 func TestManifests(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	langtest.CheckImports(t, res["gleam.toml"], map[string]lang.Target{
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	langtest.CheckImports(t, results["gleam.toml"], map[string]lang.Target{
 		"gleam_stdlib": stdlib,
 		"gleam_erlang": erlang,
 		"gleam_otp":    otp,
@@ -147,17 +147,17 @@ func TestManifests(t *testing.T) {
 	})
 	// Without a manifest: == and a bare version pin, ranges are kept as written,
 	// a git commit pins and a branch floats, a path is an edge.
-	langtest.CheckImports(t, res["tools/cli/gleam.toml"], map[string]lang.Target{
+	langtest.CheckImports(t, results["tools/cli/gleam.toml"], map[string]lang.Target{
 		"gleam_stdlib": hex("gleam_stdlib", "0.40.0", ""),
-		"argv":         {Ecosystem: ecoHex, Package: "argv", Version: "~> 1.0"},
+		"argv":         {Ecosystem: ecosystemHex, Package: "argv", Version: "~> 1.0"},
 		"birl":         hex("birl", "1.7.1", ""),
 		"shop":         {Local: "gleam.toml"},
-		"ghost": {Ecosystem: ecoHex, Package: "ghost", Version: "0123456789abcdef0123456789abcdef01234567",
+		"ghost": {Ecosystem: ecosystemHex, Package: "ghost", Version: "0123456789abcdef0123456789abcdef01234567",
 			Origin: "https://github.com/acme/ghost.git", Pinned: true},
-		"branchy":  {Ecosystem: ecoHex, Package: "branchy", Version: "main", Origin: "https://github.com/acme/branchy.git", Floating: true},
-		"gleeunit": {Ecosystem: ecoHex, Package: "gleeunit", Version: "~> 1.0"}, // inline dev-dependencies
+		"branchy":  {Ecosystem: ecosystemHex, Package: "branchy", Version: "main", Origin: "https://github.com/acme/branchy.git", Floating: true},
+		"gleeunit": {Ecosystem: ecosystemHex, Package: "gleeunit", Version: "~> 1.0"}, // inline dev-dependencies
 	})
-	langtest.CheckImports(t, res["manifest.toml"], map[string]lang.Target{
+	langtest.CheckImports(t, results["manifest.toml"], map[string]lang.Target{
 		"gleam_stdlib": stdlib,
 		"gleam_erlang": erlang,
 		"gleam_otp":    otp,
@@ -172,14 +172,14 @@ func TestManifests(t *testing.T) {
 		"hpack_erl":    hex("hpack_erl", "0.3.0", ""),
 		"thoas":        hex("thoas", "1.2.1", ""),
 	})
-	for _, im := range res["manifest.toml"].Imports {
-		if im.Spec == "mist" && im.Line != 16 {
-			t.Errorf("mist on line %d, want 16", im.Line)
+	for _, imported := range results["manifest.toml"].Imports {
+		if imported.Spec == "mist" && imported.Line != 16 {
+			t.Errorf("mist on line %d, want 16", imported.Line)
 		}
 	}
-	for _, im := range res["gleam.toml"].Imports {
-		if im.Spec == "gleeunit" && im.Line != 20 {
-			t.Errorf("gleeunit on line %d, want 20", im.Line)
+	for _, imported := range results["gleam.toml"].Imports {
+		if imported.Spec == "gleeunit" && imported.Line != 20 {
+			t.Errorf("gleeunit on line %d, want 20", imported.Line)
 		}
 	}
 }
@@ -191,8 +191,8 @@ func TestTransitive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tr := r.(lang.Transitive)
-	got := tr.Dependencies(lang.Target{Ecosystem: ecoHex, Package: "mist", Version: "1.2.0"})
+	transitive := r.(lang.Transitive)
+	got := transitive.Dependencies(lang.Target{Ecosystem: ecosystemHex, Package: "mist", Version: "1.2.0"})
 	want := []lang.Target{
 		hex("gleam_erlang", "0.25.0", ""), hex("gleam_http", "3.6.0", ""), hex("gleam_otp", "0.10.0", ""),
 		hex("gleam_stdlib", "0.40.0", ""), hex("glisten", "5.0.0", ""), hex("hpack_erl", "0.3.0", ""),
@@ -200,10 +200,10 @@ func TestTransitive(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("mist depends on %+v, want %+v", got, want)
 	}
-	if got := tr.Dependencies(lang.Target{Ecosystem: ecoHex, Package: "gleam_stdlib"}); len(got) != 0 {
+	if got := transitive.Dependencies(lang.Target{Ecosystem: ecosystemHex, Package: "gleam_stdlib"}); len(got) != 0 {
 		t.Errorf("gleam_stdlib depends on %+v", got)
 	}
-	if got := tr.Dependencies(lang.Target{Ecosystem: "npm", Package: "mist"}); got != nil {
+	if got := transitive.Dependencies(lang.Target{Ecosystem: "npm", Package: "mist"}); got != nil {
 		t.Errorf("npm mist: %+v", got)
 	}
 }
@@ -227,9 +227,9 @@ func TestClaims(t *testing.T) {
 		}
 	}
 	// A manifest.toml that Gleam did not write gives nothing.
-	ex, _ := Plugin{}.Extract(&scan.File{Path: "manifest.toml"}, []byte("[package]\nname = \"x\"\n"))
-	if len(ex.Imports) != 0 {
-		t.Errorf("foreign manifest.toml: %+v", ex.Imports)
+	extraction, _ := Plugin{}.Extract(&scan.File{Path: "manifest.toml"}, []byte("[package]\nname = \"x\"\n"))
+	if len(extraction.Imports) != 0 {
+		t.Errorf("foreign manifest.toml: %+v", extraction.Imports)
 	}
 }
 
@@ -254,11 +254,11 @@ func TestInstalledPackages(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	res := langtest.Analyze(t, Plugin{}, root)
-	langtest.CheckImports(t, res["src/app.gleam"], map[string]lang.Target{
-		"pp/doc": {Ecosystem: ecoHex, Package: "pretty_print", Version: "~> 1.0"},
+	results := langtest.Analyze(t, Plugin{}, root)
+	langtest.CheckImports(t, results["src/app.gleam"], map[string]lang.Target{
+		"pp/doc": {Ecosystem: ecosystemHex, Package: "pretty_print", Version: "~> 1.0"},
 	})
-	for f := range res {
+	for f := range results {
 		if strings.HasPrefix(f, "build/") {
 			t.Errorf("%s analyzed", f)
 		}
@@ -267,19 +267,19 @@ func TestInstalledPackages(t *testing.T) {
 
 // Verifies: REQ-GLEAM-002, REQ-GLEAM-010
 func TestLexer(t *testing.T) {
-	src := "import a/b.{type T, f as g} as c\nimport d/e\n  .{x}\n" +
+	source := "import a/b.{type T, f as g} as c\nimport d/e\n  .{x}\n" +
 		"const s = \"import no/pe \\\" still string\n// import no/comment\"\n" +
 		"// import commented/out\nfn f() { \"@external(erlang, \\\"no\\\", \\\"x\\\")\" }\nimport z\n"
-	ex := extractSource([]byte(src))
+	extraction := extractSource([]byte(source))
 	var specs []string
-	for _, im := range ex.Imports {
-		specs = append(specs, im.Spec)
+	for _, rawImport := range extraction.Imports {
+		specs = append(specs, rawImport.Spec)
 	}
 	if want := []string{"a/b", "d/e", "z"}; !reflect.DeepEqual(specs, want) {
 		t.Errorf("imports %v, want %v", specs, want)
 	}
-	if want := []lang.Symbol{{Name: "s", Kind: "const", Line: 4}, {Name: "f", Kind: "func", Line: 7}}; !reflect.DeepEqual(ex.Symbols, want) {
-		t.Errorf("symbols %+v", ex.Symbols)
+	if want := []lang.Symbol{{Name: "s", Kind: "const", Line: 4}, {Name: "f", Kind: "func", Line: 7}}; !reflect.DeepEqual(extraction.Symbols, want) {
+		t.Errorf("symbols %+v", extraction.Symbols)
 	}
 }
 
@@ -296,26 +296,26 @@ func TestTruncated(t *testing.T) {
 		return nil
 	})
 	for _, p := range files {
-		src, err := os.ReadFile(p)
+		source, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatal(err)
 		}
 		f := &scan.File{Path: strings.TrimPrefix(filepath.ToSlash(p), "testdata/repo/")}
-		for i := 0; i <= len(src); i++ {
-			if _, err := (Plugin{}).Extract(f, src[:i]); err != nil {
+		for i := 0; i <= len(source); i++ {
+			if _, err := (Plugin{}).Extract(f, source[:i]); err != nil {
 				t.Fatal(err)
 			}
-			extractSource(src[:i])
+			extractSource(source[:i])
 		}
 	}
 	for _, unit := range []string{"{", "(", "[", "}", ")", "\"", "\\", "//", "import ", "import a/", "import a.{",
 		"import a.{b, ", "@external(", "@external(erlang, \"m\", ", "pub type T(", "pub type T { A(", "type ",
 		"fn ", "pub external fn f(", "external fn f() = ", "const ", "-> ", ".. ", "1.0e", "é"} {
-		src := []byte(strings.Repeat(unit, 200_000/len(unit)+1))
+		source := []byte(strings.Repeat(unit, 200_000/len(unit)+1))
 		start := time.Now()
-		extractSource(src)
+		extractSource(source)
 		if d := time.Since(start); d > 5*time.Second {
-			t.Errorf("%q x %d: %v", unit, len(src)/len(unit), d)
+			t.Errorf("%q x %d: %v", unit, len(source)/len(unit), d)
 		}
 	}
 }

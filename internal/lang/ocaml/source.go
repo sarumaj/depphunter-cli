@@ -40,7 +40,7 @@ var keywords = map[string]bool{
 // cannot continue that expression, so it starts a new definition.
 func operandEnd(t token) bool {
 	switch t.k {
-	case tUpper, tStr, tLit:
+	case tUpper, tString, tLiteral:
 		return true
 	case tLower:
 		switch t.s {
@@ -65,39 +65,39 @@ type frame struct {
 }
 
 type sourceReader struct {
-	tokens   []token
-	mode     byte // 'm' .ml/.mli, 'l' ocamllex, 'y' menhir/ocamlyacc
-	declared map[string]bool
-	modAt    []bool
-	imports  []lang.RawImport
-	seenImp  map[string]bool
-	opens    []string
-	symbols  []lang.Symbol
-	seenSym  map[string]bool
-	stack    []*frame
+	tokens     []token
+	mode       byte // 'm' .ml/.mli, 'l' ocamllex, 'y' menhir/ocamlyacc
+	declared   map[string]bool
+	moduleAt   []bool
+	imports    []lang.RawImport
+	seenImport map[string]bool
+	opens      []string
+	symbols    []lang.Symbol
+	seenSymbol map[string]bool
+	stack      []*frame
 	// the definition being read: its keyword (for `and`), the module or class it
 	// names (the owner of a struct/object that follows)
 	item, pendingOwner, pendingClass string
 }
 
-// readSource extracts a source file; ext is .ml, .mli, .mll or .mly.
-func readSource(src []byte, ext string) *lang.Extraction {
+// readSource extracts a source file; extension is .ml, .mli, .mll or .mly.
+func readSource(source []byte, extension string) *lang.Extraction {
 	mode := byte('m')
-	switch ext {
+	switch extension {
 	case ".mll":
 		mode = 'l'
 	case ".mly":
 		mode = 'y'
 	}
 	r := &sourceReader{
-		tokens: lex(src, mode == 'y'), mode: mode, declared: map[string]bool{},
-		seenImp: map[string]bool{}, seenSym: map[string]bool{},
+		tokens: lex(source, mode == 'y'), mode: mode, declared: map[string]bool{},
+		seenImport: map[string]bool{}, seenSymbol: map[string]bool{},
 	}
-	r.modAt = make([]bool, len(r.tokens)+1)
+	r.moduleAt = make([]bool, len(r.tokens)+1)
 	r.declarations()
 	r.read()
 	if mode == 'y' {
-		r.grammarRules(src)
+		r.grammarRules(source)
 	}
 	opens := strings.Join(r.opens, ",")
 	for i := range r.imports {
@@ -195,10 +195,10 @@ func (r *sourceReader) symbol(name, kind string, line int) {
 	if f.owner != "" {
 		name = f.owner + "." + name
 	}
-	if r.seenSym[name] {
+	if r.seenSymbol[name] {
 		return // shadowed, or declared by a signature and defined by its structure
 	}
-	r.seenSym[name] = true
+	r.seenSymbol[name] = true
 	r.symbols = append(r.symbols, lang.Symbol{Name: name, Kind: kind, Line: line})
 }
 
@@ -230,10 +230,10 @@ func (r *sourceReader) read() {
 			}
 		case tUpper:
 			r.path(i)
-		case tDir:
-			if t.s == "require" && r.at(i+1).k == tStr {
-				for _, lib := range strings.FieldsFunc(r.at(i+1).s, func(c rune) bool { return c == ',' || c == ' ' }) {
-					r.addImport(lang.RawImport{Spec: "#require \"" + lib + "\"", Module: lib, Name: kindRequire, Line: t.line})
+		case tDirectory:
+			if t.s == "require" && r.at(i+1).k == tString {
+				for _, library := range strings.FieldsFunc(r.at(i+1).s, func(c rune) bool { return c == ',' || c == ' ' }) {
+					r.addImport(lang.RawImport{Spec: "#require \"" + library + "\"", Module: library, Name: kindRequire, Line: t.line})
 				}
 			}
 		case tLower:
@@ -243,15 +243,15 @@ func (r *sourceReader) read() {
 }
 
 func (r *sourceReader) keyword(i int, t token) {
-	prev := r.at(i - 1)
-	afterLet := prev.k == tLower && (prev.s == "let" || prev.s == "with" || prev.s == "and")
+	previous := r.at(i - 1)
+	afterLet := previous.k == tLower && (previous.s == "let" || previous.s == "with" || previous.s == "and")
 	switch t.s {
 	case "struct", "sig":
 		f := r.top()
 		owner, record := f.owner, false
 		if r.pendingOwner != "" {
 			owner, record = join(owner, r.pendingOwner), f.record
-		} else if prev.k == tLower && prev.s == "include" {
+		} else if previous.k == tLower && previous.s == "include" {
 			record = f.record
 		}
 		r.push('s', owner, record)
@@ -272,18 +272,18 @@ func (r *sourceReader) keyword(i int, t token) {
 		}
 	case "let":
 		f := r.top()
-		if t.ext != "" && !(t.ext[0] >= 'a' && t.ext[0] <= 'z' || t.ext[0] == '_') {
+		if t.extension != "" && !(t.extension[0] >= 'a' && t.extension[0] <= 'z' || t.extension[0] == '_') {
 			f.lets++ // let* x = ... in: a binding operator is always local
 			return
 		}
-		if (f.kind == 's' || f.kind == 'x') && f.lets == 0 && (i == 0 || operandEnd(prev) || prev.k == tOp && prev.s == "[%%") {
+		if (f.kind == 's' || f.kind == 'x') && f.lets == 0 && (i == 0 || operandEnd(previous) || previous.k == tOp && previous.s == "[%%") {
 			r.startItem("let")
 			r.binding(i + 1)
 			return
 		}
 		f.lets++
 	case "and":
-		if !r.structure() || r.top().lets > 0 || t.ext != "" && !(t.ext[0] >= 'a' && t.ext[0] <= 'z') {
+		if !r.structure() || r.top().lets > 0 || t.extension != "" && !(t.extension[0] >= 'a' && t.extension[0] <= 'z') {
 			return
 		}
 		switch r.item {
@@ -304,7 +304,7 @@ func (r *sourceReader) keyword(i int, t token) {
 			}
 		}
 	case "type":
-		if !r.structure() || afterLet || prev.k == tLower && prev.s == "module" {
+		if !r.structure() || afterLet || previous.k == tLower && previous.s == "module" {
 			return
 		}
 		r.startItem("type")
@@ -316,12 +316,12 @@ func (r *sourceReader) keyword(i int, t token) {
 		if r.is(k, tOp, "!") {
 			k++
 		}
-		r.modAt[k] = true
+		r.moduleAt[k] = true
 		if r.structure() && !afterLet {
 			r.startItem(t.s)
 		}
 	case "exception":
-		if !r.structure() || afterLet || prev.k == tOp && prev.s == "|" {
+		if !r.structure() || afterLet || previous.k == tOp && previous.s == "|" {
 			return
 		}
 		r.startItem("exception")
@@ -471,15 +471,15 @@ func (r *sourceReader) typeName(j int) {
 // moduleBinding reads `module M ... = <module expression>`, `module type S`,
 // `module type of M`, `let module M = ...` and `(module M)`.
 func (r *sourceReader) moduleBinding(i int, afterLet bool) {
-	prev := r.at(i - 1)
-	if prev.k == tOp && prev.s == "(" {
+	previous := r.at(i - 1)
+	if previous.k == tOp && previous.s == "(" {
 		if r.at(i+1).k == tUpper {
-			r.modAt[i+1] = true // (module M): packed; (module M : S) was declared
+			r.moduleAt[i+1] = true // (module M): packed; (module M : S) was declared
 		}
 		return
 	}
 	j := i + 1
-	item := r.structure() && !afterLet && !(prev.k == tLower && (prev.s == "with" || prev.s == "and"))
+	item := r.structure() && !afterLet && !(previous.k == tLower && (previous.s == "with" || previous.s == "and"))
 	if r.is(j, tLower, "rec") {
 		j++
 	}
@@ -487,7 +487,7 @@ func (r *sourceReader) moduleBinding(i int, afterLet bool) {
 	if r.is(j, tLower, "type") {
 		j++
 		if r.is(j, tLower, "of") {
-			r.modAt[j+1] = true
+			r.moduleAt[j+1] = true
 			return
 		}
 		kind = "module type"
@@ -518,7 +518,7 @@ func (r *sourceReader) moduleBinding(i int, afterLet bool) {
 		}
 	}
 	if r.is(j, tOp, "=") {
-		r.modAt[j+1] = true
+		r.moduleAt[j+1] = true
 	}
 }
 
@@ -582,11 +582,11 @@ func (r *sourceReader) arrow(j int) bool {
 
 // path reads the module path starting at i, if one does.
 func (r *sourceReader) path(i int) {
-	prev := r.at(i - 1)
-	if prev.k == tOp && prev.s == "." && r.at(i-2).k == tUpper {
+	previous := r.at(i - 1)
+	if previous.k == tOp && previous.s == "." && r.at(i-2).k == tUpper {
 		return // inside a path read from its start
 	}
-	ctx := r.modAt[i]
+	ctx := r.moduleAt[i]
 	var segments []string
 	j := i
 	for j < len(r.tokens) && r.tokens[j].k == tUpper {
@@ -604,9 +604,9 @@ func (r *sourceReader) path(i int) {
 	if ctx {
 		// Functor arguments: F(A), F(A)(B).
 		if r.is(j, tOp, "(") && r.at(j+1).k == tUpper {
-			r.modAt[j+1] = true
+			r.moduleAt[j+1] = true
 		} else if r.is(j, tOp, ")") && r.is(j+1, tOp, "(") && r.at(j+2).k == tUpper {
-			r.modAt[j+2] = true
+			r.moduleAt[j+2] = true
 		}
 	}
 	if len(segments) == 0 {
@@ -637,19 +637,19 @@ func (r *sourceReader) path(i int) {
 	if kind != kindModule {
 		spec = kind + " " + module
 	}
-	if r.seenImp[module] {
+	if r.seenImport[module] {
 		return
 	}
-	r.seenImp[module] = true
+	r.seenImport[module] = true
 	r.imports = append(r.imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: r.tokens[i].line})
 }
 
-func (r *sourceReader) addImport(im lang.RawImport) {
-	if r.seenImp[im.Spec] {
+func (r *sourceReader) addImport(rawImport lang.RawImport) {
+	if r.seenImport[rawImport.Spec] {
 		return
 	}
-	r.seenImp[im.Spec] = true
-	r.imports = append(r.imports, im)
+	r.seenImport[rawImport.Spec] = true
+	r.imports = append(r.imports, rawImport)
 }
 
 // ruleLine is a grammar rule's head: `expr:`, `%public list(X):`, `%inline op:`,
@@ -658,9 +658,9 @@ var ruleLine = regexp.MustCompile(`^(?:%public\s+)?(?:%inline\s+)?(?:let\s+)?([a
 
 // grammarRules records a Menhir or ocamlyacc grammar's rules, which are what the
 // generated parser exports.
-func (r *sourceReader) grammarRules(src []byte) {
+func (r *sourceReader) grammarRules(source []byte) {
 	section := 0
-	for n, line := range strings.Split(string(src), "\n") {
+	for n, line := range strings.Split(string(source), "\n") {
 		if strings.TrimSpace(line) == "%%" {
 			section++
 			continue
@@ -669,8 +669,8 @@ func (r *sourceReader) grammarRules(src []byte) {
 			continue
 		}
 		if m := ruleLine.FindStringSubmatch(line); m != nil && !strings.HasPrefix(line[len(m[0]):], ":") {
-			if !r.seenSym[m[1]] {
-				r.seenSym[m[1]] = true
+			if !r.seenSymbol[m[1]] {
+				r.seenSymbol[m[1]] = true
 				r.symbols = append(r.symbols, lang.Symbol{Name: m[1], Kind: "rule", Line: n + 1})
 			}
 		}

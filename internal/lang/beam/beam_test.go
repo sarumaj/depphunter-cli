@@ -22,146 +22,146 @@ import (
 // Verifies: REQ-BEAM-006, REQ-BEAM-007, REQ-BEAM-008, REQ-BEAM-009, REQ-BEAM-010
 // Verifies: REQ-BEAM-011, REQ-BEAM-013
 func TestUmbrellaAndRebarApp(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
 	imports := map[string]map[string]lang.Target{
 		"apps/shop/lib/shop.ex": {
-			"String":    {Ecosystem: ecoElixir, Package: "String"},
-			"GenServer": {Ecosystem: ecoElixir, Package: "GenServer"},
+			"String":    {Ecosystem: ecosystemElixir, Package: "String"},
+			"GenServer": {Ecosystem: ecosystemElixir, Package: "GenServer"},
 		},
 		"apps/shop/lib/shop/cart.ex": {
-			"use GenServer":            {Ecosystem: ecoElixir, Package: "GenServer"},
-			"require Logger":           {Ecosystem: ecoElixir, Package: "Logger"},
-			"alias Ecto.Changeset":     {Ecosystem: ecoHex, Package: "ecto", Version: "3.11.2", Pinned: true},
+			"use GenServer":            {Ecosystem: ecosystemElixir, Package: "GenServer"},
+			"require Logger":           {Ecosystem: ecosystemElixir, Package: "Logger"},
+			"alias Ecto.Changeset":     {Ecosystem: ecosystemHex, Package: "ecto", Version: "3.11.2", Pinned: true},
 			"alias Shop.Item":          {Local: "apps/shop/lib/shop/item.ex"},
 			"alias Shop.Pricing.Rules": {Local: "apps/shop/lib/shop/pricing.ex"},
 			"alias Shop.Cart.Line":     {Local: "apps/shop/lib/shop/pricing.ex"},
-			"import Ecto.Query":        {Ecosystem: ecoHex, Package: "ecto", Version: "3.11.2", Pinned: true},
-			":gen_statem":              {Ecosystem: ecoOTP, Package: "gen_statem"},
-			"Jason":                    {Ecosystem: ecoHex, Package: "jason", Version: "1.4.1", Pinned: true},
-			":ets":                     {Ecosystem: ecoOTP, Package: "ets"},
-			"UUID":                     {Ecosystem: ecoHex, Package: "elixir_uuid", Version: "1.2.1", Requested: "~> 1.2", Pinned: true},
-			"NimbleCSV.RFC4180":        {Ecosystem: ecoHex, Package: "nimble_csv", Version: "1.2.0", Pinned: true},
-			"Ecto.Adapters.SQL":        {Ecosystem: ecoHex, Package: "ecto_sql", Version: "3.11.3", Requested: "~> 3.10", Pinned: true},
+			"import Ecto.Query":        {Ecosystem: ecosystemHex, Package: "ecto", Version: "3.11.2", Pinned: true},
+			":gen_statem":              {Ecosystem: ecosystemOTP, Package: "gen_statem"},
+			"Jason":                    {Ecosystem: ecosystemHex, Package: "jason", Version: "1.4.1", Pinned: true},
+			":ets":                     {Ecosystem: ecosystemOTP, Package: "ets"},
+			"UUID":                     {Ecosystem: ecosystemHex, Package: "elixir_uuid", Version: "1.2.1", Requested: "~> 1.2", Pinned: true},
+			"NimbleCSV.RFC4180":        {Ecosystem: ecosystemHex, Package: "nimble_csv", Version: "1.2.0", Pinned: true},
+			"Ecto.Adapters.SQL":        {Ecosystem: ecosystemHex, Package: "ecto_sql", Version: "3.11.3", Requested: "~> 3.10", Pinned: true},
 			"Shop.Repo":                {Local: "apps/shop/lib/shop.ex"},
 			"LocalLib":                 {Local: "libs/local_lib/lib/local_lib.ex"},
-			"Money":                    {Ecosystem: ecoHex, Package: "money", Version: "v1.12.0", Floating: true, Origin: "https://github.com/elixirmoney/money.git"},
-			"Unknown.Thing":            {Ecosystem: ecoHex, Package: "unknown", Unresolved: true},
-			":crypto":                  {Ecosystem: ecoOTP, Package: "crypto"},
+			"Money":                    {Ecosystem: ecosystemHex, Package: "money", Version: "v1.12.0", Floating: true, Origin: "https://github.com/elixirmoney/money.git"},
+			"Unknown.Thing":            {Ecosystem: ecosystemHex, Package: "unknown", Unresolved: true},
+			":crypto":                  {Ecosystem: ecosystemOTP, Package: "crypto"},
 		},
 		"apps/shop/lib/shop/item.ex": {
 			"use Shop.Schema": {Local: "apps/shop/lib/shop/schema.ex"},
 			"Cart":            {Local: "apps/shop/lib/shop/cart.ex"},
-			"Multi":           {Ecosystem: ecoHex, Package: "ecto", Version: "3.11.2", Pinned: true},
+			"Multi":           {Ecosystem: ecosystemHex, Package: "ecto", Version: "3.11.2", Pinned: true},
 			"Shop.Cart.Line":  {Local: "apps/shop/lib/shop/pricing.ex"},
 		},
 		"apps/shop/lib/shop/pricing.ex": {},
 		"apps/shop/lib/shop/schema.ex": {
-			"use Ecto.Schema":  {Ecosystem: ecoHex, Package: "ecto", Version: "3.11.2", Pinned: true},
-			"alias Ecto.Multi": {Ecosystem: ecoHex, Package: "ecto", Version: "3.11.2", Pinned: true},
+			"use Ecto.Schema":  {Ecosystem: ecosystemHex, Package: "ecto", Version: "3.11.2", Pinned: true},
+			"alias Ecto.Multi": {Ecosystem: ecosystemHex, Package: "ecto", Version: "3.11.2", Pinned: true},
 			"alias Shop.Cart":  {Local: "apps/shop/lib/shop/cart.ex"},
 			"alias Shop.Item":  {Local: "apps/shop/lib/shop/item.ex"},
 		},
 		"apps/shop/mix.exs": {
-			"use Mix.Project":                                           {Ecosystem: ecoElixir, Package: "Mix"},
-			"{:ecto_sql, \"~> 3.10\"}":                                  {Ecosystem: ecoHex, Package: "ecto_sql", Version: "3.11.3", Requested: "~> 3.10", Pinned: true},
-			"{:jason, \"== 1.4.1\"}":                                    {Ecosystem: ecoHex, Package: "jason", Version: "1.4.1", Pinned: true},
-			"{:elixir_uuid, \"~> 1.2\"}":                                {Ecosystem: ecoHex, Package: "elixir_uuid", Version: "1.2.1", Requested: "~> 1.2", Pinned: true},
-			"{:nimble_csv, \"1.2.0\"}":                                  {Ecosystem: ecoHex, Package: "nimble_csv", Version: "1.2.0", Pinned: true},
+			"use Mix.Project":                                           {Ecosystem: ecosystemElixir, Package: "Mix"},
+			"{:ecto_sql, \"~> 3.10\"}":                                  {Ecosystem: ecosystemHex, Package: "ecto_sql", Version: "3.11.3", Requested: "~> 3.10", Pinned: true},
+			"{:jason, \"== 1.4.1\"}":                                    {Ecosystem: ecosystemHex, Package: "jason", Version: "1.4.1", Pinned: true},
+			"{:elixir_uuid, \"~> 1.2\"}":                                {Ecosystem: ecosystemHex, Package: "elixir_uuid", Version: "1.2.1", Requested: "~> 1.2", Pinned: true},
+			"{:nimble_csv, \"1.2.0\"}":                                  {Ecosystem: ecosystemHex, Package: "nimble_csv", Version: "1.2.0", Pinned: true},
 			"{:local_lib, path: \"../../libs/local_lib\"}":              {Local: "libs/local_lib/mix.exs"},
-			"{:money, github: \"elixirmoney/money\", tag: \"v1.12.0\"}": {Ecosystem: ecoHex, Package: "money", Version: "v1.12.0", Floating: true, Origin: "https://github.com/elixirmoney/money.git"},
+			"{:money, github: \"elixirmoney/money\", tag: \"v1.12.0\"}": {Ecosystem: ecosystemHex, Package: "money", Version: "v1.12.0", Floating: true, Origin: "https://github.com/elixirmoney/money.git"},
 		},
 		"apps/shop/test/cart_test.exs": {
-			"use ExUnit.Case":      {Ecosystem: ecoElixir, Package: "ExUnit"},
-			"use ExUnitProperties": {Ecosystem: ecoHex, Package: "stream_data", Unresolved: true},
+			"use ExUnit.Case":      {Ecosystem: ecosystemElixir, Package: "ExUnit"},
+			"use ExUnitProperties": {Ecosystem: ecosystemHex, Package: "stream_data", Unresolved: true},
 			"Shop.Cart":            {Local: "apps/shop/lib/shop/cart.ex"},
 		},
 		"apps/shop_web/lib/shop_web.ex": {
-			"use Phoenix.Controller":       {Ecosystem: ecoHex, Package: "phoenix", Version: "8d2f6a5fbb2b7bd4bc7f4b0c3a5e16d4ac8a7a12", Pinned: true, Origin: "https://github.com/phoenixframework/phoenix.git"},
+			"use Phoenix.Controller":       {Ecosystem: ecosystemHex, Package: "phoenix", Version: "8d2f6a5fbb2b7bd4bc7f4b0c3a5e16d4ac8a7a12", Pinned: true, Origin: "https://github.com/phoenixframework/phoenix.git"},
 			"alias ShopWeb.Router.Helpers": {Local: "apps/shop_web/lib/shop_web/router.ex"},
 		},
 		"apps/shop_web/lib/shop_web/cart_live.ex": {
-			"use Phoenix.LiveView": {Ecosystem: ecoHex, Package: "phoenix_live_view", Version: "0.20.14", Requested: "~> 0.20.0", Pinned: true},
+			"use Phoenix.LiveView": {Ecosystem: ecosystemHex, Package: "phoenix_live_view", Version: "0.20.14", Requested: "~> 0.20.0", Pinned: true},
 			":legacy_parser":       {Local: "apps/shop_web/src/legacy_parser.erl"},
 		},
 		"apps/shop_web/lib/shop_web/controllers/page_controller.ex": {
 			"use ShopWeb": {Local: "apps/shop_web/lib/shop_web.ex"},
-			"Plug.Conn":   {Ecosystem: ecoHex, Package: "plug", Version: "1.16.0", Pinned: true},
+			"Plug.Conn":   {Ecosystem: ecosystemHex, Package: "plug", Version: "1.16.0", Pinned: true},
 			"Routes":      {Local: "apps/shop_web/lib/shop_web/router.ex"},
 		},
 		"apps/shop_web/lib/shop_web/router.ex": {
-			"use Phoenix.Router":                {Ecosystem: ecoHex, Package: "phoenix", Version: "8d2f6a5fbb2b7bd4bc7f4b0c3a5e16d4ac8a7a12", Pinned: true, Origin: "https://github.com/phoenixframework/phoenix.git"},
-			"import Phoenix.LiveView.Router":    {Ecosystem: ecoHex, Package: "phoenix_live_view", Version: "0.20.14", Requested: "~> 0.20.0", Pinned: true},
+			"use Phoenix.Router":                {Ecosystem: ecosystemHex, Package: "phoenix", Version: "8d2f6a5fbb2b7bd4bc7f4b0c3a5e16d4ac8a7a12", Pinned: true, Origin: "https://github.com/phoenixframework/phoenix.git"},
+			"import Phoenix.LiveView.Router":    {Ecosystem: ecosystemHex, Package: "phoenix_live_view", Version: "0.20.14", Requested: "~> 0.20.0", Pinned: true},
 			"ShopWeb.PageController":            {Local: "apps/shop_web/lib/shop_web/controllers/page_controller.ex"},
 			"ShopWeb.CartLive":                  {Local: "apps/shop_web/lib/shop_web/cart_live.ex"},
 			"ShopWeb.Admin.DashboardController": {Local: "apps/shop_web/lib/shop_web.ex"},
 		},
 		"apps/shop_web/mix.exs": {
-			"use Mix.Project": {Ecosystem: ecoElixir, Package: "Mix"},
-			"{:phoenix, github: \"phoenixframework/phoenix\", branch: \"main\", override: true}": {Ecosystem: ecoHex, Package: "phoenix", Version: "8d2f6a5fbb2b7bd4bc7f4b0c3a5e16d4ac8a7a12", Pinned: true, Origin: "https://github.com/phoenixframework/phoenix.git"},
-			"{:phoenix_live_view, \"~> 0.20.0\"}":                                                {Ecosystem: ecoHex, Package: "phoenix_live_view", Version: "0.20.14", Requested: "~> 0.20.0", Pinned: true},
+			"use Mix.Project": {Ecosystem: ecosystemElixir, Package: "Mix"},
+			"{:phoenix, github: \"phoenixframework/phoenix\", branch: \"main\", override: true}": {Ecosystem: ecosystemHex, Package: "phoenix", Version: "8d2f6a5fbb2b7bd4bc7f4b0c3a5e16d4ac8a7a12", Pinned: true, Origin: "https://github.com/phoenixframework/phoenix.git"},
+			"{:phoenix_live_view, \"~> 0.20.0\"}":                                                {Ecosystem: ecosystemHex, Package: "phoenix_live_view", Version: "0.20.14", Requested: "~> 0.20.0", Pinned: true},
 			"{:shop, in_umbrella: true}":                                                         {Local: "apps/shop/mix.exs"},
 		},
 		"apps/shop_web/src/legacy_parser.erl": {
 			"Elixir.Shop.Cart": {Local: "apps/shop/lib/shop/cart.ex"},
-			"lists":            {Ecosystem: ecoOTP, Package: "lists"},
+			"lists":            {Ecosystem: ecosystemOTP, Package: "lists"},
 		},
 		"erl/include/erl_app.hrl": {
-			"logger": {Ecosystem: ecoOTP, Package: "logger"},
+			"logger": {Ecosystem: ecosystemOTP, Package: "logger"},
 		},
 		"erl/rebar.config": {
-			"{cowboy, \"2.10.0\"}":                       {Ecosystem: ecoHex, Package: "cowboy", Version: "2.10.0", Pinned: true, Registry: "*"},
-			"{jsx, \"~> 3.1\"}":                          {Ecosystem: ecoHex, Package: "jsx", Version: "3.1.0", Requested: "~> 3.1", Pinned: true, Registry: "*"},
-			"erlware_commons":                            {Ecosystem: ecoHex, Package: "erlware_commons", Version: "1.7.0", Pinned: true, Registry: "*"},
-			"{hackney_fork, \"1.20.1\", {pkg, hackney}}": {Ecosystem: ecoHex, Package: "hackney", Version: "1.20.1", Pinned: true, Registry: "*"},
-			"{meck, {git, \"https://github.com/eproxus/meck.git\", {ref, \"4ecc1ae9089edc6977e8c8c4cd41081513cc5590\"}}}": {Ecosystem: ecoHex, Package: "meck", Version: "4ecc1ae9089edc6977e8c8c4cd41081513cc5590", Pinned: true, Origin: "https://github.com/eproxus/meck.git"},
-			"{recon, {git, \"https://github.com/ferd/recon.git\", {branch, \"master\"}}}":                                 {Ecosystem: ecoHex, Package: "recon", Version: "master", Floating: true, Origin: "https://github.com/ferd/recon.git"},
-			"{proper, \"1.4.0\"}": {Ecosystem: ecoHex, Package: "proper", Version: "1.4.0", Pinned: true, Registry: "*"},
+			"{cowboy, \"2.10.0\"}":                       {Ecosystem: ecosystemHex, Package: "cowboy", Version: "2.10.0", Pinned: true, Registry: "*"},
+			"{jsx, \"~> 3.1\"}":                          {Ecosystem: ecosystemHex, Package: "jsx", Version: "3.1.0", Requested: "~> 3.1", Pinned: true, Registry: "*"},
+			"erlware_commons":                            {Ecosystem: ecosystemHex, Package: "erlware_commons", Version: "1.7.0", Pinned: true, Registry: "*"},
+			"{hackney_fork, \"1.20.1\", {pkg, hackney}}": {Ecosystem: ecosystemHex, Package: "hackney", Version: "1.20.1", Pinned: true, Registry: "*"},
+			"{meck, {git, \"https://github.com/eproxus/meck.git\", {ref, \"4ecc1ae9089edc6977e8c8c4cd41081513cc5590\"}}}": {Ecosystem: ecosystemHex, Package: "meck", Version: "4ecc1ae9089edc6977e8c8c4cd41081513cc5590", Pinned: true, Origin: "https://github.com/eproxus/meck.git"},
+			"{recon, {git, \"https://github.com/ferd/recon.git\", {branch, \"master\"}}}":                                 {Ecosystem: ecosystemHex, Package: "recon", Version: "master", Floating: true, Origin: "https://github.com/ferd/recon.git"},
+			"{proper, \"1.4.0\"}": {Ecosystem: ecosystemHex, Package: "proper", Version: "1.4.0", Pinned: true, Registry: "*"},
 		},
 		"erl/src/erl_app.app.src": {
-			"application kernel":    {Ecosystem: ecoOTP, Package: "kernel"},
-			"application stdlib":    {Ecosystem: ecoOTP, Package: "stdlib"},
-			"application crypto":    {Ecosystem: ecoOTP, Package: "crypto"},
-			"application sasl":      {Ecosystem: ecoOTP, Package: "sasl"},
-			"application cowboy":    {Ecosystem: ecoHex, Package: "cowboy", Version: "2.10.0", Pinned: true, Registry: "*"},
-			"application jsx":       {Ecosystem: ecoHex, Package: "jsx", Version: "3.1.0", Requested: "~> 3.1", Pinned: true, Registry: "*"},
-			"application local_dep": {Ecosystem: ecoHex, Package: "local_dep", Unresolved: true},
+			"application kernel":    {Ecosystem: ecosystemOTP, Package: "kernel"},
+			"application stdlib":    {Ecosystem: ecosystemOTP, Package: "stdlib"},
+			"application crypto":    {Ecosystem: ecosystemOTP, Package: "crypto"},
+			"application sasl":      {Ecosystem: ecosystemOTP, Package: "sasl"},
+			"application cowboy":    {Ecosystem: ecosystemHex, Package: "cowboy", Version: "2.10.0", Pinned: true, Registry: "*"},
+			"application jsx":       {Ecosystem: ecosystemHex, Package: "jsx", Version: "3.1.0", Requested: "~> 3.1", Pinned: true, Registry: "*"},
+			"application local_dep": {Ecosystem: ecosystemHex, Package: "local_dep", Unresolved: true},
 		},
 		"erl/src/erl_app.erl": { // cSpell: words behaviour
-			"-behaviour(application)":                         {Ecosystem: ecoOTP, Package: "application"},
+			"-behaviour(application)":                         {Ecosystem: ecosystemOTP, Package: "application"},
 			"-include(\"erl_app.hrl\")":                       {Local: "erl/include/erl_app.hrl"},
-			"-include_lib(\"kernel/include/logger.hrl\")":     {Ecosystem: ecoOTP, Package: "kernel"},
-			"-include_lib(\"cowlib/include/cow_inline.hrl\")": {Ecosystem: ecoHex, Package: "cowlib", Version: "2.12.1", Pinned: true, Registry: "*"},
+			"-include_lib(\"kernel/include/logger.hrl\")":     {Ecosystem: ecosystemOTP, Package: "kernel"},
+			"-include_lib(\"cowlib/include/cow_inline.hrl\")": {Ecosystem: ecosystemHex, Package: "cowlib", Version: "2.12.1", Pinned: true, Registry: "*"},
 			"-include_lib(\"erl_app/include/erl_app.hrl\")":   {Local: "erl/include/erl_app.hrl"},
 			"-include(\"generated.hrl\")":                     {},
-			"cowboy_router":                                   {Ecosystem: ecoHex, Package: "cowboy", Version: "2.10.0", Pinned: true, Registry: "*"},
-			"cowboy":                                          {Ecosystem: ecoHex, Package: "cowboy", Version: "2.10.0", Pinned: true, Registry: "*"},
-			"jsx":                                             {Ecosystem: ecoHex, Package: "jsx", Version: "3.1.0", Requested: "~> 3.1", Pinned: true, Registry: "*"},
-			"ec_file":                                         {Ecosystem: ecoHex, Package: "erlware_commons", Version: "1.7.0", Pinned: true, Registry: "*"},
-			"crypto":                                          {Ecosystem: ecoOTP, Package: "crypto"},
+			"cowboy_router":                                   {Ecosystem: ecosystemHex, Package: "cowboy", Version: "2.10.0", Pinned: true, Registry: "*"},
+			"cowboy":                                          {Ecosystem: ecosystemHex, Package: "cowboy", Version: "2.10.0", Pinned: true, Registry: "*"},
+			"jsx":                                             {Ecosystem: ecosystemHex, Package: "jsx", Version: "3.1.0", Requested: "~> 3.1", Pinned: true, Registry: "*"},
+			"ec_file":                                         {Ecosystem: ecosystemHex, Package: "erlware_commons", Version: "1.7.0", Pinned: true, Registry: "*"},
+			"crypto":                                          {Ecosystem: ecosystemOTP, Package: "crypto"},
 			"erl_worker":                                      {Local: "erl/src/erl_worker.erl"},
-			"lists":                                           {Ecosystem: ecoOTP, Package: "lists"},
-			"Elixir.Jason":                                    {Ecosystem: ecoHex, Package: "jason", Unresolved: true},
-			"unknown_mod":                                     {Ecosystem: ecoHex, Package: "unknown_mod", Unresolved: true},
+			"lists":                                           {Ecosystem: ecosystemOTP, Package: "lists"},
+			"Elixir.Jason":                                    {Ecosystem: ecosystemHex, Package: "jason", Unresolved: true},
+			"unknown_mod":                                     {Ecosystem: ecosystemHex, Package: "unknown_mod", Unresolved: true},
 		},
 		"erl/src/erl_handler.erl": {
 			"-include(\"erl_app.hrl\")": {Local: "erl/include/erl_app.hrl"},
-			"cowboy_req":                {Ecosystem: ecoHex, Package: "cowboy", Version: "2.10.0", Pinned: true, Registry: "*"},
+			"cowboy_req":                {Ecosystem: ecosystemHex, Package: "cowboy", Version: "2.10.0", Pinned: true, Registry: "*"},
 		},
 		"erl/src/erl_worker.erl": {
-			"-behaviour(gen_server)": {Ecosystem: ecoOTP, Package: "gen_server"},
-			"-import(lists)":         {Ecosystem: ecoOTP, Package: "lists"},
+			"-behaviour(gen_server)": {Ecosystem: ecosystemOTP, Package: "gen_server"},
+			"-import(lists)":         {Ecosystem: ecosystemOTP, Package: "lists"},
 		},
 		"libs/local_lib/lib/local_lib.ex": {},
 		"libs/local_lib/mix.exs": {
-			"use Mix.Project": {Ecosystem: ecoElixir, Package: "Mix"},
+			"use Mix.Project": {Ecosystem: ecosystemElixir, Package: "Mix"},
 		},
 		"mix.exs": {
-			"use Mix.Project": {Ecosystem: ecoElixir, Package: "Mix"},
-			"{:credo, \"~> 1.7\", only: [:dev, :test], runtime: false}": {Ecosystem: ecoHex, Package: "credo", Version: "1.7.7", Requested: "~> 1.7", Pinned: true},
+			"use Mix.Project": {Ecosystem: ecosystemElixir, Package: "Mix"},
+			"{:credo, \"~> 1.7\", only: [:dev, :test], runtime: false}": {Ecosystem: ecosystemHex, Package: "credo", Version: "1.7.7", Requested: "~> 1.7", Pinned: true},
 		},
 	}
 	for file, want := range imports {
-		t.Run(file, func(t *testing.T) { langtest.CheckImports(t, res[file], want) })
+		t.Run(file, func(t *testing.T) { langtest.CheckImports(t, results[file], want) })
 	}
 	symbols := map[string]map[string]string{
 		"apps/shop/lib/shop.ex": {
@@ -277,12 +277,12 @@ func TestUmbrellaAndRebarApp(t *testing.T) {
 		},
 	}
 	for file, want := range symbols {
-		t.Run(file+"/symbols", func(t *testing.T) { langtest.CheckSymbols(t, res[file], want) })
+		t.Run(file+"/symbols", func(t *testing.T) { langtest.CheckSymbols(t, results[file], want) })
 	}
-	if len(res) != len(imports) {
-		t.Errorf("analyzed %d files, want %d", len(res), len(imports))
+	if len(results) != len(imports) {
+		t.Errorf("analyzed %d files, want %d", len(results), len(imports))
 	}
-	for f := range res {
+	for f := range results {
 		if _, ok := imports[f]; !ok {
 			t.Errorf("unexpected file %s", f)
 		}
@@ -296,27 +296,27 @@ func TestUmbrellaAndRebarApp(t *testing.T) {
 // Verifies: REQ-BEAM-010, REQ-SUP-011
 func TestMixLockDependencies(t *testing.T) {
 	r := newResolver("testdata/repo", langtest.Files(t, "testdata/repo"))
-	got := r.Dependencies(lang.Target{Ecosystem: ecoHex, Package: "ecto", Version: "3.11.2", Pinned: true})
+	got := r.Dependencies(lang.Target{Ecosystem: ecosystemHex, Package: "ecto", Version: "3.11.2", Pinned: true})
 	want := []lang.Target{
-		{Ecosystem: ecoHex, Package: "decimal", Version: "2.1.1", Requested: "~> 2.0", Pinned: true},
-		{Ecosystem: ecoHex, Package: "jason", Version: "1.4.1", Requested: "~> 1.0", Pinned: true},
-		{Ecosystem: ecoHex, Package: "telemetry", Version: "1.2.1", Requested: "~> 0.4 or ~> 1.0", Pinned: true},
+		{Ecosystem: ecosystemHex, Package: "decimal", Version: "2.1.1", Requested: "~> 2.0", Pinned: true},
+		{Ecosystem: ecosystemHex, Package: "jason", Version: "1.4.1", Requested: "~> 1.0", Pinned: true},
+		{Ecosystem: ecosystemHex, Package: "telemetry", Version: "1.2.1", Requested: "~> 0.4 or ~> 1.0", Pinned: true},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("ecto: got %+v\nwant %+v", got, want)
 	}
 	// db_connection is not in the lock: its requirement is all that is known.
-	got = r.Dependencies(lang.Target{Ecosystem: ecoHex, Package: "ecto_sql", Version: "3.11.3"})
-	if len(got) != 3 || got[0] != (lang.Target{Ecosystem: ecoHex, Package: "db_connection", Version: "~> 2.4.1 or ~> 2.5"}) {
+	got = r.Dependencies(lang.Target{Ecosystem: ecosystemHex, Package: "ecto_sql", Version: "3.11.3"})
+	if len(got) != 3 || got[0] != (lang.Target{Ecosystem: ecosystemHex, Package: "db_connection", Version: "~> 2.4.1 or ~> 2.5"}) {
 		t.Errorf("ecto_sql: got %+v", got)
 	}
-	if got := r.Dependencies(lang.Target{Ecosystem: ecoHex, Package: "phoenix"}); got != nil {
+	if got := r.Dependencies(lang.Target{Ecosystem: ecosystemHex, Package: "phoenix"}); got != nil {
 		t.Errorf("git package: got %+v, want none", got)
 	}
-	if got := r.Dependencies(lang.Target{Ecosystem: ecoHex, Package: "cowboy", Version: "2.10.0"}); got != nil {
+	if got := r.Dependencies(lang.Target{Ecosystem: ecosystemHex, Package: "cowboy", Version: "2.10.0"}); got != nil {
 		t.Errorf("rebar.lock records no edges: got %+v", got)
 	}
-	if got := r.Dependencies(lang.Target{Ecosystem: ecoOTP, Package: "crypto"}); got != nil {
+	if got := r.Dependencies(lang.Target{Ecosystem: ecosystemOTP, Package: "crypto"}); got != nil {
 		t.Errorf("OTP: got %+v", got)
 	}
 }
@@ -329,13 +329,13 @@ func TestReadLocks(t *testing.T) {
   "dep": {:git, "https://github.com/acme/dep.git", "8d2f6a5fbb2b7bd4bc7f4b0c3a5e16d4ac8a7a12", [tag: "v1"]},
   "local": {:path, "../local", []},
 }`))
-	if l := mix["plug"]; l == nil || l.version != "1.16.0" || len(l.deps) != 1 || l.deps[0] != (lockedDep{app: "mime", pkg: "mime", req: "~> 2.0"}) {
+	if l := mix["plug"]; l == nil || l.version != "1.16.0" || len(l.dependencies) != 1 || l.dependencies[0] != (lockedDependency{app: "mime", packageName: "mime", requirement: "~> 2.0"}) {
 		t.Errorf("plug: %+v", l)
 	}
-	if l := mix["my_fork"]; l == nil || l.pkg != "jason" {
+	if l := mix["my_fork"]; l == nil || l.packageName != "jason" {
 		t.Errorf("an app under another package name: %+v", l)
 	}
-	if l := mix["dep"]; l == nil || l.git != "https://github.com/acme/dep.git" || l.ref != "8d2f6a5fbb2b7bd4bc7f4b0c3a5e16d4ac8a7a12" {
+	if l := mix["dep"]; l == nil || l.git != "https://github.com/acme/dep.git" || l.reference != "8d2f6a5fbb2b7bd4bc7f4b0c3a5e16d4ac8a7a12" {
 		t.Errorf("git: %+v", l)
 	}
 	if _, ok := mix["local"]; ok {
@@ -353,13 +353,13 @@ func TestReadLocks(t *testing.T) {
 
 // Verifies: REQ-BEAM-011
 func TestHexPinned(t *testing.T) {
-	for req, want := range map[string]string{
+	for requirement, want := range map[string]string{
 		"1.2.3": "1.2.3", "== 1.2.3": "1.2.3", "==1.2.3": "1.2.3", "1.2.3-rc.1": "1.2.3-rc.1",
 		"~> 1.2": "", ">= 1.0.0": "", "~> 1.0 or ~> 2.0": "", "": "", ">= 1.0.0 and < 2.0.0": "",
 	} {
-		v, pinned := hexPinned(req)
+		v, pinned := hexPinned(requirement)
 		if pinned != (want != "") || pinned && v != want {
-			t.Errorf("%q: got %q %v, want %q", req, v, pinned, want)
+			t.Errorf("%q: got %q %v, want %q", requirement, v, pinned, want)
 		}
 	}
 }
@@ -369,7 +369,7 @@ func TestHexPinned(t *testing.T) {
 //
 // Verifies: REQ-BEAM-002, REQ-BEAM-004
 func TestLexers(t *testing.T) {
-	ex := extractElixir([]byte(`defmodule A do
+	extraction := extractElixir([]byte(`defmodule A do
   # Comment.Module.call()
   @doc ~S"""
   Doc.Module.call()
@@ -382,14 +382,14 @@ func TestLexers(t *testing.T) {
 end
 `))
 	var specs []string
-	for _, im := range ex.Imports {
-		specs = append(specs, im.Spec)
+	for _, rawImport := range extraction.Imports {
+		specs = append(specs, rawImport.Spec)
 	}
 	if !reflect.DeepEqual(specs, []string{"Real.Module"}) {
 		t.Errorf("Elixir imports: %q", specs)
 	}
 	var names []string
-	for _, s := range ex.Symbols {
+	for _, s := range extraction.Symbols {
 		names = append(names, s.Name)
 	}
 	if want := []string{"A", "A.f/1", "A.g/1", "A.h/1"}; !reflect.DeepEqual(names, want) {
@@ -400,8 +400,8 @@ end
 f() -> "string:call()", 'quoted atom':x(), $:, <<"bin">>, X = 1.0e3, Y:z(), ?M:w(), 16#FF.
 `))
 	specs = nil
-	for _, im := range erl.Imports {
-		specs = append(specs, im.Spec)
+	for _, rawImport := range erl.Imports {
+		specs = append(specs, rawImport.Spec)
 	}
 	if !reflect.DeepEqual(specs, []string{"quoted atom"}) {
 		t.Errorf("Erlang imports: %q", specs)

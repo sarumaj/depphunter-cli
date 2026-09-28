@@ -17,47 +17,47 @@ import (
 
 // Cached returns References for g, reusing the result of an earlier run on the same
 // content (the graph's nodes and edges) with the same installed servers. Complete
-// results are stored in dir; "" disables caching.
+// results are stored in directory; "" disables caching.
 //
 // Implements: REQ-LSP-006
-func Cached(ctx context.Context, dir string, g *graph.Graph, opts Options) (*Result, error) {
-	if opts.LookPath == nil {
-		opts.LookPath = exec.LookPath
+func Cached(ctx context.Context, directory string, g *graph.Graph, options Options) (*Result, error) {
+	if options.LookPath == nil {
+		options.LookPath = exec.LookPath
 	}
 	h := sha256.New()
 	json.NewEncoder(h).Encode([]any{g.Nodes, g.Edges})
 	for _, s := range Servers {
-		if argv := s.command(opts.LookPath); argv != nil {
+		if argv := s.command(options.LookPath); argv != nil {
 			h.Write([]byte(strings.Join(argv, " ") + "\n"))
 		}
 	}
-	root := sha256.Sum256([]byte(opts.Root))
-	prefix := filepath.Join(dir, hex.EncodeToString(root[:12])+"-references-")
+	root := sha256.Sum256([]byte(options.Root))
+	prefix := filepath.Join(directory, hex.EncodeToString(root[:12])+"-references-")
 	file := prefix + hex.EncodeToString(h.Sum(nil)[:12]) + ".json.gz"
 
-	if dir != "" {
+	if directory != "" {
 		if f, err := os.Open(file); err == nil {
 			defer f.Close()
-			if zr, err := gzip.NewReader(f); err == nil {
+			if gzipReader, err := gzip.NewReader(f); err == nil {
 				var r Result
-				if json.NewDecoder(zr).Decode(&r) == nil {
+				if json.NewDecoder(gzipReader).Decode(&r) == nil {
 					return &r, nil
 				}
 			}
 		}
 	}
-	r, err := References(ctx, g, opts)
-	if err != nil || r.Partial || dir == "" {
+	r, err := References(ctx, g, options)
+	if err != nil || r.Partial || directory == "" {
 		return r, err
 	}
 	old, _ := filepath.Glob(prefix + "*.json.gz")
 	for _, o := range old {
 		os.Remove(o)
 	}
-	var buf bytes.Buffer
-	zw := gzip.NewWriter(&buf)
-	if json.NewEncoder(zw).Encode(r) == nil && zw.Close() == nil && os.MkdirAll(dir, 0o755) == nil {
-		if os.WriteFile(file+".tmp", buf.Bytes(), 0o644) == nil {
+	var buffer bytes.Buffer
+	gzipWriter := gzip.NewWriter(&buffer)
+	if json.NewEncoder(gzipWriter).Encode(r) == nil && gzipWriter.Close() == nil && os.MkdirAll(directory, 0o755) == nil {
+		if os.WriteFile(file+".tmp", buffer.Bytes(), 0o644) == nil {
 			os.Rename(file+".tmp", file)
 		}
 	}

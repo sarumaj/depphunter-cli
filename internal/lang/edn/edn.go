@@ -29,7 +29,7 @@ const (
 	Keyword // Text without the leading ':' ("::x" keeps one: ":x")
 	String  // Text unescaped
 	Number
-	Char
+	Character
 	Regex
 	Other // ##Inf, ##NaN and anything unreadable
 )
@@ -115,7 +115,7 @@ func render(b *strings.Builder, n *Node, max, depth int) {
 		b.WriteString(":" + n.Text)
 	case String:
 		b.WriteString(`"` + n.Text + `"`)
-	case Char:
+	case Character:
 		b.WriteString(`\` + n.Text)
 	case Regex:
 		b.WriteString(`#"` + n.Text + `"`)
@@ -137,9 +137,9 @@ func render(b *strings.Builder, n *Node, max, depth int) {
 // Read reads every top-level form.
 //
 // Implements: REQ-CLOJURE-011
-func Read(src []byte) []*Node {
+func Read(source []byte) []*Node {
 	var out []*Node
-	ReadTop(src, func(n *Node) bool { out = append(out, n); return true })
+	ReadTop(source, func(n *Node) bool { out = append(out, n); return true })
 	return out
 }
 
@@ -159,11 +159,11 @@ type prefix struct {
 }
 
 type frame struct {
-	node    *Node
-	closer  byte
-	cond    bool // #?( ... ): its branches replace it
-	splice  bool // #?@( ... )
-	pending []prefix
+	node      *Node
+	closer    byte
+	condition bool // #?( ... ): its branches replace it
+	splice    bool // #?@( ... )
+	pending   []prefix
 }
 
 type reader struct {
@@ -176,14 +176,14 @@ type reader struct {
 	stop   bool
 }
 
-// ReadTop calls fn with each top-level form in order until fn returns false.
+// ReadTop calls function with each top-level form in order until function returns false.
 //
 // Implements: REQ-CLOJURE-011
-func ReadTop(src []byte, fn func(*Node) bool) {
-	r := &reader{s: string(src), emit: fn}
+func ReadTop(source []byte, function func(*Node) bool) {
+	r := &reader{s: string(source), emit: function}
 	r.starts = append(r.starts, 0)
 	for i := 0; ; {
-		j := bytes.IndexByte(src[i:], '\n')
+		j := bytes.IndexByte(source[i:], '\n')
 		if j < 0 {
 			break
 		}
@@ -197,8 +197,8 @@ func ReadTop(src []byte, fn func(*Node) bool) {
 	}
 }
 
-func (r *reader) line(pos int) int {
-	return sort.Search(len(r.starts), func(k int) bool { return r.starts[k] > pos })
+func (r *reader) line(position int) int {
+	return sort.Search(len(r.starts), func(k int) bool { return r.starts[k] > position })
 }
 
 func (r *reader) top() *frame { return r.stack[len(r.stack)-1] }
@@ -258,13 +258,13 @@ func (r *reader) close() {
 	f := r.top()
 	r.stack = r.stack[:len(r.stack)-1]
 	n := f.node
-	if !f.cond {
+	if !f.condition {
 		if n.Kind == Map && strings.HasPrefix(n.Tag, ":") {
 			// #:ns{:a 1} qualifies its unqualified keyword keys: {:ns/a 1}.
-			ns := n.Tag[1:]
+			namespace := n.Tag[1:]
 			for i := 0; i < len(n.Kids); i += 2 {
-				if k := n.Kids[i]; k.Kind == Keyword && !strings.Contains(k.Text, "/") && ns != ":" && ns != "" {
-					k.Text = ns + "/" + k.Text
+				if k := n.Kids[i]; k.Kind == Keyword && !strings.Contains(k.Text, "/") && namespace != ":" && namespace != "" {
+					k.Text = namespace + "/" + k.Text
 				}
 			}
 			n.Tag = ""
@@ -358,10 +358,10 @@ func (r *reader) run() {
 			r.closeAt(c)
 		case '"':
 			r.i++
-			r.add(&Node{Kind: String, Text: r.str(), Line: r.line(start)})
+			r.add(&Node{Kind: String, Text: r.readString(), Line: r.line(start)})
 		case '\\':
 			r.i++
-			r.add(&Node{Kind: Char, Text: r.char(), Line: r.line(start)})
+			r.add(&Node{Kind: Character, Text: r.character(), Line: r.line(start)})
 		case ':':
 			r.i++
 			r.add(&Node{Kind: Keyword, Text: r.token(), Line: r.line(start)})
@@ -421,7 +421,7 @@ func (r *reader) dispatch() {
 		}
 	case '"':
 		r.i++
-		r.add(&Node{Kind: Regex, Text: r.str(), Line: r.line(start)})
+		r.add(&Node{Kind: Regex, Text: r.readString(), Line: r.line(start)})
 	case '_':
 		r.i++
 		r.push(prefix{kind: '_'})
@@ -450,16 +450,16 @@ func (r *reader) dispatch() {
 		if r.i < len(s) && s[r.i] == '(' {
 			r.i++
 			if f := r.open(List, ')', r.line(start)); f != nil {
-				f.cond, f.splice = true, splice
+				f.condition, f.splice = true, splice
 			}
 		}
 	case ':':
 		r.i++
-		ns := ":" + r.nsPrefix()
+		namespace := ":" + r.namespacePrefix()
 		if r.i < len(s) && s[r.i] == '{' {
 			r.i++
 			if f := r.open(Map, '}', r.line(start)); f != nil {
-				f.node.Tag = ns
+				f.node.Tag = namespace
 			}
 		}
 	default:
@@ -470,8 +470,8 @@ func (r *reader) dispatch() {
 	}
 }
 
-// nsPrefix reads the namespace of #:ns{...} (":" for #::{...}, the current one).
-func (r *reader) nsPrefix() string {
+// namespacePrefix reads the namespace of #:ns{...} (":" for #::{...}, the current one).
+func (r *reader) namespacePrefix() string {
 	j := r.i
 	for j < len(r.s) && !terminating(r.s[j]) {
 		j++
@@ -492,9 +492,9 @@ func (r *reader) skipLine() {
 	}
 }
 
-// str reads a string's body after its opening quote, up to the unescaped closing one
+// readString reads a string's body after its opening quote, up to the unescaped closing one
 // (or the end of the input), unescaping \" \\ \n \t.
-func (r *reader) str() string {
+func (r *reader) readString() string {
 	s := r.s
 	j := r.i
 	escaped := false
@@ -530,9 +530,9 @@ func (r *reader) str() string {
 	return b.String()
 }
 
-// char reads a character literal after its backslash: one character, then the rest
+// character reads a character literal after its backslash: one character, then the rest
 // of a name (\newline, A) when it starts with a letter.
-func (r *reader) char() string {
+func (r *reader) character() string {
 	s := r.s
 	if r.i >= len(s) {
 		return ""

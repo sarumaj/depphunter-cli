@@ -17,29 +17,29 @@ import (
 
 // Token kinds.
 const (
-	tIdent = iota + 1
+	tIdentifier = iota + 1
 	tString
 	tNumber
-	tPunct
+	tPunctuation
 )
 
-type tok struct {
-	kind  int
-	text  string // identifier, punctuation, number, or a string's value
-	line  int
-	col   int  // byte column of the token on its line
-	first bool // first token of a logical line (not inside brackets)
+type token struct {
+	kind   int
+	text   string // identifier, punctuation, number, or a string's value
+	line   int
+	column int  // byte column of the token on its line
+	first  bool // first token of a logical line (not inside brackets)
 }
 
-// lex splits src into tokens. Comments, blank lines and line breaks inside
+// lex splits source into tokens. Comments, blank lines and line breaks inside
 // brackets or after a backslash vanish; the first token of each logical line is
 // marked, with its column, which is all the indentation a reader of declarations
 // needs. Unterminated strings end at the line (or, for a triple-quoted one, the
 // file) and unbalanced brackets are tolerated.
-func lex(src []byte) []tok {
-	s := string(src)
+func lex(source []byte) []token {
+	s := string(source)
 	s = strings.TrimPrefix(s, "\xef\xbb\xbf")
-	var tokens []tok
+	var tokens []token
 	line, lineStart := 1, 0
 	depth := 0
 	first := true
@@ -74,39 +74,39 @@ func lex(src []byte) []tok {
 			}
 			continue
 		}
-		t := tok{line: line, col: i - lineStart, first: first}
+		t := token{line: line, column: i - lineStart, first: first}
 		first = false
 		switch {
 		case c == '"' || c == '\'':
 			var v string
-			v, i, line, lineStart = str(s, i, false, line, lineStart)
+			v, i, line, lineStart = lexString(s, i, false, line, lineStart)
 			t.kind, t.text = tString, v
-		case isIdentStart(c):
+		case isIdentifierStart(c):
 			j := i
-			for j < len(s) && isIdentPart(s[j]) {
+			for j < len(s) && isIdentifierPart(s[j]) {
 				j++
 			}
 			word := s[i:j]
 			if j < len(s) && (s[j] == '"' || s[j] == '\'') && stringPrefix(word) {
 				raw := strings.ContainsAny(word, "rR")
 				var v string
-				v, i, line, lineStart = str(s, j, raw, line, lineStart)
+				v, i, line, lineStart = lexString(s, j, raw, line, lineStart)
 				t.kind, t.text = tString, v
 				break
 			}
-			t.kind, t.text = tIdent, word
+			t.kind, t.text = tIdentifier, word
 			i = j
 		case c >= '0' && c <= '9' || c == '.' && i+1 < len(s) && s[i+1] >= '0' && s[i+1] <= '9':
 			j := i + 1
-			for j < len(s) && (isIdentPart(s[j]) || s[j] == '.' ||
+			for j < len(s) && (isIdentifierPart(s[j]) || s[j] == '.' ||
 				(s[j] == '+' || s[j] == '-') && (s[j-1] == 'e' || s[j-1] == 'E') && !strings.HasPrefix(strings.ToLower(s[i:j]), "0x")) {
 				j++
 			}
 			t.kind, t.text = tNumber, s[i:j]
 			i = j
 		default:
-			n := punct(s[i:])
-			t.kind, t.text = tPunct, s[i:i+n]
+			n := punctuation(s[i:])
+			t.kind, t.text = tPunctuation, s[i:i+n]
 			switch t.text {
 			case "(", "[", "{":
 				depth++
@@ -122,11 +122,11 @@ func lex(src []byte) []tok {
 	return tokens
 }
 
-func isIdentStart(c byte) bool {
+func isIdentifierStart(c byte) bool {
 	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 0x80
 }
 
-func isIdentPart(c byte) bool { return isIdentStart(c) || c >= '0' && c <= '9' }
+func isIdentifierPart(c byte) bool { return isIdentifierStart(c) || c >= '0' && c <= '9' }
 
 // stringPrefix reports whether an identifier directly before a quote is a string
 // prefix: r (raw), b (bytes), or both.
@@ -138,12 +138,12 @@ func stringPrefix(w string) bool {
 	return false
 }
 
-// punct is the length of the operator at the start of s: the longest of the
+// punctuation is the length of the operator at the start of s: the longest of the
 // three-, two- and one-character operators, or one byte (or rune) of anything else.
-func punct(s string) int {
-	for _, op := range []string{"//=", ">>=", "<<=", "**=", "...", "==", "!=", "<=", ">=", "//", "**", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<", ">>", "->"} {
-		if strings.HasPrefix(s, op) {
-			return len(op)
+func punctuation(s string) int {
+	for _, operator := range []string{"//=", ">>=", "<<=", "**=", "...", "==", "!=", "<=", ">=", "//", "**", "+=", "-=", "*=", "/=", "%=", "&=", "|=", "^=", "<<", ">>", "->"} {
+		if strings.HasPrefix(s, operator) {
+			return len(operator)
 		}
 	}
 	if s[0] >= 0x80 {
@@ -153,10 +153,10 @@ func punct(s string) int {
 	return 1
 }
 
-// str reads the string literal whose opening quote is at s[i], returning its value
+// lexString reads the string literal whose opening quote is at s[i], returning its value
 // and the position after it. Escapes are decoded where they matter for names
 // (\\, \", \', \n, \t); a raw string keeps its backslashes.
-func str(s string, i int, raw bool, line, lineStart int) (string, int, int, int) {
+func lexString(s string, i int, raw bool, line, lineStart int) (string, int, int, int) {
 	q := s[i]
 	triple := strings.HasPrefix(s[i:], string([]byte{q, q, q}))
 	if triple {

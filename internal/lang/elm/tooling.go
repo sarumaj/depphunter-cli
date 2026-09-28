@@ -8,7 +8,7 @@ import (
 )
 
 // toolingElm is the compiler version elm-tooling.json pins (`tools.elm`) for a
-// project in dir: the file in dir or the nearest directory above it in the
+// project in directory: the file in directory or the nearest directory above it in the
 // repository, as elm-tooling looks it up. Its other tools (elm-format,
 // elm-json, elm-test-rs) are programs run on the code, downloaded from their
 // releases like the compiler, so they are not dependencies (a nimble
@@ -16,16 +16,16 @@ import (
 // pins an exact version.
 //
 // Implements: REQ-ELM-005
-func toolingElm(root, dir string) string {
+func toolingElm(root, directory string) string {
 	if root == "" {
 		return ""
 	}
-	for d := dir; ; d = path.Dir(d) {
-		if src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(d), "elm-tooling.json")); err == nil {
+	for d := directory; ; d = path.Dir(d) {
+		if source, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(d), "elm-tooling.json")); err == nil {
 			var raw struct {
 				Tools map[string]any `json:"tools"`
 			}
-			json.Unmarshal(src, &raw)
+			json.Unmarshal(source, &raw)
 			v, _ := raw.Tools["elm"].(string)
 			if _, ok := parseVersion(v); ok {
 				return v

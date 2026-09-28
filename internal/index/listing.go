@@ -72,8 +72,8 @@ func (m *memo[T]) get(key string, read func() (T, error)) (T, error) {
 
 // localCopy is the copy on this machine's disk of an index this machine's
 // configuration names, or "".
-func (c *Config) localCopy(eco, index string) string {
-	for _, s := range c.sources[eco] {
+func (c *Config) localCopy(ecosystem, index string) string {
+	for _, s := range c.sources[ecosystem] {
 		if s.URL == index && s.Local != "" && s.Trusted {
 			return s.Local
 		}
@@ -84,10 +84,10 @@ func (c *Config) localCopy(eco, index string) string {
 // unlisted reports whether a package's versions cannot be listed on an index
 // served over HTTP: it has no copy on disk, and it is not the public one,
 // whose repository GitHub lists. An index served otherwise (git) with no copy
-// is not read at all, and passes the question on (see opamRepo, alireIndex).
-func (c *Client) unlisted(eco, index string) bool {
+// is not read at all, and passes the question on (see opamRepository, alireIndex).
+func (c *Client) unlisted(ecosystem, index string) bool {
 	return (strings.HasPrefix(index, "https://") || strings.HasPrefix(index, "http://")) &&
-		c.cfg.localCopy(eco, index) == "" && index != c.cfg.publicURL(eco)
+		c.config.localCopy(ecosystem, index) == "" && index != c.config.publicURL(ecosystem)
 }
 
 // fileURLPath is the local path a file: URL or a plain path names, or "".
@@ -149,10 +149,10 @@ func sshUserless(u string) string {
 //
 // Implements: REQ-SUP-053, REQ-SUP-064
 func machineCPAN(m userconf.Machine, k sink) {
-	if u := cpanMirrorURL(m.Env("PERL_CARTON_MIRROR")); u != "" && !cpanPublicMirror(u) {
+	if u := cpanMirrorURL(m.Environment("PERL_CARTON_MIRROR")); u != "" && !cpanPublicMirror(u) {
 		k.extra(CPAN, u)
 	}
-	mirrors, only := cpanmMirrors(m.Env("PERL_CPANM_OPT"))
+	mirrors, only := cpanmMirrors(m.Environment("PERL_CPANM_OPT"))
 	if !only || len(mirrors) == 0 {
 		return
 	}
@@ -169,13 +169,13 @@ func machineCPAN(m userconf.Machine, k sink) {
 
 // cpanmMirrors reads cpanm's options: the mirrors in order, and whether they
 // are the only indexes.
-func cpanmMirrors(opt string) (mirrors []string, only bool) {
-	args, err := shellquote.Split(opt)
+func cpanmMirrors(option string) (mirrors []string, only bool) {
+	arguments, err := shellquote.Split(option)
 	if err != nil {
-		args = strings.Fields(opt)
+		arguments = strings.Fields(option)
 	}
-	for i := 0; i < len(args); i++ {
-		a := args[i]
+	for i := 0; i < len(arguments); i++ {
+		a := arguments[i]
 		name, value, inline := strings.Cut(a, "=")
 		switch name {
 		case "--mirror-only":
@@ -185,9 +185,9 @@ func cpanmMirrors(opt string) (mirrors []string, only bool) {
 		default:
 			continue
 		}
-		if !inline && i+1 < len(args) {
+		if !inline && i+1 < len(arguments) {
 			i++
-			value = args[i]
+			value = arguments[i]
 		}
 		if name != "--mirror" {
 			only = true
@@ -242,8 +242,8 @@ func (c *Config) readCPANSnapshot(data []byte) {
 		switch {
 		case indent == 2:
 			dist = ""
-			if sm := cpanDistVersion.FindStringSubmatch(text); sm != nil {
-				dist = sm[1] + " " + sm[2]
+			if match := cpanDistVersion.FindStringSubmatch(text); match != nil {
+				dist = match[1] + " " + match[2]
 			}
 		case indent == 4 && dist != "" && strings.HasPrefix(text, "pathname:"):
 			p := strings.TrimSpace(strings.TrimPrefix(text, "pathname:"))
@@ -270,8 +270,8 @@ func cpanArchive(p string) (author, name string) {
 		return "", ""
 	}
 	name = parts[len(parts)-1]
-	for _, ext := range []string{".tar.gz", ".tgz", ".tar.bz2", ".tbz", ".tar.xz", ".zip", ".tar"} {
-		if n, ok := strings.CutSuffix(name, ext); ok {
+	for _, extension := range []string{".tar.gz", ".tgz", ".tar.bz2", ".tbz", ".tar.xz", ".zip", ".tar"} {
+		if n, ok := strings.CutSuffix(name, extension); ok {
 			name = n
 			break
 		}
@@ -308,45 +308,45 @@ type cpanMirrored struct {
 // describe is answered without dependencies, with a note.
 //
 // Implements: REQ-SUP-053
-func (c *Client) cpanMirror(ctx context.Context, base string, t lang.Target) ([]dep, error) {
-	pkgs, err := c.cpanMirrors.get(base, func() (*cpanPackages, error) { return c.readCPANPackages(ctx, base) })
+func (c *Client) cpanMirror(ctx context.Context, base string, t lang.Target) ([]dependency, error) {
+	packages, err := c.cpanMirrors.get(base, func() (*cpanPackages, error) { return c.readCPANPackages(ctx, base) })
 	if err != nil {
 		return nil, err
 	}
-	rel, ok := pkgs.dists[t.Package]
+	relative, ok := packages.dists[t.Package]
 	if !ok {
 		return nil, fmt.Errorf("%w: %s lists no %s", errAbsent, base, t.Package)
 	}
-	name := rel.name
-	if v := strings.TrimSpace(t.Version); cpanVersion.MatchString(v) && v != rel.version {
+	name := relative.name
+	if v := strings.TrimSpace(t.Version); cpanVersion.MatchString(v) && v != relative.version {
 		name = t.Package + "-" + v
 	}
-	meta := c.cfg.publicURL(CPAN)
-	if c.private.Match(CPAN, t.Package) || meta == "" {
-		return []dep{}, nil
+	metacpan := c.config.publicURL(CPAN)
+	if c.private.Match(CPAN, t.Package) || metacpan == "" {
+		return []dependency{}, nil
 	}
-	found, err := c.cpanRelease(ctx, meta+"/v1/release/"+url.PathEscape(rel.author)+"/"+url.PathEscape(name))
+	found, err := c.cpanRelease(ctx, metacpan+"/v1/release/"+url.PathEscape(relative.author)+"/"+url.PathEscape(name))
 	if notFound(err) {
 		// Implements: REQ-TRC-017
-		c.note(trace.NoteNoRelease, "CPAN mirror "+base+" has "+t.Package+" ("+rel.path+"), a release MetaCPAN does "+
+		c.note(trace.NoteNoRelease, "CPAN mirror "+base+" has "+t.Package+" ("+relative.path+"), a release MetaCPAN does "+
 			"not describe: its dependencies are in the archive's META.json, which is not downloaded")
-		return []dep{}, nil
+		return []dependency{}, nil
 	}
 	if err != nil {
 		return nil, err
 	}
-	var out []dep
+	var out []dependency
 	seen := map[string]bool{t.Package: true, found.Distribution: true}
 	for _, d := range found.Dependency {
 		if d.Phase != "runtime" || d.Relationship != "requires" || d.Module == "perl" {
 			continue
 		}
-		dist := pkgs.modules[d.Module]
+		dist := packages.modules[d.Module]
 		if dist == "" || dist == "perl" || seen[dist] {
 			continue
 		}
 		seen[dist] = true
-		out = append(out, dep{Name: dist, Version: cpanMinimum(d.Version)})
+		out = append(out, dependency{Name: dist, Version: cpanMinimum(d.Version)})
 	}
 	sort.Slice(out, func(i, j int) bool { return out[i].Name < out[j].Name })
 	return out, nil
@@ -357,8 +357,8 @@ func (c *Client) cpanMirror(ctx context.Context, base string, t lang.Target) ([]
 func (c *Client) readCPANPackages(ctx context.Context, base string) (*cpanPackages, error) {
 	var body []byte
 	var err error
-	if dir := fileURLPath(base); strings.HasPrefix(base, "file:") && dir != "" {
-		name := filepath.Join(dir, "modules", "02packages.details.txt")
+	if directory := fileURLPath(base); strings.HasPrefix(base, "file:") && directory != "" {
+		name := filepath.Join(directory, "modules", "02packages.details.txt")
 		if body, err = os.ReadFile(name + ".gz"); err != nil {
 			body, err = os.ReadFile(name)
 		} else {
@@ -395,11 +395,11 @@ func gunzip(data []byte) ([]byte, error) {
 // `Module version A/AU/AUTHOR/Dist-1.23.tar.gz` per line.
 func parseCPANPackages(data []byte) *cpanPackages {
 	p := &cpanPackages{dists: map[string]cpanMirrored{}, modules: map[string]string{}}
-	sc := bufio.NewScanner(bytes.NewReader(data))
-	sc.Buffer(make([]byte, 64<<10), 1<<20)
+	scanner := bufio.NewScanner(bytes.NewReader(data))
+	scanner.Buffer(make([]byte, 64<<10), 1<<20)
 	header := true
-	for sc.Scan() {
-		line := strings.TrimSpace(sc.Text())
+	for scanner.Scan() {
+		line := strings.TrimSpace(scanner.Text())
 		if header {
 			header = line != ""
 			continue
@@ -409,14 +409,14 @@ func parseCPANPackages(data []byte) *cpanPackages {
 			continue
 		}
 		author, name := cpanArchive(f[2])
-		sm := cpanDistVersion.FindStringSubmatch(name)
-		if author == "" || sm == nil {
+		match := cpanDistVersion.FindStringSubmatch(name)
+		if author == "" || match == nil {
 			continue
 		}
-		dist := sm[1]
+		dist := match[1]
 		p.modules[f[0]] = dist
 		if _, ok := p.dists[dist]; !ok || strings.ReplaceAll(dist, "-", "::") == f[0] {
-			p.dists[dist] = cpanMirrored{path: f[2], author: author, name: name, version: sm[2]}
+			p.dists[dist] = cpanMirrored{path: f[2], author: author, name: name, version: match[2]}
 		}
 	}
 	return p
@@ -440,20 +440,20 @@ func cpanMinimum(version any) string {
 // githubAPI is GitHub's REST API; tests point it at their own server.
 var githubAPI = "https://api.github.com"
 
-// githubRepo is a public index's git repository on GitHub, for listing a
+// githubRepository is a public index's git repository on GitHub, for listing a
 // directory of it when there is no copy on disk.
-type githubRepo struct{ repo, ref string }
+type githubRepository struct{ repository, reference string }
 
 var (
-	opamGitHub  = githubRepo{"ocaml/opam-repository", "master"}
-	alireGitHub = githubRepo{"alire-project/alire-index", "stable-1.4.0"}
+	opamGitHub  = githubRepository{"ocaml/opam-repository", "master"}
+	alireGitHub = githubRepository{"alire-project/alire-index", "stable-1.4.0"}
 )
 
 // githubList lists a directory of a repository through GitHub's contents API
 // (unauthenticated, 60 requests an hour, unless this machine holds a credential
 // for api.github.com), once per directory.
-func (c *Client) githubList(ctx context.Context, r githubRepo, dir string) ([]string, error) {
-	address := githubAPI + "/repos/" + r.repo + "/contents/" + dir + "?ref=" + url.QueryEscape(r.ref)
+func (c *Client) githubList(ctx context.Context, r githubRepository, directory string) ([]string, error) {
+	address := githubAPI + "/repos/" + r.repository + "/contents/" + directory + "?ref=" + url.QueryEscape(r.reference)
 	return c.listings.get(address, func() ([]string, error) {
 		body, err := c.accept(ctx, address, "application/vnd.github+json")
 		if err != nil {
@@ -538,23 +538,23 @@ func machineOpam(m userconf.Machine, k sink) {
 }
 
 // publicIndex is an ecosystem's public default.
-func publicIndex(eco string) string { return public[eco] }
+func publicIndex(ecosystem string) string { return public[ecosystem] }
 
 // opamOrder is the repositories of the current switch in order of priority: its
 // switch-config's, else the root config's.
 func opamOrder(m userconf.Machine, root string) []string {
 	config, _ := os.ReadFile(filepath.Join(root, "config"))
-	sw := m.Env("OPAMSWITCH")
+	sw := m.Environment("OPAMSWITCH")
 	if sw == "" {
 		sw = opam.String(config, "switch")
 	}
 	var names []string
 	if sw != "" {
-		dir := filepath.Join(root, sw)
+		directory := filepath.Join(root, sw)
 		if strings.ContainsAny(sw, `/\`) {
-			dir = filepath.Join(sw, "_opam") // a local switch
+			directory = filepath.Join(sw, "_opam") // a local switch
 		}
-		if data, err := os.ReadFile(filepath.Join(dir, ".opam-switch", "switch-config")); err == nil {
+		if data, err := os.ReadFile(filepath.Join(directory, ".opam-switch", "switch-config")); err == nil {
 			for _, r := range opam.Repositories(data) {
 				names = append(names, r.Name)
 			}
@@ -570,12 +570,12 @@ func opamOrder(m userconf.Machine, root string) []string {
 
 // opamCopyPath is the copy opam keeps of a repository, or "".
 func opamCopyPath(root, name string) string {
-	dir := filepath.Join(root, "repo", name)
-	if info, err := os.Stat(filepath.Join(dir, "packages")); err == nil && info.IsDir() {
-		return dir
+	directory := filepath.Join(root, "repo", name)
+	if info, err := os.Stat(filepath.Join(directory, "packages")); err == nil && info.IsDir() {
+		return directory
 	}
-	if info, err := os.Stat(dir + ".tar.gz"); err == nil && !info.IsDir() {
-		return dir + ".tar.gz"
+	if info, err := os.Stat(directory + ".tar.gz"); err == nil && !info.IsDir() {
+		return directory + ".tar.gz"
 	}
 	return ""
 }
@@ -625,35 +625,35 @@ func parseDuneWorkspace(data []byte, k sink) {
 // opamName is an opam package name.
 var opamName = regexp.MustCompile(`^[A-Za-z0-9][A-Za-z0-9_+.-]{0,127}$`)
 
-// opamRepo is a repository's descriptions as they can be read: its versions of a
+// opamRepository is a repository's descriptions as they can be read: its versions of a
 // package (nil when they cannot be listed) and one version's description.
-type opamRepo struct {
+type opamRepository struct {
 	versions func(name string) ([]string, error)
 	read     func(name, version string) ([]byte, error)
 }
 
-// opamRepo is how an opam repository is read: from the copy opam keeps of it,
+// opamRepository is how an opam repository is read: from the copy opam keeps of it,
 // else as files over HTTP - listed through GitHub for opam-repository itself.
 // A repository only git serves, with no copy here, cannot be read at all.
-func (c *Client) opamRepo(ctx context.Context, base string) (opamRepo, error) {
-	if local := c.cfg.localCopy(Opam, base); local != "" {
-		cp, err := c.opamCopies.get(local, func() (*opamCopy, error) { return readOpamCopy(local) })
+func (c *Client) opamRepository(ctx context.Context, base string) (opamRepository, error) {
+	if local := c.config.localCopy(Opam, base); local != "" {
+		localCopy, err := c.opamCopies.get(local, func() (*opamCopy, error) { return readOpamCopy(local) })
 		if err != nil {
-			return opamRepo{}, err
+			return opamRepository{}, err
 		}
-		return opamRepo{versions: cp.list, read: cp.description}, nil
+		return opamRepository{versions: localCopy.list, read: localCopy.description}, nil
 	}
 	if !strings.HasPrefix(base, "https://") && !strings.HasPrefix(base, "http://") {
 		// Implements: REQ-TRC-017
 		c.note(trace.NoteNoCopy, "opam repository "+base+" is read only from a copy on this machine's disk "+
 			"(opam's repo/<name>), and there is none: its packages are asked of the next repository")
-		return opamRepo{}, fmt.Errorf("%w: %s has no copy on this machine", errAbsent, base)
+		return opamRepository{}, fmt.Errorf("%w: %s has no copy on this machine", errAbsent, base)
 	}
-	r := opamRepo{read: func(name, version string) ([]byte, error) {
+	r := opamRepository{read: func(name, version string) ([]byte, error) {
 		n := url.PathEscape(name)
 		return c.accept(ctx, base+"/packages/"+n+"/"+n+"."+url.PathEscape(version)+"/opam", "text/plain")
 	}}
-	if base == c.cfg.publicURL(Opam) {
+	if base == c.config.publicURL(Opam) {
 		r.versions = func(name string) ([]string, error) {
 			entries, err := c.githubList(ctx, opamGitHub, "packages/"+url.PathEscape(name))
 			var out []string
@@ -671,13 +671,13 @@ func (c *Client) opamRepo(ctx context.Context, base string) (opamRepo, error) {
 // opamCopy is a repository copy opam keeps: a directory, or an archive read
 // once into memory.
 type opamCopy struct {
-	dir   string
-	files map[string]map[string][]byte // name -> version -> opam file, for an archive
+	directory string
+	files     map[string]map[string][]byte // name -> version -> opam file, for an archive
 }
 
 func readOpamCopy(local string) (*opamCopy, error) {
 	if !strings.HasSuffix(local, ".tar.gz") {
-		return &opamCopy{dir: local}, nil
+		return &opamCopy{directory: local}, nil
 	}
 	f, err := os.Open(local)
 	if err != nil {
@@ -688,10 +688,10 @@ func readOpamCopy(local string) (*opamCopy, error) {
 	if err != nil {
 		return nil, err
 	}
-	cp := &opamCopy{files: map[string]map[string][]byte{}}
-	tr := tar.NewReader(z)
+	localCopy := &opamCopy{files: map[string]map[string][]byte{}}
+	tarReader := tar.NewReader(z)
 	for {
-		h, err := tr.Next()
+		h, err := tarReader.Next()
 		if errors.Is(err, io.EOF) {
 			break
 		}
@@ -709,22 +709,22 @@ func readOpamCopy(local string) (*opamCopy, error) {
 		if !ok {
 			continue
 		}
-		body, err := io.ReadAll(io.LimitReader(tr, maxBody))
+		body, err := io.ReadAll(io.LimitReader(tarReader, maxBody))
 		if err != nil {
 			return nil, err
 		}
-		if cp.files[name] == nil {
-			cp.files[name] = map[string][]byte{}
+		if localCopy.files[name] == nil {
+			localCopy.files[name] = map[string][]byte{}
 		}
-		cp.files[name][version] = body
+		localCopy.files[name][version] = body
 	}
-	return cp, nil
+	return localCopy, nil
 }
 
-func (cp *opamCopy) list(name string) ([]string, error) {
-	if cp.files != nil {
+func (localCopy *opamCopy) list(name string) ([]string, error) {
+	if localCopy.files != nil {
 		var out []string
-		for v := range cp.files[name] {
+		for v := range localCopy.files[name] {
 			out = append(out, v)
 		}
 		if out == nil {
@@ -732,7 +732,7 @@ func (cp *opamCopy) list(name string) ([]string, error) {
 		}
 		return out, nil
 	}
-	entries, err := os.ReadDir(filepath.Join(cp.dir, "packages", name))
+	entries, err := os.ReadDir(filepath.Join(localCopy.directory, "packages", name))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, errAbsent
 	}
@@ -745,15 +745,15 @@ func (cp *opamCopy) list(name string) ([]string, error) {
 	return out, err
 }
 
-func (cp *opamCopy) description(name, version string) ([]byte, error) {
-	if cp.files != nil {
-		body, ok := cp.files[name][version]
+func (localCopy *opamCopy) description(name, version string) ([]byte, error) {
+	if localCopy.files != nil {
+		body, ok := localCopy.files[name][version]
 		if !ok {
 			return nil, errAbsent
 		}
 		return body, nil
 	}
-	body, err := os.ReadFile(filepath.Join(cp.dir, "packages", name, name+"."+version, "opam"))
+	body, err := os.ReadFile(filepath.Join(localCopy.directory, "packages", name, name+"."+version, "opam"))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, errAbsent
 	}
@@ -777,11 +777,11 @@ func alirePublic(u string) bool {
 //
 // Implements: REQ-SUP-061, REQ-SUP-064
 func machineAlire(m userconf.Machine, k sink) {
-	dir := m.AlireSettingsDir()
-	if dir == "" {
+	directory := m.AlireSettingsDirectory()
+	if directory == "" {
 		return
 	}
-	files, _ := filepath.Glob(filepath.Join(dir, "indexes", "*", "index.toml"))
+	files, _ := filepath.Glob(filepath.Join(directory, "indexes", "*", "index.toml"))
 	type index struct {
 		URL      string `toml:"url"`
 		Name     string `toml:"name"`
@@ -790,19 +790,19 @@ func machineAlire(m userconf.Machine, k sink) {
 	}
 	var indexes []index
 	for _, f := range files {
-		var ix index
-		if _, err := toml.DecodeFile(f, &ix); err != nil || ix.URL == "" {
+		var parsed index
+		if _, err := toml.DecodeFile(f, &parsed); err != nil || parsed.URL == "" {
 			continue
 		}
-		if p := fileURLPath(ix.URL); p != "" {
-			ix.local = p
-		} else if strings.HasPrefix(ix.URL, "git+") {
-			ix.local = filepath.Join(filepath.Dir(f), "repo")
+		if p := fileURLPath(parsed.URL); p != "" {
+			parsed.local = p
+		} else if strings.HasPrefix(parsed.URL, "git+") {
+			parsed.local = filepath.Join(filepath.Dir(f), "repo")
 		}
-		if info, err := os.Stat(ix.local); err != nil || !info.IsDir() {
-			ix.local = ""
+		if info, err := os.Stat(parsed.local); err != nil || !info.IsDir() {
+			parsed.local = ""
 		}
-		indexes = append(indexes, ix)
+		indexes = append(indexes, parsed)
 	}
 	sort.SliceStable(indexes, func(i, j int) bool {
 		if indexes[i].Priority != indexes[j].Priority {
@@ -811,12 +811,12 @@ func machineAlire(m userconf.Machine, k sink) {
 		return indexes[i].Name < indexes[j].Name
 	})
 	public := false
-	for _, ix := range indexes {
-		u := ix.URL
+	for _, parsed := range indexes {
+		u := parsed.URL
 		if alirePublic(u) {
 			u, public = publicIndex(Alire), true
 		}
-		k.put(Alire, Source{URL: sshUserless(u), Kind: Listed, Local: ix.local})
+		k.put(Alire, Source{URL: sshUserless(u), Kind: Listed, Local: parsed.local})
 	}
 	if len(indexes) > 0 && !public {
 		k.off(Alire)
@@ -834,12 +834,12 @@ type alireIndex struct {
 // over HTTP - listed through GitHub for the community index. An index only git
 // serves, with no checkout here, cannot be read at all.
 func (c *Client) alireIndex(ctx context.Context, base string) (alireIndex, error) {
-	if local := c.cfg.localCopy(Alire, base); local != "" {
+	if local := c.config.localCopy(Alire, base); local != "" {
 		root := alireRoot(local)
-		dir := func(crate string) string { return filepath.Join(root, crate[:2], crate) }
+		directory := func(crate string) string { return filepath.Join(root, crate[:2], crate) }
 		return alireIndex{
 			versions: func(crate string) ([]string, error) {
-				entries, err := os.ReadDir(dir(crate))
+				entries, err := os.ReadDir(directory(crate))
 				if errors.Is(err, os.ErrNotExist) {
 					return nil, errAbsent
 				}
@@ -850,7 +850,7 @@ func (c *Client) alireIndex(ctx context.Context, base string) (alireIndex, error
 				return alireVersions(crate, names), err
 			},
 			read: func(crate, version string) ([]byte, error) {
-				body, err := os.ReadFile(filepath.Join(dir(crate), crate+"-"+version+".toml"))
+				body, err := os.ReadFile(filepath.Join(directory(crate), crate+"-"+version+".toml"))
 				if errors.Is(err, os.ErrNotExist) {
 					return nil, errAbsent
 				}
@@ -864,16 +864,16 @@ func (c *Client) alireIndex(ctx context.Context, base string) (alireIndex, error
 			"(alr's indexes/<name>/repo), and there is none: its crates are asked of the next index")
 		return alireIndex{}, fmt.Errorf("%w: %s has no copy on this machine", errAbsent, base)
 	}
-	ix := alireIndex{read: func(crate, version string) ([]byte, error) {
+	alire := alireIndex{read: func(crate, version string) ([]byte, error) {
 		return c.accept(ctx, base+"/index/"+crate[:2]+"/"+crate+"/"+crate+"-"+url.PathEscape(version)+".toml", "text/plain")
 	}}
-	if base == c.cfg.publicURL(Alire) {
-		ix.versions = func(crate string) ([]string, error) {
+	if base == c.config.publicURL(Alire) {
+		alire.versions = func(crate string) ([]string, error) {
 			names, err := c.githubList(ctx, alireGitHub, "index/"+crate[:2]+"/"+crate)
 			return alireVersions(crate, names), err
 		}
 	}
-	return ix, nil
+	return alire, nil
 }
 
 // alireVersions are the versions of a crate's release manifests

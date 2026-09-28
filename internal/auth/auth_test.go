@@ -119,10 +119,10 @@ func TestNetrcCredentials(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := Read(home, nil)
-	req, _ := http.NewRequest(http.MethodGet, "https://index.internal/simple/requests/", nil)
-	c.Apply(req)
+	request, _ := http.NewRequest(http.MethodGet, "https://index.internal/simple/requests/", nil)
+	c.Apply(request)
 	// cSpell: disable-next-line
-	if got := req.Header.Get("Authorization"); got != "Basic dXNlcjpwYXNz" {
+	if got := request.Header.Get("Authorization"); got != "Basic dXNlcjpwYXNz" {
 		t.Errorf("got %q", got)
 	}
 	other, _ := http.NewRequest(http.MethodGet, "https://elsewhere.internal/x", nil)
@@ -171,8 +171,8 @@ func TestFromURLWhileApplying(t *testing.T) {
 		}
 	}()
 	for range 200 {
-		req, _ := http.NewRequest(http.MethodGet, "https://mirror1.corp/x", nil)
-		c.Apply(req)
+		request, _ := http.NewRequest(http.MethodGet, "https://mirror1.corp/x", nil)
+		c.Apply(request)
 	}
 	<-done
 }

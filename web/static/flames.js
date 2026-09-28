@@ -138,29 +138,29 @@ const EDGE = 0.04;
  * Two of these crossed make a tongue.
  */
 function blade(steps = 10) {
-  const pos = [], col = [], idx = [];
+  const positions = [], colors = [], indices = [];
   for (let i = 0; i <= steps; i++) {
     const t = i / steps, w = across(t) * 0.5;
     // Same color all the way across, and the edges clear instead. Fading a color
     // towards black would give the blade a dark rim on a pale wall; fading it towards
     // nothing gives it no rim at all, whatever it is drawn over.
     const c = heatAt(t), a = alphaAt(t) * BODY;
-    pos.push(-w, t, 0, 0, t, 0, w, t, 0);
-    col.push(...c, EDGE * a, ...c, a, ...c, EDGE * a);
+    positions.push(-w, t, 0, 0, t, 0, w, t, 0);
+    colors.push(...c, EDGE * a, ...c, a, ...c, EDGE * a);
     if (i < steps) {
       const a = i * 3;
       // Both halves of the rung, left edge to spine and spine to right edge.
-      idx.push(a, a + 1, a + 3, a + 1, a + 4, a + 3);
-      idx.push(a + 1, a + 2, a + 4, a + 2, a + 5, a + 4);
+      indices.push(a, a + 1, a + 3, a + 1, a + 4, a + 3);
+      indices.push(a + 1, a + 2, a + 4, a + 2, a + 5, a + 4);
     }
   }
   const g = new THREE.BufferGeometry();
-  g.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  g.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   // Four components, not three: three.js reads the alpha off the color attribute
   // when it has one, which is how a tongue gets a soft edge without a texture and
   // without a shader of its own.
-  g.setAttribute('color', new THREE.Float32BufferAttribute(col, 4));
-  g.setIndex(idx);
+  g.setAttribute('color', new THREE.Float32BufferAttribute(colors, 4));
+  g.setIndex(indices);
   return g;
 }
 
@@ -327,8 +327,8 @@ export class Flames {
    * shrinking as it climbs; the smoke above it rises slower and spreads; the embers
    * come off the top and drift.
    */
-  step(dt) {
-    this.clock += dt;
+  step(deltaTime) {
+    this.clock += deltaTime;
     const d = this.drawn;
     if (!d) return;
     const m = new THREE.Matrix4(), q = new THREE.Quaternion(), s = new THREE.Vector3(), p = new THREE.Vector3();

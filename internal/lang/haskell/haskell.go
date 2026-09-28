@@ -22,8 +22,8 @@ import (
 )
 
 const (
-	ecoHackage = "hackage"
-	ecoStd     = "haskell-std"
+	ecosystemHackage = "hackage"
+	ecosystemStd     = "haskell-std"
 )
 
 // Implements: REQ-HASKELL-001
@@ -41,7 +41,7 @@ func (Plugin) Claims(f *scan.File) bool {
 	if f.Binary || ignored(f.Path) {
 		return false
 	}
-	if sourceExt(f.Path) != "" {
+	if sourceExtension(f.Path) != "" {
 		return true
 	}
 	return manifestClass(f.Path) != ""
@@ -73,8 +73,8 @@ func (Plugin) Class(f *scan.File) string {
 
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoHackage, Name: "Hackage"},
-		{ID: ecoStd, Name: "GHC libraries", Std: true},
+		{ID: ecosystemHackage, Name: "Hackage"},
+		{ID: ecosystemStd, Name: "GHC libraries", Std: true},
 	}
 }
 
@@ -86,16 +86,16 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 // module.
 //
 // Implements: REQ-HASKELL-002, REQ-HASKELL-003, REQ-HASKELL-005, REQ-HASKELL-011
-func (p Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (p Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	switch manifestClass(f.Path) {
 	case "cabal":
-		return extractCabal(src), nil
+		return extractCabal(source), nil
 	case "cabal.project":
-		return extractCabalProject(src), nil
+		return extractCabalProject(source), nil
 	case "package.yaml":
-		return extractHpack(src), nil
+		return extractHpack(source), nil
 	case "stack.yaml":
-		return extractStack(src), nil
+		return extractStack(source), nil
 	}
-	return extractSource(src, sourceExt(f.Path) == ".lhs"), nil
+	return extractSource(source, sourceExtension(f.Path) == ".lhs"), nil
 }

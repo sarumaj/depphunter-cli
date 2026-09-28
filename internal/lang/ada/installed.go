@@ -17,17 +17,17 @@ type installedCrate struct {
 	m             *manifest
 }
 
-// crateDirRe splits Alire's <crate>_<version>_<hash> directory names.
-var crateDirRe = regexp.MustCompile(`^([a-z0-9_]+?)_(\d[^_]*)_([0-9a-f]{6,})$`)
+// crateDirectoryRe splits Alire's <crate>_<version>_<hash> directory names.
+var crateDirectoryRe = regexp.MustCompile(`^([a-z0-9_]+?)_(\d[^_]*)_([0-9a-f]{6,})$`)
 
-// readInstalled reads what Alire fetched beside the manifest in absDir: each
+// readInstalled reads what Alire fetched beside the manifest in absoluteDirectory: each
 // crate's alire.toml and the units and project files its sources hold.
 //
 // Implements: REQ-ADA-008
-func (c *crateDir) readInstalled(absDir string) {
+func (c *crateDirectory) readInstalled(absoluteDirectory string) {
 	c.installed, c.units, c.projects = map[string]*installedCrate{}, map[string]string{}, map[string]string{}
-	for _, sub := range []string{"dependencies", "pins"} {
-		base := filepath.Join(absDir, "alire", "cache", sub)
+	for _, section := range []string{"dependencies", "pins"} {
+		base := filepath.Join(absoluteDirectory, "alire", "cache", section)
 		entries, err := os.ReadDir(base)
 		if err != nil {
 			continue
@@ -38,12 +38,12 @@ func (c *crateDir) readInstalled(absDir string) {
 				continue
 			}
 			name, version := "", ""
-			if m := crateDirRe.FindStringSubmatch(e.Name()); m != nil {
+			if m := crateDirectoryRe.FindStringSubmatch(e.Name()); m != nil {
 				name, version = m[1], m[2]
 			}
-			dir := filepath.Join(base, e.Name())
-			if src, err := os.ReadFile(filepath.Join(dir, "alire.toml")); err == nil {
-				if n := readManifest(src).name; n != "" {
+			directory := filepath.Join(base, e.Name())
+			if source, err := os.ReadFile(filepath.Join(directory, "alire.toml")); err == nil {
+				if n := readManifest(source).name; n != "" {
 					name = n
 				}
 			}
@@ -53,7 +53,7 @@ func (c *crateDir) readInstalled(absDir string) {
 			if _, ok := c.installed[name]; ok {
 				continue
 			}
-			c.add(dir, name, version)
+			c.add(directory, name, version)
 		}
 	}
 }
@@ -82,16 +82,16 @@ func sharedReleases(getenv func(string) string) []string {
 // into another's.
 //
 // Implements: REQ-ADA-008
-func (c *crateDir) readShared(dirs []string) {
-	type release struct{ dir, version string }
+func (c *crateDirectory) readShared(directories []string) {
+	type release struct{ directory, version string }
 	found := map[string][]release{}
-	for _, base := range dirs {
+	for _, base := range directories {
 		entries, err := os.ReadDir(base)
 		if err != nil {
 			continue
 		}
 		for _, e := range entries {
-			m := crateDirRe.FindStringSubmatch(e.Name())
+			m := crateDirectoryRe.FindStringSubmatch(e.Name())
 			if m == nil || !e.IsDir() {
 				continue
 			}
@@ -104,45 +104,45 @@ func (c *crateDir) readShared(dirs []string) {
 			continue
 		}
 		want := ""
-		if st := c.lock[name]; st != nil {
-			want = st.version
-		} else if d := c.m.deps[name]; d != nil {
+		if state := c.lock[name]; state != nil {
+			want = state.version
+		} else if d := c.m.dependencies[name]; d != nil {
 			want, _ = exactVersion(d.constraint)
 		}
 		best := -1
-		for i, rel := range releases {
+		for i, relative := range releases {
 			switch {
-			case want != "" && rel.version == want:
+			case want != "" && relative.version == want:
 				best = i
-			case want == "" && (best < 0 || versionLess(releases[best].version, rel.version)):
+			case want == "" && (best < 0 || versionLess(releases[best].version, relative.version)):
 				best = i
 			}
 		}
 		if best < 0 {
 			continue
 		}
-		c.add(releases[best].dir, name, releases[best].version)
+		c.add(releases[best].directory, name, releases[best].version)
 	}
 }
 
 // add reads an installed crate's directory: its manifest, project files and
 // units.
-func (c *crateDir) add(dir, name, version string) {
-	ic := &installedCrate{name: name, version: version, m: &manifest{deps: map[string]*dependency{}, pins: map[string]*pin{}}}
-	if src, err := os.ReadFile(filepath.Join(dir, "alire.toml")); err == nil {
-		ic.m = readManifest(src)
-		if ic.m.version != "" {
-			ic.version = ic.m.version
+func (c *crateDirectory) add(directory, name, version string) {
+	installed := &installedCrate{name: name, version: version, m: &manifest{dependencies: map[string]*dependency{}, pins: map[string]*pin{}}}
+	if source, err := os.ReadFile(filepath.Join(directory, "alire.toml")); err == nil {
+		installed.m = readManifest(source)
+		if installed.m.version != "" {
+			installed.version = installed.m.version
 		}
 	}
-	c.installed[name] = ic
-	for _, pf := range ic.m.projectFiles {
-		c.addProject(pf.s, name)
+	c.installed[name] = installed
+	for _, projectFile := range installed.m.projectFiles {
+		c.addProject(projectFile.s, name)
 	}
-	c.walk(dir, name)
+	c.walk(directory, name)
 }
 
-func (c *crateDir) addProject(file, crate string) {
+func (c *crateDirectory) addProject(file, crate string) {
 	name := lower(strings.TrimSuffix(filepath.Base(filepath.FromSlash(file)), filepath.Ext(file)))
 	if _, ok := c.projects[name]; !ok {
 		c.projects[name] = crate
@@ -151,14 +151,14 @@ func (c *crateDir) addProject(file, crate string) {
 
 // walk indexes the units and project files of an installed crate's directory
 // (at most 5000 files; nested alire/ and obj/ directories are skipped).
-func (c *crateDir) walk(dir, crate string) {
+func (c *crateDirectory) walk(directory, crate string) {
 	n := 0
-	filepath.WalkDir(dir, func(q string, d os.DirEntry, err error) error {
+	filepath.WalkDir(directory, func(q string, d os.DirEntry, err error) error {
 		if err != nil {
 			return nil
 		}
 		if d.IsDir() {
-			if q != dir && (d.Name() == "alire" || d.Name() == "obj" || strings.HasPrefix(d.Name(), ".")) {
+			if q != directory && (d.Name() == "alire" || d.Name() == "obj" || strings.HasPrefix(d.Name(), ".")) {
 				return filepath.SkipDir
 			}
 			return nil
@@ -171,11 +171,11 @@ func (c *crateDir) walk(dir, crate string) {
 			return nil
 		}
 		n++
-		if st, err := d.Info(); err != nil || st.Size() > lang.MaxParseSize {
+		if fileInfo, err := d.Info(); err != nil || fileInfo.Size() > lang.MaxParseSize {
 			return nil
 		}
-		if src, err := os.ReadFile(q); err == nil {
-			for _, u := range units(src, strings.EqualFold(filepath.Ext(q), ".ada")) {
+		if source, err := os.ReadFile(q); err == nil {
+			for _, u := range units(source, strings.EqualFold(filepath.Ext(q), ".ada")) {
 				if _, ok := c.units[u.name]; !ok {
 					c.units[u.name] = crate
 				}
@@ -187,16 +187,16 @@ func (c *crateDir) walk(dir, crate string) {
 
 // versionLess orders versions by their numeric segments.
 func versionLess(a, b string) bool {
-	pa, pb := strings.FieldsFunc(a, notDigit), strings.FieldsFunc(b, notDigit)
-	for i := 0; i < len(pa) && i < len(pb); i++ {
-		if len(pa[i]) != len(pb[i]) {
-			return len(pa[i]) < len(pb[i])
+	aNumbers, bNumbers := strings.FieldsFunc(a, notDigit), strings.FieldsFunc(b, notDigit)
+	for i := 0; i < len(aNumbers) && i < len(bNumbers); i++ {
+		if len(aNumbers[i]) != len(bNumbers[i]) {
+			return len(aNumbers[i]) < len(bNumbers[i])
 		}
-		if pa[i] != pb[i] {
-			return pa[i] < pb[i]
+		if aNumbers[i] != bNumbers[i] {
+			return aNumbers[i] < bNumbers[i]
 		}
 	}
-	return len(pa) < len(pb)
+	return len(aNumbers) < len(bNumbers)
 }
 
 func notDigit(r rune) bool { return r < '0' || r > '9' }

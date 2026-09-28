@@ -6,24 +6,24 @@ import (
 
 // Import kinds, carried in RawImport.Name.
 const (
-	kindModule = "module" // import A.B as C exposing (..)
-	kindDep    = "dep"    // a package elm.json lists
-	kindSrcDir = "srcdir" // a source directory elm.json lists
+	kindModule          = "module" // import A.B as C exposing (..)
+	kindDependency      = "dep"    // a package elm.json lists
+	kindSourceDirectory = "srcdir" // a source directory elm.json lists
 )
 
-type tokKind uint8
+type tokenKind uint8
 
 const (
-	tLower  tokKind = iota // a lower-case name or keyword, possibly qualified (Html.text)
-	tUpper                 // an upper-case name, possibly qualified (Json.Decode, Maybe.Just)
-	tString                // "...", """...""" or a glsl block: never a name
-	tChar                  // 'x'
-	tPunct                 // a bracket, a comma or a run of operator characters
-	tOther                 // numbers and anything else
+	tLower       tokenKind = iota // a lower-case name or keyword, possibly qualified (Html.text)
+	tUpper                        // an upper-case name, possibly qualified (Json.Decode, Maybe.Just)
+	tString                       // "...", """...""" or a glsl block: never a name
+	tCharacter                    // 'x'
+	tPunctuation                  // a bracket, a comma or a run of operator characters
+	tOther                        // numbers and anything else
 )
 
 type token struct {
-	kind tokKind
+	kind tokenKind
 	text string
 	line int
 	// first is true for a token starting in column 0: Elm's layout rule puts every
@@ -35,14 +35,14 @@ type token struct {
 // dropped; strings ("..." and """..."""), characters and [glsl| ... |] blocks are
 // single tokens, so nothing inside them can look like a declaration. A qualified
 // name (Json.Decode.field, Maybe.Just) is one token. Token texts are slices of one
-// string copy of src.
+// string copy of source.
 //
 // Implements: REQ-ELM-010
-func lex(src []byte) []token {
-	s := string(src)
+func lex(source []byte) []token {
+	s := string(source)
 	var out []token
 	line, lineStart := 1, 0
-	emit := func(kind tokKind, start, end, at int) {
+	emit := func(kind tokenKind, start, end, at int) {
 		out = append(out, token{kind: kind, text: s[start:end], line: at, first: start == lineStart})
 	}
 	for i := 0; i < len(s); {
@@ -120,7 +120,7 @@ func lex(src []byte) []token {
 				i++
 			}
 			i = min(i, len(s))
-			emit(tChar, start, i, line)
+			emit(tCharacter, start, i, line)
 		case c == '[' && hasPrefix(s, i+1, "glsl|"):
 			start, startLine := i, line
 			for i += 6; i < len(s) && !(s[i] == '|' && at(s, i+1) == ']'); i++ {
@@ -159,14 +159,14 @@ func lex(src []byte) []token {
 			}
 			emit(tOther, start, i, line)
 		case c == '(' || c == ')' || c == '[' || c == ']' || c == '{' || c == '}' || c == ',':
-			emit(tPunct, i, i+1, line)
+			emit(tPunctuation, i, i+1, line)
 			i++
 		case isSymbol(c):
 			start := i
 			for i < len(s) && isSymbol(s[i]) && !(s[i] == '-' && at(s, i+1) == '-' && i > start) {
 				i++
 			}
-			emit(tPunct, start, i, line)
+			emit(tPunctuation, start, i, line)
 		case c < 0x80:
 			emit(tOther, i, i+1, line)
 			i++
@@ -210,9 +210,9 @@ func isSymbol(c byte) bool {
 // `Type.Ctor`), `port` declarations and the operators `infix` declares.
 //
 // Implements: REQ-ELM-002, REQ-ELM-003, REQ-ELM-010
-func extractSource(src []byte) *lang.Extraction {
-	tokens := lex(src)
-	ex := &lang.Extraction{}
+func extractSource(source []byte) *lang.Extraction {
+	tokens := lex(source)
+	extraction := &lang.Extraction{}
 	var symbols lang.SymbolSet
 	seenImport := map[string]bool{}
 	defined := map[string]bool{}
@@ -223,36 +223,36 @@ func extractSource(src []byte) *lang.Extraction {
 		}
 	}
 	for i := 0; i < len(tokens); {
-		tk := tokens[i]
+		current := tokens[i]
 		// end is the next declaration's first token.
 		end := i + 1
 		for end < len(tokens) && !tokens[end].first {
 			end++
 		}
-		decl := tokens[i:end]
+		declaration := tokens[i:end]
 		i = end
-		if !tk.first {
+		if !current.first {
 			continue // before the first column-0 token: nothing to read
 		}
 		get := func(j int) token {
-			if j < len(decl) {
-				return decl[j]
+			if j < len(declaration) {
+				return declaration[j]
 			}
 			return token{kind: tOther}
 		}
 		switch {
-		case tk.kind == tLower && tk.text == "import":
+		case current.kind == tLower && current.text == "import":
 			if m := get(1); m.kind == tUpper && !seenImport[m.text] {
 				seenImport[m.text] = true
-				ex.Imports = append(ex.Imports, lang.RawImport{Spec: m.text, Module: m.text, Name: kindModule, Line: m.line})
+				extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: m.text, Module: m.text, Name: kindModule, Line: m.line})
 			}
-		case tk.kind == tLower && (tk.text == "module" || tk.text == "effect"):
+		case current.kind == tLower && (current.text == "module" || current.text == "effect"):
 			// The module header; `port module` starts with port, below.
-		case tk.kind == tLower && tk.text == "port":
+		case current.kind == tLower && current.text == "port":
 			if n := get(1); n.kind == tLower && n.text != "module" && get(2).text == ":" {
 				add(n.text, "port", n.line)
 			}
-		case tk.kind == tLower && tk.text == "type":
+		case current.kind == tLower && current.text == "type":
 			if get(1).kind == tLower && get(1).text == "alias" {
 				if n := get(2); n.kind == tUpper {
 					add(n.text, "type", n.line)
@@ -266,13 +266,13 @@ func extractSource(src []byte) *lang.Extraction {
 			add(n.text, "type", n.line)
 			// Constructors follow `=` and each `|` outside brackets.
 			depth, next := 0, false
-			for _, t := range decl[2:] {
+			for _, t := range declaration[2:] {
 				switch {
-				case t.kind == tPunct && (t.text == "(" || t.text == "[" || t.text == "{"):
+				case t.kind == tPunctuation && (t.text == "(" || t.text == "[" || t.text == "{"):
 					depth++
-				case t.kind == tPunct && (t.text == ")" || t.text == "]" || t.text == "}"):
+				case t.kind == tPunctuation && (t.text == ")" || t.text == "]" || t.text == "}"):
 					depth = max(depth-1, 0)
-				case depth == 0 && t.kind == tPunct && (t.text == "=" || t.text == "|"):
+				case depth == 0 && t.kind == tPunctuation && (t.text == "=" || t.text == "|"):
 					next = true
 					continue
 				case next && t.kind == tUpper:
@@ -280,36 +280,36 @@ func extractSource(src []byte) *lang.Extraction {
 				}
 				next = false
 			}
-		case tk.kind == tLower && tk.text == "infix":
+		case current.kind == tLower && current.text == "infix":
 			// infix left 0 (|>) = apR
-			for j := 1; j+2 < len(decl) && j < 6; j++ {
-				if decl[j].text == "(" && decl[j+1].kind == tPunct && decl[j+2].text == ")" {
-					add(decl[j+1].text, "operator", decl[j+1].line)
+			for j := 1; j+2 < len(declaration) && j < 6; j++ {
+				if declaration[j].text == "(" && declaration[j+1].kind == tPunctuation && declaration[j+2].text == ")" {
+					add(declaration[j+1].text, "operator", declaration[j+1].line)
 					break
 				}
 			}
-		case tk.kind == tLower && !keyword[tk.text]:
+		case current.kind == tLower && !keyword[current.text]:
 			// f : Type, or f a b = ...; a qualified name is not a definition.
 			if n := get(1); n.text == ":" || n.text == "=" || n.kind == tLower || n.kind == tOther && n.text == "_" ||
-				n.kind == tPunct && (n.text == "(" || n.text == "{" || n.text == "[") || n.kind == tUpper || n.kind == tString || n.kind == tChar {
-				if !isQualified(tk.text) && hasEquals(decl, n) {
-					add(tk.text, "func", tk.line)
+				n.kind == tPunctuation && (n.text == "(" || n.text == "{" || n.text == "[") || n.kind == tUpper || n.kind == tString || n.kind == tCharacter {
+				if !isQualified(current.text) && hasEquals(declaration, n) {
+					add(current.text, "func", current.line)
 				}
 			}
 		}
 	}
-	ex.Symbols = symbols.List()
-	return ex
+	extraction.Symbols = symbols.List()
+	return extraction
 }
 
 // hasEquals reports whether a column-0 declaration is an annotation (`:` second)
 // or a definition (an `=` operator follows the name and its arguments).
-func hasEquals(decl []token, second token) bool {
+func hasEquals(declaration []token, second token) bool {
 	if second.text == ":" {
 		return true
 	}
-	for _, t := range decl[1:] {
-		if t.kind == tPunct && t.text == "=" {
+	for _, t := range declaration[1:] {
+		if t.kind == tPunctuation && t.text == "=" {
 			return true
 		}
 	}

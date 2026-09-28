@@ -61,11 +61,11 @@ func (s *sexp) value(name string) string {
 	return ""
 }
 
-func parseSexps(src []byte) []*sexp {
+func parseSexps(source []byte) []*sexp {
 	root := &sexp{isL: true}
 	stack := []*sexp{root}
 	skip := []int{0} // datum comments pending per level
-	n := len(src)
+	n := len(source)
 	line := 1
 	add := func(s *sexp) {
 		k := len(stack) - 1
@@ -76,7 +76,7 @@ func parseSexps(src []byte) []*sexp {
 		stack[k].list = append(stack[k].list, s)
 	}
 	for i := 0; i < n; {
-		c := src[i]
+		c := source[i]
 		switch {
 		case c == '\n':
 			line++
@@ -84,19 +84,19 @@ func parseSexps(src []byte) []*sexp {
 		case c == ' ' || c == '\t' || c == '\r':
 			i++
 		case c == ';':
-			for i < n && src[i] != '\n' {
+			for i < n && source[i] != '\n' {
 				i++
 			}
-		case c == '#' && i+1 < n && src[i+1] == '|':
+		case c == '#' && i+1 < n && source[i+1] == '|':
 			j := i + 2
-			for j < n && !(src[j] == '|' && j+1 < n && src[j+1] == '#') {
-				if src[j] == '\n' {
+			for j < n && !(source[j] == '|' && j+1 < n && source[j+1] == '#') {
+				if source[j] == '\n' {
 					line++
 				}
 				j++
 			}
 			i = min(j+2, n)
-		case c == '#' && i+1 < n && src[i+1] == ';':
+		case c == '#' && i+1 < n && source[i+1] == ';':
 			skip[len(skip)-1]++
 			i += 2
 		case c == '(':
@@ -114,37 +114,37 @@ func parseSexps(src []byte) []*sexp {
 			start := line
 			var b strings.Builder
 			j := i + 1
-			for j < n && src[j] != '"' {
-				if src[j] == '\\' && j+1 < n {
+			for j < n && source[j] != '"' {
+				if source[j] == '\\' && j+1 < n {
 					j++
-					switch src[j] {
+					switch source[j] {
 					case 'n':
 						b.WriteByte('\n')
 					case '\n':
 						line++
-						for j+1 < n && (src[j+1] == ' ' || src[j+1] == '\t') {
+						for j+1 < n && (source[j+1] == ' ' || source[j+1] == '\t') {
 							j++
 						}
 					default:
-						b.WriteByte(src[j])
+						b.WriteByte(source[j])
 					}
 					j++
 					continue
 				}
-				if src[j] == '\n' {
+				if source[j] == '\n' {
 					line++
 				}
-				b.WriteByte(src[j])
+				b.WriteByte(source[j])
 				j++
 			}
 			add(&sexp{atom: b.String(), line: start})
 			i = min(j+1, n)
 		default:
 			j := i
-			for j < n && !strings.ContainsRune(" \t\r\n();\"", rune(src[j])) {
+			for j < n && !strings.ContainsRune(" \t\r\n();\"", rune(source[j])) {
 				j++
 			}
-			add(&sexp{atom: string(src[i:j]), line: line})
+			add(&sexp{atom: string(source[i:j]), line: line})
 			i = j
 		}
 	}
@@ -159,34 +159,34 @@ func parseSexps(src []byte) []*sexp {
 
 // stanza is a dune library, executable(s) or test(s).
 type stanza struct {
-	kind    string   // library, executable, executables, test, tests
-	names   []string // (name x) / (names a b)
-	public  []string // (public_name x) / (public_names a b)
-	libs    []*sexp  // what (libraries ...) names
-	pps     []*sexp  // ppx rewriters in (preprocess (pps ...)) and lint
-	modules []string // (modules ...): nil means every module of the directory
-	except  []string // modules taken out of :standard
-	wrapped bool
-	opens   []string // -open M in flags
-	line    int
+	kind      string   // library, executable, executables, test, tests
+	names     []string // (name x) / (names a b)
+	public    []string // (public_name x) / (public_names a b)
+	libraries []*sexp  // what (libraries ...) names
+	pps       []*sexp  // ppx rewriters in (preprocess (pps ...)) and lint
+	modules   []string // (modules ...): nil means every module of the directory
+	except    []string // modules taken out of :standard
+	wrapped   bool
+	opens     []string // -open M in flags
+	line      int
 }
 
 // duneFile is what a dune file says about the directory.
 type duneFile struct {
 	stanzas []*stanza
-	// includeSubdirs is (include_subdirs unqualified|qualified), "" otherwise.
-	includeSubdirs string
+	// includeSubdirectories is (include_subdirs unqualified|qualified), "" otherwise.
+	includeSubdirectories string
 }
 
 var stanzaKinds = map[string]bool{"library": true, "executable": true, "executables": true, "test": true, "tests": true}
 
-func readDune(src []byte) *duneFile {
+func readDune(source []byte) *duneFile {
 	d := &duneFile{}
-	for _, s := range parseSexps(src) {
+	for _, s := range parseSexps(source) {
 		switch h := s.head(); {
 		case h == "include_subdirs":
 			if v := s.atoms(); len(v) > 0 && v[0].atom != "no" {
-				d.includeSubdirs = v[0].atom
+				d.includeSubdirectories = v[0].atom
 			}
 		case stanzaKinds[h]:
 			d.stanzas = append(d.stanzas, readStanza(s))
@@ -196,35 +196,35 @@ func readDune(src []byte) *duneFile {
 }
 
 func readStanza(s *sexp) *stanza {
-	st := &stanza{kind: s.head(), wrapped: true, line: s.line}
+	parsed := &stanza{kind: s.head(), wrapped: true, line: s.line}
 	for _, a := range s.field("name").atoms() {
-		st.names = append(st.names, a.atom)
+		parsed.names = append(parsed.names, a.atom)
 	}
 	for _, a := range s.field("names").atoms() {
-		st.names = append(st.names, a.atom)
+		parsed.names = append(parsed.names, a.atom)
 	}
 	for _, a := range s.field("public_name").atoms() {
-		st.public = append(st.public, a.atom)
+		parsed.public = append(parsed.public, a.atom)
 	}
 	for _, a := range s.field("public_names").atoms() {
-		st.public = append(st.public, a.atom)
+		parsed.public = append(parsed.public, a.atom)
 	}
-	if len(st.names) == 0 {
-		st.names = st.public // dune derives the name from the public name
+	if len(parsed.names) == 0 {
+		parsed.names = parsed.public // dune derives the name from the public name
 	}
 	if w := s.value("wrapped"); w == "false" {
-		st.wrapped = false
+		parsed.wrapped = false
 	}
 	if l := s.field("libraries"); l != nil {
-		st.libs = libraries(l.list[1:], nil)
+		parsed.libraries = libraries(l.list[1:], nil)
 	}
 	for _, f := range []string{"preprocess", "lint"} {
 		if p := s.field(f); p != nil {
-			st.pps = append(st.pps, ppxs(p, nil, 0)...)
+			parsed.pps = append(parsed.pps, ppxs(p, nil, 0)...)
 		}
 	}
 	if m := s.field("modules"); m != nil {
-		st.modules = []string{}
+		parsed.modules = []string{}
 		standard, minus := false, false
 		for _, a := range flatten(m.list[1:], nil, 0) {
 			switch a.atom {
@@ -237,25 +237,25 @@ func readStanza(s *sexp) *stanza {
 					continue
 				}
 				if minus {
-					st.except = append(st.except, capitalize(a.atom))
+					parsed.except = append(parsed.except, capitalize(a.atom))
 				} else {
-					st.modules = append(st.modules, capitalize(a.atom))
+					parsed.modules = append(parsed.modules, capitalize(a.atom))
 				}
 			}
 		}
 		if standard {
-			st.modules = nil
+			parsed.modules = nil
 		}
 	}
 	for _, f := range []string{"flags", "ocamlc_flags", "ocamlopt_flags"} {
 		atoms := flatten(s.field(f).listTail(), nil, 0)
 		for i := 0; i+1 < len(atoms); i++ {
 			if atoms[i].atom == "-open" {
-				st.opens = append(st.opens, atoms[i+1].atom)
+				parsed.opens = append(parsed.opens, atoms[i+1].atom)
 			}
 		}
 	}
-	return st
+	return parsed
 }
 
 func (s *sexp) listTail() []*sexp {
@@ -348,36 +348,36 @@ func capitalize(s string) string {
 
 // extractDune turns a dune file's stanzas into symbols (the components) and
 // imports (the libraries and ppx rewriters they use).
-func extractDune(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
+func extractDune(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
 	var set lang.SymbolSet
 	seen := map[string]bool{}
-	for _, st := range readDune(src).stanzas {
-		kind := strings.TrimSuffix(st.kind, "s")
-		for _, n := range st.names {
-			set.Add(kind+" "+n, "component", st.line)
+	for _, stanza := range readDune(source).stanzas {
+		kind := strings.TrimSuffix(stanza.kind, "s")
+		for _, n := range stanza.names {
+			set.Add(kind+" "+n, "component", stanza.line)
 		}
-		add := func(field, kind string, libs []*sexp) {
-			for _, l := range libs {
+		add := func(field, kind string, libraries []*sexp) {
+			for _, l := range libraries {
 				spec := field + ": " + l.atom
 				if seen[spec] {
 					continue
 				}
 				seen[spec] = true
-				ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: l.atom, Name: kind, Line: l.line})
+				extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: l.atom, Name: kind, Line: l.line})
 			}
 		}
-		add("libraries", kindLib, st.libs)
-		add("pps", kindLib, st.pps)
+		add("libraries", kindLibrary, stanza.libraries)
+		add("pps", kindLibrary, stanza.pps)
 	}
-	ex.Symbols = set.List()
-	return ex
+	extraction.Symbols = set.List()
+	return extraction
 }
 
 const (
-	kindLib = "lib" // a findlib library name: dune's libraries and pps, #require
-	kindDep = "dep" // a package a manifest requires; the second line is its constraint
-	kindPin = "pin" // a package pinned to a source; the second line is its URL
+	kindLibrary    = "lib" // a findlib library name: dune's libraries and pps, #require
+	kindDependency = "dep" // a package a manifest requires; the second line is its constraint
+	kindPin        = "pin" // a package pinned to a source; the second line is its URL
 )
 
 // project is what a dune-project file says: the packages it describes, their
@@ -390,26 +390,26 @@ type project struct {
 type duneProjectPackage struct {
 	name    string
 	line    int
-	depends []opam.Dep
+	depends []opam.Dependency
 }
 
-func readDuneProject(src []byte) *project {
+func readDuneProject(source []byte) *project {
 	p := &project{}
-	for _, s := range parseSexps(src) {
+	for _, s := range parseSexps(source) {
 		switch s.head() {
 		case "package":
-			pkg := duneProjectPackage{name: s.value("name"), line: s.line}
+			projectPackage := duneProjectPackage{name: s.value("name"), line: s.line}
 			for _, f := range []string{"depends", "depopts"} {
 				for _, d := range s.field(f).listTail() {
-					pkg.depends = append(pkg.depends, duneDep(d))
+					projectPackage.depends = append(projectPackage.depends, duneDependency(d))
 				}
 			}
-			p.packages = append(p.packages, pkg)
+			p.packages = append(p.packages, projectPackage)
 		case "pin":
 			u := s.value("url")
-			for _, pk := range s.list[1:] {
-				if pk.head() == "package" {
-					p.pins = append(p.pins, opam.Pin{Name: pk.value("name"), Version: pk.value("version"), URL: u, Line: pk.line})
+			for _, packageForm := range s.list[1:] {
+				if packageForm.head() == "package" {
+					p.pins = append(p.pins, opam.Pin{Name: packageForm.value("name"), Version: packageForm.value("version"), URL: u, Line: packageForm.line})
 				}
 			}
 		}
@@ -417,18 +417,18 @@ func readDuneProject(src []byte) *project {
 	return p
 }
 
-// duneDep reads a dependency of a dune-project package: `lwt`, `(lwt (>= 5.6))`,
+// duneDependency reads a dependency of a dune-project package: `lwt`, `(lwt (>= 5.6))`,
 // `(lwt (and :with-test (>= 5.6) (< 6)))`, `(yojson (= 2.1.0))`.
-func duneDep(d *sexp) opam.Dep {
+func duneDependency(d *sexp) opam.Dependency {
 	if !d.isL {
-		return opam.Dep{Name: d.atom, Line: d.line}
+		return opam.Dependency{Name: d.atom, Line: d.line}
 	}
 	if len(d.list) == 0 || d.list[0].isL {
-		return opam.Dep{}
+		return opam.Dependency{}
 	}
-	dep := opam.Dep{Name: d.head(), Line: d.line}
+	dependency := opam.Dependency{Name: d.head(), Line: d.line}
 	var parts []string
-	ops := 0
+	operatorCount := 0
 	var walk func(s *sexp, conn string, depth int)
 	walk = func(s *sexp, conn string, depth int) {
 		if depth > 20 {
@@ -436,7 +436,7 @@ func duneDep(d *sexp) opam.Dep {
 		}
 		if !s.isL {
 			if strings.HasPrefix(s.atom, ":") {
-				dep.Flags = append(dep.Flags, strings.TrimPrefix(s.atom, ":"))
+				dependency.Flags = append(dependency.Flags, strings.TrimPrefix(s.atom, ":"))
 			}
 			return
 		}
@@ -451,17 +451,17 @@ func duneDep(d *sexp) opam.Dep {
 			}
 		case "=", "<>", "<", "<=", ">", ">=":
 			if len(s.list) == 2 && !s.list[1].isL && !strings.HasPrefix(s.list[1].atom, ":") {
-				op := h
-				if op == "<>" {
-					op = "!="
+				operator := h
+				if operator == "<>" {
+					operator = "!="
 				}
 				if len(parts) > 0 {
 					parts = append(parts, conn)
 				}
-				parts = append(parts, op+" "+s.list[1].atom)
-				ops++
+				parts = append(parts, operator+" "+s.list[1].atom)
+				operatorCount++
 				if h == "=" {
-					dep.Exact = s.list[1].atom
+					dependency.Exact = s.list[1].atom
 				}
 			}
 		}
@@ -469,38 +469,38 @@ func duneDep(d *sexp) opam.Dep {
 	for _, c := range d.list[1:] {
 		walk(c, "&", 0)
 	}
-	dep.Constraint = strings.Join(parts, " ")
-	if ops != 1 {
-		dep.Exact = ""
+	dependency.Constraint = strings.Join(parts, " ")
+	if operatorCount != 1 {
+		dependency.Exact = ""
 	}
-	return dep
+	return dependency
 }
 
 // extractDuneProject makes a dune-project's packages symbols and their
 // dependencies and pins imports.
-func extractDuneProject(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
+func extractDuneProject(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
 	var set lang.SymbolSet
-	p := readDuneProject(src)
+	p := readDuneProject(source)
 	seen := map[string]bool{}
-	for _, pkg := range p.packages {
-		set.Add("package "+pkg.name, "component", pkg.line)
-		for _, d := range pkg.depends {
-			manifestImport(ex, seen, "depends: ", d)
+	for _, projectPackage := range p.packages {
+		set.Add("package "+projectPackage.name, "component", projectPackage.line)
+		for _, d := range projectPackage.depends {
+			manifestImport(extraction, seen, "depends: ", d)
 		}
 	}
 	for _, pin := range p.pins {
 		spec := "pin: " + pin.Name
 		if !seen[spec] && pin.Name != "" {
 			seen[spec] = true
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: pin.Name, Name: kindPin + "\n" + pin.URL, Line: pin.Line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: pin.Name, Name: kindPin + "\n" + pin.URL, Line: pin.Line})
 		}
 	}
-	ex.Symbols = set.List()
-	return ex
+	extraction.Symbols = set.List()
+	return extraction
 }
 
-func manifestImport(ex *lang.Extraction, seen map[string]bool, field string, d opam.Dep) {
+func manifestImport(extraction *lang.Extraction, seen map[string]bool, field string, d opam.Dependency) {
 	if d.Name == "" || opam.Compiler(d.Name) {
 		return
 	}
@@ -509,35 +509,35 @@ func manifestImport(ex *lang.Extraction, seen map[string]bool, field string, d o
 		return
 	}
 	seen[spec] = true
-	ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: d.Name, Name: kindDep + "\n" + d.Constraint, Line: d.Line})
+	extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: d.Name, Name: kindDependency + "\n" + d.Constraint, Line: d.Line})
 }
 
 // extractOpam makes an opam file's dependencies, optional dependencies and pins
 // imports; a lock's are its pinned versions.
-func extractOpam(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
-	f := opam.Read(src)
+func extractOpam(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
+	f := opam.Read(source)
 	seen := map[string]bool{}
 	for _, d := range f.Depends {
-		manifestImport(ex, seen, "depends: ", d)
+		manifestImport(extraction, seen, "depends: ", d)
 	}
 	for _, d := range f.Depopts {
-		manifestImport(ex, seen, "depopts: ", d)
+		manifestImport(extraction, seen, "depopts: ", d)
 	}
 	for _, pin := range f.Pins {
 		spec := "pin-depends: " + pin.Name
 		if !seen[spec] && pin.Name != "" {
 			seen[spec] = true
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: pin.Name, Name: kindPin + "\n" + pin.URL, Line: pin.Line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: pin.Name, Name: kindPin + "\n" + pin.URL, Line: pin.Line})
 		}
 	}
-	return ex
+	return extraction
 }
 
 // extractWorkspace makes a dune-workspace's build contexts symbols.
-func extractWorkspace(src []byte) *lang.Extraction {
+func extractWorkspace(source []byte) *lang.Extraction {
 	var set lang.SymbolSet
-	for _, s := range parseSexps(src) {
+	for _, s := range parseSexps(source) {
 		if s.head() != "context" {
 			continue
 		}
@@ -562,8 +562,8 @@ func extractWorkspace(src []byte) *lang.Extraction {
 // `upstream`).
 //
 // Implements: REQ-SUP-054
-func WorkspaceRepositories(src []byte) (defined []opam.Repository, order []string, listed bool) {
-	for _, s := range parseSexps(src) {
+func WorkspaceRepositories(source []byte) (defined []opam.Repository, order []string, listed bool) {
+	for _, s := range parseSexps(source) {
 		switch s.head() {
 		case "repository":
 			if r := (opam.Repository{Name: s.value("name"), URL: s.value("url")}); r.Name != "" && r.URL != "" {

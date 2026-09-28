@@ -42,7 +42,7 @@ func component(p string) bool {
 type script struct {
 	start, end int                 // the code's byte range in the file
 	grammar    *treesitter.Grammar // nil for a block that is only a src reference
-	src        string              // the src attribute of a <script> tag
+	source     string              // the src attribute of a <script> tag
 	line       int                 // the tag's line, for src
 }
 
@@ -51,18 +51,18 @@ type script struct {
 // the top-level definitions of every block.
 //
 // Implements: REQ-JS-012, REQ-JS-013, REQ-JS-014
-func extractComponent(p string, src []byte, ex *lang.Extraction, symbols *lang.SymbolSet) error {
-	ext := path.Ext(p)
-	symbols.Add(strings.TrimSuffix(path.Base(p), ext), "component", 1)
+func extractComponent(p string, source []byte, extraction *lang.Extraction, symbols *lang.SymbolSet) error {
+	extension := path.Ext(p)
+	symbols.Add(strings.TrimSuffix(path.Base(p), extension), "component", 1)
 	var firstErr error
-	for _, s := range componentScripts(ext, src) {
-		if s.src != "" {
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: s.src, Module: s.src, Line: s.line})
+	for _, s := range componentScripts(extension, source) {
+		if s.source != "" {
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: s.source, Module: s.source, Line: s.line})
 		}
 		if s.grammar == nil || s.start >= s.end {
 			continue
 		}
-		if err := extract(s.grammar, blankOutside(src, s.start, s.end), ex, symbols); err != nil && firstErr == nil {
+		if err := extract(s.grammar, blankOutside(source, s.start, s.end), extraction, symbols); err != nil && firstErr == nil {
 			firstErr = err
 		}
 	}
@@ -71,9 +71,9 @@ func extractComponent(p string, src []byte, ex *lang.Extraction, symbols *lang.S
 
 // blankOutside copies src with every byte outside [start, end) turned into a space,
 // except line breaks.
-func blankOutside(src []byte, start, end int) []byte {
-	out := make([]byte, len(src))
-	for i, b := range src {
+func blankOutside(source []byte, start, end int) []byte {
+	out := make([]byte, len(source))
+	for i, b := range source {
 		if (i < start || i >= end) && b != '\n' {
 			b = ' '
 		}
@@ -82,7 +82,7 @@ func blankOutside(src []byte, start, end int) []byte {
 	return out
 }
 
-// componentScripts finds the code blocks of a component with extension ext.
+// componentScripts finds the code blocks of a component with extension extension.
 //
 // Only the component's own scripts count. A Vue <script> inside <template> and a
 // Svelte one inside <svelte:head> are markup the component renders; so is an Astro
@@ -93,47 +93,47 @@ func blankOutside(src []byte, start, end int) []byte {
 // the string writes "<\/script>".
 //
 // Implements: REQ-JS-012, REQ-JS-013
-func componentScripts(ext string, src []byte) []script {
+func componentScripts(extension string, source []byte) []script {
 	var out []script
 	i := 0
-	if ext == ".astro" {
-		if s, next, ok := frontmatter(src); ok {
+	if extension == ".astro" {
+		if s, next, ok := frontmatter(source); ok {
 			out = append(out, s)
 			i = next
 		}
 	}
 	// Elements whose scripts are rendered rather than being the component's code.
 	container := map[string]bool{}
-	switch ext {
+	switch extension {
 	case ".vue":
 		container["template"] = true
 	case ".svelte":
 		container["svelte:head"] = true
 	}
 	depth := 0
-	for i < len(src) {
-		switch c := src[i]; {
-		case bytes.HasPrefix(src[i:], []byte("<!--")):
-			i = skipPast(src, i+4, "-->")
-		case c == '<' && i+1 < len(src) && src[i+1] == '/':
-			name, j := tagName(src, i+2)
+	for i < len(source) {
+		switch c := source[i]; {
+		case bytes.HasPrefix(source[i:], []byte("<!--")):
+			i = skipPast(source, i+4, "-->")
+		case c == '<' && i+1 < len(source) && source[i+1] == '/':
+			name, j := tagName(source, i+2)
 			if container[strings.ToLower(name)] && depth > 0 {
 				depth--
 			}
-			i = skipPast(src, j, ">")
-		case c == '<' && i+1 < len(src) && isLetter(src[i+1]):
-			name, j := tagName(src, i+1)
+			i = skipPast(source, j, ">")
+		case c == '<' && i+1 < len(source) && isLetter(source[i+1]):
+			name, j := tagName(source, i+1)
 			name = strings.ToLower(name)
-			attrs, j, selfClosing := attributes(src, j, ext)
+			attributeList, j, selfClosing := attributes(source, j, extension)
 			switch {
 			case name == "script" || name == "style":
 				end, after := j, j
 				if !selfClosing {
-					end, after = rawTextEnd(src, j, name)
+					end, after = rawTextEnd(source, j, name)
 				}
 				if name == "script" && depth == 0 {
-					if s, ok := newScript(ext, attrs, j, end); ok {
-						s.line = bytes.Count(src[:i], []byte("\n")) + 1
+					if s, ok := newScript(extension, attributeList, j, end); ok {
+						s.line = bytes.Count(source[:i], []byte("\n")) + 1
 						out = append(out, s)
 					}
 				}
@@ -144,14 +144,14 @@ func componentScripts(ext string, src []byte) []script {
 			default:
 				i = j
 			}
-		case c == '{' && ext == ".vue":
-			if bytes.HasPrefix(src[i:], []byte("{{")) {
-				i = skipPast(src, i+2, "}}")
+		case c == '{' && extension == ".vue":
+			if bytes.HasPrefix(source[i:], []byte("{{")) {
+				i = skipPast(source, i+2, "}}")
 			} else {
 				i++
 			}
 		case c == '{':
-			i = skipExpression(src, i)
+			i = skipExpression(source, i)
 		default:
 			i++
 		}
@@ -164,42 +164,42 @@ func componentScripts(ext string, src []byte) []script {
 // template begins.
 //
 // Implements: REQ-JS-012
-func frontmatter(src []byte) (s script, next int, ok bool) {
+func frontmatter(source []byte) (s script, next int, ok bool) {
 	i := 0
-	if bytes.HasPrefix(src, []byte("\xef\xbb\xbf")) {
+	if bytes.HasPrefix(source, []byte("\xef\xbb\xbf")) {
 		i = 3
 	}
-	for i < len(src) && (src[i] == ' ' || src[i] == '\t' || src[i] == '\r' || src[i] == '\n') {
+	for i < len(source) && (source[i] == ' ' || source[i] == '\t' || source[i] == '\r' || source[i] == '\n') {
 		i++
 	}
 	fence := func(line []byte) bool { return string(bytes.TrimRight(line, " \t\r")) == "---" }
 	lineEnd := func(at int) int {
-		if n := bytes.IndexByte(src[at:], '\n'); n >= 0 {
+		if n := bytes.IndexByte(source[at:], '\n'); n >= 0 {
 			return at + n + 1
 		}
-		return len(src)
+		return len(source)
 	}
 	open := lineEnd(i)
-	if !fence(bytes.TrimSuffix(src[i:open], []byte("\n"))) {
+	if !fence(bytes.TrimSuffix(source[i:open], []byte("\n"))) {
 		return script{}, 0, false
 	}
-	for at := open; at < len(src); {
+	for at := open; at < len(source); {
 		end := lineEnd(at)
-		if fence(bytes.TrimSuffix(src[at:end], []byte("\n"))) {
+		if fence(bytes.TrimSuffix(source[at:end], []byte("\n"))) {
 			return script{start: open, end: at, grammar: tsGrammar}, end, true
 		}
 		at = end
 	}
 	// An unclosed fence: the whole file is frontmatter, as far as Astro is concerned.
-	return script{start: open, end: len(src), grammar: tsGrammar}, len(src), true
+	return script{start: open, end: len(source), grammar: tsGrammar}, len(source), true
 }
 
 // newScript turns a <script> tag whose code spans [start, end) into a block, or
 // reports that it is not the component's JavaScript or TypeScript.
-func newScript(ext string, attrs map[string]string, start, end int) (script, bool) {
-	s := script{start: start, end: end, src: attrs["src"]}
-	if ext == ".astro" {
-		for name := range attrs {
+func newScript(extension string, attributes map[string]string, start, end int) (script, bool) {
+	s := script{start: start, end: end, source: attributes["src"]}
+	if extension == ".astro" {
+		for name := range attributes {
 			if name != "src" {
 				return script{}, false
 			}
@@ -207,17 +207,17 @@ func newScript(ext string, attrs map[string]string, start, end int) (script, boo
 		s.grammar = tsGrammar // Astro compiles every processed script as TypeScript
 		return s, true
 	}
-	lang := strings.ToLower(attrs["lang"])
-	switch t := strings.ToLower(attrs["type"]); t {
+	language := strings.ToLower(attributes["lang"])
+	switch t := strings.ToLower(attributes["type"]); t {
 	case "", "module", "text/javascript", "application/javascript":
 	case "text/typescript", "ts":
-		if lang == "" {
-			lang = "ts"
+		if language == "" {
+			language = "ts"
 		}
 	default:
 		return script{}, false // JSON, templates and other data blocks
 	}
-	switch lang {
+	switch language {
 	case "", "js", "javascript":
 		s.grammar = jsGrammar
 	case "ts", "typescript":
@@ -234,76 +234,76 @@ func newScript(ext string, attrs map[string]string, start, end int) (script, boo
 // by lower-cased name (a bare attribute has the value ""), the position after the
 // tag and whether it closed itself. Values may be quoted with ', " or ` or be a
 // {…} expression, which is how a ">" inside one does not end the tag.
-func attributes(src []byte, i int, ext string) (map[string]string, int, bool) {
-	attrs := map[string]string{}
-	for i < len(src) {
-		switch c := src[i]; {
+func attributes(source []byte, i int, extension string) (map[string]string, int, bool) {
+	attributes := map[string]string{}
+	for i < len(source) {
+		switch c := source[i]; {
 		case c == '>':
-			return attrs, i + 1, false
-		case c == '/' && i+1 < len(src) && src[i+1] == '>':
-			return attrs, i + 2, true
-		case c == '{' && ext != ".vue": // {...spread} or {shorthand}
-			i = skipExpression(src, i)
+			return attributes, i + 1, false
+		case c == '/' && i+1 < len(source) && source[i+1] == '>':
+			return attributes, i + 2, true
+		case c == '{' && extension != ".vue": // {...spread} or {shorthand}
+			i = skipExpression(source, i)
 		case isSpace(c) || c == '/':
 			i++
 		default:
 			start := i
-			for i < len(src) && !isSpace(src[i]) && src[i] != '=' && src[i] != '>' && !(src[i] == '/' && i+1 < len(src) && src[i+1] == '>') {
+			for i < len(source) && !isSpace(source[i]) && source[i] != '=' && source[i] != '>' && !(source[i] == '/' && i+1 < len(source) && source[i+1] == '>') {
 				i++
 			}
-			name := strings.ToLower(string(src[start:i]))
-			for i < len(src) && isSpace(src[i]) {
+			name := strings.ToLower(string(source[start:i]))
+			for i < len(source) && isSpace(source[i]) {
 				i++
 			}
-			if i >= len(src) || src[i] != '=' {
-				attrs[name] = ""
+			if i >= len(source) || source[i] != '=' {
+				attributes[name] = ""
 				continue
 			}
 			i++
-			for i < len(src) && isSpace(src[i]) {
+			for i < len(source) && isSpace(source[i]) {
 				i++
 			}
 			var value string
 			switch {
-			case i >= len(src):
-			case src[i] == '"' || src[i] == '\'' || src[i] == '`':
-				end := bytes.IndexByte(src[i+1:], src[i])
+			case i >= len(source):
+			case source[i] == '"' || source[i] == '\'' || source[i] == '`':
+				end := bytes.IndexByte(source[i+1:], source[i])
 				if end < 0 {
-					return attrs, len(src), false
+					return attributes, len(source), false
 				}
-				value = string(src[i+1 : i+1+end])
+				value = string(source[i+1 : i+1+end])
 				i += end + 2
-			case src[i] == '{' && ext != ".vue":
-				next := skipExpression(src, i)
-				value = string(src[i+1 : max(i+1, next-1)])
+			case source[i] == '{' && extension != ".vue":
+				next := skipExpression(source, i)
+				value = string(source[i+1 : max(i+1, next-1)])
 				i = next
 			default:
 				start := i
-				for i < len(src) && !isSpace(src[i]) && src[i] != '>' {
+				for i < len(source) && !isSpace(source[i]) && source[i] != '>' {
 					i++
 				}
-				value = string(src[start:i])
+				value = string(source[start:i])
 			}
-			attrs[name] = value
+			attributes[name] = value
 		}
 	}
-	return attrs, len(src), false
+	return attributes, len(source), false
 }
 
 // rawTextEnd finds the end of a raw-text element's content from i: where its
 // closing tag starts, and the position past that tag. Case does not matter, as in
 // HTML.
-func rawTextEnd(src []byte, i int, name string) (end, after int) {
+func rawTextEnd(source []byte, i int, name string) (end, after int) {
 	closing := []byte("</" + name)
 	for at := i; ; {
-		n := bytes.Index(src[at:], []byte("</"))
+		n := bytes.Index(source[at:], []byte("</"))
 		if n < 0 {
-			return len(src), len(src)
+			return len(source), len(source)
 		}
 		end = at + n
-		if after := end + len(closing); after <= len(src) && bytes.EqualFold(src[end:after], closing) &&
-			(after == len(src) || !isLetter(src[after])) {
-			return end, skipPast(src, after, ">")
+		if after := end + len(closing); after <= len(source) && bytes.EqualFold(source[end:after], closing) &&
+			(after == len(source) || !isLetter(source[after])) {
+			return end, skipPast(source, after, ">")
 		}
 		at = end + 2
 	}
@@ -312,17 +312,17 @@ func rawTextEnd(src []byte, i int, name string) (end, after int) {
 // skipExpression skips a {…} template expression starting at src[i] == '{',
 // stepping over nested braces, strings, template literals and comments. An
 // expression that never closes is taken for a literal "{".
-func skipExpression(src []byte, i int) int {
-	if end, ok := expressionEnd(src, i); ok {
+func skipExpression(source []byte, i int) int {
+	if end, ok := expressionEnd(source, i); ok {
 		return end
 	}
 	return i + 1
 }
 
-func expressionEnd(src []byte, i int) (int, bool) {
+func expressionEnd(source []byte, i int) (int, bool) {
 	depth := 0
-	for i < len(src) {
-		switch c := src[i]; c {
+	for i < len(source) {
+		switch c := source[i]; c {
 		case '{':
 			depth++
 			i++
@@ -335,8 +335,8 @@ func expressionEnd(src []byte, i int) (int, bool) {
 		case '"', '\'':
 			// A quote left open at the end of the line is an apostrophe in JSX text.
 			i++
-			for i < len(src) && src[i] != c && src[i] != '\n' {
-				if src[i] == '\\' {
+			for i < len(source) && source[i] != c && source[i] != '\n' {
+				if source[i] == '\\' {
 					i++
 				}
 				i++
@@ -344,12 +344,12 @@ func expressionEnd(src []byte, i int) (int, bool) {
 			i++
 		case '`':
 			i++
-			for i < len(src) && src[i] != '`' {
+			for i < len(source) && source[i] != '`' {
 				switch {
-				case src[i] == '\\':
+				case source[i] == '\\':
 					i += 2
-				case src[i] == '$' && i+1 < len(src) && src[i+1] == '{':
-					end, ok := expressionEnd(src, i+1)
+				case source[i] == '$' && i+1 < len(source) && source[i+1] == '{':
+					end, ok := expressionEnd(source, i+1)
 					if !ok {
 						return 0, false
 					}
@@ -361,10 +361,10 @@ func expressionEnd(src []byte, i int) (int, bool) {
 			i++
 		case '/':
 			switch {
-			case bytes.HasPrefix(src[i:], []byte("//")):
-				i = skipPast(src, i, "\n")
-			case bytes.HasPrefix(src[i:], []byte("/*")):
-				i = skipPast(src, i+2, "*/")
+			case bytes.HasPrefix(source[i:], []byte("//")):
+				i = skipPast(source, i, "\n")
+			case bytes.HasPrefix(source[i:], []byte("/*")):
+				i = skipPast(source, i+2, "*/")
 			default:
 				i++
 			}
@@ -375,25 +375,25 @@ func expressionEnd(src []byte, i int) (int, bool) {
 	return 0, false
 }
 
-// skipPast returns the position after the first sep at or after i, or len(src).
-func skipPast(src []byte, i int, sep string) int {
-	if i >= len(src) {
-		return len(src)
+// skipPast returns the position after the first separator at or after i, or len(src).
+func skipPast(source []byte, i int, separator string) int {
+	if i >= len(source) {
+		return len(source)
 	}
-	if n := bytes.Index(src[i:], []byte(sep)); n >= 0 {
-		return i + n + len(sep)
+	if n := bytes.Index(source[i:], []byte(separator)); n >= 0 {
+		return i + n + len(separator)
 	}
-	return len(src)
+	return len(source)
 }
 
 // tagName reads a tag name from i: letters, digits and the ":", "-", "." and "_"
 // of svelte:head, custom elements and Astro's namespaced components.
-func tagName(src []byte, i int) (string, int) {
+func tagName(source []byte, i int) (string, int) {
 	start := i
-	for i < len(src) && (isLetter(src[i]) || src[i] >= '0' && src[i] <= '9' || strings.IndexByte(":-._", src[i]) >= 0) {
+	for i < len(source) && (isLetter(source[i]) || source[i] >= '0' && source[i] <= '9' || strings.IndexByte(":-._", source[i]) >= 0) {
 		i++
 	}
-	return string(src[start:i]), i
+	return string(source[start:i]), i
 }
 
 func isLetter(c byte) bool { return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' }

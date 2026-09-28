@@ -24,4 +24,4 @@ keeps the graph independent of response order.
 ## Acceptance criteria
 
 1. Two runs over the same repository produce the same graph.
-2. Cancelling the analysis stops the walk without asking the rest of the level.
+2. Canceling the analysis stops the walk without asking the rest of the level.

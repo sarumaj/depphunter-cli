@@ -33,9 +33,9 @@ import (
 )
 
 const (
-	ecoFetch = "cmake-fetch" // FetchContent, ExternalProject and CPM.cmake content
-	ecoPkg   = "pkg-config"  // pkg_check_modules() modules
-	ecoStd   = "cmake-std"   // the modules CMake ships
+	ecosystemFetch   = "cmake-fetch" // FetchContent, ExternalProject and CPM.cmake content
+	ecosystemPackage = "pkg-config"  // pkg_check_modules() modules
+	ecosystemStd     = "cmake-std"   // the modules CMake ships
 )
 
 // Implements: REQ-CMAKE-001
@@ -68,8 +68,8 @@ func (Plugin) Claims(f *scan.File) bool {
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return append(cpp.PackageEcosystems(),
 		Plugin{}.FetchIsland(),
-		lang.Ecosystem{ID: ecoPkg, Name: "pkg-config modules"},
-		lang.Ecosystem{ID: ecoStd, Name: "CMake modules", Std: true},
+		lang.Ecosystem{ID: ecosystemPackage, Name: "pkg-config modules"},
+		lang.Ecosystem{ID: ecosystemStd, Name: "CMake modules", Std: true},
 	)
 }
 
@@ -85,17 +85,17 @@ func (Plugin) Fetched(all []*scan.File) []cpp.Fetched { return newResolver(all).
 
 // FetchIsland is the island of fetched content (cpp.FetchReader).
 func (Plugin) FetchIsland() lang.Ecosystem {
-	return lang.Ecosystem{ID: ecoFetch, Name: "CMake fetched content"}
+	return lang.Ecosystem{ID: ecosystemFetch, Name: "CMake fetched content"}
 }
 
 // Extract depends on the file's name only through its extension: of the claimed
 // files, only the presets files are .json, and every other one is CMake language.
 //
 // Implements: REQ-CMAKE-002, REQ-CMAKE-008, REQ-CMAKE-009
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	if strings.EqualFold(path.Ext(f.Path), ".json") {
-		return readPresets(src), nil
+		return readPresets(source), nil
 	}
-	info := analyze(lex(src))
+	info := analyze(lex(source))
 	return &lang.Extraction{Imports: info.imports, Symbols: info.symbols.List()}, nil
 }

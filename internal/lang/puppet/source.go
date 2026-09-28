@@ -16,7 +16,7 @@ const (
 	kindType     = "type"     // X::Y as a data type (a type alias)
 	kindTemplate = "template" // template('mod/x.erb'), epp('mod/x.epp')
 	kindFile     = "file"     // file('mod/x'), 'puppet:///modules/mod/x'
-	kindMod      = "puppetfile"
+	kindModule   = "puppetfile"
 	kindMetadata = "metadata"
 	kindFixture  = "fixtures"
 )
@@ -69,39 +69,39 @@ var stdlibFunction = map[string]bool{
 // types, nodes, functions, type aliases, plans) and what it refers to.
 //
 // Implements: REQ-PUPPET-002, REQ-PUPPET-003
-func extractSource(src []byte) *lang.Extraction {
-	tokens := lex(src)
-	ex := &lang.Extraction{}
+func extractSource(source []byte) *lang.Extraction {
+	tokens := lex(source)
+	extraction := &lang.Extraction{}
 	if pascal(tokens) {
-		return ex
+		return extraction
 	}
 	seen := map[string]bool{}
-	ref := func(kind, module, spec string, line int) {
+	reference := func(kind, module, spec string, line int) {
 		module = strings.TrimPrefix(module, "::")
 		if module == "" || seen[kind+" "+module] {
 			return
 		}
 		seen[kind+" "+module] = true
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
 	}
 	var symbols lang.SymbolSet
 	get := func(i int) token {
 		if i >= 0 && i < len(tokens) {
 			return tokens[i]
 		}
-		return token{kind: tPunct}
+		return token{kind: tPunctuation}
 	}
-	is := func(i int, text string) bool { t := get(i); return t.kind == tPunct && t.text == text }
+	is := func(i int, text string) bool { t := get(i); return t.kind == tPunctuation && t.text == text }
 	for i := 0; i < len(tokens); i++ {
 		t := tokens[i]
-		prev := get(i - 1)
+		previous := get(i - 1)
 		switch t.kind {
 		case tString:
 			if rest, ok := strings.CutPrefix(t.text, "puppet:///modules/"); ok && !t.interpolate {
-				ref(kindFile, rest, t.text, t.line)
+				reference(kindFile, rest, t.text, t.line)
 			}
-		case tRef:
-			if prev.kind == tName && prev.text == "type" {
+		case tReference:
+			if previous.kind == tName && previous.text == "type" {
 				if is(i+1, "=") {
 					symbols.Add(t.text, "type", t.line)
 				}
@@ -112,18 +112,18 @@ func extractSource(src []byte) *lang.Extraction {
 			case t.text == "Class" && is(i+1, "["):
 				for _, n := range titles(tokens, i+2) {
 					if !coreType[strings.ToLower(n.text)] {
-						ref(kindClass, strings.ToLower(n.text), "Class['"+n.text+"']", n.line)
+						reference(kindClass, strings.ToLower(n.text), "Class['"+n.text+"']", n.line)
 					}
 				}
 			case strings.Contains(lower, "::") && (is(i+1, "[") && get(i+2).kind == tString || is(i+1, "{") || is(i+1, "<|") || is(i+1, "<<|")):
-				ref(kindDefine, lower, t.text, t.line)
+				reference(kindDefine, lower, t.text, t.line)
 			case strings.Contains(lower, "::"):
-				ref(kindType, lower, t.text, t.line)
+				reference(kindType, lower, t.text, t.line)
 			case !coreType[lower] && !dataType[t.text] && (is(i+1, "[") && get(i+2).kind == tString || is(i+1, "{") || is(i+1, "<|") || is(i+1, "<<|")):
-				ref(kindDefine, lower, t.text, t.line) // an unqualified custom type: Concat['x'], Firewall { }
+				reference(kindDefine, lower, t.text, t.line) // an unqualified custom type: Concat['x'], Firewall { }
 			}
 		case tName:
-			if prev.kind == tPunct && prev.text == "." { // $x.each, a method call
+			if previous.kind == tPunctuation && previous.text == "." { // $x.each, a method call
 				continue
 			}
 			next := get(i + 1)
@@ -131,7 +131,7 @@ func extractSource(src []byte) *lang.Extraction {
 			case "class":
 				if is(i+1, "{") { // class { 'a::b': ... }
 					for _, n := range titles(tokens, i+2) {
-						ref(kindClass, n.text, "class { '"+n.text+"': }", n.line)
+						reference(kindClass, n.text, "class { '"+n.text+"': }", n.line)
 					}
 				} else if next.kind == tName {
 					symbols.Add(next.text, "class", next.line)
@@ -161,15 +161,15 @@ func extractSource(src []byte) *lang.Extraction {
 				continue
 			case "inherits":
 				if next.kind == tName {
-					ref(kindClass, next.text, "inherits "+next.text, next.line)
+					reference(kindClass, next.text, "inherits "+next.text, next.line)
 				}
 				continue
 			case "include", "require", "contain":
 				if is(i+1, "=>") || is(i-1, ".") {
 					continue // the require metaparameter
 				}
-				for _, n := range classArgs(tokens, i+1) {
-					ref(kindClass, n.text, t.text+" "+n.text, n.line)
+				for _, n := range classArguments(tokens, i+1) {
+					reference(kindClass, n.text, t.text+" "+n.text, n.line)
 				}
 				continue
 			case "template", "epp", "file":
@@ -180,7 +180,7 @@ func extractSource(src []byte) *lang.Extraction {
 					}
 					for j := i + 2; j < len(tokens) && tokens[j].kind == tString && !tokens[j].interpolate; j += 2 {
 						if a := tokens[j].text; strings.Contains(a, "/") && !strings.HasPrefix(a, "/") {
-							ref(kind, a, t.text+"('"+a+"')", tokens[j].line)
+							reference(kind, a, t.text+"('"+a+"')", tokens[j].line)
 						}
 						if !is(j+1, ",") {
 							break
@@ -189,27 +189,27 @@ func extractSource(src []byte) *lang.Extraction {
 					continue
 				}
 			}
-			if keyword[t.text] || prev.kind == tName && (prev.text == "class" || prev.text == "define" || prev.text == "function" || prev.text == "plan") {
+			if keyword[t.text] || previous.kind == tName && (previous.text == "class" || previous.text == "define" || previous.text == "function" || previous.text == "plan") {
 				continue
 			}
 			qualified := strings.Contains(strings.TrimPrefix(t.text, "::"), "::")
 			switch {
 			case is(i+1, "(") && qualified:
-				ref(kindFunction, t.text, t.text+"()", t.line)
-			case is(i+1, "(") && next.adj && stdlibFunction[t.text]:
-				ref(kindFunction, "stdlib::"+t.text, t.text+"()", t.line)
+				reference(kindFunction, t.text, t.text+"()", t.line)
+			case is(i+1, "(") && next.adjacent && stdlibFunction[t.text]:
+				reference(kindFunction, "stdlib::"+t.text, t.text+"()", t.line)
 			case is(i+1, "{") && resourceBody(tokens, i+2):
 				if qualified || !coreType[t.text] {
-					ref(kindDefine, t.text, t.text, t.line)
+					reference(kindDefine, t.text, t.text, t.line)
 				}
 			}
-		case tPunct:
+		case tPunctuation:
 			// @name { } and @@name { }: virtual and exported resources are
 			// declarations like any other; the name is read next.
 		}
 	}
-	ex.Symbols = symbols.List()
-	return ex
+	extraction.Symbols = symbols.List()
+	return extraction
 }
 
 // resourceBody reports whether the `{` before i opens a resource body: a
@@ -219,7 +219,7 @@ func resourceBody(tokens []token, i int) bool {
 	depth := 0
 	for end := min(i+64, len(tokens)); i < end; i++ {
 		t := tokens[i]
-		if t.kind != tPunct {
+		if t.kind != tPunctuation {
 			continue
 		}
 		switch t.text {
@@ -245,8 +245,8 @@ func resourceBody(tokens []token, i int) bool {
 // titles are the string titles at i: 'a' or ['a', 'b'] (then `:` or `]`).
 func titles(tokens []token, i int) []token {
 	var out []token
-	if i < len(tokens) && tokens[i].kind == tPunct && tokens[i].text == "[" {
-		for i++; i < len(tokens) && tokens[i].kind != tPunct || i < len(tokens) && tokens[i].text == ","; i++ {
+	if i < len(tokens) && tokens[i].kind == tPunctuation && tokens[i].text == "[" {
+		for i++; i < len(tokens) && tokens[i].kind != tPunctuation || i < len(tokens) && tokens[i].text == ","; i++ {
 			if tokens[i].kind == tString && !tokens[i].interpolate || tokens[i].kind == tName {
 				out = append(out, tokens[i])
 			}
@@ -259,23 +259,23 @@ func titles(tokens []token, i int) []token {
 	return out
 }
 
-// classArgs are the classes include, require and contain name: bare words
+// classArguments are the classes include, require and contain name: bare words
 // and strings, separated by commas, optionally in parentheses or an array.
-func classArgs(tokens []token, i int) []token {
+func classArguments(tokens []token, i int) []token {
 	var out []token
 	for ; i < len(tokens); i++ {
 		t := tokens[i]
 		switch {
 		case t.kind == tName && !keyword[t.text] || t.kind == tString && !t.interpolate && t.text != "":
-			if i+1 < len(tokens) && tokens[i+1].kind == tPunct && tokens[i+1].text == "(" {
+			if i+1 < len(tokens) && tokens[i+1].kind == tPunctuation && tokens[i+1].text == "(" {
 				return out // a function call computing the name
 			}
 			out = append(out, token{kind: tName, text: strings.ToLower(t.text), line: t.line})
-			if i+1 >= len(tokens) || tokens[i+1].kind != tPunct || tokens[i+1].text != "," {
+			if i+1 >= len(tokens) || tokens[i+1].kind != tPunctuation || tokens[i+1].text != "," {
 				return out
 			}
 			i++
-		case t.kind == tPunct && (t.text == "(" || t.text == "[") && len(out) == 0:
+		case t.kind == tPunctuation && (t.text == "(" || t.text == "[") && len(out) == 0:
 		default:
 			return out
 		}
@@ -291,7 +291,7 @@ func pascal(tokens []token) bool {
 	}
 	switch strings.ToLower(tokens[0].text) {
 	case "unit", "program", "library":
-		return tokens[2].kind == tPunct && (tokens[2].text == ";" || tokens[2].text == ".")
+		return tokens[2].kind == tPunctuation && (tokens[2].text == ";" || tokens[2].text == ".")
 	}
 	return false
 }

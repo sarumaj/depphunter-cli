@@ -13,10 +13,10 @@ import (
 
 // Import kinds of the manifests, carried in RawImport.Name.
 const (
-	kindRemap     = "remap"     // a remapping, in foundry.toml or remappings.txt
-	kindDep       = "dep"       // a Soldeer dependency in foundry.toml
-	kindLock      = "lock"      // an entry of soldeer.lock
-	kindSubmodule = "submodule" // a submodule of .gitmodules
+	kindRemap      = "remap"     // a remapping, in foundry.toml or remappings.txt
+	kindDependency = "dep"       // a Soldeer dependency in foundry.toml
+	kindLock       = "lock"      // an entry of soldeer.lock
+	kindSubmodule  = "submodule" // a submodule of .gitmodules
 )
 
 // remapping is solc's `context:prefix=target`.
@@ -46,11 +46,11 @@ func parseRemapping(s string) (remapping, bool) {
 
 // remappingLines reads remappings.txt: one remapping per line; blank lines
 // and # or // comments are skipped.
-func remappingLines(src []byte) (out []string, lines []int) {
-	sc := bufio.NewScanner(bytes.NewReader(src))
-	sc.Buffer(make([]byte, 0, 4096), lang.MaxParseSize+1)
-	for n := 1; sc.Scan(); n++ {
-		l := strings.TrimSpace(sc.Text())
+func remappingLines(source []byte) (out []string, lines []int) {
+	scanner := bufio.NewScanner(bytes.NewReader(source))
+	scanner.Buffer(make([]byte, 0, 4096), lang.MaxParseSize+1)
+	for n := 1; scanner.Scan(); n++ {
+		l := strings.TrimSpace(scanner.Text())
 		if l == "" || strings.HasPrefix(l, "#") || strings.HasPrefix(l, "//") {
 			continue
 		}
@@ -61,9 +61,9 @@ func remappingLines(src []byte) (out []string, lines []int) {
 	return out, lines
 }
 
-// soldeerDep is a dependency of foundry.toml's [dependencies] table: a
+// soldeerDependency is a dependency of foundry.toml's [dependencies] table: a
 // version string, or a table with version and a git source or a url.
-type soldeerDep struct {
+type soldeerDependency struct {
 	name, version         string
 	git, rev, tag, branch string
 	url                   string
@@ -71,10 +71,10 @@ type soldeerDep struct {
 
 // foundryConfig is what the plugin reads of foundry.toml.
 type foundryConfig struct {
-	remappings []string // every profile's, the default profile's first
-	libs       []string // the default profile's libs ("lib" when unset)
-	src        string
-	deps       []soldeerDep
+	remappings   []string // every profile's, the default profile's first
+	libraries    []string // the default profile's libs ("lib" when unset)
+	source       string
+	dependencies []soldeerDependency
 	// Soldeer's remapping settings: a prefix before each generated
 	// remapping's name and whether the version is part of it.
 	soldeerPrefix    string
@@ -82,7 +82,7 @@ type foundryConfig struct {
 	autoDetect       bool // auto_detect_remappings (true unless switched off)
 }
 
-func str(v any) string {
+func stringOf(v any) string {
 	s, _ := v.(string)
 	return s
 }
@@ -101,12 +101,12 @@ func stringList(v any) []string {
 // readFoundry decodes foundry.toml; ok is false when it is not TOML.
 //
 // Implements: REQ-SOLIDITY-005, REQ-SOLIDITY-007
-func readFoundry(src []byte) (foundryConfig, bool) {
+func readFoundry(source []byte) (foundryConfig, bool) {
 	var m map[string]any
-	if _, err := toml.Decode(string(src), &m); err != nil {
+	if _, err := toml.Decode(string(source), &m); err != nil {
 		return foundryConfig{}, false
 	}
-	c := foundryConfig{libs: []string{"lib"}, autoDetect: true}
+	c := foundryConfig{libraries: []string{"lib"}, autoDetect: true}
 	profiles, _ := m["profile"].(map[string]any)
 	names := make([]string, 0, len(profiles))
 	for name := range profiles {
@@ -136,41 +136,41 @@ func readFoundry(src []byte) (foundryConfig, bool) {
 			}
 		}
 		if i == 0 && defaults {
-			if libs, ok := t["libs"].([]any); ok {
-				c.libs = nil
-				for _, l := range libs {
+			if libraries, ok := t["libs"].([]any); ok {
+				c.libraries = nil
+				for _, l := range libraries {
 					if s, ok := l.(string); ok {
-						c.libs = append(c.libs, strings.Trim(strings.TrimPrefix(s, "./"), "/"))
+						c.libraries = append(c.libraries, strings.Trim(strings.TrimPrefix(s, "./"), "/"))
 					}
 				}
 			}
-			c.src = strings.Trim(strings.TrimPrefix(str(t["src"]), "./"), "/")
+			c.source = strings.Trim(strings.TrimPrefix(stringOf(t["src"]), "./"), "/")
 			if v, ok := t["auto_detect_remappings"].(bool); ok {
 				c.autoDetect = v
 			}
 		}
 	}
 	if s, ok := m["soldeer"].(map[string]any); ok {
-		c.soldeerPrefix = str(s["remappings_prefix"])
+		c.soldeerPrefix = stringOf(s["remappings_prefix"])
 		if v, ok := s["remappings_version"].(bool); ok {
 			c.soldeerNoVersion = !v
 		}
 	}
-	deps, _ := m["dependencies"].(map[string]any)
-	for name, v := range deps {
-		d := soldeerDep{name: name}
+	dependencies, _ := m["dependencies"].(map[string]any)
+	for name, v := range dependencies {
+		d := soldeerDependency{name: name}
 		switch v := v.(type) {
 		case string:
 			d.version = v
 		case map[string]any:
-			d.version, d.git, d.rev = str(v["version"]), str(v["git"]), str(v["rev"])
-			d.tag, d.branch, d.url = str(v["tag"]), str(v["branch"]), str(v["url"])
+			d.version, d.git, d.rev = stringOf(v["version"]), stringOf(v["git"]), stringOf(v["rev"])
+			d.tag, d.branch, d.url = stringOf(v["tag"]), stringOf(v["branch"]), stringOf(v["url"])
 		default:
 			continue
 		}
-		c.deps = append(c.deps, d)
+		c.dependencies = append(c.dependencies, d)
 	}
-	sort.Slice(c.deps, func(i, j int) bool { return c.deps[i].name < c.deps[j].name })
+	sort.Slice(c.dependencies, func(i, j int) bool { return c.dependencies[i].name < c.dependencies[j].name })
 	return c, true
 }
 
@@ -182,19 +182,19 @@ type lockEntry struct {
 // readSoldeerLock decodes soldeer.lock's [[dependencies]] entries.
 //
 // Implements: REQ-SOLIDITY-007
-func readSoldeerLock(src []byte) []lockEntry {
+func readSoldeerLock(source []byte) []lockEntry {
 	var m struct {
 		Dependencies []map[string]any `toml:"dependencies"`
 	}
-	if _, err := toml.Decode(string(src), &m); err != nil {
+	if _, err := toml.Decode(string(source), &m); err != nil {
 		return nil
 	}
 	var out []lockEntry
 	for _, d := range m.Dependencies {
-		e := lockEntry{name: str(d["name"]), version: str(d["version"]), url: str(d["url"]),
-			git: str(d["git"]), rev: str(d["rev"]), checksum: str(d["checksum"])}
+		e := lockEntry{name: stringOf(d["name"]), version: stringOf(d["version"]), url: stringOf(d["url"]),
+			git: stringOf(d["git"]), rev: stringOf(d["rev"]), checksum: stringOf(d["checksum"])}
 		if e.url == "" {
-			e.url = str(d["source"]) // the lock files of Soldeer before 0.3
+			e.url = stringOf(d["source"]) // the lock files of Soldeer before 0.3
 		}
 		if e.name != "" {
 			out = append(out, e)
@@ -212,26 +212,26 @@ type submodule struct {
 // readGitmodules reads .gitmodules, which is git-config syntax.
 //
 // Implements: REQ-SOLIDITY-006
-func readGitmodules(src []byte) []submodule {
+func readGitmodules(source []byte) []submodule {
 	var out []submodule
-	var cur *submodule
-	sc := bufio.NewScanner(bytes.NewReader(src))
-	sc.Buffer(make([]byte, 0, 4096), lang.MaxParseSize+1)
-	for n := 1; sc.Scan(); n++ {
-		l := strings.TrimSpace(sc.Text())
+	var current *submodule
+	scanner := bufio.NewScanner(bytes.NewReader(source))
+	scanner.Buffer(make([]byte, 0, 4096), lang.MaxParseSize+1)
+	for n := 1; scanner.Scan(); n++ {
+		l := strings.TrimSpace(scanner.Text())
 		if l == "" || l[0] == '#' || l[0] == ';' {
 			continue
 		}
 		if l[0] == '[' {
-			cur = nil
+			current = nil
 			head := strings.TrimSpace(strings.Trim(l, "[]"))
-			if kw, name, ok := strings.Cut(head, " "); ok && strings.EqualFold(kw, "submodule") {
+			if keyword, name, ok := strings.Cut(head, " "); ok && strings.EqualFold(keyword, "submodule") {
 				out = append(out, submodule{name: strings.Trim(strings.TrimSpace(name), `"`), line: n})
-				cur = &out[len(out)-1]
+				current = &out[len(out)-1]
 			}
 			continue
 		}
-		if cur == nil {
+		if current == nil {
 			continue
 		}
 		key, value, ok := strings.Cut(l, "=")
@@ -245,11 +245,11 @@ func readGitmodules(src []byte) []submodule {
 		value = strings.Trim(value, `"`)
 		switch strings.ToLower(strings.TrimSpace(key)) {
 		case "path":
-			cur.path = strings.Trim(strings.TrimPrefix(value, "./"), "/")
+			current.path = strings.Trim(strings.TrimPrefix(value, "./"), "/")
 		case "url":
-			cur.url = value
+			current.url = value
 		case "branch":
-			cur.branch = value
+			current.branch = value
 		}
 	}
 	kept := out[:0]
@@ -268,13 +268,13 @@ type tomlLines struct {
 	lines []string
 }
 
-func newTOMLLines(src []byte) tomlLines {
-	return tomlLines{lines: strings.Split(string(src), "\n")}
+func newTOMLLines(source []byte) tomlLines {
+	return tomlLines{lines: strings.Split(string(source), "\n")}
 }
 
 // key returns the line of key in section (1-based), 0 when not found.
 func (t tomlLines) key(section, key string) int {
-	cur := ""
+	current := ""
 	for i, l := range t.lines {
 		l = strings.TrimSpace(l)
 		if strings.HasPrefix(l, "[") {
@@ -282,10 +282,10 @@ func (t tomlLines) key(section, key string) int {
 			if h == section+"."+key || h == section+`."`+key+`"` {
 				return i + 1
 			}
-			cur = h
+			current = h
 			continue
 		}
-		if cur != section {
+		if current != section {
 			continue
 		}
 		k, _, ok := strings.Cut(l, "=")
@@ -313,43 +313,43 @@ func (t tomlLines) quoted(s string, from int) int {
 // foundry.toml an import.
 //
 // Implements: REQ-SOLIDITY-005, REQ-SOLIDITY-007
-func extractFoundry(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
-	c, ok := readFoundry(src)
+func extractFoundry(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
+	c, ok := readFoundry(source)
 	if !ok {
-		return ex
+		return extraction
 	}
-	lines := newTOMLLines(src)
+	lines := newTOMLLines(source)
 	for _, r := range c.remappings {
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: r, Module: r, Name: kindRemap, Line: max(lines.quoted(r, 0), 1)})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: r, Module: r, Name: kindRemap, Line: max(lines.quoted(r, 0), 1)})
 	}
-	for _, d := range c.deps {
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: d.name, Module: d.name, Name: kindDep, Line: max(lines.key("dependencies", d.name), 1)})
+	for _, d := range c.dependencies {
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: d.name, Module: d.name, Name: kindDependency, Line: max(lines.key("dependencies", d.name), 1)})
 	}
-	return ex
+	return extraction
 }
 
 // extractRemappings makes every line of remappings.txt an import.
-func extractRemappings(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
+func extractRemappings(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
 	seen := map[string]bool{}
-	list, lines := remappingLines(src)
+	list, lines := remappingLines(source)
 	for i, r := range list {
 		if !seen[r] {
 			seen[r] = true
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: r, Module: r, Name: kindRemap, Line: lines[i]})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: r, Module: r, Name: kindRemap, Line: lines[i]})
 		}
 	}
-	return ex
+	return extraction
 }
 
 // extractLock makes every entry of soldeer.lock an import.
-func extractLock(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
-	lines := newTOMLLines(src)
+func extractLock(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
+	lines := newTOMLLines(source)
 	seen := map[string]bool{}
 	from := 0
-	for _, e := range readSoldeerLock(src) {
+	for _, e := range readSoldeerLock(source) {
 		if seen[e.name] {
 			continue
 		}
@@ -358,20 +358,20 @@ func extractLock(src []byte) *lang.Extraction {
 		if line > 0 {
 			from = line
 		}
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: e.name, Module: e.name, Name: kindLock, Line: max(line, 1)})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: e.name, Module: e.name, Name: kindLock, Line: max(line, 1)})
 	}
-	return ex
+	return extraction
 }
 
 // extractGitmodules makes every submodule an import.
-func extractGitmodules(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
+func extractGitmodules(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
 	seen := map[string]bool{}
-	for _, s := range readGitmodules(src) {
+	for _, s := range readGitmodules(source) {
 		if !seen[s.path] {
 			seen[s.path] = true
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: s.path, Module: s.path, Name: kindSubmodule, Line: s.line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: s.path, Module: s.path, Name: kindSubmodule, Line: s.line})
 		}
 	}
-	return ex
+	return extraction
 }

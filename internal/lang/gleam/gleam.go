@@ -28,9 +28,9 @@ import (
 // The islands are the BEAM plugin's, so a Gleam package and the same package
 // reached from Elixir or Erlang are one node.
 const (
-	ecoHex = "hex"
-	ecoOTP = "erlang-std"
-	ecoNPM = "npm"
+	ecosystemHex = "hex"
+	ecosystemOTP = "erlang-std"
+	ecosystemNPM = "npm"
 )
 
 const (
@@ -91,11 +91,11 @@ func class(p string) string {
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	var out []lang.Ecosystem
 	for _, e := range (beam.Plugin{}).Ecosystems() {
-		if e.ID == ecoHex || e.ID == ecoOTP {
+		if e.ID == ecosystemHex || e.ID == ecosystemOTP {
 			out = append(out, e)
 		}
 	}
-	return append(out, lang.Ecosystem{ID: ecoNPM, Name: "npm"})
+	return append(out, lang.Ecosystem{ID: ecosystemNPM, Name: "npm"})
 }
 
 func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
@@ -103,12 +103,12 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-GLEAM-002, REQ-GLEAM-003, REQ-GLEAM-005, REQ-GLEAM-006
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	switch class(f.Path) {
 	case classConfig:
-		return extractConfig(src), nil
+		return extractConfig(source), nil
 	case classManifest:
-		return extractManifest(src), nil
+		return extractManifest(source), nil
 	}
-	return extractSource(src), nil
+	return extractSource(source), nil
 }

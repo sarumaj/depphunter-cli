@@ -12,9 +12,9 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 )
 
-// req is one requirement a manifest declares. Requirements name modules; the
+// moduleRequirement is one requirement a manifest declares. Requirements name modules; the
 // distributions that provide them are worked out by the resolver.
-type req struct {
+type moduleRequirement struct {
 	module   string
 	version  string // as written: "1.2", "== 1.2", ">= 1, < 2", "" or "0" for any
 	phase    string // runtime, test, build, configure, develop
@@ -26,8 +26,8 @@ type req struct {
 // manifest is what a manifest says: the distribution's name (when it names it) and
 // its requirements.
 type manifest struct {
-	name string
-	reqs []req
+	name         string
+	requirements []moduleRequirement
 }
 
 // Manifest kinds, by file name.
@@ -61,19 +61,19 @@ func manifestClass(base string) string {
 // readManifest reads a manifest of the given class.
 //
 // Implements: REQ-PERL-006
-func readManifest(class, base string, src []byte) *manifest {
+func readManifest(class, base string, source []byte) *manifest {
 	switch class {
 	case classCpanfile:
-		return &manifest{reqs: readCpanfile(lex(src))}
+		return &manifest{requirements: readCpanfile(lex(source))}
 	case classMakefile, classBuild:
-		return readBuildScript(lex(src))
+		return readBuildScript(lex(source))
 	case classMeta:
 		if strings.HasSuffix(base, ".json") {
-			return readMetaJSON(src)
+			return readMetaJSON(source)
 		}
-		return readMetaYAML(src)
+		return readMetaYAML(source)
 	case classDistIni:
-		return readDistIni(src)
+		return readDistIni(source)
 	}
 	return &manifest{}
 }
@@ -86,7 +86,7 @@ func readManifest(class, base string, src []byte) *manifest {
 func (m *manifest) imports() []lang.RawImport {
 	var out []lang.RawImport
 	seen := map[string]bool{}
-	for _, r := range m.reqs {
+	for _, r := range m.requirements {
 		if r.module == "perl" || r.relation == "suggests" || r.relation == "conflicts" || !moduleName(r.module) {
 			continue
 		}
@@ -101,7 +101,7 @@ func (m *manifest) imports() []lang.RawImport {
 			continue
 		}
 		seen[spec] = true
-		out = append(out, lang.RawImport{Spec: spec, Module: r.module, Name: kindDep + "\n" + r.version + "\n" + r.origin, Line: r.line})
+		out = append(out, lang.RawImport{Spec: spec, Module: r.module, Name: kindDependency + "\n" + r.version + "\n" + r.origin, Line: r.line})
 	}
 	sort.SliceStable(out, func(i, j int) bool { return out[i].Line < out[j].Line })
 	return out
@@ -119,8 +119,8 @@ var cpanfileWords = map[string][2]string{
 // blocks `on 'test' => sub { ... }`, feature blocks, and cpm's and Carmel's
 // `git =>`/`url =>` options - from a lexed file. Module::Install's Makefile.PL uses
 // the same statements.
-func readCpanfile(tokens []token) []req {
-	var out []req
+func readCpanfile(tokens []token) []moduleRequirement {
+	var out []moduleRequirement
 	type frame struct {
 		depth int
 		phase string
@@ -130,7 +130,7 @@ func readCpanfile(tokens []token) []req {
 	pendingPhase := ""
 	for i := 0; i < len(tokens); i++ {
 		t := tokens[i]
-		if t.kind == tPunct {
+		if t.kind == tPunctuation {
 			switch t.text {
 			case "{":
 				depth++
@@ -148,26 +148,26 @@ func readCpanfile(tokens []token) []req {
 			}
 			continue
 		}
-		if t.kind != tWord || i > 0 && tokens[i-1].kind == tPunct && tokens[i-1].text == "->" {
+		if t.kind != tWord || i > 0 && tokens[i-1].kind == tPunctuation && tokens[i-1].text == "->" {
 			continue
 		}
-		if t.text == "on" && i+1 < len(tokens) && (tokens[i+1].kind == tStr || tokens[i+1].kind == tWord) {
+		if t.text == "on" && i+1 < len(tokens) && (tokens[i+1].kind == tString || tokens[i+1].kind == tWord) {
 			pendingPhase = tokens[i+1].text
 			continue
 		}
-		kw, ok := cpanfileWords[t.text]
-		if !ok || i+1 >= len(tokens) || tokens[i+1].kind == tPunct && tokens[i+1].text == "=>" {
+		keyword, ok := cpanfileWords[t.text]
+		if !ok || i+1 >= len(tokens) || tokens[i+1].kind == tPunctuation && tokens[i+1].text == "=>" {
 			continue
 		}
 		j := i + 1
-		if tokens[j].kind == tPunct && tokens[j].text == "(" {
+		if tokens[j].kind == tPunctuation && tokens[j].text == "(" {
 			j++
 		}
-		mod := tokens[min(j, len(tokens)-1)]
-		if mod.kind != tStr && mod.kind != tWord || !moduleName(mod.text) {
+		module := tokens[min(j, len(tokens)-1)]
+		if module.kind != tString && module.kind != tWord || !moduleName(module.text) {
 			continue
 		}
-		r := req{module: strings.TrimSuffix(mod.text, "::"), relation: kw[1], phase: kw[0], line: t.line}
+		r := moduleRequirement{module: strings.TrimSuffix(module.text, "::"), relation: keyword[1], phase: keyword[0], line: t.line}
 		if r.phase == "" {
 			r.phase = "runtime"
 			if n := len(phases); n > 0 {
@@ -175,19 +175,19 @@ func readCpanfile(tokens []token) []req {
 			}
 		}
 		end := j + 1
-		for end < len(tokens) && !(tokens[end].kind == tPunct && (tokens[end].text == ";" || tokens[end].text == "}")) {
+		for end < len(tokens) && !(tokens[end].kind == tPunctuation && (tokens[end].text == ";" || tokens[end].text == "}")) {
 			end++
 		}
-		items := splitArgs(tokens[j+1 : end])
+		items := splitArguments(tokens[j+1 : end])
 		if len(items) > 0 && len(items[0]) == 0 {
 			items = items[1:] // the comma after the module
 		}
-		if len(items) > 0 && len(items[0]) == 1 && (items[0][0].kind == tStr || items[0][0].kind == tNum) {
+		if len(items) > 0 && len(items[0]) == 1 && (items[0][0].kind == tString || items[0][0].kind == tNumber) {
 			r.version = strings.TrimSpace(items[0][0].text)
 			items = items[1:]
 		}
 		for k := 0; k+1 < len(items); k += 2 {
-			if len(items[k]) == 1 && len(items[k+1]) == 1 && items[k+1][0].kind == tStr {
+			if len(items[k]) == 1 && len(items[k+1]) == 1 && items[k+1][0].kind == tString {
 				switch items[k][0].text {
 				case "git", "url", "dist":
 					if r.origin == "" {
@@ -217,11 +217,11 @@ var buildKeys = map[string][2]string{
 // distribution's name (NAME, DISTNAME, module_name, dist_name, Module::Install's
 // name) and Module::Install's cpanfile-like statements.
 func readBuildScript(tokens []token) *manifest {
-	m := &manifest{reqs: readCpanfile(tokens)}
+	m := &manifest{requirements: readCpanfile(tokens)}
 	for i := 0; i+2 < len(tokens); i++ {
 		t := tokens[i]
-		if t.kind != tWord && t.kind != tStr || !(tokens[i+1].kind == tPunct && tokens[i+1].text == "=>") {
-			if t.kind == tWord && t.text == "name" && tokens[i+1].kind == tStr && m.name == "" {
+		if t.kind != tWord && t.kind != tString || !(tokens[i+1].kind == tPunctuation && tokens[i+1].text == "=>") {
+			if t.kind == tWord && t.text == "name" && tokens[i+1].kind == tString && m.name == "" {
 				m.name = tokens[i+1].text // Module::Install: name 'Foo-Bar';
 			}
 			continue
@@ -229,40 +229,40 @@ func readBuildScript(tokens []token) *manifest {
 		v := tokens[i+2]
 		switch t.text {
 		case "NAME", "module_name":
-			if v.kind == tStr && m.name == "" {
+			if v.kind == tString && m.name == "" {
 				m.name = strings.ReplaceAll(v.text, "::", "-")
 			}
 		case "DISTNAME", "dist_name":
-			if v.kind == tStr {
+			if v.kind == tString {
 				m.name = v.text
 			}
 		case "prereqs":
-			if v.kind == tPunct && v.text == "{" {
-				val, _ := parseValue(tokens, i+2, 0)
-				for _, phase := range val.keysOf() {
-					releases := val.m[phase]
-					for _, rel := range releases.keysOf() {
-						m.reqs = append(m.reqs, hashReqs(releases.m[rel], phase, rel)...)
+			if v.kind == tPunctuation && v.text == "{" {
+				value, _ := parseValue(tokens, i+2, 0)
+				for _, phase := range value.keysOf() {
+					releases := value.m[phase]
+					for _, relationship := range releases.keysOf() {
+						m.requirements = append(m.requirements, hashRequirements(releases.m[relationship], phase, relationship)...)
 					}
 				}
 			}
 		}
-		if kw, ok := buildKeys[t.text]; ok && v.kind == tPunct && v.text == "{" {
-			val, _ := parseValue(tokens, i+2, 0)
-			m.reqs = append(m.reqs, hashReqs(val, kw[0], kw[1])...)
+		if keyword, ok := buildKeys[t.text]; ok && v.kind == tPunctuation && v.text == "{" {
+			value, _ := parseValue(tokens, i+2, 0)
+			m.requirements = append(m.requirements, hashRequirements(value, keyword[0], keyword[1])...)
 		}
 	}
 	return m
 }
 
-func hashReqs(v *value, phase, relation string) []req {
+func hashRequirements(v *value, phase, relation string) []moduleRequirement {
 	if v == nil {
 		return nil
 	}
-	var out []req
+	var out []moduleRequirement
 	for _, k := range v.keys {
 		if e := v.m[k]; e != nil && moduleName(k) {
-			out = append(out, req{module: k, version: e.s, phase: phase, relation: relation, line: v.lines[k]})
+			out = append(out, moduleRequirement{module: k, version: e.s, phase: phase, relation: relation, line: v.lines[k]})
 		}
 	}
 	return out
@@ -295,18 +295,18 @@ func parseValue(tokens []token, i, depth int) (*value, int) {
 	}
 	t := tokens[i]
 	switch {
-	case t.kind == tStr || t.kind == tNum || t.kind == tWord:
+	case t.kind == tString || t.kind == tNumber || t.kind == tWord:
 		return &value{s: t.text}, i + 1
-	case t.kind == tPunct && (t.text == "{" || t.text == "(" || t.text == "[") && depth < maxNesting:
+	case t.kind == tPunctuation && (t.text == "{" || t.text == "(" || t.text == "[") && depth < maxNesting:
 		v := &value{m: map[string]*value{}, lines: map[string]int{}}
 		cl := map[string]string{"{": "}", "(": ")", "[": "]"}[t.text]
 		j := i + 1
-		for j < len(tokens) && !(tokens[j].kind == tPunct && tokens[j].text == cl) {
+		for j < len(tokens) && !(tokens[j].kind == tPunctuation && tokens[j].text == cl) {
 			k := tokens[j]
-			if (k.kind == tStr || k.kind == tWord || k.kind == tNum) && j+1 < len(tokens) && tokens[j+1].kind == tPunct && (tokens[j+1].text == "=>" || tokens[j+1].text == ",") {
+			if (k.kind == tString || k.kind == tWord || k.kind == tNumber) && j+1 < len(tokens) && tokens[j+1].kind == tPunctuation && (tokens[j+1].text == "=>" || tokens[j+1].text == ",") {
 				var e *value
 				e, j = parseValue(tokens, j+2, depth+1)
-				if _, dup := v.m[k.text]; !dup {
+				if _, duplicate := v.m[k.text]; !duplicate {
 					v.keys = append(v.keys, k.text)
 					v.lines[k.text] = k.line
 				}
@@ -314,7 +314,7 @@ func parseValue(tokens []token, i, depth int) (*value, int) {
 			} else {
 				j = skipItem(tokens, j)
 			}
-			if j < len(tokens) && tokens[j].kind == tPunct && (tokens[j].text == "," || tokens[j].text == "=>") {
+			if j < len(tokens) && tokens[j].kind == tPunctuation && (tokens[j].text == "," || tokens[j].text == "=>") {
 				j++
 			}
 		}
@@ -328,7 +328,7 @@ func skipItem(tokens []token, i int) int {
 	depth := 0
 	for ; i < len(tokens); i++ {
 		t := tokens[i]
-		if t.kind != tPunct {
+		if t.kind != tPunctuation {
 			continue
 		}
 		switch t.text {
@@ -351,35 +351,35 @@ func skipItem(tokens []token, i int) int {
 // readMetaJSON reads META.json or MYMETA.json: version 2's prereqs (phase ->
 // relation -> module -> version) or version 1's requires, build_requires,
 // configure_requires and recommends.
-func readMetaJSON(src []byte) *manifest {
-	dec := json.NewDecoder(bytes.NewReader(src))
-	dec.UseNumber()
+func readMetaJSON(source []byte) *manifest {
+	decoder := json.NewDecoder(bytes.NewReader(source))
+	decoder.UseNumber()
 	var doc map[string]any
-	if dec.Decode(&doc) != nil {
+	if decoder.Decode(&doc) != nil {
 		return &manifest{}
 	}
 	m := &manifest{}
 	m.name, _ = doc["name"].(string)
-	lines := strings.Split(string(src), "\n")
+	lines := strings.Split(string(source), "\n")
 	add := func(h any, phase, relation string) {
-		mods, _ := h.(map[string]any)
-		for _, mod := range sortedAny(mods) {
-			m.reqs = append(m.reqs, req{module: mod, version: jsonString(mods[mod]), phase: phase, relation: relation, line: lineOf(lines, `"`+mod+`"`)})
+		modules, _ := h.(map[string]any)
+		for _, module := range sortedAny(modules) {
+			m.requirements = append(m.requirements, moduleRequirement{module: module, version: jsonString(modules[module]), phase: phase, relation: relation, line: lineOf(lines, `"`+module+`"`)})
 		}
 	}
 	if prereqs, ok := doc["prereqs"].(map[string]any); ok {
 		for _, phase := range sortedAny(prereqs) {
 			releases, _ := prereqs[phase].(map[string]any)
-			for _, rel := range sortedAny(releases) {
-				add(releases[rel], phase, rel)
+			for _, relationship := range sortedAny(releases) {
+				add(releases[relationship], phase, relationship)
 			}
 		}
 		return m
 	}
-	for key, kw := range metaV1 {
-		add(doc[key], kw[0], kw[1])
+	for key, keyword := range metaV1 {
+		add(doc[key], keyword[0], keyword[1])
 	}
-	sort.SliceStable(m.reqs, func(i, j int) bool { return m.reqs[i].line < m.reqs[j].line })
+	sort.SliceStable(m.requirements, func(i, j int) bool { return m.requirements[i].line < m.requirements[j].line })
 	return m
 }
 
@@ -421,9 +421,9 @@ func lineOf(lines []string, s string) int {
 
 // readMetaYAML reads META.yml or MYMETA.yml (version 1.4, or version 2 written as
 // YAML), keeping versions as written: 1.10 is not 1.1.
-func readMetaYAML(src []byte) *manifest {
+func readMetaYAML(source []byte) *manifest {
 	var doc yaml.Node
-	if yaml.Unmarshal(src, &doc) != nil || len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+	if yaml.Unmarshal(source, &doc) != nil || len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
 		return &manifest{}
 	}
 	root := doc.Content[0]
@@ -447,7 +447,7 @@ func readMetaYAML(src []byte) *manifest {
 			return
 		}
 		for k := 0; k+1 < len(n.Content); k += 2 {
-			m.reqs = append(m.reqs, req{module: n.Content[k].Value, version: n.Content[k+1].Value, phase: phase, relation: relation, line: n.Content[k].Line})
+			m.requirements = append(m.requirements, moduleRequirement{module: n.Content[k].Value, version: n.Content[k+1].Value, phase: phase, relation: relation, line: n.Content[k].Line})
 		}
 	}
 	if p := get(root, "prereqs"); p != nil && p.Kind == yaml.MappingNode {
@@ -461,10 +461,10 @@ func readMetaYAML(src []byte) *manifest {
 			}
 		}
 	}
-	for key, kw := range metaV1 {
-		add(get(root, key), kw[0], kw[1])
+	for key, keyword := range metaV1 {
+		add(get(root, key), keyword[0], keyword[1])
 	}
-	sort.SliceStable(m.reqs, func(i, j int) bool { return m.reqs[i].line < m.reqs[j].line })
+	sort.SliceStable(m.requirements, func(i, j int) bool { return m.requirements[i].line < m.requirements[j].line })
 	return m
 }
 
@@ -478,25 +478,25 @@ var prereqsLabel = regexp.MustCompile(`^(Runtime|Test|Build|Configure|Develop)(R
 // ; authordep comments, plugin bundles) are the author's tools, not the
 // distribution's, and are not read; neither is [AutoPrereqs], whose prerequisites
 // are what the sources use.
-func readDistIni(src []byte) *manifest {
+func readDistIni(source []byte) *manifest {
 	m := &manifest{}
 	type section struct {
 		start           int
 		phase, relation string
-		entries         []req
+		entries         []moduleRequirement
 	}
-	var cur *section
+	var current *section
 	flush := func() {
-		if cur == nil {
+		if current == nil {
 			return
 		}
-		for _, e := range cur.entries {
-			e.phase, e.relation = cur.phase, cur.relation
-			m.reqs = append(m.reqs, e)
+		for _, e := range current.entries {
+			e.phase, e.relation = current.phase, current.relation
+			m.requirements = append(m.requirements, e)
 		}
-		cur = nil
+		current = nil
 	}
-	for n, line := range strings.Split(string(src), "\n") {
+	for n, line := range strings.Split(string(source), "\n") {
 		s := strings.TrimSpace(line)
 		if i := strings.Index(s, " ;"); i >= 0 {
 			s = strings.TrimSpace(s[:i])
@@ -511,31 +511,31 @@ func readDistIni(src []byte) *manifest {
 			if strings.TrimSpace(plugin) != "Prereqs" {
 				continue
 			}
-			cur = &section{start: n + 1, phase: "runtime", relation: "requires"}
-			if sm := prereqsLabel.FindStringSubmatch(strings.TrimSpace(label)); sm != nil {
-				cur.phase, cur.relation = strings.ToLower(sm[1]), strings.ToLower(sm[2])
+			current = &section{start: n + 1, phase: "runtime", relation: "requires"}
+			if match := prereqsLabel.FindStringSubmatch(strings.TrimSpace(label)); match != nil {
+				current.phase, current.relation = strings.ToLower(match[1]), strings.ToLower(match[2])
 			}
 			continue
 		}
-		key, val, ok := strings.Cut(s, "=")
+		key, value, ok := strings.Cut(s, "=")
 		if !ok {
 			continue
 		}
-		key, val = strings.TrimSpace(key), strings.TrimSpace(val)
-		if cur == nil {
+		key, value = strings.TrimSpace(key), strings.TrimSpace(value)
+		if current == nil {
 			if key == "name" && m.name == "" {
-				m.name = val
+				m.name = value
 			}
 			continue
 		}
 		switch key {
 		case "-phase":
-			cur.phase = val
+			current.phase = value
 		case "-relationship", "-type":
-			cur.relation = val
+			current.relation = value
 		default:
 			if !strings.HasPrefix(key, "-") && moduleName(key) {
-				cur.entries = append(cur.entries, req{module: key, version: val, line: n + 1})
+				current.entries = append(current.entries, moduleRequirement{module: key, version: value, line: n + 1})
 			}
 		}
 	}
@@ -552,7 +552,7 @@ type snapshot struct {
 
 type snapDist struct {
 	name, version string
-	requires      []req
+	requires      []moduleRequirement
 }
 
 // distVersion splits "libwww-perl-6.72" into the distribution and its version.
@@ -561,11 +561,11 @@ var distVersion = regexp.MustCompile(`^(.+)-(v?[0-9][0-9._]*(?:-TRIAL)?)$`)
 // readSnapshot reads a cpanfile.snapshot (carton snapshot format 1.0).
 //
 // Implements: REQ-PERL-007
-func readSnapshot(src []byte) *snapshot {
+func readSnapshot(source []byte) *snapshot {
 	s := &snapshot{dists: map[string]*snapDist{}, provides: map[string]string{}}
-	var cur *snapDist
+	var current *snapDist
 	section := ""
-	for _, line := range strings.Split(string(src), "\n") {
+	for _, line := range strings.Split(string(source), "\n") {
 		line = strings.TrimRight(line, "\r")
 		indent := len(line) - len(strings.TrimLeft(line, " "))
 		text := strings.TrimSpace(line)
@@ -574,14 +574,14 @@ func readSnapshot(src []byte) *snapshot {
 		}
 		switch {
 		case indent == 2:
-			cur, section = nil, ""
-			if sm := distVersion.FindStringSubmatch(text); sm != nil {
-				cur = &snapDist{name: sm[1], version: sm[2]}
-				s.dists[cur.name] = cur
+			current, section = nil, ""
+			if match := distVersion.FindStringSubmatch(text); match != nil {
+				current = &snapDist{name: match[1], version: match[2]}
+				s.dists[current.name] = current
 			}
-		case indent == 4 && cur != nil:
+		case indent == 4 && current != nil:
 			section = strings.TrimSuffix(strings.Fields(text)[0], ":")
-		case indent >= 6 && cur != nil:
+		case indent >= 6 && current != nil:
 			f := strings.Fields(text)
 			v := ""
 			if len(f) > 1 {
@@ -590,10 +590,10 @@ func readSnapshot(src []byte) *snapshot {
 			switch section {
 			case "provides":
 				if _, ok := s.provides[f[0]]; !ok {
-					s.provides[f[0]] = cur.name
+					s.provides[f[0]] = current.name
 				}
 			case "requirements":
-				cur.requires = append(cur.requires, req{module: f[0], version: v})
+				current.requires = append(current.requires, moduleRequirement{module: f[0], version: v})
 			}
 		}
 	}

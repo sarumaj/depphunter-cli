@@ -93,7 +93,7 @@ func TestRoute(t *testing.T) {
 }
 
 // Verifies: REQ-AUTH-022
-func TestEnvCredential(t *testing.T) {
+func TestEnvironmentCredential(t *testing.T) {
 	for v, want := range map[string][3]string{
 		"Username=ci;Password=p@ss=word":                                    {"ci", "p@ss=word", "ok"},
 		"username=ci; password=x; ValidAuthenticationTypes=basic,negotiate": {"ci", "x", "ok"},
@@ -101,7 +101,7 @@ func TestEnvCredential(t *testing.T) {
 		"Username=ci": {"ci", "", ""},
 		"":            {"", "", ""},
 	} {
-		u, p, ok := EnvCredential(v)
+		u, p, ok := EnvironmentCredential(v)
 		if u != want[0] || p != want[1] || ok != (want[2] == "ok") {
 			t.Errorf("%q: %q %q %v", v, u, p, ok)
 		}

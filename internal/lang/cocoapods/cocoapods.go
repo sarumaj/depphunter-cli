@@ -4,7 +4,7 @@
 // modules come from pods, and the swift plugin, whose `import Alamofire` may too.
 //
 // A pod is named by its root name (the subspec "Firebase/Analytics" is Firebase)
-// and a Carthage dependency by its repository URL as lang.RepoName spells it
+// and a Carthage dependency by its repository URL as lang.RepositoryName spells it
 // (github.com/Alamofire/Alamofire), as the swiftpm island names packages.
 package cocoapods
 
@@ -51,22 +51,22 @@ func Kind(p string) string {
 	return ""
 }
 
-// Deps reads the dependency lines of a manifest of the given kind, for the plugin's
+// Dependencies reads the dependency lines of a manifest of the given kind, for the plugin's
 // imports: a Podfile's pods, a podspec's dependencies, a Cartfile's entries.
 //
 // Implements: REQ-OBJC-007, REQ-OBJC-010, REQ-OBJC-011
-func Deps(kind string, src []byte) []Dep {
+func Dependencies(kind string, source []byte) []Dependency {
 	switch kind {
 	case "podfile":
-		return readPodfile(string(src)).deps
+		return readPodfile(string(source)).dependencies
 	case "podspec":
-		return readPodspec(string(src)).lines
+		return readPodspec(string(source)).lines
 	case "podspec.json":
-		return readPodspecJSON(string(src)).lines
+		return readPodspecJSON(string(source)).lines
 	case "cartfile":
-		var out []Dep
-		for _, c := range readCartfile(string(src)) {
-			out = append(out, Dep{Spec: c.kind + ` "` + c.source + `"`, Name: CartfileModule(c.kind, c.source), Line: c.line})
+		var out []Dependency
+		for _, c := range readCartfile(string(source)) {
+			out = append(out, Dependency{Spec: c.kind + ` "` + c.source + `"`, Name: CartfileModule(c.kind, c.source), Line: c.line})
 		}
 		return out
 	}
@@ -79,31 +79,31 @@ func CartfileModule(kind, source string) string { return "carthage:" + cartName(
 
 // cartName names a Carthage dependency: `github "owner/repo"` is
 // github.com/owner/repo, a URL (git, binary, a GitHub Enterprise github) is itself
-// as lang.RepoName spells it.
+// as lang.RepositoryName spells it.
 func cartName(kind, source string) string {
 	if kind == "github" && !strings.Contains(source, "://") && strings.Count(source, "/") == 1 {
 		return "github.com/" + source
 	}
-	return lang.RepoName(source)
+	return lang.RepositoryName(source)
 }
 
 // project is what one directory's manifests say.
 type project struct {
-	dir      string
-	podfile  bool
-	declared map[string]*decl   // root name -> the first declaration
-	locks    map[string]*locked // root name -> Podfile.lock
-	carts    map[string]*cart   // package -> Cartfile entry
-	pins     map[string]*cart   // package -> Cartfile.resolved entry
+	directory string
+	podfile   bool
+	declared  map[string]*declaration // root name -> the first declaration
+	locks     map[string]*locked      // root name -> Podfile.lock
+	carts     map[string]*cart        // package -> Cartfile entry
+	pins      map[string]*cart        // package -> Cartfile.resolved entry
 }
 
 // Index is what the project's CocoaPods and Carthage manifests say, per directory.
 type Index struct {
-	root     string
-	projects []*project        // shallowest first
-	own      map[string]string // pod name built here (podspec name, module name) -> podspec path
-	dirs     map[string]bool
-	files    map[string]bool
+	root        string
+	projects    []*project        // shallowest first
+	own         map[string]string // pod name built here (podspec name, module name) -> podspec path
+	directories map[string]bool
+	files       map[string]bool
 }
 
 // Read reads the manifests among the scanned files; a Podfile.lock or
@@ -112,37 +112,37 @@ type Index struct {
 //
 // Implements: REQ-OBJC-007, REQ-OBJC-008, REQ-OBJC-010, REQ-OBJC-011
 func Read(root string, all []*scan.File) *Index {
-	x := &Index{root: root, own: map[string]string{}, dirs: map[string]bool{}, files: map[string]bool{}}
-	byDir := map[string]*project{}
-	get := func(dir string) *project {
-		p := byDir[dir]
+	x := &Index{root: root, own: map[string]string{}, directories: map[string]bool{}, files: map[string]bool{}}
+	byDirectory := map[string]*project{}
+	get := func(directory string) *project {
+		p := byDirectory[directory]
 		if p == nil {
-			p = &project{dir: dir, declared: map[string]*decl{}, locks: map[string]*locked{},
+			p = &project{directory: directory, declared: map[string]*declaration{}, locks: map[string]*locked{},
 				carts: map[string]*cart{}, pins: map[string]*cart{}}
-			byDir[dir] = p
+			byDirectory[directory] = p
 		}
 		return p
 	}
 	sorted := append([]*scan.File(nil), all...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Path < sorted[j].Path })
-	abs := map[string]string{}
+	absolute := map[string]string{}
 	for _, f := range sorted {
-		abs[f.Path] = f.Abs
+		absolute[f.Path] = f.AbsolutePath
 		x.files[f.Path] = true
-		for d := path.Dir(f.Path); d != "." && !x.dirs[d]; d = path.Dir(d) {
-			x.dirs[d] = true
+		for d := path.Dir(f.Path); d != "." && !x.directories[d]; d = path.Dir(d) {
+			x.directories[d] = true
 		}
 	}
-	read := func(rel string) (string, bool) {
-		a, ok := abs[rel]
+	read := func(relative string) (string, bool) {
+		a, ok := absolute[relative]
 		if !ok {
 			if root == "" {
 				return "", false
 			}
-			a = filepath.Join(root, filepath.FromSlash(rel))
+			a = filepath.Join(root, filepath.FromSlash(relative))
 		}
-		fi, err := os.Stat(a)
-		if err != nil || fi.IsDir() || fi.Size() > lang.MaxParseSize {
+		fileInfo, err := os.Stat(a)
+		if err != nil || fileInfo.IsDir() || fileInfo.Size() > lang.MaxParseSize {
 			return "", false
 		}
 		b, err := os.ReadFile(a)
@@ -152,53 +152,53 @@ func Read(root string, all []*scan.File) *Index {
 		if f.Binary || vendored(f.Path) {
 			continue
 		}
-		dir := path.Dir(f.Path)
+		directory := path.Dir(f.Path)
 		switch Kind(f.Path) {
 		case "podfile":
-			src, _ := read(f.Path)
-			p := get(dir)
+			source, _ := read(f.Path)
+			p := get(directory)
 			p.podfile = true
-			for _, d := range readPodfile(src).pods {
+			for _, d := range readPodfile(source).pods {
 				p.declare(d)
 			}
-			if lock, ok := read(path.Join(dir, "Podfile.lock")); ok {
+			if lock, ok := read(path.Join(directory, "Podfile.lock")); ok {
 				p.locks, _ = readLock([]byte(lock))
 				if p.locks == nil {
 					p.locks = map[string]*locked{}
 				}
 			}
 		case "podspec", "podspec.json":
-			src, _ := read(f.Path)
-			spec := readPodspec(src)
+			source, _ := read(f.Path)
+			spec := readPodspec(source)
 			if Kind(f.Path) == "podspec.json" {
-				spec = readPodspecJSON(src)
+				spec = readPodspecJSON(source)
 			}
 			if spec.name == "" {
 				continue
 			}
 			for _, n := range []string{spec.name, spec.module} {
 				if n != "" {
-					if _, dup := x.own[n]; !dup {
+					if _, duplicate := x.own[n]; !duplicate {
 						x.own[n] = f.Path
 					}
 				}
 			}
-			p := get(dir)
-			for _, d := range spec.deps {
+			p := get(directory)
+			for _, d := range spec.dependencies {
 				if Root(d.name) != spec.name {
 					p.declare(d)
 				}
 			}
 		case "cartfile":
-			src, _ := read(f.Path)
-			p := get(dir)
-			for _, c := range readCartfile(src) {
+			source, _ := read(f.Path)
+			p := get(directory)
+			for _, c := range readCartfile(source) {
 				if _, ok := p.carts[c.name]; !ok {
 					c := c
 					p.carts[c.name] = &c
 				}
 			}
-			if lock, ok := read(path.Join(dir, "Cartfile.resolved")); ok {
+			if lock, ok := read(path.Join(directory, "Cartfile.resolved")); ok {
 				for _, c := range readCartfile(lock) {
 					c := c
 					p.pins[c.name] = &c
@@ -206,11 +206,11 @@ func Read(root string, all []*scan.File) *Index {
 			}
 		}
 	}
-	for _, p := range byDir {
+	for _, p := range byDirectory {
 		x.projects = append(x.projects, p)
 	}
 	sort.Slice(x.projects, func(i, j int) bool {
-		a, b := x.projects[i].dir, x.projects[j].dir
+		a, b := x.projects[i].directory, x.projects[j].directory
 		if depth(a) != depth(b) {
 			return depth(a) < depth(b)
 		}
@@ -219,24 +219,24 @@ func Read(root string, all []*scan.File) *Index {
 	return x
 }
 
-func (p *project) declare(d *decl) {
+func (p *project) declare(d *declaration) {
 	if _, ok := p.declared[Root(d.name)]; !ok {
 		p.declared[Root(d.name)] = d
 	}
 }
 
-func depth(dir string) int {
-	if dir == "." {
+func depth(directory string) int {
+	if directory == "." {
 		return 0
 	}
-	return strings.Count(dir, "/") + 1
+	return strings.Count(directory, "/") + 1
 }
 
 // vendored reports whether a path is inside a dependency checkout: CocoaPods' Pods
 // directory, Carthage's Checkouts and Build.
 func vendored(p string) bool {
-	for _, seg := range strings.Split(path.Dir(p), "/") {
-		if seg == "Pods" || seg == "Carthage" {
+	for _, segment := range strings.Split(path.Dir(p), "/") {
+		if segment == "Pods" || segment == "Carthage" {
 			return true
 		}
 	}
@@ -248,7 +248,7 @@ func vendored(p string) bool {
 func (x *Index) projectsOf(file string) []*project {
 	var out []*project
 	for i := len(x.projects) - 1; i >= 0; i-- {
-		if p := x.projects[i]; p.dir == "." || strings.HasPrefix(file, p.dir+"/") {
+		if p := x.projects[i]; p.directory == "." || strings.HasPrefix(file, p.directory+"/") {
 			out = append(out, p)
 		}
 	}
@@ -286,7 +286,7 @@ func (x *Index) Pod(file, name string) lang.Target {
 
 // target resolves a root pod name in the given projects.
 func (x *Index) target(file string, projects []*project, root string) lang.Target {
-	var d *decl
+	var d *declaration
 	var dp *project
 	for _, p := range projects {
 		if dd, ok := p.declared[root]; ok {
@@ -295,18 +295,18 @@ func (x *Index) target(file string, projects []*project, root string) lang.Targe
 		}
 	}
 	var l *locked
-	var lp *project
+	var localProject *project
 	for _, p := range projects {
 		if ll, ok := p.locks[root]; ok {
-			l, lp = ll, p
+			l, localProject = ll, p
 			break
 		}
 	}
 	if d != nil && d.path != "" {
-		return x.local(path.Join(dp.dir, d.path), root)
+		return x.local(path.Join(dp.directory, d.path), root)
 	}
 	if l != nil && l.path != "" {
-		return x.local(path.Join(lp.dir, l.path), root)
+		return x.local(path.Join(localProject.directory, l.path), root)
 	}
 	t := lang.Target{Ecosystem: Ecosystem, Package: root}
 	switch {
@@ -321,11 +321,11 @@ func (x *Index) target(file string, projects []*project, root string) lang.Targe
 			t.Origin = git
 			gitPin(&t, tag, branch, commit)
 		case l.podspec != "" || (d != nil && d.podspec != ""):
-			t.Origin = "podspec:" + path.Join(lp.dir, first(l.podspec, podspecOf(d)))
+			t.Origin = "podspec:" + path.Join(localProject.directory, first(l.podspec, podspecOf(d)))
 		}
-		if d != nil && d.reqs != "" && d.reqs != t.Version {
-			if v, ok := exact(d.reqs); !ok || v != t.Version {
-				t.Requested = d.reqs
+		if d != nil && d.requirements != "" && d.requirements != t.Version {
+			if v, ok := exact(d.requirements); !ok || v != t.Version {
+				t.Requested = d.requirements
 			}
 		}
 	case d != nil:
@@ -334,10 +334,10 @@ func (x *Index) target(file string, projects []*project, root string) lang.Targe
 			t.Origin = d.git
 			gitPin(&t, d.tag, d.branch, d.commit)
 		case d.podspec != "":
-			t.Origin = "podspec:" + path.Join(dp.dir, d.podspec)
-			requirement(&t, d.reqs)
+			t.Origin = "podspec:" + path.Join(dp.directory, d.podspec)
+			requirement(&t, d.requirements)
 		default:
-			requirement(&t, d.reqs)
+			requirement(&t, d.requirements)
 		}
 	default:
 		if spec, ok := x.own[root]; ok {
@@ -348,7 +348,7 @@ func (x *Index) target(file string, projects []*project, root string) lang.Targe
 	return t
 }
 
-func podspecOf(d *decl) string {
+func podspecOf(d *declaration) string {
 	if d == nil {
 		return ""
 	}
@@ -384,17 +384,17 @@ func gitPin(t *lang.Target, tag, branch, commit string) {
 // none floats.
 //
 // Implements: REQ-OBJC-009
-func requirement(t *lang.Target, reqs string) {
-	if v, ok := exact(reqs); ok {
+func requirement(t *lang.Target, requirements string) {
+	if v, ok := exact(requirements); ok {
 		t.Version, t.Pinned = v, true
 		return
 	}
-	t.Version, t.Floating = reqs, true
+	t.Version, t.Floating = requirements, true
 }
 
 // exact reads a requirement naming one version.
-func exact(req string) (string, bool) {
-	v := strings.TrimSpace(req)
+func exact(requirement string) (string, bool) {
+	v := strings.TrimSpace(requirement)
 	if strings.Contains(v, ",") {
 		return "", false
 	}
@@ -419,7 +419,7 @@ func (x *Index) local(p, root string) lang.Target {
 			return lang.Target{Local: f}
 		}
 	}
-	if x.dirs[p] {
+	if x.directories[p] {
 		return lang.Target{Local: p}
 	}
 	return lang.Target{}
@@ -442,8 +442,8 @@ func (x *Index) Dependencies(t lang.Target) []lang.Target {
 			continue
 		}
 		var out []lang.Target
-		for _, dep := range l.deps {
-			if d := x.target("", []*project{p}, dep); d.Package != "" {
+		for _, dependency := range l.dependencies {
+			if d := x.target("", []*project{p}, dependency); d.Package != "" {
 				out = append(out, d)
 			}
 		}
@@ -472,15 +472,15 @@ func (x *Index) checkedOut(t lang.Target) []lang.Target {
 		if c == nil {
 			continue
 		}
-		dir := filepath.Join(x.root, filepath.FromSlash(p.dir), "Carthage", "Checkouts",
+		directory := filepath.Join(x.root, filepath.FromSlash(p.directory), "Carthage", "Checkouts",
 			strings.TrimSuffix(path.Base(strings.TrimSuffix(c.source, "/")), ".git"))
 		own := &project{carts: map[string]*cart{}, pins: map[string]*cart{}}
 		read := func(name string, into map[string]*cart) bool {
-			src, err := os.ReadFile(filepath.Join(dir, name))
-			if err != nil || len(src) > lang.MaxParseSize {
+			source, err := os.ReadFile(filepath.Join(directory, name))
+			if err != nil || len(source) > lang.MaxParseSize {
 				return false
 			}
-			for _, c := range readCartfile(string(src)) {
+			for _, c := range readCartfile(string(source)) {
 				c := c
 				into[c.name] = &c
 			}
@@ -641,28 +641,28 @@ func (p *project) cart(want string) string {
 func (p *project) cartTarget(name string) lang.Target {
 	t := lang.Target{Ecosystem: Carthage, Package: name}
 	c := p.carts[name]
-	if pin, ok := p.pins[name]; ok && pin.req != "" {
-		t.Version, t.Pinned = pin.req, true
-		if c != nil && c.req != "" && c.req != pin.req {
-			t.Requested = c.req
+	if pin, ok := p.pins[name]; ok && pin.requirement != "" {
+		t.Version, t.Pinned = pin.requirement, true
+		if c != nil && c.requirement != "" && c.requirement != pin.requirement {
+			t.Requested = c.requirement
 		}
 		return t
 	}
-	if c == nil || c.req == "" {
+	if c == nil || c.requirement == "" {
 		t.Floating = true
 		return t
 	}
 	switch {
-	case c.ref && lang.Commit(c.req):
-		t.Version, t.Pinned = c.req, true
-	case c.ref:
-		t.Version = c.req
-	case strings.HasPrefix(c.req, "=="):
-		t.Version = strings.TrimSpace(strings.TrimPrefix(c.req, "=="))
+	case c.reference && lang.Commit(c.requirement):
+		t.Version, t.Pinned = c.requirement, true
+	case c.reference:
+		t.Version = c.requirement
+	case strings.HasPrefix(c.requirement, "=="):
+		t.Version = strings.TrimSpace(strings.TrimPrefix(c.requirement, "=="))
 		t.Pinned = lang.Pinned(t.Version)
 		t.Floating = !t.Pinned
 	default:
-		t.Version, t.Floating = c.req, true
+		t.Version, t.Floating = c.requirement, true
 	}
 	return t
 }
@@ -733,11 +733,11 @@ func (x *Index) Vendored(file, local string) (lang.Target, bool) {
 
 // Sources are the spec repositories a Podfile names with `source` (for the index
 // discovery).
-func Sources(src []byte) []string { return readPodfile(string(src)).sources }
+func Sources(source []byte) []string { return readPodfile(string(source)).sources }
 
 // SpecRepos reads a Podfile.lock's SPEC REPOS: repository -> the pods installed from
 // it. "trunk" is CocoaPods' own.
-func SpecRepos(src []byte) map[string][]string {
-	_, repos := readLock(src)
-	return repos
+func SpecRepositories(source []byte) map[string][]string {
+	_, repositories := readLock(source)
+	return repositories
 }

@@ -14,7 +14,7 @@ verification:
 The walker **shall** walk up a ledge no higher than the step height without
 jumping and **shall** be stopped by anything higher, testing each axis
 separately so that the walker slides along walls. The step height **shall** be
-half a storey.
+half a story.
 
 ## Rationale
 
@@ -29,7 +29,7 @@ slides along walls instead of sticking to them.
 
 ## Notes
 
-Fixed: `STEP` in `walk.js` is 0.15 units, half a storey (0.3), below a terrace
+Fixed: `STEP` in `walk.js` is 0.15 units, half a story (0.3), below a terrace
 wall (`TERRACE` 0.28 in `layout.js`), so a terrace needs its ramp or a jump
 (`JUMP` tops out near 0.4). Ramps and bridge arches change height continuously
 and stay walkable. Climbing out of the water keeps its own allowance: `WADE` rose

@@ -1,6 +1,6 @@
 ---
 id: REQ-HUNT-013
-title: Bug shapes modelled in Blender with stand-ins
+title: Bug shapes modeled in Blender with stand-ins
 scope: hunt
 type: constraint
 priority: must
@@ -12,7 +12,7 @@ verification:
 
 ## Statement
 
-The bug shapes **shall** be modelled by `scripts/bug.py` and exported to
+The bug shapes **shall** be modeled by `scripts/bug.py` and exported to
 `web/static/bug.glb`, and the UI **shall** draw a stand-in for every shape whose
 meshes are missing from the loaded file.
 

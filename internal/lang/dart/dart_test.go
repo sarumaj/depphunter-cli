@@ -22,21 +22,21 @@ import (
 // Verifies: REQ-DART-001, REQ-DART-002, REQ-DART-003, REQ-DART-004, REQ-DART-005
 // Verifies: REQ-DART-006, REQ-DART-007, REQ-DART-008
 func TestWorkspaceAndApp(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
 	imports := map[string]map[string]lang.Target{
 		"app/lib/main.dart": {
-			"import 'dart:async'":                                          {Ecosystem: ecoStd, Package: "dart:async"},
-			"import 'dart:io'":                                             {Ecosystem: ecoStd, Package: "dart:io"},
-			"import 'package:flutter/material.dart'":                       {Ecosystem: ecoFlutter, Package: "flutter"},
-			"import 'package:http/http.dart'":                              {Ecosystem: ecoPub, Package: "http", Version: "1.2.1", Requested: "^1.2.0", Pinned: true},
+			"import 'dart:async'":                                          {Ecosystem: ecosystemStd, Package: "dart:async"},
+			"import 'dart:io'":                                             {Ecosystem: ecosystemStd, Package: "dart:io"},
+			"import 'package:flutter/material.dart'":                       {Ecosystem: ecosystemFlutter, Package: "flutter"},
+			"import 'package:http/http.dart'":                              {Ecosystem: ecosystemPub, Package: "http", Version: "1.2.1", Requested: "^1.2.0", Pinned: true},
 			"import 'package:shop_app/src/model.dart'":                     {Local: "app/lib/src/model.dart"},
 			"import 'package:shop_core/shop_core.dart'":                    {Local: "packages/shop_core/lib/shop_core.dart"},
-			"import 'package:path/path.dart'":                              {Ecosystem: ecoPub, Package: "path", Version: "1.9.0", Pinned: true},
-			"import 'package:missing/missing.dart'":                        {Ecosystem: ecoPub, Package: "missing", Unresolved: true},
-			"import 'package:provider/provider.dart'":                      {Ecosystem: ecoPub, Package: "provider", Version: "6.1.2", Pinned: true},
-			"import 'package:tracing/tracing.dart'":                        {Ecosystem: ecoPub, Package: "tracing", Version: "0.3.0", Pinned: true, Origin: "https://github.com/acme/tracing.git"},
-			"import 'package:nightly/nightly.dart'":                        {Ecosystem: ecoPub, Package: "nightly", Version: "main", Floating: true, Origin: "https://github.com/acme/nightly.git"},
-			"import 'package:private_kit/private_kit.dart'":                {Ecosystem: ecoPub, Package: "private_kit", Version: "2.1.0", Requested: "^2.0.0", Pinned: true},
+			"import 'package:path/path.dart'":                              {Ecosystem: ecosystemPub, Package: "path", Version: "1.9.0", Pinned: true},
+			"import 'package:missing/missing.dart'":                        {Ecosystem: ecosystemPub, Package: "missing", Unresolved: true},
+			"import 'package:provider/provider.dart'":                      {Ecosystem: ecosystemPub, Package: "provider", Version: "6.1.2", Pinned: true},
+			"import 'package:tracing/tracing.dart'":                        {Ecosystem: ecosystemPub, Package: "tracing", Version: "0.3.0", Pinned: true, Origin: "https://github.com/acme/tracing.git"},
+			"import 'package:nightly/nightly.dart'":                        {Ecosystem: ecosystemPub, Package: "nightly", Version: "main", Floating: true, Origin: "https://github.com/acme/nightly.git"},
+			"import 'package:private_kit/private_kit.dart'":                {Ecosystem: ecosystemPub, Package: "private_kit", Version: "2.1.0", Requested: "^2.0.0", Pinned: true},
 			"import 'package:flutter_gen/gen_l10n/app_localizations.dart'": {},
 			"import 'src/platform.dart'":                                   {Local: "app/lib/src/platform.dart"},
 			"import 'src/platform_io.dart' if (dart.library.io)":           {Local: "app/lib/src/platform_io.dart"},
@@ -46,9 +46,9 @@ func TestWorkspaceAndApp(t *testing.T) {
 			"part 'main.g.dart'":                                           {},
 		},
 		"app/lib/src/model.dart": {
-			"import 'package:collection/collection.dart'": {Ecosystem: ecoPub, Package: "collection", Version: "1.18.0", Requested: "any", Pinned: true},
-			"import 'package:intl/intl.dart'":             {Ecosystem: ecoPub, Package: "intl", Floating: true},
-			"import 'package:meta/meta.dart'":             {Ecosystem: ecoPub, Package: "meta", Version: "1.11.0", Pinned: true},
+			"import 'package:collection/collection.dart'": {Ecosystem: ecosystemPub, Package: "collection", Version: "1.18.0", Requested: "any", Pinned: true},
+			"import 'package:intl/intl.dart'":             {Ecosystem: ecosystemPub, Package: "intl", Floating: true},
+			"import 'package:meta/meta.dart'":             {Ecosystem: ecosystemPub, Package: "meta", Version: "1.11.0", Pinned: true},
 			"part 'model.part.dart'":                      {Local: "app/lib/src/model.part.dart"},
 		},
 		"app/lib/src/model.part.dart": {
@@ -56,33 +56,33 @@ func TestWorkspaceAndApp(t *testing.T) {
 		},
 		"app/lib/src/platform.dart": {},
 		"app/lib/src/platform_io.dart": {
-			"import 'dart:io'": {Ecosystem: ecoStd, Package: "dart:io"},
+			"import 'dart:io'": {Ecosystem: ecosystemStd, Package: "dart:io"},
 		},
 		"app/lib/src/platform_web.dart": {
-			"import 'dart:js_interop'": {Ecosystem: ecoStd, Package: "dart:js_interop"},
+			"import 'dart:js_interop'": {Ecosystem: ecosystemStd, Package: "dart:js_interop"},
 		},
 		"app/pubspec.yaml": {
-			"flutter (sdk: flutter)":                  {Ecosystem: ecoFlutter, Package: "flutter"},
-			"flutter_localizations (sdk: flutter)":    {Ecosystem: ecoFlutter, Package: "flutter_localizations"},
-			"http: ^1.2.0":                            {Ecosystem: ecoPub, Package: "http", Version: "1.2.1", Requested: "^1.2.0", Pinned: true},
-			"provider: 6.1.2":                         {Ecosystem: ecoPub, Package: "provider", Version: "6.1.2", Pinned: true},
-			"collection: any":                         {Ecosystem: ecoPub, Package: "collection", Version: "1.18.0", Requested: "any", Pinned: true},
-			"intl: any":                               {Ecosystem: ecoPub, Package: "intl", Floating: true},
+			"flutter (sdk: flutter)":                  {Ecosystem: ecosystemFlutter, Package: "flutter"},
+			"flutter_localizations (sdk: flutter)":    {Ecosystem: ecosystemFlutter, Package: "flutter_localizations"},
+			"http: ^1.2.0":                            {Ecosystem: ecosystemPub, Package: "http", Version: "1.2.1", Requested: "^1.2.0", Pinned: true},
+			"provider: 6.1.2":                         {Ecosystem: ecosystemPub, Package: "provider", Version: "6.1.2", Pinned: true},
+			"collection: any":                         {Ecosystem: ecosystemPub, Package: "collection", Version: "1.18.0", Requested: "any", Pinned: true},
+			"intl: any":                               {Ecosystem: ecosystemPub, Package: "intl", Floating: true},
 			"shop_core (path: ../packages/shop_core)": {Local: "packages/shop_core/pubspec.yaml"},
-			"tracing (git: https://github.com/acme/tracing.git 0123456789abcdef0123456789abcdef01234567)": {Ecosystem: ecoPub, Package: "tracing", Version: "0.3.0", Pinned: true, Origin: "https://github.com/acme/tracing.git"},
-			"nightly (git: https://github.com/acme/nightly.git main)":                                     {Ecosystem: ecoPub, Package: "nightly", Version: "main", Floating: true, Origin: "https://github.com/acme/nightly.git"},
-			"private_kit: ^2.0.0 (hosted: https://pub.acme.test)":                                         {Ecosystem: ecoPub, Package: "private_kit", Version: "2.1.0", Requested: "^2.0.0", Pinned: true},
-			"flutter_test (sdk: flutter)":                                                                 {Ecosystem: ecoFlutter, Package: "flutter_test"},
-			"lints: >=3.0.0 <4.0.0":                                                                       {Ecosystem: ecoPub, Package: "lints", Version: "3.0.0", Requested: ">=3.0.0 <4.0.0", Pinned: true},
-			"override meta: 1.11.0":                                                                       {Ecosystem: ecoPub, Package: "meta", Version: "1.11.0", Pinned: true},
+			"tracing (git: https://github.com/acme/tracing.git 0123456789abcdef0123456789abcdef01234567)": {Ecosystem: ecosystemPub, Package: "tracing", Version: "0.3.0", Pinned: true, Origin: "https://github.com/acme/tracing.git"},
+			"nightly (git: https://github.com/acme/nightly.git main)":                                     {Ecosystem: ecosystemPub, Package: "nightly", Version: "main", Floating: true, Origin: "https://github.com/acme/nightly.git"},
+			"private_kit: ^2.0.0 (hosted: https://pub.acme.test)":                                         {Ecosystem: ecosystemPub, Package: "private_kit", Version: "2.1.0", Requested: "^2.0.0", Pinned: true},
+			"flutter_test (sdk: flutter)":                                                                 {Ecosystem: ecosystemFlutter, Package: "flutter_test"},
+			"lints: >=3.0.0 <4.0.0":                                                                       {Ecosystem: ecosystemPub, Package: "lints", Version: "3.0.0", Requested: ">=3.0.0 <4.0.0", Pinned: true},
+			"override meta: 1.11.0":                                                                       {Ecosystem: ecosystemPub, Package: "meta", Version: "1.11.0", Pinned: true},
 		},
 		"app/test/widget_test.dart": {
-			"import 'package:flutter_test/flutter_test.dart'": {Ecosystem: ecoFlutter, Package: "flutter_test"},
+			"import 'package:flutter_test/flutter_test.dart'": {Ecosystem: ecosystemFlutter, Package: "flutter_test"},
 			"import 'package:shop_app/main.dart'":             {Local: "app/lib/main.dart"},
-			"import 'package:lints/lints.dart'":               {Ecosystem: ecoPub, Package: "lints", Version: "3.0.0", Requested: ">=3.0.0 <4.0.0", Pinned: true},
+			"import 'package:lints/lints.dart'":               {Ecosystem: ecosystemPub, Package: "lints", Version: "3.0.0", Requested: ">=3.0.0 <4.0.0", Pinned: true},
 		},
 		"packages/shop_core/lib/shop_core.dart": {
-			"import 'package:collection/collection.dart'": {Ecosystem: ecoPub, Package: "collection", Version: "1.18.0", Requested: "^1.18.0", Pinned: true},
+			"import 'package:collection/collection.dart'": {Ecosystem: ecosystemPub, Package: "collection", Version: "1.18.0", Requested: "^1.18.0", Pinned: true},
 			"import 'package:shop_utils/shop_utils.dart'": {Local: "packages/shop_utils/lib/shop_utils.dart"},
 			"export 'src/cart.dart'":                      {Local: "packages/shop_core/lib/src/cart.dart"},
 		},
@@ -90,7 +90,7 @@ func TestWorkspaceAndApp(t *testing.T) {
 			"import '../shop_core.dart'": {Local: "packages/shop_core/lib/shop_core.dart"},
 		},
 		"packages/shop_core/pubspec.yaml": {
-			"collection: ^1.18.0": {Ecosystem: ecoPub, Package: "collection", Version: "1.18.0", Requested: "^1.18.0", Pinned: true},
+			"collection: ^1.18.0": {Ecosystem: ecosystemPub, Package: "collection", Version: "1.18.0", Requested: "^1.18.0", Pinned: true},
 			"shop_utils: ^1.0.0":  {Local: "packages/shop_utils/pubspec.yaml"},
 		},
 		"packages/shop_utils/lib/shop_utils.dart": {},
@@ -98,14 +98,14 @@ func TestWorkspaceAndApp(t *testing.T) {
 		"pubspec.yaml": {
 			"workspace: packages/shop_core":  {Local: "packages/shop_core/pubspec.yaml"},
 			"workspace: packages/shop_utils": {Local: "packages/shop_utils/pubspec.yaml"},
-			"lints: ^3.0.0":                  {Ecosystem: ecoPub, Package: "lints", Version: "3.0.0", Requested: "^3.0.0", Pinned: true},
+			"lints: ^3.0.0":                  {Ecosystem: ecosystemPub, Package: "lints", Version: "3.0.0", Requested: "^3.0.0", Pinned: true},
 		},
 	}
 	for file, want := range imports {
-		langtest.CheckImports(t, res[file], want)
+		langtest.CheckImports(t, results[file], want)
 	}
-	if len(res) != len(imports) {
-		t.Errorf("analyzed %d files, want %d", len(res), len(imports))
+	if len(results) != len(imports) {
+		t.Errorf("analyzed %d files, want %d", len(results), len(imports))
 	}
 	symbols := map[string]map[string]string{
 		"app/lib/main.dart":                       {"main": "func", "ShopApp": "class", "ShopApp.new": "constructor", "ShopApp.build": "method"},
@@ -124,7 +124,7 @@ func TestWorkspaceAndApp(t *testing.T) {
 		"pubspec.yaml":                            {},
 	}
 	for file, want := range symbols {
-		langtest.CheckSymbols(t, res[file], want)
+		langtest.CheckSymbols(t, results[file], want)
 	}
 }
 
@@ -133,7 +133,7 @@ func TestWorkspaceAndApp(t *testing.T) {
 //
 // Verifies: REQ-DART-004
 func TestMelosPackagesAreLocal(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/melos")
+	results := langtest.Analyze(t, Plugin{}, "testdata/melos")
 	imports := map[string]map[string]lang.Target{
 		"examples/demo/lib/main.dart": {
 			"import 'package:a/a.dart'": {Local: "packages/a/lib/a.dart"},
@@ -142,24 +142,24 @@ func TestMelosPackagesAreLocal(t *testing.T) {
 			"a: ^1.0.0": {Local: "packages/a/pubspec.yaml"},
 		},
 		"examples/legacy/lib/legacy.dart": {
-			"import 'package:a/a.dart'": {Ecosystem: ecoPub, Package: "a", Version: "^1.0.0"},
+			"import 'package:a/a.dart'": {Ecosystem: ecosystemPub, Package: "a", Version: "^1.0.0"},
 		},
 		"examples/legacy/pubspec.yaml": {
-			"a: ^1.0.0": {Ecosystem: ecoPub, Package: "a", Version: "^1.0.0"},
+			"a: ^1.0.0": {Ecosystem: ecosystemPub, Package: "a", Version: "^1.0.0"},
 		},
 		"packages/a/lib/a.dart": {
 			"import 'package:b/b.dart'": {Local: "packages/b/lib/b.dart"},
-			"import 'package:c/c.dart'": {Ecosystem: ecoPub, Package: "c", Version: "^1.0.0"},
+			"import 'package:c/c.dart'": {Ecosystem: ecosystemPub, Package: "c", Version: "^1.0.0"},
 		},
 		"packages/a/pubspec.yaml": {
 			"b: ^1.0.0": {Local: "packages/b/pubspec.yaml"},
-			"c: ^1.0.0": {Ecosystem: ecoPub, Package: "c", Version: "^1.0.0"},
+			"c: ^1.0.0": {Ecosystem: ecosystemPub, Package: "c", Version: "^1.0.0"},
 		},
 		"packages/b/lib/b.dart":   {},
 		"packages/b/pubspec.yaml": {},
 	}
 	for file, want := range imports {
-		langtest.CheckImports(t, res[file], want)
+		langtest.CheckImports(t, results[file], want)
 	}
 }
 
@@ -204,7 +204,7 @@ func TestPubPinned(t *testing.T) {
 //
 // Verifies: REQ-DART-002, REQ-DART-003
 func TestScannerSkipsStringsAndComments(t *testing.T) {
-	src := `import 'a.dart' if (dart.library.io == 'true') 'b.dart';
+	source := `import 'a.dart' if (dart.library.io == 'true') 'b.dart';
 /* outer /* inner */ still a comment: class NotAClass {} */
 const s = 'x ${ {'k': '}'}['k'] } y';
 const r = r'${';
@@ -215,19 +215,19 @@ class Real {
   String f() => "$s ${s.length}";
 }
 `
-	ex, err := (Plugin{}).Extract(&scan.File{Path: "lib/x.dart"}, []byte(src))
+	extraction, err := (Plugin{}).Extract(&scan.File{Path: "lib/x.dart"}, []byte(source))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var specs []string
-	for _, im := range ex.Imports {
-		specs = append(specs, im.Spec)
+	for _, rawImport := range extraction.Imports {
+		specs = append(specs, rawImport.Spec)
 	}
 	if want := []string{"import 'a.dart'", "import 'b.dart' if (dart.library.io == 'true')"}; !slices.Equal(specs, want) {
 		t.Errorf("imports %q, want %q", specs, want)
 	}
 	got := map[string]string{}
-	for _, s := range ex.Symbols {
+	for _, s := range extraction.Symbols {
 		got[s.Name] = s.Kind
 	}
 	want := map[string]string{"s": "const", "r": "const", "m": "const", "Real": "class", "Real.f": "method"}
@@ -240,8 +240,8 @@ class Real {
 //
 // Verifies: REQ-DART-002
 func TestByteOrderMark(t *testing.T) {
-	ex, _ := (Plugin{}).Extract(&scan.File{Path: "lib/x.dart"}, []byte("\xef\xbb\xbfimport 'y.dart';\n"))
-	if len(ex.Imports) != 1 || ex.Imports[0].Module != "y.dart" {
-		t.Errorf("imports %+v, want y.dart", ex.Imports)
+	extraction, _ := (Plugin{}).Extract(&scan.File{Path: "lib/x.dart"}, []byte("\xef\xbb\xbfimport 'y.dart';\n"))
+	if len(extraction.Imports) != 1 || extraction.Imports[0].Module != "y.dart" {
+		t.Errorf("imports %+v, want y.dart", extraction.Imports)
 	}
 }

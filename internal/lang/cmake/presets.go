@@ -20,23 +20,23 @@ var presetName = regexp.MustCompile(`"name"\s*:\s*"((?:[^"\\]|\\.)*)"`)
 // ($env{VCPKG_ROOT}/...) is not the project's and is not recorded.
 //
 // Implements: REQ-CMAKE-009
-func readPresets(src []byte) *lang.Extraction {
+func readPresets(source []byte) *lang.Extraction {
 	var p map[string]json.RawMessage
-	ex := &lang.Extraction{}
-	if json.Unmarshal(src, &p) != nil {
-		return ex
+	extraction := &lang.Extraction{}
+	if json.Unmarshal(source, &p) != nil {
+		return extraction
 	}
 	lineOf := func(needle string) int {
-		if i := bytes.Index(src, []byte(needle)); i >= 0 {
-			return bytes.Count(src[:i], []byte("\n")) + 1
+		if i := bytes.Index(source, []byte(needle)); i >= 0 {
+			return bytes.Count(source[:i], []byte("\n")) + 1
 		}
 		return 1
 	}
 	var includes []string
 	json.Unmarshal(p["include"], &includes)
-	for _, inc := range includes {
-		ex.Imports = append(ex.Imports, lang.RawImport{
-			Spec: `"include": "` + inc + `"`, Module: presetPath(inc), Name: kindFile, Line: lineOf(`"` + inc + `"`),
+	for _, include := range includes {
+		extraction.Imports = append(extraction.Imports, lang.RawImport{
+			Spec: `"include": "` + include + `"`, Module: presetPath(include), Name: kindFile, Line: lineOf(`"` + include + `"`),
 		})
 	}
 	names := map[string]bool{}
@@ -46,25 +46,25 @@ func readPresets(src []byte) *lang.Extraction {
 			ToolchainFile string `json:"toolchainFile"`
 		}
 		json.Unmarshal(p[kind], &list)
-		for _, pr := range list {
-			names[pr.Name] = true
-			if tc := pr.ToolchainFile; tc != "" && !strings.Contains(tc, "$env{") && !strings.Contains(tc, "$penv{") && !strings.HasPrefix(tc, "/") {
-				ex.Imports = append(ex.Imports, lang.RawImport{
-					Spec: `"toolchainFile": "` + tc + `"`, Module: presetPath(tc), Name: kindFile, Line: lineOf(`"` + tc + `"`),
+		for _, preset := range list {
+			names[preset.Name] = true
+			if testCase := preset.ToolchainFile; testCase != "" && !strings.Contains(testCase, "$env{") && !strings.Contains(testCase, "$penv{") && !strings.HasPrefix(testCase, "/") {
+				extraction.Imports = append(extraction.Imports, lang.RawImport{
+					Spec: `"toolchainFile": "` + testCase + `"`, Module: presetPath(testCase), Name: kindFile, Line: lineOf(`"` + testCase + `"`),
 				})
 			}
 		}
 	}
 	// Symbols in the order the file names them, with their lines.
 	var set lang.SymbolSet
-	for _, m := range presetName.FindAllSubmatchIndex(src, -1) {
-		name := string(src[m[2]:m[3]])
+	for _, m := range presetName.FindAllSubmatchIndex(source, -1) {
+		name := string(source[m[2]:m[3]])
 		if names[name] {
-			set.Add(name, "preset", bytes.Count(src[:m[0]], []byte("\n"))+1)
+			set.Add(name, "preset", bytes.Count(source[:m[0]], []byte("\n"))+1)
 		}
 	}
-	ex.Symbols = set.List()
-	return ex
+	extraction.Symbols = set.List()
+	return extraction
 }
 
 // presetPath writes a presets file's path the way a CMake file would: relative to

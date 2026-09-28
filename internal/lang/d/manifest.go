@@ -13,12 +13,12 @@ import (
 // dependency is one entry of a recipe's dependencies: a registry package by
 // version specification, a path, or a git repository at a commit.
 type dependency struct {
-	name     string // as written: vibe-d, vibe-d:http, :sub
-	version  string
-	path     string
-	repo     string
-	optional bool
-	line     int
+	name       string // as written: vibe-d, vibe-d:http, :sub
+	version    string
+	path       string
+	repository string
+	optional   bool
+	line       int
 }
 
 // subPackage is an entry of a recipe's subPackages: a directory with a recipe
@@ -34,20 +34,20 @@ type subPackage struct {
 // sub-packages and where its sources and string imports are. A nil path list
 // means dub's default.
 type recipe struct {
-	name         string
-	deps         []*dependency
-	subs         []subPackage
-	sourcePaths  []string
-	importPaths  []string
-	stringPaths  []string
-	sourcesSet   bool
-	importsSet   bool
-	stringSet    bool
-	nameLine     int
-	dependencies map[string]*dependency // by name as written, first entry wins
+	name           string
+	dependencyList []*dependency
+	subs           []subPackage
+	sourcePaths    []string
+	importPaths    []string
+	stringPaths    []string
+	sourcesSet     bool
+	importsSet     bool
+	stringSet      bool
+	nameLine       int
+	dependencies   map[string]*dependency // by name as written, first entry wins
 }
 
-func (r *recipe) addDep(d *dependency) {
+func (r *recipe) addDependency(d *dependency) {
 	if r.dependencies == nil {
 		r.dependencies = map[string]*dependency{}
 	}
@@ -55,32 +55,32 @@ func (r *recipe) addDep(d *dependency) {
 		return
 	}
 	r.dependencies[d.name] = d
-	r.deps = append(r.deps, d)
+	r.dependencyList = append(r.dependencyList, d)
 }
 
 // selection is an entry of dub.selections.json.
 type selection struct {
-	version, path, repo string
-	line                int
+	version, path, repository string
+	line                      int
 }
 
-// lineOf is the line of the first occurrence of needle in src at or after
+// lineOf is the line of the first occurrence of needle in source at or after
 // from, else 1.
-func lineOf(src []byte, needle string, from int) (int, int) {
-	if from > len(src) {
-		from = len(src)
+func lineOf(source []byte, needle string, from int) (int, int) {
+	if from > len(source) {
+		from = len(source)
 	}
-	i := bytes.Index(src[from:], []byte(needle))
+	i := bytes.Index(source[from:], []byte(needle))
 	if i < 0 {
 		return 1, from
 	}
-	return bytes.Count(src[:from+i], []byte("\n")) + 1, from + i + len(needle)
+	return bytes.Count(source[:from+i], []byte("\n")) + 1, from + i + len(needle)
 }
 
 // keyLine is the line of the first "key": in a JSON document, else 1.
-func keyLine(src []byte, key string) int {
-	if loc := regexp.MustCompile(regexp.QuoteMeta(`"`+key+`"`) + `\s*:`).FindIndex(src); loc != nil {
-		return bytes.Count(src[:loc[0]], []byte("\n")) + 1
+func keyLine(source []byte, key string) int {
+	if span := regexp.MustCompile(regexp.QuoteMeta(`"`+key+`"`) + `\s*:`).FindIndex(source); span != nil {
+		return bytes.Count(source[:span[0]], []byte("\n")) + 1
 	}
 	return 1
 }
@@ -88,24 +88,24 @@ func keyLine(src []byte, key string) int {
 // readJSONRecipe reads dub.json.
 //
 // Implements: REQ-DLANG-005
-func readJSONRecipe(src []byte) *recipe {
+func readJSONRecipe(source []byte) *recipe {
 	var doc map[string]json.RawMessage
-	if json.Unmarshal(src, &doc) != nil {
+	if json.Unmarshal(source, &doc) != nil {
 		return &recipe{}
 	}
-	return jsonRecipe(doc, src)
+	return jsonRecipe(doc, source)
 }
 
-func jsonRecipe(doc map[string]json.RawMessage, src []byte) *recipe {
+func jsonRecipe(doc map[string]json.RawMessage, source []byte) *recipe {
 	r := &recipe{}
-	str := func(raw json.RawMessage) string {
+	stringOf := func(raw json.RawMessage) string {
 		var s string
 		json.Unmarshal(raw, &s)
 		return s
 	}
-	r.name = str(doc["name"])
+	r.name = stringOf(doc["name"])
 	if r.name != "" {
-		r.nameLine, _ = lineOf(src, `"`+r.name+`"`, 0)
+		r.nameLine, _ = lineOf(source, `"`+r.name+`"`, 0)
 	}
 	paths := func(key string) ([]string, bool) {
 		var out []string
@@ -125,15 +125,15 @@ func jsonRecipe(doc map[string]json.RawMessage, src []byte) *recipe {
 	r.sourcePaths, r.sourcesSet = paths("sourcePaths")
 	r.importPaths, r.importsSet = paths("importPaths")
 	r.stringPaths, r.stringSet = paths("stringImportPaths")
-	readDeps := func(raw json.RawMessage) {
-		var deps map[string]json.RawMessage
-		if json.Unmarshal(raw, &deps) != nil {
+	readDependencies := func(raw json.RawMessage) {
+		var dependencies map[string]json.RawMessage
+		if json.Unmarshal(raw, &dependencies) != nil {
 			return
 		}
-		for _, name := range sortedKeys(deps) {
-			d := &dependency{name: name, line: keyLine(src, name)}
+		for _, name := range sortedKeys(dependencies) {
+			d := &dependency{name: name, line: keyLine(source, name)}
 			var spec string
-			if json.Unmarshal(deps[name], &spec) == nil {
+			if json.Unmarshal(dependencies[name], &spec) == nil {
 				d.version = strings.TrimSpace(spec)
 			} else {
 				var o struct {
@@ -142,17 +142,17 @@ func jsonRecipe(doc map[string]json.RawMessage, src []byte) *recipe {
 					Repository string `json:"repository"`
 					Optional   bool   `json:"optional"`
 				}
-				json.Unmarshal(deps[name], &o)
-				d.version, d.path, d.repo, d.optional = strings.TrimSpace(o.Version), o.Path, o.Repository, o.Optional
+				json.Unmarshal(dependencies[name], &o)
+				d.version, d.path, d.repository, d.optional = strings.TrimSpace(o.Version), o.Path, o.Repository, o.Optional
 			}
-			r.addDep(d)
+			r.addDependency(d)
 		}
 	}
-	readDeps(doc["dependencies"])
+	readDependencies(doc["dependencies"])
 	var configs []map[string]json.RawMessage
 	if json.Unmarshal(doc["configurations"], &configs) == nil {
 		for _, c := range configs {
-			readDeps(c["dependencies"])
+			readDependencies(c["dependencies"])
 			// A configuration's paths add to the package's.
 			for _, k := range sortedKeys(c) {
 				var list []string
@@ -175,13 +175,13 @@ func jsonRecipe(doc map[string]json.RawMessage, src []byte) *recipe {
 		for _, raw := range subs {
 			var p string
 			if json.Unmarshal(raw, &p) == nil {
-				line, _ := lineOf(src, `"`+p+`"`, 0)
+				line, _ := lineOf(source, `"`+p+`"`, 0)
 				r.subs = append(r.subs, subPackage{path: p, line: line})
 				continue
 			}
-			var sub map[string]json.RawMessage
-			if json.Unmarshal(raw, &sub) == nil {
-				in := jsonRecipe(sub, src)
+			var inlineRecipe map[string]json.RawMessage
+			if json.Unmarshal(raw, &inlineRecipe) == nil {
+				in := jsonRecipe(inlineRecipe, source)
 				r.subs = append(r.subs, subPackage{inline: in, line: in.nameLine})
 			}
 		}
@@ -192,8 +192,8 @@ func jsonRecipe(doc map[string]json.RawMessage, src []byte) *recipe {
 // readSDLRecipe reads dub.sdl.
 //
 // Implements: REQ-DLANG-005
-func readSDLRecipe(src []byte) *recipe {
-	return sdlRecipe(readSDL(src))
+func readSDLRecipe(source []byte) *recipe {
+	return sdlRecipe(readSDL(source))
 }
 
 func sdlRecipe(tags []*sdlTag) *recipe {
@@ -203,9 +203,9 @@ func sdlRecipe(tags []*sdlTag) *recipe {
 		case "name":
 			r.name, r.nameLine = t.value(), t.line
 		case "dependency":
-			d := &dependency{name: t.value(), version: strings.TrimSpace(t.attr("version")), path: t.attr("path"),
-				repo: t.attr("repository"), optional: t.attr("optional") == "true", line: t.line}
-			r.addDep(d)
+			d := &dependency{name: t.value(), version: strings.TrimSpace(t.attribute("version")), path: t.attribute("path"),
+				repository: t.attribute("repository"), optional: t.attribute("optional") == "true", line: t.line}
+			r.addDependency(d)
 		case "sourcePaths":
 			r.sourcePaths, r.sourcesSet = append(r.sourcePaths, t.values...), true
 		case "importPaths":
@@ -215,8 +215,8 @@ func sdlRecipe(tags []*sdlTag) *recipe {
 		case "configuration":
 			// A configuration's dependencies and paths add to the package's.
 			c := sdlRecipe(t.children)
-			for _, d := range c.deps {
-				r.addDep(d)
+			for _, d := range c.dependencyList {
+				r.addDependency(d)
 			}
 			if c.sourcesSet {
 				r.sourcePaths, r.sourcesSet = append(r.sourcePaths, c.sourcePaths...), true
@@ -243,16 +243,16 @@ func sdlRecipe(tags []*sdlTag) *recipe {
 // with a version, a path or a repository and its commit.
 //
 // Implements: REQ-DLANG-006
-func readSelections(src []byte) map[string]*selection {
+func readSelections(source []byte) map[string]*selection {
 	var doc struct {
 		Versions map[string]json.RawMessage `json:"versions"`
 	}
 	out := map[string]*selection{}
-	if json.Unmarshal(src, &doc) != nil {
+	if json.Unmarshal(source, &doc) != nil {
 		return out
 	}
 	for _, name := range sortedKeys(doc.Versions) {
-		s := &selection{line: keyLine(src, name)}
+		s := &selection{line: keyLine(source, name)}
 		var v string
 		if json.Unmarshal(doc.Versions[name], &v) == nil {
 			s.version = strings.TrimSpace(v)
@@ -263,7 +263,7 @@ func readSelections(src []byte) map[string]*selection {
 				Repository string `json:"repository"`
 			}
 			json.Unmarshal(doc.Versions[name], &o)
-			s.version, s.path, s.repo = strings.TrimSpace(o.Version), o.Path, o.Repository
+			s.version, s.path, s.repository = strings.TrimSpace(o.Version), o.Path, o.Repository
 		}
 		out[name] = s
 	}
@@ -284,39 +284,39 @@ func sortedKeys[V any](m map[string]V) []string {
 //
 // Implements: REQ-DLANG-005
 func extractRecipe(r *recipe) *lang.Extraction {
-	ex := &lang.Extraction{}
+	extraction := &lang.Extraction{}
 	seen := map[string]bool{}
 	var walk func(r *recipe)
 	walk = func(r *recipe) {
-		for _, d := range r.deps {
+		for _, d := range r.dependencyList {
 			if seen[d.name] {
 				continue
 			}
 			seen[d.name] = true
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: d.name, Module: d.name, Name: kindDep, Line: d.line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: d.name, Module: d.name, Name: kindDependency, Line: d.line})
 		}
 		for _, s := range r.subs {
 			if s.inline != nil {
 				walk(s.inline)
 			} else if p := strings.TrimRight(s.path, "/"); p != "" && !seen["\x00"+p] {
 				seen["\x00"+p] = true
-				ex.Imports = append(ex.Imports, lang.RawImport{Spec: s.path, Module: p, Name: kindSubPath, Line: s.line})
+				extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: s.path, Module: p, Name: kindSubPath, Line: s.line})
 			}
 		}
 	}
 	walk(r)
-	return ex
+	return extraction
 }
 
 // Implements: REQ-DLANG-006
-func extractSelections(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
-	sel := readSelections(src)
-	for _, name := range sortedKeys(sel) {
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: name, Module: name, Name: kindSelected, Line: sel[name].line})
+func extractSelections(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
+	selections := readSelections(source)
+	for _, name := range sortedKeys(selections) {
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: name, Module: name, Name: kindSelected, Line: selections[name].line})
 	}
-	sort.SliceStable(ex.Imports, func(i, j int) bool { return ex.Imports[i].Line < ex.Imports[j].Line })
-	return ex
+	sort.SliceStable(extraction.Imports, func(i, j int) bool { return extraction.Imports[i].Line < extraction.Imports[j].Line })
+	return extraction
 }
 
 // pinRule is dub's pinning of a version specification without a selection: an
@@ -325,12 +325,12 @@ func extractSelections(src []byte) *lang.Extraction {
 // commit only.
 //
 // Implements: REQ-DLANG-006
-func pinRule(t *lang.Target, spec string, repo bool) {
+func pinRule(t *lang.Target, spec string, repository bool) {
 	spec = strings.TrimSpace(spec)
 	switch {
-	case repo && lang.Commit(spec):
+	case repository && lang.Commit(spec):
 		t.Version, t.Pinned = spec, true
-	case repo:
+	case repository:
 		t.Version, t.Floating = spec, true
 	case strings.HasPrefix(spec, "=="):
 		v := strings.TrimSpace(spec[2:])
@@ -350,8 +350,8 @@ func pinRule(t *lang.Target, spec string, repo bool) {
 // when the module has none.
 //
 // Implements: REQ-DLANG-005
-func singleFile(src []byte) (*recipe, int) {
-	s := string(bytes.TrimPrefix(src, []byte("\xef\xbb\xbf")))
+func singleFile(source []byte) (*recipe, int) {
+	s := string(bytes.TrimPrefix(source, []byte("\xef\xbb\xbf")))
 	skipped := 0
 	if strings.HasPrefix(s, "#!") {
 		i := strings.IndexByte(s, '\n')
@@ -382,13 +382,13 @@ func singleFile(src []byte) (*recipe, int) {
 	if end < 0 {
 		end = len(body)
 	}
-	offset := strings.Count(string(src[:min(len(src), skipped+2+(len(rest)-len(strings.TrimLeft(rest, " \t\r\n")))+colon)]), "\n")
+	offset := strings.Count(string(source[:min(len(source), skipped+2+(len(rest)-len(strings.TrimLeft(rest, " \t\r\n")))+colon)]), "\n")
 	text := []byte(body[:end])
-	var rec *recipe
+	var current *recipe
 	if format == "sdl" {
-		rec = readSDLRecipe(text)
+		current = readSDLRecipe(text)
 	} else {
-		rec = readJSONRecipe(text)
+		current = readJSONRecipe(text)
 	}
-	return rec, offset
+	return current, offset
 }

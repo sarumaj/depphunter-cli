@@ -36,10 +36,10 @@ import (
 //
 // Implements: REQ-SUP-034, REQ-SUP-035
 type Private struct {
-	// any applies to every ecosystem; byEco only to the one that named it. Both are
+	// any applies to every ecosystem; byEcosystem only to the one that named it. Both are
 	// comma-joined, because that is what MatchPrefixPatterns takes.
-	any   string
-	byEco map[string]string
+	any         string
+	byEcosystem map[string]string
 }
 
 // New builds a matcher. Patterns may themselves be comma-separated, so one flag, one
@@ -47,7 +47,7 @@ type Private struct {
 //
 // Implements: REQ-SUP-034, REQ-SUP-035
 func New(patterns []string) *Private {
-	p := &Private{byEco: map[string]string{}}
+	p := &Private{byEcosystem: map[string]string{}}
 	var any []string
 	for _, entry := range patterns {
 		for _, pattern := range strings.Split(entry, ",") {
@@ -59,10 +59,10 @@ func New(patterns []string) *Private {
 			// looks like a host and port ("localhost:5000/*") is not a scope either,
 			// so only a known-shaped ecosystem id counts - which is to say one with
 			// no slash before the colon.
-			if eco, rest, ok := strings.Cut(pattern, ":"); ok && rest != "" && !strings.Contains(eco, "/") && isEcosystem(eco) {
+			if ecosystem, rest, ok := strings.Cut(pattern, ":"); ok && rest != "" && !strings.Contains(ecosystem, "/") && isEcosystem(ecosystem) {
 				// Ids are matched lowercased, so "NPM:" must be stored as "npm:".
-				eco = strings.ToLower(eco)
-				p.byEco[eco] = join(p.byEco[eco], rest)
+				ecosystem = strings.ToLower(ecosystem)
+				p.byEcosystem[ecosystem] = join(p.byEcosystem[ecosystem], rest)
 				continue
 			}
 			any = append(any, pattern)
@@ -75,12 +75,12 @@ func New(patterns []string) *Private {
 // Match reports whether a package is the organization's own.
 //
 // Implements: REQ-SUP-034, REQ-SUP-035
-func (p *Private) Match(eco, name string) bool {
+func (p *Private) Match(ecosystem, name string) bool {
 	if p == nil || name == "" {
 		return false
 	}
 	names := []string{name}
-	if group, artifact, ok := strings.Cut(name, ":"); ok && eco == "maven" {
+	if group, artifact, ok := strings.Cut(name, ":"); ok && ecosystem == "maven" {
 		// Maven packages are named group:artifact; a pattern names one
 		// ("com.acme:lib"), a group ("com.acme.*" matches com.acme.billing:api)
 		// or group.artifact.
@@ -90,7 +90,7 @@ func (p *Private) Match(eco, name string) bool {
 		if p.any != "" && module.MatchPrefixPatterns(p.any, n) {
 			return true
 		}
-		if globs := p.byEco[eco]; globs != "" && module.MatchPrefixPatterns(globs, n) {
+		if globs := p.byEcosystem[ecosystem]; globs != "" && module.MatchPrefixPatterns(globs, n) {
 			return true
 		}
 	}
@@ -99,7 +99,7 @@ func (p *Private) Match(eco, name string) bool {
 
 // Empty reports whether nothing was declared private, which is the ordinary case for
 // a repository of public dependencies.
-func (p *Private) Empty() bool { return p == nil || (p.any == "" && len(p.byEco) == 0) }
+func (p *Private) Empty() bool { return p == nil || (p.any == "" && len(p.byEcosystem) == 0) }
 
 // Patterns lists what was declared, ecosystem-scoped entries included, for the log
 // line that says what a run considers private.
@@ -111,9 +111,9 @@ func (p *Private) Patterns() []string {
 	if p.any != "" {
 		out = append(out, strings.Split(p.any, ",")...)
 	}
-	for eco, globs := range p.byEco {
+	for ecosystem, globs := range p.byEcosystem {
 		for _, g := range strings.Split(globs, ",") {
-			out = append(out, eco+":"+g)
+			out = append(out, ecosystem+":"+g)
 		}
 	}
 	return out
@@ -124,10 +124,10 @@ func (p *Private) Patterns() []string {
 // from the proxy, and it defaults to GOPRIVATE when it is not set itself.
 //
 // Implements: REQ-SUP-036
-func FromGoEnv(env func(string) string) []string {
+func FromGoEnvironment(environment func(string) string) []string {
 	var out []string
 	for _, name := range []string{"GOPRIVATE", "GONOPROXY", "GONOSUMDB"} {
-		for _, pattern := range strings.Split(env(name), ",") {
+		for _, pattern := range strings.Split(environment(name), ",") {
 			if pattern = strings.TrimSpace(pattern); pattern != "" && pattern != "none" && pattern != "*" {
 				out = append(out, "go:"+pattern)
 			}

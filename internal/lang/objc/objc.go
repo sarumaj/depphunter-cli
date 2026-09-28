@@ -10,7 +10,7 @@
 // Podfile's `pod` lines, a podspec's dependencies and a Cartfile's entries are
 // imports of the packages they name.
 //
-// Declarations are read by a hand-written scanner (lex.go, decls.go), not the
+// Declarations are read by a hand-written scanner (lex.go, declarations.go), not the
 // vendored tree-sitter grammar: see REQ-OBJC-013.
 package objc
 
@@ -40,7 +40,7 @@ func (Plugin) Name() string { return "objc" }
 func (Plugin) Version() int { return 1 }
 
 // Claims takes Objective-C sources: ".mm", and ".m" and ".h" files the scan
-// labelled Objective-C by their content (a ".m" may be MATLAB or Mercury, a ".h" a
+// labeled Objective-C by their content (a ".m" may be MATLAB or Mercury, a ".h" a
 // C or C++ header - those are left to others), plus the CocoaPods and Carthage
 // manifests.
 //
@@ -53,7 +53,7 @@ func (Plugin) Claims(f *scan.File) bool {
 	case ".mm":
 		return true
 	case ".m", ".h":
-		return f.Lang == "Objective-C"
+		return f.Language == "Objective-C"
 	}
 	return cocoapods.Kind(f.Path) != ""
 }
@@ -77,20 +77,20 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 var define = regexp.MustCompile(`^[ \t]*#[ \t]*define[ \t]+([A-Za-z_]\w*)(?:\(|[ \t]+\S)`)
 
 // Implements: REQ-OBJC-002, REQ-OBJC-003, REQ-OBJC-007, REQ-OBJC-010, REQ-OBJC-011
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	if kind := cocoapods.Kind(f.Path); kind != "" {
-		ex := &lang.Extraction{}
-		for _, d := range cocoapods.Deps(kind, src) {
+		extraction := &lang.Extraction{}
+		for _, d := range cocoapods.Dependencies(kind, source) {
 			name := kindPod
 			if kind == "cartfile" {
 				name = kindCarthage
 			}
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: d.Spec, Module: d.Name, Name: name, Line: d.Line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: d.Spec, Module: d.Name, Name: name, Line: d.Line})
 		}
-		return ex, nil
+		return extraction, nil
 	}
-	includes, dead := cpp.Preprocess(src)
-	tokens := lex(src)
+	includes, dead := cpp.Preprocess(source)
+	tokens := lex(source)
 	live := tokens[:0:0]
 	for _, t := range tokens {
 		if t.line >= len(dead) || !dead[t.line] {
@@ -98,7 +98,7 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 		}
 	}
 	p := parse(live)
-	for i, line := range strings.Split(string(src), "\n") {
+	for i, line := range strings.Split(string(source), "\n") {
 		if strings.Contains(line, "define") && (i+1 >= len(dead) || !dead[i+1]) {
 			if m := define.FindStringSubmatch(line); m != nil {
 				p.add(m[1], "macro", i+1, false)
@@ -107,5 +107,5 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 	}
 	imports := append(includes, p.modules...)
 	slices.SortStableFunc(imports, func(a, b lang.RawImport) int { return a.Line - b.Line })
-	return &lang.Extraction{Imports: imports, Symbols: symbols(p.defs)}, nil
+	return &lang.Extraction{Imports: imports, Symbols: symbols(p.definitions)}, nil
 }

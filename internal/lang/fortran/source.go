@@ -40,11 +40,11 @@ const maxStatement = 4096
 
 // reader turns source lines into statements, in free or fixed source form.
 type reader struct {
-	stmts []statement
-	dirs  []directive
-	buf   strings.Builder
-	start int  // line of the statement being built, 0 for none
-	quote byte // the open string's quote, 0 outside strings
+	statements  []statement
+	directories []directive
+	buffer      strings.Builder
+	start       int  // line of the statement being built, 0 for none
+	quote       byte // the open string's quote, 0 outside strings
 }
 
 func (r *reader) add(c byte, line int) {
@@ -54,18 +54,18 @@ func (r *reader) add(c byte, line int) {
 		}
 		r.start = line
 	}
-	if r.buf.Len() < maxStatement {
-		r.buf.WriteByte(c)
+	if r.buffer.Len() < maxStatement {
+		r.buffer.WriteByte(c)
 	}
 }
 
 func (r *reader) flush() {
 	if r.start != 0 {
-		if t := strings.TrimSpace(r.buf.String()); t != "" {
-			r.stmts = append(r.stmts, statement{text: t, line: r.start})
+		if t := strings.TrimSpace(r.buffer.String()); t != "" {
+			r.statements = append(r.statements, statement{text: t, line: r.start})
 		}
 	}
-	r.buf.Reset()
+	r.buffer.Reset()
 	r.start = 0
 	r.quote = 0
 }
@@ -77,9 +77,9 @@ func directiveLine(line string) bool {
 	return strings.HasPrefix(t, "#") || strings.HasPrefix(t, "$:") || strings.HasPrefix(t, "@:")
 }
 
-// splitLines splits src into lines without their line terminators.
-func splitLines(src []byte) []string {
-	s := string(src)
+// splitLines splits source into lines without their line terminators.
+func splitLines(source []byte) []string {
+	s := string(source)
 	s = strings.TrimPrefix(s, "\xef\xbb\xbf")
 	lines := strings.Split(s, "\n")
 	for i, l := range lines {
@@ -97,7 +97,7 @@ func (r *reader) readDirective(lines []string, i int) int {
 		n++
 		text = strings.TrimSuffix(text, "\\") + " " + strings.TrimSpace(lines[i+n])
 	}
-	r.dirs = append(r.dirs, directive{text: text, line: i + 1})
+	r.directories = append(r.directories, directive{text: text, line: i + 1})
 	return n
 }
 
@@ -114,12 +114,12 @@ func ompSentinel(rest string) bool {
 // doubled inside.
 //
 // Implements: REQ-FORTRAN-002
-func readFree(src []byte) *reader {
+func readFree(source []byte) *reader {
 	r := &reader{}
-	lines := splitLines(src)
-	cont := false
+	lines := splitLines(source)
+	continued := false
 	for i := 0; i < len(lines); i++ {
-		line, ln := lines[i], i+1
+		line, lineNumber := lines[i], i+1
 		if r.quote == 0 && directiveLine(line) {
 			i += r.readDirective(lines, i)
 			continue
@@ -130,7 +130,7 @@ func readFree(src []byte) *reader {
 			line = strings.Replace(line, "!$", "  ", 1)
 			t = strings.TrimLeft(line, " \t")
 		}
-		if cont {
+		if continued {
 			if r.quote == 0 && (t == "" || t[0] == '!') {
 				continue // a comment or blank line between continuation lines
 			}
@@ -139,24 +139,24 @@ func readFree(src []byte) *reader {
 				j++
 			}
 		}
-		cont = false
+		continued = false
 	scan:
 		for ; j < len(line); j++ {
 			c := line[j]
 			if r.quote != 0 {
 				if c == r.quote {
 					if j+1 < len(line) && line[j+1] == r.quote {
-						r.add(c, ln)
-						r.add(c, ln)
+						r.add(c, lineNumber)
+						r.add(c, lineNumber)
 						j++
 						continue
 					}
 					r.quote = 0
 				} else if c == '&' && nextCode(line, j+1) == len(line) {
-					cont = true
+					continued = true
 					break scan
 				}
-				r.add(c, ln)
+				r.add(c, lineNumber)
 				continue
 			}
 			switch c {
@@ -169,16 +169,16 @@ func readFree(src []byte) *reader {
 				continue
 			case '&':
 				if k := nextCode(line, j+1); k == len(line) || line[k] == '!' {
-					cont = true
+					continued = true
 					break scan
 				}
 			}
-			r.add(c, ln)
+			r.add(c, lineNumber)
 		}
-		if !cont {
+		if !continued {
 			r.flush()
 		} else {
-			r.add(' ', ln)
+			r.add(' ', lineNumber)
 		}
 	}
 	r.flush()
@@ -202,11 +202,11 @@ func nextCode(line string, i int) int {
 // compilers are commonly told to take longer lines.
 //
 // Implements: REQ-FORTRAN-002
-func readFixed(src []byte) *reader {
+func readFixed(source []byte) *reader {
 	r := &reader{}
-	lines := splitLines(src)
+	lines := splitLines(source)
 	for i := 0; i < len(lines); i++ {
-		line, ln := lines[i], i+1
+		line, lineNumber := lines[i], i+1
 		if line == "" || strings.TrimSpace(line) == "" {
 			continue
 		}
@@ -231,14 +231,14 @@ func readFixed(src []byte) *reader {
 			if r.quote != 0 {
 				if c == r.quote {
 					if j+1 < len(code) && code[j+1] == r.quote {
-						r.add(c, ln)
-						r.add(c, ln)
+						r.add(c, lineNumber)
+						r.add(c, lineNumber)
 						j++
 						continue
 					}
 					r.quote = 0
 				}
-				r.add(c, ln)
+				r.add(c, lineNumber)
 				continue
 			}
 			if c == '!' {
@@ -251,7 +251,7 @@ func readFixed(src []byte) *reader {
 			if c == '\'' || c == '"' {
 				r.quote = c
 			}
-			r.add(c, ln)
+			r.add(c, lineNumber)
 		}
 	}
 	r.flush()
@@ -273,8 +273,8 @@ func fixedCode(line string) (string, bool) {
 	if len(line) < 6 {
 		return "", false // a label alone
 	}
-	cont := line[5] != ' ' && line[5] != '0' && strings.TrimSpace(line[:5]) == ""
-	return line[6:], cont
+	continued := line[5] != ' ' && line[5] != '0' && strings.TrimSpace(line[:5]) == ""
+	return line[6:], continued
 }
 
 // looksFree reports whether a file with a fixed-form extension is written in free
@@ -282,8 +282,8 @@ func fixedCode(line string) (string, bool) {
 // only comment markers and statement labels, or continues with `&` at its end.
 //
 // Implements: REQ-FORTRAN-002
-func looksFree(src []byte) bool {
-	for n, line := range splitLines(src) {
+func looksFree(source []byte) bool {
+	for n, line := range splitLines(source) {
 		if n > 2000 {
 			break
 		}
@@ -406,34 +406,34 @@ const maxDepth = 64
 
 // extractor holds the state of one file's extraction.
 type extractor struct {
-	ex      *lang.Extraction
-	symbols lang.SymbolSet
-	stack   []frame
-	uses    map[string]bool
+	extraction *lang.Extraction
+	symbols    lang.SymbolSet
+	stack      []frame
+	uses       map[string]bool
 }
 
 // Implements: REQ-FORTRAN-002, REQ-FORTRAN-003, REQ-FORTRAN-010, REQ-FORTRAN-011
-func extractSource(src []byte, fixed bool) *lang.Extraction {
+func extractSource(source []byte, fixed bool) *lang.Extraction {
 	var r *reader
-	if fixed && !looksFree(src) {
-		r = readFixed(src)
+	if fixed && !looksFree(source) {
+		r = readFixed(source)
 	} else {
-		r = readFree(src)
+		r = readFree(source)
 	}
-	x := &extractor{ex: &lang.Extraction{}, uses: map[string]bool{}}
-	di := 0
-	for _, st := range r.stmts {
-		for di < len(r.dirs) && r.dirs[di].line <= st.line {
-			x.directive(r.dirs[di])
-			di++
+	x := &extractor{extraction: &lang.Extraction{}, uses: map[string]bool{}}
+	directiveIndex := 0
+	for _, statement := range r.statements {
+		for directiveIndex < len(r.directories) && r.directories[directiveIndex].line <= statement.line {
+			x.directive(r.directories[directiveIndex])
+			directiveIndex++
 		}
-		x.statement(st)
+		x.statement(statement)
 	}
-	for ; di < len(r.dirs); di++ {
-		x.directive(r.dirs[di])
+	for ; directiveIndex < len(r.directories); directiveIndex++ {
+		x.directive(r.directories[directiveIndex])
 	}
-	x.ex.Symbols = x.symbols.List()
-	return x.ex
+	x.extraction.Symbols = x.symbols.List()
+	return x.extraction
 }
 
 // directive records #include "x", #include <x> and fypp's #:include "x".
@@ -481,13 +481,13 @@ func (x *extractor) directive(d directive) {
 	x.importOnce(lang.RawImport{Spec: shown, Module: spec, Name: kind, Line: d.line})
 }
 
-func (x *extractor) importOnce(im lang.RawImport) {
-	key := im.Name + "\x00" + im.Module
+func (x *extractor) importOnce(rawImport lang.RawImport) {
+	key := rawImport.Name + "\x00" + rawImport.Module
 	if x.uses[key] {
 		return
 	}
 	x.uses[key] = true
-	x.ex.Imports = append(x.ex.Imports, im)
+	x.extraction.Imports = append(x.extraction.Imports, rawImport)
 }
 
 func (x *extractor) push(kind, name string) {
@@ -541,28 +541,28 @@ func (x *extractor) symbol(name, kind string, line int, qualify bool) {
 	x.symbols.Add(name, kind, line)
 }
 
-// eos reports whether ts ends at i.
-func eos(ts []token, i int) bool { return i >= len(ts) }
+// pastEnd reports whether tokens ends at i.
+func pastEnd(tokens []token, i int) bool { return i >= len(tokens) }
 
-func word(ts []token, i int) string {
-	if i < len(ts) && ts[i].kind == 'w' {
-		return ts[i].lower
+func word(tokens []token, i int) string {
+	if i < len(tokens) && tokens[i].kind == 'w' {
+		return tokens[i].lower
 	}
 	return ""
 }
 
-func punct(ts []token, i int, p string) bool {
-	return i < len(ts) && ts[i].kind == 'p' && ts[i].text == p
+func punctuation(tokens []token, i int, p string) bool {
+	return i < len(tokens) && tokens[i].kind == 'p' && tokens[i].text == p
 }
 
-// skipParens returns the index after the parenthesized group starting at i.
-func skipParens(ts []token, i int) int {
+// skipParentheses returns the index after the parenthesized group starting at i.
+func skipParentheses(tokens []token, i int) int {
 	depth := 0
-	for ; i < len(ts); i++ {
-		if ts[i].kind != 'p' {
+	for ; i < len(tokens); i++ {
+		if tokens[i].kind != 'p' {
 			continue
 		}
-		switch ts[i].text {
+		switch tokens[i].text {
 		case "(":
 			depth++
 		case ")":
@@ -601,156 +601,156 @@ var typeWords = map[string]bool{
 }
 
 // Implements: REQ-FORTRAN-002, REQ-FORTRAN-003
-func (x *extractor) statement(st statement) {
-	ts := tokenize(st.text, 4)
-	if !x.relevant(ts, st.text) {
+func (x *extractor) statement(current statement) {
+	tokens := tokenize(current.text, 4)
+	if !x.relevant(tokens, current.text) {
 		return
 	}
-	ts = tokenize(st.text, maxTokens)
+	tokens = tokenize(current.text, maxTokens)
 	i := 0
-	if i < len(ts) && ts[i].kind == 'n' {
+	if i < len(tokens) && tokens[i].kind == 'n' {
 		i++ // a statement label
 	}
-	if word(ts, i) != "" && punct(ts, i+1, ":") {
+	if word(tokens, i) != "" && punctuation(tokens, i+1, ":") {
 		i += 2 // a construct name: outer: do ...
 	}
-	kw := word(ts, i)
-	if kw == "" {
+	keyword := word(tokens, i)
+	if keyword == "" {
 		return
 	}
-	line := st.line
-	switch kw {
+	line := current.line
+	switch keyword {
 	case "module":
-		next := word(ts, i+1)
+		next := word(tokens, i+1)
 		switch {
-		case next == "procedure" && word(ts, i+2) != "" && (eos(ts, i+3) || strings.Contains(ts[i+2].text, "$")):
+		case next == "procedure" && word(tokens, i+2) != "" && (pastEnd(tokens, i+3) || strings.Contains(tokens[i+2].text, "$")):
 			if x.inInterface() {
 				return // names module procedures of a generic interface
 			}
-			name := ts[i+2].text
+			name := tokens[i+2].text
 			x.symbol(name, "function", line, true)
 			x.push(frProcedure, name)
 			return
-		case next != "" && eos(ts, i+2) && next != "procedure":
-			x.symbol(ts[i+1].text, "module", line, false)
-			x.push(frModule, ts[i+1].text)
+		case next != "" && pastEnd(tokens, i+2) && next != "procedure":
+			x.symbol(tokens[i+1].text, "module", line, false)
+			x.push(frModule, tokens[i+1].text)
 			return
 		}
 	case "submodule":
-		if !punct(ts, i+1, "(") {
+		if !punctuation(tokens, i+1, "(") {
 			return
 		}
-		ancestor := word(ts, i+2)
+		ancestor := word(tokens, i+2)
 		j := i + 3
 		parent := ""
-		if punct(ts, j, ":") {
-			parent = word(ts, j+1)
+		if punctuation(tokens, j, ":") {
+			parent = word(tokens, j+1)
 			j += 2
 		}
-		if ancestor == "" || !punct(ts, j, ")") || word(ts, j+1) == "" || !eos(ts, j+2) {
+		if ancestor == "" || !punctuation(tokens, j, ")") || word(tokens, j+1) == "" || !pastEnd(tokens, j+2) {
 			return
 		}
-		mod, spec := ancestor, ancestor
+		module, spec := ancestor, ancestor
 		if parent != "" {
-			mod = ancestor + ":" + parent
+			module = ancestor + ":" + parent
 			spec = ancestor + ":" + parent
 		}
-		x.importOnce(lang.RawImport{Spec: "submodule (" + spec + ")", Module: mod, Name: kindSubmodule, Line: line})
-		name := ts[j+1].text
+		x.importOnce(lang.RawImport{Spec: "submodule (" + spec + ")", Module: module, Name: kindSubmodule, Line: line})
+		name := tokens[j+1].text
 		x.symbol(name, "submodule", line, false)
 		x.push(frSubmodule, name)
 		return
 	case "program":
-		if word(ts, i+1) != "" && eos(ts, i+2) {
-			x.symbol(ts[i+1].text, "program", line, false)
-			x.push(frProgram, ts[i+1].text)
+		if word(tokens, i+1) != "" && pastEnd(tokens, i+2) {
+			x.symbol(tokens[i+1].text, "program", line, false)
+			x.push(frProgram, tokens[i+1].text)
 		}
 		return
 	case "block", "blockdata":
 		j := i + 1
-		if kw == "block" {
-			if word(ts, j) != "data" {
+		if keyword == "block" {
+			if word(tokens, j) != "data" {
 				return
 			}
 			j++
 		}
-		if eos(ts, j) {
+		if pastEnd(tokens, j) {
 			x.push(frBlockData, "")
-		} else if word(ts, j) != "" && eos(ts, j+1) {
-			x.symbol(ts[j].text, "block data", line, false)
-			x.push(frBlockData, ts[j].text)
+		} else if word(tokens, j) != "" && pastEnd(tokens, j+1) {
+			x.symbol(tokens[j].text, "block data", line, false)
+			x.push(frBlockData, tokens[j].text)
 		}
 		return
 	case "type":
-		if name, ok := typeDefinition(ts, i+1); ok {
+		if name, ok := typeDefinition(tokens, i+1); ok {
 			x.symbol(name, "type", line, false)
 			x.push(frType, name)
 			return
 		}
 	case "interface", "abstract":
 		j := i + 1
-		if kw == "abstract" {
-			if word(ts, j) != "interface" {
+		if keyword == "abstract" {
+			if word(tokens, j) != "interface" {
 				return
 			}
 			j++
 		}
-		if eos(ts, j) {
+		if pastEnd(tokens, j) {
 			x.push(frInterface, "")
 			return
 		}
-		name := interfaceName(ts, j)
+		name := interfaceName(tokens, j)
 		if name == "" {
 			return // not an interface statement: interface = 1
 		}
-		if kw == "interface" {
+		if keyword == "interface" {
 			x.symbol(name, "interface", line, false)
 		}
 		x.push(frInterface, name)
 		return
 	case "enum":
-		if punct(ts, i+1, ",") {
+		if punctuation(tokens, i+1, ",") {
 			x.push(frEnum, "")
 		}
 		return
 	case "end":
-		x.end(ts, i+1)
+		x.end(tokens, i+1)
 		return
 	case "use":
-		x.use(ts, i+1, line)
+		x.use(tokens, i+1, line)
 		return
 	case "include":
-		if i+1 < len(ts) && ts[i+1].kind == 's' && eos(ts, i+2) && ts[i+1].text != "" {
-			spec := ts[i+1].text
+		if i+1 < len(tokens) && tokens[i+1].kind == 's' && pastEnd(tokens, i+2) && tokens[i+1].text != "" {
+			spec := tokens[i+1].text
 			x.importOnce(lang.RawImport{Spec: "include '" + spec + "'", Module: spec, Name: kindInclude, Line: line})
 		}
 		return
 	}
-	if k, ok := ends[kw]; ok {
+	if k, ok := ends[keyword]; ok {
 		x.close(k)
 		return
 	}
-	x.procedure(ts, i, line)
+	x.procedure(tokens, i, line)
 }
 
 // relevant reports, from a statement's first tokens, whether it can be one the
 // extractor reads: most statements are assignments, calls, control flow and
 // declarations, and are not tokenized in full.
-func (x *extractor) relevant(ts []token, text string) bool {
+func (x *extractor) relevant(tokens []token, text string) bool {
 	i := 0
-	if i < len(ts) && ts[i].kind == 'n' {
+	if i < len(tokens) && tokens[i].kind == 'n' {
 		i++
 	}
-	if word(ts, i) != "" && punct(ts, i+1, ":") {
+	if word(tokens, i) != "" && punctuation(tokens, i+1, ":") {
 		i += 2
 	}
-	kw := word(ts, i)
+	keyword := word(tokens, i)
 	switch {
-	case kw == "":
+	case keyword == "":
 		return false
-	case keywords[kw] || ends[kw] != "" || kw == "function" || kw == "subroutine":
+	case keywords[keyword] || ends[keyword] != "" || keyword == "function" || keyword == "subroutine":
 		return true
-	case prefixes[kw] || typeWords[kw] || kw == "double" || kw == "class":
+	case prefixes[keyword] || typeWords[keyword] || keyword == "double" || keyword == "class":
 		return containsFold(text, "function") || containsFold(text, "subroutine")
 	}
 	return false
@@ -782,36 +782,36 @@ func containsFold(s, w string) bool {
 // typeDefinition reads a derived type definition's name after TYPE: `type name`,
 // `type :: name`, `type, extends(a), public :: name` or `type name(k)` - not a
 // declaration `type(t) :: x`, a guard `type is (t)` or a DEC `type *, x`.
-func typeDefinition(ts []token, j int) (string, bool) {
+func typeDefinition(tokens []token, j int) (string, bool) {
 	switch {
-	case punct(ts, j, "::"):
-		if word(ts, j+1) != "" {
-			return ts[j+1].text, true
+	case punctuation(tokens, j, "::"):
+		if word(tokens, j+1) != "" {
+			return tokens[j+1].text, true
 		}
-	case punct(ts, j, ","):
+	case punctuation(tokens, j, ","):
 		depth := 0
-		for k := j; k < len(ts); k++ {
-			if ts[k].kind != 'p' {
+		for k := j; k < len(tokens); k++ {
+			if tokens[k].kind != 'p' {
 				continue
 			}
-			switch ts[k].text {
+			switch tokens[k].text {
 			case "(":
 				depth++
 			case ")":
 				depth--
 			case "::":
-				if depth == 0 && word(ts, k+1) != "" {
-					return ts[k+1].text, true
+				if depth == 0 && word(tokens, k+1) != "" {
+					return tokens[k+1].text, true
 				}
 				return "", false
 			}
 		}
-	case word(ts, j) != "":
-		if ts[j].lower == "is" && punct(ts, j+1, "(") {
+	case word(tokens, j) != "":
+		if tokens[j].lower == "is" && punctuation(tokens, j+1, "(") {
 			return "", false
 		}
-		if eos(ts, j+1) || punct(ts, j+1, "(") && eos(ts, skipParens(ts, j+1)) {
-			return ts[j].text, true
+		if pastEnd(tokens, j+1) || punctuation(tokens, j+1, "(") && pastEnd(tokens, skipParentheses(tokens, j+1)) {
+			return tokens[j].text, true
 		}
 	}
 	return "", false
@@ -820,32 +820,32 @@ func typeDefinition(ts []token, j int) (string, bool) {
 // interfaceName is a generic interface's name: a word, operator(.op.),
 // assignment(=), or read(formatted) and its kin; "" when the tokens are no
 // interface statement.
-func interfaceName(ts []token, j int) string {
-	w := word(ts, j)
+func interfaceName(tokens []token, j int) string {
+	w := word(tokens, j)
 	if w == "" {
 		return ""
 	}
-	if eos(ts, j+1) {
-		return ts[j].text
+	if pastEnd(tokens, j+1) {
+		return tokens[j].text
 	}
-	if !punct(ts, j+1, "(") {
+	if !punctuation(tokens, j+1, "(") {
 		return ""
 	}
-	end := skipParens(ts, j+1)
-	if !eos(ts, end) {
+	end := skipParentheses(tokens, j+1)
+	if !pastEnd(tokens, end) {
 		return ""
 	}
 	var b strings.Builder
 	b.WriteString(w)
 	for k := j + 1; k < end; k++ {
-		b.WriteString(ts[k].text)
+		b.WriteString(tokens[k].text)
 	}
 	return b.String()
 }
 
 // end handles END [kind [name]].
-func (x *extractor) end(ts []token, j int) {
-	if eos(ts, j) {
+func (x *extractor) end(tokens []token, j int) {
+	if pastEnd(tokens, j) {
 		for k := len(x.stack) - 1; k >= 0 && k >= len(x.stack)-8; k-- {
 			if units[x.stack[k].kind] {
 				x.stack = x.stack[:k]
@@ -854,10 +854,10 @@ func (x *extractor) end(ts []token, j int) {
 		}
 		return
 	}
-	kind := word(ts, j)
+	kind := word(tokens, j)
 	switch kind {
 	case "block":
-		if word(ts, j+1) != "data" {
+		if word(tokens, j+1) != "data" {
 			return // END BLOCK of a BLOCK construct
 		}
 		kind = frBlockData
@@ -884,11 +884,11 @@ func (x *extractor) close(kind string) {
 // use reads USE [, INTRINSIC | NON_INTRINSIC] [::] name [, only: ...].
 //
 // Implements: REQ-FORTRAN-002
-func (x *extractor) use(ts []token, j, line int) {
+func (x *extractor) use(tokens []token, j, line int) {
 	kind := kindUse
 	switch {
-	case punct(ts, j, ","):
-		switch word(ts, j+1) {
+	case punctuation(tokens, j, ","):
+		switch word(tokens, j+1) {
 		case "intrinsic":
 			kind = kindIntrinsic
 		case "non_intrinsic":
@@ -896,20 +896,20 @@ func (x *extractor) use(ts []token, j, line int) {
 		default:
 			return
 		}
-		if !punct(ts, j+2, "::") {
+		if !punctuation(tokens, j+2, "::") {
 			return
 		}
 		j += 3
-	case punct(ts, j, "::"):
+	case punctuation(tokens, j, "::"):
 		j++
 	}
-	name := word(ts, j)
-	if name == "" || !(eos(ts, j+1) || punct(ts, j+1, ",")) || !validName(ts[j].text) {
+	name := word(tokens, j)
+	if name == "" || !(pastEnd(tokens, j+1) || punctuation(tokens, j+1, ",")) || !validName(tokens[j].text) {
 		return
 	}
-	spec := "use " + ts[j].text
+	spec := "use " + tokens[j].text
 	if kind != kindUse {
-		spec = "use, " + kind + " :: " + ts[j].text
+		spec = "use, " + kind + " :: " + tokens[j].text
 	}
 	x.importOnce(lang.RawImport{Spec: spec, Module: name, Name: kind, Line: line})
 }
@@ -918,44 +918,44 @@ func (x *extractor) use(ts []token, j, line int) {
 // type: `pure elemental real(dp) function f(x)`, `module subroutine s`.
 //
 // Implements: REQ-FORTRAN-003
-func (x *extractor) procedure(ts []token, j, line int) {
-	for j < len(ts) {
-		w := word(ts, j)
+func (x *extractor) procedure(tokens []token, j, line int) {
+	for j < len(tokens) {
+		w := word(tokens, j)
 		switch {
 		case prefixes[w]:
 			j++
 			continue
-		case typeWords[w] || w == "double" && (word(ts, j+1) == "precision" || word(ts, j+1) == "complex"):
+		case typeWords[w] || w == "double" && (word(tokens, j+1) == "precision" || word(tokens, j+1) == "complex"):
 			if w == "double" {
 				j++
 			}
 			j++
-			if punct(ts, j, "(") {
-				j = skipParens(ts, j)
-			} else if punct(ts, j, "*") {
+			if punctuation(tokens, j, "(") {
+				j = skipParentheses(tokens, j)
+			} else if punctuation(tokens, j, "*") {
 				j++
-				if punct(ts, j, "(") {
-					j = skipParens(ts, j)
+				if punctuation(tokens, j, "(") {
+					j = skipParentheses(tokens, j)
 				} else {
 					j++
 				}
 			}
 			continue
-		case (w == "type" || w == "class") && punct(ts, j+1, "("):
-			j = skipParens(ts, j+1)
+		case (w == "type" || w == "class") && punctuation(tokens, j+1, "("):
+			j = skipParentheses(tokens, j+1)
 			continue
 		}
 		break
 	}
-	w := word(ts, j)
-	if w != "function" && w != "subroutine" || word(ts, j+1) == "" {
+	w := word(tokens, j)
+	if w != "function" && w != "subroutine" || word(tokens, j+1) == "" {
 		return
 	}
-	templated := strings.Contains(ts[j+1].text, "$") // a fypp name: f_${k}$
-	if !templated && !(eos(ts, j+2) || punct(ts, j+2, "(") || word(ts, j+2) == "bind" || word(ts, j+2) == "result") {
+	templated := strings.Contains(tokens[j+1].text, "$") // a fypp name: f_${k}$
+	if !templated && !(pastEnd(tokens, j+2) || punctuation(tokens, j+2, "(") || word(tokens, j+2) == "bind" || word(tokens, j+2) == "result") {
 		return
 	}
-	name := ts[j+1].text
+	name := tokens[j+1].text
 	kind := frFunction
 	if w == "subroutine" {
 		kind = frSubroutine

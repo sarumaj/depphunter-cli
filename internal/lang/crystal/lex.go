@@ -4,7 +4,7 @@ import "strings"
 
 // The lexer reads what the extraction needs from Crystal: identifiers and
 // constants, punctuation, and literals as single tokens so nothing inside a
-// string, a heredoc, a regex, a %-literal, a char or a comment is read as code.
+// string, a heredoc, a regex, a %-literal, a character or a comment is read as code.
 // Macro control ({% ... %}) and macro expressions ({{ ... }}) are opaque tokens
 // too, so a `{% end %}` does not close a block and `def {{name}}` defines nothing
 // the map could name.
@@ -12,17 +12,17 @@ import "strings"
 type kind uint8
 
 const (
-	kIdent  kind = iota // identifiers and keywords, with a trailing ? or !
-	kConst              // capitalized identifiers
-	kString             // "..", `..`, %(..), heredocs; text is the raw content
-	kChar
+	kIdentifier kind = iota // identifiers and keywords, with a trailing ? or !
+	kConstant               // capitalized identifiers
+	kString                 // "..", `..`, %(..), heredocs; text is the raw content
+	kCharacter
 	kNumber
 	kSymbol
 	kRegex
-	kVar    // @x, @@x, $x
-	kMacro  // {% ... %}
-	kExpand // {{ ... }}
-	kPunct
+	kVariable // @x, @@x, $x
+	kMacro    // {% ... %}
+	kExpand   // {{ ... }}
+	kPunctuation
 )
 
 type token struct {
@@ -52,14 +52,14 @@ type lexer struct {
 type heredoc struct {
 	id          string
 	interpolate bool
-	tok         int // index of its token
+	token       int // index of its token
 }
 
-// lex splits src into tokens.
+// lex splits source into tokens.
 //
 // Implements: REQ-CRYSTAL-010
-func lex(src []byte) []token {
-	s := string(src)
+func lex(source []byte) []token {
+	s := string(source)
 	s = strings.TrimPrefix(s, "\xef\xbb\xbf")
 	l := &lexer{s: s, line: 1, first: true}
 	l.run()
@@ -79,9 +79,9 @@ func (l *lexer) operand() bool {
 	}
 	t := l.tokens[len(l.tokens)-1]
 	switch t.kind {
-	case kIdent:
-		return !exprKeywords[t.text]
-	case kPunct:
+	case kIdentifier:
+		return !expressionKeywords[t.text]
+	case kPunctuation:
 		return t.text == ")" || t.text == "]" || t.text == "}"
 	case kMacro:
 		return false
@@ -89,22 +89,22 @@ func (l *lexer) operand() bool {
 	return true
 }
 
-// exprKeywords are keywords an expression follows.
-var exprKeywords = map[string]bool{
+// expressionKeywords are keywords an expression follows.
+var expressionKeywords = map[string]bool{
 	"if": true, "unless": true, "while": true, "until": true, "return": true, "break": true, "next": true,
 	"when": true, "case": true, "in": true, "else": true, "elsif": true, "then": true, "do": true,
 	"yield": true, "begin": true, "ensure": true, "require": true, "puts": true, "p": true, "raise": true,
 }
 
-// callArg reports whether the last token is a method name written before an
+// callArgument reports whether the last token is a method name written before an
 // argument without parentheses (`foo /re/`, `puts %w(a)`): an identifier
 // followed by a space, with no space after the operator character at i.
-func (l *lexer) callArg() bool {
+func (l *lexer) callArgument() bool {
 	if len(l.tokens) == 0 || !l.space {
 		return false
 	}
 	t := l.tokens[len(l.tokens)-1]
-	if t.kind != kIdent || exprKeywords[t.text] {
+	if t.kind != kIdentifier || expressionKeywords[t.text] {
 		return false
 	}
 	c := byte('\n')
@@ -138,20 +138,20 @@ func (l *lexer) run() {
 			for l.i < len(s) && s[l.i] != '\n' {
 				l.i++
 			}
-		case isIdentStart(c):
-			l.ident()
+		case isIdentifierStart(c):
+			l.identifier()
 		case c >= '0' && c <= '9':
 			start := l.i
-			for l.i < len(s) && (isIdentChar(s[l.i]) || s[l.i] == '.' && l.i+1 < len(s) && s[l.i+1] >= '0' && s[l.i+1] <= '9') {
+			for l.i < len(s) && (isIdentifierCharacter(s[l.i]) || s[l.i] == '.' && l.i+1 < len(s) && s[l.i+1] >= '0' && s[l.i+1] <= '9') {
 				l.i++
 			}
 			l.emit(kNumber, s[start:l.i])
-		case (c == '`' || c == '/' || c == '%') && l.afterDef():
-			l.punct() // def `(cmd), def /(other), def %(other)
+		case (c == '`' || c == '/' || c == '%') && l.afterDefinition():
+			l.punctuation() // def `(cmd), def /(other), def %(other)
 		case c == '"' || c == '`':
-			l.str(c, 0, true, false)
+			l.readString(c, 0, true, false)
 		case c == '\'':
-			l.char()
+			l.character()
 		case c == ':':
 			l.colon()
 		case c == '@':
@@ -160,20 +160,20 @@ func (l *lexer) run() {
 			if l.i < len(s) && s[l.i] == '@' {
 				l.i++
 			}
-			if l.i < len(s) && isIdentStart(s[l.i]) {
-				for l.i < len(s) && isIdentChar(s[l.i]) {
+			if l.i < len(s) && isIdentifierStart(s[l.i]) {
+				for l.i < len(s) && isIdentifierCharacter(s[l.i]) {
 					l.i++
 				}
-				l.emit(kVar, s[start:l.i])
+				l.emit(kVariable, s[start:l.i])
 			} else {
 				l.i = start + 1
-				l.emit(kPunct, "@")
+				l.emit(kPunctuation, "@")
 			}
 		case c == '$':
 			start := l.i
 			l.i++
-			if l.i < len(s) && isIdentStart(s[l.i]) {
-				for l.i < len(s) && isIdentChar(s[l.i]) {
+			if l.i < len(s) && isIdentifierStart(s[l.i]) {
+				for l.i < len(s) && isIdentifierCharacter(s[l.i]) {
 					l.i++
 				}
 			} else if l.i < len(s) && s[l.i] != '\n' {
@@ -182,53 +182,53 @@ func (l *lexer) run() {
 					l.i++
 				}
 			}
-			l.emit(kVar, s[start:l.i])
+			l.emit(kVariable, s[start:l.i])
 		case c == '{' && l.i+1 < len(s) && (s[l.i+1] == '%' || s[l.i+1] == '{'):
 			l.macro()
-		case c == '<' && strings.HasPrefix(s[l.i:], "<<-") && l.i+3 < len(s) && (isIdentStart(s[l.i+3]) || s[l.i+3] == '\''):
+		case c == '<' && strings.HasPrefix(s[l.i:], "<<-") && l.i+3 < len(s) && (isIdentifierStart(s[l.i+3]) || s[l.i+3] == '\''):
 			l.heredocStart()
-		case c == '/' && (!l.operand() || l.callArg()):
+		case c == '/' && (!l.operand() || l.callArgument()):
 			if !l.regex() {
-				l.punct()
+				l.punctuation()
 			}
-		case c == '%' && (!l.operand() || l.callArg()) && l.percent():
+		case c == '%' && (!l.operand() || l.callArgument()) && l.percent():
 		default:
-			l.punct()
+			l.punctuation()
 		}
 	}
 }
 
-// afterDef reports whether the last token is `def` or a `.`, after which an
+// afterDefinition reports whether the last token is `def` or a `.`, after which an
 // operator character is a method's name.
-func (l *lexer) afterDef() bool {
+func (l *lexer) afterDefinition() bool {
 	if len(l.tokens) == 0 {
 		return false
 	}
 	t := l.tokens[len(l.tokens)-1]
-	return t.kind == kIdent && t.text == "def" || t.kind == kPunct && t.text == "."
+	return t.kind == kIdentifier && t.text == "def" || t.kind == kPunctuation && t.text == "."
 }
 
-func isIdentStart(c byte) bool {
+func isIdentifierStart(c byte) bool {
 	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '_' || c >= 0x80
 }
 
-func isIdentChar(c byte) bool {
-	return isIdentStart(c) || c >= '0' && c <= '9'
+func isIdentifierCharacter(c byte) bool {
+	return isIdentifierStart(c) || c >= '0' && c <= '9'
 }
 
-func (l *lexer) ident() {
+func (l *lexer) identifier() {
 	s := l.s
 	start := l.i
-	for l.i < len(s) && isIdentChar(s[l.i]) {
+	for l.i < len(s) && isIdentifierCharacter(s[l.i]) {
 		l.i++
 	}
 	// foo? and foo! are method names; foo!= is foo followed by !=.
 	if l.i < len(s) && (s[l.i] == '?' || s[l.i] == '!') && (l.i+1 >= len(s) || s[l.i+1] != '=') {
 		l.i++
 	}
-	k := kIdent
+	k := kIdentifier
 	if c := s[start]; c >= 'A' && c <= 'Z' {
-		k = kConst
+		k = kConstant
 	}
 	l.emit(k, s[start:l.i])
 	// A label is `name:` followed by something other than a second colon.
@@ -237,19 +237,19 @@ func (l *lexer) ident() {
 	}
 }
 
-var puncts = []string{"<=>", "===", "...", "**=", "<<=", ">>=", "&&=", "||=", "//=", "//", "::", "->", "=>", "==", "!=", "=~", "!~",
+var punctuations = []string{"<=>", "===", "...", "**=", "<<=", ">>=", "&&=", "||=", "//=", "//", "::", "->", "=>", "==", "!=", "=~", "!~",
 	"<=", ">=", "&&", "||", "**", "<<", ">>", "+=", "-=", "*=", "/=", "%=", "|=", "&=", "^=", "..", "&."}
 
-func (l *lexer) punct() {
+func (l *lexer) punctuation() {
 	rest := l.s[l.i:]
-	for _, p := range puncts {
+	for _, p := range punctuations {
 		if strings.HasPrefix(rest, p) {
-			l.emit(kPunct, p)
+			l.emit(kPunctuation, p)
 			l.i += len(p)
 			return
 		}
 	}
-	l.emit(kPunct, rest[:1])
+	l.emit(kPunctuation, rest[:1])
 	l.i++
 }
 
@@ -258,14 +258,14 @@ func (l *lexer) colon() {
 	s := l.s
 	start := l.i
 	if strings.HasPrefix(s[l.i:], "::") {
-		l.punct()
+		l.punctuation()
 		return
 	}
 	if l.i+1 < len(s) {
 		switch c := s[l.i+1]; {
-		case isIdentStart(c):
+		case isIdentifierStart(c):
 			l.i++
-			for l.i < len(s) && isIdentChar(s[l.i]) {
+			for l.i < len(s) && isIdentifierCharacter(s[l.i]) {
 				l.i++
 			}
 			if l.i < len(s) && (s[l.i] == '?' || s[l.i] == '!' || s[l.i] == '=') && (l.i+1 >= len(s) || s[l.i+1] != '=' && s[l.i+1] != '>') {
@@ -275,17 +275,17 @@ func (l *lexer) colon() {
 			return
 		case c == '"':
 			l.i++
-			l.str('"', 0, true, false)
+			l.readString('"', 0, true, false)
 			l.tokens[len(l.tokens)-1].kind = kSymbol
 			return
 		}
 	}
-	l.punct()
+	l.punctuation()
 }
 
-// char reads a char literal: 'a', '\n', '\u{1F600}', '\”. A quote that does not
+// character reads a char literal: 'a', '\n', '\u{1F600}', '\”. A quote that does not
 // start one within a few bytes is punctuation.
-func (l *lexer) char() {
+func (l *lexer) character() {
 	s := l.s
 	start := l.i
 	j := start + 1
@@ -293,7 +293,7 @@ func (l *lexer) char() {
 		for k := j + 2; k < len(s) && k < start+16 && s[k] != '\n'; k++ {
 			if s[k] == '\'' {
 				l.i = k + 1
-				l.emit(kChar, s[start:l.i])
+				l.emit(kCharacter, s[start:l.i])
 				return
 			}
 		}
@@ -304,17 +304,17 @@ func (l *lexer) char() {
 		}
 		if j < len(s) && s[j] == '\'' {
 			l.i = j + 1
-			l.emit(kChar, s[start:l.i])
+			l.emit(kCharacter, s[start:l.i])
 			return
 		}
 	}
-	l.punct()
+	l.punctuation()
 }
 
-// str reads a string from its opening delimiter at l.i to the closing one, open
+// readString reads a string from its opening delimiter at l.i to the closing one, open
 // being the bracket a %-literal nests (0 for none); a raw string (%q) has no
 // escapes.
-func (l *lexer) str(closing, open byte, interpolate, raw bool) {
+func (l *lexer) readString(closing, open byte, interpolate, raw bool) {
 	l.i++
 	body := l.i
 	has := false
@@ -466,7 +466,7 @@ func (l *lexer) percent() bool {
 		return false
 	}
 	l.i = j
-	l.str(closing, open, interpolate, raw)
+	l.readString(closing, open, interpolate, raw)
 	return true
 }
 
@@ -526,7 +526,7 @@ func (l *lexer) heredocStart() {
 		j++
 	}
 	idStart := j
-	for j < len(s) && isIdentChar(s[j]) {
+	for j < len(s) && isIdentifierCharacter(s[j]) {
 		j++
 	}
 	id := s[idStart:j]
@@ -534,10 +534,10 @@ func (l *lexer) heredocStart() {
 		j++
 	}
 	if id == "" {
-		l.punct()
+		l.punctuation()
 		return
 	}
-	l.pending = append(l.pending, heredoc{id: id, interpolate: interpolate, tok: len(l.tokens)})
+	l.pending = append(l.pending, heredoc{id: id, interpolate: interpolate, token: len(l.tokens)})
 	l.emit(kString, "")
 	l.i = j
 }
@@ -556,7 +556,7 @@ func (l *lexer) heredocBodies() {
 			}
 			line := strings.TrimSpace(s[l.i:lineEnd])
 			if line == h.id {
-				t := &l.tokens[h.tok]
+				t := &l.tokens[h.token]
 				t.text = s[body:l.i]
 				t.interpolate = h.interpolate && strings.Contains(t.text, "#{")
 				l.i = lineEnd

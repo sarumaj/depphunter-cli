@@ -38,7 +38,7 @@ const SKIP = [/(^|\/)vendor\//, /(^|\/)node_modules\//, /(^|\/)testdata\//, /^do
 const TEXT = /(\.(go|m?js|ts|py|sh|ya?ml|css|html)|(^|\/)go\.mod)$/;
 
 const errors = [];
-const fail = (msg) => errors.push(msg);
+const fail = (message) => errors.push(message);
 
 /** Parses the small YAML subset the requirement front matter uses. */
 function frontMatter(text, file) {
@@ -57,12 +57,12 @@ function frontMatter(text, file) {
       else out[list].push(unquote(item[1]));
       continue;
     }
-    const kv = /^([a-z_]+):\s*(.*)$/.exec(line);
-    if (!kv) {
+    const pair = /^([a-z_]+):\s*(.*)$/.exec(line);
+    if (!pair) {
       fail(`${file}: cannot read front matter line: ${line}`);
       continue;
     }
-    const [, key, value] = kv;
+    const [, key, value] = pair;
     if (value === '') {
       out[key] = [];
       list = key;
@@ -82,12 +82,12 @@ const unquote = (s) => s.replace(/^(['"])(.*)\1$/, '$2');
 function loadRequirements() {
   const requirements = [];
   for (const scope of readdirSync(REQ_DIR).sort()) {
-    const dir = join(REQ_DIR, scope);
-    if (!statSync(dir).isDirectory()) continue;
-    for (const name of readdirSync(dir).sort()) {
+    const directory = join(REQ_DIR, scope);
+    if (!statSync(directory).isDirectory()) continue;
+    for (const name of readdirSync(directory).sort()) {
       if (!name.endsWith('.md')) continue;
-      const file = relative(ROOT, join(dir, name)).split(sep).join('/');
-      const fm = frontMatter(readFileSync(join(dir, name), 'utf8'), file);
+      const file = relative(ROOT, join(directory, name)).split(sep).join('/');
+      const fm = frontMatter(readFileSync(join(directory, name), 'utf8'), file);
       if (!fm) continue;
       for (const key of REQUIRED) if (fm[key] === undefined) fail(`${file}: missing ${key}`);
       if (!ID.test(fm.id ?? '')) fail(`${file}: malformed id ${fm.id}`);

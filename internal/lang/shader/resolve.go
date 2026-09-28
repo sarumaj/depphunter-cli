@@ -15,12 +15,12 @@ import (
 )
 
 type resolver struct {
-	files   map[string]bool
-	folded  map[string]string   // lower-case path -> path
-	byBase  map[string][]string // lower-case file name -> paths
-	modules map[string][]string // naga_oil #define_import_path -> the files declaring it
-	inc     func() cpp.Includes
-	crates  func() *rust.Crates // nil without a Cargo.toml
+	files         map[string]bool
+	folded        map[string]string   // lower-case path -> path
+	byBase        map[string][]string // lower-case file name -> paths
+	modules       map[string][]string // naga_oil #define_import_path -> the files declaring it
+	includeSearch func() cpp.Includes
+	crates        func() *rust.Crates // nil without a Cargo.toml
 }
 
 var defineImportPath = regexp.MustCompile(`(?m)^[ \t]*#[ \t]*define_import_path[ \t]+([\w:]+)`)
@@ -35,16 +35,16 @@ func newResolver(root string, all []*scan.File) *resolver {
 		r.folded[lower] = f.Path
 		r.byBase[path.Base(lower)] = append(r.byBase[path.Base(lower)], f.Path)
 		cargo = cargo || path.Base(f.Path) == "Cargo.toml"
-		if exts[strings.ToLower(path.Ext(f.Path))] != wgsl || f.Binary || f.TooLarge || f.Size > lang.MaxParseSize {
+		if extensions[strings.ToLower(path.Ext(f.Path))] != wgsl || f.Binary || f.TooLarge || f.Size > lang.MaxParseSize {
 			continue
 		}
-		if src, err := os.ReadFile(f.Abs); err == nil && bytes.Contains(src, []byte("define_import_path")) {
-			for _, m := range defineImportPath.FindAllSubmatch(src, -1) {
+		if source, err := os.ReadFile(f.AbsolutePath); err == nil && bytes.Contains(source, []byte("define_import_path")) {
+			for _, m := range defineImportPath.FindAllSubmatch(source, -1) {
 				r.modules[string(m[1])] = append(r.modules[string(m[1])], f.Path)
 			}
 		}
 	}
-	r.inc = sync.OnceValue(func() cpp.Includes { return cpp.NewIncludes(root, all) })
+	r.includeSearch = sync.OnceValue(func() cpp.Includes { return cpp.NewIncludes(root, all) })
 	r.crates = sync.OnceValue(func() *rust.Crates {
 		if !cargo {
 			return nil
@@ -56,11 +56,11 @@ func newResolver(root string, all []*scan.File) *resolver {
 }
 
 // Implements: REQ-SHADER-004, REQ-SHADER-006, REQ-SHADER-007
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	if imp.Name == nagaImport || imp.Name == weslImport {
-		return r.module(file, imp.Module)
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	if rawImport.Name == nagaImport || rawImport.Name == weslImport {
+		return r.module(file, rawImport.Module)
 	}
-	return r.include(file, imp)
+	return r.include(file, rawImport)
 }
 
 // drop answers the cpp resolution for every header that is not the project's: a
@@ -73,12 +73,12 @@ func drop(string, bool) (lang.Target, bool) { return lang.Target{}, true }
 // file whose path ends in it, ignoring case.
 //
 // Implements: REQ-SHADER-004, REQ-SHADER-009
-func (r *resolver) include(file string, imp lang.RawImport) lang.Target {
-	name := strings.ReplaceAll(imp.Module, `\`, "/")
+func (r *resolver) include(file string, rawImport lang.RawImport) lang.Target {
+	name := strings.ReplaceAll(rawImport.Module, `\`, "/")
 	if strings.HasPrefix(name, "/") {
 		return r.virtual(file, name)
 	}
-	if t := r.inc().Resolve(file, imp, drop); t.Local != "" {
+	if t := r.includeSearch().Resolve(file, rawImport, drop); t.Local != "" {
 		return t
 	}
 	if p := r.upward(file, name); p != "" {
@@ -94,9 +94,9 @@ func (r *resolver) include(file string, imp lang.RawImport) lang.Target {
 // exactly, else ignoring case.
 func (r *resolver) upward(file, name string) string {
 	for _, fold := range []bool{false, true} {
-		dir := path.Dir(file)
+		directory := path.Dir(file)
 		for {
-			p := path.Join(dir, name)
+			p := path.Join(directory, name)
 			if !strings.HasPrefix(p, "../") {
 				if r.files[p] {
 					return p
@@ -105,10 +105,10 @@ func (r *resolver) upward(file, name string) string {
 					return q
 				}
 			}
-			if dir == "." || dir == "/" {
+			if directory == "." || directory == "/" {
 				break
 			}
-			dir = path.Dir(dir)
+			directory = path.Dir(directory)
 		}
 	}
 	return ""
@@ -126,7 +126,7 @@ func (r *resolver) virtual(file, name string) lang.Target {
 		if p := r.suffix(file, "Engine/Shaders/"+rest); p != "" {
 			return lang.Target{Local: p}
 		}
-		return lang.Target{Ecosystem: ecoUnreal, Package: "Engine"}
+		return lang.Target{Ecosystem: ecosystemUnreal, Package: "Engine"}
 	case "Plugin":
 		plugin, rest, _ := strings.Cut(rest, "/")
 		if p := r.suffix(file, plugin+"/Shaders/"+rest); p != "" {
@@ -135,7 +135,7 @@ func (r *resolver) virtual(file, name string) lang.Target {
 		if plugin == "" || rest == "" {
 			return lang.Target{}
 		}
-		return lang.Target{Ecosystem: ecoUnreal, Package: plugin}
+		return lang.Target{Ecosystem: ecosystemUnreal, Package: plugin}
 	case "Project":
 		if p := r.suffix(file, "Shaders/"+rest); p != "" {
 			return lang.Target{Local: p}
@@ -159,15 +159,15 @@ func (r *resolver) suffix(file, name string) string {
 		return ""
 	}
 	var best string
-	bestLen, tie := -1, false
+	bestLength, tie := -1, false
 	for _, p := range r.byBase[path.Base(name)] {
 		if l := strings.ToLower(p); l != name && !strings.HasSuffix(l, "/"+name) {
 			continue
 		}
-		switch n := commonDirs(file, p); {
-		case n > bestLen:
-			best, bestLen, tie = p, n, false
-		case n == bestLen:
+		switch n := commonDirectories(file, p); {
+		case n > bestLength:
+			best, bestLength, tie = p, n, false
+		case n == bestLength:
 			tie = true
 		}
 	}
@@ -177,44 +177,44 @@ func (r *resolver) suffix(file, name string) string {
 	return best
 }
 
-func commonDirs(a, b string) int {
-	as, bs := strings.Split(path.Dir(a), "/"), strings.Split(path.Dir(b), "/")
+func commonDirectories(a, b string) int {
+	aParts, bParts := strings.Split(path.Dir(a), "/"), strings.Split(path.Dir(b), "/")
 	n := 0
-	for n < len(as) && n < len(bs) && as[n] == bs[n] && as[n] != "." {
+	for n < len(aParts) && n < len(bParts) && aParts[n] == bParts[n] && aParts[n] != "." {
 		n++
 	}
 	return n
 }
 
-// moduleExts are the extensions of a WGSL module's file.
-var moduleExts = []string{".wesl", ".wgsl"}
+// moduleExtensions are the extensions of a WGSL module's file.
+var moduleExtensions = []string{".wesl", ".wgsl"}
 
 // module follows a WGSL import: a quoted file, a path below the package root
 // (package::), the importer's parent (super::), a module some file declares with
 // #define_import_path, or a crate the Cargo manifests declare.
 //
 // Implements: REQ-SHADER-006, REQ-SHADER-007
-func (r *resolver) module(file, mod string) lang.Target {
-	if strings.HasPrefix(mod, `"`) {
-		return r.quoted(file, mod)
+func (r *resolver) module(file, module string) lang.Target {
+	if strings.HasPrefix(module, `"`) {
+		return r.quoted(file, module)
 	}
-	segments := strings.Split(mod, "::")
+	segments := strings.Split(module, "::")
 	switch segments[0] {
 	case "package":
-		for dir := path.Dir(file); ; dir = path.Dir(dir) {
-			if p := r.probe(dir, segments[1:]); p != "" {
+		for directory := path.Dir(file); ; directory = path.Dir(directory) {
+			if p := r.probe(directory, segments[1:]); p != "" {
 				return lang.Target{Local: p}
 			}
-			if dir == "." || dir == "/" {
+			if directory == "." || directory == "/" {
 				return lang.Target{}
 			}
 		}
 	case "super":
-		dir := path.Dir(file)
+		directory := path.Dir(file)
 		for segments = segments[1:]; len(segments) > 0 && segments[0] == "super"; segments = segments[1:] {
-			dir = path.Dir(dir)
+			directory = path.Dir(directory)
 		}
-		if p := r.probe(dir, segments); p != "" {
+		if p := r.probe(directory, segments); p != "" {
 			return lang.Target{Local: p}
 		}
 		return lang.Target{}
@@ -266,22 +266,22 @@ func (r *resolver) crate(file string, segments []string) lang.Target {
 	// Bevy's crates are released together: the lock's version, else bevy's
 	// requirement.
 	if v := c.Locked(segments[0]); v != "" {
-		return lang.Target{Ecosystem: ecoCrates, Package: segments[0], Version: v, Pinned: true}
+		return lang.Target{Ecosystem: ecosystemCrates, Package: segments[0], Version: v, Pinned: true}
 	}
 	v := bevy.Requested
 	if v == "" {
 		v = bevy.Version
 	}
-	return lang.Target{Ecosystem: ecoCrates, Package: segments[0], Version: v}
+	return lang.Target{Ecosystem: ecosystemCrates, Package: segments[0], Version: v}
 }
 
-// probe finds the module file of the longest prefix of segments below dir.
-func (r *resolver) probe(dir string, segments []string) string {
+// probe finds the module file of the longest prefix of segments below directory.
+func (r *resolver) probe(directory string, segments []string) string {
 	for k := len(segments); k >= 1; k-- {
-		p := path.Join(append([]string{dir}, segments[:k]...)...)
-		for _, ext := range moduleExts {
-			if r.files[p+ext] {
-				return p + ext
+		p := path.Join(append([]string{directory}, segments[:k]...)...)
+		for _, extension := range moduleExtensions {
+			if r.files[p+extension] {
+				return p + extension
 			}
 		}
 	}
@@ -292,14 +292,14 @@ func (r *resolver) probe(dir string, segments []string) string {
 // below an assets/ directory; embedded://crate/path): beside the importer, below
 // an assets/ directory or directly under one of its parents, else the only file so
 // ending.
-func (r *resolver) quoted(file, mod string) lang.Target {
-	name, _, _ := strings.Cut(strings.TrimPrefix(mod, `"`), `"`)
+func (r *resolver) quoted(file, module string) lang.Target {
+	name, _, _ := strings.Cut(strings.TrimPrefix(module, `"`), `"`)
 	if _, rest, ok := strings.Cut(name, "://"); ok {
 		// embedded://bevy_pbr/render/pbr.wgsl is a file below the crate's src/.
 		name = strings.TrimPrefix(rest, "/")
-		if crate, sub, ok := strings.Cut(name, "/"); ok && r.crates() != nil {
-			if t, ok := r.crates().Crate(file, crate); ok && t.Local != "" && r.files[path.Join(t.Local, "src", sub)] {
-				return lang.Target{Local: path.Join(t.Local, "src", sub)}
+		if crate, subpath, ok := strings.Cut(name, "/"); ok && r.crates() != nil {
+			if t, ok := r.crates().Crate(file, crate); ok && t.Local != "" && r.files[path.Join(t.Local, "src", subpath)] {
+				return lang.Target{Local: path.Join(t.Local, "src", subpath)}
 			}
 		}
 	}
@@ -307,13 +307,13 @@ func (r *resolver) quoted(file, mod string) lang.Target {
 	if name == "" {
 		return lang.Target{}
 	}
-	for dir := path.Dir(file); ; dir = path.Dir(dir) {
-		for _, p := range []string{path.Join(dir, name), path.Join(dir, "assets", name)} {
+	for directory := path.Dir(file); ; directory = path.Dir(directory) {
+		for _, p := range []string{path.Join(directory, name), path.Join(directory, "assets", name)} {
 			if r.files[p] && !strings.HasPrefix(p, "../") {
 				return lang.Target{Local: p}
 			}
 		}
-		if dir == "." || dir == "/" {
+		if directory == "." || directory == "/" {
 			break
 		}
 	}
@@ -326,10 +326,10 @@ func (r *resolver) quoted(file, mod string) lang.Target {
 // closest is the file sharing the most directories with from; the first listed on a
 // tie.
 func closest(from string, files []string) string {
-	best, bestLen := files[0], -1
+	best, bestLength := files[0], -1
 	for _, f := range files {
-		if n := commonDirs(from, f); n > bestLen {
-			best, bestLen = f, n
+		if n := commonDirectories(from, f); n > bestLength {
+			best, bestLength = f, n
 		}
 	}
 	return best

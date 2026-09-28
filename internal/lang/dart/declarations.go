@@ -43,7 +43,7 @@ func members(tokens []token, i, end int, owner string, symbols *lang.SymbolSet) 
 		if i >= end {
 			return
 		}
-		if t := tokens[i]; t.kind == tPunct && (t.text == ";" || t.text == "}" || t.text == ")" || t.text == "]") {
+		if t := tokens[i]; t.kind == tPunctuation && (t.text == ";" || t.text == "}" || t.text == ")" || t.text == "]") {
 			i++ // stray: an empty declaration or what a broken file left over
 			continue
 		}
@@ -74,17 +74,17 @@ func members(tokens []token, i, end int, owner string, symbols *lang.SymbolSet) 
 func header(tokens []token, i, end int) ([]token, int, int) {
 	start := i
 	depth := 0
-	expr := false     // after `=` or `=>`: braces are part of an expression
-	initList := false // a constructor's `: x = 1, super(...)` before its body
+	expression := false // after `=` or `=>`: braces are part of an expression
+	initList := false   // a constructor's `: x = 1, super(...)` before its body
 	for ; i < end; i++ {
 		t := tokens[i]
-		if t.kind == tIdent && t.text == "operator" {
-			for i+1 < end && tokens[i+1].kind == tPunct && tokens[i+1].text != "(" {
+		if t.kind == tIdentifier && t.text == "operator" {
+			for i+1 < end && tokens[i+1].kind == tPunctuation && tokens[i+1].text != "(" {
 				i++ // `operator []=`: not an assignment
 			}
 			continue
 		}
-		if t.kind != tPunct {
+		if t.kind != tPunctuation {
 			continue
 		}
 		switch t.text {
@@ -93,19 +93,19 @@ func header(tokens []token, i, end int) ([]token, int, int) {
 		case ")", "]":
 			depth--
 		case ":":
-			if depth == 0 && !expr && i > start && tokens[i-1].text == ")" {
+			if depth == 0 && !expression && i > start && tokens[i-1].text == ")" {
 				initList = true
 			}
 		case "=", "=>":
 			if depth == 0 && !initList {
-				expr = true
+				expression = true
 			}
 		case ";":
 			if depth <= 0 {
 				return tokens[start:i], i + 1, -1
 			}
 		case "{":
-			if depth > 0 || expr {
+			if depth > 0 || expression {
 				i = matching(tokens[:end], i)
 				continue
 			}
@@ -146,12 +146,12 @@ func classify(h []token, owner string) (string, string, int, bool) {
 	// Modifiers are skipped while a name follows them: in `final base = 1`, base is
 	// the variable.
 	j := 0
-	for j+1 < len(h) && h[j].kind == tIdent && modifiers[h[j].text] && h[j+1].kind == tIdent {
+	for j+1 < len(h) && h[j].kind == tIdentifier && modifiers[h[j].text] && h[j+1].kind == tIdentifier {
 		j++
 	}
 	// `abstract base class`, `sealed class`, `mixin class`: a class.
-	for k := 0; k < len(h) && h[k].kind == tIdent; k++ {
-		if h[k].text == "class" && k+1 < len(h) && h[k+1].kind == tIdent {
+	for k := 0; k < len(h) && h[k].kind == tIdentifier; k++ {
+		if h[k].text == "class" && k+1 < len(h) && h[k+1].kind == tIdentifier {
 			return h[k+1].text, "class", h[k+1].line, true
 		}
 		if !modifiers[h[k].text] && h[k].text != "mixin" {
@@ -161,29 +161,29 @@ func classify(h []token, owner string) (string, string, int, bool) {
 	if j >= len(h) {
 		return "", "", 0, false
 	}
-	kw := h[j]
-	if kw.kind == tIdent && owner == "" {
-		switch kw.text {
+	keyword := h[j]
+	if keyword.kind == tIdentifier && owner == "" {
+		switch keyword.text {
 		case "mixin":
-			if j+1 < len(h) && h[j+1].kind == tIdent {
+			if j+1 < len(h) && h[j+1].kind == tIdentifier {
 				return h[j+1].text, "mixin", h[j+1].line, true
 			}
 			return "", "", 0, false
 		case "enum":
-			if j+1 < len(h) && h[j+1].kind == tIdent {
+			if j+1 < len(h) && h[j+1].kind == tIdentifier {
 				return h[j+1].text, "enum", h[j+1].line, true
 			}
 			return "", "", 0, false
 		case "extension":
 			k := j + 1
-			if k+1 < len(h) && h[k].text == "type" && h[k+1].kind == tIdent && h[k+1].text != "on" {
+			if k+1 < len(h) && h[k].text == "type" && h[k+1].kind == tIdentifier && h[k+1].text != "on" {
 				k++
-				if h[k].text == "const" && k+1 < len(h) && h[k+1].kind == tIdent {
+				if h[k].text == "const" && k+1 < len(h) && h[k+1].kind == tIdentifier {
 					k++
 				}
 				return h[k].text, "extension type", h[k].line, true
 			}
-			if k < len(h) && h[k].kind == tIdent && h[k].text != "on" {
+			if k < len(h) && h[k].kind == tIdentifier && h[k].text != "on" {
 				return h[k].text, "extension", h[k].line, true
 			}
 			return "", "", 0, false // unnamed: nothing can name its members
@@ -202,7 +202,7 @@ func classify(h []token, owner string) (string, string, int, bool) {
 
 // typedefName names `typedef Name<T> = Type;` and the older `typedef R Name(args);`.
 func typedefName(h []token) (string, string, int, bool) {
-	if len(h) > 0 && h[0].kind == tIdent {
+	if len(h) > 0 && h[0].kind == tIdentifier {
 		for k := 1; k < len(h); k++ {
 			if h[k].text == "=" {
 				return h[0].text, "typedef", h[0].line, false
@@ -214,10 +214,10 @@ func typedefName(h []token) (string, string, int, bool) {
 			break
 		}
 	}
-	if k := paramList(h); k > 0 {
+	if k := parameterList(h); k > 0 {
 		return h[k-1].text, "typedef", h[k-1].line, false
 	}
-	if n := len(h); n > 0 && h[n-1].kind == tIdent {
+	if n := len(h); n > 0 && h[n-1].kind == tIdentifier {
 		return h[n-1].text, "typedef", h[n-1].line, false
 	}
 	return "", "", 0, false
@@ -230,12 +230,12 @@ var bodyStart = map[string]bool{"=>": true, "async": true, "sync": true}
 // declaration (modifiers already taken off): at the top level with owner "", else in
 // a class-like body.
 func member(h []token, owner string) (string, string, int, bool) {
-	fn, field := "func", "var"
+	function, field := "func", "var"
 	if owner != "" {
-		fn, field = "method", "field"
+		function, field = "method", "field"
 	}
 	for k, t := range h {
-		if t.kind != tIdent {
+		if t.kind != tIdentifier {
 			if t.text == "=" || t.text == "(" && k == 0 {
 				break
 			}
@@ -243,34 +243,34 @@ func member(h []token, owner string) (string, string, int, bool) {
 		}
 		switch t.text {
 		case "get":
-			if k+1 < len(h) && h[k+1].kind == tIdent && (k+2 == len(h) || bodyStart[h[k+2].text]) {
+			if k+1 < len(h) && h[k+1].kind == tIdentifier && (k+2 == len(h) || bodyStart[h[k+2].text]) {
 				return h[k+1].text, "property", h[k+1].line, false
 			}
 		case "set":
-			if k+2 < len(h) && h[k+1].kind == tIdent && h[k+2].text == "(" {
+			if k+2 < len(h) && h[k+1].kind == tIdentifier && h[k+2].text == "(" {
 				return h[k+1].text, "setter", h[k+1].line, false
 			}
 		case "operator":
-			if owner != "" && k+1 < len(h) && h[k+1].kind == tPunct {
-				op := ""
+			if owner != "" && k+1 < len(h) && h[k+1].kind == tPunctuation {
+				operator := ""
 				for m := k + 1; m < len(h) && h[m].text != "("; m++ {
-					op += h[m].text
+					operator += h[m].text
 				}
-				return "operator" + op, "method", t.line, false
+				return "operator" + operator, "method", t.line, false
 			}
 		}
 	}
 	// A constructor: the owner's name, maybe dotted, then its parameters.
-	if owner != "" && len(h) > 1 && h[0].kind == tIdent && h[0].text == owner {
+	if owner != "" && len(h) > 1 && h[0].kind == tIdentifier && h[0].text == owner {
 		switch {
 		case h[1].text == "(":
 			return "new", "constructor", h[0].line, false
-		case h[1].text == "." && len(h) > 3 && h[2].kind == tIdent && h[3].text == "(":
+		case h[1].text == "." && len(h) > 3 && h[2].kind == tIdentifier && h[3].text == "(":
 			return h[2].text, "constructor", h[2].line, false
 		}
 	}
-	if k := paramList(h); k > 0 {
-		return h[k-1].text, fn, h[k-1].line, false
+	if k := parameterList(h); k > 0 {
+		return h[k-1].text, function, h[k-1].line, false
 	}
 	// A variable: `Type a = 1, b;` is named by its first variable, the last
 	// identifier before its `=`, its comma or the end.
@@ -280,7 +280,7 @@ func member(h []token, owner string) (string, string, int, bool) {
 	inInit := false
 	for k := 0; k < len(h); k++ {
 		t := h[k]
-		if t.kind == tPunct {
+		if t.kind == tPunctuation {
 			switch t.text {
 			case "(", "[", "{":
 				depth++
@@ -311,7 +311,7 @@ func member(h []token, owner string) (string, string, int, bool) {
 			}
 			continue
 		}
-		if !inInit && depth == 0 && angles <= 0 && t.kind == tIdent && !modifiers[t.text] {
+		if !inInit && depth == 0 && angles <= 0 && t.kind == tIdentifier && !modifiers[t.text] {
 			name, line = t.text, t.line
 		}
 	}
@@ -321,15 +321,15 @@ func member(h []token, owner string) (string, string, int, bool) {
 	return name, kind, line, false
 }
 
-// paramList finds a declaration's parameter list: the first `(` at depth 0 before any
+// parameterList finds a declaration's parameter list: the first `(` at depth 0 before any
 // `=` that follows the declaration's name (an identifier, or the `>` ending its type
 // parameters). A function type's `Function(...)` and a record type's `(...)` are
 // types, not parameters. It returns the index of the name + 1, or 0.
-func paramList(h []token) int {
+func parameterList(h []token) int {
 	depth := 0
 	for k := 0; k < len(h); k++ {
 		t := h[k]
-		if t.kind != tPunct {
+		if t.kind != tPunctuation {
 			continue
 		}
 		switch t.text {
@@ -349,7 +349,7 @@ func paramList(h []token) int {
 				if h[n].text == ">" || h[n].text == ">>" {
 					n = openingAngle(h, n) - 1
 				}
-				if n >= 0 && h[n].kind == tIdent && h[n].text != "Function" && !modifiers[h[n].text] {
+				if n >= 0 && h[n].kind == tIdentifier && h[n].text != "Function" && !modifiers[h[n].text] {
 					return n + 1
 				}
 			}

@@ -47,7 +47,7 @@ func commitServer(t *testing.T) (*httptest.Server, func() []string) {
 				keys = append(keys, k)
 			}
 			sort.Strings(keys)
-			var res batchResult
+			var result batchResult
 			var ids []string
 			switch {
 			case reflect.DeepEqual(keys, []string{"commit"}):
@@ -76,11 +76,11 @@ func commitServer(t *testing.T) (*httptest.Server, func() []string) {
 				t.Errorf("query with fields %v", keys)
 			}
 			for _, id := range ids {
-				res.Vulns = append(res.Vulns, struct {
+				result.Vulnerabilities = append(result.Vulnerabilities, struct {
 					ID string `json:"id"`
 				}{id})
 			}
-			out.Results = append(out.Results, res)
+			out.Results = append(out.Results, result)
 		}
 		json.NewEncoder(w).Encode(out)
 	})
@@ -102,9 +102,9 @@ func commitServer(t *testing.T) (*httptest.Server, func() []string) {
 		}
 		w.Write([]byte(entry))
 	})
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	return srv, func() []string {
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	return server, func() []string {
 		mu.Lock()
 		defer mu.Unlock()
 		out := slices.Clone(asked)
@@ -116,12 +116,12 @@ func commitServer(t *testing.T) (*httptest.Server, func() []string) {
 func commitPackages() []Package {
 	return []Package{
 		// Asked by name and version (SwiftURL) and by its commit.
-		{Ecosystem: "swiftpm", Name: "github.com/swiftlang/swift-markdown", Version: commitSwift, Commit: commitSwift, Repo: "github.com/swiftlang/swift-markdown"},
+		{Ecosystem: "swiftpm", Name: "github.com/swiftlang/swift-markdown", Version: commitSwift, Commit: commitSwift, Repository: "github.com/swiftlang/swift-markdown"},
 		// No OSV ecosystem: by its commit only.
-		{Ecosystem: "zig", Name: "github.com/rockorager/libvaxis", Version: commitZig, Commit: commitZig, Repo: "github.com/rockorager/libvaxis"},
+		{Ecosystem: "zig", Name: "github.com/rockorager/libvaxis", Version: commitZig, Commit: commitZig, Repository: "github.com/rockorager/libvaxis"},
 		// Private for having come from GitHub rather than rubygems.org: by its commit
 		// only, never by its name and version.
-		{Ecosystem: "rubygems", Name: "devise", Version: "4.9.3", Commit: commitBundle, Repo: "github.com/heartcombo/devise", CommitOnly: true},
+		{Ecosystem: "rubygems", Name: "devise", Version: "4.9.3", Commit: commitBundle, Repository: "github.com/heartcombo/devise", CommitOnly: true},
 		// A shortened commit is not a pin anybody can be asked about; the version is.
 		{Ecosystem: "npm", Name: "forge-std", Version: "1.0.0", Commit: "1eea5ba"},
 		// No commit: asked about by name and version, as before.
@@ -138,9 +138,9 @@ func commitPackages() []Package {
 //
 // Verifies: REQ-FND-026, REQ-FND-010, REQ-FND-011, REQ-FND-012
 func TestOSVAsksAboutGitCommits(t *testing.T) {
-	srv, asked := commitServer(t)
-	dir := t.TempDir()
-	o := &OSV{http: srv.Client(), cache: store.New(dir, time.Hour), API: srv.URL}
+	server, asked := commitServer(t)
+	directory := t.TempDir()
+	o := &OSV{http: server.Client(), cache: store.New(directory, time.Hour), API: server.URL}
 	found, partial := o.Query(context.Background(), commitPackages())
 	if partial {
 		t.Error("a complete answer was reported as partial")
@@ -159,7 +159,7 @@ func TestOSVAsksAboutGitCommits(t *testing.T) {
 
 	var got []string
 	for _, f := range found {
-		got = append(got, f.Source+" "+f.Ecosystem+" "+f.Package+" "+f.Ref+" fixed="+f.Fixed)
+		got = append(got, f.Source+" "+f.Ecosystem+" "+f.Package+" "+f.Reference+" fixed="+f.Fixed)
 	}
 	sort.Strings(got)
 	wantFound := []string{
@@ -181,7 +181,7 @@ func TestOSVAsksAboutGitCommits(t *testing.T) {
 	}
 
 	n := len(asked())
-	again := &OSV{http: srv.Client(), cache: store.New(dir, time.Hour), API: srv.URL}
+	again := &OSV{http: server.Client(), cache: store.New(directory, time.Hour), API: server.URL}
 	if f, _ := again.Query(context.Background(), commitPackages()); len(f) != len(found) {
 		t.Errorf("cached run: %d findings, want %d", len(f), len(found))
 	}
@@ -195,8 +195,8 @@ func TestOSVAsksAboutGitCommits(t *testing.T) {
 //
 // Verifies: REQ-FND-026, REQ-FND-011
 func TestOSVAsksAboutACommitOnce(t *testing.T) {
-	srv, asked := commitServer(t)
-	o := &OSV{http: srv.Client(), API: srv.URL}
+	server, asked := commitServer(t)
+	o := &OSV{http: server.Client(), API: server.URL}
 	found, _ := o.Query(context.Background(), []Package{
 		{Ecosystem: "bazel", Name: "libvaxis", Version: commitZig, Commit: commitZig, CommitOnly: true},
 		{Ecosystem: "bazel-repo", Name: "github.com/rockorager/libvaxis", Version: commitZig, Commit: commitZig},
@@ -206,7 +206,7 @@ func TestOSVAsksAboutACommitOnce(t *testing.T) {
 	}
 	var on []string
 	for _, f := range found {
-		on = append(on, f.Ecosystem+" "+f.Ref)
+		on = append(on, f.Ecosystem+" "+f.Reference)
 	}
 	sort.Strings(on)
 	if want := []string{"bazel OSV-2024-7", "bazel-repo OSV-2024-7"}; !reflect.DeepEqual(on, want) {
@@ -219,10 +219,10 @@ func TestOSVAsksAboutACommitOnce(t *testing.T) {
 //
 // Verifies: REQ-FND-026, REQ-FND-020
 func TestCollectReportsCommitFindingsUnderTheirOwnSource(t *testing.T) {
-	srv, _ := commitServer(t)
+	server, _ := commitServer(t)
 	set := Collect(context.Background(), Options{
 		Root:     t.TempDir(),
-		OSV:      &OSV{http: srv.Client(), API: srv.URL},
+		OSV:      &OSV{http: server.Client(), API: server.URL},
 		Packages: commitPackages(),
 	})
 	if want := []string{SourceCommit, "osv"}; !reflect.DeepEqual(set.Sources, want) {
@@ -234,7 +234,7 @@ func TestCollectReportsCommitFindingsUnderTheirOwnSource(t *testing.T) {
 
 	set = Collect(context.Background(), Options{
 		Root:     t.TempDir(),
-		OSV:      &OSV{http: srv.Client(), API: srv.URL},
+		OSV:      &OSV{http: server.Client(), API: server.URL},
 		Packages: []Package{{Ecosystem: "go", Name: "golang.org/x/text", Version: "v0.14.0"}},
 	})
 	if want := []string{"osv"}; !reflect.DeepEqual(set.Sources, want) {

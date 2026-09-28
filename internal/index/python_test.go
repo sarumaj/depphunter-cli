@@ -110,8 +110,8 @@ func TestSeveralPoetryPrimaries(t *testing.T) {
 	pypi := newFeed(t, map[string]string{"/pypi/lib/1.0.0/json": pypiJSON("evil")})
 	first := newFeed(t, nil)
 	second := newFeed(t, map[string]string{"/pypi/lib/1.0.0/json": pypiJSON("certifi")})
-	supp := newFeed(t, nil)
-	expl := newFeed(t, map[string]string{"/pypi/acme/1.0.0/json": pypiJSON("acme-core")})
+	supplementary := newFeed(t, nil)
+	explicit := newFeed(t, map[string]string{"/pypi/acme/1.0.0/json": pypiJSON("acme-core")})
 	asPublic(t, PyPI, pypi)
 	files := write(t, map[string]string{"pyproject.toml": `
 [tool.poetry.dependencies]
@@ -119,7 +119,7 @@ acme = { version = "^1", source = "private" }
 
 [[tool.poetry.source]]
 name = "supp"
-url = "` + supp.URL + `/simple"
+url = "` + supplementary.URL + `/simple"
 priority = "supplemental"
 
 [[tool.poetry.source]]
@@ -128,7 +128,7 @@ url = "` + first.URL + `/simple"
 
 [[tool.poetry.source]]
 name = "private"
-url = "` + expl.URL + `/simple"
+url = "` + explicit.URL + `/simple"
 priority = "explicit"
 
 [[tool.poetry.source]]
@@ -136,13 +136,13 @@ name = "second"
 url = "` + second.URL + `/simple"
 priority = "primary"
 `})
-	d := NewDiscoverer(env(nil), "")
-	d.Config().Trust([]string{first.URL + "/simple", second.URL + "/simple", supp.URL + "/simple", expl.URL + "/simple"})
-	cfg := d.Discover(files)
-	if got, want := order(cfg, PyPI, "lib", ""), []string{supp.URL + "/simple", first.URL + "/simple", second.URL + "/simple"}; !slices.Equal(got, want) {
+	d := NewDiscoverer(environment(nil), "")
+	d.Config().Trust([]string{first.URL + "/simple", second.URL + "/simple", supplementary.URL + "/simple", explicit.URL + "/simple"})
+	config := d.Discover(files)
+	if got, want := order(config, PyPI, "lib", ""), []string{supplementary.URL + "/simple", first.URL + "/simple", second.URL + "/simple"}; !slices.Equal(got, want) {
 		t.Errorf("order %v, want %v", got, want)
 	}
-	c := newClient(t, cfg)
+	c := newClient(t, config)
 	got, l := ask(t, c, lang.Target{Ecosystem: PyPI, Package: "lib", Version: "1.0.0"})
 	if !slices.Equal(got, []string{"certifi"}) || l.Index != second.URL+"/simple" {
 		t.Errorf("lib: %v from %s", got, l.Index)
@@ -151,13 +151,13 @@ priority = "primary"
 	if !slices.Equal(got, []string{"acme-core"}) {
 		t.Errorf("acme: %v", got)
 	}
-	if len(pypi.paths()) != 0 || first.askedFor("acme") || supp.askedFor("acme") || expl.askedFor("lib") {
-		t.Errorf("pypi %v, first %v, supp %v, explicit %v", pypi.paths(), first.paths(), supp.paths(), expl.paths())
+	if len(pypi.paths()) != 0 || first.askedFor("acme") || supplementary.askedFor("acme") || explicit.askedFor("lib") {
+		t.Errorf("pypi %v, first %v, supp %v, explicit %v", pypi.paths(), first.paths(), supplementary.paths(), explicit.paths())
 	}
 
 	// A Poetry source named PyPI takes PyPI's place among the primaries.
 	c2 := Discover(write(t, map[string]string{"pyproject.toml": "[[tool.poetry.source]]\nname = \"corp\"\nurl = \"https://corp.example/simple\"\n\n" +
-		"[[tool.poetry.source]]\nname = \"PyPI\"\npriority = \"primary\"\n"}), env(nil), "")
+		"[[tool.poetry.source]]\nname = \"PyPI\"\npriority = \"primary\"\n"}), environment(nil), "")
 	if got := order(c2, PyPI, "x", ""); !slices.Equal(got, []string{"https://corp.example/simple?", pypi.URL}) {
 		t.Errorf("with PyPI listed: %v", got)
 	}
@@ -190,20 +190,20 @@ requests = "*"
 `,
 		"app/Pipfile.lock": `{"_meta": {"sources": [{"name": "lockcorp", "url": "https://lock.corp/simple"}]},
 "default": {"billing": {"index": "lockcorp", "version": "==1"}}}`,
-	}), env(nil), "")
+	}), environment(nil), "")
 	got := strings.Join(sources(c, PyPI), ", ")
 	want := "https://pipenv.corp/simple?, https://pypi.org/simple?, acme https://pipenv.corp/simple?, " +
 		"https://lock.corp/simple?, billing https://lock.corp/simple?"
 	if got != want {
 		t.Errorf("sources\n got %s\nwant %s", got, want)
 	}
-	for pkg, wantOrder := range map[string][]string{
+	for packageName, wantOrder := range map[string][]string{
 		"requests": {"https://pypi.org/simple", "https://pipenv.corp/simple?"},
 		"acme":     {"https://pipenv.corp/simple?"},
 		"Billing":  {"https://lock.corp/simple?"},
 	} {
-		if got := order(c, PyPI, pkg, ""); !slices.Equal(got, wantOrder) {
-			t.Errorf("%s: %v, want %v", pkg, got, wantOrder)
+		if got := order(c, PyPI, packageName, ""); !slices.Equal(got, wantOrder) {
+			t.Errorf("%s: %v, want %v", packageName, got, wantOrder)
 		}
 	}
 }
@@ -232,23 +232,23 @@ url = "https://wheels.corp/"
 type = "find_links"
 `,
 		"pdm.toml": "[pypi.team]\nurl = \"https://team.corp/simple\"\n",
-	}), env(nil), "")
-	for pkg, want := range map[string][]string{
+	}), environment(nil), "")
+	for packageName, want := range map[string][]string{
 		"requests":     {"https://team.corp/simple?", "https://pdm.corp/simple?", "https://mirror.corp/simple?"},
 		"Acme_Utils":   {"https://pdm.corp/simple?"},
 		"acme.billing": {"https://pdm.corp/simple?"},
 	} {
-		if got := order(c, PyPI, pkg, ""); !slices.Equal(got, want) {
-			t.Errorf("%s: %v, want %v", pkg, got, want)
+		if got := order(c, PyPI, packageName, ""); !slices.Equal(got, want) {
+			t.Errorf("%s: %v, want %v", packageName, got, want)
 		}
 	}
 }
 
 // pythonRun discovers files with this machine's home and environment, vouching for
 // trust, and answers the credential store.
-func pythonRun(t *testing.T, home string, vars map[string]string, files map[string]string, trust ...string) *auth.Store {
+func pythonRun(t *testing.T, home string, variables map[string]string, files map[string]string, trust ...string) *auth.Store {
 	t.Helper()
-	e := env(vars)
+	e := environment(variables)
 	store := auth.Read(home, e)
 	d := NewDiscoverer(e, home)
 	d.Config().Credentials(store)
@@ -266,7 +266,7 @@ func pythonRun(t *testing.T, home string, vars map[string]string, files map[stri
 //
 // Verifies: REQ-AUTH-023, REQ-AUTH-026
 func TestRepositoryPythonCredentials(t *testing.T) {
-	vars := map[string]string{
+	variables := map[string]string{
 		"UV_INDEX_TEAM_USERNAME": "uv", "UV_INDEX_TEAM_PASSWORD": "uv-secret",
 		"POETRY_HTTP_BASIC_CORP_PASSWORD": "poetry-secret", "POETRY_HTTP_BASIC_CORP_USERNAME": "poetry",
 		"PIP_USER": "pipenv", "PIP_PASS": "pipenv-secret", "PDM_TOKEN": "pdm-token",
@@ -294,14 +294,14 @@ url = "https://ci:written@literal.corp/simple"
 	all := []string{"https://uv.corp/team/pypi/a/json", "https://poetry.corp/pypi/a/json",
 		"https://pdm.corp/pypi/a/json", "https://literal.corp/pypi/a/json", "https://pipenv.corp/x/pypi/a/json"}
 
-	s := pythonRun(t, t.TempDir(), vars, files)
+	s := pythonRun(t, t.TempDir(), variables, files)
 	for _, u := range all {
 		if got := authOf(s, u); got != "" {
 			t.Errorf("unvouched %s got %q", u, got)
 		}
 	}
 
-	s = pythonRun(t, t.TempDir(), vars, files, "uv.corp", "poetry.corp", "pdm.corp", "literal.corp", "https://pipenv.corp/x/simple")
+	s = pythonRun(t, t.TempDir(), variables, files, "uv.corp", "poetry.corp", "pdm.corp", "literal.corp", "https://pipenv.corp/x/simple")
 	want := map[string]string{
 		"https://uv.corp/team/pypi/a/json":  basicHeaderOf("uv:uv-secret"),
 		"https://poetry.corp/pypi/a/json":   basicHeaderOf("poetry:poetry-secret"),
@@ -323,11 +323,11 @@ url = "https://ci:written@literal.corp/simple"
 	put(t, filepath.Join(home, ".config", "uv", "uv.toml"), "[[index]]\nname = \"mine\"\nurl = \"https://uv.corp/team/simple\"\n")
 	put(t, filepath.Join(home, ".config", "pypoetry", "config.toml"), "[repositories.corp]\nurl = \"https://poetry.corp/upload\"\n")
 	put(t, filepath.Join(home, ".config", "pdm", "config.toml"), "[pypi.p]\nurl = \"https://pdm.corp/other/simple\"\n")
-	machineVars := map[string]string{"UV_INDEX_MINE_USERNAME": "me", "UV_INDEX_MINE_PASSWORD": "mine"}
-	for k, v := range vars {
-		machineVars[k] = v
+	machineVariables := map[string]string{"UV_INDEX_MINE_USERNAME": "me", "UV_INDEX_MINE_PASSWORD": "mine"}
+	for k, v := range variables {
+		machineVariables[k] = v
 	}
-	s = pythonRun(t, home, machineVars, files)
+	s = pythonRun(t, home, machineVariables, files)
 	want = map[string]string{
 		"https://uv.corp/team/pypi/a/json": basicHeaderOf("me:mine"),
 		"https://poetry.corp/pypi/a/json":  basicHeaderOf("poetry:poetry-secret"),
@@ -372,7 +372,7 @@ url = "https://evil.example/simple"
 func TestUVIndexCredentialEndToEnd(t *testing.T) {
 	var mu sync.Mutex
 	var seen []string
-	reg := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	registry := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		seen = append(seen, r.URL.Path+" "+r.Header.Get("Authorization"))
 		mu.Unlock()
@@ -382,11 +382,11 @@ func TestUVIndexCredentialEndToEnd(t *testing.T) {
 		}
 		fmt.Fprint(w, pypiJSON("certifi"))
 	}))
-	t.Cleanup(reg.Close)
+	t.Cleanup(registry.Close)
 	pypi := newFeed(t, nil)
 	asPublic(t, PyPI, pypi)
-	e := env(map[string]string{
-		"UV_DEFAULT_INDEX":       "corp=" + reg.URL + "/team/simple",
+	e := environment(map[string]string{
+		"UV_DEFAULT_INDEX":       "corp=" + registry.URL + "/team/simple",
 		"UV_INDEX_CORP_USERNAME": "ci", "UV_INDEX_CORP_PASSWORD": "secret",
 	})
 	home := t.TempDir()
@@ -394,7 +394,7 @@ func TestUVIndexCredentialEndToEnd(t *testing.T) {
 	d := NewDiscoverer(e, home)
 	d.Config().Credentials(store)
 	c := NewClient(d.Discover(nil), t.TempDir(), time.Hour, 5*time.Second, store, nil)
-	if got := authOf(store, reg.URL+"/team/pypi/lib/1.0.0/json"); got != basicHeaderOf("ci:secret") {
+	if got := authOf(store, registry.URL+"/team/pypi/lib/1.0.0/json"); got != basicHeaderOf("ci:secret") {
 		t.Fatalf("credential %q", got)
 	}
 	if got := names(c.Dependencies(lang.Target{Ecosystem: PyPI, Package: "lib", Version: "1.0.0"})); !slices.Equal(got, []string{"certifi"}) {

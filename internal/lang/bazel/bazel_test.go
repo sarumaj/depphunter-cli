@@ -23,7 +23,7 @@ import (
 // Verifies: REQ-BAZEL-006, REQ-BAZEL-007, REQ-BAZEL-008, REQ-BAZEL-009, REQ-BAZEL-010
 // Verifies: REQ-BAZEL-011
 func TestFixture(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
 	cases := map[string]struct {
 		imports map[string]lang.Target
 		symbols map[string]string
@@ -285,11 +285,11 @@ func TestFixture(t *testing.T) {
 	}
 	for file, c := range cases {
 		t.Run(file, func(t *testing.T) {
-			langtest.CheckImports(t, res[file], c.imports)
-			langtest.CheckSymbols(t, res[file], c.symbols)
+			langtest.CheckImports(t, results[file], c.imports)
+			langtest.CheckSymbols(t, results[file], c.symbols)
 		})
 	}
-	for file := range res {
+	for file := range results {
 		if _, ok := cases[file]; !ok {
 			t.Errorf("%s: analyzed but not checked", file)
 		}
@@ -310,10 +310,10 @@ func TestClaims(t *testing.T) {
 	}
 	// A BUILD file names its targets by its directory: the same content elsewhere is
 	// read again.
-	src := []byte("cc_library(name = \"x\")\n")
-	a := cache.Key("bazel", 1, lang.ClassOf(Plugin{}, &scan.File{Path: "a/BUILD"}), src)
-	b := cache.Key("bazel", 1, lang.ClassOf(Plugin{}, &scan.File{Path: "b/BUILD"}), src)
-	c := cache.Key("bazel", 1, lang.ClassOf(Plugin{}, &scan.File{Path: "a/WORKSPACE"}), src)
+	source := []byte("cc_library(name = \"x\")\n")
+	a := cache.Key("bazel", 1, lang.ClassOf(Plugin{}, &scan.File{Path: "a/BUILD"}), source)
+	b := cache.Key("bazel", 1, lang.ClassOf(Plugin{}, &scan.File{Path: "b/BUILD"}), source)
+	c := cache.Key("bazel", 1, lang.ClassOf(Plugin{}, &scan.File{Path: "a/WORKSPACE"}), source)
 	if a == b || a == c {
 		t.Error("BUILD files of different packages, or a BUILD and a WORKSPACE, share a cache key")
 	}
@@ -322,17 +322,17 @@ func TestClaims(t *testing.T) {
 // Verifies: REQ-BAZEL-004
 func TestLabels(t *testing.T) {
 	for s, want := range map[string]label{
-		"//a/b:c":           {abs: true, pkg: "a/b", target: "c"},
-		"//a/b":             {abs: true, pkg: "a/b", target: "b"},
+		"//a/b:c":           {absolute: true, packageName: "a/b", target: "c"},
+		"//a/b":             {absolute: true, packageName: "a/b", target: "b"},
 		":c":                {target: "c"},
 		"c.cc":              {target: "c.cc"},
 		"sub/c.cc":          {target: "sub/c.cc"},
-		"@r//a:c":           {repo: "r", hasRepo: true, abs: true, pkg: "a", target: "c"},
-		"@r":                {repo: "r", hasRepo: true, abs: true, target: "r"},
-		"@r//:r":            {repo: "r", hasRepo: true, abs: true, target: "r"},
-		"@//a:c":            {hasRepo: true, abs: true, pkg: "a", target: "c"},
-		"@@//a:c":           {hasRepo: true, canonical: true, abs: true, pkg: "a", target: "c"},
-		"@@rules_go+//go:x": {repo: "rules_go+", hasRepo: true, canonical: true, abs: true, pkg: "go", target: "x"},
+		"@r//a:c":           {repository: "r", hasRepository: true, absolute: true, packageName: "a", target: "c"},
+		"@r":                {repository: "r", hasRepository: true, absolute: true, target: "r"},
+		"@r//:r":            {repository: "r", hasRepository: true, absolute: true, target: "r"},
+		"@//a:c":            {hasRepository: true, absolute: true, packageName: "a", target: "c"},
+		"@@//a:c":           {hasRepository: true, canonical: true, absolute: true, packageName: "a", target: "c"},
+		"@@rules_go+//go:x": {repository: "rules_go+", hasRepository: true, canonical: true, absolute: true, packageName: "go", target: "x"},
 	} {
 		got, ok := parseLabel(s)
 		if !ok || got != want {
@@ -353,7 +353,7 @@ func TestLabels(t *testing.T) {
 		"github.com/pkg/errors": "com_github_pkg_errors", "golang.org/x/sys": "org_golang_x_sys",
 		"gopkg.in/yaml.v3": "in_gopkg_yaml_v3", "github.com/Azure/go-autorest": "com_github_azure_go_autorest",
 	} {
-		if got := goRepoName(path); got != want {
+		if got := goRepositoryName(path); got != want {
 			t.Errorf("goRepoName(%s) = %s, want %s", path, got, want)
 		}
 	}
@@ -396,8 +396,8 @@ func TestVersionsAndNames(t *testing.T) {
 		"https://zlib.net/zlib-1.3.1.tar.gz":                                                    {"zlib.net/zlib", "1.3.1"},
 		"https://example.com/downloads/tool.tar.gz?raw=true":                                    {"example.com/downloads/tool", ""},
 	} {
-		if name, ref, _ := archiveName(u); name != want[0] || ref != want[1] {
-			t.Errorf("archiveName(%s) = %s, %s", u, name, ref)
+		if name, reference, _ := archiveName(u); name != want[0] || reference != want[1] {
+			t.Errorf("archiveName(%s) = %s, %s", u, name, reference)
 		}
 	}
 }
@@ -412,9 +412,9 @@ func TestDependencies(t *testing.T) {
 	}
 
 	// Lock files before Bazel 7.2 keep the resolved module graph.
-	dir := t.TempDir()
+	directory := t.TempDir()
 	write := func(name, content string) {
-		if err := os.WriteFile(filepath.Join(dir, name), []byte(content), 0o644); err != nil {
+		if err := os.WriteFile(filepath.Join(directory, name), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -423,16 +423,16 @@ func TestDependencies(t *testing.T) {
 		"<root>": {"name": "", "version": "", "deps": {"rules_go": "rules_go@0.42.0"}},
 		"rules_go@0.42.0": {"name": "rules_go", "version": "0.42.0", "deps": {"bazel_skylib": "bazel_skylib@1.4.1", "bazel_tools": "bazel_tools@_"}},
 		"bazel_skylib@1.4.1": {"name": "bazel_skylib", "version": "1.4.1", "deps": {}}}}`)
-	files, err := scan.Scan(context.Background(), dir, scan.Options{})
+	files, err := scan.Scan(context.Background(), directory, scan.Options{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	r = newResolver(dir, files)
-	dep := r.Resolve("MODULE.bazel", lang.RawImport{Spec: "rules_go", Module: "rules_go", Name: impDep})
-	if want := (lang.Target{Ecosystem: "bazel", Package: "rules_go", Version: "0.42.0", Requested: "0.41.0", Pinned: true}); dep != want {
-		t.Errorf("rules_go = %+v, want %+v", dep, want)
+	r = newResolver(directory, files)
+	dependency := r.Resolve("MODULE.bazel", lang.RawImport{Spec: "rules_go", Module: "rules_go", Name: importDependency})
+	if want := (lang.Target{Ecosystem: "bazel", Package: "rules_go", Version: "0.42.0", Requested: "0.41.0", Pinned: true}); dependency != want {
+		t.Errorf("rules_go = %+v, want %+v", dependency, want)
 	}
-	got = r.Dependencies(dep)
+	got = r.Dependencies(dependency)
 	if len(got) != 1 || got[0] != (lang.Target{Ecosystem: "bazel", Package: "bazel_skylib", Version: "1.4.1", Pinned: true}) {
 		t.Errorf("rules_go needs %+v", got)
 	}
@@ -447,12 +447,12 @@ func TestTruncated(t *testing.T) {
 		if fileKind(f.Path) == "" {
 			continue
 		}
-		src, err := os.ReadFile(f.Abs)
+		source, err := os.ReadFile(f.AbsolutePath)
 		if err != nil {
 			t.Fatal(err)
 		}
-		for n := 0; n <= len(src); n++ {
-			if ex, err := (Plugin{}).Extract(f, src[:n]); err != nil || ex == nil {
+		for n := 0; n <= len(source); n++ {
+			if extraction, err := (Plugin{}).Extract(f, source[:n]); err != nil || extraction == nil {
 				t.Fatalf("%s[:%d]: %v", f.Path, n, err)
 			}
 		}

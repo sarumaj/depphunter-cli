@@ -97,9 +97,9 @@ type Package struct {
 	//
 	// Implements: REQ-FND-026
 	Commit string
-	// Repo is the repository the commit is from, as lang.RepoName spells it. It is
+	// Repository is the repository the commit is from, as lang.RepositoryName spells it. It is
 	// not sent; it chooses which of an advisory's fixed commits to suggest.
-	Repo string
+	Repository string
 	// CommitOnly sends the commit and nothing else: the package itself is private
 	// (it came from outside every index), although its repository is public.
 	CommitOnly bool
@@ -122,14 +122,14 @@ type OSV struct {
 }
 
 // Implements: REQ-FND-012
-func NewOSV(dir string, ttl, timeout time.Duration) *OSV {
-	return &OSV{http: &http.Client{Timeout: timeout}, cache: store.New(dir, ttl)}
+func NewOSV(directory string, ttl, timeout time.Duration) *OSV {
+	return &OSV{http: &http.Client{Timeout: timeout}, cache: store.New(directory, ttl)}
 }
 
 // question is one query of a batch: a package at a version, or a commit alone.
 type question struct {
-	pkg    Package // the name and the version asked about; zero for a commit
-	commit string
+	askedPackage Package // the name and the version asked about; zero for a commit
+	commit       string
 }
 
 // key is where a question's answer is kept.
@@ -137,7 +137,7 @@ func (q question) key() string {
 	if q.commit != "" {
 		return "osv-commit|" + q.commit
 	}
-	return queryKey(q.pkg)
+	return queryKey(q.askedPackage)
 }
 
 // Query returns a finding per (package, vulnerability) pair, and whether anything was
@@ -150,11 +150,11 @@ func (q question) key() string {
 // is the same advisory.
 //
 // Implements: REQ-FND-010, REQ-FND-016, REQ-FND-026
-func (o *OSV) Query(ctx context.Context, pkgs []Package) ([]*Finding, bool) {
+func (o *OSV) Query(ctx context.Context, packages []Package) ([]*Finding, bool) {
 	var queries []Package
 	byCommit := map[string][]Package{}
 	seen := map[string]bool{}
-	for _, p := range pkgs {
+	for _, p := range packages {
 		if c := strings.ToLower(p.Commit); lang.Commit(c) && p.Name != "" {
 			p.Commit = c
 			if k := "commit|" + p.Ecosystem + "|" + p.Name + "|" + c; !seen[k] {
@@ -162,12 +162,12 @@ func (o *OSV) Query(ctx context.Context, pkgs []Package) ([]*Finding, bool) {
 				byCommit[c] = append(byCommit[c], p)
 			}
 		}
-		eco, ok := osvEcosystems[p.Ecosystem]
+		ecosystem, ok := osvEcosystems[p.Ecosystem]
 		if !ok || p.CommitOnly || p.Name == "" || p.Version == "" {
 			continue
 		}
 		p.Version = osvVersion(p.Ecosystem, p.Version)
-		key := eco + "|" + p.Name + "|" + p.Version
+		key := ecosystem + "|" + p.Name + "|" + p.Version
 		if seen[key] {
 			continue
 		}
@@ -183,7 +183,7 @@ func (o *OSV) Query(ctx context.Context, pkgs []Package) ([]*Finding, bool) {
 	})
 	var asked []question
 	for _, p := range queries {
-		asked = append(asked, question{pkg: Package{Ecosystem: p.Ecosystem, Name: p.Name, Version: p.Version}})
+		asked = append(asked, question{askedPackage: Package{Ecosystem: p.Ecosystem, Name: p.Name, Version: p.Version}})
 	}
 	for _, c := range slices.Sorted(maps.Keys(byCommit)) {
 		asked = append(asked, question{commit: c})
@@ -198,7 +198,7 @@ func (o *OSV) Query(ctx context.Context, pkgs []Package) ([]*Finding, bool) {
 	// commit does not repeat what its name and version said.
 	known := map[string]bool{}
 	for _, p := range queries {
-		for _, id := range ids[question{pkg: Package{Ecosystem: p.Ecosystem, Name: p.Name, Version: p.Version}}] {
+		for _, id := range ids[question{askedPackage: Package{Ecosystem: p.Ecosystem, Name: p.Name, Version: p.Version}}] {
 			e, ok := entries[id]
 			if !ok {
 				continue
@@ -248,12 +248,12 @@ func (o *OSV) ids(ctx context.Context, qs []question) (map[question][]string, bo
 	for start := 0; start < len(ask); start += osvBatch {
 		end := min(start+osvBatch, len(ask))
 		batch := ask[start:end]
-		res, err := o.batch(ctx, batch)
-		if err == nil && len(res) != len(batch) {
+		result, err := o.batch(ctx, batch)
+		if err == nil && len(result) != len(batch) {
 			// Answers are matched to questions by position: a short answer cannot be
 			// matched, and caching the missing ones as clean would hide them for the
 			// whole time to live.
-			err = fmt.Errorf("%d answers to %d questions", len(res), len(batch))
+			err = fmt.Errorf("%d answers to %d questions", len(result), len(batch))
 		}
 		if err != nil {
 			o.logFormat("osv.dev: %v", err)
@@ -262,10 +262,10 @@ func (o *OSV) ids(ctx context.Context, qs []question) (map[question][]string, bo
 		}
 		for i, q := range batch {
 			var ids []string
-			for _, v := range res[i].Vulns {
+			for _, v := range result[i].Vulnerabilities {
 				ids = append(ids, v.ID)
 			}
-			if res[i].NextPageToken != "" {
+			if result[i].NextPageToken != "" {
 				// More than one page of advisories: what came is shown, but it is not
 				// the whole answer and is not cached as one.
 				partial = true
@@ -281,7 +281,7 @@ func (o *OSV) ids(ctx context.Context, qs []question) (map[question][]string, bo
 }
 
 type batchResult struct {
-	Vulns []struct {
+	Vulnerabilities []struct {
 		ID string `json:"id"`
 	} `json:"vulns"`
 	NextPageToken string `json:"next_page_token"`
@@ -291,14 +291,14 @@ type batchResult struct {
 // its version; a commit question is {"commit": "<sha>"} and nothing else, which is
 // how OSV's API asks about a commit.
 func (o *OSV) batch(ctx context.Context, qs []question) ([]batchResult, error) {
-	type pkg struct {
+	type osvPackage struct {
 		Name      string `json:"name"`
 		Ecosystem string `json:"ecosystem"`
 	}
 	type query struct {
-		Commit  string `json:"commit,omitempty"`
-		Package *pkg   `json:"package,omitempty"`
-		Version string `json:"version,omitempty"`
+		Commit  string      `json:"commit,omitempty"`
+		Package *osvPackage `json:"package,omitempty"`
+		Version string      `json:"version,omitempty"`
 	}
 	body := struct {
 		Queries []query `json:"queries"`
@@ -308,25 +308,25 @@ func (o *OSV) batch(ctx context.Context, qs []question) ([]batchResult, error) {
 			body.Queries = append(body.Queries, query{Commit: q.commit})
 			continue
 		}
-		p := q.pkg
-		body.Queries = append(body.Queries, query{Package: &pkg{Name: p.Name, Ecosystem: osvEcosystems[p.Ecosystem]}, Version: p.Version})
+		p := q.askedPackage
+		body.Queries = append(body.Queries, query{Package: &osvPackage{Name: p.Name, Ecosystem: osvEcosystems[p.Ecosystem]}, Version: p.Version})
 	}
-	buf, err := json.Marshal(body)
+	buffer, err := json.Marshal(body)
 	if err != nil {
 		return nil, err
 	}
-	req, err := http.NewRequestWithContext(ctx, http.MethodPost, o.base()+"/v1/querybatch", bytes.NewReader(buf))
+	request, err := http.NewRequestWithContext(ctx, http.MethodPost, o.base()+"/v1/querybatch", bytes.NewReader(buffer))
 	if err != nil {
 		return nil, err
 	}
-	req.Header.Set("Content-Type", "application/json")
-	var res struct {
+	request.Header.Set("Content-Type", "application/json")
+	var result struct {
 		Results []batchResult `json:"results"`
 	}
-	if err := o.do(req, &res); err != nil {
+	if err := o.do(request, &result); err != nil {
 		return nil, err
 	}
-	return res.Results, nil
+	return result.Results, nil
 }
 
 // entries fetches the vulnerabilities themselves. Only the few ids a query matched are
@@ -361,7 +361,7 @@ func (o *OSV) entries(ctx context.Context, ids map[question][]string) (map[strin
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
-			e, err := o.vuln(ctx, id)
+			e, err := o.vulnerability(ctx, id)
 			mu.Lock()
 			defer mu.Unlock()
 			if err != nil {
@@ -376,35 +376,35 @@ func (o *OSV) entries(ctx context.Context, ids map[question][]string) (map[strin
 	return out, partial
 }
 
-func (o *OSV) vuln(ctx context.Context, id string) (*osvEntry, error) {
-	req, err := http.NewRequestWithContext(ctx, http.MethodGet, o.base()+"/v1/vulns/"+id, nil)
+func (o *OSV) vulnerability(ctx context.Context, id string) (*osvEntry, error) {
+	request, err := http.NewRequestWithContext(ctx, http.MethodGet, o.base()+"/v1/vulns/"+id, nil)
 	if err != nil {
 		return nil, err
 	}
 	var e osvEntry
-	if err := o.do(req, &e); err != nil {
+	if err := o.do(request, &e); err != nil {
 		return nil, err
 	}
 	o.cache.Put("osv-vuln|"+id, e)
 	return &e, nil
 }
 
-func (o *OSV) do(req *http.Request, into any) error {
-	res, err := o.http.Do(req)
+func (o *OSV) do(request *http.Request, into any) error {
+	response, err := o.http.Do(request)
 	if err != nil {
 		return err
 	}
-	defer res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		io.Copy(io.Discard, io.LimitReader(res.Body, 4<<10))
-		return fmt.Errorf("%s: %s", req.URL.Path, res.Status)
+	defer response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		io.Copy(io.Discard, io.LimitReader(response.Body, 4<<10))
+		return fmt.Errorf("%s: %s", request.URL.Path, response.Status)
 	}
-	return json.NewDecoder(io.LimitReader(res.Body, 8<<20)).Decode(into)
+	return json.NewDecoder(io.LimitReader(response.Body, 8<<20)).Decode(into)
 }
 
-func (o *OSV) logFormat(format string, args ...any) {
+func (o *OSV) logFormat(format string, arguments ...any) {
 	if o.Logf != nil {
-		o.Logf(format, args...)
+		o.Logf(format, arguments...)
 	}
 }
 
@@ -450,9 +450,9 @@ type osvEntry struct {
 			Name      string `json:"name"`
 		} `json:"package"`
 		Ranges []struct {
-			Type   string `json:"type"`
-			Repo   string `json:"repo"` // a GIT range's repository
-			Events []struct {
+			Type       string `json:"type"`
+			Repository string `json:"repo"` // a GIT range's repository
+			Events     []struct {
 				Introduced string `json:"introduced"`
 				Fixed      string `json:"fixed"`
 			} `json:"events"`
@@ -473,7 +473,7 @@ func (e *osvEntry) finding(p Package) *Finding {
 	f := &Finding{
 		Kind:      KindVulnerability,
 		Source:    "osv",
-		Ref:       e.ID,
+		Reference: e.ID,
 		Severity:  e.severity(),
 		Title:     e.title(),
 		Detail:    e.detail(),
@@ -493,12 +493,12 @@ func (e *osvEntry) finding(p Package) *Finding {
 func (e *osvEntry) commitFinding(p Package) *Finding {
 	f := e.finding(Package{Ecosystem: p.Ecosystem, Name: p.Name, Version: p.Version})
 	f.Source = SourceCommit
-	f.Fixed = e.fixedCommit(p.Repo)
+	f.Fixed = e.fixedCommit(p.Repository)
 	// Which commit it was: the version the map shows may be a release or a shortened
 	// commit, and an advisory matched by commit says nothing about releases.
 	how := "Matched by its git commit " + p.Commit
-	if p.Repo != "" {
-		how += " of " + p.Repo
+	if p.Repository != "" {
+		how += " of " + p.Repository
 	}
 	if f.Detail != "" {
 		how = f.Detail + "\n\n" + how
@@ -512,10 +512,10 @@ func (e *osvEntry) commitFinding(p Package) *Finding {
 
 // fixedCommit is the last fixed commit of a GIT range in repo ("" matches any
 // repository), "" when the advisory names none.
-func (e *osvEntry) fixedCommit(repo string) string {
+func (e *osvEntry) fixedCommit(repository string) string {
 	for _, a := range e.Affected {
 		for _, r := range a.Ranges {
-			if r.Type != "GIT" || repo != "" && !within(repo, lang.RepoName(r.Repo)) {
+			if r.Type != "GIT" || repository != "" && !within(repository, lang.RepositoryName(r.Repository)) {
 				continue
 			}
 			for i := len(r.Events) - 1; i >= 0; i-- {
@@ -528,11 +528,11 @@ func (e *osvEntry) fixedCommit(repo string) string {
 	return ""
 }
 
-// within reports whether repo, which may name a directory inside a repository
+// within reports whether repository, which may name a directory inside a repository
 // (github.com/grafana/jsonnet-libs/ksonnet-util), is in the repository r.
-func within(repo, r string) bool {
-	repo, r = strings.ToLower(repo), strings.ToLower(r)
-	return r != "" && (repo == r || strings.HasPrefix(repo, r+"/"))
+func within(repository, r string) bool {
+	repository, r = strings.ToLower(repository), strings.ToLower(r)
+	return r != "" && (repository == r || strings.HasPrefix(repository, r+"/"))
 }
 
 func (e *osvEntry) title() string {
@@ -582,14 +582,14 @@ func (e *osvEntry) severity() Severity {
 		}
 	}
 	if s, ok := e.DatabaseSpecific["severity"].(string); ok {
-		if sev := severity(s); sev != Unknown {
-			return sev
+		if level := severity(s); level != Unknown {
+			return level
 		}
 	}
 	for _, a := range e.Affected {
 		if s, ok := a.DatabaseSpecific["severity"].(string); ok {
-			if sev := severity(s); sev != Unknown {
-				return sev
+			if level := severity(s); level != Unknown {
+				return level
 			}
 		}
 	}
@@ -614,11 +614,11 @@ func (e *osvEntry) url() string {
 // in another - so the answer is the lowest fix above the version in use; a fix on an
 // older line would be a downgrade that is still vulnerable. When the versions cannot
 // be compared, the answer is the last fix of the first affected range.
-func (e *osvEntry) fixed(pkg, version string) string {
+func (e *osvEntry) fixed(packageName, version string) string {
 	current := semverOf(version)
 	first, best := "", ""
 	for _, a := range e.Affected {
-		if pkg != "" && a.Package.Name != "" && !strings.EqualFold(a.Package.Name, pkg) {
+		if packageName != "" && a.Package.Name != "" && !strings.EqualFold(a.Package.Name, packageName) {
 			continue
 		}
 		for _, r := range a.Ranges {

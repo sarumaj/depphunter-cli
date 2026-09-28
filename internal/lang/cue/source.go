@@ -8,23 +8,23 @@ import (
 
 // Import kinds, carried in RawImport.Name.
 const (
-	kindImport = "import"
-	kindDep    = "dep" // a module.cue dependency
+	kindImport     = "import"
+	kindDependency = "dep" // a module.cue dependency
 )
 
 // endsLine reports whether a line ending in t ends a declaration (CUE
 // inserts a comma there, as Go inserts semicolons).
 func endsLine(t token) bool {
 	switch t.kind {
-	case tIdent, tString, tNumber:
+	case tIdentifier, tString, tNumber:
 		return true
 	}
 	return t.text == ")" || t.text == "]" || t.text == "}"
 }
 
-// decls calls fn with the index of each declaration start between from and
+// declarations calls function with the index of each declaration start between from and
 // end at bracket depth 0 (what nests is jumped over).
-func decls(tokens []token, m []int, from, end int, fn func(i int)) {
+func declarations(tokens []token, m []int, from, end int, function func(i int)) {
 	start := true
 	for i := from; i < end; i++ {
 		t := tokens[i]
@@ -32,10 +32,10 @@ func decls(tokens []token, m []int, from, end int, fn func(i int)) {
 			start = true
 		}
 		if start {
-			fn(i)
+			function(i)
 			start = false
 		}
-		if t.kind != tPunct {
+		if t.kind != tPunctuation {
 			continue
 		}
 		switch t.text {
@@ -54,7 +54,7 @@ func decls(tokens []token, m []int, from, end int, fn func(i int)) {
 // plain string, an optional alias `X=` before it and `?`/`!` after it - and
 // returns its name, whether a colon follows, and the index after the colon.
 func label(tokens []token, i, end int) (name string, ok bool, next int) {
-	if i+2 < end && tokens[i].kind == tIdent && isPunct(tokens[i+1], "=") {
+	if i+2 < end && tokens[i].kind == tIdentifier && isPunctuation(tokens[i+1], "=") {
 		i += 2
 	}
 	if i >= end {
@@ -62,42 +62,42 @@ func label(tokens []token, i, end int) (name string, ok bool, next int) {
 	}
 	t := tokens[i]
 	switch {
-	case t.kind == tIdent:
+	case t.kind == tIdentifier:
 	case t.kind == tString && !strings.Contains(t.text, "\\("):
 	default:
 		return "", false, i
 	}
 	j := i + 1
-	if j < end && (isPunct(tokens[j], "?") || isPunct(tokens[j], "!")) {
+	if j < end && (isPunctuation(tokens[j], "?") || isPunctuation(tokens[j], "!")) {
 		j++
 	}
-	if j < end && isPunct(tokens[j], ":") {
+	if j < end && isPunctuation(tokens[j], ":") {
 		return t.text, true, j + 1
 	}
 	return "", false, i
 }
 
-func isPunct(t token, p string) bool { return t.kind == tPunct && t.text == p }
+func isPunctuation(t token, p string) bool { return t.kind == tPunctuation && t.text == p }
 
 // extractSource reads a CUE file: its package clause and imports, and as
 // symbols its package, top-level definitions (#Name) and fields.
 //
 // Implements: REQ-CUE-002, REQ-CUE-003
-func extractSource(src []byte) *lang.Extraction {
-	tokens := lex(src)
+func extractSource(source []byte) *lang.Extraction {
+	tokens := lex(source)
 	m := match(tokens)
-	ex := &lang.Extraction{}
+	extraction := &lang.Extraction{}
 	var symbols lang.SymbolSet
 	defined := map[string]bool{}
 	seen := map[string]bool{}
-	pkg := false
+	sawPackage := false
 	addImport := func(t token) {
 		if t.kind == tString && t.text != "" && !seen[t.text] {
 			seen[t.text] = true
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: t.text, Module: t.text, Name: kindImport, Line: t.line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: t.text, Module: t.text, Name: kindImport, Line: t.line})
 		}
 	}
-	decls(tokens, m, 0, len(tokens), func(i int) {
+	declarations(tokens, m, 0, len(tokens), func(i int) {
 		t := tokens[i]
 		next := func(k int) token {
 			if i+k < len(tokens) {
@@ -106,13 +106,13 @@ func extractSource(src []byte) *lang.Extraction {
 			return token{}
 		}
 		switch {
-		case t.kind == tIdent && t.text == "package" && next(1).kind == tIdent && !isPunct(next(2), ":"):
-			if !pkg {
-				pkg = true
+		case t.kind == tIdentifier && t.text == "package" && next(1).kind == tIdentifier && !isPunctuation(next(2), ":"):
+			if !sawPackage {
+				sawPackage = true
 				symbols.Add(next(1).text, "package", t.line)
 			}
 			return
-		case t.kind == tIdent && t.text == "import" && isPunct(next(1), "("):
+		case t.kind == tIdentifier && t.text == "import" && isPunctuation(next(1), "("):
 			end := m[i+1]
 			if end < 0 {
 				end = len(tokens)
@@ -121,10 +121,10 @@ func extractSource(src []byte) *lang.Extraction {
 				addImport(tokens[k])
 			}
 			return
-		case t.kind == tIdent && t.text == "import" && next(1).kind == tString:
+		case t.kind == tIdentifier && t.text == "import" && next(1).kind == tString:
 			addImport(next(1))
 			return
-		case t.kind == tIdent && t.text == "import" && next(1).kind == tIdent && next(2).kind == tString:
+		case t.kind == tIdentifier && t.text == "import" && next(1).kind == tIdentifier && next(2).kind == tString:
 			addImport(next(2))
 			return
 		}
@@ -139,13 +139,13 @@ func extractSource(src []byte) *lang.Extraction {
 		}
 		symbols.Add(name, kind, t.line)
 	})
-	ex.Symbols = symbols.List()
-	return ex
+	extraction.Symbols = symbols.List()
+	return extraction
 }
 
 // value is a module.cue value: a string, or a struct of fields.
 type value struct {
-	str    string
+	text   string
 	fields map[string]*value
 	line   int
 }
@@ -155,7 +155,7 @@ type value struct {
 // twice merges.
 func structOf(tokens []token, m []int, from, end, depth int) map[string]*value {
 	out := map[string]*value{}
-	decls(tokens, m, from, end, func(i int) {
+	declarations(tokens, m, from, end, func(i int) {
 		fieldAt(tokens, m, i, end, out, depth)
 	})
 	return out
@@ -180,8 +180,8 @@ func fieldAt(tokens []token, m []int, i, end int, into map[string]*value, depth 
 	}
 	switch t := tokens[j]; {
 	case t.kind == tString:
-		v.str = t.text
-	case isPunct(t, "{") && m[j] > j && m[j] <= end:
+		v.text = t.text
+	case isPunctuation(t, "{") && m[j] > j && m[j] <= end:
 		if v.fields == nil {
 			v.fields = map[string]*value{}
 		}
@@ -195,11 +195,11 @@ func fieldAt(tokens []token, m []int, i, end int, into map[string]*value, depth 
 
 // moduleFile is what cue.mod/module.cue says.
 type moduleFile struct {
-	path string // the module path, major version suffix removed
-	deps []*modDep
+	path         string // the module path, major version suffix removed
+	dependencies []*moduleDependency
 }
 
-type modDep struct {
+type moduleDependency struct {
 	key  string // as written: github.com/x/y@v0
 	path string // without the major version
 	v    string
@@ -210,26 +210,26 @@ type modDep struct {
 // modules system (each with its `v:`).
 //
 // Implements: REQ-CUE-005
-func readModule(src []byte) *moduleFile {
-	tokens := lex(src)
+func readModule(source []byte) *moduleFile {
+	tokens := lex(source)
 	fields := structOf(tokens, match(tokens), 0, len(tokens), 0)
-	mf := &moduleFile{}
+	parsed := &moduleFile{}
 	if v := fields["module"]; v != nil {
-		mf.path = stripMajor(v.str)
+		parsed.path = stripMajor(v.text)
 	}
 	if d := fields["deps"]; d != nil {
 		for _, k := range sortedKeys(d.fields) {
 			x := d.fields[k]
-			md := &modDep{key: k, path: stripMajor(k), line: x.line}
+			md := &moduleDependency{key: k, path: stripMajor(k), line: x.line}
 			if v := x.fields["v"]; v != nil {
-				md.v = v.str
+				md.v = v.text
 			}
 			if md.path != "" {
-				mf.deps = append(mf.deps, md)
+				parsed.dependencies = append(parsed.dependencies, md)
 			}
 		}
 	}
-	return mf
+	return parsed
 }
 
 // stripMajor removes a major version suffix (@v0) from each element of an

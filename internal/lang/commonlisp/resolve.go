@@ -16,47 +16,47 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
-// sysRef is a system some .asd file of the repository defines.
-type sysRef struct {
-	sys *system
-	asd string // the .asd file
-	dir string // its directory
+// sysReference is a system some .asd file of the repository defines.
+type sysReference struct {
+	system    *system
+	asd       string // the .asd file
+	directory string // its directory
 }
 
 // root is the directory the system's components and package-inferred files
 // are relative to.
-func (s *sysRef) root() string { return path.Join(s.dir, s.sys.base) }
+func (s *sysReference) root() string { return path.Join(s.directory, s.system.base) }
 
 // pins is what the qlfile, qlfile.lock and ocicl.csv of one directory fix.
 type pins struct {
-	dir       string
-	ql        map[string]qlEntry
-	lock      map[string]lockEntry
-	lockDist  string                // the dist version of the lock's last dist (the one with priority)
-	qlDist    string                // ql :all <version>, or dist <quicklisp> <version>
-	ocicl     map[string]ociclEntry // by system
-	ociclProj map[string]ociclEntry // by project
+	directory    string
+	ql           map[string]qlEntry
+	lock         map[string]lockEntry
+	lockDist     string                // the dist version of the lock's last dist (the one with priority)
+	qlDist       string                // ql :all <version>, or dist <quicklisp> <version>
+	ocicl        map[string]ociclEntry // by system
+	ociclProject map[string]ociclEntry // by project
 }
 
 type resolver struct {
-	files map[string]bool
-	dirs  map[string]bool // directories holding files
+	files       map[string]bool
+	directories map[string]bool // directories holding files
 	// systems are the repository's systems by name; fileSystems the systems
-	// whose components include a file; asdDirs the systems defined in each
+	// whose components include a file; asdDirectories the systems defined in each
 	// directory's .asd files.
-	systems     map[string]*sysRef
-	fileSystems map[string][]*sysRef
-	asdDirs     map[string][]*sysRef
-	all         []*sysRef
+	systems        map[string]*sysReference
+	fileSystems    map[string][]*sysReference
+	asdDirectories map[string][]*sysReference
+	all            []*sysReference
 	// packages are the files defining each package of the repository (by
 	// name and nickname), sorted.
-	packages   map[string][]string
-	nicknames  map[string]map[string]string // package -> its local nicknames
-	stems      map[string][]string          // path without extension -> files
-	registered map[string]string            // package -> system, asdf:register-system-packages
-	pins       map[string]*pins
-	pinDirs    []string // shallowest first
-	declared   sync.Map // file -> *declaration
+	packages       map[string][]string
+	nicknames      map[string]map[string]string // package -> its local nicknames
+	stems          map[string][]string          // path without extension -> files
+	registered     map[string]string            // package -> system, asdf:register-system-packages
+	pins           map[string]*pins
+	pinDirectories []string // shallowest first
+	declared       sync.Map // file -> *declaration
 	// installed are the systems Qlot installed into .qlot/ and ocicl into
 	// systems/, by name, and installedNames their names, sorted.
 	installed      map[string]*installedSystem
@@ -66,8 +66,8 @@ type resolver struct {
 // installedSystem is a system Qlot or ocicl installed: the systems it depends
 // on and the pins of the directory it was installed for.
 type installedSystem struct {
-	deps []string
-	pins *pins
+	dependencies []string
+	pins         *pins
 }
 
 // declaration is what a file's systems declare: the systems they depend on
@@ -86,29 +86,29 @@ func ignored(f *scan.File) bool {
 	}
 	segments := strings.Split(f.Path, "/")
 	for i, s := range segments[:len(segments)-1] {
-		if s != "systems" || f.Abs == "" {
+		if s != "systems" || f.AbsolutePath == "" {
 			continue
 		}
-		abs := strings.ReplaceAll(f.Abs, "\\", "/")
-		if !strings.HasSuffix(abs, f.Path) {
+		absolute := strings.ReplaceAll(f.AbsolutePath, "\\", "/")
+		if !strings.HasSuffix(absolute, f.Path) {
 			continue
 		}
-		dir := abs[:len(abs)-len(f.Path)] + strings.Join(segments[:i], "/")
-		if besideOcicl(dir) {
+		directory := absolute[:len(absolute)-len(f.Path)] + strings.Join(segments[:i], "/")
+		if besideOcicl(directory) {
 			return true
 		}
 	}
 	return false
 }
 
-var ociclDirs sync.Map // absolute directory -> bool
+var ociclDirectories sync.Map // absolute directory -> bool
 
-func besideOcicl(dir string) bool {
-	if v, ok := ociclDirs.Load(dir); ok {
+func besideOcicl(directory string) bool {
+	if v, ok := ociclDirectories.Load(directory); ok {
 		return v.(bool)
 	}
-	_, err := os.Stat(path.Join(dir, "ocicl.csv"))
-	ociclDirs.Store(dir, err == nil)
+	_, err := os.Stat(path.Join(directory, "ocicl.csv"))
+	ociclDirectories.Store(directory, err == nil)
 	return err == nil
 }
 
@@ -125,8 +125,8 @@ func readable(f *scan.File) bool {
 // Implements: REQ-COMMONLISP-005, REQ-COMMONLISP-006, REQ-COMMONLISP-011, REQ-COMMONLISP-012
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{
-		files: map[string]bool{}, dirs: map[string]bool{}, systems: map[string]*sysRef{},
-		fileSystems: map[string][]*sysRef{}, asdDirs: map[string][]*sysRef{},
+		files: map[string]bool{}, directories: map[string]bool{}, systems: map[string]*sysReference{},
+		fileSystems: map[string][]*sysReference{}, asdDirectories: map[string][]*sysReference{},
 		packages: map[string][]string{}, nicknames: map[string]map[string]string{}, stems: map[string][]string{}, registered: map[string]string{}, pins: map[string]*pins{},
 		installed: map[string]*installedSystem{},
 	}
@@ -139,10 +139,10 @@ func newResolver(root string, all []*scan.File) *resolver {
 		stem := strings.TrimSuffix(f.Path, path.Ext(f.Path))
 		r.stems[stem] = append(r.stems[stem], f.Path)
 		for d := path.Dir(f.Path); ; d = path.Dir(d) {
-			if r.dirs[d] {
+			if r.directories[d] {
 				break
 			}
-			r.dirs[d] = true
+			r.directories[d] = true
 			if d == "." || d == "/" {
 				break
 			}
@@ -160,22 +160,22 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 	}
 	for _, f := range asds {
-		src, err := os.ReadFile(f.Abs)
+		source, err := os.ReadFile(f.AbsolutePath)
 		if err != nil {
 			continue
 		}
-		in := read(src)
-		dir := path.Dir(f.Path)
+		in := read(source)
+		directory := path.Dir(f.Path)
 		for _, s := range in.systems {
-			ref := &sysRef{sys: s, asd: f.Path, dir: dir}
-			r.all = append(r.all, ref)
-			r.asdDirs[dir] = append(r.asdDirs[dir], ref)
-			if _, dup := r.systems[s.name]; !dup {
-				r.systems[s.name] = ref
+			reference := &sysReference{system: s, asd: f.Path, directory: directory}
+			r.all = append(r.all, reference)
+			r.asdDirectories[directory] = append(r.asdDirectories[directory], reference)
+			if _, duplicate := r.systems[s.name]; !duplicate {
+				r.systems[s.name] = reference
 			}
 			for _, c := range s.files {
-				p := path.Join(dir, c)
-				r.fileSystems[p] = append(r.fileSystems[p], ref)
+				p := path.Join(directory, c)
+				r.fileSystems[p] = append(r.fileSystems[p], reference)
 			}
 		}
 		for p, s := range in.registered {
@@ -185,11 +185,11 @@ func newResolver(root string, all []*scan.File) *resolver {
 	}
 	// Package definitions: only files that mention one are read.
 	var mu sync.Mutex
-	lang.ForEachFile(context.Background(), sources, func(f *scan.File, src []byte) *lang.FileResult {
-		if !mentionsPackage(src) {
+	lang.ForEachFile(context.Background(), sources, func(f *scan.File, source []byte) *lang.FileResult {
+		if !mentionsPackage(source) {
 			return nil
 		}
-		in := read(src)
+		in := read(source)
 		mu.Lock()
 		r.index(f.Path, in)
 		mu.Unlock()
@@ -199,16 +199,16 @@ func newResolver(root string, all []*scan.File) *resolver {
 		sort.Strings(files)
 	}
 	for d := range r.pins {
-		r.pinDirs = append(r.pinDirs, d)
+		r.pinDirectories = append(r.pinDirectories, d)
 	}
-	sort.Slice(r.pinDirs, func(i, j int) bool {
-		a, b := strings.Count(r.pinDirs[i], "/"), strings.Count(r.pinDirs[j], "/")
+	sort.Slice(r.pinDirectories, func(i, j int) bool {
+		a, b := strings.Count(r.pinDirectories[i], "/"), strings.Count(r.pinDirectories[j], "/")
 		if a != b {
 			return a < b
 		}
-		return r.pinDirs[i] < r.pinDirs[j]
+		return r.pinDirectories[i] < r.pinDirectories[j]
 	})
-	for _, d := range r.pinDirs {
+	for _, d := range r.pinDirectories {
 		if root == "" {
 			break
 		}
@@ -236,9 +236,9 @@ const maxInstalledFiles = 100_000
 // implementation modules it requires. A system already read is kept.
 //
 // Implements: REQ-COMMONLISP-012
-func (r *resolver) readInstalled(dir string, p *pins) {
+func (r *resolver) readInstalled(directory string, p *pins) {
 	n := 0
-	filepath.WalkDir(dir, func(f string, e fs.DirEntry, err error) error {
+	filepath.WalkDir(directory, func(f string, e fs.DirEntry, err error) error {
 		if n++; err != nil || n > maxInstalledFiles {
 			return nil
 		}
@@ -248,18 +248,18 @@ func (r *resolver) readInstalled(dir string, p *pins) {
 		if info, err := e.Info(); err != nil || info.Size() > lang.MaxParseSize {
 			return nil
 		}
-		src, err := os.ReadFile(f)
+		source, err := os.ReadFile(f)
 		if err != nil {
 			return nil
 		}
-		for _, s := range read(src).systems {
+		for _, s := range read(source).systems {
 			if r.installed[s.name] != nil {
 				continue
 			}
 			in := &installedSystem{pins: p}
-			for _, d := range s.deps {
+			for _, d := range s.dependencies {
 				if !d.require && d.option != "weakly-depends-on" {
-					in.deps = append(in.deps, d.name)
+					in.dependencies = append(in.dependencies, d.name)
 				}
 			}
 			r.installed[s.name] = in
@@ -275,7 +275,7 @@ func (r *resolver) readInstalled(dir string, p *pins) {
 //
 // Implements: REQ-COMMONLISP-012
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
-	if t.Ecosystem != ecoQuicklisp {
+	if t.Ecosystem != ecosystemQuicklisp {
 		return nil
 	}
 	name := path.Base(t.Package)
@@ -293,11 +293,11 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 	}
 	out := []lang.Target{}
 	seen := map[string]bool{t.Package: true, projectOf(name): true} // its own secondary systems
-	for _, d := range s.deps {
-		dt := r.systemTarget("", d, "", s.pins)
-		if dt.Ecosystem == ecoQuicklisp && !seen[dt.Package] {
-			seen[dt.Package] = true
-			out = append(out, dt)
+	for _, d := range s.dependencies {
+		dependencyTarget := r.systemTarget("", d, "", s.pins)
+		if dependencyTarget.Ecosystem == ecosystemQuicklisp && !seen[dependencyTarget.Package] {
+			seen[dependencyTarget.Package] = true
+			out = append(out, dependencyTarget)
 		}
 	}
 	return out
@@ -305,7 +305,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 
 // Installed says a project's dependencies come from what Qlot or ocicl
 // installed.
-func (r *resolver) Installed(t lang.Target) bool { return t.Ecosystem == ecoQuicklisp }
+func (r *resolver) Installed(t lang.Target) bool { return t.Ecosystem == ecosystemQuicklisp }
 
 // index records the packages a file defines.
 func (r *resolver) index(file string, in *info) {
@@ -331,39 +331,39 @@ func contains(list []string, s string) bool {
 }
 
 // mentionsPackage reports whether a source may define a package.
-func mentionsPackage(src []byte) bool {
+func mentionsPackage(source []byte) bool {
 	for _, w := range [][]byte{[]byte("defpackage"), []byte("define-package"), []byte("DEFPACKAGE"), []byte("DEFINE-PACKAGE")} {
-		if bytes.Contains(src, w) {
+		if bytes.Contains(source, w) {
 			return true
 		}
 	}
-	return bytes.Contains(bytes.ToLower(src), []byte("defpackage"))
+	return bytes.Contains(bytes.ToLower(source), []byte("defpackage"))
 }
 
 // readPins reads a qlfile, qlfile.lock or ocicl.csv into its directory's
 // pins.
 func (r *resolver) readPins(f *scan.File) {
-	src, err := os.ReadFile(f.Abs)
+	source, err := os.ReadFile(f.AbsolutePath)
 	if err != nil {
 		return
 	}
-	dir := path.Dir(f.Path)
-	p := r.pins[dir]
+	directory := path.Dir(f.Path)
+	p := r.pins[directory]
 	if p == nil {
-		p = &pins{dir: dir, ql: map[string]qlEntry{}, lock: map[string]lockEntry{}, ocicl: map[string]ociclEntry{}, ociclProj: map[string]ociclEntry{}}
-		r.pins[dir] = p
+		p = &pins{directory: directory, ql: map[string]qlEntry{}, lock: map[string]lockEntry{}, ocicl: map[string]ociclEntry{}, ociclProject: map[string]ociclEntry{}}
+		r.pins[directory] = p
 	}
 	switch path.Base(f.Path) {
 	case "qlfile":
-		q := readQlfile(src)
+		q := readQlfile(source)
 		for _, e := range q.entries {
-			if _, dup := p.ql[e.name]; !dup {
+			if _, duplicate := p.ql[e.name]; !duplicate {
 				p.ql[e.name] = e
 			}
 		}
 		p.qlDist = q.dist
 	case "qlfile.lock":
-		l := readLock(src)
+		l := readLock(source)
 		for _, e := range l.entries {
 			p.lock[e.name] = e
 		}
@@ -371,10 +371,10 @@ func (r *resolver) readPins(f *scan.File) {
 			p.lockDist = l.dists[n-1].version
 		}
 	case "ocicl.csv":
-		for _, e := range readOcicl(src) {
+		for _, e := range readOcicl(source) {
 			p.ocicl[e.system] = e
-			if _, dup := p.ociclProj[e.project]; !dup {
-				p.ociclProj[e.project] = e
+			if _, duplicate := p.ociclProject[e.project]; !duplicate {
+				p.ociclProject[e.project] = e
 			}
 		}
 	}
@@ -392,19 +392,19 @@ func (r *resolver) governing(file string) []*pins {
 			break
 		}
 	}
-	out := make([]*pins, 0, len(r.pinDirs))
-	for _, d := range r.pinDirs {
+	out := make([]*pins, 0, len(r.pinDirectories))
+	for _, d := range r.pinDirectories {
 		out = append(out, r.pins[d])
 	}
 	return out
 }
 
 // Implements: REQ-COMMONLISP-004, REQ-COMMONLISP-005, REQ-COMMONLISP-006, REQ-COMMONLISP-007, REQ-COMMONLISP-008
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	kind, version, _ := strings.Cut(imp.Name, "\x00")
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	kind, version, _ := strings.Cut(rawImport.Name, "\x00")
 	switch kind {
 	case kindComponent:
-		p := path.Join(path.Dir(file), imp.Module)
+		p := path.Join(path.Dir(file), rawImport.Module)
 		if r.files[p] && p != file {
 			return lang.Target{Local: p}
 		}
@@ -415,7 +415,7 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 			return lang.Target{Local: c[0]}
 		}
 	case kindLoad:
-		for _, p := range []string{path.Join(path.Dir(file), imp.Module), path.Clean(imp.Module)} {
+		for _, p := range []string{path.Join(path.Dir(file), rawImport.Module), path.Clean(rawImport.Module)} {
 			if strings.HasPrefix(p, "../") || strings.HasPrefix(p, "/") {
 				continue
 			}
@@ -426,40 +426,40 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 			}
 		}
 	case kindSystem:
-		return r.systemTarget(file, imp.Module, version, nil)
+		return r.systemTarget(file, rawImport.Module, version, nil)
 	case kindRequire:
 		// require loads an implementation's module (SBCL's contribs, ABCL's
 		// and CMUCL's gray-streams) or, through ASDF's hook, a system.
-		if s, ok := stdSystem(imp.Module); ok {
-			return lang.Target{Ecosystem: ecoStd, Package: s}
+		if s, ok := stdSystem(rawImport.Module); ok {
+			return lang.Target{Ecosystem: ecosystemStd, Package: s}
 		}
-		if s, ok := implementationModules[imp.Module]; ok {
-			return lang.Target{Ecosystem: ecoStd, Package: s}
+		if s, ok := implementationModules[rawImport.Module]; ok {
+			return lang.Target{Ecosystem: ecosystemStd, Package: s}
 		}
-		if strings.Contains(imp.Module, ".") && !r.declarationOf(file).set[imp.Module] {
+		if strings.Contains(rawImport.Module, ".") && !r.declarationOf(file).set[rawImport.Module] {
 			return lang.Target{} // a file: (require "streamc.fasl")
 		}
-		return r.systemTarget(file, imp.Module, "", nil)
+		return r.systemTarget(file, rawImport.Module, "", nil)
 	case kindQlfile, kindLock, kindOcicl:
 		p := r.pins[path.Dir(file)]
 		if p == nil {
 			break
 		}
 		if kind == kindQlfile {
-			if e, ok := p.ql[imp.Module]; ok && e.source == "local" {
-				return r.localSource(e, p.dir)
+			if e, ok := p.ql[rawImport.Module]; ok && e.source == "local" {
+				return r.localSource(e, p.directory)
 			}
 		}
-		return r.systemTarget(file, imp.Module, "", p)
-	case kindRef:
+		return r.systemTarget(file, rawImport.Module, "", p)
+	case kindReference:
 		// A local nickname the file's package defines elsewhere.
-		m := imp.Module
+		m := rawImport.Module
 		if t, ok := r.nicknames[version][m]; ok && len(r.packages[m]) == 0 {
 			m = t
 		}
 		return r.packageTarget(file, m, kind)
 	case kindPackage, kindInPackage:
-		return r.packageTarget(file, imp.Module, kind)
+		return r.packageTarget(file, rawImport.Module, kind)
 	}
 	return lang.Target{}
 }
@@ -467,21 +467,21 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 // localSystem resolves a system of the repository: the .asd defining it,
 // or for a package-inferred system's foo/bar/baz the file bar/baz.lisp under
 // foo's root. ok is false for a system the repository does not define.
-func (r *resolver) localSystem(file, sys string) (lang.Target, bool) {
-	if ref := r.systems[sys]; ref != nil {
-		if ref.asd == file {
+func (r *resolver) localSystem(file, system string) (lang.Target, bool) {
+	if reference := r.systems[system]; reference != nil {
+		if reference.asd == file {
 			return lang.Target{}, true
 		}
-		return lang.Target{Local: ref.asd}, true
+		return lang.Target{Local: reference.asd}, true
 	}
-	primary, rest, slash := strings.Cut(sys, "/")
-	ref := r.systems[primary]
-	if !slash || ref == nil {
+	primary, rest, slash := strings.Cut(system, "/")
+	reference := r.systems[primary]
+	if !slash || reference == nil {
 		return lang.Target{}, false
 	}
-	if ref.sys.pis && rest != "" {
-		for _, ext := range []string{".lisp", ".lsp", ".cl"} {
-			if p := path.Join(ref.root(), rest) + ext; r.files[p] {
+	if reference.system.pis && rest != "" {
+		for _, extension := range []string{".lisp", ".lsp", ".cl"} {
+			if p := path.Join(reference.root(), rest) + extension; r.files[p] {
 				if p == file {
 					return lang.Target{}, true
 				}
@@ -489,10 +489,10 @@ func (r *resolver) localSystem(file, sys string) (lang.Target, bool) {
 			}
 		}
 	}
-	if ref.asd == file {
+	if reference.asd == file {
 		return lang.Target{}, true
 	}
-	return lang.Target{Local: ref.asd}, true
+	return lang.Target{Local: reference.asd}, true
 }
 
 // systemTarget resolves an ASDF system: one of the repository's, one the
@@ -500,44 +500,44 @@ func (r *resolver) localSystem(file, sys string) (lang.Target, bool) {
 // as the governing qlfile, lock or ocicl.csv say (from, when set, instead).
 //
 // Implements: REQ-COMMONLISP-005, REQ-COMMONLISP-006
-func (r *resolver) systemTarget(file, sys, version string, from *pins) lang.Target {
-	if t, ok := r.localSystem(file, sys); ok {
+func (r *resolver) systemTarget(file, system, version string, from *pins) lang.Target {
+	if t, ok := r.localSystem(file, system); ok {
 		return t
 	}
-	if s, ok := stdSystem(sys); ok {
-		return lang.Target{Ecosystem: ecoStd, Package: s}
+	if s, ok := stdSystem(system); ok {
+		return lang.Target{Ecosystem: ecosystemStd, Package: s}
 	}
-	project := projectOf(sys)
+	project := projectOf(system)
 	sets := []*pins{from}
 	if from == nil {
 		sets = r.governing(file)
 	}
 	for _, p := range sets {
-		if t, ok := r.pinned(p, sys, project); ok {
+		if t, ok := r.pinned(p, system, project); ok {
 			return t
 		}
 	}
-	return lang.Target{Ecosystem: ecoQuicklisp, Package: project, Version: version, Floating: true}
+	return lang.Target{Ecosystem: ecosystemQuicklisp, Package: project, Version: version, Floating: true}
 }
 
 // pinned is the target a directory's pins give a system, if they list it or
 // fix a dist version.
 //
 // Implements: REQ-COMMONLISP-006
-func (r *resolver) pinned(p *pins, sys, project string) (lang.Target, bool) {
-	if e, ok := p.ocicl[sys]; ok {
+func (r *resolver) pinned(p *pins, system, project string) (lang.Target, bool) {
+	if e, ok := p.ocicl[system]; ok {
 		return ociclTarget(e), true
 	}
-	if e, ok := p.ociclProj[project]; ok {
+	if e, ok := p.ociclProject[project]; ok {
 		return ociclTarget(e), true
 	}
 	q, hasQ := p.ql[project]
 	if !hasQ {
-		q, hasQ = p.ql[sys]
+		q, hasQ = p.ql[system]
 	}
 	e, hasL := p.lock[project]
 	if !hasL {
-		e, hasL = p.lock[sys]
+		e, hasL = p.lock[system]
 	}
 	switch {
 	case hasL:
@@ -547,13 +547,13 @@ func (r *resolver) pinned(p *pins, sys, project string) (lang.Target, bool) {
 		}
 		return lockTarget(e, asked, project), true
 	case hasQ && q.source == "local":
-		return r.localSource(q, p.dir), true
+		return r.localSource(q, p.directory), true
 	case hasQ:
 		return qlTarget(q, project), true
 	case p.lockDist != "":
-		return lang.Target{Ecosystem: ecoQuicklisp, Package: project, Version: p.lockDist, Pinned: true}, true
+		return lang.Target{Ecosystem: ecosystemQuicklisp, Package: project, Version: p.lockDist, Pinned: true}, true
 	case p.qlDist != "":
-		return lang.Target{Ecosystem: ecoQuicklisp, Package: project, Version: p.qlDist, Pinned: true}, true
+		return lang.Target{Ecosystem: ecosystemQuicklisp, Package: project, Version: p.qlDist, Pinned: true}, true
 	}
 	return lang.Target{}, false
 }
@@ -563,7 +563,7 @@ func ociclTarget(e ociclEntry) lang.Target {
 	if v == "" {
 		v = e.digest
 	}
-	return lang.Target{Ecosystem: ecoQuicklisp, Package: e.project, Version: v, Pinned: e.digest != ""}
+	return lang.Target{Ecosystem: ecosystemQuicklisp, Package: e.project, Version: v, Pinned: e.digest != ""}
 }
 
 // gitName names a git source by its repository URL.
@@ -571,7 +571,7 @@ func gitName(url, fallback string) string {
 	if url == "" {
 		return fallback
 	}
-	return lang.RepoName(url)
+	return lang.RepositoryName(url)
 }
 
 // lockTarget is what a qlfile.lock records for a project: the dist version
@@ -587,21 +587,21 @@ func lockTarget(e lockEntry, asked *qlEntry, project string) lang.Target {
 			requested = asked.tag
 		case asked.branch != "":
 			requested = asked.branch
-		case asked.ref != "":
-			requested = asked.ref
+		case asked.reference != "":
+			requested = asked.reference
 		}
 	}
 	requested = strings.TrimPrefix(requested, ":")
 	switch {
 	case strings.Contains(e.class, "source-ql"), strings.Contains(e.class, "ultralisp"):
-		t := lang.Target{Ecosystem: ecoQuicklisp, Package: project, Pinned: true}
+		t := lang.Target{Ecosystem: ecosystemQuicklisp, Package: project, Pinned: true}
 		switch {
 		case e.commit != "": // ql <project> :upstream
 			t.Version = e.commit
 		default:
 			v := e.version
-			for _, pre := range []string{"ql-dist-", "ql-upstream-", "ultralisp-", "ql-"} {
-				if s, ok := strings.CutPrefix(v, pre); ok {
+			for _, prerelease := range []string{"ql-dist-", "ql-upstream-", "ultralisp-", "ql-"} {
+				if s, ok := strings.CutPrefix(v, prerelease); ok {
 					v = s
 					break
 				}
@@ -614,7 +614,7 @@ func lockTarget(e lockEntry, asked *qlEntry, project string) lang.Target {
 		}
 		return t
 	case e.commit != "":
-		t := lang.Target{Ecosystem: ecoQuicklisp, Package: gitName(e.url, project), Version: e.commit, Pinned: true}
+		t := lang.Target{Ecosystem: ecosystemQuicklisp, Package: gitName(e.url, project), Version: e.commit, Pinned: true}
 		if requested != e.commit {
 			t.Requested = requested
 		}
@@ -623,7 +623,7 @@ func lockTarget(e lockEntry, asked *qlEntry, project string) lang.Target {
 		}
 		return t
 	}
-	t := lang.Target{Ecosystem: ecoQuicklisp, Package: project, Version: e.version, Pinned: e.version != ""}
+	t := lang.Target{Ecosystem: ecosystemQuicklisp, Package: project, Version: e.version, Pinned: e.version != ""}
 	if e.url != "" && !public(e.url) {
 		t.Origin = e.url
 	}
@@ -636,16 +636,16 @@ func lockTarget(e lockEntry, asked *qlEntry, project string) lang.Target {
 func qlTarget(e qlEntry, project string) lang.Target {
 	switch e.source {
 	case "git", "github":
-		t := lang.Target{Ecosystem: ecoQuicklisp, Package: gitName(e.url, project)}
+		t := lang.Target{Ecosystem: ecosystemQuicklisp, Package: gitName(e.url, project)}
 		switch {
-		case lang.Commit(e.ref):
-			t.Version, t.Pinned = e.ref, true
+		case lang.Commit(e.reference):
+			t.Version, t.Pinned = e.reference, true
 		case e.tag != "":
 			t.Version = e.tag
 		case e.branch != "":
 			t.Version, t.Floating = e.branch, true
-		case e.ref != "":
-			t.Version, t.Floating = e.ref, true
+		case e.reference != "":
+			t.Version, t.Floating = e.reference, true
 		default:
 			t.Floating = true
 		}
@@ -654,7 +654,7 @@ func qlTarget(e qlEntry, project string) lang.Target {
 		}
 		return t
 	case "http":
-		t := lang.Target{Ecosystem: ecoQuicklisp, Package: project, Origin: e.url}
+		t := lang.Target{Ecosystem: ecosystemQuicklisp, Package: project, Origin: e.url}
 		if e.md5 != "" {
 			t.Version, t.Pinned = e.md5, true
 		} else {
@@ -663,26 +663,26 @@ func qlTarget(e qlEntry, project string) lang.Target {
 		return t
 	}
 	if dated(e.version) {
-		return lang.Target{Ecosystem: ecoQuicklisp, Package: project, Version: e.version, Pinned: true}
+		return lang.Target{Ecosystem: ecosystemQuicklisp, Package: project, Version: e.version, Pinned: true}
 	}
-	return lang.Target{Ecosystem: ecoQuicklisp, Package: project, Floating: true}
+	return lang.Target{Ecosystem: ecosystemQuicklisp, Package: project, Floating: true}
 }
 
 // localSource is a qlfile's local <name> <directory>: the directory when
 // it is in the repository, else a package from that path.
-func (r *resolver) localSource(e qlEntry, dir string) lang.Target {
+func (r *resolver) localSource(e qlEntry, directory string) lang.Target {
 	if !path.IsAbs(e.url) && !strings.HasPrefix(e.url, "~") {
-		if p := path.Join(dir, e.url); r.dirs[p] && !strings.HasPrefix(p, "../") && p != "." {
+		if p := path.Join(directory, e.url); r.directories[p] && !strings.HasPrefix(p, "../") && p != "." {
 			return lang.Target{Local: p}
 		}
 	}
-	return lang.Target{Ecosystem: ecoQuicklisp, Package: e.name, Floating: true, Origin: e.url}
+	return lang.Target{Ecosystem: ecosystemQuicklisp, Package: e.name, Floating: true, Origin: e.url}
 }
 
 // public reports whether a git URL is on a public forge, whose projects are
 // named, not origins.
 func public(url string) bool {
-	host, _, _ := strings.Cut(lang.RepoName(url), "/")
+	host, _, _ := strings.Cut(lang.RepositoryName(url), "/")
 	switch host {
 	case "github.com", "gitlab.com", "bitbucket.org", "codeberg.org", "git.sr.ht", "sr.ht":
 		return true
@@ -697,49 +697,49 @@ func (r *resolver) declarationOf(file string) *declaration {
 		return d.(*declaration)
 	}
 	d := &declaration{set: map[string]bool{}}
-	refs := r.fileSystems[file]
+	references := r.fileSystems[file]
 	if strings.EqualFold(path.Ext(file), ".asd") {
-		refs = r.asdDirs[path.Dir(file)]
+		references = r.asdDirectories[path.Dir(file)]
 	}
-	if len(refs) == 0 {
-		for _, ref := range r.all {
-			if ref.sys.pis && under(file, ref.root()) {
-				refs = append(refs, ref)
+	if len(references) == 0 {
+		for _, reference := range r.all {
+			if reference.system.pis && under(file, reference.root()) {
+				references = append(references, reference)
 			}
 		}
 	}
-	for _, ref := range refs {
-		d.pis = d.pis || ref.sys.pis
+	for _, reference := range references {
+		d.pis = d.pis || reference.system.pis
 	}
-	if len(refs) == 0 {
-		for dir := path.Dir(file); ; dir = path.Dir(dir) {
-			if refs = r.asdDirs[dir]; len(refs) > 0 || dir == "." || dir == "/" {
+	if len(references) == 0 {
+		for directory := path.Dir(file); ; directory = path.Dir(directory) {
+			if references = r.asdDirectories[directory]; len(references) > 0 || directory == "." || directory == "/" {
 				break
 			}
 		}
 	}
-	if len(refs) == 0 {
-		refs = r.all
+	if len(references) == 0 {
+		references = r.all
 	}
 	// What a system of the repository depends on is loaded with the
 	// systems depending on it: the closure through local systems counts.
-	// refs is a copy: appending to r.all or r.asdDirs' slices would write
+	// references is a copy: appending to r.all or r.asdDirs' slices would write
 	// into memory other files' resolutions read.
-	refs = slices.Clone(refs)
-	seen := map[*sysRef]bool{}
-	for len(refs) > 0 && len(seen) < 4096 {
-		ref := refs[0]
-		refs = refs[1:]
-		if seen[ref] {
+	references = slices.Clone(references)
+	seen := map[*sysReference]bool{}
+	for len(references) > 0 && len(seen) < 4096 {
+		reference := references[0]
+		references = references[1:]
+		if seen[reference] {
 			continue
 		}
-		seen[ref] = true
-		for _, dep := range ref.sys.deps {
-			d.set[dep.name] = true
-			primary, _, _ := strings.Cut(dep.name, "/")
-			for _, n := range []string{dep.name, primary} {
+		seen[reference] = true
+		for _, dependency := range reference.system.dependencies {
+			d.set[dependency.name] = true
+			primary, _, _ := strings.Cut(dependency.name, "/")
+			for _, n := range []string{dependency.name, primary} {
 				if l := r.systems[n]; l != nil && !seen[l] {
-					refs = append(refs, l)
+					references = append(references, l)
 				}
 			}
 		}
@@ -764,8 +764,8 @@ func (r *resolver) declarationOf(file string) *declaration {
 	return v.(*declaration)
 }
 
-func under(file, dir string) bool {
-	return dir == "." || strings.HasPrefix(file, dir+"/")
+func under(file, directory string) bool {
+	return directory == "." || strings.HasPrefix(file, directory+"/")
 }
 
 // fold is a name without case, a cl- prefix or -cl suffix and punctuation:
@@ -785,16 +785,16 @@ func fold(s string) string {
 // name (or its primary system's, for foo/bar), the declared name folding
 // alike (json and cl-json), or the declared system the package's dotted or
 // slashed prefix names (lack.request is lack's).
-func (r *resolver) match(pkg string, d *declaration) (string, bool) {
+func (r *resolver) match(packageName string, d *declaration) (string, bool) {
 	var candidates []string
-	if s, ok := r.registered[pkg]; ok {
+	if s, ok := r.registered[packageName]; ok {
 		candidates = append(candidates, s)
 	}
-	if s, ok := packageSystem(pkg); ok {
+	if s, ok := packageSystem(packageName); ok {
 		candidates = append(candidates, s)
 	}
-	primary, _, _ := strings.Cut(pkg, "/")
-	candidates = append(candidates, pkg, primary)
+	primary, _, _ := strings.Cut(packageName, "/")
+	candidates = append(candidates, packageName, primary)
 	for _, c := range candidates {
 		if d.set[c] {
 			return c, true
@@ -805,7 +805,7 @@ func (r *resolver) match(pkg string, d *declaration) (string, bool) {
 			}
 		}
 	}
-	f := fold(pkg)
+	f := fold(packageName)
 	for _, n := range d.names {
 		if fold(n) == f {
 			return n, true
@@ -813,7 +813,7 @@ func (r *resolver) match(pkg string, d *declaration) (string, bool) {
 	}
 	best := ""
 	for _, n := range d.names {
-		if (strings.HasPrefix(pkg, n+".") || strings.HasPrefix(pkg, n+"/")) && len(n) > len(best) {
+		if (strings.HasPrefix(packageName, n+".") || strings.HasPrefix(packageName, n+"/")) && len(n) > len(best) {
 			best = n
 		}
 	}
@@ -830,8 +830,8 @@ func (r *resolver) match(pkg string, d *declaration) (string, bool) {
 // nothing declares are dropped.
 //
 // Implements: REQ-COMMONLISP-004, REQ-COMMONLISP-007, REQ-COMMONLISP-008
-func (r *resolver) packageTarget(file, pkg, kind string) lang.Target {
-	if files := r.packages[pkg]; len(files) > 0 {
+func (r *resolver) packageTarget(file, packageName, kind string) lang.Target {
+	if files := r.packages[packageName]; len(files) > 0 {
 		if contains(files, file) {
 			return lang.Target{}
 		}
@@ -843,32 +843,32 @@ func (r *resolver) packageTarget(file, pkg, kind string) lang.Target {
 		}
 		return lang.Target{Local: best}
 	}
-	if s, ok := stdPackage(pkg); ok {
-		return lang.Target{Ecosystem: ecoStd, Package: s}
+	if s, ok := stdPackage(packageName); ok {
+		return lang.Target{Ecosystem: ecosystemStd, Package: s}
 	}
-	primary, _, _ := strings.Cut(pkg, "/")
-	if r.systems[pkg] != nil || r.systems[primary] != nil {
-		t, _ := r.localSystem(file, pkg)
+	primary, _, _ := strings.Cut(packageName, "/")
+	if r.systems[packageName] != nil || r.systems[primary] != nil {
+		t, _ := r.localSystem(file, packageName)
 		return t
 	}
 	d := r.declarationOf(file)
-	if sys, ok := r.match(pkg, d); ok {
-		return r.systemTarget(file, sys, "", nil)
+	if system, ok := r.match(packageName, d); ok {
+		return r.systemTarget(file, system, "", nil)
 	}
 	if kind != kindPackage {
 		return lang.Target{}
 	}
-	sys, known := packageSystem(pkg)
-	if s, ok := r.registered[pkg]; ok {
-		sys, known = s, true
+	system, known := packageSystem(packageName)
+	if s, ok := r.registered[packageName]; ok {
+		system, known = s, true
 	}
 	if !known {
-		sys = pkg
+		system = packageName
 	}
 	if d.pis {
-		return r.systemTarget(file, sys, "", nil)
+		return r.systemTarget(file, system, "", nil)
 	}
-	return lang.Target{Ecosystem: ecoQuicklisp, Package: projectOf(sys), Unresolved: true}
+	return lang.Target{Ecosystem: ecosystemQuicklisp, Package: projectOf(system), Unresolved: true}
 }
 
 // shared is the length of the common directory prefix of two paths.

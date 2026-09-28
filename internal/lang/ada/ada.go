@@ -32,8 +32,8 @@ import (
 )
 
 const (
-	ecoAlire = "alire"
-	ecoStd   = "ada-std"
+	ecosystemAlire = "alire"
+	ecosystemStd   = "ada-std"
 )
 
 const classManifest = "alire"
@@ -78,29 +78,29 @@ func generated(f *scan.File) bool {
 		if s != "alire" && s != "obj" {
 			continue
 		}
-		if f.Abs == "" || !strings.HasSuffix(filepath.ToSlash(f.Abs), f.Path) {
+		if f.AbsolutePath == "" || !strings.HasSuffix(filepath.ToSlash(f.AbsolutePath), f.Path) {
 			continue
 		}
-		base := f.Abs[:len(f.Abs)-len(f.Path)]
-		dir := filepath.Join(base, filepath.FromSlash(strings.Join(segments[:i], "/")))
-		if s == "alire" && hasFile(dir, "alire.toml") || s == "obj" && hasFile(dir, "*.gpr") {
+		base := f.AbsolutePath[:len(f.AbsolutePath)-len(f.Path)]
+		directory := filepath.Join(base, filepath.FromSlash(strings.Join(segments[:i], "/")))
+		if s == "alire" && hasFile(directory, "alire.toml") || s == "obj" && hasFile(directory, "*.gpr") {
 			return true
 		}
 	}
 	return false
 }
 
-var dirFiles sync.Map // absolute directory + "\x00" + pattern -> bool
+var directoryFiles sync.Map // absolute directory + "\x00" + pattern -> bool
 
-// hasFile reports whether dir has a file matching pattern (a name, or *.gpr).
-func hasFile(dir, pattern string) bool {
-	key := dir + "\x00" + pattern
-	if v, ok := dirFiles.Load(key); ok {
+// hasFile reports whether directory has a file matching pattern (a name, or *.gpr).
+func hasFile(directory, pattern string) bool {
+	key := directory + "\x00" + pattern
+	if v, ok := directoryFiles.Load(key); ok {
 		return v.(bool)
 	}
 	found := false
 	if strings.HasPrefix(pattern, "*") {
-		if entries, err := os.ReadDir(dir); err == nil {
+		if entries, err := os.ReadDir(directory); err == nil {
 			for _, e := range entries {
 				if !e.IsDir() && strings.EqualFold(path.Ext(e.Name()), pattern[1:]) {
 					found = true
@@ -108,10 +108,10 @@ func hasFile(dir, pattern string) bool {
 				}
 			}
 		}
-	} else if _, err := os.Stat(filepath.Join(dir, pattern)); err == nil {
+	} else if _, err := os.Stat(filepath.Join(directory, pattern)); err == nil {
 		found = true
 	}
-	dirFiles.Store(key, found)
+	directoryFiles.Store(key, found)
 	return found
 }
 
@@ -128,8 +128,8 @@ func (Plugin) Class(f *scan.File) string {
 // Implements: REQ-ADA-009
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoAlire, Name: "Alire crates"},
-		{ID: ecoStd, Name: "Ada predefined units", Std: true},
+		{ID: ecosystemAlire, Name: "Alire crates"},
+		{ID: ecosystemStd, Name: "Ada predefined units", Std: true},
 	}
 }
 
@@ -138,13 +138,13 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-ADA-002, REQ-ADA-003, REQ-ADA-005, REQ-ADA-006
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	switch {
 	case path.Base(f.Path) == "alire.toml":
-		return extractManifest(src), nil
+		return extractManifest(source), nil
 	case gprFile(f.Path):
-		return extractGPR(src), nil
+		return extractGPR(source), nil
 	}
-	s := extractSource(src)
+	s := extractSource(source)
 	return &lang.Extraction{Imports: s.imports, Symbols: s.symbols.List()}, nil
 }

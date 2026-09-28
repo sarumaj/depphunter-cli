@@ -22,10 +22,10 @@ import (
 // Verifies: REQ-SHELL-001, REQ-SHELL-002, REQ-SHELL-004, REQ-SHELL-005, REQ-SHELL-006
 // Verifies: REQ-SHELL-007, REQ-SHELL-008, REQ-SHELL-010
 func TestSourcesInvocationsAndInstalls(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
 	local := func(p string) lang.Target { return lang.Target{Local: p} }
-	pkg := func(eco, name, version string, pinned, floating bool) lang.Target {
-		return lang.Target{Ecosystem: eco, Package: name, Version: version, Pinned: pinned, Floating: floating}
+	packageName := func(ecosystem, name, version string, pinned, floating bool) lang.Target {
+		return lang.Target{Ecosystem: ecosystem, Package: name, Version: version, Pinned: pinned, Floating: floating}
 	}
 	common, logb := local("scripts/lib/common.sh"), local("scripts/lib/log.bash")
 	imports := map[string]map[string]lang.Target{
@@ -45,22 +45,22 @@ func TestSourcesInvocationsAndInstalls(t *testing.T) {
 			`"$DIR"/../scripts/lib/log.bash`: logb,
 		},
 		"scripts/ci.sh": {
-			"pip install pip":                       pkg(ecoPyPI, "pip", "", false, true),
+			"pip install pip":                       packageName(ecosystemPyPI, "pip", "", false, true),
 			"pip install -r requirements-dev.txt":   local("requirements-dev.txt"),
-			`pip install "requests[socks]==2.31.0"`: pkg(ecoPyPI, "requests", "2.31.0", true, false),
-			`pip install 'flask>=2.0'`:              pkg(ecoPyPI, "flask", ">=2.0", false, false),
-			"python3 -m pip install black==24.1.0":  pkg(ecoPyPI, "black", "24.1.0", true, false),
-			"npm install typescript@5.3.3":          pkg(ecoNPM, "typescript", "5.3.3", true, false),
-			"npm install @angular/cli@^17":          pkg(ecoNPM, "@angular/cli", "^17", false, false),
-			"npm install yarn":                      pkg(ecoNPM, "yarn", "", false, true),
-			"go install github.com/golangci/golangci-lint/cmd/golangci-lint@${GOLANGCI_VERSION}": pkg(ecoGo, "github.com/golangci/golangci-lint", "v1.55.2", true, false),
-			"go install golang.org/x/tools/cmd/goimports@latest":                                 pkg(ecoGo, "golang.org/x/tools", "latest", false, true),
-			"go install golang.org/x/tools/gopls@v0.14.2":                                        pkg(ecoGo, "golang.org/x/tools/gopls", "v0.14.2", true, false),
-			"cargo install ripgrep":                                                              pkg(ecoCrates, "ripgrep", "13.0.0", true, false),
-			"cargo install cargo-edit@0.12":                                                      pkg(ecoCrates, "cargo-edit", "0.12", false, false),
-			"gem install bundler":                                                                pkg(ecoGems, "bundler", "2.5.3", true, false),
-			"gem install rake:13.1.0":                                                            pkg(ecoGems, "rake", "13.1.0", true, false),
-			"gem install rubocop":                                                                pkg(ecoGems, "rubocop", "", false, true),
+			`pip install "requests[socks]==2.31.0"`: packageName(ecosystemPyPI, "requests", "2.31.0", true, false),
+			`pip install 'flask>=2.0'`:              packageName(ecosystemPyPI, "flask", ">=2.0", false, false),
+			"python3 -m pip install black==24.1.0":  packageName(ecosystemPyPI, "black", "24.1.0", true, false),
+			"npm install typescript@5.3.3":          packageName(ecosystemNPM, "typescript", "5.3.3", true, false),
+			"npm install @angular/cli@^17":          packageName(ecosystemNPM, "@angular/cli", "^17", false, false),
+			"npm install yarn":                      packageName(ecosystemNPM, "yarn", "", false, true),
+			"go install github.com/golangci/golangci-lint/cmd/golangci-lint@${GOLANGCI_VERSION}": packageName(ecosystemGo, "github.com/golangci/golangci-lint", "v1.55.2", true, false),
+			"go install golang.org/x/tools/cmd/goimports@latest":                                 packageName(ecosystemGo, "golang.org/x/tools", "latest", false, true),
+			"go install golang.org/x/tools/gopls@v0.14.2":                                        packageName(ecosystemGo, "golang.org/x/tools/gopls", "v0.14.2", true, false),
+			"cargo install ripgrep":                                                              packageName(ecosystemCrates, "ripgrep", "13.0.0", true, false),
+			"cargo install cargo-edit@0.12":                                                      packageName(ecosystemCrates, "cargo-edit", "0.12", false, false),
+			"gem install bundler":                                                                packageName(ecosystemGems, "bundler", "2.5.3", true, false),
+			"gem install rake:13.1.0":                                                            packageName(ecosystemGems, "rake", "13.1.0", true, false),
+			"gem install rubocop":                                                                packageName(ecosystemGems, "rubocop", "", false, true),
 		},
 		"tools/setup.zsh": {
 			"source ${0:A:h}/../scripts/lib/common.sh": common,
@@ -82,11 +82,11 @@ func TestSourcesInvocationsAndInstalls(t *testing.T) {
 		"sub/.envrc": {"source_up": local(".envrc"), "dotenv_if_exists ../.env": local(".env")},
 	}
 	for file, want := range imports {
-		t.Run(file, func(t *testing.T) { langtest.CheckImports(t, res[file], want) })
+		t.Run(file, func(t *testing.T) { langtest.CheckImports(t, results[file], want) })
 	}
-	if len(res) != len(imports) {
+	if len(results) != len(imports) {
 		var got []string
-		for p := range res {
+		for p := range results {
 			got = append(got, p)
 		}
 		t.Errorf("analyzed %v, want the %d files above (scripts/notes has no shebang, scripts/gen.py is Python)", got, len(imports))
@@ -95,7 +95,7 @@ func TestSourcesInvocationsAndInstalls(t *testing.T) {
 
 // Verifies: REQ-SHELL-003
 func TestSymbols(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
 	want := map[string]map[string]string{
 		"scripts/build.sh": {
 			"SCRIPT_DIR": "var", "ROOT_DIR": "var", "VERSION": "const", "BUILD_MODE": "var",
@@ -115,10 +115,10 @@ func TestSymbols(t *testing.T) {
 		"sub/.envrc":            {},
 	}
 	for file, w := range want {
-		langtest.CheckSymbols(t, res[file], w)
+		langtest.CheckSymbols(t, results[file], w)
 	}
 	lines := map[string]int{}
-	for _, s := range res["scripts/build.sh"].Symbols {
+	for _, s := range results["scripts/build.sh"].Symbols {
 		lines[s.Name] = s.Line
 	}
 	if lines["build"] != 19 || lines["clean"] != 32 || lines["VERSION"] != 7 {
@@ -133,7 +133,7 @@ func TestSymbols(t *testing.T) {
 //
 // Verifies: REQ-SHELL-002, REQ-SHELL-010
 func TestScannerSurvives(t *testing.T) {
-	src := `#!/bin/sh
+	source := `#!/bin/sh
 grep -E "(^| )${key}( |$)" file
 v=$(case "$x" in a) echo ")" ;; (b|c) echo b ;; esac)
 arr=(
@@ -152,17 +152,17 @@ empty=()
 x=$(f() { source in-function.sh; }; f)
 source after.sh
 `
-	ex := extract([]byte(src), ".sh")
+	extraction := extract([]byte(source), ".sh")
 	var specs []string
-	for _, im := range ex.Imports {
-		specs = append(specs, im.Spec)
+	for _, rawImport := range extraction.Imports {
+		specs = append(specs, rawImport.Spec)
 	}
 	want := []string{"source in-function.sh", "source after.sh"}
 	if !reflect.DeepEqual(specs, want) {
 		t.Errorf("imports %q, want %q", specs, want)
 	}
-	if n := len(ex.Imports); n == 2 && ex.Imports[1].Line != 18 {
-		t.Errorf("source after.sh on line %d, want 18", ex.Imports[1].Line)
+	if n := len(extraction.Imports); n == 2 && extraction.Imports[1].Line != 18 {
+		t.Errorf("source after.sh on line %d, want 18", extraction.Imports[1].Line)
 	}
 }
 
@@ -171,14 +171,14 @@ source after.sh
 //
 // Verifies: REQ-SHELL-002
 func TestTruncatedScripts(t *testing.T) {
-	for _, src := range []string{"echo 'abc", "x=\\", "echo ${a", "cat <<EOF\nsource a.sh", "v=$(source a.sh", "echo `ls", "a=(1 2", "case x in a) f", "f() {", "$'\\"} {
-		extract([]byte(src), ".sh")
+	for _, source := range []string{"echo 'abc", "x=\\", "echo ${a", "cat <<EOF\nsource a.sh", "v=$(source a.sh", "echo `ls", "a=(1 2", "case x in a) f", "f() {", "$'\\"} {
+		extract([]byte(source), ".sh")
 	}
 }
 
 // Verifies: REQ-SHELL-004, REQ-SHELL-010
 func TestPathIdioms(t *testing.T) {
-	for src, want := range map[string]string{
+	for source, want := range map[string]string{
 		`source "$(dirname "$0")/a.sh"`:                                                 "dir:a.sh",
 		`source "$(dirname -- "$(readlink -f -- "$0")")/a.sh"`:                          "dir:a.sh",
 		`source "$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" &>/dev/null && pwd)/a.sh"`: "dir:a.sh",
@@ -199,13 +199,13 @@ func TestPathIdioms(t *testing.T) {
 		`source "$(dirname "$0")/lib/$1.sh"`:                                            "",
 		`source "$(dirname "$0")"/*.sh`:                                                 "",
 	} {
-		ex := extract([]byte(src), ".sh")
+		extraction := extract([]byte(source), ".sh")
 		got := ""
-		if len(ex.Imports) > 0 {
-			got = ex.Imports[len(ex.Imports)-1].Module
+		if len(extraction.Imports) > 0 {
+			got = extraction.Imports[len(extraction.Imports)-1].Module
 		}
 		if got != want {
-			t.Errorf("%s: module %q, want %q", src, got, want)
+			t.Errorf("%s: module %q, want %q", source, got, want)
 		}
 	}
 }

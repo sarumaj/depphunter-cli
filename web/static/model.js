@@ -4,7 +4,7 @@
 // Anything binary, and anything over --max-file-size, is listed without being read,
 // so it arrives with a size in bytes and nothing else; sized by lines alone every one
 // of them came out at the floor height, which drew a 4 MB model as the same flat slab
-// as an empty file. This is the conversion that gives them a storey instead. It is an
+// as an empty file. This is the conversion that gives them a story instead. It is an
 // average of source, not a measurement of anything - which is why it is only ever
 // used for how big a thing is drawn, and never for a number the map puts in words.
 const BYTES_PER_LINE = 40;
@@ -140,14 +140,14 @@ export function ancestors(n) {
 export function boundaryEdges(model, sel, kind = 'import') {
   const from = kind === 'reference' ? model.refsFrom : model.edgesFrom;
   const to = kind === 'reference' ? model.refsTo : model.edgesTo;
-  const out = [], inc = [];
+  const out = [], incoming = [];
   const visit = n => {
     for (const e of from.get(n.id) || []) if (!isWithin(model.byId.get(e.to), sel)) out.push(e);
-    for (const e of to.get(n.id) || []) if (!isWithin(model.byId.get(e.from), sel)) inc.push(e);
+    for (const e of to.get(n.id) || []) if (!isWithin(model.byId.get(e.from), sel)) incoming.push(e);
     for (const c of n.children) visit(c);
   };
   visit(sel);
-  return { out, in: inc };
+  return { out, in: incoming };
 }
 
 /**
@@ -158,10 +158,10 @@ export function boundaryEdges(model, sel, kind = 'import') {
  * Returns {selBox, arcs: [{from, to, color, count}], lit: Set<box>}.
  * Implements: REQ-MAP-012, REQ-MAP-013
  */
-export function focusArcs(model, sel, { kind = 'import', rep, visible, outColor, inColor, max = Infinity }) {
-  const selBox = sel && rep(sel);
+export function focusArcs(model, sel, { kind = 'import', rep: representative, visible, outColor, inColor, max = Infinity }) {
+  const selBox = sel && representative(sel);
   if (!sel || !selBox) return null;
-  const { out, in: inc } = boundaryEdges(model, sel, kind);
+  const { out, in: incoming } = boundaryEdges(model, sel, kind);
   const agg = new Map();
   const add = (from, to, color) => {
     if (!from || !to || from === to) return;
@@ -172,10 +172,10 @@ export function focusArcs(model, sel, { kind = 'import', rep, visible, outColor,
   };
   const shown = id => {
     const n = model.byId.get(id);
-    return visible(n) ? rep(n) : null;
+    return visible(n) ? representative(n) : null;
   };
   for (const e of out) add(selBox, shown(e.to), outColor);
-  for (const e of inc) add(shown(e.from), selBox, inColor);
+  for (const e of incoming) add(shown(e.from), selBox, inColor);
   const arcs = [...agg.values()].sort((a, b) => b.count - a.count).slice(0, max);
   const lit = new Set([selBox]);
   for (const a of arcs) { lit.add(a.from); lit.add(a.to); }

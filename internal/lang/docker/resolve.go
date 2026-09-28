@@ -18,15 +18,15 @@ type resolver struct {
 	root  string
 	files map[string]bool
 
-	mu   sync.Mutex
-	envs map[string]map[string]string // directory -> what its .env file sets
+	mu           sync.Mutex
+	environments map[string]map[string]string // directory -> what its .env file sets
 }
 
 // A Compose file's include: and cross-file extends: resolve to several imports.
 var _ lang.Expander = (*resolver)(nil)
 
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{root: root, files: map[string]bool{}, envs: map[string]map[string]string{}}
+	r := &resolver{root: root, files: map[string]bool{}, environments: map[string]map[string]string{}}
 	for _, f := range all {
 		r.files[f.Path] = true
 	}
@@ -34,24 +34,24 @@ func newResolver(root string, all []*scan.File) *resolver {
 }
 
 // Implements: REQ-DOCKER-003, REQ-DOCKER-004, REQ-DOCKER-007, REQ-DOCKER-009
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	dir := path.Dir(file)
-	return r.target(imp, dir, dir)
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	directory := path.Dir(file)
+	return r.target(rawImport, directory, directory)
 }
 
-// target resolves imp with the paths it holds read from dir, and a Compose value
-// interpolated with the .env file of envDir: the directory of the Compose file that
+// target resolves rawImport with the paths it holds read from directory, and a Compose value
+// interpolated with the .env file of environmentDirectory: the directory of the Compose file that
 // was asked for, which Compose takes as the project's.
-func (r *resolver) target(imp lang.RawImport, dir, envDir string) lang.Target {
-	switch imp.Name {
+func (r *resolver) target(rawImport lang.RawImport, directory, environmentDirectory string) lang.Target {
+	switch rawImport.Name {
 	case kindBuild:
 		// Compose reads a build context from the Compose file's own directory.
-		return r.local(path.Join(dir, imp.Module))
+		return r.local(path.Join(directory, rawImport.Module))
 	case kindImage:
-		return imageTarget(imp.Module, imp.Module)
+		return imageTarget(rawImport.Module, rawImport.Module)
 	case kindCompose:
-		v, _ := expand(imp.Module, r.env(envDir), true)
-		written, _ := expand(imp.Module, nil, true)
+		v, _ := expand(rawImport.Module, r.environment(environmentDirectory), true)
+		written, _ := expand(rawImport.Module, nil, true)
 		return imageTarget(v, written)
 	}
 	return lang.Target{}
@@ -62,8 +62,8 @@ func (r *resolver) target(imp lang.RawImport, dir, envDir string) lang.Target {
 // (with its defaults, never a value of an .env file). One left only in the tag or
 // digest names a known image at a version nobody can read off the file, which is
 // kept as written and pins nothing.
-func imageTarget(ref, written string) lang.Target {
-	t := oci.Image(ref)
+func imageTarget(reference, written string) lang.Target {
+	t := oci.Image(reference)
 	if strings.Contains(t.Package, "$") {
 		return lang.Target{Ecosystem: oci.Ecosystem, Package: written, Unresolved: true}
 	}
@@ -85,38 +85,38 @@ func (r *resolver) local(p string) lang.Target {
 // lists, and the image and build a service extends from another file.
 //
 // Implements: REQ-DOCKER-009
-func (r *resolver) Expand(file string, imp lang.RawImport) ([]lang.Import, bool) {
-	if imp.Name != kindInclude && imp.Name != kindExtends {
+func (r *resolver) Expand(file string, rawImport lang.RawImport) ([]lang.Import, bool) {
+	if rawImport.Name != kindInclude && rawImport.Name != kindExtends {
 		return nil, false
 	}
-	return r.expand(file, imp, 0), true
+	return r.expand(file, rawImport, 0), true
 }
 
-func (r *resolver) expand(file string, imp lang.RawImport, depth int) []lang.Import {
-	dir := path.Dir(file)
-	if imp.Name == kindInclude {
+func (r *resolver) expand(file string, rawImport lang.RawImport, depth int) []lang.Import {
+	directory := path.Dir(file)
+	if rawImport.Name == kindInclude {
 		// An included file is read with its own directory as the project's, and so
 		// with its own .env file.
 		var t lang.Target
-		if p, ok := r.path(dir, imp.Module, dir); ok {
+		if p, ok := r.path(directory, rawImport.Module, directory); ok {
 			t = r.local(p)
 		}
-		out := []lang.Import{{Spec: imp.Spec, Line: imp.Line, Target: t}}
+		out := []lang.Import{{Spec: rawImport.Spec, Line: rawImport.Line, Target: t}}
 		if t.Local == "" || composeFile(t.Local) || depth >= maxExtends {
 			return out // a Compose file by name is analyzed on its own
 		}
-		if src := r.read(t.Local); src != nil {
-			for _, im := range r.apply(t.Local, extractCompose(src), depth+1) {
-				im.Spec, im.Line = im.Spec+" ("+t.Local+")", imp.Line
-				out = append(out, im)
+		if source := r.read(t.Local); source != nil {
+			for _, imported := range r.apply(t.Local, extractCompose(source), depth+1) {
+				imported.Spec, imported.Line = imported.Spec+" ("+t.Local+")", rawImport.Line
+				out = append(out, imported)
 			}
 		}
 		return out
 	}
 	services := r.services(file)
-	image, build, buildFile, via := inherit(file, services, field(services, imp.Module),
+	image, build, buildFile, via := inherit(file, services, field(services, rawImport.Module),
 		func(from, written string) (string, *yaml.Node) {
-			p, ok := r.path(path.Dir(from), written, dir)
+			p, ok := r.path(path.Dir(from), written, directory)
 			if !ok || !r.files[p] {
 				return "", nil
 			}
@@ -128,87 +128,87 @@ func (r *resolver) expand(file string, imp lang.RawImport, depth int) []lang.Imp
 		if h.file != "" {
 			t = lang.Target{Local: h.file}
 		}
-		out = append(out, lang.Import{Spec: "extends: " + h.written, Line: imp.Line, Target: t})
+		out = append(out, lang.Import{Spec: "extends: " + h.written, Line: rawImport.Line, Target: t})
 	}
-	ex := &lang.Extraction{}
-	serviceImports(ex, image, build)
-	for _, im := range ex.Imports {
-		out = append(out, lang.Import{Spec: im.Spec, Line: imp.Line, Target: r.target(im, path.Dir(buildFile), dir)})
+	extraction := &lang.Extraction{}
+	serviceImports(extraction, image, build)
+	for _, rawImport := range extraction.Imports {
+		out = append(out, lang.Import{Spec: rawImport.Spec, Line: rawImport.Line, Target: r.target(rawImport, path.Dir(buildFile), directory)})
 	}
 	return out
 }
 
 // apply resolves the imports of a file read for another one.
-func (r *resolver) apply(file string, ex *lang.Extraction, depth int) []lang.Import {
+func (r *resolver) apply(file string, extraction *lang.Extraction, depth int) []lang.Import {
 	var out []lang.Import
-	for _, im := range ex.Imports {
-		if im.Name == kindInclude || im.Name == kindExtends {
-			out = append(out, r.expand(file, im, depth)...)
+	for _, rawImport := range extraction.Imports {
+		if rawImport.Name == kindInclude || rawImport.Name == kindExtends {
+			out = append(out, r.expand(file, rawImport, depth)...)
 			continue
 		}
-		out = append(out, lang.Import{Spec: im.Spec, Line: im.Line, Target: r.Resolve(file, im)})
+		out = append(out, lang.Import{Spec: rawImport.Spec, Line: rawImport.Line, Target: r.Resolve(file, rawImport)})
 	}
 	return out
 }
 
-// path is a file named in a Compose file of dir, interpolated with the .env file of
-// envDir, from the repository root; false when it stays unknown or is absolute or
+// path is a file named in a Compose file of directory, interpolated with the .env file of
+// environmentDirectory, from the repository root; false when it stays unknown or is absolute or
 // remote. The caller checks the repository has it.
-func (r *resolver) path(dir, written, envDir string) (string, bool) {
-	v, ok := expand(written, r.env(envDir), true)
+func (r *resolver) path(directory, written, environmentDirectory string) (string, bool) {
+	v, ok := expand(written, r.environment(environmentDirectory), true)
 	if !ok || v == "" || remote(v) || path.IsAbs(v) {
 		return "", false
 	}
-	return path.Join(dir, v), true
+	return path.Join(directory, v), true
 }
 
 // read returns a file of the repository, nil when it cannot be read or is too large
 // to parse.
 func (r *resolver) read(p string) []byte {
-	abs := filepath.Join(r.root, filepath.FromSlash(p))
-	if info, err := os.Stat(abs); err != nil || !info.Mode().IsRegular() || info.Size() > lang.MaxParseSize {
+	absolute := filepath.Join(r.root, filepath.FromSlash(p))
+	if info, err := os.Stat(absolute); err != nil || !info.Mode().IsRegular() || info.Size() > lang.MaxParseSize {
 		return nil
 	}
-	src, err := os.ReadFile(abs)
+	source, err := os.ReadFile(absolute)
 	if err != nil {
 		return nil
 	}
-	return src
+	return source
 }
 
 // services is the services: mapping of a Compose file of the repository.
 func (r *resolver) services(p string) *yaml.Node {
 	var doc yaml.Node
-	if src := r.read(p); src == nil || yaml.Unmarshal(src, &doc) != nil {
+	if source := r.read(p); source == nil || yaml.Unmarshal(source, &doc) != nil {
 		return nil
 	}
 	return field(&doc, "services")
 }
 
-// env is what the .env file of dir sets, read once. The file is often left out of
+// environment is what the .env file of directory sets, read once. The file is often left out of
 // version control and so of the scan; it is read from disk. Its values serve only to
 // interpolate the references resolved here: they are never reported.
 //
 // Implements: REQ-DOCKER-003
-func (r *resolver) env(dir string) map[string]string {
+func (r *resolver) environment(directory string) map[string]string {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	vars, ok := r.envs[dir]
+	variables, ok := r.environments[directory]
 	if !ok {
-		vars = readEnv(r.read(path.Join(dir, ".env")))
-		r.envs[dir] = vars
+		variables = readEnvironment(r.read(path.Join(directory, ".env")))
+		r.environments[directory] = variables
 	}
-	return vars
+	return variables
 }
 
-// readEnv reads an .env file as Compose does: NAME=value lines, `export ` allowed
+// readEnvironment reads an .env file as Compose does: NAME=value lines, `export ` allowed
 // before the name, # comments; a value in single quotes is literal, one in double
 // quotes or unquoted is interpolated with the names set above it, and an unquoted
 // one ends at " #". A line without "=" (a name the environment passes) sets nothing,
 // and neither does a name that holds a credential (secretName).
-func readEnv(src []byte) map[string]string {
-	vars := map[string]string{}
-	for line := range strings.Lines(string(src)) {
+func readEnvironment(source []byte) map[string]string {
+	variables := map[string]string{}
+	for line := range strings.Lines(string(source)) {
 		line = strings.TrimSpace(line)
 		if line == "" || line[0] == '#' {
 			continue
@@ -225,7 +225,7 @@ func readEnv(src []byte) map[string]string {
 		value = strings.TrimSpace(value)
 		switch {
 		case len(value) >= 2 && value[0] == '\'' && strings.IndexByte(value[1:], '\'') >= 0:
-			vars[name] = value[1 : 1+strings.IndexByte(value[1:], '\'')]
+			variables[name] = value[1 : 1+strings.IndexByte(value[1:], '\'')]
 			continue
 		case len(value) >= 2 && value[0] == '"' && strings.IndexByte(value[1:], '"') >= 0:
 			value = value[1 : 1+strings.IndexByte(value[1:], '"')]
@@ -234,9 +234,9 @@ func readEnv(src []byte) map[string]string {
 				value = strings.TrimSpace(value[:i])
 			}
 		}
-		vars[name], _ = expand(value, vars, true)
+		variables[name], _ = expand(value, variables, true)
 	}
-	return vars
+	return variables
 }
 
 // secretName reports whether an .env name holds a credential (DB_PASSWORD,

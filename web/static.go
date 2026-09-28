@@ -53,15 +53,15 @@ func WriteStatic(w io.Writer, g *graph.Graph, ui config.UI, root string, extra m
 		if err != nil || d.IsDir() || path.Ext(p) != ".js" {
 			return err
 		}
-		src, err := fs.ReadFile(assets, p)
+		source, err := fs.ReadFile(assets, p)
 		if err != nil {
 			return err
 		}
-		src = relativeImport.ReplaceAll(src, []byte(`$1"depphunter/$3"`))
+		source = relativeImport.ReplaceAll(source, []byte(`$1"depphunter/$3"`))
 		// An export is one file with everything in it and no server to compress it,
 		// so the comments come out here too (internal/minify).
-		src = []byte(minify.JS(string(src)))
-		imports["depphunter/"+strings.TrimSuffix(path.Base(p), ".js")] = "data:text/javascript;base64," + base64.StdEncoding.EncodeToString(src)
+		source = []byte(minify.JS(string(source)))
+		imports["depphunter/"+strings.TrimSuffix(path.Base(p), ".js")] = "data:text/javascript;base64," + base64.StdEncoding.EncodeToString(source)
 		return nil
 	})
 	if err != nil {
@@ -122,7 +122,7 @@ func WriteStatic(w io.Writer, g *graph.Graph, ui config.UI, root string, extra m
 	}
 
 	page := string(index)
-	for old, repl := range map[string]string{
+	for old, replacement := range map[string]string{
 		`<link rel="stylesheet" href="style.css">`: "<style>\n" + string(css) + "</style>",
 		`<script type="module" src="app.js"></script>`: `<script type="application/json" id="depphunter-data">` + string(payload) + "</script>\n" +
 			`  <script type="importmap">` + string(importMap) + "</script>\n" +
@@ -131,7 +131,7 @@ func WriteStatic(w io.Writer, g *graph.Graph, ui config.UI, root string, extra m
 		if !strings.Contains(page, old) {
 			return fmt.Errorf("static export: index.html no longer contains %s", old)
 		}
-		page = strings.Replace(page, old, repl, 1)
+		page = strings.Replace(page, old, replacement, 1)
 	}
 	_, err = io.Copy(w, bytes.NewBufferString(page))
 	return err

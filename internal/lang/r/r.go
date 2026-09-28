@@ -25,9 +25,9 @@ import (
 )
 
 const (
-	ecoCRAN = "cran"
-	ecoBioc = "bioconductor"
-	ecoStd  = "r-std"
+	ecosystemCRAN = "cran"
+	ecosystemBioc = "bioconductor"
+	ecosystemStd  = "r-std"
 )
 
 // Implements: REQ-R-001
@@ -74,9 +74,9 @@ func (Plugin) Class(f *scan.File) string {
 
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoCRAN, Name: "CRAN"},
-		{ID: ecoBioc, Name: "Bioconductor"},
-		{ID: ecoStd, Name: "R base packages", Std: true},
+		{ID: ecosystemCRAN, Name: "CRAN"},
+		{ID: ecosystemBioc, Name: "Bioconductor"},
+		{ID: ecosystemStd, Name: "R base packages", Std: true},
 	}
 }
 
@@ -88,17 +88,17 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 // or R source.
 //
 // Implements: REQ-R-002, REQ-R-003, REQ-R-004, REQ-R-005, REQ-R-011
-func (p Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (p Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	switch p.Class(f) {
 	case "DESCRIPTION":
-		return extractDescription(src), nil
+		return extractDescription(source), nil
 	case "NAMESPACE":
-		return extractNamespace(src), nil
+		return extractNamespace(source), nil
 	}
 	switch strings.ToLower(path.Ext(f.Path)) {
 	case ".rmd", ".qmd":
-		return extractDocument(src), nil
+		return extractDocument(source), nil
 	}
-	tokens, comments := lex(src, 1)
+	tokens, comments := lex(source, 1)
 	return extractCode(newCode(tokens), comments), nil
 }

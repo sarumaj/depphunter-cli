@@ -34,21 +34,21 @@ import (
 // OpenCL kernel (not claimed) and lisp/ has .cl and .lsp sources.
 
 var (
-	alexandria      = lang.Target{Ecosystem: ecoQuicklisp, Package: "alexandria", Version: "2023-10-21", Requested: "latest", Pinned: true}
-	ppcre           = lang.Target{Ecosystem: ecoQuicklisp, Package: "cl-ppcre", Version: "2023-06-18", Pinned: true}
-	dexador         = lang.Target{Ecosystem: ecoQuicklisp, Package: "github.com/fukamachi/dexador", Version: "1c2b3a4d5e6f708192a3b4c5d6e7f8091a2b3c4d", Requested: "master", Pinned: true}
-	str             = lang.Target{Ecosystem: ecoQuicklisp, Package: "github.com/vindarel/cl-str", Version: "aaaabbbbccccddddeeeeffff0000111122223333", Requested: "0.21", Pinned: true}
-	treeSitter      = lang.Target{Ecosystem: ecoQuicklisp, Package: "git.acme.dev/lisp/tree-sitter-cl", Version: "0123456789abcdef0123456789abcdef01234567", Pinned: true, Origin: "https://git.acme.dev/lisp/tree-sitter-cl.git"}
-	ociclAlexandria = lang.Target{Ecosystem: ecoQuicklisp, Package: "alexandria", Version: "20240503-8514d8e", Pinned: true}
-	ociclPpcre      = lang.Target{Ecosystem: ecoQuicklisp, Package: "cl-ppcre", Version: "20240423-80fb19d", Pinned: true}
+	alexandria      = lang.Target{Ecosystem: ecosystemQuicklisp, Package: "alexandria", Version: "2023-10-21", Requested: "latest", Pinned: true}
+	ppcre           = lang.Target{Ecosystem: ecosystemQuicklisp, Package: "cl-ppcre", Version: "2023-06-18", Pinned: true}
+	dexador         = lang.Target{Ecosystem: ecosystemQuicklisp, Package: "github.com/fukamachi/dexador", Version: "1c2b3a4d5e6f708192a3b4c5d6e7f8091a2b3c4d", Requested: "master", Pinned: true}
+	str             = lang.Target{Ecosystem: ecosystemQuicklisp, Package: "github.com/vindarel/cl-str", Version: "aaaabbbbccccddddeeeeffff0000111122223333", Requested: "0.21", Pinned: true}
+	treeSitter      = lang.Target{Ecosystem: ecosystemQuicklisp, Package: "git.acme.dev/lisp/tree-sitter-cl", Version: "0123456789abcdef0123456789abcdef01234567", Pinned: true, Origin: "https://git.acme.dev/lisp/tree-sitter-cl.git"}
+	ociclAlexandria = lang.Target{Ecosystem: ecosystemQuicklisp, Package: "alexandria", Version: "20240503-8514d8e", Pinned: true}
+	ociclPpcre      = lang.Target{Ecosystem: ecosystemQuicklisp, Package: "cl-ppcre", Version: "20240423-80fb19d", Pinned: true}
 )
 
 func local(p string) lang.Target { return lang.Target{Local: p} }
-func std(p string) lang.Target   { return lang.Target{Ecosystem: ecoStd, Package: p} }
+func std(p string) lang.Target   { return lang.Target{Ecosystem: ecosystemStd, Package: p} }
 
 // dist is a Quicklisp project the lock's quicklisp dist pins.
 func dist(p string) lang.Target {
-	return lang.Target{Ecosystem: ecoQuicklisp, Package: p, Version: "2023-10-21", Pinned: true}
+	return lang.Target{Ecosystem: ecosystemQuicklisp, Package: p, Version: "2023-10-21", Pinned: true}
 }
 
 func analyze(t *testing.T) map[string]*lang.FileResult {
@@ -57,8 +57,8 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 
 // Verifies: REQ-COMMONLISP-002, REQ-COMMONLISP-005, REQ-COMMONLISP-007
 func TestSystems(t *testing.T) {
-	res := analyze(t)
-	langtest.CheckImports(t, res["shop.asd"], map[string]lang.Target{
+	results := analyze(t)
+	langtest.CheckImports(t, results["shop.asd"], map[string]lang.Target{
 		"use cl":                                 std("common-lisp"),
 		"use asdf":                               std("asdf"),
 		"in-package shop-asd":                    {},
@@ -90,48 +90,48 @@ func TestSystems(t *testing.T) {
 		"depends-on rove":                        dist("rove"),
 		"component t/main.lisp":                  local("t/main.lisp"),
 	})
-	langtest.CheckImports(t, res["pis/acme.asd"], map[string]lang.Target{
+	langtest.CheckImports(t, results["pis/acme.asd"], map[string]lang.Target{
 		"depends-on acme/main": local("pis/src/main.lisp"),
 		"asdf:":                std("asdf"),
 	})
-	langtest.CheckImports(t, res["ocicl-app/app.asd"], map[string]lang.Target{
+	langtest.CheckImports(t, results["ocicl-app/app.asd"], map[string]lang.Target{
 		"depends-on alexandria":       ociclAlexandria,
 		"depends-on cl-ppcre-unicode": ociclPpcre,
-		"depends-on fiveam":           {Ecosystem: ecoQuicklisp, Package: "fiveam", Version: ">= 1.4", Floating: true},
+		"depends-on fiveam":           {Ecosystem: ecosystemQuicklisp, Package: "fiveam", Version: ">= 1.4", Floating: true},
 		"component app.lisp":          local("ocicl-app/app.lisp"),
 	})
-	langtest.CheckImports(t, res["tools/tools.asd"], map[string]lang.Target{
-		"depends-on fiveam":                  {Ecosystem: ecoQuicklisp, Package: "fiveam", Floating: true},
-		"depends-on bar":                     {Ecosystem: ecoQuicklisp, Package: "github.com/foo/bar", Version: "89abcdef0123456789abcdef0123456789abcdef", Pinned: true},
-		"depends-on widgets":                 {Ecosystem: ecoQuicklisp, Package: "github.com/acme/widgets", Version: "v1.2"},
-		"depends-on gitlib":                  {Ecosystem: ecoQuicklisp, Package: "gitlab.com/x/gitlib", Version: "dev", Floating: true},
-		"depends-on yason":                   {Ecosystem: ecoQuicklisp, Package: "yason", Version: "0123456789abcdef0123456789abcdef", Origin: "http://netzhansa.com/yason.tar.gz", Pinned: true},
-		"depends-on cl-foo":                  {Ecosystem: ecoQuicklisp, Package: "cl-foo", Floating: true},
+	langtest.CheckImports(t, results["tools/tools.asd"], map[string]lang.Target{
+		"depends-on fiveam":                  {Ecosystem: ecosystemQuicklisp, Package: "fiveam", Floating: true},
+		"depends-on bar":                     {Ecosystem: ecosystemQuicklisp, Package: "github.com/foo/bar", Version: "89abcdef0123456789abcdef0123456789abcdef", Pinned: true},
+		"depends-on widgets":                 {Ecosystem: ecosystemQuicklisp, Package: "github.com/acme/widgets", Version: "v1.2"},
+		"depends-on gitlib":                  {Ecosystem: ecosystemQuicklisp, Package: "gitlab.com/x/gitlib", Version: "dev", Floating: true},
+		"depends-on yason":                   {Ecosystem: ecosystemQuicklisp, Package: "yason", Version: "0123456789abcdef0123456789abcdef", Origin: "http://netzhansa.com/yason.tar.gz", Pinned: true},
+		"depends-on cl-foo":                  {Ecosystem: ecosystemQuicklisp, Package: "cl-foo", Floating: true},
 		"depends-on shop-vendor":             local("third_party/shop-vendor"),
-		"depends-on local-time":              {Ecosystem: ecoQuicklisp, Package: "local-time", Version: "2022-01-01", Pinned: true},
-		"depends-on ironclad/digests/sha256": {Ecosystem: ecoQuicklisp, Package: "ironclad", Version: "2022-01-01", Pinned: true},
+		"depends-on local-time":              {Ecosystem: ecosystemQuicklisp, Package: "local-time", Version: "2022-01-01", Pinned: true},
+		"depends-on ironclad/digests/sha256": {Ecosystem: ecosystemQuicklisp, Package: "ironclad", Version: "2022-01-01", Pinned: true},
 	})
 }
 
 // Verifies: REQ-COMMONLISP-002, REQ-COMMONLISP-004, REQ-COMMONLISP-007, REQ-COMMONLISP-008
 func TestSources(t *testing.T) {
-	res := analyze(t)
-	langtest.CheckImports(t, res["lisp/autolisp.lsp"], map[string]lang.Target{
+	results := analyze(t)
+	langtest.CheckImports(t, results["lisp/autolisp.lsp"], map[string]lang.Target{
 		"c:": {},
 	})
-	langtest.CheckImports(t, res["lisp/old.cl"], map[string]lang.Target{
+	langtest.CheckImports(t, results["lisp/old.cl"], map[string]lang.Target{
 		"in-package shop": local("src/package.lisp"),
 	})
-	langtest.CheckImports(t, res["ocicl-app/app.lisp"], map[string]lang.Target{
+	langtest.CheckImports(t, results["ocicl-app/app.lisp"], map[string]lang.Target{
 		"use cl":            std("common-lisp"),
 		"import-from ppcre": ociclPpcre,
-		"import-from 5am":   {Ecosystem: ecoQuicklisp, Package: "fiveam", Floating: true},
+		"import-from 5am":   {Ecosystem: ecosystemQuicklisp, Package: "fiveam", Floating: true},
 		"in-package app":    {},
 	})
-	langtest.CheckImports(t, res["pis/src/extra.lisp"], map[string]lang.Target{
+	langtest.CheckImports(t, results["pis/src/extra.lisp"], map[string]lang.Target{
 		"in-package cl-user": std("common-lisp"),
 	})
-	langtest.CheckImports(t, res["pis/src/main.lisp"], map[string]lang.Target{
+	langtest.CheckImports(t, results["pis/src/main.lisp"], map[string]lang.Target{
 		"use cl":                  std("common-lisp"),
 		"import-from acme/util":   local("pis/src/util.lisp"),
 		"import-from acme/extra":  local("pis/src/extra.lisp"),
@@ -140,13 +140,13 @@ func TestSources(t *testing.T) {
 		"import-from mystery-lib": dist("mystery-lib"),
 		"in-package acme/main":    {},
 	})
-	langtest.CheckImports(t, res["pis/src/util.lisp"], map[string]lang.Target{
+	langtest.CheckImports(t, results["pis/src/util.lisp"], map[string]lang.Target{
 		"use cl":               std("common-lisp"),
 		"mix uiop/utility":     std("uiop"),
 		"in-package acme/util": {},
 		"uiop:":                std("uiop"),
 	})
-	langtest.CheckImports(t, res["scripts/build.lisp"], map[string]lang.Target{
+	langtest.CheckImports(t, results["scripts/build.lisp"], map[string]lang.Target{
 		`load "~/quicklisp/setup.lisp"`: {},
 		`load "helpers.lisp"`:           local("scripts/helpers.lisp"),
 		"quickload shop":                local("shop.asd"),
@@ -160,21 +160,21 @@ func TestSources(t *testing.T) {
 		"ql:":                           std("quicklisp"),
 		"asdf:":                         std("asdf"),
 	})
-	langtest.CheckImports(t, res["scripts/helpers.lisp"], nil)
-	langtest.CheckImports(t, res["src/core.lisp"], map[string]lang.Target{
+	langtest.CheckImports(t, results["scripts/helpers.lisp"], nil)
+	langtest.CheckImports(t, results["src/core.lisp"], map[string]lang.Target{
 		"use cl":                 std("common-lisp"),
-		"use undeclared-pkg":     {Ecosystem: ecoQuicklisp, Package: "undeclared-pkg", Unresolved: true},
+		"use undeclared-pkg":     {Ecosystem: ecosystemQuicklisp, Package: "undeclared-pkg", Unresolved: true},
 		"import-from local-time": dist("local-time"),
-		"import-from 5am":        {Ecosystem: ecoQuicklisp, Package: "fiveam", Unresolved: true},
+		"import-from 5am":        {Ecosystem: ecosystemQuicklisp, Package: "fiveam", Unresolved: true},
 		"in-package shop.core":   {},
 	})
-	langtest.CheckImports(t, res["src/grovel.lisp"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/grovel.lisp"], map[string]lang.Target{
 		"in-package shop": local("src/package.lisp"),
 	})
-	langtest.CheckImports(t, res["src/input-output/reader.lisp"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/input-output/reader.lisp"], map[string]lang.Target{
 		"in-package shop": local("src/package.lisp"),
 	})
-	langtest.CheckImports(t, res["src/model/cart.lisp"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/model/cart.lisp"], map[string]lang.Target{
 		"in-package shop": local("src/package.lisp"),
 		"bt:":             dist("bordeaux-threads"),
 		"dex:":            dexador,
@@ -186,14 +186,14 @@ func TestSources(t *testing.T) {
 		"mystery:":        {},
 		"ppcre:":          ppcre,
 	})
-	langtest.CheckImports(t, res["src/model/item.lisp"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/model/item.lisp"], map[string]lang.Target{
 		"in-package shop": local("src/package.lisp"),
 		"a:":              alexandria,
 	})
-	langtest.CheckImports(t, res["src/old/legacy.lisp"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/old/legacy.lisp"], map[string]lang.Target{
 		"in-package shop": local("src/package.lisp"),
 	})
-	langtest.CheckImports(t, res["src/package.lisp"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/package.lisp"], map[string]lang.Target{
 		"in-package cl-user":               std("common-lisp"),
 		"use cl":                           std("common-lisp"),
 		"use alexandria":                   alexandria,
@@ -203,19 +203,19 @@ func TestSources(t *testing.T) {
 		"local-nicknames bordeaux-threads": dist("bordeaux-threads"),
 		"local-nicknames tree-sitter":      treeSitter,
 	})
-	langtest.CheckImports(t, res["t/main.lisp"], map[string]lang.Target{
+	langtest.CheckImports(t, results["t/main.lisp"], map[string]lang.Target{
 		"use cl":                std("common-lisp"),
 		"use rove":              dist("rove"),
 		"use shop":              local("src/package.lisp"),
 		"in-package shop/tests": {},
 	})
-	langtest.CheckImports(t, res["third_party/shop-vendor/vendored.lisp"], nil)
+	langtest.CheckImports(t, results["third_party/shop-vendor/vendored.lisp"], nil)
 }
 
 // Verifies: REQ-COMMONLISP-006
 func TestManifests(t *testing.T) {
-	res := analyze(t)
-	langtest.CheckImports(t, res["qlfile"], map[string]lang.Target{
+	results := analyze(t)
+	langtest.CheckImports(t, results["qlfile"], map[string]lang.Target{
 		"ql alexandria":      alexandria,
 		"ql cl-ppcre":        ppcre,
 		"github dexador":     dexador,
@@ -223,23 +223,23 @@ func TestManifests(t *testing.T) {
 		"git tree-sitter-cl": treeSitter,
 		"local shop-vendor":  local("third_party/shop-vendor"),
 	})
-	langtest.CheckImports(t, res["qlfile.lock"], map[string]lang.Target{
+	langtest.CheckImports(t, results["qlfile.lock"], map[string]lang.Target{
 		"lock alexandria":     alexandria,
 		"lock cl-ppcre":       ppcre,
 		"lock dexador":        dexador,
 		"lock str":            str,
 		"lock tree-sitter-cl": treeSitter,
 	})
-	langtest.CheckImports(t, res["tools/qlfile"], map[string]lang.Target{
-		"ql fiveam":         {Ecosystem: ecoQuicklisp, Package: "fiveam", Floating: true},
-		"github bar":        {Ecosystem: ecoQuicklisp, Package: "github.com/foo/bar", Version: "89abcdef0123456789abcdef0123456789abcdef", Pinned: true},
-		"github widgets":    {Ecosystem: ecoQuicklisp, Package: "github.com/acme/widgets", Version: "v1.2"},
-		"git gitlib":        {Ecosystem: ecoQuicklisp, Package: "gitlab.com/x/gitlib", Version: "dev", Floating: true},
-		"http yason":        {Ecosystem: ecoQuicklisp, Package: "yason", Version: "0123456789abcdef0123456789abcdef", Origin: "http://netzhansa.com/yason.tar.gz", Pinned: true},
-		"ultralisp cl-foo":  {Ecosystem: ecoQuicklisp, Package: "cl-foo", Floating: true},
+	langtest.CheckImports(t, results["tools/qlfile"], map[string]lang.Target{
+		"ql fiveam":         {Ecosystem: ecosystemQuicklisp, Package: "fiveam", Floating: true},
+		"github bar":        {Ecosystem: ecosystemQuicklisp, Package: "github.com/foo/bar", Version: "89abcdef0123456789abcdef0123456789abcdef", Pinned: true},
+		"github widgets":    {Ecosystem: ecosystemQuicklisp, Package: "github.com/acme/widgets", Version: "v1.2"},
+		"git gitlib":        {Ecosystem: ecosystemQuicklisp, Package: "gitlab.com/x/gitlib", Version: "dev", Floating: true},
+		"http yason":        {Ecosystem: ecosystemQuicklisp, Package: "yason", Version: "0123456789abcdef0123456789abcdef", Origin: "http://netzhansa.com/yason.tar.gz", Pinned: true},
+		"ultralisp cl-foo":  {Ecosystem: ecosystemQuicklisp, Package: "cl-foo", Floating: true},
 		"local shop-vendor": local("third_party/shop-vendor"),
 	})
-	langtest.CheckImports(t, res["ocicl-app/ocicl.csv"], map[string]lang.Target{
+	langtest.CheckImports(t, results["ocicl-app/ocicl.csv"], map[string]lang.Target{
 		"ocicl alexandria":       ociclAlexandria,
 		"ocicl cl-ppcre-unicode": ociclPpcre,
 	})
@@ -247,50 +247,50 @@ func TestManifests(t *testing.T) {
 
 // Verifies: REQ-COMMONLISP-003
 func TestSymbols(t *testing.T) {
-	res := analyze(t)
-	langtest.CheckSymbols(t, res["lisp/autolisp.lsp"], map[string]string{
+	results := analyze(t)
+	langtest.CheckSymbols(t, results["lisp/autolisp.lsp"], map[string]string{
 		"hello": "func",
 	})
-	langtest.CheckSymbols(t, res["lisp/old.cl"], map[string]string{
+	langtest.CheckSymbols(t, results["lisp/old.cl"], map[string]string{
 		"old-cl": "func",
 	})
-	langtest.CheckSymbols(t, res["ocicl-app/app.asd"], map[string]string{
+	langtest.CheckSymbols(t, results["ocicl-app/app.asd"], map[string]string{
 		"app": "system",
 	})
-	langtest.CheckSymbols(t, res["ocicl-app/app.lisp"], map[string]string{
+	langtest.CheckSymbols(t, results["ocicl-app/app.lisp"], map[string]string{
 		"app": "package",
 	})
-	langtest.CheckSymbols(t, res["ocicl-app/ocicl.csv"], map[string]string{})
-	langtest.CheckSymbols(t, res["pis/acme.asd"], map[string]string{
+	langtest.CheckSymbols(t, results["ocicl-app/ocicl.csv"], map[string]string{})
+	langtest.CheckSymbols(t, results["pis/acme.asd"], map[string]string{
 		"acme": "system",
 	})
-	langtest.CheckSymbols(t, res["pis/src/extra.lisp"], map[string]string{
+	langtest.CheckSymbols(t, results["pis/src/extra.lisp"], map[string]string{
 		"acme-extra": "func",
 	})
-	langtest.CheckSymbols(t, res["pis/src/main.lisp"], map[string]string{
+	langtest.CheckSymbols(t, results["pis/src/main.lisp"], map[string]string{
 		"acme/main": "package",
 	})
-	langtest.CheckSymbols(t, res["pis/src/util.lisp"], map[string]string{
+	langtest.CheckSymbols(t, results["pis/src/util.lisp"], map[string]string{
 		"acme/util": "package",
 		"helper":    "func",
 	})
-	langtest.CheckSymbols(t, res["qlfile"], map[string]string{})
-	langtest.CheckSymbols(t, res["qlfile.lock"], map[string]string{})
-	langtest.CheckSymbols(t, res["scripts/build.lisp"], map[string]string{})
-	langtest.CheckSymbols(t, res["scripts/helpers.lisp"], map[string]string{
+	langtest.CheckSymbols(t, results["qlfile"], map[string]string{})
+	langtest.CheckSymbols(t, results["qlfile.lock"], map[string]string{})
+	langtest.CheckSymbols(t, results["scripts/build.lisp"], map[string]string{})
+	langtest.CheckSymbols(t, results["scripts/helpers.lisp"], map[string]string{
 		"build-all": "func",
 	})
-	langtest.CheckSymbols(t, res["shop.asd"], map[string]string{
+	langtest.CheckSymbols(t, results["shop.asd"], map[string]string{
 		"shop-asd":   "package",
 		"shop":       "system",
 		"shop/core":  "system",
 		"shop/tests": "system",
 	})
-	langtest.CheckSymbols(t, res["src/core.lisp"], map[string]string{
+	langtest.CheckSymbols(t, results["src/core.lisp"], map[string]string{
 		"shop.core": "package",
 	})
-	langtest.CheckSymbols(t, res["src/grovel.lisp"], map[string]string{})
-	langtest.CheckSymbols(t, res["src/input-output/reader.lisp"], map[string]string{
+	langtest.CheckSymbols(t, results["src/grovel.lisp"], map[string]string{})
+	langtest.CheckSymbols(t, results["src/input-output/reader.lisp"], map[string]string{
 		"*doc*":        "var",
 		"*paren*":      "var",
 		"*semi*":       "var",
@@ -307,13 +307,13 @@ func TestSymbols(t *testing.T) {
 		"*label*":      "var",
 		"read-prices":  "func",
 	})
-	langtest.CheckSymbols(t, res["src/model/cart.lisp"], map[string]string{
+	langtest.CheckSymbols(t, results["src/model/cart.lisp"], map[string]string{
 		"helper":   "func",
 		"next-id":  "func",
 		"platform": "func",
 		"checkout": "func",
 	})
-	langtest.CheckSymbols(t, res["src/model/item.lisp"], map[string]string{
+	langtest.CheckSymbols(t, results["src/model/item.lisp"], map[string]string{
 		"item":                  "struct",
 		"cart":                  "class",
 		"total":                 "func",
@@ -329,20 +329,20 @@ func TestSymbols(t *testing.T) {
 		"+max+":                 "const",
 		"with-cart":             "macro",
 	})
-	langtest.CheckSymbols(t, res["src/old/legacy.lisp"], map[string]string{
+	langtest.CheckSymbols(t, results["src/old/legacy.lisp"], map[string]string{
 		"legacy": "func",
 	})
-	langtest.CheckSymbols(t, res["src/package.lisp"], map[string]string{
+	langtest.CheckSymbols(t, results["src/package.lisp"], map[string]string{
 		"shop": "package",
 	})
-	langtest.CheckSymbols(t, res["t/main.lisp"], map[string]string{
+	langtest.CheckSymbols(t, results["t/main.lisp"], map[string]string{
 		"shop/tests": "package",
 	})
-	langtest.CheckSymbols(t, res["third_party/shop-vendor/vendored.lisp"], map[string]string{
+	langtest.CheckSymbols(t, results["third_party/shop-vendor/vendored.lisp"], map[string]string{
 		"vendored": "func",
 	})
-	langtest.CheckSymbols(t, res["tools/qlfile"], map[string]string{})
-	langtest.CheckSymbols(t, res["tools/tools.asd"], map[string]string{
+	langtest.CheckSymbols(t, results["tools/qlfile"], map[string]string{})
+	langtest.CheckSymbols(t, results["tools/tools.asd"], map[string]string{
 		"tools": "system",
 	})
 }
@@ -394,8 +394,8 @@ func show(n *Node) string {
 	case String:
 		return `"` + n.Text + `"`
 	case Symbol:
-		if n.Pkg != "" {
-			return n.Pkg + ":" + n.Text
+		if n.Package != "" {
+			return n.Package + ":" + n.Text
 		}
 	}
 	return n.Text
@@ -421,10 +421,10 @@ func TestManifestReaders(t *testing.T) {
 	if len(l.dists) != 2 || l.dists[1].version != "2024-10-01" || len(l.entries) != 2 {
 		t.Fatalf("lock %+v", l)
 	}
-	if got := lockTarget(l.entries[0], nil, "trial"); got != (lang.Target{Ecosystem: ecoQuicklisp, Package: "trial", Version: "2024-10-01", Requested: "latest", Pinned: true}) {
+	if got := lockTarget(l.entries[0], nil, "trial"); got != (lang.Target{Ecosystem: ecosystemQuicklisp, Package: "trial", Version: "2024-10-01", Requested: "latest", Pinned: true}) {
 		t.Errorf("ql-dist %+v", got)
 	}
-	if got := lockTarget(l.entries[1], nil, "mito"); got != (lang.Target{Ecosystem: ecoQuicklisp, Package: "mito", Version: "8c795b7b4de7dc635f1d2442ef1faf8f23d283e6", Pinned: true}) {
+	if got := lockTarget(l.entries[1], nil, "mito"); got != (lang.Target{Ecosystem: ecosystemQuicklisp, Package: "mito", Version: "8c795b7b4de7dc635f1d2442ef1faf8f23d283e6", Pinned: true}) {
 		t.Errorf("upstream %+v", got)
 	}
 	o := readOcicl([]byte("# comment\nstr, ghcr.io/ocicl/cl-str@sha256:ab, cl-str-20240101-abc1234/str.asd\nshort, ghcr.io/ocicl/short:latest\n\n"))
@@ -438,18 +438,18 @@ func TestManifestReaders(t *testing.T) {
 
 // Verifies: REQ-COMMONLISP-007
 func TestProjects(t *testing.T) {
-	for sys, want := range map[string]string{
+	for system, want := range map[string]string{
 		"cl-ppcre-unicode": "cl-ppcre", "ironclad/digests/sha256": "ironclad", "str": "cl-str", "cl+ssl": "cl-plus-ssl",
 		"clack-handler-hunchentoot": "clack", "lack-middleware-session": "lack", "dbd-sqlite3": "cl-dbi",
 		"alexandria": "alexandria", "trivial-gray-streams": "trivial-gray-streams", "swank": "slime", "clack": "clack",
 	} {
-		if got := projectOf(sys); got != want {
-			t.Errorf("%s: %s, want %s", sys, got, want)
+		if got := projectOf(system); got != want {
+			t.Errorf("%s: %s, want %s", system, got, want)
 		}
 	}
-	for pkg, want := range map[string]string{"bt2": "bordeaux-threads", "lack.request": "lack", "trivia.level2": "trivia", "c2mop": "closer-mop"} {
-		if got, _ := packageSystem(pkg); got != want {
-			t.Errorf("%s: %s, want %s", pkg, got, want)
+	for packageName, want := range map[string]string{"bt2": "bordeaux-threads", "lack.request": "lack", "trivia.level2": "trivia", "c2mop": "closer-mop"} {
+		if got, _ := packageSystem(packageName); got != want {
+			t.Errorf("%s: %s, want %s", packageName, got, want)
 		}
 	}
 	if _, ok := packageSystem("mystery"); ok {
@@ -479,16 +479,16 @@ func TestClaims(t *testing.T) {
 	if classes["qlfile"] != classQlfile || classes["qlfile.lock"] != classLock || classes["ocicl-app/ocicl.csv"] != classOcicl || classes["shop.asd"] != "" {
 		t.Errorf("classes %v", classes)
 	}
-	abs, _ := filepath.Abs("testdata/repo")
-	for _, f := range []*scan.File{{Path: "a.lisp", Binary: true}, {Path: "k.cl", Lang: "OpenCL"}, {Path: "k.cl"},
+	absolute, _ := filepath.Abs("testdata/repo")
+	for _, f := range []*scan.File{{Path: "a.lisp", Binary: true}, {Path: "k.cl", Language: "OpenCL"}, {Path: "k.cl"},
 		{Path: ".qlot/dists/quicklisp/software/x/x.lisp"}, {Path: "app/.qlot/local-projects/y.asd"},
-		{Path: "ocicl-app/systems/alexandria-20240503-8514d8e/alexandria.asd", Abs: filepath.Join(abs, "ocicl-app/systems/alexandria-20240503-8514d8e/alexandria.asd")},
+		{Path: "ocicl-app/systems/alexandria-20240503-8514d8e/alexandria.asd", AbsolutePath: filepath.Join(absolute, "ocicl-app/systems/alexandria-20240503-8514d8e/alexandria.asd")},
 		{Path: "Qlfile"}, {Path: "x.csv"}} {
 		if (Plugin{}).Claims(f) {
 			t.Errorf("%s claimed", f.Path)
 		}
 	}
-	for _, f := range []*scan.File{{Path: "k.cl", Lang: "Common Lisp"}, {Path: "systems/x.lisp", Abs: filepath.Join(abs, "systems/x.lisp")}, {Path: "X.LISP"}, {Path: "y.ASD"}} {
+	for _, f := range []*scan.File{{Path: "k.cl", Language: "Common Lisp"}, {Path: "systems/x.lisp", AbsolutePath: filepath.Join(absolute, "systems/x.lisp")}, {Path: "X.LISP"}, {Path: "y.ASD"}} {
 		if !(Plugin{}).Claims(f) {
 			t.Errorf("%s not claimed", f.Path)
 		}
@@ -501,13 +501,13 @@ func TestIslands(t *testing.T) {
 	for _, e := range (Plugin{}).Ecosystems() {
 		ids[e.ID] = e.Std
 	}
-	if std, ok := ids[ecoStd]; !ok || !std || len(ids) != 2 || ids[ecoQuicklisp] {
+	if std, ok := ids[ecosystemStd]; !ok || !std || len(ids) != 2 || ids[ecosystemQuicklisp] {
 		t.Fatalf("ecosystems: %v", ids)
 	}
 	for f, r := range analyze(t) {
-		for _, im := range r.Imports {
-			if e := im.Target.Ecosystem; e != "" && e != ecoQuicklisp && e != ecoStd {
-				t.Errorf("%s: %s -> %s", f, im.Spec, e)
+		for _, imported := range r.Imports {
+			if e := imported.Target.Ecosystem; e != "" && e != ecosystemQuicklisp && e != ecosystemStd {
+				t.Errorf("%s: %s -> %s", f, imported.Spec, e)
 			}
 		}
 	}
@@ -527,15 +527,15 @@ func TestTruncated(t *testing.T) {
 		return nil
 	})
 	for _, p := range files {
-		src, err := os.ReadFile(p)
+		source, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatal(err)
 		}
-		for i := 0; i <= len(src); i++ {
-			read(src[:i])
-			readQlfile(src[:i])
-			readLock(src[:i])
-			readOcicl(src[:i])
+		for i := 0; i <= len(source); i++ {
+			read(source[:i])
+			readQlfile(source[:i])
+			readLock(source[:i])
+			readOcicl(source[:i])
 		}
 	}
 	for _, unit := range []string{"(", ")", "\"", "#|", "|#", "|", "\\", "#\\", "#\\a", "#+", "#-", "#+nil ", "#+(or) ", "#.", "#'", "'", "`",
@@ -543,14 +543,14 @@ func TestTruncated(t *testing.T) {
 		"(defpackage p (:use ", "(defpackage p (:local-nicknames (a ", "(defsystem s :components (", "(:module m :components (",
 		"(defsystem s :depends-on ((:feature :x ", "(in-package ", "(progn ", "(eval-when () ", "(let () ", "(defmethod m ((a ",
 		"(ql:quickload '(", "(load \"", "(\"x\" . (:class ", "ql x\n", "a, b, c\n"} {
-		src := []byte(strings.Repeat(unit, 200_000/len(unit)+1))
+		source := []byte(strings.Repeat(unit, 200_000/len(unit)+1))
 		start := time.Now()
-		read(src)
-		readLock(src)
-		readQlfile(src)
-		readOcicl(src)
+		read(source)
+		readLock(source)
+		readQlfile(source)
+		readOcicl(source)
 		if d := time.Since(start); d > 5*time.Second {
-			t.Errorf("%q x %d: %v", unit, len(src)/len(unit), d)
+			t.Errorf("%q x %d: %v", unit, len(source)/len(unit), d)
 		}
 	}
 }
@@ -578,17 +578,17 @@ func TestInstalledSystems(t *testing.T) {
 	})
 	r := newResolver(root, langtest.Files(t, root))
 	ql := func(name string) lang.Target {
-		return lang.Target{Ecosystem: ecoQuicklisp, Package: name, Version: "2023-10-21", Pinned: true}
+		return lang.Target{Ecosystem: ecosystemQuicklisp, Package: name, Version: "2023-10-21", Pinned: true}
 	}
-	for pkg, want := range map[string][]lang.Target{
+	for packageName, want := range map[string][]lang.Target{
 		"dexador":                      {ql("cffi"), ql("fast-http"), ql("quri"), ql("flexi-streams")},
 		"github.com/fukamachi/dexador": {ql("cffi"), ql("fast-http"), ql("quri"), ql("flexi-streams")},
 		"cl-str":                       {ql("cl-ppcre")},
 		"fast-http":                    nil,
 	} {
-		dt := lang.Target{Ecosystem: ecoQuicklisp, Package: pkg}
-		if got := r.Dependencies(dt); !reflect.DeepEqual(got, want) || !r.Installed(dt) {
-			t.Errorf("%s depends on %+v, want %+v", pkg, got, want)
+		dependencyTarget := lang.Target{Ecosystem: ecosystemQuicklisp, Package: packageName}
+		if got := r.Dependencies(dependencyTarget); !reflect.DeepEqual(got, want) || !r.Installed(dependencyTarget) {
+			t.Errorf("%s depends on %+v, want %+v", packageName, got, want)
 		}
 	}
 
@@ -600,10 +600,10 @@ func TestInstalledSystems(t *testing.T) {
 	})
 	r = newResolver(root, langtest.Files(t, root))
 	want := []lang.Target{
-		{Ecosystem: ecoQuicklisp, Package: "quri", Version: "20231001-def5678", Pinned: true},
-		{Ecosystem: ecoQuicklisp, Package: "fast-http", Floating: true},
+		{Ecosystem: ecosystemQuicklisp, Package: "quri", Version: "20231001-def5678", Pinned: true},
+		{Ecosystem: ecosystemQuicklisp, Package: "fast-http", Floating: true},
 	}
-	if got := r.Dependencies(lang.Target{Ecosystem: ecoQuicklisp, Package: "dexador"}); !reflect.DeepEqual(got, want) {
+	if got := r.Dependencies(lang.Target{Ecosystem: ecosystemQuicklisp, Package: "dexador"}); !reflect.DeepEqual(got, want) {
 		t.Errorf("ocicl: dexador depends on %+v, want %+v", got, want)
 	}
 	if got := newResolver("", langtest.Files(t, root)).Dependencies(want[0]); got != nil {

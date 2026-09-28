@@ -92,13 +92,13 @@ describe('a bug', () => {
     for (const how of ['bubble', 'reel', 'pin', 'net', 'foam', 'flash']) {
       const bugs = placed(['medium']);
       const [bug] = bugs.bugs;
-      const from = bug.pos.clone();
+      const from = bug.position.clone();
       assert.ok(bugs.catch(bug, how));
       assert.equal(bugs.counts.caught, 1, 'a catch with an animation did not count');
       const seen = [];
       for (let i = 0; i < 40 && bug.take; i++) {
         bugs.update(0.05, i * 50, at);
-        if (bug.take) seen.push({ y: bug.pos.y - from.y, size: bug.size, to: bug.pos.distanceTo(at) });
+        if (bug.take) seen.push({ y: bug.position.y - from.y, size: bug.size, to: bug.position.distanceTo(at) });
       }
       assert.equal(bug.take, null, `a ${how} never finished; a bug would hang there for good`);
       assert.ok(seen.length > 3, `a ${how} was over before it was seen`);
@@ -133,15 +133,15 @@ describe('a bug', () => {
     const bugs = placed(['medium']);
     const [bug] = bugs.bugs;
     assert.ok(bugs.catch(bug, 'net'));
-    const far = bug.pos.distanceTo(hoop);
+    const far = bug.position.distanceTo(hoop);
     let near = Infinity, turns = 0, above = null, going = 0;
     for (let i = 0; i < 40 && bug.take; i++) {
       bugs.update(0.05, i * 50, eye, hoop);
       if (!bug.take) break;
-      near = Math.min(near, bug.pos.distanceTo(hoop));
+      near = Math.min(near, bug.position.distanceTo(hoop));
       // It fights in there: the struggle is what makes a catch something anybody saw,
       // and a struggle is a thing that changes direction.
-      const up = bug.pos.y - hoop.y;
+      const up = bug.position.y - hoop.y;
       if (above !== null) {
         const way = Math.sign(up - above);
         if (way !== 0 && going !== 0 && way !== going) turns++;
@@ -177,7 +177,7 @@ describe('which findings walk', () => {
     const seen = [];
     for (let i = 0; i < 20; i++) {
       bugs.update(0.25, i * 250);
-      seen.push(bug.pos.clone());
+      seen.push(bug.position.clone());
     }
     for (let i = 1; i < seen.length; i++) {
       assert.ok(seen[i].distanceTo(seen[i - 1]) > 0.01, `the bug stood still at step ${i}`);

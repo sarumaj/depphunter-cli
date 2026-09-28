@@ -26,19 +26,19 @@ import (
 )
 
 const (
-	ecoMaven = "maven"
-	ecoStd   = "clojure-std"
-	ecoJDK   = "jdk"
-	ecoNPM   = "npm"
-	ecoNode  = "node"
+	ecosystemMaven = "maven"
+	ecosystemStd   = "clojure-std"
+	ecosystemJDK   = "jdk"
+	ecosystemNPM   = "npm"
+	ecosystemNode  = "node"
 )
 
-var sourceExts = map[string]bool{".clj": true, ".cljs": true, ".cljc": true, ".bb": true}
+var sourceExtensions = map[string]bool{".clj": true, ".cljs": true, ".cljc": true, ".bb": true}
 
-// ignoredDirs are caches: shadow-cljs's .shadow-cljs, tools.deps' .cpcache,
+// ignoredDirectories are caches: shadow-cljs's .shadow-cljs, tools.deps' .cpcache,
 // clojure-lsp's .lsp, and node_modules beside a shadow-cljs build. .clj-kondo is
 // read: projects keep their linter hooks there, as code (metabase's :paths list it).
-var ignoredDirs = map[string]bool{".cpcache": true, ".shadow-cljs": true, ".lsp": true, "node_modules": true}
+var ignoredDirectories = map[string]bool{".cpcache": true, ".shadow-cljs": true, ".lsp": true, "node_modules": true}
 
 // Implements: REQ-CLOJURE-001
 type Plugin struct{}
@@ -55,14 +55,14 @@ func (Plugin) Claims(f *scan.File) bool {
 		return false
 	}
 	base := path.Base(f.Path)
-	ext := path.Ext(base)
-	return sourceExts[ext] || ext == ".edn" || manifestNames[base] ||
+	extension := path.Ext(base)
+	return sourceExtensions[extension] || extension == ".edn" || manifestNames[base] ||
 		(f.Interpreter == "bb" && scan.Language(f.Path) == "")
 }
 
 func skipped(p string) bool {
-	for _, seg := range strings.Split(path.Dir(p), "/") {
-		if ignoredDirs[seg] {
+	for _, segment := range strings.Split(path.Dir(p), "/") {
+		if ignoredDirectories[segment] {
 			return true
 		}
 	}
@@ -73,11 +73,11 @@ func skipped(p string) bool {
 // namespaces, the JDK (shared with Java) for :import, and npm for ClojureScript.
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoMaven, Name: "Maven"},
-		{ID: ecoStd, Name: "Clojure standard library", Std: true},
-		{ID: ecoJDK, Name: "Java standard library", Std: true},
-		{ID: ecoNPM, Name: "npm"},
-		{ID: ecoNode, Name: "Node.js built-ins", Std: true},
+		{ID: ecosystemMaven, Name: "Maven"},
+		{ID: ecosystemStd, Name: "Clojure standard library", Std: true},
+		{ID: ecosystemJDK, Name: "Java standard library", Std: true},
+		{ID: ecosystemNPM, Name: "npm"},
+		{ID: ecosystemNode, Name: "Node.js built-ins", Std: true},
 	}
 }
 
@@ -99,30 +99,30 @@ func (Plugin) Class(f *scan.File) string {
 // imports and definitions. Other .edn files declare nothing.
 //
 // Implements: REQ-CLOJURE-002, REQ-CLOJURE-003, REQ-CLOJURE-004
-func (p Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (p Plugin) Extract(f *scan.File, content []byte) (*lang.Extraction, error) {
 	if kind := p.Class(f); kind != "" {
-		m := readManifest(kind, src)
-		ex := &lang.Extraction{Imports: manifestImports(m), Symbols: []lang.Symbol{}}
+		m := readManifest(kind, content)
+		extraction := &lang.Extraction{Imports: manifestImports(m), Symbols: []lang.Symbol{}}
 		if len(m.requires) > 0 { // bb.edn tasks' :requires
 			s := &source{seen: map[string]bool{}, names: map[string]bool{}}
 			for _, r := range m.requires {
 				s.libspec(r, "", r.Line)
 			}
-			ex.Imports = append(ex.Imports, s.imports...)
+			extraction.Imports = append(extraction.Imports, s.imports...)
 		}
-		return ex, nil
+		return extraction, nil
 	}
 	if path.Ext(f.Path) == ".edn" {
 		return &lang.Extraction{Symbols: []lang.Symbol{}}, nil
 	}
-	s := readSource(src)
+	s := readSource(content)
 	symbols := s.symbols
 	if symbols == nil {
 		symbols = []lang.Symbol{}
 	}
 	var set lang.SymbolSet
-	for _, sym := range symbols {
-		set.Add(sym.Name, sym.Kind, sym.Line)
+	for _, symbol := range symbols {
+		set.Add(symbol.Name, symbol.Kind, symbol.Line)
 	}
 	out := set.List()
 	if out == nil {

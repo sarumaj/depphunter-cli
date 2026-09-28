@@ -9,21 +9,21 @@ import (
 
 // Import kinds (RawImport.Name).
 const (
-	impLoad  = "load"  // a label load(), use_extension(), use_repo_rule(), include() or Label() names
-	impLabel = "label" // a label an attribute names
-	impGlob  = "glob"  // Module: include patterns joined by \x00, \x01, exclude patterns
-	impDep   = "dep"   // a bazel_dep; Module = the module's name
-	impRepo  = "repo"  // a repository rule's declaration; Module = the repository's name
-	impMaven = "maven" // a Maven coordinate; Module = coordinate "\n" hub repository
-	impPip   = "pip"   // requirement("x"); Module = hub repository "\n" distribution
-	impGoMod = "gomod" // go_deps.module(path = ...); Module = the module path
-	impCrate = "crate" // crate.spec(package = ...); Module = the crate
+	importLoad       = "load"  // a label load(), use_extension(), use_repo_rule(), include() or Label() names
+	importLabel      = "label" // a label an attribute names
+	importGlob       = "glob"  // Module: include patterns joined by \x00, \x01, exclude patterns
+	importDependency = "dep"   // a bazel_dep; Module = the module's name
+	importRepository = "repo"  // a repository rule's declaration; Module = the repository's name
+	importMaven      = "maven" // a Maven coordinate; Module = coordinate "\n" hub repository
+	importPip        = "pip"   // requirement("x"); Module = hub repository "\n" distribution
+	importGoMod      = "gomod" // go_deps.module(path = ...); Module = the module path
+	importCrate      = "crate" // crate.spec(package = ...); Module = the crate
 )
 
-// repoRules are the repository rules that declare one external repository by
+// repositoryRules are the repository rules that declare one external repository by
 // name; hubRules those that declare a hub of packages of another ecosystem.
 var (
-	repoRules = map[string]bool{
+	repositoryRules = map[string]bool{
 		"http_archive": true, "http_file": true, "http_jar": true, "git_repository": true,
 		"new_git_repository": true, "local_repository": true, "new_local_repository": true,
 		"go_repository": true,
@@ -34,9 +34,9 @@ var (
 	}
 )
 
-// labelAttrs are the rule attributes that hold labels, besides any attribute
+// labelAttributes are the rule attributes that hold labels, besides any attribute
 // whose name ends in deps, srcs or hdrs.
-var labelAttrs = map[string]bool{
+var labelAttributes = map[string]bool{
 	"srcs": true, "hdrs": true, "textual_hdrs": true, "data": true, "deps": true, "runtime_deps": true,
 	"implementation_deps": true, "interface_deps": true, "exports": true, "proto": true, "protos": true,
 	"embed": true, "plugins": true, "exported_plugins": true, "resources": true, "resource_jars": true,
@@ -46,8 +46,8 @@ var labelAttrs = map[string]bool{
 	"compatible_with": false, "target_compatible_with": false,
 }
 
-func labelAttr(name string) bool {
-	if v, ok := labelAttrs[name]; ok {
+func labelAttribute(name string) bool {
+	if v, ok := labelAttributes[name]; ok {
 		return v
 	}
 	return strings.HasSuffix(name, "deps") || strings.HasSuffix(name, "_srcs") || strings.HasSuffix(name, "_hdrs")
@@ -70,34 +70,34 @@ var symbolKinds = map[string]string{
 type loaded struct{ label, name string }
 
 type extractor struct {
-	kind    string
-	dir     string
-	loads   map[string]loaded
-	exts    map[string]string // MODULE.bazel extension proxies: variable -> extension name
-	rules   map[string]string // MODULE.bazel use_repo_rule: variable -> rule name
-	ex      *lang.Extraction
-	symbols lang.SymbolSet
-	seen    map[string]bool
+	kind       string
+	directory  string
+	loads      map[string]loaded
+	extensions map[string]string // MODULE.bazel extension proxies: variable -> extension name
+	rules      map[string]string // MODULE.bazel use_repo_rule: variable -> rule name
+	extraction *lang.Extraction
+	symbols    lang.SymbolSet
+	seen       map[string]bool
 }
 
 // extract reads what one Starlark file declares and names.
-func extract(kind, dir string, src []byte) *lang.Extraction {
-	f := starlark.Parse(src)
-	x := &extractor{kind: kind, dir: dir, loads: map[string]loaded{}, exts: map[string]string{},
-		rules: map[string]string{}, ex: &lang.Extraction{}, seen: map[string]bool{}}
-	for _, st := range f.Stmts {
-		if st.Def == "" && st.Kind == 'e' && st.X.Callee() == "load" {
-			x.load(st.X)
+func extract(kind, directory string, source []byte) *lang.Extraction {
+	f := starlark.Parse(source)
+	x := &extractor{kind: kind, directory: directory, loads: map[string]loaded{}, extensions: map[string]string{},
+		rules: map[string]string{}, extraction: &lang.Extraction{}, seen: map[string]bool{}}
+	for _, statement := range f.Statements {
+		if statement.Definition == "" && statement.Kind == 'e' && statement.X.Callee() == "load" {
+			x.load(statement.X)
 		}
 	}
-	for _, st := range f.Stmts {
-		x.stmt(st)
+	for _, statement := range f.Statements {
+		x.statement(statement)
 	}
-	x.ex.Symbols = x.symbols.List()
-	if x.ex.Symbols == nil {
-		x.ex.Symbols = []lang.Symbol{}
+	x.extraction.Symbols = x.symbols.List()
+	if x.extraction.Symbols == nil {
+		x.extraction.Symbols = []lang.Symbol{}
 	}
-	return x.ex
+	return x.extraction
 }
 
 func (x *extractor) add(kind, spec, module string, line int) {
@@ -105,21 +105,21 @@ func (x *extractor) add(kind, spec, module string, line int) {
 		return
 	}
 	x.seen[spec] = true
-	x.ex.Imports = append(x.ex.Imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
+	x.extraction.Imports = append(x.extraction.Imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
 }
 
 // load records a load() statement's label and the names it binds.
 func (x *extractor) load(call *starlark.Node) {
-	label, ok := call.Pos(0).Str()
+	label, ok := call.Position(0).StringValue()
 	if !ok {
 		return
 	}
-	x.add(impLoad, label, label, call.Line)
-	for i, a := range call.Args {
+	x.add(importLoad, label, label, call.Line)
+	for i, a := range call.Arguments {
 		if i == 0 || a.Star != "" {
 			continue
 		}
-		name, ok := a.Val.Str()
+		name, ok := a.Value.StringValue()
 		if !ok {
 			continue
 		}
@@ -140,53 +140,53 @@ func (x *extractor) original(callee string) string {
 	return strings.TrimPrefix(callee, "native.")
 }
 
-func (x *extractor) stmt(st starlark.Stmt) {
-	top := st.Def == ""
+func (x *extractor) statement(statement starlark.Statement) {
+	top := statement.Definition == ""
 	switch {
-	case st.Kind == 'd' && top:
-		x.symbols.Add(st.Name, "func", st.Line)
+	case statement.Kind == 'd' && top:
+		x.symbols.Add(statement.Name, "func", statement.Line)
 		return
-	case st.Kind == 'a' && top && x.kind != kindBuild:
-		callee := st.X.Callee()
+	case statement.Kind == 'a' && top && x.kind != kindBuild:
+		callee := statement.X.Callee()
 		if x.kind == kindModule {
 			switch callee {
 			case "use_extension":
-				if ext, ok := st.X.Pos(1).Str(); ok && len(st.Targets) == 1 {
-					x.exts[st.Targets[0]] = ext
+				if extension, ok := statement.X.Position(1).StringValue(); ok && len(statement.Targets) == 1 {
+					x.extensions[statement.Targets[0]] = extension
 				}
 			case "use_repo_rule":
-				if rule, ok := st.X.Pos(1).Str(); ok && len(st.Targets) == 1 {
-					x.rules[st.Targets[0]] = rule
+				if rule, ok := statement.X.Position(1).StringValue(); ok && len(statement.Targets) == 1 {
+					x.rules[statement.Targets[0]] = rule
 				}
 			}
-		} else if st.Col == 0 {
+		} else if statement.Column == 0 {
 			kind := symbolKinds[callee]
 			if kind == "" {
 				kind = "var"
 			}
-			for _, t := range st.Targets {
-				x.symbols.Add(t, kind, st.Line)
+			for _, t := range statement.Targets {
+				x.symbols.Add(t, kind, statement.Line)
 			}
 		}
 	}
-	if st.X == nil {
+	if statement.X == nil {
 		return
 	}
 	if x.kind == kindBuild {
-		if top && st.Kind == 'e' && st.X.Kind == starlark.Call {
-			x.target(st.X)
+		if top && statement.Kind == 'e' && statement.X.Kind == starlark.Call {
+			x.target(statement.X)
 		}
 		return
 	}
-	walk(st.X, func(n *starlark.Node) {
+	walk(statement.X, func(n *starlark.Node) {
 		if n.Kind == starlark.Call {
 			x.call(n, top)
 		}
 	})
 }
 
-// walk calls fn for n and every expression inside it.
-func walk(n *starlark.Node, fn func(*starlark.Node)) {
+// walk calls function for n and every expression inside it.
+func walk(n *starlark.Node, function func(*starlark.Node)) {
 	if n == nil {
 		return
 	}
@@ -194,13 +194,13 @@ func walk(n *starlark.Node, fn func(*starlark.Node)) {
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
-		fn(n)
+		function(n)
 		if n.X != nil {
 			stack = append(stack, n.X)
 		}
-		for _, a := range n.Args {
-			if a.Val != nil {
-				stack = append(stack, a.Val)
+		for _, a := range n.Arguments {
+			if a.Value != nil {
+				stack = append(stack, a.Value)
 			}
 		}
 		for _, it := range n.Items {
@@ -219,17 +219,17 @@ func (x *extractor) target(call *starlark.Node) {
 		return
 	}
 	if !notTargets[callee] {
-		if name := call.Kw("name"); name != nil && name.Kind == starlark.String {
-			pkg := x.dir
-			if pkg == "." {
-				pkg = ""
+		if name := call.Keyword("name"); name != nil && name.Kind == starlark.String {
+			packageName := x.directory
+			if packageName == "." {
+				packageName = ""
 			}
-			x.symbols.Add("//"+pkg+":"+name.Text, callee, name.Line)
+			x.symbols.Add("//"+packageName+":"+name.Text, callee, name.Line)
 		}
 	}
-	for _, a := range call.Args {
-		if a.Name != "" && labelAttr(a.Name) {
-			x.labels(a.Val)
+	for _, a := range call.Arguments {
+		if a.Name != "" && labelAttribute(a.Name) {
+			x.labels(a.Value)
 		}
 	}
 }
@@ -244,7 +244,7 @@ func (x *extractor) labels(v *starlark.Node) {
 	switch v.Kind {
 	case starlark.String:
 		if plausibleLabel(v.Text) {
-			x.add(impLabel, v.Text, v.Text, v.Line)
+			x.add(importLabel, v.Text, v.Text, v.Line)
 		}
 	case starlark.List, starlark.Tuple:
 		for _, it := range v.Items {
@@ -255,7 +255,7 @@ func (x *extractor) labels(v *starlark.Node) {
 			x.labels(v.Items[0])
 			x.labels(v.Items[1])
 		}
-	case starlark.Cond:
+	case starlark.Condition:
 		x.labels(v.Items[0])
 		x.labels(v.Items[2])
 	case starlark.Call:
@@ -263,26 +263,26 @@ func (x *extractor) labels(v *starlark.Node) {
 		case "glob":
 			x.glob(v)
 		case "select":
-			if d := v.Pos(0); d != nil && d.Kind == starlark.Dict {
+			if d := v.Position(0); d != nil && d.Kind == starlark.Dictionary {
 				for i := 1; i < len(d.Items); i += 2 {
 					x.labels(d.Items[i])
 				}
 			}
 		case "requirement":
-			name, ok := v.Pos(0).Str()
+			name, ok := v.Position(0).StringValue()
 			if l, loadedFrom := x.loads[callee]; ok && loadedFrom {
-				if repo, _, ok := splitRepo(l.label); ok && repo != "" {
-					x.add(impPip, "requirement("+name+")", repo+"\n"+name, v.Line)
+				if repository, _, ok := splitRepository(l.label); ok && repository != "" {
+					x.add(importPip, "requirement("+name+")", repository+"\n"+name, v.Line)
 				}
 			}
 		case "artifact", "maven_artifact":
-			coord, ok := v.Pos(0).Str()
+			coordinate, ok := v.Position(0).StringValue()
 			if _, loadedFrom := x.loads[callee]; ok && loadedFrom {
-				hub := v.KwStr("repository_name")
+				hub := v.KeywordString("repository_name")
 				if hub == "" {
 					hub = "maven"
 				}
-				x.add(impMaven, "artifact("+coord+")", coord+"\n"+hub, v.Line)
+				x.add(importMaven, "artifact("+coordinate+")", coordinate+"\n"+hub, v.Line)
 			}
 		}
 	}
@@ -296,20 +296,20 @@ func plausibleLabel(s string) bool {
 
 // glob records a glob() call as one import, expanded by the resolver.
 func (x *extractor) glob(call *starlark.Node) {
-	include := call.Pos(0)
+	include := call.Position(0)
 	if include == nil {
-		include = call.Kw("include")
+		include = call.Keyword("include")
 	}
-	inc := include.Strings()
-	exc := call.Kw("exclude").Strings()
-	if len(inc) == 0 {
+	includeList := include.Strings()
+	excluded := call.Keyword("exclude").Strings()
+	if len(includeList) == 0 {
 		return
 	}
-	spec := "glob(" + quoted(inc) + ")"
-	if len(exc) > 0 {
-		spec = "glob(" + quoted(inc) + ", exclude = " + quoted(exc) + ")"
+	spec := "glob(" + quoted(includeList) + ")"
+	if len(excluded) > 0 {
+		spec = "glob(" + quoted(includeList) + ", exclude = " + quoted(excluded) + ")"
 	}
-	x.add(impGlob, spec, strings.Join(inc, "\x00")+"\x01"+strings.Join(exc, "\x00"), call.Line)
+	x.add(importGlob, spec, strings.Join(includeList, "\x00")+"\x01"+strings.Join(excluded, "\x00"), call.Line)
 }
 
 func quoted(ss []string) string {
@@ -325,8 +325,8 @@ func (x *extractor) call(n *starlark.Node, top bool) {
 	callee := n.Callee()
 	switch {
 	case callee == "Label":
-		if l, ok := n.Pos(0).Str(); ok {
-			x.add(impLoad, l, l, n.Line)
+		if l, ok := n.Position(0).StringValue(); ok {
+			x.add(importLoad, l, l, n.Line)
 		}
 		return
 	case x.kind == kindModule && top:
@@ -334,27 +334,27 @@ func (x *extractor) call(n *starlark.Node, top bool) {
 			return
 		}
 	case x.kind == kindWorkspace && top && callee == "workspace":
-		if name := n.Kw("name"); name != nil && name.Kind == starlark.String {
+		if name := n.Keyword("name"); name != nil && name.Kind == starlark.String {
 			x.symbols.Add(name.Text, "workspace", name.Line)
 		}
 		return
 	}
 	rule := x.original(callee)
 	if rule == "maybe" { // maybe(http_archive, name = ...) from bazel_tools' utils.bzl
-		rule = x.original(n.Pos(0).Name())
+		rule = x.original(n.Position(0).Name())
 	}
 	if r, ok := x.rules[callee]; ok {
 		rule = r
 	}
 	switch {
-	case repoRules[rule]:
-		if name := n.KwStr("name"); name != "" {
-			x.add(impRepo, name, name, n.Line)
+	case repositoryRules[rule]:
+		if name := n.KeywordString("name"); name != "" {
+			x.add(importRepository, name, name, n.Line)
 		}
 		x.lockLabels(n)
 	case hubRules[rule]:
 		if rule == "maven_install" {
-			hub := n.KwStr("name")
+			hub := n.KeywordString("name")
 			if hub == "" {
 				hub = "maven"
 			}
@@ -367,24 +367,24 @@ func (x *extractor) call(n *starlark.Node, top bool) {
 // lockLabels records the labels of project files a repository rule or module
 // extension tag reads: lock files, requirements, go.mod, Cargo manifests.
 func (x *extractor) lockLabels(n *starlark.Node) {
-	for _, a := range n.Args {
+	for _, a := range n.Arguments {
 		if a.Name == "" || a.Name == "name" {
 			continue
 		}
-		var vals []*starlark.Node
-		switch a.Val.Kind {
+		var values []*starlark.Node
+		switch a.Value.Kind {
 		case starlark.String:
-			vals = []*starlark.Node{a.Val}
+			values = []*starlark.Node{a.Value}
 		case starlark.List, starlark.Tuple:
-			vals = a.Val.Items
-		case starlark.Dict: // requirements_by_platform = {"//:req.txt": "linux_*"}
-			for i := 0; i < len(a.Val.Items); i += 2 {
-				vals = append(vals, a.Val.Items[i])
+			values = a.Value.Items
+		case starlark.Dictionary: // requirements_by_platform = {"//:req.txt": "linux_*"}
+			for i := 0; i < len(a.Value.Items); i += 2 {
+				values = append(values, a.Value.Items[i])
 			}
 		}
-		for _, v := range vals {
-			if s, ok := v.Str(); ok && localLabel(s) {
-				x.add(impLabel, s, s, v.Line)
+		for _, v := range values {
+			if s, ok := v.StringValue(); ok && localLabel(s) {
+				x.add(importLabel, s, s, v.Line)
 			}
 		}
 	}
@@ -399,14 +399,14 @@ func localLabel(s string) bool {
 
 // artifacts records maven_install's or maven.install's artifacts.
 func (x *extractor) artifacts(n *starlark.Node, hub string) {
-	for _, it := range listItems(n.Kw("artifacts")) {
+	for _, it := range listItems(n.Keyword("artifacts")) {
 		switch {
 		case it.Kind == starlark.String:
-			x.add(impMaven, it.Text, it.Text+"\n"+hub, it.Line)
+			x.add(importMaven, it.Text, it.Text+"\n"+hub, it.Line)
 		case it.Kind == starlark.Call && strings.HasSuffix(it.Callee(), "artifact"):
 			// maven.artifact(group = ..., artifact = ..., version = ...) as a value
 			if c := coordinate(it); c != "" {
-				x.add(impMaven, c, c+"\n"+hub, it.Line)
+				x.add(importMaven, c, c+"\n"+hub, it.Line)
 			}
 		}
 	}
@@ -421,12 +421,12 @@ func listItems(n *starlark.Node) []*starlark.Node {
 
 // coordinate is group:artifact:version of a call naming them by keyword.
 func coordinate(n *starlark.Node) string {
-	g, a := n.KwStr("group"), n.KwStr("artifact")
+	g, a := n.KeywordString("group"), n.KeywordString("artifact")
 	if g == "" || a == "" {
 		return ""
 	}
 	c := g + ":" + a
-	if v := n.KwStr("version"); v != "" {
+	if v := n.KeywordString("version"); v != "" {
 		c += ":" + v
 	}
 	return c
@@ -436,62 +436,62 @@ func coordinate(n *starlark.Node) string {
 func (x *extractor) module(n *starlark.Node, callee string) bool {
 	switch callee {
 	case "module":
-		if name := n.Kw("name"); name != nil && name.Kind == starlark.String {
+		if name := n.Keyword("name"); name != nil && name.Kind == starlark.String {
 			x.symbols.Add(name.Text, "module", name.Line)
 		}
 	case "bazel_dep":
-		if name := n.KwStr("name"); name != "" {
-			x.add(impDep, name, name, n.Line)
+		if name := n.KeywordString("name"); name != "" {
+			x.add(importDependency, name, name, n.Line)
 		}
 	case "use_extension", "use_repo_rule", "include":
-		if l, ok := n.Pos(0).Str(); ok {
-			x.add(impLoad, l, l, n.Line)
+		if l, ok := n.Position(0).StringValue(); ok {
+			x.add(importLoad, l, l, n.Line)
 		}
 	case "register_toolchains", "register_execution_platforms":
-		for _, a := range n.Args {
-			if s, ok := a.Val.Str(); ok && a.Name == "" && !strings.HasSuffix(s, ":all") && !strings.HasSuffix(s, "/...") {
-				x.add(impLabel, s, s, a.Val.Line)
+		for _, a := range n.Arguments {
+			if s, ok := a.Value.StringValue(); ok && a.Name == "" && !strings.HasSuffix(s, ":all") && !strings.HasSuffix(s, "/...") {
+				x.add(importLabel, s, s, a.Value.Line)
 			}
 		}
 	case "use_repo", "local_path_override", "git_override", "archive_override", "single_version_override",
 		"multiple_version_override", "bazel_lib_override":
 	default:
-		obj, tag, ok := strings.Cut(callee, ".")
-		ext, isExt := x.exts[obj]
-		if !ok || !isExt {
+		object, tag, ok := strings.Cut(callee, ".")
+		extension, isExtension := x.extensions[object]
+		if !ok || !isExtension {
 			return false
 		}
-		x.tag(ext, tag, n)
+		x.tag(extension, tag, n)
 	}
 	return true
 }
 
 // tag reads a module extension's tag: the project files it reads, and the
 // packages maven.install, go_deps.module and crate.spec name.
-func (x *extractor) tag(ext, tag string, n *starlark.Node) {
+func (x *extractor) tag(extension, tag string, n *starlark.Node) {
 	x.lockLabels(n)
 	switch {
-	case ext == "maven" && tag == "install":
-		hub := n.KwStr("name")
+	case extension == "maven" && tag == "install":
+		hub := n.KeywordString("name")
 		if hub == "" {
 			hub = "maven"
 		}
 		x.artifacts(n, hub)
-	case ext == "maven" && tag == "artifact":
-		hub := n.KwStr("name")
+	case extension == "maven" && tag == "artifact":
+		hub := n.KeywordString("name")
 		if hub == "" {
 			hub = "maven"
 		}
 		if c := coordinate(n); c != "" {
-			x.add(impMaven, c, c+"\n"+hub, n.Line)
+			x.add(importMaven, c, c+"\n"+hub, n.Line)
 		}
-	case ext == "go_deps" && tag == "module":
-		if p := n.KwStr("path"); p != "" {
-			x.add(impGoMod, p, p, n.Line)
+	case extension == "go_deps" && tag == "module":
+		if p := n.KeywordString("path"); p != "" {
+			x.add(importGoMod, p, p, n.Line)
 		}
-	case ext == "crate" && tag == "spec":
-		if p := n.KwStr("package"); p != "" {
-			x.add(impCrate, p, p, n.Line)
+	case extension == "crate" && tag == "spec":
+		if p := n.KeywordString("package"); p != "" {
+			x.add(importCrate, p, p, n.Line)
 		}
 	}
 }

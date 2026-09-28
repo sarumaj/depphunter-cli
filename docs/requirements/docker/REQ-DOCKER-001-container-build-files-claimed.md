@@ -17,7 +17,7 @@ The docker plugin **shall** analyze, case-insensitively, files named
 ending in `.dockerignore`, and Compose files: `compose.yaml`,
 `compose.yml`, `compose.*.yaml`/`.yml` and `docker-compose*.yaml`/`.yml`.
 Which of the two kinds a file is **shall** be part of its cache key, and every
-Dockerfile name **shall** be labelled with the language `Docker`.
+Dockerfile name **shall** be labeled with the language `Docker`.
 
 ## Rationale
 

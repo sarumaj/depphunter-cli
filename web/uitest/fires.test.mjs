@@ -17,17 +17,17 @@ const { Fires, seatsOf, reachable, MOST, CATCHES, SPREADS_AT, SPREADS_EVERY, COO
   await import('../static/fires.js');
 const { buildModel } = await import('../static/model.js');
 
-const vuln = (o = {}) => ({
+const vulnerability = (o = {}) => ({
   id: o.id || 'GO-1', kind: 'vulnerability', severity: 'high', title: 'bad',
   ecosystem: 'go', package: 'evil.dev/pkg', reached: 'app.Handler', path: 'a.go', ...o,
 });
 
 /** A repository of files importing one another, plus one package they pull in. */
-function world({ files = ['a.go', 'b.go', 'c.go'], imports = [], pkgs = ['evil.dev/pkg'] } = {}) {
+function world({ files = ['a.go', 'b.go', 'c.go'], imports = [], packages = ['evil.dev/pkg'] } = {}) {
   const nodes = [{ id: 'd:.', kind: 'dir', name: '.', path: '.' }];
   for (const f of files) nodes.push({ id: `f:${f}`, kind: 'file', name: f, path: f, parent: 'd:.', loc: 10 });
   nodes.push({ id: 'e:go', kind: 'ecosystem', name: 'go' });
-  for (const p of pkgs) nodes.push({ id: `p:go:${p}`, kind: 'package', name: p, parent: 'e:go' });
+  for (const p of packages) nodes.push({ id: `p:go:${p}`, kind: 'package', name: p, parent: 'e:go' });
   const edges = imports.map(([from, to]) => ({ from, to, kind: 'import' }));
   return buildModel({ nodes, edges });
 }
@@ -41,32 +41,32 @@ const run = (fires, seconds, step = 0.25) => {
 
 describe('what catches fire', () => {
   it('burns only what a scanner proved is reachable', () => {
-    assert.equal(reachable(vuln()), true);
+    assert.equal(reachable(vulnerability()), true);
     // The common case by far: the dependency is vulnerable, nothing here calls in.
-    assert.equal(reachable(vuln({ reached: '' })), false);
-    assert.equal(reachable(vuln({ reached: undefined })), false);
+    assert.equal(reachable(vulnerability({ reached: '' })), false);
+    assert.equal(reachable(vulnerability({ reached: undefined })), false);
     // A linter's objection is not a fire however bad it is.
     assert.equal(reachable({ kind: 'lint', severity: 'critical', reached: 'x' }), false);
   });
 
   it('seats a fire on the package and on the call site', () => {
     const m = world();
-    const [seat] = seatsOf(index(vuln()), m);
+    const [seat] = seatsOf(index(vulnerability()), m);
     assert.equal(seat.from, 'p:go:evil.dev/pkg', 'the fire does not start at the package');
     assert.equal(seat.into, 'f:a.go', 'the call site is not where it is going');
   });
 
   it('drops a finding with neither end on the map', () => {
-    const m = world({ files: ['a.go'], pkgs: [] });
+    const m = world({ files: ['a.go'], packages: [] });
     // A vendored path and a package the map does not draw: nowhere to put it.
-    assert.deepEqual(seatsOf(index(vuln({ path: 'vendor/x.go' })), m), []);
+    assert.deepEqual(seatsOf(index(vulnerability({ path: 'vendor/x.go' })), m), []);
     // One end is enough, though.
-    assert.equal(seatsOf(index(vuln({ package: '', path: 'a.go' })), m).length, 1);
+    assert.equal(seatsOf(index(vulnerability({ package: '', path: 'a.go' })), m).length, 1);
   });
 
   it('ignores what is not reachable, however bad', () => {
     const m = world();
-    assert.deepEqual(seatsOf(index(vuln({ severity: 'critical', reached: '' })), m), []);
+    assert.deepEqual(seatsOf(index(vulnerability({ severity: 'critical', reached: '' })), m), []);
   });
 });
 
@@ -74,7 +74,7 @@ describe('where the fire goes', () => {
   it('travels from the package to the call site the scanner named', () => {
     const m = world();
     const fires = new Fires(m);
-    fires.light(index(vuln()));
+    fires.light(index(vulnerability()));
     assert.deepEqual([...fires.lit.keys()], ['p:go:evil.dev/pkg']);
     run(fires, SPREADS_EVERY + 2 / CATCHES);
     assert.ok(fires.lit.has('f:a.go'), 'the fire never reached the call site');
@@ -85,7 +85,7 @@ describe('where the fire goes', () => {
     // both, and the fire has to say so in that order.
     const m = world({ imports: [['f:b.go', 'f:a.go'], ['f:c.go', 'f:b.go']] });
     const fires = new Fires(m);
-    fires.light(index(vuln()));
+    fires.light(index(vulnerability()));
     run(fires, SPREADS_EVERY * 4 + 8);
     assert.ok(fires.lit.has('f:b.go'), 'the fire did not reach the file that imports the call site');
     assert.ok(fires.lit.has('f:c.go'), 'the fire stopped one hop short');
@@ -96,7 +96,7 @@ describe('where the fire goes', () => {
     // down the arrow would be blaming a file for its own dependency's problem.
     const m = world({ files: ['a.go', 'b.go'], imports: [['f:a.go', 'f:b.go']] });
     const fires = new Fires(m);
-    fires.light(index(vuln()));
+    fires.light(index(vulnerability()));
     run(fires, SPREADS_EVERY * 4 + 8);
     assert.equal(fires.lit.has('f:b.go'), false, 'the fire ran down an import');
   });
@@ -104,9 +104,9 @@ describe('where the fire goes', () => {
   it('never sets a package alight from the repository', () => {
     // c imports the package directly as well. Nothing this project does can light a
     // dependency: the fire only ever comes out of one.
-    const m = world({ imports: [['f:b.go', 'f:a.go'], ['f:b.go', 'p:go:evil.dev/pkg']], pkgs: ['evil.dev/pkg', 'other.dev/p'] });
+    const m = world({ imports: [['f:b.go', 'f:a.go'], ['f:b.go', 'p:go:evil.dev/pkg']], packages: ['evil.dev/pkg', 'other.dev/p'] });
     const fires = new Fires(m);
-    fires.light(index(vuln()));
+    fires.light(index(vulnerability()));
     run(fires, SPREADS_EVERY * 5 + 10);
     assert.equal(fires.lit.has('p:go:other.dev/p'), false, 'a second package caught');
     for (const [id] of fires.lit) {
@@ -118,7 +118,7 @@ describe('where the fire goes', () => {
   it('waits until a building is well alight before passing it on', () => {
     const m = world({ imports: [['f:b.go', 'f:a.go']] });
     const fires = new Fires(m);
-    fires.light(index(vuln()));
+    fires.light(index(vulnerability()));
     // One tick: the package is lit but nowhere near hot enough to pass it on.
     fires.step(0.1);
     assert.equal(fires.lit.size, 1, 'the fire crossed the map in a frame');
@@ -132,7 +132,7 @@ describe('where the fire goes', () => {
     const imports = files.slice(1).map((f, i) => [`f:${f}`, `f:${files[i]}`]);
     const m = world({ files, imports });
     const fires = new Fires(m);
-    fires.light(index(vuln({ path: 'f0.go' })));
+    fires.light(index(vulnerability({ path: 'f0.go' })));
     run(fires, SPREADS_EVERY * (MOST + 60));
     assert.ok(fires.lit.size <= MOST, `${fires.lit.size} buildings alight, over the cap of ${MOST}`);
   });
@@ -142,7 +142,7 @@ describe('putting it out', () => {
   it('reports what one moment of spray did', () => {
     const m = world();
     const fires = new Fires(m);
-    fires.light(index(vuln()));
+    fires.light(index(vulnerability()));
     assert.equal(fires.douse('f:nothing.go', 1), null, 'doused something that was not alight');
     assert.equal(fires.douse('p:go:evil.dev/pkg', 0.01), 'cooling');
     assert.equal(fires.douse('p:go:evil.dev/pkg', 10), 'out');
@@ -153,7 +153,7 @@ describe('putting it out', () => {
     // it; upgrade the dependency and all of it goes out at once.
     const m = world({ imports: [['f:b.go', 'f:a.go'], ['f:c.go', 'f:b.go']] });
     const fires = new Fires(m);
-    fires.light(index(vuln()));
+    fires.light(index(vulnerability()));
     run(fires, SPREADS_EVERY * 4 + 8);
     assert.ok(fires.lit.size > 1, 'the fire never spread, so there is nothing to test');
     assert.equal(fires.douse('p:go:evil.dev/pkg', 10), 'out');
@@ -164,7 +164,7 @@ describe('putting it out', () => {
   it('holds a line without ending the fire', () => {
     const m = world({ imports: [['f:b.go', 'f:a.go'], ['f:c.go', 'f:b.go']] });
     const fires = new Fires(m);
-    fires.light(index(vuln()));
+    fires.light(index(vulnerability()));
     run(fires, SPREADS_EVERY * 3 + 6);
     assert.ok(fires.lit.has('f:a.go'));
     assert.equal(fires.douse('f:a.go', 10), 'cooled', 'a building away from the source ended the fire');
@@ -174,7 +174,7 @@ describe('putting it out', () => {
   it('keeps a doused building cold for a while', () => {
     const m = world({ imports: [['f:b.go', 'f:a.go']] });
     const fires = new Fires(m);
-    fires.light(index(vuln()));
+    fires.light(index(vulnerability()));
     run(fires, SPREADS_EVERY + 6);
     fires.douse('f:a.go', 10);
     run(fires, SPREADS_EVERY * 2);
@@ -187,7 +187,7 @@ describe('putting it out', () => {
     const m = world();
     const fires = new Fires(m);
     fires.keepDoused(['GO-1']);
-    fires.light(index(vuln()));
+    fires.light(index(vulnerability()));
     assert.equal(fires.burning, 0, 'a fire already put out came back on a relayout');
   });
 });

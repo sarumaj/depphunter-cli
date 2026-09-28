@@ -23,9 +23,9 @@ func (t term) at(i int) term {
 	return term{}
 }
 
-// opt looks a key up in a keyword list or proplist: [hex: :x] or [{hex, x}]. A
+// option looks a key up in a keyword list or proplist: [hex: :x] or [{hex, x}]. A
 // bare atom in a proplist is true.
-func (t term) opt(key string) (term, bool) {
+func (t term) option(key string) (term, bool) {
 	for _, it := range t.items {
 		switch {
 		case it.kind == 'k' && it.s == key:
@@ -102,12 +102,12 @@ func (p *termParser) peek() token {
 	if p.i < len(p.tokens) {
 		return p.tokens[p.i]
 	}
-	return token{kind: tPunct, val: "eof"}
+	return token{kind: tPunctuation, value: "eof"}
 }
 
-func (p *termParser) isPunct(v string) bool {
+func (p *termParser) isPunctuation(v string) bool {
 	t := p.peek()
-	return t.kind == tPunct && t.val == v
+	return t.kind == tPunctuation && t.value == v
 }
 
 // value reads one term, or skips an expression it cannot read up to the next comma
@@ -119,37 +119,37 @@ func (p *termParser) value() term {
 	switch {
 	case t.kind == tKey:
 		p.i++
-		v = term{kind: 'k', s: t.val, line: line, items: []term{p.value()}}
+		v = term{kind: 'k', s: t.value, line: line, items: []term{p.value()}}
 		return v
 	case t.kind == tAtom:
 		p.i++
-		v = term{kind: 'a', s: t.val, line: line}
-	case t.kind == tIdent && (t.val == "true" || t.val == "false" || t.val == "nil"):
+		v = term{kind: 'a', s: t.value, line: line}
+	case t.kind == tIdentifier && (t.value == "true" || t.value == "false" || t.value == "nil"):
 		p.i++
-		v = term{kind: 'a', s: t.val, line: line}
+		v = term{kind: 'a', s: t.value, line: line}
 	case t.kind == tString:
 		p.i++
-		v = term{kind: 's', s: t.val, line: line}
-	case t.kind == tNum:
+		v = term{kind: 's', s: t.value, line: line}
+	case t.kind == tNumber:
 		p.i++
-		v = term{kind: 'n', s: t.val, line: line}
-	case t.kind == tPunct && t.val == "[":
+		v = term{kind: 'n', s: t.value, line: line}
+	case t.kind == tPunctuation && t.value == "[":
 		p.i++
-		v = term{kind: 'l', line: line, items: p.seq("]")}
-	case t.kind == tPunct && t.val == "{":
+		v = term{kind: 'l', line: line, items: p.sequence("]")}
+	case t.kind == tPunctuation && t.value == "{":
 		p.i++
-		v = term{kind: 't', line: line, items: p.seq("}")}
-	case t.kind == tPunct && (t.val == "%" || t.val == "#" && p.erl) && p.i+1 < len(p.tokens) && p.tokens[p.i+1].val == "{":
+		v = term{kind: 't', line: line, items: p.sequence("}")}
+	case t.kind == tPunctuation && (t.value == "%" || t.value == "#" && p.erl) && p.i+1 < len(p.tokens) && p.tokens[p.i+1].value == "{":
 		// Elixir's %{...} and Erlang's #{...}
 		p.i += 2
-		v = term{kind: 'm', line: line, items: p.seq("}")}
-	case t.kind == tPunct && t.val == "<<" && p.erl:
+		v = term{kind: 'm', line: line, items: p.sequence("}")}
+	case t.kind == tPunctuation && t.value == "<<" && p.erl:
 		// <<"name">>: a binary holding one string
 		p.i++
 		v = term{kind: 'x', line: line}
 		if s := p.peek(); s.kind == tString {
 			p.i++
-			v = term{kind: 's', s: s.val, line: line}
+			v = term{kind: 's', s: s.value, line: line}
 		}
 		p.skipTo(">>")
 		return v
@@ -158,32 +158,32 @@ func (p *termParser) value() term {
 		return term{kind: 'x', line: line}
 	}
 	// Elixir's "key" => value and Erlang's key => value in maps.
-	if p.isPunct("=>") {
+	if p.isPunctuation("=>") {
 		p.i++
 		return term{kind: 'k', s: v.s, line: line, items: []term{p.value()}}
 	}
 	// Anything else continuing the expression (Mix.env() == :prod, "a" <> "b") makes
 	// the whole thing other.
-	if t := p.peek(); !(t.kind == tPunct && (t.val == "," || t.val == "]" || t.val == "}" || t.val == ")" || t.val == "end" || t.val == ">>" || t.val == "|" || t.val == "eof")) {
+	if t := p.peek(); !(t.kind == tPunctuation && (t.value == "," || t.value == "]" || t.value == "}" || t.value == ")" || t.value == "end" || t.value == ">>" || t.value == "|" || t.value == "eof")) {
 		p.skip()
 		return term{kind: 'x', line: line}
 	}
 	return v
 }
 
-// seq reads comma-separated terms up to close.
-func (p *termParser) seq(close string) []term {
+// sequence reads comma-separated terms up to close.
+func (p *termParser) sequence(close string) []term {
 	var out []term
 	for p.i < len(p.tokens) {
-		if p.isPunct(close) {
+		if p.isPunctuation(close) {
 			p.i++
 			return out
 		}
-		if p.isPunct(",") || p.isPunct("|") {
+		if p.isPunctuation(",") || p.isPunctuation("|") {
 			p.i++
 			continue
 		}
-		if t := p.peek(); t.kind == tPunct && (t.val == "]" || t.val == "}" || t.val == ")" || t.val == "end") {
+		if t := p.peek(); t.kind == tPunctuation && (t.value == "]" || t.value == "}" || t.value == ")" || t.value == "end") {
 			p.i++ // a mismatched closer: give up on this sequence
 			return out
 		}
@@ -201,8 +201,8 @@ func (p *termParser) skip() {
 	depth := 0
 	for p.i < len(p.tokens) {
 		t := p.tokens[p.i]
-		if t.kind == tPunct {
-			switch t.val {
+		if t.kind == tPunctuation {
+			switch t.value {
 			case "(", "[", "{", "<<":
 				depth++
 			case ")", "]", "}", ">>":
@@ -218,10 +218,10 @@ func (p *termParser) skip() {
 				return
 			}
 		}
-		if t.kind == tIdent && t.val == "do" {
+		if t.kind == tIdentifier && t.value == "do" {
 			depth++
 		}
-		if t.kind == tIdent && t.val == "end" && depth > 0 {
+		if t.kind == tIdentifier && t.value == "end" && depth > 0 {
 			depth--
 		}
 		p.i++
@@ -229,21 +229,21 @@ func (p *termParser) skip() {
 }
 
 func (p *termParser) skipTo(v string) {
-	for p.i < len(p.tokens) && !p.isPunct(v) {
+	for p.i < len(p.tokens) && !p.isPunctuation(v) {
 		p.i++
 	}
 	p.i++
 }
 
 // erlForms reads the terms of a file of Erlang terms, one per form.
-func erlForms(src []byte) []term {
-	p := &termParser{tokens: lexErlang(src), erl: true}
+func erlForms(source []byte) []term {
+	p := &termParser{tokens: lexErlang(source), erl: true}
 	var out []term
 	for p.i < len(p.tokens) {
 		start := p.i
 		v := p.value()
 		out = append(out, v)
-		for p.i < len(p.tokens) && !p.isPunct("end") {
+		for p.i < len(p.tokens) && !p.isPunctuation("end") {
 			p.i++
 		}
 		p.i++

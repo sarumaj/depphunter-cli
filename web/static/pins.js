@@ -80,14 +80,14 @@ export class Pins {
     // Grouped by severity, because a color is a material and a material is a draw.
     const bySeverity = new Map();
     for (const [box, at] of tally) {
-      const sev = at.worst || 'unknown';
-      if (!bySeverity.has(sev)) bySeverity.set(sev, []);
-      bySeverity.get(sev).push({ box, count: at.count, worst: sev });
+      const severity = at.worst || 'unknown';
+      if (!bySeverity.has(severity)) bySeverity.set(severity, []);
+      bySeverity.get(severity).push({ box, count: at.count, worst: severity });
     }
     // Worst last, so a critical pin draws over the low one behind it.
-    for (const sev of [...bySeverity.keys()].sort((a, b) => rankOf(a) - rankOf(b))) {
-      const items = bySeverity.get(sev);
-      const material = this.material(colors[sev] || colors.unknown);
+    for (const severity of [...bySeverity.keys()].sort((a, b) => rankOf(a) - rankOf(b))) {
+      const items = bySeverity.get(severity);
+      const material = this.material(colors[severity] || colors.unknown);
       const stems = new THREE.InstancedMesh(parts.stem, material, items.length);
       const heads = new THREE.InstancedMesh(parts.head, material, items.length);
       for (const mesh of [stems, heads]) {
@@ -187,8 +187,8 @@ export class Pins {
 // How far a point is from a segment, squared, all in pixels.
 function toSegment(x, y, a, b) {
   const dx = b.x - a.x, dy = b.y - a.y;
-  const len = dx * dx + dy * dy;
-  const t = len ? Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / len)) : 0;
+  const squaredLength = dx * dx + dy * dy;
+  const t = squaredLength ? Math.max(0, Math.min(1, ((x - a.x) * dx + (y - a.y) * dy) / squaredLength)) : 0;
   return (x - a.x - dx * t) ** 2 + (y - a.y - dy * t) ** 2;
 }
 

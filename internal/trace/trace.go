@@ -199,9 +199,9 @@ type Lookup struct {
 	Answer    Answer `json:"answer"`
 	// Index is the index the question went to, or would have gone to had it been
 	// asked: a package skipped for being private still says which index was spared.
-	Index  string `json:"index,omitempty"`
-	Deps   int    `json:"deps"`
-	Reason string `json:"reason,omitempty"`
+	Index        string `json:"index,omitempty"`
+	Dependencies int    `json:"deps"`
+	Reason       string `json:"reason,omitempty"`
 	// Requests is what went over the network, when anything did.
 	Requests []Request `json:"requests,omitempty"`
 	Millis   int64     `json:"ms,omitempty"`
@@ -209,12 +209,12 @@ type Lookup struct {
 
 // Totals count what the detail adds up to, so the counts survive the cap on Lookups.
 type Totals struct {
-	Packages   int `json:"packages"`
-	Transitive int `json:"transitive"`
-	PrivatePkg int `json:"privatePackages"`
-	Untrusted  int `json:"untrustedPackages"`
-	Asked      int `json:"asked"`
-	FromLock   int `json:"fromLock"`
+	Packages       int `json:"packages"`
+	Transitive     int `json:"transitive"`
+	PrivatePackage int `json:"privatePackages"`
+	Untrusted      int `json:"untrustedPackages"`
+	Asked          int `json:"asked"`
+	FromLock       int `json:"fromLock"`
 	// Implements: REQ-PY-015
 	FromInstalled int `json:"fromInstalled,omitempty"`
 	FromIndex     int `json:"fromIndex"`
@@ -384,10 +384,10 @@ func (r *Report) Summarize(g *graph.Graph) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	r.Root = g.Root
-	eco := map[string]string{} // ecosystem node id -> its id without the prefix
+	ecosystem := map[string]string{} // ecosystem node id -> its id without the prefix
 	for _, n := range g.Nodes {
 		if n.Kind == graph.KindEcosystem {
-			eco[n.ID] = strings.TrimPrefix(n.ID, "e:")
+			ecosystem[n.ID] = strings.TrimPrefix(n.ID, "e:")
 		}
 	}
 	use := map[[2]string]*Use{}
@@ -404,12 +404,12 @@ func (r *Report) Summarize(g *graph.Graph) {
 			r.Totals.Transitive++
 		}
 		if n.Private {
-			r.Totals.PrivatePkg++
+			r.Totals.PrivatePackage++
 		}
 		if n.IndexUnknown {
 			r.Totals.Untrusted++
 		}
-		key := [2]string{eco[n.Parent], index}
+		key := [2]string{ecosystem[n.Parent], index}
 		u := use[key]
 		if u == nil {
 			u = &Use{Ecosystem: key[0], Index: index, Trusted: !n.IndexUnknown}

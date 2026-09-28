@@ -206,7 +206,7 @@ func (r *Report) answers() string {
 	}
 	if t.Packages > 0 {
 		parts = append(parts, fmt.Sprintf("%s on the map (%d transitive, %d private, %d from an index nothing here vouches for)",
-			plural(t.Packages, "external package", "external packages"), t.Transitive, t.PrivatePkg, t.Untrusted))
+			plural(t.Packages, "external package", "external packages"), t.Transitive, t.PrivatePackage, t.Untrusted))
 	}
 	return strings.Join(parts, "; ")
 }
@@ -278,7 +278,7 @@ func lookupTable(ls []Lookup, limit int, full bool) *table {
 	for _, l := range shown {
 		if full {
 			t.add(fmt.Sprint(l.Level), l.Ecosystem, l.Package, or(l.Version, "-"),
-				string(l.Answer), fmt.Sprint(l.Deps), or(l.Reason, requestSummary(l)))
+				string(l.Answer), fmt.Sprint(l.Dependencies), or(l.Reason, requestSummary(l)))
 			continue
 		}
 		t.add(fmt.Sprint(l.Level), l.Ecosystem, l.Package, or(l.Version, "-"),
@@ -371,11 +371,11 @@ type writer struct {
 	err error
 }
 
-func (o *writer) printf(format string, args ...any) {
+func (o *writer) printf(format string, arguments ...any) {
 	if o.err != nil {
 		return
 	}
-	_, o.err = fmt.Fprintf(o.w, format, args...)
+	_, o.err = fmt.Fprintf(o.w, format, arguments...)
 }
 
 func (o *writer) text(t *table) {

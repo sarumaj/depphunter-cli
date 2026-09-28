@@ -46,21 +46,21 @@ func stubIndex(t *testing.T) (*httptest.Server, *[]string) {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	})
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	return srv, &asked
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	return server, &asked
 }
 
-func clientFor(t *testing.T, eco, url, home string) *Client {
+func clientFor(t *testing.T, ecosystem, url, home string) *Client {
 	t.Helper()
-	cfg := New()
-	cfg.Add(eco, Source{URL: url, Trusted: true})
-	return NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil), nil)
+	config := New()
+	config.Add(ecosystem, Source{URL: url, Trusted: true})
+	return NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil), nil)
 }
 
-func names(deps []lang.Target) []string {
+func names(dependencies []lang.Target) []string {
 	var out []string
-	for _, d := range deps {
+	for _, d := range dependencies {
 		out = append(out, d.Package)
 	}
 	sort.Strings(out)
@@ -69,23 +69,23 @@ func names(deps []lang.Target) []string {
 
 // Verifies: REQ-SUP-021, REQ-SUP-029
 func TestGoModuleDependencies(t *testing.T) {
-	srv, _ := stubIndex(t)
-	c := clientFor(t, Go, srv.URL, "")
+	server, _ := stubIndex(t)
+	c := clientFor(t, Go, server.URL, "")
 	got := names(c.Dependencies(lang.Target{Ecosystem: Go, Package: "example.com/mod", Version: "v1.2.3"}))
 	// An indirect requirement belongs to something else's go.mod, not to this module.
 	if len(got) != 1 || got[0] != "github.com/direct/dep" {
 		t.Errorf("got %v, want the direct requirement only", got)
 	}
 	// Without a version the proxy has no document to serve, and nothing is asked.
-	if deps := c.Dependencies(lang.Target{Ecosystem: Go, Package: "example.com/mod"}); len(deps) != 0 {
-		t.Errorf("got %v for a module with no version", names(deps))
+	if dependencies := c.Dependencies(lang.Target{Ecosystem: Go, Package: "example.com/mod"}); len(dependencies) != 0 {
+		t.Errorf("got %v for a module with no version", names(dependencies))
 	}
 }
 
 // Verifies: REQ-SUP-022
 func TestNpmDependencies(t *testing.T) {
-	srv, asked := stubIndex(t)
-	c := clientFor(t, NPM, srv.URL, "")
+	server, asked := stubIndex(t)
+	c := clientFor(t, NPM, server.URL, "")
 	if got := names(c.Dependencies(lang.Target{Ecosystem: NPM, Package: "react", Version: "18.3.1"})); len(got) != 1 || got[0] != "loose-envify" {
 		t.Errorf("got %v", got)
 	}
@@ -100,10 +100,10 @@ func TestNpmDependencies(t *testing.T) {
 
 // Verifies: REQ-SUP-023
 func TestPyPIDependencies(t *testing.T) {
-	srv, _ := stubIndex(t)
-	cfg := New()
-	cfg.Add(PyPI, Source{URL: srv.URL + "/simple", Trusted: true})
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, nil, nil)
+	server, _ := stubIndex(t)
+	config := New()
+	config.Add(PyPI, Source{URL: server.URL + "/simple", Trusted: true})
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil, nil)
 	got := names(c.Dependencies(lang.Target{Ecosystem: PyPI, Package: "requests", Version: "2.31.0"}))
 	// An extra's dependency is installed only when that extra is asked for.
 	if len(got) != 2 || got[0] != "certifi" || got[1] != "urllib3" {
@@ -113,12 +113,12 @@ func TestPyPIDependencies(t *testing.T) {
 
 // Verifies: REQ-SUP-019
 func TestAnIndexOnlyTheRepositoryNamesIsNotAsked(t *testing.T) {
-	srv, asked := stubIndex(t)
-	cfg := New()
-	cfg.Add(NPM, Source{URL: srv.URL}) // as a repository's .npmrc would
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, nil, nil)
-	if deps := c.Dependencies(lang.Target{Ecosystem: NPM, Package: "react", Version: "18.3.1"}); len(deps) != 0 {
-		t.Errorf("got %v from an index nothing here vouches for", names(deps))
+	server, asked := stubIndex(t)
+	config := New()
+	config.Add(NPM, Source{URL: server.URL}) // as a repository's .npmrc would
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil, nil)
+	if dependencies := c.Dependencies(lang.Target{Ecosystem: NPM, Package: "react", Version: "18.3.1"}); len(dependencies) != 0 {
+		t.Errorf("got %v from an index nothing here vouches for", names(dependencies))
 	}
 	if len(*asked) != 0 {
 		t.Errorf("the index was asked anyway: %v", *asked)
@@ -127,20 +127,20 @@ func TestAnIndexOnlyTheRepositoryNamesIsNotAsked(t *testing.T) {
 
 // Verifies: REQ-SUP-033
 func TestCredentialsGoToTheHostTheyWereWrittenFor(t *testing.T) {
-	srv, _ := stubIndex(t)
+	server, _ := stubIndex(t)
 	home := t.TempDir()
-	host := srv.Listener.Addr().String()
+	host := server.Listener.Addr().String()
 	npmrc := fmt.Sprintf("//%s/:_authToken=secret-token\n", host)
 	if err := os.WriteFile(filepath.Join(home, ".npmrc"), []byte(npmrc), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	c := clientFor(t, NPM, srv.URL, home)
+	c := clientFor(t, NPM, server.URL, home)
 	if got := names(c.Dependencies(lang.Target{Ecosystem: NPM, Package: "private", Version: "1.0.0"})); len(got) != 1 {
 		t.Errorf("got %v, want the private package's dependency", got)
 	}
 	// The same request without the token is refused by the stub, which is what
 	// proves the header was sent.
-	plain := clientFor(t, NPM, srv.URL, t.TempDir())
+	plain := clientFor(t, NPM, server.URL, t.TempDir())
 	if got := plain.Dependencies(lang.Target{Ecosystem: NPM, Package: "private", Version: "1.0.0"}); len(got) != 0 {
 		t.Errorf("got %v without credentials", names(got))
 	}
@@ -148,16 +148,16 @@ func TestCredentialsGoToTheHostTheyWereWrittenFor(t *testing.T) {
 
 // Verifies: REQ-SUP-032
 func TestAnswersAreCached(t *testing.T) {
-	srv, asked := stubIndex(t)
-	dir := t.TempDir()
-	cfg := New()
-	cfg.Add(Go, Source{URL: srv.URL, Trusted: true})
+	server, asked := stubIndex(t)
+	directory := t.TempDir()
+	config := New()
+	config.Add(Go, Source{URL: server.URL, Trusted: true})
 	target := lang.Target{Ecosystem: Go, Package: "example.com/mod", Version: "v1.2.3"}
 
-	first := NewClient(cfg, dir, time.Hour, 5*time.Second, nil, nil)
+	first := NewClient(config, directory, time.Hour, 5*time.Second, nil, nil)
 	first.Dependencies(target)
 	// A second client, a second run: the answer is on disk.
-	second := NewClient(cfg, dir, time.Hour, 5*time.Second, nil, nil)
+	second := NewClient(config, directory, time.Hour, 5*time.Second, nil, nil)
 	if got := names(second.Dependencies(target)); len(got) != 1 {
 		t.Errorf("got %v from the cache", got)
 	}
@@ -168,20 +168,20 @@ func TestAnswersAreCached(t *testing.T) {
 	// to live shortened: Windows reads a clock that ticks every fifteen
 	// milliseconds, so an answer written and read inside one test is the same
 	// instant there, and no time to live short of zero expires it.
-	age(t, dir, 2*time.Hour)
-	third := NewClient(cfg, dir, time.Hour, 5*time.Second, nil, nil)
+	age(t, directory, 2*time.Hour)
+	third := NewClient(config, directory, time.Hour, 5*time.Second, nil, nil)
 	third.Dependencies(target)
 	if len(*asked) != 2 {
 		t.Errorf("a stale answer was reused: %v", *asked)
 	}
 }
 
-// age moves every cached answer in dir that far into the past.
-func age(t *testing.T, dir string, by time.Duration) {
+// age moves every cached answer in directory that far into the past.
+func age(t *testing.T, directory string, by time.Duration) {
 	t.Helper()
-	found, err := filepath.Glob(filepath.Join(dir, "*.json"))
+	found, err := filepath.Glob(filepath.Join(directory, "*.json"))
 	if err != nil || len(found) == 0 {
-		t.Fatalf("no cached answers in %s: %v", dir, err)
+		t.Fatalf("no cached answers in %s: %v", directory, err)
 	}
 	for _, name := range found {
 		data, err := os.ReadFile(name)
@@ -212,19 +212,19 @@ func age(t *testing.T, dir string, by time.Duration) {
 
 // Verifies: REQ-SUP-038
 func TestAPrivatePackageIsNotNamedToAPublicIndex(t *testing.T) {
-	srv, asked := stubIndex(t)
+	server, asked := stubIndex(t)
 	// The stub stands in for the ecosystem's public index, which is what makes
 	// asking it a disclosure.
-	public[Go] = srv.URL
+	public[Go] = server.URL
 	t.Cleanup(func() { public[Go] = "https://proxy.golang.org" })
 
-	cfg := New()
-	cfg.Add(Go, Source{URL: srv.URL, Trusted: true})
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, nil,
+	config := New()
+	config.Add(Go, Source{URL: server.URL, Trusted: true})
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil,
 		scope.New([]string{"go:example.com/*"}))
 
-	if deps := c.Dependencies(lang.Target{Ecosystem: Go, Package: "example.com/mod", Version: "v1.2.3"}); len(deps) != 0 {
-		t.Errorf("answered %v for a private module", names(deps))
+	if dependencies := c.Dependencies(lang.Target{Ecosystem: Go, Package: "example.com/mod", Version: "v1.2.3"}); len(dependencies) != 0 {
+		t.Errorf("answered %v for a private module", names(dependencies))
 	}
 	// Not "asked and ignored": not asked. The request is what would say the module
 	// exists, and to whom.
@@ -237,11 +237,11 @@ func TestAPrivatePackageIsNotNamedToAPublicIndex(t *testing.T) {
 //
 // Verifies: REQ-SUP-039
 func TestAPrivatePackageIsStillAskedOfTheCompanysOwnIndex(t *testing.T) {
-	srv, asked := stubIndex(t)
+	server, asked := stubIndex(t)
 	// The machine's own configuration points Go at an internal proxy, which is not
 	// the ecosystem's public one: asking it discloses nothing that is not already
 	// inside the organization.
-	c := clientFor(t, Go, srv.URL, "")
+	c := clientFor(t, Go, server.URL, "")
 	c.private = scope.New([]string{"go:example.com/*"})
 
 	got := names(c.Dependencies(lang.Target{Ecosystem: Go, Package: "example.com/mod", Version: "v1.2.3"}))
@@ -259,18 +259,18 @@ func TestAPrivatePackageIsStillAskedOfTheCompanysOwnIndex(t *testing.T) {
 //
 // Verifies: REQ-SUP-028, REQ-SUP-029, REQ-TRC-005, REQ-TRC-006, REQ-TRC-007
 func TestTheReportSaysWhoAnswered(t *testing.T) {
-	srv, _ := stubIndex(t)
+	server, _ := stubIndex(t)
 	// The stub stands in for the Go ecosystem's public index, which is what makes
 	// naming a private module to it a disclosure.
-	public[Go] = srv.URL
+	public[Go] = server.URL
 	t.Cleanup(func() { public[Go] = "https://proxy.golang.org" })
 
-	cfg := New()
-	cfg.Add(Go, Source{URL: srv.URL, Trusted: true, Origin: OriginMachine})
-	cfg.Add(NPM, Source{URL: srv.URL, Origin: OriginProject}) // as a repository's .npmrc would
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, nil, scope.New([]string{"go:private.example/*"}))
-	rep := trace.New(1, true, nil, nil)
-	c.Trace(rep)
+	config := New()
+	config.Add(Go, Source{URL: server.URL, Trusted: true, Origin: OriginMachine})
+	config.Add(NPM, Source{URL: server.URL, Origin: OriginProject}) // as a repository's .npmrc would
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil, scope.New([]string{"go:private.example/*"}))
+	report := trace.New(1, true, nil, nil)
+	c.Trace(report)
 
 	for _, ask := range []lang.Target{
 		{Ecosystem: Go, Package: "example.com/mod", Version: "v1.2.3"},
@@ -286,16 +286,16 @@ func TestTheReportSaysWhoAnswered(t *testing.T) {
 	}
 
 	got := map[string]trace.Lookup{}
-	for _, l := range rep.Lookups {
+	for _, l := range report.Lookups {
 		if have, ok := got[l.Package]; ok && have.Answer == trace.FromIndex {
 			continue // the first answer for a package asked twice
 		}
 		got[l.Package] = l
 	}
 	for _, want := range []struct {
-		pkg    string
-		answer trace.Answer
-		reason string
+		packageName string
+		answer      trace.Answer
+		reason      string
 	}{
 		{"example.com/mod", trace.FromIndex, ""},
 		{"private.example/billing", trace.NoAnswer, trace.ReasonPrivate},
@@ -304,12 +304,12 @@ func TestTheReportSaysWhoAnswered(t *testing.T) {
 		{"com.google.guava", trace.NoAnswer, trace.ReasonUnsupported},
 		{"actions/checkout", trace.NoAnswer, trace.ReasonNoIndex},
 	} {
-		l, ok := got[want.pkg]
+		l, ok := got[want.packageName]
 		switch {
 		case !ok:
-			t.Errorf("%s was not recorded at all", want.pkg)
+			t.Errorf("%s was not recorded at all", want.packageName)
 		case l.Answer != want.answer || l.Reason != want.reason:
-			t.Errorf("%s: %q / %q, want %q / %q", want.pkg, l.Answer, l.Reason, want.answer, want.reason)
+			t.Errorf("%s: %q / %q, want %q / %q", want.packageName, l.Answer, l.Reason, want.answer, want.reason)
 		}
 	}
 	// A question that was put and came back empty-handed carries what was sent and
@@ -322,7 +322,7 @@ func TestTheReportSaysWhoAnswered(t *testing.T) {
 	// Asking twice is one question, and the report says so rather than implying two
 	// round trips.
 	memo := 0
-	for _, l := range rep.Lookups {
+	for _, l := range report.Lookups {
 		if l.Answer == trace.FromMemo {
 			memo++
 		}
@@ -332,8 +332,8 @@ func TestTheReportSaysWhoAnswered(t *testing.T) {
 	}
 	// One for example.com/mod and one for example.com/missing. Everything else was
 	// declined, answered from memory, or belongs to an ecosystem with nothing to ask.
-	if rep.Totals.Requests != 2 {
-		t.Errorf("requests: %d, want 2", rep.Totals.Requests)
+	if report.Totals.Requests != 2 {
+		t.Errorf("requests: %d, want 2", report.Totals.Requests)
 	}
 }
 
@@ -341,7 +341,7 @@ func TestTheReportSaysWhoAnswered(t *testing.T) {
 func TestAFailedLookupIsAskedAgainLater(t *testing.T) {
 	down := true
 	var asked int
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked++
 		if down {
 			w.WriteHeader(http.StatusServiceUnavailable)
@@ -349,8 +349,8 @@ func TestAFailedLookupIsAskedAgainLater(t *testing.T) {
 		}
 		fmt.Fprint(w, "module example.com/mod\n\nrequire github.com/direct/dep v1.0.0\n")
 	}))
-	t.Cleanup(srv.Close)
-	c := clientFor(t, Go, srv.URL, "")
+	t.Cleanup(server.Close)
+	c := clientFor(t, Go, server.URL, "")
 	target := lang.Target{Ecosystem: Go, Package: "example.com/mod", Version: "v1.2.3"}
 
 	if got := c.Dependencies(target); len(got) != 0 {
@@ -374,21 +374,21 @@ func TestAFailedLookupIsAskedAgainLater(t *testing.T) {
 
 // Verifies: REQ-PY-015
 func TestAPackageInstalledFromElsewhereIsNotAsked(t *testing.T) {
-	srv, asked := stubIndex(t)
-	cfg := New()
-	cfg.Add(PyPI, Source{URL: srv.URL, Trusted: true})
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, nil, scope.New(nil))
-	rep := trace.New(1, true, nil, nil)
-	c.Trace(rep)
+	server, asked := stubIndex(t)
+	config := New()
+	config.Add(PyPI, Source{URL: server.URL, Trusted: true})
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil, scope.New(nil))
+	report := trace.New(1, true, nil, nil)
+	c.Trace(report)
 
-	if deps := c.Dependencies(lang.Target{Ecosystem: PyPI, Package: "acme-core", Version: "1.4.0", Origin: "file:///src/acme-core"}); len(deps) != 0 {
-		t.Errorf("answered %v for a package no index has", names(deps))
+	if dependencies := c.Dependencies(lang.Target{Ecosystem: PyPI, Package: "acme-core", Version: "1.4.0", Origin: "file:///src/acme-core"}); len(dependencies) != 0 {
+		t.Errorf("answered %v for a package no index has", names(dependencies))
 	}
 	for _, path := range *asked {
 		t.Errorf("asked the index for %s", path)
 	}
-	rep.Finish()
-	if got := rep.Lookups; len(got) != 1 || got[0].Reason != trace.ReasonInstalled {
+	report.Finish()
+	if got := report.Lookups; len(got) != 1 || got[0].Reason != trace.ReasonInstalled {
 		t.Errorf("reported %+v, want one lookup declined as installed", got)
 	}
 }
@@ -400,10 +400,10 @@ func TestAPackageInstalledFromElsewhereIsNotAsked(t *testing.T) {
 //
 // Verifies: REQ-AUTH-029, REQ-AUTH-002
 func TestGOAUTHDecidesWhetherTheNetrcReachesTheProxy(t *testing.T) {
-	const mod = "/example.com/mod/@v/v1.0.0.mod"
+	const module = "/example.com/mod/@v/v1.0.0.mod"
 	var mu sync.Mutex
 	var headers []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		headers = append(headers, r.Header.Get("Authorization"))
 		mu.Unlock()
@@ -413,7 +413,7 @@ func TestGOAUTHDecidesWhetherTheNetrcReachesTheProxy(t *testing.T) {
 		}
 		fmt.Fprint(w, "module example.com/mod\n\nrequire example.com/dep v1.0.0\n")
 	}))
-	t.Cleanup(srv.Close)
+	t.Cleanup(server.Close)
 	home := t.TempDir()
 	netrc := filepath.Join(home, ".netrc")
 	if err := os.WriteFile(netrc, []byte("machine 127.0.0.1 login gopher password s3cr3t\n"), 0o600); err != nil {
@@ -423,9 +423,9 @@ func TestGOAUTHDecidesWhetherTheNetrcReachesTheProxy(t *testing.T) {
 	if err := os.WriteFile(goenv, []byte("GOAUTH=off\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	for _, tt := range []struct {
-		vars map[string]string
-		sent bool
+	for _, test := range []struct {
+		variables map[string]string
+		sent      bool
 	}{
 		{map[string]string{}, true},
 		{map[string]string{"GOAUTH": "netrc"}, true},
@@ -435,27 +435,27 @@ func TestGOAUTHDecidesWhetherTheNetrcReachesTheProxy(t *testing.T) {
 		{map[string]string{"GOAUTH": "my-credential-command --flag"}, false},
 		{map[string]string{"GOENV": goenv}, false},
 	} {
-		tt.vars["GOPROXY"] = srv.URL
+		test.variables["GOPROXY"] = server.URL
 		mu.Lock()
 		headers = nil
 		mu.Unlock()
-		store := auth.Read(home, env(tt.vars))
-		c := NewClient(NewDiscoverer(env(tt.vars), "").Discover(nil), t.TempDir(), time.Hour, 5*time.Second, store, nil)
+		store := auth.Read(home, environment(test.variables))
+		c := NewClient(NewDiscoverer(environment(test.variables), "").Discover(nil), t.TempDir(), time.Hour, 5*time.Second, store, nil)
 		got := c.Dependencies(lang.Target{Ecosystem: Go, Package: "example.com/mod", Version: "v1.0.0"})
-		if tt.sent != (len(got) == 1) {
-			t.Errorf("%v: got %v, want the credential sent: %v", tt.vars, names(got), tt.sent)
+		if test.sent != (len(got) == 1) {
+			t.Errorf("%v: got %v, want the credential sent: %v", test.variables, names(got), test.sent)
 		}
 		mu.Lock()
-		if !tt.sent && (len(headers) != 1 || headers[0] != "") {
-			t.Errorf("%v: headers %q", tt.vars, headers)
+		if !test.sent && (len(headers) != 1 || headers[0] != "") {
+			t.Errorf("%v: headers %q", test.variables, headers)
 		}
 		mu.Unlock()
 		// Whatever GOAUTH says, it is the go command's: another ecosystem's request to
 		// the same host still carries the netrc credential.
-		req := httptest.NewRequest(http.MethodGet, srv.URL+mod, nil)
-		store.Apply(req)
-		if req.Header.Get("Authorization") == "" {
-			t.Errorf("%v: Apply left the netrc out", tt.vars)
+		request := httptest.NewRequest(http.MethodGet, server.URL+module, nil)
+		store.Apply(request)
+		if request.Header.Get("Authorization") == "" {
+			t.Errorf("%v: Apply left the netrc out", test.variables)
 		}
 	}
 }

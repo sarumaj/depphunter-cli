@@ -76,15 +76,15 @@ func (l Language) stdTarget(segments []string, wildcard bool) lang.Target {
 }
 
 type resolver struct {
-	lang   Language
-	byName map[string][]string // "User.java" -> project paths
-	dirs   []string            // directories holding Java files, sorted
-	maven                      // the declared Maven artifacts (maven.go)
-	own    []string            // groupIds of the project itself
+	language    Language
+	byName      map[string][]string // "User.java" -> project paths
+	directories []string            // directories holding Java files, sorted
+	maven                           // the declared Maven artifacts (maven.go)
+	own         []string            // groupIds of the project itself
 	// Kotlin and Scala declarations (sources.go): fully qualified name -> files,
 	// and package -> files; and the package each such file declares.
-	decls, packages map[string][]string
-	filePkg         map[string]string
+	declarations, packages map[string][]string
+	filePackage            map[string]string
 	// roots are the first segments of the project's packages and of the declared
 	// groups: the root packages known to exist.
 	roots map[string]bool
@@ -104,27 +104,27 @@ func NewResolver(all []*scan.File, l Language) lang.Resolver {
 
 func newResolver(all []*scan.File, l Language) *resolver {
 	r := &resolver{
-		lang: l, byName: map[string][]string{}, maven: maven{artifacts: map[string]*artifact{}},
-		decls: map[string][]string{}, packages: map[string][]string{}, filePkg: map[string]string{},
+		language: l, byName: map[string][]string{}, maven: maven{artifacts: map[string]*artifact{}},
+		declarations: map[string][]string{}, packages: map[string][]string{}, filePackage: map[string]string{},
 	}
-	dirs := map[string]bool{}
+	directories := map[string]bool{}
 	var sbt []*scan.File
 	for _, f := range all {
 		base := path.Base(f.Path)
 		switch {
 		case strings.HasSuffix(base, ".java"):
 			r.byName[base] = append(r.byName[base], f.Path)
-			dirs[path.Dir(f.Path)] = true
-		case sourceExts[path.Ext(base)]:
+			directories[path.Dir(f.Path)] = true
+		case sourceExtensions[path.Ext(base)]:
 			r.readSource(f)
 		case base == "pom.xml":
-			r.readPOM(f.Abs)
+			r.readPOM(f.AbsolutePath)
 		case base == "build.gradle" || base == "build.gradle.kts":
-			r.readGradle(f.Abs)
+			r.readGradle(f.AbsolutePath)
 		case base == "libs.versions.toml":
-			r.readCatalog(f.Abs)
+			r.readCatalog(f.AbsolutePath)
 		case gradleLockfile(f.Path):
-			r.readGradleLock(f.Abs)
+			r.readGradleLock(f.AbsolutePath)
 		case strings.HasSuffix(base, ".sbt") && path.Base(path.Dir(f.Path)) != "project":
 			// project/*.sbt configures sbt itself (its plugins), not the code.
 			sbt = append(sbt, f)
@@ -133,11 +133,11 @@ func newResolver(all []*scan.File, l Language) *resolver {
 	r.readSBTs(sbt)
 	r.applyLocks()
 	r.finish(l)
-	for d := range dirs {
-		r.dirs = append(r.dirs, d)
+	for d := range directories {
+		r.directories = append(r.directories, d)
 	}
-	sort.Strings(r.dirs)
-	for _, m := range []map[string][]string{r.decls, r.packages} {
+	sort.Strings(r.directories)
+	for _, m := range []map[string][]string{r.declarations, r.packages} {
 		for _, files := range m {
 			sort.Strings(files)
 		}
@@ -154,30 +154,30 @@ func newResolver(all []*scan.File, l Language) *resolver {
 
 // Implements: REQ-JAVA-001, REQ-JAVA-002, REQ-JAVA-003, REQ-JAVA-009, REQ-KT-002, REQ-KT-003
 // Implements: REQ-KT-006, REQ-SCALA-002, REQ-SCALA-003, REQ-SCALA-007
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	spec := imp.Module
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	spec := rawImport.Module
 	wildcard := strings.HasSuffix(spec, ".*")
 	spec = strings.TrimSuffix(spec, ".*")
-	if r.lang.Relative {
-		if abs, ok := strings.CutPrefix(spec, "_root_."); ok {
-			spec = abs
+	if r.language.Relative {
+		if absolute, ok := strings.CutPrefix(spec, "_root_."); ok {
+			spec = absolute
 		} else {
 			// The packages around the file first, innermost out: they shadow the root.
-			for pkg := r.filePkg[file]; pkg != ""; pkg = pkg[:max(0, strings.LastIndex(pkg, "."))] {
-				if p := r.local(strings.Split(pkg+"."+spec, "."), wildcard); p != "" {
+			for packageName := r.filePackage[file]; packageName != ""; packageName = packageName[:max(0, strings.LastIndex(packageName, "."))] {
+				if p := r.local(strings.Split(packageName+"."+spec, "."), wildcard); p != "" {
 					return lang.Target{Local: p}
 				}
 			}
 			segments := strings.Split(spec, ".")
-			if slices.Contains(r.lang.Implicit, segments[0]) && !r.roots[segments[0]] && r.local(segments, wildcard) == "" {
-				root := strings.TrimSuffix(r.lang.Prefixes[0], ".")
-				return r.lang.stdTarget(strings.Split(root+"."+spec, "."), wildcard)
+			if slices.Contains(r.language.Implicit, segments[0]) && !r.roots[segments[0]] && r.local(segments, wildcard) == "" {
+				root := strings.TrimSuffix(r.language.Prefixes[0], ".")
+				return r.language.stdTarget(strings.Split(root+"."+spec, "."), wildcard)
 			}
 		}
 	}
 	segments := strings.Split(spec, ".")
-	if r.lang.covers(spec) {
-		return r.lang.stdTarget(segments, wildcard)
+	if r.language.covers(spec) {
+		return r.language.stdTarget(segments, wildcard)
 	}
 	if t, ok := JDK(spec); ok {
 		return t
@@ -188,7 +188,7 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 	// A root no package would have: a class of the default package (a Gradle script
 	// declares them, and imports them as TestMode.KSP), or in Scala a value in scope
 	// whose members are imported (import builder._). Neither is a dependency.
-	if (spec != "" && unicode.IsUpper([]rune(spec)[0])) || (r.lang.Relative && len(segments) == 1) {
+	if (spec != "" && unicode.IsUpper([]rune(spec)[0])) || (r.language.Relative && len(segments) == 1) {
 		return lang.Target{}
 	}
 	for _, g := range r.own {
@@ -207,9 +207,9 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 func (r *resolver) local(segments []string, wildcard bool) string {
 	// The longest prefix naming a project class (static imports add member names).
 	for n := len(segments); n >= 1; n-- {
-		rel := strings.Join(segments[:n], "/") + ".java"
+		relative := strings.Join(segments[:n], "/") + ".java"
 		for _, p := range r.byName[segments[n-1]+".java"] {
-			if p == rel || strings.HasSuffix(p, "/"+rel) {
+			if p == relative || strings.HasSuffix(p, "/"+relative) {
 				return p
 			}
 		}
@@ -218,9 +218,9 @@ func (r *resolver) local(segments []string, wildcard bool) string {
 		return p
 	}
 	if wildcard {
-		rel := strings.Join(segments, "/")
-		for _, d := range r.dirs {
-			if d == rel || strings.HasSuffix(d, "/"+rel) {
+		relative := strings.Join(segments, "/")
+		for _, d := range r.directories {
+			if d == relative || strings.HasSuffix(d, "/"+relative) {
 				return d
 			}
 		}
@@ -243,7 +243,7 @@ func JDK(spec string) (lang.Target, bool) {
 	for _, p := range jdkPrefixes {
 		if strings.HasPrefix(spec+".", p) || strings.HasPrefix(spec, p) {
 			segments := strings.Split(spec, ".")
-			return lang.Target{Ecosystem: ecoJDK, Package: strings.Join(segments[:min(2, len(segments))], ".")}, true
+			return lang.Target{Ecosystem: ecosystemJDK, Package: strings.Join(segments[:min(2, len(segments))], ".")}, true
 		}
 	}
 	return lang.Target{}, false
@@ -251,7 +251,7 @@ func JDK(spec string) (lang.Target, bool) {
 
 // ---------------------------------------------------------------- manifests
 
-type pomDep struct {
+type pomDependency struct {
 	GroupID    string `xml:"groupId"`
 	ArtifactID string `xml:"artifactId"`
 	Version    string `xml:"version"`
@@ -260,8 +260,8 @@ type pomDep struct {
 var property = regexp.MustCompile(`\$\{([^}]+)\}`)
 
 // Implements: REQ-JAVA-003, REQ-JAVA-004
-func (r *resolver) readPOM(abs string) {
-	data, err := os.ReadFile(abs)
+func (r *resolver) readPOM(absolute string) {
+	data, err := os.ReadFile(absolute)
 	if err != nil {
 		return
 	}
@@ -277,8 +277,8 @@ func (r *resolver) readPOM(abs string) {
 				Value   string `xml:",chardata"`
 			} `xml:",any"`
 		} `xml:"properties"`
-		Deps    []pomDep `xml:"dependencies>dependency"`
-		Managed []pomDep `xml:"dependencyManagement>dependencies>dependency"`
+		Dependencies []pomDependency `xml:"dependencies>dependency"`
+		Managed      []pomDependency `xml:"dependencyManagement>dependencies>dependency"`
 	}
 	if lang.UnmarshalXML(data, &pom) != nil {
 		return
@@ -306,7 +306,7 @@ func (r *resolver) readPOM(abs string) {
 	for _, d := range pom.Managed {
 		managed[expand(d.GroupID)+":"+expand(d.ArtifactID)] = expand(d.Version)
 	}
-	for _, d := range pom.Deps {
+	for _, d := range pom.Dependencies {
 		g, a, v := expand(d.GroupID), expand(d.ArtifactID), expand(d.Version)
 		if v == "" {
 			v = managed[g+":"+a]
@@ -318,7 +318,7 @@ func (r *resolver) readPOM(abs string) {
 }
 
 var (
-	gradleDep = regexp.MustCompile(`["']([\w.\-]+):([\w.\-]+)(?::([\w.\-$+{}\[\](),]+))?["']`)
+	gradleDependency = regexp.MustCompile(`["']([\w.\-]+):([\w.\-]+)(?::([\w.\-$+{}\[\](),]+))?["']`)
 	// The map notation: group: 'g', name: 'a', version: 'v' (Groovy) or
 	// group = "g", name = "a", version = "v" (Kotlin DSL).
 	gradleMap = regexp.MustCompile(`group\s*[:=]\s*["']([\w.\-]+)["']\s*,\s*name\s*[:=]\s*["']([\w.\-]+)["']` +
@@ -327,15 +327,15 @@ var (
 )
 
 // Implements: REQ-JAVA-005
-func (r *resolver) readGradle(abs string) {
-	data, err := os.ReadFile(abs)
+func (r *resolver) readGradle(absolute string) {
+	data, err := os.ReadFile(absolute)
 	if err != nil {
 		return
 	}
 	if m := gradleGroup.FindSubmatch(data); m != nil {
 		r.own = append(r.own, string(m[1]))
 	}
-	for _, m := range gradleDep.FindAllSubmatch(data, -1) {
+	for _, m := range gradleDependency.FindAllSubmatch(data, -1) {
 		r.addArtifact(string(m[1]), string(m[2]), string(m[3]))
 	}
 	for _, m := range gradleMap.FindAllSubmatch(data, -1) {
@@ -345,10 +345,10 @@ func (r *resolver) readGradle(abs string) {
 
 var (
 	// "org" %% "name" % "1.2.3", where the version may be a val of the build.
-	sbtDep   = regexp.MustCompile(`"([\w.\-]+)"\s*(%{1,3})\s*"([\w.\-]+)"(?:\s*%\s*(?:"([^"]*)"|(\w+)))?`)
-	sbtVal   = regexp.MustCompile(`(?m)^\s*(?:lazy\s+)?val\s+(\w+)\s*=\s*"([^"]*)"`)
-	sbtOrg   = regexp.MustCompile(`(?m)^\s*(?:ThisBuild\s*/\s*)?organization\s*:=\s*"([\w.\-]+)"`)
-	sbtScala = regexp.MustCompile(`(?m)^\s*(?:ThisBuild\s*/\s*)?scalaVersion(?:\s+in\s+ThisBuild)?\s*:=\s*(?:"([^"]+)"|(\w+))`)
+	sbtDependency = regexp.MustCompile(`"([\w.\-]+)"\s*(%{1,3})\s*"([\w.\-]+)"(?:\s*%\s*(?:"([^"]*)"|(\w+)))?`)
+	sbtValue      = regexp.MustCompile(`(?m)^\s*(?:lazy\s+)?val\s+(\w+)\s*=\s*"([^"]*)"`)
+	sbtOrg        = regexp.MustCompile(`(?m)^\s*(?:ThisBuild\s*/\s*)?organization\s*:=\s*"([\w.\-]+)"`)
+	sbtScala      = regexp.MustCompile(`(?m)^\s*(?:ThisBuild\s*/\s*)?scalaVersion(?:\s+in\s+ThisBuild)?\s*:=\s*(?:"([^"]+)"|(\w+))`)
 )
 
 // readSBTs reads the dependencies of sbt builds. `%%` (and Scala.js's `%%%`) has
@@ -362,29 +362,29 @@ var (
 // Implements: REQ-SCALA-004
 func (r *resolver) readSBTs(files []*scan.File) {
 	sort.Slice(files, func(i, j int) bool {
-		di, dj := strings.Count(files[i].Path, "/"), strings.Count(files[j].Path, "/")
-		return di < dj || di == dj && files[i].Path < files[j].Path
+		depthI, depthJ := strings.Count(files[i].Path, "/"), strings.Count(files[j].Path, "/")
+		return depthI < depthJ || depthI == depthJ && files[i].Path < files[j].Path
 	})
 	type build struct {
-		data  []byte
-		vals  map[string]string
-		scala string
+		data   []byte
+		values map[string]string
+		scala  string
 	}
 	var builds []build
 	global := ""
 	for _, f := range files {
-		data, err := os.ReadFile(f.Abs)
+		data, err := os.ReadFile(f.AbsolutePath)
 		if err != nil {
 			continue
 		}
-		b := build{data: data, vals: map[string]string{}}
-		for _, m := range sbtVal.FindAllSubmatch(data, -1) {
-			b.vals[string(m[1])] = string(m[2])
+		b := build{data: data, values: map[string]string{}}
+		for _, m := range sbtValue.FindAllSubmatch(data, -1) {
+			b.values[string(m[1])] = string(m[2])
 		}
 		if m := sbtScala.FindSubmatch(data); m != nil {
 			b.scala = string(m[1])
 			if len(m[2]) > 0 {
-				b.scala = b.vals[string(m[2])]
+				b.scala = b.values[string(m[2])]
 			}
 		}
 		if global == "" {
@@ -397,10 +397,10 @@ func (r *resolver) readSBTs(files []*scan.File) {
 			r.own = append(r.own, string(m[1]))
 		}
 		suffix := scalaBinary(cmp.Or(b.scala, global))
-		for _, m := range sbtDep.FindAllSubmatch(b.data, -1) {
+		for _, m := range sbtDependency.FindAllSubmatch(b.data, -1) {
 			version := string(m[4])
 			if len(m[5]) > 0 {
-				version = b.vals[string(m[5])] // "" when it is no val of this file (Test, a setting)
+				version = b.values[string(m[5])] // "" when it is no val of this file (Test, a setting)
 			}
 			name := string(m[3])
 			if len(m[2]) > 1 && suffix != "" && !scalaSuffix.MatchString(name) {
@@ -433,9 +433,9 @@ func gradleLockfile(p string) bool {
 	if base == "gradle.lockfile" {
 		return true
 	}
-	dir := path.Dir(p)
+	directory := path.Dir(p)
 	return strings.HasSuffix(base, ".lockfile") && !strings.HasPrefix(base, "buildscript-") &&
-		path.Base(dir) == "dependency-locks" && path.Base(path.Dir(dir)) == "gradle"
+		path.Base(directory) == "dependency-locks" && path.Base(path.Dir(directory)) == "gradle"
 }
 
 // readGradleLock reads a Gradle dependency lock: `group:artifact:version=configurations`
@@ -444,8 +444,8 @@ func gradleLockfile(p string) bool {
 // that disagree on a module's version lock none.
 //
 // Implements: REQ-JAVA-013
-func (r *resolver) readGradleLock(abs string) {
-	data, err := os.ReadFile(abs)
+func (r *resolver) readGradleLock(absolute string) {
+	data, err := os.ReadFile(absolute)
 	if err != nil {
 		return
 	}
@@ -457,8 +457,8 @@ func (r *resolver) readGradleLock(abs string) {
 		if line == "" || strings.HasPrefix(line, "#") {
 			continue
 		}
-		coords, _, _ := strings.Cut(line, "=")
-		parts := strings.Split(strings.TrimSpace(coords), ":")
+		coordinates, _, _ := strings.Cut(line, "=")
+		parts := strings.Split(strings.TrimSpace(coordinates), ":")
 		if len(parts) != 3 || parts[0] == "" || parts[1] == "" || parts[2] == "" {
 			continue // the empty= line, or not a module
 		}
@@ -495,12 +495,12 @@ func (r *resolver) applyLocks() {
 // version = { strictly | require | prefer = "1" } }.
 //
 // Implements: REQ-JAVA-006
-func (r *resolver) readCatalog(abs string) {
+func (r *resolver) readCatalog(absolute string) {
 	var cat struct {
 		Versions  map[string]any
 		Libraries map[string]any
 	}
-	if _, err := toml.DecodeFile(abs, &cat); err != nil {
+	if _, err := toml.DecodeFile(absolute, &cat); err != nil {
 		return
 	}
 	rich := func(v any) string {
@@ -516,30 +516,30 @@ func (r *resolver) readCatalog(abs string) {
 		}
 		return ""
 	}
-	for _, lib := range cat.Libraries {
-		switch v := lib.(type) {
+	for _, library := range cat.Libraries {
+		switch v := library.(type) {
 		case string:
 			parts := strings.Split(v, ":")
 			if len(parts) >= 2 {
-				ver := ""
+				version := ""
 				if len(parts) > 2 {
-					ver = parts[2]
+					version = parts[2]
 				}
-				r.addArtifact(parts[0], parts[1], ver)
+				r.addArtifact(parts[0], parts[1], version)
 			}
 		case map[string]any:
 			group, _ := v["group"].(string)
 			artifact, _ := v["name"].(string)
-			if mod, ok := v["module"].(string); ok {
-				group, artifact, _ = strings.Cut(mod, ":")
+			if module, ok := v["module"].(string); ok {
+				group, artifact, _ = strings.Cut(module, ":")
 			}
-			ver := rich(v["version"])
+			version := rich(v["version"])
 			if vv, ok := v["version"].(map[string]any); ok {
-				if ref, ok := vv["ref"].(string); ok {
-					ver = rich(cat.Versions[ref])
+				if reference, ok := vv["ref"].(string); ok {
+					version = rich(cat.Versions[reference])
 				}
 			}
-			r.addArtifact(group, artifact, ver)
+			r.addArtifact(group, artifact, version)
 		}
 	}
 }

@@ -13,45 +13,45 @@ import (
 //
 // Implements: REQ-TERRAFORM-010
 func readTerragrunt(root *block) *fileInfo {
-	fi := newFileInfo()
-	fi.tg = &tgConfig{locals: map[string]string{}, includes: map[string]string{}}
-	locals := fi.tg.locals // string locals, substituted into sources
+	fileInfo := newFileInfo()
+	fileInfo.terragrunt = &tgConfig{locals: map[string]string{}, includes: map[string]string{}}
+	locals := fileInfo.terragrunt.locals // string locals, substituted into sources
 	for _, b := range root.blocks {
-		if b.typ != "locals" {
+		if b.typeName != "locals" {
 			continue
 		}
-		for _, a := range b.attrs {
-			fi.symbols.Add("local."+a.name, "local", a.line)
-			if s, ok := stringExpr(a.expr); ok {
+		for _, a := range b.attributes {
+			fileInfo.symbols.Add("local."+a.name, "local", a.line)
+			if s, ok := stringExpression(a.expression); ok {
 				locals[a.name] = s
 			}
 		}
 	}
 	for _, b := range root.blocks {
-		switch b.typ {
+		switch b.typeName {
 		case "terraform":
 			if a, ok := b.get("source"); ok {
-				if s, ok := stringExpr(a.expr); ok {
+				if s, ok := stringExpression(a.expression); ok {
 					// What is still interpolated may come from an included file's
 					// locals (include.envcommon.locals.x), which the resolver reads.
-					fi.add("terraform.source", expandLocals(s, locals), kindTGSource, a.line)
+					fileInfo.add("terraform.source", expandLocals(s, locals), kindTGSource, a.line)
 				}
 			}
 		case "dependency":
 			if len(b.labels) != 1 {
 				continue
 			}
-			fi.symbols.Add("dependency."+b.labels[0], "dependency", b.line)
+			fileInfo.symbols.Add("dependency."+b.labels[0], "dependency", b.line)
 			if a, ok := b.get("config_path"); ok {
-				if p, ok := terragruntPath(a.expr); ok {
-					fi.add("dependency \""+b.labels[0]+"\"", p, kindTGDep, a.line)
+				if p, ok := terragruntPath(a.expression); ok {
+					fileInfo.add("dependency \""+b.labels[0]+"\"", p, kindTGDependency, a.line)
 				}
 			}
 		case "dependencies":
 			if a, ok := b.get("paths"); ok {
-				for _, t := range a.expr {
-					if p, ok := terragruntPath([]tok{t}); ok {
-						fi.add("dependencies \""+t.text+"\"", p, kindTGDep, t.line)
+				for _, t := range a.expression {
+					if p, ok := terragruntPath([]token{t}); ok {
+						fileInfo.add("dependencies \""+t.text+"\"", p, kindTGDependency, t.line)
 					}
 				}
 			}
@@ -61,19 +61,19 @@ func readTerragrunt(root *block) *fileInfo {
 				label = b.labels[0]
 				name += "." + label
 			}
-			fi.symbols.Add(name, "include", b.line)
+			fileInfo.symbols.Add(name, "include", b.line)
 			if a, ok := b.get("path"); ok {
-				fi.tg.includes[label] = includePath(a.expr)
+				fileInfo.terragrunt.includes[label] = includePath(a.expression)
 			}
 		}
 	}
 	// Includes and read_terragrunt_config: anything found in a parent folder.
-	var all []attr
-	collectAttrs(root, &all)
+	var all []attribute
+	collectAttributes(root, &all)
 	for _, a := range all {
-		parentReads(a.expr, fi)
+		parentReads(a.expression, fileInfo)
 	}
-	return fi
+	return fileInfo
 }
 
 // tgConfig is what the resolver needs to expand a Terragrunt source built from an
@@ -86,41 +86,41 @@ type tgConfig struct {
 // includePath reads an include's path: "parent:<name>" for
 // find_in_parent_folders("name"), "parent:<name>|/rest" for a path under that file's
 // directory, else the path as written; "" when it cannot be read.
-func includePath(expr []tok) string {
-	if s, ok := stringExpr(expr); ok {
-		if m := parentDir.FindStringSubmatch(s); m != nil {
+func includePath(expression []token) string {
+	if s, ok := stringExpression(expression); ok {
+		if m := parentDirectory.FindStringSubmatch(s); m != nil {
 			return "parent:" + parentName(m[1]) + "|" + m[2]
 		}
-		if p, ok := terragruntPath(expr); ok {
+		if p, ok := terragruntPath(expression); ok {
 			return p
 		}
 		return ""
 	}
-	if len(expr) >= 3 && expr[0].kind == tIdent && expr[0].text == "find_in_parent_folders" && expr[1].is("(") {
-		if expr[2].is(")") {
+	if len(expression) >= 3 && expression[0].kind == tIdentifier && expression[0].text == "find_in_parent_folders" && expression[1].is("(") {
+		if expression[2].is(")") {
 			return "parent:" + parentName("")
 		}
-		if expr[2].kind == tString && expr[2].lit {
-			return "parent:" + parentName(expr[2].text)
+		if expression[2].kind == tString && expression[2].literal {
+			return "parent:" + parentName(expression[2].text)
 		}
 	}
 	return ""
 }
 
-func collectAttrs(b *block, out *[]attr) {
-	*out = append(*out, b.attrs...)
+func collectAttributes(b *block, out *[]attribute) {
+	*out = append(*out, b.attributes...)
 	for _, c := range b.blocks {
-		collectAttrs(c, out)
+		collectAttributes(c, out)
 	}
 }
 
-var localRef = regexp.MustCompile(`\$\{\s*local\.([A-Za-z_][A-Za-z0-9_-]*)\s*\}`)
+var localReference = regexp.MustCompile(`\$\{\s*local\.([A-Za-z_][A-Za-z0-9_-]*)\s*\}`)
 
 // expandLocals substitutes literal locals into a template, as far as they go.
 func expandLocals(s string, locals map[string]string) string {
 	for range 4 { // locals naming locals, a few levels deep
-		next := localRef.ReplaceAllStringFunc(s, func(m string) string {
-			if v, ok := locals[localRef.FindStringSubmatch(m)[1]]; ok {
+		next := localReference.ReplaceAllStringFunc(s, func(m string) string {
+			if v, ok := locals[localReference.FindStringSubmatch(m)[1]]; ok {
 				return v
 			}
 			return m
@@ -135,8 +135,8 @@ func expandLocals(s string, locals map[string]string) string {
 
 // terragruntPath reads a directory a dependency names: "../vpc", or
 // "${get_terragrunt_dir()}/../vpc".
-func terragruntPath(expr []tok) (string, bool) {
-	s, ok := stringExpr(expr)
+func terragruntPath(expression []token) (string, bool) {
+	s, ok := stringExpression(expression)
 	if !ok {
 		return "", false
 	}
@@ -152,30 +152,30 @@ func terragruntPath(expr []tok) (string, bool) {
 	return s, true
 }
 
-// parentDir matches "${dirname(find_in_parent_folders("root.hcl"))}/rest".
-var parentDir = regexp.MustCompile(`^\$\{\s*dirname\(\s*find_in_parent_folders\(\s*(?:"([^"]*)")?\s*\)\s*\)\s*\}(/[^$%]*)$`)
+// parentDirectory matches "${dirname(find_in_parent_folders("root.hcl"))}/rest".
+var parentDirectory = regexp.MustCompile(`^\$\{\s*dirname\(\s*find_in_parent_folders\(\s*(?:"([^"]*)")?\s*\)\s*\)\s*\}(/[^$%]*)$`)
 
 // parentReads records find_in_parent_folders("name") calls, which name the nearest
 // file of that name above the configuration (terragrunt.hcl without an argument),
 // and paths built on the directory one finds.
-func parentReads(expr []tok, fi *fileInfo) {
-	walk(expr, func(tokens []tok, i int) {
+func parentReads(expression []token, info *fileInfo) {
+	walk(expression, func(tokens []token, i int) {
 		t := tokens[i]
 		if t.kind == tString {
-			if m := parentDir.FindStringSubmatch(t.text); m != nil {
-				fi.add(t.text, parentName(m[1]), kindTGParent+"|"+m[2], t.line)
+			if m := parentDirectory.FindStringSubmatch(t.text); m != nil {
+				info.add(t.text, parentName(m[1]), kindTGParent+"|"+m[2], t.line)
 			}
 			return
 		}
-		if t.kind != tIdent || t.text != "find_in_parent_folders" || i+1 >= len(tokens) || !tokens[i+1].is("(") {
+		if t.kind != tIdentifier || t.text != "find_in_parent_folders" || i+1 >= len(tokens) || !tokens[i+1].is("(") {
 			return
 		}
-		if i >= 2 && tokens[i-1].is("(") && tokens[i-2].kind == tIdent && tokens[i-2].text == "dirname" {
+		if i >= 2 && tokens[i-1].is("(") && tokens[i-2].kind == tIdentifier && tokens[i-2].text == "dirname" {
 			return // a directory, read with the rest of its path above
 		}
 		name := ""
 		if i+2 < len(tokens) && tokens[i+2].kind == tString {
-			if !tokens[i+2].lit {
+			if !tokens[i+2].literal {
 				return
 			}
 			name = tokens[i+2].text
@@ -183,7 +183,7 @@ func parentReads(expr []tok, fi *fileInfo) {
 			return
 		}
 		spec := "find_in_parent_folders(" + quoteIf(name) + ")"
-		fi.add(spec, parentName(name), kindTGParent, t.line)
+		info.add(spec, parentName(name), kindTGParent, t.line)
 	})
 }
 

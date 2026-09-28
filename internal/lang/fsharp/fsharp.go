@@ -40,7 +40,7 @@ func (Plugin) Name() string { return "fsharp" }
 func (Plugin) Version() int { return 1 }
 
 // Claims takes F# sources, .fsproj files and Paket's files. A .fs file is claimed
-// only when scan labelled it F#: GLSL shaders and Forth use .fs too (scan tells
+// only when scan labeled it F#: GLSL shaders and Forth use .fs too (scan tells
 // them apart by content). What Paket downloads (paket-files/, packages/ beside a
 // paket.dependencies) and FAKE's .fake/ cache are not read.
 //
@@ -49,12 +49,12 @@ func (Plugin) Claims(f *scan.File) bool {
 	if f.Binary {
 		return false
 	}
-	switch ext := strings.ToLower(path.Ext(f.Path)); {
-	case ext == ".fs":
-		if f.Lang != "F#" {
+	switch extension := strings.ToLower(path.Ext(f.Path)); {
+	case extension == ".fs":
+		if f.Language != "F#" {
 			return false
 		}
-	case ext == ".fsi" || ext == ".fsx" || ext == ".fsscript" || class(f.Path) != "":
+	case extension == ".fsi" || extension == ".fsx" || extension == ".fsscript" || class(f.Path) != "":
 	default:
 		return false
 	}
@@ -69,8 +69,8 @@ func downloaded(f *scan.File) bool {
 		case "paket-files", ".fake", ".paket":
 			return true
 		case "packages":
-			if f.Abs != "" && strings.HasSuffix(filepath.ToSlash(f.Abs), f.Path) {
-				base := f.Abs[:len(f.Abs)-len(f.Path)]
+			if f.AbsolutePath != "" && strings.HasSuffix(filepath.ToSlash(f.AbsolutePath), f.Path) {
+				base := f.AbsolutePath[:len(f.AbsolutePath)-len(f.Path)]
 				if hasPaket(filepath.Join(base, filepath.FromSlash(strings.Join(segments[:i], "/")))) {
 					return true
 				}
@@ -80,14 +80,14 @@ func downloaded(f *scan.File) bool {
 	return false
 }
 
-var paketDirs sync.Map // absolute directory -> it has a paket.dependencies
+var paketDirectories sync.Map // absolute directory -> it has a paket.dependencies
 
-func hasPaket(dir string) bool {
-	if v, ok := paketDirs.Load(dir); ok {
+func hasPaket(directory string) bool {
+	if v, ok := paketDirectories.Load(directory); ok {
 		return v.(bool)
 	}
-	_, err := os.Stat(filepath.Join(dir, "paket.dependencies"))
-	paketDirs.Store(dir, err == nil)
+	_, err := os.Stat(filepath.Join(directory, "paket.dependencies"))
+	paketDirectories.Store(directory, err == nil)
 	return err == nil
 }
 
@@ -125,17 +125,17 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-FSHARP-002, REQ-FSHARP-003, REQ-FSHARP-005, REQ-FSHARP-006, REQ-FSHARP-007
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	switch class(f.Path) {
 	case classProject:
-		return extractProject(src), nil
+		return extractProject(source), nil
 	case classDependencies:
-		return extractDependencies(src), nil
+		return extractDependencies(source), nil
 	case classLock:
-		return extractLock(src), nil
+		return extractLock(source), nil
 	case classReferences:
-		return extractReferences(src), nil
+		return extractReferences(source), nil
 	}
-	in := scanSource(string(src))
+	in := scanSource(string(source))
 	return &lang.Extraction{Imports: in.imports, Symbols: in.symbols}, nil
 }

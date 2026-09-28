@@ -12,7 +12,7 @@ verification:
 ## Statement
 
 In a history mode a file or district without changes in the selected range
-**shall** be drawn in a dedicated neutral color, labelled "no commits in range"
+**shall** be drawn in a dedicated neutral color, labeled "no commits in range"
 (or "not committed" in Last change mode) in the legend.
 
 ## Rationale

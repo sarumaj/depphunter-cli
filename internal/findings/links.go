@@ -17,15 +17,15 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/store"
 )
 
-// Why a link is reported, carried as the finding's Ref so the side panel can group
+// Why a link is reported, carried as the finding's Reference so the side panel can group
 // them the way it groups a linter's rules.
 //
 // Implements: REQ-MD-007, REQ-MD-008, REQ-MD-009, REQ-MD-012
 const (
-	refMissingFile   = "link/missing-file"
-	refMissingAnchor = "link/missing-anchor"
-	refUndefinedRef  = "link/undefined-reference"
-	refGone          = "link/gone"
+	referenceMissingFile        = "link/missing-file"
+	referenceMissingAnchor      = "link/missing-anchor"
+	referenceUndefinedReference = "link/undefined-reference"
+	referenceGone               = "link/gone"
 )
 
 // checkLinks follows every link the repository's documentation carries and reports
@@ -45,46 +45,46 @@ func checkLinks(ctx context.Context, root string, docs []string, web *Web,
 	external := map[string][]*Finding{} // url -> where it is written
 
 	for _, doc := range docs {
-		src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(doc)))
+		source, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(doc)))
 		if err != nil {
 			logFormat("links: %s: %v", doc, err)
 			partial = true
 			continue
 		}
-		for _, l := range markdown.Links(src) {
+		for _, l := range markdown.Links(source) {
 			switch {
-			case l.Ref != "":
-				out = append(out, broken(doc, l, Medium, refUndefinedRef,
-					"the reference ["+l.Ref+"] is never defined"))
+			case l.Reference != "":
+				out = append(out, broken(doc, l, Medium, referenceUndefinedReference,
+					"the reference ["+l.Reference+"] is never defined"))
 
-			case strings.HasPrefix(l.Dest, "#"):
-				if fragment := l.Dest[1:]; !anchors.of(doc, src)[anchor(fragment)] {
-					out = append(out, broken(doc, l, Low, refMissingAnchor,
-						"no heading in this file is named "+l.Dest))
+			case strings.HasPrefix(l.Destination, "#"):
+				if fragment := l.Destination[1:]; !anchors.of(doc, source)[anchor(fragment)] {
+					out = append(out, broken(doc, l, Low, referenceMissingAnchor,
+						"no heading in this file is named "+l.Destination))
 				}
 
-			case markdown.External(l.Dest):
+			case markdown.External(l.Destination):
 				if web != nil {
-					f := broken(doc, l, Low, refGone, "")
-					external[l.Dest] = append(external[l.Dest], f)
+					f := broken(doc, l, Low, referenceGone, "")
+					external[l.Destination] = append(external[l.Destination], f)
 				}
 
 			default:
-				target, ok := markdown.Target(doc, l.Dest)
+				target, ok := markdown.Target(doc, l.Destination)
 				if !ok {
 					continue // a mail address, a fragment of a URL, a path out of the repository
 				}
 				info, err := os.Stat(filepath.Join(root, filepath.FromSlash(target)))
 				if err != nil {
-					out = append(out, broken(doc, l, Medium, refMissingFile, target+" is not there"))
+					out = append(out, broken(doc, l, Medium, referenceMissingFile, target+" is not there"))
 					continue
 				}
-				_, fragment, hasFragment := strings.Cut(l.Dest, "#")
+				_, fragment, hasFragment := strings.Cut(l.Destination, "#")
 				if !hasFragment || fragment == "" || info.IsDir() || !isMarkdown(target) {
 					continue
 				}
 				if !anchors.of(target, nil)[anchor(fragment)] {
-					out = append(out, broken(doc, l, Low, refMissingAnchor,
+					out = append(out, broken(doc, l, Low, referenceMissingAnchor,
 						"no heading in "+target+" is named #"+fragment))
 				}
 			}
@@ -121,11 +121,11 @@ func checkLinks(ctx context.Context, root string, docs []string, web *Web,
 // broken is one link that leads nowhere, placed on the line that carries it.
 //
 // Implements: REQ-MD-006
-func broken(doc string, l markdown.Link, severity Severity, ref, title string) *Finding {
+func broken(doc string, l markdown.Link, severity Severity, reference, title string) *Finding {
 	return &Finding{
-		Kind: KindLink, Source: "links", Ref: ref, Severity: severity,
+		Kind: KindLink, Source: "links", Reference: reference, Severity: severity,
 		Title: title, Detail: l.Spec,
-		Path: doc, Line: l.Line, Column: l.Col,
+		Path: doc, Line: l.Line, Column: l.Column,
 	}
 }
 
@@ -149,20 +149,20 @@ type anchorCache struct {
 	read map[string]map[string]bool
 }
 
-// of is the anchors of a document. src saves a read where the caller has the file
+// of is the anchors of a document. source saves a read where the caller has the file
 // already; nil reads it.
-func (c *anchorCache) of(p string, src []byte) map[string]bool {
+func (c *anchorCache) of(p string, source []byte) map[string]bool {
 	if have, ok := c.read[p]; ok {
 		return have
 	}
-	if src == nil {
+	if source == nil {
 		var err error
-		if src, err = os.ReadFile(filepath.Join(c.root, filepath.FromSlash(p))); err != nil {
+		if source, err = os.ReadFile(filepath.Join(c.root, filepath.FromSlash(p))); err != nil {
 			c.read[p] = nil
 			return nil
 		}
 	}
-	found := markdown.Anchors(src)
+	found := markdown.Anchors(source)
 	c.read[p] = found
 	return found
 }
@@ -184,17 +184,17 @@ type Web struct {
 	timeout time.Duration
 }
 
-// NewWeb prepares the checker. dir holds the answers, which are kept for ttl: link
+// NewWeb prepares the checker. directory holds the answers, which are kept for ttl: link
 // rot is slow, and asking a hundred hosts on every re-analysis is the kind of thing
 // that gets a tool blocked. credentials are what this machine holds, so that a link
 // into a private repository or an internal wiki is checked rather than reported
 // missing; each is sent only to the host it was written for.
 //
 // Implements: REQ-MD-014
-func NewWeb(dir string, ttl, timeout time.Duration, credentials *auth.Store) *Web {
+func NewWeb(directory string, ttl, timeout time.Duration, credentials *auth.Store) *Web {
 	return &Web{
 		http:    &http.Client{Timeout: timeout},
-		cache:   store.New(dir, ttl),
+		cache:   store.New(directory, ttl),
 		auth:    credentials,
 		timeout: timeout,
 	}
@@ -278,20 +278,20 @@ func (w *Web) status(ctx context.Context, u string) (int, bool) {
 }
 
 func (w *Web) ask(ctx context.Context, method, u string) (int, error) {
-	req, err := http.NewRequestWithContext(ctx, method, u, nil)
+	request, err := http.NewRequestWithContext(ctx, method, u, nil)
 	if err != nil {
 		return 0, err
 	}
-	req.Header.Set("User-Agent", userAgent)
-	req.Header.Set("Accept", "*/*")
+	request.Header.Set("User-Agent", userAgent)
+	request.Header.Set("Accept", "*/*")
 	// A link to a private repository or an internal wiki answers 404 to an
 	// anonymous request, and a 404 is what this reports. The credential goes only to
 	// a host this machine's own files name.
-	w.auth.Apply(req)
-	resp, err := w.http.Do(req)
+	w.auth.Apply(request)
+	response, err := w.http.Do(request)
 	if err != nil {
 		return 0, err
 	}
-	resp.Body.Close()
-	return resp.StatusCode, nil
+	response.Body.Close()
+	return response.StatusCode, nil
 }

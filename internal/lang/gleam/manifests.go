@@ -14,22 +14,22 @@ import (
 // or of manifest.toml's [requirements]: a Hex requirement ("~> 1.0",
 // ">= 0.34.0 and < 2.0.0"), a { path = ".." } or a { git = "..", ref = ".." }.
 type dependency struct {
-	name, req, path, git, ref string
-	dev                       bool
+	name, requirement, path, git, reference string
+	dev                                     bool
 }
 
 // config is what gleam.toml says about a package.
 type config struct {
-	name string
-	deps map[string]*dependency
+	name         string
+	dependencies map[string]*dependency
 }
 
 // locked is a package of manifest.toml: source "hex" with its version, "git" with
-// its repo and commit, or "local" with its path; requirements name other packages
+// its repository and commit, or "local" with its path; requirements name other packages
 // of the same manifest.
 type locked struct {
-	name, version, source, repo, commit, path, otpApp string
-	requirements                                      []string
+	name, version, source, repository, commit, path, otpApp string
+	requirements                                            []string
 }
 
 // manifest is manifest.toml: every package the build uses, directly or not, and
@@ -43,19 +43,19 @@ type manifest struct {
 // nothing.
 //
 // Implements: REQ-GLEAM-005
-func readConfig(src []byte) *config {
+func readConfig(source []byte) *config {
 	var raw map[string]any
-	c := &config{deps: map[string]*dependency{}}
-	if _, err := toml.Decode(string(src), &raw); err != nil {
+	c := &config{dependencies: map[string]*dependency{}}
+	if _, err := toml.Decode(string(source), &raw); err != nil {
 		return c
 	}
 	c.name, _ = raw["name"].(string)
-	for _, sec := range []string{"dependencies", "dev-dependencies", "dev_dependencies"} {
-		table, _ := raw[sec].(map[string]any)
+	for _, section := range []string{"dependencies", "dev-dependencies", "dev_dependencies"} {
+		table, _ := raw[section].(map[string]any)
 		for name, v := range table {
-			if d := readDependency(name, v); d != nil && c.deps[name] == nil {
-				d.dev = sec != "dependencies"
-				c.deps[name] = d
+			if d := readDependency(name, v); d != nil && c.dependencies[name] == nil {
+				d.dev = section != "dependencies"
+				c.dependencies[name] = d
 			}
 		}
 	}
@@ -67,10 +67,10 @@ func readDependency(name string, v any) *dependency {
 	d := &dependency{name: name}
 	switch v := v.(type) {
 	case string:
-		d.req = strings.TrimSpace(v)
+		d.requirement = strings.TrimSpace(v)
 	case map[string]any:
-		str := func(k string) string { s, _ := v[k].(string); return strings.TrimSpace(s) }
-		d.req, d.path, d.git, d.ref = str("version"), str("path"), str("git"), str("ref")
+		stringField := func(k string) string { s, _ := v[k].(string); return strings.TrimSpace(s) }
+		d.requirement, d.path, d.git, d.reference = stringField("version"), stringField("path"), stringField("git"), stringField("ref")
 	default:
 		return nil
 	}
@@ -81,13 +81,13 @@ func readDependency(name string, v any) *dependency {
 // packages list build tools or whose requirements table exists.
 //
 // Implements: REQ-GLEAM-006
-func readManifest(src []byte) *manifest {
+func readManifest(source []byte) *manifest {
 	var raw struct {
 		Packages []struct {
 			Name         string   `toml:"name"`
 			Version      string   `toml:"version"`
 			Source       string   `toml:"source"`
-			Repo         string   `toml:"repo"`
+			Repository   string   `toml:"repo"`
 			Commit       string   `toml:"commit"`
 			Path         string   `toml:"path"`
 			OTPApp       string   `toml:"otp_app"`
@@ -96,7 +96,7 @@ func readManifest(src []byte) *manifest {
 		} `toml:"packages"`
 		Requirements map[string]any `toml:"requirements"`
 	}
-	if _, err := toml.Decode(string(src), &raw); err != nil {
+	if _, err := toml.Decode(string(source), &raw); err != nil {
 		return nil
 	}
 	m := &manifest{packages: map[string]*locked{}, requirements: map[string]*dependency{}}
@@ -106,7 +106,7 @@ func readManifest(src []byte) *manifest {
 			continue
 		}
 		gleam = gleam || len(p.BuildTools) > 0
-		m.packages[p.Name] = &locked{name: p.Name, version: p.Version, source: p.Source, repo: p.Repo,
+		m.packages[p.Name] = &locked{name: p.Name, version: p.Version, source: p.Source, repository: p.Repository,
 			commit: p.Commit, path: p.Path, otpApp: p.OTPApp, requirements: p.Requirements}
 	}
 	for name, v := range raw.Requirements {
@@ -124,34 +124,34 @@ func readManifest(src []byte) *manifest {
 // names.
 //
 // Implements: REQ-GLEAM-005
-func extractConfig(src []byte) *lang.Extraction {
-	c := readConfig(src)
-	lines := keyLines(src)
-	ex := &lang.Extraction{}
-	for _, name := range sortedKeys(c.deps) {
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: name, Module: name, Name: kindDep, Line: lines[name]})
+func extractConfig(source []byte) *lang.Extraction {
+	c := readConfig(source)
+	lines := keyLines(source)
+	extraction := &lang.Extraction{}
+	for _, name := range sortedKeys(c.dependencies) {
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: name, Module: name, Name: kindDependency, Line: lines[name]})
 	}
 	if c.name != "" {
-		ex.Symbols = []lang.Symbol{{Name: c.name, Kind: "package", Line: lines["name"]}}
+		extraction.Symbols = []lang.Symbol{{Name: c.name, Kind: "package", Line: lines["name"]}}
 	}
-	return ex
+	return extraction
 }
 
 // extractManifest makes each package of manifest.toml an import, so what the
 // build installs is on the map even when no module imports it.
 //
 // Implements: REQ-GLEAM-006
-func extractManifest(src []byte) *lang.Extraction {
-	m := readManifest(src)
-	ex := &lang.Extraction{}
+func extractManifest(source []byte) *lang.Extraction {
+	m := readManifest(source)
+	extraction := &lang.Extraction{}
 	if m == nil {
-		return ex
+		return extraction
 	}
-	lines := packageLines(src)
+	lines := packageLines(source)
 	for _, name := range sortedKeys(m.packages) {
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: name, Module: name, Name: kindLocked, Line: lines[name]})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: name, Module: name, Name: kindLocked, Line: lines[name]})
 	}
-	return ex
+	return extraction
 }
 
 var (
@@ -161,9 +161,9 @@ var (
 )
 
 // keyLines is the first line each key is written on, inline tables included.
-func keyLines(src []byte) map[string]int {
+func keyLines(source []byte) map[string]int {
 	out := map[string]int{}
-	for i, l := range strings.Split(string(src), "\n") {
+	for i, l := range strings.Split(string(source), "\n") {
 		keys := inlineKey.FindAllStringSubmatch(l, -1)
 		if m := keyLine.FindStringSubmatch(l); m != nil {
 			keys = append([][]string{m}, keys...)
@@ -178,9 +178,9 @@ func keyLines(src []byte) map[string]int {
 }
 
 // packageLines is the line of each `{ name = "x", ... }` entry of manifest.toml.
-func packageLines(src []byte) map[string]int {
+func packageLines(source []byte) map[string]int {
 	out := map[string]int{}
-	for i, l := range strings.Split(string(src), "\n") {
+	for i, l := range strings.Split(string(source), "\n") {
 		if m := packageLine.FindStringSubmatch(l); m != nil {
 			if _, ok := out[m[1]]; !ok {
 				out[m[1]] = i + 1

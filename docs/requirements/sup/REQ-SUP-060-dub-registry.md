@@ -27,7 +27,7 @@ is not asked. The registries dub asks before it **shall** be this machine's
 the `registryUrls` of dub's settings files, the user's before the system's
 (REQ-SUP-064); a repository's `dub.settings.json` names registries of its
 own, untrusted. Only `http(s)` registries are recorded (dub's `file://` and
-`mvn+` suppliers have no API). `skipRegistry` is honoured from the file of
+`mvn+` suppliers have no API). `skipRegistry` is honored from the file of
 highest priority that sets it: `standard` switches code.dlang.org off,
 `configured` the settings' registries too, `all` every registry.
 

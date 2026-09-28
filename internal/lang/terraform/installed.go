@@ -16,10 +16,10 @@ import (
 // source address as Terraform normalized it, the registry version it installed
 // and the directory it installed into.
 type installedModule struct {
-	Key     string `json:"Key"`
-	Source  string `json:"Source"`
-	Version string `json:"Version"`
-	Dir     string `json:"Dir"`
+	Key       string `json:"Key"`
+	Source    string `json:"Source"`
+	Version   string `json:"Version"`
+	Directory string `json:"Dir"`
 }
 
 // maxNested bounds how deep local module calls are followed for Dependencies.
@@ -30,18 +30,18 @@ const maxNested = 16
 // file lists nothing.
 //
 // Implements: REQ-TERRAFORM-008
-func readInstalled(root, dir string) []installedModule {
+func readInstalled(root, directory string) []installedModule {
 	if root == "" {
 		return nil
 	}
-	src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(dir), ".terraform", "modules", "modules.json"))
-	if err != nil || len(src) > lang.MaxParseSize {
+	source, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(directory), ".terraform", "modules", "modules.json"))
+	if err != nil || len(source) > lang.MaxParseSize {
 		return nil
 	}
 	var raw struct {
 		Modules []installedModule `json:"Modules"`
 	}
-	if json.Unmarshal(src, &raw) != nil {
+	if json.Unmarshal(source, &raw) != nil {
 		return nil
 	}
 	out := raw.Modules[:0]
@@ -55,17 +55,17 @@ func readInstalled(root, dir string) []installedModule {
 }
 
 // installedVersion is the version `terraform init` installed for the module call
-// named call with the registry module pkg in dir: from the dir's own
+// named call with the registry module packageName in directory: from the dir's own
 // modules.json (key call), else from that of a module calling it, directly or
 // not (a key ending in .call). "" when none installed it.
-func (r *resolver) installedVersion(dir, call, pkg string) string {
+func (r *resolver) installedVersion(directory, call, packageName string) string {
 	found := ""
-	r.callersOf(dir, func(d string) bool {
+	r.callersOf(directory, func(d string) bool {
 		for _, m := range r.modules[d].installedList() {
 			if m.Version == "" || m.Key != call && !strings.HasSuffix(m.Key, "."+call) {
 				continue
 			}
-			if s, ok := parseSource(m.Source); ok && s.pkg == pkg {
+			if s, ok := parseSource(m.Source); ok && s.packageName == packageName {
 				found = m.Version
 				return true
 			}
@@ -75,7 +75,7 @@ func (r *resolver) installedVersion(dir, call, pkg string) string {
 	return found
 }
 
-func (m *moduleDir) installedList() []installedModule {
+func (m *moduleDirectory) installedList() []installedModule {
 	if m == nil {
 		return nil
 	}
@@ -85,18 +85,18 @@ func (m *moduleDir) installedList() []installedModule {
 // installedCall is the modules.json entry that installed a registry module at
 // a version, with the list it is in.
 func (r *resolver) installedCall(t lang.Target) (installedModule, []installedModule, bool) {
-	dirs := make([]string, 0, len(r.modules))
+	directories := make([]string, 0, len(r.modules))
 	for d := range r.modules {
-		dirs = append(dirs, d)
+		directories = append(directories, d)
 	}
-	sort.Strings(dirs)
-	for _, d := range dirs {
+	sort.Strings(directories)
+	for _, d := range directories {
 		list := r.modules[d].installed
 		for _, m := range list {
 			if m.Version == "" || t.Version != "" && m.Version != t.Version {
 				continue
 			}
-			if s, ok := parseSource(m.Source); ok && s.pkg == t.Package {
+			if s, ok := parseSource(m.Source); ok && s.packageName == t.Package {
 				return m, list, true
 			}
 		}
@@ -111,7 +111,7 @@ func (r *resolver) installedCall(t lang.Target) (installedModule, []installedMod
 //
 // Implements: REQ-TERRAFORM-008
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
-	if t.Ecosystem != ecoModule {
+	if t.Ecosystem != ecosystemModule {
 		return nil
 	}
 	m, list, ok := r.installedCall(t)
@@ -135,13 +135,13 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 					children(c.Key, depth+1)
 				}
 			default:
-				dt := r.moduleTarget(".", c.Source, "")
+				dependencyTarget := r.moduleTarget(".", c.Source, "")
 				if s.origin == "" && c.Version != "" {
-					dt = lang.Target{Ecosystem: ecoModule, Package: s.pkg, Version: c.Version, Pinned: true}
+					dependencyTarget = lang.Target{Ecosystem: ecosystemModule, Package: s.packageName, Version: c.Version, Pinned: true}
 				}
-				if k := dt.Package + "@" + dt.Version; dt.Package != "" && !seen[k] {
+				if k := dependencyTarget.Package + "@" + dependencyTarget.Version; dependencyTarget.Package != "" && !seen[k] {
 					seen[k] = true
-					out = append(out, dt)
+					out = append(out, dependencyTarget)
 				}
 			}
 		}
@@ -153,7 +153,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 // Installed reports whether a module's dependencies come from what `terraform
 // init` installed.
 func (r *resolver) Installed(t lang.Target) bool {
-	if t.Ecosystem != ecoModule {
+	if t.Ecosystem != ecosystemModule {
 		return false
 	}
 	_, _, ok := r.installedCall(t)
@@ -167,11 +167,11 @@ var _ lang.Installed = (*resolver)(nil)
 // with the constraint as requested.
 //
 // Implements: REQ-TERRAFORM-009
-func (r *resolver) installedPin(dir, call string, t lang.Target) lang.Target {
-	if t.Ecosystem != ecoModule || t.Origin != "" || t.Pinned || call == "" {
+func (r *resolver) installedPin(directory, call string, t lang.Target) lang.Target {
+	if t.Ecosystem != ecosystemModule || t.Origin != "" || t.Pinned || call == "" {
 		return t
 	}
-	if v := r.installedVersion(dir, call, t.Package); v != "" {
+	if v := r.installedVersion(directory, call, t.Package); v != "" {
 		t.Requested, t.Version, t.Pinned, t.Floating = t.Version, v, true, false
 	}
 	return t

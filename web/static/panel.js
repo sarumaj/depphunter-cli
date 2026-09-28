@@ -95,7 +95,7 @@ export class Panel {
     this.node = node;
     this.root.hidden = false;
     this.root.parentElement.classList.add('panel-open');
-    const seq = ++this.seq;
+    const sequence = ++this.seq;
     this.pinOpen(node);
     this.body.replaceChildren(...[
       this.crumbs(node),
@@ -115,7 +115,7 @@ export class Panel {
       this.history(node),
     ].filter(Boolean));
     this.body.scrollTop = top;
-    if (node.kind === 'file' || node.kind === 'symbol') this.source(node, seq, top);
+    if (node.kind === 'file' || node.kind === 'symbol') this.source(node, sequence, top);
   }
 
   /**
@@ -128,10 +128,10 @@ export class Panel {
 
   /** A list row or breadcrumb: clickable, and reachable by keyboard. */
   // Implements: REQ-A11Y-004
-  item(tag, attrs, ...children) {
-    const go = attrs.onclick;
+  item(tag, attributes, ...children) {
+    const go = attributes.onclick;
     return h(tag, {
-      ...attrs, tabindex: '0', role: 'button',
+      ...attributes, tabindex: '0', role: 'button',
       onkeydown: e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); go(); } },
     }, ...children);
   }
@@ -158,10 +158,10 @@ export class Panel {
   // cannot reach it from here cannot reach it at all.
   // Implements: REQ-FND-024
   findings(node) {
-    const res = this.findingsOf?.(node);
-    if (!res) return null;
-    const own = res.own || [];
-    const below = (res.rollup?.count || 0) - own.length;
+    const findings = this.findingsOf?.(node);
+    if (!findings) return null;
+    const own = findings.own || [];
+    const below = (findings.rollup?.count || 0) - own.length;
     if (!own.length && below <= 0) return null;
     const ul = h('ul', { class: 'p-list findings' }, own.map(f => this.findingRow(f)));
     // The count is everything the section can reach, not just what is listed at once:
@@ -356,10 +356,10 @@ export class Panel {
 
   // neighbors are what a node depends on ('out') or what depends on it ('in'),
   // grouped per node so a file importing the same package twice is one row.
-  neighbors(node, dir) {
-    const { out, in: inc } = boundaryEdges(this.model, node, this.linkKind());
-    const edges = dir === 'out' ? out : inc;
-    const key = dir === 'out' ? 'to' : 'from';
+  neighbors(node, directory) {
+    const { out, in: incoming } = boundaryEdges(this.model, node, this.linkKind());
+    const edges = directory === 'out' ? out : incoming;
+    const key = directory === 'out' ? 'to' : 'from';
     const m = new Map();
     for (const e of edges) {
       const node = this.model.byId.get(e[key]);
@@ -375,10 +375,10 @@ export class Panel {
   // pinned and transitive packages are on the map. Nothing is fetched - the edges are
   // in the model - so opening a row costs only layout.
   // Implements: REQ-MAP-029, REQ-MAP-045
-  tree(title, hint, root, dir) {
-    const groups = this.neighbors(root, dir);
+  tree(title, hint, root, directory) {
+    const groups = this.neighbors(root, directory);
     const ul = h('ul', { class: 'p-list tree' });
-    this.insertRows(ul, null, groups, dir, [root.id], 0);
+    this.insertRows(ul, null, groups, directory, [root.id], 0);
     return h('div', { class: 'p-section' },
       h('h4', {}, h('span', { class: 'swatch', style: `background:${hint}` }), title,
         h('span', { class: 'n' }, fmt.format(groups.length))),
@@ -386,10 +386,10 @@ export class Panel {
   }
 
   // insertRows puts one level of rows after `after` (or at the end of the list).
-  insertRows(ul, after, groups, dir, ancestors, depth) {
+  insertRows(ul, after, groups, directory, ancestors, depth) {
     let anchor = after;
     for (const g of groups) {
-      const row = this.treeRow(ul, g, dir, ancestors, depth);
+      const row = this.treeRow(ul, g, directory, ancestors, depth);
       if (anchor) anchor.after(row);
       else ul.append(row);
       anchor = row;
@@ -415,14 +415,14 @@ export class Panel {
   }
 
   // Implements: REQ-MAP-029, REQ-MAP-046, REQ-MAP-047, REQ-MAP-048
-  treeRow(ul, g, dir, ancestors, depth) {
-    const node = g.node, branch = [...ancestors, node.id], key = dir + '|' + branch.join('>');
+  treeRow(ul, g, directory, ancestors, depth) {
+    const node = g.node, branch = [...ancestors, node.id], key = directory + '|' + branch.join('>');
     // A package that depends on something that depends back on it would open for
     // ever: the repeat is shown and left closed.
     const cyclic = ancestors.includes(node.id);
-    const children = cyclic ? [] : this.neighbors(node, dir);
+    const children = cyclic ? [] : this.neighbors(node, directory);
     const twisty = children.length
-      ? h('button', { class: 'twisty', 'aria-label': `Show what ${node.name} ${dir === 'out' ? 'depends on' : 'is used by'}` }, '▸')
+      ? h('button', { class: 'twisty', 'aria-label': `Show what ${node.name} ${directory === 'out' ? 'depends on' : 'is used by'}` }, '▸')
       : h('span', { class: 'twisty leaf' }, cyclic ? '↻' : '');
 
     const row = this.item('li', {
@@ -441,7 +441,7 @@ export class Panel {
     if (!children.length) return row;
     const toggle = event => {
       if (event) event.stopPropagation();
-      this.open.has(key) ? this.collapse(ul, key) : this.expand(ul, row, children, dir, branch, depth);
+      this.open.has(key) ? this.collapse(ul, key) : this.expand(ul, row, children, directory, branch, depth);
     };
     twisty.addEventListener('click', toggle);
     // The row itself selects; the arrow keys open and close it, as a tree does.
@@ -453,17 +453,17 @@ export class Panel {
     if (this.open.has(key)) {
       // An update redraws the panel; what was open stays open. The children can only
       // be inserted once the row itself is in the list, which insertRows does next.
-      row.reopen = () => this.expand(ul, row, children, dir, branch, depth);
+      row.reopen = () => this.expand(ul, row, children, directory, branch, depth);
     }
     return row;
   }
 
-  expand(ul, row, children, dir, branch, depth) {
+  expand(ul, row, children, directory, branch, depth) {
     const key = row.dataset.branch;
     this.open.add(key);
     row.setAttribute('aria-expanded', 'true');
     row.querySelector('.twisty').textContent = '▾';
-    this.insertRows(ul, row, children, dir, branch, depth + 1);
+    this.insertRows(ul, row, children, directory, branch, depth + 1);
   }
 
   collapse(ul, key) {
@@ -488,16 +488,16 @@ export class Panel {
   }
 
   dependencies(n) {
-    const refs = this.linkKind() === 'reference';
-    if (n.kind === 'ecosystem' || (n.kind === 'symbol' && !refs)) return [];
+    const references = this.linkKind() === 'reference';
+    if (n.kind === 'ecosystem' || (n.kind === 'symbol' && !references)) return [];
     const usedBy = this.tree('Used by', 'var(--edge-in)', n, 'in');
-    if (refs) return [this.tree('Uses', 'var(--edge-out)', n, 'out'), usedBy];
+    if (references) return [this.tree('Uses', 'var(--edge-out)', n, 'out'), usedBy];
     // Some ecosystems (Go) import directories, not files: point at the package instead.
-    const pkg = n.kind === 'file' && n.parentNode;
-    const pkgUsers = pkg ? (this.model.edgesTo.get(pkg.id) || []).length : 0;
-    if (pkgUsers) {
-      usedBy.append(h('div', { class: 'hint' }, `Its package is imported ${pkgUsers}× - `,
-        h('a', { class: 'link', onclick: () => this.onSelect(pkg) }, `select ${pkg.path}/`)));
+    const packageNode = n.kind === 'file' && n.parentNode;
+    const packageUsers = packageNode ? (this.model.edgesTo.get(packageNode.id) || []).length : 0;
+    if (packageUsers) {
+      usedBy.append(h('div', { class: 'hint' }, `Its package is imported ${packageUsers}× - `,
+        h('a', { class: 'link', onclick: () => this.onSelect(packageNode) }, `select ${packageNode.path}/`)));
     }
     return [this.tree('Depends on', 'var(--edge-out)', n, 'out'), usedBy];
   }
@@ -506,10 +506,10 @@ export class Panel {
   // Implements: REQ-HIST-014
   history(n) {
     if (n.kind !== 'file' && n.kind !== 'dir') return null;
-    const hist = this.historyOf(n);
-    if (!hist) return null;
-    const title = h('h4', {}, 'Git history ', h('span', { class: 'n' }, `since ${formatDate(hist.since)}`));
-    const m = hist.metric;
+    const nodeHistory = this.historyOf(n);
+    if (!nodeHistory) return null;
+    const title = h('h4', {}, 'Git history ', h('span', { class: 'n' }, `since ${formatDate(nodeHistory.since)}`));
+    const m = nodeHistory.metric;
     if (!m) return h('div', { class: 'p-section' }, title, h('div', { class: 'empty' }, 'Not committed'));
     const stat = (v, k) => h('div', { class: 'stat' }, h('div', { class: 'v' }, v), h('div', { class: 'k' }, k));
     const top = [...m.authors.entries()].sort((a, b) => b[1] - a[1]);
@@ -520,8 +520,8 @@ export class Panel {
         stat(fmt.format(m.commits), 'commits'), stat(fmt.format(m.churn), 'lines changed'),
         stat(ago(m.last), 'last change'), stat(fmt.format(m.authors.size), 'authors')),
       top.length ? h('ul', { class: 'p-list authors' }, top.slice(0, 5).map(([a, c]) =>
-        h('li', { title: `${hist.authors[a]}: ${c} commits` },
-          h('span', { class: 'name' }, hist.authors[a]),
+        h('li', { title: `${nodeHistory.authors[a]}: ${c} commits` },
+          h('span', { class: 'name' }, nodeHistory.authors[a]),
           h('span', { class: 'share' }, h('i', { style: `width:${Math.round(c / most * 100)}%` })),
           h('span', { class: 'meta' }, fmt.format(c)))),
         others ? h('li', {}, h('span', { class: 'name meta' }, `${top.length - 5} more`), h('span', { class: 'meta' }, fmt.format(others))) : null)
@@ -530,7 +530,7 @@ export class Panel {
   }
 
   // Implements: REQ-MAP-027, REQ-MAP-028, REQ-MAP-044, REQ-MAP-062
-  async source(node, seq, keepTop = 0) {
+  async source(node, sequence, keepTop = 0) {
     const file = node.kind === 'symbol' ? node.parentNode : node;
     // A picture, a clip or a recording is shown as itself rather than read as text,
     // and without asking for the text first: the element fetches what it needs.
@@ -551,7 +551,7 @@ export class Panel {
       text = await fetchSource(file.path);
     } catch (e) {
       if (e instanceof BinaryFile) {
-        if (seq !== this.seq) return;
+        if (sequence !== this.seq) return;
         pre.parentElement.replaceWith(this.binary(file, e.type));
         // Now it is known to have no text, the corner offers a hex editor for it.
         this.binaryPath = file.path;
@@ -565,7 +565,7 @@ export class Panel {
     // <pre> this began with is gone, but the text is still good: while the panel is
     // showing the same file and the redraw's read has not come back, fill the pane
     // that is there rather than leave it on "Loading..." while updates keep arriving.
-    if (seq !== this.seq) {
+    if (sequence !== this.seq) {
       if (this.node?.id === node.id) {
         const live = this.body.querySelector('pre.code');
         if (live && !live.dataset.filled) paint(live, text, file);
@@ -675,7 +675,7 @@ export function findBar(pre, initial = '', remember = () => {}) {
   });
   input.value = initial || '';
   const count = h('span', { class: 'p-find-count', 'aria-live': 'polite' });
-  const prev = h('button', { type: 'button', class: 'p-find-step', title: 'Previous match (Shift+Enter)', 'aria-label': 'Previous match' }, '↑');
+  const previous = h('button', { type: 'button', class: 'p-find-step', title: 'Previous match (Shift+Enter)', 'aria-label': 'Previous match' }, '↑');
   const next = h('button', { type: 'button', class: 'p-find-step', title: 'Next match (Enter)', 'aria-label': 'Next match' }, '↓');
   const lines = () => pre.children.filter ? pre.children : [...pre.children];
 
@@ -683,11 +683,11 @@ export function findBar(pre, initial = '', remember = () => {}) {
     const els = lines();
     for (const el of els) { el.classList.remove('found'); el.classList.remove('current'); }
     for (const m of found) els[m.line]?.classList.add('found');
-    const cur = found[at];
-    if (cur) els[cur.line]?.classList.add('current');
+    const current = found[at];
+    if (current) els[current.line]?.classList.add('current');
     count.textContent = !input.value ? '' : found.length ? `${at + 1} of ${found.length}${found.length >= MAX_FOUND ? '+' : ''}` : 'No matches';
-    prev.disabled = next.disabled = found.length < 2;
-    highlight(els, found, cur);
+    previous.disabled = next.disabled = found.length < 2;
+    highlight(els, found, current);
   };
   const go = i => {
     if (!found.length) return;
@@ -716,22 +716,22 @@ export function findBar(pre, initial = '', remember = () => {}) {
       run();
     }
   });
-  prev.addEventListener('click', () => go(at - 1));
+  previous.addEventListener('click', () => go(at - 1));
   next.addEventListener('click', () => go(at + 1));
-  return { el: h('div', { class: 'p-findbar', role: 'search' }, input, count, prev, next), run, input };
+  return { el: h('div', { class: 'p-findbar', role: 'search' }, input, count, previous, next), run, input };
 }
 
 /** Marks the matches in the page, or takes the marks away (no matches). */
 function highlight(lines, found, current) {
   const registry = globalThis.CSS?.highlights;
   if (!registry || typeof Highlight !== 'function' || typeof document.createRange !== 'function') return;
-  const all = new Highlight(), cur = new Highlight();
+  const all = new Highlight(), currentHighlight = new Highlight();
   for (const m of found) {
     const range = rangeIn(lines[m.line], m.start, m.end);
-    if (range) (m === current ? cur : all).add(range);
+    if (range) (m === current ? currentHighlight : all).add(range);
   }
   registry.set('dh-found', all);
-  registry.set('dh-current', cur);
+  registry.set('dh-current', currentHighlight);
 }
 
 function clearFound() {
@@ -746,10 +746,10 @@ function rangeIn(el, start, end) {
   const range = document.createRange();
   let seen = 0, begun = false;
   for (let node = walk.nextNode(); node; node = walk.nextNode()) {
-    const len = node.nodeValue.length;
-    if (!begun && start < seen + len) { range.setStart(node, start - seen); begun = true; }
-    if (begun && end <= seen + len) { range.setEnd(node, end - seen); return range; }
-    seen += len;
+    const textLength = node.nodeValue.length;
+    if (!begun && start < seen + textLength) { range.setStart(node, start - seen); begun = true; }
+    if (begun && end <= seen + textLength) { range.setEnd(node, end - seen); return range; }
+    seen += textLength;
   }
   return null;
 }
@@ -782,8 +782,8 @@ const MEDIA = {
  * Implements: REQ-MAP-062
  */
 export function mediaKind(path) {
-  const ext = /\.([^./]+)$/.exec(path || '')?.[1]?.toLowerCase();
-  return Object.keys(MEDIA).find(k => MEDIA[k].includes(ext)) || null;
+  const extension = /\.([^./]+)$/.exec(path || '')?.[1]?.toLowerCase();
+  return Object.keys(MEDIA).find(k => MEDIA[k].includes(extension)) || null;
 }
 
 /** The element that previews it; `failed` replaces it when the browser cannot play it. */
@@ -821,10 +821,10 @@ const formatBytes = fileSize;
 // hljs knows the language and the file is small enough to be worth it.
 // Implements: REQ-MAP-027
 function paint(pre, text, file) {
-  const lang = HLJS[file.lang];
+  const language = HLJS[file.lang];
   let lines;
-  if (lang && hljs.getLanguage(lang) && text.length < MAX_HIGHLIGHT) {
-    lines = splitHighlighted(hljs.highlight(text, { language: lang, ignoreIllegals: true }).value);
+  if (language && hljs.getLanguage(language) && text.length < MAX_HIGHLIGHT) {
+    lines = splitHighlighted(hljs.highlight(text, { language: language, ignoreIllegals: true }).value);
   } else {
     lines = text.split('\n').map(escapeHTML);
   }

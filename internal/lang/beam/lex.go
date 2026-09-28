@@ -10,27 +10,27 @@ import (
 // sigils, heredocs, character literals and comments are out of the way, and a lexer
 // never loses a file to a parse error.
 
-type tokKind uint8
+type tokenKind uint8
 
 const (
-	tIdent  tokKind = iota // Elixir identifier (do, end, fn and def included)
-	tAlias                 // Elixir alias segment: Foo
-	tAtom                  // :atom in Elixir, atom or 'quoted' in Erlang; val without quotes
-	tKey                   // Elixir keyword key: `name:` or `"name":`
-	tString                // string, charlist, heredoc or sigil; val is its raw content
-	tNum                   // number
-	tChar                  // character literal: ?a in Elixir, $a in Erlang
-	tVar                   // Erlang variable
-	tPunct                 // operator or punctuation; "end" is Erlang's form-ending dot
+	tIdentifier  tokenKind = iota // Elixir identifier (do, end, fn and def included)
+	tAlias                        // Elixir alias segment: Foo
+	tAtom                         // :atom in Elixir, atom or 'quoted' in Erlang; val without quotes
+	tKey                          // Elixir keyword key: `name:` or `"name":`
+	tString                       // string, charlist, heredoc or sigil; val is its raw content
+	tNumber                       // number
+	tCharacter                    // character literal: ?a in Elixir, $a in Erlang
+	tVariable                     // Erlang variable
+	tPunctuation                  // operator or punctuation; "end" is Erlang's form-ending dot
 )
 
 type token struct {
-	kind tokKind
-	val  string
-	line int
+	kind  tokenKind
+	value string
+	line  int
 }
 
-func isIdentByte(c byte) bool {
+func isIdentifierByte(c byte) bool {
 	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c >= 0x80
 }
 
@@ -42,27 +42,27 @@ func isSpace(c byte) bool {
 }
 
 type lexer struct {
-	src    []byte
+	source []byte
 	i      int
 	line   int
 	tokens []token
 }
 
 func (l *lexer) at(off int) byte {
-	if l.i+off < len(l.src) && l.i+off >= 0 {
-		return l.src[l.i+off]
+	if l.i+off < len(l.source) && l.i+off >= 0 {
+		return l.source[l.i+off]
 	}
 	return 0
 }
 
-func (l *lexer) emit(k tokKind, val string, line int) {
-	l.tokens = append(l.tokens, token{kind: k, val: val, line: line})
+func (l *lexer) emit(k tokenKind, value string, line int) {
+	l.tokens = append(l.tokens, token{kind: k, value: value, line: line})
 }
 
 // advance moves past n bytes, counting the line breaks among them.
 func (l *lexer) advance(n int) {
-	for ; n > 0 && l.i < len(l.src); n-- {
-		if l.src[l.i] == '\n' {
+	for ; n > 0 && l.i < len(l.source); n-- {
+		if l.source[l.i] == '\n' {
 			l.line++
 		}
 		l.i++
@@ -70,32 +70,32 @@ func (l *lexer) advance(n int) {
 }
 
 func (l *lexer) skipLine() {
-	for l.i < len(l.src) && l.src[l.i] != '\n' {
+	for l.i < len(l.source) && l.source[l.i] != '\n' {
 		l.i++
 	}
 }
 
 func (l *lexer) hasPrefix(s string) bool {
-	return l.i+len(s) <= len(l.src) && string(l.src[l.i:l.i+len(s)]) == s
+	return l.i+len(s) <= len(l.source) && string(l.source[l.i:l.i+len(s)]) == s
 }
 
-// punct emits the longest operator of ops found at the cursor, or else one byte.
-func (l *lexer) punct(ops []string) {
-	for _, op := range ops {
-		if l.hasPrefix(op) {
-			l.emit(tPunct, op, l.line)
-			l.i += len(op)
+// punctuation emits the longest operator of operators found at the cursor, or else one byte.
+func (l *lexer) punctuation(operators []string) {
+	for _, operator := range operators {
+		if l.hasPrefix(operator) {
+			l.emit(tPunctuation, operator, l.line)
+			l.i += len(operator)
 			return
 		}
 	}
-	_, n := utf8.DecodeRune(l.src[l.i:])
-	l.emit(tPunct, string(l.src[l.i:l.i+n]), l.line)
+	_, n := utf8.DecodeRune(l.source[l.i:])
+	l.emit(tPunctuation, string(l.source[l.i:l.i+n]), l.line)
 	l.i += n
 }
 
-func startLexer(src []byte) *lexer {
-	l := &lexer{src: src, line: 1}
-	if len(src) >= 3 && src[0] == 0xEF && src[1] == 0xBB && src[2] == 0xBF {
+func startLexer(source []byte) *lexer {
+	l := &lexer{source: source, line: 1}
+	if len(source) >= 3 && source[0] == 0xEF && source[1] == 0xBB && source[2] == 0xBF {
 		l.i = 3
 	}
 	if l.hasPrefix("#!") {
@@ -111,10 +111,10 @@ var exOps = []string{"...", "\\\\", "::", "..", "=>", "|>", "<>", "->", "<-", "=
 
 // lexElixir tokenizes Elixir source. Interpolations inside strings are skipped with
 // the string, so a call written in one is not seen.
-func lexElixir(src []byte) []token {
-	l := startLexer(src)
-	for l.i < len(l.src) {
-		c := l.src[l.i]
+func lexElixir(source []byte) []token {
+	l := startLexer(source)
+	for l.i < len(l.source) {
+		c := l.source[l.i]
 		switch {
 		case c == '\n':
 			l.line++
@@ -147,11 +147,11 @@ func lexElixir(src []byte) []token {
 			if l.at(0) == '\\' {
 				l.i++
 			}
-			if l.i < len(l.src) {
-				_, n := utf8.DecodeRune(l.src[l.i:])
+			if l.i < len(l.source) {
+				_, n := utf8.DecodeRune(l.source[l.i:])
 				l.advance(n)
 			}
-			l.emit(tChar, "", line)
+			l.emit(tCharacter, "", line)
 		case c == '~' && (isLower(l.at(1)) && l.at(1) != '_' && l.at(1) < 0x80 || isUpper(l.at(1))):
 			l.exSigil()
 		case c == ':':
@@ -159,20 +159,20 @@ func lexElixir(src []byte) []token {
 		case isDigit(c):
 			l.number()
 		case c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 0x80:
-			l.exIdent()
+			l.exIdentifier()
 		default:
-			l.punct(exOps)
+			l.punctuation(exOps)
 		}
 	}
 	return l.tokens
 }
 
-func (l *lexer) exIdent() {
+func (l *lexer) exIdentifier() {
 	start, line := l.i, l.line
-	for l.i < len(l.src) && isIdentByte(l.src[l.i]) {
+	for l.i < len(l.source) && isIdentifierByte(l.source[l.i]) {
 		l.i++
 	}
-	name := string(l.src[start:l.i])
+	name := string(l.source[start:l.i])
 	keyword := l.at(0) == ':' && l.at(1) != ':' && (isSpace(l.at(1)) || l.at(1) == 0)
 	if isUpper(name[0]) {
 		if keyword { // [Plugs: [...]]: a keyword key, not a module
@@ -193,43 +193,43 @@ func (l *lexer) exIdent() {
 		l.emit(tKey, name, line)
 		return
 	}
-	l.emit(tIdent, name, line)
+	l.emit(tIdentifier, name, line)
 }
 
 func (l *lexer) exColon() {
 	line := l.line
 	switch c := l.at(1); {
 	case c == ':':
-		l.emit(tPunct, "::", line)
+		l.emit(tPunctuation, "::", line)
 		l.i += 2
 	case c == '"' || c == '\'':
 		l.i += 2
 		s := l.exQuoted(c, true)
 		l.emit(tAtom, s, line)
-	case isIdentByte(c) && !isDigit(c):
+	case isIdentifierByte(c) && !isDigit(c):
 		l.i++
 		start := l.i
-		for l.i < len(l.src) && (isIdentByte(l.src[l.i]) || l.src[l.i] == '@') {
+		for l.i < len(l.source) && (isIdentifierByte(l.source[l.i]) || l.source[l.i] == '@') {
 			l.i++
 		}
 		if c := l.at(0); c == '?' || c == '!' {
 			l.i++
 		}
-		l.emit(tAtom, string(l.src[start:l.i]), line)
+		l.emit(tAtom, string(l.source[start:l.i]), line)
 	case c != 0 && !isSpace(c) && c != ',' && c != ')' && c != ']' && c != '}':
 		// An operator atom: :+, :<<>>, :&&, :.
 		l.i++
 		start := l.i
-		for l.i < len(l.src) && isOpByte(l.src[l.i]) {
+		for l.i < len(l.source) && isOpByte(l.source[l.i]) {
 			l.i++
 		}
 		if l.i == start {
-			l.emit(tPunct, ":", line)
+			l.emit(tPunctuation, ":", line)
 			return
 		}
-		l.emit(tAtom, string(l.src[start:l.i]), line)
+		l.emit(tAtom, string(l.source[start:l.i]), line)
 	default:
-		l.emit(tPunct, ":", line)
+		l.emit(tPunctuation, ":", line)
 		l.i++
 	}
 }
@@ -246,7 +246,7 @@ func isOpByte(c byte) bool {
 // skipping escapes and, when interpolate, #{...} interpolations.
 func (l *lexer) exQuoted(q byte, interpolate bool) string {
 	return l.exUntil(func() int {
-		if l.src[l.i] == q {
+		if l.source[l.i] == q {
 			return 1
 		}
 		return 0
@@ -257,14 +257,14 @@ func (l *lexer) exQuoted(q byte, interpolate bool) string {
 // before it.
 func (l *lexer) exUntil(end func() int, interpolate bool) string {
 	start := l.i
-	for l.i < len(l.src) {
-		c := l.src[l.i]
+	for l.i < len(l.source) {
+		c := l.source[l.i]
 		if c == '\\' {
 			l.advance(2)
 			continue
 		}
 		if n := end(); n > 0 {
-			s := string(l.src[start:l.i])
+			s := string(l.source[start:l.i])
 			l.i += n
 			return s
 		}
@@ -275,15 +275,15 @@ func (l *lexer) exUntil(end func() int, interpolate bool) string {
 		}
 		l.advance(1)
 	}
-	return string(l.src[start:])
+	return string(l.source[start:])
 }
 
 // skipInterpolation skips the code of a #{...} up to its closing brace, stepping
 // over nested braces and strings.
 func (l *lexer) skipInterpolation() {
 	depth := 1
-	for l.i < len(l.src) {
-		switch c := l.src[l.i]; c {
+	for l.i < len(l.source) {
+		switch c := l.source[l.i]; c {
 		case '{':
 			depth++
 			l.i++
@@ -315,9 +315,9 @@ func (l *lexer) skipInterpolation() {
 // exHeredoc reads a """ or ”' heredoc from its opening delimiter.
 func (l *lexer) exHeredoc(q byte, interpolate bool) string {
 	l.i += 3
-	delim := string([]byte{q, q, q})
+	delimiter := string([]byte{q, q, q})
 	return l.exUntil(func() int {
-		if l.hasPrefix(delim) {
+		if l.hasPrefix(delimiter) {
 			return 3
 		}
 		return 0
@@ -332,16 +332,16 @@ func (l *lexer) exSigil() {
 	line := l.line
 	l.i++ // ~
 	start := l.i
-	lower := isLower(l.src[l.i])
+	lower := isLower(l.source[l.i])
 	if lower {
 		l.i++
 	} else {
-		for l.i < len(l.src) && (isUpper(l.src[l.i]) || isDigit(l.src[l.i])) {
+		for l.i < len(l.source) && (isUpper(l.source[l.i]) || isDigit(l.source[l.i])) {
 			l.i++
 		}
 	}
 	if l.i == start {
-		l.emit(tPunct, "~", line)
+		l.emit(tPunctuation, "~", line)
 		return
 	}
 	var s string
@@ -352,17 +352,17 @@ func (l *lexer) exSigil() {
 		closer := sigilClose[d]
 		l.i++
 		s = l.exUntil(func() int {
-			if l.src[l.i] == closer {
+			if l.source[l.i] == closer {
 				return 1
 			}
 			return 0
 		}, lower)
 	default:
-		l.emit(tPunct, "~", line)
+		l.emit(tPunctuation, "~", line)
 		l.i = start
 		return
 	}
-	for l.i < len(l.src) && (l.src[l.i] >= 'a' && l.src[l.i] <= 'z' || l.src[l.i] >= 'A' && l.src[l.i] <= 'Z') {
+	for l.i < len(l.source) && (l.source[l.i] >= 'a' && l.source[l.i] <= 'z' || l.source[l.i] >= 'A' && l.source[l.i] <= 'Z') {
 		l.i++ // modifiers
 	}
 	l.emit(tString, s, line)
@@ -372,19 +372,19 @@ func (l *lexer) exSigil() {
 // that matters is that none of it is taken for something else.
 func (l *lexer) number() {
 	start, line := l.i, l.line
-	for l.i < len(l.src) {
-		c := l.src[l.i]
+	for l.i < len(l.source) {
+		c := l.source[l.i]
 		switch {
-		case isIdentByte(c) && c < 0x80, c == '#':
+		case isIdentifierByte(c) && c < 0x80, c == '#':
 		case c == '.' && isDigit(l.at(1)):
-		case (c == '+' || c == '-') && (l.src[l.i-1] == 'e' || l.src[l.i-1] == 'E') && !hexNumber(l.src[start:l.i]):
+		case (c == '+' || c == '-') && (l.source[l.i-1] == 'e' || l.source[l.i-1] == 'E') && !hexNumber(l.source[start:l.i]):
 		default:
-			l.emit(tNum, string(l.src[start:l.i]), line)
+			l.emit(tNumber, string(l.source[start:l.i]), line)
 			return
 		}
 		l.i++
 	}
-	l.emit(tNum, string(l.src[start:]), line)
+	l.emit(tNumber, string(l.source[start:]), line)
 }
 
 func hexNumber(b []byte) bool {
@@ -405,11 +405,11 @@ func containsByte(b []byte, c byte) bool {
 var erlOps = []string{"=:=", "=/=", "...", "->", "<-", "<=", "=>", ":=", "::", "||", "<<", ">>", "==", "/=", "=<", ">=", "++", "--", "?=", "??", ".."}
 
 // lexErlang tokenizes Erlang source (and the Erlang terms of rebar.config,
-// rebar.lock and .app.src). A dot that ends a form becomes the punct "end".
-func lexErlang(src []byte) []token {
-	l := startLexer(src)
-	for l.i < len(l.src) {
-		c := l.src[l.i]
+// rebar.lock and .app.src). A dot that ends a form becomes the punctuation "end".
+func lexErlang(source []byte) []token {
+	l := startLexer(source)
+	for l.i < len(l.source) {
+		c := l.source[l.i]
 		switch {
 		case c == '\n':
 			l.line++
@@ -436,39 +436,39 @@ func lexErlang(src []byte) []token {
 			if l.at(0) == '\\' {
 				l.i++
 				if l.at(0) == 'x' && l.at(1) == '{' {
-					for l.i < len(l.src) && l.src[l.i] != '}' {
+					for l.i < len(l.source) && l.source[l.i] != '}' {
 						l.i++
 					}
 				} else if l.at(0) == '^' {
 					l.i++
 				}
 			}
-			if l.i < len(l.src) {
-				_, n := utf8.DecodeRune(l.src[l.i:])
+			if l.i < len(l.source) {
+				_, n := utf8.DecodeRune(l.source[l.i:])
 				l.advance(n)
 			}
-			l.emit(tChar, "", line)
+			l.emit(tCharacter, "", line)
 		case c == '~' && (l.at(1) == '"' || l.at(1) >= 'a' && l.at(1) <= 'z' || l.at(1) >= 'A' && l.at(1) <= 'Z'):
 			l.exSigil() // OTP 27 sigils
-		case c == '.' && (l.i+1 >= len(l.src) || isSpace(l.at(1)) || l.at(1) == '%'):
-			l.emit(tPunct, "end", l.line)
+		case c == '.' && (l.i+1 >= len(l.source) || isSpace(l.at(1)) || l.at(1) == '%'):
+			l.emit(tPunctuation, "end", l.line)
 			l.i++
 		case isDigit(c):
 			l.number()
 		case c >= 'a' && c <= 'z' || c >= 0x80:
 			start, line := l.i, l.line
-			for l.i < len(l.src) && (isIdentByte(l.src[l.i]) || l.src[l.i] == '@') {
+			for l.i < len(l.source) && (isIdentifierByte(l.source[l.i]) || l.source[l.i] == '@') {
 				l.i++
 			}
-			l.emit(tAtom, string(l.src[start:l.i]), line)
+			l.emit(tAtom, string(l.source[start:l.i]), line)
 		case c == '_' || isUpper(c):
 			start, line := l.i, l.line
-			for l.i < len(l.src) && (isIdentByte(l.src[l.i]) || l.src[l.i] == '@') {
+			for l.i < len(l.source) && (isIdentifierByte(l.source[l.i]) || l.source[l.i] == '@') {
 				l.i++
 			}
-			l.emit(tVar, string(l.src[start:l.i]), line)
+			l.emit(tVariable, string(l.source[start:l.i]), line)
 		default:
-			l.punct(erlOps)
+			l.punctuation(erlOps)
 		}
 	}
 	return l.tokens

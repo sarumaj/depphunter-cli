@@ -23,8 +23,8 @@ import (
 )
 
 const (
-	ecoNix     = "nix"
-	ecoNixpkgs = "nixpkgs"
+	ecosystemNix     = "nix"
+	ecosystemNixpkgs = "nixpkgs"
 )
 
 // Implements: REQ-NIX-001
@@ -64,8 +64,8 @@ func class(p string) string {
 // Ecosystems: flake inputs, channels and pinned sources; and nixpkgs' packages.
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoNix, Name: "Nix flakes and sources"},
-		{ID: ecoNixpkgs, Name: "Nixpkgs"},
+		{ID: ecosystemNix, Name: "Nix flakes and sources"},
+		{ID: ecosystemNixpkgs, Name: "Nixpkgs"},
 	}
 }
 
@@ -74,12 +74,12 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-NIX-002, REQ-NIX-003, REQ-NIX-004, REQ-NIX-005, REQ-NIX-008
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	switch c := class(f.Path); c {
 	case "lock", "niv", "npins":
-		return extractLock(c, src), nil
+		return extractLock(c, source), nil
 	case "flake":
-		return extract(src, true), nil
+		return extract(source, true), nil
 	}
-	return extract(src, false), nil
+	return extract(source, false), nil
 }

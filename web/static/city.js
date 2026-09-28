@@ -19,7 +19,7 @@
 // terrace's edge its ring road. The shader measures, per fragment, the distance to
 // the nearest obstacles (the terrace's own edges and the footprints listed for its
 // cell in a lookup texture, see setRoads): close to one is sidewalk, halfway between
-// two facing ones is the centre line, and where facing obstacles end is a crossing.
+// two facing ones is the center line, and where facing obstacles end is a crossing.
 //
 // Colors stay data first: facades and roofs are modulated from the box's own
 // color (language, size, history, dimming, hover), never replaced. Streets and lawns
@@ -65,7 +65,7 @@ float fbm(vec2 p) {
 }
 /**
  * A star on a plane: the plane is cut into cells and a few of them hold one at their
- * centre. What it is worth, round and falling off from there, or nothing.
+ * center. What it is worth, round and falling off from there, or nothing.
  *
  * Filling the cell instead - which is how the deck, the void and the sky were all
  * drawn - gives a grid of squares that grow and shrink with the angle the surface is
@@ -94,9 +94,9 @@ float starDot(vec2 q, float rarity, float size) {
 export const CITY_VERT_HEAD = `
 attribute float aKind;
 attribute float aFade;     // 1: dimmed, drawn plain (MapScene.setColors)
-attribute vec3 aBoxCenter; // base centre, for non-instanced boxes
+attribute vec3 aBoxCenter; // base center, for non-instanced boxes
 attribute vec3 aBoxSize;
-varying vec3 vLP;          // position relative to the box's base centre, world units
+varying vec3 vLP;          // position relative to the box's base center, world units
 varying vec3 vObjN;
 // Per box. Flat: interpolation noise in a seed, run through a hash, speckles windows.
 flat varying vec3 vSize;
@@ -291,7 +291,7 @@ vec3 streets(vec3 base, vec3 lp, vec3 sz) {
     c = mix(c, vec3(0.78, 0.6, 0.12), dash * (1.0 - smoothstep(0.02, 0.06, wa)));
   }
   if (facing) {
-    float width = d1 + d2, s = (d2 - d1) * 0.5; // s: distance from the centre line
+    float width = d1 + d2, s = (d2 - d1) * 0.5; // s: distance from the center line
     bool xRoad = r.xRoad;                       // the street runs along x
     float along = xRoad ? p.x : p.y, across = xRoad ? p.y : p.x;
     vec2 e = r.ends; // where both sides face each other
@@ -306,7 +306,7 @@ vec3 streets(vec3 base, vec3 lp, vec3 sz) {
       c = mix(c, vec3(0.62, 0.62, 0.6), zebra);
     }
     if (width > 0.28 && fromEnd > 0.2) {
-      // A manhole every few metres on the centre line, the dashed line between them.
+      // A manhole every few meters on the center line, the dashed line between them.
       float m = length(vec2(s, (fract(along / 2.7 + 0.5) - 0.5) * 2.7));
       float lid = 1.0 - smoothstep(0.042 - w, 0.042 + w, m);
       c = mix(c, vec3(0.05, 0.05, 0.055) * (0.8 + 0.4 * band(fract(p.x * 40.0), 0.0, 0.5, 0.2)), lid * near);
@@ -381,14 +381,14 @@ vec3 traces(vec3 base, vec3 lp, vec3 sz) {
   c = mix(c, mix(mask, copper * 0.6, 0.45 + 0.55 * hatch), smoothstep(PAD + 0.02, PAD + 0.1, r.d1) * 0.7);
 
   if (r.d2 < 1e8) {
-    float width = r.d1 + r.d2, s = (r.d2 - r.d1) * 0.5; // s: from the centre line
+    float width = r.d1 + r.d2, s = (r.d2 - r.d1) * 0.5; // s: from the center line
     float ws = fwidth(s) + 1e-4;
     // Several traces side by side, as many as the street is wide enough for.
     float lanes = clamp(floor(width / 0.1), 1.0, 5.0);
     float pitch = width / (lanes + 1.0);
     float t = abs(mod(s + width * 0.5 + pitch * 0.5, pitch) - pitch * 0.5);
     c = mix(c, copper, (1.0 - smoothstep(0.011 - ws, 0.011 + ws, t)) * step(0.06, width));
-    // Vias down the centre of the street, every so often.
+    // Vias down the center of the street, every so often.
     float along = r.xRoad ? p.x : p.y;
     float m = length(vec2(s, (fract(along / 1.1 + 0.5) - 0.5) * 1.1));
     float via = step(0.2, width) * (1.0 - smoothstep(0.03, 0.03 + w * 2.0, m));
@@ -416,7 +416,7 @@ vec3 chipFace(vec3 base, float u, float faceW, float v, float h, vec2 seed) {
   }
   vec3 epoxy = mix(vec3(0.05, 0.052, 0.06), base * 0.35, 0.14) * (0.9 + 0.2 * vnoise(vec2(u, v) * 45.0));
   vec3 c = epoxy * dark(0.55);
-  c = mix(c, epoxy * 1.9, band(v, h * 0.5 - 0.005, h * 0.5 + 0.005, wv)); // the mould parting line
+  c = mix(c, epoxy * 1.9, band(v, h * 0.5 - 0.005, h * 0.5 + 0.005, wv)); // the mold parting line
   float pinH = min(0.08, h * 0.32);
   float pins = band(fract(u / 0.05), 0.18, 0.82, wu / 0.05) * band(v, 0.0, pinH, wv);
   vec3 tin = vec3(0.7, 0.72, 0.76) * (0.85 + 0.3 * vnoise(vec2(u, v) * 110.0)) * dark(0.5);
@@ -572,7 +572,7 @@ vec3 roof(vec3 base, vec3 lp, vec3 sz, float e) {
   return c * dark(0.55);
 }
 
-// A facade: whole window bays across the face, 0.3-unit storeys, a shopfront with one
+// A facade: whole window bays across the face, 0.3-unit stories, a shopfront with one
 // door on the ground floor and a cornice on top. Each building picks a style: brick
 // with framed windows, concrete panels, or (tall ones) a glass curtain wall. Lit
 // windows glow, more of them at night.
@@ -704,7 +704,7 @@ vec3 cityTexture(vec3 base) {
   // Anything standing on something is darker where the two meet. There are no lights
   // in this scene and so no shadows either, and without this a building floats over
   // its own plot: the band is what puts it back down on it. A short wall gets a
-  // shorter one, or a kerb would be all shadow.
+  // shorter one, or a curb would be all shadow.
   float foot = min(0.24, sz.y * 0.35);
   return c * mix(0.7, 1.0, smoothstep(0.0, foot, lp.y + sz.y * 0.5));
 }
@@ -828,7 +828,7 @@ export function makeSky(uniforms) {
 
       /**
        * One layer of stars. The directions are cut into cells and a cell either holds
-       * a star at its centre or holds nothing; what was drawn before was the cell
+       * a star at its center or holds nothing; what was drawn before was the cell
        * itself, which is why the sky was a grid of white squares. Only a few cells in
        * a hundred are lit, so their lattice never reads, and the distance is measured
        * across the line of sight rather than through it, which keeps a star a round
@@ -916,7 +916,7 @@ export function makeSky(uniforms) {
 
         // The scales are chosen so a cell is several pixels across at a normal field
         // of view: finer than that and every star is smaller than a pixel, which is
-        // how the dense layer ended up a dim grey haze with wedges cut out of it.
+        // how the dense layer ended up a dim gray haze with wedges cut out of it.
         col += stars(d, 85.0, 0.87, 0.17, 0.0) * (0.5 + 1.0 * along);
         col += stars(d, 38.0, 0.955, 0.13, 0.0) * 1.5;
         col += stars(d, 15.0, 0.982, 0.075, 0.25) * 2.2;
@@ -990,7 +990,7 @@ export function waterMaterial(uniforms) {
        * of a pulse, and the tail the ball drags behind it.
        *
        * It takes both where the pixel is down the lane and how far it is off the
-       * lane's centre line, because a head that only knows the first is a band of
+       * lane's center line, because a head that only knows the first is a band of
        * even brightness the width of the track - a straight edge crossing it - and
        * what a current wants to look like is a ball of light with a wake.
        *
@@ -1054,7 +1054,7 @@ export function waterMaterial(uniforms) {
         // Through the dust, a slow curtain of light: the one thing here bright enough
         // to be seen moving, so it is what makes the rest of it read as moving too.
         // Broad and faint - a sheet drawn across the whole of it, not a cloud, which
-        // is the difference between a nebula and mould on the screen.
+        // is the difference between a nebula and mold on the screen.
         float curtain = fbm(vW.xz * 0.045 + vec2(uTime * -0.012, uTime * 0.007) + 61.0);
         diffuseColor.rgb += vec3(0.05, 0.09, 0.19) * smoothstep(0.58, 0.96, curtain);
 
@@ -1069,7 +1069,7 @@ export function waterMaterial(uniforms) {
       } else if (uStyle > 0.5) {
         // Off the edge of the board is the backplane it is plugged into, and it is
         // live. This is the circuit style's water: the place the map will not let
-        // you walk. A flat grey bench said nothing about that - it read as a floor -
+        // you walk. A flat gray bench said nothing about that - it read as a floor -
         // and a bus with charge running down it says it without a word.
         //
         // The plane is dark and brushed, with a copper track down the middle of
@@ -1177,10 +1177,10 @@ export function rampsFor(boxes) {
       let best = null;
       for (const side of sides(c)) {
         if (side.len < RAMP_MIN_SIDE) continue;
-        const len = Math.min(RAMP_MAX, side.len - 0.8);
+        const rampLength = Math.min(RAMP_MAX, side.len - 0.8);
         const a = -side.len / 2 + RAMP_START;
         const origin = [side.mid[0] + side.u[0] * a, side.mid[1] + side.u[1] * a];
-        const far = [origin[0] + side.u[0] * len + side.n[0] * RAMP_W, origin[1] + side.u[1] * len + side.n[1] * RAMP_W];
+        const far = [origin[0] + side.u[0] * rampLength + side.n[0] * RAMP_W, origin[1] + side.u[1] * rampLength + side.n[1] * RAMP_W];
         const r = {
           x0: Math.min(origin[0], far[0]), x1: Math.max(origin[0], far[0]),
           z0: Math.min(origin[1], far[1]), z1: Math.max(origin[1], far[1]),
@@ -1188,9 +1188,9 @@ export function rampsFor(boxes) {
         let clear = Math.min(r.x0 - tx0, tx1 - r.x1, r.z0 - tz0, tz1 - r.z1);
         for (const k of kids) if (k !== c) clear = Math.min(clear, rectDist(r, k));
         if (clear >= RAMP_CLEAR && (!best || clear > best.clear)) {
-          best = { ...r, clear, origin, u: side.u, n: side.n, len, rise: len - RAMP_LANDING, y0: t.y + t.h, y1: c.y + c.h };
+          best = { ...r, clear, origin, u: side.u, n: side.n, len: rampLength, rise: rampLength - RAMP_LANDING, y0: t.y + t.h, y1: c.y + c.h };
           const d0 = [origin[0] + side.u[0] * best.rise, origin[1] + side.u[1] * best.rise];
-          const d1 = [origin[0] + side.u[0] * len - side.n[0] * DRIVE, origin[1] + side.u[1] * len - side.n[1] * DRIVE];
+          const d1 = [origin[0] + side.u[0] * rampLength - side.n[0] * DRIVE, origin[1] + side.u[1] * rampLength - side.n[1] * DRIVE];
           best.drive = { x0: Math.min(d0[0], d1[0]), x1: Math.max(d0[0], d1[0]), z0: Math.min(d0[1], d1[1]), z1: Math.max(d0[1], d1[1]) };
         }
       }
@@ -1213,7 +1213,7 @@ export function rampHeight(r, x, z) {
 }
 
 // A box's four sides: outward normal n, direction u of increasing position along the
-// face as the shaders measure it (cityColor's u), the side's centre and length.
+// face as the shaders measure it (cityColor's u), the side's center and length.
 function sides(b) {
   const hw = b.w / 2, hd = b.d / 2;
   return [
@@ -1243,7 +1243,7 @@ const bridgeCache = new WeakMap();
 
 /**
  * The bridges of a layout: {a, b: the two shores, axis: 'x'|'z' (the span's
- * direction), across: the deck's centre on the other axis, from, to: the span's ends
+ * direction), across: the deck's center on the other axis, from, to: the span's ends
  * along the axis, y: the shores' level}. Cached per boxes array, like rampsFor.
  *
  * Implements: REQ-CITY-021, REQ-CITY-026
@@ -1300,7 +1300,7 @@ export function bridgeHeight(r, x, z, inset = 0) {
   return r.y + DECK_RISE * Math.sin(Math.PI * t);
 }
 
-// The span between two shores: across the smaller gap, centred on the stretch where
+// The span between two shores: across the smaller gap, centered on the stretch where
 // they face each other (or on the nearer end when they only overlap diagonally).
 function bridgeBetween(a, b) {
   const ra = rect(a), rb = rect(b);
@@ -1311,28 +1311,28 @@ function bridgeBetween(a, b) {
   const from = forward ? g0 : (axis === 'x' ? rb.x1 : rb.z1);
   const to = forward ? g1 : (axis === 'x' ? ra.x0 : ra.z0);
   if (to - from < 0.2) return null; // touching shores need no bridge
-  const [lo, hi] = axis === 'x'
+  const [low, high] = axis === 'x'
     ? [Math.max(ra.z0, rb.z0), Math.min(ra.z1, rb.z1)]
     : [Math.max(ra.x0, rb.x0), Math.min(ra.x1, rb.x1)];
-  const across = lo < hi
-    ? (lo + hi) / 2
+  const across = low < high
+    ? (low + high) / 2
     : clampTo(axis === 'x' ? [ra.z0, ra.z1] : [ra.x0, ra.x1], axis === 'x' ? (rb.z0 + rb.z1) / 2 : (rb.x0 + rb.x1) / 2);
   return { a, b, axis, across, from: from - DECK_OVERLAP, to: to + DECK_OVERLAP, y: a.y + a.h };
 }
 
 const rect = b => ({ x0: b.x - b.w / 2, x1: b.x + b.w / 2, z0: b.z - b.d / 2, z1: b.z + b.d / 2 });
-const clampTo = ([lo, hi], v) => Math.min(hi - DECK_W, Math.max(lo + DECK_W, v));
+const clampTo = ([low, high], v) => Math.min(high - DECK_W, Math.max(low + DECK_W, v));
 
 // Bridge geometry: the arched deck (split along its length so it bends with the
 // planet), its sides and railings, and a pier every PIER_EVERY down to the water.
 // aRamp, as for ramps: across and along in world units, 3 on the deck (a road with a
-// centre line), 0 on everything else.
+// center line), 0 on everything else.
 // Implements: REQ-CITY-027
 function bridgeGeometry(bridges) {
-  const pos = [], ramp = [], shade = [], index = [];
+  const positions = [], ramp = [], shade = [], index = [];
   const quad = (a, b, c, d, ra, rb, rc, rd, k) => {
-    const i = pos.length / 3;
-    pos.push(...a, ...b, ...c, ...d);
+    const i = positions.length / 3;
+    positions.push(...a, ...b, ...c, ...d);
     ramp.push(...ra, ...rb, ...rc, ...rd);
     for (let j = 0; j < 4; j++) shade.push(k, k, k);
     index.push(i, i + 1, i + 2, i, i + 2, i + 3);
@@ -1347,14 +1347,14 @@ function bridgeGeometry(bridges) {
     }
   };
   for (const r of bridges) {
-    const len = r.to - r.from;
+    const spanLength = r.to - r.from;
     const at = (t, off, dy) => {
-      const along = r.from + len * t, y = r.y + DECK_RISE * Math.sin(Math.PI * t) + dy;
+      const along = r.from + spanLength * t, y = r.y + DECK_RISE * Math.sin(Math.PI * t) + dy;
       return r.axis === 'x' ? [along, y, r.across + off] : [r.across + off, y, along];
     };
-    const n = Math.max(3, Math.ceil(len / 0.5));
+    const n = Math.max(3, Math.ceil(spanLength / 0.5));
     for (let i = 0; i < n; i++) {
-      const t0 = i / n, t1 = (i + 1) / n, a0 = len * t0, a1 = len * t1;
+      const t0 = i / n, t1 = (i + 1) / n, a0 = spanLength * t0, a1 = spanLength * t1;
       const hw = DECK_W / 2;
       quad(at(t0, -hw, 0), at(t1, -hw, 0), at(t1, hw, 0), at(t0, hw, 0),
         [0, a0, 3], [0, a1, 3], [DECK_W, a1, 3], [DECK_W, a0, 3], 1);          // deck
@@ -1365,13 +1365,13 @@ function bridgeGeometry(bridges) {
           [a0, 0, 0], [a1, 0, 0], [a1, RAIL_H, 0], [a0, RAIL_H, 0], 0.9);      // railing
       }
     }
-    for (let t = PIER_EVERY / 2; t < len; t += PIER_EVERY) {
-      const [x, y, z] = at(t / len, 0, -DECK_T);
+    for (let t = PIER_EVERY / 2; t < spanLength; t += PIER_EVERY) {
+      const [x, y, z] = at(t / spanLength, 0, -DECK_T);
       box(x, z, r.y - 0.45, y, 0.18, 0.18, 0.7);
     }
   }
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute('aRamp', new THREE.Float32BufferAttribute(ramp, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(shade, 3));
   geo.setIndex(index);
@@ -1384,10 +1384,10 @@ function bridgeGeometry(bridges) {
 // world units, and 1 on the sloped roadway (markings), 2 on plain asphalt, 0 on walls.
 // Implements: REQ-CITY-019, REQ-CITY-020
 function rampGeometry(ramps) {
-  const pos = [], ramp = [], shade = [], index = [];
+  const positions = [], ramp = [], shade = [], index = [];
   const quad = (a, b, c, d, ra, rb, rc, rd, k) => {
-    const i = pos.length / 3;
-    pos.push(...a, ...b, ...c, ...d);
+    const i = positions.length / 3;
+    positions.push(...a, ...b, ...c, ...d);
     ramp.push(...ra, ...rb, ...rc, ...rd);
     for (let j = 0; j < 4; j++) shade.push(k, k, k);
     index.push(i, i + 1, i + 2, i, i + 2, i + 3);
@@ -1421,7 +1421,7 @@ function rampGeometry(ramps) {
       [0, -APRON, 2], [0, 0, 2], [RAMP_W, 0, 2], [RAMP_W, -APRON, 2], 1);
   }
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
   geo.setAttribute('aRamp', new THREE.Float32BufferAttribute(ramp, 3));
   geo.setAttribute('color', new THREE.Float32BufferAttribute(shade, 3));
   geo.setIndex(index);
@@ -1462,7 +1462,7 @@ function rampMaterial(bendable) {
           c = mix(c, vec3(0.5, 0.3, 0.11), mid + edge * 0.8);
         }
       } else if (vRamp.z > 2.5) {
-        // A bridge deck: asphalt with a dashed centre line and edge lines.
+        // A bridge deck: asphalt with a dashed center line and edge lines.
         float w = fwidth(q.x) + 1e-4, wa = fwidth(q.y) + 1e-4;
         c = vec3(0.045, 0.047, 0.052) * (0.8 + 0.4 * vnoise(q * 24.0));
         c = mix(c, vec3(0.7), band(q.x, 0.03, 0.05, w) + band(q.x, ${DECK_W - 0.05}, ${DECK_W - 0.03}, w));
@@ -1531,8 +1531,8 @@ export function makeProps(boxes, bendable, style = 'city') {
   const group = new THREE.Group();
   const m = new THREE.Matrix4(), q = new THREE.Quaternion(), p = new THREE.Vector3(), s = new THREE.Vector3();
   const c = new THREE.Color();
-  const add = (geo, color, items, place, tint, opts) => {
-    const mesh = new THREE.InstancedMesh(geo, bendable(new THREE.MeshBasicMaterial({ color, vertexColors: true, ...opts })), Math.max(1, items.length));
+  const add = (geo, color, items, place, tint, options) => {
+    const mesh = new THREE.InstancedMesh(geo, bendable(new THREE.MeshBasicMaterial({ color, vertexColors: true, ...options })), Math.max(1, items.length));
     mesh.count = items.length;
     items.forEach((it, i) => {
       mesh.setMatrixAt(i, place(it, m));
@@ -1605,8 +1605,8 @@ function plantParks(boxes, tree, bush) {
     }
     const clear = (x, z) => {
       const i = Math.floor(x / cell), j = Math.floor(z / cell);
-      for (let di = -1; di <= 1; di++) for (let dj = -1; dj <= 1; dj++) {
-        for (const k of grid.get(i + di + ',' + (j + dj)) || []) {
+      for (let offsetI = -1; offsetI <= 1; offsetI++) for (let offsetJ = -1; offsetJ <= 1; offsetJ++) {
+        for (const k of grid.get(i + offsetI + ',' + (j + offsetJ)) || []) {
           if (rectDist({ x0: x, x1: x, z0: z, z1: z }, k) < PARK_CLEAR) return false;
         }
       }
@@ -1638,12 +1638,12 @@ export function setNight(group, night) {
 const UP = new THREE.Vector3(0, 1, 0);
 
 // Calls fn at points spaced along a rectangle inset from a box's edges.
-function around(b, inset, spacing, fn) {
+function around(b, inset, spacing, callback) {
   const x0 = b.x - b.w / 2 + inset, x1 = b.x + b.w / 2 - inset, z0 = b.z - b.d / 2 + inset, z1 = b.z + b.d / 2 - inset;
   if (x1 <= x0 || z1 <= z0) return;
   const side = (ax, az, bx, bz) => {
     const n = Math.max(1, Math.round(Math.hypot(bx - ax, bz - az) / spacing));
-    for (let i = 0; i < n; i++) fn(ax + (bx - ax) * i / n, az + (bz - az) * i / n, i);
+    for (let i = 0; i < n; i++) callback(ax + (bx - ax) * i / n, az + (bz - az) * i / n, i);
   };
   side(x0, z0, x1, z0); side(x1, z0, x1, z1); side(x1, z1, x0, z1); side(x0, z1, x0, z0);
 }
@@ -1663,14 +1663,14 @@ function shaded(geo, jitter = 0) {
   geo.computeVertexNormals();
   geo.computeBoundingBox();
   const { min, max } = geo.boundingBox;
-  const n = geo.getAttribute('normal'), pos = geo.getAttribute('position'), col = [];
+  const n = geo.getAttribute('normal'), position = geo.getAttribute('position'), colors = [];
   for (let i = 0; i < n.count; i++) {
-    const up = (pos.getY(i) - min.y) / Math.max(1e-6, max.y - min.y);
+    const up = (position.getY(i) - min.y) / Math.max(1e-6, max.y - min.y);
     const k = (0.5 + 0.4 * Math.max(0, n.getY(i)) + 0.12 * n.getX(i) - 0.06 * n.getZ(i)) * (0.72 + 0.28 * up)
-      * (1 + jitter * (rand(pos.getX(i) * 7.1, pos.getZ(i) * 5.3 + pos.getY(i)) - 0.5));
-    col.push(k, k, k);
+      * (1 + jitter * (rand(position.getX(i) * 7.1, position.getZ(i) * 5.3 + position.getY(i)) - 0.5));
+    colors.push(k, k, k);
   }
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(col, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(colors, 3));
   return geo;
 }
 
@@ -1711,7 +1711,7 @@ const HEAD = shaded(new THREE.BoxGeometry(0.07, 0.025, 0.05).translate(0, 0.61, 
 
 // ------------------------------------------------------------------ the other styles' props
 
-const cyl = (r0, r1, h, y, seg = 10) => shaded(new THREE.CylinderGeometry(r0, r1, h, seg).translate(0, y + h / 2, 0));
+const cyl = (r0, r1, h, y, segments = 10) => shaded(new THREE.CylinderGeometry(r0, r1, h, segments).translate(0, y + h / 2, 0));
 const legs = (h, dx) => merge([
   shaded(new THREE.CylinderGeometry(0.008, 0.008, h, 5).translate(dx, h / 2, 0)),
   shaded(new THREE.CylinderGeometry(0.008, 0.008, h, 5).translate(-dx, h / 2, 0)),
@@ -1820,7 +1820,7 @@ const PROPS = {
 // per-instance tint and read as part of it rather than as an import.
 //
 // Built once, the first time makeProps runs after the models land.
-let modelled = null;
+let modeled = null;
 
 const MODELS = ['tree1_stem', 'tree1_head', 'tree2_stem', 'tree2_head',
   'tree3_stem', 'tree3_head', 'bush_head', 'rock_head'];
@@ -1830,7 +1830,7 @@ function dressed(style) {
   const got = plants();
   // A file that loaded but is missing a part would be worse than no file at all.
   if (!got || MODELS.some(name => !got.has(name))) return set;
-  modelled ||= {
+  modeled ||= {
     city: {
       ...PROPS.city,
       species: [1, 2, 3].map((n, i) => ({
@@ -1842,5 +1842,5 @@ function dressed(style) {
     },
     galaxy: { ...PROPS.galaxy, low: shaded(got.get('rock_head'), 0.12) },
   };
-  return modelled[style] || set;
+  return modeled[style] || set;
 }

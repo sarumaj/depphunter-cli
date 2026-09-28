@@ -29,8 +29,8 @@ import (
 )
 
 const (
-	ecoQuicklisp = "quicklisp"
-	ecoStd       = "cl-std"
+	ecosystemQuicklisp = "quicklisp"
+	ecosystemStd       = "cl-std"
 )
 
 // Classes of the manifests, which share their extensions with other files.
@@ -47,7 +47,7 @@ func lispSource(f *scan.File) bool {
 	case ".lisp", ".lsp":
 		return true
 	case ".cl":
-		return f.Lang == "Common Lisp"
+		return f.Language == "Common Lisp"
 	}
 	return false
 }
@@ -90,8 +90,8 @@ func (Plugin) Class(f *scan.File) string {
 // Implements: REQ-COMMONLISP-009
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoQuicklisp, Name: "Quicklisp projects"},
-		{ID: ecoStd, Name: "Common Lisp built-ins", Std: true},
+		{ID: ecosystemQuicklisp, Name: "Quicklisp projects"},
+		{ID: ecosystemStd, Name: "Common Lisp built-ins", Std: true},
 	}
 }
 
@@ -100,15 +100,15 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-COMMONLISP-002, REQ-COMMONLISP-003, REQ-COMMONLISP-006
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	switch path.Base(f.Path) {
 	case classQlfile:
-		return extractQlfile(src), nil
+		return extractQlfile(source), nil
 	case classLock:
-		return extractLock(src), nil
+		return extractLock(source), nil
 	case classOcicl:
-		return extractOcicl(src), nil
+		return extractOcicl(source), nil
 	}
-	in := read(src)
+	in := read(source)
 	return &lang.Extraction{Imports: in.imports, Symbols: in.symbols}, nil
 }

@@ -5,10 +5,10 @@ import "strings"
 type kind uint8
 
 const (
-	tIdent kind = iota
+	tIdentifier kind = iota
 	tString
 	tNumber
-	tPunct
+	tPunctuation
 )
 
 type token struct {
@@ -23,8 +23,8 @@ type token struct {
 // Unterminated constructs end at the end of the file.
 //
 // Implements: REQ-JSONNET-009
-func lex(src []byte) []token {
-	s := string(src)
+func lex(source []byte) []token {
+	s := string(source)
 	tokens := make([]token, 0, len(s)/6)
 	line := 1
 	i := 0
@@ -69,27 +69,27 @@ func lex(src []byte) []token {
 			i = j
 		case c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z':
 			j := i + 1
-			for j < len(s) && identByte(s[j]) {
+			for j < len(s) && identifierByte(s[j]) {
 				j++
 			}
-			tokens = append(tokens, token{tIdent, s[i:j], line})
+			tokens = append(tokens, token{tIdentifier, s[i:j], line})
 			i = j
 		case c >= '0' && c <= '9':
 			j := i + 1
-			for j < len(s) && (identByte(s[j]) || s[j] == '.' || (s[j] == '-' || s[j] == '+') && (s[j-1] == 'e' || s[j-1] == 'E')) {
+			for j < len(s) && (identifierByte(s[j]) || s[j] == '.' || (s[j] == '-' || s[j] == '+') && (s[j-1] == 'e' || s[j-1] == 'E')) {
 				j++
 			}
 			tokens = append(tokens, token{tNumber, s[i:j], line})
 			i = j
 		default:
-			tokens = append(tokens, token{tPunct, s[i : i+1], line})
+			tokens = append(tokens, token{tPunctuation, s[i : i+1], line})
 			i++
 		}
 	}
 	return tokens
 }
 
-func identByte(c byte) bool {
+func identifierByte(c byte) bool {
 	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
 }
 
@@ -147,11 +147,11 @@ func textBlock(s string, i int) (string, int) {
 	if i < len(s) && s[i] == '-' {
 		i++
 	}
-	nl := strings.IndexByte(s[i:], '\n')
-	if nl < 0 {
+	newline := strings.IndexByte(s[i:], '\n')
+	if newline < 0 {
 		return "", len(s)
 	}
-	i += nl + 1
+	i += newline + 1
 	// The first line's leading whitespace is the block's indentation.
 	j := i
 	for j < len(s) && (s[j] == ' ' || s[j] == '\t') {
@@ -194,7 +194,7 @@ func match(tokens []token) []int {
 	var stack []int
 	for i, t := range tokens {
 		m[i] = -1
-		if t.kind != tPunct {
+		if t.kind != tPunctuation {
 			continue
 		}
 		switch t.text {

@@ -8,10 +8,10 @@ import (
 
 // Verifies: REQ-LUA-012
 func TestLex(t *testing.T) {
-	src := "\xef\xbb\xbfx = 'a\\tb' .. \"\\65\\x42\\u{43}\\z\n  d\" --[=[ gone ]=] [==[\nlong]]x]==] 0x1F 3.5e-2 a//=b `i{1}`"
+	source := "\xef\xbb\xbfx = 'a\\tb' .. \"\\65\\x42\\u{43}\\z\n  d\" --[=[ gone ]=] [==[\nlong]]x]==] 0x1F 3.5e-2 a//=b `i{1}`"
 	var got []string
-	for _, tok := range Lex([]byte(src)) {
-		got = append(got, tok.Text)
+	for _, token := range Lex([]byte(source)) {
+		got = append(got, token.Text)
 	}
 	want := []string{"x", "=", "a\tb", "..", "ABCd", "long]]x", "0x1F", "3.5e-2", "a", "//=", "b", ""}
 	if !reflect.DeepEqual(got, want) {
@@ -24,7 +24,7 @@ func TestLex(t *testing.T) {
 //
 // Verifies: REQ-LUA-006
 func TestReadRockspec(t *testing.T) {
-	src := `local MODREV, SPECREV = 'scm', '-1'
+	source := `local MODREV, SPECREV = 'scm', '-1'
 rockspec_format = '3.0'
 package = 'telescope.nvim'
 version = MODREV .. SPECREV
@@ -50,29 +50,29 @@ build = {
 }
 if something() then build.modules.x = "x.lua" end
 `
-	r := ReadRockspec([]byte(src))
+	r := ReadRockspec([]byte(source))
 	if r.Package != "telescope.nvim" || r.Version != "scm-1" {
 		t.Errorf("package %q version %q", r.Package, r.Version)
 	}
-	var deps []string
-	for _, d := range r.Deps {
-		deps = append(deps, d.Section+":"+d.Name+"|"+d.Constraint)
+	var dependencies []string
+	for _, d := range r.Dependencies {
+		dependencies = append(dependencies, d.Section+":"+d.Name+"|"+d.Constraint)
 	}
-	wantDeps := []string{"dependencies:lua|== 5.1", "dependencies:plenary.nvim|", "dependencies:luasocket|>= 3.0, < 4",
+	wantDependencies := []string{"dependencies:lua|== 5.1", "dependencies:plenary.nvim|", "dependencies:luasocket|>= 3.0, < 4",
 		"dependencies:winapi|", "build_dependencies:luarocks-build-rust-mlua|", "test_dependencies:busted|~> 2"}
-	if !reflect.DeepEqual(deps, wantDeps) {
-		t.Errorf("deps %q", deps)
+	if !reflect.DeepEqual(dependencies, wantDependencies) {
+		t.Errorf("deps %q", dependencies)
 	}
-	if r.Deps[1].Line != 9 {
-		t.Errorf("line %d", r.Deps[1].Line)
+	if r.Dependencies[1].Line != 9 {
+		t.Errorf("line %d", r.Dependencies[1].Line)
 	}
-	var mods []string
+	var modules []string
 	for _, m := range r.Modules {
-		mods = append(mods, m.Name+"="+m.File)
+		modules = append(modules, m.Name+"="+m.File)
 	}
-	wantMods := []string{"a.b=src/a/b.lua", "c=src/c.c", "d=src/d.c", "x=x.lua", "a.e=src/a/e.lua", "u=src/u.lua"}
-	if !reflect.DeepEqual(mods, wantMods) {
-		t.Errorf("modules %q", mods)
+	wantModules := []string{"a.b=src/a/b.lua", "c=src/c.c", "d=src/d.c", "x=x.lua", "a.e=src/a/e.lua", "u=src/u.lua"}
+	if !reflect.DeepEqual(modules, wantModules) {
+		t.Errorf("modules %q", modules)
 	}
 }
 
@@ -97,7 +97,7 @@ func TestLockAndConstraints(t *testing.T) {
 			t.Errorf("Exact(%q) = %q", c, v)
 		}
 	}
-	if name, c := ParseDep(" Lua-CJSON>=2.1 "); name != "lua-cjson" || c != ">=2.1" {
+	if name, c := ParseDependency(" Lua-CJSON>=2.1 "); name != "lua-cjson" || c != ">=2.1" {
 		t.Errorf("ParseDep: %q %q", name, c)
 	}
 }
@@ -123,8 +123,8 @@ func TestVersions(t *testing.T) {
 			t.Errorf("Satisfies(%q, %q) = %v", c.v, c.c, got)
 		}
 	}
-	vs := []string{"1.2.0-1", "scm-1", "1.10.0-2", "1.10.0-1", "2.0.0-1"}
-	if got := Newest(vs, "< 2"); got != "1.10.0-2" {
+	versions := []string{"1.2.0-1", "scm-1", "1.10.0-2", "1.10.0-1", "2.0.0-1"}
+	if got := Newest(versions, "< 2"); got != "1.10.0-2" {
 		t.Errorf("Newest: %s", got)
 	}
 	if got := Newest([]string{"scm-1"}, ""); got != "scm-1" {
@@ -160,12 +160,12 @@ local_by_default = true`))
 //
 // Verifies: REQ-LUA-012
 func TestEvalSurvives(t *testing.T) {
-	src := "x = " + strings.Repeat("{", 5000) + strings.Repeat("(", 5000) + strings.Repeat("- ", 5000)
-	for i := 0; i < len(src); i += 997 {
-		Eval([]byte(src[:i]))
+	source := "x = " + strings.Repeat("{", 5000) + strings.Repeat("(", 5000) + strings.Repeat("- ", 5000)
+	for i := 0; i < len(source); i += 997 {
+		Eval([]byte(source[:i]))
 	}
-	rs := `package = "p" version = "1-1" dependencies = { "a >= 1", "b" } build = { modules = { x = "x.lua" } }`
-	for i := range rs {
-		ReadRockspec([]byte(rs[:i]))
+	rockspec := `package = "p" version = "1-1" dependencies = { "a >= 1", "b" } build = { modules = { x = "x.lua" } }`
+	for i := range rockspec {
+		ReadRockspec([]byte(rockspec[:i]))
 	}
 }

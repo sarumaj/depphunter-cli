@@ -10,16 +10,16 @@ import (
 )
 
 type resolver struct {
-	files map[string]bool
-	dirs  map[string]bool
+	files       map[string]bool
+	directories map[string]bool
 }
 
 func newResolver(all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, dirs: map[string]bool{}}
+	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}}
 	for _, f := range all {
 		r.files[f.Path] = true
 		for d := path.Dir(f.Path); d != "." && d != "/"; d = path.Dir(d) {
-			r.dirs[d] = true
+			r.directories[d] = true
 		}
 	}
 	return r
@@ -30,15 +30,15 @@ func newResolver(all []*scan.File) *resolver {
 // draw, and is left to the link check to judge.
 //
 // Implements: REQ-MD-001, REQ-MD-005
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	p, ok := Target(file, imp.Module)
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	p, ok := Target(file, rawImport.Module)
 	if !ok {
 		return lang.Target{}
 	}
 	if r.files[p] {
 		return lang.Target{Local: p}
 	}
-	if r.dirs[p] {
+	if r.directories[p] {
 		return lang.Target{Local: p}
 	}
 	// It may be there and simply not scanned - ignored, excluded, generated at build
@@ -53,25 +53,25 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 // path, is neither an edge on the map nor a defect in the document.
 //
 // Implements: REQ-MD-001
-func Target(from, dest string) (string, bool) {
-	dest, _, _ = strings.Cut(dest, "#")
-	dest, _, _ = strings.Cut(dest, "?")
-	if dest == "" || External(dest) || scheme(dest) != "" {
+func Target(from, destination string) (string, bool) {
+	destination, _, _ = strings.Cut(destination, "#")
+	destination, _, _ = strings.Cut(destination, "?")
+	if destination == "" || External(destination) || scheme(destination) != "" {
 		return "", false
 	}
 	// A destination is a URL, so its spaces and brackets arrive escaped.
-	if unescaped, err := url.PathUnescape(dest); err == nil {
-		dest = unescaped
+	if unescaped, err := url.PathUnescape(destination); err == nil {
+		destination = unescaped
 	}
-	if strings.HasPrefix(dest, "/") {
+	if strings.HasPrefix(destination, "/") {
 		// Rooted, which means the repository root to one renderer and the host root
 		// to another. Read as the repository's, and silently where it is not there:
 		// guessing wrong in the other direction would report every site link broken.
-		dest = strings.TrimPrefix(dest, "/")
+		destination = strings.TrimPrefix(destination, "/")
 	} else {
-		dest = path.Join(path.Dir(from), dest)
+		destination = path.Join(path.Dir(from), destination)
 	}
-	p := path.Clean(dest)
+	p := path.Clean(destination)
 	if p == "." || p == "/" || strings.HasPrefix(p, "..") {
 		return "", false
 	}
@@ -80,17 +80,17 @@ func Target(from, dest string) (string, bool) {
 
 // External reports whether a link leaves for the web, which is the only kind that
 // cannot be checked without asking somebody else.
-func External(dest string) bool {
-	s := scheme(dest)
+func External(destination string) bool {
+	s := scheme(destination)
 	return s == "http" || s == "https"
 }
 
 // scheme is the URL scheme a destination names, or empty for a path. A Windows drive
 // letter is not a scheme, and neither is the colon in a file name.
-func scheme(dest string) string {
-	i := strings.IndexByte(dest, ':')
-	if i <= 1 || strings.ContainsAny(dest[:i], "/?#") {
+func scheme(destination string) string {
+	i := strings.IndexByte(destination, ':')
+	if i <= 1 || strings.ContainsAny(destination[:i], "/?#") {
 		return ""
 	}
-	return strings.ToLower(dest[:i])
+	return strings.ToLower(destination[:i])
 }

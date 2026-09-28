@@ -52,11 +52,11 @@ func Collect(ctx context.Context, o Options) *Set {
 		source, found, err := Read(f)
 		f.Close()
 		if err != nil {
-			logFormat("findings: %s: %v", rel(o.Root, name), err)
+			logFormat("findings: %s: %v", relative(o.Root, name), err)
 			set.Partial = true
 			continue
 		}
-		logFormat("findings: %s: %d from %s", rel(o.Root, name), len(found), source)
+		logFormat("findings: %s: %d from %s", relative(o.Root, name), len(found), source)
 		set.Add(source, found)
 	}
 
@@ -124,7 +124,7 @@ func expand(root string, patterns []string) []string {
 			matches = []string{p}
 		}
 		for _, m := range matches {
-			if st, err := os.Stat(m); err == nil && st.IsDir() {
+			if fileInfo, err := os.Stat(m); err == nil && fileInfo.IsDir() {
 				continue
 			}
 			if !seen[m] {
@@ -137,7 +137,7 @@ func expand(root string, patterns []string) []string {
 	return out
 }
 
-func rel(root, name string) string {
+func relative(root, name string) string {
 	if r, err := filepath.Rel(root, name); err == nil {
 		return filepath.ToSlash(r)
 	}

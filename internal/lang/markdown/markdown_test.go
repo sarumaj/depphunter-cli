@@ -83,11 +83,11 @@ func TestHeadingsBecomeSymbols(t *testing.T) {
 
 // Verifies: REQ-MD-008
 func TestAnchors(t *testing.T) {
-	src, err := os.ReadFile("testdata/repo/docs/SPEC.md")
+	source, err := os.ReadFile("testdata/repo/docs/SPEC.md")
 	if err != nil {
 		t.Fatal(err)
 	}
-	got := Anchors(src)
+	got := Anchors(source)
 	for _, want := range []string{"spec", "how-it-works", "custom", "the-custom-one", "html-anchor"} {
 		if !got[want] {
 			t.Errorf("#%s is not an anchor of the spec (have %v)", want, keys(got))
@@ -124,25 +124,25 @@ func TestSlug(t *testing.T) {
 //
 // Verifies: REQ-MD-009
 func TestUndefinedReferenceIsReported(t *testing.T) {
-	src, err := os.ReadFile("testdata/repo/README.md")
+	source, err := os.ReadFile("testdata/repo/README.md")
 	if err != nil {
 		t.Fatal(err)
 	}
-	var refs []string
-	for _, l := range Links(src) {
-		if l.Ref != "" {
-			refs = append(refs, l.Ref)
+	var references []string
+	for _, l := range Links(source) {
+		if l.Reference != "" {
+			references = append(references, l.Reference)
 		}
 	}
-	if len(refs) != 1 || refs[0] != "nowhere" {
-		t.Errorf("undefined references %v, want [nowhere]", refs)
+	if len(references) != 1 || references[0] != "nowhere" {
+		t.Errorf("undefined references %v, want [nowhere]", references)
 	}
 }
 
 func TestTarget(t *testing.T) {
 	for _, c := range []struct {
-		from, dest, want string
-		ok               bool
+		from, destination, want string
+		ok                      bool
 	}{
 		{"README.md", "docs/SPEC.md", "docs/SPEC.md", true},
 		{"docs/SPEC.md", "../README.md", "README.md", true},
@@ -158,9 +158,9 @@ func TestTarget(t *testing.T) {
 		{"README.md", "../../outside.md", "", false},
 		{"README.md", "", "", false},
 	} {
-		got, ok := Target(c.from, c.dest)
+		got, ok := Target(c.from, c.destination)
 		if got != c.want || ok != c.ok {
-			t.Errorf("Target(%q, %q) = %q, %v; want %q, %v", c.from, c.dest, got, ok, c.want, c.ok)
+			t.Errorf("Target(%q, %q) = %q, %v; want %q, %v", c.from, c.destination, got, ok, c.want, c.ok)
 		}
 	}
 }

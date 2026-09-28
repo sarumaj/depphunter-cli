@@ -27,8 +27,8 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 
 // Verifies: REQ-FSHARP-002, REQ-FSHARP-004, REQ-FSHARP-008, REQ-FSHARP-012
 func TestOpensAndReferences(t *testing.T) {
-	res := analyze(t)
-	langtest.CheckImports(t, res["src/Shop.Domain/Cart.fs"], map[string]lang.Target{
+	results := analyze(t)
+	langtest.CheckImports(t, results["src/Shop.Domain/Cart.fs"], map[string]lang.Target{
 		"open Shop.Domain": {Local: "src/Shop.Domain/Types.fs"},
 		// Later.fs comes after Cart.fs in the compile order.
 		"open Shop.Domain.Later": {},
@@ -41,7 +41,7 @@ func TestOpensAndReferences(t *testing.T) {
 		"Cart.Empty": {},
 		"Later":      {},
 	})
-	langtest.CheckImports(t, res["src/Shop.Web/Program.fs"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/Shop.Web/Program.fs"], map[string]lang.Target{
 		"open System":                       {Ecosystem: "dotnet", Package: "System"},
 		"open System.Text.Json":             {Ecosystem: "dotnet", Package: "System.Text"},
 		"open Microsoft.FSharp.Collections": {Ecosystem: "nuget", Package: "FSharp.Core", Version: "8.0.400", Requested: "~> 8.0", Pinned: true},
@@ -61,12 +61,12 @@ func TestOpensAndReferences(t *testing.T) {
 		"Views":        {Local: "src/Shop.Web/Views.fs"},
 		"P":            {},
 	})
-	langtest.CheckImports(t, res["src/Shop.Domain/Types.fs"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/Shop.Domain/Types.fs"], map[string]lang.Target{
 		"open System": {Ecosystem: "dotnet", Package: "System"},
 	})
 	// The tests project references no project declaring Shop.Domain: its open is
 	// dropped rather than made a package.
-	langtest.CheckImports(t, res["tests/Shop.Tests/Tests.fs"], map[string]lang.Target{
+	langtest.CheckImports(t, results["tests/Shop.Tests/Tests.fs"], map[string]lang.Target{
 		"open Expecto":     {Ecosystem: "nuget", Package: "Expecto", Version: "10.2.1", Pinned: true},
 		"open FsCheck":     {Ecosystem: "nuget", Package: "FsCheck", Version: "2.16.6", Pinned: true},
 		"open Shop.Domain": {},
@@ -95,8 +95,8 @@ func TestScriptDirectives(t *testing.T) {
 
 // Verifies: REQ-FSHARP-005
 func TestProjectFiles(t *testing.T) {
-	res := analyze(t)
-	langtest.CheckImports(t, res["src/Shop.Domain/Shop.Domain.fsproj"], map[string]lang.Target{
+	results := analyze(t)
+	langtest.CheckImports(t, results["src/Shop.Domain/Shop.Domain.fsproj"], map[string]lang.Target{
 		"..\\..\\paket-files\\fsharp\\FAKE\\src\\app\\FakeLib\\Globbing\\Globbing.fs": {Ecosystem: "paket", Package: "github.com/fsharp/FAKE", Version: "0341a2e614eb2a7f34607cec914eb0ed83ce9add", Pinned: true},
 		"Types.fs":                    {Local: "src/Shop.Domain/Types.fs"},
 		"Pricing.fsi":                 {Local: "src/Shop.Domain/Pricing.fsi"},
@@ -107,7 +107,7 @@ func TestProjectFiles(t *testing.T) {
 		"Newtonsoft.Json":             {Ecosystem: "nuget", Package: "Newtonsoft.Json", Version: "13.0.3", Pinned: true},
 		"FSharp.Core":                 {Ecosystem: "nuget", Package: "FSharp.Core", Version: "8.0.400", Requested: "~> 8.0", Pinned: true},
 	})
-	langtest.CheckImports(t, res["src/Shop.Web/Shop.Web.fsproj"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/Shop.Web/Shop.Web.fsproj"], map[string]lang.Target{
 		"Views.fs":                            {Local: "src/Shop.Web/Views.fs"},
 		"Program.fs":                          {Local: "src/Shop.Web/Program.fs"},
 		"..\\Shop.Domain\\Shop.Domain.fsproj": {Local: "src/Shop.Domain/Shop.Domain.fsproj"},
@@ -116,15 +116,15 @@ func TestProjectFiles(t *testing.T) {
 		"FSharp.Core (implicit)":              {Ecosystem: "nuget", Package: "FSharp.Core", Version: "8.0.400", Requested: "~> 8.0", Pinned: true},
 	})
 	// DisableImplicitFSharpCoreReference: no implicit FSharp.Core.
-	langtest.CheckImports(t, res["tests/Shop.Tests/Shop.Tests.fsproj"], map[string]lang.Target{
+	langtest.CheckImports(t, results["tests/Shop.Tests/Shop.Tests.fsproj"], map[string]lang.Target{
 		"Tests.fs": {Local: "tests/Shop.Tests/Tests.fs"},
 	})
 }
 
 // Verifies: REQ-FSHARP-006, REQ-FSHARP-007, REQ-FSHARP-008
 func TestPaketFiles(t *testing.T) {
-	res := analyze(t)
-	langtest.CheckImports(t, res["paket.dependencies"], map[string]lang.Target{
+	results := analyze(t)
+	langtest.CheckImports(t, results["paket.dependencies"], map[string]lang.Target{
 		"nuget FSharp.Core ~> 8.0":           {Ecosystem: "nuget", Package: "FSharp.Core", Version: "8.0.400", Requested: "~> 8.0", Pinned: true},
 		"nuget Argu >= 6.1 redirects: force": {Ecosystem: "nuget", Package: "Argu", Version: "6.1.1", Requested: ">= 6.1", Pinned: true},
 		"nuget Expecto 10.2.1":               {Ecosystem: "nuget", Package: "Expecto", Version: "10.2.1", Pinned: true},
@@ -136,7 +136,7 @@ func TestPaketFiles(t *testing.T) {
 		"http http://www.fssnip.net/raw/1M/test1.fs":           {Ecosystem: "paket", Package: "www.fssnip.net/raw/1M/test1.fs", Floating: true},
 		"nuget FAKE < 5": {Ecosystem: "nuget", Package: "FAKE", Version: "4.64.18", Requested: "< 5", Pinned: true},
 	})
-	langtest.CheckImports(t, res["paket.lock"], map[string]lang.Target{
+	langtest.CheckImports(t, results["paket.lock"], map[string]lang.Target{
 		"Argu":             {Ecosystem: "nuget", Package: "Argu", Version: "6.1.1", Requested: ">= 6.1", Pinned: true},
 		"Expecto":          {Ecosystem: "nuget", Package: "Expecto", Version: "10.2.1", Pinned: true},
 		"Fake.Core.Target": {Ecosystem: "nuget", Package: "Fake.Core.Target", Version: "6.0.0", Pinned: true},
@@ -150,7 +150,7 @@ func TestPaketFiles(t *testing.T) {
 		"http://www.fssnip.net/raw/1M/test1.fs":            {Ecosystem: "paket", Package: "www.fssnip.net/raw/1M/test1.fs", Floating: true},
 		"Build/FAKE":                                       {Ecosystem: "nuget", Package: "FAKE", Version: "4.64.18", Requested: "< 5", Pinned: true},
 	})
-	langtest.CheckImports(t, res["src/Shop.Web/paket.references"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/Shop.Web/paket.references"], map[string]lang.Target{
 		"FSharp.Core":             {Ecosystem: "nuget", Package: "FSharp.Core", Version: "8.0.400", Requested: "~> 8.0", Pinned: true},
 		"Argu":                    {Ecosystem: "nuget", Package: "Argu", Version: "6.1.1", Requested: ">= 6.1", Pinned: true},
 		"Unknown.Package":         {Ecosystem: "nuget", Package: "Unknown.Package", Unresolved: true},
@@ -161,8 +161,8 @@ func TestPaketFiles(t *testing.T) {
 
 // Verifies: REQ-FSHARP-003
 func TestSymbols(t *testing.T) {
-	res := analyze(t)
-	langtest.CheckSymbols(t, res["src/Shop.Domain/Cart.fs"], map[string]string{
+	results := analyze(t)
+	langtest.CheckSymbols(t, results["src/Shop.Domain/Cart.fs"], map[string]string{
 		"banner":        "value",
 		"verbatim":      "value",
 		"triple":        "value",
@@ -180,7 +180,7 @@ func TestSymbols(t *testing.T) {
 		"(|Big|Small|)": "func",
 		"later":         "value",
 	})
-	langtest.CheckSymbols(t, res["src/Shop.Domain/Types.fs"], map[string]string{
+	langtest.CheckSymbols(t, results["src/Shop.Domain/Types.fs"], map[string]string{
 		"Item":           "type",
 		"Status":         "type",
 		"Money":          "module",
@@ -191,11 +191,11 @@ func TestSymbols(t *testing.T) {
 		"IPriced.Price":  "method",
 		"OutOfStock":     "exception",
 	})
-	langtest.CheckSymbols(t, res["src/Shop.Web/Views.fs"], map[string]string{
+	langtest.CheckSymbols(t, results["src/Shop.Web/Views.fs"], map[string]string{
 		"Views":      "module",
 		"Views.page": "func",
 	})
-	langtest.CheckSymbols(t, res["src/Shop.Domain/Pricing.fsi"], map[string]string{
+	langtest.CheckSymbols(t, results["src/Shop.Domain/Pricing.fsi"], map[string]string{
 		"total": "func",
 	})
 }
@@ -205,28 +205,28 @@ func TestSymbols(t *testing.T) {
 //
 // Verifies: REQ-FSHARP-001
 func TestClaims(t *testing.T) {
-	res := analyze(t)
+	results := analyze(t)
 	for _, p := range []string{"shaders/blur.fs", "forth/hello.fs", "src/Legacy/Thing.cs", "src/Legacy/Legacy.csproj", "Directory.Packages.props"} {
-		if _, ok := res[p]; ok {
+		if _, ok := results[p]; ok {
 			t.Errorf("%s claimed", p)
 		}
 	}
 	for _, p := range []string{"build.fsx", "src/Shop.Domain/Pricing.fsi", "paket.lock", "src/Shop.Web/paket.references", "src/Shop.Web/Shop.Web.fsproj"} {
-		if _, ok := res[p]; !ok {
+		if _, ok := results[p]; !ok {
 			t.Errorf("%s not claimed", p)
 		}
 	}
 	for _, f := range []*scan.File{
-		{Path: "paket-files/fsharp/FAKE/src/Globbing.fs", Lang: "F#"},
+		{Path: "paket-files/fsharp/FAKE/src/Globbing.fs", Language: "F#"},
 		{Path: ".fake/build.fsx/intellisense.fsx"},
-		{Path: "src/App.fs", Lang: "GLSL"},
+		{Path: "src/App.fs", Language: "GLSL"},
 		{Path: "src/App.fs"},
 	} {
 		if (Plugin{}).Claims(f) {
-			t.Errorf("%s (%q) claimed", f.Path, f.Lang)
+			t.Errorf("%s (%q) claimed", f.Path, f.Language)
 		}
 	}
-	if !(Plugin{}).Claims(&scan.File{Path: "src/App.fs", Lang: "F#"}) {
+	if !(Plugin{}).Claims(&scan.File{Path: "src/App.fs", Language: "F#"}) {
 		t.Error("an F# .fs file not claimed")
 	}
 }
@@ -236,7 +236,7 @@ func TestClaims(t *testing.T) {
 //
 // Verifies: REQ-FSHARP-002, REQ-FSHARP-011
 func TestLiteralsHideCode(t *testing.T) {
-	src := "module M\n" +
+	source := "module M\n" +
 		"(* open A (* open B *) \"*)\" open C *)\n" +
 		"// open D\n" +
 		"let a = \"open E \\\" open F\"\n" +
@@ -254,10 +254,10 @@ func TestLiteralsHideCode(t *testing.T) {
 		"open Real.One\n" +
 		"let m = $\"{x'}\" // a primed name in a hole\n" +
 		"open Real.Two\n"
-	in := scanSource(src)
+	in := scanSource(source)
 	var opens []string
-	for _, im := range in.imports {
-		opens = append(opens, im.Module)
+	for _, rawImport := range in.imports {
+		opens = append(opens, rawImport.Module)
 	}
 	if want := []string{"Real.One", "Real.Two"}; !reflect.DeepEqual(opens, want) {
 		t.Errorf("opens %v, want %v", opens, want)
@@ -276,7 +276,7 @@ func TestLiteralsHideCode(t *testing.T) {
 //
 // Verifies: REQ-FSHARP-003
 func TestOffside(t *testing.T) {
-	src := `namespace Shop.Orders
+	source := `namespace Shop.Orders
 
 open System
 
@@ -313,7 +313,7 @@ module Tail =
     and odd n = n <> 0 && even (n - 1)
 `
 	got := map[string]string{}
-	for _, s := range scanSource(src).symbols {
+	for _, s := range scanSource(source).symbols {
 		got[s.Name] = s.Kind
 	}
 	want := map[string]string{
@@ -326,13 +326,13 @@ module Tail =
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("symbols\n got %v\nwant %v", got, want)
 	}
-	var decls []string
-	for _, d := range scanSource(src).decls {
-		decls = append(decls, string(d.kind)+" "+d.name)
+	var declarations []string
+	for _, d := range scanSource(source).declarations {
+		declarations = append(declarations, string(d.kind)+" "+d.name)
 	}
 	if w := []string{"n Shop.Orders", "m Shop.Orders.Order", "t Shop.Orders.Order.Line", "m Shop.Orders.Order.Rules",
-		"t Shop.Orders.Service", "t Shop.Orders.A", "t Shop.Orders.B", "m Shop.Orders.Tail"}; !reflect.DeepEqual(decls, w) {
-		t.Errorf("decls %v, want %v", decls, w)
+		"t Shop.Orders.Service", "t Shop.Orders.A", "t Shop.Orders.B", "m Shop.Orders.Tail"}; !reflect.DeepEqual(declarations, w) {
+		t.Errorf("declarations %v, want %v", declarations, w)
 	}
 }
 
@@ -349,26 +349,26 @@ func TestTruncated(t *testing.T) {
 		return nil
 	})
 	for _, p := range files {
-		src, err := os.ReadFile(p)
+		source, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatal(err)
 		}
 		f := &scan.File{Path: strings.TrimPrefix(filepath.ToSlash(p), "testdata/repo/")}
-		for i := 0; i <= len(src); i++ {
-			if _, err := (Plugin{}).Extract(f, src[:i]); err != nil {
+		for i := 0; i <= len(source); i++ {
+			if _, err := (Plugin{}).Extract(f, source[:i]); err != nil {
 				t.Fatal(err)
 			}
-			scanSource(string(src[:i]))
+			scanSource(string(source[:i]))
 		}
 	}
 	for _, unit := range []string{"(*", "*)", "(", "[<", ">]", "\"", "@\"", "\"\"\"", "$\"{", "$$\"\"\"{{", "{", "'", "'a", "``",
 		"#load \"", "#r @\"", "open ", "open type ", "module M =\n", "module ", "type T =\n ", "let ", "namespace N\n",
 		"A.", "A.B.c ", " member x.", "and ", "[<AutoOpen>]\n", "\\", "é", "0x1e-", "let (|", "exception "} {
-		src := strings.Repeat(unit, 200_000/len(unit)+1)
+		source := strings.Repeat(unit, 200_000/len(unit)+1)
 		start := time.Now()
-		scanSource(src)
+		scanSource(source)
 		if d := time.Since(start); d > 5*time.Second {
-			t.Errorf("%q x %d: %v", unit, len(src)/len(unit), d)
+			t.Errorf("%q x %d: %v", unit, len(source)/len(unit), d)
 		}
 	}
 }
@@ -383,9 +383,9 @@ func TestIslands(t *testing.T) {
 		t.Fatalf("ecosystems: %v", ids)
 	}
 	for f, r := range analyze(t) {
-		for _, im := range r.Imports {
-			if e := im.Target.Ecosystem; e != "" && !(e == "nuget" || e == "dotnet" || e == "paket") {
-				t.Errorf("%s: %s -> %s", f, im.Spec, e)
+		for _, imported := range r.Imports {
+			if e := imported.Target.Ecosystem; e != "" && !(e == "nuget" || e == "dotnet" || e == "paket") {
+				t.Errorf("%s: %s -> %s", f, imported.Spec, e)
 			}
 		}
 	}

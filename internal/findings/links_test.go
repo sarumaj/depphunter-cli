@@ -22,11 +22,11 @@ func docs(t *testing.T, files map[string]string) string {
 	t.Helper()
 	root := t.TempDir()
 	for p, content := range files {
-		abs := filepath.Join(root, filepath.FromSlash(p))
-		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		absolute := filepath.Join(root, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
+		if err := os.WriteFile(absolute, []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -35,10 +35,10 @@ func docs(t *testing.T, files map[string]string) string {
 
 // reasons maps each finding's location to the rule it broke, which is what the tests
 // below are actually asserting.
-func reasons(fs []*Finding) map[string]string {
+func reasons(found []*Finding) map[string]string {
 	out := map[string]string{}
-	for _, f := range fs {
-		out[f.Path+":"+strconv.Itoa(f.Line)] = f.Ref
+	for _, f := range found {
+		out[f.Path+":"+strconv.Itoa(f.Line)] = f.Reference
 	}
 	return out
 }
@@ -63,20 +63,20 @@ Line six uses [a reference][missing] and [another][spec].
 		t.Error("the check reported itself incomplete with every document readable")
 	}
 	want := map[string]string{
-		"README.md:3": refMissingFile,
-		"README.md:4": refMissingAnchor,
-		"README.md:5": refMissingAnchor,
-		"README.md:6": refUndefinedRef,
+		"README.md:3": referenceMissingFile,
+		"README.md:4": referenceMissingAnchor,
+		"README.md:5": referenceMissingAnchor,
+		"README.md:6": referenceUndefinedReference,
 	}
 	got := reasons(found)
-	for where, ref := range want {
-		if got[where] != ref {
-			t.Errorf("%s: %q, want %q", where, got[where], ref)
+	for where, reference := range want {
+		if got[where] != reference {
+			t.Errorf("%s: %q, want %q", where, got[where], reference)
 		}
 	}
 	if len(found) != len(want) {
 		for _, f := range found {
-			t.Logf("  %s:%d:%d %s %s", f.Path, f.Line, f.Column, f.Ref, f.Title)
+			t.Logf("  %s:%d:%d %s %s", f.Path, f.Line, f.Column, f.Reference, f.Title)
 		}
 		t.Errorf("%d findings, want %d", len(found), len(want))
 	}
@@ -140,7 +140,7 @@ func TestADocumentThatCannotBeReadIsSaidSo(t *testing.T) {
 // Verifies: REQ-MD-012, REQ-MD-013, REQ-MD-014
 func TestOnlyAGoneAnswerIsAFinding(t *testing.T) {
 	var asked atomic.Int64
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked.Add(1)
 		switch r.URL.Path {
 		case "/ok":
@@ -164,21 +164,21 @@ func TestOnlyAGoneAnswerIsAFinding(t *testing.T) {
 			w.WriteHeader(http.StatusOK)
 		}
 	}))
-	defer srv.Close()
+	defer server.Close()
 
-	dir := t.TempDir()
+	directory := t.TempDir()
 	body := "# Home\n\n"
 	for _, p := range []string{"ok", "gone", "retired", "robot", "busy", "broken", "head-refused"} {
-		body += "A [link](" + srv.URL + "/" + p + ").\n"
+		body += "A [link](" + server.URL + "/" + p + ").\n"
 	}
 	root := docs(t, map[string]string{"README.md": body})
-	web := NewWeb(dir, time.Hour, 5*time.Second, nil)
-	web.http = srv.Client()
+	web := NewWeb(directory, time.Hour, 5*time.Second, nil)
+	web.http = server.Client()
 
 	found, _ := checkLinks(context.Background(), root, []string{"README.md"}, web, func(string, ...any) {})
 	var gone []string
 	for _, f := range found {
-		gone = append(gone, strings.TrimPrefix(f.Title, srv.URL+"/"))
+		gone = append(gone, strings.TrimPrefix(f.Title, server.URL+"/"))
 	}
 	sort.Strings(gone)
 	if strings.Join(gone, ",") != "gone answers 404,retired answers 410" {
@@ -188,8 +188,8 @@ func TestOnlyAGoneAnswerIsAFinding(t *testing.T) {
 	// The answers worth keeping are kept, so a second run asks again only about the
 	// ones that said nothing usable.
 	before := asked.Load()
-	again := NewWeb(dir, time.Hour, 5*time.Second, nil)
-	again.http = srv.Client()
+	again := NewWeb(directory, time.Hour, 5*time.Second, nil)
+	again.http = server.Client()
 	checkLinks(context.Background(), root, []string{"README.md"}, again, func(string, ...any) {})
 	if asked.Load()-before >= before {
 		t.Errorf("the second run asked %d times, the first %d: nothing was cached",
@@ -205,23 +205,23 @@ func TestOnlyAGoneAnswerIsAFinding(t *testing.T) {
 func TestALinkIsNotSentAnotherPathsRegistryToken(t *testing.T) {
 	var mu sync.Mutex
 	sent := map[string]string{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		sent[r.URL.Path] = r.Header.Get("Authorization")
 		mu.Unlock()
 	}))
-	defer srv.Close()
+	defer server.Close()
 	home := t.TempDir()
-	npmrc := "//" + srv.Listener.Addr().String() + "/api/v4/projects/1/packages/npm/:_authToken=registry-token\n"
+	npmrc := "//" + server.Listener.Addr().String() + "/api/v4/projects/1/packages/npm/:_authToken=registry-token\n"
 	if err := os.WriteFile(filepath.Join(home, ".npmrc"), []byte(npmrc), 0o600); err != nil {
 		t.Fatal(err)
 	}
 	web := NewWeb(t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil))
-	web.http = srv.Client()
+	web.http = server.Client()
 	web.Check(context.Background(), []string{
-		srv.URL + "/wiki/Home",
-		srv.URL + "/api/v4/projects/2/packages/npm/x",
-		srv.URL + "/api/v4/projects/1/packages/npm/x",
+		server.URL + "/wiki/Home",
+		server.URL + "/api/v4/projects/2/packages/npm/x",
+		server.URL + "/api/v4/projects/1/packages/npm/x",
 	}, func(string, ...any) {})
 	mu.Lock()
 	defer mu.Unlock()

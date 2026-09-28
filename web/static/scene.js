@@ -2,7 +2,7 @@
 // Renders on demand only; nothing animates unless the camera or the state changes.
 //
 // Walk mode (walk.js) views the same scene through a perspective camera and bends the
-// flat map onto a small planet centred under the walker: every material shares the
+// flat map onto a small planet centered under the walker: every material shares the
 // `curve` uniforms, and a vertex shader wraps world positions around the sphere.
 // Large flat boxes (land, terraces, districts) are drawn from a tessellated copy in
 // walk mode so their tops follow the curve instead of cutting through it as chords.
@@ -229,7 +229,7 @@ export class MapScene {
 
   /**
    * Switches between the isometric map and walk mode. radius: the planet's; the
-   * walker's camera and centre are set with setWalker.
+   * walker's camera and center are set with setWalker.
    *
    * Implements: REQ-CITY-030
    */
@@ -432,13 +432,13 @@ export class MapScene {
   paintGround(colors, faded, only) {
     const g = this.ground.geometry, ranges = g.userData.ranges;
     const shade = g.getAttribute('shade'), box = g.getAttribute('box');
-    const col = g.getAttribute('color'), gFade = g.getAttribute('aFade');
+    const color = g.getAttribute('color'), gFade = g.getAttribute('aFade');
     const c = new THREE.Color();
     const paint = (from, to) => {
       for (let v = from; v < to; v++) {
         const i = box.getX(v);
         c.copy(parseColor(colors[i])).multiplyScalar(shade.getX(v));
-        col.setXYZ(v, c.r, c.g, c.b);
+        color.setXYZ(v, c.r, c.g, c.b);
         gFade.setX(v, faded[i] ? 1 : 0);
       }
     };
@@ -448,7 +448,7 @@ export class MapScene {
         const r = ranges.get(i);
         if (!r) continue; // a box too small to be part of the ground
         paint(r[0], r[1]);
-        col.addUpdateRange(r[0] * 3, (r[1] - r[0]) * 3);
+        color.addUpdateRange(r[0] * 3, (r[1] - r[0]) * 3);
         gFade.addUpdateRange(r[0], r[1] - r[0]);
         any = true;
       }
@@ -456,10 +456,10 @@ export class MapScene {
     } else {
       paint(0, box.count);
       // No ranges: the whole buffer goes to the GPU.
-      col.clearUpdateRanges();
+      color.clearUpdateRanges();
       gFade.clearUpdateRanges();
     }
-    col.needsUpdate = true;
+    color.needsUpdate = true;
     gFade.needsUpdate = true;
   }
 
@@ -545,7 +545,7 @@ export class MapScene {
     this.requestRender();
   }
 
-  /** Centre and zoom on a world-space box {minX,maxX,minZ,maxZ,maxY}. */
+  /** Center and zoom on a world-space box {minX,maxX,minZ,maxZ,maxY}. */
   // Implements: REQ-MAP-019
   fit(b, margin = 0.88) {
     const center = new THREE.Vector3((b.minX + b.maxX) / 2, 0, (b.minZ + b.maxZ) / 2);
@@ -586,7 +586,7 @@ export class MapScene {
     return Math.min(w / Math.max(1e-6, maxX - minX), h / Math.max(1e-6, maxY - minY));
   }
 
-  /** Pan (keeping zoom) so a world point is centred. */
+  /** Pan (keeping zoom) so a world point is centered. */
   centerOn(x, y, z) {
     const target = new THREE.Vector3(x, y, z);
     const offset = this.camera.position.clone().sub(this.controls.target);
@@ -614,7 +614,7 @@ export class MapScene {
     r.render(this.scene, this.view);
     // The held tool, second and on top of everything: the depth buffer is cleared
     // between the two, so nothing in the world can occlude a hand that is, in truth,
-    // a few centimetres from the lens.
+    // a few centimeters from the lens.
     if (hands && this.walking && this.viewScene.children.length) {
       r.autoClear = false;
       r.clearDepth();
@@ -701,7 +701,7 @@ export class MapScene {
 
   /**
    * Flat-map point -> where walk mode draws it (in place). Mirrors BEND_GLSL: the point
-   * keeps its height above the surface and its distance along it from the centre.
+   * keeps its height above the surface and its distance along it from the center.
    */
   bend(v) {
     const c = this.curve.uCenter.value, R = this.curve.uRadius.value;
@@ -739,11 +739,11 @@ const WATER_DEPTH = 0.45;
 // Implements: REQ-CITY-025
 const SEA_LEVEL = -WATER_DEPTH + 0.03, SEA_SIZE = 40;
 // Zooming out stops when the map fills this share of the view; panning stops when
-// the view's centre is this far beyond the map (a share of its size, plus a minimum).
+// the view's center is this far beyond the map (a share of its size, plus a minimum).
 // Implements: REQ-MAP-020, REQ-MAP-021
 const MIN_ZOOM_SHARE = 0.35, PAN_MARGIN = 0.25, PAN_MARGIN_MIN = 6;
 
-const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const clamp = (v, low, high) => Math.min(high, Math.max(low, v));
 
 // Colors arrive as CSS strings, one per box, and every ground vertex reads its box's
 // again; parsing one takes long enough to be worth doing once per color. setColors
@@ -794,15 +794,15 @@ const _p = new THREE.Vector3(), _q = new THREE.Vector3(), _d = new THREE.Vector3
 const MASK_W = 128, MASK_H = 72;
 const _clear = new THREE.Color();
 
-// Whether the segment eye->p passes through the sphere (centre c, radius r).
+// Whether the segment eye->p passes through the sphere (center c, radius r).
 function occludedBySphere(eye, p, c, r) {
-  const d = _d.subVectors(p, eye), len = d.length();
-  d.divideScalar(len);
+  const d = _d.subVectors(p, eye), distance = d.length();
+  d.divideScalar(distance);
   const oc = _oc.subVectors(eye, c);
   const b = oc.dot(d), disc = b * b - (oc.lengthSq() - r * r);
   if (disc < 0) return false;
   const t = -b - Math.sqrt(disc);
-  return t > 0 && t < len - 0.01;
+  return t > 0 && t < distance - 0.01;
 }
 
 const isLarge = b => Math.max(b.w, b.d) > 1.5;
@@ -815,24 +815,24 @@ const SHADE = { top: 1, px: 0.62, nx: 0.62, pz: 0.78, nz: 0.78 };
  * length (heights need no split: the bend keeps verticals straight). Bottoms are
  * left out; they face the planet. Attributes: position, normal, color (set by
  * setColors), shade (face brightness), box (the box index), and for city.js aKind,
- * aBoxCenter (base centre) and aBoxSize. userData.ranges maps a box index to its
+ * aBoxCenter (base center) and aBoxSize. userData.ranges maps a box index to its
  * vertex range, so one box can be repainted without walking the whole buffer.
  */
 function tessellate(boxes) {
   const area = boxes.reduce((a, b) => a + b.w * b.d, 0);
   const cell = Math.max(0.75, Math.sqrt(area / 150000)); // bounds the vertex count
-  const pos = [], shade = [], box = [], index = [], normal = [], kind = [], center = [], size = [];
-  let cur;
+  const positions = [], shade = [], box = [], index = [], normal = [], kind = [], center = [], size = [];
+  let current;
   const quadGrid = (i, s, n, nu, nv, at) => {
-    const base = pos.length / 3;
+    const base = positions.length / 3;
     for (let v = 0; v <= nv; v++) for (let u = 0; u <= nu; u++) {
-      pos.push(...at(u / nu, v / nv));
+      positions.push(...at(u / nu, v / nv));
       shade.push(s);
       box.push(i);
       normal.push(...n);
-      kind.push(kindCode(cur));
-      center.push(cur.x, cur.y, cur.z);
-      size.push(cur.w, Math.max(cur.h, 0.01), cur.d);
+      kind.push(kindCode(current));
+      center.push(current.x, current.y, current.z);
+      size.push(current.w, Math.max(current.h, 0.01), current.d);
     }
     for (let v = 0; v < nv; v++) for (let u = 0; u < nu; u++) {
       const a = base + v * (nu + 1) + u, b = a + 1, c = a + nu + 1, d = c + 1;
@@ -841,36 +841,36 @@ function tessellate(boxes) {
   };
   const ranges = new Map();
   for (const b of boxes) {
-    const start = pos.length / 3;
+    const start = positions.length / 3;
     const x0 = b.x - b.w / 2, x1 = b.x + b.w / 2, z0 = b.z - b.d / 2, z1 = b.z + b.d / 2;
     const y0 = b.y, y1 = b.y + Math.max(b.h, 0.01);
     const nx = Math.max(1, Math.ceil(b.w / cell)), nz = Math.max(1, Math.ceil(b.d / cell));
     const i = b.i;
-    cur = b;
+    current = b;
     quadGrid(i, SHADE.top, [0, 1, 0], nx, nz, (u, v) => [x0 + u * b.w, y1, z0 + v * b.d]);
     quadGrid(i, SHADE.pz, [0, 0, 1], nx, 1, (u, v) => [x0 + u * b.w, y1 - v * (y1 - y0), z1]);
     quadGrid(i, SHADE.nz, [0, 0, -1], nx, 1, (u, v) => [x1 - u * b.w, y1 - v * (y1 - y0), z0]);
     quadGrid(i, SHADE.px, [1, 0, 0], nz, 1, (u, v) => [x1, y1 - v * (y1 - y0), z1 - u * b.d]);
     quadGrid(i, SHADE.nx, [-1, 0, 0], nz, 1, (u, v) => [x0, y1 - v * (y1 - y0), z0 + u * b.d]);
-    ranges.set(i, [start, pos.length / 3]);
+    ranges.set(i, [start, positions.length / 3]);
   }
   const geo = new THREE.BufferGeometry();
-  geo.setAttribute('position', new THREE.Float32BufferAttribute(pos, 3));
-  geo.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(pos.length), 3));
+  geo.setAttribute('position', new THREE.Float32BufferAttribute(positions, 3));
+  geo.setAttribute('color', new THREE.Float32BufferAttribute(new Float32Array(positions.length), 3));
   geo.setAttribute('shade', new THREE.Float32BufferAttribute(shade, 1));
   geo.setAttribute('box', new THREE.Float32BufferAttribute(box, 1));
   geo.setAttribute('normal', new THREE.Float32BufferAttribute(normal, 3));
   geo.setAttribute('aKind', new THREE.Float32BufferAttribute(kind, 1));
   geo.setAttribute('aBoxCenter', new THREE.Float32BufferAttribute(center, 3));
   geo.setAttribute('aBoxSize', new THREE.Float32BufferAttribute(size, 3));
-  geo.setAttribute('aFade', new THREE.Float32BufferAttribute(new Float32Array(pos.length / 3), 1));
+  geo.setAttribute('aFade', new THREE.Float32BufferAttribute(new Float32Array(positions.length / 3), 1));
   geo.setIndex(index);
   geo.userData.ranges = ranges;
   return geo;
 }
 
 // A box's 12 edges as line segments, split into short pieces so they bend with the
-// planet in walk mode. Base at y=0, centred on x and z like the boxes.
+// planet in walk mode. Base at y=0, centered on x and z like the boxes.
 function outlineGeometry(w, h, d) {
   const pts = [];
   const edge = (a, b) => {

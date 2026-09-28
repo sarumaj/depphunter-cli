@@ -35,6 +35,6 @@ nothing more.
 
 1. `a.sh`, `lib/x.BASH`, `themes/r.zsh-theme`, `t/x.bats`, `home/.zshrc` and
    `.envrc` are claimed; `bin/deploy` whose first line is
-   `#!/usr/bin/env -S bash -e` is claimed and labelled Shell; `bin/tool`
+   `#!/usr/bin/env -S bash -e` is claimed and labeled Shell; `bin/tool`
    running `python3` and `lib/x.py` running `sh` are not claimed (`lib/x.py`
    stays Python); a binary `a.sh` and `README` are not claimed.

@@ -41,15 +41,15 @@ func newNpmStub(t *testing.T, want string) *npmStub {
 
 // authOf is the Authorization header the store sends to u.
 func authOf(s *auth.Store, u string) string {
-	req, _ := http.NewRequest(http.MethodGet, u, nil)
-	s.Apply(req)
-	return req.Header.Get("Authorization")
+	request, _ := http.NewRequest(http.MethodGet, u, nil)
+	s.Apply(request)
+	return request.Header.Get("Authorization")
 }
 
 // sources lists an ecosystem's sources as "scope url" with "?" for untrusted.
-func sources(c *Config, eco string) []string {
+func sources(c *Config, ecosystem string) []string {
 	var out []string
-	for _, s := range c.Sources(eco) {
+	for _, s := range c.Sources(ecosystem) {
 		mark := ""
 		if !s.Trusted {
 			mark = "?"
@@ -89,20 +89,20 @@ func TestYarnAndBunRegistries(t *testing.T) {
 //
 // Verifies: REQ-AUTH-024, REQ-SUP-015
 func TestYarnScopeRegistryAndToken(t *testing.T) {
-	reg := newNpmStub(t, "Bearer acme-secret")
+	registry := newNpmStub(t, "Bearer acme-secret")
 	home := t.TempDir()
-	put(t, filepath.Join(home, ".yarnrc.yml"), "npmScopes:\n  acme:\n    npmRegistryServer: "+reg.URL+"/npm\n    npmAuthToken: ${ACME_TOKEN}\n")
-	e := env(map[string]string{"ACME_TOKEN": "acme-secret"})
+	put(t, filepath.Join(home, ".yarnrc.yml"), "npmScopes:\n  acme:\n    npmRegistryServer: "+registry.URL+"/npm\n    npmAuthToken: ${ACME_TOKEN}\n")
+	e := environment(map[string]string{"ACME_TOKEN": "acme-secret"})
 	store := auth.Read(home, e)
 	d := NewDiscoverer(e, home)
 	d.Config().Credentials(store)
-	cfg := d.Discover(nil)
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, store, nil)
+	config := d.Discover(nil)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, store, nil)
 	if got := names(c.Dependencies(lang.Target{Ecosystem: NPM, Package: "@acme/ui", Version: "1.0.0"})); len(got) != 1 {
-		t.Errorf("got %v, asked %v", got, reg.asked)
+		t.Errorf("got %v, asked %v", got, registry.asked)
 	}
-	if len(reg.asked) != 1 || !strings.HasPrefix(reg.asked[0], "/npm/@acme/ui/1.0.0 ") {
-		t.Errorf("asked %v", reg.asked)
+	if len(registry.asked) != 1 || !strings.HasPrefix(registry.asked[0], "/npm/@acme/ui/1.0.0 ") {
+		t.Errorf("asked %v", registry.asked)
 	}
 }
 
@@ -114,7 +114,7 @@ func TestYarnScopeRegistryAndToken(t *testing.T) {
 //
 // Verifies: REQ-AUTH-023
 func TestRepositoryYarnAndBunCredentials(t *testing.T) {
-	vars := map[string]string{"NPM_TOKEN": "env-token", "BUN_PASS": "env-pass", "IDENT": "ci:env-ident"}
+	variables := map[string]string{"NPM_TOKEN": "env-token", "BUN_PASS": "env-pass", "IDENT": "ci:env-ident"}
 	files := write(t, map[string]string{
 		".yarnrc.yml": `npmRegistryServer: "https://yarn.corp/npm"
 npmAuthToken: "${NPM_TOKEN}"
@@ -136,7 +136,7 @@ url = "https://ci:written@bunurl.corp/"
 `,
 	})
 	run := func(home string, trust ...string) *auth.Store {
-		e := env(vars)
+		e := environment(variables)
 		store := auth.Read(home, e)
 		d := NewDiscoverer(e, home)
 		d.Config().Credentials(store)
@@ -190,10 +190,10 @@ url = "https://ci:written@bunurl.corp/"
 
 // basicHeaderOf is the Basic Authorization header of a pair.
 func basicHeaderOf(pair string) string {
-	req, _ := http.NewRequest(http.MethodGet, "https://x", nil)
+	request, _ := http.NewRequest(http.MethodGet, "https://x", nil)
 	user, pass, _ := strings.Cut(pair, ":")
-	req.SetBasicAuth(user, pass)
-	return req.Header.Get("Authorization")
+	request.SetBasicAuth(user, pass)
+	return request.Header.Get("Authorization")
 }
 
 // Two npm registries on one host, each with a path-scoped token in the user's
@@ -203,7 +203,7 @@ func basicHeaderOf(pair string) string {
 func TestPathScopedNpmTokensEndToEnd(t *testing.T) {
 	var mu sync.Mutex
 	seen := map[string]string{}
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		seen[r.URL.Path] = r.Header.Get("Authorization")
 		mu.Unlock()
@@ -214,21 +214,21 @@ func TestPathScopedNpmTokensEndToEnd(t *testing.T) {
 		}
 		fmt.Fprint(w, `{"name":"x","dependencies":{"dep":"1.0.0"}}`)
 	}))
-	t.Cleanup(srv.Close)
-	host := srv.Listener.Addr().String()
+	t.Cleanup(server.Close)
+	host := server.Listener.Addr().String()
 	home := t.TempDir()
 	put(t, filepath.Join(home, ".npmrc"), fmt.Sprintf(
-		"@one:registry=%[2]s/p/1/\n@two:registry=%[2]s/p/2/\n//%[1]s/p/1/:_authToken=one\n//%[1]s/p/2/:_authToken=two\n", host, srv.URL))
+		"@one:registry=%[2]s/p/1/\n@two:registry=%[2]s/p/2/\n//%[1]s/p/1/:_authToken=one\n//%[1]s/p/2/:_authToken=two\n", host, server.URL))
 	store := auth.Read(home, nil)
 	d := NewDiscoverer(nil, home)
 	d.Config().Credentials(store)
 	c := NewClient(d.Discover(nil), t.TempDir(), time.Hour, 5*time.Second, store, nil)
-	for _, pkg := range []string{"@one/a", "@two/b"} {
-		if got := names(c.Dependencies(lang.Target{Ecosystem: NPM, Package: pkg, Version: "1.0.0"})); len(got) != 1 {
-			t.Errorf("%s: got %v, seen %v", pkg, got, seen)
+	for _, packageName := range []string{"@one/a", "@two/b"} {
+		if got := names(c.Dependencies(lang.Target{Ecosystem: NPM, Package: packageName, Version: "1.0.0"})); len(got) != 1 {
+			t.Errorf("%s: got %v, seen %v", packageName, got, seen)
 		}
 	}
-	if got := authOf(store, srv.URL+"/p/3/x"); got != "" {
+	if got := authOf(store, server.URL+"/p/3/x"); got != "" {
 		t.Errorf("another path of the host got %q", got)
 	}
 }

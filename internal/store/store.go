@@ -20,20 +20,20 @@ import (
 )
 
 type Store struct {
-	dir string
-	ttl time.Duration
+	directory string
+	ttl       time.Duration
 }
 
-// New opens the store under dir, keeping answers for ttl. It returns nil - a store
+// New opens the store under directory, keeping answers for ttl. It returns nil - a store
 // that keeps nothing - when there is nowhere to write or nothing to be gained.
 //
 // Implements: REQ-FND-012
-func New(dir string, ttl time.Duration) *Store {
-	if dir == "" || ttl <= 0 || os.MkdirAll(dir, 0o755) != nil {
+func New(directory string, ttl time.Duration) *Store {
+	if directory == "" || ttl <= 0 || os.MkdirAll(directory, 0o755) != nil {
 		return nil
 	}
-	sweep(dir, ttl)
-	return &Store{dir: dir, ttl: ttl}
+	sweep(directory, ttl)
+	return &Store{directory: directory, ttl: ttl}
 }
 
 // sweep removes answers past their time to live. A stale answer is replaced only when
@@ -41,8 +41,8 @@ func New(dir string, ttl time.Duration) *Store {
 // directory grows with every version ever asked about. It goes by file age, which is
 // never less than the age of the answer inside, and gives a Put's scratch file an hour
 // in case that Put is still running.
-func sweep(dir string, ttl time.Duration) {
-	entries, err := os.ReadDir(dir)
+func sweep(directory string, ttl time.Duration) {
+	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return
 	}
@@ -56,7 +56,7 @@ func sweep(dir string, ttl time.Duration) {
 			continue
 		}
 		if info, err := e.Info(); err == nil && info.Mode().IsRegular() && time.Since(info.ModTime()) > limit {
-			os.Remove(filepath.Join(dir, name))
+			os.Remove(filepath.Join(directory, name))
 		}
 	}
 }
@@ -107,13 +107,13 @@ func (s *Store) Put(key string, value any) {
 	// asking about the same package at once - two depphunters over two folders, say -
 	// would otherwise write the same scratch file over each other, and the rename
 	// would publish whichever half won.
-	tmp, err := os.CreateTemp(s.dir, "put-*")
+	temporary, err := os.CreateTemp(s.directory, "put-*")
 	if err != nil {
 		return
 	}
-	_, err = tmp.Write(data)
-	if closeErr := tmp.Close(); err != nil || closeErr != nil || os.Rename(tmp.Name(), s.path(key)) != nil {
-		os.Remove(tmp.Name())
+	_, err = temporary.Write(data)
+	if closeErr := temporary.Close(); err != nil || closeErr != nil || os.Rename(temporary.Name(), s.path(key)) != nil {
+		os.Remove(temporary.Name())
 	}
 }
 
@@ -122,5 +122,5 @@ func (s *Store) Put(key string, value any) {
 // trusted to be a file name.
 func (s *Store) path(key string) string {
 	sum := sha256.Sum256([]byte(key))
-	return filepath.Join(s.dir, hex.EncodeToString(sum[:])+".json")
+	return filepath.Join(s.directory, hex.EncodeToString(sum[:])+".json")
 }

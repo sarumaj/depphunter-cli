@@ -19,8 +19,8 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 
 // Verifies: REQ-RS-002, REQ-RS-003, REQ-RS-004, REQ-RS-005, REQ-RS-006, REQ-RS-007, REQ-RS-008
 func TestResolution(t *testing.T) {
-	res := analyze(t)
-	langtest.CheckImports(t, res["app/src/main.rs"], map[string]lang.Target{
+	results := analyze(t)
+	langtest.CheckImports(t, results["app/src/main.rs"], map[string]lang.Target{
 		"use std::collections::HashMap":  {Ecosystem: "rust-std", Package: "std"},
 		"use crate::net":                 {Local: "app/src/net/mod.rs"},
 		"use crate::net::server::Server": {Local: "app/src/net/server.rs"},
@@ -36,11 +36,11 @@ func TestResolution(t *testing.T) {
 		"use Mode":           {}, // a local enum, not a crate
 		"mod config":         {Local: "app/src/config.rs"},
 	})
-	langtest.CheckImports(t, res["app/src/net/mod.rs"], map[string]lang.Target{
+	langtest.CheckImports(t, results["app/src/net/mod.rs"], map[string]lang.Target{
 		"mod server":                  {Local: "app/src/net/server.rs"},
 		"use super::config::Settings": {Local: "app/src/config.rs"},
 	})
-	langtest.CheckImports(t, res["app/src/net/server.rs"], map[string]lang.Target{
+	langtest.CheckImports(t, results["app/src/net/server.rs"], map[string]lang.Target{
 		"use crate::config": {Local: "app/src/config.rs"},
 		"use super":         {Local: "app/src/net/mod.rs"},
 	})
@@ -68,16 +68,16 @@ func TestLockTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tr, ok := r.(lang.Transitive)
+	transitive, ok := r.(lang.Transitive)
 	if !ok {
 		t.Fatal("the resolver cannot answer for transitive dependencies")
 	}
-	got := tr.Dependencies(lang.Target{Ecosystem: "crates", Package: "serde"})
+	got := transitive.Dependencies(lang.Target{Ecosystem: "crates", Package: "serde"})
 	if len(got) != 1 || got[0].Package != "serde_derive" || got[0].Version != "1.0.200" || !got[0].Pinned {
 		t.Fatalf("serde depends on %+v, want serde_derive 1.0.200 pinned", got)
 	}
 	// "syn 2.0.60" names a version beside the crate; only the name is the edge.
-	if got = tr.Dependencies(lang.Target{Ecosystem: "crates", Package: "serde_derive"}); len(got) != 1 || got[0].Package != "syn" {
+	if got = transitive.Dependencies(lang.Target{Ecosystem: "crates", Package: "serde_derive"}); len(got) != 1 || got[0].Package != "syn" {
 		t.Errorf("serde_derive depends on %+v, want syn", got)
 	}
 }
@@ -128,8 +128,8 @@ version = "1.0.12"
 	os.MkdirAll(filepath.Join(root, "src"), 0o755)
 	write("src/main.rs", "use syn::Item;\nuse old::Thing;\nfn main() {}\n")
 
-	res := langtest.Analyze(t, Plugin{}, root)
-	langtest.CheckImports(t, res["src/main.rs"], map[string]lang.Target{
+	results := langtest.Analyze(t, Plugin{}, root)
+	langtest.CheckImports(t, results["src/main.rs"], map[string]lang.Target{
 		"use syn::Item":  {Ecosystem: "crates", Package: "syn", Version: "2.0.48", Requested: "2", Pinned: true},
 		"use old::Thing": {Ecosystem: "crates", Package: "old", Version: "0.3.1", Requested: "0.3", Pinned: true},
 	})
@@ -138,15 +138,15 @@ version = "1.0.12"
 	if err != nil {
 		t.Fatal(err)
 	}
-	tr := r.(lang.Transitive)
-	got := tr.Dependencies(lang.Target{Ecosystem: "crates", Package: "old", Version: "0.3.1"})
+	transitive := r.(lang.Transitive)
+	got := transitive.Dependencies(lang.Target{Ecosystem: "crates", Package: "old", Version: "0.3.1"})
 	if len(got) != 1 || got[0].Package != "syn" || got[0].Version != "1.0.109" {
 		t.Errorf("old depends on %+v, want syn 1.0.109", got)
 	}
-	if got := tr.Dependencies(lang.Target{Ecosystem: "crates", Package: "syn", Version: "2.0.48"}); len(got) != 1 {
+	if got := transitive.Dependencies(lang.Target{Ecosystem: "crates", Package: "syn", Version: "2.0.48"}); len(got) != 1 {
 		t.Errorf("syn 2 depends on %+v, want unicode-ident alone", got)
 	}
-	if got := tr.Dependencies(lang.Target{Ecosystem: "crates", Package: "syn", Version: "1.0.109"}); len(got) != 2 {
+	if got := transitive.Dependencies(lang.Target{Ecosystem: "crates", Package: "syn", Version: "1.0.109"}); len(got) != 2 {
 		t.Errorf("syn 1 depends on %+v, want quote and unicode-ident", got)
 	}
 }
@@ -187,8 +187,8 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 	os.MkdirAll(filepath.Join(root, "src"), 0o755)
 	write("src/main.rs", "use billing::Invoice;\nuse ledger::Entry;\nuse serde::Serialize;\nfn main() {}\n")
 
-	res := langtest.Analyze(t, Plugin{}, root)
-	langtest.CheckImports(t, res["src/main.rs"], map[string]lang.Target{
+	results := langtest.Analyze(t, Plugin{}, root)
+	langtest.CheckImports(t, results["src/main.rs"], map[string]lang.Target{
 		"use billing::Invoice": {Ecosystem: "crates", Package: "billing", Version: "1.2.0", Requested: "1", Pinned: true, Registry: "corp"},
 		"use ledger::Entry":    {Ecosystem: "crates", Package: "ledger", Version: "2.0.1", Requested: "2", Pinned: true, Registry: "https://crates.corp.example/index"},
 		"use serde::Serialize": {Ecosystem: "crates", Package: "serde", Version: "1.0.200", Requested: "1", Pinned: true},

@@ -17,7 +17,7 @@ and Rojo project files (`*.project.json`), and **shall not** claim what
 LuaRocks and Wally install into a project (`lua_modules`, `.luarocks`,
 `Packages`, `DevPackages`, `ServerPackages`). `wally.toml` and Rojo
 projects, which share their extensions with other formats, have their own
-extraction cache classes. `.luau` files are labelled Luau, `.tl` files Teal,
+extraction cache classes. `.luau` files are labeled Luau, `.tl` files Teal,
 rockspecs and `luarocks.lock` Lua, and a walk without git skips `lua_modules`
 (REQ-LANG-018).
 

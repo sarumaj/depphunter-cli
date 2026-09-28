@@ -13,9 +13,9 @@ import "strings"
 // evalList evaluates a comma-separated list of paths (a qw list gives several).
 //
 // Implements: REQ-PERL-004
-func evalList(args []token) []string {
+func evalList(arguments []token) []string {
 	var out []string
-	for _, item := range splitArgs(args) {
+	for _, item := range splitArguments(arguments) {
 		if len(item) == 1 && item[0].kind == tQW {
 			out = append(out, item[0].words...)
 			continue
@@ -27,16 +27,16 @@ func evalList(args []token) []string {
 	return out
 }
 
-// splitArgs splits tokens on the commas (and fat commas) at bracket depth 0; an
+// splitArguments splits tokens on the commas (and fat commas) at bracket depth 0; an
 // argument list in parentheses is unwrapped first.
-func splitArgs(args []token) [][]token {
-	if len(args) >= 2 && args[0].kind == tPunct && args[0].text == "(" && args[len(args)-1].kind == tPunct && args[len(args)-1].text == ")" {
-		args = args[1 : len(args)-1]
+func splitArguments(arguments []token) [][]token {
+	if len(arguments) >= 2 && arguments[0].kind == tPunctuation && arguments[0].text == "(" && arguments[len(arguments)-1].kind == tPunctuation && arguments[len(arguments)-1].text == ")" {
+		arguments = arguments[1 : len(arguments)-1]
 	}
 	var out [][]token
 	depth, from := 0, 0
-	for k, t := range args {
-		if t.kind != tPunct {
+	for k, t := range arguments {
+		if t.kind != tPunctuation {
 			continue
 		}
 		switch t.text {
@@ -46,13 +46,13 @@ func splitArgs(args []token) [][]token {
 			depth--
 		case ",", "=>":
 			if depth == 0 {
-				out = append(out, args[from:k])
+				out = append(out, arguments[from:k])
 				from = k + 1
 			}
 		}
 	}
-	if from < len(args) {
-		out = append(out, args[from:])
+	if from < len(arguments) {
+		out = append(out, arguments[from:])
 	}
 	return out
 }
@@ -87,9 +87,9 @@ func (e *evaluator) peek() token {
 	return token{kind: -1}
 }
 
-func (e *evaluator) punct(p string) bool {
+func (e *evaluator) punctuation(p string) bool {
 	t := e.peek()
-	if t.kind == tPunct && t.text == p {
+	if t.kind == tPunctuation && t.text == p {
 		e.i++
 		return true
 	}
@@ -98,7 +98,7 @@ func (e *evaluator) punct(p string) bool {
 
 func (e *evaluator) concat() (string, bool) {
 	v, ok := e.postfix()
-	for ok && e.punct(".") {
+	for ok && e.punctuation(".") {
 		var w string
 		if w, ok = e.postfix(); ok {
 			v += w
@@ -110,15 +110,15 @@ func (e *evaluator) concat() (string, bool) {
 // postfix is a primary followed by method calls: ->dirname, ->sibling('x').
 func (e *evaluator) postfix() (string, bool) {
 	v, ok := e.primary()
-	for ok && e.punct("->") {
+	for ok && e.punctuation("->") {
 		m := e.peek()
 		if m.kind != tWord {
 			return "", false
 		}
 		e.i++
-		var args []string
-		if e.punct("(") {
-			if args, ok = e.args(); !ok {
+		var arguments []string
+		if e.punctuation("(") {
+			if arguments, ok = e.arguments(); !ok {
 				return "", false
 			}
 		}
@@ -126,9 +126,9 @@ func (e *evaluator) postfix() (string, bool) {
 		case "dirname", "parent":
 			v += "/.."
 		case "sibling":
-			v += "/.." + joinArgs(args)
+			v += "/.." + joinArguments(arguments)
 		case "child":
-			v += joinArgs(args)
+			v += joinArguments(arguments)
 		case "to_string", "stringify", "realpath", "absolute", "to_abs", "canonpath", "canonical":
 		default:
 			return "", false
@@ -137,18 +137,18 @@ func (e *evaluator) postfix() (string, bool) {
 	return v, ok
 }
 
-func joinArgs(args []string) string {
+func joinArguments(arguments []string) string {
 	var b strings.Builder
-	for _, a := range args {
+	for _, a := range arguments {
 		b.WriteString("/" + a)
 	}
 	return b.String()
 }
 
-// args reads call arguments after "(" through ")".
-func (e *evaluator) args() ([]string, bool) {
+// arguments reads call arguments after "(" through ")".
+func (e *evaluator) arguments() ([]string, bool) {
 	var out []string
-	if e.punct(")") {
+	if e.punctuation(")") {
 		return nil, true
 	}
 	for {
@@ -157,10 +157,10 @@ func (e *evaluator) args() ([]string, bool) {
 			return nil, false
 		}
 		out = append(out, v)
-		if e.punct(")") {
+		if e.punctuation(")") {
 			return out, true
 		}
-		if !e.punct(",") {
+		if !e.punctuation(",") {
 			return nil, false
 		}
 	}
@@ -169,10 +169,10 @@ func (e *evaluator) args() ([]string, bool) {
 func (e *evaluator) primary() (string, bool) {
 	t := e.peek()
 	switch t.kind {
-	case tStr:
+	case tString:
 		e.i++
 		return interpolate(t)
-	case tVar:
+	case tVariable:
 		e.i++
 		for _, v := range findBin {
 			if t.text == v {
@@ -180,11 +180,11 @@ func (e *evaluator) primary() (string, bool) {
 			}
 		}
 		return "", false
-	case tPunct:
+	case tPunctuation:
 		if t.text == "(" {
 			e.i++
 			v, ok := e.concat()
-			return v, ok && e.punct(")")
+			return v, ok && e.punctuation(")")
 		}
 		return "", false
 	case tWord:
@@ -194,12 +194,12 @@ func (e *evaluator) primary() (string, bool) {
 		case "__FILE__":
 			return selfMarker, true
 		case "curfile":
-			if e.punct("(") && !e.punct(")") {
+			if e.punctuation("(") && !e.punctuation(")") {
 				return "", false
 			}
 			return selfMarker, true
 		case "File::Spec", "Mojo::File", "Path::Tiny", "Cwd":
-			if !e.punct("->") {
+			if !e.punctuation("->") {
 				return "", false
 			}
 			m := e.peek()
@@ -209,29 +209,29 @@ func (e *evaluator) primary() (string, bool) {
 			e.i++
 			name = m.text
 		}
-		if !e.punct("(") {
+		if !e.punctuation("(") {
 			return "", false
 		}
-		args, ok := e.args()
+		arguments, ok := e.arguments()
 		if !ok {
 			return "", false
 		}
 		switch name {
 		case "catdir", "catfile", "File::Spec::Functions::catdir", "File::Spec::Functions::catfile":
-			if len(args) == 0 {
+			if len(arguments) == 0 {
 				return "", false
 			}
-			return strings.Join(args, "/"), true
+			return strings.Join(arguments, "/"), true
 		case "dirname", "File::Basename::dirname":
-			if len(args) != 1 {
+			if len(arguments) != 1 {
 				return "", false
 			}
-			return args[0] + "/..", true
+			return arguments[0] + "/..", true
 		case "abs_path", "realpath", "rel2abs", "Cwd::abs_path", "Cwd::realpath", "path", "Path::Tiny::path", "new":
-			if len(args) != 1 {
+			if len(arguments) != 1 {
 				return "", false
 			}
-			return args[0], true
+			return arguments[0], true
 		}
 	}
 	return "", false

@@ -23,12 +23,12 @@ func composer(name, version, requested string) lang.Target {
 	return lang.Target{Ecosystem: "composer", Package: name, Version: version, Requested: requested, Pinned: true}
 }
 
-func std(ext string) lang.Target { return lang.Target{Ecosystem: "php-std", Package: ext} }
+func std(extension string) lang.Target { return lang.Target{Ecosystem: "php-std", Package: extension} }
 
 // Verifies: REQ-PHP-001, REQ-PHP-002, REQ-PHP-003, REQ-PHP-004, REQ-PHP-005, REQ-PHP-006, REQ-PHP-007, REQ-PHP-009, REQ-PHP-010
 func TestResolution(t *testing.T) {
-	res := analyze(t, "testdata/repo")
-	langtest.CheckImports(t, res["src/Http/Controller/UserController.php"], map[string]lang.Target{
+	results := analyze(t, "testdata/repo")
+	langtest.CheckImports(t, results["src/Http/Controller/UserController.php"], map[string]lang.Target{
 		"use App\\Models\\User":                           {Local: "src/Models/User.php"},
 		"use App\\Models":                                 {Local: "src/Models"}, // a namespace, not a class
 		"use App\\Services\\Mailer":                       {Local: "src/Services/Mailer.php"},
@@ -60,29 +60,29 @@ func TestResolution(t *testing.T) {
 		"\\strlen()":                                       std("core"),
 		"\\collect()":                                      {}, // a global helper nobody here defines
 	})
-	langtest.CheckImports(t, res["tests/UserTest.php"], map[string]lang.Target{
+	langtest.CheckImports(t, results["tests/UserTest.php"], map[string]lang.Target{
 		// phpunit autoloads by classmap only: matched by its name.
 		"use PHPUnit\\Framework\\TestCase": composer("phpunit/phpunit", "10.5.5", "^10.5"),
 		"use Mockery":                      composer("mockery/mockery", "1.6.7", "^1.6"), // PSR-0 "Mockery"
 		"use App\\Models\\User":            {Local: "src/Models/User.php"},
 		"use UserSeeder":                   {Local: "database/seeds/UserSeeder.php"}, // classmap
 	})
-	langtest.CheckImports(t, res["src/Models/User.php"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/Models/User.php"], map[string]lang.Target{
 		"trait HasName": {Local: "src/Models/HasName.php"},
 	})
 	// A nested composer.json without a lock takes packages from the project above.
-	langtest.CheckImports(t, res["packages/tools/src/Formatter.php"], map[string]lang.Target{
+	langtest.CheckImports(t, results["packages/tools/src/Formatter.php"], map[string]lang.Target{
 		"use Psr\\Log\\LoggerInterface": composer("psr/log", "3.0.0", ""),
 	})
-	langtest.CheckImports(t, res["templates/view.phtml"], map[string]lang.Target{
+	langtest.CheckImports(t, results["templates/view.phtml"], map[string]lang.Target{
 		"include __DIR__ . '/partials/header.phtml'": {Local: "templates/partials/header.phtml"},
 	})
 }
 
 // Verifies: REQ-PHP-008
 func TestInstalledJSON(t *testing.T) {
-	res := analyze(t, "testdata/installed")
-	langtest.CheckImports(t, res["src/Shop.php"], map[string]lang.Target{
+	results := analyze(t, "testdata/installed")
+	langtest.CheckImports(t, results["src/Shop.php"], map[string]lang.Target{
 		"use Monolog\\Logger":              composer("monolog/monolog", "3.6.0", "^3.0"),
 		"use Psr\\Log\\NullLogger":         composer("psr/log", "3.0.1", ""),
 		"use Laminas\\Diactoros\\Response": {Ecosystem: "composer", Package: "laminas/diactoros", Unresolved: true},
@@ -106,11 +106,11 @@ func TestLockTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tr, ok := r.(lang.Transitive)
+	transitive, ok := r.(lang.Transitive)
 	if !ok {
 		t.Fatal("the resolver cannot answer for transitive dependencies")
 	}
-	for pkg, want := range map[string][]lang.Target{
+	for packageName, want := range map[string][]lang.Target{
 		// php and ext-json are the platform, not packages.
 		"guzzlehttp/guzzle":       {composer("psr/log", "3.0.0", "")},
 		"symfony/http-foundation": {composer("symfony/polyfill-mbstring", "v1.28.0", "")},
@@ -118,12 +118,12 @@ func TestLockTree(t *testing.T) {
 		"phpunit/phpunit": {{Ecosystem: "composer", Package: "sebastian/diff", Version: "^5.0"}},
 		"psr/log":         {},
 	} {
-		got := tr.Dependencies(lang.Target{Ecosystem: "composer", Package: pkg})
+		got := transitive.Dependencies(lang.Target{Ecosystem: "composer", Package: packageName})
 		if len(got) == 0 && len(want) == 0 {
 			continue
 		}
 		if !reflect.DeepEqual(got, want) {
-			t.Errorf("%s depends on %+v, want %+v", pkg, got, want)
+			t.Errorf("%s depends on %+v, want %+v", packageName, got, want)
 		}
 	}
 	if in, ok := r.(lang.Installed); !ok || in.Installed(composer("psr/log", "3.0.0", "")) {
@@ -133,22 +133,22 @@ func TestLockTree(t *testing.T) {
 
 // Verifies: REQ-PHP-003
 func TestSymbols(t *testing.T) {
-	res := analyze(t, "testdata/repo")
-	langtest.CheckSymbols(t, res["src/Http/Controller/UserController.php"], map[string]string{
+	results := analyze(t, "testdata/repo")
+	langtest.CheckSymbols(t, results["src/Http/Controller/UserController.php"], map[string]string{
 		"App\\Http\\Controller": "namespace", "UserController": "class", "UserController.LIMIT": "const",
 		"UserController.index": "method", "UserController.helper": "method", // nested() is local to a closure
 	})
-	langtest.CheckSymbols(t, res["src/Support/functions.php"], map[string]string{
+	langtest.CheckSymbols(t, results["src/Support/functions.php"], map[string]string{
 		"App\\Support": "namespace", "VERSION": "const", "format_money": "func", "legacy": "func",
 		"APP_DEBUG": "const",
 	})
-	langtest.CheckSymbols(t, res["src/Services/Billing/Invoice.php"], map[string]string{
+	langtest.CheckSymbols(t, results["src/Services/Billing/Invoice.php"], map[string]string{
 		"App\\Services\\Billing": "namespace", "Invoice": "enum", "Invoice.label": "method",
 	})
-	langtest.CheckSymbols(t, res["src/Models/HasName.php"], map[string]string{
+	langtest.CheckSymbols(t, results["src/Models/HasName.php"], map[string]string{
 		"App\\Models": "namespace", "HasName": "trait", "HasName.name": "method",
 	})
-	langtest.CheckSymbols(t, res["src/Http/Controller/Contracts/Handles.php"], map[string]string{
+	langtest.CheckSymbols(t, results["src/Http/Controller/Contracts/Handles.php"], map[string]string{
 		"App\\Http\\Controller\\Contracts": "namespace", "Handles": "interface", "Handles.handle": "method",
 	})
 }
@@ -157,7 +157,7 @@ func TestSymbols(t *testing.T) {
 //
 // Verifies: REQ-PHP-002, REQ-PHP-003
 func TestBracedNamespaces(t *testing.T) {
-	src := []byte(`<?php
+	source := []byte(`<?php
 namespace A {
     class K extends Base {}
     $o = new class { public function anon() {} };
@@ -167,13 +167,13 @@ namespace B {
     class L extends Y\Z implements \Countable {}
 }
 `)
-	ex, err := (Plugin{}).Extract(&scan.File{Path: "x.php"}, src)
+	extraction, err := (Plugin{}).Extract(&scan.File{Path: "x.php"}, source)
 	if err != nil {
 		t.Fatal(err)
 	}
 	var got []lang.RawImport
-	for _, im := range ex.Imports {
-		got = append(got, lang.RawImport{Spec: im.Spec, Module: im.Module, Name: im.Name})
+	for _, rawImport := range extraction.Imports {
+		got = append(got, lang.RawImport{Spec: rawImport.Spec, Module: rawImport.Module, Name: rawImport.Name})
 	}
 	want := []lang.RawImport{
 		{Spec: "extends Base", Module: `A\Base`, Name: kindLocal},
@@ -185,11 +185,11 @@ namespace B {
 		t.Errorf("got %+v\nwant %+v", got, want)
 	}
 	names := map[string]bool{}
-	for _, s := range ex.Symbols {
+	for _, s := range extraction.Symbols {
 		names[s.Name] = true
 	}
 	if !names["K"] || !names["L"] || names[".anon"] || names["anon"] {
-		t.Errorf("symbols %+v", ex.Symbols)
+		t.Errorf("symbols %+v", extraction.Symbols)
 	}
 }
 
@@ -199,9 +199,9 @@ func TestParseUse(t *testing.T) {
 		`use A\B;`:           {{kindClass, `A\B`, "B"}},
 		`use \A\B as C;`:     {{kindClass, `A\B`, "C"}},
 		`use A\B, C\D AS E;`: {{kindClass, `A\B`, "B"}, {kindClass, `C\D`, "E"}},
-		"use A\\{B, C\\D as E, function f, const G,\n};": {{kindClass, `A\B`, "B"}, {kindClass, `A\C\D`, "E"}, {kindFunction, `A\f`, "f"}, {kindConst, `A\G`, "G"}},
+		"use A\\{B, C\\D as E, function f, const G,\n};": {{kindClass, `A\B`, "B"}, {kindClass, `A\C\D`, "E"}, {kindFunction, `A\f`, "f"}, {kindConstant, `A\G`, "G"}},
 		`use function A\f, A\g;`:                         {{kindFunction, `A\f`, "f"}, {kindFunction, `A\g`, "g"}},
-		`use const A\B;`:                                 {{kindConst, `A\B`, "B"}},
+		`use const A\B;`:                                 {{kindConstant, `A\B`, "B"}},
 		`use function A\{f, g};`:                         {{kindFunction, `A\f`, "f"}, {kindFunction, `A\g`, "g"}},
 		"use A\\B; // why":                               {{kindClass, `A\B`, "B"}},
 	} {
@@ -254,17 +254,17 @@ func TestPinned(t *testing.T) {
 // Verifies: REQ-PHP-006
 func TestBuiltin(t *testing.T) {
 	for _, c := range []struct {
-		fqn, kind, ext string
+		qualifiedName, kind, extension string
 	}{
 		{"ArrayObject", kindClass, "spl"}, {"pdo", kindClass, "pdo"}, {`Random\Randomizer`, kindClass, "random"},
 		{"FFI", kindClass, "ffi"}, {"array_map", kindFunction, "standard"}, {"mb_strlen", kindFunction, "mbstring"},
-		{"json_encode", kindFunction, "json"}, {"is_array", kindFunction, "standard"}, {"PHP_EOL", kindConst, "core"},
+		{"json_encode", kindFunction, "json"}, {"is_array", kindFunction, "standard"}, {"PHP_EOL", kindConstant, "core"},
 		{`MongoDB\Client`, kindClass, ""}, {"collect", kindFunction, ""}, {"get_option", kindFunction, ""},
 		{"Carbon", kindClass, ""},
 	} {
-		ext, ok := builtin(c.fqn, c.kind)
-		if ext != c.ext || ok != (c.ext != "") {
-			t.Errorf("builtin(%s, %s) = %q %v, want %q", c.fqn, c.kind, ext, ok, c.ext)
+		extension, ok := builtin(c.qualifiedName, c.kind)
+		if extension != c.extension || ok != (c.extension != "") {
+			t.Errorf("builtin(%s, %s) = %q %v, want %q", c.qualifiedName, c.kind, extension, ok, c.extension)
 		}
 	}
 }

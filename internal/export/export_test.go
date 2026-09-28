@@ -17,11 +17,11 @@ func sample() *graph.Graph {
 	return &graph.Graph{
 		Root: `odd "repo"`,
 		Nodes: []*graph.Node{
-			{ID: "d:.", Kind: graph.KindDir, Name: "repo", Path: "."},
-			{ID: "d:pkg", Kind: graph.KindDir, Name: "pkg", Path: "pkg", Parent: "d:."},
-			{ID: "f:main.go", Kind: graph.KindFile, Name: "main.go", Path: "main.go", Parent: "d:.", Lang: "Go", LOC: 10},
-			{ID: "f:pkg/a.go", Kind: graph.KindFile, Name: "a.go", Path: "pkg/a.go", Parent: "d:pkg", Lang: "Go", LOC: 3},
-			{ID: "f:README.md", Kind: graph.KindFile, Name: "README.md", Path: "README.md", Parent: "d:.", Lang: "Markdown", LOC: 1},
+			{ID: "d:.", Kind: graph.KindDirectory, Name: "repo", Path: "."},
+			{ID: "d:pkg", Kind: graph.KindDirectory, Name: "pkg", Path: "pkg", Parent: "d:."},
+			{ID: "f:main.go", Kind: graph.KindFile, Name: "main.go", Path: "main.go", Parent: "d:.", Language: "Go", LOC: 10},
+			{ID: "f:pkg/a.go", Kind: graph.KindFile, Name: "a.go", Path: "pkg/a.go", Parent: "d:pkg", Language: "Go", LOC: 3},
+			{ID: "f:README.md", Kind: graph.KindFile, Name: "README.md", Path: "README.md", Parent: "d:.", Language: "Markdown", LOC: 1},
 			{ID: "s:main.go#main", Kind: graph.KindSymbol, Name: "main", SymbolKind: "func", Line: 3, Parent: "f:main.go"},
 			{ID: "e:go", Kind: graph.KindEcosystem, Name: "Go modules"},
 			{ID: "e:go-std", Kind: graph.KindEcosystem, Name: "Go standard library", Std: true},
@@ -40,54 +40,54 @@ func sample() *graph.Graph {
 
 // Verifies: REQ-EXP-001
 func TestJSONRoundTrip(t *testing.T) {
-	var buf bytes.Buffer
-	if err := Write(&buf, sample(), "json"); err != nil {
+	var buffer bytes.Buffer
+	if err := Write(&buffer, sample(), "json"); err != nil {
 		t.Fatal(err)
 	}
 	var g graph.Graph
-	if err := json.Unmarshal(buf.Bytes(), &g); err != nil || len(g.Nodes) != 11 || len(g.Edges) != 4 {
+	if err := json.Unmarshal(buffer.Bytes(), &g); err != nil || len(g.Nodes) != 11 || len(g.Edges) != 4 {
 		t.Fatalf("round trip: %v, %d nodes, %d edges", err, len(g.Nodes), len(g.Edges))
 	}
 }
 
 // Verifies: REQ-EXP-002
 func TestGraphML(t *testing.T) {
-	var buf bytes.Buffer
-	if err := Write(&buf, sample(), "graphml"); err != nil {
+	var buffer bytes.Buffer
+	if err := Write(&buffer, sample(), "graphml"); err != nil {
 		t.Fatal(err)
 	}
 	var doc gmlDoc
-	if err := xml.Unmarshal(buf.Bytes(), &doc); err != nil {
-		t.Fatalf("not well-formed: %v\n%s", err, buf.String())
+	if err := xml.Unmarshal(buffer.Bytes(), &doc); err != nil {
+		t.Fatalf("not well-formed: %v\n%s", err, buffer.String())
 	}
 	if len(doc.Graph.Nodes) != 11 || len(doc.Graph.Edges) != 4 {
 		t.Fatalf("%d nodes, %d edges", len(doc.Graph.Nodes), len(doc.Graph.Edges))
 	}
-	var loc string
+	var location string
 	for _, n := range doc.Graph.Nodes {
 		if n.ID == "f:main.go" {
 			for _, d := range n.Data {
 				if d.Key == "loc" {
-					loc = d.Value
+					location = d.Value
 				}
 			}
 		}
 	}
-	if loc != "10" {
-		t.Errorf("main.go loc = %q", loc)
+	if location != "10" {
+		t.Errorf("main.go loc = %q", location)
 	}
-	if !strings.Contains(buf.String(), "x.io/&lt;z&gt;") {
+	if !strings.Contains(buffer.String(), "x.io/&lt;z&gt;") {
 		t.Error("names must be XML-escaped")
 	}
 }
 
 // Verifies: REQ-EXP-003
 func TestDOT(t *testing.T) {
-	var buf bytes.Buffer
-	if err := Write(&buf, sample(), "dot"); err != nil {
+	var buffer bytes.Buffer
+	if err := Write(&buffer, sample(), "dot"); err != nil {
 		t.Fatal(err)
 	}
-	out := buf.String()
+	out := buffer.String()
 	// Node ids are generated; compare edges by label.
 	labels := map[string]string{}
 	for _, m := range regexp.MustCompile(`(n\d+)\[[^\]]*label="((?:[^"\\]|\\.)*)"`).FindAllStringSubmatch(out, -1) {

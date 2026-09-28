@@ -13,7 +13,7 @@ verification:
 ## Statement
 
 A grapple hook that strikes a building **shall** hold, every time, where it
-strikes within 0.6 map units (two storeys) of the building's roof edge, and
+strikes within 0.6 map units (two stories) of the building's roof edge, and
 **shall not** hold anywhere lower; a hook that strikes the ground or a terrace
 **shall** hold as before. A hook that does not hold **shall** pull nobody: it
 **shall** be seen to glance off the face it struck, with a puff at the point of

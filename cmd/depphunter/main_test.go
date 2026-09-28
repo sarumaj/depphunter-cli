@@ -19,15 +19,15 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/scope"
 )
 
-// execute runs the command with args and returns what it printed.
-func execute(t *testing.T, args ...string) (string, error) {
+// execute runs the command with arguments and returns what it printed.
+func execute(t *testing.T, arguments ...string) (string, error) {
 	t.Helper()
 	var out bytes.Buffer
-	cmd := newCommand()
-	cmd.SetOut(&out)
-	cmd.SetErr(&out)
-	cmd.SetArgs(args)
-	err := cmd.ExecuteContext(context.Background())
+	command := newCommand()
+	command.SetOut(&out)
+	command.SetErr(&out)
+	command.SetArgs(arguments)
+	err := command.ExecuteContext(context.Background())
 	return out.String(), err
 }
 
@@ -192,10 +192,10 @@ func TestVendoredDocsAndTestdataAreNotLinkChecked(t *testing.T) {
 		"lib/site-packages/pkg/README.md", ".venv/lib/README.md", "venv/README.md",
 		"internal/x/testdata/README.md",
 	} {
-		g.Nodes = append(g.Nodes, &graph.Node{ID: graph.FileID(p), Kind: graph.KindFile, Path: p, Lang: "Markdown"})
+		g.Nodes = append(g.Nodes, &graph.Node{ID: graph.FileID(p), Kind: graph.KindFile, Path: p, Language: "Markdown"})
 	}
 	// Not Markdown, so not a document either way.
-	g.Nodes = append(g.Nodes, &graph.Node{ID: graph.FileID("main.go"), Kind: graph.KindFile, Path: "main.go", Lang: "Go"})
+	g.Nodes = append(g.Nodes, &graph.Node{ID: graph.FileID("main.go"), Kind: graph.KindFile, Path: "main.go", Language: "Go"})
 
 	got := documents(g)
 	want := []string{"README.md", "docs/guide.md", "internal/x/notes.md"}
@@ -268,46 +268,46 @@ func TestPrivatePackagesAreNotAskedAbout(t *testing.T) {
 // Verifies: REQ-FND-026, REQ-SUP-040
 func TestCommitPinnedPackagesAreAskedByCommit(t *testing.T) {
 	const sha = "0123456789abcdef0123456789abcdef01234567"
-	pkg := func(eco, name, version string, set func(*graph.Node)) *graph.Node {
-		n := &graph.Node{ID: graph.PackageID(eco, name), Kind: graph.KindPackage, Name: name,
-			Parent: graph.EcosystemID(eco), Version: version}
+	packageName := func(ecosystem, name, version string, set func(*graph.Node)) *graph.Node {
+		n := &graph.Node{ID: graph.PackageID(ecosystem, name), Kind: graph.KindPackage, Name: name,
+			Parent: graph.EcosystemID(ecosystem), Version: version}
 		if set != nil {
 			set(n)
 		}
 		return n
 	}
 	g := &graph.Graph{Nodes: []*graph.Node{
-		pkg("zig", "github.com/ziglibs/known-folders", sha, nil),
-		pkg("carthage", "git.example.com/ios/Kit", sha, nil),
-		pkg("jsonnet-bundler", "git.acme.internal/ops/libs", sha, func(n *graph.Node) {
+		packageName("zig", "github.com/ziglibs/known-folders", sha, nil),
+		packageName("carthage", "git.example.com/ios/Kit", sha, nil),
+		packageName("jsonnet-bundler", "git.acme.internal/ops/libs", sha, func(n *graph.Node) {
 			n.Origin, n.Private = "git@git.acme.internal:ops/libs.git", true
 		}),
-		pkg("hex", "phoenix", sha, func(n *graph.Node) {
+		packageName("hex", "phoenix", sha, func(n *graph.Node) {
 			n.Origin, n.Private = "https://github.com/phoenixframework/phoenix.git", true
 		}),
-		pkg("swiftpm", "github.com/acme/private-kit", sha, nil),
-		pkg("shards", "internal-shard", sha, func(n *graph.Node) { n.Private = true }),
-		pkg("shards", "markd", sha, nil),
-		pkg("paket", "github.com/fsharp/FAKE", sha, func(n *graph.Node) { n.Private = true }),
-		pkg("nix", "github.com/numtide/flake-utils", "b1d9ab7", func(n *graph.Node) {
+		packageName("swiftpm", "github.com/acme/private-kit", sha, nil),
+		packageName("shards", "internal-shard", sha, func(n *graph.Node) { n.Private = true }),
+		packageName("shards", "markd", sha, nil),
+		packageName("paket", "github.com/fsharp/FAKE", sha, func(n *graph.Node) { n.Private = true }),
+		packageName("nix", "github.com/numtide/flake-utils", "b1d9ab7", func(n *graph.Node) {
 			n.Git = "https://github.com/numtide/flake-utils#" + sha
 		}),
-		pkg("npm", "forge-std", "github:foundry-rs/forge-std#1eea5ba", nil),
-		pkg("npm", "left-pad", "github:stevemao/left-pad#"+sha, nil),
-		pkg("pypi", "foo", "@ git+https://git.corp.example/o/foo@"+sha, func(n *graph.Node) {
+		packageName("npm", "forge-std", "github:foundry-rs/forge-std#1eea5ba", nil),
+		packageName("npm", "left-pad", "github:stevemao/left-pad#"+sha, nil),
+		packageName("pypi", "foo", "@ git+https://git.corp.example/o/foo@"+sha, func(n *graph.Node) {
 			n.Git = "https://git.corp.example/o/foo#" + sha
 		}),
-		pkg("pypi", "bar", "@ git+https://github.com/o/bar@"+sha, func(n *graph.Node) {
+		packageName("pypi", "bar", "@ git+https://github.com/o/bar@"+sha, func(n *graph.Node) {
 			n.Git = "https://github.com/o/bar#" + sha
 		}),
-		pkg("fpm", "floating", sha, func(n *graph.Node) { n.Floating = true }),
+		packageName("fpm", "floating", sha, func(n *graph.Node) { n.Floating = true }),
 	}}
 	private := scope.New([]string{"github.com/acme/*", "shards:internal-*"})
 	var got []string
 	for _, p := range pinned(g, private.Match) {
 		s := p.Ecosystem + " " + p.Name
 		if p.Commit != "" {
-			s += " commit=" + p.Repo
+			s += " commit=" + p.Repository
 		}
 		if p.CommitOnly {
 			s += " only"

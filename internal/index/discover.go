@@ -27,15 +27,15 @@ import (
 // Discover reads index configuration from this machine first and the repository
 // second, so a source the machine names is preferred and trusted, and one only the
 // repository names is recorded but never vouched for.
-func Discover(files []*scan.File, env func(string) string, home string) *Config {
-	return NewDiscoverer(env, home).Discover(files)
+func Discover(files []*scan.File, environment func(string) string, home string) *Config {
+	return NewDiscoverer(environment, home).Discover(files)
 }
 
 // Discoverer fills one configuration once the files are known. The configuration
 // exists before that, so a client can be built against it up front and still see what
 // the scan later finds.
 type Discoverer struct {
-	cfg *Config
+	config *Config
 	// m is whose configuration is read, and where each tool keeps it.
 	m userconf.Machine
 	// read says the machine's configuration has been read: it is this user's, it
@@ -43,12 +43,12 @@ type Discoverer struct {
 	read bool
 }
 
-func NewDiscoverer(env func(string) string, home string) *Discoverer {
-	return &Discoverer{cfg: New(), m: userconf.New(home, env)}
+func NewDiscoverer(environment func(string) string, home string) *Discoverer {
+	return &Discoverer{config: New(), m: userconf.New(home, environment)}
 }
 
 // Config is the configuration this discoverer fills.
-func (d *Discoverer) Config() *Config { return d.cfg }
+func (d *Discoverer) Config() *Config { return d.config }
 
 // Discover reads the machine's configuration on the first call and the repository's
 // on every call, replacing what the repository declared before, so under --watch the
@@ -57,12 +57,12 @@ func (d *Discoverer) Config() *Config { return d.cfg }
 // Implements: REQ-SUP-015, REQ-SUP-016
 func (d *Discoverer) Discover(files []*scan.File) *Config {
 	if !d.read {
-		d.cfg.machine(d.m)
+		d.config.machine(d.m)
 		d.read = true
 	}
-	d.cfg.forgetProject()
-	d.cfg.project(files)
-	return d.cfg
+	d.config.forgetProject()
+	d.config.project(files)
+	return d.config
 }
 
 // machine reads the configuration of whoever is running depphunter: environment first,
@@ -71,13 +71,13 @@ func (d *Discoverer) Discover(files []*scan.File) *Config {
 //
 // Implements: REQ-SUP-015, REQ-SUP-064
 func (c *Config) machine(m userconf.Machine) {
-	env, home := m.Env, m.Home
+	environment, home := m.Environment, m.Home
 	k := sink{
-		put: func(eco string, s Source) {
+		put: func(ecosystem string, s Source) {
 			s.Trusted, s.Origin = true, OriginMachine
-			c.Add(eco, s)
+			c.Add(ecosystem, s)
 		},
-		off: func(eco string) { c.SwitchOff(eco, OriginMachine) },
+		off: func(ecosystem string) { c.SwitchOff(ecosystem, OriginMachine) },
 	}
 	add := k.add
 	read := func(name string, parse func([]byte, sink)) {
@@ -90,11 +90,11 @@ func (c *Config) machine(m userconf.Machine) {
 	}
 
 	// npm: the environment's settings, then the user's npmrc, then the global one.
-	npmEnv := m.NpmEnv()
-	add(NPM, npmEnv["registry"], "")
-	for _, key := range slices.Sorted(maps.Keys(npmEnv)) {
+	npmEnvironment := m.NpmEnvironment()
+	add(NPM, npmEnvironment["registry"], "")
+	for _, key := range slices.Sorted(maps.Keys(npmEnvironment)) {
 		if scope, ok := strings.CutSuffix(key, ":registry"); ok && strings.HasPrefix(scope, "@") {
-			add(NPM, npmEnv[key], scope)
+			add(NPM, npmEnvironment[key], scope)
 		}
 	}
 	read(m.NpmUserConfig(), plain(parseNpmrc))
@@ -102,17 +102,17 @@ func (c *Config) machine(m userconf.Machine) {
 	machineYarnBun(m, k)
 	machinePip(m, k)
 	c.machinePython(m, k)
-	parseGoproxy(m.GoEnv("GOPROXY"), k)
+	parseGoproxy(m.GoEnvironment("GOPROXY"), k)
 	// Where the container tools pull images from: registries.conf's registries and
 	// mirrors, the Docker daemon's mirrors of Docker Hub.
 	c.oci = readOCIConf(m)
 	// Cargo: the registries the environment defines, before config.toml's, since a
 	// variable overrides the same registry's index there.
-	cargoEnv := m.CargoRegistries()
-	for _, name := range slices.Sorted(maps.Keys(cargoEnv)) {
-		k.put(Cargo, Source{URL: cargoEnv[name], Registry: strings.ToLower(name), Kind: Additive})
+	cargoEnvironment := m.CargoRegistries()
+	for _, name := range slices.Sorted(maps.Keys(cargoEnvironment)) {
+		k.put(Cargo, Source{URL: cargoEnvironment[name], Registry: strings.ToLower(name), Kind: Additive})
 	}
-	read(m.CargoFile("config"), func(data []byte, k sink) { cargoConfig(data, k, cargoEnv) })
+	read(m.CargoFile("config"), func(data []byte, k sink) { cargoConfig(data, k, cargoEnvironment) })
 	// Composer's global configuration, in the one home Composer takes.
 	read(join(m.ComposerHome(), "config.json"), parseComposer)
 	// NuGet: the user's NuGet.Config, then the machine-wide ones, the same the
@@ -128,20 +128,20 @@ func (c *Config) machine(m userconf.Machine) {
 	}
 	c.applyNuGet(nil)
 	// Bundler's mirror of rubygems.org, from the environment and the user's config.
-	add(RubyGems, env("BUNDLE_MIRROR__RUBYGEMS__ORG"), "")
+	add(RubyGems, environment("BUNDLE_MIRROR__RUBYGEMS__ORG"), "")
 	read(m.BundlerConfig(), plain(parseBundleConfig))
 	// The server dart pub and flutter pub get install from instead of pub.dev.
-	add(Pub, env("PUB_HOSTED_URL"), "")
+	add(Pub, environment("PUB_HOSTED_URL"), "")
 	// The Hex API Mix and rebar3 talk to instead of hex.pm's (HEX_API_URL, HEX_API,
 	// hex.config's api_url). HEX_MIRROR is not read: a mirror serves the
 	// repository's signed protobuf files, not this API.
 	add(Hex, m.HexAPIURL(), "")
 	// The Hex repositories rebar3 asks, before hex.pm's, for every project: a
 	// rebar3 project's packages are asked of them too (see hexRepositories).
-	c.rebar3Repos, c.rebar3Replace = m.ReadRebar3HexRepos()
+	c.rebar3Repositories, c.rebar3Replace = m.ReadRebar3HexRepositories()
 	// The repositories renv restores from instead of those renv.lock records, and the
 	// R profile R reads first, which is where options(repos = ...) usually lives.
-	for _, u := range strings.FieldsFunc(env("RENV_CONFIG_REPOS_OVERRIDE"), func(r rune) bool { return r == ';' || r == ',' }) {
+	for _, u := range strings.FieldsFunc(environment("RENV_CONFIG_REPOS_OVERRIDE"), func(r rune) bool { return r == ';' || r == ',' }) {
 		if k, v, ok := strings.Cut(u, "="); ok && !strings.Contains(k, "/") {
 			u = v // CRAN=https://...
 		}
@@ -149,24 +149,24 @@ func (c *Config) machine(m userconf.Machine) {
 			add(CRAN, u, "")
 		}
 	}
-	if p := env("R_PROFILE_USER"); p != "" {
+	if p := environment("R_PROFILE_USER"); p != "" {
 		if data, err := os.ReadFile(p); err == nil {
 			parseRprofile(data, add)
 		}
 	}
 	// cabal's configuration: CABAL_CONFIG names the file, CABAL_DIR the directory
 	// holding it; else ~/.config/cabal/config (XDG) or ~/.cabal/config below.
-	if f := env("CABAL_CONFIG"); f != "" {
+	if f := environment("CABAL_CONFIG"); f != "" {
 		if data, err := os.ReadFile(f); err == nil {
 			parseCabalRepositories(data, add)
 		}
-	} else if dir := env("CABAL_DIR"); dir != "" {
-		if data, err := os.ReadFile(filepath.Join(dir, "config")); err == nil {
+	} else if directory := environment("CABAL_DIR"); directory != "" {
+		if data, err := os.ReadFile(filepath.Join(directory, "config")); err == nil {
 			parseCabalRepositories(data, add)
 		}
 	}
 	// The LuaRocks configuration file LUAROCKS_CONFIG names replaces the user's.
-	if f := env("LUAROCKS_CONFIG"); f != "" {
+	if f := environment("LUAROCKS_CONFIG"); f != "" {
 		if data, err := os.ReadFile(f); err == nil {
 			parseLuaRocksConfig(data, add)
 		}
@@ -201,13 +201,13 @@ func (c *Config) machine(m userconf.Machine) {
 	readBazelrc(filepath.Join(home, ".bazelrc"), "", "", add, c.bazelHelper(false), map[string]bool{})
 }
 
-// join is filepath.Join, or "" when dir is: nothing is read under a directory that
+// join is filepath.Join, or "" when directory is: nothing is read under a directory that
 // is not there.
-func join(dir, name string) string {
-	if dir == "" {
+func join(directory, name string) string {
+	if directory == "" {
 		return ""
 	}
-	return filepath.Join(dir, name)
+	return filepath.Join(directory, name)
 }
 
 // machinePip reads pip's configuration as pip layers it: its configuration files in
@@ -236,10 +236,10 @@ func machinePip(m userconf.Machine, k sink) {
 			extra = s.extra
 		}
 	}
-	if v := m.Env("PIP_INDEX_URL"); v != "" {
+	if v := m.Environment("PIP_INDEX_URL"); v != "" {
 		index = v
 	}
-	if v := m.Env("PIP_EXTRA_INDEX_URL"); v != "" {
+	if v := m.Environment("PIP_EXTRA_INDEX_URL"); v != "" {
 		extra = strings.Fields(v)
 	}
 	k.add(PyPI, index, "")
@@ -252,18 +252,18 @@ func machinePip(m userconf.Machine, k sink) {
 // (add); those that know how a source relates to the public default say so (put,
 // extra), and a configuration that switches the default off says that (off).
 type sink struct {
-	put func(eco string, s Source)
-	off func(eco string)
+	put func(ecosystem string, s Source)
+	off func(ecosystem string)
 }
 
 // add records a source that replaces the public default, or serves its scope.
-func (k sink) add(eco, url, scope string) { k.put(eco, Source{URL: url, Scope: scope}) }
+func (k sink) add(ecosystem, url, scope string) { k.put(ecosystem, Source{URL: url, Scope: scope}) }
 
 // extra records a source asked beside the public default.
-func (k sink) extra(eco, url string) { k.put(eco, Source{URL: url, Kind: Additive}) }
+func (k sink) extra(ecosystem, url string) { k.put(ecosystem, Source{URL: url, Kind: Additive}) }
 
 // plain adapts a parser that only ever calls add.
-func plain(parse func([]byte, func(eco, url, scope string))) func([]byte, sink) {
+func plain(parse func([]byte, func(ecosystem, url, scope string))) func([]byte, sink) {
 	return func(data []byte, k sink) { parse(data, k.add) }
 }
 
@@ -283,9 +283,9 @@ func parseGoproxy(value string, k sink) {
 	k.off(Go)
 	for value != "" {
 		i := strings.IndexAny(value, ",|")
-		entry, sep := value, byte(0)
+		entry, separator := value, byte(0)
 		if i >= 0 {
-			entry, sep, value = value[:i], value[i], value[i+1:]
+			entry, separator, value = value[:i], value[i], value[i+1:]
 		} else {
 			value = ""
 		}
@@ -295,7 +295,7 @@ func parseGoproxy(value string, k sink) {
 		case "direct", "off":
 			return
 		}
-		k.put(Go, Source{URL: entry, Kind: Listed, OnError: sep == '|'})
+		k.put(Go, Source{URL: entry, Kind: Listed, OnError: separator == '|'})
 	}
 }
 
@@ -305,11 +305,11 @@ func parseGoproxy(value string, k sink) {
 // Implements: REQ-SUP-015, REQ-SUP-018
 func (c *Config) project(files []*scan.File) {
 	k := sink{
-		put: func(eco string, s Source) {
+		put: func(ecosystem string, s Source) {
 			s.Trusted, s.Origin = false, OriginProject
-			c.Add(eco, s)
+			c.Add(ecosystem, s)
 		},
-		off: func(eco string) { c.SwitchOff(eco, OriginProject) },
+		off: func(ecosystem string) { c.SwitchOff(ecosystem, OriginProject) },
 	}
 	add := k.add
 	// A repository may declare several indexes for one ecosystem. Which one is shown
@@ -326,7 +326,7 @@ func (c *Config) project(files []*scan.File) {
 		if base == "nuget.config" {
 			continue
 		}
-		data, err := os.ReadFile(f.Abs)
+		data, err := os.ReadFile(f.AbsolutePath)
 		if err != nil {
 			continue
 		}
@@ -354,12 +354,12 @@ func (c *Config) project(files []*scan.File) {
 		case base == "pom.xml":
 			parsePom(data, k)
 		case base == "build.gradle", base == "build.gradle.kts", base == "settings.gradle", base == "settings.gradle.kts":
-			parseGradleRepos(data, k)
+			parseGradleRepositories(data, k)
 		case strings.HasSuffix(base, ".sbt") && path.Base(path.Dir(f.Path)) != "project":
 			parseSbtResolvers(data, k)
 		case base == "deps.edn", base == "bb.edn", base == "shadow-cljs.edn", base == "project.clj", base == "build.boot":
 			c.clojure = true
-			parseClojureRepos(base, data, k)
+			parseClojureRepositories(base, data, k)
 		case base == "composer.json":
 			parseComposer(data, k)
 		case f.Path == "Gemfile" || strings.HasSuffix(f.Path, "/Gemfile") || base == "gems.rb":
@@ -386,8 +386,8 @@ func (c *Config) project(files []*scan.File) {
 		case base == "podfile.lock":
 			parsePodfileLock(data, add)
 		case base == ".bazelrc" || strings.HasSuffix(base, ".bazelrc"):
-			root := strings.TrimSuffix(f.Abs, filepath.FromSlash(f.Path))
-			readBazelrc(f.Abs, bazelWorkspace(root, filepath.Dir(f.Abs)), root, add, c.bazelHelper(true), map[string]bool{})
+			root := strings.TrimSuffix(f.AbsolutePath, filepath.FromSlash(f.Path))
+			readBazelrc(f.AbsolutePath, bazelWorkspace(root, filepath.Dir(f.AbsolutePath)), root, add, c.bazelHelper(true), map[string]bool{})
 		case base == "dub.settings.json":
 			parseDubSettings(data, k)
 		case base == "qlfile":
@@ -403,7 +403,7 @@ func (c *Config) project(files []*scan.File) {
 }
 
 // parseNpmrc reads "registry=" and the per-scope "@scope:registry=" of an npm config.
-func parseNpmrc(data []byte, add func(eco, url, scope string)) {
+func parseNpmrc(data []byte, add func(ecosystem, url, scope string)) {
 	for _, line := range strings.Split(string(data), "\n") {
 		line = strings.TrimSpace(line)
 		if line == "" || strings.HasPrefix(line, ";") || strings.HasPrefix(line, "#") {
@@ -510,7 +510,7 @@ func parseCargoConfig(data []byte, k sink) { cargoConfig(data, k, nil) }
 // cargoConfig is parseCargoConfig with the registries the environment defines
 // (userconf.Machine.CargoRegistries), whose index replaces config.toml's. Those were
 // recorded already; what a replace-with chain ends at is taken from them too.
-func cargoConfig(data []byte, k sink, env map[string]string) {
+func cargoConfig(data []byte, k sink, environment map[string]string) {
 	var doc struct {
 		Source map[string]struct {
 			Registry    string
@@ -531,13 +531,13 @@ func cargoConfig(data []byte, k sink, env map[string]string) {
 	}
 	if s, ok := doc.Source[name]; ok && name != "crates-io" {
 		k.add(Cargo, s.Registry, "")
-	} else if u, ok := env[userconf.CargoRegistryName(name)]; ok && name != "crates-io" {
+	} else if u, ok := environment[userconf.CargoRegistryName(name)]; ok && name != "crates-io" {
 		k.add(Cargo, u, "")
 	} else if r, ok := doc.Registries[name]; ok {
 		k.add(Cargo, r.Index, "")
 	}
 	for _, key := range slices.Sorted(maps.Keys(doc.Registries)) {
-		if _, ok := env[userconf.CargoRegistryName(key)]; ok {
+		if _, ok := environment[userconf.CargoRegistryName(key)]; ok {
 			continue
 		}
 		k.put(Cargo, Source{URL: doc.Registries[key].Index, Registry: key, Kind: Additive})
@@ -612,44 +612,44 @@ func parsePom(data []byte, k sink) {
 }
 
 var (
-	// gradleRepo is a maven repository of a Gradle script: maven("url"),
+	// gradleRepository is a maven repository of a Gradle script: maven("url"),
 	// maven(url = "url"), maven { url "url" }, maven { url = uri("url") } and
 	// maven { setUrl("url") }.
-	gradleRepo = regexp.MustCompile(`\bmaven\s*(?:\(\s*(?:url\s*=\s*)?(?:uri\(\s*)?["']([^"']+)["']|` +
+	gradleRepository = regexp.MustCompile(`\bmaven\s*(?:\(\s*(?:url\s*=\s*)?(?:uri\(\s*)?["']([^"']+)["']|` +
 		`\{[^{}]*?\b(?:url|setUrl)\s*(?:=\s*|\(\s*)?(?:uri\(\s*)?["']([^"']+)["'])`)
 	// gradleOwnBlock opens a block whose repositories serve Gradle itself - its
 	// plugins, the build script's classpath - rather than the code.
 	gradleOwnBlock = regexp.MustCompile(`\b(?:pluginManagement|buildscript)\s*\{`)
 )
 
-// parseGradleRepos reads the Maven repositories a Gradle build or settings script
+// parseGradleRepositories reads the Maven repositories a Gradle build or settings script
 // declares, other than Maven Central. mavenCentral(), google() and mavenLocal()
 // name no repository of the project's own, and the repositories of
 // pluginManagement and buildscript blocks serve Gradle's plugins, not the code.
 // Each is asked beside Maven Central.
 //
 // Implements: REQ-SUP-015, REQ-SUP-056, REQ-SUP-063
-func parseGradleRepos(data []byte, k sink) {
-	src := string(data)
+func parseGradleRepositories(data []byte, k sink) {
+	source := string(data)
 	for {
-		loc := gradleOwnBlock.FindStringIndex(src)
-		if loc == nil {
+		span := gradleOwnBlock.FindStringIndex(source)
+		if span == nil {
 			break
 		}
-		depth, end := 1, len(src)
-		for i := loc[1]; i < len(src); i++ {
-			if src[i] == '{' {
+		depth, end := 1, len(source)
+		for i := span[1]; i < len(source); i++ {
+			if source[i] == '{' {
 				depth++
-			} else if src[i] == '}' {
+			} else if source[i] == '}' {
 				if depth--; depth == 0 {
 					end = i + 1
 					break
 				}
 			}
 		}
-		src = src[:loc[0]] + src[end:]
+		source = source[:span[0]] + source[end:]
 	}
-	for _, m := range gradleRepo.FindAllStringSubmatch(src, -1) {
+	for _, m := range gradleRepository.FindAllStringSubmatch(source, -1) {
 		u := strings.TrimSpace(m[1] + m[2])
 		if strings.HasPrefix(u, "http") && !MavenPublic(u) {
 			k.extra(Maven, u)
@@ -657,23 +657,23 @@ func parseGradleRepos(data []byte, k sink) {
 	}
 }
 
-// parseClojureRepos reads the Maven repositories a Clojure manifest declares:
+// parseClojureRepositories reads the Maven repositories a Clojure manifest declares:
 // deps.edn's and bb.edn's :mvn/repos, Leiningen's and Boot's :repositories,
 // shadow-cljs's :repositories or :maven {:repositories}. Maven Central and Clojars
 // are the public indexes and are not recorded as the repository's; the others are
 // asked beside them.
 //
 // Implements: REQ-SUP-056, REQ-SUP-063
-func parseClojureRepos(base string, data []byte, k sink) {
+func parseClojureRepositories(base string, data []byte, k sink) {
 	forms := edn.Read(data)
-	var repos []*edn.Node
+	var repositories []*edn.Node
 	switch base {
 	case "deps.edn", "bb.edn", "shadow-cljs.edn":
 		if len(forms) > 0 {
 			top := forms[0]
-			repos = append(repos, top.Get("mvn/repos"), top.Get("repositories"))
+			repositories = append(repositories, top.Get("mvn/repos"), top.Get("repositories"))
 			if mv := top.Get("maven"); mv != nil {
-				repos = append(repos, mv.Get("repositories"))
+				repositories = append(repositories, mv.Get("repositories"))
 			}
 		}
 	case "project.clj", "build.boot":
@@ -683,24 +683,24 @@ func parseClojureRepos(base string, data []byte, k sink) {
 			}
 			for i := 1; i+1 < len(f.Kids); i++ {
 				if k := f.Kids[i]; k.Kind == edn.Keyword && k.Text == "repositories" {
-					repos = append(repos, edn.Unquote(f.Kids[i+1]))
+					repositories = append(repositories, edn.Unquote(f.Kids[i+1]))
 				}
 			}
 		}
 	}
-	for _, r := range repos {
-		clojureRepos(r, k)
+	for _, r := range repositories {
+		clojureRepositories(r, k)
 	}
 }
 
-// clojureRepos records the repositories of one :mvn/repos or :repositories form:
+// clojureRepositories records the repositories of one :mvn/repos or :repositories form:
 // {"name" {:url "..."}}, {"name" "url"}, [["name" "url"]] or [["name" {:url "..."}]].
 // Maven Central and Clojars are the public indexes and are not recorded; the others
 // are asked beside them, except one named "central", which tools.deps and
 // Leiningen take in place of Maven Central.
 //
 // Implements: REQ-SUP-056, REQ-SUP-063
-func clojureRepos(r *edn.Node, k sink) {
+func clojureRepositories(r *edn.Node, k sink) {
 	if r == nil {
 		return
 	}
@@ -756,8 +756,8 @@ func parseComposer(data []byte, k sink) {
 	disabled := func(name string, raw json.RawMessage) bool {
 		return (name == "packagist.org" || name == "packagist") && strings.TrimSpace(string(raw)) == "false"
 	}
-	var repos []json.RawMessage
-	if json.Unmarshal(doc.Repositories, &repos) != nil {
+	var repositories []json.RawMessage
+	if json.Unmarshal(doc.Repositories, &repositories) != nil {
 		var named map[string]json.RawMessage
 		if json.Unmarshal(doc.Repositories, &named) != nil {
 			return
@@ -767,10 +767,10 @@ func parseComposer(data []byte, k sink) {
 				k.off(Composer)
 				continue
 			}
-			repos = append(repos, named[key])
+			repositories = append(repositories, named[key])
 		}
 	}
-	for _, raw := range repos {
+	for _, raw := range repositories {
 		var r repository
 		if json.Unmarshal(raw, &r) == nil && r.Type == "composer" {
 			k.extra(Composer, strings.TrimSpace(r.URL))
@@ -788,14 +788,14 @@ func parseComposer(data []byte, k sink) {
 }
 
 var (
-	gemSource = regexp.MustCompile(`^(\s*)source\s*\(?\s*["']([^"']+)["']\s*\)?\s*(do\b)?`)
-	gemDecl   = regexp.MustCompile(`^\s*gem\s*\(?\s*["']([^"']+)["']`)
-	blockEnd  = regexp.MustCompile(`^(\s*)end\b`)
+	gemSource      = regexp.MustCompile(`^(\s*)source\s*\(?\s*["']([^"']+)["']\s*\)?\s*(do\b)?`)
+	gemDeclaration = regexp.MustCompile(`^\s*gem\s*\(?\s*["']([^"']+)["']`)
+	blockEnd       = regexp.MustCompile(`^(\s*)end\b`)
 )
 
 // parseGemfile reads the gem servers a Gemfile names: a `source` line serves every
 // gem, a `source ... do` block only the gems declared inside it.
-func parseGemfile(data []byte, add func(eco, url, scope string)) {
+func parseGemfile(data []byte, add func(ecosystem, url, scope string)) {
 	block, indent := "", ""
 	for _, line := range strings.Split(string(data), "\n") {
 		if m := gemSource.FindStringSubmatch(line); m != nil {
@@ -811,7 +811,7 @@ func parseGemfile(data []byte, add func(eco, url, scope string)) {
 		}
 		if m := blockEnd.FindStringSubmatch(line); m != nil && m[1] == indent {
 			block = ""
-		} else if m := gemDecl.FindStringSubmatch(line); m != nil {
+		} else if m := gemDeclaration.FindStringSubmatch(line); m != nil {
 			add(RubyGems, block, m[1])
 		}
 	}
@@ -820,7 +820,7 @@ func parseGemfile(data []byte, add func(eco, url, scope string)) {
 // parseGemfileLock reads the remotes of Gemfile.lock's GEM sections. The first serves
 // everything; a later one - a private server beside rubygems.org - only the gems
 // locked under it.
-func parseGemfileLock(data []byte, add func(eco, url, scope string)) {
+func parseGemfileLock(data []byte, add func(ecosystem, url, scope string)) {
 	first, remote, gem := "", "", false
 	for _, line := range strings.Split(string(data), "\n") {
 		switch {
@@ -842,7 +842,7 @@ func parseGemfileLock(data []byte, add func(eco, url, scope string)) {
 }
 
 // parseGemrc reads the sources of a ~/.gemrc (YAML: ":sources:" and a list).
-func parseGemrc(data []byte, add func(eco, url, scope string)) {
+func parseGemrc(data []byte, add func(ecosystem, url, scope string)) {
 	in := false
 	for _, line := range strings.Split(string(data), "\n") {
 		trimmed := strings.TrimSpace(line)
@@ -861,7 +861,7 @@ func parseGemrc(data []byte, add func(eco, url, scope string)) {
 // (~/.bundle/config, or where BUNDLE_USER_CONFIG or BUNDLE_USER_HOME put it:
 // BUNDLE_MIRROR__RUBYGEMS__ORG, or the URL form of the key). Its credentials are
 // read by internal/auth.
-func parseBundleConfig(data []byte, add func(eco, url, scope string)) {
+func parseBundleConfig(data []byte, add func(ecosystem, url, scope string)) {
 	for _, line := range strings.Split(string(data), "\n") {
 		key, value, ok := strings.Cut(line, ": ")
 		if !ok || !strings.HasPrefix(key, "BUNDLE_MIRROR__") || !strings.Contains(strings.ToUpper(key), "RUBYGEMS__ORG") {
@@ -874,15 +874,15 @@ func parseBundleConfig(data []byte, add func(eco, url, scope string)) {
 // parsePubspec reads the servers a pubspec names for its hosted dependencies, each
 // serving only the package it is written for: `hosted: <url>`, or the older
 // `hosted: {name, url}`.
-func parsePubspec(data []byte, add func(eco, url, scope string)) {
+func parsePubspec(data []byte, add func(ecosystem, url, scope string)) {
 	var doc map[string]any
 	if yaml.Unmarshal(data, &doc) != nil {
 		return
 	}
 	for _, section := range []string{"dependencies", "dev_dependencies", "dependency_overrides"} {
-		deps, _ := doc[section].(map[string]any)
-		for _, name := range slices.Sorted(maps.Keys(deps)) {
-			d, _ := deps[name].(map[string]any)
+		dependencies, _ := doc[section].(map[string]any)
+		for _, name := range slices.Sorted(maps.Keys(dependencies)) {
+			d, _ := dependencies[name].(map[string]any)
 			switch h := d["hosted"].(type) {
 			case string:
 				add(Pub, h, name)
@@ -897,7 +897,7 @@ func parsePubspec(data []byte, add func(eco, url, scope string)) {
 
 // parsePubspecLock reads the servers pubspec.lock resolved hosted packages from,
 // other than pub.dev (and its former name), each serving the packages locked from it.
-func parsePubspecLock(data []byte, add func(eco, url, scope string)) {
+func parsePubspecLock(data []byte, add func(ecosystem, url, scope string)) {
 	var doc struct {
 		Packages map[string]struct {
 			Source      string `yaml:"source"`
@@ -925,7 +925,7 @@ func parsePubspecLock(data []byte, add func(eco, url, scope string)) {
 // Manager's included, are the public index and are not recorded.
 //
 // Implements: REQ-SUP-015, REQ-SUP-048
-func parseRenvLock(data []byte, add func(eco, url, scope string)) {
+func parseRenvLock(data []byte, add func(ecosystem, url, scope string)) {
 	var doc struct {
 		R struct {
 			Repositories []struct{ Name, URL string }
@@ -935,14 +935,14 @@ func parseRenvLock(data []byte, add func(eco, url, scope string)) {
 	if json.Unmarshal(data, &doc) != nil {
 		return
 	}
-	repos := map[string]string{}
+	repositories := map[string]string{}
 	for _, r := range doc.R.Repositories {
-		repos[r.Name] = r.URL
+		repositories[r.Name] = r.URL
 	}
 	names := slices.Sorted(maps.Keys(doc.Packages))
 	for _, key := range names {
 		p := doc.Packages[key]
-		u, ok := repos[p.Repository]
+		u, ok := repositories[p.Repository]
 		if !ok && strings.Contains(p.Repository, "://") {
 			u = p.Repository
 		}
@@ -973,18 +973,18 @@ func renvBioconductor(data []byte) string {
 }
 
 var (
-	rReposArg = regexp.MustCompile(`\brepos\s*=\s*`)
-	rURL      = regexp.MustCompile(`["'](https?://[^"'\s]+)["']`)
+	rRepositoriesArgument = regexp.MustCompile(`\brepos\s*=\s*`)
+	rURL                  = regexp.MustCompile(`["'](https?://[^"'\s]+)["']`)
 )
 
 // parseRprofile reads the literal repository URLs of options(repos = ...) in an R
 // profile: repos = "url" or repos = c(CRAN = "url", internal = "url").
 //
 // Implements: REQ-SUP-015, REQ-SUP-048
-func parseRprofile(data []byte, add func(eco, url, scope string)) {
-	src := string(data)
-	for _, loc := range rReposArg.FindAllStringIndex(src, -1) {
-		rest := src[loc[1]:]
+func parseRprofile(data []byte, add func(ecosystem, url, scope string)) {
+	source := string(data)
+	for _, span := range rRepositoriesArgument.FindAllStringIndex(source, -1) {
+		rest := source[span[1]:]
 		end := len(rest)
 		if strings.HasPrefix(rest, "c(") {
 			depth := 0
@@ -1015,7 +1015,7 @@ func parseRprofile(data []byte, add func(eco, url, scope string)) {
 // company's) serves every package, as cabal asks each configured repository.
 //
 // Implements: REQ-SUP-015, REQ-SUP-049
-func parseCabalRepositories(data []byte, add func(eco, url, scope string)) {
+func parseCabalRepositories(data []byte, add func(ecosystem, url, scope string)) {
 	in := false
 	for _, line := range strings.Split(string(data), "\n") {
 		trimmed := strings.TrimSpace(line)
@@ -1044,7 +1044,7 @@ var podSource = regexp.MustCompile(`(?m)^\s*source[\s(]+['"]([^'"]+)['"]`)
 // repository is the public index and is not recorded.
 //
 // Implements: REQ-SUP-015, REQ-SUP-051
-func parsePodfile(data []byte, add func(eco, url, scope string)) {
+func parsePodfile(data []byte, add func(ecosystem, url, scope string)) {
 	for _, m := range podSource.FindAllSubmatch(data, -1) {
 		if u := string(m[1]); !CocoaPodsTrunk(u) {
 			add(CocoaPods, u, "")
@@ -1056,20 +1056,20 @@ func parsePodfile(data []byte, add func(eco, url, scope string)) {
 // pod was installed from: a private one is recorded for its pods only.
 //
 // Implements: REQ-SUP-015, REQ-SUP-051
-func parsePodfileLock(data []byte, add func(eco, url, scope string)) {
+func parsePodfileLock(data []byte, add func(ecosystem, url, scope string)) {
 	var doc struct {
-		Repos map[string][]string `yaml:"SPEC REPOS"`
+		Repositories map[string][]string `yaml:"SPEC REPOS"`
 	}
 	if yaml.Unmarshal(data, &doc) != nil {
 		return
 	}
-	for _, repo := range slices.Sorted(maps.Keys(doc.Repos)) {
-		if CocoaPodsTrunk(repo) {
+	for _, repository := range slices.Sorted(maps.Keys(doc.Repositories)) {
+		if CocoaPodsTrunk(repository) {
 			continue
 		}
-		for _, name := range doc.Repos[repo] {
+		for _, name := range doc.Repositories[repository] {
 			root, _, _ := strings.Cut(name, "/")
-			add(CocoaPods, repo, root)
+			add(CocoaPods, repository, root)
 		}
 	}
 }
@@ -1079,7 +1079,7 @@ func parsePodfileLock(data []byte, add func(eco, url, scope string)) {
 // recorded.
 //
 // Implements: REQ-SUP-052
-func parseLuaRocksConfig(data []byte, add func(eco, url, scope string)) {
+func parseLuaRocksConfig(data []byte, add func(ecosystem, url, scope string)) {
 	for _, s := range luarocks.Servers(data) {
 		if !LuaRocksItself(s) {
 			add(LuaRocks, s, "")
@@ -1096,7 +1096,7 @@ func parseLuaRocksConfig(data []byte, add func(eco, url, scope string)) {
 // helper: helpers are programs, and are not run (REQ-BAZEL-011).
 //
 // Implements: REQ-SUP-057, REQ-BAZEL-011
-func parseBazelrc(data []byte, add func(eco, url, scope string), helper func(string), include func(string)) {
+func parseBazelrc(data []byte, add func(ecosystem, url, scope string), helper func(string), include func(string)) {
 	for _, line := range strings.Split(string(data), "\n") {
 		fields := strings.Fields(line)
 		if len(fields) == 0 || strings.HasPrefix(fields[0], "#") {
@@ -1144,7 +1144,7 @@ func parseBazelrc(data []byte, add func(eco, url, scope string), helper func(str
 // which Bazel fails on) or read already is passed over.
 //
 // Implements: REQ-SUP-057
-func readBazelrc(name, workspace, within string, add func(eco, url, scope string), helper func(string), seen map[string]bool) {
+func readBazelrc(name, workspace, within string, add func(ecosystem, url, scope string), helper func(string), seen map[string]bool) {
 	name = filepath.Clean(name)
 	if seen[name] || len(seen) > 64 {
 		return
@@ -1163,15 +1163,15 @@ func readBazelrc(name, workspace, within string, add func(eco, url, scope string
 		}
 		p = filepath.FromSlash(p)
 		if !filepath.IsAbs(p) {
-			rel := p
-			p = filepath.Join(filepath.Dir(name), rel)
+			relative := p
+			p = filepath.Join(filepath.Dir(name), relative)
 			if workspace != "" {
-				if _, err := os.Stat(filepath.Join(workspace, rel)); err == nil {
-					p = filepath.Join(workspace, rel)
+				if _, err := os.Stat(filepath.Join(workspace, relative)); err == nil {
+					p = filepath.Join(workspace, relative)
 				}
 			}
 		}
-		if rel, err := filepath.Rel(within, filepath.Clean(p)); within != "" && (err != nil || rel == ".." || strings.HasPrefix(rel, ".."+string(filepath.Separator))) {
+		if relative, err := filepath.Rel(within, filepath.Clean(p)); within != "" && (err != nil || relative == ".." || strings.HasPrefix(relative, ".."+string(filepath.Separator))) {
 			return
 		}
 		readBazelrc(p, workspace, within, add, helper, seen)
@@ -1234,14 +1234,14 @@ func (c *Config) bazelHelperFor(host string) (scope string, ok bool) {
 // bazelWorkspace is the Bazel workspace a repository's .bazelrc belongs to: the
 // nearest directory at or above it holding MODULE.bazel, REPO.bazel, WORKSPACE or
 // WORKSPACE.bazel, up to the repository's root, else the root.
-func bazelWorkspace(root, dir string) string {
-	for d := dir; ; d = filepath.Dir(d) {
+func bazelWorkspace(root, directory string) string {
+	for d := directory; ; d = filepath.Dir(d) {
 		for _, marker := range []string{"MODULE.bazel", "REPO.bazel", "WORKSPACE", "WORKSPACE.bazel"} {
 			if _, err := os.Stat(filepath.Join(d, marker)); err == nil {
 				return d
 			}
 		}
-		if rel, err := filepath.Rel(root, d); err != nil || rel == "." || strings.HasPrefix(rel, "..") || filepath.Dir(d) == d {
+		if relative, err := filepath.Rel(root, d); err != nil || relative == "." || strings.HasPrefix(relative, "..") || filepath.Dir(d) == d {
 			return root
 		}
 	}
@@ -1256,7 +1256,7 @@ type dubSettings struct {
 // machineDub reads the registries dub asks on this machine, in dub's order: those of
 // `DUB_REGISTRY` (`;`-separated), then the `registryUrls` of its settings files, the
 // user's before the system's, each asked before code.dlang.org. The `skipRegistry`
-// of the file with priority that sets one is honoured: `standard` switches
+// of the file with priority that sets one is honored: `standard` switches
 // code.dlang.org off, `configured` the settings' registries too, `all` every one.
 //
 // Implements: REQ-SUP-060, REQ-SUP-064
@@ -1278,7 +1278,7 @@ func machineDub(m userconf.Machine, k sink) {
 		}
 	}
 	if skip != "all" {
-		for _, u := range strings.Split(m.Env("DUB_REGISTRY"), ";") {
+		for _, u := range strings.Split(m.Environment("DUB_REGISTRY"), ";") {
 			addDubRegistry(k, u)
 		}
 	}

@@ -27,18 +27,18 @@ type declaration struct {
 // spec is a gem Gemfile.lock records.
 type spec struct {
 	name, version string
-	deps          map[string]string // name -> requirement
+	dependencies  map[string]string // name -> requirement
 	origin        string            // remote of a GIT or PATH section; "" for a gem server
 	commit        string            // a GIT section's revision, when it is a full SHA
 	path          bool              // PATH section: the gem's code is on disk
 }
 
 type project struct {
-	dir      string
-	declared map[string]*declaration // lower-case name
-	locked   map[string]*spec        // lower-case name
-	loadPath []string                // lib directories of gems whose code is in the repository
-	own      map[string]string       // gems this repository builds -> their gemspec or directory
+	directory string
+	declared  map[string]*declaration // lower-case name
+	locked    map[string]*spec        // lower-case name
+	loadPath  []string                // lib directories of gems whose code is in the repository
+	own       map[string]string       // gems this repository builds -> their gemspec or directory
 }
 
 var (
@@ -54,14 +54,14 @@ var (
 // `path`, `git` and `github` blocks whose gems come from there. Nothing is run.
 //
 // Implements: REQ-RUBY-007
-func readGemfile(src string, read func(rel string) (string, bool)) (decls []*declaration, gemspecDirs []string) {
+func readGemfile(source string, read func(relative string) (string, bool)) (declarations []*declaration, gemspecDirectories []string) {
 	type block struct {
 		indent string
 		kind   string
 		value  string
 	}
 	var blocks []block
-	lines := strings.Split(src, "\n")
+	lines := strings.Split(source, "\n")
 	for i := 0; i < len(lines); i++ {
 		line := stripComment(lines[i])
 		for strings.HasSuffix(strings.TrimSpace(line), ",") && i+1 < len(lines) {
@@ -78,16 +78,16 @@ func readGemfile(src string, read func(rel string) (string, bool)) (decls []*dec
 			continue
 		}
 		if m := gemspecLine.FindStringSubmatch(line); m != nil {
-			p, _ := option(splitArgs(m[1]), "path")
-			gemspecDirs = append(gemspecDirs, p)
+			p, _ := option(splitArguments(m[1]), "path")
+			gemspecDirectories = append(gemspecDirectories, p)
 			continue
 		}
 		if m := evalGemfile.FindStringSubmatch(line); m != nil && read != nil {
 			if p, ok := evalPath(m[1]); ok && !strings.HasPrefix(p, "__DIR__/_") {
 				if data, ok := read(strings.TrimPrefix(strings.TrimPrefix(p, "__DIR__"), "/")); ok {
-					more, dirs := readGemfile(data, nil)
-					decls = append(decls, more...)
-					gemspecDirs = append(gemspecDirs, dirs...)
+					more, directories := readGemfile(data, nil)
+					declarations = append(declarations, more...)
+					gemspecDirectories = append(gemspecDirectories, directories...)
 				}
 			}
 			continue
@@ -95,42 +95,42 @@ func readGemfile(src string, read func(rel string) (string, bool)) (decls []*dec
 		if !gemLine.MatchString(line) {
 			continue
 		}
-		args := splitArgs(strings.TrimSpace(line)[3:])
-		if len(args) == 0 {
+		arguments := splitArguments(strings.TrimSpace(line)[3:])
+		if len(arguments) == 0 {
 			continue
 		}
-		name, ok := literal(args[0])
+		name, ok := literal(arguments[0])
 		if !ok || name == "" {
 			continue
 		}
 		d := &declaration{name: name}
-		var reqs []string
-		for _, a := range args[1:] {
+		var requirements []string
+		for _, a := range arguments[1:] {
 			if v, ok := literal(a); ok {
-				reqs = append(reqs, strings.TrimSpace(v))
+				requirements = append(requirements, strings.TrimSpace(v))
 			}
 		}
-		d.requirement = strings.Join(reqs, ", ")
-		opts := options(args[1:])
+		d.requirement = strings.Join(requirements, ", ")
+		parsedOptions := options(arguments[1:])
 		for _, b := range blocks {
-			if b.kind != "source" && opts[b.kind] == "" {
-				opts[b.kind] = b.value
+			if b.kind != "source" && parsedOptions[b.kind] == "" {
+				parsedOptions[b.kind] = b.value
 			}
 		}
 		switch {
-		case opts["path"] != "":
-			d.origin = "path:" + opts["path"]
-		case opts["git"] != "":
-			d.origin = opts["git"]
-		case opts["github"] != "":
-			d.origin = "https://github.com/" + opts["github"] + ".git"
+		case parsedOptions["path"] != "":
+			d.origin = "path:" + parsedOptions["path"]
+		case parsedOptions["git"] != "":
+			d.origin = parsedOptions["git"]
+		case parsedOptions["github"] != "":
+			d.origin = "https://github.com/" + parsedOptions["github"] + ".git"
 		}
-		if d.origin != "" && lang.Commit(opts["ref"]) {
-			d.commit = opts["ref"]
+		if d.origin != "" && lang.Commit(parsedOptions["ref"]) {
+			d.commit = parsedOptions["ref"]
 		}
-		decls = append(decls, d)
+		declarations = append(declarations, d)
 	}
-	return decls, gemspecDirs
+	return declarations, gemspecDirectories
 }
 
 // stripComment takes a `#` comment off a line, outside strings.
@@ -155,23 +155,23 @@ func stripComment(line string) string {
 }
 
 var (
-	specName     = regexp.MustCompile(`\.name\s*=\s*["']([^"']+)["']`)
-	specDep      = regexp.MustCompile(`\.add_(?:runtime_|development_)?dependency\s*\(?\s*(.*)$`)
-	requirePaths = regexp.MustCompile(`\.require_paths?\s*=\s*(.*)$`)
+	specName       = regexp.MustCompile(`\.name\s*=\s*["']([^"']+)["']`)
+	specDependency = regexp.MustCompile(`\.add_(?:runtime_|development_)?dependency\s*\(?\s*(.*)$`)
+	requirePaths   = regexp.MustCompile(`\.require_paths?\s*=\s*(.*)$`)
 )
 
 // readGemspec reads a gemspec's name, its dependencies and the directories it puts on
 // the load path (lib unless require_paths says otherwise), from its text.
 //
 // Implements: REQ-RUBY-007
-func readGemspec(src string) (name string, decls []*declaration, paths []string) {
-	for _, line := range strings.Split(src, "\n") {
+func readGemspec(source string) (name string, declarations []*declaration, paths []string) {
+	for _, line := range strings.Split(source, "\n") {
 		line = stripComment(line)
 		if m := specName.FindStringSubmatch(line); m != nil && name == "" {
 			name = m[1]
 		}
 		if m := requirePaths.FindStringSubmatch(line); m != nil {
-			for _, a := range splitArgs(strings.Trim(strings.TrimSpace(m[1]), "[]")) {
+			for _, a := range splitArguments(strings.Trim(strings.TrimSpace(m[1]), "[]")) {
 				if p, ok := literal(a); ok {
 					paths = append(paths, p)
 				}
@@ -180,38 +180,38 @@ func readGemspec(src string) (name string, decls []*declaration, paths []string)
 				paths = append(paths, strings.Fields(s[3:len(s)-1])...)
 			}
 		}
-		m := specDep.FindStringSubmatch(line)
+		m := specDependency.FindStringSubmatch(line)
 		if m == nil {
 			continue
 		}
-		args := splitArgs(strings.TrimSuffix(strings.TrimSpace(m[1]), ")"))
-		if len(args) == 0 {
+		arguments := splitArguments(strings.TrimSuffix(strings.TrimSpace(m[1]), ")"))
+		if len(arguments) == 0 {
 			continue
 		}
-		dep, ok := literal(args[0])
-		if !ok || dep == "" {
+		dependency, ok := literal(arguments[0])
+		if !ok || dependency == "" {
 			continue
 		}
-		var reqs []string
-		for _, a := range args[1:] {
-			for _, item := range splitArgs(strings.Trim(strings.TrimSpace(a), "[]")) {
+		var requirements []string
+		for _, a := range arguments[1:] {
+			for _, item := range splitArguments(strings.Trim(strings.TrimSpace(a), "[]")) {
 				if v, ok := literal(item); ok {
-					reqs = append(reqs, strings.TrimSpace(v))
+					requirements = append(requirements, strings.TrimSpace(v))
 				}
 			}
 		}
-		decls = append(decls, &declaration{name: dep, requirement: strings.Join(reqs, ", ")})
+		declarations = append(declarations, &declaration{name: dependency, requirement: strings.Join(requirements, ", ")})
 	}
 	if len(paths) == 0 {
 		paths = []string{"lib"}
 	}
-	return name, decls, paths
+	return name, declarations, paths
 }
 
 var (
-	lockSpec = regexp.MustCompile(`^    ([^\s(]+) \(([^)]+)\)$`)
-	lockDep  = regexp.MustCompile(`^      ([^\s(]+)(?: \(([^)]+)\))?$`)
-	lockTop  = regexp.MustCompile(`^  ([^\s(!]+)!?(?: \(([^)]+)\))?$`)
+	lockSpec       = regexp.MustCompile(`^    ([^\s(]+) \(([^)]+)\)$`)
+	lockDependency = regexp.MustCompile(`^      ([^\s(]+)(?: \(([^)]+)\))?$`)
+	lockTop        = regexp.MustCompile(`^  ([^\s(!]+)!?(?: \(([^)]+)\))?$`)
 )
 
 // readLock reads Gemfile.lock: the specs of its GEM, GIT and PATH sections with what
@@ -220,14 +220,14 @@ var (
 // one version, the platform left out.
 //
 // Implements: REQ-RUBY-008, REQ-RUBY-011
-func readLock(src string) (map[string]*spec, map[string]string) {
+func readLock(source string) (map[string]*spec, map[string]string) {
 	specs := map[string]*spec{}
 	direct := map[string]string{}
 	section, remote, revision := "", "", ""
-	var cur *spec
-	for _, line := range strings.Split(strings.ReplaceAll(src, "\r\n", "\n"), "\n") {
+	var current *spec
+	for _, line := range strings.Split(strings.ReplaceAll(source, "\r\n", "\n"), "\n") {
 		if line != "" && line[0] != ' ' {
-			section, remote, revision, cur = strings.TrimSpace(line), "", "", nil
+			section, remote, revision, current = strings.TrimSpace(line), "", "", nil
 			continue
 		}
 		switch section {
@@ -244,24 +244,24 @@ func readLock(src string) (map[string]*spec, map[string]string) {
 			if m := lockSpec.FindStringSubmatch(line); m != nil {
 				key := strings.ToLower(m[1])
 				if old := specs[key]; old != nil {
-					cur = old // another platform of the same gem
+					current = old // another platform of the same gem
 					continue
 				}
-				cur = &spec{name: m[1], version: platformless(m[2]), deps: map[string]string{}}
+				current = &spec{name: m[1], version: platformless(m[2]), dependencies: map[string]string{}}
 				switch section {
 				case "GIT":
-					cur.origin = remote
+					current.origin = remote
 					if lang.Commit(revision) {
-						cur.commit = revision
+						current.commit = revision
 					}
 				case "PATH":
-					cur.origin, cur.path = remote, true
+					current.origin, current.path = remote, true
 				}
-				specs[key] = cur
+				specs[key] = current
 				continue
 			}
-			if m := lockDep.FindStringSubmatch(line); m != nil && cur != nil {
-				cur.deps[m[1]] = m[2]
+			if m := lockDependency.FindStringSubmatch(line); m != nil && current != nil {
+				current.dependencies[m[1]] = m[2]
 			}
 		case "DEPENDENCIES":
 			if m := lockTop.FindStringSubmatch(line); m != nil {
@@ -291,7 +291,7 @@ func (p *project) target(name string) lang.Target {
 	key := strings.ToLower(name)
 	d := p.declared[key]
 	if s := p.locked[key]; s != nil {
-		t := lang.Target{Ecosystem: ecoGems, Package: s.name, Version: s.version, Pinned: true}
+		t := lang.Target{Ecosystem: ecosystemGems, Package: s.name, Version: s.version, Pinned: true}
 		switch {
 		case s.path:
 			t.Origin, t.Pinned = "path:"+s.origin, false
@@ -307,9 +307,9 @@ func (p *project) target(name string) lang.Target {
 		return t
 	}
 	if d == nil {
-		return lang.Target{Ecosystem: ecoGems, Package: name, Unresolved: true}
+		return lang.Target{Ecosystem: ecosystemGems, Package: name, Unresolved: true}
 	}
-	t := lang.Target{Ecosystem: ecoGems, Package: d.name, Version: d.requirement, Origin: d.origin}
+	t := lang.Target{Ecosystem: ecosystemGems, Package: d.name, Version: d.requirement, Origin: d.origin}
 	switch {
 	case d.origin != "":
 		t.Pinned, t.Floating = d.commit != "", d.commit == ""
@@ -350,33 +350,33 @@ func pinned(requirement string) bool {
 // gemVersion is a RubyGems version with a pre-release part after a dot: 7.1.0.rc1.
 var gemVersion = regexp.MustCompile(`^\d+(\.\d+)*\.(?i:alpha|beta|pre|rc|dev)\d*(\.\d+)*$`)
 
-// readProject reads a Bundler project at dir: its Gemfile (if any), every gemspec in
-// dir and in the directories its gemspec directives name, and its lock.
-func readProject(dir, gemfile string, gemspecs map[string][]string, read func(rel string) (string, bool)) *project {
-	p := &project{dir: dir, declared: map[string]*declaration{}, locked: map[string]*spec{}, own: map[string]string{}}
+// readProject reads a Bundler project at directory: its Gemfile (if any), every gemspec in
+// directory and in the directories its gemspec directives name, and its lock.
+func readProject(directory, gemfile string, gemspecs map[string][]string, read func(relative string) (string, bool)) *project {
+	p := &project{directory: directory, declared: map[string]*declaration{}, locked: map[string]*spec{}, own: map[string]string{}}
 	declare := func(d *declaration) {
 		key := strings.ToLower(d.name)
 		if old, ok := p.declared[key]; !ok || old.requirement == "" && d.requirement != "" {
 			p.declared[key] = d
 		}
 	}
-	specDirs := []string{dir}
+	specDirectories := []string{directory}
 	lockName := ""
 	if gemfile != "" {
-		src, _ := read(path.Join(dir, gemfile))
-		decls, dirs := readGemfile(src, func(rel string) (string, bool) { return read(path.Join(dir, rel)) })
-		for _, d := range decls {
+		source, _ := read(path.Join(directory, gemfile))
+		declarations, directories := readGemfile(source, func(relative string) (string, bool) { return read(path.Join(directory, relative)) })
+		for _, d := range declarations {
 			declare(d)
-			if rel, ok := strings.CutPrefix(d.origin, "path:"); ok {
-				if gDir := path.Join(dir, rel); inside(gDir) {
-					p.loadPath = append(p.loadPath, path.Join(gDir, "lib"))
-					p.own[strings.ToLower(d.name)] = gDir
+			if relative, ok := strings.CutPrefix(d.origin, "path:"); ok {
+				if gDirectory := path.Join(directory, relative); inside(gDirectory) {
+					p.loadPath = append(p.loadPath, path.Join(gDirectory, "lib"))
+					p.own[strings.ToLower(d.name)] = gDirectory
 				}
 			}
 		}
-		for _, d := range dirs {
-			if d = path.Join(dir, d); d != dir {
-				specDirs = append(specDirs, d)
+		for _, d := range directories {
+			if d = path.Join(directory, d); d != directory {
+				specDirectories = append(specDirectories, d)
 			}
 		}
 		lockName = "Gemfile.lock"
@@ -384,10 +384,10 @@ func readProject(dir, gemfile string, gemspecs map[string][]string, read func(re
 			lockName = "gems.locked"
 		}
 	}
-	for _, d := range specDirs {
+	for _, d := range specDirectories {
 		for _, f := range gemspecs[d] {
-			src, _ := read(f)
-			name, decls, paths := readGemspec(src)
+			source, _ := read(f)
+			name, declarations, paths := readGemspec(source)
 			if name == "" {
 				name = strings.TrimSuffix(path.Base(f), ".gemspec")
 			}
@@ -395,28 +395,28 @@ func readProject(dir, gemfile string, gemspecs map[string][]string, read func(re
 			for _, rp := range paths {
 				p.loadPath = append(p.loadPath, path.Join(d, rp))
 			}
-			for _, dd := range decls {
+			for _, dd := range declarations {
 				declare(dd)
 			}
 		}
 	}
 	if lockName != "" {
-		if src, ok := read(path.Join(dir, lockName)); ok {
-			specs, direct := readLock(src)
+		if source, ok := read(path.Join(directory, lockName)); ok {
+			specs, direct := readLock(source)
 			p.locked = specs
 			for name, s := range specs {
 				if s.path {
-					if gDir := path.Join(dir, s.origin); inside(gDir) {
-						p.loadPath = append(p.loadPath, path.Join(gDir, "lib"))
+					if gDirectory := path.Join(directory, s.origin); inside(gDirectory) {
+						p.loadPath = append(p.loadPath, path.Join(gDirectory, "lib"))
 						if _, ok := p.own[name]; !ok {
-							p.own[name] = gDir
+							p.own[name] = gDirectory
 						}
 					}
 				}
 			}
-			for name, req := range direct {
+			for name, requirement := range direct {
 				if _, ok := p.declared[name]; !ok {
-					p.declared[name] = &declaration{name: name, requirement: req}
+					p.declared[name] = &declaration{name: name, requirement: requirement}
 				}
 			}
 		}
@@ -451,7 +451,7 @@ func (p *project) gemNames() []string {
 	return out
 }
 
-func readFile(abs string) (string, bool) {
-	data, err := os.ReadFile(abs)
+func readFile(absolute string) (string, bool) {
+	data, err := os.ReadFile(absolute)
 	return string(data), err == nil
 }

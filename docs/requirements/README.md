@@ -92,7 +92,7 @@ The server **shall** ...
 | `ui`          | Headless Node tests of the browser modules (`web/uitest/*.test.mjs`).                                                          |
 | `extension`   | Node tests of the VS Code extension (`extension/test/*.test.js`).                                                              |
 | `e2e`         | Manual or scripted end-to-end runs of the command and the map in a real browser.                                               |
-| `manual`      | Human judgement of a visual or interactive quality that no automated test captures.                                            |
+| `manual`      | Human judgment of a visual or interactive quality that no automated test captures.                                             |
 | `inspection`  | Review of source, configuration, CI workflows or release artifacts.                                                            |
 
 ### Scopes

@@ -12,10 +12,10 @@ func TestGitPin(t *testing.T) {
 	const sha = "0123456789abcdef0123456789abcdef01234567"
 	sha256 := sha + sha[:24]
 	for _, c := range []struct {
-		name                     string
-		eco, pkg, ver, origin, g string
-		commit, repo             string
-		public                   bool
+		name                                       string
+		ecosystem, packageName, version, origin, g string
+		commit, repository                         string
+		public                                     bool
 	}{
 		{"swiftpm revision", "swiftpm", "github.com/apple/swift-nio", sha, "", "", sha, "github.com/apple/swift-nio", true},
 		{"SHA-256 commit", "zig", "codeberg.org/o/r", sha256, "", "", sha256, "codeberg.org/o/r", true},
@@ -43,16 +43,16 @@ func TestGitPin(t *testing.T) {
 		{"a tag", "swiftpm", "github.com/o/r", "1.2.3", "", "", "", "", false},
 		{"a shortened git field", "crates", "regex", "1.10.0", "", "https://github.com/rust-lang/regex#0123456", "", "", false},
 	} {
-		commit, repo, public := GitPin(c.eco, c.pkg, c.ver, c.origin, c.g)
-		if commit != c.commit || repo != c.repo || public != c.public {
-			t.Errorf("%s: GitPin = %q, %q, %v; want %q, %q, %v", c.name, commit, repo, public, c.commit, c.repo, c.public)
+		commit, repository, public := GitPin(c.ecosystem, c.packageName, c.version, c.origin, c.g)
+		if commit != c.commit || repository != c.repository || public != c.public {
+			t.Errorf("%s: GitPin = %q, %q, %v; want %q, %q, %v", c.name, commit, repository, public, c.commit, c.repository, c.public)
 		}
 	}
 }
 
 // Verifies: REQ-FND-026
 func TestPublicForge(t *testing.T) {
-	for repo, want := range map[string]bool{
+	for repository, want := range map[string]bool{
 		"https://github.com/o/r.git":     true,
 		"git@gitlab.com:g/sub/r.git":     true,
 		"bitbucket.org/o/r":              true,
@@ -62,8 +62,8 @@ func TestPublicForge(t *testing.T) {
 		"git@git.acme.internal:ops/lib":  false,
 		"":                               false,
 	} {
-		if got := PublicForge(repo); got != want {
-			t.Errorf("PublicForge(%q) = %v, want %v", repo, got, want)
+		if got := PublicForge(repository); got != want {
+			t.Errorf("PublicForge(%q) = %v, want %v", repository, got, want)
 		}
 	}
 }

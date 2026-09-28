@@ -24,11 +24,11 @@ import (
 // Verifies: REQ-TERRAFORM-001, REQ-TERRAFORM-002, REQ-TERRAFORM-003, REQ-TERRAFORM-004, REQ-TERRAFORM-005
 // Verifies: REQ-TERRAFORM-006, REQ-TERRAFORM-007, REQ-TERRAFORM-008, REQ-TERRAFORM-009, REQ-TERRAFORM-010
 func TestModulesProvidersAndTerragrunt(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	aws := lang.Target{Ecosystem: ecoProvider, Package: "hashicorp/aws", Version: "5.31.0", Requested: "~> 5.0", Pinned: true}
-	random := lang.Target{Ecosystem: ecoProvider, Package: "hashicorp/random", Version: "3.6.0", Pinned: true}
-	cloudflare := lang.Target{Ecosystem: ecoProvider, Package: "cloudflare/cloudflare", Version: ">= 4.0, < 5.0"}
-	vpc := lang.Target{Ecosystem: ecoModule, Package: "terraform-aws-modules/vpc/aws", Version: "5.1.2", Pinned: true}
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	aws := lang.Target{Ecosystem: ecosystemProvider, Package: "hashicorp/aws", Version: "5.31.0", Requested: "~> 5.0", Pinned: true}
+	random := lang.Target{Ecosystem: ecosystemProvider, Package: "hashicorp/random", Version: "3.6.0", Pinned: true}
+	cloudflare := lang.Target{Ecosystem: ecosystemProvider, Package: "cloudflare/cloudflare", Version: ">= 4.0, < 5.0"}
+	vpc := lang.Target{Ecosystem: ecosystemModule, Package: "terraform-aws-modules/vpc/aws", Version: "5.1.2", Pinned: true}
 	local := func(p string) lang.Target { return lang.Target{Local: p} }
 	imports := map[string]map[string]lang.Target{
 		".terraform.lock.hcl": {
@@ -43,7 +43,7 @@ func TestModulesProvidersAndTerragrunt(t *testing.T) {
 		"main.tf": {
 			"required_providers aws":    aws,
 			"required_providers random": random,
-			"required_providers acme":   {Ecosystem: ecoProvider, Package: "tf.corp.test/acme/acme", Version: "1.4.0", Pinned: true},
+			"required_providers acme":   {Ecosystem: ecosystemProvider, Package: "tf.corp.test/acme/acme", Version: "1.4.0", Pinned: true},
 			`provider "aws"`:            aws,
 			"var.region":                local("variables.tf"),
 			"var.cidr":                  local("variables.tf"),
@@ -52,18 +52,18 @@ func TestModulesProvidersAndTerragrunt(t *testing.T) {
 			"local.name":                local("locals.tf"),
 			`module "network"`:          local("modules/network"),
 			`module "vpc"`:              vpc,
-			`module "iam"`:              {Ecosystem: ecoModule, Package: "terraform-aws-modules/iam/aws//modules/iam-role", Version: "~> 6.0"},
-			`module "label"`:            {Ecosystem: ecoModule, Package: "cloudposse/label/null", Floating: true},
-			`module "private"`:          {Ecosystem: ecoModule, Package: "app.terraform.io/acme/db/aws", Version: "2.0.1", Pinned: true},
-			`module "storage"`: {Ecosystem: ecoModule, Package: "github.com/acme/tf-modules//storage", Version: "v1.2.0",
+			`module "iam"`:              {Ecosystem: ecosystemModule, Package: "terraform-aws-modules/iam/aws//modules/iam-role", Version: "~> 6.0"},
+			`module "label"`:            {Ecosystem: ecosystemModule, Package: "cloudposse/label/null", Floating: true},
+			`module "private"`:          {Ecosystem: ecosystemModule, Package: "app.terraform.io/acme/db/aws", Version: "2.0.1", Pinned: true},
+			`module "storage"`: {Ecosystem: ecosystemModule, Package: "github.com/acme/tf-modules//storage", Version: "v1.2.0",
 				Origin: "git::https://github.com/acme/tf-modules.git//storage"},
-			`module "dns"`: {Ecosystem: ecoModule, Package: "github.com/acme/tf-dns", Version: "0123456789abcdef0123456789abcdef01234567",
+			`module "dns"`: {Ecosystem: ecosystemModule, Package: "github.com/acme/tf-dns", Version: "0123456789abcdef0123456789abcdef01234567",
 				Pinned: true, Origin: "github.com/acme/tf-dns"},
-			`module "queue"`: {Ecosystem: ecoModule, Package: "github.com/acme/tf-queue", Floating: true, Origin: "git@github.com:acme/tf-queue.git"},
-			`module "cdn"`: {Ecosystem: ecoModule, Package: "s3-eu-west-1.amazonaws.com/acme-modules/cdn.zip", Floating: true,
+			`module "queue"`: {Ecosystem: ecosystemModule, Package: "github.com/acme/tf-queue", Floating: true, Origin: "git@github.com:acme/tf-queue.git"},
+			`module "cdn"`: {Ecosystem: ecosystemModule, Package: "s3-eu-west-1.amazonaws.com/acme-modules/cdn.zip", Floating: true,
 				Origin: "s3::https://s3-eu-west-1.amazonaws.com/acme-modules/cdn.zip"},
 			`templatefile("${path.module}/templates/init.sh.tpl")`: local("templates/init.sh.tpl"),
-			"provider google (google_storage_bucket)":              {Ecosystem: ecoProvider, Package: "hashicorp/google", Floating: true},
+			"provider google (google_storage_bucket)":              {Ecosystem: ecosystemProvider, Package: "hashicorp/google", Floating: true},
 		},
 		"outputs.tf": {
 			"aws_instance.web": local("main.tf"),
@@ -78,7 +78,7 @@ func TestModulesProvidersAndTerragrunt(t *testing.T) {
 		},
 		"modules/network/outputs.tf": {"aws_subnet.this": local("modules/network/main.tf")},
 		"modules/legacy/main.tf": {
-			`provider "aws"`:     {Ecosystem: ecoProvider, Package: "hashicorp/aws", Version: "~> 2.0"},
+			`provider "aws"`:     {Ecosystem: ecosystemProvider, Package: "hashicorp/aws", Version: "~> 2.0"},
 			`module "old_style"`: local("modules/legacy/network"),
 		},
 		"modules/dns/main.tf.json": {
@@ -94,7 +94,7 @@ func TestModulesProvidersAndTerragrunt(t *testing.T) {
 		"live/prod/app/terragrunt.hcl": {
 			`find_in_parent_folders("root.hcl")`:                                local("live/root.hcl"),
 			`${dirname(find_in_parent_folders("root.hcl"))}/_envcommon/app.hcl`: local("live/_envcommon/app.hcl"),
-			"terraform.source": {Ecosystem: ecoModule, Package: "github.com/acme/infra-modules//app", Version: "v0.8.0",
+			"terraform.source": {Ecosystem: ecosystemModule, Package: "github.com/acme/infra-modules//app", Version: "v0.8.0",
 				Origin: "git::git@github.com:acme/infra-modules.git//app"},
 			`dependency "vpc"`:                  local("live/prod/vpc/terragrunt.hcl"),
 			`dependencies "../dns"`:             local("live/prod/dns/terragrunt.hcl"),
@@ -109,7 +109,7 @@ func TestModulesProvidersAndTerragrunt(t *testing.T) {
 		"prod.tfvars.json":             {},
 	}
 	for file, want := range imports {
-		t.Run(file, func(t *testing.T) { langtest.CheckImports(t, res[file], want) })
+		t.Run(file, func(t *testing.T) { langtest.CheckImports(t, results[file], want) })
 	}
 
 	symbols := map[string]map[string]string{
@@ -137,17 +137,17 @@ func TestModulesProvidersAndTerragrunt(t *testing.T) {
 		"live/_envcommon/app.hcl":      {"local.base_source_url": "local"},
 	}
 	for file, want := range symbols {
-		t.Run("symbols "+file, func(t *testing.T) { langtest.CheckSymbols(t, res[file], want) })
+		t.Run("symbols "+file, func(t *testing.T) { langtest.CheckSymbols(t, results[file], want) })
 	}
 	lines := map[string]int{}
-	for _, s := range res["main.tf"].Symbols {
+	for _, s := range results["main.tf"].Symbols {
 		lines[s.Name] = s.Line
 	}
 	if lines["aws_instance.web"] != 65 || lines["module.vpc"] != 30 {
 		t.Errorf("lines: %v", lines)
 	}
 	lines = map[string]int{}
-	for _, s := range res["modules/dns/main.tf.json"].Symbols {
+	for _, s := range results["modules/dns/main.tf.json"].Symbols {
 		lines[s.Name] = s.Line
 	}
 	if lines["cloudflare_record.www"] != 15 || lines["module.cdn"] != 22 {
@@ -160,35 +160,35 @@ func TestModulesProvidersAndTerragrunt(t *testing.T) {
 //
 // Verifies: REQ-TERRAFORM-004
 func TestModuleSources(t *testing.T) {
-	for src, want := range map[string]moduleSource{
+	for source, want := range map[string]moduleSource{
 		"./modules/x":                     {local: "./modules/x"},
 		"../shared":                       {local: "../shared"},
-		"hashicorp/consul/aws":            {pkg: "hashicorp/consul/aws"},
-		"Terraform-AWS-Modules/VPC/aws":   {pkg: "terraform-aws-modules/vpc/aws"},
-		"registry.opentofu.org/a/b/aws":   {pkg: "a/b/aws"},
-		"example.com:8443/a/b/aws//sub/":  {pkg: "example.com:8443/a/b/aws//sub"},
-		"tfr:///a/b/aws?version=1.0.0":    {pkg: "a/b/aws", ref: "1.0.0"},
-		"tfr://tf.corp.test/a/b/aws":      {pkg: "tf.corp.test/a/b/aws"},
-		"github.com/org/repo//sub?ref=v1": {pkg: "github.com/org/repo//sub", ref: "v1", origin: "github.com/org/repo//sub"},
-		"bitbucket.org/org/repo":          {pkg: "bitbucket.org/org/repo", origin: "bitbucket.org/org/repo"},
-		"git::ssh://git@Example.com:2222/org/repo.git?ref=main": {pkg: "example.com/org/repo", ref: "main",
+		"hashicorp/consul/aws":            {packageName: "hashicorp/consul/aws"},
+		"Terraform-AWS-Modules/VPC/aws":   {packageName: "terraform-aws-modules/vpc/aws"},
+		"registry.opentofu.org/a/b/aws":   {packageName: "a/b/aws"},
+		"example.com:8443/a/b/aws//sub/":  {packageName: "example.com:8443/a/b/aws//sub"},
+		"tfr:///a/b/aws?version=1.0.0":    {packageName: "a/b/aws", reference: "1.0.0"},
+		"tfr://tf.corp.test/a/b/aws":      {packageName: "tf.corp.test/a/b/aws"},
+		"github.com/org/repo//sub?ref=v1": {packageName: "github.com/org/repo//sub", reference: "v1", origin: "github.com/org/repo//sub"},
+		"bitbucket.org/org/repo":          {packageName: "bitbucket.org/org/repo", origin: "bitbucket.org/org/repo"},
+		"git::ssh://git@Example.com:2222/org/repo.git?ref=main": {packageName: "example.com/org/repo", reference: "main",
 			origin: "git::ssh://git@Example.com:2222/org/repo.git"},
-		"git::https://user:pw@git.corp.test/infra/modules.git//vpc?ref=v2&depth=1": {pkg: "git.corp.test/infra/modules//vpc",
-			ref: "v2", origin: "git::https://user:pw@git.corp.test/infra/modules.git//vpc"},
-		"hg::http://example.com/vpc.hg?ref=v1": {pkg: "example.com/vpc.hg", ref: "v1", origin: "hg::http://example.com/vpc.hg"},
-		"https://example.com/vpc-module.zip":   {pkg: "example.com/vpc-module.zip", origin: "https://example.com/vpc-module.zip", archive: true},
-		"https://example.com/vpc?archive=zip":  {pkg: "example.com/vpc", origin: "https://example.com/vpc", archive: true},
-		"gcs::https://www.googleapis.com/storage/v1/modules/foo.zip": {pkg: "www.googleapis.com/storage/v1/modules/foo.zip",
+		"git::https://user:pw@git.corp.test/infra/modules.git//vpc?ref=v2&depth=1": {packageName: "git.corp.test/infra/modules//vpc",
+			reference: "v2", origin: "git::https://user:pw@git.corp.test/infra/modules.git//vpc"},
+		"hg::http://example.com/vpc.hg?ref=v1": {packageName: "example.com/vpc.hg", reference: "v1", origin: "hg::http://example.com/vpc.hg"},
+		"https://example.com/vpc-module.zip":   {packageName: "example.com/vpc-module.zip", origin: "https://example.com/vpc-module.zip", archive: true},
+		"https://example.com/vpc?archive=zip":  {packageName: "example.com/vpc", origin: "https://example.com/vpc", archive: true},
+		"gcs::https://www.googleapis.com/storage/v1/modules/foo.zip": {packageName: "www.googleapis.com/storage/v1/modules/foo.zip",
 			origin: "gcs::https://www.googleapis.com/storage/v1/modules/foo.zip", archive: true},
 	} {
-		got, ok := parseSource(src)
+		got, ok := parseSource(source)
 		if !ok || got != want {
-			t.Errorf("%s: got %+v (%v), want %+v", src, got, ok, want)
+			t.Errorf("%s: got %+v (%v), want %+v", source, got, ok, want)
 		}
 	}
-	for _, src := range []string{"", "hashicorp/consul", "/abs/path"} {
-		if got, ok := parseSource(src); ok {
-			t.Errorf("%s: got %+v, want nothing", src, got)
+	for _, source := range []string{"", "hashicorp/consul", "/abs/path"} {
+		if got, ok := parseSource(source); ok {
+			t.Errorf("%s: got %+v, want nothing", source, got)
 		}
 	}
 }
@@ -217,46 +217,46 @@ func TestProviderSources(t *testing.T) {
 // Verifies: REQ-TERRAFORM-011
 func TestScanner(t *testing.T) {
 	// cSpell: ignore: ufeff
-	src := []byte("\ufeff# comment aws_x.y\n// another\n/* multi\nline */\n" +
+	source := []byte("\ufeff# comment aws_x.y\n// another\n/* multi\nline */\n" +
 		"locals { a = \"x\\\"${var.one}\" }\n" +
 		"??? garbage {\n  b = 1\n}\n" +
 		"resource \"t_x\" \"n\" {\n  c = <<EOT\n  $${literal} %{ if local.z }yes%{ endif }\n  EOT\n  d = [for k in var.two : k.v]\n}\n" +
 		"output \"o\" { value = t_x.n.id }\n")
-	root := parse(src)
+	root := parse(source)
 	var types []string
 	for _, b := range root.blocks {
-		types = append(types, b.typ)
+		types = append(types, b.typeName)
 	}
 	if want := []string{"locals", "resource", "output"}; !reflect.DeepEqual(types, want) {
 		t.Fatalf("blocks %v, want %v", types, want)
 	}
-	if a := root.blocks[0].attrs[0]; a.name != "a" || a.line != 5 || a.expr[0].text != `x"${var.one}` || a.expr[0].lit {
+	if a := root.blocks[0].attributes[0]; a.name != "a" || a.line != 5 || a.expression[0].text != `x"${var.one}` || a.expression[0].literal {
 		t.Errorf("string: %+v", a)
 	}
 	r := root.blocks[1]
-	if r.line != 9 || len(r.attrs) != 2 || r.attrs[1].name != "d" || r.attrs[1].line != 13 {
+	if r.line != 9 || len(r.attributes) != 2 || r.attributes[1].name != "d" || r.attributes[1].line != 13 {
 		t.Errorf("resource: %+v", r)
 	}
-	if o := root.blocks[2]; o.line != 15 || len(o.attrs) != 1 {
+	if o := root.blocks[2]; o.line != 15 || len(o.attributes) != 1 {
 		t.Errorf("one-line block: %+v", o)
 	}
-	fi := readModule(root)
-	var refs []string
-	for _, im := range fi.imports {
-		if im.Name == kindRef {
-			refs = append(refs, im.Module)
+	fileInfo := readModule(root)
+	var references []string
+	for _, rawImport := range fileInfo.imports {
+		if rawImport.Name == kindReference {
+			references = append(references, rawImport.Module)
 		}
 	}
-	if want := []string{"var.one", "local.z", "var.two"}; !reflect.DeepEqual(refs, want) {
-		t.Errorf("refs %v, want %v", refs, want)
+	if want := []string{"var.one", "local.z", "var.two"}; !reflect.DeepEqual(references, want) {
+		t.Errorf("refs %v, want %v", references, want)
 	}
 }
 
 // Verifies: REQ-TERRAFORM-001
 func TestClaimsAndClasses(t *testing.T) {
 	for p, want := range map[string]string{
-		"main.tf": classConfig, "x/main.tofu": classConfig, "main.tf.json": classJSON, "a.tfvars": classVars,
-		"a.auto.tfvars.json": classVarsJSON, ".terraform.lock.hcl": classLock, "live/terragrunt.hcl": classTerragrunt,
+		"main.tf": classConfig, "x/main.tofu": classConfig, "main.tf.json": classJSON, "a.tfvars": classVariables,
+		"a.auto.tfvars.json": classVariablesJSON, ".terraform.lock.hcl": classLock, "live/terragrunt.hcl": classTerragrunt,
 		"root.hcl": classTerragrunt, "image.pkr.hcl": "", "job.nomad.hcl": "", "package.json": "", "main.go": "",
 	} {
 		if got := fileClass(p); got != want {
@@ -321,21 +321,21 @@ module "exact" {
   {"Key": "vpc.inner.label.deep", "Source": "registry.terraform.io/acme/deep/null", "Version": "1.0.0", "Dir": ".terraform/modules/deep"}
 ]}`,
 	}
-	vpc := lang.Target{Ecosystem: ecoModule, Package: "terraform-aws-modules/vpc/aws", Version: "5.1.2", Requested: "~> 5.0", Pinned: true}
-	label := lang.Target{Ecosystem: ecoModule, Package: "cloudposse/label/null", Version: "0.25.0", Pinned: true}
-	exact := lang.Target{Ecosystem: ecoModule, Package: "terraform-aws-modules/iam/aws", Version: "5.2.0", Pinned: true}
-	sg := lang.Target{Ecosystem: ecoModule, Package: "terraform-aws-modules/security-group/aws", Version: "4.17.2", Requested: ">= 4", Pinned: true}
+	vpc := lang.Target{Ecosystem: ecosystemModule, Package: "terraform-aws-modules/vpc/aws", Version: "5.1.2", Requested: "~> 5.0", Pinned: true}
+	label := lang.Target{Ecosystem: ecosystemModule, Package: "cloudposse/label/null", Version: "0.25.0", Pinned: true}
+	exact := lang.Target{Ecosystem: ecosystemModule, Package: "terraform-aws-modules/iam/aws", Version: "5.2.0", Pinned: true}
+	sg := lang.Target{Ecosystem: ecosystemModule, Package: "terraform-aws-modules/security-group/aws", Version: "4.17.2", Requested: ">= 4", Pinned: true}
 	root := langtest.Write(t, files)
-	res := langtest.Analyze(t, Plugin{}, root)
-	langtest.CheckImports(t, res["main.tf"], map[string]lang.Target{
+	results := langtest.Analyze(t, Plugin{}, root)
+	langtest.CheckImports(t, results["main.tf"], map[string]lang.Target{
 		`module "vpc"`:   vpc,
 		`module "net"`:   {Local: "modules/net"},
 		`module "label"`: label,
 		`module "exact"`: exact, // the configuration's exact version stands
 	})
-	langtest.CheckImports(t, res["modules/net/main.tf"], map[string]lang.Target{`module "sg"`: sg})
+	langtest.CheckImports(t, results["modules/net/main.tf"], map[string]lang.Target{`module "sg"`: sg})
 	r := newResolver(root, langtest.Files(t, root))
-	dns := lang.Target{Ecosystem: ecoModule, Package: "github.com/acme/tf-dns", Version: "0123456789abcdef0123456789abcdef01234567",
+	dns := lang.Target{Ecosystem: ecosystemModule, Package: "github.com/acme/tf-dns", Version: "0123456789abcdef0123456789abcdef01234567",
 		Pinned: true, Origin: "git::https://github.com/acme/tf-dns.git"}
 	if got, want := r.Dependencies(vpc), []lang.Target{dns, label}; !reflect.DeepEqual(got, want) || !r.Installed(vpc) {
 		t.Errorf("vpc depends on %+v, want %+v", got, want)
@@ -343,8 +343,8 @@ module "exact" {
 	if got := r.Dependencies(label); got != nil || !r.Installed(label) {
 		t.Errorf("label depends on %+v", got)
 	}
-	other := lang.Target{Ecosystem: ecoModule, Package: "terraform-aws-modules/vpc/aws", Version: "4.0.0"}
-	if got := r.Dependencies(other); got != nil || r.Installed(other) || r.Installed(lang.Target{Ecosystem: ecoProvider, Package: "hashicorp/aws"}) {
+	other := lang.Target{Ecosystem: ecosystemModule, Package: "terraform-aws-modules/vpc/aws", Version: "4.0.0"}
+	if got := r.Dependencies(other); got != nil || r.Installed(other) || r.Installed(lang.Target{Ecosystem: ecosystemProvider, Package: "hashicorp/aws"}) {
 		t.Errorf("another version: %+v", got)
 	}
 
@@ -355,9 +355,9 @@ module "exact" {
 		}
 		root := langtest.Write(t, files)
 		langtest.CheckImports(t, langtest.Analyze(t, Plugin{}, root)["main.tf"], map[string]lang.Target{
-			`module "vpc"`:   {Ecosystem: ecoModule, Package: "terraform-aws-modules/vpc/aws", Version: "~> 5.0"},
+			`module "vpc"`:   {Ecosystem: ecosystemModule, Package: "terraform-aws-modules/vpc/aws", Version: "~> 5.0"},
 			`module "net"`:   {Local: "modules/net"},
-			`module "label"`: {Ecosystem: ecoModule, Package: "cloudposse/label/null", Floating: true},
+			`module "label"`: {Ecosystem: ecosystemModule, Package: "cloudposse/label/null", Floating: true},
 			`module "exact"`: exact,
 		})
 		if r := newResolver(root, langtest.Files(t, root)); r.Dependencies(vpc) != nil || r.Installed(vpc) {

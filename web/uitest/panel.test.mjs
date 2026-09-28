@@ -38,12 +38,12 @@ class El {
   }
   setAttribute(k, v) { this.attributes.set(k, String(v)); if (k === 'hidden') this.hidden = true; }
   getAttribute(k) { return this.attributes.get(k) ?? null; }
-  addEventListener(type, fn) { (this.listeners[type] ||= []).push(fn); }
+  addEventListener(type, callback) { (this.listeners[type] ||= []).push(callback); }
   insertAt(c, at) {
     if (c instanceof El) { c.remove(); c.parentElement = this; } else c = String(c);
     this.childNodes.splice(at ?? this.childNodes.length, 0, c);
   }
-  append(...cs) { for (const c of cs) this.insertAt(c); }
+  append(...children) { for (const c of children) this.insertAt(c); }
   after(el) {
     el.remove?.();
     const p = this.parentElement;
@@ -62,10 +62,10 @@ class El {
     p.childNodes.splice(p.childNodes.indexOf(this), 1);
     this.parentElement = null;
   }
-  replaceChildren(...cs) {
+  replaceChildren(...children) {
     for (const c of this.children) c.parentElement = null;
     this.childNodes = [];
-    this.append(...cs);
+    this.append(...children);
   }
   get textContent() { return this.childNodes.map(c => (c instanceof El ? c.textContent : c)).join(''); }
   set textContent(v) { this.replaceChildren(String(v)); }
@@ -84,14 +84,14 @@ class El {
 function matcher(sel) {
   const data = /^\[data-([a-z]+)="(.*)"\]$/.exec(sel);
   if (data) return el => el.dataset[data[1]] === data[2];
-  const [tag, cls] = sel.split('.');
-  return el => (!tag || el.tagName === tag.toUpperCase()) && (!cls || el.classList.contains(cls));
+  const [tag, className] = sel.split('.');
+  return el => (!tag || el.tagName === tag.toUpperCase()) && (!className || el.classList.contains(className));
 }
 
 /** Delivers an event to an element's own listeners; nothing here relies on bubbling. */
 function fire(el, type, extra = {}) {
   const ev = { type, key: extra.key, preventDefault() {}, stopPropagation() {}, ...extra };
-  for (const fn of el.listeners[type] || []) fn(ev);
+  for (const callback of el.listeners[type] || []) callback(ev);
 }
 
 globalThis.document.createElement = tag => new El(tag);
@@ -105,9 +105,9 @@ globalThis.fetch = async () => { requests++; throw new Error('no network in a te
 const { buildModel } = await import('../static/model.js');
 const { Panel, hexDump, mediaKind, findMatches, findBar } = await import('../static/panel.js');
 
-const dir = (path, parent) => ({ id: `d:${path}`, kind: 'dir', name: path.split('/').pop(), path, parent });
-const file = (path, parent, lang, loc) => ({ id: `f:${path}`, kind: 'file', name: path.split('/').pop(), path, parent, lang, loc });
-const pkg = (eco, name, extra) => ({ id: `p:${eco}:${name}`, kind: 'package', name, parent: `e:${eco}`, ...extra });
+const directory = (path, parent) => ({ id: `d:${path}`, kind: 'dir', name: path.split('/').pop(), path, parent });
+const file = (path, parent, language, loc) => ({ id: `f:${path}`, kind: 'file', name: path.split('/').pop(), path, parent, lang: language, loc });
+const packageNode = (ecosystem, name, extra) => ({ id: `p:${ecosystem}:${name}`, kind: 'package', name, parent: `e:${ecosystem}`, ...extra });
 
 // A slice of this repository: the Go analyzer, which imports go/parser, is imported
 // by its parent package and by the command; and a lock file's worth of npm packages,
@@ -115,8 +115,8 @@ const pkg = (eco, name, extra) => ({ id: `p:${eco}:${name}`, kind: 'package', na
 const GRAPH = {
   nodes: [
     { id: 'd:.', kind: 'dir', name: '.', path: '.' },
-    dir('cmd', 'd:.'), dir('internal', 'd:.'), dir('internal/lang', 'd:internal'),
-    dir('internal/lang/golang', 'd:internal/lang'), dir('web', 'd:.'),
+    directory('cmd', 'd:.'), directory('internal', 'd:.'), directory('internal/lang', 'd:internal'),
+    directory('internal/lang/golang', 'd:internal/lang'), directory('web', 'd:.'),
     file('cmd/main.go', 'd:cmd', 'Go', 40),
     file('internal/lang/lang.go', 'd:internal/lang', 'Go', 20),
     file('internal/lang/golang/golang.go', 'd:internal/lang/golang', 'Go', 300),
@@ -124,10 +124,10 @@ const GRAPH = {
     file('internal/lang/golang/testdata.yaml', 'd:internal/lang/golang', 'YAML', 100),
     file('web/app.ts', 'd:web', 'TypeScript', 80),
     { id: 'e:gostd', kind: 'ecosystem', name: 'go std' },
-    pkg('gostd', 'go/parser'),
+    packageNode('gostd', 'go/parser'),
     { id: 'e:npm', kind: 'ecosystem', name: 'npm' },
-    pkg('npm', 'a', { version: '1.2.3', requested: '^1.2', index: 'https://registry.npmjs.org/' }),
-    pkg('npm', 'b'), pkg('npm', 'c'), pkg('npm', 'd'), pkg('npm', 'x'), pkg('npm', 'y'),
+    packageNode('npm', 'a', { version: '1.2.3', requested: '^1.2', index: 'https://registry.npmjs.org/' }),
+    packageNode('npm', 'b'), packageNode('npm', 'c'), packageNode('npm', 'd'), packageNode('npm', 'x'), packageNode('npm', 'y'),
   ],
   edges: [
     { from: 'f:internal/lang/golang/golang.go', to: 'p:gostd:go/parser', kind: 'import' },
@@ -154,7 +154,7 @@ function makePanel() {
   root.append(body);
   panel = new Panel(root, body, {
     model,
-    colorOf: lang => `color(${lang})`,
+    colorOf: language => `color(${language})`,
     onSelect: n => selected.push(n),
     linkKind: () => 'import',
     historyOf: () => null,
@@ -196,72 +196,72 @@ describe('the dependency lists', () => {
   // Verifies: REQ-MAP-045
   it('opens a row into its own dependencies, from the model and nothing else', () => {
     const s = show('f:web/app.ts');
-    const deps = s.get('Depends on');
-    assert.deepEqual(outline(deps), ['a', 'x']);
+    const dependencies = s.get('Depends on');
+    assert.deepEqual(outline(dependencies), ['a', 'x']);
     const before = requests;
-    fire(named(deps, 'a').querySelector('.twisty'), 'click');
-    fire(named(deps, 'b').querySelector('.twisty'), 'click');
-    fire(named(deps, 'c').querySelector('.twisty'), 'click');
-    assert.deepEqual(outline(deps), ['a', '  b', '    c', '      d', 'x']);
+    fire(named(dependencies, 'a').querySelector('.twisty'), 'click');
+    fire(named(dependencies, 'b').querySelector('.twisty'), 'click');
+    fire(named(dependencies, 'c').querySelector('.twisty'), 'click');
+    assert.deepEqual(outline(dependencies), ['a', '  b', '    c', '      d', 'x']);
     assert.equal(requests, before, 'opening a row asked the server for something');
     // Opening is not selecting: the twisty is a control of its own.
     assert.deepEqual(selected, []);
     // A leaf has nothing to open.
-    assert.equal(named(deps, 'd').querySelector('.twisty').tagName, 'SPAN');
+    assert.equal(named(dependencies, 'd').querySelector('.twisty').tagName, 'SPAN');
   });
 
   // Verifies: REQ-MAP-047
   it('opens on the right arrow and closes, with everything below, on the left', () => {
-    const deps = show('f:web/app.ts').get('Depends on');
-    const a = named(deps, 'a');
+    const dependencies = show('f:web/app.ts').get('Depends on');
+    const a = named(dependencies, 'a');
     assert.equal(a.getAttribute('aria-expanded'), 'false');
     fire(a, 'keydown', { key: 'ArrowRight' });
     assert.equal(a.getAttribute('aria-expanded'), 'true');
-    fire(named(deps, 'b'), 'keydown', { key: 'ArrowRight' });
-    assert.deepEqual(outline(deps), ['a', '  b', '    c', 'x']);
+    fire(named(dependencies, 'b'), 'keydown', { key: 'ArrowRight' });
+    assert.deepEqual(outline(dependencies), ['a', '  b', '    c', 'x']);
     // A second right arrow on an open row does not close it.
     fire(a, 'keydown', { key: 'ArrowRight' });
     assert.equal(a.getAttribute('aria-expanded'), 'true');
 
     fire(a, 'keydown', { key: 'ArrowLeft' });
-    assert.deepEqual(outline(deps), ['a', 'x'], 'closing a row left its branch behind');
+    assert.deepEqual(outline(dependencies), ['a', 'x'], 'closing a row left its branch behind');
     assert.equal(a.getAttribute('aria-expanded'), 'false');
     // What was open below it went with it: opening a again shows b closed.
     fire(a, 'keydown', { key: 'ArrowRight' });
-    assert.deepEqual(outline(deps), ['a', '  b', 'x']);
+    assert.deepEqual(outline(dependencies), ['a', '  b', 'x']);
     assert.deepEqual(selected, [], 'an arrow key selected the row');
   });
 
   // Verifies: REQ-MAP-048
   it('shows a cycle once more, marked, and does not open it', () => {
-    const deps = show('f:web/app.ts').get('Depends on');
-    fire(named(deps, 'x').querySelector('.twisty'), 'click');
-    fire(named(deps, 'y').querySelector('.twisty'), 'click');
-    assert.deepEqual(outline(deps), ['a', 'x', '  y', '    x']);
-    const repeat = rows(deps).at(-1);
+    const dependencies = show('f:web/app.ts').get('Depends on');
+    fire(named(dependencies, 'x').querySelector('.twisty'), 'click');
+    fire(named(dependencies, 'y').querySelector('.twisty'), 'click');
+    assert.deepEqual(outline(dependencies), ['a', 'x', '  y', '    x']);
+    const repeat = rows(dependencies).at(-1);
     assert.equal(repeat.querySelector('.twisty').tagName, 'SPAN', 'the repeat can be opened');
     assert.equal(repeat.querySelector('.twisty').textContent, '↻');
     assert.match(repeat.getAttribute('title'), /already open further up/);
     fire(repeat, 'keydown', { key: 'ArrowRight' });
-    assert.deepEqual(outline(deps), ['a', 'x', '  y', '    x'], 'the repeat opened');
+    assert.deepEqual(outline(dependencies), ['a', 'x', '  y', '    x'], 'the repeat opened');
   });
 
   // Verifies: REQ-MAP-046
   it('reopens what was open when a live update redraws the panel', () => {
-    let deps = show('f:web/app.ts').get('Depends on');
-    fire(named(deps, 'a').querySelector('.twisty'), 'click');
-    fire(named(deps, 'b').querySelector('.twisty'), 'click');
-    const open = outline(deps);
+    let dependencies = show('f:web/app.ts').get('Depends on');
+    fire(named(dependencies, 'a').querySelector('.twisty'), 'click');
+    fire(named(dependencies, 'b').querySelector('.twisty'), 'click');
+    const open = outline(dependencies);
     assert.deepEqual(open, ['a', '  b', '    c', 'x']);
 
     // What app.js does on an update: a new model out of the new graph, and the same
     // node shown again from it.
     model = buildModel(GRAPH);
     panel.model = model;
-    deps = show('f:web/app.ts', true).get('Depends on');
-    assert.deepEqual(outline(deps), open, 'the redraw closed a branch the reader had open');
-    assert.equal(named(deps, 'b').getAttribute('aria-expanded'), 'true');
-    assert.equal(named(deps, 'c').getAttribute('aria-expanded'), 'false');
+    dependencies = show('f:web/app.ts', true).get('Depends on');
+    assert.deepEqual(outline(dependencies), open, 'the redraw closed a branch the reader had open');
+    assert.equal(named(dependencies, 'b').getAttribute('aria-expanded'), 'true');
+    assert.equal(named(dependencies, 'c').getAttribute('aria-expanded'), 'false');
   });
 });
 
@@ -383,7 +383,7 @@ describe('finding in a file', () => {
   const pane = lines => {
     const pre = new El('pre');
     pre.dataset.filled = '1';
-    for (const l of lines) { const ln = new El('span'); ln.className = 'ln'; ln.append(l); pre.append(ln); }
+    for (const l of lines) { const lineElement = new El('span'); lineElement.className = 'ln'; lineElement.append(l); pre.append(lineElement); }
     return pre;
   };
   const type = (bar, text) => { bar.input.value = text; fire(bar.input, 'input'); };

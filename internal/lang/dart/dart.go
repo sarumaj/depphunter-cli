@@ -7,7 +7,7 @@
 // pubspec.lock resolved (resolve.go). A pubspec's dependencies are imports of the
 // packages they declare.
 //
-// The source is read by a scanner of its own (source.go, decls.go), not the
+// The source is read by a scanner of its own (source.go, declarations.go), not the
 // tree-sitter grammar, which was slow and failed on too many real Flutter files.
 package dart
 
@@ -22,9 +22,9 @@ import (
 )
 
 const (
-	ecoPub     = "pub"
-	ecoStd     = "dart-std"
-	ecoFlutter = "flutter-sdk"
+	ecosystemPub     = "pub"
+	ecosystemStd     = "dart-std"
+	ecosystemFlutter = "flutter-sdk"
 )
 
 // Implements: REQ-DART-001
@@ -46,9 +46,9 @@ func (Plugin) Claims(f *scan.File) bool {
 
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoPub, Name: "pub"},
-		{ID: ecoStd, Name: "Dart SDK libraries", Std: true},
-		{ID: ecoFlutter, Name: "Flutter SDK", Std: true},
+		{ID: ecosystemPub, Name: "pub"},
+		{ID: ecosystemStd, Name: "Dart SDK libraries", Std: true},
+		{ID: ecosystemFlutter, Name: "Flutter SDK", Std: true},
 	}
 }
 
@@ -60,18 +60,18 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 // dependencies and workspace members.
 //
 // Implements: REQ-DART-002, REQ-DART-003, REQ-DART-006
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	if !strings.EqualFold(path.Ext(f.Path), ".dart") {
-		return extractPubspec(src)
+		return extractPubspec(source)
 	}
-	ex := &lang.Extraction{}
-	tokens := tokenize(src)
+	extraction := &lang.Extraction{}
+	tokens := tokenize(source)
 	imports, i := directives(tokens)
-	ex.Imports = imports
+	extraction.Imports = imports
 	var symbols lang.SymbolSet
 	declarations(tokens, i, &symbols)
-	ex.Symbols = symbols.List()
-	return ex, nil
+	extraction.Symbols = symbols.List()
+	return extraction, nil
 }
 
 // extractPubspec turns a pubspec's dependencies into imports of what they declare
@@ -79,18 +79,18 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 // and its workspace members into imports of their pubspecs.
 //
 // Implements: REQ-DART-006
-func extractPubspec(src []byte) (*lang.Extraction, error) {
-	p, err := readPubspec(src)
+func extractPubspec(source []byte) (*lang.Extraction, error) {
+	p, err := readPubspec(source)
 	if err != nil {
 		return &lang.Extraction{}, nil // a broken pubspec imports nothing
 	}
-	ex := &lang.Extraction{}
-	for _, d := range p.deps {
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: d.spec, Module: d.name, Name: kindDep + ":" + d.section, Line: d.line})
+	extraction := &lang.Extraction{}
+	for _, d := range p.dependencies {
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: d.spec, Module: d.name, Name: kindDependency + ":" + d.section, Line: d.line})
 	}
 	for _, m := range p.workspace {
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: "workspace: " + m, Module: m, Name: kindMember, Line: p.memberLine[m]})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "workspace: " + m, Module: m, Name: kindMember, Line: p.memberLine[m]})
 	}
-	slices.SortStableFunc(ex.Imports, func(a, b lang.RawImport) int { return cmp.Compare(a.Line, b.Line) })
-	return ex, nil
+	slices.SortStableFunc(extraction.Imports, func(a, b lang.RawImport) int { return cmp.Compare(a.Line, b.Line) })
+	return extraction, nil
 }

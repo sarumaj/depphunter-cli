@@ -11,9 +11,9 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
-// pkgInfo is a package of the repository: a .cabal file, or a package.yaml without one.
-type pkgInfo struct {
-	*cabalPkg
+// packageInfo is a package of the repository: a .cabal file, or a package.yaml without one.
+type packageInfo struct {
+	*cabalPackage
 	project *projectInfo
 }
 
@@ -21,31 +21,31 @@ type pkgInfo struct {
 // stack.yaml or cabal.project.freeze, or else a package's own directory - and what
 // pins its dependencies there.
 type projectInfo struct {
-	dir     string
-	pins    map[string]string
-	plan    *buildPlan
-	stack   *stackProject
-	lock    *stackLock
-	repos   map[string]srp
-	extras  map[string]extraDep
-	members []string // package directories cabal.project or stack.yaml name
+	directory    string
+	pins         map[string]string
+	plan         *buildPlan
+	stack        *stackProject
+	lock         *stackLock
+	repositories map[string]srp
+	extras       map[string]extraDependency
+	members      []string // package directories cabal.project or stack.yaml name
 }
 
 type resolver struct {
-	files    map[string]bool
-	dirs     map[string]bool
-	pkgs     []*pkgInfo // deepest first
-	byName   map[string]*pkgInfo
-	byDir    map[string]*pkgInfo
-	projects []*projectInfo      // deepest first
-	mods     map[string][]string // module name -> files declaring it
-	boots    map[string][]string // module name -> .hs-boot files
+	files       map[string]bool
+	directories map[string]bool
+	packages    []*packageInfo // deepest first
+	byName      map[string]*packageInfo
+	byDirectory map[string]*packageInfo
+	projects    []*projectInfo      // deepest first
+	modules     map[string][]string // module name -> files declaring it
+	boots       map[string][]string // module name -> .hs-boot files
 }
 
 // ignored are the directories cabal and stack build into.
 func ignored(p string) bool {
-	for _, seg := range strings.Split(p, "/") {
-		if seg == "dist-newstyle" || seg == ".stack-work" {
+	for _, segment := range strings.Split(p, "/") {
+		if segment == "dist-newstyle" || segment == ".stack-work" {
 			return true
 		}
 	}
@@ -54,21 +54,21 @@ func ignored(p string) bool {
 
 // Implements: REQ-HASKELL-004, REQ-HASKELL-006, REQ-HASKELL-007, REQ-HASKELL-008
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, dirs: map[string]bool{}, byName: map[string]*pkgInfo{},
-		byDir: map[string]*pkgInfo{}, mods: map[string][]string{}, boots: map[string][]string{}}
-	abs := map[string]string{}
-	read := func(rel string) ([]byte, bool) {
-		if a, ok := abs[rel]; ok {
+	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, byName: map[string]*packageInfo{},
+		byDirectory: map[string]*packageInfo{}, modules: map[string][]string{}, boots: map[string][]string{}}
+	absolute := map[string]string{}
+	read := func(relative string) ([]byte, bool) {
+		if a, ok := absolute[relative]; ok {
 			data, err := os.ReadFile(a)
 			return data, err == nil
 		}
 		if root == "" {
 			return nil, false
 		}
-		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
 		return data, err == nil
 	}
-	projDirs := map[string]bool{}
+	projectDirectories := map[string]bool{}
 	var sources []*scan.File
 	hpack := map[string]*scan.File{}
 	for _, f := range all {
@@ -76,69 +76,69 @@ func newResolver(root string, all []*scan.File) *resolver {
 			continue
 		}
 		r.files[f.Path] = true
-		abs[f.Path] = f.Abs
-		for d := path.Dir(f.Path); d != "." && !r.dirs[d]; d = path.Dir(d) {
-			r.dirs[d] = true
+		absolute[f.Path] = f.AbsolutePath
+		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
+			r.directories[d] = true
 		}
 		base := path.Base(f.Path)
 		switch {
 		case base == "cabal.project" || base == "stack.yaml" || base == "cabal.project.freeze":
-			projDirs[path.Dir(f.Path)] = true
+			projectDirectories[path.Dir(f.Path)] = true
 		case strings.HasSuffix(base, ".cabal") && !f.Binary && !f.TooLarge:
-			src, err := os.ReadFile(f.Abs)
+			source, err := os.ReadFile(f.AbsolutePath)
 			if err != nil {
 				continue
 			}
-			p := readCabal(src, f.Path)
+			p := readCabal(source, f.Path)
 			if p.name == "" {
 				p.name = strings.TrimSuffix(base, ".cabal")
 			}
-			r.addPkg(p)
+			r.addPackage(p)
 		case base == "package.yaml":
 			hpack[path.Dir(f.Path)] = f
-		case sourceExt(f.Path) != "" && !f.Binary && !f.TooLarge && f.Size <= lang.MaxParseSize:
+		case sourceExtension(f.Path) != "" && !f.Binary && !f.TooLarge && f.Size <= lang.MaxParseSize:
 			sources = append(sources, f)
 		}
 	}
-	for dir, f := range hpack {
-		if r.byDir[dir] != nil {
+	for directory, f := range hpack {
+		if r.byDirectory[directory] != nil {
 			continue // stack and hpack commit the .cabal they generate: it is the same package
 		}
-		if src, err := os.ReadFile(f.Abs); err == nil {
-			if p := readHpack(src, f.Path); p != nil && p.name != "" {
-				r.addPkg(p)
+		if source, err := os.ReadFile(f.AbsolutePath); err == nil {
+			if p := readHpack(source, f.Path); p != nil && p.name != "" {
+				r.addPackage(p)
 			}
 		}
 	}
-	sort.Slice(r.pkgs, func(i, j int) bool { return deeper(r.pkgs[i].dir, r.pkgs[j].dir) })
-	for _, p := range r.pkgs {
+	sort.Slice(r.packages, func(i, j int) bool { return deeper(r.packages[i].directory, r.packages[j].directory) })
+	for _, p := range r.packages {
 		covered := false
-		for d := range projDirs {
-			if within(p.dir, d) || p.dir == d {
+		for d := range projectDirectories {
+			if within(p.directory, d) || p.directory == d {
 				covered = true
 				break
 			}
 		}
 		if !covered {
-			projDirs[p.dir] = true
+			projectDirectories[p.directory] = true
 		}
 	}
-	for d := range projDirs {
+	for d := range projectDirectories {
 		r.projects = append(r.projects, r.readProject(d, read))
 	}
-	sort.Slice(r.projects, func(i, j int) bool { return deeper(r.projects[i].dir, r.projects[j].dir) })
-	for _, p := range r.pkgs {
+	sort.Slice(r.projects, func(i, j int) bool { return deeper(r.projects[i].directory, r.projects[j].directory) })
+	for _, p := range r.packages {
 		p.project = r.projectOf(p.file)
 	}
 	r.index(sources)
 	return r
 }
 
-func (r *resolver) addPkg(p *cabalPkg) {
-	info := &pkgInfo{cabalPkg: p}
-	r.pkgs = append(r.pkgs, info)
-	r.byDir[p.dir] = info
-	if q := r.byName[p.name]; q == nil || depth(p.dir) < depth(q.dir) {
+func (r *resolver) addPackage(p *cabalPackage) {
+	info := &packageInfo{cabalPackage: p}
+	r.packages = append(r.packages, info)
+	r.byDirectory[p.directory] = info
+	if q := r.byName[p.name]; q == nil || depth(p.directory) < depth(q.directory) {
 		r.byName[p.name] = info
 	}
 }
@@ -151,54 +151,54 @@ func (r *resolver) addPkg(p *cabalPkg) {
 // they are read from disk too.
 //
 // Implements: REQ-HASKELL-007, REQ-HASKELL-008
-func (r *resolver) readProject(dir string, read func(string) ([]byte, bool)) *projectInfo {
-	p := &projectInfo{dir: dir, pins: map[string]string{}, repos: map[string]srp{}, extras: map[string]extraDep{}}
+func (r *resolver) readProject(directory string, read func(string) ([]byte, bool)) *projectInfo {
+	p := &projectInfo{directory: directory, pins: map[string]string{}, repositories: map[string]srp{}, extras: map[string]extraDependency{}}
 	pin := func(name, c string) {
 		if _, ok := p.pins[name]; !ok && lang.Pinned(c) {
 			p.pins[name] = c
 		}
 	}
-	if src, ok := read(path.Join(dir, "cabal.project.freeze")); ok {
-		for name, c := range readCabalProject(src).constraints {
+	if source, ok := read(path.Join(directory, "cabal.project.freeze")); ok {
+		for name, c := range readCabalProject(source).constraints {
 			pin(name, c)
 		}
 	}
-	for i, cp := range projectFiles(path.Join(dir, "cabal.project"), read) {
-		for name, c := range cp.constraints {
+	for i, project := range projectFiles(path.Join(directory, "cabal.project"), read) {
+		for name, c := range project.constraints {
 			pin(name, c)
 		}
-		for _, s := range cp.repos {
-			if _, dup := p.repos[s.name]; !dup || i == 0 {
-				p.repos[s.name] = s
+		for _, s := range project.repositories {
+			if _, duplicate := p.repositories[s.name]; !duplicate || i == 0 {
+				p.repositories[s.name] = s
 			}
 		}
-		for _, m := range cp.members {
-			p.members = append(p.members, r.memberDirs(dir, m.text)...)
+		for _, m := range project.members {
+			p.members = append(p.members, r.memberDirectories(directory, m.text)...)
 		}
 	}
-	if src, ok := read(path.Join(dir, "dist-newstyle", "cache", "plan.json")); ok {
-		p.plan = readPlan(src)
+	if source, ok := read(path.Join(directory, "dist-newstyle", "cache", "plan.json")); ok {
+		p.plan = readPlan(source)
 	}
-	if src, ok := read(path.Join(dir, "stack.yaml")); ok {
-		p.stack = readStack(src)
+	if source, ok := read(path.Join(directory, "stack.yaml")); ok {
+		p.stack = readStack(source)
 		if p.stack != nil {
 			for _, e := range p.stack.extras {
-				if _, dup := p.extras[e.name]; !dup {
+				if _, duplicate := p.extras[e.name]; !duplicate {
 					p.extras[e.name] = e
 				}
 			}
 			for _, m := range p.stack.members {
-				p.members = append(p.members, path.Join(dir, m.text))
+				p.members = append(p.members, path.Join(directory, m.text))
 			}
 		}
 	}
-	if src, ok := read(path.Join(dir, "stack.yaml.lock")); ok {
-		p.lock = readStackLock(src)
+	if source, ok := read(path.Join(directory, "stack.yaml.lock")); ok {
+		p.lock = readStackLock(source)
 	}
 	if p.lock != nil {
 		// A repository extra-dep is named after its repository until the lock
 		// says which package it holds.
-		for _, l := range p.lock.pkgs {
+		for _, l := range p.lock.packages {
 			for name, e := range p.extras {
 				if l.origin != "" && e.origin == l.origin && name != l.name {
 					e.name, e.version = l.name, l.version
@@ -211,16 +211,16 @@ func (r *resolver) readProject(dir string, read func(string) ([]byte, bool)) *pr
 	return p
 }
 
-// sourceExt is the extension of a Haskell source file the plugin reads, "" for any
+// sourceExtension is the extension of a Haskell source file the plugin reads, "" for any
 // other file.
-func sourceExt(p string) string {
+func sourceExtension(p string) string {
 	base := path.Base(p)
 	if strings.HasSuffix(base, ".hs-boot") {
 		return ".hs-boot"
 	}
-	switch ext := path.Ext(base); ext {
+	switch extension := path.Ext(base); extension {
 	case ".hs", ".lhs", ".hsc":
-		return ext
+		return extension
 	}
 	return ""
 }
@@ -233,33 +233,33 @@ func sourceExt(p string) string {
 func (r *resolver) index(sources []*scan.File) {
 	sort.Slice(sources, func(i, j int) bool { return sources[i].Path < sources[j].Path })
 	for _, f := range sources {
-		src, err := os.ReadFile(f.Abs)
-		if err != nil || !lang.Parseable(f, src) {
+		source, err := os.ReadFile(f.AbsolutePath)
+		if err != nil || !lang.Parseable(f, source) {
 			continue
 		}
-		mod := moduleName(src, sourceExt(f.Path) == ".lhs")
-		if mod == "" || mod == "Main" {
+		module := moduleName(source, sourceExtension(f.Path) == ".lhs")
+		if module == "" || module == "Main" {
 			continue
 		}
-		if sourceExt(f.Path) == ".hs-boot" {
-			r.boots[mod] = append(r.boots[mod], f.Path)
+		if sourceExtension(f.Path) == ".hs-boot" {
+			r.boots[module] = append(r.boots[module], f.Path)
 		} else {
-			r.mods[mod] = append(r.mods[mod], f.Path)
+			r.modules[module] = append(r.modules[module], f.Path)
 		}
 	}
 }
 
 // moduleName is the name a module header declares, "" without one.
-func moduleName(src []byte, literate bool) string {
+func moduleName(source []byte, literate bool) string {
 	if literate {
-		src = unlit(src)
+		source = unlit(source)
 	}
-	tokens := lex(src)
+	tokens := lex(source)
 	for i, t := range tokens {
 		switch {
 		case t.k == tPragma:
 			continue
-		case t.k == tVar && t.s == "module" && i+1 < len(tokens) && tokens[i+1].k == tCon:
+		case t.k == tVariable && t.s == "module" && i+1 < len(tokens) && tokens[i+1].k == tCon:
 			return tokens[i+1].s
 		}
 		return ""
@@ -267,25 +267,27 @@ func moduleName(src []byte, literate bool) string {
 	return ""
 }
 
-func depth(dir string) int {
-	if dir == "." {
+func depth(directory string) int {
+	if directory == "." {
 		return 0
 	}
-	return strings.Count(dir, "/") + 1
+	return strings.Count(directory, "/") + 1
 }
 
 func deeper(a, b string) bool {
-	if da, db := depth(a), depth(b); da != db {
-		return da > db
+	if da, database := depth(a), depth(b); da != database {
+		return da > database
 	}
 	return a < b
 }
 
-func within(file, dir string) bool { return dir == "." || strings.HasPrefix(file, dir+"/") }
+func within(file, directory string) bool {
+	return directory == "." || strings.HasPrefix(file, directory+"/")
+}
 
-func (r *resolver) pkgOf(file string) *pkgInfo {
-	for _, p := range r.pkgs {
-		if within(file, p.dir) {
+func (r *resolver) packageInfoOf(file string) *packageInfo {
+	for _, p := range r.packages {
+		if within(file, p.directory) {
 			return p
 		}
 	}
@@ -294,7 +296,7 @@ func (r *resolver) pkgOf(file string) *pkgInfo {
 
 func (r *resolver) projectOf(file string) *projectInfo {
 	for _, p := range r.projects {
-		if within(file, p.dir) {
+		if within(file, p.directory) {
 			return p
 		}
 	}
@@ -303,14 +305,14 @@ func (r *resolver) projectOf(file string) *projectInfo {
 
 // components are those of a package whose source directories hold file; all of them
 // for a file in none (Setup.hs) and for the package's manifest.
-func (p *pkgInfo) components(file string) []*component {
+func (p *packageInfo) components(file string) []*component {
 	var out []*component
 	best := -1
 	for _, c := range p.comps {
 		n := -1
-		for _, d := range c.dirs {
-			if dir := path.Join(p.dir, d); within(file, dir) {
-				n = max(n, depth(dir))
+		for _, d := range c.directories {
+			if directory := path.Join(p.directory, d); within(file, directory) {
+				n = max(n, depth(directory))
 			}
 		}
 		switch {
@@ -329,8 +331,8 @@ func (p *pkgInfo) components(file string) []*component {
 
 // declared are the packages a file's components depend on, by name, with the first
 // constraint written for each.
-func (r *resolver) declared(file string, own *pkgInfo, manifest bool) map[string]dep {
-	out := map[string]dep{}
+func (r *resolver) declared(file string, own *packageInfo, manifest bool) map[string]dependency {
+	out := map[string]dependency{}
 	if own == nil {
 		return out
 	}
@@ -340,7 +342,7 @@ func (r *resolver) declared(file string, own *pkgInfo, manifest bool) map[string
 		// against Cabal and base.
 		comps = []*component{own.setup}
 		if own.setup == nil {
-			return map[string]dep{"Cabal": {name: "Cabal"}, "base": {name: "base"}}
+			return map[string]dependency{"Cabal": {name: "Cabal"}, "base": {name: "base"}}
 		}
 	} else if !manifest {
 		comps = own.components(file)
@@ -348,8 +350,8 @@ func (r *resolver) declared(file string, own *pkgInfo, manifest bool) map[string
 		comps = append(append([]*component(nil), comps...), own.setup)
 	}
 	for _, c := range comps {
-		for _, d := range c.deps {
-			if prev, ok := out[d.name]; !ok || prev.constraint == "" && d.constraint != "" {
+		for _, d := range c.dependencies {
+			if previous, ok := out[d.name]; !ok || previous.constraint == "" && d.constraint != "" {
 				out[d.name] = d
 			}
 		}
@@ -358,52 +360,52 @@ func (r *resolver) declared(file string, own *pkgInfo, manifest bool) map[string
 }
 
 // setup reports whether file is a package's Setup script.
-func setup(file string, own *pkgInfo) bool {
+func setup(file string, own *packageInfo) bool {
 	base := path.Base(file)
-	return path.Dir(file) == own.dir && (base == "Setup.hs" || base == "Setup.lhs")
+	return path.Dir(file) == own.directory && (base == "Setup.hs" || base == "Setup.lhs")
 }
 
 // Implements: REQ-HASKELL-002, REQ-HASKELL-005, REQ-HASKELL-006, REQ-HASKELL-007, REQ-HASKELL-009
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 	switch {
-	case imp.Name == kindImport || imp.Name == kindSource || strings.HasPrefix(imp.Name, kindPkg):
-		return r.module(file, imp)
-	case imp.Name == kindDep:
-		own := r.byDir[path.Dir(file)]
+	case rawImport.Name == kindImport || rawImport.Name == kindSource || strings.HasPrefix(rawImport.Name, kindPackage):
+		return r.module(file, rawImport)
+	case rawImport.Name == kindDependency:
+		own := r.byDirectory[path.Dir(file)]
 		if own == nil {
-			own = r.pkgOf(file)
+			own = r.packageInfoOf(file)
 		}
-		if own != nil && imp.Module == own.name {
+		if own != nil && rawImport.Module == own.name {
 			return lang.Target{} // a component using the package's own library
 		}
-		if lp := r.byName[imp.Module]; lp != nil {
-			return lang.Target{Local: lp.file}
+		if localPackage := r.byName[rawImport.Module]; localPackage != nil {
+			return lang.Target{Local: localPackage.file}
 		}
-		return r.pkgTarget(file, own, imp.Module, true)
-	case imp.Name == kindMember:
-		return r.member(file, imp.Module)
-	case imp.Name == kindInclude:
-		return r.include(file, imp.Module)
-	case imp.Name == kindRepo:
+		return r.packageTarget(file, own, rawImport.Module, true)
+	case rawImport.Name == kindMember:
+		return r.member(file, rawImport.Module)
+	case rawImport.Name == kindInclude:
+		return r.include(file, rawImport.Module)
+	case rawImport.Name == kindRepository:
 		if p := r.projectOf(file); p != nil {
-			if s, ok := p.repos[imp.Module]; ok {
-				return originTarget(imp.Module, s.location, s.tag)
+			if s, ok := p.repositories[rawImport.Module]; ok {
+				return originTarget(rawImport.Module, s.location, s.tag)
 			}
 		}
-	case imp.Name == kindExtra:
+	case rawImport.Name == kindExtra:
 		p := r.projectOf(file)
 		if p == nil {
 			return lang.Target{}
 		}
-		e, ok := p.extras[imp.Module]
+		e, ok := p.extras[rawImport.Module]
 		if !ok {
 			return lang.Target{}
 		}
-		if dir, ok := strings.CutPrefix(e.origin, "path:"); ok {
-			if lp := r.byDir[path.Join(p.dir, dir)]; lp != nil {
-				return lang.Target{Local: lp.file}
+		if directory, ok := strings.CutPrefix(e.origin, "path:"); ok {
+			if localPackage := r.byDirectory[path.Join(p.directory, directory)]; localPackage != nil {
+				return lang.Target{Local: localPackage.file}
 			}
-			return lang.Target{Ecosystem: ecoHackage, Package: e.name, Origin: e.origin}
+			return lang.Target{Ecosystem: ecosystemHackage, Package: e.name, Origin: e.origin}
 		}
 		if l, ok := p.lock.get(e.name); ok && e.origin != "" && l.origin != "" {
 			e = l
@@ -411,24 +413,24 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 		if e.origin != "" {
 			return originTarget(e.name, e.origin, e.version)
 		}
-		return lang.Target{Ecosystem: ecoHackage, Package: e.name, Version: e.version, Pinned: lang.Pinned(e.version)}
+		return lang.Target{Ecosystem: ecosystemHackage, Package: e.name, Version: e.version, Pinned: lang.Pinned(e.version)}
 	}
 	return lang.Target{}
 }
 
-func (l *stackLock) get(name string) (extraDep, bool) {
+func (l *stackLock) get(name string) (extraDependency, bool) {
 	if l == nil {
-		return extraDep{}, false
+		return extraDependency{}, false
 	}
-	e, ok := l.pkgs[name]
+	e, ok := l.packages[name]
 	return e, ok
 }
 
 // originTarget is a package built from a repository at a tag or commit: pinned by a
 // commit only.
-func originTarget(name, location, ref string) lang.Target {
-	t := lang.Target{Ecosystem: ecoHackage, Package: name, Origin: location, Version: ref}
-	t.Pinned = lang.Commit(ref)
+func originTarget(name, location, reference string) lang.Target {
+	t := lang.Target{Ecosystem: ecosystemHackage, Package: name, Origin: location, Version: reference}
+	t.Pinned = lang.Commit(reference)
 	t.Floating = !t.Pinned
 	return t
 }
@@ -444,10 +446,10 @@ func (r *resolver) member(file, entry string) lang.Target {
 	if strings.HasSuffix(p, ".cabal") && r.files[p] {
 		return lang.Target{Local: p}
 	}
-	if lp := r.byDir[p]; lp != nil {
-		return lang.Target{Local: lp.file}
+	if localPackage := r.byDirectory[p]; localPackage != nil {
+		return lang.Target{Local: localPackage.file}
 	}
-	if r.dirs[p] {
+	if r.directories[p] {
 		return lang.Target{Local: p}
 	}
 	return lang.Target{}
@@ -458,28 +460,28 @@ func (r *resolver) member(file, entry string) lang.Target {
 // depends on), and else to the package providing it (external).
 //
 // Implements: REQ-HASKELL-006, REQ-HASKELL-009
-func (r *resolver) module(file string, imp lang.RawImport) lang.Target {
-	mod := imp.Module
-	own := r.pkgOf(file)
-	boot := imp.Name == kindSource
-	if pkg, ok := strings.CutPrefix(imp.Name, kindPkg); ok {
+func (r *resolver) module(file string, rawImport lang.RawImport) lang.Target {
+	module := rawImport.Module
+	own := r.packageInfoOf(file)
+	boot := rawImport.Name == kindSource
+	if packageName, ok := strings.CutPrefix(rawImport.Name, kindPackage); ok {
 		// PackageImports names the package: only its modules are candidates.
-		var in *pkgInfo
+		var in *packageInfo
 		switch {
-		case pkg == "this" || own != nil && pkg == own.name:
+		case packageName == "this" || own != nil && packageName == own.name:
 			in = own
-		case r.byName[pkg] != nil:
-			in = r.byName[pkg]
+		case r.byName[packageName] != nil:
+			in = r.byName[packageName]
 		default:
-			return r.pkgTarget(file, own, pkg, false)
+			return r.packageTarget(file, own, packageName, false)
 		}
 		if in == nil {
 			return lang.Target{}
 		}
-		if f := r.localIn(file, mod, boot, func(p *pkgInfo) bool { return p == in }); f != "" {
+		if f := r.localIn(file, module, boot, func(p *packageInfo) bool { return p == in }); f != "" {
 			return local(file, f)
 		}
-		if f := r.probe(file, in, mod, boot); f != "" {
+		if f := r.probe(file, in, module, boot); f != "" {
 			return local(file, f)
 		}
 		if in == own {
@@ -487,23 +489,23 @@ func (r *resolver) module(file string, imp lang.RawImport) lang.Target {
 		}
 		return lang.Target{Local: in.file}
 	}
-	if f := r.local(file, own, mod, boot); f != "" {
+	if f := r.local(file, own, module, boot); f != "" {
 		return local(file, f)
 	}
-	if mod == "Main" {
+	if module == "Main" {
 		return lang.Target{} // a program, not a library module
 	}
 	for _, prefix := range []string{"Paths_", "PackageInfo_", "Build_"} {
 		// Modules cabal (or a package's Setup.hs) generates from the package
 		// description.
-		if name, ok := strings.CutPrefix(mod, prefix); ok {
-			if lp := r.byName[strings.ReplaceAll(name, "_", "-")]; lp != nil {
-				return lang.Target{Local: lp.file}
+		if name, ok := strings.CutPrefix(module, prefix); ok {
+			if localPackage := r.byName[strings.ReplaceAll(name, "_", "-")]; localPackage != nil {
+				return lang.Target{Local: localPackage.file}
 			}
 			return lang.Target{}
 		}
 	}
-	return r.pkgTarget(file, own, r.packageOf(file, own, mod), false)
+	return r.packageTarget(file, own, r.packageOf(file, own, module), false)
 }
 
 func local(file, f string) lang.Target {
@@ -513,70 +515,70 @@ func local(file, f string) lang.Target {
 	return lang.Target{Local: f}
 }
 
-// local finds the file declaring mod: in the importer's own package (its component's
+// local finds the file declaring module: in the importer's own package (its component's
 // source directories first, then a generated module's source - .y, .x, .chs - probed
 // there), else in a package of the same project or one the importer depends on. A
 // file of no package takes the nearest declaration anywhere.
-func (r *resolver) local(file string, own *pkgInfo, mod string, boot bool) string {
+func (r *resolver) local(file string, own *packageInfo, module string, boot bool) string {
 	if own == nil {
-		return r.localIn(file, mod, boot, nil)
+		return r.localIn(file, module, boot, nil)
 	}
-	if f := r.localIn(file, mod, boot, func(p *pkgInfo) bool { return p == own }); f != "" {
+	if f := r.localIn(file, module, boot, func(p *packageInfo) bool { return p == own }); f != "" {
 		return f
 	}
-	if f := r.probe(file, own, mod, boot); f != "" {
+	if f := r.probe(file, own, module, boot); f != "" {
 		return f
 	}
 	declared := r.declared(file, own, false)
-	return r.localIn(file, mod, boot, func(p *pkgInfo) bool {
+	return r.localIn(file, module, boot, func(p *packageInfo) bool {
 		if p == nil {
 			return false
 		}
-		_, dep := declared[p.name]
-		return dep || p.project != nil && p.project == own.project || own.project != nil && member(own.project, p)
+		_, dependency := declared[p.name]
+		return dependency || p.project != nil && p.project == own.project || own.project != nil && member(own.project, p)
 	})
 }
 
-func member(proj *projectInfo, p *pkgInfo) bool {
-	for _, m := range proj.members {
-		if m == p.dir || m == p.file {
+func member(project *projectInfo, p *packageInfo) bool {
+	for _, m := range project.members {
+		if m == p.directory || m == p.file {
 			return true
 		}
 	}
 	return false
 }
 
-// localIn picks among the files declaring mod those whose package keep accepts (nil
+// localIn picks among the files declaring module those whose package keep accepts (nil
 // accepts all): one in the importer's component directories, else the nearest.
-func (r *resolver) localIn(file, mod string, boot bool, keep func(*pkgInfo) bool) string {
-	candidates := r.mods[mod]
+func (r *resolver) localIn(file, module string, boot bool, keep func(*packageInfo) bool) string {
+	candidates := r.modules[module]
 	if boot {
-		candidates = append(append([]string(nil), r.boots[mod]...), candidates...)
+		candidates = append(append([]string(nil), r.boots[module]...), candidates...)
 	}
 	var ok []string
 	for _, c := range candidates {
-		if keep == nil || keep(r.pkgOf(c)) {
+		if keep == nil || keep(r.packageInfoOf(c)) {
 			ok = append(ok, c)
 		}
 	}
 	if len(ok) == 0 {
 		return ""
 	}
-	if own := r.pkgOf(file); own != nil {
-		for _, comp := range own.components(file) {
-			for _, d := range comp.dirs {
+	if own := r.packageInfoOf(file); own != nil {
+		for _, component := range own.components(file) {
+			for _, d := range component.directories {
 				for _, c := range ok {
-					if within(c, path.Join(own.dir, d)) {
+					if within(c, path.Join(own.directory, d)) {
 						return c
 					}
 				}
 			}
 		}
 	}
-	best, bestLen := ok[0], -1
+	best, bestLength := ok[0], -1
 	for _, c := range ok {
-		if n := common(file, c); n > bestLen {
-			best, bestLen = c, n
+		if n := common(file, c); n > bestLength {
+			best, bestLength = c, n
 		}
 	}
 	return best
@@ -584,9 +586,9 @@ func (r *resolver) localIn(file, mod string, boot bool, keep func(*pkgInfo) bool
 
 // common is the number of leading directories two paths share.
 func common(a, b string) int {
-	as, bs := strings.Split(path.Dir(a), "/"), strings.Split(path.Dir(b), "/")
+	aParts, bParts := strings.Split(path.Dir(a), "/"), strings.Split(path.Dir(b), "/")
 	n := 0
-	for n < len(as) && n < len(bs) && as[n] == bs[n] {
+	for n < len(aParts) && n < len(bParts) && aParts[n] == bParts[n] {
 		n++
 	}
 	return n
@@ -595,16 +597,16 @@ func common(a, b string) int {
 // probe looks for the source of a module under the importer's component directories
 // by its path, for the modules no header declares: those generated from Alex, Happy,
 // c2hs or hsc2hs sources.
-func (r *resolver) probe(file string, own *pkgInfo, mod string, boot bool) string {
-	rel := strings.ReplaceAll(mod, ".", "/")
-	exts := []string{".hs", ".lhs", ".hsc", ".y", ".ly", ".x", ".chs", ".hsig"}
+func (r *resolver) probe(file string, own *packageInfo, module string, boot bool) string {
+	relative := strings.ReplaceAll(module, ".", "/")
+	extensions := []string{".hs", ".lhs", ".hsc", ".y", ".ly", ".x", ".chs", ".hsig"}
 	if boot {
-		exts = append([]string{".hs-boot"}, exts...)
+		extensions = append([]string{".hs-boot"}, extensions...)
 	}
 	for _, c := range own.components(file) {
-		for _, d := range c.dirs {
-			for _, ext := range exts {
-				if p := path.Join(own.dir, d, rel+ext); r.files[p] {
+		for _, d := range c.directories {
+			for _, extension := range extensions {
+				if p := path.Join(own.directory, d, relative+extension); r.files[p] {
 					return p
 				}
 			}
@@ -622,60 +624,60 @@ func (r *resolver) probe(file string, own *pkgInfo, mod string, boot bool) strin
 // not name a subject, in lower case.
 //
 // Implements: REQ-HASKELL-009
-func (r *resolver) packageOf(file string, own *pkgInfo, mod string) string {
+func (r *resolver) packageOf(file string, own *packageInfo, module string) string {
 	declared := r.declared(file, own, false)
-	isDeclared := func(p string) bool { _, ok := declared[p]; return ok && !stdPkgs[p] }
-	for _, p := range moduleTable[mod] {
-		if stdPkgs[p] || isDeclared(p) {
+	isDeclared := func(p string) bool { _, ok := declared[p]; return ok && !stdPackages[p] }
+	for _, p := range moduleTable[module] {
+		if stdPackages[p] || isDeclared(p) {
 			return p
 		}
 	}
-	if _, ps := tableMatch(mod, isDeclared); len(ps) > 0 {
-		return ps[0]
+	if _, packages := tableMatch(module, isDeclared); len(packages) > 0 {
+		return packages[0]
 	}
 	names := map[string]string{}
 	for name := range declared {
-		if !stdPkgs[name] {
+		if !stdPackages[name] {
 			names[fold(name)] = name
 		}
 	}
-	if p := runMatch(mod, names); p != "" {
+	if p := runMatch(module, names); p != "" {
 		return p
 	}
-	proj := r.projectOf(file)
-	if _, ps := tableMatch(mod, nil); len(ps) > 0 {
-		for _, p := range ps {
-			if proj.pinned(p) {
+	project := r.projectOf(file)
+	if _, packages := tableMatch(module, nil); len(packages) > 0 {
+		for _, p := range packages {
+			if project.pinned(p) {
 				return p
 			}
 		}
-		return ps[0]
+		return packages[0]
 	}
 	// A declared package named after its first word (hermes-json for Data.Hermes).
 	firsts := map[string]string{}
 	for name := range declared {
 		first, _, _ := strings.Cut(name, "-")
-		if !stdPkgs[name] && first != name {
-			if _, dup := firsts[fold(first)]; dup {
+		if !stdPackages[name] && first != name {
+			if _, duplicate := firsts[fold(first)]; duplicate {
 				firsts[fold(first)] = ""
 			} else {
 				firsts[fold(first)] = name
 			}
 		}
 	}
-	if p := runMatch(mod, firsts); p != "" {
+	if p := runMatch(module, firsts); p != "" {
 		return p
 	}
-	if proj != nil {
+	if project != nil {
 		known := map[string]string{}
-		for _, name := range proj.names() {
+		for _, name := range project.names() {
 			known[fold(name)] = name
 		}
-		if p := runMatch(mod, known); p != "" {
+		if p := runMatch(module, known); p != "" {
 			return p
 		}
 	}
-	return guessName(mod)
+	return guessName(module)
 }
 
 // pinned reports whether the project's plan, freeze file, constraints, lock or
@@ -687,8 +689,8 @@ func (p *projectInfo) pinned(name string) bool {
 	_, a := p.pins[name]
 	_, b := p.extras[name]
 	_, c := p.lock.get(name)
-	_, d := p.repos[name]
-	e := p.plan != nil && p.plan.pkgs[name] != nil
+	_, d := p.repositories[name]
+	e := p.plan != nil && p.plan.packages[name] != nil
 	return a || b || c || d || e
 }
 
@@ -701,12 +703,12 @@ func (p *projectInfo) names() []string {
 		out = append(out, n)
 	}
 	if p.lock != nil {
-		for n := range p.lock.pkgs {
+		for n := range p.lock.packages {
 			out = append(out, n)
 		}
 	}
 	if p.plan != nil {
-		for n := range p.plan.pkgs {
+		for n := range p.plan.packages {
 			out = append(out, n)
 		}
 	}
@@ -714,7 +716,7 @@ func (p *projectInfo) names() []string {
 	return out
 }
 
-// pkgTarget is a package as the importer's project pins it: GHC's own packages to
+// packageTarget is a package as the importer's project pins it: GHC's own packages to
 // haskell-std; a package of the repository to its description; and else a Hackage
 // package at the version the build plan, the freeze file or an exact constraint of
 // cabal.project, a source-repository-package, stack.yaml.lock or stack.yaml's
@@ -724,12 +726,12 @@ func (p *projectInfo) names() []string {
 // as the snapshot's name). A package nothing declares or pins is unresolved.
 //
 // Implements: REQ-HASKELL-007, REQ-HASKELL-008, REQ-HASKELL-009, REQ-HASKELL-010
-func (r *resolver) pkgTarget(file string, own *pkgInfo, name string, manifest bool) lang.Target {
-	if stdPkgs[name] {
-		return lang.Target{Ecosystem: ecoStd, Package: name}
+func (r *resolver) packageTarget(file string, own *packageInfo, name string, manifest bool) lang.Target {
+	if stdPackages[name] {
+		return lang.Target{Ecosystem: ecosystemStd, Package: name}
 	}
-	if lp := r.byName[name]; lp != nil {
-		return lang.Target{Local: lp.file}
+	if localPackage := r.byName[name]; localPackage != nil {
+		return lang.Target{Local: localPackage.file}
 	}
 	d, declared := r.declared(file, own, manifest)[name]
 	if !declared && !manifest && own != nil {
@@ -737,11 +739,11 @@ func (r *resolver) pkgTarget(file string, own *pkgInfo, name string, manifest bo
 		// guards it is not evaluated, so it counts.
 		d, declared = r.declared(file, own, true)[name]
 	}
-	proj := r.projectOf(file)
+	project := r.projectOf(file)
 	if own != nil && own.project != nil {
-		proj = own.project
+		project = own.project
 	}
-	t := lang.Target{Ecosystem: ecoHackage, Package: name}
+	t := lang.Target{Ecosystem: ecosystemHackage, Package: name}
 	exact := func(v string) lang.Target {
 		t.Version, t.Pinned = v, true
 		if declared && d.constraint != "" && d.constraint != v {
@@ -749,28 +751,28 @@ func (r *resolver) pkgTarget(file string, own *pkgInfo, name string, manifest bo
 		}
 		return t
 	}
-	if proj != nil {
-		if proj.plan != nil {
-			if pk := proj.plan.pkgs[name]; pk != nil && !pk.local {
-				if pk.origin != "" {
-					return originTarget(name, pk.origin, pk.tag)
+	if project != nil {
+		if project.plan != nil {
+			if planned := project.plan.packages[name]; planned != nil && !planned.local {
+				if planned.origin != "" {
+					return originTarget(name, planned.origin, planned.tag)
 				}
-				return exact(pk.version)
+				return exact(planned.version)
 			}
 		}
-		if v, ok := proj.pins[name]; ok {
+		if v, ok := project.pins[name]; ok {
 			return exact(v)
 		}
-		if s, ok := proj.repos[name]; ok {
+		if s, ok := project.repositories[name]; ok {
 			return originTarget(name, s.location, s.tag)
 		}
-		if l, ok := proj.lock.get(name); ok {
+		if l, ok := project.lock.get(name); ok {
 			if l.origin != "" {
 				return originTarget(name, l.origin, l.version)
 			}
 			return exact(l.version)
 		}
-		if e, ok := proj.extras[name]; ok {
+		if e, ok := project.extras[name]; ok {
 			switch {
 			case strings.HasPrefix(e.origin, "path:"):
 				t.Origin = e.origin
@@ -788,8 +790,8 @@ func (r *resolver) pkgTarget(file string, own *pkgInfo, name string, manifest bo
 	}
 	t.Version, t.Pinned = d.constraint, lang.Pinned(d.constraint)
 	if d.constraint == "" {
-		if proj != nil && proj.stack != nil && proj.stack.snapshot != "" {
-			t.Version = proj.stack.snapshot
+		if project != nil && project.stack != nil && project.stack.snapshot != "" {
+			t.Version = project.stack.snapshot
 		} else {
 			t.Floating = true
 		}
@@ -804,28 +806,28 @@ func (r *resolver) pkgTarget(file string, own *pkgInfo, name string, manifest bo
 //
 // Implements: REQ-HASKELL-008
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
-	if t.Ecosystem != ecoHackage {
+	if t.Ecosystem != ecosystemHackage {
 		return nil
 	}
 	for _, p := range r.projects {
 		if p.plan == nil {
 			continue
 		}
-		pk := p.plan.pkgs[t.Package]
-		if pk == nil || t.Version != pk.version && t.Version != pk.tag {
+		planned := p.plan.packages[t.Package]
+		if planned == nil || t.Version != planned.version && t.Version != planned.tag {
 			continue
 		}
 		var out []lang.Target
-		for _, name := range pk.depends {
-			dep := p.plan.pkgs[name]
-			if stdPkgs[name] || dep == nil || dep.local {
+		for _, name := range planned.depends {
+			dependency := p.plan.packages[name]
+			if stdPackages[name] || dependency == nil || dependency.local {
 				continue
 			}
-			if dep.origin != "" {
-				out = append(out, originTarget(name, dep.origin, dep.tag))
+			if dependency.origin != "" {
+				out = append(out, originTarget(name, dependency.origin, dependency.tag))
 				continue
 			}
-			out = append(out, lang.Target{Ecosystem: ecoHackage, Package: name, Version: dep.version, Pinned: true})
+			out = append(out, lang.Target{Ecosystem: ecosystemHackage, Package: name, Version: dependency.version, Pinned: true})
 		}
 		return out
 	}

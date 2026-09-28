@@ -134,9 +134,9 @@ func underscore(s string) string {
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		if isUpper(c) {
-			prevLower := i > 0 && (s[i-1] >= 'a' && s[i-1] <= 'z' || isDigit(s[i-1]))
+			previousLower := i > 0 && (s[i-1] >= 'a' && s[i-1] <= 'z' || isDigit(s[i-1]))
 			nextLower := i > 0 && isUpper(s[i-1]) && i+1 < len(s) && s[i+1] >= 'a' && s[i+1] <= 'z'
-			if prevLower || nextLower {
+			if previousLower || nextLower {
 				b.WriteByte('_')
 			}
 			b.WriteByte(c + 'a' - 'A')

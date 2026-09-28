@@ -27,8 +27,8 @@ import (
 )
 
 const (
-	ecoBuf = "buf"          // Buf Schema Registry modules and plugins
-	ecoStd = "protobuf-std" // the protos protoc and buf ship
+	ecoBuf       = "buf"          // Buf Schema Registry modules and plugins
+	ecosystemStd = "protobuf-std" // the protos protoc and buf ship
 )
 
 // The kinds of file, as Class names them.
@@ -77,7 +77,7 @@ func (Plugin) Class(f *scan.File) string { return fileClass(f.Path) }
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
 		{ID: ecoBuf, Name: "Buf Schema Registry"},
-		{ID: ecoStd, Name: "Protobuf well-known types", Std: true},
+		{ID: ecosystemStd, Name: "Protobuf well-known types", Std: true},
 	}
 }
 
@@ -86,10 +86,10 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-PROTO-001, REQ-PROTO-002, REQ-PROTO-003
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	class := fileClass(f.Path)
 	if class == classProto {
-		return readProto(src), nil
+		return readProto(source), nil
 	}
-	return readBuf(class, src).extraction(), nil
+	return readBuf(class, source).extraction(), nil
 }

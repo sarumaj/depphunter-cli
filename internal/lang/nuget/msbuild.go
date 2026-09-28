@@ -42,14 +42,14 @@ func ReadProject(data []byte) Project {
 	d.Strict = false
 	d.CharsetReader = charset
 	var stack []string
-	var cur *Item   // the item whose children are being read
-	var text string // character data of the innermost element
+	var current *Item // the item whose children are being read
+	var text string   // character data of the innermost element
 	for {
-		tok, err := d.Token()
+		token, err := d.Token()
 		if err != nil {
 			break
 		}
-		switch t := tok.(type) {
+		switch t := token.(type) {
 		case xml.StartElement:
 			name := t.Name.Local
 			text = ""
@@ -77,7 +77,7 @@ func ReadProject(data []byte) Project {
 					}
 				}
 				p.Items = append(p.Items, it)
-				cur = &p.Items[len(p.Items)-1]
+				current = &p.Items[len(p.Items)-1]
 			}
 		case xml.CharData:
 			text += string(t)
@@ -88,12 +88,12 @@ func ReadProject(data []byte) Project {
 			name := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
 			switch {
-			case len(stack) >= 2 && stack[len(stack)-2] == "ItemGroup" && cur != nil && (name == "Version" || name == "VersionOverride"):
-				if cur.Version == "" {
-					cur.Version = strings.TrimSpace(text)
+			case len(stack) >= 2 && stack[len(stack)-2] == "ItemGroup" && current != nil && (name == "Version" || name == "VersionOverride"):
+				if current.Version == "" {
+					current.Version = strings.TrimSpace(text)
 				}
 			case len(stack) >= 1 && stack[len(stack)-1] == "ItemGroup":
-				cur = nil
+				current = nil
 			case len(stack) >= 1 && stack[len(stack)-1] == "PropertyGroup":
 				p.Properties[name] = strings.TrimSpace(text)
 			}

@@ -14,19 +14,19 @@ import (
 
 var stdCrates = map[string]bool{"std": true, "core": true, "alloc": true, "proc_macro": true, "test": true}
 
-// dep is one Cargo dependency as the code names it (dashes become underscores).
-type dep struct {
-	pkg     string // package name on crates.io (differs from the key when renamed)
-	version string
-	path    string // project-relative directory of a path dependency
+// dependency is one Cargo dependency as the code names it (dashes become underscores).
+type dependency struct {
+	packageName string // package name on crates.io (differs from the key when renamed)
+	version     string
+	path        string // project-relative directory of a path dependency
 	// registry is the alternative registry the dependency declares: its name
 	// (registry = "corp") or its index URL (registry-index = "...").
 	registry string
 }
 
 type crate struct {
-	dir  string // directory holding Cargo.toml
-	deps map[string]dep
+	directory    string // directory holding Cargo.toml
+	dependencies map[string]dependency
 }
 
 type resolver struct {
@@ -55,18 +55,18 @@ type locked struct{ name, version string }
 //
 // Implements: REQ-SUP-009
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
-	if t.Ecosystem != ecoCrates {
+	if t.Ecosystem != ecosystemCrates {
 		return nil
 	}
 	var out []lang.Target
-	for _, dep := range r.tree[t.Package+" "+r.pick(t.Package, t.Version)] {
-		version := dep.version
+	for _, dependency := range r.tree[t.Package+" "+r.pick(t.Package, t.Version)] {
+		version := dependency.version
 		if version == "" {
-			version = r.pick(dep.name, "")
+			version = r.pick(dependency.name, "")
 		}
 		out = append(out, lang.Target{
-			Ecosystem: ecoCrates, Package: dep.name, Version: version, Pinned: version != "",
-			Registry: r.sources[dep.name+" "+version], Git: r.gits[dep.name+" "+version],
+			Ecosystem: ecosystemCrates, Package: dependency.name, Version: version, Pinned: version != "",
+			Registry: r.sources[dependency.name+" "+version], Git: r.gits[dependency.name+" "+version],
 		})
 	}
 	return out
@@ -77,21 +77,21 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 // reading of it accepts. "" when the lock holds none.
 //
 // Implements: REQ-RS-007
-func (r *resolver) pick(pkg, requirement string) string {
-	versions := r.locked[pkg]
+func (r *resolver) pick(packageName, requirement string) string {
+	versions := r.locked[packageName]
 	if len(versions) <= 1 {
 		if len(versions) == 1 {
 			return versions[0]
 		}
 		return ""
 	}
-	req := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(requirement), "^="))
+	trimmed := strings.TrimSpace(strings.TrimLeft(strings.TrimSpace(requirement), "^="))
 	best := ""
 	for _, v := range versions {
-		if v == req {
+		if v == trimmed {
 			return v
 		}
-		if (req == "" || caret(req, v)) && (best == "" || semver.Compare("v"+v, "v"+best) > 0) {
+		if (trimmed == "" || caret(trimmed, v)) && (best == "" || semver.Compare("v"+v, "v"+best) > 0) {
 			best = v
 		}
 	}
@@ -107,8 +107,8 @@ func (r *resolver) pick(pkg, requirement string) string {
 
 // caret reports whether version v satisfies the requirement req read as Cargo reads a
 // bare one: the same leftmost non-zero component, and no older than req.
-func caret(req, v string) bool {
-	rp, vp := strings.Split(req, "."), strings.Split(v, ".")
+func caret(requirement, v string) bool {
+	rp, vp := strings.Split(requirement, "."), strings.Split(v, ".")
 	for i, part := range rp {
 		if i >= len(vp) {
 			return false
@@ -120,17 +120,17 @@ func caret(req, v string) bool {
 			break
 		}
 	}
-	full := req + strings.Repeat(".0", max(0, 3-len(rp)))
+	full := requirement + strings.Repeat(".0", max(0, 3-len(rp)))
 	return semver.Compare("v"+v, "v"+full) >= 0
 }
 
-func norm(name string) string { return strings.ReplaceAll(name, "-", "_") }
+func normalize(name string) string { return strings.ReplaceAll(name, "-", "_") }
 
 // Implements: REQ-RS-004, REQ-RS-006, REQ-RS-007
 func newResolver(all []*scan.File) *resolver {
 	r := &resolver{files: map[string]bool{}, members: map[string]string{}, locked: map[string][]string{},
 		tree: map[string][]locked{}, sources: map[string]string{}, gits: map[string]string{}}
-	workspaceDeps := map[string]dep{}
+	workspaceDependencies := map[string]dependency{}
 	type manifest struct {
 		f   *scan.File
 		doc map[string]any
@@ -141,11 +141,11 @@ func newResolver(all []*scan.File) *resolver {
 		switch path.Base(f.Path) {
 		case "Cargo.toml":
 			var doc map[string]any
-			if _, err := toml.DecodeFile(f.Abs, &doc); err == nil {
+			if _, err := toml.DecodeFile(f.AbsolutePath, &doc); err == nil {
 				manifests = append(manifests, manifest{f, doc})
-				if ws, ok := doc["workspace"].(map[string]any); ok {
-					for k, v := range table(ws["dependencies"]) {
-						workspaceDeps[norm(k)] = parseDep(k, v, path.Dir(f.Path))
+				if workspace, ok := doc["workspace"].(map[string]any); ok {
+					for k, v := range table(workspace["dependencies"]) {
+						workspaceDependencies[normalize(k)] = parseDependency(k, v, path.Dir(f.Path))
 					}
 				}
 			}
@@ -158,11 +158,11 @@ func newResolver(all []*scan.File) *resolver {
 					Dependencies []string
 				}
 			}
-			if _, err := toml.DecodeFile(f.Abs, &lock); err == nil {
+			if _, err := toml.DecodeFile(f.AbsolutePath, &lock); err == nil {
 				for _, p := range lock.Package {
 					r.locked[p.Name] = append(r.locked[p.Name], p.Version)
-					if reg := lockRegistry(p.Source); reg != "" {
-						r.sources[p.Name+" "+p.Version] = reg
+					if registrySpec := lockRegistry(p.Source); registrySpec != "" {
+						r.sources[p.Name+" "+p.Version] = registrySpec
 					}
 					if g := lockGit(p.Source); g != "" {
 						r.gits[p.Name+" "+p.Version] = g
@@ -173,34 +173,34 @@ func newResolver(all []*scan.File) *resolver {
 						if len(fields) == 0 || fields[0] == p.Name {
 							continue
 						}
-						dep := locked{name: fields[0]}
+						dependency := locked{name: fields[0]}
 						if len(fields) > 1 {
-							dep.version = fields[1]
+							dependency.version = fields[1]
 						}
 						key := p.Name + " " + p.Version
-						r.tree[key] = append(r.tree[key], dep)
+						r.tree[key] = append(r.tree[key], dependency)
 					}
 				}
 			}
 		}
 	}
 	for _, m := range manifests {
-		dir := path.Dir(m.f.Path)
-		c := &crate{dir: dir, deps: map[string]dep{}}
-		if pkg, ok := m.doc["package"].(map[string]any); ok {
-			if name, ok := pkg["name"].(string); ok {
-				r.members[norm(name)] = dir
+		directory := path.Dir(m.f.Path)
+		c := &crate{directory: directory, dependencies: map[string]dependency{}}
+		if packageName, ok := m.doc["package"].(map[string]any); ok {
+			if name, ok := packageName["name"].(string); ok {
+				r.members[normalize(name)] = directory
 			}
 		}
 		add := func(t map[string]any) {
 			for k, v := range t {
-				d := parseDep(k, v, dir)
+				d := parseDependency(k, v, directory)
 				if w, ok := v.(map[string]any); ok && w["workspace"] == true {
-					if wd, ok := workspaceDeps[norm(k)]; ok {
+					if wd, ok := workspaceDependencies[normalize(k)]; ok {
 						d = wd
 					}
 				}
-				c.deps[norm(k)] = d
+				c.dependencies[normalize(k)] = d
 			}
 		}
 		for _, key := range []string{"dependencies", "dev-dependencies", "build-dependencies"} {
@@ -213,7 +213,7 @@ func newResolver(all []*scan.File) *resolver {
 		}
 		r.crates = append(r.crates, c)
 	}
-	sort.Slice(r.crates, func(i, j int) bool { return len(r.crates[i].dir) > len(r.crates[j].dir) })
+	sort.Slice(r.crates, func(i, j int) bool { return len(r.crates[i].directory) > len(r.crates[j].directory) })
 	return r
 }
 
@@ -223,8 +223,8 @@ func table(v any) map[string]any {
 }
 
 // Implements: REQ-RS-004, REQ-RS-005
-func parseDep(key string, v any, dir string) dep {
-	d := dep{pkg: key}
+func parseDependency(key string, v any, directory string) dependency {
+	d := dependency{packageName: key}
 	switch v := v.(type) {
 	case string:
 		d.version = v
@@ -233,10 +233,10 @@ func parseDep(key string, v any, dir string) dep {
 			d.version = s
 		}
 		if s, ok := v["package"].(string); ok {
-			d.pkg = s
+			d.packageName = s
 		}
 		if s, ok := v["path"].(string); ok {
-			d.path = path.Clean(path.Join(dir, s))
+			d.path = path.Clean(path.Join(directory, s))
 		}
 		if s, ok := v["registry"].(string); ok {
 			d.registry = s
@@ -289,32 +289,32 @@ func lockGit(source string) string {
 // holds for it, and the registry it comes from when that is not crates.io.
 //
 // Implements: REQ-RS-007, REQ-RS-010
-func (r *resolver) target(d dep) lang.Target {
-	t := lang.Target{Ecosystem: ecoCrates, Package: d.pkg, Version: d.version, Registry: d.registry}
-	if exact := r.pick(d.pkg, d.version); exact != "" {
+func (r *resolver) target(d dependency) lang.Target {
+	t := lang.Target{Ecosystem: ecosystemCrates, Package: d.packageName, Version: d.version, Registry: d.registry}
+	if exact := r.pick(d.packageName, d.version); exact != "" {
 		t.Version, t.Requested, t.Pinned = exact, d.version, true
 		if t.Registry == "" {
-			t.Registry = r.sources[d.pkg+" "+exact]
+			t.Registry = r.sources[d.packageName+" "+exact]
 		}
-		t.Git = r.gits[d.pkg+" "+exact]
+		t.Git = r.gits[d.packageName+" "+exact]
 	}
 	return t
 }
 
 func (r *resolver) crateOf(file string) *crate {
 	for _, c := range r.crates {
-		if c.dir == "." || strings.HasPrefix(file, c.dir+"/") {
+		if c.directory == "." || strings.HasPrefix(file, c.directory+"/") {
 			return c
 		}
 	}
 	return nil
 }
 
-// moduleDir is where a file's child modules live: src/lib.rs and a/mod.rs own their
+// moduleDirectory is where a file's child modules live: src/lib.rs and a/mod.rs own their
 // directory, a/b.rs owns a/b/.
 //
 // Implements: REQ-RS-002
-func moduleDir(file string) string {
+func moduleDirectory(file string) string {
 	switch base := path.Base(file); base {
 	case "lib.rs", "main.rs", "mod.rs":
 		return path.Dir(file)
@@ -324,32 +324,32 @@ func moduleDir(file string) string {
 }
 
 // Implements: REQ-RS-002, REQ-RS-003, REQ-RS-004, REQ-RS-005, REQ-RS-007, REQ-RS-008
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	segments := strings.Split(imp.Module, "::")
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	segments := strings.Split(rawImport.Module, "::")
 	c := r.crateOf(file)
 	switch first := segments[0]; {
 	case first == "crate":
 		if c != nil {
-			t, _ := r.probe(path.Join(c.dir, "src"), segments[1:])
+			t, _ := r.probe(path.Join(c.directory, "src"), segments[1:])
 			return t
 		}
 		return lang.Target{}
 	case first == "self":
-		t, _ := r.probe(moduleDir(file), segments[1:])
+		t, _ := r.probe(moduleDirectory(file), segments[1:])
 		return t
 	case first == "super":
-		dir := moduleDir(file)
+		directory := moduleDirectory(file)
 		for len(segments) > 0 && segments[0] == "super" {
-			dir, segments = path.Dir(dir), segments[1:]
+			directory, segments = path.Dir(directory), segments[1:]
 		}
-		t, _ := r.probe(dir, segments)
+		t, _ := r.probe(directory, segments)
 		return t
 	case stdCrates[first]:
-		return lang.Target{Ecosystem: ecoStd, Package: first}
+		return lang.Target{Ecosystem: ecosystemStd, Package: first}
 	}
 	// Edition 2018 paths may name a module of the current file directly.
-	if t, ok := r.probe(moduleDir(file), segments[:1]); ok {
-		if t2, ok := r.probe(moduleDir(file), segments); ok {
+	if t, ok := r.probe(moduleDirectory(file), segments[:1]); ok {
+		if t2, ok := r.probe(moduleDirectory(file), segments); ok {
 			return t2
 		}
 		return t
@@ -358,54 +358,54 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 	if first := segments[0]; first != "" && first[0] >= 'A' && first[0] <= 'Z' {
 		return lang.Target{}
 	}
-	name := norm(segments[0])
+	name := normalize(segments[0])
 	if c != nil {
-		if d, ok := c.deps[name]; ok {
+		if d, ok := c.dependencies[name]; ok {
 			if d.path != "" {
 				return r.local(d.path, segments[1:])
 			}
-			if dir, ok := r.members[norm(d.pkg)]; ok {
-				return r.local(dir, segments[1:])
+			if directory, ok := r.members[normalize(d.packageName)]; ok {
+				return r.local(directory, segments[1:])
 			}
 			// Cargo reads a bare "1.2.3" as ^1.2.3, so a manifest never pins on its
 			// own: only Cargo.lock says which version is built.
 			return r.target(d)
 		}
 	}
-	if dir, ok := r.members[name]; ok {
-		return r.local(dir, segments[1:])
+	if directory, ok := r.members[name]; ok {
+		return r.local(directory, segments[1:])
 	}
-	return lang.Target{Ecosystem: ecoCrates, Package: segments[0], Unresolved: true}
+	return lang.Target{Ecosystem: ecosystemCrates, Package: segments[0], Unresolved: true}
 }
 
 // local resolves a path inside another project crate, falling back to the crate itself.
 //
 // Implements: REQ-RS-004
-func (r *resolver) local(crateDir string, segments []string) lang.Target {
-	if t, ok := r.probe(path.Join(crateDir, "src"), segments); ok && len(segments) > 0 {
+func (r *resolver) local(crateDirectory string, segments []string) lang.Target {
+	if t, ok := r.probe(path.Join(crateDirectory, "src"), segments); ok && len(segments) > 0 {
 		return t
 	}
-	return lang.Target{Local: crateDir}
+	return lang.Target{Local: crateDirectory}
 }
 
-// probe finds the module file for the longest prefix of segments under dir; with no
+// probe finds the module file for the longest prefix of segments under directory; with no
 // segments it returns the crate or module root file.
 //
 // Implements: REQ-RS-002, REQ-RS-003
-func (r *resolver) probe(dir string, segments []string) (lang.Target, bool) {
+func (r *resolver) probe(directory string, segments []string) (lang.Target, bool) {
 	if len(segments) == 0 {
 		for _, root := range []string{"lib.rs", "main.rs", "mod.rs"} {
-			if p := path.Join(dir, root); r.files[p] {
+			if p := path.Join(directory, root); r.files[p] {
 				return lang.Target{Local: p}, true
 			}
 		}
-		if r.files[dir+".rs"] { // 2018 layout: a.rs owns a/
-			return lang.Target{Local: dir + ".rs"}, true
+		if r.files[directory+".rs"] { // 2018 layout: a.rs owns a/
+			return lang.Target{Local: directory + ".rs"}, true
 		}
 		return lang.Target{}, false
 	}
 	for n := len(segments); n > 0; n-- {
-		p := path.Join(append([]string{dir}, segments[:n]...)...)
+		p := path.Join(append([]string{directory}, segments[:n]...)...)
 		for _, candidate := range []string{p + ".rs", path.Join(p, "mod.rs")} {
 			if r.files[candidate] {
 				return lang.Target{Local: candidate}, true
@@ -436,22 +436,22 @@ func (c Crates) Crate(file, name string) (lang.Target, bool) {
 	if own := c.r.crateOf(file); own != nil {
 		crates = append([]*crate{own}, crates...)
 	}
-	name = norm(name)
+	name = normalize(name)
 	for _, cr := range crates {
-		d, ok := cr.deps[name]
+		d, ok := cr.dependencies[name]
 		if !ok {
 			continue
 		}
 		if d.path != "" {
 			return lang.Target{Local: d.path}, true
 		}
-		if dir, ok := c.r.members[norm(d.pkg)]; ok {
-			return lang.Target{Local: dir}, true
+		if directory, ok := c.r.members[normalize(d.packageName)]; ok {
+			return lang.Target{Local: directory}, true
 		}
 		return c.r.target(d), true
 	}
-	if dir, ok := c.r.members[name]; ok {
-		return lang.Target{Local: dir}, true
+	if directory, ok := c.r.members[name]; ok {
+		return lang.Target{Local: directory}, true
 	}
 	return lang.Target{}, false
 }

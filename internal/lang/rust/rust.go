@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	ecoCrates = "crates"
-	ecoStd    = "rust-std"
+	ecosystemCrates = "crates"
+	ecosystemStd    = "rust-std"
 )
 
 // @use is a use tree; @crate an extern crate; @mod a `mod name;` declaration (its
@@ -48,8 +48,8 @@ func (Plugin) Version() int             { return 1 }
 func (Plugin) Claims(f *scan.File) bool { return strings.HasSuffix(f.Path, ".rs") && !f.Binary }
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoCrates, Name: "crates.io"},
-		{ID: ecoStd, Name: "Rust standard library", Std: true},
+		{ID: ecosystemCrates, Name: "crates.io"},
+		{ID: ecosystemStd, Name: "Rust standard library", Std: true},
 	}
 }
 
@@ -58,33 +58,33 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-RS-001, REQ-RS-003
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
-	ex := &lang.Extraction{}
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
+	extraction := &lang.Extraction{}
 	var symbols lang.SymbolSet
-	err := grammar.Matches(src, func(m treesitter.Match) {
+	err := grammar.Matches(source, func(m treesitter.Match) {
 		for _, c := range m {
 			switch {
 			case c.Name == "use":
 				for _, p := range expandUse(c.Text) {
-					ex.Imports = append(ex.Imports, lang.RawImport{Spec: "use " + p, Module: p, Line: c.Line})
+					extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "use " + p, Module: p, Line: c.Line})
 				}
 			case c.Name == "crate":
-				ex.Imports = append(ex.Imports, lang.RawImport{Spec: "extern crate " + c.Text, Module: c.Text, Line: c.Line})
+				extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "extern crate " + c.Text, Module: c.Text, Line: c.Line})
 			case c.Name == "mod":
-				ex.Imports = append(ex.Imports, lang.RawImport{Spec: "mod " + c.Text, Module: "self::" + c.Text, Line: c.Line})
+				extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "mod " + c.Text, Module: "self::" + c.Text, Line: c.Line})
 			case c.Name == "def.method":
-				typ := c.EnclosingField("type", "impl_item")
-				if i := strings.IndexAny(typ, "<"); i >= 0 {
-					typ = typ[:i] // Server<T> -> Server
+				typeName := c.EnclosingField("type", "impl_item")
+				if i := strings.IndexAny(typeName, "<"); i >= 0 {
+					typeName = typeName[:i] // Server<T> -> Server
 				}
-				symbols.Add(typ+"."+c.Text, "method", c.Line)
+				symbols.Add(typeName+"."+c.Text, "method", c.Line)
 			case strings.HasPrefix(c.Name, "def."):
 				symbols.Add(c.Text, strings.TrimPrefix(c.Name, "def."), c.Line)
 			}
 		}
 	})
-	ex.Symbols = symbols.List()
-	return ex, err
+	extraction.Symbols = symbols.List()
+	return extraction, err
 }
 
 var alias = regexp.MustCompile(`\s+as\s+[A-Za-z_][A-Za-z0-9_]*`)

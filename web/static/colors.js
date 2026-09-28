@@ -7,8 +7,8 @@ const SLOTS = 7; // categorical slots for languages; the rest fold into "Other"
 
 // Implements: REQ-A11Y-001, REQ-MAP-051
 export function readPalette() {
-  const cs = getComputedStyle(document.documentElement);
-  const v = name => cs.getPropertyValue(name).trim();
+  const computedStyle = getComputedStyle(document.documentElement);
+  const v = name => computedStyle.getPropertyValue(name).trim();
   return {
     series: Array.from({ length: SLOTS }, (_, i) => v(`--series-${i + 1}`)),
     other: v('--series-other'),
@@ -34,16 +34,16 @@ export function readPalette() {
 }
 
 // assignSlots gives the largest languages the categorical slots and keeps earlier
-// assignments (prev) while those languages exist, so live updates never repaint a
+// assignments (previous) while those languages exist, so live updates never repaint a
 // language: color follows the language, not its rank.
 // Implements: REQ-MAP-036
-export function assignSlots(model, prev = []) {
+export function assignSlots(model, previous = []) {
   const present = new Set(model.languages.map(l => l.lang));
-  const slots = Array.from({ length: SLOTS }, (_, i) => (present.has(prev[i]) ? prev[i] : null));
-  for (const { lang } of model.languages) {
+  const slots = Array.from({ length: SLOTS }, (_, i) => (present.has(previous[i]) ? previous[i] : null));
+  for (const { lang: language } of model.languages) {
     const free = slots.indexOf(null);
     if (free < 0) break;
-    if (!slots.includes(lang)) slots[free] = lang;
+    if (!slots.includes(language)) slots[free] = language;
   }
   return slots;
 }
@@ -51,11 +51,11 @@ export function assignSlots(model, prev = []) {
 // Implements: REQ-MAP-014, REQ-A11Y-001
 export function languageColors(model, pal, slots) {
   const map = new Map();
-  slots.forEach((lang, i) => lang && map.set(lang, pal.series[i]));
+  slots.forEach((language, i) => language && map.set(language, pal.series[i]));
   return {
-    of: lang => map.get(lang) || pal.other,
+    of: language => map.get(language) || pal.other,
     legend: () => {
-      const entries = slots.map((lang, i) => lang && { label: lang, color: pal.series[i], lang }).filter(Boolean);
+      const entries = slots.map((language, i) => language && { label: language, color: pal.series[i], lang: language }).filter(Boolean);
       const other = model.languages.some(l => !map.has(l.lang)) || model.root.langLoc.has('');
       if (other) entries.push({ label: 'Other', color: pal.other, lang: null });
       return entries;
@@ -74,7 +74,7 @@ export function sequential(pal, t) {
  * size, and otherwise the language (buildings, symbols) or the fixed role colors.
  * Implements: REQ-MAP-037, REQ-MAP-051, REQ-MAP-058, REQ-HIST-010, REQ-HIST-013
  */
-export function boxColor(b, { mode, pal, langs, sizeT, hm, historyT }) {
+export function boxColor(b, { mode, pal, langs: languages, sizeT, hm, historyT }) {
   const n = b.node;
   if (hm && (b.kind === 'district' || b.kind === 'building' || b.kind === 'symbol')) {
     const t = historyT(mode, b.kind === 'symbol' ? n.parentNode : n, hm);
@@ -86,10 +86,10 @@ export function boxColor(b, { mode, pal, langs, sizeT, hm, historyT }) {
     case 'district':
       return mode === 'size' ? sequential(pal, sizeT(n.totalBulk / Math.max(1, n.fileCount))) : pal.district;
     case 'building':
-      return mode === 'size' ? sequential(pal, sizeT(bulk(n))) : langs.of(n.lang);
+      return mode === 'size' ? sequential(pal, sizeT(bulk(n))) : languages.of(n.lang);
     case 'symbol': {
       const f = n.parentNode;
-      return mode === 'size' ? sequential(pal, sizeT(bulk(f))) : langs.of(f.lang);
+      return mode === 'size' ? sequential(pal, sizeT(bulk(f))) : languages.of(f.lang);
     }
     // A package nothing pins is worth seeing from across the map.
     // Implements: REQ-SUP-004

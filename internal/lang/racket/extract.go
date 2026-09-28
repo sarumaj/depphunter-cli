@@ -10,14 +10,14 @@ import (
 
 // Kinds of imports, carried in RawImport.Name.
 const (
-	kindColl   = "coll"   // a collection-based module path: racket/list, (lib "x/y.rkt")
-	kindLang   = "lang"   // a #lang's module path, whose reader is <path>/lang/reader
-	kindRel    = "rel"    // a path relative to the file: "util.rkt", (file "x.rkt")
-	kindUp     = "up"     // (path-up "x.rkt"): the nearest such file above
-	kindFile   = "file"   // an absolute (file "/...") path
-	kindSelf   = "self"   // a submodule of the file itself
-	kindPlanet = "planet" // a PLaneT package
-	kindDep    = "deps"   // an info.rkt deps entry; Name is kindDep + "\x00" + fields
+	kindColl       = "coll"   // a collection-based module path: racket/list, (lib "x/y.rkt")
+	kindLanguage   = "lang"   // a #lang's module path, whose reader is <path>/lang/reader
+	kindRelative   = "rel"    // a path relative to the file: "util.rkt", (file "x.rkt")
+	kindUp         = "up"     // (path-up "x.rkt"): the nearest such file above
+	kindFile       = "file"   // an absolute (file "/...") path
+	kindSelf       = "self"   // a submodule of the file itself
+	kindPlanet     = "planet" // a PLaneT package
+	kindDependency = "deps"   // an info.rkt deps entry; Name is kindDependency + "\x00" + fields
 )
 
 // maxDepth bounds how deep module-level forms (submodules, begin) and require
@@ -43,17 +43,17 @@ func (x *extractor) add(spec, module, kind string, line int) {
 // module level (submodules and begin included) and its definitions.
 //
 // Implements: REQ-RACKET-002, REQ-RACKET-003
-func extractSource(src []byte, ext string) *lang.Extraction {
-	if ext == ".rktd" {
+func extractSource(source []byte, extension string) *lang.Extraction {
+	if extension == ".rktd" {
 		return &lang.Extraction{} // data: nothing to link
 	}
-	m := Read(src, ext == ".scrbl")
+	m := Read(source, extension == ".scrbl")
 	x := &extractor{seen: map[string]bool{}, subs: map[string]bool{}}
 	if m.WXME {
 		return &lang.Extraction{}
 	}
-	if m.Lang != "" {
-		x.lang(m.Lang, m.LangLine)
+	if m.Language != "" {
+		x.language(m.Language, m.LanguageLine)
 	}
 	if m.Reader != nil {
 		x.modulePath(m.Reader, "#reader", 0)
@@ -61,28 +61,28 @@ func extractSource(src []byte, ext string) *lang.Extraction {
 	forms := m.Forms
 	// A file without #lang that is one (module name lang body ...) form is
 	// that module: its body's definitions are the file's.
-	if m.Lang == "" && m.Reader == nil {
-		var mods []*Node
+	if m.Language == "" && m.Reader == nil {
+		var modules []*Node
 		for _, f := range forms {
 			if f.Kind == List {
-				mods = append(mods, f)
+				modules = append(modules, f)
 			}
 		}
-		if len(mods) == 1 && mods[0].Head() == "module" && len(mods[0].Kids) >= 3 {
-			x.modulePath(mods[0].Kids[2], "module", 0)
-			forms = mods[0].Kids[3:]
+		if len(modules) == 1 && modules[0].Head() == "module" && len(modules[0].Kids) >= 3 {
+			x.modulePath(modules[0].Kids[2], "module", 0)
+			forms = modules[0].Kids[3:]
 		}
 	}
 	x.body(forms, "", true, 0)
 	return &lang.Extraction{Imports: x.imports, Symbols: x.symbols.List()}
 }
 
-// metaLangs are the #lang words that take another language after them.
-var metaLangs = map[string]bool{"at-exp": true, "errortrace": true}
+// metaLanguages are the #lang words that take another language after them.
+var metaLanguages = map[string]bool{"at-exp": true, "errortrace": true}
 
-// lang turns a #lang line into imports: each meta-language and the language
+// language turns a #lang line into imports: each meta-language and the language
 // (a module path whose reader reads the file).
-func (x *extractor) lang(l string, line int) {
+func (x *extractor) language(l string, line int) {
 	words := strings.Fields(l)
 	for len(words) > 0 {
 		w := words[0]
@@ -97,11 +97,11 @@ func (x *extractor) lang(l string, line int) {
 				}
 			}
 			return
-		case metaLangs[w]:
-			x.add("#lang "+w, w, kindLang, line)
+		case metaLanguages[w]:
+			x.add("#lang "+w, w, kindLanguage, line)
 		default:
 			if validCollPath(w) {
-				x.add("#lang "+w, w, kindLang, line)
+				x.add("#lang "+w, w, kindLanguage, line)
 			}
 			return
 		}
@@ -121,51 +121,51 @@ func (x *extractor) body(forms []*Node, prefix string, symbols bool, depth int) 
 			continue
 		}
 		head := f.Head()
-		args := f.Kids[min(1, len(f.Kids)):]
+		arguments := f.Kids[min(1, len(f.Kids)):]
 		switch head {
 		case "require", "local-require", "#%require", "require-for-syntax", "require-for-template", "require-for-label":
-			for _, a := range args {
+			for _, a := range arguments {
 				x.requireSpec(a, "require", depth)
 			}
 		case "require/typed", "require/typed/provide", "unsafe-require/typed", "require/expose":
-			if len(args) > 0 {
-				x.modulePath(args[0], head, depth)
+			if len(arguments) > 0 {
+				x.modulePath(arguments[0], head, depth)
 			}
 		case "require-typed-struct", "require/opaque-type", "require-typed-struct/provide":
-			if len(args) > 2 { // (require/opaque-type T pred? m): the module comes last
-				x.modulePath(args[len(args)-1], head, depth)
+			if len(arguments) > 2 { // (require/opaque-type T pred? m): the module comes last
+				x.modulePath(arguments[len(arguments)-1], head, depth)
 			}
 		case "lazy-require", "lazy-require-syntax":
-			for _, a := range args {
+			for _, a := range arguments {
 				if a.Kind == List && a.Tag == "" && len(a.Kids) > 0 {
 					x.modulePath(a.Kids[0], head, depth)
 				}
 			}
 		case "include", "include/reader", "load", "load-relative", "include-section", "include-extracted":
-			if len(args) > 0 && (args[0].Kind == String || head == "include-section" || head == "include-extracted") {
-				x.modulePath(args[0], head, depth)
+			if len(arguments) > 0 && (arguments[0].Kind == String || head == "include-section" || head == "include-extracted") {
+				x.modulePath(arguments[0], head, depth)
 			}
 		case "module", "module*":
-			if len(args) >= 2 {
-				name := x.submodule(args[0], f.Line, prefix, symbols)
-				if args[1].Kind != Other { // (module* name #f ...) shares the enclosing module
-					x.modulePath(args[1], head, depth)
+			if len(arguments) >= 2 {
+				name := x.submodule(arguments[0], f.Line, prefix, symbols)
+				if arguments[1].Kind != Other { // (module* name #f ...) shares the enclosing module
+					x.modulePath(arguments[1], head, depth)
 				}
-				x.body(args[2:], name+".", symbols && name != "", depth+1)
+				x.body(arguments[2:], name+".", symbols && name != "", depth+1)
 			}
 		case "module+":
-			if len(args) >= 1 {
-				x.submodule(args[0], f.Line, prefix, symbols)
-				x.body(args[1:], "", false, depth+1)
+			if len(arguments) >= 1 {
+				x.submodule(arguments[0], f.Line, prefix, symbols)
+				x.body(arguments[1:], "", false, depth+1)
 			}
 		case "begin", "begin-for-syntax", "chunk":
-			if head == "chunk" && len(args) > 0 {
-				args = args[1:] // a literate program's chunk: <name> code ...
+			if head == "chunk" && len(arguments) > 0 {
+				arguments = arguments[1:] // a literate program's chunk: <name> code ...
 			}
-			x.body(args, prefix, symbols, depth+1)
+			x.body(arguments, prefix, symbols, depth+1)
 		default:
 			if symbols {
-				x.define(f, prefix, head, args)
+				x.define(f, prefix, head, arguments)
 			}
 		}
 	}
@@ -195,32 +195,32 @@ func (x *extractor) requireSpec(n *Node, form string, depth int) {
 		x.modulePath(n, form, depth)
 		return
 	}
-	args := n.Kids[min(1, len(n.Kids)):]
+	arguments := n.Kids[min(1, len(n.Kids)):]
 	switch h := n.Head(); h {
 	case "only-in", "except-in", "rename-in", "combine-in", "for-syntax", "for-template", "for-label",
 		"subtract-in", "prefix-all-except":
-		if h == "prefix-all-except" && len(args) > 0 {
-			args = args[1:]
+		if h == "prefix-all-except" && len(arguments) > 0 {
+			arguments = arguments[1:]
 		}
 		if h == "only-in" || h == "except-in" || h == "rename-in" {
-			args = args[:min(1, len(args))]
+			arguments = arguments[:min(1, len(arguments))]
 		}
-		for _, a := range args {
+		for _, a := range arguments {
 			x.requireSpec(a, form, depth+1)
 		}
 	case "prefix-in", "for-meta", "for-space", "just-meta", "just-space", "only-meta-in", "only-space-in",
 		"filtered-in", "matching-identifiers-in", "relative-in":
-		if len(args) > 1 {
-			for _, a := range args[1:] {
+		if len(arguments) > 1 {
+			for _, a := range arguments[1:] {
 				x.requireSpec(a, form, depth+1)
 			}
 		}
 	case "multi-in":
-		for _, p := range multiIn(args) {
+		for _, p := range multiIn(arguments) {
 			x.add(form+" "+p, p, kindColl, n.Line)
 		}
 	case "path-up":
-		for _, a := range args {
+		for _, a := range arguments {
 			if a.Kind == String {
 				x.add(form+" (path-up "+strconv.Quote(a.Text)+")", a.Text, kindUp, a.Line)
 			}
@@ -232,25 +232,25 @@ func (x *extractor) requireSpec(n *Node, form string, depth int) {
 
 // multiIn expands racket/require's (multi-in racket (list string)): each
 // argument a name or a list of alternatives, joined with /; capped at 64.
-func multiIn(args []*Node) []string {
+func multiIn(arguments []*Node) []string {
 	out := []string{""}
-	for _, a := range args {
-		var alts []string
+	for _, a := range arguments {
+		var alternatives []string
 		switch {
 		case a.Kind == Symbol || a.Kind == String:
-			alts = []string{strings.TrimSuffix(a.Text, ".rkt")}
+			alternatives = []string{strings.TrimSuffix(a.Text, ".rkt")}
 		case a.Kind == List && a.Tag == "":
 			for _, k := range a.Kids {
 				if k.Kind == Symbol || k.Kind == String {
-					alts = append(alts, strings.TrimSuffix(k.Text, ".rkt"))
+					alternatives = append(alternatives, strings.TrimSuffix(k.Text, ".rkt"))
 				}
 			}
 		}
 		var next []string
 		for _, o := range out {
-			for _, alt := range alts {
+			for _, alternative := range alternatives {
 				if len(next) < 64 {
-					next = append(next, strings.TrimPrefix(o+"/"+alt, "/"))
+					next = append(next, strings.TrimPrefix(o+"/"+alternative, "/"))
 				}
 			}
 		}
@@ -280,7 +280,7 @@ func (x *extractor) modulePath(n *Node, form string, depth int) {
 		return
 	case String:
 		if n.Text != "" && len(n.Text) < 1024 {
-			x.add(form+" "+strconv.Quote(n.Text), n.Text, kindRel, n.Line)
+			x.add(form+" "+strconv.Quote(n.Text), n.Text, kindRelative, n.Line)
 		}
 		return
 	case List:
@@ -290,10 +290,10 @@ func (x *extractor) modulePath(n *Node, form string, depth int) {
 	if n.Tag != "" || len(n.Kids) == 0 {
 		return
 	}
-	args := n.Kids[1:]
-	strs := func() []string {
+	arguments := n.Kids[1:]
+	stringList := func() []string {
 		var out []string
-		for _, a := range args {
+		for _, a := range arguments {
 			if a.Kind == String {
 				out = append(out, a.Text)
 			}
@@ -302,73 +302,73 @@ func (x *extractor) modulePath(n *Node, form string, depth int) {
 	}
 	switch n.Head() {
 	case "quote":
-		x.add(form+" '"+render(args), "", kindSelf, n.Line)
+		x.add(form+" '"+render(arguments), "", kindSelf, n.Line)
 	case "lib":
-		s := strs()
+		s := stringList()
 		if len(s) == 0 {
 			return
 		}
 		p := s[0]
-		if len(s) == 1 && !strings.Contains(p, "/") && stripExt(p) != p {
+		if len(s) == 1 && !strings.Contains(p, "/") && stripExtension(p) != p {
 			p = "mzlib/" + p // (lib "list.ss") is mzlib's
 		}
 		if len(s) > 1 { // (lib "file.rkt" "coll" "sub"): coll/sub/file.rkt
 			p = strings.Join(append(append([]string{}, s[1:]...), s[0]), "/")
 		}
-		p = stripExt(p)
+		p = stripExtension(p)
 		if validCollPath(p) {
-			x.add(form+" (lib "+render(args)+")", p, kindColl, n.Line)
+			x.add(form+" (lib "+render(arguments)+")", p, kindColl, n.Line)
 		}
 	case "file":
-		if s := strs(); len(s) > 0 {
-			kind := kindRel
+		if s := stringList(); len(s) > 0 {
+			kind := kindRelative
 			if path.IsAbs(s[0]) || len(s[0]) > 1 && s[0][1] == ':' || strings.HasPrefix(s[0], "~") {
 				kind = kindFile
 			}
 			x.add(form+" (file "+strconv.Quote(s[0])+")", s[0], kind, n.Line)
 		}
 	case "planet":
-		if p := planetName(args); p != "" {
-			x.add(form+" (planet "+render(args)+")", p, kindPlanet, n.Line)
+		if p := planetName(arguments); p != "" {
+			x.add(form+" (planet "+render(arguments)+")", p, kindPlanet, n.Line)
 		}
 	case "submod":
-		if len(args) == 0 {
+		if len(arguments) == 0 {
 			return
 		}
-		if b := args[0]; (b.Kind == String || b.Kind == Symbol) && (b.Text == "." || b.Text == "..") {
-			x.add(form+" (submod "+render(args)+")", "", kindSelf, n.Line)
+		if b := arguments[0]; (b.Kind == String || b.Kind == Symbol) && (b.Text == "." || b.Text == "..") {
+			x.add(form+" (submod "+render(arguments)+")", "", kindSelf, n.Line)
 			return
 		}
-		x.modulePath(args[0], form, depth+1)
+		x.modulePath(arguments[0], form, depth+1)
 	}
 }
 
 // planetName reads a PLaneT module path: (planet owner/pkg:1:0/file) or
 // (planet "file.rkt" ("owner" "pkg.plt" 1 0)). It returns "owner/pkg" and,
 // after a colon, the version.
-func planetName(args []*Node) string {
-	if len(args) == 0 {
+func planetName(arguments []*Node) string {
+	if len(arguments) == 0 {
 		return ""
 	}
-	if a := args[0]; a.Kind == Symbol {
+	if a := arguments[0]; a.Kind == Symbol {
 		parts := strings.SplitN(a.Text, "/", 3)
 		if len(parts) < 2 || parts[0] == "" || parts[1] == "" {
 			return ""
 		}
-		pkg, ver, _ := strings.Cut(parts[1], ":")
-		return parts[0] + "/" + strings.TrimSuffix(pkg, ".plt") + versionSuffix(strings.ReplaceAll(ver, ":", "."))
+		packageName, version, _ := strings.Cut(parts[1], ":")
+		return parts[0] + "/" + strings.TrimSuffix(packageName, ".plt") + versionSuffix(strings.ReplaceAll(version, ":", "."))
 	}
-	for _, a := range args[1:] {
+	for _, a := range arguments[1:] {
 		if a.Kind != List || len(a.Kids) < 2 || a.Kids[0].Kind != String || a.Kids[1].Kind != String {
 			continue
 		}
-		var nums []string
+		var numbers []string
 		for _, k := range a.Kids[2:] {
 			if k.Kind == Other {
-				nums = append(nums, k.Text)
+				numbers = append(numbers, k.Text)
 			}
 		}
-		return a.Kids[0].Text + "/" + strings.TrimSuffix(a.Kids[1].Text, ".plt") + versionSuffix(strings.Join(nums, "."))
+		return a.Kids[0].Text + "/" + strings.TrimSuffix(a.Kids[1].Text, ".plt") + versionSuffix(strings.Join(numbers, "."))
 	}
 	return ""
 }
@@ -380,7 +380,7 @@ func versionSuffix(v string) string {
 	return ":" + v
 }
 
-func stripExt(p string) string {
+func stripExtension(p string) string {
 	for _, e := range []string{".rkt", ".ss", ".scm", ".scrbl"} {
 		if strings.HasSuffix(p, e) {
 			return strings.TrimSuffix(p, e)
@@ -401,8 +401,8 @@ func validCollPath(s string) bool {
 			return false
 		}
 	}
-	for _, seg := range strings.Split(s, "/") {
-		if seg == "." || seg == ".." {
+	for _, segment := range strings.Split(s, "/") {
+		if segment == "." || segment == ".." {
 			return false
 		}
 	}
@@ -410,11 +410,11 @@ func validCollPath(s string) bool {
 }
 
 // render writes a few small datums back as text for a spec.
-func render(ns []*Node) string { return renderDepth(ns, 0) }
+func render(nodes []*Node) string { return renderDepth(nodes, 0) }
 
-func renderDepth(ns []*Node, depth int) string {
+func renderDepth(nodes []*Node, depth int) string {
 	var b strings.Builder
-	for i, n := range ns {
+	for i, n := range nodes {
 		if i > 0 {
 			b.WriteByte(' ')
 		}
@@ -462,12 +462,12 @@ var classMembers = map[string]bool{
 }
 
 // define records what a module-level definition defines.
-func (x *extractor) define(f *Node, prefix, head string, args []*Node) {
+func (x *extractor) define(f *Node, prefix, head string, arguments []*Node) {
 	kind, ok := definers[head]
-	if !ok || len(args) == 0 {
+	if !ok || len(arguments) == 0 {
 		return
 	}
-	target := args[0]
+	target := arguments[0]
 	switch head {
 	case "define-values", "define-syntaxes":
 		if target.Kind == List {
@@ -499,13 +499,13 @@ func (x *extractor) define(f *Node, prefix, head string, args []*Node) {
 		kind = "var"
 		if isProc {
 			kind = "func"
-		} else if len(args) > 1 {
-			kind = valueKind(args[len(args)-1])
+		} else if len(arguments) > 1 {
+			kind = valueKind(arguments[len(arguments)-1])
 		}
 	}
 	x.symbols.Add(prefix+target.Text, kind, f.Line)
-	if kind == "class" && len(args) > 1 {
-		x.members(prefix+target.Text, args[len(args)-1], 0)
+	if kind == "class" && len(arguments) > 1 {
+		x.members(prefix+target.Text, arguments[len(arguments)-1], 0)
 	}
 }
 
@@ -552,11 +552,11 @@ func (x *extractor) members(owner string, class *Node, depth int) {
 // extractInfo reads an info.rkt: its deps and build-deps entries are imports.
 //
 // Implements: REQ-RACKET-006
-func extractInfo(src []byte) *lang.Extraction {
-	in := readInfo(src)
+func extractInfo(source []byte) *lang.Extraction {
+	in := readInfo(source)
 	var out []lang.RawImport
 	seen := map[string]bool{}
-	for _, d := range in.deps {
+	for _, d := range in.dependencies {
 		key := "deps"
 		if d.build {
 			key = "build-deps"
@@ -566,7 +566,7 @@ func extractInfo(src []byte) *lang.Extraction {
 			continue
 		}
 		seen[spec] = true
-		out = append(out, lang.RawImport{Spec: spec, Module: d.source, Name: strings.Join([]string{kindDep, d.version, d.checksum}, "\x00"), Line: d.line})
+		out = append(out, lang.RawImport{Spec: spec, Module: d.source, Name: strings.Join([]string{kindDependency, d.version, d.checksum}, "\x00"), Line: d.line})
 	}
 	return &lang.Extraction{Imports: out}
 }

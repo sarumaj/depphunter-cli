@@ -78,10 +78,10 @@ type gmlEdge struct {
 }
 
 type gmlDoc struct {
-	XMLName xml.Name `xml:"graphml"`
-	NS      string   `xml:"xmlns,attr"`
-	Keys    []gmlKey `xml:"key"`
-	Graph   struct {
+	XMLName   xml.Name `xml:"graphml"`
+	Namespace string   `xml:"xmlns,attr"`
+	Keys      []gmlKey `xml:"key"`
+	Graph     struct {
 		ID          string    `xml:"id,attr"`
 		EdgeDefault string    `xml:"edgedefault,attr"`
 		Nodes       []gmlNode `xml:"node"`
@@ -91,15 +91,15 @@ type gmlDoc struct {
 
 // Implements: REQ-EXP-002, REQ-EXP-013
 func writeGraphML(w io.Writer, g *graph.Graph) error {
-	doc := gmlDoc{NS: "http://graphml.graphdrawing.org/xmlns"}
-	for _, k := range []struct{ id, typ string }{
+	doc := gmlDoc{Namespace: "http://graphml.graphdrawing.org/xmlns"}
+	for _, k := range []struct{ id, typeName string }{
 		{"kind", "string"}, {"name", "string"}, {"path", "string"}, {"parent", "string"},
 		{"lang", "string"}, {"loc", "int"}, {"symbolKind", "string"}, {"line", "int"},
 		{"version", "string"}, {"requested", "string"}, {"floating", "boolean"}, {"transitive", "boolean"},
 		{"index", "string"}, {"indexUnknown", "boolean"}, {"private", "boolean"},
 		{"std", "boolean"}, {"unresolved", "boolean"}, {"origin", "string"}, {"git", "string"},
 	} {
-		doc.Keys = append(doc.Keys, gmlKey{ID: k.id, For: "node", Name: k.id, Type: k.typ})
+		doc.Keys = append(doc.Keys, gmlKey{ID: k.id, For: "node", Name: k.id, Type: k.typeName})
 	}
 	doc.Keys = append(doc.Keys,
 		gmlKey{ID: "edgeKind", For: "edge", Name: "kind", Type: "string"},
@@ -114,7 +114,7 @@ func writeGraphML(w io.Writer, g *graph.Graph) error {
 				data = append(data, gmlData{key, v})
 			}
 		}
-		num := func(key string, v int) {
+		number := func(key string, v int) {
 			if v != 0 {
 				add(key, strconv.Itoa(v))
 			}
@@ -128,10 +128,10 @@ func writeGraphML(w io.Writer, g *graph.Graph) error {
 		add("name", n.Name)
 		add("path", n.Path)
 		add("parent", n.Parent)
-		add("lang", n.Lang)
-		num("loc", n.LOC)
+		add("lang", n.Language)
+		number("loc", n.LOC)
 		add("symbolKind", n.SymbolKind)
-		num("line", n.Line)
+		number("line", n.Line)
 		add("version", n.Version)
 		// Implements: REQ-SUP-006
 		add("requested", n.Requested)
@@ -157,9 +157,9 @@ func writeGraphML(w io.Writer, g *graph.Graph) error {
 	if _, err := io.WriteString(w, xml.Header); err != nil {
 		return err
 	}
-	enc := xml.NewEncoder(w)
-	enc.Indent("", "  ")
-	if err := enc.Encode(doc); err != nil {
+	encoder := xml.NewEncoder(w)
+	encoder.Indent("", "  ")
+	if err := encoder.Encode(doc); err != nil {
 		return err
 	}
 	_, err := io.WriteString(w, "\n")
@@ -201,7 +201,7 @@ func writeDOT(w io.Writer, g *graph.Graph) error {
 	for id := range used {
 		n := byID[id]
 		key := n.Parent
-		if n.Kind == graph.KindDir {
+		if n.Kind == graph.KindDirectory {
 			key = n.ID
 		}
 		clusters[key] = append(clusters[key], n)
@@ -228,20 +228,20 @@ func writeDOT(w io.Writer, g *graph.Graph) error {
 
 	nodes := map[string]dot.Node{}
 	for _, key := range keys {
-		sub := d.Subgraph(key, dot.ClusterOption{})
-		if c := byID[key]; c != nil && c.Kind == graph.KindDir {
-			sub.Attr("label", c.Path+"/")
+		subgraph := d.Subgraph(key, dot.ClusterOption{})
+		if c := byID[key]; c != nil && c.Kind == graph.KindDirectory {
+			subgraph.Attr("label", c.Path+"/")
 		} else if c != nil {
-			sub.Attr("label", c.Name)
-			sub.Attr("style", "filled")
-			sub.Attr("fillcolor", "#e3e9ec")
+			subgraph.Attr("label", c.Name)
+			subgraph.Attr("style", "filled")
+			subgraph.Attr("fillcolor", "#e3e9ec")
 		}
 		members := clusters[key]
 		sort.Slice(members, func(i, j int) bool { return members[i].ID < members[j].ID })
 		for _, n := range members {
-			node := sub.Node(n.ID).Label(n.Name)
+			node := subgraph.Node(n.ID).Label(n.Name)
 			switch n.Kind {
-			case graph.KindDir:
+			case graph.KindDirectory:
 				node.Label(n.Path+"/").Attr("shape", "folder")
 			case graph.KindPackage:
 				label := n.Name
@@ -274,12 +274,12 @@ func Sources(root string, g *graph.Graph, perFile, total int64) map[string]strin
 		if n.Kind != graph.KindFile {
 			continue
 		}
-		abs := filepath.Join(root, filepath.FromSlash(n.Path))
-		st, err := os.Stat(abs)
-		if err != nil || st.Size() > perFile || used+st.Size() > total {
+		absolute := filepath.Join(root, filepath.FromSlash(n.Path))
+		fileInfo, err := os.Stat(absolute)
+		if err != nil || fileInfo.Size() > perFile || used+fileInfo.Size() > total {
 			continue
 		}
-		data, err := os.ReadFile(abs)
+		data, err := os.ReadFile(absolute)
 		if err != nil || bytes.IndexByte(data, 0) >= 0 {
 			continue
 		}

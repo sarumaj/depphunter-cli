@@ -25,11 +25,11 @@ func newResolver(all []*scan.File) *resolver {
 		if path.Ext(f.Path) != ".rego" || f.Binary || f.TooLarge || f.Size > lang.MaxParseSize {
 			continue
 		}
-		src, err := os.ReadFile(f.Abs)
+		source, err := os.ReadFile(f.AbsolutePath)
 		if err != nil {
 			continue
 		}
-		if p := packageOf(src); p != "" {
+		if p := packageOf(source); p != "" {
 			r.packages[p] = append(r.packages[p], f.Path)
 		}
 	}
@@ -40,11 +40,11 @@ func newResolver(all []*scan.File) *resolver {
 }
 
 // packageOf is the package a file declares.
-func packageOf(src []byte) string {
-	tokens := lex(src)
+func packageOf(source []byte) string {
+	tokens := lex(source)
 	for i, t := range tokens {
-		if t.kind == tIdent && t.first && t.text == "package" {
-			segments, _ := readRef(tokens, i+1)
+		if t.kind == tIdentifier && t.first && t.text == "package" {
+			segments, _ := readReference(tokens, i+1)
 			return strings.Join(segments, ".")
 		}
 	}
@@ -58,33 +58,33 @@ func packageOf(src []byte) string {
 // namespace whose packages lie below it (import data.lib, then lib.x.y).
 //
 // Implements: REQ-REGO-004
-func (r *resolver) Expand(file string, imp lang.RawImport) ([]lang.Import, bool) {
-	via, ref := strings.CutPrefix(imp.Name, kindRef)
-	pkg, files := r.lookup(imp.Module)
+func (r *resolver) Expand(file string, rawImport lang.RawImport) ([]lang.Import, bool) {
+	via, reference := strings.CutPrefix(rawImport.Name, kindReference)
+	packageName, files := r.lookup(rawImport.Module)
 	if files != nil {
 		for _, v := range strings.Split(via, ",") {
-			if p, _ := r.lookup(v); ref && v != "" && p == pkg {
+			if p, _ := r.lookup(v); reference && v != "" && p == packageName {
 				return nil, true // an import links that package already
 			}
 		}
 		var out []lang.Import
 		for _, f := range files {
 			if f != file && len(out) < maxFiles {
-				out = append(out, lang.Import{Line: imp.Line, Target: lang.Target{Local: f}})
+				out = append(out, lang.Import{Line: rawImport.Line, Target: lang.Target{Local: f}})
 			}
 		}
 		for i := range out {
-			out[i].Spec = imp.Spec
+			out[i].Spec = rawImport.Spec
 			if len(out) > 1 {
 				out[i].Spec += " (" + out[i].Target.Local + ")"
 			}
 		}
 		return out, true
 	}
-	if ref {
+	if reference {
 		return nil, true
 	}
-	prefix := imp.Module + "."
+	prefix := rawImport.Module + "."
 	for p := range r.packages {
 		if strings.HasPrefix(p, prefix) {
 			return nil, true
@@ -97,9 +97,9 @@ func (r *resolver) Expand(file string, imp lang.RawImport) ([]lang.Import, bool)
 func (r *resolver) lookup(p string) (string, []string) {
 	segments := strings.Split(p, ".")
 	for k := len(segments); k >= 1; k-- {
-		pkg := strings.Join(segments[:k], ".")
-		if files := r.packages[pkg]; len(files) > 0 {
-			return pkg, files
+		packageName := strings.Join(segments[:k], ".")
+		if files := r.packages[packageName]; len(files) > 0 {
+			return packageName, files
 		}
 	}
 	return "", nil
@@ -108,4 +108,4 @@ func (r *resolver) lookup(p string) (string, []string) {
 // Resolve drops what Expand did not link: data no policy declares.
 //
 // Implements: REQ-REGO-004, REQ-REGO-007
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target { return lang.Target{} }
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target { return lang.Target{} }

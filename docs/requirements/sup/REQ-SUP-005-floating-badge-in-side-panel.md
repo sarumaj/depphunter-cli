@@ -21,5 +21,5 @@ The color on the map says that something moves; the panel says what.
 ## Acceptance criteria
 
 1. Selecting a floating package shows the "⚠ floating" badge and the version
-   stat labelled "version (floating)".
+   stat labeled "version (floating)".
 2. Selecting a pinned package shows neither.

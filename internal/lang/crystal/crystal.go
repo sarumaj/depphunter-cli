@@ -26,8 +26,8 @@ import (
 )
 
 const (
-	ecoShards = "shards"
-	ecoStd    = "crystal-std"
+	ecosystemShards = "shards"
+	ecosystemStd    = "crystal-std"
 )
 
 const (
@@ -64,8 +64,8 @@ func installed(f *scan.File) bool {
 		if s == ".crystal" {
 			return true
 		}
-		if s == "lib" && f.Abs != "" && strings.HasSuffix(filepath.ToSlash(f.Abs), f.Path) {
-			base := f.Abs[:len(f.Abs)-len(f.Path)]
+		if s == "lib" && f.AbsolutePath != "" && strings.HasSuffix(filepath.ToSlash(f.AbsolutePath), f.Path) {
+			base := f.AbsolutePath[:len(f.AbsolutePath)-len(f.Path)]
 			if hasShard(filepath.Join(base, filepath.FromSlash(strings.Join(segments[:i], "/")))) {
 				return true
 			}
@@ -74,14 +74,14 @@ func installed(f *scan.File) bool {
 	return false
 }
 
-var shardDirs sync.Map // absolute directory -> bool: it has a shard.yml
+var shardDirectories sync.Map // absolute directory -> bool: it has a shard.yml
 
-func hasShard(dir string) bool {
-	if v, ok := shardDirs.Load(dir); ok {
+func hasShard(directory string) bool {
+	if v, ok := shardDirectories.Load(directory); ok {
 		return v.(bool)
 	}
-	_, err := os.Stat(filepath.Join(dir, "shard.yml"))
-	shardDirs.Store(dir, err == nil)
+	_, err := os.Stat(filepath.Join(directory, "shard.yml"))
+	shardDirectories.Store(directory, err == nil)
 	return err == nil
 }
 
@@ -106,8 +106,8 @@ func class(p string) string {
 // Implements: REQ-CRYSTAL-009
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoShards, Name: "Crystal shards"},
-		{ID: ecoStd, Name: "Crystal standard library", Std: true},
+		{ID: ecosystemShards, Name: "Crystal shards"},
+		{ID: ecosystemStd, Name: "Crystal standard library", Std: true},
 	}
 }
 
@@ -116,14 +116,14 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-CRYSTAL-002, REQ-CRYSTAL-003, REQ-CRYSTAL-005
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	switch class(f.Path) {
 	case classShard:
-		return extractShard(src), nil
+		return extractShard(source), nil
 	case classLock:
-		return extractLock(src), nil
+		return extractLock(source), nil
 	case classOverride:
-		return extractOverride(src), nil
+		return extractOverride(source), nil
 	}
-	return extractSource(src), nil
+	return extractSource(source), nil
 }

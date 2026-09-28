@@ -16,15 +16,15 @@ import (
 // noted, as "code: message" lines.
 func notesOf(t *testing.T, c *Client, targets ...lang.Target) []string {
 	t.Helper()
-	rep := trace.New(1, true, nil, nil)
-	c.Trace(rep)
-	rep.Enter("beam", 0)
+	report := trace.New(1, true, nil, nil)
+	c.Trace(report)
+	report.Enter("beam", 0)
 	for _, target := range targets {
 		c.Dependencies(target)
 	}
-	rep.Finish()
+	report.Finish()
 	var out []string
-	for _, n := range rep.Notes {
+	for _, n := range report.Notes {
 		if n.Plugin != "beam" || n.File != "" {
 			t.Errorf("note filed as %+v", n)
 		}
@@ -40,8 +40,8 @@ func notesOf(t *testing.T, c *Client, targets ...lang.Target) []string {
 func TestHexNoKeyIsNoted(t *testing.T) {
 	stub := newHexStub(t, "user-key")
 	home := t.TempDir()
-	vars := map[string]string{"HEX_API_URL": stub.URL + "/api"}
-	c := NewClient(Discover(nil, env(vars), home), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, env(vars)), nil)
+	variables := map[string]string{"HEX_API_URL": stub.URL + "/api"}
+	c := NewClient(Discover(nil, environment(variables), home), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(variables)), nil)
 	got := notesOf(t, c,
 		lang.Target{Ecosystem: Hex, Package: "billing", Version: "1.2.0", Registry: "hexpm:acme"},
 		lang.Target{Ecosystem: Hex, Package: "ledger", Version: "2.0.0", Registry: "hexpm:acme"},
@@ -68,8 +68,8 @@ func TestHexForbiddenKeyIsNoted(t *testing.T) {
 	t.Cleanup(stub.Close)
 	for key, want := range map[string]int{"repo-only": 1, "other": 0} {
 		home := t.TempDir()
-		vars := map[string]string{"HEX_API_URL": stub.URL + "/api", "HEX_API_KEY": key}
-		c := NewClient(Discover(nil, env(vars), home), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, env(vars)), nil)
+		variables := map[string]string{"HEX_API_URL": stub.URL + "/api", "HEX_API_KEY": key}
+		c := NewClient(Discover(nil, environment(variables), home), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(variables)), nil)
 		got := notesOf(t, c,
 			lang.Target{Ecosystem: Hex, Package: "billing", Version: "1.2.0", Registry: "hexpm:acme"},
 			lang.Target{Ecosystem: Hex, Package: "ledger", Version: "2.0.0", Registry: "hexpm:acme"})
@@ -96,7 +96,7 @@ func TestNuGetUnmappedIsNoted(t *testing.T) {
 	home := t.TempDir()
 	userNuGet(t, home, `<packageSources><add key="contoso" value="`+feed.index()+`"/></packageSources>
   <packageSourceMapping><packageSource key="contoso"><package pattern="Contoso.*"/></packageSource></packageSourceMapping>`)
-	c := newClient(t, Discover(nil, env(nil), home))
+	c := newClient(t, Discover(nil, environment(nil), home))
 	got := notesOf(t, c,
 		lang.Target{Ecosystem: NuGet, Package: "Contoso.Billing", Version: "1.0.0"},
 		lang.Target{Ecosystem: NuGet, Package: "Newtonsoft.Json", Version: "1.0.0"})
@@ -105,7 +105,7 @@ func TestNuGetUnmappedIsNoted(t *testing.T) {
 	}
 
 	userNuGet(t, home, `<packageSources><add key="contoso" value="`+feed.index()+`"/></packageSources>`)
-	c = newClient(t, Discover(nil, env(nil), home))
+	c = newClient(t, Discover(nil, environment(nil), home))
 	if got := notesOf(t, c, lang.Target{Ecosystem: NuGet, Package: "Newtonsoft.Json", Version: "1.0.0"}); len(got) != 0 {
 		t.Errorf("without a mapping: notes %q", got)
 	}

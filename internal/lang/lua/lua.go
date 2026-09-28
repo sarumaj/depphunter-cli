@@ -28,10 +28,10 @@ import (
 )
 
 const (
-	ecoRocks   = "luarocks"
-	ecoWally   = "wally"
-	ecoStd     = "lua-std"
-	ecoRuntime = "lua-runtime"
+	ecosystemRocks   = "luarocks"
+	ecosystemWally   = "wally"
+	ecosystemStd     = "lua-std"
+	ecosystemRuntime = "lua-runtime"
 )
 
 // Implements: REQ-LUA-001
@@ -77,10 +77,10 @@ func (Plugin) Class(f *scan.File) string {
 
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoRocks, Name: "LuaRocks"},
-		{ID: ecoWally, Name: "Wally"},
-		{ID: ecoStd, Name: "Lua standard library", Std: true},
-		{ID: ecoRuntime, Name: "Lua host runtimes", Std: true},
+		{ID: ecosystemRocks, Name: "LuaRocks"},
+		{ID: ecosystemWally, Name: "Wally"},
+		{ID: ecosystemStd, Name: "Lua standard library", Std: true},
+		{ID: ecosystemRuntime, Name: "Lua host runtimes", Std: true},
 	}
 }
 
@@ -91,18 +91,18 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 // Extract reads a source's definitions and requires, or a manifest's dependencies.
 //
 // Implements: REQ-LUA-002, REQ-LUA-003, REQ-LUA-006, REQ-LUA-009, REQ-LUA-010
-func (p Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (p Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	switch p.Class(f) {
 	case "wally":
-		return extractWally(src), nil
+		return extractWally(source), nil
 	case "rojo":
-		return extractRojo(src), nil
+		return extractRojo(source), nil
 	}
 	switch strings.ToLower(path.Ext(f.Path)) {
 	case ".rockspec":
-		return extractRockspec(src), nil
+		return extractRockspec(source), nil
 	case ".tl":
-		return readSource(src, true), nil
+		return readSource(source, true), nil
 	}
-	return readSource(src, false), nil
+	return readSource(source, false), nil
 }

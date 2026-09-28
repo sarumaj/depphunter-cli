@@ -85,11 +85,11 @@ export class Api {
    * Implements: REQ-EXT-004
    */
   async graph(force = false): Promise<Graph | null> {
-    const res = await this.fetch('GET', '/api/graph', undefined,
+    const response = await this.fetch('GET', '/api/graph', undefined,
       !force && this.graphTag ? { 'If-None-Match': this.graphTag } : {});
-    if (res.status === 304) return null;
-    this.graphTag = res.etag;
-    return JSON.parse(res.body.toString('utf8')) as Graph;
+    if (response.status === 304) return null;
+    this.graphTag = response.etag;
+    return JSON.parse(response.body.toString('utf8')) as Graph;
   }
 
   session(): Promise<Session> {
@@ -118,7 +118,7 @@ export class Api {
   }
 
   /**
-   * Follows the server's event stream until the token is cancelled or the server
+   * Follows the server's event stream until the token is canceled or the server
    * stops. The stream is the only way the panel hears about a selection made on the
    * map, so it reconnects - a --watch re-analysis does not drop it, but a restart
    * of the editor's own network stack can.
@@ -144,9 +144,9 @@ export class Api {
       const resume = this.lastEvent ? { 'Last-Event-ID': this.lastEvent } : {};
       // opens=hex: this client can open a file in a hex editor, which a page asks for
       // on a binary file and a launcher on the command line cannot do (REQ-EXT-034).
-      request = this.open('GET', '/api/events?opens=hex', undefined, res => {
-        if (res.statusCode !== 200) {
-          res.resume();
+      request = this.open('GET', '/api/events?opens=hex', undefined, response => {
+        if (response.statusCode !== 200) {
+          response.resume();
           again();
           return;
         }
@@ -155,8 +155,8 @@ export class Api {
         // An event is a few lines and a blank one; only whole events are parsed, so
         // one split across two reads is not half-read.
         let pending = '';
-        res.setEncoding('utf8');
-        res.on('data', (chunk: string) => {
+        response.setEncoding('utf8');
+        response.on('data', (chunk: string) => {
           pending += chunk;
           let cut = pending.indexOf('\n\n');
           for (; cut >= 0; cut = pending.indexOf('\n\n')) {
@@ -172,7 +172,7 @@ export class Api {
           if (pending.length > 64 << 10) pending = ''; // not an event; nothing to wait for
         });
         // 'close' rather than 'end': a connection reset mid-stream never ends.
-        res.on('close', again);
+        response.on('close', again);
       }, resume);
       request.on('error', again);
       request.end();
@@ -212,31 +212,31 @@ export class Api {
   private fetch(method: string, path: string, body?: string, extra: Record<string, string> = {}):
   Promise<{ status: number; body: Buffer; etag: string }> {
     return new Promise((resolve, reject) => {
-      const req = this.open(method, path, body, res => {
+      const request = this.open(method, path, body, response => {
         const chunks: Buffer[] = [];
-        res.on('data', (c: Buffer) => chunks.push(c));
-        res.on('end', () => {
+        response.on('data', (c: Buffer) => chunks.push(c));
+        response.on('end', () => {
           const data = Buffer.concat(chunks);
-          const status = res.statusCode ?? 0;
+          const status = response.statusCode ?? 0;
           if ((status >= 200 && status < 300) || status === 304) {
-            resolve({ status, body: data, etag: res.headers.etag ?? '' });
+            resolve({ status, body: data, etag: response.headers.etag ?? '' });
           } else {
             reject(new Error(`${method} ${path}: ${status} ${data.toString('utf8').trim()}`));
           }
         });
       }, extra);
-      req.on('error', reject);
+      request.on('error', reject);
       // A server that accepts the connection and never answers would hold the caller,
       // and the map waiting on it, indefinitely. The event stream has no timeout: it
       // is quiet by design.
-      req.setTimeout(REQUEST_TIMEOUT, () => req.destroy(new Error(`${method} ${path}: no answer in ${REQUEST_TIMEOUT / 1000}s`)));
-      if (body !== undefined) req.write(body);
-      req.end();
+      request.setTimeout(REQUEST_TIMEOUT, () => request.destroy(new Error(`${method} ${path}: no answer in ${REQUEST_TIMEOUT / 1000}s`)));
+      if (body !== undefined) request.write(body);
+      request.end();
     });
   }
 
   private open(method: string, path: string, body: string | undefined,
-    onResponse: (res: http.IncomingMessage) => void,
+    onResponse: (response: http.IncomingMessage) => void,
     extra: Record<string, string> = {}): http.ClientRequest {
     const url = new URL(this.base + path);
     const headers: Record<string, string> = {

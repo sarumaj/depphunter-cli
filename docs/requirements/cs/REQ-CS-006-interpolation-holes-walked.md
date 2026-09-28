@@ -19,7 +19,7 @@ is read as a literal brace.
 ## Rationale
 
 An expression such as `$"{(ok ? "}" : "{")}"` contains quotes and braces that
-would otherwise end the string early and desynchronise every following
+would otherwise end the string early and desynchronize every following
 statement.
 
 ## Acceptance criteria

@@ -5,16 +5,16 @@ import "strings"
 // label is a parsed Bazel label: @repo//pkg:target, //pkg:target, :target, or a
 // bare target relative to the package.
 type label struct {
-	repo      string // the repository name, without @ ("" for the main repository)
-	hasRepo   bool   // an @ was written (@//x names the main repository)
-	canonical bool   // @@repo: a canonical name, not an apparent one
-	abs       bool   // the package is written (//pkg), not relative
-	pkg       string
-	target    string
+	repository    string // the repository name, without @ ("" for the main repository)
+	hasRepository bool   // an @ was written (@//x names the main repository)
+	canonical     bool   // @@repo: a canonical name, not an apparent one
+	absolute      bool   // the package is written (//pkg), not relative
+	packageName   string
+	target        string
 }
 
-// splitRepo cuts a label's repository part off: "@repo//x" -> "repo", "//x".
-func splitRepo(s string) (repo, rest string, ok bool) {
+// splitRepository cuts a label's repository part off: "@repo//x" -> "repo", "//x".
+func splitRepository(s string) (repository, rest string, ok bool) {
 	if !strings.HasPrefix(s, "@") {
 		return "", s, false
 	}
@@ -32,36 +32,36 @@ func parseLabel(s string) (label, bool) {
 		return l, false
 	}
 	l.canonical = strings.HasPrefix(s, "@@")
-	if repo, rest, ok := splitRepo(s); ok {
-		l.repo, l.hasRepo = repo, true
+	if repository, rest, ok := splitRepository(s); ok {
+		l.repository, l.hasRepository = repository, true
 		s = rest
 		if s == "" { // @repo is @repo//:repo
-			l.abs, l.target = true, repo
-			return l, repo != ""
+			l.absolute, l.target = true, repository
+			return l, repository != ""
 		}
 	}
 	switch {
 	case strings.HasPrefix(s, "//"):
-		l.abs = true
+		l.absolute = true
 		s = s[2:]
-		pkg, target, hasTarget := strings.Cut(s, ":")
-		l.pkg = strings.TrimSuffix(pkg, "/")
+		packageName, target, hasTarget := strings.Cut(s, ":")
+		l.packageName = strings.TrimSuffix(packageName, "/")
 		switch {
 		case hasTarget:
 			l.target = target
-		case l.pkg == "":
-			l.target = l.repo
+		case l.packageName == "":
+			l.target = l.repository
 		default:
-			l.target = l.pkg[strings.LastIndex(l.pkg, "/")+1:]
+			l.target = l.packageName[strings.LastIndex(l.packageName, "/")+1:]
 		}
-	case strings.HasPrefix(s, ":") && !l.hasRepo:
+	case strings.HasPrefix(s, ":") && !l.hasRepository:
 		l.target = s[1:]
-	case l.hasRepo:
+	case l.hasRepository:
 		return l, false // @repo:x is not a label
 	default:
 		l.target = s
 	}
-	if l.target == "" || strings.HasPrefix(l.pkg, "/") || strings.Contains(l.pkg, "..") || strings.HasPrefix(l.target, "/") {
+	if l.target == "" || strings.HasPrefix(l.packageName, "/") || strings.Contains(l.packageName, "..") || strings.HasPrefix(l.target, "/") {
 		return l, false
 	}
 	return l, true

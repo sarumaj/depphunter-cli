@@ -22,20 +22,20 @@ import (
 // it, so it is source.
 
 var (
-	kemal     = lang.Target{Ecosystem: ecoShards, Package: "kemal", Version: "1.4.0", Requested: "~> 1.4", Pinned: true}
-	db        = lang.Target{Ecosystem: ecoShards, Package: "db", Version: "0.13.1", Pinned: true}
-	sqlite    = lang.Target{Ecosystem: ecoShards, Package: "crystal-sqlite3", Version: "0.21.0", Pinned: true}
-	exception = lang.Target{Ecosystem: ecoShards, Package: "exception_page", Version: "0.4.1", Pinned: true}
-	spectator = lang.Target{Ecosystem: ecoShards, Package: "spectator", Version: "0.12.1+git.commit.0a1b2c3d4e5f60718293a4b5c6d7e8f901234567",
+	kemal     = lang.Target{Ecosystem: ecosystemShards, Package: "kemal", Version: "1.4.0", Requested: "~> 1.4", Pinned: true}
+	database  = lang.Target{Ecosystem: ecosystemShards, Package: "db", Version: "0.13.1", Pinned: true}
+	sqlite    = lang.Target{Ecosystem: ecosystemShards, Package: "crystal-sqlite3", Version: "0.21.0", Pinned: true}
+	exception = lang.Target{Ecosystem: ecosystemShards, Package: "exception_page", Version: "0.4.1", Pinned: true}
+	spectator = lang.Target{Ecosystem: ecosystemShards, Package: "spectator", Version: "0.12.1+git.commit.0a1b2c3d4e5f60718293a4b5c6d7e8f901234567",
 		Requested: "~> 0.12", Pinned: true}
-	markd    = lang.Target{Ecosystem: ecoShards, Package: "markd", Version: "5e5a4a4f7c3e8f3d0f9b7e2a3c1d4b6a8e9f0a1b", Pinned: true}
-	radix    = lang.Target{Ecosystem: ecoShards, Package: "radix", Version: "9c0ffee9c0ffee9c0ffee9c0ffee9c0ffee9c0ff", Pinned: true}
-	crinja   = lang.Target{Ecosystem: ecoShards, Package: "crinja", Version: "v0.8.1"}
-	internal = lang.Target{Ecosystem: ecoShards, Package: "internal", Version: ">= 1.0", Floating: true,
+	markd    = lang.Target{Ecosystem: ecosystemShards, Package: "markd", Version: "5e5a4a4f7c3e8f3d0f9b7e2a3c1d4b6a8e9f0a1b", Pinned: true}
+	radix    = lang.Target{Ecosystem: ecosystemShards, Package: "radix", Version: "9c0ffee9c0ffee9c0ffee9c0ffee9c0ffee9c0ff", Pinned: true}
+	crinja   = lang.Target{Ecosystem: ecosystemShards, Package: "crinja", Version: "v0.8.1"}
+	internal = lang.Target{Ecosystem: ecosystemShards, Package: "internal", Version: ">= 1.0", Floating: true,
 		Origin: "https://git.acme.internal/shop/internal.git"}
 )
 
-func std(name string) lang.Target { return lang.Target{Ecosystem: ecoStd, Package: name} }
+func std(name string) lang.Target { return lang.Target{Ecosystem: ecosystemStd, Package: name} }
 
 // The machine's CRYSTAL_PATH must not change what the fixtures resolve to.
 func TestMain(m *testing.M) {
@@ -43,12 +43,12 @@ func TestMain(m *testing.M) {
 	os.Exit(m.Run())
 }
 
-func noEnv(string) string { return "" }
+func noEnvironment(string) string { return "" }
 
 // Verifies: REQ-CRYSTAL-002, REQ-CRYSTAL-004, REQ-CRYSTAL-006, REQ-CRYSTAL-007, REQ-CRYSTAL-011
 func TestRequires(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	langtest.CheckImports(t, res["src/shop.cr"], map[string]lang.Target{
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	langtest.CheckImports(t, results["src/shop.cr"], map[string]lang.Target{
 		// ./shop/* is the .cr files of src/shop; ./shop/models/** those below it too.
 		"./shop/cart.cr":              {Local: "src/shop/cart.cr"},
 		"./shop/version.cr":           {Local: "src/shop/version.cr"},
@@ -63,7 +63,7 @@ func TestRequires(t *testing.T) {
 		"kemal":                       kemal, // installed in lib/
 		"kemal/cli":                   kemal,
 		"exception_page":              exception, // installed, only the lock names it
-		"db":                          db,        // an exact version the lock pins
+		"db":                          database,  // an exact version the lock pins
 		"sqlite3":                     sqlite,    // declared as crystal-sqlite3
 		"markd":                       markd,     // a commit
 		"radix":                       radix,     // shard.override.yml's commit
@@ -72,29 +72,29 @@ func TestRequires(t *testing.T) {
 		"widgets":                     {Local: "libs/widgets/src/widgets.cr"},
 		"widgets/button":              {Local: "libs/widgets/src/widgets/button.cr"},
 		"shop/version":                {Local: "src/shop/version.cr"}, // the shard itself
-		"nothere/thing":               {Ecosystem: ecoShards, Package: "nothere", Unresolved: true},
+		"nothere/thing":               {Ecosystem: ecosystemShards, Package: "nothere", Unresolved: true},
 	})
-	langtest.CheckImports(t, res["spec/shop_spec.cr"], map[string]lang.Target{
+	langtest.CheckImports(t, results["spec/shop_spec.cr"], map[string]lang.Target{
 		"spec":        std("spec"),
 		"spectator":   spectator,
 		"../src/shop": {Local: "src/shop.cr"},
 		"shop/cart":   {Local: "src/shop/cart.cr"},
 	})
-	langtest.CheckImports(t, res["tools/script.cr"], map[string]lang.Target{
+	langtest.CheckImports(t, results["tools/script.cr"], map[string]lang.Target{
 		"./lib/helper":     {Local: "tools/lib/helper.cr"},
 		"../src/shop/cart": {Local: "src/shop/cart.cr"},
 	})
-	langtest.CheckImports(t, res["libs/widgets/src/widgets.cr"], map[string]lang.Target{
+	langtest.CheckImports(t, results["libs/widgets/src/widgets.cr"], map[string]lang.Target{
 		"./widgets/button.cr": {Local: "libs/widgets/src/widgets/button.cr"},
 	})
 }
 
 // Verifies: REQ-CRYSTAL-005, REQ-CRYSTAL-006
 func TestManifests(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	langtest.CheckImports(t, res["shard.yml"], map[string]lang.Target{
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	langtest.CheckImports(t, results["shard.yml"], map[string]lang.Target{
 		"kemal":             kemal,
-		"db":                db,
+		"db":                database,
 		"radix":             radix,
 		"markd":             markd,
 		"crinja":            crinja,
@@ -104,17 +104,17 @@ func TestManifests(t *testing.T) {
 		"spectator":         spectator,
 		"main: src/shop.cr": {Local: "src/shop.cr"},
 	})
-	langtest.CheckImports(t, res["shard.lock"], map[string]lang.Target{
+	langtest.CheckImports(t, results["shard.lock"], map[string]lang.Target{
 		"crystal-sqlite3": sqlite,
-		"db":              db,
+		"db":              database,
 		"exception_page":  exception,
 		"kemal":           kemal,
 		"spectator":       spectator,
 		"widgets":         {Local: "libs/widgets"},
 	})
-	langtest.CheckImports(t, res["shard.override.yml"], map[string]lang.Target{"radix": radix})
-	langtest.CheckSymbols(t, res["shard.yml"], map[string]string{"shop": "package"})
-	langtest.CheckSymbols(t, res["libs/widgets/shard.yml"], map[string]string{"widgets": "package"})
+	langtest.CheckImports(t, results["shard.override.yml"], map[string]lang.Target{"radix": radix})
+	langtest.CheckSymbols(t, results["shard.yml"], map[string]string{"shop": "package"})
+	langtest.CheckSymbols(t, results["libs/widgets/shard.yml"], map[string]string{"widgets": "package"})
 }
 
 // Verifies: REQ-CRYSTAL-006
@@ -142,8 +142,8 @@ func TestPinRule(t *testing.T) {
 
 // Verifies: REQ-CRYSTAL-003
 func TestSymbols(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	langtest.CheckSymbols(t, res["src/shop.cr"], map[string]string{
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	langtest.CheckSymbols(t, results["src/shop.cr"], map[string]string{
 		"Shop":                     "module",
 		"Shop::VERSION_NAME":       "const",
 		"Shop::TEMPLATE":           "const",
@@ -180,7 +180,7 @@ func TestSymbols(t *testing.T) {
 		"Shop::Store.delegate_all": "macro",
 		"main":                     "func",
 	})
-	langtest.CheckSymbols(t, res["src/shop/models/admin/role.cr"], map[string]string{
+	langtest.CheckSymbols(t, results["src/shop/models/admin/role.cr"], map[string]string{
 		"Shop::Models::Admin":       "module",
 		"Shop::Models::Admin::Role": "class",
 	})
@@ -191,7 +191,7 @@ func TestSymbols(t *testing.T) {
 //
 // Verifies: REQ-CRYSTAL-002, REQ-CRYSTAL-010
 func TestLiteralsHideCode(t *testing.T) {
-	src := `# require "comment"
+	source := `# require "comment"
 x = "#{"require \"nested\""} #{y}"
 s = <<-EOS
   require "heredoc"
@@ -215,17 +215,17 @@ class Real
   end
 end
 `
-	ex := extractSource([]byte(src))
+	extraction := extractSource([]byte(source))
 	var specs []string
-	for _, im := range ex.Imports {
-		specs = append(specs, im.Spec)
+	for _, rawImport := range extraction.Imports {
+		specs = append(specs, rawImport.Spec)
 	}
 	if !reflect.DeepEqual(specs, []string{"./real"}) {
 		t.Errorf("imports: %v", specs)
 	}
 	want := []lang.Symbol{{Name: "Real", Kind: "class", Line: 19}, {Name: "Real.fetch", Kind: "method", Line: 20}}
-	if !reflect.DeepEqual(ex.Symbols, want) {
-		t.Errorf("symbols: %v", ex.Symbols)
+	if !reflect.DeepEqual(extraction.Symbols, want) {
+		t.Errorf("symbols: %v", extraction.Symbols)
 	}
 }
 
@@ -234,7 +234,7 @@ end
 //
 // Verifies: REQ-CRYSTAL-003
 func TestMacroBranches(t *testing.T) {
-	src := `module M
+	source := `module M
   {% if flag?(:x) %}
   def f(a : Int32)
   {% else %}
@@ -248,7 +248,7 @@ func TestMacroBranches(t *testing.T) {
 end
 `
 	got := map[string]bool{}
-	for _, s := range extractSource([]byte(src)).Symbols {
+	for _, s := range extractSource([]byte(source)).Symbols {
 		got[s.Name] = true
 	}
 	if !got["M.g"] || !got["M.f"] {
@@ -258,14 +258,14 @@ end
 
 // Verifies: REQ-CRYSTAL-001
 func TestClaims(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
 	for _, p := range []string{"lib/kemal/src/kemal.cr", "lib/kemal/shard.yml", ".crystal/cache/macro.cr"} {
-		if res[p] != nil {
+		if results[p] != nil {
 			t.Errorf("%s: analyzed", p)
 		}
 	}
 	for _, p := range []string{"tools/lib/helper.cr", "shard.lock", "shard.override.yml", "libs/widgets/shard.yml"} {
-		if res[p] == nil {
+		if results[p] == nil {
 			t.Errorf("%s: not analyzed", p)
 		}
 	}
@@ -282,17 +282,17 @@ func TestClaims(t *testing.T) {
 
 // Verifies: REQ-CRYSTAL-008
 func TestInstalledDependencies(t *testing.T) {
-	r := newResolver("testdata/repo", langtest.Files(t, "testdata/repo"), noEnv)
+	r := newResolver("testdata/repo", langtest.Files(t, "testdata/repo"), noEnvironment)
 	got := r.Dependencies(kemal)
 	want := []lang.Target{exception, radix} // ameba is a development dependency
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v, want %+v", got, want)
 	}
-	if !r.Installed(kemal) || r.Installed(db) {
+	if !r.Installed(kemal) || r.Installed(database) {
 		t.Error("installed")
 	}
-	if deps := r.Dependencies(db); deps != nil {
-		t.Errorf("db: %v", deps)
+	if dependencies := r.Dependencies(database); dependencies != nil {
+		t.Errorf("db: %v", dependencies)
 	}
 }
 
@@ -310,21 +310,21 @@ func TestShardsInfo(t *testing.T) {
 			"  radix:\n    git: https://github.com/luislavena/radix.git\n    version: 0.4.1\n",
 	}
 	root := langtest.Write(t, files)
-	r := newResolver(root, langtest.Files(t, root), noEnv)
+	r := newResolver(root, langtest.Files(t, root), noEnvironment)
 	app := r.projects["."]
-	kemal := lang.Target{Ecosystem: ecoShards, Package: "kemal", Version: "1.4.0", Requested: "~> 1.4", Pinned: true}
+	kemal := lang.Target{Ecosystem: ecosystemShards, Package: "kemal", Version: "1.4.0", Requested: "~> 1.4", Pinned: true}
 	if got := r.shardTarget(app, "kemal"); got != kemal {
 		t.Errorf("kemal: %+v", got)
 	}
-	radix := lang.Target{Ecosystem: ecoShards, Package: "radix", Version: "0.4.1", Pinned: true}
+	radix := lang.Target{Ecosystem: ecosystemShards, Package: "radix", Version: "0.4.1", Pinned: true}
 	if got := r.Dependencies(kemal); !reflect.DeepEqual(got, []lang.Target{radix}) || !r.Installed(kemal) {
 		t.Errorf("kemal depends on %+v", got)
 	}
 
 	files["lib/.shards.info"] = "{{{ not yaml"
 	root = langtest.Write(t, files)
-	r = newResolver(root, langtest.Files(t, root), noEnv)
-	floating := lang.Target{Ecosystem: ecoShards, Package: "radix", Version: "~> 0.4.0", Floating: true}
+	r = newResolver(root, langtest.Files(t, root), noEnvironment)
+	floating := lang.Target{Ecosystem: ecosystemShards, Package: "radix", Version: "~> 0.4.0", Floating: true}
 	if got := r.Dependencies(kemal); !reflect.DeepEqual(got, []lang.Target{floating}) {
 		t.Errorf("garbage .shards.info: %+v", got)
 	}
@@ -343,26 +343,26 @@ func TestTruncated(t *testing.T) {
 		return nil
 	})
 	for _, p := range files {
-		src, err := os.ReadFile(p)
+		source, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatal(err)
 		}
 		f := &scan.File{Path: strings.TrimPrefix(filepath.ToSlash(p), "testdata/repo/")}
-		for i := 0; i <= len(src); i++ {
-			if _, err := (Plugin{}).Extract(f, src[:i]); err != nil {
+		for i := 0; i <= len(source); i++ {
+			if _, err := (Plugin{}).Extract(f, source[:i]); err != nil {
 				t.Fatal(err)
 			}
-			extractSource(src[:i])
+			extractSource(source[:i])
 		}
 	}
 	for _, unit := range []string{"{", "(", "[", "}", ")", "end ", "\"", "\"#{", "#{", "'", "\\", "%(", "%q(", "%w[", "/",
 		"<<-A\n", "{%", "{{", "{% if x %}", "{% else %}", "{% end %}", "class A\n", "def f\n", "if x\n", "x if y\n",
 		"record A, b do\n", "getter a, ", "require \"", "::", ":", "@[", "$", "é", "macro m\n", "lib L\n fun f\n"} {
-		src := []byte(strings.Repeat(unit, 200_000/len(unit)+1))
+		source := []byte(strings.Repeat(unit, 200_000/len(unit)+1))
 		start := time.Now()
-		extractSource(src)
+		extractSource(source)
 		if d := time.Since(start); d > 5*time.Second {
-			t.Errorf("%q x %d: %v", unit, len(src)/len(unit), d)
+			t.Errorf("%q x %d: %v", unit, len(source)/len(unit), d)
 		}
 	}
 }
@@ -373,13 +373,13 @@ func TestIslands(t *testing.T) {
 	for _, e := range (Plugin{}).Ecosystems() {
 		ids[e.ID] = e.Std
 	}
-	if std, ok := ids[ecoStd]; !ok || !std || len(ids) != 2 || ids[ecoShards] {
+	if std, ok := ids[ecosystemStd]; !ok || !std || len(ids) != 2 || ids[ecosystemShards] {
 		t.Fatalf("ecosystems: %v", ids)
 	}
 	for f, r := range langtest.Analyze(t, Plugin{}, "testdata/repo") {
-		for _, im := range r.Imports {
-			if e := im.Target.Ecosystem; e != "" && e != ecoShards && e != ecoStd {
-				t.Errorf("%s: %s -> %s", f, im.Spec, e)
+		for _, imported := range r.Imports {
+			if e := imported.Target.Ecosystem; e != "" && e != ecosystemShards && e != ecosystemStd {
+				t.Errorf("%s: %s -> %s", f, imported.Spec, e)
 			}
 		}
 	}
@@ -400,28 +400,28 @@ func TestCrystalPath(t *testing.T) {
 		"extra/extra/src/extra.cr":      "module Extra; end\n",
 		"deps2/orphan.cr":               "module Orphan; end\n",
 	})
-	abs, _ := filepath.Abs(filepath.Join(root, "extra"))
-	sep := string(os.PathListSeparator)
+	absolute, _ := filepath.Abs(filepath.Join(root, "extra"))
+	separator := string(os.PathListSeparator)
 	for _, c := range []struct {
-		env  string
-		want map[string]lang.Target
+		environment string
+		want        map[string]lang.Target
 	}{
-		{"lib" + sep + "deps_local" + sep + abs + sep + "/usr/share/crystal/src" + sep + "$ORIGIN/../deps2", map[string]lang.Target{
+		{"lib" + separator + "deps_local" + separator + absolute + separator + "/usr/share/crystal/src" + separator + "$ORIGIN/../deps2", map[string]lang.Target{
 			"vendorlib":   {Local: "deps_local/vendorlib.cr"},
 			"tool/helper": {Local: "deps_local/tool/src/helper.cr"},
 			"extra":       {Local: "extra/extra/src/extra.cr"},
 			"json":        std("json"),
-			"orphan":      {Ecosystem: ecoShards, Package: "orphan", Unresolved: true},
+			"orphan":      {Ecosystem: ecosystemShards, Package: "orphan", Unresolved: true},
 		}},
-		{"  " + sep + sep + "../elsewhere" + sep + "src/app.cr", map[string]lang.Target{
-			"vendorlib":   {Ecosystem: ecoShards, Package: "vendorlib", Unresolved: true},
-			"tool/helper": {Ecosystem: ecoShards, Package: "tool", Unresolved: true},
-			"extra":       {Ecosystem: ecoShards, Package: "extra", Unresolved: true},
+		{"  " + separator + separator + "../elsewhere" + separator + "src/app.cr", map[string]lang.Target{
+			"vendorlib":   {Ecosystem: ecosystemShards, Package: "vendorlib", Unresolved: true},
+			"tool/helper": {Ecosystem: ecosystemShards, Package: "tool", Unresolved: true},
+			"extra":       {Ecosystem: ecosystemShards, Package: "extra", Unresolved: true},
 			"json":        std("json"),
-			"orphan":      {Ecosystem: ecoShards, Package: "orphan", Unresolved: true},
+			"orphan":      {Ecosystem: ecosystemShards, Package: "orphan", Unresolved: true},
 		}},
 	} {
-		t.Setenv("CRYSTAL_PATH", c.env)
+		t.Setenv("CRYSTAL_PATH", c.environment)
 		langtest.CheckImports(t, langtest.Analyze(t, Plugin{}, root)["src/app.cr"], c.want)
 	}
 }

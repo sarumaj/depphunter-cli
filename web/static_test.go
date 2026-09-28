@@ -25,11 +25,11 @@ func TestWriteStatic(t *testing.T) {
 		{ID: "f:big.txt", Kind: graph.KindFile, Path: "big.txt"},
 		{ID: "f:bin.dat", Kind: graph.KindFile, Path: "bin.dat"},
 	}}
-	var buf bytes.Buffer
-	if err := WriteStatic(&buf, g, config.Default().UI, root, nil); err != nil {
+	var buffer bytes.Buffer
+	if err := WriteStatic(&buffer, g, config.Default().UI, root, nil); err != nil {
 		t.Fatal(err)
 	}
-	page := buf.String()
+	page := buffer.String()
 
 	// The embedded source must not be able to close the data <script>.
 	if strings.Count(page, "</script>") != 3 {
@@ -54,22 +54,22 @@ func TestWriteStatic(t *testing.T) {
 	// Every module is inlined and none keeps a relative import (they cannot resolve
 	// from a data: URL).
 	m := regexp.MustCompile(`<script type="importmap">(.*?)</script>`).FindStringSubmatch(page)
-	var im struct{ Imports map[string]string }
-	if m == nil || json.Unmarshal([]byte(m[1]), &im) != nil {
+	var importMap struct{ Imports map[string]string }
+	if m == nil || json.Unmarshal([]byte(m[1]), &importMap) != nil {
 		t.Fatal("import map missing or invalid")
 	}
 	for _, name := range []string{"app", "model", "layout", "scene", "panel", "filter", "colors", "data", "three.module.min", "OrbitControls", "highlight.min"} {
-		url, ok := im.Imports["depphunter/"+name]
+		url, ok := importMap.Imports["depphunter/"+name]
 		if !ok {
 			t.Errorf("module %s missing", name)
 			continue
 		}
-		src, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(url, "data:text/javascript;base64,"))
+		source, err := base64.StdEncoding.DecodeString(strings.TrimPrefix(url, "data:text/javascript;base64,"))
 		if err != nil {
 			t.Fatalf("%s: %v", name, err)
 		}
-		if loc := regexp.MustCompile(`(?:from|import)\s*\(?\s*['"]\.\.?/`).FindIndex(src); loc != nil {
-			t.Errorf("%s still has a relative import: %.60s", name, src[loc[0]:])
+		if span := regexp.MustCompile(`(?:from|import)\s*\(?\s*['"]\.\.?/`).FindIndex(source); span != nil {
+			t.Errorf("%s still has a relative import: %.60s", name, source[span[0]:])
 		}
 	}
 	if strings.Contains(page, `href="style.css"`) || strings.Contains(page, `src="app.js"`) {

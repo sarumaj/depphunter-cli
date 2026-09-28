@@ -11,34 +11,34 @@ import (
 
 // Import kinds, carried in RawImport.Name.
 const (
-	kindPkg      = "pkg"      // library(), require(), requireNamespace(), loadNamespace(), pacman
-	kindNS       = "ns"       // pkg::fun, pkg:::fun
-	kindRoxygen  = "roxygen"  // #' @import / @importFrom
-	kindBox      = "box"      // box::use(pkg[...])
-	kindBoxLocal = "boxlocal" // box::use(./mod, app/logic/x)
-	kindSource   = "source"   // source("x.R"), sys.source(), Rcpp::sourceCpp()
-	kindSrcDir   = "srcdir"   // targets::tar_source("R")
-	kindInclude  = "include"  // #' @include utils.R (collation order)
-	kindChild    = "child"    // knitr child documents, Quarto includes
-	kindCall     = "call"     // a function the file calls, resolved within its package
-	kindDep      = "dep"      // DESCRIPTION dependency: "dep:Imports"
-	kindNSFile   = "nsfile"   // NAMESPACE import() / importFrom()
+	kindPackage         = "pkg"      // library(), require(), requireNamespace(), loadNamespace(), pacman
+	kindNS              = "ns"       // pkg::fun, pkg:::fun
+	kindRoxygen         = "roxygen"  // #' @import / @importFrom
+	kindBox             = "box"      // box::use(pkg[...])
+	kindBoxLocal        = "boxlocal" // box::use(./mod, app/logic/x)
+	kindSource          = "source"   // source("x.R"), sys.source(), Rcpp::sourceCpp()
+	kindSourceDirectory = "srcdir"   // targets::tar_source("R")
+	kindInclude         = "include"  // #' @include utils.R (collation order)
+	kindChild           = "child"    // knitr child documents, Quarto includes
+	kindCall            = "call"     // a function the file calls, resolved within its package
+	kindDependency      = "dep"      // DESCRIPTION dependency: "dep:Imports"
+	kindNSFile          = "nsfile"   // NAMESPACE import() / importFrom()
 )
 
 // code is one run of tokens with its brackets matched: an R file, or the chunks of
-// an R Markdown document separated by tSep.
+// an R Markdown document separated by tSeparator.
 type code struct {
-	tokens []tok
+	tokens []token
 	match  []int // index of the matching bracket, -1 when unmatched
 	depth  []int // brackets open before the token
 }
 
-func newCode(tokens []tok) *code {
+func newCode(tokens []token) *code {
 	c := &code{tokens: tokens, match: make([]int, len(tokens)), depth: make([]int, len(tokens))}
 	var stack []int
 	for i, t := range tokens {
 		c.match[i] = -1
-		if t.k == tSep {
+		if t.k == tSeparator {
 			stack = stack[:0] // a chunk that leaves a bracket open does not spill over
 		}
 		if t.k == tOp {
@@ -67,7 +67,7 @@ func (c *code) is(i int, k int, s string) bool {
 	return i >= 0 && i < len(c.tokens) && c.tokens[i].k == k && c.tokens[i].s == s
 }
 
-func (c *code) op(i int, s string) bool { return c.is(i, tOp, s) }
+func (c *code) operator(i int, s string) bool { return c.is(i, tOp, s) }
 
 // end is the index of the bracket closing the opener at i, or where the chunk ends.
 func (c *code) end(i int) int {
@@ -75,29 +75,29 @@ func (c *code) end(i int) int {
 		return c.match[i]
 	}
 	for j := i + 1; j < len(c.tokens); j++ {
-		if c.tokens[j].k == tSep {
+		if c.tokens[j].k == tSeparator {
 			return j
 		}
 	}
 	return len(c.tokens)
 }
 
-// arg is one argument of a call: its name when it has one, and its value's tokens.
-type arg struct {
+// argument is one argument of a call: its name when it has one, and its value's tokens.
+type argument struct {
 	name       string
 	start, end int // value tokens [start, end)
 }
 
-// args splits the arguments of the call whose "(" is at i.
-func (c *code) args(i int) []arg {
+// arguments splits the arguments of the call whose "(" is at i.
+func (c *code) arguments(i int) []argument {
 	end := c.end(i)
-	var out []arg
+	var out []argument
 	start := i + 1
 	base := c.depth[i] + 1
 	for j := i + 1; j <= end; j++ {
-		if j == end || c.op(j, ",") && c.depth[j] == base {
-			a := arg{start: start, end: j}
-			if j-start >= 2 && (c.tokens[start].k == tIdent || c.tokens[start].k == tStr) && c.op(start+1, "=") {
+		if j == end || c.operator(j, ",") && c.depth[j] == base {
+			a := argument{start: start, end: j}
+			if j-start >= 2 && (c.tokens[start].k == tIdentifier || c.tokens[start].k == tString) && c.operator(start+1, "=") {
 				a.name, a.start = c.tokens[start].s, start+2
 			}
 			if a.start < a.end || a.name != "" {
@@ -110,16 +110,16 @@ func (c *code) args(i int) []arg {
 }
 
 // single is the one token an argument's value consists of.
-func (c *code) single(a arg) (tok, bool) {
+func (c *code) single(a argument) (token, bool) {
 	if a.end-a.start == 1 {
 		return c.tokens[a.start], true
 	}
-	return tok{}, false
+	return token{}, false
 }
 
 // positional returns the n-th unnamed argument.
-func positional(args []arg, n int) (arg, bool) {
-	for _, a := range args {
+func positional(arguments []argument, n int) (argument, bool) {
+	for _, a := range arguments {
 		if a.name == "" {
 			if n == 0 {
 				return a, true
@@ -127,45 +127,45 @@ func positional(args []arg, n int) (arg, bool) {
 			n--
 		}
 	}
-	return arg{}, false
+	return argument{}, false
 }
 
-func named(args []arg, name string) (arg, bool) {
-	for _, a := range args {
+func named(arguments []argument, name string) (argument, bool) {
+	for _, a := range arguments {
 		if a.name == name {
 			return a, true
 		}
 	}
-	return arg{}, false
+	return argument{}, false
 }
 
 // callAt reports the function called at i ("(" follows) and the namespace it is
 // qualified with, if any: base::library, box::use.
-func (c *code) callAt(i int) (name, ns string, ok bool) {
+func (c *code) callAt(i int) (name, namespace string, ok bool) {
 	t := c.tokens[i]
-	if t.k != tIdent || !c.op(i+1, "(") {
+	if t.k != tIdentifier || !c.operator(i+1, "(") {
 		return "", "", false
 	}
-	if c.op(i-1, "$") || c.op(i-1, "@") {
+	if c.operator(i-1, "$") || c.operator(i-1, "@") {
 		return "", "", false
 	}
-	if (c.op(i-1, "::") || c.op(i-1, ":::")) && i >= 2 && c.tokens[i-2].k == tIdent {
+	if (c.operator(i-1, "::") || c.operator(i-1, ":::")) && i >= 2 && c.tokens[i-2].k == tIdentifier {
 		return t.s, c.tokens[i-2].s, true
 	}
 	return t.s, "", true
 }
 
-// stmtStart reports whether token i begins a statement: the first token of a run, a
+// statementStart reports whether token i begins a statement: the first token of a run, a
 // line that does not continue an expression left open by an operator, or after ";".
-func (c *code) stmtStart(i int) bool {
+func (c *code) statementStart(i int) bool {
 	if i == 0 {
 		return true
 	}
 	p := c.tokens[i-1]
-	if p.k == tSep || p.k == tOp && p.s == ";" {
+	if p.k == tSeparator || p.k == tOp && p.s == ";" {
 		return true
 	}
-	if !c.tokens[i].bol {
+	if !c.tokens[i].lineStart {
 		return false
 	}
 	return p.k != tOp || p.s == ")" || p.s == "]" || p.s == "}"
@@ -181,10 +181,10 @@ var keywords = map[string]bool{
 //
 // Implements: REQ-R-002, REQ-R-003
 func extractCode(c *code, comments []comment) *lang.Extraction {
-	ex := &lang.Extraction{}
+	extraction := &lang.Extraction{}
 	var symbols lang.SymbolSet
 	defined := definitions(c, &symbols)
-	ex.Symbols = symbols.List()
+	extraction.Symbols = symbols.List()
 	seen := map[string]bool{}
 	add := func(kind, spec, module string, line int) {
 		key := kind + " " + module
@@ -192,7 +192,7 @@ func extractCode(c *code, comments []comment) *lang.Extraction {
 			return
 		}
 		seen[key] = true
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
 	}
 	roxygen(comments, add)
 	calls := map[string]int{}
@@ -204,89 +204,89 @@ func extractCode(c *code, comments []comment) *lang.Extraction {
 		}
 	}
 	for i, t := range c.tokens {
-		if t.k != tIdent {
+		if t.k != tIdentifier {
 			continue
 		}
 		// pkg::name and pkg:::name name a package whatever follows.
-		if (c.op(i+1, "::") || c.op(i+1, ":::")) && !c.op(i-1, "$") && !c.op(i-1, "@") && validPkg(t.s) {
+		if (c.operator(i+1, "::") || c.operator(i+1, ":::")) && !c.operator(i-1, "$") && !c.operator(i-1, "@") && validPackage(t.s) {
 			add(kindNS, t.s+c.tokens[i+1].s, t.s, t.line)
 		}
 		// Name$new() creates an R5/R6 object: a use of the class generator.
-		if c.op(i+1, "$") && c.is(i+2, tIdent, "new") && c.op(i+3, "(") && !c.op(i-1, "$") && !c.op(i-1, "::") {
+		if c.operator(i+1, "$") && c.is(i+2, tIdentifier, "new") && c.operator(i+3, "(") && !c.operator(i-1, "$") && !c.operator(i-1, "::") {
 			call(t.s, t.line)
 		}
-		name, ns, ok := c.callAt(i)
+		name, namespace, ok := c.callAt(i)
 		if !ok {
 			continue
 		}
-		if ns == "" {
+		if namespace == "" {
 			call(name, t.line)
 		}
-		if !readArgs[name] && !applyFamily[name] {
+		if !readArguments[name] && !applyFamily[name] {
 			continue
 		}
-		args := c.args(i + 1)
+		arguments := c.arguments(i + 1)
 		switch {
-		case (ns == "" || ns == "base") && (name == "library" || name == "require"):
-			a, ok := named(args, "package")
+		case (namespace == "" || namespace == "base") && (name == "library" || name == "require"):
+			a, ok := named(arguments, "package")
 			if !ok {
-				a, ok = positional(args, 0)
+				a, ok = positional(arguments, 0)
 			}
 			v, one := c.single(a)
 			if !ok || !one {
 				break
 			}
-			if v.k == tIdent {
+			if v.k == tIdentifier {
 				// character.only = TRUE: the name is in a variable.
-				if co, ok := named(args, "character.only"); ok {
+				if co, ok := named(arguments, "character.only"); ok {
 					if f, one := c.single(co); !one || f.s != "FALSE" && f.s != "F" {
 						break
 					}
 				}
 			}
-			if (v.k == tIdent || v.k == tStr) && validPkg(v.s) {
-				add(kindPkg, name+"("+v.s+")", v.s, t.line)
+			if (v.k == tIdentifier || v.k == tString) && validPackage(v.s) {
+				add(kindPackage, name+"("+v.s+")", v.s, t.line)
 			}
-		case (ns == "" || ns == "base") && (name == "requireNamespace" || name == "loadNamespace" || name == "attachNamespace"):
-			a, ok := named(args, "package")
+		case (namespace == "" || namespace == "base") && (name == "requireNamespace" || name == "loadNamespace" || name == "attachNamespace"):
+			a, ok := named(arguments, "package")
 			if !ok {
-				a, ok = positional(args, 0)
+				a, ok = positional(arguments, 0)
 			}
-			if v, one := c.single(a); ok && one && v.k == tStr && validPkg(v.s) {
-				add(kindPkg, name+"(\""+v.s+"\")", v.s, t.line)
+			if v, one := c.single(a); ok && one && v.k == tString && validPackage(v.s) {
+				add(kindPackage, name+"(\""+v.s+"\")", v.s, t.line)
 			}
-		case (ns == "" || ns == "pacman") && name == "p_load":
-			for _, a := range args {
-				if v, one := c.single(a); a.name == "" && one && (v.k == tIdent || v.k == tStr) && validPkg(v.s) {
-					add(kindPkg, "p_load("+v.s+")", v.s, t.line)
+		case (namespace == "" || namespace == "pacman") && name == "p_load":
+			for _, a := range arguments {
+				if v, one := c.single(a); a.name == "" && one && (v.k == tIdentifier || v.k == tString) && validPackage(v.s) {
+					add(kindPackage, "p_load("+v.s+")", v.s, t.line)
 				}
 				if a.name == "char" {
 					for _, s := range c.strings(a) {
-						if validPkg(s) {
-							add(kindPkg, "p_load("+s+")", s, t.line)
+						if validPackage(s) {
+							add(kindPackage, "p_load("+s+")", s, t.line)
 						}
 					}
 				}
 			}
-		case ns == "box" && name == "use":
-			for _, a := range args {
-				mod, local := c.boxModule(a)
+		case namespace == "box" && name == "use":
+			for _, a := range arguments {
+				module, local := c.boxModule(a)
 				switch {
-				case mod == "":
+				case module == "":
 				case local:
-					if strings.HasPrefix(mod, ".") && !strings.HasPrefix(mod, "./") && !strings.HasPrefix(mod, "../") {
+					if strings.HasPrefix(module, ".") && !strings.HasPrefix(module, "./") && !strings.HasPrefix(module, "../") {
 						break // not a path: ".", "..x"
 					}
-					add(kindBoxLocal, "box::use("+mod+")", mod, c.tokens[a.start].line)
-				case validPkg(mod):
-					add(kindBox, "box::use("+mod+")", mod, c.tokens[a.start].line)
+					add(kindBoxLocal, "box::use("+module+")", module, c.tokens[a.start].line)
+				case validPackage(module):
+					add(kindBox, "box::use("+module+")", module, c.tokens[a.start].line)
 				}
 			}
-		case (ns == "" || ns == "base") && (name == "source" || name == "sys.source"),
-			(ns == "" || ns == "Rcpp") && name == "sourceCpp":
-			a, ok := named(args, "file")
+		case (namespace == "" || namespace == "base") && (name == "source" || name == "sys.source"),
+			(namespace == "" || namespace == "Rcpp") && name == "sourceCpp":
+			a, ok := named(arguments, "file")
 			if !ok {
-				a, ok = positional(args, 0)
+				a, ok = positional(arguments, 0)
 			}
 			if !ok {
 				break
@@ -298,38 +298,38 @@ func extractCode(c *code, comments []comment) *lang.Extraction {
 				}
 				add(kindSource, spec, p, t.line)
 			}
-		case (ns == "" || ns == "targets") && name == "tar_source":
-			dir := "R"
-			if a, ok := named(args, "files"); ok {
-				dir, _, ok = c.evalPath(a.start, a.end)
+		case (namespace == "" || namespace == "targets") && name == "tar_source":
+			directory := "R"
+			if a, ok := named(arguments, "files"); ok {
+				directory, _, ok = c.evalPath(a.start, a.end)
 				if !ok {
 					break
 				}
-			} else if a, ok := positional(args, 0); ok {
-				dir, _, ok = c.evalPath(a.start, a.end)
+			} else if a, ok := positional(arguments, 0); ok {
+				directory, _, ok = c.evalPath(a.start, a.end)
 				if !ok {
 					break
 				}
 			}
-			add(kindSrcDir, "tar_source(\""+dir+"\")", dir, t.line)
-		case (ns == "" || ns == "base") && name == "do.call",
-			applyFamily[name] && (ns == "" || ns == "base" || ns == "purrr"):
+			add(kindSourceDirectory, "tar_source(\""+directory+"\")", directory, t.line)
+		case (namespace == "" || namespace == "base") && name == "do.call",
+			applyFamily[name] && (namespace == "" || namespace == "base" || namespace == "purrr"):
 			// A function handed over by name is called as much as one called directly.
-			for _, a := range args {
-				if v, one := c.single(a); one && (v.k == tIdent || name == "do.call" && v.k == tStr) && !c.op(a.start-1, "$") {
+			for _, a := range arguments {
+				if v, one := c.single(a); one && (v.k == tIdentifier || name == "do.call" && v.k == tString) && !c.operator(a.start-1, "$") {
 					call(v.s, v.line)
 				}
 			}
 		}
 	}
 	for _, name := range callOrder {
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: name + "()", Module: name, Name: kindCall, Line: calls[name]})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: name + "()", Module: name, Name: kindCall, Line: calls[name]})
 	}
-	return ex
+	return extraction
 }
 
-// readArgs are the calls whose arguments name a package or a file.
-var readArgs = map[string]bool{
+// readArguments are the calls whose arguments name a package or a file.
+var readArguments = map[string]bool{
 	"library": true, "require": true, "requireNamespace": true, "loadNamespace": true,
 	"attachNamespace": true, "p_load": true, "use": true, "source": true, "sys.source": true,
 	"sourceCpp": true, "tar_source": true, "do.call": true,
@@ -343,21 +343,21 @@ var applyFamily = map[string]bool{
 	"map2": true, "pmap": true, "walk": true, "imap": true, "match.fun": true,
 }
 
-var pkgName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9.]*[A-Za-z0-9]$`)
+var packageName = regexp.MustCompile(`^[A-Za-z][A-Za-z0-9.]*[A-Za-z0-9]$`)
 
-// validPkg reports whether s can be an R package name (letters, digits and dots,
+// validPackage reports whether s can be an R package name (letters, digits and dots,
 // starting with a letter, at least two characters).
-func validPkg(s string) bool { return pkgName.MatchString(s) }
+func validPackage(s string) bool { return packageName.MatchString(s) }
 
 // strings collects the string literals of c("a", "b") or of a single "a".
-func (c *code) strings(a arg) []string {
-	if v, one := c.single(a); one && v.k == tStr {
+func (c *code) strings(a argument) []string {
+	if v, one := c.single(a); one && v.k == tString {
 		return []string{v.s}
 	}
-	if a.end-a.start >= 3 && c.is(a.start, tIdent, "c") && c.op(a.start+1, "(") {
+	if a.end-a.start >= 3 && c.is(a.start, tIdentifier, "c") && c.operator(a.start+1, "(") {
 		var out []string
-		for _, b := range c.args(a.start + 1) {
-			if v, one := c.single(b); one && v.k == tStr {
+		for _, b := range c.arguments(a.start + 1) {
+			if v, one := c.single(b); one && v.k == tString {
 				out = append(out, v.s)
 			}
 		}
@@ -370,20 +370,20 @@ func (c *code) strings(a arg) []string {
 // path of names and slashes (./x, ../x, app/logic/x, pkg) up to an attach list
 // "[...]". A path with a slash or a leading dot is a local module, anything else a
 // package.
-func (c *code) boxModule(a arg) (string, bool) {
+func (c *code) boxModule(a argument) (string, bool) {
 	var b strings.Builder
 	for j := a.start; j < a.end; j++ {
 		t := c.tokens[j]
 		if t.k == tOp && t.s == "[" {
 			break
 		}
-		if t.k != tIdent && !(t.k == tOp && t.s == "/") {
+		if t.k != tIdentifier && !(t.k == tOp && t.s == "/") {
 			return "", false
 		}
 		b.WriteString(t.s)
 	}
-	mod := b.String()
-	return mod, strings.Contains(mod, "/") || strings.HasPrefix(mod, ".")
+	module := b.String()
+	return module, strings.Contains(module, "/") || strings.HasPrefix(module, ".")
 }
 
 // evalPath evaluates the few path expressions source() is usually given: a string,
@@ -392,25 +392,25 @@ func (c *code) boxModule(a arg) (string, bool) {
 // directory. Anything else (a variable, a computed name) is not a path.
 func (c *code) evalPath(start, end int) (p string, here bool, ok bool) {
 	if end-start == 1 {
-		if t := c.tokens[start]; t.k == tStr {
+		if t := c.tokens[start]; t.k == tString {
 			return t.s, false, true
 		}
 		return "", false, false
 	}
 	i := start
-	ns := ""
-	if end-start > 3 && c.tokens[i].k == tIdent && c.op(i+1, "::") {
-		ns = c.tokens[i].s
+	namespace := ""
+	if end-start > 3 && c.tokens[i].k == tIdentifier && c.operator(i+1, "::") {
+		namespace = c.tokens[i].s
 		i += 2
 	}
-	if c.tokens[i].k != tIdent || !c.op(i+1, "(") || c.end(i+1) != end-1 {
+	if c.tokens[i].k != tIdentifier || !c.operator(i+1, "(") || c.end(i+1) != end-1 {
 		return "", false, false
 	}
-	fn := c.tokens[i].s
+	function := c.tokens[i].s
 	var parts []string
-	for _, a := range c.args(i + 1) {
+	for _, a := range c.arguments(i + 1) {
 		if a.name != "" {
-			if fn == "file.path" && a.name == "fsep" {
+			if function == "file.path" && a.name == "fsep" {
 				continue
 			}
 			return "", false, false
@@ -423,12 +423,12 @@ func (c *code) evalPath(start, end int) (p string, here bool, ok bool) {
 		parts = append(parts, s)
 	}
 	switch {
-	case fn == "here" && (ns == "" || ns == "here"):
+	case function == "here" && (namespace == "" || namespace == "here"):
 		return strings.Join(parts, "/"), true, true
-	case fn == "file.path" && (ns == "" || ns == "base"):
+	case function == "file.path" && (namespace == "" || namespace == "base"):
 		parts = slices.DeleteFunc(parts, func(s string) bool { return s == "" })
 		return strings.Join(parts, "/"), here, true
-	case fn == "paste0" && (ns == "" || ns == "base"):
+	case function == "paste0" && (namespace == "" || namespace == "base"):
 		return strings.Join(parts, ""), here, true
 	}
 	return "", false, false
@@ -442,16 +442,16 @@ func (c *code) evalPath(start, end int) (p string, here bool, ok bool) {
 // Implements: REQ-R-003
 func definitions(c *code, symbols *lang.SymbolSet) map[string]bool {
 	defined := map[string]bool{}
-	vars := map[string]bool{}
+	variables := map[string]bool{}
 	for i := 0; i < len(c.tokens); i++ {
 		t := c.tokens[i]
-		if c.depth[i] != 0 || !c.stmtStart(i) || t.k != tIdent && t.k != tStr {
+		if c.depth[i] != 0 || !c.statementStart(i) || t.k != tIdentifier && t.k != tString {
 			continue
 		}
 		// name <- value, name = value, name <<- value; a chain a <- b <- value names both.
 		j := i
-		var names []tok
-		for (c.tokens[j].k == tIdent || c.tokens[j].k == tStr) && (c.op(j+1, "<-") || c.op(j+1, "=") || c.op(j+1, "<<-")) {
+		var names []token
+		for (c.tokens[j].k == tIdentifier || c.tokens[j].k == tString) && (c.operator(j+1, "<-") || c.operator(j+1, "=") || c.operator(j+1, "<<-")) {
 			names = append(names, c.tokens[j])
 			j += 2
 		}
@@ -477,8 +477,8 @@ func definitions(c *code, symbols *lang.SymbolSet) map[string]bool {
 					symbols.Add(n.s, "generic", n.line)
 					defined[n.s] = true
 				default:
-					if !vars[n.s] && !defined[n.s] {
-						vars[n.s] = true
+					if !variables[n.s] && !defined[n.s] {
+						variables[n.s] = true
 						symbols.Add(n.s, "var", n.line)
 					}
 				}
@@ -486,21 +486,21 @@ func definitions(c *code, symbols *lang.SymbolSet) map[string]bool {
 			continue
 		}
 		k := i
-		if t.k == tIdent && c.op(i+1, "::") {
+		if t.k == tIdentifier && c.operator(i+1, "::") {
 			k = i + 2 // methods::setClass(...)
 		}
-		name, ns, ok := c.callAt(k)
-		if !ok || ns != "" && ns != "methods" && ns != "base" {
+		name, namespace, ok := c.callAt(k)
+		if !ok || namespace != "" && namespace != "methods" && namespace != "base" {
 			// Name$methods(...) adds methods to an R5 class.
-			if t.k == tIdent && c.op(i+1, "$") && c.is(i+2, tIdent, "methods") && c.op(i+3, "(") {
+			if t.k == tIdentifier && c.operator(i+1, "$") && c.is(i+2, tIdentifier, "methods") && c.operator(i+3, "(") {
 				c.methodList(i+3, t.s, symbols)
 			}
 			continue
 		}
-		args := c.args(k + 1)
+		arguments := c.arguments(k + 1)
 		first := ""
-		if a, ok := positional(args, 0); ok {
-			if v, one := c.single(a); one && v.k == tStr {
+		if a, ok := positional(arguments, 0); ok {
+			if v, one := c.single(a); one && v.k == tString {
 				first = v.s
 			}
 		}
@@ -520,19 +520,19 @@ func definitions(c *code, symbols *lang.SymbolSet) map[string]bool {
 			if first == "" {
 				break
 			}
-			sig := ""
-			if a, ok := named(args, "signature"); ok {
-				sig = c.firstString(a)
-			} else if a, ok := positional(args, 1); ok {
-				sig = c.firstString(a)
+			signature := ""
+			if a, ok := named(arguments, "signature"); ok {
+				signature = c.firstString(a)
+			} else if a, ok := positional(arguments, 1); ok {
+				signature = c.firstString(a)
 			}
-			if sig != "" {
-				symbols.Add(sig+"."+first, "method", t.line)
+			if signature != "" {
+				symbols.Add(signature+"."+first, "method", t.line)
 			} else {
 				symbols.Add(first, "method", t.line)
 			}
 		case "assign":
-			if a, ok := positional(args, 1); ok && first != "" && c.is(a.start, tIdent, "function") {
+			if a, ok := positional(arguments, 1); ok && first != "" && c.is(a.start, tIdentifier, "function") {
 				symbols.Add(first, "function", t.line)
 				defined[first] = true
 			}
@@ -543,9 +543,9 @@ func definitions(c *code, symbols *lang.SymbolSet) map[string]bool {
 
 // firstString is the first string literal among an argument's tokens:
 // "Person", signature("Person", "numeric"), c(x = "Person").
-func (c *code) firstString(a arg) string {
+func (c *code) firstString(a argument) string {
 	for j := a.start; j < a.end; j++ {
-		if c.tokens[j].k == tStr {
+		if c.tokens[j].k == tString {
 			return c.tokens[j].s
 		}
 	}
@@ -557,11 +557,11 @@ func (c *code) firstString(a arg) string {
 // generic.
 func (c *code) valueKind(j int) (kind, class string) {
 	t := c.tokens[j]
-	if t.k == tIdent && t.s == "function" || c.op(j, "\\") {
+	if t.k == tIdentifier && t.s == "function" || c.operator(j, "\\") {
 		return "function", ""
 	}
 	k := j
-	if t.k == tIdent && (c.op(j+1, "::") || c.op(j+1, ":::")) {
+	if t.k == tIdentifier && (c.operator(j+1, "::") || c.operator(j+1, ":::")) {
 		k = j + 2
 	}
 	name, _, ok := c.callAt(k)
@@ -569,8 +569,8 @@ func (c *code) valueKind(j int) (kind, class string) {
 		return "", ""
 	}
 	first := ""
-	if a, ok := positional(c.args(k+1), 0); ok {
-		if v, one := c.single(a); one && v.k == tStr {
+	if a, ok := positional(c.arguments(k+1), 0); ok {
+		if v, one := c.single(a); one && v.k == tString {
 			first = v.s
 		}
 	}
@@ -588,13 +588,13 @@ func (c *code) valueKind(j int) (kind, class string) {
 // class's methods list, as Class.method.
 func (c *code) methods(j int, class string, symbols *lang.SymbolSet) {
 	for k := j; k < len(c.tokens) && k <= j+3; k++ {
-		if !c.op(k, "(") {
+		if !c.operator(k, "(") {
 			continue
 		}
-		for _, a := range c.args(k) {
+		for _, a := range c.arguments(k) {
 			switch a.name {
 			case "public", "private", "active", "methods":
-				if c.is(a.start, tIdent, "list") && c.op(a.start+1, "(") {
+				if c.is(a.start, tIdentifier, "list") && c.operator(a.start+1, "(") {
 					c.methodList(a.start+1, class, symbols)
 				}
 			}
@@ -606,8 +606,8 @@ func (c *code) methods(j int, class string, symbols *lang.SymbolSet) {
 // methodList records the functions of list(name = function...) or of a call's named
 // arguments, whose "(" is at k.
 func (c *code) methodList(k int, class string, symbols *lang.SymbolSet) {
-	for _, m := range c.args(k) {
-		if m.name != "" && m.start < m.end && (c.is(m.start, tIdent, "function") || c.op(m.start, "\\")) {
+	for _, m := range c.arguments(k) {
+		if m.name != "" && m.start < m.end && (c.is(m.start, tIdentifier, "function") || c.operator(m.start, "\\")) {
 			symbols.Add(class+"."+m.name, "method", c.tokens[m.start-2].line)
 		}
 	}
@@ -625,24 +625,24 @@ var (
 //
 // Implements: REQ-R-002
 func roxygen(comments []comment, add func(kind, spec, module string, line int)) {
-	for _, cm := range comments {
-		if !strings.HasPrefix(cm.text, "#'") {
+	for _, comment := range comments {
+		if !strings.HasPrefix(comment.text, "#'") {
 			continue
 		}
-		text := strings.TrimSpace(cm.text)
+		text := strings.TrimSpace(comment.text)
 		if m := roxImportFrom.FindStringSubmatch(text); m != nil {
-			if validPkg(m[1]) {
-				add(kindRoxygen, "@importFrom "+m[1], m[1], cm.line)
+			if validPackage(m[1]) {
+				add(kindRoxygen, "@importFrom "+m[1], m[1], comment.line)
 			}
 		} else if m := roxImport.FindStringSubmatch(text); m != nil {
 			for _, p := range strings.Fields(m[1]) {
-				if validPkg(p) {
-					add(kindRoxygen, "@import "+p, p, cm.line)
+				if validPackage(p) {
+					add(kindRoxygen, "@import "+p, p, comment.line)
 				}
 			}
 		} else if m := roxInclude.FindStringSubmatch(text); m != nil {
 			for _, f := range strings.Fields(m[1]) {
-				add(kindInclude, "@include "+f, path.Clean(f), cm.line)
+				add(kindInclude, "@include "+f, path.Clean(f), comment.line)
 			}
 		}
 	}

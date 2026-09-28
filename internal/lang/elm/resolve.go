@@ -16,21 +16,21 @@ import (
 
 // project is a directory with an elm.json.
 type project struct {
-	dir   string
-	m     *manifest
-	roots []string // source directories, relative to the repository root
-	tests string   // the elm-test directory, dir/tests
+	directory string
+	m         *manifest
+	roots     []string // source directories, relative to the repository root
+	tests     string   // the elm-test directory, dir/tests
 	// modules maps a module of an installed package to that package: from the
 	// exposed-modules of each dependency's elm.json in ELM_HOME, when it is there.
 	modules map[string]string
 }
 
 type resolver struct {
-	files    map[string]bool
-	dirs     map[string]bool
-	projects []*project          // sorted by directory
-	byDir    map[string]*project // by directory
-	home     string              // ELM_HOME
+	files       map[string]bool
+	directories map[string]bool
+	projects    []*project          // sorted by directory
+	byDirectory map[string]*project // by directory
+	home        string              // ELM_HOME
 	// installed memoizes the elm.json of installed packages, by "author/name@version"
 	// (nil when not on disk).
 	installed sync.Map
@@ -49,56 +49,56 @@ func elmHome() string {
 
 // Implements: REQ-ELM-004, REQ-ELM-005, REQ-ELM-007
 func newResolver(root string, all []*scan.File, home string) *resolver {
-	r := &resolver{files: map[string]bool{}, dirs: map[string]bool{}, byDir: map[string]*project{}, home: home}
+	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, byDirectory: map[string]*project{}, home: home}
 	for _, f := range all {
 		r.files[f.Path] = true
-		for d := path.Dir(f.Path); d != "." && !r.dirs[d]; d = path.Dir(d) {
-			r.dirs[d] = true
+		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
+			r.directories[d] = true
 		}
 	}
 	for _, f := range all {
 		if path.Base(f.Path) != "elm.json" || inElmStuff(f.Path) {
 			continue
 		}
-		src, err := os.ReadFile(f.Abs)
+		source, err := os.ReadFile(f.AbsolutePath)
 		if err != nil {
 			continue
 		}
-		m := readManifest(src)
+		m := readManifest(source)
 		if m == nil {
 			continue
 		}
-		dir := path.Dir(f.Path)
+		directory := path.Dir(f.Path)
 		if _, exact := parseVersion(m.elmVersion); !exact {
 			// A package allows a range of compilers: the one elm-tooling
 			// installs decides which ELM_HOME directory holds its packages.
-			if v := toolingElm(root, dir); v != "" {
+			if v := toolingElm(root, directory); v != "" {
 				m.elmVersion = v
 			}
 		}
-		p := &project{dir: dir, m: m, tests: path.Join(dir, "tests"), modules: map[string]string{}}
-		dirs := m.srcDirs
+		p := &project{directory: directory, m: m, tests: path.Join(directory, "tests"), modules: map[string]string{}}
+		directories := m.sourceDirectories
 		if m.kind == "package" {
-			dirs = []string{"src"}
+			directories = []string{"src"}
 		}
-		for _, d := range dirs {
-			if d = path.Join(dir, strings.TrimSpace(d)); inside(d) {
+		for _, d := range directories {
+			if d = path.Join(directory, strings.TrimSpace(d)); inside(d) {
 				p.roots = append(p.roots, d)
 			}
 		}
-		for _, name := range sortedKeys(m.deps) {
-			if in := r.installedManifest(name, r.installedVersion(m, m.deps[name])); in != nil {
-				for _, mod := range in.exposed {
-					if _, ok := p.modules[mod]; !ok {
-						p.modules[mod] = name
+		for _, name := range sortedKeys(m.dependencies) {
+			if in := r.installedManifest(name, r.installedVersion(m, m.dependencies[name])); in != nil {
+				for _, module := range in.exposed {
+					if _, ok := p.modules[module]; !ok {
+						p.modules[module] = name
 					}
 				}
 			}
 		}
 		r.projects = append(r.projects, p)
-		r.byDir[dir] = p
+		r.byDirectory[directory] = p
 	}
-	sort.Slice(r.projects, func(i, j int) bool { return r.projects[i].dir < r.projects[j].dir })
+	sort.Slice(r.projects, func(i, j int) bool { return r.projects[i].directory < r.projects[j].directory })
 	return r
 }
 
@@ -106,7 +106,9 @@ func newResolver(root string, all []*scan.File, home string) *resolver {
 func inside(p string) bool { return p != ".." && !strings.HasPrefix(p, "../") && !path.IsAbs(p) }
 
 // under reports whether file is inside dir ("." holds everything).
-func under(file, dir string) bool { return dir == "." || strings.HasPrefix(file, dir+"/") }
+func under(file, directory string) bool {
+	return directory == "." || strings.HasPrefix(file, directory+"/")
+}
 
 // candidate is a project that lists a module file in its source directories, with
 // the roots its imports are looked up under.
@@ -139,7 +141,7 @@ func (r *resolver) candidates(file string) []candidate {
 			}
 		}
 		if n >= 0 {
-			found = append(found, scored{p, under(file, p.dir), n})
+			found = append(found, scored{p, under(file, p.directory), n})
 		}
 	}
 	sort.SliceStable(found, func(i, j int) bool {
@@ -148,13 +150,13 @@ func (r *resolver) candidates(file string) []candidate {
 			return a.ancestor
 		}
 		if a.ancestor {
-			return len(a.p.dir) > len(b.p.dir)
+			return len(a.p.directory) > len(b.p.directory)
 		}
 		return a.n > b.n
 	})
 	if len(found) == 0 {
 		for d := path.Dir(file); ; d = path.Dir(d) {
-			if p := r.byDir[d]; p != nil {
+			if p := r.byDirectory[d]; p != nil {
 				found = append(found, scored{p: p})
 				break
 			}
@@ -174,17 +176,17 @@ func (r *resolver) candidates(file string) []candidate {
 }
 
 // Implements: REQ-ELM-004, REQ-ELM-005, REQ-ELM-006
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	switch imp.Name {
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	switch rawImport.Name {
 	case kindModule:
-		return r.module(file, imp.Module)
-	case kindDep:
-		if p := r.byDir[path.Dir(file)]; p != nil && p.m.deps[imp.Module] != nil {
-			return target(p, imp.Module)
+		return r.module(file, rawImport.Module)
+	case kindDependency:
+		if p := r.byDirectory[path.Dir(file)]; p != nil && p.m.dependencies[rawImport.Module] != nil {
+			return target(p, rawImport.Module)
 		}
-	case kindSrcDir:
-		if p := r.byDir[path.Dir(file)]; p != nil {
-			if d := path.Join(p.dir, imp.Module); inside(d) && (r.dirs[d] || d == ".") {
+	case kindSourceDirectory:
+		if p := r.byDirectory[path.Dir(file)]; p != nil {
+			if d := path.Join(p.directory, rawImport.Module); inside(d) && (r.directories[d] || d == ".") {
 				return lang.Target{Local: d}
 			}
 		}
@@ -205,17 +207,17 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 // published it.
 //
 // Implements: REQ-ELM-004, REQ-ELM-007, REQ-ELM-011
-func (r *resolver) module(file, mod string) lang.Target {
+func (r *resolver) module(file, module string) lang.Target {
 	candidates := r.candidates(file)
-	rel := strings.ReplaceAll(mod, ".", "/")
-	kernel, isKernel := strings.CutPrefix(mod, "Elm.Kernel.")
-	ext := ".elm"
+	relative := strings.ReplaceAll(module, ".", "/")
+	kernel, isKernel := strings.CutPrefix(module, "Elm.Kernel.")
+	extension := ".elm"
 	if isKernel {
-		ext = ".js" // the kernel code of elm/core, elm/html's elm/virtual-dom, ...
+		extension = ".js" // the kernel code of elm/core, elm/html's elm/virtual-dom, ...
 	}
 	for _, c := range candidates {
 		for _, root := range c.roots {
-			if f := path.Join(root, rel+ext); r.files[f] {
+			if f := path.Join(root, relative+extension); r.files[f] {
 				return lang.Target{Local: f}
 			}
 		}
@@ -237,48 +239,48 @@ func (r *resolver) module(file, mod string) lang.Target {
 		return lang.Target{}
 	}
 	if p == nil {
-		if coreModules[mod] {
-			return lang.Target{Ecosystem: ecoElm, Package: core, Unresolved: true}
+		if coreModules[module] {
+			return lang.Target{Ecosystem: ecosystemElm, Package: core, Unresolved: true}
 		}
-		if name, ok := knownPackage(mod, func(string) bool { return false }); ok {
-			return lang.Target{Ecosystem: ecoElm, Package: name, Unresolved: true}
+		if name, ok := knownPackage(module, func(string) bool { return false }); ok {
+			return lang.Target{Ecosystem: ecosystemElm, Package: name, Unresolved: true}
 		}
 		return lang.Target{}
 	}
-	if name, ok := p.modules[mod]; ok {
+	if name, ok := p.modules[module]; ok {
 		return target(p, name)
 	}
-	if coreModules[mod] {
+	if coreModules[module] {
 		return target(p, core)
 	}
-	declared := func(name string) bool { return p.m.deps[name] != nil }
-	name, n := spelled(p, mod)
-	if known, ok := knownPackage(mod, declared); ok && declared(known) && segments(known, mod) >= n {
+	declared := func(name string) bool { return p.m.dependencies[name] != nil }
+	name, n := spelled(p, module)
+	if known, ok := knownPackage(module, declared); ok && declared(known) && segments(known, module) >= n {
 		return target(p, known)
 	}
 	if name != "" {
 		return target(p, name)
 	}
-	if name = startsLike(p, mod); name != "" {
+	if name = startsLike(p, module); name != "" {
 		return target(p, name)
 	}
 	if p.m.kind == "package" && p.m.name != "" {
 		for _, e := range p.m.exposed {
-			if e == mod {
+			if e == module {
 				return lang.Target{} // the package's own module, missing from src/
 			}
 		}
 	}
-	if known, ok := knownPackage(mod, declared); ok {
+	if known, ok := knownPackage(module, declared); ok {
 		return target(p, known)
 	}
 	return lang.Target{}
 }
 
-// segments is how many leading segments of mod the table entry for pkg covers.
-func segments(pkg, mod string) int {
-	for m := mod; m != ""; m = parent(m) {
-		if knownModules[m] == pkg {
+// segments is how many leading segments of module the table entry for packageName covers.
+func segments(packageName, module string) int {
+	for m := module; m != ""; m = parent(m) {
+		if knownModules[m] == packageName {
 			return strings.Count(m, ".") + 1
 		}
 	}
@@ -290,10 +292,10 @@ func segments(pkg, mod string) int {
 // such run: List.Extra is elm-community/list-extra, Json.Decode.Pipeline
 // NoRedInk/elm-json-decode-pipeline. It returns the package and how many
 // segments matched.
-func spelled(p *project, mod string) (string, int) {
-	segments := strings.Split(mod, ".")
+func spelled(p *project, module string) (string, int) {
+	segments := strings.Split(module, ".")
 	best, n := "", 0
-	for _, name := range sortedKeys(p.m.deps) {
+	for _, name := range sortedKeys(p.m.dependencies) {
 		f := foldPackage(name)
 		if f == "" {
 			continue
@@ -311,16 +313,16 @@ func spelled(p *project, mod string) (string, int) {
 // startsLike is the declared package whose folded name starts with the module's
 // first segment folded, when that is at least four characters: Iso8601 is
 // rtfeldman/elm-iso8601-date-strings.
-func startsLike(p *project, mod string) string {
-	first := mod
-	if i := strings.IndexByte(mod, '.'); i >= 0 {
-		first = mod[:i]
+func startsLike(p *project, module string) string {
+	first := module
+	if i := strings.IndexByte(module, '.'); i >= 0 {
+		first = module[:i]
 	}
 	first = fold(first)
 	if len(first) < 4 {
 		return ""
 	}
-	for _, name := range sortedKeys(p.m.deps) {
+	for _, name := range sortedKeys(p.m.dependencies) {
 		if strings.HasPrefix(foldPackage(name), first) {
 			return name
 		}
@@ -355,14 +357,14 @@ func fold(s string) string {
 //
 // Implements: REQ-ELM-005, REQ-ELM-006
 func target(p *project, name string) lang.Target {
-	d := p.m.deps[name]
+	d := p.m.dependencies[name]
 	if d == nil {
-		return lang.Target{Ecosystem: ecoElm, Package: name, Unresolved: true}
+		return lang.Target{Ecosystem: ecosystemElm, Package: name, Unresolved: true}
 	}
 	if _, ok := parseVersion(d.version); ok {
-		return lang.Target{Ecosystem: ecoElm, Package: name, Version: d.version, Pinned: true}
+		return lang.Target{Ecosystem: ecosystemElm, Package: name, Version: d.version, Pinned: true}
 	}
-	return lang.Target{Ecosystem: ecoElm, Package: name, Version: d.version, Floating: true}
+	return lang.Target{Ecosystem: ecosystemElm, Package: name, Version: d.version, Floating: true}
 }
 
 // installedVersion is the version of a dependency to look for in ELM_HOME: an
@@ -371,16 +373,16 @@ func (r *resolver) installedVersion(m *manifest, d *dependency) string {
 	if _, ok := parseVersion(d.version); ok {
 		return d.version
 	}
-	lo, hi, ok := parseRange(d.version)
+	low, high, ok := parseRange(d.version)
 	if !ok || r.home == "" {
 		return ""
 	}
 	best, bestV := "", version{}
-	for _, ev := range elmVersions(m) {
-		entries, _ := os.ReadDir(filepath.Join(r.home, ev, "packages", filepath.FromSlash(d.name)))
+	for _, elmVersion := range elmVersions(m) {
+		entries, _ := os.ReadDir(filepath.Join(r.home, elmVersion, "packages", filepath.FromSlash(d.name)))
 		for _, e := range entries {
 			v, ok := parseVersion(e.Name())
-			if ok && e.IsDir() && lo.admits(v, hi) && (best == "" || bestV.less(v)) {
+			if ok && e.IsDir() && low.admits(v, high) && (best == "" || bestV.less(v)) {
 				best, bestV = e.Name(), v
 			}
 		}
@@ -405,19 +407,19 @@ func elmVersions(m *manifest) []string {
 
 // installedManifest is the elm.json of a package version the compiler downloaded
 // into ELM_HOME, or nil.
-func (r *resolver) installedManifest(name, ver string) *manifest {
-	if r.home == "" || ver == "" || !validName(name) {
+func (r *resolver) installedManifest(name, version string) *manifest {
+	if r.home == "" || version == "" || !validName(name) {
 		return nil
 	}
-	key := name + "@" + ver
+	key := name + "@" + version
 	if m, ok := r.installed.Load(key); ok {
 		return m.(*manifest)
 	}
 	var found *manifest
-	for _, ev := range elmVersions(nil) {
-		src, err := os.ReadFile(filepath.Join(r.home, ev, "packages", filepath.FromSlash(name), ver, "elm.json"))
+	for _, elmVersion := range elmVersions(nil) {
+		source, err := os.ReadFile(filepath.Join(r.home, elmVersion, "packages", filepath.FromSlash(name), version, "elm.json"))
 		if err == nil {
-			if found = readManifest(src); found != nil {
+			if found = readManifest(source); found != nil {
 				break
 			}
 		}
@@ -444,8 +446,8 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 		return nil
 	}
 	var out []lang.Target
-	for _, name := range sortedKeys(m.deps) {
-		d := m.deps[name]
+	for _, name := range sortedKeys(m.dependencies) {
+		d := m.dependencies[name]
 		if d.test {
 			continue
 		}
@@ -458,7 +460,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 func (r *resolver) Installed(t lang.Target) bool { return r.installedFor(t) != nil }
 
 func (r *resolver) installedFor(t lang.Target) *manifest {
-	if t.Ecosystem != ecoElm || t.Package == "" {
+	if t.Ecosystem != ecosystemElm || t.Package == "" {
 		return nil
 	}
 	v := t.Version
@@ -470,15 +472,15 @@ func (r *resolver) installedFor(t lang.Target) *manifest {
 
 // pinned is a dependency of an installed package: at the version an application
 // of the repository lists, else its range.
-func (r *resolver) pinned(name, rng string) lang.Target {
+func (r *resolver) pinned(name, versionRange string) lang.Target {
 	for _, p := range r.projects {
-		if d := p.m.deps[name]; d != nil && p.m.kind == "application" {
+		if d := p.m.dependencies[name]; d != nil && p.m.kind == "application" {
 			if _, ok := parseVersion(d.version); ok {
-				return lang.Target{Ecosystem: ecoElm, Package: name, Version: d.version, Pinned: true}
+				return lang.Target{Ecosystem: ecosystemElm, Package: name, Version: d.version, Pinned: true}
 			}
 		}
 	}
-	return lang.Target{Ecosystem: ecoElm, Package: name, Version: rng, Floating: true}
+	return lang.Target{Ecosystem: ecosystemElm, Package: name, Version: versionRange, Floating: true}
 }
 
 // version is an Elm package version: always major.minor.patch.
@@ -517,23 +519,23 @@ type bound struct {
 
 // parseRange reads an Elm constraint: "1.0.0 <= v < 2.0.0" (either side may be <
 // or <=).
-func parseRange(s string) (lo, hi bound, ok bool) {
+func parseRange(s string) (low, high bound, ok bool) {
 	f := strings.Fields(s)
 	if len(f) != 5 || f[2] != "v" || f[1] != "<" && f[1] != "<=" || f[3] != "<" && f[3] != "<=" {
-		return lo, hi, false
+		return low, high, false
 	}
 	a, ok1 := parseVersion(f[0])
 	b, ok2 := parseVersion(f[4])
 	if !ok1 || !ok2 {
-		return lo, hi, false
+		return low, high, false
 	}
 	return bound{a, f[1] == "<"}, bound{b, f[3] == "<"}, true
 }
 
 // admits reports whether v lies between the lower bound lo and the upper bound hi.
-func (lo bound) admits(v version, hi bound) bool {
-	if v.less(lo.v) || lo.strict && v == lo.v {
+func (low bound) admits(v version, high bound) bool {
+	if v.less(low.v) || low.strict && v == low.v {
 		return false
 	}
-	return v.less(hi.v) || !hi.strict && v == hi.v
+	return v.less(high.v) || !high.strict && v == high.v
 }

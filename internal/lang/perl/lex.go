@@ -10,19 +10,19 @@ import (
 // "$h" subscripts), so the lexer keeps the one bit that decides most of it: whether
 // the last token was an operand.
 const (
-	tWord  = iota // identifier or bareword, with its :: parts (Foo::Bar)
-	tVar          // a variable with its sigil ($x, @{, %$h, $#a, $Foo::Bar)
-	tStr          // '...', "...", `...`, q//, qq//, qx//, a here-document
-	tQW           // qw// - its words in words
-	tRegex        // m//, qr//, s///, tr///, y///, //
-	tNum          // a number
-	tPunct        // everything else: ; , => -> ( ) { } [ ] and operators
+	tWord        = iota // identifier or bareword, with its :: parts (Foo::Bar)
+	tVariable           // a variable with its sigil ($x, @{, %$h, $#a, $Foo::Bar)
+	tString             // '...', "...", `...`, q//, qq//, qx//, a here-document
+	tQW                 // qw// - its words in words
+	tRegex              // m//, qr//, s///, tr///, y///, //
+	tNumber             // a number
+	tPunctuation        // everything else: ; , => -> ( ) { } [ ] and operators
 )
 
 type token struct {
 	kind        int
-	text        string   // tWord/tVar/tNum/tPunct: as written; tStr: the inner text
-	interpolate bool     // tStr: interpolating ("..." and qq)
+	text        string   // tWord/tVar/tNum/tPunct: as written; tString: the inner text
+	interpolate bool     // tString: interpolating ("..." and qq)
 	words       []string // tQW
 	line        int
 }
@@ -43,7 +43,7 @@ var opWords = map[string]bool{
 var quoteOps = map[string]int{"q": 1, "qq": 1, "qw": 1, "qx": 1, "m": 1, "qr": 1, "s": 2, "tr": 2, "y": 2}
 
 type lexer struct {
-	src     []byte
+	source  []byte
 	i, line int
 	tokens  []token
 	operand bool // the last token was an operand
@@ -52,35 +52,35 @@ type lexer struct {
 	heredocs []heredoc
 	// subHeader is set between "sub" and the body, where "(...)" may be a prototype
 	// ("($;$)") that would not lex as code.
-	subHeader bool
+	subroutineHeader bool
 }
 
 type heredoc struct {
 	term   string
 	indent bool
-	tok    int // index of the token holding the body
+	token  int // index of the token holding the body
 }
 
 // lex tokenizes Perl source. It stops at __END__ or __DATA__, skips POD and
 // here-document bodies, and returns tokens for any input, however broken.
 //
 // Implements: REQ-PERL-010
-func lex(src []byte) []token {
-	src = bytes.TrimPrefix(src, []byte("\xef\xbb\xbf"))
-	l := &lexer{src: src, line: 1}
+func lex(source []byte) []token {
+	source = bytes.TrimPrefix(source, []byte("\xef\xbb\xbf"))
+	l := &lexer{source: source, line: 1}
 	l.run()
 	return l.tokens
 }
 
-func identStart(c byte) bool {
+func identifierStart(c byte) bool {
 	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 0x80
 }
 
-func identByte(c byte) bool { return identStart(c) || c >= '0' && c <= '9' }
+func identifierByte(c byte) bool { return identifierStart(c) || c >= '0' && c <= '9' }
 
 func (l *lexer) at(i int) byte {
-	if i >= 0 && i < len(l.src) {
-		return l.src[i]
+	if i >= 0 && i < len(l.source) {
+		return l.source[i]
 	}
 	return 0
 }
@@ -92,28 +92,28 @@ func (l *lexer) emit(t token) {
 // lastIs reports whether the previous token is the punctuation p.
 func (l *lexer) lastIs(p string) bool {
 	n := len(l.tokens)
-	return n > 0 && l.tokens[n-1].kind == tPunct && l.tokens[n-1].text == p
+	return n > 0 && l.tokens[n-1].kind == tPunctuation && l.tokens[n-1].text == p
 }
 
-// stmtStart reports whether a statement may start here.
-func (l *lexer) stmtStart() bool {
+// statementStart reports whether a statement may start here.
+func (l *lexer) statementStart() bool {
 	n := len(l.tokens)
-	return n == 0 || l.tokens[n-1].kind == tPunct && (l.tokens[n-1].text == ";" || l.tokens[n-1].text == "{" || l.tokens[n-1].text == "}")
+	return n == 0 || l.tokens[n-1].kind == tPunctuation && (l.tokens[n-1].text == ";" || l.tokens[n-1].text == "{" || l.tokens[n-1].text == "}")
 }
 
 // advance moves to j, counting the line breaks passed.
 func (l *lexer) advance(j int) {
-	j = min(j, len(l.src))
+	j = min(j, len(l.source))
 	if j > l.i {
-		l.line += bytes.Count(l.src[l.i:j], []byte{'\n'})
+		l.line += bytes.Count(l.source[l.i:j], []byte{'\n'})
 		l.i = j
 	}
 }
 
 func (l *lexer) run() {
-	src := l.src
-	for l.i < len(src) {
-		c := src[l.i]
+	source := l.source
+	for l.i < len(source) {
+		c := source[l.i]
 		switch {
 		case c == '\n':
 			l.i++
@@ -121,18 +121,18 @@ func (l *lexer) run() {
 			if len(l.heredocs) > 0 {
 				l.bodies()
 			}
-			if l.at(l.i) == '=' && identStart(l.at(l.i+1)) {
+			if l.at(l.i) == '=' && identifierStart(l.at(l.i+1)) {
 				l.pod()
 			}
 		case c == ' ' || c == '\t' || c == '\r' || c == '\f' || c == '\v':
 			l.i++
 		case c == '#':
 			l.toEOL()
-		case c == '=' && l.i == 0 && identStart(l.at(1)):
+		case c == '=' && l.i == 0 && identifierStart(l.at(1)):
 			l.pod()
 		case c == 4 || c == 26: // ^D, ^Z end the program text
 			return
-		case identStart(c):
+		case identifierStart(c):
 			if !l.word() {
 				return
 			}
@@ -142,15 +142,15 @@ func (l *lexer) run() {
 			l.scalar()
 		case c == '@':
 			l.array()
-		case c == '%' && !l.operand && (identStart(l.at(l.i+1)) || strings.IndexByte("{$^+-:", l.at(l.i+1)) >= 0):
+		case c == '%' && !l.operand && (identifierStart(l.at(l.i+1)) || strings.IndexByte("{$^+-:", l.at(l.i+1)) >= 0):
 			l.array()
-		case c == '*' && !l.operand && (identStart(l.at(l.i+1)) || l.at(l.i+1) == '{'):
+		case c == '*' && !l.operand && (identifierStart(l.at(l.i+1)) || l.at(l.i+1) == '{'):
 			l.array()
 		case c == '\'' || c == '"' || c == '`':
 			line := l.line
 			inner, end := l.delimited(l.i)
 			l.advance(end)
-			l.emit(token{kind: tStr, text: inner, interpolate: c != '\'', line: line})
+			l.emit(token{kind: tString, text: inner, interpolate: c != '\'', line: line})
 			l.operand = true
 		case c == '/' && !l.operand:
 			line := l.line
@@ -162,33 +162,33 @@ func (l *lexer) run() {
 		case c == '<' && l.at(l.i+1) == '<' && l.heredoc():
 		case c == '<' && !l.operand && l.readline():
 		default:
-			l.punct()
+			l.punctuation()
 		}
 	}
 }
 
 func (l *lexer) toEOL() {
-	if j := bytes.IndexByte(l.src[l.i:], '\n'); j >= 0 {
+	if j := bytes.IndexByte(l.source[l.i:], '\n'); j >= 0 {
 		l.i += j
 	} else {
-		l.i = len(l.src)
+		l.i = len(l.source)
 	}
 }
 
 // pod skips a POD block: from a line starting "=word" through the line starting
 // "=cut", or to the end.
 func (l *lexer) pod() {
-	for l.i < len(l.src) {
-		end := bytes.IndexByte(l.src[l.i:], '\n')
-		cut := bytes.HasPrefix(l.src[l.i:], []byte("=cut")) && !identByte(l.at(l.i+4))
+	for l.i < len(l.source) {
+		end := bytes.IndexByte(l.source[l.i:], '\n')
+		cut := bytes.HasPrefix(l.source[l.i:], []byte("=cut")) && !identifierByte(l.at(l.i+4))
 		if end < 0 {
-			l.i = len(l.src)
+			l.i = len(l.source)
 			return
 		}
 		l.i += end + 1
 		l.line++
 		if cut {
-			if l.at(l.i) == '=' && identStart(l.at(l.i+1)) {
+			if l.at(l.i) == '=' && identifierStart(l.at(l.i+1)) {
 				continue // another block right after
 			}
 			return
@@ -203,11 +203,11 @@ func (l *lexer) bodies() {
 	l.heredocs = nil
 	for _, h := range docs {
 		start := l.i
-		for l.i < len(l.src) {
-			end := bytes.IndexByte(l.src[l.i:], '\n')
-			line := l.src[l.i:]
+		for l.i < len(l.source) {
+			end := bytes.IndexByte(l.source[l.i:], '\n')
+			line := l.source[l.i:]
 			if end >= 0 {
-				line = l.src[l.i : l.i+end]
+				line = l.source[l.i : l.i+end]
 			}
 			line = bytes.TrimSuffix(line, []byte("\r"))
 			if h.indent {
@@ -215,18 +215,18 @@ func (l *lexer) bodies() {
 			}
 			done := string(line) == h.term
 			if !done && end < 0 {
-				l.i = len(l.src)
+				l.i = len(l.source)
 				break
 			}
 			body := l.i
 			if end < 0 {
-				l.i = len(l.src)
+				l.i = len(l.source)
 			} else {
 				l.i += end + 1
 				l.line++
 			}
 			if done {
-				l.tokens[h.tok].text = string(l.src[start:body])
+				l.tokens[h.token].text = string(l.source[start:body])
 				break
 			}
 		}
@@ -250,33 +250,33 @@ func (l *lexer) heredoc() bool {
 	interpolate := true
 	switch q := l.at(k); {
 	case q == '"' || q == '\'' || q == '`':
-		end := bytes.IndexByte(l.src[k+1:], q)
-		if end < 0 || bytes.IndexByte(l.src[k+1:k+1+end], '\n') >= 0 {
+		end := bytes.IndexByte(l.source[k+1:], q)
+		if end < 0 || bytes.IndexByte(l.source[k+1:k+1+end], '\n') >= 0 {
 			return false
 		}
-		term = string(l.src[k+1 : k+1+end])
+		term = string(l.source[k+1 : k+1+end])
 		interpolate = q != '\''
 		j = k + 1 + end + 1
-	case k == j && identStart(q) && (!l.operand || indent):
+	case k == j && identifierStart(q) && (!l.operand || indent):
 		e := j
-		for e < len(l.src) && identByte(l.src[e]) {
+		for e < len(l.source) && identifierByte(l.source[e]) {
 			e++
 		}
-		term = string(l.src[j:e])
+		term = string(l.source[j:e])
 		j = e
-	case k == j && q == '\\' && identStart(l.at(j+1)):
+	case k == j && q == '\\' && identifierStart(l.at(j+1)):
 		e := j + 1
-		for e < len(l.src) && identByte(l.src[e]) {
+		for e < len(l.source) && identifierByte(l.source[e]) {
 			e++
 		}
-		term = string(l.src[j+1 : e])
+		term = string(l.source[j+1 : e])
 		interpolate = false
 		j = e
 	default:
 		return false
 	}
-	l.emit(token{kind: tStr, interpolate: interpolate, line: l.line})
-	l.heredocs = append(l.heredocs, heredoc{term: term, indent: indent, tok: len(l.tokens) - 1})
+	l.emit(token{kind: tString, interpolate: interpolate, line: l.line})
+	l.heredocs = append(l.heredocs, heredoc{term: term, indent: indent, token: len(l.tokens) - 1})
 	l.i = j
 	l.operand = true
 	return true
@@ -288,19 +288,19 @@ func (l *lexer) readline() bool {
 	if l.at(j) == '<' {
 		if l.at(j+1) == '>' && l.at(j+2) == '>' {
 			l.i = j + 3
-			l.emit(token{kind: tVar, text: "<<>>", line: l.line})
+			l.emit(token{kind: tVariable, text: "<<>>", line: l.line})
 			l.operand = true
 			return true
 		}
 		return false
 	}
-	for j < len(l.src) && (identByte(l.src[j]) || l.src[j] == '$' || l.src[j] == ':') {
+	for j < len(l.source) && (identifierByte(l.source[j]) || l.source[j] == '$' || l.source[j] == ':') {
 		j++
 	}
 	if l.at(j) != '>' {
 		return false
 	}
-	l.emit(token{kind: tVar, text: string(l.src[l.i : j+1]), line: l.line})
+	l.emit(token{kind: tVariable, text: string(l.source[l.i : j+1]), line: l.line})
 	l.i = j + 1
 	l.operand = true
 	return true
@@ -325,26 +325,26 @@ func closer(c byte) byte {
 // a backslash escapes the next byte. It returns the inner text and the index after
 // the closing delimiter (the end of the input when there is none).
 func (l *lexer) delimited(j int) (string, int) {
-	open := l.src[j]
+	open := l.source[j]
 	cl := closer(open)
 	depth := 1
-	for k := j + 1; k < len(l.src); k++ {
-		switch c := l.src[k]; {
+	for k := j + 1; k < len(l.source); k++ {
+		switch c := l.source[k]; {
 		case c == '\\':
 			k++
 		case c == cl:
 			if depth--; depth == 0 {
-				return string(l.src[j+1 : k]), k + 1
+				return string(l.source[j+1 : k]), k + 1
 			}
 		case c == open && cl != open:
 			depth++
 		}
 	}
-	return string(l.src[j+1:]), len(l.src)
+	return string(l.source[j+1:]), len(l.source)
 }
 
 func (l *lexer) modifiers() {
-	for l.i < len(l.src) && (l.src[l.i] >= 'a' && l.src[l.i] <= 'z' || l.src[l.i] >= 'A' && l.src[l.i] <= 'Z') {
+	for l.i < len(l.source) && (l.source[l.i] >= 'a' && l.source[l.i] <= 'z' || l.source[l.i] >= 'A' && l.source[l.i] <= 'Z') {
 		l.i++
 	}
 }
@@ -355,7 +355,7 @@ func (l *lexer) word() bool {
 	start, line := l.i, l.line
 	j := l.i
 	for {
-		for j < len(l.src) && identByte(l.src[j]) {
+		for j < len(l.source) && identifierByte(l.source[j]) {
 			j++
 		}
 		if l.at(j) == ':' && l.at(j+1) == ':' {
@@ -364,7 +364,7 @@ func (l *lexer) word() bool {
 		}
 		break
 	}
-	w := string(l.src[start:j])
+	w := string(l.source[start:j])
 	if w == "__END__" || w == "__DATA__" {
 		return false
 	}
@@ -373,14 +373,14 @@ func (l *lexer) word() bool {
 		l.quote(w, parts, line)
 		return true
 	}
-	if w == "format" && l.stmtStart() && l.format(j) {
+	if w == "format" && l.statementStart() && l.format(j) {
 		return true
 	}
 	l.i = j
 	l.emit(token{kind: tWord, text: w, line: line})
 	switch w {
 	case "sub", "method", "fun":
-		l.subHeader = !l.lastWasArrow()
+		l.subroutineHeader = !l.lastWasArrow()
 	}
 	l.operand = !opWords[w]
 	return true
@@ -388,7 +388,7 @@ func (l *lexer) word() bool {
 
 func (l *lexer) lastWasArrow() bool {
 	n := len(l.tokens)
-	return n > 1 && l.tokens[n-2].kind == tPunct && l.tokens[n-2].text == "->"
+	return n > 1 && l.tokens[n-2].kind == tPunctuation && l.tokens[n-2].text == "->"
 }
 
 // quoteContext reports whether a quote-like word at [start, end) is the operator
@@ -403,13 +403,13 @@ func (l *lexer) quoteContext(start, end int) bool {
 	}
 	k := end
 	space := false
-	for k < len(l.src) && (l.src[k] == ' ' || l.src[k] == '\t' || l.src[k] == '\n' || l.src[k] == '\r') {
+	for k < len(l.source) && (l.source[k] == ' ' || l.source[k] == '\t' || l.source[k] == '\n' || l.source[k] == '\r') {
 		k++
 		space = true
 	}
 	d := l.at(k)
 	switch {
-	case k >= len(l.src), identByte(d), d == '#' && space:
+	case k >= len(l.source), identifierByte(d), d == '#' && space:
 		return false
 	case d == '=' && l.at(k+1) == '>', d == ',', d == ';', d == ')', d == ']', d == '}', d == '>' && space, d == '=' && space:
 		return false
@@ -418,22 +418,22 @@ func (l *lexer) quoteContext(start, end int) bool {
 }
 
 // quote reads a quote-like operator's parts from after its name.
-func (l *lexer) quote(op string, parts int, line int) {
-	for l.i < len(l.src) && (l.src[l.i] == ' ' || l.src[l.i] == '\t' || l.src[l.i] == '\n' || l.src[l.i] == '\r') {
+func (l *lexer) quote(operator string, parts int, line int) {
+	for l.i < len(l.source) && (l.source[l.i] == ' ' || l.source[l.i] == '\t' || l.source[l.i] == '\n' || l.source[l.i] == '\r') {
 		l.advance(l.i + 1)
 	}
-	if l.i >= len(l.src) {
+	if l.i >= len(l.source) {
 		return
 	}
-	open := l.src[l.i]
+	open := l.source[l.i]
 	inner, end := l.delimited(l.i)
 	l.advance(end)
-	if parts == 2 && l.i <= len(l.src) {
+	if parts == 2 && l.i <= len(l.source) {
 		if closer(open) != open {
 			// s{...}{...}: the second part has delimiters of its own, maybe after
 			// whitespace and comments.
-			for l.i < len(l.src) {
-				c := l.src[l.i]
+			for l.i < len(l.source) {
+				c := l.source[l.i]
 				if c == '#' {
 					l.toEOL()
 					continue
@@ -443,18 +443,18 @@ func (l *lexer) quote(op string, parts int, line int) {
 				}
 				l.advance(l.i + 1)
 			}
-			if l.i < len(l.src) {
+			if l.i < len(l.source) {
 				_, end = l.delimited(l.i)
 				l.advance(end)
 			}
-		} else if l.i > 0 && l.i <= len(l.src) {
+		} else if l.i > 0 && l.i <= len(l.source) {
 			_, end = l.delimited(l.i - 1)
 			l.advance(end)
 		}
 	}
-	switch op {
+	switch operator {
 	case "q", "qq", "qx":
-		l.emit(token{kind: tStr, text: inner, interpolate: op != "q", line: line})
+		l.emit(token{kind: tString, text: inner, interpolate: operator != "q", line: line})
 	case "qw":
 		l.emit(token{kind: tQW, words: strings.Fields(inner), line: line})
 	default:
@@ -468,7 +468,7 @@ func (l *lexer) quote(op string, parts int, line int) {
 // "."), reporting whether there was one.
 func (l *lexer) format(j int) bool {
 	k := j
-	for k < len(l.src) && (l.src[k] == ' ' || l.src[k] == '\t' || identByte(l.src[k]) || l.src[k] == ':') {
+	for k < len(l.source) && (l.source[k] == ' ' || l.source[k] == '\t' || identifierByte(l.source[k]) || l.source[k] == ':') {
 		k++
 	}
 	if l.at(k) != '=' || l.at(k+1) == '>' || l.at(k+1) == '=' {
@@ -482,14 +482,14 @@ func (l *lexer) format(j int) bool {
 		return false
 	}
 	l.advance(k + 1)
-	for l.i < len(l.src) {
-		end := bytes.IndexByte(l.src[l.i:], '\n')
-		line := l.src[l.i:]
+	for l.i < len(l.source) {
+		end := bytes.IndexByte(l.source[l.i:], '\n')
+		line := l.source[l.i:]
 		if end >= 0 {
-			line = l.src[l.i : l.i+end]
+			line = l.source[l.i : l.i+end]
 		}
 		if end < 0 {
-			l.i = len(l.src)
+			l.i = len(l.source)
 			break
 		}
 		l.advance(l.i + end + 1)
@@ -497,36 +497,36 @@ func (l *lexer) format(j int) bool {
 			break
 		}
 	}
-	l.emit(token{kind: tPunct, text: ";", line: l.line})
+	l.emit(token{kind: tPunctuation, text: ";", line: l.line})
 	l.operand = false
 	return true
 }
 
 func (l *lexer) number() {
 	j := l.i
-	if l.src[j] == '0' && (l.at(j+1) == 'x' || l.at(j+1) == 'X' || l.at(j+1) == 'b' || l.at(j+1) == 'B') {
+	if l.source[j] == '0' && (l.at(j+1) == 'x' || l.at(j+1) == 'X' || l.at(j+1) == 'b' || l.at(j+1) == 'B') {
 		j += 2
-		for j < len(l.src) && (identByte(l.src[j])) {
+		for j < len(l.source) && (identifierByte(l.source[j])) {
 			j++
 		}
 	} else {
-		for j < len(l.src) && (l.src[j] >= '0' && l.src[j] <= '9' || l.src[j] == '_') {
+		for j < len(l.source) && (l.source[j] >= '0' && l.source[j] <= '9' || l.source[j] == '_') {
 			j++
 		}
 		if l.at(j) == '.' && l.at(j+1) >= '0' && l.at(j+1) <= '9' {
 			j++
-			for j < len(l.src) && (l.src[j] >= '0' && l.src[j] <= '9' || l.src[j] == '_' || l.src[j] == '.' && l.at(j+1) != '.') {
+			for j < len(l.source) && (l.source[j] >= '0' && l.source[j] <= '9' || l.source[j] == '_' || l.source[j] == '.' && l.at(j+1) != '.') {
 				j++
 			}
 		}
 		if (l.at(j) == 'e' || l.at(j) == 'E') && (l.at(j+1) >= '0' && l.at(j+1) <= '9' || (l.at(j+1) == '-' || l.at(j+1) == '+') && l.at(j+2) >= '0' && l.at(j+2) <= '9') {
 			j += 2
-			for j < len(l.src) && l.src[j] >= '0' && l.src[j] <= '9' {
+			for j < len(l.source) && l.source[j] >= '0' && l.source[j] <= '9' {
 				j++
 			}
 		}
 	}
-	l.emit(token{kind: tNum, text: string(l.src[l.i:j]), line: l.line})
+	l.emit(token{kind: tNumber, text: string(l.source[l.i:j]), line: l.line})
 	l.i = j
 	l.operand = true
 }
@@ -535,9 +535,9 @@ func (l *lexer) number() {
 // digits. It returns the end, or j when there is none.
 func (l *lexer) name(j int) int {
 	switch c := l.at(j); {
-	case identStart(c) || c == ':' && l.at(j+1) == ':':
+	case identifierStart(c) || c == ':' && l.at(j+1) == ':':
 		for {
-			for j < len(l.src) && identByte(l.src[j]) {
+			for j < len(l.source) && identifierByte(l.source[j]) {
 				j++
 			}
 			if l.at(j) == ':' && l.at(j+1) == ':' {
@@ -549,7 +549,7 @@ func (l *lexer) name(j int) int {
 	case c == '^' && (l.at(j+1) >= 'A' && l.at(j+1) <= 'Z' || l.at(j+1) == '_' || l.at(j+1) == '['):
 		return j + 2
 	case c >= '0' && c <= '9':
-		for j < len(l.src) && l.src[j] >= '0' && l.src[j] <= '9' {
+		for j < len(l.source) && l.source[j] >= '0' && l.source[j] <= '9' {
 			j++
 		}
 		return j
@@ -562,51 +562,51 @@ func (l *lexer) name(j int) int {
 func (l *lexer) scalar() {
 	j := l.i + 1
 	if l.at(j) == '#' {
-		if n := l.at(j + 1); n == '{' || n == '$' || identStart(n) {
+		if n := l.at(j + 1); n == '{' || n == '$' || identifierStart(n) {
 			j++
 		} else {
-			l.emitVar(j + 1)
+			l.emitVariable(j + 1)
 			return
 		}
 	}
-	for l.at(j) == '$' && (identStart(l.at(j+1)) || l.at(j+1) == '{' || l.at(j+1) == '$' || l.at(j+1) == ':' && l.at(j+2) == ':') {
+	for l.at(j) == '$' && (identifierStart(l.at(j+1)) || l.at(j+1) == '{' || l.at(j+1) == '$' || l.at(j+1) == ':' && l.at(j+2) == ':') {
 		j++
 	}
 	if e := l.name(j); e > j {
-		l.emitVar(e)
+		l.emitVariable(e)
 		return
 	}
 	switch c := l.at(j); {
 	case c == '{', c == 0, c == ' ', c == '\t', c == '\n', c == '\r', c == ')', c == '(', c == ',':
-		l.emitVar(j) // "${ ... }" or a bare "$" (a signature's placeholder)
+		l.emitVariable(j) // "${ ... }" or a bare "$" (a signature's placeholder)
 	default:
-		l.emitVar(j + 1) // a punctuation variable
+		l.emitVariable(j + 1) // a punctuation variable
 	}
 }
 
 // array reads "@name", "@{", "@$ref", "%name", "%$ref", "*glob" and the like.
 func (l *lexer) array() {
 	j := l.i + 1
-	for l.at(j) == '$' && (identStart(l.at(j+1)) || l.at(j+1) == '{' || l.at(j+1) == '$' || l.at(j+1) == ':') {
+	for l.at(j) == '$' && (identifierStart(l.at(j+1)) || l.at(j+1) == '{' || l.at(j+1) == '$' || l.at(j+1) == ':') {
 		j++
 	}
 	if e := l.name(j); e > j {
-		l.emitVar(e)
+		l.emitVariable(e)
 		return
 	}
 	switch c := l.at(j); {
 	case c == '$':
-		l.emitVar(j + 1)
-	case (c == '-' || c == '+') && l.src[l.i] != '*':
-		l.emitVar(j + 1)
+		l.emitVariable(j + 1)
+	case (c == '-' || c == '+') && l.source[l.i] != '*':
+		l.emitVariable(j + 1)
 	default:
-		l.emitVar(j)
+		l.emitVariable(j)
 	}
 }
 
-func (l *lexer) emitVar(end int) {
-	end = min(end, len(l.src))
-	l.emit(token{kind: tVar, text: string(l.src[l.i:end]), line: l.line})
+func (l *lexer) emitVariable(end int) {
+	end = min(end, len(l.source))
+	l.emit(token{kind: tVariable, text: string(l.source[l.i:end]), line: l.line})
 	l.i = end
 	l.operand = true
 }
@@ -619,8 +619,8 @@ var multi = map[byte][]string{
 	'&': {"&&"}, '|': {"||"}, '/': {"//"}, '<': {"<="}, '>': {">="}, '.': {"..."},
 }
 
-func (l *lexer) punct() {
-	rest := l.src[l.i:]
+func (l *lexer) punctuation() {
+	rest := l.source[l.i:]
 	text := string(rest[:1])
 	for _, m := range multi[rest[0]] {
 		if len(rest) >= len(m) && string(rest[:len(m)]) == m {
@@ -628,10 +628,10 @@ func (l *lexer) punct() {
 			break
 		}
 	}
-	if l.subHeader && text == "(" && l.prototype() {
+	if l.subroutineHeader && text == "(" && l.prototype() {
 		return
 	}
-	l.emit(token{kind: tPunct, text: text, line: l.line})
+	l.emit(token{kind: tPunctuation, text: text, line: l.line})
 	l.i += len(text)
 	switch text {
 	case ")", "]", "}":
@@ -642,7 +642,7 @@ func (l *lexer) punct() {
 		l.operand = false
 	}
 	if text == "{" || text == ";" || text == "=" {
-		l.subHeader = false
+		l.subroutineHeader = false
 	}
 }
 
@@ -650,14 +650,14 @@ func (l *lexer) punct() {
 // would otherwise read as variables.
 func (l *lexer) prototype() bool {
 	j := l.i + 1
-	for j < len(l.src) && strings.IndexByte("$@%&*;\\[]+_ \t", l.src[j]) >= 0 {
+	for j < len(l.source) && strings.IndexByte("$@%&*;\\[]+_ \t", l.source[j]) >= 0 {
 		j++
 	}
 	if l.at(j) != ')' {
 		return false
 	}
-	l.emit(token{kind: tPunct, text: "(", line: l.line})
-	l.emit(token{kind: tPunct, text: ")", line: l.line})
+	l.emit(token{kind: tPunctuation, text: "(", line: l.line})
+	l.emit(token{kind: tPunctuation, text: ")", line: l.line})
 	l.i = j + 1
 	l.operand = true
 	return true

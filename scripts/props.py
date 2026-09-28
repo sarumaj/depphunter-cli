@@ -192,7 +192,7 @@ def bounds(objs: list[Object]) -> tuple[Vector, Vector]:
 
 def stand(objs: list[Object], height: float) -> None:
     """Scale the model to the height a prop is on the map and sit it on the origin,
-    centred on its own footprint so that turning an instance turns it on the spot."""
+    centered on its own footprint so that turning an instance turns it on the spot."""
     lo, hi = bounds(objs)
     scale = height / max(1e-6, hi.z - lo.z)
     mid = (lo + hi) / 2

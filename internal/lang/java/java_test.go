@@ -19,8 +19,8 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 // Verifies: REQ-JAVA-001, REQ-JAVA-002, REQ-JAVA-003, REQ-JAVA-004, REQ-JAVA-005, REQ-JAVA-006, REQ-JAVA-007, REQ-JAVA-008, REQ-JAVA-009
 func TestResolution(t *testing.T) {
 	// cSpell: disable
-	res := analyze(t)["src/main/java/com/example/app/App.java"]
-	langtest.CheckImports(t, res, map[string]lang.Target{
+	result := analyze(t)["src/main/java/com/example/app/App.java"]
+	langtest.CheckImports(t, result, map[string]lang.Target{
 		"import java.util.List":                                 {Ecosystem: "jdk", Package: "java.util"},
 		"import javax.swing.JFrame":                             {Ecosystem: "jdk", Package: "javax.swing"},
 		"import javax.servlet.http.HttpServlet":                 {Ecosystem: "maven", Package: "javax.servlet:javax.servlet-api", Unresolved: true},
@@ -68,7 +68,7 @@ func TestPinnedMaven(t *testing.T) {
 
 // Verifies: REQ-KT-003, REQ-KT-005, REQ-SCALA-003
 func TestDeclarations(t *testing.T) {
-	src := `/*
+	source := `/*
  * package not.this
  */
 @file:JvmName("Tools")
@@ -94,7 +94,7 @@ typealias Name = String
 val (a, b) = pair
 package object util
 `
-	got := declared(declarations([]byte(src), true))
+	got := declared(declarations([]byte(source), true))
 	want := "com.example.tools: Box Shape Registry Color second shout Action MAX Name util"
 	if got != want {
 		t.Errorf("got %q, want %q", got, want)
@@ -107,27 +107,27 @@ func resolveIn(t *testing.T, l Language, files map[string]string, imports ...str
 	t.Helper()
 	root := t.TempDir()
 	for p, c := range files {
-		abs := filepath.Join(root, p)
-		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		absolute := filepath.Join(root, p)
+		if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(abs, []byte(c), 0o644); err != nil {
+		if err := os.WriteFile(absolute, []byte(c), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
 	r := newResolver(langtest.Files(t, root), l)
 	out := map[string]lang.Target{}
-	for _, imp := range imports {
-		out[imp] = r.Resolve("src/Main.java", lang.RawImport{Module: imp})
+	for _, importPath := range imports {
+		out[importPath] = r.Resolve("src/Main.java", lang.RawImport{Module: importPath})
 	}
 	return out
 }
 
 func checkTargets(t *testing.T, got, want map[string]lang.Target) {
 	t.Helper()
-	for imp, w := range want {
-		if g := got[imp]; g != w {
-			t.Errorf("%s: got %+v, want %+v", imp, g, w)
+	for importPath, w := range want {
+		if g := got[importPath]; g != w {
+			t.Errorf("%s: got %+v, want %+v", importPath, g, w)
 		}
 	}
 }
@@ -139,8 +139,8 @@ func checkTargets(t *testing.T, got, want map[string]lang.Target) {
 // Verifies: REQ-JAVA-005, REQ-JAVA-006, REQ-JAVA-007
 func TestArtifactMatching(t *testing.T) {
 	// cSpell: disable
-	maven := func(pkg, v string) lang.Target {
-		return lang.Target{Ecosystem: "maven", Package: pkg, Version: v, Pinned: pinnedMaven(v)}
+	maven := func(packageName, v string) lang.Target {
+		return lang.Target{Ecosystem: "maven", Package: packageName, Version: v, Pinned: pinnedMaven(v)}
 	}
 	got := resolveIn(t, Language{}, map[string]string{
 		"build.gradle": `dependencies {

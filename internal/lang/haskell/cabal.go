@@ -44,8 +44,8 @@ func (n *cnode) word() string {
 	return strings.ToLower(w)
 }
 
-// arg is what follows the section header's first word: an executable's name.
-func (n *cnode) arg() string {
+// argument is what follows the section header's first word: an executable's name.
+func (n *cnode) argument() string {
 	_, a, _ := strings.Cut(n.head, " ")
 	return strings.TrimSpace(a)
 }
@@ -54,11 +54,11 @@ var cabalKey = regexp.MustCompile(`^([A-Za-z][A-Za-z0-9_-]*)\s*:(.*)$`)
 
 // parseCabal reads a cabal-format file into its top-level fields and sections. Braces
 // are not read (layout is how these files are written); -- comment lines are skipped.
-func parseCabal(src []byte) []*cnode {
+func parseCabal(source []byte) []*cnode {
 	root := &cnode{indent: -1}
 	stack := []*cnode{root}
 	var field *cnode
-	for i, raw := range strings.Split(string(src), "\n") {
+	for i, raw := range strings.Split(string(source), "\n") {
 		raw = strings.TrimRight(raw, "\r")
 		trimmed := strings.TrimSpace(raw)
 		if trimmed == "" || strings.HasPrefix(trimmed, "--") {
@@ -92,34 +92,34 @@ func parseCabal(src []byte) []*cnode {
 			parent.kids = append(parent.kids, field)
 			continue
 		}
-		sec := &cnode{head: strings.Join(strings.Fields(strings.TrimSuffix(trimmed, "{")), " "), line: i + 1, indent: indent}
-		parent.kids = append(parent.kids, sec)
-		stack = append(stack, sec)
+		section := &cnode{head: strings.Join(strings.Fields(strings.TrimSuffix(trimmed, "{")), " "), line: i + 1, indent: indent}
+		parent.kids = append(parent.kids, section)
+		stack = append(stack, section)
 	}
 	return root.kids
 }
 
-// dep is one entry of build-depends (or of hpack's dependencies): "aeson >=2.0 && <2.3".
-type dep struct {
+// dependency is one entry of build-depends (or of hpack's dependencies): "aeson >=2.0 && <2.3".
+type dependency struct {
 	name       string
 	constraint string // normalized; an exact ==1.2.3 is the bare 1.2.3
 	text       string // as written, spaces single
 	line       int
 }
 
-var depEntry = regexp.MustCompile(`^([A-Za-z0-9][A-Za-z0-9-]*)\s*(?::\s*(\{[^}]*\}|[A-Za-z0-9-]+))?\s*(.*)$`)
+var dependencyEntry = regexp.MustCompile(`^([A-Za-z0-9][A-Za-z0-9-]*)\s*(?::\s*(\{[^}]*\}|[A-Za-z0-9-]+))?\s*(.*)$`)
 
 // splitList splits a field's value on the commas outside braces, each entry with the
 // line it starts on (build-depends: pkg:{a, b} is one entry).
 func splitList(lines []cline) []cline {
 	var out []cline
-	var cur strings.Builder
+	var current strings.Builder
 	line, depth := 0, 0
 	flush := func() {
-		if t := strings.Join(strings.Fields(cur.String()), " "); t != "" {
+		if t := strings.Join(strings.Fields(current.String()), " "); t != "" {
 			out = append(out, cline{text: t, line: line})
 		}
-		cur.Reset()
+		current.Reset()
 		line = 0
 	}
 	for _, l := range lines {
@@ -136,26 +136,26 @@ func splitList(lines []cline) []cline {
 			if line == 0 && r != ' ' && r != '\t' {
 				line = l.line
 			}
-			cur.WriteRune(r)
+			current.WriteRune(r)
 		}
-		cur.WriteByte(' ')
+		current.WriteByte(' ')
 	}
 	flush()
 	return out
 }
 
-// parseDep reads one dependency entry.
-func parseDep(e cline) (dep, bool) {
-	m := depEntry.FindStringSubmatch(e.text)
+// parseDependency reads one dependency entry.
+func parseDependency(e cline) (dependency, bool) {
+	m := dependencyEntry.FindStringSubmatch(e.text)
 	if m == nil {
-		return dep{}, false
+		return dependency{}, false
 	}
-	return dep{name: m[1], constraint: normConstraint(m[3]), text: e.text, line: e.line}, true
+	return dependency{name: m[1], constraint: normalizeConstraint(m[3]), text: e.text, line: e.line}, true
 }
 
-// normConstraint writes a version range with single spaces, "" for none (-any, >=0),
+// normalizeConstraint writes a version range with single spaces, "" for none (-any, >=0),
 // and a single version (==1.2.3, == 1.2.3) bare, as lang.Pinned reads a pin.
-func normConstraint(c string) string {
+func normalizeConstraint(c string) string {
 	c = strings.Join(strings.Fields(c), " ")
 	switch c {
 	case "", "-any", "any", ">=0", ">= 0":
@@ -172,20 +172,20 @@ func normConstraint(c string) string {
 
 // component is a library, executable, test suite, benchmark or common stanza.
 type component struct {
-	kind, name string
-	dirs       []string // hs-source-dirs, relative to the package directory
-	modules    []string // exposed-modules, other-modules, signatures
-	deps       []dep
-	imports    []string // common stanzas it imports
-	line       int
+	kind, name   string
+	directories  []string // hs-source-dirs, relative to the package directory
+	modules      []string // exposed-modules, other-modules, signatures
+	dependencies []dependency
+	imports      []string // common stanzas it imports
+	line         int
 }
 
-// cabalPkg is a package description: a .cabal file, or an hpack package.yaml.
-type cabalPkg struct {
-	name, version string
-	file, dir     string
-	comps         []*component
-	setup         *component // custom-setup: what Setup.hs is built with
+// cabalPackage is a package description: a .cabal file, or an hpack package.yaml.
+type cabalPackage struct {
+	name, version   string
+	file, directory string
+	comps           []*component
+	setup           *component // custom-setup: what Setup.hs is built with
 }
 
 // fields splits a list field (hs-source-dirs, exposed-modules) on commas and spaces.
@@ -198,8 +198,8 @@ func fields(s string) []string {
 // blocks included and common stanzas merged into the components importing them.
 //
 // Implements: REQ-HASKELL-004, REQ-HASKELL-006
-func readCabal(src []byte, file string) *cabalPkg {
-	p := &cabalPkg{file: file, dir: path.Dir(file)}
+func readCabal(source []byte, file string) *cabalPackage {
+	p := &cabalPackage{file: file, directory: path.Dir(file)}
 	commons := map[string]*component{}
 	top := &component{kind: "library"}
 	var fill func(c *component, nodes []*cnode)
@@ -209,13 +209,13 @@ func readCabal(src []byte, file string) *cabalPkg {
 			case n.head != "":
 				fill(c, n.kids) // if/else blocks
 			case n.key == "hs-source-dirs":
-				c.dirs = append(c.dirs, fields(n.text())...)
+				c.directories = append(c.directories, fields(n.text())...)
 			case n.key == "exposed-modules" || n.key == "other-modules" || n.key == "signatures":
 				c.modules = append(c.modules, fields(n.text())...)
 			case n.key == "build-depends":
 				for _, e := range splitList(n.value) {
-					if d, ok := parseDep(e); ok {
-						c.deps = append(c.deps, d)
+					if d, ok := parseDependency(e); ok {
+						c.dependencies = append(c.dependencies, d)
 					}
 				}
 			case n.key == "import":
@@ -224,7 +224,7 @@ func readCabal(src []byte, file string) *cabalPkg {
 		}
 	}
 	var topFields []*cnode
-	for _, n := range parseCabal(src) {
+	for _, n := range parseCabal(source) {
 		switch {
 		case n.key == "name":
 			p.name = n.text()
@@ -241,8 +241,8 @@ func readCabal(src []byte, file string) *cabalPkg {
 				for _, k := range n.kids {
 					if k.key == "setup-depends" {
 						for _, e := range splitList(k.value) {
-							if d, ok := parseDep(e); ok {
-								p.setup.deps = append(p.setup.deps, d)
+							if d, ok := parseDependency(e); ok {
+								p.setup.dependencies = append(p.setup.dependencies, d)
 							}
 						}
 					}
@@ -251,7 +251,7 @@ func readCabal(src []byte, file string) *cabalPkg {
 			default:
 				continue // flag, source-repository
 			}
-			c := &component{kind: kind, name: n.arg(), line: n.line}
+			c := &component{kind: kind, name: n.argument(), line: n.line}
 			fill(c, n.kids)
 			if kind == "common" {
 				commons[c.name] = c
@@ -262,30 +262,30 @@ func readCabal(src []byte, file string) *cabalPkg {
 	}
 	// A description from before sections has its build-depends at the top level.
 	fill(top, topFields)
-	if len(top.deps) > 0 || len(top.modules) > 0 {
+	if len(top.dependencies) > 0 || len(top.modules) > 0 {
 		p.comps = append(p.comps, top)
 	}
 	var merge func(c *component, seen map[string]bool)
 	merge = func(c *component, seen map[string]bool) {
 		for _, name := range c.imports {
-			cm := commons[name]
-			if cm == nil || seen[name] {
+			common := commons[name]
+			if common == nil || seen[name] {
 				continue
 			}
 			seen[name] = true
-			merge(cm, seen)
-			c.dirs = append(c.dirs, cm.dirs...)
-			c.modules = append(c.modules, cm.modules...)
-			c.deps = append(c.deps, cm.deps...)
+			merge(common, seen)
+			c.directories = append(c.directories, common.directories...)
+			c.modules = append(c.modules, common.modules...)
+			c.dependencies = append(c.dependencies, common.dependencies...)
 		}
 	}
 	for _, c := range p.comps {
 		merge(c, map[string]bool{})
-		if len(c.dirs) == 0 {
-			c.dirs = []string{"."}
+		if len(c.directories) == 0 {
+			c.directories = []string{"."}
 		}
-		for i, d := range c.dirs {
-			c.dirs[i] = path.Clean(d)
+		for i, d := range c.directories {
+			c.directories[i] = path.Clean(d)
 		}
 	}
 	return p
@@ -293,10 +293,10 @@ func readCabal(src []byte, file string) *cabalPkg {
 
 // kinds of manifest imports, in RawImport.Name.
 const (
-	kindDep    = "dep"    // build-depends, hpack dependencies
-	kindMember = "member" // cabal.project / stack.yaml packages
-	kindRepo   = "repo"   // cabal.project source-repository-package
-	kindExtra  = "extra"  // stack.yaml extra-deps
+	kindDependency = "dep"    // build-depends, hpack dependencies
+	kindMember     = "member" // cabal.project / stack.yaml packages
+	kindRepository = "repo"   // cabal.project source-repository-package
+	kindExtra      = "extra"  // stack.yaml extra-deps
 )
 
 // kindInclude is a cabal.project `import:` of another project file.
@@ -306,8 +306,8 @@ const kindInclude = "include"
 // packages they name (once per entry as written) and its components into symbols.
 //
 // Implements: REQ-HASKELL-005
-func extractCabal(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
+func extractCabal(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
 	var symbols lang.SymbolSet
 	seen := map[string]bool{}
 	var walk func(nodes []*cnode)
@@ -321,7 +321,7 @@ func extractCabal(src []byte) *lang.Extraction {
 				continue
 			}
 			for _, e := range splitList(n.value) {
-				d, ok := parseDep(e)
+				d, ok := parseDependency(e)
 				if !ok {
 					continue
 				}
@@ -330,11 +330,11 @@ func extractCabal(src []byte) *lang.Extraction {
 					continue
 				}
 				seen[spec] = true
-				ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: d.name, Name: kindDep, Line: d.line})
+				extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: d.name, Name: kindDependency, Line: d.line})
 			}
 		}
 	}
-	nodes := parseCabal(src)
+	nodes := parseCabal(source)
 	walk(nodes)
 	for _, n := range nodes {
 		switch n.word() {
@@ -342,8 +342,8 @@ func extractCabal(src []byte) *lang.Extraction {
 			symbols.Add(n.head, "component", n.line)
 		}
 	}
-	ex.Symbols = symbols.List()
-	return ex
+	extraction.Symbols = symbols.List()
+	return extraction
 }
 
 // srp is a source-repository-package of cabal.project: a package built from a
@@ -355,10 +355,10 @@ type srp struct {
 
 // cabalProject is what cabal.project (and cabal.project.freeze) say.
 type cabalProject struct {
-	members     []cline // packages: and optional-packages: entries
-	imports     []cline // import: other project files (a path or a URL)
-	repos       []srp
-	constraints map[string]string // package -> the version ==x pins it to, else the range
+	members      []cline // packages: and optional-packages: entries
+	imports      []cline // import: other project files (a path or a URL)
+	repositories []srp
+	constraints  map[string]string // package -> the version ==x pins it to, else the range
 }
 
 // readCabalProject reads cabal.project or its freeze file: packages, the
@@ -367,7 +367,7 @@ type cabalProject struct {
 // "installed" constraints are left out.
 //
 // Implements: REQ-HASKELL-007, REQ-HASKELL-008
-func readCabalProject(src []byte) *cabalProject {
+func readCabalProject(source []byte) *cabalProject {
 	p := &cabalProject{constraints: map[string]string{}}
 	var walk func(nodes []*cnode)
 	walk = func(nodes []*cnode) {
@@ -389,14 +389,14 @@ func readCabalProject(src []byte) *cabalProject {
 				for _, e := range splitList(n.value) {
 					name, c, ok := constraint(e.text)
 					if ok {
-						if _, dup := p.constraints[name]; !dup {
+						if _, duplicate := p.constraints[name]; !duplicate {
 							p.constraints[name] = c
 						}
 					}
 				}
 			case n.word() == "source-repository-package":
 				r := srp{line: n.line}
-				var subdir string
+				var subdirectory string
 				for _, k := range n.kids {
 					switch k.key {
 					case "location":
@@ -405,20 +405,20 @@ func readCabalProject(src []byte) *cabalProject {
 						r.tag = k.text()
 					case "subdir":
 						if f := fields(k.text()); len(f) > 0 {
-							subdir = f[0]
+							subdirectory = f[0]
 						}
 					}
 				}
-				r.name = repoName(r.location, subdir)
+				r.name = repositoryName(r.location, subdirectory)
 				if r.name != "" {
-					p.repos = append(p.repos, r)
+					p.repositories = append(p.repositories, r)
 				}
 			case n.head != "":
 				walk(n.kids)
 			}
 		}
 	}
-	walk(parseCabal(src))
+	walk(parseCabal(source))
 	return p
 }
 
@@ -438,50 +438,50 @@ func constraint(e string) (string, string, bool) {
 		rest[0] == '+' || rest[0] == '-' || strings.HasPrefix(rest, "source") {
 		return "", "", false
 	}
-	return name, normConstraint(rest), true
+	return name, normalizeConstraint(rest), true
 }
 
-// repoName is the package a repository holds: its subdirectory's name, else the
+// repositoryName is the package a repository holds: its subdirectory's name, else the
 // repository's.
-func repoName(location, subdir string) string {
-	if subdir != "" && subdir != "." {
-		return path.Base(strings.TrimSuffix(subdir, "/"))
+func repositoryName(location, subdirectory string) string {
+	if subdirectory != "" && subdirectory != "." {
+		return path.Base(strings.TrimSuffix(subdirectory, "/"))
 	}
-	loc := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSpace(location), "/"), ".git")
-	if loc == "" {
+	gitNode := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSpace(location), "/"), ".git")
+	if gitNode == "" {
 		return ""
 	}
-	return path.Base(loc)
+	return path.Base(gitNode)
 }
 
 // extractCabalProject turns cabal.project's packages, imports of other project
 // files and source-repository-package stanzas into imports.
 //
 // Implements: REQ-HASKELL-005
-func extractCabalProject(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
-	p := readCabalProject(src)
+func extractCabalProject(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
+	p := readCabalProject(source)
 	seen := map[string]bool{}
 	for _, m := range p.members {
 		spec := "packages: " + m.text
 		if !seen[spec] {
 			seen[spec] = true
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: m.text, Name: kindMember, Line: m.line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: m.text, Name: kindMember, Line: m.line})
 		}
 	}
 	for _, m := range p.imports {
 		spec := "import: " + m.text
 		if !seen[spec] {
 			seen[spec] = true
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: m.text, Name: kindInclude, Line: m.line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: m.text, Name: kindInclude, Line: m.line})
 		}
 	}
-	for _, r := range p.repos {
+	for _, r := range p.repositories {
 		spec := "source-repository-package: " + r.name
 		if !seen[spec] {
 			seen[spec] = true
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: r.name, Name: kindRepo, Line: r.line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: r.name, Name: kindRepository, Line: r.line})
 		}
 	}
-	return ex
+	return extraction
 }

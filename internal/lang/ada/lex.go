@@ -4,14 +4,14 @@ import "strings"
 
 // Token kinds.
 const (
-	tIdent  = 'i' // an identifier or reserved word; low is its lower-case form
-	tString = 's' // a string literal; text is its value ("" collapsed to ")
-	tChar   = 'c' // a character literal 'x'
-	tNumber = 'n'
-	tPunct  = 'p'
+	tIdentifier  = 'i' // an identifier or reserved word; low is its lower-case form
+	tString      = 's' // a string literal; text is its value ("" collapsed to ")
+	tCharacter   = 'c' // a character literal 'x'
+	tNumber      = 'n'
+	tPunctuation = 'p'
 )
 
-type tok struct {
+type token struct {
 	kind byte
 	text string // as written (a string's value)
 	low  string // identifiers only: lower case, as Ada compares names
@@ -26,21 +26,21 @@ type tok struct {
 // literal ('x', including ”') unless it follows a name or a closing
 // parenthesis, where it is an attribute tick (X'First, T'(...)).
 type lexer struct {
-	src  string
-	i    int
-	line int
-	prev tok // the last token returned, for the tick rule
+	source   string
+	i        int
+	line     int
+	previous token // the last token returned, for the tick rule
 }
 
-func newLexer(src []byte) *lexer {
-	s := string(src)
+func newLexer(source []byte) *lexer {
+	s := string(source)
 	s = strings.TrimPrefix(s, "\xef\xbb\xbf")
-	return &lexer{src: s, line: 1}
+	return &lexer{source: s, line: 1}
 }
 
 // next returns the next token; ok is false at the end of the source.
-func (l *lexer) next() (tok, bool) {
-	s := l.src
+func (l *lexer) next() (token, bool) {
+	s := l.source
 	for l.i < len(s) {
 		c := s[l.i]
 		switch {
@@ -56,10 +56,10 @@ func (l *lexer) next() (tok, bool) {
 		case c == '#' && l.lineStart():
 			l.directive()
 		case c == '"':
-			return l.emit(l.str()), true
+			return l.emit(l.readString()), true
 		case c == '\'':
 			if l.i+2 < len(s) && s[l.i+2] == '\'' && !l.tickContext() {
-				t := tok{kind: tChar, text: s[l.i : l.i+3], line: l.line}
+				t := token{kind: tCharacter, text: s[l.i : l.i+3], line: l.line}
 				if s[l.i+1] == '\n' {
 					l.line++
 				}
@@ -67,13 +67,13 @@ func (l *lexer) next() (tok, bool) {
 				return l.emit(t), true
 			}
 			l.i++
-			return l.emit(tok{kind: tPunct, text: "'", line: l.line}), true
-		case isIdentStart(c):
+			return l.emit(token{kind: tPunctuation, text: "'", line: l.line}), true
+		case isIdentifierStart(c):
 			j := l.i + 1
-			for j < len(s) && isIdentPart(s[j]) {
+			for j < len(s) && isIdentifierPart(s[j]) {
 				j++
 			}
-			t := tok{kind: tIdent, text: s[l.i:j], line: l.line}
+			t := token{kind: tIdentifier, text: s[l.i:j], line: l.line}
 			t.low = lower(t.text)
 			l.i = j
 			return l.emit(t), true
@@ -95,7 +95,7 @@ func (l *lexer) next() (tok, bool) {
 				}
 				break number
 			}
-			t := tok{kind: tNumber, text: s[l.i:j], line: l.line}
+			t := token{kind: tNumber, text: s[l.i:j], line: l.line}
 			l.i = j
 			return l.emit(t), true
 		default:
@@ -106,7 +106,7 @@ func (l *lexer) next() (tok, bool) {
 					n = 2
 				}
 			}
-			t := tok{kind: tPunct, text: s[l.i : l.i+n], line: l.line}
+			t := token{kind: tPunctuation, text: s[l.i : l.i+n], line: l.line}
 			// Ada 2022's [ ] aggregates nest like parentheses, and are read
 			// as such
 			switch c {
@@ -119,13 +119,13 @@ func (l *lexer) next() (tok, bool) {
 			return l.emit(t), true
 		}
 	}
-	return tok{}, false
+	return token{}, false
 }
 
 // lineStart reports whether only blanks precede l.i on its line.
 func (l *lexer) lineStart() bool {
 	for j := l.i - 1; j >= 0; j-- {
-		switch l.src[j] {
+		switch l.source[j] {
 		case '\n':
 			return true
 		case ' ', '\t', '\r', '\f', '\v':
@@ -147,17 +147,17 @@ func (l *lexer) directive() {
 	}
 	// skip the other branches up to the matching #end if
 	depth := 0
-	for l.i < len(l.src) {
-		if l.src[l.i] == '\n' {
+	for l.i < len(l.source) {
+		if l.source[l.i] == '\n' {
 			l.line++
 			l.i++
 			continue
 		}
-		if c := l.src[l.i]; c == ' ' || c == '\t' || c == '\r' {
+		if c := l.source[l.i]; c == ' ' || c == '\t' || c == '\r' {
 			l.i++
 			continue
 		}
-		if l.src[l.i] == '#' && l.lineStart() {
+		if l.source[l.i] == '#' && l.lineStart() {
 			switch l.directiveWord() {
 			case "if":
 				depth++
@@ -176,45 +176,45 @@ func (l *lexer) directive() {
 // directiveWord is the lower-case word after the # at l.i.
 func (l *lexer) directiveWord() string {
 	j := l.i + 1
-	for j < len(l.src) && (l.src[j] == ' ' || l.src[j] == '\t') {
+	for j < len(l.source) && (l.source[j] == ' ' || l.source[j] == '\t') {
 		j++
 	}
 	k := j
-	for k < len(l.src) && k-j < 8 && isIdentPart(l.src[k]) {
+	for k < len(l.source) && k-j < 8 && isIdentifierPart(l.source[k]) {
 		k++
 	}
-	return lower(l.src[j:k])
+	return lower(l.source[j:k])
 }
 
 // skipLine moves to the end of the line (its line break is not consumed).
 func (l *lexer) skipLine() {
-	if k := strings.IndexByte(l.src[l.i:], '\n'); k >= 0 {
+	if k := strings.IndexByte(l.source[l.i:], '\n'); k >= 0 {
 		l.i += k
 	} else {
-		l.i = len(l.src)
+		l.i = len(l.source)
 	}
 }
 
-func (l *lexer) emit(t tok) tok {
-	l.prev = t
+func (l *lexer) emit(t token) token {
+	l.previous = t
 	return t
 }
 
 // tickContext reports whether a quote here is an attribute tick: after a name
 // (not a reserved word, except all: X.all'Access) or a closing parenthesis.
 func (l *lexer) tickContext() bool {
-	switch l.prev.kind {
-	case tIdent:
-		return !reserved[l.prev.low] || l.prev.low == "all"
-	case tPunct:
-		return l.prev.text == ")"
+	switch l.previous.kind {
+	case tIdentifier:
+		return !reserved[l.previous.low] || l.previous.low == "all"
+	case tPunctuation:
+		return l.previous.text == ")"
 	}
 	return false
 }
 
-// str reads a string literal at l.i.
-func (l *lexer) str() tok {
-	s := l.src
+// readString reads a string literal at l.i.
+func (l *lexer) readString() token {
+	s := l.source
 	start := l.line
 	j := l.i + 1
 	var b strings.Builder
@@ -251,15 +251,15 @@ func (l *lexer) str() tok {
 		j++
 	}
 	l.i = j
-	return tok{kind: tString, text: text, line: start}
+	return token{kind: tString, text: text, line: start}
 }
 
-func isIdentStart(c byte) bool {
+func isIdentifierStart(c byte) bool {
 	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 0x80
 }
 
-func isIdentPart(c byte) bool {
-	return isIdentStart(c) || c >= '0' && c <= '9' || c == '_'
+func isIdentifierPart(c byte) bool {
+	return isIdentifierStart(c) || c >= '0' && c <= '9' || c == '_'
 }
 
 // lower folds ASCII letters; Ada compares identifiers without case.
@@ -295,10 +295,10 @@ func init() {
 // before base were dropped (see trim): readers look back a token or two at
 // most.
 type stream struct {
-	lx     *lexer
-	tokens []tok
-	base   int
-	eof    bool
+	lexer     *lexer
+	tokens    []token
+	base      int
+	endOfFile bool
 }
 
 // trim drops the tokens before i - 8 once enough have accumulated, so a long
@@ -311,37 +311,37 @@ func (s *stream) trim(i int) {
 	}
 }
 
-func newStream(src []byte) *stream {
-	return &stream{lx: newLexer(src)}
+func newStream(source []byte) *stream {
+	return &stream{lexer: newLexer(source)}
 }
 
 // at returns token i, reading as far as needed; ok is false past the end.
-func (s *stream) at(i int) (tok, bool) {
+func (s *stream) at(i int) (token, bool) {
 	i -= s.base
-	for i >= len(s.tokens) && !s.eof {
-		t, ok := s.lx.next()
+	for i >= len(s.tokens) && !s.endOfFile {
+		t, ok := s.lexer.next()
 		if !ok {
-			s.eof = true
+			s.endOfFile = true
 			break
 		}
 		s.tokens = append(s.tokens, t)
 	}
 	if i < 0 || i >= len(s.tokens) {
-		return tok{}, false
+		return token{}, false
 	}
 	return s.tokens[i], true
 }
 
 // word is token i's lower-case text if it is an identifier.
 func (s *stream) word(i int) string {
-	if t, ok := s.at(i); ok && t.kind == tIdent {
+	if t, ok := s.at(i); ok && t.kind == tIdentifier {
 		return t.low
 	}
 	return ""
 }
 
-// punct reports whether token i is the punctuation p.
-func (s *stream) punct(i int, p string) bool {
+// punctuation reports whether token i is the punctuation p.
+func (s *stream) punctuation(i int, p string) bool {
 	t, ok := s.at(i)
-	return ok && t.kind == tPunct && t.text == p
+	return ok && t.kind == tPunctuation && t.text == p
 }

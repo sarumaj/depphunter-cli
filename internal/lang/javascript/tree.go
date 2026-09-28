@@ -20,8 +20,8 @@ import (
 // versions of the same package are one node, and an edge between names is what the
 // graph can hold anyway.
 type tree struct {
-	deps   map[string]map[string]bool
-	locked map[string]string // package -> a version some lock file pinned it to
+	dependencies map[string]map[string]bool
+	locked       map[string]string // package -> a version some lock file pinned it to
 	// "parent/dep" -> the version of dep installed under parent rather than
 	// hoisted ("" when that copy pins nothing), where a lock file says so.
 	nested map[string]string
@@ -34,22 +34,22 @@ type tree struct {
 
 func newTree() *tree {
 	return &tree{
-		deps: map[string]map[string]bool{}, locked: map[string]string{}, nested: map[string]string{},
+		dependencies: map[string]map[string]bool{}, locked: map[string]string{}, nested: map[string]string{},
 		exact: map[string]map[string]string{},
 	}
 }
 
-func (t *tree) add(pkg string, deps ...string) {
-	if pkg == "" {
+func (t *tree) add(packageName string, dependencies ...string) {
+	if packageName == "" {
 		return
 	}
-	m := t.deps[pkg]
+	m := t.dependencies[packageName]
 	if m == nil {
 		m = map[string]bool{}
-		t.deps[pkg] = m
+		t.dependencies[packageName] = m
 	}
-	for _, d := range deps {
-		if d != "" && d != pkg {
+	for _, d := range dependencies {
+		if d != "" && d != packageName {
 			m[d] = true
 		}
 	}
@@ -58,13 +58,13 @@ func (t *tree) add(pkg string, deps ...string) {
 // addExact records what one copy of a package loads, under each name it is
 // installed as (the real one and an alias). The first lock file, and within one
 // the first copy, to name a version keeps it.
-func (t *tree) addExact(names []string, version string, deps map[string]string) {
+func (t *tree) addExact(names []string, version string, dependencies map[string]string) {
 	if version == "" {
 		return
 	}
 	for _, n := range names {
 		if _, ok := t.exact[n+"@"+version]; !ok && n != "" {
-			t.exact[n+"@"+version] = deps
+			t.exact[n+"@"+version] = dependencies
 		}
 	}
 }
@@ -76,7 +76,7 @@ func (t *tree) addExact(names []string, version string, deps map[string]string) 
 //
 // Implements: REQ-SUP-009
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
-	if t.Ecosystem != ecoNPM {
+	if t.Ecosystem != ecosystemNPM {
 		return nil
 	}
 	var exact map[string]string
@@ -84,17 +84,17 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 		exact = r.tree.exact[t.Package+"@"+t.Version]
 	}
 	var out []lang.Target
-	for dep := range r.tree.deps[t.Package] {
-		version := exact[dep] // "" when the lock holds no copy it loads
+	for dependency := range r.tree.dependencies[t.Package] {
+		version := exact[dependency] // "" when the lock holds no copy it loads
 		ok := version != ""
 		if !ok {
-			version, ok = r.tree.nested[t.Package+"/"+dep]
+			version, ok = r.tree.nested[t.Package+"/"+dependency]
 		}
 		if !ok {
-			version = r.tree.locked[dep]
+			version = r.tree.locked[dependency]
 		}
 		out = append(out, lang.Target{
-			Ecosystem: ecoNPM, Package: dep, Version: version,
+			Ecosystem: ecosystemNPM, Package: dependency, Version: version,
 			// It is in a lock file, which is what pins an npm package.
 			Pinned: version != "",
 		})
@@ -120,9 +120,9 @@ func (t *tree) addPackageLockTree(lock *packageLock) {
 	// Shallowest first: the hoisted copy is the one a name stands for, and the
 	// first copy of a version is the one that version's node follows.
 	sort.Slice(keys, func(i, j int) bool {
-		di, dj := strings.Count(keys[i], "node_modules/"), strings.Count(keys[j], "node_modules/")
-		if di != dj {
-			return di < dj
+		depthI, depthJ := strings.Count(keys[i], "node_modules/"), strings.Count(keys[j], "node_modules/")
+		if depthI != depthJ {
+			return depthI < depthJ
 		}
 		return keys[i] < keys[j]
 	})
@@ -138,45 +138,45 @@ func (t *tree) addPackageLockTree(lock *packageLock) {
 			seen[name] = true
 			t.locked[name] = p.Version
 		}
-		deps := map[string]string{}
+		dependencies := map[string]string{}
 		for i, m := range []map[string]string{p.Dependencies, p.OptionalDependencies} {
-			for dep := range m {
-				found, ok := installed(paths, key, dep)
+			for dependency := range m {
+				found, ok := installed(paths, key, dependency)
 				switch {
 				case ok && found.Link:
 				case ok:
-					deps[cmp.Or(found.Name, dep)] = found.Version
+					dependencies[cmp.Or(found.Name, dependency)] = found.Version
 				case i == 0: // missing from the lock: the name is all there is
-					if _, have := deps[dep]; !have {
-						deps[dep] = ""
+					if _, have := dependencies[dependency]; !have {
+						dependencies[dependency] = ""
 					}
 				} // an optional dependency missing is one this install left out
 			}
 		}
 		for _, n := range []string{name, alias} { // a package imported as "c2" is that node
-			for dep := range deps {
-				t.add(n, dep)
+			for dependency := range dependencies {
+				t.add(n, dependency)
 			}
 		}
-		t.addExact([]string{name, alias}, p.Version, deps)
+		t.addExact([]string{name, alias}, p.Version, dependencies)
 	}
 }
 
-// installed finds the copy of dep that the package installed at from loads:
+// installed finds the copy of dependency that the package installed at from loads:
 // Node looks in from's own node_modules, then in each directory's above it.
-func installed(paths map[string]lockPath, from, dep string) (lockPath, bool) {
-	for dir := from; ; dir = path.Dir(dir) {
-		if path.Base(dir) == "node_modules" {
+func installed(paths map[string]lockPath, from, dependency string) (lockPath, bool) {
+	for directory := from; ; directory = path.Dir(directory) {
+		if path.Base(directory) == "node_modules" {
 			continue
 		}
-		key := "node_modules/" + dep
-		if dir != "." {
-			key = dir + "/" + key
+		key := "node_modules/" + dependency
+		if directory != "." {
+			key = directory + "/" + key
 		}
 		if p, ok := paths[key]; ok {
 			return p, true
 		}
-		if dir == "." {
+		if directory == "." {
 			return lockPath{}, false
 		}
 	}
@@ -184,8 +184,8 @@ func installed(paths map[string]lockPath, from, dep string) (lockPath, bool) {
 
 // flattenV1 turns v1's nested "dependencies" into the install paths v2 keys
 // them by. An alias is written "npm:real@1.2.3", a local package "file:dir".
-func flattenV1(out map[string]lockPath, parent string, deps map[string]*lockV1) {
-	for name, d := range deps {
+func flattenV1(out map[string]lockPath, parent string, dependencies map[string]*lockV1) {
+	for name, d := range dependencies {
 		if d == nil {
 			continue
 		}
@@ -193,7 +193,7 @@ func flattenV1(out map[string]lockPath, parent string, deps map[string]*lockV1) 
 		p := lockPath{Version: d.Version, Dependencies: d.Requires}
 		switch {
 		case strings.HasPrefix(d.Version, "npm:"):
-			p.Name, p.Version = splitIdent(strings.TrimPrefix(d.Version, "npm:"))
+			p.Name, p.Version = splitIdentifier(strings.TrimPrefix(d.Version, "npm:"))
 		case strings.HasPrefix(d.Version, "file:") || strings.HasPrefix(d.Version, "link:"):
 			p.Link, p.Version = true, ""
 		}
@@ -202,9 +202,9 @@ func flattenV1(out map[string]lockPath, parent string, deps map[string]*lockV1) 
 	}
 }
 
-// splitIdent splits "name@version" (or "@scope/name@range") at the "@" after
+// splitIdentifier splits "name@version" (or "@scope/name@range") at the "@" after
 // the name.
-func splitIdent(s string) (name, version string) {
+func splitIdentifier(s string) (name, version string) {
 	if i := strings.Index(s[min(1, len(s)):], "@"); i >= 0 {
 		return s[:i+1], s[i+2:]
 	}
@@ -228,21 +228,21 @@ func lockName(key string) string {
 func (t *tree) addPnpmTree(doc *pnpmLock) {
 	aliases := map[[2]string]string{} // {alias, real name} -> version
 	add := func(name, version string, lists ...map[string]string) {
-		deps := map[string]string{}
+		dependencies := map[string]string{}
 		for _, m := range lists {
 			for alias, v := range m {
-				if dep, ver, ok := doc.ref(alias, v); ok {
-					deps[dep] = ver
-					if dep != alias {
-						aliases[[2]string{alias, dep}] = ver
+				if dependency, version, ok := doc.reference(alias, v); ok {
+					dependencies[dependency] = version
+					if dependency != alias {
+						aliases[[2]string{alias, dependency}] = version
 					}
 				}
 			}
 		}
-		for dep := range deps {
-			t.add(name, dep)
+		for dependency := range dependencies {
+			t.add(name, dependency)
 		}
-		t.addExact([]string{name}, version, deps)
+		t.addExact([]string{name}, version, dependencies)
 	}
 	for _, key := range slices.Sorted(maps.Keys(doc.Packages)) {
 		p := doc.Packages[key]
@@ -265,30 +265,30 @@ func (t *tree) addPnpmTree(doc *pnpmLock) {
 	}
 	// A package the project itself imports under an alias ("c2": "npm:c@^2") is
 	// a node of that name: it needs what the real package does.
-	for _, sec := range append([]pnpmDeps{doc.pnpmDeps}, slices.Collect(maps.Values(doc.Importers))...) {
-		for _, m := range []map[string]any{sec.Dependencies, sec.DevDependencies, sec.OptionalDependencies} {
+	for _, section := range append([]pnpmDependencies{doc.pnpmDependencies}, slices.Collect(maps.Values(doc.Importers))...) {
+		for _, m := range []map[string]any{section.Dependencies, section.DevDependencies, section.OptionalDependencies} {
 			for alias, v := range m {
-				if dep, ver, ok := doc.ref(alias, pnpmRef(v)); ok && dep != alias {
-					aliases[[2]string{alias, dep}] = ver
+				if dependency, version, ok := doc.reference(alias, pnpmReference(v)); ok && dependency != alias {
+					aliases[[2]string{alias, dependency}] = version
 				}
 			}
 		}
 	}
 	for pair, version := range aliases {
-		for dep := range t.deps[pair[1]] {
-			t.add(pair[0], dep)
+		for dependency := range t.dependencies[pair[1]] {
+			t.add(pair[0], dependency)
 		}
-		if deps, ok := t.exact[pair[1]+"@"+version]; ok {
-			t.addExact(pair[:1], version, deps)
+		if dependencies, ok := t.exact[pair[1]+"@"+version]; ok {
+			t.addExact(pair[:1], version, dependencies)
 		}
 	}
 }
 
-// ref reads a dependency reference of pnpm-lock.yaml as the package and version
+// reference reads a dependency reference of pnpm-lock.yaml as the package and version
 // it installs; ok is false for a workspace or local directory. A dependency on
 // something outside the registry is written as that entry's key, which names
 // the package only in the entry's own "name".
-func (lock *pnpmLock) ref(alias, v string) (name, version string, ok bool) {
+func (lock *pnpmLock) reference(alias, v string) (name, version string, ok bool) {
 	v, _, _ = strings.Cut(v, "(")
 	switch {
 	case v == "" || strings.HasPrefix(v, "link:") || strings.HasPrefix(v, "file:"):
@@ -309,7 +309,7 @@ func (lock *pnpmLock) ref(alias, v string) (name, version string, ok bool) {
 }
 
 // pnpmKey splits a package key into name and version. Version 6 onwards writes
-// "/lodash@4.17.21" and "react-dom@18.3.1(react@18.3.1)", where the parenthesised
+// "/lodash@4.17.21" and "react-dom@18.3.1(react@18.3.1)", where the parenthesized
 // part is peer-dependency context; version 5 wrote "/lodash/4.17.21",
 // "/@scope/pkg/1.2.3" and "/react-dom/18.2.0_react@18.2.0", where the segment
 // after the name is the version and "_" starts the peer context.
@@ -346,7 +346,7 @@ func startsWithDigit(s string) bool { return s != "" && s[0] >= '0' && s[0] <= '
 type yarnEntry struct {
 	descriptors         []string
 	version, resolution string
-	deps                [][2]string // name, range
+	dependencies        [][2]string // name, range
 }
 
 // readYarnEntries reads a yarn.lock's entries. Classic writes `version "1.2.3"`
@@ -372,8 +372,8 @@ func readYarnEntries(data []byte) []*yarnEntry {
 		case e == nil:
 		case strings.HasPrefix(line, "    "):
 			if (section == "dependencies" || section == "optionalDependencies") && !strings.HasPrefix(line, "     ") {
-				if name, rng := yarnDep(trimmed); name != "" {
-					e.deps = append(e.deps, [2]string{name, rng})
+				if name, versionRange := yarnDependency(trimmed); name != "" {
+					e.dependencies = append(e.dependencies, [2]string{name, versionRange})
 				}
 			}
 		default:
@@ -389,9 +389,9 @@ func readYarnEntries(data []byte) []*yarnEntry {
 	return entries
 }
 
-// yarnDep reads one line of a dependency block: `dep "^1"`, `dep: ^1`,
+// yarnDependency reads one line of a dependency block: `dep "^1"`, `dep: ^1`,
 // `"@scope/dep": "npm:^1"`.
-func yarnDep(s string) (name, rng string) {
+func yarnDependency(s string) (name, versionRange string) {
 	if strings.HasPrefix(s, `"`) {
 		end := strings.Index(s[1:], `"`)
 		if end < 0 {
@@ -413,40 +413,40 @@ func yarnDep(s string) (name, rng string) {
 // project (or beside it), not a package any registry has.
 var yarnLocalProtocols = []string{"workspace:", "portal:", "link:", "file:"}
 
-func yarnLocal(rng string) bool {
+func yarnLocal(versionRange string) bool {
 	for _, p := range yarnLocalProtocols {
-		if strings.HasPrefix(rng, p) {
+		if strings.HasPrefix(versionRange, p) {
 			return true
 		}
 	}
 	return false
 }
 
-// ident is the package an entry installs and whether it is a local one. Berry
+// identifier is the package an entry installs and whether it is a local one. Berry
 // writes it as the resolution ("real@npm:1.2.3", "ws@workspace:packages/ws");
 // classic only has the descriptors, where an alias reads "alias@npm:real@^1".
-func (e *yarnEntry) ident() (name string, local bool) {
+func (e *yarnEntry) identifier() (name string, local bool) {
 	if e.resolution != "" {
-		name, rest := splitIdent(e.resolution)
+		name, rest := splitIdentifier(e.resolution)
 		return name, yarnLocal(rest)
 	}
 	if len(e.descriptors) == 0 || e.descriptors[0] == "__metadata" {
 		return "", true
 	}
-	name, rng := splitIdent(e.descriptors[0])
-	if real, ok := strings.CutPrefix(rng, "npm:"); ok {
-		if n, v := splitIdent(real); v != "" {
+	name, versionRange := splitIdentifier(e.descriptors[0])
+	if real, ok := strings.CutPrefix(versionRange, "npm:"); ok {
+		if n, v := splitIdentifier(real); v != "" {
 			name = n
 		}
 	}
-	return name, yarnLocal(rng)
+	return name, yarnLocal(versionRange)
 }
 
 // names are the names the entry is installed as: its package's, and any alias.
-func (e *yarnEntry) names(ident string) []string {
-	out := []string{ident}
+func (e *yarnEntry) names(identifier string) []string {
+	out := []string{identifier}
 	for _, d := range e.descriptors {
-		if n, _ := splitIdent(d); n != ident && !slices.Contains(out, n) {
+		if n, _ := splitIdentifier(d); n != identifier && !slices.Contains(out, n) {
 			out = append(out, n)
 		}
 	}
@@ -456,28 +456,28 @@ func (e *yarnEntry) names(ident string) []string {
 // yarnCandidates are the descriptors a dependency's range may be keyed under:
 // as written; with "npm:" where Berry adds the default protocol; and for a
 // "patch:" range, the range it patches.
-func yarnCandidates(name, rng string) []string {
-	out := []string{name + "@" + rng}
-	if base, ok := strings.CutPrefix(rng, "patch:"); ok {
+func yarnCandidates(name, versionRange string) []string {
+	out := []string{name + "@" + versionRange}
+	if base, ok := strings.CutPrefix(versionRange, "patch:"); ok {
 		base, _, _ = strings.Cut(base, "#")
 		if u, err := url.PathUnescape(base); err == nil {
 			base = u
 		}
-		return append(out, yarnCandidates(splitIdent(base))...)
+		return append(out, yarnCandidates(splitIdentifier(base))...)
 	}
-	if !yarnProtocol(rng) {
-		out = append(out, name+"@npm:"+rng)
+	if !yarnProtocol(versionRange) {
+		out = append(out, name+"@npm:"+versionRange)
 	}
 	return out
 }
 
 // yarnProtocol tells "npm:^1", "workspace:*" and "https://..." from a bare range.
-func yarnProtocol(rng string) bool {
-	i := strings.Index(rng, ":")
+func yarnProtocol(versionRange string) bool {
+	i := strings.Index(versionRange, ":")
 	if i <= 0 {
 		return false
 	}
-	for _, c := range rng[:i] {
+	for _, c := range versionRange[:i] {
 		if (c < 'a' || c > 'z') && c != '+' && c != '-' {
 			return false
 		}
@@ -498,8 +498,8 @@ func (t *tree) addYarnTree(data []byte) {
 			byDescriptor[d] = e
 		}
 	}
-	find := func(name, rng string) *yarnEntry {
-		for _, d := range yarnCandidates(name, rng) {
+	find := func(name, versionRange string) *yarnEntry {
+		for _, d := range yarnCandidates(name, versionRange) {
 			if e := byDescriptor[d]; e != nil {
 				return e
 			}
@@ -507,7 +507,7 @@ func (t *tree) addYarnTree(data []byte) {
 		return nil
 	}
 	for _, e := range entries {
-		name, local := e.ident()
+		name, local := e.identifier()
 		if name == "" || local {
 			continue
 		}
@@ -517,24 +517,24 @@ func (t *tree) addYarnTree(data []byte) {
 				t.locked[n] = e.version
 			}
 		}
-		deps := map[string]string{}
-		for _, d := range e.deps {
-			switch dep := find(d[0], d[1]); {
-			case dep != nil:
-				if n, local := dep.ident(); !local {
-					deps[n] = dep.version
+		dependencies := map[string]string{}
+		for _, d := range e.dependencies {
+			switch dependency := find(d[0], d[1]); {
+			case dependency != nil:
+				if n, local := dependency.identifier(); !local {
+					dependencies[n] = dependency.version
 				}
 			case !yarnLocal(d[1]):
-				if _, have := deps[d[0]]; !have {
-					deps[d[0]] = ""
+				if _, have := dependencies[d[0]]; !have {
+					dependencies[d[0]] = ""
 				}
 			}
 		}
 		for _, n := range names {
-			for dep := range deps {
-				t.add(n, dep)
+			for dependency := range dependencies {
+				t.add(n, dependency)
 			}
 		}
-		t.addExact(names, e.version, deps)
+		t.addExact(names, e.version, dependencies)
 	}
 }

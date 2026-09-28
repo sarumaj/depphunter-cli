@@ -14,7 +14,7 @@ verification:
 
 The details panel's opening of a file in the editor **shall** be a button in the
 panel's top corner, beside maximize and close, that stays in view however far
-the panel is scrolled. It **shall** be labelled briefly with the editor ("VS Code
+the panel is scrolled. It **shall** be labeled briefly with the editor ("VS Code
 ↗") and name the full action in its title, and **shall** be absent for anything
 that is not a file and where no editor can be opened. What shares the top of the
 panel - the breadcrumbs, and the source heading with its search pinned there

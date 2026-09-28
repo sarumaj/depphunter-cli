@@ -35,7 +35,7 @@ func TestGoplsReferences(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := References(context.Background(), g, Options{
+	result, err := References(context.Background(), g, Options{
 		Root: root, Timeout: 2 * time.Minute,
 		LookPath: func(string) (string, error) { return gopls[0], nil },
 		Logf:     t.Logf,
@@ -44,7 +44,7 @@ func TestGoplsReferences(t *testing.T) {
 		t.Fatal(err)
 	}
 	got := map[[2]string]bool{}
-	for _, e := range res.Edges {
+	for _, e := range result.Edges {
 		if e.Kind != graph.EdgeReference {
 			t.Errorf("edge kind %q", e.Kind)
 		}
@@ -66,17 +66,17 @@ func TestGoplsReferences(t *testing.T) {
 	if got[[2]string{"s:a.go#Use", "s:a.go#Use"}] {
 		t.Error("self reference")
 	}
-	if len(res.Servers) != 1 || res.Servers[0] != "gopls" || res.Partial {
-		t.Errorf("servers %v, partial %v", res.Servers, res.Partial)
+	if len(result.Servers) != 1 || result.Servers[0] != "gopls" || result.Partial {
+		t.Errorf("servers %v, partial %v", result.Servers, result.Partial)
 	}
-	t.Logf("%d references: %v", len(res.Edges), got)
+	t.Logf("%d references: %v", len(result.Edges), got)
 }
 
 // Verifies: REQ-LSP-008
 func TestNameColumn(t *testing.T) {
 	for _, c := range []struct {
 		line, name string
-		col        int
+		column     int
 		ok         bool
 	}{
 		{"func (s *Store) Get() int {", "Get", 16, true},
@@ -84,9 +84,9 @@ func TestNameColumn(t *testing.T) {
 		{"const π = 3; func Area() {}", "Area", 18, true}, // π is one UTF-16 unit
 		{"let 😀 = 1; function f() {}", "f", 21, true},     // 😀 is two UTF-16 units
 	} {
-		col, ok := nameColumn(c.line, c.name)
-		if col != c.col || ok != c.ok {
-			t.Errorf("%q in %q: got %d %v, want %d %v", c.name, c.line, col, ok, c.col, c.ok)
+		column, ok := nameColumn(c.line, c.name)
+		if column != c.column || ok != c.ok {
+			t.Errorf("%q in %q: got %d %v, want %d %v", c.name, c.line, column, ok, c.column, c.ok)
 		}
 	}
 }
@@ -110,10 +110,10 @@ func TestSymbolWord(t *testing.T) {
 
 func TestURIs(t *testing.T) {
 	root := filepath.FromSlash("/work/repo")
-	if rel, ok := relPath(root, fileURI(filepath.Join(root, "a b", "c.go"))); !ok || rel != "a b/c.go" {
-		t.Errorf("round trip: %q %v", rel, ok)
+	if relative, ok := relativePath(root, fileURI(filepath.Join(root, "a b", "c.go"))); !ok || relative != "a b/c.go" {
+		t.Errorf("round trip: %q %v", relative, ok)
 	}
-	if _, ok := relPath(root, "file:///usr/lib/go/src/fmt/print.go"); ok {
+	if _, ok := relativePath(root, "file:///usr/lib/go/src/fmt/print.go"); ok {
 		t.Error("paths outside the root must be rejected")
 	}
 }

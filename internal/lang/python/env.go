@@ -43,9 +43,9 @@ type installed struct {
 
 // Environment settings: the interpreter to read, as a path; the variable an activated
 // virtual environment sets; and the directories a project keeps its own in.
-const envVirtual = "VIRTUAL_ENV"
+const environmentVirtual = "VIRTUAL_ENV"
 
-var projectEnvs = []string{".venv", "venv"}
+var projectEnvironments = []string{".venv", "venv"}
 
 // findEnvironment picks the interpreter whose site-packages to read, in this order: the
 // one configured (--python), the activated virtual environment, the project's own .venv
@@ -59,10 +59,10 @@ func findEnvironment(root, interpreter string, getenv func(string) string) *envi
 	switch {
 	case interpreter != "":
 		prefix = prefixOf(interpreter)
-	case getenv != nil && getenv(envVirtual) != "":
-		prefix = getenv(envVirtual)
+	case getenv != nil && getenv(environmentVirtual) != "":
+		prefix = getenv(environmentVirtual)
 	default:
-		for _, d := range projectEnvs {
+		for _, d := range projectEnvironments {
 			if isVenv(filepath.Join(root, d)) {
 				prefix = filepath.Join(root, d)
 				break
@@ -79,22 +79,22 @@ func findEnvironment(root, interpreter string, getenv func(string) string) *envi
 // is in (bin/python beside a pyvenv.cfg one level up), or else the prefix of the
 // program it is a link to (/usr for /usr/bin/python3.12).
 func prefixOf(interpreter string) string {
-	abs, err := filepath.Abs(interpreter)
+	absolute, err := filepath.Abs(interpreter)
 	if err != nil {
 		return ""
 	}
-	if venv := filepath.Dir(filepath.Dir(abs)); isVenv(venv) {
+	if venv := filepath.Dir(filepath.Dir(absolute)); isVenv(venv) {
 		return venv
 	}
-	if real, err := filepath.EvalSymlinks(abs); err == nil {
-		abs = real
+	if real, err := filepath.EvalSymlinks(absolute); err == nil {
+		absolute = real
 	}
-	return filepath.Dir(filepath.Dir(abs))
+	return filepath.Dir(filepath.Dir(absolute))
 }
 
-func isVenv(dir string) bool {
-	st, err := os.Stat(filepath.Join(dir, "pyvenv.cfg"))
-	return err == nil && !st.IsDir()
+func isVenv(directory string) bool {
+	fileInfo, err := os.Stat(filepath.Join(directory, "pyvenv.cfg"))
+	return err == nil && !fileInfo.IsDir()
 }
 
 var pythonVersion = regexp.MustCompile(`python(3\.\d+)`)
@@ -119,25 +119,25 @@ func versionOf(interpreter string) string {
 // (lib/pythonX.Y), Debian's dist-packages, and Windows (Lib). A virtual environment
 // that includes the system site-packages (pyvenv.cfg) adds its base interpreter's.
 func sitesOf(prefix, version string) []string {
-	ver := "3.*"
+	versionGlob := "3.*"
 	if version != "" {
-		ver = version
+		versionGlob = version
 	}
 	var sites []string
 	for _, pattern := range []string{
-		"lib/python" + ver + "/site-packages", "lib64/python" + ver + "/site-packages",
-		"lib/python3/dist-packages", "local/lib/python" + ver + "/dist-packages",
+		"lib/python" + versionGlob + "/site-packages", "lib64/python" + versionGlob + "/site-packages",
+		"lib/python3/dist-packages", "local/lib/python" + versionGlob + "/dist-packages",
 		"Lib/site-packages",
 	} {
 		matches, _ := filepath.Glob(filepath.Join(prefix, filepath.FromSlash(pattern)))
 		sort.Sort(sort.Reverse(sort.StringSlice(matches))) // the newest Python first
 		sites = append(sites, matches...)
 	}
-	if cfg := readPyvenvCfg(filepath.Join(prefix, "pyvenv.cfg")); cfg["include-system-site-packages"] == "true" && cfg["home"] != "" {
+	if config := readPyvenvCfg(filepath.Join(prefix, "pyvenv.cfg")); config["include-system-site-packages"] == "true" && config["home"] != "" {
 		// home is the directory the base interpreter is in (/usr/bin).
-		base := filepath.Dir(cfg["home"])
+		base := filepath.Dir(config["home"])
 		if version == "" {
-			version = majorMinor(cfg["version"])
+			version = majorMinor(config["version"])
 		}
 		sites = append(sites, sitesOf(base, version)...)
 	}
@@ -175,7 +175,7 @@ func majorMinor(v string) string {
 // found in an earlier site shadows one of the same name in a later one, as it would on
 // sys.path.
 func readEnvironment(sites []string) *environment {
-	env := &environment{sites: sites, byName: map[string]*installed{}, modules: map[string]*installed{}}
+	created := &environment{sites: sites, byName: map[string]*installed{}, modules: map[string]*installed{}}
 	claimed := map[string]map[string]bool{} // module -> distributions providing it
 	for _, site := range sites {
 		entries, err := os.ReadDir(site)
@@ -188,10 +188,10 @@ func readEnvironment(sites []string) *environment {
 			}
 			info := filepath.Join(site, e.Name())
 			d := readDistInfo(info)
-			if d == nil || env.byName[normalize(d.name)] != nil {
+			if d == nil || created.byName[normalize(d.name)] != nil {
 				continue
 			}
-			env.byName[normalize(d.name)] = d
+			created.byName[normalize(d.name)] = d
 			for _, m := range providedModules(site, info) {
 				if claimed[m] == nil {
 					claimed[m] = map[string]bool{}
@@ -202,14 +202,14 @@ func readEnvironment(sites []string) *environment {
 	}
 	for m, by := range claimed {
 		if len(by) != 1 {
-			env.modules[m] = nil
+			created.modules[m] = nil
 			continue
 		}
 		for name := range by {
-			env.modules[m] = env.byName[name]
+			created.modules[m] = created.byName[name]
 		}
 	}
-	return env
+	return created
 }
 
 // readDistInfo reads a distribution's name, version and requirements from METADATA,
@@ -221,9 +221,9 @@ func readDistInfo(info string) *installed {
 	}
 	defer f.Close()
 	d := &installed{}
-	sc := bufio.NewScanner(f)
-	for sc.Scan() {
-		line := sc.Text()
+	scanner := bufio.NewScanner(f)
+	for scanner.Scan() {
+		line := scanner.Text()
 		if line == "" {
 			break // the headers end here, and the description begins
 		}
@@ -248,7 +248,7 @@ func readDistInfo(info string) *installed {
 			}
 		}
 	}
-	if sc.Err() != nil {
+	if scanner.Err() != nil {
 		return nil
 	}
 	if d.name == "" {
@@ -290,14 +290,14 @@ func providedModules(site, info string) []string {
 			case file == "" || strings.HasPrefix(file, "..") || strings.Contains(file, ".dist-info/") ||
 				strings.Contains(file, "__pycache__"):
 			case strings.HasSuffix(file, ".pth"):
-				for _, dir := range pthDirs(filepath.Join(site, file)) {
-					for _, m := range modulesIn(dir) {
+				for _, directory := range pthDirectories(filepath.Join(site, file)) {
+					for _, m := range modulesIn(directory) {
 						add([]string{m})
 					}
 				}
 			case strings.HasPrefix(path.Base(file), "__editable__") && strings.HasSuffix(file, "_finder.py"):
-				if src, err := os.ReadFile(filepath.Join(site, file)); err == nil {
-					if m := editableMapping.FindSubmatch(src); m != nil {
+				if source, err := os.ReadFile(filepath.Join(site, file)); err == nil {
+					if m := editableMapping.FindSubmatch(source); m != nil {
 						for _, k := range mappingKey.FindAllSubmatch(m[1], -1) {
 							add(strings.Split(string(k[1]), "."))
 						}
@@ -331,9 +331,9 @@ func providedModules(site, info string) []string {
 	return out
 }
 
-// pthDirs reads the directories a .pth file adds to sys.path; its import lines are
+// pthDirectories reads the directories a .pth file adds to sys.path; its import lines are
 // code, and are not.
-func pthDirs(file string) []string {
+func pthDirectories(file string) []string {
 	data, err := os.ReadFile(file)
 	if err != nil {
 		return nil
@@ -344,7 +344,7 @@ func pthDirs(file string) []string {
 		if line == "" || strings.HasPrefix(line, "#") || strings.HasPrefix(line, "import ") {
 			continue
 		}
-		if st, err := os.Stat(line); err == nil && st.IsDir() {
+		if fileInfo, err := os.Stat(line); err == nil && fileInfo.IsDir() {
 			out = append(out, line)
 		}
 	}
@@ -352,8 +352,8 @@ func pthDirs(file string) []string {
 }
 
 // modulesIn lists the top-level packages and modules in a directory on sys.path.
-func modulesIn(dir string) []string {
-	entries, err := os.ReadDir(dir)
+func modulesIn(directory string) []string {
+	entries, err := os.ReadDir(directory)
 	if err != nil {
 		return nil
 	}
@@ -362,7 +362,7 @@ func modulesIn(dir string) []string {
 		name := e.Name()
 		switch {
 		case e.IsDir() && isIdentifier(name):
-			if _, err := os.Stat(filepath.Join(dir, name, "__init__.py")); err == nil {
+			if _, err := os.Stat(filepath.Join(directory, name, "__init__.py")); err == nil {
 				out = append(out, name)
 			}
 		case strings.HasSuffix(name, ".py") && isIdentifier(strings.TrimSuffix(name, ".py")):

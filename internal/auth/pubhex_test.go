@@ -62,11 +62,11 @@ func TestHexKeys(t *testing.T) {
   <<"hexpm:gone">> => #{oauth_token => #{access_token => <<"gone">>, expires_at => 1000}},
   <<"mini">> => #{auth_key => <<"mini-key">>, url => <<"https://mini.corp/repo">>}}}.
 `
-	for _, tc := range []struct {
-		name   string
-		config string
-		vars   map[string]string
-		want   map[string]string
+	for _, testCase := range []struct {
+		name      string
+		config    string
+		variables map[string]string
+		want      map[string]string
 	}{
 		{"organization keys", config, nil, map[string]string{
 			"https://hex.pm/api/repos/acme/packages/billing":          "acme-key",
@@ -105,11 +105,11 @@ func TestHexKeys(t *testing.T) {
 		}},
 	} {
 		home := t.TempDir()
-		writeFile(t, filepath.Join(home, ".hex", "hex.config"), tc.config)
-		c := onMachine(t, home, "linux", tc.vars)
-		for u, want := range tc.want {
+		writeFile(t, filepath.Join(home, ".hex", "hex.config"), testCase.config)
+		c := onMachine(t, home, "linux", testCase.variables)
+		for u, want := range testCase.want {
 			if got := authorization(t, c, u); got != want {
-				t.Errorf("%s: %s: %q, want %q", tc.name, u, got, want)
+				t.Errorf("%s: %s: %q, want %q", testCase.name, u, got, want)
 			}
 		}
 	}
@@ -126,59 +126,59 @@ func TestRebar3HexKeys(t *testing.T) {
 	saved := now
 	now = func() time.Time { return time.Unix(2000, 0) }
 	t.Cleanup(func() { now = saved })
-	repos := `<<"hexpm:acme">> => #{name => <<"hexpm:acme">>, repo_key => <<"acme-key">>},
+	repositories := `<<"hexpm:acme">> => #{name => <<"hexpm:acme">>, repo_key => <<"acme-key">>},
   <<"hexpm:beta">> => #{api_key => <<"beta-api">>},
   <<"hexpm:gone">> => #{oauth_token => #{access_token => <<"gone">>, expires_at => 1000}},
   <<"mine">> => #{repo_key => <<"mine-key">>}`
-	for _, tc := range []struct {
+	for _, testCase := range []struct {
 		name, rebar3, mix string
-		vars              map[string]string
+		variables         map[string]string
 		want              map[string]string
 	}{
-		{"organization keys", "#{" + repos + "}.", "", nil, map[string]string{
+		{"organization keys", "#{" + repositories + "}.", "", nil, map[string]string{
 			"https://hex.pm/api/repos/acme/packages/billing": "acme-key",
 			"https://hex.pm/api/repos/beta/packages/x":       "beta-api",
 			"https://hex.pm/api/repos/gone/packages/x":       "",
 			"https://hex.pm/api/repos/other/packages/x":      "",
 			"https://hex.pm/api/packages/jason":              "",
 		}},
-		{"repos key for the others", "#{" + repos + "}.", "", map[string]string{"HEX_REPOS_KEY": "repos-key"}, map[string]string{
+		{"repos key for the others", "#{" + repositories + "}.", "", map[string]string{"HEX_REPOS_KEY": "repos-key"}, map[string]string{
 			"https://hex.pm/api/repos/acme/packages/billing": "acme-key",
 			"https://hex.pm/api/repos/other/packages/x":      "repos-key",
 		}},
-		{"hexpm api_key of the user", "#{" + repos + `, <<"hexpm">> => #{api_key => <<"user-key">>}}.`, "", nil, map[string]string{
+		{"hexpm api_key of the user", "#{" + repositories + `, <<"hexpm">> => #{api_key => <<"user-key">>}}.`, "", nil, map[string]string{
 			"https://hex.pm/api/repos/acme/packages/billing": "user-key",
 			"https://hex.pm/api/repos/beta/packages/x":       "beta-api",
 			"https://hex.pm/api/repos/other/packages/x":      "user-key",
 			"https://hex.pm/api/packages/jason":              "",
 		}},
-		{"OAuth token of the user", "#{" + repos + `, <<"$oauth">> => #{access_token => <<"user-live">>, expires_at => 3000}}.`, "", nil, map[string]string{
+		{"OAuth token of the user", "#{" + repositories + `, <<"$oauth">> => #{access_token => <<"user-live">>, expires_at => 3000}}.`, "", nil, map[string]string{
 			"https://hex.pm/api/repos/acme/packages/billing": bearer("user-live"),
 		}},
-		{"hexpm api_key over the OAuth token", "#{" + repos + `, <<"hexpm">> => #{api_key => <<"user-key">>}, <<"$oauth">> => #{access_token => <<"user-live">>, expires_at => 3000}}.`, "", nil, map[string]string{
+		{"hexpm api_key over the OAuth token", "#{" + repositories + `, <<"hexpm">> => #{api_key => <<"user-key">>}, <<"$oauth">> => #{access_token => <<"user-live">>, expires_at => 3000}}.`, "", nil, map[string]string{
 			"https://hex.pm/api/repos/acme/packages/billing": "user-key",
 		}},
-		{"expired OAuth token", "#{" + repos + `, <<"$oauth">> => #{access_token => <<"user-old">>, expires_at => 1000}}.`, "", nil, map[string]string{
+		{"expired OAuth token", "#{" + repositories + `, <<"$oauth">> => #{access_token => <<"user-old">>, expires_at => 1000}}.`, "", nil, map[string]string{
 			"https://hex.pm/api/repos/acme/packages/billing": "acme-key",
 		}},
-		{"Mix's key first", "#{" + repos + `, <<"hexpm">> => #{api_key => <<"rebar3-key">>}}.`, `{api_key,<<"mix-key">>}.`, nil, map[string]string{
+		{"Mix's key first", "#{" + repositories + `, <<"hexpm">> => #{api_key => <<"rebar3-key">>}}.`, `{api_key,<<"mix-key">>}.`, nil, map[string]string{
 			"https://hex.pm/api/repos/other/packages/x": "mix-key",
 		}},
-		{"Mix's organization key first", "#{" + repos + "}.", `{'$repos',#{<<"hexpm:acme">> => #{auth_key => <<"mix-acme">>}}}.`, nil, map[string]string{
+		{"Mix's organization key first", "#{" + repositories + "}.", `{'$repos',#{<<"hexpm:acme">> => #{auth_key => <<"mix-acme">>}}}.`, nil, map[string]string{
 			"https://hex.pm/api/repos/acme/packages/billing": "mix-acme",
 		}},
-		{"HEX_API_KEY over all", "#{" + repos + "}.", "", map[string]string{"HEX_API_KEY": "env-key"}, map[string]string{
+		{"HEX_API_KEY over all", "#{" + repositories + "}.", "", map[string]string{"HEX_API_KEY": "env-key"}, map[string]string{
 			"https://hex.pm/api/repos/beta/packages/x": "env-key",
 			"https://hex.pm/api/repos/acme/packages/x": "env-key",
 		}},
 	} {
 		home := t.TempDir()
-		writeFile(t, filepath.Join(home, ".config", "rebar3", "hex.config"), "%% coding: utf-8\n"+tc.rebar3+"\n")
-		writeFile(t, filepath.Join(home, ".hex", "hex.config"), tc.mix)
-		c := onMachine(t, home, "linux", tc.vars)
-		for u, want := range tc.want {
+		writeFile(t, filepath.Join(home, ".config", "rebar3", "hex.config"), "%% coding: utf-8\n"+testCase.rebar3+"\n")
+		writeFile(t, filepath.Join(home, ".hex", "hex.config"), testCase.mix)
+		c := onMachine(t, home, "linux", testCase.variables)
+		for u, want := range testCase.want {
 			if got := authorization(t, c, u); got != want {
-				t.Errorf("%s: %s: %q, want %q", tc.name, u, got, want)
+				t.Errorf("%s: %s: %q, want %q", testCase.name, u, got, want)
 			}
 		}
 	}

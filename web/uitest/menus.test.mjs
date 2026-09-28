@@ -20,12 +20,12 @@ function locked(held = true) {
     pointerLockElement: held ? {} : null,
     exits: 0,
     exitPointerLock() { this.exits++; },
-    addEventListener(name, fn) { if (name === 'pointerlockchange') listeners.add(fn); },
-    removeEventListener(name, fn) { if (name === 'pointerlockchange') listeners.delete(fn); },
+    addEventListener(name, callback) { if (name === 'pointerlockchange') listeners.add(callback); },
+    removeEventListener(name, callback) { if (name === 'pointerlockchange') listeners.delete(callback); },
     /** The browser reporting a change, with the lock now `still` held or not. */
     change(still = false) {
       this.pointerLockElement = still ? {} : null;
-      for (const fn of [...listeners]) fn();
+      for (const callback of [...listeners]) callback();
     },
     listeners,
   };

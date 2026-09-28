@@ -9,7 +9,7 @@ import (
 
 // Verifies: REQ-CS-005
 func TestScannerEdgeCases(t *testing.T) {
-	src := `// using Commented;
+	source := `// using Commented;
 /* using BlockCommented; */
 #if DEBUG
 using System.Diagnostics;
@@ -49,20 +49,20 @@ namespace Outer
     public interface IThing { void Run(); }
 }
 `
-	ex, err := Plugin{}.Extract(&scan.File{Path: "x.cs"}, []byte(src))
+	extraction, err := Plugin{}.Extract(&scan.File{Path: "x.cs"}, []byte(source))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var usings []string
-	for _, im := range ex.Imports {
-		usings = append(usings, im.Module)
+	for _, rawImport := range extraction.Imports {
+		usings = append(usings, rawImport.Module)
 	}
 	if want := []string{"System.Diagnostics", "System.Text", "Inner.Stuff"}; !reflect.DeepEqual(usings, want) {
 		t.Errorf("usings %v, want %v", usings, want)
 	}
 	symbols := map[string]string{}
 	lines := map[string]int{}
-	for _, s := range ex.Symbols {
+	for _, s := range extraction.Symbols {
 		symbols[s.Name], lines[s.Name] = s.Kind, s.Line
 	}
 	want := map[string]string{
@@ -79,18 +79,18 @@ namespace Outer
 
 // Verifies: REQ-CS-006
 func TestInterpolatedStrings(t *testing.T) {
-	src := "class A\n{\n" +
+	source := "class A\n{\n" +
 		"    string a = $\"{(ok ? \"x;{\" : \"b\")} {{not a hole}} {d:yyyy-MM-dd} {'{'}\";\n" +
 		"    string b = $@\"C:\\{name}\\\"\"x\"\" {(y ? \"}\" : \"{\")}\";\n" +
 		"    string c = $$\"\"\"{{x}} \"quoted\" \"\"\";\n" +
 		"    public void AfterStrings() { }\n" +
 		"}\n"
-	ex, err := Plugin{}.Extract(&scan.File{Path: "a.cs"}, []byte(src))
+	extraction, err := Plugin{}.Extract(&scan.File{Path: "a.cs"}, []byte(source))
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := map[string]int{}
-	for _, s := range ex.Symbols {
+	for _, s := range extraction.Symbols {
 		got[s.Name] = s.Line
 	}
 	if want := map[string]int{"A": 1, "A.AfterStrings": 6}; !reflect.DeepEqual(got, want) {

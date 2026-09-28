@@ -24,8 +24,8 @@ export class Backpack {
    * repo names the store, so two maps open side by side do not share one backpack.
    * onChange is called whenever the contents change, for whatever draws them.
    */
-  constructor(repo, onChange = () => {}) {
-    this.key = `${KEY}:${repo}`;
+  constructor(repository, onChange = () => {}) {
+    this.key = `${KEY}:${repository}`;
     this.onChange = onChange;
     this.items = read(this.key);
   }

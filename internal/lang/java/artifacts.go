@@ -11,15 +11,15 @@ import "strings"
 //
 // Implements: REQ-JAVA-012, REQ-CLOJURE-006
 type Artifacts struct {
-	m    maven
-	lang Language
+	m        maven
+	language Language
 }
 
 // NewArtifacts starts an empty set. l's Prefixes are the importing language's own
 // root packages (clojure.), which no artifact's name may claim as its root package:
 // org.clojure/clojure does not ship clojure.core.async.
 func NewArtifacts(l Language) *Artifacts {
-	return &Artifacts{m: maven{artifacts: map[string]*artifact{}}, lang: l}
+	return &Artifacts{m: maven{artifacts: map[string]*artifact{}}, language: l}
 }
 
 // Declare adds an artifact a manifest declares. Declared twice at different
@@ -27,7 +27,7 @@ func NewArtifacts(l Language) *Artifacts {
 func (a *Artifacts) Declare(group, name, version string) { a.m.addArtifact(group, name, version) }
 
 // Finish indexes the declared artifacts; Match is ready after it.
-func (a *Artifacts) Finish() { a.m.finish(a.lang) }
+func (a *Artifacts) Finish() { a.m.finish(a.language) }
 
 // Match is an artifact a class matched.
 type Match struct {

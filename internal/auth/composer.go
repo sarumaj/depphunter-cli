@@ -49,8 +49,8 @@ func (c *Store) readComposer(m userconf.Machine) {
 			}
 		}
 	}
-	if dir := m.ComposerHome(); dir != "" {
-		if data, err := os.ReadFile(filepath.Join(dir, "config.json")); err == nil {
+	if directory := m.ComposerHome(); directory != "" {
+		if data, err := os.ReadFile(filepath.Join(directory, "config.json")); err == nil {
 			var doc struct {
 				Config       map[string]json.RawMessage `json:"config"`
 				Repositories json.RawMessage            `json:"repositories"`
@@ -60,14 +60,14 @@ func (c *Store) readComposer(m userconf.Machine) {
 				c.composerPlain(doc.Repositories)
 			}
 		}
-		if data, err := os.ReadFile(filepath.Join(dir, "auth.json")); err == nil {
+		if data, err := os.ReadFile(filepath.Join(directory, "auth.json")); err == nil {
 			var doc map[string]json.RawMessage
 			if json.Unmarshal(data, &doc) == nil {
 				merge(doc)
 			}
 		}
 	}
-	if v := m.Env("COMPOSER_AUTH"); v != "" {
+	if v := m.Environment("COMPOSER_AUTH"); v != "" {
 		var doc map[string]json.RawMessage
 		if json.Unmarshal([]byte(v), &doc) == nil {
 			merge(doc)
@@ -83,12 +83,12 @@ func (c *Store) readComposer(m userconf.Machine) {
 			if host == "" {
 				continue
 			}
-			var cred credential
+			var parsed credential
 			switch kind {
 			case "http-basic":
 				var pair struct{ Username, Password string }
 				if json.Unmarshal(raw, &pair) == nil && pair.Username != "" {
-					cred.basic = pair.Username + ":" + pair.Password
+					parsed.basic = pair.Username + ":" + pair.Password
 				}
 			case "gitlab-token":
 				// A personal, project or group access token alone is taken as a
@@ -98,36 +98,36 @@ func (c *Store) readComposer(m userconf.Machine) {
 				var token string
 				var pair struct{ Username, Token string }
 				if json.Unmarshal(raw, &token) == nil {
-					cred.bearer = token
+					parsed.bearer = token
 				} else if json.Unmarshal(raw, &pair) == nil && pair.Token != "" {
 					if pair.Username != "" {
-						cred.basic = pair.Username + ":" + pair.Token
+						parsed.basic = pair.Username + ":" + pair.Token
 					} else {
-						cred.bearer = pair.Token
+						parsed.bearer = pair.Token
 					}
 				}
 			default: // bearer, gitlab-oauth, github-oauth: one token per host
 				var token string
 				if json.Unmarshal(raw, &token) == nil {
-					cred.bearer = token
+					parsed.bearer = token
 				}
 			}
-			if cred.bearer == "" && cred.basic == "" {
+			if parsed.bearer == "" && parsed.basic == "" {
 				continue
 			}
-			resolved[host] = cred
+			resolved[host] = parsed
 			// Composer sends a github.com token to the API as well, which is where
 			// the dist archives and the rate limit are.
 			if kind == "github-oauth" && host == "github.com" {
-				resolved["api.github.com"] = cred
+				resolved["api.github.com"] = parsed
 			}
 		}
 	}
-	for host, cred := range resolved {
-		if cred.bearer != "" {
-			c.bearer[host] = cred.bearer
+	for host, credential := range resolved {
+		if credential.bearer != "" {
+			c.bearer[host] = credential.bearer
 		} else {
-			c.basic[host] = cred.basic
+			c.basic[host] = credential.basic
 		}
 	}
 }
@@ -164,11 +164,11 @@ func (c *Store) composerPlain(raw json.RawMessage) {
 		}
 	}
 	for _, r := range list {
-		var repo struct {
+		var repository struct {
 			URL string `json:"url"`
 		}
-		if json.Unmarshal(r, &repo) == nil {
-			if u, err := url.Parse(strings.TrimSpace(repo.URL)); err == nil && u.Host != "" {
+		if json.Unmarshal(r, &repository) == nil {
+			if u, err := url.Parse(strings.TrimSpace(repository.URL)); err == nil && u.Host != "" {
 				c.notePlain(u)
 			}
 		}

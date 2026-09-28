@@ -22,131 +22,131 @@ import (
 // Verifies: REQ-PERL-001, REQ-PERL-002, REQ-PERL-004, REQ-PERL-005, REQ-PERL-006
 // Verifies: REQ-PERL-007, REQ-PERL-008
 func TestImportsAndManifests(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
 	imports := map[string]map[string]lang.Target{
 		"app.psgi": {
-			"use Plack::Builder": {Ecosystem: ecoCPAN, Package: "Plack", Version: "1.0050", Requested: ">= 1.0047", Pinned: true},
+			"use Plack::Builder": {Ecosystem: ecosystemCPAN, Package: "Plack", Version: "1.0050", Requested: ">= 1.0047", Pinned: true},
 			"use Shop":           {Local: "lib/Shop.pm"},
 		},
 		"built/Build.PL": {
-			"use Module::Build":         {Ecosystem: ecoCPAN, Package: "Module-Build", Unresolved: true},
-			"requires Path::Tiny 0.100": {Ecosystem: ecoCPAN, Package: "Path-Tiny", Version: ">= 0.100", Floating: true},
-			"build requires Test::More": {Ecosystem: ecoCPAN, Package: "Test-Simple", Floating: true},
+			"use Module::Build":         {Ecosystem: ecosystemCPAN, Package: "Module-Build", Unresolved: true},
+			"requires Path::Tiny 0.100": {Ecosystem: ecosystemCPAN, Package: "Path-Tiny", Version: ">= 0.100", Floating: true},
+			"build requires Test::More": {Ecosystem: ecosystemCPAN, Package: "Test-Simple", Floating: true},
 		},
 		"built/META.yml": {
-			"requires Path::Tiny 0.100": {Ecosystem: ecoCPAN, Package: "Path-Tiny", Version: ">= 0.100", Floating: true},
-			"build requires Test::More": {Ecosystem: ecoCPAN, Package: "Test-Simple", Floating: true},
+			"requires Path::Tiny 0.100": {Ecosystem: ecosystemCPAN, Package: "Path-Tiny", Version: ">= 0.100", Floating: true},
+			"build requires Test::More": {Ecosystem: ecosystemCPAN, Package: "Test-Simple", Floating: true},
 		},
 		"built/lib/Acme/Built.pm": {
-			"use Path::Tiny": {Ecosystem: ecoCPAN, Package: "Path-Tiny", Version: ">= 0.100", Floating: true},
+			"use Path::Tiny": {Ecosystem: ecosystemCPAN, Package: "Path-Tiny", Version: ">= 0.100", Floating: true},
 		},
 		"cpanfile": {
-			"requires Plack 1.0047":              {Ecosystem: ecoCPAN, Package: "Plack", Version: "1.0050", Requested: ">= 1.0047", Pinned: true},
-			"requires Moose":                     {Ecosystem: ecoCPAN, Package: "Moose", Version: "2.2206", Pinned: true},
-			"requires LWP::UserAgent == 6.72":    {Ecosystem: ecoCPAN, Package: "libwww-perl", Version: "6.72", Pinned: true},
-			"requires Try::Tiny >= 0.30, < 1":    {Ecosystem: ecoCPAN, Package: "Try-Tiny", Version: "0.31", Requested: ">= 0.30, < 1", Pinned: true},
-			"requires List::Util 1.45":           {Ecosystem: ecoCPAN, Package: "Scalar-List-Utils", Version: "1.63", Requested: ">= 1.45", Pinned: true},
-			"requires Exporter":                  {Ecosystem: ecoStd, Package: "Exporter"},
-			"requires JSON::MaybeXS == 1.004005": {Ecosystem: ecoCPAN, Package: "JSON-MaybeXS", Version: "1.004005", Pinned: true},
-			"recommends JSON::XS":                {Ecosystem: ecoCPAN, Package: "JSON-XS", Floating: true},
-			"requires Acme::Git":                 {Ecosystem: ecoCPAN, Package: "Acme-Git", Origin: "https://github.com/acme/p5-acme-git.git"},
-			"test requires Test::More 0.98":      {Ecosystem: ecoCPAN, Package: "Test-Simple", Version: ">= 0.98", Floating: true},
-			"test requires Test::Deep":           {Ecosystem: ecoCPAN, Package: "Test-Deep", Floating: true},
-			"develop requires Perl::Critic":      {Ecosystem: ecoCPAN, Package: "Perl-Critic", Floating: true},
-			"requires DBD::SQLite":               {Ecosystem: ecoCPAN, Package: "DBD-SQLite", Floating: true},
+			"requires Plack 1.0047":              {Ecosystem: ecosystemCPAN, Package: "Plack", Version: "1.0050", Requested: ">= 1.0047", Pinned: true},
+			"requires Moose":                     {Ecosystem: ecosystemCPAN, Package: "Moose", Version: "2.2206", Pinned: true},
+			"requires LWP::UserAgent == 6.72":    {Ecosystem: ecosystemCPAN, Package: "libwww-perl", Version: "6.72", Pinned: true},
+			"requires Try::Tiny >= 0.30, < 1":    {Ecosystem: ecosystemCPAN, Package: "Try-Tiny", Version: "0.31", Requested: ">= 0.30, < 1", Pinned: true},
+			"requires List::Util 1.45":           {Ecosystem: ecosystemCPAN, Package: "Scalar-List-Utils", Version: "1.63", Requested: ">= 1.45", Pinned: true},
+			"requires Exporter":                  {Ecosystem: ecosystemStd, Package: "Exporter"},
+			"requires JSON::MaybeXS == 1.004005": {Ecosystem: ecosystemCPAN, Package: "JSON-MaybeXS", Version: "1.004005", Pinned: true},
+			"recommends JSON::XS":                {Ecosystem: ecosystemCPAN, Package: "JSON-XS", Floating: true},
+			"requires Acme::Git":                 {Ecosystem: ecosystemCPAN, Package: "Acme-Git", Origin: "https://github.com/acme/p5-acme-git.git"},
+			"test requires Test::More 0.98":      {Ecosystem: ecosystemCPAN, Package: "Test-Simple", Version: ">= 0.98", Floating: true},
+			"test requires Test::Deep":           {Ecosystem: ecosystemCPAN, Package: "Test-Deep", Floating: true},
+			"develop requires Perl::Critic":      {Ecosystem: ecosystemCPAN, Package: "Perl-Critic", Floating: true},
+			"requires DBD::SQLite":               {Ecosystem: ecosystemCPAN, Package: "DBD-SQLite", Floating: true},
 		},
 		"dist/META.json": {
-			"requires Moo":                    {Ecosystem: ecoCPAN, Package: "Moo", Floating: true},
-			"test requires Test::Fatal 0.016": {Ecosystem: ecoCPAN, Package: "Test-Fatal", Version: ">= 0.016", Floating: true},
+			"requires Moo":                    {Ecosystem: ecosystemCPAN, Package: "Moo", Floating: true},
+			"test requires Test::Fatal 0.016": {Ecosystem: ecosystemCPAN, Package: "Test-Fatal", Version: ">= 0.016", Floating: true},
 		},
 		"dist/Makefile.PL": {
-			"use ExtUtils::MakeMaker":         {Ecosystem: ecoStd, Package: "ExtUtils::MakeMaker"},
-			"requires JSON::PP 4.00":          {Ecosystem: ecoCPAN, Package: "JSON-PP", Version: ">= 4.00", Floating: true},
-			"requires Moo":                    {Ecosystem: ecoCPAN, Package: "Moo", Floating: true},
-			"test requires Test::Fatal 0.016": {Ecosystem: ecoCPAN, Package: "Test-Fatal", Version: ">= 0.016", Floating: true},
-			"recommends Cpanel::JSON::XS 4.0": {Ecosystem: ecoCPAN, Package: "Cpanel-JSON-XS", Version: ">= 4.0", Floating: true},
+			"use ExtUtils::MakeMaker":         {Ecosystem: ecosystemStd, Package: "ExtUtils::MakeMaker"},
+			"requires JSON::PP 4.00":          {Ecosystem: ecosystemCPAN, Package: "JSON-PP", Version: ">= 4.00", Floating: true},
+			"requires Moo":                    {Ecosystem: ecosystemCPAN, Package: "Moo", Floating: true},
+			"test requires Test::Fatal 0.016": {Ecosystem: ecosystemCPAN, Package: "Test-Fatal", Version: ">= 0.016", Floating: true},
+			"recommends Cpanel::JSON::XS 4.0": {Ecosystem: ecosystemCPAN, Package: "Cpanel-JSON-XS", Version: ">= 4.0", Floating: true},
 		},
 		"dist/dist.ini": {
-			"requires Moo 2.0":                {Ecosystem: ecoCPAN, Package: "Moo", Version: ">= 2.0", Floating: true},
-			"test requires Test::Fatal 0.016": {Ecosystem: ecoCPAN, Package: "Test-Fatal", Version: ">= 0.016", Floating: true},
-			"recommends Cpanel::JSON::XS 4":   {Ecosystem: ecoCPAN, Package: "Cpanel-JSON-XS", Version: ">= 4", Floating: true},
-			"develop requires Test::Pod 1.41": {Ecosystem: ecoCPAN, Package: "Test-Pod", Version: ">= 1.41", Floating: true},
+			"requires Moo 2.0":                {Ecosystem: ecosystemCPAN, Package: "Moo", Version: ">= 2.0", Floating: true},
+			"test requires Test::Fatal 0.016": {Ecosystem: ecosystemCPAN, Package: "Test-Fatal", Version: ">= 0.016", Floating: true},
+			"recommends Cpanel::JSON::XS 4":   {Ecosystem: ecosystemCPAN, Package: "Cpanel-JSON-XS", Version: ">= 4", Floating: true},
+			"develop requires Test::Pod 1.41": {Ecosystem: ecosystemCPAN, Package: "Test-Pod", Version: ">= 1.41", Floating: true},
 		},
 		"dist/lib/Acme/Widget.pm": {
-			"use Moo":                {Ecosystem: ecoCPAN, Package: "Moo", Floating: true},
-			"use JSON::PP":           {Ecosystem: ecoCPAN, Package: "JSON-PP", Version: ">= 4.00", Floating: true},
+			"use Moo":                {Ecosystem: ecosystemCPAN, Package: "Moo", Floating: true},
+			"use JSON::PP":           {Ecosystem: ecosystemCPAN, Package: "JSON-PP", Version: ">= 4.00", Floating: true},
 			"use Acme::Widget::Util": {},
-			"use Plack":              {Ecosystem: ecoCPAN, Package: "Plack", Version: "1.0050", Requested: ">= 1.0047", Pinned: true},
-			"use Cpanel::JSON::XS":   {Ecosystem: ecoCPAN, Package: "Cpanel-JSON-XS", Version: ">= 4.0", Floating: true},
+			"use Plack":              {Ecosystem: ecosystemCPAN, Package: "Plack", Version: "1.0050", Requested: ">= 1.0047", Pinned: true},
+			"use Cpanel::JSON::XS":   {Ecosystem: ecosystemCPAN, Package: "Cpanel-JSON-XS", Version: ">= 4.0", Floating: true},
 		},
 		"examples/tool/bin/run": {
-			"use Mojo::File": {Ecosystem: ecoCPAN, Package: "Mojolicious", Unresolved: true},
+			"use Mojo::File": {Ecosystem: ecosystemCPAN, Package: "Mojolicious", Unresolved: true},
 			"use Tool":       {Local: "examples/tool/modules/Tool.pm"},
 		},
 		"examples/tool/bin/run2": {
-			"use File::Spec":     {Ecosystem: ecoStd, Package: "File::Spec"},
-			"use File::Basename": {Ecosystem: ecoStd, Package: "File::Basename"},
+			"use File::Spec":     {Ecosystem: ecosystemStd, Package: "File::Spec"},
+			"use File::Basename": {Ecosystem: ecosystemStd, Package: "File::Basename"},
 			"use Tool":           {Local: "examples/tool/modules/Tool.pm"},
 			"require \"$FindBin::Bin/../modules/Tool.pm\"": {Local: "examples/tool/modules/Tool.pm"},
 		},
 		"lib/Shop.pm": {
-			"use Moose":                     {Ecosystem: ecoCPAN, Package: "Moose", Version: "2.2206", Pinned: true},
+			"use Moose":                     {Ecosystem: ecosystemCPAN, Package: "Moose", Version: "2.2206", Pinned: true},
 			"use Shop::Cart":                {Local: "lib/Shop/Cart.pm"},
-			"use Plack::Request":            {Ecosystem: ecoCPAN, Package: "Plack", Version: "1.0050", Requested: ">= 1.0047", Pinned: true},
-			"use LWP::UserAgent":            {Ecosystem: ecoCPAN, Package: "libwww-perl", Version: "6.72", Pinned: true},
-			"use Scalar::Util":              {Ecosystem: ecoCPAN, Package: "Scalar-List-Utils", Version: "1.63", Requested: ">= 1.45", Pinned: true},
-			"use Data::Dumper":              {Ecosystem: ecoStd, Package: "Data::Dumper"},
-			"use POSIX":                     {Ecosystem: ecoStd, Package: "POSIX"},
-			"use Mojo::UserAgent":           {Ecosystem: ecoCPAN, Package: "Mojolicious", Unresolved: true},
-			"use DateTime::Format::ISO8601": {Ecosystem: ecoCPAN, Package: "DateTime-Format-ISO8601", Unresolved: true},
-			"use Some::Unknown::Thing":      {Ecosystem: ecoCPAN, Package: "Some-Unknown-Thing", Unresolved: true},
-			"use constant":                  {Ecosystem: ecoStd, Package: "constant"},
+			"use Plack::Request":            {Ecosystem: ecosystemCPAN, Package: "Plack", Version: "1.0050", Requested: ">= 1.0047", Pinned: true},
+			"use LWP::UserAgent":            {Ecosystem: ecosystemCPAN, Package: "libwww-perl", Version: "6.72", Pinned: true},
+			"use Scalar::Util":              {Ecosystem: ecosystemCPAN, Package: "Scalar-List-Utils", Version: "1.63", Requested: ">= 1.45", Pinned: true},
+			"use Data::Dumper":              {Ecosystem: ecosystemStd, Package: "Data::Dumper"},
+			"use POSIX":                     {Ecosystem: ecosystemStd, Package: "POSIX"},
+			"use Mojo::UserAgent":           {Ecosystem: ecosystemCPAN, Package: "Mojolicious", Unresolved: true},
+			"use DateTime::Format::ISO8601": {Ecosystem: ecosystemCPAN, Package: "DateTime-Format-ISO8601", Unresolved: true},
+			"use Some::Unknown::Thing":      {Ecosystem: ecosystemCPAN, Package: "Some-Unknown-Thing", Unresolved: true},
+			"use constant":                  {Ecosystem: ecosystemStd, Package: "constant"},
 			"with Shop::Role::Priced":       {Local: "lib/Shop/Role/Priced.pm"},
 			"extends Shop::Base":            {Local: "lib/Shop/Base.pm"},
-			"require Try::Tiny":             {Ecosystem: ecoCPAN, Package: "Try-Tiny", Version: "0.31", Requested: ">= 0.30, < 1", Pinned: true},
-			"use JSON::XS":                  {Ecosystem: ecoCPAN, Package: "JSON-XS", Floating: true},
+			"require Try::Tiny":             {Ecosystem: ecosystemCPAN, Package: "Try-Tiny", Version: "0.31", Requested: ">= 0.30, < 1", Pinned: true},
+			"use JSON::XS":                  {Ecosystem: ecosystemCPAN, Package: "JSON-XS", Floating: true},
 		},
 		"lib/Shop/Cart.pm": {
-			"use parent":        {Ecosystem: ecoStd, Package: "parent"},
+			"use parent":        {Ecosystem: ecosystemStd, Package: "parent"},
 			"parent Shop::Base": {Local: "lib/Shop/Base.pm"},
-			"use base":          {Ecosystem: ecoStd, Package: "base"},
-			"base Exporter":     {Ecosystem: ecoStd, Package: "Exporter"},
-			"use Try::Tiny":     {Ecosystem: ecoCPAN, Package: "Try-Tiny", Version: "0.31", Requested: ">= 0.30, < 1", Pinned: true},
+			"use base":          {Ecosystem: ecosystemStd, Package: "base"},
+			"base Exporter":     {Ecosystem: ecosystemStd, Package: "Exporter"},
+			"use Try::Tiny":     {Ecosystem: ecosystemCPAN, Package: "Try-Tiny", Version: "0.31", Requested: ">= 0.30, < 1", Pinned: true},
 		},
 		"lib/Shop/Point.pm": {
-			"use experimental": {Ecosystem: ecoStd, Package: "experimental"},
+			"use experimental": {Ecosystem: ecosystemStd, Package: "experimental"},
 			":isa(Shop::Base)": {Local: "lib/Shop/Base.pm"},
 		},
 		"lib/Shop/Role/Priced.pm": {
-			"use Moose::Role": {Ecosystem: ecoCPAN, Package: "Moose", Version: "2.2206", Pinned: true},
+			"use Moose::Role": {Ecosystem: ecosystemCPAN, Package: "Moose", Version: "2.2206", Pinned: true},
 		},
 		"script/shop": {
-			"use Mojo::File": {Ecosystem: ecoCPAN, Package: "Mojolicious", Unresolved: true},
+			"use Mojo::File": {Ecosystem: ecosystemCPAN, Package: "Mojolicious", Unresolved: true},
 			"use Shop":       {Local: "lib/Shop.pm"},
 			"use Shop::Base": {Local: "lib/Shop/Base.pm"},
 		},
 		"t/basic.t": {
-			"use Test::More":                       {Ecosystem: ecoCPAN, Package: "Test-Simple", Version: ">= 0.98", Floating: true},
-			"use Test::Deep":                       {Ecosystem: ecoCPAN, Package: "Test-Deep", Floating: true},
-			"use FindBin":                          {Ecosystem: ecoStd, Package: "FindBin"},
+			"use Test::More":                       {Ecosystem: ecosystemCPAN, Package: "Test-Simple", Version: ">= 0.98", Floating: true},
+			"use Test::Deep":                       {Ecosystem: ecosystemCPAN, Package: "Test-Deep", Floating: true},
+			"use FindBin":                          {Ecosystem: ecosystemStd, Package: "FindBin"},
 			"use Shop::Inc":                        {Local: "inc/Shop/Inc.pm"},
 			"use TestHelper":                       {Local: "t/testlib/TestHelper.pm"},
 			"use Shop":                             {Local: "lib/Shop.pm"},
-			"use JSON::MaybeXS":                    {Ecosystem: ecoCPAN, Package: "JSON-MaybeXS", Version: "1.004005", Pinned: true},
+			"use JSON::MaybeXS":                    {Ecosystem: ecosystemCPAN, Package: "JSON-MaybeXS", Version: "1.004005", Pinned: true},
 			"do \"$FindBin::Bin/data/fixture.pl\"": {Local: "t/data/fixture.pl"},
 			"require \"t/data/fixture.pl\"":        {Local: "t/data/fixture.pl"},
 			"require \"missing.pl\"":               {},
 			"use_ok Shop::Cart":                    {Local: "lib/Shop/Cart.pm"},
 		},
 		"t/testlib/TestHelper.pm": {
-			"use Exporter": {Ecosystem: ecoStd, Package: "Exporter"},
+			"use Exporter": {Ecosystem: ecosystemStd, Package: "Exporter"},
 		},
 	}
 	for file, want := range imports {
-		t.Run(file, func(t *testing.T) { langtest.CheckImports(t, res[file], want) })
+		t.Run(file, func(t *testing.T) { langtest.CheckImports(t, results[file], want) })
 	}
 	for _, f := range []string{"local/lib/perl5/Plack.pm", "prolog/family.pl", "templates/page.t", "cpanfile.snapshot"} {
-		if _, ok := res[f]; ok {
+		if _, ok := results[f]; ok {
 			t.Errorf("%s: claimed", f)
 		}
 	}
@@ -159,7 +159,7 @@ func TestImportsAndManifests(t *testing.T) {
 //
 // Verifies: REQ-PERL-003
 func TestDefinitions(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
 	symbols := map[string]map[string]string{
 		"app.psgi":                      {},
 		"built/Build.PL":                {},
@@ -188,7 +188,7 @@ func TestDefinitions(t *testing.T) {
 		"t/testlib/TestHelper.pm":       {"TestHelper": "class", "TestHelper.helper": "function"},
 	}
 	for file, want := range symbols {
-		t.Run(file, func(t *testing.T) { langtest.CheckSymbols(t, res[file], want) })
+		t.Run(file, func(t *testing.T) { langtest.CheckSymbols(t, results[file], want) })
 	}
 }
 
@@ -199,27 +199,27 @@ func TestDefinitions(t *testing.T) {
 // Verifies: REQ-PERL-007
 func TestSnapshotDependencies(t *testing.T) {
 	r := newResolver("testdata/repo", langtest.Files(t, "testdata/repo"), Plugin{})
-	got := r.Dependencies(lang.Target{Ecosystem: ecoCPAN, Package: "Plack", Version: "1.0050", Pinned: true})
+	got := r.Dependencies(lang.Target{Ecosystem: ecosystemCPAN, Package: "Plack", Version: "1.0050", Pinned: true})
 	want := []lang.Target{
-		{Ecosystem: ecoCPAN, Package: "HTTP-Message", Version: "6.45", Pinned: true},
-		{Ecosystem: ecoCPAN, Package: "Try-Tiny", Version: "0.31", Pinned: true},
-		{Ecosystem: ecoCPAN, Package: "Hash-MultiValue", Version: ">= 0.05", Floating: true},
+		{Ecosystem: ecosystemCPAN, Package: "HTTP-Message", Version: "6.45", Pinned: true},
+		{Ecosystem: ecosystemCPAN, Package: "Try-Tiny", Version: "0.31", Pinned: true},
+		{Ecosystem: ecosystemCPAN, Package: "Hash-MultiValue", Version: ">= 0.05", Floating: true},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Plack: got %+v, want %+v", got, want)
 	}
-	got = r.Dependencies(lang.Target{Ecosystem: ecoCPAN, Package: "Moose", Version: "2.2206", Pinned: true})
+	got = r.Dependencies(lang.Target{Ecosystem: ecosystemCPAN, Package: "Moose", Version: "2.2206", Pinned: true})
 	want = []lang.Target{
-		{Ecosystem: ecoCPAN, Package: "Scalar-List-Utils", Version: "1.63", Pinned: true},
-		{Ecosystem: ecoCPAN, Package: "Try-Tiny", Version: "0.31", Pinned: true},
+		{Ecosystem: ecosystemCPAN, Package: "Scalar-List-Utils", Version: "1.63", Pinned: true},
+		{Ecosystem: ecosystemCPAN, Package: "Try-Tiny", Version: "0.31", Pinned: true},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("Moose: got %+v, want %+v", got, want)
 	}
-	if got := r.Dependencies(lang.Target{Ecosystem: ecoCPAN, Package: "Plack", Version: "1.0", Pinned: true}); got != nil {
+	if got := r.Dependencies(lang.Target{Ecosystem: ecosystemCPAN, Package: "Plack", Version: "1.0", Pinned: true}); got != nil {
 		t.Errorf("another version: %+v", got)
 	}
-	if got := r.Dependencies(lang.Target{Ecosystem: ecoStd, Package: "POSIX"}); got != nil {
+	if got := r.Dependencies(lang.Target{Ecosystem: ecosystemStd, Package: "POSIX"}); got != nil {
 		t.Errorf("core module: %+v", got)
 	}
 }
@@ -232,8 +232,8 @@ func TestSnapshotDependencies(t *testing.T) {
 // Verifies: REQ-PERL-002, REQ-PERL-010
 func TestScanner(t *testing.T) {
 	for _, c := range []struct {
-		name, src string
-		want      []string
+		name, source string
+		want         []string
 	}{
 		{"division then pattern", "my $x = $a / 2 / 3; my @p = split /,/, $s;\nuse A;\n", []string{"A"}},
 		{"pattern with quote", "if ($s =~ /it's/) { }\nuse A;\n", []string{"A"}},
@@ -260,8 +260,8 @@ func TestScanner(t *testing.T) {
 	} {
 		t.Run(c.name, func(t *testing.T) {
 			var got []string
-			for _, im := range readSource([]byte(c.src)).Imports {
-				got = append(got, im.Module)
+			for _, rawImport := range readSource([]byte(c.source)).Imports {
+				got = append(got, rawImport.Module)
 			}
 			if !reflect.DeepEqual(got, c.want) {
 				t.Errorf("got %q, want %q", got, c.want)
@@ -275,7 +275,7 @@ func TestScanner(t *testing.T) {
 //
 // Verifies: REQ-PERL-004, REQ-PERL-009
 func TestEvalPaths(t *testing.T) {
-	for src, want := range map[string]string{
+	for source, want := range map[string]string{
 		`"$FindBin::Bin/../lib"`:                           "\x01/../../lib",
 		`$FindBin::RealBin . '/lib'`:                       "\x01/../lib",
 		`File::Spec->catdir(dirname(__FILE__), 'lib')`:     "\x01/../lib",
@@ -287,9 +287,9 @@ func TestEvalPaths(t *testing.T) {
 		`$dir`:             "",
 		`somefunc('lib')`:  "",
 	} {
-		got, _ := evalPath(lex([]byte(src)))
+		got, _ := evalPath(lex([]byte(source)))
 		if got != want {
-			t.Errorf("%s: got %q, want %q", src, got, want)
+			t.Errorf("%s: got %q, want %q", source, got, want)
 		}
 	}
 }
@@ -326,16 +326,16 @@ func TestTruncated(t *testing.T) {
 		"=pod\n", "format X =\n", "sub f($", "use lib curfile->", "use constant {", "has [", "class X :isa(", "\"\\"} {
 		sources = append(sources, []byte("use A;\n"+s))
 	}
-	for _, src := range sources {
-		for i := 0; i <= len(src); i++ {
-			readSource(src[:i])
+	for _, source := range sources {
+		for i := 0; i <= len(source); i++ {
+			readSource(source[:i])
 			for _, class := range []string{classCpanfile, classMakefile, classDistIni} {
-				readManifest(class, "x", src[:i])
+				readManifest(class, "x", source[:i])
 			}
 		}
-		readManifest(classMeta, "META.json", src)
-		readManifest(classMeta, "META.yml", src)
-		readSnapshot(src)
+		readManifest(classMeta, "META.json", source)
+		readManifest(classMeta, "META.yml", source)
+		readSnapshot(source)
 	}
 	deep := strings.Repeat("{[(", 100000) + "use A;"
 	readSource([]byte(deep))

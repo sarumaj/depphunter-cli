@@ -15,19 +15,19 @@ import (
 // what they require (per module and per distribution), the distribution's own name
 // and the cpanfile.snapshot beside them.
 type project struct {
-	dir   string
-	name  string
-	reqs  map[string]req // module -> its first requirement
-	dists map[string]req // distribution -> the first requirement of a module it provides
-	snap  *snapshot
+	directory    string
+	name         string
+	requirements map[string]moduleRequirement // module -> its first requirement
+	dists        map[string]moduleRequirement // distribution -> the first requirement of a module it provides
+	snap         *snapshot
 }
 
 type resolver struct {
-	files    map[string]bool
-	projects []*project
-	byDir    map[string]*project
-	packages map[string][]string // package -> the files declaring it
-	suffixes map[string][]string // Foo/Bar.pm -> the .pm files ending so
+	files       map[string]bool
+	projects    []*project
+	byDirectory map[string]*project
+	packages    map[string][]string // package -> the files declaring it
+	suffixes    map[string][]string // Foo/Bar.pm -> the .pm files ending so
 }
 
 // ignored reports whether a path is inside what Carton installs into a project
@@ -36,11 +36,11 @@ type resolver struct {
 // Implements: REQ-PERL-001
 func ignored(p string) bool {
 	segments := strings.Split(p, "/")
-	for i, seg := range segments {
-		if seg == "blib" {
+	for i, segment := range segments {
+		if segment == "blib" {
 			return true
 		}
-		if seg == "local" && i+1 < len(segments) && (segments[i+1] == "bin" || segments[i+1] == "man" || segments[i+1] == "cache" ||
+		if segment == "local" && i+1 < len(segments) && (segments[i+1] == "bin" || segments[i+1] == "man" || segments[i+1] == "cache" ||
 			segments[i+1] == "lib" && i+2 < len(segments) && segments[i+2] == "perl5") {
 			return true
 		}
@@ -50,19 +50,19 @@ func ignored(p string) bool {
 
 // Implements: REQ-PERL-004, REQ-PERL-006, REQ-PERL-007
 func newResolver(root string, all []*scan.File, p Plugin) *resolver {
-	r := &resolver{files: map[string]bool{}, byDir: map[string]*project{}, packages: map[string][]string{}, suffixes: map[string][]string{}}
-	read := func(rel string) ([]byte, bool) {
-		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+	r := &resolver{files: map[string]bool{}, byDirectory: map[string]*project{}, packages: map[string][]string{}, suffixes: map[string][]string{}}
+	read := func(relative string) ([]byte, bool) {
+		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
 		return b, err == nil && len(b) <= lang.MaxParseSize
 	}
-	projectOf := func(dir string) *project {
-		pr := r.byDir[dir]
-		if pr == nil {
-			pr = &project{dir: dir, reqs: map[string]req{}, dists: map[string]req{}}
-			r.byDir[dir] = pr
-			r.projects = append(r.projects, pr)
+	projectOf := func(directory string) *project {
+		governing := r.byDirectory[directory]
+		if governing == nil {
+			governing = &project{directory: directory, requirements: map[string]moduleRequirement{}, dists: map[string]moduleRequirement{}}
+			r.byDirectory[directory] = governing
+			r.projects = append(r.projects, governing)
 		}
-		return pr
+		return governing
 	}
 	manifests := map[string][]*manifest{}
 	for _, f := range all {
@@ -71,16 +71,16 @@ func newResolver(root string, all []*scan.File, p Plugin) *resolver {
 			continue
 		}
 		base := path.Base(f.Path)
-		dir := path.Dir(f.Path)
+		directory := path.Dir(f.Path)
 		if class := manifestClass(base); class != "" {
 			if b, ok := read(f.Path); ok {
-				manifests[dir] = append(manifests[dir], readManifest(class, base, b))
-				projectOf(dir)
+				manifests[directory] = append(manifests[directory], readManifest(class, base, b))
+				projectOf(directory)
 			}
 			continue
 		}
 		if base == "cpanfile.snapshot" {
-			projectOf(dir)
+			projectOf(directory)
 			continue
 		}
 		if strings.HasSuffix(f.Path, ".pm") {
@@ -92,51 +92,51 @@ func newResolver(root string, all []*scan.File, p Plugin) *resolver {
 		}
 		if p.Claims(f) && f.Size <= lang.MaxParseSize {
 			if b, ok := read(f.Path); ok {
-				for _, pkg := range declaredPackages(b) {
-					r.packages[pkg] = append(r.packages[pkg], f.Path)
+				for _, packageName := range declaredPackages(b) {
+					r.packages[packageName] = append(r.packages[packageName], f.Path)
 				}
 			}
 		}
 	}
-	for _, pr := range r.projects {
+	for _, project := range r.projects {
 		// The snapshot is Carton's lock file; applications commit it, libraries
 		// often ignore it, so it is read from disk.
-		if b, ok := read(path.Join(pr.dir, "cpanfile.snapshot")); ok {
-			pr.snap = readSnapshot(b)
+		if b, ok := read(path.Join(project.directory, "cpanfile.snapshot")); ok {
+			project.snap = readSnapshot(b)
 		}
-		ms := manifests[pr.dir]
+		ms := manifests[project.directory]
 		// cpanfile first: it is what Carton installs from; then the build scripts
 		// and the metadata generated from them.
-		sort.SliceStable(ms, func(i, j int) bool { return len(ms[i].reqs) > 0 && len(ms[j].reqs) == 0 })
+		sort.SliceStable(ms, func(i, j int) bool { return len(ms[i].requirements) > 0 && len(ms[j].requirements) == 0 })
 		for _, m := range ms {
-			if pr.name == "" {
-				pr.name = m.name
+			if project.name == "" {
+				project.name = m.name
 			}
-			for _, rq := range m.reqs {
-				if rq.relation == "conflicts" || rq.module == "perl" {
+			for _, requirement := range m.requirements {
+				if requirement.relation == "conflicts" || requirement.module == "perl" {
 					continue
 				}
-				if _, ok := pr.reqs[rq.module]; !ok {
-					pr.reqs[rq.module] = rq
+				if _, ok := project.requirements[requirement.module]; !ok {
+					project.requirements[requirement.module] = requirement
 				}
-				d := pr.distOf(rq.module)
-				if old, ok := pr.dists[d]; !ok || old.relation != "requires" && rq.relation == "requires" {
-					pr.dists[d] = rq
+				d := project.distOf(requirement.module)
+				if old, ok := project.dists[d]; !ok || old.relation != "requires" && requirement.relation == "requires" {
+					project.dists[d] = requirement
 				}
 			}
 		}
 	}
 	sort.SliceStable(r.projects, func(i, j int) bool {
-		return depth(r.projects[i].dir) < depth(r.projects[j].dir) ||
-			depth(r.projects[i].dir) == depth(r.projects[j].dir) && r.projects[i].dir < r.projects[j].dir
+		return depth(r.projects[i].directory) < depth(r.projects[j].directory) ||
+			depth(r.projects[i].directory) == depth(r.projects[j].directory) && r.projects[i].directory < r.projects[j].directory
 	})
 	return r
 }
 
 // declaredPackages lists the packages (and classes) a source declares.
-func declaredPackages(src []byte) []string {
+func declaredPackages(source []byte) []string {
 	var out []string
-	for _, s := range readSource(src).Symbols {
+	for _, s := range readSource(source).Symbols {
 		if s.Kind == "class" {
 			out = append(out, strings.SplitN(s.Name, "@", 2)[0])
 		}
@@ -144,14 +144,16 @@ func declaredPackages(src []byte) []string {
 	return out
 }
 
-func depth(dir string) int {
-	if dir == "." {
+func depth(directory string) int {
+	if directory == "." {
 		return 0
 	}
-	return strings.Count(dir, "/") + 1
+	return strings.Count(directory, "/") + 1
 }
 
-func within(file, dir string) bool { return dir == "." || strings.HasPrefix(file, dir+"/") }
+func within(file, directory string) bool {
+	return directory == "." || strings.HasPrefix(file, directory+"/")
+}
 
 // distOf is the distribution providing a module as this project knows it: by its
 // snapshot, else by name.
@@ -169,7 +171,7 @@ func (p *project) distOf(module string) string {
 func (r *resolver) governing(file string) []*project {
 	var out []*project
 	for i := len(r.projects) - 1; i >= 0; i-- {
-		if within(file, r.projects[i].dir) {
+		if within(file, r.projects[i].directory) {
 			out = append(out, r.projects[i])
 		}
 	}
@@ -182,8 +184,8 @@ func (r *resolver) governing(file string) []*project {
 // distRoot is the directory of the nearest project above the file, else the root.
 func (r *resolver) distRoot(file string) string {
 	for i := len(r.projects) - 1; i >= 0; i-- {
-		if within(file, r.projects[i].dir) {
-			return r.projects[i].dir
+		if within(file, r.projects[i].directory) {
+			return r.projects[i].directory
 		}
 	}
 	return "."
@@ -192,16 +194,16 @@ func (r *resolver) distRoot(file string) string {
 // Resolve maps one import.
 //
 // Implements: REQ-PERL-004, REQ-PERL-005, REQ-PERL-008
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	lines := strings.Split(imp.Name, "\n")
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	lines := strings.Split(rawImport.Name, "\n")
 	switch lines[0] {
 	case kindModule:
-		return r.module(file, imp.Module, lines[1:], false)
+		return r.module(file, rawImport.Module, lines[1:], false)
 	case kindIsa:
-		return r.module(file, imp.Module, lines[1:], true)
+		return r.module(file, rawImport.Module, lines[1:], true)
 	case kindFile:
-		return r.file(file, imp.Module, lines[1:])
-	case kindDep:
+		return r.file(file, rawImport.Module, lines[1:])
+	case kindDependency:
 		version, origin := "", ""
 		if len(lines) > 1 {
 			version = lines[1]
@@ -209,18 +211,18 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 		if len(lines) > 2 {
 			origin = lines[2]
 		}
-		return r.dep(file, imp.Module, version, origin)
+		return r.dependency(file, rawImport.Module, version, origin)
 	}
 	return lang.Target{}
 }
 
-// libDirs are the directories a file's use lib entries name, project-relative. An
+// libraryDirectories are the directories a file's use lib entries name, project-relative. An
 // entry evalPath could not work out was left out by Extract.
 //
 // Implements: REQ-PERL-004, REQ-PERL-009
-func (r *resolver) libDirs(file string, libs []string) []string {
+func (r *resolver) libraryDirectories(file string, libraries []string) []string {
 	var out []string
-	for _, l := range libs {
+	for _, l := range libraries {
 		switch {
 		case l == "" || path.IsAbs(l) || strings.Contains(l[1:], selfMarker):
 		case strings.HasPrefix(l, selfMarker):
@@ -239,13 +241,13 @@ func (r *resolver) libDirs(file string, libs []string) []string {
 // roots are the directories a module is looked for under, in order: the file's use
 // lib directories, its distribution's lib, root and t/lib, the lib of every
 // directory above the file, and the repository's lib and root.
-func (r *resolver) roots(file string, libs []string) []string {
-	out := r.libDirs(file, libs)
+func (r *resolver) roots(file string, libraries []string) []string {
+	out := r.libraryDirectories(file, libraries)
 	d := r.distRoot(file)
 	out = append(out, path.Join(d, "lib"), d, path.Join(d, "t/lib"))
-	for dir := path.Dir(file); ; dir = path.Dir(dir) {
-		out = append(out, path.Join(dir, "lib"))
-		if dir == "." {
+	for directory := path.Dir(file); ; directory = path.Dir(directory) {
+		out = append(out, path.Join(directory, "lib"))
+		if directory == "." {
 			break
 		}
 	}
@@ -263,55 +265,55 @@ func (r *resolver) local(p string) bool {
 // packages first.
 //
 // Implements: REQ-PERL-004, REQ-PERL-005, REQ-PERL-008
-func (r *resolver) module(file, m string, libs []string, isa bool) lang.Target {
-	decl := r.packages[m]
+func (r *resolver) module(file, m string, libraries []string, isa bool) lang.Target {
+	declaration := r.packages[m]
 	if isa {
-		if contains(decl, file) {
+		if contains(declaration, file) {
 			return lang.Target{} // the same file declares it
 		}
-		if len(decl) == 1 {
-			return lang.Target{Local: decl[0]}
+		if len(declaration) == 1 {
+			return lang.Target{Local: declaration[0]}
 		}
 	}
-	rel := strings.ReplaceAll(m, "::", "/") + ".pm"
-	for _, root := range r.roots(file, libs) {
-		if p := path.Join(root, rel); r.local(p) {
+	relative := strings.ReplaceAll(m, "::", "/") + ".pm"
+	for _, root := range r.roots(file, libraries) {
+		if p := path.Join(root, relative); r.local(p) {
 			if p == file {
 				return lang.Target{}
 			}
 			return lang.Target{Local: p}
 		}
 	}
-	gov := r.governing(file)
-	if core[m] && !r.installed(gov, m) {
-		return lang.Target{Ecosystem: ecoStd, Package: m}
+	governing := r.governing(file)
+	if core[m] && !r.installed(governing, m) {
+		return lang.Target{Ecosystem: ecosystemStd, Package: m}
 	}
-	if t, ok := r.declared(gov, m, ""); ok {
+	if t, ok := r.declared(governing, m, ""); ok {
 		return t
 	}
 	// A project file ending in the module's path, when only one does: modules
 	// kept outside the usual roots. One-segment names (EV, DBI) are left alone:
 	// any Foo/EV.pm would match.
-	if fs := r.suffixes[rel]; len(fs) == 1 && strings.Contains(m, "::") && fs[0] != file {
-		return lang.Target{Local: fs[0]}
+	if files := r.suffixes[relative]; len(files) == 1 && strings.Contains(m, "::") && files[0] != file {
+		return lang.Target{Local: files[0]}
 	}
-	if contains(decl, file) {
+	if contains(declaration, file) {
 		return lang.Target{}
 	}
-	if len(decl) == 1 {
-		return lang.Target{Local: decl[0]}
+	if len(declaration) == 1 {
+		return lang.Target{Local: declaration[0]}
 	}
 	// A module of the project's own distribution that is not in the checkout (made
 	// at build time) is not a dependency.
-	for _, pr := range gov {
-		if own := strings.ReplaceAll(pr.name, "-", "::"); own != "" && (m == own || strings.HasPrefix(m, own+"::") || distOf(m) == pr.name) {
+	for _, project := range governing {
+		if own := strings.ReplaceAll(project.name, "-", "::"); own != "" && (m == own || strings.HasPrefix(m, own+"::") || distOf(m) == project.name) {
 			return lang.Target{}
 		}
 	}
 	if t, ok := r.declared(r.projects, m, ""); ok {
 		return t // declared by a project that does not govern the file
 	}
-	return lang.Target{Ecosystem: ecoCPAN, Package: distOf(m), Unresolved: true}
+	return lang.Target{Ecosystem: ecosystemCPAN, Package: distOf(m), Unresolved: true}
 }
 
 func contains(list []string, s string) bool {
@@ -328,17 +330,17 @@ func contains(list []string, s string) bool {
 // distribution) with a version, which perl's own copy may not satisfy.
 //
 // Implements: REQ-PERL-005
-func (r *resolver) installed(gov []*project, m string) bool {
-	for _, pr := range gov {
-		if pr.snap != nil {
-			if _, ok := pr.snap.provides[m]; ok {
+func (r *resolver) installed(governing []*project, m string) bool {
+	for _, project := range governing {
+		if project.snap != nil {
+			if _, ok := project.snap.provides[m]; ok {
 				return true
 			}
 		}
-		if rq, ok := pr.reqs[m]; ok && versioned(rq.version) {
+		if requirement, ok := project.requirements[m]; ok && versioned(requirement.version) {
 			return true
 		}
-		if rq, ok := pr.dists[pr.distOf(m)]; ok && versioned(rq.version) {
+		if requirement, ok := project.dists[project.distOf(m)]; ok && versioned(requirement.version) {
 			return true
 		}
 	}
@@ -355,27 +357,27 @@ func versioned(v string) bool {
 // provide and manifests require - the module's own, then the namespaces above it
 // (Plack::Request is Plack's). version, when set, is the requirement being resolved
 // (a manifest's own line).
-func (r *resolver) declared(gov []*project, m, version string) (lang.Target, bool) {
+func (r *resolver) declared(governing []*project, m, version string) (lang.Target, bool) {
 	segments := strings.Split(m, "::")
-	for _, pr := range gov {
-		if pr.snap == nil {
+	for _, project := range governing {
+		if project.snap == nil {
 			continue
 		}
 		for k := len(segments); k >= 1; k-- {
 			if k < len(segments) && walkStop[segments[k-1]] {
 				break
 			}
-			if d, ok := pr.snap.provides[strings.Join(segments[:k], "::")]; ok {
-				return r.target(gov, d, m, version), true
+			if d, ok := project.snap.provides[strings.Join(segments[:k], "::")]; ok {
+				return r.target(governing, d, m, version), true
 			}
 		}
 	}
 	for _, c := range candidates(m) {
-		for _, pr := range gov {
-			_, declared := pr.dists[c]
-			_, locked := pr.snap.dist(c)
+		for _, project := range governing {
+			_, declared := project.dists[c]
+			_, locked := project.snap.dist(c)
 			if declared || locked {
-				return r.target(gov, c, m, version), true
+				return r.target(governing, c, m, version), true
 			}
 		}
 	}
@@ -395,19 +397,19 @@ func (s *snapshot) dist(name string) (*snapDist, bool) {
 // ">= 1.2"; a range floats as written; no version (or 0) floats.
 //
 // Implements: REQ-PERL-007, REQ-PERL-008
-func (r *resolver) target(gov []*project, dist, m, version string) lang.Target {
-	t := lang.Target{Ecosystem: ecoCPAN, Package: dist}
+func (r *resolver) target(governing []*project, dist, m, version string) lang.Target {
+	t := lang.Target{Ecosystem: ecosystemCPAN, Package: dist}
 	if version == "" {
-		for _, pr := range gov {
-			if rq, ok := pr.dists[dist]; ok {
-				version = rq.version
+		for _, project := range governing {
+			if requirement, ok := project.dists[dist]; ok {
+				version = requirement.version
 				break
 			}
 		}
 	}
 	requested := requirement(version)
-	for _, pr := range gov {
-		if d, ok := pr.snap.dist(dist); ok {
+	for _, project := range governing {
+		if d, ok := project.snap.dist(dist); ok {
 			t.Version, t.Pinned = d.version, true
 			if requested != "" && strings.TrimPrefix(requested, "== ") != d.version {
 				t.Requested = requested
@@ -446,7 +448,7 @@ func requirement(v string) string {
 // (the working directory) and the file's own directory.
 //
 // Implements: REQ-PERL-004
-func (r *resolver) file(file, p string, libs []string) lang.Target {
+func (r *resolver) file(file, p string, libraries []string) lang.Target {
 	var candidates []string
 	switch {
 	case path.IsAbs(p) || strings.Contains(p[1:], selfMarker):
@@ -454,7 +456,7 @@ func (r *resolver) file(file, p string, libs []string) lang.Target {
 	case strings.HasPrefix(p, selfMarker):
 		candidates = []string{path.Clean(path.Join(file, p[len(selfMarker):]))}
 	default:
-		for _, d := range append(r.libDirs(file, libs), r.distRoot(file), ".", path.Dir(file)) {
+		for _, d := range append(r.libraryDirectories(file, libraries), r.distRoot(file), ".", path.Dir(file)) {
 			candidates = append(candidates, path.Clean(path.Join(d, p)))
 		}
 	}
@@ -466,22 +468,22 @@ func (r *resolver) file(file, p string, libs []string) lang.Target {
 	return lang.Target{}
 }
 
-// dep resolves a manifest's requirement of a module to its distribution; a core
+// dependency resolves a manifest's requirement of a module to its distribution; a core
 // module required without a version is perl's own.
 //
 // Implements: REQ-PERL-005, REQ-PERL-006, REQ-PERL-008
-func (r *resolver) dep(file, m, version, origin string) lang.Target {
-	gov := r.governing(file)
-	if core[m] && !r.installed(gov, m) {
-		return lang.Target{Ecosystem: ecoStd, Package: m}
+func (r *resolver) dependency(file, m, version, origin string) lang.Target {
+	governing := r.governing(file)
+	if core[m] && !r.installed(governing, m) {
+		return lang.Target{Ecosystem: ecosystemStd, Package: m}
 	}
 	if origin != "" {
-		return lang.Target{Ecosystem: ecoCPAN, Package: distOf(m), Origin: origin, Version: requirement(version)}
+		return lang.Target{Ecosystem: ecosystemCPAN, Package: distOf(m), Origin: origin, Version: requirement(version)}
 	}
-	if t, ok := r.declared(gov, m, version); ok {
+	if t, ok := r.declared(governing, m, version); ok {
 		return t
 	}
-	return r.target(gov, distOf(m), m, version)
+	return r.target(governing, distOf(m), m, version)
 }
 
 // Dependencies answers --resolve-depth from cpanfile.snapshot, which records what
@@ -491,41 +493,41 @@ func (r *resolver) dep(file, m, version, origin string) lang.Target {
 //
 // Implements: REQ-PERL-007
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
-	if t.Ecosystem != ecoCPAN {
+	if t.Ecosystem != ecosystemCPAN {
 		return nil
 	}
-	for _, pr := range r.projects {
-		d, ok := pr.snap.dist(t.Package)
+	for _, project := range r.projects {
+		d, ok := project.snap.dist(t.Package)
 		if !ok || t.Pinned && t.Version != d.version {
 			continue
 		}
 		out := []lang.Target{}
 		seen := map[string]bool{t.Package: true}
-		for _, rq := range d.requires {
-			if rq.module == "perl" {
+		for _, required := range d.requires {
+			if required.module == "perl" {
 				continue
 			}
-			name, ok := pr.snap.provides[rq.module]
+			name, ok := project.snap.provides[required.module]
 			switch {
 			case ok:
-			case core[rq.module]:
+			case core[required.module]:
 				continue
 			default:
-				name = distOf(rq.module)
+				name = distOf(required.module)
 			}
 			if seen[name] {
 				continue
 			}
 			seen[name] = true
-			dt := lang.Target{Ecosystem: ecoCPAN, Package: name}
-			if sd, ok := pr.snap.dist(name); ok {
-				dt.Version, dt.Pinned = sd.version, true
-			} else if v := requirement(rq.version); v != "" {
-				dt.Version, dt.Floating = v, true
+			dependencyTarget := lang.Target{Ecosystem: ecosystemCPAN, Package: name}
+			if snapshotDist, ok := project.snap.dist(name); ok {
+				dependencyTarget.Version, dependencyTarget.Pinned = snapshotDist.version, true
+			} else if v := requirement(required.version); v != "" {
+				dependencyTarget.Version, dependencyTarget.Floating = v, true
 			} else {
-				dt.Floating = true
+				dependencyTarget.Floating = true
 			}
-			out = append(out, dt)
+			out = append(out, dependencyTarget)
 		}
 		return out
 	}

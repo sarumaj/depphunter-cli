@@ -7,12 +7,12 @@ import "testing"
 //
 // Verifies: REQ-SUP-061
 func TestCompareVersions(t *testing.T) {
-	for _, tt := range [][2]string{
+	for _, test := range [][2]string{
 		{"1.9.0", "1.10.0"}, {"1.0.0-rc1", "1.0.0"}, {"1.0.0-alpha", "1.0.0-alpha.1"}, {"1.0.0-alpha.2", "1.0.0-alpha.10"},
 		{"1.0.0-2", "1.0.0-alpha"}, {"1.0", "1.0.1"}, {"24.0.0", "25.0.0-rc"},
 	} {
-		if CompareVersions(tt[0], tt[1]) >= 0 || CompareVersions(tt[1], tt[0]) <= 0 {
-			t.Errorf("%s should come before %s", tt[0], tt[1])
+		if CompareVersions(test[0], test[1]) >= 0 || CompareVersions(test[1], test[0]) <= 0 {
+			t.Errorf("%s should come before %s", test[0], test[1])
 		}
 	}
 	if CompareVersions("1.0.0+build", "1.0.0") != 0 || CompareVersions("1.0", "1.0.0") != 0 {
@@ -26,7 +26,7 @@ func TestCompareVersions(t *testing.T) {
 //
 // Verifies: REQ-SUP-061
 func TestSatisfies(t *testing.T) {
-	for _, tt := range []struct {
+	for _, test := range []struct {
 		version, constraint string
 		want                bool
 	}{
@@ -49,8 +49,8 @@ func TestSatisfies(t *testing.T) {
 		{"5.0.0", "", true},
 		{"5.0.0", "main", false},
 	} {
-		if got := Satisfies(tt.version, tt.constraint); got != tt.want {
-			t.Errorf("Satisfies(%q, %q) = %v", tt.version, tt.constraint, got)
+		if got := Satisfies(test.version, test.constraint); got != test.want {
+			t.Errorf("Satisfies(%q, %q) = %v", test.version, test.constraint, got)
 		}
 	}
 	if got := Newest([]string{"25.1.0", "26.0.0-rc1", "25.2.0", "external"}, "*"); got != "25.2.0" {

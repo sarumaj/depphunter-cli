@@ -15,8 +15,8 @@ import (
 )
 
 const (
-	ecoMaven = "maven"
-	ecoJDK   = "jdk"
+	ecosystemMaven = "maven"
+	ecosystemJDK   = "jdk"
 )
 
 const query = `
@@ -42,8 +42,8 @@ func (Plugin) Version() int             { return 3 }
 func (Plugin) Claims(f *scan.File) bool { return strings.HasSuffix(f.Path, ".java") && !f.Binary }
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoMaven, Name: "Maven"},
-		{ID: ecoJDK, Name: "Java standard library", Std: true},
+		{ID: ecosystemMaven, Name: "Maven"},
+		{ID: ecosystemJDK, Name: "Java standard library", Std: true},
 	}
 }
 
@@ -51,10 +51,10 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 	return newResolver(all, Language{}), nil
 }
 
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
-	ex := &lang.Extraction{}
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
+	extraction := &lang.Extraction{}
 	var symbols lang.SymbolSet
-	err := grammar.Matches(src, func(m treesitter.Match) {
+	err := grammar.Matches(source, func(m treesitter.Match) {
 		for _, c := range m {
 			switch {
 			case c.Name == "import":
@@ -63,11 +63,11 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 				if len(fields) < 2 {
 					continue
 				}
-				imp := lang.RawImport{Spec: strings.Join(fields, " "), Module: strings.Join(fields[1:], ""), Line: c.Line}
+				rawImport := lang.RawImport{Spec: strings.Join(fields, " "), Module: strings.Join(fields[1:], ""), Line: c.Line}
 				if fields[1] == "static" {
-					imp.Module, imp.Name = strings.Join(fields[2:], ""), "static"
+					rawImport.Module, rawImport.Name = strings.Join(fields[2:], ""), "static"
 				}
-				ex.Imports = append(ex.Imports, imp)
+				extraction.Imports = append(extraction.Imports, rawImport)
 			case c.Name == "def.method":
 				owner := c.EnclosingName("class_declaration", "enum_declaration", "record_declaration")
 				symbols.Add(owner+"."+c.Text, "method", c.Line)
@@ -76,6 +76,6 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 			}
 		}
 	})
-	ex.Symbols = symbols.List()
-	return ex, err
+	extraction.Symbols = symbols.List()
+	return extraction, err
 }

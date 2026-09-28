@@ -17,12 +17,12 @@ import (
 )
 
 type resolver struct {
-	root    string
-	files   map[string]bool
-	dirs    map[string]bool
-	modules map[string][]string // module -> directories of the targets building it, shallowest first
-	named   map[string][]string // directory base name -> directories holding Swift, shallowest first
-	targets []string            // target directories, deepest first
+	root        string
+	files       map[string]bool
+	directories map[string]bool
+	modules     map[string][]string // module -> directories of the targets building it, shallowest first
+	named       map[string][]string // directory base name -> directories holding Swift, shallowest first
+	targets     []string            // target directories, deepest first
 	// projects are the directories with a Package.swift or an Xcode project,
 	// shallowest first.
 	projects []*project
@@ -37,47 +37,47 @@ var _ lang.Noter = (*resolver)(nil)
 // project is what one directory's manifests say: Package.swift, the Xcode projects
 // and workspaces beside it, and their Package.resolved files.
 type project struct {
-	dir      string
-	declared map[string]dependency // identity -> declaration
-	pins     map[string]pin        // identity -> what Package.resolved pins
-	products map[string]string     // product -> package identity (or pre-5.2 package name)
-	names    map[string]string     // pre-5.2 `name:` of a package, lower case -> identity
+	directory string
+	declared  map[string]dependency // identity -> declaration
+	pins      map[string]pin        // identity -> what Package.resolved pins
+	products  map[string]string     // product -> package identity (or pre-5.2 package name)
+	names     map[string]string     // pre-5.2 `name:` of a package, lower case -> identity
 }
 
 // Implements: REQ-SWIFT-004, REQ-SWIFT-007, REQ-SWIFT-009, REQ-SWIFT-010, REQ-SWIFT-011, REQ-SWIFT-013
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{root: root, files: map[string]bool{}, dirs: map[string]bool{}, modules: map[string][]string{},
+	r := &resolver{root: root, files: map[string]bool{}, directories: map[string]bool{}, modules: map[string][]string{},
 		named: map[string][]string{}, types: map[string][]string{}}
 	sorted := append([]*scan.File(nil), all...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Path < sorted[j].Path })
-	abs := map[string]string{}
-	byDir := map[string]*project{}
-	get := func(dir string) *project {
-		p := byDir[dir]
+	absolute := map[string]string{}
+	byDirectory := map[string]*project{}
+	get := func(directory string) *project {
+		p := byDirectory[directory]
 		if p == nil {
-			p = &project{dir: dir, declared: map[string]dependency{}, pins: map[string]pin{}, products: map[string]string{}, names: map[string]string{}}
-			byDir[dir] = p
+			p = &project{directory: directory, declared: map[string]dependency{}, pins: map[string]pin{}, products: map[string]string{}, names: map[string]string{}}
+			byDirectory[directory] = p
 		}
 		return p
 	}
-	read := func(rel string) (string, bool) {
-		if a, ok := abs[rel]; ok {
+	read := func(relative string) (string, bool) {
+		if a, ok := absolute[relative]; ok {
 			return readFile(a)
 		}
-		if root == "" || !inside(rel) {
+		if root == "" || !inside(relative) {
 			return "", false
 		}
-		return readFile(filepath.Join(root, filepath.FromSlash(rel))) // a file the scan left out
+		return readFile(filepath.Join(root, filepath.FromSlash(relative))) // a file the scan left out
 	}
-	var swiftDirs []string
+	var swiftDirectories []string
 	for _, f := range sorted {
 		r.files[f.Path] = true
-		abs[f.Path] = f.Abs
-		for d := path.Dir(f.Path); d != "." && !r.dirs[d]; d = path.Dir(d) {
-			r.dirs[d] = true
+		absolute[f.Path] = f.AbsolutePath
+		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
+			r.directories[d] = true
 		}
 		if strings.HasSuffix(f.Path, ".swift") && !buildOutput(f.Path) {
-			swiftDirs = append(swiftDirs, path.Dir(f.Path))
+			swiftDirectories = append(swiftDirectories, path.Dir(f.Path))
 		}
 	}
 	var manifests []string
@@ -85,24 +85,24 @@ func newResolver(root string, all []*scan.File) *resolver {
 		if buildOutput(f.Path) {
 			continue
 		}
-		dir, base := path.Dir(f.Path), path.Base(f.Path)
+		directory, base := path.Dir(f.Path), path.Base(f.Path)
 		switch {
 		case base == "Package.swift":
 			manifests = append(manifests, f.Path)
-		case base == "project.pbxproj" && strings.HasSuffix(dir, ".xcodeproj"):
-			src, _ := read(f.Path)
-			p := get(path.Dir(dir))
-			deps, products := xcodePackages(src)
-			for _, d := range deps {
-				p.declare(d, path.Dir(dir))
+		case base == "project.pbxproj" && strings.HasSuffix(directory, ".xcodeproj"):
+			source, _ := read(f.Path)
+			p := get(path.Dir(directory))
+			dependencies, products := xcodePackages(source)
+			for _, d := range dependencies {
+				p.declare(d, path.Dir(directory))
 			}
 			for k, v := range products {
 				p.products[k] = v
 			}
-		case base == "Package.resolved" && strings.HasSuffix(dir, "xcshareddata/swiftpm"):
+		case base == "Package.resolved" && strings.HasSuffix(directory, "xcshareddata/swiftpm"):
 			// X.xcodeproj/project.xcworkspace/xcshareddata/swiftpm or
 			// X.xcworkspace/xcshareddata/swiftpm: the project is beside X.
-			d := dir
+			d := directory
 			for d != "." && !strings.HasSuffix(d, ".xcodeproj") && !strings.HasSuffix(d, ".xcworkspace") {
 				d = path.Dir(d)
 			}
@@ -110,53 +110,53 @@ func newResolver(root string, all []*scan.File) *resolver {
 				d = path.Dir(d)
 			}
 			if d != "." {
-				src, _ := read(f.Path)
-				pins := readResolved([]byte(src))
+				source, _ := read(f.Path)
+				pins := readResolved([]byte(source))
 				get(path.Dir(d)).pin(pins)
 				r.noteResolved(f.Path, path.Dir(d), len(pins))
 			}
 		}
 	}
 	for _, m := range manifests {
-		dir := path.Dir(m)
-		src, _ := read(m)
-		src = stripComments(src)
-		p := get(dir)
-		for _, d := range dependencies(src) {
-			p.declare(d, dir)
+		directory := path.Dir(m)
+		source, _ := read(m)
+		source = stripComments(source)
+		p := get(directory)
+		for _, d := range dependencies(source) {
+			p.declare(d, directory)
 		}
-		for _, t := range targets(src) {
+		for _, t := range targets(source) {
 			for k, v := range t.products {
 				p.products[k] = v
 			}
-			if d := r.targetDir(dir, t); d != "" {
+			if d := r.targetDirectory(directory, t); d != "" {
 				name := c99name(t.name)
 				r.modules[name] = append(r.modules[name], d)
 				r.targets = append(r.targets, d)
 			}
 		}
-		if lock, ok := read(path.Join(dir, "Package.resolved")); ok {
+		if lock, ok := read(path.Join(directory, "Package.resolved")); ok {
 			pins := readResolved([]byte(lock))
 			p.pin(pins)
-			if _, listed := abs[path.Join(dir, "Package.resolved")]; !listed && len(pins) > 0 {
-				r.NoteIgnored(path.Join(dir, "Package.resolved"))
+			if _, listed := absolute[path.Join(directory, "Package.resolved")]; !listed && len(pins) > 0 {
+				r.NoteIgnored(path.Join(directory, "Package.resolved"))
 			}
-			r.noteResolved(path.Join(dir, "Package.resolved"), dir, len(pins))
+			r.noteResolved(path.Join(directory, "Package.resolved"), directory, len(pins))
 		}
 	}
-	for _, p := range byDir {
+	for _, p := range byDirectory {
 		r.projects = append(r.projects, p)
 	}
 	sort.Slice(r.projects, func(i, j int) bool {
-		a, b := r.projects[i].dir, r.projects[j].dir
+		a, b := r.projects[i].directory, r.projects[j].directory
 		if depth(a) != depth(b) {
 			return depth(a) < depth(b)
 		}
 		return a < b
 	})
-	for name, dirs := range r.modules {
-		sortShallow(dirs)
-		r.modules[name] = dirs
+	for name, directories := range r.modules {
+		sortShallow(directories)
+		r.modules[name] = directories
 	}
 	sort.Slice(r.targets, func(i, j int) bool {
 		a, b := r.targets[i], r.targets[j]
@@ -169,7 +169,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 	// Swift, or holding directories that do, by its name - except dependency
 	// checkouts (CocoaPods, Carthage).
 	seen := map[string]bool{}
-	for _, d := range swiftDirs {
+	for _, d := range swiftDirectories {
 		for ; d != "." && !seen[d]; d = path.Dir(d) {
 			seen[d] = true
 			if !vendored(d) {
@@ -177,9 +177,9 @@ func newResolver(root string, all []*scan.File) *resolver {
 			}
 		}
 	}
-	for name, dirs := range r.named {
-		sortShallow(dirs)
-		r.named[name] = dirs
+	for name, directories := range r.named {
+		sortShallow(directories)
+		r.named[name] = directories
 	}
 	r.indexTypes(sorted)
 	r.pods = cocoapods.Read(root, all)
@@ -188,7 +188,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 
 // declare records a dependency; a path dependency's path is made relative to the
 // repository root.
-func (p *project) declare(d dependency, dir string) {
+func (p *project) declare(d dependency, directory string) {
 	switch {
 	case d.url != "":
 		p.declared[identity(d.url)] = d
@@ -196,7 +196,7 @@ func (p *project) declare(d dependency, dir string) {
 			p.names[strings.ToLower(d.name)] = identity(d.url)
 		}
 	case d.path != "":
-		d.path = path.Join(dir, d.path)
+		d.path = path.Join(directory, d.path)
 		p.declared[identity(d.path)] = d
 		if d.name != "" {
 			p.names[strings.ToLower(d.name)] = identity(d.path)
@@ -217,12 +217,12 @@ func (p *project) pin(pins []pin) {
 // under .build/checkouts, which this project has none of.
 //
 // Implements: REQ-SWIFT-012, REQ-TRC-017
-func (r *resolver) noteResolved(file, dir string, pins int) {
+func (r *resolver) noteResolved(file, directory string, pins int) {
 	if pins == 0 {
 		return
 	}
 	if r.root != "" {
-		if fi, err := os.Stat(filepath.Join(r.root, filepath.FromSlash(dir), ".build", "checkouts")); err == nil && fi.IsDir() {
+		if fileInfo, err := os.Stat(filepath.Join(r.root, filepath.FromSlash(directory), ".build", "checkouts")); err == nil && fileInfo.IsDir() {
 			return
 		}
 	}
@@ -237,13 +237,13 @@ func (p *project) has(id string) bool {
 	return declared || pinned
 }
 
-// targetDir is where a target's sources are: its path:, else SwiftPM's default -
+// targetDirectory is where a target's sources are: its path:, else SwiftPM's default -
 // Tests/<name> for a test target, Plugins/<name> for a plugin, else
 // Sources/<name> (or Source, src, srcs). A directory without files is none.
-func (r *resolver) targetDir(dir string, t target) string {
+func (r *resolver) targetDirectory(directory string, t target) string {
 	if t.path != "" {
-		d := path.Join(dir, t.path)
-		if inside(d) && (r.dirs[d] || d == ".") {
+		d := path.Join(directory, t.path)
+		if inside(d) && (r.directories[d] || d == ".") {
 			return d
 		}
 		return ""
@@ -256,33 +256,33 @@ func (r *resolver) targetDir(dir string, t target) string {
 		parents = []string{"Plugins"}
 	}
 	for _, parent := range parents {
-		if d := path.Join(dir, parent, t.name); r.dirs[d] {
+		if d := path.Join(directory, parent, t.name); r.directories[d] {
 			return d
 		}
 	}
 	return ""
 }
 
-func sortShallow(dirs []string) {
-	sort.SliceStable(dirs, func(i, j int) bool {
-		if depth(dirs[i]) != depth(dirs[j]) {
-			return depth(dirs[i]) < depth(dirs[j])
+func sortShallow(directories []string) {
+	sort.SliceStable(directories, func(i, j int) bool {
+		if depth(directories[i]) != depth(directories[j]) {
+			return depth(directories[i]) < depth(directories[j])
 		}
-		return dirs[i] < dirs[j]
+		return directories[i] < directories[j]
 	})
 }
 
-func depth(dir string) int {
-	if dir == "." {
+func depth(directory string) int {
+	if directory == "." {
 		return 0
 	}
-	return strings.Count(dir, "/") + 1
+	return strings.Count(directory, "/") + 1
 }
 
 // vendored reports whether a directory holds checkouts of dependencies.
 func vendored(d string) bool {
-	for _, seg := range strings.Split(d, "/") {
-		switch seg {
+	for _, segment := range strings.Split(d, "/") {
+		switch segment {
 		case "Pods", "Carthage", "checkouts", "SourcePackages", ".build":
 			return true
 		}
@@ -294,12 +294,12 @@ func inside(p string) bool {
 	return p != ".." && !strings.HasPrefix(p, "../") && !path.IsAbs(p)
 }
 
-func readFile(abs string) (string, bool) {
-	fi, err := os.Stat(abs)
-	if err != nil || fi.IsDir() || fi.Size() > lang.MaxParseSize {
+func readFile(absolute string) (string, bool) {
+	fileInfo, err := os.Stat(absolute)
+	if err != nil || fileInfo.IsDir() || fileInfo.Size() > lang.MaxParseSize {
 		return "", false
 	}
-	b, err := os.ReadFile(abs)
+	b, err := os.ReadFile(absolute)
 	return string(b), err == nil
 }
 
@@ -318,11 +318,11 @@ func (r *resolver) indexTypes(files []*scan.File) {
 		if !strings.HasSuffix(f.Path, ".swift") || buildOutput(f.Path) || f.Binary || f.TooLarge || f.Size > lang.MaxParseSize {
 			continue
 		}
-		src, ok := readFile(f.Abs)
-		if !ok || manifest([]byte(src)) {
+		source, ok := readFile(f.AbsolutePath)
+		if !ok || manifest([]byte(source)) {
 			continue
 		}
-		for _, m := range topLevelType.FindAllStringSubmatch(stripComments(src), -1) {
+		for _, m := range topLevelType.FindAllStringSubmatch(stripComments(source), -1) {
 			if strings.Contains(m[1], "private") {
 				continue
 			}
@@ -334,22 +334,22 @@ func (r *resolver) indexTypes(files []*scan.File) {
 }
 
 // Implements: REQ-SWIFT-004, REQ-SWIFT-005, REQ-SWIFT-006, REQ-SWIFT-007, REQ-SWIFT-011
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	kind, scope, _ := strings.Cut(imp.Name, ":")
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	kind, scope, _ := strings.Cut(rawImport.Name, ":")
 	switch kind {
 	case kindImport:
-		return r.module(file, imp.Module)
+		return r.module(file, rawImport.Module)
 	case kindURL:
-		return r.pkg(r.projectsOf(file), identity(imp.Module), imp.Module)
+		return r.packageName(r.projectsOf(file), identity(rawImport.Module), rawImport.Module)
 	case kindID:
-		return r.pkg(r.projectsOf(file), strings.ToLower(imp.Module), imp.Module)
+		return r.packageName(r.projectsOf(file), strings.ToLower(rawImport.Module), rawImport.Module)
 	case kindPath:
-		d := path.Clean(path.Dir(file) + strings.TrimPrefix(imp.Module, "__DIR__"))
-		if inside(d) && r.dirs[d] {
+		d := path.Clean(path.Dir(file) + strings.TrimPrefix(rawImport.Module, "__DIR__"))
+		if inside(d) && r.directories[d] {
 			return lang.Target{Local: d}
 		}
 	case kindType:
-		return r.typeRef(file, imp.Module, scope)
+		return r.typeReference(file, rawImport.Module, scope)
 	}
 	return lang.Target{}
 }
@@ -363,36 +363,36 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 // Implements: REQ-SWIFT-004, REQ-SWIFT-005, REQ-SWIFT-007, REQ-OBJC-012
 func (r *resolver) module(file, m string) lang.Target {
 	own := r.moduleOf(file)
-	if dirs := r.modules[m]; len(dirs) > 0 {
-		d := r.nearest(file, dirs)
+	if directories := r.modules[m]; len(directories) > 0 {
+		d := r.nearest(file, directories)
 		if d == own {
 			return lang.Target{}
 		}
 		return lang.Target{Local: d}
 	}
 	if stdModules[m] {
-		return lang.Target{Ecosystem: ecoStd, Package: m}
+		return lang.Target{Ecosystem: ecosystemStd, Package: m}
 	}
 	if appleModules[m] {
-		return lang.Target{Ecosystem: ecoApple, Package: m}
+		return lang.Target{Ecosystem: ecosystemApple, Package: m}
 	}
 	projects := r.projectsOf(file)
 	if id, ok := r.packageOf(projects, m); ok {
-		return r.pkg(projects, id, "")
+		return r.packageName(projects, id, "")
 	}
 	if t, ok := r.pods.Module(file, m); ok {
 		return t // a pod or Carthage framework of an app built with CocoaPods or Carthage
 	}
-	if dirs := r.named[m]; len(dirs) > 0 {
-		if d := r.nearest(file, dirs); d != own {
+	if directories := r.named[m]; len(directories) > 0 {
+		if d := r.nearest(file, directories); d != own {
 			return lang.Target{Local: d}
 		}
 		return lang.Target{}
 	}
 	if url := knownPackages[m]; url != "" {
-		return lang.Target{Ecosystem: ecoSwiftPM, Package: url, Unresolved: true}
+		return lang.Target{Ecosystem: ecosystemSwiftPM, Package: url, Unresolved: true}
 	}
-	return lang.Target{Ecosystem: ecoSwiftPM, Package: m, Unresolved: true}
+	return lang.Target{Ecosystem: ecosystemSwiftPM, Package: m, Unresolved: true}
 }
 
 // packageOf names the declared package a module comes from: the package a target
@@ -428,7 +428,7 @@ func (r *resolver) packageOf(projects []*project, m string) (string, bool) {
 		return identity(url), true
 	}
 	want := fold(m)
-	best, bestLen := "", 0
+	best, bestLength := "", 0
 	for _, p := range projects {
 		for _, id := range p.identities() {
 			f := fold(id)
@@ -437,8 +437,8 @@ func (r *resolver) packageOf(projects []*project, m string) (string, bool) {
 			switch {
 			case f == want || short == want || strings.TrimSuffix(f, "swift") == want || dotted && fold(after) == want:
 				return id, true
-			case len(short) >= 3 && strings.HasPrefix(want, short) && len(short) > bestLen:
-				best, bestLen = id, len(short)
+			case len(short) >= 3 && strings.HasPrefix(want, short) && len(short) > bestLength:
+				best, bestLength = id, len(short)
 			}
 		}
 	}
@@ -461,21 +461,21 @@ func (p *project) identities() []string {
 	return out
 }
 
-// pkg is the target of a package identity: pinned by the nearest project whose
+// packageName is the target of a package identity: pinned by the nearest project whose
 // Package.resolved has it, else as the nearest project declaring it asks for it. A
 // path dependency is its directory.
 //
 // Implements: REQ-SWIFT-006, REQ-SWIFT-008, REQ-SWIFT-009
-func (r *resolver) pkg(projects []*project, id, spelled string) lang.Target {
+func (r *resolver) packageName(projects []*project, id, spelled string) lang.Target {
 	var d *dependency
 	for _, p := range projects {
-		if dep, ok := p.declared[id]; ok {
-			d = &dep
+		if dependency, ok := p.declared[id]; ok {
+			d = &dependency
 			break
 		}
 	}
 	if d != nil && d.path != "" {
-		if inside(d.path) && r.dirs[d.path] {
+		if inside(d.path) && r.directories[d.path] {
 			return lang.Target{Local: d.path}
 		}
 		return lang.Target{}
@@ -485,7 +485,7 @@ func (r *resolver) pkg(projects []*project, id, spelled string) lang.Target {
 		if !ok {
 			continue
 		}
-		t := lang.Target{Ecosystem: ecoSwiftPM, Package: packageName(q.location), Version: q.version, Pinned: true}
+		t := lang.Target{Ecosystem: ecosystemSwiftPM, Package: packageName(q.location), Version: q.version, Pinned: true}
 		if q.registry {
 			t.Package = q.location
 		}
@@ -508,13 +508,13 @@ func (r *resolver) pkg(projects []*project, id, spelled string) lang.Target {
 		if strings.Contains(name, "/") {
 			name = packageName(name)
 		}
-		return lang.Target{Ecosystem: ecoSwiftPM, Package: name, Unresolved: true}
+		return lang.Target{Ecosystem: ecosystemSwiftPM, Package: name, Unresolved: true}
 	}
 	name := d.id
 	if d.url != "" {
 		name = packageName(d.url)
 	}
-	return lang.Target{Ecosystem: ecoSwiftPM, Package: name, Version: d.requirement, Pinned: d.pinned, Floating: d.floating}
+	return lang.Target{Ecosystem: ecosystemSwiftPM, Package: name, Version: d.requirement, Pinned: d.pinned, Floating: d.floating}
 }
 
 // projectsOf lists the projects a file belongs to, nearest first; a file under none
@@ -522,7 +522,7 @@ func (r *resolver) pkg(projects []*project, id, spelled string) lang.Target {
 func (r *resolver) projectsOf(file string) []*project {
 	var out []*project
 	for i := len(r.projects) - 1; i >= 0; i-- {
-		if p := r.projects[i]; p.dir == "." || strings.HasPrefix(file, p.dir+"/") {
+		if p := r.projects[i]; p.directory == "." || strings.HasPrefix(file, p.directory+"/") {
 			out = append(out, p)
 		}
 	}
@@ -534,12 +534,12 @@ func (r *resolver) projectsOf(file string) []*project {
 
 // nearest picks, of the directories a module could be, the one sharing the longest
 // path prefix with the file; ties go to the shallowest.
-func (r *resolver) nearest(file string, dirs []string) string {
-	best, bestLen := dirs[0], -1
-	for _, d := range dirs {
+func (r *resolver) nearest(file string, directories []string) string {
+	best, bestLength := directories[0], -1
+	for _, d := range directories {
 		n := common(file, d)
-		if n > bestLen {
-			best, bestLen = d, n
+		if n > bestLength {
+			best, bestLength = d, n
 		}
 	}
 	return best
@@ -547,9 +547,9 @@ func (r *resolver) nearest(file string, dirs []string) string {
 
 // common counts the leading path segments two paths share.
 func common(a, b string) int {
-	as, bs := strings.Split(a, "/"), strings.Split(b, "/")
+	aParts, bParts := strings.Split(a, "/"), strings.Split(b, "/")
 	n := 0
-	for n < len(as) && n < len(bs) && as[n] == bs[n] {
+	for n < len(aParts) && n < len(bParts) && aParts[n] == bParts[n] {
 		n++
 	}
 	return n
@@ -569,8 +569,8 @@ func (r *resolver) moduleOf(file string) string {
 	}
 	base := "."
 	for i := len(r.projects) - 1; i >= 0; i-- {
-		if p := r.projects[i]; p.dir == "." || strings.HasPrefix(file, p.dir+"/") {
-			base = p.dir
+		if p := r.projects[i]; p.directory == "." || strings.HasPrefix(file, p.directory+"/") {
+			base = p.directory
 			break
 		}
 	}
@@ -578,19 +578,19 @@ func (r *resolver) moduleOf(file string) string {
 	if base != "." {
 		rest = strings.TrimPrefix(file, base+"/")
 	}
-	seg, _, ok := strings.Cut(rest, "/")
+	segment, _, ok := strings.Cut(rest, "/")
 	if !ok {
 		return base
 	}
-	return path.Join(base, seg)
+	return path.Join(base, segment)
 }
 
-// typeRef resolves a type name a file uses to the file declaring it: in the file's
+// typeReference resolves a type name a file uses to the file declaring it: in the file's
 // own module, else in one of the project's modules the file imports. Anything else -
 // the standard library's, a package's, the file's own - is dropped.
 //
 // Implements: REQ-SWIFT-011
-func (r *resolver) typeRef(file, name, imported string) lang.Target {
+func (r *resolver) typeReference(file, name, imported string) lang.Target {
 	candidates := r.types[name]
 	if slices.Contains(candidates, file) {
 		return lang.Target{} // declared here after all, in a form the query missed
@@ -611,8 +611,8 @@ func (r *resolver) typeRef(file, name, imported string) lang.Target {
 		if m == "" {
 			continue
 		}
-		if dir := r.module(file, m).Local; dir != "" {
-			if t := pick(func(c string) bool { return dir == "." || strings.HasPrefix(c, dir+"/") }); t.Local != "" {
+		if directory := r.module(file, m).Local; directory != "" {
+			if t := pick(func(c string) bool { return directory == "." || strings.HasPrefix(c, directory+"/") }); t.Local != "" {
 				return t
 			}
 		}
@@ -629,7 +629,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 	if t.Ecosystem == cocoapods.Ecosystem || t.Ecosystem == cocoapods.Carthage {
 		return r.pods.Dependencies(t)
 	}
-	if t.Ecosystem != ecoSwiftPM || r.root == "" {
+	if t.Ecosystem != ecosystemSwiftPM || r.root == "" {
 		return nil
 	}
 	for _, p := range r.projects {
@@ -637,30 +637,30 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 			if packageName(q.location) != t.Package {
 				continue
 			}
-			src, ok := readFile(filepath.Join(r.root, filepath.FromSlash(p.dir), ".build", "checkouts", id, "Package.swift"))
+			source, ok := readFile(filepath.Join(r.root, filepath.FromSlash(p.directory), ".build", "checkouts", id, "Package.swift"))
 			if !ok {
 				return nil
 			}
 			var out []lang.Target
-			for _, d := range dependencies(stripComments(src)) {
+			for _, d := range dependencies(stripComments(source)) {
 				if d.url == "" && d.id == "" {
 					continue
 				}
-				dep := identity(d.url)
+				dependency := identity(d.url)
 				if d.url == "" {
-					dep = strings.ToLower(d.id)
+					dependency = strings.ToLower(d.id)
 				}
-				tt := r.pkg([]*project{p}, dep, cmp.Or(d.url, d.id))
-				if tt.Unresolved {
+				test := r.packageName([]*project{p}, dependency, cmp.Or(d.url, d.id))
+				if test.Unresolved {
 					name := d.id
 					if d.url != "" {
 						name = packageName(d.url)
 					}
-					tt = lang.Target{Ecosystem: ecoSwiftPM, Package: name, Version: d.requirement, Pinned: d.pinned, Floating: d.floating}
-				} else if tt.Requested == "" && d.requirement != "" && d.requirement != tt.Version {
-					tt.Requested = d.requirement
+					test = lang.Target{Ecosystem: ecosystemSwiftPM, Package: name, Version: d.requirement, Pinned: d.pinned, Floating: d.floating}
+				} else if test.Requested == "" && d.requirement != "" && d.requirement != test.Version {
+					test.Requested = d.requirement
 				}
-				out = append(out, tt)
+				out = append(out, test)
 			}
 			return out
 		}

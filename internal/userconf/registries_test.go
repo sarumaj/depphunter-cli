@@ -12,29 +12,29 @@ import (
 //
 // Verifies: REQ-SUP-064
 func TestDubSettings(t *testing.T) {
-	home, dir, appData, programData := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
-	for _, tc := range []struct {
-		goos string
-		vars map[string]string
-		user string
+	home, directory, appData, programData := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
+	for _, testCase := range []struct {
+		goos      string
+		variables map[string]string
+		user      string
 	}{
 		{"linux", nil, filepath.Join(home, ".dub")},
 		{"darwin", nil, filepath.Join(home, ".dub")},
-		{"linux", map[string]string{"DUB_HOME": dir, "DPATH": appData}, dir},
-		{"linux", map[string]string{"DPATH": dir}, filepath.Join(dir, "dub")},
+		{"linux", map[string]string{"DUB_HOME": directory, "DPATH": appData}, directory},
+		{"linux", map[string]string{"DPATH": directory}, filepath.Join(directory, "dub")},
 		{"windows", map[string]string{"APPDATA": appData, "ProgramData": programData}, filepath.Join(appData, "dub")},
 		{"windows", nil, filepath.Join(home, ".dub")},
 	} {
-		m := machine(t, home, tc.goos, tc.vars)
-		want := []string{filepath.Join(tc.user, "settings.json")}
+		m := machine(t, home, testCase.goos, testCase.variables)
+		want := []string{filepath.Join(testCase.user, "settings.json")}
 		switch {
-		case tc.goos != "windows":
+		case testCase.goos != "windows":
 			want = append(want, filepath.Join(SystemRoot, "etc", "dub", "settings.json"), filepath.Join(SystemRoot, "var", "lib", "dub", "settings.json"))
-		case tc.vars["ProgramData"] != "":
+		case testCase.variables["ProgramData"] != "":
 			want = append(want, filepath.Join(programData, "dub", "settings.json"))
 		}
 		if got := m.DubSettings(); !reflect.DeepEqual(got, want) {
-			t.Errorf("%s %v:\n got %v\nwant %v", tc.goos, tc.vars, got, want)
+			t.Errorf("%s %v:\n got %v\nwant %v", testCase.goos, testCase.variables, got, want)
 		}
 	}
 }
@@ -66,28 +66,28 @@ func TestQuicklispDists(t *testing.T) {
 //
 // Verifies: REQ-SUP-064
 func TestOpamAndAlireLocations(t *testing.T) {
-	home, dir, local, xdg := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
-	for _, tc := range []struct {
+	home, directory, local, xdg := t.TempDir(), t.TempDir(), t.TempDir(), t.TempDir()
+	for _, testCase := range []struct {
 		goos        string
-		vars        map[string]string
+		variables   map[string]string
 		opam, alire string
 	}{
 		{"linux", nil, filepath.Join(home, ".opam"), filepath.Join(home, ".config", "alire")},
 		{"darwin", map[string]string{"XDG_CONFIG_HOME": xdg}, filepath.Join(home, ".opam"), filepath.Join(xdg, "alire")},
-		{"linux", map[string]string{"OPAMROOT": dir, "ALIRE_SETTINGS_DIR": dir, "ALR_CONFIG": local}, dir, dir},
+		{"linux", map[string]string{"OPAMROOT": directory, "ALIRE_SETTINGS_DIR": directory, "ALR_CONFIG": local}, directory, directory},
 		{"linux", map[string]string{"ALR_CONFIG": local}, filepath.Join(home, ".opam"), local},
 		{"windows", map[string]string{"LOCALAPPDATA": local, "XDG_CONFIG_HOME": xdg}, filepath.Join(local, "opam"), filepath.Join(home, ".config", "alire")},
 		{"windows", nil, filepath.Join(home, ".opam"), filepath.Join(home, ".config", "alire")},
 	} {
-		m := machine(t, home, tc.goos, tc.vars)
-		if got := m.OpamRoot(); got != tc.opam {
-			t.Errorf("%s %v: opam root %s, want %s", tc.goos, tc.vars, got, tc.opam)
+		m := machine(t, home, testCase.goos, testCase.variables)
+		if got := m.OpamRoot(); got != testCase.opam {
+			t.Errorf("%s %v: opam root %s, want %s", testCase.goos, testCase.variables, got, testCase.opam)
 		}
-		if got := m.AlireSettingsDir(); got != tc.alire {
-			t.Errorf("%s %v: alire settings %s, want %s", tc.goos, tc.vars, got, tc.alire)
+		if got := m.AlireSettingsDirectory(); got != testCase.alire {
+			t.Errorf("%s %v: alire settings %s, want %s", testCase.goos, testCase.variables, got, testCase.alire)
 		}
 	}
-	if m := machine(t, "", "linux", nil); m.OpamRoot() != "" || m.AlireSettingsDir() != "" {
+	if m := machine(t, "", "linux", nil); m.OpamRoot() != "" || m.AlireSettingsDirectory() != "" {
 		t.Error("no home, no paths")
 	}
 }
@@ -101,7 +101,7 @@ func TestOpamAndAlireLocations(t *testing.T) {
 func TestJuliaDepots(t *testing.T) {
 	home := t.TempDir()
 	user := filepath.Join(home, ".julia")
-	for _, tc := range []struct {
+	for _, testCase := range []struct {
 		goos, value string
 		want        []string
 	}{
@@ -114,9 +114,9 @@ func TestJuliaDepots(t *testing.T) {
 		{"windows", `C:\depot`, []string{`C:\depot`}},
 		{"linux", "/a;/b", []string{"/a;/b"}},
 	} {
-		m := machine(t, home, tc.goos, map[string]string{"JULIA_DEPOT_PATH": tc.value})
-		if got := m.JuliaDepots(); !reflect.DeepEqual(got, tc.want) {
-			t.Errorf("%s %q: got %v, want %v", tc.goos, tc.value, got, tc.want)
+		m := machine(t, home, testCase.goos, map[string]string{"JULIA_DEPOT_PATH": testCase.value})
+		if got := m.JuliaDepots(); !reflect.DeepEqual(got, testCase.want) {
+			t.Errorf("%s %q: got %v, want %v", testCase.goos, testCase.value, got, testCase.want)
 		}
 	}
 }

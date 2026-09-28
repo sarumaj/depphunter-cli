@@ -15,23 +15,23 @@ type zval struct {
 }
 
 type zfield struct {
-	name string
-	line int
-	val  zval
+	name  string
+	line  int
+	value zval
 }
 
 func (v zval) get(name string) (zval, bool) {
 	for _, f := range v.fields {
 		if f.name == name {
-			return f.val, true
+			return f.value, true
 		}
 	}
 	return zval{}, false
 }
 
-// str is a string or enum literal field's text: the package name is .shop in
+// stringField is a string or enum literal field's text: the package name is .shop in
 // build.zig.zon since Zig 0.14 and "shop" before.
-func (v zval) str(name string) string {
+func (v zval) stringField(name string) string {
 	f, ok := v.get(name)
 	if ok && (f.kind == '"' || f.kind == '.') {
 		return f.text
@@ -41,14 +41,14 @@ func (v zval) str(name string) string {
 
 // parseZon reads a ZON document. It never fails: what it cannot read becomes an
 // "other" value.
-func parseZon(src []byte) zval {
-	tokens := lex(src)
+func parseZon(source []byte) zval {
+	tokens := lex(source)
 	p := &zparser{tokens: tokens}
 	v, _ := p.value(0, 0)
 	return v
 }
 
-type zparser struct{ tokens []tok }
+type zparser struct{ tokens []token }
 
 func (p *zparser) is(i int, kind int, text string) bool {
 	return i < len(p.tokens) && p.tokens[i].kind == kind && p.tokens[i].text == text
@@ -60,11 +60,11 @@ func (p *zparser) value(i, depth int) (zval, int) {
 	}
 	t := p.tokens[i]
 	switch {
-	case t.kind == tStr:
+	case t.kind == tString:
 		return zval{kind: '"', text: t.text, line: t.line}, i + 1
-	case p.is(i, tPunct, ".") && p.is(i+1, tPunct, "{"):
+	case p.is(i, tPunctuation, ".") && p.is(i+1, tPunctuation, "{"):
 		return p.aggregate(i+2, t.line, depth)
-	case p.is(i, tPunct, ".") && i+1 < len(p.tokens) && p.tokens[i+1].kind == tIdent:
+	case p.is(i, tPunctuation, ".") && i+1 < len(p.tokens) && p.tokens[i+1].kind == tIdentifier:
 		return zval{kind: '.', text: p.tokens[i+1].text, line: t.line}, i + 2
 	}
 	return zval{kind: '?', text: t.text, line: t.line}, i + 1
@@ -75,9 +75,9 @@ func (p *zparser) aggregate(i, line, depth int) (zval, int) {
 	v := zval{kind: 't', line: line}
 	for i < len(p.tokens) {
 		switch {
-		case p.is(i, tPunct, "}"):
+		case p.is(i, tPunctuation, "}"):
 			return v, i + 1
-		case p.is(i, tPunct, ","):
+		case p.is(i, tPunctuation, ","):
 			i++
 			continue
 		}
@@ -86,16 +86,16 @@ func (p *zparser) aggregate(i, line, depth int) (zval, int) {
 			continue
 		}
 		start := i
-		if p.is(i, tPunct, ".") && i+2 < len(p.tokens) && p.tokens[i+1].kind == tIdent && p.is(i+2, tPunct, "=") {
+		if p.is(i, tPunctuation, ".") && i+2 < len(p.tokens) && p.tokens[i+1].kind == tIdentifier && p.is(i+2, tPunctuation, "=") {
 			v.kind = 's'
 			name, fline := p.tokens[i+1].text, p.tokens[i+1].line
-			var val zval
-			val, i = p.value(i+3, depth+1)
-			v.fields = append(v.fields, zfield{name: name, line: fline, val: val})
+			var value zval
+			value, i = p.value(i+3, depth+1)
+			v.fields = append(v.fields, zfield{name: name, line: fline, value: value})
 		} else {
-			var val zval
-			val, i = p.value(i, depth+1)
-			v.items = append(v.items, val)
+			var value zval
+			value, i = p.value(i, depth+1)
+			v.items = append(v.items, value)
 		}
 		if i == start {
 			i++
@@ -104,8 +104,8 @@ func (p *zparser) aggregate(i, line, depth int) (zval, int) {
 	return v, i
 }
 
-// zonDep is one entry of a build.zig.zon's .dependencies.
-type zonDep struct {
+// zonDependency is one entry of a build.zig.zon's .dependencies.
+type zonDependency struct {
 	key, url, hash, path string
 	lazy                 bool
 	line                 int
@@ -115,7 +115,7 @@ type zonDep struct {
 type zonFile struct {
 	name, version, minZig string
 	nameLine, minZigLine  int
-	deps                  []zonDep
+	dependencies          []zonDependency
 	paths                 []string
 }
 
@@ -124,9 +124,9 @@ type zonFile struct {
 // whether they are lazy.
 //
 // Implements: REQ-ZIG-007
-func readZon(src []byte) *zonFile {
-	root := parseZon(src)
-	z := &zonFile{name: root.str("name"), version: root.str("version"), minZig: root.str("minimum_zig_version")}
+func readZon(source []byte) *zonFile {
+	root := parseZon(source)
+	z := &zonFile{name: root.stringField("name"), version: root.stringField("version"), minZig: root.stringField("minimum_zig_version")}
 	for _, f := range root.fields {
 		switch f.name {
 		case "name":
@@ -134,18 +134,18 @@ func readZon(src []byte) *zonFile {
 		case "minimum_zig_version":
 			z.minZigLine = f.line
 		case "paths":
-			for _, it := range f.val.items {
+			for _, it := range f.value.items {
 				if it.kind == '"' {
 					z.paths = append(z.paths, it.text)
 				}
 			}
 		case "dependencies":
-			for _, d := range f.val.fields {
-				dep := zonDep{key: d.name, line: d.line, url: d.val.str("url"), hash: d.val.str("hash"), path: d.val.str("path")}
-				if l, ok := d.val.get("lazy"); ok && l.text == "true" {
-					dep.lazy = true
+			for _, d := range f.value.fields {
+				dependency := zonDependency{key: d.name, line: d.line, url: d.value.stringField("url"), hash: d.value.stringField("hash"), path: d.value.stringField("path")}
+				if l, ok := d.value.get("lazy"); ok && l.text == "true" {
+					dependency.lazy = true
 				}
-				z.deps = append(z.deps, dep)
+				z.dependencies = append(z.dependencies, dependency)
 			}
 		}
 	}
@@ -157,22 +157,22 @@ func readZon(src []byte) *zonFile {
 // symbol.
 //
 // Implements: REQ-ZIG-007
-func extractZon(src []byte) *lang.Extraction {
-	z := readZon(src)
-	ex := &lang.Extraction{Symbols: []lang.Symbol{}}
+func extractZon(source []byte) *lang.Extraction {
+	z := readZon(source)
+	extraction := &lang.Extraction{Symbols: []lang.Symbol{}}
 	if z.name != "" {
-		ex.Symbols = append(ex.Symbols, lang.Symbol{Name: z.name, Kind: "package", Line: max(z.nameLine, 1)})
+		extraction.Symbols = append(extraction.Symbols, lang.Symbol{Name: z.name, Kind: "package", Line: max(z.nameLine, 1)})
 	}
 	if z.minZig != "" {
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: ".minimum_zig_version", Module: z.minZig, Name: kindZigVer, Line: z.minZigLine})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: ".minimum_zig_version", Module: z.minZig, Name: kindZigVersion, Line: z.minZigLine})
 	}
 	seen := map[string]bool{}
-	for _, d := range z.deps {
+	for _, d := range z.dependencies {
 		if seen[d.key] {
 			continue
 		}
 		seen[d.key] = true
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: d.key, Module: d.url + "\n" + d.hash + "\n" + d.path, Name: kindZon, Line: d.line})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: d.key, Module: d.url + "\n" + d.hash + "\n" + d.path, Name: kindZon, Line: d.line})
 	}
-	return ex
+	return extraction
 }

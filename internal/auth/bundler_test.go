@@ -6,9 +6,9 @@ import (
 	"testing"
 )
 
-// bundlerEnv serves m as the environment and lists its names as the process
+// bundlerEnvironment serves m as the environment and lists its names as the process
 // environment, which is where readBundler finds the names of BUNDLE_ variables.
-func bundlerEnv(t *testing.T, m map[string]string) func(string) string {
+func bundlerEnvironment(t *testing.T, m map[string]string) func(string) string {
 	t.Helper()
 	saved := environ
 	t.Cleanup(func() { environ = saved })
@@ -20,7 +20,7 @@ func bundlerEnv(t *testing.T, m map[string]string) func(string) string {
 		sort.Strings(out)
 		return out
 	}
-	return env(m)
+	return environment(m)
 }
 
 // A setting name decodes to the host it was written for; Bundler's own dotted
@@ -80,7 +80,7 @@ BUNDLE_GEM__TEST: "rspec"
 BUNDLE_PATH: "vendor/bundle"
 BUNDLE_JOBS: 4
 `)
-	c := Read(home, bundlerEnv(t, map[string]string{
+	c := Read(home, bundlerEnvironment(t, map[string]string{
 		"BUNDLE_GEMS__CONTRIBSYS__COM":   "env-user:env-pass",
 		"BUNDLE_ENTERPRISE___GEMS__CORP": "ci:%2Bsecret",
 		"BUNDLE_WITHOUT":                 "development:test",
@@ -134,7 +134,7 @@ BUNDLE_HTTPS://ONLY__URL__TEST/B/: "url-b:x"
 BUNDLE_HTTPS://ONLY__URL__TEST/A/: "url-a:x"
 BUNDLE_GEMS__CORP__TEST: "host:x"
 `)
-	c := Read(home, bundlerEnv(t, nil))
+	c := Read(home, bundlerEnvironment(t, nil))
 	if got := authorization(t, c, "https://gems.corp.test/a/info/x"); got != basicHeader("host:x") {
 		t.Errorf("gems.corp.test: %q", got)
 	}
@@ -152,20 +152,20 @@ func TestBundlerUserConfigLocation(t *testing.T) {
 	writeFile(t, filepath.Join(home, ".bundle", "config"), "BUNDLE_HOME__CORP__TEST: \"home:x\"\n")
 	other := filepath.Join(t.TempDir(), "bundler.yml")
 	writeFile(t, other, "BUNDLE_USERCONFIG__CORP__TEST: \"uc:x\"\n")
-	dir := t.TempDir()
-	writeFile(t, filepath.Join(dir, "config"), "BUNDLE_USERHOME__CORP__TEST: \"uh:x\"\n")
+	directory := t.TempDir()
+	writeFile(t, filepath.Join(directory, "config"), "BUNDLE_USERHOME__CORP__TEST: \"uh:x\"\n")
 
-	for _, tc := range []struct {
-		env  map[string]string
-		host string
+	for _, testCase := range []struct {
+		environment map[string]string
+		host        string
 	}{
 		{nil, "home.corp.test"},
-		{map[string]string{"BUNDLE_USER_CONFIG": other, "BUNDLE_USER_HOME": dir}, "userconfig.corp.test"},
-		{map[string]string{"BUNDLE_USER_HOME": dir}, "userhome.corp.test"},
+		{map[string]string{"BUNDLE_USER_CONFIG": other, "BUNDLE_USER_HOME": directory}, "userconfig.corp.test"},
+		{map[string]string{"BUNDLE_USER_HOME": directory}, "userhome.corp.test"},
 	} {
-		c := Read(home, bundlerEnv(t, tc.env))
-		if len(c.basic) != 1 || c.basic[tc.host] == "" {
-			t.Errorf("%v: %v, want %s only", tc.env, c.basic, tc.host)
+		c := Read(home, bundlerEnvironment(t, testCase.environment))
+		if len(c.basic) != 1 || c.basic[testCase.host] == "" {
+			t.Errorf("%v: %v, want %s only", testCase.environment, c.basic, testCase.host)
 		}
 	}
 }
@@ -176,13 +176,13 @@ func TestBundlerUserConfigLocation(t *testing.T) {
 // Verifies: REQ-AUTH-019, REQ-AUTH-012
 func TestBundlerAppConfigIsNotRead(t *testing.T) {
 	home := t.TempDir()
-	repo := filepath.Join(home, "src", "app")
-	writeFile(t, filepath.Join(repo, "Gemfile"), "source \"https://gems.corp.test\"\ngem \"lib\"\n")
-	writeFile(t, filepath.Join(repo, ".bundle", "config"), "BUNDLE_GEMS__CORP__TEST: \"repo:leak\"\n")
-	writeFile(t, filepath.Join(repo, "ci-bundle", "config"), "BUNDLE_GEMS__CORP__TEST: \"repo:leak2\"\n")
-	t.Chdir(repo)
-	for _, app := range []string{filepath.Join(repo, ".bundle"), filepath.Join(repo, "ci-bundle"), ".bundle"} {
-		c := Read(home, bundlerEnv(t, map[string]string{"BUNDLE_APP_CONFIG": app}))
+	repository := filepath.Join(home, "src", "app")
+	writeFile(t, filepath.Join(repository, "Gemfile"), "source \"https://gems.corp.test\"\ngem \"lib\"\n")
+	writeFile(t, filepath.Join(repository, ".bundle", "config"), "BUNDLE_GEMS__CORP__TEST: \"repo:leak\"\n")
+	writeFile(t, filepath.Join(repository, "ci-bundle", "config"), "BUNDLE_GEMS__CORP__TEST: \"repo:leak2\"\n")
+	t.Chdir(repository)
+	for _, app := range []string{filepath.Join(repository, ".bundle"), filepath.Join(repository, "ci-bundle"), ".bundle"} {
+		c := Read(home, bundlerEnvironment(t, map[string]string{"BUNDLE_APP_CONFIG": app}))
 		if got := authorization(t, c, "https://gems.corp.test/info/lib"); got != "" {
 			t.Errorf("BUNDLE_APP_CONFIG=%s: the repository's credential was taken: %q", app, got)
 		}
@@ -200,7 +200,7 @@ BUNDLE_HTTP://LEGACY__CORP__TEST/: "legacy:x"
 BUNDLE_MIRROR__HTTPS://RUBYGEMS__ORG/: "http://mirror.corp.test/gems"
 BUNDLE_MIRROR__CORP__TEST: "mirror:x"
 `)
-	c := Read(home, bundlerEnv(t, map[string]string{
+	c := Read(home, bundlerEnvironment(t, map[string]string{
 		"BUNDLE_SECURE__CORP__TEST":    "secure:x",
 		"BUNDLE_MIRROR__RUBYGEMS__ORG": "http://envmirror.corp.test",
 		"BUNDLE_ENVMIRROR__CORP__TEST": "envmirror:x",
@@ -227,7 +227,7 @@ func TestBundlerPrecedenceWithNetrcAndURL(t *testing.T) {
 	home := t.TempDir()
 	writeFile(t, filepath.Join(home, ".netrc"), "machine gems.corp.test login netrc password x\nmachine other.corp.test login netrc password y\n")
 	writeFile(t, filepath.Join(home, ".bundle", "config"), "BUNDLE_GEMS__CORP__TEST: \"bundle:x\"\n")
-	c := Read(home, bundlerEnv(t, nil))
+	c := Read(home, bundlerEnvironment(t, nil))
 	if got := authorization(t, c, "https://gems.corp.test/"); got != basicHeader("bundle:x") {
 		t.Errorf("gems.corp.test: %q", got)
 	}

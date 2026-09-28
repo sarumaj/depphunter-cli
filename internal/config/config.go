@@ -78,7 +78,7 @@ func oneOf(name, v string, allowed ...string) error {
 type Config struct {
 	Root        string   `yaml:"-" mapstructure:"-"`
 	ConfigFile  string   `yaml:"-" mapstructure:"-"` // where the browser's "Save settings" writes
-	Addr        string   `yaml:"addr" mapstructure:"addr"`
+	Address     string   `yaml:"addr" mapstructure:"addr"`
 	Open        bool     `yaml:"open" mapstructure:"open"`
 	Exclude     []string `yaml:"exclude" mapstructure:"exclude"`
 	MaxFileSize int64    `yaml:"max_file_size" mapstructure:"max_file_size"`
@@ -127,9 +127,9 @@ type Config struct {
 	// Findings are files (or globs) holding what a scanner already reported:
 	// govulncheck, npm audit, trivy, golangci-lint, eslint or osv-scanner JSON.
 	Findings []string `yaml:"findings" mapstructure:"findings"`
-	// Vulns places those reports on the map and, with Online, additionally asks the
+	// Vulnerabilities places those reports on the map and, with Online, additionally asks the
 	// OSV database about every pinned external package.
-	Vulns bool `yaml:"vulns" mapstructure:"vulns"`
+	Vulnerabilities bool `yaml:"vulns" mapstructure:"vulns"`
 	// Links follows the links the repository's Markdown carries and reports the ones
 	// that lead nowhere. It needs nothing but the repository, so it is on by default;
 	// with Online the http(s) links are asked about as well.
@@ -159,71 +159,71 @@ type Config struct {
 // Implements: REQ-SEC-001
 func Default() Config {
 	return Config{
-		Addr:           "127.0.0.1:0",
-		Open:           true,
-		Cache:          true,
-		History:        true,
-		Vulns:          true,
-		Links:          true,
-		HistoryCommits: 10000,
-		LSPTimeout:     5 * time.Minute,
-		MaxFileSize:    2 << 20,
-		UI:             UI{Theme: "auto", ColorBy: "language", HeightScale: "sqrt", Style: "city"},
+		Address:         "127.0.0.1:0",
+		Open:            true,
+		Cache:           true,
+		History:         true,
+		Vulnerabilities: true,
+		Links:           true,
+		HistoryCommits:  10000,
+		LSPTimeout:      5 * time.Minute,
+		MaxFileSize:     2 << 20,
+		UI:              UI{Theme: "auto", ColorBy: "language", HeightScale: "sqrt", Style: "city"},
 	}
 }
 
-// RegisterFlags declares the command-line flags on fs. Load reads them back.
+// RegisterFlags declares the command-line flags on flags. Load reads them back.
 //
 // Implements: REQ-CFG-005, REQ-CLI-004
-func RegisterFlags(fs *pflag.FlagSet) {
+func RegisterFlags(flags *pflag.FlagSet) {
 	d := Default()
-	fs.String("config", "", "config file to use instead of <path>/"+ProjectFile)
-	fs.String("addr", d.Addr, "listen address (port 0 picks a free port)")
-	fs.Bool("no-open", false, "do not open the browser")
-	fs.StringArray("exclude", nil, "glob of paths to skip; repeatable")
-	fs.Int64("max-file-size", d.MaxFileSize, "files larger than this many bytes are not read")
-	fs.String("theme", d.UI.Theme, "color theme: auto, light, dark")
-	fs.String("color-by", d.UI.ColorBy, "building color: language, size, commits, churn, age, authors")
-	fs.String("height-scale", d.UI.HeightScale, "building height scale: linear, sqrt, log")
-	fs.String("style", d.UI.Style, "what the map is dressed as: city, circuit, galaxy")
-	fs.Bool("show-std", d.UI.ShowStd, "show standard-library islands")
-	fs.Int("expand-depth", d.UI.ExpandDepth, "initially expanded directory depth (0 = auto, -1 = all)")
-	fs.StringArray("ui-default", nil,
+	flags.String("config", "", "config file to use instead of <path>/"+ProjectFile)
+	flags.String("addr", d.Address, "listen address (port 0 picks a free port)")
+	flags.Bool("no-open", false, "do not open the browser")
+	flags.StringArray("exclude", nil, "glob of paths to skip; repeatable")
+	flags.Int64("max-file-size", d.MaxFileSize, "files larger than this many bytes are not read")
+	flags.String("theme", d.UI.Theme, "color theme: auto, light, dark")
+	flags.String("color-by", d.UI.ColorBy, "building color: language, size, commits, churn, age, authors")
+	flags.String("height-scale", d.UI.HeightScale, "building height scale: linear, sqrt, log")
+	flags.String("style", d.UI.Style, "what the map is dressed as: city, circuit, galaxy")
+	flags.Bool("show-std", d.UI.ShowStd, "show standard-library islands")
+	flags.Int("expand-depth", d.UI.ExpandDepth, "initially expanded directory depth (0 = auto, -1 = all)")
+	flags.StringArray("ui-default", nil,
 		"seed a view setting for a repository that has saved none: key=value, repeatable "+
 			"(theme, color_by, height_scale, style, show_std, expand_depth, tool, path_filter)")
-	fs.Bool("watch", false, "re-analyze on file changes and update the browser live")
-	fs.Bool("no-cache", false, "do not read or write the analysis cache")
-	fs.Bool("no-history", false, "do not read git history")
+	flags.Bool("watch", false, "re-analyze on file changes and update the browser live")
+	flags.Bool("no-cache", false, "do not read or write the analysis cache")
+	flags.Bool("no-history", false, "do not read git history")
 	// Implements: REQ-HIST-002
-	fs.Int("history-commits", d.HistoryCommits, "read at most this many commits of git history")
-	fs.Bool("online", false, "ask package indexes about dependencies the project's files do not record")
-	fs.Bool("explain", false,
+	flags.Int("history-commits", d.HistoryCommits, "read at most this many commits of git history")
+	flags.Bool("online", false, "ask package indexes about dependencies the project's files do not record")
+	flags.Bool("explain", false,
 		"write the resolution report when the analysis is over: which index answered for which package, "+
 			"what each level of --resolve-depth added, and what nothing answered for")
-	fs.StringArray("private", nil,
+	flags.StringArray("private", nil,
 		"glob naming packages your organization owns, as GOPRIVATE writes them (e.g. corp.example/*, npm:@acme/*); "+
 			"they are never asked of a public index nor sent to the vulnerability database; repeatable")
-	fs.String("python", "",
+	flags.String("python", "",
 		"Python interpreter whose installed packages resolve imports no package index has (default: an activated "+
 			"VIRTUAL_ENV, else the project's .venv or venv); its files are read, it is never run")
-	fs.StringArray("trust-index", nil,
+	flags.StringArray("trust-index", nil,
 		"index URL to treat as configured on this machine, so a repository that names it is not marked; repeatable")
 	// Implements: REQ-FND-001
-	fs.StringArray("findings", nil,
+	flags.StringArray("findings", nil,
 		"scanner report to place on the map (govulncheck, npm audit, trivy, golangci-lint, eslint, osv-scanner JSON); repeatable, globs allowed")
-	fs.Bool("no-vulns", false, "do not place scanner reports on the map, and do not ask the OSV database")
+	flags.Bool("no-vulns", false, "do not place scanner reports on the map, and do not ask the OSV database")
 	// Implements: REQ-MD-016
-	fs.Bool("no-links", false, "do not follow the links the repository's Markdown carries")
-	fs.Int("resolve-depth", d.ResolveDepth,
+	flags.Bool("no-links", false, "do not follow the links the repository's Markdown carries")
+	flags.Int("resolve-depth", d.ResolveDepth,
 		"levels of external dependencies-of-dependencies to resolve from lock files (-1 = all)")
-	fs.Bool("lsp", false, "find symbol references with installed language servers (gopls, …)")
+	flags.Bool("lsp", false, "find symbol references with installed language servers (gopls, …)")
 	// Implements: REQ-LSP-009
-	fs.Duration("lsp-timeout", d.LSPTimeout, "time budget for language servers")
-	fs.String("editor", "", `editor command template, e.g. "code -g {file}:{line}" (default: auto-detect)`)
-	fs.StringArray("embed", nil,
+	flags.Duration("lsp-timeout", d.LSPTimeout, "time budget for language servers")
+	flags.String("editor", "", `editor command template, e.g. "code -g {file}:{line}" (default: auto-detect)`)
+	flags.StringArray("embed", nil,
 		"origin allowed to show the map in a frame, e.g. vscode-webview: for an editor's browser; repeatable")
-	fs.String("export", "", "write the graph as json, graphml, dot or html and exit instead of serving")
-	fs.StringP("output", "o", "", "output file for --export (default: stdout)")
+	flags.String("export", "", "write the graph as json, graphml, dot or html and exit instead of serving")
+	flags.StringP("output", "o", "", "output file for --export (default: stdout)")
 }
 
 // Settings a flag sets directly, by flag name.
@@ -248,7 +248,7 @@ var negatedFlags = map[string]string{
 // handled apart: it adds to the configured globs instead of replacing them.
 //
 // Implements: REQ-CFG-006
-var envKeys = map[string]string{
+var environmentKeys = map[string]string{
 	"addr": "ADDR", "open": "OPEN", "max_file_size": "MAX_FILE_SIZE", "watch": "WATCH", "cache": "CACHE",
 	"history": "HISTORY", "history_commits": "HISTORY_COMMITS", "resolve_depth": "RESOLVE_DEPTH", "online": "ONLINE",
 	"explain": "EXPLAIN",
@@ -257,50 +257,50 @@ var envKeys = map[string]string{
 	"ui.show_std": "SHOW_STD", "ui.expand_depth": "EXPAND_DEPTH", "ui.tool": "TOOL",
 }
 
-// Load builds the configuration from the parsed flags fs (see RegisterFlags), the
+// Load builds the configuration from the parsed flags (see RegisterFlags), the
 // positional args (at most one path), the environment, and the config files.
-// userDir holds the user-level config (e.g. ~/.config/depphunter); "" skips it.
+// userDirectory holds the user-level config (e.g. ~/.config/depphunter); "" skips it.
 //
 // Implements: REQ-CFG-001, REQ-CFG-002, REQ-CFG-003, REQ-CLI-002
-func Load(fs *pflag.FlagSet, args []string, userDir string) (Config, error) {
-	cfg := Default()
-	if len(args) > 1 {
-		return cfg, fmt.Errorf("expected at most one path, got %d", len(args))
+func Load(flags *pflag.FlagSet, arguments []string, userDirectory string) (Config, error) {
+	config := Default()
+	if len(arguments) > 1 {
+		return config, fmt.Errorf("expected at most one path, got %d", len(arguments))
 	}
 	root := "."
-	if len(args) == 1 {
-		root = args[0]
+	if len(arguments) == 1 {
+		root = arguments[0]
 	}
 	root, err := filepath.Abs(root)
 	if err != nil {
-		return cfg, err
+		return config, err
 	}
 	// Walking a symlinked root would yield nothing; analyze the directory it points to.
 	if resolved, err := filepath.EvalSymlinks(root); err == nil {
 		root = resolved
 	}
-	if st, err := os.Stat(root); err != nil || !st.IsDir() {
-		return cfg, fmt.Errorf("%s is not a directory", root)
+	if fileInfo, err := os.Stat(root); err != nil || !fileInfo.IsDir() {
+		return config, fmt.Errorf("%s is not a directory", root)
 	}
 
 	v := viper.New()
-	setDefaults(v, cfg)
-	seeds, _ := fs.GetStringArray("ui-default")
+	setDefaults(v, config)
+	seeds, _ := flags.GetStringArray("ui-default")
 	if err := uiDefaults(v, seeds); err != nil {
-		return cfg, err
+		return config, err
 	}
-	if userDir != "" {
-		if err := mergeFile(v, filepath.Join(userDir, "config.yaml"), false, true); err != nil {
-			return cfg, err
+	if userDirectory != "" {
+		if err := mergeFile(v, filepath.Join(userDirectory, "config.yaml"), false, true); err != nil {
+			return config, err
 		}
 	}
 	// The project config comes with the (possibly untrusted) repository, so it may not
 	// choose a program this machine runs or send it onto the network: its editor and
 	// online keys are dropped. A file named with --config is the user's own choice.
-	configFile, _ := fs.GetString("config")
+	configFile, _ := flags.GetString("config")
 	if configFile != "" {
 		if configFile, err = filepath.Abs(configFile); err != nil {
-			return cfg, err
+			return config, err
 		}
 		err = mergeFile(v, configFile, true, true)
 	} else {
@@ -308,64 +308,64 @@ func Load(fs *pflag.FlagSet, args []string, userDir string) (Config, error) {
 		err = mergeFile(v, configFile, false, false)
 	}
 	if err != nil {
-		return cfg, err
+		return config, err
 	}
-	for key, name := range envKeys {
+	for key, name := range environmentKeys {
 		if err := v.BindEnv(key, "DEPPHUNTER_"+name); err != nil {
-			return cfg, err
+			return config, err
 		}
 	}
 	for name, key := range flagKeys {
-		if err := v.BindPFlag(key, fs.Lookup(name)); err != nil {
-			return cfg, err
+		if err := v.BindPFlag(key, flags.Lookup(name)); err != nil {
+			return config, err
 		}
 	}
 	for name, key := range negatedFlags {
-		if fs.Changed(name) {
-			off, _ := fs.GetBool(name)
+		if flags.Changed(name) {
+			off, _ := flags.GetBool(name)
 			v.Set(key, !off)
 		}
 	}
-	if err := v.Unmarshal(&cfg); err != nil {
-		return cfg, err
+	if err := v.Unmarshal(&config); err != nil {
+		return config, err
 	}
 
-	cfg.Root, cfg.ConfigFile = root, configFile
+	config.Root, config.ConfigFile = root, configFile
 	// Implements: REQ-CFG-009
 	if e := os.Getenv("DEPPHUNTER_EXCLUDE"); e != "" {
-		cfg.Exclude = append(cfg.Exclude, strings.Split(e, ",")...)
+		config.Exclude = append(config.Exclude, strings.Split(e, ",")...)
 	}
-	flagExclude, _ := fs.GetStringArray("exclude")
-	cfg.Exclude = append(cfg.Exclude, flagExclude...)
+	flagExclude, _ := flags.GetStringArray("exclude")
+	config.Exclude = append(config.Exclude, flagExclude...)
 	if f := os.Getenv("DEPPHUNTER_FINDINGS"); f != "" {
-		cfg.Findings = append(cfg.Findings, strings.Split(f, ",")...)
+		config.Findings = append(config.Findings, strings.Split(f, ",")...)
 	}
-	flagFindings, _ := fs.GetStringArray("findings")
-	cfg.Findings = append(cfg.Findings, flagFindings...)
+	flagFindings, _ := flags.GetStringArray("findings")
+	config.Findings = append(config.Findings, flagFindings...)
 	if p := os.Getenv("DEPPHUNTER_PRIVATE"); p != "" {
-		cfg.Private = append(cfg.Private, strings.Split(p, ",")...)
+		config.Private = append(config.Private, strings.Split(p, ",")...)
 	}
-	flagPrivate, _ := fs.GetStringArray("private")
-	cfg.Private = append(cfg.Private, flagPrivate...)
+	flagPrivate, _ := flags.GetStringArray("private")
+	config.Private = append(config.Private, flagPrivate...)
 	if t := os.Getenv("DEPPHUNTER_TRUST_INDEXES"); t != "" {
-		cfg.TrustIndexes = append(cfg.TrustIndexes, strings.Split(t, ",")...)
+		config.TrustIndexes = append(config.TrustIndexes, strings.Split(t, ",")...)
 	}
-	flagTrust, _ := fs.GetStringArray("trust-index")
-	cfg.TrustIndexes = append(cfg.TrustIndexes, flagTrust...)
-	cfg.Embed, _ = fs.GetStringArray("embed")
-	cfg.Export, _ = fs.GetString("export")
-	cfg.Output, _ = fs.GetString("output")
-	return cfg, cfg.validate()
+	flagTrust, _ := flags.GetStringArray("trust-index")
+	config.TrustIndexes = append(config.TrustIndexes, flagTrust...)
+	config.Embed, _ = flags.GetStringArray("embed")
+	config.Export, _ = flags.GetString("export")
+	config.Output, _ = flags.GetString("output")
+	return config, config.validate()
 }
 
 // setDefaults makes every setting known to viper, so environment variables and
 // Unmarshal see it even when no file mentions it.
 func setDefaults(v *viper.Viper, d Config) {
-	for key, val := range map[string]any{
-		"addr": d.Addr, "open": d.Open, "exclude": d.Exclude, "max_file_size": d.MaxFileSize,
+	for key, value := range map[string]any{
+		"addr": d.Address, "open": d.Open, "exclude": d.Exclude, "max_file_size": d.MaxFileSize,
 		"watch": d.Watch, "cache": d.Cache, "history": d.History, "history_commits": d.HistoryCommits,
 		"resolve_depth": d.ResolveDepth, "online": d.Online, "explain": d.Explain,
-		"findings": d.Findings, "vulns": d.Vulns, "links": d.Links,
+		"findings": d.Findings, "vulns": d.Vulnerabilities, "links": d.Links,
 		"private": d.Private, "trust_indexes": d.TrustIndexes,
 		"lsp": d.LSP, "lsp_timeout": d.LSPTimeout,
 		"editor": d.Editor, "python": d.Python,
@@ -373,7 +373,7 @@ func setDefaults(v *viper.Viper, d Config) {
 		"ui.show_std": d.UI.ShowStd, "ui.expand_depth": d.UI.ExpandDepth, "ui.tool": d.UI.Tool,
 		"ui.hide_languages": d.UI.HideLanguages, "ui.hide_islands": d.UI.HideIslands, "ui.path_filter": d.UI.PathFilter,
 	} {
-		v.SetDefault(key, val)
+		v.SetDefault(key, value)
 	}
 }
 
@@ -462,14 +462,14 @@ func mergeFile(v *viper.Viper, name string, required, trusted bool) error {
 	// Implements: REQ-CFG-009, REQ-SUP-041
 	for _, key := range []string{"exclude", "findings", "private", "trust_indexes"} {
 		if list, ok := m[key]; ok {
-			m[key] = append(v.GetStringSlice(key), strs(list)...)
+			m[key] = append(v.GetStringSlice(key), stringList(list)...)
 		}
 	}
 	return v.MergeConfigMap(m)
 }
 
-// strs is a list as YAML decodes it ([]any), or as confine returns it, as strings.
-func strs(list any) []string {
+// stringList is a list as YAML decodes it ([]any), or as confine returns it, as strings.
+func stringList(list any) []string {
 	switch l := list.(type) {
 	case []string:
 		return l
@@ -531,7 +531,7 @@ func rooted(s string) bool {
 //
 // Implements: REQ-MD-010
 func (c Config) FindingsEnabled() bool {
-	return c.Links || c.Vulns && (len(c.Findings) > 0 || c.Online)
+	return c.Links || c.Vulnerabilities && (len(c.Findings) > 0 || c.Online)
 }
 
 // Implements: REQ-CFG-007

@@ -19,7 +19,7 @@ preprocessor directive, a `//` comment or an Objective-C keyword
 (`@interface`, `@implementation`, `@protocol`, `@class`, `@import`, `@end`),
 else Mercury when a line starts with `:-`, else MATLAB; and it **shall** label
 a `.h` file Objective-C when a line of its head starts with `#import` or one of
-those keywords. The C/C++ plugin **shall** leave `.h` files labelled
+those keywords. The C/C++ plugin **shall** leave `.h` files labeled
 Objective-C to this plugin.
 
 ## Rationale

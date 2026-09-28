@@ -35,13 +35,13 @@ func osvServer(t *testing.T) (*httptest.Server, *int32, *int32) {
 			Results []batchResult `json:"results"`
 		}{}
 		for _, q := range body.Queries {
-			var res batchResult
+			var result batchResult
 			if q.Package.Name == "golang.org/x/net" && q.Package.Ecosystem == "Go" && q.Version == "0.17.0" {
-				res.Vulns = append(res.Vulns, struct {
+				result.Vulnerabilities = append(result.Vulnerabilities, struct {
 					ID string `json:"id"`
 				}{"GO-2024-2687"})
 			}
-			out.Results = append(out.Results, res)
+			out.Results = append(out.Results, result)
 		}
 		json.NewEncoder(w).Encode(out)
 	})
@@ -58,24 +58,24 @@ func osvServer(t *testing.T) (*httptest.Server, *int32, *int32) {
 			}{{Type: "CVSS_V3", Score: "CVSS:3.1/AV:N/AC:L/PR:N/UI:N/S:U/C:N/I:N/A:H"}},
 		})
 	})
-	srv := httptest.NewServer(mux)
-	t.Cleanup(srv.Close)
-	return srv, &batches, &details
+	server := httptest.NewServer(mux)
+	t.Cleanup(server.Close)
+	return server, &batches, &details
 }
 
 // Verifies: REQ-FND-010, REQ-FND-011, REQ-FND-012
 func TestOSVQueriesTheDatabaseAndCachesTheAnswer(t *testing.T) {
-	srv, batches, details := osvServer(t)
-	dir := t.TempDir()
-	pkgs := []Package{
+	server, batches, details := osvServer(t)
+	directory := t.TempDir()
+	packages := []Package{
 		{Ecosystem: "go", Name: "golang.org/x/net", Version: "v0.17.0"}, // the v is the database's to drop
 		{Ecosystem: "go", Name: "golang.org/x/text", Version: "v0.14.0"},
 		{Ecosystem: "psgallery", Name: "Pester", Version: "5.5.0"}, // no OSV counterpart
 		{Ecosystem: "npm", Name: "left-pad", Version: ""},          // nothing to ask about
 	}
 
-	o := &OSV{http: srv.Client(), cache: store.New(dir, time.Hour), API: srv.URL}
-	found, partial := o.Query(context.Background(), pkgs)
+	o := &OSV{http: server.Client(), cache: store.New(directory, time.Hour), API: server.URL}
+	found, partial := o.Query(context.Background(), packages)
 	if partial {
 		t.Error("a complete answer was reported as partial")
 	}
@@ -83,7 +83,7 @@ func TestOSVQueriesTheDatabaseAndCachesTheAnswer(t *testing.T) {
 		t.Fatalf("%d findings, want 1", len(found))
 	}
 	f := found[0]
-	if f.Ref != "GO-2024-2687" || f.Package != "golang.org/x/net" || f.Version != "0.17.0" {
+	if f.Reference != "GO-2024-2687" || f.Package != "golang.org/x/net" || f.Version != "0.17.0" {
 		t.Errorf("finding: %+v", f)
 	}
 	if f.Severity != High || f.Source != "osv" || f.Kind != KindVulnerability {
@@ -96,8 +96,8 @@ func TestOSVQueriesTheDatabaseAndCachesTheAnswer(t *testing.T) {
 	// A second run with the same cache directory asks nothing at all - including about
 	// the packages that turned out to be fine, which is most of them.
 	b1, d1 := atomic.LoadInt32(batches), atomic.LoadInt32(details)
-	again := &OSV{http: srv.Client(), cache: store.New(dir, time.Hour), API: srv.URL}
-	if found, _ := again.Query(context.Background(), pkgs); len(found) != 1 {
+	again := &OSV{http: server.Client(), cache: store.New(directory, time.Hour), API: server.URL}
+	if found, _ := again.Query(context.Background(), packages); len(found) != 1 {
 		t.Fatalf("cached run: %d findings, want 1", len(found))
 	}
 	if b, d := atomic.LoadInt32(batches), atomic.LoadInt32(details); b != b1 || d != d1 {
@@ -109,11 +109,11 @@ func TestOSVQueriesTheDatabaseAndCachesTheAnswer(t *testing.T) {
 //
 // Verifies: REQ-FND-016
 func TestOSVSurvivesADatabaseThatWillNotAnswer(t *testing.T) {
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "service unavailable", http.StatusServiceUnavailable)
 	}))
-	defer srv.Close()
-	o := &OSV{http: srv.Client(), API: srv.URL, Logf: func(string, ...any) {}}
+	defer server.Close()
+	o := &OSV{http: server.Client(), API: server.URL, Logf: func(string, ...any) {}}
 	found, partial := o.Query(context.Background(), []Package{{Ecosystem: "go", Name: "example.com/m", Version: "1.0.0"}})
 	if len(found) != 0 {
 		t.Errorf("%d findings from a failing database", len(found))
@@ -128,14 +128,14 @@ func TestOSVSurvivesADatabaseThatWillNotAnswer(t *testing.T) {
 // Verifies: REQ-FND-010, REQ-FND-014
 func TestOSVAsksNothingWhenThereIsNothingToAsk(t *testing.T) {
 	o := &OSV{http: &http.Client{}, API: "http://127.0.0.1:1"} // any request would fail
-	for _, pkgs := range [][]Package{
+	for _, packages := range [][]Package{
 		nil,
 		{{Ecosystem: "psgallery", Name: "Pester", Version: "5.5.0"}},
 		{{Ecosystem: "oci", Name: "alpine", Version: "3.19"}},
 		{{Ecosystem: "go", Name: "example.com/m"}},
 	} {
-		if found, partial := o.Query(context.Background(), pkgs); len(found) != 0 || partial {
-			t.Errorf("%v: %d findings, partial %t", pkgs, len(found), partial)
+		if found, partial := o.Query(context.Background(), packages); len(found) != 0 || partial {
+			t.Errorf("%v: %d findings, partial %t", packages, len(found), partial)
 		}
 	}
 }
@@ -146,7 +146,7 @@ func TestOSVAsksNothingWhenThereIsNothingToAsk(t *testing.T) {
 // Verifies: REQ-FND-010, REQ-CPP-011
 func TestOSVAsksConanCenterForConanPackages(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Queries []struct {
 				Package struct{ Name, Ecosystem string } `json:"package"`
@@ -163,8 +163,8 @@ func TestOSVAsksConanCenterForConanPackages(t *testing.T) {
 		}
 		json.NewEncoder(w).Encode(out)
 	}))
-	defer srv.Close()
-	o := &OSV{http: srv.Client(), cache: store.New(t.TempDir(), time.Hour), API: srv.URL}
+	defer server.Close()
+	o := &OSV{http: server.Client(), cache: store.New(t.TempDir(), time.Hour), API: server.URL}
 	o.Query(context.Background(), []Package{
 		{Ecosystem: "conan", Name: "zlib", Version: "1.2.13"},
 		{Ecosystem: "vcpkg", Name: "zlib", Version: "1.2.13"},
@@ -179,7 +179,7 @@ func TestOSVAsksConanCenterForConanPackages(t *testing.T) {
 // Verifies: REQ-FND-010, REQ-PHP-009
 func TestOSVAsksPackagistForComposerPackages(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Queries []struct {
 				Package struct{ Name, Ecosystem string } `json:"package"`
@@ -196,8 +196,8 @@ func TestOSVAsksPackagistForComposerPackages(t *testing.T) {
 		}
 		json.NewEncoder(w).Encode(out)
 	}))
-	defer srv.Close()
-	o := &OSV{http: srv.Client(), cache: store.New(t.TempDir(), time.Hour), API: srv.URL}
+	defer server.Close()
+	o := &OSV{http: server.Client(), cache: store.New(t.TempDir(), time.Hour), API: server.URL}
 	o.Query(context.Background(), []Package{
 		{Ecosystem: "composer", Name: "symfony/http-foundation", Version: "v6.4.2"},
 		{Ecosystem: "composer", Name: "monolog/monolog", Version: "3.5.0"},
@@ -214,7 +214,7 @@ func TestOSVAsksPackagistForComposerPackages(t *testing.T) {
 // Verifies: REQ-FND-010, REQ-RUBY-009
 func TestOSVAsksRubyGemsForGems(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Queries []struct {
 				Package struct{ Name, Ecosystem string } `json:"package"`
@@ -231,8 +231,8 @@ func TestOSVAsksRubyGemsForGems(t *testing.T) {
 		}
 		json.NewEncoder(w).Encode(out)
 	}))
-	defer srv.Close()
-	o := &OSV{http: srv.Client(), cache: store.New(t.TempDir(), time.Hour), API: srv.URL}
+	defer server.Close()
+	o := &OSV{http: server.Client(), cache: store.New(t.TempDir(), time.Hour), API: server.URL}
 	o.Query(context.Background(), []Package{{Ecosystem: "rubygems", Name: "nokogiri", Version: "1.15.4"}})
 	if want := []string{"RubyGems nokogiri 1.15.4"}; !reflect.DeepEqual(asked, want) {
 		t.Errorf("asked %q, want %q", asked, want)
@@ -245,7 +245,7 @@ func TestOSVAsksRubyGemsForGems(t *testing.T) {
 // Verifies: REQ-FND-010, REQ-SWIFT-006
 func TestOSVAsksSwiftURLForSwiftPackages(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Queries []struct {
 				Package struct{ Name, Ecosystem string } `json:"package"`
@@ -262,8 +262,8 @@ func TestOSVAsksSwiftURLForSwiftPackages(t *testing.T) {
 		}
 		json.NewEncoder(w).Encode(out)
 	}))
-	defer srv.Close()
-	o := &OSV{http: srv.Client(), cache: store.New(t.TempDir(), time.Hour), API: srv.URL}
+	defer server.Close()
+	o := &OSV{http: server.Client(), cache: store.New(t.TempDir(), time.Hour), API: server.URL}
 	o.Query(context.Background(), []Package{{Ecosystem: "swiftpm", Name: "github.com/apple/swift-nio", Version: "2.64.0"}})
 	if want := []string{"SwiftURL github.com/apple/swift-nio 2.64.0"}; !reflect.DeepEqual(asked, want) {
 		t.Errorf("asked %q, want %q", asked, want)
@@ -276,7 +276,7 @@ func TestOSVAsksSwiftURLForSwiftPackages(t *testing.T) {
 // Verifies: REQ-FND-010, REQ-DART-008
 func TestOSVAsksPubForDartPackages(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Queries []struct {
 				Package struct{ Name, Ecosystem string } `json:"package"`
@@ -293,8 +293,8 @@ func TestOSVAsksPubForDartPackages(t *testing.T) {
 		}
 		json.NewEncoder(w).Encode(out)
 	}))
-	defer srv.Close()
-	o := &OSV{http: srv.Client(), cache: store.New(t.TempDir(), time.Hour), API: srv.URL}
+	defer server.Close()
+	o := &OSV{http: server.Client(), cache: store.New(t.TempDir(), time.Hour), API: server.URL}
 	o.Query(context.Background(), []Package{{Ecosystem: "pub", Name: "http", Version: "1.2.1"}})
 	if want := []string{"Pub http 1.2.1"}; !reflect.DeepEqual(asked, want) {
 		t.Errorf("asked %q, want %q", asked, want)
@@ -307,7 +307,7 @@ func TestOSVAsksPubForDartPackages(t *testing.T) {
 // Verifies: REQ-FND-010, REQ-BEAM-011
 func TestOSVAsksHexForBeamPackages(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Queries []struct {
 				Package struct{ Name, Ecosystem string } `json:"package"`
@@ -324,8 +324,8 @@ func TestOSVAsksHexForBeamPackages(t *testing.T) {
 		}
 		json.NewEncoder(w).Encode(out)
 	}))
-	defer srv.Close()
-	o := &OSV{http: srv.Client(), cache: store.New(t.TempDir(), time.Hour), API: srv.URL}
+	defer server.Close()
+	o := &OSV{http: server.Client(), cache: store.New(t.TempDir(), time.Hour), API: server.URL}
 	o.Query(context.Background(), []Package{{Ecosystem: "hex", Name: "plug", Version: "1.16.0"}})
 	if want := []string{"Hex plug 1.16.0"}; !reflect.DeepEqual(asked, want) {
 		t.Errorf("asked %q, want %q", asked, want)
@@ -338,7 +338,7 @@ func TestOSVAsksHexForBeamPackages(t *testing.T) {
 // Verifies: REQ-FND-010, REQ-R-007, REQ-R-009
 func TestOSVAsksCRANAndBioconductorForRPackages(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Queries []struct {
 				Package struct{ Name, Ecosystem string } `json:"package"`
@@ -355,8 +355,8 @@ func TestOSVAsksCRANAndBioconductorForRPackages(t *testing.T) {
 		}
 		json.NewEncoder(w).Encode(out)
 	}))
-	defer srv.Close()
-	o := &OSV{http: srv.Client(), cache: store.New(t.TempDir(), time.Hour), API: srv.URL}
+	defer server.Close()
+	o := &OSV{http: server.Client(), cache: store.New(t.TempDir(), time.Hour), API: server.URL}
 	o.Query(context.Background(), []Package{
 		{Ecosystem: "cran", Name: "readxl", Version: "1.4.3"},
 		{Ecosystem: "bioconductor", Name: "DESeq2", Version: "1.44.0"},
@@ -373,7 +373,7 @@ func TestOSVAsksCRANAndBioconductorForRPackages(t *testing.T) {
 // Verifies: REQ-FND-010, REQ-HASKELL-010
 func TestOSVAsksHackageForHaskellPackages(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Queries []struct {
 				Package struct{ Name, Ecosystem string } `json:"package"`
@@ -390,8 +390,8 @@ func TestOSVAsksHackageForHaskellPackages(t *testing.T) {
 		}
 		json.NewEncoder(w).Encode(out)
 	}))
-	defer srv.Close()
-	o := &OSV{http: srv.Client(), cache: store.New(t.TempDir(), time.Hour), API: srv.URL}
+	defer server.Close()
+	o := &OSV{http: server.Client(), cache: store.New(t.TempDir(), time.Hour), API: server.URL}
 	o.Query(context.Background(), []Package{{Ecosystem: "hackage", Name: "aeson", Version: "2.2.3.0"}})
 	if want := []string{"Hackage aeson 2.2.3.0"}; !reflect.DeepEqual(asked, want) {
 		t.Errorf("asked %q, want %q", asked, want)
@@ -404,7 +404,7 @@ func TestOSVAsksHackageForHaskellPackages(t *testing.T) {
 // Verifies: REQ-FND-010, REQ-OCAML-008
 func TestOSVAsksOpamForOCamlPackages(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Queries []struct {
 				Package struct{ Name, Ecosystem string } `json:"package"`
@@ -421,8 +421,8 @@ func TestOSVAsksOpamForOCamlPackages(t *testing.T) {
 		}
 		json.NewEncoder(w).Encode(out)
 	}))
-	defer srv.Close()
-	o := &OSV{http: srv.Client(), cache: store.New(t.TempDir(), time.Hour), API: srv.URL}
+	defer server.Close()
+	o := &OSV{http: server.Client(), cache: store.New(t.TempDir(), time.Hour), API: server.URL}
 	o.Query(context.Background(), []Package{{Ecosystem: "opam", Name: "lwt", Version: "5.7.0"}, {Ecosystem: "opam", Name: "base", Version: "v0.16.3"}})
 	if want := []string{"opam base v0.16.3", "opam lwt 5.7.0"}; !reflect.DeepEqual(asked, want) {
 		t.Errorf("asked %q, want %q", asked, want)
@@ -435,7 +435,7 @@ func TestOSVAsksOpamForOCamlPackages(t *testing.T) {
 // Verifies: REQ-FND-010, REQ-JULIA-008
 func TestOSVAsksJuliaForJuliaPackages(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Queries []struct {
 				Package struct{ Name, Ecosystem string } `json:"package"`
@@ -452,8 +452,8 @@ func TestOSVAsksJuliaForJuliaPackages(t *testing.T) {
 		}
 		json.NewEncoder(w).Encode(out)
 	}))
-	defer srv.Close()
-	o := &OSV{http: srv.Client(), cache: store.New(t.TempDir(), time.Hour), API: srv.URL}
+	defer server.Close()
+	o := &OSV{http: server.Client(), cache: store.New(t.TempDir(), time.Hour), API: server.URL}
 	o.Query(context.Background(), []Package{{Ecosystem: "julia", Name: "HTTP", Version: "1.10.8"}, {Ecosystem: "julia-std", Name: "Dates", Version: "1.11.0"}})
 	if want := []string{"Julia HTTP 1.10.8"}; !reflect.DeepEqual(asked, want) {
 		t.Errorf("asked %q, want %q", asked, want)
@@ -489,20 +489,20 @@ func TestOSVSuggestsTheFixOnTheLineInUse(t *testing.T) {
 // Verifies: REQ-FND-012
 func TestOSVDoesNotCacheAShortAnswer(t *testing.T) {
 	var batches int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		atomic.AddInt32(&batches, 1)
 		w.Write([]byte(`{"results":[{"vulns":[]}]}`)) // one answer to two questions
 	}))
-	defer srv.Close()
-	o := &OSV{http: srv.Client(), cache: store.New(t.TempDir(), time.Hour), API: srv.URL, Logf: func(string, ...any) {}}
-	pkgs := []Package{
+	defer server.Close()
+	o := &OSV{http: server.Client(), cache: store.New(t.TempDir(), time.Hour), API: server.URL, Logf: func(string, ...any) {}}
+	packages := []Package{
 		{Ecosystem: "go", Name: "example.com/a", Version: "v1.0.0"},
 		{Ecosystem: "go", Name: "example.com/b", Version: "v1.0.0"},
 	}
-	if _, partial := o.Query(context.Background(), pkgs); !partial {
+	if _, partial := o.Query(context.Background(), packages); !partial {
 		t.Error("a short answer was reported as complete")
 	}
-	o.Query(context.Background(), pkgs)
+	o.Query(context.Background(), packages)
 	if n := atomic.LoadInt32(&batches); n != 2 {
 		t.Errorf("the database was asked %d times, want 2: the short answer was cached", n)
 	}
@@ -514,7 +514,7 @@ func TestOSVDoesNotCacheAShortAnswer(t *testing.T) {
 // Verifies: REQ-FND-010, REQ-JAVA-012
 func TestOSVAsksMavenByGroupAndArtifact(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		var body struct {
 			Queries []struct {
 				Package struct{ Name, Ecosystem string } `json:"package"`
@@ -531,8 +531,8 @@ func TestOSVAsksMavenByGroupAndArtifact(t *testing.T) {
 		}
 		json.NewEncoder(w).Encode(out)
 	}))
-	defer srv.Close()
-	o := &OSV{http: srv.Client(), cache: store.New(t.TempDir(), time.Hour), API: srv.URL}
+	defer server.Close()
+	o := &OSV{http: server.Client(), cache: store.New(t.TempDir(), time.Hour), API: server.URL}
 	o.Query(context.Background(), []Package{{Ecosystem: "maven", Name: "com.fasterxml.jackson.core:jackson-databind", Version: "2.17.0"}})
 	if want := []string{"Maven com.fasterxml.jackson.core:jackson-databind 2.17.0"}; !reflect.DeepEqual(asked, want) {
 		t.Errorf("asked %q, want %q", asked, want)

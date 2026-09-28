@@ -17,11 +17,11 @@ import (
 // way Java's own are, so the resolver reads what each such file declares. It reads
 // text, not a syntax tree: the resolver is rebuilt on every run and must stay cheap,
 // and what it needs sits in plain sight - the package clauses, and the definitions
-// outside every class, object and function body (declscan.go).
+// outside every class, object and function body (declarationscan.go).
 
-// sourceExts are the files whose declarations other files import. Scripts (.kts,
+// sourceExtensions are the files whose declarations other files import. Scripts (.kts,
 // .sc) are run, never imported, and are not read.
-var sourceExts = map[string]bool{".kt": true, ".scala": true}
+var sourceExtensions = map[string]bool{".kt": true, ".scala": true}
 
 // topLevel matches a top-level line that is a definition: modifiers and
 // annotations, the keyword, type parameters, and a name - for a Kotlin extension
@@ -42,7 +42,7 @@ func (r *resolver) readSource(f *scan.File) {
 	if f.Binary || f.TooLarge || f.Size > lang.MaxParseSize {
 		return
 	}
-	data, err := os.ReadFile(f.Abs)
+	data, err := os.ReadFile(f.AbsolutePath)
 	if err != nil {
 		return
 	}
@@ -63,11 +63,11 @@ func (r *resolver) readSource(f *scan.File) {
 			}
 		}
 		for _, name := range names {
-			r.decls[each.name+"."+name] = append(r.decls[each.name+"."+name], f.Path)
+			r.declarations[each.name+"."+name] = append(r.declarations[each.name+"."+name], f.Path)
 		}
 	}
 	if len(packageNames) > 0 {
-		r.filePkg[f.Path] = commonPackage(packageNames)
+		r.filePackage[f.Path] = commonPackage(packageNames)
 	}
 }
 
@@ -95,7 +95,7 @@ func commonPackage(packageNames []string) string {
 // Implements: REQ-KT-003, REQ-SCALA-003
 func (r *resolver) declared(segments []string) string {
 	for n := len(segments); n >= 2; n-- {
-		if files := r.decls[strings.Join(segments[:n], ".")]; len(files) > 0 {
+		if files := r.declarations[strings.Join(segments[:n], ".")]; len(files) > 0 {
 			return files[0]
 		}
 	}
@@ -103,11 +103,11 @@ func (r *resolver) declared(segments []string) string {
 	if len(files) == 0 {
 		return ""
 	}
-	dir := path.Dir(files[0])
+	directory := path.Dir(files[0])
 	for _, f := range files[1:] {
-		if path.Dir(f) != dir {
+		if path.Dir(f) != directory {
 			return files[0]
 		}
 	}
-	return dir
+	return directory
 }

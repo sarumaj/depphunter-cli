@@ -29,14 +29,14 @@ var std = func() map[string]string {
 		random/formatter=random-formatter ruby2_keywords objspace/ enumerator rational
 		complex io/console/size=io-console
 	`) {
-		key, pkg, _ := strings.Cut(entry, "=")
+		key, packageName, _ := strings.Cut(entry, "=")
 		name := strings.TrimSuffix(key, "/")
-		if pkg == "" {
-			pkg = strings.ToLower(name)
+		if packageName == "" {
+			packageName = strings.ToLower(name)
 		}
-		m[name] = pkg
+		m[name] = packageName
 		if strings.HasSuffix(key, "/") {
-			m[name+"/"] = pkg
+			m[name+"/"] = packageName
 		}
 	}
 	return m
@@ -45,12 +45,12 @@ var std = func() map[string]string {
 // stdLibrary finds the library of Ruby's own a require path belongs to: the path
 // itself, or a library that owns everything under it.
 func stdLibrary(p string) (string, bool) {
-	if pkg, ok := std[p]; ok {
-		return pkg, true
+	if packageName, ok := std[p]; ok {
+		return packageName, true
 	}
 	for i := strings.LastIndex(p, "/"); i > 0; i = strings.LastIndex(p[:i], "/") {
-		if pkg, ok := std[p[:i]+"/"]; ok {
-			return pkg, true
+		if packageName, ok := std[p[:i]+"/"]; ok {
+			return packageName, true
 		}
 	}
 	return "", false

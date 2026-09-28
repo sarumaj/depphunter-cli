@@ -19,45 +19,45 @@ import (
 // workspace (its package set, extra packages and spago.lock) or the package set a
 // spago.dhall configuration uses.
 type workspace struct {
-	dir    string
-	set    string // the package set's name, shown as the version of what it provides
-	extra  map[string]*extraPackage
-	lock   *spagoLock
-	locals map[string]string // the workspace's own packages -> their manifest
+	directory string
+	set       string // the package set's name, shown as the version of what it provides
+	extra     map[string]*extraPackage
+	lock      *spagoLock
+	locals    map[string]string // the workspace's own packages -> their manifest
 	// installed is what spago installed into the workspace's .spago/, by name.
 	installed map[string]*installedPackage
 }
 
-// installedPackage is a package spago installed: its version (or git ref) and
+// installedPackage is a package spago installed: its version (or git reference) and
 // the dependencies its own manifest lists.
 type installedPackage struct {
-	version string
-	pinned  bool
-	deps    []string
+	version      string
+	pinned       bool
+	dependencies []string
 }
 
 // project is one PureScript package of the repository: a spago.yaml package, a
 // spago.dhall configuration or a bower.json.
 type project struct {
-	file, dir string
-	kind      string // classYAML, classDhall or classBower
-	name      string
-	globs     []string // source globs, relative to the repository
-	testGlobs []string
-	deps      map[string]dependency
-	ws        *workspace
+	file, directory string
+	kind            string // classYAML, classDhall or classBower
+	name            string
+	globs           []string // source globs, relative to the repository
+	testGlobs       []string
+	dependencies    map[string]dependency
+	workspace       *workspace
 }
 
 type resolver struct {
-	root     string
-	files    map[string]bool
-	dirs     map[string]bool
-	projects []*project
-	byFile   map[string]*project // by manifest
-	wsByDir  map[string]*workspace
-	owner    map[string]*project // a module file's project
-	test     map[string]bool     // a module file read by a project's test globs
-	modules  map[string][]string // module name -> files declaring it, sorted
+	root          string
+	files         map[string]bool
+	directories   map[string]bool
+	projects      []*project
+	byFile        map[string]*project // by manifest
+	wsByDirectory map[string]*workspace
+	owner         map[string]*project // a module file's project
+	test          map[string]bool     // a module file read by a project's test globs
+	modules       map[string][]string // module name -> files declaring it, sorted
 	// evaluated memoizes Dhall files; nil while one is being evaluated (an
 	// import cycle).
 	evaluated map[string]*dhall.Value
@@ -68,14 +68,14 @@ type resolver struct {
 
 // Implements: REQ-PURESCRIPT-004, REQ-PURESCRIPT-005, REQ-PURESCRIPT-007
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{root: root, files: map[string]bool{}, dirs: map[string]bool{}, byFile: map[string]*project{},
-		wsByDir: map[string]*workspace{}, owner: map[string]*project{}, test: map[string]bool{},
+	r := &resolver{root: root, files: map[string]bool{}, directories: map[string]bool{}, byFile: map[string]*project{},
+		wsByDirectory: map[string]*workspace{}, owner: map[string]*project{}, test: map[string]bool{},
 		modules: map[string][]string{}, evaluated: map[string]*dhall.Value{}, setWS: map[*dhall.Value]*workspace{}, setFile: map[string]*workspace{}}
 	var sources []*scan.File
 	for _, f := range all {
 		r.files[f.Path] = true
-		for d := path.Dir(f.Path); d != "." && !r.dirs[d]; d = path.Dir(d) {
-			r.dirs[d] = true
+		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
+			r.directories[d] = true
 		}
 		if path.Ext(f.Path) == ".purs" && !installedPath(f.Path) && !f.Binary && !f.TooLarge && f.Size <= lang.MaxParseSize {
 			sources = append(sources, f)
@@ -85,14 +85,14 @@ func newResolver(root string, all []*scan.File) *resolver {
 	r.readDhall(all)
 	r.readBower(all)
 	if root != "" {
-		for _, ws := range r.workspaces() {
-			ws.installed = readSpagoInstalled(filepath.Join(root, filepath.FromSlash(ws.dir), ".spago"))
+		for _, workspace := range r.workspaces() {
+			workspace.installed = readSpagoInstalled(filepath.Join(root, filepath.FromSlash(workspace.directory), ".spago"))
 		}
 	}
 	sort.Slice(r.projects, func(i, j int) bool {
 		a, b := r.projects[i], r.projects[j]
-		if a.dir != b.dir {
-			return a.dir < b.dir
+		if a.directory != b.directory {
+			return a.directory < b.directory
 		}
 		if a.kind != b.kind {
 			return kindRank[a.kind] < kindRank[b.kind]
@@ -100,8 +100,8 @@ func newResolver(root string, all []*scan.File) *resolver {
 		return a.file < b.file
 	})
 	for _, f := range sources {
-		if src, err := os.ReadFile(f.Abs); err == nil {
-			if m := moduleName(src); m != "" {
+		if source, err := os.ReadFile(f.AbsolutePath); err == nil {
+			if m := moduleName(source); m != "" {
 				r.modules[m] = append(r.modules[m], f.Path)
 			}
 		}
@@ -118,8 +118,8 @@ func (r *resolver) read(f *scan.File) []byte {
 	if f.Binary || f.TooLarge || f.Size > lang.MaxParseSize {
 		return nil
 	}
-	src, _ := os.ReadFile(f.Abs)
-	return src
+	source, _ := os.ReadFile(f.AbsolutePath)
+	return source
 }
 
 // readYAML reads every spago.yaml: workspaces (with their spago.lock, read from
@@ -129,7 +129,7 @@ func (r *resolver) readYAML(all []*scan.File) {
 		f *scan.File
 		m *spagoYAML
 	}
-	var pkgs []found
+	var packages []found
 	for _, f := range all {
 		if path.Base(f.Path) != "spago.yaml" || installedPath(f.Path) {
 			continue
@@ -138,65 +138,65 @@ func (r *resolver) readYAML(all []*scan.File) {
 		if m == nil {
 			continue
 		}
-		dir := path.Dir(f.Path)
+		directory := path.Dir(f.Path)
 		if m.workspace {
-			ws := &workspace{dir: dir, set: m.set, extra: map[string]*extraPackage{}, locals: map[string]string{}}
+			activeWorkspace := &workspace{directory: directory, set: m.set, extra: map[string]*extraPackage{}, locals: map[string]string{}}
 			for _, e := range m.extra {
-				e.dir = dir
-				ws.extra[e.name] = e
+				e.directory = directory
+				activeWorkspace.extra[e.name] = e
 			}
-			if src, err := os.ReadFile(filepath.Join(r.root, filepath.FromSlash(dir), "spago.lock")); err == nil {
-				ws.lock = readLock(src)
-				if ws.lock != nil && ws.set == "" {
-					ws.set = ws.lock.set
+			if source, err := os.ReadFile(filepath.Join(r.root, filepath.FromSlash(directory), "spago.lock")); err == nil {
+				activeWorkspace.lock = readLock(source)
+				if activeWorkspace.lock != nil && activeWorkspace.set == "" {
+					activeWorkspace.set = activeWorkspace.lock.set
 				}
 			}
-			r.wsByDir[dir] = ws
+			r.wsByDirectory[directory] = activeWorkspace
 		}
 		if m.isPackage {
-			pkgs = append(pkgs, found{f, m})
+			packages = append(packages, found{f, m})
 		}
 	}
-	for _, p := range pkgs {
-		dir := path.Dir(p.f.Path)
-		ws := r.nearestWorkspace(dir)
-		if ws == nil {
-			ws = &workspace{dir: dir, extra: map[string]*extraPackage{}, locals: map[string]string{}}
+	for _, p := range packages {
+		directory := path.Dir(p.f.Path)
+		activeWorkspace := r.nearestWorkspace(directory)
+		if activeWorkspace == nil {
+			activeWorkspace = &workspace{directory: directory, extra: map[string]*extraPackage{}, locals: map[string]string{}}
 		}
-		pr := &project{file: p.f.Path, dir: dir, kind: classYAML, name: p.m.name, deps: map[string]dependency{}, ws: ws,
-			globs: []string{path.Join(dir, "src/**/*.purs")}, testGlobs: []string{path.Join(dir, "test/**/*.purs")}}
-		for _, d := range p.m.deps {
-			if _, ok := pr.deps[d.name]; !ok || !d.test {
-				pr.deps[d.name] = d
+		newProject := &project{file: p.f.Path, directory: directory, kind: classYAML, name: p.m.name, dependencies: map[string]dependency{}, workspace: activeWorkspace,
+			globs: []string{path.Join(directory, "src/**/*.purs")}, testGlobs: []string{path.Join(directory, "test/**/*.purs")}}
+		for _, d := range p.m.dependencies {
+			if _, ok := newProject.dependencies[d.name]; !ok || !d.test {
+				newProject.dependencies[d.name] = d
 			}
 		}
-		if pr.name != "" {
-			ws.locals[pr.name] = p.f.Path
+		if newProject.name != "" {
+			activeWorkspace.locals[newProject.name] = p.f.Path
 		}
-		r.projects = append(r.projects, pr)
-		r.byFile[p.f.Path] = pr
+		r.projects = append(r.projects, newProject)
+		r.byFile[p.f.Path] = newProject
 	}
 	// A lock's local packages are the workspace's too (their spago.yaml may be
 	// missing from the scan).
-	for _, ws := range r.wsByDir {
-		if ws.lock == nil {
+	for _, workspace := range r.wsByDirectory {
+		if workspace.lock == nil {
 			continue
 		}
-		for name, p := range ws.lock.locals {
-			if _, ok := ws.locals[name]; !ok {
-				if d := path.Join(ws.dir, p); inside(d) && (r.files[path.Join(d, "spago.yaml")]) {
-					ws.locals[name] = path.Join(d, "spago.yaml")
+		for name, p := range workspace.lock.locals {
+			if _, ok := workspace.locals[name]; !ok {
+				if d := path.Join(workspace.directory, p); inside(d) && (r.files[path.Join(d, "spago.yaml")]) {
+					workspace.locals[name] = path.Join(d, "spago.yaml")
 				}
 			}
 		}
 	}
 }
 
-// nearestWorkspace is the spago.yaml workspace in dir or the nearest above it.
-func (r *resolver) nearestWorkspace(dir string) *workspace {
-	for d := dir; ; d = path.Dir(d) {
-		if ws := r.wsByDir[d]; ws != nil {
-			return ws
+// nearestWorkspace is the spago.yaml workspace in directory or the nearest above it.
+func (r *resolver) nearestWorkspace(directory string) *workspace {
+	for d := directory; ; d = path.Dir(d) {
+		if workspace := r.wsByDirectory[d]; workspace != nil {
+			return workspace
 		}
 		if d == "." || d == "/" {
 			return nil
@@ -220,30 +220,30 @@ func (r *resolver) readDhall(all []*scan.File) {
 			}
 			continue
 		}
-		src := r.read(byPath[p])
-		if !strings.Contains(string(src), "dependencies") && !strings.Contains(string(src), "sources") {
+		source := r.read(byPath[p])
+		if !strings.Contains(string(source), "dependencies") && !strings.Contains(string(source), "sources") {
 			continue
 		}
 		v := r.loadDhall(p)
 		if v == nil || !dhallConfig(v) {
 			continue
 		}
-		dir := path.Dir(p)
-		pr := &project{file: p, dir: dir, kind: classDhall, deps: map[string]dependency{}}
+		directory := path.Dir(p)
+		newProject := &project{file: p, directory: directory, kind: classDhall, dependencies: map[string]dependency{}}
 		if n := v.Field("name"); n.Kind == dhall.KindText {
-			pr.name = n.Text
+			newProject.name = n.Text
 		}
 		for _, t := range v.Field("dependencies").Texts() {
-			if _, ok := pr.deps[t.Text]; !ok {
-				pr.deps[t.Text] = dependency{name: t.Text, line: t.Line}
+			if _, ok := newProject.dependencies[t.Text]; !ok {
+				newProject.dependencies[t.Text] = dependency{name: t.Text, line: t.Line}
 			}
 		}
 		for _, t := range v.Field("sources").Texts() {
-			pr.globs = append(pr.globs, r.globBase(dir, t.Text))
+			newProject.globs = append(newProject.globs, r.globBase(directory, t.Text))
 		}
-		pr.ws = r.dhallWorkspace(v.Field("packages"), dir)
-		r.projects = append(r.projects, pr)
-		r.byFile[p] = pr
+		newProject.workspace = r.dhallWorkspace(v.Field("packages"), directory)
+		r.projects = append(r.projects, newProject)
+		r.byFile[p] = newProject
 	}
 }
 
@@ -256,36 +256,36 @@ func (r *resolver) loadDhall(file string) *dhall.Value {
 	if !r.files[file] || len(r.evaluated) > 1000 {
 		return nil
 	}
-	src, err := os.ReadFile(filepath.Join(r.root, filepath.FromSlash(file)))
-	if err != nil || len(src) > lang.MaxParseSize {
+	source, err := os.ReadFile(filepath.Join(r.root, filepath.FromSlash(file)))
+	if err != nil || len(source) > lang.MaxParseSize {
 		return nil
 	}
 	r.evaluated[file] = nil
-	v := dhall.Eval(src, path.Dir(file), r.loadDhall)
+	v := dhall.Eval(source, path.Dir(file), r.loadDhall)
 	r.evaluated[file] = v
 	return v
 }
 
 // dhallWorkspace is the workspace of a package set value: its name and the
 // packages it adds or overrides. One set evaluated once is one workspace.
-func (r *resolver) dhallWorkspace(set *dhall.Value, dir string) *workspace {
-	if ws := r.setWS[set]; ws != nil && set != dhall.Unknown {
-		return ws
+func (r *resolver) dhallWorkspace(set *dhall.Value, directory string) *workspace {
+	if workspace := r.setWS[set]; workspace != nil && set != dhall.Unknown {
+		return workspace
 	}
-	ws := &workspace{dir: dir, set: setName(set), extra: map[string]*extraPackage{}, locals: map[string]string{}}
-	setDir := dir
+	activeWorkspace := &workspace{directory: directory, set: setName(set), extra: map[string]*extraPackage{}, locals: map[string]string{}}
+	setDirectory := directory
 	for f, v := range r.evaluated {
 		if v == set && path.Base(f) == "packages.dhall" {
-			setDir = path.Dir(f)
+			setDirectory = path.Dir(f)
 		}
 	}
-	for _, e := range dhallExtras(set, setDir) {
-		ws.extra[e.name] = e
+	for _, e := range dhallExtras(set, setDirectory) {
+		activeWorkspace.extra[e.name] = e
 	}
 	if set != dhall.Unknown {
-		r.setWS[set] = ws
+		r.setWS[set] = activeWorkspace
 	}
-	return ws
+	return activeWorkspace
 }
 
 // globBase makes a spago.dhall source glob relative to the repository. Legacy
@@ -294,20 +294,20 @@ func (r *resolver) dhallWorkspace(set *dhall.Value, dir string) *workspace {
 // extend another (examples/basic/spago.dhall listing "examples/basic/**"): the
 // first of the configuration's directory and its ancestors under which the
 // glob's literal part exists wins.
-func (r *resolver) globBase(dir, glob string) string {
-	lit := glob
+func (r *resolver) globBase(directory, glob string) string {
+	literal := glob
 	if i := strings.IndexAny(glob, "*?["); i >= 0 {
-		lit = path.Dir(glob[:i+1])
+		literal = path.Dir(glob[:i+1])
 	}
-	for d := dir; ; d = path.Dir(d) {
-		if p := path.Join(d, lit); inside(p) && (r.dirs[p] || r.files[p] || p == ".") {
+	for d := directory; ; d = path.Dir(d) {
+		if p := path.Join(d, literal); inside(p) && (r.directories[p] || r.files[p] || p == ".") {
 			return path.Join(d, glob)
 		}
 		if d == "." || d == "/" {
 			break
 		}
 	}
-	return path.Join(dir, glob)
+	return path.Join(directory, glob)
 }
 
 // readBower reads bower.json files that name PureScript packages; each is a
@@ -321,17 +321,17 @@ func (r *resolver) readBower(all []*scan.File) {
 		if m == nil {
 			continue
 		}
-		dir := path.Dir(f.Path)
-		pr := &project{file: f.Path, dir: dir, kind: classBower, name: m.name, deps: map[string]dependency{},
-			globs: []string{path.Join(dir, "src/**/*.purs")}, testGlobs: []string{path.Join(dir, "test/**/*.purs")},
-			ws: &workspace{dir: dir, extra: map[string]*extraPackage{}, locals: map[string]string{}}}
-		for _, d := range m.deps {
-			if _, ok := pr.deps[d.name]; !ok || !d.test {
-				pr.deps[d.name] = d
+		directory := path.Dir(f.Path)
+		newProject := &project{file: f.Path, directory: directory, kind: classBower, name: m.name, dependencies: map[string]dependency{},
+			globs: []string{path.Join(directory, "src/**/*.purs")}, testGlobs: []string{path.Join(directory, "test/**/*.purs")},
+			workspace: &workspace{directory: directory, extra: map[string]*extraPackage{}, locals: map[string]string{}}}
+		for _, d := range m.dependencies {
+			if _, ok := newProject.dependencies[d.name]; !ok || !d.test {
+				newProject.dependencies[d.name] = d
 			}
 		}
-		r.projects = append(r.projects, pr)
-		r.byFile[f.Path] = pr
+		r.projects = append(r.projects, newProject)
+		r.byFile[f.Path] = newProject
 	}
 }
 
@@ -340,7 +340,7 @@ func (r *resolver) readBower(all []*scan.File) {
 // a file no glob matches belongs to the nearest project above it.
 func (r *resolver) own(file string) {
 	var best *project
-	bestTest, bestAnc := false, false
+	bestTest, bestAncestor := false, false
 	for _, p := range r.projects {
 		m, t := matchAny(p.globs, file), false
 		if !m {
@@ -351,15 +351,15 @@ func (r *resolver) own(file string) {
 		if !m {
 			continue
 		}
-		anc := under(file, p.dir)
-		if best == nil || anc && !bestAnc || anc && bestAnc && len(p.dir) > len(best.dir) {
-			best, bestTest, bestAnc = p, t, anc
+		ancestor := under(file, p.directory)
+		if best == nil || ancestor && !bestAncestor || ancestor && bestAncestor && len(p.directory) > len(best.directory) {
+			best, bestTest, bestAncestor = p, t, ancestor
 		}
 	}
 	if best == nil {
 		for d := path.Dir(file); best == nil; d = path.Dir(d) {
 			for _, p := range r.projects {
-				if p.dir == d {
+				if p.directory == d {
 					best = p
 					bestTest = strings.HasPrefix(file, path.Join(d, "test")+"/")
 					break
@@ -417,11 +417,13 @@ func matchSegments(g, p []string, depth int) bool {
 
 func inside(p string) bool { return p != ".." && !strings.HasPrefix(p, "../") && !path.IsAbs(p) }
 
-func under(file, dir string) bool { return dir == "." || strings.HasPrefix(file, dir+"/") }
+func under(file, directory string) bool {
+	return directory == "." || strings.HasPrefix(file, directory+"/")
+}
 
 // moduleName reads the name a module file declares in its header, or "".
-func moduleName(src []byte) string {
-	tokens := lex(src[:min(len(src), 64<<10)])
+func moduleName(source []byte) string {
+	tokens := lex(source[:min(len(source), 64<<10)])
 	if len(tokens) >= 2 && tokens[0].kind == tLower && tokens[0].text == "module" && tokens[1].kind == tUpper {
 		return tokens[1].text
 	}
@@ -429,36 +431,36 @@ func moduleName(src []byte) string {
 }
 
 // Implements: REQ-PURESCRIPT-004, REQ-PURESCRIPT-005, REQ-PURESCRIPT-006
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	switch imp.Name {
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	switch rawImport.Name {
 	case kindModule:
-		return r.module(file, imp.Module)
+		return r.module(file, rawImport.Module)
 	case kindFFI:
 		// The JavaScript companion of a module with foreign imports.
 		if js := strings.TrimSuffix(file, ".purs") + ".js"; r.files[js] {
 			return lang.Target{Local: js}
 		}
-	case kindDep:
+	case kindDependency:
 		if p := r.byFile[file]; p != nil {
-			return r.target(p, imp.Module)
+			return r.target(p, rawImport.Module)
 		}
 	case kindExtra:
 		if p := r.byFile[file]; p != nil {
-			return r.fromWorkspace(p.ws, imp.Module, "")
+			return r.fromWorkspace(p.workspace, rawImport.Module, "")
 		}
-		if ws := r.wsByDir[path.Dir(file)]; ws != nil {
-			return r.fromWorkspace(ws, imp.Module, "")
+		if workspace := r.wsByDirectory[path.Dir(file)]; workspace != nil {
+			return r.fromWorkspace(workspace, rawImport.Module, "")
 		}
-		if ws := r.setFile[file]; ws != nil {
-			return r.fromWorkspace(ws, imp.Module, "")
+		if workspace := r.setFile[file]; workspace != nil {
+			return r.fromWorkspace(workspace, rawImport.Module, "")
 		}
 	case kindLock:
-		if ws := r.wsByDir[path.Dir(file)]; ws != nil {
-			return r.fromWorkspace(ws, imp.Module, "")
+		if workspace := r.wsByDirectory[path.Dir(file)]; workspace != nil {
+			return r.fromWorkspace(workspace, rawImport.Module, "")
 		}
-		if src, err := os.ReadFile(filepath.Join(r.root, filepath.FromSlash(file))); err == nil {
-			if l := readLock(src); l != nil {
-				return r.fromWorkspace(&workspace{dir: path.Dir(file), lock: l}, imp.Module, "")
+		if source, err := os.ReadFile(filepath.Join(r.root, filepath.FromSlash(file))); err == nil {
+			if l := readLock(source); l != nil {
+				return r.fromWorkspace(&workspace{directory: path.Dir(file), lock: l}, rawImport.Module, "")
 			}
 		}
 	}
@@ -474,12 +476,12 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 // the table names; else it is dropped.
 //
 // Implements: REQ-PURESCRIPT-004, REQ-PURESCRIPT-007, REQ-PURESCRIPT-011
-func (r *resolver) module(file, mod string) lang.Target {
-	if primModules[mod] {
-		return lang.Target{Ecosystem: ecoStd, Package: prim}
+func (r *resolver) module(file, module string) lang.Target {
+	if primModules[module] {
+		return lang.Target{Ecosystem: ecosystemStd, Package: prim}
 	}
 	p := r.owner[file]
-	candidates := r.modules[mod]
+	candidates := r.modules[module]
 	if p != nil {
 		for _, c := range candidates {
 			if o := r.owner[c]; o == p && (!r.test[c] || r.test[file]) {
@@ -487,28 +489,28 @@ func (r *resolver) module(file, mod string) lang.Target {
 			}
 		}
 		for _, c := range candidates {
-			if o := r.owner[c]; o != nil && o.ws == p.ws {
+			if o := r.owner[c]; o != nil && o.workspace == p.workspace {
 				return lang.Target{Local: c}
 			}
 		}
-		if name := r.installedIndex(p.dir).mods[mod]; name != "" {
+		if name := r.installedIndex(p.directory).modules[module]; name != "" {
 			return r.target(p, name)
 		}
 		declared := func(name string) bool { return r.declares(p, name) }
-		name, n := spelled(mod, p, declared)
-		if known, k := knownPackage(mod); known != "" && declared(known) && k >= n {
+		name, n := spelled(module, p, declared)
+		if known, k := knownPackage(module); known != "" && declared(known) && k >= n {
 			name = known
 		}
 		if name != "" {
 			t := r.target(p, name)
 			if t.Local != "" {
 				// A local package: the module's file in it.
-				dir := t.Local
-				if !r.dirs[dir] {
-					dir = path.Dir(dir)
+				directory := t.Local
+				if !r.directories[directory] {
+					directory = path.Dir(directory)
 				}
 				for _, c := range candidates {
-					if under(c, dir) {
+					if under(c, directory) {
 						return lang.Target{Local: c}
 					}
 				}
@@ -519,11 +521,11 @@ func (r *resolver) module(file, mod string) lang.Target {
 	if len(candidates) > 0 {
 		return lang.Target{Local: nearest(file, candidates)}
 	}
-	if known, _ := knownPackage(mod); known != "" {
+	if known, _ := knownPackage(module); known != "" {
 		if p != nil {
 			return r.target(p, known)
 		}
-		return lang.Target{Ecosystem: ecoPureScript, Package: known, Unresolved: true}
+		return lang.Target{Ecosystem: ecosystemPureScript, Package: known, Unresolved: true}
 	}
 	return lang.Target{}
 }
@@ -546,14 +548,14 @@ func nearest(file string, candidates []string) string {
 // declares reports whether a package is listed for the project: a dependency, a
 // workspace's extra package, or one its lock records.
 func (r *resolver) declares(p *project, name string) bool {
-	if _, ok := p.deps[name]; ok {
+	if _, ok := p.dependencies[name]; ok {
 		return true
 	}
-	if _, ok := p.ws.extra[name]; ok {
+	if _, ok := p.workspace.extra[name]; ok {
 		return true
 	}
-	if p.ws.lock != nil {
-		if _, ok := p.ws.lock.packages[name]; ok {
+	if p.workspace.lock != nil {
+		if _, ok := p.workspace.lock.packages[name]; ok {
 			return true
 		}
 	}
@@ -565,8 +567,8 @@ func (r *resolver) declares(p *project, name string) bool {
 // namespace (Data, Control, Effect, Test, Type): Node.FS is node-fs, Web.HTML
 // web-html, Data.Maybe maybe, Effect.Aff aff. The run ending furthest wins; it
 // returns the package and where the run ends.
-func spelled(mod string, p *project, declared func(string) bool) (string, int) {
-	segments := strings.Split(mod, ".")
+func spelled(module string, p *project, declared func(string) bool) (string, int) {
+	segments := strings.Split(module, ".")
 	names := map[string]string{} // folded -> name
 	add := func(name string) {
 		if f := fold(name); f != "" && declared(name) {
@@ -575,14 +577,14 @@ func spelled(mod string, p *project, declared func(string) bool) (string, int) {
 			}
 		}
 	}
-	for n := range p.deps {
+	for n := range p.dependencies {
 		add(n)
 	}
-	for n := range p.ws.extra {
+	for n := range p.workspace.extra {
 		add(n)
 	}
-	if p.ws.lock != nil {
-		for n := range p.ws.lock.packages {
+	if p.workspace.lock != nil {
+		for n := range p.workspace.lock.packages {
 			add(n)
 		}
 	}
@@ -620,30 +622,30 @@ func fold(s string) string {
 //
 // Implements: REQ-PURESCRIPT-005, REQ-PURESCRIPT-006
 func (r *resolver) target(p *project, name string) lang.Target {
-	d, declared := p.deps[name]
-	if t := r.fromWorkspace(p.ws, name, d.rng); t != (lang.Target{}) {
+	d, declared := p.dependencies[name]
+	if t := r.fromWorkspace(p.workspace, name, d.versionRange); t != (lang.Target{}) {
 		return t
 	}
 	if !declared {
-		return lang.Target{Ecosystem: ecoPureScript, Package: name, Unresolved: true}
+		return lang.Target{Ecosystem: ecosystemPureScript, Package: name, Unresolved: true}
 	}
 	if d.origin != "" {
 		// bower installing from git: a commit pins, a tag or range does not.
-		return lang.Target{Ecosystem: ecoPureScript, Package: gitName(d.origin, ""), Version: d.rng, Origin: d.origin,
-			Pinned: lang.Commit(d.rng), Floating: !lang.Commit(d.rng)}
+		return lang.Target{Ecosystem: ecosystemPureScript, Package: gitName(d.origin, ""), Version: d.versionRange, Origin: d.origin,
+			Pinned: lang.Commit(d.versionRange), Floating: !lang.Commit(d.versionRange)}
 	}
-	if d.rng != "" {
-		v := strings.TrimPrefix(d.rng, "v")
+	if d.versionRange != "" {
+		v := strings.TrimPrefix(d.versionRange, "v")
 		if lang.PinnedSemver(v) {
-			return lang.Target{Ecosystem: ecoPureScript, Package: name, Version: v, Pinned: true}
+			return lang.Target{Ecosystem: ecosystemPureScript, Package: name, Version: v, Pinned: true}
 		}
-		return lang.Target{Ecosystem: ecoPureScript, Package: name, Version: d.rng, Floating: true}
+		return lang.Target{Ecosystem: ecosystemPureScript, Package: name, Version: d.versionRange, Floating: true}
 	}
-	if p.ws.set != "" {
+	if p.workspace.set != "" {
 		// A package set decides the version, but which one is not known offline.
-		return lang.Target{Ecosystem: ecoPureScript, Package: name, Version: p.ws.set}
+		return lang.Target{Ecosystem: ecosystemPureScript, Package: name, Version: p.workspace.set}
 	}
-	return lang.Target{Ecosystem: ecoPureScript, Package: name, Floating: true}
+	return lang.Target{Ecosystem: ecosystemPureScript, Package: name, Floating: true}
 }
 
 // fromWorkspace is a package as a workspace decides it: one of the workspace's
@@ -651,23 +653,23 @@ func (r *resolver) target(p *project, name string) lang.Target {
 // Target when the workspace says nothing about it.
 //
 // Implements: REQ-PURESCRIPT-006
-func (r *resolver) fromWorkspace(ws *workspace, name, requested string) lang.Target {
-	if ws == nil {
+func (r *resolver) fromWorkspace(activeWorkspace *workspace, name, requested string) lang.Target {
+	if activeWorkspace == nil {
 		return lang.Target{}
 	}
-	if m, ok := ws.locals[name]; ok {
+	if m, ok := activeWorkspace.locals[name]; ok {
 		return lang.Target{Local: m}
 	}
-	if ws.lock != nil {
-		if l := ws.lock.packages[name]; l != nil {
+	if activeWorkspace.lock != nil {
+		if l := activeWorkspace.lock.packages[name]; l != nil {
 			switch {
-			case l.typ == "git" || l.url != "":
-				return lang.Target{Ecosystem: ecoPureScript, Package: gitName(l.url, l.subdir), Version: l.rev,
+			case l.typeName == "git" || l.url != "":
+				return lang.Target{Ecosystem: ecosystemPureScript, Package: gitName(l.url, l.subdirectory), Version: l.rev,
 					Pinned: lang.Commit(l.rev), Origin: l.url}
-			case l.typ == "local" || l.path != "":
-				return r.localDir(ws.dir, l.path)
+			case l.typeName == "local" || l.path != "":
+				return r.localDirectory(activeWorkspace.directory, l.path)
 			case l.version != "":
-				t := lang.Target{Ecosystem: ecoPureScript, Package: name, Version: l.version, Pinned: true}
+				t := lang.Target{Ecosystem: ecosystemPureScript, Package: name, Version: l.version, Pinned: true}
 				if requested != "" && requested != l.version {
 					t.Requested = requested
 				}
@@ -675,34 +677,34 @@ func (r *resolver) fromWorkspace(ws *workspace, name, requested string) lang.Tar
 			}
 		}
 	}
-	if e := ws.extra[name]; e != nil {
+	if e := activeWorkspace.extra[name]; e != nil {
 		switch {
 		case e.path != "":
-			return r.localDir(e.dir, e.path)
+			return r.localDirectory(e.directory, e.path)
 		case e.git != "":
-			ref := e.ref
-			if ref == "" {
-				ref = e.version // packages.dhall: version is the git ref
+			reference := e.reference
+			if reference == "" {
+				reference = e.version // packages.dhall: version is the git reference
 			}
-			return lang.Target{Ecosystem: ecoPureScript, Package: gitName(e.git, e.subdir), Version: ref,
-				Pinned: lang.Commit(ref), Floating: ref == "", Origin: e.git}
+			return lang.Target{Ecosystem: ecosystemPureScript, Package: gitName(e.git, e.subdirectory), Version: reference,
+				Pinned: lang.Commit(reference), Floating: reference == "", Origin: e.git}
 		case e.version != "":
 			v := strings.TrimPrefix(e.version, "v")
 			if lang.PinnedSemver(v) && !strings.HasPrefix(e.version, "v") {
-				return lang.Target{Ecosystem: ecoPureScript, Package: name, Version: v, Pinned: true}
+				return lang.Target{Ecosystem: ecosystemPureScript, Package: name, Version: v, Pinned: true}
 			}
 			// A packages.dhall override of the version alone: a tag of the
 			// package's repository, or a commit.
-			return lang.Target{Ecosystem: ecoPureScript, Package: name, Version: e.version, Pinned: lang.Commit(e.version)}
+			return lang.Target{Ecosystem: ecosystemPureScript, Package: name, Version: e.version, Pinned: lang.Commit(e.version)}
 		}
 	}
 	return lang.Target{}
 }
 
-// localDir is a local package's directory (its spago.yaml or spago.dhall when
+// localDirectory is a local package's directory (its spago.yaml or spago.dhall when
 // it has one), or nothing when it is outside the repository or not there.
-func (r *resolver) localDir(base, rel string) lang.Target {
-	d := path.Join(base, rel)
+func (r *resolver) localDirectory(base, relative string) lang.Target {
+	d := path.Join(base, relative)
 	if !inside(d) {
 		return lang.Target{}
 	}
@@ -711,7 +713,7 @@ func (r *resolver) localDir(base, rel string) lang.Target {
 			return lang.Target{Local: f}
 		}
 	}
-	if r.dirs[d] {
+	if r.directories[d] {
 		return lang.Target{Local: d}
 	}
 	return lang.Target{}
@@ -720,30 +722,30 @@ func (r *resolver) localDir(base, rel string) lang.Target {
 // installedIndex maps the modules of the packages spago (or bower) installed
 // for a project to their packages.
 type installedIndex struct {
-	once sync.Once
-	mods map[string]string // module -> package
+	once    sync.Once
+	modules map[string]string // module -> package
 }
 
 // maxInstalledFiles bounds how many installed files are listed per directory.
 const maxInstalledFiles = 100_000
 
 // installedIndex is what is installed under the nearest directory at or above
-// dir that has a .spago/ or bower_components/: spago 0.93 and later keep
+// directory that has a .spago/ or bower_components/: spago 0.93 and later keep
 // registry packages in .spago/p/<name>-<version>/ and git packages in
 // .spago/p/<name>/<ref>/, spago 0.20 in .spago/<name>/<version>/, bower in
 // bower_components/purescript-<name>/. A module is a file under the package's
 // src/, named by its path (Data/Maybe.purs is Data.Maybe).
 //
 // Implements: REQ-PURESCRIPT-007
-func (r *resolver) installedIndex(dir string) *installedIndex {
-	for d := dir; ; d = path.Dir(d) {
-		abs := filepath.Join(r.root, filepath.FromSlash(d))
-		spago, bower := filepath.Join(abs, ".spago"), filepath.Join(abs, "bower_components")
-		if isDir(spago) || isDir(bower) {
+func (r *resolver) installedIndex(directory string) *installedIndex {
+	for d := directory; ; d = path.Dir(d) {
+		absolute := filepath.Join(r.root, filepath.FromSlash(d))
+		spago, bower := filepath.Join(absolute, ".spago"), filepath.Join(absolute, "bower_components")
+		if isDirectory(spago) || isDirectory(bower) {
 			v, _ := r.installed.LoadOrStore(d, &installedIndex{})
-			idx := v.(*installedIndex)
-			idx.once.Do(func() { idx.mods = readInstalled(spago, bower) })
-			return idx
+			index := v.(*installedIndex)
+			index.once.Do(func() { index.modules = readInstalled(spago, bower) })
+			return index
 		}
 		if d == "." || d == "/" {
 			return &installedIndex{}
@@ -751,16 +753,16 @@ func (r *resolver) installedIndex(dir string) *installedIndex {
 	}
 }
 
-func isDir(p string) bool {
-	st, err := os.Stat(p)
-	return err == nil && st.IsDir()
+func isDirectory(p string) bool {
+	fileInfo, err := os.Stat(p)
+	return err == nil && fileInfo.IsDir()
 }
 
 func readInstalled(spago, bower string) map[string]string {
-	mods := map[string]string{}
+	modules := map[string]string{}
 	count := 0
-	addSrc := func(pkg, src string) {
-		filepath.WalkDir(src, func(p string, d os.DirEntry, err error) error {
+	addSource := func(packageName, source string) {
+		filepath.WalkDir(source, func(p string, d os.DirEntry, err error) error {
 			if err != nil || count > maxInstalledFiles {
 				return filepath.SkipDir
 			}
@@ -768,10 +770,10 @@ func readInstalled(spago, bower string) map[string]string {
 				return nil
 			}
 			count++
-			rel, _ := filepath.Rel(src, p)
-			mod := strings.ReplaceAll(strings.TrimSuffix(filepath.ToSlash(rel), ".purs"), "/", ".")
-			if _, ok := mods[mod]; !ok {
-				mods[mod] = pkg
+			relative, _ := filepath.Rel(source, p)
+			module := strings.ReplaceAll(strings.TrimSuffix(filepath.ToSlash(relative), ".purs"), "/", ".")
+			if _, ok := modules[module]; !ok {
+				modules[module] = packageName
 			}
 			return nil
 		})
@@ -781,17 +783,17 @@ func readInstalled(spago, bower string) map[string]string {
 		if !e.IsDir() {
 			continue
 		}
-		dir := filepath.Join(spago, "p", e.Name())
-		if isDir(filepath.Join(dir, "src")) {
+		directory := filepath.Join(spago, "p", e.Name())
+		if isDirectory(filepath.Join(directory, "src")) {
 			if name, _, ok := splitNameVersion(e.Name()); ok {
-				addSrc(name, filepath.Join(dir, "src"))
+				addSource(name, filepath.Join(directory, "src"))
 			}
 			continue
 		}
-		refs, _ := os.ReadDir(dir)
-		for _, ref := range refs {
-			if src := filepath.Join(dir, ref.Name(), "src"); ref.IsDir() && isDir(src) {
-				addSrc(e.Name(), src)
+		references, _ := os.ReadDir(directory)
+		for _, reference := range references {
+			if source := filepath.Join(directory, reference.Name(), "src"); reference.IsDir() && isDirectory(source) {
+				addSource(e.Name(), source)
 				break
 			}
 		}
@@ -801,10 +803,10 @@ func readInstalled(spago, bower string) map[string]string {
 		if !e.IsDir() || e.Name() == "p" {
 			continue
 		}
-		vers, _ := os.ReadDir(filepath.Join(spago, e.Name()))
-		for _, v := range vers {
-			if src := filepath.Join(spago, e.Name(), v.Name(), "src"); v.IsDir() && isDir(src) {
-				addSrc(e.Name(), src)
+		versions, _ := os.ReadDir(filepath.Join(spago, e.Name()))
+		for _, v := range versions {
+			if source := filepath.Join(spago, e.Name(), v.Name(), "src"); v.IsDir() && isDirectory(source) {
+				addSource(e.Name(), source)
 				break
 			}
 		}
@@ -812,10 +814,10 @@ func readInstalled(spago, bower string) map[string]string {
 	entries, _ = os.ReadDir(bower)
 	for _, e := range entries {
 		if name, ok := strings.CutPrefix(e.Name(), "purescript-"); ok && e.IsDir() {
-			addSrc(name, filepath.Join(bower, e.Name(), "src"))
+			addSource(name, filepath.Join(bower, e.Name(), "src"))
 		}
 	}
-	return mods
+	return modules
 }
 
 // readSpagoInstalled reads the manifests of the packages spago installed into a
@@ -826,28 +828,28 @@ func readInstalled(spago, bower string) map[string]string {
 // Implements: REQ-PURESCRIPT-008
 func readSpagoInstalled(spago string) map[string]*installedPackage {
 	out := map[string]*installedPackage{}
-	add := func(name, version string, pinned bool, dir string) bool {
+	add := func(name, version string, pinned bool, directory string) bool {
 		if out[name] != nil {
 			return true
 		}
-		deps, ok := manifestDeps(dir)
+		dependencies, ok := manifestDependencies(directory)
 		if ok {
-			out[name] = &installedPackage{version: version, pinned: pinned, deps: deps}
+			out[name] = &installedPackage{version: version, pinned: pinned, dependencies: dependencies}
 		}
 		return ok
 	}
 	entries, _ := os.ReadDir(filepath.Join(spago, "p"))
 	for _, e := range entries {
-		dir := filepath.Join(spago, "p", e.Name())
+		directory := filepath.Join(spago, "p", e.Name())
 		if !e.IsDir() {
 			continue
 		}
-		if name, version, ok := splitNameVersion(e.Name()); ok && add(name, version, true, dir) {
+		if name, version, ok := splitNameVersion(e.Name()); ok && add(name, version, true, directory) {
 			continue
 		}
-		refs, _ := os.ReadDir(dir)
-		for _, ref := range refs {
-			if ref.IsDir() && add(e.Name(), ref.Name(), lang.Commit(ref.Name()), filepath.Join(dir, ref.Name())) {
+		references, _ := os.ReadDir(directory)
+		for _, reference := range references {
+			if reference.IsDir() && add(e.Name(), reference.Name(), lang.Commit(reference.Name()), filepath.Join(directory, reference.Name())) {
 				break
 			}
 		}
@@ -857,8 +859,8 @@ func readSpagoInstalled(spago string) map[string]*installedPackage {
 		if !e.IsDir() || e.Name() == "p" {
 			continue
 		}
-		vers, _ := os.ReadDir(filepath.Join(spago, e.Name()))
-		for _, v := range vers {
+		versions, _ := os.ReadDir(filepath.Join(spago, e.Name()))
+		for _, v := range versions {
 			if v.IsDir() && add(e.Name(), v.Name(), lang.Commit(v.Name()), filepath.Join(spago, e.Name(), v.Name())) {
 				break
 			}
@@ -867,38 +869,38 @@ func readSpagoInstalled(spago string) map[string]*installedPackage {
 	return out
 }
 
-// manifestDeps are the dependencies an installed package's manifest lists (not
+// manifestDependencies are the dependencies an installed package's manifest lists (not
 // its test dependencies): spago.yaml's, else spago.dhall's, else the registry's
 // purs.json's. ok is false when it has none of them readable.
-func manifestDeps(dir string) (deps []string, ok bool) {
+func manifestDependencies(directory string) (dependencies []string, ok bool) {
 	read := func(name string) []byte {
-		src, err := os.ReadFile(filepath.Join(dir, name))
-		if err != nil || len(src) > lang.MaxParseSize {
+		source, err := os.ReadFile(filepath.Join(directory, name))
+		if err != nil || len(source) > lang.MaxParseSize {
 			return nil
 		}
-		return src
+		return source
 	}
 	if m := readSpagoYAML(read("spago.yaml")); m != nil && m.isPackage {
-		for _, d := range m.deps {
+		for _, d := range m.dependencies {
 			if !d.test {
-				deps = append(deps, d.name)
+				dependencies = append(dependencies, d.name)
 			}
 		}
-		return deps, true
+		return dependencies, true
 	}
-	if src := read("spago.dhall"); src != nil {
-		if v := dhall.Eval(src, ".", nil); dhallConfig(v) {
+	if source := read("spago.dhall"); source != nil {
+		if v := dhall.Eval(source, ".", nil); dhallConfig(v) {
 			for _, t := range v.Field("dependencies").Texts() {
-				deps = append(deps, t.Text)
+				dependencies = append(dependencies, t.Text)
 			}
-			return deps, true
+			return dependencies, true
 		}
 	}
 	if m := yamlGet(yamlDoc(read("purs.json")), "dependencies"); m != nil && m.Kind == yaml.MappingNode {
 		for i := 0; i+1 < len(m.Content); i += 2 {
-			deps = append(deps, m.Content[i].Value)
+			dependencies = append(dependencies, m.Content[i].Value)
 		}
-		return deps, true
+		return dependencies, true
 	}
 	return nil, false
 }
@@ -920,8 +922,8 @@ func splitNameVersion(s string) (name, version string, ok bool) {
 //
 // Implements: REQ-PURESCRIPT-008
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
-	deps, _ := r.dependencies(t)
-	return deps
+	dependencies, _ := r.dependencies(t)
+	return dependencies
 }
 
 // Installed reports whether a package's dependencies come from what spago
@@ -933,43 +935,43 @@ func (r *resolver) Installed(t lang.Target) bool {
 
 // dependencies answers for Dependencies and says whether the answer came from
 // what spago installed.
-func (r *resolver) dependencies(t lang.Target) (deps []lang.Target, installed bool) {
-	if t.Ecosystem != ecoPureScript || t.Package == "" {
+func (r *resolver) dependencies(t lang.Target) (dependencies []lang.Target, installed bool) {
+	if t.Ecosystem != ecosystemPureScript || t.Package == "" {
 		return nil, false
 	}
-	for _, ws := range r.workspaces() {
-		if ws.lock != nil {
-			for _, name := range sortedKeys(ws.lock.packages) {
-				l := ws.lock.packages[name]
-				if name == t.Package && l.url == "" || l.url != "" && gitName(l.url, l.subdir) == t.Package {
-					return r.depTargets(ws, l.dependencies), false
+	for _, workspace := range r.workspaces() {
+		if workspace.lock != nil {
+			for _, name := range sortedKeys(workspace.lock.packages) {
+				l := workspace.lock.packages[name]
+				if name == t.Package && l.url == "" || l.url != "" && gitName(l.url, l.subdirectory) == t.Package {
+					return r.dependencyTargets(workspace, l.dependencies), false
 				}
 			}
 		}
-		for _, name := range sortedKeys(ws.extra) {
-			e := ws.extra[name]
-			if e.hasDeps && (name == t.Package && e.git == "" || e.git != "" && gitName(e.git, e.subdir) == t.Package) {
-				return r.depTargets(ws, e.dependencies), false
+		for _, name := range sortedKeys(workspace.extra) {
+			e := workspace.extra[name]
+			if e.hasDependencies && (name == t.Package && e.git == "" || e.git != "" && gitName(e.git, e.subdirectory) == t.Package) {
+				return r.dependencyTargets(workspace, e.dependencies), false
 			}
 		}
 	}
-	for _, ws := range r.workspaces() {
-		if p := ws.installed[t.Package]; p != nil {
-			return r.depTargets(ws, p.deps), true
+	for _, workspace := range r.workspaces() {
+		if p := workspace.installed[t.Package]; p != nil {
+			return r.dependencyTargets(workspace, p.dependencies), true
 		}
 	}
 	return nil, false
 }
 
-func (r *resolver) depTargets(ws *workspace, names []string) []lang.Target {
+func (r *resolver) dependencyTargets(activeWorkspace *workspace, names []string) []lang.Target {
 	var out []lang.Target
 	for _, n := range names {
-		if t := r.fromWorkspace(ws, n, ""); t.Package != "" {
+		if t := r.fromWorkspace(activeWorkspace, n, ""); t.Package != "" {
 			out = append(out, t)
-		} else if p := ws.installed[n]; p != nil && t.Local == "" {
-			out = append(out, lang.Target{Ecosystem: ecoPureScript, Package: n, Version: p.version, Pinned: p.pinned})
+		} else if p := activeWorkspace.installed[n]; p != nil && t.Local == "" {
+			out = append(out, lang.Target{Ecosystem: ecosystemPureScript, Package: n, Version: p.version, Pinned: p.pinned})
 		} else if t.Local == "" {
-			out = append(out, lang.Target{Ecosystem: ecoPureScript, Package: n, Version: ws.set, Floating: ws.set == ""})
+			out = append(out, lang.Target{Ecosystem: ecosystemPureScript, Package: n, Version: activeWorkspace.set, Floating: activeWorkspace.set == ""})
 		}
 	}
 	return out
@@ -978,14 +980,14 @@ func (r *resolver) depTargets(ws *workspace, names []string) []lang.Target {
 // workspaces are every workspace, spago.yaml ones first, in a stable order.
 func (r *resolver) workspaces() []*workspace {
 	var out []*workspace
-	for _, d := range sortedKeys(r.wsByDir) {
-		out = append(out, r.wsByDir[d])
+	for _, d := range sortedKeys(r.wsByDirectory) {
+		out = append(out, r.wsByDirectory[d])
 	}
 	seen := map[*workspace]bool{}
 	for _, p := range r.projects {
-		if p.ws != nil && !seen[p.ws] && r.wsByDir[p.ws.dir] != p.ws {
-			seen[p.ws] = true
-			out = append(out, p.ws)
+		if p.workspace != nil && !seen[p.workspace] && r.wsByDirectory[p.workspace.directory] != p.workspace {
+			seen[p.workspace] = true
+			out = append(out, p.workspace)
 		}
 	}
 	return out

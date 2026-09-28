@@ -30,7 +30,7 @@ const box = (kind, node, name, x, z, w = 8, extra = {}) => ({
 
 /**
  * Where a label element covers the screen. Labels positions an element by its anchor
- * (left, and top two pixels above it) and centres it there; the rectangle it keeps
+ * (left, and top two pixels above it) and centers it there; the rectangle it keeps
  * clear is its text at 6.6 px a character plus 14 of padding, 18 high, ending 2 px
  * above the anchor. That is what "overlap" means here.
  */

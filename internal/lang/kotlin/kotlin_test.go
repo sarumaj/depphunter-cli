@@ -19,8 +19,8 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 // Verifies: REQ-KT-001, REQ-KT-002, REQ-KT-003, REQ-KT-004
 func TestResolution(t *testing.T) {
 	// cSpell: disable
-	res := analyze(t)["src/main/kotlin/com/example/app/App.kt"]
-	langtest.CheckImports(t, res, map[string]lang.Target{
+	result := analyze(t)["src/main/kotlin/com/example/app/App.kt"]
+	langtest.CheckImports(t, result, map[string]lang.Target{
 		"import kotlinx.coroutines.launch": {Ecosystem: "maven", Package: "org.jetbrains.kotlinx:kotlinx-coroutines-core", Version: "1.8.0", Pinned: true},
 		"import kotlin.collections.List":   {Ecosystem: "kotlin-std", Package: "kotlin.collections"},
 		"import kotlin.math.*":             {Ecosystem: "kotlin-std", Package: "kotlin.math"},
@@ -55,8 +55,8 @@ func TestDefaultPackage(t *testing.T) {
 //
 // Verifies: REQ-KT-003
 func TestJavaImportsKotlin(t *testing.T) {
-	res := langtest.Analyze(t, java.Plugin{}, "testdata/repo")["lib/src/main/java/org/acme/net/Client.java"]
-	langtest.CheckImports(t, res, map[string]lang.Target{
+	result := langtest.Analyze(t, java.Plugin{}, "testdata/repo")["lib/src/main/java/org/acme/net/Client.java"]
+	langtest.CheckImports(t, result, map[string]lang.Target{
 		"import com.example.app.model.User":     {Local: "src/main/kotlin/models/Models.kt"},
 		"import com.example.app.util.StringsKt": {Local: "src/main/kotlin/com/example/app/util/Strings.kt"},
 	})

@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	ecoMaven = "maven"
-	ecoJDK   = "jdk"
-	ecoStd   = "scala-std"
+	ecosystemMaven = "maven"
+	ecosystemJDK   = "jdk"
+	ecosystemStd   = "scala-std"
 )
 
 // Imports are taken wherever they are: Scala scopes them to a block as often as to
@@ -54,7 +54,7 @@ var grammar = treesitter.MustGrammar("scala", scala.Language(), query)
 //
 // Implements: REQ-SCALA-002, REQ-SCALA-007
 var language = java.Language{
-	Std:      ecoStd,
+	Std:      ecosystemStd,
 	Prefixes: []string{"scala."},
 	Except: []string{
 		"scala.xml", "scala.util.parsing", "scala.collection.parallel", "scala.swing", "scala.async",
@@ -77,9 +77,9 @@ func (Plugin) Claims(f *scan.File) bool {
 }
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoMaven, Name: "Maven"},
-		{ID: ecoJDK, Name: "Java standard library", Std: true},
-		{ID: ecoStd, Name: "Scala standard library", Std: true},
+		{ID: ecosystemMaven, Name: "Maven"},
+		{ID: ecosystemJDK, Name: "Java standard library", Std: true},
+		{ID: ecosystemStd, Name: "Scala standard library", Std: true},
 	}
 }
 
@@ -88,16 +88,16 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-SCALA-001
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
-	ex := &lang.Extraction{}
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
+	extraction := &lang.Extraction{}
 	var symbols lang.SymbolSet
-	err := grammar.Matches(src, func(m treesitter.Match) {
+	err := grammar.Matches(source, func(m treesitter.Match) {
 		for _, c := range m {
 			switch {
 			case c.Name == "import":
-				for _, imp := range expandImport(c.Text) {
-					imp.Line = c.Line
-					ex.Imports = append(ex.Imports, imp)
+				for _, rawImport := range expandImport(c.Text) {
+					rawImport.Line = c.Line
+					extraction.Imports = append(extraction.Imports, rawImport)
 				}
 			case c.Name == "def.method":
 				owner := c.EnclosingName("class_definition", "trait_definition", "object_definition", "enum_definition")
@@ -111,8 +111,8 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 			}
 		}
 	})
-	ex.Symbols = symbols.List()
-	return ex, err
+	extraction.Symbols = symbols.List()
+	return extraction, err
 }
 
 // expandImport splits one import into what it names, the way Rust's use trees are

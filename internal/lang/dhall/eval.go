@@ -35,8 +35,8 @@ type Value struct {
 	Keys   []string // record fields in the order they were written
 	// Base is what a record was merged onto when that was not a record: a remote
 	// package set extended with `//` or `with`.
-	Base *Value
-	Loc  string // KindImport: the URL or the path as written
+	Base     *Value
+	Location string // KindImport: the URL or the path as written
 }
 
 // Unknown is the value of everything the reader does not evaluate.
@@ -141,14 +141,14 @@ func withPath(v *Value, p []string, x *Value) *Value {
 type TokenKind uint8
 
 const (
-	TokLabel TokenKind = iota
-	TokString
-	TokURL
-	TokPath
-	TokEnv
-	TokHash
-	TokNumber
-	TokPunct
+	TokenLabel TokenKind = iota
+	TokenString
+	TokenURL
+	TokenPath
+	TokenEnvironment
+	TokenHash
+	TokenNumber
+	TokenPunctuation
 )
 
 // Token is one Dhall token.
@@ -164,8 +164,8 @@ type Token struct {
 // imports and `sha256:` hashes.
 //
 // Implements: REQ-DHALL-007, REQ-PURESCRIPT-005
-func Lex(src []byte) []Token {
-	s := string(src)
+func Lex(source []byte) []Token {
+	s := string(source)
 	var out []Token
 	line := 1
 	emit := func(kind TokenKind, text string, at int) { out = append(out, Token{Kind: kind, Text: text, Line: at}) }
@@ -218,7 +218,7 @@ func Lex(src []byte) []Token {
 					}
 				case s[i] == '$' && at(s, i+1) == '{':
 					interpolate = true
-					i = skipInterp(s, i+2, &line) - 1
+					i = skipInterpolation(s, i+2, &line) - 1
 				default:
 					if s[i] == '\n' {
 						line++
@@ -227,7 +227,7 @@ func Lex(src []byte) []Token {
 				}
 			}
 			i = min(i+1, len(s))
-			out = append(out, Token{Kind: TokString, Text: text.String(), Line: start, Interpolate: interpolate})
+			out = append(out, Token{Kind: TokenString, Text: text.String(), Line: start, Interpolate: interpolate})
 		case c == '\'' && at(s, i+1) == '\'':
 			start, text, interpolate := line, strings.Builder{}, false
 			for i += 2; i < len(s); i++ {
@@ -243,7 +243,7 @@ func Lex(src []byte) []Token {
 					goto closed
 				case s[i] == '$' && at(s, i+1) == '{':
 					interpolate = true
-					i = skipInterp(s, i+2, &line) - 1
+					i = skipInterpolation(s, i+2, &line) - 1
 				default:
 					if s[i] == '\n' {
 						line++
@@ -253,33 +253,33 @@ func Lex(src []byte) []Token {
 			}
 		closed:
 			i = min(i, len(s))
-			out = append(out, Token{Kind: TokString, Text: text.String(), Line: start, Interpolate: interpolate})
+			out = append(out, Token{Kind: TokenString, Text: text.String(), Line: start, Interpolate: interpolate})
 		case strings.HasPrefix(s[i:], "https://") || strings.HasPrefix(s[i:], "http://"):
 			j := locationEnd(s, i)
-			emit(TokURL, s[i:j], line)
+			emit(TokenURL, s[i:j], line)
 			i = j
 		case strings.HasPrefix(s[i:], "./") || strings.HasPrefix(s[i:], "../") || strings.HasPrefix(s[i:], "~/") ||
 			c == '/' && i+1 < len(s) && (isWord(s[i+1]) || s[i+1] == '.' || s[i+1] == '-'):
 			j := locationEnd(s, i)
-			emit(TokPath, s[i:j], line)
+			emit(TokenPath, s[i:j], line)
 			i = j
 		case strings.HasPrefix(s[i:], "env:"):
 			j := locationEnd(s, i)
-			emit(TokEnv, s[i:j], line)
+			emit(TokenEnvironment, s[i:j], line)
 			i = j
 		case strings.HasPrefix(s[i:], "sha256:"):
 			j := i + 7
 			for j < len(s) && isWord(s[j]) {
 				j++
 			}
-			emit(TokHash, s[i:j], line)
+			emit(TokenHash, s[i:j], line)
 			i = j
 		case c == '`':
 			j := strings.IndexAny(s[i+1:], "`\n")
 			if j < 0 {
 				j = len(s) - i - 1
 			}
-			emit(TokLabel, s[i+1:i+1+j], line)
+			emit(TokenLabel, s[i+1:i+1+j], line)
 			i = min(i+2+j, len(s))
 		case c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '_':
 			j := i + 1
@@ -291,44 +291,44 @@ func Lex(src []byte) []Token {
 				}
 				break
 			}
-			emit(TokLabel, s[i:j], line)
+			emit(TokenLabel, s[i:j], line)
 			i = j
 		case c >= '0' && c <= '9':
 			j := i
 			for j < len(s) && (isWord(s[j]) || s[j] == '.') {
 				j++
 			}
-			emit(TokNumber, s[i:j], line)
+			emit(TokenNumber, s[i:j], line)
 			i = j
 		case c < 0x80:
-			op := s[i : i+1]
+			operator := s[i : i+1]
 			for _, m := range []string{"//\\\\", "===", "//", "/\\", "->", "==", "!=", "&&", "||", "++", "::"} {
 				if strings.HasPrefix(s[i:], m) {
-					op = m
+					operator = m
 					break
 				}
 			}
-			emit(TokPunct, op, line)
-			i += len(op)
+			emit(TokenPunctuation, operator, line)
+			i += len(operator)
 		default:
 			r, n := utf8.DecodeRuneInString(s[i:])
 			switch r {
 			case 'λ':
-				emit(TokPunct, "\\", line)
+				emit(TokenPunctuation, "\\", line)
 			case '→':
-				emit(TokPunct, "->", line)
+				emit(TokenPunctuation, "->", line)
 			case '∀':
-				emit(TokLabel, "forall", line)
+				emit(TokenLabel, "forall", line)
 			case '⫽':
-				emit(TokPunct, "//", line)
+				emit(TokenPunctuation, "//", line)
 			case '≡':
-				emit(TokPunct, "===", line)
+				emit(TokenPunctuation, "===", line)
 			case '∧':
-				emit(TokPunct, "/\\", line)
+				emit(TokenPunctuation, "/\\", line)
 			case '⩓':
-				emit(TokPunct, "//\\\\", line)
+				emit(TokenPunctuation, "//\\\\", line)
 			default:
-				emit(TokPunct, s[i:i+n], line)
+				emit(TokenPunctuation, s[i:i+n], line)
 			}
 			i += n
 		}
@@ -336,9 +336,9 @@ func Lex(src []byte) []Token {
 	return out
 }
 
-// skipInterp returns the index just past the `}` that closes an interpolation
+// skipInterpolation returns the index just past the `}` that closes an interpolation
 // whose code starts at i, counting braces (a string inside it is not read).
-func skipInterp(s string, i int, line *int) int {
+func skipInterpolation(s string, i int, line *int) int {
 	depth := 1
 	for ; i < len(s); i++ {
 		switch s[i] {
@@ -369,14 +369,14 @@ const dhallMaxDepth = 200
 
 // dhallReader evaluates one file's tokens.
 type dhallReader struct {
-	tokens []Token
-	i      int
-	depth  int
-	dir    string // the file's directory, to resolve relative imports
+	tokens    []Token
+	i         int
+	depth     int
+	directory string // the file's directory, to resolve relative imports
 	// load evaluates a local file (a path relative to the repository), or
 	// returns nil; nil load leaves every import a location.
-	load func(file string) *Value
-	env  []binding
+	load        func(file string) *Value
+	environment []binding
 	// declare, when set, is told the file's top-level declarations: the
 	// bindings of the let chain the file starts with and the fields of a
 	// record at its top; top is the depth those are read at.
@@ -389,13 +389,13 @@ type binding struct {
 	v    *Value
 }
 
-// Eval evaluates a Dhall file. dir is its directory relative to the
+// Eval evaluates a Dhall file. directory is its directory relative to the
 // repository; load, when not nil, evaluates the local files it imports.
 //
 // Implements: REQ-PURESCRIPT-005, REQ-DHALL-003
-func Eval(src []byte, dir string, load func(string) *Value) *Value {
-	r := &dhallReader{tokens: Lex(src), dir: dir, load: load}
-	return r.expr(false)
+func Eval(source []byte, directory string, load func(string) *Value) *Value {
+	r := &dhallReader{tokens: Lex(source), directory: directory, load: load}
+	return r.expression(false)
 }
 
 // Declarations evaluates a file only to report its top-level declarations:
@@ -404,14 +404,14 @@ func Eval(src []byte, dir string, load func(string) *Value) *Value {
 // evaluates to at its top ("field").
 //
 // Implements: REQ-DHALL-003
-func Declarations(src []byte, declare func(name, kind string, line int)) {
-	r := &dhallReader{tokens: Lex(src), dir: ".", declare: declare, top: 1}
-	r.expr(false)
+func Declarations(source []byte, declare func(name, kind string, line int)) {
+	r := &dhallReader{tokens: Lex(source), directory: ".", declare: declare, top: 1}
+	r.expression(false)
 }
 
 func bindingKind(name string, next Token) string {
 	switch {
-	case next.Kind == TokPunct && next.Text == "\\":
+	case next.Kind == TokenPunctuation && next.Text == "\\":
 		return "function"
 	case name[0] >= 'A' && name[0] <= 'Z':
 		return "type"
@@ -423,12 +423,12 @@ func (r *dhallReader) peek() Token {
 	if r.i < len(r.tokens) {
 		return r.tokens[r.i]
 	}
-	return Token{Kind: TokPunct, Text: ""}
+	return Token{Kind: TokenPunctuation, Text: ""}
 }
 
 func (r *dhallReader) is(text string) bool {
 	t := r.peek()
-	return r.i < len(r.tokens) && (t.Kind == TokPunct || t.Kind == TokLabel) && t.Text == text
+	return r.i < len(r.tokens) && (t.Kind == TokenPunctuation || t.Kind == TokenLabel) && t.Text == text
 }
 
 func (r *dhallReader) accept(text string) bool {
@@ -445,13 +445,13 @@ func (r *dhallReader) stop() bool {
 		return true
 	}
 	t := r.peek()
-	if t.Kind == TokPunct {
+	if t.Kind == TokenPunctuation {
 		switch t.Text {
 		case ")", "]", "}", ",", "=", ":", ">", "|", "->":
 			return true
 		}
 	}
-	return t.Kind == TokLabel && dhallStop[t.Text]
+	return t.Kind == TokenLabel && dhallStop[t.Text]
 }
 
 var dhallStop = map[string]bool{"in": true, "then": true, "else": true, "with": true, "as": true, "using": true}
@@ -461,7 +461,7 @@ var dhallOps = map[string]bool{
 	"&&": true, "||": true, "==": true, "!=": true, "===": true,
 }
 
-func (r *dhallReader) expr(noWith bool) *Value {
+func (r *dhallReader) expression(noWith bool) *Value {
 	if r.depth >= dhallMaxDepth || r.i >= len(r.tokens) {
 		r.skipToEnd()
 		return Unknown
@@ -470,17 +470,17 @@ func (r *dhallReader) expr(noWith bool) *Value {
 	defer func() { r.depth-- }()
 	t := r.peek()
 	switch {
-	case t.Kind == TokLabel && t.Text == "let":
-		mark := len(r.env)
+	case t.Kind == TokenLabel && t.Text == "let":
+		mark := len(r.environment)
 		top := r.declare != nil && r.depth == r.top
 		for r.accept("let") {
 			name := r.peek()
-			if name.Kind != TokLabel {
+			if name.Kind != TokenLabel {
 				break
 			}
 			r.i++
 			if r.accept(":") {
-				r.expr(false) // the type: ∀(a : Type) → a
+				r.expression(false) // the type: ∀(a : Type) → a
 			}
 			if !r.accept("=") {
 				break
@@ -488,44 +488,44 @@ func (r *dhallReader) expr(noWith bool) *Value {
 			if top {
 				r.declare(name.Text, bindingKind(name.Text, r.peek()), name.Line)
 			}
-			r.env = append(r.env, binding{name.Text, r.expr(false)})
+			r.environment = append(r.environment, binding{name.Text, r.expression(false)})
 			r.skipBinding()
 		}
 		r.accept("in")
 		if top {
 			r.top++ // the body of the file's let chain is its top too
 		}
-		v := r.expr(noWith)
-		r.env = r.env[:mark]
+		v := r.expression(noWith)
+		r.environment = r.environment[:mark]
 		return v
-	case t.Kind == TokPunct && t.Text == "\\", t.Kind == TokLabel && t.Text == "forall":
+	case t.Kind == TokenPunctuation && t.Text == "\\", t.Kind == TokenLabel && t.Text == "forall":
 		r.i++
 		if r.is("(") {
 			r.skipGroup()
 		}
 		r.accept("->")
-		r.expr(noWith)
+		r.expression(noWith)
 		return Unknown
-	case t.Kind == TokLabel && t.Text == "if":
+	case t.Kind == TokenLabel && t.Text == "if":
 		r.i++
-		r.expr(false)
+		r.expression(false)
 		r.accept("then")
-		r.expr(false)
+		r.expression(false)
 		r.accept("else")
-		r.expr(noWith)
+		r.expression(noWith)
 		return Unknown
-	case t.Kind == TokLabel && t.Text == "assert":
+	case t.Kind == TokenLabel && t.Text == "assert":
 		r.i++
 		r.accept(":")
-		r.expr(noWith)
+		r.expression(noWith)
 		return Unknown
 	}
-	v := r.opExpr(noWith)
+	v := r.opExpression(noWith)
 	if r.accept(":") {
-		r.opExpr(noWith) // a type annotation
+		r.opExpression(noWith) // a type annotation
 	}
 	if r.accept("->") { // a function type
-		r.expr(noWith)
+		r.expression(noWith)
 		return Unknown
 	}
 	return v
@@ -537,7 +537,7 @@ func (r *dhallReader) expr(noWith bool) *Value {
 func (r *dhallReader) skipBinding() {
 	for r.i < len(r.tokens) && !r.is("let") && !r.is("in") {
 		t := r.peek()
-		if t.Kind == TokPunct {
+		if t.Kind == TokenPunctuation {
 			switch t.Text {
 			case "(", "[", "{":
 				r.skipGroup()
@@ -558,15 +558,15 @@ func (r *dhallReader) skipToEnd() {
 	}
 }
 
-func (r *dhallReader) opExpr(noWith bool) *Value {
-	v := r.withExpr(noWith)
+func (r *dhallReader) opExpression(noWith bool) *Value {
+	v := r.withExpression(noWith)
 	for r.i < len(r.tokens) {
 		t := r.peek()
-		if t.Kind != TokPunct || !dhallOps[t.Text] {
+		if t.Kind != TokenPunctuation || !dhallOps[t.Text] {
 			break
 		}
 		r.i++
-		w := r.withExpr(noWith)
+		w := r.withExpression(noWith)
 		switch t.Text {
 		case "//":
 			v = merge(v, w)
@@ -583,13 +583,13 @@ func (r *dhallReader) opExpr(noWith bool) *Value {
 	return v
 }
 
-func (r *dhallReader) withExpr(noWith bool) *Value {
-	v := r.appExpr()
+func (r *dhallReader) withExpression(noWith bool) *Value {
+	v := r.appExpression()
 	for !noWith && r.accept("with") {
 		var p []string
 		for {
 			t := r.peek()
-			if t.Kind != TokLabel {
+			if t.Kind != TokenLabel {
 				break
 			}
 			r.i++
@@ -601,43 +601,43 @@ func (r *dhallReader) withExpr(noWith bool) *Value {
 		if len(p) == 0 || !r.accept("=") {
 			return Unknown
 		}
-		v = withPath(v, p, r.opExpr(true))
+		v = withPath(v, p, r.opExpression(true))
 	}
 	return v
 }
 
-// appExpr reads a function application. Only two are understood: `Some x` is
+// appExpression reads a function application. Only two are understood: `Some x` is
 // x, and mkPackage deps repo version (older package sets) is the record it
 // makes.
-func (r *dhallReader) appExpr() *Value {
+func (r *dhallReader) appExpression() *Value {
 	head := r.selector()
-	var args []*Value
+	var arguments []*Value
 	for r.i < len(r.tokens) && !r.stop() {
 		t := r.peek()
-		if t.Kind == TokPunct && (dhallOps[t.Text] || t.Text != "(" && t.Text != "[" && t.Text != "{" && t.Text != "<") {
+		if t.Kind == TokenPunctuation && (dhallOps[t.Text] || t.Text != "(" && t.Text != "[" && t.Text != "{" && t.Text != "<") {
 			break
 		}
-		if t.Kind == TokLabel && (t.Text == "let" || t.Text == "if") {
+		if t.Kind == TokenLabel && (t.Text == "let" || t.Text == "if") {
 			break
 		}
 		start := r.i
-		args = append(args, r.selector())
+		arguments = append(arguments, r.selector())
 		if r.i == start {
 			r.i++
 		}
 	}
-	if len(args) == 0 {
+	if len(arguments) == 0 {
 		return head
 	}
 	if head.Kind == KindUnknown && head.Text == "Some" {
-		return args[0]
+		return arguments[0]
 	}
-	if len(args) == 3 && (head.Kind == KindUnknown && head.Text == "mkPackage" ||
-		head.Kind == KindImport && strings.HasSuffix(head.Loc, "mkPackage.dhall")) {
+	if len(arguments) == 3 && (head.Kind == KindUnknown && head.Text == "mkPackage" ||
+		head.Kind == KindImport && strings.HasSuffix(head.Location, "mkPackage.dhall")) {
 		out := newRecord()
-		out.set("dependencies", args[0])
-		out.set("repo", args[1])
-		out.set("version", args[2])
+		out.set("dependencies", arguments[0])
+		out.set("repo", arguments[1])
+		out.set("version", arguments[2])
 		return out
 	}
 	return Unknown
@@ -649,7 +649,7 @@ func (r *dhallReader) selector() *Value {
 		r.i++
 		t := r.peek()
 		switch {
-		case t.Kind == TokLabel:
+		case t.Kind == TokenLabel:
 			r.i++
 			v = v.Field(t.Text)
 		case r.is("{"), r.is("("):
@@ -667,15 +667,15 @@ func (r *dhallReader) primary() *Value {
 	}
 	t := r.peek()
 	switch t.Kind {
-	case TokString:
+	case TokenString:
 		r.i++
 		if t.Interpolate {
 			return Unknown
 		}
 		return &Value{Kind: KindText, Text: t.Text, Line: t.Line}
-	case TokURL, TokPath, TokEnv:
+	case TokenURL, TokenPath, TokenEnvironment:
 		r.i++
-		if r.peek().Kind == TokHash {
+		if r.peek().Kind == TokenHash {
 			r.i++
 		}
 		if r.accept("using") {
@@ -686,34 +686,34 @@ func (r *dhallReader) primary() *Value {
 			as = r.peek().Text
 			r.i++
 		}
-		if t.Kind == TokEnv {
+		if t.Kind == TokenEnvironment {
 			return Unknown
 		}
-		if t.Kind == TokPath && as == "" && r.load != nil && !strings.HasPrefix(t.Text, "/") && !strings.HasPrefix(t.Text, "~") {
-			if v := r.load(path.Join(r.dir, t.Text)); v != nil {
+		if t.Kind == TokenPath && as == "" && r.load != nil && !strings.HasPrefix(t.Text, "/") && !strings.HasPrefix(t.Text, "~") {
+			if v := r.load(path.Join(r.directory, t.Text)); v != nil {
 				return v
 			}
 		}
 		if as == "Location" || as == "Text" || as == "Bytes" {
 			return Unknown
 		}
-		return &Value{Kind: KindImport, Loc: t.Text, Line: t.Line}
-	case TokLabel:
+		return &Value{Kind: KindImport, Location: t.Text, Line: t.Line}
+	case TokenLabel:
 		r.i++
-		for k := len(r.env) - 1; k >= 0; k-- {
-			if r.env[k].name == t.Text {
-				return r.env[k].v
+		for k := len(r.environment) - 1; k >= 0; k-- {
+			if r.environment[k].name == t.Text {
+				return r.environment[k].v
 			}
 		}
 		return &Value{Text: t.Text} // unbound: a builtin, or mkPackage
-	case TokNumber, TokHash:
+	case TokenNumber, TokenHash:
 		r.i++
 		return Unknown
 	}
 	switch t.Text {
 	case "(":
 		r.i++
-		v := r.expr(false)
+		v := r.expression(false)
 		r.closeGroup(")")
 		return v
 	case "[":
@@ -722,7 +722,7 @@ func (r *dhallReader) primary() *Value {
 		for r.i < len(r.tokens) && !r.is("]") {
 			start := r.i
 			if !r.accept(",") {
-				out.List = append(out.List, r.expr(false))
+				out.List = append(out.List, r.expression(false))
 			}
 			if r.i == start {
 				if r.stop() && !r.is(",") {
@@ -750,7 +750,7 @@ func (r *dhallReader) record() *Value {
 		r.closeGroup("}")
 		return out
 	}
-	typ := false
+	isType := false
 	for r.i < len(r.tokens) && !r.is("}") {
 		start := r.i
 		if r.accept(",") {
@@ -759,7 +759,7 @@ func (r *dhallReader) record() *Value {
 		var p []string
 		for {
 			t := r.peek()
-			if t.Kind != TokLabel {
+			if t.Kind != TokenLabel {
 				break
 			}
 			r.i++
@@ -773,20 +773,20 @@ func (r *dhallReader) record() *Value {
 		}
 		switch {
 		case len(p) > 0 && r.accept("="):
-			v := r.expr(false)
+			v := r.expression(false)
 			if len(p) == 1 {
 				out.set(p[0], v)
 			} else {
 				out.set(p[0], withPath(out.Field(p[0]), p[1:], v))
 			}
 		case len(p) > 0 && r.accept(":"):
-			typ = true
-			r.expr(false)
+			isType = true
+			r.expression(false)
 		case len(p) == 1 && (r.is(",") || r.is("}")):
 			// A punned field: { x } is { x = x }.
-			for k := len(r.env) - 1; k >= 0; k-- {
-				if r.env[k].name == p[0] {
-					out.set(p[0], r.env[k].v)
+			for k := len(r.environment) - 1; k >= 0; k-- {
+				if r.environment[k].name == p[0] {
+					out.set(p[0], r.environment[k].v)
 					break
 				}
 			}
@@ -804,7 +804,7 @@ func (r *dhallReader) record() *Value {
 		}
 	}
 	r.closeGroup("}")
-	if typ {
+	if isType {
 		return Unknown
 	}
 	return out
@@ -820,7 +820,7 @@ func (r *dhallReader) skipGroup() {
 	for r.i < len(r.tokens) {
 		t := r.tokens[r.i]
 		r.i++
-		if t.Kind != TokPunct {
+		if t.Kind != TokenPunctuation {
 			continue
 		}
 		switch t.Text {
@@ -841,7 +841,7 @@ func (r *dhallReader) skipUnion() {
 	for r.i < len(r.tokens) {
 		t := r.tokens[r.i]
 		r.i++
-		if t.Kind != TokPunct {
+		if t.Kind != TokenPunctuation {
 			continue
 		}
 		switch t.Text {

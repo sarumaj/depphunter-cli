@@ -23,13 +23,13 @@ import "strings"
 // and otherwise it opens a pattern - with one safeguard that makes a wrong guess
 // harmless: a pattern may not contain a newline, so a scan that reaches one gives up
 // and the slash is treated as an ordinary character after all.
-func JS(src string) string {
+func JS(source string) string {
 	// Indentation is dropped as the characters are copied, outside literals only: a
 	// template literal or a continued string may span lines, and the whitespace
 	// inside it is part of its value. trimLines, used for CSS and HTML, cannot tell.
-	out := make([]byte, 0, len(src))
+	out := make([]byte, 0, len(source))
 	lineStart := true
-	prev := byte(0) // the last significant character written, for the slash rule
+	previous := byte(0) // the last significant character written, for the slash rule
 	literal := func(s string) {
 		out = append(out, s...)
 		lineStart = false
@@ -41,29 +41,29 @@ func JS(src string) string {
 		out = append(out, '\n')
 		lineStart = true
 	}
-	for i := 0; i < len(src); {
-		c := src[i]
+	for i := 0; i < len(source); {
+		c := source[i]
 		switch {
 		case c == '"' || c == '\'':
-			j := endOfString(src, i)
-			literal(src[i:j])
-			prev = '"'
+			j := endOfString(source, i)
+			literal(source[i:j])
+			previous = '"'
 			i = j
 		case c == '`':
-			j := endOfTemplate(src, i)
-			literal(src[i:j])
-			prev = '"'
+			j := endOfTemplate(source, i)
+			literal(source[i:j])
+			previous = '"'
 			i = j
-		case c == '/' && i+1 < len(src) && src[i+1] == '/':
-			j := strings.IndexByte(src[i:], '\n')
+		case c == '/' && i+1 < len(source) && source[i+1] == '/':
+			j := strings.IndexByte(source[i:], '\n')
 			if j < 0 {
-				i = len(src)
+				i = len(source)
 			} else {
 				i += j
 			}
-		case c == '/' && i+1 < len(src) && src[i+1] == '*':
-			j := strings.Index(src[i+2:], "*/")
-			end := len(src)
+		case c == '/' && i+1 < len(source) && source[i+1] == '*':
+			j := strings.Index(source[i+2:], "*/")
+			end := len(source)
 			if j >= 0 {
 				end = i + 2 + j + 2
 			}
@@ -74,19 +74,19 @@ func JS(src string) string {
 			if !lineStart {
 				out = append(out, ' ')
 			}
-			for range strings.Count(src[i:end], "\n") {
+			for range strings.Count(source[i:end], "\n") {
 				newline()
 			}
 			i = end
-		case c == '/' && !dividesAfter(prev, out):
-			if j := endOfRegexp(src, i); j > 0 {
-				literal(src[i:j])
-				prev = '/'
+		case c == '/' && !dividesAfter(previous, out):
+			if j := endOfRegexp(source, i); j > 0 {
+				literal(source[i:j])
+				previous = '/'
 				i = j
 				continue
 			}
 			literal("/")
-			prev = c
+			previous = c
 			i++
 		case c == '\n':
 			newline()
@@ -97,8 +97,8 @@ func JS(src string) string {
 			}
 			i++
 		default:
-			literal(src[i : i+1])
-			prev = c
+			literal(source[i : i+1])
+			previous = c
 			i++
 		}
 	}
@@ -112,19 +112,19 @@ func isSpace(c byte) bool { return c == ' ' || c == '\t' || c == '\r' || c == '\
 
 // CSS removes comments and indentation from a stylesheet. A stylesheet has no regular
 // expressions and no line comments, so only strings have to be stepped over.
-func CSS(src string) string {
+func CSS(source string) string {
 	var out strings.Builder
-	out.Grow(len(src))
-	for i := 0; i < len(src); {
-		switch c := src[i]; {
+	out.Grow(len(source))
+	for i := 0; i < len(source); {
+		switch c := source[i]; {
 		case c == '"' || c == '\'':
-			j := endOfString(src, i)
-			out.WriteString(src[i:j])
+			j := endOfString(source, i)
+			out.WriteString(source[i:j])
 			i = j
-		case c == '/' && i+1 < len(src) && src[i+1] == '*':
-			j := strings.Index(src[i+2:], "*/")
+		case c == '/' && i+1 < len(source) && source[i+1] == '*':
+			j := strings.Index(source[i+2:], "*/")
 			if j < 0 {
-				i = len(src)
+				i = len(source)
 			} else {
 				i += 2 + j + 2
 			}
@@ -141,31 +141,31 @@ func CSS(src string) string {
 // long gone from the browsers this runs in, and there is no element here whose
 // whitespace is significant, but text nodes are left alone all the same: only the
 // indentation a line starts with goes.
-func HTML(src string) string {
+func HTML(source string) string {
 	var out strings.Builder
-	out.Grow(len(src))
-	for i := 0; i < len(src); {
-		if strings.HasPrefix(src[i:], "<!--") {
-			j := strings.Index(src[i+4:], "-->")
+	out.Grow(len(source))
+	for i := 0; i < len(source); {
+		if strings.HasPrefix(source[i:], "<!--") {
+			j := strings.Index(source[i+4:], "-->")
 			if j < 0 {
 				break
 			}
 			i += 4 + j + 3
 			continue
 		}
-		out.WriteByte(src[i])
+		out.WriteByte(source[i])
 		i++
 	}
 	return trimLines(out.String())
 }
 
-// dividesAfter reports whether a slash following prev is a division rather than the
+// dividesAfter reports whether a slash following previous is a division rather than the
 // start of a pattern: it is after anything that can end a value, except a keyword an
 // expression follows (return /x/, typeof /x/). out is the output so far, from which
-// the word ending in prev is read.
-func dividesAfter(prev byte, out []byte) bool {
+// the word ending in previous is read.
+func dividesAfter(previous byte, out []byte) bool {
 	switch {
-	case isWord(prev):
+	case isWord(previous):
 		end := len(out)
 		for end > 0 && isSpace(out[end-1]) {
 			end--
@@ -179,7 +179,7 @@ func dividesAfter(prev byte, out []byte) bool {
 			return true
 		}
 		return !beforeValue[string(out[start:end])]
-	case prev == ')' || prev == ']' || prev == '}' || prev == '"':
+	case previous == ')' || previous == ']' || previous == '}' || previous == '"':
 		return true
 	}
 	return false
@@ -198,10 +198,10 @@ var beforeValue = map[string]bool{
 }
 
 // endOfString returns the index just past the quoted string starting at i.
-func endOfString(src string, i int) int {
-	quote := src[i]
-	for j := i + 1; j < len(src); j++ {
-		switch src[j] {
+func endOfString(source string, i int) int {
+	quote := source[i]
+	for j := i + 1; j < len(source); j++ {
+		switch source[j] {
 		case '\\':
 			j++
 		case quote:
@@ -210,33 +210,33 @@ func endOfString(src string, i int) int {
 			return j // unterminated; let the browser complain about its own file
 		}
 	}
-	return len(src)
+	return len(source)
 }
 
 // endOfTemplate returns the index just past the template literal starting at i,
 // stepping over the ${...} holes in it, which may hold anything at all.
-func endOfTemplate(src string, i int) int {
-	for j := i + 1; j < len(src); j++ {
-		switch src[j] {
+func endOfTemplate(source string, i int) int {
+	for j := i + 1; j < len(source); j++ {
+		switch source[j] {
 		case '\\':
 			j++
 		case '`':
 			return j + 1
 		case '$':
-			if j+1 < len(src) && src[j+1] == '{' {
-				j = endOfHole(src, j+1) - 1
+			if j+1 < len(source) && source[j+1] == '{' {
+				j = endOfHole(source, j+1) - 1
 			}
 		}
 	}
-	return len(src)
+	return len(source)
 }
 
 // endOfHole returns the index just past the ${...} that opens at i (the brace),
 // counting nested braces and stepping over the strings and templates inside it.
-func endOfHole(src string, i int) int {
+func endOfHole(source string, i int) int {
 	depth := 0
-	for j := i; j < len(src); j++ {
-		switch src[j] {
+	for j := i; j < len(source); j++ {
+		switch source[j] {
 		case '{':
 			depth++
 		case '}':
@@ -244,21 +244,21 @@ func endOfHole(src string, i int) int {
 				return j + 1
 			}
 		case '"', '\'':
-			j = endOfString(src, j) - 1
+			j = endOfString(source, j) - 1
 		case '`':
-			j = endOfTemplate(src, j) - 1
+			j = endOfTemplate(source, j) - 1
 		}
 	}
-	return len(src)
+	return len(source)
 }
 
 // endOfRegexp returns the index just past the pattern starting at i, or 0 if what is
 // there is not one: a pattern may not contain a newline, so anything that runs into
 // one was a division after all.
-func endOfRegexp(src string, i int) int {
+func endOfRegexp(source string, i int) int {
 	class := false
-	for j := i + 1; j < len(src); j++ {
-		switch src[j] {
+	for j := i + 1; j < len(source); j++ {
+		switch source[j] {
 		case '\\':
 			j++
 		case '\n':
@@ -272,7 +272,7 @@ func endOfRegexp(src string, i int) int {
 				continue
 			}
 			// The flags after it are part of the literal.
-			for j++; j < len(src) && isFlag(src[j]); j++ {
+			for j++; j < len(source) && isFlag(source[j]); j++ {
 			}
 			return j
 		}

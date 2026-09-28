@@ -11,7 +11,7 @@ type Kind uint8
 
 const (
 	List    Kind = iota + 1 // (...), vectors #(...) and structures #S(...) too (Tag says which)
-	Symbol                  // Text is the symbol's name, Pkg its package prefix if written
+	Symbol                  // Text is the symbol's name, Package its package prefix if written
 	String                  // Text unescaped; #p"..." pathnames too
 	Keyword                 // :kw and #:uninterned, Text without the colon
 	Other                   // numbers, characters, bit vectors, #n# references
@@ -21,11 +21,11 @@ const (
 type Node struct {
 	Kind Kind
 	Text string
-	// Pkg is the package prefix of a qualified symbol (alexandria in
+	// Package is the package prefix of a qualified symbol (alexandria in
 	// alexandria:when-let or alexandria::x), as written.
-	Pkg  string
-	Line int
-	Kids []*Node
+	Package string
+	Line    int
+	Kids    []*Node
 	// Tag is "vector" for #(...), "s" for #S(...), "eval" for the one-element
 	// list #. wraps its form in; "" for a plain list.
 	Tag string
@@ -64,11 +64,11 @@ type reader struct {
 // time evaluation) keeps its form wrapped in a list tagged "eval".
 //
 // Implements: REQ-COMMONLISP-010
-func Read(src []byte) []*Node {
-	r := &reader{s: string(src)}
+func Read(source []byte) []*Node {
+	r := &reader{s: string(source)}
 	r.starts = append(r.starts, 0)
 	for i := 0; ; {
-		j := bytes.IndexByte(src[i:], '\n')
+		j := bytes.IndexByte(source[i:], '\n')
 		if j < 0 {
 			break
 		}
@@ -83,8 +83,8 @@ func Read(src []byte) []*Node {
 	return r.stack[0].node.Kids
 }
 
-func (r *reader) line(pos int) int {
-	return sort.Search(len(r.starts), func(k int) bool { return r.starts[k] > pos })
+func (r *reader) line(position int) int {
+	return sort.Search(len(r.starts), func(k int) bool { return r.starts[k] > position })
 }
 
 func (r *reader) top() *frame { return r.stack[len(r.stack)-1] }
@@ -140,11 +140,11 @@ func feature(n *Node) int {
 		if n.Tag != "" || len(n.Kids) == 0 || n.Kids[0].Kind != Symbol && n.Kids[0].Kind != Keyword {
 			return 0
 		}
-		args := n.Kids[1:]
+		arguments := n.Kids[1:]
 		switch strings.ToLower(n.Kids[0].Text) {
 		case "or":
 			v := -1
-			for _, a := range args {
+			for _, a := range arguments {
 				switch feature(a) {
 				case 1:
 					return 1
@@ -155,7 +155,7 @@ func feature(n *Node) int {
 			return v
 		case "and":
 			v := 1
-			for _, a := range args {
+			for _, a := range arguments {
 				switch feature(a) {
 				case -1:
 					return -1
@@ -165,8 +165,8 @@ func feature(n *Node) int {
 			}
 			return v
 		case "not":
-			if len(args) == 1 {
-				return -feature(args[0])
+			if len(arguments) == 1 {
+				return -feature(arguments[0])
 			}
 		}
 	}
@@ -221,7 +221,7 @@ func (r *reader) run() {
 			} // a stray closer at the top level is ignored
 		case '"':
 			r.i++
-			r.add(&Node{Kind: String, Text: r.str(), Line: r.line(start)})
+			r.add(&Node{Kind: String, Text: r.readString(), Line: r.line(start)})
 		case '\'', '`':
 			r.i++
 			r.push(c)
@@ -243,7 +243,7 @@ func (r *reader) run() {
 
 // atom reads a token: a symbol (qualified or not), a keyword or a number.
 func (r *reader) atom(start int) {
-	raw, name, pkg, colons, escaped := r.token()
+	raw, name, packageName, colons, escaped := r.token()
 	if raw == "" {
 		r.i++ // cannot happen: the caller saw a constituent
 		return
@@ -254,10 +254,10 @@ func (r *reader) atom(start int) {
 		r.add(&Node{Kind: Other, Text: raw, Line: line})
 	case !escaped && strings.Trim(raw, ".") == "":
 		r.add(&Node{Kind: Other, Text: raw, Line: line}) // the dot of a dotted pair
-	case colons > 0 && pkg == "":
+	case colons > 0 && packageName == "":
 		r.add(&Node{Kind: Keyword, Text: name, Line: line})
 	default:
-		r.add(&Node{Kind: Symbol, Text: name, Pkg: pkg, Line: line})
+		r.add(&Node{Kind: Symbol, Text: name, Package: packageName, Line: line})
 	}
 }
 
@@ -265,7 +265,7 @@ func (r *reader) atom(start int) {
 // unescaped colon (or pair of colons) separates a package prefix. It returns
 // the token as written, the name and prefix without escapes, how many
 // colons separated them, and whether anything was escaped.
-func (r *reader) token() (raw, name, pkg string, colons int, escaped bool) {
+func (r *reader) token() (raw, name, packageName string, colons int, escaped bool) {
 	s := r.s
 	var b strings.Builder
 	start := r.i
@@ -292,7 +292,7 @@ func (r *reader) token() (raw, name, pkg string, colons int, escaped bool) {
 			continue
 		case ':':
 			if colons == 0 {
-				pkg = b.String()
+				packageName = b.String()
 				b.Reset()
 				colons = 1
 				if j+1 < len(s) && s[j+1] == ':' {
@@ -308,7 +308,7 @@ func (r *reader) token() (raw, name, pkg string, colons int, escaped bool) {
 	}
 	j = min(j, len(s))
 	r.i = j
-	return s[start:j], b.String(), pkg, colons, escaped
+	return s[start:j], b.String(), packageName, colons, escaped
 }
 
 // number reports whether a token reads as a number rather than a symbol:
@@ -355,7 +355,7 @@ func (r *reader) dispatch() {
 		r.push('f')
 	case '\\':
 		r.i++
-		r.add(&Node{Kind: Other, Text: `#\` + r.char(), Line: line})
+		r.add(&Node{Kind: Other, Text: `#\` + r.character(), Line: line})
 	case ':':
 		r.i++
 		_, name, _, _, _ := r.token()
@@ -433,9 +433,9 @@ func (r *reader) blockComment() {
 	}
 }
 
-// str reads a string's body after its opening quote, up to the unescaped
+// readString reads a string's body after its opening quote, up to the unescaped
 // closing one (or the end of the input); a backslash escapes any character.
-func (r *reader) str() string {
+func (r *reader) readString() string {
 	s := r.s
 	j := r.i
 	escaped := false
@@ -462,9 +462,9 @@ func (r *reader) str() string {
 	return b.String()
 }
 
-// char reads a character after #\: one character (#\( #\;), then, when it
+// character reads a character after #\: one character (#\( #\;), then, when it
 // was a letter or digit, the rest of a name (#\Space, #\Newline, #\U+2603).
-func (r *reader) char() string {
+func (r *reader) character() string {
 	s := r.s
 	if r.i >= len(s) {
 		return ""

@@ -15,7 +15,7 @@ func texts(nodes []*Node) string {
 
 // Verifies: REQ-CLOJURE-011
 func TestReader(t *testing.T) {
-	for src, want := range map[string]string{
+	for source, want := range map[string]string{
 		`(a b) [1 2] {:k "v"} #{x}`:     `(a b) [1 2] {:k "v"} #{x}`,
 		`(a #_ b c)`:                    `(a c)`,
 		`(a #_ #_ b c d)`:               `(a d)`,
@@ -44,8 +44,8 @@ func TestReader(t *testing.T) {
 		`{:a 1, :b 2}`:                  `{:a 1 :b 2}`,
 		`(a b#)`:                        `(a b#)`,
 	} {
-		if got := texts(Read([]byte(src))); got != want {
-			t.Errorf("Read(%q) = %s, want %s", src, got, want)
+		if got := texts(Read([]byte(source))); got != want {
+			t.Errorf("Read(%q) = %s, want %s", source, got, want)
 		}
 	}
 	nodes := Read([]byte("(a)\n\n(b\n c)"))
@@ -53,7 +53,7 @@ func TestReader(t *testing.T) {
 		t.Errorf("lines %d %d %d", nodes[0].Line, nodes[1].Line, nodes[1].Kids[1].Line)
 	}
 	kinds := Read([]byte(`a :k "s" 1 \c #"r" [] () {} #{}`))
-	for i, want := range []Kind{Symbol, Keyword, String, Number, Char, Regex, Vector, List, Map, Set} {
+	for i, want := range []Kind{Symbol, Keyword, String, Number, Character, Regex, Vector, List, Map, Set} {
 		if kinds[i].Kind != want {
 			t.Errorf("form %d kind %d, want %d", i, kinds[i].Kind, want)
 		}

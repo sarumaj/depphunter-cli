@@ -22,10 +22,12 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 	return langtest.Analyze(t, Plugin{}, "testdata/repo")
 }
 
-func std(eco, pkg string) lang.Target { return lang.Target{Ecosystem: eco, Package: pkg} }
+func std(ecosystem, packageName string) lang.Target {
+	return lang.Target{Ecosystem: ecosystem, Package: packageName}
+}
 
-func external(pkg string) lang.Target {
-	return lang.Target{Ecosystem: ecoExternal, Package: pkg, Unresolved: true}
+func external(packageName string) lang.Target {
+	return lang.Target{Ecosystem: ecosystemExternal, Package: packageName, Unresolved: true}
 }
 
 // Verifies: REQ-CPP-002, REQ-CPP-004, REQ-CPP-005, REQ-CPP-006, REQ-CPP-007
@@ -38,14 +40,14 @@ func TestIncludes(t *testing.T) {
 		`#include "app/app.hpp"`:  {Local: "include/app/app.hpp"},
 		`#include <fmt/core.h>`:   {Local: "third_party/fmt/include/fmt/core.h"},
 		`#include "net/socket.h"`: {Local: "libs/net/net/socket.h"}, // the only file so ending
-		`#include <map>`:          std(ecoCppStd, "map"),
-		`#include <vector>`:       std(ecoCppStd, "vector"),
-		`#include <cstdint>`:      std(ecoCppStd, "cstdint"),
+		`#include <map>`:          std(ecosystemCppStd, "map"),
+		`#include <vector>`:       std(ecosystemCppStd, "vector"),
+		`#include <cstdint>`:      std(ecosystemCppStd, "cstdint"),
 		// Not tests/stdio.h: a system header is not shadowed by a file of that name.
-		`#include <stdio.h>`:        std(ecoCStd, "stdio.h"),
-		`#include <sys/socket.h>`:   std(ecoSystem, "sys/socket.h"),
-		`#include <pthread.h>`:      std(ecoSystem, "pthread.h"),
-		`#include <windows.h>`:      std(ecoSystem, "windows.h"),
+		`#include <stdio.h>`:        std(ecosystemCStd, "stdio.h"),
+		`#include <sys/socket.h>`:   std(ecosystemSystem, "sys/socket.h"),
+		`#include <pthread.h>`:      std(ecosystemSystem, "pthread.h"),
+		`#include <windows.h>`:      std(ecosystemSystem, "windows.h"),
 		`#include <boost/asio.hpp>`: external("boost"),
 		`#include <openssl/ssl.h>`:  external("openssl"),
 		`#include <zlib.h>`:         external("zlib"),
@@ -58,12 +60,12 @@ func TestIncludes(t *testing.T) {
 	// The "command" entry's -I tells lib/include/util/util.h from legacy/util/util.h.
 	langtest.CheckImports(t, analyze(t)["lib/util.c"], map[string]lang.Target{
 		`#include "util/util.h"`: {Local: "lib/include/util/util.h"},
-		`#include <stdlib.h>`:    std(ecoCStd, "stdlib.h"),
+		`#include <stdlib.h>`:    std(ecosystemCStd, "stdlib.h"),
 	})
 	// A header has no entry of its own and is given every entry's include path.
 	langtest.CheckImports(t, analyze(t)["include/app/app.hpp"], map[string]lang.Target{
 		`#include "detail.hpp"`: {Local: "include/app/detail.hpp"},
-		`#include <string>`:     std(ecoCppStd, "string"),
+		`#include <string>`:     std(ecosystemCppStd, "string"),
 	})
 	// cSpell: enable
 }
@@ -71,7 +73,7 @@ func TestIncludes(t *testing.T) {
 // Without a compilation database, include/, src/ and the root are searched.
 //
 // Verifies: REQ-CPP-004
-func TestConventionalDirs(t *testing.T) {
+func TestConventionalDirectories(t *testing.T) {
 	r := newResolver(t.TempDir(), langtest.Files(t, "testdata/repo"))
 	for spec, want := range map[lang.RawImport]lang.Target{
 		{Module: "app/detail.hpp", Name: bracket}: {Local: "include/app/detail.hpp"},
@@ -91,23 +93,23 @@ func TestConventionalDirs(t *testing.T) {
 }
 
 // Verifies: REQ-CPP-004
-func TestIncludeDirs(t *testing.T) {
-	for _, tc := range []struct {
-		args []string
-		want []string
+func TestIncludeDirectories(t *testing.T) {
+	for _, testCase := range []struct {
+		arguments []string
+		want      []string
 	}{
 		{[]string{"g++", "-Ia", "-I", "b", "-iquote", "c", "-isystem=d", "-idirafter", "e", "-include", "f.h", "/Ix"}, []string{"a", "b", "c", "=d", "e"}},
 		{[]string{`C:\VS\bin\cl.exe`, "/Ia", "/I", "b", "/external:Ic", "-Id"}, []string{"a", "b", "c", "d"}},
 	} {
-		if got := includeDirs(tc.args); !reflect.DeepEqual(got, tc.want) {
-			t.Errorf("%v: got %v, want %v", tc.args, got, tc.want)
+		if got := includeDirectories(testCase.arguments); !reflect.DeepEqual(got, testCase.want) {
+			t.Errorf("%v: got %v, want %v", testCase.arguments, got, testCase.want)
 		}
 	}
 }
 
 // Verifies: REQ-CPP-002, REQ-CPP-007
 func TestPreprocess(t *testing.T) {
-	src := strings.Join([]string{
+	source := strings.Join([]string{
 		`#include "a.h" /* a comment "with quotes" */`,
 		`char *s = "/* not a comment";`,
 		`#include <b.h>`,
@@ -121,10 +123,10 @@ func TestPreprocess(t *testing.T) {
 		`#include_next <f.h>`,
 		`#import <Foundation/Foundation.h>`,
 	}, "\n")
-	includes, dead := preprocess([]byte(src))
+	includes, dead := preprocess([]byte(source))
 	var got []string
-	for _, im := range includes {
-		got = append(got, im.Spec)
+	for _, rawImport := range includes {
+		got = append(got, rawImport.Spec)
 	}
 	want := []string{`#include "a.h"`, `#include <b.h>`, `#include "d.h"`, `#include_next <f.h>`}
 	if !reflect.DeepEqual(got, want) {
@@ -137,8 +139,8 @@ func TestPreprocess(t *testing.T) {
 
 // Verifies: REQ-CPP-003
 func TestSymbols(t *testing.T) {
-	res := analyze(t)
-	langtest.CheckSymbols(t, res["include/app/app.hpp"], map[string]string{
+	results := analyze(t)
+	langtest.CheckSymbols(t, results["include/app/app.hpp"], map[string]string{
 		"APP_VERSION": "macro", "APP_MAX": "macro", "app": "namespace",
 		"Server": "class", "Server.Server": "method", "Server.~Server": "method", "Server.start": "method",
 		"Server.port": "method", "Server.operator==": "method", "Server.Options": "struct",
@@ -147,28 +149,28 @@ func TestSymbols(t *testing.T) {
 	// Out-of-class definitions belong to their class; a prototype of a function the
 	// file defines is not a second symbol; nothing in a function body or #if 0 is one,
 	// nor a test macro's body.
-	langtest.CheckSymbols(t, res["src/main.cpp"], map[string]string{
+	langtest.CheckSymbols(t, results["src/main.cpp"], map[string]string{
 		"ALIVE": "macro", "app": "namespace", "Server.Server": "method", "Server.~Server": "method",
 		"Server.start": "method", "helper": "func", "Point": "struct", "callback_t": "type", "main": "func",
 	})
-	langtest.CheckSymbols(t, res["include/app/detail.hpp"], map[string]string{"app.detail": "namespace", "answer": "func"})
+	langtest.CheckSymbols(t, results["include/app/detail.hpp"], map[string]string{"app.detail": "namespace", "answer": "func"})
 	// C with the C grammar, where "new" is a name.
-	langtest.CheckSymbols(t, res["lib/util.c"], map[string]string{"buffer": "struct", "split": "func", "util_count": "func"})
+	langtest.CheckSymbols(t, results["lib/util.c"], map[string]string{"buffer": "struct", "split": "func", "util_count": "func"})
 	// A C header read by the C++ grammar; its guard is no symbol.
-	langtest.CheckSymbols(t, res["lib/include/util/util.h"], map[string]string{
+	langtest.CheckSymbols(t, results["lib/include/util/util.h"], map[string]string{
 		"util_list": "struct", "util_list_t": "type", "util_count": "func",
 	})
 }
 
 // Verifies: REQ-CPP-001
 func TestClaims(t *testing.T) {
-	res := analyze(t)
+	results := analyze(t)
 	for _, p := range []string{"src/main.cpp", "lib/util.c", "include/app/app.hpp", "tests/stdio.h"} {
-		if res[p] == nil {
+		if results[p] == nil {
 			t.Errorf("%s not analyzed", p)
 		}
 	}
-	if res["build/compile_commands.json"] != nil {
+	if results["build/compile_commands.json"] != nil {
 		t.Error("compile_commands.json analyzed")
 	}
 }
@@ -176,9 +178,9 @@ func TestClaims(t *testing.T) {
 // Verifies: REQ-CPP-005
 func TestStandard(t *testing.T) {
 	for name, want := range map[string]string{
-		"vector": ecoCppStd, "cstdio": ecoCppStd, "experimental/filesystem": ecoCppStd, "bits/stdc++.h": ecoCppStd,
-		"stdio.h": ecoCStd, "threads.h": ecoCStd, "unistd.h": ecoSystem, "sys/types.h": ecoSystem,
-		"linux/fs.h": ecoSystem, "Windows.h": ecoSystem, "TargetConditionals.h": ecoSystem, "ext/stdio_filebuf.h": ecoCppStd, "CoreFoundation/CoreFoundation.h": ecoSystem, "immintrin.h": ecoSystem,
+		"vector": ecosystemCppStd, "cstdio": ecosystemCppStd, "experimental/filesystem": ecosystemCppStd, "bits/stdc++.h": ecosystemCppStd,
+		"stdio.h": ecosystemCStd, "threads.h": ecosystemCStd, "unistd.h": ecosystemSystem, "sys/types.h": ecosystemSystem,
+		"linux/fs.h": ecosystemSystem, "Windows.h": ecosystemSystem, "TargetConditionals.h": ecosystemSystem, "ext/stdio_filebuf.h": ecosystemCppStd, "CoreFoundation/CoreFoundation.h": ecosystemSystem, "immintrin.h": ecosystemSystem,
 		"boost/asio.hpp": "", "curl/curl.h": "", "vector.h": "",
 	} {
 		if got := standard(name); got != want {
@@ -187,15 +189,15 @@ func TestStandard(t *testing.T) {
 	}
 }
 
-// symbolsOf extracts src as a file with the given extension.
-func symbolsOf(t *testing.T, ext, src string) map[string]string {
+// symbolsOf extracts source as a file with the given extension.
+func symbolsOf(t *testing.T, extension, source string) map[string]string {
 	t.Helper()
-	ex, err := Plugin{}.Extract(&scan.File{Path: "x" + ext}, []byte(src))
+	extraction, err := Plugin{}.Extract(&scan.File{Path: "x" + extension}, []byte(source))
 	if err != nil {
 		t.Fatal(err)
 	}
 	got := map[string]string{}
-	for _, s := range ex.Symbols {
+	for _, s := range extraction.Symbols {
 		got[s.Name] = s.Kind
 	}
 	return got
@@ -207,9 +209,9 @@ func symbolsOf(t *testing.T, ext, src string) map[string]string {
 // Verifies: REQ-CPP-003, REQ-CPP-014
 func TestScanner(t *testing.T) {
 	// cSpell: disable
-	for _, tc := range []struct {
-		name, ext, src string
-		want           map[string]string
+	for _, testCase := range []struct {
+		name, extension, source string
+		want                    map[string]string
 	}{
 		{"macro lines before a namespace", ".h", "namespace absl {\nABSL_NAMESPACE_BEGIN\nnamespace internal {\nint f();\n}\nABSL_NAMESPACE_END\n}\n",
 			map[string]string{"absl": "namespace", "internal": "namespace", "f": "func"}},
@@ -232,9 +234,9 @@ func TestScanner(t *testing.T) {
 		{"defines", ".h", "#ifndef GUARD_H\n#define GUARD_H\n#define ON\n#define MAX(a, b) ((a) > (b) ? (a) : (b))\nvoid f() {\n#define LOCAL 1\n}\n#endif\n",
 			map[string]string{"ON": "macro", "MAX": "macro", "f": "func"}},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := symbolsOf(t, tc.ext, tc.src); !reflect.DeepEqual(got, tc.want) {
-				t.Errorf("got %v, want %v", got, tc.want)
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := symbolsOf(t, testCase.extension, testCase.source); !reflect.DeepEqual(got, testCase.want) {
+				t.Errorf("got %v, want %v", got, testCase.want)
 			}
 		})
 	}
@@ -254,9 +256,9 @@ func TestGeneratedTables(t *testing.T) {
 	}
 	b.WriteString("\n};\n_upb_DefPool_Init init = {deps, &layout, \"x.proto\"};\nconst upb_MessageDef* x_getmsgdef(upb_DefPool* s) { return 0; }\n")
 	start := time.Now()
-	ex, err := Plugin{}.Extract(&scan.File{Path: "x.upbdefs.c"}, []byte(b.String()))
-	if err != nil || len(ex.Imports) != 1 || len(ex.Symbols) != 1 || ex.Symbols[0].Name != "x_getmsgdef" {
-		t.Fatalf("got %+v, %v", ex, err)
+	extraction, err := Plugin{}.Extract(&scan.File{Path: "x.upbdefs.c"}, []byte(b.String()))
+	if err != nil || len(extraction.Imports) != 1 || len(extraction.Symbols) != 1 || extraction.Symbols[0].Name != "x_getmsgdef" {
+		t.Fatalf("got %+v, %v", extraction, err)
 	}
 	if d := time.Since(start); d > 2*time.Second {
 		t.Errorf("took %v", d)
@@ -268,24 +270,24 @@ func TestGeneratedTables(t *testing.T) {
 //
 // Verifies: REQ-CPP-014
 func TestTruncated(t *testing.T) {
-	var srcs []string
+	var sources []string
 	for _, p := range []string{"testdata/repo/src/main.cpp", "testdata/repo/include/app/app.hpp", "testdata/repo/lib/util.c"} {
 		b, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatal(err)
 		}
 		for i := range b {
-			srcs = append(srcs, string(b[:i]))
+			sources = append(sources, string(b[:i]))
 		}
 	}
 	for _, run := range []string{"{", "}", "(", ")", "<", ">", "template<", "namespace a {", "class A {", "struct A : ",
 		"operator", "::", "f(x)", "typedef ", "/*", "\"", "R\"x(", "'", "#if X\n", "#else\n", "#endif\n", "#define X \\\n",
 		"extern \"C\" {", "A::A() : a(1), ", "auto f() -> a<", "enum class E : ", "FOO(x)\n", "~", "= {"} {
-		srcs = append(srcs, strings.Repeat(run, 3000))
+		sources = append(sources, strings.Repeat(run, 3000))
 	}
-	for _, src := range srcs {
-		for _, ext := range []string{".c", ".hpp"} {
-			if _, err := (Plugin{}).Extract(&scan.File{Path: "x" + ext}, []byte(src)); err != nil {
+	for _, source := range sources {
+		for _, extension := range []string{".c", ".hpp"} {
+			if _, err := (Plugin{}).Extract(&scan.File{Path: "x" + extension}, []byte(source)); err != nil {
 				t.Fatal(err)
 			}
 		}

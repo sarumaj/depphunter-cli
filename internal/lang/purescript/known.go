@@ -241,11 +241,11 @@ var knownModules = map[string]string{
 // knownPackage is the package the curated table names for a module - prelude's
 // modules exactly, other entries for themselves and every module under them,
 // the longest entry first - and how many leading segments the entry covers.
-func knownPackage(mod string) (string, int) {
-	if preludeModules[mod] {
-		return "prelude", strings.Count(mod, ".") + 1
+func knownPackage(module string) (string, int) {
+	if preludeModules[module] {
+		return "prelude", strings.Count(module, ".") + 1
 	}
-	for m := mod; m != ""; m = parent(m) {
+	for m := module; m != ""; m = parent(m) {
 		if p, ok := knownModules[m]; ok {
 			return p, strings.Count(m, ".") + 1
 		}

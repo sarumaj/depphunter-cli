@@ -30,15 +30,15 @@ func TestSaveUIPreservesTheRest(t *testing.T) {
 		t.Errorf("cleared filter still saved:\n%s", out)
 	}
 
-	cfg, err := load(t, []string{root}, nil, "")
+	config, err := load(t, []string{root}, nil, "")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if cfg.UI.Theme != "light" || cfg.UI.ExpandDepth != 3 || len(cfg.UI.HideLanguages) != 1 || len(cfg.Exclude) != 1 {
-		t.Errorf("round trip: %+v", cfg)
+	if config.UI.Theme != "light" || config.UI.ExpandDepth != 3 || len(config.UI.HideLanguages) != 1 || len(config.Exclude) != 1 {
+		t.Errorf("round trip: %+v", config)
 	}
-	if cfg.ConfigFile != filepath.Join(resolve(t, root), ProjectFile) {
-		t.Errorf("ConfigFile = %q", cfg.ConfigFile)
+	if config.ConfigFile != filepath.Join(resolve(t, root), ProjectFile) {
+		t.Errorf("ConfigFile = %q", config.ConfigFile)
 	}
 }
 

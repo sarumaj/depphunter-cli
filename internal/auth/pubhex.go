@@ -36,9 +36,9 @@ func (c *Store) readPub(m userconf.Machine) {
 	}
 	var doc struct {
 		Hosted []struct {
-			URL   string `json:"url"`
-			Token string `json:"token"`
-			Env   string `json:"env"`
+			URL         string `json:"url"`
+			Token       string `json:"token"`
+			Environment string `json:"env"`
 		} `json:"hosted"`
 	}
 	if json.Unmarshal(data, &doc) != nil {
@@ -46,8 +46,8 @@ func (c *Store) readPub(m userconf.Machine) {
 	}
 	for _, h := range doc.Hosted {
 		token := h.Token
-		if h.Env != "" {
-			token = m.Env(h.Env)
+		if h.Environment != "" {
+			token = m.Environment(h.Environment)
 		}
 		u, err := url.Parse(strings.TrimSpace(h.URL))
 		if err != nil || u.Host == "" || u.User != nil || !bearerToken.MatchString(token) {
@@ -100,7 +100,7 @@ func (c *Store) readHex(m userconf.Machine) {
 	if err != nil || u.Host == "" {
 		return
 	}
-	repos := u.Path + "/repos/"
+	repositories := u.Path + "/repos/"
 	filed := map[string]bool{}
 	// put files the first of secrets that is a key or a token under prefix, unless
 	// one is there already; it reports whether one is there now.
@@ -120,9 +120,9 @@ func (c *Store) readHex(m userconf.Machine) {
 		return ""
 	}
 	// organizations lists the organizations of a hex.config's repositories.
-	organizations := func(cfg userconf.HexConfig) []string {
+	organizations := func(config userconf.HexConfig) []string {
 		var out []string
-		for name := range cfg.Repos {
+		for name := range config.Repositories {
 			if org, ok := strings.CutPrefix(name, "hexpm:"); ok && HexOrganization(org) {
 				out = append(out, org)
 			}
@@ -130,21 +130,21 @@ func (c *Store) readHex(m userconf.Machine) {
 		sort.Strings(out)
 		return out
 	}
-	if put(repos, secret{verbatim: true, value: m.Env("HEX_API_KEY")}) {
+	if put(repositories, secret{verbatim: true, value: m.Environment("HEX_API_KEY")}) {
 		c.notePlain(u)
 		return
 	}
 	for _, org := range organizations(rebar3) {
-		put(repos+org+"/", secret{verbatim: true, value: rebar3.Repos["hexpm:"+org].APIKey})
+		put(repositories+org+"/", secret{verbatim: true, value: rebar3.Repositories["hexpm:"+org].APIKey})
 	}
-	user := put(repos, secret{verbatim: true, value: mix.APIKey}, secret{bearer: true, value: token(mix.OAuth)},
+	user := put(repositories, secret{verbatim: true, value: mix.APIKey}, secret{bearer: true, value: token(mix.OAuth)},
 		secret{verbatim: true, value: rebar3.APIKey}, secret{bearer: true, value: token(rebar3.OAuth)})
 	if !user {
-		put(repos, secret{verbatim: true, value: m.Env("HEX_REPOS_KEY")})
-		for _, cfg := range []userconf.HexConfig{mix, rebar3} {
-			for _, org := range organizations(cfg) {
-				r := cfg.Repos["hexpm:"+org]
-				put(repos+org+"/", secret{verbatim: true, value: r.AuthKey}, secret{bearer: true, value: token(r.OAuth)})
+		put(repositories, secret{verbatim: true, value: m.Environment("HEX_REPOS_KEY")})
+		for _, config := range []userconf.HexConfig{mix, rebar3} {
+			for _, org := range organizations(config) {
+				r := config.Repositories["hexpm:"+org]
+				put(repositories+org+"/", secret{verbatim: true, value: r.AuthKey}, secret{bearer: true, value: token(r.OAuth)})
 			}
 		}
 	}

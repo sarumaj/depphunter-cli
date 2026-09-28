@@ -23,23 +23,23 @@ func read(t *testing.T, name string) (string, []*Finding) {
 }
 
 // find is the one finding with this reference, or a failure naming what was there.
-func find(t *testing.T, fs []*Finding, ref string) *Finding {
+func find(t *testing.T, found []*Finding, reference string) *Finding {
 	t.Helper()
 	var hit *Finding
-	for _, f := range fs {
-		if f.Ref == ref {
+	for _, f := range found {
+		if f.Reference == reference {
 			if hit != nil {
-				t.Fatalf("%s reported twice", ref)
+				t.Fatalf("%s reported twice", reference)
 			}
 			hit = f
 		}
 	}
 	if hit == nil {
-		refs := make([]string, len(fs))
-		for i, f := range fs {
-			refs[i] = f.Ref
+		references := make([]string, len(found))
+		for i, f := range found {
+			references[i] = f.Reference
 		}
-		t.Fatalf("no finding %q; got %v", ref, refs)
+		t.Fatalf("no finding %q; got %v", reference, references)
 	}
 	return hit
 }
@@ -130,16 +130,16 @@ func TestNPMAuditV6PrefersTheCVE(t *testing.T) {
 // Verifies: REQ-FND-005, REQ-FND-018
 func TestTrivyPrefersTheCVSSVector(t *testing.T) {
 	_, found := read(t, "trivy.json")
-	vuln := find(t, found, "CVE-2020-8203")
-	if vuln.Severity != Critical {
-		t.Errorf("severity %q, want critical (9.8 from the vector, not the MEDIUM word)", vuln.Severity)
+	vulnerability := find(t, found, "CVE-2020-8203")
+	if vulnerability.Severity != Critical {
+		t.Errorf("severity %q, want critical (9.8 from the vector, not the MEDIUM word)", vulnerability.Severity)
 	}
-	if vuln.Ecosystem != "npm" || vuln.Package != "lodash" || vuln.Path != "package-lock.json" {
-		t.Errorf("placement: %+v", vuln)
+	if vulnerability.Ecosystem != "npm" || vulnerability.Package != "lodash" || vulnerability.Path != "package-lock.json" {
+		t.Errorf("placement: %+v", vulnerability)
 	}
-	misconfig := find(t, found, "DS002")
-	if misconfig.Kind != KindLint || misconfig.Path != "Dockerfile" || misconfig.Line != 1 {
-		t.Errorf("misconfiguration: %+v", misconfig)
+	misconfiguration := find(t, found, "DS002")
+	if misconfiguration.Kind != KindLint || misconfiguration.Path != "Dockerfile" || misconfiguration.Line != 1 {
+		t.Errorf("misconfiguration: %+v", misconfiguration)
 	}
 }
 
@@ -209,7 +209,7 @@ func TestReadRejectsWhatIsNotAReport(t *testing.T) {
 //
 // Verifies: REQ-FND-005
 func TestTrivyPackageTypes(t *testing.T) {
-	for typ, want := range map[string]string{
+	for typeName, want := range map[string]string{
 		"bun": "npm", "javascript": "npm", "pnpm": "npm", "yarn": "npm", "node-pkg": "npm",
 		"uv": "pypi", "pylock": "pypi", "poetry": "pypi",
 		"sbt": "maven", "gradle": "maven", "jar": "maven",
@@ -219,13 +219,13 @@ func TestTrivyPackageTypes(t *testing.T) {
 		"swift": "swiftpm", "cocoapods": "cocoapods", "pub": "pub", "hex": "hex", "conan": "conan", "julia": "julia",
 		"conda-pkg": "", "bitnami": "", "debian": "",
 	} {
-		doc := `{"Results":[{"Target":"lock","Class":"lang-pkgs","Type":"` + typ + `","Vulnerabilities":[{"VulnerabilityID":"CVE-1","PkgName":"p","InstalledVersion":"1"}]}]}`
+		doc := `{"Results":[{"Target":"lock","Class":"lang-pkgs","Type":"` + typeName + `","Vulnerabilities":[{"VulnerabilityID":"CVE-1","PkgName":"p","InstalledVersion":"1"}]}]}`
 		found, err := readTrivy([]byte(doc))
 		if err != nil || len(found) != 1 {
-			t.Fatalf("%s: %v %v", typ, found, err)
+			t.Fatalf("%s: %v %v", typeName, found, err)
 		}
 		if found[0].Ecosystem != want {
-			t.Errorf("%s: ecosystem %q, want %q", typ, found[0].Ecosystem, want)
+			t.Errorf("%s: ecosystem %q, want %q", typeName, found[0].Ecosystem, want)
 		}
 	}
 }

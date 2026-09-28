@@ -37,8 +37,8 @@ source = "git+https://example.com/odd#abc1234"
 `,
 		"src/main.rs": "use regex::Regex;\nuse serde::Serialize;\nuse odd::Thing;\nfn main() {}\n",
 	})
-	res := langtest.Analyze(t, Plugin{}, root)
-	langtest.CheckImports(t, res["src/main.rs"], map[string]lang.Target{
+	results := langtest.Analyze(t, Plugin{}, root)
+	langtest.CheckImports(t, results["src/main.rs"], map[string]lang.Target{
 		"use regex::Regex":     {Ecosystem: "crates", Package: "regex", Version: "1.10.0", Pinned: true, Git: "https://github.com/rust-lang/regex#" + sha},
 		"use serde::Serialize": {Ecosystem: "crates", Package: "serde", Version: "1.0.200", Requested: "1", Pinned: true},
 		"use odd::Thing":       {Ecosystem: "crates", Package: "odd", Version: "0.1.0", Pinned: true},

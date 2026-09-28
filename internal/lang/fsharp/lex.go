@@ -8,21 +8,21 @@ import (
 
 // Token kinds.
 const (
-	tIdent  = 'i' // identifier or keyword; ``quoted`` identifiers without the backticks
-	tTyVar  = 'v' // type variable: 'a, ^T
-	tString = 's' // string literal (text is the decoded value for plain and verbatim strings)
-	tChar   = 'c'
-	tNumber = 'n'
-	tPunct  = 'p' // one operator character, or [< >] ..
-	tDir    = 'd' // #load, #r, #I: text is the name and each argument, NUL-separated
+	tIdentifier  = 'i' // identifier or keyword; ``quoted`` identifiers without the backticks
+	tTyVariable  = 'v' // type variable: 'a, ^T
+	tString      = 's' // string literal (text is the decoded value for plain and verbatim strings)
+	tCharacter   = 'c'
+	tNumber      = 'n'
+	tPunctuation = 'p' // one operator character, or [< >] ..
+	tDirectory   = 'd' // #load, #r, #I: text is the name and each argument, NUL-separated
 )
 
 type token struct {
-	kind  byte
-	text  string
-	line  int // 1-based
-	col   int // 0-based, in bytes from the line start
-	first bool
+	kind   byte
+	text   string
+	line   int // 1-based
+	column int // 0-based, in bytes from the line start
+	first  bool
 	// glued says no space separates the token from the one before it, which tells
 	// `A.b` (a qualified name) from `a . b` and `x.Y` member access.
 	glued bool
@@ -32,14 +32,14 @@ type token struct {
 const maxNest = 200
 
 type lexer struct {
-	s         string
-	i         int
-	line      int
-	lineStart int
-	tokens    []token
-	lastLine  int // line of the last token, for token.first
-	lastEnd   int // offset just past the last token
-	bol       bool
+	s               string
+	i               int
+	line            int
+	lineStart       int
+	tokens          []token
+	lastLine        int // line of the last token, for token.first
+	lastEnd         int // offset just past the last token
+	beginningOfLine bool
 }
 
 // lex splits F# source into tokens. Comments are dropped: `//` to the end of the
@@ -54,8 +54,8 @@ type lexer struct {
 // #include become directive tokens with their string arguments.
 //
 // Implements: REQ-FSHARP-002, REQ-FSHARP-011
-func lex(src string) []token {
-	l := &lexer{s: strings.TrimPrefix(src, "\xef\xbb\xbf"), line: 1, lastLine: 0, bol: true}
+func lex(source string) []token {
+	l := &lexer{s: strings.TrimPrefix(source, "\xef\xbb\xbf"), line: 1, lastLine: 0, beginningOfLine: true}
 	l.tokens = make([]token, 0, len(l.s)/4+16)
 	if strings.HasPrefix(l.s, "#!") { // a script's shebang line
 		for l.i < len(l.s) && l.s[l.i] != '\n' {
@@ -67,17 +67,17 @@ func lex(src string) []token {
 }
 
 func (l *lexer) emit(kind byte, text string, start int) {
-	col := start - l.lineStart
-	if col < 0 {
-		col = 0
+	column := start - l.lineStart
+	if column < 0 {
+		column = 0
 	}
-	l.tokens = append(l.tokens, token{kind: kind, text: text, line: l.line, col: col, first: l.lastLine != l.line, glued: start == l.lastEnd && len(l.tokens) > 0})
+	l.tokens = append(l.tokens, token{kind: kind, text: text, line: l.line, column: column, first: l.lastLine != l.line, glued: start == l.lastEnd && len(l.tokens) > 0})
 	l.lastLine, l.lastEnd = l.line, l.i
 }
 
 // emitAt is emit for a token that began on an earlier line (a multi-line string).
-func (l *lexer) emitAt(kind byte, text string, line, col int) {
-	l.tokens = append(l.tokens, token{kind: kind, text: text, line: line, col: col, first: l.lastLine != line})
+func (l *lexer) emitAt(kind byte, text string, line, column int) {
+	l.tokens = append(l.tokens, token{kind: kind, text: text, line: line, column: column, first: l.lastLine != line})
 	l.lastLine, l.lastEnd = l.line, l.i
 }
 
@@ -118,21 +118,21 @@ func (l *lexer) run() {
 			start := l.i
 			// A ``quoted name`` ends on its line; look no further than that.
 			rest := l.s[l.i+2 : min(len(l.s), l.i+2+512)]
-			if nl := strings.IndexByte(rest, '\n'); nl >= 0 {
-				rest = rest[:nl]
+			if newline := strings.IndexByte(rest, '\n'); newline >= 0 {
+				rest = rest[:newline]
 			}
 			end := strings.Index(rest, "``")
 			if end < 0 {
 				l.i += 2
-				l.emit(tPunct, "`", start)
+				l.emit(tPunctuation, "`", start)
 				continue
 			}
 			l.i += 2 + end + 2
-			l.emit(tIdent, l.s[start+2:start+2+end], start)
-		case isIdentStart(c):
+			l.emit(tIdentifier, l.s[start+2:start+2+end], start)
+		case isIdentifierStart(c):
 			start := l.i
-			l.ident()
-			l.emit(tIdent, l.s[start:l.i], start)
+			l.identifier()
+			l.emit(tIdentifier, l.s[start:l.i], start)
 		case c >= '0' && c <= '9':
 			start := l.i
 			l.number(start)
@@ -141,50 +141,50 @@ func (l *lexer) run() {
 			r, n := utf8.DecodeRuneInString(l.s[l.i:])
 			start := l.i
 			if unicode.IsLetter(r) {
-				l.ident()
-				l.emit(tIdent, l.s[start:l.i], start)
+				l.identifier()
+				l.emit(tIdentifier, l.s[start:l.i], start)
 				continue
 			}
 			l.i += max(n, 1)
-			l.emit(tPunct, l.s[start:l.i], start)
+			l.emit(tPunctuation, l.s[start:l.i], start)
 		case c == '[' && l.peek(1) == '<':
 			start := l.i
 			l.i += 2
-			l.emit(tPunct, "[<", start)
+			l.emit(tPunctuation, "[<", start)
 		case c == '>' && l.peek(1) == ']':
 			start := l.i
 			l.i += 2
-			l.emit(tPunct, ">]", start)
+			l.emit(tPunctuation, ">]", start)
 		case c == '.' && l.peek(1) == '.':
 			start := l.i
 			l.i += 2
-			l.emit(tPunct, "..", start)
-		case c == '^' && isIdentStart(l.peek(1)) && l.i > 0 && !isIdentByte(l.s[l.i-1]) && l.s[l.i-1] != ')':
+			l.emit(tPunctuation, "..", start)
+		case c == '^' && isIdentifierStart(l.peek(1)) && l.i > 0 && !isIdentifierByte(l.s[l.i-1]) && l.s[l.i-1] != ')':
 			// ^T, a statically resolved type parameter.
 			start := l.i
 			l.i++
-			l.ident()
-			l.emit(tTyVar, l.s[start:l.i], start)
+			l.identifier()
+			l.emit(tTyVariable, l.s[start:l.i], start)
 		default:
 			start := l.i
 			l.i++
-			l.emit(tPunct, l.s[start:l.i], start)
+			l.emit(tPunctuation, l.s[start:l.i], start)
 		}
 	}
 }
 
-func isIdentStart(c byte) bool {
+func isIdentifierStart(c byte) bool {
 	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
 }
 
-func isIdentByte(c byte) bool {
-	return isIdentStart(c) || c >= '0' && c <= '9' || c == '\''
+func isIdentifierByte(c byte) bool {
+	return isIdentifierStart(c) || c >= '0' && c <= '9' || c == '\''
 }
 
-func (l *lexer) ident() {
+func (l *lexer) identifier() {
 	for l.i < len(l.s) {
 		c := l.s[l.i]
-		if isIdentByte(c) {
+		if isIdentifierByte(c) {
 			l.i++
 			continue
 		}
@@ -204,7 +204,7 @@ func (l *lexer) number(start int) {
 	for l.i < len(l.s) {
 		c := l.s[l.i]
 		switch {
-		case isIdentByte(c) && c != '\'':
+		case isIdentifierByte(c) && c != '\'':
 			l.i++
 		case c == '.' && l.peek(1) != '.' && l.peek(1) >= '0' && l.peek(1) <= '9':
 			l.i++
@@ -246,8 +246,8 @@ func (l *lexer) comment() {
 			}
 		case c == '"':
 			l.skipString(false, false, 0)
-		case c == '\'' && charLen(l.s[l.i:]) > 0 && (l.i == 0 || !isIdentByte(l.s[l.i-1])):
-			l.i += charLen(l.s[l.i:])
+		case c == '\'' && characterLength(l.s[l.i:]) > 0 && (l.i == 0 || !isIdentifierByte(l.s[l.i-1])):
+			l.i += characterLength(l.s[l.i:])
 		default:
 			l.i++
 		}
@@ -262,11 +262,11 @@ func (l *lexer) directive() {
 	for l.i < len(l.s) && (l.s[l.i] == ' ' || l.s[l.i] == '\t') {
 		l.i++
 	}
-	ws := l.i
-	for l.i < len(l.s) && isIdentByte(l.s[l.i]) {
+	whitespaceStart := l.i
+	for l.i < len(l.s) && isIdentifierByte(l.s[l.i]) {
 		l.i++
 	}
-	name := l.s[ws:l.i]
+	name := l.s[whitespaceStart:l.i]
 	switch name {
 	case "load", "r", "I", "reference", "include":
 	default:
@@ -275,8 +275,8 @@ func (l *lexer) directive() {
 		}
 		return
 	}
-	line, col := l.line, start-l.lineStart
-	var args []string
+	line, column := l.line, start-l.lineStart
+	var arguments []string
 	for l.i < len(l.s) && l.s[l.i] != '\n' {
 		c := l.s[l.i]
 		switch {
@@ -291,16 +291,16 @@ func (l *lexer) directive() {
 			if verbatim {
 				l.i++
 			}
-			args = append(args, l.skipString(verbatim, false, 0))
+			arguments = append(arguments, l.skipString(verbatim, false, 0))
 		default:
 			l.i++
 		}
 	}
 	text := name
-	for _, a := range args {
+	for _, a := range arguments {
 		text += "\x00" + a
 	}
-	l.tokens = append(l.tokens, token{kind: tDir, text: text, line: line, col: col, first: l.lastLine != line})
+	l.tokens = append(l.tokens, token{kind: tDirectory, text: text, line: line, column: column, first: l.lastLine != line})
 	l.lastLine, l.lastEnd = line, l.i
 }
 
@@ -316,7 +316,7 @@ func (l *lexer) stringAhead() bool {
 
 func (l *lexer) stringToken() {
 	start, line := l.i, l.line
-	col := start - l.lineStart
+	column := start - l.lineStart
 	verbatim, dollars := false, 0
 	for l.s[l.i] != '"' {
 		if l.s[l.i] == '@' {
@@ -330,7 +330,7 @@ func (l *lexer) stringToken() {
 	if l.i < len(l.s) && l.s[l.i] == 'B' { // byte string
 		l.i++
 	}
-	l.emitAt(tString, text, line, col)
+	l.emitAt(tString, text, line, column)
 }
 
 // skipString moves past the string literal whose opening quote is at i and returns
@@ -453,7 +453,7 @@ func (l *lexer) hole() {
 				l.skipString(verbatim, false, 0)
 			}
 		case c == '\'':
-			if n := charLen(l.s[l.i:]); n > 0 && (l.i == 0 || !isIdentByte(l.s[l.i-1])) {
+			if n := characterLength(l.s[l.i:]); n > 0 && (l.i == 0 || !isIdentifierByte(l.s[l.i-1])) {
 				l.i += n
 			} else {
 				l.i++
@@ -465,32 +465,32 @@ func (l *lexer) hole() {
 }
 
 // quote reads what a ' starts: a char literal, a type variable, or nothing (an
-// apostrophe glued to an identifier was taken by ident already).
+// apostrophe glued to an identifier was taken by identifier already).
 func (l *lexer) quote() {
 	start := l.i
-	if n := charLen(l.s[l.i:]); n > 0 {
+	if n := characterLength(l.s[l.i:]); n > 0 {
 		l.i += n
 		if l.i < len(l.s) && l.s[l.i] == 'B' {
 			l.i++
 		}
-		l.emit(tChar, l.s[start:l.i], start)
+		l.emit(tCharacter, l.s[start:l.i], start)
 		return
 	}
 	l.i++
 	for l.i < len(l.s) && l.s[l.i] == '\'' { // ''a
 		l.i++
 	}
-	if l.i < len(l.s) && isIdentStart(l.s[l.i]) {
-		l.ident()
-		l.emit(tTyVar, l.s[start:l.i], start)
+	if l.i < len(l.s) && isIdentifierStart(l.s[l.i]) {
+		l.identifier()
+		l.emit(tTyVariable, l.s[start:l.i], start)
 		return
 	}
-	l.emit(tPunct, l.s[start:l.i], start)
+	l.emit(tPunctuation, l.s[start:l.i], start)
 }
 
-// charLen is the length of the char literal at the start of s ('a', '\n', '\”,
+// characterLength is the length of the char literal at the start of s ('a', '\n', '\”,
 // 'A', '\065', 'é'), or 0 when s does not start one.
-func charLen(s string) int {
+func characterLength(s string) int {
 	if len(s) < 3 || s[0] != '\'' {
 		return 0
 	}

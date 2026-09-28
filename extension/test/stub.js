@@ -91,7 +91,7 @@ const vscode = {
       const panel = {
         viewType: type, title, options, reveal() { calls.push(['panel.reveal', panel.title]); },
         webview: { set html(v) { panel.html = v; calls.push(['panel.html', v]); } },
-        onDidDispose: fn => { panel.disposed = fn; return { dispose() {} }; },
+        onDidDispose: callback => { panel.disposed = callback; return { dispose() {} }; },
         dispose() { calls.push(['panel.dispose', panel.title]); panel.disposed?.(); },
       };
       calls.push(['createWebviewPanel', panel]);
@@ -116,8 +116,8 @@ const vscode = {
     createTreeView: (id, options) => {
       const view = {
         id, visible: true, title: id,
-        reveal: async (element, opts) => { calls.push(['reveal', id, element, opts]); },
-        onDidChangeVisibility: fn => { view.visibilityListener = fn; return { dispose() {} }; },
+        reveal: async (element, panelOptions) => { calls.push(['reveal', id, element, panelOptions]); },
+        onDidChangeVisibility: callback => { view.visibilityListener = callback; return { dispose() {} }; },
         dispose() {},
       };
       calls.push(['registerTreeDataProvider', id, options.treeDataProvider]);
@@ -132,13 +132,13 @@ const vscode = {
   // Which extensions are installed, by id; a test adds the ones it needs.
   extensions: { getExtension: id => (installed.has(id) ? { id } : undefined) },
   commands: {
-    registerCommand: (id, fn) => { commands.set(id, fn); return { dispose() {} }; },
+    registerCommand: (id, callback) => { commands.set(id, callback); return { dispose() {} }; },
     executeCommand: async (id, ...args) => { calls.push(['executeCommand', id, ...args]); },
   },
   EventEmitter: class EventEmitter {
     constructor() { this.listeners = []; }
-    get event() { return fn => { this.listeners.push(fn); return { dispose() {} }; }; }
-    fire(v) { for (const fn of this.listeners) fn(v); }
+    get event() { return callback => { this.listeners.push(callback); return { dispose() {} }; }; }
+    fire(v) { for (const callback of this.listeners) callback(v); }
     dispose() { this.listeners = []; }
   },
   TreeItem: class TreeItem {
@@ -152,7 +152,7 @@ const vscode = {
     appendMarkdown(text) { this.value += text; return this; }
   },
   Disposable: class Disposable {
-    constructor(fn) { this.dispose = fn; }
+    constructor(callback) { this.dispose = callback; }
   },
   StatusBarAlignment: { Right: 2 },
   ViewColumn: { Active: -1 },
@@ -163,12 +163,12 @@ const vscode = {
       const listeners = [];
       this.token = {
         isCancellationRequested: false,
-        onCancellationRequested: fn => { listeners.push(fn); return { dispose() {} }; },
+        onCancellationRequested: callback => { listeners.push(callback); return { dispose() {} }; },
       };
       this.cancel = () => {
         if (this.token.isCancellationRequested) return;
         this.token.isCancellationRequested = true;
-        for (const fn of listeners) fn();
+        for (const callback of listeners) callback();
       };
     }
     dispose() {}
@@ -189,7 +189,7 @@ require.cache['vscode'] = { id: 'vscode', filename: 'vscode', loaded: true, expo
 
 module.exports = {
   vscode, calls, commands, settings, installed, answers,
-  setRoot: dir => { root = dir; },
+  setRoot: directory => { root = directory; },
   /** The last call of a kind, or undefined. */
   last: (kind, id) => [...calls].reverse().find(c => c[0] === kind && (!id || c[1] === id)),
 };

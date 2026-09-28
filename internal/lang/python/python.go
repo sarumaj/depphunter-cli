@@ -17,8 +17,8 @@ import (
 )
 
 const (
-	ecoPyPI = "pypi"
-	ecoStd  = "python-std"
+	ecosystemPyPI = "pypi"
+	ecosystemStd  = "python-std"
 )
 
 // @import is a dotted module; @from.module / @from.name come from "from m import n"
@@ -68,8 +68,8 @@ func (Plugin) Claims(f *scan.File) bool {
 // Implements: REQ-PY-005
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoPyPI, Name: "PyPI"},
-		{ID: ecoStd, Name: "Python standard library", Std: true},
+		{ID: ecosystemPyPI, Name: "PyPI"},
+		{ID: ecosystemStd, Name: "Python standard library", Std: true},
 	}
 }
 
@@ -77,26 +77,26 @@ func (Plugin) Version() int { return 1 }
 
 func (p Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 	r := newResolver(all, lang.Claimed(p, all))
-	r.env = findEnvironment(root, p.Interpreter, p.Getenv)
+	r.environment = findEnvironment(root, p.Interpreter, p.Getenv)
 	return r, nil
 }
 
 // Implements: REQ-PY-001, REQ-PY-014, REQ-LANG-024
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
-	ex := &lang.Extraction{}
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
+	extraction := &lang.Extraction{}
 	var symbols lang.SymbolSet
-	err := grammar.Matches(src, func(m treesitter.Match) {
-		if mod, ok := m.Get("from.module"); ok {
+	err := grammar.Matches(source, func(m treesitter.Match) {
+		if module, ok := m.Get("from.module"); ok {
 			name, _ := m.Get("from.name")
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: fromSpec(mod, name), Module: mod, Name: name, Line: m[0].Line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: fromSpec(module, name), Module: module, Name: name, Line: m[0].Line})
 			return
 		}
 		for _, c := range m {
 			switch {
 			case c.Name == "future":
-				ex.Imports = append(ex.Imports, lang.RawImport{Spec: c.Text, Module: "__future__", Line: c.Line})
+				extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: c.Text, Module: "__future__", Line: c.Line})
 			case c.Name == "import":
-				ex.Imports = append(ex.Imports, lang.RawImport{Spec: c.Text, Module: c.Text, Line: c.Line})
+				extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: c.Text, Module: c.Text, Line: c.Line})
 			case c.Name == "def.method":
 				symbols.Add(c.EnclosingName("class_definition")+"."+c.Text, "method", c.Line)
 			case strings.HasPrefix(c.Name, "def."):
@@ -104,13 +104,13 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 			}
 		}
 	})
-	ex.Symbols = symbols.List()
-	return ex, err
+	extraction.Symbols = symbols.List()
+	return extraction, err
 }
 
-func fromSpec(mod, name string) string {
+func fromSpec(module, name string) string {
 	if name == "" {
-		return "from " + mod + " import *"
+		return "from " + module + " import *"
 	}
-	return "from " + mod + " import " + name
+	return "from " + module + " import " + name
 }

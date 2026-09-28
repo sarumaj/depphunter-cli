@@ -9,15 +9,15 @@ import (
 
 // qlEntry is a line of a qlfile: <source> <project name> [args].
 type qlEntry struct {
-	source  string // ql, ultralisp, ql-dist, git, github, http, local
-	name    string // the project name, lower case
-	version string // ql's dist version (2023-10-21, :latest, :upstream)
-	url     string // git's URL, github's user/repository as a URL, http's URL, local's path
-	ref     string
-	branch  string
-	tag     string
-	md5     string
-	line    int
+	source    string // ql, ultralisp, ql-dist, git, github, http, local
+	name      string // the project name, lower case
+	version   string // ql's dist version (2023-10-21, :latest, :upstream)
+	url       string // git's URL, github's user/repository as a URL, http's URL, local's path
+	reference string
+	branch    string
+	tag       string
+	md5       string
+	line      int
 }
 
 // qlfile is what a qlfile declares: its projects and, from `ql :all <date>`
@@ -36,9 +36,9 @@ func quicklispDist(u string) bool {
 // readQlfile reads a qlfile; # starts a comment.
 //
 // Implements: REQ-COMMONLISP-006
-func readQlfile(src []byte) qlfile {
+func readQlfile(source []byte) qlfile {
 	var q qlfile
-	for i, line := range strings.Split(string(src), "\n") {
+	for i, line := range strings.Split(string(source), "\n") {
 		if j := strings.IndexByte(line, '#'); j >= 0 {
 			line = line[:j]
 		}
@@ -47,51 +47,51 @@ func readQlfile(src []byte) qlfile {
 			continue
 		}
 		e := qlEntry{source: strings.ToLower(f[0]), line: i + 1}
-		args := f[1:]
+		arguments := f[1:]
 		switch e.source {
 		case "ql", "ultralisp":
-			if strings.EqualFold(args[0], ":all") {
-				if len(args) > 1 && dated(args[1]) && e.source == "ql" {
-					q.dist = args[1]
+			if strings.EqualFold(arguments[0], ":all") {
+				if len(arguments) > 1 && dated(arguments[1]) && e.source == "ql" {
+					q.dist = arguments[1]
 				}
 				continue
 			}
-			e.name = args[0]
-			if len(args) > 1 {
-				e.version = args[1]
+			e.name = arguments[0]
+			if len(arguments) > 1 {
+				e.version = arguments[1]
 			}
 		case "ql-dist":
-			if len(args) < 2 {
+			if len(arguments) < 2 {
 				continue
 			}
-			e.name = args[1]
-			if len(args) > 2 {
-				e.version = args[2]
+			e.name = arguments[1]
+			if len(arguments) > 2 {
+				e.version = arguments[2]
 			}
 		case "git", "http", "local":
-			if len(args) < 2 {
+			if len(arguments) < 2 {
 				continue
 			}
-			e.name, e.url = args[0], args[1]
-			args = args[2:]
-			if e.source == "http" && len(args) > 0 && !strings.HasPrefix(args[0], ":") {
-				e.md5 = args[0]
+			e.name, e.url = arguments[0], arguments[1]
+			arguments = arguments[2:]
+			if e.source == "http" && len(arguments) > 0 && !strings.HasPrefix(arguments[0], ":") {
+				e.md5 = arguments[0]
 			}
 		case "github":
 			// github <user/repository>, or the older github <name> <user/repository>
-			repos := args[0]
-			if !strings.Contains(repos, "/") && len(args) > 1 {
-				e.name, repos, args = args[0], args[1], args[2:]
+			repositories := arguments[0]
+			if !strings.Contains(repositories, "/") && len(arguments) > 1 {
+				e.name, repositories, arguments = arguments[0], arguments[1], arguments[2:]
 			} else {
-				args = args[1:]
+				arguments = arguments[1:]
 			}
-			e.url = "https://github.com/" + strings.TrimSuffix(repos, ".git")
+			e.url = "https://github.com/" + strings.TrimSuffix(repositories, ".git")
 			if e.name == "" {
-				e.name = repos[strings.LastIndexByte(repos, '/')+1:]
+				e.name = repositories[strings.LastIndexByte(repositories, '/')+1:]
 			}
 		case "dist":
 			// dist <url> [version], or dist <name> <url> [version]
-			u, rest := args[0], args[1:]
+			u, rest := arguments[0], arguments[1:]
 			if !strings.Contains(u, "/") && len(rest) > 0 {
 				u, rest = rest[0], rest[1:]
 			}
@@ -102,14 +102,14 @@ func readQlfile(src []byte) qlfile {
 		default:
 			continue // asdf <version>, unknown sources
 		}
-		for k := 0; k+1 < len(args); k++ {
-			switch strings.ToLower(args[k]) {
+		for k := 0; k+1 < len(arguments); k++ {
+			switch strings.ToLower(arguments[k]) {
 			case ":ref":
-				e.ref = args[k+1]
+				e.reference = arguments[k+1]
 			case ":branch":
-				e.branch = args[k+1]
+				e.branch = arguments[k+1]
 			case ":tag":
-				e.tag = args[k+1]
+				e.tag = arguments[k+1]
 			}
 		}
 		e.name = strings.ToLower(e.name)
@@ -156,9 +156,9 @@ type qlock struct {
 // :version "..." ...)) forms.
 //
 // Implements: REQ-COMMONLISP-006
-func readLock(src []byte) qlock {
+func readLock(source []byte) qlock {
 	var l qlock
-	for _, f := range Read(src) {
+	for _, f := range Read(source) {
 		if f.Kind != List || len(f.Kids) < 2 || f.Kids[0].Kind != String {
 			continue
 		}
@@ -166,13 +166,13 @@ func readLock(src []byte) qlock {
 		if len(body) == 2 && body[0].Kind == Other && body[0].Text == "." && body[1].Kind == List {
 			body = body[1].Kids
 		}
-		opts := plist(body)
+		options := plist(body)
 		e := lockEntry{name: strings.ToLower(f.Kids[0].Text), line: f.Line}
-		e.class = strings.ToLower(symbolText(opts["class"]))
-		e.version = stringOf(opts["version"])
-		e.url = stringOf(opts["remote-url"])
-		ref := stringOf(opts["ref"])
-		if init := opts["initargs"]; init != nil && init.Kind == List {
+		e.class = strings.ToLower(symbolText(options["class"]))
+		e.version = stringOf(options["version"])
+		e.url = stringOf(options["remote-url"])
+		reference := stringOf(options["ref"])
+		if init := options["initargs"]; init != nil && init.Kind == List {
 			io := plist(init.Kids)
 			e.dist = stringOf(io["distribution"])
 			if e.url == "" {
@@ -195,8 +195,8 @@ func readLock(src []byte) qlock {
 			}
 		}
 		switch {
-		case lang.Commit(ref):
-			e.commit = ref
+		case lang.Commit(reference):
+			e.commit = reference
 		case strings.Contains(e.version, "-"):
 			if c := e.version[strings.LastIndexByte(e.version, '-')+1:]; lang.Commit(c) {
 				e.commit = c
@@ -222,8 +222,8 @@ func symbolText(n *Node) string {
 	if n == nil || n.Kind != Symbol && n.Kind != Keyword {
 		return ""
 	}
-	if n.Pkg != "" {
-		return n.Pkg + ":" + n.Text
+	if n.Package != "" {
+		return n.Package + ":" + n.Text
 	}
 	return n.Text
 }
@@ -242,27 +242,27 @@ type ociclEntry struct {
 // readOcicl reads ocicl.csv: `system, image@sha256:digest, release/x.asd`.
 //
 // Implements: REQ-COMMONLISP-006
-func readOcicl(src []byte) []ociclEntry {
+func readOcicl(source []byte) []ociclEntry {
 	var out []ociclEntry
-	for i, line := range bytes.Split(src, []byte("\n")) {
-		cols := strings.Split(string(line), ",")
-		if len(cols) < 2 {
+	for i, line := range bytes.Split(source, []byte("\n")) {
+		columns := strings.Split(string(line), ",")
+		if len(columns) < 2 {
 			continue
 		}
-		e := ociclEntry{system: strings.ToLower(strings.TrimSpace(cols[0])), image: strings.TrimSpace(cols[1]), line: i + 1}
+		e := ociclEntry{system: strings.ToLower(strings.TrimSpace(columns[0])), image: strings.TrimSpace(columns[1]), line: i + 1}
 		if e.system == "" || e.image == "" || strings.HasPrefix(e.system, "#") {
 			continue
 		}
-		ref, digest, _ := strings.Cut(e.image, "@")
+		reference, digest, _ := strings.Cut(e.image, "@")
 		e.digest = digest
-		if j := strings.LastIndexByte(ref, ':'); j > strings.LastIndexByte(ref, '/') {
-			ref = ref[:j] // a tag
+		if j := strings.LastIndexByte(reference, ':'); j > strings.LastIndexByte(reference, '/') {
+			reference = reference[:j] // a tag
 		}
-		e.project = strings.ToLower(ref[strings.LastIndexByte(ref, '/')+1:])
-		if len(cols) > 2 {
-			rel := strings.TrimSpace(cols[2])
-			if j := strings.IndexByte(rel, '/'); j > 0 {
-				e.release = rel[:j]
+		e.project = strings.ToLower(reference[strings.LastIndexByte(reference, '/')+1:])
+		if len(columns) > 2 {
+			relative := strings.TrimSpace(columns[2])
+			if j := strings.IndexByte(relative, '/'); j > 0 {
+				e.release = relative[:j]
 			}
 		}
 		out = append(out, e)
@@ -283,41 +283,41 @@ func (e ociclEntry) version() string {
 }
 
 // extractQlfile makes every project of a qlfile an import.
-func extractQlfile(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
+func extractQlfile(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
 	seen := map[string]bool{}
-	for _, e := range readQlfile(src).entries {
+	for _, e := range readQlfile(source).entries {
 		spec := e.source + " " + e.name
 		if !seen[spec] {
 			seen[spec] = true
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: e.name, Name: kindQlfile, Line: e.line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: e.name, Name: kindQlfile, Line: e.line})
 		}
 	}
-	return ex
+	return extraction
 }
 
 // extractLock makes every project a qlfile.lock records an import.
-func extractLock(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
+func extractLock(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
 	seen := map[string]bool{}
-	for _, e := range readLock(src).entries {
+	for _, e := range readLock(source).entries {
 		if !seen[e.name] {
 			seen[e.name] = true
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: "lock " + e.name, Module: e.name, Name: kindLock, Line: e.line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "lock " + e.name, Module: e.name, Name: kindLock, Line: e.line})
 		}
 	}
-	return ex
+	return extraction
 }
 
 // extractOcicl makes every system of ocicl.csv an import.
-func extractOcicl(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
+func extractOcicl(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
 	seen := map[string]bool{}
-	for _, e := range readOcicl(src) {
+	for _, e := range readOcicl(source) {
 		if !seen[e.system] {
 			seen[e.system] = true
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: "ocicl " + e.system, Module: e.system, Name: kindOcicl, Line: e.line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "ocicl " + e.system, Module: e.system, Name: kindOcicl, Line: e.line})
 		}
 	}
-	return ex
+	return extraction
 }

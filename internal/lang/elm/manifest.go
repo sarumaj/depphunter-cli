@@ -19,12 +19,12 @@ type dependency struct {
 
 // manifest is what elm.json says about a project.
 type manifest struct {
-	kind       string // "application" or "package"
-	name       string // a package's author/name
-	elmVersion string
-	srcDirs    []string // an application's source-directories, as written
-	deps       map[string]*dependency
-	exposed    []string // a package's exposed-modules
+	kind              string // "application" or "package"
+	name              string // a package's author/name
+	elmVersion        string
+	sourceDirectories []string // an application's source-directories, as written
+	dependencies      map[string]*dependency
+	exposed           []string // a package's exposed-modules
 }
 
 // readManifest reads elm.json: an application (dependencies.direct/indirect and
@@ -33,47 +33,47 @@ type manifest struct {
 // else - not JSON, no "type" - is nil.
 //
 // Implements: REQ-ELM-005
-func readManifest(src []byte) *manifest {
+func readManifest(source []byte) *manifest {
 	var raw struct {
-		Type           string          `json:"type"`
-		Name           string          `json:"name"`
-		ElmVersion     string          `json:"elm-version"`
-		SourceDirs     []string        `json:"source-directories"`
-		Dependencies   json.RawMessage `json:"dependencies"`
-		TestDeps       json.RawMessage `json:"test-dependencies"`
-		ExposedModules json.RawMessage `json:"exposed-modules"`
+		Type              string          `json:"type"`
+		Name              string          `json:"name"`
+		ElmVersion        string          `json:"elm-version"`
+		SourceDirectories []string        `json:"source-directories"`
+		Dependencies      json.RawMessage `json:"dependencies"`
+		TestDependencies  json.RawMessage `json:"test-dependencies"`
+		ExposedModules    json.RawMessage `json:"exposed-modules"`
 	}
-	if json.Unmarshal(src, &raw) != nil || raw.Type != "application" && raw.Type != "package" {
+	if json.Unmarshal(source, &raw) != nil || raw.Type != "application" && raw.Type != "package" {
 		return nil
 	}
-	m := &manifest{kind: raw.Type, name: raw.Name, elmVersion: raw.ElmVersion, srcDirs: raw.SourceDirs,
-		deps: map[string]*dependency{}}
-	for _, sec := range []struct {
+	m := &manifest{kind: raw.Type, name: raw.Name, elmVersion: raw.ElmVersion, sourceDirectories: raw.SourceDirectories,
+		dependencies: map[string]*dependency{}}
+	for _, section := range []struct {
 		raw  json.RawMessage
 		test bool
-	}{{raw.Dependencies, false}, {raw.TestDeps, true}} {
+	}{{raw.Dependencies, false}, {raw.TestDependencies, true}} {
 		if m.kind == "application" {
 			var split struct {
 				Direct   map[string]string `json:"direct"`
 				Indirect map[string]string `json:"indirect"`
 			}
-			json.Unmarshal(sec.raw, &split)
-			m.add(split.Direct, false, sec.test)
-			m.add(split.Indirect, true, sec.test)
+			json.Unmarshal(section.raw, &split)
+			m.add(split.Direct, false, section.test)
+			m.add(split.Indirect, true, section.test)
 		} else {
 			var flat map[string]string
-			json.Unmarshal(sec.raw, &flat)
-			m.add(flat, false, sec.test)
+			json.Unmarshal(section.raw, &flat)
+			m.add(flat, false, section.test)
 		}
 	}
 	m.exposed = exposedModules(raw.ExposedModules)
 	return m
 }
 
-func (m *manifest) add(deps map[string]string, indirect, test bool) {
-	for name, v := range deps {
-		if name = strings.TrimSpace(name); name != "" && m.deps[name] == nil {
-			m.deps[name] = &dependency{name: name, version: strings.TrimSpace(v), indirect: indirect, test: test}
+func (m *manifest) add(dependencies map[string]string, indirect, test bool) {
+	for name, v := range dependencies {
+		if name = strings.TrimSpace(name); name != "" && m.dependencies[name] == nil {
+			m.dependencies[name] = &dependency{name: name, version: strings.TrimSpace(v), indirect: indirect, test: test}
 		}
 	}
 }
@@ -99,31 +99,31 @@ func exposedModules(raw json.RawMessage) []string {
 // that directory.
 //
 // Implements: REQ-ELM-005
-func extractManifest(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
-	m := readManifest(src)
+func extractManifest(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
+	m := readManifest(source)
 	if m == nil {
-		return ex
+		return extraction
 	}
-	lines := stringLines(src)
-	for _, name := range sortedKeys(m.deps) {
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: name, Module: name, Name: kindDep, Line: lines[name]})
+	lines := stringLines(source)
+	for _, name := range sortedKeys(m.dependencies) {
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: name, Module: name, Name: kindDependency, Line: lines[name]})
 	}
-	for _, d := range m.srcDirs {
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: d, Module: d, Name: kindSrcDir, Line: lines[d]})
+	for _, d := range m.sourceDirectories {
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: d, Module: d, Name: kindSourceDirectory, Line: lines[d]})
 	}
 	if m.kind == "package" && m.name != "" {
-		ex.Symbols = []lang.Symbol{{Name: m.name, Kind: "package", Line: lines[m.name]}}
+		extraction.Symbols = []lang.Symbol{{Name: m.name, Kind: "package", Line: lines[m.name]}}
 	}
-	return ex
+	return extraction
 }
 
 var jsonString = regexp.MustCompile(`"((?:[^"\\]|\\.)*)"`)
 
 // stringLines is the first line each JSON string is written on.
-func stringLines(src []byte) map[string]int {
+func stringLines(source []byte) map[string]int {
 	out := map[string]int{}
-	for i, l := range strings.Split(string(src), "\n") {
+	for i, l := range strings.Split(string(source), "\n") {
 		for _, m := range jsonString.FindAllStringSubmatch(l, -1) {
 			if _, ok := out[m[1]]; !ok {
 				out[m[1]] = i + 1

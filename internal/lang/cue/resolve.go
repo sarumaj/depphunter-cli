@@ -23,39 +23,39 @@ type module struct {
 }
 
 type goMod struct {
-	dir, path string
-	requires  map[string]string
+	directory, path string
+	requires        map[string]string
 }
 
 type cueFile struct {
-	path, pkg string
+	path, packageName string
 }
 
 type resolver struct {
-	root    string
-	files   map[string]bool
-	modules map[string]*module
-	order   []*module            // shallowest first
-	pkgs    map[string][]cueFile // directory -> its CUE files with their package names
-	dirs    sync.Map             // repository-relative directory -> exists on disk
-	cache   string               // cue's cache directory, where fetched modules are extracted
+	root        string
+	files       map[string]bool
+	modules     map[string]*module
+	order       []*module            // shallowest first
+	packages    map[string][]cueFile // directory -> its CUE files with their package names
+	directories sync.Map             // repository-relative directory -> exists on disk
+	cache       string               // cue's cache directory, where fetched modules are extracted
 }
 
 // Implements: REQ-CUE-004, REQ-CUE-005, REQ-CUE-006, REQ-CUE-010
 func newResolver(root string, all []*scan.File, cache string) *resolver {
-	r := &resolver{root: root, files: map[string]bool{}, modules: map[string]*module{}, pkgs: map[string][]cueFile{}, cache: cache}
+	r := &resolver{root: root, files: map[string]bool{}, modules: map[string]*module{}, packages: map[string][]cueFile{}, cache: cache}
 	gomods := map[string]*goMod{}
 	for _, f := range all {
 		r.files[f.Path] = true
 		segments := strings.Split(f.Path, "/")
 		for i, s := range segments[:len(segments)-1] {
 			if s == "cue.mod" {
-				dir := "."
+				directory := "."
 				if i > 0 {
-					dir = strings.Join(segments[:i], "/")
+					directory = strings.Join(segments[:i], "/")
 				}
-				if r.modules[dir] == nil {
-					r.modules[dir] = &module{root: dir, file: &moduleFile{}}
+				if r.modules[directory] == nil {
+					r.modules[directory] = &module{root: directory, file: &moduleFile{}}
 				}
 				break
 			}
@@ -65,23 +65,23 @@ func newResolver(root string, all []*scan.File, cache string) *resolver {
 		}
 		switch {
 		case path.Base(f.Path) == "go.mod":
-			if gm := readGoMod(f); gm != nil {
-				gomods[gm.dir] = gm
+			if goModFile := readGoMod(f); goModFile != nil {
+				gomods[goModFile.directory] = goModFile
 			}
 		case path.Ext(f.Path) == ".cue" && !ignored(f.Path):
-			dir := path.Dir(f.Path)
-			r.pkgs[dir] = append(r.pkgs[dir], cueFile{f.Path, packageName(readFile(f.Abs, 64<<10))})
+			directory := path.Dir(f.Path)
+			r.packages[directory] = append(r.packages[directory], cueFile{f.Path, packageName(readFile(f.AbsolutePath, 64<<10))})
 		}
 	}
-	for _, dir := range sortedKeys(r.modules) {
-		m := r.modules[dir]
+	for _, directory := range sortedKeys(r.modules) {
+		m := r.modules[directory]
 		r.order = append(r.order, m)
-		if src := readFile(filepath.Join(root, filepath.FromSlash(dir), "cue.mod", "module.cue"), lang.MaxParseSize); src != nil {
-			m.file = readModule(src)
+		if source := readFile(filepath.Join(root, filepath.FromSlash(directory), "cue.mod", "module.cue"), lang.MaxParseSize); source != nil {
+			m.file = readModule(source)
 		}
-		for d := dir; ; d = path.Dir(d) {
-			if gm := gomods[d]; gm != nil {
-				m.gomod = gm
+		for d := directory; ; d = path.Dir(d) {
+			if goModFile := gomods[d]; goModFile != nil {
+				m.gomod = goModFile
 				break
 			}
 			if d == "." {
@@ -95,34 +95,34 @@ func newResolver(root string, all []*scan.File, cache string) *resolver {
 	return r
 }
 
-func depth(dir string) int {
-	if dir == "." {
+func depth(directory string) int {
+	if directory == "." {
 		return 0
 	}
-	return strings.Count(dir, "/") + 1
+	return strings.Count(directory, "/") + 1
 }
 
 func readGoMod(f *scan.File) *goMod {
-	data, err := os.ReadFile(f.Abs)
+	data, err := os.ReadFile(f.AbsolutePath)
 	if err != nil {
 		return nil
 	}
-	mf, err := modfile.ParseLax(f.Path, data, nil)
-	if err != nil || mf.Module == nil {
+	parsed, err := modfile.ParseLax(f.Path, data, nil)
+	if err != nil || parsed.Module == nil {
 		return nil
 	}
-	gm := &goMod{dir: path.Dir(f.Path), path: mf.Module.Mod.Path, requires: map[string]string{}}
-	for _, req := range mf.Require {
-		gm.requires[req.Mod.Path] = req.Mod.Version
+	goModFile := &goMod{directory: path.Dir(f.Path), path: parsed.Module.Mod.Path, requires: map[string]string{}}
+	for _, require := range parsed.Require {
+		goModFile.requires[require.Mod.Path] = require.Mod.Version
 	}
-	return gm
+	return goModFile
 }
 
 // packageName reads a CUE file's package clause.
-func packageName(src []byte) string {
-	for _, sym := range extractSource(src).Symbols {
-		if sym.Kind == "package" {
-			return sym.Name
+func packageName(source []byte) string {
+	for _, symbol := range extractSource(source).Symbols {
+		if symbol.Kind == "package" {
+			return symbol.Name
 		}
 	}
 	return ""
@@ -147,32 +147,32 @@ func (r *resolver) modulesOf(file string) []*module {
 	return out
 }
 
-func within(p, dir string) (string, bool) {
-	if p == dir {
+func within(p, directory string) (string, bool) {
+	if p == directory {
 		return "", true
 	}
-	if dir == "." {
+	if directory == "." {
 		return p, true
 	}
-	return strings.CutPrefix(p, dir+"/")
+	return strings.CutPrefix(p, directory+"/")
 }
 
-func join(dir, rest string) string {
+func join(directory, rest string) string {
 	if rest == "" {
-		return dir
+		return directory
 	}
-	return path.Join(dir, rest)
+	return path.Join(directory, rest)
 }
 
-// isDir reports whether a repository directory exists on disk (the trees
+// isDirectory reports whether a repository directory exists on disk (the trees
 // under cue.mod are not scanned).
-func (r *resolver) isDir(p string) bool {
-	if v, ok := r.dirs.Load(p); ok {
+func (r *resolver) isDirectory(p string) bool {
+	if v, ok := r.directories.Load(p); ok {
 		return v.(bool)
 	}
-	st, err := os.Stat(filepath.Join(r.root, filepath.FromSlash(p)))
-	ok := err == nil && st.IsDir()
-	r.dirs.Store(p, ok)
+	fileInfo, err := os.Stat(filepath.Join(r.root, filepath.FromSlash(p)))
+	ok := err == nil && fileInfo.IsDir()
+	r.directories.Store(p, ok)
 	return ok
 }
 
@@ -195,7 +195,7 @@ func splitImport(spec string) (string, string) {
 // import starts with, else in any module of the repository it starts with
 // (the longest). ok is false for any other import.
 func (r *resolver) local(file, spec string) ([]string, bool) {
-	p, pkg := splitImport(spec)
+	p, packageName := splitImport(spec)
 	var found *module
 	rest := ""
 	for _, m := range r.modulesOf(file) {
@@ -215,8 +215,8 @@ func (r *resolver) local(file, spec string) ([]string, bool) {
 		return nil, false
 	}
 	var out []string
-	for _, f := range r.pkgs[join(found.root, rest)] {
-		if f.pkg == pkg && len(out) < maxImport {
+	for _, f := range r.packages[join(found.root, rest)] {
+		if f.packageName == packageName && len(out) < maxImport {
 			out = append(out, f.path)
 		}
 	}
@@ -226,62 +226,62 @@ func (r *resolver) local(file, spec string) ([]string, bool) {
 // Expand makes one import per file of a module-local package.
 //
 // Implements: REQ-CUE-004
-func (r *resolver) Expand(file string, imp lang.RawImport) ([]lang.Import, bool) {
-	if imp.Name != kindImport {
+func (r *resolver) Expand(file string, rawImport lang.RawImport) ([]lang.Import, bool) {
+	if rawImport.Name != kindImport {
 		return nil, false
 	}
-	files, _ := r.local(file, imp.Module)
+	files, _ := r.local(file, rawImport.Module)
 	if len(files) == 0 {
 		return nil, false
 	}
 	if len(files) == 1 {
-		return []lang.Import{{Spec: imp.Spec, Line: imp.Line, Target: r.Resolve(file, imp)}}, true
+		return []lang.Import{{Spec: rawImport.Spec, Line: rawImport.Line, Target: r.Resolve(file, rawImport)}}, true
 	}
 	out := make([]lang.Import, 0, len(files))
 	for _, f := range files {
-		out = append(out, lang.Import{Spec: imp.Spec + " (" + path.Base(f) + ")", Line: imp.Line, Target: lang.Target{Local: f}})
+		out = append(out, lang.Import{Spec: rawImport.Spec + " (" + path.Base(f) + ")", Line: rawImport.Line, Target: lang.Target{Local: f}})
 	}
 	return out, true
 }
 
 // Implements: REQ-CUE-004, REQ-CUE-005, REQ-CUE-006, REQ-CUE-007
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	if imp.Name == kindDep {
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	if rawImport.Name == kindDependency {
 		if m := r.modules[path.Dir(path.Dir(file))]; m != nil {
-			for _, d := range m.file.deps {
-				if d.key == imp.Module {
-					return depTarget(d)
+			for _, d := range m.file.dependencies {
+				if d.key == rawImport.Module {
+					return dependencyTarget(d)
 				}
 			}
 		}
 		return lang.Target{}
 	}
-	files, own := r.local(file, imp.Module)
+	files, own := r.local(file, rawImport.Module)
 	if len(files) > 0 {
 		return lang.Target{Local: files[0]}
 	}
-	p, _ := splitImport(imp.Module)
+	p, _ := splitImport(rawImport.Module)
 	if std[p] {
-		return lang.Target{Ecosystem: ecoStd, Package: p} // builtin packages come first
+		return lang.Target{Ecosystem: ecosystemStd, Package: p} // builtin packages come first
 	}
 	for _, m := range r.modulesOf(file) {
-		for _, sub := range []string{"gen", "usr", "pkg"} {
-			if !r.isDir(path.Join(m.root, "cue.mod", sub, p)) {
+		for _, subdirectory := range []string{"gen", "usr", "pkg"} {
+			if !r.isDirectory(path.Join(m.root, "cue.mod", subdirectory, p)) {
 				continue
 			}
-			if sub == "pkg" {
+			if subdirectory == "pkg" {
 				return r.vendored(m, p)
 			}
 			return r.generated(m, p)
 		}
-		var best *modDep
-		for _, d := range m.file.deps {
+		var best *moduleDependency
+		for _, d := range m.file.dependencies {
 			if _, ok := within(p, d.path); ok && (best == nil || len(d.path) > len(best.path)) {
 				best = d
 			}
 		}
 		if best != nil {
-			return depTarget(best)
+			return dependencyTarget(best)
 		}
 	}
 	if own {
@@ -289,17 +289,17 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 	}
 	first, _, _ := strings.Cut(p, "/")
 	if !strings.Contains(first, ".") {
-		return lang.Target{Ecosystem: ecoCUE, Package: p, Unresolved: true}
+		return lang.Target{Ecosystem: ecosystemCUE, Package: p, Unresolved: true}
 	}
-	return lang.Target{Ecosystem: ecoCUE, Package: guess(p), Unresolved: true}
+	return lang.Target{Ecosystem: ecosystemCUE, Package: guess(p), Unresolved: true}
 }
 
-// depTarget is a module.cue dependency, pinned by its exact version (the
+// dependencyTarget is a module.cue dependency, pinned by its exact version (the
 // modules system selects versions deterministically, as Go's does).
 //
 // Implements: REQ-CUE-005
-func depTarget(d *modDep) lang.Target {
-	t := lang.Target{Ecosystem: ecoCUE, Package: d.path, Version: d.v, Pinned: d.v != ""}
+func dependencyTarget(d *moduleDependency) lang.Target {
+	t := lang.Target{Ecosystem: ecosystemCUE, Package: d.path, Version: d.v, Pinned: d.v != ""}
 	if d.v == "" {
 		t.Floating = true
 	}
@@ -314,7 +314,7 @@ func depTarget(d *modDep) lang.Target {
 //
 // Implements: REQ-CUE-011
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
-	if t.Ecosystem != ecoCUE || !t.Pinned || r.cache == "" {
+	if t.Ecosystem != ecosystemCUE || !t.Pinned || r.cache == "" {
 		return nil
 	}
 	p, err := gomodule.EscapePath(t.Package)
@@ -325,31 +325,31 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 	if err != nil {
 		return nil
 	}
-	src := readFile(filepath.Join(r.cache, "mod", "extract", filepath.FromSlash(p)+"@"+v, "cue.mod", "module.cue"), lang.MaxParseSize)
-	if src == nil {
+	source := readFile(filepath.Join(r.cache, "mod", "extract", filepath.FromSlash(p)+"@"+v, "cue.mod", "module.cue"), lang.MaxParseSize)
+	if source == nil {
 		return nil
 	}
 	var out []lang.Target
-	for _, d := range readModule(src).deps {
+	for _, d := range readModule(source).dependencies {
 		out = append(out, r.selected(d))
 	}
 	return out
 }
 
 // selected is a dependency at the version the repository's modules select for it.
-func (r *resolver) selected(d *modDep) lang.Target {
+func (r *resolver) selected(d *moduleDependency) lang.Target {
 	for _, m := range r.order {
-		for _, own := range m.file.deps {
+		for _, own := range m.file.dependencies {
 			if own.path == d.path {
-				return depTarget(own)
+				return dependencyTarget(own)
 			}
 		}
 	}
-	return depTarget(d)
+	return dependencyTarget(d)
 }
 
 // Installed says a module's dependencies come from cue's module cache.
-func (r *resolver) Installed(t lang.Target) bool { return t.Ecosystem == ecoCUE }
+func (r *resolver) Installed(t lang.Target) bool { return t.Ecosystem == ecosystemCUE }
 
 var forges = map[string]bool{"github.com": true, "gitlab.com": true, "bitbucket.org": true, "codeberg.org": true, "git.sr.ht": true, "cue.dev": true}
 
@@ -371,13 +371,13 @@ func guess(p string) string {
 func (r *resolver) vendored(m *module, p string) lang.Target {
 	base := path.Join(m.root, "cue.mod", "pkg")
 	for d := p; d != "." && d != ""; d = path.Dir(d) {
-		if src := readFile(filepath.Join(r.root, filepath.FromSlash(path.Join(base, d)), "cue.mod", "module.cue"), 64<<10); src != nil {
-			if mp := readModule(src).path; mp != "" {
-				return lang.Target{Ecosystem: ecoCUE, Package: mp}
+		if source := readFile(filepath.Join(r.root, filepath.FromSlash(path.Join(base, d)), "cue.mod", "module.cue"), 64<<10); source != nil {
+			if modulePath := readModule(source).path; modulePath != "" {
+				return lang.Target{Ecosystem: ecosystemCUE, Package: modulePath}
 			}
 		}
 	}
-	return lang.Target{Ecosystem: ecoCUE, Package: guess(p)}
+	return lang.Target{Ecosystem: ecosystemCUE, Package: guess(p)}
 }
 
 // generated is a package `cue get go` wrote into cue.mod/gen (or its
@@ -387,23 +387,23 @@ func (r *resolver) vendored(m *module, p string) lang.Target {
 //
 // Implements: REQ-CUE-006
 func (r *resolver) generated(m *module, p string) lang.Target {
-	if gm := m.gomod; gm != nil {
-		if rest, ok := within(p, gm.path); ok {
-			return lang.Target{Local: join(gm.dir, rest)}
+	if goModFile := m.gomod; goModFile != nil {
+		if rest, ok := within(p, goModFile.path); ok {
+			return lang.Target{Local: join(goModFile.directory, rest)}
 		}
 		best := ""
-		for mp := range gm.requires {
-			if _, ok := within(p, mp); ok && len(mp) > len(best) {
-				best = mp
+		for modulePath := range goModFile.requires {
+			if _, ok := within(p, modulePath); ok && len(modulePath) > len(best) {
+				best = modulePath
 			}
 		}
 		if best != "" {
-			v := gm.requires[best]
-			return lang.Target{Ecosystem: ecoGo, Package: best, Version: v, Pinned: lang.Pinned(v)}
+			v := goModFile.requires[best]
+			return lang.Target{Ecosystem: ecosystemGo, Package: best, Version: v, Pinned: lang.Pinned(v)}
 		}
 	}
 	if first, _, _ := strings.Cut(p, "/"); !strings.Contains(first, ".") {
-		return lang.Target{Ecosystem: ecoGoStd, Package: p}
+		return lang.Target{Ecosystem: ecosystemGoStd, Package: p}
 	}
-	return lang.Target{Ecosystem: ecoCUE, Package: guess(p)}
+	return lang.Target{Ecosystem: ecosystemCUE, Package: guess(p)}
 }

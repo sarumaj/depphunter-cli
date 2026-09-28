@@ -33,17 +33,17 @@ type registry struct {
 func newRegistry(t *testing.T, base string, manifests ...string) *registry {
 	t.Helper()
 	r := &registry{status: map[string]int{}}
-	r.Server = httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, req *http.Request) {
+	r.Server = httptest.NewUnstartedServer(http.HandlerFunc(func(w http.ResponseWriter, request *http.Request) {
 		r.mu.Lock()
-		r.asked = append(r.asked, req.URL.Path)
-		code := r.status[req.URL.Path]
+		r.asked = append(r.asked, request.URL.Path)
+		code := r.status[request.URL.Path]
 		r.mu.Unlock()
 		if code != 0 {
 			w.WriteHeader(code)
 			return
 		}
 		for _, m := range manifests {
-			if req.URL.Path == m {
+			if request.URL.Path == m {
 				fmt.Fprintf(w, `{"annotations":{"org.opencontainers.image.base.name":%q}}`, base)
 				return
 			}
@@ -72,9 +72,9 @@ func ociOrder(c *Config, image string) string { return strings.Join(order(c, OCI
 
 // tlsClient is a client whose requests trust the stub registries' certificate
 // (every httptest TLS server has the same one).
-func tlsClient(t *testing.T, cfg *Config, r *registry, store *auth.Store) *Client {
+func tlsClient(t *testing.T, config *Config, r *registry, store *auth.Store) *Client {
 	t.Helper()
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, store, nil)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, store, nil)
 	c.http = r.Client()
 	c.http.Timeout = 5 * time.Second
 	return c
@@ -87,7 +87,7 @@ func tlsClient(t *testing.T, cfg *Config, r *registry, store *auth.Store) *Clien
 //
 // Verifies: REQ-SUP-068
 func TestRegistriesConfMirrorIsAskedFirst(t *testing.T) {
-	for _, tt := range []struct {
+	for _, test := range []struct {
 		name         string
 		mirrorStatus int
 		wantMirror   bool
@@ -96,10 +96,10 @@ func TestRegistriesConfMirrorIsAskedFirst(t *testing.T) {
 		{"mirror 404", http.StatusNotFound, false},
 		{"mirror 500", http.StatusInternalServerError, false},
 	} {
-		t.Run(tt.name, func(t *testing.T) {
-			loc := newRegistry(t, "alpine:3", "/v2/team/app/manifests/1.0")
+		t.Run(test.name, func(t *testing.T) {
+			registry := newRegistry(t, "alpine:3", "/v2/team/app/manifests/1.0")
 			mirror := newRegistry(t, "debian:12", "/v2/cache/team/app/manifests/1.0")
-			mirror.status["/v2/cache/team/app/manifests/1.0"] = tt.mirrorStatus
+			mirror.status["/v2/cache/team/app/manifests/1.0"] = test.mirrorStatus
 			home := t.TempDir()
 			put(t, filepath.Join(home, ".config", "containers", "registries.conf"), fmt.Sprintf(`
 [[registry]]
@@ -107,27 +107,27 @@ prefix = "%[1]s/team"
 location = "%[1]s/team"
 [[registry.mirror]]
 location = "%[2]s/cache/team"
-`, loc.host(), mirror.host()))
-			cfg := discoverOn(home, "linux", nil)
-			image := lang.Target{Ecosystem: OCI, Package: loc.host() + "/team/app", Version: "1.0"}
-			if got := ociOrder(cfg, image.Package); got != mirror.URL+"/cache/team "+loc.URL {
+`, registry.host(), mirror.host()))
+			config := discoverOn(home, "linux", nil)
+			image := lang.Target{Ecosystem: OCI, Package: registry.host() + "/team/app", Version: "1.0"}
+			if got := ociOrder(config, image.Package); got != mirror.URL+"/cache/team "+registry.URL {
 				t.Errorf("candidates %q", got)
 			}
 			// The map attributes the image to its registry, not to the mirror.
-			if idx, known := cfg.For(OCI, image.Package); idx != loc.URL || !known {
-				t.Errorf("For: %s %v", idx, known)
+			if index, known := config.For(OCI, image.Package); index != registry.URL || !known {
+				t.Errorf("For: %s %v", index, known)
 			}
-			c := tlsClient(t, cfg, loc, nil)
+			c := tlsClient(t, config, registry, nil)
 			got, l := ask(t, c, image)
 			want := "alpine"
-			if tt.wantMirror {
+			if test.wantMirror {
 				want = "debian"
 			}
 			if len(got) != 1 || got[0] != want {
 				t.Fatalf("got %v (%+v), want %s", got, l, want)
 			}
-			if tt.wantMirror != (len(loc.paths()) == 0) {
-				t.Errorf("location asked %v", loc.paths())
+			if test.wantMirror != (len(registry.paths()) == 0) {
+				t.Errorf("location asked %v", registry.paths())
 			}
 			if len(mirror.paths()) == 0 || mirror.paths()[0] != "/v2/cache/team/app/manifests/1.0" {
 				t.Errorf("mirror asked %v", mirror.paths())
@@ -152,19 +152,19 @@ location = "digests.corp"
 location = "tags.corp"
 pull-from-mirror = "tag-only"
 `)
-	cfg := discoverOn(home, "linux", nil)
-	for ref, want := range map[string]string{
+	config := discoverOn(home, "linux", nil)
+	for reference, want := range map[string]string{
 		"1.0":          "https://tags.corp https://quay.io",
 		"sha256:abcd":  "https://digests.corp https://quay.io",
 		"":             "https://tags.corp https://quay.io",
 		"sha256:other": "https://digests.corp https://quay.io",
 	} {
 		var got []string
-		for _, k := range cfg.candidatesFor(lang.Target{Ecosystem: OCI, Package: "quay.io/org/app", Version: ref}) {
+		for _, k := range config.candidatesFor(lang.Target{Ecosystem: OCI, Package: "quay.io/org/app", Version: reference}) {
 			got = append(got, k.url)
 		}
 		if strings.Join(got, " ") != want {
-			t.Errorf("%q: %v, want %s", ref, got, want)
+			t.Errorf("%q: %v, want %s", reference, got, want)
 		}
 	}
 }
@@ -173,7 +173,7 @@ pull-from-mirror = "tag-only"
 //
 // Verifies: REQ-SUP-068
 func TestRegistriesConfBlockedRegistryIsNeverAsked(t *testing.T) {
-	reg := newRegistry(t, "alpine:3", "/v2/team/app/manifests/1.0")
+	registry := newRegistry(t, "alpine:3", "/v2/team/app/manifests/1.0")
 	home := t.TempDir()
 	put(t, filepath.Join(home, ".config", "containers", "registries.conf"), fmt.Sprintf(`
 [[registry]]
@@ -181,13 +181,13 @@ prefix = "%s"
 blocked = true
 [[registry.mirror]]
 location = "mirror.invalid"
-`, reg.host()))
-	cfg := discoverOn(home, "linux", nil)
-	cfg.Trust([]string{reg.URL})
-	c := tlsClient(t, cfg, reg, nil)
-	got, l := ask(t, c, lang.Target{Ecosystem: OCI, Package: reg.host() + "/team/app", Version: "1.0"})
-	if len(got) != 0 || len(reg.paths()) != 0 {
-		t.Errorf("asked a blocked registry: %v %v", got, reg.paths())
+`, registry.host()))
+	config := discoverOn(home, "linux", nil)
+	config.Trust([]string{registry.URL})
+	c := tlsClient(t, config, registry, nil)
+	got, l := ask(t, c, lang.Target{Ecosystem: OCI, Package: registry.host() + "/team/app", Version: "1.0"})
+	if len(got) != 0 || len(registry.paths()) != 0 {
+		t.Errorf("asked a blocked registry: %v %v", got, registry.paths())
 	}
 	if l.Reason != trace.ReasonBlocked {
 		t.Errorf("reason %q", l.Reason)
@@ -196,9 +196,9 @@ location = "mirror.invalid"
 	put(t, filepath.Join(home, ".config", "containers", "registries.conf.d", "10-open.conf"), fmt.Sprintf(`
 [[registry]]
 location = "%s/open"
-`, reg.host()))
-	cfg = discoverOn(home, "linux", nil)
-	if got := ociOrder(cfg, reg.host()+"/open/app"); got != reg.URL {
+`, registry.host()))
+	config = discoverOn(home, "linux", nil)
+	if got := ociOrder(config, registry.host()+"/open/app"); got != registry.URL {
 		t.Errorf("unblocked prefix: %q", got)
 	}
 }
@@ -212,8 +212,8 @@ location = "%s/open"
 // Verifies: REQ-SUP-068, REQ-SUP-064
 func TestRegistriesConfDropInsMergeInOrder(t *testing.T) {
 	home := t.TempDir()
-	sysDir := filepath.Join(userconf.SystemRoot, "etc", "containers")
-	t.Cleanup(func() { os.RemoveAll(sysDir) })
+	sysDirectory := filepath.Join(userconf.SystemRoot, "etc", "containers")
+	t.Cleanup(func() { os.RemoveAll(sysDirectory) })
 	main := filepath.Join(t.TempDir(), "main.conf")
 	put(t, main, `
 [[registry]]
@@ -226,20 +226,20 @@ location = "ghcr.io"
 [[registry.mirror]]
 location = "ghcr-main.corp"
 `)
-	put(t, filepath.Join(sysDir, "registries.conf.d", "50-sys.conf"), `
+	put(t, filepath.Join(sysDirectory, "registries.conf.d", "50-sys.conf"), `
 [[registry]]
 location = "quay.io"
 [[registry.mirror]]
 location = "sys50.corp"
 `)
-	put(t, filepath.Join(sysDir, "registries.conf.d", "90-sys.conf"), `
+	put(t, filepath.Join(sysDirectory, "registries.conf.d", "90-sys.conf"), `
 [[registry]]
 prefix = "ghcr.io"
 location = "ghcr.io"
 [[registry.mirror]]
 location = "sys90.corp"
 `)
-	put(t, filepath.Join(sysDir, "registries.conf.d", "ignored.txt"), `[[registry]]
+	put(t, filepath.Join(sysDirectory, "registries.conf.d", "ignored.txt"), `[[registry]]
 location = "quay.io"
 blocked = true
 `)
@@ -249,39 +249,39 @@ location = "quay.io"
 [[registry.mirror]]
 location = "user00.corp"
 `)
-	cfg := discoverOn(home, "linux", map[string]string{"CONTAINERS_REGISTRIES_CONF": main})
+	config := discoverOn(home, "linux", map[string]string{"CONTAINERS_REGISTRIES_CONF": main})
 	// The user's 00- drop-in is read after the system's 50-: it wins for quay.io.
-	if got := ociOrder(cfg, "quay.io/org/app"); got != "https://user00.corp https://quay.io" {
+	if got := ociOrder(config, "quay.io/org/app"); got != "https://user00.corp https://quay.io" {
 		t.Errorf("quay.io: %q", got)
 	}
-	if got := ociOrder(cfg, "ghcr.io/org/app"); got != "https://sys90.corp https://ghcr.io" {
+	if got := ociOrder(config, "ghcr.io/org/app"); got != "https://sys90.corp https://ghcr.io" {
 		t.Errorf("ghcr.io: %q", got)
 	}
 	// Without the variable, the system registries.conf is the main file.
-	put(t, filepath.Join(sysDir, "registries.conf"), `
+	put(t, filepath.Join(sysDirectory, "registries.conf"), `
 [[registry]]
 location = "docker.io"
 [[registry.mirror]]
 location = "hub.corp/proxy"
 `)
-	cfg = discoverOn(home, "linux", nil)
-	if got := ociOrder(cfg, "nginx"); got != "https://hub.corp/proxy "+public[OCI] {
+	config = discoverOn(home, "linux", nil)
+	if got := ociOrder(config, "nginx"); got != "https://hub.corp/proxy "+public[OCI] {
 		t.Errorf("docker.io: %q", got)
 	}
-	if base, repo := cfg.ociRoute("nginx", "", "https://hub.corp/proxy"); base != "https://hub.corp" || repo != "proxy/library/nginx" {
-		t.Errorf("route %s %s", base, repo)
+	if base, repository := config.ociRoute("nginx", "", "https://hub.corp/proxy"); base != "https://hub.corp" || repository != "proxy/library/nginx" {
+		t.Errorf("route %s %s", base, repository)
 	}
 	// A user registries.conf replaces the system's, and its registries.conf.d is
 	// the only one read.
 	put(t, filepath.Join(home, ".config", "containers", "registries.conf"), "")
-	cfg = discoverOn(home, "linux", nil)
-	if got := ociOrder(cfg, "nginx"); got != public[OCI] {
+	config = discoverOn(home, "linux", nil)
+	if got := ociOrder(config, "nginx"); got != public[OCI] {
 		t.Errorf("user file: nginx %q", got)
 	}
-	if got := ociOrder(cfg, "quay.io/org/app"); got != "https://user00.corp https://quay.io" {
+	if got := ociOrder(config, "quay.io/org/app"); got != "https://user00.corp https://quay.io" {
 		t.Errorf("user file: quay.io %q", got)
 	}
-	if got := ociOrder(cfg, "ghcr.io/org/app"); got != "https://ghcr.io?" {
+	if got := ociOrder(config, "ghcr.io/org/app"); got != "https://ghcr.io?" {
 		t.Errorf("user file: ghcr.io %q", got)
 	}
 }
@@ -307,7 +307,7 @@ location = "wild.mirror"
 prefix = "*.bad.io"
 location = "never.corp"
 `)
-	cfg := discoverOn(home, "linux", nil)
+	config := discoverOn(home, "linux", nil)
 	for image, want := range map[string]string{
 		"example.com/foo/app":      "https://internal.corp",
 		"example.com/foobar/app":   "https://example.com?",
@@ -316,13 +316,13 @@ location = "never.corp"
 		"corp.io/team/app":         "https://corp.io?",
 		"x.bad.io/app":             "https://x.bad.io?",
 	} {
-		if got := ociOrder(cfg, image); got != want {
+		if got := ociOrder(config, image); got != want {
 			t.Errorf("%s: %q, want %q", image, got, want)
 		}
 	}
 	// A Docker Hub image named in full, as a base image's annotation names it, is
 	// Docker Hub's.
-	if got := ociOrder(cfg, "docker.io/library/debian"); got != public[OCI] {
+	if got := ociOrder(config, "docker.io/library/debian"); got != public[OCI] {
 		t.Errorf("docker.io/library/debian: %q", got)
 	}
 	for image, want := range map[string]string{
@@ -331,9 +331,9 @@ location = "never.corp"
 		"example.com/foo/deep/app": "deep.corp app",
 		"a.corp.io/team/app":       "a.corp.io team/app",
 	} {
-		index, _ := cfg.For(OCI, image)
-		base, repo := cfg.ociRoute(image, "", index)
-		if got := Host(base) + " " + repo; got != want {
+		index, _ := config.For(OCI, image)
+		base, repository := config.ociRoute(image, "", index)
+		if got := Host(base) + " " + repository; got != want {
 			t.Errorf("%s: %q, want %q", image, got, want)
 		}
 	}
@@ -353,14 +353,14 @@ func TestDockerDaemonMirrorsServeDockerHub(t *testing.T) {
 	home := t.TempDir()
 	put(t, filepath.Join(home, ".config", "docker", "daemon.json"), fmt.Sprintf(`{
 		"registry-mirrors": [%q, "no-scheme.corp", "https://with.path/v2"]}`, mirror.URL+"/"))
-	cfg := discoverOn(home, "linux", nil)
-	if got := ociOrder(cfg, "app"); got != mirror.URL+" "+hub.URL {
+	config := discoverOn(home, "linux", nil)
+	if got := ociOrder(config, "app"); got != mirror.URL+" "+hub.URL {
 		t.Errorf("hub image: %q", got)
 	}
-	if got := ociOrder(cfg, "ghcr.io/org/app"); got != "https://ghcr.io?" {
+	if got := ociOrder(config, "ghcr.io/org/app"); got != "https://ghcr.io?" {
 		t.Errorf("ghcr image: %q", got)
 	}
-	c := tlsClient(t, cfg, hub, nil)
+	c := tlsClient(t, config, hub, nil)
 	// The mirror has org/tool; library/app only Docker Hub has.
 	if got, l := ask(t, c, lang.Target{Ecosystem: OCI, Package: "org/tool", Version: "2"}); len(got) != 1 || got[0] != "debian" {
 		t.Errorf("org/tool: %v %+v", got, l)
@@ -376,9 +376,9 @@ func TestDockerDaemonMirrorsServeDockerHub(t *testing.T) {
 	}
 	// /etc/docker/daemon.json is the rootful daemon's, read when the rootless one's
 	// is absent.
-	sys := filepath.Join(userconf.SystemRoot, "etc", "docker", "daemon.json")
-	t.Cleanup(func() { os.RemoveAll(filepath.Dir(sys)) })
-	put(t, sys, `{"registry-mirrors": ["https://etc.mirror"]}`)
+	systemFile := filepath.Join(userconf.SystemRoot, "etc", "docker", "daemon.json")
+	t.Cleanup(func() { os.RemoveAll(filepath.Dir(systemFile)) })
+	put(t, systemFile, `{"registry-mirrors": ["https://etc.mirror"]}`)
 	if got := ociOrder(discoverOn(t.TempDir(), "linux", nil), "app"); got != "https://etc.mirror "+hub.URL {
 		t.Errorf("/etc/docker: %q", got)
 	}
@@ -395,8 +395,8 @@ func TestIdentityTokenIsExchangedAtTheRegistry(t *testing.T) {
 	var mu sync.Mutex
 	var forms []string
 	realm := ""
-	reg := newRegistry(t, "", "")
-	reg.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	registry := newRegistry(t, "", "")
+	registry.Config.Handler = http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/oauth2/token":
 			if r.Method != http.MethodPost || r.Header.Get("Authorization") != "" {
@@ -427,17 +427,17 @@ func TestIdentityTokenIsExchangedAtTheRegistry(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	})
-	realm = reg.URL + "/oauth2/token"
+	realm = registry.URL + "/oauth2/token"
 	home := t.TempDir()
-	put(t, filepath.Join(home, ".docker", "config.json"), fmt.Sprintf(`{"auths":{%q:{"identitytoken":"refresh-1"}}}`, reg.host()))
+	put(t, filepath.Join(home, ".docker", "config.json"), fmt.Sprintf(`{"auths":{%q:{"identitytoken":"refresh-1"}}}`, registry.host()))
 	store := auth.Read(home, nil)
-	if store.IdentityToken(reg.host()) != "refresh-1" {
+	if store.IdentityToken(registry.host()) != "refresh-1" {
 		t.Fatal("identity token not read")
 	}
-	cfg := New()
-	cfg.Credentials(store)
-	image := lang.Target{Ecosystem: OCI, Package: reg.host() + "/team/app", Version: "1"}
-	c := tlsClient(t, cfg, reg, store)
+	config := New()
+	config.Credentials(store)
+	image := lang.Target{Ecosystem: OCI, Package: registry.host() + "/team/app", Version: "1"}
+	c := tlsClient(t, config, registry, store)
 	got, l := ask(t, c, image)
 	if len(got) != 1 || got[0] != "alpine" {
 		t.Fatalf("got %v (%+v)", got, l)
@@ -460,9 +460,9 @@ func TestIdentityTokenIsExchangedAtTheRegistry(t *testing.T) {
 		otherAsked = append(otherAsked, r.Method+" "+r.Form.Encode())
 		w.WriteHeader(http.StatusUnauthorized)
 	})
-	for _, elsewhere := range []string{other.URL + "/oauth2/token", strings.Replace(reg.URL, "https:", "http:", 1) + "/oauth2/token"} {
+	for _, elsewhere := range []string{other.URL + "/oauth2/token", strings.Replace(registry.URL, "https:", "http:", 1) + "/oauth2/token"} {
 		realm = elsewhere
-		c := tlsClient(t, cfg, reg, store)
+		c := tlsClient(t, config, registry, store)
 		c.Dependencies(image)
 		mu.Lock()
 		if len(forms) != 0 {
@@ -486,19 +486,19 @@ func TestIdentityTokenIsExchangedAtTheRegistry(t *testing.T) {
 // Verifies: REQ-AUTH-030
 func TestIdentityTokenNeverTravelsOverHTTP(t *testing.T) {
 	var got []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		_ = r.ParseForm()
 		got = append(got, r.Method+" "+r.Form.Encode())
 		fmt.Fprint(w, `{"token":"anonymous"}`)
 	}))
-	t.Cleanup(srv.Close)
-	host := strings.TrimPrefix(srv.URL, "http://")
+	t.Cleanup(server.Close)
+	host := strings.TrimPrefix(server.URL, "http://")
 	home := t.TempDir()
 	put(t, filepath.Join(home, ".docker", "config.json"), fmt.Sprintf(`{"auths":{%q:{"identitytoken":"refresh-1"}}}`, host))
 	store := auth.Read(home, nil)
 	c := NewClient(New(), t.TempDir(), time.Hour, 5*time.Second, store, nil)
 	token, err := c.ociToken(context.Background(), "https://"+host, "team/app",
-		fmt.Sprintf(`Bearer realm="%s/token",service="reg"`, srv.URL))
+		fmt.Sprintf(`Bearer realm="%s/token",service="reg"`, server.URL))
 	if err != nil || token != "anonymous" {
 		t.Fatalf("token %q, %v", token, err)
 	}

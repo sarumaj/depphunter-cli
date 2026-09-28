@@ -23,9 +23,9 @@ func (c *Store) readMaven(m userconf.Machine) {
 			files = append(files, data)
 		}
 	}
-	repos := map[string]string{}
-	if dir := m.ClojureConfigDir(); dir != "" {
-		if data, err := os.ReadFile(filepath.Join(dir, "deps.edn")); err == nil {
+	repositories := map[string]string{}
+	if directory := m.ClojureConfigDirectory(); directory != "" {
+		if data, err := os.ReadFile(filepath.Join(directory, "deps.edn")); err == nil {
 			for _, top := range edn.Read(data) {
 				r := top.Get("mvn/repos")
 				if r == nil || r.Kind != edn.Map {
@@ -37,14 +37,14 @@ func (c *Store) readMaven(m userconf.Machine) {
 						v = v.Get("url")
 					}
 					if name.Kind == edn.String && v != nil && v.Kind == edn.String {
-						repos[name.Text] = v.Text
+						repositories[name.Text] = v.Text
 					}
 				}
 			}
 		}
 	}
 	if len(files) > 0 {
-		c.readMavenSettings(files, repos)
+		c.readMavenSettings(files, repositories)
 	}
 }
 
@@ -185,7 +185,7 @@ func (c *Store) readGradle(m userconf.Machine) {
 		if v := props[name]; v != "" {
 			return v
 		}
-		return m.Env("ORG_GRADLE_PROJECT_" + name)
+		return m.Environment("ORG_GRADLE_PROJECT_" + name)
 	}
 	for _, name := range scripts {
 		data, err := os.ReadFile(name)
@@ -193,11 +193,11 @@ func (c *Store) readGradle(m userconf.Machine) {
 			continue
 		}
 		for _, block := range gradleMaven.FindAllStringSubmatch(string(data), -1) {
-			repo, u := gradleName.FindStringSubmatch(block[1]), gradleURL.FindStringSubmatch(block[1])
-			if repo == nil || u == nil || !gradlePassword.MatchString(block[1]) {
+			repository, u := gradleName.FindStringSubmatch(block[1]), gradleURL.FindStringSubmatch(block[1])
+			if repository == nil || u == nil || !gradlePassword.MatchString(block[1]) {
 				continue
 			}
-			user, pass := property(repo[1]+"Username"), property(repo[1]+"Password")
+			user, pass := property(repository[1]+"Username"), property(repository[1]+"Password")
 			if user == "" || pass == "" {
 				continue
 			}

@@ -8,7 +8,7 @@ import (
 )
 
 func TestJS(t *testing.T) {
-	for _, tc := range []struct{ name, in, want string }{
+	for _, testCase := range []struct{ name, in, want string }{
 		{"line comment", "a = 1; // note\nb = 2;", "a = 1;\nb = 2;"},
 		{"line numbering kept", "a;\n// x\n// y\nb;", "a;\n\n\nb;"},
 		{"whole line", "a = 1;\n  // note\nb = 2;", "a = 1;\n\nb = 2;"},
@@ -33,9 +33,9 @@ func TestJS(t *testing.T) {
 		{"a template over lines", "const t = `a\n    b  \n`;\n    f();", "const t = `a\n    b  \n`;\nf();"},
 		{"a continued string", "const s = 'a\\\n   b';\n  f();", "const s = 'a\\\n   b';\nf();"},
 	} {
-		t.Run(tc.name, func(t *testing.T) {
-			if got := JS(tc.in); got != tc.want {
-				t.Errorf("JS(%q)\n got %q\nwant %q", tc.in, got, tc.want)
+		t.Run(testCase.name, func(t *testing.T) {
+			if got := JS(testCase.in); got != testCase.want {
+				t.Errorf("JS(%q)\n got %q\nwant %q", testCase.in, got, testCase.want)
 			}
 		})
 	}
@@ -62,29 +62,29 @@ func TestHTML(t *testing.T) {
 // pattern in the file has to come through untouched, and so does every other
 // character that is not whitespace or inside a comment.
 func TestMinifyKeepsEveryLiteral(t *testing.T) {
-	dir := filepath.Join("..", "..", "web", "static")
-	files, err := filepath.Glob(filepath.Join(dir, "*.js"))
+	directory := filepath.Join("..", "..", "web", "static")
+	files, err := filepath.Glob(filepath.Join(directory, "*.js"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	more, _ := filepath.Glob(filepath.Join(dir, "vendor", "*.js"))
+	more, _ := filepath.Glob(filepath.Join(directory, "vendor", "*.js"))
 	files = append(files, more...)
 	if len(files) < 10 {
-		t.Fatalf("expected the UI's modules under %s, found %d", dir, len(files))
+		t.Fatalf("expected the UI's modules under %s, found %d", directory, len(files))
 	}
 	for _, f := range files {
-		src, err := os.ReadFile(f)
+		source, err := os.ReadFile(f)
 		if err != nil {
 			t.Fatal(err)
 		}
-		out := JS(string(src))
-		for _, lit := range literals(string(src)) {
-			if !strings.Contains(out, lit) {
-				t.Errorf("%s: literal %q did not survive", filepath.Base(f), lit)
+		out := JS(string(source))
+		for _, literal := range literals(string(source)) {
+			if !strings.Contains(out, literal) {
+				t.Errorf("%s: literal %q did not survive", filepath.Base(f), literal)
 			}
 		}
-		if len(out) > len(src) {
-			t.Errorf("%s: grew from %d to %d bytes", filepath.Base(f), len(src), len(out))
+		if len(out) > len(source) {
+			t.Errorf("%s: grew from %d to %d bytes", filepath.Base(f), len(source), len(out))
 		}
 	}
 }
@@ -92,32 +92,32 @@ func TestMinifyKeepsEveryLiteral(t *testing.T) {
 // literals pulls the quoted strings out of a source file with the same scanner the
 // minifier uses, so a bug that mis-scans them fails this test on both sides at once -
 // which is why the check above also counts characters.
-func literals(src string) []string {
+func literals(source string) []string {
 	var out []string
-	for i := 0; i < len(src); i++ {
-		switch src[i] {
+	for i := 0; i < len(source); i++ {
+		switch source[i] {
 		case '"', '\'':
-			j := endOfString(src, i)
-			if j-i > 4 && !strings.Contains(src[i:j], "\n") {
-				out = append(out, src[i:j])
+			j := endOfString(source, i)
+			if j-i > 4 && !strings.Contains(source[i:j], "\n") {
+				out = append(out, source[i:j])
 			}
 			i = j - 1
 		case '`':
-			j := endOfTemplate(src, i)
+			j := endOfTemplate(source, i)
 			if j-i > 4 {
-				out = append(out, src[i:j])
+				out = append(out, source[i:j])
 			}
 			i = j - 1
 		case '/':
-			if i+1 < len(src) && (src[i+1] == '/' || src[i+1] == '*') {
+			if i+1 < len(source) && (source[i+1] == '/' || source[i+1] == '*') {
 				// Skip the comment so its contents are not mistaken for a literal.
-				if src[i+1] == '/' {
-					if k := strings.IndexByte(src[i:], '\n'); k < 0 {
+				if source[i+1] == '/' {
+					if k := strings.IndexByte(source[i:], '\n'); k < 0 {
 						return out
 					} else {
 						i += k
 					}
-				} else if k := strings.Index(src[i+2:], "*/"); k < 0 {
+				} else if k := strings.Index(source[i+2:], "*/"); k < 0 {
 					return out
 				} else {
 					i += 2 + k + 1

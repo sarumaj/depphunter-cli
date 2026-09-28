@@ -29,17 +29,17 @@ import { PRIMARY_IDS, SECONDARY_IDS, DEFAULT_TOOL, toolFor, idleTool, restTool, 
 import { ToolWheel, EMPTY, carriedRing, cycle, keyFor, keysFor, rowOrder, toolForKey } from './switcher.js';
 import { inBlaze } from './flames.js';
 
-// A building is one unit wide and its storeys 0.3 high (city.js): the walker is
-// about a storey and a half tall.
+// A building is one unit wide and its stories 0.3 high (city.js): the walker is
+// about a story and a half tall.
 const EYE = 0.45;           // eye height above the feet
 // Implements: REQ-WALK-004
 const WALK = 2.6, RUN = 7, FLY = 10; // units per second
 // A jump clears a curb and a terrace wall and nothing more. At this gravity it tops
-// out about 0.4 units up, which against a storey of 0.3 is a person leaving the ground
+// out about 0.4 units up, which against a story of 0.3 is a person leaving the ground
 // rather than one clearing a tree.
 // Implements: REQ-WALK-005
 const JUMP = 3.2, GRAVITY = 13;
-// Half a storey (0.3): a curb, a ramp's slope and a bridge's arch are walked, a
+// Half a story (0.3): a curb, a ramp's slope and a bridge's arch are walked, a
 // terrace wall (0.28 in layout.js) is not - that takes the ramp or a jump.
 // Implements: REQ-WALK-006
 const STEP = 0.15;          // highest ledge walked up without jumping
@@ -127,7 +127,7 @@ const RADAR_RANGE_TAU = 0.5, RADAR_ZOOM_TAU = 0.55;
 // (right button).
 // Implements: REQ-WALK-012, REQ-WALK-013
 const FOV = 70, MIN_FOV = 30, MAX_FOV = 90, SCOPE_FOV = 22;
-// How far in the held tool sits, as a fraction of where it is modelled. See showTool.
+// How far in the held tool sits, as a fraction of where it is modeled. See showTool.
 const VIEW_NEAR = 0.5;
 const SWING = 0.45;         // seconds a tool takes to swing and settle
 // How far the view rides up and down, and how fast, for each of the two things that
@@ -174,7 +174,7 @@ const SINK_EYE = 0.06, DROWN_BOB = 0.05, DROWN_BOB_RATE = 7, SINK_BACK = 1.5, SI
 const DYING = 1.1;
 // Being bitten: how near a bug has to be to reach the walker, and how often it can.
 // The reach is a stride, so standing in the middle of a lap is what does it rather
-// than walking past one; a bug on a wall three storeys up cannot reach anybody.
+// than walking past one; a bug on a wall three stories up cannot reach anybody.
 // Implements: REQ-WALK-028
 const BITE_REACH = 0.75, BITE_EVERY = 1.1;
 // Standing in a fire: how often it takes something, and what a full blaze takes each
@@ -270,7 +270,7 @@ export class Walker {
     // it only puts it out.
     this.fires = null;
     // Frozen: the details panel has the pointer, so the view holds still. Otherwise
-    // the freed cursor and the reticle in the centre both steer the same scene, and
+    // the freed cursor and the reticle in the center both steer the same scene, and
     // reading about a building means fighting it.
     this.frozen = false;
     this.roll = 0;        // the view's bank in flight, eased towards bankFor's (bank)
@@ -559,10 +559,10 @@ export class Walker {
 
   // Held (frozen) it waits where it is: the first walk's tour is read over the city
   // from the top of the flight, and the flight goes on once the tour is closed.
-  arrive(dt) {
+  arrive(deltaTime) {
     const a = this.arrival;
-    if (this.frozen && dt > 0) return;
-    a.t = Math.min(1, a.t + dt / a.T);
+    if (this.frozen && deltaTime > 0) return;
+    a.t = Math.min(1, a.t + deltaTime / a.T);
     Object.assign(this.p, a.path(a.t), { vy: 0 });
     if (a.kind === 'rise') this.hud.style.setProperty('--dead', (1 - clamp(a.t / 0.6, 0, 1)).toFixed(3));
     if (a.t >= 1) this.endArrival(true);
@@ -705,7 +705,7 @@ export class Walker {
     this.lights ||= viewLights();
     this.scene.walkCamera.add(this.lights);
     // Held near the lens rather than out in the street. A viewmodel is drawn in the
-    // same pass as the map, so at arm's length it is half a metre off the ground and
+    // same pass as the map, so at arm's length it is half a meter off the ground and
     // the pavement is drawn straight through it; brought in and scaled down by the
     // same amount, the picture is identical and nothing can reach it.
     this.held = new THREE.Group();
@@ -854,8 +854,8 @@ export class Walker {
    *
    * Implements: REQ-TOOL-057
    */
-  nextPrimary(dir = 1) {
-    this.setTool(cycle(PRIMARY_IDS, this.primary.id, dir));
+  nextPrimary(directory = 1) {
+    this.setTool(cycle(PRIMARY_IDS, this.primary.id, directory));
   }
 
   /**
@@ -871,8 +871,8 @@ export class Walker {
    *
    * Implements: REQ-TOOL-056
    */
-  nextCarried(dir = 1) {
-    const next = cycle(carriedRing(), this.secondary?.id ?? EMPTY, dir);
+  nextCarried(directory = 1) {
+    const next = cycle(carriedRing(), this.secondary?.id ?? EMPTY, directory);
     if (next !== EMPTY) this.setTool(next);
     else if (this.secondary) this.setTool(this.secondary.id); // same tool again: stowed
     else this.flash('Left hand empty');
@@ -1016,8 +1016,8 @@ export class Walker {
 
   // Implements: REQ-HUNT-044
   /** One frame of looking at one: it comes up, it is held, and it goes back down. */
-  study(dt) {
-    this.showing.t += dt;
+  study(deltaTime) {
+    this.showing.t += deltaTime;
     if (this.showing.t >= SHOWING) this.endShow();
   }
 
@@ -1057,13 +1057,13 @@ export class Walker {
   lens() {
     const cam = this.scene.walkCamera;
     this.filmCamera ||= new THREE.PerspectiveCamera(1, 4 / 3, 0.02, 3000);
-    const lens = this.filmCamera;
-    lens.position.copy(cam.position);
-    lens.quaternion.copy(cam.quaternion);
+    const lengths = this.filmCamera;
+    lengths.position.copy(cam.position);
+    lengths.quaternion.copy(cam.quaternion);
     const fov = cam.fov * 0.8;
-    if (lens.fov !== fov) { lens.fov = fov; lens.updateProjectionMatrix(); }
-    lens.updateMatrixWorld();
-    return lens;
+    if (lengths.fov !== fov) { lengths.fov = fov; lengths.updateProjectionMatrix(); }
+    lengths.updateMatrixWorld();
+    return lengths;
   }
 
   // Each tool breathes while it waits and swings while it is used; the swing is what
@@ -1071,12 +1071,12 @@ export class Walker {
   // The two hands keep their own gestures, so netting a bug while the jet is running
   // is one hand doing each.
   // Implements: REQ-TOOL-031
-  poseTool(dt, now) {
+  poseTool(deltaTime, now) {
     // A tool with something live on it gets its frame here. Every other frame is
     // enough for a screen this size, and halves what it costs.
     const live = !((this.frames = (this.frames || 0) + 1) & 1);
-    this.swing = this.poseOne(this.viewmodel, this.primary, this.swing, dt, now, live);
-    this.offSwing = this.poseOne(this.offhand, this.secondary, this.offSwing, dt, now, live);
+    this.swing = this.poseOne(this.viewmodel, this.primary, this.swing, deltaTime, now, live);
+    this.offSwing = this.poseOne(this.offhand, this.secondary, this.offSwing, deltaTime, now, live);
     // A photograph being looked at is laid over the right hand afterwards: whatever
     // that hand was doing, it is now holding the camera up at the face.
     if (this.showing && this.viewmodel) studyTool(this.viewmodel, this.raised());
@@ -1084,11 +1084,11 @@ export class Walker {
 
   // Implements: REQ-TOOL-002
   /** One hand's frame; returns how far into its gesture it now is, -1 once it is over. */
-  poseOne(vm, tool, swing, dt, now, live) {
+  poseOne(vm, tool, swing, deltaTime, now, live) {
     if (!vm || !tool) return -1;
     if (live && tool.live) tool.live(vm, this.scene, this.lens());
     if (swing >= 0) {
-      swing += dt;
+      swing += deltaTime;
       const u = swing / SWING;
       if (u < 1) {
         tool.pose(vm, u, now);
@@ -1097,7 +1097,7 @@ export class Walker {
       tool.pose(vm, 1, now); // land the gesture on its own end state
       restTool(vm);
     }
-    idleTool(vm, now, this.pace, dt);
+    idleTool(vm, now, this.pace, deltaTime);
     return -1;
   }
 
@@ -1176,7 +1176,7 @@ export class Walker {
    */
   drawCatchFocus() {
     const bug = !this.frozen && this.dying === null ? this.bugs?.beingTaken() : null;
-    const p = bug?.pos;
+    const p = bug?.position;
     const at = p && this.scene.project(p.x, p.y, p.z);
     const hole = at && bugFocus(at, this.scene.project(p.x, p.y + BUG_FOCUS_SPAN, p.z));
     this.hud.classList.toggle('catching', !!hole);
@@ -1559,31 +1559,31 @@ export class Walker {
     this.frame = requestAnimationFrame(() => {
       if (!this.active) return;
       const now = performance.now();
-      const dt = Math.min(0.05, (now - this.last) / 1000);
+      const deltaTime = Math.min(0.05, (now - this.last) / 1000);
       this.last = now;
       // Dying is watched rather than played: the walker stops steering and the red
       // deepens instead, until it takes them back to the map.
-      if (this.arrival) this.arrive(dt);
-      else if (this.dying !== null) this.fade(dt);
-      else this.step(dt);
-      if (this.showing) this.study(dt);
+      if (this.arrival) this.arrive(deltaTime);
+      else if (this.dying !== null) this.fade(deltaTime);
+      else this.step(deltaTime);
+      if (this.showing) this.study(deltaTime);
       this.autoFire(now);
       if (this.p.fly) this.setFog();
-      this.zoom(dt);
-      this.updateDarts(dt);
-      this.updatePuffs(dt);
+      this.zoom(deltaTime);
+      this.updateDarts(deltaTime);
+      this.updatePuffs(deltaTime);
       // The walker's eye, for the catches that draw a bug in towards them - and the
       // hoop of the net, for the one catch that carries a bug somewhere else.
       const hoop = this.primary.catchAs === 'net' ? this.muzzle(this.viewmodel, HOOP_AT) : null;
-      this.bugs?.update(dt, now, this.eye(EYE_AT), hoop);
-      this.douse(dt);
-      this.drawRadar(now, dt);
+      this.bugs?.update(deltaTime, now, this.eye(EYE_AT), hoop);
+      this.douse(deltaTime);
+      this.drawRadar(now, deltaTime);
       this.health.draw(now); // the wash a hit leaves has to come off by itself
       this.drawFuel();
-      this.poseTool(dt, now);
-      this.bank(dt);
-      const under = this.drown(dt, now);
-      this.scene.setWalker(this.p.x, this.p.feet, this.p.z, EYE + this.ride(dt) + under, this.p.yaw, this.p.pitch, this.roll);
+      this.poseTool(deltaTime, now);
+      this.bank(deltaTime);
+      const under = this.drown(deltaTime, now);
+      this.scene.setWalker(this.p.x, this.p.feet, this.p.z, EYE + this.ride(deltaTime) + under, this.p.yaw, this.p.pitch, this.roll);
       if (!this.still && !this.arrival) this.updateAim();
       this.scene.renderNow();
       if (this.frozen && this.focus) this.drawFocus();
@@ -1626,19 +1626,19 @@ export class Walker {
    *
    * Implements: REQ-WALK-036, REQ-WALK-042, REQ-WALK-043
    */
-  ride(dt) {
+  ride(deltaTime) {
     const how = this.p.fly ? RIDE.fly : this.onWater() ? RIDE.float : null;
-    this.rideLift += ((how ? how.lift : 0) - this.rideLift) * Math.min(1, dt * 4);
-    this.ridePhase = (this.ridePhase + dt * (how?.rate ?? RIDE.float.rate) * Math.PI) % (2 * Math.PI);
+    this.rideLift += ((how ? how.lift : 0) - this.rideLift) * Math.min(1, deltaTime * 4);
+    this.ridePhase = (this.ridePhase + deltaTime * (how?.rate ?? RIDE.float.rate) * Math.PI) % (2 * Math.PI);
     return Math.sin(this.ridePhase) * this.rideLift;
   }
 
   // Eases the field of view towards the scope's or the normal one.
   // Implements: REQ-WALK-012, REQ-WALK-042
-  zoom(dt) {
+  zoom(deltaTime) {
     const cam = this.scene.walkCamera, target = this.scoped ? Math.min(SCOPE_FOV, this.fov) : this.fov;
     if (Math.abs(cam.fov - target) < 0.05) return;
-    cam.fov += (target - cam.fov) * Math.min(1, dt * 14);
+    cam.fov += (target - cam.fov) * Math.min(1, deltaTime * 14);
     cam.updateProjectionMatrix();
   }
 
@@ -1651,19 +1651,19 @@ export class Walker {
    *
    * Implements: REQ-WALK-054
    */
-  bank(dt) {
+  bank(deltaTime) {
     const p = this.p;
     let turning = 0;
-    if (this.lastYaw !== null && dt > 0) {
+    if (this.lastYaw !== null && deltaTime > 0) {
       let d = p.yaw - this.lastYaw;
       d = Math.atan2(Math.sin(d), Math.cos(d)); // across the ±π seam the short way
-      turning = d / dt;
+      turning = d / deltaTime;
     }
     this.lastYaw = p.yaw;
     const k = this.keys;
     const side = this.frozen || this.still ? 0 : (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
     const want = reducedMotion() || this.arrival ? 0 : bankFor(turning, side, !!p.fly);
-    this.roll += (want - this.roll) * Math.min(1, dt * BANK_EASE);
+    this.roll += (want - this.roll) * Math.min(1, deltaTime * BANK_EASE);
     if (Math.abs(this.roll) < 1e-4 && want === 0) this.roll = 0;
   }
 
@@ -1679,9 +1679,9 @@ export class Walker {
    *
    * Implements: REQ-WALK-055
    */
-  drown(dt, now) {
+  drown(deltaTime, now) {
     const want = this.sinking ? Math.min(1, (this.sinkT * DROWN) / Math.max(1, this.sinkFrom)) : 0;
-    this.sunk = want >= this.sunk ? want : Math.max(want, this.sunk - dt * SINK_BACK);
+    this.sunk = want >= this.sunk ? want : Math.max(want, this.sunk - deltaTime * SINK_BACK);
     const on = this.sunk > 0;
     this.hud.classList.toggle('drowning', on);
     if (this.held) {
@@ -1701,7 +1701,7 @@ export class Walker {
   }
 
   // Implements: REQ-WALK-004, REQ-WALK-006, REQ-WALK-008, REQ-WALK-026
-  step(dt) {
+  step(deltaTime) {
     if (this.still) return;
     const k = this.keys, p = this.p;
     // A line in a wall pulls the walker along it, past walls and gravity both, and
@@ -1714,32 +1714,32 @@ export class Walker {
       if (k.has('Space') && !this.pull.jumping) this.cutLine('Line cut');
       else {
         this.sinking = false; // a line out of the water is a way out of it
-        return this.reel(dt);
+        return this.reel(deltaTime);
       }
     }
     const turn = (k.has('ArrowLeft') ? 1 : 0) - (k.has('ArrowRight') ? 1 : 0);
-    p.yaw += turn * TURN * dt;
-    const fwd = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0);
+    p.yaw += turn * TURN * deltaTime;
+    const forward = (k.has('KeyW') || k.has('ArrowUp') ? 1 : 0) - (k.has('KeyS') || k.has('ArrowDown') ? 1 : 0);
     const side = (k.has('KeyD') ? 1 : 0) - (k.has('KeyA') ? 1 : 0);
     // Sprinting is the legs' work, so it is the legs that pay for it; a jet carries
     // the walker on its own tank and asks nothing of them.
     const wants = k.has('ShiftLeft') || k.has('ShiftRight');
     const run = wants && (p.fly || this.wind.ready);
-    this.wind.breathe(dt, run && !p.fly && (fwd !== 0 || side !== 0));
+    this.wind.breathe(deltaTime, run && !p.fly && (forward !== 0 || side !== 0));
     // A burst on the jet backpack runs down whether or not it is being used to go
     // anywhere, so opening the throttle is a decision rather than a switch.
-    this.burst = Math.max(0, this.burst - dt);
+    this.burst = Math.max(0, this.burst - deltaTime);
     const speed = (p.fly ? (run ? FLY * 2.5 : FLY) : run ? RUN : WALK)
       * (this.burst > 0 ? BURST_SPEED : 1);
     // On foot, W and S move level; flying, they move where the view points (look
     // down and press W to dive), and Space and C add straight up and down.
     const lift = p.fly ? (k.has('Space') ? 1 : 0) - (k.has('KeyC') ? 1 : 0) : 0;
     const level = p.fly ? Math.cos(p.pitch) : 1;
-    let mx = -Math.sin(p.yaw) * level * fwd + Math.cos(p.yaw) * side;
-    let mz = -Math.cos(p.yaw) * level * fwd - Math.sin(p.yaw) * side;
-    let my = p.fly ? Math.sin(p.pitch) * fwd + lift : 0;
-    const len = Math.hypot(mx, my, mz);
-    if (len > 1) { mx /= len; my /= len; mz /= len; }
+    let mx = -Math.sin(p.yaw) * level * forward + Math.cos(p.yaw) * side;
+    let mz = -Math.cos(p.yaw) * level * forward - Math.sin(p.yaw) * side;
+    let my = p.fly ? Math.sin(p.pitch) * forward + lift : 0;
+    const magnitude = Math.hypot(mx, my, mz);
+    if (magnitude > 1) { mx /= magnitude; my /= magnitude; mz /= magnitude; }
 
     // Axis by axis, so the walker slides along walls. There is one question, and it is
     // the same one everywhere: can they get up onto that? The bay is not a wall around
@@ -1766,16 +1766,16 @@ export class Walker {
     // Implements: REQ-WALK-041
     const ok = h => h <= climb
       && (h > WATER || p.fly || !p.ground || wet || afloat || (step && p.feet - h <= WADE_IN));
-    const nx = p.x + mx * speed * dt;
+    const nx = p.x + mx * speed * deltaTime;
     if (ok(this.height(nx, p.z, p.feet))) p.x = nx;
-    const nz = p.z + mz * speed * dt;
+    const nz = p.z + mz * speed * deltaTime;
     if (ok(this.height(p.x, nz, p.feet))) p.z = nz;
     // How hard the walker is moving, eased: the tool in their hands sways with it.
-    const effort = len > 0 ? (p.fly ? 0.3 : run ? 1.5 : 1) : 0;
-    this.pace += (effort - this.pace) * Math.min(1, dt * 7);
+    const effort = magnitude > 0 ? (p.fly ? 0.3 : run ? 1.5 : 1) : 0;
+    this.pace += (effort - this.pace) * Math.min(1, deltaTime * 7);
     // The key list folds away while moving and comes back after a pause.
     // Implements: REQ-WALK-018
-    if (len > 0) {
+    if (magnitude > 0) {
       this.movedAt = performance.now();
       if (!this.hudTimer) this.hudTimer = setTimeout(() => this.hud.classList.add('compact'), 2500);
     } else if (this.hudTimer && performance.now() - this.movedAt > 6000) {
@@ -1798,11 +1798,11 @@ export class Walker {
     // holding the walker off the ground, not while they stand on a roof wearing it, and
     // the skimmers only while the water is the only thing under them.
     // Implements: REQ-TOOL-047, REQ-TOOL-049
-    this.burn(dt, (p.fly && p.feet > floor + 0.02) || (afloat && floor <= WATER));
+    this.burn(deltaTime, (p.fly && p.feet > floor + 0.02) || (afloat && floor <= WATER));
     p.fly = this.flying();
     if (p.fly) {
       const ceiling = (this.limits?.maxY ?? 0) + SKY_MARGIN;
-      p.feet = Math.max(floor, Math.min(ceiling, p.feet + my * speed * dt));
+      p.feet = Math.max(floor, Math.min(ceiling, p.feet + my * speed * deltaTime));
       p.vy = 0;
       p.ground = p.feet <= floor;
       this.fell = null;
@@ -1815,8 +1815,8 @@ export class Walker {
     // stopped working, but only to somebody already looking at it.
     if (this.wind.spent && !this.blown) this.flash('Out of breath');
     this.blown = this.wind.spent;
-    p.vy -= GRAVITY * dt;
-    p.feet += p.vy * dt;
+    p.vy -= GRAVITY * deltaTime;
+    p.feet += p.vy * deltaTime;
     // Where the fall started, so how far it was can be measured when it stops. A jump
     // counts from the top of its arc, which is what makes jumping off a roof cost the
     // roof's height and not a hand's breadth more.
@@ -1829,11 +1829,11 @@ export class Walker {
     }
     this.bites();
     this.scorches();
-    this.drowns(dt, floor, afloat);
+    this.drowns(deltaTime, floor, afloat);
     // ... and, for a walker none of the three has touched lately, time putting them
     // back together. Last, so that anything which has just landed this turn holds it
     // off rather than being half undone by it in the same frame.
-    this.health.mend(dt);
+    this.health.mend(deltaTime);
   }
 
   /**
@@ -1844,7 +1844,7 @@ export class Walker {
    *
    * Implements: REQ-WALK-031
    */
-  drowns(dt, floor, afloat) {
+  drowns(deltaTime, floor, afloat) {
     const p = this.p;
     if (p.fly || afloat || floor > WATER || p.feet > WATER + 0.02) {
       this.sinking = false;
@@ -1856,8 +1856,8 @@ export class Walker {
       this.sinkFrom = this.health.hp;
       this.flash('In the water - get to a shore');
     }
-    this.sinkT += dt;
-    if (this.health.hurt(DROWN * dt)) this.die('The water');
+    this.sinkT += deltaTime;
+    if (this.health.hurt(DROWN * deltaTime)) this.die('The water');
   }
 
   // Implements: REQ-TOOL-023, REQ-TOOL-025, REQ-TOOL-049, REQ-TOOL-050
@@ -1939,13 +1939,13 @@ export class Walker {
    *
    * Implements: REQ-TOOL-047, REQ-TOOL-049, REQ-TOOL-050
    */
-  burn(dt, using) {
+  burn(deltaTime, using) {
     for (const id of SECONDARY_IDS) {
       const tool = toolFor(id);
       if (!tool.fuel) continue;
       const was = this.tank(tool);
       const spending = tool === this.secondary && using;
-      const now = clamp(was + (spending ? -dt / tool.fuel.full : dt / tool.fuel.fills), 0, 1);
+      const now = clamp(was + (spending ? -deltaTime / tool.fuel.full : deltaTime / tool.fuel.fills), 0, 1);
       this.tanks.set(id, now);
       if (!spending) {
         // Back once there is enough in it to be worth having, in the hand or not - not
@@ -1975,8 +1975,8 @@ export class Walker {
     this.fell = null;
     const damage = this.health.fall(drop);
     if (!damage) return;
-    // In a person's metres, the walker being half a unit tall (health.js).
-    if (this.health.dead) this.die(`A fall of ${Math.round(drop * 3.5)} metres`);
+    // In a person's meters, the walker being half a unit tall (health.js).
+    if (this.health.dead) this.die(`A fall of ${Math.round(drop * 3.5)} meters`);
     else this.flash(`That drop cost ${damage} - watch the roofs`);
   }
 
@@ -2029,8 +2029,8 @@ export class Walker {
    *
    * Implements: REQ-WALK-033
    */
-  fade(dt) {
-    this.dying += dt;
+  fade(deltaTime) {
+    this.dying += deltaTime;
     this.hud.style.setProperty('--dead', Math.min(1, this.dying / (DYING * 0.4)).toFixed(3));
     if (this.dying >= DYING) this.exit();
   }
@@ -2119,7 +2119,7 @@ export class Walker {
         const d2 = dx * dx + dz * dz;
         if (d2 >= want * want) continue;
         const d = Math.sqrt(d2);
-        // Dead centre: push along the way they came rather than picking an axis.
+        // Dead center: push along the way they came rather than picking an axis.
         const [ux, uz] = d > 1e-4 ? [dx / d, dz / d] : [Math.sin(p.yaw), Math.cos(p.yaw)];
         const x = o.x + ux * want, z = o.z + uz * want;
         // Never push someone through a wall or up onto a roof to get them off a tree,
@@ -2140,9 +2140,9 @@ export class Walker {
   propsNear(x, z, out) {
     out.length = 0;
     const i = Math.floor(x / CELL), j = Math.floor(z / CELL);
-    for (let di = -1; di <= 1; di++) {
-      for (let dj = -1; dj <= 1; dj++) {
-        const cell = this.propGrid.get(cellOf(i + di, j + dj));
+    for (let offsetI = -1; offsetI <= 1; offsetI++) {
+      for (let offsetJ = -1; offsetJ <= 1; offsetJ++) {
+        const cell = this.propGrid.get(cellOf(i + offsetI, j + offsetJ));
         if (cell) for (const o of cell) out.push(o);
       }
     }
@@ -2242,7 +2242,7 @@ export class Walker {
   // Implements: REQ-TOOL-022
   updateAim() {
     const cam = this.scene.walkCamera;
-    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+    const directory = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
     const v = new THREE.Vector3();
     const tool = this.primary;
     // Both answers are the same at every step of the march, so they are asked once.
@@ -2250,7 +2250,7 @@ export class Walker {
     const tags = hits(tool, 'buildings');
     let hit = null, point = null, bug = null;
     for (let t = 0.2; t < REACH; t += 0.04 + t * 0.008) {
-      v.copy(cam.position).addScaledVector(dir, t);
+      v.copy(cam.position).addScaledVector(directory, t);
       this.scene.unbend(v);
       if (v.y < WATER) break;
       // A bug walks in front of the building it belongs to, so it is tested first:
@@ -2320,7 +2320,7 @@ export class Walker {
     const target = this.aimed(), bug = this.aim.bug;
     // A copy: a shot that scatters moves where it is going, and where it is going is
     // the crosshair's own point until the next frame recomputes it.
-    const to = bug ? bug.pos.clone() : this.aim.point?.clone() || null;
+    const to = bug ? bug.position.clone() : this.aim.point?.clone() || null;
 
     if (!tool.projectile) {
       // A camera keeps every frame it is used on, because pressing the shutter is what
@@ -2371,11 +2371,11 @@ export class Walker {
    * wherever it has reached. That is not a mercy: it is what upgrading the dependency
    * actually does.
    */
-  douse(dt) {
+  douse(deltaTime) {
     if (!this.fires || !this.primary.douses || !this.firing || this.still) return;
     const box = this.aim.box;
     if (!box) return;
-    const what = this.fires.douse(box.node.id, dt);
+    const what = this.fires.douse(box.node.id, deltaTime);
     if (what === 'out') this.flash(`Out - ${box.node.name} and everything that fire reached`);
     else if (what === 'cooled') this.flash(`${box.node.name} is out; the fire is still going elsewhere`);
   }
@@ -2411,9 +2411,9 @@ export class Walker {
   /** Sends a shot off along the view, to fly on under its own physics. */
   loose(shot) {
     const p = this.p;
-    const dir = new THREE.Vector3(-Math.sin(p.yaw) * Math.cos(p.pitch), Math.sin(p.pitch) + 0.04, -Math.cos(p.yaw) * Math.cos(p.pitch));
-    if (shot.flight.spread) scatter(dir, shot.flight.spread);
-    shot.vel = dir.normalize().multiplyScalar(shot.flight.speed);
+    const directory = new THREE.Vector3(-Math.sin(p.yaw) * Math.cos(p.pitch), Math.sin(p.pitch) + 0.04, -Math.cos(p.yaw) * Math.cos(p.pitch));
+    if (shot.flight.spread) scatter(directory, shot.flight.spread);
+    shot.vel = directory.normalize().multiplyScalar(shot.flight.speed);
     // Where it left from, so how far it has carried can be measured against the tool's
     // reach - and against the length of a line, for the ones that pay one out.
     shot.from = shot.start.clone();
@@ -2478,10 +2478,10 @@ export class Walker {
    */
   lookingAt(reach) {
     const cam = this.scene.walkCamera;
-    const dir = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
+    const directory = new THREE.Vector3(0, 0, -1).applyQuaternion(cam.quaternion);
     const v = new THREE.Vector3();
     for (let t = 0.2; t < reach; t += 0.04 + t * 0.008) {
-      v.copy(cam.position).addScaledVector(dir, t);
+      v.copy(cam.position).addScaledVector(directory, t);
       this.scene.unbend(v);
       if (v.y < WATER) break;
       const box = this.boxAt(v);
@@ -2548,11 +2548,11 @@ export class Walker {
   }
 
   /** Reels the walker along the line, and lets go at the end of it. */
-  reel(dt) {
+  reel(deltaTime) {
     const p = this.p, to = this.pull.to;
     const dx = to.x - p.x, dy = to.y - p.feet, dz = to.z - p.z;
     const d = Math.hypot(dx, dy, dz);
-    this.pull.t += dt;
+    this.pull.t += deltaTime;
     if (d < this.pull.line.stop || this.pull.t > GRAPPLE_TIME) {
       this.cutLine();
       // Let go standing on what was arrived at, rather than falling back off it.
@@ -2561,7 +2561,7 @@ export class Walker {
       p.ground = true;
       return;
     }
-    const step = Math.min(d, this.pull.line.speed * dt);
+    const step = Math.min(d, this.pull.line.speed * deltaTime);
     p.x += (dx / d) * step;
     p.feet += (dy / d) * step;
     p.z += (dz / d) * step;
@@ -2605,15 +2605,15 @@ export class Walker {
    *
    * Implements: REQ-TOOL-067, REQ-TOOL-069
    */
-  rebound(shot, dt) {
+  rebound(shot, deltaTime) {
     const m = shot.mesh;
-    shot.since += dt;
+    shot.since += deltaTime;
     if (shot.since < GLANCE_DROP) {
       if (shot.vel.lengthSq() > 0) {
-        shot.vel.y -= GLANCE_GRAVITY * dt;
-        m.position.addScaledVector(shot.vel, dt);
-        m.rotation.x += GLANCE_TUMBLE * dt;
-        m.rotation.z += GLANCE_TUMBLE * 0.37 * dt;
+        shot.vel.y -= GLANCE_GRAVITY * deltaTime;
+        m.position.addScaledVector(shot.vel, deltaTime);
+        m.rotation.x += GLANCE_TUMBLE * deltaTime;
+        m.rotation.z += GLANCE_TUMBLE * 0.37 * deltaTime;
         const floor = Math.max(WATER, this.height(m.position.x, m.position.z));
         if (m.position.y <= floor) {
           m.position.y = floor;
@@ -2627,7 +2627,7 @@ export class Walker {
     const hand = this.muzzle(shot.hand) || new THREE.Vector3(this.p.x, this.p.feet + EYE - 0.05, this.p.z);
     m.position.lerpVectors(shot.back, hand, u * u);
     m.position.y += 0.25 * Math.sin(Math.PI * u) * (1 - u); // skipping as it is dragged in
-    m.rotation.x += GLANCE_TUMBLE * 0.5 * dt;
+    m.rotation.x += GLANCE_TUMBLE * 0.5 * deltaTime;
     return u >= 1;
   }
 
@@ -2646,9 +2646,9 @@ export class Walker {
     this.puffs.push({ mesh, t: 0 });
   }
 
-  updatePuffs(dt) {
+  updatePuffs(deltaTime) {
     for (const puff of this.puffs) {
-      puff.t += dt;
+      puff.t += deltaTime;
       puff.mesh.scale.setScalar(1 + puff.t * PUFF_GROW);
       puff.mesh.material.opacity = 0.9 * Math.max(0, 1 - puff.t / PUFF_TIME);
     }
@@ -2684,7 +2684,7 @@ export class Walker {
   // ------------------------------------------------------------------ the tracker
 
   /**
-   * A top-down sweep centred on the walker and turning with them: every bug still on
+   * A top-down sweep centered on the walker and turning with them: every bug still on
    * the streets as a dot in its severity's color, every module already tagged as a
    * ring, and anything beyond the sweep's range pinned to its rim as an arrow - the
    * point of the thing being to say which way to walk. Under it, how far the nearest
@@ -2743,7 +2743,7 @@ export class Walker {
   }
 
   // Implements: REQ-HUNT-021, REQ-HUNT-022, REQ-HUNT-023, REQ-HUNT-024, REQ-HUNT-025, REQ-HUNT-026
-  drawRadar(now, dt) {
+  drawRadar(now, deltaTime) {
     const box = this.hud.querySelector('.w-radar');
     // A map whose every advisory is reachable has no bugs walking it at all, and the
     // sweep is worth more there than anywhere: everything on it is on fire.
@@ -2755,7 +2755,7 @@ export class Walker {
     box.hidden = false;
     const canvas = box.querySelector('canvas');
 
-    // The range fits whatever is still out there, so the sweep is never all centre
+    // The range fits whatever is still out there, so the sweep is never all center
     // dot or all rim arrows. Once one is close, though, holding the whole map is the
     // wrong thing to hold: the range pulls in to the neighborhood and the dial grows
     // to meet it, which is the difference between knowing a bug is somewhere ahead
@@ -2763,7 +2763,7 @@ export class Walker {
     const { x: px, z: pz, yaw } = this.p;
     const live = this.bugs?.bugs.filter(b => !b.caught) || [];
     let far = RADAR_MIN, near = Infinity;
-    for (const at of [...live.map(b => b.pos), ...alight]) {
+    for (const at of [...live.map(b => b.position), ...alight]) {
       const d = Math.hypot(at.x - px, at.z - pz);
       far = Math.max(far, d);
       near = Math.min(near, d);
@@ -2777,8 +2777,8 @@ export class Walker {
     const want = closing
       ? clamp(Math.max(near * 2.4, RADAR_MIN), RADAR_MIN, RADAR_NEAR * 2.4)
       : clamp(far * 1.2, RADAR_MIN, RADAR_MAX);
-    this.radarRange = ease(this.radarRange, want, RADAR_RANGE_TAU, dt);
-    this.radarZoom = ease(this.radarZoom, 1 + closing * RADAR_GROW, RADAR_ZOOM_TAU, dt);
+    this.radarRange = ease(this.radarRange, want, RADAR_RANGE_TAU, deltaTime);
+    this.radarZoom = ease(this.radarZoom, 1 + closing * RADAR_GROW, RADAR_ZOOM_TAU, deltaTime);
     // The dial grows by transform rather than by resizing the canvas: a scale is
     // sub-pixel and costs the compositor alone, where a resize rounded to whole
     // pixels grew in visible steps, threw the drawing away and reallocated the
@@ -2794,8 +2794,8 @@ export class Walker {
     if (now - (this.radarAt || 0) < RADAR_MS) return;
     this.radarAt = now;
 
-    const cs = getComputedStyle(this.hud);
-    const v = name => cs.getPropertyValue(name).trim();
+    const computedStyle = getComputedStyle(this.hud);
+    const v = name => computedStyle.getPropertyValue(name).trim();
     // Drawn in CSS pixels of the unscaled dial, whatever the bitmap behind it is.
     const size = RADAR_SIZE;
     const g = canvas.getContext('2d');
@@ -2873,7 +2873,7 @@ export class Walker {
     live.sort((a, b) => severityRank(a.f.severity) - severityRank(b.f.severity));
     let nearest = null;
     for (const bug of live) {
-      const m = bug.pos;
+      const m = bug.position;
       const q = place(m.x, m.z);
       if (!nearest || q.d < nearest.d) nearest = { d: q.d, bug };
       g.fillStyle = colors[bug.f.severity] || v('--muted');
@@ -2958,7 +2958,7 @@ export class Walker {
     // Close in, the nearest bug is marked as well as drawn: a ring around it, so the
     // one being walked up to is not one dot among several.
     if (nearest && closing > 0.25) {
-      const q = place(nearest.bug.pos.x, nearest.bug.pos.z);
+      const q = place(nearest.bug.position.x, nearest.bug.position.z);
       if (q.inside) {
         g.strokeStyle = colors[nearest.bug.f.severity] || v('--text');
         g.lineWidth = 1.5;
@@ -3023,18 +3023,18 @@ export class Walker {
   }
 
   // Implements: REQ-HUNT-001, REQ-HUNT-017, REQ-HUNT-018, REQ-TOOL-004, REQ-TOOL-027
-  updateDarts(dt) {
-    const done = [], prev = new THREE.Vector3(), dir = new THREE.Vector3();
+  updateDarts(deltaTime) {
+    const done = [], previous = new THREE.Vector3(), directory = new THREE.Vector3();
     for (const dart of this.darts) {
-      dart.t += dt;
+      dart.t += deltaTime;
       const m = dart.mesh;
-      prev.copy(m.position);
+      previous.copy(m.position);
       if (dart.glanced) {
         // Off the wall and on its way back: see rebound.
-        if (this.rebound(dart, dt)) done.push(dart);
+        if (this.rebound(dart, deltaTime)) done.push(dart);
       } else if (dart.bug || dart.target) {
         // A bug walks on while the cast is in the air, so the shot follows it.
-        if (dart.bug && !dart.bug.caught) dart.to.copy(dart.bug.pos);
+        if (dart.bug && !dart.bug.caught) dart.to.copy(dart.bug.position);
         const u = Math.min(1, dart.t / dart.T);
         m.position.lerpVectors(dart.start, dart.to, u);
         m.position.y += dart.arc * 4 * u * (1 - u);
@@ -3059,14 +3059,14 @@ export class Walker {
         // A miss flies on under the tool's own physics: a dart drops like a dart, a
         // bubble slows to a crawl and then climbs.
         const { gravity, drag, track } = dart.flight || DEFAULT_FLIGHT;
-        dart.vel.y -= gravity * dt;
-        if (drag) dart.vel.multiplyScalar(Math.max(0, 1 - drag * dt));
+        dart.vel.y -= gravity * deltaTime;
+        if (drag) dart.vel.multiplyScalar(Math.max(0, 1 - drag * deltaTime));
         // A tracking dart earns the name on a miss: its fins pull it round towards
         // whatever wall lies ahead of it, so a shot lobbed over a block still finds
         // one. Nothing else here steers, which is the whole of the difference between
         // it and a nail.
-        if (track) this.steer(dart, track * dt);
-        m.position.addScaledVector(dart.vel, dt);
+        if (track) this.steer(dart, track * deltaTime);
+        m.position.addScaledVector(dart.vel, deltaTime);
         // Anything thrown catches a bug it passes through, aimed at or not - if it is
         // the kind of thing that catches bugs at all.
         const bug = hits(dart.tool, 'bugs') ? this.bugs?.at(m.position) : null;
@@ -3101,10 +3101,10 @@ export class Walker {
       }
       // A dart points along its flight; a hoop spins, a bubble wobbles, a bobber
       // just bobs along.
-      if (m.userData.aim && !dart.glanced && dir.subVectors(m.position, prev).lengthSq() > 1e-10) {
-        m.quaternion.setFromUnitVectors(FORWARD, dir.normalize());
+      if (m.userData.aim && !dart.glanced && directory.subVectors(m.position, previous).lengthSq() > 1e-10) {
+        m.quaternion.setFromUnitVectors(FORWARD, directory.normalize());
       }
-      if (m.userData.spin) m.rotation.z += m.userData.spin * dt;
+      if (m.userData.spin) m.rotation.z += m.userData.spin * deltaTime;
       if (m.userData.wobble) m.scale.set(1 + Math.sin(dart.t * 9) * 0.07, 1 - Math.sin(dart.t * 9) * 0.07, 1);
       // A cloud opens out as it goes: what left the horn as a gout is a fog by the
       // time it is across the street, which is why the extinguisher is forgiving up
@@ -3267,7 +3267,7 @@ export class Walker {
   }
 }
 
-const clamp = (v, lo, hi) => Math.min(hi, Math.max(lo, v));
+const clamp = (v, low, high) => Math.min(high, Math.max(low, v));
 
 // Implements: REQ-TOOL-027, REQ-TOOL-042
 /** Knocks a point or a direction off course by up to `by`, evenly in all directions. */
@@ -3281,7 +3281,7 @@ export function scatter(v, by) {
  * Where the first arrival has the walker at t (0 to 1): from behind and to the right
  * of `land`, `ARRIVAL_ABOVE` over the roof at `top`, down onto `land`, looking at the
  * point the landing looks at from the start, tipped down over the city at first and
- * levelling on the way. It ends exactly on `land`, yaw and pitch included, so the
+ * leveling on the way. It ends exactly on `land`, yaw and pitch included, so the
  * walker is handed back the view they would have had without it.
  *
  * Implements: REQ-WALK-051
@@ -3350,7 +3350,7 @@ const FOCUS_PAD = 36, FOCUS_FEATHER = 22;
 const BUG_FOCUS_SPAN = 0.3, BUG_FOCUS_SPANS = 2.5, BUG_FOCUS_MIN = 60, BUG_FOCUS_MAX = 220;
 
 /**
- * The clear circle around a bug being caught: centred where it is on screen, `at`,
+ * The clear circle around a bug being caught: centered where it is on screen, `at`,
  * and sized by how far `top` - a point BUG_FOCUS_SPAN above it - is from there, which
  * is how big it looks. null when it is not on screen.
  *
@@ -3363,7 +3363,7 @@ export function bugFocus(at, top) {
 }
 
 /**
- * The convex outline of points on the screen, anticlockwise, without repeats: all a
+ * The convex outline of points on the screen, counterclockwise, without repeats: all a
  * box can be seen as from anywhere, which is at most six of its eight corners.
  */
 export function hull(points) {
@@ -3396,8 +3396,8 @@ export function focusMask(points, width, height) {
   const cx = outline.reduce((s, p) => s + p.x, 0) / outline.length;
   const cy = outline.reduce((s, p) => s + p.y, 0) / outline.length;
   const at = outline.map(p => {
-    const dx = p.x - cx, dy = p.y - cy, len = Math.hypot(dx, dy) || 1;
-    return `${Math.round(p.x + (dx / len) * FOCUS_PAD)},${Math.round(p.y + (dy / len) * FOCUS_PAD)}`;
+    const dx = p.x - cx, dy = p.y - cy, distance = Math.hypot(dx, dy) || 1;
+    return `${Math.round(p.x + (dx / distance) * FOCUS_PAD)},${Math.round(p.y + (dy / distance) * FOCUS_PAD)}`;
   }).join(' ');
   const w = Math.round(width), h = Math.round(height), m = 4 * FOCUS_FEATHER;
   // One shape: the view, reaching well past its edges so the feathering does not fade
@@ -3479,10 +3479,10 @@ const reducedMotion = () => typeof matchMedia === 'function' && matchMedia('(pre
  * the gap, in seconds, whatever dt happens to be. An undefined current value starts
  * where it is going, so nothing animates in from zero on the first frame.
  */
-const ease = (cur, want, tau, dt) =>
-  cur === undefined ? want : cur + (want - cur) * (1 - Math.exp(-Math.max(0, dt) / tau));
+const ease = (current, want, tau, deltaTime) =>
+  current === undefined ? want : current + (want - current) * (1 - Math.exp(-Math.max(0, deltaTime) / tau));
 
-// The walker's footprint, sampled at its centre and four corners (height). Flat
+// The walker's footprint, sampled at its center and four corners (height). Flat
 // pairs, so walking it allocates nothing.
 const PROBES = [0, 0, BODY, BODY, BODY, -BODY, -BODY, BODY, -BODY, -BODY];
 

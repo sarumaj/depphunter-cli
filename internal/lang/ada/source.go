@@ -14,9 +14,9 @@ const (
 	kindParent   = "parent"   // a child unit's parent spec
 
 	kindProject     = "project"      // a .gpr's with, extends or Project_Files
-	kindDir         = "dir"          // a .gpr's Source_Dirs entry
+	kindDirectory   = "dir"          // a .gpr's Source_Dirs entry
 	kindMain        = "main"         // a .gpr's Main entry
-	kindDep         = "dep"          // alire.toml [[depends-on]]
+	kindDependency  = "dep"          // alire.toml [[depends-on]]
 	kindPin         = "pin"          // alire.toml [[pins]] of a crate depends-on does not name
 	kindProjectFile = "project-file" // alire.toml project-files
 )
@@ -40,10 +40,10 @@ const (
 )
 
 type frame struct {
-	kind  byte
-	name  string // the qualified name declarations inside are owned by
-	owner bool   // declarations inside are symbols
-	stmts bool   // in the statement part (after begin)
+	kind       byte
+	name       string // the qualified name declarations inside are owned by
+	owner      bool   // declarations inside are symbols
+	statements bool   // in the statement part (after begin)
 }
 
 // unit is a library unit (or subunit) a file holds.
@@ -80,19 +80,19 @@ type parser struct {
 // units and of the packages, tasks and protected units inside them.
 //
 // Implements: REQ-ADA-002, REQ-ADA-003, REQ-ADA-010, REQ-ADA-011
-func extractSource(src []byte) *scanned {
-	return scanSource(src, false)
+func extractSource(source []byte) *scanned {
+	return scanSource(source, false)
 }
 
 // units reads only as far as the first unit's name, unless all is set (a
 // .ada file may hold several units).
-func units(src []byte, all bool) []unit {
-	return scanSource(src, !all).units
+func units(source []byte, all bool) []unit {
+	return scanSource(source, !all).units
 }
 
-func scanSource(src []byte, header bool) *scanned {
+func scanSource(source []byte, header bool) *scanned {
 	out := &scanned{seen: map[string]bool{}}
-	p := &parser{s: newStream(src), out: out, headerOnly: header, specs: map[string]bool{}}
+	p := &parser{s: newStream(source), out: out, headerOnly: header, specs: map[string]bool{}}
 	p.run()
 	return out
 }
@@ -107,7 +107,7 @@ func (p *parser) run() {
 		switch {
 		case len(p.frames) == 0:
 			p.context()
-		case p.frames[len(p.frames)-1].stmts:
+		case p.frames[len(p.frames)-1].statements:
 			p.statement()
 		default:
 			p.declaration()
@@ -147,20 +147,20 @@ func (p *parser) context() {
 	case "separate":
 		p.separate()
 	case "package":
-		p.packageDecl(p.subunit, true, true)
+		p.packageDeclaration(p.subunit, true, true)
 	case "procedure", "function":
-		p.subprogramDecl(p.subunit, true, true)
+		p.subprogramDeclaration(p.subunit, true, true)
 	case "overriding":
 		p.i++
 	case "task", "protected":
-		p.taskDecl(p.subunit, true, true)
+		p.taskDeclaration(p.subunit, true, true)
 	default:
 		p.i++
 	}
 }
 
 // with reads the names of a with clause whose "with" is token i.
-func (p *parser) with(i int, qual string) {
+func (p *parser) with(i int, qualifier string) {
 	j := i + 1
 	for {
 		written, low, next := p.name(j)
@@ -168,9 +168,9 @@ func (p *parser) with(i int, qual string) {
 			break // a with clause names library units, never an operator
 		}
 		t, _ := p.s.at(j)
-		p.addImport(qual+"with "+written, low, kindWith, t.line)
+		p.addImport(qualifier+"with "+written, low, kindWith, t.line)
 		j = next
-		if !p.s.punct(j, ",") {
+		if !p.s.punctuation(j, ",") {
 			break
 		}
 		j++
@@ -182,12 +182,12 @@ func (p *parser) with(i int, qual string) {
 func (p *parser) separate() {
 	t, _ := p.s.at(p.i)
 	j := p.i + 1
-	if !p.s.punct(j, "(") {
+	if !p.s.punctuation(j, "(") {
 		p.i = j
 		return
 	}
 	written, low, next := p.name(j + 1)
-	if written == "" || !p.s.punct(next, ")") {
+	if written == "" || !p.s.punctuation(next, ")") {
 		p.i = j + 1
 		return
 	}
@@ -204,7 +204,7 @@ func (p *parser) genericFormals() {
 		if !ok {
 			return
 		}
-		if t.kind == tIdent {
+		if t.kind == tIdentifier {
 			switch t.low {
 			case "package", "procedure", "function":
 				return
@@ -224,14 +224,14 @@ func (p *parser) name(i int) (written, low string, next int) {
 	if t.kind == tString {
 		return `"` + t.text + `"`, `"` + lower(t.text) + `"`, i + 1
 	}
-	if t.kind != tIdent || reserved[t.low] {
+	if t.kind != tIdentifier || reserved[t.low] {
 		return "", "", i
 	}
 	written, low = t.text, t.low
 	i++
-	for n := 0; n < 64 && p.s.punct(i, "."); n++ {
+	for n := 0; n < 64 && p.s.punctuation(i, "."); n++ {
 		u, ok := p.s.at(i + 1)
-		if !ok || u.kind != tIdent || reserved[u.low] {
+		if !ok || u.kind != tIdentifier || reserved[u.low] {
 			break
 		}
 		written += "." + u.text
@@ -252,7 +252,7 @@ func (p *parser) skipTo(i int) {
 			return
 		}
 		i++
-		if t.kind != tPunct {
+		if t.kind != tPunctuation {
 			continue
 		}
 		switch t.text {
@@ -282,7 +282,7 @@ func (p *parser) header(i int) (at int, word string) {
 			return i, ""
 		}
 		switch t.kind {
-		case tPunct:
+		case tPunctuation:
 			switch t.text {
 			case "(":
 				depth++
@@ -295,7 +295,7 @@ func (p *parser) header(i int) (at int, word string) {
 					return i, ";"
 				}
 			}
-		case tIdent:
+		case tIdentifier:
 			if depth > 0 {
 				break
 			}
@@ -377,9 +377,9 @@ func (p *parser) libraryUnit(written, low string, kind byte, line int) {
 	}
 }
 
-// packageDecl reads a package declaration, body, renaming or instantiation at
+// packageDeclaration reads a package declaration, body, renaming or instantiation at
 // p.i ("package").
-func (p *parser) packageDecl(owner string, lib, symbols bool) {
+func (p *parser) packageDeclaration(owner string, library, symbols bool) {
 	start, _ := p.s.at(p.i)
 	i := p.i + 1
 	body := p.s.word(i) == "body"
@@ -391,21 +391,21 @@ func (p *parser) packageDecl(owner string, lib, symbols bool) {
 		p.i = i
 		return
 	}
-	qual := qualify(owner, written)
+	qualifier := qualify(owner, written)
 	at, w := p.header(j)
 	switch {
 	case w == "is" && p.s.word(at+1) == "separate":
 		p.skipTo(at)
 	case w == "is" && !body && p.s.word(at+1) == "new":
 		if symbols {
-			p.symbol(qual, "package", start.line)
+			p.symbol(qualifier, "package", start.line)
 		}
-		if lib {
+		if library {
 			p.libraryUnit(written, low, 's', start.line)
 		}
 		p.skipTo(at)
 	case w == "is":
-		if lib {
+		if library {
 			kind := byte('s')
 			if body {
 				kind = 'b'
@@ -413,15 +413,15 @@ func (p *parser) packageDecl(owner string, lib, symbols bool) {
 			p.libraryUnit(written, low, kind, start.line)
 		}
 		if symbols && !body {
-			p.symbol(qual, "package", start.line)
+			p.symbol(qualifier, "package", start.line)
 		}
-		p.push(frame{kind: fPackage, name: qual, owner: symbols})
+		p.push(frame{kind: fPackage, name: qualifier, owner: symbols})
 		p.i = at + 1
 	case w == "renames":
 		if symbols && !body {
-			p.symbol(qual, "package", start.line)
+			p.symbol(qualifier, "package", start.line)
 		}
-		if lib && !body {
+		if library && !body {
 			p.libraryUnit(written, low, 's', start.line)
 		}
 		p.skipTo(at)
@@ -432,43 +432,43 @@ func (p *parser) packageDecl(owner string, lib, symbols bool) {
 	}
 }
 
-// subprogramDecl reads a procedure or function declaration, body, renaming,
+// subprogramDeclaration reads a procedure or function declaration, body, renaming,
 // instantiation, stub or expression function at p.i.
-func (p *parser) subprogramDecl(owner string, lib, symbols bool) {
+func (p *parser) subprogramDeclaration(owner string, library, symbols bool) {
 	start, _ := p.s.at(p.i)
 	written, low, j := p.name(p.i + 1)
 	if written == "" {
 		p.i++
 		return
 	}
-	qual := qualify(owner, written)
+	qualifier := qualify(owner, written)
 	kind := start.low
 	at, w := p.header(j)
 	switch w {
 	case ";", "renames":
 		if symbols {
-			p.symbol(qual, kind, start.line)
+			p.symbol(qualifier, kind, start.line)
 		}
-		if lib {
+		if library {
 			p.libraryUnit(written, low, 's', start.line)
 		}
 		p.skipTo(at)
 	case "is":
 		next := p.s.word(at + 1)
-		if next == "new" || next == "separate" || next == "abstract" || next == "null" || p.s.punct(at+1, "<>") || p.s.punct(at+1, "(") {
+		if next == "new" || next == "separate" || next == "abstract" || next == "null" || p.s.punctuation(at+1, "<>") || p.s.punctuation(at+1, "(") {
 			if symbols {
-				p.symbol(qual, kind, start.line)
+				p.symbol(qualifier, kind, start.line)
 			}
-			if lib {
+			if library {
 				p.libraryUnit(written, low, 's', start.line)
 			}
 			p.skipTo(at)
 			return
 		}
 		if symbols {
-			p.symbol(qual, kind, start.line)
+			p.symbol(qualifier, kind, start.line)
 		}
-		if lib {
+		if library {
 			p.libraryUnit(written, low, 'p', start.line)
 			if p.done {
 				return
@@ -481,8 +481,8 @@ func (p *parser) subprogramDecl(owner string, lib, symbols bool) {
 	}
 }
 
-// taskDecl reads a task or protected declaration or body at p.i.
-func (p *parser) taskDecl(owner string, lib, symbols bool) {
+// taskDeclaration reads a task or protected declaration or body at p.i.
+func (p *parser) taskDeclaration(owner string, library, symbols bool) {
 	start, _ := p.s.at(p.i)
 	protected := start.low == "protected"
 	i := p.i + 1
@@ -499,20 +499,20 @@ func (p *parser) taskDecl(owner string, lib, symbols bool) {
 		p.i = i
 		return
 	}
-	qual := qualify(owner, written)
+	qualifier := qualify(owner, written)
 	at, w := p.header(j)
 	if !body && symbols {
 		kind := "task"
 		if protected {
 			kind = "protected"
 		}
-		p.symbol(qual, kind, start.line)
+		p.symbol(qualifier, kind, start.line)
 	}
 	switch {
 	case w == "is" && p.s.word(at+1) == "separate":
 		p.skipTo(at)
 	case w == "is":
-		if lib && body {
+		if library && body {
 			p.libraryUnit(written, low, 'b', start.line)
 			if p.done {
 				return
@@ -526,7 +526,7 @@ func (p *parser) taskDecl(owner string, lib, symbols bool) {
 					k++
 					break
 				}
-				if _, ok := p.s.at(k); !ok || p.s.punct(k, ";") {
+				if _, ok := p.s.at(k); !ok || p.s.punctuation(k, ";") {
 					break
 				}
 				k++
@@ -536,7 +536,7 @@ func (p *parser) taskDecl(owner string, lib, symbols bool) {
 		case body && !protected:
 			p.push(frame{kind: fBody})
 		default:
-			p.push(frame{kind: fPackage, name: qual, owner: symbols && protected})
+			p.push(frame{kind: fPackage, name: qualifier, owner: symbols && protected})
 		}
 		p.i = k
 	case w == ";":
@@ -546,8 +546,8 @@ func (p *parser) taskDecl(owner string, lib, symbols bool) {
 	}
 }
 
-// entryDecl reads an entry declaration or (in a protected body) entry body.
-func (p *parser) entryDecl() {
+// entryDeclaration reads an entry declaration or (in a protected body) entry body.
+func (p *parser) entryDeclaration() {
 	_, low, j := p.name(p.i + 1)
 	if low == "" {
 		p.i++
@@ -565,16 +565,16 @@ func (p *parser) entryDecl() {
 	}
 }
 
-// typeDecl reads a type declaration at p.i: a record opens a frame that ends at
+// typeDeclaration reads a type declaration at p.i: a record opens a frame that ends at
 // end record.
-func (p *parser) typeDecl(owner string, symbols bool) {
+func (p *parser) typeDeclaration(owner string, symbols bool) {
 	start, _ := p.s.at(p.i)
 	t, ok := p.s.at(p.i + 1)
-	if !ok || t.kind != tIdent || reserved[t.low] {
+	if !ok || t.kind != tIdentifier || reserved[t.low] {
 		p.i++
 		return
 	}
-	qual := qualify(owner, t.text)
+	qualifier := qualify(owner, t.text)
 	kind := "type"
 	tagged, derived, record := false, false, false
 	i := p.i + 2
@@ -586,7 +586,7 @@ loop:
 		if !ok {
 			break
 		}
-		if u.kind == tPunct {
+		if u.kind == tPunctuation {
 			switch u.text {
 			case "(":
 				if depth == 0 && afterIs && p.s.word(i-1) == "is" {
@@ -606,7 +606,7 @@ loop:
 			i++
 			continue
 		}
-		if u.kind != tIdent || depth > 0 {
+		if u.kind != tIdentifier || depth > 0 {
 			i++
 			continue
 		}
@@ -656,7 +656,7 @@ loop:
 		kind = "struct"
 	}
 	if symbols {
-		p.symbol(qual, kind, start.line)
+		p.symbol(qualifier, kind, start.line)
 	}
 	if record {
 		p.push(frame{kind: fRecord})
@@ -671,7 +671,7 @@ func (p *parser) declaration() {
 	owner := top.name
 	switch p.s.word(p.i) {
 	case "procedure", "function":
-		p.subprogramDecl(owner, false, symbols)
+		p.subprogramDeclaration(owner, false, symbols)
 	case "overriding":
 		p.i++
 	case "not":
@@ -681,23 +681,23 @@ func (p *parser) declaration() {
 			p.skipTo(p.i)
 		}
 	case "package":
-		p.packageDecl(owner, false, symbols)
+		p.packageDeclaration(owner, false, symbols)
 	case "generic":
 		p.i++
 		p.genericFormals()
 	case "type":
-		p.typeDecl(owner, symbols)
+		p.typeDeclaration(owner, symbols)
 	case "subtype":
-		if t, ok := p.s.at(p.i + 1); ok && t.kind == tIdent && symbols {
+		if t, ok := p.s.at(p.i + 1); ok && t.kind == tIdentifier && symbols {
 			p.symbol(qualify(owner, t.text), "type", t.line)
 		}
 		p.skipTo(p.i)
 	case "task", "protected":
-		p.taskDecl(owner, false, symbols)
+		p.taskDeclaration(owner, false, symbols)
 	case "entry":
-		p.entryDecl()
+		p.entryDeclaration()
 	case "begin":
-		p.frames[len(p.frames)-1].stmts = true
+		p.frames[len(p.frames)-1].statements = true
 		p.depth = 0
 		p.i++
 	case "private":
@@ -726,7 +726,7 @@ func (p *parser) skipAlternative() {
 			return
 		}
 		p.i++
-		if t.kind == tIdent && t.low == "is" || t.kind == tPunct && (t.text == "=>" || t.text == ";") {
+		if t.kind == tIdentifier && t.low == "is" || t.kind == tPunctuation && (t.text == "=>" || t.text == ";") {
 			return
 		}
 	}
@@ -743,7 +743,7 @@ func (p *parser) skipDeclaration() {
 			p.i = i
 			return
 		}
-		if t.kind == tPunct {
+		if t.kind == tPunctuation {
 			switch t.text {
 			case "(":
 				depth++
@@ -757,7 +757,7 @@ func (p *parser) skipDeclaration() {
 					return
 				}
 			}
-		} else if t.kind == tIdent && depth == 0 && n > 0 {
+		} else if t.kind == tIdentifier && depth == 0 && n > 0 {
 			switch t.low {
 			case "record":
 				if p.s.word(i-1) != "null" {
@@ -783,7 +783,7 @@ func (p *parser) skipDeclaration() {
 // block matters.
 func (p *parser) statement() {
 	t, _ := p.s.at(p.i)
-	if t.kind == tPunct {
+	if t.kind == tPunctuation {
 		switch t.text {
 		case "(":
 			p.depth++
@@ -797,25 +797,25 @@ func (p *parser) statement() {
 		p.i++
 		return
 	}
-	if t.kind != tIdent || p.depth > 0 {
+	if t.kind != tIdentifier || p.depth > 0 {
 		p.i++
 		return
 	}
 	switch t.low {
 	case "if":
-		p.push(frame{kind: fIf, stmts: true})
+		p.push(frame{kind: fIf, statements: true})
 	case "case":
-		p.push(frame{kind: fCase, stmts: true})
+		p.push(frame{kind: fCase, statements: true})
 	case "loop":
-		p.push(frame{kind: fLoop, stmts: true})
+		p.push(frame{kind: fLoop, statements: true})
 	case "select":
-		p.push(frame{kind: fSelect, stmts: true})
+		p.push(frame{kind: fSelect, statements: true})
 	case "declare":
 		p.push(frame{kind: fBlock})
 	case "begin":
-		p.push(frame{kind: fBlock, stmts: true})
+		p.push(frame{kind: fBlock, statements: true})
 	case "do":
-		p.push(frame{kind: fDo, stmts: true})
+		p.push(frame{kind: fDo, statements: true})
 	case "end":
 		p.end()
 		return

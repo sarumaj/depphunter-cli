@@ -10,9 +10,9 @@ import (
 
 // onMachine reads the credentials of a machine with home, the environment vars (listed
 // and answered) and the platform goos.
-func onMachine(t *testing.T, home, goos string, vars map[string]string) *Store {
+func onMachine(t *testing.T, home, goos string, variables map[string]string) *Store {
 	t.Helper()
-	return readMachine(userconf.Machine{Home: home, GOOS: goos, Env: bundlerEnv(t, vars), Environ: environ})
+	return readMachine(userconf.Machine{Home: home, GOOS: goos, Environment: bundlerEnvironment(t, variables), Environ: environ})
 }
 
 // CARGO_HOME moves Cargo's config and credentials; a registry the environment defines
@@ -26,7 +26,7 @@ func TestCargoHomeAndEnvironmentRegistries(t *testing.T) {
 	writeFile(t, filepath.Join(home, ".cargo", "config.toml"), "[registries]\ncorp = { index = \"sparse+https://home.corp/index/\" }\n")
 	writeFile(t, filepath.Join(cargo, "config.toml"), "[registries]\ncorp = { index = \"sparse+https://crates.corp/index/\" }\nmoved = { index = \"sparse+https://old.corp/index/\" }\n")
 	writeFile(t, filepath.Join(cargo, "credentials.toml"), "[registries.corp]\ntoken = \"corp-token\"\n[registries.moved]\ntoken = \"moved-token\"\n")
-	c := Read(home, bundlerEnv(t, map[string]string{
+	c := Read(home, bundlerEnvironment(t, map[string]string{
 		"CARGO_HOME":                    cargo,
 		"CARGO_REGISTRIES_MY_REG_INDEX": "sparse+https://env.corp/index/",
 		"CARGO_REGISTRIES_MY_REG_TOKEN": "env-token",
@@ -47,12 +47,12 @@ func TestCargoHomeAndEnvironmentRegistries(t *testing.T) {
 //
 // Verifies: REQ-AUTH-001, REQ-AUTH-020
 func TestNpmCredentialLocations(t *testing.T) {
-	home, dir := t.TempDir(), t.TempDir()
+	home, directory := t.TempDir(), t.TempDir()
 	writeFile(t, filepath.Join(home, ".npmrc"), "//home.corp/:_authToken=home\n")
-	global, user := filepath.Join(dir, "global-npmrc"), filepath.Join(dir, "ci-npmrc")
+	global, user := filepath.Join(directory, "global-npmrc"), filepath.Join(directory, "ci-npmrc")
 	writeFile(t, global, "//a.corp/:_authToken=global-a\n//b.corp/:_authToken=global-b\n//g.corp/:_authToken=global-g\n")
 	writeFile(t, user, "//b.corp/:_authToken=user-b\n//a.corp/:_authToken=user-a\n")
-	c := Read(home, bundlerEnv(t, map[string]string{
+	c := Read(home, bundlerEnvironment(t, map[string]string{
 		"npm_config_globalconfig":             global,
 		"NPM_CONFIG_USERCONFIG":               user,
 		"npm_config_//a.corp/:_authToken":     "env-a",
@@ -81,19 +81,19 @@ func TestNetrcVariableAndWindowsName(t *testing.T) {
 	writeFile(t, filepath.Join(home, "_netrc"), "machine underscore.corp login u password p\n")
 	other := filepath.Join(t.TempDir(), "netrc")
 	writeFile(t, other, "machine env.corp login u password p\n")
-	for _, tc := range []struct {
-		goos string
-		vars map[string]string
-		want string
+	for _, testCase := range []struct {
+		goos      string
+		variables map[string]string
+		want      string
 	}{
 		{"linux", map[string]string{"NETRC": other}, "env.corp"},
 		{"windows", map[string]string{"NETRC": other}, "env.corp"},
 		{"linux", nil, "dot.corp"},
 		{"windows", nil, "underscore.corp"},
 	} {
-		c := onMachine(t, home, tc.goos, tc.vars)
-		if len(c.basic) != 1 || c.basic[tc.want] == "" {
-			t.Errorf("%s %v: %v, want %s only", tc.goos, tc.vars, c.basic, tc.want)
+		c := onMachine(t, home, testCase.goos, testCase.variables)
+		if len(c.basic) != 1 || c.basic[testCase.want] == "" {
+			t.Errorf("%s %v: %v, want %s only", testCase.goos, testCase.variables, c.basic, testCase.want)
 		}
 	}
 }

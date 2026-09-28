@@ -17,7 +17,7 @@ type planned struct {
 // buildPlan is dist-newstyle/cache/plan.json: the package versions cabal chose and
 // what each depends on.
 type buildPlan struct {
-	pkgs map[string]*planned
+	packages map[string]*planned
 }
 
 // readPlan reads plan.json's install-plan. A package appears once per component
@@ -25,51 +25,51 @@ type buildPlan struct {
 // (aeson-2.2.1.0-abc123), mapped back to package names through the plan's ids.
 //
 // Implements: REQ-HASKELL-008
-func readPlan(src []byte) *buildPlan {
-	type deps struct {
+func readPlan(source []byte) *buildPlan {
+	type dependencies struct {
 		Depends    []string `json:"depends"`
 		ExeDepends []string `json:"exe-depends"`
 	}
 	var doc struct {
 		InstallPlan []struct {
-			Type       string          `json:"type"`
-			ID         string          `json:"id"`
-			Name       string          `json:"pkg-name"`
-			Version    string          `json:"pkg-version"`
-			Style      string          `json:"style"`
-			Depends    []string        `json:"depends"`
-			Components map[string]deps `json:"components"`
-			Src        struct {
-				Type string `json:"type"`
-				Repo struct {
+			Type       string                  `json:"type"`
+			ID         string                  `json:"id"`
+			Name       string                  `json:"pkg-name"`
+			Version    string                  `json:"pkg-version"`
+			Style      string                  `json:"style"`
+			Depends    []string                `json:"depends"`
+			Components map[string]dependencies `json:"components"`
+			Source     struct {
+				Type       string `json:"type"`
+				Repository struct {
 					Location string `json:"location"`
 					Tag      string `json:"tag"`
 				} `json:"source-repo"`
 			} `json:"pkg-src"`
 		} `json:"install-plan"`
 	}
-	if json.Unmarshal(src, &doc) != nil || len(doc.InstallPlan) == 0 {
+	if json.Unmarshal(source, &doc) != nil || len(doc.InstallPlan) == 0 {
 		return nil
 	}
 	ids := map[string]string{}
 	for _, u := range doc.InstallPlan {
 		ids[u.ID] = u.Name
 	}
-	p := &buildPlan{pkgs: map[string]*planned{}}
+	p := &buildPlan{packages: map[string]*planned{}}
 	for _, u := range doc.InstallPlan {
 		if u.Name == "" {
 			continue
 		}
-		pk := p.pkgs[u.Name]
-		if pk == nil {
-			pk = &planned{name: u.Name, version: u.Version}
-			p.pkgs[u.Name] = pk
+		plannedPackage := p.packages[u.Name]
+		if plannedPackage == nil {
+			plannedPackage = &planned{name: u.Name, version: u.Version}
+			p.packages[u.Name] = plannedPackage
 		}
-		if u.Style == "local" || u.Style == "inplace" || u.Src.Type == "local" {
-			pk.local = true
+		if u.Style == "local" || u.Style == "inplace" || u.Source.Type == "local" {
+			plannedPackage.local = true
 		}
-		if u.Src.Type == "source-repo" {
-			pk.origin, pk.tag = u.Src.Repo.Location, u.Src.Repo.Tag
+		if u.Source.Type == "source-repo" {
+			plannedPackage.origin, plannedPackage.tag = u.Source.Repository.Location, u.Source.Repository.Tag
 		}
 		all := append([]string(nil), u.Depends...)
 		for _, c := range u.Components {
@@ -77,19 +77,19 @@ func readPlan(src []byte) *buildPlan {
 		}
 		for _, id := range all {
 			if n := ids[id]; n != "" && n != u.Name {
-				pk.depends = append(pk.depends, n)
+				plannedPackage.depends = append(plannedPackage.depends, n)
 			}
 		}
 	}
-	for _, pk := range p.pkgs {
-		sort.Strings(pk.depends)
-		out := pk.depends[:0]
-		for i, d := range pk.depends {
-			if i == 0 || d != pk.depends[i-1] {
+	for _, planned := range p.packages {
+		sort.Strings(planned.depends)
+		out := planned.depends[:0]
+		for i, d := range planned.depends {
+			if i == 0 || d != planned.depends[i-1] {
 				out = append(out, d)
 			}
 		}
-		pk.depends = out
+		planned.depends = out
 	}
 	return p
 }

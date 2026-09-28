@@ -50,9 +50,9 @@ winsvc.h accctrl.h iptypes.h winperf.h
 lwp.h thread.h pthread_np.h xlocale.h cxxabi.h unwind.h crt_externs.h kvm.h kstat.h
 libutil.h util.h syscall.h xti.h port.h procinfo.h libperfstat.h`))
 
-// systemDirs are directories of system headers (<sys/socket.h>, <linux/fs.h>) and
+// systemDirectories are directories of system headers (<sys/socket.h>, <linux/fs.h>) and
 // frameworks of the Apple SDKs (<CoreFoundation/CoreFoundation.h>).
-var systemDirs = set(`sys arpa net netinet netinet6 netpacket linux asm asm-generic
+var systemDirectories = set(`sys arpa net netinet netinet6 netpacket linux asm asm-generic
 mach mach-o libkern machine xlocale os dispatch android gnu hurd uvm vm sanitizer
 CoreFoundation CoreServices Foundation IOKit Security SystemConfiguration
 ApplicationServices Cocoa AppKit Carbon`)
@@ -66,22 +66,22 @@ func set(words string) map[string]bool {
 }
 
 // standard returns the island a header the project does not have belongs to:
-// ecoCStd, ecoCppStd, ecoSystem, or "" for a third-party library.
+// ecosystemCStd, ecosystemCppStd, ecosystemSystem, or "" for a third-party library.
 //
 // Implements: REQ-CPP-005
 func standard(name string) string {
 	switch {
 	case cHeaders[name]:
-		return ecoCStd
+		return ecosystemCStd
 	case cppHeaders[name], strings.HasPrefix(name, "experimental/"), strings.HasPrefix(name, "tr1/"),
 		strings.HasPrefix(name, "ext/"),
 		name == "bits/stdc++.h":
-		return ecoCppStd
+		return ecosystemCppStd
 	case systemHeaders[strings.ToLower(name)], strings.HasPrefix(name, "bits/"): // <Windows.h> too
-		return ecoSystem
+		return ecosystemSystem
 	}
-	if dir, _, ok := strings.Cut(name, "/"); ok && systemDirs[dir] {
-		return ecoSystem
+	if directory, _, ok := strings.Cut(name, "/"); ok && systemDirectories[directory] {
+		return ecosystemSystem
 	}
 	return ""
 }

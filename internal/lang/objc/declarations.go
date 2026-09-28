@@ -9,12 +9,12 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 )
 
-// def is one definition found; decl marks a declaration (a prototype, a method an
+// definition is one definition found; declaration marks a declaration (a prototype, a method an
 // @interface declares) that a definition of the same name in the file replaces.
-type def struct {
-	name, kind string
-	line       int
-	decl       bool
+type definition struct {
+	name, kind  string
+	line        int
+	declaration bool
 }
 
 // Containers: what the tokens being read belong to.
@@ -26,16 +26,16 @@ const (
 )
 
 type parser struct {
-	tokens  []token
-	i       int
-	in      int
-	owner   string // the class or protocol of the container
-	frames  []bool // open braces the parser stands in: true = transparent (namespace, extern "C")
-	defs    []def
-	modules []lang.RawImport // @import
+	tokens      []token
+	i           int
+	in          int
+	owner       string // the class or protocol of the container
+	frames      []bool // open braces the parser stands in: true = transparent (namespace, extern "C")
+	definitions []definition
+	modules     []lang.RawImport // @import
 }
 
-func (p *parser) tok(k int) token {
+func (p *parser) token(k int) token {
 	if p.i+k < len(p.tokens) && p.i+k >= 0 {
 		return p.tokens[p.i+k]
 	}
@@ -43,13 +43,13 @@ func (p *parser) tok(k int) token {
 }
 
 func (p *parser) is(k int, text string) bool {
-	t := p.tok(k)
+	t := p.token(k)
 	return t.kind >= 0 && t.text == text && t.kind != tString
 }
 
-func (p *parser) add(name, kind string, line int, decl bool) {
+func (p *parser) add(name, kind string, line int, declaration bool) {
 	if name != "" {
-		p.defs = append(p.defs, def{name, kind, line, decl})
+		p.definitions = append(p.definitions, definition{name, kind, line, declaration})
 	}
 }
 
@@ -61,29 +61,29 @@ func (p *parser) add(name, kind string, line int, decl bool) {
 func parse(tokens []token) *parser {
 	p := &parser{tokens: tokens}
 	for p.i < len(p.tokens) {
-		t := p.tok(0)
+		t := p.token(0)
 		switch {
-		case t.kind == tIdent && t.text == "@import":
-			p.importDecl()
-		case t.kind == tIdent && (t.text == "@interface" || t.text == "@implementation" || t.text == "@protocol"):
+		case t.kind == tIdentifier && t.text == "@import":
+			p.importDeclaration()
+		case t.kind == tIdentifier && (t.text == "@interface" || t.text == "@implementation" || t.text == "@protocol"):
 			p.header()
-		case t.kind == tIdent && t.text == "@end":
+		case t.kind == tIdentifier && t.text == "@end":
 			p.in, p.owner = inNone, ""
 			p.i++
-		case t.kind == tIdent && t.text == "@property":
+		case t.kind == tIdentifier && t.text == "@property":
 			p.property()
-		case t.kind == tIdent && (t.text == "@class" || t.text == "@synthesize" || t.text == "@dynamic" || t.text == "@compatibility_alias"):
+		case t.kind == tIdentifier && (t.text == "@class" || t.text == "@synthesize" || t.text == "@dynamic" || t.text == "@compatibility_alias"):
 			p.skipTo(";")
-		case t.kind == tIdent && strings.HasPrefix(t.text, "@"):
+		case t.kind == tIdentifier && strings.HasPrefix(t.text, "@"):
 			p.i++ // @optional, @required, @public, @private, @package...
-		case t.kind == tPunct && (t.text == "-" || t.text == "+") && p.in != inNone:
+		case t.kind == tPunctuation && (t.text == "-" || t.text == "+") && p.in != inNone:
 			p.method()
-		case t.kind == tPunct && t.text == "}":
+		case t.kind == tPunctuation && t.text == "}":
 			if n := len(p.frames); n > 0 {
 				p.frames = p.frames[:n-1]
 			}
 			p.i++
-		case t.kind == tPunct && t.text == ";":
+		case t.kind == tPunctuation && t.text == ";":
 			p.i++
 		default:
 			p.statement()
@@ -96,7 +96,7 @@ func parse(tokens []token) *parser {
 // means the braces before it did not balance (an #if branch opened one), so the
 // parser picks up from there.
 func stopper(t token) bool {
-	return t.kind == tIdent && (t.text == "@end" || t.text == "@interface" || t.text == "@implementation")
+	return t.kind == tIdentifier && (t.text == "@end" || t.text == "@interface" || t.text == "@implementation")
 }
 
 // skipTo steps past the next text at bracket depth 0, stopping at a container
@@ -104,12 +104,12 @@ func stopper(t token) bool {
 func (p *parser) skipTo(text string) {
 	depth := 0
 	for p.i < len(p.tokens) {
-		t := p.tok(0)
+		t := p.token(0)
 		if stopper(t) && t.text != text {
 			return
 		}
 		p.i++
-		if t.kind != tPunct {
+		if t.kind != tPunctuation {
 			continue
 		}
 		switch t.text {
@@ -126,16 +126,16 @@ func (p *parser) skipTo(text string) {
 
 // skipGroup steps over a bracketed group starting at the current token.
 func (p *parser) skipGroup() {
-	open := p.tok(0).text
+	open := p.token(0).text
 	closing := map[string]string{"(": ")", "[": "]", "{": "}", "<": ">"}[open]
 	depth := 0
 	for p.i < len(p.tokens) {
-		t := p.tok(0)
+		t := p.token(0)
 		if stopper(t) {
 			return
 		}
 		p.i++
-		if t.kind != tPunct {
+		if t.kind != tPunctuation {
 			continue
 		}
 		switch t.text {
@@ -153,14 +153,14 @@ func (p *parser) skipGroup() {
 	}
 }
 
-// importDecl reads `@import Module.Sub;`.
-func (p *parser) importDecl() {
-	line := p.tok(0).line
+// importDeclaration reads `@import Module.Sub;`.
+func (p *parser) importDeclaration() {
+	line := p.token(0).line
 	p.i++
 	var b strings.Builder
-	for p.i < len(p.tokens) && !p.is(0, ";") && !stopper(p.tok(0)) {
-		t := p.tok(0)
-		if t.kind != tIdent && t.text != "." {
+	for p.i < len(p.tokens) && !p.is(0, ";") && !stopper(p.token(0)) {
+		t := p.token(0)
+		if t.kind != tIdentifier && t.text != "." {
 			break
 		}
 		b.WriteString(t.text)
@@ -176,28 +176,28 @@ func (p *parser) importDecl() {
 // it: a class, a category Class(Name) - a class extension Class() adds no symbol -
 // or a protocol; a forward @protocol declaration is skipped.
 func (p *parser) header() {
-	kw := p.tok(0)
+	keyword := p.token(0)
 	p.i++
-	name := p.tok(0)
-	if name.kind != tIdent || strings.HasPrefix(name.text, "@") {
+	name := p.token(0)
+	if name.kind != tIdentifier || strings.HasPrefix(name.text, "@") {
 		return
 	}
 	p.i++
-	if kw.text == "@protocol" && (p.is(0, ";") || p.is(0, ",")) {
+	if keyword.text == "@protocol" && (p.is(0, ";") || p.is(0, ",")) {
 		p.skipTo(";")
 		return
 	}
-	if kw.text == "@protocol" && p.is(0, "(") {
+	if keyword.text == "@protocol" && p.is(0, "(") {
 		return // @protocol(Name) is an expression
 	}
-	if p.is(0, "<") && kw.text == "@interface" && !p.is(-1, ":") {
+	if p.is(0, "<") && keyword.text == "@interface" && !p.is(-1, ":") {
 		p.skipGroup() // generic parameters: @interface Box<ObjectType>
 	}
 	category, isCategory := "", false
 	if p.is(0, "(") {
 		isCategory = true
 		p.i++
-		if t := p.tok(0); t.kind == tIdent {
+		if t := p.token(0); t.kind == tIdentifier {
 			category = t.text
 			p.i++
 		}
@@ -206,19 +206,19 @@ func (p *parser) header() {
 		}
 	}
 	switch {
-	case kw.text == "@protocol":
+	case keyword.text == "@protocol":
 		p.in = inProtocol
 		p.add(name.text, "interface", name.line, false)
 	case isCategory && category == "":
 		p.in = inInterface // a class extension: more of the class
 	case isCategory:
 		p.in = inInterface
-		p.add(name.text+"("+category+")", "extension", name.line, kw.text == "@interface")
+		p.add(name.text+"("+category+")", "extension", name.line, keyword.text == "@interface")
 	default:
 		p.in = inInterface
-		p.add(name.text, "class", name.line, kw.text == "@interface")
+		p.add(name.text, "class", name.line, keyword.text == "@interface")
 	}
-	if kw.text == "@implementation" {
+	if keyword.text == "@implementation" {
 		p.in = inImplementation
 	}
 	p.owner = name.text
@@ -227,7 +227,7 @@ func (p *parser) header() {
 		switch {
 		case p.is(0, ":"):
 			p.i++
-			if p.tok(0).kind == tIdent {
+			if p.token(0).kind == tIdentifier {
 				p.i++
 			}
 		case p.is(0, "<"):
@@ -244,27 +244,27 @@ func (p *parser) header() {
 // method reads a method's declaration or definition: `- (T)name`, `- (T)a:(T)x
 // b:(T)y`, `+ ...`; its symbol is Owner.selector. A body is skipped.
 func (p *parser) method() {
-	line := p.tok(0).line
+	line := p.token(0).line
 	p.i++
 	if p.is(0, "(") {
 		p.skipGroup()
 	}
-	var sel strings.Builder
+	var selector strings.Builder
 	parts := 0
 loop:
 	for p.i < len(p.tokens) {
-		t := p.tok(0)
+		t := p.token(0)
 		switch {
-		case t.kind == tIdent && !strings.HasPrefix(t.text, "@") && p.is(1, ":"):
-			sel.WriteString(t.text)
-			sel.WriteRune(':')
+		case t.kind == tIdentifier && !strings.HasPrefix(t.text, "@") && p.is(1, ":"):
+			selector.WriteString(t.text)
+			selector.WriteRune(':')
 			parts++
 			p.i += 2
 		case p.is(0, ":") && parts > 0:
-			sel.WriteRune(':')
+			selector.WriteRune(':')
 			p.i++
-		case t.kind == tIdent && parts == 0 && sel.Len() == 0:
-			sel.WriteString(t.text)
+		case t.kind == tIdentifier && parts == 0 && selector.Len() == 0:
+			selector.WriteString(t.text)
 			p.i++
 			break loop
 		default:
@@ -274,7 +274,7 @@ loop:
 		if p.is(0, "(") {
 			p.skipGroup()
 		}
-		if t := p.tok(0); t.kind == tIdent && !strings.HasPrefix(t.text, "@") {
+		if t := p.token(0); t.kind == tIdentifier && !strings.HasPrefix(t.text, "@") {
 			p.i++ // after a keyword and its type comes the parameter's name, always
 		}
 		if p.is(0, ",") { // varargs: , ...
@@ -285,8 +285,8 @@ loop:
 		}
 	}
 	// Attributes up to the end of the declaration or the start of the body.
-	for p.i < len(p.tokens) && !p.is(0, ";") && !p.is(0, "{") && !stopper(p.tok(0)) &&
-		!(p.in != inNone && (p.is(0, "-") || p.is(0, "+")) && p.tok(0).line != line) {
+	for p.i < len(p.tokens) && !p.is(0, ";") && !p.is(0, "{") && !stopper(p.token(0)) &&
+		!(p.in != inNone && (p.is(0, "-") || p.is(0, "+")) && p.token(0).line != line) {
 		if p.is(0, "(") {
 			p.skipGroup()
 			continue
@@ -299,14 +299,14 @@ loop:
 	} else if p.is(0, ";") {
 		p.i++
 	}
-	if sel.Len() > 0 && p.owner != "" {
-		p.add(p.owner+"."+sel.String(), "method", line, !body)
+	if selector.Len() > 0 && p.owner != "" {
+		p.add(p.owner+"."+selector.String(), "method", line, !body)
 	}
 }
 
 // property reads `@property (attrs) T name;`, a block `T (^name)(args)` included.
 func (p *parser) property() {
-	line := p.tok(0).line
+	line := p.token(0).line
 	p.i++
 	if p.is(0, "(") {
 		p.skipGroup()
@@ -327,9 +327,9 @@ var (
 	}
 )
 
-// attrPrefixes start the attribute and availability macros of Apple's SDKs
+// attributePrefixes start the attribute and availability macros of Apple's SDKs
 // (NS_DESIGNATED_INITIALIZER, API_AVAILABLE, UIKIT_EXTERN, OBJC_EXPORT...).
-var attrPrefixes = []string{"NS_", "CF_", "API_", "UIKIT_", "APPKIT_", "OBJC_", "FOUNDATION_",
+var attributePrefixes = []string{"NS_", "CF_", "API_", "UIKIT_", "APPKIT_", "OBJC_", "FOUNDATION_",
 	"XCT_", "SWIFT_", "OS_", "AVAILABLE_", "DEPRECATED_", "__IOS_", "__OSX_", "__TVOS_",
 	"__WATCHOS_", "__API_", "IB_", "CA_", "WK_", "MP_", "AV_", "CG_", "CT_", "UNAVAILABLE_"}
 
@@ -344,7 +344,7 @@ func macro(s string) bool {
 	if !upperName.MatchString(s) {
 		return false
 	}
-	for _, p := range attrPrefixes {
+	for _, p := range attributePrefixes {
 		if strings.HasPrefix(s, p) {
 			return true
 		}
@@ -357,7 +357,7 @@ func macro(s string) bool {
 // an array bound, trailing attribute macros ignored.
 func declaredName(tokens []token) string {
 	for j := 0; j+2 < len(tokens); j++ {
-		if tokens[j].text == "(" && (tokens[j+1].text == "^" || tokens[j+1].text == "*") && tokens[j+2].kind == tIdent {
+		if tokens[j].text == "(" && (tokens[j+1].text == "^" || tokens[j+1].text == "*") && tokens[j+2].kind == tIdentifier {
 			return tokens[j+2].text
 		}
 	}
@@ -373,7 +373,7 @@ func declaredName(tokens []token) string {
 			depth++
 		case t.text == ")" || t.text == "]":
 			depth--
-		case depth == 0 && t.kind == tIdent && !macro(t.text) && !qualifier[t.text] &&
+		case depth == 0 && t.kind == tIdentifier && !macro(t.text) && !qualifier[t.text] &&
 			!(j+1 < len(tokens) && tokens[j+1].text == "("):
 			name = t.text // an identifier before "(" is a macro call: NS_SWIFT_NAME(x)
 		}
@@ -394,7 +394,7 @@ var qualifier = map[string]bool{
 func indexTop(tokens []token, text string) int {
 	depth := 0
 	for j, t := range tokens {
-		if t.kind != tPunct {
+		if t.kind != tPunctuation {
 			continue
 		}
 		switch t.text {
@@ -417,15 +417,15 @@ func (p *parser) statement() {
 	start := p.i
 	depth := 0
 	for p.i < len(p.tokens) {
-		t := p.tok(0)
-		if (t.kind == tIdent && strings.HasPrefix(t.text, "@") && t.text != "@selector" && t.text != "@encode" && !(t.text == "@protocol" && p.is(1, "("))) ||
-			stopper(t) || (depth == 0 && t.kind == tPunct && t.text == "}") {
+		t := p.token(0)
+		if (t.kind == tIdentifier && strings.HasPrefix(t.text, "@") && t.text != "@selector" && t.text != "@encode" && !(t.text == "@protocol" && p.is(1, "("))) ||
+			stopper(t) || (depth == 0 && t.kind == tPunctuation && t.text == "}") {
 			if p.i == start {
 				p.i++
 			}
 			return // not a statement: drop what was read
 		}
-		if t.kind == tPunct {
+		if t.kind == tPunctuation {
 			switch t.text {
 			case "(", "[":
 				depth++
@@ -433,7 +433,7 @@ func (p *parser) statement() {
 				depth--
 			}
 		}
-		if depth == 0 && t.kind == tPunct && (t.text == ";" || t.text == "{") {
+		if depth == 0 && t.kind == tPunctuation && (t.text == ";" || t.text == "{") {
 			break
 		}
 		p.i++
@@ -475,7 +475,7 @@ func (p *parser) statement() {
 // trimLeading drops the region macros a declaration may start with
 // (NS_ASSUME_NONNULL_BEGIN, CF_EXTERN_C_BEGIN), which end no statement.
 func trimLeading(tokens []token) []token {
-	for len(tokens) > 0 && tokens[0].kind == tIdent && (strings.HasSuffix(tokens[0].text, "_BEGIN") || strings.HasSuffix(tokens[0].text, "_END")) && upperName.MatchString(tokens[0].text) {
+	for len(tokens) > 0 && tokens[0].kind == tIdentifier && (strings.HasSuffix(tokens[0].text, "_BEGIN") || strings.HasSuffix(tokens[0].text, "_END")) && upperName.MatchString(tokens[0].text) {
 		tokens = tokens[1:]
 	}
 	return tokens
@@ -493,21 +493,21 @@ func isFunction(head []token) bool {
 			return false
 		}
 	}
-	eq, paren := indexTop(head, "="), funcParen(head)
-	return paren > 0 && (eq < 0 || eq > paren) && !pointerDeclarator(head, paren)
+	equalsAt, parenthesis := indexTop(head, "="), functionParenthesis(head)
+	return parenthesis > 0 && (equalsAt < 0 || equalsAt > parenthesis) && !pointerDeclarator(head, parenthesis)
 }
 
-// funcParen finds the "(" of a function's parameter list: the first at depth 0 after
+// functionParenthesis finds the "(" of a function's parameter list: the first at depth 0 after
 // an identifier that is not an attribute macro, __attribute__ or a keyword.
-func funcParen(head []token) int {
+func functionParenthesis(head []token) int {
 	depth := 0
 	for j, t := range head {
-		if t.kind != tPunct {
+		if t.kind != tPunctuation {
 			continue
 		}
 		switch t.text {
 		case "(":
-			if depth == 0 && j > 0 && head[j-1].kind == tIdent && !skipCall[head[j-1].text] && !macro(head[j-1].text) &&
+			if depth == 0 && j > 0 && head[j-1].kind == tIdentifier && !skipCall[head[j-1].text] && !macro(head[j-1].text) &&
 				!(upperName.MatchString(head[j-1].text) && indexTop(head[j+1:], "(") >= 0) {
 				return j
 			}
@@ -528,8 +528,8 @@ var skipCall = map[string]bool{
 
 // pointerDeclarator reports whether the parenthesis at paren starts `(*name)` or
 // `(^name)`: a function pointer or block variable, not a function.
-func pointerDeclarator(head []token, paren int) bool {
-	return paren+1 < len(head) && (head[paren+1].text == "*" || head[paren+1].text == "^")
+func pointerDeclarator(head []token, parenthesis int) bool {
+	return parenthesis+1 < len(head) && (head[parenthesis+1].text == "*" || head[parenthesis+1].text == "^")
 }
 
 // declaration records what a statement declares. body says a "{...}" followed the
@@ -551,8 +551,8 @@ func (p *parser) declaration(head, tail []token, body bool) {
 		p.add(declaredName(groupAfter(head, j)), "enum", head[j].line, false)
 		return
 	}
-	if paren := funcParen(head); paren > 0 && !pointerDeclarator(head, paren) && (indexTop(head, "=") < 0 || indexTop(head, "=") > paren) {
-		name := qualifiedBefore(head, paren)
+	if parenthesis := functionParenthesis(head); parenthesis > 0 && !pointerDeclarator(head, parenthesis) && (indexTop(head, "=") < 0 || indexTop(head, "=") > parenthesis) {
+		name := qualifiedBefore(head, parenthesis)
 		if name == "" || upperName.MatchString(name) || skipCall[name] {
 			return // a macro invocation: TEST(Suite, Case), SPEC_BEGIN(X)
 		}
@@ -560,11 +560,11 @@ func (p *parser) declaration(head, tail []token, body bool) {
 		if strings.Contains(name, ".") {
 			kind = "method"
 		}
-		p.add(name, kind, head[paren-1].line, !body)
+		p.add(name, kind, head[parenthesis-1].line, !body)
 		return
 	}
 	if kind := typeKeyword(first); kind != "" && (body || len(head) == 2) {
-		if body && len(head) >= 2 && head[1].kind == tIdent && !macro(head[1].text) {
+		if body && len(head) >= 2 && head[1].kind == tIdentifier && !macro(head[1].text) {
 			name := head[1].text
 			if name == "class" || name == "struct" { // enum class Name
 				if len(head) < 3 {
@@ -613,15 +613,15 @@ func (p *parser) typedef(head, tail []token, body bool) {
 			kind = k
 		}
 	}
-	decl := head[1:]
+	declaration := head[1:]
 	if body {
-		decl = tail
+		declaration = tail
 	}
-	if paren := funcParen(decl); paren > 0 && !pointerDeclarator(decl, paren) {
-		p.add(decl[paren-1].text, kind, head[0].line, false) // a function type
+	if parenthesis := functionParenthesis(declaration); parenthesis > 0 && !pointerDeclarator(declaration, parenthesis) {
+		p.add(declaration[parenthesis-1].text, kind, head[0].line, false) // a function type
 		return
 	}
-	if name := declaredName(decl); name != "" {
+	if name := declaredName(declaration); name != "" {
 		p.add(name, kind, head[0].line, false)
 	}
 }
@@ -656,15 +656,15 @@ func groupAfter(head []token, j int) []token {
 			depth++
 		case ")":
 			if depth--; depth == 0 {
-				return lastArg(head[start:k])
+				return lastArgument(head[start:k])
 			}
 		}
 	}
 	return nil
 }
 
-// lastArg is the last comma-separated argument.
-func lastArg(tokens []token) []token {
+// lastArgument is the last comma-separated argument.
+func lastArgument(tokens []token) []token {
 	for j := len(tokens) - 1; j >= 0; j-- {
 		if tokens[j].text == "," {
 			return tokens[j+1:]
@@ -675,13 +675,13 @@ func lastArg(tokens []token) []token {
 
 // qualifiedBefore is the (C++-qualified) name before a parameter list: "Foo::bar"
 // becomes "Foo.bar".
-func qualifiedBefore(head []token, paren int) string {
-	j := paren - 1
-	if j < 0 || head[j].kind != tIdent {
+func qualifiedBefore(head []token, parenthesis int) string {
+	j := parenthesis - 1
+	if j < 0 || head[j].kind != tIdentifier {
 		return ""
 	}
 	name := head[j].text
-	for j >= 2 && head[j-1].text == "::" && head[j-2].kind == tIdent {
+	for j >= 2 && head[j-1].text == "::" && head[j-2].kind == tIdentifier {
 		name = head[j-2].text + "." + name
 		j -= 2
 	}
@@ -690,20 +690,20 @@ func qualifiedBefore(head []token, paren int) string {
 
 // symbols orders the definitions by line and drops a declaration whose name the
 // file also defines (a prototype, an @interface of the class implemented below).
-func symbols(defs []def) []lang.Symbol {
-	slices.SortStableFunc(defs, func(a, b def) int {
+func symbols(definitions []definition) []lang.Symbol {
+	slices.SortStableFunc(definitions, func(a, b definition) int {
 		return cmp.Or(cmp.Compare(a.line, b.line), strings.Compare(a.name, b.name))
 	})
 	defined := map[string]bool{}
-	for _, d := range defs {
-		if !d.decl {
+	for _, d := range definitions {
+		if !d.declaration {
 			defined[d.name] = true
 		}
 	}
 	seen := map[string]bool{}
 	var set lang.SymbolSet
-	for _, d := range defs {
-		if (d.decl && defined[d.name]) || seen[d.name+"\x00"+d.kind] {
+	for _, d := range definitions {
+		if (d.declaration && defined[d.name]) || seen[d.name+"\x00"+d.kind] {
 			continue
 		}
 		seen[d.name+"\x00"+d.kind] = true

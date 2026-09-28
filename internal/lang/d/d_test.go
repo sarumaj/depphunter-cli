@@ -23,21 +23,21 @@ import (
 // them D. .dub/ is what dub fetched with --cache=local.
 
 var (
-	vibe      = lang.Target{Ecosystem: ecoDub, Package: "vibe-d", Version: "0.9.7", Requested: "~>0.9.5", Pinned: true}
-	dyaml     = lang.Target{Ecosystem: ecoDub, Package: "dyaml", Version: "0.9.2", Requested: "==0.9.2", Pinned: true}
-	mirAlgo   = lang.Target{Ecosystem: ecoDub, Package: "mir-algorithm", Version: "3.20.0", Requested: ">=3.0.0", Pinned: true}
-	mirCore   = lang.Target{Ecosystem: ecoDub, Package: "mir-core", Version: "1.7.0", Pinned: true}
-	fancy     = lang.Target{Ecosystem: ecoDub, Package: "fancy", Version: "0123456789abcdef0123456789abcdef01234567", Pinned: true, Origin: "https://github.com/acme/fancy.git"}
-	unitT     = lang.Target{Ecosystem: ecoDub, Package: "unit-threaded", Version: "2.1.0", Pinned: true}
-	arsd      = lang.Target{Ecosystem: ecoDub, Package: "arsd-official", Version: "~>11.0", Floating: true}
-	requests  = lang.Target{Ecosystem: ecoDub, Package: "requests", Version: "~>2.0", Floating: true}
-	eventcore = lang.Target{Ecosystem: ecoDub, Package: "eventcore", Version: "~master", Requested: "*", Floating: true}
-	silly     = lang.Target{Ecosystem: ecoDub, Package: "silly", Version: "~>1.1", Floating: true}
-	darg      = lang.Target{Ecosystem: ecoDub, Package: "darg", Version: "~>0.1", Floating: true}
-	colorize  = lang.Target{Ecosystem: ecoDub, Package: "colorize", Version: "~>1.0", Floating: true}
+	vibe      = lang.Target{Ecosystem: ecosystemDub, Package: "vibe-d", Version: "0.9.7", Requested: "~>0.9.5", Pinned: true}
+	dyaml     = lang.Target{Ecosystem: ecosystemDub, Package: "dyaml", Version: "0.9.2", Requested: "==0.9.2", Pinned: true}
+	mirAlgo   = lang.Target{Ecosystem: ecosystemDub, Package: "mir-algorithm", Version: "3.20.0", Requested: ">=3.0.0", Pinned: true}
+	mirCore   = lang.Target{Ecosystem: ecosystemDub, Package: "mir-core", Version: "1.7.0", Pinned: true}
+	fancy     = lang.Target{Ecosystem: ecosystemDub, Package: "fancy", Version: "0123456789abcdef0123456789abcdef01234567", Pinned: true, Origin: "https://github.com/acme/fancy.git"}
+	unitT     = lang.Target{Ecosystem: ecosystemDub, Package: "unit-threaded", Version: "2.1.0", Pinned: true}
+	arsd      = lang.Target{Ecosystem: ecosystemDub, Package: "arsd-official", Version: "~>11.0", Floating: true}
+	requests  = lang.Target{Ecosystem: ecosystemDub, Package: "requests", Version: "~>2.0", Floating: true}
+	eventcore = lang.Target{Ecosystem: ecosystemDub, Package: "eventcore", Version: "~master", Requested: "*", Floating: true}
+	silly     = lang.Target{Ecosystem: ecosystemDub, Package: "silly", Version: "~>1.1", Floating: true}
+	darg      = lang.Target{Ecosystem: ecosystemDub, Package: "darg", Version: "~>0.1", Floating: true}
+	colorize  = lang.Target{Ecosystem: ecosystemDub, Package: "colorize", Version: "~>1.0", Floating: true}
 )
 
-func std(name string) lang.Target { return lang.Target{Ecosystem: ecoStd, Package: name} }
+func std(name string) lang.Target { return lang.Target{Ecosystem: ecosystemStd, Package: name} }
 
 // analyze runs the plugin over the fixture with no dub packages installed.
 func analyze(t *testing.T) map[string]*lang.FileResult {
@@ -47,8 +47,8 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 
 // Verifies: REQ-DLANG-002, REQ-DLANG-004, REQ-DLANG-006, REQ-DLANG-007, REQ-DLANG-011
 func TestImports(t *testing.T) {
-	res := analyze(t)
-	langtest.CheckImports(t, res["source/shop/app.d"], map[string]lang.Target{
+	results := analyze(t)
+	langtest.CheckImports(t, results["source/shop/app.d"], map[string]lang.Target{
 		"std.stdio":             std("std.stdio"),
 		"core.thread":           std("core.thread"),
 		"object":                std("object"),
@@ -69,40 +69,40 @@ func TestImports(t *testing.T) {
 		"requests":              requests, // a configuration's dependency
 		"eventcore.core":        eventcore,
 		"commands":              {Local: "cli/commands.d"}, // the inline sub-package's directory
-		"nothere.x":             {Ecosystem: ecoDub, Package: "nothere", Unresolved: true},
+		"nothere.x":             {Ecosystem: ecosystemDub, Package: "nothere", Unresolved: true},
 		"shop.gone":             {}, // the package's own module, missing
 		"std.conv":              std("std.conv"),
 		`import("banner.txt")`:  {Local: "views/banner.txt"},
 		`import("missing.txt")`: {},
 	})
-	langtest.CheckImports(t, res["source/shop/cart.d"], map[string]lang.Target{
+	langtest.CheckImports(t, results["source/shop/cart.d"], map[string]lang.Target{
 		"shop.models.user": {Local: "source/shop/models/user.d"},
 		"std.exception":    std("std.exception"), // in a unittest
 	})
-	langtest.CheckImports(t, res["libs/widgets/source/widgets/button.d"], map[string]lang.Target{
-		"dyaml":           {Ecosystem: ecoDub, Package: "dyaml", Version: "~>0.9", Floating: true},
-		"bindbc.sdl":      {Ecosystem: ecoDub, Package: "bindbc-sdl", Version: "~>1.4", Floating: true},
-		"taggedalgebraic": {Ecosystem: ecoDub, Package: "taggedalgebraic", Version: ">=0.11.0 <0.12.0", Floating: true},
+	langtest.CheckImports(t, results["libs/widgets/source/widgets/button.d"], map[string]lang.Target{
+		"dyaml":           {Ecosystem: ecosystemDub, Package: "dyaml", Version: "~>0.9", Floating: true},
+		"bindbc.sdl":      {Ecosystem: ecosystemDub, Package: "bindbc-sdl", Version: "~>1.4", Floating: true},
+		"taggedalgebraic": {Ecosystem: ecosystemDub, Package: "taggedalgebraic", Version: ">=0.11.0 <0.12.0", Floating: true},
 	})
-	langtest.CheckImports(t, res["cli/commands.d"], map[string]lang.Target{
+	langtest.CheckImports(t, results["cli/commands.d"], map[string]lang.Target{
 		"shop.cart": {Local: "source/shop/cart.d"}, // the sub-package depends on shop
 		"darg":      darg,
 	})
-	langtest.CheckImports(t, res["tools/source/tool.d"], map[string]lang.Target{
+	langtest.CheckImports(t, results["tools/source/tool.d"], map[string]lang.Target{
 		"shop.cart":             {Local: "source/shop/cart.d"}, // a path dependency on ..
 		"colorize":              colorize,
 		`import("config.json")`: {Local: "tools/res/config.json"},
 	})
-	langtest.CheckImports(t, res["scripts/hello.d"], map[string]lang.Target{
-		"scriptlike": {Ecosystem: ecoDub, Package: "scriptlike", Version: "~>0.10.3", Floating: true},
+	langtest.CheckImports(t, results["scripts/hello.d"], map[string]lang.Target{
+		"scriptlike": {Ecosystem: ecosystemDub, Package: "scriptlike", Version: "~>0.10.3", Floating: true},
 		"std.stdio":  std("std.stdio"),
 	})
 }
 
 // Verifies: REQ-DLANG-005, REQ-DLANG-006
 func TestManifests(t *testing.T) {
-	res := analyze(t)
-	langtest.CheckImports(t, res["dub.json"], map[string]lang.Target{
+	results := analyze(t)
+	langtest.CheckImports(t, results["dub.json"], map[string]lang.Target{
 		"vibe-d":            vibe,
 		"dyaml":             dyaml,
 		"mir-algorithm":     mirAlgo,
@@ -118,7 +118,7 @@ func TestManifests(t *testing.T) {
 		"shop":              {Local: "."}, // cli depends on its package
 		"tools/":            {Local: "tools"},
 	})
-	langtest.CheckImports(t, res["dub.selections.json"], map[string]lang.Target{
+	langtest.CheckImports(t, results["dub.selections.json"], map[string]lang.Target{
 		"vibe-d":        vibe,
 		"dyaml":         dyaml,
 		"mir-algorithm": mirAlgo,
@@ -127,25 +127,25 @@ func TestManifests(t *testing.T) {
 		"fancy":         fancy,
 		"eventcore":     eventcore,
 	})
-	langtest.CheckImports(t, res["libs/widgets/dub.sdl"], map[string]lang.Target{
-		"dyaml":           {Ecosystem: ecoDub, Package: "dyaml", Version: "~>0.9", Floating: true},
-		"bindbc-sdl":      {Ecosystem: ecoDub, Package: "bindbc-sdl", Version: "~>1.4", Floating: true},
-		"taggedalgebraic": {Ecosystem: ecoDub, Package: "taggedalgebraic", Version: ">=0.11.0 <0.12.0", Floating: true},
+	langtest.CheckImports(t, results["libs/widgets/dub.sdl"], map[string]lang.Target{
+		"dyaml":           {Ecosystem: ecosystemDub, Package: "dyaml", Version: "~>0.9", Floating: true},
+		"bindbc-sdl":      {Ecosystem: ecosystemDub, Package: "bindbc-sdl", Version: "~>1.4", Floating: true},
+		"taggedalgebraic": {Ecosystem: ecosystemDub, Package: "taggedalgebraic", Version: ">=0.11.0 <0.12.0", Floating: true},
 	})
-	langtest.CheckImports(t, res["tools/dub.sdl"], map[string]lang.Target{
+	langtest.CheckImports(t, results["tools/dub.sdl"], map[string]lang.Target{
 		"shop":     {Local: "."},
 		"colorize": colorize,
 	})
 	lines := map[string]int{}
-	for _, im := range res["dub.json"].Imports {
-		lines[im.Spec] = im.Line
+	for _, imported := range results["dub.json"].Imports {
+		lines[imported.Spec] = imported.Line
 	}
 	if lines["vibe-d"] != 5 || lines["darg"] != 21 || lines["tools/"] != 23 || lines["requests"] != 27 {
 		t.Errorf("lines %v", lines)
 	}
-	for _, im := range res["libs/widgets/dub.sdl"].Imports {
-		if im.Spec == "taggedalgebraic" && im.Line != 8 {
-			t.Errorf("taggedalgebraic on line %d", im.Line)
+	for _, imported := range results["libs/widgets/dub.sdl"].Imports {
+		if imported.Spec == "taggedalgebraic" && imported.Line != 8 {
+			t.Errorf("taggedalgebraic on line %d", imported.Line)
 		}
 	}
 }
@@ -176,8 +176,8 @@ func TestPinRule(t *testing.T) {
 
 // Verifies: REQ-DLANG-003, REQ-DLANG-011
 func TestSymbols(t *testing.T) {
-	res := analyze(t)
-	langtest.CheckSymbols(t, res["source/shop/cart.d"], map[string]string{
+	results := analyze(t)
+	langtest.CheckSymbols(t, results["source/shop/cart.d"], map[string]string{
 		"shop.cart":       "module",
 		"TaxRate":         "const",
 		"MaxItems":        "const",
@@ -207,12 +207,12 @@ func TestSymbols(t *testing.T) {
 		"total":           "func",
 		"shop_version":    "func",
 	})
-	langtest.CheckSymbols(t, res["source/shop/app.d"], map[string]string{
+	langtest.CheckSymbols(t, results["source/shop/app.d"], map[string]string{
 		"shop.app": "module",
 		"code":     "const",
 		"main":     "func",
 	})
-	langtest.CheckSymbols(t, res["dub.json"], map[string]string{})
+	langtest.CheckSymbols(t, results["dub.json"], map[string]string{})
 }
 
 // Nothing in a comment, a string of any kind, a token string or a character
@@ -220,7 +220,7 @@ func TestSymbols(t *testing.T) {
 //
 // Verifies: REQ-DLANG-002, REQ-DLANG-010, REQ-DLANG-011
 func TestLiteralsHideCode(t *testing.T) {
-	src := "module m;\n" +
+	source := "module m;\n" +
 		"/+ /+ nested +/ import a1; +/\n" +
 		"/* import a2; */ // import a3;\n" +
 		"enum t = q{ import a4; void f() { string s = \"}\"; } };\n" +
@@ -234,16 +234,16 @@ func TestLiteralsHideCode(t *testing.T) {
 		"auto x = x\"0A 0B\";\n" +
 		"void f() {\n\timport real.one : a, b = c;\n\tstatic import real.two, alias3 = real.three;\n}\n" +
 		"__EOF__\nimport after.eof;\n"
-	ex := extractSource([]byte(src))
+	extraction := extractSource([]byte(source))
 	var got []string
-	for _, im := range ex.Imports {
-		got = append(got, im.Module)
+	for _, rawImport := range extraction.Imports {
+		got = append(got, rawImport.Module)
 	}
 	if want := []string{"real.one", "real.two", "real.three"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("imports %v, want %v", got, want)
 	}
-	if ex.Imports[0].Line != 16 {
-		t.Errorf("line %d", ex.Imports[0].Line)
+	if extraction.Imports[0].Line != 16 {
+		t.Errorf("line %d", extraction.Imports[0].Line)
 	}
 }
 
@@ -263,10 +263,10 @@ func TestClaims(t *testing.T) {
 	}
 	for _, f := range []*scan.File{
 		{Path: "import/shop.di"},
-		{Path: "a/.dub/packages/x/1.0.0/x/source/x.d", Lang: "D"},
-		{Path: "deps/app.d", Lang: "Make"},
-		{Path: "probes/trace.d", Lang: "DTrace"},
-		{Path: "src/x.d", Lang: "D", Binary: true},
+		{Path: "a/.dub/packages/x/1.0.0/x/source/x.d", Language: "D"},
+		{Path: "deps/app.d", Language: "Make"},
+		{Path: "probes/trace.d", Language: "DTrace"},
+		{Path: "src/x.d", Language: "D", Binary: true},
 	} {
 		if got, want := (Plugin{}).Claims(f), f.Path == "import/shop.di"; got != want {
 			t.Errorf("%s: claimed %v", f.Path, got)
@@ -279,20 +279,20 @@ func TestClaims(t *testing.T) {
 
 // Verifies: REQ-DLANG-005
 func TestSDL(t *testing.T) {
-	src := "name \"a\" // c\n# c\n-- c\n/* block\n */dependency \"b\" version=\"~>1\" \\\n  optional=true; dependency `c` path=\"../c\"\n" +
+	source := "name \"a\" // c\n# c\n-- c\n/* block\n */dependency \"b\" version=\"~>1\" \\\n  optional=true; dependency `c` path=\"../c\"\n" +
 		"configuration \"x\" {\n\tdependency \"d\" version=\"1.0.0\"\n\tsubConfiguration \"b\" \"y\"\n}\nsourcePaths \"s1\" \"s2\" platform=\"posix\"\n" +
 		"subPackage {\n\tname \"inner\"\n\tdependency \"e\" version=\"*\"\n}\nsubPackage \"./sub/\"\nstringImportPaths \"views\" \"more\"\n" +
 		"description \"a \\\"quoted\\\" \\\n    text\"\n"
-	r := readSDLRecipe([]byte(src))
-	var deps []string
-	for _, d := range r.deps {
-		deps = append(deps, d.name+"@"+d.version+"@"+d.path)
+	r := readSDLRecipe([]byte(source))
+	var dependencies []string
+	for _, d := range r.dependencyList {
+		dependencies = append(dependencies, d.name+"@"+d.version+"@"+d.path)
 	}
-	if want := []string{"b@~>1@", "c@@../c", "d@1.0.0@"}; !reflect.DeepEqual(deps, want) {
-		t.Errorf("deps %v", deps)
+	if want := []string{"b@~>1@", "c@@../c", "d@1.0.0@"}; !reflect.DeepEqual(dependencies, want) {
+		t.Errorf("deps %v", dependencies)
 	}
-	if r.name != "a" || !r.deps[0].optional || r.deps[0].line != 5 || r.deps[1].line != 6 {
-		t.Errorf("recipe %+v %+v", r, r.deps[0])
+	if r.name != "a" || !r.dependencyList[0].optional || r.dependencyList[0].line != 5 || r.dependencyList[1].line != 6 {
+		t.Errorf("recipe %+v %+v", r, r.dependencyList[0])
 	}
 	if !reflect.DeepEqual(r.sourcePaths, []string{"s1", "s2"}) || !reflect.DeepEqual(r.stringPaths, []string{"views", "more"}) {
 		t.Errorf("paths %v %v", r.sourcePaths, r.stringPaths)
@@ -311,9 +311,9 @@ func TestSDL(t *testing.T) {
 func installDub(t *testing.T) string {
 	home := t.TempDir()
 	write := func(p, content string) {
-		abs := filepath.Join(home, filepath.FromSlash(p))
-		os.MkdirAll(filepath.Dir(abs), 0o755)
-		os.WriteFile(abs, []byte(content), 0o644)
+		absolute := filepath.Join(home, filepath.FromSlash(p))
+		os.MkdirAll(filepath.Dir(absolute), 0o755)
+		os.WriteFile(absolute, []byte(content), 0o644)
 	}
 	write("packages/ddata/1.2.0/ddata/dub.json", `{"name": "ddata", "importPaths": ["lib"], "sourcePaths": ["lib"],
 "dependencies": {"dyaml": "~>0.9", "vibe-d:data": "*", ":internal": "*", "extra": {"version": "*", "optional": true}},
@@ -331,9 +331,9 @@ func installDub(t *testing.T) string {
 func TestInstalledPackages(t *testing.T) {
 	root := t.TempDir()
 	write := func(p, content string) {
-		abs := filepath.Join(root, filepath.FromSlash(p))
-		os.MkdirAll(filepath.Dir(abs), 0o755)
-		os.WriteFile(abs, []byte(content), 0o644)
+		absolute := filepath.Join(root, filepath.FromSlash(p))
+		os.MkdirAll(filepath.Dir(absolute), 0o755)
+		os.WriteFile(absolute, []byte(content), 0o644)
 	}
 	write("dub.sdl", "name \"app\"\ndependency \"ddata\" version=\"~>1.1\"\ndependency \"dyaml\" version=\"~>0.9\"\n")
 	write("dub.selections.json", `{"fileVersion": 1, "versions": {"ddata": "1.2.0", "dyaml": "0.9.2", "vibe-d": "0.9.7"}}`)
@@ -342,11 +342,11 @@ func TestInstalledPackages(t *testing.T) {
 		t.Setenv("DUB_HOME", home)
 		files := langtest.Files(t, root)
 		r := newResolver(root, files)
-		imp := func(m string) lang.Target { return r.Resolve("source/app.d", lang.RawImport{Module: m}) }
-		ddata := lang.Target{Ecosystem: ecoDub, Package: "ddata", Version: "1.2.0", Requested: "~>1.1", Pinned: true}
+		resolveImport := func(m string) lang.Target { return r.Resolve("source/app.d", lang.RawImport{Module: m}) }
+		ddata := lang.Target{Ecosystem: ecosystemDub, Package: "ddata", Version: "1.2.0", Requested: "~>1.1", Pinned: true}
 		if i == 0 {
 			// Nothing installed: the module names no declared package.
-			if got := imp("datastructs.tree"); got != (lang.Target{Ecosystem: ecoDub, Package: "datastructs", Unresolved: true}) {
+			if got := resolveImport("datastructs.tree"); got != (lang.Target{Ecosystem: ecosystemDub, Package: "datastructs", Unresolved: true}) {
 				t.Errorf("not installed: %+v", got)
 			}
 			if r.Installed(ddata) || r.Dependencies(ddata) != nil {
@@ -355,23 +355,23 @@ func TestInstalledPackages(t *testing.T) {
 			continue
 		}
 		for _, m := range []string{"datastructs.tree", "datastructs", "ddinternal.util"} {
-			if got := imp(m); got != ddata {
+			if got := resolveImport(m); got != ddata {
 				t.Errorf("%s: %+v", m, got)
 			}
 		}
 		// Only the selected version is read.
-		if got := imp("datastructs.old"); got.Package != "datastructs" || !got.Unresolved {
+		if got := resolveImport("datastructs.old"); got.Package != "datastructs" || !got.Unresolved {
 			t.Errorf("datastructs.old: %+v", got)
 		}
 		want := []lang.Target{
-			{Ecosystem: ecoDub, Package: "dyaml", Version: "0.9.2", Pinned: true},
-			{Ecosystem: ecoDub, Package: "vibe-d", Version: "0.9.7", Pinned: true},
-			{Ecosystem: ecoDub, Package: "taggedalgebraic", Version: "~>0.11", Floating: true},
+			{Ecosystem: ecosystemDub, Package: "dyaml", Version: "0.9.2", Pinned: true},
+			{Ecosystem: ecosystemDub, Package: "vibe-d", Version: "0.9.7", Pinned: true},
+			{Ecosystem: ecosystemDub, Package: "taggedalgebraic", Version: "~>0.11", Floating: true},
 		}
 		if got := r.Dependencies(ddata); !reflect.DeepEqual(got, want) {
 			t.Errorf("dependencies %+v, want %+v", got, want)
 		}
-		if !r.Installed(ddata) || r.Installed(lang.Target{Ecosystem: ecoDub, Package: "dyaml"}) {
+		if !r.Installed(ddata) || r.Installed(lang.Target{Ecosystem: ecosystemDub, Package: "dyaml"}) {
 			t.Error("installed")
 		}
 	}
@@ -390,29 +390,29 @@ func TestTruncated(t *testing.T) {
 		return nil
 	})
 	for _, p := range files {
-		src, err := os.ReadFile(p)
+		source, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatal(err)
 		}
 		f := &scan.File{Path: strings.TrimPrefix(filepath.ToSlash(p), "testdata/repo/")}
-		for i := 0; i <= len(src); i++ {
-			if _, err := (Plugin{}).Extract(f, src[:i]); err != nil {
+		for i := 0; i <= len(source); i++ {
+			if _, err := (Plugin{}).Extract(f, source[:i]); err != nil {
 				t.Fatal(err)
 			}
-			extractSource(src[:i])
-			readSDLRecipe(src[:i])
-			singleFile(src[:i])
+			extractSource(source[:i])
+			readSDLRecipe(source[:i])
+			singleFile(source[:i])
 		}
 	}
 	for _, unit := range []string{"{", "(", "[", "}", ")", "]", "\"", "`", "'", "q{", "q\"(", "q\"EOS\n", "/+", "+/", "/*",
 		"import ", "import(", "import a.", "import a :", "static ", "@", "@a(", "class A ", "enum ", "alias ", "private:",
 		"version(X) ", "void f() ", "q{x\"", "q{r\"", "x = ", "a : ", "~this", "this(", "mixin template ", "é", "#line 1\n", "\\\n", "=", ","} {
-		src := []byte(strings.Repeat(unit, 200_000/len(unit)+1))
+		source := []byte(strings.Repeat(unit, 200_000/len(unit)+1))
 		start := time.Now()
-		extractSource(src)
-		readSDLRecipe(src)
+		extractSource(source)
+		readSDLRecipe(source)
 		if d := time.Since(start); d > 5*time.Second {
-			t.Errorf("%q x %d: %v", unit, len(src)/len(unit), d)
+			t.Errorf("%q x %d: %v", unit, len(source)/len(unit), d)
 		}
 	}
 }
@@ -423,13 +423,13 @@ func TestIslands(t *testing.T) {
 	for _, e := range (Plugin{}).Ecosystems() {
 		ids[e.ID] = e.Std
 	}
-	if std, ok := ids[ecoStd]; !ok || !std || len(ids) != 2 || ids[ecoDub] {
+	if std, ok := ids[ecosystemStd]; !ok || !std || len(ids) != 2 || ids[ecosystemDub] {
 		t.Fatalf("ecosystems: %v", ids)
 	}
 	for f, r := range analyze(t) {
-		for _, im := range r.Imports {
-			if e := im.Target.Ecosystem; e != "" && e != ecoDub && e != ecoStd {
-				t.Errorf("%s: %s -> %s", f, im.Spec, e)
+		for _, imported := range r.Imports {
+			if e := imported.Target.Ecosystem; e != "" && e != ecosystemDub && e != ecosystemStd {
+				t.Errorf("%s: %s -> %s", f, imported.Spec, e)
 			}
 		}
 	}

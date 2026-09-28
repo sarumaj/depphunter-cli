@@ -52,13 +52,13 @@ var contribFamilies = map[string]bool{"core": true, "data": true, "tools": true,
 
 // contrib names the artifact of a clojure.* namespace outside org.clojure/clojure:
 // org.clojure:<a>.<b> for clojure.<a>.<b>..., with the exceptions above.
-func contrib(ns string) string {
-	for k := ns; k != ""; k = parentNS(k) {
+func contrib(namespace string) string {
+	for k := namespace; k != ""; k = parentNS(k) {
 		if a, ok := contribExceptions[k]; ok {
 			return a
 		}
 	}
-	segments := strings.Split(ns, ".")
+	segments := strings.Split(namespace, ".")
 	if len(segments) < 3 || segments[0] != "clojure" || !contribFamilies[segments[1]] {
 		return ""
 	}
@@ -161,25 +161,25 @@ var jsBuiltins = map[string]bool{
 	"util": true, "v8": true, "vm": true, "worker_threads": true, "zlib": true,
 }
 
-func parentNS(ns string) string {
-	if i := strings.LastIndexByte(ns, '.'); i >= 0 {
-		return ns[:i]
+func parentNS(namespace string) string {
+	if i := strings.LastIndexByte(namespace, '.'); i >= 0 {
+		return namespace[:i]
 	}
 	return ""
 }
 
 // known is the table's artifact for a namespace, by its longest listed prefix.
-func known(ns string) string {
-	for k := ns; k != ""; k = parentNS(k) {
+func known(namespace string) string {
+	for k := namespace; k != ""; k = parentNS(k) {
 		if a, ok := knownArtifacts[k]; ok {
 			return a
 		}
 	}
-	if ns == "reitit" {
+	if namespace == "reitit" {
 		return "metosin:reitit"
 	}
 	// reitit.<x> is metosin/reitit-<x>, taoensso.<x> is com.taoensso/<x>.
-	segments := strings.Split(ns, ".")
+	segments := strings.Split(namespace, ".")
 	if len(segments) >= 2 {
 		switch segments[0] {
 		case "reitit":

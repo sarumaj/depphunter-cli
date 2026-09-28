@@ -157,31 +157,31 @@ var knownModules = map[string]string{
 	"TransparentColor":               "tesk9/palette",
 }
 
-// knownPackage is the package the longest entry of knownModules covering mod
+// knownPackage is the package the longest entry of knownModules covering module
 // names, preferring one the project declares: of Html.Styled.Attributes, Html is
 // elm/html but Html.Styled rtfeldman/elm-css, and when only elm/html is declared
 // Html wins over the longer, undeclared match.
-func knownPackage(mod string, declared func(string) bool) (name string, ok bool) {
+func knownPackage(module string, declared func(string) bool) (name string, ok bool) {
 	var first string
-	for m := mod; m != ""; m = parent(m) {
-		pkg, found := knownModules[m]
+	for m := module; m != ""; m = parent(m) {
+		packageName, found := knownModules[m]
 		if !found {
 			continue
 		}
-		if declared(pkg) {
-			return pkg, true
+		if declared(packageName) {
+			return packageName, true
 		}
 		if first == "" {
-			first = pkg
+			first = packageName
 		}
 	}
 	return first, first != ""
 }
 
 // parent drops a module's last segment: Html.Styled.Attributes -> Html.Styled.
-func parent(mod string) string {
-	if i := strings.LastIndexByte(mod, '.'); i >= 0 {
-		return mod[:i]
+func parent(module string) string {
+	if i := strings.LastIndexByte(module, '.'); i >= 0 {
+		return module[:i]
 	}
 	return ""
 }

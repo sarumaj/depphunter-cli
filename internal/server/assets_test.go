@@ -61,11 +61,11 @@ func TestAssetsCompresses(t *testing.T) {
 	if got := w.Header().Get("Content-Encoding"); got != "gzip" {
 		t.Fatalf("encoding %q", got)
 	}
-	zr, err := gzip.NewReader(w.Body)
+	gzipReader, err := gzip.NewReader(w.Body)
 	if err != nil {
 		t.Fatal(err)
 	}
-	body, err := io.ReadAll(zr)
+	body, err := io.ReadAll(gzipReader)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -104,21 +104,21 @@ func TestAssetsRevalidates(t *testing.T) {
 
 func TestAssetsServesIndexAndBinaries(t *testing.T) {
 	a := testAssets()
-	for _, tc := range []struct{ path, ctype, body string }{
+	for _, testCase := range []struct{ path, ctype, body string }{
 		{"/", "text/html; charset=utf-8", "<p>hi</p>"},
 		{"/index.html", "text/html; charset=utf-8", "<p>hi</p>"},
 		{"/hand.glb", "model/gltf-binary", "glTF binary bytes"},
 	} {
-		w := fetch(t, a, tc.path, nil)
+		w := fetch(t, a, testCase.path, nil)
 		if w.Code != http.StatusOK {
-			t.Errorf("%s: status %d", tc.path, w.Code)
+			t.Errorf("%s: status %d", testCase.path, w.Code)
 			continue
 		}
-		if got := w.Header().Get("Content-Type"); got != tc.ctype {
-			t.Errorf("%s: content type %q, want %q", tc.path, got, tc.ctype)
+		if got := w.Header().Get("Content-Type"); got != testCase.ctype {
+			t.Errorf("%s: content type %q, want %q", testCase.path, got, testCase.ctype)
 		}
-		if !strings.Contains(w.Body.String(), tc.body) {
-			t.Errorf("%s: body %q", tc.path, w.Body.String())
+		if !strings.Contains(w.Body.String(), testCase.body) {
+			t.Errorf("%s: body %q", testCase.path, w.Body.String())
 		}
 	}
 }

@@ -31,9 +31,9 @@ let nth = 0;
  * A box of the layout, with the defaults the tests do not care about filled in. `node`
  * may be given to stand a box on a terrace: pass the terrace's node as its parentNode.
  */
-export function box(kind, x, z, w, d, opts = {}) {
+export function box(kind, x, z, w, d, options = {}) {
   const node = { id: `n${nth++}`, kind: kind === 'building' ? 'file' : 'dir', parentNode: null };
-  return { kind, x, z, w, d, y: 0, h: 0.2, node, ...opts };
+  return { kind, x, z, w, d, y: 0, h: 0.2, node, ...options };
 }
 
 /**

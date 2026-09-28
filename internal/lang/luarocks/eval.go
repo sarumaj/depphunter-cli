@@ -1,20 +1,20 @@
 package luarocks
 
-// VKind is what a Value holds.
-type VKind uint8
+// ValueKind is what a Value holds.
+type ValueKind uint8
 
 const (
-	Nil VKind = iota
-	Str       // a string, or a number kept as written
-	Bool
-	Tab
+	NilValue    ValueKind = iota
+	StringValue           // a string, or a number kept as written
+	BoolValue
+	TableValue
 )
 
 // Value is what a constant Lua expression evaluates to. Anything the evaluator does
 // not compute (a call, arithmetic, a function) is Nil.
 type Value struct {
-	Kind  VKind
-	Str   string
+	Kind  ValueKind
+	Text  string
 	Table *Table
 	Line  int // where the expression starts
 }
@@ -48,7 +48,7 @@ func (t *Table) Get(key string) Value {
 // Path follows keys through nested tables: Path("build", "modules").
 func (v Value) Path(keys ...string) Value {
 	for _, k := range keys {
-		if v.Kind != Tab {
+		if v.Kind != TableValue {
 			return Value{}
 		}
 		v = v.Table.Get(k)
@@ -58,12 +58,12 @@ func (v Value) Path(keys ...string) Value {
 
 // Strings is a list of strings: the positional string entries of a table.
 func (v Value) Strings() []Value {
-	if v.Kind != Tab {
+	if v.Kind != TableValue {
 		return nil
 	}
 	var out []Value
 	for _, e := range v.Table.List {
-		if e.Kind == Str {
+		if e.Kind == StringValue {
 			out = append(out, e)
 		}
 	}
@@ -84,8 +84,8 @@ type Chunk struct {
 // assignment, a function call) cost nothing but their own values. It never fails.
 //
 // Implements: REQ-LUA-006
-func Eval(src []byte) *Chunk {
-	e := &evaluator{tokens: Lex(src), env: map[string]Value{}}
+func Eval(source []byte) *Chunk {
+	e := &evaluator{tokens: Lex(source), environment: map[string]Value{}}
 	c := &Chunk{Globals: map[string]Value{}}
 	for e.i < len(e.tokens) {
 		start := e.i
@@ -98,10 +98,10 @@ func Eval(src []byte) *Chunk {
 }
 
 type evaluator struct {
-	tokens []Token
-	i      int
-	env    map[string]Value
-	depth  int
+	tokens      []Token
+	i           int
+	environment map[string]Value
+	depth       int
 }
 
 // maxDepth bounds nested expressions and tables; deeper ones are skipped.
@@ -137,13 +137,13 @@ func (e *evaluator) statement(c *Chunk) {
 			return
 		}
 		e.i++
-		for k, v := range e.exprList(len(names)) {
-			e.env[names[k]] = v
+		for k, v := range e.expressionList(len(names)) {
+			e.environment[names[k]] = v
 		}
 	case t.Is("return"):
 		e.i++
-		if vs := e.exprList(1); len(vs) > 0 {
-			c.Return = vs[0]
+		if values := e.expressionList(1); len(values) > 0 {
+			c.Return = values[0]
 		}
 	case t.Kind == Name && !keyword[t.Text]:
 		// name {.name | [expr]} {, target} = exprlist
@@ -156,25 +156,25 @@ func (e *evaluator) statement(c *Chunk) {
 			if e.at(0).Kind != Name || keyword[e.at(0).Text] {
 				return
 			}
-			tg := target{name: e.at(0).Text}
+			newTarget := target{name: e.at(0).Text}
 			e.i++
 			for {
 				if e.at(0).Is(".") && e.at(1).Kind == Name {
-					tg.keys = append(tg.keys, e.at(1).Text)
+					newTarget.keys = append(newTarget.keys, e.at(1).Text)
 					e.i += 2
 				} else if e.at(0).Is("[") {
 					e.i++
-					k := e.expr()
+					k := e.expression()
 					if !e.at(0).Is("]") {
 						return
 					}
 					e.i++
-					tg.keys = append(tg.keys, k.Str)
+					newTarget.keys = append(newTarget.keys, k.Text)
 				} else {
 					break
 				}
 			}
-			targets = append(targets, tg)
+			targets = append(targets, newTarget)
 			if !e.at(0).Is(",") {
 				break
 			}
@@ -184,19 +184,19 @@ func (e *evaluator) statement(c *Chunk) {
 			return
 		}
 		e.i++
-		for k, v := range e.exprList(len(targets)) {
-			tg := targets[k]
-			if len(tg.keys) == 0 {
-				e.env[tg.name] = v
-				c.Globals[tg.name] = v
+		for k, v := range e.expressionList(len(targets)) {
+			target := targets[k]
+			if len(target.keys) == 0 {
+				e.environment[target.name] = v
+				c.Globals[target.name] = v
 				continue
 			}
-			tab := e.env[tg.name]
-			for _, key := range tg.keys[:len(tg.keys)-1] {
+			tab := e.environment[target.name]
+			for _, key := range target.keys[:len(target.keys)-1] {
 				tab = tab.Path(key)
 			}
-			if tab.Kind == Tab {
-				tab.Table.Fields = append(tab.Table.Fields, Field{Key: tg.keys[len(tg.keys)-1], Value: v})
+			if tab.Kind == TableValue {
+				tab.Table.Fields = append(tab.Table.Fields, Field{Key: target.keys[len(target.keys)-1], Value: v})
 			}
 		}
 	}
@@ -209,11 +209,11 @@ var keyword = map[string]bool{
 	"then": true, "true": true, "until": true, "while": true,
 }
 
-// exprList evaluates comma-separated expressions; at most n are kept.
-func (e *evaluator) exprList(n int) []Value {
+// expressionList evaluates comma-separated expressions; at most n are kept.
+func (e *evaluator) expressionList(n int) []Value {
 	var out []Value
 	for {
-		v := e.expr()
+		v := e.expression()
 		if len(out) < n {
 			out = append(out, v)
 		}
@@ -231,7 +231,7 @@ var binary = map[string]bool{
 	"&": true, "|": true, "~": true, "<<": true, ">>": true,
 }
 
-func (e *evaluator) expr() Value {
+func (e *evaluator) expression() Value {
 	if e.depth >= maxDepth {
 		e.i++ // deeper than any real file: skipped a token at a time
 		return Value{}
@@ -240,29 +240,29 @@ func (e *evaluator) expr() Value {
 	defer func() { e.depth-- }()
 	v := e.unary()
 	for {
-		op := e.at(0)
-		if !(op.Kind == Punct || op.Kind == Name) || !binary[op.Text] {
+		operator := e.at(0)
+		if !(operator.Kind == Punctuation || operator.Kind == Name) || !binary[operator.Text] {
 			return v
 		}
 		e.i++
 		w := e.unary()
-		if op.Text == ".." && v.Kind == Str && w.Kind == Str {
-			v = Value{Kind: Str, Str: v.Str + w.Str, Line: v.Line}
-		} else if op.Text == "or" && v.Kind == Nil {
+		if operator.Text == ".." && v.Kind == StringValue && w.Kind == StringValue {
+			v = Value{Kind: StringValue, Text: v.Text + w.Text, Line: v.Line}
+		} else if operator.Text == "or" && v.Kind == NilValue {
 			v = w
-		} else if op.Text != "or" {
+		} else if operator.Text != "or" {
 			v = Value{Line: v.Line}
 		}
 	}
 }
 
 func (e *evaluator) unary() Value {
-	op := false
+	sawOperator := false
 	for e.at(0).Is("-") || e.at(0).Is("not") || e.at(0).Is("#") || e.at(0).Is("~") {
 		e.i++
-		op = true
+		sawOperator = true
 	}
-	if v := e.primary(); !op {
+	if v := e.primary(); !sawOperator {
 		return v
 	}
 	return Value{}
@@ -274,11 +274,11 @@ func (e *evaluator) primary() Value {
 	switch {
 	case t.Kind == String, t.Kind == Number:
 		e.i++
-		v = Value{Kind: Str, Str: t.Text, Line: t.Line}
+		v = Value{Kind: StringValue, Text: t.Text, Line: t.Line}
 	case t.Is("true"), t.Is("false"):
 		e.i++
-		v = Value{Kind: Bool, Str: t.Text, Line: t.Line}
-	case t.Is("nil"), t.Is("..."), t.Kind == Interp:
+		v = Value{Kind: BoolValue, Text: t.Text, Line: t.Line}
+	case t.Is("nil"), t.Is("..."), t.Kind == Interpolation:
 		e.i++
 	case t.Is("{"):
 		v = e.table()
@@ -287,13 +287,13 @@ func (e *evaluator) primary() Value {
 		return Value{}
 	case t.Is("("):
 		e.i++
-		v = e.expr()
+		v = e.expression()
 		if e.at(0).Is(")") {
 			e.i++
 		}
 	case t.Kind == Name && !keyword[t.Text]:
 		e.i++
-		v = e.env[t.Text]
+		v = e.environment[t.Text]
 		v.Line = t.Line
 	default:
 		return Value{}
@@ -306,11 +306,11 @@ func (e *evaluator) primary() Value {
 			e.i += 2
 		case s.Is("["):
 			e.i++
-			k := e.expr()
+			k := e.expression()
 			if e.at(0).Is("]") {
 				e.i++
 			}
-			v = v.Path(k.Str)
+			v = v.Path(k.Text)
 		case s.Is(":") && e.at(1).Kind == Name:
 			e.i += 2
 		case s.Is("("):
@@ -344,20 +344,20 @@ func (e *evaluator) table() Value {
 		switch {
 		case e.at(0).Is("["):
 			e.i++
-			k := e.expr()
+			k := e.expression()
 			if e.at(0).Is("]") && e.at(1).Is("=") {
 				e.i += 2
-				v := e.expr()
-				if k.Kind == Str {
-					t.Fields = append(t.Fields, Field{Key: k.Str, Value: v})
+				v := e.expression()
+				if k.Kind == StringValue {
+					t.Fields = append(t.Fields, Field{Key: k.Text, Value: v})
 				}
 			}
 		case e.at(0).Kind == Name && e.at(1).Is("="):
 			key := e.at(0).Text
 			e.i += 2
-			t.Fields = append(t.Fields, Field{Key: key, Value: e.expr()})
+			t.Fields = append(t.Fields, Field{Key: key, Value: e.expression()})
 		default:
-			t.List = append(t.List, e.expr())
+			t.List = append(t.List, e.expression())
 		}
 		// Anything up to the next separator is what the evaluator did not follow.
 		for e.i < len(e.tokens) && !e.at(0).Is(",") && !e.at(0).Is(";") && !e.at(0).Is("}") {
@@ -379,7 +379,7 @@ func (e *evaluator) table() Value {
 	if e.at(0).Is("}") {
 		e.i++
 	}
-	return Value{Kind: Tab, Table: t, Line: line}
+	return Value{Kind: TableValue, Table: t, Line: line}
 }
 
 // skipGroup skips a bracketed group starting at e.i, nested ones included.

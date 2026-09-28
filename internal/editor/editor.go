@@ -61,16 +61,16 @@ func Detect(getenv func(string) string, lookPath func(string) (string, error)) s
 //
 // Implements: REQ-SEC-009, REQ-DIST-016, REQ-SRV-007
 func Command(template, file string, line int) (*exec.Cmd, error) {
-	args, err := shellquote.Split(template)
+	arguments, err := shellquote.Split(template)
 	if err != nil {
 		return nil, fmt.Errorf("editor template %q: %w", template, err)
 	}
-	if len(args) == 0 || !strings.Contains(template, "{file}") {
+	if len(arguments) == 0 || !strings.Contains(template, "{file}") {
 		return nil, errors.New("editor template must name a program and contain {file}")
 	}
 	r := strings.NewReplacer("{file}", file, "{line}", strconv.Itoa(max(line, 1)))
-	for i := range args {
-		args[i] = r.Replace(args[i])
+	for i := range arguments {
+		arguments[i] = r.Replace(arguments[i])
 	}
-	return exec.Command(args[0], args[1:]...), nil
+	return exec.Command(arguments[0], arguments[1:]...), nil
 }

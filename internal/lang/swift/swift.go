@@ -1,4 +1,4 @@
-// Package swift analyzes Swift with a scanner (lex.go, decls.go). `import`
+// Package swift analyzes Swift with a scanner (lex.go, declarations.go). `import`
 // statements name modules, which resolve to the directories of the project's own
 // targets (Package.swift,
 // else a directory named after the module), to the Swift toolchain's libraries and
@@ -21,9 +21,9 @@ import (
 )
 
 const (
-	ecoSwiftPM = "swiftpm"
-	ecoStd     = "swift-std"
-	ecoApple   = "apple-sdk"
+	ecosystemSwiftPM = "swiftpm"
+	ecosystemStd     = "swift-std"
+	ecosystemApple   = "apple-sdk"
 )
 
 // Implements: REQ-SWIFT-001
@@ -48,9 +48,9 @@ func buildOutput(p string) bool {
 
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return append([]lang.Ecosystem{
-		{ID: ecoSwiftPM, Name: "Swift packages"},
-		{ID: ecoStd, Name: "Swift standard library", Std: true},
-		{ID: ecoApple, Name: "Apple SDKs", Std: true},
+		{ID: ecosystemSwiftPM, Name: "Swift packages"},
+		{ID: ecosystemStd, Name: "Swift standard library", Std: true},
+		{ID: ecosystemApple, Name: "Apple SDKs", Std: true},
 	}, cocoapods.Ecosystems()...)
 }
 
@@ -68,34 +68,34 @@ const (
 )
 
 // Implements: REQ-SWIFT-002, REQ-SWIFT-003, REQ-SWIFT-006, REQ-SWIFT-011, REQ-SWIFT-014
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
-	p := parse(src)
-	ex := &lang.Extraction{Imports: p.imports}
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
+	p := parse(source)
+	extraction := &lang.Extraction{Imports: p.imports}
 	var modules []string
-	for _, imp := range p.imports {
-		modules = append(modules, imp.Module)
+	for _, rawImport := range p.imports {
+		modules = append(modules, rawImport.Module)
 	}
-	if manifest(src) {
-		ex.Imports = append(ex.Imports, packageImports(string(src))...)
+	if manifest(source) {
+		extraction.Imports = append(extraction.Imports, packageImports(string(source))...)
 	}
 	// The type uses: each name once, at its first line, unless the file declares
 	// it outside a body.
-	refs := p.refs
-	slices.SortFunc(refs, func(a, b ref) int { return cmp.Or(cmp.Compare(a.line, b.line), cmp.Compare(a.name, b.name)) })
+	references := p.references
+	slices.SortFunc(references, func(a, b reference) int { return cmp.Or(cmp.Compare(a.line, b.line), cmp.Compare(a.name, b.name)) })
 	seen := map[string]bool{}
 	scope := kindType + ":" + strings.Join(modules, ",")
-	for _, r := range refs {
+	for _, r := range references {
 		if seen[r.name] || p.declared[r.name] {
 			continue
 		}
 		seen[r.name] = true
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: r.name, Module: r.name, Name: scope, Line: r.line})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: r.name, Module: r.name, Name: scope, Line: r.line})
 	}
-	slices.SortStableFunc(ex.Imports, func(a, b lang.RawImport) int {
+	slices.SortStableFunc(extraction.Imports, func(a, b lang.RawImport) int {
 		return cmp.Or(cmp.Compare(a.Line, b.Line), cmp.Compare(a.Spec, b.Spec))
 	})
-	ex.Symbols = p.symbols.List()
-	return ex, nil
+	extraction.Symbols = p.symbols.List()
+	return extraction, nil
 }
 
 // typeKinds names the symbol kinds of a type declaration by its keyword.
@@ -103,33 +103,33 @@ var typeKinds = map[string]string{
 	"class": "class", "actor": "class", "struct": "type", "enum": "type", "extension": "extension",
 }
 
-// manifest reports whether src is a package manifest: it imports PackageDescription.
-func manifest(src []byte) bool {
-	return strings.Contains(string(src), "import PackageDescription")
+// manifest reports whether source is a package manifest: it imports PackageDescription.
+func manifest(source []byte) bool {
+	return strings.Contains(string(source), "import PackageDescription")
 }
 
 // packageImports turns a manifest's `.package(...)` lines into imports of the
 // packages they declare.
 //
 // Implements: REQ-SWIFT-006
-func packageImports(src string) []lang.RawImport {
+func packageImports(source string) []lang.RawImport {
 	var out []lang.RawImport
-	clean := stripComments(src)
+	clean := stripComments(source)
 	for _, c := range calls(clean, "package") {
-		d := dependencies(".package(" + strings.Join(c.args, ", ") + ")")
+		d := dependencies(".package(" + strings.Join(c.arguments, ", ") + ")")
 		if len(d) != 1 {
 			continue
 		}
-		imp := lang.RawImport{Spec: ".package(" + strings.Join(strings.Fields(strings.Join(c.args, ", ")), " ") + ")", Line: c.line}
+		rawImport := lang.RawImport{Spec: ".package(" + strings.Join(strings.Fields(strings.Join(c.arguments, ", ")), " ") + ")", Line: c.line}
 		switch {
 		case d[0].url != "":
-			imp.Module, imp.Name = d[0].url, kindURL
+			rawImport.Module, rawImport.Name = d[0].url, kindURL
 		case d[0].path != "":
-			imp.Module, imp.Name = "__DIR__/"+d[0].path, kindPath
+			rawImport.Module, rawImport.Name = "__DIR__/"+d[0].path, kindPath
 		default:
-			imp.Module, imp.Name = d[0].id, kindID
+			rawImport.Module, rawImport.Name = d[0].id, kindID
 		}
-		out = append(out, imp)
+		out = append(out, rawImport)
 	}
 	return out
 }
@@ -163,7 +163,7 @@ func parseImport(text string) (lang.RawImport, bool) {
 		switch {
 		case strings.HasPrefix(rest, "@"):
 			i := 1
-			for i < len(rest) && identChar(rest[i]) {
+			for i < len(rest) && identifierCharacter(rest[i]) {
 				i++
 			}
 			if i < len(rest) && rest[i] == '(' {
@@ -193,7 +193,7 @@ func parseImport(text string) (lang.RawImport, bool) {
 		return lang.RawImport{}, false
 	}
 	module, _, _ := strings.Cut(fields[0], ".")
-	if !isIdent(module) {
+	if !isIdentifier(module) {
 		return lang.RawImport{}, false
 	}
 	return lang.RawImport{Spec: spec, Module: module, Name: kindImport}, true
@@ -208,18 +208,18 @@ func typeName(text string) string {
 	if i := strings.IndexAny(t, ".<?! \t\n"); i >= 0 {
 		t = t[:i]
 	}
-	if t == "" || t[0] < 'A' || t[0] > 'Z' || !isIdent(t) || t == "Self" {
+	if t == "" || t[0] < 'A' || t[0] > 'Z' || !isIdentifier(t) || t == "Self" {
 		return ""
 	}
 	return t
 }
 
-func isIdent(s string) bool {
+func isIdentifier(s string) bool {
 	if s == "" || s[0] >= '0' && s[0] <= '9' {
 		return false
 	}
 	for i := 0; i < len(s); i++ {
-		if !identChar(s[i]) {
+		if !identifierCharacter(s[i]) {
 			return false
 		}
 	}

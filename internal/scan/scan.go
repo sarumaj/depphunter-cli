@@ -21,11 +21,11 @@ import (
 //
 // Implements: REQ-LANG-020
 type File struct {
-	Path   string
-	Abs    string
-	Lang   string
-	LOC    int
-	Binary bool
+	Path         string
+	AbsolutePath string
+	Language     string
+	LOC          int
+	Binary       bool
 	// Size is the file's size in bytes when it was measured, so that a file too
 	// large to be worth reading can be passed over without being read.
 	Size int64
@@ -59,7 +59,7 @@ var defaultIgnore = map[string]bool{
 	"nimbledeps": true, "nimcache": true,
 }
 
-func Scan(ctx context.Context, root string, opts Options) ([]*File, error) {
+func Scan(ctx context.Context, root string, options Options) ([]*File, error) {
 	paths, err := gitFiles(ctx, root)
 	if err != nil {
 		if ctx.Err() != nil {
@@ -72,8 +72,8 @@ func Scan(ctx context.Context, root string, opts Options) ([]*File, error) {
 
 	files := make([]*File, 0, len(paths))
 	for _, p := range paths {
-		if !excluded(p, opts.Exclude) {
-			files = append(files, &File{Path: p, Abs: filepath.Join(root, filepath.FromSlash(p)), Lang: Language(p)})
+		if !excluded(p, options.Exclude) {
+			files = append(files, &File{Path: p, AbsolutePath: filepath.Join(root, filepath.FromSlash(p)), Language: Language(p)})
 		}
 	}
 	sort.Slice(files, func(i, j int) bool { return files[i].Path < files[j].Path })
@@ -85,13 +85,13 @@ func Scan(ctx context.Context, root string, opts Options) ([]*File, error) {
 		if ctx.Err() != nil {
 			break
 		}
-		g.Go(func() error { measure(f, opts.MaxFileSize); return nil })
+		g.Go(func() error { measure(f, options.MaxFileSize); return nil })
 	}
 	g.Wait()
 	return files, ctx.Err()
 }
 
-// gitFiles lists tracked and untracked-but-not-ignored files, which honours every
+// gitFiles lists tracked and untracked-but-not-ignored files, which honors every
 // .gitignore, .git/info/exclude and the global excludes file for free.
 //
 // Duplicates - a file with merge conflicts is listed once per stage - are dropped
@@ -100,8 +100,8 @@ func Scan(ctx context.Context, root string, opts Options) ([]*File, error) {
 //
 // Implements: REQ-LANG-017
 func gitFiles(ctx context.Context, root string) ([]string, error) {
-	cmd := exec.CommandContext(ctx, "git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
-	out, err := cmd.Output()
+	command := exec.CommandContext(ctx, "git", "-C", root, "ls-files", "-z", "--cached", "--others", "--exclude-standard")
+	out, err := command.Output()
 	if err != nil {
 		return nil, err
 	}
@@ -116,7 +116,7 @@ func gitFiles(ctx context.Context, root string) ([]string, error) {
 		// files. Nor is a symbolic link, deliberately (Lstat): a committed link may point
 		// anywhere on this machine, and a file node's content is served by /api/file and
 		// written into the HTML export. walkFiles skips links too.
-		if st, err := os.Lstat(filepath.Join(root, string(p))); err == nil && st.Mode().IsRegular() {
+		if fileInfo, err := os.Lstat(filepath.Join(root, string(p))); err == nil && fileInfo.Mode().IsRegular() {
 			paths = append(paths, string(p))
 		}
 	}
@@ -148,8 +148,8 @@ func walkFiles(ctx context.Context, root string) ([]string, error) {
 			return nil
 		}
 		if d.Type().IsRegular() {
-			rel, _ := filepath.Rel(root, p)
-			paths = append(paths, filepath.ToSlash(rel))
+			relative, _ := filepath.Rel(root, p)
+			paths = append(paths, filepath.ToSlash(relative))
 		}
 		return nil
 	})
@@ -205,13 +205,13 @@ var generatedBeside = map[string][]string{
 	"modules": {"Puppetfile", "../../.fixtures.yml"},
 }
 
-// besideManifest reports whether the directory name in dir is such a directory.
+// besideManifest reports whether the directory name in directory is such a directory.
 //
 // Implements: REQ-LANG-018
-func besideManifest(name, dir string) bool {
+func besideManifest(name, directory string) bool {
 	for _, m := range generatedBeside[name] {
 		if strings.Contains(m, "*") {
-			entries, _ := os.ReadDir(dir)
+			entries, _ := os.ReadDir(directory)
 			for _, e := range entries {
 				if ok, _ := path.Match(m, e.Name()); ok {
 					return true
@@ -219,7 +219,7 @@ func besideManifest(name, dir string) bool {
 			}
 			continue
 		}
-		if _, err := os.Stat(filepath.Join(dir, m)); err == nil {
+		if _, err := os.Stat(filepath.Join(directory, m)); err == nil {
 			return true
 		}
 	}
@@ -227,13 +227,13 @@ func besideManifest(name, dir string) bool {
 }
 
 // Implements: REQ-LANG-019
-func excluded(rel string, patterns []string) bool {
-	for _, pat := range patterns {
-		if ok, _ := path.Match(pat, rel); ok {
+func excluded(relative string, patterns []string) bool {
+	for _, pattern := range patterns {
+		if ok, _ := path.Match(pattern, relative); ok {
 			return true
 		}
-		for _, seg := range strings.Split(rel, "/") {
-			if ok, _ := path.Match(pat, seg); ok {
+		for _, segment := range strings.Split(relative, "/") {
+			if ok, _ := path.Match(pattern, segment); ok {
 				return true
 			}
 		}
@@ -243,22 +243,22 @@ func excluded(rel string, patterns []string) bool {
 
 // Implements: REQ-LANG-016, REQ-LANG-020, REQ-LANG-021, REQ-LANG-022
 func measure(f *File, maxSize int64) {
-	st, err := os.Stat(f.Abs)
+	fileInfo, err := os.Stat(f.AbsolutePath)
 	if err != nil {
 		return
 	}
-	f.Size = st.Size()
+	f.Size = fileInfo.Size()
 	if maxSize > 0 && f.Size > maxSize {
 		f.TooLarge = true
 		return
 	}
-	fh, err := os.Open(f.Abs)
+	opened, err := os.Open(f.AbsolutePath)
 	if err != nil {
 		return
 	}
-	defer fh.Close()
+	defer opened.Close()
 
-	r := bufio.NewReader(fh)
+	r := bufio.NewReader(opened)
 	head, _ := r.Peek(8000)
 	if bytes.IndexByte(head, 0) >= 0 {
 		f.Binary = true
@@ -266,8 +266,8 @@ func measure(f *File, maxSize int64) {
 	}
 	// Qt Linguist keeps its translations in .ts files too: XML, which the
 	// TypeScript grammar can only fail on, slowly (REQ-LANG-011's bound each).
-	if f.Lang == "TypeScript" && strings.EqualFold(path.Ext(f.Path), ".ts") && xmlDocument(head) {
-		f.Lang = "XML"
+	if f.Language == "TypeScript" && strings.EqualFold(path.Ext(f.Path), ".ts") && xmlDocument(head) {
+		f.Language = "XML"
 	}
 	f.Interpreter = interpreter(head)
 	// ".m" is MATLAB's and Mercury's too, and ".h" C's: Objective-C says which by
@@ -279,51 +279,51 @@ func measure(f *File, maxSize int64) {
 	// Scheme's, and Racket's when a #lang line starts them. ".cl" is Common
 	// Lisp's and OpenCL's. ".vs", ".gs", ".mesh" and ".task" are GLSL's when a
 	// directive or declaration of GLSL starts a line.
-	switch ext := strings.ToLower(path.Ext(f.Path)); {
-	case ext == ".m" && f.Lang == "Objective-C" && !objcMarker(head, true):
-		f.Lang = notObjC(head)
-	case ext == ".h" && f.Lang == "C" && objcMarker(head, false):
-		f.Lang = "Objective-C"
-	case ext == ".pl" && f.Lang == "Perl" && !PerlInterpreter(f.Interpreter) && !perlMarker(head) && prologClause(head):
-		f.Lang = "Prolog"
-	case ext == ".t" && f.Lang == "Perl" && !PerlInterpreter(f.Interpreter) && !perlMarker(head):
-		f.Lang = ""
-	case ext == ".fs" && f.Lang == "F#" && glslSource(head):
-		f.Lang = "GLSL"
-	case ext == ".fs" && f.Lang == "F#" && forthSource(head):
-		f.Lang = "Forth"
-	case (ext == ".f" || ext == ".for") && f.Lang == "Fortran" && forthSource(head):
-		f.Lang = "Forth"
-	case ext == ".d" && f.Lang == "D" && dependencyFile(head):
-		f.Lang = "Make"
-	case ext == ".d" && f.Lang == "D" && (f.Interpreter == "dtrace" || dtraceSource(head)):
-		f.Lang = "DTrace"
-	case (ext == ".scm" || ext == ".ss") && f.Lang == "Scheme" && racketSource(head):
-		f.Lang = "Racket"
-	case ext == ".cl" && f.Lang == "Common Lisp" && openclSource(head):
-		f.Lang = "OpenCL"
-	case (ext == ".vs" || ext == ".gs" || ext == ".mesh" || ext == ".task") && f.Lang == "" && glslSource(head):
-		f.Lang = "GLSL"
+	switch extension := strings.ToLower(path.Ext(f.Path)); {
+	case extension == ".m" && f.Language == "Objective-C" && !objcMarker(head, true):
+		f.Language = notObjC(head)
+	case extension == ".h" && f.Language == "C" && objcMarker(head, false):
+		f.Language = "Objective-C"
+	case extension == ".pl" && f.Language == "Perl" && !PerlInterpreter(f.Interpreter) && !perlMarker(head) && prologClause(head):
+		f.Language = "Prolog"
+	case extension == ".t" && f.Language == "Perl" && !PerlInterpreter(f.Interpreter) && !perlMarker(head):
+		f.Language = ""
+	case extension == ".fs" && f.Language == "F#" && glslSource(head):
+		f.Language = "GLSL"
+	case extension == ".fs" && f.Language == "F#" && forthSource(head):
+		f.Language = "Forth"
+	case (extension == ".f" || extension == ".for") && f.Language == "Fortran" && forthSource(head):
+		f.Language = "Forth"
+	case extension == ".d" && f.Language == "D" && dependencyFile(head):
+		f.Language = "Make"
+	case extension == ".d" && f.Language == "D" && (f.Interpreter == "dtrace" || dtraceSource(head)):
+		f.Language = "DTrace"
+	case (extension == ".scm" || extension == ".ss") && f.Language == "Scheme" && racketSource(head):
+		f.Language = "Racket"
+	case extension == ".cl" && f.Language == "Common Lisp" && openclSource(head):
+		f.Language = "OpenCL"
+	case (extension == ".vs" || extension == ".gs" || extension == ".mesh" || extension == ".task") && f.Language == "" && glslSource(head):
+		f.Language = "GLSL"
 	}
-	// A script without a language is labelled by the shell or perl its "#!" line
+	// A script without a language is labeled by the shell or perl its "#!" line
 	// runs.
 	switch {
-	case f.Lang == "" && ShellInterpreter(f.Interpreter):
-		f.Lang = "Shell"
-	case f.Lang == "" && PerlInterpreter(f.Interpreter):
-		f.Lang = "Perl"
-	case f.Lang == "" && f.Interpreter == "bb":
-		f.Lang = "Clojure" // a babashka script
-	case f.Lang == "" && f.Interpreter == "racket":
-		f.Lang = "Racket"
+	case f.Language == "" && ShellInterpreter(f.Interpreter):
+		f.Language = "Shell"
+	case f.Language == "" && PerlInterpreter(f.Interpreter):
+		f.Language = "Perl"
+	case f.Language == "" && f.Interpreter == "bb":
+		f.Language = "Clojure" // a babashka script
+	case f.Language == "" && f.Interpreter == "racket":
+		f.Language = "Racket"
 	}
 	var lines, last int
-	buf := make([]byte, 32*1024)
+	buffer := make([]byte, 32*1024)
 	for {
-		n, err := r.Read(buf)
-		lines += bytes.Count(buf[:n], []byte{'\n'})
+		n, err := r.Read(buffer)
+		lines += bytes.Count(buffer[:n], []byte{'\n'})
 		if n > 0 {
-			last = int(buf[n-1])
+			last = int(buffer[n-1])
 		}
 		if err != nil {
 			break

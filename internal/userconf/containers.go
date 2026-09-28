@@ -18,21 +18,21 @@ import (
 // Implements: REQ-SUP-068
 func (m Machine) RegistriesConf() (main string, dropIns []string) {
 	user := join(m.xdgConfigHome(), "containers", "registries.conf")
-	userDir := join(m.xdgConfigHome(), "containers", "registries.conf.d")
-	dirs := []string{system("etc", "containers", "registries.conf.d"), userDir}
-	switch env := m.Env("CONTAINERS_REGISTRIES_CONF"); {
-	case env != "":
-		main = env
+	userDirectory := join(m.xdgConfigHome(), "containers", "registries.conf.d")
+	directories := []string{system("etc", "containers", "registries.conf.d"), userDirectory}
+	switch environment := m.Environment("CONTAINERS_REGISTRIES_CONF"); {
+	case environment != "":
+		main = environment
 	case user != "" && isFile(user):
-		main, dirs = user, []string{userDir}
+		main, directories = user, []string{userDirectory}
 	default:
 		main = system("etc", "containers", "registries.conf")
 	}
-	for _, dir := range dirs {
-		if dir == "" {
+	for _, directory := range directories {
+		if directory == "" {
 			continue
 		}
-		files, _ := filepath.Glob(filepath.Join(dir, "*.conf"))
+		files, _ := filepath.Glob(filepath.Join(directory, "*.conf"))
 		sort.Strings(files)
 		for _, f := range files {
 			if isFile(f) {
@@ -55,7 +55,7 @@ func (m Machine) DockerDaemonConfig() string {
 	var candidates []string
 	switch m.GOOS {
 	case "windows":
-		candidates = []string{join(m.Home, ".docker", "daemon.json"), join(m.Env("ProgramData"), "docker", "config", "daemon.json")}
+		candidates = []string{join(m.Home, ".docker", "daemon.json"), join(m.Environment("ProgramData"), "docker", "config", "daemon.json")}
 	case "darwin", "ios":
 		candidates = []string{join(m.Home, ".docker", "daemon.json")}
 	default:
@@ -70,14 +70,14 @@ func (m Machine) DockerDaemonConfig() string {
 }
 
 // GoAuthNetrc reports whether the go command sends the netrc's credentials to a
-// module proxy: GOAUTH (from the environment or the go env file) unset, or a
+// module proxy: GOAUTH (from the environment or the go environment file) unset, or a
 // ";"-separated list naming "netrc" and not "off". The list's other forms - "git
 // <dir>" and a command - make the go command run a program for credentials, which
 // depphunter does not: they contribute nothing.
 //
 // Implements: REQ-AUTH-029
 func (m Machine) GoAuthNetrc() bool {
-	value := strings.TrimSpace(m.GoEnv("GOAUTH"))
+	value := strings.TrimSpace(m.GoEnvironment("GOAUTH"))
 	if value == "" {
 		return true
 	}

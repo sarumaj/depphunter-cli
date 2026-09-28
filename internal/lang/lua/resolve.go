@@ -14,32 +14,32 @@ import (
 )
 
 type rockspec struct {
-	dir, path string
-	spec      *luarocks.Rockspec
-	modules   map[string]string // module -> project file that provides it
-	lock      map[string]string // the luarocks.lock beside it (or the root's)
-	declared  map[string]string // rock -> constraint
-	rocks     []string          // declared and locked rocks, sorted
-	folded    []string          // the same, folded
+	directory, path string
+	spec            *luarocks.Rockspec
+	modules         map[string]string // module -> project file that provides it
+	lock            map[string]string // the luarocks.lock beside it (or the root's)
+	declared        map[string]string // rock -> constraint
+	rocks           []string          // declared and locked rocks, sorted
+	folded          []string          // the same, folded
 }
 
 type wally struct {
-	dir  string
-	name string
-	deps map[string]wallyDep // alias -> dependency
-	lock *wallyLock
+	directory    string
+	name         string
+	dependencies map[string]wallyDependency // alias -> dependency
+	lock         *wallyLock
 }
 
 type resolver struct {
-	files     map[string]bool
-	dirs      map[string]bool
-	suffixes  map[string][]string // module path suffix (a/b) -> files providing it
-	rockspecs []*rockspec
-	wallies   []*wally
-	fwd       map[string]string // Rojo instance path (game/A/B) -> project path
-	rev       map[string]string // project path -> Rojo instance path
-	luarc     []string          // extra module roots
-	luaurc    map[string]map[string]string
+	files       map[string]bool
+	directories map[string]bool
+	suffixes    map[string][]string // module path suffix (a/b) -> files providing it
+	rockspecs   []*rockspec
+	wallies     []*wally
+	forward     map[string]string // Rojo instance path (game/A/B) -> project path
+	rev         map[string]string // project path -> Rojo instance path
+	luarc       []string          // extra module roots
+	luaurc      map[string]map[string]string
 	// models are the model projects (default.project.json whose tree is not a
 	// DataModel) by directory: a $path naming that directory builds its tree.
 	models map[string]*rojoNode
@@ -59,15 +59,15 @@ type installedRock struct {
 // The notes a resolver keeps reach --explain only through lang.Noter.
 var _ lang.Noter = (*resolver)(nil)
 
-// sourceExts are the extensions of Lua sources a module path may name, in the order
+// sourceExtensions are the extensions of Lua sources a module path may name, in the order
 // they are tried.
-var sourceExts = []string{".lua", ".luau", ".tl"}
+var sourceExtensions = []string{".lua", ".luau", ".tl"}
 
 // ignored reports whether a path is inside a tree a package manager installs into:
 // LuaRocks' project tree (lua_modules, .luarocks) or Wally's Packages folders.
 func ignored(p string) bool {
-	for _, seg := range strings.Split(p, "/") {
-		switch seg {
+	for _, segment := range strings.Split(p, "/") {
+		switch segment {
 		case "lua_modules", ".luarocks", "Packages", "DevPackages", "ServerPackages":
 			return true
 		}
@@ -77,11 +77,11 @@ func ignored(p string) bool {
 
 // Implements: REQ-LUA-004, REQ-LUA-007, REQ-LUA-009, REQ-LUA-010
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, dirs: map[string]bool{}, suffixes: map[string][]string{},
-		fwd: map[string]string{}, rev: map[string]string{}, luaurc: map[string]map[string]string{},
+	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, suffixes: map[string][]string{},
+		forward: map[string]string{}, rev: map[string]string{}, luaurc: map[string]map[string]string{},
 		models: map[string]*rojoNode{}}
-	read := func(rel string) ([]byte, bool) {
-		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+	read := func(relative string) ([]byte, bool) {
+		b, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
 		return b, err == nil && len(b) <= lang.MaxParseSize
 	}
 	var rockspecs, wallies, rojos []string
@@ -89,10 +89,10 @@ func newResolver(root string, all []*scan.File) *resolver {
 		p := f.Path
 		r.files[p] = true
 		for d := path.Dir(p); ; d = path.Dir(d) {
-			if r.dirs[d] {
+			if r.directories[d] {
 				break
 			}
-			r.dirs[d] = true
+			r.directories[d] = true
 			if d == "." {
 				break
 			}
@@ -117,12 +117,12 @@ func newResolver(root string, all []*scan.File) *resolver {
 				r.luaurc[path.Dir(p)] = readLuaurc(b)
 			}
 		}
-		if ext := path.Ext(p); ext == ".lua" || ext == ".luau" || ext == ".tl" {
-			mod := strings.TrimSuffix(p, ext)
-			if path.Base(mod) == "init" {
-				mod = path.Dir(mod)
+		if extension := path.Ext(p); extension == ".lua" || extension == ".luau" || extension == ".tl" {
+			module := strings.TrimSuffix(p, extension)
+			if path.Base(module) == "init" {
+				module = path.Dir(module)
 			}
-			segments := strings.Split(mod, "/")
+			segments := strings.Split(module, "/")
 			for i := range segments {
 				key := strings.Join(segments[i:], "/")
 				r.suffixes[key] = append(r.suffixes[key], p)
@@ -130,15 +130,15 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 	}
 	locks := map[string]map[string]string{}
-	lockOf := func(dir string) map[string]string {
-		if l, ok := locks[dir]; ok {
+	lockOf := func(directory string) map[string]string {
+		if l, ok := locks[directory]; ok {
 			return l
 		}
 		var l map[string]string
-		if b, ok := read(path.Join(dir, "luarocks.lock")); ok {
+		if b, ok := read(path.Join(directory, "luarocks.lock")); ok {
 			l = luarocks.ReadLock(b)
 			// Implements: REQ-LUA-007, REQ-TRC-017
-			if lock := path.Join(dir, "luarocks.lock"); len(l) > 0 {
+			if lock := path.Join(directory, "luarocks.lock"); len(l) > 0 {
 				if !r.files[lock] {
 					r.NoteIgnored(lock)
 				}
@@ -146,7 +146,7 @@ func newResolver(root string, all []*scan.File) *resolver {
 					"--resolve-depth follows only rocks installed in lua_modules/ or .luarocks/ (--online asks the rocks servers)")
 			}
 		}
-		locks[dir] = l
+		locks[directory] = l
 		return l
 	}
 	for _, p := range rockspecs {
@@ -154,38 +154,38 @@ func newResolver(root string, all []*scan.File) *resolver {
 		if !ok {
 			continue
 		}
-		rs := &rockspec{dir: path.Dir(p), path: p, spec: luarocks.ReadRockspec(b), modules: map[string]string{}, declared: map[string]string{}}
-		rs.lock = lockOf(rs.dir)
-		if rs.lock == nil {
-			rs.lock = lockOf(".")
+		newRockspec := &rockspec{directory: path.Dir(p), path: p, spec: luarocks.ReadRockspec(b), modules: map[string]string{}, declared: map[string]string{}}
+		newRockspec.lock = lockOf(newRockspec.directory)
+		if newRockspec.lock == nil {
+			newRockspec.lock = lockOf(".")
 		}
-		for _, d := range rs.spec.Deps {
-			if _, ok := rs.declared[d.Name]; !ok {
-				rs.declared[d.Name] = d.Constraint
+		for _, d := range newRockspec.spec.Dependencies {
+			if _, ok := newRockspec.declared[d.Name]; !ok {
+				newRockspec.declared[d.Name] = d.Constraint
 			}
 		}
-		rs.rocks = sortedKeys(rs.declared, rs.lock)
-		for _, rock := range rs.rocks {
-			rs.folded = append(rs.folded, fold(rock))
+		newRockspec.rocks = sortedKeys(newRockspec.declared, newRockspec.lock)
+		for _, rock := range newRockspec.rocks {
+			newRockspec.folded = append(newRockspec.folded, fold(rock))
 		}
-		for _, m := range rs.spec.Modules {
-			if f := r.moduleFile(rs.dir, m.File); f != "" {
-				rs.modules[m.Name] = f
+		for _, m := range newRockspec.spec.Modules {
+			if f := r.moduleFile(newRockspec.directory, m.File); f != "" {
+				newRockspec.modules[m.Name] = f
 			}
 		}
-		r.rockspecs = append(r.rockspecs, rs)
+		r.rockspecs = append(r.rockspecs, newRockspec)
 	}
 	sort.SliceStable(r.rockspecs, func(i, j int) bool {
-		return depth(r.rockspecs[i].dir) < depth(r.rockspecs[j].dir) ||
-			depth(r.rockspecs[i].dir) == depth(r.rockspecs[j].dir) && r.rockspecs[i].path < r.rockspecs[j].path
+		return depth(r.rockspecs[i].directory) < depth(r.rockspecs[j].directory) ||
+			depth(r.rockspecs[i].directory) == depth(r.rockspecs[j].directory) && r.rockspecs[i].path < r.rockspecs[j].path
 	})
-	seen, dirs := map[string]bool{}, []string{"."}
-	for _, rs := range r.rockspecs {
-		dirs = append(dirs, rs.dir)
+	seen, directories := map[string]bool{}, []string{"."}
+	for _, rockspec := range r.rockspecs {
+		directories = append(directories, rockspec.directory)
 	}
-	for _, dir := range dirs {
+	for _, directory := range directories {
 		for _, tree := range []string{"lua_modules", ".luarocks"} {
-			if t := path.Join(dir, tree); !seen[t] {
+			if t := path.Join(directory, tree); !seen[t] {
 				seen[t] = true
 				if rocks := readTree(filepath.Join(root, filepath.FromSlash(t))); len(rocks) > 0 {
 					r.trees = append(r.trees, rocks)
@@ -198,25 +198,25 @@ func newResolver(root string, all []*scan.File) *resolver {
 		if !ok {
 			continue
 		}
-		w := &wally{dir: path.Dir(p), deps: map[string]wallyDep{}}
-		var deps []wallyDep
-		w.name, deps = readWally(b)
-		for _, d := range deps {
-			if _, ok := w.deps[d.alias]; !ok {
-				w.deps[d.alias] = d
+		w := &wally{directory: path.Dir(p), dependencies: map[string]wallyDependency{}}
+		var dependencies []wallyDependency
+		w.name, dependencies = readWally(b)
+		for _, d := range dependencies {
+			if _, ok := w.dependencies[d.alias]; !ok {
+				w.dependencies[d.alias] = d
 			}
 		}
-		if b, ok := read(path.Join(w.dir, "wally.lock")); ok {
+		if b, ok := read(path.Join(w.directory, "wally.lock")); ok {
 			w.lock = readWallyLock(b)
 		}
 		r.wallies = append(r.wallies, w)
 	}
-	sort.SliceStable(r.wallies, func(i, j int) bool { return depth(r.wallies[i].dir) < depth(r.wallies[j].dir) })
+	sort.SliceStable(r.wallies, func(i, j int) bool { return depth(r.wallies[i].directory) < depth(r.wallies[j].directory) })
 	// Rojo: place projects (a DataModel tree) say where each $path lands in the
 	// game; default.project.json first, then the others by path.
 	sort.SliceStable(rojos, func(i, j int) bool {
-		di, dj := path.Base(rojos[i]) == "default.project.json", path.Base(rojos[j]) == "default.project.json"
-		return di && !dj || di == dj && rojos[i] < rojos[j]
+		defaultI, defaultJ := path.Base(rojos[i]) == "default.project.json", path.Base(rojos[j]) == "default.project.json"
+		return defaultI && !defaultJ || defaultI == defaultJ && rojos[i] < rojos[j]
 	})
 	for _, p := range rojos {
 		b, ok := read(p)
@@ -230,19 +230,19 @@ func newResolver(root string, all []*scan.File) *resolver {
 		if !ok || tree.class != "DataModel" {
 			continue
 		}
-		var walk func(n *rojoNode, inst string)
-		walk = func(n *rojoNode, inst string) {
+		var walk func(n *rojoNode, instance string)
+		walk = func(n *rojoNode, instance string) {
 			if n.path != "" {
-				fs := path.Clean(path.Join(path.Dir(p), n.path))
-				if _, ok := r.fwd[inst]; !ok {
-					r.fwd[inst] = fs
+				filePath := path.Clean(path.Join(path.Dir(p), n.path))
+				if _, ok := r.forward[instance]; !ok {
+					r.forward[instance] = filePath
 				}
-				if _, ok := r.rev[fs]; !ok {
-					r.rev[fs] = inst
+				if _, ok := r.rev[filePath]; !ok {
+					r.rev[filePath] = instance
 				}
 			}
 			for _, c := range n.children {
-				walk(c, inst+"/"+c.name)
+				walk(c, instance+"/"+c.name)
 			}
 		}
 		walk(tree, "game")
@@ -281,18 +281,18 @@ func readTree(tree string) map[string]*installedRock {
 	return out
 }
 
-func depth(dir string) int {
-	if dir == "." {
+func depth(directory string) int {
+	if directory == "." {
 		return 0
 	}
-	return strings.Count(dir, "/") + 1
+	return strings.Count(directory, "/") + 1
 }
 
 // moduleFile finds the project file a rockspec's build.modules entry names: relative
 // to the rockspec, else to the project root (a rockspecs/ directory's rockspecs name
 // files of the source tree).
-func (r *resolver) moduleFile(dir, file string) string {
-	for _, p := range []string{path.Join(dir, file), path.Clean(file)} {
+func (r *resolver) moduleFile(directory, file string) string {
+	for _, p := range []string{path.Join(directory, file), path.Clean(file)} {
 		if r.files[p] {
 			return p
 		}
@@ -305,8 +305,8 @@ func (r *resolver) moduleFile(dir, file string) string {
 func (r *resolver) governing(file string) []*rockspec {
 	var out []*rockspec
 	for i := len(r.rockspecs) - 1; i >= 0; i-- {
-		if rs := r.rockspecs[i]; within(file, rs.dir) {
-			out = append(out, rs)
+		if rockspec := r.rockspecs[i]; within(file, rockspec.directory) {
+			out = append(out, rockspec)
 		}
 	}
 	if len(out) == 0 {
@@ -315,48 +315,50 @@ func (r *resolver) governing(file string) []*rockspec {
 	return out
 }
 
-func within(file, dir string) bool { return dir == "." || strings.HasPrefix(file, dir+"/") }
+func within(file, directory string) bool {
+	return directory == "." || strings.HasPrefix(file, directory+"/")
+}
 
 // Resolve maps one import.
 //
 // Implements: REQ-LUA-004, REQ-LUA-005, REQ-LUA-008, REQ-LUA-009, REQ-LUA-010
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	kind, arg, _ := strings.Cut(imp.Name, ":")
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	kind, argument, _ := strings.Cut(rawImport.Name, ":")
 	switch kind {
 	case kindRequire:
-		return r.require(file, imp.Module)
+		return r.require(file, rawImport.Module)
 	case kindPath:
-		return r.luauPath(file, imp.Module)
+		return r.luauPath(file, rawImport.Module)
 	case kindRoblox:
-		return r.roblox(file, strings.Split(imp.Module, "/"))
+		return r.roblox(file, strings.Split(rawImport.Module, "/"))
 	case kindFile:
-		for _, p := range []string{path.Join(path.Dir(file), imp.Module), path.Clean(imp.Module)} {
+		for _, p := range []string{path.Join(path.Dir(file), rawImport.Module), path.Clean(rawImport.Module)} {
 			if r.files[p] {
 				return lang.Target{Local: p}
 			}
 		}
-	case kindDep:
+	case kindDependency:
 		var lock map[string]string
-		for _, rs := range r.rockspecs {
-			if rs.path == file {
-				lock = rs.lock
+		for _, rockspec := range r.rockspecs {
+			if rockspec.path == file {
+				lock = rockspec.lock
 			}
 		}
-		return rockTarget(imp.Module, arg, lock[imp.Module])
+		return rockTarget(rawImport.Module, argument, lock[rawImport.Module])
 	case kindModule:
-		if p := r.moduleFile(path.Dir(file), imp.Module); p != "" {
+		if p := r.moduleFile(path.Dir(file), rawImport.Module); p != "" {
 			return lang.Target{Local: p}
 		}
 	case kindWally:
 		for _, w := range r.wallies {
-			if w.dir == path.Dir(file) {
-				return wallyTarget(imp.Module, arg, w.lock)
+			if w.directory == path.Dir(file) {
+				return wallyTarget(rawImport.Module, argument, w.lock)
 			}
 		}
-		return wallyTarget(imp.Module, arg, nil)
+		return wallyTarget(rawImport.Module, argument, nil)
 	case kindRojo:
-		p := path.Clean(path.Join(path.Dir(file), imp.Module))
-		if r.files[p] || r.dirs[p] {
+		p := path.Clean(path.Join(path.Dir(file), rawImport.Module))
+		if r.files[p] || r.directories[p] {
 			return lang.Target{Local: p}
 		}
 	}
@@ -369,7 +371,7 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 //
 // Implements: REQ-LUA-008
 func rockTarget(name, constraint, locked string) lang.Target {
-	t := lang.Target{Ecosystem: ecoRocks, Package: name}
+	t := lang.Target{Ecosystem: ecosystemRocks, Package: name}
 	switch v, exact := luarocks.Exact(constraint); {
 	case locked != "":
 		t.Version, t.Pinned = locked, true
@@ -390,21 +392,21 @@ func rockTarget(name, constraint, locked string) lang.Target {
 // a caret range in Wally and floats like any other requirement.
 //
 // Implements: REQ-LUA-009
-func wallyTarget(pkg, req string, lock *wallyLock) lang.Target {
-	t := lang.Target{Ecosystem: ecoWally, Package: pkg}
-	if lock != nil && lock.versions[pkg] != "" {
-		t.Version, t.Pinned = lock.versions[pkg], true
-		if req != "" && strings.TrimPrefix(req, "=") != t.Version {
-			t.Requested = req
+func wallyTarget(packageName, requirement string, lock *wallyLock) lang.Target {
+	t := lang.Target{Ecosystem: ecosystemWally, Package: packageName}
+	if lock != nil && lock.versions[packageName] != "" {
+		t.Version, t.Pinned = lock.versions[packageName], true
+		if requirement != "" && strings.TrimPrefix(requirement, "=") != t.Version {
+			t.Requested = requirement
 		}
 		return t
 	}
 	switch {
-	case strings.HasPrefix(req, "="):
-		t.Version = strings.TrimSpace(strings.TrimPrefix(req, "="))
+	case strings.HasPrefix(requirement, "="):
+		t.Version = strings.TrimSpace(strings.TrimPrefix(requirement, "="))
 		t.Pinned = lang.Pinned(t.Version)
-	case req != "":
-		t.Version = req
+	case requirement != "":
+		t.Version = requirement
 	default:
 		t.Floating = true
 	}
@@ -423,13 +425,13 @@ func (r *resolver) require(file, module string) lang.Target {
 	if i := strings.IndexAny(m, "./"); i >= 0 {
 		first = m[:i]
 	}
-	gov := r.governing(file)
-	if std[first] && !r.declares(gov, strings.ToLower(first)) {
-		return lang.Target{Ecosystem: ecoStd, Package: first}
+	governing := r.governing(file)
+	if std[first] && !r.declares(governing, strings.ToLower(first)) {
+		return lang.Target{Ecosystem: ecosystemStd, Package: first}
 	}
-	for _, list := range [][]*rockspec{gov, r.rockspecs} {
-		for _, rs := range list {
-			if f, ok := rs.modules[m]; ok {
+	for _, list := range [][]*rockspec{governing, r.rockspecs} {
+		for _, rockspec := range list {
+			if f, ok := rockspec.modules[m]; ok {
 				return lang.Target{Local: f}
 			}
 		}
@@ -439,21 +441,21 @@ func (r *resolver) require(file, module string) lang.Target {
 		return lang.Target{Local: f}
 	}
 	for _, c := range candidates(m) {
-		if t, ok := r.declared(gov, c, first); ok {
+		if t, ok := r.declared(governing, c, first); ok {
 			return t
 		}
 	}
 	if host := runtime(m); host != "" {
-		return lang.Target{Ecosystem: ecoRuntime, Package: host}
+		return lang.Target{Ecosystem: ecosystemRuntime, Package: host}
 	}
-	if first == "cjson" && r.openresty(gov) {
-		return lang.Target{Ecosystem: ecoRuntime, Package: "openresty"} // bundled with it
+	if first == "cjson" && r.openresty(governing) {
+		return lang.Target{Ecosystem: ecosystemRuntime, Package: "openresty"} // bundled with it
 	}
-	if fs := r.suffixes[p]; len(fs) == 1 && !ignored(fs[0]) {
-		return lang.Target{Local: fs[0]}
+	if files := r.suffixes[p]; len(files) == 1 && !ignored(files[0]) {
+		return lang.Target{Local: files[0]}
 	}
-	for _, rs := range gov {
-		if strings.EqualFold(rs.spec.Package, first) {
+	for _, rockspec := range governing {
+		if strings.EqualFold(rockspec.spec.Package, first) {
 			return lang.Target{} // the rock's own module, not in this checkout
 		}
 	}
@@ -461,7 +463,7 @@ func (r *resolver) require(file, module string) lang.Target {
 	if _, ok := aliases[m]; ok || aliases[first] != nil || first == "resty" {
 		name = candidates(m)[0]
 	}
-	return lang.Target{Ecosystem: ecoRocks, Package: name, Unresolved: true}
+	return lang.Target{Ecosystem: ecosystemRocks, Package: name, Unresolved: true}
 }
 
 // probeRoots looks for a module path under the directories package.path usually
@@ -491,14 +493,14 @@ func (r *resolver) probe(p string) string {
 	if strings.HasPrefix(p, "../") || ignored(p) {
 		return ""
 	}
-	for _, ext := range sourceExts {
-		if r.files[p+ext] {
-			return p + ext
+	for _, extension := range sourceExtensions {
+		if r.files[p+extension] {
+			return p + extension
 		}
 	}
-	for _, ext := range sourceExts {
-		if r.files[p+"/init"+ext] {
-			return p + "/init" + ext
+	for _, extension := range sourceExtensions {
+		if r.files[p+"/init"+extension] {
+			return p + "/init" + extension
 		}
 	}
 	return ""
@@ -506,9 +508,9 @@ func (r *resolver) probe(p string) string {
 
 // openresty reports whether a project runs on OpenResty, as declaring lua-resty
 // rocks says: it then gets lua-cjson from OpenResty, not from a rock.
-func (r *resolver) openresty(gov []*rockspec) bool {
-	for _, rs := range gov {
-		for rock := range rs.declared {
+func (r *resolver) openresty(governing []*rockspec) bool {
+	for _, rockspec := range governing {
+		for rock := range rockspec.declared {
 			if strings.HasPrefix(rock, "lua-resty-") {
 				return true
 			}
@@ -518,19 +520,19 @@ func (r *resolver) openresty(gov []*rockspec) bool {
 }
 
 // declares reports whether any of the rockspecs declares or locks a rock.
-func (r *resolver) declares(gov []*rockspec, name string) bool {
-	_, ok := r.declared(gov, name, "")
+func (r *resolver) declares(governing []*rockspec, name string) bool {
+	_, ok := r.declared(governing, name, "")
 	return ok
 }
 
 // declared finds a rock the governing rockspecs declare or their locks hold, by
 // name; with first set also a fork named <owner>-<first> (kong-pgmoon for pgmoon).
-func (r *resolver) declared(gov []*rockspec, name, first string) (lang.Target, bool) {
+func (r *resolver) declared(governing []*rockspec, name, first string) (lang.Target, bool) {
 	want, fork := fold(name), "-"+strings.ToLower(first)
-	for _, rs := range gov {
-		for k, rock := range rs.rocks {
-			if rs.folded[k] == want || (first != "" && strings.HasSuffix(rock, fork)) {
-				return rockTarget(rock, rs.declared[rock], rs.lock[rock]), true
+	for _, rockspec := range governing {
+		for k, rock := range rockspec.rocks {
+			if rockspec.folded[k] == want || (first != "" && strings.HasSuffix(rock, fork)) {
+				return rockTarget(rock, rockspec.declared[rock], rockspec.lock[rock]), true
 			}
 		}
 	}
@@ -557,29 +559,29 @@ func sortedKeys(maps ...map[string]string) []string {
 // directory), "@self/x" from the module itself, "@alias/x" through the nearest
 // .luaurc's aliases.
 func (r *resolver) luauPath(file, spec string) lang.Target {
-	dir := path.Dir(file)
+	directory := path.Dir(file)
 	init := stem(file) == "init"
 	var base, rest string
 	switch {
 	case strings.HasPrefix(spec, "@self"):
-		base, rest = path.Join(dir, stem(file)), strings.TrimPrefix(spec, "@self")
+		base, rest = path.Join(directory, stem(file)), strings.TrimPrefix(spec, "@self")
 		if init {
-			base = dir
+			base = directory
 		}
 	case strings.HasPrefix(spec, "@"):
 		alias, tail, _ := strings.Cut(spec[1:], "/")
 		if strings.EqualFold(alias, "lune") {
-			return lang.Target{Ecosystem: ecoRuntime, Package: "lune"}
+			return lang.Target{Ecosystem: ecosystemRuntime, Package: "lune"}
 		}
-		target, at, ok := r.alias(dir, strings.ToLower(alias))
+		target, at, ok := r.alias(directory, strings.ToLower(alias))
 		if !ok {
 			return r.wallyIn(file, strings.Split(alias+"/"+tail, "/"))
 		}
 		base, rest = path.Join(at, target), tail
 	default:
-		base, rest = dir, spec
+		base, rest = directory, spec
 		if init {
-			base = path.Dir(dir)
+			base = path.Dir(directory)
 		}
 	}
 	p := path.Clean(path.Join(base, rest))
@@ -592,9 +594,9 @@ func (r *resolver) luauPath(file, spec string) lang.Target {
 	return r.wallyIn(file, strings.Split(p, "/"))
 }
 
-// alias finds a .luaurc alias in dir or above: its value and the .luaurc's dir.
-func (r *resolver) alias(dir, name string) (string, string, bool) {
-	for d := dir; ; d = path.Dir(d) {
+// alias finds a .luaurc alias in directory or above: its value and the .luaurc's directory.
+func (r *resolver) alias(directory, name string) (string, string, bool) {
+	for d := directory; ; d = path.Dir(d) {
 		if v, ok := r.luaurc[d][name]; ok {
 			return v, d, true
 		}
@@ -606,23 +608,23 @@ func (r *resolver) alias(dir, name string) (string, string, bool) {
 
 // wallyIn resolves an instance or file path through a Wally Packages folder
 // (Packages/Roact) to the package the governing wally.toml names so.
-func (r *resolver) wallyIn(file string, elems []string) lang.Target {
-	for k := 0; k+1 < len(elems); k++ {
-		if !packages(elems[k]) {
+func (r *resolver) wallyIn(file string, elements []string) lang.Target {
+	for k := 0; k+1 < len(elements); k++ {
+		if !packages(elements[k]) {
 			continue
 		}
-		alias := elems[k+1]
+		alias := elements[k+1]
 		for _, w := range r.wallyOf(file) {
-			d, ok := w.deps[alias]
+			d, ok := w.dependencies[alias]
 			if !ok {
-				for a, dd := range w.deps {
+				for a, dd := range w.dependencies {
 					if strings.EqualFold(a, alias) {
 						d, ok = dd, true
 					}
 				}
 			}
 			if ok {
-				return wallyTarget(d.pkg, d.req, w.lock)
+				return wallyTarget(d.packageName, d.requirement, w.lock)
 			}
 		}
 	}
@@ -634,7 +636,7 @@ func (r *resolver) wallyIn(file string, elems []string) lang.Target {
 func (r *resolver) wallyOf(file string) []*wally {
 	var out []*wally
 	for i := len(r.wallies) - 1; i >= 0; i-- {
-		if within(file, r.wallies[i].dir) {
+		if within(file, r.wallies[i].directory) {
 			out = append(out, r.wallies[i])
 		}
 	}
@@ -651,75 +653,75 @@ func (r *resolver) wallyOf(file string) []*wally {
 // it; .. is the parent instance, else directory; a child is what the project maps
 // under the instance, else the child file or directory. A path through a Packages
 // folder is a Wally package.
-func (r *resolver) roblox(file string, elems []string) lang.Target {
-	if t := r.wallyIn(file, elems); t.Package != "" {
+func (r *resolver) roblox(file string, elements []string) lang.Target {
+	if t := r.wallyIn(file, elements); t.Package != "" {
 		return t
 	}
-	var fs, inst string
-	switch elems[0] {
+	var filePath, instance string
+	switch elements[0] {
 	case "script":
-		fs = file
+		filePath = file
 		if stem(file) == "init" {
-			fs = path.Dir(file)
+			filePath = path.Dir(file)
 		}
-		inst = r.instanceOf(fs)
+		instance = r.instanceOf(filePath)
 	case "game":
-		inst = "game"
+		instance = "game"
 	default:
 		return lang.Target{}
 	}
-	onDisk := func(p string) bool { return r.files[p] || r.dirs[p] }
+	onDisk := func(p string) bool { return r.files[p] || r.directories[p] }
 	mapped := func(i string) string {
-		if p, ok := r.fwd[i]; ok && onDisk(p) {
+		if p, ok := r.forward[i]; ok && onDisk(p) {
 			return p
 		}
 		return ""
 	}
-	if inst != "" && fs == "" {
-		fs = mapped(inst)
+	if instance != "" && filePath == "" {
+		filePath = mapped(instance)
 	}
-	for _, e := range elems[1:] {
-		isDir := fs != "" && r.dirs[fs] && !r.files[fs]
+	for _, e := range elements[1:] {
+		isDirectory := filePath != "" && r.directories[filePath] && !r.files[filePath]
 		if e == ".." {
-			_, root := r.rev[fs]
+			_, root := r.rev[filePath]
 			switch {
-			case inst != "" && strings.Contains(inst, "/"):
-				inst = inst[:strings.LastIndex(inst, "/")]
-				if m := mapped(inst); m != "" {
-					fs = m
-				} else if fs != "" && !root && fs != "." {
-					fs = path.Dir(fs)
+			case instance != "" && strings.Contains(instance, "/"):
+				instance = instance[:strings.LastIndex(instance, "/")]
+				if m := mapped(instance); m != "" {
+					filePath = m
+				} else if filePath != "" && !root && filePath != "." {
+					filePath = path.Dir(filePath)
 				} else {
-					fs = ""
+					filePath = ""
 				}
-			case inst == "" && fs != "" && fs != ".":
-				fs = path.Dir(fs)
+			case instance == "" && filePath != "" && filePath != ".":
+				filePath = path.Dir(filePath)
 			default:
 				return lang.Target{}
 			}
 			continue
 		}
 		next := ""
-		if inst != "" {
-			inst += "/" + e
-			next = mapped(inst)
+		if instance != "" {
+			instance += "/" + e
+			next = mapped(instance)
 		}
-		if next == "" && inst != "" && packages(path.Base(r.fwd[inst[:strings.LastIndex(inst, "/")]])) {
+		if next == "" && instance != "" && packages(path.Base(r.forward[instance[:strings.LastIndex(instance, "/")]])) {
 			// A folder Wally installs into, mapped by the project.
 			if t := r.wallyIn(file, []string{"Packages", e}); t.Package != "" {
 				return t
 			}
 		}
-		if next == "" && isDir {
-			if m := r.models[fs]; m != nil {
-				fs, isDir = r.model(fs, m, e)
-				if isDir || fs != "" {
+		if next == "" && isDirectory {
+			if m := r.models[filePath]; m != nil {
+				filePath, isDirectory = r.model(filePath, m, e)
+				if isDirectory || filePath != "" {
 					continue
 				}
 			}
-			child := path.Join(fs, e)
+			child := path.Join(filePath, e)
 			switch {
-			case r.dirs[child] && !r.files[child]:
+			case r.directories[child] && !r.files[child]:
 				next = child
 			case r.files[child+".lua"]:
 				next = child + ".lua"
@@ -727,19 +729,19 @@ func (r *resolver) roblox(file string, elems []string) lang.Target {
 				next = child + ".luau"
 			}
 		}
-		fs = next
-		if fs == "" && inst == "" {
+		filePath = next
+		if filePath == "" && instance == "" {
 			return lang.Target{}
 		}
 	}
 	switch {
-	case fs == "":
-	case r.files[fs]:
-		return lang.Target{Local: fs}
+	case filePath == "":
+	case r.files[filePath]:
+		return lang.Target{Local: filePath}
 	default:
-		for _, ext := range sourceExts {
-			if r.files[path.Join(fs, "init"+ext)] {
-				return lang.Target{Local: path.Join(fs, "init"+ext)}
+		for _, extension := range sourceExtensions {
+			if r.files[path.Join(filePath, "init"+extension)] {
+				return lang.Target{Local: path.Join(filePath, "init"+extension)}
 			}
 		}
 	}
@@ -748,17 +750,17 @@ func (r *resolver) roblox(file string, elems []string) lang.Target {
 
 // model steps into a child of a model project's root instance: a child the tree
 // names, else one of the directory its root $path names.
-func (r *resolver) model(dir string, root *rojoNode, e string) (string, bool) {
+func (r *resolver) model(directory string, root *rojoNode, e string) (string, bool) {
 	for _, c := range root.children {
 		if c.name == e && c.path != "" {
-			p := path.Clean(path.Join(dir, c.path))
-			return p, r.dirs[p] && !r.files[p]
+			p := path.Clean(path.Join(directory, c.path))
+			return p, r.directories[p] && !r.files[p]
 		}
 	}
 	if root.path != "" {
-		p := path.Clean(path.Join(dir, root.path, e))
+		p := path.Clean(path.Join(directory, root.path, e))
 		switch {
-		case r.dirs[p] && !r.files[p]:
+		case r.directories[p] && !r.files[p]:
 			return p, true
 		case r.files[p+".lua"]:
 			return p + ".lua", false
@@ -779,9 +781,9 @@ func stem(p string) string { return strings.TrimSuffix(path.Base(p), path.Ext(p)
 // instanceOf is the instance path a Rojo place project gives a project path: that of
 // the nearest mapped directory above it, followed by the names below (a file named
 // without its extension and .server/.client suffix). "" when none maps it.
-func (r *resolver) instanceOf(fs string) string {
+func (r *resolver) instanceOf(filePath string) string {
 	var tail []string
-	for p := fs; ; p = path.Dir(p) {
+	for p := filePath; ; p = path.Dir(p) {
 		if i, ok := r.rev[p]; ok {
 			for k := len(tail) - 1; k >= 0; k-- {
 				i += "/" + tail[k]
@@ -805,24 +807,24 @@ func (r *resolver) instanceOf(fs string) string {
 //
 // Implements: REQ-LUA-009, REQ-LUA-013
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
-	if t.Ecosystem == ecoRocks {
+	if t.Ecosystem == ecosystemRocks {
 		return r.installedDependencies(t)
 	}
-	if t.Ecosystem != ecoWally {
+	if t.Ecosystem != ecosystemWally {
 		return nil
 	}
 	for _, w := range r.wallies {
 		if w.lock == nil {
 			continue
 		}
-		deps, ok := w.lock.deps[t.Package]
+		dependencies, ok := w.lock.dependencies[t.Package]
 		if !ok {
 			continue
 		}
 		out := []lang.Target{}
-		for _, d := range deps {
-			name, ver, _ := strings.Cut(d, "@")
-			out = append(out, lang.Target{Ecosystem: ecoWally, Package: name, Version: ver, Pinned: ver != ""})
+		for _, d := range dependencies {
+			name, version, _ := strings.Cut(d, "@")
+			out = append(out, lang.Target{Ecosystem: ecosystemWally, Package: name, Version: version, Pinned: version != ""})
 		}
 		return out
 	}
@@ -842,14 +844,14 @@ func (r *resolver) installedDependencies(t lang.Target) []lang.Target {
 		}
 		out := []lang.Target{}
 		seen := map[string]bool{}
-		for _, d := range rock.spec.Deps {
+		for _, d := range rock.spec.Dependencies {
 			if d.Section != "dependencies" || d.Name == "lua" || seen[d.Name] {
 				continue
 			}
 			seen[d.Name] = true
 			locked := ""
-			if dep := tree[d.Name]; dep != nil {
-				locked = dep.version
+			if dependency := tree[d.Name]; dependency != nil {
+				locked = dependency.version
 			}
 			out = append(out, rockTarget(d.Name, d.Constraint, locked))
 		}
@@ -860,7 +862,7 @@ func (r *resolver) installedDependencies(t lang.Target) []lang.Target {
 
 // Installed reports whether a rock's dependencies come from a LuaRocks tree.
 func (r *resolver) Installed(t lang.Target) bool {
-	if t.Ecosystem != ecoRocks {
+	if t.Ecosystem != ecosystemRocks {
 		return false
 	}
 	for _, tree := range r.trees {

@@ -2,9 +2,9 @@ package objc
 
 // Token kinds.
 const (
-	tIdent  = iota // identifier or keyword; "@interface" and kin keep their "@"
-	tPunct         // one punctuation character, or "::"
-	tString        // a string or character literal
+	tIdentifier  = iota // identifier or keyword; "@interface" and kin keep their "@"
+	tPunctuation        // one punctuation character, or "::"
+	tString             // a string or character literal
 	tNumber
 )
 
@@ -20,62 +20,62 @@ type token struct {
 // are 1-based.
 //
 // Implements: REQ-OBJC-003, REQ-OBJC-013
-func lex(src []byte) []token {
+func lex(source []byte) []token {
 	var out []token
 	line := 1
-	bol := true // only whitespace since the start of the line
-	n := len(src)
+	lineStart := true // only whitespace since the start of the line
+	n := len(source)
 	for i := 0; i < n; {
-		c := src[i]
+		c := source[i]
 		switch {
 		case c == '\n':
 			line++
-			bol = true
+			lineStart = true
 			i++
 			continue
 		case c == ' ' || c == '\t' || c == '\r' || c == '\f' || c == '\v':
 			i++
 			continue
-		case c == '/' && i+1 < n && src[i+1] == '/':
-			for i < n && src[i] != '\n' {
+		case c == '/' && i+1 < n && source[i+1] == '/':
+			for i < n && source[i] != '\n' {
 				i++
 			}
 			continue
-		case c == '/' && i+1 < n && src[i+1] == '*':
+		case c == '/' && i+1 < n && source[i+1] == '*':
 			i += 2
-			for i < n && !(src[i] == '*' && i+1 < n && src[i+1] == '/') {
-				if src[i] == '\n' {
+			for i < n && !(source[i] == '*' && i+1 < n && source[i+1] == '/') {
+				if source[i] == '\n' {
 					line++
 				}
 				i++
 			}
 			i += 2
 			continue
-		case c == '#' && bol:
+		case c == '#' && lineStart:
 			// A directive: to the end of the line, continuations and block comments
 			// included.
-			for i < n && src[i] != '\n' {
+			for i < n && source[i] != '\n' {
 				switch {
-				case src[i] == '\\' && i+1 < n && src[i+1] == '\n':
+				case source[i] == '\\' && i+1 < n && source[i+1] == '\n':
 					line++
 					i += 2
 					continue
-				case src[i] == '\\' && i+2 < n && src[i+1] == '\r' && src[i+2] == '\n':
+				case source[i] == '\\' && i+2 < n && source[i+1] == '\r' && source[i+2] == '\n':
 					line++
 					i += 3
 					continue
-				case src[i] == '/' && i+1 < n && src[i+1] == '*':
+				case source[i] == '/' && i+1 < n && source[i+1] == '*':
 					i += 2
-					for i < n && !(src[i] == '*' && i+1 < n && src[i+1] == '/') {
-						if src[i] == '\n' {
+					for i < n && !(source[i] == '*' && i+1 < n && source[i+1] == '/') {
+						if source[i] == '\n' {
 							line++
 						}
 						i++
 					}
 					i += 2
 					continue
-				case src[i] == '/' && i+1 < n && src[i+1] == '/':
-					for i < n && src[i] != '\n' {
+				case source[i] == '/' && i+1 < n && source[i+1] == '/':
+					for i < n && source[i] != '\n' {
 						i++
 					}
 					continue
@@ -84,43 +84,43 @@ func lex(src []byte) []token {
 			}
 			continue
 		}
-		bol = false
+		lineStart = false
 		start, startLine := i, line
 		switch {
 		case c == '"' || c == '\'':
-			i = skipQuoted(src, i, &line)
-			out = append(out, token{tString, string(src[start:min(i, n)]), startLine})
-		case c == 'R' && i+1 < n && src[i+1] == '"':
-			i = skipRaw(src, i+1, &line)
+			i = skipQuoted(source, i, &line)
+			out = append(out, token{tString, string(source[start:min(i, n)]), startLine})
+		case c == 'R' && i+1 < n && source[i+1] == '"':
+			i = skipRaw(source, i+1, &line)
 			out = append(out, token{tString, "R\"\"", startLine})
-		case c == '@' && i+1 < n && src[i+1] == '"':
-			i = skipQuoted(src, i+1, &line)
-			out = append(out, token{tString, string(src[start:min(i, n)]), startLine})
-		case c == '@' && i+1 < n && identStart(src[i+1]):
+		case c == '@' && i+1 < n && source[i+1] == '"':
+			i = skipQuoted(source, i+1, &line)
+			out = append(out, token{tString, string(source[start:min(i, n)]), startLine})
+		case c == '@' && i+1 < n && identifierStart(source[i+1]):
 			i++
-			for i < n && identChar(src[i]) {
+			for i < n && identifierCharacter(source[i]) {
 				i++
 			}
-			out = append(out, token{tIdent, string(src[start:i]), startLine})
-		case identStart(c):
-			for i < n && identChar(src[i]) {
+			out = append(out, token{tIdentifier, string(source[start:i]), startLine})
+		case identifierStart(c):
+			for i < n && identifierCharacter(source[i]) {
 				i++
 			}
-			out = append(out, token{tIdent, string(src[start:i]), startLine})
-		case c >= '0' && c <= '9' || c == '.' && i+1 < n && src[i+1] >= '0' && src[i+1] <= '9':
+			out = append(out, token{tIdentifier, string(source[start:i]), startLine})
+		case c >= '0' && c <= '9' || c == '.' && i+1 < n && source[i+1] >= '0' && source[i+1] <= '9':
 			i++
-			for i < n && (identChar(src[i]) || src[i] == '.' ||
-				src[i] == '\'' && i+1 < n && identChar(src[i+1]) ||
-				(src[i] == '+' || src[i] == '-') && (src[i-1] == 'e' || src[i-1] == 'E' || src[i-1] == 'p' || src[i-1] == 'P')) {
+			for i < n && (identifierCharacter(source[i]) || source[i] == '.' ||
+				source[i] == '\'' && i+1 < n && identifierCharacter(source[i+1]) ||
+				(source[i] == '+' || source[i] == '-') && (source[i-1] == 'e' || source[i-1] == 'E' || source[i-1] == 'p' || source[i-1] == 'P')) {
 				i++
 			}
-			out = append(out, token{tNumber, string(src[start:i]), startLine})
-		case c == ':' && i+1 < n && src[i+1] == ':':
+			out = append(out, token{tNumber, string(source[start:i]), startLine})
+		case c == ':' && i+1 < n && source[i+1] == ':':
 			i += 2
-			out = append(out, token{tPunct, "::", startLine})
+			out = append(out, token{tPunctuation, "::", startLine})
 		default:
 			i++
-			out = append(out, token{tPunct, string(c), startLine})
+			out = append(out, token{tPunctuation, string(c), startLine})
 		}
 	}
 	return out
@@ -128,13 +128,13 @@ func lex(src []byte) []token {
 
 // skipQuoted steps over a string or character literal starting at i (the quote),
 // returning the index after it. An unterminated one ends at the line's end.
-func skipQuoted(src []byte, i int, line *int) int {
-	q := src[i]
+func skipQuoted(source []byte, i int, line *int) int {
+	q := source[i]
 	i++
-	for i < len(src) {
-		switch src[i] {
+	for i < len(source) {
+		switch source[i] {
 		case '\\':
-			if i+1 < len(src) && src[i+1] == '\n' {
+			if i+1 < len(source) && source[i+1] == '\n' {
 				*line++
 			}
 			i += 2
@@ -146,32 +146,32 @@ func skipQuoted(src []byte, i int, line *int) int {
 		}
 		i++
 	}
-	return len(src)
+	return len(source)
 }
 
 // skipRaw steps over a C++ raw string R"delim( ... )delim" from its quote.
-func skipRaw(src []byte, i int, line *int) int {
+func skipRaw(source []byte, i int, line *int) int {
 	j := i + 1
-	for j < len(src) && src[j] != '(' && src[j] != '\n' && j-i < 18 {
+	for j < len(source) && source[j] != '(' && source[j] != '\n' && j-i < 18 {
 		j++
 	}
-	if j >= len(src) || src[j] != '(' {
-		return skipQuoted(src, i, line)
+	if j >= len(source) || source[j] != '(' {
+		return skipQuoted(source, i, line)
 	}
-	end := ")" + string(src[i+1:j]) + "\""
-	for k := j + 1; k+len(end) <= len(src); k++ {
-		if src[k] == '\n' {
+	end := ")" + string(source[i+1:j]) + "\""
+	for k := j + 1; k+len(end) <= len(source); k++ {
+		if source[k] == '\n' {
 			*line++
 		}
-		if string(src[k:k+len(end)]) == end {
+		if string(source[k:k+len(end)]) == end {
 			return k + len(end)
 		}
 	}
-	return len(src)
+	return len(source)
 }
 
-func identStart(c byte) bool {
+func identifierStart(c byte) bool {
 	return c == '_' || c == '$' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 0x80
 }
 
-func identChar(c byte) bool { return identStart(c) || c >= '0' && c <= '9' }
+func identifierCharacter(c byte) bool { return identifierStart(c) || c >= '0' && c <= '9' }

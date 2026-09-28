@@ -17,7 +17,7 @@ const (
 	kInput   = "input"   // a flake input; Module = name \n ref.encode() \n follows
 	kUse     = "use"     // inputs.<name> outside flake.nix; Module = name
 	kPin     = "pin"     // sources.<name> of niv or npins; Module = sources dir \n name
-	kPkg     = "pkg"     // a nixpkgs attribute in a package list; Module = attribute path
+	kPackage = "pkg"     // a nixpkgs attribute in a package list; Module = attribute path
 )
 
 // scope is a lexical scope of the walk: names bound by let, rec, a lambda, or a
@@ -53,23 +53,23 @@ func (s *scope) lookup(name string) (string, string) {
 }
 
 type extractor struct {
-	flake    bool
-	imports  []lang.RawImport
-	seen     map[string]bool
-	consumed map[*node]bool
-	sources  map[string]string // name bound to niv's or npins' import -> sources dir as written
-	symbols  []lang.Symbol
-	symSeen  map[string]bool
-	visits   int
+	flake      bool
+	imports    []lang.RawImport
+	seen       map[string]bool
+	consumed   map[*node]bool
+	sources    map[string]string // name bound to niv's or npins' import -> sources dir as written
+	symbols    []lang.Symbol
+	symbolSeen map[string]bool
+	visits     int
 }
 
 // maxVisits bounds the walk; a tree is at most a few nodes per token, so this is
 // only reached by pathological input.
 const maxVisits = 4_000_000
 
-func extract(src []byte, flake bool) *lang.Extraction {
-	root := parse(src)
-	e := &extractor{flake: flake, seen: map[string]bool{}, consumed: map[*node]bool{}, sources: map[string]string{}, symSeen: map[string]bool{}}
+func extract(source []byte, flake bool) *lang.Extraction {
+	root := parse(source)
+	e := &extractor{flake: flake, seen: map[string]bool{}, consumed: map[*node]bool{}, sources: map[string]string{}, symbolSeen: map[string]bool{}}
 	if flake {
 		e.flakeInputs(root)
 		e.flakeSymbols(root)
@@ -110,15 +110,15 @@ func (e *extractor) emit(kind, spec, module string, line int) {
 }
 
 func (e *extractor) symbol(name, kind string, line int) {
-	if name == "" || e.symSeen[name] {
+	if name == "" || e.symbolSeen[name] {
 		return
 	}
-	e.symSeen[name] = true
+	e.symbolSeen[name] = true
 	e.symbols = append(e.symbols, lang.Symbol{Name: name, Kind: kind, Line: line})
 }
 
 func unparen(n *node) *node {
-	for n != nil && n.kind == nParen && len(n.kids) > 0 {
+	for n != nil && n.kind == nParenthesis && len(n.kids) > 0 {
 		n = n.kids[0]
 	}
 	return n
@@ -136,23 +136,23 @@ func static(p []string) bool {
 	return true
 }
 
-// fnName is the name an application calls: `import`, `callPackage` of
+// functionName is the name an application calls: `import`, `callPackage` of
 // `pkgs.callPackage`, `fetchTarball` of `builtins.fetchTarball`.
-func fnName(n *node) (name string, builtin bool) {
+func functionName(n *node) (name string, builtin bool) {
 	n = unparen(n)
 	switch n.kind {
-	case nIdent:
+	case nIdentifier:
 		return n.text, false
 	case nSelect:
 		if len(n.path) > 0 && n.path[len(n.path)-1] != "" {
 			b := unparen(n.kids[0])
-			return n.path[len(n.path)-1], b.kind == nIdent && b.text == "builtins" && len(n.path) == 1
+			return n.path[len(n.path)-1], b.kind == nIdentifier && b.text == "builtins" && len(n.path) == 1
 		}
 	}
 	return "", false
 }
 
-func (e *extractor) walk(n *node, sc *scope, top bool, depth int) {
+func (e *extractor) walk(n *node, current *scope, top bool, depth int) {
 	if n == nil || depth > 2*maxDepth {
 		return
 	}
@@ -162,12 +162,12 @@ func (e *extractor) walk(n *node, sc *scope, top bool, depth int) {
 	d := depth + 1
 	switch n.kind {
 	case nSelect:
-		if b := unparen(n.kids[0]); b.kind == nIdent && len(n.path) > 0 && n.path[0] != "" {
+		if b := unparen(n.kids[0]); b.kind == nIdentifier && len(n.path) > 0 && n.path[0] != "" {
 			if b.text == "inputs" && !e.flake {
 				e.emit(kUse, "inputs."+n.path[0], n.path[0], n.line)
 			}
-			if dir, ok := e.sources[b.text]; ok {
-				e.emit(kPin, b.text+"."+n.path[0], dir+"\n"+n.path[0], n.line)
+			if directory, ok := e.sources[b.text]; ok {
+				e.emit(kPin, b.text+"."+n.path[0], directory+"\n"+n.path[0], n.line)
 			}
 		}
 	case nPath:
@@ -176,10 +176,10 @@ func (e *extractor) walk(n *node, sc *scope, top bool, depth int) {
 		}
 	case nSPath:
 		e.emit(kChannel, "<"+n.text+">", strings.Split(n.text, "/")[0], n.line)
-	case nAttrs:
-		inner := sc
-		if n.rec {
-			inner = &scope{parent: sc, names: bindNames(n.binds)}
+	case nAttributes:
+		inner := current
+		if n.recursive {
+			inner = &scope{parent: current, names: bindNames(n.binds)}
 		}
 		e.sourcesOf(n.binds)
 		for _, b := range n.binds {
@@ -187,7 +187,7 @@ func (e *extractor) walk(n *node, sc *scope, top bool, depth int) {
 		}
 		return
 	case nLet:
-		inner := &scope{parent: sc, names: bindNames(n.binds)}
+		inner := &scope{parent: current, names: bindNames(n.binds)}
 		e.sourcesOf(n.binds)
 		for _, b := range n.binds {
 			e.bind(b, inner, d)
@@ -197,9 +197,9 @@ func (e *extractor) walk(n *node, sc *scope, top bool, depth int) {
 		}
 		return
 	case nWith:
-		e.walk(n.kids[0], sc, false, d)
-		inner := &scope{parent: sc}
-		inner.with, inner.prefix = pkgsEnv(n.kids[0])
+		e.walk(n.kids[0], current, false, d)
+		inner := &scope{parent: current}
+		inner.with, inner.prefix = packagesEnvironment(n.kids[0])
 		if len(n.kids) > 1 {
 			e.walk(n.kids[1], inner, top, d)
 		}
@@ -214,22 +214,22 @@ func (e *extractor) walk(n *node, sc *scope, top bool, depth int) {
 		}
 		e.sourcesOf(n.binds)
 		for _, b := range n.binds { // defaults: `pkgs ? import <nixpkgs> { }`
-			e.walk(b.value, sc, false, d)
+			e.walk(b.value, current, false, d)
 		}
-		inner := &scope{parent: sc, names: names, formals: top && n.set && !e.flake}
+		inner := &scope{parent: current, names: names, formals: top && n.set && !e.flake}
 		e.walk(n.kids[0], inner, top, d)
 		return
 	case nApply:
 		e.apply(n)
 	}
 	for _, k := range n.kids {
-		e.walk(k, sc, false, d)
+		e.walk(k, current, false, d)
 	}
 }
 
-func bindNames(bs []*bind) map[string]bool {
+func bindNames(binds []*bind) map[string]bool {
 	m := map[string]bool{}
-	for _, b := range bs {
+	for _, b := range binds {
 		if len(b.path) > 0 && b.path[0] != "" {
 			m[b.path[0]] = true
 		}
@@ -245,19 +245,19 @@ var packageLists = map[string]bool{
 	"packages": true, "systemPackages": true,
 }
 
-func (e *extractor) bind(b *bind, sc *scope, depth int) {
+func (e *extractor) bind(b *bind, current *scope, depth int) {
 	if b.value == nil {
 		return
 	}
 	if !b.inherit && len(b.path) > 0 {
 		switch last := b.path[len(b.path)-1]; {
 		case packageLists[last]:
-			e.pkgList(b.value, sc, 0)
+			e.packageList(b.value, current, 0)
 		case last == "imports":
 			e.moduleImports(b.value, 0)
 		}
 	}
-	e.walk(b.value, sc, false, depth)
+	e.walk(b.value, current, false, depth)
 }
 
 // moduleImports reads a NixOS module's `imports = [ ./a.nix ./b ]` (lists joined
@@ -303,63 +303,63 @@ func (e *extractor) path(kind string, n *node) {
 //
 // Implements: REQ-NIX-002, REQ-NIX-004, REQ-NIX-010
 func (e *extractor) apply(n *node) {
-	name, builtin := fnName(n.kids[0])
-	args := n.kids[1:]
-	if len(args) == 0 {
+	name, builtin := functionName(n.kids[0])
+	arguments := n.kids[1:]
+	if len(arguments) == 0 {
 		return
 	}
 	switch name {
 	case "import", "callPackage", "callPackages", "callPackageWith", "callPackagesWith":
-		a := args[0]
+		a := arguments[0]
 		if strings.HasSuffix(name, "With") {
-			if len(args) < 2 {
+			if len(arguments) < 2 {
 				return
 			}
-			a = args[1]
+			a = arguments[1]
 		}
 		if a = unparen(a); a.kind == nPath && !a.interpolate {
 			e.consumed[a] = true
 			e.path(kImport, a)
 		}
 	case "fetchTarball", "fetchGit", "fetchTree", "getFlake", "fetchMercurial":
-		if fn := unparen(n.kids[0]); !builtin && fn.kind != nIdent {
+		if function := unparen(n.kids[0]); !builtin && function.kind != nIdentifier {
 			return // pkgs.fetchgit and friends fetch a package's sources
 		}
-		a := unparen(args[0])
-		var r ref
+		a := unparen(arguments[0])
+		var r reference
 		spec := ""
 		switch {
 		case a.kind == nString && !a.interpolate || a.kind == nURI:
 			spec = a.text
 			switch name {
 			case "fetchTarball":
-				r = ref{typ: "tarball", url: a.text}
+				r = reference{typeName: "tarball", url: a.text}
 			case "fetchGit":
-				r = ref{typ: "git", url: a.text}
+				r = reference{typeName: "git", url: a.text}
 			case "fetchMercurial":
-				r = ref{typ: "hg", url: a.text}
+				r = reference{typeName: "hg", url: a.text}
 			default:
-				r = parseRef(a.text)
+				r = parseReference(a.text)
 			}
-		case a.kind == nAttrs:
+		case a.kind == nAttributes:
 			f := literalFields(a)
 			switch name {
 			case "fetchTarball":
-				r = ref{typ: "tarball", url: f["url"], narHash: f["sha256"]}
+				r = reference{typeName: "tarball", url: f["url"], narHash: f["sha256"]}
 			case "fetchGit", "fetchMercurial":
-				r = ref{typ: "git", url: f["url"], ref: f["ref"], rev: f["rev"], narHash: f["narHash"]}
+				r = reference{typeName: "git", url: f["url"], reference: f["ref"], rev: f["rev"], narHash: f["narHash"]}
 				if name == "fetchMercurial" {
-					r.typ = "hg"
+					r.typeName = "hg"
 				}
 			default:
-				r = attrsRef(f)
+				r = attributesReference(f)
 			}
 		default:
 			return
 		}
-		switch r.typ {
+		switch r.typeName {
 		case "github", "gitlab", "sourcehut":
-			if r.owner == "" || r.repo == "" {
+			if r.owner == "" || r.repository == "" {
 				return // computed: owner = gh.owner
 			}
 		case "indirect":
@@ -371,7 +371,7 @@ func (e *extractor) apply(n *node) {
 				return
 			}
 		}
-		e.emit(kFetch, name+" "+first(spec, r.url, r.owner+"/"+r.repo, r.id), r.encode(), n.line)
+		e.emit(kFetch, name+" "+first(spec, r.url, r.owner+"/"+r.repository, r.id), r.encode(), n.line)
 	}
 }
 
@@ -385,7 +385,7 @@ func literalFields(a *node) map[string]string {
 		switch v := unparen(b.value); {
 		case v.kind == nString && !v.interpolate, v.kind == nURI:
 			f[b.path[0]] = v.text
-		case v.kind == nIdent && (v.text == "true" || v.text == "false"):
+		case v.kind == nIdentifier && (v.text == "true" || v.text == "false"):
 			f[b.path[0]] = v.text
 		case v.kind == nPath && !v.interpolate:
 			f[b.path[0]] = v.text
@@ -396,8 +396,8 @@ func literalFields(a *node) map[string]string {
 
 // sourcesOf notes bindings of niv's or npins' sources: `sources = import
 // ./nix/sources.nix;`, `pins = import ./npins;`.
-func (e *extractor) sourcesOf(bs []*bind) {
-	for _, b := range bs {
+func (e *extractor) sourcesOf(binds []*bind) {
+	for _, b := range binds {
 		if b.inherit || len(b.path) != 1 || b.path[0] == "" {
 			continue
 		}
@@ -405,7 +405,7 @@ func (e *extractor) sourcesOf(bs []*bind) {
 		if v == nil || v.kind != nApply {
 			continue
 		}
-		if name, _ := fnName(v.kids[0]); name != "import" || len(v.kids) < 2 {
+		if name, _ := functionName(v.kids[0]); name != "import" || len(v.kids) < 2 {
 			continue
 		}
 		p := unparen(v.kids[1])
@@ -424,49 +424,49 @@ func (e *extractor) sourcesOf(bs []*bind) {
 	}
 }
 
-// pkgsEnv reports whether a with's environment is nixpkgs (pkgs, import <nixpkgs>
+// packagesEnvironment reports whether a with's environment is nixpkgs (pkgs, import <nixpkgs>
 // {}, nixpkgs.legacyPackages.x86_64-linux) or a package set in it
 // (pkgs.python3Packages, python3Packages), and the attribute prefix of its names.
-func pkgsEnv(env *node) (bool, string) {
-	env = unparen(env)
-	switch env.kind {
-	case nIdent:
-		if pkgsName(env.text) {
+func packagesEnvironment(environment *node) (bool, string) {
+	environment = unparen(environment)
+	switch environment.kind {
+	case nIdentifier:
+		if packagesName(environment.text) {
 			return true, ""
 		}
-		if strings.HasSuffix(env.text, "Packages") && env.text != "legacyPackages" {
-			return true, env.text + "."
+		if strings.HasSuffix(environment.text, "Packages") && environment.text != "legacyPackages" {
+			return true, environment.text + "."
 		}
 	case nSelect:
-		b := unparen(env.kids[0])
-		if b.kind != nIdent || !static(env.path) {
-			if b.kind == nIdent && len(env.path) > 0 && env.path[0] == "legacyPackages" && (pkgsName(b.text) || b.text == "nixpkgs") {
+		b := unparen(environment.kids[0])
+		if b.kind != nIdentifier || !static(environment.path) {
+			if b.kind == nIdentifier && len(environment.path) > 0 && environment.path[0] == "legacyPackages" && (packagesName(b.text) || b.text == "nixpkgs") {
 				return true, ""
 			}
 			return false, ""
 		}
-		p := env.path
-		if p[0] == "legacyPackages" && (pkgsName(b.text) || b.text == "nixpkgs") {
+		p := environment.path
+		if p[0] == "legacyPackages" && (packagesName(b.text) || b.text == "nixpkgs") {
 			if len(p) <= 2 {
 				return true, ""
 			}
 			p = p[2:]
-		} else if !pkgsName(b.text) {
+		} else if !packagesName(b.text) {
 			return false, ""
 		}
 		return true, strings.Join(p, ".") + "."
 	case nApply:
-		if name, _ := fnName(env.kids[0]); name == "import" && len(env.kids) > 1 {
-			a := unparen(env.kids[1])
-			return a.kind == nSPath && strings.HasPrefix(a.text, "nixpkgs") || a.kind == nIdent && a.text == "nixpkgs", ""
+		if name, _ := functionName(environment.kids[0]); name == "import" && len(environment.kids) > 1 {
+			a := unparen(environment.kids[1])
+			return a.kind == nSPath && strings.HasPrefix(a.text, "nixpkgs") || a.kind == nIdentifier && a.text == "nixpkgs", ""
 		}
 	}
 	return false, ""
 }
 
-// pkgsName is a name conventionally bound to a nixpkgs package set: pkgs,
+// packagesName is a name conventionally bound to a nixpkgs package set: pkgs,
 // unstablePkgs, pkgs-unstable, pkgs'.
-func pkgsName(s string) bool { return strings.Contains(strings.ToLower(s), "pkgs") }
+func packagesName(s string) bool { return strings.Contains(strings.ToLower(s), "pkgs") }
 
 // notPackages are names a package list may hold that are not nixpkgs packages.
 var notPackages = map[string]bool{
@@ -480,12 +480,12 @@ var notPackages = map[string]bool{
 var wrappers = map[string]bool{"optionals": true, "optional": true, "mkIf": true, "mkDefault": true,
 	"mkForce": true, "mkBefore": true, "mkAfter": true, "mkOverride": true, "mkOrder": true}
 
-// pkgList reads the nixpkgs packages of a package list's value: list literals
+// packageList reads the nixpkgs packages of a package list's value: list literals
 // joined with ++, under with pkgs;, in both branches of an if and inside
 // lib.optionals and mkIf.
 //
 // Implements: REQ-NIX-007
-func (e *extractor) pkgList(v *node, sc *scope, depth int) {
+func (e *extractor) packageList(v *node, current *scope, depth int) {
 	v = unparen(v)
 	if v == nil || depth > 32 {
 		return
@@ -493,36 +493,36 @@ func (e *extractor) pkgList(v *node, sc *scope, depth int) {
 	switch v.kind {
 	case nList:
 		for _, k := range v.kids {
-			e.pkgElem(k, sc, true)
+			e.packageElement(k, current, true)
 		}
 	case nBinary:
 		if v.text == "++" {
 			for _, k := range v.kids {
-				e.pkgList(k, sc, depth+1)
+				e.packageList(k, current, depth+1)
 			}
 		}
 	case nWith:
-		inner := &scope{parent: sc}
-		inner.with, inner.prefix = pkgsEnv(v.kids[0])
+		inner := &scope{parent: current}
+		inner.with, inner.prefix = packagesEnvironment(v.kids[0])
 		if len(v.kids) > 1 {
-			e.pkgList(v.kids[1], inner, depth+1)
+			e.packageList(v.kids[1], inner, depth+1)
 		}
 	case nLet:
-		inner := &scope{parent: sc, names: bindNames(v.binds)}
+		inner := &scope{parent: current, names: bindNames(v.binds)}
 		if len(v.kids) > 0 {
-			e.pkgList(v.kids[0], inner, depth+1)
+			e.packageList(v.kids[0], inner, depth+1)
 		}
 	case nIf:
 		for _, k := range v.kids[min(1, len(v.kids)):] {
-			e.pkgList(k, sc, depth+1)
+			e.packageList(k, current, depth+1)
 		}
 	case nApply:
-		if name, _ := fnName(v.kids[0]); wrappers[name] && len(v.kids) > 1 {
+		if name, _ := functionName(v.kids[0]); wrappers[name] && len(v.kids) > 1 {
 			last := v.kids[len(v.kids)-1]
 			if name == "optional" {
-				e.pkgElem(last, sc, true)
+				e.packageElement(last, current, true)
 			} else {
-				e.pkgList(last, sc, depth+1)
+				e.packageList(last, current, depth+1)
 			}
 		}
 	}
@@ -533,26 +533,26 @@ func (e *extractor) pkgList(v *node, sc *scope, depth int) {
 var strip = map[string]bool{"override": true, "overrideAttrs": true, "overrideDerivation": true,
 	"overridePythonAttrs": true, "withPackages": true, "withPlugins": true, "withExtensions": true}
 
-func (e *extractor) pkgElem(n *node, sc *scope, bare bool) {
+func (e *extractor) packageElement(n *node, current *scope, bare bool) {
 	n = unparen(n)
 	switch n.kind {
 	case nApply:
 		// Only a package's own call (pkgs.hello.override ...); a bare function
 		// (writeShellScriptBin "x" ...) makes a new derivation.
 		if f := unparen(n.kids[0]); f.kind == nSelect && len(f.path) > 0 && strip[f.path[len(f.path)-1]] {
-			e.pkgElem(f, sc, false)
+			e.packageElement(f, current, false)
 		}
-	case nIdent:
+	case nIdentifier:
 		if !bare || notPackages[n.text] {
 			return
 		}
-		switch kind, prefix := sc.lookup(n.text); kind {
+		switch kind, prefix := current.lookup(n.text); kind {
 		case "formal", "with":
-			e.emit(kPkg, n.text, prefix+n.text, n.line)
+			e.emit(kPackage, n.text, prefix+n.text, n.line)
 		}
 	case nSelect:
 		b := unparen(n.kids[0])
-		if b.kind != nIdent || !static(n.path) || notPackages[b.text] && b.text != "pkgs" {
+		if b.kind != nIdentifier || !static(n.path) || notPackages[b.text] && b.text != "pkgs" {
 			return
 		}
 		p := n.path
@@ -563,15 +563,15 @@ func (e *extractor) pkgElem(n *node, sc *scope, bare bool) {
 		if len(p) == 0 {
 			return
 		}
-		if len(p) >= 3 && p[0] == "legacyPackages" && (pkgsName(b.text) || b.text == "nixpkgs") {
+		if len(p) >= 3 && p[0] == "legacyPackages" && (packagesName(b.text) || b.text == "nixpkgs") {
 			p = p[2:]
-		} else if kind, prefix := sc.lookup(b.text); !pkgsName(b.text) {
+		} else if kind, prefix := current.lookup(b.text); !packagesName(b.text) {
 			if kind != "formal" && kind != "with" {
 				return
 			}
 			p = append(strings.Split(prefix+b.text, "."), p...)
 		}
-		e.emit(kPkg, spec, strings.Join(p, "."), n.line)
+		e.emit(kPackage, spec, strings.Join(p, "."), n.line)
 	}
 }
 
@@ -645,7 +645,7 @@ func returned(n *node, calls bool, depth int) []*node {
 		return nil
 	}
 	switch n.kind {
-	case nAttrs:
+	case nAttributes:
 		return []*node{n}
 	case nBinary:
 		if n.text == "//" {
@@ -675,10 +675,10 @@ func returned(n *node, calls bool, depth int) []*node {
 	return nil
 }
 
-// topAttrs is the attribute set a flake.nix consists of.
-func topAttrs(root *node) *node {
+// topAttributes is the attribute set a flake.nix consists of.
+func topAttributes(root *node) *node {
 	n := unparen(root)
-	if n != nil && n.kind == nAttrs {
+	if n != nil && n.kind == nAttributes {
 		return n
 	}
 	return nil
@@ -690,7 +690,7 @@ func topAttrs(root *node) *node {
 //
 // Implements: REQ-NIX-003
 func (e *extractor) flakeSymbols(root *node) {
-	top := topAttrs(root)
+	top := topAttributes(root)
 	if top == nil {
 		return
 	}
@@ -712,10 +712,10 @@ func (e *extractor) flakeSymbols(root *node) {
 					e.symbol(ob.path[0]+"."+ob.path[1], "output", ob.line)
 					continue
 				}
-				for _, sub := range returned(ob.value, true, 0) {
-					for _, sb := range sub.binds {
-						if len(sb.path) > 0 && sb.path[0] != "" {
-							e.symbol(ob.path[0]+"."+sb.path[0], "output", sb.line)
+				for _, returnedSet := range returned(ob.value, true, 0) {
+					for _, binding := range returnedSet.binds {
+						if len(binding.path) > 0 && binding.path[0] != "" {
+							e.symbol(ob.path[0]+"."+binding.path[0], "output", binding.line)
 						}
 					}
 				}
@@ -738,7 +738,7 @@ type input struct {
 //
 // Implements: REQ-NIX-004
 func (e *extractor) flakeInputs(root *node) {
-	top := topAttrs(root)
+	top := topAttributes(root)
 	if top == nil {
 		return
 	}
@@ -760,7 +760,7 @@ func (e *extractor) flakeInputs(root *node) {
 			return
 		}
 		if len(p) == 0 {
-			if v.kind == nAttrs {
+			if v.kind == nAttributes {
 				for _, b := range v.binds {
 					if static(b.path) && !b.inherit {
 						field(in, b.path, b.value)
@@ -784,7 +784,7 @@ func (e *extractor) flakeInputs(root *node) {
 			} else {
 				in.fields[p[0]] = v.text
 			}
-		case v.kind == nIdent && (v.text == "true" || v.text == "false"):
+		case v.kind == nIdentifier && (v.text == "true" || v.text == "false"):
 			in.fields[p[0]] = v.text
 		}
 	}
@@ -796,10 +796,10 @@ func (e *extractor) flakeInputs(root *node) {
 		switch b.path[0] {
 		case "inputs":
 			if len(b.path) == 1 {
-				if v := unparen(b.value); v != nil && v.kind == nAttrs {
-					for _, ib := range v.binds {
-						if static(ib.path) && !ib.inherit {
-							field(get(ib.path[0], ib.line), ib.path[1:], ib.value)
+				if v := unparen(b.value); v != nil && v.kind == nAttributes {
+					for _, binding := range v.binds {
+						if static(binding.path) && !binding.inherit {
+							field(get(binding.path[0], binding.line), binding.path[1:], binding.value)
 						}
 					}
 				}
@@ -821,14 +821,14 @@ func (e *extractor) flakeInputs(root *node) {
 		}
 	}
 	for _, in := range order {
-		var r ref
+		var r reference
 		if len(in.fields) > 0 {
-			r = attrsRef(in.fields)
-			if r.typ == "" && r.url == "" && in.follows == "" {
-				r = ref{typ: "indirect", id: in.name} // { flake = false; } alone: the registry's
+			r = attributesReference(in.fields)
+			if r.typeName == "" && r.url == "" && in.follows == "" {
+				r = reference{typeName: "indirect", id: in.name} // { flake = false; } alone: the registry's
 			}
 		} else if in.follows == "" {
-			r = ref{typ: "indirect", id: in.name}
+			r = reference{typeName: "indirect", id: in.name}
 		}
 		e.emit(kInput, "inputs."+in.name, in.name+"\n"+r.encode()+"\n"+in.follows, in.line)
 	}

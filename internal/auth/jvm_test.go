@@ -46,11 +46,11 @@ func TestSbtCredentials(t *testing.T) {
 	home := t.TempDir()
 	writeFile(t, filepath.Join(home, ".sbt", ".credentials"), "realm=Sonatype Nexus Repository Manager\nhost=nexus.corp\nuser=sbt\npassword=s3cr3t\n")
 	writeFile(t, filepath.Join(home, ".ivy2", ".credentials"), "# old\nrealm = Artifactory Realm\nhost = Artifactory.Corp\nuser = ivy\npassword = p:w\n")
-	env := filepath.Join(t.TempDir(), "ci.credentials")
-	writeFile(t, env, "host=ci.corp\nuser=ci\npassword=token\n")
+	environment := filepath.Join(t.TempDir(), "ci.credentials")
+	writeFile(t, environment, "host=ci.corp\nuser=ci\npassword=token\n")
 	bad := filepath.Join(t.TempDir(), "bad.credentials")
 	writeFile(t, bad, "host=https://url.corp/maven\nuser=u\npassword=p\n")
-	c := onMachine(t, home, "linux", map[string]string{"SBT_CREDENTIALS": env})
+	c := onMachine(t, home, "linux", map[string]string{"SBT_CREDENTIALS": environment})
 	for host, want := range map[string]string{"nexus.corp": "sbt:s3cr3t", "artifactory.corp": "ivy:p:w", "ci.corp": "ci:token"} {
 		if got := c.basic[host]; got != want {
 			t.Errorf("%s: %q, want %q", host, got, want)

@@ -13,15 +13,15 @@ import (
 )
 
 type resolver struct {
-	files     map[string]bool
-	dirs      map[string]bool // directories holding files
-	projects  []*project      // shallowest first
-	byDir     map[string]*project
-	byName    map[string][]*project
-	byUUID    map[string][]*project
-	byFile    map[string]*project
-	manifests map[string]*manifest // by file, those claimed
-	all       []*manifest          // every manifest read, by path
+	files       map[string]bool
+	directories map[string]bool // directories holding files
+	projects    []*project      // shallowest first
+	byDirectory map[string]*project
+	byName      map[string][]*project
+	byUUID      map[string][]*project
+	byFile      map[string]*project
+	manifests   map[string]*manifest // by file, those claimed
+	all         []*manifest          // every manifest read, by path
 	// modules maps a module's absolute path (Shop.Internal) to the files defining
 	// it; ctx is the module path a file's top level is in, from the include graph.
 	modules map[string][]string
@@ -38,18 +38,18 @@ func readable(f *scan.File) bool {
 //
 // Implements: REQ-JULIA-004, REQ-JULIA-005, REQ-JULIA-008
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, dirs: map[string]bool{}, byDir: map[string]*project{},
+	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, byDirectory: map[string]*project{},
 		byName: map[string][]*project{}, byUUID: map[string][]*project{}, byFile: map[string]*project{},
 		manifests: map[string]*manifest{}, modules: map[string][]string{}, ctx: map[string]string{}}
 	var sources []*scan.File
-	dirManifest := map[string]*manifest{}
+	directoryManifest := map[string]*manifest{}
 	for _, f := range all {
 		r.files[f.Path] = true
 		for d := path.Dir(f.Path); ; d = path.Dir(d) {
-			if r.dirs[d] {
+			if r.directories[d] {
 				break
 			}
-			r.dirs[d] = true
+			r.directories[d] = true
 			if d == "." {
 				break
 			}
@@ -61,26 +61,26 @@ func newResolver(root string, all []*scan.File) *resolver {
 		case classSource:
 			sources = append(sources, f)
 		case classProject:
-			src, err := os.ReadFile(f.Abs)
+			source, err := os.ReadFile(f.AbsolutePath)
 			if err != nil {
 				continue
 			}
-			p := readProject(src)
+			p := readProject(source)
 			if p == nil {
 				continue
 			}
-			p.file, p.dir = f.Path, path.Dir(f.Path)
+			p.file, p.directory = f.Path, path.Dir(f.Path)
 			// JuliaProject.toml takes precedence over Project.toml, as in Pkg.
-			if have := r.byDir[p.dir]; have != nil && path.Base(have.file) == "JuliaProject.toml" {
+			if have := r.byDirectory[p.directory]; have != nil && path.Base(have.file) == "JuliaProject.toml" {
 				continue
 			}
-			r.byDir[p.dir] = p
+			r.byDirectory[p.directory] = p
 		}
 	}
 	// Manifests are often not committed; they are looked for on disk beside every
 	// project too.
-	for dir := range r.byDir {
-		entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(dir)))
+	for directory := range r.byDirectory {
+		entries, err := os.ReadDir(filepath.Join(root, filepath.FromSlash(directory)))
 		if err != nil {
 			continue
 		}
@@ -93,44 +93,44 @@ func newResolver(root string, all []*scan.File) *resolver {
 		if best == "" {
 			continue
 		}
-		file := path.Join(dir, best)
-		src, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(file)))
-		if err != nil || len(src) > 8*lang.MaxParseSize {
+		file := path.Join(directory, best)
+		source, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(file)))
+		if err != nil || len(source) > 8*lang.MaxParseSize {
 			continue
 		}
-		m := readManifest(src)
-		m.file, m.dir = file, dir
-		dirManifest[dir] = m
+		m := readManifest(source)
+		m.file, m.directory = file, directory
+		directoryManifest[directory] = m
 	}
 	for _, f := range all {
 		if fileClass(f.Path) != classManifest || !readable(f) {
 			continue
 		}
-		if m := dirManifest[path.Dir(f.Path)]; m != nil && m.file == f.Path {
+		if m := directoryManifest[path.Dir(f.Path)]; m != nil && m.file == f.Path {
 			r.manifests[f.Path] = m
 			continue
 		}
-		src, err := os.ReadFile(f.Abs)
+		source, err := os.ReadFile(f.AbsolutePath)
 		if err != nil {
 			continue
 		}
-		m := readManifest(src)
-		m.file, m.dir = f.Path, path.Dir(f.Path)
+		m := readManifest(source)
+		m.file, m.directory = f.Path, path.Dir(f.Path)
 		r.manifests[f.Path] = m
-		if dirManifest[m.dir] == nil {
-			dirManifest[m.dir] = m
+		if directoryManifest[m.directory] == nil {
+			directoryManifest[m.directory] = m
 		}
 	}
-	for _, m := range dirManifest {
+	for _, m := range directoryManifest {
 		r.all = append(r.all, m)
 	}
 	sort.Slice(r.all, func(i, j int) bool { return r.all[i].file < r.all[j].file })
-	for _, p := range r.byDir {
+	for _, p := range r.byDirectory {
 		r.projects = append(r.projects, p)
 		// The manifest resolving a project is its own, else the nearest above it (a
 		// workspace's, or the repository's environment).
-		for d := p.dir; ; d = path.Dir(d) {
-			if m := dirManifest[d]; m != nil {
+		for d := p.directory; ; d = path.Dir(d) {
+			if m := directoryManifest[d]; m != nil {
 				p.manifest = m
 				break
 			}
@@ -140,11 +140,11 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 	}
 	sort.Slice(r.projects, func(i, j int) bool {
-		di, dj := depth(r.projects[i].dir), depth(r.projects[j].dir)
-		if di != dj {
-			return di < dj
+		depthI, depthJ := depth(r.projects[i].directory), depth(r.projects[j].directory)
+		if depthI != depthJ {
+			return depthI < depthJ
 		}
-		return r.projects[i].dir < r.projects[j].dir
+		return r.projects[i].directory < r.projects[j].directory
 	})
 	for _, p := range r.projects {
 		r.byFile[p.file] = p
@@ -159,11 +159,11 @@ func newResolver(root string, all []*scan.File) *resolver {
 	return r
 }
 
-func depth(dir string) int {
-	if dir == "." {
+func depth(directory string) int {
+	if directory == "." {
 		return 0
 	}
-	return strings.Count(dir, "/") + 1
+	return strings.Count(directory, "/") + 1
 }
 
 // manifestRank orders the manifests of one directory as Pkg prefers them: a
@@ -189,25 +189,25 @@ func manifestRank(name string) int {
 // module Shop has Shop as its top level, so the modules it defines are Shop.X.
 func (r *resolver) readSources(files []*scan.File) {
 	type parsed struct {
-		file string
-		src  *source
+		file   string
+		source *source
 	}
 	var list []parsed
 	for _, f := range files {
-		src, err := os.ReadFile(f.Abs)
-		if err != nil || !lang.Parseable(f, src) {
+		source, err := os.ReadFile(f.AbsolutePath)
+		if err != nil || !lang.Parseable(f, source) {
 			continue
 		}
-		list = append(list, parsed{f.Path, readSource(src)})
+		list = append(list, parsed{f.Path, readSource(source)})
 	}
 	sort.Slice(list, func(i, j int) bool { return list[i].file < list[j].file })
 	type parent struct{ file, module string }
 	includedBy := map[string]parent{}
 	for _, p := range list {
-		for _, inc := range p.src.includes {
-			child := path.Join(path.Dir(p.file), inc.path)
+		for _, include := range p.source.includes {
+			child := path.Join(path.Dir(p.file), include.path)
 			if _, ok := includedBy[child]; !ok && r.files[child] && child != p.file {
-				includedBy[child] = parent{p.file, inc.module}
+				includedBy[child] = parent{p.file, include.module}
 			}
 		}
 	}
@@ -226,7 +226,7 @@ func (r *resolver) readSources(files []*scan.File) {
 	}
 	for _, p := range list {
 		c := ctxOf(p.file, map[string]bool{})
-		for _, m := range p.src.modules {
+		for _, m := range p.source.modules {
 			key := joinModule(c, m)
 			r.modules[key] = append(r.modules[key], p.file)
 		}
@@ -252,20 +252,20 @@ func splitModule(s string) []string {
 
 // moduleFile is the file defining a module, the one nearest to from when several do.
 func (r *resolver) moduleFile(key, from string) string {
-	best, bestLen := "", -1
+	best, bestLength := "", -1
 	for _, f := range r.modules[key] {
-		if n := commonDir(f, from); n > bestLen {
-			best, bestLen = f, n
+		if n := commonDirectory(f, from); n > bestLength {
+			best, bestLength = f, n
 		}
 	}
 	return best
 }
 
-// commonDir counts the leading directories two paths share.
-func commonDir(a, b string) int {
-	as, bs := strings.Split(path.Dir(a), "/"), strings.Split(path.Dir(b), "/")
+// commonDirectory counts the leading directories two paths share.
+func commonDirectory(a, b string) int {
+	aParts, bParts := strings.Split(path.Dir(a), "/"), strings.Split(path.Dir(b), "/")
 	n := 0
-	for n < len(as) && n < len(bs) && as[n] == bs[n] {
+	for n < len(aParts) && n < len(bParts) && aParts[n] == bParts[n] {
 		n++
 	}
 	return n
@@ -279,51 +279,51 @@ func local(p, file string) lang.Target {
 	return lang.Target{Local: p}
 }
 
-func std(name string) lang.Target { return lang.Target{Ecosystem: ecoStd, Package: name} }
+func std(name string) lang.Target { return lang.Target{Ecosystem: ecosystemStd, Package: name} }
 
 // Resolve maps an import to its target.
 //
 // Implements: REQ-JULIA-004, REQ-JULIA-005, REQ-JULIA-006, REQ-JULIA-008, REQ-JULIA-010
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	kind, arg, _ := strings.Cut(imp.Name, "\n")
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	kind, argument, _ := strings.Cut(rawImport.Name, "\n")
 	switch kind {
 	case kindInclude:
-		if imp.Module == "" {
+		if rawImport.Module == "" {
 			return lang.Target{}
 		}
-		p := path.Join(path.Dir(file), imp.Module)
+		p := path.Join(path.Dir(file), rawImport.Module)
 		if !r.files[p] {
 			return lang.Target{}
 		}
 		return local(p, file)
 	case kindUsing:
-		return r.module(file, arg, imp.Module)
-	case kindDep:
+		return r.module(file, argument, rawImport.Module)
+	case kindDependency:
 		p := r.byFile[file]
 		if p == nil {
 			return lang.Target{}
 		}
-		return r.declared(p, imp.Module, p.deps[imp.Module], []string{imp.Module}, file)
+		return r.declared(p, rawImport.Module, p.dependencies[rawImport.Module], []string{rawImport.Module}, file)
 	case kindMember:
-		d := path.Join(path.Dir(file), imp.Module)
-		if p := r.byDir[d]; p != nil {
+		d := path.Join(path.Dir(file), rawImport.Module)
+		if p := r.byDirectory[d]; p != nil {
 			return local(p.file, file)
 		}
-		if r.dirs[d] {
+		if r.directories[d] {
 			return lang.Target{Local: d}
 		}
 		return lang.Target{}
-	case kindExt:
-		dir := path.Dir(file)
-		for _, c := range []string{"ext/" + imp.Module + ".jl", "ext/" + imp.Module + "/" + imp.Module + ".jl"} {
-			if p := path.Join(dir, c); r.files[p] {
+	case kindExtension:
+		directory := path.Dir(file)
+		for _, c := range []string{"ext/" + rawImport.Module + ".jl", "ext/" + rawImport.Module + "/" + rawImport.Module + ".jl"} {
+			if p := path.Join(directory, c); r.files[p] {
 				return lang.Target{Local: p}
 			}
 		}
 		return lang.Target{}
 	case kindManifest:
 		m := r.manifests[file]
-		if e := m.find(imp.Module, arg); e != nil {
+		if e := m.find(rawImport.Module, argument); e != nil {
 			return r.entry(m, e, []string{e.name}, file)
 		}
 	}
@@ -335,7 +335,7 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 func (r *resolver) ancestors(file string) []*project {
 	var out []*project
 	for d := path.Dir(file); ; d = path.Dir(d) {
-		if p := r.byDir[d]; p != nil {
+		if p := r.byDirectory[d]; p != nil {
 			out = append(out, p)
 		}
 		if d == "." || d == "/" {
@@ -384,24 +384,24 @@ func (r *resolver) module(file, within, spec string) lang.Target {
 			return r.local(p, segments, file)
 		}
 	}
-	gov := r.governing(file)
-	for _, p := range gov {
-		if uuid, ok := p.deps[first]; ok {
+	governing := r.governing(file)
+	for _, p := range governing {
+		if uuid, ok := p.dependencies[first]; ok {
 			return r.declared(p, first, uuid, segments, file)
 		}
 	}
 	if juliapkg.Stdlib(first) {
 		return std(first)
 	}
-	for _, p := range gov {
+	for _, p := range governing {
 		if e := p.manifest.find(first, ""); e != nil {
 			return r.entry(p.manifest, e, segments, file)
 		}
 	}
-	if ps := r.byName[first]; len(ps) > 0 {
-		best := ps[0]
-		for _, p := range ps[1:] {
-			if commonDir(p.file, file) > commonDir(best.file, file) {
+	if projects := r.byName[first]; len(projects) > 0 {
+		best := projects[0]
+		for _, p := range projects[1:] {
+			if commonDirectory(p.file, file) > commonDirectory(best.file, file) {
 				best = p
 			}
 		}
@@ -413,11 +413,11 @@ func (r *resolver) module(file, within, spec string) lang.Target {
 		return local(f, file)
 	}
 	for _, p := range r.projects {
-		if uuid, ok := p.deps[first]; ok {
+		if uuid, ok := p.dependencies[first]; ok {
 			return r.declared(p, first, uuid, segments, file)
 		}
 	}
-	return lang.Target{Ecosystem: ecoJulia, Package: first, Unresolved: true, Floating: true}
+	return lang.Target{Ecosystem: ecosystemJulia, Package: first, Unresolved: true, Floating: true}
 }
 
 // relative resolves using .Sub / ..Parent.X: one dot is the module the statement
@@ -469,29 +469,29 @@ func (r *resolver) local(p *project, segments []string, file string) lang.Target
 	if name == "" && len(segments) > 0 {
 		name = segments[0]
 	}
-	entry := path.Join(p.dir, "src", name+".jl")
+	entry := path.Join(p.directory, "src", name+".jl")
 	for n := len(segments); n >= 2; n-- {
-		if f := r.moduleFile(strings.Join(segments[:n], "."), entry); f != "" && strings.HasPrefix(f, prefixOf(p.dir)) {
+		if f := r.moduleFile(strings.Join(segments[:n], "."), entry); f != "" && strings.HasPrefix(f, prefixOf(p.directory)) {
 			return local(f, file)
 		}
 	}
 	if r.files[entry] {
 		return local(entry, file)
 	}
-	if f := r.moduleFile(name, entry); f != "" && strings.HasPrefix(f, prefixOf(p.dir)) {
+	if f := r.moduleFile(name, entry); f != "" && strings.HasPrefix(f, prefixOf(p.directory)) {
 		return local(f, file)
 	}
-	if p.dir != "." && r.dirs[p.dir] {
-		return lang.Target{Local: p.dir}
+	if p.directory != "." && r.directories[p.directory] {
+		return lang.Target{Local: p.directory}
 	}
 	return local(p.file, file)
 }
 
-func prefixOf(dir string) string {
-	if dir == "." {
+func prefixOf(directory string) string {
+	if directory == "." {
 		return ""
 	}
-	return dir + "/"
+	return directory + "/"
 }
 
 // declared resolves a dependency a project declares: a [sources] path or URL, the
@@ -500,16 +500,16 @@ func prefixOf(dir string) string {
 func (r *resolver) declared(p *project, name, uuid string, segments []string, file string) lang.Target {
 	if s, ok := p.sources[name]; ok {
 		if s.path != "" {
-			d := path.Join(p.dir, s.path)
-			if lp := r.byDir[d]; lp != nil {
-				return r.local(lp, segments, file)
+			d := path.Join(p.directory, s.path)
+			if localProject := r.byDirectory[d]; localProject != nil {
+				return r.local(localProject, segments, file)
 			}
-			if r.dirs[d] {
+			if r.directories[d] {
 				return lang.Target{Local: d}
 			}
 		}
 		if s.url != "" {
-			t := lang.Target{Ecosystem: ecoJulia, Package: name, Version: s.rev, Origin: s.url, Pinned: lang.Commit(s.rev)}
+			t := lang.Target{Ecosystem: ecosystemJulia, Package: name, Version: s.rev, Origin: s.url, Pinned: lang.Commit(s.rev)}
 			t.Floating = s.rev == ""
 			return t
 		}
@@ -538,7 +538,7 @@ func (r *resolver) declared(p *project, name, uuid string, segments []string, fi
 //
 // Implements: REQ-JULIA-008
 func compatTarget(name, uuid, compat string) lang.Target {
-	t := lang.Target{Ecosystem: ecoJulia, Package: name, Registry: uuid}
+	t := lang.Target{Ecosystem: ecosystemJulia, Package: name, Registry: uuid}
 	switch v, ok := juliapkg.ExactCompat(compat); {
 	case ok:
 		t.Version, t.Pinned = v, true
@@ -555,14 +555,14 @@ func compatTarget(name, uuid, compat string) lang.Target {
 // a package pinned to its version.
 func (r *resolver) entry(m *manifest, e *entry, segments []string, file string) lang.Target {
 	if e.path != "" {
-		d := path.Join(m.dir, e.path)
-		if lp := r.byDir[d]; lp != nil {
-			return r.local(lp, segments, file)
+		d := path.Join(m.directory, e.path)
+		if localProject := r.byDirectory[d]; localProject != nil {
+			return r.local(localProject, segments, file)
 		}
-		if r.dirs[d] {
+		if r.directories[d] {
 			return lang.Target{Local: d}
 		}
-		return lang.Target{Ecosystem: ecoJulia, Package: e.name, Version: e.version, Origin: "path:" + e.path}
+		return lang.Target{Ecosystem: ecosystemJulia, Package: e.name, Version: e.version, Origin: "path:" + e.path}
 	}
 	if juliapkg.Stdlib(e.name) && e.tree == "" {
 		return std(e.name)
@@ -571,17 +571,17 @@ func (r *resolver) entry(m *manifest, e *entry, segments []string, file string) 
 	if v == "" {
 		v = e.tree // a package added by URL without a version: its tree hash
 	}
-	t := lang.Target{Ecosystem: ecoJulia, Package: e.name, Version: v, Pinned: v != "", Origin: e.repoURL, Registry: e.uuid}
+	t := lang.Target{Ecosystem: ecosystemJulia, Package: e.name, Version: v, Pinned: v != "", Origin: e.repositoryURL, Registry: e.uuid}
 	t.Floating = v == ""
 	return t
 }
 
-// Dependencies answers --resolve-depth from the manifests: the deps of the entry
+// Dependencies answers --resolve-depth from the manifests: the dependencies of the entry
 // that pinned the package.
 //
 // Implements: REQ-JULIA-009
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
-	if t.Ecosystem != ecoJulia {
+	if t.Ecosystem != ecosystemJulia {
 		return nil
 	}
 	for _, m := range r.all {
@@ -590,13 +590,13 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 				continue
 			}
 			var out []lang.Target
-			for _, d := range e.deps {
+			for _, d := range e.dependencies {
 				de := m.find(d, "")
 				switch {
 				case de == nil && juliapkg.Stdlib(d):
 					out = append(out, std(d))
 				case de == nil:
-					out = append(out, lang.Target{Ecosystem: ecoJulia, Package: d, Floating: true})
+					out = append(out, lang.Target{Ecosystem: ecosystemJulia, Package: d, Floating: true})
 				case de.path != "":
 					// a developed package is the repository's own, not a dependency
 				default:

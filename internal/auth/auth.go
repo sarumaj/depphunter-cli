@@ -80,11 +80,11 @@ func (s secret) header() string {
 }
 
 // Read collects the credentials from the files and variables the package managers of
-// this machine keep them in. env is the environment to read; nil reads none.
+// this machine keep them in. environment is the environment to read; nil reads none.
 //
 // Implements: REQ-AUTH-014
-func Read(home string, env func(string) string) *Store {
-	m := userconf.New(home, env)
+func Read(home string, environment func(string) string) *Store {
+	m := userconf.New(home, environment)
 	m.Environ = environ
 	return readMachine(m)
 }
@@ -128,7 +128,7 @@ func readMachine(m userconf.Machine) *Store {
 // repository would then be choosing where the password is sent.
 //
 // Implements: REQ-AUTH-003, REQ-AUTH-010
-func (c *Store) readMavenSettings(files [][]byte, repos map[string]string) {
+func (c *Store) readMavenSettings(files [][]byte, repositories map[string]string) {
 	type doc struct {
 		Servers []struct {
 			ID       string `xml:"id"`
@@ -171,8 +171,8 @@ func (c *Store) readMavenSettings(files [][]byte, repos map[string]string) {
 			}
 		}
 	}
-	for _, id := range slices.Sorted(maps.Keys(repos)) {
-		name(id, repos[id])
+	for _, id := range slices.Sorted(maps.Keys(repositories)) {
+		name(id, repositories[id])
 	}
 	done := map[string]bool{}
 	for _, d := range docs {
@@ -272,7 +272,7 @@ func (c *Store) readNpm(m userconf.Machine) {
 			}
 		}
 	}
-	for k, v := range m.NpmEnv() {
+	for k, v := range m.NpmEnvironment() {
 		if strings.HasPrefix(k, "//") {
 			keys[k] = v
 		}
@@ -427,7 +427,7 @@ func (c *Store) readNetrc(data []byte) {
 // in the clear.
 //
 // Implements: REQ-AUTH-011
-func (c *Store) Apply(req *http.Request) { c.apply(req, true) }
+func (c *Store) Apply(request *http.Request) { c.apply(request, true) }
 
 // ApplyGo is Apply for a request the go command would make to a module proxy: the
 // netrc's credential for the host is left out when GOAUTH says the go command does
@@ -435,41 +435,41 @@ func (c *Store) Apply(req *http.Request) { c.apply(req, true) }
 // filed over the netrc's for the same host is sent as usual.
 //
 // Implements: REQ-AUTH-029
-func (c *Store) ApplyGo(req *http.Request) {
+func (c *Store) ApplyGo(request *http.Request) {
 	if c == nil {
 		return
 	}
-	c.apply(req, !c.goNoNetrc)
+	c.apply(request, !c.goNoNetrc)
 }
 
 // apply is Apply, with or without the credentials that came from the netrc.
-func (c *Store) apply(req *http.Request, netrc bool) {
+func (c *Store) apply(request *http.Request, netrc bool) {
 	if c == nil {
 		return
 	}
 	c.mu.RLock()
 	defer c.mu.RUnlock()
-	if req.URL.Scheme != "https" && !c.plain[req.URL.Host] && !c.plain[req.URL.Hostname()] && !loopback(req.URL.Hostname()) {
+	if request.URL.Scheme != "https" && !c.plain[request.URL.Host] && !c.plain[request.URL.Hostname()] && !loopback(request.URL.Hostname()) {
 		return
 	}
-	for _, host := range [...]string{req.URL.Host, req.URL.Hostname()} {
-		if s, ok := scopedSecret(c.scoped[host], req.URL.Path); ok {
-			req.Header.Set("Authorization", s.header())
+	for _, host := range [...]string{request.URL.Host, request.URL.Hostname()} {
+		if s, ok := scopedSecret(c.scoped[host], request.URL.Path); ok {
+			request.Header.Set("Authorization", s.header())
 			return
 		}
 	}
-	for _, host := range [...]string{req.URL.Host, req.URL.Hostname()} {
+	for _, host := range [...]string{request.URL.Host, request.URL.Hostname()} {
 		if token, ok := c.bearer[host]; ok {
-			req.Header.Set("Authorization", "Bearer "+token)
+			request.Header.Set("Authorization", "Bearer "+token)
 			return
 		}
 	}
-	for _, host := range [...]string{req.URL.Host, req.URL.Hostname()} {
+	for _, host := range [...]string{request.URL.Host, request.URL.Hostname()} {
 		if pair, ok := c.basic[host]; ok {
 			if !netrc && c.netrc[host] == pair {
 				continue
 			}
-			req.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(pair)))
+			request.Header.Set("Authorization", "Basic "+base64.StdEncoding.EncodeToString([]byte(pair)))
 			return
 		}
 	}
@@ -479,12 +479,12 @@ func (c *Store) apply(req *http.Request, netrc bool) {
 //
 // Implements: REQ-SUP-047
 func (c *Store) Authorizes(raw string) bool {
-	req, err := http.NewRequest(http.MethodGet, raw, nil)
+	request, err := http.NewRequest(http.MethodGet, raw, nil)
 	if err != nil {
 		return false
 	}
-	c.Apply(req)
-	return req.Header.Get("Authorization") != ""
+	c.Apply(request)
+	return request.Header.Get("Authorization") != ""
 }
 
 // scopedSecret is the credential of the longest prefix of path among a host's

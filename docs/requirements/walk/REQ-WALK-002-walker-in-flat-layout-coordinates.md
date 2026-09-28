@@ -14,7 +14,7 @@ verification:
 
 The walker's position, collisions, heights and aiming **shall** be computed in
 the flat layout coordinates of the isometric map, and only the renderer
-**shall** bend the drawn world onto a small planet centred under the walker.
+**shall** bend the drawn world onto a small planet centered under the walker.
 
 ## Rationale
 

@@ -82,7 +82,7 @@ type Target struct {
 }
 
 type Resolver interface {
-	Resolve(file string, imp RawImport) Target
+	Resolve(file string, rawImport RawImport) Target
 }
 
 // Transitive is the optional half of a Resolver: what an external package itself
@@ -103,7 +103,7 @@ type Transitive interface {
 //
 // Implements: REQ-BAZEL-005
 type Expander interface {
-	Expand(file string, imp RawImport) (imports []Import, ok bool)
+	Expand(file string, rawImport RawImport) (imports []Import, ok bool)
 }
 
 // Installed is the optional part of a Transitive that says when its answer comes from
@@ -177,9 +177,9 @@ type Plugin interface {
 	// Claims reports whether the plugin analyzes this file.
 	Claims(f *scan.File) bool
 	Ecosystems() []Ecosystem
-	// Extract must depend only on src and the file's extension, or else the plugin
+	// Extract must depend only on source and the file's extension, or else the plugin
 	// implements Classifier to say what else it depends on.
-	Extract(f *scan.File, src []byte) (*Extraction, error)
+	Extract(f *scan.File, source []byte) (*Extraction, error)
 	// Resolver prepares import resolution from all project files (manifests, layout).
 	Resolver(root string, all []*scan.File) (Resolver, error)
 }
@@ -206,19 +206,19 @@ func ClassOf(p Plugin, f *scan.File) string {
 }
 
 // Apply resolves an extraction's imports, expanding those an Expander takes.
-func Apply(r Resolver, file string, ex *Extraction) *FileResult {
-	res := &FileResult{Symbols: ex.Symbols}
+func Apply(r Resolver, file string, extraction *Extraction) *FileResult {
+	result := &FileResult{Symbols: extraction.Symbols}
 	exp, _ := r.(Expander)
-	for _, im := range ex.Imports {
+	for _, rawImport := range extraction.Imports {
 		if exp != nil {
-			if more, ok := exp.Expand(file, im); ok {
-				res.Imports = append(res.Imports, more...)
+			if more, ok := exp.Expand(file, rawImport); ok {
+				result.Imports = append(result.Imports, more...)
 				continue
 			}
 		}
-		res.Imports = append(res.Imports, Import{Spec: im.Spec, Line: im.Line, Target: r.Resolve(file, im)})
+		result.Imports = append(result.Imports, Import{Spec: rawImport.Spec, Line: rawImport.Line, Target: r.Resolve(file, rawImport)})
 	}
-	return res
+	return result
 }
 
 // Claimed returns the files p analyzes.
@@ -240,11 +240,11 @@ func Analyze(ctx context.Context, p Plugin, root string, all []*scan.File) (map[
 	if err != nil {
 		return nil, err
 	}
-	return ForEachFile(ctx, Claimed(p, all), func(f *scan.File, src []byte) *FileResult {
-		ex, err := p.Extract(f, src)
+	return ForEachFile(ctx, Claimed(p, all), func(f *scan.File, source []byte) *FileResult {
+		extraction, err := p.Extract(f, source)
 		if err != nil {
 			return nil
 		}
-		return Apply(r, f.Path, ex)
+		return Apply(r, f.Path, extraction)
 	}), ctx.Err()
 }

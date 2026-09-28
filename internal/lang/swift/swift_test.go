@@ -20,18 +20,18 @@ import (
 // Verifies: REQ-SWIFT-006, REQ-SWIFT-007, REQ-SWIFT-008, REQ-SWIFT-009, REQ-SWIFT-010
 // Verifies: REQ-SWIFT-011
 func TestPackageAndApp(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
 	imports := map[string]map[string]lang.Target{
 		"App/App/AppModel.swift": {
-			`import Combine`:   {Ecosystem: ecoApple, Package: "Combine"},
+			`import Combine`:   {Ecosystem: ecosystemApple, Package: "Combine"},
 			`MainActor`:        {},
 			`ObservableObject`: {},
 			`Published`:        {},
 		},
 		"App/App/ContentView.swift": {
-			`import SwiftUI`:    {Ecosystem: ecoApple, Package: "SwiftUI"},
-			`import Alamofire`:  {Ecosystem: ecoSwiftPM, Package: "github.com/Alamofire/Alamofire", Version: "5.8.1", Requested: "5.8.0..<6.0.0", Pinned: true},
-			`import Kingfisher`: {Ecosystem: ecoSwiftPM, Package: "github.com/onevcat/Kingfisher", Version: "7.10.0", Pinned: true},
+			`import SwiftUI`:    {Ecosystem: ecosystemApple, Package: "SwiftUI"},
+			`import Alamofire`:  {Ecosystem: ecosystemSwiftPM, Package: "github.com/Alamofire/Alamofire", Version: "5.8.1", Requested: "5.8.0..<6.0.0", Pinned: true},
+			`import Kingfisher`: {Ecosystem: ecosystemSwiftPM, Package: "github.com/onevcat/Kingfisher", Version: "7.10.0", Pinned: true},
 			`import CoreKit`:    {Local: "App/CoreKit"},
 			`View`:              {},
 			`AppModel`:          {Local: "App/App/AppModel.swift"},
@@ -40,7 +40,7 @@ func TestPackageAndApp(t *testing.T) {
 			`Text`:              {},
 		},
 		"App/AppTests/AppTests.swift": {
-			`import XCTest`:        {Ecosystem: ecoStd, Package: "XCTest"},
+			`import XCTest`:        {Ecosystem: ecosystemStd, Package: "XCTest"},
 			`@testable import App`: {Local: "App"},
 			`import CoreKit`:       {Local: "App/CoreKit"},
 			`XCTestCase`:           {},
@@ -49,35 +49,35 @@ func TestPackageAndApp(t *testing.T) {
 		},
 		"App/CoreKit/Core.swift": {},
 		"Local/LocalKit/Package.swift": {
-			`import PackageDescription`: {Ecosystem: ecoStd, Package: "PackageDescription"},
+			`import PackageDescription`: {Ecosystem: ecosystemStd, Package: "PackageDescription"},
 			`Package`:                   {},
 		},
 		"Local/LocalKit/Sources/LocalKit/LocalKit.swift": {},
 		"Package.swift": {
-			`import PackageDescription`: {Ecosystem: ecoStd, Package: "PackageDescription"},
+			`import PackageDescription`: {Ecosystem: ecosystemStd, Package: "PackageDescription"},
 			`Package`:                   {},
-			`.package(url: "https://github.com/apple/swift-nio.git", from: "2.60.0")`:                                    {Ecosystem: ecoSwiftPM, Package: "github.com/apple/swift-nio", Version: "2.64.0", Requested: "2.60.0..<3.0.0", Pinned: true},
-			`.package(url: "https://github.com/apple/swift-log", .upToNextMajor(from: "1.5.0"))`:                         {Ecosystem: ecoSwiftPM, Package: "github.com/apple/swift-log", Version: "1.5.4", Requested: "1.5.0..<2.0.0", Pinned: true},
-			`.package(url: "git@github.com:apple/swift-argument-parser.git", exact: "1.3.0")`:                            {Ecosystem: ecoSwiftPM, Package: "github.com/apple/swift-argument-parser", Version: "1.3.0", Pinned: true},
-			`.package(url: "https://github.com/apple/swift-collections", "1.0.0"..<"2.0.0")`:                             {Ecosystem: ecoSwiftPM, Package: "github.com/apple/swift-collections", Version: "1.1.0", Requested: "1.0.0..<2.0.0", Pinned: true},
-			`.package(url: "https://github.com/swiftlang/swift-markdown.git", branch: "main")`:                           {Ecosystem: ecoSwiftPM, Package: "github.com/swiftlang/swift-markdown", Version: "4aae40bf6fff5286e0e1672329d17824ce16e081", Requested: "branch main", Pinned: true},
-			`.package(url: "https://github.com/acme/private-kit", revision: "0123456789abcdef0123456789abcdef01234567")`: {Ecosystem: ecoSwiftPM, Package: "github.com/acme/private-kit", Version: "0123456789abcdef0123456789abcdef01234567", Pinned: true},
+			`.package(url: "https://github.com/apple/swift-nio.git", from: "2.60.0")`:                                    {Ecosystem: ecosystemSwiftPM, Package: "github.com/apple/swift-nio", Version: "2.64.0", Requested: "2.60.0..<3.0.0", Pinned: true},
+			`.package(url: "https://github.com/apple/swift-log", .upToNextMajor(from: "1.5.0"))`:                         {Ecosystem: ecosystemSwiftPM, Package: "github.com/apple/swift-log", Version: "1.5.4", Requested: "1.5.0..<2.0.0", Pinned: true},
+			`.package(url: "git@github.com:apple/swift-argument-parser.git", exact: "1.3.0")`:                            {Ecosystem: ecosystemSwiftPM, Package: "github.com/apple/swift-argument-parser", Version: "1.3.0", Pinned: true},
+			`.package(url: "https://github.com/apple/swift-collections", "1.0.0"..<"2.0.0")`:                             {Ecosystem: ecosystemSwiftPM, Package: "github.com/apple/swift-collections", Version: "1.1.0", Requested: "1.0.0..<2.0.0", Pinned: true},
+			`.package(url: "https://github.com/swiftlang/swift-markdown.git", branch: "main")`:                           {Ecosystem: ecosystemSwiftPM, Package: "github.com/swiftlang/swift-markdown", Version: "4aae40bf6fff5286e0e1672329d17824ce16e081", Requested: "branch main", Pinned: true},
+			`.package(url: "https://github.com/acme/private-kit", revision: "0123456789abcdef0123456789abcdef01234567")`: {Ecosystem: ecosystemSwiftPM, Package: "github.com/acme/private-kit", Version: "0123456789abcdef0123456789abcdef01234567", Pinned: true},
 			`.package(path: "Local/LocalKit")`:                                                                           {Local: "Local/LocalKit"},
-			`.package(id: "mona.LinkedList", from: "1.0.0")`:                                                             {Ecosystem: ecoSwiftPM, Package: "mona.LinkedList", Version: "1.0.0..<2.0.0"},
+			`.package(id: "mona.LinkedList", from: "1.0.0")`:                                                             {Ecosystem: ecosystemSwiftPM, Package: "mona.LinkedList", Version: "1.0.0..<2.0.0"},
 		},
 		"Sources/Demo/Model.swift": {
 			`String`: {},
 			`Void`:   {},
 		},
 		"Sources/Demo/Server.swift": {
-			`import Foundation`:               {Ecosystem: ecoStd, Package: "Foundation"},
-			`import NIOCore`:                  {Ecosystem: ecoSwiftPM, Package: "github.com/apple/swift-nio", Version: "2.64.0", Requested: "2.60.0..<3.0.0", Pinned: true},
-			`@preconcurrency import Logging`:  {Ecosystem: ecoSwiftPM, Package: "github.com/apple/swift-log", Version: "1.5.4", Requested: "1.5.0..<2.0.0", Pinned: true},
+			`import Foundation`:               {Ecosystem: ecosystemStd, Package: "Foundation"},
+			`import NIOCore`:                  {Ecosystem: ecosystemSwiftPM, Package: "github.com/apple/swift-nio", Version: "2.64.0", Requested: "2.60.0..<3.0.0", Pinned: true},
+			`@preconcurrency import Logging`:  {Ecosystem: ecosystemSwiftPM, Package: "github.com/apple/swift-log", Version: "1.5.4", Requested: "1.5.0..<2.0.0", Pinned: true},
 			`@_exported import Util`:          {Local: "Sources/Util"},
-			`import struct Collections.Deque`: {Ecosystem: ecoSwiftPM, Package: "github.com/apple/swift-collections", Version: "1.1.0", Requested: "1.0.0..<2.0.0", Pinned: true},
-			`import Markdown`:                 {Ecosystem: ecoSwiftPM, Package: "github.com/swiftlang/swift-markdown", Version: "4aae40bf6fff5286e0e1672329d17824ce16e081", Requested: "branch main", Pinned: true},
-			`import UIKit`:                    {Ecosystem: ecoApple, Package: "UIKit"},
-			`import AppKit`:                   {Ecosystem: ecoApple, Package: "AppKit"},
+			`import struct Collections.Deque`: {Ecosystem: ecosystemSwiftPM, Package: "github.com/apple/swift-collections", Version: "1.1.0", Requested: "1.0.0..<2.0.0", Pinned: true},
+			`import Markdown`:                 {Ecosystem: ecosystemSwiftPM, Package: "github.com/swiftlang/swift-markdown", Version: "4aae40bf6fff5286e0e1672329d17824ce16e081", Requested: "branch main", Pinned: true},
+			`import UIKit`:                    {Ecosystem: ecosystemApple, Package: "UIKit"},
+			`import AppKit`:                   {Ecosystem: ecosystemApple, Package: "AppKit"},
 			`Service`:                         {Local: "Sources/Demo/Model.swift"},
 			`Logger`:                          {},
 			`Deque`:                           {},
@@ -89,20 +89,20 @@ func TestPackageAndApp(t *testing.T) {
 			`String`:                          {},
 		},
 		"Sources/Util/Helper.swift": {
-			`import Collections`: {Ecosystem: ecoSwiftPM, Package: "github.com/apple/swift-collections", Version: "1.1.0", Requested: "1.0.0..<2.0.0", Pinned: true},
-			`import LinkedList`:  {Ecosystem: ecoSwiftPM, Package: "mona.LinkedList", Version: "1.0.0..<2.0.0"},
+			`import Collections`: {Ecosystem: ecosystemSwiftPM, Package: "github.com/apple/swift-collections", Version: "1.1.0", Requested: "1.0.0..<2.0.0", Pinned: true},
+			`import LinkedList`:  {Ecosystem: ecosystemSwiftPM, Package: "mona.LinkedList", Version: "1.0.0..<2.0.0"},
 			`Array`:              {},
 			`Int`:                {},
 		},
 		"Sources/demo-cli/main.swift": {
-			`import ArgumentParser`: {Ecosystem: ecoSwiftPM, Package: "github.com/apple/swift-argument-parser", Version: "1.3.0", Pinned: true},
+			`import ArgumentParser`: {Ecosystem: ecosystemSwiftPM, Package: "github.com/apple/swift-argument-parser", Version: "1.3.0", Pinned: true},
 			`import Demo`:           {Local: "Sources/Demo"},
-			`import SnapKit`:        {Ecosystem: ecoSwiftPM, Package: "github.com/SnapKit/SnapKit", Unresolved: true},
-			`import Unknown`:        {Ecosystem: ecoSwiftPM, Package: "Unknown", Unresolved: true},
+			`import SnapKit`:        {Ecosystem: ecosystemSwiftPM, Package: "github.com/SnapKit/SnapKit", Unresolved: true},
+			`import Unknown`:        {Ecosystem: ecosystemSwiftPM, Package: "Unknown", Unresolved: true},
 			`Server`:                {Local: "Sources/Demo/Server.swift"},
 		},
 		"Tests/DemoTests/ServerTests.swift": {
-			`import XCTest`:         {Ecosystem: ecoStd, Package: "XCTest"},
+			`import XCTest`:         {Ecosystem: ecosystemStd, Package: "XCTest"},
 			`@testable import Demo`: {Local: "Sources/Demo"},
 			`XCTestCase`:            {},
 			`Server`:                {Local: "Sources/Demo/Server.swift"},
@@ -124,14 +124,14 @@ func TestPackageAndApp(t *testing.T) {
 		"Sources/demo-cli/main.swift":                    {"server": "var"},
 		"Tests/DemoTests/ServerTests.swift":              {"ServerTests": "class", "ServerTests.testStart": "method"},
 	}
-	for file, r := range res {
+	for file, r := range results {
 		t.Run(file, func(t *testing.T) {
 			langtest.CheckImports(t, r, imports[file])
 			langtest.CheckSymbols(t, r, symbols[file])
 		})
 	}
 	for file := range symbols {
-		if res[file] == nil {
+		if results[file] == nil {
 			t.Errorf("%s: not analyzed", file)
 		}
 	}
@@ -147,16 +147,16 @@ func TestDependencies(t *testing.T) {
 		t.Fatal(err)
 	}
 	r := newResolver(root, langtest.Files(t, root))
-	got := r.Dependencies(lang.Target{Ecosystem: ecoSwiftPM, Package: "github.com/apple/swift-nio", Version: "2.64.0"})
+	got := r.Dependencies(lang.Target{Ecosystem: ecosystemSwiftPM, Package: "github.com/apple/swift-nio", Version: "2.64.0"})
 	want := []lang.Target{
-		{Ecosystem: ecoSwiftPM, Package: "github.com/apple/swift-atomics", Version: "1.2.0", Requested: "1.1.0..<2.0.0", Pinned: true},
-		{Ecosystem: ecoSwiftPM, Package: "github.com/apple/swift-collections", Version: "1.1.0", Requested: "1.0.0..<2.0.0", Pinned: true},
-		{Ecosystem: ecoSwiftPM, Package: "github.com/apple/swift-docc-plugin", Version: "1.0.0..<2.0.0"},
+		{Ecosystem: ecosystemSwiftPM, Package: "github.com/apple/swift-atomics", Version: "1.2.0", Requested: "1.1.0..<2.0.0", Pinned: true},
+		{Ecosystem: ecosystemSwiftPM, Package: "github.com/apple/swift-collections", Version: "1.1.0", Requested: "1.0.0..<2.0.0", Pinned: true},
+		{Ecosystem: ecosystemSwiftPM, Package: "github.com/apple/swift-docc-plugin", Version: "1.0.0..<2.0.0"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("swift-nio: got %+v\nwant %+v", got, want)
 	}
-	if got := r.Dependencies(lang.Target{Ecosystem: ecoSwiftPM, Package: "github.com/apple/swift-log", Version: "1.5.4"}); got != nil {
+	if got := r.Dependencies(lang.Target{Ecosystem: ecosystemSwiftPM, Package: "github.com/apple/swift-log", Version: "1.5.4"}); got != nil {
 		t.Errorf("swift-log has no checkout: got %+v", got)
 	}
 }
@@ -181,11 +181,11 @@ func TestPackageName(t *testing.T) {
 
 // Verifies: REQ-SWIFT-008
 func TestRequirement(t *testing.T) {
-	type req struct {
+	type requirement struct {
 		requirement      string
 		pinned, floating bool
 	}
-	for in, want := range map[string]req{
+	for in, want := range map[string]requirement{
 		`url: "u", from: "1.2.3"`:                 {"1.2.3..<2.0.0", false, false},
 		`url: "u", .upToNextMajor(from: "0.9.0")`: {"0.9.0..<1.0.0", false, false},
 		`url: "u", .upToNextMinor(from: "1.2.3")`: {"1.2.3..<1.3.0", false, false},
@@ -200,12 +200,12 @@ func TestRequirement(t *testing.T) {
 		`name: "N", url: "u", from: "5.0.0"`:      {"5.0.0..<6.0.0", false, false},
 		`url: "u", from: "1.0.0", traits: ["A"]`:  {"1.0.0..<2.0.0", false, false},
 	} {
-		deps := dependencies(".package(" + in + ")")
-		if len(deps) != 1 {
-			t.Fatalf("%s: %d dependencies", in, len(deps))
+		parsed := dependencies(".package(" + in + ")")
+		if len(parsed) != 1 {
+			t.Fatalf("%s: %d dependencies", in, len(parsed))
 		}
-		d := deps[0]
-		if got := (req{d.requirement, d.pinned, d.floating}); got != want {
+		d := parsed[0]
+		if got := (requirement{d.requirement, d.pinned, d.floating}); got != want {
 			t.Errorf("%s: got %+v, want %+v", in, got, want)
 		}
 	}
@@ -233,7 +233,7 @@ func TestResolvedFormats(t *testing.T) {
 //
 // Verifies: REQ-SWIFT-010
 func TestXcodeLocalPackage(t *testing.T) {
-	src := `
+	source := `
 		C1000000000000000000000D /* XCLocalSwiftPackageReference "Packages/Kit" */ = {
 			isa = XCLocalSwiftPackageReference;
 			relativePath = Packages/Kit;
@@ -246,13 +246,13 @@ func TestXcodeLocalPackage(t *testing.T) {
 				branch = main;
 			};
 		};`
-	deps, _ := xcodePackages(src)
+	dependencies, _ := xcodePackages(source)
 	want := []dependency{
 		{path: "Packages/Kit", line: 2},
 		{url: "https://github.com/a/x", requirement: "branch main", floating: true, line: 6},
 	}
-	if !reflect.DeepEqual(deps, want) {
-		t.Errorf("got %+v\nwant %+v", deps, want)
+	if !reflect.DeepEqual(dependencies, want) {
+		t.Errorf("got %+v\nwant %+v", dependencies, want)
 	}
 }
 
@@ -268,9 +268,9 @@ func TestParseImport(t *testing.T) {
 		"import struct Collections.Deque;":          "Collections",
 		"importFoo":                                 "",
 	} {
-		imp, ok := parseImport(in)
-		if imp.Module != want || ok != (want != "") {
-			t.Errorf("%q: got %q %v, want %q", in, imp.Module, ok, want)
+		rawImport, ok := parseImport(in)
+		if rawImport.Module != want || ok != (want != "") {
+			t.Errorf("%q: got %q %v, want %q", in, rawImport.Module, ok, want)
 		}
 	}
 }
@@ -282,7 +282,7 @@ func TestParseImport(t *testing.T) {
 //
 // Verifies: REQ-SWIFT-002, REQ-SWIFT-003, REQ-SWIFT-011, REQ-SWIFT-014
 func TestScanner(t *testing.T) {
-	src := `import A
+	source := `import A
 /* /* import Nested */ still a comment */
 #if canImport(UIKit)
 import UIKit
@@ -308,34 +308,34 @@ struct Box<T: Hashable> where T: Sendable {
     enum Kind { case plain, boxed(Inner, label: Other = .none) }
 }
 `
-	ex, err := Plugin{}.Extract(&scan.File{Path: "x.swift"}, []byte(src))
+	extraction, err := Plugin{}.Extract(&scan.File{Path: "x.swift"}, []byte(source))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var imports []string
-	refs := map[string]int{}
-	for _, imp := range ex.Imports {
-		if imp.Name == kindImport {
-			imports = append(imports, imp.Spec)
+	references := map[string]int{}
+	for _, rawImport := range extraction.Imports {
+		if rawImport.Name == kindImport {
+			imports = append(imports, rawImport.Spec)
 		} else {
-			refs[imp.Spec] = imp.Line
+			references[rawImport.Spec] = rawImport.Line
 		}
 	}
 	if want := []string{"import A", "import UIKit", "@preconcurrency import AppKit"}; !reflect.DeepEqual(imports, want) {
 		t.Errorf("imports %q, want %q", imports, want)
 	}
 	for name, line := range map[string]int{"Raw": 8, "Interp": 10, "UIView": 14, "Macro": 18, "Hashable": 20, "Sendable": 20, "Item": 22, "Inner": 24, "Other": 24} {
-		if refs[name] != line {
-			t.Errorf("ref %s at %d, want %d", name, refs[name], line)
+		if references[name] != line {
+			t.Errorf("ref %s at %d, want %d", name, references[name], line)
 		}
 	}
 	for _, name := range []string{"NotCode", "NotAnImport", "NSView", "Key", "Value", "Box", "Kind", "T"} {
-		if _, ok := refs[name]; ok {
+		if _, ok := references[name]; ok {
 			t.Errorf("unexpected ref %s", name)
 		}
 	}
 	symbols := map[string]string{}
-	for _, s := range ex.Symbols {
+	for _, s := range extraction.Symbols {
 		symbols[s.Name] = s.Kind
 	}
 	want := map[string]string{"quote": "var", "text": "var", "re": "var", "Box": "extension", "Box.draw": "method",
@@ -350,7 +350,7 @@ struct Box<T: Hashable> where T: Sendable {
 //
 // Verifies: REQ-SWIFT-014
 func TestTruncated(t *testing.T) {
-	src := []byte(`@testable import A.B
+	source := []byte(`@testable import A.B
 extension Array<Box<Int>>: P where Element == Int { }
 func f<T: P & Q>(_ x: inout [String: (Int) async throws(E) -> Void] = [:], y: T...) -> some View {
     let s = "\(a + "\(b)") \( { $0 } (1) )" + #"\#(c)"# + """
@@ -363,8 +363,8 @@ func f<T: P & Q>(_ x: inout [String: (Int) async throws(E) -> Void] = [:], y: T.
     /* /* unterminated
 }
 `)
-	for i := range len(src) + 1 {
-		if _, err := (Plugin{}).Extract(&scan.File{Path: "x.swift"}, src[:i]); err != nil {
+	for i := range len(source) + 1 {
+		if _, err := (Plugin{}).Extract(&scan.File{Path: "x.swift"}, source[:i]); err != nil {
 			t.Fatalf("prefix %d: %v", i, err)
 		}
 	}

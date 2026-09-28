@@ -19,22 +19,22 @@ const parseTimeout = 3_000_000 // µs
 
 // Implements: REQ-LANG-006, REQ-LANG-008
 type Grammar struct {
-	name    string
-	lang    *ts.Language
-	query   *ts.Query
-	parsers sync.Pool
+	name     string
+	language *ts.Language
+	query    *ts.Query
+	parsers  sync.Pool
 }
 
-// NewGrammar compiles query for lang. Capture names starting with "_" are helpers
+// NewGrammar compiles query for language. Capture names starting with "_" are helpers
 // for predicates and are not reported.
-func NewGrammar(name string, lang *ts.Language, query string) (*Grammar, error) {
-	q, err := ts.NewQuery(query, lang)
+func NewGrammar(name string, language *ts.Language, query string) (*Grammar, error) {
+	q, err := ts.NewQuery(query, language)
 	if err != nil {
 		return nil, fmt.Errorf("%s query: %w", name, err)
 	}
-	g := &Grammar{name: name, lang: lang, query: q}
+	g := &Grammar{name: name, language: language, query: q}
 	g.parsers.New = func() any {
-		p := ts.NewParser(lang)
+		p := ts.NewParser(language)
 		p.SetTimeoutMicros(parseTimeout)
 		return p
 	}
@@ -42,8 +42,8 @@ func NewGrammar(name string, lang *ts.Language, query string) (*Grammar, error) 
 }
 
 // MustGrammar is NewGrammar for queries embedded in the program.
-func MustGrammar(name string, lang *ts.Language, query string) *Grammar {
-	g, err := NewGrammar(name, lang, query)
+func MustGrammar(name string, language *ts.Language, query string) *Grammar {
+	g, err := NewGrammar(name, language, query)
 	if err != nil {
 		panic(err)
 	}
@@ -52,12 +52,12 @@ func MustGrammar(name string, lang *ts.Language, query string) *Grammar {
 
 // Capture is one captured node of a query match.
 type Capture struct {
-	Name string // without the leading "@"
-	Text string
-	Line int // 1-based
-	node *ts.Node
-	g    *Grammar
-	src  []byte
+	Name   string // without the leading "@"
+	Text   string
+	Line   int // 1-based
+	node   *ts.Node
+	g      *Grammar
+	source []byte
 }
 
 // Match holds the captures of one pattern match, in pattern order.
@@ -73,13 +73,13 @@ func (m Match) Get(name string) (string, bool) {
 	return "", false
 }
 
-// Matches parses src and runs the grammar's query. The tree is released before
+// Matches parses source and runs the grammar's query. The tree is released before
 // returning, so captures only keep their text, line and the ability to inspect
 // their ancestors via the methods below - which must be called inside visit.
-func (g *Grammar) Matches(src []byte, visit func(Match)) error {
+func (g *Grammar) Matches(source []byte, visit func(Match)) error {
 	p := g.parsers.Get().(*ts.Parser)
 	defer g.parsers.Put(p)
-	tree, err := p.Parse(src)
+	tree, err := p.Parse(source)
 	if err != nil {
 		return err
 	}
@@ -97,8 +97,8 @@ func (g *Grammar) Matches(src []byte, visit func(Match)) error {
 				continue
 			}
 			out = append(out, Capture{
-				Name: c.Name, Text: c.Text(src), Line: int(c.Node.StartPoint().Row) + 1,
-				node: c.Node, g: g, src: src,
+				Name: c.Name, Text: c.Text(source), Line: int(c.Node.StartPoint().Row) + 1,
+				node: c.Node, g: g, source: source,
 			})
 		}
 		if len(out) > 0 {
@@ -118,11 +118,11 @@ func (c Capture) EnclosingName(types ...string) string {
 // of types, e.g. the "type" of the Rust impl block around a method.
 func (c Capture) EnclosingField(field string, types ...string) string {
 	for n := c.node.Parent(); n != nil; n = n.Parent() {
-		t := n.Type(c.g.lang)
+		t := n.Type(c.g.language)
 		for _, want := range types {
 			if t == want {
-				if f := n.ChildByFieldName(field, c.g.lang); f != nil {
-					return f.Text(c.src)
+				if f := n.ChildByFieldName(field, c.g.language); f != nil {
+					return f.Text(c.source)
 				}
 				return ""
 			}
@@ -135,8 +135,8 @@ func (c Capture) EnclosingField(field string, types ...string) string {
 // kind of value a variable declarator is initialized with.
 func (c Capture) SiblingFieldType(field string) string {
 	if p := c.node.Parent(); p != nil {
-		if f := p.ChildByFieldName(field, c.g.lang); f != nil {
-			return f.Type(c.g.lang)
+		if f := p.ChildByFieldName(field, c.g.language); f != nil {
+			return f.Type(c.g.language)
 		}
 	}
 	return ""
@@ -154,9 +154,9 @@ type Scope struct {
 func (c Capture) Scopes() []Scope {
 	var out []Scope
 	for n := c.node.Parent(); n != nil; n = n.Parent() {
-		s := Scope{Type: n.Type(c.g.lang)}
-		if f := n.ChildByFieldName("name", c.g.lang); f != nil {
-			s.Name = f.Text(c.src)
+		s := Scope{Type: n.Type(c.g.language)}
+		if f := n.ChildByFieldName("name", c.g.language); f != nil {
+			s.Name = f.Text(c.source)
 		}
 		out = append(out, s)
 	}
