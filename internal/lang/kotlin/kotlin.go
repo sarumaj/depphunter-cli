@@ -16,9 +16,9 @@ import (
 )
 
 const (
-	ecoMaven = "maven"
-	ecoJDK   = "jdk"
-	ecoStd   = "kotlin-std"
+	ecosystemMaven = "maven"
+	ecosystemJDK   = "jdk"
+	ecosystemStd   = "kotlin-std"
 )
 
 // The grammar names no fields, so a method's pattern captures its owner (@owner)
@@ -47,7 +47,7 @@ var grammar = treesitter.MustGrammar("kotlin", kotlin.Language(), query)
 // in it: coroutines and serialization are Maven artifacts.
 //
 // Implements: REQ-KT-002
-var language = java.Language{Std: ecoStd, Prefixes: []string{"kotlin."}}
+var language = java.Language{Std: ecosystemStd, Prefixes: []string{"kotlin."}}
 
 // Implements: REQ-KT-001
 type Plugin struct{}
@@ -59,9 +59,9 @@ func (Plugin) Claims(f *scan.File) bool {
 }
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoMaven, Name: "Maven"},
-		{ID: ecoJDK, Name: "Java standard library", Std: true},
-		{ID: ecoStd, Name: "Kotlin standard library", Std: true},
+		{ID: ecosystemMaven, Name: "Maven"},
+		{ID: ecosystemJDK, Name: "Java standard library", Std: true},
+		{ID: ecosystemStd, Name: "Kotlin standard library", Std: true},
 	}
 }
 
@@ -70,41 +70,41 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-KT-001
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
-	ex := &lang.Extraction{}
-	type def struct {
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
+	extraction := &lang.Extraction{}
+	type definition struct {
 		name, kind string
 		line       int
 	}
-	var defs []def
-	enums := map[def]bool{}
-	err := grammar.Matches(src, func(m treesitter.Match) {
+	var definitions []definition
+	enums := map[definition]bool{}
+	err := grammar.Matches(source, func(m treesitter.Match) {
 		for _, c := range m {
 			switch {
 			case c.Name == "import":
-				if imp, ok := parseImport(c.Text); ok {
-					imp.Line = c.Line
-					ex.Imports = append(ex.Imports, imp)
+				if rawImport, ok := parseImport(c.Text); ok {
+					rawImport.Line = c.Line
+					extraction.Imports = append(extraction.Imports, rawImport)
 				}
 			case c.Name == "enum":
-				enums[def{c.Text, "", c.Line}] = true
+				enums[definition{c.Text, "", c.Line}] = true
 			case c.Name == "def.method":
 				owner, _ := m.Get("owner")
-				defs = append(defs, def{owner + "." + c.Text, "method", c.Line})
+				definitions = append(definitions, definition{owner + "." + c.Text, "method", c.Line})
 			case strings.HasPrefix(c.Name, "def."):
-				defs = append(defs, def{c.Text, strings.TrimPrefix(c.Name, "def."), c.Line})
+				definitions = append(definitions, definition{c.Text, strings.TrimPrefix(c.Name, "def."), c.Line})
 			}
 		}
 	})
 	var symbols lang.SymbolSet
-	for _, d := range defs {
-		if d.kind == "class" && enums[def{d.name, "", d.line}] {
+	for _, d := range definitions {
+		if d.kind == "class" && enums[definition{d.name, "", d.line}] {
 			d.kind = "enum"
 		}
 		symbols.Add(d.name, d.kind, d.line)
 	}
-	ex.Symbols = symbols.List()
-	return ex, err
+	extraction.Symbols = symbols.List()
+	return extraction, err
 }
 
 // parseImport reads "import a.b.C", "import a.b.*" and "import a.b.C as D". The

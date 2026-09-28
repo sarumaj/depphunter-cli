@@ -39,7 +39,7 @@ var exported = []string{"Graph", "Node", "Edge"}
 
 // Verifies: REQ-MOD-013
 func TestGeneratedTypeScriptMatchesTheGoDeclarations(t *testing.T) {
-	root := repoRoot(t)
+	root := repositoryRoot(t)
 	want, err := renderTypeScript(filepath.Join(root, "graph.go"))
 	if err != nil {
 		t.Fatal(err)
@@ -62,13 +62,13 @@ func TestGeneratedTypeScriptMatchesTheGoDeclarations(t *testing.T) {
 	}
 }
 
-func repoRoot(t *testing.T) string {
+func repositoryRoot(t *testing.T) string {
 	t.Helper()
-	dir, err := os.Getwd()
+	directory, err := os.Getwd()
 	if err != nil {
 		t.Fatal(err)
 	}
-	return dir
+	return directory
 }
 
 // renderTypeScript reads the declarations out of graph.go and writes the interfaces
@@ -121,15 +121,15 @@ func renderTypeScript(path string) ([]byte, error) {
 	return b.Bytes(), nil
 }
 
-type decl struct {
+type declaration struct {
 	node *ast.StructType
 	doc  string
 }
 
 // declarations collects the struct types and the string-constant groups, which is
 // where the unions come from: NodeKind's constants are what a node's kind may be.
-func declarations(file *ast.File) (map[string]decl, map[string][]string) {
-	types := map[string]decl{}
+func declarations(file *ast.File) (map[string]declaration, map[string][]string) {
+	types := map[string]declaration{}
 	unions := map[string][]string{}
 	for _, d := range file.Decls {
 		gen, ok := d.(*ast.GenDecl)
@@ -139,12 +139,12 @@ func declarations(file *ast.File) (map[string]decl, map[string][]string) {
 		for _, spec := range gen.Specs {
 			switch s := spec.(type) {
 			case *ast.TypeSpec:
-				if st, ok := s.Type.(*ast.StructType); ok {
+				if structType, ok := s.Type.(*ast.StructType); ok {
 					doc := s.Doc
 					if doc == nil {
 						doc = gen.Doc
 					}
-					types[s.Name.Name] = decl{node: st, doc: text(doc)}
+					types[s.Name.Name] = declaration{node: structType, doc: text(doc)}
 				}
 			case *ast.ValueSpec:
 				// `KindDir NodeKind = "dir"` in a const block: the named type gets
@@ -153,8 +153,8 @@ func declarations(file *ast.File) (map[string]decl, map[string][]string) {
 				if !ok || len(s.Values) != 1 {
 					continue
 				}
-				if lit, ok := s.Values[0].(*ast.BasicLit); ok && lit.Kind == token.STRING {
-					unions[named.Name] = append(unions[named.Name], strings.Trim(lit.Value, `"`))
+				if literal, ok := s.Values[0].(*ast.BasicLit); ok && literal.Kind == token.STRING {
+					unions[named.Name] = append(unions[named.Name], strings.Trim(literal.Value, `"`))
 				}
 			}
 		}
@@ -169,13 +169,13 @@ type field struct {
 	doc      string
 }
 
-func fieldsOf(st *ast.StructType, types map[string]decl, unions map[string][]string) ([]field, error) {
+func fieldsOf(structType *ast.StructType, types map[string]declaration, unions map[string][]string) ([]field, error) {
 	var out []field
-	for _, f := range st.Fields.List {
+	for _, f := range structType.Fields.List {
 		if f.Tag == nil || len(f.Names) != 1 || !f.Names[0].IsExported() {
 			continue
 		}
-		name, opts := jsonTag(strings.Trim(f.Tag.Value, "`"))
+		name, options := jsonTag(strings.Trim(f.Tag.Value, "`"))
 		if name == "-" || name == "" {
 			continue
 		}
@@ -183,7 +183,7 @@ func fieldsOf(st *ast.StructType, types map[string]decl, unions map[string][]str
 		if err != nil {
 			return nil, fmt.Errorf("%s: %w", f.Names[0].Name, err)
 		}
-		out = append(out, field{json: name, ts: ts, optional: opts, doc: text(f.Doc)})
+		out = append(out, field{json: name, ts: ts, optional: options, doc: text(f.Doc)})
 	}
 	return out, nil
 }
@@ -198,12 +198,12 @@ func jsonTag(tag string) (string, bool) {
 			value = strings.TrimSuffix(rest, `"`)
 		}
 	}
-	name, opts, _ := strings.Cut(value, ",")
-	return name, strings.Contains(opts, "omitempty")
+	name, options, _ := strings.Cut(value, ",")
+	return name, strings.Contains(options, "omitempty")
 }
 
-func tsType(expr ast.Expr, types map[string]decl, unions map[string][]string) (string, error) {
-	switch t := expr.(type) {
+func tsType(expression ast.Expr, types map[string]declaration, unions map[string][]string) (string, error) {
+	switch t := expression.(type) {
 	case *ast.Ident:
 		switch t.Name {
 		case "string":
@@ -228,23 +228,23 @@ func tsType(expr ast.Expr, types map[string]decl, unions map[string][]string) (s
 	case *ast.SelectorExpr:
 		// time.Time serializes as an RFC 3339 string, and nothing else from another
 		// package is in this document.
-		if pkg, ok := t.X.(*ast.Ident); ok && pkg.Name == "time" && t.Sel.Name == "Time" {
+		if packageIdentifier, ok := t.X.(*ast.Ident); ok && packageIdentifier.Name == "time" && t.Sel.Name == "Time" {
 			return "string", nil
 		}
 		return "", fmt.Errorf("no TypeScript for %s.%s", t.X, t.Sel.Name)
 	case *ast.StarExpr:
 		return tsType(t.X, types, unions)
 	case *ast.ArrayType:
-		elem, err := tsType(t.Elt, types, unions)
+		element, err := tsType(t.Elt, types, unions)
 		if err != nil {
 			return "", err
 		}
-		if strings.Contains(elem, " | ") { // a union needs holding together
-			elem = "(" + elem + ")"
+		if strings.Contains(element, " | ") { // a union needs holding together
+			element = "(" + element + ")"
 		}
-		return elem + "[]", nil
+		return element + "[]", nil
 	}
-	return "", fmt.Errorf("no TypeScript for %T", expr)
+	return "", fmt.Errorf("no TypeScript for %T", expression)
 }
 
 // tsName is what a Go type is called on the other side. Node and Edge are the graph's
@@ -326,13 +326,13 @@ func TestNodeMembersAreNamedAndOmittedAsSpecified(t *testing.T) {
 		want string
 	}{
 		{&Node{ID: EcosystemID("go"), Kind: KindEcosystem, Name: "Go modules"}, "id,kind,name"},
-		{&Node{ID: DirID("a"), Kind: KindDir, Name: "a", Path: "a", Parent: DirID(".")}, "id,kind,name,parent,path"},
+		{&Node{ID: DirectoryID("a"), Kind: KindDirectory, Name: "a", Path: "a", Parent: DirectoryID(".")}, "id,kind,name,parent,path"},
 		{
-			&Node{ID: FileID("a/x.go"), Kind: KindFile, Name: "x.go", Path: "a/x.go", Parent: DirID("a"), Lang: "Go", LOC: 3, Bytes: 42},
+			&Node{ID: FileID("a/x.go"), Kind: KindFile, Name: "x.go", Path: "a/x.go", Parent: DirectoryID("a"), Language: "Go", LOC: 3, Bytes: 42},
 			"bytes,id,kind,lang,loc,name,parent,path",
 		},
 		// A binary file: its size, and no lines.
-		{&Node{ID: FileID("a.bin"), Kind: KindFile, Name: "a.bin", Path: "a.bin", Parent: DirID("."), Bytes: 7}, "bytes,id,kind,name,parent,path"},
+		{&Node{ID: FileID("a.bin"), Kind: KindFile, Name: "a.bin", Path: "a.bin", Parent: DirectoryID("."), Bytes: 7}, "bytes,id,kind,name,parent,path"},
 		{
 			&Node{ID: SymbolID("a/x.go", "F"), Kind: KindSymbol, Name: "F", Parent: FileID("a/x.go"), SymbolKind: "func", Line: 1},
 			"id,kind,line,name,parent,symbolKind",

@@ -9,8 +9,8 @@ import (
 
 // Token kinds of the scanners.
 const (
-	tIdent = iota + 1
-	tPunct // one character, or "::"
+	tIdentifier  = iota + 1
+	tPunctuation // one character, or "::"
 	tString
 	tNumber
 )
@@ -21,62 +21,62 @@ type token struct {
 	line int
 }
 
-func (t token) is(text string) bool { return t.kind == tPunct && t.text == text }
+func (t token) is(text string) bool { return t.kind == tPunctuation && t.text == text }
 
 // extractC reads a GLSL or HLSL file: the includes through the cpp plugin's
 // directive scanner (comments, continued lines, #if 0), the definitions through a
 // scan of the tokens outside the dead lines.
-func extractC(src []byte, d int) *lang.Extraction {
-	includes, dead := cpp.Directives(src)
+func extractC(source []byte, d int) *lang.Extraction {
+	includes, dead := cpp.Directives(source)
 	var set lang.SymbolSet
-	s := &cScanner{tokens: lexC(src, dead), hlsl: d == hlsl, set: &set}
-	s.decls(0, len(s.tokens), "", 0)
+	s := &cScanner{tokens: lexC(source, dead), hlsl: d == hlsl, set: &set}
+	s.declarations(0, len(s.tokens), "", 0)
 	return &lang.Extraction{Imports: includes, Symbols: set.List()}
 }
 
 // lexC splits a C-like source into tokens. Comments, preprocessor lines and the
 // lines the directive scanner found dead are dropped.
-func lexC(src []byte, dead []bool) []token {
+func lexC(source []byte, dead []bool) []token {
 	var tokens []token
-	line, bol := 1, true
-	for i := 0; i < len(src); {
-		c := src[i]
-		if bol && c != '\n' && line < len(dead) && dead[line] {
-			for i < len(src) && src[i] != '\n' {
+	line, lineStart := 1, true
+	for i := 0; i < len(source); {
+		c := source[i]
+		if lineStart && c != '\n' && line < len(dead) && dead[line] {
+			for i < len(source) && source[i] != '\n' {
 				i++
 			}
 			continue
 		}
 		switch {
 		case c == '\n':
-			line, bol = line+1, true
+			line, lineStart = line+1, true
 			i++
 			continue
 		case c == ' ' || c == '\t' || c == '\r' || c == '\f' || c == '\v':
 			i++
 			continue
-		case c == '#' && bol:
+		case c == '#' && lineStart:
 			// A directive, continued lines included.
-			for i < len(src) && src[i] != '\n' {
-				if src[i] == '\\' && i+1 < len(src) && src[i+1] == '\n' {
+			for i < len(source) && source[i] != '\n' {
+				if source[i] == '\\' && i+1 < len(source) && source[i+1] == '\n' {
 					line++
 					i++
-				} else if src[i] == '\\' && i+2 < len(src) && src[i+1] == '\r' && src[i+2] == '\n' {
+				} else if source[i] == '\\' && i+2 < len(source) && source[i+1] == '\r' && source[i+2] == '\n' {
 					line++
 					i += 2
 				}
 				i++
 			}
 			continue
-		case c == '/' && i+1 < len(src) && src[i+1] == '/':
-			for i < len(src) && src[i] != '\n' {
+		case c == '/' && i+1 < len(source) && source[i+1] == '/':
+			for i < len(source) && source[i] != '\n' {
 				i++
 			}
 			continue
-		case c == '/' && i+1 < len(src) && src[i+1] == '*':
+		case c == '/' && i+1 < len(source) && source[i+1] == '*':
 			i += 2
-			for i < len(src) && !(src[i] == '*' && i+1 < len(src) && src[i+1] == '/') {
-				if src[i] == '\n' {
+			for i < len(source) && !(source[i] == '*' && i+1 < len(source) && source[i+1] == '/') {
+				if source[i] == '\n' {
 					line++
 				}
 				i++
@@ -84,42 +84,42 @@ func lexC(src []byte, dead []bool) []token {
 			i += 2
 			continue
 		}
-		bol = false
+		lineStart = false
 		start, at := i, line
 		switch {
-		case identStart(c):
-			for i < len(src) && identByte(src[i]) {
+		case identifierStart(c):
+			for i < len(source) && identifierByte(source[i]) {
 				i++
 			}
-			tokens = append(tokens, token{tIdent, string(src[start:i]), at})
-		case c >= '0' && c <= '9' || c == '.' && i+1 < len(src) && src[i+1] >= '0' && src[i+1] <= '9':
-			for i < len(src) && (identByte(src[i]) || src[i] == '.') {
+			tokens = append(tokens, token{tIdentifier, string(source[start:i]), at})
+		case c >= '0' && c <= '9' || c == '.' && i+1 < len(source) && source[i+1] >= '0' && source[i+1] <= '9':
+			for i < len(source) && (identifierByte(source[i]) || source[i] == '.') {
 				i++
 			}
-			tokens = append(tokens, token{tNumber, string(src[start:i]), at})
+			tokens = append(tokens, token{tNumber, string(source[start:i]), at})
 		case c == '"' || c == '\'':
 			i++
-			for i < len(src) && src[i] != c && src[i] != '\n' {
-				if src[i] == '\\' {
+			for i < len(source) && source[i] != c && source[i] != '\n' {
+				if source[i] == '\\' {
 					i++
 				}
 				i++
 			}
 			i++
 			tokens = append(tokens, token{tString, "", at})
-		case c == ':' && i+1 < len(src) && src[i+1] == ':':
+		case c == ':' && i+1 < len(source) && source[i+1] == ':':
 			i += 2
-			tokens = append(tokens, token{tPunct, "::", at})
+			tokens = append(tokens, token{tPunctuation, "::", at})
 		default:
 			i++
-			tokens = append(tokens, token{tPunct, string(c), at})
+			tokens = append(tokens, token{tPunctuation, string(c), at})
 		}
 	}
 	return tokens
 }
 
-func identStart(c byte) bool { return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' }
-func identByte(c byte) bool  { return identStart(c) || c >= '0' && c <= '9' }
+func identifierStart(c byte) bool { return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' }
+func identifierByte(c byte) bool  { return identifierStart(c) || c >= '0' && c <= '9' }
 
 // blockQualifiers open a GLSL interface block (`uniform Camera { ... } cam;`),
 // ray tracing and mesh shading ones included.
@@ -146,18 +146,18 @@ type cScanner struct {
 	set    *lang.SymbolSet
 }
 
-// decls reads the declarations of tokens[i:end] (a file, or a namespace's body):
+// declarations reads the declarations of tokens[i:end] (a file, or a namespace's body):
 // statements end at a ';' or a body in braces at nesting depth 0.
 //
 // Implements: REQ-SHADER-003
-func (s *cScanner) decls(i, end int, owner string, depth int) {
+func (s *cScanner) declarations(i, end int, owner string, depth int) {
 	for i < end {
 		start := i
 		nest := 0 // () and [] inside the statement head
 	head:
 		for ; i < end; i++ {
 			t := s.tokens[i]
-			if t.kind != tPunct {
+			if t.kind != tPunctuation {
 				continue
 			}
 			switch t.text {
@@ -192,7 +192,7 @@ func (s *cScanner) decls(i, end int, owner string, depth int) {
 		case "namespace":
 			s.set.Add(owner+name, kind, head[0].line)
 			if depth < maxDepth {
-				s.decls(body, rbrace, owner+name+".", depth+1)
+				s.declarations(body, rbrace, owner+name+".", depth+1)
 			}
 			continue
 		case "struct", "block", "cbuffer", "technique":
@@ -214,30 +214,30 @@ func (s *cScanner) classify(head []token) (name, kind string) {
 		return "", ""
 	}
 	for j, t := range head {
-		if t.kind != tIdent {
+		if t.kind != tIdentifier {
 			continue
 		}
 		switch w := t.text; {
 		case w == "struct" || w == "class" || w == "interface":
-			if n := identAt(head, j+1); n != "" {
+			if n := identifierAt(head, j+1); n != "" {
 				return n, "struct"
 			}
 			return "", ""
 		case s.hlsl && (w == "cbuffer" || w == "tbuffer"):
-			return identAt(head, j+1), "cbuffer"
+			return identifierAt(head, j+1), "cbuffer"
 		case s.hlsl && strings.HasPrefix(w, "technique") && (len(w) == 9 || w == "technique10" || w == "technique11"):
-			return identAt(head, j+1), "technique"
+			return identifierAt(head, j+1), "technique"
 		case w == "namespace":
-			return identAt(head, j+1), "namespace"
+			return identifierAt(head, j+1), "namespace"
 		}
 	}
 	// A GLSL interface block: `layout(std140) uniform Camera`.
-	if last := head[len(head)-1]; !s.hlsl && last.kind == tIdent && len(head) >= 2 && qualified(head) {
+	if last := head[len(head)-1]; !s.hlsl && last.kind == tIdentifier && len(head) >= 2 && qualified(head) {
 		return last.text, "block"
 	}
 	// A function: a name and its parameters, then at most an HLSL semantic
 	// (`: SV_Target`) or a trailing qualifier.
-	params := -1 // the ')' ending the parameters
+	parameters := -1 // the ')' ending the parameters
 	nest := 0
 	for j, t := range head {
 		switch {
@@ -246,22 +246,22 @@ func (s *cScanner) classify(head []token) (name, kind string) {
 		case t.is(")") || t.is("]"):
 			nest--
 			if nest == 0 && t.is(")") {
-				params = j
+				parameters = j
 			}
 		case nest == 0 && t.is("="):
 			return "", ""
 		}
 	}
-	if params < 0 || !tail(head[params+1:]) {
+	if parameters < 0 || !tail(head[parameters+1:]) {
 		return "", ""
 	}
-	open := matching(head, params)
-	if open < 1 || head[open-1].kind != tIdent || notNames[head[open-1].text] {
+	open := matching(head, parameters)
+	if open < 1 || head[open-1].kind != tIdentifier || notNames[head[open-1].text] {
 		return "", ""
 	}
 	j := open - 1
 	name = head[j].text
-	for j >= 2 && head[j-1].is("::") && head[j-2].kind == tIdent {
+	for j >= 2 && head[j-1].is("::") && head[j-2].kind == tIdentifier {
 		j -= 2
 		name = head[j].text + "::" + name
 	}
@@ -281,7 +281,7 @@ func qualified(head []token) bool {
 			nest++
 		case t.is(")"):
 			nest--
-		case nest == 0 && t.kind == tIdent && blockQualifiers[t.text]:
+		case nest == 0 && t.kind == tIdentifier && blockQualifiers[t.text]:
 			return true
 		}
 	}
@@ -294,7 +294,7 @@ func tail(rest []token) bool {
 	for j := 0; j < len(rest); j++ {
 		t := rest[j]
 		switch {
-		case t.is(":") || t.kind == tIdent:
+		case t.is(":") || t.kind == tIdentifier:
 		case t.is("("):
 			for j < len(rest) && !rest[j].is(")") {
 				j++
@@ -307,9 +307,9 @@ func tail(rest []token) bool {
 }
 
 // matching is the index of the '(' of the ')' at head[params].
-func matching(head []token, params int) int {
+func matching(head []token, parameters int) int {
 	nest := 0
-	for j := params; j >= 0; j-- {
+	for j := parameters; j >= 0; j-- {
 		switch {
 		case head[j].is(")"):
 			nest++
@@ -323,8 +323,8 @@ func matching(head []token, params int) int {
 	return -1
 }
 
-func identAt(head []token, j int) string {
-	if j < len(head) && head[j].kind == tIdent {
+func identifierAt(head []token, j int) string {
+	if j < len(head) && head[j].kind == tIdentifier {
 		return head[j].text
 	}
 	return ""
@@ -349,7 +349,7 @@ func hasTopLevel(head []token, text string) bool {
 func (s *cScanner) lineOf(head []token, name string) int {
 	last := name[strings.LastIndex(name, ":")+1:]
 	for j := len(head) - 1; j >= 0; j-- {
-		if head[j].kind == tIdent && head[j].text == last {
+		if head[j].kind == tIdentifier && head[j].text == last {
 			return head[j].line
 		}
 	}
@@ -382,7 +382,7 @@ func (s *cScanner) declarators(i, end int) int {
 		switch {
 		case t.is(";"):
 			return j + 1
-		case t.kind == tIdent || t.kind == tNumber || t.is("[") || t.is("]") || t.is(",") || t.is(":"):
+		case t.kind == tIdentifier || t.kind == tNumber || t.is("[") || t.is("]") || t.is(",") || t.is(":"):
 		default:
 			return i
 		}

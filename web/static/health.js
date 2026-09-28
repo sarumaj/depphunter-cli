@@ -22,10 +22,10 @@ const BASE = 100;        // what the walker starts with, before anything is caug
 const PER_CATCH = 8;     // ... and what each bug in the backpack adds to the ceiling
 const MAX_CATCH = 150;   // as far as catching can raise it
 // A fall is measured against the walker, who is half a unit tall - so a unit is
-// about three and a half metres of a person's world. It is free up to SAFE_FALL,
-// about three metres, which is what anybody jumps down without thinking (a jump off
+// about three and a half meters of a person's world. It is free up to SAFE_FALL,
+// about three meters, which is what anybody jumps down without thinking (a jump off
 // a terrace wall stays under it), and from there it takes a share of the walker's
-// health that grows with the height, until LETHAL_FALL - about seventeen metres, five
+// health that grows with the height, until LETHAL_FALL - about seventeen meters, five
 // or six floors of a real building - which nobody walks away from. It is a share
 // rather than a number of points so that a full backpack does not make a walker
 // survive what nobody would.
@@ -107,10 +107,10 @@ export class Health {
    * spent and not by how long the page has been open - a walker held still while a
    * panel is read is not quietly healing behind it.
    */
-  mend(dt, now = performance.now()) {
+  mend(deltaTime, now = performance.now()) {
     if (this.dead || this.hp >= this.max) return 0;
     if (now - this.hurtAt < MENDS_AFTER) return 0;
-    const put = Math.min(this.max - this.hp, MENDS * dt);
+    const put = Math.min(this.max - this.hp, MENDS * deltaTime);
     this.hp += put;
     this.draw(now);
     return put;

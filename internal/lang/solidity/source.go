@@ -27,8 +27,8 @@ type scanner struct {
 // scanSource extracts a Solidity file's imports and declarations.
 //
 // Implements: REQ-SOLIDITY-002, REQ-SOLIDITY-003, REQ-SOLIDITY-010
-func scanSource(src []byte) *lang.Extraction {
-	s := &scanner{tokens: lex(src), seen: map[string]bool{}}
+func scanSource(source []byte) *lang.Extraction {
+	s := &scanner{tokens: lex(source), seen: map[string]bool{}}
 	s.matchBrackets()
 	s.block(0, len(s.tokens), "")
 	return &lang.Extraction{Imports: s.imports, Symbols: s.symbols.List()}
@@ -52,7 +52,7 @@ func (s *scanner) matchBrackets() {
 	var stack []int
 	for i, t := range s.tokens {
 		s.match[i] = -1
-		if t.kind != tPunct {
+		if t.kind != tPunctuation {
 			continue
 		}
 		switch t.text {
@@ -75,12 +75,12 @@ func (s *scanner) matchBrackets() {
 	}
 }
 
-func (s *scanner) punct(i int, p string) bool {
-	return i < len(s.tokens) && s.tokens[i].kind == tPunct && s.tokens[i].text == p
+func (s *scanner) punctuation(i int, p string) bool {
+	return i < len(s.tokens) && s.tokens[i].kind == tPunctuation && s.tokens[i].text == p
 }
 
-func (s *scanner) ident(i int) (string, bool) {
-	if i < len(s.tokens) && s.tokens[i].kind == tIdent {
+func (s *scanner) identifier(i int) (string, bool) {
+	if i < len(s.tokens) && s.tokens[i].kind == tIdentifier {
 		return s.tokens[i].text, true
 	}
 	return "", false
@@ -101,7 +101,7 @@ func (s *scanner) skip(i int) int {
 func (s *scanner) statementEnd(i, end int) int {
 	for i < end {
 		t := s.tokens[i]
-		if t.kind == tPunct {
+		if t.kind == tPunctuation {
 			switch t.text {
 			case ";":
 				return i + 1
@@ -119,7 +119,7 @@ func (s *scanner) statementEnd(i, end int) int {
 func (s *scanner) bodyEnd(i, end int) int {
 	for i < end {
 		t := s.tokens[i]
-		if t.kind == tPunct {
+		if t.kind == tPunctuation {
 			switch t.text {
 			case ";":
 				return i + 1
@@ -139,7 +139,7 @@ func (s *scanner) bodyEnd(i, end int) int {
 func (s *scanner) headerOpen(i, end int) int {
 	for i < end {
 		t := s.tokens[i]
-		if t.kind == tPunct {
+		if t.kind == tPunctuation {
 			switch t.text {
 			case "{":
 				return i
@@ -164,11 +164,11 @@ func member(owner, name string) string {
 func (s *scanner) block(i, end int, owner string) {
 	for i < end {
 		t := s.tokens[i]
-		if t.kind != tIdent {
+		if t.kind != tIdentifier {
 			i = s.skip(i)
 			continue
 		}
-		next, _ := s.ident(i + 1)
+		next, _ := s.identifier(i + 1)
 		switch t.text {
 		case "pragma", "using":
 			i = s.statementEnd(i, end)
@@ -183,7 +183,7 @@ func (s *scanner) block(i, end int, owner string) {
 				}
 				j++
 			}
-			name, ok := s.ident(j + 1)
+			name, ok := s.identifier(j + 1)
 			open := s.headerOpen(j+1, end)
 			if !ok || open < 0 {
 				i = s.statementEnd(i, end)
@@ -200,18 +200,18 @@ func (s *scanner) block(i, end int, owner string) {
 		case "function":
 			name := next
 			switch {
-			case name != "" && s.punct(i+2, "("):
+			case name != "" && s.punctuation(i+2, "("):
 				kind := "func"
 				if owner != "" {
 					kind = "method"
 				}
 				s.symbols.Add(member(owner, name), kind, s.tokens[i+1].line)
 				i = s.bodyEnd(i+2, end)
-			case s.punct(i+1, "("):
+			case s.punctuation(i+1, "("):
 				// Before 0.6 a contract's fallback was `function () external {...}`;
 				// with a ';' it is a state variable of a function type.
 				j := s.bodyEnd(i+1, end)
-				if owner != "" && j > 0 && j <= len(s.tokens) && s.punct(j-1, "}") {
+				if owner != "" && j > 0 && j <= len(s.tokens) && s.punctuation(j-1, "}") {
 					s.symbols.Add(member(owner, "fallback"), "method", t.line)
 				}
 				i = j
@@ -219,7 +219,7 @@ func (s *scanner) block(i, end int, owner string) {
 				i = s.statementEnd(i+1, end)
 			}
 		case "constructor", "fallback", "receive":
-			if !s.punct(i+1, "(") {
+			if !s.punctuation(i+1, "(") {
 				i = s.statement(i, end, owner)
 				continue
 			}
@@ -231,7 +231,7 @@ func (s *scanner) block(i, end int, owner string) {
 			}
 			i = s.bodyEnd(i+1, end)
 		case "event", "error":
-			if next == "" || !s.punct(i+2, "(") {
+			if next == "" || !s.punctuation(i+2, "(") {
 				i = s.statement(i, end, owner)
 				continue
 			}
@@ -246,7 +246,7 @@ func (s *scanner) block(i, end int, owner string) {
 			s.symbols.Add(member(owner, next), t.text, s.tokens[i+1].line)
 			i = min(s.match[open], end) + 1
 		case "type":
-			if is, _ := s.ident(i + 2); next == "" || is != "is" {
+			if is, _ := s.identifier(i + 2); next == "" || is != "is" {
 				i = s.statement(i, end, owner)
 				continue
 			}
@@ -268,10 +268,10 @@ func (s *scanner) statement(i, end int, owner string) int {
 	constant, name, line := false, "", 0
 	for j := i; j < stop; j = s.skip(j) {
 		t := s.tokens[j]
-		if t.kind == tPunct && t.text == "=" {
+		if t.kind == tPunctuation && t.text == "=" {
 			break
 		}
-		if t.kind == tIdent {
+		if t.kind == tIdentifier {
 			if t.text == "constant" {
 				constant = true
 			} else {
@@ -300,16 +300,16 @@ func (s *scanner) importAt(i, end int) int {
 	j := i + 1
 	for ; j < end && j < i+1+maxImportTokens; j++ {
 		t := &s.tokens[j]
-		if t.kind == tPunct && t.text == ";" {
+		if t.kind == tPunctuation && t.text == ";" {
 			j++
 			break
 		}
-		if t.kind == tIdent && declStart[t.text] {
+		if t.kind == tIdentifier && declarationStart[t.text] {
 			break // a missing ';': the next declaration starts here
 		}
 		if t.kind == tString {
 			switch {
-			case j > i+1 && s.tokens[j-1].kind == tIdent && s.tokens[j-1].text == "from":
+			case j > i+1 && s.tokens[j-1].kind == tIdentifier && s.tokens[j-1].text == "from":
 				from = t
 			case first == nil:
 				first = t
@@ -331,8 +331,8 @@ func (s *scanner) importAt(i, end int) int {
 // symbols, never thousands of them.
 const maxImportTokens = 1024
 
-// declStart are the words that begin a declaration at the source unit's level.
-var declStart = map[string]bool{
+// declarationStart are the words that begin a declaration at the source unit's level.
+var declarationStart = map[string]bool{
 	"import": true, "pragma": true, "contract": true, "abstract": true, "interface": true,
 	"library": true, "function": true, "struct": true, "enum": true, "using": true,
 }

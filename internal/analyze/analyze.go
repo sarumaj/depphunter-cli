@@ -38,7 +38,7 @@ type Options struct {
 	// Such a package is marked on the graph, and what is marked is never named to a
 	// public index or to the vulnerability database. nil makes everything public,
 	// which is what a repository of open-source dependencies is.
-	Private func(eco, pkg string) bool
+	Private func(ecosystem, packageName string) bool
 	// Trace is the report this run writes its account of itself into: which index
 	// answered for what, and what each level of the walk added (internal/trace). One
 	// report belongs to one run, so --watch hands a fresh one to every re-analysis.
@@ -54,7 +54,7 @@ type Traced interface{ Trace(*trace.Report) }
 // Indexes says which package index serves a package, and whether anything on this
 // machine vouches for that index (see internal/index).
 type Indexes interface {
-	For(eco, pkg string) (index string, known bool)
+	For(ecosystem, packageName string) (index string, known bool)
 }
 
 // TargetIndexes is the optional half of Indexes that reads the whole target, for a
@@ -69,7 +69,7 @@ type TargetIndexes interface {
 // ecosystem's primary index; one found only on an index asked beside it (an extra
 // pip index, a POM's repository) is moved there afterwards.
 type Locator interface {
-	Located(eco, pkg string) (index string, known, ok bool)
+	Located(ecosystem, packageName string) (index string, known, ok bool)
 }
 
 // Discovered is the optional half of Indexes: every index the run knew about and
@@ -87,17 +87,17 @@ type Stats struct {
 }
 
 // Implements: REQ-MOD-001, REQ-LANG-029, REQ-LANG-030
-func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, error) {
+func Run(ctx context.Context, root string, options Options) (*graph.Graph, Stats, error) {
 	var stats Stats
-	files, err := scan.Scan(ctx, root, opts.Scan)
+	files, err := scan.Scan(ctx, root, options.Scan)
 	if err != nil {
 		return nil, stats, fmt.Errorf("scanning %s: %w", root, err)
 	}
-	stats.Files, stats.Resolution = len(files), opts.Trace
-	if t, ok := opts.Registry.(Traced); ok {
-		t.Trace(opts.Trace)
+	stats.Files, stats.Resolution = len(files), options.Trace
+	if t, ok := options.Registry.(Traced); ok {
+		t.Trace(options.Trace)
 	}
-	opts.Cache.BeginRun()
+	options.Cache.BeginRun()
 	var parsed, cached atomic.Int64
 	var mu sync.Mutex
 
@@ -107,26 +107,26 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 		edges:    map[[2]string]bool{},
 		files:    map[string]bool{},
 		packages: map[string]lang.Target{},
-		private:  opts.Private,
-		rep:      opts.Trace,
+		private:  options.Private,
+		report:   options.Trace,
 	}
-	if opts.Indexes != nil {
-		b.indexes = opts.Indexes(files)
+	if options.Indexes != nil {
+		b.indexes = options.Indexes(files)
 		if d, ok := b.indexes.(Discovered); ok {
-			opts.Trace.SetSources(d.Report())
+			options.Trace.SetSources(d.Report())
 		}
 	}
-	b.add(&graph.Node{ID: graph.DirID("."), Kind: graph.KindDir, Name: b.g.Root, Path: "."})
+	b.add(&graph.Node{ID: graph.DirectoryID("."), Kind: graph.KindDirectory, Name: b.g.Root, Path: "."})
 	// Implements: REQ-LANG-014, REQ-LANG-020
 	for _, f := range files {
 		b.files[f.Path] = true
 		b.add(&graph.Node{
 			ID: graph.FileID(f.Path), Kind: graph.KindFile, Name: path.Base(f.Path), Path: f.Path,
-			Parent: b.dir(path.Dir(f.Path)), Lang: f.Lang, LOC: f.LOC, Bytes: f.Size,
+			Parent: b.directory(path.Dir(f.Path)), Language: f.Language, LOC: f.LOC, Bytes: f.Size,
 		})
 	}
 
-	for _, p := range opts.Plugins {
+	for _, p := range options.Plugins {
 		claimed := lang.Claimed(p, files)
 		if len(claimed) == 0 {
 			continue
@@ -136,22 +136,22 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 			return nil, stats, fmt.Errorf("%s plugin: %w", p.Name(), err)
 		}
 		// Implements: REQ-LANG-026, REQ-LANG-027, REQ-LANG-028
-		results := lang.ForEachFile(ctx, claimed, func(f *scan.File, src []byte) *lang.FileResult {
-			key := cache.Key(p.Name(), p.Version(), lang.ClassOf(p, f), src)
-			if ex, ok := opts.Cache.Get(key); ok {
+		results := lang.ForEachFile(ctx, claimed, func(f *scan.File, source []byte) *lang.FileResult {
+			key := cache.Key(p.Name(), p.Version(), lang.ClassOf(p, f), source)
+			if extraction, ok := options.Cache.Get(key); ok {
 				cached.Add(1)
-				return lang.Apply(r, f.Path, ex)
+				return lang.Apply(r, f.Path, extraction)
 			}
 			parsed.Add(1)
 			mu.Lock()
 			stats.ParsedFiles = append(stats.ParsedFiles, f.Path)
 			mu.Unlock()
-			ex, err := p.Extract(f, src)
+			extraction, err := p.Extract(f, source)
 			if err != nil {
 				return nil
 			}
-			opts.Cache.Put(key, ex)
-			return lang.Apply(r, f.Path, ex)
+			options.Cache.Put(key, extraction)
+			return lang.Apply(r, f.Path, extraction)
 		})
 		if err := ctx.Err(); err != nil {
 			return nil, stats, err
@@ -161,8 +161,8 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 			ecosystems[e.ID] = e
 		}
 		for _, f := range claimed {
-			if res := results[f.Path]; res != nil {
-				b.fileResult(f.Path, res, ecosystems)
+			if result := results[f.Path]; result != nil {
+				b.fileResult(f.Path, result, ecosystems)
 			}
 		}
 		// Only now, with every direct package of this plugin on the graph, is there
@@ -170,10 +170,10 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 		// Implements: REQ-SUP-011, REQ-TRC-008
 		local, _ := r.(lang.Transitive)
 		switch {
-		case opts.ResolveDepth == 0:
-		case local != nil || opts.Registry != nil:
-			b.expand(ctx, chain{local: local, remote: opts.Registry, rep: opts.Trace},
-				p.Name(), ecosystems, opts.ResolveDepth)
+		case options.ResolveDepth == 0:
+		case local != nil || options.Registry != nil:
+			b.expand(ctx, chain{local: local, remote: options.Registry, report: options.Trace},
+				p.Name(), ecosystems, options.ResolveDepth)
 			if err := ctx.Err(); err != nil {
 				return nil, stats, err
 			}
@@ -182,22 +182,22 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 			// dependency graph outside the repository (Go modules, NuGet, Maven,
 			// containers) and nothing may be asked. Silence here is not "no
 			// dependencies", and the report is where the difference is kept.
-			opts.Trace.Skip(p.Name(),
+			options.Trace.Skip(p.Name(),
 				"the repository records no dependency graph for it, and --online was not given")
 		}
 		// Implements: REQ-TRC-017
 		if n, ok := r.(lang.Noter); ok {
 			for _, note := range n.Notes() {
 				note.Plugin = cmp.Or(note.Plugin, p.Name())
-				opts.Trace.Note(note)
+				options.Trace.Note(note)
 			}
 		}
 	}
-	b.relocate(opts.Registry)
+	b.relocate(options.Registry)
 	stats.Parsed, stats.Cached = int(parsed.Load()), int(cached.Load())
-	opts.Trace.Summarize(b.g)
-	opts.Trace.Finish()
-	opts.Cache.EndRun()
+	options.Trace.Summarize(b.g)
+	options.Trace.Finish()
+	options.Cache.EndRun()
 	return b.g, stats, nil
 }
 
@@ -207,7 +207,7 @@ func Run(ctx context.Context, root string, opts Options) (*graph.Graph, Stats, e
 //
 // Implements: REQ-SUP-018, REQ-SUP-063
 func (b *builder) relocate(r lang.Transitive) {
-	loc, ok := r.(Locator)
+	locator, ok := r.(Locator)
 	if !ok {
 		return
 	}
@@ -216,8 +216,8 @@ func (b *builder) relocate(r lang.Transitive) {
 		if n == nil || n.Index == "" || n.Origin != "" || t.Origin != "" {
 			continue
 		}
-		if idx, known, found := loc.Located(t.Ecosystem, t.Package); found && idx != "" {
-			n.Index, n.IndexUnknown = idx, !known
+		if index, known, found := locator.Located(t.Ecosystem, t.Package); found && index != "" {
+			n.Index, n.IndexUnknown = index, !known
 		}
 	}
 }
@@ -228,23 +228,23 @@ func (b *builder) relocate(r lang.Transitive) {
 // Implements: REQ-SUP-010, REQ-SUP-030
 type chain struct {
 	local, remote lang.Transitive
-	rep           *trace.Report
+	report        *trace.Report
 }
 
 // Implements: REQ-SUP-030, REQ-TRC-005, REQ-TRC-006
 func (c chain) Dependencies(t lang.Target) []lang.Target {
 	if c.local != nil {
-		if deps := c.local.Dependencies(t); len(deps) > 0 {
+		if dependencies := c.local.Dependencies(t); len(dependencies) > 0 {
 			answer := trace.FromLock
 			// Implements: REQ-PY-015
 			if in, ok := c.local.(lang.Installed); ok && in.Installed(t) {
 				answer = trace.FromInstalled
 			}
-			c.rep.Add(trace.Lookup{
+			c.report.Add(trace.Lookup{
 				Ecosystem: t.Ecosystem, Package: t.Package, Version: t.Version,
-				Answer: answer, Deps: len(deps),
+				Answer: answer, Dependencies: len(dependencies),
 			})
-			return deps
+			return dependencies
 		}
 	}
 	if c.remote != nil {
@@ -253,7 +253,7 @@ func (c chain) Dependencies(t lang.Target) []lang.Target {
 	// Offline, and the repository's own files said nothing. Whether that means the
 	// package has no dependencies or that no lock file covers it cannot be told
 	// apart from here, and the report says as much rather than implying the first.
-	c.rep.Add(trace.Lookup{
+	c.report.Add(trace.Lookup{
 		Ecosystem: t.Ecosystem, Package: t.Package, Version: t.Version,
 		Answer: trace.NoAnswer, Reason: trace.ReasonOffline,
 	})
@@ -269,8 +269,8 @@ type builder struct {
 	// walk can ask a resolver about it again.
 	packages map[string]lang.Target
 	indexes  Indexes
-	private  func(eco, pkg string) bool
-	rep      *trace.Report
+	private  func(ecosystem, packageName string) bool
+	report   *trace.Report
 }
 
 // transitiveWorkers is how many packages are asked about at once. A lock file
@@ -288,12 +288,12 @@ const transitiveWorkers = 12
 // A whole level is asked at once and its answers applied in the level's own order, so
 // what lands on the graph does not depend on which request came back first.
 //
-// It stops early when ctx is cancelled - with --online a walk is hundreds of requests,
+// It stops early when ctx is canceled - with --online a walk is hundreds of requests,
 // and Ctrl+C or a newer --watch change should not wait for all of them - leaving the
 // graph partial; the caller checks ctx and discards it.
 //
 // Implements: REQ-SUP-008, REQ-SUP-012, REQ-SUP-013, REQ-TRC-004, REQ-TRC-009
-func (b *builder) expand(ctx context.Context, tr lang.Transitive, plugin string, ecosystems map[string]lang.Ecosystem, depth int) {
+func (b *builder) expand(ctx context.Context, transitive lang.Transitive, plugin string, ecosystems map[string]lang.Ecosystem, depth int) {
 	var level []string
 	for id, t := range b.packages {
 		// A standard library is not walked: nothing publishes what "fs" or "os"
@@ -313,18 +313,18 @@ func (b *builder) expand(ctx context.Context, tr lang.Transitive, plugin string,
 		seen[id] = true
 	}
 	for n := 0; len(level) > 0 && (depth < 0 || n < depth) && ctx.Err() == nil; n++ {
-		b.rep.Enter(plugin, n)
+		b.report.Enter(plugin, n)
 		start := time.Now()
-		answers := b.ask(ctx, tr, level)
+		answers := b.ask(ctx, transitive, level)
 		var next []string
 		answered, added, edges := 0, 0, 0
 		for i, from := range level {
 			if len(answers[i]) > 0 {
 				answered++
 			}
-			for _, dep := range answers[i] {
-				_, known := b.nodes[graph.PackageID(dep.Ecosystem, dep.Package)]
-				id := b.target(dep, ecosystems)
+			for _, dependency := range answers[i] {
+				_, known := b.nodes[graph.PackageID(dependency.Ecosystem, dependency.Package)]
+				id := b.target(dependency, ecosystems)
 				if id == "" || id == from {
 					continue
 				}
@@ -341,7 +341,7 @@ func (b *builder) expand(ctx context.Context, tr lang.Transitive, plugin string,
 				}
 			}
 		}
-		b.rep.Done(len(level), answered, added, edges, time.Since(start))
+		b.report.Done(len(level), answered, added, edges, time.Since(start))
 		level = next
 	}
 }
@@ -351,7 +351,7 @@ func (b *builder) expand(ctx context.Context, tr lang.Transitive, plugin string,
 // graph must not come out differently for it.
 //
 // Implements: REQ-SUP-031
-func (b *builder) ask(ctx context.Context, tr lang.Transitive, level []string) [][]lang.Target {
+func (b *builder) ask(ctx context.Context, transitive lang.Transitive, level []string) [][]lang.Target {
 	answers := make([][]lang.Target, len(level))
 	workers := min(transitiveWorkers, len(level))
 	var wg sync.WaitGroup
@@ -362,16 +362,16 @@ func (b *builder) ask(ctx context.Context, tr lang.Transitive, level []string) [
 			defer wg.Done()
 			for i := range work {
 				if ctx.Err() != nil {
-					continue // cancelled: what is left is not asked
+					continue // canceled: what is left is not asked
 				}
-				deps := tr.Dependencies(b.packages[level[i]])
-				sort.Slice(deps, func(a, c int) bool {
-					if deps[a].Ecosystem != deps[c].Ecosystem {
-						return deps[a].Ecosystem < deps[c].Ecosystem
+				dependencies := transitive.Dependencies(b.packages[level[i]])
+				sort.Slice(dependencies, func(a, c int) bool {
+					if dependencies[a].Ecosystem != dependencies[c].Ecosystem {
+						return dependencies[a].Ecosystem < dependencies[c].Ecosystem
 					}
-					return deps[a].Package < deps[c].Package
+					return dependencies[a].Package < dependencies[c].Package
 				})
-				answers[i] = deps
+				answers[i] = dependencies
 			}
 		}()
 	}
@@ -392,27 +392,27 @@ func (b *builder) add(n *graph.Node) *graph.Node {
 	return n
 }
 
-// dir ensures the directory node and all its ancestors exist and returns its id.
-func (b *builder) dir(p string) string {
-	id := graph.DirID(p)
+// directory ensures the directory node and all its ancestors exist and returns its id.
+func (b *builder) directory(p string) string {
+	id := graph.DirectoryID(p)
 	if _, ok := b.nodes[id]; !ok {
-		b.add(&graph.Node{ID: id, Kind: graph.KindDir, Name: path.Base(p), Path: p, Parent: b.dir(path.Dir(p))})
+		b.add(&graph.Node{ID: id, Kind: graph.KindDirectory, Name: path.Base(p), Path: p, Parent: b.directory(path.Dir(p))})
 	}
 	return id
 }
 
 // Implements: REQ-MOD-002, REQ-MOD-003
-func (b *builder) fileResult(file string, res *lang.FileResult, ecosystems map[string]lang.Ecosystem) {
-	fid := graph.FileID(file)
-	for _, s := range res.Symbols {
-		b.add(&graph.Node{ID: graph.SymbolID(file, s.Name), Kind: graph.KindSymbol, Name: s.Name, SymbolKind: s.Kind, Line: s.Line, Parent: fid})
+func (b *builder) fileResult(file string, result *lang.FileResult, ecosystems map[string]lang.Ecosystem) {
+	fileID := graph.FileID(file)
+	for _, s := range result.Symbols {
+		b.add(&graph.Node{ID: graph.SymbolID(file, s.Name), Kind: graph.KindSymbol, Name: s.Name, SymbolKind: s.Kind, Line: s.Line, Parent: fileID})
 	}
-	for _, im := range res.Imports {
-		to := b.target(im.Target, ecosystems)
-		if to == "" || to == fid {
+	for _, imported := range result.Imports {
+		to := b.target(imported.Target, ecosystems)
+		if to == "" || to == fileID {
 			continue
 		}
-		b.edge(fid, to, graph.EdgeImport, im.Line)
+		b.edge(fileID, to, graph.EdgeImport, imported.Line)
 	}
 }
 
@@ -434,33 +434,33 @@ func (b *builder) target(t lang.Target, ecosystems map[string]lang.Ecosystem) st
 		if b.files[t.Local] {
 			return graph.FileID(t.Local)
 		}
-		if _, ok := b.nodes[graph.DirID(t.Local)]; ok {
-			return graph.DirID(t.Local)
+		if _, ok := b.nodes[graph.DirectoryID(t.Local)]; ok {
+			return graph.DirectoryID(t.Local)
 		}
 		return ""
 	}
 	if t.Ecosystem == "" || t.Package == "" {
 		return ""
 	}
-	eco := ecosystems[t.Ecosystem]
-	name := eco.Name
+	ecosystem := ecosystems[t.Ecosystem]
+	name := ecosystem.Name
 	if name == "" {
 		name = t.Ecosystem
 	}
-	eid := b.add(&graph.Node{ID: graph.EcosystemID(t.Ecosystem), Kind: graph.KindEcosystem, Name: name, Std: eco.Std}).ID
-	n := b.add(&graph.Node{ID: graph.PackageID(t.Ecosystem, t.Package), Kind: graph.KindPackage, Name: t.Package, Parent: eid, Unresolved: t.Unresolved})
+	ecosystemID := b.add(&graph.Node{ID: graph.EcosystemID(t.Ecosystem), Kind: graph.KindEcosystem, Name: name, Std: ecosystem.Std}).ID
+	n := b.add(&graph.Node{ID: graph.PackageID(t.Ecosystem, t.Package), Kind: graph.KindPackage, Name: t.Package, Parent: ecosystemID, Unresolved: t.Unresolved})
 	if _, ok := b.packages[n.ID]; !ok {
 		b.packages[n.ID] = t
 	}
 	if b.indexes != nil && n.Index == "" && n.Origin == "" && t.Origin == "" {
-		idx, known := "", false
+		index, known := "", false
 		if ti, ok := b.indexes.(TargetIndexes); ok {
-			idx, known = ti.ForTarget(t)
+			index, known = ti.ForTarget(t)
 		} else {
-			idx, known = b.indexes.For(t.Ecosystem, t.Package)
+			index, known = b.indexes.For(t.Ecosystem, t.Package)
 		}
-		if idx != "" {
-			n.Index, n.IndexUnknown = idx, !known
+		if index != "" {
+			n.Index, n.IndexUnknown = index, !known
 		}
 	}
 	if b.private != nil && !n.Private {

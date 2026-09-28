@@ -22,23 +22,23 @@ import (
 // package schema, one of package other and a sub-package. sub/ is a module
 // whose module.cue is empty.
 var (
-	k8sAPI  = lang.Target{Ecosystem: ecoGo, Package: "k8s.io/api", Version: "v0.29.0", Pinned: true}
-	schemas = lang.Target{Ecosystem: ecoCUE, Package: "github.com/acme/schemas", Version: "v0.3.1", Pinned: true}
-	k8sReg  = lang.Target{Ecosystem: ecoCUE, Package: "cue.dev/x/k8s.io", Version: "v0.5.0", Pinned: true}
-	chain   = lang.Target{Ecosystem: ecoCUE, Package: "github.com/acme/chain", Version: "v1.2.0", Pinned: true}
-	unver   = lang.Target{Ecosystem: ecoCUE, Package: "github.com/acme/unversioned", Floating: true}
+	k8sAPI  = lang.Target{Ecosystem: ecosystemGo, Package: "k8s.io/api", Version: "v0.29.0", Pinned: true}
+	schemas = lang.Target{Ecosystem: ecosystemCUE, Package: "github.com/acme/schemas", Version: "v0.3.1", Pinned: true}
+	k8sReg  = lang.Target{Ecosystem: ecosystemCUE, Package: "cue.dev/x/k8s.io", Version: "v0.5.0", Pinned: true}
+	chain   = lang.Target{Ecosystem: ecosystemCUE, Package: "github.com/acme/chain", Version: "v1.2.0", Pinned: true}
+	unver   = lang.Target{Ecosystem: ecosystemCUE, Package: "github.com/acme/unversioned", Floating: true}
 )
 
-func stdPkg(p string) lang.Target { return lang.Target{Ecosystem: ecoStd, Package: p} }
+func stdPackage(p string) lang.Target { return lang.Target{Ecosystem: ecosystemStd, Package: p} }
 
 // Verifies: REQ-CUE-002, REQ-CUE-004, REQ-CUE-005, REQ-CUE-006, REQ-CUE-007, REQ-CUE-010
 func TestImports(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	langtest.CheckImports(t, res["config/main.cue"], map[string]lang.Target{
-		"strings":                                stdPkg("strings"),
-		"encoding/json":                          stdPkg("encoding/json"),
-		"list":                                   stdPkg("list"),
-		"tool/exec":                              stdPkg("tool/exec"),
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	langtest.CheckImports(t, results["config/main.cue"], map[string]lang.Target{
+		"strings":                                stdPackage("strings"),
+		"encoding/json":                          stdPackage("encoding/json"),
+		"list":                                   stdPackage("list"),
+		"tool/exec":                              stdPackage("tool/exec"),
 		"example.com/shop/schema (a.cue)":        {Local: "schema/a.cue"}, // one import per file of the package
 		"example.com/shop/schema (b.cue)":        {Local: "schema/b.cue"},
 		"example.com/shop/schema:other":          {Local: "schema/c.cue"},
@@ -46,28 +46,28 @@ func TestImports(t *testing.T) {
 		"example.com/shop/nothere":               {},
 		"k8s.io/api/core/v1":                     k8sAPI, // cue.mod/gen, required by go.mod
 		"k8s.io/api/apps/v1":                     k8sAPI, // cue.mod/usr
-		"net/http":                               {Ecosystem: ecoGoStd, Package: "net/http"},
+		"net/http":                               {Ecosystem: ecosystemGoStd, Package: "net/http"},
 		"example.com/shop/api":                   {Local: "api"}, // generated from the module's own Go package
 		"github.com/acme/schemas/k8s":            schemas,
 		"cue.dev/x/k8s.io/api/apps/v1:appsv1reg": k8sReg,
 		"github.com/acme/chain/x":                chain,
 		"github.com/acme/unversioned/y":          unver,
-		"github.com/legacy/lib":                  {Ecosystem: ecoCUE, Package: "github.com/legacy/lib"}, // cue.mod/pkg with a module file
-		"example.org/old/defs":                   {Ecosystem: ecoCUE, Package: "example.org/old"},
-		"github.com/nobody/thing/pkg":            {Ecosystem: ecoCUE, Package: "github.com/nobody/thing", Unresolved: true},
-		"unknownstd":                             {Ecosystem: ecoCUE, Package: "unknownstd", Unresolved: true},
+		"github.com/legacy/lib":                  {Ecosystem: ecosystemCUE, Package: "github.com/legacy/lib"}, // cue.mod/pkg with a module file
+		"example.org/old/defs":                   {Ecosystem: ecosystemCUE, Package: "example.org/old"},
+		"github.com/nobody/thing/pkg":            {Ecosystem: ecosystemCUE, Package: "github.com/nobody/thing", Unresolved: true},
+		"unknownstd":                             {Ecosystem: ecosystemCUE, Package: "unknownstd", Unresolved: true},
 	})
 	// A module with an empty module.cue: the enclosing module's path.
-	langtest.CheckImports(t, res["sub/x.cue"], map[string]lang.Target{
+	langtest.CheckImports(t, results["sub/x.cue"], map[string]lang.Target{
 		"example.com/shop/schema:other": {Local: "schema/c.cue"},
 	})
-	langtest.CheckImports(t, res["cue.mod/module.cue"], map[string]lang.Target{
+	langtest.CheckImports(t, results["cue.mod/module.cue"], map[string]lang.Target{
 		"github.com/acme/schemas@v0":     schemas,
 		"cue.dev/x/k8s.io@v0":            k8sReg,
 		"github.com/acme/chain@v1":       chain,
 		"github.com/acme/unversioned@v0": unver,
 	})
-	for p := range res {
+	for p := range results {
 		if strings.Contains(p, "cue.mod/gen/") || strings.Contains(p, "cue.mod/pkg/") || strings.Contains(p, "cue.mod/usr/") {
 			t.Errorf("%s: a dependency tree was analyzed", p)
 		}
@@ -76,21 +76,21 @@ func TestImports(t *testing.T) {
 
 // Verifies: REQ-CUE-003
 func TestSymbols(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	langtest.CheckSymbols(t, res["config/main.cue"], map[string]string{ // cSpell: words interp
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	langtest.CheckSymbols(t, results["config/main.cue"], map[string]string{ // cSpell: words interp
 		"config": "package", "#Config": "type", "_#Hidden": "type", "_hidden": "field",
 		"name": "field", "quoted-field": "field", "opt": "field", "req": "field", "a": "field",
 		"aliased": "field", "import": "field", "fake": "field", "multi": "field", "raw": "field",
 		"interp": "field", "items": "field", "obj": "field", "cmd": "field", "pod": "field",
 		"deploy": "field", "header": "field", "item": "field", "other": "field", "sub": "field",
 	})
-	langtest.CheckSymbols(t, res["schema/a.cue"], map[string]string{"schema": "package", "#Product": "type"})
-	langtest.CheckSymbols(t, res["cue.mod/module.cue"], map[string]string{"module": "field", "language": "field", "deps": "field"})
+	langtest.CheckSymbols(t, results["schema/a.cue"], map[string]string{"schema": "package", "#Product": "type"})
+	langtest.CheckSymbols(t, results["cue.mod/module.cue"], map[string]string{"module": "field", "language": "field", "deps": "field"})
 }
 
 // Verifies: REQ-CUE-002, REQ-CUE-009
 func TestLiteralsHideCode(t *testing.T) {
-	src := []byte(`package x
+	source := []byte(`package x
 
 // import "a"
 s: "import \"b\""
@@ -104,12 +104,12 @@ b: '''
 	'''
 import "real"
 `)
-	ex := extractSource(src)
-	if len(ex.Imports) != 1 || ex.Imports[0].Spec != "real" || ex.Imports[0].Line != 13 {
-		t.Errorf("got %+v", ex.Imports)
+	extraction := extractSource(source)
+	if len(extraction.Imports) != 1 || extraction.Imports[0].Spec != "real" || extraction.Imports[0].Line != 13 {
+		t.Errorf("got %+v", extraction.Imports)
 	}
 	names := map[string]bool{}
-	for _, s := range ex.Symbols {
+	for _, s := range extraction.Symbols {
 		names[s.Name] = true
 	}
 	for _, n := range []string{"s", "m", "r", "i", "b"} {
@@ -121,20 +121,20 @@ import "real"
 
 // Verifies: REQ-CUE-005
 func TestModuleFile(t *testing.T) {
-	mf := readModule([]byte(`module: "github.com/a/b@v1"
+	moduleFile := readModule([]byte(`module: "github.com/a/b@v1"
 language: version: "v0.10.0"
 deps: {
 	"cue.dev/x/crd/cert-manager.io@v0": {v: "v0.1.0", default: true}
 }
 deps: "github.com/c/d@v2": v: "v2.0.1"
 `))
-	if mf.path != "github.com/a/b" || len(mf.deps) != 2 {
-		t.Fatalf("got %+v", mf)
+	if moduleFile.path != "github.com/a/b" || len(moduleFile.dependencies) != 2 {
+		t.Fatalf("got %+v", moduleFile)
 	}
-	if d := mf.deps[0]; d.key != "cue.dev/x/crd/cert-manager.io@v0" || d.path != "cue.dev/x/crd/cert-manager.io" || d.v != "v0.1.0" || d.line != 4 {
+	if d := moduleFile.dependencies[0]; d.key != "cue.dev/x/crd/cert-manager.io@v0" || d.path != "cue.dev/x/crd/cert-manager.io" || d.v != "v0.1.0" || d.line != 4 {
 		t.Errorf("got %+v", d)
 	}
-	if d := mf.deps[1]; d.path != "github.com/c/d" || d.v != "v2.0.1" {
+	if d := moduleFile.dependencies[1]; d.path != "github.com/c/d" || d.v != "v2.0.1" {
 		t.Errorf("got %+v", d)
 	}
 	if p, q := splitImport("example.com/x@v0/y:z"); p != "example.com/x/y" || q != "z" {
@@ -158,7 +158,7 @@ func TestClaims(t *testing.T) {
 			t.Errorf("%s: got %v, want %v", p, got, want)
 		}
 	}
-	if (Plugin{}).Class(&scan.File{Path: "x/cue.mod/module.cue"}) != classMod || (Plugin{}).Class(&scan.File{Path: "module.cue"}) != "" {
+	if (Plugin{}).Class(&scan.File{Path: "x/cue.mod/module.cue"}) != classModule || (Plugin{}).Class(&scan.File{Path: "module.cue"}) != "" {
 		t.Error("class")
 	}
 }
@@ -169,7 +169,7 @@ func TestIslands(t *testing.T) {
 	for _, e := range (Plugin{}).Ecosystems() {
 		isStd[e.ID] = e.Std
 	}
-	if len(isStd) != 4 || isStd[ecoCUE] || !isStd[ecoStd] || isStd[ecoGo] || !isStd[ecoGoStd] {
+	if len(isStd) != 4 || isStd[ecosystemCUE] || !isStd[ecosystemStd] || isStd[ecosystemGo] || !isStd[ecosystemGoStd] {
 		t.Errorf("got %v", isStd)
 	}
 }
@@ -179,26 +179,26 @@ func TestIslands(t *testing.T) {
 //
 // Verifies: REQ-CUE-009
 func TestTruncated(t *testing.T) {
-	var srcs [][]byte
+	var sources [][]byte
 	filepath.Walk("testdata", func(p string, info os.FileInfo, err error) error {
 		if err == nil && !info.IsDir() {
 			if b, err := os.ReadFile(p); err == nil {
-				srcs = append(srcs, b)
+				sources = append(sources, b)
 			}
 		}
 		return nil
 	})
-	for _, src := range srcs {
-		for i := 0; i <= len(src); i++ {
-			extractSource(src[:i])
-			readModule(src[:i])
+	for _, source := range sources {
+		for i := 0; i <= len(source); i++ {
+			extractSource(source[:i])
+			readModule(source[:i])
 		}
 	}
 	for _, unit := range []string{"{", "[", "(", "}", "a: ", "a: {", "\"\\(", "#", "##\"", "\"\"\"", "import (", "import ", "@x(", "\n", "a: b: "} {
-		src := []byte(strings.Repeat(unit, 200_000/len(unit)))
+		source := []byte(strings.Repeat(unit, 200_000/len(unit)))
 		start := time.Now()
-		extractSource(src)
-		readModule(src)
+		extractSource(source)
+		readModule(source)
 		if d := time.Since(start); d > 2*time.Second {
 			t.Errorf("%q x %d: %v", unit, 200_000/len(unit), d)
 		}
@@ -224,26 +224,26 @@ func TestModuleCache(t *testing.T) {
 		"mod/extract/github.com/other/util@v0.1.0/cue.mod/module.cue": "{{{{ \x00",
 	})
 	t.Setenv("CUE_CACHE_DIR", cache)
-	res, err := Plugin{}.Resolver(root, langtest.Files(t, root))
+	resolved, err := Plugin{}.Resolver(root, langtest.Files(t, root))
 	if err != nil {
 		t.Fatal(err)
 	}
-	r := res.(*resolver)
-	lib := lang.Target{Ecosystem: ecoCUE, Package: "github.com/Acme/lib", Version: "v0.2.0", Pinned: true}
-	util := lang.Target{Ecosystem: ecoCUE, Package: "github.com/other/util", Version: "v0.1.0", Pinned: true}
-	if got, want := r.Dependencies(lib), []lang.Target{k8sReg, util}; !reflect.DeepEqual(got, want) || !r.Installed(lib) {
+	r := resolved.(*resolver)
+	library := lang.Target{Ecosystem: ecosystemCUE, Package: "github.com/Acme/lib", Version: "v0.2.0", Pinned: true}
+	util := lang.Target{Ecosystem: ecosystemCUE, Package: "github.com/other/util", Version: "v0.1.0", Pinned: true}
+	if got, want := r.Dependencies(library), []lang.Target{k8sReg, util}; !reflect.DeepEqual(got, want) || !r.Installed(library) {
 		t.Errorf("lib depends on %+v, want %+v", got, want)
 	}
-	for _, t2 := range []lang.Target{util, k8sReg, {Ecosystem: ecoCUE, Package: "github.com/Acme/lib", Floating: true}} {
+	for _, t2 := range []lang.Target{util, k8sReg, {Ecosystem: ecosystemCUE, Package: "github.com/Acme/lib", Floating: true}} {
 		if got := r.Dependencies(t2); got != nil {
 			t.Errorf("%s depends on %+v", t2.Package, got)
 		}
 	}
-	if got := newResolver(root, langtest.Files(t, root), "").Dependencies(lib); got != nil {
+	if got := newResolver(root, langtest.Files(t, root), "").Dependencies(library); got != nil {
 		t.Errorf("no cache: %+v", got)
 	}
 	t.Setenv("CUE_CACHE_DIR", "")
-	if dir, err := os.UserCacheDir(); err == nil && cacheDir() != filepath.Join(dir, "cue") {
-		t.Errorf("cache dir %q, want cue/ in %q", cacheDir(), dir)
+	if directory, err := os.UserCacheDir(); err == nil && cacheDirectory() != filepath.Join(directory, "cue") {
+		t.Errorf("cache dir %q, want cue/ in %q", cacheDirectory(), directory)
 	}
 }

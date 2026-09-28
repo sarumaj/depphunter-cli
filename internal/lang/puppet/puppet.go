@@ -27,9 +27,9 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
-// ecoForge is the island of Puppet modules: Forge modules named by their
+// ecosystemForge is the island of Puppet modules: Forge modules named by their
 // slug (puppetlabs-stdlib), git modules by their repository.
-const ecoForge = "puppet-forge"
+const ecosystemForge = "puppet-forge"
 
 // Classes of the files the plugin claims besides manifests.
 const (
@@ -60,11 +60,11 @@ func (Plugin) Claims(f *scan.File) bool {
 			return false
 		}
 	case classMetadata:
-		if !moduleLayout(filepath.Dir(f.Abs)) {
+		if !moduleLayout(filepath.Dir(f.AbsolutePath)) {
 			return false
 		}
 	}
-	return !installed(f.Path, f.Abs)
+	return !installed(f.Path, f.AbsolutePath)
 }
 
 // Implements: REQ-PUPPET-001
@@ -84,11 +84,11 @@ func class(p string) string {
 
 // installed reports whether a file lies where modules are installed: in
 // spec/fixtures/modules, or in modules/ beside a Puppetfile.
-func installed(rel, abs string) bool {
-	segments := strings.Split(rel, "/")
+func installed(relative, absolute string) bool {
+	segments := strings.Split(relative, "/")
 	base := ""
-	if a := filepath.ToSlash(abs); abs != "" && strings.HasSuffix(a, rel) {
-		base = a[:len(a)-len(rel)]
+	if a := filepath.ToSlash(absolute); absolute != "" && strings.HasSuffix(a, relative) {
+		base = a[:len(a)-len(relative)]
 	}
 	for i, s := range segments[:len(segments)-1] {
 		if s != "modules" {
@@ -116,9 +116,9 @@ func exists(p string) bool {
 }
 
 // moduleLayout reports whether a directory is laid out as a Puppet module.
-func moduleLayout(dir string) bool {
+func moduleLayout(directory string) bool {
 	for _, d := range []string{"manifests", "functions", "types", "plans", "tasks", filepath.Join("lib", "puppet"), "templates"} {
-		if exists(filepath.Join(dir, d)) {
+		if exists(filepath.Join(directory, d)) {
 			return true
 		}
 	}
@@ -127,7 +127,7 @@ func moduleLayout(dir string) bool {
 
 // Implements: REQ-PUPPET-008
 func (Plugin) Ecosystems() []lang.Ecosystem {
-	return []lang.Ecosystem{{ID: ecoForge, Name: "Puppet modules"}}
+	return []lang.Ecosystem{{ID: ecosystemForge, Name: "Puppet modules"}}
 }
 
 func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
@@ -135,31 +135,31 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-PUPPET-002, REQ-PUPPET-003, REQ-PUPPET-005
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	switch class(f.Path) {
 	case classPuppetfile:
-		return depImports(readPuppetfile(src).deps, kindMod, nil), nil
+		return dependencyImports(readPuppetfile(source).dependencies, kindModule, nil), nil
 	case classMetadata:
-		m := readMetadata(src)
+		m := readMetadata(source)
 		if m == nil {
 			return &lang.Extraction{}, nil
 		}
-		return depImports(m.deps, kindMetadata, []lang.Symbol{{Name: m.name, Kind: "module", Line: m.line}}), nil
+		return dependencyImports(m.dependencies, kindMetadata, []lang.Symbol{{Name: m.name, Kind: "module", Line: m.line}}), nil
 	case classFixtures:
-		return depImports(readFixtures(src), kindFixture, nil), nil
+		return dependencyImports(readFixtures(source), kindFixture, nil), nil
 	}
-	return extractSource(src), nil
+	return extractSource(source), nil
 }
 
-// depImports makes each module a manifest names an import of it.
-func depImports(deps []*dep, kind string, symbols []lang.Symbol) *lang.Extraction {
-	ex := &lang.Extraction{Symbols: symbols}
+// dependencyImports makes each module a manifest names an import of it.
+func dependencyImports(dependencies []*dependency, kind string, symbols []lang.Symbol) *lang.Extraction {
+	extraction := &lang.Extraction{Symbols: symbols}
 	seen := map[string]bool{}
-	for _, d := range deps {
+	for _, d := range dependencies {
 		if !seen[d.key] {
 			seen[d.key] = true
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: d.key, Module: d.key, Name: kind, Line: d.line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: d.key, Module: d.key, Name: kind, Line: d.line})
 		}
 	}
-	return ex
+	return extraction
 }

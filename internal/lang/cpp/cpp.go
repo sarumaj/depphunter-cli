@@ -3,7 +3,7 @@
 // The C and C++ dialects of GPU programming are read the same way: CUDA (.cu,
 // .cuh) and Metal (.metal) as C++, OpenCL C kernels (.cl the scan labels OpenCL,
 // .clh) as C; their toolkits' headers are islands of their own (gpu.go).
-// Definitions are read by a hand-written scanner (lex.go, decls.go) rather than a
+// Definitions are read by a hand-written scanner (lex.go, declarations.go) rather than a
 // grammar: a tolerant recursive descent over the declaration contexts that steps
 // over function bodies. .c files are read as C, where `class`, `new` and
 // `namespace` are names; every other extension, .h included, as C++.
@@ -31,24 +31,24 @@ import (
 )
 
 const (
-	ecoCStd     = "c-std"
-	ecoCppStd   = "cpp-std"
-	ecoSystem   = "c-system"
-	ecoExternal = "c-external"
+	ecosystemCStd     = "c-std"
+	ecosystemCppStd   = "cpp-std"
+	ecosystemSystem   = "c-system"
+	ecosystemExternal = "c-external"
 )
 
-// exts are the extensions the plugin claims.
+// extensions are the extensions the plugin claims.
 //
 // Implements: REQ-CPP-001
-var exts = map[string]bool{
+var extensions = map[string]bool{
 	".c": true, ".h": true, ".cc": true, ".cpp": true, ".cxx": true, ".c++": true,
 	".hpp": true, ".hh": true, ".hxx": true, ".h++": true, ".ipp": true, ".inl": true,
 	".cu": true, ".cuh": true, ".metal": true, ".clh": true,
 }
 
-// cExts are the extensions read as C rather than C++: C, and OpenCL C, whose kernels
+// cExtensions are the extensions read as C rather than C++: C, and OpenCL C, whose kernels
 // may use C++ keywords as names.
-var cExts = map[string]bool{".c": true, ".cl": true, ".clh": true}
+var cExtensions = map[string]bool{".c": true, ".cl": true, ".clh": true}
 
 // Implements: REQ-CPP-001
 type Plugin struct {
@@ -71,11 +71,11 @@ func (Plugin) Claims(f *scan.File) bool {
 	if f.Binary {
 		return false
 	}
-	ext := strings.ToLower(path.Ext(f.Path))
-	if ext == ".cl" {
-		return f.Lang == "OpenCL"
+	extension := strings.ToLower(path.Ext(f.Path))
+	if extension == ".cl" {
+		return f.Language == "OpenCL"
 	}
-	return exts[ext] && f.Lang != "Objective-C"
+	return extensions[extension] && f.Language != "Objective-C"
 }
 
 // Ecosystems: the package managers', the standard and system headers', and the GPU
@@ -89,11 +89,11 @@ func (p Plugin) Ecosystems() []lang.Ecosystem {
 		out = append(out, p.Fetches.FetchIsland())
 	}
 	return append(out, []lang.Ecosystem{
-		{ID: ecoCStd, Name: "C standard library", Std: true},
-		{ID: ecoCppStd, Name: "C++ standard library", Std: true},
-		{ID: ecoSystem, Name: "System headers", Std: true},
-		{ID: ecoCUDA, Name: "CUDA Toolkit", Std: true},
-		{ID: ecoOpenCL, Name: "OpenCL headers", Std: true},
+		{ID: ecosystemCStd, Name: "C standard library", Std: true},
+		{ID: ecosystemCppStd, Name: "C++ standard library", Std: true},
+		{ID: ecosystemSystem, Name: "System headers", Std: true},
+		{ID: ecosystemCUDA, Name: "CUDA Toolkit", Std: true},
+		{ID: ecosystemOpenCL, Name: "OpenCL headers", Std: true},
 		{ID: swift.AppleEcosystem, Name: "Apple SDKs", Std: true},
 	}...)
 }
@@ -102,39 +102,39 @@ func (p Plugin) Ecosystems() []lang.Ecosystem {
 func (p Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 	r := newResolver(root, all)
 	if p.Fetches != nil {
-		Packages{r.pkgs}.Fetch(p.Fetches.Fetched(all))
+		Packages{r.packages}.Fetch(p.Fetches.Fetched(all))
 	}
 	return r, nil
 }
 
-type def struct {
-	name, kind string
-	line       int
-	decl       bool // declared, not defined
+type definition struct {
+	name, kind  string
+	line        int
+	declaration bool // declared, not defined
 }
 
 // Implements: REQ-CPP-001, REQ-CPP-003, REQ-CPP-007
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
-	includes, dead := preprocess(src)
-	cplus := !cExts[strings.ToLower(path.Ext(f.Path))]
-	return &lang.Extraction{Imports: includes, Symbols: symbols(scanDefinitions(src, dead, cplus))}, nil
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
+	includes, dead := preprocess(source)
+	cplus := !cExtensions[strings.ToLower(path.Ext(f.Path))]
+	return &lang.Extraction{Imports: includes, Symbols: symbols(scanDefinitions(source, dead, cplus))}, nil
 }
 
 // symbols orders the definitions by line and drops the declarations of functions
 // the file also defines: a prototype ahead of its definition is one function.
-func symbols(defs []def) []lang.Symbol {
-	slices.SortStableFunc(defs, func(a, b def) int {
+func symbols(definitions []definition) []lang.Symbol {
+	slices.SortStableFunc(definitions, func(a, b definition) int {
 		return cmp.Or(cmp.Compare(a.line, b.line), strings.Compare(a.name, b.name))
 	})
 	defined := map[string]bool{}
-	for _, d := range defs {
-		if !d.decl {
+	for _, d := range definitions {
+		if !d.declaration {
 			defined[d.name] = true
 		}
 	}
 	var set lang.SymbolSet
-	for _, d := range defs {
-		if !d.decl || !defined[d.name] {
+	for _, d := range definitions {
+		if !d.declaration || !defined[d.name] {
 			set.Add(d.name, d.kind, d.line)
 		}
 	}
@@ -144,7 +144,7 @@ func symbols(defs []def) []lang.Symbol {
 // qualified turns a C++ name into a symbol name: "ns::Box<T>::get" -> "ns.Box.get".
 // The operator of an operator function stays as written ("Foo.operator==").
 func qualified(name string) string {
-	name, op, isOp := strings.Cut(name, "operator")
+	name, operator, isOp := strings.Cut(name, "operator")
 	var b strings.Builder
 	depth := 0
 	for _, r := range name {
@@ -159,7 +159,7 @@ func qualified(name string) string {
 	}
 	out := strings.ReplaceAll(b.String(), "::", ".")
 	if isOp {
-		out += "operator" + strings.Join(strings.Fields(op), " ")
+		out += "operator" + strings.Join(strings.Fields(operator), " ")
 	}
 	return out
 }

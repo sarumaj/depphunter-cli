@@ -28,8 +28,8 @@ func TestDiscoverDubRegistries(t *testing.T) {
 	system := filepath.Join(userconf.SystemRoot, "etc", "dub", "settings.json")
 	put(t, system, `{"registryUrls": ["https://system.corp.test"], "skipRegistry": "none"}`)
 	t.Cleanup(func() { os.RemoveAll(filepath.Join(userconf.SystemRoot, "etc", "dub")) })
-	vars := map[string]string{"DUB_REGISTRY": "https://env.corp.test;https://code.dlang.org"}
-	if got, want := order(discoverOn(home, "linux", vars), Dub, "vibe-d", ""),
+	variables := map[string]string{"DUB_REGISTRY": "https://env.corp.test;https://code.dlang.org"}
+	if got, want := order(discoverOn(home, "linux", variables), Dub, "vibe-d", ""),
 		[]string{"https://env.corp.test", "https://dub.corp.test", "https://system.corp.test", "https://code.dlang.org"}; !reflect.DeepEqual(got, want) {
 		t.Errorf("order: got %v, want %v", got, want)
 	}
@@ -50,7 +50,7 @@ func TestDiscoverDubRegistries(t *testing.T) {
 		"all":        nil,
 	} {
 		put(t, filepath.Join(home, ".dub", "settings.json"), `{"registryUrls": ["https://dub.corp.test"], "skipRegistry": "`+skip+`"}`)
-		if got := order(discoverOn(home, "linux", vars), Dub, "vibe-d", ""); !reflect.DeepEqual(got, want) {
+		if got := order(discoverOn(home, "linux", variables), Dub, "vibe-d", ""); !reflect.DeepEqual(got, want) {
 			t.Errorf("skipRegistry %s: got %v, want %v", skip, got, want)
 		}
 	}
@@ -90,7 +90,7 @@ func TestDiscoverDubOnWindows(t *testing.T) {
 // Verifies: REQ-SUP-060
 func TestDubMachineRegistryIsAsked(t *testing.T) {
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		asked = append(asked, r.URL.Path)
 		if r.URL.Path != "/dub/api/packages/acme-log/1.0.0/info" {
 			w.WriteHeader(http.StatusNotFound)
@@ -98,9 +98,9 @@ func TestDubMachineRegistryIsAsked(t *testing.T) {
 		}
 		w.Write([]byte(`{"version": "1.0.0", "name": "acme-log", "dependencies": {"acme-core": "~>2.0"}}`))
 	}))
-	defer srv.Close()
+	defer server.Close()
 	home := t.TempDir()
-	put(t, filepath.Join(home, ".dub", "settings.json"), `{"registryUrls": ["`+srv.URL+`/dub/"]}`)
+	put(t, filepath.Join(home, ".dub", "settings.json"), `{"registryUrls": ["`+server.URL+`/dub/"]}`)
 	c := NewClient(discoverOn(home, "linux", nil), t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
 	want := []lang.Target{{Ecosystem: Dub, Package: "acme-core", Version: "~>2.0"}}
 	if got := c.Dependencies(lang.Target{Ecosystem: Dub, Package: "acme-log", Version: "1.0.0", Pinned: true}); !reflect.DeepEqual(got, want) {
@@ -157,7 +157,7 @@ git fork https://github.com/acme/fork.git
 // Verifies: REQ-SUP-062
 func TestQuicklispDistFallbackAndFailureMemo(t *testing.T) {
 	var corp, broken atomic.Int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		switch r.URL.Path {
 		case "/corp.txt":
 			corp.Add(1)
@@ -175,11 +175,11 @@ func TestQuicklispDistFallbackAndFailureMemo(t *testing.T) {
 			w.WriteHeader(http.StatusNotFound)
 		}
 	}))
-	defer srv.Close()
-	cfg := New()
-	cfg.Add(Quicklisp, Source{URL: srv.URL + "/corp.txt", Kind: Additive, Trusted: true})
-	cfg.Add(Quicklisp, Source{URL: srv.URL + "/quicklisp.txt", Trusted: true})
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
+	defer server.Close()
+	config := New()
+	config.Add(Quicklisp, Source{URL: server.URL + "/corp.txt", Kind: Additive, Trusted: true})
+	config.Add(Quicklisp, Source{URL: server.URL + "/quicklisp.txt", Trusted: true})
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
 	if got := c.Dependencies(lang.Target{Ecosystem: Quicklisp, Package: "acme-log"}); !reflect.DeepEqual(got, []lang.Target{{Ecosystem: Quicklisp, Package: "alexandria"}}) {
 		t.Errorf("acme-log: %+v", got)
 	}
@@ -187,16 +187,16 @@ func TestQuicklispDistFallbackAndFailureMemo(t *testing.T) {
 	if got := c.Dependencies(lang.Target{Ecosystem: Quicklisp, Package: "cl-ppcre"}); got == nil || len(got) != 0 {
 		t.Errorf("cl-ppcre: %+v, want an empty answer from the Quicklisp dist", got)
 	}
-	if idx, _, ok := c.Located(Quicklisp, "cl-ppcre"); !ok || idx != srv.URL+"/quicklisp.txt" {
-		t.Errorf("cl-ppcre located at %s", idx)
+	if index, _, ok := c.Located(Quicklisp, "cl-ppcre"); !ok || index != server.URL+"/quicklisp.txt" {
+		t.Errorf("cl-ppcre located at %s", index)
 	}
 	if n := corp.Load(); n != 1 {
 		t.Errorf("corp distinfo asked %d times, want once", n)
 	}
 
-	cfg = New()
-	cfg.Add(Quicklisp, Source{URL: srv.URL + "/broken.txt", Trusted: true})
-	c = NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
+	config = New()
+	config.Add(Quicklisp, Source{URL: server.URL + "/broken.txt", Trusted: true})
+	c = NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read("", nil), nil)
 	for _, p := range []string{"a", "b", "c"} {
 		if got := c.Dependencies(lang.Target{Ecosystem: Quicklisp, Package: p}); got != nil {
 			t.Errorf("%s: %+v, want no answer", p, got)
@@ -207,9 +207,9 @@ func TestQuicklispDistFallbackAndFailureMemo(t *testing.T) {
 	}
 	// Once the failure is older than failRetry the dist is asked again.
 	c.mu.Lock()
-	f := c.qlFailed[srv.URL+"/broken.txt"]
+	f := c.qlFailed[server.URL+"/broken.txt"]
 	f.at = f.at.Add(-failRetry)
-	c.qlFailed[srv.URL+"/broken.txt"] = f
+	c.qlFailed[server.URL+"/broken.txt"] = f
 	c.mu.Unlock()
 	c.Dependencies(lang.Target{Ecosystem: Quicklisp, Package: "d"})
 	if n := broken.Load(); n != 2 {

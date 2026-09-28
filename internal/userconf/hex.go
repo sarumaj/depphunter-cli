@@ -10,16 +10,16 @@ import (
 
 // ---------------------------------------------------------------- Dart
 
-// DartConfigDir is where the Dart SDK keeps its user configuration, as pub finds it:
+// DartConfigDirectory is where the Dart SDK keeps its user configuration, as pub finds it:
 // %APPDATA%\dart on Windows (when %APPDATA% is set), ~/Library/Application
 // Support/dart on macOS, else $XDG_CONFIG_HOME/dart (~/.config/dart).
 //
 // Implements: REQ-SUP-064, REQ-AUTH-027
-func (m Machine) DartConfigDir() string {
+func (m Machine) DartConfigDirectory() string {
 	switch m.GOOS {
 	case "windows":
-		if dir := m.Env("APPDATA"); dir != "" {
-			return filepath.Join(dir, "dart")
+		if directory := m.Environment("APPDATA"); directory != "" {
+			return filepath.Join(directory, "dart")
 		}
 	case "darwin", "ios":
 		return join(m.Home, "Library", "Application Support", "dart")
@@ -30,7 +30,7 @@ func (m Machine) DartConfigDir() string {
 // PubTokens is the file `dart pub token add` writes its tokens to.
 //
 // Implements: REQ-SUP-064, REQ-AUTH-027
-func (m Machine) PubTokens() string { return join(m.DartConfigDir(), "pub-tokens.json") }
+func (m Machine) PubTokens() string { return join(m.DartConfigDirectory(), "pub-tokens.json") }
 
 // ---------------------------------------------------------------- Hex
 
@@ -39,10 +39,10 @@ func (m Machine) PubTokens() string { return join(m.DartConfigDir(), "pub-tokens
 //
 // Implements: REQ-SUP-064, REQ-AUTH-028
 func (m Machine) HexHome() string {
-	if dir := m.Env("HEX_HOME"); dir != "" {
-		return dir
+	if directory := m.Environment("HEX_HOME"); directory != "" {
+		return directory
 	}
-	if v := m.Env("MIX_XDG"); v == "1" || v == "true" {
+	if v := m.Environment("MIX_XDG"); v == "1" || v == "true" {
 		return join(m.xdgConfigHome(), "hex")
 	}
 	return join(m.Home, ".hex")
@@ -57,9 +57,9 @@ type HexConfig struct {
 	APIKey string
 	// OAuth is the token `mix hex.user auth` stores ($oauth_token).
 	OAuth HexToken
-	// Repos holds each repository's key and token by repository name
+	// Repositories holds each repository's key and token by repository name
 	// ("hexpm:acme"), as `mix hex.organization auth acme --key KEY` stores it.
-	Repos map[string]HexRepo
+	Repositories map[string]HexRepository
 }
 
 // HexToken is an OAuth access token and when it expires (Unix seconds; 0 unknown).
@@ -68,8 +68,8 @@ type HexToken struct {
 	Expires int64
 }
 
-// HexRepo is one repository of hex.config's $repos, or of rebar3's hex.config.
-type HexRepo struct {
+// HexRepository is one repository of hex.config's $repos, or of rebar3's hex.config.
+type HexRepository struct {
 	// APIKey is an API key for this repository alone (rebar3's api_key).
 	APIKey string
 	// AuthKey is Mix's auth_key, rebar3's repo_key: the key
@@ -83,11 +83,11 @@ type HexRepo struct {
 //
 // Implements: REQ-AUTH-028
 func (m Machine) ReadHexConfig() HexConfig {
-	dir := m.HexHome()
-	if dir == "" {
+	directory := m.HexHome()
+	if directory == "" {
 		return HexConfig{}
 	}
-	data, err := os.ReadFile(filepath.Join(dir, "hex.config"))
+	data, err := os.ReadFile(filepath.Join(directory, "hex.config"))
 	if err != nil {
 		return HexConfig{}
 	}
@@ -100,7 +100,7 @@ func (m Machine) ReadHexConfig() HexConfig {
 // Implements: REQ-SUP-015, REQ-SUP-064
 func (m Machine) HexAPIURL() string {
 	for _, name := range []string{"HEX_API_URL", "HEX_API"} {
-		if v := strings.TrimSpace(m.Env(name)); v != "" {
+		if v := strings.TrimSpace(m.Environment(name)); v != "" {
 			return v
 		}
 	}
@@ -114,7 +114,7 @@ func (m Machine) HexAPIURL() string {
 //
 // Implements: REQ-AUTH-028
 func ParseHexConfig(data []byte) HexConfig {
-	out := HexConfig{Repos: map[string]HexRepo{}}
+	out := HexConfig{Repositories: map[string]HexRepository{}}
 	for _, form := range parseErlangTerms(string(data)) {
 		if form.kind != 't' || len(form.items) != 2 {
 			continue
@@ -129,13 +129,13 @@ func ParseHexConfig(data []byte) HexConfig {
 			out.OAuth = hexToken(value)
 		case "$repos":
 			for i := 0; value.kind == 'm' && i+1 < len(value.items); i += 2 {
-				name, repo := value.items[i].text(), value.items[i+1]
-				if name == "" || repo.kind != 'm' {
+				name, repository := value.items[i].text(), value.items[i+1]
+				if name == "" || repository.kind != 'm' {
 					continue
 				}
-				key, _ := repo.get("auth_key")
-				token, _ := repo.get("oauth_token")
-				out.Repos[name] = HexRepo{AuthKey: key.text(), OAuth: hexToken(token)}
+				key, _ := repository.get("auth_key")
+				token, _ := repository.get("oauth_token")
+				out.Repositories[name] = HexRepository{AuthKey: key.text(), OAuth: hexToken(token)}
 			}
 		}
 	}
@@ -188,18 +188,18 @@ func (t erlTerm) get(key string) (erlTerm, bool) {
 
 // erlParser reads the forms of a file:consult/1 file.
 type erlParser struct {
-	src string
-	i   int
+	source string
+	i      int
 }
 
-// parseErlangTerms reads the terms of src, each ended by a full stop, up to the
+// parseErlangTerms reads the terms of source, each ended by a full stop, up to the
 // first it cannot read.
-func parseErlangTerms(src string) []erlTerm {
-	p := &erlParser{src: src}
+func parseErlangTerms(source string) []erlTerm {
+	p := &erlParser{source: source}
 	var out []erlTerm
 	for {
 		p.space()
-		if p.i >= len(p.src) {
+		if p.i >= len(p.source) {
 			return out
 		}
 		t, ok := p.term()
@@ -212,10 +212,10 @@ func parseErlangTerms(src string) []erlTerm {
 
 // space skips white space and % comments.
 func (p *erlParser) space() {
-	for p.i < len(p.src) {
-		switch c := p.src[p.i]; {
+	for p.i < len(p.source) {
+		switch c := p.source[p.i]; {
 		case c == '%':
-			for p.i < len(p.src) && p.src[p.i] != '\n' {
+			for p.i < len(p.source) && p.source[p.i] != '\n' {
 				p.i++
 			}
 		case c == ' ' || c == '\t' || c == '\n' || c == '\r':
@@ -229,7 +229,7 @@ func (p *erlParser) space() {
 // eat consumes s after white space.
 func (p *erlParser) eat(s string) bool {
 	p.space()
-	if strings.HasPrefix(p.src[p.i:], s) {
+	if strings.HasPrefix(p.source[p.i:], s) {
 		p.i += len(s)
 		return true
 	}
@@ -238,18 +238,18 @@ func (p *erlParser) eat(s string) bool {
 
 func (p *erlParser) term() (erlTerm, bool) {
 	p.space()
-	if p.i >= len(p.src) {
+	if p.i >= len(p.source) {
 		return erlTerm{}, false
 	}
-	switch c := p.src[p.i]; {
+	switch c := p.source[p.i]; {
 	case p.eat("#{"):
-		return p.seq('m', "}")
+		return p.sequence('m', "}")
 	case c == '{':
 		p.i++
-		return p.seq('t', "}")
+		return p.sequence('t', "}")
 	case c == '[':
 		p.i++
-		return p.seq('l', "]")
+		return p.sequence('l', "]")
 	case p.eat("<<"):
 		return p.binary()
 	case c == '"':
@@ -260,10 +260,10 @@ func (p *erlParser) term() (erlTerm, bool) {
 		return erlTerm{kind: 'a', s: s}, ok
 	case c >= 'a' && c <= 'z':
 		start := p.i
-		for p.i < len(p.src) && isErlNameByte(p.src[p.i]) {
+		for p.i < len(p.source) && isErlNameByte(p.source[p.i]) {
 			p.i++
 		}
-		return erlTerm{kind: 'a', s: p.src[start:p.i]}, true
+		return erlTerm{kind: 'a', s: p.source[start:p.i]}, true
 	case c >= '0' && c <= '9' || c == '-':
 		return p.number()
 	}
@@ -274,9 +274,9 @@ func isErlNameByte(c byte) bool {
 	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '@'
 }
 
-// seq reads the elements of a tuple, list or map up to close; a map's are
+// sequence reads the elements of a tuple, list or map up to close; a map's are
 // key => value pairs.
-func (p *erlParser) seq(kind byte, close string) (erlTerm, bool) {
+func (p *erlParser) sequence(kind byte, close string) (erlTerm, bool) {
 	out := erlTerm{kind: kind}
 	if p.eat(close) {
 		return out, true
@@ -311,10 +311,10 @@ func (p *erlParser) binary() (erlTerm, bool) {
 	var b strings.Builder
 	for !p.eat(">>") {
 		p.space()
-		if p.i >= len(p.src) {
+		if p.i >= len(p.source) {
 			return erlTerm{}, false
 		}
-		if p.src[p.i] == '"' {
+		if p.source[p.i] == '"' {
 			s, ok := p.strings()
 			if !ok {
 				return erlTerm{}, false
@@ -329,7 +329,7 @@ func (p *erlParser) binary() (erlTerm, bool) {
 			b.WriteByte(byte(v))
 		}
 		if p.eat("/") {
-			for p.i < len(p.src) && isErlNameByte(p.src[p.i]) {
+			for p.i < len(p.source) && isErlNameByte(p.source[p.i]) {
 				p.i++
 			}
 		}
@@ -353,7 +353,7 @@ func (p *erlParser) strings() (string, bool) {
 		}
 		b.WriteString(s)
 		p.space()
-		if p.i >= len(p.src) || p.src[p.i] != '"' {
+		if p.i >= len(p.source) || p.source[p.i] != '"' {
 			return b.String(), true
 		}
 	}
@@ -363,14 +363,14 @@ func (p *erlParser) strings() (string, bool) {
 func (p *erlParser) quoted(q byte) (string, bool) {
 	p.i++ // the opening quote
 	var b strings.Builder
-	for p.i < len(p.src) {
-		c := p.src[p.i]
+	for p.i < len(p.source) {
+		c := p.source[p.i]
 		p.i++
 		switch {
 		case c == q:
 			return b.String(), true
-		case c == '\\' && p.i < len(p.src):
-			e := p.src[p.i]
+		case c == '\\' && p.i < len(p.source):
+			e := p.source[p.i]
 			p.i++
 			switch e {
 			case 'n':
@@ -394,24 +394,24 @@ func (p *erlParser) quoted(q byte) (string, bool) {
 // number reads an integer or a float, as text.
 func (p *erlParser) number() (erlTerm, bool) {
 	start := p.i
-	if p.i < len(p.src) && p.src[p.i] == '-' {
+	if p.i < len(p.source) && p.source[p.i] == '-' {
 		p.i++
 	}
 	digits := p.i
-	for p.i < len(p.src) && (p.src[p.i] >= '0' && p.src[p.i] <= '9' || p.src[p.i] == '_') {
+	for p.i < len(p.source) && (p.source[p.i] >= '0' && p.source[p.i] <= '9' || p.source[p.i] == '_') {
 		p.i++
 	}
 	if p.i == digits {
 		return erlTerm{}, false
 	}
 	// A fraction needs a digit after the point: "1." ends a form.
-	if p.i+1 < len(p.src) && p.src[p.i] == '.' && p.src[p.i+1] >= '0' && p.src[p.i+1] <= '9' {
+	if p.i+1 < len(p.source) && p.source[p.i] == '.' && p.source[p.i+1] >= '0' && p.source[p.i+1] <= '9' {
 		p.i++
-		for p.i < len(p.src) && (p.src[p.i] >= '0' && p.src[p.i] <= '9' || strings.IndexByte("eE+-", p.src[p.i]) >= 0) {
+		for p.i < len(p.source) && (p.source[p.i] >= '0' && p.source[p.i] <= '9' || strings.IndexByte("eE+-", p.source[p.i]) >= 0) {
 			p.i++
 		}
 	}
-	return erlTerm{kind: 'n', s: strings.ReplaceAll(p.src[start:p.i], "_", "")}, true
+	return erlTerm{kind: 'n', s: strings.ReplaceAll(p.source[start:p.i], "_", "")}, true
 }
 
 // ---------------------------------------------------------------- rebar3
@@ -421,7 +421,7 @@ func (p *erlParser) number() (erlTerm, bool) {
 //
 // Implements: REQ-SUP-064, REQ-BEAM-013
 func (m Machine) Rebar3GlobalConfig() string {
-	return join(cmp.Or(m.Env("REBAR_GLOBAL_CONFIG_DIR"), m.Home), ".config", "rebar3", "rebar.config")
+	return join(cmp.Or(m.Environment("REBAR_GLOBAL_CONFIG_DIR"), m.Home), ".config", "rebar3", "rebar.config")
 }
 
 // Rebar3HexConfig is the hex.config rebar3 and its hex plugin keep repository keys
@@ -431,7 +431,7 @@ func (m Machine) Rebar3GlobalConfig() string {
 //
 // Implements: REQ-SUP-064, REQ-AUTH-028
 func (m Machine) Rebar3HexConfig() string {
-	return join(cmp.Or(m.Env("REBAR_GLOBAL_CONFIG_DIR"), m.Env("REBAR_CACHE_DIR"), m.Home), ".config", "rebar3", "hex.config")
+	return join(cmp.Or(m.Environment("REBAR_GLOBAL_CONFIG_DIR"), m.Environment("REBAR_CACHE_DIR"), m.Home), ".config", "rebar3", "hex.config")
 }
 
 // ReadRebar3HexRepos reads the Hex repositories the global rebar.config names in
@@ -440,7 +440,7 @@ func (m Machine) Rebar3HexConfig() string {
 // hex.pm's public repository ("hexpm") after them.
 //
 // Implements: REQ-BEAM-013
-func (m Machine) ReadRebar3HexRepos() (repos []string, replace bool) {
+func (m Machine) ReadRebar3HexRepositories() (repositories []string, replace bool) {
 	name := m.Rebar3GlobalConfig()
 	if name == "" {
 		return nil, false
@@ -449,36 +449,36 @@ func (m Machine) ReadRebar3HexRepos() (repos []string, replace bool) {
 	if err != nil {
 		return nil, false
 	}
-	return ParseRebar3HexRepos(data)
+	return ParseRebar3HexRepositories(data)
 }
 
-// ParseRebar3HexRepos reads the repos entries of a rebar.config's {hex, Options}:
+// ParseRebar3HexRepositories reads the repos entries of a rebar.config's {hex, Options}:
 // the repository names in order, and whether the first entry replaces the default.
 //
 // Implements: REQ-BEAM-013
-func ParseRebar3HexRepos(data []byte) (repos []string, replace bool) {
+func ParseRebar3HexRepositories(data []byte) (repositories []string, replace bool) {
 	first := true
 	for _, form := range parseErlangTerms(string(data)) {
 		if form.kind != 't' || len(form.items) != 2 || form.items[0].kind != 'a' || form.items[0].s != "hex" {
 			continue
 		}
-		for _, opt := range form.items[1].items {
-			if opt.kind != 't' || len(opt.items) < 2 || opt.items[0].kind != 'a' || opt.items[0].s != "repos" {
+		for _, option := range form.items[1].items {
+			if option.kind != 't' || len(option.items) < 2 || option.items[0].kind != 'a' || option.items[0].s != "repos" {
 				continue
 			}
-			list := opt.items[len(opt.items)-1]
+			list := option.items[len(option.items)-1]
 			if first {
-				replace = len(opt.items) == 3 && opt.items[1].kind == 'a' && opt.items[1].s == "replace"
+				replace = len(option.items) == 3 && option.items[1].kind == 'a' && option.items[1].s == "replace"
 				first = false
 			}
 			for _, r := range list.items {
 				if n, ok := r.get("name"); ok && n.text() != "" {
-					repos = append(repos, n.text())
+					repositories = append(repositories, n.text())
 				}
 			}
 		}
 	}
-	return repos, replace
+	return repositories, replace
 }
 
 // ReadRebar3HexConfig reads rebar3's hex.config (Rebar3HexConfig): one map from a
@@ -490,7 +490,7 @@ func ParseRebar3HexRepos(data []byte) (repos []string, replace bool) {
 //
 // as the same HexConfig Mix's is read into: hexpm's api_key is APIKey, $oauth (the
 // token `rebar3 hex user auth` stores) is OAuth, and each repository's api_key,
-// repo_key (auth_key when it has none) and oauth_token are its Repos entry.
+// repo_key (auth_key when it has none) and oauth_token are its Repositories entry.
 //
 // Implements: REQ-AUTH-028
 func (m Machine) ReadRebar3HexConfig() HexConfig {
@@ -509,28 +509,28 @@ func (m Machine) ReadRebar3HexConfig() HexConfig {
 //
 // Implements: REQ-AUTH-028
 func ParseRebar3HexConfig(data []byte) HexConfig {
-	out := HexConfig{Repos: map[string]HexRepo{}}
+	out := HexConfig{Repositories: map[string]HexRepository{}}
 	forms := parseErlangTerms(string(data))
 	if len(forms) == 0 || forms[0].kind != 'm' {
 		return out
 	}
 	m := forms[0]
 	for i := 0; i+1 < len(m.items); i += 2 {
-		name, repo := m.items[i].text(), m.items[i+1]
-		if name == "" || repo.kind != 'm' {
+		name, repository := m.items[i].text(), m.items[i+1]
+		if name == "" || repository.kind != 'm' {
 			continue
 		}
 		if name == "$oauth" {
-			out.OAuth = hexToken(repo)
+			out.OAuth = hexToken(repository)
 			continue
 		}
-		apiKey, _ := repo.get("api_key")
-		key, _ := repo.get("repo_key")
+		apiKey, _ := repository.get("api_key")
+		key, _ := repository.get("repo_key")
 		if key.binary() == "" {
-			key, _ = repo.get("auth_key")
+			key, _ = repository.get("auth_key")
 		}
-		token, _ := repo.get("oauth_token")
-		out.Repos[name] = HexRepo{APIKey: apiKey.binary(), AuthKey: key.binary(), OAuth: hexToken(token)}
+		token, _ := repository.get("oauth_token")
+		out.Repositories[name] = HexRepository{APIKey: apiKey.binary(), AuthKey: key.binary(), OAuth: hexToken(token)}
 		if name == "hexpm" {
 			out.APIKey = apiKey.binary()
 		}

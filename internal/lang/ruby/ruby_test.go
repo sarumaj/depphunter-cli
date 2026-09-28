@@ -12,8 +12,8 @@ import (
 // should have; a file missing from want must have none.
 func check(t *testing.T, root string, imports map[string]map[string]lang.Target, symbols map[string]map[string]string) {
 	t.Helper()
-	res := langtest.Analyze(t, Plugin{}, root)
-	for file, r := range res {
+	results := langtest.Analyze(t, Plugin{}, root)
+	for file, r := range results {
 		t.Run(file, func(t *testing.T) {
 			langtest.CheckImports(t, r, imports[file])
 			want := symbols[file]
@@ -24,7 +24,7 @@ func check(t *testing.T, root string, imports map[string]map[string]lang.Target,
 		})
 	}
 	for file := range imports {
-		if res[file] == nil {
+		if results[file] == nil {
 			t.Errorf("%s: not analyzed", file)
 		}
 	}
@@ -39,14 +39,14 @@ func check(t *testing.T, root string, imports map[string]map[string]lang.Target,
 func TestRailsApplication(t *testing.T) {
 	check(t, "testdata/repo", map[string]map[string]lang.Target{
 		"Gemfile": {
-			`gem "rails", "~> 7.1.0"`: {Ecosystem: ecoGems, Package: "rails", Version: "7.1.2", Requested: "~> 7.1.0", Pinned: true},
-			`gem "pg", "1.5.4"`:       {Ecosystem: ecoGems, Package: "pg", Version: "1.5.4", Pinned: true},
-			`gem "puma", ">= 5.0"`:    {Ecosystem: ecoGems, Package: "puma", Version: "6.4.0", Requested: ">= 5.0", Pinned: true},
-			`gem "sidekiq"`:           {Ecosystem: ecoGems, Package: "sidekiq", Version: "7.2.0", Pinned: true},
-			`gem "devise", github: "heartcombo/devise", ref: "0123456789abcdef0123456789abcdef01234567"`: {Ecosystem: ecoGems, Package: "devise", Version: "4.9.3", Pinned: true, Origin: "https://github.com/heartcombo/devise.git", Git: "https://github.com/heartcombo/devise.git#0123456789abcdef0123456789abcdef01234567"},
+			`gem "rails", "~> 7.1.0"`: {Ecosystem: ecosystemGems, Package: "rails", Version: "7.1.2", Requested: "~> 7.1.0", Pinned: true},
+			`gem "pg", "1.5.4"`:       {Ecosystem: ecosystemGems, Package: "pg", Version: "1.5.4", Pinned: true},
+			`gem "puma", ">= 5.0"`:    {Ecosystem: ecosystemGems, Package: "puma", Version: "6.4.0", Requested: ">= 5.0", Pinned: true},
+			`gem "sidekiq"`:           {Ecosystem: ecosystemGems, Package: "sidekiq", Version: "7.2.0", Pinned: true},
+			`gem "devise", github: "heartcombo/devise", ref: "0123456789abcdef0123456789abcdef01234567"`: {Ecosystem: ecosystemGems, Package: "devise", Version: "4.9.3", Pinned: true, Origin: "https://github.com/heartcombo/devise.git", Git: "https://github.com/heartcombo/devise.git#0123456789abcdef0123456789abcdef01234567"},
 			`gem "billing", path: "gems/billing"`:                                                        {Local: "gems/billing/billing.gemspec"},
-			`gem "rspec-rails", "~> 6.0", require: false`:                                                {Ecosystem: ecoGems, Package: "rspec-rails", Version: "6.1.0", Requested: "~> 6.0", Pinned: true},
-			`gem "acme-auth"`: {Ecosystem: ecoGems, Package: "acme-auth", Version: "2.0.1", Pinned: true},
+			`gem "rspec-rails", "~> 6.0", require: false`:                                                {Ecosystem: ecosystemGems, Package: "rspec-rails", Version: "6.1.0", Requested: "~> 6.0", Pinned: true},
+			`gem "acme-auth"`: {Ecosystem: ecosystemGems, Package: "acme-auth", Version: "2.0.1", Pinned: true},
 		},
 		"Rakefile": {
 			`require_relative "config/application"`: {Local: "config/application.rb"},
@@ -84,13 +84,13 @@ func TestRailsApplication(t *testing.T) {
 		},
 		"config/application.rb": {
 			`require_relative "boot"`:             {Local: "config/boot.rb"},
-			`require "rails/all"`:                 {Ecosystem: ecoGems, Package: "railties", Version: "7.1.2", Pinned: true},
-			`require "action_controller/railtie"`: {Ecosystem: ecoGems, Package: "actionpack", Version: "7.1.2", Pinned: true},
+			`require "rails/all"`:                 {Ecosystem: ecosystemGems, Package: "railties", Version: "7.1.2", Pinned: true},
+			`require "action_controller/railtie"`: {Ecosystem: ecosystemGems, Package: "actionpack", Version: "7.1.2", Pinned: true},
 			"Rails::Application":                  {},
 		},
 		"config/boot.rb": {
-			`require "bundler/setup"`:  {Ecosystem: ecoStd, Package: "bundler"},
-			`require "bootsnap/setup"`: {Ecosystem: ecoGems, Package: "bootsnap", Unresolved: true},
+			`require "bundler/setup"`:  {Ecosystem: ecosystemStd, Package: "bundler"},
+			`require "bootsnap/setup"`: {Ecosystem: ecosystemGems, Package: "bootsnap", Unresolved: true},
 		},
 		"config/environment.rb": {
 			`require_relative "application"`: {Local: "config/application.rb"},
@@ -98,13 +98,13 @@ func TestRailsApplication(t *testing.T) {
 		},
 		"gems/billing/billing.gemspec": {
 			"Gem::Specification":                                   {},
-			`spec.add_dependency "money", ">= 6"`:                  {Ecosystem: ecoGems, Package: "money", Version: "6.16.0", Pinned: true},
-			`spec.add_development_dependency "minitest", "~> 5.0"`: {Ecosystem: ecoGems, Package: "minitest", Version: "~> 5.0"},
+			`spec.add_dependency "money", ">= 6"`:                  {Ecosystem: ecosystemGems, Package: "money", Version: "6.16.0", Pinned: true},
+			`spec.add_development_dependency "minitest", "~> 5.0"`: {Ecosystem: ecosystemGems, Package: "minitest", Version: "~> 5.0"},
 		},
 		"gems/billing/lib/billing.rb": {
 			`require "billing/invoice"`: {Local: "gems/billing/lib/billing/invoice.rb"},
-			`require "json"`:            {Ecosystem: ecoStd, Package: "json"},
-			`require "money"`:           {Ecosystem: ecoGems, Package: "money", Version: "6.16.0", Pinned: true},
+			`require "json"`:            {Ecosystem: ecosystemStd, Package: "json"},
+			`require "money"`:           {Ecosystem: ecosystemGems, Package: "money", Version: "6.16.0", Pinned: true},
 		},
 		"gems/billing/lib/billing/invoice.rb": {
 			`require_relative "../billing"`: {Local: "gems/billing/lib/billing.rb"},
@@ -115,7 +115,7 @@ func TestRailsApplication(t *testing.T) {
 			"Minitest::Test":        {},
 		},
 		"gems/billing/test/test_helper.rb": {
-			`require "minitest/autorun"`: {Ecosystem: ecoGems, Package: "minitest", Version: "~> 5.0"},
+			`require "minitest/autorun"`: {Ecosystem: ecosystemGems, Package: "minitest", Version: "~> 5.0"},
 			`require "billing"`:          {Local: "gems/billing/lib/billing.rb"},
 		},
 		"lib/shop/catalog.rb": {
@@ -125,7 +125,7 @@ func TestRailsApplication(t *testing.T) {
 			"Money": {},
 		},
 		"lib/tasks/seed.rake": {
-			`require "csv"`: {Ecosystem: ecoStd, Package: "csv"},
+			`require "csv"`: {Ecosystem: ecosystemStd, Package: "csv"},
 			"CSV":           {},
 			"User":          {Local: "app/models/user.rb"},
 		},
@@ -137,9 +137,9 @@ func TestRailsApplication(t *testing.T) {
 		"spec/rails_helper.rb": {
 			"File": {},
 			`require File.expand_path("../config/environment", __dir__)`: {Local: "config/environment.rb"},
-			`require "rspec/rails"`: {Ecosystem: ecoGems, Package: "rspec-rails", Version: "6.1.0", Requested: "~> 6.0", Pinned: true},
-			`require "net/http"`:    {Ecosystem: ecoStd, Package: "net-http"},
-			`require "yaml"`:        {Ecosystem: ecoGems, Package: "psych", Version: "5.1.1", Pinned: true},
+			`require "rspec/rails"`: {Ecosystem: ecosystemGems, Package: "rspec-rails", Version: "6.1.0", Requested: "~> 6.0", Pinned: true},
+			`require "net/http"`:    {Ecosystem: ecosystemStd, Package: "net-http"},
+			`require "yaml"`:        {Ecosystem: ecosystemGems, Package: "psych", Version: "5.1.1", Pinned: true},
 		},
 	}, map[string]map[string]string{
 		"app/controllers/admin/users_controller.rb": {"Admin": "module", "Admin::UsersController": "class", "Admin::UsersController.index": "method"},
@@ -166,26 +166,26 @@ func TestGemLibrary(t *testing.T) {
 	check(t, "testdata/gemlib", map[string]map[string]lang.Target{
 		"Gemfile": {
 			"gemspec":              {Local: "mylib.gemspec"},
-			`gem "rake", "13.1.0"`: {Ecosystem: ecoGems, Package: "rake", Version: "13.1.0", Pinned: true},
+			`gem "rake", "13.1.0"`: {Ecosystem: ecosystemGems, Package: "rake", Version: "13.1.0", Pinned: true},
 		},
 		"lib/mylib.rb": {
-			`require "rack"`:                {Ecosystem: ecoGems, Package: "rack", Version: ">= 2.0, < 4"},
-			`require "rack/utils"`:          {Ecosystem: ecoGems, Package: "rack", Version: ">= 2.0, < 4"},
-			`require "rspec/core"`:          {Ecosystem: ecoGems, Package: "rspec-core", Version: "3.12.2", Pinned: true},
-			`require "set"`:                 {Ecosystem: ecoStd, Package: "set"},
-			`require "digest/sha2"`:         {Ecosystem: ecoStd, Package: "digest"},
-			`require "net/http/persistent"`: {Ecosystem: ecoGems, Package: "net-http", Unresolved: true},
+			`require "rack"`:                {Ecosystem: ecosystemGems, Package: "rack", Version: ">= 2.0, < 4"},
+			`require "rack/utils"`:          {Ecosystem: ecosystemGems, Package: "rack", Version: ">= 2.0, < 4"},
+			`require "rspec/core"`:          {Ecosystem: ecosystemGems, Package: "rspec-core", Version: "3.12.2", Pinned: true},
+			`require "set"`:                 {Ecosystem: ecosystemStd, Package: "set"},
+			`require "digest/sha2"`:         {Ecosystem: ecosystemStd, Package: "digest"},
+			`require "net/http/persistent"`: {Ecosystem: ecosystemGems, Package: "net-http", Unresolved: true},
 			`require "mylib/version"`:       {Local: "lib/mylib/version.rb"},
 			"File":                          {},
 			`require File.join(File.dirname(__FILE__), "mylib", "helpers")`: {Local: "lib/mylib/helpers.rb"},
 			`require_relative "mylib/missing"`:                              {},
-			`gem "rack"`:                                                    {Ecosystem: ecoGems, Package: "rack", Version: ">= 2.0, < 4"},
+			`gem "rack"`:                                                    {Ecosystem: ecosystemGems, Package: "rack", Version: ">= 2.0, < 4"},
 			"StandardError":                                                 {},
 		},
 		"mylib.gemspec": {
 			"Gem::Specification": {},
-			`s.add_runtime_dependency("rack", [">= 2.0", "< 4"])`: {Ecosystem: ecoGems, Package: "rack", Version: ">= 2.0, < 4"},
-			`s.add_dependency "rspec-core", "= 3.12.2"`:           {Ecosystem: ecoGems, Package: "rspec-core", Version: "3.12.2", Pinned: true},
+			`s.add_runtime_dependency("rack", [">= 2.0", "< 4"])`: {Ecosystem: ecosystemGems, Package: "rack", Version: ">= 2.0, < 4"},
+			`s.add_dependency "rspec-core", "= 3.12.2"`:           {Ecosystem: ecosystemGems, Package: "rspec-core", Version: "3.12.2", Pinned: true},
 		},
 	}, map[string]map[string]string{
 		"lib/mylib.rb":         {"Mylib": "module", "Mylib::Error": "class", "Mylib.root": "method"},
@@ -216,20 +216,20 @@ func TestClaims(t *testing.T) {
 
 // Verifies: REQ-RUBY-009
 func TestPinned(t *testing.T) {
-	for req, want := range map[string]bool{
+	for requirement, want := range map[string]bool{
 		"1.2.3": true, "= 1.2.3": true, "=1.2.3": true, "7.1.0.rc1": true, "= 7.1.0.beta2": true,
 		"~> 1.2": false, ">= 1.0": false, "> 1": false, "< 2": false, "!= 1.2.3": false,
 		">= 1.0, < 2": false, "": false, "1.2.x": false,
 	} {
-		if got := pinned(req); got != want {
-			t.Errorf("pinned(%q) = %v, want %v", req, got, want)
+		if got := pinned(requirement); got != want {
+			t.Errorf("pinned(%q) = %v, want %v", requirement, got, want)
 		}
 	}
 }
 
 // Verifies: REQ-RUBY-002
 func TestEvalPath(t *testing.T) {
-	for expr, want := range map[string]string{
+	for expression, want := range map[string]string{
 		`"a/b"`: "a/b",
 		`'a/b'`: "a/b",
 		`File.expand_path("../config/environment", __dir__)`:       "__DIR__/../config/environment",
@@ -244,9 +244,9 @@ func TestEvalPath(t *testing.T) {
 		`"a" + name`:           "",
 		`Rails.root.join("x")`: "",
 	} {
-		got, ok := evalPath(expr)
+		got, ok := evalPath(expression)
 		if want == "" && ok || want != "" && got != want {
-			t.Errorf("evalPath(%s) = %q, %v; want %q", expr, got, ok, want)
+			t.Errorf("evalPath(%s) = %q, %v; want %q", expression, got, ok, want)
 		}
 	}
 }
@@ -258,27 +258,27 @@ func TestEvalPath(t *testing.T) {
 // Verifies: REQ-RUBY-008, REQ-RUBY-011
 func TestLockGraph(t *testing.T) {
 	r := newResolver("testdata/repo", langtest.Files(t, "testdata/repo"))
-	got := r.Dependencies(lang.Target{Ecosystem: ecoGems, Package: "railties", Version: "7.1.2"})
+	got := r.Dependencies(lang.Target{Ecosystem: ecosystemGems, Package: "railties", Version: "7.1.2"})
 	want := []lang.Target{
-		{Ecosystem: ecoGems, Package: "actionpack", Version: "7.1.2", Pinned: true},
-		{Ecosystem: ecoGems, Package: "activesupport", Version: "7.1.2", Pinned: true},
-		{Ecosystem: ecoGems, Package: "psych", Version: "5.1.1", Pinned: true},
+		{Ecosystem: ecosystemGems, Package: "actionpack", Version: "7.1.2", Pinned: true},
+		{Ecosystem: ecosystemGems, Package: "activesupport", Version: "7.1.2", Pinned: true},
+		{Ecosystem: ecosystemGems, Package: "psych", Version: "5.1.1", Pinned: true},
 	}
 	if !equal(got, want) {
 		t.Errorf("railties: got %+v, want %+v", got, want)
 	}
-	got = r.Dependencies(lang.Target{Ecosystem: ecoGems, Package: "nokogiri"})
-	want = []lang.Target{{Ecosystem: ecoGems, Package: "racc", Version: "1.7.3", Requested: "~> 1.4", Pinned: true}}
+	got = r.Dependencies(lang.Target{Ecosystem: ecosystemGems, Package: "nokogiri"})
+	want = []lang.Target{{Ecosystem: ecosystemGems, Package: "racc", Version: "1.7.3", Requested: "~> 1.4", Pinned: true}}
 	if !equal(got, want) {
 		t.Errorf("nokogiri: got %+v, want %+v", got, want)
 	}
 	// A dependency the lock does not hold is its requirement.
-	got = r.Dependencies(lang.Target{Ecosystem: ecoGems, Package: "devise", Version: "4.9.3"})
-	want = []lang.Target{{Ecosystem: ecoGems, Package: "railties", Version: "7.1.2", Requested: ">= 4.1.0", Pinned: true}}
+	got = r.Dependencies(lang.Target{Ecosystem: ecosystemGems, Package: "devise", Version: "4.9.3"})
+	want = []lang.Target{{Ecosystem: ecosystemGems, Package: "railties", Version: "7.1.2", Requested: ">= 4.1.0", Pinned: true}}
 	if !equal(got, want) {
 		t.Errorf("devise: got %+v, want %+v", got, want)
 	}
-	if got := r.Dependencies(lang.Target{Ecosystem: ecoStd, Package: "json"}); got != nil {
+	if got := r.Dependencies(lang.Target{Ecosystem: ecosystemStd, Package: "json"}); got != nil {
 		t.Errorf("a standard library got dependencies: %+v", got)
 	}
 }
@@ -297,7 +297,7 @@ func equal(a, b []lang.Target) bool {
 
 // Verifies: REQ-RUBY-007
 func TestReadGemfile(t *testing.T) {
-	src := `source "https://rubygems.org"
+	source := `source "https://rubygems.org"
 gemspec path: "core"
 gem "rails", "~> 7.1", ">= 7.1.2" # comment, "9"
 gem("pg")
@@ -313,11 +313,11 @@ group :test do
 end
 eval_gemfile "Gemfile.shared"
 `
-	decls, dirs := readGemfile(src, func(rel string) (string, bool) {
-		return "gem 'shared'\n", rel == "Gemfile.shared"
+	declarations, directories := readGemfile(source, func(relative string) (string, bool) {
+		return "gem 'shared'\n", relative == "Gemfile.shared"
 	})
 	got := map[string]declaration{}
-	for _, d := range decls {
+	for _, d := range declarations {
 		got[d.name] = *d
 	}
 	want := map[string]declaration{
@@ -336,7 +336,7 @@ eval_gemfile "Gemfile.shared"
 			t.Errorf("%s: got %+v, want %+v", name, got[name], w)
 		}
 	}
-	if len(dirs) != 1 || dirs[0] != "core" {
-		t.Errorf("gemspec directories %q, want [core]", dirs)
+	if len(directories) != 1 || directories[0] != "core" {
+		t.Errorf("gemspec directories %q, want [core]", directories)
 	}
 }

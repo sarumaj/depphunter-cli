@@ -21,8 +21,8 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
-// ecoDhall is the island of remote Dhall packages.
-const ecoDhall = "dhall"
+// ecosystemDhall is the island of remote Dhall packages.
+const ecosystemDhall = "dhall"
 
 // Implements: REQ-DHALL-001
 type Plugin struct{}
@@ -39,7 +39,7 @@ func (Plugin) Claims(f *scan.File) bool {
 
 // Implements: REQ-DHALL-006
 func (Plugin) Ecosystems() []lang.Ecosystem {
-	return []lang.Ecosystem{{ID: ecoDhall, Name: "Dhall packages"}}
+	return []lang.Ecosystem{{ID: ecosystemDhall, Name: "Dhall packages"}}
 }
 
 func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
@@ -47,6 +47,6 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-DHALL-002, REQ-DHALL-003
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
-	return extractSource(src), nil
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
+	return extractSource(source), nil
 }

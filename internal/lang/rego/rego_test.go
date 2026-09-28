@@ -21,10 +21,10 @@ import (
 //
 // Verifies: REQ-REGO-002, REQ-REGO-004, REQ-REGO-007
 func TestImports(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
 	k8s, k8sMore := lang.Target{Local: "policy/lib/kubernetes.rego"}, lang.Target{Local: "policy/lib/kubernetes_more.rego"}
 	util := lang.Target{Local: "policy/lib/util.rego"}
-	langtest.CheckImports(t, res["policy/deny.rego"], map[string]lang.Target{
+	langtest.CheckImports(t, results["policy/deny.rego"], map[string]lang.Target{
 		"data.lib.kubernetes (policy/lib/kubernetes.rego)":      k8s, // one per file of the package
 		"data.lib.kubernetes (policy/lib/kubernetes_more.rego)": k8sMore,
 		"data.lib.util as u":                       util,
@@ -33,28 +33,28 @@ func TestImports(t *testing.T) {
 		// import data.lib (a namespace), import rego.v1, future.keywords and
 		// input are no edges; references the imports cover are not repeated.
 	})
-	langtest.CheckImports(t, res["policy/deny_test.rego"], map[string]lang.Target{
+	langtest.CheckImports(t, results["policy/deny_test.rego"], map[string]lang.Target{
 		"data.main":           {Local: "policy/deny.rego"},
 		"data.lib.util.allow": util,
 	})
-	langtest.CheckImports(t, res["policy/ns.rego"], map[string]lang.Target{
+	langtest.CheckImports(t, results["policy/ns.rego"], map[string]lang.Target{
 		"data.lib.kubernetes.pods (policy/lib/kubernetes.rego)":      k8s,
 		"data.lib.kubernetes.pods (policy/lib/kubernetes_more.rego)": k8sMore,
 	})
 	// A package's own files do not link each other.
-	langtest.CheckImports(t, res["policy/lib/kubernetes.rego"], map[string]lang.Target{})
+	langtest.CheckImports(t, results["policy/lib/kubernetes.rego"], map[string]lang.Target{})
 }
 
 // Verifies: REQ-REGO-003
 func TestSymbols(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	langtest.CheckSymbols(t, res["policy/deny.rego"], map[string]string{
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	langtest.CheckSymbols(t, results["policy/deny.rego"], map[string]string{
 		"main": "package", "deny": "rule", "warn": "rule", "f": "function", "allow": "rule",
 	})
-	langtest.CheckSymbols(t, res["policy/lib/util.rego"], map[string]string{
+	langtest.CheckSymbols(t, results["policy/lib/util.rego"], map[string]string{
 		"lib.util": "package", "allow": "rule", "helper": "function", "ref.head.rule": "rule",
 	})
-	langtest.CheckSymbols(t, res["policy/rules/bugs/constant_condition.rego"], map[string]string{
+	langtest.CheckSymbols(t, results["policy/rules/bugs/constant_condition.rego"], map[string]string{
 		"rules.bugs.constant-condition": "package", "report": "rule",
 	})
 }
@@ -73,25 +73,25 @@ func TestClaims(t *testing.T) {
 //
 // Verifies: REQ-REGO-006
 func TestTruncated(t *testing.T) {
-	var srcs [][]byte
+	var sources [][]byte
 	filepath.Walk("testdata", func(p string, info os.FileInfo, err error) error {
 		if err == nil && !info.IsDir() {
 			if b, err := os.ReadFile(p); err == nil {
-				srcs = append(srcs, b)
+				sources = append(sources, b)
 			}
 		}
 		return nil
 	})
-	for _, src := range srcs {
-		for i := 0; i <= len(src); i++ {
-			extractSource(src[:i])
-			packageOf(src[:i])
+	for _, source := range sources {
+		for i := 0; i <= len(source); i++ {
+			extractSource(source[:i])
+			packageOf(source[:i])
 		}
 	}
 	for _, unit := range []string{"{", "[", "(", "data.a", "import data.x as y\n", "y.z ", "`", "\"", "package a[\"b\"]", "\na.b.c := 1", "x.", "[\"x\"]"} {
-		src := []byte(strings.Repeat(unit, 200_000/len(unit)))
+		source := []byte(strings.Repeat(unit, 200_000/len(unit)))
 		start := time.Now()
-		extractSource(src)
+		extractSource(source)
 		if d := time.Since(start); d > 2*time.Second {
 			t.Errorf("%q x %d: %v", unit, 200_000/len(unit), d)
 		}

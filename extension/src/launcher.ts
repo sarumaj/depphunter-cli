@@ -16,8 +16,8 @@ import * as vscode from 'vscode';
  * is not this one.
  * Implements: REQ-EXT-025
  */
-export function editorTemplate(cfg: vscode.WorkspaceConfiguration): string | undefined {
-  const set = (cfg.get<string>('editorCommand') ?? '').trim();
+export function editorTemplate(config: vscode.WorkspaceConfiguration): string | undefined {
+  const set = (config.get<string>('editorCommand') ?? '').trim();
   if (set) return set;
   const cli = launcher();
   return cli ? `${quote(cli)} -g {file}:{line}` : undefined;

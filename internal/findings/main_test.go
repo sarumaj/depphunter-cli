@@ -11,13 +11,13 @@ import (
 // (/etc/pip.conf and the like) out of the credential stores the tests read with
 // auth.Read, and pins their platform to Linux, where the fixtures sit.
 func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "depphunter-system")
+	directory, err := os.MkdirTemp("", "depphunter-system")
 	if err != nil {
 		panic(err)
 	}
-	userconf.SystemRoot = dir
+	userconf.SystemRoot = directory
 	userconf.Platform = "linux"
 	code := m.Run()
-	os.RemoveAll(dir)
+	os.RemoveAll(directory)
 	os.Exit(code)
 }

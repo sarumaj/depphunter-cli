@@ -15,18 +15,18 @@ import (
 // 1 (graph_lock) conan.lock. shared/ has no manifest of its own.
 
 func vcpkg(name, version, requested string, pinned bool) lang.Target {
-	return lang.Target{Ecosystem: ecoVcpkg, Package: name, Version: version, Requested: requested, Pinned: pinned}
+	return lang.Target{Ecosystem: ecosystemVcpkg, Package: name, Version: version, Requested: requested, Pinned: pinned}
 }
 
 func conan(name, version, requested string) lang.Target {
-	return lang.Target{Ecosystem: ecoConan, Package: name, Version: version, Requested: requested, Pinned: true}
+	return lang.Target{Ecosystem: ecosystemConan, Package: name, Version: version, Requested: requested, Pinned: true}
 }
 
 // Verifies: REQ-CPP-009, REQ-CPP-012
 func TestVcpkg(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/pkgs")
+	results := langtest.Analyze(t, Plugin{}, "testdata/pkgs")
 	// cSpell: disable
-	langtest.CheckImports(t, res["vcpkg/src/main.cpp"], map[string]lang.Target{
+	langtest.CheckImports(t, results["vcpkg/src/main.cpp"], map[string]lang.Target{
 		// An override pins; the minimum it replaced is what was requested.
 		`#include <fmt/format.h>`:  vcpkg("fmt", "10.1.1", "", true),
 		`#include <openssl/ssl.h>`: vcpkg("openssl", "3.2.0", ">=3.0.8", true),
@@ -47,12 +47,12 @@ func TestVcpkg(t *testing.T) {
 		`#include <opencv2/core.hpp>`: vcpkg("opencv4", "", "", false),
 		// Declared nowhere.
 		`#include <spdlog/spdlog.h>`: external("spdlog"),
-		`#include <vector>`:          std(ecoCppStd, "vector"),
+		`#include <vector>`:          std(ecosystemCppStd, "vector"),
 	})
 	// tools/ has its own manifest; what it lacks comes from the one above.
-	langtest.CheckImports(t, res["vcpkg/tools/check.cpp"], map[string]lang.Target{
+	langtest.CheckImports(t, results["vcpkg/tools/check.cpp"], map[string]lang.Target{
 		// No version and no baseline: whatever the vcpkg checkout has.
-		`#include <catch2/catch_test_macros.hpp>`: {Ecosystem: ecoVcpkg, Package: "catch2", Floating: true},
+		`#include <catch2/catch_test_macros.hpp>`: {Ecosystem: ecosystemVcpkg, Package: "catch2", Floating: true},
 		// The registry claiming acme-* has a baseline.
 		`#include <acme-net/client.h>`: vcpkg("acme-net", "", "", false),
 		`#include <fmt/core.h>`:        vcpkg("fmt", "10.1.1", "", true),
@@ -62,9 +62,9 @@ func TestVcpkg(t *testing.T) {
 
 // Verifies: REQ-CPP-010, REQ-CPP-011, REQ-CPP-012
 func TestConan(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/pkgs")
+	results := langtest.Analyze(t, Plugin{}, "testdata/pkgs")
 	// cSpell: disable
-	langtest.CheckImports(t, res["conan-txt/src/app.cpp"], map[string]lang.Target{
+	langtest.CheckImports(t, results["conan-txt/src/app.cpp"], map[string]lang.Target{
 		`#include <zlib.h>`: conan("zlib", "1.2.13", ""),
 		// The Conan 2 lock resolves the range.
 		`#include <spdlog/spdlog.h>`: conan("spdlog", "1.12.0", "[>=1.11 <2]"),
@@ -74,7 +74,7 @@ func TestConan(t *testing.T) {
 		// Commented out in conanfile.txt.
 		`#include <boost/asio.hpp>`: external("boost"),
 	})
-	langtest.CheckImports(t, res["conan-py/main.cpp"], map[string]lang.Target{
+	langtest.CheckImports(t, results["conan-py/main.cpp"], map[string]lang.Target{
 		`#include <openssl/evp.h>`:    conan("openssl", "1.1.1t", ""),
 		`#include <zlib.h>`:           conan("zlib", "1.2.13", "[~1.2]"),
 		`#include <curl/curl.h>`:      conan("libcurl", "8.4.0", ""),
@@ -92,8 +92,8 @@ func TestConan(t *testing.T) {
 //
 // Verifies: REQ-CPP-012
 func TestManifestElsewhere(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/pkgs")
-	langtest.CheckImports(t, res["shared/log.cpp"], map[string]lang.Target{
+	results := langtest.Analyze(t, Plugin{}, "testdata/pkgs")
+	langtest.CheckImports(t, results["shared/log.cpp"], map[string]lang.Target{
 		`#include <spdlog/spdlog.h>`:   conan("spdlog", "1.12.0", "[>=1.11 <2]"),
 		`#include <fmt/format.h>`:      conan("fmt", "10.1.1", ""), // conan-txt before vcpkg
 		`#include <acme-net/client.h>`: vcpkg("acme-net", "", "", false),
@@ -102,14 +102,14 @@ func TestManifestElsewhere(t *testing.T) {
 
 // Verifies: REQ-CPP-010
 func TestConanRequirementsWithoutLock(t *testing.T) {
-	names := func(pkgs []*pkg) map[string]lang.Target {
+	names := func(packages []*declaredPackage) map[string]lang.Target {
 		out := map[string]lang.Target{}
-		for _, p := range pkgs {
+		for _, p := range packages {
 			out[p.name] = p.target()
 		}
 		return out
 	}
-	floating := lang.Target{Ecosystem: ecoConan, Package: "zlib", Version: "[~1.2]"}
+	floating := lang.Target{Ecosystem: ecosystemConan, Package: "zlib", Version: "[~1.2]"}
 	// cSpell: disable
 	got := names(readConanfilePy([]byte(`
 class App(ConanFile):
@@ -143,15 +143,15 @@ class App(ConanFile):
 // Verifies: REQ-CPP-011
 func TestConanLockGraph(t *testing.T) {
 	r := newResolver(t.TempDir(), langtest.Files(t, "testdata/pkgs"))
-	for pkg, want := range map[lang.Target][]lang.Target{
+	for packageTarget, want := range map[lang.Target][]lang.Target{
 		conan("libcurl", "8.4.0", ""):    {conan("openssl", "1.1.1t", ""), conan("zlib", "1.2.13", "")},
 		conan("openssl", "1.1.1t", ""):   {conan("zlib", "1.2.13", "")},
 		conan("zlib", "1.2.13", ""):      nil,
 		conan("spdlog", "1.12.0", ""):    nil,
 		vcpkg("fmt", "10.1.1", "", true): nil,
 	} {
-		if got := r.Dependencies(pkg); !reflect.DeepEqual(got, want) {
-			t.Errorf("%s: got %v, want %v", pkg.Package, got, want)
+		if got := r.Dependencies(packageTarget); !reflect.DeepEqual(got, want) {
+			t.Errorf("%s: got %v, want %v", packageTarget.Package, got, want)
 		}
 	}
 }

@@ -47,39 +47,39 @@ func newResolver(all []*scan.File) *resolver {
 // to its ecosystem's package.
 //
 // Implements: REQ-SHELL-004, REQ-SHELL-005, REQ-SHELL-006, REQ-SHELL-007, REQ-SHELL-008
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	dir := path.Dir(file)
-	switch imp.Name {
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	directory := path.Dir(file)
+	switch rawImport.Name {
 	case kindSource, kindExec, kindFile:
-		return r.local(file, r.candidates(dir, imp.Module))
+		return r.local(file, r.candidates(directory, rawImport.Module))
 	case kindBats:
 		var candidates []string
-		for _, c := range r.candidates(dir, imp.Module) {
+		for _, c := range r.candidates(directory, rawImport.Module) {
 			candidates = append(candidates, c+".bash", c)
 		}
 		return r.local(file, candidates)
 	case kindEnvrc:
 		var candidates []string
-		for _, c := range r.candidates(dir, imp.Module) {
+		for _, c := range r.candidates(directory, rawImport.Module) {
 			candidates = append(candidates, c, path.Join(c, ".envrc"))
 		}
 		return r.local(file, candidates)
 	case kindDotenv:
-		return r.local(file, r.candidates(dir, imp.Module))
+		return r.local(file, r.candidates(directory, rawImport.Module))
 	case kindUp:
-		for d := dir; d != "."; {
+		for d := directory; d != "."; {
 			d = path.Dir(d)
-			if p := path.Join(d, imp.Module); r.files[p] {
+			if p := path.Join(d, rawImport.Module); r.files[p] {
 				return lang.Target{Local: p}
 			}
 		}
 		return lang.Target{}
 	}
-	eco, version, ok := strings.Cut(imp.Name, "@")
+	ecosystem, version, ok := strings.Cut(rawImport.Name, "@")
 	if !ok {
 		return lang.Target{}
 	}
-	return pkgTarget(eco, imp.Module, version)
+	return packageTarget(ecosystem, rawImport.Module, version)
 }
 
 // candidates are the project paths a module may name, most likely first. A path
@@ -88,24 +88,24 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 // directory the environment names is the one project file ending in it.
 //
 // Implements: REQ-SHELL-004, REQ-SHELL-009
-func (r *resolver) candidates(dir, module string) []string {
-	kind, rel, _ := strings.Cut(module, ":")
+func (r *resolver) candidates(directory, module string) []string {
+	kind, relative, _ := strings.Cut(module, ":")
 	var bases []string
 	switch kind {
 	case "any":
-		if p := r.ends[path.Clean(rel)]; p != "" {
+		if p := r.ends[path.Clean(relative)]; p != "" {
 			return []string{p}
 		}
 	case "dir":
-		bases = []string{dir}
+		bases = []string{directory}
 	case "root":
 		bases = []string{"."}
 	case "cwd":
-		bases = []string{dir, "."}
+		bases = []string{directory, "."}
 	}
 	var out []string
 	for _, b := range bases {
-		if p := path.Join(b, rel); p != ".." && !strings.HasPrefix(p, "../") {
+		if p := path.Join(b, relative); p != ".." && !strings.HasPrefix(p, "../") {
 			out = append(out, p)
 		}
 	}
@@ -125,13 +125,13 @@ func (r *resolver) local(file string, candidates []string) lang.Target {
 	return lang.Target{}
 }
 
-// pkgTarget applies each ecosystem's pinning rule to the version a command asked
+// packageTarget applies each ecosystem's pinning rule to the version a command asked
 // for: pip's ==1.2.3 and gem's 1.2.3 pin; npm, Go and cargo need a complete
 // 1.2.3; no version, or latest, floats; a variable pins nothing.
 //
 // Implements: REQ-SHELL-008
-func pkgTarget(eco, name, version string) lang.Target {
-	t := lang.Target{Ecosystem: eco, Package: name, Version: version}
+func packageTarget(ecosystem, name, version string) lang.Target {
+	t := lang.Target{Ecosystem: ecosystem, Package: name, Version: version}
 	switch {
 	case version == "":
 		t.Floating = true
@@ -142,18 +142,18 @@ func pkgTarget(eco, name, version string) lang.Target {
 	case strings.Contains(version, "$"):
 		return t
 	}
-	switch eco {
-	case ecoPyPI:
+	switch ecosystem {
+	case ecosystemPyPI:
 		t.Pinned = lang.Pinned(version)
 		if t.Pinned {
 			t.Version = strings.TrimPrefix(version, "==")
 		}
-	case ecoGems:
+	case ecosystemGems:
 		v := strings.TrimSpace(strings.TrimPrefix(strings.TrimSpace(version), "="))
 		if t.Pinned = lang.Pinned(v); t.Pinned {
 			t.Version = v
 		}
-	case ecoCrates:
+	case ecosystemCrates:
 		v := strings.TrimPrefix(version, "=")
 		if t.Pinned = lang.PinnedSemver(v); t.Pinned {
 			t.Version = v

@@ -4,10 +4,10 @@ import "strings"
 
 // Token kinds of the declaration scanner's lexer.
 const (
-	tIdent = iota
-	tPunct // one character, or "::"
+	tIdentifier  = iota
+	tPunctuation // one character, or "::"
 	tString
-	tChar
+	tCharacter
 	tNumber
 )
 
@@ -30,86 +30,86 @@ type directive struct {
 // lexer turns a C or C++ source into tokens and directives. Lines the preprocessor
 // scan found dead (#if 0) contribute nothing.
 type lexer struct {
-	src    string
-	i      int
-	line   int
-	dead   []bool
-	tokens []token
-	dirs   []directive
-	bol    bool // only whitespace since the last newline
-	cplus  bool
+	source      string
+	i           int
+	line        int
+	dead        []bool
+	tokens      []token
+	directories []directive
+	lineStart   bool // only whitespace since the last newline
+	cplus       bool
 }
 
-func lex(src string, dead []bool, cplus bool) ([]token, []directive) {
-	l := &lexer{src: src, line: 1, dead: dead, bol: true, cplus: cplus}
-	l.tokens = make([]token, 0, len(src)/6) // about one token in six bytes of C++
+func lex(source string, dead []bool, cplus bool) ([]token, []directive) {
+	l := &lexer{source: source, line: 1, dead: dead, lineStart: true, cplus: cplus}
+	l.tokens = make([]token, 0, len(source)/6) // about one token in six bytes of C++
 	l.run()
-	return l.tokens, l.dirs
+	return l.tokens, l.directories
 }
 
 func (l *lexer) deadLine(line int) bool { return line < len(l.dead) && l.dead[line] }
 
 func (l *lexer) emit(kind int, start, line int) {
 	if !l.deadLine(line) {
-		l.tokens = append(l.tokens, token{kind: kind, text: l.src[start:l.i], line: line})
+		l.tokens = append(l.tokens, token{kind: kind, text: l.source[start:l.i], line: line})
 	}
 }
 
-func identStart(c byte) bool {
+func identifierStart(c byte) bool {
 	return c == '_' || c == '$' || c >= 0x80 || (c|0x20 >= 'a' && c|0x20 <= 'z')
 }
 
-func identPart(c byte) bool { return identStart(c) || (c >= '0' && c <= '9') }
+func identifierPart(c byte) bool { return identifierStart(c) || (c >= '0' && c <= '9') }
 
 func (l *lexer) run() {
-	src := l.src
-	for l.i < len(src) {
-		c := src[l.i]
+	source := l.source
+	for l.i < len(source) {
+		c := source[l.i]
 		switch {
 		case c == '\n':
 			l.line++
 			l.i++
-			l.bol = true
+			l.lineStart = true
 			continue
 		case c == ' ' || c == '\t' || c == '\r' || c == '\f' || c == '\v':
 			l.i++
 			continue
-		case c == '\\' && l.i+1 < len(src) && (src[l.i+1] == '\n' || src[l.i+1] == '\r'):
+		case c == '\\' && l.i+1 < len(source) && (source[l.i+1] == '\n' || source[l.i+1] == '\r'):
 			l.i++ // a continued line outside a directive
 			continue
-		case c == '/' && l.i+1 < len(src) && src[l.i+1] == '/':
+		case c == '/' && l.i+1 < len(source) && source[l.i+1] == '/':
 			l.lineComment()
 			continue
-		case c == '/' && l.i+1 < len(src) && src[l.i+1] == '*':
+		case c == '/' && l.i+1 < len(source) && source[l.i+1] == '*':
 			l.blockComment()
 			continue
-		case c == '#' && l.bol:
+		case c == '#' && l.lineStart:
 			l.directive()
 			continue
 		}
-		l.bol = false
+		l.lineStart = false
 		start, line := l.i, l.line
 		switch {
-		case identStart(c):
-			for l.i < len(src) && identPart(src[l.i]) {
+		case identifierStart(c):
+			for l.i < len(source) && identifierPart(source[l.i]) {
 				l.i++
 			}
-			word := src[start:l.i]
-			if l.i < len(src) && (src[l.i] == '"' || src[l.i] == '\'') && literalPrefix(word) {
-				if src[l.i] == '"' && strings.HasSuffix(word, "R") {
+			word := source[start:l.i]
+			if l.i < len(source) && (source[l.i] == '"' || source[l.i] == '\'') && literalPrefix(word) {
+				if source[l.i] == '"' && strings.HasSuffix(word, "R") {
 					l.rawString()
 				} else {
-					l.quoted(src[l.i])
+					l.quoted(source[l.i])
 				}
 				kind := tString
-				if src[l.i-1] == '\'' {
-					kind = tChar
+				if source[l.i-1] == '\'' {
+					kind = tCharacter
 				}
 				l.emit(kind, start, line)
 				continue
 			}
-			l.emit(tIdent, start, line)
-		case c >= '0' && c <= '9' || (c == '.' && l.i+1 < len(src) && src[l.i+1] >= '0' && src[l.i+1] <= '9'):
+			l.emit(tIdentifier, start, line)
+		case c >= '0' && c <= '9' || (c == '.' && l.i+1 < len(source) && source[l.i+1] >= '0' && source[l.i+1] <= '9'):
 			l.number()
 			l.emit(tNumber, start, line)
 		case c == '"':
@@ -117,16 +117,16 @@ func (l *lexer) run() {
 			l.emit(tString, start, line)
 		case c == '\'':
 			l.quoted('\'')
-			l.emit(tChar, start, line)
-		case c == ':' && l.i+1 < len(src) && src[l.i+1] == ':' && l.cplus:
+			l.emit(tCharacter, start, line)
+		case c == ':' && l.i+1 < len(source) && source[l.i+1] == ':' && l.cplus:
 			l.i += 2
-			l.emit(tPunct, start, line)
-		case c == '-' && l.i+1 < len(src) && src[l.i+1] == '>':
+			l.emit(tPunctuation, start, line)
+		case c == '-' && l.i+1 < len(source) && source[l.i+1] == '>':
 			l.i += 2
-			l.emit(tPunct, start, line)
+			l.emit(tPunctuation, start, line)
 		default:
 			l.i++
-			l.emit(tPunct, start, line)
+			l.emit(tPunctuation, start, line)
 		}
 	}
 }
@@ -142,8 +142,8 @@ func literalPrefix(word string) bool {
 }
 
 func (l *lexer) lineComment() {
-	for l.i < len(l.src) && l.src[l.i] != '\n' {
-		if l.src[l.i] == '\\' && l.i+1 < len(l.src) && l.src[l.i+1] == '\n' {
+	for l.i < len(l.source) && l.source[l.i] != '\n' {
+		if l.source[l.i] == '\\' && l.i+1 < len(l.source) && l.source[l.i+1] == '\n' {
 			l.i++
 			l.line++
 		}
@@ -152,12 +152,12 @@ func (l *lexer) lineComment() {
 }
 
 func (l *lexer) blockComment() {
-	end := strings.Index(l.src[l.i+2:], "*/")
-	stop := len(l.src)
+	end := strings.Index(l.source[l.i+2:], "*/")
+	stop := len(l.source)
 	if end >= 0 {
 		stop = l.i + 2 + end + 2
 	}
-	l.line += strings.Count(l.src[l.i:stop], "\n")
+	l.line += strings.Count(l.source[l.i:stop], "\n")
 	l.i = stop
 }
 
@@ -165,10 +165,10 @@ func (l *lexer) blockComment() {
 // ends at its line's end when unterminated.
 func (l *lexer) quoted(q byte) {
 	l.i++
-	for l.i < len(l.src) {
-		switch l.src[l.i] {
+	for l.i < len(l.source) {
+		switch l.source[l.i] {
 		case '\\':
-			if l.i+1 < len(l.src) && l.src[l.i+1] == '\n' {
+			if l.i+1 < len(l.source) && l.source[l.i+1] == '\n' {
 				l.line++
 			}
 			l.i += 2
@@ -181,39 +181,39 @@ func (l *lexer) quoted(q byte) {
 		}
 		l.i++
 	}
-	l.i = min(l.i, len(l.src))
+	l.i = min(l.i, len(l.source))
 }
 
 // rawString steps over R"delim( ... )delim" starting at the quote.
 func (l *lexer) rawString() {
-	open := strings.IndexByte(l.src[l.i:], '(')
-	if open < 0 || open > 17 || strings.ContainsAny(l.src[l.i+1:l.i+open], " \\\n\t\"") {
+	open := strings.IndexByte(l.source[l.i:], '(')
+	if open < 0 || open > 17 || strings.ContainsAny(l.source[l.i+1:l.i+open], " \\\n\t\"") {
 		l.quoted('"')
 		return
 	}
-	delim := ")" + l.src[l.i+1:l.i+open] + "\""
-	end := strings.Index(l.src[l.i+open:], delim)
-	stop := len(l.src)
+	delimiter := ")" + l.source[l.i+1:l.i+open] + "\""
+	end := strings.Index(l.source[l.i+open:], delimiter)
+	stop := len(l.source)
 	if end >= 0 {
-		stop = l.i + open + end + len(delim)
+		stop = l.i + open + end + len(delimiter)
 	}
-	l.line += strings.Count(l.src[l.i:stop], "\n")
+	l.line += strings.Count(l.source[l.i:stop], "\n")
 	l.i = stop
 }
 
 // number steps over a numeric literal, digit separators (1'000) and exponents
 // (1e+5, 0x1p-3) included.
 func (l *lexer) number() {
-	src := l.src
-	for l.i < len(src) {
-		c := src[l.i]
+	source := l.source
+	for l.i < len(source) {
+		c := source[l.i]
 		switch {
-		case identPart(c) || c == '.':
+		case identifierPart(c) || c == '.':
 			l.i++
-			if (c|0x20 == 'e' || c|0x20 == 'p') && l.i < len(src) && (src[l.i] == '+' || src[l.i] == '-') {
+			if (c|0x20 == 'e' || c|0x20 == 'p') && l.i < len(source) && (source[l.i] == '+' || source[l.i] == '-') {
 				l.i++
 			}
-		case c == '\'' && l.i+1 < len(src) && identPart(src[l.i+1]):
+		case c == '\'' && l.i+1 < len(source) && identifierPart(source[l.i+1]):
 			l.i++
 		default:
 			return
@@ -227,33 +227,33 @@ func (l *lexer) directive() {
 	line := l.line
 	var b strings.Builder
 	l.i++ // '#'
-	for l.i < len(l.src) {
-		c := l.src[l.i]
+	for l.i < len(l.source) {
+		c := l.source[l.i]
 		if c == '\n' {
 			break
 		}
 		switch {
-		case c == '\\' && l.i+1 < len(l.src) && l.src[l.i+1] == '\n':
+		case c == '\\' && l.i+1 < len(l.source) && l.source[l.i+1] == '\n':
 			l.i += 2
 			l.line++
 			b.WriteByte(' ')
 			continue
-		case c == '\\' && l.i+2 < len(l.src) && l.src[l.i+1] == '\r' && l.src[l.i+2] == '\n':
+		case c == '\\' && l.i+2 < len(l.source) && l.source[l.i+1] == '\r' && l.source[l.i+2] == '\n':
 			l.i += 3
 			l.line++
 			b.WriteByte(' ')
 			continue
-		case c == '/' && l.i+1 < len(l.src) && l.src[l.i+1] == '/':
+		case c == '/' && l.i+1 < len(l.source) && l.source[l.i+1] == '/':
 			l.lineComment()
 			continue
-		case c == '/' && l.i+1 < len(l.src) && l.src[l.i+1] == '*':
+		case c == '/' && l.i+1 < len(l.source) && l.source[l.i+1] == '*':
 			l.blockComment()
 			b.WriteByte(' ')
 			continue
 		case c == '"' || c == '\'':
 			start := l.i
 			l.quoted(c)
-			b.WriteString(l.src[start:l.i])
+			b.WriteString(l.source[start:l.i])
 			continue
 		}
 		b.WriteByte(c)
@@ -267,7 +267,7 @@ func (l *lexer) directive() {
 	if j := strings.IndexAny(text, " \t<\"(!"); j >= 0 {
 		word = text[:j]
 	}
-	l.dirs = append(l.dirs, directive{word: word, rest: strings.TrimSpace(text[len(word):]), line: line, at: len(l.tokens)})
+	l.directories = append(l.directories, directive{word: word, rest: strings.TrimSpace(text[len(word):]), line: line, at: len(l.tokens)})
 }
 
 // selectBranches picks the tokens of conditional groups the scanner reads. A
@@ -286,7 +286,7 @@ func (l *lexer) directive() {
 // branches does.
 //
 // Implements: REQ-CPP-014
-func selectBranches(tokens []token, dirs []directive) ([]token, []directive) {
+func selectBranches(tokens []token, directories []directive) ([]token, []directive) {
 	type branch struct{ from, to int }
 	type group struct{ branches []branch }
 	var stack []*group
@@ -296,14 +296,14 @@ func selectBranches(tokens []token, dirs []directive) ([]token, []directive) {
 	braces := make([]int, len(tokens)+1)
 	for i, t := range tokens {
 		braces[i+1] = braces[i]
-		if t.kind == tPunct && t.text == "{" {
+		if t.kind == tPunctuation && t.text == "{" {
 			braces[i+1]++
-		} else if t.kind == tPunct && t.text == "}" {
+		} else if t.kind == tPunctuation && t.text == "}" {
 			braces[i+1]--
 		}
 	}
 	balance := func(b branch) int { return braces[b.to] - braces[b.from] }
-	for _, d := range dirs {
+	for _, d := range directories {
 		switch d.word {
 		case "if", "ifdef", "ifndef":
 			stack = append(stack, &group{branches: []branch{{from: d.at}}})
@@ -343,7 +343,7 @@ func selectBranches(tokens []token, dirs []directive) ([]token, []directive) {
 		}
 	}
 	if !any {
-		return tokens, dirs
+		return tokens, directories
 	}
 	index := make([]int, len(tokens)+1)
 	var kept []token
@@ -354,8 +354,8 @@ func selectBranches(tokens []token, dirs []directive) ([]token, []directive) {
 		}
 	}
 	index[len(tokens)] = len(kept)
-	for i := range dirs {
-		dirs[i].at = index[dirs[i].at]
+	for i := range directories {
+		directories[i].at = index[directories[i].at]
 	}
-	return kept, dirs
+	return kept, directories
 }

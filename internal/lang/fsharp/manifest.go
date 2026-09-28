@@ -23,9 +23,9 @@ const (
 // references FSharp.Core itself.
 //
 // Implements: REQ-FSHARP-005
-func extractProject(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
-	p := nuget.ReadProject(src)
+func extractProject(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
+	p := nuget.ReadProject(source)
 	core := false
 	for _, it := range p.Items {
 		if it.Include == "" {
@@ -36,56 +36,56 @@ func extractProject(src []byte) *lang.Extraction {
 			if it.Update {
 				continue
 			}
-			for _, inc := range strings.Split(it.Include, ";") {
-				if inc = strings.TrimSpace(inc); inc != "" {
-					ex.Imports = append(ex.Imports, lang.RawImport{Spec: inc, Module: inc, Name: kindCompile, Line: it.Line})
+			for _, include := range strings.Split(it.Include, ";") {
+				if include = strings.TrimSpace(include); include != "" {
+					extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: include, Module: include, Name: kindCompile, Line: it.Line})
 				}
 			}
 		case "ProjectReference":
-			for _, inc := range strings.Split(it.Include, ";") {
-				if inc = strings.TrimSpace(inc); inc != "" {
-					ex.Imports = append(ex.Imports, lang.RawImport{Spec: inc, Module: inc, Name: kindProject, Line: it.Line})
+			for _, include := range strings.Split(it.Include, ";") {
+				if include = strings.TrimSpace(include); include != "" {
+					extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: include, Module: include, Name: kindProject, Line: it.Line})
 				}
 			}
 		case "Reference": // an assembly: a file of the repository or of the framework
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: it.Include, Module: it.Include, Name: kindDLL, Line: it.Line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: it.Include, Module: it.Include, Name: kindDLL, Line: it.Line})
 		case "PackageReference":
 			core = core || strings.EqualFold(it.Include, "FSharp.Core")
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: it.Include, Module: it.Include, Name: kindPackage, Line: it.Line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: it.Include, Module: it.Include, Name: kindPackage, Line: it.Line})
 		}
 	}
 	if p.Sdk != "" && !core && !strings.EqualFold(p.Properties["DisableImplicitFSharpCoreReference"], "true") {
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: "FSharp.Core (implicit)", Module: "FSharp.Core", Name: kindImplicit, Line: 1})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "FSharp.Core (implicit)", Module: "FSharp.Core", Name: kindImplicit, Line: 1})
 	}
-	return ex
+	return extraction
 }
 
 // extractDependencies makes every nuget, github, gist, git and http line of
 // paket.dependencies an import.
 //
 // Implements: REQ-FSHARP-006
-func extractDependencies(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
-	deps, _ := nuget.ParseDependencies(src)
-	for _, d := range deps {
+func extractDependencies(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
+	dependencies, _ := nuget.ParseDependencies(source)
+	for _, d := range dependencies {
 		spec := d.Text
 		if d.Kind == "nuget" {
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: d.Name, Name: kindPackage + "\n" + d.Group, Line: d.Line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: d.Name, Name: kindPackage + "\n" + d.Group, Line: d.Line})
 			continue
 		}
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: d.Name, Name: kindRemote + "\n" + d.Kind + "\n" + d.Constraint, Line: d.Line})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: d.Name, Name: kindRemote + "\n" + d.Kind + "\n" + d.Constraint, Line: d.Line})
 	}
-	return ex
+	return extraction
 }
 
 // extractLock makes every entry of paket.lock an import: the packages (pinned at
 // their locked versions) and the remote files and repositories.
 //
 // Implements: REQ-FSHARP-007
-func extractLock(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
+func extractLock(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
 	seen := map[string]bool{}
-	for _, l := range nuget.ParseLock(src) {
+	for _, l := range nuget.ParseLock(source) {
 		prefix := ""
 		if !strings.EqualFold(l.Group, nuget.MainGroup) {
 			prefix = l.Group + "/"
@@ -94,7 +94,7 @@ func extractLock(src []byte) *lang.Extraction {
 			spec := prefix + l.Name
 			if !seen[spec] {
 				seen[spec] = true
-				ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: l.Name, Name: kindPackage + "\n" + l.Group, Line: l.Line})
+				extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: l.Name, Name: kindPackage + "\n" + l.Group, Line: l.Line})
 			}
 			continue
 		}
@@ -110,27 +110,27 @@ func extractLock(src []byte) *lang.Extraction {
 		if l.Kind == "http" && l.Name != "" && !strings.Contains(l.Remote, l.Name) {
 			remote = strings.TrimRight(l.Remote, "/") + "/" + strings.TrimLeft(l.Name, "/")
 		}
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: remote, Name: kindRemote + "\n" + l.Kind + "\n", Line: l.Line})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: remote, Name: kindRemote + "\n" + l.Kind + "\n", Line: l.Line})
 	}
-	return ex
+	return extraction
 }
 
 // extractReferences reads a project's paket.references: the packages it uses, per
 // group, and the remote files it links.
 //
 // Implements: REQ-FSHARP-006
-func extractReferences(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
-	for _, r := range nuget.ParseReferences(src) {
+func extractReferences(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
+	for _, r := range nuget.ParseReferences(source) {
 		prefix := ""
 		if !strings.EqualFold(r.Group, nuget.MainGroup) {
 			prefix = r.Group + "/"
 		}
 		if r.File {
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: prefix + "File: " + r.Name, Module: r.Name, Name: kindPaketFile, Line: r.Line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: prefix + "File: " + r.Name, Module: r.Name, Name: kindPaketFile, Line: r.Line})
 			continue
 		}
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: prefix + r.Name, Module: r.Name, Name: kindPackage + "\n" + r.Group, Line: r.Line})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: prefix + r.Name, Module: r.Name, Name: kindPackage + "\n" + r.Group, Line: r.Line})
 	}
-	return ex
+	return extraction
 }

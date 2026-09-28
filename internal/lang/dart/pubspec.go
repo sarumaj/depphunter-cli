@@ -20,28 +20,28 @@ type dependency struct {
 	source     string // hosted, git, path, sdk
 	path       string // a path dependency's directory, as written
 	url        string // a git URL, or a hosted dependency's server
-	ref        string // a git ref
+	reference  string // a git reference
 	spec       string // how the entry is shown
 	line       int
 }
 
 type pubspec struct {
-	name       string
-	deps       []*dependency
-	workspace  []string // member directories, as written
-	resolution string   // "workspace" for a member of a pub workspace
-	melos      bool     // the pubspec configures melos (melos 7 keeps it here)
-	melosPkgs  []string // and the package globs it lists
-	memberLine map[string]int
+	name          string
+	dependencies  []*dependency
+	workspace     []string // member directories, as written
+	resolution    string   // "workspace" for a member of a pub workspace
+	melos         bool     // the pubspec configures melos (melos 7 keeps it here)
+	melosPackages []string // and the package globs it lists
+	memberLine    map[string]int
 }
 
 // readPubspec reads a pubspec.yaml (or pubspec_overrides.yaml, which has only
 // dependency_overrides).
 //
 // Implements: REQ-DART-006
-func readPubspec(src []byte) (*pubspec, error) {
+func readPubspec(source []byte) (*pubspec, error) {
 	var doc yaml.Node
-	if err := yaml.Unmarshal(src, &doc); err != nil {
+	if err := yaml.Unmarshal(source, &doc); err != nil {
 		return nil, err
 	}
 	p := &pubspec{memberLine: map[string]int{}}
@@ -50,14 +50,14 @@ func readPubspec(src []byte) (*pubspec, error) {
 		return p, nil
 	}
 	for i := 0; i+1 < len(root.Content); i += 2 {
-		key, val := root.Content[i].Value, root.Content[i+1]
+		key, value := root.Content[i].Value, root.Content[i+1]
 		switch key {
 		case "name":
-			p.name = val.Value
+			p.name = value.Value
 		case "resolution":
-			p.resolution = val.Value
+			p.resolution = value.Value
 		case "workspace":
-			for _, m := range val.Content {
+			for _, m := range value.Content {
 				if m.Kind == yaml.ScalarNode && m.Value != "" {
 					p.workspace = append(p.workspace, m.Value)
 					p.memberLine[m.Value] = m.Line
@@ -65,15 +65,15 @@ func readPubspec(src []byte) (*pubspec, error) {
 			}
 		case "melos":
 			p.melos = true
-			if m := mapping(val); m != nil {
-				p.melosPkgs = scalars(lookup(m, "packages"))
+			if m := mapping(value); m != nil {
+				p.melosPackages = scalars(lookup(m, "packages"))
 			}
 		case "dependencies", "dev_dependencies", "dependency_overrides":
-			if val.Kind != yaml.MappingNode {
+			if value.Kind != yaml.MappingNode {
 				continue
 			}
-			for j := 0; j+1 < len(val.Content); j += 2 {
-				p.deps = append(p.deps, readDependency(key, val.Content[j], val.Content[j+1]))
+			for j := 0; j+1 < len(value.Content); j += 2 {
+				p.dependencies = append(p.dependencies, readDependency(key, value.Content[j], value.Content[j+1]))
 			}
 		}
 	}
@@ -89,7 +89,7 @@ func readDependency(section string, k, v *yaml.Node) *dependency {
 			d.constraint = v.Value
 		}
 	case yaml.MappingNode:
-		d.constraint = str(lookup(v, "version"))
+		d.constraint = stringOf(lookup(v, "version"))
 		if n := lookup(v, "path"); n != nil {
 			d.source, d.path = "path", n.Value
 		}
@@ -101,14 +101,14 @@ func readDependency(section string, k, v *yaml.Node) *dependency {
 			if n.Kind == yaml.ScalarNode {
 				d.url = n.Value
 			} else {
-				d.url, d.ref = str(lookup(n, "url")), str(lookup(n, "ref"))
+				d.url, d.reference = stringOf(lookup(n, "url")), stringOf(lookup(n, "ref"))
 			}
 		}
 		if n := lookup(v, "hosted"); n != nil {
 			if n.Kind == yaml.ScalarNode {
 				d.url = n.Value
 			} else {
-				d.url = str(lookup(n, "url"))
+				d.url = stringOf(lookup(n, "url"))
 			}
 		}
 	}
@@ -118,8 +118,8 @@ func readDependency(section string, k, v *yaml.Node) *dependency {
 		d.spec += " (path: " + d.path + ")"
 	case d.source == "sdk":
 		d.spec += " (sdk: " + d.url + ")"
-	case d.source == "git" && d.ref != "":
-		d.spec += " (git: " + d.url + " " + d.ref + ")"
+	case d.source == "git" && d.reference != "":
+		d.spec += " (git: " + d.url + " " + d.reference + ")"
 	case d.source == "git":
 		d.spec += " (git: " + d.url + ")"
 	case d.url != "":
@@ -140,8 +140,8 @@ func orAny(c string) string {
 	return c
 }
 
-// str is a scalar's value; "" when missing or not a scalar.
-func str(n *yaml.Node) string {
+// stringOf is a scalar's value; "" when missing or not a scalar.
+func stringOf(n *yaml.Node) string {
 	if n == nil || n.Kind != yaml.ScalarNode {
 		return ""
 	}
@@ -189,13 +189,13 @@ func scalars(n *yaml.Node) []string {
 
 // locked is a package pubspec.lock records.
 type locked struct {
-	name, version string
-	source        string // hosted, git, path, sdk
-	dependency    string // "direct main", "direct dev", "direct overridden", "transitive"
-	path          string // a path package's directory, relative to the lock when relative
-	relative      bool
-	url           string // a git URL, or the hosted server
-	resolvedRef   string // the commit a git package was resolved to
+	name, version     string
+	source            string // hosted, git, path, sdk
+	dependency        string // "direct main", "direct dev", "direct overridden", "transitive"
+	path              string // a path package's directory, relative to the lock when relative
+	relative          bool
+	url               string // a git URL, or the hosted server
+	resolvedReference string // the commit a git package was resolved to
 }
 
 // readLock reads pubspec.lock: one flat list of every package the solve selected,
@@ -203,7 +203,7 @@ type locked struct {
 // between packages.
 //
 // Implements: REQ-DART-007
-func readLock(src []byte) map[string]*locked {
+func readLock(source []byte) map[string]*locked {
 	var doc struct {
 		Packages map[string]struct {
 			Dependency  string    `yaml:"dependency"`
@@ -212,7 +212,7 @@ func readLock(src []byte) map[string]*locked {
 			Version     string    `yaml:"version"`
 		} `yaml:"packages"`
 	}
-	if yaml.Unmarshal(src, &doc) != nil {
+	if yaml.Unmarshal(source, &doc) != nil {
 		return nil
 	}
 	out := make(map[string]*locked, len(doc.Packages))
@@ -221,12 +221,12 @@ func readLock(src []byte) map[string]*locked {
 		d := &p.Description
 		switch p.Source {
 		case "path":
-			l.path = str(lookup(d, "path"))
-			l.relative = str(lookup(d, "relative")) == "true"
+			l.path = stringOf(lookup(d, "path"))
+			l.relative = stringOf(lookup(d, "relative")) == "true"
 		case "git":
-			l.url, l.resolvedRef = str(lookup(d, "url")), str(lookup(d, "resolved-ref"))
+			l.url, l.resolvedReference = stringOf(lookup(d, "url")), stringOf(lookup(d, "resolved-ref"))
 		case "hosted":
-			l.url = str(lookup(d, "url"))
+			l.url = stringOf(lookup(d, "url"))
 		}
 		out[name] = l
 	}

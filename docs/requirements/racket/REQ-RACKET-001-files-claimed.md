@@ -34,5 +34,5 @@ does not describe. `compiled/` holds bytecode (`.zo`) and dependency files
    `info.rkt` files, `scheme/legacy.scm` (with `#lang racket`) and
    `bin/shop-cli` are claimed; `scheme/chez.ss`, `scheme/r6rs.scm` and
    `compiled/stale.rkt` are not.
-2. A binary `.rkt`, a `.ss` labelled Scheme and `src/compiled/errortrace/a.rkt`
+2. A binary `.rkt`, a `.ss` labeled Scheme and `src/compiled/errortrace/a.rkt`
    are not claimed; `compiledx/a.rkt` is.

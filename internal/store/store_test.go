@@ -10,17 +10,17 @@ import (
 )
 
 type answer struct {
-	Name string   `json:"name"`
-	Deps []string `json:"deps"`
+	Name         string   `json:"name"`
+	Dependencies []string `json:"deps"`
 }
 
 func TestRoundTrip(t *testing.T) {
 	s := New(t.TempDir(), time.Hour)
-	want := answer{Name: "lodash", Deps: []string{"a", "b"}}
+	want := answer{Name: "lodash", Dependencies: []string{"a", "b"}}
 	s.Put("npm|lodash@4", want)
 
 	got, ok := Get[answer](s, "npm|lodash@4")
-	if !ok || got.Name != want.Name || len(got.Deps) != 2 {
+	if !ok || got.Name != want.Name || len(got.Dependencies) != 2 {
 		t.Errorf("got %+v (%v), want %+v", got, ok, want)
 	}
 	// A key nothing was written under is a miss, not an empty answer.
@@ -28,19 +28,19 @@ func TestRoundTrip(t *testing.T) {
 		t.Error("a key that was never written answered")
 	}
 	// The key is hashed, so anything the caller finds distinguishing will do.
-	if _, ok := Get[answer](New(s.dir, time.Hour), "npm|lodash@4"); !ok {
+	if _, ok := Get[answer](New(s.directory, time.Hour), "npm|lodash@4"); !ok {
 		t.Error("a second store over the same directory did not read the answer")
 	}
 }
 
 // Verifies: REQ-FND-012
 func TestStaleAnswersAreAMiss(t *testing.T) {
-	dir := t.TempDir()
-	New(dir, time.Hour).Put("k", answer{Name: "x"})
+	directory := t.TempDir()
+	New(directory, time.Hour).Put("k", answer{Name: "x"})
 	// Aged rather than given a shorter life: Windows reads a clock that ticks every
 	// fifteen milliseconds, so an answer written and read inside one test is the same
 	// instant there and no non-zero life expires it.
-	found, _ := filepath.Glob(filepath.Join(dir, "*.json"))
+	found, _ := filepath.Glob(filepath.Join(directory, "*.json"))
 	if len(found) != 1 {
 		t.Fatalf("%d files written, want 1", len(found))
 	}
@@ -59,7 +59,7 @@ func TestStaleAnswersAreAMiss(t *testing.T) {
 	if err := os.WriteFile(found[0], data, 0o644); err != nil {
 		t.Fatal(err)
 	}
-	if _, ok := Get[answer](New(dir, time.Hour), "k"); ok {
+	if _, ok := Get[answer](New(directory, time.Hour), "k"); ok {
 		t.Error("a stale answer was served")
 	}
 }
@@ -119,36 +119,36 @@ func TestConcurrentWritersDoNotPublishHalfAnAnswer(t *testing.T) {
 		wg.Add(1)
 		go func(i int) {
 			defer wg.Done()
-			s.Put("k", answer{Name: "x", Deps: []string{"a", "b", "c", "d"}})
-			if got, ok := Get[answer](s, "k"); ok && len(got.Deps) != 4 {
+			s.Put("k", answer{Name: "x", Dependencies: []string{"a", "b", "c", "d"}})
+			if got, ok := Get[answer](s, "k"); ok && len(got.Dependencies) != 4 {
 				t.Errorf("writer %d read a torn answer: %+v", i, got)
 			}
 		}(i)
 	}
 	wg.Wait()
 	got, ok := Get[answer](s, "k")
-	if !ok || len(got.Deps) != 4 {
+	if !ok || len(got.Dependencies) != 4 {
 		t.Errorf("after 16 writers: %+v (%v)", got, ok)
 	}
 	// Every scratch file was renamed into place or removed; none was left behind.
-	left, _ := filepath.Glob(filepath.Join(s.dir, "put-*"))
+	left, _ := filepath.Glob(filepath.Join(s.directory, "put-*"))
 	if len(left) != 0 {
 		t.Errorf("scratch files left behind: %v", left)
 	}
 }
 
 func TestStaleAnswersAreSweptAway(t *testing.T) {
-	dir := t.TempDir()
-	s := New(dir, time.Hour)
+	directory := t.TempDir()
+	s := New(directory, time.Hour)
 	s.Put("fresh", 1)
 	s.Put("stale", 2)
 	old := time.Now().Add(-2 * time.Hour)
 	os.Chtimes(s.path("stale"), old, old)
-	other := filepath.Join(dir, "README")
+	other := filepath.Join(directory, "README")
 	os.WriteFile(other, nil, 0o644)
 	os.Chtimes(other, old, old)
 
-	New(dir, time.Hour)
+	New(directory, time.Hour)
 	if _, err := os.Stat(s.path("stale")); !os.IsNotExist(err) {
 		t.Error("an answer past its time to live was kept")
 	}

@@ -30,12 +30,12 @@ type include struct{ path, module string }
 // Frame kinds of the reader's stack. Brackets are frames too, so an `end` inside
 // brackets (a[end]) is an index, not a closer.
 const (
-	fModule = iota
-	fFunc   // function, macro: definitions inside are local
-	fType   // struct, abstract type, primitive type
-	fBlock  // begin, if, try: transparent, definitions inside are top level
-	fScope  // let, for, while, do, quote: definitions inside are not
-	fParen
+	fModule   = iota
+	fFunction // function, macro: definitions inside are local
+	fType     // struct, abstract type, primitive type
+	fBlock    // begin, if, try: transparent, definitions inside are top level
+	fScope    // let, for, while, do, quote: definitions inside are not
+	fParenthesis
 	fBracket
 	fBrace
 )
@@ -46,8 +46,8 @@ type frame struct {
 }
 
 type reader struct {
-	tokens []tok
-	src    []byte
+	tokens []token
+	source []byte
 	stack  []frame
 	// opaque counts the frames in the stack that make a definition local, and
 	// paths holds the dotted module path at each module frame: both kept as the
@@ -65,17 +65,17 @@ type reader struct {
 // definitions and module structure.
 //
 // Implements: REQ-JULIA-002, REQ-JULIA-003, REQ-JULIA-011
-func readSource(src []byte) *source {
-	r := &reader{tokens: lex(src), src: src, out: &source{}, seen: map[string]bool{}, symbols: map[string]bool{}}
+func readSource(content []byte) *source {
+	r := &reader{tokens: lex(content), source: content, out: &source{}, seen: map[string]bool{}, symbols: map[string]bool{}}
 	r.matchBrackets()
 	r.run()
 	r.out.symbols = r.set.List()
 	return r.out
 }
 
-func (r *reader) peek(i int) *tok {
+func (r *reader) peek(i int) *token {
 	if i < 0 || i >= len(r.tokens) {
-		return &tok{kind: -1}
+		return &token{kind: -1}
 	}
 	return &r.tokens[i]
 }
@@ -106,7 +106,7 @@ func (r *reader) indexContext() bool {
 		switch r.stack[i].kind {
 		case fBracket:
 			return true
-		case fParen, fBrace:
+		case fParenthesis, fBrace:
 			continue
 		}
 		return false
@@ -119,7 +119,7 @@ func (r *reader) topIsBracket() bool {
 		return false
 	}
 	k := r.stack[len(r.stack)-1].kind
-	return k == fParen || k == fBracket || k == fBrace
+	return k == fParenthesis || k == fBracket || k == fBrace
 }
 
 // maxScan bounds how far down the stack a closer looks for its opener, and
@@ -159,23 +159,23 @@ func (r *reader) popTo(j int) {
 	r.stack = r.stack[:j]
 }
 
-// stmtStart reports whether token i starts a statement: the first token, after a
+// statementStart reports whether token i starts a statement: the first token, after a
 // `;`, or first on its line after a token that does not continue an expression.
-func (r *reader) stmtStart(i int) bool {
+func (r *reader) statementStart(i int) bool {
 	if i == 0 {
 		return true
 	}
 	p := r.peek(i - 1)
-	if p.kind == tPunct && p.text == ";" {
+	if p.kind == tPunctuation && p.text == ";" {
 		return true
 	}
-	if p.kind == tIdent && (p.text == "begin" || p.text == "else" || p.text == "try" || p.text == "finally" || p.text == "quote") {
+	if p.kind == tIdentifier && (p.text == "begin" || p.text == "else" || p.text == "try" || p.text == "finally" || p.text == "quote") {
 		return true
 	}
-	if !r.peek(i).nl {
+	if !r.peek(i).newline {
 		return false
 	}
-	if p.kind == tPunct {
+	if p.kind == tPunctuation {
 		switch p.text {
 		case ")", "]", "}", "'":
 			return true
@@ -188,18 +188,18 @@ func (r *reader) stmtStart(i int) bool {
 func (r *reader) run() {
 	for i := 0; i < len(r.tokens); i++ {
 		t := &r.tokens[i]
-		afterDot := r.is(i-1, tPunct, ".")
+		afterDot := r.is(i-1, tPunctuation, ".")
 		switch t.kind {
-		case tPunct:
+		case tPunctuation:
 			switch t.text {
 			case "(":
-				r.push(fParen, "")
+				r.push(fParenthesis, "")
 			case "[":
 				r.push(fBracket, "")
 			case "{":
 				r.push(fBrace, "")
 			case ")", "]", "}":
-				want := map[string]int{")": fParen, "]": fBracket, "}": fBrace}[t.text]
+				want := map[string]int{")": fParenthesis, "]": fBracket, "}": fBrace}[t.text]
 				for j := len(r.stack) - 1; j >= 0 && j >= len(r.stack)-maxScan; j-- {
 					if r.stack[j].kind == want {
 						r.popTo(j)
@@ -212,19 +212,19 @@ func (r *reader) run() {
 			if t.text == "enum" && r.topLevel() {
 				r.enum(i)
 			}
-			if r.stmtStart(i) && r.topLevel() {
+			if r.statementStart(i) && r.topLevel() {
 				// @inline f(x) = ..., Base.@kwdef struct: the definition after the
 				// macros is read where it starts.
 				j := i
 				for r.peek(j).kind == tMacro && r.peek(j).text != "enum" {
 					j++
 				}
-				if j > i && (r.peek(j).kind == tIdent && !keywords[r.peek(j).text] || r.is(j, tPunct, "(")) {
-					r.shortDef(j)
+				if j > i && (r.peek(j).kind == tIdentifier && !keywords[r.peek(j).text] || r.is(j, tPunctuation, "(")) {
+					r.shortDefinition(j)
 				}
 			}
 			continue
-		case tIdent:
+		case tIdentifier:
 		default:
 			continue
 		}
@@ -237,7 +237,7 @@ func (r *reader) run() {
 		switch t.text {
 		case "module", "baremodule":
 			name := ""
-			if n := r.peek(i + 1); n.kind == tIdent {
+			if n := r.peek(i + 1); n.kind == tIdentifier {
 				name = n.text
 				if r.topLevel() {
 					r.symbol(name, "module", n.line)
@@ -249,16 +249,16 @@ func (r *reader) run() {
 			r.push(fModule, name)
 		case "function", "macro":
 			if r.topLevel() {
-				r.funcName(i+1, t.text)
+				r.functionName(i+1, t.text)
 			}
-			r.push(fFunc, "")
+			r.push(fFunction, "")
 		case "struct":
 			if r.topLevel() {
 				r.typeName(i+1, "type")
 			}
 			r.push(fType, "")
 		case "abstract", "primitive":
-			if r.is(i+1, tIdent, "type") {
+			if r.is(i+1, tIdentifier, "type") {
 				if r.topLevel() {
 					r.typeName(i+2, "type")
 				}
@@ -270,13 +270,13 @@ func (r *reader) run() {
 				r.push(fBlock, "")
 			}
 		case "if":
-			if !r.topIsBracket() || !r.prevOperand(i) {
+			if !r.topIsBracket() || !r.previousOperand(i) {
 				r.push(fBlock, "")
 			}
 		case "try":
 			r.push(fBlock, "")
 		case "for":
-			if !r.topIsBracket() || !r.prevOperand(i) {
+			if !r.topIsBracket() || !r.previousOperand(i) {
 				r.push(fScope, "")
 			}
 		case "let", "while", "quote", "do":
@@ -289,28 +289,28 @@ func (r *reader) run() {
 			i = r.imports(i) - 1
 		case "const":
 			if r.topLevel() {
-				r.consts(i + 1)
+				r.constants(i + 1)
 			}
 		case "include", "includet":
 			r.include(i)
 		default:
-			if r.stmtStart(i) && r.topLevel() && !keywords[t.text] {
-				r.shortDef(i)
+			if r.statementStart(i) && r.topLevel() && !keywords[t.text] {
+				r.shortDefinition(i)
 			}
 		}
 	}
 }
 
-// prevOperand reports whether the token before i ends an operand: in brackets, a
+// previousOperand reports whether the token before i ends an operand: in brackets, a
 // `for` or `if` after one is a comprehension's clause, which has no `end`.
-func (r *reader) prevOperand(i int) bool {
+func (r *reader) previousOperand(i int) bool {
 	p := r.peek(i - 1)
 	switch p.kind {
-	case tIdent:
+	case tIdentifier:
 		return !keywords[p.text] || p.text == "end" || p.text == "true" || p.text == "false"
-	case tNum, tStr, tChar, tCmd, tSym:
+	case tNumber, tString, tCharacter, tCommand, tSymbol:
 		return true
-	case tPunct:
+	case tPunctuation:
 		return p.text == ")" || p.text == "]" || p.text == "}" || p.text == "'"
 	}
 	return false
@@ -333,24 +333,24 @@ func (r *reader) dotted(i int) (string, int) {
 	for {
 		t := r.peek(i)
 		switch {
-		case t.kind == tIdent && !keywords[t.text]:
+		case t.kind == tIdentifier && !keywords[t.text]:
 			parts = append(parts, t.text)
 			i++
-		case t.kind == tSym && len(parts) > 0: // Base.:+ lexes as a symbol only for names
+		case t.kind == tSymbol && len(parts) > 0: // Base.:+ lexes as a symbol only for names
 			parts = append(parts, t.text)
 			i++
-		case t.kind == tPunct && t.text == ":" && len(parts) > 0 && r.peek(i+1).kind == tPunct && r.peek(i+1).text != "(":
+		case t.kind == tPunctuation && t.text == ":" && len(parts) > 0 && r.peek(i+1).kind == tPunctuation && r.peek(i+1).text != "(":
 			parts = append(parts, r.peek(i+1).text) // Base.:+
 			i += 2
-		case t.kind == tPunct && (t.text == "(" || t.text == ":" && r.is(i+1, tPunct, "(")):
+		case t.kind == tPunctuation && (t.text == "(" || t.text == ":" && r.is(i+1, tPunctuation, "(")):
 			// (+) or Base.:(==): an operator in parentheses.
 			j := i + 1
 			if t.text == ":" {
 				j++
 			}
-			op := r.peek(j)
-			if (op.kind == tPunct || op.kind == tIdent) && r.is(j+1, tPunct, ")") && op.text != ")" && !(op.kind == tIdent && len(parts) == 0 && !r.is(j+2, tPunct, "(")) {
-				parts = append(parts, op.text)
+			operator := r.peek(j)
+			if (operator.kind == tPunctuation || operator.kind == tIdentifier) && r.is(j+1, tPunctuation, ")") && operator.text != ")" && !(operator.kind == tIdentifier && len(parts) == 0 && !r.is(j+2, tPunctuation, "(")) {
+				parts = append(parts, operator.text)
 				i = j + 2
 			} else {
 				return strings.Join(parts, "."), i
@@ -358,21 +358,21 @@ func (r *reader) dotted(i int) (string, int) {
 		default:
 			return strings.Join(parts, "."), i
 		}
-		if !r.is(i, tPunct, ".") || r.peek(i).sp {
+		if !r.is(i, tPunctuation, ".") || r.peek(i).spaceBefore {
 			return strings.Join(parts, "."), i
 		}
 		i++
 	}
 }
 
-// funcName reads a `function` or `macro` definition's name.
-func (r *reader) funcName(i int, kw string) {
+// functionName reads a `function` or `macro` definition's name.
+func (r *reader) functionName(i int, keyword string) {
 	name, _ := r.dotted(i)
 	if name == "" {
 		return // function (x) ... end: anonymous; (f::Functor)(x): a call operator
 	}
 	kind := "function"
-	if kw == "macro" {
+	if keyword == "macro" {
 		kind = "macro"
 	}
 	r.symbol(name, kind, r.peek(i).line)
@@ -380,27 +380,27 @@ func (r *reader) funcName(i int, kw string) {
 
 // typeName reads a struct's or abstract type's name, after `mutable` too.
 func (r *reader) typeName(i int, kind string) {
-	if t := r.peek(i); t.kind == tIdent && !keywords[t.text] {
+	if t := r.peek(i); t.kind == tIdentifier && !keywords[t.text] {
 		r.symbol(t.text, kind, t.line)
 	}
 }
 
-// consts reads `const A = ...` and `const A, B = ...` (after `global` too).
-func (r *reader) consts(i int) {
-	if r.is(i, tIdent, "global") {
+// constants reads `const A = ...` and `const A, B = ...` (after `global` too).
+func (r *reader) constants(i int) {
+	if r.is(i, tIdentifier, "global") {
 		i++
 	}
 	for {
 		t := r.peek(i)
-		if t.kind != tIdent || keywords[t.text] {
+		if t.kind != tIdentifier || keywords[t.text] {
 			return
 		}
 		r.symbol(t.text, "const", t.line)
 		i++
-		if r.is(i, tPunct, "::") { // const X::Int = 1
+		if r.is(i, tPunctuation, "::") { // const X::Int = 1
 			return
 		}
-		if !r.is(i, tPunct, ",") {
+		if !r.is(i, tPunctuation, ",") {
 			return
 		}
 		i++
@@ -409,25 +409,25 @@ func (r *reader) consts(i int) {
 
 // enum reads `@enum Name v1 v2` and `@enum Name::UInt8 begin ... end`.
 func (r *reader) enum(i int) {
-	if t := r.peek(i + 1); t.kind == tIdent && !keywords[t.text] {
+	if t := r.peek(i + 1); t.kind == tIdentifier && !keywords[t.text] {
 		r.symbol(t.text, "enum", t.line)
-	} else if r.is(i+1, tPunct, "(") && r.peek(i+2).kind == tIdent {
+	} else if r.is(i+1, tPunctuation, "(") && r.peek(i+2).kind == tIdentifier {
 		r.symbol(r.peek(i+2).text, "enum", r.peek(i+2).line)
 	}
 }
 
-// shortDef reads the one-line definition form at a statement's start:
+// shortDefinition reads the one-line definition form at a statement's start:
 // f(x) = ..., f(x)::T = ..., f(x) where T = ..., Base.show(io, x) = ...,
 // Foo{T}(x) = ..., (+)(a, b) = ...
-func (r *reader) shortDef(i int) {
+func (r *reader) shortDefinition(i int) {
 	name, j := r.dotted(i)
 	if name == "" {
 		return
 	}
-	if r.is(j, tPunct, "{") && !r.peek(j).sp {
+	if r.is(j, tPunctuation, "{") && !r.peek(j).spaceBefore {
 		j = r.skipGroup(j)
 	}
-	if !r.is(j, tPunct, "(") || r.peek(j).sp {
+	if !r.is(j, tPunctuation, "(") || r.peek(j).spaceBefore {
 		return
 	}
 	j = r.skipGroup(j)
@@ -436,22 +436,22 @@ func (r *reader) shortDef(i int) {
 	for n := 0; n < 256; n++ {
 		t := r.peek(j)
 		switch {
-		case t.kind == tPunct && t.text == "=":
+		case t.kind == tPunctuation && t.text == "=":
 			r.symbol(name, "function", line)
 			return
-		case t.kind == -1, t.nl && !r.is(j-1, tPunct, "::") && !r.is(j-1, tIdent, "where"):
+		case t.kind == -1, t.newline && !r.is(j-1, tPunctuation, "::") && !r.is(j-1, tIdentifier, "where"):
 			return
-		case t.kind == tPunct && t.text == "::":
+		case t.kind == tPunctuation && t.text == "::":
 			typed = true
-		case t.kind == tIdent && t.text == "where":
+		case t.kind == tIdentifier && t.text == "where":
 			typed = true
 		case !typed:
 			return
-		case t.kind == tPunct && (t.text == "{" || t.text == "("):
+		case t.kind == tPunctuation && (t.text == "{" || t.text == "("):
 			j = r.skipGroup(j)
 			continue
-		case t.kind == tPunct && (t.text == "." || t.text == "<:" || t.text == ">:" || t.text == ","):
-		case t.kind == tIdent && !keywords[t.text]:
+		case t.kind == tPunctuation && (t.text == "." || t.text == "<:" || t.text == ">:" || t.text == ","):
+		case t.kind == tIdentifier && !keywords[t.text]:
 		default:
 			return
 		}
@@ -474,7 +474,7 @@ func (r *reader) matchBrackets() {
 	var open []int
 	for i, t := range r.tokens {
 		r.match[i] = -1
-		if t.kind != tPunct {
+		if t.kind != tPunctuation {
 			continue
 		}
 		switch t.text {
@@ -496,25 +496,25 @@ func closes(open, close string) bool {
 // imports reads a using or import statement at i and returns the index after it:
 // using A, B.C; using A: x, y; import A.B: c; import A as B; using .Sub, ..Parent.
 func (r *reader) imports(i int) int {
-	kw := r.tokens[i].text
-	mp := r.modulePath()
+	keyword := r.tokens[i].text
+	modulePath := r.modulePath()
 	j := i + 1
 	for {
 		start := j
 		dots := 0
-		for r.peek(j).kind == tPunct && strings.Trim(r.peek(j).text, ".") == "" && r.peek(j).text != "" {
+		for r.peek(j).kind == tPunctuation && strings.Trim(r.peek(j).text, ".") == "" && r.peek(j).text != "" {
 			dots += len(r.peek(j).text)
 			j++
 		}
 		var parts []string
 		for {
 			t := r.peek(j)
-			if t.kind != tIdent || keywords[t.text] {
+			if t.kind != tIdentifier || keywords[t.text] {
 				break
 			}
 			parts = append(parts, t.text)
 			j++
-			if !r.is(j, tPunct, ".") {
+			if !r.is(j, tPunctuation, ".") {
 				break
 			}
 			j++
@@ -523,35 +523,35 @@ func (r *reader) imports(i int) int {
 			return max(j, i+1)
 		}
 		module := strings.Repeat(".", dots) + strings.Join(parts, ".")
-		spec := kw + " " + module
+		spec := keyword + " " + module
 		if !r.seen[spec] {
 			r.seen[spec] = true
-			r.out.imports = append(r.out.imports, lang.RawImport{Spec: spec, Module: module, Name: kindUsing + "\n" + mp, Line: r.peek(start).line})
+			r.out.imports = append(r.out.imports, lang.RawImport{Spec: spec, Module: module, Name: kindUsing + "\n" + modulePath, Line: r.peek(start).line})
 		}
-		if r.is(j, tIdent, "as") {
+		if r.is(j, tIdentifier, "as") {
 			j += 2
 		}
 		switch {
-		case r.is(j, tPunct, ","):
+		case r.is(j, tPunctuation, ","):
 			j++
 			continue
-		case r.is(j, tPunct, ":"):
+		case r.is(j, tPunctuation, ":"):
 			// using A: x, y as z, @m, (+)
 			j++
 			for n := 0; n < 4096; n++ {
 				t := r.peek(j)
-				if t.kind == -1 || t.kind == tIdent && keywords[t.text] && t.text != "as" {
+				if t.kind == -1 || t.kind == tIdentifier && keywords[t.text] && t.text != "as" {
 					return j
 				}
-				if r.is(j, tPunct, "(") {
+				if r.is(j, tPunctuation, "(") {
 					j = r.skipGroup(j)
 				} else {
 					j++
 				}
-				if r.is(j, tIdent, "as") {
+				if r.is(j, tIdentifier, "as") {
 					j += 2
 				}
-				if !r.is(j, tPunct, ",") {
+				if !r.is(j, tPunctuation, ",") {
 					return j
 				}
 				j++
@@ -565,20 +565,20 @@ func (r *reader) imports(i int) int {
 // include reads include("x.jl"), include(joinpath(@__DIR__, "x.jl")), Base.include
 // (Mod, "x.jl") and Revise's includet at i.
 func (r *reader) include(i int) {
-	if !r.is(i+1, tPunct, "(") || r.peek(i+1).sp || r.is(i-1, tIdent, "function") {
+	if !r.is(i+1, tPunctuation, "(") || r.peek(i+1).spaceBefore || r.is(i-1, tIdentifier, "function") {
 		return
 	}
 	end := r.skipGroup(i + 1)
-	if !r.is(end-1, tPunct, ")") || end-1 <= i+1 {
+	if !r.is(end-1, tPunctuation, ")") || end-1 <= i+1 {
 		return
 	}
-	args := splitTokens(r.tokens[i+2 : end-1])
-	p, ok := r.evalPath(args[len(args)-1])
+	arguments := splitTokens(r.tokens[i+2 : end-1])
+	p, ok := r.evalPath(arguments[len(arguments)-1])
 	first := i
-	if r.is(i-1, tPunct, ".") && r.peek(i-2).kind == tIdent {
+	if r.is(i-1, tPunctuation, ".") && r.peek(i-2).kind == tIdentifier {
 		first = i - 2
 	}
-	spec := string(r.src[r.tokens[first].start:r.tokens[end-1].end])
+	spec := string(r.source[r.tokens[first].start:r.tokens[end-1].end])
 	if r.seen[spec] {
 		return
 	}
@@ -595,23 +595,23 @@ func (r *reader) include(i int) {
 // directory, which is where Julia looks: "x.jl", joinpath(@__DIR__, "a", "b.jl"),
 // joinpath(dirname(@__FILE__), ...), @__DIR__ * "/x.jl", "$(@__DIR__)/x.jl",
 // normpath/abspath of those. False for anything computed at run time.
-func (r *reader) evalPath(ts []tok) (string, bool) {
-	s, ok := r.eval(ts, 0)
+func (r *reader) evalPath(tokens []token) (string, bool) {
+	s, ok := r.eval(tokens, 0)
 	if !ok || s == "" || strings.HasPrefix(s, "/") {
 		return "", false
 	}
 	return strings.TrimPrefix(s, "./"), true
 }
 
-func (r *reader) eval(ts []tok, depth int) (string, bool) {
-	if len(ts) == 0 || depth > 16 {
+func (r *reader) eval(tokens []token, depth int) (string, bool) {
+	if len(tokens) == 0 || depth > 16 {
 		return "", false
 	}
 	// a * b * c: string concatenation
-	var parts [][]tok
+	var parts [][]token
 	d, from := 0, 0
-	for j, t := range ts {
-		if t.kind == tPunct {
+	for j, t := range tokens {
+		if t.kind == tPunctuation {
 			switch t.text {
 			case "(", "[", "{":
 				d++
@@ -619,14 +619,14 @@ func (r *reader) eval(ts []tok, depth int) (string, bool) {
 				d--
 			case "*":
 				if d == 0 {
-					parts = append(parts, ts[from:j])
+					parts = append(parts, tokens[from:j])
 					from = j + 1
 				}
 			}
 		}
 	}
 	if len(parts) > 0 {
-		parts = append(parts, ts[from:])
+		parts = append(parts, tokens[from:])
 		out := ""
 		for _, p := range parts {
 			s, ok := r.eval(p, depth+1)
@@ -637,22 +637,22 @@ func (r *reader) eval(ts []tok, depth int) (string, bool) {
 		}
 		return out, true
 	}
-	t := ts[0]
+	t := tokens[0]
 	switch {
-	case t.kind == tPunct && t.text == "$" && len(ts) >= 3 && ts[1].text == "(" && ts[len(ts)-1].text == ")":
-		return r.eval(ts[2:len(ts)-1], depth+1) // include($(joinpath(...))) in an @eval
-	case len(ts) == 1 && t.kind == tStr && !t.prefixed:
+	case t.kind == tPunctuation && t.text == "$" && len(tokens) >= 3 && tokens[1].text == "(" && tokens[len(tokens)-1].text == ")":
+		return r.eval(tokens[2:len(tokens)-1], depth+1) // include($(joinpath(...))) in an @eval
+	case len(tokens) == 1 && t.kind == tString && !t.prefixed:
 		return interpolated(t.text)
-	case len(ts) == 1 && t.kind == tStr && t.text != "" && strings.HasPrefix(string(r.src[t.start:t.end]), "raw"):
+	case len(tokens) == 1 && t.kind == tString && t.text != "" && strings.HasPrefix(string(r.source[t.start:t.end]), "raw"):
 		return t.text, true
-	case t.kind == tMacro && t.text == "__DIR__" && (len(ts) == 1 || len(ts) == 3 && ts[1].text == "(" && ts[2].text == ")"):
+	case t.kind == tMacro && t.text == "__DIR__" && (len(tokens) == 1 || len(tokens) == 3 && tokens[1].text == "(" && tokens[2].text == ")"):
 		return ".", true
-	case t.kind == tIdent && len(ts) >= 3 && ts[1].text == "(" && ts[len(ts)-1].text == ")":
-		args := splitTokens(ts[2 : len(ts)-1])
+	case t.kind == tIdentifier && len(tokens) >= 3 && tokens[1].text == "(" && tokens[len(tokens)-1].text == ")":
+		arguments := splitTokens(tokens[2 : len(tokens)-1])
 		switch t.text {
 		case "joinpath", "string":
 			out := ""
-			for k, a := range args {
+			for k, a := range arguments {
 				s, ok := r.eval(a, depth+1)
 				if !ok {
 					return "", false
@@ -664,16 +664,16 @@ func (r *reader) eval(ts []tok, depth int) (string, bool) {
 			}
 			return out, true
 		case "normpath", "abspath", "realpath":
-			if len(args) == 1 {
-				return r.eval(args[0], depth+1)
+			if len(arguments) == 1 {
+				return r.eval(arguments[0], depth+1)
 			}
 		case "dirname":
-			if len(args) == 1 {
-				if a := args[0]; len(a) == 1 && a[0].kind == tMacro && a[0].text == "__FILE__" ||
+			if len(arguments) == 1 {
+				if a := arguments[0]; len(a) == 1 && a[0].kind == tMacro && a[0].text == "__FILE__" ||
 					len(a) == 3 && a[0].kind == tMacro && a[0].text == "__FILE__" {
 					return ".", true
 				}
-				s, ok := r.eval(args[0], depth+1)
+				s, ok := r.eval(arguments[0], depth+1)
 				if !ok {
 					return "", false
 				}
@@ -685,12 +685,12 @@ func (r *reader) eval(ts []tok, depth int) (string, bool) {
 }
 
 // splitTokens splits tokens on top-level commas.
-func splitTokens(ts []tok) [][]tok {
-	var out [][]tok
-	var cur []tok
+func splitTokens(tokens []token) [][]token {
+	var out [][]token
+	var current []token
 	depth := 0
-	for _, t := range ts {
-		if t.kind == tPunct {
+	for _, t := range tokens {
+		if t.kind == tPunctuation {
 			switch t.text {
 			case "(", "[", "{":
 				depth++
@@ -698,22 +698,22 @@ func splitTokens(ts []tok) [][]tok {
 				depth--
 			case ",":
 				if depth == 0 {
-					out = append(out, cur)
-					cur = nil
+					out = append(out, current)
+					current = nil
 					continue
 				}
 			}
 		}
-		cur = append(cur, t)
+		current = append(current, t)
 	}
-	return append(out, cur)
+	return append(out, current)
 }
 
 // interpolated evaluates a string's text whose only interpolation is the directory
 // of the file: "$(@__DIR__)/x.jl".
 func interpolated(s string) (string, bool) {
-	for _, dir := range []string{"$(@__DIR__)", "$(dirname(@__FILE__))"} {
-		if rest, ok := strings.CutPrefix(s, dir); ok {
+	for _, directory := range []string{"$(@__DIR__)", "$(dirname(@__FILE__))"} {
+		if rest, ok := strings.CutPrefix(s, directory); ok {
 			s = "." + rest
 			break
 		}

@@ -10,12 +10,12 @@ import (
 //
 // Verifies: REQ-SUP-054
 func TestCompareVersions(t *testing.T) {
-	for _, tt := range [][2]string{
+	for _, test := range [][2]string{
 		{"1.9", "1.10"}, {"1.0~beta1", "1.0"}, {"1.0~alpha", "1.0~beta"}, {"1.0", "1.0.1"},
 		{"1.0", "1.0a"}, {"1.0a", "1.0+b"}, {"v0.16.0", "v0.17.0"}, {"5.9.1", "5.10.0"}, {"2.0~~", "2.0~"},
 	} {
-		if CompareVersions(tt[0], tt[1]) >= 0 || CompareVersions(tt[1], tt[0]) <= 0 {
-			t.Errorf("%s should come before %s", tt[0], tt[1])
+		if CompareVersions(test[0], test[1]) >= 0 || CompareVersions(test[1], test[0]) <= 0 {
+			t.Errorf("%s should come before %s", test[0], test[1])
 		}
 	}
 	if CompareVersions("1.01", "1.1") != 0 || CompareVersions("1.0", "1.0") != 0 {
@@ -28,7 +28,7 @@ func TestCompareVersions(t *testing.T) {
 //
 // Verifies: REQ-SUP-054
 func TestSatisfies(t *testing.T) {
-	for _, tt := range []struct {
+	for _, test := range []struct {
 		version, constraint string
 		want                bool
 	}{
@@ -43,8 +43,8 @@ func TestSatisfies(t *testing.T) {
 		{"1.2", "", true},
 		{"1.2", "> 1.1 & <= 1.2", true},
 	} {
-		if got := Satisfies(tt.version, tt.constraint); got != tt.want {
-			t.Errorf("Satisfies(%q, %q) = %v", tt.version, tt.constraint, got)
+		if got := Satisfies(test.version, test.constraint); got != test.want {
+			t.Errorf("Satisfies(%q, %q) = %v", test.version, test.constraint, got)
 		}
 	}
 	if got := Newest([]string{"1.2", "1.10", "1.9", "2.0~rc"}, "< 2.0~rc"); got != "1.10" {
@@ -61,7 +61,7 @@ func TestSatisfies(t *testing.T) {
 //
 // Verifies: REQ-SUP-054
 func TestRepositories(t *testing.T) {
-	src := []byte(`opam-version: "2.0"
+	source := []byte(`opam-version: "2.0"
 repositories: [
   "default" {"https://opam.ocaml.org"}
   "corp" {"git+ssh://git.corp/r.git" ["fp1" "fp2"] 2}
@@ -69,7 +69,7 @@ repositories: [
 switch: "5.1" # the default switch
 `)
 	want := []Repository{{"default", "https://opam.ocaml.org"}, {"corp", "git+ssh://git.corp/r.git"}}
-	if got := Repositories(src); !reflect.DeepEqual(got, want) {
+	if got := Repositories(source); !reflect.DeepEqual(got, want) {
 		t.Errorf("repos-config %+v", got)
 	}
 	if got := Repositories([]byte(`repositories: "default"` + "\n" + `depends: ["x"]`)); !reflect.DeepEqual(got, []Repository{{Name: "default"}}) {
@@ -78,10 +78,10 @@ switch: "5.1" # the default switch
 	if got := Repositories([]byte(`repositories: ["a" "b"]`)); !reflect.DeepEqual(got, []Repository{{Name: "a"}, {Name: "b"}}) {
 		t.Errorf("list %+v", got)
 	}
-	if got := String(src, "switch"); got != "5.1" {
+	if got := String(source, "switch"); got != "5.1" {
 		t.Errorf("switch %q", got)
 	}
-	if got := String(src, "missing"); got != "" {
+	if got := String(source, "missing"); got != "" {
 		t.Errorf("missing %q", got)
 	}
 }

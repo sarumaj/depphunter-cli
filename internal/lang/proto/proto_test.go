@@ -13,7 +13,7 @@ import (
 // Three kinds of project in one tree: a buf v1 workspace (buf.work.yaml listing proto
 // and third_party, a v1 buf.yaml whose deps are a floating module, a label pinned by
 // the v1 buf.lock and an unlabeled module the lock pins, a v1 buf.gen.yaml); a buf v2
-// workspace (modules importing each other, a commit ref, a label the v2 lock pins, a
+// workspace (modules importing each other, a commit reference, a label the v2 lock pins, a
 // module only the lock records, a v2 buf.gen.yaml with inputs); and protoc-style
 // protos with no Buf configuration under src/main/proto, which find their imports
 // under the conventional root, in the importer's directory and by a unique suffix,
@@ -24,9 +24,9 @@ import (
 // Verifies: REQ-PROTO-001, REQ-PROTO-002, REQ-PROTO-003, REQ-PROTO-004, REQ-PROTO-005
 // Verifies: REQ-PROTO-006, REQ-PROTO-007, REQ-PROTO-008
 func TestImportsAndBufModules(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
 	local := func(p string) lang.Target { return lang.Target{Local: p} }
-	std := func(p string) lang.Target { return lang.Target{Ecosystem: ecoStd, Package: p} }
+	std := func(p string) lang.Target { return lang.Target{Ecosystem: ecosystemStd, Package: p} }
 	googleV1 := lang.Target{Ecosystem: ecoBuf, Package: "buf.build/googleapis/googleapis", Version: "62f35d8aed1149c291d606d958a7ce32", Pinned: true}
 	googleV2 := lang.Target{Ecosystem: ecoBuf, Package: "buf.build/googleapis/googleapis", Version: "e7f8d366f5264595bcc4cd4139af9973", Pinned: true}
 	pgv := lang.Target{Ecosystem: ecoBuf, Package: "buf.build/envoyproxy/protoc-gen-validate", Version: "6607b10f00ed4a3d98f906807131c44a",
@@ -97,7 +97,7 @@ func TestImportsAndBufModules(t *testing.T) {
 		"src/main/proto/com/acme/shared.proto": {},
 	}
 	for file, want := range imports {
-		t.Run(file, func(t *testing.T) { langtest.CheckImports(t, res[file], want) })
+		t.Run(file, func(t *testing.T) { langtest.CheckImports(t, results[file], want) })
 	}
 
 	symbols := map[string]map[string]string{
@@ -116,10 +116,10 @@ func TestImportsAndBufModules(t *testing.T) {
 		"v2/buf.yaml": {},
 	}
 	for file, want := range symbols {
-		t.Run("symbols "+file, func(t *testing.T) { langtest.CheckSymbols(t, res[file], want) })
+		t.Run("symbols "+file, func(t *testing.T) { langtest.CheckSymbols(t, results[file], want) })
 	}
 	lines := map[string]int{}
-	for _, s := range res["v1/proto/acme/billing/v1/invoice.proto"].Symbols {
+	for _, s := range results["v1/proto/acme/billing/v1/invoice.proto"].Symbols {
 		lines[s.Name] = s.Line
 	}
 	if lines["Invoice"] != 19 || lines["InvoiceService.ListInvoices"] != 48 {
@@ -134,23 +134,23 @@ func TestImportsAndBufModules(t *testing.T) {
 //
 // Verifies: REQ-PROTO-002, REQ-PROTO-003, REQ-PROTO-009
 func TestScanner(t *testing.T) {
-	src := []byte("\xef\xbb\xbf// import \"no.proto\";\n/* message No {} */\n" +
+	source := []byte("\xef\xbb\xbf// import \"no.proto\";\n/* message No {} */\n" +
 		"syntax = 'proto2';\nimport \"a/\" \"b.proto\";\nimport 'c\\'d.proto';\n" +
 		"option (x) = { a: \"}\" b { c: 1 } };\n" +
 		"message M { optional string message = 1; optional int32 group = 2 [(y) = { z: 1 }];\n" +
 		"  enum E { A = 0; }\n  optional group G = 3 { optional int32 n = 1; }\n}\n" +
 		"service S { rpc R (M) returns (M) { option (h) = { get: \"/x\" }; } rpc T (M) returns (M); }\n" +
 		"message Open {\n  message Inner {\n")
-	ex := readProto(src)
+	extraction := readProto(source)
 	var specs []string
-	for _, im := range ex.Imports {
-		specs = append(specs, im.Spec)
+	for _, rawImport := range extraction.Imports {
+		specs = append(specs, rawImport.Spec)
 	}
 	if want := []string{`import "a/b.proto"`, `import "c'd.proto"`}; !reflect.DeepEqual(specs, want) {
 		t.Errorf("imports %v, want %v", specs, want)
 	}
 	var names []string
-	for _, s := range ex.Symbols {
+	for _, s := range extraction.Symbols {
 		names = append(names, s.Name)
 	}
 	if want := []string{"M", "M.E", "M.G", "S", "S.R", "S.T", "Open", "Open.Inner"}; !reflect.DeepEqual(names, want) {
@@ -159,7 +159,7 @@ func TestScanner(t *testing.T) {
 }
 
 // Verifies: REQ-PROTO-008
-func TestModuleRefs(t *testing.T) {
+func TestModuleReferences(t *testing.T) {
 	for in, want := range map[string][2]string{
 		"buf.build/acme/pay":         {"buf.build/acme/pay", ""},
 		"Buf.Build/Acme/Pay:v1.2.0":  {"buf.build/acme/pay", "v1.2.0"},
@@ -167,18 +167,18 @@ func TestModuleRefs(t *testing.T) {
 		"buf.corp.test:8443/a/b":     {"buf.corp.test:8443/a/b", ""},
 		" buf.build/acme/pay:main  ": {"buf.build/acme/pay", "main"},
 	} {
-		if name, ref := moduleRef(in); name != want[0] || ref != want[1] {
-			t.Errorf("%q: got %q %q, want %q", in, name, ref, want)
+		if name, reference := moduleReference(in); name != want[0] || reference != want[1] {
+			t.Errorf("%q: got %q %q, want %q", in, name, reference, want)
 		}
 	}
-	for ref, want := range map[string]bool{
+	for reference, want := range map[string]bool{
 		"0123456789abcdef0123456789abcdef":         true,
 		"01234567-89ab-cdef-0123-456789abcdef":     true,
 		"0123456789abcdef0123456789abcdef01234567": true,
 		"v1.2.0": false, "main": false, "0123456789ABCDEF0123456789ABCDEF": false,
 	} {
-		if got := commit(ref); got != want {
-			t.Errorf("commit(%q) = %v", ref, got)
+		if got := commit(reference); got != want {
+			t.Errorf("commit(%q) = %v", reference, got)
 		}
 	}
 }

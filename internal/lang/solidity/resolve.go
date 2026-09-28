@@ -44,22 +44,22 @@ var generated = map[string][]string{
 
 var besideMemo sync.Map // absolute path of a marker file -> bool
 
-func exists(abs string) bool {
-	if v, ok := besideMemo.Load(abs); ok {
+func exists(absolute string) bool {
+	if v, ok := besideMemo.Load(absolute); ok {
 		return v.(bool)
 	}
-	_, err := os.Stat(abs)
-	besideMemo.Store(abs, err == nil)
+	_, err := os.Stat(absolute)
+	besideMemo.Store(absolute, err == nil)
 	return err == nil
 }
 
-// absRoot is the scan root of f: its absolute path without its relative one.
-func absRoot(f *scan.File) (string, bool) {
-	abs := filepath.ToSlash(f.Abs)
-	if f.Abs == "" || !strings.HasSuffix(abs, f.Path) {
+// absoluteRoot is the scan root of f: its absolute path without its relative one.
+func absoluteRoot(f *scan.File) (string, bool) {
+	absolute := filepath.ToSlash(f.AbsolutePath)
+	if f.AbsolutePath == "" || !strings.HasSuffix(absolute, f.Path) {
 		return "", false
 	}
-	return strings.TrimSuffix(abs[:len(abs)-len(f.Path)], "/"), true
+	return strings.TrimSuffix(absolute[:len(absolute)-len(f.Path)], "/"), true
 }
 
 // ignored reports whether f lies in what a package manager installed or a
@@ -69,7 +69,7 @@ func absRoot(f *scan.File) (string, bool) {
 // Implements: REQ-SOLIDITY-001
 func ignored(f *scan.File) bool {
 	segments := strings.Split(f.Path, "/")
-	root, ok := absRoot(f)
+	root, ok := absoluteRoot(f)
 	for i, s := range segments[:len(segments)-1] {
 		if s == "node_modules" {
 			return true
@@ -78,9 +78,9 @@ func ignored(f *scan.File) bool {
 		if len(markers) == 0 || !ok {
 			continue
 		}
-		dir := path.Join(append([]string{root}, segments[:i]...)...)
+		directory := path.Join(append([]string{root}, segments[:i]...)...)
 		for _, m := range markers {
-			if exists(path.Join(dir, m)) {
+			if exists(path.Join(directory, m)) {
 				return true
 			}
 		}
@@ -91,52 +91,52 @@ func ignored(f *scan.File) bool {
 // project is a directory with a foundry.toml, a hardhat.config.* or a
 // remappings.txt: the base import paths and remappings are relative to.
 type project struct {
-	dir     string
-	foundry bool
-	config  foundryConfig
-	remaps  []remapping // explicit first, then inferred
-	deps    map[string]soldeerDep
-	locked  map[string]lockEntry
+	directory    string
+	foundry      bool
+	config       foundryConfig
+	remaps       []remapping // explicit first, then inferred
+	dependencies map[string]soldeerDependency
+	locked       map[string]lockEntry
 	// installed is what Soldeer installed into dependencies/, by directory:
 	// each package's own [dependencies] and soldeer.lock.
 	installed map[string]*project
 }
 
-func (p *project) soldeer() bool { return len(p.deps) > 0 || len(p.locked) > 0 }
+func (p *project) soldeer() bool { return len(p.dependencies) > 0 || len(p.locked) > 0 }
 
-// subRef is a submodule with its path relative to the scan root.
-type subRef struct {
+// subReference is a submodule with its path relative to the scan root.
+type subReference struct {
 	submodule
 	commit   string
-	children []*subRef // the submodules of a checked-out submodule
+	children []*subReference // the submodules of a checked-out submodule
 }
 
 type resolver struct {
-	root     string
-	files    map[string]bool
-	dirs     map[string]bool
-	projects map[string]*project
-	subs     []*subRef // longest path first
-	byPath   map[string]*subRef
-	npm      *javascript.Packages
+	root        string
+	files       map[string]bool
+	directories map[string]bool
+	projects    map[string]*project
+	subs        []*subReference // longest path first
+	byPath      map[string]*subReference
+	npm         *javascript.Packages
 }
 
-func join(dir, p string) string {
-	if dir == "." || dir == "" {
+func join(directory, p string) string {
+	if directory == "." || directory == "" {
 		return path.Clean(p)
 	}
-	return path.Clean(dir + "/" + p)
+	return path.Clean(directory + "/" + p)
 }
 
-func under(p, dir string) bool {
-	return dir == "." || p == dir || strings.HasPrefix(p, dir+"/")
+func under(p, directory string) bool {
+	return directory == "." || p == directory || strings.HasPrefix(p, directory+"/")
 }
 
 func readFile(f *scan.File) []byte {
 	if f.Binary || f.TooLarge || f.Size > lang.MaxParseSize {
 		return nil
 	}
-	data, _ := os.ReadFile(f.Abs)
+	data, _ := os.ReadFile(f.AbsolutePath)
 	return data
 }
 
@@ -147,15 +147,15 @@ func readFile(f *scan.File) []byte {
 // Implements: REQ-SOLIDITY-004, REQ-SOLIDITY-005, REQ-SOLIDITY-006, REQ-SOLIDITY-007, REQ-SOLIDITY-011
 func newResolver(root string, all []*scan.File) *resolver {
 	r := &resolver{
-		root: root, files: map[string]bool{}, dirs: map[string]bool{},
-		projects: map[string]*project{}, byPath: map[string]*subRef{},
+		root: root, files: map[string]bool{}, directories: map[string]bool{},
+		projects: map[string]*project{}, byPath: map[string]*subReference{},
 	}
-	proj := func(dir string) *project {
-		if p := r.projects[dir]; p != nil {
+	projectAt := func(directory string) *project {
+		if p := r.projects[directory]; p != nil {
 			return p
 		}
-		p := &project{dir: dir, deps: map[string]soldeerDep{}, locked: map[string]lockEntry{}}
-		r.projects[dir] = p
+		p := &project{directory: directory, dependencies: map[string]soldeerDependency{}, locked: map[string]lockEntry{}}
+		r.projects[directory] = p
 		return p
 	}
 	npm := false
@@ -163,55 +163,55 @@ func newResolver(root string, all []*scan.File) *resolver {
 	txt := map[string][]string{}
 	for _, f := range all {
 		r.files[f.Path] = true
-		for d := path.Dir(f.Path); d != "." && !r.dirs[d]; d = path.Dir(d) {
-			r.dirs[d] = true
+		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
+			r.directories[d] = true
 		}
 	}
 	for _, f := range all {
-		dir, base := path.Dir(f.Path), path.Base(f.Path)
+		directory, base := path.Dir(f.Path), path.Base(f.Path)
 		switch {
 		case base == "package.json":
 			npm = true
 		case base == ".gitmodules" && !ignored(f):
 			gitmodules = append(gitmodules, f)
 		case base == "foundry.toml" && !ignored(f):
-			p := proj(dir)
+			p := projectAt(directory)
 			p.foundry = true
 			if c, ok := readFoundry(readFile(f)); ok {
 				p.config = c
-				for _, d := range c.deps {
-					p.deps[d.name] = d
+				for _, d := range c.dependencies {
+					p.dependencies[d.name] = d
 				}
 			} else {
-				p.config = foundryConfig{libs: []string{"lib"}, autoDetect: true}
+				p.config = foundryConfig{libraries: []string{"lib"}, autoDetect: true}
 			}
 		case base == "remappings.txt" && !ignored(f):
-			proj(dir)
-			txt[dir], _ = remappingLines(readFile(f))
+			projectAt(directory)
+			txt[directory], _ = remappingLines(readFile(f))
 		case hardhatConfig(base) && !ignored(f):
-			proj(dir)
+			projectAt(directory)
 		}
 	}
 	// soldeer.lock is read from disk: it sits beside foundry.toml.
-	for dir, p := range r.projects {
+	for directory, p := range r.projects {
 		if !p.foundry {
 			continue
 		}
-		if data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(join(dir, "soldeer.lock")))); err == nil && len(data) <= lang.MaxParseSize {
+		if data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(join(directory, "soldeer.lock")))); err == nil && len(data) <= lang.MaxParseSize {
 			for _, e := range readSoldeerLock(data) {
 				p.locked[e.name] = e
 			}
 		}
 		if p.soldeer() {
-			p.installed = readInstalled(filepath.Join(root, filepath.FromSlash(join(dir, "dependencies"))))
+			p.installed = readInstalled(filepath.Join(root, filepath.FromSlash(join(directory, "dependencies"))))
 		}
 	}
 	r.readSubmodules(gitmodules)
 	if npm {
 		r.npm = javascript.ReadPackages(all)
 	}
-	for dir, p := range r.projects {
-		p.remaps = r.remappings(p, txt[dir])
+	for directory, p := range r.projects {
+		p.remaps = r.remappings(p, txt[directory])
 	}
 	return r
 }
@@ -221,8 +221,8 @@ func newResolver(root string, all []*scan.File) *resolver {
 // the .gitmodules of submodules that are checked out.
 func (r *resolver) readSubmodules(gitmodules []*scan.File) {
 	type source struct {
-		dir  string // relative to the scan root
-		data []byte
+		directory string // relative to the scan root
+		data      []byte
 	}
 	var sources []source
 	for _, f := range gitmodules {
@@ -233,35 +233,35 @@ func (r *resolver) readSubmodules(gitmodules []*scan.File) {
 			sources = append(sources, source{".", data})
 		}
 	}
-	var add func(dir string, data []byte, parent *subRef, depth int)
-	add = func(dir string, data []byte, parent *subRef, depth int) {
+	var add func(directory string, data []byte, parent *subReference, depth int)
+	add = func(directory string, data []byte, parent *subReference, depth int) {
 		subs := readGitmodules(data)
 		var paths []string
 		for _, s := range subs {
 			paths = append(paths, s.path)
 		}
-		links := gitlinks(filepath.Join(r.root, filepath.FromSlash(dir)), paths)
+		links := gitlinks(filepath.Join(r.root, filepath.FromSlash(directory)), paths)
 		for _, s := range subs {
-			ref := &subRef{submodule: s, commit: links[s.path]}
-			ref.path = join(dir, s.path)
-			if strings.HasPrefix(ref.path, "../") || r.byPath[ref.path] != nil {
+			reference := &subReference{submodule: s, commit: links[s.path]}
+			reference.path = join(directory, s.path)
+			if strings.HasPrefix(reference.path, "../") || r.byPath[reference.path] != nil {
 				continue
 			}
-			r.byPath[ref.path] = ref
-			r.subs = append(r.subs, ref)
+			r.byPath[reference.path] = reference
+			r.subs = append(r.subs, reference)
 			if parent != nil {
-				parent.children = append(parent.children, ref)
+				parent.children = append(parent.children, reference)
 			}
 			if depth < maxNesting {
-				nested := filepath.Join(r.root, filepath.FromSlash(ref.path), ".gitmodules")
+				nested := filepath.Join(r.root, filepath.FromSlash(reference.path), ".gitmodules")
 				if data, err := os.ReadFile(nested); err == nil && len(data) <= lang.MaxParseSize {
-					add(ref.path, data, ref, depth+1)
+					add(reference.path, data, reference, depth+1)
 				}
 			}
 		}
 	}
 	for _, s := range sources {
-		add(s.dir, s.data, nil, 0)
+		add(s.directory, s.data, nil, 0)
 	}
 	sort.SliceStable(r.subs, func(i, j int) bool { return len(r.subs[i].path) > len(r.subs[j].path) })
 }
@@ -282,9 +282,9 @@ func (r *resolver) remappings(p *project, txt []string) []remapping {
 	var out []remapping
 	have := map[string]bool{}
 	addLine := func(s string) {
-		if rm, ok := parseRemapping(s); ok && !have[rm.context+":"+rm.prefix] {
-			have[rm.context+":"+rm.prefix] = true
-			out = append(out, rm)
+		if remapping, ok := parseRemapping(s); ok && !have[remapping.context+":"+remapping.prefix] {
+			have[remapping.context+":"+remapping.prefix] = true
+			out = append(out, remapping)
 		}
 	}
 	for _, s := range p.config.remappings {
@@ -300,12 +300,12 @@ func (r *resolver) remappings(p *project, txt []string) []remapping {
 		}
 	}
 	if p.soldeer() {
-		names := make([]string, 0, len(p.deps)+len(p.locked))
-		for n := range p.deps {
+		names := make([]string, 0, len(p.dependencies)+len(p.locked))
+		for n := range p.dependencies {
 			names = append(names, n)
 		}
 		for n := range p.locked {
-			if _, ok := p.deps[n]; !ok {
+			if _, ok := p.dependencies[n]; !ok {
 				names = append(names, n)
 			}
 		}
@@ -313,7 +313,7 @@ func (r *resolver) remappings(p *project, txt []string) []remapping {
 		for _, n := range names {
 			v := p.locked[n].version
 			if v == "" {
-				v = p.deps[n].version
+				v = p.dependencies[n].version
 			}
 			if v == "" {
 				continue
@@ -329,25 +329,25 @@ func (r *resolver) remappings(p *project, txt []string) []remapping {
 		return out
 	}
 	var nested [][2]string
-	for _, lib := range p.config.libs {
-		if lib == "" || lib == "node_modules" {
+	for _, library := range p.config.libraries {
+		if library == "" || library == "node_modules" {
 			continue // npm packages are resolved as npm resolves them
 		}
-		for _, dep := range r.libraries(join(p.dir, lib)) {
-			rel := lib + "/" + dep
-			abs := r.abs(join(p.dir, rel))
-			if isDir(filepath.Join(abs, "src")) {
-				infer(dep+"/", rel+"/src/")
+		for _, dependency := range r.libraries(join(p.directory, library)) {
+			relative := library + "/" + dependency
+			absolute := r.absolute(join(p.directory, relative))
+			if isDirectory(filepath.Join(absolute, "src")) {
+				infer(dependency+"/", relative+"/src/")
 			} else {
-				infer(dep+"/", rel+"/")
+				infer(dependency+"/", relative+"/")
 			}
-			for _, x := range r.libraries(join(p.dir, rel+"/lib")) {
-				nested = append(nested, [2]string{x, rel + "/lib/" + x})
+			for _, x := range r.libraries(join(p.directory, relative+"/lib")) {
+				nested = append(nested, [2]string{x, relative + "/lib/" + x})
 			}
 		}
 	}
 	for _, n := range nested {
-		if isDir(filepath.Join(r.abs(join(p.dir, n[1])), "src")) {
+		if isDirectory(filepath.Join(r.absolute(join(p.directory, n[1])), "src")) {
 			infer(n[0]+"/", n[1]+"/src/")
 		} else {
 			infer(n[0]+"/", n[1]+"/")
@@ -356,25 +356,25 @@ func (r *resolver) remappings(p *project, txt []string) []remapping {
 	return out
 }
 
-func (r *resolver) abs(rel string) string {
-	return filepath.Join(r.root, filepath.FromSlash(rel))
+func (r *resolver) absolute(relative string) string {
+	return filepath.Join(r.root, filepath.FromSlash(relative))
 }
 
-func isDir(p string) bool {
-	st, err := os.Stat(p)
-	return err == nil && st.IsDir()
+func isDirectory(p string) bool {
+	fileInfo, err := os.Stat(p)
+	return err == nil && fileInfo.IsDir()
 }
 
 // libraries lists the libraries in a libs directory: the submodules git
 // records there and the directories on disk (checked out or vendored).
-func (r *resolver) libraries(dir string) []string {
+func (r *resolver) libraries(directory string) []string {
 	set := map[string]bool{}
 	for _, s := range r.subs {
-		if rest, ok := strings.CutPrefix(s.path, dir+"/"); ok && !strings.Contains(rest, "/") {
+		if rest, ok := strings.CutPrefix(s.path, directory+"/"); ok && !strings.Contains(rest, "/") {
 			set[rest] = true
 		}
 	}
-	if entries, err := os.ReadDir(r.abs(dir)); err == nil {
+	if entries, err := os.ReadDir(r.absolute(directory)); err == nil {
 		for _, e := range entries {
 			if e.IsDir() && !strings.HasPrefix(e.Name(), ".") {
 				set[e.Name()] = true
@@ -408,49 +408,49 @@ func (r *resolver) projectOf(file string) *project {
 //
 // Implements: REQ-SOLIDITY-005
 func (p *project) remap(file, spec string) (string, bool) {
-	rel := file
-	if p.dir != "." {
-		rel = strings.TrimPrefix(file, p.dir+"/")
+	relative := file
+	if p.directory != "." {
+		relative = strings.TrimPrefix(file, p.directory+"/")
 	}
 	best := -1
-	for i, rm := range p.remaps {
-		if !strings.HasPrefix(spec, rm.prefix) || rm.context != "" && !strings.HasPrefix(rel, rm.context) {
+	for i, remapping := range p.remaps {
+		if !strings.HasPrefix(spec, remapping.prefix) || remapping.context != "" && !strings.HasPrefix(relative, remapping.context) {
 			continue
 		}
-		if best < 0 || len(rm.context) > len(p.remaps[best].context) ||
-			len(rm.context) == len(p.remaps[best].context) && len(rm.prefix) > len(p.remaps[best].prefix) {
+		if best < 0 || len(remapping.context) > len(p.remaps[best].context) ||
+			len(remapping.context) == len(p.remaps[best].context) && len(remapping.prefix) > len(p.remaps[best].prefix) {
 			best = i
 		}
 	}
 	if best < 0 {
 		return "", false
 	}
-	rm := p.remaps[best]
-	return join(p.dir, rm.target+spec[len(rm.prefix):]), true
+	remapping := p.remaps[best]
+	return join(p.directory, remapping.target+spec[len(remapping.prefix):]), true
 }
 
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	dir := path.Dir(file)
-	switch imp.Name {
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	directory := path.Dir(file)
+	switch rawImport.Name {
 	case kindRemap:
-		rm, ok := parseRemapping(imp.Module)
+		remapping, ok := parseRemapping(rawImport.Module)
 		if !ok {
 			return lang.Target{}
 		}
-		t, _ := r.located(join(dir, rm.target), r.projects[dir], file)
+		t, _ := r.located(join(directory, remapping.target), r.projects[directory], file)
 		return t
-	case kindDep, kindLock:
-		if p := r.projects[dir]; p != nil {
-			return p.soldeerTarget(imp.Module)
+	case kindDependency, kindLock:
+		if p := r.projects[directory]; p != nil {
+			return p.soldeerTarget(rawImport.Module)
 		}
 		return lang.Target{}
 	case kindSubmodule:
-		if s := r.byPath[join(dir, imp.Module)]; s != nil {
+		if s := r.byPath[join(directory, rawImport.Module)]; s != nil {
 			return subTarget(s)
 		}
 		return lang.Target{}
 	}
-	return r.resolveImport(file, imp.Module)
+	return r.resolveImport(file, rawImport.Module)
 }
 
 // resolveImport resolves an import path in the order solc and the tools look:
@@ -482,8 +482,8 @@ func (r *resolver) resolveImport(file, spec string) lang.Target {
 		}
 	}
 	bases := []string{"."}
-	if p != nil && p.dir != "." {
-		bases = []string{p.dir, "."}
+	if p != nil && p.directory != "." {
+		bases = []string{p.directory, "."}
 	}
 	for _, b := range bases {
 		if q := join(b, spec); r.files[q] {
@@ -496,14 +496,14 @@ func (r *resolver) resolveImport(file, spec string) lang.Target {
 		return lang.Target{}
 	}
 	for _, b := range bases {
-		if r.dirs[join(b, first)] {
+		if r.directories[join(b, first)] {
 			return lang.Target{} // a missing file of the project's own directories
 		}
 	}
 	if !strings.HasPrefix(name, "@") && p != nil && p.foundry {
-		return lang.Target{Ecosystem: ecoGit, Package: first, Unresolved: true}
+		return lang.Target{Ecosystem: ecosystemGit, Package: first, Unresolved: true}
 	}
-	return lang.Target{Ecosystem: ecoNPM, Package: name, Unresolved: true}
+	return lang.Target{Ecosystem: ecosystemNPM, Package: name, Unresolved: true}
 }
 
 // located resolves a path relative to the scan root that an import or a
@@ -533,26 +533,26 @@ func (r *resolver) located(q string, p *project, file string) (lang.Target, bool
 				return t, true
 			}
 		}
-		return lang.Target{Ecosystem: ecoNPM, Package: name, Unresolved: true}, true
+		return lang.Target{Ecosystem: ecosystemNPM, Package: name, Unresolved: true}, true
 	}
 	if p != nil && p.soldeer() {
-		if rest, ok := strings.CutPrefix(q, join(p.dir, "dependencies")+"/"); ok {
-			dir, _, _ := strings.Cut(rest, "/")
-			return p.soldeerTarget(p.soldeerName(dir)), true
+		if rest, ok := strings.CutPrefix(q, join(p.directory, "dependencies")+"/"); ok {
+			directory, _, _ := strings.Cut(rest, "/")
+			return p.soldeerTarget(p.soldeerName(directory)), true
 		}
 	}
 	if p != nil && p.foundry {
-		for _, lib := range p.config.libs {
-			if lib == "" || lib == "node_modules" {
+		for _, library := range p.config.libraries {
+			if library == "" || library == "node_modules" {
 				continue
 			}
-			if rest, ok := strings.CutPrefix(q, join(p.dir, lib)+"/"); ok {
-				dep, _, _ := strings.Cut(rest, "/")
-				return lang.Target{Ecosystem: ecoGit, Package: dep, Unresolved: true}, true
+			if rest, ok := strings.CutPrefix(q, join(p.directory, library)+"/"); ok {
+				dependency, _, _ := strings.Cut(rest, "/")
+				return lang.Target{Ecosystem: ecosystemGit, Package: dependency, Unresolved: true}, true
 			}
 		}
 	}
-	if r.files[q] || r.dirs[q] {
+	if r.files[q] || r.directories[q] {
 		return lang.Target{Local: q}, true
 	}
 	return lang.Target{}, false
@@ -562,11 +562,11 @@ var versionSuffix = regexp.MustCompile(`^(.+)-v?[0-9][0-9A-Za-z.+_-]*$`)
 
 // soldeerName names the dependency Soldeer installed into dependencies/<dir>:
 // the declared or locked name the directory is "<name>-<version>" of.
-func (p *project) soldeerName(dir string) string {
+func (p *project) soldeerName(directory string) string {
 	best := ""
-	for _, names := range []map[string]bool{keys(p.deps), keysLock(p.locked)} {
+	for _, names := range []map[string]bool{keys(p.dependencies), keysLock(p.locked)} {
 		for n := range names {
-			if (dir == n || strings.HasPrefix(dir, n+"-")) && len(n) > len(best) {
+			if (directory == n || strings.HasPrefix(directory, n+"-")) && len(n) > len(best) {
 				best = n
 			}
 		}
@@ -574,13 +574,13 @@ func (p *project) soldeerName(dir string) string {
 	if best != "" {
 		return best
 	}
-	if m := versionSuffix.FindStringSubmatch(dir); m != nil {
+	if m := versionSuffix.FindStringSubmatch(directory); m != nil {
 		return m[1]
 	}
-	return dir
+	return directory
 }
 
-func keys(m map[string]soldeerDep) map[string]bool {
+func keys(m map[string]soldeerDependency) map[string]bool {
 	out := map[string]bool{}
 	for k := range m {
 		out[k] = true
@@ -603,8 +603,8 @@ func keysLock(m map[string]lockEntry) map[string]bool {
 //
 // Implements: REQ-SOLIDITY-007
 func (p *project) soldeerTarget(name string) lang.Target {
-	t := lang.Target{Ecosystem: ecoSoldeer, Package: name}
-	d, declared := p.deps[name]
+	t := lang.Target{Ecosystem: ecosystemSoldeer, Package: name}
+	d, declared := p.dependencies[name]
 	e, locked := p.locked[name]
 	switch {
 	case locked:
@@ -655,8 +655,8 @@ func (p *project) soldeerTarget(name string) lang.Target {
 // a branch or nothing at all floats.
 //
 // Implements: REQ-SOLIDITY-006
-func subTarget(s *subRef) lang.Target {
-	t := lang.Target{Ecosystem: ecoGit, Package: repoName(s.url, s.path)}
+func subTarget(s *subReference) lang.Target {
+	t := lang.Target{Ecosystem: ecosystemGit, Package: repositoryName(s.url, s.path)}
 	switch {
 	case s.commit != "":
 		t.Version, t.Pinned, t.Requested = s.commit, true, s.branch
@@ -673,15 +673,15 @@ func subTarget(s *subRef) lang.Target {
 
 func relativeURL(u string) bool { return strings.HasPrefix(u, "./") || strings.HasPrefix(u, "../") }
 
-// repoName names a submodule by its URL (lang.RepoName), lower-cased on the
+// repositoryName names a submodule by its URL (lang.RepositoryName), lower-cased on the
 // public forges, which ignore case: openzeppelin/openzeppelin-contracts and
 // OpenZeppelin/openzeppelin-contracts are one repository. A relative URL
 // names no repository, so its path's last element names it.
-func repoName(url, p string) string {
+func repositoryName(url, p string) string {
 	if url == "" || relativeURL(url) {
 		return path.Base(p)
 	}
-	n := lang.RepoName(url)
+	n := lang.RepositoryName(url)
 	if public(url) {
 		n = strings.ToLower(n)
 	}
@@ -691,7 +691,7 @@ func repoName(url, p string) string {
 // public reports whether a git URL is on a public forge, whose repositories
 // are named, not origins.
 func public(url string) bool {
-	host, _, _ := strings.Cut(lang.RepoName(url), "/")
+	host, _, _ := strings.Cut(lang.RepositoryName(url), "/")
 	switch host {
 	case "github.com", "gitlab.com", "bitbucket.org", "codeberg.org", "git.sr.ht", "sr.ht":
 		return true
@@ -706,17 +706,17 @@ func public(url string) bool {
 // Implements: REQ-SOLIDITY-006, REQ-SOLIDITY-008
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 	switch t.Ecosystem {
-	case ecoNPM:
+	case ecosystemNPM:
 		if r.npm != nil {
 			return r.npm.Dependencies(t)
 		}
-	case ecoSoldeer:
+	case ecosystemSoldeer:
 		return r.soldeerDependencies(t)
-	case ecoGit:
+	case ecosystemGit:
 		var out []lang.Target
 		seen := map[string]bool{}
 		for _, s := range r.subs {
-			if len(s.children) == 0 || repoName(s.url, s.path) != t.Package {
+			if len(s.children) == 0 || repositoryName(s.url, s.path) != t.Package {
 				continue
 			}
 			for _, c := range s.children {
@@ -734,7 +734,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 // Installed says a submodule's dependencies come from its checkout, and a Soldeer
 // package's from what Soldeer installed.
 func (r *resolver) Installed(t lang.Target) bool {
-	return t.Ecosystem == ecoGit || t.Ecosystem == ecoSoldeer
+	return t.Ecosystem == ecosystemGit || t.Ecosystem == ecosystemSoldeer
 }
 
 // readInstalled reads what Soldeer installed into a dependencies/ directory:
@@ -742,30 +742,30 @@ func (r *resolver) Installed(t lang.Target) bool {
 // directory ships.
 //
 // Implements: REQ-SOLIDITY-007
-func readInstalled(dir string) map[string]*project {
-	entries, _ := os.ReadDir(dir)
+func readInstalled(directory string) map[string]*project {
+	entries, _ := os.ReadDir(directory)
 	out := map[string]*project{}
 	for _, e := range entries {
 		if !e.IsDir() {
 			continue
 		}
-		sub := &project{dir: e.Name(), deps: map[string]soldeerDep{}, locked: map[string]lockEntry{}}
+		subproject := &project{directory: e.Name(), dependencies: map[string]soldeerDependency{}, locked: map[string]lockEntry{}}
 		read := func(name string) []byte {
-			data, err := os.ReadFile(filepath.Join(dir, e.Name(), name))
+			data, err := os.ReadFile(filepath.Join(directory, e.Name(), name))
 			if err != nil || len(data) > lang.MaxParseSize {
 				return nil
 			}
 			return data
 		}
 		if c, ok := readFoundry(read("foundry.toml")); ok {
-			for _, d := range c.deps {
-				sub.deps[d.name] = d
+			for _, d := range c.dependencies {
+				subproject.dependencies[d.name] = d
 			}
 		}
 		for _, l := range readSoldeerLock(read("soldeer.lock")) {
-			sub.locked[l.name] = l
+			subproject.locked[l.name] = l
 		}
-		out[e.Name()] = sub
+		out[e.Name()] = subproject
 	}
 	return out
 }
@@ -779,29 +779,29 @@ func readInstalled(dir string) map[string]*project {
 func (r *resolver) soldeerDependencies(t lang.Target) []lang.Target {
 	for _, d := range sortedKeys(r.projects) {
 		p := r.projects[d]
-		sub := p.installed[t.Package+"-"+t.Version]
-		for _, dir := range sortedKeys(p.installed) {
-			if sub != nil {
+		subproject := p.installed[t.Package+"-"+t.Version]
+		for _, directory := range sortedKeys(p.installed) {
+			if subproject != nil {
 				break
 			}
-			if p.soldeerName(dir) == t.Package {
-				sub = p.installed[dir]
+			if p.soldeerName(directory) == t.Package {
+				subproject = p.installed[directory]
 			}
 		}
-		if sub == nil {
+		if subproject == nil {
 			continue
 		}
-		names := keys(sub.deps)
-		for n := range sub.locked {
+		names := keys(subproject.dependencies)
+		for n := range subproject.locked {
 			names[n] = true
 		}
 		var out []lang.Target
 		for _, n := range sortedKeys(names) {
-			_, declared := p.deps[n]
+			_, declared := p.dependencies[n]
 			if _, locked := p.locked[n]; declared || locked {
 				out = append(out, p.soldeerTarget(n))
 			} else {
-				out = append(out, sub.soldeerTarget(n))
+				out = append(out, subproject.soldeerTarget(n))
 			}
 		}
 		return out

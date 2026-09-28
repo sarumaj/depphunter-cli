@@ -26,11 +26,11 @@ import (
 // The ecosystems of the package managers read, with the ids their own plugins use,
 // so the packages merge with the manifests' ones.
 const (
-	ecoPyPI   = "pypi"
-	ecoNPM    = "npm"
-	ecoGo     = "go"
-	ecoCrates = "crates"
-	ecoGems   = "rubygems"
+	ecosystemPyPI   = "pypi"
+	ecosystemNPM    = "npm"
+	ecosystemGo     = "go"
+	ecosystemCrates = "crates"
+	ecosystemGems   = "rubygems"
 )
 
 // Import kinds, carried in RawImport.Name. A package's is its ecosystem, "@", and the
@@ -80,11 +80,11 @@ func (Plugin) Claims(f *scan.File) bool {
 // Implements: REQ-SHELL-007
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoPyPI, Name: "PyPI"},
-		{ID: ecoNPM, Name: "npm"},
-		{ID: ecoGo, Name: "Go modules"},
-		{ID: ecoCrates, Name: "crates.io"},
-		{ID: ecoGems, Name: "RubyGems"},
+		{ID: ecosystemPyPI, Name: "PyPI"},
+		{ID: ecosystemNPM, Name: "npm"},
+		{ID: ecosystemGo, Name: "Go modules"},
+		{ID: ecosystemCrates, Name: "crates.io"},
+		{ID: ecosystemGems, Name: "RubyGems"},
 	}
 }
 
@@ -96,6 +96,6 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 // commands) and .bats (bats' load), and the extension is part of the cache key.
 //
 // Implements: REQ-SHELL-002, REQ-SHELL-003
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
-	return extract(src, strings.ToLower(path.Ext(f.Path))), nil
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
+	return extract(source, strings.ToLower(path.Ext(f.Path))), nil
 }

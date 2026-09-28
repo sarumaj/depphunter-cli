@@ -54,15 +54,15 @@ func TestPackageIdsIgnoreCase(t *testing.T) {
 		"b/B.csproj":               `<Project><ItemGroup><PackageReference Include="NEWTONSOFT.JSON" /></ItemGroup></Project>`,
 	}
 	var all []*scan.File
-	for rel, body := range files {
-		abs := filepath.Join(root, filepath.FromSlash(rel))
-		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+	for relative, body := range files {
+		absolute := filepath.Join(root, filepath.FromSlash(relative))
+		if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(abs, []byte(body), 0o644); err != nil {
+		if err := os.WriteFile(absolute, []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		all = append(all, &scan.File{Path: rel, Abs: abs})
+		all = append(all, &scan.File{Path: relative, AbsolutePath: absolute})
 	}
 	r := newResolver(all)
 	// Two spellings of one id are one package, and it takes the central version.

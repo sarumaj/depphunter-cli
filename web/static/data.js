@@ -39,18 +39,18 @@ let graphTag = '';
  */
 export async function fetchGraph() {
   if (STATIC) return { graph: STATIC.graph, version: 1 };
-  const res = await fetch('api/graph', { headers: auth(graphTag ? { 'If-None-Match': graphTag } : {}) });
-  if (res.status === 304) return { graph: null, version: +res.headers.get('X-Graph-Version') || 0 };
-  if (!res.ok) throw new Error(`api/graph: ${res.status} ${await res.text()}`);
-  graphTag = res.headers.get('ETag') || '';
-  return { graph: await res.json(), version: +res.headers.get('X-Graph-Version') || 0 };
+  const response = await fetch('api/graph', { headers: auth(graphTag ? { 'If-None-Match': graphTag } : {}) });
+  if (response.status === 304) return { graph: null, version: +response.headers.get('X-Graph-Version') || 0 };
+  if (!response.ok) throw new Error(`api/graph: ${response.status} ${await response.text()}`);
+  graphTag = response.headers.get('ETag') || '';
+  return { graph: await response.json(), version: +response.headers.get('X-Graph-Version') || 0 };
 }
 
 export async function fetchConfig() {
   if (STATIC) return STATIC.config;
-  const res = await fetch('api/config', { headers: auth() });
-  if (!res.ok) throw new Error(`api/config: ${res.status} ${await res.text()}`);
-  return res.json();
+  const response = await fetch('api/config', { headers: auth() });
+  if (!response.ok) throw new Error(`api/config: ${response.status} ${await response.text()}`);
+  return response.json();
 }
 
 /** A file that has no text to show, and what the server says it is instead. */
@@ -63,14 +63,14 @@ export class BinaryFile extends Error {
 
 export async function fetchSource(path) {
   if (STATIC) {
-    const src = STATIC.sources?.[path];
-    if (src == null) throw new Error('source not included in this export (too large or binary)');
-    return src;
+    const source = STATIC.sources?.[path];
+    if (source == null) throw new Error('source not included in this export (too large or binary)');
+    return source;
   }
-  const res = await fetch(`api/file?path=${encodeURIComponent(path)}`, { headers: auth() });
-  if (res.status === 415) throw new BinaryFile(res.headers.get('X-Depphunter-Binary'));
-  const text = await res.text();
-  if (!res.ok) throw new Error(`${res.status} ${text.trim()}`);
+  const response = await fetch(`api/file?path=${encodeURIComponent(path)}`, { headers: auth() });
+  if (response.status === 415) throw new BinaryFile(response.headers.get('X-Depphunter-Binary'));
+  const text = await response.text();
+  if (!response.ok) throw new Error(`${response.status} ${text.trim()}`);
   return text;
 }
 
@@ -86,20 +86,20 @@ export const fileURL = path => (STATIC ? null : authed(`api/file?as=raw&path=${e
 /** The first `limit` bytes of a file, asked for as a range so a large one is not read whole. */
 export async function fetchBytes(path, limit) {
   if (STATIC) throw new Error('not included in this export');
-  const res = await fetch(`api/file?as=raw&path=${encodeURIComponent(path)}`,
+  const response = await fetch(`api/file?as=raw&path=${encodeURIComponent(path)}`,
     { headers: auth({ Range: `bytes=0-${limit - 1}` }) });
-  if (!res.ok) throw new Error(`${res.status} ${(await res.text()).trim()}`);
-  return new Uint8Array(await res.arrayBuffer()).subarray(0, limit);
+  if (!response.ok) throw new Error(`${response.status} ${(await response.text()).trim()}`);
+  return new Uint8Array(await response.arrayBuffer()).subarray(0, limit);
 }
 
 // Implements: REQ-CFG-012
 export async function saveSettings(ui) {
-  const res = await fetch('api/settings', {
+  const response = await fetch('api/settings', {
     method: 'POST',
     headers: auth({ 'Content-Type': 'application/json', 'X-Depphunter-Request': '1' }),
     body: JSON.stringify(ui),
   });
-  if (!res.ok) throw new Error((await res.text()).trim());
+  if (!response.ok) throw new Error((await response.text()).trim());
 }
 
 /**
@@ -110,11 +110,11 @@ export async function saveSettings(ui) {
  */
 export async function fetchLazy(name) {
   if (STATIC) return STATIC[name] || null;
-  const res = await fetch(`api/${name}`, { headers: auth() });
-  if (res.status === 202) return 'pending';
-  if (res.status === 204) return null;
-  if (!res.ok) throw new Error(`api/${name}: ${res.status} ${await res.text()}`);
-  return res.json();
+  const response = await fetch(`api/${name}`, { headers: auth() });
+  if (response.status === 202) return 'pending';
+  if (response.status === 204) return null;
+  if (!response.ok) throw new Error(`api/${name}: ${response.status} ${await response.text()}`);
+  return response.json();
 }
 
 // ---------------------------------------------------------------- shared session
@@ -137,8 +137,8 @@ export const CLIENT = `page-${Math.random().toString(36).slice(2, 10)}`;
 export async function fetchSession() {
   if (STATIC) return null;
   try {
-    const res = await fetch('api/session', { headers: auth() });
-    return res.ok ? await res.json() : null;
+    const response = await fetch('api/session', { headers: auth() });
+    return response.ok ? await response.json() : null;
   } catch {
     return null;
   }

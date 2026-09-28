@@ -14,38 +14,38 @@ import (
 // rpkg is a DESCRIPTION of the repository: an R package when it has a Package field,
 // else a project declaring its dependencies.
 type rpkg struct {
-	dir, file string
-	desc      *description
+	directory, file string
+	description     *description
 }
 
 type resolver struct {
 	files        map[string]bool
-	dirs         map[string]bool
+	directories  map[string]bool
 	descriptions []*rpkg          // deepest first
 	named        map[string]*rpkg // R packages of the repository by name
 	locks        []*lockfile      // deepest first
 	// scopes are the directories whose files call each other's functions: every
 	// package, and the projects outside packages (an .Rproj, renv.lock, _targets.R
 	// or .here beside them), deepest first; "." is the last.
-	scopes []string
-	defs   map[string]map[string][]string // scope -> function or class name -> files
+	scopes      []string
+	definitions map[string]map[string][]string // scope -> function or class name -> files
 }
 
 // Implements: REQ-R-006, REQ-R-007, REQ-R-008, REQ-R-009, REQ-R-010
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, dirs: map[string]bool{}, named: map[string]*rpkg{},
-		defs: map[string]map[string][]string{}}
-	abs := map[string]string{}
+	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, named: map[string]*rpkg{},
+		definitions: map[string]map[string][]string{}}
+	absolute := map[string]string{}
 	var sources []*scan.File
 	scopes := map[string]bool{".": true}
 	// Where a lock may be: beside a DESCRIPTION or an .Rproj, where renv keeps its
 	// activate.R, and the root - read from disk when it is not in the file list.
-	lockDirs := map[string]bool{".": true}
+	lockDirectories := map[string]bool{".": true}
 	for _, f := range all {
 		r.files[f.Path] = true
-		abs[f.Path] = f.Abs
-		for d := path.Dir(f.Path); d != "." && !r.dirs[d]; d = path.Dir(d) {
-			r.dirs[d] = true
+		absolute[f.Path] = f.AbsolutePath
+		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
+			r.directories[d] = true
 		}
 		base := path.Base(f.Path)
 		switch {
@@ -56,24 +56,24 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 		switch {
 		case base == "DESCRIPTION" || base == "renv.lock" || strings.HasSuffix(base, ".Rproj"):
-			lockDirs[path.Dir(f.Path)] = true
+			lockDirectories[path.Dir(f.Path)] = true
 		case path.Base(path.Dir(f.Path)) == "renv" || path.Base(path.Dir(f.Path)) == "packrat":
-			lockDirs[path.Dir(path.Dir(f.Path))] = true
+			lockDirectories[path.Dir(path.Dir(f.Path))] = true
 		}
 		if !(Plugin{}).Claims(f) || f.TooLarge || f.Size > lang.MaxParseSize {
 			continue
 		}
 		if base == "DESCRIPTION" {
-			src, err := os.ReadFile(f.Abs)
+			source, err := os.ReadFile(f.AbsolutePath)
 			if err != nil {
 				continue
 			}
-			if d := readDescription(src); d != nil {
-				p := &rpkg{dir: path.Dir(f.Path), file: f.Path, desc: d}
+			if d := readDescription(source); d != nil {
+				p := &rpkg{directory: path.Dir(f.Path), file: f.Path, description: d}
 				r.descriptions = append(r.descriptions, p)
 				if d.name != "" {
-					scopes[p.dir] = true
-					if q := r.named[d.name]; q == nil || depth(p.dir) < depth(q.dir) {
+					scopes[p.directory] = true
+					if q := r.named[d.name]; q == nil || depth(p.directory) < depth(q.directory) {
 						r.named[d.name] = p
 					}
 				}
@@ -84,31 +84,31 @@ func newResolver(root string, all []*scan.File) *resolver {
 			sources = append(sources, f)
 		}
 	}
-	sort.Slice(r.descriptions, func(i, j int) bool { return deeper(r.descriptions[i].dir, r.descriptions[j].dir) })
+	sort.Slice(r.descriptions, func(i, j int) bool { return deeper(r.descriptions[i].directory, r.descriptions[j].directory) })
 	// renv.lock is committed by projects and packages alike; packrat keeps its lock in
 	// packrat/. Either may be git-ignored, so what is on disk counts too.
-	read := func(rel string) ([]byte, bool) {
-		if a, ok := abs[rel]; ok {
+	read := func(relative string) ([]byte, bool) {
+		if a, ok := absolute[relative]; ok {
 			data, err := os.ReadFile(a)
 			return data, err == nil
 		}
 		if root == "" {
 			return nil, false
 		}
-		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
 		return data, err == nil
 	}
-	for d := range lockDirs {
-		if src, ok := read(path.Join(d, "renv.lock")); ok {
-			if l := readRenvLock(src, d); l != nil {
+	for d := range lockDirectories {
+		if source, ok := read(path.Join(d, "renv.lock")); ok {
+			if l := readRenvLock(source, d); l != nil {
 				r.locks = append(r.locks, l)
 				scopes[d] = true
 			}
-		} else if src, ok := read(path.Join(d, "packrat", "packrat.lock")); ok {
-			r.locks = append(r.locks, readPackratLock(src, d))
+		} else if source, ok := read(path.Join(d, "packrat", "packrat.lock")); ok {
+			r.locks = append(r.locks, readPackratLock(source, d))
 		}
 	}
-	sort.Slice(r.locks, func(i, j int) bool { return deeper(r.locks[i].dir, r.locks[j].dir) })
+	sort.Slice(r.locks, func(i, j int) bool { return deeper(r.locks[i].directory, r.locks[j].directory) })
 	for s := range scopes {
 		r.scopes = append(r.scopes, s)
 	}
@@ -125,45 +125,47 @@ func newResolver(root string, all []*scan.File) *resolver {
 func (r *resolver) index(sources []*scan.File) {
 	sort.Slice(sources, func(i, j int) bool { return sources[i].Path < sources[j].Path })
 	for _, f := range sources {
-		src, err := os.ReadFile(f.Abs)
-		if err != nil || !lang.Parseable(f, src) {
+		source, err := os.ReadFile(f.AbsolutePath)
+		if err != nil || !lang.Parseable(f, source) {
 			continue
 		}
-		ex, _ := (Plugin{}).Extract(f, src)
+		extraction, _ := (Plugin{}).Extract(f, source)
 		scope := r.scopeOf(f.Path)
-		for _, s := range ex.Symbols {
+		for _, s := range extraction.Symbols {
 			if s.Kind != "function" && s.Kind != "class" && s.Kind != "generic" {
 				continue
 			}
 			name, _, _ := strings.Cut(s.Name, "@")
-			m := r.defs[scope]
+			m := r.definitions[scope]
 			if m == nil {
 				m = map[string][]string{}
-				r.defs[scope] = m
+				r.definitions[scope] = m
 			}
-			if fs := m[name]; len(fs) == 0 || fs[len(fs)-1] != f.Path {
-				m[name] = append(fs, f.Path)
+			if files := m[name]; len(files) == 0 || files[len(files)-1] != f.Path {
+				m[name] = append(files, f.Path)
 			}
 		}
 	}
 }
 
-func depth(dir string) int {
-	if dir == "." {
+func depth(directory string) int {
+	if directory == "." {
 		return 0
 	}
-	return strings.Count(dir, "/") + 1
+	return strings.Count(directory, "/") + 1
 }
 
 // deeper orders directories deepest first, then by name.
 func deeper(a, b string) bool {
-	if da, db := depth(a), depth(b); da != db {
-		return da > db
+	if da, database := depth(a), depth(b); da != database {
+		return da > database
 	}
 	return a < b
 }
 
-func within(file, dir string) bool { return dir == "." || strings.HasPrefix(file, dir+"/") }
+func within(file, directory string) bool {
+	return directory == "." || strings.HasPrefix(file, directory+"/")
+}
 
 func (r *resolver) scopeOf(file string) string {
 	for _, s := range r.scopes {
@@ -174,19 +176,19 @@ func (r *resolver) scopeOf(file string) string {
 	return "."
 }
 
-// descOf is the nearest DESCRIPTION above a file; pkgOf the nearest that is a package.
-func (r *resolver) descOf(file string) *rpkg {
+// descriptionOf is the nearest DESCRIPTION above a file; packageOf the nearest that is a package.
+func (r *resolver) descriptionOf(file string) *rpkg {
 	for _, p := range r.descriptions {
-		if within(file, p.dir) {
+		if within(file, p.directory) {
 			return p
 		}
 	}
 	return nil
 }
 
-func (r *resolver) pkgOf(file string) *rpkg {
+func (r *resolver) packageOf(file string) *rpkg {
 	for _, p := range r.descriptions {
-		if p.desc.name != "" && within(file, p.dir) {
+		if p.description.name != "" && within(file, p.directory) {
 			return p
 		}
 	}
@@ -195,7 +197,7 @@ func (r *resolver) pkgOf(file string) *rpkg {
 
 func (r *resolver) lockOf(file string) *lockfile {
 	for _, l := range r.locks {
-		if within(file, l.dir) {
+		if within(file, l.directory) {
 			return l
 		}
 	}
@@ -203,30 +205,30 @@ func (r *resolver) lockOf(file string) *lockfile {
 }
 
 // Implements: REQ-R-002, REQ-R-004, REQ-R-005, REQ-R-006, REQ-R-009, REQ-R-010
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	kind, _, _ := strings.Cut(imp.Name, ":")
-	dir := path.Dir(file)
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	kind, _, _ := strings.Cut(rawImport.Name, ":")
+	directory := path.Dir(file)
 	switch kind {
-	case kindPkg, kindNS, kindRoxygen, kindBox, kindNSFile:
-		return r.pkg(file, imp.Module, false)
-	case kindDep:
-		return r.pkg(file, imp.Module, true)
+	case kindPackage, kindNS, kindRoxygen, kindBox, kindNSFile:
+		return r.packageName(file, rawImport.Module, false)
+	case kindDependency:
+		return r.packageName(file, rawImport.Module, true)
 	case kindCall:
-		return r.call(file, imp.Module)
+		return r.call(file, rawImport.Module)
 	case kindInclude:
-		if f := path.Join(dir, imp.Module); r.files[f] {
+		if f := path.Join(directory, rawImport.Module); r.files[f] {
 			return lang.Target{Local: f}
 		}
 	case kindBoxLocal:
-		mod := imp.Module
+		module := rawImport.Module
 		var bases []string
-		if strings.HasPrefix(mod, "./") || strings.HasPrefix(mod, "../") {
-			bases = []string{dir}
+		if strings.HasPrefix(module, "./") || strings.HasPrefix(module, "../") {
+			bases = []string{directory}
 		} else {
-			bases = ancestors(dir) // box.path: usually the project root
+			bases = ancestors(directory) // box.path: usually the project root
 		}
 		for _, b := range bases {
-			p := path.Join(b, mod)
+			p := path.Join(b, module)
 			if !inside(p) {
 				continue
 			}
@@ -239,17 +241,17 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 	case kindSource, kindChild:
 		// A path is relative to the working directory, which is the project root far
 		// more often than the file's own directory; both are tried, nearest first.
-		if path.IsAbs(imp.Module) || strings.HasPrefix(imp.Module, "~") || strings.Contains(imp.Module, "://") {
+		if path.IsAbs(rawImport.Module) || strings.HasPrefix(rawImport.Module, "~") || strings.Contains(rawImport.Module, "://") {
 			return lang.Target{}
 		}
-		for _, b := range ancestors(dir) {
-			if p := path.Join(b, imp.Module); inside(p) && r.files[p] {
+		for _, b := range ancestors(directory) {
+			if p := path.Join(b, rawImport.Module); inside(p) && r.files[p] {
 				return lang.Target{Local: p}
 			}
 		}
-	case kindSrcDir:
-		for _, b := range ancestors(dir) {
-			if p := path.Join(b, imp.Module); inside(p) && (r.dirs[p] || r.files[p]) {
+	case kindSourceDirectory:
+		for _, b := range ancestors(directory) {
+			if p := path.Join(b, rawImport.Module); inside(p) && (r.directories[p] || r.files[p]) {
 				return lang.Target{Local: p}
 			}
 		}
@@ -258,11 +260,11 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 }
 
 // ancestors are a directory and those above it, nearest first.
-func ancestors(dir string) []string {
-	out := []string{dir}
-	for dir != "." {
-		dir = path.Dir(dir)
-		out = append(out, dir)
+func ancestors(directory string) []string {
+	out := []string{directory}
+	for directory != "." {
+		directory = path.Dir(directory)
+		out = append(out, directory)
 	}
 	return out
 }
@@ -278,7 +280,7 @@ func inside(p string) bool { return p != ".." && !strings.HasPrefix(p, "../") &&
 // Implements: REQ-R-010
 func (r *resolver) call(file, name string) lang.Target {
 	scope := r.scopeOf(file)
-	candidates := r.defs[scope][name]
+	candidates := r.definitions[scope][name]
 	if len(candidates) == 0 {
 		return lang.Target{}
 	}
@@ -313,7 +315,7 @@ func (r *resolver) call(file, name string) lang.Target {
 	return lang.Target{}
 }
 
-// pkg resolves a package name: the importing package itself (its R/ directory; its
+// packageName resolves a package name: the importing package itself (its R/ directory; its
 // own files are not an import of it), another package of the repository, R's base
 // packages, a recommended package the project neither declares nor locks, and else
 // CRAN or Bioconductor as renv.lock or packrat.lock pinned it, or as the nearest
@@ -321,9 +323,9 @@ func (r *resolver) call(file, name string) lang.Target {
 // imports of a local package point at that package's DESCRIPTION.
 //
 // Implements: REQ-R-006, REQ-R-007, REQ-R-009
-func (r *resolver) pkg(file, name string, manifest bool) lang.Target {
-	if own := r.pkgOf(file); own != nil && own.desc.name == name {
-		if within(file, path.Join(own.dir, "R")) || manifest {
+func (r *resolver) packageName(file, name string, manifest bool) lang.Target {
+	if own := r.packageOf(file); own != nil && own.description.name == name {
+		if within(file, path.Join(own.directory, "R")) || manifest {
 			return lang.Target{}
 		}
 		return r.local(own, false)
@@ -331,45 +333,45 @@ func (r *resolver) pkg(file, name string, manifest bool) lang.Target {
 	if p := r.named[name]; p != nil {
 		return r.local(p, manifest)
 	}
-	if basePkgs[name] {
-		return lang.Target{Ecosystem: ecoStd, Package: name}
+	if basePackages[name] {
+		return lang.Target{Ecosystem: ecosystemStd, Package: name}
 	}
-	var dep *dependency
-	var rm *remote
-	if d := r.descOf(file); d != nil {
-		if x, ok := d.desc.deps[name]; ok {
-			dep = &x
+	var declared *dependency
+	var declaredRemote *remote
+	if d := r.descriptionOf(file); d != nil {
+		if x, ok := d.description.dependencies[name]; ok {
+			declared = &x
 		}
-		if x, ok := d.desc.remotes[name]; ok {
-			rm = &x
+		if x, ok := d.description.remotes[name]; ok {
+			declaredRemote = &x
 		}
 	}
-	var lk *locked
+	var lockedPackage *locked
 	if l := r.lockOf(file); l != nil {
-		lk = l.pkgs[name]
+		lockedPackage = l.packages[name]
 	}
-	if recommendedPkgs[name] && dep == nil && lk == nil {
-		return lang.Target{Ecosystem: ecoStd, Package: name}
+	if recommendedPackages[name] && declared == nil && lockedPackage == nil {
+		return lang.Target{Ecosystem: ecosystemStd, Package: name}
 	}
-	eco := ecoCRAN
-	if biocPkgs[name] || rm != nil && rm.bioc || lk != nil && lk.bioc {
-		eco = ecoBioc
+	ecosystem := ecosystemCRAN
+	if biocPackages[name] || declaredRemote != nil && declaredRemote.bioc || lockedPackage != nil && lockedPackage.bioc {
+		ecosystem = ecosystemBioc
 	}
-	if lk != nil {
-		return lockedTarget(eco, lk, dep)
+	if lockedPackage != nil {
+		return lockedTarget(ecosystem, lockedPackage, declared)
 	}
-	t := lang.Target{Ecosystem: eco, Package: name}
+	t := lang.Target{Ecosystem: ecosystem, Package: name}
 	switch {
-	case dep == nil:
+	case declared == nil:
 		t.Unresolved = true
-	case rm != nil && rm.origin != "":
-		t.Origin, t.Version = rm.origin, rm.ref
-		t.Pinned = lang.Commit(rm.ref)
+	case declaredRemote != nil && declaredRemote.origin != "":
+		t.Origin, t.Version = declaredRemote.origin, declaredRemote.reference
+		t.Pinned = lang.Commit(declaredRemote.reference)
 		t.Floating = !t.Pinned
 	default:
-		t.Version = dep.constraint
-		t.Pinned = lang.Pinned(dep.constraint)
-		t.Floating = dep.constraint == ""
+		t.Version = declared.constraint
+		t.Pinned = lang.Pinned(declared.constraint)
+		t.Floating = declared.constraint == ""
 	}
 	return t
 }
@@ -379,8 +381,8 @@ func (r *resolver) pkg(file, name string, manifest bool) lang.Target {
 // by its commit; a local one by nothing.
 //
 // Implements: REQ-R-008, REQ-R-009
-func lockedTarget(eco string, l *locked, dep *dependency) lang.Target {
-	t := lang.Target{Ecosystem: eco, Package: l.name, Version: l.version}
+func lockedTarget(ecosystem string, l *locked, declared *dependency) lang.Target {
+	t := lang.Target{Ecosystem: ecosystem, Package: l.name, Version: l.version}
 	switch {
 	case strings.HasPrefix(l.origin, "path:"):
 		t.Origin = l.origin
@@ -389,12 +391,12 @@ func lockedTarget(eco string, l *locked, dep *dependency) lang.Target {
 		if l.sha != "" {
 			t.Version, t.Pinned = l.sha, lang.Commit(l.sha)
 		} else {
-			t.Version, t.Floating = l.ref, true
+			t.Version, t.Floating = l.reference, true
 		}
 	default:
 		t.Pinned = l.version != ""
-		if dep != nil && dep.constraint != "" && dep.constraint != l.version {
-			t.Requested = dep.constraint
+		if declared != nil && declared.constraint != "" && declared.constraint != l.version {
+			t.Requested = declared.constraint
 		}
 	}
 	return t
@@ -403,8 +405,8 @@ func lockedTarget(eco string, l *locked, dep *dependency) lang.Target {
 // local is a package of the repository: its R/ directory for code, its DESCRIPTION
 // for a DESCRIPTION.
 func (r *resolver) local(p *rpkg, manifest bool) lang.Target {
-	if rDir := path.Join(p.dir, "R"); !manifest && r.dirs[rDir] {
-		return lang.Target{Local: rDir}
+	if rDirectory := path.Join(p.directory, "R"); !manifest && r.directories[rDirectory] {
+		return lang.Target{Local: rDirectory}
 	}
 	return lang.Target{Local: p.file}
 }
@@ -416,35 +418,35 @@ func (r *resolver) local(p *rpkg, manifest bool) lang.Target {
 //
 // Implements: REQ-R-008
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
-	if t.Ecosystem != ecoCRAN && t.Ecosystem != ecoBioc {
+	if t.Ecosystem != ecosystemCRAN && t.Ecosystem != ecosystemBioc {
 		return nil
 	}
 	for _, l := range r.locks {
-		lk := l.pkgs[t.Package]
-		if lk == nil || t.Version != lk.version && t.Version != lk.sha {
+		lockedPackage := l.packages[t.Package]
+		if lockedPackage == nil || t.Version != lockedPackage.version && t.Version != lockedPackage.sha {
 			continue
 		}
 		var out []lang.Target
-		for _, name := range lk.requires {
-			if basePkgs[name] {
+		for _, name := range lockedPackage.requires {
+			if basePackages[name] {
 				continue
 			}
-			if dep := l.pkgs[name]; dep != nil {
-				eco := ecoCRAN
-				if dep.bioc || biocPkgs[name] {
-					eco = ecoBioc
+			if dependency := l.packages[name]; dependency != nil {
+				ecosystem := ecosystemCRAN
+				if dependency.bioc || biocPackages[name] {
+					ecosystem = ecosystemBioc
 				}
-				out = append(out, lockedTarget(eco, dep, nil))
+				out = append(out, lockedTarget(ecosystem, dependency, nil))
 				continue
 			}
-			if recommendedPkgs[name] {
+			if recommendedPackages[name] {
 				continue // shipped with R, and not locked
 			}
-			eco := ecoCRAN
-			if biocPkgs[name] {
-				eco = ecoBioc
+			ecosystem := ecosystemCRAN
+			if biocPackages[name] {
+				ecosystem = ecosystemBioc
 			}
-			out = append(out, lang.Target{Ecosystem: eco, Package: name})
+			out = append(out, lang.Target{Ecosystem: ecosystem, Package: name})
 		}
 		return out
 	}

@@ -70,46 +70,46 @@ type dist struct {
 }
 
 type resolver struct {
-	files   map[string]bool
-	pyDirs  map[string]bool // directories containing Python files at any depth
-	roots   []string        // import roots, most specific first, "." last
-	distMap map[string]*dist
+	files         map[string]bool
+	pyDirectories map[string]bool // directories containing Python files at any depth
+	roots         []string        // import roots, most specific first, "." last
+	distMap       map[string]*dist
 	// tree maps a normalized distribution name to what a lock file says it needs.
 	tree map[string][]string
-	// env is the interpreter's installed distributions, or nil (findEnvironment).
-	env *environment
+	// environment is the interpreter's installed distributions, or nil (findEnvironment).
+	environment *environment
 }
 
 // Implements: REQ-PY-003, REQ-PY-006, REQ-PY-009
 func newResolver(all, claimed []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, pyDirs: map[string]bool{}, distMap: map[string]*dist{}, tree: map[string][]string{}}
+	r := &resolver{files: map[string]bool{}, pyDirectories: map[string]bool{}, distMap: map[string]*dist{}, tree: map[string][]string{}}
 	for _, f := range claimed {
 		r.files[f.Path] = true
-		for d := path.Dir(f.Path); d != "." && !r.pyDirs[d]; d = path.Dir(d) {
-			r.pyDirs[d] = true
+		for d := path.Dir(f.Path); d != "." && !r.pyDirectories[d]; d = path.Dir(d) {
+			r.pyDirectories[d] = true
 		}
 	}
 
 	roots := map[string]bool{".": true}
 	var locks []*scan.File
 	for _, f := range all {
-		dir, base := path.Dir(f.Path), path.Base(f.Path)
+		directory, base := path.Dir(f.Path), path.Base(f.Path)
 		switch {
 		case base == "pyproject.toml":
-			roots[dir] = true
-			r.readPyproject(f.Abs)
+			roots[directory] = true
+			r.readPyproject(f.AbsolutePath)
 		case base == "setup.cfg":
-			roots[dir] = true
-			r.readSetupCfg(f.Abs)
+			roots[directory] = true
+			r.readSetupConfig(f.AbsolutePath)
 		case base == "setup.py":
-			roots[dir] = true
-			r.readSetupPy(f.Abs)
+			roots[directory] = true
+			r.readSetupPy(f.AbsolutePath)
 		case base == "Pipfile":
-			r.readPipfile(f.Abs)
+			r.readPipfile(f.AbsolutePath)
 		case base == "poetry.lock" || base == "uv.lock" || base == "pdm.lock" || base == "Pipfile.lock":
 			locks = append(locks, f)
-		case strings.HasSuffix(base, ".txt") && (strings.HasPrefix(base, "requirements") || path.Base(dir) == "requirements"):
-			r.readRequirements(f.Abs)
+		case strings.HasSuffix(base, ".txt") && (strings.HasPrefix(base, "requirements") || path.Base(directory) == "requirements"):
+			r.readRequirements(f.AbsolutePath)
 		}
 	}
 	for _, f := range locks { // after manifests, so pinned versions override ranges
@@ -117,8 +117,8 @@ func newResolver(all, claimed []*scan.File) *resolver {
 	}
 	for d := range roots {
 		r.roots = append(r.roots, d)
-		if src := path.Join(d, "src"); r.pyDirs[src] {
-			r.roots = append(r.roots, src)
+		if source := path.Join(d, "src"); r.pyDirectories[source] {
+			r.roots = append(r.roots, source)
 		}
 	}
 	// Deepest first, so a sub-project's modules shadow same-named top-level ones; "." last.
@@ -129,8 +129,8 @@ func newResolver(all, claimed []*scan.File) *resolver {
 		return strings.Count(d, "/")
 	}
 	sort.Slice(r.roots, func(i, j int) bool {
-		if di, dj := depth(r.roots[i]), depth(r.roots[j]); di != dj {
-			return di > dj
+		if depthI, depthJ := depth(r.roots[i]), depth(r.roots[j]); depthI != depthJ {
+			return depthI > depthJ
 		}
 		return r.roots[i] < r.roots[j]
 	})
@@ -138,8 +138,8 @@ func newResolver(all, claimed []*scan.File) *resolver {
 }
 
 // Resolve handles both "import a.b" (Name empty) and "from m import n".
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	return r.resolveFrom(imp.Module, imp.Name, file)
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	return r.resolveFrom(rawImport.Module, rawImport.Name, file)
 }
 
 // resolve handles "import a.b.c".
@@ -153,7 +153,7 @@ func (r *resolver) resolve(dotted, file string) lang.Target {
 		}
 	}
 	if stdlib[parts[0]] {
-		return lang.Target{Ecosystem: ecoStd, Package: parts[0]}
+		return lang.Target{Ecosystem: ecosystemStd, Package: parts[0]}
 	}
 	// A script's own directory is on sys.path when it runs.
 	if t, ok := r.probe(path.Dir(file), parts); ok {
@@ -162,19 +162,19 @@ func (r *resolver) resolve(dotted, file string) lang.Target {
 	return r.distribution(parts)
 }
 
-// resolveFrom handles "from mod import name"; name may be a sub-module.
+// resolveFrom handles "from module import name"; name may be a sub-module.
 //
 // Implements: REQ-PY-002
-func (r *resolver) resolveFrom(mod, name, file string) lang.Target {
-	if !strings.HasPrefix(mod, ".") {
+func (r *resolver) resolveFrom(module, name, file string) lang.Target {
+	if !strings.HasPrefix(module, ".") {
 		if name != "" {
-			return r.resolve(mod+"."+name, file)
+			return r.resolve(module+"."+name, file)
 		}
-		return r.resolve(mod, file)
+		return r.resolve(module, file)
 	}
-	rest := strings.TrimLeft(mod, ".")
+	rest := strings.TrimLeft(module, ".")
 	base := path.Dir(file)
-	for range len(mod) - len(rest) - 1 {
+	for range len(module) - len(rest) - 1 {
 		if base == "." {
 			return lang.Target{} // climbs out of the project
 		}
@@ -216,7 +216,7 @@ func (r *resolver) probe(root string, parts []string) (lang.Target, bool) {
 			return lang.Target{Local: candidate}, true
 		}
 	}
-	if r.pyDirs[p] {
+	if r.pyDirectories[p] {
 		return lang.Target{Local: p}, true
 	}
 	return lang.Target{}, false
@@ -244,24 +244,24 @@ func (r *resolver) distribution(parts []string) lang.Target {
 	// has that is installed all the same. One an index has and nothing declares is
 	// still undeclared, under its own name now rather than a guess.
 	// Implements: REQ-PY-015
-	if in := r.env.provider(parts); in != nil {
+	if in := r.environment.provider(parts); in != nil {
 		if d := r.distMap[normalize(in.name)]; d != nil {
 			return r.declared(d)
 		}
 		if in.origin != "" {
-			return lang.Target{Ecosystem: ecoPyPI, Package: in.name, Version: in.version, Origin: in.origin}
+			return lang.Target{Ecosystem: ecosystemPyPI, Package: in.name, Version: in.version, Origin: in.origin}
 		}
-		return lang.Target{Ecosystem: ecoPyPI, Package: in.name, Unresolved: true}
+		return lang.Target{Ecosystem: ecosystemPyPI, Package: in.name, Unresolved: true}
 	}
-	return lang.Target{Ecosystem: ecoPyPI, Package: candidates[0], Unresolved: true}
+	return lang.Target{Ecosystem: ecosystemPyPI, Package: candidates[0], Unresolved: true}
 }
 
 // declared is the target of a distribution the project declares. Installed from
 // outside any index, it says where from, and takes the installed version when the
 // project names none.
 func (r *resolver) declared(d *dist) lang.Target {
-	t := lang.Target{Ecosystem: ecoPyPI, Package: d.name, Version: d.version, Requested: d.requested, Pinned: d.pinned, Git: d.git}
-	if in := r.env.get(d.name); in != nil && in.origin != "" {
+	t := lang.Target{Ecosystem: ecosystemPyPI, Package: d.name, Version: d.version, Requested: d.requested, Pinned: d.pinned, Git: d.git}
+	if in := r.environment.get(d.name); in != nil && in.origin != "" {
 		t.Origin = in.origin
 		if t.Version == "" {
 			t.Version = in.version
@@ -277,13 +277,13 @@ func normalize(name string) string {
 	return strings.ToLower(separators.ReplaceAllString(name, "-"))
 }
 
-var reqName = regexp.MustCompile(`^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*(\[[^\]]*\])?\s*(.*)$`)
+var requirementNamePattern = regexp.MustCompile(`^\s*([A-Za-z0-9][A-Za-z0-9._-]*)\s*(\[[^\]]*\])?\s*(.*)$`)
 
 // addRequirement records a PEP 508 requirement such as "requests[socks]>=2.0; python_version>'3'".
-func (r *resolver) addRequirement(req string) {
-	req, _, _ = strings.Cut(req, "#")
-	req, _, _ = strings.Cut(req, ";")
-	m := reqName.FindStringSubmatch(req)
+func (r *resolver) addRequirement(requirement string) {
+	requirement, _, _ = strings.Cut(requirement, "#")
+	requirement, _, _ = strings.Cut(requirement, ";")
+	m := requirementNamePattern.FindStringSubmatch(requirement)
 	if m == nil {
 		return
 	}
@@ -331,13 +331,13 @@ func (r *resolver) addDist(name, spec string, locked bool) {
 //
 // Implements: REQ-PY-013, REQ-FND-026
 func directCommit(spec string) string {
-	ref, ok := strings.CutPrefix(strings.TrimSpace(spec), "@")
+	reference, ok := strings.CutPrefix(strings.TrimSpace(spec), "@")
 	if !ok {
 		return ""
 	}
-	ref, _, _ = strings.Cut(strings.TrimSpace(ref), "#")
-	ref, _, _ = strings.Cut(ref, ";") // an environment marker
-	u, ok := strings.CutPrefix(strings.TrimSpace(ref), "git+")
+	reference, _, _ = strings.Cut(strings.TrimSpace(reference), "#")
+	reference, _, _ = strings.Cut(reference, ";") // an environment marker
+	u, ok := strings.CutPrefix(strings.TrimSpace(reference), "git+")
 	if !ok {
 		return ""
 	}
@@ -349,8 +349,8 @@ func directCommit(spec string) string {
 }
 
 // Implements: REQ-PY-006
-func (r *resolver) readRequirements(abs string) {
-	data, err := os.ReadFile(abs)
+func (r *resolver) readRequirements(absolute string) {
+	data, err := os.ReadFile(absolute)
 	if err != nil {
 		return
 	}
@@ -362,7 +362,7 @@ func (r *resolver) readRequirements(abs string) {
 }
 
 // Implements: REQ-PY-007
-func (r *resolver) readPyproject(abs string) {
+func (r *resolver) readPyproject(absolute string) {
 	var doc struct {
 		Project struct {
 			Dependencies         []string
@@ -377,19 +377,19 @@ func (r *resolver) readPyproject(abs string) {
 			}
 		}
 	}
-	if _, err := toml.DecodeFile(abs, &doc); err != nil {
+	if _, err := toml.DecodeFile(absolute, &doc); err != nil {
 		return
 	}
 	for _, d := range doc.Project.Dependencies {
 		r.addRequirement(d)
 	}
-	for _, ds := range doc.Project.OptionalDependencies {
-		for _, d := range ds {
+	for _, group := range doc.Project.OptionalDependencies {
+		for _, d := range group {
 			r.addRequirement(d)
 		}
 	}
-	for _, ds := range doc.DependencyGroups {
-		for _, d := range ds {
+	for _, group := range doc.DependencyGroups {
+		for _, d := range group {
 			if s, ok := d.(string); ok { // other entries are {include-group = ...}
 				r.addRequirement(s)
 			}
@@ -402,12 +402,12 @@ func (r *resolver) readPyproject(abs string) {
 	}
 }
 
-// readSetupCfg reads [options] install_requires and [options.extras_require] from a
+// readSetupConfig reads [options] install_requires and [options.extras_require] from a
 // setuptools setup.cfg (INI with indented continuation lines).
 //
 // Implements: REQ-PY-011
-func (r *resolver) readSetupCfg(abs string) {
-	data, err := os.ReadFile(abs)
+func (r *resolver) readSetupConfig(absolute string) {
+	data, err := os.ReadFile(absolute)
 	if err != nil {
 		return
 	}
@@ -443,8 +443,8 @@ var (
 // requirements computed at run time cannot be seen without executing it.
 //
 // Implements: REQ-PY-012
-func (r *resolver) readSetupPy(abs string) {
-	data, err := os.ReadFile(abs)
+func (r *resolver) readSetupPy(absolute string) {
+	data, err := os.ReadFile(absolute)
 	if err != nil {
 		return
 	}
@@ -465,12 +465,12 @@ func (r *resolver) readSetupPy(abs string) {
 }
 
 // Implements: REQ-PY-008
-func (r *resolver) readPipfile(abs string) {
+func (r *resolver) readPipfile(absolute string) {
 	var doc struct {
 		Packages    map[string]any
 		DevPackages map[string]any `toml:"dev-packages"`
 	}
-	if _, err := toml.DecodeFile(abs, &doc); err == nil {
+	if _, err := toml.DecodeFile(absolute, &doc); err == nil {
 		r.addTable(doc.Packages)
 		r.addTable(doc.DevPackages)
 	}
@@ -494,7 +494,7 @@ func (r *resolver) addTable(t map[string]any) {
 func (r *resolver) readLock(f *scan.File) {
 	if path.Base(f.Path) == "Pipfile.lock" {
 		var doc map[string]json.RawMessage
-		data, err := os.ReadFile(f.Abs)
+		data, err := os.ReadFile(f.AbsolutePath)
 		if err != nil || json.Unmarshal(data, &doc) != nil {
 			return
 		}
@@ -517,13 +517,13 @@ func (r *resolver) readLock(f *scan.File) {
 			Dependencies any
 		}
 	}
-	if _, err := toml.DecodeFile(f.Abs, &doc); err == nil {
+	if _, err := toml.DecodeFile(f.AbsolutePath, &doc); err == nil {
 		for _, p := range doc.Package {
 			r.addDist(p.Name, p.Version, true)
-			for _, dep := range lockDependencies(p.Dependencies) {
-				if dep != "" && !strings.EqualFold(dep, p.Name) {
+			for _, dependency := range lockDependencies(p.Dependencies) {
+				if dependency != "" && !strings.EqualFold(dependency, p.Name) {
 					key := normalize(p.Name)
-					r.tree[key] = append(r.tree[key], dep)
+					r.tree[key] = append(r.tree[key], dependency)
 				}
 			}
 		}
@@ -554,30 +554,30 @@ func lockDependencies(v any) []string {
 }
 
 // requirementName takes the distribution name off the front of a requirement string.
-func requirementName(req string) string {
-	if i := strings.IndexAny(req, " <>=!~[;("); i >= 0 {
-		req = req[:i]
+func requirementName(requirement string) string {
+	if i := strings.IndexAny(requirement, " <>=!~[;("); i >= 0 {
+		requirement = requirement[:i]
 	}
-	return strings.TrimSpace(req)
+	return strings.TrimSpace(requirement)
 }
 
 // Dependencies implements lang.Transitive from the lock files the project carries.
 //
 // Implements: REQ-SUP-009
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
-	if t.Ecosystem != ecoPyPI {
+	if t.Ecosystem != ecosystemPyPI {
 		return nil
 	}
 	if _, locked := r.tree[normalize(t.Package)]; !locked {
 		return r.installedDependencies(t)
 	}
 	var out []lang.Target
-	for _, dep := range r.tree[normalize(t.Package)] {
-		name, version, pinned := dep, "", false
-		if d := r.distMap[normalize(dep)]; d != nil {
+	for _, dependency := range r.tree[normalize(t.Package)] {
+		name, version, pinned := dependency, "", false
+		if d := r.distMap[normalize(dependency)]; d != nil {
 			name, version, pinned = d.name, d.version, d.pinned
 		}
-		out = append(out, lang.Target{Ecosystem: ecoPyPI, Package: name, Version: version, Pinned: pinned})
+		out = append(out, lang.Target{Ecosystem: ecosystemPyPI, Package: name, Version: version, Pinned: pinned})
 	}
 	return out
 }
@@ -586,7 +586,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 // environment rather than from a lock file.
 func (r *resolver) Installed(t lang.Target) bool {
 	_, locked := r.tree[normalize(t.Package)]
-	in := r.env.get(t.Package)
+	in := r.environment.get(t.Package)
 	return !locked && in != nil && in.origin != ""
 }
 
@@ -596,19 +596,19 @@ func (r *resolver) Installed(t lang.Target) bool {
 //
 // Implements: REQ-PY-015
 func (r *resolver) installedDependencies(t lang.Target) []lang.Target {
-	in := r.env.get(t.Package)
+	in := r.environment.get(t.Package)
 	if in == nil || in.origin == "" {
 		return nil
 	}
 	var out []lang.Target
-	for _, req := range in.requires {
-		switch dep := r.env.get(req); {
-		case r.distMap[normalize(req)] != nil:
-			out = append(out, r.declared(r.distMap[normalize(req)]))
-		case dep != nil:
-			out = append(out, lang.Target{Ecosystem: ecoPyPI, Package: dep.name, Version: dep.version, Origin: dep.origin})
+	for _, requirement := range in.requires {
+		switch dependency := r.environment.get(requirement); {
+		case r.distMap[normalize(requirement)] != nil:
+			out = append(out, r.declared(r.distMap[normalize(requirement)]))
+		case dependency != nil:
+			out = append(out, lang.Target{Ecosystem: ecosystemPyPI, Package: dependency.name, Version: dependency.version, Origin: dependency.origin})
 		default:
-			out = append(out, lang.Target{Ecosystem: ecoPyPI, Package: req})
+			out = append(out, lang.Target{Ecosystem: ecosystemPyPI, Package: requirement})
 		}
 	}
 	return out

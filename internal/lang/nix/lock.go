@@ -26,9 +26,9 @@ type lockNode struct {
 	Original map[string]any             `json:"original"`
 }
 
-func readLock(src []byte) *lockFile {
+func readLock(source []byte) *lockFile {
 	var l lockFile
-	if json.Unmarshal(src, &l) != nil || l.Nodes == nil {
+	if json.Unmarshal(source, &l) != nil || l.Nodes == nil {
 		return nil
 	}
 	if l.Root == "" {
@@ -37,7 +37,7 @@ func readLock(src []byte) *lockFile {
 	return &l
 }
 
-func strMap(m map[string]any) map[string]string {
+func stringMap(m map[string]any) map[string]string {
 	out := make(map[string]string, len(m))
 	for k, v := range m {
 		switch v := v.(type) {
@@ -74,47 +74,47 @@ func (l *lockFile) follow(p []string, depth int) (string, bool) {
 	if depth > 16 {
 		return "", false
 	}
-	cur := l.Root
+	current := l.Root
 	for _, name := range p {
-		raw, ok := l.Nodes[cur].Inputs[name]
+		raw, ok := l.Nodes[current].Inputs[name]
 		if !ok {
 			return "", false
 		}
 		var key string
 		if json.Unmarshal(raw, &key) == nil {
-			cur = key
+			current = key
 			continue
 		}
 		var more []string
 		if json.Unmarshal(raw, &more) != nil {
 			return "", false
 		}
-		if cur, ok = l.follow(more, depth+1); !ok {
+		if current, ok = l.follow(more, depth+1); !ok {
 			return "", false
 		}
 	}
-	return cur, true
+	return current, true
 }
 
 // target is what a lock node fetches: named by its original reference (as flake.nix
 // names it), versioned by the locked commit, pinned by the locked commit or content
-// hash, with the original ref as the requested version. A path node returns its
+// hash, with the original reference as the requested version. A path node returns its
 // directory (relative to the root) instead.
 //
 // Implements: REQ-NIX-005
-func (l *lockFile) target(dir, key string) (lang.Target, string) {
+func (l *lockFile) target(directory, key string) (lang.Target, string) {
 	n, ok := l.Nodes[key]
 	if !ok {
 		return lang.Target{}, ""
 	}
-	orig, locked := attrsRef(strMap(n.Original)), attrsRef(strMap(n.Locked))
-	if orig.typ == "path" || locked.typ == "path" {
-		return lang.Target{}, localDir(dir, first(orig.url, locked.url))
+	original, locked := attributesReference(stringMap(n.Original)), attributesReference(stringMap(n.Locked))
+	if original.typeName == "path" || locked.typeName == "path" {
+		return lang.Target{}, localDirectory(directory, first(original.url, locked.url))
 	}
-	if orig.typ == "" {
-		orig = locked
+	if original.typeName == "" {
+		original = locked
 	}
-	t, ok := orig.target()
+	t, ok := original.target()
 	if !ok {
 		return lang.Target{}, ""
 	}
@@ -130,7 +130,7 @@ func (l *lockFile) target(dir, key string) (lang.Target, string) {
 		t.Version, t.Pinned = first(t.Version, short(locked.narHash)), true
 	}
 	if !t.Pinned {
-		t.Floating = requested == "" || orig.typ == "indirect"
+		t.Floating = requested == "" || original.typeName == "indirect"
 	}
 	if requested != "" && requested != t.Version {
 		t.Requested = requested
@@ -151,29 +151,29 @@ func (l *lockFile) keys() []string {
 }
 
 // pinsFile is niv's nix/sources.json or npins' npins/sources.json.
-type pinsFile map[string]ref
+type pinsFile map[string]reference
 
 // readPins reads niv's sources.json (kind "niv": a map of sources) or npins'
 // (kind "npins": {"pins": {...}}).
 //
 // Implements: REQ-NIX-008
-func readPins(kind string, src []byte) pinsFile {
+func readPins(kind string, source []byte) pinsFile {
 	out := pinsFile{}
 	if kind == "niv" {
 		var m map[string]map[string]any
-		if json.Unmarshal(src, &m) != nil {
+		if json.Unmarshal(source, &m) != nil {
 			return nil
 		}
 		for name, raw := range m {
-			f := strMap(raw)
-			r := ref{rev: f["rev"], narHash: f["sha256"], ref: first(f["branch"], f["version"])}
+			f := stringMap(raw)
+			r := reference{rev: f["rev"], narHash: f["sha256"], reference: first(f["branch"], f["version"])}
 			switch {
 			case f["type"] == "git":
-				r.typ, r.url = "git", f["repo"]
+				r.typeName, r.url = "git", f["repo"]
 			case f["owner"] != "" && f["repo"] != "" && (f["url"] == "" || strings.Contains(f["url"], "github.com")):
-				r.typ, r.owner, r.repo = "github", f["owner"], f["repo"]
+				r.typeName, r.owner, r.repository = "github", f["owner"], f["repo"]
 			default:
-				r.typ, r.url = "tarball", f["url"]
+				r.typeName, r.url = "tarball", f["url"]
 			}
 			out[name] = r
 		}
@@ -191,32 +191,32 @@ func readPins(kind string, src []byte) pinsFile {
 			Hash       string            `json:"hash"`
 		} `json:"pins"`
 	}
-	if json.Unmarshal(src, &m) != nil {
+	if json.Unmarshal(source, &m) != nil {
 		return nil
 	}
 	for name, p := range m.Pins {
-		r := ref{rev: p.Revision, narHash: p.Hash, ref: first(p.Branch, p.Version)}
-		repo := p.Repository
+		r := reference{rev: p.Revision, narHash: p.Hash, reference: first(p.Branch, p.Version)}
+		repository := p.Repository
 		switch {
 		case p.Type == "Channel":
 			// A channel release: nixpkgs at that release. The tarball's directory is
 			// the release (nixos-24.05.1234.abcdef).
-			r = ref{typ: "indirect", id: "nixpkgs", ref: p.Name, narHash: p.Hash, channel: p.Name}
+			r = reference{typeName: "indirect", id: "nixpkgs", reference: p.Name, narHash: p.Hash, channel: p.Name}
 			if u := strings.TrimSuffix(p.URL, "/nixexprs.tar.xz"); u != p.URL {
-				r.ref = path.Base(u)
+				r.reference = path.Base(u)
 			}
 		case p.Type == "PyPi":
-			r = ref{typ: "tarball", url: "https://pypi.org/project/" + p.Name, ref: p.Version, narHash: p.Hash}
-		case repo["type"] == "GitHub":
-			r.typ, r.owner, r.repo = "github", repo["owner"], repo["repo"]
-		case repo["type"] == "GitLab":
-			r.typ, r.url = "git", strings.TrimSuffix(first(repo["server"], "https://gitlab.com/"), "/")+"/"+repo["repo_path"]
-		case repo["type"] == "Forgejo":
-			r.typ, r.url = "git", strings.TrimSuffix(repo["server"], "/")+"/"+repo["owner"]+"/"+repo["repo"]
-		case repo["url"] != "":
-			r.typ, r.url = "git", repo["url"]
+			r = reference{typeName: "tarball", url: "https://pypi.org/project/" + p.Name, reference: p.Version, narHash: p.Hash}
+		case repository["type"] == "GitHub":
+			r.typeName, r.owner, r.repository = "github", repository["owner"], repository["repo"]
+		case repository["type"] == "GitLab":
+			r.typeName, r.url = "git", strings.TrimSuffix(first(repository["server"], "https://gitlab.com/"), "/")+"/"+repository["repo_path"]
+		case repository["type"] == "Forgejo":
+			r.typeName, r.url = "git", strings.TrimSuffix(repository["server"], "/")+"/"+repository["owner"]+"/"+repository["repo"]
+		case repository["url"] != "":
+			r.typeName, r.url = "git", repository["url"]
 		default:
-			r.typ, r.url = "tarball", p.URL
+			r.typeName, r.url = "tarball", p.URL
 		}
 		out[name] = r
 	}
@@ -224,11 +224,11 @@ func readPins(kind string, src []byte) pinsFile {
 }
 
 // pinTarget is a niv or npins source as a package: pinned by its revision or hash.
-func pinTarget(r ref) lang.Target {
+func pinTarget(r reference) lang.Target {
 	t, _ := r.target()
-	if r.typ == "indirect" && r.narHash != "" { // an npins channel, hashed
-		t.Version, t.Pinned, t.Floating = r.ref, true, false
-		if r.channel != r.ref {
+	if r.typeName == "indirect" && r.narHash != "" { // an npins channel, hashed
+		t.Version, t.Pinned, t.Floating = r.reference, true, false
+		if r.channel != r.reference {
 			t.Requested = r.channel
 		}
 	}
@@ -239,43 +239,43 @@ func pinTarget(r ref) lang.Target {
 // on the line naming it.
 //
 // Implements: REQ-NIX-005, REQ-NIX-008
-func extractLock(class string, src []byte) *lang.Extraction {
-	ex := &lang.Extraction{Symbols: []lang.Symbol{}}
+func extractLock(class string, source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{Symbols: []lang.Symbol{}}
 	var names []string
 	kind := class
 	switch class {
 	case "lock":
-		l := readLock(src)
+		l := readLock(source)
 		if l == nil {
-			return ex
+			return extraction
 		}
 		names = l.keys()
 	default:
-		p := readPins(class, src)
+		p := readPins(class, source)
 		for k := range p {
 			names = append(names, k)
 		}
 		sort.Strings(names)
 	}
 	for _, name := range names {
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: name, Module: name, Name: kind, Line: keyLine(src, name)})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: name, Module: name, Name: kind, Line: keyLine(source, name)})
 	}
-	return ex
+	return extraction
 }
 
 // keyLine is the line of the first `"name": {` in src (1 when not found): in
 // flake.lock the same name also appears as other nodes' input values.
-func keyLine(src []byte, name string) int {
+func keyLine(source []byte, name string) int {
 	q, _ := json.Marshal(name)
 	for off := 0; ; {
-		i := bytes.Index(src[off:], q)
+		i := bytes.Index(source[off:], q)
 		if i < 0 {
 			return 1
 		}
 		j := off + i + len(q)
-		rest := bytes.TrimLeft(src[j:min(len(src), j+16)], " \t")
+		rest := bytes.TrimLeft(source[j:min(len(source), j+16)], " \t")
 		if bytes.HasPrefix(rest, []byte(":")) && bytes.HasPrefix(bytes.TrimLeft(rest[1:], " \t\r\n"), []byte("{")) {
-			return bytes.Count(src[:off+i], []byte{'\n'}) + 1
+			return bytes.Count(source[:off+i], []byte{'\n'}) + 1
 		}
 		off = j
 	}

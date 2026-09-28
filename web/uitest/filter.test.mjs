@@ -15,10 +15,10 @@ const { buildModel } = await import('../static/model.js');
 const { computeVisibility, globMatcher, parsePathFilter, searchIndex, search } = await import('../static/filter.js');
 const { assignSlots, languageColors } = await import('../static/colors.js');
 
-const dir = (path, parent) => ({ id: `d:${path}`, kind: 'dir', name: path.split('/').pop(), path, parent });
-const file = (path, parent, lang, loc) => ({ id: `f:${path}`, kind: 'file', name: path.split('/').pop(), path, parent, lang, loc });
-const pkg = (eco, name) => ({ id: `p:${eco}:${name}`, kind: 'package', name, parent: `e:${eco}` });
-const eco = name => ({ id: `e:${name}`, kind: 'ecosystem', name });
+const directory = (path, parent) => ({ id: `d:${path}`, kind: 'dir', name: path.split('/').pop(), path, parent });
+const file = (path, parent, language, loc) => ({ id: `f:${path}`, kind: 'file', name: path.split('/').pop(), path, parent, lang: language, loc });
+const packageNode = (ecosystem, name) => ({ id: `p:${ecosystem}:${name}`, kind: 'package', name, parent: `e:${ecosystem}` });
+const ecosystem = name => ({ id: `e:${name}`, kind: 'ecosystem', name });
 const imports = (from, to) => ({ from: `f:${from}`, to, kind: 'import' });
 
 // Go in src/ (with a testdata directory under it), TypeScript in web/, Python in
@@ -26,7 +26,7 @@ const imports = (from, to) => ({ from: `f:${from}`, to, kind: 'import' });
 // file and the one in testdata.
 const nodes = [
   { id: 'd:.', kind: 'dir', name: '.', path: '.' },
-  dir('src', 'd:.'), dir('src/testdata', 'd:src'), dir('web', 'd:.'), dir('tools', 'd:.'),
+  directory('src', 'd:.'), directory('src/testdata', 'd:src'), directory('web', 'd:.'), directory('tools', 'd:.'),
   file('src/main.go', 'd:src', 'Go', 500),
   file('src/testdata/fix.go', 'd:src/testdata', 'Go', 10),
   file('web/app.ts', 'd:web', 'TypeScript', 300),
@@ -34,9 +34,9 @@ const nodes = [
   file('tools/gen.py', 'd:tools', 'Python', 200),
   file('README.md', 'd:.', 'Markdown', 20),
   { id: 's:parseImports', kind: 'symbol', name: 'parseImports', symbolKind: 'func', line: 12, parent: 'f:src/main.go' },
-  eco('go'), pkg('go', 'golang.org/x/mod'),
-  eco('npm'), pkg('npm', 'react'), pkg('npm', 'lodash'),
-  eco('pypi'), pkg('pypi', 'requests'),
+  ecosystem('go'), packageNode('go', 'golang.org/x/mod'),
+  ecosystem('npm'), packageNode('npm', 'react'), packageNode('npm', 'lodash'),
+  ecosystem('pypi'), packageNode('pypi', 'requests'),
 ];
 const edges = [
   imports('src/main.go', 'p:go:golang.org/x/mod'),
@@ -48,8 +48,8 @@ const edges = [
 const model = buildModel({ nodes, edges });
 
 /** The ids left visible under these filters, of one kind or all of them. */
-function shown({ langs = [], ecos = [], path = '' } = {}, kind) {
-  const vis = computeVisibility(model, { hiddenLangs: new Set(langs), hiddenEcosystems: new Set(ecos), path });
+function shown({ langs: languages = [], ecos: ecosystems = [], path = '' } = {}, kind) {
+  const vis = computeVisibility(model, { hiddenLangs: new Set(languages), hiddenEcosystems: new Set(ecosystems), path });
   return [...model.byId.values()].filter(n => (!kind || n.kind === kind) && vis.visible(n)).map(n => n.id).sort();
 }
 
@@ -184,12 +184,12 @@ describe('language colors', () => {
     const grown = buildModel({ nodes: [...nodes, file('big.rs', 'd:.', 'Rust', 99_000)], edges });
     assert.equal(grown.languages[0].lang, 'Rust', 'the fixture should rank Rust first');
     const after = colorsOf(grown, assignSlots(grown, slots));
-    for (const [lang, color] of Object.entries(before)) assert.equal(after[lang], color, `${lang} was recolored`);
+    for (const [language, color] of Object.entries(before)) assert.equal(after[language], color, `${language} was recolored`);
     assert.ok(Object.values(before).every(c => c !== after.Rust), 'Rust took a color already in use');
 
     // A language that leaves frees its slot without moving anybody else's.
     const shrunk = buildModel({ nodes: nodes.filter(n => n.lang !== 'TypeScript'), edges });
     const left = colorsOf(shrunk, assignSlots(shrunk, slots));
-    for (const lang of ['Go', 'Python', 'Markdown']) assert.equal(left[lang], before[lang]);
+    for (const language of ['Go', 'Python', 'Markdown']) assert.equal(left[language], before[language]);
   });
 });

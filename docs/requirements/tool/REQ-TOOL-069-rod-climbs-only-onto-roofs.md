@@ -24,7 +24,7 @@ either way.
 ## Rationale
 
 A fish hook is not made for brick, so the rod asks for a clean shot at the roof
-where the grapple forgives two storeys of facade. In return it climbs from the
+where the grapple forgives two stories of facade. In return it climbs from the
 hunting hand, which leaves the off hand free for the jet backpack or the water
 skimmers. A rule the walker can learn beats a chance they cannot.
 

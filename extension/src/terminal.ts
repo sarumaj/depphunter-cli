@@ -18,7 +18,7 @@ import { binaryFor } from './binary';
  * universal build and a build from a checkout, which carry no binary of their own.
  * Implements: REQ-EXT-033
  */
-export function binDirFor(configured: string | undefined, home: string | undefined, enabled = true): string | undefined {
+export function binDirectoryFor(configured: string | undefined, home: string | undefined, enabled = true): string | undefined {
   if (!enabled) return undefined;
   const bin = binaryFor(configured, home);
   return path.isAbsolute(bin) ? path.dirname(bin) : undefined;
@@ -31,11 +31,11 @@ export function binDirFor(configured: string | undefined, home: string | undefin
  * the ones already open.
  * Implements: REQ-EXT-033
  */
-export function exposeOnPath(env: vscode.EnvironmentVariableCollection, dir: string | undefined): void {
-  env.clear();
-  if (!dir) return;
-  env.prepend('PATH', dir + path.delimiter);
+export function exposeOnPath(environment: vscode.EnvironmentVariableCollection, directory: string | undefined): void {
+  environment.clear();
+  if (!directory) return;
+  environment.prepend('PATH', directory + path.delimiter);
   // Shown where the editor says why a terminal's environment changed. Newer editors
   // only; on older ones the property is simply not read.
-  (env as { description?: string }).description = `Puts the depphunter the extension runs (${dir}) on PATH`;
+  (environment as { description?: string }).description = `Puts the depphunter the extension runs (${directory}) on PATH`;
 }

@@ -10,29 +10,29 @@ import (
 
 // Import kinds, carried in RawImport.Name.
 const (
-	kindModule = "module" // import A.B as C (x, T(..))
-	kindFFI    = "ffi"    // a foreign import: the module's JavaScript companion
-	kindDep    = "dep"    // a package a manifest lists as a dependency
-	kindExtra  = "extra"  // a package a workspace or package set adds or overrides
-	kindLock   = "lock"   // a package spago.lock records
+	kindModule     = "module" // import A.B as C (x, T(..))
+	kindFFI        = "ffi"    // a foreign import: the module's JavaScript companion
+	kindDependency = "dep"    // a package a manifest lists as a dependency
+	kindExtra      = "extra"  // a package a workspace or package set adds or overrides
+	kindLock       = "lock"   // a package spago.lock records
 )
 
-type tokKind uint8
+type tokenKind uint8
 
 const (
-	tLower  tokKind = iota // a lower-case name or keyword, possibly qualified (Map.lookup)
-	tUpper                 // an upper-case name, possibly qualified (Data.Map, M.Just)
-	tString                // "..." or """...""": never a name
-	tChar                  // 'x'
-	tPunct                 // a bracket, a comma, a backtick or a run of operator characters
-	tOther                 // numbers and anything else
+	tLower       tokenKind = iota // a lower-case name or keyword, possibly qualified (Map.lookup)
+	tUpper                        // an upper-case name, possibly qualified (Data.Map, M.Just)
+	tString                       // "..." or """...""": never a name
+	tCharacter                    // 'x'
+	tPunctuation                  // a bracket, a comma, a backtick or a run of operator characters
+	tOther                        // numbers and anything else
 )
 
 type token struct {
-	kind tokKind
-	text string
-	line int
-	col  int // byte offset from the start of the line
+	kind   tokenKind
+	text   string
+	line   int
+	column int // byte offset from the start of the line
 	// first is true for a token that starts its line (after indentation).
 	first bool
 }
@@ -42,16 +42,16 @@ type token struct {
 // gaps, raw """...""") and characters are single tokens, so nothing inside them
 // can look like a declaration or an import. A qualified name (Data.Map.lookup,
 // M.Just) is one token; identifiers take primes (foldl'). `∷` is `::`. Token
-// texts are slices of one string copy of src.
+// texts are slices of one string copy of source.
 //
 // Implements: REQ-PURESCRIPT-010
-func lex(src []byte) []token {
-	s := string(src)
+func lex(source []byte) []token {
+	s := string(source)
 	var out []token
 	line, lineStart := 1, 0
 	first := true // no token yet on this line
-	emit := func(kind tokKind, text string, start, at int) {
-		out = append(out, token{kind: kind, text: text, line: at, col: start - lineStart, first: first})
+	emit := func(kind tokenKind, text string, start, at int) {
+		out = append(out, token{kind: kind, text: text, line: at, column: start - lineStart, first: first})
 		first = false
 	}
 	newline := func(i int) {
@@ -79,7 +79,7 @@ func lex(src []byte) []token {
 			i = min(i+2, len(s))
 		case c == '"':
 			start, startLine := i, line
-			startCol := i - lineStart
+			startColumn := i - lineStart
 			if at(s, i+1) == '"' && at(s, i+2) == '"' {
 				// A raw string: no escapes, it ends at the next """.
 				for i += 3; i < len(s) && !(s[i] == '"' && at(s, i+1) == '"' && at(s, i+2) == '"'); i++ {
@@ -110,7 +110,7 @@ func lex(src []byte) []token {
 				}
 				i = min(i, len(s))
 			}
-			out = append(out, token{kind: tString, text: s[start:i], line: startLine, col: startCol, first: first})
+			out = append(out, token{kind: tString, text: s[start:i], line: startLine, column: startColumn, first: first})
 			first = false
 		case c == '\'':
 			// Identifiers absorb their primes, so a quote here starts a character:
@@ -127,26 +127,26 @@ func lex(src []byte) []token {
 				j++
 			}
 			if at(s, j) == '\'' {
-				emit(tChar, s[i:j+1], i, line)
+				emit(tCharacter, s[i:j+1], i, line)
 				i = j + 1
 			} else {
-				emit(tPunct, s[i:i+1], i, line)
+				emit(tPunctuation, s[i:i+1], i, line)
 				i++
 			}
-		case isIdentStart(s, i):
+		case isIdentifierStart(s, i):
 			start := i
 			kind := tLower
 			for {
 				r, _ := utf8.DecodeRuneInString(s[i:])
 				upper := unicode.IsUpper(r)
-				i = identEnd(s, i)
+				i = identifierEnd(s, i)
 				kind = tLower
 				if upper {
 					kind = tUpper
 				}
 				// Only an upper-case segment qualifies what follows: Map.lookup, not
 				// record.field.
-				if upper && at(s, i) == '.' && i+1 < len(s) && isIdentStart(s, i+1) {
+				if upper && at(s, i) == '.' && i+1 < len(s) && isIdentifierStart(s, i+1) {
 					i++
 					continue
 				}
@@ -161,14 +161,14 @@ func lex(src []byte) []token {
 			}
 			emit(tOther, s[start:i], start, line)
 		case c == '(' || c == ')' || c == '[' || c == ']' || c == '{' || c == '}' || c == ',' || c == '`' || c == ';':
-			emit(tPunct, s[i:i+1], i, line)
+			emit(tPunctuation, s[i:i+1], i, line)
 			i++
 		case isSymbol(c):
 			start := i
 			for i < len(s) && isSymbol(s[i]) {
 				i++
 			}
-			emit(tPunct, s[start:i], start, line)
+			emit(tPunctuation, s[start:i], start, line)
 		case c < 0x80:
 			emit(tOther, s[i:i+1], i, line)
 			i++
@@ -176,9 +176,9 @@ func lex(src []byte) []token {
 			r, n := utf8.DecodeRuneInString(s[i:])
 			switch r {
 			case '∷':
-				emit(tPunct, "::", i, line)
+				emit(tPunctuation, "::", i, line)
 			case '→', '⇒', '←', '∀':
-				emit(tPunct, s[i:i+n], i, line)
+				emit(tPunctuation, s[i:i+n], i, line)
 			}
 			i += n // other non-ASCII outside strings and comments: not a name
 		}
@@ -207,8 +207,8 @@ func isWord(c byte) bool {
 	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_'
 }
 
-// isIdentStart reports whether an identifier starts at i: a letter or `_`.
-func isIdentStart(s string, i int) bool {
+// isIdentifierStart reports whether an identifier starts at i: a letter or `_`.
+func isIdentifierStart(s string, i int) bool {
 	c := s[i]
 	if c < 0x80 {
 		return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c == '_'
@@ -217,9 +217,9 @@ func isIdentStart(s string, i int) bool {
 	return unicode.IsLetter(r)
 }
 
-// identEnd is the end of the identifier segment starting at i: letters, digits,
+// identifierEnd is the end of the identifier segment starting at i: letters, digits,
 // `_` and primes.
-func identEnd(s string, i int) int {
+func identifierEnd(s string, i int) int {
 	for i < len(s) {
 		c := s[i]
 		if isWord(c) || c == '\'' {
@@ -257,7 +257,7 @@ func declarations(tokens []token) [][]token {
 		depth := 0
 		for i = 1; i < len(tokens); i++ {
 			t := tokens[i]
-			if t.kind == tPunct {
+			if t.kind == tPunctuation {
 				depth = bracket(t.text, depth)
 			}
 			if depth == 0 && t.kind == tLower && t.text == "where" {
@@ -266,13 +266,13 @@ func declarations(tokens []token) [][]token {
 			}
 		}
 		if i < len(tokens) {
-			top = tokens[i].col
+			top = tokens[i].column
 		}
 	}
 	var out [][]token
 	for i < len(tokens) {
 		end := i + 1
-		for end < len(tokens) && !(tokens[end].first && tokens[end].col <= top) {
+		for end < len(tokens) && !(tokens[end].first && tokens[end].column <= top) {
 			end++
 		}
 		out = append(out, tokens[i:end])
@@ -304,8 +304,8 @@ func bracket(p string, depth int) int {
 // companion, one import of kind ffi.
 //
 // Implements: REQ-PURESCRIPT-002, REQ-PURESCRIPT-003, REQ-PURESCRIPT-010
-func extractSource(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
+func extractSource(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
 	var symbols lang.SymbolSet
 	seenImport := map[string]bool{}
 	defined := map[string]bool{}
@@ -316,31 +316,31 @@ func extractSource(src []byte) *lang.Extraction {
 		}
 	}
 	ffi := 0
-	for _, decl := range declarations(lex(src)) {
+	for _, declaration := range declarations(lex(source)) {
 		get := func(j int) token {
-			if j < len(decl) {
-				return decl[j]
+			if j < len(declaration) {
+				return declaration[j]
 			}
 			return token{kind: tOther}
 		}
-		tk := decl[0]
+		token := declaration[0]
 		switch {
-		case tk.kind == tLower && tk.text == "import":
+		case token.kind == tLower && token.text == "import":
 			if m := get(1); m.kind == tUpper && !seenImport[m.text] {
 				seenImport[m.text] = true
-				ex.Imports = append(ex.Imports, lang.RawImport{Spec: m.text, Module: m.text, Name: kindModule, Line: m.line})
+				extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: m.text, Module: m.text, Name: kindModule, Line: m.line})
 			}
-		case tk.kind == tLower && tk.text == "foreign" && get(1).text == "import":
+		case token.kind == tLower && token.text == "foreign" && get(1).text == "import":
 			switch n := get(2); {
 			case n.kind == tLower && (n.text == "data" || n.text == "kind") && get(3).kind == tUpper:
 				add(get(3).text, "type", get(3).line)
 			case n.kind == tLower && !isQualified(n.text) && get(3).text == "::":
 				add(n.text, "foreign", n.line)
 				if ffi == 0 {
-					ffi = tk.line
+					ffi = token.line
 				}
 			}
-		case tk.kind == tLower && (tk.text == "data" || tk.text == "newtype"):
+		case token.kind == tLower && (token.text == "data" || token.text == "newtype"):
 			n := get(1)
 			if n.kind != tUpper || isQualified(n.text) {
 				continue
@@ -348,13 +348,13 @@ func extractSource(src []byte) *lang.Extraction {
 			add(n.text, "type", n.line)
 			// Constructors follow `=` and each `|` outside brackets.
 			depth, next := 0, false
-			for _, t := range decl[2:] {
+			for _, t := range declaration[2:] {
 				switch {
-				case t.kind == tPunct && (t.text == "(" || t.text == "[" || t.text == "{"):
+				case t.kind == tPunctuation && (t.text == "(" || t.text == "[" || t.text == "{"):
 					depth++
-				case t.kind == tPunct && (t.text == ")" || t.text == "]" || t.text == "}"):
+				case t.kind == tPunctuation && (t.text == ")" || t.text == "]" || t.text == "}"):
 					depth = max(depth-1, 0)
-				case depth == 0 && t.kind == tPunct && (t.text == "=" || t.text == "|"):
+				case depth == 0 && t.kind == tPunctuation && (t.text == "=" || t.text == "|"):
 					next = true
 					continue
 				case next && t.kind == tUpper && !isQualified(t.text):
@@ -362,55 +362,55 @@ func extractSource(src []byte) *lang.Extraction {
 				}
 				next = false
 			}
-		case tk.kind == tLower && tk.text == "type":
+		case token.kind == tLower && token.text == "type":
 			if n := get(1); n.kind == tUpper && !isQualified(n.text) {
 				add(n.text, "type", n.line) // `type role T ...` has a lower name after type
 			}
-		case tk.kind == tLower && tk.text == "class":
-			readClass(decl, add)
-		case tk.kind == tLower && (tk.text == "instance" || tk.text == "derive" || tk.text == "else"):
+		case token.kind == tLower && token.text == "class":
+			readClass(declaration, add)
+		case token.kind == tLower && (token.text == "instance" || token.text == "derive" || token.text == "else"):
 			// instance name :: C T, derive (newtype) instance name :: C T, else
 			// instance name :: C T. 0.15 instances may be unnamed: no symbol.
-			for j := 0; j < len(decl) && j < 4; j++ {
-				if decl[j].kind == tLower && decl[j].text == "instance" {
+			for j := 0; j < len(declaration) && j < 4; j++ {
+				if declaration[j].kind == tLower && declaration[j].text == "instance" {
 					if n := get(j + 1); n.kind == tLower && !isQualified(n.text) && get(j+2).text == "::" {
 						add(n.text, "instance", n.line)
 					}
 					break
 				}
 			}
-		case tk.kind == tLower && (tk.text == "infix" || tk.text == "infixl" || tk.text == "infixr"):
+		case token.kind == tLower && (token.text == "infix" || token.text == "infixl" || token.text == "infixr"):
 			// infixl 6 add as +, infixr 0 type Tuple as /\
-			for j := 2; j+1 < len(decl) && j < 6; j++ {
-				if decl[j].kind == tLower && decl[j].text == "as" && decl[j+1].kind == tPunct {
-					add(decl[j+1].text, "operator", decl[j+1].line)
+			for j := 2; j+1 < len(declaration) && j < 6; j++ {
+				if declaration[j].kind == tLower && declaration[j].text == "as" && declaration[j+1].kind == tPunctuation {
+					add(declaration[j+1].text, "operator", declaration[j+1].line)
 					break
 				}
 			}
-		case tk.kind == tLower && !keyword[tk.text] && !isQualified(tk.text):
+		case token.kind == tLower && !keyword[token.text] && !isQualified(token.text):
 			// f :: Type, or f a b = ... / f x | guard = ...
-			if get(1).text == "::" || definition(decl) {
-				add(tk.text, "func", tk.line)
+			if get(1).text == "::" || definition(declaration) {
+				add(token.text, "func", token.line)
 			}
 		}
 	}
 	if ffi > 0 {
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: "foreign import", Name: kindFFI, Line: ffi})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "foreign import", Name: kindFFI, Line: ffi})
 	}
-	ex.Symbols = symbols.List()
-	return ex
+	extraction.Symbols = symbols.List()
+	return extraction
 }
 
 // readClass records a class and its members. The class is the name after `<=`
 // when it has superclasses (`class (Eq a) <= Ord a where`), else the first
 // upper-case name; members are the names first on their lines after `where` that
 // a `::` follows.
-func readClass(decl []token, add func(name, kind string, line int)) {
-	name, where := token{}, len(decl)
+func readClass(declaration []token, add func(name, kind string, line int)) {
+	name, where := token{}, len(declaration)
 	depth := 0
-	for j := 1; j < len(decl); j++ {
-		t := decl[j]
-		if t.kind == tPunct {
+	for j := 1; j < len(declaration); j++ {
+		t := declaration[j]
+		if t.kind == tPunctuation {
 			depth = bracket(t.text, depth)
 			if depth == 0 && (t.text == "<=" || t.text == "⇐") {
 				name = token{}
@@ -429,8 +429,8 @@ func readClass(decl []token, add func(name, kind string, line int)) {
 		return
 	}
 	add(name.text, "class", name.line)
-	for j := where + 1; j+1 < len(decl); j++ {
-		if t := decl[j]; t.first && t.kind == tLower && !isQualified(t.text) && decl[j+1].text == "::" {
+	for j := where + 1; j+1 < len(declaration); j++ {
+		if t := declaration[j]; t.first && t.kind == tLower && !isQualified(t.text) && declaration[j+1].text == "::" {
 			add(name.text+"."+t.text, "method", t.line)
 		}
 	}
@@ -438,10 +438,10 @@ func readClass(decl []token, add func(name, kind string, line int)) {
 
 // definition reports whether a declaration starting with a name defines it: an
 // `=` or a guard `|` follows at bracket depth 0.
-func definition(decl []token) bool {
+func definition(declaration []token) bool {
 	depth := 0
-	for _, t := range decl[1:] {
-		if t.kind != tPunct {
+	for _, t := range declaration[1:] {
+		if t.kind != tPunctuation {
 			continue
 		}
 		if depth == 0 && (t.text == "=" || t.text == "|") {

@@ -12,9 +12,9 @@ import (
 )
 
 // show prints indexes as "name kind url", one per line, for comparison.
-func show(ix []Index) string {
+func show(indexes []Index) string {
 	var out []string
-	for _, i := range ix {
+	for _, i := range indexes {
 		kind := [...]string{"extra", "default", "primary", "explicit"}[i.Kind]
 		line := strings.TrimSpace(fmt.Sprintf("%s %s %s", i.Name, kind, i.URL))
 		if len(i.Include) > 0 {
@@ -30,8 +30,8 @@ func show(ix []Index) string {
 
 func pins(s Settings) string {
 	var out []string
-	for pkg, idx := range s.Pins {
-		out = append(out, pkg+"->"+idx)
+	for packageName, index := range s.Pins {
+		out = append(out, packageName+"->"+index)
 	}
 	sort.Strings(out)
 	return strings.Join(out, " ")
@@ -95,14 +95,14 @@ local = { path = "../local" }
 // query string is not taken for a name.
 //
 // Verifies: REQ-SUP-066
-func TestUVEnv(t *testing.T) {
-	vars := map[string]string{
+func TestUVEnvironment(t *testing.T) {
+	variables := map[string]string{
 		"UV_DEFAULT_INDEX":   "main=https://main.corp/simple",
 		"UV_INDEX_URL":       "https://legacy.corp/simple",
 		"UV_INDEX":           "corp=https://corp.corp/simple  https://q.corp/simple?x=y",
 		"UV_EXTRA_INDEX_URL": "https://extra.corp/simple",
 	}
-	got := show(UVEnv(func(k string) string { return vars[k] }))
+	got := show(UVEnvironment(func(k string) string { return variables[k] }))
 	check(t, "env", got, "main default https://main.corp/simple\ndefault https://legacy.corp/simple\n"+
 		"corp extra https://corp.corp/simple\nextra https://q.corp/simple?x=y\nextra https://extra.corp/simple")
 	user, pass := UVCredential(func(k string) string {
@@ -111,7 +111,7 @@ func TestUVEnv(t *testing.T) {
 	if user != "u" || pass != "p" {
 		t.Errorf("UV_INDEX_<NAME>_*: %q %q", user, pass)
 	}
-	if got := EnvName("pytorch-cu121.x"); got != "PYTORCH_CU121_X" {
+	if got := EnvironmentName("pytorch-cu121.x"); got != "PYTORCH_CU121_X" {
 		t.Errorf("EnvName: %s", got)
 	}
 }
@@ -269,7 +269,7 @@ func TestPDMMachine(t *testing.T) {
 	home := t.TempDir()
 	file := filepath.Join(home, ".config", "pdm", "config.toml")
 	write(t, file, "[pypi]\nurl = \"https://file.corp/simple\"\nusername = \"fu\"\npassword = \"fp\"\n")
-	m := userconf.Machine{Home: home, GOOS: "linux", Env: func(k string) string {
+	m := userconf.Machine{Home: home, GOOS: "linux", Environment: func(k string) string {
 		return map[string]string{"PDM_PYPI_URL": "https://env.corp/simple", "PDM_PYPI_PASSWORD": "ep"}[k]
 	}}
 	check(t, "env over file", show(PDMMachine(m).Indexes), "pypi default https://env.corp/simple cred=fu:ep")
@@ -279,32 +279,32 @@ func TestPDMMachine(t *testing.T) {
 
 // Poetry's config.toml names repositories and http-basic credentials, auth.toml
 // credentials over them, POETRY_REPOSITORIES_<NAME>_URL and
-// POETRY_HTTP_BASIC_<NAME>_* over both; names compare as EnvName spells them.
+// POETRY_HTTP_BASIC_<NAME>_* over both; names compare as EnvironmentName spells them.
 //
 // Verifies: REQ-AUTH-026, REQ-SUP-064
 func TestPoetryMachine(t *testing.T) {
-	dir := t.TempDir()
-	write(t, filepath.Join(dir, "config.toml"), "[repositories.my-corp]\nurl = \"https://file.corp/simple\"\n\n[http-basic.my-corp]\nusername = \"cu\"\npassword = \"cp\"\n")
-	write(t, filepath.Join(dir, "auth.toml"), "[http-basic.my-corp]\nusername = \"au\"\npassword = \"ap\"\n\n[http-basic.other]\nusername = \"ou\"\npassword = \"op\"\n")
-	vars := map[string]string{
-		"POETRY_CONFIG_DIR":                dir,
+	directory := t.TempDir()
+	write(t, filepath.Join(directory, "config.toml"), "[repositories.my-corp]\nurl = \"https://file.corp/simple\"\n\n[http-basic.my-corp]\nusername = \"cu\"\npassword = \"cp\"\n")
+	write(t, filepath.Join(directory, "auth.toml"), "[http-basic.my-corp]\nusername = \"au\"\npassword = \"ap\"\n\n[http-basic.other]\nusername = \"ou\"\npassword = \"op\"\n")
+	variables := map[string]string{
+		"POETRY_CONFIG_DIR":                directory,
 		"POETRY_REPOSITORIES_ENVREPO_URL":  "https://env.corp/simple",
 		"POETRY_HTTP_BASIC_OTHER_PASSWORD": "env-op",
 		"POETRY_HTTP_BASIC_LATE_USERNAME":  "lu",
 		"POETRY_HTTP_BASIC_LATE_PASSWORD":  "lp",
 	}
-	m := userconf.Machine{GOOS: "linux", Env: func(k string) string { return vars[k] }, Environ: func() []string {
+	m := userconf.Machine{GOOS: "linux", Environment: func(k string) string { return variables[k] }, Environ: func() []string {
 		var out []string
-		for k, v := range vars {
+		for k, v := range variables {
 			out = append(out, k+"="+v)
 		}
 		return out
 	}}
-	repos, creds := PoetryMachine(m)
-	check(t, "repos", fmt.Sprint(repos), "map[ENVREPO:https://env.corp/simple MY_CORP:https://file.corp/simple]")
-	check(t, "creds", fmt.Sprint(creds), "map[MY_CORP:{au ap} OTHER:{ou env-op}]")
-	check(t, "a name only the environment knows", fmt.Sprint(PoetryCredential(m, creds, "late")), "{lu lp}")
-	check(t, "by source name", fmt.Sprint(PoetryCredential(m, creds, "my.corp")), "{au ap}")
+	repositories, credentials := PoetryMachine(m)
+	check(t, "repos", fmt.Sprint(repositories), "map[ENVREPO:https://env.corp/simple MY_CORP:https://file.corp/simple]")
+	check(t, "creds", fmt.Sprint(credentials), "map[MY_CORP:{au ap} OTHER:{ou env-op}]")
+	check(t, "a name only the environment knows", fmt.Sprint(PoetryCredential(m, credentials, "late")), "{lu lp}")
+	check(t, "by source name", fmt.Sprint(PoetryCredential(m, credentials, "my.corp")), "{au ap}")
 }
 
 func write(t *testing.T, path, data string) {

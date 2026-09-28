@@ -10,8 +10,8 @@ import (
 func TestImageReferences(t *testing.T) {
 	digest := "sha256:" + "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 	for _, c := range []struct {
-		ref  string
-		want lang.Target
+		reference string
+		want      lang.Target
 	}{
 		// No tag floats, with no version made up for it.
 		{"nginx", lang.Target{Ecosystem: "oci", Package: "nginx", Floating: true}},
@@ -24,15 +24,15 @@ func TestImageReferences(t *testing.T) {
 		{"postgres:16@" + digest, lang.Target{Ecosystem: "oci", Package: "postgres", Version: digest, Requested: "16", Pinned: true}},
 		{"", lang.Target{}},
 	} {
-		if got := Image(c.ref); got != c.want {
-			t.Errorf("%s: got %+v, want %+v", c.ref, got, c.want)
+		if got := Image(c.reference); got != c.want {
+			t.Errorf("%s: got %+v, want %+v", c.reference, got, c.want)
 		}
 	}
 }
 
 // Verifies: REQ-DOCKER-004
 func TestDockerHubNamesAreCanonical(t *testing.T) {
-	for ref, want := range map[string]string{
+	for reference, want := range map[string]string{
 		"docker.io/library/nginx:1.27":     "nginx",
 		"index.docker.io/library/nginx":    "nginx",
 		"registry-1.docker.io/nginx":       "nginx",
@@ -41,8 +41,8 @@ func TestDockerHubNamesAreCanonical(t *testing.T) {
 		"ghcr.io/library/tool":             "ghcr.io/library/tool", // another registry's names are its own
 		"quay.io/prometheus/node-exporter": "quay.io/prometheus/node-exporter",
 	} {
-		if got := Image(ref).Package; got != want {
-			t.Errorf("%s: got %q, want %q", ref, got, want)
+		if got := Image(reference).Package; got != want {
+			t.Errorf("%s: got %q, want %q", reference, got, want)
 		}
 	}
 }

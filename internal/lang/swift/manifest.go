@@ -19,14 +19,14 @@ import (
 // call is one `.name(...)` in a manifest: its arguments split at top-level commas,
 // and the line it starts on.
 type call struct {
-	args []string
-	line int
+	arguments []string
+	line      int
 }
 
 // stripComments replaces comments with spaces, keeping line breaks and string
 // literals ("…", """…""" and #"…"#) as they are.
-func stripComments(src string) string {
-	b := []byte(src)
+func stripComments(source string) string {
+	b := []byte(source)
 	for i := 0; i < len(b); i++ {
 		switch {
 		case b[i] == '"':
@@ -89,18 +89,18 @@ func skipString(b []byte, i int) int {
 
 // calls finds every `.name(` in src (comments already stripped) not preceded by an
 // identifier - `.package(` in a list, not `foo.package(` - and returns its arguments.
-func calls(src, name string) []call {
+func calls(source, name string) []call {
 	var out []call
-	b := []byte(src)
+	b := []byte(source)
 	needle := "." + name
 	for i := 0; ; {
-		j := strings.Index(src[i:], needle)
+		j := strings.Index(source[i:], needle)
 		if j < 0 {
 			return out
 		}
 		at := i + j
 		i = at + len(needle)
-		if at > 0 && identChar(b[at-1]) || i < len(b) && identChar(b[i]) {
+		if at > 0 && identifierCharacter(b[at-1]) || i < len(b) && identifierCharacter(b[i]) {
 			continue
 		}
 		k := i
@@ -114,11 +114,11 @@ func calls(src, name string) []call {
 		if end < 0 {
 			return out
 		}
-		out = append(out, call{args: splitArgs(src[k+1 : end]), line: strings.Count(src[:at], "\n") + 1})
+		out = append(out, call{arguments: splitArguments(source[k+1 : end]), line: strings.Count(source[:at], "\n") + 1})
 	}
 }
 
-func identChar(c byte) bool {
+func identifierCharacter(c byte) bool {
 	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9'
 }
 
@@ -141,8 +141,8 @@ func closing(b []byte, open int) int {
 	return -1
 }
 
-// splitArgs splits an argument list at its top-level commas, each argument trimmed.
-func splitArgs(s string) []string {
+// splitArguments splits an argument list at its top-level commas, each argument trimmed.
+func splitArguments(s string) []string {
 	var out []string
 	b := []byte(s)
 	depth, start := 0, 0
@@ -169,20 +169,20 @@ func splitArgs(s string) []string {
 
 // label splits "name: value" into its label and value; an unlabeled argument has no
 // label.
-func label(arg string) (string, string) {
+func label(argument string) (string, string) {
 	i := 0
-	for i < len(arg) && identChar(arg[i]) {
+	for i < len(argument) && identifierCharacter(argument[i]) {
 		i++
 	}
-	if i > 0 && i < len(arg) && arg[i] == ':' {
-		return arg[:i], strings.TrimSpace(arg[i+1:])
+	if i > 0 && i < len(argument) && argument[i] == ':' {
+		return argument[:i], strings.TrimSpace(argument[i+1:])
 	}
-	return "", arg
+	return "", argument
 }
 
 // labeled returns the value of the argument with the given label.
-func labeled(args []string, name string) (string, bool) {
-	for _, a := range args {
+func labeled(arguments []string, name string) (string, bool) {
+	for _, a := range arguments {
 		if l, v := label(a); l == name {
 			return v, true
 		}
@@ -216,32 +216,32 @@ type dependency struct {
 // dependencies reads the `.package(...)` calls of a manifest (comments stripped).
 //
 // Implements: REQ-SWIFT-006, REQ-SWIFT-008
-func dependencies(src string) []dependency {
+func dependencies(source string) []dependency {
 	var out []dependency
-	for _, c := range calls(src, "package") {
+	for _, c := range calls(source, "package") {
 		d := dependency{line: c.line}
-		if v, ok := labeled(c.args, "url"); ok {
+		if v, ok := labeled(c.arguments, "url"); ok {
 			d.url, _ = literal(v)
 		}
-		if v, ok := labeled(c.args, "path"); ok {
+		if v, ok := labeled(c.arguments, "path"); ok {
 			d.path, _ = literal(v)
 		}
-		if v, ok := labeled(c.args, "id"); ok {
+		if v, ok := labeled(c.arguments, "id"); ok {
 			d.id, _ = literal(v)
 		}
-		if v, ok := labeled(c.args, "name"); ok {
+		if v, ok := labeled(c.arguments, "name"); ok {
 			d.name, _ = literal(v)
 		}
 		if d.url == "" && d.path == "" && d.id == "" {
 			continue
 		}
-		d.requirement, d.pinned, d.floating = requirement(c.args)
+		d.requirement, d.pinned, d.floating = requirement(c.arguments)
 		out = append(out, d)
 	}
 	return out
 }
 
-var rangeReq = regexp.MustCompile(`^"([^"]+)"\s*(\.\.<|\.\.\.)\s*"([^"]+)"$`)
+var rangeRequirement = regexp.MustCompile(`^"([^"]+)"\s*(\.\.<|\.\.\.)\s*"([^"]+)"$`)
 
 // requirement reads a package's version requirement from its arguments: from:,
 // exact:, branch:, revision:, a range literal, or one of the Requirement values
@@ -249,8 +249,8 @@ var rangeReq = regexp.MustCompile(`^"([^"]+)"\s*(\.\.<|\.\.\.)\s*"([^"]+)"$`)
 // bare version string is an exact version.
 //
 // Implements: REQ-SWIFT-008
-func requirement(args []string) (string, bool, bool) {
-	for _, a := range args {
+func requirement(arguments []string) (string, bool, bool) {
+	for _, a := range arguments {
 		l, v := label(a)
 		switch l {
 		case "url", "path", "id", "name", "traits":
@@ -258,13 +258,13 @@ func requirement(args []string) (string, bool, bool) {
 		}
 		if l == "" && strings.HasPrefix(v, ".") {
 			// .upToNextMajor(from: "1.0.0") and kin
-			fn, rest, ok := strings.Cut(v[1:], "(")
+			function, rest, ok := strings.Cut(v[1:], "(")
 			if !ok {
 				continue
 			}
 			inner := strings.TrimSuffix(strings.TrimSpace(rest), ")")
 			_, inner = label(inner)
-			l, v = fn, inner
+			l, v = function, inner
 		}
 		s, _ := literal(v)
 		switch l {
@@ -289,7 +289,7 @@ func requirement(args []string) (string, bool, bool) {
 				return "branch " + s, false, true
 			}
 		case "":
-			if m := rangeReq.FindStringSubmatch(v); m != nil {
+			if m := rangeRequirement.FindStringSubmatch(v); m != nil {
 				return m[1] + m[2] + m[3], false, false
 			}
 			if s != "" {
@@ -336,11 +336,11 @@ var targetKinds = []string{"target", "executableTarget", "testTarget", "macro", 
 // targets reads a manifest's targets and the products their dependencies name.
 //
 // Implements: REQ-SWIFT-004, REQ-SWIFT-007
-func targets(src string) []target {
+func targets(source string) []target {
 	var out []target
 	for _, kind := range targetKinds {
-		for _, c := range calls(src, kind) {
-			v, ok := labeled(c.args, "name")
+		for _, c := range calls(source, kind) {
+			v, ok := labeled(c.arguments, "name")
 			if !ok {
 				continue
 			}
@@ -348,15 +348,15 @@ func targets(src string) []target {
 			if t.name, ok = literal(v); !ok || t.name == "" {
 				continue
 			}
-			if v, ok := labeled(c.args, "path"); ok {
+			if v, ok := labeled(c.arguments, "path"); ok {
 				t.path, _ = literal(v)
 			}
-			if deps, ok := labeled(c.args, "dependencies"); ok {
-				for _, p := range calls(deps, "product") {
-					name, _ := labeled(p.args, "name")
-					pkg, _ := labeled(p.args, "package")
+			if dependencies, ok := labeled(c.arguments, "dependencies"); ok {
+				for _, p := range calls(dependencies, "product") {
+					name, _ := labeled(p.arguments, "name")
+					packageName, _ := labeled(p.arguments, "package")
 					n, ok1 := literal(name)
-					k, ok2 := literal(pkg)
+					k, ok2 := literal(packageName)
 					if ok1 && ok2 {
 						t.products[n] = k
 					}
@@ -441,7 +441,7 @@ func identity(location string) string {
 // SwiftURL) and Trivy: lang.RepoName's spelling of the URL.
 //
 // Implements: REQ-SWIFT-006
-func packageName(url string) string { return lang.RepoName(url) }
+func packageName(url string) string { return lang.RepositoryName(url) }
 
 var (
 	pbxObject = regexp.MustCompile(`(?m)^\s*([0-9A-Fa-f]{24})\b[^=\n]*=\s*\{\s*isa\s*=\s*(XCRemoteSwiftPackageReference|XCLocalSwiftPackageReference|XCSwiftPackageProductDependency)\s*;`)
@@ -453,20 +453,20 @@ var (
 // with their path, and the products its targets take from them.
 //
 // Implements: REQ-SWIFT-010
-func xcodePackages(src string) (deps []dependency, products map[string]string) {
+func xcodePackages(source string) (dependencies []dependency, products map[string]string) {
 	products = map[string]string{}
-	refs := map[string]dependency{}
-	type product struct{ name, ref string }
+	references := map[string]dependency{}
+	type product struct{ name, reference string }
 	var prods []product
-	b := []byte(src)
-	for _, m := range pbxObject.FindAllStringSubmatchIndex(src, -1) {
-		open := strings.LastIndex(src[:m[1]], "{")
+	b := []byte(source)
+	for _, m := range pbxObject.FindAllStringSubmatchIndex(source, -1) {
+		open := strings.LastIndex(source[:m[1]], "{")
 		end := closing(b, open)
 		if end < 0 {
 			continue
 		}
 		fields := map[string]string{}
-		for _, f := range pbxField.FindAllStringSubmatch(src[open+1:end], -1) {
+		for _, f := range pbxField.FindAllStringSubmatch(source[open+1:end], -1) {
 			v := strings.TrimSpace(f[2])
 			v = unquote(v)
 			if i := strings.Index(v, "/*"); i >= 0 {
@@ -474,8 +474,8 @@ func xcodePackages(src string) (deps []dependency, products map[string]string) {
 			}
 			fields[f[1]] = v
 		}
-		id, isa := src[m[2]:m[3]], src[m[4]:m[5]]
-		line := strings.Count(src[:m[2]], "\n") + 1
+		id, isa := source[m[2]:m[3]], source[m[4]:m[5]]
+		line := strings.Count(source[:m[2]], "\n") + 1
 		switch isa {
 		case "XCRemoteSwiftPackageReference":
 			d := dependency{url: fields["repositoryURL"], line: line}
@@ -494,11 +494,11 @@ func xcodePackages(src string) (deps []dependency, products map[string]string) {
 				d.requirement, d.floating = "branch "+fields["branch"], true
 			}
 			if d.url != "" {
-				refs[id] = d
+				references[id] = d
 			}
 		case "XCLocalSwiftPackageReference":
 			if p := fields["relativePath"]; p != "" {
-				refs[id] = dependency{path: p, line: line}
+				references[id] = dependency{path: p, line: line}
 			}
 		case "XCSwiftPackageProductDependency":
 			if fields["productName"] != "" && fields["package"] != "" {
@@ -507,15 +507,15 @@ func xcodePackages(src string) (deps []dependency, products map[string]string) {
 		}
 	}
 	for _, p := range prods {
-		if d, ok := refs[p.ref]; ok && d.url != "" {
+		if d, ok := references[p.reference]; ok && d.url != "" {
 			products[p.name] = identity(d.url)
 		}
 	}
-	for _, d := range refs {
-		deps = append(deps, d)
+	for _, d := range references {
+		dependencies = append(dependencies, d)
 	}
-	sort.Slice(deps, func(i, j int) bool { return deps[i].line < deps[j].line })
-	return deps, products
+	sort.Slice(dependencies, func(i, j int) bool { return dependencies[i].line < dependencies[j].line })
+	return dependencies, products
 }
 
 // unquote reads a pbxproj string: quoted with backslash escapes, or a bare word.

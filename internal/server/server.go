@@ -63,7 +63,7 @@ type Server struct {
 	root   string
 	assets fs.FS
 	editor string // command template; "" disables /api/open
-	cfg    config.Config
+	config config.Config
 	// allowedHosts is nil when listening on a non-loopback address.
 	allowedHosts map[string]bool
 	// embed lists the origins allowed to show the map in a frame of their own; empty
@@ -83,8 +83,8 @@ type Server struct {
 	// and the catch, so the page and the editor's side panel are one interface.
 	selected string
 	pack     []PackItem
-	// seq counts the announcements made on the event stream; see event.seq.
-	seq uint64
+	// sequence counts the announcements made on the event stream; see event.sequence.
+	sequence uint64
 	// resolution is the account the last analysis gave of itself (internal/trace).
 	// It is served rather than announced: nothing on the map is drawn from it, and
 	// the editor asks for it when somebody opens the report.
@@ -96,19 +96,19 @@ type Server struct {
 type event struct {
 	name string
 	data []byte
-	// seq numbers every announcement this server has made, and goes out as the
+	// sequence numbers every announcement this server has made, and goes out as the
 	// stream's event id. A client that reconnects hands its last one back
 	// (Last-Event-ID) and is told whether it is still current; without it a dropped
 	// connection is indistinguishable from a quiet one, and whatever was announced
 	// while it was down is simply lost.
-	seq uint64
+	sequence uint64
 }
 
 // lazyData is a dataset computed in the background after the map is served.
 type lazyData struct {
 	pending bool
 	value   any // nil when unavailable
-	gz      []byte
+	gzipped []byte
 	// sum fingerprints the encoded value, so a re-read that produced the same answer
 	// can be recognized and not announced again.
 	sum [32]byte
@@ -116,29 +116,29 @@ type lazyData struct {
 
 // snapshot is one immutable analysis result with its encodings.
 type snapshot struct {
-	g           *graph.Graph
-	version     int
-	json, gz    []byte
-	fingerprint [32]byte
+	g             *graph.Graph
+	version       int
+	json, gzipped []byte
+	fingerprint   [32]byte
 	// etag is the fingerprint as an HTTP entity tag, quoted and ready to compare.
 	etag  string
 	files map[string]int // path -> lines, also the allow-list for /api/file
 }
 
 // Implements: REQ-SEC-002
-func New(cfg config.Config, g *graph.Graph, assets fs.FS) (*Server, error) {
-	tok := make([]byte, 24)
-	if _, err := rand.Read(tok); err != nil {
+func New(settings config.Config, g *graph.Graph, assets fs.FS) (*Server, error) {
+	token := make([]byte, 24)
+	if _, err := rand.Read(token); err != nil {
 		return nil, err
 	}
 	s := &Server{
-		token: hex.EncodeToString(tok), cookie: cookieFor(tok), root: cfg.Root, assets: assets, editor: cfg.Editor, cfg: cfg,
-		embed: cfg.Embed,
+		token: hex.EncodeToString(token), cookie: cookieFor(token), root: settings.Root, assets: assets, editor: settings.Editor, config: settings,
+		embed: settings.Embed,
 		subs:  map[chan event]struct{}{}, hexers: map[chan event]struct{}{}, done: make(chan struct{}),
 		lazy: map[string]*lazyData{
-			"history":    {pending: cfg.History},
-			"references": {pending: cfg.LSP},
-			"findings":   {pending: cfg.FindingsEnabled()},
+			"history":    {pending: settings.History},
+			"references": {pending: settings.LSP},
+			"findings":   {pending: settings.FindingsEnabled()},
 		},
 	}
 	var err error
@@ -160,10 +160,10 @@ type docHead struct {
 
 // Implements: REQ-SRV-013
 func newSnapshot(g *graph.Graph, version int) (*snapshot, error) {
-	sn := &snapshot{g: g, version: version, files: make(map[string]int, len(g.Nodes))}
+	created := &snapshot{g: g, version: version, files: make(map[string]int, len(g.Nodes))}
 	for _, n := range g.Nodes {
 		if n.Kind == graph.KindFile {
-			sn.files[n.Path] = n.LOC
+			created.files[n.Path] = n.LOC
 		}
 	}
 	nodes, err := json.Marshal(g.Nodes)
@@ -179,8 +179,8 @@ func newSnapshot(g *graph.Graph, version int) (*snapshot, error) {
 	sum := sha256.New()
 	sum.Write(nodes)
 	sum.Write(edges)
-	sum.Sum(sn.fingerprint[:0])
-	sn.etag = `"` + hex.EncodeToString(sn.fingerprint[:16]) + `"`
+	sum.Sum(created.fingerprint[:0])
+	created.etag = `"` + hex.EncodeToString(created.fingerprint[:16]) + `"`
 
 	// The nodes and the edges are written straight into the buffer and fingerprinted
 	// from it. Encoding them a second time to fingerprint - or handing them back to
@@ -198,15 +198,15 @@ func newSnapshot(g *graph.Graph, version int) (*snapshot, error) {
 	doc.WriteString(`,"edges":`)
 	doc.Write(edges)
 	doc.WriteByte('}')
-	sn.json = doc.Bytes()
-	var buf bytes.Buffer
-	zw := gzip.NewWriter(&buf)
-	zw.Write(sn.json)
-	if err := zw.Close(); err != nil {
+	created.json = doc.Bytes()
+	var buffer bytes.Buffer
+	gzipWriter := gzip.NewWriter(&buffer)
+	gzipWriter.Write(created.json)
+	if err := gzipWriter.Close(); err != nil {
 		return nil, err
 	}
-	sn.gz = buf.Bytes()
-	return sn, nil
+	created.gzipped = buffer.Bytes()
+	return created, nil
 }
 
 // Update publishes a new analysis and notifies connected browsers. touched lists files
@@ -218,29 +218,29 @@ func (s *Server) Update(g *graph.Graph, touched []string) (bool, error) {
 	// Encoded before the lock is taken: it is the expensive part of an update, and
 	// every request reading the server's state would wait for it. The version is
 	// assigned under the lock, once the snapshot is known to replace the current one.
-	sn, err := newSnapshot(g, 0)
+	snapshot, err := newSnapshot(g, 0)
 	if err != nil {
 		return false, err
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if sn.fingerprint == s.snap.fingerprint {
+	if snapshot.fingerprint == s.snap.fingerprint {
 		return false, nil
 	}
-	sn.version = s.snap.version + 1
+	snapshot.version = s.snap.version + 1
 	changed := map[string]bool{}
-	for p, loc := range sn.files {
-		if old, ok := s.snap.files[p]; !ok || old != loc {
+	for p, lineCount := range snapshot.files {
+		if old, ok := s.snap.files[p]; !ok || old != lineCount {
 			changed[p] = true
 		}
 	}
 	for p := range s.snap.files {
-		if _, ok := sn.files[p]; !ok {
+		if _, ok := snapshot.files[p]; !ok {
 			changed[p] = true
 		}
 	}
 	for _, p := range touched {
-		if _, ok := sn.files[p]; ok {
+		if _, ok := snapshot.files[p]; ok {
 			changed[p] = true
 		}
 	}
@@ -249,25 +249,25 @@ func (s *Server) Update(g *graph.Graph, touched []string) (bool, error) {
 		paths = append(paths, p)
 	}
 	sort.Strings(paths)
-	msg, _ := json.Marshal(struct {
+	message, _ := json.Marshal(struct {
 		Version int      `json:"version"`
 		Changed []string `json:"changed"`
-	}{sn.version, paths})
+	}{snapshot.version, paths})
 
-	s.snap = sn
-	s.broadcast(event{name: "graph", data: msg})
+	s.snap = snapshot
+	s.broadcast(event{name: "graph", data: message})
 	return true, nil
 }
 
 // broadcast sends ev to every event stream; callers hold s.mu.
 //
 // Implements: REQ-SRV-015
-func (s *Server) broadcast(ev event) {
-	s.seq++
-	ev.seq = s.seq
-	for ch := range s.subs {
+func (s *Server) broadcast(sent event) {
+	s.sequence++
+	sent.sequence = s.sequence
+	for channel := range s.subs {
 		select {
-		case ch <- ev:
+		case channel <- sent:
 		default: // a slow client still refetches the latest state on its next event
 		}
 	}
@@ -323,15 +323,15 @@ func (s *Server) setLazy(name string, v any) error {
 			return err
 		}
 		d.sum = sha256.Sum256(raw.Bytes())
-		var buf bytes.Buffer
-		zw := gzip.NewWriter(&buf)
-		if _, err := zw.Write(raw.Bytes()); err != nil {
+		var buffer bytes.Buffer
+		gzipWriter := gzip.NewWriter(&buffer)
+		if _, err := gzipWriter.Write(raw.Bytes()); err != nil {
 			return err
 		}
-		if err := zw.Close(); err != nil {
+		if err := gzipWriter.Close(); err != nil {
 			return err
 		}
-		d.gz = buf.Bytes()
+		d.gzipped = buffer.Bytes()
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -391,7 +391,7 @@ func (s *Server) handleLazy(name string) http.HandlerFunc {
 		default:
 			w.Header().Set("Content-Type", "application/json")
 			w.Header().Set("Content-Encoding", "gzip")
-			w.Write(d.gz)
+			w.Write(d.gzipped)
 		}
 	}
 }
@@ -410,12 +410,12 @@ func (s *Server) current() *snapshot {
 // Listen binds the address and returns the listener and the URL to open (including the token).
 //
 // Implements: REQ-SEC-002, REQ-SEC-005
-func (s *Server) Listen(addr string) (net.Listener, string, error) {
-	ln, err := net.Listen("tcp", addr)
+func (s *Server) Listen(address string) (net.Listener, string, error) {
+	line, err := net.Listen("tcp", address)
 	if err != nil {
 		return nil, "", err
 	}
-	tcp := ln.Addr().(*net.TCPAddr)
+	tcp := line.Addr().(*net.TCPAddr)
 	port := tcp.Port
 	host := tcp.IP.String()
 	if tcp.IP.IsLoopback() {
@@ -426,7 +426,7 @@ func (s *Server) Listen(addr string) (net.Listener, string, error) {
 	} else if tcp.IP.IsUnspecified() {
 		host = "127.0.0.1"
 	}
-	return ln, "http://" + net.JoinHostPort(host, strconv.Itoa(port)) + "/?token=" + s.token, nil
+	return line, "http://" + net.JoinHostPort(host, strconv.Itoa(port)) + "/?token=" + s.token, nil
 }
 
 func (s *Server) Handler() http.Handler {
@@ -466,7 +466,7 @@ func (s *Server) guard(next http.Handler) http.Handler {
 			ancestors = strings.Join(s.embed, " ")
 		} else {
 			// Only where nothing may frame us at all. X-Frame-Options has no way to
-			// name an origin that browsers still honour, so in embed mode the
+			// name an origin that browsers still honor, so in embed mode the
 			// Content-Security-Policy below is the whole of the answer.
 			h.Set("X-Frame-Options", "DENY")
 		}
@@ -550,27 +550,27 @@ func (s *Server) equalToken(t string) bool {
 
 // Implements: REQ-SRV-002, REQ-SRV-013, REQ-SRV-014
 func (s *Server) handleGraph(w http.ResponseWriter, r *http.Request) {
-	sn := s.current()
+	snapshot := s.current()
 	w.Header().Set("Content-Type", "application/json")
 	// Revalidate rather than refuse to store: the document is large and usually
 	// unchanged, and an ETag is no use to a client that was told not to keep it.
 	w.Header().Set("Cache-Control", "no-cache")
 	w.Header().Set("Vary", "Accept-Encoding")
-	w.Header().Set("ETag", sn.etag)
-	w.Header().Set("X-Graph-Version", strconv.Itoa(sn.version))
+	w.Header().Set("ETag", snapshot.etag)
+	w.Header().Set("X-Graph-Version", strconv.Itoa(snapshot.version))
 	// The fingerprint is of the nodes and the edges, not of when they were read, so
 	// a re-analysis that found the same project answers 304 - which is what a client
 	// reconnecting to a server that restarted under it is asking about.
-	if matches(r.Header.Get("If-None-Match"), sn.etag) {
+	if matches(r.Header.Get("If-None-Match"), snapshot.etag) {
 		w.WriteHeader(http.StatusNotModified)
 		return
 	}
 	if strings.Contains(r.Header.Get("Accept-Encoding"), "gzip") {
 		w.Header().Set("Content-Encoding", "gzip")
-		w.Write(sn.gz)
+		w.Write(snapshot.gzipped)
 		return
 	}
-	w.Write(sn.json)
+	w.Write(snapshot.json)
 }
 
 // matches reports whether an If-None-Match header names this entity. The header is a
@@ -590,7 +590,7 @@ func matches(header, etag string) bool {
 // Implements: REQ-CFG-015, REQ-SRV-004
 func (s *Server) handleConfig(w http.ResponseWriter, _ *http.Request) {
 	s.mu.RLock()
-	cfg := s.cfg
+	settings := s.config
 	s.mu.RUnlock()
 	w.Header().Set("Content-Type", "application/json")
 	json.NewEncoder(w).Encode(struct {
@@ -601,7 +601,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, _ *http.Request) {
 		ConfigFile string `json:"configFile"`
 		LSP        bool   `json:"lsp"`
 		Findings   bool   `json:"findings"`
-	}{cfg.UI, s.editor != "", cfg.Root, cfg.Watch, filepath.Base(cfg.ConfigFile), cfg.LSP, cfg.FindingsEnabled()})
+	}{settings.UI, s.editor != "", settings.Root, settings.Watch, filepath.Base(settings.ConfigFile), settings.LSP, settings.FindingsEnabled()})
 }
 
 // handleSettings saves the browser's view settings into the project config file.
@@ -619,11 +619,11 @@ func (s *Server) handleSettings(w http.ResponseWriter, r *http.Request) {
 	}
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	if err := config.SaveUI(s.cfg.ConfigFile, ui); err != nil {
+	if err := config.SaveUI(s.config.ConfigFile, ui); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	s.cfg.UI = ui
+	s.config.UI = ui
 	w.WriteHeader(http.StatusNoContent)
 }
 
@@ -642,8 +642,8 @@ var mediaTypes = map[string]string{
 
 // mediaType is the type a file's bytes are served under: its media type if it is one
 // the panel previews, and application/octet-stream otherwise.
-func mediaType(rel string) string {
-	if t, ok := mediaTypes[strings.ToLower(filepath.Ext(rel))]; ok {
+func mediaType(relative string) string {
+	if t, ok := mediaTypes[strings.ToLower(filepath.Ext(relative))]; ok {
 		return t
 	}
 	return "application/octet-stream"
@@ -664,35 +664,35 @@ func mediaType(rel string) string {
 //
 // Implements: REQ-SEC-006, REQ-SRV-003, REQ-MAP-062
 func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
-	rel := r.URL.Query().Get("path")
-	if _, ok := s.current().files[rel]; !ok {
+	relative := r.URL.Query().Get("path")
+	if _, ok := s.current().files[relative]; !ok {
 		http.NotFound(w, r)
 		return
 	}
-	f, err := os.Open(filepath.Join(s.root, filepath.FromSlash(rel)))
+	f, err := os.Open(filepath.Join(s.root, filepath.FromSlash(relative)))
 	if err != nil {
 		http.NotFound(w, r)
 		return
 	}
 	defer f.Close()
-	st, err := f.Stat()
+	fileInfo, err := f.Stat()
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	raw := r.URL.Query().Get("as") == "raw"
 	limit := int64(maxServedFile)
-	if raw && mediaType(rel) != "application/octet-stream" {
+	if raw && mediaType(relative) != "application/octet-stream" {
 		limit = maxServedMedia
 	}
-	if st.Size() > limit {
+	if fileInfo.Size() > limit {
 		http.Error(w, "file too large to display", http.StatusRequestEntityTooLarge)
 		return
 	}
 	h := w.Header()
 	h.Set("Cache-Control", "no-store")
 	if raw {
-		h.Set("Content-Type", mediaType(rel))
+		h.Set("Content-Type", mediaType(relative))
 		h.Set("Content-Security-Policy", "default-src 'none'; sandbox")
 		http.ServeContent(w, r, "", time.Time{}, f)
 		return
@@ -700,7 +700,7 @@ func (s *Server) handleFile(w http.ResponseWriter, r *http.Request) {
 	head := make([]byte, 8000)
 	n, _ := io.ReadFull(f, head)
 	if bytes.IndexByte(head[:n], 0) >= 0 {
-		h.Set(binaryHeader, mediaType(rel))
+		h.Set(binaryHeader, mediaType(relative))
 		http.Error(w, "binary file", http.StatusUnsupportedMediaType)
 		return
 	}
@@ -724,9 +724,9 @@ func (s *Server) handToHexer(path string) bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	sent := false
-	for ch := range s.hexers {
+	for channel := range s.hexers {
 		select {
-		case ch <- event{name: "open", data: data, seq: s.seq}:
+		case channel <- event{name: "open", data: data, sequence: s.sequence}:
 			sent = true
 		default: // a stream too far behind to take it is not one to rely on
 		}
@@ -743,19 +743,19 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "streaming unsupported", http.StatusInternalServerError)
 		return
 	}
-	ch := make(chan event, 8)
+	channel := make(chan event, 8)
 	hexer := r.URL.Query().Get("opens") == "hex"
 	s.mu.Lock()
-	s.subs[ch] = struct{}{}
+	s.subs[channel] = struct{}{}
 	if hexer {
-		s.hexers[ch] = struct{}{}
+		s.hexers[channel] = struct{}{}
 	}
-	version, etag, seq := s.snap.version, s.snap.etag, s.seq
+	version, etag, sequence := s.snap.version, s.snap.etag, s.sequence
 	s.mu.Unlock()
 	defer func() {
 		s.mu.Lock()
-		delete(s.subs, ch)
-		delete(s.hexers, ch)
+		delete(s.subs, channel)
+		delete(s.hexers, channel)
 		s.mu.Unlock()
 	}()
 
@@ -767,11 +767,11 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	// reconnection from a first connection - so it either refetches everything or
 	// carries on listening, never learning what it slept through.
 	hello, _ := json.Marshal(struct {
-		Version int    `json:"version"`
-		ETag    string `json:"etag"`
-		Seq     uint64 `json:"seq"`
-		Resumed bool   `json:"resumed"`
-	}{version, etag, seq, resumed(r, seq)})
+		Version  int    `json:"version"`
+		ETag     string `json:"etag"`
+		Sequence uint64 `json:"seq"`
+		Resumed  bool   `json:"resumed"`
+	}{version, etag, sequence, resumed(r, sequence)})
 	fmt.Fprintf(w, "retry: 2000\nevent: hello\ndata: %s\n\n", hello)
 	flusher.Flush()
 
@@ -779,8 +779,8 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 	defer tick.Stop()
 	for {
 		select {
-		case ev := <-ch:
-			fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", ev.seq, ev.name, ev.data)
+		case event := <-channel:
+			fmt.Fprintf(w, "id: %d\nevent: %s\ndata: %s\n\n", event.sequence, event.name, event.data)
 		case <-tick.C:
 			fmt.Fprint(w, ": ping\n\n")
 		case <-r.Context().Done():
@@ -798,9 +798,9 @@ func (s *Server) handleEvents(w http.ResponseWriter, r *http.Request) {
 // talking to a server restarted under it, is not resumed and refetches.
 //
 // Implements: REQ-SRV-016
-func resumed(r *http.Request, seq uint64) bool {
+func resumed(r *http.Request, sequence uint64) bool {
 	last, err := strconv.ParseUint(strings.TrimSpace(r.Header.Get("Last-Event-ID")), 10, 64)
-	return err == nil && last == seq
+	return err == nil && last == sequence
 }
 
 // handleResolution serves how the analysis reached its dependencies: JSON by default,
@@ -810,24 +810,24 @@ func resumed(r *http.Request, seq uint64) bool {
 // Implements: REQ-TRC-011, REQ-TRC-012, REQ-TRC-013
 func (s *Server) handleResolution(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
-	rep := s.resolution
+	report := s.resolution
 	s.mu.RUnlock()
-	if rep == nil {
+	if report == nil {
 		http.Error(w, "no resolution report: this build served a graph it did not analyze", http.StatusNotFound)
 		return
 	}
-	var buf bytes.Buffer
+	var buffer bytes.Buffer
 	var err error
 	switch r.URL.Query().Get("format") {
 	case "", "json":
 		w.Header().Set("Content-Type", "application/json")
-		err = json.NewEncoder(&buf).Encode(rep)
+		err = json.NewEncoder(&buffer).Encode(report)
 	case "md":
 		w.Header().Set("Content-Type", "text/markdown; charset=utf-8")
-		err = rep.Markdown(&buf)
+		err = report.Markdown(&buffer)
 	case "text":
 		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		err = rep.Text(&buf)
+		err = report.Text(&buffer)
 	default:
 		http.Error(w, "format must be one of json, md, text", http.StatusBadRequest)
 		return
@@ -836,16 +836,16 @@ func (s *Server) handleResolution(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	w.Write(buf.Bytes())
+	w.Write(buffer.Bytes())
 }
 
 // Implements: REQ-EXP-005, REQ-EXP-009, REQ-HIST-015
 func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 	format := r.URL.Query().Get("format")
 	if format == "html" {
-		sn := s.current()
+		snapshot := s.current()
 		s.mu.RLock()
-		ui := s.cfg.UI
+		ui := s.config.UI
 		s.mu.RUnlock()
 		// The browser sends the view it is showing, so the exported page opens like
 		// the map on screen instead of like the config file.
@@ -857,16 +857,16 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 			}
 			ui = from
 		}
-		var buf bytes.Buffer
-		if err := web.WriteStatic(&buf, sn.g, ui, s.root, map[string]any{
+		var buffer bytes.Buffer
+		if err := web.WriteStatic(&buffer, snapshot.g, ui, s.root, map[string]any{
 			"history": s.Lazy("history"), "references": s.Lazy("references"), "findings": s.Lazy("findings"),
 		}); err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
 		}
 		w.Header().Set("Content-Type", "text/html; charset=utf-8")
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", sn.g.Root+".html"))
-		w.Write(buf.Bytes())
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", snapshot.g.Root+".html"))
+		w.Write(buffer.Bytes())
 		return
 	}
 	ct, ok := export.ContentTypes[format]
@@ -874,19 +874,19 @@ func (s *Server) handleExport(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "format must be one of "+strings.Join(export.Formats, ", "), http.StatusBadRequest)
 		return
 	}
-	sn := s.current()
-	g := sn.g
-	if refs, ok := s.Lazy("references").(*References); ok && refs != nil {
-		g = export.WithEdges(g, refs.Edges)
+	snapshot := s.current()
+	g := snapshot.g
+	if references, ok := s.Lazy("references").(*References); ok && references != nil {
+		g = export.WithEdges(g, references.Edges)
 	}
-	var buf bytes.Buffer
-	if err := export.Write(&buf, g, format); err != nil {
+	var buffer bytes.Buffer
+	if err := export.Write(&buffer, g, format); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	w.Header().Set("Content-Type", ct)
-	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", sn.g.Root+export.Extensions[format]))
-	w.Write(buf.Bytes())
+	w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", snapshot.g.Root+export.Extensions[format]))
+	w.Write(buffer.Bytes())
 }
 
 // openedHeader says how a file asked for in a hex editor was opened after all:
@@ -904,20 +904,20 @@ const openedHeader = "X-Depphunter-Opened"
 //
 // Implements: REQ-SEC-008, REQ-SRV-005, REQ-EXT-034
 func (s *Server) handleOpen(w http.ResponseWriter, r *http.Request) {
-	var req struct {
+	var request struct {
 		Path string `json:"path"`
 		Line int    `json:"line"`
 		Hex  bool   `json:"hex"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 4096)).Decode(&request); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	if _, ok := s.current().files[req.Path]; !ok {
+	if _, ok := s.current().files[request.Path]; !ok {
 		http.NotFound(w, r)
 		return
 	}
-	if req.Hex && s.handToHexer(req.Path) {
+	if request.Hex && s.handToHexer(request.Path) {
 		w.WriteHeader(http.StatusAccepted)
 		return
 	}
@@ -925,17 +925,17 @@ func (s *Server) handleOpen(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "no editor configured (set --editor or DEPPHUNTER_EDITOR)", http.StatusNotImplemented)
 		return
 	}
-	if req.Hex {
+	if request.Hex {
 		w.Header().Set(openedHeader, "as-is")
 	}
-	cmd, err := editor.Command(s.editor, filepath.Join(s.root, filepath.FromSlash(req.Path)), req.Line)
+	command, err := editor.Command(s.editor, filepath.Join(s.root, filepath.FromSlash(request.Path)), request.Line)
 	if err == nil {
-		err = cmd.Start()
+		err = command.Start()
 	}
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
-	go cmd.Wait() // reap the editor launcher
+	go command.Wait() // reap the editor launcher
 	w.WriteHeader(http.StatusNoContent)
 }

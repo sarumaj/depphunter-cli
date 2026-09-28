@@ -47,9 +47,9 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 		"img.bin":                                                "\x00\x01\x02",
 	}
 	for p, c := range files {
-		abs := filepath.Join(root, p)
-		os.MkdirAll(filepath.Dir(abs), 0o755)
-		os.WriteFile(abs, []byte(c), 0o644)
+		absolute := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(absolute), 0o755)
+		os.WriteFile(absolute, []byte(c), 0o644)
 	}
 
 	got, err := Scan(context.Background(), root, Options{Exclude: []string{"gen"}})
@@ -63,10 +63,10 @@ func TestScanMeasuresAndExcludes(t *testing.T) {
 	if len(byPath) != 3 {
 		t.Fatalf("got files %v, want a.go, no_newline.py, img.bin", byPath)
 	}
-	if f := byPath["a.go"]; f.LOC != 3 || f.Lang != "Go" {
+	if f := byPath["a.go"]; f.LOC != 3 || f.Language != "Go" {
 		t.Errorf("a.go: %+v", f)
 	}
-	if f := byPath["no_newline.py"]; f.LOC != 2 || f.Lang != "Python" {
+	if f := byPath["no_newline.py"]; f.LOC != 2 || f.Language != "Python" {
 		t.Errorf("no_newline.py: %+v", f)
 	}
 	if f := byPath["img.bin"]; !f.Binary || f.LOC != 0 {
@@ -140,9 +140,9 @@ func TestScanSkipsGeneratedBesideManifest(t *testing.T) {
 		"pup/spec/fixtures/modules/stdlib/manifests/init.pp":    "class stdlib {}\n",
 		"web/modules/app.js":                                    "export {}\n",
 	} {
-		abs := filepath.Join(root, p)
-		os.MkdirAll(filepath.Dir(abs), 0o755)
-		os.WriteFile(abs, []byte(c), 0o644)
+		absolute := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(absolute), 0o755)
+		os.WriteFile(absolute, []byte(c), 0o644)
 	}
 	got, err := Scan(context.Background(), root, Options{})
 	if err != nil {
@@ -171,9 +171,9 @@ func TestScanSkipsSymlinksInGit(t *testing.T) {
 	if err := os.Symlink(outside, filepath.Join(root, "notes.txt")); err != nil {
 		t.Skip("symlinks unavailable:", err)
 	}
-	for _, args := range [][]string{{"init", "-q"}, {"add", "."}} {
-		if out, err := exec.Command("git", append([]string{"-C", root}, args...)...).CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %v\n%s", args, err, out)
+	for _, arguments := range [][]string{{"init", "-q"}, {"add", "."}} {
+		if out, err := exec.Command("git", append([]string{"-C", root}, arguments...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", arguments, err, out)
 		}
 	}
 
@@ -225,20 +225,20 @@ func TestScanListsWhatGitDoes(t *testing.T) {
 		t.Skip("no git")
 	}
 	root := t.TempDir()
-	git := func(args ...string) {
+	git := func(arguments ...string) {
 		t.Helper()
 		// No user configuration is assumed: identity and signing are set here.
 		base := []string{"-C", root, "-c", "user.name=test", "-c", "user.email=test@example.com",
 			"-c", "commit.gpgsign=false", "-c", "core.autocrlf=false"}
-		if out, err := exec.Command("git", append(base, args...)...).CombinedOutput(); err != nil {
-			t.Fatalf("git %v: %v\n%s", args, err, out)
+		if out, err := exec.Command("git", append(base, arguments...)...).CombinedOutput(); err != nil {
+			t.Fatalf("git %v: %v\n%s", arguments, err, out)
 		}
 	}
 	write := func(p, content string) {
 		t.Helper()
-		abs := filepath.Join(root, filepath.FromSlash(p))
-		os.MkdirAll(filepath.Dir(abs), 0o755)
-		if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
+		absolute := filepath.Join(root, filepath.FromSlash(p))
+		os.MkdirAll(filepath.Dir(absolute), 0o755)
+		if err := os.WriteFile(absolute, []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -296,17 +296,17 @@ func TestScanMeasuresEveryFilesSize(t *testing.T) {
 		t.Fatalf("got %d files, want %d", len(got), len(files))
 	}
 	for _, f := range got {
-		st, err := os.Stat(f.Abs)
+		fileInfo, err := os.Stat(f.AbsolutePath)
 		if err != nil {
 			t.Fatal(err)
 		}
-		if f.Size != st.Size() || f.Size != int64(len(files[f.Path])) {
-			t.Errorf("%s: size %d, want %d", f.Path, f.Size, st.Size())
+		if f.Size != fileInfo.Size() || f.Size != int64(len(files[f.Path])) {
+			t.Errorf("%s: size %d, want %d", f.Path, f.Size, fileInfo.Size())
 		}
 	}
 }
 
-// A script without an extension is labelled by the shell its "#!" line runs, read
+// A script without an extension is labeled by the shell its "#!" line runs, read
 // through env; other interpreters are recorded but label nothing.
 //
 // Verifies: REQ-LANG-015, REQ-SHELL-001
@@ -321,9 +321,9 @@ func TestScanReadsShebangs(t *testing.T) {
 		"bin/env-only": "#!/usr/bin/env\n",
 	}
 	for p, c := range files {
-		abs := filepath.Join(root, p)
-		os.MkdirAll(filepath.Dir(abs), 0o755)
-		os.WriteFile(abs, []byte(c), 0o644)
+		absolute := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(absolute), 0o755)
+		os.WriteFile(absolute, []byte(c), 0o644)
 	}
 	got, err := Scan(context.Background(), root, Options{})
 	if err != nil {
@@ -338,8 +338,8 @@ func TestScanReadsShebangs(t *testing.T) {
 		"bin/env-only": {"", ""},
 	}
 	for _, f := range got {
-		if w := want[f.Path]; f.Interpreter != w[0] || f.Lang != w[1] {
-			t.Errorf("%s: interpreter %q, lang %q; want %q, %q", f.Path, f.Interpreter, f.Lang, w[0], w[1])
+		if w := want[f.Path]; f.Interpreter != w[0] || f.Language != w[1] {
+			t.Errorf("%s: interpreter %q, lang %q; want %q, %q", f.Path, f.Interpreter, f.Language, w[0], w[1])
 		}
 	}
 }
@@ -361,9 +361,9 @@ func TestScanTellsQtLinguistFromTypeScript(t *testing.T) {
 		"src/declarations.cts": "<?xml version=\"1.0\"?>\n",
 	}
 	for p, c := range files {
-		abs := filepath.Join(root, p)
-		os.MkdirAll(filepath.Dir(abs), 0o755)
-		os.WriteFile(abs, []byte(c), 0o644)
+		absolute := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(absolute), 0o755)
+		os.WriteFile(absolute, []byte(c), 0o644)
 	}
 	got, err := Scan(context.Background(), root, Options{})
 	if err != nil {
@@ -381,8 +381,8 @@ func TestScanTellsQtLinguistFromTypeScript(t *testing.T) {
 		"src/declarations.cts": "TypeScript",
 	}
 	for _, f := range got {
-		if f.Lang != want[f.Path] {
-			t.Errorf("%s: lang %q, want %q", f.Path, f.Lang, want[f.Path])
+		if f.Language != want[f.Path] {
+			t.Errorf("%s: lang %q, want %q", f.Path, f.Language, want[f.Path])
 		}
 	}
 }
@@ -410,9 +410,9 @@ func TestScanTellsObjectiveC(t *testing.T) {
 		"App/Store.mm":     "x = 1;\n",
 	}
 	for p, c := range files {
-		abs := filepath.Join(root, p)
-		os.MkdirAll(filepath.Dir(abs), 0o755)
-		os.WriteFile(abs, []byte(c), 0o644)
+		absolute := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(absolute), 0o755)
+		os.WriteFile(absolute, []byte(c), 0o644)
 	}
 	got, err := Scan(context.Background(), root, Options{})
 	if err != nil {
@@ -426,8 +426,8 @@ func TestScanTellsObjectiveC(t *testing.T) {
 		"App/Store.mm": "Objective-C++",
 	}
 	for _, f := range got {
-		if f.Lang != want[f.Path] {
-			t.Errorf("%s: lang %q, want %q", f.Path, f.Lang, want[f.Path])
+		if f.Language != want[f.Path] {
+			t.Errorf("%s: lang %q, want %q", f.Path, f.Language, want[f.Path])
 		}
 	}
 }
@@ -462,9 +462,9 @@ func TestScanTellsPerl(t *testing.T) {
 		"Makefile.PL":       "use ExtUtils::MakeMaker;\n",
 	}
 	for p, c := range files {
-		abs := filepath.Join(root, p)
-		os.MkdirAll(filepath.Dir(abs), 0o755)
-		os.WriteFile(abs, []byte(c), 0o644)
+		absolute := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(absolute), 0o755)
+		os.WriteFile(absolute, []byte(c), 0o644)
 	}
 	got, err := Scan(context.Background(), root, Options{})
 	if err != nil {
@@ -480,8 +480,8 @@ func TestScanTellsPerl(t *testing.T) {
 		"dist.ini": "Dist::Zilla", "Makefile.PL": "Perl",
 	}
 	for _, f := range got {
-		if f.Lang != want[f.Path] {
-			t.Errorf("%s: lang %q, want %q", f.Path, f.Lang, want[f.Path])
+		if f.Language != want[f.Path] {
+			t.Errorf("%s: lang %q, want %q", f.Path, f.Language, want[f.Path])
 		}
 	}
 }
@@ -508,9 +508,9 @@ func TestScanTellsFSharpFromShaders(t *testing.T) {
 		"src/paket.references": "Argu\n",
 	}
 	for p, c := range files {
-		abs := filepath.Join(root, p)
-		os.MkdirAll(filepath.Dir(abs), 0o755)
-		os.WriteFile(abs, []byte(c), 0o644)
+		absolute := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(absolute), 0o755)
+		os.WriteFile(absolute, []byte(c), 0o644)
 	}
 	got, err := Scan(context.Background(), root, Options{})
 	if err != nil {
@@ -523,8 +523,8 @@ func TestScanTellsFSharpFromShaders(t *testing.T) {
 		"paket.dependencies": "Paket", "paket.lock": "Paket", "src/paket.references": "Paket",
 	}
 	for _, f := range got {
-		if f.Lang != want[f.Path] {
-			t.Errorf("%s: lang %q, want %q", f.Path, f.Lang, want[f.Path])
+		if f.Language != want[f.Path] {
+			t.Errorf("%s: lang %q, want %q", f.Path, f.Language, want[f.Path])
 		}
 	}
 }
@@ -547,9 +547,9 @@ func TestScanSniffsGLSLExtensions(t *testing.T) {
 		"shaders/common.wgsl": "fn f() {}\n",
 	}
 	for p, c := range files {
-		abs := filepath.Join(root, p)
-		os.MkdirAll(filepath.Dir(abs), 0o755)
-		os.WriteFile(abs, []byte(c), 0o644)
+		absolute := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(absolute), 0o755)
+		os.WriteFile(absolute, []byte(c), 0o644)
 	}
 	got, err := Scan(context.Background(), root, Options{})
 	if err != nil {
@@ -560,8 +560,8 @@ func TestScanSniffsGLSLExtensions(t *testing.T) {
 		"shaders/tone.frag": "GLSL", "shaders/common.wgsl": "WGSL",
 	}
 	for _, f := range got {
-		if f.Lang != want[f.Path] {
-			t.Errorf("%s: lang %q, want %q", f.Path, f.Lang, want[f.Path])
+		if f.Language != want[f.Path] {
+			t.Errorf("%s: lang %q, want %q", f.Path, f.Language, want[f.Path])
 		}
 	}
 }
@@ -591,9 +591,9 @@ func TestScanTellsDFromDepfilesAndDTrace(t *testing.T) {
 		"dtrace/pid.d":      "pid$target::malloc:entry\n/arg0 > 100/\n{ }\n",
 	}
 	for p, c := range files {
-		abs := filepath.Join(root, p)
-		os.MkdirAll(filepath.Dir(abs), 0o755)
-		os.WriteFile(abs, []byte(c), 0o644)
+		absolute := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(absolute), 0o755)
+		os.WriteFile(absolute, []byte(c), 0o644)
 	}
 	got, err := Scan(context.Background(), root, Options{})
 	if err != nil {
@@ -610,8 +610,8 @@ func TestScanTellsDFromDepfilesAndDTrace(t *testing.T) {
 		t.Errorf("scanned %d files, want %d", len(got), len(want))
 	}
 	for _, f := range got {
-		if f.Lang != want[f.Path] {
-			t.Errorf("%s: lang %q, want %q", f.Path, f.Lang, want[f.Path])
+		if f.Language != want[f.Path] {
+			t.Errorf("%s: lang %q, want %q", f.Path, f.Language, want[f.Path])
 		}
 	}
 }
@@ -631,9 +631,9 @@ func TestScanTellsFortranFromForth(t *testing.T) {
 		"forth/defs.for":  ": cube dup dup * * ;\n",
 	}
 	for p, c := range files {
-		abs := filepath.Join(root, p)
-		os.MkdirAll(filepath.Dir(abs), 0o755)
-		os.WriteFile(abs, []byte(c), 0o644)
+		absolute := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(absolute), 0o755)
+		os.WriteFile(absolute, []byte(c), 0o644)
 	}
 	got, err := Scan(context.Background(), root, Options{})
 	if err != nil {
@@ -644,8 +644,8 @@ func TestScanTellsFortranFromForth(t *testing.T) {
 		"forth/words.f": "Forth", "forth/defs.for": "Forth",
 	}
 	for _, f := range got {
-		if f.Lang != want[f.Path] {
-			t.Errorf("%s: lang %q, want %q", f.Path, f.Lang, want[f.Path])
+		if f.Language != want[f.Path] {
+			t.Errorf("%s: lang %q, want %q", f.Path, f.Language, want[f.Path])
 		}
 	}
 }
@@ -669,9 +669,9 @@ func TestScanTellsRacketFromScheme(t *testing.T) {
 		"bin/shop":          "#!/usr/bin/env racket\n#lang racket/base\n",
 	}
 	for p, c := range files {
-		abs := filepath.Join(root, p)
-		os.MkdirAll(filepath.Dir(abs), 0o755)
-		os.WriteFile(abs, []byte(c), 0o644)
+		absolute := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(absolute), 0o755)
+		os.WriteFile(absolute, []byte(c), 0o644)
 	}
 	got, err := Scan(context.Background(), root, Options{})
 	if err != nil {
@@ -683,8 +683,8 @@ func TestScanTellsRacketFromScheme(t *testing.T) {
 		"racket/main.rkt": "Racket", "docs/guide.scrbl": "Scribble", "bin/shop": "Racket",
 	}
 	for _, f := range got {
-		if f.Lang != want[f.Path] {
-			t.Errorf("%s: lang %q, want %q", f.Path, f.Lang, want[f.Path])
+		if f.Language != want[f.Path] {
+			t.Errorf("%s: lang %q, want %q", f.Path, f.Language, want[f.Path])
 		}
 	}
 }
@@ -709,9 +709,9 @@ func TestScanTellsOpenCLFromLisp(t *testing.T) {
 		"ocicl.csv":         "alexandria, ghcr.io/ocicl/alexandria@sha256:ab\n",
 	}
 	for p, c := range files {
-		abs := filepath.Join(root, p)
-		os.MkdirAll(filepath.Dir(abs), 0o755)
-		os.WriteFile(abs, []byte(c), 0o644)
+		absolute := filepath.Join(root, p)
+		os.MkdirAll(filepath.Dir(absolute), 0o755)
+		os.WriteFile(absolute, []byte(c), 0o644)
 	}
 	got, err := Scan(context.Background(), root, Options{})
 	if err != nil {
@@ -723,8 +723,8 @@ func TestScanTellsOpenCLFromLisp(t *testing.T) {
 		"qlfile": "Qlot", "qlfile.lock": "Qlot", "ocicl.csv": "ocicl",
 	}
 	for _, f := range got {
-		if f.Lang != want[f.Path] {
-			t.Errorf("%s: lang %q, want %q", f.Path, f.Lang, want[f.Path])
+		if f.Language != want[f.Path] {
+			t.Errorf("%s: lang %q, want %q", f.Path, f.Language, want[f.Path])
 		}
 	}
 }

@@ -32,33 +32,33 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-CS-005
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
-	ex := &lang.Extraction{}
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
+	extraction := &lang.Extraction{}
 	var symbols lang.SymbolSet
-	for _, st := range scanStatements(string(src)) {
+	for _, statement := range scanStatements(string(source)) {
 		switch {
-		case (st.scope == "" || st.scope == "namespace") && usingDecl.MatchString(st.text):
-			if ns := usingNamespace(st.text); ns != "" {
-				ex.Imports = append(ex.Imports, lang.RawImport{Spec: st.text, Module: ns, Line: st.line})
+		case (statement.scope == "" || statement.scope == "namespace") && usingDeclaration.MatchString(statement.text):
+			if namespace := usingNamespace(statement.text); namespace != "" {
+				extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: statement.text, Module: namespace, Line: statement.line})
 			}
-		case typeDecl.MatchString(st.text):
-			m := typeDecl.FindStringSubmatch(st.text)
+		case typeDeclaration.MatchString(statement.text):
+			m := typeDeclaration.FindStringSubmatch(statement.text)
 			kind := m[1]
 			if strings.HasPrefix(kind, "record") {
 				kind = "record"
 			}
-			symbols.Add(m[2], kind, st.line)
-		case delegateDecl.MatchString(st.text):
-			symbols.Add(delegateDecl.FindStringSubmatch(st.text)[1], "delegate", st.line)
-		case st.scope == "type":
+			symbols.Add(m[2], kind, statement.line)
+		case delegateDeclaration.MatchString(statement.text):
+			symbols.Add(delegateDeclaration.FindStringSubmatch(statement.text)[1], "delegate", statement.line)
+		case statement.scope == "type":
 			// A member named like its type is a constructor, not a method.
-			if m := method.FindStringSubmatch(st.text); m != nil && !notNames[m[1]] && m[1] != st.owner {
-				symbols.Add(st.owner+"."+m[1], "method", st.line)
+			if m := method.FindStringSubmatch(statement.text); m != nil && !notNames[m[1]] && m[1] != statement.owner {
+				symbols.Add(statement.owner+"."+m[1], "method", statement.line)
 			}
 		}
 	}
-	ex.Symbols = symbols.List()
-	return ex, nil
+	extraction.Symbols = symbols.List()
+	return extraction, nil
 }
 
 // usingNamespace extracts the namespace from "global using static A.B;",

@@ -73,19 +73,19 @@ func (s *Server) handleSession(w http.ResponseWriter, _ *http.Request) {
 //
 // Implements: REQ-SRV-010, REQ-SRV-012
 func (s *Server) handleSelection(w http.ResponseWriter, r *http.Request) {
-	var req struct {
+	var request struct {
 		ID     string `json:"id"`
 		Origin string `json:"origin"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 8<<10)).Decode(&request); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
 	s.mu.Lock()
-	changed := s.selected != req.ID
-	s.selected = req.ID
+	changed := s.selected != request.ID
+	s.selected = request.ID
 	if changed {
-		s.broadcast(event{name: "selection", data: mustJSON(map[string]string{"id": req.ID, "origin": req.Origin})})
+		s.broadcast(event{name: "selection", data: mustJSON(map[string]string{"id": request.ID, "origin": request.Origin})})
 	}
 	s.mu.Unlock()
 	w.WriteHeader(http.StatusNoContent)
@@ -97,15 +97,15 @@ func (s *Server) handleSelection(w http.ResponseWriter, r *http.Request) {
 //
 // Implements: REQ-SRV-011, REQ-SRV-012
 func (s *Server) handlePack(w http.ResponseWriter, r *http.Request) {
-	var req struct {
+	var request struct {
 		Items  []PackItem `json:"items"`
 		Origin string     `json:"origin"`
 	}
-	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&req); err != nil {
+	if err := json.NewDecoder(http.MaxBytesReader(w, r.Body, 1<<20)).Decode(&request); err != nil {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	items := req.Items
+	items := request.Items
 	for i := range items {
 		if items[i].ID == "" {
 			http.Error(w, "every backpack item needs an id", http.StatusBadRequest)
@@ -119,7 +119,7 @@ func (s *Server) handlePack(w http.ResponseWriter, r *http.Request) {
 	changed := !samePack(s.pack, items)
 	s.pack = items
 	if changed {
-		s.broadcast(event{name: "backpack", data: mustJSON(map[string]any{"count": len(items), "origin": req.Origin})})
+		s.broadcast(event{name: "backpack", data: mustJSON(map[string]any{"count": len(items), "origin": request.Origin})})
 	}
 	s.mu.Unlock()
 	w.WriteHeader(http.StatusNoContent)
@@ -148,8 +148,8 @@ func (s *Server) handlePackExport(w http.ResponseWriter, r *http.Request) {
 		return items[i].CaughtAt > items[j].CaughtAt
 	})
 
-	filename := func(ext string) {
-		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name+"-backpack"+ext))
+	filename := func(extension string) {
+		w.Header().Set("Content-Disposition", fmt.Sprintf("attachment; filename=%q", name+"-backpack"+extension))
 	}
 	switch format {
 	case "json":

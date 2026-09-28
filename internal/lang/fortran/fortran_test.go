@@ -23,22 +23,22 @@ import (
 // form .f file and a Forth file. testdata/cmake is a CMake project without fpm.
 
 var (
-	stdlibMeta = lang.Target{Ecosystem: ecoFpm, Package: "stdlib", Version: "*", Floating: true}
-	jsonF      = lang.Target{Ecosystem: ecoFpm, Package: "json-fortran", Version: "89abcdef0123456789abcdef0123456789abcdef", Requested: "8.3.0"}
-	tomlF      = lang.Target{Ecosystem: ecoFpm, Package: "toml-f", Version: "d7b892b1d074b7cfc5d75c3e0eb36ebc1f7958c1", Pinned: true}
-	fancy      = lang.Target{Ecosystem: ecoFpm, Package: "fancy", Version: "0123456789abcdef0123456789abcdef01234567", Requested: "main", Floating: true, Origin: "https://git.acme.corp/fortran/fancy.git"}
-	plotter    = lang.Target{Ecosystem: ecoFpm, Package: "plotter", Version: "1.2.0", Pinned: true}
-	testDrive  = lang.Target{Ecosystem: ecoFpm, Package: "test-drive", Floating: true}
+	stdlibMeta = lang.Target{Ecosystem: ecosystemFpm, Package: "stdlib", Version: "*", Floating: true}
+	jsonF      = lang.Target{Ecosystem: ecosystemFpm, Package: "json-fortran", Version: "89abcdef0123456789abcdef0123456789abcdef", Requested: "8.3.0"}
+	tomlF      = lang.Target{Ecosystem: ecosystemFpm, Package: "toml-f", Version: "d7b892b1d074b7cfc5d75c3e0eb36ebc1f7958c1", Pinned: true}
+	fancy      = lang.Target{Ecosystem: ecosystemFpm, Package: "fancy", Version: "0123456789abcdef0123456789abcdef01234567", Requested: "main", Floating: true, Origin: "https://git.acme.corp/fortran/fancy.git"}
+	plotter    = lang.Target{Ecosystem: ecosystemFpm, Package: "plotter", Version: "1.2.0", Pinned: true}
+	testDrive  = lang.Target{Ecosystem: ecosystemFpm, Package: "test-drive", Floating: true}
 	mpi        = lang.Target{Ecosystem: "c-external", Package: "mpi", Unresolved: true}
 	netcdf     = lang.Target{Ecosystem: "c-external", Package: "netcdf", Unresolved: true}
 )
 
-func std(name string) lang.Target { return lang.Target{Ecosystem: ecoStd, Package: name} }
+func std(name string) lang.Target { return lang.Target{Ecosystem: ecosystemStd, Package: name} }
 
 // Verifies: REQ-FORTRAN-002, REQ-FORTRAN-004, REQ-FORTRAN-006, REQ-FORTRAN-007, REQ-FORTRAN-008, REQ-FORTRAN-011
 func TestImports(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	langtest.CheckImports(t, res["src/shop.f90"], map[string]lang.Target{
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	langtest.CheckImports(t, results["src/shop.f90"], map[string]lang.Target{
 		"use, intrinsic :: iso_fortran_env": std("iso_fortran_env"),
 		"use iso_c_binding":                 std("iso_c_binding"),
 		"use shop_cart":                     {Local: "src/cart.F90"}, // MODULE Shop_Cart: names are case-insensitive
@@ -48,43 +48,43 @@ func TestImports(t *testing.T) {
 		"use fancy_core":                    fancy,                   // defined by what fpm fetched
 		"use mpi_f08":                       mpi,                     // the C library the cpp plugin names
 		"use netcdf":                        netcdf,
-		"use vendor_mod":                    {Ecosystem: ecoExternal, Package: "vendor_mod"}, // [build] external-modules
+		"use vendor_mod":                    {Ecosystem: ecosystemExternal, Package: "vendor_mod"}, // [build] external-modules
 		"use plotter_axes":                  plotter,
 		"use widgets":                       {Local: "libs/widgets/src/widgets.f90"},
-		"use nothere_mod":                   {Ecosystem: ecoExternal, Package: "nothere_mod", Unresolved: true},
+		"use nothere_mod":                   {Ecosystem: ecosystemExternal, Package: "nothere_mod", Unresolved: true},
 		"use shop_missing":                  {}, // the package's own module, missing
-		"use, non_intrinsic :: iso_varying_string": {Ecosystem: ecoExternal, Package: "iso_varying_string", Unresolved: true},
+		"use, non_intrinsic :: iso_varying_string": {Ecosystem: ecosystemExternal, Package: "iso_varying_string", Unresolved: true},
 		"use omp_lib":           std("openmp"), // !$ OpenMP conditional compilation
 		"include 'shop.inc'":    {Local: "src/shop.inc"},
 		"include 'common.inc'":  {Local: "include/common.inc"}, // [library] include-dir
 		"include 'mpif.h'":      mpi,
 		"include 'nowhere.inc'": {},
 	})
-	langtest.CheckImports(t, res["src/cart.F90"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/cart.F90"], map[string]lang.Target{
 		`#include "config.h"`:   {Local: "src/config.h"},
 		"#include <petscsys.h>": {Ecosystem: "c-external", Package: "petscsys", Unresolved: true},
 		"use mpi":               mpi, // both branches of #ifdef are read
 	})
-	langtest.CheckImports(t, res["src/cart_impl.f90"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/cart_impl.f90"], map[string]lang.Target{
 		"submodule (shop_cart)": {Local: "src/cart.F90"},
 	})
-	langtest.CheckImports(t, res["src/cart_more.f90"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/cart_more.f90"], map[string]lang.Target{
 		"submodule (shop_cart:cart_impl)": {Local: "src/cart_impl.f90"}, // the parent submodule
 		"use testdrive":                   testDrive,
 	})
-	langtest.CheckImports(t, res["test/check.f90"], map[string]lang.Target{
+	langtest.CheckImports(t, results["test/check.f90"], map[string]lang.Target{
 		"use testdrive": testDrive, // a dev-dependency
 		"use shop_cart": {Local: "src/cart.F90"},
 	})
-	langtest.CheckImports(t, res["app/main.f90"], map[string]lang.Target{
+	langtest.CheckImports(t, results["app/main.f90"], map[string]lang.Target{
 		"use shop": {Local: "src/shop.f90"},
 	})
-	langtest.CheckImports(t, res["legacy/dgemm.f"], map[string]lang.Target{
+	langtest.CheckImports(t, results["legacy/dgemm.f"], map[string]lang.Target{
 		"include 'params.inc'": {Local: "legacy/params.inc"},
 		"use LEGACY_UTIL":      {}, // defined in the same file
 		"use SHOP_CART":        {Local: "src/cart.F90"},
 	})
-	langtest.CheckImports(t, res["legacy/modern.f"], map[string]lang.Target{
+	langtest.CheckImports(t, results["legacy/modern.f"], map[string]lang.Target{
 		"use shop_cart": {Local: "src/cart.F90"},
 	})
 }
@@ -95,22 +95,22 @@ func TestImports(t *testing.T) {
 //
 // Verifies: REQ-FORTRAN-004, REQ-FORTRAN-007
 func TestWithoutFpm(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/cmake")
-	langtest.CheckImports(t, res["src/physics.f90"], map[string]lang.Target{
+	results := langtest.Analyze(t, Plugin{}, "testdata/cmake")
+	langtest.CheckImports(t, results["src/physics.f90"], map[string]lang.Target{
 		"use constants":    {Local: "src/constants.f90"},
-		"use stdlib_math":  {Ecosystem: ecoFpm, Package: "stdlib", Unresolved: true},
+		"use stdlib_math":  {Ecosystem: ecosystemFpm, Package: "stdlib", Unresolved: true},
 		"use mpi":          mpi,
 		"use hdf5":         {Ecosystem: "c-external", Package: "hdf5", Unresolved: true},
 		"use omp_lib":      std("openmp"),
-		"use unknown_mod":  {Ecosystem: ecoExternal, Package: "unknown_mod", Unresolved: true},
+		"use unknown_mod":  {Ecosystem: ecosystemExternal, Package: "unknown_mod", Unresolved: true},
 		"include 'mpif.h'": mpi,
 	})
 }
 
 // Verifies: REQ-FORTRAN-005
 func TestManifest(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	langtest.CheckImports(t, res["fpm.toml"], map[string]lang.Target{
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	langtest.CheckImports(t, results["fpm.toml"], map[string]lang.Target{
 		"stdlib":                        stdlibMeta,
 		"openmp":                        std("openmp"),
 		"mpi":                           mpi,
@@ -125,13 +125,13 @@ func TestManifest(t *testing.T) {
 		"executable shop: app/main.f90": {Local: "app/main.f90"},
 		"test unit: test/check.f90":     {Local: "test/check.f90"},
 		"external-modules: netcdf":      netcdf,
-		"external-modules: vendor_mod":  {Ecosystem: ecoExternal, Package: "vendor_mod"},
+		"external-modules: vendor_mod":  {Ecosystem: ecosystemExternal, Package: "vendor_mod"},
 		"link: lapack":                  {Ecosystem: "c-external", Package: "lapack", Unresolved: true},
 	})
-	langtest.CheckSymbols(t, res["fpm.toml"], map[string]string{"shop": "package"})
+	langtest.CheckSymbols(t, results["fpm.toml"], map[string]string{"shop": "package"})
 	lines := map[string]int{}
-	for _, im := range res["fpm.toml"].Imports {
-		lines[im.Spec] = im.Line
+	for _, imported := range results["fpm.toml"].Imports {
+		lines[imported.Spec] = imported.Line
 	}
 	want := map[string]int{"stdlib": 13, "toml-f": 17, "fancy": 19, "test-drive": 25, "executable shop: app/main.f90": 27, "external-modules: netcdf": 9}
 	for spec, l := range want {
@@ -143,8 +143,8 @@ func TestManifest(t *testing.T) {
 
 // Verifies: REQ-FORTRAN-003
 func TestSymbols(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	langtest.CheckSymbols(t, res["src/shop.f90"], map[string]string{
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	langtest.CheckSymbols(t, results["src/shop.f90"], map[string]string{
 		"shop":            "module",
 		"order_t":         "type",
 		"total":           "interface",
@@ -154,48 +154,48 @@ func TestSymbols(t *testing.T) {
 		"shop.walk.inner": "function",
 		"shop.new_order":  "function", // type(order_t) function
 	})
-	langtest.CheckSymbols(t, res["src/cart.F90"], map[string]string{
+	langtest.CheckSymbols(t, results["src/cart.F90"], map[string]string{
 		"Shop_Cart":             "module",
 		"cart_t":                "type",
 		"operator(+)":           "interface",
 		"Shop_Cart.add":         "function",
 		"Shop_Cart.merge_carts": "function",
 	})
-	langtest.CheckSymbols(t, res["src/cart_impl.f90"], map[string]string{
+	langtest.CheckSymbols(t, results["src/cart_impl.f90"], map[string]string{
 		"cart_impl":          "submodule",
 		"cart_impl.checkout": "function", // module procedure checkout
 	})
-	langtest.CheckSymbols(t, res["src/cart_more.f90"], map[string]string{
+	langtest.CheckSymbols(t, results["src/cart_more.f90"], map[string]string{
 		"cart_more": "submodule", "cart_more.audit": "function",
 	})
-	langtest.CheckSymbols(t, res["app/main.f90"], map[string]string{
+	langtest.CheckSymbols(t, results["app/main.f90"], map[string]string{
 		"shop_app": "program", "shop_app.run": "function",
 	})
-	langtest.CheckSymbols(t, res["legacy/dgemm.f"], map[string]string{
+	langtest.CheckSymbols(t, results["legacy/dgemm.f"], map[string]string{
 		"DGEMM": "function", "DDOT": "function", "LABEL": "function",
 		"SHOPINIT": "block data", "LEGACY_UTIL": "module", "LEGACY": "program",
 	})
-	langtest.CheckSymbols(t, res["legacy/tabbed.for"], map[string]string{"TABBED": "function"})
-	langtest.CheckSymbols(t, res["legacy/modern.f"], map[string]string{"modern_f": "module"})
+	langtest.CheckSymbols(t, results["legacy/tabbed.for"], map[string]string{"TABBED": "function"})
+	langtest.CheckSymbols(t, results["legacy/modern.f"], map[string]string{"modern_f": "module"})
 }
 
 // Forth's .f files and what fpm wrote into build/ are not read.
 //
 // Verifies: REQ-FORTRAN-001
 func TestClaims(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
 	for _, p := range []string{"legacy/words.f", "build/cache.toml", "build/dependencies/fancy/fpm.toml",
 		"build/dependencies/fancy/src/fancy_core.f90", "src/shop.inc", "src/config.h"} {
-		if _, ok := res[p]; ok {
+		if _, ok := results[p]; ok {
 			t.Errorf("%s claimed", p)
 		}
 	}
 	for _, p := range []string{"legacy/dgemm.f", "legacy/tabbed.for", "src/cart.F90", "fpm.toml", "libs/widgets/fpm.toml"} {
-		if _, ok := res[p]; !ok {
+		if _, ok := results[p]; !ok {
 			t.Errorf("%s not claimed", p)
 		}
 	}
-	for _, f := range []*scan.File{{Path: "gleam.toml"}, {Path: "x.fs"}, {Path: "a.f", Lang: "Forth"}, {Path: "a.f90", Binary: true}} {
+	for _, f := range []*scan.File{{Path: "gleam.toml"}, {Path: "x.fs"}, {Path: "a.f", Language: "Forth"}, {Path: "a.f90", Binary: true}} {
 		if (Plugin{}).Claims(f) {
 			t.Errorf("%s claimed", f.Path)
 		}
@@ -216,11 +216,11 @@ func TestTransitive(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tr := r.(lang.Transitive)
-	got := tr.Dependencies(fancy)
+	transitive := r.(lang.Transitive)
+	got := transitive.Dependencies(fancy)
 	want := []lang.Target{
 		jsonF,
-		{Ecosystem: ecoFpm, Package: "leftpad", Version: "fedcba9876543210fedcba9876543210fedcba98"},
+		{Ecosystem: ecosystemFpm, Package: "leftpad", Version: "fedcba9876543210fedcba9876543210fedcba98"},
 	}
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("fancy depends on %+v, want %+v", got, want)
@@ -229,7 +229,7 @@ func TestTransitive(t *testing.T) {
 	if !in.Installed(fancy) || in.Installed(plotter) {
 		t.Error("installed dependencies not told apart")
 	}
-	if tr.Dependencies(plotter) != nil {
+	if transitive.Dependencies(plotter) != nil {
 		t.Error("a dependency fpm did not fetch has dependencies")
 	}
 }
@@ -237,9 +237,9 @@ func TestTransitive(t *testing.T) {
 // Verifies: REQ-FORTRAN-002
 func TestSourceForms(t *testing.T) {
 	cases := []struct {
-		src   string
-		fixed bool
-		want  []string
+		source string
+		fixed  bool
+		want   []string
 	}{
 		// free form: & continuation (a comment between), ; separated statements
 		{"use a, &\n  ! note\n  & only: x; use b\n", false, []string{"use a", "use b"}},
@@ -258,13 +258,13 @@ func TestSourceForms(t *testing.T) {
 		{"#include \"a.h\"\n#:include \"common.fypp\"\n#define X \\\n  use nope\n", false, []string{`#include "a.h"`, `#:include "common.fypp"`}},
 	}
 	for _, c := range cases {
-		ex := extractSource([]byte(c.src), c.fixed)
+		extraction := extractSource([]byte(c.source), c.fixed)
 		var got []string
-		for _, im := range ex.Imports {
-			got = append(got, im.Spec)
+		for _, rawImport := range extraction.Imports {
+			got = append(got, rawImport.Spec)
 		}
 		if !reflect.DeepEqual(got, c.want) {
-			t.Errorf("%q: imports %q, want %q", c.src, got, c.want)
+			t.Errorf("%q: imports %q, want %q", c.source, got, c.want)
 		}
 	}
 }
@@ -282,28 +282,28 @@ func TestTruncated(t *testing.T) {
 		return nil
 	})
 	for _, p := range files {
-		src, err := os.ReadFile(p)
+		source, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatal(err)
 		}
 		f := &scan.File{Path: filepath.ToSlash(p)}
-		for i := 0; i <= len(src); i++ {
-			if _, err := (Plugin{}).Extract(f, src[:i]); err != nil {
+		for i := 0; i <= len(source); i++ {
+			if _, err := (Plugin{}).Extract(f, source[:i]); err != nil {
 				t.Fatal(err)
 			}
-			extractSource(src[:i], true)
-			extractSource(src[:i], false)
-			readManifest(src[:i])
-			readCache(src[:i])
+			extractSource(source[:i], true)
+			extractSource(source[:i], false)
+			readManifest(source[:i])
+			readCache(source[:i])
 		}
 	}
 	for _, unit := range []string{"module m\n", "submodule (a:b) c\n", "function f()\n", "end\n", "end function\n",
 		"type t\n", "interface\n", "interface x\n", "'", "\"", "&\n", "'&\n", "!", ";", "#include \"x\"\n", "#define x \\\n",
 		"(", "use ", "use a, only: ", "include '", "     &", "\t1", "C\n", "type, extends(", "real function ", "é",
 		"module procedure x\n", "& ", "&", "&!", "   ", "pure elemental real(dp) function f(x)\n", "!$ use omp_lib\n", "${x}$", "x = [" + "\n"} {
-		src := []byte(strings.Repeat(unit, 200_000/len(unit)+1))
+		source := []byte(strings.Repeat(unit, 200_000/len(unit)+1))
 		// the same run inside a string that starts before it
-		for _, s := range [][]byte{src, append([]byte("'"), src...)} {
+		for _, s := range [][]byte{source, append([]byte("'"), source...)} {
 			start := time.Now()
 			extractSource(s, true)
 			extractSource(s, false)
@@ -320,15 +320,15 @@ func TestIslands(t *testing.T) {
 	for _, e := range (Plugin{}).Ecosystems() {
 		ids[e.ID] = e.Std
 	}
-	if std, ok := ids[ecoStd]; !ok || !std || ids[ecoFpm] || ids[ecoExternal] {
+	if std, ok := ids[ecosystemStd]; !ok || !std || ids[ecosystemFpm] || ids[ecosystemExternal] {
 		t.Fatalf("ecosystems: %v", ids)
 	}
 	for _, root := range []string{"testdata/repo", "testdata/cmake"} {
 		for f, r := range langtest.Analyze(t, Plugin{}, root) {
-			for _, im := range r.Imports {
-				if e := im.Target.Ecosystem; e != "" {
+			for _, imported := range r.Imports {
+				if e := imported.Target.Ecosystem; e != "" {
 					if _, ok := ids[e]; !ok {
-						t.Errorf("%s: %s -> %s, not declared", f, im.Spec, e)
+						t.Errorf("%s: %s -> %s, not declared", f, imported.Spec, e)
 					}
 				}
 			}

@@ -8,7 +8,7 @@ import (
 // Declarations are read from statements, the text between `;`, `{` and `}` outside
 // parentheses, comments, strings and preprocessor lines.
 
-type stmt struct {
+type statement struct {
 	text string
 	line int
 	// scope is the kind of the innermost enclosing block: "" (file), "namespace",
@@ -20,19 +20,19 @@ type stmt struct {
 type blockInfo struct{ kind, name string }
 
 var (
-	typeDecl     = regexp.MustCompile(`(?:^|\s)(class|interface|struct|enum|record(?:\s+(?:class|struct))?)\s+([A-Za-z_]\w*)`)
-	delegateDecl = regexp.MustCompile(`(?:^|\s)delegate\s+[\w<>\[\],.?\s]+?\s+([A-Za-z_]\w*)\s*[<(]`)
-	nsDecl       = regexp.MustCompile(`^namespace\s+([\w.]+)`)
-	usingDecl    = regexp.MustCompile(`^(?:global\s+)?using\s+[^(]`)
-	method       = regexp.MustCompile(`^(?:\[[^\]]*\]\s*)*(?:(?:public|private|protected|internal|static|virtual|override|abstract|sealed|async|extern|unsafe|new|partial|readonly|required)\s+)*[\w<>\[\],.?]+(?:\s*<[^>]*>)?\s+([A-Za-z_]\w*)\s*(?:<[^>]*>)?\s*\(`)
-	notNames     = map[string]bool{"if": true, "while": true, "for": true, "foreach": true, "switch": true, "using": true, "lock": true, "catch": true, "return": true, "new": true, "await": true, "yield": true, "throw": true, "nameof": true, "typeof": true, "sizeof": true, "fixed": true}
+	typeDeclaration      = regexp.MustCompile(`(?:^|\s)(class|interface|struct|enum|record(?:\s+(?:class|struct))?)\s+([A-Za-z_]\w*)`)
+	delegateDeclaration  = regexp.MustCompile(`(?:^|\s)delegate\s+[\w<>\[\],.?\s]+?\s+([A-Za-z_]\w*)\s*[<(]`)
+	namespaceDeclaration = regexp.MustCompile(`^namespace\s+([\w.]+)`)
+	usingDeclaration     = regexp.MustCompile(`^(?:global\s+)?using\s+[^(]`)
+	method               = regexp.MustCompile(`^(?:\[[^\]]*\]\s*)*(?:(?:public|private|protected|internal|static|virtual|override|abstract|sealed|async|extern|unsafe|new|partial|readonly|required)\s+)*[\w<>\[\],.?]+(?:\s*<[^>]*>)?\s+([A-Za-z_]\w*)\s*(?:<[^>]*>)?\s*\(`)
+	notNames             = map[string]bool{"if": true, "while": true, "for": true, "foreach": true, "switch": true, "using": true, "lock": true, "catch": true, "return": true, "new": true, "await": true, "yield": true, "throw": true, "nameof": true, "typeof": true, "sizeof": true, "fixed": true}
 )
 
 // Implements: REQ-CS-005
-func scanStatements(src string) []stmt {
-	var out []stmt
-	var cur strings.Builder
-	curLine, line, parens := 0, 1, 0
+func scanStatements(source string) []statement {
+	var out []statement
+	var current strings.Builder
+	currentLine, line, parentheses := 0, 1, 0
 	started := false // the current statement has a non-space character
 	var blocks []blockInfo
 	pending := blockInfo{kind: "other"}
@@ -46,22 +46,22 @@ func scanStatements(src string) []stmt {
 	}
 	// emit ends the current statement and returns its text ("" if it was empty).
 	emit := func(opensBlock bool) string {
-		text := strings.Join(strings.Fields(cur.String()), " ")
-		cur.Reset()
+		text := strings.Join(strings.Fields(current.String()), " ")
+		current.Reset()
 		started = false
 		pending = blockInfo{kind: "other"}
 		if text == "" {
 			return ""
 		}
-		st := stmt{text: text, line: curLine}
-		st.scope, st.owner = scope()
-		out = append(out, st)
+		statement := statement{text: text, line: currentLine}
+		statement.scope, statement.owner = scope()
+		out = append(out, statement)
 		if !opensBlock {
 			return text
 		}
-		if m := nsDecl.FindStringSubmatch(text); m != nil {
+		if m := namespaceDeclaration.FindStringSubmatch(text); m != nil {
 			pending = blockInfo{kind: "namespace", name: m[1]}
-		} else if m := typeDecl.FindStringSubmatch(text); m != nil {
+		} else if m := typeDeclaration.FindStringSubmatch(text); m != nil {
 			kind := "type"
 			if m[1] == "interface" || m[1] == "enum" {
 				kind = "other"
@@ -72,76 +72,76 @@ func scanStatements(src string) []stmt {
 	}
 	write := func(r rune) {
 		if !started && r != ' ' && r != '\t' && r != '\r' && r != '\n' {
-			curLine, started = line, true
+			currentLine, started = line, true
 		}
-		cur.WriteRune(r)
+		current.WriteRune(r)
 	}
 
-	rs := []rune(src)
+	runes := []rune(source)
 	at := func(i int) rune {
-		if i >= 0 && i < len(rs) {
-			return rs[i]
+		if i >= 0 && i < len(runes) {
+			return runes[i]
 		}
 		return 0
 	}
 	atLineStart := func(i int) bool {
-		for j := i - 1; j >= 0 && rs[j] != '\n'; j-- {
-			if rs[j] != ' ' && rs[j] != '\t' {
+		for j := i - 1; j >= 0 && runes[j] != '\n'; j-- {
+			if runes[j] != ' ' && runes[j] != '\t' {
 				return false
 			}
 		}
 		return true
 	}
-	for i := 0; i < len(rs); i++ {
-		r := rs[i]
+	for i := 0; i < len(runes); i++ {
+		r := runes[i]
 		switch {
 		case r == '\n':
 			line++
 			write(' ')
 		case r == '/' && at(i+1) == '/':
-			for i < len(rs) && rs[i] != '\n' {
+			for i < len(runes) && runes[i] != '\n' {
 				i++
 			}
 			i--
 		case r == '/' && at(i+1) == '*':
-			for i += 2; i < len(rs) && !(rs[i] == '*' && at(i+1) == '/'); i++ {
-				if rs[i] == '\n' {
+			for i += 2; i < len(runes) && !(runes[i] == '*' && at(i+1) == '/'); i++ {
+				if runes[i] == '\n' {
 					line++
 				}
 			}
 			i++
 		case r == '#' && atLineStart(i): // preprocessor directive
-			for i < len(rs) && rs[i] != '\n' {
+			for i < len(runes) && runes[i] != '\n' {
 				i++
 			}
 			i--
-		case isLiteralStart(rs, i):
+		case isLiteralStart(runes, i):
 			// Skip the literal, keeping a placeholder so statements stay well-formed.
-			i = skipLiteral(rs, i, &line)
+			i = skipLiteral(runes, i, &line)
 			write('"')
 			write('"')
 		case r == '\'':
-			i = skipChar(rs, i)
+			i = skipCharacter(runes, i)
 			write('\'')
 			write('\'')
 		case r == '(':
-			parens++
+			parentheses++
 			write(r)
 		case r == ')':
-			parens = max(0, parens-1)
+			parentheses = max(0, parentheses-1)
 			write(r)
-		case r == '{' && parens == 0:
+		case r == '{' && parentheses == 0:
 			emit(true)
 			blocks = append(blocks, pending)
 			pending = blockInfo{kind: "other"}
-		case r == '}' && parens == 0:
+		case r == '}' && parentheses == 0:
 			emit(false)
 			if len(blocks) > 0 {
 				blocks = blocks[:len(blocks)-1]
 			}
-		case r == ';' && parens == 0:
+		case r == ';' && parentheses == 0:
 			// A file-scoped namespace applies to the rest of the file.
-			if m := nsDecl.FindStringSubmatch(emit(false)); m != nil {
+			if m := namespaceDeclaration.FindStringSubmatch(emit(false)); m != nil {
 				blocks = append(blocks, blockInfo{kind: "namespace", name: m[1]})
 			}
 		default:
@@ -154,10 +154,10 @@ func scanStatements(src string) []stmt {
 
 // isLiteralStart reports whether a string literal starts at i: "…", @"…", $"…",
 // $@"…", @$"…", or a raw literal with $ prefixes ($$"""…""").
-func isLiteralStart(rs []rune, i int) bool {
-	for ; i < len(rs) && (rs[i] == '@' || rs[i] == '$'); i++ {
+func isLiteralStart(runes []rune, i int) bool {
+	for ; i < len(runes) && (runes[i] == '@' || runes[i] == '$'); i++ {
 	}
-	return i < len(rs) && rs[i] == '"'
+	return i < len(runes) && runes[i] == '"'
 }
 
 // skipLiteral returns the index of the last rune of the string literal starting at i,
@@ -165,17 +165,17 @@ func isLiteralStart(rs []rune, i int) bool {
 // braces inside them ($"{(ok ? "}" : "{")}") cannot end the literal early.
 //
 // Implements: REQ-CS-005, REQ-CS-006
-func skipLiteral(rs []rune, i int, line *int) int {
+func skipLiteral(runes []rune, i int, line *int) int {
 	at := func(j int) rune {
-		if j < len(rs) {
-			return rs[j]
+		if j < len(runes) {
+			return runes[j]
 		}
 		return 0
 	}
 	verbatim, interpolated := false, false
-	for ; rs[i] != '"'; i++ {
-		verbatim = verbatim || rs[i] == '@'
-		interpolated = interpolated || rs[i] == '$'
+	for ; runes[i] != '"'; i++ {
+		verbatim = verbatim || runes[i] == '@'
+		interpolated = interpolated || runes[i] == '$'
 	}
 	quotes := 0
 	for at(i+quotes) == '"' {
@@ -183,18 +183,18 @@ func skipLiteral(rs []rune, i int, line *int) int {
 	}
 	if quotes >= 3 { // raw literal: ends at the same run of quotes
 		run := strings.Repeat(`"`, quotes)
-		for i += quotes; i < len(rs) && !strings.HasPrefix(string(rs[i:min(i+quotes, len(rs))]), run); i++ {
-			if rs[i] == '\n' {
+		for i += quotes; i < len(runes) && !strings.HasPrefix(string(runes[i:min(i+quotes, len(runes))]), run); i++ {
+			if runes[i] == '\n' {
 				*line++
 			}
 		}
-		return min(i+quotes-1, len(rs)-1)
+		return min(i+quotes-1, len(runes)-1)
 	}
 	if quotes == 2 && !verbatim { // ""
 		return i + 1
 	}
-	for i++; i < len(rs); i++ {
-		switch c := rs[i]; {
+	for i++; i < len(runes); i++ {
+		switch c := runes[i]; {
 		case c == '\n':
 			*line++
 		case c == '\\' && !verbatim:
@@ -210,13 +210,13 @@ func skipLiteral(rs []rune, i int, line *int) int {
 				i++
 				continue
 			}
-			for depth := 1; depth > 0 && i+1 < len(rs); {
+			for depth := 1; depth > 0 && i+1 < len(runes); {
 				i++
-				switch d := rs[i]; {
-				case isLiteralStart(rs, i):
-					i = skipLiteral(rs, i, line)
+				switch d := runes[i]; {
+				case isLiteralStart(runes, i):
+					i = skipLiteral(runes, i, line)
 				case d == '\'':
-					i = skipChar(rs, i)
+					i = skipCharacter(runes, i)
 				case d == '{':
 					depth++
 				case d == '}':
@@ -227,15 +227,15 @@ func skipLiteral(rs []rune, i int, line *int) int {
 			}
 		}
 	}
-	return len(rs) - 1
+	return len(runes) - 1
 }
 
-// skipChar returns the index of the closing quote of the char literal at i.
-func skipChar(rs []rune, i int) int {
-	for i++; i < len(rs) && rs[i] != '\''; i++ {
-		if rs[i] == '\\' {
+// skipCharacter returns the index of the closing quote of the char literal at i.
+func skipCharacter(runes []rune, i int) int {
+	for i++; i < len(runes) && runes[i] != '\''; i++ {
+		if runes[i] == '\\' {
 			i++
 		}
 	}
-	return min(i, len(rs)-1)
+	return min(i, len(runes)-1)
 }

@@ -26,8 +26,8 @@ func TestBranchPackagesCarryTheirCheckout(t *testing.T) {
 		]}`,
 		"index.php": "<?php\nuse Acme\\Lib\\Client;\nuse Psr\\Log\\LoggerInterface;\n",
 	})
-	res := langtest.Analyze(t, Plugin{}, root)
-	langtest.CheckImports(t, res["index.php"], map[string]lang.Target{
+	results := langtest.Analyze(t, Plugin{}, root)
+	langtest.CheckImports(t, results["index.php"], map[string]lang.Target{
 		`use Acme\Lib\Client`:         {Ecosystem: "composer", Package: "acme/lib", Version: "dev-main", Pinned: true, Git: "https://github.com/acme/lib.git#" + sha},
 		`use Psr\Log\LoggerInterface`: {Ecosystem: "composer", Package: "psr/log", Version: "3.0.0", Requested: "^3.0", Pinned: true},
 	})

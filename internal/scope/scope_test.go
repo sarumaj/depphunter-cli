@@ -160,12 +160,12 @@ func TestNothingDeclaredMatchesNothing(t *testing.T) {
 
 // Verifies: REQ-SUP-036
 func TestReadsWhatTheMachineAlreadySaysAboutGo(t *testing.T) {
-	env := map[string]string{
+	environment := map[string]string{
 		"GOPRIVATE": "corp.example/*,other.example/x",
 		"GONOPROXY": "corp.example/*", // usually a copy of GOPRIVATE; a repeat is harmless
 		"GONOSUMDB": "none",           // means "nothing", not a module called none
 	}
-	got := FromGoEnv(func(k string) string { return env[k] })
+	got := FromGoEnvironment(func(k string) string { return environment[k] })
 	sort.Strings(got)
 	want := []string{"go:corp.example/*", "go:corp.example/*", "go:other.example/x"}
 	if !reflect.DeepEqual(got, want) {

@@ -15,7 +15,7 @@ func TestAnUnfinishedRunDoesNotPrune(t *testing.T) {
 	c.Put("b", &lang.Extraction{})
 	c.EndRun()
 
-	// Cancelled after reaching one file of two: b is still the project's.
+	// Canceled after reaching one file of two: b is still the project's.
 	c.BeginRun()
 	c.Get("a")
 	c.BeginRun()
@@ -34,8 +34,8 @@ func TestAnUnfinishedRunDoesNotPrune(t *testing.T) {
 }
 
 func TestSaveWritesOnlyWhatChanged(t *testing.T) {
-	dir := t.TempDir()
-	c := Open(dir, "/project")
+	directory := t.TempDir()
+	c := Open(directory, "/project")
 	c.BeginRun()
 	c.Put("a", &lang.Extraction{})
 	if err := c.Save(); err != nil {
@@ -52,7 +52,7 @@ func TestSaveWritesOnlyWhatChanged(t *testing.T) {
 	if err := c.Save(); err != nil {
 		t.Fatal(err)
 	}
-	if st, _ := os.Stat(c.path); !st.ModTime().Equal(old) {
+	if fileInfo, _ := os.Stat(c.path); !fileInfo.ModTime().Equal(old) {
 		t.Error("the cache was written again with nothing new in it")
 	}
 
@@ -60,10 +60,10 @@ func TestSaveWritesOnlyWhatChanged(t *testing.T) {
 	if err := c.Save(); err != nil {
 		t.Fatal(err)
 	}
-	if st, _ := os.Stat(c.path); st.ModTime().Equal(old) {
+	if fileInfo, _ := os.Stat(c.path); fileInfo.ModTime().Equal(old) {
 		t.Error("a new entry was not written")
 	}
-	if _, ok := Open(dir, "/project").Get("b"); !ok {
+	if _, ok := Open(directory, "/project").Get("b"); !ok {
 		t.Error("the new entry is not on disk")
 	}
 }

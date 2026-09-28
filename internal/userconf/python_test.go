@@ -12,16 +12,16 @@ import (
 //
 // Verifies: REQ-SUP-064
 func TestUVConfigFiles(t *testing.T) {
-	home, xdg, dirs := t.TempDir(), t.TempDir(), t.TempDir()
+	home, xdg, directories := t.TempDir(), t.TempDir(), t.TempDir()
 	m := machine(t, home, "linux", nil)
 	want := []string{filepath.Join(home, ".config", "uv", "uv.toml"), filepath.Join(SystemRoot, "etc", "uv", "uv.toml")}
 	if got := m.UVConfigFiles(); !slices.Equal(got, want) {
 		t.Errorf("default: %v", got)
 	}
-	touch(t, filepath.Join(dirs, "uv", "uv.toml"))
+	touch(t, filepath.Join(directories, "uv", "uv.toml"))
 	m = machine(t, home, "linux", map[string]string{"XDG_CONFIG_HOME": xdg,
-		"XDG_CONFIG_DIRS": filepath.Join(dirs, "none") + string(filepath.ListSeparator) + dirs})
-	want = []string{filepath.Join(xdg, "uv", "uv.toml"), filepath.Join(dirs, "uv", "uv.toml")}
+		"XDG_CONFIG_DIRS": filepath.Join(directories, "none") + string(filepath.ListSeparator) + directories})
+	want = []string{filepath.Join(xdg, "uv", "uv.toml"), filepath.Join(directories, "uv", "uv.toml")}
 	if got := m.UVConfigFiles(); !slices.Equal(got, want) {
 		t.Errorf("XDG: %v", got)
 	}
@@ -55,9 +55,9 @@ func TestUVConfigFiles(t *testing.T) {
 // Verifies: REQ-SUP-064
 func TestPoetryAndPDMLocations(t *testing.T) {
 	home, xdg, local := t.TempDir(), t.TempDir(), t.TempDir()
-	for _, tc := range []struct {
+	for _, testCase := range []struct {
 		goos       string
-		vars       map[string]string
+		variables  map[string]string
 		poetry, pd string
 	}{
 		{"linux", nil, filepath.Join(home, ".config", "pypoetry"), filepath.Join(home, ".config", "pdm", "config.toml")},
@@ -69,16 +69,16 @@ func TestPoetryAndPDMLocations(t *testing.T) {
 		{"windows", nil, filepath.Join(home, ".config", "pypoetry"), filepath.Join(home, ".config", "pdm", "config.toml")},
 		{"linux", map[string]string{"POETRY_CONFIG_DIR": xdg, "PDM_CONFIG_FILE": "/ci/pdm.toml"}, xdg, "/ci/pdm.toml"},
 	} {
-		m := machine(t, home, tc.goos, tc.vars)
-		if got := m.PoetryConfigDir(); got != tc.poetry {
-			t.Errorf("%s %v: poetry %s", tc.goos, tc.vars, got)
+		m := machine(t, home, testCase.goos, testCase.variables)
+		if got := m.PoetryConfigDirectory(); got != testCase.poetry {
+			t.Errorf("%s %v: poetry %s", testCase.goos, testCase.variables, got)
 		}
-		if got := m.PDMConfigFile(); got != tc.pd {
-			t.Errorf("%s %v: pdm %s", tc.goos, tc.vars, got)
+		if got := m.PDMConfigFile(); got != testCase.pd {
+			t.Errorf("%s %v: pdm %s", testCase.goos, testCase.variables, got)
 		}
 	}
 	m := machine(t, home, "linux", map[string]string{"POETRY_REPOSITORIES_CORP_URL": "https://corp/simple", "POETRY_REPOSITORIES__URL": "x"})
-	if got := m.PoetryRepositoryVars(); len(got) != 1 || got["CORP"] != "https://corp/simple" {
+	if got := m.PoetryRepositoryVariables(); len(got) != 1 || got["CORP"] != "https://corp/simple" {
 		t.Errorf("POETRY_REPOSITORIES_*: %v", got)
 	}
 }

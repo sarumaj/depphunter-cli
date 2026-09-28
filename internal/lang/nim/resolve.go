@@ -14,34 +14,34 @@ import (
 // project is a directory with a .nimble file: the package, its requirements,
 // its lock files and what is installed for it.
 type project struct {
-	dir     string
-	nimble  *nimbleFile
-	deps    []dep
-	lock    []*locked // nimble.lock
-	atlas   []*locked // atlas.lock
-	pkgs    []*installed
-	srcRoot string
-	develop map[string]*project // nimble.develop: folded package name -> the repository's package
+	directory    string
+	nimble       *nimbleFile
+	dependencies []dependency
+	lock         []*locked // nimble.lock
+	atlas        []*locked // atlas.lock
+	packages     []*installed
+	sourceRoot   string
+	develop      map[string]*project // nimble.develop: folded package name -> the repository's package
 }
 
 type resolver struct {
-	root     string
-	files    map[string]bool
-	dirs     map[string]bool
-	projects map[string]*project
-	order    []*project          // shallowest first
-	configs  map[string][]string // directory -> the search dirs its configurations add
-	stdRoots []string            // directories holding Nim's standard library (lib/ of Nim's repository)
-	global   []*installed        // the nimble directory's packages the manifests name
-	byAbs    map[string]*installed
+	root        string
+	files       map[string]bool
+	directories map[string]bool
+	projects    map[string]*project
+	order       []*project          // shallowest first
+	configs     map[string][]string // directory -> the search dirs its configurations add
+	stdRoots    []string            // directories holding Nim's standard library (lib/ of Nim's repository)
+	global      []*installed        // the nimble directory's packages the manifests name
+	byAbsolute  map[string]*installed
 }
 
-func readFile(abs string) []byte {
-	st, err := os.Stat(abs)
-	if err != nil || st.Size() > lang.MaxParseSize || st.IsDir() {
+func readFile(absolute string) []byte {
+	fileInfo, err := os.Stat(absolute)
+	if err != nil || fileInfo.Size() > lang.MaxParseSize || fileInfo.IsDir() {
 		return nil
 	}
-	data, _ := os.ReadFile(abs)
+	data, _ := os.ReadFile(absolute)
 	return data
 }
 
@@ -53,13 +53,13 @@ func readFile(abs string) []byte {
 //
 // Implements: REQ-NIM-004, REQ-NIM-005, REQ-NIM-006, REQ-NIM-007, REQ-NIM-011
 func newResolver(root string, all []*scan.File, getenv func(string) string) *resolver {
-	r := &resolver{root: root, files: map[string]bool{}, dirs: map[string]bool{}, projects: map[string]*project{},
-		configs: map[string][]string{}, byAbs: map[string]*installed{}}
-	onDisk := func(rel string) []byte {
+	r := &resolver{root: root, files: map[string]bool{}, directories: map[string]bool{}, projects: map[string]*project{},
+		configs: map[string][]string{}, byAbsolute: map[string]*installed{}}
+	onDisk := func(relative string) []byte {
 		if root == "" {
 			return nil
 		}
-		return readFile(filepath.Join(root, filepath.FromSlash(rel)))
+		return readFile(filepath.Join(root, filepath.FromSlash(relative)))
 	}
 	var nimbles, configs []*scan.File
 	for _, f := range all {
@@ -67,80 +67,80 @@ func newResolver(root string, all []*scan.File, getenv func(string) string) *res
 			continue
 		}
 		r.files[f.Path] = true
-		for d := path.Dir(f.Path); d != "." && !r.dirs[d]; d = path.Dir(d) {
-			r.dirs[d] = true
+		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
+			r.directories[d] = true
 		}
 		switch c := class(f.Path); {
 		case strings.HasPrefix(c, classNimble):
 			nimbles = append(nimbles, f)
-		case c == classCfg, path.Ext(f.Path) == ".nims":
+		case c == classConfig, path.Ext(f.Path) == ".nims":
 			configs = append(configs, f)
 		}
 	}
 	for _, f := range nimbles {
-		dir := path.Dir(f.Path)
-		if r.projects[dir] != nil {
+		directory := path.Dir(f.Path)
+		if r.projects[directory] != nil {
 			continue
 		}
-		data := readFile(f.Abs)
+		data := readFile(f.AbsolutePath)
 		n := readNimble(data, strings.TrimSuffix(path.Base(f.Path), ".nimble"))
-		p := &project{dir: dir, nimble: n, deps: n.deps, srcRoot: dir}
-		if n.srcDir != "" {
-			if d := path.Join(dir, n.srcDir); r.dirs[d] {
-				p.srcRoot = d
+		p := &project{directory: directory, nimble: n, dependencies: n.dependencies, sourceRoot: directory}
+		if n.sourceDirectory != "" {
+			if d := path.Join(directory, n.sourceDirectory); r.directories[d] {
+				p.sourceRoot = d
 			}
 		}
-		p.deps = append(p.deps, readRequiresFile(onDisk(path.Join(dir, "requires")))...)
+		p.dependencies = append(p.dependencies, readRequiresFile(onDisk(path.Join(directory, "requires")))...)
 		// Libraries often keep their lock files out of git.
-		p.lock = readNimbleLock(onDisk(path.Join(dir, "nimble.lock")))
-		p.atlas = readAtlasLock(onDisk(path.Join(dir, "atlas.lock")))
+		p.lock = readNimbleLock(onDisk(path.Join(directory, "nimble.lock")))
+		p.atlas = readAtlasLock(onDisk(path.Join(directory, "atlas.lock")))
 		if root != "" {
-			abs := filepath.Join(root, filepath.FromSlash(dir))
-			p.pkgs = append(p.pkgs, readPkgs(filepath.Join(abs, "nimbledeps"), true, nil, nil)...)
-			if deps := atlasDepsDir(abs); deps != "" {
-				p.pkgs = append(p.pkgs, readAtlas(deps)...)
+			absolute := filepath.Join(root, filepath.FromSlash(directory))
+			p.packages = append(p.packages, readPackages(filepath.Join(absolute, "nimbledeps"), true, nil, nil)...)
+			if dependencies := atlasDependenciesDirectory(absolute); dependencies != "" {
+				p.packages = append(p.packages, readAtlas(dependencies)...)
 			}
-			p.pkgs = append(p.pkgs, fromPaths(readCfg(onDisk(path.Join(dir, "nimble.paths"))))...)
+			p.packages = append(p.packages, fromPaths(readConfig(onDisk(path.Join(directory, "nimble.paths"))))...)
 		}
-		for _, ip := range p.pkgs {
-			r.byAbs[filepath.Clean(ip.root)] = ip
+		for _, installedPackage := range p.packages {
+			r.byAbsolute[filepath.Clean(installedPackage.root)] = installedPackage
 		}
-		r.projects[dir] = p
+		r.projects[directory] = p
 		r.order = append(r.order, p)
 	}
 	sort.Slice(r.order, func(i, j int) bool {
-		di, dj := depth(r.order[i].dir), depth(r.order[j].dir)
-		if di != dj {
-			return di < dj
+		depthI, depthJ := depth(r.order[i].directory), depth(r.order[j].directory)
+		if depthI != depthJ {
+			return depthI < depthJ
 		}
-		return r.order[i].dir < r.order[j].dir
+		return r.order[i].directory < r.order[j].directory
 	})
 	for _, p := range r.order {
-		p.develop = r.readDevelop(p.dir, onDisk)
+		p.develop = r.readDevelop(p.directory, onDisk)
 	}
-	for d := range r.dirs {
-		if path.Base(d) == "lib" && r.files[d+"/system.nim"] && r.dirs[d+"/pure"] {
+	for d := range r.directories {
+		if path.Base(d) == "lib" && r.files[d+"/system.nim"] && r.directories[d+"/pure"] {
 			r.stdRoots = append(r.stdRoots, d)
 		}
 	}
-	if r.files["system.nim"] && r.dirs["pure"] {
+	if r.files["system.nim"] && r.directories["pure"] {
 		r.stdRoots = append(r.stdRoots, ".")
 	}
 	sort.Strings(r.stdRoots)
 	for _, f := range configs {
-		dir := path.Dir(f.Path)
+		directory := path.Dir(f.Path)
 		var paths []pathSwitch
-		if class(f.Path) == classCfg {
-			paths = readCfg(readFile(f.Abs))
+		if class(f.Path) == classConfig {
+			paths = readConfig(readFile(f.AbsolutePath))
 		} else {
-			paths = scanSource(readFile(f.Abs)).paths()
+			paths = scanSource(readFile(f.AbsolutePath)).paths()
 		}
 		// A <name>.nims or <name>.nim.cfg configures the compilation of
 		// <name>.nim, whose imports reach the modules around it: read like
 		// config.nims and nim.cfg, for the directory.
 		for _, p := range paths {
-			if d, abs := expandPath(dir, p.value, r.lib()); d != "" && !abs && !strings.HasPrefix(d, "..") {
-				r.configs[dir] = append(r.configs[dir], d)
+			if d, absolute := expandPath(directory, p.value, r.library()); d != "" && !absolute && !strings.HasPrefix(d, "..") {
+				r.configs[directory] = append(r.configs[directory], d)
 			}
 		}
 	}
@@ -151,20 +151,20 @@ func newResolver(root string, all []*scan.File, getenv func(string) string) *res
 // readGlobal reads the packages of the nimble directory that a manifest names,
 // the locked version if it is installed, else the newest.
 func (r *resolver) readGlobal(getenv func(string) string) {
-	dir := getenv("NIMBLE_DIR")
-	if dir == "" {
+	directory := getenv("NIMBLE_DIR")
+	if directory == "" {
 		home := getenv("HOME")
 		if home == "" {
 			return
 		}
-		dir = filepath.Join(home, ".nimble")
+		directory = filepath.Join(home, ".nimble")
 	}
 	want, prefer := map[string]bool{}, map[string]string{}
 	for _, p := range r.order {
-		for _, d := range p.deps {
+		for _, d := range p.dependencies {
 			want[fold(d.name)] = true
 			if d.url != "" {
-				want[fold(repoBase(d.url))] = true
+				want[fold(repositoryBase(d.url))] = true
 			}
 		}
 		for _, l := range append(append([]*locked{}, p.lock...), p.atlas...) {
@@ -178,25 +178,25 @@ func (r *resolver) readGlobal(getenv func(string) string) {
 	if len(want) == 0 {
 		return
 	}
-	r.global = readPkgs(dir, false, want, prefer)
-	for _, ip := range r.global {
-		r.byAbs[filepath.Clean(ip.root)] = ip
+	r.global = readPackages(directory, false, want, prefer)
+	for _, installedPackage := range r.global {
+		r.byAbsolute[filepath.Clean(installedPackage.root)] = installedPackage
 	}
 }
 
-// lib is the repository's own standard library directory, or "".
-func (r *resolver) lib() string {
+// library is the repository's own standard library directory, or "".
+func (r *resolver) library() string {
 	if len(r.stdRoots) > 0 {
 		return r.stdRoots[0]
 	}
 	return ""
 }
 
-func depth(dir string) int {
-	if dir == "." {
+func depth(directory string) int {
+	if directory == "." {
 		return 0
 	}
-	return strings.Count(dir, "/") + 1
+	return strings.Count(directory, "/") + 1
 }
 
 // fold is how names are compared: case and `_`/`-` do not matter (Nim is
@@ -208,21 +208,21 @@ func fold(s string) string {
 	return strings.NewReplacer("_", "", "-", "").Replace(s)
 }
 
-// repoBase is the last path element of a repository URL.
-func repoBase(url string) string {
-	name := lang.RepoName(url)
+// repositoryBase is the last path element of a repository URL.
+func repositoryBase(url string) string {
+	name := lang.RepositoryName(url)
 	return name[strings.LastIndexByte(name, '/')+1:]
 }
 
-func (r *resolver) projectOf(dir string) *project {
+func (r *resolver) projectOf(directory string) *project {
 	for {
-		if p := r.projects[dir]; p != nil {
+		if p := r.projects[directory]; p != nil {
 			return p
 		}
-		if dir == "." || dir == "/" || dir == "" {
+		if directory == "." || directory == "/" || directory == "" {
 			return nil
 		}
-		dir = path.Dir(dir)
+		directory = path.Dir(directory)
 	}
 }
 
@@ -235,25 +235,25 @@ func (r *resolver) scope(file string) []*project {
 	return r.order
 }
 
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	switch imp.Name {
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	switch rawImport.Name {
 	case kindImport, kindInclude:
-		return r.module(file, imp.Module)
+		return r.module(file, rawImport.Module)
 	case kindRequire:
-		d, ok := parseDep(imp.Module, imp.Line, "")
+		d, ok := parseDependency(rawImport.Module, rawImport.Line, "")
 		if !ok || d.compiler() {
 			return lang.Target{}
 		}
 		p := r.projects[path.Dir(file)]
 		if p == nil {
-			t := lang.Target{Ecosystem: ecoNimble, Package: d.pkg()}
-			pinRule(&t, d.ver)
+			t := lang.Target{Ecosystem: ecosystemNimble, Package: d.packageName()}
+			pinRule(&t, d.version)
 			return t
 		}
-		return r.target(p, d.pkg())
+		return r.target(p, d.packageName())
 	case kindBin:
 		if p := r.projects[path.Dir(file)]; p != nil {
-			for _, f := range []string{path.Join(p.srcRoot, imp.Module+".nim"), path.Join(p.dir, imp.Module+".nim")} {
+			for _, f := range []string{path.Join(p.sourceRoot, rawImport.Module+".nim"), path.Join(p.directory, rawImport.Module+".nim")} {
 				if r.files[f] {
 					return lang.Target{Local: f}
 				}
@@ -261,12 +261,12 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 		}
 		return lang.Target{}
 	case kindPath:
-		return r.pathTarget(file, imp.Module)
+		return r.pathTarget(file, rawImport.Module)
 	case kindLock, kindAtlas:
 		if p := r.projects[path.Dir(file)]; p != nil {
-			return r.target(p, imp.Module)
+			return r.target(p, rawImport.Module)
 		}
-		return lang.Target{Ecosystem: ecoNimble, Package: imp.Module}
+		return lang.Target{Ecosystem: ecosystemNimble, Package: rawImport.Module}
 	}
 	return lang.Target{}
 }
@@ -274,47 +274,47 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 // pathTarget resolves a configured search path: a directory of the project, or
 // the installed package that directory is.
 func (r *resolver) pathTarget(file, value string) lang.Target {
-	d, abs := expandPath(path.Dir(file), value, r.lib())
+	d, absolute := expandPath(path.Dir(file), value, r.library())
 	if d == "" {
 		return lang.Target{}
 	}
-	if !abs && !strings.HasPrefix(d, "..") && (r.dirs[d] || d == ".") {
+	if !absolute && !strings.HasPrefix(d, "..") && (r.directories[d] || d == ".") {
 		return lang.Target{Local: d}
 	}
 	full := d
-	if !abs {
+	if !absolute {
 		full = filepath.Join(r.root, filepath.FromSlash(d))
 	}
-	if ip := r.byAbs[filepath.Clean(full)]; ip != nil {
-		return r.installedTarget(file, ip)
+	if installedPackage := r.byAbsolute[filepath.Clean(full)]; installedPackage != nil {
+		return r.installedTarget(file, installedPackage)
 	}
 	return lang.Target{}
 }
 
-// probe finds module under dir as the compiler does: as written, then in lower
+// probe finds module under directory as the compiler does: as written, then in lower
 // case (std/compileSettings is compilesettings.nim).
-func (r *resolver) probe(dir, module string) string {
-	f := path.Join(dir, module+".nim")
+func (r *resolver) probe(directory, module string) string {
+	f := path.Join(directory, module+".nim")
 	if strings.HasPrefix(f, "../") || f == ".." {
 		return ""
 	}
 	if r.files[f] {
 		return f
 	}
-	if lower := path.Join(dir, strings.ToLower(module)+".nim"); r.files[lower] {
+	if lower := path.Join(directory, strings.ToLower(module)+".nim"); r.files[lower] {
 		return lower
 	}
 	return ""
 }
 
 // searchRoots are the directories an import by name is looked up in after the
-// importing file's own: the package's srcDir (or its directory), then the
+// importing file's own: the package's sourceDirectory (or its directory), then the
 // --path entries of the configurations of its directory and those above it,
 // nearest first.
 func (r *resolver) searchRoots(file string) []string {
 	var out []string
 	if p := r.projectOf(path.Dir(file)); p != nil {
-		out = append(out, p.srcRoot)
+		out = append(out, p.sourceRoot)
 	}
 	for d := path.Dir(file); ; d = path.Dir(d) {
 		out = append(out, r.configs[d]...)
@@ -329,7 +329,7 @@ func (r *resolver) searchRoots(file string) []string {
 //
 // Implements: REQ-NIM-004, REQ-NIM-007, REQ-NIM-008
 func (r *resolver) module(file, module string) lang.Target {
-	dir := path.Dir(file)
+	directory := path.Dir(file)
 	if rest, ok := strings.CutPrefix(module, "$lib/"); ok {
 		module = "std/" + rest
 	}
@@ -341,26 +341,26 @@ func (r *resolver) module(file, module string) lang.Target {
 		if f := r.stdFile(s, true); f != "" {
 			return lang.Target{Local: f}
 		}
-		return lang.Target{Ecosystem: ecoStd, Package: s}
+		return lang.Target{Ecosystem: ecosystemStd, Package: s}
 	case strings.HasPrefix(module, "pkg/"):
-		return r.pkgModule(file, strings.TrimPrefix(module, "pkg/"))
+		return r.packageModule(file, strings.TrimPrefix(module, "pkg/"))
 	case strings.HasPrefix(module, "."):
 		// ./x and ../x are only looked up beside the importing file.
-		if f := r.probe(dir, module); f != "" {
+		if f := r.probe(directory, module); f != "" {
 			return lang.Target{Local: f}
 		}
 		return lang.Target{}
 	}
 	if base := path.Base(module); strings.Contains(base, ".") {
 		// `include "nimble.paths"`: a file named with its extension.
-		for _, d := range append([]string{dir}, r.searchRoots(file)...) {
+		for _, d := range append([]string{directory}, r.searchRoots(file)...) {
 			if f := path.Join(d, module); r.files[f] {
 				return lang.Target{Local: f}
 			}
 		}
 		return lang.Target{}
 	}
-	if f := r.probe(dir, module); f != "" && f != file {
+	if f := r.probe(directory, module); f != "" && f != file {
 		return lang.Target{Local: f}
 	}
 	for _, root := range r.searchRoots(file) {
@@ -379,9 +379,9 @@ func (r *resolver) module(file, module string) lang.Target {
 				}
 			}
 		}
-		return lang.Target{Ecosystem: ecoStd, Package: module}
+		return lang.Target{Ecosystem: ecosystemStd, Package: module}
 	}
-	return r.pkgModule(file, module)
+	return r.packageModule(file, module)
 }
 
 // stdFile finds a module of the standard library in the repository (Nim's own
@@ -389,7 +389,7 @@ func (r *resolver) module(file, module string) lang.Target {
 // (lib/std/x.nim for std/x).
 func (r *resolver) stdFile(module string, explicit bool) string {
 	for _, root := range r.stdRoots {
-		for _, d := range stdlibDirs {
+		for _, d := range stdlibDirectories {
 			if f := r.probe(path.Join(root, d), module); f != "" {
 				return f
 			}
@@ -406,37 +406,37 @@ func (r *resolver) stdFile(module string, explicit bool) string {
 	return ""
 }
 
-// pkgModule resolves a module of a nimble package: the repository's package
+// packageModule resolves a module of a nimble package: the repository's package
 // nimble.develop develops, the installed package that has the module
 // (authoritative), else the requirement or locked package its
 // first segment names, else an unresolved package of that name.
 //
 // Implements: REQ-NIM-007
-func (r *resolver) pkgModule(file, module string) lang.Target {
+func (r *resolver) packageModule(file, module string) lang.Target {
 	first, _, _ := strings.Cut(module, "/")
 	scope := r.scope(file)
 	// A package the project develops from a directory of the repository wins
 	// over what is installed.
 	for _, p := range scope {
 		if q := p.developed(first); q != nil {
-			for _, d := range []string{q.srcRoot, q.dir} {
+			for _, d := range []string{q.sourceRoot, q.directory} {
 				if f := r.probe(d, module); f != "" {
 					return lang.Target{Local: f}
 				}
 			}
-			return lang.Target{Local: q.dir}
+			return lang.Target{Local: q.directory}
 		}
 	}
 	for _, p := range scope {
-		for _, ip := range p.pkgs {
-			if ip.modules[module] {
-				return r.installedTarget(file, ip)
+		for _, installedPackage := range p.packages {
+			if installedPackage.modules[module] {
+				return r.installedTarget(file, installedPackage)
 			}
 		}
 	}
-	for _, ip := range r.global {
-		if ip.modules[module] {
-			return r.installedTarget(file, ip)
+	for _, installedPackage := range r.global {
+		if installedPackage.modules[module] {
+			return r.installedTarget(file, installedPackage)
 		}
 	}
 	for _, p := range scope {
@@ -460,27 +460,27 @@ func (r *resolver) pkgModule(file, module string) lang.Target {
 	}
 	// A directory of the project (a module missing from it) is not a package.
 	for _, root := range append([]string{path.Dir(file)}, r.searchRoots(file)...) {
-		if r.dirs[path.Join(root, first)] {
+		if r.directories[path.Join(root, first)] {
 			return lang.Target{}
 		}
 	}
-	return lang.Target{Ecosystem: ecoNimble, Package: first, Unresolved: true}
+	return lang.Target{Ecosystem: ecosystemNimble, Package: first, Unresolved: true}
 }
 
 // installedTarget is the package an installed directory is, as the file's
 // project requires or locks it.
-func (r *resolver) installedTarget(file string, ip *installed) lang.Target {
+func (r *resolver) installedTarget(file string, installedPackage *installed) lang.Target {
 	for _, p := range r.scope(file) {
-		if node, _, _, _, ok := r.node(p, ip.name); ok {
+		if node, _, _, _, ok := r.node(p, installedPackage.name); ok {
 			return r.target(p, node)
 		}
-		if ip.url != "" {
-			if node, _, _, _, ok := r.node(p, repoBase(ip.url)); ok {
+		if installedPackage.url != "" {
+			if node, _, _, _, ok := r.node(p, repositoryBase(installedPackage.url)); ok {
 				return r.target(p, node)
 			}
 		}
 	}
-	return lang.Target{Ecosystem: ecoNimble, Package: ip.name, Version: ip.version}
+	return lang.Target{Ecosystem: ecosystemNimble, Package: installedPackage.name, Version: installedPackage.version}
 }
 
 // node finds the package a project knows by name: a requirement of that name,
@@ -488,48 +488,48 @@ func (r *resolver) installedTarget(file string, ip *installed) lang.Target {
 // nimble.lock or atlas.lock entry. It returns the node's name - a URL
 // requirement's repository, else the package's name - with what declares and
 // locks it.
-func (r *resolver) node(p *project, name string) (node string, d *dep, l, al *locked, ok bool) {
+func (r *resolver) node(p *project, name string) (node string, d *dependency, l, al *locked, ok bool) {
 	want := fold(name)
 	if want == "" || want == "nim" {
 		return "", nil, nil, nil, false
 	}
-	for i := range p.deps {
-		x := &p.deps[i]
+	for i := range p.dependencies {
+		x := &p.dependencies[i]
 		if x.compiler() {
 			continue
 		}
-		if x.url == "" && fold(x.name) == want || x.url != "" && (fold(repoBase(x.url)) == want || x.pkg() == name) {
+		if x.url == "" && fold(x.name) == want || x.url != "" && (fold(repositoryBase(x.url)) == want || x.packageName() == name) {
 			d = x
 			break
 		}
 	}
 	for _, x := range p.lock {
-		if fold(x.name) == want || d != nil && d.url != "" && x.url != "" && lang.RepoName(x.url) == d.pkg() {
+		if fold(x.name) == want || d != nil && d.url != "" && x.url != "" && lang.RepositoryName(x.url) == d.packageName() {
 			l = x
 			break
 		}
 	}
 	for _, x := range p.atlas {
-		if fold(x.name) == want || x.url != "" && (fold(repoBase(x.url)) == want || d != nil && d.url != "" && lang.RepoName(x.url) == d.pkg()) {
+		if fold(x.name) == want || x.url != "" && (fold(repositoryBase(x.url)) == want || d != nil && d.url != "" && lang.RepositoryName(x.url) == d.packageName()) {
 			al = x
 			break
 		}
 	}
 	switch {
 	case d != nil:
-		return d.pkg(), d, l, al, true
+		return d.packageName(), d, l, al, true
 	case l != nil:
 		// A lock entry of a URL requirement is named by the requirement.
-		for i := range p.deps {
-			if x := &p.deps[i]; x.url != "" && l.url != "" && lang.RepoName(l.url) == x.pkg() {
-				return x.pkg(), x, l, al, true
+		for i := range p.dependencies {
+			if x := &p.dependencies[i]; x.url != "" && l.url != "" && lang.RepositoryName(l.url) == x.packageName() {
+				return x.packageName(), x, l, al, true
 			}
 		}
 		return l.name, nil, l, al, true
 	case al != nil:
-		for i := range p.deps {
-			if x := &p.deps[i]; x.url != "" && al.url != "" && lang.RepoName(al.url) == x.pkg() {
-				return x.pkg(), x, l, al, true
+		for i := range p.dependencies {
+			if x := &p.dependencies[i]; x.url != "" && al.url != "" && lang.RepositoryName(al.url) == x.packageName() {
+				return x.packageName(), x, l, al, true
 			}
 		}
 		return al.name, nil, l, al, true
@@ -546,47 +546,47 @@ func (r *resolver) node(p *project, name string) (node string, d *dep, l, al *lo
 // Implements: REQ-NIM-006
 func (r *resolver) target(p *project, name string) lang.Target {
 	if q := p.developed(name); q != nil {
-		return lang.Target{Local: q.dir}
+		return lang.Target{Local: q.directory}
 	}
 	node, d, l, al, ok := r.node(p, name)
 	if !ok {
-		for _, ip := range p.pkgs {
-			if fold(ip.name) == fold(name) {
-				return lang.Target{Ecosystem: ecoNimble, Package: ip.name, Version: ip.version}
+		for _, installedPackage := range p.packages {
+			if fold(installedPackage.name) == fold(name) {
+				return lang.Target{Ecosystem: ecosystemNimble, Package: installedPackage.name, Version: installedPackage.version}
 			}
 		}
-		return lang.Target{Ecosystem: ecoNimble, Package: name, Unresolved: true}
+		return lang.Target{Ecosystem: ecosystemNimble, Package: name, Unresolved: true}
 	}
 	if d != nil {
-		if dir, ok := d.file(); ok {
+		if directory, ok := d.file(); ok {
 			// A package from a directory: the directory when it is the
 			// repository's, else a floating package from there.
-			if !path.IsAbs(dir) {
-				if local := path.Join(p.dir, dir); r.dirs[local] {
+			if !path.IsAbs(directory) {
+				if local := path.Join(p.directory, directory); r.directories[local] {
 					return lang.Target{Local: local}
 				}
 			}
-			return lang.Target{Ecosystem: ecoNimble, Package: node, Floating: true, Origin: dir}
+			return lang.Target{Ecosystem: ecosystemNimble, Package: node, Floating: true, Origin: directory}
 		}
 	}
-	t := lang.Target{Ecosystem: ecoNimble, Package: node}
+	t := lang.Target{Ecosystem: ecosystemNimble, Package: node}
 	url := ""
 	if d != nil {
 		url = d.url
 	}
-	if lk := l; lk != nil || al != nil {
-		if lk == nil {
-			lk = al
+	if lockedPackage := l; lockedPackage != nil || al != nil {
+		if lockedPackage == nil {
+			lockedPackage = al
 		}
-		t.Version, t.Pinned = lk.shown(), true
+		t.Version, t.Pinned = lockedPackage.shown(), true
 		if url == "" {
-			url = lk.url
+			url = lockedPackage.url
 		}
-		if d != nil && d.ver != "" && d.ver != t.Version && d.ver != "=="+t.Version && d.ver != "== "+t.Version {
-			t.Requested = d.ver
+		if d != nil && d.version != "" && d.version != t.Version && d.version != "=="+t.Version && d.version != "== "+t.Version {
+			t.Requested = d.version
 		}
 	} else {
-		pinRule(&t, d.ver)
+		pinRule(&t, d.version)
 	}
 	if !public(url) {
 		t.Origin = url
@@ -601,7 +601,7 @@ func public(url string) bool {
 	if url == "" || strings.HasPrefix(url, "file://") {
 		return url == ""
 	}
-	host, _, _ := strings.Cut(lang.RepoName(url), "/")
+	host, _, _ := strings.Cut(lang.RepositoryName(url), "/")
 	switch host {
 	case "github.com", "gitlab.com", "bitbucket.org", "codeberg.org", "git.sr.ht", "sr.ht":
 		return true
@@ -615,13 +615,13 @@ func public(url string) bool {
 //
 // Implements: REQ-NIM-006, REQ-NIM-007
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
-	if t.Ecosystem != ecoNimble {
+	if t.Ecosystem != ecosystemNimble {
 		return nil
 	}
 	for _, p := range r.order {
 		if _, _, l, _, ok := r.node(p, t.Package); ok && l != nil {
 			var out []lang.Target
-			for _, name := range l.deps {
+			for _, name := range l.dependencies {
 				if fold(name) == "nim" {
 					continue
 				}
@@ -630,21 +630,21 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 			return out
 		}
 	}
-	if ip, p := r.installedOf(t); ip != nil {
+	if installedPackage, p := r.installedOf(t); installedPackage != nil {
 		var out []lang.Target
-		for _, d := range ip.deps {
+		for _, d := range installedPackage.dependencies {
 			if d.compiler() {
 				continue
 			}
 			if p != nil {
-				if node, _, _, _, ok := r.node(p, d.pkg()); ok {
+				if node, _, _, _, ok := r.node(p, d.packageName()); ok {
 					out = append(out, r.target(p, node))
 					continue
 				}
 			}
-			dt := lang.Target{Ecosystem: ecoNimble, Package: d.pkg()}
-			pinRule(&dt, d.ver)
-			out = append(out, dt)
+			dependencyTarget := lang.Target{Ecosystem: ecosystemNimble, Package: d.packageName()}
+			pinRule(&dependencyTarget, d.version)
+			out = append(out, dependencyTarget)
 		}
 		return out
 	}
@@ -655,41 +655,41 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 // installed it (nil for the nimble directory's).
 func (r *resolver) installedOf(t lang.Target) (*installed, *project) {
 	for _, p := range r.order {
-		for _, ip := range p.pkgs {
-			if names(ip, t.Package) {
-				return ip, p
+		for _, installedPackage := range p.packages {
+			if names(installedPackage, t.Package) {
+				return installedPackage, p
 			}
 		}
 	}
-	for _, ip := range r.global {
-		if names(ip, t.Package) {
+	for _, installedPackage := range r.global {
+		if names(installedPackage, t.Package) {
 			for _, p := range r.order {
-				if _, _, _, _, ok := r.node(p, ip.name); ok {
-					return ip, p
+				if _, _, _, _, ok := r.node(p, installedPackage.name); ok {
+					return installedPackage, p
 				}
 			}
-			return ip, nil
+			return installedPackage, nil
 		}
 	}
 	return nil, nil
 }
 
-// names reports whether an installed package is the node named pkg: by its
+// names reports whether an installed package is the node named packageName: by its
 // name, its checkout's repository, or a repository named like it.
-func names(ip *installed, pkg string) bool {
+func names(installedPackage *installed, packageName string) bool {
 	switch {
-	case ip.name == pkg:
+	case installedPackage.name == packageName:
 		return true
-	case ip.url != "" && lang.RepoName(ip.url) == pkg:
+	case installedPackage.url != "" && lang.RepositoryName(installedPackage.url) == packageName:
 		return true
 	}
-	return strings.Contains(pkg, "/") && fold(repoBase(pkg)) == fold(ip.name)
+	return strings.Contains(packageName, "/") && fold(repositoryBase(packageName)) == fold(installedPackage.name)
 }
 
 // Installed reports whether a package's dependencies come from what is
 // installed rather than from a lock file.
 func (r *resolver) Installed(t lang.Target) bool {
-	if t.Ecosystem != ecoNimble {
+	if t.Ecosystem != ecosystemNimble {
 		return false
 	}
 	for _, p := range r.order {
@@ -697,8 +697,8 @@ func (r *resolver) Installed(t lang.Target) bool {
 			return false
 		}
 	}
-	ip, _ := r.installedOf(t)
-	return ip != nil
+	installedPackage, _ := r.installedOf(t)
+	return installedPackage != nil
 }
 
 func sortedKeys[V any](m map[string]V) []string {

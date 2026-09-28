@@ -288,7 +288,7 @@ export class Bugs {
       wing: 0, // where in the beat its wings are, for the ones that have any
       // Where it is on the flat map: what the crosshair and everything thrown at it
       // measure against, kept here rather than read back off a shared mesh.
-      pos: new THREE.Vector3(),
+      position: new THREE.Vector3(),
       heading: 0,
       rock: 0,
     };
@@ -346,7 +346,7 @@ export class Bugs {
    *
    * Implements: REQ-HUNT-011
    */
-  update(dt, now, at = null, hand = null) {
+  update(deltaTime, now, at = null, hand = null) {
     if (!this.drawn.length) return;
     const m = new THREE.Matrix4(), r = new THREE.Matrix4();
     const c = new THREE.Color();
@@ -354,9 +354,9 @@ export class Bugs {
       let n = 0, w = 0;
       for (const bug of bugs) {
         if (bug.caught && !bug.take) continue;
-        if (bug.take && !this.taking(bug, dt, at, hand)) continue;
+        if (bug.take && !this.taking(bug, deltaTime, at, hand)) continue;
         if (!bug.take) {
-          bug.u = (bug.u + (bug.speed * dt) / bug.lap.length) % 1;
+          bug.u = (bug.u + (bug.speed * deltaTime) / bug.lap.length) % 1;
           this.moveTo(bug, now);
         }
         orient(m, bug);
@@ -394,9 +394,9 @@ export class Bugs {
    *
    * Implements: REQ-HUNT-030, REQ-HUNT-032
    */
-  taking(bug, dt, at, hand = null) {
+  taking(bug, deltaTime, at, hand = null) {
     const take = bug.take;
-    take.t += dt / TAKE;
+    take.t += deltaTime / TAKE;
     if (take.t >= 1) {
       this.unbubble(bug);
       bug.take = null;
@@ -407,14 +407,14 @@ export class Bugs {
     // Where it is being taken: the hoop of the net carries what it catches, so a
     // netted one homes on the tool; everything else comes to the walker.
     const home = (IN_HAND.has(take.how) ? hand : null) || at;
-    bug.pos.copy(take.at).addScaledVector(take.up, to.lift || 0);
-    if (to.toward && home) bug.pos.lerp(home, to.toward);
+    bug.position.copy(take.at).addScaledVector(take.up, to.lift || 0);
+    if (to.toward && home) bug.position.lerp(home, to.toward);
     // The struggle is added after the move rather than before it: almost all of the
     // way to the hoop, anything mixed in beforehand would be damped to nothing.
-    if (to.shake) bug.pos.addScaledVector(take.up, to.shake);
+    if (to.shake) bug.position.addScaledVector(take.up, to.shake);
     bug.size = Math.max(0, to.size ?? 1);
     bug.squash = to.squash ?? 1;
-    bug.heading += (to.spin || 0) * dt;
+    bug.heading += (to.spin || 0) * deltaTime;
     bug.rock = 0;
     if (to.bubble) this.bubble(bug, to.bubble); else this.unbubble(bug);
     return bug.size > 0.01;
@@ -434,7 +434,7 @@ export class Bugs {
       bug.soap.renderOrder = 2;
       this.group.add(bug.soap);
     }
-    bug.soap.position.copy(bug.pos);
+    bug.soap.position.copy(bug.position);
     bug.soap.scale.setScalar(r);
   }
 
@@ -451,7 +451,7 @@ export class Bugs {
       // Nothing to stand on: it holds a height above the roof, rising and falling on
       // the way round, and leans into the corners the way anything that turns in the
       // air has to. The legs are tucked back and the wings do the work.
-      bug.pos.set(at.x, at.y + AIR_UP + Math.sin(t * 1.5) * AIR_RISE, at.z);
+      bug.position.set(at.x, at.y + AIR_UP + Math.sin(t * 1.5) * AIR_RISE, at.z);
       bug.heading = at.heading;
       bug.bank = at.turn * BANK;
       bug.up.set(0, 1, 0);
@@ -462,7 +462,7 @@ export class Bugs {
     // The bob is along whatever the bug is standing on, so one on a wall bobs in and
     // out of it rather than up and down past it.
     const bob = 0.035 + Math.sin(t * 9) * 0.006;
-    bug.pos.set(at.x + at.nx * bob, at.y + at.ny * bob, at.z + at.nz * bob);
+    bug.position.set(at.x + at.nx * bob, at.y + at.ny * bob, at.z + at.nz * bob);
     bug.heading = at.heading;
     bug.bank = 0;
     bug.up.set(at.nx, at.ny, at.nz);
@@ -482,7 +482,7 @@ export class Bugs {
     let best = null, bestSq = r * r;
     for (const bug of cell) {
       if (bug.caught) continue;
-      const m = bug.pos;
+      const m = bug.position;
       const dSq = (m.x - v.x) ** 2 + (m.y - v.y) ** 2 + (m.z - v.z) ** 2;
       if (dSq < bestSq) { best = bug; bestSq = dSq; }
     }
@@ -500,7 +500,7 @@ export class Bugs {
   catch(bug, how = null) {
     if (!bug || bug.caught) return false;
     bug.caught = true;
-    if (TAKES[how]) bug.take = { how, t: 0, at: bug.pos.clone(), up: bug.up.clone() };
+    if (TAKES[how]) bug.take = { how, t: 0, at: bug.position.clone(), up: bug.up.clone() };
     this.caught.add(bug.f.id);
     this.dirty = true; // the instances close up over the gap it leaves
     this.hooks.onCatch?.(bug.f, bug.node);
@@ -595,13 +595,13 @@ function lapOf(box, surface) {
   let length = 0;
   for (let i = 0; i < corners.length; i++) {
     const [x0, z0] = corners[i], [x1, z1] = corners[(i + 1) % corners.length];
-    const len = Math.hypot(x1 - x0, z1 - z0);
+    const distance = Math.hypot(x1 - x0, z1 - z0);
     // Walking the corners in this order keeps the building on the left, so the
     // outward normal is the walking direction turned right.
     const n = flat ? { nx: 0, ny: 1, nz: 0 }
-      : { nx: (z1 - z0) / (len || 1), ny: 0, nz: -(x1 - x0) / (len || 1) };
-    segments.push({ x0, z0, x1, z1, len, at: length, ...n });
-    length += len;
+      : { nx: (z1 - z0) / (distance || 1), ny: 0, nz: -(x1 - x0) / (distance || 1) };
+    segments.push({ x0, z0, x1, z1, len: distance, at: length, ...n });
+    length += distance;
   }
   // A wall lap sits on the footprint and a roof lap inside it; only the one in the
   // air reaches further out than the street. One box for the spatial index, wide
@@ -617,21 +617,21 @@ function lapOf(box, surface) {
 // which way is up for it there.
 function pointAt(lap, u) {
   const want = u * lap.length;
-  let seg = lap.segments[lap.segments.length - 1];
+  let segment = lap.segments[lap.segments.length - 1];
   for (const s of lap.segments) {
-    if (want < s.at + s.len) { seg = s; break; }
+    if (want < s.at + s.len) { segment = s; break; }
   }
-  const t = seg.len ? (want - seg.at) / seg.len : 0;
+  const t = segment.len ? (want - segment.at) / segment.len : 0;
   // How much of a corner the bug is in: the last fifth of a side and the first fifth
   // of the next one, which is what a flyer leans into. A lap is a rectangle, so every
   // corner turns the same way and the lean is always to the same side.
   const turn = Math.max(0, t - 0.8) / 0.2 + Math.max(0, 0.2 - t) / 0.2;
   return {
-    x: seg.x0 + (seg.x1 - seg.x0) * t,
+    x: segment.x0 + (segment.x1 - segment.x0) * t,
     y: lap.y,
-    z: seg.z0 + (seg.z1 - seg.z0) * t,
-    heading: Math.atan2(seg.x1 - seg.x0, seg.z1 - seg.z0),
-    nx: seg.nx, ny: seg.ny, nz: seg.nz, turn: Math.min(1, turn),
+    z: segment.z0 + (segment.z1 - segment.z0) * t,
+    heading: Math.atan2(segment.x1 - segment.x0, segment.z1 - segment.z0),
+    nx: segment.nx, ny: segment.ny, nz: segment.nz, turn: Math.min(1, turn),
   };
 }
 
@@ -641,7 +641,7 @@ function pointAt(lap, u) {
  * rest of it following, and for a shape that flies a wing as well. All of them stand
  * on the origin with the nose along +z.
  *
- * They are modelled in Blender (scripts/bug.py) and arrive as bug.glb; until they do -
+ * They are modeled in Blender (scripts/bug.py) and arrive as bug.glb; until they do -
  * and for any shape an older file was built without - the map draws the ones below
  * out of spheres and boxes, so the street is never empty waiting on a download.
  *
@@ -745,7 +745,7 @@ const mite = model => fromFile(model, ['mite_shell', 'mite_dark', 'mite_legs', '
 });
 
 /**
- * The stand-in left wing, for a bug.glb modelled before there was one in it. The
+ * The stand-in left wing, for a bug.glb modeled before there was one in it. The
  * shape is scripts/bug.py's, drawn here the way the stand-in beetle above is drawn:
  * flat, hinged on the body's own length so that turning it about that line beats it
  * (flap above), and lying over the back from the hinge outwards.
@@ -789,7 +789,7 @@ function shade(geo, base) {
 }
 
 const rock = new THREE.Matrix4(), beat = new THREE.Matrix4();
-const fwd = new THREE.Vector3(), side = new THREE.Vector3(), lean = new THREE.Vector3();
+const forward = new THREE.Vector3(), side = new THREE.Vector3(), lean = new THREE.Vector3();
 
 /**
  * Stands a bug on its surface: nose along the lap, back along the surface's normal.
@@ -804,16 +804,16 @@ const fwd = new THREE.Vector3(), side = new THREE.Vector3(), lean = new THREE.Ve
  * and a beetle sliding round one.
  */
 function orient(m, bug) {
-  fwd.set(Math.sin(bug.heading), 0, Math.cos(bug.heading));
-  const up = bug.bank ? lean.copy(bug.up).applyAxisAngle(fwd, bug.bank) : bug.up;
-  side.crossVectors(up, fwd).normalize();
-  m.makeBasis(side, up, fwd);
+  forward.set(Math.sin(bug.heading), 0, Math.cos(bug.heading));
+  const up = bug.bank ? lean.copy(bug.up).applyAxisAngle(forward, bug.bank) : bug.up;
+  side.crossVectors(up, forward).normalize();
+  m.makeBasis(side, up, forward);
   // How big this severity walks, and how much of it is left if it is being taken off
   // the map: the basis is scaled rather than the geometry, so one mesh per shape still
   // draws every size of it.
   const s = bug.scale * (bug.size ?? 1);
   m.scale(SIZE.set(s, s * (bug.squash ?? 1), s));
-  m.setPosition(bug.pos);
+  m.setPosition(bug.position);
 }
 
 /**

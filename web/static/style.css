@@ -330,7 +330,7 @@ main { position: relative; flex: 1; min-height: 0; }
 /* And the last one fills the screen instead: the walker stops answering to anything,
    the red comes up over the whole view and holds, and then the map is back. --dead is
    how far into it walk.js has got, so the fade is driven by the frame clock rather
-   than by an animation that would have to be restarted and cancelled. */
+   than by an animation that would have to be restarted and canceled. */
 #walk-hud.dead::before {
   content: ""; position: absolute; inset: 0; pointer-events: none; z-index: 1;
   background: radial-gradient(ellipse at center, rgba(120, 8, 6, 0.55), rgba(90, 4, 4, 0.98));

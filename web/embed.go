@@ -12,9 +12,9 @@ var static embed.FS
 
 // Implements: REQ-DIST-002
 func Assets() fs.FS {
-	sub, err := fs.Sub(static, "static")
+	staticFiles, err := fs.Sub(static, "static")
 	if err != nil {
 		panic(err) // unreachable: the directory is embedded at compile time
 	}
-	return sub
+	return staticFiles
 }

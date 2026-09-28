@@ -10,54 +10,54 @@ import (
 )
 
 type resolver struct {
-	files map[string]bool
-	dirs  map[string]bool
+	files       map[string]bool
+	directories map[string]bool
 }
 
 func newResolver(all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, dirs: map[string]bool{}}
+	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}}
 	for _, f := range all {
 		r.files[f.Path] = true
 		for d := path.Dir(f.Path); d != "." && d != "/"; d = path.Dir(d) {
-			r.dirs[d] = true
+			r.directories[d] = true
 		}
 	}
 	return r
 }
 
 // Implements: REQ-CI-005, REQ-CI-011, REQ-CI-013
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
 	// A pinned reference may carry the version it documents in a comment.
-	kind, requested, _ := strings.Cut(imp.Name, "\x00")
+	kind, requested, _ := strings.Cut(rawImport.Name, "\x00")
 	switch kind {
 	case kindLocal:
-		return r.local(imp.Module)
+		return r.local(rawImport.Module)
 	case kindImage:
-		return oci.Image(imp.Module)
+		return oci.Image(rawImport.Module)
 	case kindAction, kindWorkflow:
-		return action(imp.Module, requested)
+		return action(rawImport.Module, requested)
 	case kindProject:
-		project, ref, _ := strings.Cut(imp.Module, "@")
-		// Without a ref the include follows the project's default branch.
+		project, reference, _ := strings.Cut(rawImport.Module, "@")
+		// Without a reference the include follows the project's default branch.
 		return lang.Target{
-			Ecosystem: ecoGitLab, Package: project, Version: ref,
-			Pinned: lang.Commit(ref), Floating: ref == "",
+			Ecosystem: ecosystemGitLab, Package: project, Version: reference,
+			Pinned: lang.Commit(reference), Floating: reference == "",
 		}
 	case kindComponent:
-		name, version, ok := strings.Cut(imp.Module, "@")
+		name, version, ok := strings.Cut(rawImport.Module, "@")
 		if !ok {
 			// Without a version the component follows its project's default branch.
-			return lang.Target{Ecosystem: ecoGitLab, Package: name, Floating: true}
+			return lang.Target{Ecosystem: ecosystemGitLab, Package: name, Floating: true}
 		}
-		return lang.Target{Ecosystem: ecoGitLab, Package: name, Version: version, Pinned: lang.Commit(version)}
+		return lang.Target{Ecosystem: ecosystemGitLab, Package: name, Version: version, Pinned: lang.Commit(version)}
 	case kindTemplate:
 		// A template is served by the GitLab instance and versioned with it: there is
 		// no reference to pin, which makes it as loose as a dependency gets.
-		return lang.Target{Ecosystem: ecoGitLab, Package: "template: " + imp.Module, Floating: true}
+		return lang.Target{Ecosystem: ecosystemGitLab, Package: "template: " + rawImport.Module, Floating: true}
 	case kindRemote:
 		// Whatever that URL returns today, with nothing to say it is the same file
 		// that was reviewed.
-		return lang.Target{Ecosystem: ecoGitLab, Package: remoteName(imp.Module), Floating: true}
+		return lang.Target{Ecosystem: ecosystemGitLab, Package: remoteName(rawImport.Module), Floating: true}
 	}
 	return lang.Target{}
 }
@@ -81,25 +81,25 @@ func (r *resolver) local(p string) lang.Target {
 			return lang.Target{Local: candidate}
 		}
 	}
-	if r.dirs[p] {
+	if r.directories[p] {
 		return lang.Target{Local: p}
 	}
 	return lang.Target{}
 }
 
 // action resolves "owner/repo[/path][@ref]". The dependency is the repository: a
-// reference to a sub-directory still runs whatever that repository holds at ref.
+// reference to a sub-directory still runs whatever that repository holds at reference.
 // Only a commit pins it - a tag can be moved to other code at any time.
 //
 // Implements: REQ-CI-002, REQ-CI-011, REQ-CI-013, REQ-CI-014, REQ-CI-015
-func action(ref, requested string) lang.Target {
-	spec, version, _ := strings.Cut(ref, "@")
+func action(reference, requested string) lang.Target {
+	spec, version, _ := strings.Cut(reference, "@")
 	segments := strings.Split(spec, "/")
 	if len(segments) < 2 || segments[0] == "" || segments[1] == "" {
-		return lang.Target{Ecosystem: ecoActions, Package: spec, Unresolved: true}
+		return lang.Target{Ecosystem: ecosystemActions, Package: spec, Unresolved: true}
 	}
 	t := lang.Target{
-		Ecosystem: ecoActions,
+		Ecosystem: ecosystemActions,
 		Package:   segments[0] + "/" + segments[1],
 		Version:   version,
 		Pinned:    lang.Commit(version),

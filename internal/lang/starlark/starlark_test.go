@@ -8,12 +8,12 @@ import (
 
 // Verifies: REQ-BAZEL-012
 func TestStrings(t *testing.T) {
-	src := "a = \"x\\\"y\"\nb = 'it''s'\nc = r\"\\d+\"\nd = \"\"\"multi\nline # not a comment\"\"\"\ne = rb'''raw'''  # comment\nf = \"unterminated\ng = \"ok\"\n"
+	source := "a = \"x\\\"y\"\nb = 'it''s'\nc = r\"\\d+\"\nd = \"\"\"multi\nline # not a comment\"\"\"\ne = rb'''raw'''  # comment\nf = \"unterminated\ng = \"ok\"\n"
 	want := map[string]string{"a": `x"y`, "b": "its", "c": `\d+`, "d": "multi\nline # not a comment", "e": "raw", "f": "unterminated", "g": "ok"}
 	got := map[string]string{}
-	for _, st := range Parse([]byte(src)).Stmts {
-		if st.Kind == 'a' {
-			got[st.Targets[0]], _ = st.X.Str()
+	for _, statement := range Parse([]byte(source)).Statements {
+		if statement.Kind == 'a' {
+			got[statement.Targets[0]], _ = statement.X.StringValue()
 		}
 	}
 	if !reflect.DeepEqual(got, want) {
@@ -23,7 +23,7 @@ func TestStrings(t *testing.T) {
 
 // Verifies: REQ-BAZEL-012
 func TestStatements(t *testing.T) {
-	src := `load("//a:b.bzl", "x", y = "z")
+	source := `load("//a:b.bzl", "x", y = "z")
 
 # a comment
 cc_library(
@@ -46,10 +46,10 @@ def inline(): return 1
 
 after = struct(a = [1, 2,], b = {"k": "v"}, c = -1, d = not True, e = a if b else c, f = lambda x: x)
 `
-	f := Parse([]byte(src))
+	f := Parse([]byte(source))
 	var got []string
-	for _, st := range f.Stmts {
-		got = append(got, string(st.Kind)+":"+st.Def+":"+st.Name+":"+strings.Join(st.Targets, ",")+":"+st.X.Callee())
+	for _, statement := range f.Statements {
+		got = append(got, string(statement.Kind)+":"+statement.Definition+":"+statement.Name+":"+strings.Join(statement.Targets, ",")+":"+statement.X.Callee())
 	}
 	want := []string{
 		"e:::" + ":load", "e::::cc_library", "a:::X,Y:", "d::macro::", "e:macro:::", "o:macro:::",
@@ -58,31 +58,31 @@ after = struct(a = [1, 2,], b = {"k": "v"}, c = -1, d = not True, e = a if b els
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("statements\n got %q\nwant %q", got, want)
 	}
-	lib := f.Stmts[1].X
-	if s := lib.KwStr("name"); s != "lib" {
+	library := f.Statements[1].X
+	if s := library.KeywordString("name"); s != "lib" {
 		t.Errorf("name = %q", s)
 	}
-	srcs := lib.Kw("srcs")
-	if srcs.Kind != Binary || srcs.Text != "+" || srcs.Items[0].Callee() != "glob" ||
-		!reflect.DeepEqual(srcs.Items[0].Kw("exclude").Strings(), []string{"x.cc"}) ||
-		!reflect.DeepEqual(srcs.Items[1].Strings(), []string{":gen"}) {
-		t.Errorf("srcs read as %+v", srcs)
+	sources := library.Keyword("srcs")
+	if sources.Kind != Binary || sources.Text != "+" || sources.Items[0].Callee() != "glob" ||
+		!reflect.DeepEqual(sources.Items[0].Keyword("exclude").Strings(), []string{"x.cc"}) ||
+		!reflect.DeepEqual(sources.Items[1].Strings(), []string{":gen"}) {
+		t.Errorf("srcs read as %+v", sources)
 	}
-	sel := lib.Kw("deps").Pos(0)
-	if sel.Kind != Dict || len(sel.Items) != 4 || !reflect.DeepEqual(sel.Items[1].Strings(), []string{":l"}) {
-		t.Errorf("select read as %+v", sel)
+	dependency := library.Keyword("deps").Position(0)
+	if dependency.Kind != Dictionary || len(dependency.Items) != 4 || !reflect.DeepEqual(dependency.Items[1].Strings(), []string{":l"}) {
+		t.Errorf("select read as %+v", dependency)
 	}
-	if lib.Args[len(lib.Args)-1].Star != "**" {
+	if library.Arguments[len(library.Arguments)-1].Star != "**" {
 		t.Error("**kwargs not read")
 	}
-	after := f.Stmts[len(f.Stmts)-1].X
-	if a := after.Kw("a"); a.Kind != List || len(a.Items) != 2 {
+	after := f.Statements[len(f.Statements)-1].X
+	if a := after.Keyword("a"); a.Kind != List || len(a.Items) != 2 {
 		t.Errorf("a = %+v", a)
 	}
-	if e := after.Kw("e"); e.Kind != Cond {
+	if e := after.Keyword("e"); e.Kind != Condition {
 		t.Errorf("e = %+v", e)
 	}
-	if l := f.Stmts[0].X; l.Pos(0).Text != "//a:b.bzl" || l.Args[2].Name != "y" {
+	if l := f.Statements[0].X; l.Position(0).Text != "//a:b.bzl" || l.Arguments[2].Name != "y" {
 		t.Errorf("load read as %+v", l)
 	}
 }

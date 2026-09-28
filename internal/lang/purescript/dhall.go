@@ -16,14 +16,14 @@ func setName(v *dhall.Value) string {
 	for k := 0; v != nil && k < 64; k++ {
 		switch v.Kind {
 		case dhall.KindImport:
-			if !strings.Contains(v.Loc, "://") {
+			if !strings.Contains(v.Location, "://") {
 				return ""
 			}
-			u := strings.TrimSuffix(v.Loc, "/packages.dhall")
-			if u != v.Loc {
+			u := strings.TrimSuffix(v.Location, "/packages.dhall")
+			if u != v.Location {
 				return u[strings.LastIndexByte(u, '/')+1:]
 			}
-			return lang.RepoName(v.Loc)
+			return lang.RepositoryName(v.Location)
 		case dhall.KindRecord:
 			v = v.Base
 		default:

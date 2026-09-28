@@ -26,16 +26,16 @@ import (
 )
 
 var (
-	binOnce sync.Once
-	binDir  string
-	binPath string
-	binErr  error
+	binOnce      sync.Once
+	binDirectory string
+	binPath      string
+	binErr       error
 )
 
 func TestMain(m *testing.M) {
 	code := m.Run()
-	if binDir != "" {
-		os.RemoveAll(binDir)
+	if binDirectory != "" {
+		os.RemoveAll(binDirectory)
 	}
 	os.Exit(code)
 }
@@ -47,16 +47,16 @@ func binary(t *testing.T) string {
 		t.Skip("builds and runs the binary")
 	}
 	binOnce.Do(func() {
-		if binDir, binErr = os.MkdirTemp("", "depphunter-bin"); binErr != nil {
+		if binDirectory, binErr = os.MkdirTemp("", "depphunter-bin"); binErr != nil {
 			return
 		}
-		binPath = filepath.Join(binDir, "depphunter")
+		binPath = filepath.Join(binDirectory, "depphunter")
 		if runtime.GOOS == "windows" {
 			binPath += ".exe"
 		}
-		cmd := exec.Command("go", "build", "-o", binPath, ".")
-		cmd.Env = append(os.Environ(), "CGO_ENABLED=0")
-		if out, err := cmd.CombinedOutput(); err != nil {
+		command := exec.Command("go", "build", "-o", binPath, ".")
+		command.Env = append(os.Environ(), "CGO_ENABLED=0")
+		if out, err := command.CombinedOutput(); err != nil {
 			binErr = errors.New(err.Error() + "\n" + string(out))
 		}
 	})
@@ -69,21 +69,21 @@ func binary(t *testing.T) string {
 // command prepares a run of the binary that sees none of this machine's settings:
 // its config, cache and home directories are fresh, and no DEPPHUNTER_* variable
 // or private-module pattern leaks in from the environment running the tests.
-func command(t *testing.T, args ...string) *exec.Cmd {
+func command(t *testing.T, arguments ...string) *exec.Cmd {
 	t.Helper()
-	cmd := exec.Command(binary(t), args...)
+	command := exec.Command(binary(t), arguments...)
 	home := t.TempDir()
-	for _, kv := range os.Environ() {
-		name := strings.ToUpper(kv[:strings.IndexByte(kv+"=", '=')])
+	for _, keyValue := range os.Environ() {
+		name := strings.ToUpper(keyValue[:strings.IndexByte(keyValue+"=", '=')])
 		if strings.HasPrefix(name, "DEPPHUNTER_") || name == "GOPRIVATE" || name == "GONOPROXY" {
 			continue
 		}
-		cmd.Env = append(cmd.Env, kv)
+		command.Env = append(command.Env, keyValue)
 	}
 	for _, name := range []string{"HOME", "USERPROFILE", "XDG_CONFIG_HOME", "XDG_CACHE_HOME", "APPDATA", "LOCALAPPDATA"} {
-		cmd.Env = append(cmd.Env, name+"="+filepath.Join(home, name))
+		command.Env = append(command.Env, name+"="+filepath.Join(home, name))
 	}
-	return cmd
+	return command
 }
 
 // project writes a small npm project whose lock file answers one question, so a
@@ -108,11 +108,11 @@ func project(t *testing.T) string {
 }
 
 // exitCode runs cmd to the end, returning its exit status and both streams apart.
-func exitCode(t *testing.T, cmd *exec.Cmd) (int, string, string) {
+func exitCode(t *testing.T, command *exec.Cmd) (int, string, string) {
 	t.Helper()
 	var stdout, stderr bytes.Buffer
-	cmd.Stdout, cmd.Stderr = &stdout, &stderr
-	err := cmd.Run()
+	command.Stdout, command.Stderr = &stdout, &stderr
+	err := command.Run()
 	var exit *exec.ExitError
 	switch {
 	case err == nil:
@@ -176,36 +176,36 @@ func TestSingleDashLongFlagIsRejected(t *testing.T) {
 
 // running is a started depphunter whose log lines are read as they come.
 type running struct {
-	t     *testing.T
-	cmd   *exec.Cmd
-	lines chan string
-	exit  chan struct{}
+	t       *testing.T
+	command *exec.Cmd
+	lines   chan string
+	exit    chan struct{}
 }
 
-func start(t *testing.T, cmd *exec.Cmd) *running {
+func start(t *testing.T, command *exec.Cmd) *running {
 	t.Helper()
-	out, err := cmd.StdoutPipe()
+	out, err := command.StdoutPipe()
 	if err != nil {
 		t.Fatal(err)
 	}
-	cmd.Stderr = cmd.Stdout
-	if err := cmd.Start(); err != nil {
+	command.Stderr = command.Stdout
+	if err := command.Start(); err != nil {
 		t.Fatal(err)
 	}
-	r := &running{t: t, cmd: cmd, lines: make(chan string, 64), exit: make(chan struct{})}
+	r := &running{t: t, command: command, lines: make(chan string, 64), exit: make(chan struct{})}
 	go func() {
-		sc := bufio.NewScanner(out)
-		for sc.Scan() {
-			r.lines <- sc.Text()
+		scanner := bufio.NewScanner(out)
+		for scanner.Scan() {
+			r.lines <- scanner.Text()
 		}
-		if err := sc.Err(); err != nil {
+		if err := scanner.Err(); err != nil {
 			t.Error(err)
 		}
-		cmd.Wait()
+		command.Wait()
 		close(r.exit)
 	}()
 	t.Cleanup(func() {
-		cmd.Process.Kill()
+		command.Process.Kill()
 		<-r.exit
 	})
 	return r
@@ -240,20 +240,20 @@ var serving = regexp.MustCompile(`^depphunter: serving at (http://127\.0\.0\.1:(
 func TestServesOnLoopbackByDefault(t *testing.T) {
 	root := project(t)
 	before, _ := os.ReadDir(root)
-	cmd := command(t, "--no-open", "--no-history", "--no-links")
-	cmd.Dir = root // the default path is the current directory
-	r := start(t, cmd)
+	process := command(t, "--no-open", "--no-history", "--no-links")
+	process.Dir = root // the default path is the current directory
+	r := start(t, process)
 	url := r.await(serving)[1]
 
 	jar, _ := cookiejar.New(nil)
-	res, err := (&http.Client{Jar: jar}).Get(url)
+	response, err := (&http.Client{Jar: jar}).Get(url)
 	if err != nil {
 		t.Fatal(err)
 	}
-	io.Copy(io.Discard, res.Body)
-	res.Body.Close()
-	if res.StatusCode != http.StatusOK {
-		t.Errorf("the logged URL answered %d", res.StatusCode)
+	io.Copy(io.Discard, response.Body)
+	response.Body.Close()
+	if response.StatusCode != http.StatusOK {
+		t.Errorf("the logged URL answered %d", response.StatusCode)
 	}
 
 	select {
@@ -280,11 +280,11 @@ func TestWatchReanalyzesIncrementally(t *testing.T) {
 	base := url[:strings.Index(url, "/?")]
 	jar, _ := cookiejar.New(nil)
 	c := &http.Client{Jar: jar}
-	res, err := c.Get(url)
+	response, err := c.Get(url)
 	if err != nil {
 		t.Fatal(err)
 	}
-	res.Body.Close()
+	response.Body.Close()
 
 	type report struct {
 		GeneratedAt time.Time `json:"generatedAt"`
@@ -295,16 +295,16 @@ func TestWatchReanalyzesIncrementally(t *testing.T) {
 	}
 	resolution := func() report {
 		t.Helper()
-		res, err := c.Get(base + "/api/resolution")
+		response, err := c.Get(base + "/api/resolution")
 		if err != nil {
 			t.Fatal(err)
 		}
-		defer res.Body.Close()
-		var rep report
-		if err := json.NewDecoder(res.Body).Decode(&rep); err != nil || res.StatusCode != http.StatusOK {
-			t.Fatalf("/api/resolution: %d %v", res.StatusCode, err)
+		defer response.Body.Close()
+		var decoded report
+		if err := json.NewDecoder(response.Body).Decode(&decoded); err != nil || response.StatusCode != http.StatusOK {
+			t.Fatalf("/api/resolution: %d %v", response.StatusCode, err)
 		}
-		return rep
+		return decoded
 	}
 	first := resolution()
 	if first.Totals.Asked == 0 {
@@ -334,9 +334,9 @@ func TestWatchReanalyzesIncrementally(t *testing.T) {
 // Verifies: REQ-DIST-001
 func TestNoCgoOutsideTheStandardLibrary(t *testing.T) {
 	binary(t)
-	cmd := exec.Command("go", "list", "-deps", "-f", `{{if and .CgoFiles (not .Standard)}}{{.ImportPath}}{{end}}`, ".")
-	cmd.Env = append(os.Environ(), "CGO_ENABLED=1")
-	out, err := cmd.Output()
+	command := exec.Command("go", "list", "-deps", "-f", `{{if and .CgoFiles (not .Standard)}}{{.ImportPath}}{{end}}`, ".")
+	command.Env = append(os.Environ(), "CGO_ENABLED=1")
+	out, err := command.Output()
 	if err != nil {
 		t.Fatal(err)
 	}

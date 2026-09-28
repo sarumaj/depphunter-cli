@@ -22,9 +22,9 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
-// ecoElm is the island of Elm packages, named author/name as elm.json and
+// ecosystemElm is the island of Elm packages, named author/name as elm.json and
 // package.elm-lang.org name them.
-const ecoElm = "elm"
+const ecosystemElm = "elm"
 
 const classManifest = "manifest"
 
@@ -64,7 +64,7 @@ func (Plugin) Class(f *scan.File) string {
 //
 // Implements: REQ-ELM-009
 func (Plugin) Ecosystems() []lang.Ecosystem {
-	return []lang.Ecosystem{{ID: ecoElm, Name: "Elm packages"}}
+	return []lang.Ecosystem{{ID: ecosystemElm, Name: "Elm packages"}}
 }
 
 func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
@@ -72,9 +72,9 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-ELM-002, REQ-ELM-003, REQ-ELM-005
-func (p Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (p Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	if p.Class(f) == classManifest {
-		return extractManifest(src), nil
+		return extractManifest(source), nil
 	}
-	return extractSource(src), nil
+	return extractSource(source), nil
 }

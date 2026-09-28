@@ -13,23 +13,23 @@ type nodeKind uint8
 
 const (
 	nOther nodeKind = iota
-	nIdent
+	nIdentifier
 	nSelect // kids[0] base, path; kids[1] the `or` default
 	nString // text when literal; interpolate; kids = interpolated expressions
 	nPath   // text (literal part); interpolate; kids = interpolated expressions
 	nSPath  // <text>
 	nURI
-	nAttrs  // binds; rec
-	nLet    // binds; kids[0] body
-	nWith   // kids[0] environment, kids[1] body
-	nAssert // kids[0] condition, kids[1] body
-	nIf     // kids[0..2]
-	nLambda // arg, formals (defaults in binds), set; kids[0] body
-	nApply  // kids[0] function, kids[1:] arguments
-	nList   // kids
-	nBinary // text = operator; kids = operands (a chain of one operator is flat)
-	nUnary  // kids[0]
-	nParen  // kids[0]
+	nAttributes  // binds; rec
+	nLet         // binds; kids[0] body
+	nWith        // kids[0] environment, kids[1] body
+	nAssert      // kids[0] condition, kids[1] body
+	nIf          // kids[0..2]
+	nLambda      // arg, formals (defaults in binds), set; kids[0] body
+	nApply       // kids[0] function, kids[1:] arguments
+	nList        // kids
+	nBinary      // text = operator; kids = operands (a chain of one operator is flat)
+	nUnary       // kids[0]
+	nParenthesis // kids[0]
 )
 
 type node struct {
@@ -37,7 +37,7 @@ type node struct {
 	line        int
 	text        string
 	interpolate bool
-	rec         bool
+	recursive   bool
 	set         bool     // a lambda with a { formals } pattern
 	path        []string // a selection's attribute path; "" for a dynamic part
 	kids        []*node
@@ -69,10 +69,10 @@ type parser struct {
 // parse reads a Nix file's expression.
 //
 // Implements: REQ-NIX-011
-func parse(src []byte) *node {
-	tokens := lex(src)
+func parse(source []byte) *node {
+	tokens := lex(source)
 	p := &parser{tokens: tokens, match: matchBrackets(tokens)}
-	root := p.expr()
+	root := p.expression()
 	return root
 }
 
@@ -86,30 +86,30 @@ func matchBrackets(tokens []token) []int {
 	var stack []int
 	closes := func(open token, c token) bool {
 		switch open.kind {
-		case tStrOpen:
-			return c.kind == tStrClose
+		case tStringOpen:
+			return c.kind == tStringClose
 		case tPathOpen:
 			return c.kind == tPathClose
-		case tInterp:
-			return c.kind == tInterpEnd
+		case tInterpolation:
+			return c.kind == tInterpolationEnd
 		}
 		switch open.text {
 		case "{":
-			return c.kind == tPunct && c.text == "}"
+			return c.kind == tPunctuation && c.text == "}"
 		case "(":
-			return c.kind == tPunct && c.text == ")"
+			return c.kind == tPunctuation && c.text == ")"
 		case "[":
-			return c.kind == tPunct && c.text == "]"
+			return c.kind == tPunctuation && c.text == "]"
 		}
 		return false
 	}
 	for i, t := range tokens {
 		switch {
-		case t.kind == tStrOpen || t.kind == tPathOpen || t.kind == tInterp,
-			t.kind == tPunct && (t.text == "{" || t.text == "(" || t.text == "["):
+		case t.kind == tStringOpen || t.kind == tPathOpen || t.kind == tInterpolation,
+			t.kind == tPunctuation && (t.text == "{" || t.text == "(" || t.text == "["):
 			stack = append(stack, i)
-		case t.kind == tStrClose || t.kind == tPathClose || t.kind == tInterpEnd,
-			t.kind == tPunct && (t.text == "}" || t.text == ")" || t.text == "]"):
+		case t.kind == tStringClose || t.kind == tPathClose || t.kind == tInterpolationEnd,
+			t.kind == tPunctuation && (t.text == "}" || t.text == ")" || t.text == "]"):
 			for k := len(stack) - 1; k >= 0 && k >= len(stack)-8; k-- {
 				if closes(tokens[stack[k]], t) {
 					m[stack[k]] = i
@@ -123,9 +123,9 @@ func matchBrackets(tokens []token) []int {
 	return m
 }
 
-func (p *parser) tok() token { return p.tokens[p.i] }
+func (p *parser) token() token { return p.tokens[p.i] }
 
-func (p *parser) peekTok(k int) token {
+func (p *parser) peekToken(k int) token {
 	if p.i+k < len(p.tokens) {
 		return p.tokens[p.i+k]
 	}
@@ -134,12 +134,12 @@ func (p *parser) peekTok(k int) token {
 
 func (p *parser) is(text string) bool {
 	t := p.tokens[p.i]
-	return t.kind == tPunct && t.text == text
+	return t.kind == tPunctuation && t.text == text
 }
 
-func (p *parser) kw(word string) bool {
+func (p *parser) keyword(word string) bool {
 	t := p.tokens[p.i]
-	return t.kind == tIdent && t.text == word
+	return t.kind == tIdentifier && t.text == word
 }
 
 func (p *parser) next() token {
@@ -150,7 +150,7 @@ func (p *parser) next() token {
 	return t
 }
 
-func (p *parser) eof() bool { return p.tokens[p.i].kind == tEOF }
+func (p *parser) atEnd() bool { return p.tokens[p.i].kind == tEOF }
 
 // skipGroup steps over the bracketed group opening at p.i, or one token.
 func (p *parser) skipGroup() {
@@ -164,21 +164,21 @@ func (p *parser) skipGroup() {
 var keywords = map[string]bool{"if": true, "then": true, "else": true, "assert": true, "with": true,
 	"let": true, "in": true, "rec": true, "inherit": true, "or": true}
 
-// expr parses an expression: a lambda, let, with, assert, if or an operator
+// expression parses an expression: a lambda, let, with, assert, if or an operator
 // expression.
-func (p *parser) expr() *node {
+func (p *parser) expression() *node {
 	p.depth++
 	defer func() { p.depth-- }()
-	t := p.tok()
+	t := p.token()
 	if p.depth > maxDepth {
 		p.skipGroup()
 		return &node{kind: nOther, line: t.line}
 	}
 	switch {
-	case t.kind == tIdent && !keywords[t.text] && p.peekTok(1).kind == tPunct && p.peekTok(1).text == ":":
+	case t.kind == tIdentifier && !keywords[t.text] && p.peekToken(1).kind == tPunctuation && p.peekToken(1).text == ":":
 		p.i += 2
-		return &node{kind: nLambda, line: t.line, text: t.text, kids: []*node{p.expr()}}
-	case t.kind == tIdent && !keywords[t.text] && p.peekTok(1).kind == tPunct && p.peekTok(1).text == "@":
+		return &node{kind: nLambda, line: t.line, text: t.text, kids: []*node{p.expression()}}
+	case t.kind == tIdentifier && !keywords[t.text] && p.peekToken(1).kind == tPunctuation && p.peekToken(1).text == "@":
 		p.i += 2
 		if p.is("{") {
 			n := p.formals()
@@ -186,40 +186,40 @@ func (p *parser) expr() *node {
 			return n
 		}
 		return &node{kind: nOther, line: t.line}
-	case t.kind == tPunct && t.text == "{" && p.isFormals():
+	case t.kind == tPunctuation && t.text == "{" && p.isFormals():
 		return p.formals()
-	case t.kind == tIdent && t.text == "let" && !(p.peekTok(1).kind == tPunct && p.peekTok(1).text == "{"):
+	case t.kind == tIdentifier && t.text == "let" && !(p.peekToken(1).kind == tPunctuation && p.peekToken(1).text == "{"):
 		p.next()
 		n := &node{kind: nLet, line: t.line}
-		n.binds = p.binds(func() bool { return p.kw("in") }, false)
-		if p.kw("in") {
+		n.binds = p.binds(func() bool { return p.keyword("in") }, false)
+		if p.keyword("in") {
 			p.next()
 		}
-		n.kids = []*node{p.expr()}
+		n.kids = []*node{p.expression()}
 		return n
-	case t.kind == tIdent && (t.text == "with" || t.text == "assert"):
+	case t.kind == tIdentifier && (t.text == "with" || t.text == "assert"):
 		p.next()
 		k := nWith
 		if t.text == "assert" {
 			k = nAssert
 		}
-		env := p.expr()
+		environment := p.expression()
 		if p.is(";") {
 			p.next()
 		}
-		return &node{kind: k, line: t.line, kids: []*node{env, p.expr()}}
-	case t.kind == tIdent && t.text == "if":
+		return &node{kind: k, line: t.line, kids: []*node{environment, p.expression()}}
+	case t.kind == tIdentifier && t.text == "if":
 		p.next()
 		n := &node{kind: nIf, line: t.line}
-		c := p.expr()
+		c := p.expression()
 		var a, b *node
-		if p.kw("then") {
+		if p.keyword("then") {
 			p.next()
-			a = p.expr()
+			a = p.expression()
 		}
-		if p.kw("else") {
+		if p.keyword("else") {
 			p.next()
-			b = p.expr()
+			b = p.expression()
 		}
 		n.kids = nonNil(c, a, b)
 		return n
@@ -227,9 +227,9 @@ func (p *parser) expr() *node {
 	return p.binary(0)
 }
 
-func nonNil(ns ...*node) []*node {
-	out := ns[:0]
-	for _, n := range ns {
+func nonNil(nodes ...*node) []*node {
+	out := nodes[:0]
+	for _, n := range nodes {
 		if n != nil {
 			out = append(out, n)
 		}
@@ -240,20 +240,20 @@ func nonNil(ns ...*node) []*node {
 // isFormals tells `{ a, b ? 1, ... }:` (or `{ ... } @ args:`) from an attribute
 // set at a `{`.
 func (p *parser) isFormals() bool {
-	a, b := p.peekTok(1), p.peekTok(2)
+	a, b := p.peekToken(1), p.peekToken(2)
 	switch {
-	case a.kind == tPunct && a.text == "}":
-		c := p.peekTok(2)
-		return c.kind == tPunct && (c.text == ":" || c.text == "@")
-	case a.kind == tPunct && a.text == "...":
+	case a.kind == tPunctuation && a.text == "}":
+		c := p.peekToken(2)
+		return c.kind == tPunctuation && (c.text == ":" || c.text == "@")
+	case a.kind == tPunctuation && a.text == "...":
 		return true
-	case a.kind == tIdent && !keywords[a.text]:
-		if b.kind == tPunct && (b.text == "," || b.text == "?") {
+	case a.kind == tIdentifier && !keywords[a.text]:
+		if b.kind == tPunctuation && (b.text == "," || b.text == "?") {
 			return true
 		}
-		if b.kind == tPunct && b.text == "}" {
-			c := p.peekTok(3)
-			return c.kind == tPunct && (c.text == ":" || c.text == "@")
+		if b.kind == tPunctuation && b.text == "}" {
+			c := p.peekToken(3)
+			return c.kind == tPunctuation && (c.text == ":" || c.text == "@")
 		}
 	}
 	return false
@@ -262,20 +262,20 @@ func (p *parser) isFormals() bool {
 // formals parses `{ a, b ? default, ... } [@ name] : body` at a `{`.
 func (p *parser) formals() *node {
 	open := p.i
-	n := &node{kind: nLambda, line: p.tok().line, set: true}
+	n := &node{kind: nLambda, line: p.token().line, set: true}
 	p.next()
-	for !p.eof() && !p.is("}") {
+	for !p.atEnd() && !p.is("}") {
 		start := p.i
-		t := p.tok()
+		t := p.token()
 		switch {
-		case t.kind == tIdent:
+		case t.kind == tIdentifier:
 			p.next()
 			n.formals = append(n.formals, t.text)
 			if p.is("?") {
 				p.next()
-				n.binds = append(n.binds, &bind{path: []string{t.text}, line: t.line, value: p.expr()})
+				n.binds = append(n.binds, &bind{path: []string{t.text}, line: t.line, value: p.expression()})
 			}
-		case t.kind == tPunct && (t.text == "," || t.text == "..."):
+		case t.kind == tPunctuation && (t.text == "," || t.text == "..."):
 			p.next()
 		default:
 			p.skipGroup()
@@ -292,14 +292,14 @@ func (p *parser) formals() *node {
 	}
 	if p.is("@") {
 		p.next()
-		if p.tok().kind == tIdent {
+		if p.token().kind == tIdentifier {
 			n.text = p.next().text
 		}
 	}
 	if p.is(":") {
 		p.next()
 	}
-	n.kids = []*node{p.expr()}
+	n.kids = []*node{p.expression()}
 	return n
 }
 
@@ -313,33 +313,33 @@ func (p *parser) binary(min int) *node {
 	p.depth++
 	defer func() { p.depth-- }()
 	var left *node
-	t := p.tok()
+	t := p.token()
 	switch {
 	case p.depth > maxDepth:
 		p.skipGroup()
 		return &node{kind: nOther, line: t.line}
-	case t.kind == tPunct && t.text == "!":
+	case t.kind == tPunctuation && t.text == "!":
 		p.next()
 		left = &node{kind: nUnary, line: t.line, kids: []*node{p.binary(8)}}
-	case t.kind == tPunct && t.text == "-":
+	case t.kind == tPunctuation && t.text == "-":
 		p.next()
 		left = &node{kind: nUnary, line: t.line, kids: []*node{p.binary(13)}}
 	default:
 		left = p.apply()
 	}
 	for {
-		t := p.tok()
-		prec, ok := precedence[t.text]
-		if t.kind != tPunct || !ok || prec <= min && min > 0 || prec < min {
+		t := p.token()
+		level, ok := precedence[t.text]
+		if t.kind != tPunctuation || !ok || level <= min && min > 0 || level < min {
 			return left
 		}
 		p.next()
 		if t.text == "?" { // a ? b.c: an attribute path, not an expression
-			path, _ := p.attrPath()
+			path, _ := p.attributePath()
 			left = &node{kind: nBinary, line: t.line, text: "?", kids: []*node{left, {kind: nOther, path: path}}}
 			continue
 		}
-		right := p.binary(prec)
+		right := p.binary(level)
 		if left.kind == nBinary && left.text == t.text {
 			left.kids = append(left.kids, right)
 		} else {
@@ -351,25 +351,25 @@ func (p *parser) binary(min int) *node {
 // startsOperand reports whether the token can begin an argument of an application.
 func startsOperand(t token) bool {
 	switch t.kind {
-	case tIdent:
+	case tIdentifier:
 		return !keywords[t.text] || t.text == "rec"
-	case tNum, tStrOpen, tPath, tPathOpen, tSPath, tURI:
+	case tNumber, tStringOpen, tPath, tPathOpen, tSPath, tURI:
 		return true
-	case tPunct:
+	case tPunctuation:
 		return t.text == "(" || t.text == "[" || t.text == "{"
 	}
 	return false
 }
 
 func (p *parser) apply() *node {
-	fn := p.selectExpr()
-	if !startsOperand(p.tok()) {
-		return fn
+	function := p.selectExpression()
+	if !startsOperand(p.token()) {
+		return function
 	}
-	n := &node{kind: nApply, line: fn.line, kids: []*node{fn}}
-	for startsOperand(p.tok()) {
+	n := &node{kind: nApply, line: function.line, kids: []*node{function}}
+	for startsOperand(p.token()) {
 		start := p.i
-		n.kids = append(n.kids, p.selectExpr())
+		n.kids = append(n.kids, p.selectExpression())
 		if p.i == start {
 			p.next()
 		}
@@ -377,67 +377,67 @@ func (p *parser) apply() *node {
 	return n
 }
 
-// selectExpr parses a primary with its `.attr.path` and `or` default.
-func (p *parser) selectExpr() *node {
+// selectExpression parses a primary with its `.attr.path` and `or` default.
+func (p *parser) selectExpression() *node {
 	base := p.primary()
 	if !p.is(".") {
 		return base
 	}
 	p.next()
-	path, _ := p.attrPath()
+	path, _ := p.attributePath()
 	n := &node{kind: nSelect, line: base.line, kids: []*node{base}, path: path}
-	if p.kw("or") {
+	if p.keyword("or") {
 		p.next()
-		n.kids = append(n.kids, p.selectExpr())
+		n.kids = append(n.kids, p.selectExpression())
 	}
 	return n
 }
 
-// attrPath reads `a.b."c".${d}`; dynamic parts are "" (their code is returned
+// attributePath reads `a.b."c".${d}`; dynamic parts are "" (their code is returned
 // too, so paths inside them are not lost).
-func (p *parser) attrPath() ([]string, []*node) {
+func (p *parser) attributePath() ([]string, []*node) {
 	var path []string
-	var dyn []*node
+	var dynamic []*node
 	for {
-		t := p.tok()
+		t := p.token()
 		switch {
-		case t.kind == tIdent:
+		case t.kind == tIdentifier:
 			p.next()
 			path = append(path, t.text)
-		case t.kind == tStrOpen:
-			s := p.str()
+		case t.kind == tStringOpen:
+			s := p.parseString()
 			if s.interpolate {
 				path = append(path, "")
-				dyn = append(dyn, s)
+				dynamic = append(dynamic, s)
 			} else {
 				path = append(path, s.text)
 			}
-		case t.kind == tInterp:
+		case t.kind == tInterpolation:
 			p.next()
-			e := p.expr()
-			p.closeTo(tInterpEnd)
+			e := p.expression()
+			p.closeTo(tInterpolationEnd)
 			path = append(path, "")
-			dyn = append(dyn, e)
+			dynamic = append(dynamic, e)
 		default:
-			return path, dyn
+			return path, dynamic
 		}
 		if !p.is(".") {
-			return path, dyn
+			return path, dynamic
 		}
 		p.next()
 	}
 }
 
 // closeTo consumes up to and including the next token of kind k at this level.
-func (p *parser) closeTo(k tokKind) {
-	for !p.eof() {
-		t := p.tok()
+func (p *parser) closeTo(k tokenKind) {
+	for !p.atEnd() {
+		t := p.token()
 		if t.kind == k {
 			p.next()
 			return
 		}
-		if t.kind == tInterpEnd || t.kind == tStrClose || t.kind == tPathClose ||
-			t.kind == tPunct && (t.text == "}" || t.text == ")" || t.text == "]") {
+		if t.kind == tInterpolationEnd || t.kind == tStringClose || t.kind == tPathClose ||
+			t.kind == tPunctuation && (t.text == "}" || t.text == ")" || t.text == "]") {
 			return // a closer of an outer group: leave it
 		}
 		p.skipGroup()
@@ -445,23 +445,23 @@ func (p *parser) closeTo(k tokKind) {
 }
 
 func (p *parser) primary() *node {
-	t := p.tok()
+	t := p.token()
 	switch t.kind {
-	case tIdent:
+	case tIdentifier:
 		switch t.text {
 		case "rec":
 			p.next()
 			if p.is("{") {
-				n := p.attrs()
-				n.rec = true
+				n := p.attributes()
+				n.recursive = true
 				return n
 			}
 			return &node{kind: nOther, line: t.line}
 		case "let": // let { ...; body = x; }, the old form
 			p.next()
 			if p.is("{") {
-				n := p.attrs()
-				n.rec = true
+				n := p.attributes()
+				n.recursive = true
 				return n
 			}
 			return &node{kind: nOther, line: t.line}
@@ -470,12 +470,12 @@ func (p *parser) primary() *node {
 			return &node{kind: nOther, line: t.line}
 		}
 		p.next()
-		return &node{kind: nIdent, line: t.line, text: t.text}
-	case tNum:
+		return &node{kind: nIdentifier, line: t.line, text: t.text}
+	case tNumber:
 		p.next()
 		return &node{kind: nOther, line: t.line, text: t.text}
-	case tStrOpen:
-		return p.str()
+	case tStringOpen:
+		return p.parseString()
 	case tPath:
 		p.next()
 		return &node{kind: nPath, line: t.line, text: t.text}
@@ -487,25 +487,25 @@ func (p *parser) primary() *node {
 	case tURI:
 		p.next()
 		return &node{kind: nURI, line: t.line, text: t.text}
-	case tPunct:
+	case tPunctuation:
 		switch t.text {
 		case "(":
 			open := p.i
 			p.next()
-			n := &node{kind: nParen, line: t.line, kids: []*node{p.expr()}}
+			n := &node{kind: nParenthesis, line: t.line, kids: []*node{p.expression()}}
 			p.closeGroup(open, ")")
 			return n
 		case "[":
 			open := p.i
 			p.next()
 			n := &node{kind: nList, line: t.line}
-			for !p.eof() && !p.is("]") {
+			for !p.atEnd() && !p.is("]") {
 				start := p.i
 				if m := p.match[open]; m > 0 && p.i >= m {
 					break
 				}
-				if startsOperand(p.tok()) {
-					n.kids = append(n.kids, p.selectExpr())
+				if startsOperand(p.token()) {
+					n.kids = append(n.kids, p.selectExpression())
 				}
 				if p.i == start {
 					p.skipGroup()
@@ -514,7 +514,7 @@ func (p *parser) primary() *node {
 			p.closeGroup(open, "]")
 			return n
 		case "{":
-			return p.attrs()
+			return p.attributes()
 		}
 	}
 	return &node{kind: nOther, line: t.line}
@@ -536,26 +536,26 @@ func (p *parser) closeGroup(open int, closer string) {
 	}
 }
 
-// str parses a string whose opener is at p.i.
-func (p *parser) str() *node {
+// parseString parses a string whose opener is at p.i.
+func (p *parser) parseString() *node {
 	open := p.i
 	t := p.next()
 	n := &node{kind: nString, line: t.line}
 	var b strings.Builder
-	for !p.eof() {
-		t := p.tok()
+	for !p.atEnd() {
+		t := p.token()
 		switch t.kind {
-		case tStrText:
+		case tStringText:
 			b.WriteString(t.text)
 			p.next()
 			continue
-		case tInterp:
+		case tInterpolation:
 			n.interpolate = true
 			p.next()
-			n.kids = append(n.kids, p.expr())
-			p.closeTo(tInterpEnd)
+			n.kids = append(n.kids, p.expression())
+			p.closeTo(tInterpolationEnd)
 			continue
-		case tStrClose:
+		case tStringClose:
 			p.next()
 		default:
 			p.closeGroup(open, "")
@@ -572,16 +572,16 @@ func (p *parser) interpolatePath() *node {
 	open := p.i
 	t := p.next()
 	n := &node{kind: nPath, line: t.line, text: t.text, interpolate: true}
-	for !p.eof() {
-		t := p.tok()
+	for !p.atEnd() {
+		t := p.token()
 		switch t.kind {
 		case tPathText:
 			p.next()
 			continue
-		case tInterp:
+		case tInterpolation:
 			p.next()
-			n.kids = append(n.kids, p.expr())
-			p.closeTo(tInterpEnd)
+			n.kids = append(n.kids, p.expression())
+			p.closeTo(tInterpolationEnd)
 			continue
 		case tPathClose:
 			p.next()
@@ -593,11 +593,11 @@ func (p *parser) interpolatePath() *node {
 	return n
 }
 
-// attrs parses `{ bindings }` at a `{`.
-func (p *parser) attrs() *node {
+// attributes parses `{ bindings }` at a `{`.
+func (p *parser) attributes() *node {
 	open := p.i
 	t := p.next()
-	n := &node{kind: nAttrs, line: t.line}
+	n := &node{kind: nAttributes, line: t.line}
 	m := p.match[open]
 	n.binds = p.binds(func() bool { return m > 0 && p.i >= m || m <= 0 && p.is("}") }, m > 0)
 	p.closeGroup(open, "}")
@@ -608,25 +608,25 @@ func (p *parser) attrs() *node {
 // set, done() knows the group's own closer, and any other closer is skipped.
 func (p *parser) binds(done func() bool, stray bool) []*bind {
 	var out []*bind
-	for !p.eof() && !done() {
+	for !p.atEnd() && !done() {
 		start := p.i
-		t := p.tok()
+		t := p.token()
 		switch {
-		case t.kind == tIdent && t.text == "inherit":
+		case t.kind == tIdentifier && t.text == "inherit":
 			p.next()
 			var from *node
 			if p.is("(") {
 				open := p.i
 				p.next()
-				from = p.expr()
+				from = p.expression()
 				p.closeGroup(open, ")")
 			}
-			for !p.eof() && !p.is(";") {
-				u := p.tok()
-				if u.kind == tIdent && !keywords[u.text] || u.kind == tStrOpen {
+			for !p.atEnd() && !p.is(";") {
+				u := p.token()
+				if u.kind == tIdentifier && !keywords[u.text] || u.kind == tStringOpen {
 					name := u.text
-					if u.kind == tStrOpen {
-						name = p.str().text
+					if u.kind == tStringOpen {
+						name = p.parseString().text
 					} else {
 						p.next()
 					}
@@ -635,21 +635,21 @@ func (p *parser) binds(done func() bool, stray bool) []*bind {
 				}
 				break
 			}
-		case t.kind == tIdent && !keywords[t.text] || t.kind == tStrOpen || t.kind == tInterp:
-			path, dyn := p.attrPath()
+		case t.kind == tIdentifier && !keywords[t.text] || t.kind == tStringOpen || t.kind == tInterpolation:
+			path, dynamic := p.attributePath()
 			if !p.is("=") {
 				break
 			}
 			p.next()
-			b := &bind{path: path, line: t.line, value: p.expr()}
-			if len(dyn) > 0 { // keep the dynamic parts' code reachable
-				b.value = &node{kind: nOther, line: t.line, kids: append(dyn, b.value)}
+			b := &bind{path: path, line: t.line, value: p.expression()}
+			if len(dynamic) > 0 { // keep the dynamic parts' code reachable
+				b.value = &node{kind: nOther, line: t.line, kids: append(dynamic, b.value)}
 				b.path = path
 			}
 			out = append(out, b)
 		}
 		// To the end of the binding: its ";", or the closer of the enclosing group.
-		for !p.eof() && !p.is(";") && !done() && !isCloser(p.tok()) {
+		for !p.atEnd() && !p.is(";") && !done() && !isCloser(p.token()) {
 			p.recovered++
 			p.skipGroup()
 		}
@@ -657,7 +657,7 @@ func (p *parser) binds(done func() bool, stray bool) []*bind {
 			p.next()
 		}
 		if p.i == start {
-			if isCloser(p.tok()) && !stray {
+			if isCloser(p.token()) && !stray {
 				break
 			}
 			p.recovered++
@@ -668,6 +668,6 @@ func (p *parser) binds(done func() bool, stray bool) []*bind {
 }
 
 func isCloser(t token) bool {
-	return t.kind == tInterpEnd || t.kind == tStrClose || t.kind == tPathClose ||
-		t.kind == tPunct && (t.text == "}" || t.text == ")" || t.text == "]")
+	return t.kind == tInterpolationEnd || t.kind == tStringClose || t.kind == tPathClose ||
+		t.kind == tPunctuation && (t.text == "}" || t.text == ")" || t.text == "]")
 }

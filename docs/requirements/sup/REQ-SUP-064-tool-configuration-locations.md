@@ -123,7 +123,7 @@ fixed `$HOME` paths missed the feed the machine actually uses.
    `YARN_NPM_REGISTRY_SERVER` replaces its registry; Bun's
    `$XDG_CONFIG_HOME/.bunfig.toml` wins over the home one.
 9. `UV_CONFIG_FILE` and `UV_NO_CONFIG`, `$XDG_CONFIG_DIRS` for uv's system
-   file, `POETRY_CONFIG_DIR` and `PDM_CONFIG_FILE` are honoured, and the
+   file, `POETRY_CONFIG_DIR` and `PDM_CONFIG_FILE` are honored, and the
    Windows and macOS directories used on those platforms (falling through to
    the XDG ones on a Windows without its variables).
 10. Dart's configuration directory and Hex's home follow `XDG_CONFIG_HOME`,

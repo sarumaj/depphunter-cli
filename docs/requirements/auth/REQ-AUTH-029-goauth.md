@@ -37,7 +37,7 @@ names, which depphunter does only for Docker credential helpers
 1. Against a stub proxy answering 401 without credentials: `GOAUTH` unset,
    `netrc` or `git /src;netrc` answers; `off`, `git /src` or a command does
    not, and the request has no `Authorization` header.
-2. `GOAUTH=off` in the file `GOENV` names is honoured.
+2. `GOAUTH=off` in the file `GOENV` names is honored.
 3. Under `GOAUTH=off` a non-Go request to the same host still carries the
    netrc credential, and a Go request carries a container-file credential
    filed over the netrc's.

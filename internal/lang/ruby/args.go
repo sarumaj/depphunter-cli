@@ -5,25 +5,25 @@ import (
 	"strings"
 )
 
-// splitArgs splits a call's argument list at the commas outside strings and
+// splitArguments splits a call's argument list at the commas outside strings and
 // brackets, its parentheses and `#` comments taken off.
-func splitArgs(s string) []string {
+func splitArguments(s string) []string {
 	s = strings.TrimSpace(s)
 	if strings.HasPrefix(s, "(") && strings.HasSuffix(s, ")") {
 		s = s[1 : len(s)-1]
 	}
 	var parts []string
-	var cur strings.Builder
+	var current strings.Builder
 	depth := 0
 	var quote byte
 	for i := 0; i < len(s); i++ {
 		c := s[i]
 		switch {
 		case quote != 0:
-			cur.WriteByte(c)
+			current.WriteByte(c)
 			if c == '\\' && i+1 < len(s) {
 				i++
-				cur.WriteByte(s[i])
+				current.WriteByte(s[i])
 			} else if c == quote {
 				quote = 0
 			}
@@ -40,13 +40,13 @@ func splitArgs(s string) []string {
 		case c == ')' || c == ']' || c == '}':
 			depth--
 		case c == ',' && depth == 0:
-			parts = append(parts, strings.TrimSpace(cur.String()))
-			cur.Reset()
+			parts = append(parts, strings.TrimSpace(current.String()))
+			current.Reset()
 			continue
 		}
-		cur.WriteByte(c)
+		current.WriteByte(c)
 	}
-	if last := strings.TrimSpace(cur.String()); last != "" || len(parts) > 0 {
+	if last := strings.TrimSpace(current.String()); last != "" || len(parts) > 0 {
 		parts = append(parts, last)
 	}
 	return parts
@@ -77,8 +77,8 @@ var optionKey = regexp.MustCompile(`^(?::([a-z_]+)\s*=>|([a-z_]+):)\s*`)
 
 // option reads a keyword argument whose value is a string literal: `path: "x"` or
 // `:path => "x"`.
-func option(args []string, key string) (string, bool) {
-	for _, a := range args {
+func option(arguments []string, key string) (string, bool) {
+	for _, a := range arguments {
 		m := optionKey.FindStringSubmatch(a)
 		if m == nil || m[1]+m[2] != key {
 			continue
@@ -89,9 +89,9 @@ func option(args []string, key string) (string, bool) {
 }
 
 // options lists every keyword argument with a string literal value.
-func options(args []string) map[string]string {
+func options(arguments []string) map[string]string {
 	out := map[string]string{}
-	for _, a := range args {
+	for _, a := range arguments {
 		if m := optionKey.FindStringSubmatch(a); m != nil {
 			if v, ok := literal(a[len(m[0]):]); ok {
 				out[m[1]+m[2]] = v
@@ -101,8 +101,8 @@ func options(args []string) map[string]string {
 	return out
 }
 
-// dirOfFile are the expressions naming the directory of the file they are in.
-var dirOfFile = map[string]bool{
+// directoryOfFile are the expressions naming the directory of the file they are in.
+var directoryOfFile = map[string]bool{
 	"__dir__": true, "File.dirname(__FILE__)": true, "File.dirname __FILE__": true,
 	"File.expand_path(File.dirname(__FILE__))": true, "File.expand_path(__dir__)": true,
 }
@@ -115,30 +115,30 @@ var dirOfFile = map[string]bool{
 // knows the directory. Anything else (a variable, a method call) is not evaluated.
 //
 // Implements: REQ-RUBY-002
-func evalPath(expr string) (string, bool) {
-	expr = strings.TrimSpace(expr)
-	for strings.HasPrefix(expr, "(") && strings.HasSuffix(expr, ")") && balanced(expr[1:len(expr)-1]) {
-		expr = strings.TrimSpace(expr[1 : len(expr)-1])
+func evalPath(expression string) (string, bool) {
+	expression = strings.TrimSpace(expression)
+	for strings.HasPrefix(expression, "(") && strings.HasSuffix(expression, ")") && balanced(expression[1:len(expression)-1]) {
+		expression = strings.TrimSpace(expression[1 : len(expression)-1])
 	}
-	if s, ok := literal(expr); ok {
+	if s, ok := literal(expression); ok {
 		return s, s != ""
 	}
-	if dirOfFile[strings.Join(strings.Fields(expr), " ")] {
+	if directoryOfFile[strings.Join(strings.Fields(expression), " ")] {
 		return "__DIR__", true
 	}
-	if expr == "__FILE__" {
+	if expression == "__FILE__" {
 		return "__DIR__/_", true
 	}
-	if strings.HasPrefix(expr, `"#{`) && strings.HasSuffix(expr, `"`) {
-		inner := expr[3 : len(expr)-1]
-		if i := strings.Index(inner, "}"); i > 0 && dirOfFile[inner[:i]] {
+	if strings.HasPrefix(expression, `"#{`) && strings.HasSuffix(expression, `"`) {
+		inner := expression[3 : len(expression)-1]
+		if i := strings.Index(inner, "}"); i > 0 && directoryOfFile[inner[:i]] {
 			if rest, ok := literal(`"` + inner[i+1:] + `"`); ok {
 				return "__DIR__" + rest, true
 			}
 		}
 		return "", false
 	}
-	if parts := splitTop(expr, '+'); len(parts) > 1 {
+	if parts := splitTop(expression, '+'); len(parts) > 1 {
 		var out strings.Builder
 		for _, p := range parts {
 			s, ok := evalPath(p)
@@ -149,29 +149,29 @@ func evalPath(expr string) (string, bool) {
 		}
 		return out.String(), true
 	}
-	for _, fn := range []string{"File.expand_path", "File.join", "::File.expand_path", "::File.join"} {
-		rest, ok := strings.CutPrefix(expr, fn)
+	for _, function := range []string{"File.expand_path", "File.join", "::File.expand_path", "::File.join"} {
+		rest, ok := strings.CutPrefix(expression, function)
 		if !ok {
 			continue
 		}
-		args := splitArgs(rest)
-		var vals []string
-		for _, a := range args {
+		arguments := splitArguments(rest)
+		var values []string
+		for _, a := range arguments {
 			v, ok := evalPath(a)
 			if !ok {
 				return "", false
 			}
-			vals = append(vals, v)
+			values = append(values, v)
 		}
 		switch {
-		case len(vals) == 0:
+		case len(values) == 0:
 			return "", false
-		case strings.HasSuffix(fn, "join"):
-			return strings.Join(vals, "/"), true
-		case len(vals) == 1:
-			return vals[0], true
-		case len(vals) == 2 && strings.HasPrefix(vals[1], "__DIR__"):
-			return vals[1] + "/" + vals[0], true
+		case strings.HasSuffix(function, "join"):
+			return strings.Join(values, "/"), true
+		case len(values) == 1:
+			return values[0], true
+		case len(values) == 2 && strings.HasPrefix(values[1], "__DIR__"):
+			return values[1] + "/" + values[0], true
 		}
 		return "", false
 	}
@@ -179,7 +179,7 @@ func evalPath(expr string) (string, bool) {
 }
 
 // splitTop splits an expression at an operator outside strings and brackets.
-func splitTop(s string, op byte) []string {
+func splitTop(s string, separator byte) []string {
 	var parts []string
 	depth, start := 0, 0
 	var quote byte
@@ -198,7 +198,7 @@ func splitTop(s string, op byte) []string {
 			depth++
 		case c == ')' || c == ']':
 			depth--
-		case c == op && depth == 0:
+		case c == separator && depth == 0:
 			parts = append(parts, s[start:i])
 			start = i + 1
 		}

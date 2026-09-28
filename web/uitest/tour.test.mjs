@@ -23,7 +23,7 @@ function page({ store = {} } = {}) {
     classList: { on: false, toggle(_, v) { this.on = v; }, add() {}, remove() {} },
     style: {},
     replaceChildren(...c) { this.children = c; },
-    addEventListener(name, fn) { this.closed = fn; },
+    addEventListener(name, callback) { this.closed = callback; },
     showModal() { this.open = true; },
     close() { this.open = false; this.closed?.(); },
   });

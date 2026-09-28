@@ -6,16 +6,16 @@
 export const SEVERITIES = ['critical', 'high', 'medium', 'low', 'info', 'unknown'];
 const RANK = { critical: 5, high: 4, medium: 3, low: 2, info: 1, unknown: 0 };
 
-export const rankOf = sev => RANK[sev] ?? 0;
+export const rankOf = severity => RANK[severity] ?? 0;
 
 /** The worst of two severities, either of which may be missing. */
 export const worse = (a, b) => (!a ? b : !b ? a : rankOf(a) >= rankOf(b) ? a : b);
 
 /** Severity colors, read from the stylesheet so both themes choose their own. */
 export function severityColors() {
-  const cs = getComputedStyle(document.documentElement);
+  const computedStyle = getComputedStyle(document.documentElement);
   const out = {};
-  for (const s of SEVERITIES) out[s] = cs.getPropertyValue(`--sev-${s}`).trim() || cs.getPropertyValue('--muted').trim();
+  for (const s of SEVERITIES) out[s] = computedStyle.getPropertyValue(`--sev-${s}`).trim() || computedStyle.getPropertyValue('--muted').trim();
   return out;
 }
 
@@ -33,12 +33,12 @@ export function severityColors() {
 export function indexFindings(set, model) {
   const all = [], own = new Map(), home = new Map();
   for (const f of set?.findings || []) {
-    const pkg = f.package ? model.byId.get(`p:${f.ecosystem}:${f.package}`) : null;
+    const packageNode = f.package ? model.byId.get(`p:${f.ecosystem}:${f.package}`) : null;
     const file = f.path ? model.byId.get(`f:${f.path}`) : null;
     // A finding with a path this map does not show (a lock file, a vendored copy) is
     // still about somewhere: the nearest directory that is on the map takes it.
-    const near = !file && f.path ? nearestDir(model, f.path) : null;
-    const on = [pkg, file, near].filter(Boolean);
+    const near = !file && f.path ? nearestDirectory(model, f.path) : null;
+    const on = [packageNode, file, near].filter(Boolean);
     if (!on.length) on.push(model.root); // a whole-repository finding
     all.push(f);
     home.set(f, on[0]);
@@ -94,14 +94,14 @@ export function indexFindings(set, model) {
 }
 
 // nearestDir walks a path upwards until it finds a directory the map draws.
-function nearestDir(model, path) {
-  let dir = path;
+function nearestDirectory(model, path) {
+  let directory = path;
   for (let i = 0; i < 64; i++) {
-    const cut = dir.lastIndexOf('/');
-    dir = cut < 0 ? '.' : dir.slice(0, cut);
-    const n = model.byId.get(`d:${dir}`);
+    const cut = directory.lastIndexOf('/');
+    directory = cut < 0 ? '.' : directory.slice(0, cut);
+    const n = model.byId.get(`d:${directory}`);
     if (n) return n;
-    if (dir === '.') return null;
+    if (directory === '.') return null;
   }
   return null;
 }

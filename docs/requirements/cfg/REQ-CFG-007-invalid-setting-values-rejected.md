@@ -17,7 +17,7 @@ outside its allowed values.
 
 ## Rationale
 
-A misspelt value that is silently replaced by a default leaves the user
+A misspelled value that is silently replaced by a default leaves the user
 wondering why the setting has no effect.
 
 ## Acceptance criteria

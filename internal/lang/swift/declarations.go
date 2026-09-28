@@ -21,8 +21,8 @@ var keywords = set(
 // operandKeywords are keywords that are values: an expression may end with them.
 var operandKeywords = set("self", "super", "nil", "true", "false")
 
-// declKeywords start a declaration.
-var declKeywords = set("import", "class", "struct", "enum", "actor", "protocol",
+// declarationKeywords start a declaration.
+var declarationKeywords = set("import", "class", "struct", "enum", "actor", "protocol",
 	"extension", "func", "init", "deinit", "subscript", "var", "let", "typealias",
 	"associatedtype", "operator", "precedencegroup", "macro")
 
@@ -52,7 +52,7 @@ const (
 // a tolerant recursive descent: every step consumes at least one token, and what it
 // does not understand it reads as an expression.
 type parser struct {
-	src    []byte
+	source []byte
 	tokens []token
 	i      int
 
@@ -60,23 +60,23 @@ type parser struct {
 	body  int      // how many code bodies are around it; > 0 hides declarations
 	depth int      // how deep the parser has recursed (maxDepth)
 
-	imports  []lang.RawImport
-	symbols  lang.SymbolSet
-	declared map[string]bool
-	refs     []ref
+	imports    []lang.RawImport
+	symbols    lang.SymbolSet
+	declared   map[string]bool
+	references []reference
 }
 
-type ref struct {
+type reference struct {
 	name string
 	line int
 }
 
-// parse reads src.
+// parse reads source.
 //
 // Implements: REQ-SWIFT-014
-func parse(src []byte) *parser {
-	p := &parser{src: src, tokens: branches(tokenize(src)), declared: map[string]bool{}}
-	for !p.eof() {
+func parse(source []byte) *parser {
+	p := &parser{source: source, tokens: branches(tokenize(source)), declared: map[string]bool{}}
+	for !p.atEnd() {
 		p.statement(sTop)
 		if p.is("}") || p.is(")") || p.is("]") {
 			p.i++ // a closing bracket nothing opened
@@ -118,22 +118,22 @@ func branch(tokens []token, i *int) []token {
 			return out
 		}
 		*i++
-		alts := [][]token{branch(tokens, i)}
+		alternatives := [][]token{branch(tokens, i)}
 		for *i < len(tokens) && (tokens[*i].text == "elseif" || tokens[*i].text == "else") {
 			*i++
-			alts = append(alts, branch(tokens, i))
+			alternatives = append(alternatives, branch(tokens, i))
 		}
 		if *i < len(tokens) && tokens[*i].text == "endif" {
 			*i++
 		}
 		balanced := true
-		for _, a := range alts {
+		for _, a := range alternatives {
 			balanced = balanced && braceDelta(a) == 0
 		}
 		if !balanced {
-			alts = alts[:1]
+			alternatives = alternatives[:1]
 		}
-		for _, a := range alts {
+		for _, a := range alternatives {
 			out = append(out, a...)
 		}
 	}
@@ -143,7 +143,7 @@ func branch(tokens []token, i *int) []token {
 func braceDelta(tokens []token) int {
 	d := 0
 	for _, t := range tokens {
-		if t.kind == tPunct {
+		if t.kind == tPunctuation {
 			switch t.text {
 			case "{":
 				d++
@@ -155,40 +155,40 @@ func braceDelta(tokens []token) int {
 	return d
 }
 
-// eof reports whether the tokens are used up. Steps past the end are harmless: tok
+// atEnd reports whether the tokens are used up. Steps past the end are harmless: token
 // and peek read the zero token there.
-func (p *parser) eof() bool { return p.i >= len(p.tokens) }
+func (p *parser) atEnd() bool { return p.i >= len(p.tokens) }
 
-func (p *parser) tok() token {
+func (p *parser) token() token {
 	if p.i < len(p.tokens) {
 		return p.tokens[p.i]
 	}
-	return token{kind: tPunct}
+	return token{kind: tPunctuation}
 }
 
 func (p *parser) peek(k int) token {
 	if p.i+k >= 0 && p.i+k < len(p.tokens) {
 		return p.tokens[p.i+k]
 	}
-	return token{kind: tPunct}
+	return token{kind: tPunctuation}
 }
 
 // is reports whether the current token is the punctuator s.
 func (p *parser) is(s string) bool {
-	return p.i < len(p.tokens) && p.tokens[p.i].kind == tPunct && p.tokens[p.i].text == s
+	return p.i < len(p.tokens) && p.tokens[p.i].kind == tPunctuation && p.tokens[p.i].text == s
 }
 
 // word reports whether t is the unquoted identifier or keyword w.
-func word(t token, w string) bool { return t.kind == tIdent && !t.bt && t.text == w }
+func word(t token, w string) bool { return t.kind == tIdentifier && !t.bt && t.text == w }
 
-func punct(t token, s string) bool { return t.kind == tPunct && t.text == s }
+func punctuation(t token, s string) bool { return t.kind == tPunctuation && t.text == s }
 
 // name reports whether t can name something: an identifier that is not a keyword.
-func name(t token) bool { return t.kind == tIdent && (t.bt || !keywords[t.text]) }
+func name(t token) bool { return t.kind == tIdentifier && (t.bt || !keywords[t.text]) }
 
-func (p *parser) ref(t token) {
+func (p *parser) reference(t token) {
 	if n := typeName(t.text); n != "" && !t.bt {
-		p.refs = append(p.refs, ref{n, t.line})
+		p.references = append(p.references, reference{n, t.line})
 	}
 }
 
@@ -207,45 +207,45 @@ func (p *parser) statement(s scope) {
 	j := p.i
 	for p.i < len(p.tokens) && p.modifier() {
 	}
-	t := p.tok()
-	decl := t.kind == tIdent && !t.bt && (declKeywords[t.text] || t.text == "case" || t.text == "default")
+	t := p.token()
+	declaration := t.kind == tIdentifier && !t.bt && (declarationKeywords[t.text] || t.text == "case" || t.text == "default")
 	switch {
-	case !decl:
+	case !declaration:
 	case t.text == "default":
-	case punct(p.peek(1), ":"):
-		decl = false // a label: `for: x`
+	case punctuation(p.peek(1), ":"):
+		declaration = false // a label: `for: x`
 	case t.text == "actor" || t.text == "macro":
-		decl = name(p.peek(1)) && !p.peek(1).nl
+		declaration = name(p.peek(1)) && !p.peek(1).newline
 	}
-	if !decl {
+	if !declaration {
 		p.i = j // modifiers that modify nothing were words: `open(url)`
-		if !p.expr(false, false, false) && p.i == start {
+		if !p.expression(false, false, false) && p.i == start {
 			p.i++
 		}
 		return
 	}
 	switch t.text {
 	case "import":
-		p.importDecl(start)
+		p.importDeclaration(start)
 	case "class", "struct", "enum", "actor", "protocol", "extension":
-		if !p.typeDecl() {
+		if !p.typeDeclaration() {
 			p.i = j
-			p.expr(false, false, false)
+			p.expression(false, false, false)
 		}
 	case "func", "macro":
-		p.funcDecl()
+		p.functionDeclaration()
 	case "init":
-		p.initDecl()
+		p.initDeclaration()
 	case "deinit", "subscript":
 		p.i++
-		p.genericParams()
+		p.genericParameters()
 		p.signature()
 		p.bodyBlock()
 	case "var", "let":
 		p.property(s)
 	case "typealias":
 		p.i++
-		n := p.tok()
+		n := p.token()
 		if name(n) {
 			p.i++
 			if p.visible() {
@@ -253,14 +253,14 @@ func (p *parser) statement(s scope) {
 				p.declared[n.text] = true
 			}
 		}
-		p.genericParams()
+		p.genericParameters()
 		if p.is("=") {
 			p.i++
 			p.parseType()
 		}
 	case "associatedtype":
 		p.i++
-		if name(p.tok()) {
+		if name(p.token()) {
 			p.i++
 		}
 		p.inheritance()
@@ -274,7 +274,7 @@ func (p *parser) statement(s scope) {
 		if s == sEnum {
 			p.enumCases()
 		} else {
-			p.expr(false, true, false)
+			p.expression(false, true, false)
 			if p.is(":") {
 				p.i++
 			}
@@ -287,7 +287,7 @@ func (p *parser) statement(s scope) {
 	case "operator":
 		// infix operator <>: AdditionPrecedence - names no types.
 		p.i++
-		for !p.eof() && !p.tok().nl && !p.is("{") && !p.is("}") {
+		for !p.atEnd() && !p.token().newline && !p.is("{") && !p.is("}") {
 			p.i++
 		}
 		if p.is("{") {
@@ -295,7 +295,7 @@ func (p *parser) statement(s scope) {
 		}
 	case "precedencegroup":
 		p.i++
-		for !p.eof() && !p.is("{") && !p.is("}") && !p.tok().nl {
+		for !p.atEnd() && !p.is("{") && !p.is("}") && !p.token().newline {
 			p.i++
 		}
 		if p.is("{") {
@@ -307,24 +307,24 @@ func (p *parser) statement(s scope) {
 // modifier consumes a declaration modifier (with its argument: private(set)) when a
 // declaration keyword or another modifier follows it.
 func (p *parser) modifier() bool {
-	t := p.tok()
-	if t.kind != tIdent || t.bt || !modifiers[t.text] {
+	t := p.token()
+	if t.kind != tIdentifier || t.bt || !modifiers[t.text] {
 		return false
 	}
 	k := 1
-	if punct(p.peek(1), "(") && !p.peek(1).nl {
-		if p.peek(2).kind == tIdent && punct(p.peek(3), ")") {
+	if punctuation(p.peek(1), "(") && !p.peek(1).newline {
+		if p.peek(2).kind == tIdentifier && punctuation(p.peek(3), ")") {
 			k = 4
 		} else {
 			return false
 		}
 	}
 	n := p.peek(k)
-	if n.nl {
+	if n.newline {
 		return false
 	}
-	if n.kind != tIdent || n.bt || !(declKeywords[n.text] || modifiers[n.text] || n.text == "case") {
-		if !punct(n, "@") {
+	if n.kind != tIdentifier || n.bt || !(declarationKeywords[n.text] || modifiers[n.text] || n.text == "case") {
+		if !punctuation(n, "@") {
 			return false
 		}
 	}
@@ -342,82 +342,82 @@ func (p *parser) modifier() bool {
 // uses (@MainActor, @Published). In a type (@Sendable (Int) -> Void) a parenthesis
 // only holds arguments when it touches the name.
 func (p *parser) attribute(inType bool) {
-	at := p.tok()
+	at := p.token()
 	p.i++
-	t := p.tok()
-	if t.kind != tIdent || t.start != at.end {
+	t := p.token()
+	if t.kind != tIdentifier || t.start != at.end {
 		return
 	}
-	p.ref(t)
+	p.reference(t)
 	p.i++
-	for p.is(".") && p.peek(1).kind == tIdent {
+	for p.is(".") && p.peek(1).kind == tIdentifier {
 		p.i += 2
 	}
 	if p.is("<") {
-		p.genericArgs()
+		p.genericArguments()
 	}
-	if p.is("(") && !p.tok().nl && (!inType || p.tok().start == p.peek(-1).end) {
+	if p.is("(") && !p.token().newline && (!inType || p.token().start == p.peek(-1).end) {
 		p.group(")")
 	}
 }
 
-// importDecl reads an import declaration starting at token start (its attributes and
+// importDeclaration reads an import declaration starting at token start (its attributes and
 // modifiers).
-func (p *parser) importDecl(start int) {
+func (p *parser) importDeclaration(start int) {
 	p.i++
-	for !p.eof() && !p.tok().nl && (p.tok().kind == tIdent || p.is(".")) {
+	for !p.atEnd() && !p.token().newline && (p.token().kind == tIdentifier || p.is(".")) {
 		p.i++
 	}
-	text := string(p.src[p.tokens[start].start:p.tokens[min(p.i, len(p.tokens))-1].end])
-	if imp, ok := parseImport(text); ok {
-		imp.Line = p.tokens[start].line
-		p.imports = append(p.imports, imp)
+	text := string(p.source[p.tokens[start].start:p.tokens[min(p.i, len(p.tokens))-1].end])
+	if rawImport, ok := parseImport(text); ok {
+		rawImport.Line = p.tokens[start].line
+		p.imports = append(p.imports, rawImport)
 	}
 }
 
-// typeDecl reads a class, struct, enum, actor, protocol or extension. It reports
+// typeDeclaration reads a class, struct, enum, actor, protocol or extension. It reports
 // false when the keyword declares nothing (`class` in `protocol P: class`).
-func (p *parser) typeDecl() bool {
-	kw := p.tok().text
+func (p *parser) typeDeclaration() bool {
+	keyword := p.token().text
 	p.i++
-	n := p.tok()
-	if !name(n) && !(kw == "extension" && n.kind == tIdent) {
+	n := p.token()
+	if !name(n) && !(keyword == "extension" && n.kind == tIdentifier) {
 		return false
 	}
-	var typ string
-	if kw == "extension" {
+	var typeName string
+	if keyword == "extension" {
 		from := p.i
 		p.parseType()
-		typ = typePath(string(p.src[p.tokens[from].start:p.tokens[max(min(p.i, len(p.tokens))-1, from)].end]))
-		if i := strings.IndexAny(typ, "?!&"); i >= 0 {
-			typ = typ[:i]
+		typeName = typePath(string(p.source[p.tokens[from].start:p.tokens[max(min(p.i, len(p.tokens))-1, from)].end]))
+		if i := strings.IndexAny(typeName, "?!&"); i >= 0 {
+			typeName = typeName[:i]
 		}
 	} else {
 		p.i++
-		typ = typePath(n.text)
-		p.genericParams()
+		typeName = typePath(n.text)
+		p.genericParameters()
 	}
 	p.inheritance()
 	p.where()
 	if p.visible() {
-		if kw != "extension" {
-			p.declared[typ] = true
+		if keyword != "extension" {
+			p.declared[typeName] = true
 		}
-		kind := typeKinds[kw]
-		if kw == "protocol" {
+		kind := typeKinds[keyword]
+		if keyword == "protocol" {
 			kind = "interface"
 		}
-		p.symbols.Add(p.qualified(typ), kind, n.line)
+		p.symbols.Add(p.qualified(typeName), kind, n.line)
 	}
 	if !p.is("{") {
 		return true
 	}
 	p.i++
-	inner := map[string]scope{"enum": sEnum, "protocol": sProtocol}[kw]
+	inner := map[string]scope{"enum": sEnum, "protocol": sProtocol}[keyword]
 	if inner == 0 {
 		inner = sType
 	}
-	p.owner = append(p.owner, typ)
+	p.owner = append(p.owner, typeName)
 	p.block(inner)
 	p.owner = p.owner[:len(p.owner)-1]
 	return true
@@ -436,7 +436,7 @@ func (p *parser) block(s scope) {
 		p.body++
 		defer func() { p.body-- }()
 	}
-	for !p.eof() {
+	for !p.atEnd() {
 		if p.is("}") {
 			p.i++
 			return
@@ -457,14 +457,14 @@ func (p *parser) bodyBlock() {
 	}
 }
 
-// funcDecl reads a function (or macro) declaration.
-func (p *parser) funcDecl() {
-	kw := p.tok().text
+// functionDeclaration reads a function (or macro) declaration.
+func (p *parser) functionDeclaration() {
+	keyword := p.token().text
 	p.i++
-	n := p.tok()
-	if n.kind == tIdent {
+	n := p.token()
+	if n.kind == tIdentifier {
 		p.i++
-		if kw == "func" && p.visible() {
+		if keyword == "func" && p.visible() {
 			switch owner := strings.Join(p.owner, "."); {
 			case owner != "":
 				p.symbols.Add(owner+"."+n.text, "method", n.line)
@@ -476,21 +476,21 @@ func (p *parser) funcDecl() {
 		// An operator: its name is the punctuation up to a space or the
 		// parameters (`static func < (`, `func && <T: P>(`).
 		p.i++
-		for !p.eof() && p.tok().kind == tPunct && p.tok().start == p.peek(-1).end && !p.is("(") && !p.is("{") && !p.is("}") {
+		for !p.atEnd() && p.token().kind == tPunctuation && p.token().start == p.peek(-1).end && !p.is("(") && !p.is("{") && !p.is("}") {
 			p.i++
 		}
 	}
-	p.genericParams()
+	p.genericParameters()
 	p.signature()
-	if kw == "macro" && p.is("=") {
+	if keyword == "macro" && p.is("=") {
 		p.i++
-		p.expr(false, false, false)
+		p.expression(false, false, false)
 	}
 	p.bodyBlock()
 }
 
-func (p *parser) initDecl() {
-	t := p.tok()
+func (p *parser) initDeclaration() {
+	t := p.token()
 	p.i++
 	if p.is("?") || p.is("!") {
 		p.i++
@@ -498,7 +498,7 @@ func (p *parser) initDecl() {
 	if p.visible() && len(p.owner) > 0 {
 		p.symbols.Add(strings.Join(p.owner, ".")+".init", "method", t.line)
 	}
-	p.genericParams()
+	p.genericParameters()
 	p.signature()
 	p.bodyBlock()
 }
@@ -506,7 +506,7 @@ func (p *parser) initDecl() {
 // signature reads parameters, effects, a result type and a where clause.
 func (p *parser) signature() {
 	if p.is("(") {
-		p.params(false)
+		p.parameters(false)
 	}
 	p.effects()
 	if p.is("->") {
@@ -519,13 +519,13 @@ func (p *parser) signature() {
 // effects reads async, throws, throws(E), rethrows.
 func (p *parser) effects() {
 	for {
-		t := p.tok()
+		t := p.token()
 		switch {
 		case word(t, "async"), word(t, "reasync"), word(t, "rethrows"):
 			p.i++
 		case word(t, "throws"):
 			p.i++
-			if p.is("(") && !p.tok().nl {
+			if p.is("(") && !p.token().newline {
 				p.i++
 				p.parseType()
 				if p.is(")") {
@@ -538,12 +538,12 @@ func (p *parser) effects() {
 	}
 }
 
-// params reads a parameter clause: (label name: Type = default, ...). In a closure
+// parameters reads a parameter clause: (label name: Type = default, ...). In a closure
 // or an enum case a parameter may have no label: a closure's is a name, an enum
 // case's a type.
-func (p *parser) params(unlabeledType bool) {
+func (p *parser) parameters(unlabeledType bool) {
 	p.i++ // (
-	for !p.eof() {
+	for !p.atEnd() {
 		if p.is(")") {
 			p.i++
 			return
@@ -563,10 +563,10 @@ func (p *parser) params(unlabeledType bool) {
 			}
 			if p.is("=") {
 				p.i++
-				p.expr(true, false, false)
+				p.expression(true, false, false)
 			}
 		default:
-			p.expr(true, false, false)
+			p.expression(true, false, false)
 		}
 		if p.is(",") {
 			p.i++
@@ -580,7 +580,7 @@ func (p *parser) params(unlabeledType bool) {
 // element's type (`label name:`, `_ name:`, `name:`), reporting whether there were.
 func (p *parser) labels() bool {
 	for k := 1; k <= 2; k++ {
-		if p.peek(0).kind == tIdent && (k == 1 || p.peek(1).kind == tIdent) && punct(p.peek(k), ":") {
+		if p.peek(0).kind == tIdentifier && (k == 1 || p.peek(1).kind == tIdentifier) && punctuation(p.peek(k), ":") {
 			p.i += k + 1
 			return true
 		}
@@ -588,22 +588,22 @@ func (p *parser) labels() bool {
 	return false
 }
 
-// genericParams reads <T: Constraint, each U>: the parameters are names, their
+// genericParameters reads <T: Constraint, each U>: the parameters are names, their
 // constraints types.
-func (p *parser) genericParams() {
+func (p *parser) genericParameters() {
 	if !p.is("<") {
 		return
 	}
 	p.i++
-	for !p.eof() && !p.is(">") {
+	for !p.atEnd() && !p.is(">") {
 		start := p.i
 		for p.is("@") {
 			p.attribute(false)
 		}
-		if word(p.tok(), "each") || word(p.tok(), "let") {
+		if word(p.token(), "each") || word(p.token(), "let") {
 			p.i++
 		}
-		if p.tok().kind == tIdent {
+		if p.token().kind == tIdentifier {
 			p.i++
 		}
 		if p.is(":") {
@@ -642,21 +642,21 @@ func (p *parser) inheritance() {
 // where reads a where clause: `where T: P, T.Element == U`. The constrained side is
 // a name path, not a type use.
 func (p *parser) where() {
-	if !word(p.tok(), "where") {
+	if !word(p.token(), "where") {
 		return
 	}
 	p.i++
-	for !p.eof() {
+	for !p.atEnd() {
 		for p.is("@") {
 			p.attribute(false)
 		}
 		start := p.i
-		for p.tok().kind == tIdent && !word(p.tok(), "where") || p.is(".") {
+		for p.token().kind == tIdentifier && !word(p.token(), "where") || p.is(".") {
 			p.i++
 		}
 		if p.is("<") { // a generic constrained type: Foo<T>.Bar
-			p.genericArgs()
-			for p.tok().kind == tIdent || p.is(".") {
+			p.genericArguments()
+			for p.token().kind == tIdentifier || p.is(".") {
 				p.i++
 			}
 		}
@@ -677,14 +677,14 @@ func (p *parser) where() {
 // accessor bodies, separated by commas.
 func (p *parser) property(s scope) {
 	p.i++
-	for !p.eof() {
-		n := p.tok()
+	for !p.atEnd() {
+		n := p.token()
 		switch {
 		case p.is("("):
 			p.group(")")
-		case n.kind == tIdent:
+		case n.kind == tIdentifier:
 			p.i++
-			if p.visible() && s != sProtocol && !n.bt && isIdent(n.text) {
+			if p.visible() && s != sProtocol && !n.bt && isIdentifier(n.text) {
 				if owner := strings.Join(p.owner, "."); owner != "" {
 					p.symbols.Add(owner+"."+n.text, "property", n.line)
 				} else {
@@ -700,7 +700,7 @@ func (p *parser) property(s scope) {
 		}
 		if p.is("=") {
 			p.i++
-			p.expr(false, false, true)
+			p.expression(false, false, true)
 		}
 		if p.is("{") {
 			p.i++
@@ -716,17 +716,17 @@ func (p *parser) property(s scope) {
 // enumCases reads the cases after `case` in an enum: names, associated values (whose
 // unlabeled elements are types) and raw values.
 func (p *parser) enumCases() {
-	for !p.eof() {
-		if p.tok().kind != tIdent {
+	for !p.atEnd() {
+		if p.token().kind != tIdentifier {
 			return
 		}
 		p.i++
 		if p.is("(") {
-			p.params(true)
+			p.parameters(true)
 		}
 		if p.is("=") {
 			p.i++
-			p.expr(false, false, true)
+			p.expression(false, false, true)
 		}
 		if !p.is(",") {
 			return
@@ -741,26 +741,26 @@ func (p *parser) parseType() {
 		return
 	}
 	defer p.leave()
-	for !p.eof() {
+	for !p.atEnd() {
 		for {
-			t := p.tok()
-			if punct(t, "@") {
+			t := p.token()
+			if punctuation(t, "@") {
 				p.attribute(true)
-			} else if punct(t, "~") && p.peek(1).kind == tIdent {
+			} else if punctuation(t, "~") && p.peek(1).kind == tIdentifier {
 				p.i += 2 // ~Copyable suppresses a protocol; it uses nothing
 				return
-			} else if n := p.peek(1); t.kind == tIdent && !t.bt && typePrefixes[t.text] && !n.nl &&
-				(n.kind == tIdent || punct(n, "(") || punct(n, "[") || punct(n, "@")) {
+			} else if n := p.peek(1); t.kind == tIdentifier && !t.bt && typePrefixes[t.text] && !n.newline &&
+				(n.kind == tIdentifier || punctuation(n, "(") || punctuation(n, "[") || punctuation(n, "@")) {
 				p.i++
 			} else {
 				break
 			}
 		}
-		t := p.tok()
+		t := p.token()
 		switch {
-		case punct(t, "("):
+		case punctuation(t, "("):
 			p.i++
-			for !p.eof() && !p.is(")") {
+			for !p.atEnd() && !p.is(")") {
 				start := p.i
 				p.labels()
 				p.parseType()
@@ -779,7 +779,7 @@ func (p *parser) parseType() {
 			if p.is(")") {
 				p.i++
 			}
-		case punct(t, "["):
+		case punctuation(t, "["):
 			p.i++
 			p.parseType()
 			if p.is(":") {
@@ -789,31 +789,31 @@ func (p *parser) parseType() {
 			if p.is("]") {
 				p.i++
 			}
-		case t.kind == tIdent && (t.bt || !keywords[t.text] || t.text == "Self" || t.text == "Any"):
-			p.ref(t)
+		case t.kind == tIdentifier && (t.bt || !keywords[t.text] || t.text == "Self" || t.text == "Any"):
+			p.reference(t)
 			p.i++
-			if p.is("<") && !p.tok().nl {
-				p.genericArgs()
+			if p.is("<") && !p.token().newline {
+				p.genericArguments()
 			}
-			for p.is(".") && p.peek(1).kind == tIdent && !word(p.peek(1), "Type") && !word(p.peek(1), "Protocol") {
+			for p.is(".") && p.peek(1).kind == tIdentifier && !word(p.peek(1), "Type") && !word(p.peek(1), "Protocol") {
 				p.i += 2
-				if p.is("<") && !p.tok().nl {
-					p.genericArgs()
+				if p.is("<") && !p.token().newline {
+					p.genericArguments()
 				}
 			}
 		default:
 			return
 		}
 		for {
-			t := p.tok()
+			t := p.token()
 			switch {
-			case (punct(t, "?") || punct(t, "!")) && !t.nl:
+			case (punctuation(t, "?") || punctuation(t, "!")) && !t.newline:
 				p.i++
 				continue
-			case punct(t, "...") && !t.nl:
+			case punctuation(t, "...") && !t.newline:
 				p.i++
 				continue
-			case punct(t, ".") && (word(p.peek(1), "Type") || word(p.peek(1), "Protocol")):
+			case punctuation(t, ".") && (word(p.peek(1), "Type") || word(p.peek(1), "Protocol")):
 				p.i += 2
 				continue
 			}
@@ -832,10 +832,10 @@ func (p *parser) parseType() {
 	}
 }
 
-// genericArgs reads <A, B> after a type name.
-func (p *parser) genericArgs() {
+// genericArguments reads <A, B> after a type name.
+func (p *parser) genericArguments() {
 	p.i++
-	for !p.eof() && !p.is(">") {
+	for !p.atEnd() && !p.is(">") {
 		start := p.i
 		p.parseType()
 		if p.is(",") {
@@ -863,9 +863,9 @@ func (p *parser) genericCall(k int) bool {
 	for j := p.i + k; j < len(p.tokens) && j < p.i+k+64; j++ {
 		t := p.tokens[j]
 		switch t.kind {
-		case tIdent:
+		case tIdentifier:
 			continue
-		case tPunct:
+		case tPunctuation:
 		default:
 			return false
 		}
@@ -876,17 +876,17 @@ func (p *parser) genericCall(k int) bool {
 			depth--
 			// Box<Set<Int>>(x): the grammar reads `>>` as one operator, which
 			// makes a comparison impossible.
-			complex = complex || j > 0 && punct(p.tokens[j-1], ">") && p.tokens[j-1].end == t.start
+			complex = complex || j > 0 && punctuation(p.tokens[j-1], ">") && p.tokens[j-1].end == t.start
 			if depth == 0 {
-				if j+2 >= len(p.tokens) || p.tokens[j+1].nl {
+				if j+2 >= len(p.tokens) || p.tokens[j+1].newline {
 					return false
 				}
 				switch next := p.tokens[j+1]; {
-				case punct(next, "."):
+				case punctuation(next, "."):
 					return true
-				case punct(next, "("):
-					return complex || punct(p.tokens[j+2], ")")
-				case punct(next, "{"):
+				case punctuation(next, "("):
+					return complex || punctuation(p.tokens[j+2], ")")
+				case punctuation(next, "{"):
 					return complex
 				}
 				return false
@@ -910,7 +910,7 @@ func (p *parser) group(closer string) {
 	}
 	defer p.leave()
 	p.i++
-	for !p.eof() {
+	for !p.atEnd() {
 		switch {
 		case p.is(closer):
 			p.i++
@@ -924,7 +924,7 @@ func (p *parser) group(closer string) {
 			p.i++
 		default:
 			start := p.i
-			p.expr(true, false, false)
+			p.expression(true, false, false)
 			if p.i == start {
 				p.i++
 			}
@@ -951,10 +951,10 @@ func (p *parser) leave() { p.depth-- }
 // skipGroup skips a bracketed group, noting nothing.
 func (p *parser) skipGroup() {
 	depth := 0
-	for !p.eof() {
-		t := p.tok()
+	for !p.atEnd() {
+		t := p.token()
 		p.i++
-		if t.kind != tPunct {
+		if t.kind != tPunctuation {
 			continue
 		}
 		switch t.text {
@@ -981,7 +981,7 @@ func (p *parser) closure() {
 			p.attribute(false)
 		}
 		if p.is("(") {
-			p.params(false)
+			p.parameters(false)
 		}
 		for p.i < end {
 			p.effects()
@@ -1005,7 +1005,7 @@ func (p *parser) closureSignature() int {
 		depth := 0
 		for ; j < len(p.tokens); j++ {
 			t := p.tokens[j]
-			if t.kind != tPunct {
+			if t.kind != tPunctuation {
 				continue
 			}
 			switch t.text {
@@ -1023,11 +1023,11 @@ func (p *parser) closureSignature() int {
 		}
 		return false
 	}
-	at := func(s string) bool { return j < len(p.tokens) && punct(p.tokens[j], s) }
+	at := func(s string) bool { return j < len(p.tokens) && punctuation(p.tokens[j], s) }
 	if at("[") && !skip("[", "]") {
 		return 0
 	}
-	for at("@") && j+1 < len(p.tokens) && p.tokens[j+1].kind == tIdent {
+	for at("@") && j+1 < len(p.tokens) && p.tokens[j+1].kind == tIdentifier {
 		j += 2
 		if at("(") && !skip("(", ")") {
 			return 0
@@ -1038,8 +1038,8 @@ func (p *parser) closureSignature() int {
 		if !skip("(", ")") {
 			return 0
 		}
-	case j < len(p.tokens) && p.tokens[j].kind == tIdent && (name(p.tokens[j]) || p.tokens[j].text == "_"):
-		for j < len(p.tokens) && p.tokens[j].kind == tIdent && (name(p.tokens[j]) || p.tokens[j].text == "_") {
+	case j < len(p.tokens) && p.tokens[j].kind == tIdentifier && (name(p.tokens[j]) || p.tokens[j].text == "_"):
+		for j < len(p.tokens) && p.tokens[j].kind == tIdentifier && (name(p.tokens[j]) || p.tokens[j].text == "_") {
 			j++
 			if !at(",") {
 				break
@@ -1052,35 +1052,35 @@ func (p *parser) closureSignature() int {
 		switch {
 		case word(t, "in"):
 			return j
-		case t.kind == tIdent && (!keywords[t.text] || t.bt || t.text == "throws" || t.text == "rethrows" || t.text == "async"):
-		case t.kind == tPunct && strings.Contains(" -> . , ? ! < > ( ) [ ] : & ... @ ", " "+t.text+" "):
+		case t.kind == tIdentifier && (!keywords[t.text] || t.bt || t.text == "throws" || t.text == "rethrows" || t.text == "async"):
+		case t.kind == tPunctuation && strings.Contains(" -> . , ? ! < > ( ) [ ] : & ... @ ", " "+t.text+" "):
 		default:
 			return 0
 		}
-		if n == 0 && !(t.kind == tIdent || punct(t, "->")) {
+		if n == 0 && !(t.kind == tIdentifier || punctuation(t, "->")) {
 			return 0
 		}
-		if n == 0 && t.kind == tIdent && !(t.text == "throws" || t.text == "rethrows" || t.text == "async") {
+		if n == 0 && t.kind == tIdentifier && !(t.text == "throws" || t.text == "rethrows" || t.text == "async") {
 			return 0
 		}
 	}
 	return 0
 }
 
-// expr reads an expression, or a run of them, up to the end of the statement: a `;`,
+// expression reads an expression, or a run of them, up to the end of the statement: a `;`,
 // a closing bracket, or a line that starts a new statement. In a group (inside
 // brackets) line breaks mean nothing and a `,` ends it; stopColon ends it at a `:`
 // (a case pattern), stopComma at a `,` (a property's initializer). It reports
 // whether it read anything.
-func (p *parser) expr(inGroup, stopColon, stopComma bool) bool {
+func (p *parser) expression(inGroup, stopColon, stopComma bool) bool {
 	start := p.i
-	cond := false // after if/while/guard/for/switch: a `{` is the statement's body
-	for !p.eof() {
-		t := p.tok()
-		if p.i > start && !inGroup && t.nl && operandEnd(p.peek(-1)) && !continues(t) {
+	condition := false // after if/while/guard/for/switch: a `{` is the statement's body
+	for !p.atEnd() {
+		t := p.token()
+		if p.i > start && !inGroup && t.newline && operandEnd(p.peek(-1)) && !continues(t) {
 			return true
 		}
-		if t.kind == tPunct {
+		if t.kind == tPunctuation {
 			switch t.text {
 			case ";", "}", ")", "]":
 				return p.i > start
@@ -1103,8 +1103,8 @@ func (p *parser) expr(inGroup, stopColon, stopComma bool) bool {
 					p.group("]")
 				}
 			case "{":
-				if cond {
-					cond = false
+				if condition {
+					condition = false
 					p.i++
 					p.block(sBody)
 				} else {
@@ -1117,12 +1117,12 @@ func (p *parser) expr(inGroup, stopColon, stopComma bool) bool {
 				p.attribute(false)
 			case "#":
 				p.i++
-				if p.tok().kind == tIdent && p.tok().start == t.end {
+				if p.token().kind == tIdentifier && p.token().start == t.end {
 					p.i++
 				}
 			case `\`:
 				p.i++
-				if p.tok().kind == tIdent && p.tok().start == t.end {
+				if p.token().kind == tIdentifier && p.token().start == t.end {
 					p.i++
 					if p.is("<") {
 						p.skipGenerics()
@@ -1132,9 +1132,9 @@ func (p *parser) expr(inGroup, stopColon, stopComma bool) bool {
 				// .Foo.bar is an implicit member whose base is a type; x.Foo a member.
 				implicit := p.i == start || !p.operandBefore()
 				p.i++
-				if p.tok().kind == tIdent && !p.tok().nl {
-					if implicit && punct(p.peek(1), ".") {
-						p.ref(p.tok())
+				if p.token().kind == tIdentifier && !p.token().newline {
+					if implicit && punctuation(p.peek(1), ".") {
+						p.reference(p.token())
 					}
 					p.i++
 				}
@@ -1143,43 +1143,43 @@ func (p *parser) expr(inGroup, stopColon, stopComma bool) bool {
 			}
 			continue
 		}
-		if t.kind != tIdent {
+		if t.kind != tIdentifier {
 			p.i++
 			continue
 		}
 		if !t.bt && keywords[t.text] || word(t, "actor") || word(t, "macro") {
-			if punct(p.peek(1), ":") && !inGroup && !stopColon || inGroup && punct(p.peek(1), ":") {
+			if punctuation(p.peek(1), ":") && !inGroup && !stopColon || inGroup && punctuation(p.peek(1), ":") {
 				p.i += 2 // a label
 				continue
 			}
 			switch t.text {
 			case "as", "is":
 				p.i++
-				if (p.is("?") || p.is("!")) && !p.tok().nl {
+				if (p.is("?") || p.is("!")) && !p.token().newline {
 					p.i++
 				}
 				p.parseType()
 				continue
 			case "if", "guard", "while", "switch", "catch":
-				cond = true
+				condition = true
 			case "for":
-				cond = true
+				condition = true
 				p.i++
-				if p.tok().kind == tIdent && punct(p.peek(1), ":") { // for x: T in
+				if p.token().kind == tIdentifier && punctuation(p.peek(1), ":") { // for x: T in
 					p.i += 2
 					p.parseType()
 				}
 				continue
 			case "throws": // do throws(E) {
 				p.i++
-				if p.is("(") && !p.tok().nl {
+				if p.is("(") && !p.token().newline {
 					p.i++
 					p.parseType()
 				}
 				continue
 			case "let", "var":
 				p.i++
-				if p.tok().kind == tIdent && punct(p.peek(1), ":") {
+				if p.token().kind == tIdentifier && punctuation(p.peek(1), ":") {
 					p.i += 2
 					p.parseType()
 				}
@@ -1188,13 +1188,13 @@ func (p *parser) expr(inGroup, stopColon, stopComma bool) bool {
 				"typealias", "associatedtype", "init", "deinit", "subscript", "case",
 				"default", "static", "private", "public", "fileprivate", "internal", "operator",
 				"precedencegroup", "actor", "macro":
-				if t.text == "case" && (cond || inGroup) {
+				if t.text == "case" && (condition || inGroup) {
 					break // if case .a = x, for case let
 				}
-				if (t.text == "actor" || t.text == "macro") && !(p.i == start || t.nl) {
+				if (t.text == "actor" || t.text == "macro") && !(p.i == start || t.newline) {
 					break
 				}
-				if t.text == "init" && punct(p.peek(-1), ".") {
+				if t.text == "init" && punctuation(p.peek(-1), ".") {
 					break
 				}
 				if p.i > start {
@@ -1207,11 +1207,11 @@ func (p *parser) expr(inGroup, stopColon, stopComma bool) bool {
 			p.i++
 			continue
 		}
-		if (word(t, "any") || word(t, "some")) && name(p.peek(1)) && !p.peek(1).nl {
+		if (word(t, "any") || word(t, "some")) && name(p.peek(1)) && !p.peek(1).newline {
 			p.parseType() // (any Error).self
 			continue
 		}
-		p.identifier(cond)
+		p.identifier(condition)
 	}
 	return p.i > start
 }
@@ -1225,10 +1225,10 @@ func (p *parser) arrayType() bool {
 	for j := p.i; j < len(p.tokens) && j < p.i+64; j++ {
 		t := p.tokens[j]
 		switch {
-		case t.kind == tIdent && (t.bt || !keywords[t.text] || t.text == "async" || t.text == "throws"):
+		case t.kind == tIdentifier && (t.bt || !keywords[t.text] || t.text == "async" || t.text == "throws"):
 		case t.text == "->":
 			generic = true // a function type cannot be a literal
-		case t.kind != tPunct:
+		case t.kind != tPunctuation:
 			return false
 		case t.text == "[":
 			depth++
@@ -1238,7 +1238,7 @@ func (p *parser) arrayType() bool {
 				if j == p.i+1 || j+1 >= len(p.tokens) || p.tokens[j+1].start != t.end {
 					return false
 				}
-				return punct(p.tokens[j+1], ".") || generic && punct(p.tokens[j+1], "(")
+				return punctuation(p.tokens[j+1], ".") || generic && punctuation(p.tokens[j+1], "(")
 			}
 		case t.text == "(" || t.text == "<":
 			nested++
@@ -1264,18 +1264,18 @@ func (p *parser) operandBefore() bool {
 	if p.i == 0 {
 		return false
 	}
-	prev := p.peek(-1)
-	if punct(prev, "?") || punct(prev, "!") {
-		return p.i > 1 && p.peek(-2).end == prev.start
+	previous := p.peek(-1)
+	if punctuation(previous, "?") || punctuation(previous, "!") {
+		return p.i > 1 && p.peek(-2).end == previous.start
 	}
-	return operandEnd(prev)
+	return operandEnd(previous)
 }
 
 // continues reports whether a token at the start of a line continues the expression
 // on the line before: a member access, a binary operator, else, catch.
 func continues(t token) bool {
 	switch t.kind {
-	case tPunct:
+	case tPunctuation:
 		switch t.text {
 		case ".", "->", "?", "&", "<", ">", "...", "..<", "=":
 			return true
@@ -1283,7 +1283,7 @@ func continues(t token) bool {
 			return t.text == "{" // a trailing closure
 		}
 		return true // an operator
-	case tIdent:
+	case tIdentifier:
 		return !t.bt && (t.text == "else" || t.text == "catch" || t.text == "where" || t.text == "as" || t.text == "is" || t.text == "in")
 	}
 	return false
@@ -1293,25 +1293,25 @@ func continues(t token) bool {
 // code uses when a member access, call, subscript, trailing closure or generic
 // arguments follow it: Foo.shared, Foo(), Foo<Int>(). Not in a condition, where `{`
 // is the statement's body: `if x == Foo {`.
-func (p *parser) identifier(cond bool) {
-	t := p.tok()
+func (p *parser) identifier(condition bool) {
+	t := p.token()
 	n := p.peek(1)
 	// After an additive or multiplicative operator the grammar applied a call to
 	// the whole operation (`x + Foo(y)` as `(x + Foo)(y)`), and after a prefix
 	// operator to the operand (`!Foo()`, `try! Foo()`): no type use.
-	prev := p.peek(-1)
-	arith := p.i > 0 && !t.nl && prev.kind == tPunct && strings.Contains(" + - * / % ! ~ ", " "+prev.text+" ")
+	previous := p.peek(-1)
+	arith := p.i > 0 && !t.newline && previous.kind == tPunctuation && strings.Contains(" + - * / % ! ~ ", " "+previous.text+" ")
 	switch {
-	case punct(n, "."):
-		p.ref(t)
-	case (punct(n, "(") || punct(n, "[")) && !n.nl && !arith:
-		p.ref(t)
-	case punct(n, "{") && !cond && !arith:
-		p.ref(t)
-	case punct(n, "<") && !n.nl && p.genericCall(1):
-		p.ref(t)
+	case punctuation(n, "."):
+		p.reference(t)
+	case (punctuation(n, "(") || punctuation(n, "[")) && !n.newline && !arith:
+		p.reference(t)
+	case punctuation(n, "{") && !condition && !arith:
+		p.reference(t)
+	case punctuation(n, "<") && !n.newline && p.genericCall(1):
+		p.reference(t)
 		p.i++
-		p.genericArgs()
+		p.genericArguments()
 		return
 	}
 	p.i++
@@ -1320,9 +1320,9 @@ func (p *parser) identifier(cond bool) {
 // skipGenerics skips balanced <...>.
 func (p *parser) skipGenerics() {
 	depth := 0
-	for !p.eof() {
-		t := p.tok()
-		if t.kind == tPunct {
+	for !p.atEnd() {
+		t := p.token()
+		if t.kind == tPunctuation {
 			switch t.text {
 			case "<":
 				depth++

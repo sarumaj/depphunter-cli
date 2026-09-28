@@ -10,19 +10,19 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
-// flakeDir is a directory with flake.nix and/or flake.lock.
-type flakeDir struct {
+// flakeDirectory is a directory with flake.nix and/or flake.lock.
+type flakeDirectory struct {
 	inputs map[string]string // input name -> RawImport.Module of its declaration
 	lock   *lockFile
 }
 
 type resolver struct {
-	files   map[string]bool
-	dirs    map[string]bool
-	flakes  map[string]*flakeDir
-	pins    map[string]pinsFile      // directory of a sources.json -> its pins
-	nixpkgs map[string]lang.Target   // project directory -> the nixpkgs it builds with
-	deps    map[string][]lang.Target // lock target key -> its inputs' targets
+	files        map[string]bool
+	directories  map[string]bool
+	flakes       map[string]*flakeDirectory
+	pins         map[string]pinsFile      // directory of a sources.json -> its pins
+	nixpkgs      map[string]lang.Target   // project directory -> the nixpkgs it builds with
+	dependencies map[string][]lang.Target // lock target key -> its inputs' targets
 	// inNixpkgs is set when the repository is nixpkgs itself, whose package lists
 	// name its own packages.
 	inNixpkgs bool
@@ -31,50 +31,50 @@ type resolver struct {
 func readable(f *scan.File) bool { return !f.Binary && !f.TooLarge && f.Size <= lang.MaxParseSize }
 
 func newResolver(all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, dirs: map[string]bool{}, flakes: map[string]*flakeDir{},
-		pins: map[string]pinsFile{}, nixpkgs: map[string]lang.Target{}, deps: map[string][]lang.Target{}}
-	flake := func(d string) *flakeDir {
+	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, flakes: map[string]*flakeDirectory{},
+		pins: map[string]pinsFile{}, nixpkgs: map[string]lang.Target{}, dependencies: map[string][]lang.Target{}}
+	flake := func(d string) *flakeDirectory {
 		if r.flakes[d] == nil {
-			r.flakes[d] = &flakeDir{inputs: map[string]string{}}
+			r.flakes[d] = &flakeDirectory{inputs: map[string]string{}}
 		}
 		return r.flakes[d]
 	}
 	for _, f := range all {
 		r.files[f.Path] = true
-		for d := path.Dir(f.Path); d != "." && !r.dirs[d]; d = path.Dir(d) {
-			r.dirs[d] = true
+		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
+			r.directories[d] = true
 		}
 		c := class(f.Path)
 		if c == "" || !readable(f) {
 			continue
 		}
-		src, err := os.ReadFile(f.Abs)
+		source, err := os.ReadFile(f.AbsolutePath)
 		if err != nil {
 			continue
 		}
 		d := path.Dir(f.Path)
 		switch c {
 		case "flake":
-			fd := flake(d)
-			for _, im := range extract(src, true).Imports {
-				if im.Name == kInput {
-					name, _, _ := strings.Cut(im.Module, "\n")
-					fd.inputs[name] = im.Module
+			found := flake(d)
+			for _, rawImport := range extract(source, true).Imports {
+				if rawImport.Name == kInput {
+					name, _, _ := strings.Cut(rawImport.Module, "\n")
+					found.inputs[name] = rawImport.Module
 				}
 			}
 		case "lock":
-			flake(d).lock = readLock(src)
+			flake(d).lock = readLock(source)
 		case "niv", "npins":
-			r.pins[d] = readPins(c, src)
+			r.pins[d] = readPins(c, source)
 		}
 	}
 	r.inNixpkgs = r.files["pkgs/top-level/all-packages.nix"]
 	for _, d := range sortedKeys(r.flakes) {
-		fd := r.flakes[d]
-		if fd.lock != nil {
-			r.lockDeps(d, fd.lock)
+		flake := r.flakes[d]
+		if flake.lock != nil {
+			r.lockDependencies(d, flake.lock)
 		}
-		if t, ok := r.flakeNixpkgs(d, fd); ok {
+		if t, ok := r.flakeNixpkgs(d, flake); ok {
 			r.nixpkgs[d] = t
 		}
 	}
@@ -99,27 +99,27 @@ func sortedKeys[V any](m map[string]V) []string {
 
 func key(t lang.Target) string { return t.Ecosystem + "\x00" + t.Package + "\x00" + t.Version }
 
-// lockDeps records, for each node of a lock, the nodes its inputs name (follows
+// lockDependencies records, for each node of a lock, the nodes its inputs name (follows
 // resolved), for --resolve-depth.
-func (r *resolver) lockDeps(dir string, l *lockFile) {
+func (r *resolver) lockDependencies(directory string, l *lockFile) {
 	for _, k := range l.keys() {
-		t, local := l.target(dir, k)
+		t, local := l.target(directory, k)
 		if local != "" || t.Package == "" {
 			continue
 		}
 		kk := key(t)
-		if _, done := r.deps[kk]; done {
+		if _, done := r.dependencies[kk]; done {
 			continue
 		}
 		var out []lang.Target
 		for _, name := range sortedKeys(l.Nodes[k].Inputs) {
 			if nk, ok := l.input(k, name); ok {
-				if d, local := l.target(dir, nk); local == "" && d.Package != "" {
+				if d, local := l.target(directory, nk); local == "" && d.Package != "" {
 					out = append(out, d)
 				}
 			}
 		}
-		r.deps[kk] = out
+		r.dependencies[kk] = out
 	}
 }
 
@@ -127,30 +127,30 @@ func (r *resolver) lockDeps(dir string, l *lockFile) {
 //
 // Implements: REQ-NIX-005
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
-	if t.Ecosystem != ecoNix {
+	if t.Ecosystem != ecosystemNix {
 		return nil
 	}
-	return r.deps[key(t)]
+	return r.dependencies[key(t)]
 }
 
 // flakeNixpkgs is the nixpkgs a flake builds with: its input named nixpkgs, else
 // the one input that is NixOS/nixpkgs.
-func (r *resolver) flakeNixpkgs(dir string, fd *flakeDir) (lang.Target, bool) {
+func (r *resolver) flakeNixpkgs(directory string, flake *flakeDirectory) (lang.Target, bool) {
 	names := []string{"nixpkgs"}
-	for _, n := range sortedKeys(fd.inputs) {
+	for _, n := range sortedKeys(flake.inputs) {
 		if n != "nixpkgs" {
 			names = append(names, n)
 		}
 	}
-	if fd.lock != nil {
-		for _, n := range sortedKeys(fd.lock.Nodes[fd.lock.Root].Inputs) {
+	if flake.lock != nil {
+		for _, n := range sortedKeys(flake.lock.Nodes[flake.lock.Root].Inputs) {
 			if n != "nixpkgs" {
 				names = append(names, n)
 			}
 		}
 	}
 	for _, n := range names {
-		t := r.input(dir, n, 0)
+		t := r.input(directory, n, 0)
 		if t.Package == "nixpkgs" || strings.EqualFold(t.Package, "github.com/NixOS/nixpkgs") {
 			return t, true
 		}
@@ -161,37 +161,37 @@ func (r *resolver) flakeNixpkgs(dir string, fd *flakeDir) (lang.Target, bool) {
 // input resolves a flake's input by name: through the lock beside flake.nix, else
 // by the declaration's own reference (a follows of another top-level input taken
 // through to it).
-func (r *resolver) input(dir, name string, depth int) lang.Target {
-	fd := r.flakes[dir]
-	if fd == nil || depth > 8 {
+func (r *resolver) input(directory, name string, depth int) lang.Target {
+	flake := r.flakes[directory]
+	if flake == nil || depth > 8 {
 		return lang.Target{}
 	}
-	if fd.lock != nil {
-		if k, ok := fd.lock.input(fd.lock.Root, name); ok {
-			t, local := fd.lock.target(dir, k)
+	if flake.lock != nil {
+		if k, ok := flake.lock.input(flake.lock.Root, name); ok {
+			t, local := flake.lock.target(directory, k)
 			if local != "" {
 				return r.localFlake(local)
 			}
 			return t
 		}
 	}
-	decl, ok := fd.inputs[name]
+	declaration, ok := flake.inputs[name]
 	if !ok {
 		return lang.Target{}
 	}
-	_, rest, _ := strings.Cut(decl, "\n")
-	enc, follows, _ := strings.Cut(rest, "\n")
+	_, rest, _ := strings.Cut(declaration, "\n")
+	encoded, follows, _ := strings.Cut(rest, "\n")
 	if follows != "" {
 		if strings.Contains(follows, "/") {
 			return lang.Target{} // an input of an input: only the lock knows it
 		}
-		return r.input(dir, follows, depth+1)
+		return r.input(directory, follows, depth+1)
 	}
-	ref := decodeRef(enc)
-	if ref.typ == "path" {
-		return r.localFlake(localDir(dir, ref.url))
+	reference := decodeReference(encoded)
+	if reference.typeName == "path" {
+		return r.localFlake(localDirectory(directory, reference.url))
 	}
-	t, _ := ref.target()
+	t, _ := reference.target()
 	return t
 }
 
@@ -202,16 +202,16 @@ func (r *resolver) localFlake(d string) lang.Target {
 		return lang.Target{}
 	case r.files[d+"/flake.nix"]:
 		return lang.Target{Local: d + "/flake.nix"}
-	case r.dirs[d]:
+	case r.directories[d]:
 		return lang.Target{Local: d}
 	}
 	return lang.Target{}
 }
 
-// nearest is the closest directory at or above dir for which has is true, else
+// nearest is the closest directory at or above directory for which has is true, else
 // "" (and false).
-func nearest(dir string, has func(string) bool) (string, bool) {
-	for d := dir; ; d = path.Dir(d) {
+func nearest(directory string, has func(string) bool) (string, bool) {
+	for d := directory; ; d = path.Dir(d) {
 		if has(d) {
 			return d, true
 		}
@@ -222,66 +222,66 @@ func nearest(dir string, has func(string) bool) (string, bool) {
 }
 
 // Implements: REQ-NIX-002, REQ-NIX-004, REQ-NIX-005, REQ-NIX-007, REQ-NIX-008, REQ-NIX-009
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	dir := path.Dir(file)
-	switch imp.Name {
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	directory := path.Dir(file)
+	switch rawImport.Name {
 	case kImport, kPath:
-		p := localDir(dir, imp.Module)
+		p := localDirectory(directory, rawImport.Module)
 		switch {
 		case p == "":
 		case r.files[p]:
 			return lang.Target{Local: p}
-		case imp.Name == kImport && r.files[p+"/default.nix"]:
+		case rawImport.Name == kImport && r.files[p+"/default.nix"]:
 			return lang.Target{Local: p + "/default.nix"}
-		case r.dirs[p] && p != dir:
+		case r.directories[p] && p != directory:
 			return lang.Target{Local: p}
 		}
 		return lang.Target{}
 	case kChannel:
 		// NIX_PATH decides what <nixpkgs> is on each machine.
-		return lang.Target{Ecosystem: ecoNix, Package: imp.Module, Floating: true}
+		return lang.Target{Ecosystem: ecosystemNix, Package: rawImport.Module, Floating: true}
 	case kFetch:
-		ref := decodeRef(imp.Module)
-		if ref.typ == "path" {
-			return r.localFlake(localDir(dir, ref.url))
+		reference := decodeReference(rawImport.Module)
+		if reference.typeName == "path" {
+			return r.localFlake(localDirectory(directory, reference.url))
 		}
-		t, _ := ref.target()
+		t, _ := reference.target()
 		return t
 	case kInput:
-		name, _, _ := strings.Cut(imp.Module, "\n")
-		return r.input(dir, name, 0)
+		name, _, _ := strings.Cut(rawImport.Module, "\n")
+		return r.input(directory, name, 0)
 	case kUse:
-		d, ok := nearest(dir, func(d string) bool { fd := r.flakes[d]; return fd != nil && fd.inputs[imp.Module] != "" })
+		d, ok := nearest(directory, func(d string) bool { flake := r.flakes[d]; return flake != nil && flake.inputs[rawImport.Module] != "" })
 		if !ok {
 			return lang.Target{}
 		}
-		return r.input(d, imp.Module, 0)
+		return r.input(d, rawImport.Module, 0)
 	case kPin:
-		sdir, name, _ := strings.Cut(imp.Module, "\n")
-		if p, ok := r.pins[localDir(dir, sdir)][name]; ok {
+		relativeDirectory, name, _ := strings.Cut(rawImport.Module, "\n")
+		if p, ok := r.pins[localDirectory(directory, relativeDirectory)][name]; ok {
 			return pinTarget(p)
 		}
 		return lang.Target{}
-	case kPkg:
+	case kPackage:
 		if r.inNixpkgs {
-			return r.byName(imp.Module)
+			return r.byName(rawImport.Module)
 		}
-		t := lang.Target{Ecosystem: ecoNixpkgs, Package: imp.Module}
-		if d, ok := nearest(dir, func(d string) bool { _, ok := r.nixpkgs[d]; return ok }); ok {
+		t := lang.Target{Ecosystem: ecosystemNixpkgs, Package: rawImport.Module}
+		if d, ok := nearest(directory, func(d string) bool { _, ok := r.nixpkgs[d]; return ok }); ok {
 			n := r.nixpkgs[d]
 			t.Version, t.Pinned, t.Floating = n.Version, n.Pinned, n.Floating
 		}
 		return t
 	case "lock":
-		if fd := r.flakes[dir]; fd != nil && fd.lock != nil {
-			t, local := fd.lock.target(dir, imp.Module)
+		if flake := r.flakes[directory]; flake != nil && flake.lock != nil {
+			t, local := flake.lock.target(directory, rawImport.Module)
 			if local != "" {
 				return r.localFlake(local)
 			}
 			return t
 		}
 	case "niv", "npins":
-		if p, ok := r.pins[dir][imp.Module]; ok {
+		if p, ok := r.pins[directory][rawImport.Module]; ok {
 			return pinTarget(p)
 		}
 	}
@@ -293,11 +293,11 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 // are dropped, since the repository defines them itself.
 //
 // Implements: REQ-NIX-007
-func (r *resolver) byName(attr string) lang.Target {
-	if strings.Contains(attr, ".") || len(attr) < 2 {
+func (r *resolver) byName(attribute string) lang.Target {
+	if strings.Contains(attribute, ".") || len(attribute) < 2 {
 		return lang.Target{}
 	}
-	p := "pkgs/by-name/" + strings.ToLower(attr[:2]) + "/" + attr + "/package.nix"
+	p := "pkgs/by-name/" + strings.ToLower(attribute[:2]) + "/" + attribute + "/package.nix"
 	if r.files[p] {
 		return lang.Target{Local: p}
 	}

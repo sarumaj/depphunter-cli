@@ -14,7 +14,7 @@ verification:
 C and C++ definitions **shall** be read by a token scanner, not by a
 tree-sitter grammar: a tolerant recursive descent over the file, namespace,
 `extern "C"` and class bodies that steps over function bodies, initializers
-and bracket groups it does not recognise. Of a conditional group whose
+and bracket groups it does not recognize. Of a conditional group whose
 branches do not each balance their braces, only the first branch **shall** be
 read. The scanner **shall** return a result for any input in time linear in
 its length.

@@ -35,9 +35,9 @@ func TestResolverNotesReachTheReport(t *testing.T) {
 	root := t.TempDir()
 	writeProject(t, root, map[string]string{"a.fake": "x\n"})
 	for _, depth := range []int{0, 1} {
-		rep := trace.New(depth, false, nil, nil)
+		report := trace.New(depth, false, nil, nil)
 		if _, _, err := Run(context.Background(), root, Options{
-			Plugins: []lang.Plugin{notedPlugin{}}, ResolveDepth: depth, Trace: rep,
+			Plugins: []lang.Plugin{notedPlugin{}}, ResolveDepth: depth, Trace: report,
 		}); err != nil {
 			t.Fatal(err)
 		}
@@ -45,8 +45,8 @@ func TestResolverNotesReachTheReport(t *testing.T) {
 			{Plugin: "fake", File: "a.lock", Code: trace.NoteUnread, Message: "unread"},
 			{Plugin: "fake", File: "b.lock", Code: trace.NoteFlat, Message: "flat"},
 		}
-		if !reflect.DeepEqual(rep.Notes, want) {
-			t.Errorf("depth %d: notes %+v, want %+v", depth, rep.Notes, want)
+		if !reflect.DeepEqual(report.Notes, want) {
+			t.Errorf("depth %d: notes %+v, want %+v", depth, report.Notes, want)
 		}
 	}
 }
@@ -61,14 +61,14 @@ func TestBunLockbIsNoted(t *testing.T) {
 		"bun.lockb":    "\x00binary",
 		"index.js":     "import React from 'react'\n",
 	})
-	rep := trace.New(0, false, nil, nil)
+	report := trace.New(0, false, nil, nil)
 	if _, _, err := Run(context.Background(), root, Options{
-		Plugins: []lang.Plugin{javascript.Plugin{}}, Trace: rep,
+		Plugins: []lang.Plugin{javascript.Plugin{}}, Trace: report,
 	}); err != nil {
 		t.Fatal(err)
 	}
-	if len(rep.Notes) != 1 || rep.Notes[0].File != "bun.lockb" || rep.Notes[0].Code != trace.NoteUnread ||
-		rep.Notes[0].Plugin != (javascript.Plugin{}).Name() {
-		t.Errorf("notes: %+v", rep.Notes)
+	if len(report.Notes) != 1 || report.Notes[0].File != "bun.lockb" || report.Notes[0].Code != trace.NoteUnread ||
+		report.Notes[0].Plugin != (javascript.Plugin{}).Name() {
+		t.Errorf("notes: %+v", report.Notes)
 	}
 }

@@ -22,27 +22,27 @@ import (
 // Verifies: REQ-HASKELL-001, REQ-HASKELL-002, REQ-HASKELL-003, REQ-HASKELL-004, REQ-HASKELL-005, REQ-HASKELL-006
 // Verifies: REQ-HASKELL-007, REQ-HASKELL-008, REQ-HASKELL-009, REQ-HASKELL-010
 func TestCabalAndStackProjects(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	base := lang.Target{Ecosystem: ecoStd, Package: "base"}
-	conduit := lang.Target{Ecosystem: ecoHackage, Package: "conduit", Version: "6b98f070fea09a3bf0a5d0897a2e27e3aa91c8fe", Pinned: true, Origin: "https://github.com/snoyberg/conduit.git"}
-	winConsole := lang.Target{Ecosystem: ecoHackage, Package: "win-console", Version: "v1.2", Floating: true, Origin: "https://github.com/acme/win-console"}
-	containers := lang.Target{Ecosystem: ecoHackage, Package: "containers", Version: "0.6.7", Pinned: true}
-	text := lang.Target{Ecosystem: ecoHackage, Package: "text", Version: "2.0.2", Pinned: true}
-	mtl := lang.Target{Ecosystem: ecoHackage, Package: "mtl", Version: "2.3.1", Requested: ">=2.2 && <2.4", Pinned: true}
-	aeson := lang.Target{Ecosystem: ecoHackage, Package: "aeson", Version: "2.2.3.0", Requested: "^>=2.2", Pinned: true}
-	hashable := lang.Target{Ecosystem: ecoHackage, Package: "hashable", Version: "1.4.4.0", Pinned: true}
-	deepseq := lang.Target{Ecosystem: ecoHackage, Package: "deepseq", Version: "1.4.8.1", Pinned: true}
-	httpClient := lang.Target{Ecosystem: ecoHackage, Package: "http-client", Floating: true}
-	hermes := lang.Target{Ecosystem: ecoHackage, Package: "hermes-json", Version: ">=0.6"}
-	hspec := lang.Target{Ecosystem: ecoHackage, Package: "hspec", Floating: true}
-	quickCheck := lang.Target{Ecosystem: ecoHackage, Package: "QuickCheck", Version: "2.14.3", Pinned: true}
-	cabal := lang.Target{Ecosystem: ecoHackage, Package: "Cabal", Version: ">=3.10"}
-	optparse := lang.Target{Ecosystem: ecoHackage, Package: "optparse-applicative", Floating: true}
-	snapshotText := lang.Target{Ecosystem: ecoHackage, Package: "text", Version: "lts-22.43"}
-	missiles := lang.Target{Ecosystem: ecoHackage, Package: "acme-missiles", Version: "0.3", Pinned: true}
-	leftPad := lang.Target{Ecosystem: ecoHackage, Package: "left-pad", Version: "0123456789abcdef0123456789abcdef01234567", Pinned: true, Origin: "https://github.com/acme/left-pad-hs"}
-	unlocked := lang.Target{Ecosystem: ecoHackage, Package: "unlocked-hs", Version: "main", Floating: true, Origin: "https://github.com/acme/unlocked-hs"}
-	filepath := lang.Target{Ecosystem: ecoHackage, Package: "filepath", Version: ">= 1.4"}
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	base := lang.Target{Ecosystem: ecosystemStd, Package: "base"}
+	conduit := lang.Target{Ecosystem: ecosystemHackage, Package: "conduit", Version: "6b98f070fea09a3bf0a5d0897a2e27e3aa91c8fe", Pinned: true, Origin: "https://github.com/snoyberg/conduit.git"}
+	winConsole := lang.Target{Ecosystem: ecosystemHackage, Package: "win-console", Version: "v1.2", Floating: true, Origin: "https://github.com/acme/win-console"}
+	containers := lang.Target{Ecosystem: ecosystemHackage, Package: "containers", Version: "0.6.7", Pinned: true}
+	text := lang.Target{Ecosystem: ecosystemHackage, Package: "text", Version: "2.0.2", Pinned: true}
+	mtl := lang.Target{Ecosystem: ecosystemHackage, Package: "mtl", Version: "2.3.1", Requested: ">=2.2 && <2.4", Pinned: true}
+	aeson := lang.Target{Ecosystem: ecosystemHackage, Package: "aeson", Version: "2.2.3.0", Requested: "^>=2.2", Pinned: true}
+	hashable := lang.Target{Ecosystem: ecosystemHackage, Package: "hashable", Version: "1.4.4.0", Pinned: true}
+	deepseq := lang.Target{Ecosystem: ecosystemHackage, Package: "deepseq", Version: "1.4.8.1", Pinned: true}
+	httpClient := lang.Target{Ecosystem: ecosystemHackage, Package: "http-client", Floating: true}
+	hermes := lang.Target{Ecosystem: ecosystemHackage, Package: "hermes-json", Version: ">=0.6"}
+	hspec := lang.Target{Ecosystem: ecosystemHackage, Package: "hspec", Floating: true}
+	quickCheck := lang.Target{Ecosystem: ecosystemHackage, Package: "QuickCheck", Version: "2.14.3", Pinned: true}
+	cabal := lang.Target{Ecosystem: ecosystemHackage, Package: "Cabal", Version: ">=3.10"}
+	optparse := lang.Target{Ecosystem: ecosystemHackage, Package: "optparse-applicative", Floating: true}
+	snapshotText := lang.Target{Ecosystem: ecosystemHackage, Package: "text", Version: "lts-22.43"}
+	missiles := lang.Target{Ecosystem: ecosystemHackage, Package: "acme-missiles", Version: "0.3", Pinned: true}
+	leftPad := lang.Target{Ecosystem: ecosystemHackage, Package: "left-pad", Version: "0123456789abcdef0123456789abcdef01234567", Pinned: true, Origin: "https://github.com/acme/left-pad-hs"}
+	unlocked := lang.Target{Ecosystem: ecosystemHackage, Package: "unlocked-hs", Version: "main", Floating: true, Origin: "https://github.com/acme/unlocked-hs"}
+	filepath := lang.Target{Ecosystem: ecosystemHackage, Package: "filepath", Version: ">= 1.4"}
 	imports := map[string]map[string]lang.Target{
 		"cabal.project": {
 			"packages: shop-core":                    {Local: "shop-core/shop-core.cabal"},
@@ -56,8 +56,8 @@ func TestCabalAndStackProjects(t *testing.T) {
 			"import Shop.Cart":                {Local: "shop-core/src/Shop/Cart.hs"},
 			"import Options.Applicative":      optparse,
 			"import \"conduit\" Data.Conduit": conduit,
-			"import System.Win32.Console":     {Ecosystem: ecoHackage, Package: "Win32", Unresolved: true},
-			"import Data.Unknown.Thing":       {Ecosystem: ecoHackage, Package: "unknown", Unresolved: true},
+			"import System.Win32.Console":     {Ecosystem: ecosystemHackage, Package: "Win32", Unresolved: true},
+			"import Data.Unknown.Thing":       {Ecosystem: ecosystemHackage, Package: "unknown", Unresolved: true},
 			"import Numeric.Natural":          base,
 		},
 		"shop-app/shop-app.cabal": {
@@ -80,7 +80,7 @@ func TestCabalAndStackProjects(t *testing.T) {
 			"build-depends: deepseq ==1.4.8.1":               deepseq,
 			"build-depends: http-client":                     httpClient,
 			"build-depends: hermes-json:{hermes-json} >=0.6": hermes,
-			"build-depends: template-haskell":                {Ecosystem: ecoStd, Package: "template-haskell"},
+			"build-depends: template-haskell":                {Ecosystem: ecosystemStd, Package: "template-haskell"},
 			"build-depends: shop-core":                       {},
 			"build-depends: hspec":                           hspec,
 			"build-depends: QuickCheck == 2.14.3":            quickCheck,
@@ -113,7 +113,7 @@ func TestCabalAndStackProjects(t *testing.T) {
 			"import Test.Hspec":      hspec,
 			"import Test.QuickCheck": quickCheck,
 			"import Shop.Cart":       {Local: "shop-core/src/Shop/Cart.hs"},
-			"import Control.Lens":    {Ecosystem: ecoHackage, Package: "lens", Unresolved: true},
+			"import Control.Lens":    {Ecosystem: ecosystemHackage, Package: "lens", Unresolved: true},
 		},
 		"stackproj/app/Main.hs": {
 			"import Lib":             {Local: "stackproj/src/Lib.hs"},
@@ -141,15 +141,15 @@ func TestCabalAndStackProjects(t *testing.T) {
 			"extra-deps: unlocked-hs":       unlocked,
 		},
 	}
-	if len(res) != len(imports) {
+	if len(results) != len(imports) {
 		var got []string
-		for f := range res {
+		for f := range results {
 			got = append(got, f)
 		}
-		t.Errorf("analyzed %d files, want %d: %v", len(res), len(imports), got)
+		t.Errorf("analyzed %d files, want %d: %v", len(results), len(imports), got)
 	}
 	for file, want := range imports {
-		langtest.CheckImports(t, res[file], want)
+		langtest.CheckImports(t, results[file], want)
 	}
 	symbols := map[string]map[string]string{
 		"cabal.project":        {},
@@ -192,10 +192,10 @@ func TestCabalAndStackProjects(t *testing.T) {
 		"stackproj/src/Lib.hs":             {"Lib": "module", "someFunc": "function"},
 	}
 	for file, want := range symbols {
-		langtest.CheckSymbols(t, res[file], want)
+		langtest.CheckSymbols(t, results[file], want)
 	}
 	// Literate lines are the document's own.
-	for _, s := range res["docs/Tutorial.lhs"].Symbols {
+	for _, s := range results["docs/Tutorial.lhs"].Symbols {
 		if s.Name == "farewell" && s.Line != 8 {
 			t.Errorf("farewell at line %d, want 8", s.Line)
 		}
@@ -208,22 +208,22 @@ func TestCabalAndStackProjects(t *testing.T) {
 // Verifies: REQ-HASKELL-008
 func TestPlanDependencies(t *testing.T) {
 	r := newResolver("testdata/repo", langtest.Files(t, "testdata/repo"))
-	for _, tt := range []struct {
-		pkg  lang.Target
-		want []lang.Target
+	for _, test := range []struct {
+		packageTarget lang.Target
+		want          []lang.Target
 	}{
-		{lang.Target{Ecosystem: ecoHackage, Package: "aeson", Version: "2.2.3.0"}, []lang.Target{
-			{Ecosystem: ecoHackage, Package: "conduit", Version: "6b98f070fea09a3bf0a5d0897a2e27e3aa91c8fe", Pinned: true, Origin: "https://github.com/snoyberg/conduit.git"},
-			{Ecosystem: ecoHackage, Package: "containers", Version: "0.6.7", Pinned: true},
-			{Ecosystem: ecoHackage, Package: "text", Version: "2.0.2", Pinned: true},
+		{lang.Target{Ecosystem: ecosystemHackage, Package: "aeson", Version: "2.2.3.0"}, []lang.Target{
+			{Ecosystem: ecosystemHackage, Package: "conduit", Version: "6b98f070fea09a3bf0a5d0897a2e27e3aa91c8fe", Pinned: true, Origin: "https://github.com/snoyberg/conduit.git"},
+			{Ecosystem: ecosystemHackage, Package: "containers", Version: "0.6.7", Pinned: true},
+			{Ecosystem: ecosystemHackage, Package: "text", Version: "2.0.2", Pinned: true},
 		}},
-		{lang.Target{Ecosystem: ecoHackage, Package: "text", Version: "2.0.2"}, nil},
+		{lang.Target{Ecosystem: ecosystemHackage, Package: "text", Version: "2.0.2"}, nil},
 		// Another version than the plan's is not answered for.
-		{lang.Target{Ecosystem: ecoHackage, Package: "aeson", Version: "2.1.0.0"}, nil},
-		{lang.Target{Ecosystem: ecoStd, Package: "base", Version: "4.18.2.1"}, nil},
+		{lang.Target{Ecosystem: ecosystemHackage, Package: "aeson", Version: "2.1.0.0"}, nil},
+		{lang.Target{Ecosystem: ecosystemStd, Package: "base", Version: "4.18.2.1"}, nil},
 	} {
-		if got := r.Dependencies(tt.pkg); !reflect.DeepEqual(got, tt.want) {
-			t.Errorf("%s %s: got %+v, want %+v", tt.pkg.Package, tt.pkg.Version, got, tt.want)
+		if got := r.Dependencies(test.packageTarget); !reflect.DeepEqual(got, test.want) {
+			t.Errorf("%s %s: got %+v, want %+v", test.packageTarget.Package, test.packageTarget.Version, got, test.want)
 		}
 	}
 }
@@ -234,7 +234,7 @@ func TestPlanDependencies(t *testing.T) {
 //
 // Verifies: REQ-HASKELL-002, REQ-HASKELL-003, REQ-HASKELL-011
 func TestLexerHidesNonCode(t *testing.T) {
-	src := "{- outer {- inner -} import InComment -}\n" +
+	source := "{- outer {- inner -} import InComment -}\n" +
 		"module M where\n" +
 		"#include \"x.h\"\n" +
 		"import Data.Maybe\n" +
@@ -245,25 +245,25 @@ func TestLexerHidesNonCode(t *testing.T) {
 		"import qualified Real.One as R hiding (x)\n" +
 		"import safe Real.Two\n" +
 		"x ∷ Int\n"
-	tokens := lex([]byte(src))
-	for _, tk := range tokens {
-		if tk.k == tCon && (tk.s == "InComment" || tk.s == "InString" || tk.s == "InLineComment") {
-			t.Errorf("%s read as code at line %d", tk.s, tk.line)
+	tokens := lex([]byte(source))
+	for _, token := range tokens {
+		if token.k == tCon && (token.s == "InComment" || token.s == "InString" || token.s == "InLineComment") {
+			t.Errorf("%s read as code at line %d", token.s, token.line)
 		}
 	}
-	ex, err := Plugin{}.Extract(&scan.File{Path: "M.hs"}, []byte(src))
+	extraction, err := Plugin{}.Extract(&scan.File{Path: "M.hs"}, []byte(source))
 	if err != nil {
 		t.Fatal(err)
 	}
 	var specs []string
-	for _, im := range ex.Imports {
-		specs = append(specs, im.Spec)
+	for _, rawImport := range extraction.Imports {
+		specs = append(specs, rawImport.Spec)
 	}
 	if want := []string{"import Data.Maybe", "import qualified Real.One as R", "import safe Real.Two"}; !reflect.DeepEqual(specs, want) {
 		t.Errorf("imports %q, want %q", specs, want)
 	}
 	var names []string
-	for _, s := range ex.Symbols {
+	for _, s := range extraction.Symbols {
 		names = append(names, s.Name+" "+s.Kind)
 	}
 	if want := []string{"M module", "s function", "c function", "f' function", "g function", "x function"}; !reflect.DeepEqual(names, want) {
@@ -316,8 +316,8 @@ func TestProjectGlobsAndImports(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(filepath.Dir(root), "outside.project"), []byte("constraints: text ==2.1\n"), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	res := langtest.Analyze(t, Plugin{}, root)
-	langtest.CheckImports(t, res["cabal.project"], map[string]lang.Target{
+	results := langtest.Analyze(t, Plugin{}, root)
+	langtest.CheckImports(t, results["cabal.project"], map[string]lang.Target{
 		"packages: libs/*/ (libs/a/a.cabal)":                    {Local: "libs/a/a.cabal"},
 		"packages: libs/*/ (libs/b/b.cabal)":                    {Local: "libs/b/b.cabal"},
 		"packages: apps/{web,cli}/*.cabal (apps/cli/cli.cabal)": {Local: "apps/cli/cli.cabal"},
@@ -327,11 +327,11 @@ func TestProjectGlobsAndImports(t *testing.T) {
 		"import: https://example.org/stackage.config":           {},
 		"import: ../outside.project":                            {},
 	})
-	aeson := lang.Target{Ecosystem: ecoHackage, Package: "aeson", Version: "2.2.1.0", Pinned: true}
-	langtest.CheckImports(t, res["libs/a/a.cabal"], map[string]lang.Target{
+	aeson := lang.Target{Ecosystem: ecosystemHackage, Package: "aeson", Version: "2.2.1.0", Pinned: true}
+	langtest.CheckImports(t, results["libs/a/a.cabal"], map[string]lang.Target{
 		"build-depends: aeson": aeson,
 		"build-depends: b":     {Local: "libs/b/b.cabal"},
-		"build-depends: text":  {Ecosystem: ecoHackage, Package: "text", Floating: true},
+		"build-depends: text":  {Ecosystem: ecosystemHackage, Package: "text", Floating: true},
 	})
 	r := newResolver(root, langtest.Files(t, root))
 	if got, want := r.projectOf("cabal.project").members, []string{"libs/a", "libs/b", "apps/cli", "apps/web", "extra"}; !reflect.DeepEqual(got, want) {
@@ -350,8 +350,8 @@ func TestProjectGlobsAndImports(t *testing.T) {
 			delete(files, "cabal.project.common")
 		}
 		root := langtest.Write(t, files)
-		res := langtest.Analyze(t, Plugin{}, root)
-		if got := langtest.Imports(t, res["libs/a/a.cabal"])["build-depends: aeson"]; got.Pinned {
+		results := langtest.Analyze(t, Plugin{}, root)
+		if got := langtest.Imports(t, results["libs/a/a.cabal"])["build-depends: aeson"]; got.Pinned {
 			t.Errorf("%q: aeson %+v", garbage, got)
 		}
 	}

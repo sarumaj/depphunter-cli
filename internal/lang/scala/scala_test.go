@@ -19,13 +19,13 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 // Verifies: REQ-SCALA-007
 func TestResolution(t *testing.T) {
 	// cSpell: disable
-	res := analyze(t)["src/main/scala/com/example/app/Main.scala"]
-	std := func(pkg string) lang.Target { return lang.Target{Ecosystem: "scala-std", Package: pkg} }
+	result := analyze(t)["src/main/scala/com/example/app/Main.scala"]
+	std := func(packageName string) lang.Target { return lang.Target{Ecosystem: "scala-std", Package: packageName} }
 	// scalaVersion 3.3.3: %% appends _3 to the artifact.
 	cats := lang.Target{Ecosystem: "maven", Package: "org.typelevel:cats-effect_3", Version: "3.5.4", Pinned: true}
 	akka := lang.Target{Ecosystem: "maven", Package: "com.typesafe.akka:akka-actor-typed_3", Version: "2.8.5", Pinned: true}
 	model := lang.Target{Local: "src/main/scala/domain.scala"}
-	langtest.CheckImports(t, res, map[string]lang.Target{
+	langtest.CheckImports(t, result, map[string]lang.Target{
 		"import scala.collection.mutable":                std("scala.collection"),
 		"import scala.concurrent.Future":                 std("scala.concurrent"),
 		"import scala.concurrent.ExecutionContext => EC": std("scala.concurrent"),
@@ -86,8 +86,8 @@ func TestExpandImport(t *testing.T) {
 		"import scala":                     nil,
 	} {
 		var got []string
-		for _, imp := range expandImport(text) {
-			got = append(got, imp.Module)
+		for _, rawImport := range expandImport(text) {
+			got = append(got, rawImport.Module)
 		}
 		if len(got) != len(want) {
 			t.Errorf("%q: got %v, want %v", text, got, want)

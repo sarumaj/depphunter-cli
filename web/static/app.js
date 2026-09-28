@@ -48,7 +48,7 @@ const state = {
   tool: '',               // what walk mode holds; empty leaves tools.js its default
 };
 
-let model, L, pal, langs, scene, panel, searchItems, defaultHiddenEcosystems, maxDepth = 0, fileCount = 0;
+let model, L, pal, languages, scene, panel, searchItems, defaultHiddenEcosystems, maxDepth = 0, fileCount = 0;
 let config = {};        // /api/config
 let slots = [];         // languages holding categorical color slots (colors.assignSlots)
 let graphVersion = 0;   // server graph version currently shown
@@ -74,21 +74,21 @@ let openExport = () => {};
 const WANTS_POINTER = ['pack', 'stash', 'export', 'panel'];
 
 async function main() {
-  const [{ graph, version }, cfg] = await Promise.all([fetchGraph(), fetchConfig()]);
-  config = cfg;
+  const [{ graph, version }, settings] = await Promise.all([fetchGraph(), fetchConfig()]);
+  config = settings;
   Object.assign(state, {
-    colorBy: cfg.colorBy, heightScale: cfg.heightScale, theme: cfg.theme,
-    style: cfg.style || 'city', tool: cfg.tool || '',
+    colorBy: settings.colorBy, heightScale: settings.heightScale, theme: settings.theme,
+    style: settings.style || 'city', tool: settings.tool || '',
   });
   // Saved filters (config ui.hide_languages / hide_islands / path_filter).
-  for (const l of cfg.hideLanguages || []) state.filters.hiddenLangs.add(l);
-  for (const e of cfg.hideIslands || []) state.filters.hiddenEcosystems.add('e:' + e);
-  state.filters.path = cfg.pathFilter || '';
+  for (const l of settings.hideLanguages || []) state.filters.hiddenLangs.add(l);
+  for (const e of settings.hideIslands || []) state.filters.hiddenEcosystems.add('e:' + e);
+  state.filters.path = settings.pathFilter || '';
   defaultHiddenEcosystems = new Set();
   setModel(graph, version);
   document.title = `${model.root.name} · depphunter`;
   $('repo-name').textContent = model.root.name;
-  setLevel(cfg.expandDepth < 0 ? maxDepth : cfg.expandDepth || autoLevel(), false);
+  setLevel(settings.expandDepth < 0 ? maxDepth : settings.expandDepth || autoLevel(), false);
 
   scene = new MapScene($('map'));
   labels = new Labels($('labels'), scene);
@@ -104,7 +104,7 @@ async function main() {
       if (now - labelsAt < 90) return;
       labelsAt = now;
     }
-    // Nothing is labelled across what the walker is holding, which is drawn in the
+    // Nothing is labeled across what the walker is holding, which is drawn in the
     // canvas under the labels' own layer.
     labels.draw(walker?.active ? scene.handMask() : []);
   };
@@ -141,7 +141,7 @@ async function main() {
       // The panel has the pointer now; hold the view still until it is given back,
       // with the building being read left sharp in the blur.
       walker.setFrozen(true);
-      walker.focusOn(box || rep(n));
+      walker.focusOn(box || representativeOf(n));
       walker.flash(`Details of ${n.name} - click the map to keep walking`);
     },
     onExit: () => setWalking(false),
@@ -220,7 +220,7 @@ async function main() {
         panel.show(node, false, f.id);
         document.exitPointerLock?.();
         walker.setFrozen(true);
-        walker.focusOn(rep(node));
+        walker.focusOn(representativeOf(node));
         walker.flash(`${f.severity}: ${f.title} - click the map to keep walking`);
       }, TAKE_MS + 120);
     },
@@ -235,7 +235,7 @@ async function main() {
   walker.setFires(fires);
   panel = new Panel($('panel'), $('panel-body'), {
     model,
-    colorOf: lang => langs.of(lang),
+    colorOf: language => languages.of(language),
     onSelect: n => reveal(n),
     onOpen: openFile,
     linkKind: () => state.linkKind,
@@ -243,7 +243,7 @@ async function main() {
       const hm = metrics();
       return hm && { metric: hm.byId.get(node.id), since: state.since, authors: state.history.authors };
     },
-    openLabel: cfg.static ? null : cfg.editor ? 'Open in editor' : 'Open in VS Code',
+    openLabel: settings.static ? null : settings.editor ? 'Open in editor' : 'Open in VS Code',
     // Closing the details gives the pointer back, so walk mode may move again.
     onClose: () => walker.setFrozen(false),
     // `under` is a getter: a directory near the root carries every finding in the
@@ -283,11 +283,11 @@ async function main() {
   // there, reaches this page. Without a server there is nothing to connect to.
   if (!STATIC) connectEvents();
   loadLazy('history', setHistory);
-  if (cfg.lsp || STATIC?.references) {
+  if (settings.lsp || STATIC?.references) {
     state.referencesStatus = 'loading';
     loadLazy('references', applyReferences);
   }
-  if (cfg.findings || STATIC?.findings) {
+  if (settings.findings || STATIC?.findings) {
     state.findingsStatus = 'loading';
     loadLazy('findings', applyFindings);
   }
@@ -355,11 +355,11 @@ function applyFindings(set) {
 let fireFrame = 0, fireAt = 0;
 function runFire(now) {
   fireFrame = 0;
-  const dt = Math.min(0.1, (now - (fireAt || now)) / 1000); // a tab left in the background does not burn down
+  const deltaTime = Math.min(0.1, (now - (fireAt || now)) / 1000); // a tab left in the background does not burn down
   fireAt = now;
-  fires.step(dt);
+  fires.step(deltaTime);
   flames.place([...fires.entries()], id => L?.byNode.get(id));
-  flames.step(dt);
+  flames.step(deltaTime);
   if (!walker.active) scene.requestRender();
   if (fires.burning) fireFrame = requestAnimationFrame(runFire);
   else { fireAt = 0; scene.setAnimated(false, 'fire'); }
@@ -543,7 +543,7 @@ async function saveViewSettings() {
 // expanded directories, selection, filters and language colors.
 // Implements: REQ-WATCH-005
 function setModel(graph, version) {
-  const prev = model;
+  const previous = model;
   model = buildModel(graph);
   graphVersion = version;
   searchItems = searchIndex(model);
@@ -558,14 +558,14 @@ function setModel(graph, version) {
     if (n.kind === 'file') { maxLoc = Math.max(maxLoc, n.loc || 0); fileCount++; }
   }
   for (const e of model.ecosystems) {
-    if (e.std && !config.showStd && !prev?.byId.has(e.id)) {
+    if (e.std && !config.showStd && !previous?.byId.has(e.id)) {
       state.filters.hiddenEcosystems.add(e.id);
       defaultHiddenEcosystems.add(e.id);
     }
   }
-  if (prev) {
+  if (previous) {
     for (const n of model.byId.values()) {
-      if (n.kind === 'dir' && !prev.byId.has(n.id) && n.depth < state.level) state.expanded.add(n.id);
+      if (n.kind === 'dir' && !previous.byId.has(n.id) && n.depth < state.level) state.expanded.add(n.id);
     }
     state.selected = state.selected ? model.byId.get(state.selected.id) || null : null;
   }
@@ -669,7 +669,7 @@ async function reload(changed) {
     return;
   }
   setModel(graph, version);
-  langs = languageColors(model, pal, slots);
+  languages = languageColors(model, pal, slots);
   // The findings are indexed onto the model, and this is a new one.
   if (state.findings) {
     const { all, sources, partial } = state.findings;
@@ -857,18 +857,18 @@ function frame(then, hands = true) {
 async function openFile(path, line = 1, hex = false) {
   if (!config.editor) {
     // No server-side editor: hand the file to VS Code through its URL handler.
-    const abs = config.root.replace(/\\/g, '/') + '/' + path;
-    location.href = `vscode://file${abs.startsWith('/') ? '' : '/'}${encodeURI(abs)}:${line}`;
+    const absolutePath = config.root.replace(/\\/g, '/') + '/' + path;
+    location.href = `vscode://file${absolutePath.startsWith('/') ? '' : '/'}${encodeURI(absolutePath)}:${line}`;
     return;
   }
-  const res = await fetch('api/open', {
+  const response = await fetch('api/open', {
     method: 'POST',
     headers: auth({ 'Content-Type': 'application/json', 'X-Depphunter-Request': '1' }),
     body: JSON.stringify({ path, line, hex }),
   });
-  if (!res.ok) updateStatus(`could not open editor: ${(await res.text()).trim()}`);
-  else if (res.status === 202) updateStatus(`${path} opened in the Hex Editor`);
-  else if (res.headers.get('X-Depphunter-Opened') === 'as-is') {
+  if (!response.ok) updateStatus(`could not open editor: ${(await response.text()).trim()}`);
+  else if (response.status === 202) updateStatus(`${path} opened in the Hex Editor`);
+  else if (response.headers.get('X-Depphunter-Opened') === 'as-is') {
     updateStatus(`${path} opened as it is - in VS Code, Reopen Editor With… and pick the Hex Editor to edit its bytes`);
   }
 }
@@ -876,15 +876,15 @@ async function openFile(path, line = 1, hex = false) {
 // Implements: REQ-MAP-059
 function updateStatus(note = '') {
   const hidden = state.vis.hiddenFiles ? ` · ${fmt.format(state.vis.hiddenFiles)} hidden by filters` : '';
-  const refs = state.referencesStatus === 'ready'
+  const references = state.referencesStatus === 'ready'
     ? ` · ${fmt.format(state.references.edges.length)} references${state.references.partial ? ' (partial)' : ''}`
     : state.referencesStatus === 'loading' ? ' · finding references…' : '';
-  const hist = state.history ? ` · ${fmt.format(state.history.commits)} commits${state.history.truncated ? '+' : ''}` :
+  const historyText = state.history ? ` · ${fmt.format(state.history.commits)} commits${state.history.truncated ? '+' : ''}` :
     state.historyStatus === 'loading' && config.history !== false ? ' · reading git history…' : '';
   const found = state.findings
     ? ` · ${fmt.format(state.findings.all.length)} findings${state.findings.partial ? ' (partial)' : ''}`
     : state.findingsStatus === 'loading' ? ' · reading scanner reports…' : '';
-  $('status-text').textContent = `${fmt.format(fileCount)} files · ${fmt.format(model.root.totalLoc)} lines · ${fmt.format(model.graph.edges.length)} imports${hidden}${hist}${refs}${found}` +
+  $('status-text').textContent = `${fmt.format(fileCount)} files · ${fmt.format(model.root.totalLoc)} lines · ${fmt.format(model.graph.edges.length)} imports${hidden}${historyText}${references}${found}` +
     (note ? ` · ${note}` : '');
 }
 
@@ -902,19 +902,19 @@ function applyFilters() {
 // The badge counts filters beyond the defaults, so std-lib islands hidden at start do
 // not show up as filters.
 function updateFilterBadge() {
-  const ecoChanges = model.ecosystems.filter(e => state.filters.hiddenEcosystems.has(e.id) !== defaultHiddenEcosystems.has(e.id)).length;
-  const active = state.filters.hiddenLangs.size + ecoChanges + (state.filters.path.trim() ? 1 : 0);
+  const ecosystemChanges = model.ecosystems.filter(e => state.filters.hiddenEcosystems.has(e.id) !== defaultHiddenEcosystems.has(e.id)).length;
+  const active = state.filters.hiddenLangs.size + ecosystemChanges + (state.filters.path.trim() ? 1 : 0);
   $('filter-count').hidden = !active;
   $('filter-count').textContent = active;
 }
 
 // Languages folded into the legend's "Other" entry.
-function otherLangs() {
-  const inLegend = new Set(langs.legend().filter(e => e.lang).map(e => e.lang));
+function otherLanguages() {
+  const inLegend = new Set(languages.legend().filter(e => e.lang).map(e => e.lang));
   return ['', ...model.languages.map(l => l.lang).filter(l => !inLegend.has(l))];
 }
 
-function setLangsHidden(list, hide) {
+function setLanguagesHidden(list, hide) {
   for (const l of list) hide ? state.filters.hiddenLangs.add(l) : state.filters.hiddenLangs.delete(l);
 }
 
@@ -938,7 +938,7 @@ function drawFilters() {
   const check = (id, label, checked, meta, swatch) => `<li><label><input type="checkbox" data-id="${escapeHTML(id)}" ${checked ? 'checked' : ''}>
     ${swatch ? `<span class="swatch" style="background:${swatch}"></span>` : ''}${escapeHTML(label)}<span class="meta">${meta}</span></label></li>`;
   $('lang-list').innerHTML = [...counts.entries()].sort((a, b) => b[1] - a[1])
-    .map(([l, c]) => check(l, l || 'unknown', !state.filters.hiddenLangs.has(l), fmt.format(c), langs.of(l))).join('');
+    .map(([l, c]) => check(l, l || 'unknown', !state.filters.hiddenLangs.has(l), fmt.format(c), languages.of(l))).join('');
   $('eco-list').innerHTML = model.ecosystems
     .map(e => check(e.id, e.name, !state.filters.hiddenEcosystems.has(e.id), fmt.format(e.children.length), null)).join('');
 }
@@ -1012,7 +1012,7 @@ function reveal(n) {
   state.selected = n;
   if (changed) relayout();
   select(n);
-  const b = rep(n);
+  const b = representativeOf(n);
   if (b && walker.active) walker.teleport(b);
   else if (b) scene.centerOn(b.x, b.y + b.h / 2, b.z);
 }
@@ -1027,7 +1027,7 @@ function walkTarget() {
   const id = state.selected?.id || null;
   const same = id === sentTo;
   sentTo = id;
-  return same ? null : state.selected && rep(state.selected);
+  return same ? null : state.selected && representativeOf(state.selected);
 }
 
 // What the toolbar cannot do from the street: rotating and fitting move the map's own
@@ -1036,7 +1036,7 @@ function walkTarget() {
  * The controls that only mean anything on the map, marked `data-map-only` where they
  * are written rather than listed by id here, so adding one is a word in the markup.
  *
- * They are taken away in walk mode rather than greyed out. Greying says "not now",
+ * They are taken away in walk mode rather than grayed out. Graying says "not now",
  * which is a thing worth saying about something a walker might reasonably reach for;
  * none of these are. Rotating, fitting and stepping the depth all move or rebuild the
  * map's own camera and layout, and the walker is standing in that layout - fitting the
@@ -1082,7 +1082,7 @@ function setWalking(on) {
     // Implements: REQ-WALK-010, REQ-WALK-037
     setPackOpen(false);
     panel.close();
-    walker.enter(walkTarget(), rep(model.root), L.bounds, !teaching);
+    walker.enter(walkTarget(), representativeOf(model.root), L.bounds, !teaching);
     // A first walk is also flown in (walker.startArrival): held, the flight waits at
     // its top, so the cards are read over the city and the flight goes on once they
     // are closed and the pointer is taken.
@@ -1131,7 +1131,7 @@ function relayout() {
   scene.setBoxes(L.boxes, baseColors());
   walker.setBoxes(L.boxes);
   if (bugs) placeBugs();
-  const to = anchor && rep(anchor.node);
+  const to = anchor && representativeOf(anchor.node);
   if (to) walker.reanchor(anchor, to);
   avatar.set(walker.stance(), pal.avatar);
   avatar.show(!walker.active);
@@ -1140,7 +1140,7 @@ function relayout() {
 
 /** The box that stands for `n` in the current layout: itself or its nearest visible ancestor. */
 // Implements: REQ-MAP-009
-function rep(n) {
+function representativeOf(n) {
   return representative(L.byNode, n);
 }
 
@@ -1148,7 +1148,7 @@ function rep(n) {
 function baseColors() {
   const mode = colorMode();
   const hm = isHistoryMode(mode) && metrics();
-  return L.boxes.map(b => boxColor(b, { mode, pal, langs, sizeT, hm, historyT }));
+  return L.boxes.map(b => boxColor(b, { mode, pal, langs: languages, sizeT, hm, historyT }));
 }
 
 let maxLoc = 1;
@@ -1160,7 +1160,7 @@ function sizeT(loc) {
 // Implements: REQ-MAP-012, REQ-MAP-013, REQ-MAP-026
 function refreshFocus() {
   focus = focusArcs(model, state.selected, {
-    kind: state.linkKind, rep, visible: state.vis.visible,
+    kind: state.linkKind, rep: representativeOf, visible: state.vis.visible,
     outColor: pal.edgeOut, inColor: pal.edgeIn, max: MAX_ARCS,
   });
   scene.setArcs(focus ? focus.arcs : []);
@@ -1185,9 +1185,9 @@ function recolor() {
     const structural = b.kind === 'land' || b.kind === 'terrace';
     if (focus && !structural && !focus.lit.has(b) && !isWithin(b.node, sel)) c = pal.dim;
     if (state.legendLang !== undefined && (b.kind === 'building' || b.kind === 'symbol')) {
-      const lang = b.kind === 'symbol' ? b.node.parentNode.lang : b.node.lang;
-      const isOther = langs.of(lang) === pal.other;
-      if (state.legendLang === null ? !isOther : lang !== state.legendLang) c = pal.dim;
+      const language = b.kind === 'symbol' ? b.node.parentNode.lang : b.node.lang;
+      const isOther = languages.of(language) === pal.other;
+      if (state.legendLang === null ? !isOther : language !== state.legendLang) c = pal.dim;
     }
     faded[i] = c === pal.dim;
     if (state.flash && (state.flash.has(b.node.id) || (b.kind === 'symbol' && state.flash.has(b.node.parentNode.id)))) c = mix(c, pal.select, 0.5);
@@ -1210,7 +1210,7 @@ function drawLegend() {
   if (isHistoryMode(mode)) {
     parts.push(historyLegend(mode));
   } else if (mode === 'language') {
-    parts.push('<h3>Language</h3><ul>' + langs.legend().map(e =>
+    parts.push('<h3>Language</h3><ul>' + languages.legend().map(e =>
       `<li data-lang="${e.lang === null ? '' : escapeHTML(e.lang)}" data-other="${e.lang === null}" class="${isOff(e) ? 'off' : ''}"
          tabindex="0" role="button" aria-pressed="${!isOff(e)}"
          title="Click to ${isOff(e) ? 'show' : 'hide'}"><span class="swatch" style="background:${e.color}"></span>${escapeHTML(e.label)}</li>`).join('') + '</ul>');
@@ -1231,7 +1231,7 @@ function drawLegend() {
       <span><i class="line" style="background:${pal.edgeOut}"></i>depends on</span>
       <span><i class="line" style="background:${pal.edgeIn}"></i>used by</span></div>`);
   const scaleName = { sqrt: '√ lines of code', linear: 'lines of code', log: 'log lines of code' }[state.heightScale];
-  parts.push(`<p>Height: ${scaleName}. Grey blocks are collapsed directories; islands are external dependencies.</p>`);
+  parts.push(`<p>Height: ${scaleName}. Gray blocks are collapsed directories; islands are external dependencies.</p>`);
   el.innerHTML = parts.join('');
   bindSinceSlider();
   for (const b of el.querySelectorAll('.link-kind button')) {
@@ -1251,20 +1251,20 @@ function drawLegend() {
     li.addEventListener('mouseleave', () => isolate(false));
     li.addEventListener('focus', () => isolate(true));
     li.addEventListener('blur', () => isolate(false));
-    const toggleLang = () => {
-      const list = li.dataset.other === 'true' ? otherLangs() : [li.dataset.lang];
-      setLangsHidden(list, !li.classList.contains('off'));
+    const toggleLanguage = () => {
+      const list = li.dataset.other === 'true' ? otherLanguages() : [li.dataset.lang];
+      setLanguagesHidden(list, !li.classList.contains('off'));
       state.legendLang = undefined;
       drawFilters();
       applyFilters();
     };
-    li.addEventListener('click', toggleLang);
-    li.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleLang(); } });
+    li.addEventListener('click', toggleLanguage);
+    li.addEventListener('keydown', e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); toggleLanguage(); } });
   }
 }
 
 function isOff(entry) {
-  return entry.lang === null ? otherLangs().every(l => state.filters.hiddenLangs.has(l)) : state.filters.hiddenLangs.has(entry.lang);
+  return entry.lang === null ? otherLanguages().every(l => state.filters.hiddenLangs.has(l)) : state.filters.hiddenLangs.has(entry.lang);
 }
 
 // The Imports / References switch, once language servers have answered.
@@ -1453,7 +1453,7 @@ function applyTheme() {
   if (state.theme === 'auto') delete document.documentElement.dataset.theme;
   else document.documentElement.dataset.theme = state.theme;
   pal = readPalette();
-  langs = languageColors(model, pal, slots);
+  languages = languageColors(model, pal, slots);
   scene.setBackground({ water: pal.water, sky: pal.sky, skyTop: pal.skyTop, sea: pal.sea, ground: pal.terraceA, land: pal.land });
   if (L) { scene.setOutline(focus?.selBox, pal.select); refreshFocus(); }
   avatar?.set(walker.stance(), pal.avatar); // its color is the theme's too
@@ -1687,7 +1687,7 @@ function bindFilters() {
   onCheck('lang-list', () => state.filters.hiddenLangs);
   onCheck('eco-list', () => state.filters.hiddenEcosystems);
   $('langs-all').onclick = () => { state.filters.hiddenLangs.clear(); drawFilters(); applyFilters(); };
-  $('langs-none').onclick = () => { setLangsHidden(['', ...model.languages.map(l => l.lang)], true); drawFilters(); applyFilters(); };
+  $('langs-none').onclick = () => { setLanguagesHidden(['', ...model.languages.map(l => l.lang)], true); drawFilters(); applyFilters(); };
 
   let timer = 0;
   $('path-filter').addEventListener('input', e => {
@@ -1714,7 +1714,7 @@ function bindSearch() {
     if (!input.value.trim()) return close();
     list.innerHTML = results.length
       ? results.map((r, i) => `<li role="option" id="sr-${i}" aria-selected="${i === active}" data-i="${i}">
-          ${r.node.kind === 'file' ? `<span class="swatch" style="background:${langs.of(r.node.lang)}"></span>` : ''}
+          ${r.node.kind === 'file' ? `<span class="swatch" style="background:${languages.of(r.node.lang)}"></span>` : ''}
           <span class="name">${escapeHTML(r.name)}</span><span class="ctx">${escapeHTML(r.context)}</span>
           <span class="badge">${r.node.symbolKind || kindLabel[r.node.kind]}</span></li>`).join('')
       : '<li class="empty">No matches among visible nodes</li>';

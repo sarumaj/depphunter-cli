@@ -11,7 +11,7 @@ export class Labels {
     this.pool = [];
   }
 
-  /** Chooses what may be labelled: the layout's boxes plus the focus (arcs, selection). */
+  /** Chooses what may be labeled: the layout's boxes plus the focus (arcs, selection). */
   // Implements: REQ-MAP-040, REQ-MAP-041
   set(boxes, focus, selected) {
     const c = [];

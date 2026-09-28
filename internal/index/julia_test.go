@@ -30,25 +30,25 @@ const (
 	corpRegistry    = "https://git.corp.example/julia/CorpRegistry.git"
 )
 
-// tarGz writes a gzipped tar archive of files, named as a Pkg server's registry
+// writeTarGzip writes a gzipped tar archive of files, named as a Pkg server's registry
 // archives name them ("./Registry.toml").
-func tarGz(t *testing.T, name string, files map[string]string) {
+func writeTarGzip(t *testing.T, name string, files map[string]string) {
 	t.Helper()
-	var buf bytes.Buffer
-	z := gzip.NewWriter(&buf)
-	tw := tar.NewWriter(z)
+	var buffer bytes.Buffer
+	z := gzip.NewWriter(&buffer)
+	tarWriter := tar.NewWriter(z)
 	for _, p := range []string{"./", "./C/", "./C/CorpBilling/", "./J/", "./J/JSON/"} {
-		tw.WriteHeader(&tar.Header{Name: p, Typeflag: tar.TypeDir, Mode: 0o755})
+		tarWriter.WriteHeader(&tar.Header{Name: p, Typeflag: tar.TypeDir, Mode: 0o755})
 	}
 	for p, body := range files {
-		if err := tw.WriteHeader(&tar.Header{Name: "./" + p, Typeflag: tar.TypeReg, Mode: 0o644, Size: int64(len(body))}); err != nil {
+		if err := tarWriter.WriteHeader(&tar.Header{Name: "./" + p, Typeflag: tar.TypeReg, Mode: 0o644, Size: int64(len(body))}); err != nil {
 			t.Fatal(err)
 		}
-		tw.Write([]byte(body))
+		tarWriter.Write([]byte(body))
 	}
-	tw.Close()
+	tarWriter.Close()
 	z.Close()
-	put(t, name, buf.String())
+	put(t, name, buffer.String())
 }
 
 // juliaDepots makes a home whose ~/.julia holds General (a git checkout) and Acme
@@ -79,7 +79,7 @@ repo = "https://github.com/acme/AcmeRegistry.git"
 
 	corp := filepath.Join(home, "corp-depot", "registries")
 	put(t, filepath.Join(corp, "Corp.toml"), "git-tree-sha1 = \"0123abcd\"\nuuid = \"33333333-0000-4000-8000-000000000003\"\npath = \"Corp.tar.gz\"\n")
-	tarGz(t, filepath.Join(corp, "Corp.tar.gz"), map[string]string{
+	writeTarGzip(t, filepath.Join(corp, "Corp.tar.gz"), map[string]string{
 		"Registry.toml": `name = "Corp"
 uuid = "33333333-0000-4000-8000-000000000003"
 repo = "` + corpRegistry + `"
@@ -143,12 +143,12 @@ func (o *offline) RoundTrip(r *http.Request) (*http.Response, error) {
 // Verifies: REQ-SUP-055, REQ-JULIA-010
 func TestJuliaDepotRegistries(t *testing.T) {
 	home := juliaDepots(t)
-	vars := map[string]string{"JULIA_DEPOT_PATH": "~/corp-depot:"}
-	cfg := Discover(nil, env(vars), home)
+	variables := map[string]string{"JULIA_DEPOT_PATH": "~/corp-depot:"}
+	config := Discover(nil, environment(variables), home)
 	general := public[Julia]
-	for _, tc := range []struct {
-		pkg, uuid string
-		want      []string
+	for _, testCase := range []struct {
+		packageName, uuid string
+		want              []string
 	}{
 		{"CorpBilling", uuidCorpBilling, []string{corpRegistry}},
 		{"JSON", uuidGeneralJSON, []string{general}},
@@ -157,16 +157,16 @@ func TestJuliaDepotRegistries(t *testing.T) {
 		{"AcmeBilling", "11111111-1111-1111-1111-111111111111", []string{"https://raw.githubusercontent.com/acme/AcmeRegistry/HEAD"}},
 		{"CorpBilling", "99999999-0000-4000-8000-000000000009", []string{general}},
 	} {
-		if got := order(cfg, Julia, tc.pkg, tc.uuid); !reflect.DeepEqual(got, tc.want) {
-			t.Errorf("%s %s: asked of %v, want %v", tc.pkg, tc.uuid, got, tc.want)
+		if got := order(config, Julia, testCase.packageName, testCase.uuid); !reflect.DeepEqual(got, testCase.want) {
+			t.Errorf("%s %s: asked of %v, want %v", testCase.packageName, testCase.uuid, got, testCase.want)
 		}
 	}
 
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, env(vars)), nil)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(variables)), nil)
 	net := &offline{}
 	c.http = &http.Client{Transport: net}
 	std := func(name string) lang.Target { return lang.Target{Ecosystem: "julia-std", Package: name} }
-	for _, tc := range []struct {
+	for _, testCase := range []struct {
 		target lang.Target
 		want   []lang.Target
 	}{
@@ -182,8 +182,8 @@ func TestJuliaDepotRegistries(t *testing.T) {
 		{lang.Target{Ecosystem: Julia, Package: "AcmeBilling", Registry: "11111111-1111-1111-1111-111111111111"}, []lang.Target{
 			{Ecosystem: Julia, Package: "JSON", Registry: uuidGeneralJSON}}},
 	} {
-		if got := c.Dependencies(tc.target); !reflect.DeepEqual(got, tc.want) {
-			t.Errorf("%s %s:\n got %+v\nwant %+v", tc.target.Package, tc.target.Version, got, tc.want)
+		if got := c.Dependencies(testCase.target); !reflect.DeepEqual(got, testCase.want) {
+			t.Errorf("%s %s:\n got %+v\nwant %+v", testCase.target.Package, testCase.target.Version, got, testCase.want)
 		}
 	}
 	// A JSON of a UUID no registry lists is General's question, and General does
@@ -210,15 +210,15 @@ func TestJuliaDepotRegistries(t *testing.T) {
 // Verifies: REQ-SUP-055
 func TestJuliaDepotWithoutGeneral(t *testing.T) {
 	home := juliaDepots(t)
-	cfg := Discover(nil, env(map[string]string{"JULIA_DEPOT_PATH": "~/corp-depot"}), home)
-	if got := order(cfg, Julia, "JSON", uuidGeneralJSON); got != nil {
+	config := Discover(nil, environment(map[string]string{"JULIA_DEPOT_PATH": "~/corp-depot"}), home)
+	if got := order(config, Julia, "JSON", uuidGeneralJSON); got != nil {
 		t.Errorf("General's JSON asked of %v", got)
 	}
-	if got := order(cfg, Julia, "CorpBilling", uuidCorpBilling); !reflect.DeepEqual(got, []string{corpRegistry}) {
+	if got := order(config, Julia, "CorpBilling", uuidCorpBilling); !reflect.DeepEqual(got, []string{corpRegistry}) {
 		t.Errorf("CorpBilling asked of %v", got)
 	}
-	cfg = Discover(nil, env(map[string]string{"JULIA_DEPOT_PATH": "~/nothing-here"}), home)
-	if got := order(cfg, Julia, "JSON", uuidGeneralJSON); !reflect.DeepEqual(got, []string{public[Julia]}) {
+	config = Discover(nil, environment(map[string]string{"JULIA_DEPOT_PATH": "~/nothing-here"}), home)
+	if got := order(config, Julia, "JSON", uuidGeneralJSON); !reflect.DeepEqual(got, []string{public[Julia]}) {
 		t.Errorf("no registries: asked of %v", got)
 	}
 }
@@ -228,9 +228,9 @@ func TestJuliaDepotWithoutGeneral(t *testing.T) {
 //
 // Verifies: REQ-SUP-055, REQ-TRC-017
 func TestJuliaRegistryWithoutCopyIsNoted(t *testing.T) {
-	cfg := New()
-	cfg.Add(Julia, Source{URL: "ssh://git.corp.example/julia/Registry.git", Scope: "CorpBilling", Trusted: true})
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, auth.Read(t.TempDir(), nil), nil)
+	config := New()
+	config.Add(Julia, Source{URL: "ssh://git.corp.example/julia/Registry.git", Scope: "CorpBilling", Trusted: true})
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read(t.TempDir(), nil), nil)
 	got := notesOf(t, c, lang.Target{Ecosystem: Julia, Package: "CorpBilling", Version: "1.0.0", Pinned: true})
 	if len(got) != 1 || !strings.HasPrefix(got[0], trace.NoteNoCopy+": Julia registry ssh://git.corp.example/julia/Registry.git") {
 		t.Errorf("notes: %q", got)
@@ -244,19 +244,19 @@ func TestJuliaRegistryWithoutCopyIsNoted(t *testing.T) {
 // Verifies: REQ-SUP-055
 func TestJuliaGeneralArchive(t *testing.T) {
 	home := t.TempDir()
-	dir := filepath.Join(home, ".julia", "registries")
-	put(t, filepath.Join(dir, "General.toml"), "uuid = \""+juliaGeneral+"\"\npath = \"General.tar.gz\"\n")
-	put(t, filepath.Join(dir, "General.tar.gz"), "not opened by discovery")
-	cfg := Discover(nil, env(nil), home)
-	tarGz(t, filepath.Join(dir, "General.tar.gz"), map[string]string{
+	directory := filepath.Join(home, ".julia", "registries")
+	put(t, filepath.Join(directory, "General.toml"), "uuid = \""+juliaGeneral+"\"\npath = \"General.tar.gz\"\n")
+	put(t, filepath.Join(directory, "General.tar.gz"), "not opened by discovery")
+	config := Discover(nil, environment(nil), home)
+	writeTarGzip(t, filepath.Join(directory, "General.tar.gz"), map[string]string{
 		"Registry.toml":        "name = \"General\"\nuuid = \"" + juliaGeneral + "\"\n[packages]\n" + uuidGeneralJSON + " = { name = \"JSON\", path = \"J/JSON\" }\n",
 		"J/JSON/Versions.toml": "[\"0.21.4\"]\ngit-tree-sha1 = \"a\"\n",
 		"J/JSON/Deps.toml":     "[0]\nParsers = \"" + uuidParsers + "\"\n",
 	})
-	if got := order(cfg, Julia, "JSON", uuidGeneralJSON); !reflect.DeepEqual(got, []string{public[Julia]}) {
+	if got := order(config, Julia, "JSON", uuidGeneralJSON); !reflect.DeepEqual(got, []string{public[Julia]}) {
 		t.Errorf("asked of %v", got)
 	}
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil), nil)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil), nil)
 	net := &offline{}
 	c.http = &http.Client{Transport: net}
 	got := c.Dependencies(lang.Target{Ecosystem: Julia, Package: "JSON", Registry: uuidGeneralJSON})
@@ -274,10 +274,10 @@ func TestJuliaRegistryPaths(t *testing.T) {
 ` + uuidCorpJSON + ` = { name = "JSON", path = "../../etc" }
 ` + uuidTables + ` = { name = "Tables", path = "/abs/Tables" }
 `))
-	if got := p.dir("CorpBilling", strings.ToUpper(uuidCorpBilling)); got != "C/CorpBilling" {
+	if got := p.directory("CorpBilling", strings.ToUpper(uuidCorpBilling)); got != "C/CorpBilling" {
 		t.Errorf("CorpBilling: %q", got)
 	}
-	if p.dir("JSON", "") != "" || p.dir("Tables", uuidTables) != "" {
+	if p.directory("JSON", "") != "" || p.directory("Tables", uuidTables) != "" {
 		t.Errorf("paths outside the registry kept: %+v", p)
 	}
 }

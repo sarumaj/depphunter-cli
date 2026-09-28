@@ -88,8 +88,8 @@ func (m *maven) finish(l Language) {
 		sort.Slice(as, func(i, j int) bool { return as[i].name < as[j].name })
 	}
 	virtual := map[string]*artifact{}
-	for pkg, ga := range knownArtifacts {
-		group, base, _ := strings.Cut(ga, ":")
+	for packageName, groupArtifact := range knownArtifacts {
+		group, base, _ := strings.Cut(groupArtifact, ":")
 		declared := m.groups[group]
 		if len(declared) == 0 {
 			continue
@@ -102,14 +102,14 @@ func (m *maven) finish(l Language) {
 			}
 		}
 		if a == nil {
-			if a = virtual[ga]; a == nil {
+			if a = virtual[groupArtifact]; a == nil {
 				a = &artifact{group: group, name: base + groupSuffix(declared), base: base, virtual: true}
 				a.version, _ = groupVersion(declared)
 				a.rest, _ = artifactPrefixes(group, base, l)
-				virtual[ga] = a
+				virtual[groupArtifact] = a
 			}
 		}
-		a.prefixes = append(a.prefixes, pkg)
+		a.prefixes = append(a.prefixes, packageName)
 	}
 	for _, a := range m.artifacts {
 		m.candidates = append(m.candidates, a)
@@ -167,17 +167,17 @@ var genericRoots = map[string]bool{
 // Implements: REQ-JAVA-007, REQ-SCALA-005
 func artifactPrefixes(group, base string, l Language) (rest, prefixes []string) {
 	words := strings.FieldsFunc(base, func(r rune) bool { return r == '-' })
-	gs := strings.Split(group, ".")
+	groupParts := strings.Split(group, ".")
 	i := 0
-	for i < len(words) && namesGroup(words[i], gs) {
+	for i < len(words) && namesGroup(words[i], groupParts) {
 		i++
 	}
 	rest = words[i:]
 	for n := 1; n <= len(rest); n++ {
 		tail := strings.Join(rest[:n], ".")
 		prefixes = append(prefixes, group+"."+tail)
-		if len(gs) >= 3 {
-			prefixes = append(prefixes, strings.Join(gs[:len(gs)-1], ".")+"."+tail)
+		if len(groupParts) >= 3 {
+			prefixes = append(prefixes, strings.Join(groupParts[:len(groupParts)-1], ".")+"."+tail)
 		}
 	}
 	for n := 1; n <= len(words); n++ {
@@ -196,8 +196,8 @@ func artifactPrefixes(group, base string, l Language) (rest, prefixes []string) 
 // namesGroup reports whether a word of an artifact's name repeats its group: a
 // segment (jackson in com.fasterxml.jackson.core) or the start of one (spring in
 // org.springframework, okhttp in com.squareup.okhttp3).
-func namesGroup(w string, gs []string) bool {
-	for _, s := range gs {
+func namesGroup(w string, groupParts []string) bool {
+	for _, s := range groupParts {
 		if s == w || len(w) >= 3 && strings.HasPrefix(s, w) {
 			return true
 		}
@@ -208,8 +208,8 @@ func namesGroup(w string, gs []string) bool {
 // root reports whether p is the language's own root package (scala, kotlin), which
 // the first word of many artifacts spells (scala-xml) without owning it.
 func (l Language) root(p string) bool {
-	for _, pre := range l.Prefixes {
-		if p+"." == pre {
+	for _, prerelease := range l.Prefixes {
+		if p+"." == prerelease {
 			return true
 		}
 	}
@@ -239,22 +239,22 @@ func (a *artifact) score(spec string, segments []string) int {
 	if a.virtual {
 		return best
 	}
-	gs := strings.Split(a.group, ".")
+	groupParts := strings.Split(a.group, ".")
 	if under(spec, a.group) {
-		best = max(best, prefixScore+10*len(gs))
+		best = max(best, prefixScore+10*len(groupParts))
 	}
 	if best > 0 {
 		return best
 	}
 	common := 0
-	for common < len(gs) && common < len(segments) && gs[common] == segments[common] {
+	for common < len(groupParts) && common < len(segments) && groupParts[common] == segments[common] {
 		common++
 	}
-	if common >= min(3, len(gs)) {
+	if common >= min(3, len(groupParts)) {
 		return 500 + common
 	}
 	for _, s := range segments[:min(2, len(segments))] {
-		if s == gs[len(gs)-1] || s == a.base {
+		if s == groupParts[len(groupParts)-1] || s == a.base {
 			return 100
 		}
 	}
@@ -338,9 +338,9 @@ func (r *resolver) artifactOf(spec string, wildcard bool) lang.Target {
 	best, _ := r.best(spec, segments)
 	var t lang.Target
 	if best != nil {
-		t = lang.Target{Ecosystem: ecoMaven, Package: best.key(), Version: best.version, Requested: best.requested, Pinned: pinnedMaven(best.version)}
+		t = lang.Target{Ecosystem: ecosystemMaven, Package: best.key(), Version: best.version, Requested: best.requested, Pinned: pinnedMaven(best.version)}
 	} else {
-		t = lang.Target{Ecosystem: ecoMaven, Package: guessArtifact(segments, wildcard), Unresolved: true}
+		t = lang.Target{Ecosystem: ecosystemMaven, Package: guessArtifact(segments, wildcard), Unresolved: true}
 	}
 	r.memo.Store(key, t)
 	return t
@@ -361,11 +361,11 @@ func (m *maven) best(spec string, segments []string) (*artifact, int) {
 		}
 	}
 	for n := len(segments); n >= 1 && best != nil; n-- {
-		ga, ok := knownArtifacts[strings.Join(segments[:n], ".")]
+		groupArtifact, ok := knownArtifacts[strings.Join(segments[:n], ".")]
 		if !ok {
 			continue
 		}
-		if bestScore <= prefixScore+10*n+1 && !m.candidate(ga) {
+		if bestScore <= prefixScore+10*n+1 && !m.candidate(groupArtifact) {
 			return nil, 0
 		}
 		break
@@ -375,8 +375,8 @@ func (m *maven) best(spec string, segments []string) (*artifact, int) {
 
 // candidate reports whether a table entry's group:artifact (a base name) is among
 // the candidates, whatever Scala suffix it carries there.
-func (m *maven) candidate(ga string) bool {
-	group, base, _ := strings.Cut(ga, ":")
+func (m *maven) candidate(groupArtifact string) bool {
+	group, base, _ := strings.Cut(groupArtifact, ":")
 	for _, a := range m.groups[group] {
 		if a.base == base {
 			return true
@@ -395,20 +395,20 @@ func (m *maven) candidate(ga string) bool {
 // without one, all but the last unless it is a wildcard).
 func guessArtifact(segments []string, wildcard bool) string {
 	for n := len(segments); n >= 1; n-- {
-		if ga, ok := knownArtifacts[strings.Join(segments[:n], ".")]; ok {
-			return ga
+		if groupArtifact, ok := knownArtifacts[strings.Join(segments[:n], ".")]; ok {
+			return groupArtifact
 		}
 	}
-	pkg := len(segments)
+	packageEnd := len(segments)
 	for i, s := range segments {
 		if s != "" && unicode.IsUpper([]rune(s)[0]) {
-			pkg = i
+			packageEnd = i
 			break
 		}
 	}
-	if pkg == len(segments) && !wildcard {
-		pkg--
+	if packageEnd == len(segments) && !wildcard {
+		packageEnd--
 	}
-	pkg = max(1, min(3, pkg))
-	return strings.Join(segments[:pkg], ".") + ":" + segments[pkg-1]
+	packageEnd = max(1, min(3, packageEnd))
+	return strings.Join(segments[:packageEnd], ".") + ":" + segments[packageEnd-1]
 }

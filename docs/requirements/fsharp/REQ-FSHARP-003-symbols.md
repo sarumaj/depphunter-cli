@@ -14,7 +14,7 @@ verification:
 The F# plugin **shall** report as symbols the top-level declarations of a
 file's namespace or module and of its nested modules: `let` bindings
 (`func` with parameters, `value` without; active patterns and operators by
-their parenthesised names), `and` continuations, `val` declarations of
+their parenthesized names), `and` continuations, `val` declarations of
 signature files, `type` definitions (`class` with a primary constructor
 or a class body, `interface`, `delegate`, else `type`), `exception`s
 and nested `module`s, named with the nested module path

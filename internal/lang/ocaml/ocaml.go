@@ -25,8 +25,8 @@ import (
 )
 
 const (
-	ecoOpam = "opam"
-	ecoStd  = "ocaml-std"
+	ecosystemOpam = "opam"
+	ecosystemStd  = "ocaml-std"
 )
 
 // Kinds of claimed files; Class names them.
@@ -45,13 +45,13 @@ type Plugin struct{}
 func (Plugin) Name() string { return "ocaml" }
 func (Plugin) Version() int { return 1 }
 
-var sourceExts = map[string]bool{".ml": true, ".mli": true, ".mll": true, ".mly": true}
+var sourceExtensions = map[string]bool{".ml": true, ".mli": true, ".mll": true, ".mly": true}
 
 // fileClass tells the claimed files apart by name.
 func fileClass(p string) string {
 	base := path.Base(p)
 	switch {
-	case sourceExts[path.Ext(base)]:
+	case sourceExtensions[path.Ext(base)]:
 		return classSource
 	case base == "dune":
 		return classDune
@@ -70,8 +70,8 @@ func fileClass(p string) string {
 // ignored is build output and local switches: dune's _build, opam's _opam, esy's
 // _esy.
 func ignored(p string) bool {
-	for _, seg := range strings.Split(path.Dir(p), "/") {
-		switch seg {
+	for _, segment := range strings.Split(path.Dir(p), "/") {
+		switch segment {
 		case "_build", "_opam", "_esy":
 			return true
 		}
@@ -95,8 +95,8 @@ func (Plugin) Class(f *scan.File) string { return fileClass(f.Path) }
 
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoOpam, Name: "opam"},
-		{ID: ecoStd, Name: "OCaml standard library", Std: true},
+		{ID: ecosystemOpam, Name: "opam"},
+		{ID: ecosystemStd, Name: "OCaml standard library", Std: true},
 	}
 }
 
@@ -107,16 +107,16 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 // Extract dispatches on the kind of file.
 //
 // Implements: REQ-OCAML-002, REQ-OCAML-003, REQ-OCAML-006, REQ-OCAML-007, REQ-OCAML-011
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	switch fileClass(f.Path) {
 	case classDune:
-		return extractDune(src), nil
+		return extractDune(source), nil
 	case classProject:
-		return extractDuneProject(src), nil
+		return extractDuneProject(source), nil
 	case classWorkspace:
-		return extractWorkspace(src), nil
+		return extractWorkspace(source), nil
 	case classOpam, classLock:
-		return extractOpam(src), nil
+		return extractOpam(source), nil
 	}
-	return readSource(src, path.Ext(f.Path)), nil
+	return readSource(source, path.Ext(f.Path)), nil
 }

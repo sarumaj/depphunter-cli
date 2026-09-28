@@ -30,14 +30,14 @@ import (
 )
 
 const (
-	ecoBazel  = "bazel"      // Bazel modules (Bazel Central Registry)
-	ecoRepo   = "bazel-repo" // WORKSPACE downloads named by their URL
-	ecoStd    = "bazel-std"  // repositories Bazel itself provides
-	ecoMaven  = "maven"
-	ecoPyPI   = "pypi"
-	ecoGo     = "go"
-	ecoNPM    = "npm"
-	ecoCrates = "crates"
+	ecosystemBazel      = "bazel"      // Bazel modules (Bazel Central Registry)
+	ecosystemRepository = "bazel-repo" // WORKSPACE downloads named by their URL
+	ecosystemStd        = "bazel-std"  // repositories Bazel itself provides
+	ecosystemMaven      = "maven"
+	ecosystemPyPI       = "pypi"
+	ecosystemGo         = "go"
+	ecosystemNPM        = "npm"
+	ecosystemCrates     = "crates"
 )
 
 // File kinds, which Class names.
@@ -81,8 +81,8 @@ func (Plugin) Claims(f *scan.File) bool {
 // skipped reports whether a path is inside Bazel's output trees (bazel-bin,
 // bazel-out, ...), which a checkout without git could hold as directories.
 func skipped(p string) bool {
-	for _, seg := range strings.Split(path.Dir(p), "/") {
-		switch seg {
+	for _, segment := range strings.Split(path.Dir(p), "/") {
+		switch segment {
 		case "bazel-bin", "bazel-out", "bazel-testlogs", "bazel-genfiles":
 			return true
 		}
@@ -95,14 +95,14 @@ func skipped(p string) bool {
 // plugins' islands of the same ids).
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoBazel, Name: "Bazel modules"},
-		{ID: ecoRepo, Name: "Bazel repositories"},
-		{ID: ecoStd, Name: "Bazel built-in repositories", Std: true},
-		{ID: ecoMaven, Name: "Maven"},
-		{ID: ecoPyPI, Name: "PyPI"},
-		{ID: ecoGo, Name: "Go modules"},
-		{ID: ecoNPM, Name: "npm"},
-		{ID: ecoCrates, Name: "crates.io"},
+		{ID: ecosystemBazel, Name: "Bazel modules"},
+		{ID: ecosystemRepository, Name: "Bazel repositories"},
+		{ID: ecosystemStd, Name: "Bazel built-in repositories", Std: true},
+		{ID: ecosystemMaven, Name: "Maven"},
+		{ID: ecosystemPyPI, Name: "PyPI"},
+		{ID: ecosystemGo, Name: "Go modules"},
+		{ID: ecosystemNPM, Name: "npm"},
+		{ID: ecosystemCrates, Name: "crates.io"},
 	}
 }
 
@@ -125,6 +125,6 @@ func (Plugin) Class(f *scan.File) string {
 // Extract reads a file's declarations and the labels it names.
 //
 // Implements: REQ-BAZEL-002, REQ-BAZEL-003, REQ-BAZEL-004
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
-	return extract(fileKind(f.Path), path.Dir(f.Path), src), nil
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
+	return extract(fileKind(f.Path), path.Dir(f.Path), source), nil
 }

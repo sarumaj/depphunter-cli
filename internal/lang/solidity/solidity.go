@@ -27,9 +27,9 @@ import (
 )
 
 const (
-	ecoSoldeer = "soldeer"
-	ecoGit     = "git-submodule"
-	ecoNPM     = "npm"
+	ecosystemSoldeer = "soldeer"
+	ecosystemGit     = "git-submodule"
+	ecosystemNPM     = "npm"
 )
 
 // The manifests, told apart from other files of their extensions by name.
@@ -60,7 +60,7 @@ func (Plugin) Claims(f *scan.File) bool {
 	case strings.EqualFold(path.Ext(base), ".sol"):
 	case base == classFoundry, base == classRemappings, base == classLock:
 	case base == classGitmodules:
-		root, ok := absRoot(f)
+		root, ok := absoluteRoot(f)
 		if !ok || !exists(path.Join(root, path.Dir(f.Path), classFoundry)) {
 			return false
 		}
@@ -84,9 +84,9 @@ func (Plugin) Class(f *scan.File) string {
 // Implements: REQ-SOLIDITY-009
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoSoldeer, Name: "Soldeer packages"},
-		{ID: ecoGit, Name: "Git submodules"},
-		{ID: ecoNPM, Name: "npm"},
+		{ID: ecosystemSoldeer, Name: "Soldeer packages"},
+		{ID: ecosystemGit, Name: "Git submodules"},
+		{ID: ecosystemNPM, Name: "npm"},
 	}
 }
 
@@ -95,16 +95,16 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-SOLIDITY-002, REQ-SOLIDITY-003, REQ-SOLIDITY-005
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	switch path.Base(f.Path) {
 	case classFoundry:
-		return extractFoundry(src), nil
+		return extractFoundry(source), nil
 	case classRemappings:
-		return extractRemappings(src), nil
+		return extractRemappings(source), nil
 	case classLock:
-		return extractLock(src), nil
+		return extractLock(source), nil
 	case classGitmodules:
-		return extractGitmodules(src), nil
+		return extractGitmodules(source), nil
 	}
-	return scanSource(src), nil
+	return scanSource(source), nil
 }

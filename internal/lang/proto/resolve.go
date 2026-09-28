@@ -16,27 +16,27 @@ var conventional = []string{".", "proto", "protos", "api", "src/main/proto"}
 
 // config is one buf.yaml or buf.work.yaml.
 type config struct {
-	dir   string
-	file  *bufFile
-	roots []string // import roots, project-relative
-	lock  map[string]locked
+	directory string
+	file      *bufFile
+	roots     []string // import roots, project-relative
+	lock      map[string]locked
 }
 
-// dep is a module a configuration declares or its lock records.
-type dep struct {
-	name, ref string
-	lock      *locked
+// dependency is a module a configuration declares or its lock records.
+type dependency struct {
+	name, reference string
+	lock            *locked
 }
 
 type resolver struct {
-	files   map[string]bool
-	dirs    map[string]bool
-	byBase  map[string][]string // file name -> the project files so named
-	work    map[string]*config  // directory -> its buf.work.yaml or v2 buf.yaml
-	modules map[string]*config  // directory -> its v1 (or v1beta1) buf.yaml
-	all     []*config           // every buf.yaml, shallowest first
-	locks   map[string]map[string]locked
-	protoc  []protocRoot // the -I directories build scripts give protoc
+	files       map[string]bool
+	directories map[string]bool
+	byBase      map[string][]string // file name -> the project files so named
+	work        map[string]*config  // directory -> its buf.work.yaml or v2 buf.yaml
+	modules     map[string]*config  // directory -> its v1 (or v1beta1) buf.yaml
+	all         []*config           // every buf.yaml, shallowest first
+	locks       map[string]map[string]locked
+	protoc      []protocRoot // the -I directories build scripts give protoc
 }
 
 func depth(p string) int {
@@ -50,13 +50,13 @@ func depth(p string) int {
 //
 // Implements: REQ-PROTO-004, REQ-PROTO-005, REQ-PROTO-007
 func newResolver(all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, dirs: map[string]bool{}, byBase: map[string][]string{},
+	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, byBase: map[string][]string{},
 		work: map[string]*config{}, modules: map[string]*config{}, locks: map[string]map[string]locked{}}
 	var configs []*scan.File
 	for _, f := range all {
 		r.files[f.Path] = true
-		for d := path.Dir(f.Path); !r.dirs[d]; d = path.Dir(d) {
-			r.dirs[d] = true
+		for d := path.Dir(f.Path); !r.directories[d]; d = path.Dir(d) {
+			r.directories[d] = true
 			if d == "." {
 				break
 			}
@@ -72,54 +72,54 @@ func newResolver(all []*scan.File) *resolver {
 	}
 	sort.Slice(configs, func(i, j int) bool { return configs[i].Path < configs[j].Path })
 	for _, f := range configs {
-		src, err := os.ReadFile(f.Abs)
+		source, err := os.ReadFile(f.AbsolutePath)
 		if err != nil {
 			continue
 		}
-		class, dir := fileClass(f.Path), path.Dir(f.Path)
-		b := readBuf(class, src)
+		class, directory := fileClass(f.Path), path.Dir(f.Path)
+		b := readBuf(class, source)
 		if class == classLock {
 			m := map[string]locked{}
 			for _, l := range b.locks {
 				m[l.name] = l
 			}
-			r.locks[dir] = m
+			r.locks[directory] = m
 			continue
 		}
-		c := &config{dir: dir, file: b}
+		c := &config{directory: directory, file: b}
 		for _, root := range b.roots {
-			if p := path.Join(dir, root.value); !strings.HasPrefix(p, "../") {
+			if p := path.Join(directory, root.value); !strings.HasPrefix(p, "../") {
 				c.roots = append(c.roots, p)
 			}
 		}
 		switch {
 		case class == classWork:
-			r.work[dir] = c
+			r.work[directory] = c
 		case b.v2:
 			if len(c.roots) == 0 {
-				c.roots = []string{dir}
+				c.roots = []string{directory}
 			}
-			r.work[dir] = c
+			r.work[directory] = c
 			r.all = append(r.all, c)
 		default:
 			if len(c.roots) == 0 {
-				c.roots = []string{dir}
+				c.roots = []string{directory}
 			}
-			r.modules[dir] = c
+			r.modules[directory] = c
 			r.all = append(r.all, c)
 		}
 	}
 	for _, c := range r.all {
-		c.lock = r.locks[c.dir]
+		c.lock = r.locks[c.directory]
 	}
-	r.protoc = readProtocRoots(all, r.dirs)
-	sort.SliceStable(r.all, func(i, j int) bool { return depth(r.all[i].dir) < depth(r.all[j].dir) })
+	r.protoc = readProtocRoots(all, r.directories)
+	sort.SliceStable(r.all, func(i, j int) bool { return depth(r.all[i].directory) < depth(r.all[j].directory) })
 	return r
 }
 
-// nearest finds the configuration in m of dir or its closest ancestor.
-func nearest(m map[string]*config, dir string) *config {
-	for d := dir; ; d = path.Dir(d) {
+// nearest finds the configuration in m of directory or its closest ancestor.
+func nearest(m map[string]*config, directory string) *config {
+	for d := directory; ; d = path.Dir(d) {
 		if c := m[d]; c != nil {
 			return c
 		}
@@ -129,17 +129,17 @@ func nearest(m map[string]*config, dir string) *config {
 	}
 }
 
-// under reports whether p is dir or inside it.
-func under(p, dir string) bool {
-	return dir == "." || p == dir || strings.HasPrefix(p, dir+"/")
+// under reports whether p is directory or inside it.
+func under(p, directory string) bool {
+	return directory == "." || p == directory || strings.HasPrefix(p, directory+"/")
 }
 
 // scope is what Buf's configuration says about one file: its workspace's import roots
 // and the modules its module depends on.
 type scope struct {
-	buf   bool // a Buf configuration governs the file
-	roots []string
-	deps  []dep
+	buf          bool // a Buf configuration governs the file
+	roots        []string
+	dependencies []dependency
 }
 
 // scopeOf finds the Buf workspace (buf.work.yaml or a v2 buf.yaml) and the v1 module
@@ -148,47 +148,47 @@ type scope struct {
 //
 // Implements: REQ-PROTO-004, REQ-PROTO-005
 func (r *resolver) scopeOf(file string) scope {
-	dir := path.Dir(file)
-	ws, mod := nearest(r.work, dir), nearest(r.modules, dir)
-	if ws != nil && mod != nil && !under(mod.dir, ws.dir) {
-		mod = nil // a module above the workspace is not part of it
+	directory := path.Dir(file)
+	workspaceConfig, module := nearest(r.work, directory), nearest(r.modules, directory)
+	if workspaceConfig != nil && module != nil && !under(module.directory, workspaceConfig.directory) {
+		module = nil // a module above the workspace is not part of it
 	}
-	var sc scope
+	var current scope
 	var configs []*config
 	switch {
-	case ws != nil:
-		sc.buf, sc.roots = true, ws.roots
-		if ws.file.v2 {
-			configs = append(configs, ws)
+	case workspaceConfig != nil:
+		current.buf, current.roots = true, workspaceConfig.roots
+		if workspaceConfig.file.v2 {
+			configs = append(configs, workspaceConfig)
 		}
-		if mod != nil {
-			configs = append(configs, mod)
+		if module != nil {
+			configs = append(configs, module)
 		}
-	case mod != nil:
-		sc.buf, sc.roots = true, mod.roots
-		configs = append(configs, mod)
+	case module != nil:
+		current.buf, current.roots = true, module.roots
+		configs = append(configs, module)
 	default:
 		configs = r.all
 	}
 	for _, c := range configs {
 		seen := map[string]bool{}
-		for _, d := range c.file.deps {
-			name, ref := moduleRef(d.value)
+		for _, d := range c.file.dependencies {
+			name, reference := moduleReference(d.value)
 			seen[name] = true
 			var l *locked
 			if e, ok := c.lock[name]; ok {
 				l = &e
 			}
-			sc.deps = append(sc.deps, dep{name: name, ref: ref, lock: l})
+			current.dependencies = append(current.dependencies, dependency{name: name, reference: reference, lock: l})
 		}
 		for _, name := range sortedLocks(c.lock) { // installed as a dependency's dependency
 			if !seen[name] {
 				e := c.lock[name]
-				sc.deps = append(sc.deps, dep{name: name, lock: &e})
+				current.dependencies = append(current.dependencies, dependency{name: name, lock: &e})
 			}
 		}
 	}
-	return sc
+	return current
 }
 
 func sortedLocks(m map[string]locked) []string {
@@ -205,57 +205,57 @@ func sortedLocks(m map[string]locked) []string {
 // name.
 //
 // Implements: REQ-PROTO-004, REQ-PROTO-005, REQ-PROTO-006, REQ-PROTO-007, REQ-PROTO-008
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	switch imp.Name {
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	switch rawImport.Name {
 	case kindDirectory:
-		if p := path.Join(path.Dir(file), imp.Module); r.dirs[p] && !strings.HasPrefix(p, "../") {
+		if p := path.Join(path.Dir(file), rawImport.Module); r.directories[p] && !strings.HasPrefix(p, "../") {
 			return lang.Target{Local: p}
 		}
 		return lang.Target{}
-	case kindDep:
-		name, ref := moduleRef(imp.Module)
+	case kindDependency:
+		name, reference := moduleReference(rawImport.Module)
 		var l *locked
 		if e, ok := r.locks[path.Dir(file)][name]; ok {
 			l = &e
 		}
-		return dep{name: name, ref: ref, lock: l}.target()
+		return dependency{name: name, reference: reference, lock: l}.target()
 	case kindLock:
-		l := r.locks[path.Dir(file)][imp.Module]
-		return dep{name: imp.Module, lock: &l}.target()
+		l := r.locks[path.Dir(file)][rawImport.Module]
+		return dependency{name: rawImport.Module, lock: &l}.target()
 	case kindPlugin:
-		name, version := moduleRef(imp.Module)
+		name, version := moduleReference(rawImport.Module)
 		return lang.Target{Ecosystem: ecoBuf, Package: name, Version: version, Pinned: lang.Pinned(version), Floating: version == ""}
 	}
-	return r.resolveImport(file, imp.Module)
+	return r.resolveImport(file, rawImport.Module)
 }
 
-// target is a declared module: pinned by its lock's commit, else by a commit ref; a
-// label, tag or branch ref is shown but moves; no ref floats.
+// target is a declared module: pinned by its lock's commit, else by a commit reference; a
+// label, tag or branch reference is shown but moves; no reference floats.
 //
 // Implements: REQ-PROTO-008
-func (d dep) target() lang.Target {
+func (d dependency) target() lang.Target {
 	t := lang.Target{Ecosystem: ecoBuf, Package: d.name}
 	switch {
 	case d.lock != nil && d.lock.commit != "":
 		t.Version, t.Pinned = d.lock.commit, true
-		if d.ref != "" && d.ref != d.lock.commit {
-			t.Requested = d.ref
+		if d.reference != "" && d.reference != d.lock.commit {
+			t.Requested = d.reference
 		}
-	case d.ref != "":
-		t.Version, t.Pinned = d.ref, commit(d.ref)
+	case d.reference != "":
+		t.Version, t.Pinned = d.reference, commit(d.reference)
 	default:
 		t.Floating = true
 	}
 	return t
 }
 
-// commit reports whether a module ref is a commit: a Buf Schema Registry commit id
+// commit reports whether a module reference is a commit: a Buf Schema Registry commit id
 // (32 hex digits, or a dashed UUID) or a git commit.
-func commit(ref string) bool {
-	if lang.Commit(ref) {
+func commit(reference string) bool {
+	if lang.Commit(reference) {
 		return true
 	}
-	s := strings.ReplaceAll(ref, "-", "")
+	s := strings.ReplaceAll(reference, "-", "")
 	if len(s) != 32 {
 		return false
 	}
@@ -279,21 +279,21 @@ func (r *resolver) resolveImport(file, name string) lang.Target {
 	if name == ".." || strings.HasPrefix(name, "../") {
 		return lang.Target{}
 	}
-	sc := r.scopeOf(file)
-	roots := sc.roots
-	if !sc.buf {
+	current := r.scopeOf(file)
+	roots := current.roots
+	if !current.buf {
 		roots = append(r.protocRootsFor(file), heuristic(file)...)
 	}
 	if p := r.find(roots, name); p != "" {
 		return lang.Target{Local: p}
 	}
 	if wellKnown(name) {
-		return lang.Target{Ecosystem: ecoStd, Package: name}
+		return lang.Target{Ecosystem: ecosystemStd, Package: name}
 	}
-	if d := sc.match(name); d != nil {
+	if d := current.match(name); d != nil {
 		return d.target()
 	}
-	if sc.buf { // protoc may be pointed elsewhere than Buf is
+	if current.buf { // protoc may be pointed elsewhere than Buf is
 		if p := r.find(append(r.protocRootsFor(file), heuristic(file)...), name); p != "" {
 			return lang.Target{Local: p}
 		}
@@ -301,8 +301,8 @@ func (r *resolver) resolveImport(file, name string) lang.Target {
 	if p := r.bySuffix(file, name); p != "" {
 		return lang.Target{Local: p}
 	}
-	if mods := known(name); mods != nil {
-		return lang.Target{Ecosystem: ecoBuf, Package: mods[0], Unresolved: true}
+	if modules := known(name); modules != nil {
+		return lang.Target{Ecosystem: ecoBuf, Package: modules[0], Unresolved: true}
 	}
 	first, _, _ := strings.Cut(name, "/")
 	return lang.Target{Ecosystem: ecoBuf, Package: strings.TrimSuffix(first, ".proto"), Unresolved: true}
@@ -331,11 +331,11 @@ func (r *resolver) find(roots []string, name string) string {
 // match finds the declared module an import comes from: one the table of known protos
 // names for its path, else the one whose repository (or, alone with it, owner) is the
 // path's first directory, compared without case, dashes, dots or underscores.
-func (sc scope) match(name string) *dep {
+func (current scope) match(name string) *dependency {
 	for _, m := range known(name) {
-		for i := range sc.deps {
-			if sc.deps[i].name == m {
-				return &sc.deps[i]
+		for i := range current.dependencies {
+			if current.dependencies[i].name == m {
+				return &current.dependencies[i]
 			}
 		}
 	}
@@ -344,22 +344,22 @@ func (sc scope) match(name string) *dep {
 		return nil
 	}
 	first = fold(first)
-	var byRepo, byOwner []*dep
-	for i := range sc.deps {
-		segments := strings.Split(sc.deps[i].name, "/")
+	var byRepository, byOwner []*dependency
+	for i := range current.dependencies {
+		segments := strings.Split(current.dependencies[i].name, "/")
 		if len(segments) < 3 {
 			continue
 		}
 		if fold(segments[len(segments)-1]) == first {
-			byRepo = append(byRepo, &sc.deps[i])
+			byRepository = append(byRepository, &current.dependencies[i])
 		}
 		if fold(segments[len(segments)-2]) == first {
-			byOwner = append(byOwner, &sc.deps[i])
+			byOwner = append(byOwner, &current.dependencies[i])
 		}
 	}
 	switch {
-	case len(byRepo) > 0:
-		return byRepo[0] // the nearest configuration's comes first
+	case len(byRepository) > 0:
+		return byRepository[0] // the nearest configuration's comes first
 	case len(byOwner) == 1:
 		return byOwner[0]
 	}
@@ -375,16 +375,16 @@ func fold(s string) string {
 // when that is closer than all the others.
 func (r *resolver) bySuffix(file, name string) string {
 	var best string
-	bestLen, tie := -1, false
+	bestLength, tie := -1, false
 	for _, p := range r.byBase[path.Base(name)] {
 		if !strings.HasSuffix(p, "/"+name) {
 			continue
 		}
-		n := commonDirs(file, p)
+		n := commonDirectories(file, p)
 		switch {
-		case n > bestLen:
-			best, bestLen, tie = p, n, false
-		case n == bestLen:
+		case n > bestLength:
+			best, bestLength, tie = p, n, false
+		case n == bestLength:
 			tie = true
 		}
 	}
@@ -394,11 +394,11 @@ func (r *resolver) bySuffix(file, name string) string {
 	return best
 }
 
-// commonDirs counts the leading directories two paths share.
-func commonDirs(a, b string) int {
-	as, bs := strings.Split(path.Dir(a), "/"), strings.Split(path.Dir(b), "/")
+// commonDirectories counts the leading directories two paths share.
+func commonDirectories(a, b string) int {
+	aParts, bParts := strings.Split(path.Dir(a), "/"), strings.Split(path.Dir(b), "/")
 	n := 0
-	for n < len(as) && n < len(bs) && as[n] == bs[n] && as[n] != "." {
+	for n < len(aParts) && n < len(bParts) && aParts[n] == bParts[n] && aParts[n] != "." {
 		n++
 	}
 	return n

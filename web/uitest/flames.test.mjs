@@ -1,6 +1,6 @@
 // What fire looks like, in the parts of it that are arithmetic.
 //
-// The look itself is a judgement and no test settles it. What a test can hold is the
+// The look itself is a judgment and no test settles it. What a test can hold is the
 // handful of properties the look is built on, each of which was got wrong at least
 // once on the way here and none of which announces itself when it breaks: a flame
 // pinched at the root floats like a leaf, a bright root draws a lit bar across the
@@ -33,17 +33,17 @@ describe('the shape of a tongue', () => {
     // an outline drawn round the fire - and outlines are the one thing a crowd of
     // tongues must not have if it is going to read as a body.
     const g = F.tongueGeometry();
-    const pos = g.getAttribute('position'), col = g.getAttribute('color');
-    assert.equal(col.itemSize, 4, 'a tongue has no alpha, so it can only fade to black');
-    assert.equal(pos.count, col.count, 'a vertex has no color');
+    const position = g.getAttribute('position'), color = g.getAttribute('color');
+    assert.equal(color.itemSize, 4, 'a tongue has no alpha, so it can only fade to black');
+    assert.equal(position.count, color.count, 'a vertex has no color');
 
     let rootA = 0, spineA = 0, edgeA = 1, dimmest = 9;
-    for (let i = 0; i < pos.count; i++) {
-      const y = pos.getY(i), a = col.getW(i);
-      const lum = col.getX(i) + col.getY(i) + col.getZ(i);
+    for (let i = 0; i < position.count; i++) {
+      const y = position.getY(i), a = color.getW(i);
+      const lum = color.getX(i) + color.getY(i) + color.getZ(i);
       dimmest = Math.min(dimmest, lum);
       if (y < 0.001) rootA = Math.max(rootA, a);
-      else if (Math.abs(pos.getX(i)) < 1e-6 && Math.abs(pos.getZ(i)) < 1e-6) spineA = Math.max(spineA, a);
+      else if (Math.abs(position.getX(i)) < 1e-6 && Math.abs(position.getZ(i)) < 1e-6) spineA = Math.max(spineA, a);
       else if (y > 0.1 && y < 0.4) edgeA = Math.min(edgeA, a);
     }
     assert.equal(rootA, 0, 'the root is opaque, which draws a bar across the foot of the fire');
@@ -65,11 +65,11 @@ describe('the shape of a tongue', () => {
   it('crosses two blades of different widths', () => {
     // Equal blades put their spines through each other and the cross is what you see.
     const g = F.tongueGeometry();
-    const pos = g.getAttribute('position');
+    const position = g.getAttribute('position');
     let wideX = 0, wideZ = 0;
-    for (let i = 0; i < pos.count; i++) {
-      wideX = Math.max(wideX, Math.abs(pos.getX(i)));
-      wideZ = Math.max(wideZ, Math.abs(pos.getZ(i)));
+    for (let i = 0; i < position.count; i++) {
+      wideX = Math.max(wideX, Math.abs(position.getX(i)));
+      wideZ = Math.max(wideZ, Math.abs(position.getZ(i)));
     }
     assert.ok(wideX > 0 && wideZ > 0, 'the tongue is flat, so it is a cutout side on');
     assert.ok(Math.abs(wideX - wideZ) > 0.05, 'both blades are the same width');

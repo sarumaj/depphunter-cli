@@ -27,14 +27,14 @@ func projectFiles(file string, read func(string) ([]byte, bool)) []*cabalProject
 			return
 		}
 		seen[file] = true
-		src, ok := read(file)
+		source, ok := read(file)
 		if !ok {
 			return
 		}
-		cp := readCabalProject(src)
-		out = append(out, cp)
-		for _, im := range cp.imports {
-			if p, ok := includePath(file, im.text); ok {
+		project := readCabalProject(source)
+		out = append(out, project)
+		for _, importLine := range project.imports {
+			if p, ok := includePath(file, importLine.text); ok {
 				visit(p)
 			}
 		}
@@ -67,24 +67,24 @@ func globFields(s string) []string {
 	var out []string
 	depth, from := 0, -1
 	for i := 0; i <= len(s); i++ {
-		sep := i == len(s)
-		if !sep {
+		separator := i == len(s)
+		if !separator {
 			switch s[i] {
 			case '{':
 				depth++
 			case '}':
 				depth = max(depth-1, 0)
 			case ',':
-				sep = depth == 0
+				separator = depth == 0
 			case ' ', '\t', '"':
-				sep = true
+				separator = true
 			}
 		}
 		switch {
-		case sep && from >= 0:
+		case separator && from >= 0:
 			out = append(out, s[from:i])
 			from = -1
-		case !sep && from < 0:
+		case !separator && from < 0:
 			from = i
 		}
 	}
@@ -94,34 +94,34 @@ func globFields(s string) []string {
 // glob reports whether a packages: entry is a cabal file glob.
 func glob(entry string) bool { return strings.ContainsAny(entry, "*?[{") }
 
-// memberDirs are the package directories a packages: entry of the project in
-// dir names: the entry's directory, or those of the repository's packages whose
+// memberDirectories are the package directories a packages: entry of the project in
+// directory names: the entry's directory, or those of the repository's packages whose
 // directory or .cabal file a glob matches.
-func (r *resolver) memberDirs(dir, entry string) []string {
+func (r *resolver) memberDirectories(directory, entry string) []string {
 	if !glob(entry) {
-		return []string{path.Join(dir, strings.TrimSuffix(entry, "/"))}
+		return []string{path.Join(directory, strings.TrimSuffix(entry, "/"))}
 	}
 	var out []string
-	for _, p := range r.globbed(dir, entry) {
-		out = append(out, p.dir)
+	for _, p := range r.globbed(directory, entry) {
+		out = append(out, p.directory)
 	}
 	return out
 }
 
-// globbed are the repository's packages a packages: glob, relative to dir,
+// globbed are the repository's packages a packages: glob, relative to directory,
 // matches, in path order: `*`, `?` and `[...]` within one path segment and
 // `{a,b}` alternatives, as cabal reads them, against a package's directory
 // (`libs/*/`) or its .cabal file (`*/*.cabal`).
-func (r *resolver) globbed(dir, entry string) []*pkgInfo {
-	alts := braces(path.Join(dir, strings.TrimPrefix(entry, "./")))
-	var out []*pkgInfo
-	for _, p := range r.pkgs {
-		for _, alt := range alts {
-			if m, _ := path.Match(alt, p.dir); m && p.dir != "." {
+func (r *resolver) globbed(directory, entry string) []*packageInfo {
+	alternatives := braces(path.Join(directory, strings.TrimPrefix(entry, "./")))
+	var out []*packageInfo
+	for _, p := range r.packages {
+		for _, alternative := range alternatives {
+			if m, _ := path.Match(alternative, p.directory); m && p.directory != "." {
 				out = append(out, p)
 				break
 			}
-			if m, _ := path.Match(alt, p.file); m {
+			if m, _ := path.Match(alternative, p.file); m {
 				out = append(out, p)
 				break
 			}
@@ -147,12 +147,12 @@ func braces(g string) []string {
 	j += i
 	rests := braces(g[j+1:])
 	var out []string
-	for _, alt := range strings.Split(g[i+1:j], ",") {
+	for _, alternative := range strings.Split(g[i+1:j], ",") {
 		for _, rest := range rests {
 			if len(out) == maxAlternatives {
 				return out
 			}
-			out = append(out, g[:i]+alt+rest)
+			out = append(out, g[:i]+alternative+rest)
 		}
 	}
 	return out
@@ -162,13 +162,13 @@ func braces(g string) []string {
 // of the repository it matches.
 //
 // Implements: REQ-HASKELL-005
-func (r *resolver) Expand(file string, imp lang.RawImport) ([]lang.Import, bool) {
-	if imp.Name != kindMember || !glob(imp.Module) || strings.Contains(imp.Module, "://") {
+func (r *resolver) Expand(file string, rawImport lang.RawImport) ([]lang.Import, bool) {
+	if rawImport.Name != kindMember || !glob(rawImport.Module) || strings.Contains(rawImport.Module, "://") {
 		return nil, false
 	}
 	var out []lang.Import
-	for _, p := range r.globbed(path.Dir(file), imp.Module) {
-		out = append(out, lang.Import{Spec: imp.Spec + " (" + p.file + ")", Line: imp.Line, Target: lang.Target{Local: p.file}})
+	for _, p := range r.globbed(path.Dir(file), rawImport.Module) {
+		out = append(out, lang.Import{Spec: rawImport.Spec + " (" + p.file + ")", Line: rawImport.Line, Target: lang.Target{Local: p.file}})
 	}
 	return out, len(out) > 0
 }

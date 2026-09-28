@@ -29,8 +29,8 @@ func TestBazelCredentialHelpers(t *testing.T) {
 			"common --credential_helper_timeout=5s\n",
 	})
 	home := t.TempDir()
-	d := NewDiscoverer(env(nil), home)
-	cfg := d.Discover(files)
+	d := NewDiscoverer(environment(nil), home)
+	config := d.Discover(files)
 	for host, want := range map[string]string{
 		"registry.corp.test": "registry.corp.test",
 		"a.b.corp.test":      "*.corp.test",
@@ -39,7 +39,7 @@ func TestBazelCredentialHelpers(t *testing.T) {
 		"bcr.bazel.build":    "none",
 		"xcorp.test":         "none",
 	} {
-		scope, ok := cfg.bazelHelperFor(host)
+		scope, ok := config.bazelHelperFor(host)
 		if !ok {
 			scope = "none"
 		}
@@ -47,11 +47,11 @@ func TestBazelCredentialHelpers(t *testing.T) {
 			t.Errorf("%s: helper %q, want %q", host, scope, want)
 		}
 	}
-	if cfg = d.Discover(nil); len(cfg.bazelHelpers) != 0 {
-		t.Errorf("the repository's helpers outlive it: %v", cfg.bazelHelpers)
+	if config = d.Discover(nil); len(config.bazelHelpers) != 0 {
+		t.Errorf("the repository's helpers outlive it: %v", config.bazelHelpers)
 	}
 	put(t, filepath.Join(home, ".bazelrc"), "common --credential_helper=\"/usr/local/bin/any\"\n")
-	if scope, ok := Discover(nil, env(nil), home).bazelHelperFor("bcr.bazel.build"); !ok || scope != "" {
+	if scope, ok := Discover(nil, environment(nil), home).bazelHelperFor("bcr.bazel.build"); !ok || scope != "" {
 		t.Errorf("unscoped helper: %q %v", scope, ok)
 	}
 }
@@ -64,30 +64,30 @@ func TestBazelCredentialHelpers(t *testing.T) {
 func TestBazelCredentialHelperIsNoted(t *testing.T) {
 	var mu sync.Mutex
 	asked := 0
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		asked++
 		mu.Unlock()
 		w.Write([]byte("module(name = \"rules_go\")\nbazel_dep(name = \"platforms\", version = \"0.0.4\")\n"))
 	}))
-	t.Cleanup(srv.Close)
+	t.Cleanup(server.Close)
 	home := t.TempDir()
-	put(t, filepath.Join(home, ".bazelrc"), "common --registry="+srv.URL+"\ncommon --credential_helper=127.0.0.1=/opt/helper\n")
-	dir := t.TempDir()
+	put(t, filepath.Join(home, ".bazelrc"), "common --registry="+server.URL+"\ncommon --credential_helper=127.0.0.1=/opt/helper\n")
+	directory := t.TempDir()
 	target := lang.Target{Ecosystem: Bazel, Package: "rules_go", Version: "0.50.1", Pinned: true}
 	for i := range 2 { // the second client answers from the first one's cache
-		c := NewClient(Discover(nil, env(nil), home), dir, time.Hour, 5*time.Second, auth.Read(home, nil), nil)
+		c := NewClient(Discover(nil, environment(nil), home), directory, time.Hour, 5*time.Second, auth.Read(home, nil), nil)
 		got := notesOf(t, c, target)
 		if len(got) != 1 || !strings.HasPrefix(got[0], trace.NoteHelperNotRun+": a .bazelrc names a credential helper for 127.0.0.1") ||
-			!strings.Contains(got[0], srv.URL) {
+			!strings.Contains(got[0], server.URL) {
 			t.Errorf("run %d: notes %q", i, got)
 		}
 	}
 	if asked != 1 {
 		t.Errorf("registry asked %d times", asked)
 	}
-	put(t, filepath.Join(home, ".bazelrc"), "common --registry="+srv.URL+"\ncommon --credential_helper=*.corp.test=/opt/helper\n")
-	c := NewClient(Discover(nil, env(nil), home), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil), nil)
+	put(t, filepath.Join(home, ".bazelrc"), "common --registry="+server.URL+"\ncommon --credential_helper=*.corp.test=/opt/helper\n")
+	c := NewClient(Discover(nil, environment(nil), home), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, nil), nil)
 	if got := notesOf(t, c, target); len(got) != 0 {
 		t.Errorf("a helper for another host is noted: %q", got)
 	}

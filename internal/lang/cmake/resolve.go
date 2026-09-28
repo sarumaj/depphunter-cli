@@ -25,33 +25,33 @@ const (
 
 const lists = "CMakeLists.txt"
 
-type fetchRef struct {
-	file string
-	imp  lang.RawImport
+type fetchReference struct {
+	file      string
+	rawImport lang.RawImport
 }
 
 type resolver struct {
 	files  map[string]bool
 	byBase map[string][]string // file name -> the project files so named
-	// vars are the variables each CMake file leaves set, with the directory
+	// variables are the variables each CMake file leaves set, with the directory
 	// variables of the file itself already expanded.
-	vars     map[string]map[string]string
-	projects map[string]string // lower-case project name -> its directory
-	projDir  map[string]string // directory -> the first project its CMakeLists.txt declares
+	variables        map[string]map[string]string
+	projects         map[string]string // lower-case project name -> its directory
+	projectDirectory map[string]string // directory -> the first project its CMakeLists.txt declares
 	// modules are the directories every CMake file puts on CMAKE_MODULE_PATH: where a
 	// module is looked for from a file whose own directories name none.
-	modules []string
-	fetches map[string][]fetchRef // lower-case name -> declarations, shallowest file first
-	pkgs    cpp.Packages
-	content []cpp.Fetched // the fetched packages, for the includes of their headers
+	modules  []string
+	fetches  map[string][]fetchReference // lower-case name -> declarations, shallowest file first
+	packages cpp.Packages
+	content  []cpp.Fetched // the fetched packages, for the includes of their headers
 }
 
 // Implements: REQ-CMAKE-003
 func newResolver(all []*scan.File) *resolver {
 	r := &resolver{
-		files: map[string]bool{}, byBase: map[string][]string{}, vars: map[string]map[string]string{},
-		projects: map[string]string{}, projDir: map[string]string{}, fetches: map[string][]fetchRef{},
-		pkgs: cpp.ReadPackages(all),
+		files: map[string]bool{}, byBase: map[string][]string{}, variables: map[string]map[string]string{},
+		projects: map[string]string{}, projectDirectory: map[string]string{}, fetches: map[string][]fetchReference{},
+		packages: cpp.ReadPackages(all),
 	}
 	var cmake []*scan.File
 	for _, f := range all {
@@ -66,23 +66,23 @@ func newResolver(all []*scan.File) *resolver {
 	})
 	infos := map[string]*fileInfo{}
 	for _, f := range cmake {
-		src, err := os.ReadFile(f.Abs)
+		source, err := os.ReadFile(f.AbsolutePath)
 		if err != nil {
 			continue
 		}
-		info := analyze(lex(src))
+		info := analyze(lex(source))
 		infos[f.Path] = info
-		dir := path.Dir(f.Path)
+		directory := path.Dir(f.Path)
 		if path.Base(f.Path) == lists && len(info.projects) > 0 {
-			r.projDir[dir] = info.projects[0]
+			r.projectDirectory[directory] = info.projects[0]
 			for _, p := range info.projects {
 				if _, ok := r.projects[strings.ToLower(p)]; !ok {
-					r.projects[strings.ToLower(p)] = dir
+					r.projects[strings.ToLower(p)] = directory
 				}
 			}
 		}
-		for name, im := range info.fetches {
-			r.fetches[name] = append(r.fetches[name], fetchRef{f.Path, im})
+		for name, rawImport := range info.fetches {
+			r.fetches[name] = append(r.fetches[name], fetchReference{f.Path, rawImport})
 		}
 	}
 	// Directory variables need every project known first (PROJECT_SOURCE_DIR,
@@ -92,17 +92,17 @@ func newResolver(all []*scan.File) *resolver {
 		if info == nil {
 			continue
 		}
-		vars := make(map[string]string, len(info.vars))
-		for k, v := range info.vars {
-			vars[k], _ = expand(v, func(name string) (string, bool) { return r.builtin(f.Path, name) }, true)
+		variables := make(map[string]string, len(info.variables))
+		for k, v := range info.variables {
+			variables[k], _ = expand(v, func(name string) (string, bool) { return r.builtin(f.Path, name) }, true)
 		}
-		r.vars[f.Path] = vars
+		r.variables[f.Path] = variables
 	}
 	for _, f := range cmake {
 		r.modules = append(r.modules, r.modulePath(f.Path, false)...)
 	}
 	r.content = r.fetchedContent()
-	r.pkgs.Fetch(r.content)
+	r.packages.Fetch(r.content)
 	return r
 }
 
@@ -116,16 +116,16 @@ func newResolver(all []*scan.File) *resolver {
 func (r *resolver) fetchedContent() []cpp.Fetched {
 	var out []cpp.Fetched
 	for _, name := range slices.Sorted(maps.Keys(r.fetches)) {
-		for _, ref := range r.fetches[name] {
-			t := r.fetched(ref.file, ref.imp)
-			if t.Ecosystem != ecoFetch {
+		for _, reference := range r.fetches[name] {
+			t := r.fetched(reference.file, reference.rawImport)
+			if t.Ecosystem != ecosystemFetch {
 				continue
 			}
 			names := []string{name}
 			if parts := strings.Split(t.Package, "/"); len(parts) == 3 {
 				names = append(names, parts[2], parts[1]+"-"+parts[2])
 			}
-			out = append(out, cpp.Fetched{Dir: path.Dir(ref.file), Names: names, Target: t})
+			out = append(out, cpp.Fetched{Directory: path.Dir(reference.file), Names: names, Target: t})
 		}
 	}
 	return out
@@ -136,23 +136,23 @@ func (r *resolver) fetchedContent() []cpp.Fetched {
 //
 // Implements: REQ-CMAKE-003
 func (r *resolver) builtin(file, name string) (string, bool) {
-	dir := path.Dir(file)
+	directory := path.Dir(file)
 	switch name {
 	case "CMAKE_CURRENT_LIST_DIR":
-		return markRoot + dir, true
+		return markRoot + directory, true
 	case "CMAKE_CURRENT_LIST_FILE":
 		return markRoot + file, true
 	case "CMAKE_CURRENT_SOURCE_DIR":
 		if path.Base(file) == lists {
-			return markRoot + dir, true
+			return markRoot + directory, true
 		}
 		return markCurrent, true
 	case "CMAKE_SOURCE_DIR", "CMAKE_HOME_DIRECTORY":
-		return markRoot + r.top(dir), true
+		return markRoot + r.top(directory), true
 	case "PROJECT_SOURCE_DIR":
-		return markRoot + r.project(dir), true
+		return markRoot + r.project(directory), true
 	case "PROJECT_NAME":
-		if p, ok := r.projDir[r.project(dir)]; ok {
+		if p, ok := r.projectDirectory[r.project(directory)]; ok {
 			return p, true
 		}
 		return "", false
@@ -165,11 +165,11 @@ func (r *resolver) builtin(file, name string) (string, bool) {
 	return "", false
 }
 
-// top is the topmost directory above dir (or dir) with a CMakeLists.txt: the source
+// top is the topmost directory above directory (or directory itself) with a CMakeLists.txt: the source
 // directory of the build the file most likely belongs to.
-func (r *resolver) top(dir string) string {
+func (r *resolver) top(directory string) string {
 	top := "."
-	for d := dir; ; d = path.Dir(d) {
+	for d := directory; ; d = path.Dir(d) {
 		if r.files[path.Join(d, lists)] {
 			top = d
 		}
@@ -179,15 +179,15 @@ func (r *resolver) top(dir string) string {
 	}
 }
 
-// project is the nearest directory above dir (or dir) whose CMakeLists.txt declares
+// project is the nearest directory above directory (or directory itself) whose CMakeLists.txt declares
 // a project, else the top.
-func (r *resolver) project(dir string) string {
-	for d := dir; ; d = path.Dir(d) {
-		if _, ok := r.projDir[d]; ok {
+func (r *resolver) project(directory string) string {
+	for d := directory; ; d = path.Dir(d) {
+		if _, ok := r.projectDirectory[d]; ok {
 			return d
 		}
 		if d == "." || d == "/" {
-			return r.top(dir)
+			return r.top(directory)
 		}
 	}
 }
@@ -215,7 +215,7 @@ func (r *resolver) evalFrom(file string, chain []string, s string, from, depth i
 	}
 	return expand(s, func(name string) (string, bool) {
 		for i := from; i < len(chain); i++ {
-			if v, ok := r.vars[chain[i]][name]; ok {
+			if v, ok := r.variables[chain[i]][name]; ok {
 				return r.evalFrom(file, chain, v, i+1, depth+1)
 			}
 		}
@@ -230,13 +230,13 @@ func (r *resolver) evalFrom(file string, chain []string, s string, from, depth i
 // Implements: REQ-CMAKE-003
 func (r *resolver) eval(file, s string) (string, bool) {
 	v, ok := r.evalFrom(file, r.chain(file), s, 0, 0)
-	if !ok || strings.Contains(v, "$ENV{") || strings.Contains(v, "$<") || configVar.MatchString(v) {
+	if !ok || strings.Contains(v, "$ENV{") || strings.Contains(v, "$<") || configVariable.MatchString(v) {
 		return "", false
 	}
 	return v, true
 }
 
-var configVar = regexp.MustCompile(`@[A-Za-z_][A-Za-z0-9_]*@`)
+var configVariable = regexp.MustCompile(`@[A-Za-z_][A-Za-z0-9_]*@`)
 
 // paths are the project paths an evaluated path may name from file: one from the
 // root, or else relative to the current source directory - the file's own for a
@@ -291,10 +291,10 @@ func (r *resolver) local(file string, candidates []string) lang.Target {
 //
 // Implements: REQ-CMAKE-003, REQ-CMAKE-004, REQ-CMAKE-005, REQ-CMAKE-006, REQ-CMAKE-007
 // Implements: REQ-CMAKE-009, REQ-CMAKE-011
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	switch imp.Name {
-	case kindSubdir:
-		v, ok := r.eval(file, imp.Module)
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	switch rawImport.Name {
+	case kindSubdirectory:
+		v, ok := r.eval(file, rawImport.Module)
 		if !ok {
 			return lang.Target{}
 		}
@@ -304,13 +304,13 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 		}
 		return r.local(file, candidates)
 	case kindSource, kindFile:
-		v, ok := r.eval(file, imp.Module)
+		v, ok := r.eval(file, rawImport.Module)
 		if !ok {
 			return lang.Target{}
 		}
 		return r.local(file, r.paths(file, v))
 	case kindInclude:
-		v, ok := r.eval(file, imp.Module)
+		v, ok := r.eval(file, rawImport.Module)
 		if !ok {
 			return lang.Target{}
 		}
@@ -319,13 +319,13 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 		}
 		return r.module(file, v)
 	case kindFind:
-		return r.find(file, imp.Module)
+		return r.find(file, rawImport.Module)
 	case kindGit, kindURL:
-		return r.fetched(file, imp)
+		return r.fetched(file, rawImport)
 	case kindUse:
-		return r.use(file, imp.Module)
-	case kindPkg:
-		return r.pkgConfig(file, imp.Module)
+		return r.use(file, rawImport.Module)
+	case kindPackage:
+		return r.packageConfig(file, rawImport.Module)
 	}
 	return lang.Target{}
 }
@@ -337,7 +337,7 @@ func (r *resolver) modulePath(file string, all bool) []string {
 	chain := r.chain(file)
 	var out []string
 	for i, f := range chain {
-		v, ok := r.vars[f]["CMAKE_MODULE_PATH"]
+		v, ok := r.variables[f]["CMAKE_MODULE_PATH"]
 		if !ok || v == "" {
 			continue
 		}
@@ -367,22 +367,22 @@ func (r *resolver) module(file, name string) lang.Target {
 	}
 	lower := strings.ToLower(name)
 	if std, ok := stdModules[lower]; ok {
-		return lang.Target{Ecosystem: ecoStd, Package: std}
+		return lang.Target{Ecosystem: ecosystemStd, Package: std}
 	}
 	if strings.HasPrefix(name, "Find") {
-		return lang.Target{Ecosystem: ecoStd, Package: name}
+		return lang.Target{Ecosystem: ecosystemStd, Package: name}
 	}
 	var best string
-	bestLen, tie := -1, false
+	bestLength, tie := -1, false
 	for _, p := range r.byBase[name+".cmake"] {
 		if p == file {
 			continue
 		}
-		n := commonDirs(file, p)
+		n := commonDirectories(file, p)
 		switch {
-		case n > bestLen:
-			best, bestLen, tie = p, n, false
-		case n == bestLen:
+		case n > bestLength:
+			best, bestLength, tie = p, n, false
+		case n == bestLength:
 			tie = true
 		}
 	}
@@ -392,11 +392,11 @@ func (r *resolver) module(file, name string) lang.Target {
 	return lang.Target{Local: best}
 }
 
-// commonDirs counts the leading directories two paths share.
-func commonDirs(a, b string) int {
-	as, bs := strings.Split(path.Dir(a), "/"), strings.Split(path.Dir(b), "/")
+// commonDirectories counts the leading directories two paths share.
+func commonDirectories(a, b string) int {
+	aParts, bParts := strings.Split(path.Dir(a), "/"), strings.Split(path.Dir(b), "/")
 	n := 0
-	for n < len(as) && n < len(bs) && as[n] == bs[n] && as[n] != "." {
+	for n < len(aParts) && n < len(bParts) && aParts[n] == bParts[n] && aParts[n] != "." {
 		n++
 	}
 	return n
@@ -411,22 +411,22 @@ func commonDirs(a, b string) int {
 //
 // Implements: REQ-CMAKE-006
 func (r *resolver) find(file, spec string) lang.Target {
-	written, comp, _ := strings.Cut(spec, "/")
+	written, component, _ := strings.Cut(spec, "/")
 	name, ok := r.eval(file, written)
-	if !ok && comp != "" && strings.HasPrefix(written, "Qt${") {
+	if !ok && component != "" && strings.HasPrefix(written, "Qt${") {
 		name, ok = "Qt", true // Qt of a major version only the configure step knows
 	}
 	if !ok || name == "" {
 		return lang.Target{}
 	}
 	lower := strings.ToLower(name)
-	if dir, ok := r.projects[lower]; ok && dir != r.project(path.Dir(file)) {
-		if t := r.local(file, []string{path.Join(dir, lists)}); t.Local != "" {
+	if directory, ok := r.projects[lower]; ok && directory != r.project(path.Dir(file)) {
+		if t := r.local(file, []string{path.Join(directory, lists)}); t.Local != "" {
 			return t
 		}
 	}
-	include, extra := representative(name, comp)
-	t := r.pkgs.Library(file, include, extra...)
+	include, extra := representative(name, component)
+	t := r.packages.Library(file, include, extra...)
 	if !t.Unresolved {
 		return t
 	}
@@ -436,13 +436,13 @@ func (r *resolver) find(file, spec string) lang.Target {
 			return lang.Target{Local: p}
 		}
 	}
-	if comp == "" {
+	if component == "" {
 		if f := r.use(file, lower); f.Ecosystem != "" {
 			return f
 		}
 	}
 	if std, ok := systemFinds[lower]; ok {
-		return lang.Target{Ecosystem: ecoStd, Package: "Find" + std}
+		return lang.Target{Ecosystem: ecosystemStd, Package: "Find" + std}
 	}
 	return t
 }
@@ -453,50 +453,50 @@ func (r *resolver) find(file, spec string) lang.Target {
 //
 // Implements: REQ-CMAKE-007
 func (r *resolver) use(file, name string) lang.Target {
-	refs := r.fetches[strings.ToLower(name)]
-	if len(refs) == 0 {
+	references := r.fetches[strings.ToLower(name)]
+	if len(references) == 0 {
 		return lang.Target{}
 	}
-	best := refs[0]
-	for _, ref := range refs {
-		if ref.file == file {
-			best = ref
+	best := references[0]
+	for _, reference := range references {
+		if reference.file == file {
+			best = reference
 			break
 		}
 	}
 	if best.file != file {
-		for _, ref := range refs {
-			if d := path.Dir(ref.file); d == "." || strings.HasPrefix(file, d+"/") {
-				best = ref
+		for _, reference := range references {
+			if d := path.Dir(reference.file); d == "." || strings.HasPrefix(file, d+"/") {
+				best = reference
 				break
 			}
 		}
 	}
-	return r.fetched(best.file, best.imp)
+	return r.fetched(best.file, best.rawImport)
 }
 
 var (
-	// GitHub and GitLab archives of a ref and GitHub release assets.
-	archiveRef = regexp.MustCompile(`^((?:github\.com|gitlab\.com)/[^/]+/[^/]+?)(?:/-)?/archive/(refs/tags/|refs/heads/)?(?:[^/]+/)?([^/]+?)(\.zip|\.tar\.gz|\.tgz|\.tar\.bz2|\.tar\.xz)$`)
-	releaseRef = regexp.MustCompile(`^(github\.com/[^/]+/[^/]+)/releases/download/([^/]+)/`)
+	// GitHub and GitLab archives of a reference and GitHub release assets.
+	archiveReference = regexp.MustCompile(`^((?:github\.com|gitlab\.com)/[^/]+/[^/]+?)(?:/-)?/archive/(refs/tags/|refs/heads/)?(?:[^/]+/)?([^/]+?)(\.zip|\.tar\.gz|\.tgz|\.tar\.bz2|\.tar\.xz)$`)
+	releaseReference = regexp.MustCompile(`^(github\.com/[^/]+/[^/]+)/releases/download/([^/]+)/`)
 )
 
 // fetched is content a FetchContent_Declare(), ExternalProject_Add() or CPM call
-// declared in file: a git repository named by its URL (lang.RepoName) at a GIT_TAG
+// declared in file: a git repository named by its URL (lang.RepositoryName) at a GIT_TAG
 // - a commit pins it, a branch or no tag floats, a tag (which can be moved) is
 // neither - or a download named by its URL, pinned by a URL_HASH (or a commit's
 // archive). A GitHub or GitLab archive or release asset is named by its repository,
-// with the ref as the version. A URL naming a project file is that file.
+// with the reference as the version. A URL naming a project file is that file.
 //
 // Implements: REQ-CMAKE-007
-func (r *resolver) fetched(file string, imp lang.RawImport) lang.Target {
-	rawURL, rawRef, _ := strings.Cut(imp.Module, "\n")
+func (r *resolver) fetched(file string, rawImport lang.RawImport) lang.Target {
+	rawURL, rawReference, _ := strings.Cut(rawImport.Module, "\n")
 	u, ok := r.eval(file, rawURL)
 	if !ok || u == "" {
 		return lang.Target{}
 	}
-	ref, refKnown := r.eval(file, rawRef)
-	if !strings.Contains(u, "://") && !(imp.Name == kindGit && strings.Contains(u, "@") && strings.Contains(u, ":")) {
+	reference, referenceKnown := r.eval(file, rawReference)
+	if !strings.Contains(u, "://") && !(rawImport.Name == kindGit && strings.Contains(u, "@") && strings.Contains(u, ":")) {
 		// A path: a tarball in the repository, or a directory of it - a checkout
 		// of the repository itself (tests of a project's own FetchContent use) -
 		// which is the CMakeLists.txt it builds.
@@ -506,34 +506,34 @@ func (r *resolver) fetched(file string, imp lang.RawImport) lang.Target {
 		}
 		return r.local(file, candidates)
 	}
-	t := lang.Target{Ecosystem: ecoFetch}
-	if imp.Name == kindGit {
-		t.Package = lang.RepoName(u)
+	t := lang.Target{Ecosystem: ecosystemFetch}
+	if rawImport.Name == kindGit {
+		t.Package = lang.RepositoryName(u)
 		switch {
-		case !refKnown:
-		case ref == "":
+		case !referenceKnown:
+		case reference == "":
 			t.Floating = true
-		case lang.Commit(ref):
-			t.Version, t.Pinned = ref, true
+		case lang.Commit(reference):
+			t.Version, t.Pinned = reference, true
 		default:
-			t.Version = ref
-			_, t.Floating = branches[strings.ToLower(strings.TrimPrefix(ref, "origin/"))]
+			t.Version = reference
+			_, t.Floating = branches[strings.ToLower(strings.TrimPrefix(reference, "origin/"))]
 		}
 		return t
 	}
 	u, _, _ = strings.Cut(u, "?")
-	t.Package = lang.RepoName(u)
+	t.Package = lang.RepositoryName(u)
 	head := false
-	if m := archiveRef.FindStringSubmatch(t.Package); m != nil {
+	if m := archiveReference.FindStringSubmatch(t.Package); m != nil {
 		t.Package, t.Version, head = m[1], m[3], m[2] == "refs/heads/"
-	} else if m := releaseRef.FindStringSubmatch(t.Package); m != nil {
+	} else if m := releaseReference.FindStringSubmatch(t.Package); m != nil {
 		t.Package, t.Version = m[1], m[2]
 	}
 	switch {
-	case refKnown && ref != "":
+	case referenceKnown && reference != "":
 		t.Pinned = true
 		if t.Version == "" {
-			t.Version = ref
+			t.Version = reference
 		}
 	case lang.Commit(t.Version):
 		t.Pinned = true
@@ -543,14 +543,14 @@ func (r *resolver) fetched(file string, imp lang.RawImport) lang.Target {
 	return t
 }
 
-var pkgVersionSuffix = regexp.MustCompile(`-[0-9][0-9.]*$`)
+var packageVersionSuffix = regexp.MustCompile(`-[0-9][0-9.]*$`)
 
-// pkgConfig resolves a pkg_check_modules() module ("glib-2.0>=2.40"): the package a
+// packageConfig resolves a pkg_check_modules() module ("glib-2.0>=2.40"): the package a
 // vcpkg or Conan manifest declares under its name, else the module of the
 // pkg-config island with the constraint as its version; "=" pins.
 //
 // Implements: REQ-CMAKE-011
-func (r *resolver) pkgConfig(file, spec string) lang.Target {
+func (r *resolver) packageConfig(file, spec string) lang.Target {
 	spec, ok := r.eval(file, spec)
 	if !ok || spec == "" {
 		return lang.Target{}
@@ -559,11 +559,11 @@ func (r *resolver) pkgConfig(file, spec string) lang.Target {
 	if i := strings.IndexAny(spec, "<>="); i > 0 {
 		name, constraint = strings.TrimSpace(spec[:i]), strings.TrimSpace(spec[i:])
 	}
-	base := pkgVersionSuffix.ReplaceAllString(strings.TrimPrefix(name, "lib"), "")
-	if t := r.pkgs.Library(file, base+"/", name); !t.Unresolved {
+	base := packageVersionSuffix.ReplaceAllString(strings.TrimPrefix(name, "lib"), "")
+	if t := r.packages.Library(file, base+"/", name); !t.Unresolved {
 		return t
 	}
-	t := lang.Target{Ecosystem: ecoPkg, Package: name, Version: constraint}
+	t := lang.Target{Ecosystem: ecosystemPackage, Package: name, Version: constraint}
 	if v, ok := strings.CutPrefix(constraint, "="); ok && !strings.HasPrefix(v, "=") {
 		t.Version, t.Pinned = strings.TrimSpace(v), true
 	}

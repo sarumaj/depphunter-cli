@@ -14,14 +14,14 @@ import (
 )
 
 type project struct {
-	dir  string
-	root string // root namespace
+	directory string
+	root      string // root namespace
 }
 
 type resolver struct {
-	projects     []project       // longest root namespace first
-	csDirs       map[string]bool // directories holding C# files
-	*nuget.Store                 // packages, versions and what the lock files say they depend on
+	projects      []project       // longest root namespace first
+	csDirectories map[string]bool // directories holding C# files
+	*nuget.Store                  // packages, versions and what the lock files say they depend on
 }
 
 type msbuild struct {
@@ -37,19 +37,19 @@ type msbuild struct {
 //
 // Implements: REQ-CS-001, REQ-CS-002, REQ-CS-003, REQ-CS-004
 func newResolver(all []*scan.File) *resolver {
-	r := &resolver{csDirs: map[string]bool{}, Store: nuget.Read(all)}
+	r := &resolver{csDirectories: map[string]bool{}, Store: nuget.Read(all)}
 	for _, f := range all {
 		base := path.Base(f.Path)
 		switch {
 		case strings.HasSuffix(base, ".cs"):
-			for d := path.Dir(f.Path); !r.csDirs[d]; d = path.Dir(d) {
-				r.csDirs[d] = true
+			for d := path.Dir(f.Path); !r.csDirectories[d]; d = path.Dir(d) {
+				r.csDirectories[d] = true
 				if d == "." {
 					break
 				}
 			}
 		case strings.HasSuffix(base, ".csproj"):
-			data, err := os.ReadFile(f.Abs)
+			data, err := os.ReadFile(f.AbsolutePath)
 			if err != nil {
 				continue
 			}
@@ -68,28 +68,28 @@ func newResolver(all []*scan.File) *resolver {
 					root = g.RootNamespace
 				}
 			}
-			r.projects = append(r.projects, project{dir: path.Dir(f.Path), root: root})
+			r.projects = append(r.projects, project{directory: path.Dir(f.Path), root: root})
 		}
 	}
 	sort.Slice(r.projects, func(i, j int) bool { return len(r.projects[i].root) > len(r.projects[j].root) })
 	return r
 }
 
-func within(ns, prefix string) (string, bool) {
-	if ns == prefix {
+func within(namespace, prefix string) (string, bool) {
+	if namespace == prefix {
 		return "", true
 	}
-	if strings.HasPrefix(ns, prefix+".") {
-		return ns[len(prefix)+1:], true
+	if strings.HasPrefix(namespace, prefix+".") {
+		return namespace[len(prefix)+1:], true
 	}
 	return "", false
 }
 
 // Implements: REQ-CS-001, REQ-CS-002, REQ-CS-004, REQ-CS-007
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	ns := imp.Module
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	namespace := rawImport.Module
 	for _, p := range r.projects {
-		rest, ok := within(ns, p.root)
+		rest, ok := within(namespace, p.root)
 		if !ok {
 			continue
 		}
@@ -99,10 +99,10 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 			segments = strings.Split(rest, ".")
 		}
 		for n := len(segments); n >= 0; n-- {
-			if d := path.Join(append([]string{p.dir}, segments[:n]...)...); r.csDirs[d] {
+			if d := path.Join(append([]string{p.directory}, segments[:n]...)...); r.csDirectories[d] {
 				return lang.Target{Local: d}
 			}
 		}
 	}
-	return r.Namespace(ns)
+	return r.Namespace(namespace)
 }

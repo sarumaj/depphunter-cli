@@ -15,14 +15,14 @@ import (
 // project is a directory with a jsonnetfile.json: jsonnet-bundler's root,
 // whose vendor/ and lib/ are on the import path of the files below it.
 type project struct {
-	dir    string
-	deps   []*dep // jsonnetfile.json
-	lock   []*dep // jsonnetfile.lock.json
-	legacy bool   // legacy import names are linked (vendor/<name>)
+	directory    string
+	dependencies []*dependency // jsonnetfile.json
+	lock         []*dependency // jsonnetfile.lock.json
+	legacy       bool          // legacy import names are linked (vendor/<name>)
 	// locked is the lock that installs this project's dependencies: its own,
 	// else that of a project listing it as a local source, else an
 	// ancestor's.
-	locked []*dep
+	locked []*dependency
 }
 
 type resolver struct {
@@ -34,23 +34,23 @@ type resolver struct {
 	exists   sync.Map   // repository-relative path -> bool, for what scan does not list
 }
 
-func readFile(abs string) []byte {
-	st, err := os.Stat(abs)
-	if err != nil || st.IsDir() || st.Size() > lang.MaxParseSize {
+func readFile(absolute string) []byte {
+	fileInfo, err := os.Stat(absolute)
+	if err != nil || fileInfo.IsDir() || fileInfo.Size() > lang.MaxParseSize {
 		return nil
 	}
-	b, _ := os.ReadFile(abs)
+	b, _ := os.ReadFile(absolute)
 	return b
 }
 
 // Implements: REQ-JSONNET-004, REQ-JSONNET-005, REQ-JSONNET-010
 func newResolver(root string, all []*scan.File, getenv func(string) string) *resolver {
 	r := &resolver{root: root, files: map[string]bool{}, projects: map[string]*project{}}
-	proj := func(dir string) *project {
-		p := r.projects[dir]
+	projectAt := func(directory string) *project {
+		p := r.projects[directory]
 		if p == nil {
-			p = &project{dir: dir, legacy: true}
-			r.projects[dir] = p
+			p = &project{directory: directory, legacy: true}
+			r.projects[directory] = p
 		}
 		return p
 	}
@@ -61,70 +61,70 @@ func newResolver(root string, all []*scan.File, getenv func(string) string) *res
 		}
 		switch path.Base(f.Path) {
 		case "jsonnetfile.json":
-			p := proj(path.Dir(f.Path))
-			p.deps, p.legacy = readJsonnetfile(readFile(f.Abs))
+			p := projectAt(path.Dir(f.Path))
+			p.dependencies, p.legacy = readJsonnetfile(readFile(f.AbsolutePath))
 		case "jsonnetfile.lock.json":
-			proj(path.Dir(f.Path)).lock, _ = readJsonnetfile(readFile(f.Abs))
+			projectAt(path.Dir(f.Path)).lock, _ = readJsonnetfile(readFile(f.AbsolutePath))
 		}
 	}
-	for dir, p := range r.projects {
+	for directory, p := range r.projects {
 		// A lock git ignores is still what jb installed.
-		if p.lock == nil && !r.files[path.Join(dir, "jsonnetfile.lock.json")] {
-			p.lock, _ = readJsonnetfile(readFile(filepath.Join(root, filepath.FromSlash(dir), "jsonnetfile.lock.json")))
+		if p.lock == nil && !r.files[path.Join(directory, "jsonnetfile.lock.json")] {
+			p.lock, _ = readJsonnetfile(readFile(filepath.Join(root, filepath.FromSlash(directory), "jsonnetfile.lock.json")))
 		}
 		r.order = append(r.order, p)
 	}
 	sort.Slice(r.order, func(i, j int) bool {
-		di, dj := depth(r.order[i].dir), depth(r.order[j].dir)
-		if di != dj {
-			return di < dj
+		depthI, depthJ := depth(r.order[i].directory), depth(r.order[j].directory)
+		if depthI != depthJ {
+			return depthI < depthJ
 		}
-		return r.order[i].dir < r.order[j].dir
+		return r.order[i].directory < r.order[j].directory
 	})
 	for _, p := range r.order {
 		p.locked = p.lock
 		for _, q := range r.order {
-			for _, d := range q.deps {
-				if len(p.locked) == 0 && d.local() && len(q.lock) > 0 && path.Join(q.dir, d.dir) == p.dir {
+			for _, d := range q.dependencies {
+				if len(p.locked) == 0 && d.local() && len(q.lock) > 0 && path.Join(q.directory, d.directory) == p.directory {
 					p.locked = q.lock
 				}
 			}
 		}
-		for d := p.dir; len(p.locked) == 0 && d != "."; {
+		for d := p.directory; len(p.locked) == 0 && d != "."; {
 			d = path.Dir(d)
 			if a := r.projects[d]; a != nil {
 				p.locked = a.lock
 			}
 		}
 	}
-	absRoot, _ := filepath.Abs(root)
+	absoluteRoot, _ := filepath.Abs(root)
 	for _, e := range filepath.SplitList(getenv("JSONNET_PATH")) {
 		if e == "" {
 			continue
 		}
 		if !filepath.IsAbs(e) {
-			e = filepath.Join(absRoot, e)
+			e = filepath.Join(absoluteRoot, e)
 		}
-		if rel, err := filepath.Rel(absRoot, e); err == nil && !strings.HasPrefix(filepath.ToSlash(rel), "../") && rel != ".." {
-			r.jpath = append(r.jpath, filepath.ToSlash(rel))
+		if relative, err := filepath.Rel(absoluteRoot, e); err == nil && !strings.HasPrefix(filepath.ToSlash(relative), "../") && relative != ".." {
+			r.jpath = append(r.jpath, filepath.ToSlash(relative))
 		}
 	}
 	return r
 }
 
-func depth(dir string) int {
-	if dir == "." {
+func depth(directory string) int {
+	if directory == "." {
 		return 0
 	}
-	return strings.Count(dir, "/") + 1
+	return strings.Count(directory, "/") + 1
 }
 
-// within reports whether p lies in dir, returning the rest.
-func within(p, dir string) (string, bool) {
-	if dir == "." {
+// within reports whether p lies in directory, returning the rest.
+func within(p, directory string) (string, bool) {
+	if directory == "." {
 		return p, true
 	}
-	return strings.CutPrefix(p, dir+"/")
+	return strings.CutPrefix(p, directory+"/")
 }
 
 // scope lists the projects whose directory holds file, nearest first.
@@ -149,48 +149,48 @@ func (r *resolver) present(p string) bool {
 	if v, ok := r.exists.Load(p); ok {
 		return v.(bool)
 	}
-	st, err := os.Stat(filepath.Join(r.root, filepath.FromSlash(p)))
-	ok := err == nil && !st.IsDir()
+	fileInfo, err := os.Stat(filepath.Join(r.root, filepath.FromSlash(p)))
+	ok := err == nil && !fileInfo.IsDir()
 	r.exists.Store(p, ok)
 	return ok
 }
 
 // Implements: REQ-JSONNET-004, REQ-JSONNET-005, REQ-JSONNET-006
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	switch imp.Name {
-	case kindDep, kindLock:
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	switch rawImport.Name {
+	case kindDependency, kindLock:
 		p := r.projects[path.Dir(file)]
 		if p == nil {
 			return lang.Target{}
 		}
-		list := p.deps
-		if imp.Name == kindLock {
+		list := p.dependencies
+		if rawImport.Name == kindLock {
 			list = p.lock
 		}
 		for _, d := range list {
-			if d.pkg() == imp.Module {
+			if d.packageName() == rawImport.Module {
 				return r.target(p, d)
 			}
 		}
 		return lang.Target{}
 	}
-	return r.source(file, imp.Module)
+	return r.source(file, rawImport.Module)
 }
 
 // source resolves an import as jsonnet does - relative to the importing file,
 // then along the library path: each governing project's vendor/ and lib/,
 // then JSONNET_PATH - and, when nothing is installed, by the manifests.
-func (r *resolver) source(file, mod string) lang.Target {
-	if mod == "" || strings.HasPrefix(mod, "/") {
+func (r *resolver) source(file, module string) lang.Target {
+	if module == "" || strings.HasPrefix(module, "/") {
 		return lang.Target{}
 	}
 	chain := r.scope(file)
-	candidates := []string{path.Join(path.Dir(file), mod)}
+	candidates := []string{path.Join(path.Dir(file), module)}
 	for _, p := range chain {
-		candidates = append(candidates, path.Join(p.dir, "vendor", mod), path.Join(p.dir, "lib", mod))
+		candidates = append(candidates, path.Join(p.directory, "vendor", module), path.Join(p.directory, "lib", module))
 	}
 	for _, j := range r.jpath {
-		candidates = append(candidates, path.Join(j, mod))
+		candidates = append(candidates, path.Join(j, module))
 	}
 	for _, c := range candidates {
 		if c == ".." || strings.HasPrefix(c, "../") {
@@ -208,10 +208,10 @@ func (r *resolver) source(file, mod string) lang.Target {
 	}
 	// A path under an ancestor of the file: jsonnet run with -J at a parent
 	// directory (mimir's tests import mimir/ from operations/).
-	if !strings.HasPrefix(mod, "./") && !strings.HasPrefix(mod, "../") {
+	if !strings.HasPrefix(module, "./") && !strings.HasPrefix(module, "../") {
 		for d := path.Dir(file); d != "."; {
 			d = path.Dir(d)
-			if c := path.Join(d, mod); r.files[c] {
+			if c := path.Join(d, module); r.files[c] {
 				return lang.Target{Local: c}
 			}
 		}
@@ -220,9 +220,9 @@ func (r *resolver) source(file, mod string) lang.Target {
 	// through another project of the repository) every project's.
 	for _, list := range [][]*project{chain, r.order} {
 		for _, p := range list {
-			if d, rest, ok := p.match(mod); ok {
+			if d, rest, ok := p.match(module); ok {
 				if d.local() {
-					if f := path.Join(p.dir, d.dir, rest); r.files[f] {
+					if f := path.Join(p.directory, d.directory, rest); r.files[f] {
 						return lang.Target{Local: f}
 					}
 					return lang.Target{}
@@ -231,10 +231,10 @@ func (r *resolver) source(file, mod string) lang.Target {
 			}
 		}
 	}
-	if strings.HasPrefix(mod, "./") || strings.HasPrefix(mod, "../") {
+	if strings.HasPrefix(module, "./") || strings.HasPrefix(module, "../") {
 		return lang.Target{} // a relative file that is not there
 	}
-	return guess(mod)
+	return guess(module)
 }
 
 // inVendor reports whether c lies in a project's vendor/ (the nearest).
@@ -242,7 +242,7 @@ func (r *resolver) inVendor(c string) (*project, string, bool) {
 	var best *project
 	rest := ""
 	for _, p := range r.order {
-		if x, ok := within(c, path.Join(p.dir, "vendor")); ok {
+		if x, ok := within(c, path.Join(p.directory, "vendor")); ok {
 			best, rest = p, x
 		}
 	}
@@ -253,9 +253,9 @@ func (r *resolver) inVendor(c string) (*project, string, bool) {
 // that installed it (full path or legacy link); a directory no manifest
 // lists is an unresolved package.
 func (r *resolver) vendored(p *project, rest string) lang.Target {
-	if d, sub, ok := p.match(rest); ok {
+	if d, subdirectory, ok := p.match(rest); ok {
 		if d.local() {
-			return lang.Target{Local: path.Join(p.dir, d.dir, sub)}
+			return lang.Target{Local: path.Join(p.directory, d.directory, subdirectory)}
 		}
 		return r.target(p, d)
 	}
@@ -269,15 +269,15 @@ func (r *resolver) vendored(p *project, rest string) lang.Target {
 // match finds the dependency an import path names: the longest full-path
 // prefix (host/owner/repo/subdir), else a legacy name as the first element.
 // jsonnetfile.json is asked before the lock (which adds transitive ones).
-func (p *project) match(mod string) (*dep, string, bool) {
-	for _, list := range [][]*dep{p.deps, p.locked} {
-		var best *dep
+func (p *project) match(module string) (*dependency, string, bool) {
+	for _, list := range [][]*dependency{p.dependencies, p.locked} {
+		var best *dependency
 		rest := ""
 		for _, d := range list {
 			if d.local() {
 				continue
 			}
-			if x, ok := within(mod, d.pkg()); ok && (best == nil || len(d.pkg()) > len(best.pkg())) {
+			if x, ok := within(module, d.packageName()); ok && (best == nil || len(d.packageName()) > len(best.packageName())) {
 				best, rest = d, x
 			}
 		}
@@ -288,8 +288,8 @@ func (p *project) match(mod string) (*dep, string, bool) {
 	if !p.legacy {
 		return nil, "", false
 	}
-	first, rest, _ := strings.Cut(mod, "/")
-	for _, list := range [][]*dep{p.deps, p.locked} {
+	first, rest, _ := strings.Cut(module, "/")
+	for _, list := range [][]*dependency{p.dependencies, p.locked} {
 		for _, d := range list {
 			if d.legacy() == first {
 				return d, rest, true
@@ -304,21 +304,21 @@ var forges = map[string]bool{"github.com": true, "gitlab.com": true, "bitbucket.
 // guess names the package of an import no manifest explains: a full path by
 // its repository (host/owner/repo on a forge, else host/first), a legacy
 // path by its first element. A bare file name is dropped.
-func guess(mod string) lang.Target {
-	segments := strings.Split(mod, "/")
+func guess(module string) lang.Target {
+	segments := strings.Split(module, "/")
 	if len(segments) < 2 {
 		return lang.Target{}
 	}
-	dirs := segments[:len(segments)-1]
-	name := dirs[0]
-	if strings.Contains(dirs[0], ".") {
+	directories := segments[:len(segments)-1]
+	name := directories[0]
+	if strings.Contains(directories[0], ".") {
 		n := 2
-		if forges[dirs[0]] {
+		if forges[directories[0]] {
 			n = 3
 		}
-		name = strings.ToLower(dirs[0]) + strings.TrimPrefix(strings.Join(dirs[:min(n, len(dirs))], "/"), dirs[0])
+		name = strings.ToLower(directories[0]) + strings.TrimPrefix(strings.Join(directories[:min(n, len(directories))], "/"), directories[0])
 	}
-	return lang.Target{Ecosystem: ecoJB, Package: name, Unresolved: true}
+	return lang.Target{Ecosystem: ecosystemJB, Package: name, Unresolved: true}
 }
 
 // target is a git dependency of p: the lock's version pins (the declared one
@@ -326,24 +326,24 @@ func guess(mod string) lang.Target {
 // pinned nor floating, and a branch or nothing floats.
 //
 // Implements: REQ-JSONNET-006
-func (r *resolver) target(p *project, d *dep) lang.Target {
+func (r *resolver) target(p *project, d *dependency) lang.Target {
 	if d.local() {
-		return lang.Target{Local: path.Join(p.dir, d.dir)}
+		return lang.Target{Local: path.Join(p.directory, d.directory)}
 	}
-	name := d.pkg()
-	t := lang.Target{Ecosystem: ecoJB, Package: name}
+	name := d.packageName()
+	t := lang.Target{Ecosystem: ecosystemJB, Package: name}
 	if !public(d.remote) {
 		t.Origin = d.remote
 	}
 	declared := d
-	for _, x := range p.deps {
-		if x.pkg() == name {
+	for _, x := range p.dependencies {
+		if x.packageName() == name {
 			declared = x
 			break
 		}
 	}
 	for _, l := range p.locked {
-		if l.pkg() == name && l.version != "" {
+		if l.packageName() == name && l.version != "" {
 			t.Version, t.Pinned = l.version, true
 			if declared != l && declared.version != "" && declared.version != l.version {
 				t.Requested = declared.version
@@ -364,7 +364,7 @@ func (r *resolver) target(p *project, d *dep) lang.Target {
 }
 
 func public(url string) bool {
-	host, _, _ := strings.Cut(lang.RepoName(url), "/")
+	host, _, _ := strings.Cut(lang.RepositoryName(url), "/")
 	return forges[host]
 }
 
@@ -374,12 +374,12 @@ func public(url string) bool {
 //
 // Implements: REQ-JSONNET-007
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
-	p, deps := r.installed(t)
+	p, dependencies := r.installed(t)
 	if p == nil {
 		return nil
 	}
 	var out []lang.Target
-	for _, d := range deps {
+	for _, d := range dependencies {
 		if !d.local() {
 			out = append(out, r.target(p, d))
 		}
@@ -387,15 +387,15 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 	return out
 }
 
-func (r *resolver) installed(t lang.Target) (*project, []*dep) {
-	if t.Ecosystem != ecoJB || t.Package == "" || strings.Contains(t.Package, "..") {
+func (r *resolver) installed(t lang.Target) (*project, []*dependency) {
+	if t.Ecosystem != ecosystemJB || t.Package == "" || strings.Contains(t.Package, "..") {
 		return nil, nil
 	}
 	for _, p := range r.order {
-		src := readFile(filepath.Join(r.root, filepath.FromSlash(p.dir), "vendor", filepath.FromSlash(t.Package), "jsonnetfile.json"))
-		if src != nil {
-			deps, _ := readJsonnetfile(src)
-			return p, deps
+		source := readFile(filepath.Join(r.root, filepath.FromSlash(p.directory), "vendor", filepath.FromSlash(t.Package), "jsonnetfile.json"))
+		if source != nil {
+			dependencies, _ := readJsonnetfile(source)
+			return p, dependencies
 		}
 	}
 	return nil, nil

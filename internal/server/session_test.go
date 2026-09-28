@@ -12,30 +12,30 @@ import (
 // send performs one state-changing request, with the header the guard insists on.
 func send(t *testing.T, c *http.Client, method, url, body string) int {
 	t.Helper()
-	req, _ := http.NewRequest(method, url, strings.NewReader(body))
-	req.Header.Set(requestHeader, "1")
-	res, err := c.Do(req)
+	request, _ := http.NewRequest(method, url, strings.NewReader(body))
+	request.Header.Set(requestHeader, "1")
+	response, err := c.Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
-	res.Body.Close()
-	return res.StatusCode
+	response.Body.Close()
+	return response.StatusCode
 }
 
 // stream reads the event names and payloads off an open /api/events connection.
 func stream(t *testing.T, c *http.Client, base string) func() string {
 	t.Helper()
-	res, err := c.Get(base + "/api/events")
+	response, err := c.Get(base + "/api/events")
 	if err != nil {
 		t.Fatal(err)
 	}
-	t.Cleanup(func() { res.Body.Close() })
+	t.Cleanup(func() { response.Body.Close() })
 	lines := make(chan string, 8)
 	go func() {
-		sc := bufio.NewScanner(res.Body)
+		scanner := bufio.NewScanner(response.Body)
 		name := ""
-		for sc.Scan() {
-			line := sc.Text()
+		for scanner.Scan() {
+			line := scanner.Text()
 			if rest, ok := strings.CutPrefix(line, "event: "); ok {
 				name = rest
 			}
@@ -173,14 +173,14 @@ func TestSessionWritesNeedTheRequestHeader(t *testing.T) {
 		{http.MethodPost, "/api/selection", `{"id":"f:a.go"}`},
 		{http.MethodPut, "/api/backpack", `{"items":[]}`},
 	} {
-		req, _ := http.NewRequest(call.method, base+call.path, strings.NewReader(call.body))
-		res, err := c.Do(req)
+		request, _ := http.NewRequest(call.method, base+call.path, strings.NewReader(call.body))
+		response, err := c.Do(request)
 		if err != nil {
 			t.Fatal(err)
 		}
-		res.Body.Close()
-		if res.StatusCode != http.StatusForbidden {
-			t.Errorf("%s %s without the header: %d", call.method, call.path, res.StatusCode)
+		response.Body.Close()
+		if response.StatusCode != http.StatusForbidden {
+			t.Errorf("%s %s without the header: %d", call.method, call.path, response.StatusCode)
 		}
 	}
 }

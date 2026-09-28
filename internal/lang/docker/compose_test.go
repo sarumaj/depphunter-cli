@@ -78,8 +78,8 @@ services:
 
 // Verifies: REQ-DOCKER-003, REQ-DOCKER-009
 func TestComposeFilesTogether(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, langtest.Write(t, composeProject))["compose.yaml"]
-	langtest.CheckImports(t, res, map[string]lang.Target{
+	result := langtest.Analyze(t, Plugin{}, langtest.Write(t, composeProject))["compose.yaml"]
+	langtest.CheckImports(t, result, map[string]lang.Target{
 		// Included files are edges; one no Compose name claims is read here, with
 		// its own directory's .env file.
 		"include: infra/db.yml":                    {Local: "infra/db.yml"},
@@ -111,12 +111,12 @@ func TestComposeFilesTogether(t *testing.T) {
 		"image: debian:12":          image("debian", "12"),
 	})
 	lines := map[int]bool{}
-	for _, im := range res.Imports {
-		if im.Spec == "image: busybox:1.36" {
-			lines[im.Line] = true
+	for _, imported := range result.Imports {
+		if imported.Spec == "image: busybox:1.36" {
+			lines[imported.Line] = true
 		}
-		if im.Spec == "image: acme/web:1" || strings.Contains(im.Spec, "oci://") {
-			t.Errorf("reported: %s", im.Spec)
+		if imported.Spec == "image: acme/web:1" || strings.Contains(imported.Spec, "oci://") {
+			t.Errorf("reported: %s", imported.Spec)
 		}
 	}
 	if !reflect.DeepEqual(lines, map[int]bool{18: true, 20: true}) {
@@ -130,7 +130,7 @@ func TestComposeFilesTogether(t *testing.T) {
 // resolution report, even where it resolves a reference.
 //
 // Verifies: REQ-DOCKER-003
-func TestEnvValuesNeverShown(t *testing.T) {
+func TestEnvironmentValuesNeverShown(t *testing.T) {
 	files := map[string]string{}
 	for k, v := range composeProject {
 		files[k] = v
@@ -138,33 +138,33 @@ func TestEnvValuesNeverShown(t *testing.T) {
 	files["compose.yaml"] += "  leaky:\n    image: ${DB_PASSWORD}/x:${DB_PASSWORD}\n  tagged:\n    image: app:${DB_PASSWORD}\n"
 	root := langtest.Write(t, files)
 	var out bytes.Buffer
-	res := langtest.Analyze(t, Plugin{}, root)
-	if err := json.NewEncoder(&out).Encode(res); err != nil {
+	results := langtest.Analyze(t, Plugin{}, root)
+	if err := json.NewEncoder(&out).Encode(results); err != nil {
 		t.Fatal(err)
 	}
-	rep := trace.New(-1, false, nil, nil)
+	report := trace.New(-1, false, nil, nil)
 	g, _, err := analysis.Run(context.Background(), root, analysis.Options{
-		Plugins: []lang.Plugin{Plugin{}}, ResolveDepth: -1, Trace: rep,
+		Plugins: []lang.Plugin{Plugin{}}, ResolveDepth: -1, Trace: report,
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, v := range []any{g, rep} {
+	for _, v := range []any{g, report} {
 		if err := json.NewEncoder(&out).Encode(v); err != nil {
 			t.Fatal(err)
 		}
 	}
-	if err := rep.Text(&out); err != nil {
+	if err := report.Text(&out); err != nil {
 		t.Fatal(err)
 	}
-	if err := rep.Markdown(&out); err != nil {
+	if err := report.Markdown(&out); err != nil {
 		t.Fatal(err)
 	}
 	if strings.Contains(out.String(), secret) {
 		t.Errorf("an .env value was shown:\n%s", out.String())
 	}
 	// A reference naming a credential is left as written: such values are not read.
-	got := langtest.Imports(t, res["compose.yaml"])
+	got := langtest.Imports(t, results["compose.yaml"])
 	for spec, want := range map[string]lang.Target{
 		"image: ${DB_PASSWORD}/x:${DB_PASSWORD}": {Ecosystem: "oci", Package: "${DB_PASSWORD}/x:${DB_PASSWORD}", Unresolved: true},
 		"image: app:${DB_PASSWORD}":              image("app", "${DB_PASSWORD}"),
@@ -196,21 +196,21 @@ func TestComposeGarbage(t *testing.T) {
 		".env":    "\x00\xff=\n==\n=x\nTAG\n'broken=\"x\nA=\"unterminated\nB='\n",
 		"bad.yml": ":\n\t- [\x00",
 	})
-	res := langtest.Analyze(t, Plugin{}, root)["compose.yaml"]
-	langtest.CheckImports(t, res, map[string]lang.Target{
+	result := langtest.Analyze(t, Plugin{}, root)["compose.yaml"]
+	langtest.CheckImports(t, result, map[string]lang.Target{
 		"include: bad.yml":    {Local: "bad.yml"},
 		"extends: bad.yml":    {Local: "bad.yml"},
 		"include: 7":          {}, // a file named 7, which the repository lacks
 		"image: nginx:${TAG}": image("nginx", "${TAG}"),
 	})
-	for _, src := range []string{"\x00\xff", "include: 7\nservices: [1]\n", "include:\n  - [a]\n"} {
-		extractCompose([]byte(src))
+	for _, source := range []string{"\x00\xff", "include: 7\nservices: [1]\n", "include:\n  - [a]\n"} {
+		extractCompose([]byte(source))
 	}
-	if ex := extractCompose([]byte("include: base.yml\n")); len(ex.Imports) != 1 || ex.Imports[0].Module != "base.yml" {
-		t.Errorf("an include: of one path: %+v", ex.Imports)
+	if extraction := extractCompose([]byte("include: base.yml\n")); len(extraction.Imports) != 1 || extraction.Imports[0].Module != "base.yml" {
+		t.Errorf("an include: of one path: %+v", extraction.Imports)
 	}
-	if vars := readEnv([]byte("A=1\nB=${A}-x\nC='${A}'\nD=\"${A} #\" # c\nE=$$\nexport F = 2\nG=x # c\n")); vars["B"] != "1-x" || vars["G"] != "x" ||
-		vars["C"] != "${A}" || vars["D"] != "1 #" || vars["E"] != "$" || vars["F"] != "2" {
-		t.Errorf("readEnv: %v", vars)
+	if variables := readEnvironment([]byte("A=1\nB=${A}-x\nC='${A}'\nD=\"${A} #\" # c\nE=$$\nexport F = 2\nG=x # c\n")); variables["B"] != "1-x" || variables["G"] != "x" ||
+		variables["C"] != "${A}" || variables["D"] != "1 #" || variables["E"] != "$" || variables["F"] != "2" {
+		t.Errorf("readEnv: %v", variables)
 	}
 }

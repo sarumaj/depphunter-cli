@@ -10,24 +10,24 @@ import (
 // A path is evaluated into a string that may start with one of these markers, for the
 // directory it is relative to. The markers never appear in a file name.
 const (
-	mDir  = "\x01" // the script's own directory
-	mRoot = "\x02" // the repository root (git rev-parse --show-toplevel)
-	mSelf = "\x03" // the script itself ($0, ${BASH_SOURCE[0]})
-	mCwd  = "\x04" // the working directory ($PWD, $(pwd))
-	mAny  = "\x05" // a variable set outside the file ($PLUGIN_PATH/x/functions)
+	mDirectory        = "\x01" // the script's own directory
+	mRoot             = "\x02" // the repository root (git rev-parse --show-toplevel)
+	mSelf             = "\x03" // the script itself ($0, ${BASH_SOURCE[0]})
+	mWorkingDirectory = "\x04" // the working directory ($PWD, $(pwd))
+	mAny              = "\x05" // a variable set outside the file ($PLUGIN_PATH/x/functions)
 )
 
-const markers = mDir + mRoot + mSelf + mCwd + mAny
+const markers = mDirectory + mRoot + mSelf + mWorkingDirectory + mAny
 
 // extractor turns the parser's commands into imports and symbols, in source order,
 // keeping what variables hold so that "$SCRIPT_DIR/lib.sh" can be read.
 type extractor struct {
-	ext     string
-	vars    map[string]string // evaluated values; a variable whose value is unknown is absent
-	symbols lang.SymbolSet
-	defined map[string]bool
-	imports []lang.RawImport
-	specs   map[string]bool
+	extension string
+	variables map[string]string // evaluated values; a variable whose value is unknown is absent
+	symbols   lang.SymbolSet
+	defined   map[string]bool
+	imports   []lang.RawImport
+	specs     map[string]bool
 }
 
 func (x *extractor) function(name, kind string, line int) {
@@ -54,20 +54,20 @@ func (x *extractor) add(spec, module, kind string, line int) {
 	x.imports = append(x.imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
 }
 
-// extract reads a shell script. ext is the file's lower-cased extension, which
+// extract reads a shell script. extension is the file's lower-cased extension, which
 // decides whether direnv's and bats' commands are read.
-func extract(src []byte, ext string) *lang.Extraction {
-	src = trimBOM(src)
-	x := &extractor{ext: ext, vars: map[string]string{}, defined: map[string]bool{}, specs: map[string]bool{}}
-	newParser(src, 1, x).script()
+func extract(source []byte, extension string) *lang.Extraction {
+	source = trimBOM(source)
+	x := &extractor{extension: extension, variables: map[string]string{}, defined: map[string]bool{}, specs: map[string]bool{}}
+	newParser(source, 1, x).script()
 	return &lang.Extraction{Imports: x.imports, Symbols: x.symbols.List()}
 }
 
-func trimBOM(src []byte) []byte {
-	if len(src) >= 3 && src[0] == 0xEF && src[1] == 0xBB && src[2] == 0xBF {
-		return src[3:]
+func trimBOM(source []byte) []byte {
+	if len(source) >= 3 && source[0] == 0xEF && source[1] == 0xBB && source[2] == 0xBF {
+		return source[3:]
 	}
-	return src
+	return source
 }
 
 // raw joins words as written, for an import's spec.
@@ -103,11 +103,11 @@ func upper(s string) bool {
 //
 // Implements: REQ-SHELL-003, REQ-SHELL-004, REQ-SHELL-005, REQ-SHELL-006, REQ-SHELL-010
 func (x *extractor) command(c *command) {
-	top := !c.inFunc && !c.sub
+	top := !c.inFunction && !c.inSubstitution
 	if len(c.words) == 0 {
 		for _, a := range c.assigns {
-			n, val, _ := splitAssign(a)
-			x.assign(n, val)
+			n, value, _ := splitAssign(a)
+			x.assign(n, value)
 			if top && upper(n) && n != "IFS" {
 				x.symbol(n, "var", a.line)
 			}
@@ -118,32 +118,32 @@ func (x *extractor) command(c *command) {
 	if len(words) == 0 {
 		return
 	}
-	cmd := name(words[0])
-	args := words[1:]
+	command := name(words[0])
+	arguments := words[1:]
 	switch {
-	case cmd == "source" || cmd == ".":
-		if len(args) > 0 {
-			x.path(raw(words[:2]), args[0], kindSource, c.line)
+	case command == "source" || command == ".":
+		if len(arguments) > 0 {
+			x.path(raw(words[:2]), arguments[0], kindSource, c.line)
 		}
 		return
-	case cmd == "load" && x.ext == ".bats":
-		if len(args) > 0 {
-			x.path(raw(words[:2]), args[0], kindBats, c.line)
+	case command == "load" && x.extension == ".bats":
+		if len(arguments) > 0 {
+			x.path(raw(words[:2]), arguments[0], kindBats, c.line)
 		}
 		return
-	case x.ext == ".envrc" && x.direnv(cmd, words, c.line):
+	case x.extension == ".envrc" && x.direnv(command, words, c.line):
 		return
-	case cmd == "alias":
-		for _, a := range args {
+	case command == "alias":
+		for _, a := range arguments {
 			if s, ok := a.text(); ok && !strings.HasPrefix(s, "-") {
-				if n, _, ok := strings.Cut(s, "="); ok && !c.sub {
+				if n, _, ok := strings.Cut(s, "="); ok && !c.inSubstitution {
 					x.symbol(n, "alias", a.line)
 				}
 			}
 		}
 		return
-	case cmd == "export" || cmd == "readonly" || cmd == "declare" || cmd == "typeset" || cmd == "local":
-		x.declare(cmd, args, top)
+	case command == "export" || command == "readonly" || command == "declare" || command == "typeset" || command == "local":
+		x.declare(command, arguments, top)
 		return
 	}
 	if x.install(words, c.line) {
@@ -153,11 +153,11 @@ func (x *extractor) command(c *command) {
 }
 
 // assign records what a variable now holds.
-func (x *extractor) assign(n string, val *word) {
-	if v, ok := x.eval(val); ok {
-		x.vars[n] = v
+func (x *extractor) assign(n string, value *word) {
+	if v, ok := x.eval(value); ok {
+		x.variables[n] = v
 	} else {
-		delete(x.vars, n)
+		delete(x.variables, n)
 	}
 }
 
@@ -166,9 +166,9 @@ func (x *extractor) assign(n string, val *word) {
 // ones and upper-case ones become symbols.
 //
 // Implements: REQ-SHELL-003
-func (x *extractor) declare(cmd string, args []*word, top bool) {
+func (x *extractor) declare(command string, arguments []*word, top bool) {
 	flags := ""
-	for _, a := range args {
+	for _, a := range arguments {
 		s, _ := a.text()
 		if strings.HasPrefix(s, "-") || strings.HasPrefix(s, "+") {
 			if strings.HasPrefix(s, "-") {
@@ -179,19 +179,19 @@ func (x *extractor) declare(cmd string, args []*word, top bool) {
 		if strings.ContainsAny(flags, "fF") {
 			return // declare -f: functions, not variables
 		}
-		n, val, ok := splitAssign(a)
+		n, value, ok := splitAssign(a)
 		if ok {
-			x.assign(n, val)
+			x.assign(n, value)
 		} else if n = s; !validName(n) {
 			continue
 		}
-		if !top || cmd == "local" {
+		if !top || command == "local" {
 			continue
 		}
 		switch {
-		case cmd == "readonly" || strings.ContainsRune(flags, 'r'):
+		case command == "readonly" || strings.ContainsRune(flags, 'r'):
 			x.symbol(n, "const", a.line)
-		case cmd == "export" || strings.ContainsRune(flags, 'x'):
+		case command == "export" || strings.ContainsRune(flags, 'x'):
 			x.symbol(n, "var", a.line)
 		case ok && upper(n) && n != "IFS":
 			x.symbol(n, "var", a.line)
@@ -224,7 +224,7 @@ func (x *extractor) unwrap(words []*word) []*word {
 			valued = map[string]bool{"-u": true, "-g": true, "-C": true, "-D": true, "-h": true, "-p": true, "-r": true, "-t": true, "-U": true}
 		case "nohup", "time", "stdbuf":
 		case "run": // bats: run [-N] [!] command
-			if x.ext != ".bats" {
+			if x.extension != ".bats" {
 				return words
 			}
 			if len(words) > 1 && name(words[1]) == "!" {
@@ -298,9 +298,9 @@ func interpreter(n string) string {
 // Implements: REQ-SHELL-005
 func (x *extractor) invoke(words []*word, line int) {
 	if in := interpreter(name(words[0])); in != "" {
-		opts := interpreters[in]
-		valued := strings.Fields(opts.valued)
-		stop := strings.Fields(opts.stop)
+		options := interpreters[in]
+		valued := strings.Fields(options.valued)
+		stop := strings.Fields(options.stop)
 		for i := 1; i < len(words); i++ {
 			s := name(words[i])
 			switch {
@@ -342,8 +342,8 @@ func contains(list []string, s string) bool {
 // direnv reads direnv's stdlib commands in an .envrc.
 //
 // Implements: REQ-SHELL-006
-func (x *extractor) direnv(cmd string, words []*word, line int) bool {
-	switch cmd {
+func (x *extractor) direnv(command string, words []*word, line int) bool {
+	switch command {
 	case "source_env", "source_env_if_exists":
 		if len(words) > 1 {
 			x.path(raw(words[:2]), words[1], kindEnvrc, line)
@@ -361,7 +361,7 @@ func (x *extractor) direnv(cmd string, words []*word, line int) bool {
 		if len(words) > 1 {
 			x.path(raw(words[:2]), words[1], kindDotenv, line)
 		} else {
-			x.add(cmd, "dir:.env", kindDotenv, line)
+			x.add(command, "dir:.env", kindDotenv, line)
 		}
 	default:
 		return false
@@ -391,11 +391,11 @@ func (x *extractor) module(w *word) (string, bool) {
 	}
 	prefix := "cwd:"
 	switch v[:1] {
-	case mDir:
+	case mDirectory:
 		prefix = "dir:"
 	case mRoot:
 		prefix = "root:"
-	case mCwd:
+	case mWorkingDirectory:
 	case mAny:
 		// Only a path with directories below the variable is worth looking up by
 		// its end: "$X/lib/functions", not "$X/functions".
@@ -431,26 +431,26 @@ func (x *extractor) eval(w *word) (string, bool) {
 	var b strings.Builder
 	parts := w.parts
 	for i := 0; i < len(parts); i++ {
-		pt := parts[i]
-		switch pt.kind {
-		case pLit:
-			if i == 0 && !pt.quoted && strings.HasPrefix(pt.text, "~") {
+		piece := parts[i]
+		switch piece.kind {
+		case pLiteral:
+			if i == 0 && !piece.quoted && strings.HasPrefix(piece.text, "~") {
 				return "", false // the home directory
 			}
-			b.WriteString(pt.text)
-		case pParam:
-			v, ok := x.param(pt.text)
-			if !ok && i == 0 && validName(pt.text) && pt.text != "HOME" {
+			b.WriteString(piece.text)
+		case pParameter:
+			v, ok := x.parameter(piece.text)
+			if !ok && i == 0 && validName(piece.text) && piece.text != "HOME" {
 				v, ok = mAny, true // set by whatever runs the script
 			}
 			if !ok {
 				return "", false
 			}
 			// zsh: $0:A:h is the script's directory.
-			if v == mSelf && i+1 < len(parts) && parts[i+1].kind == pLit {
+			if v == mSelf && i+1 < len(parts) && parts[i+1].kind == pLiteral {
 				for _, m := range []string{":A:h", ":a:h", ":h"} {
 					if strings.HasPrefix(parts[i+1].text, m) {
-						v = mDir
+						v = mDirectory
 						parts = append([]part(nil), parts...)
 						parts[i+1].text = strings.TrimPrefix(parts[i+1].text, m)
 						break
@@ -459,7 +459,7 @@ func (x *extractor) eval(w *word) (string, bool) {
 			}
 			b.WriteString(v)
 		case pSub:
-			v, ok := x.subst(pt.cmds)
+			v, ok := x.subst(piece.commands)
 			if !ok {
 				return "", false
 			}
@@ -481,22 +481,22 @@ var selfNames = map[string]bool{
 	"${(%):-%x}": true, "${(%):-%N}": true, "BATS_TEST_FILENAME": true,
 }
 
-// param evaluates the inside of ${...} (or a plain $name).
-func (x *extractor) param(inner string) (string, bool) {
-	n, op := splitParam(inner)
+// parameter evaluates the inside of ${...} (or a plain $name).
+func (x *extractor) parameter(inner string) (string, bool) {
+	n, operator := splitParameter(inner)
 	var v string
 	known := true
 	switch {
 	case selfNames[n]:
 		v = mSelf
 	case n == "BATS_TEST_DIRNAME":
-		v = mDir
+		v = mDirectory
 	case n == "HOME":
 		return "", false
 	case n == "PWD":
-		v = mCwd
+		v = mWorkingDirectory
 	default:
-		v, known = x.vars[n]
+		v, known = x.variables[n]
 		if !known && strings.HasPrefix(n, "(%)") { // a whole zsh prompt expansion
 			if selfNames[inner] {
 				return mSelf, true
@@ -504,21 +504,21 @@ func (x *extractor) param(inner string) (string, bool) {
 			return "", false
 		}
 	}
-	switch op {
+	switch operator {
 	case "", ":a", ":A":
 		return v, known
 	case "%/*", ":h", ":a:h", ":A:h", ":h:a", ":h:A":
 		if !known {
 			return "", false
 		}
-		return dirOf(v)
+		return directoryOf(v)
 	}
 	for _, d := range []string{":-", ":=", "-", "="} {
-		if def, ok := strings.CutPrefix(op, d); ok {
+		if defaultValue, ok := strings.CutPrefix(operator, d); ok {
 			if known && v != "" {
 				return v, true
 			}
-			q := newParser([]byte(def), 1, discard{})
+			q := newParser([]byte(defaultValue), 1, discard{})
 			if w := q.token(); w.kind == tWord {
 				return x.eval(w.w)
 			}
@@ -528,9 +528,9 @@ func (x *extractor) param(inner string) (string, bool) {
 	return "", false
 }
 
-// splitParam splits ${name op} into the name (with an index, or a nested ${...})
+// splitParameter splits ${name op} into the name (with an index, or a nested ${...})
 // and the operator after it.
-func splitParam(inner string) (string, string) {
+func splitParameter(inner string) (string, string) {
 	if strings.HasPrefix(inner, "${") {
 		depth := 0
 		for i := 0; i < len(inner); i++ {
@@ -563,11 +563,11 @@ func splitParam(inner string) (string, string) {
 	return inner[:i], inner[i:]
 }
 
-// dirOf is the directory of an evaluated path.
-func dirOf(v string) (string, bool) {
+// directoryOf is the directory of an evaluated path.
+func directoryOf(v string) (string, bool) {
 	switch {
 	case v == mSelf:
-		return mDir, true
+		return mDirectory, true
 	case v == "":
 		return "", false
 	}
@@ -577,15 +577,15 @@ func dirOf(v string) (string, bool) {
 // subst evaluates a command substitution that computes a directory: dirname,
 // realpath and readlink -f of a known path, "cd DIR && pwd", pwd, and
 // git rev-parse --show-toplevel.
-func (x *extractor) subst(cmds []*command) (string, bool) {
-	if len(cmds) == 0 {
+func (x *extractor) subst(commands []*command) (string, bool) {
+	if len(commands) == 0 {
 		return "", false
 	}
-	first, last := cmds[0], cmds[len(cmds)-1]
+	first, last := commands[0], commands[len(commands)-1]
 	if len(first.words) == 0 || len(last.words) == 0 {
 		return "", false
 	}
-	args := func(c *command) []*word {
+	arguments := func(c *command) []*word {
 		var out []*word
 		for _, w := range c.words[1:] {
 			if s := name(w); !strings.HasPrefix(s, "-") || s == "-" {
@@ -594,20 +594,20 @@ func (x *extractor) subst(cmds []*command) (string, bool) {
 		}
 		return out
 	}
-	cmd := name(first.words[0])
-	if len(cmds) == 1 {
-		a := args(first)
-		switch cmd {
+	command := name(first.words[0])
+	if len(commands) == 1 {
+		a := arguments(first)
+		switch command {
 		case "pwd":
-			return mCwd, true
+			return mWorkingDirectory, true
 		case "dirname":
 			if len(a) == 1 {
 				if v, ok := x.eval(a[0]); ok {
-					return dirOf(v)
+					return directoryOf(v)
 				}
 			}
 		case "realpath", "grealpath", "readlink", "greadlink":
-			if len(a) == 1 && (!strings.HasSuffix(cmd, "readlink") || len(a) < len(first.words)-1) {
+			if len(a) == 1 && (!strings.HasSuffix(command, "readlink") || len(a) < len(first.words)-1) {
 				if v, ok := x.eval(a[0]); ok && v != "" && strings.ContainsAny(v[:1], markers) {
 					return v, true
 				}
@@ -624,8 +624,8 @@ func (x *extractor) subst(cmds []*command) (string, bool) {
 		}
 		return "", false
 	}
-	if cmd == "cd" && name(last.words[0]) == "pwd" {
-		if a := args(first); len(a) == 1 {
+	if command == "cd" && name(last.words[0]) == "pwd" {
+		if a := arguments(first); len(a) == 1 {
 			if v, ok := x.eval(a[0]); ok && v != "" && strings.ContainsAny(v[:1], markers) {
 				return v, true
 			}

@@ -8,15 +8,15 @@ import (
 
 // Import kinds, carried in RawImport.Name.
 const (
-	kindImport = "import" // import a.b.C, a.b.*, a.b.C.field, a.b.C as D
-	kindUsing  = "using"  // using a.b.Tools
-	kindRef    = "ref"    // a qualified name in code: haxe.Json.parse(...)
-	kindLib    = "lib"    // a haxelib library a manifest declares: name[:version]
-	kindLix    = "lix"    // the library a lix haxe_libraries/<name>.hxml pins
-	kindCP     = "cp"     // a class path directory
-	kindMain   = "main"   // a main class or a root module to compile
-	kindHXML   = "hxml"   // another .hxml file an .hxml includes
-	kindFile   = "file"   // a resource or an included project file
+	kindImport    = "import" // import a.b.C, a.b.*, a.b.C.field, a.b.C as D
+	kindUsing     = "using"  // using a.b.Tools
+	kindReference = "ref"    // a qualified name in code: haxe.Json.parse(...)
+	kindLibrary   = "lib"    // a haxelib library a manifest declares: name[:version]
+	kindLix       = "lix"    // the library a lix haxe_libraries/<name>.hxml pins
+	kindCP        = "cp"     // a class path directory
+	kindMain      = "main"   // a main class or a root module to compile
+	kindHXML      = "hxml"   // another .hxml file an .hxml includes
+	kindFile      = "file"   // a resource or an included project file
 )
 
 // kindHx is an import every module has, which the resolver expands into the
@@ -24,9 +24,9 @@ const (
 const kindHx = "import.hx"
 
 const (
-	frameType  = 1 // the body of a class, interface, enum or abstract
-	frameFunc  = 2 // a function body
-	frameOther = 3 // any other braces: blocks, object literals, structures
+	frameType     = 1 // the body of a class, interface, enum or abstract
+	frameFunction = 2 // a function body
+	frameOther    = 3 // any other braces: blocks, object literals, structures
 )
 
 const (
@@ -36,20 +36,20 @@ const (
 )
 
 type frame struct {
-	kind  byte
-	name  string
-	paren int // the enclosing parenthesis depth, restored when the frame closes
+	kind        byte
+	name        string
+	parenthesis int // the enclosing parenthesis depth, restored when the frame closes
 }
 
 // state is what the scanner knows at a point of the file; #if saves it and each
 // #elseif/#else starts again from it.
 type state struct {
-	stack    []frame
-	overflow int
-	paren    int
-	pending  byte   // frameType or frameFunc: the next { opens that body
-	pendName string // the type the next { opens
-	angle    int    // < > depth in a pending type's header
+	stack       []frame
+	overflow    int
+	parenthesis int
+	pending     byte   // frameType or frameFunction: the next { opens that body
+	pendName    string // the type the next { opens
+	angle       int    // < > depth in a pending type's header
 }
 
 func (s state) clone() state {
@@ -57,7 +57,7 @@ func (s state) clone() state {
 	return s
 }
 
-type cond struct {
+type condition struct {
 	snap  state
 	first *state // the state at the end of the first branch
 }
@@ -93,9 +93,9 @@ func lower(s string) bool { return s != "" && ((s[0] >= 'a' && s[0] <= 'z') || s
 // variables. Every branch of #if counts; braces follow the first branch.
 //
 // Implements: REQ-HAXE-002, REQ-HAXE-003, REQ-HAXE-010, REQ-HAXE-011
-func extractSource(src []byte) *lang.Extraction {
+func extractSource(source []byte) *lang.Extraction {
 	var tokens []token
-	l := newLexer(src)
+	l := newLexer(source)
 	for {
 		t, ok := l.next()
 		if !ok {
@@ -103,31 +103,31 @@ func extractSource(src []byte) *lang.Extraction {
 		}
 		tokens = append(tokens, t)
 	}
-	ex := &lang.Extraction{}
+	extraction := &lang.Extraction{}
 	var symbols lang.SymbolSet
 	seenType := map[string]bool{}
-	seenMod := map[string]bool{}
-	var refs []lang.RawImport
-	var st state
-	var conditions []cond
-	condSkip := 0
+	seenModule := map[string]bool{}
+	var references []lang.RawImport
+	var current state
+	var conditions []condition
+	conditionSkip := 0
 	at := func(i int) token {
 		if i < len(tokens) {
 			return tokens[i]
 		}
 		return token{}
 	}
-	isP := func(i int, s string) bool { t := at(i); return t.kind == tPunct && t.text == s }
-	isI := func(i int, s string) bool { t := at(i); return t.kind == tIdent && t.text == s }
+	isP := func(i int, s string) bool { t := at(i); return t.kind == tPunctuation && t.text == s }
+	isI := func(i int, s string) bool { t := at(i); return t.kind == tIdentifier && t.text == s }
 	top := func() *frame {
-		if st.overflow > 0 || len(st.stack) == 0 {
+		if current.overflow > 0 || len(current.stack) == 0 {
 			return nil
 		}
-		return &st.stack[len(st.stack)-1]
+		return &current.stack[len(current.stack)-1]
 	}
-	moduleLevel := func() bool { return len(st.stack) == 0 && st.overflow == 0 && st.paren == 0 }
+	moduleLevel := func() bool { return len(current.stack) == 0 && current.overflow == 0 && current.parenthesis == 0 }
 	name := func(i int) string {
-		if t := at(i); t.kind == tIdent {
+		if t := at(i); t.kind == tIdentifier {
 			return t.text
 		}
 		return ""
@@ -139,69 +139,69 @@ func extractSource(src []byte) *lang.Extraction {
 			switch t.text {
 			case "if":
 				if len(conditions) < maxConditions {
-					conditions = append(conditions, cond{snap: st.clone()})
+					conditions = append(conditions, condition{snap: current.clone()})
 				} else {
-					condSkip++
+					conditionSkip++
 				}
 			case "elseif", "else":
-				if condSkip == 0 && len(conditions) > 0 {
+				if conditionSkip == 0 && len(conditions) > 0 {
 					c := &conditions[len(conditions)-1]
 					if c.first == nil {
-						f := st.clone()
+						f := current.clone()
 						c.first = &f
 					}
-					st = c.snap.clone()
+					current = c.snap.clone()
 				}
 			case "end":
-				if condSkip > 0 {
-					condSkip--
+				if conditionSkip > 0 {
+					conditionSkip--
 				} else if len(conditions) > 0 {
 					c := conditions[len(conditions)-1]
 					conditions = conditions[:len(conditions)-1]
 					if c.first != nil {
-						st = *c.first
+						current = *c.first
 					}
 				}
 			}
 			continue
-		case tPunct:
+		case tPunctuation:
 			switch t.text {
 			case "{":
-				f := frame{kind: frameOther, paren: st.paren}
-				if st.pending != 0 && st.paren == 0 && st.angle == 0 {
-					f.kind, f.name = st.pending, st.pendName
-					st.pending, st.pendName = 0, ""
+				f := frame{kind: frameOther, parenthesis: current.parenthesis}
+				if current.pending != 0 && current.parenthesis == 0 && current.angle == 0 {
+					f.kind, f.name = current.pending, current.pendName
+					current.pending, current.pendName = 0, ""
 				}
-				if len(st.stack) < maxDepth && st.overflow == 0 {
-					st.stack = append(st.stack, f)
+				if len(current.stack) < maxDepth && current.overflow == 0 {
+					current.stack = append(current.stack, f)
 				} else {
-					st.overflow++
+					current.overflow++
 				}
-				st.paren = 0
+				current.parenthesis = 0
 			case "}":
-				if st.overflow > 0 {
-					st.overflow--
-				} else if n := len(st.stack); n > 0 {
-					st.paren = st.stack[n-1].paren
-					st.stack = st.stack[:n-1]
+				if current.overflow > 0 {
+					current.overflow--
+				} else if n := len(current.stack); n > 0 {
+					current.parenthesis = current.stack[n-1].parenthesis
+					current.stack = current.stack[:n-1]
 				}
 			case "(", "[":
-				st.paren++
+				current.parenthesis++
 			case ")", "]":
-				if st.paren > 0 {
-					st.paren--
+				if current.parenthesis > 0 {
+					current.parenthesis--
 				}
 			case "<":
-				if st.pending == frameType {
-					st.angle++
+				if current.pending == frameType {
+					current.angle++
 				}
 			case ">":
-				if st.pending == frameType && st.angle > 0 {
-					st.angle--
+				if current.pending == frameType && current.angle > 0 {
+					current.angle--
 				}
 			case ";":
-				if st.paren == 0 && st.pending == frameFunc {
-					st.pending = 0 // a function without a body: interfaces, externs
+				if current.parenthesis == 0 && current.pending == frameFunction {
+					current.pending = 0 // a function without a body: interfaces, externs
 				}
 			case "@":
 				// Metadata: @name, @:name, @:a.b - a name that is no keyword.
@@ -209,15 +209,15 @@ func extractSource(src []byte) *lang.Extraction {
 				if isP(j, ":") {
 					j++
 				}
-				if at(j).kind == tIdent && at(j).pos == at(j-1).end {
-					for isP(j+1, ".") && at(j+2).kind == tIdent {
+				if at(j).kind == tIdentifier && at(j).position == at(j-1).end {
+					for isP(j+1, ".") && at(j+2).kind == tIdentifier {
 						j += 2
 					}
 					i = j
 				}
 			}
 			continue
-		case tIdent:
+		case tIdentifier:
 		default:
 			continue
 		}
@@ -227,7 +227,7 @@ func extractSource(src []byte) *lang.Extraction {
 		switch t.text {
 		case "package":
 			if moduleLevel() {
-				for i+1 < len(tokens) && !isP(i+1, ";") && (at(i+1).kind == tIdent || isP(i+1, ".")) {
+				for i+1 < len(tokens) && !isP(i+1, ";") && (at(i+1).kind == tIdentifier || isP(i+1, ".")) {
 					i++
 				}
 			}
@@ -239,7 +239,7 @@ func extractSource(src []byte) *lang.Extraction {
 			var segments []string
 			j := i + 1
 			for {
-				if at(j).kind == tIdent {
+				if at(j).kind == tIdentifier {
 					segments = append(segments, at(j).text)
 					j++
 				} else if isP(j, "*") && len(segments) > 0 {
@@ -270,8 +270,8 @@ func extractSource(src []byte) *lang.Extraction {
 			if t.text == "using" {
 				kind = kindUsing
 			}
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: p, Module: p, Name: kind, Line: t.line})
-			seenMod[p] = true
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: p, Module: p, Name: kind, Line: t.line})
+			seenModule[p] = true
 			continue
 		case "class", "interface", "enum", "abstract", "typedef":
 			if !moduleLevel() {
@@ -295,7 +295,7 @@ func extractSource(src []byte) *lang.Extraction {
 			}
 			i = j
 			if kind != "typedef" {
-				st.pending, st.pendName, st.angle = frameType, n, 0
+				current.pending, current.pendName, current.angle = frameType, n, 0
 			}
 			continue
 		case "function":
@@ -305,12 +305,12 @@ func extractSource(src []byte) *lang.Extraction {
 			}
 			if moduleLevel() {
 				symbols.Add(n, "func", t.line)
-			} else if f := top(); f != nil && f.kind == frameType && st.paren == 0 {
+			} else if f := top(); f != nil && f.kind == frameType && current.parenthesis == 0 {
 				symbols.Add(f.name+"."+n, "method", t.line)
 			} else {
 				continue
 			}
-			st.pending, st.pendName = frameFunc, ""
+			current.pending, current.pendName = frameFunction, ""
 			i++
 			continue
 		case "var", "final":
@@ -326,7 +326,7 @@ func extractSource(src []byte) *lang.Extraction {
 		}
 		segments := []string{t.text}
 		j := i
-		for isP(j+1, ".") && at(j+2).kind == tIdent {
+		for isP(j+1, ".") && at(j+2).kind == tIdentifier {
 			j += 2
 			segments = append(segments, at(j).text)
 			if upper(at(j).text) {
@@ -344,30 +344,30 @@ func extractSource(src []byte) *lang.Extraction {
 		}
 		i = j
 		p := strings.Join(segments, ".")
-		if !seenMod[p] {
-			seenMod[p] = true
-			refs = append(refs, lang.RawImport{Spec: p, Module: p, Name: kindRef, Line: t.line})
+		if !seenModule[p] {
+			seenModule[p] = true
+			references = append(references, lang.RawImport{Spec: p, Module: p, Name: kindReference, Line: t.line})
 		}
 	}
-	if len(refs) > 0 {
+	if len(references) > 0 {
 		// A qualified name of a module the file imports adds nothing.
 		exact, prefixes := map[string]bool{}, map[string]bool{}
-		for _, im := range ex.Imports {
-			m := strings.TrimSuffix(im.Module, ".*")
+		for _, rawImport := range extraction.Imports {
+			m := strings.TrimSuffix(rawImport.Module, ".*")
 			exact[m] = true
 			for k := strings.LastIndexByte(m, '.'); k > 0; k = strings.LastIndexByte(m[:k], '.') {
 				prefixes[m[:k]] = true
 			}
 		}
-		for _, r := range refs {
+		for _, r := range references {
 			if !imported(exact, prefixes, r.Module) {
-				ex.Imports = append(ex.Imports, r)
+				extraction.Imports = append(extraction.Imports, r)
 			}
 		}
 	}
-	ex.Imports = append(ex.Imports, lang.RawImport{Spec: "import.hx", Name: kindHx, Line: 1})
-	ex.Symbols = symbols.List()
-	return ex
+	extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "import.hx", Name: kindHx, Line: 1})
+	extraction.Symbols = symbols.List()
+	return extraction
 }
 
 // imported reports whether a qualified name is one a module imports: the
@@ -386,20 +386,20 @@ func imported(exact, prefixes map[string]bool, p string) bool {
 
 // readPackage is the package a module declares (package a.b;), "" for the
 // top-level package. Only the first token and what follows are read.
-func readPackage(src []byte) string {
-	l := newLexer(src)
+func readPackage(source []byte) string {
+	l := newLexer(source)
 	t, ok := l.next()
-	if !ok || t.kind != tIdent || t.text != "package" {
+	if !ok || t.kind != tIdentifier || t.text != "package" {
 		return ""
 	}
 	var segments []string
 	for {
 		t, ok = l.next()
-		if !ok || t.kind != tIdent {
+		if !ok || t.kind != tIdentifier {
 			break
 		}
 		segments = append(segments, t.text)
-		if t, ok = l.next(); !ok || t.kind != tPunct || t.text != "." {
+		if t, ok = l.next(); !ok || t.kind != tPunctuation || t.text != "." {
 			break
 		}
 	}

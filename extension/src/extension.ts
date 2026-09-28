@@ -14,7 +14,7 @@ import { Api, PackItem } from './api';
 import { BackpackView } from './backpack';
 import * as panel from './panel';
 import { StartError, start } from './server';
-import { binDirFor, exposeOnPath } from './terminal';
+import { binDirectoryFor, exposeOnPath } from './terminal';
 import { DependencyTree, Row } from './tree';
 import { MapsView } from './view';
 
@@ -53,9 +53,9 @@ export function activate(context: vscode.ExtensionContext): void {
   // The editor's terminals get the binary on their PATH (terminal.ts), from the start
   // and again whenever the setting that decides which binary it is changes.
   const onPath = (): void => {
-    const cfg = vscode.workspace.getConfiguration('depphunter');
+    const config = vscode.workspace.getConfiguration('depphunter');
     if (context.environmentVariableCollection) {
-      exposeOnPath(context.environmentVariableCollection, binDirFor(cfg.get<string>('path'), home, cfg.get<boolean>('addToPath') ?? true));
+      exposeOnPath(context.environmentVariableCollection, binDirectoryFor(config.get<string>('path'), home, config.get<boolean>('addToPath') ?? true));
     }
   };
   onPath();
@@ -125,11 +125,11 @@ const HEX_VIEW = 'hexEditor.hexedit';
  *
  * Implements: REQ-EXT-034
  */
-export async function openHex(root: string, rel: string): Promise<void> {
-  const uri = vscode.Uri.file(path.join(root, ...rel.split('/')));
+export async function openHex(root: string, relativePath: string): Promise<void> {
+  const uri = vscode.Uri.file(path.join(root, ...relativePath.split('/')));
   if (!vscode.extensions.getExtension(HEX_EDITOR)) {
     const answer = await vscode.window.showInformationMessage(
-      `${rel} is a binary file. The Hex Editor edits its bytes and their text side by side, and is not installed.`,
+      `${relativePath} is a binary file. The Hex Editor edits its bytes and their text side by side, and is not installed.`,
       'Install Hex Editor', 'Open as is');
     if (answer === 'Open as is') {
       await vscode.commands.executeCommand('vscode.open', uri);
@@ -146,7 +146,7 @@ export async function openHex(root: string, rel: string): Promise<void> {
   try {
     await vscode.commands.executeCommand('vscode.openWith', uri, HEX_VIEW);
   } catch (e) {
-    log?.appendLine(`The Hex Editor could not open ${rel}: ${e instanceof Error ? e.message : e}`);
+    log?.appendLine(`The Hex Editor could not open ${relativePath}: ${e instanceof Error ? e.message : e}`);
     await vscode.commands.executeCommand('vscode.open', uri);
   }
 }
@@ -413,7 +413,7 @@ async function launching(folder: { root: string; name: string }, cancel: vscode.
     const running = await vscode.window.withProgress(
       { location: vscode.ProgressLocation.Notification, title: `depphunter: mapping ${folder.name}…`, cancellable: true },
       async (_progress, token) => {
-        // Cancelled from the notification by the user, or by stopAll through cancel.
+        // Canceled from the notification by the user, or by stopAll through cancel.
         const link = token.onCancellationRequested(() => cancel.cancel());
         try {
           if (cancel.token.isCancellationRequested) throw new vscode.CancellationError();
@@ -635,10 +635,10 @@ async function check(local: string, address: string): Promise<void> {
   probe.pathname = shown.pathname;
   probe.search = shown.search;
   try {
-    const res = await fetch(probe, { redirect: 'manual' });
-    if (res.status === 200) return;
-    log.appendLine(`the map answered ${res.status} at ${address.replace(/token=[^&]*/, 'token=...')}`);
-    log.appendLine(res.status === 401 || res.status === 303
+    const response = await fetch(probe, { redirect: 'manual' });
+    if (response.status === 200) return;
+    log.appendLine(`the map answered ${response.status} at ${address.replace(/token=[^&]*/, 'token=...')}`);
+    log.appendLine(response.status === 401 || response.status === 303
       ? 'the session token did not reach the page: the server may have been started without --embed, '
         + 'or the address lost its query on the way. The command line above is what was run.'
       : 'see the command line above for what was started.');

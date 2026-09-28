@@ -13,11 +13,11 @@ it('reconnects promptly after every drop, however many there were', async () => 
   // and the response never ends. A client that only retried on 'end' never comes
   // back; one whose delay doubled for good takes 1s, 2s, 4s... between them.
   let connections = 0;
-  const server = http.createServer((req, res) => {
+  const server = http.createServer((request, response) => {
     connections++;
-    res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-    res.write(`id: ${connections}\nevent: selection\ndata: {"id":"n${connections}","origin":"x"}\n\n`);
-    setTimeout(() => req.socket.destroy(), 20);
+    response.writeHead(200, { 'Content-Type': 'text/event-stream' });
+    response.write(`id: ${connections}\nevent: selection\ndata: {"id":"n${connections}","origin":"x"}\n\n`);
+    setTimeout(() => request.socket.destroy(), 20);
   });
   await new Promise(r => server.listen(0, '127.0.0.1', r));
   const api = new Api(`http://127.0.0.1:${server.address().port}/?token=t`);

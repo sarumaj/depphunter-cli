@@ -2,11 +2,11 @@ package cmake
 
 import "strings"
 
-// arg is one argument of a command invocation as written: its text with escapes
+// argument is one argument of a command invocation as written: its text with escapes
 // decoded (an escaped ";" is kept as "\;" so it does not split a list), and whether
 // it was quoted or a bracket argument, which variable references and list splitting
 // treat differently.
-type arg struct {
+type argument struct {
 	text   string
 	quoted bool // "..." - variables are expanded, the value is not split on ";"
 	raw    bool // [[...]] - nothing is expanded or split
@@ -16,10 +16,10 @@ type arg struct {
 // command is one command invocation, `name(args)`. Parentheses nested in the
 // arguments (in if() conditions) are arguments "(" and ")" of their own.
 type command struct {
-	name  string // lower case: command names are case-insensitive
-	cased string // as written, for the import's spec
-	line  int
-	args  []arg
+	name      string // lower case: command names are case-insensitive
+	cased     string // as written, for the import's spec
+	line      int
+	arguments []argument
 }
 
 // lex reads a CMake file's command invocations: comments (`#`, `#[[ ]]`), bracket
@@ -28,8 +28,8 @@ type command struct {
 // skipped, so a damaged file still yields the commands it has.
 //
 // Implements: REQ-CMAKE-002, REQ-CMAKE-010
-func lex(src []byte) []command {
-	l := lexer{s: string(src), line: 1}
+func lex(source []byte) []command {
+	l := lexer{s: string(source), line: 1}
 	if strings.HasPrefix(l.s, "\xef\xbb\xbf") {
 		l.i = 3
 	}
@@ -42,9 +42,9 @@ func lex(src []byte) []command {
 			l.i++
 		case c == '#':
 			l.comment()
-		case isIdentStart(c):
+		case isIdentifierStart(c):
 			start, line := l.i, l.line
-			for l.i < len(l.s) && isIdent(l.s[l.i]) {
+			for l.i < len(l.s) && isIdentifier(l.s[l.i]) {
 				l.i++
 			}
 			name := l.s[start:l.i]
@@ -53,7 +53,7 @@ func lex(src []byte) []command {
 			}
 			if l.i < len(l.s) && l.s[l.i] == '(' {
 				l.i++
-				out = append(out, command{name: strings.ToLower(name), cased: name, line: line, args: l.args()})
+				out = append(out, command{name: strings.ToLower(name), cased: name, line: line, arguments: l.arguments()})
 			}
 		default:
 			l.i++
@@ -68,11 +68,11 @@ type lexer struct {
 	line int
 }
 
-func isIdentStart(c byte) bool {
+func isIdentifierStart(c byte) bool {
 	return c == '_' || (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z')
 }
 
-func isIdent(c byte) bool { return isIdentStart(c) || (c >= '0' && c <= '9') }
+func isIdentifier(c byte) bool { return isIdentifierStart(c) || (c >= '0' && c <= '9') }
 
 // bracketOpen reports the number of "=" of a bracket opening `[=*[` at l.i, or -1.
 func (l *lexer) bracketOpen() int {
@@ -123,9 +123,9 @@ func (l *lexer) comment() {
 	}
 }
 
-// args reads the arguments after a command's "(" up to its ")".
-func (l *lexer) args() []arg {
-	var out []arg
+// arguments reads the arguments after a command's "(" up to its ")".
+func (l *lexer) arguments() []argument {
+	var out []argument
 	depth := 0
 	for l.i < len(l.s) {
 		c := l.s[l.i]
@@ -139,7 +139,7 @@ func (l *lexer) args() []arg {
 			l.comment()
 		case c == '(':
 			depth++
-			out = append(out, arg{text: "(", line: l.line})
+			out = append(out, argument{text: "(", line: l.line})
 			l.i++
 		case c == ')':
 			l.i++
@@ -147,18 +147,18 @@ func (l *lexer) args() []arg {
 				return out
 			}
 			depth--
-			out = append(out, arg{text: ")", line: l.line})
+			out = append(out, argument{text: ")", line: l.line})
 		case c == '"':
 			line := l.line
 			l.i++
-			out = append(out, arg{text: l.quoted(), quoted: true, line: line})
+			out = append(out, argument{text: l.quoted(), quoted: true, line: line})
 		default:
 			if n := l.bracketOpen(); n >= 0 {
 				line := l.line
-				out = append(out, arg{text: l.bracket(n), raw: true, line: line})
+				out = append(out, argument{text: l.bracket(n), raw: true, line: line})
 				continue
 			}
-			out = append(out, arg{text: l.unquoted(), line: l.line})
+			out = append(out, argument{text: l.unquoted(), line: l.line})
 		}
 	}
 	return out

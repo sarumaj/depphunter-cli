@@ -20,11 +20,11 @@ import (
 // application whose source directories reach into the package.
 
 func pinned(name, version string) lang.Target {
-	return lang.Target{Ecosystem: ecoElm, Package: name, Version: version, Pinned: true}
+	return lang.Target{Ecosystem: ecosystemElm, Package: name, Version: version, Pinned: true}
 }
 
-func ranged(name, rng string) lang.Target {
-	return lang.Target{Ecosystem: ecoElm, Package: name, Version: rng, Floating: true}
+func ranged(name, versionRange string) lang.Target {
+	return lang.Target{Ecosystem: ecosystemElm, Package: name, Version: versionRange, Floating: true}
 }
 
 // analyze runs the plugin over the fixture with an empty ELM_HOME, so what the
@@ -36,10 +36,10 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 
 // Verifies: REQ-ELM-002, REQ-ELM-004, REQ-ELM-007, REQ-ELM-011
 func TestModules(t *testing.T) {
-	res := analyze(t)
+	results := analyze(t)
 	html := pinned("elm/html", "1.0.0")
-	langtest.CheckImports(t, res["src/Main.elm"], map[string]lang.Target{
-		"Browser":              {Ecosystem: ecoElm, Package: "elm/browser", Unresolved: true}, // not in elm.json
+	langtest.CheckImports(t, results["src/Main.elm"], map[string]lang.Target{
+		"Browser":              {Ecosystem: ecosystemElm, Package: "elm/browser", Unresolved: true}, // not in elm.json
 		"Dict":                 pinned("elm/core", "1.0.5"),
 		"Glitter.Sparkle":      pinned("acme/elm-glitter-effects", "3.1.0"), // the name starts like the module
 		"Html":                 html,
@@ -48,29 +48,29 @@ func TestModules(t *testing.T) {
 		"Json.Decode":          pinned("elm/json", "1.1.3"),
 		"Json.Decode.Pipeline": pinned("NoRedInk/elm-json-decode-pipeline", "1.0.1"),
 		"List.Extra":           pinned("elm-community/list-extra", "8.7.0"),
-		"Markdown":             {Ecosystem: ecoElm, Package: "elm-explorations/markdown", Unresolved: true},
+		"Markdown":             {Ecosystem: ecosystemElm, Package: "elm-explorations/markdown", Unresolved: true},
 		"Mystery.Thing":        {}, // nothing names its package
 		"Shared.Format":        {Local: "lib/shared/Shared/Format.elm"},
 		"Shop.Cart":            {Local: "src/Shop/Cart.elm"},
 		"Widget.Button":        {}, // acme/elm-toolkit's, but only its installed elm.json says so
 	})
 	test := pinned("elm-explorations/test", "2.1.1")
-	langtest.CheckImports(t, res["tests/CartTest.elm"], map[string]lang.Target{
+	langtest.CheckImports(t, results["tests/CartTest.elm"], map[string]lang.Target{
 		"Expect": test, "Fuzz": test, "Test": test,
 		"Helpers":   {Local: "tests/Helpers.elm"},
 		"Shop.Cart": {Local: "src/Shop/Cart.elm"},
 	})
-	langtest.CheckImports(t, res["src/Shop/Cart.elm"], map[string]lang.Target{"Shared.Format": {Local: "lib/shared/Shared/Format.elm"}})
+	langtest.CheckImports(t, results["src/Shop/Cart.elm"], map[string]lang.Target{"Shared.Format": {Local: "lib/shared/Shared/Format.elm"}})
 	// The package's own directory wins over examples/, which lists it too.
 	core := ranged("elm/core", "1.0.0 <= v < 2.0.0")
-	langtest.CheckImports(t, res["packages/ui-kit/src/UiKit/Button.elm"], map[string]lang.Target{
+	langtest.CheckImports(t, results["packages/ui-kit/src/UiKit/Button.elm"], map[string]lang.Target{
 		"Elm.Kernel.Kit":   {Local: "packages/ui-kit/src/Elm/Kernel/Kit.js"},
 		"Elm.Kernel.Nope":  {},
 		"Elm.Kernel.Utils": core,
 		"Html":             ranged("elm/html", "1.0.0 <= v < 2.0.0"),
 		"UiKit.Missing":    {}, // exposed by the package itself, but missing
 	})
-	langtest.CheckImports(t, res["examples/Demo.elm"], map[string]lang.Target{
+	langtest.CheckImports(t, results["examples/Demo.elm"], map[string]lang.Target{
 		"Html":         html,
 		"UiKit.Button": {Local: "packages/ui-kit/src/UiKit/Button.elm"},
 	})
@@ -78,18 +78,18 @@ func TestModules(t *testing.T) {
 
 // Verifies: REQ-ELM-003, REQ-ELM-010
 func TestSymbols(t *testing.T) {
-	res := analyze(t)
-	langtest.CheckSymbols(t, res["src/Main.elm"], map[string]string{
+	results := analyze(t)
+	langtest.CheckSymbols(t, results["src/Main.elm"], map[string]string{
 		"sendMessage": "port", "messageReceiver": "port",
 		"help": "func", "shader": "func", "quote": "func", "main": "func",
 	})
-	langtest.CheckSymbols(t, res["src/Shop/Cart.elm"], map[string]string{
+	langtest.CheckSymbols(t, results["src/Shop/Cart.elm"], map[string]string{
 		"Item": "type", "Item.Book": "constructor", "Item.Toy": "constructor", "Item.Gift": "constructor",
 		"Cart": "type", "empty": "func", "total": "func", "andThen": "func", "|>>": "operator",
 	})
-	langtest.CheckSymbols(t, res["packages/ui-kit/elm.json"], map[string]string{"acme/ui-kit": "package"})
+	langtest.CheckSymbols(t, results["packages/ui-kit/elm.json"], map[string]string{"acme/ui-kit": "package"})
 	// An annotation and its definition are one symbol, on the annotation's line.
-	for _, s := range res["lib/shared/Shared/Format.elm"].Symbols {
+	for _, s := range results["lib/shared/Shared/Format.elm"].Symbols {
 		if s.Name == "price" && s.Line != 4 {
 			t.Errorf("price on line %d, want 4", s.Line)
 		}
@@ -98,8 +98,8 @@ func TestSymbols(t *testing.T) {
 
 // Verifies: REQ-ELM-005, REQ-ELM-006
 func TestManifests(t *testing.T) {
-	res := analyze(t)
-	langtest.CheckImports(t, res["elm.json"], map[string]lang.Target{
+	results := analyze(t)
+	langtest.CheckImports(t, results["elm.json"], map[string]lang.Target{
 		"NoRedInk/elm-json-decode-pipeline": pinned("NoRedInk/elm-json-decode-pipeline", "1.0.1"),
 		"acme/elm-glitter-effects":          pinned("acme/elm-glitter-effects", "3.1.0"),
 		"acme/elm-toolkit":                  pinned("acme/elm-toolkit", "2.0.0"),
@@ -115,12 +115,12 @@ func TestManifests(t *testing.T) {
 		"src":                               {Local: "src"},
 		"lib/shared":                        {Local: "lib/shared"},
 	})
-	langtest.CheckImports(t, res["packages/ui-kit/elm.json"], map[string]lang.Target{
+	langtest.CheckImports(t, results["packages/ui-kit/elm.json"], map[string]lang.Target{
 		"elm/core":              ranged("elm/core", "1.0.0 <= v < 2.0.0"),
 		"elm/html":              ranged("elm/html", "1.0.0 <= v < 2.0.0"),
 		"elm-explorations/test": ranged("elm-explorations/test", "2.0.0 <= v < 3.0.0"),
 	})
-	langtest.CheckImports(t, res["examples/elm.json"], map[string]lang.Target{
+	langtest.CheckImports(t, results["examples/elm.json"], map[string]lang.Target{
 		"elm/core":               pinned("elm/core", "1.0.5"),
 		"elm/html":               pinned("elm/html", "1.0.0"),
 		"elm/json":               pinned("elm/json", "1.1.3"),
@@ -129,15 +129,15 @@ func TestManifests(t *testing.T) {
 		"../packages/ui-kit/src": {Local: "packages/ui-kit/src"},
 		"../../outside":          {}, // outside the repository
 	})
-	for _, im := range res["elm.json"].Imports {
-		if im.Spec == "elm/random" && im.Line != 29 {
-			t.Errorf("elm/random on line %d, want 29", im.Line)
+	for _, imported := range results["elm.json"].Imports {
+		if imported.Spec == "elm/random" && imported.Line != 29 {
+			t.Errorf("elm/random on line %d, want 29", imported.Line)
 		}
 	}
 	// Not an elm.json the compiler would read.
-	for _, src := range []string{"{}", "[1]", `{"type": "library"}`, "not json"} {
-		if ex, _ := (Plugin{}).Extract(&scan.File{Path: "elm.json"}, []byte(src)); len(ex.Imports) != 0 || len(ex.Symbols) != 0 {
-			t.Errorf("%s: %+v", src, ex)
+	for _, source := range []string{"{}", "[1]", `{"type": "library"}`, "not json"} {
+		if extraction, _ := (Plugin{}).Extract(&scan.File{Path: "elm.json"}, []byte(source)); len(extraction.Imports) != 0 || len(extraction.Symbols) != 0 {
+			t.Errorf("%s: %+v", source, extraction)
 		}
 	}
 }
@@ -175,9 +175,9 @@ func TestInstalledPackages(t *testing.T) {
 		"0.19.1/packages/elm/html/2.0.0/elm.json": `{"type": "package", "name": "elm/html", "exposed-modules": ["Html2"]}`,
 	})
 	t.Setenv("ELM_HOME", home)
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	langtest.CheckImports(t, res["src/Main.elm"], map[string]lang.Target{
-		"Browser":              {Ecosystem: ecoElm, Package: "elm/browser", Unresolved: true},
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	langtest.CheckImports(t, results["src/Main.elm"], map[string]lang.Target{
+		"Browser":              {Ecosystem: ecosystemElm, Package: "elm/browser", Unresolved: true},
 		"Dict":                 pinned("elm/core", "1.0.5"),
 		"Glitter.Sparkle":      pinned("acme/elm-glitter-effects", "3.1.0"),
 		"Html":                 pinned("elm/html", "1.0.0"),
@@ -186,7 +186,7 @@ func TestInstalledPackages(t *testing.T) {
 		"Json.Decode":          pinned("elm/json", "1.1.3"),
 		"Json.Decode.Pipeline": pinned("NoRedInk/elm-json-decode-pipeline", "1.0.1"),
 		"List.Extra":           pinned("elm-community/list-extra", "8.7.0"),
-		"Markdown":             {Ecosystem: ecoElm, Package: "elm-explorations/markdown", Unresolved: true},
+		"Markdown":             {Ecosystem: ecosystemElm, Package: "elm-explorations/markdown", Unresolved: true},
 		"Mystery.Thing":        {},
 		"Shared.Format":        {Local: "lib/shared/Shared/Format.elm"},
 		"Shop.Cart":            {Local: "src/Shop/Cart.elm"},
@@ -237,7 +237,7 @@ func TestClaims(t *testing.T) {
 
 // Verifies: REQ-ELM-002, REQ-ELM-010
 func TestLexer(t *testing.T) {
-	src := "module A exposing (..)\n" +
+	source := "module A exposing (..)\n" +
 		"import B.C as D exposing (e, F(..))\n" +
 		"{- {- import No.Nested -} import No.Block -}\n" +
 		"s = \"import No.String \\\" -- still\"\n" +
@@ -250,10 +250,10 @@ func TestLexer(t *testing.T) {
 		"x=1 --comment\n" +
 		"record = { a = 1 }.a\n" +
 		"  import No.Indented\n"
-	ex := extractSource([]byte(src))
+	extraction := extractSource([]byte(source))
 	var specs []string
-	for _, im := range ex.Imports {
-		specs = append(specs, im.Spec)
+	for _, rawImport := range extraction.Imports {
+		specs = append(specs, rawImport.Spec)
 	}
 	if want := []string{"B.C", "E"}; !reflect.DeepEqual(specs, want) {
 		t.Errorf("imports %v, want %v", specs, want)
@@ -262,8 +262,8 @@ func TestLexer(t *testing.T) {
 		{Name: "s", Kind: "func", Line: 4}, {Name: "m", Kind: "func", Line: 5}, {Name: "c", Kind: "func", Line: 8},
 		{Name: "g", Kind: "func", Line: 9}, {Name: "x", Kind: "func", Line: 15}, {Name: "record", Kind: "func", Line: 16},
 	}
-	if !reflect.DeepEqual(ex.Symbols, want) {
-		t.Errorf("symbols %+v, want %+v", ex.Symbols, want)
+	if !reflect.DeepEqual(extraction.Symbols, want) {
+		t.Errorf("symbols %+v, want %+v", extraction.Symbols, want)
 	}
 }
 
@@ -280,27 +280,27 @@ func TestTruncated(t *testing.T) {
 		return nil
 	})
 	for _, p := range files {
-		src, err := os.ReadFile(p)
+		source, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatal(err)
 		}
 		f := &scan.File{Path: strings.TrimPrefix(filepath.ToSlash(p), "testdata/repo/")}
-		for i := 0; i <= len(src); i++ {
-			if _, err := (Plugin{}).Extract(f, src[:i]); err != nil {
+		for i := 0; i <= len(source); i++ {
+			if _, err := (Plugin{}).Extract(f, source[:i]); err != nil {
 				t.Fatal(err)
 			}
-			extractSource(src[:i])
-			readManifest(src[:i])
+			extractSource(source[:i])
+			readManifest(source[:i])
 		}
 	}
 	for _, unit := range []string{"{-", "-}", "{", "(", "[", "\"", "\"\"\"", "'", "\\", "--", "[glsl|", "import ",
 		"import A.", "type T = ", "| A ", "type alias ", "port ", "infix ", "f a b = ", "x : ", "\nx", "\nA.B.c",
 		"A.", "1.0e", "0x", "é", "\n"} {
-		src := []byte(strings.Repeat(unit, 200_000/len(unit)+1))
+		source := []byte(strings.Repeat(unit, 200_000/len(unit)+1))
 		start := time.Now()
-		extractSource(src)
+		extractSource(source)
 		if d := time.Since(start); d > 5*time.Second {
-			t.Errorf("%q x %d: %v", unit, len(src)/len(unit), d)
+			t.Errorf("%q x %d: %v", unit, len(source)/len(unit), d)
 		}
 	}
 }
@@ -310,13 +310,13 @@ func TestTruncated(t *testing.T) {
 // Verifies: REQ-ELM-009
 func TestEcosystems(t *testing.T) {
 	ecosystems := (Plugin{}).Ecosystems()
-	if len(ecosystems) != 1 || ecosystems[0].ID != ecoElm || ecosystems[0].Std {
+	if len(ecosystems) != 1 || ecosystems[0].ID != ecosystemElm || ecosystems[0].Std {
 		t.Fatalf("ecosystems %+v", ecosystems)
 	}
 	for f, r := range analyze(t) {
-		for _, im := range r.Imports {
-			if im.Target.Package != "" && im.Target.Ecosystem != ecoElm {
-				t.Errorf("%s %s: %+v", f, im.Spec, im.Target)
+		for _, imported := range r.Imports {
+			if imported.Target.Package != "" && imported.Target.Ecosystem != ecosystemElm {
+				t.Errorf("%s %s: %+v", f, imported.Spec, imported.Target)
 			}
 		}
 	}
@@ -356,7 +356,7 @@ func TestElmTooling(t *testing.T) {
 			t.Fatalf("%q: projects %v", garbage, r.projects)
 		}
 		m := r.projects[0].m
-		if got := r.installedVersion(m, m.deps["elm/json"]); got != want {
+		if got := r.installedVersion(m, m.dependencies["elm/json"]); got != want {
 			t.Errorf("%q: elm/json %s, want %s", garbage, got, want)
 		}
 	}

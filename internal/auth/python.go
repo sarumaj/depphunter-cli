@@ -28,8 +28,8 @@ import (
 //
 // Implements: REQ-AUTH-026, REQ-AUTH-020
 func (c *Store) readPython(m userconf.Machine) {
-	put := func(index string, cred pyconf.Credential) {
-		if cred.Password == "" && cred.Username == "" {
+	put := func(index string, credential pyconf.Credential) {
+		if credential.Password == "" && credential.Username == "" {
 			return
 		}
 		u, err := url.Parse(strings.TrimSpace(index))
@@ -37,7 +37,7 @@ func (c *Store) readPython(m userconf.Machine) {
 			return
 		}
 		c.notePlain(u)
-		c.file(u.Host, pythonPrefix(u.Path), secret{value: cred.Username + ":" + cred.Password}, true)
+		c.file(u.Host, pythonPrefix(u.Path), secret{value: credential.Username + ":" + credential.Password}, true)
 	}
 	pdm := pyconf.PDMMachine(m)
 	for _, i := range pdm.Indexes {
@@ -47,12 +47,12 @@ func (c *Store) readPython(m userconf.Machine) {
 		}
 		put(index, pyconf.Credential{Username: i.Username, Password: i.Password})
 	}
-	repos, creds := pyconf.PoetryMachine(m)
-	for _, name := range slices.Sorted(maps.Keys(repos)) {
-		put(repos[name], creds[name])
+	repositories, credentials := pyconf.PoetryMachine(m)
+	for _, name := range slices.Sorted(maps.Keys(repositories)) {
+		put(repositories[name], credentials[name])
 	}
 	for _, i := range pyconf.UVMachine(m) {
-		user, pass := pyconf.UVCredential(m.Env, i.Name)
+		user, pass := pyconf.UVCredential(m.Environment, i.Name)
 		put(i.URL, pyconf.Credential{Username: user, Password: pass})
 	}
 }

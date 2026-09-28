@@ -15,8 +15,8 @@ var publicForges = map[string]bool{
 // spells it - is on a public git forge.
 //
 // Implements: REQ-FND-026
-func PublicForge(repo string) bool {
-	host, _, _ := strings.Cut(RepoName(repo), "/")
+func PublicForge(repository string) bool {
+	host, _, _ := strings.Cut(RepositoryName(repository), "/")
 	return publicForges[host]
 }
 
@@ -53,9 +53,9 @@ var forgeNamed = map[string]bool{
 // ecosystem whose plugins would have recorded a private one in the origin.
 //
 // Implements: REQ-FND-026
-func GitPin(eco, name, version, origin, git string) (commit, repo string, public bool) {
+func GitPin(ecosystem, name, version, origin, git string) (commit, repository string, public bool) {
 	if url, c, ok := cutLast(git, "#"); ok && Commit(c) {
-		commit, repo = c, url
+		commit, repository = c, url
 	}
 	v := strings.TrimSpace(version)
 	if commit == "" {
@@ -70,8 +70,8 @@ func GitPin(eco, name, version, origin, git string) (commit, repo string, public
 		default:
 			if spec, c, ok := cutLast(v, "#"); ok && Commit(c) {
 				commit = c
-				if repo == "" && eco == "npm" {
-					repo = npmRepo(spec)
+				if repository == "" && ecosystem == "npm" {
+					repository = npmRepository(spec)
 				}
 			}
 		}
@@ -80,17 +80,17 @@ func GitPin(eco, name, version, origin, git string) (commit, repo string, public
 		return "", "", false
 	}
 	commit = strings.ToLower(commit)
-	if repo == "" && remote(origin) {
-		repo = origin
+	if repository == "" && remote(origin) {
+		repository = origin
 	}
-	if repo == "" && remote(name) && eco != "npm" && eco != "composer" {
-		repo = name // named after its repository: github.com/owner/repo
+	if repository == "" && remote(name) && ecosystem != "npm" && ecosystem != "composer" {
+		repository = name // named after its repository: github.com/owner/repo
 	}
-	if repo != "" {
-		repo = RepoName(strings.TrimPrefix(repo, "git+"))
-		return commit, repo, PublicForge(repo)
+	if repository != "" {
+		repository = RepositoryName(strings.TrimPrefix(repository, "git+"))
+		return commit, repository, PublicForge(repository)
 	}
-	return commit, "", origin == "" && forgeNamed[eco]
+	return commit, "", origin == "" && forgeNamed[ecosystem]
 }
 
 // remote reports whether s names a repository on a host rather than a directory,
@@ -108,9 +108,9 @@ func remote(s string) bool {
 		!strings.Contains(host, ":")
 }
 
-// npmRepo is the repository an npm git specifier names: "github:owner/repo",
+// npmRepository is the repository an npm git specifier names: "github:owner/repo",
 // "gitlab:…", "bitbucket:…", a bare "owner/repo" (GitHub), or a git URL.
-func npmRepo(spec string) string {
+func npmRepository(spec string) string {
 	if prefix, rest, ok := strings.Cut(spec, ":"); ok && !strings.Contains(prefix, "/") {
 		if host := map[string]string{"github": "github.com", "gitlab": "gitlab.com", "bitbucket": "bitbucket.org"}[prefix]; host != "" {
 			return host + "/" + rest
@@ -119,16 +119,16 @@ func npmRepo(spec string) string {
 	if remote(spec) {
 		return spec
 	}
-	if owner, repo, ok := strings.Cut(spec, "/"); ok && owner != "" && repo != "" && !strings.ContainsAny(spec, ":@") {
+	if owner, repository, ok := strings.Cut(spec, "/"); ok && owner != "" && repository != "" && !strings.ContainsAny(spec, ":@") {
 		return "github.com/" + spec
 	}
 	return ""
 }
 
-// cutLast is strings.Cut at the last sep.
-func cutLast(s, sep string) (before, after string, found bool) {
-	if i := strings.LastIndex(s, sep); i >= 0 {
-		return s[:i], s[i+len(sep):], true
+// cutLast is strings.Cut at the last separator.
+func cutLast(s, separator string) (before, after string, found bool) {
+	if i := strings.LastIndex(s, separator); i >= 0 {
+		return s[:i], s[i+len(separator):], true
 	}
 	return s, "", false
 }

@@ -1,6 +1,6 @@
 ---
 id: REQ-TOOL-035
-title: Tools modelled around the hand
+title: Tools modeled around the hand
 scope: tool
 type: constraint
 priority: must

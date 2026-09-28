@@ -22,8 +22,8 @@ import (
 )
 
 const (
-	ecoActions = "actions"
-	ecoGitLab  = "gitlab-ci"
+	ecosystemActions = "actions"
+	ecosystemGitLab  = "gitlab-ci"
 )
 
 // Import kinds, carried in RawImport.Name so the resolver knows how to read Module.
@@ -52,7 +52,7 @@ func (Plugin) Claims(f *scan.File) bool {
 		return false
 	}
 	p := f.Path
-	if ext := path.Ext(p); ext != ".yml" && ext != ".yaml" {
+	if extension := path.Ext(p); extension != ".yml" && extension != ".yaml" {
 		return false
 	}
 	base := path.Base(p)
@@ -72,8 +72,8 @@ func (Plugin) Claims(f *scan.File) bool {
 // Implements: REQ-CI-008
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoActions, Name: "GitHub Actions"},
-		{ID: ecoGitLab, Name: "GitLab CI"},
+		{ID: ecosystemActions, Name: "GitHub Actions"},
+		{ID: ecosystemGitLab, Name: "GitLab CI"},
 		oci.Island, // shared with the docker plugin
 	}
 }
@@ -101,9 +101,9 @@ func (Plugin) Class(f *scan.File) string {
 // Extract reads one configuration file, as the kind Class says it is.
 //
 // Implements: REQ-CI-001
-func (p Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (p Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	var doc yaml.Node
-	if err := yaml.Unmarshal(src, &doc); err != nil {
+	if err := yaml.Unmarshal(source, &doc); err != nil {
 		return &lang.Extraction{}, nil // a pipeline that does not parse has no dependencies
 	}
 	root := mapping(&doc)

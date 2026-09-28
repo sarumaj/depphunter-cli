@@ -9,8 +9,8 @@ package solidity
 type kind uint8
 
 const (
-	tIdent kind = iota + 1
-	tPunct
+	tIdentifier kind = iota + 1
+	tPunctuation
 	tString
 	tNumber
 )
@@ -21,18 +21,18 @@ type token struct {
 	line int
 }
 
-func identStart(c byte) bool {
+func identifierStart(c byte) bool {
 	return c == '_' || c == '$' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
 }
 
-func identPart(c byte) bool { return identStart(c) || c >= '0' && c <= '9' }
+func identifierPart(c byte) bool { return identifierStart(c) || c >= '0' && c <= '9' }
 
-// lex reads src into tokens. It never fails: an unterminated comment runs to
+// lex reads source into tokens. It never fails: an unterminated comment runs to
 // the end of the file, an unterminated string to the end of its line.
 //
 // Implements: REQ-SOLIDITY-002, REQ-SOLIDITY-010
-func lex(src []byte) []token {
-	s := string(src) // one copy; every token's text is a slice of it
+func lex(source []byte) []token {
+	s := string(source) // one copy; every token's text is a slice of it
 	tokens := make([]token, 0, len(s)/5+16)
 	line := 1
 	for i := 0; i < len(s); {
@@ -73,9 +73,9 @@ func lex(src []byte) []token {
 			if i < len(s) && s[i] == c {
 				i++
 			}
-		case identStart(c):
+		case identifierStart(c):
 			j := i + 1
-			for j < len(s) && identPart(s[j]) {
+			for j < len(s) && identifierPart(s[j]) {
 				j++
 			}
 			// unicode"..." and hex"..." are string literals with a prefix: the
@@ -84,17 +84,17 @@ func lex(src []byte) []token {
 				i = j
 				continue
 			}
-			tokens = append(tokens, token{kind: tIdent, text: s[i:j], line: line})
+			tokens = append(tokens, token{kind: tIdentifier, text: s[i:j], line: line})
 			i = j
 		case c >= '0' && c <= '9':
 			j := i + 1
-			for j < len(s) && (identPart(s[j]) || s[j] == '.' && j+1 < len(s) && s[j+1] >= '0' && s[j+1] <= '9') {
+			for j < len(s) && (identifierPart(s[j]) || s[j] == '.' && j+1 < len(s) && s[j+1] >= '0' && s[j+1] <= '9') {
 				j++
 			}
 			tokens = append(tokens, token{kind: tNumber, text: s[i:j], line: line})
 			i = j
 		default:
-			tokens = append(tokens, token{kind: tPunct, text: s[i : i+1], line: line})
+			tokens = append(tokens, token{kind: tPunctuation, text: s[i : i+1], line: line})
 			i++
 		}
 	}

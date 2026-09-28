@@ -91,14 +91,14 @@ const VIEW = { width: 1280, height: 800 };
 // left behind is a binary the size of this one per run.
 const cleanups = [];
 let cleaned = false;
-const onExit = fn => cleanups.push(fn);
+const onExit = callback => cleanups.push(callback);
 const cleanup = () => {
   if (cleaned) return;
   cleaned = true;
-  for (const fn of cleanups.reverse()) { try { fn(); } catch { /* leaving anyway */ } }
+  for (const callback of cleanups.reverse()) { try { callback(); } catch { /* leaving anyway */ } }
 };
 process.on('exit', cleanup);
-for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { cleanup(); process.exit(130); });
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { cleanup(); process.exit(130); });
 process.on('uncaughtException', e => { console.error(e); cleanup(); process.exit(1); });
 process.on('unhandledRejection', e => { console.error(e); cleanup(); process.exit(1); });
 
@@ -106,7 +106,7 @@ process.on('unhandledRejection', e => { console.error(e); cleanup(); process.exi
 
 let temp = null;
 /** This run's temporary directory, made on first use and removed on exit (--keep-temp). */
-function tempDir() {
+function temporaryDirectory() {
   if (temp) return temp;
   temp = fs.mkdtempSync(path.join(os.tmpdir(), 'depphunter-tourshot-'));
   onExit(ARGS['keep-temp'] ? () => console.log(`kept ${temp}`) : () => fs.rmSync(temp, { recursive: true, force: true }));
@@ -114,15 +114,15 @@ function tempDir() {
 }
 
 /** The user cache directory's corner for these scripts, where os.UserCacheDir puts it in Go. */
-function cacheDir() {
+function cacheDirectory() {
   const home = os.homedir();
   const base = process.env.XDG_CACHE_HOME
     || (process.platform === 'darwin' ? path.join(home, 'Library', 'Caches')
       : process.platform === 'win32' ? (process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'))
         : path.join(home, '.cache'));
-  const dir = path.join(base, 'depphunter', 'scripts');
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
+  const directory = path.join(base, 'depphunter', 'scripts');
+  fs.mkdirSync(directory, { recursive: true });
+  return directory;
 }
 
 // ------------------------------------------------------------------ the server and the browser
@@ -134,7 +134,7 @@ function binary() {
     if (!fs.existsSync(bin)) throw new Error(`--bin ${bin}: no such file`);
     return bin;
   }
-  const bin = path.join(tempDir(), process.platform === 'win32' ? 'depphunter.exe' : 'depphunter');
+  const bin = path.join(temporaryDirectory(), process.platform === 'win32' ? 'depphunter.exe' : 'depphunter');
   console.log('building depphunter...');
   execFileSync('go', ['build', '-o', bin, './cmd/depphunter'], { cwd: REPO, stdio: 'inherit' });
   return bin;
@@ -145,19 +145,19 @@ function binary() {
  * the server is stopped when the run ends. One that stops before it says where, or
  * says nothing for two minutes, is an error that quotes what it did say.
  */
-async function serve(bin, repo, findings) {
-  const srv = spawn(bin, [repo, '--addr', `127.0.0.1:${PORT}`, '--no-open', ...findings.flatMap(f => ['--findings', f])]);
-  onExit(() => { if (srv.exitCode === null) srv.kill(); });
+async function serve(bin, repository, findings) {
+  const server = spawn(bin, [repository, '--addr', `127.0.0.1:${PORT}`, '--no-open', ...findings.flatMap(f => ['--findings', f])]);
+  onExit(() => { if (server.exitCode === null) server.kill(); });
   let url = '', said = '', exited = null;
   const grab = d => {
     said += String(d);
     const m = /http:\/\/\S+/.exec(said);
     if (m && !url) url = m[0];
   };
-  srv.stdout.on('data', grab);
-  srv.stderr.on('data', grab);
-  srv.on('exit', code => { exited = code; });
-  srv.on('error', e => { exited = e.message; });
+  server.stdout.on('data', grab);
+  server.stderr.on('data', grab);
+  server.on('exit', code => { exited = code; });
+  server.on('error', e => { exited = e.message; });
   for (let i = 0; i < 240 && !url && exited === null; i++) await new Promise(r => setTimeout(r, 500));
   if (!url) {
     throw new Error(`depphunter ${exited === null ? 'said nothing about where it was serving in 2 minutes'
@@ -191,13 +191,13 @@ async function routeModels(ctx) {
   for (const name of ['hand', 'bug', 'props']) {
     const file = path.join(REPO, 'web/static', `${name}.glb`);
     if (fs.readFileSync(file).subarray(0, 4).toString() === 'glTF') continue; // the real thing is embedded
-    const cached = path.join(cacheDir(), `${name}.glb`);
+    const cached = path.join(cacheDirectory(), `${name}.glb`);
     if (!fs.existsSync(cached)) {
       const url = `https://media.githubusercontent.com/media/sarumaj/depphunter-cli/main/web/static/${name}.glb`;
       console.log(`fetching ${name}.glb (the checkout holds an LFS pointer)`);
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`${url}: ${res.status}; run git lfs pull instead`);
-      fs.writeFileSync(`${cached}.part`, Buffer.from(await res.arrayBuffer()));
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`${url}: ${response.status}; run git lfs pull instead`);
+      fs.writeFileSync(`${cached}.part`, Buffer.from(await response.arrayBuffer()));
       fs.renameSync(`${cached}.part`, cached);
     }
     const body = fs.readFileSync(cached);
@@ -215,11 +215,11 @@ async function routeModels(ctx) {
  * It names a real package and a real file, because what the picture has to show is the
  * map doing its actual job. A made-up path would place the fire nowhere.
  */
-function report(dir) {
-  const into = path.join(dir, 'govuln.json');
+function report(directory) {
+  const into = path.join(directory, 'govuln.json');
   const main = 'github.com/sarumaj/depphunter-cli';
-  const frame = (module, pkg, fn, at) => ({
-    module, version: at ? '' : 'v0.3.7', package: pkg, function: fn,
+  const frame = (module, packageName, functionName, at) => ({
+    module, version: at ? '' : 'v0.3.7', package: packageName, function: functionName,
     ...(at ? { position: { filename: at, line: 48, column: 1 } } : {}),
   });
   const lines = [
@@ -249,19 +249,19 @@ function report(dir) {
 async function findFire(page, view) {
   const png = (await page.screenshot()).toString('base64');
   return page.evaluate(async ({ data, view }) => {
-    const img = new Image();
-    await new Promise(r => { img.onload = r; img.src = 'data:image/png;base64,' + data; });
+    const image = new Image();
+    await new Promise(r => { image.onload = r; image.src = 'data:image/png;base64,' + data; });
     const c = document.createElement('canvas');
-    c.width = img.width; c.height = img.height;
-    c.getContext('2d').drawImage(img, 0, 0);
-    const px = c.getContext('2d').getImageData(0, 0, img.width, img.height).data;
+    c.width = image.width; c.height = image.height;
+    c.getContext('2d').drawImage(image, 0, 0);
+    const px = c.getContext('2d').getImageData(0, 0, image.width, image.height).data;
     let x0 = 1e9, y0 = 1e9, x1 = -1, y1 = -1, n = 0;
     for (let i = 0; i < px.length; i += 4) {
       const [r, g, b] = [px[i], px[i + 1], px[i + 2]];
       if (!(r > g && g > b && r - b > 30)) continue;
-      const at = i / 4, x = at % img.width, y = Math.floor(at / img.width);
+      const at = i / 4, x = at % image.width, y = Math.floor(at / image.width);
       // The HUD is warm in places (a stamina bar, a severity dot); the city is not.
-      if (y < 90 || y > img.height - 120) continue;
+      if (y < 90 || y > image.height - 120) continue;
       x0 = Math.min(x0, x); x1 = Math.max(x1, x);
       y0 = Math.min(y0, y); y1 = Math.max(y1, y);
       n++;
@@ -283,12 +283,12 @@ async function findFire(page, view) {
 async function shot(page, name, clip) {
   const png = await page.screenshot({ clip });
   const webp = await page.evaluate(async ({ data, w, q }) => {
-    const img = new Image();
-    await new Promise(r => { img.onload = r; img.src = 'data:image/png;base64,' + data; });
+    const image = new Image();
+    await new Promise(r => { image.onload = r; image.src = 'data:image/png;base64,' + data; });
     const c = document.createElement('canvas');
     c.width = w;
-    c.height = Math.round(img.height * (w / img.width));
-    c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+    c.height = Math.round(image.height * (w / image.width));
+    c.getContext('2d').drawImage(image, 0, 0, c.width, c.height);
     return c.toDataURL('image/webp', q).split(',')[1];
   }, { data: png.toString('base64'), w: SHOT_W, q: QUALITY });
   const file = path.join(OUT, `${name}.webp`);
@@ -298,7 +298,7 @@ async function shot(page, name, clip) {
 
 async function main() {
   fs.mkdirSync(OUT, { recursive: true });
-  const url = await serve(binary(), SERVED, [report(tempDir())]);
+  const url = await serve(binary(), SERVED, [report(temporaryDirectory())]);
 
   const browser = await launch();
   // Reduced motion: the first walk is not flown in (walk.js startArrival), so the street

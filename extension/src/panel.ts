@@ -64,7 +64,7 @@ function page(address: string): string {
 <head>
 <meta charset="UTF-8">
 <meta http-equiv="Content-Security-Policy"
-      content="default-src 'none'; style-src 'unsafe-inline'; frame-src ${attr(origin)};">
+      content="default-src 'none'; style-src 'unsafe-inline'; frame-src ${escapeAttribute(origin)};">
 <title>depphunter</title>
 <style>
   html, body { margin: 0; padding: 0; height: 100%; overflow: hidden; background: var(--vscode-editor-background); }
@@ -72,9 +72,9 @@ function page(address: string): string {
 </style>
 </head>
 <body>
-<iframe src="${attr(address)}" allow="local-network-access"></iframe>
+<iframe src="${escapeAttribute(address)}" allow="local-network-access"></iframe>
 </body>
 </html>`;
 }
 
-const attr = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');
+const escapeAttribute = (s: string) => s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/"/g, '&quot;');

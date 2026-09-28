@@ -17,24 +17,24 @@ import (
 // ~/Library/Application Support or Windows's %APPDATA%. The tests of another
 // platform's locations pick it through discoverOn.
 func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "depphunter-system")
+	directory, err := os.MkdirTemp("", "depphunter-system")
 	if err != nil {
 		panic(err)
 	}
-	userconf.SystemRoot = dir
+	userconf.SystemRoot = directory
 	userconf.Platform = "linux"
 	code := m.Run()
-	os.RemoveAll(dir)
+	os.RemoveAll(directory)
 	os.Exit(code)
 }
 
 // discoverOn reads the machine configuration of a machine with home, the environment
 // vars (listed and answered) and the platform goos.
-func discoverOn(home, goos string, vars map[string]string) *Config {
+func discoverOn(home, goos string, variables map[string]string) *Config {
 	c := New()
-	c.machine(userconf.Machine{Home: home, GOOS: goos, Env: env(vars), Environ: func() []string {
+	c.machine(userconf.Machine{Home: home, GOOS: goos, Environment: environment(variables), Environ: func() []string {
 		var out []string
-		for k, v := range vars {
+		for k, v := range variables {
 			out = append(out, k+"="+v)
 		}
 		sort.Strings(out)
@@ -72,15 +72,15 @@ moved = { index = "sparse+https://old.corp/index/" }
 		"CARGO_REGISTRIES_MOVED_INDEX":  "sparse+https://new.corp/index/",
 		"CARGO_REGISTRIES_MIRROR_INDEX": "sparse+https://mirror.corp/index/",
 	})
-	for _, tc := range []struct{ registry, want string }{
+	for _, testCase := range []struct{ registry, want string }{
 		{"corp", "sparse+https://crates.corp/index"},
 		{"my-reg", "sparse+https://env.corp/index"},
 		{"my_reg", "sparse+https://env.corp/index"},
 		{"moved", "sparse+https://new.corp/index"},
 		{"", "sparse+https://mirror.corp/index"}, // replace-with ends at an env registry
 	} {
-		if got := order(c, Cargo, "lib", tc.registry); strings.Join(got, " ") != tc.want {
-			t.Errorf("registry %q: %v, want %s", tc.registry, got, tc.want)
+		if got := order(c, Cargo, "lib", testCase.registry); strings.Join(got, " ") != testCase.want {
+			t.Errorf("registry %q: %v, want %s", testCase.registry, got, testCase.want)
 		}
 	}
 	if got := order(c, Cargo, "lib", "home"); len(got) != 0 {
@@ -93,33 +93,33 @@ moved = { index = "sparse+https://old.corp/index/" }
 //
 // Verifies: REQ-SUP-064
 func TestDiscoverNpmLocations(t *testing.T) {
-	home, dir := t.TempDir(), t.TempDir()
+	home, directory := t.TempDir(), t.TempDir()
 	put(t, filepath.Join(home, ".npmrc"), "registry=https://home.corp/npm\n")
-	user, global := filepath.Join(dir, "user-npmrc"), filepath.Join(dir, "etc", "npmrc")
+	user, global := filepath.Join(directory, "user-npmrc"), filepath.Join(directory, "etc", "npmrc")
 	put(t, user, "registry=https://user.corp/npm\n")
 	put(t, global, "registry=https://global.corp/npm\n@acme:registry=https://acme.global.corp/npm\n@beta:registry=https://beta.global.corp/npm\n")
-	vars := map[string]string{
+	variables := map[string]string{
 		"NPM_CONFIG_USERCONFIG":     user,
-		"npm_config_prefix":         dir,
+		"npm_config_prefix":         directory,
 		"npm_config_@beta:registry": "https://beta.env.corp/npm",
 	}
-	c := discoverOn(home, "linux", vars)
-	for pkg, want := range map[string]string{
+	c := discoverOn(home, "linux", variables)
+	for packageName, want := range map[string]string{
 		"lodash":     "https://user.corp/npm",
 		"@acme/tool": "https://acme.global.corp/npm",
 		"@beta/tool": "https://beta.env.corp/npm",
 	} {
-		if idx, known := c.For(NPM, pkg); idx != want || !known {
-			t.Errorf("%s: %s (known %v), want %s", pkg, idx, known, want)
+		if index, known := c.For(NPM, packageName); index != want || !known {
+			t.Errorf("%s: %s (known %v), want %s", packageName, index, known, want)
 		}
 	}
-	vars["NPM_CONFIG_REGISTRY"] = "https://upper.corp/npm"
-	vars["npm_config_registry"] = "https://lower.corp/npm"
-	if idx, _ := discoverOn(home, "linux", vars).For(NPM, "lodash"); idx != "https://lower.corp/npm" {
-		t.Errorf("environment: %s, want the lower-case variable's", idx)
+	variables["NPM_CONFIG_REGISTRY"] = "https://upper.corp/npm"
+	variables["npm_config_registry"] = "https://lower.corp/npm"
+	if index, _ := discoverOn(home, "linux", variables).For(NPM, "lodash"); index != "https://lower.corp/npm" {
+		t.Errorf("environment: %s, want the lower-case variable's", index)
 	}
-	if idx, _ := discoverOn(home, "linux", nil).For(NPM, "lodash"); idx != "https://home.corp/npm" {
-		t.Errorf("default: %s, want ~/.npmrc's", idx)
+	if index, _ := discoverOn(home, "linux", nil).For(NPM, "lodash"); index != "https://home.corp/npm" {
+		t.Errorf("default: %s, want ~/.npmrc's", index)
 	}
 }
 
@@ -141,10 +141,10 @@ func TestDiscoverPipLayers(t *testing.T) {
 	file := filepath.Join(t.TempDir(), "pip.conf")
 	put(t, file, "[install]\nextra-index-url = https://file-extra.corp/simple\n")
 
-	for _, tc := range []struct {
-		name string
-		vars map[string]string
-		want string
+	for _, testCase := range []struct {
+		name      string
+		variables map[string]string
+		want      string
 	}{
 		{"site < legacy < user", map[string]string{"XDG_CONFIG_HOME": xdg},
 			"https://legacy-extra.corp/simple https://user.corp/simple"},
@@ -155,9 +155,9 @@ func TestDiscoverPipLayers(t *testing.T) {
 		{"null device", map[string]string{"XDG_CONFIG_HOME": xdg, "PIP_CONFIG_FILE": "/dev/null", "PIP_EXTRA_INDEX_URL": "https://env-extra.corp/simple"},
 			"https://env-extra.corp/simple https://pypi.org/simple"},
 	} {
-		c := discoverOn(home, "linux", tc.vars)
-		if got := strings.Join(order(c, PyPI, "requests", ""), " "); got != tc.want {
-			t.Errorf("%s:\n got %s\nwant %s", tc.name, got, tc.want)
+		c := discoverOn(home, "linux", testCase.variables)
+		if got := strings.Join(order(c, PyPI, "requests", ""), " "); got != testCase.want {
+			t.Errorf("%s:\n got %s\nwant %s", testCase.name, got, testCase.want)
 		}
 	}
 
@@ -175,7 +175,7 @@ func TestDiscoverPipLayers(t *testing.T) {
 // directory) when the environment does not set it.
 //
 // Verifies: REQ-SUP-064
-func TestDiscoverGoproxyFromTheGoEnvFile(t *testing.T) {
+func TestDiscoverGoproxyFromTheGoEnvironmentFile(t *testing.T) {
 	home := t.TempDir()
 	put(t, filepath.Join(home, ".config", "go", "env"), "GOPROXY=https://goproxy.corp,direct\n")
 	if got := order(discoverOn(home, "linux", nil), Go, "corp.example/lib", ""); strings.Join(got, " ") != "https://goproxy.corp" {

@@ -15,9 +15,9 @@ import (
 // Verifies: REQ-SUP-064, REQ-AUTH-027, REQ-AUTH-028
 func TestDartAndHexLocations(t *testing.T) {
 	home, xdg, other := t.TempDir(), t.TempDir(), t.TempDir()
-	for _, tc := range []struct {
+	for _, testCase := range []struct {
 		goos      string
-		vars      map[string]string
+		variables map[string]string
 		pub, hexd string
 	}{
 		{"linux", nil, filepath.Join(home, ".config", "dart", "pub-tokens.json"), filepath.Join(home, ".hex")},
@@ -31,12 +31,12 @@ func TestDartAndHexLocations(t *testing.T) {
 		{"windows", map[string]string{"APPDATA": other}, filepath.Join(other, "dart", "pub-tokens.json"), filepath.Join(home, ".hex")},
 		{"windows", nil, filepath.Join(home, ".config", "dart", "pub-tokens.json"), filepath.Join(home, ".hex")},
 	} {
-		m := machine(t, home, tc.goos, tc.vars)
-		if got := m.PubTokens(); got != tc.pub {
-			t.Errorf("%s %v: pub %s", tc.goos, tc.vars, got)
+		m := machine(t, home, testCase.goos, testCase.variables)
+		if got := m.PubTokens(); got != testCase.pub {
+			t.Errorf("%s %v: pub %s", testCase.goos, testCase.variables, got)
 		}
-		if got := m.HexHome(); got != tc.hexd {
-			t.Errorf("%s %v: hex %s", tc.goos, tc.vars, got)
+		if got := m.HexHome(); got != testCase.hexd {
+			t.Errorf("%s %v: hex %s", testCase.goos, testCase.variables, got)
 		}
 	}
 	if got := machine(t, "", "linux", nil).PubTokens(); got != "" {
@@ -69,7 +69,7 @@ func TestParseHexConfig(t *testing.T) {
 		APIURL: "https://hex.corp/api",
 		APIKey: "user-key",
 		OAuth:  HexToken{Access: "oauth-access", Expires: 1893456000},
-		Repos: map[string]HexRepo{
+		Repositories: map[string]HexRepository{
 			"hexpm:acme": {AuthKey: "acme-key"},
 			"hexpm:beta": {OAuth: HexToken{Access: "beta-token", Expires: 1}},
 			"bytes":      {AuthKey: "key"},
@@ -97,17 +97,17 @@ func TestHexAPIURL(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, ".hex", "hex.config"), []byte(`{api_url,<<"https://file.corp/api">>}.`), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	for _, tc := range []struct {
-		vars map[string]string
-		want string
+	for _, testCase := range []struct {
+		variables map[string]string
+		want      string
 	}{
 		{nil, "https://file.corp/api"},
 		{map[string]string{"HEX_API": "https://api.corp/api"}, "https://api.corp/api"},
 		{map[string]string{"HEX_API": "https://api.corp/api", "HEX_API_URL": "https://url.corp/api"}, "https://url.corp/api"},
 		{map[string]string{"HEX_HOME": t.TempDir()}, ""},
 	} {
-		if got := machine(t, home, "linux", tc.vars).HexAPIURL(); got != tc.want {
-			t.Errorf("%v: %q, want %q", tc.vars, got, tc.want)
+		if got := machine(t, home, "linux", testCase.variables).HexAPIURL(); got != testCase.want {
+			t.Errorf("%v: %q, want %q", testCase.variables, got, testCase.want)
 		}
 	}
 }
@@ -120,8 +120,8 @@ func TestHexAPIURL(t *testing.T) {
 // Verifies: REQ-SUP-064, REQ-AUTH-028, REQ-BEAM-013
 func TestRebar3Locations(t *testing.T) {
 	home, global, cache := t.TempDir(), t.TempDir(), t.TempDir()
-	for _, tc := range []struct {
-		vars          map[string]string
+	for _, testCase := range []struct {
+		variables     map[string]string
 		config, hexed string
 	}{
 		{nil, filepath.Join(home, ".config", "rebar3", "rebar.config"), filepath.Join(home, ".config", "rebar3", "hex.config")},
@@ -130,12 +130,12 @@ func TestRebar3Locations(t *testing.T) {
 		{map[string]string{"REBAR_CACHE_DIR": cache, "REBAR_GLOBAL_CONFIG_DIR": global},
 			filepath.Join(global, ".config", "rebar3", "rebar.config"), filepath.Join(global, ".config", "rebar3", "hex.config")},
 	} {
-		m := machine(t, home, "linux", tc.vars)
-		if got := m.Rebar3GlobalConfig(); got != tc.config {
-			t.Errorf("%v: rebar.config %s", tc.vars, got)
+		m := machine(t, home, "linux", testCase.variables)
+		if got := m.Rebar3GlobalConfig(); got != testCase.config {
+			t.Errorf("%v: rebar.config %s", testCase.variables, got)
 		}
-		if got := m.Rebar3HexConfig(); got != tc.hexed {
-			t.Errorf("%v: hex.config %s", tc.vars, got)
+		if got := m.Rebar3HexConfig(); got != testCase.hexed {
+			t.Errorf("%v: hex.config %s", testCase.variables, got)
 		}
 	}
 	if got := machine(t, "", "linux", nil).Rebar3HexConfig(); got != "" {
@@ -148,10 +148,10 @@ func TestRebar3Locations(t *testing.T) {
 // map without one and the other options are passed over.
 //
 // Verifies: REQ-BEAM-013
-func TestParseRebar3HexRepos(t *testing.T) {
-	for src, want := range map[string]struct {
-		repos   []string
-		replace bool
+func TestParseRebar3HexRepositories(t *testing.T) {
+	for source, want := range map[string]struct {
+		repositories []string
+		replace      bool
 	}{
 		`{hex, [{repos, [#{name => <<"hexpm:acme">>, repo_key => <<"k">>}]}]}.`: {[]string{"hexpm:acme"}, false},
 		`%% global
@@ -162,9 +162,9 @@ func TestParseRebar3HexRepos(t *testing.T) {
 		`{hex, [{repos, [#{name => <<"a">>}]}, {repos, replace, [#{name => <<"b">>}]}]}.`: {[]string{"a", "b"}, false},
 		`{deps, []}.`: {nil, false},
 	} {
-		repos, replace := ParseRebar3HexRepos([]byte(src))
-		if !reflect.DeepEqual(repos, want.repos) || replace != want.replace {
-			t.Errorf("%s: %v %v", src, repos, replace)
+		repositories, replace := ParseRebar3HexRepositories([]byte(source))
+		if !reflect.DeepEqual(repositories, want.repositories) || replace != want.replace {
+			t.Errorf("%s: %v %v", source, repositories, replace)
 		}
 	}
 }
@@ -189,7 +189,7 @@ func TestParseRebar3HexConfig(t *testing.T) {
 	want := HexConfig{
 		APIKey: "user-key",
 		OAuth:  HexToken{Access: "user-token", Expires: 1893456000},
-		Repos: map[string]HexRepo{
+		Repositories: map[string]HexRepository{
 			"hexpm":       {APIKey: "user-key"},
 			"hexpm:acme":  {AuthKey: "acme-key"},
 			"hexpm:beta":  {APIKey: "beta-api", AuthKey: "beta-auth", OAuth: HexToken{Access: "beta-token", Expires: 1}},
@@ -199,7 +199,7 @@ func TestParseRebar3HexConfig(t *testing.T) {
 	if !reflect.DeepEqual(got, want) {
 		t.Errorf("got %+v\nwant %+v", got, want)
 	}
-	if got := ParseRebar3HexConfig([]byte("{api_key, <<\"k\">>}.\n")); got.APIKey != "" || len(got.Repos) != 0 {
+	if got := ParseRebar3HexConfig([]byte("{api_key, <<\"k\">>}.\n")); got.APIKey != "" || len(got.Repositories) != 0 {
 		t.Errorf("Mix's hex.config read as rebar3's: %+v", got)
 	}
 }

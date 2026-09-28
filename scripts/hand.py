@@ -6,8 +6,8 @@ Run it with Blender, or with the `bpy` module on the same Python it was built fo
     pip install "numpy<2" bpy
     python3 scripts/hand.py
 
-The hand itself is not modelled here. It is `generic-hand` from the WebXR Input
-Profiles project - a real hand, modelled and rigged by people who model hands, and
+The hand itself is not modeled here. It is `generic-hand` from the WebXR Input
+Profiles project - a real hand, modeled and rigged by people who model hands, and
 MIT licensed (see web/static/vendor/README.md). Nothing anyone writes in a script
 will beat it, and an earlier version of this file spent a lot of lines proving that.
 What the script does is the part that is ours:
@@ -259,10 +259,10 @@ def forearm(mesh: Object, elbow: Vector, wrist: Vector) -> tuple[float, float, V
 
     rim = [e for e in bm.edges if len(e.link_faces) == 1]
     ring = {v for e in rim for v in e.verts}
-    centre = sum((v.co for v in ring), Vector()) / len(ring)
+    center = sum((v.co for v in ring), Vector()) / len(ring)
     # How wide the wrist is where the model stops, which every ring after it is a
     # multiple of: the arm keeps the wrist's own oval rather than becoming a tube.
-    width = sum((v.co - centre).length for v in ring) / len(ring)
+    width = sum((v.co - center).length for v in ring) / len(ring)
 
     # The arm's line: straight out of the wrist to the elbow, and turned at it.
     side = axis.cross(Vector((0.0, 0.0, 1.0)))
@@ -276,9 +276,9 @@ def forearm(mesh: Object, elbow: Vector, wrist: Vector) -> tuple[float, float, V
         return bent + upper * (run * (t - ELBOW)) if t > ELBOW else axis * (run * t)
 
     edges = rim
-    at = centre
+    at = center
     for t, swell in ARM_PROFILE:
-        edges, at, _ = grow(bm, edges, centre + at_t(t) - at, at, swell)
+        edges, at, _ = grow(bm, edges, center + at_t(t) - at, at, swell)
     # ... and close the elbow off with a ring pulled into a point.
     bmesh.ops.contextual_create(bm, geom=edges)
 
@@ -286,7 +286,7 @@ def forearm(mesh: Object, elbow: Vector, wrist: Vector) -> tuple[float, float, V
     bm.to_mesh(mesh.data)
     bm.free()
     mesh.data.update()
-    return centre.dot(axis), width, axis  # type: ignore[reportAttributeAccessIssue]
+    return center.dot(axis), width, axis  # type: ignore[reportAttributeAccessIssue]
 
 
 def grow(

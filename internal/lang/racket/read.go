@@ -46,10 +46,10 @@ func Unquote(n *Node) *Node {
 
 // Module is what the reader found in a file.
 type Module struct {
-	// Lang is the text after #lang (or #!name) on the file's first line of
-	// content, trimmed; LangLine its line.
-	Lang     string
-	LangLine int
+	// Language is the text after #lang (or #!name) on the file's first line of
+	// content, trimmed; LanguageLine its line.
+	Language     string
+	LanguageLine int
 	// Reader is the module path a #reader prefix names (DrRacket's saved
 	// teaching-language files start with one).
 	Reader *Node
@@ -76,13 +76,13 @@ const (
 )
 
 type frame struct {
-	node    *Node
-	closer  byte
-	text    bool // the body is text ({...} of an @-form, or a Scribble document)
-	alt     bool // |{ ... }| text: nothing inside is read
-	depth   int  // plain braces open inside text
-	at      bool // an @cmd[...] list: a {text} body may follow its ]
-	pending []byte
+	node        *Node
+	closer      byte
+	text        bool // the body is text ({...} of an @-form, or a Scribble document)
+	alternative bool // |{ ... }| text: nothing inside is read
+	depth       int  // plain braces open inside text
+	at          bool // an @cmd[...] list: a {text} body may follow its ]
+	pending     []byte
 }
 
 type reader struct {
@@ -92,7 +92,7 @@ type reader struct {
 	stack  []*frame
 	extra  int
 	mode   int
-	mod    *Module
+	module *Module
 	seen   bool // a datum (or #lang) was read: a later #lang is not the module's
 }
 
@@ -102,16 +102,16 @@ type reader struct {
 // goes, and what it cannot read is skipped.
 //
 // Implements: REQ-RACKET-010
-func Read(src []byte, text bool) *Module {
-	return read(src, text, true)
+func Read(source []byte, text bool) *Module {
+	return read(source, text, true)
 }
 
-// read reads src, its header (#lang, #reader) first when header is set.
-func read(src []byte, text, header bool) *Module {
-	r := &reader{s: string(src), mod: &Module{}}
+// read reads source, its header (#lang, #reader) first when header is set.
+func read(source []byte, text, header bool) *Module {
+	r := &reader{s: string(source), module: &Module{}}
 	r.starts = append(r.starts, 0)
 	for i := 0; ; {
-		j := bytes.IndexByte(src[i:], '\n')
+		j := bytes.IndexByte(source[i:], '\n')
 		if j < 0 {
 			break
 		}
@@ -122,11 +122,11 @@ func read(src []byte, text, header bool) *Module {
 		r.header()
 	}
 	switch {
-	case r.mod.WXME:
-		return r.mod
-	case scribbleLang(r.mod.Lang), r.mod.Lang == "" && text:
+	case r.module.WXME:
+		return r.module
+	case scribbleLanguage(r.module.Language), r.module.Language == "" && text:
 		r.mode = modeText
-	case atLang(r.mod.Lang):
+	case atLanguage(r.module.Language):
 		r.mode = modeAt
 	}
 	r.stack = []*frame{{node: &Node{}, text: r.mode == modeText}}
@@ -134,18 +134,18 @@ func read(src []byte, text, header bool) *Module {
 	for len(r.stack) > 1 {
 		r.close()
 	}
-	r.mod.Forms = r.stack[0].node.Kids
-	return r.mod
+	r.module.Forms = r.stack[0].node.Kids
+	return r.module
 }
 
-// scribbleLang reports whether a #lang reads its body as text with @-forms.
-func scribbleLang(l string) bool {
+// scribbleLanguage reports whether a #lang reads its body as text with @-forms.
+func scribbleLanguage(l string) bool {
 	first, _, _ := strings.Cut(l, " ")
 	return strings.HasPrefix(first, "scribble/") && first != "scribble/reader" || first == "pollen" || strings.HasPrefix(first, "pollen/")
 }
 
-// atLang reports whether a #lang reads s-expressions with @-forms.
-func atLang(l string) bool {
+// atLanguage reports whether a #lang reads s-expressions with @-forms.
+func atLanguage(l string) bool {
 	return strings.HasPrefix(l, "at-exp ") || l == "at-exp"
 }
 
@@ -164,20 +164,20 @@ func (r *reader) header() {
 		case strings.HasPrefix(s[r.i:], "#!/") || strings.HasPrefix(s[r.i:], "#! "):
 			r.skipLine() // a script's interpreter line
 		case strings.HasPrefix(s[r.i:], "#lang ") || strings.HasPrefix(s[r.i:], "#lang\t"):
-			r.langLine(r.i + 6)
+			r.languageLine(r.i + 6)
 			return
-		case strings.HasPrefix(s[r.i:], "#!") && r.i+2 < len(s) && isLangChar(s[r.i+2]):
-			r.langLine(r.i + 2) // #!racket/base is #lang racket/base
+		case strings.HasPrefix(s[r.i:], "#!") && r.i+2 < len(s) && isLanguageCharacter(s[r.i+2]):
+			r.languageLine(r.i + 2) // #!racket/base is #lang racket/base
 			return
 		case strings.HasPrefix(s[r.i:], "#reader"):
 			start := r.i
 			r.i += len("#reader")
-			sub := read([]byte(r.nextDatumText()), false, false)
-			if len(sub.Forms) > 0 {
-				r.mod.Reader = sub.Forms[0]
-				r.mod.Reader.Line = r.line(start)
+			submodule := read([]byte(r.nextDatumText()), false, false)
+			if len(submodule.Forms) > 0 {
+				r.module.Reader = submodule.Forms[0]
+				r.module.Reader.Line = r.line(start)
 				if strings.Contains(strings.ToLower(s[start:r.i]), "wxme") {
-					r.mod.WXME = true
+					r.module.WXME = true
 				}
 			}
 			return
@@ -187,11 +187,11 @@ func (r *reader) header() {
 	}
 }
 
-func isLangChar(c byte) bool {
+func isLanguageCharacter(c byte) bool {
 	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-'
 }
 
-func (r *reader) langLine(from int) {
+func (r *reader) languageLine(from int) {
 	end := strings.IndexByte(r.s[from:], '\n')
 	if end < 0 {
 		end = len(r.s) - from
@@ -200,8 +200,8 @@ func (r *reader) langLine(from int) {
 	if len(l) > 256 {
 		l = l[:256]
 	}
-	r.mod.Lang = strings.Join(strings.Fields(l), " ")
-	r.mod.LangLine = r.line(r.i)
+	r.module.Language = strings.Join(strings.Fields(l), " ")
+	r.module.LanguageLine = r.line(r.i)
 	r.seen = true
 	r.i = min(from+end+1, len(r.s))
 }
@@ -216,21 +216,21 @@ func (r *reader) nextDatumText() string {
 	}
 	start := r.i
 	if r.i < len(s) && (s[r.i] == '(' || s[r.i] == '[') {
-		depth, inStr := 0, false
+		depth, inString := 0, false
 		for ; r.i < len(s) && r.i-start < 4096; r.i++ {
 			c := s[r.i]
 			switch {
-			case inStr && c == '\\':
+			case inString && c == '\\':
 				r.i++
 			case c == '"':
-				inStr = !inStr
-			case inStr:
+				inString = !inString
+			case inString:
 			case c == '(' || c == '[':
 				depth++
 			case c == ')' || c == ']':
 				depth--
 			}
-			if depth == 0 && !inStr {
+			if depth == 0 && !inString {
 				r.i++
 				break
 			}
@@ -242,8 +242,8 @@ func (r *reader) nextDatumText() string {
 	return s[start:r.i]
 }
 
-func (r *reader) line(pos int) int {
-	return sort.Search(len(r.starts), func(k int) bool { return r.starts[k] > pos })
+func (r *reader) line(position int) int {
+	return sort.Search(len(r.starts), func(k int) bool { return r.starts[k] > position })
 }
 
 func (r *reader) top() *frame { return r.stack[len(r.stack)-1] }
@@ -301,7 +301,7 @@ func (r *reader) close() {
 		}
 		if strings.HasPrefix(r.s[r.i:], "|{") {
 			r.i += 2
-			f.at, f.text, f.alt, f.closer = false, true, true, '}'
+			f.at, f.text, f.alternative, f.closer = false, true, true, '}'
 			return
 		}
 	}
@@ -375,7 +375,7 @@ func (r *reader) run() {
 func (r *reader) text() {
 	s := r.s
 	f := r.top()
-	if f.alt {
+	if f.alternative {
 		// |{ ... }|: nested |{ }| pairs are counted, nothing else is read.
 		for r.i < len(s) {
 			k := strings.IndexByte(s[r.i:], '|')
@@ -469,12 +469,12 @@ func (r *reader) at() {
 		if delimiter(c) || c == '@' || c == '#' || c == '\\' {
 			return // a literal @
 		}
-		cmd := r.command()
-		if cmd == "" {
+		command := r.command()
+		if command == "" {
 			r.i++
 			return
 		}
-		n := &Node{Kind: List, Line: r.line(start), Kids: []*Node{{Kind: Symbol, Text: cmd, Line: r.line(start)}}}
+		n := &Node{Kind: List, Line: r.line(start), Kids: []*Node{{Kind: Symbol, Text: command, Line: r.line(start)}}}
 		switch {
 		case r.i < len(s) && s[r.i] == '[':
 			r.i++
@@ -489,7 +489,7 @@ func (r *reader) at() {
 		case strings.HasPrefix(s[r.i:], "|{"):
 			r.i += 2
 			if f := r.open(n, '}'); f != nil {
-				f.text, f.alt = true, true
+				f.text, f.alternative = true, true
 			}
 		default:
 			r.add(n.Kids[0])
@@ -522,7 +522,7 @@ func (r *reader) code1() {
 	case '"':
 		start := r.i
 		r.i++
-		r.add(&Node{Kind: String, Text: r.str(), Line: r.line(start)})
+		r.add(&Node{Kind: String, Text: r.readString(), Line: r.line(start)})
 	}
 }
 
@@ -554,7 +554,7 @@ func (r *reader) code() {
 			r.closeAt(c)
 		case '"':
 			r.i++
-			r.add(&Node{Kind: String, Text: r.str(), Line: r.line(start)})
+			r.add(&Node{Kind: String, Text: r.readString(), Line: r.line(start)})
 		case '\'', '`':
 			r.i++
 			r.push(c)
@@ -622,10 +622,10 @@ func (r *reader) dispatch() {
 		r.open(&Node{Kind: List, Line: r.line(start), Tag: "vector"}, closerOf(c))
 	case '"':
 		r.i++
-		r.add(&Node{Kind: String, Text: r.str(), Line: r.line(start)})
+		r.add(&Node{Kind: String, Text: r.readString(), Line: r.line(start)})
 	case '\\':
 		r.i++
-		r.add(&Node{Kind: Other, Text: `#\` + r.char(), Line: r.line(start)})
+		r.add(&Node{Kind: Other, Text: `#\` + r.character(), Line: r.line(start)})
 	case ':':
 		r.i++
 		r.add(&Node{Kind: Keyword, Text: r.token(), Line: r.line(start)})
@@ -673,14 +673,14 @@ func (r *reader) dispatch() {
 		switch {
 		case strings.HasPrefix(s[r.i:], "rx\"") || strings.HasPrefix(s[r.i:], "px\""):
 			r.i += 3
-			r.add(&Node{Kind: Other, Text: "#rx" + r.str(), Line: r.line(start)})
+			r.add(&Node{Kind: Other, Text: "#rx" + r.readString(), Line: r.line(start)})
 			return
 		case strings.HasPrefix(s[r.i:], "rx#\"") || strings.HasPrefix(s[r.i:], "px#\""):
 			r.i += 4
-			r.add(&Node{Kind: Other, Text: "#rx" + r.str(), Line: r.line(start)})
+			r.add(&Node{Kind: Other, Text: "#rx" + r.readString(), Line: r.line(start)})
 			return
 		case strings.HasPrefix(s[r.i:], "lang ") && !r.seen:
-			r.langLine(r.i + 5)
+			r.languageLine(r.i + 5)
 			return
 		case strings.HasPrefix(s[r.i:], "reader"):
 			r.i += len("reader")
@@ -794,13 +794,13 @@ func (r *reader) skipBraces() {
 // string ends at a line that is exactly the terminator.
 func (r *reader) hereString() string {
 	s := r.s
-	eol := strings.IndexByte(s[r.i:], '\n')
-	if eol < 0 {
+	lineEnd := strings.IndexByte(s[r.i:], '\n')
+	if lineEnd < 0 {
 		r.i = len(s)
 		return ""
 	}
-	term := strings.TrimSuffix(s[r.i:r.i+eol], "\r")
-	r.i += eol + 1
+	term := strings.TrimSuffix(s[r.i:r.i+lineEnd], "\r")
+	r.i += lineEnd + 1
 	bodyStart := r.i
 	for r.i < len(s) {
 		end := strings.IndexByte(s[r.i:], '\n')
@@ -826,9 +826,9 @@ func (r *reader) hereString() string {
 	return s[bodyStart:]
 }
 
-// str reads a string's body after its opening quote, up to the unescaped
+// readString reads a string's body after its opening quote, up to the unescaped
 // closing one (or the end of the input), unescaping \" \\ \n \t.
-func (r *reader) str() string {
+func (r *reader) readString() string {
 	s := r.s
 	j := r.i
 	escaped := false
@@ -864,9 +864,9 @@ func (r *reader) str() string {
 	return b.String()
 }
 
-// char reads a character after #\: one character, then more letters and
+// character reads a character after #\: one character, then more letters and
 // digits when it was one (#\space, #λ, #\nul).
-func (r *reader) char() string {
+func (r *reader) character() string {
 	s := r.s
 	if r.i >= len(s) {
 		return ""

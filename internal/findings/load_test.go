@@ -53,7 +53,7 @@ func TestCollectReadsEveryReportAndOrdersThem(t *testing.T) {
 	ids := map[string]bool{}
 	for _, f := range set.Findings {
 		if f.ID == "" || ids[f.ID] {
-			t.Fatalf("finding %q has no distinct id: %q", f.Ref, f.ID)
+			t.Fatalf("finding %q has no distinct id: %q", f.Reference, f.ID)
 		}
 		ids[f.ID] = true
 	}
@@ -69,17 +69,17 @@ func TestLocalizeKeepsOnlyPathsInsideTheRepository(t *testing.T) {
 	}
 	root := t.TempDir()
 	set := &Set{Findings: []*Finding{
-		{Ref: "a", Path: filepath.Join(root, "web", "static", "app.js")},
-		{Ref: "b", Path: "/etc/passwd", Package: "elsewhere"},
-		{Ref: "c", Path: "internal/server/server.go"},
-		{Ref: "d", Path: "../outside/thing.go"},
-		{Ref: "e", Path: ""},
+		{Reference: "a", Path: filepath.Join(root, "web", "static", "app.js")},
+		{Reference: "b", Path: "/etc/passwd", Package: "elsewhere"},
+		{Reference: "c", Path: "internal/server/server.go"},
+		{Reference: "d", Path: "../outside/thing.go"},
+		{Reference: "e", Path: ""},
 	}}
 	set.Localize(root)
 	want := map[string]string{"a": "web/static/app.js", "b": "", "c": "internal/server/server.go", "d": "", "e": ""}
 	for _, f := range set.Findings {
-		if f.Path != want[f.Ref] {
-			t.Errorf("%s: path %q, want %q", f.Ref, f.Path, want[f.Ref])
+		if f.Path != want[f.Reference] {
+			t.Errorf("%s: path %q, want %q", f.Reference, f.Path, want[f.Reference])
 		}
 	}
 }
@@ -88,7 +88,7 @@ func TestLocalizeKeepsOnlyPathsInsideTheRepository(t *testing.T) {
 func TestAddKeepsOneOfEachFinding(t *testing.T) {
 	set := &Set{}
 	f := func() []*Finding {
-		return []*Finding{{Ref: "CVE-1", Ecosystem: "npm", Package: "lodash", Version: "4.17.15"}}
+		return []*Finding{{Reference: "CVE-1", Ecosystem: "npm", Package: "lodash", Version: "4.17.15"}}
 	}
 	set.Add("trivy", f())
 	set.Add("osv", f())

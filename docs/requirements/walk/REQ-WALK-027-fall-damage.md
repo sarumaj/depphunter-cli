@@ -14,9 +14,9 @@ verification:
 
 A fall **shall** cost health as it would in life, measured against the walker,
 who is half a map unit tall: nothing for a drop of up to 0.9 units (about three
-metres); for a longer one, a share of the walker's current maximum health equal
+meters); for a longer one, a share of the walker's current maximum health equal
 to the part of the drop beyond 0.9 units over the 4.1 units between 0.9 and 5;
-and all of it for a drop of 5 units (about seventeen metres) or more, whatever
+and all of it for a drop of 5 units (about seventeen meters) or more, whatever
 the backpack holds. A fall **shall** be measured from its top, a jump included.
 Being reeled down a line **shall** count as falling from where the walker was
 when the line bit, or from the top of a fall already in progress; being reeled
@@ -40,4 +40,4 @@ brake on the way down.
 4. A drop of 5 units kills, with an empty backpack and with a full one, and so
    does a drop of 40.
 5. A walker who steps off a tower dies and is returned to the map, with the
-   height of the fall given in metres.
+   height of the fall given in meters.

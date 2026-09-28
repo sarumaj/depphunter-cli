@@ -26,8 +26,8 @@ import (
 )
 
 const (
-	ecoRaco = "raco"
-	ecoStd  = "racket-std"
+	ecosystemRaco = "raco"
+	ecosystemStd  = "racket-std"
 )
 
 const classInfo = "info"
@@ -39,7 +39,7 @@ func (Plugin) Name() string { return "racket" }
 func (Plugin) Version() int { return 1 }
 
 // Claims takes Racket's files: .rkt, .rktl, .rktd and .scrbl, and a Scheme
-// extension (.scm, .ss) or a script without one only when the scan labelled it
+// extension (.scm, .ss) or a script without one only when the scan labeled it
 // Racket (a #lang line, a racket #! line). Nothing in a compiled/ directory
 // (raco make's bytecode and dependency files) is read.
 //
@@ -51,7 +51,7 @@ func (Plugin) Claims(f *scan.File) bool {
 	switch strings.ToLower(path.Ext(f.Path)) {
 	case ".rkt", ".rktl", ".rktd", ".scrbl":
 	default:
-		if f.Lang != "Racket" {
+		if f.Language != "Racket" {
 			return false
 		}
 	}
@@ -71,8 +71,8 @@ func (Plugin) Class(f *scan.File) string {
 // Implements: REQ-RACKET-009
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoRaco, Name: "Racket packages"},
-		{ID: ecoStd, Name: "Racket base collections", Std: true},
+		{ID: ecosystemRaco, Name: "Racket packages"},
+		{ID: ecosystemStd, Name: "Racket base collections", Std: true},
 	}
 }
 
@@ -81,9 +81,9 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-RACKET-002, REQ-RACKET-003, REQ-RACKET-006
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	if path.Base(f.Path) == "info.rkt" {
-		return extractInfo(src), nil
+		return extractInfo(source), nil
 	}
-	return extractSource(src, strings.ToLower(path.Ext(f.Path))), nil
+	return extractSource(source, strings.ToLower(path.Ext(f.Path))), nil
 }

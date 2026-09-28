@@ -55,7 +55,7 @@ var metaLibraries = map[string]string{
 // Longest prefix first; a prefix ending in "_" also matches the bare word.
 //
 // Implements: REQ-FORTRAN-007
-var knownPackages = []struct{ prefix, pkg string }{
+var knownPackages = []struct{ prefix, packageName string }{
 	{"stdlib_", "stdlib"},
 	{"json_", "json-fortran"},
 	{"tomlf_", "toml-f"},
@@ -87,7 +87,7 @@ var knownPackages = []struct{ prefix, pkg string }{
 func knownPackage(module string) string {
 	for _, k := range knownPackages {
 		if p := strings.TrimSuffix(k.prefix, "_"); module == p || p != k.prefix && strings.HasPrefix(module, k.prefix) {
-			return k.pkg
+			return k.packageName
 		}
 	}
 	return ""
@@ -96,8 +96,8 @@ func knownPackage(module string) string {
 // stems are the spellings of a package name a module name may start with: the
 // name itself and the name without a "fortran" or "-f" affix (json-fortran:
 // json, toml-f: toml, fortran-regex: regex), each with - and . as _.
-func stems(pkg string) []string {
-	n := strings.ToLower(pkg)
+func stems(packageName string) []string {
+	n := strings.ToLower(packageName)
 	out := []string{n}
 	for _, affix := range []string{"fortran-", "fortran_", "f-"} {
 		if s := strings.TrimPrefix(n, affix); s != n && s != "" {
@@ -120,17 +120,17 @@ func fold(s string) string {
 	return strings.NewReplacer("-", "", "_", "", ".", "").Replace(strings.ToLower(s))
 }
 
-// spells reports whether a module's name spells package pkg: the name itself,
+// spells reports whether a module's name spells package packageName: the name itself,
 // or one of its stems followed by "_" (stdlib_kinds, json_module, regex_module),
 // or folded the same (test_drive and test-drive), or folded starting with a stem
 // of at least four letters (tomlf and toml-f).
 //
 // Implements: REQ-FORTRAN-007
-func spells(module, pkg string) bool {
-	if fold(module) == fold(pkg) {
+func spells(module, packageName string) bool {
+	if fold(module) == fold(packageName) {
 		return true
 	}
-	for _, s := range stems(pkg) {
+	for _, s := range stems(packageName) {
 		if len(s) < 2 {
 			continue
 		}

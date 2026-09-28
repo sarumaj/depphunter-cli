@@ -24,8 +24,8 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 
 // Verifies: REQ-SHADER-002, REQ-SHADER-004
 func TestGLSL(t *testing.T) {
-	res := analyze(t)
-	langtest.CheckImports(t, res["shaders/glsl/pbr.frag"], map[string]lang.Target{
+	results := analyze(t)
+	langtest.CheckImports(t, results["shaders/glsl/pbr.frag"], map[string]lang.Target{
 		`#include "common/lighting.glsl"`: {Local: "shaders/glsl/common/lighting.glsl"},
 		`#include "lib/noise.glsl"`:       {Local: "shaders/lib/noise.glsl"},
 		`#include <brdf.glsl>`:            {Local: "include/brdf.glsl"},
@@ -35,77 +35,79 @@ func TestGLSL(t *testing.T) {
 		`#include "generated/defines.glsl"`: {},
 		// Not captured: in comments and #if 0.
 	})
-	langtest.CheckImports(t, res["shaders/glsl/common/lighting.glsl"], map[string]lang.Target{
+	langtest.CheckImports(t, results["shaders/glsl/common/lighting.glsl"], map[string]lang.Target{
 		`#include "../utils.glsl"`: {Local: "shaders/glsl/utils.glsl"},
 	})
 	// Found in a parent directory, ignoring case.
-	langtest.CheckImports(t, res["shaders/glsl/post/blur.comp"], map[string]lang.Target{
+	langtest.CheckImports(t, results["shaders/glsl/post/blur.comp"], map[string]lang.Target{
 		`#include "Utils.glsl"`: {Local: "shaders/glsl/utils.glsl"},
 	})
 	// .vs and .fs files the scan found GLSL in; the F# file is not claimed.
-	langtest.CheckImports(t, res["shaders/glsl/basic.vs"], map[string]lang.Target{
+	langtest.CheckImports(t, results["shaders/glsl/basic.vs"], map[string]lang.Target{
 		`#include "common/lighting.glsl"`: {Local: "shaders/glsl/common/lighting.glsl"},
 	})
-	if res["shaders/glsl/basic.fs"] == nil {
+	if results["shaders/glsl/basic.fs"] == nil {
 		t.Error("basic.fs (GLSL) not analyzed")
 	}
-	if res["src/App.fs"] != nil {
+	if results["src/App.fs"] != nil {
 		t.Error("App.fs (F#) analyzed")
 	}
 }
 
 // Verifies: REQ-SHADER-003
 func TestGLSLSymbols(t *testing.T) {
-	res := analyze(t)
+	results := analyze(t)
 	// Interface blocks, structs and functions; a prototype of a defined function is
 	// not a second symbol, and initializer lists in braces are no bodies.
-	langtest.CheckSymbols(t, res["shaders/glsl/pbr.frag"], map[string]string{
+	langtest.CheckSymbols(t, results["shaders/glsl/pbr.frag"], map[string]string{
 		"Camera": "block", "Lights": "block", "Material": "struct", "shade": "func", "main": "func",
 	})
-	langtest.CheckSymbols(t, res["shaders/glsl/common/lighting.glsl"], map[string]string{"attenuation": "func"})
-	langtest.CheckSymbols(t, res["shaders/glsl/basic.fs"], map[string]string{"main": "func"})
+	langtest.CheckSymbols(t, results["shaders/glsl/common/lighting.glsl"], map[string]string{"attenuation": "func"})
+	langtest.CheckSymbols(t, results["shaders/glsl/basic.fs"], map[string]string{"main": "func"})
 }
 
 // Verifies: REQ-SHADER-002, REQ-SHADER-003, REQ-SHADER-004, REQ-SHADER-009
 func TestHLSL(t *testing.T) {
-	res := analyze(t)
-	langtest.CheckImports(t, res["d3d/hlsl/Lighting.hlsl"], map[string]lang.Target{
+	results := analyze(t)
+	langtest.CheckImports(t, results["d3d/hlsl/Lighting.hlsl"], map[string]lang.Target{
 		`#include "Common.hlsli"`:            {Local: "d3d/hlsl/Common.hlsli"},
 		`#include "..\Shared\SharedTypes.h"`: {Local: "d3d/Shared/SharedTypes.h"},
 		`#include <Samplers.hlsli>`:          {Local: "d3d/include/Samplers.hlsli"},
 	})
 	// Written in another case than the file's.
-	langtest.CheckImports(t, res["d3d/hlsl/Common.hlsli"], map[string]lang.Target{
+	langtest.CheckImports(t, results["d3d/hlsl/Common.hlsli"], map[string]lang.Target{
 		`#include "samplers.hlsli"`: {Local: "d3d/include/Samplers.hlsli"},
 	})
-	langtest.CheckSymbols(t, res["d3d/hlsl/Lighting.hlsl"], map[string]string{
+	langtest.CheckSymbols(t, results["d3d/hlsl/Lighting.hlsl"], map[string]string{
 		"SceneCB": "cbuffer", "VSIn": "struct", "PSIn": "struct", "VSMain": "func", "PSMain": "func",
 		"CSMain": "func", "Util": "namespace", "Util.Sq": "func",
 	})
-	langtest.CheckImports(t, res["effects/Blur.fx"], map[string]lang.Target{
+	langtest.CheckImports(t, results["effects/Blur.fx"], map[string]lang.Target{
 		`#include "Blur.fxh"`: {Local: "effects/Blur.fxh"},
 	})
-	langtest.CheckSymbols(t, res["effects/Blur.fx"], map[string]string{"PS": "func", "Blur": "technique"})
-	langtest.CheckSymbols(t, res["effects/Blur.fxh"], map[string]string{})
+	langtest.CheckSymbols(t, results["effects/Blur.fx"], map[string]string{"PS": "func", "Blur": "technique"})
+	langtest.CheckSymbols(t, results["effects/Blur.fxh"], map[string]string{})
 	// Unreal's virtual paths: the plugin's own Shaders/ directory, else the engine.
-	unreal := func(pkg string) lang.Target { return lang.Target{Ecosystem: ecoUnreal, Package: pkg} }
-	langtest.CheckImports(t, res["Plugins/MyFX/Shaders/Private/Glow.usf"], map[string]lang.Target{
+	unreal := func(packageName string) lang.Target {
+		return lang.Target{Ecosystem: ecosystemUnreal, Package: packageName}
+	}
+	langtest.CheckImports(t, results["Plugins/MyFX/Shaders/Private/Glow.usf"], map[string]lang.Target{
 		`#include "/Engine/Private/Common.ush"`:                unreal("Engine"),
 		`#include "/Plugin/MyFX/Private/GlowCommon.ush"`:       {Local: "Plugins/MyFX/Shaders/Private/GlowCommon.ush"},
 		`#include "/Plugin/Niagara/Private/NiagaraCommon.ush"`: unreal("Niagara"),
 		`#include "/Project/Missing.ush"`:                      {},
 	})
-	langtest.CheckSymbols(t, res["Plugins/MyFX/Shaders/Private/Glow.usf"], map[string]string{"MainPS": "func"})
+	langtest.CheckSymbols(t, results["Plugins/MyFX/Shaders/Private/Glow.usf"], map[string]string{"MainPS": "func"})
 }
 
 // Verifies: REQ-SHADER-005, REQ-SHADER-006, REQ-SHADER-007, REQ-SHADER-009
 func TestWGSL(t *testing.T) {
-	res := analyze(t)
-	pbr := lang.Target{Ecosystem: ecoCrates, Package: "bevy_pbr", Version: "0.14.2", Pinned: true}
+	results := analyze(t)
+	pbr := lang.Target{Ecosystem: ecosystemCrates, Package: "bevy_pbr", Version: "0.14.2", Pinned: true}
 	// Not in Cargo.lock: bevy's requirement, floating.
-	render := lang.Target{Ecosystem: ecoCrates, Package: "bevy_render", Version: "0.14"}
+	render := lang.Target{Ecosystem: ecosystemCrates, Package: "bevy_render", Version: "0.14"}
 	util := lang.Target{Local: "assets/shaders/util.wgsl"}
-	langtest.CheckImports(t, res["assets/shaders/custom.wgsl"], map[string]lang.Target{
+	langtest.CheckImports(t, results["assets/shaders/custom.wgsl"], map[string]lang.Target{
 		`#import bevy_pbr::forward_io::VertexOutput`: pbr,
 		`#import bevy_render::view::View`:            render,
 		`#import bevy_render::globals::Globals`:      render,
@@ -122,14 +124,14 @@ func TestWGSL(t *testing.T) {
 		`#import bevy_pbr::skinning`:           pbr,
 		// Not captured: in comments.
 	})
-	langtest.CheckSymbols(t, res["assets/shaders/custom.wgsl"], map[string]string{
+	langtest.CheckSymbols(t, results["assets/shaders/custom.wgsl"], map[string]string{
 		"material_color": "var", "SCALE": "const", "WORKGROUP": "const", "Params": "struct", "Color": "type",
 		"fragment": "func",
 	})
-	langtest.CheckSymbols(t, res["assets/shaders/util.wgsl"], map[string]string{"PI": "const", "hash": "func"})
+	langtest.CheckSymbols(t, results["assets/shaders/util.wgsl"], map[string]string{"PI": "const", "hash": "func"})
 	view := lang.Target{Local: "crates/fx/src/render/view.wesl"}
 	shapes := lang.Target{Local: "crates/fx/src/shapes.wesl"}
-	langtest.CheckImports(t, res["crates/fx/src/lighting.wesl"], map[string]lang.Target{
+	langtest.CheckImports(t, results["crates/fx/src/lighting.wesl"], map[string]lang.Target{
 		`import package::render::view::View`: view,
 		`import super::shapes::circle`:       shapes,
 		`import super::shapes::square`:       shapes,
@@ -138,25 +140,25 @@ func TestWGSL(t *testing.T) {
 		`import bevy_pbr::mesh_functions::get_world_from_local`: pbr,
 		`import package::missing::thing`:                        {},
 	})
-	langtest.CheckSymbols(t, res["crates/fx/src/lighting.wesl"], map[string]string{"light": "func"})
+	langtest.CheckSymbols(t, results["crates/fx/src/lighting.wesl"], map[string]string{"light": "func"})
 }
 
 // Verifies: REQ-SHADER-001
 func TestClaims(t *testing.T) {
 	for _, f := range []scan.File{
 		{Path: "a.glsl"}, {Path: "a.FRAG"}, {Path: "a.rchit"}, {Path: "a.hlsli"}, {Path: "a.usf"}, {Path: "a.wgsl"},
-		{Path: "a.wesl"}, {Path: "a.fs", Lang: "GLSL"}, {Path: "a.vs", Lang: "GLSL"}, {Path: "a.mesh", Lang: "GLSL"},
+		{Path: "a.wesl"}, {Path: "a.fs", Language: "GLSL"}, {Path: "a.vs", Language: "GLSL"}, {Path: "a.mesh", Language: "GLSL"},
 	} {
 		if !(Plugin{}).Claims(&f) {
 			t.Errorf("%s not claimed", f.Path)
 		}
 	}
 	for _, f := range []scan.File{
-		{Path: "a.fs", Lang: "F#"}, {Path: "a.fs", Lang: "Forth"}, {Path: "a.vs"}, {Path: "a.mesh"}, {Path: "a.cu"},
-		{Path: "a.metal"}, {Path: "a.cl", Lang: "OpenCL"}, {Path: "a.glsl", Binary: true},
+		{Path: "a.fs", Language: "F#"}, {Path: "a.fs", Language: "Forth"}, {Path: "a.vs"}, {Path: "a.mesh"}, {Path: "a.cu"},
+		{Path: "a.metal"}, {Path: "a.cl", Language: "OpenCL"}, {Path: "a.glsl", Binary: true},
 	} {
 		if (Plugin{}).Claims(&f) {
-			t.Errorf("%s (%s) claimed", f.Path, f.Lang)
+			t.Errorf("%s (%s) claimed", f.Path, f.Language)
 		}
 	}
 }
@@ -166,28 +168,28 @@ func TestClaims(t *testing.T) {
 //
 // Verifies: REQ-SHADER-008
 func TestTruncated(t *testing.T) {
-	var srcs []string
+	var sources []string
 	filepath.WalkDir("testdata/repo", func(p string, d os.DirEntry, err error) error {
 		if err == nil && !d.IsDir() && dialect(p, "GLSL") != 0 {
 			b, _ := os.ReadFile(p)
 			for i := range b {
-				srcs = append(srcs, string(b[:i]))
+				sources = append(sources, string(b[:i]))
 			}
 		}
 		return nil
 	})
 	for _, run := range []string{"{", "}", "(", ")", "[", "<", "/*", "\"", "#import a::{", "import a::{", "a::",
 		"struct S {", "namespace N {", "uniform B {", "f(x) {", "@a(", "var<", "fn ", "= {", "#include \"", "\\\n"} {
-		srcs = append(srcs, strings.Repeat(run, 200_000/len(run)))
+		sources = append(sources, strings.Repeat(run, 200_000/len(run)))
 	}
-	for _, src := range srcs {
-		for _, ext := range []string{".glsl", ".hlsl", ".wgsl"} {
+	for _, source := range sources {
+		for _, extension := range []string{".glsl", ".hlsl", ".wgsl"} {
 			start := time.Now()
-			if _, err := (Plugin{}).Extract(&scan.File{Path: "x" + ext}, []byte(src)); err != nil {
+			if _, err := (Plugin{}).Extract(&scan.File{Path: "x" + extension}, []byte(source)); err != nil {
 				t.Fatal(err)
 			}
 			if d := time.Since(start); d > 2*time.Second {
-				t.Errorf("%s %.20q (%d bytes): %v", ext, src, len(src), d)
+				t.Errorf("%s %.20q (%d bytes): %v", extension, source, len(source), d)
 			}
 		}
 	}

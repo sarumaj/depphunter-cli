@@ -25,21 +25,21 @@ const set = "registry 60.0.0"
 const psc = "psc-0.15.0-20220507"
 
 func pinned(name, version string) lang.Target {
-	return lang.Target{Ecosystem: ecoPureScript, Package: name, Version: version, Pinned: true}
+	return lang.Target{Ecosystem: ecosystemPureScript, Package: name, Version: version, Pinned: true}
 }
 
 func inSet(name, set string) lang.Target {
-	return lang.Target{Ecosystem: ecoPureScript, Package: name, Version: set}
+	return lang.Target{Ecosystem: ecosystemPureScript, Package: name, Version: set}
 }
 
 var (
-	registryLib = lang.Target{Ecosystem: ecoPureScript, Package: "github.com/purescript/registry-dev/lib",
+	registryLibrary = lang.Target{Ecosystem: ecosystemPureScript, Package: "github.com/purescript/registry-dev/lib",
 		Version: "3e8af27822b9d1ac8bfb158cdad08bcf6e6ec8be", Pinned: true, Origin: "https://github.com/purescript/registry-dev.git"}
-	glitter = lang.Target{Ecosystem: ecoPureScript, Package: "github.com/acme/purescript-glitter", Version: "v2.0.0",
+	glitter = lang.Target{Ecosystem: ecosystemPureScript, Package: "github.com/acme/purescript-glitter", Version: "v2.0.0",
 		Origin: "https://github.com/acme/purescript-glitter.git"}
-	domIndexed = lang.Target{Ecosystem: ecoPureScript, Package: "github.com/purescript-halogen/purescript-dom-indexed",
+	domIndexed = lang.Target{Ecosystem: ecosystemPureScript, Package: "github.com/purescript-halogen/purescript-dom-indexed",
 		Version: "v11.0.0", Origin: "https://github.com/purescript-halogen/purescript-dom-indexed.git"}
-	forked = lang.Target{Ecosystem: ecoPureScript, Package: "github.com/acme/purescript-forked",
+	forked = lang.Target{Ecosystem: ecosystemPureScript, Package: "github.com/acme/purescript-forked",
 		Version: "0123456789abcdef0123456789abcdef01234567", Pinned: true, Origin: "https://github.com/acme/purescript-forked.git"}
 	prelude = pinned("prelude", "6.0.1")
 	maybe   = pinned("maybe", "6.0.0")
@@ -48,38 +48,38 @@ var (
 
 // Verifies: REQ-PURESCRIPT-002, REQ-PURESCRIPT-004, REQ-PURESCRIPT-007, REQ-PURESCRIPT-011
 func TestModules(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	langtest.CheckImports(t, res["src/Main.purs"], map[string]lang.Target{
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	langtest.CheckImports(t, results["src/Main.purs"], map[string]lang.Target{
 		"Prelude":              prelude,
-		"Data.Argonaut.Core":   {Ecosystem: ecoPureScript, Package: "argonaut-core", Unresolved: true}, // table, not listed
-		"Data.Map":             inSet("ordered-collections", set),                                      // table
+		"Data.Argonaut.Core":   {Ecosystem: ecosystemPureScript, Package: "argonaut-core", Unresolved: true}, // table, not listed
+		"Data.Map":             inSet("ordered-collections", set),                                            // table
 		"Data.Maybe":           maybe,
 		"Effect":               effect,
-		"Effect.Aff":           {Ecosystem: ecoPureScript, Package: "aff", Version: "7.1.0", Requested: ">=7.0.0 <8.0.0", Pinned: true},
+		"Effect.Aff":           {Ecosystem: ecosystemPureScript, Package: "aff", Version: "7.1.0", Requested: ">=7.0.0 <8.0.0", Pinned: true},
 		"Effect.Console":       inSet("console", set),
 		"Glitter.Sparkle":      glitter, // only the package installed in .spago/p says so
 		"Halogen.HTML":         pinned("halogen", "7.0.0"),
-		"Mystery.Thing":        {},                                                                                         // nothing names its package
-		"Node.FS.Aff":          {Ecosystem: ecoPureScript, Package: "node-fs", Version: ">=9.0.0 <10.0.0", Floating: true}, // spelled
-		"Prim.Row":             {Ecosystem: ecoStd, Package: prim},
-		"Registry.PackageName": registryLib, // installed from git
+		"Mystery.Thing":        {},                                                                                               // nothing names its package
+		"Node.FS.Aff":          {Ecosystem: ecosystemPureScript, Package: "node-fs", Version: ">=9.0.0 <10.0.0", Floating: true}, // spelled
+		"Prim.Row":             {Ecosystem: ecosystemStd, Package: prim},
+		"Registry.PackageName": registryLibrary, // installed from git
 		"Shop.Cart":            {Local: "src/Shop/Cart.purs"},
 		"Widgets.Button":       {Local: "packages/widgets/src/Widgets/Button.purs"}, // a workspace package
 		"foreign import":       {Local: "src/Main.js"},
 	})
-	langtest.CheckImports(t, res["src/Shop/Cart.purs"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/Shop/Cart.purs"], map[string]lang.Target{
 		"Prelude": prelude, "Data.Array": pinned("arrays", "7.3.0"), "Data.Maybe": maybe,
 	})
-	langtest.CheckImports(t, res["test/Test/Main.purs"], map[string]lang.Target{
+	langtest.CheckImports(t, results["test/Test/Main.purs"], map[string]lang.Target{
 		"Prelude": prelude, "Effect": effect,
 		"Shop.Cart":    {Local: "src/Shop/Cart.purs"},
 		"Test.Helpers": {Local: "test/Test/Helpers.purs"},
 		"Test.Spec":    pinned("spec", "7.6.0"), // a test dependency
 	})
-	langtest.CheckImports(t, res["packages/widgets/src/Widgets/Button.purs"], map[string]lang.Target{
+	langtest.CheckImports(t, results["packages/widgets/src/Widgets/Button.purs"], map[string]lang.Target{
 		"Prelude": prelude, "Web.HTML": inSet("web-html", set), "Data.Maybe": maybe,
 	})
-	langtest.CheckImports(t, res["legacy/src/Legacy/Main.purs"], map[string]lang.Target{
+	langtest.CheckImports(t, results["legacy/src/Legacy/Main.purs"], map[string]lang.Target{
 		"Prelude":             inSet("prelude", psc),
 		"Control.Monad.State": inSet("transformers", psc),
 		"DOM.HTML.Indexed":    domIndexed, // a packages.dhall override: a tag is shown, neither pinned nor floating
@@ -88,7 +88,7 @@ func TestModules(t *testing.T) {
 		"Legacy.Util":         {Local: "legacy/src/Legacy/Util.purs"},
 		"Widgets.Button":      {Local: "packages/widgets/src/Widgets/Button.purs"}, // a local repo in the set
 	})
-	langtest.CheckImports(t, res["legacy/test/Legacy/Test.purs"], map[string]lang.Target{
+	langtest.CheckImports(t, results["legacy/test/Legacy/Test.purs"], map[string]lang.Target{
 		"Legacy.Util": {Local: "legacy/src/Legacy/Util.purs"},
 		"Test.Assert": inSet("assert", psc), // test.dhall adds assert
 	})
@@ -96,21 +96,21 @@ func TestModules(t *testing.T) {
 
 // Verifies: REQ-PURESCRIPT-003, REQ-PURESCRIPT-010
 func TestSymbols(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	langtest.CheckSymbols(t, res["src/Main.purs"], map[string]string{
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	langtest.CheckSymbols(t, results["src/Main.purs"], map[string]string{
 		"greeting": "func", "raw": "func", "greet": "foreign", "Handle": "type", "main": "func", "<+>": "operator",
 	})
-	langtest.CheckSymbols(t, res["src/Shop/Cart.purs"], map[string]string{
+	langtest.CheckSymbols(t, results["src/Shop/Cart.purs"], map[string]string{
 		"Item": "type", "Item.Book": "constructor", "Item.Toy": "constructor", "Item.Gift": "constructor",
 		"Cart": "type", "Cart.Cart": "constructor", "Total": "type",
 		"Priced": "class", "Priced.price": "method", "Priced.discount": "method",
 		"pricedItem": "instance", "eqItem": "instance", "showCart": "instance",
 		"empty": "func", "total": "func",
 	})
-	langtest.CheckSymbols(t, res["spago.yaml"], map[string]string{"shop": "package"})
-	langtest.CheckSymbols(t, res["legacy/spago.dhall"], map[string]string{"legacy": "package"})
+	langtest.CheckSymbols(t, results["spago.yaml"], map[string]string{"shop": "package"})
+	langtest.CheckSymbols(t, results["legacy/spago.dhall"], map[string]string{"legacy": "package"})
 	// A signature and its definition are one symbol, on the signature's line.
-	for _, s := range res["src/Shop/Cart.purs"].Symbols {
+	for _, s := range results["src/Shop/Cart.purs"].Symbols {
 		if s.Name == "empty" && s.Line != 27 {
 			t.Errorf("empty on line %d, want 27", s.Line)
 		}
@@ -119,59 +119,59 @@ func TestSymbols(t *testing.T) {
 
 // Verifies: REQ-PURESCRIPT-005, REQ-PURESCRIPT-006
 func TestManifests(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
-	langtest.CheckImports(t, res["spago.yaml"], map[string]lang.Target{
-		"aff":                 {Ecosystem: ecoPureScript, Package: "aff", Version: "7.1.0", Requested: ">=7.0.0 <8.0.0", Pinned: true},
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	langtest.CheckImports(t, results["spago.yaml"], map[string]lang.Target{
+		"aff":                 {Ecosystem: ecosystemPureScript, Package: "aff", Version: "7.1.0", Requested: ">=7.0.0 <8.0.0", Pinned: true},
 		"arrays":              pinned("arrays", "7.3.0"),
 		"console":             inSet("console", set), // the package set decides, offline unknown
 		"effect":              effect,
 		"halogen":             pinned("halogen", "7.0.0"),
 		"maybe":               maybe,
-		"node-fs":             {Ecosystem: ecoPureScript, Package: "node-fs", Version: ">=9.0.0 <10.0.0", Floating: true},
+		"node-fs":             {Ecosystem: ecosystemPureScript, Package: "node-fs", Version: ">=9.0.0 <10.0.0", Floating: true},
 		"ordered-collections": inSet("ordered-collections", set),
 		"prelude":             prelude,
-		"registry-lib":        registryLib,
+		"registry-lib":        registryLibrary,
 		"acme-glitter":        glitter, // a git tag: shown, neither pinned nor floating
 		"widgets":             {Local: "packages/widgets/spago.yaml"},
 		"spec":                pinned("spec", "7.6.0"),
 		"json-codecs":         pinned("json-codecs", "4.0.0"), // an extra registry version
 		"vendored":            {},                             // a path that is not there
 	})
-	langtest.CheckImports(t, res["spago.lock"], map[string]lang.Target{
+	langtest.CheckImports(t, results["spago.lock"], map[string]lang.Target{
 		"aff": pinned("aff", "7.1.0"), "arrays": pinned("arrays", "7.3.0"), "effect": effect,
 		"halogen": pinned("halogen", "7.0.0"), "maybe": maybe, "prelude": prelude,
-		"registry-lib": registryLib, "spec": pinned("spec", "7.6.0"),
+		"registry-lib": registryLibrary, "spec": pinned("spec", "7.6.0"),
 	})
-	langtest.CheckImports(t, res["packages/widgets/spago.yaml"], map[string]lang.Target{
+	langtest.CheckImports(t, results["packages/widgets/spago.yaml"], map[string]lang.Target{
 		"prelude": prelude, "web-html": inSet("web-html", set),
 	})
-	langtest.CheckImports(t, res["legacy/spago.dhall"], map[string]lang.Target{
+	langtest.CheckImports(t, results["legacy/spago.dhall"], map[string]lang.Target{
 		"console": inSet("console", psc), "dom-indexed": domIndexed, "effect": inSet("effect", psc),
 		"forked": forked, "maybe": inSet("maybe", psc), "prelude": inSet("prelude", psc),
 		"transformers": inSet("transformers", psc), "widgets": {Local: "packages/widgets/spago.yaml"},
 	})
-	langtest.CheckImports(t, res["legacy/packages.dhall"], map[string]lang.Target{
+	langtest.CheckImports(t, results["legacy/packages.dhall"], map[string]lang.Target{
 		"forked": forked, "dom-indexed": domIndexed, "widgets": {Local: "packages/widgets/spago.yaml"},
 	})
-	langtest.CheckImports(t, res["legacy/test.dhall"], map[string]lang.Target{"assert": inSet("assert", psc)})
-	langtest.CheckImports(t, res["bower.json"], map[string]lang.Target{
-		"purescript-prelude": {Ecosystem: ecoPureScript, Package: "prelude", Version: "^v6.0.0", Floating: true},
-		"purescript-halogen-subscriptions": {Ecosystem: ecoPureScript, Package: "github.com/purescript-halogen/purescript-halogen-subscriptions",
+	langtest.CheckImports(t, results["legacy/test.dhall"], map[string]lang.Target{"assert": inSet("assert", psc)})
+	langtest.CheckImports(t, results["bower.json"], map[string]lang.Target{
+		"purescript-prelude": {Ecosystem: ecosystemPureScript, Package: "prelude", Version: "^v6.0.0", Floating: true},
+		"purescript-halogen-subscriptions": {Ecosystem: ecosystemPureScript, Package: "github.com/purescript-halogen/purescript-halogen-subscriptions",
 			Version: "^2.0.0", Floating: true, Origin: "https://github.com/purescript-halogen/purescript-halogen-subscriptions.git"},
 		"purescript-spec": pinned("spec", "7.0.0"),
 	})
-	for _, im := range res["spago.yaml"].Imports {
-		if im.Spec == "node-fs" && im.Line != 10 {
-			t.Errorf("node-fs on line %d, want 10", im.Line)
+	for _, imported := range results["spago.yaml"].Imports {
+		if imported.Spec == "node-fs" && imported.Line != 10 {
+			t.Errorf("node-fs on line %d, want 10", imported.Line)
 		}
 	}
 	// Not a manifest spago or bower would read.
-	for name, src := range map[string]string{
+	for name, source := range map[string]string{
 		"spago.yaml": "other: 1\n", "spago.lock": "[1]", "bower.json": `{"name": "left-pad", "dependencies": {"x": "1"}}`,
 		"spago.dhall": `{ foo = 1 }`, "packages.dhall": `https://example.com/packages.dhall`,
 	} {
-		if ex, _ := (Plugin{}).Extract(&scan.File{Path: name}, []byte(src)); len(ex.Imports) != 0 || len(ex.Symbols) != 0 {
-			t.Errorf("%s: %+v", name, ex)
+		if extraction, _ := (Plugin{}).Extract(&scan.File{Path: name}, []byte(source)); len(extraction.Imports) != 0 || len(extraction.Symbols) != 0 {
+			t.Errorf("%s: %+v", name, extraction)
 		}
 	}
 }
@@ -182,12 +182,12 @@ func TestDhall(t *testing.T) {
 		"base.dhall": `let x = "a" in { list = [ x, "b" ] : List Text, name = "base" }`,
 	}
 	load := func(f string) *dhall.Value {
-		if src, ok := files[f]; ok {
-			return dhall.Eval([]byte(src), ".", nil)
+		if source, ok := files[f]; ok {
+			return dhall.Eval([]byte(source), ".", nil)
 		}
 		return nil
 	}
-	for src, want := range map[string][]string{
+	for source, want := range map[string][]string{
 		// Imports, `//`, `#`, selection.
 		`let b = ./base.dhall in b // { list = b.list # [ "c" ] }`: {"a", "b", "c"},
 		// A projection keeps what is known; `?` takes the first import that loads.
@@ -201,7 +201,7 @@ func TestDhall(t *testing.T) {
       multi ${"line"}
       '' `: nil,
 	} {
-		v := dhall.Eval([]byte(src), ".", load)
+		v := dhall.Eval([]byte(source), ".", load)
 		if v.Kind == dhall.KindRecord {
 			v = v.Field("list")
 		}
@@ -210,7 +210,7 @@ func TestDhall(t *testing.T) {
 			got = append(got, e.Text)
 		}
 		if !reflect.DeepEqual(got, want) {
-			t.Errorf("%s: %v, want %v", src, got, want)
+			t.Errorf("%s: %v, want %v", source, got, want)
 		}
 	}
 	// Older package sets build their records with mkPackage.
@@ -258,16 +258,16 @@ func TestInstalledLegacy(t *testing.T) {
 		"lib/src/Lib.purs": "module Lib where\nimport Web.Thing\n",
 		"lib/bower_components/purescript-web-thing/src/Web/Thing.purs": "module Web.Thing where\n",
 	})
-	res := langtest.Analyze(t, Plugin{}, root)
-	langtest.CheckImports(t, res["src/Main.purs"], map[string]lang.Target{
+	results := langtest.Analyze(t, Plugin{}, root)
+	langtest.CheckImports(t, results["src/Main.purs"], map[string]lang.Target{
 		"Unusual.Module": inSet("odd-name", "psc-0.15.4-20220901"),
 		"Data.Maybe":     inSet("maybe", "psc-0.15.4-20220901"),
 		"Web.Thing":      {}, // installed for lib/ only, and not listed here
 	})
-	langtest.CheckImports(t, res["lib/src/Lib.purs"], map[string]lang.Target{
-		"Web.Thing": {Ecosystem: ecoPureScript, Package: "web-thing", Version: "^1.0.0", Floating: true},
+	langtest.CheckImports(t, results["lib/src/Lib.purs"], map[string]lang.Target{
+		"Web.Thing": {Ecosystem: ecosystemPureScript, Package: "web-thing", Version: "^1.0.0", Floating: true},
 	})
-	if _, ok := res["lib/bower_components/purescript-web-thing/src/Web/Thing.purs"]; ok {
+	if _, ok := results["lib/bower_components/purescript-web-thing/src/Web/Thing.purs"]; ok {
 		t.Error("bower_components/ analyzed")
 	}
 }
@@ -281,7 +281,7 @@ func TestDependencies(t *testing.T) {
 	}{
 		// spago.lock's dependencies, pinned by the lock.
 		{pinned("aff", "7.1.0"), []lang.Target{effect, prelude}},
-		{registryLib, []lang.Target{pinned("aff", "7.1.0"), prelude}},
+		{registryLibrary, []lang.Target{pinned("aff", "7.1.0"), prelude}},
 		// A packages.dhall override's dependencies, as its workspace decides them.
 		{forked, []lang.Target{inSet("prelude", psc), inSet("maybe", psc)}},
 		{inSet("console", set), nil},
@@ -322,9 +322,9 @@ func TestInstalledDependencies(t *testing.T) {
 	}{
 		{halogen, []lang.Target{pinned("aff", "7.1.0"), pinned("prelude", "6.0.1"), inSet("dom-indexed", set)}},
 		{pinned("aff", "7.1.0"), []lang.Target{pinned("prelude", "6.0.1")}},
-		{lang.Target{Ecosystem: ecoPureScript, Package: "hooks"}, []lang.Target{halogen}},
-		{lang.Target{Ecosystem: ecoPureScript, Package: "console"}, []lang.Target{
-			{Ecosystem: ecoPureScript, Package: "effect", Floating: true}, {Ecosystem: ecoPureScript, Package: "prelude", Floating: true}}},
+		{lang.Target{Ecosystem: ecosystemPureScript, Package: "hooks"}, []lang.Target{halogen}},
+		{lang.Target{Ecosystem: ecosystemPureScript, Package: "console"}, []lang.Target{
+			{Ecosystem: ecosystemPureScript, Package: "effect", Floating: true}, {Ecosystem: ecosystemPureScript, Package: "prelude", Floating: true}}},
 	} {
 		if got := r.Dependencies(c.t); !reflect.DeepEqual(got, c.want) || !r.Installed(c.t) {
 			t.Errorf("%s: got %+v, want %+v", c.t.Package, got, c.want)
@@ -363,7 +363,7 @@ func TestClaims(t *testing.T) {
 
 // Verifies: REQ-PURESCRIPT-002, REQ-PURESCRIPT-010
 func TestLexer(t *testing.T) {
-	src := "module A\n( x\n, y\n) where\n" +
+	source := "module A\n( x\n, y\n) where\n" +
 		"import B.C as D\n" +
 		"{- import No.Block {- -}\n" +
 		"s = \"import No.String \\\" -- still\"\n" +
@@ -378,10 +378,10 @@ func TestLexer(t *testing.T) {
 		"y = 1\n" +
 		"  import No.Indented\n" +
 		"type role T nominal\n"
-	ex := extractSource([]byte(src))
+	extraction := extractSource([]byte(source))
 	var specs []string
-	for _, im := range ex.Imports {
-		specs = append(specs, im.Spec)
+	for _, rawImport := range extraction.Imports {
+		specs = append(specs, rawImport.Spec)
 	}
 	if want := []string{"B.C", "E"}; !reflect.DeepEqual(specs, want) {
 		t.Errorf("imports %v, want %v", specs, want)
@@ -390,8 +390,8 @@ func TestLexer(t *testing.T) {
 		{Name: "s", Kind: "func", Line: 7}, {Name: "g", Kind: "func", Line: 8}, {Name: "m", Kind: "func", Line: 10},
 		{Name: "c", Kind: "func", Line: 13}, {Name: "x'", Kind: "func", Line: 15}, {Name: "y", Kind: "func", Line: 18},
 	}
-	if !reflect.DeepEqual(ex.Symbols, want) {
-		t.Errorf("symbols %+v, want %+v", ex.Symbols, want)
+	if !reflect.DeepEqual(extraction.Symbols, want) {
+		t.Errorf("symbols %+v, want %+v", extraction.Symbols, want)
 	}
 	if moduleName([]byte("-- | doc\n{- x -}\nmodule Data.Shop (a) where\n")) != "Data.Shop" || moduleName([]byte("x = 1")) != "" {
 		t.Error("moduleName")
@@ -411,17 +411,17 @@ func TestTruncated(t *testing.T) {
 		return nil
 	})
 	for _, p := range files {
-		src, err := os.ReadFile(p)
+		source, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatal(err)
 		}
 		f := &scan.File{Path: strings.TrimPrefix(filepath.ToSlash(p), "testdata/repo/")}
-		for i := 0; i <= len(src); i++ {
-			if _, err := (Plugin{}).Extract(f, src[:i]); err != nil {
+		for i := 0; i <= len(source); i++ {
+			if _, err := (Plugin{}).Extract(f, source[:i]); err != nil {
 				t.Fatal(err)
 			}
-			extractSource(src[:i])
-			dhall.Eval(src[:i], ".", nil)
+			extractSource(source[:i])
+			dhall.Eval(source[:i], ".", nil)
 		}
 	}
 	for _, unit := range []string{"{-", "-}", "{", "(", "[", "\"", "\"\"\"", "'", "\\", "--", "import ", "import A.",
@@ -430,12 +430,12 @@ func TestTruncated(t *testing.T) {
 		// Dhall
 		"let x = ", "{ a = ", "[ ", "( ", "x // ", "x # ", "x with a = ", "x.", "''", "${", "< A | ", "\\(x : T) -> ",
 		"https://x ", "./a ", "Some ", "mkPackage [] \"\" \"\" "} {
-		src := []byte(strings.Repeat(unit, 200_000/len(unit)+1))
+		source := []byte(strings.Repeat(unit, 200_000/len(unit)+1))
 		start := time.Now()
-		extractSource(src)
-		dhall.Eval(src, ".", nil)
+		extractSource(source)
+		dhall.Eval(source, ".", nil)
 		if d := time.Since(start); d > 5*time.Second {
-			t.Errorf("%q x %d: %v", unit, len(src)/len(unit), d)
+			t.Errorf("%q x %d: %v", unit, len(source)/len(unit), d)
 		}
 	}
 }
@@ -445,13 +445,13 @@ func TestTruncated(t *testing.T) {
 // Verifies: REQ-PURESCRIPT-009
 func TestEcosystems(t *testing.T) {
 	ecosystems := (Plugin{}).Ecosystems()
-	if len(ecosystems) != 2 || ecosystems[0].ID != ecoPureScript || ecosystems[0].Std || ecosystems[1].ID != ecoStd || !ecosystems[1].Std {
+	if len(ecosystems) != 2 || ecosystems[0].ID != ecosystemPureScript || ecosystems[0].Std || ecosystems[1].ID != ecosystemStd || !ecosystems[1].Std {
 		t.Fatalf("ecosystems %+v", ecosystems)
 	}
 	for f, r := range langtest.Analyze(t, Plugin{}, "testdata/repo") {
-		for _, im := range r.Imports {
-			if im.Target.Package != "" && im.Target.Ecosystem != ecoPureScript && im.Target.Ecosystem != ecoStd {
-				t.Errorf("%s %s: %+v", f, im.Spec, im.Target)
+		for _, imported := range r.Imports {
+			if imported.Target.Package != "" && imported.Target.Ecosystem != ecosystemPureScript && imported.Target.Ecosystem != ecosystemStd {
+				t.Errorf("%s %s: %+v", f, imported.Spec, imported.Target)
 			}
 		}
 	}

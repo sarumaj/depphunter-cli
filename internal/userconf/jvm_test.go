@@ -12,16 +12,16 @@ import (
 func TestMavenSettings(t *testing.T) {
 	home, mvn, m2 := t.TempDir(), t.TempDir(), t.TempDir()
 	user := filepath.Join(home, ".m2", "settings.xml")
-	for _, tc := range []struct {
-		vars map[string]string
-		want []string
+	for _, testCase := range []struct {
+		variables map[string]string
+		want      []string
 	}{
 		{nil, []string{user}},
 		{map[string]string{"M2_HOME": m2}, []string{user, filepath.Join(m2, "conf", "settings.xml")}},
 		{map[string]string{"M2_HOME": m2, "MAVEN_HOME": mvn}, []string{user, filepath.Join(mvn, "conf", "settings.xml")}},
 	} {
-		if got := machine(t, home, "linux", tc.vars).MavenSettings(); !reflect.DeepEqual(got, tc.want) {
-			t.Errorf("%v: %v, want %v", tc.vars, got, tc.want)
+		if got := machine(t, home, "linux", testCase.variables).MavenSettings(); !reflect.DeepEqual(got, testCase.want) {
+			t.Errorf("%v: %v, want %v", testCase.variables, got, testCase.want)
 		}
 	}
 }
@@ -36,7 +36,7 @@ func TestSbtLocations(t *testing.T) {
 	if got, want := m.SbtRepositories(), filepath.Join(home, ".sbt", "repositories"); got != want {
 		t.Errorf("repositories: %s, want %s", got, want)
 	}
-	if m.SbtOverrideBuildRepos() {
+	if m.SbtOverrideBuildRepositories() {
 		t.Error("override without the property")
 	}
 	want := []string{filepath.Join(home, ".sbt", ".credentials"), filepath.Join(home, ".ivy2", ".credentials")}
@@ -52,7 +52,7 @@ func TestSbtLocations(t *testing.T) {
 	if got, want := m.SbtRepositories(), filepath.Join(base, "repositories"); got != want {
 		t.Errorf("repositories: %s, want %s", got, want)
 	}
-	if m.SbtOverrideBuildRepos() {
+	if m.SbtOverrideBuildRepositories() {
 		t.Error("SBT_OPTS did not win over JAVA_OPTS")
 	}
 	want = []string{"/ci/credentials", filepath.Join(base, ".credentials"), filepath.Join(home, ".ivy2", ".credentials")}
@@ -60,8 +60,8 @@ func TestSbtLocations(t *testing.T) {
 		t.Errorf("credentials: %v, want %v", got, want)
 	}
 	m = machine(t, home, "linux", map[string]string{"SBT_OPTS": "-J-Dsbt.override.build.repos=true -Dsbt.repository.config=/r"})
-	if !m.SbtOverrideBuildRepos() || m.SbtRepositories() != "/r" {
-		t.Errorf("override %v, repositories %s", m.SbtOverrideBuildRepos(), m.SbtRepositories())
+	if !m.SbtOverrideBuildRepositories() || m.SbtRepositories() != "/r" {
+		t.Errorf("override %v, repositories %s", m.SbtOverrideBuildRepositories(), m.SbtRepositories())
 	}
 }
 
@@ -70,31 +70,31 @@ func TestSbtLocations(t *testing.T) {
 //
 // Verifies: REQ-AUTH-020
 func TestCoursierLocations(t *testing.T) {
-	home, dir, appData := t.TempDir(), t.TempDir(), t.TempDir()
-	for _, tc := range []struct {
-		goos string
-		vars map[string]string
-		want string
+	home, directory, appData := t.TempDir(), t.TempDir(), t.TempDir()
+	for _, testCase := range []struct {
+		goos      string
+		variables map[string]string
+		want      string
 	}{
 		{"linux", nil, filepath.Join(home, ".config", "coursier")},
-		{"linux", map[string]string{"XDG_CONFIG_HOME": dir}, filepath.Join(dir, "coursier")},
-		{"linux", map[string]string{"COURSIER_CONFIG_DIR": dir}, dir},
+		{"linux", map[string]string{"XDG_CONFIG_HOME": directory}, filepath.Join(directory, "coursier")},
+		{"linux", map[string]string{"COURSIER_CONFIG_DIR": directory}, directory},
 		{"darwin", nil, filepath.Join(home, "Library", "Application Support", "Coursier")},
 		{"windows", map[string]string{"APPDATA": appData}, filepath.Join(appData, "Coursier", "config")},
 		{"windows", nil, filepath.Join(home, ".config", "coursier")},
 	} {
-		m := machine(t, home, tc.goos, tc.vars)
-		if got := m.CoursierConfigDir(); got != tc.want {
-			t.Errorf("%s %v: %s, want %s", tc.goos, tc.vars, got, tc.want)
+		m := machine(t, home, testCase.goos, testCase.variables)
+		if got := m.CoursierConfigDirectory(); got != testCase.want {
+			t.Errorf("%s %v: %s, want %s", testCase.goos, testCase.variables, got, testCase.want)
 		}
-		if inline, file := m.CoursierCredentials(); inline != "" || file != filepath.Join(tc.want, "credentials.properties") {
-			t.Errorf("%s %v: credentials %q %q", tc.goos, tc.vars, inline, file)
+		if inline, file := m.CoursierCredentials(); inline != "" || file != filepath.Join(testCase.want, "credentials.properties") {
+			t.Errorf("%s %v: credentials %q %q", testCase.goos, testCase.variables, inline, file)
 		}
 	}
-	abs := filepath.Join(dir, "c.properties")
+	absolute := filepath.Join(directory, "c.properties")
 	for value, want := range map[string][2]string{
 		"host(realm) u:p":                   {"host(realm) u:p", ""},
-		abs:                                 {"", abs},
+		absolute:                            {"", absolute},
 		"file:///etc/coursier/c.properties": {"", "/etc/coursier/c.properties"},
 	} {
 		inline, file := machine(t, home, "linux", map[string]string{"COURSIER_CREDENTIALS": value}).CoursierCredentials()
@@ -114,7 +114,7 @@ func TestCoursierLocations(t *testing.T) {
 func TestCoursierCredentialsFileURL(t *testing.T) {
 	saved := Platform
 	t.Cleanup(func() { Platform = saved })
-	for _, tc := range []struct {
+	for _, testCase := range []struct {
 		goos, value, want string
 	}{
 		{"windows", "file:///C:/x", `C:\x`},
@@ -133,14 +133,14 @@ func TestCoursierCredentialsFileURL(t *testing.T) {
 		{"linux", "file://server/share/c.properties", ""},
 		{"darwin", "file:///Users/me/c.properties", "/Users/me/c.properties"},
 	} {
-		Platform = tc.goos
-		env := map[string]string{"COURSIER_CREDENTIALS": tc.value}
-		for _, m := range []Machine{New(t.TempDir(), func(k string) string { return env[k] }), machine(t, t.TempDir(), tc.goos, env)} {
-			if m.GOOS != tc.goos {
-				t.Fatalf("GOOS %s, want %s", m.GOOS, tc.goos)
+		Platform = testCase.goos
+		environment := map[string]string{"COURSIER_CREDENTIALS": testCase.value}
+		for _, m := range []Machine{New(t.TempDir(), func(k string) string { return environment[k] }), machine(t, t.TempDir(), testCase.goos, environment)} {
+			if m.GOOS != testCase.goos {
+				t.Fatalf("GOOS %s, want %s", m.GOOS, testCase.goos)
 			}
-			if inline, file := m.CoursierCredentials(); inline != "" || file != tc.want {
-				t.Errorf("%s %q: inline %q, file %q, want %q", tc.goos, tc.value, inline, file, tc.want)
+			if inline, file := m.CoursierCredentials(); inline != "" || file != testCase.want {
+				t.Errorf("%s %q: inline %q, file %q, want %q", testCase.goos, testCase.value, inline, file, testCase.want)
 			}
 		}
 	}
@@ -177,21 +177,21 @@ func TestGradleLocations(t *testing.T) {
 //
 // Verifies: REQ-SUP-064
 func TestClojureLocations(t *testing.T) {
-	home, dir := t.TempDir(), t.TempDir()
-	for _, tc := range []struct {
-		vars       map[string]string
-		deps, lein string
+	home, directory := t.TempDir(), t.TempDir()
+	for _, testCase := range []struct {
+		variables          map[string]string
+		dependencies, lein string
 	}{
 		{nil, filepath.Join(home, ".clojure"), filepath.Join(home, ".lein", "profiles.clj")},
-		{map[string]string{"XDG_CONFIG_HOME": dir}, filepath.Join(dir, "clojure"), filepath.Join(home, ".lein", "profiles.clj")},
-		{map[string]string{"XDG_CONFIG_HOME": home, "CLJ_CONFIG": dir, "LEIN_HOME": dir}, dir, filepath.Join(dir, "profiles.clj")},
+		{map[string]string{"XDG_CONFIG_HOME": directory}, filepath.Join(directory, "clojure"), filepath.Join(home, ".lein", "profiles.clj")},
+		{map[string]string{"XDG_CONFIG_HOME": home, "CLJ_CONFIG": directory, "LEIN_HOME": directory}, directory, filepath.Join(directory, "profiles.clj")},
 	} {
-		m := machine(t, home, "linux", tc.vars)
-		if got := m.ClojureConfigDir(); got != tc.deps {
-			t.Errorf("%v: %s, want %s", tc.vars, got, tc.deps)
+		m := machine(t, home, "linux", testCase.variables)
+		if got := m.ClojureConfigDirectory(); got != testCase.dependencies {
+			t.Errorf("%v: %s, want %s", testCase.variables, got, testCase.dependencies)
 		}
-		if got := m.LeinProfiles(); got != tc.lein {
-			t.Errorf("%v: %s, want %s", tc.vars, got, tc.lein)
+		if got := m.LeinProfiles(); got != testCase.lein {
+			t.Errorf("%v: %s, want %s", testCase.variables, got, testCase.lein)
 		}
 	}
 }

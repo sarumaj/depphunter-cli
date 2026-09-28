@@ -26,7 +26,7 @@ import (
 // Verifies: REQ-OBJC-006, REQ-OBJC-007, REQ-OBJC-008, REQ-OBJC-009, REQ-OBJC-010
 // Verifies: REQ-OBJC-011, REQ-OBJC-014
 func TestAppAndLibraries(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
 	imports := map[string]map[string]lang.Target{
 		"App/AppDelegate.h": {
 			`#import <UIKit/UIKit.h>`: {Ecosystem: swift.AppleEcosystem, Package: "UIKit"},
@@ -141,7 +141,7 @@ func TestAppAndLibraries(t *testing.T) {
 		"Pods/AFNetworking/AFNetworking/AFURLSessionManager.h":             {"AFURLSessionManager": "class"},
 	}
 	var got []string
-	for f := range res {
+	for f := range results {
 		got = append(got, f)
 	}
 	sort.Strings(got)
@@ -155,8 +155,8 @@ func TestAppAndLibraries(t *testing.T) {
 	}
 	for f, w := range imports {
 		t.Run(f, func(t *testing.T) {
-			langtest.CheckImports(t, res[f], w)
-			langtest.CheckSymbols(t, res[f], symbols[f])
+			langtest.CheckImports(t, results[f], w)
+			langtest.CheckSymbols(t, results[f], symbols[f])
 		})
 	}
 }
@@ -213,7 +213,7 @@ func TestClaimsOnlyObjectiveC(t *testing.T) {
 // Verifies: REQ-OBJC-008
 func TestLockGraph(t *testing.T) {
 	r, _ := Plugin{}.Resolver("testdata/repo", langtest.Files(t, "testdata/repo"))
-	tr := r.(lang.Transitive)
+	transitive := r.(lang.Transitive)
 	for pod, want := range map[string][]lang.Target{
 		"Firebase": {
 			{Ecosystem: cocoapods.Ecosystem, Package: "FirebaseAnalytics", Version: "10.0.0", Pinned: true},
@@ -228,7 +228,7 @@ func TestLockGraph(t *testing.T) {
 		},
 		"AFNetworking": nil,
 	} {
-		got := tr.Dependencies(lang.Target{Ecosystem: cocoapods.Ecosystem, Package: pod})
+		got := transitive.Dependencies(lang.Target{Ecosystem: cocoapods.Ecosystem, Package: pod})
 		if !reflect.DeepEqual(got, want) {
 			t.Errorf("%s depends on %+v\nwant %+v", pod, got, want)
 		}
@@ -259,8 +259,8 @@ func TestCarthageCheckoutDependencies(t *testing.T) {
 //
 // Verifies: REQ-OBJC-012, REQ-OBJC-014
 func TestSwiftImportsPods(t *testing.T) {
-	res := langtest.Analyze(t, swift.Plugin{}, "testdata/repo")
-	langtest.CheckImports(t, res["App/Swift/Bridge.swift"], map[string]lang.Target{
+	results := langtest.Analyze(t, swift.Plugin{}, "testdata/repo")
+	langtest.CheckImports(t, results["App/Swift/Bridge.swift"], map[string]lang.Target{
 		`import UIKit`:        {Ecosystem: swift.AppleEcosystem, Package: "UIKit"},
 		`import Alamofire`:    {Ecosystem: cocoapods.Ecosystem, Package: "Alamofire", Version: "5.8.1", Origin: "https://github.com/Alamofire/Alamofire.git"},
 		`import GRDB`:         {Ecosystem: cocoapods.Ecosystem, Package: "GRDB.swift", Version: "6.24.0", Pinned: true},
@@ -276,12 +276,12 @@ func TestSwiftImportsPods(t *testing.T) {
 //
 // Verifies: REQ-OBJC-013
 func TestScannerSurvivesBrokenSource(t *testing.T) {
-	src, err := os.ReadFile(filepath.Join("testdata", "repo", "App", "Models", "Cart.h"))
+	source, err := os.ReadFile(filepath.Join("testdata", "repo", "App", "Models", "Cart.h"))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for i := 0; i <= len(src); i++ {
-		if _, err := (Plugin{}).Extract(&scan.File{Path: "Cart.h"}, src[:i]); err != nil {
+	for i := 0; i <= len(source); i++ {
+		if _, err := (Plugin{}).Extract(&scan.File{Path: "Cart.h"}, source[:i]); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -308,15 +308,15 @@ func TestXcodeHeaderSearchPaths(t *testing.T) {
 		"App.xcodeproj/project.pbxproj": "{ objects = { 1 = { isa = XCBuildConfiguration; buildSettings = {\n" +
 			"HEADER_SEARCH_PATHS = (\"$(inherited)\", \"$(SRCROOT)/Vendor/**\"); }; }; }; }\n",
 	}
-	res := langtest.Analyze(t, Plugin{}, langtest.Write(t, files))
-	langtest.CheckImports(t, res["App/main.m"], map[string]lang.Target{
+	results := langtest.Analyze(t, Plugin{}, langtest.Write(t, files))
+	langtest.CheckImports(t, results["App/main.m"], map[string]lang.Target{
 		"#import <Lib/Lib.h>":  {Local: "Vendor/x/Lib/Lib.h"},
 		"#import \"Config.h\"": {Local: "Settings/Config.h"},
 	})
 	delete(files, "App.xcodeproj/project.pbxproj")
 	delete(files, "Settings/App.xcconfig")
-	res = langtest.Analyze(t, Plugin{}, langtest.Write(t, files))
-	langtest.CheckImports(t, res["App/main.m"], map[string]lang.Target{
+	results = langtest.Analyze(t, Plugin{}, langtest.Write(t, files))
+	langtest.CheckImports(t, results["App/main.m"], map[string]lang.Target{
 		"#import <Lib/Lib.h>":  {Local: "Other/Lib"},
 		"#import \"Config.h\"": {},
 	})

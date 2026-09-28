@@ -19,31 +19,31 @@ func write(t *testing.T, files map[string]string) []*scan.File {
 	root := t.TempDir()
 	var out []*scan.File
 	for name, body := range files {
-		abs := filepath.Join(root, filepath.FromSlash(name))
-		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		absolute := filepath.Join(root, filepath.FromSlash(name))
+		if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(abs, []byte(body), 0o644); err != nil {
+		if err := os.WriteFile(absolute, []byte(body), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		out = append(out, &scan.File{Path: name, Abs: abs})
+		out = append(out, &scan.File{Path: name, AbsolutePath: absolute})
 	}
 	return out
 }
 
-func env(m map[string]string) func(string) string {
+func environment(m map[string]string) func(string) string {
 	return func(k string) string { return m[k] }
 }
 
 // Verifies: REQ-SUP-014
 func TestPublicDefaults(t *testing.T) {
-	c := Discover(nil, env(nil), "")
-	for eco, want := range map[string]string{
+	c := Discover(nil, environment(nil), "")
+	for ecosystem, want := range map[string]string{
 		NPM: "https://registry.npmjs.org", PyPI: "https://pypi.org/simple", Go: "https://proxy.golang.org",
 	} {
-		idx, known := c.For(eco, "anything")
-		if idx != want || !known {
-			t.Errorf("%s: got %s (known %v), want %s known", eco, idx, known, want)
+		index, known := c.For(ecosystem, "anything")
+		if index != want || !known {
+			t.Errorf("%s: got %s (known %v), want %s known", ecosystem, index, known, want)
 		}
 	}
 }
@@ -53,20 +53,20 @@ func TestRepositoryIndexIsNotVouchedFor(t *testing.T) {
 	files := write(t, map[string]string{
 		".npmrc": "registry=https://artifactory.internal/api/npm/all\n@acme:registry=https://artifactory.internal/api/npm/acme\n",
 	})
-	c := Discover(files, env(nil), "")
+	c := Discover(files, environment(nil), "")
 
 	// The repository's index is what a package resolves from - and nothing on this
 	// machine says it should be, which is the whole point of showing it.
-	idx, known := c.For(NPM, "lodash")
-	if idx != "https://artifactory.internal/api/npm/all" || known {
-		t.Errorf("got %s (known %v), want the repository's index, unknown", idx, known)
+	index, known := c.For(NPM, "lodash")
+	if index != "https://artifactory.internal/api/npm/all" || known {
+		t.Errorf("got %s (known %v), want the repository's index, unknown", index, known)
 	}
-	if idx, _ := c.For(NPM, "@acme/tool"); idx != "https://artifactory.internal/api/npm/acme" {
-		t.Errorf("scoped package resolves from %s", idx)
+	if index, _ := c.For(NPM, "@acme/tool"); index != "https://artifactory.internal/api/npm/acme" {
+		t.Errorf("scoped package resolves from %s", index)
 	}
 	// A scope's index applies to that scope only.
-	if idx, _ := c.For(NPM, "@other/tool"); idx != "https://artifactory.internal/api/npm/all" {
-		t.Errorf("another scope resolves from %s", idx)
+	if index, _ := c.For(NPM, "@other/tool"); index != "https://artifactory.internal/api/npm/all" {
+		t.Errorf("another scope resolves from %s", index)
 	}
 }
 
@@ -77,11 +77,11 @@ func TestMachineConfigurationWins(t *testing.T) {
 		t.Fatal(err)
 	}
 	files := write(t, map[string]string{".npmrc": "registry=https://somewhere.else/npm\n"})
-	c := Discover(files, env(nil), home)
+	c := Discover(files, environment(nil), home)
 
-	idx, known := c.For(NPM, "lodash")
-	if idx != "https://mirror.corp/npm" || !known {
-		t.Errorf("got %s (known %v), want this machine's mirror, known", idx, known)
+	index, known := c.For(NPM, "lodash")
+	if index != "https://mirror.corp/npm" || !known {
+		t.Errorf("got %s (known %v), want this machine's mirror, known", index, known)
 	}
 }
 
@@ -92,15 +92,15 @@ func TestAScopedSourceBeatsTheMachinesUnscopedOne(t *testing.T) {
 		t.Fatal(err)
 	}
 	files := write(t, map[string]string{".npmrc": "@acme:registry=https://acme.example/npm\n"})
-	c := Discover(files, env(nil), home)
+	c := Discover(files, environment(nil), home)
 
 	// The repository's scope is the more specific answer, so it is the one recorded -
 	// and, since only the repository names it, it is marked rather than fetched from.
-	if idx, known := c.For(NPM, "@acme/ui"); idx != "https://acme.example/npm" || known {
-		t.Errorf("@acme/ui: got %s (known %v), want the repository's scope, unknown", idx, known)
+	if index, known := c.For(NPM, "@acme/ui"); index != "https://acme.example/npm" || known {
+		t.Errorf("@acme/ui: got %s (known %v), want the repository's scope, unknown", index, known)
 	}
-	if idx, known := c.For(NPM, "lodash"); idx != "https://mirror.corp/npm" || !known {
-		t.Errorf("lodash: got %s (known %v), want this machine's mirror, known", idx, known)
+	if index, known := c.For(NPM, "lodash"); index != "https://mirror.corp/npm" || !known {
+		t.Errorf("lodash: got %s (known %v), want this machine's mirror, known", index, known)
 	}
 }
 
@@ -113,7 +113,7 @@ func TestDiscoverReadsPaketFeeds(t *testing.T) {
 		"paket.dependencies": "source https://www.nuget.org/api/v2\nsource ./local-packages\nnuget Argu\n\ngroup Build\n  source https://nuget.pkg.example.com/acme/index.json username: \"x\" password: \"%TOKEN%\"\n  nuget FAKE\n",
 		"sub/paket.lock":     "NUGET\n  remote: https://feed.internal/v3/index.json\n    Argu (6.1.1)\n",
 	})
-	c := Discover(files, env(nil), "")
+	c := Discover(files, environment(nil), "")
 	var got []string
 	for _, s := range c.Sources(NuGet) {
 		got = append(got, s.URL)
@@ -135,11 +135,11 @@ func TestDiscoverReadsEveryEcosystem(t *testing.T) {
 		"composer.json": `{"repositories": [{"type": "vcs", "url": "https://github.com/acme/fork"},
 			{"type": "composer", "url": "https://satis.internal"}, {"packagist.org": false}]}`,
 	})
-	c := Discover(files, env(map[string]string{"GOPROXY": "https://goproxy.internal,direct"}), "")
+	c := Discover(files, environment(map[string]string{"GOPROXY": "https://goproxy.internal,direct"}), "")
 
 	// What replaces the public default is what a package is attributed to; what is
 	// asked beside it is not, since which packages it holds is not known offline.
-	for _, tt := range []struct{ eco, want string }{
+	for _, test := range []struct{ ecosystem, want string }{
 		{PyPI, "https://pypi.org/simple"},
 		{NuGet, "https://api.nuget.org/v3/index.json"},
 		{Maven, "https://repo.maven.apache.org/maven2"},
@@ -149,15 +149,15 @@ func TestDiscoverReadsEveryEcosystem(t *testing.T) {
 		{Go, "https://goproxy.internal"},
 		{Composer, "https://satis.internal"}, // Packagist is off; a VCS repository is not an index
 	} {
-		if idx, _ := c.For(tt.eco, "pkg"); idx != tt.want {
-			t.Errorf("%s: got %s, want %s", tt.eco, idx, tt.want)
+		if index, _ := c.For(test.ecosystem, "pkg"); index != test.want {
+			t.Errorf("%s: got %s, want %s", test.ecosystem, index, test.want)
 		}
 	}
 	// Every source is recorded, and each additive one is a candidate before the
 	// public default, in the same order on every run.
-	for _, tt := range []struct {
-		eco  string
-		want []string
+	for _, test := range []struct {
+		ecosystem string
+		want      []string
 	}{
 		{PyPI, []string{"https://uv.internal/simple?", "https://pypi.internal/simple?", "https://pypi.org/simple"}},
 		{NuGet, []string{"https://nuget.internal/v3/index.json?", "https://api.nuget.org/v3/index.json"}},
@@ -165,8 +165,8 @@ func TestDiscoverReadsEveryEcosystem(t *testing.T) {
 		{Go, []string{"https://goproxy.internal"}},
 		{Composer, []string{"https://satis.internal?"}},
 	} {
-		if got := order(c, tt.eco, "pkg", ""); strings.Join(got, " ") != strings.Join(tt.want, " ") {
-			t.Errorf("%s: asked in the order %v, want %v", tt.eco, got, tt.want)
+		if got := order(c, test.ecosystem, "pkg", ""); strings.Join(got, " ") != strings.Join(test.want, " ") {
+			t.Errorf("%s: asked in the order %v, want %v", test.ecosystem, got, test.want)
 		}
 	}
 	// GOPROXY comes from this machine's environment, so it is vouched for; the
@@ -181,9 +181,9 @@ func TestDiscoverReadsEveryEcosystem(t *testing.T) {
 
 // order lists the indexes a package is asked of, in order, with "?" after one that
 // is not fetched from.
-func order(c *Config, eco, pkg, registry string) []string {
+func order(c *Config, ecosystem, packageName, registry string) []string {
 	var out []string
-	for _, k := range c.candidates(eco, pkg, registry) {
+	for _, k := range c.candidates(ecosystem, packageName, registry) {
 		u := k.url
 		if !k.known {
 			u += "?"
@@ -195,8 +195,8 @@ func order(c *Config, eco, pkg, registry string) []string {
 
 // Verifies: REQ-SUP-017
 func TestContainerRegistryComesFromTheReference(t *testing.T) {
-	c := Discover(nil, env(nil), "")
-	for _, tt := range []struct {
+	c := Discover(nil, environment(nil), "")
+	for _, test := range []struct {
 		image, want string
 		known       bool
 	}{
@@ -205,9 +205,9 @@ func TestContainerRegistryComesFromTheReference(t *testing.T) {
 		{"ghcr.io/org/app", "https://ghcr.io", false},
 		{"localhost:5000/app", "https://localhost:5000", false},
 	} {
-		idx, known := c.For(OCI, tt.image)
-		if idx != tt.want || known != tt.known {
-			t.Errorf("%s: got %s (known %v), want %s (%v)", tt.image, idx, known, tt.want, tt.known)
+		index, known := c.For(OCI, test.image)
+		if index != test.want || known != test.known {
+			t.Errorf("%s: got %s (known %v), want %s (%v)", test.image, index, known, test.want, test.known)
 		}
 	}
 }
@@ -229,7 +229,7 @@ func TestContainerRegistryTheMachineKnowsIsAsked(t *testing.T) {
 	c := New()
 	c.Credentials(auth.Read(home, nil))
 	c.Trust([]string{"https://harbor.corp", "localhost:5000"})
-	for _, tt := range []struct {
+	for _, test := range []struct {
 		image string
 		known bool
 	}{
@@ -239,8 +239,8 @@ func TestContainerRegistryTheMachineKnowsIsAsked(t *testing.T) {
 		{"localhost:5000/app", true},
 		{"quay.io/org/app", false},
 	} {
-		if _, known := c.For(OCI, tt.image); known != tt.known {
-			t.Errorf("%s: known %v, want %v", tt.image, known, tt.known)
+		if _, known := c.For(OCI, test.image); known != test.known {
+			t.Errorf("%s: known %v, want %v", test.image, known, test.known)
 		}
 	}
 }
@@ -261,18 +261,18 @@ func TestAnIndexTheUserVouchesForIsNotMarked(t *testing.T) {
 	// an index nothing on this machine configures, which is what dependency
 	// confusion looks like - so every package is marked, and a warning that is
 	// always on is a warning nobody reads.
-	repoOnly := func() *Config {
+	repositoryOnly := func() *Config {
 		c := New()
 		c.Add(NPM, Source{URL: "https://nexus.corp/repository/npm-group"})
 		return c
 	}
 
-	c := repoOnly()
+	c := repositoryOnly()
 	if _, known := c.For(NPM, "@acme/widgets"); known {
 		t.Error("an index only the repository names was trusted without being vouched for")
 	}
 
-	c = repoOnly()
+	c = repositoryOnly()
 	c.Trust([]string{"https://nexus.corp/repository/npm-group/"}) // a trailing slash is the same index
 	index, known := c.For(NPM, "@acme/widgets")
 	if index != "https://nexus.corp/repository/npm-group" || !known {
@@ -308,16 +308,16 @@ func TestPublicNamesTheEcosystemsOwnIndex(t *testing.T) {
 // Verifies: REQ-AUTH-012, REQ-AUTH-013, REQ-TRC-002
 func TestACredentialInAnIndexURLIsNotRecorded(t *testing.T) {
 	store := auth.Read("", nil)
-	cfg := New()
-	cfg.Credentials(store)
-	cfg.Add(PyPI, Source{URL: "https://deploy:s3cr3t@pypi.corp/simple", Trusted: true, Origin: OriginMachine})
-	cfg.Add(NPM, Source{URL: "https://someone:else@npm.corp/", Origin: OriginProject})
+	config := New()
+	config.Credentials(store)
+	config.Add(PyPI, Source{URL: "https://deploy:s3cr3t@pypi.corp/simple", Trusted: true, Origin: OriginMachine})
+	config.Add(NPM, Source{URL: "https://someone:else@npm.corp/", Origin: OriginProject})
 
-	index, _ := cfg.For(PyPI, "requests")
+	index, _ := config.For(PyPI, "requests")
 	if index != "https://pypi.corp/simple" {
 		t.Errorf("the index is recorded as %q", index)
 	}
-	for _, s := range cfg.Report() {
+	for _, s := range config.Report() {
 		if strings.Contains(s.URL, "s3cr3t") || strings.Contains(s.URL, "else") {
 			t.Errorf("the resolution report carries a credential: %q", s.URL)
 		}
@@ -342,10 +342,10 @@ func TestACredentialInAnIndexURLIsNotRecorded(t *testing.T) {
 //
 // Verifies: REQ-AUTH-012, REQ-AUTH-017
 func TestARepositorysComposerCredentialsAreDiscarded(t *testing.T) {
-	store := auth.Read(t.TempDir(), env(nil))
-	d := NewDiscoverer(env(nil), "")
+	store := auth.Read(t.TempDir(), environment(nil))
+	d := NewDiscoverer(environment(nil), "")
 	d.Config().Credentials(store)
-	cfg := d.Discover(write(t, map[string]string{
+	config := d.Discover(write(t, map[string]string{
 		"composer.json": `{"repositories": [{"type": "composer", "url": "https://satis.corp"},
 			{"type": "composer", "url": "https://repo:leak@private.corp"}],
 			"config": {"http-basic": {"satis.corp": {"username": "repo", "password": "leak"}}}}`,
@@ -353,16 +353,16 @@ func TestARepositorysComposerCredentialsAreDiscarded(t *testing.T) {
 			"bearer": {"private.corp": "leak"}}`,
 	}))
 	var urls []string
-	for _, s := range cfg.Report() {
+	for _, s := range config.Report() {
 		urls = append(urls, s.URL)
 	}
 	if !slices.Contains(urls, "https://satis.corp") || !slices.Contains(urls, "https://private.corp") {
 		t.Fatalf("the repository's Composer repositories were not recorded: %v", urls)
 	}
 	for _, raw := range []string{"https://satis.corp/packages.json", "https://private.corp/packages.json"} {
-		req, _ := http.NewRequest(http.MethodGet, raw, nil)
-		store.Apply(req)
-		if got := req.Header.Get("Authorization"); got != "" {
+		request, _ := http.NewRequest(http.MethodGet, raw, nil)
+		store.Apply(request)
+		if got := request.Header.Get("Authorization"); got != "" {
 			t.Errorf("%s: a credential the repository supplied was sent: %q", raw, got)
 		}
 	}
@@ -374,25 +374,25 @@ func TestARepositorysComposerCredentialsAreDiscarded(t *testing.T) {
 //
 // Verifies: REQ-AUTH-012, REQ-AUTH-019
 func TestARepositorysBundlerCredentialsAreDiscarded(t *testing.T) {
-	store := auth.Read(t.TempDir(), env(nil))
-	d := NewDiscoverer(env(nil), "")
+	store := auth.Read(t.TempDir(), environment(nil))
+	d := NewDiscoverer(environment(nil), "")
 	d.Config().Credentials(store)
-	cfg := d.Discover(write(t, map[string]string{
+	config := d.Discover(write(t, map[string]string{
 		"Gemfile": "source \"https://gems.corp.test\"\n" +
 			"source \"https://repo:leak@private.corp.test\" do\n  gem \"acme\"\nend\n",
 		".bundle/config": "---\nBUNDLE_GEMS__CORP__TEST: \"repo:leak\"\nBUNDLE_PRIVATE__CORP__TEST: \"repo:leak\"\n",
 	}))
 	var urls []string
-	for _, s := range cfg.Report() {
+	for _, s := range config.Report() {
 		urls = append(urls, s.URL)
 	}
 	if !slices.Contains(urls, "https://gems.corp.test") || !slices.Contains(urls, "https://private.corp.test") {
 		t.Fatalf("the Gemfile's sources were not recorded: %v", urls)
 	}
 	for _, raw := range []string{"https://gems.corp.test/info/rack", "https://private.corp.test/info/acme"} {
-		req, _ := http.NewRequest(http.MethodGet, raw, nil)
-		store.Apply(req)
-		if got := req.Header.Get("Authorization"); got != "" {
+		request, _ := http.NewRequest(http.MethodGet, raw, nil)
+		store.Apply(request)
+		if got := request.Header.Get("Authorization"); got != "" {
 			t.Errorf("%s: a credential the repository supplied was sent: %q", raw, got)
 		}
 	}
@@ -403,10 +403,10 @@ func TestARepositorysBundlerCredentialsAreDiscarded(t *testing.T) {
 //
 // Verifies: REQ-SUP-015
 func TestDiscoverForgetsWhatTheRepositoryNoLongerSays(t *testing.T) {
-	d := NewDiscoverer(env(map[string]string{"PIP_INDEX_URL": "https://pypi.machine/simple"}), "")
+	d := NewDiscoverer(environment(map[string]string{"PIP_INDEX_URL": "https://pypi.machine/simple"}), "")
 	files := write(t, map[string]string{".npmrc": "registry=https://npm.old/\n"})
 	d.Discover(files)
-	os.WriteFile(files[0].Abs, []byte("registry=https://npm.new/\n"), 0o644)
+	os.WriteFile(files[0].AbsolutePath, []byte("registry=https://npm.new/\n"), 0o644)
 	c := d.Discover(files)
 
 	var urls []string
@@ -416,8 +416,8 @@ func TestDiscoverForgetsWhatTheRepositoryNoLongerSays(t *testing.T) {
 	if len(urls) != 1 || urls[0] != "https://npm.new" {
 		t.Errorf("npm sources after the .npmrc changed: %v", urls)
 	}
-	if idx, known := c.For(PyPI, "requests"); idx != "https://pypi.machine/simple" || !known {
-		t.Errorf("the machine's index was lost: %s (known %v)", idx, known)
+	if index, known := c.For(PyPI, "requests"); index != "https://pypi.machine/simple" || !known {
+		t.Errorf("the machine's index was lost: %s (known %v)", index, known)
 	}
 }
 
@@ -439,7 +439,7 @@ index = "https://zzz.example/index"
 `
 	for range 20 {
 		var first string
-		parseCargoConfig([]byte(config), sink{put: func(eco string, s Source) {
+		parseCargoConfig([]byte(config), sink{put: func(ecosystem string, s Source) {
 			if first == "" && s.URL != "" {
 				first = s.URL
 			}
@@ -455,23 +455,23 @@ index = "https://zzz.example/index"
 //
 // Verifies: REQ-SUP-015
 func TestReadsComposerConfigFromTheMachine(t *testing.T) {
-	for _, dir := range [][]string{{".config", "composer"}, {".composer"}, {"custom-home"}} {
+	for _, directory := range [][]string{{".config", "composer"}, {".composer"}, {"custom-home"}} {
 		home := t.TempDir()
-		path := filepath.Join(append([]string{home}, dir...)...)
+		path := filepath.Join(append([]string{home}, directory...)...)
 		if err := os.MkdirAll(path, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		cfg := `{"repositories": {"corp": {"type": "composer", "url": "https://packagist.corp"}, "packagist.org": false}}`
-		if err := os.WriteFile(filepath.Join(path, "config.json"), []byte(cfg), 0o644); err != nil {
+		config := `{"repositories": {"corp": {"type": "composer", "url": "https://packagist.corp"}, "packagist.org": false}}`
+		if err := os.WriteFile(filepath.Join(path, "config.json"), []byte(config), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		vars := map[string]string{}
-		if dir[0] == "custom-home" {
-			vars["COMPOSER_HOME"] = path
+		variables := map[string]string{}
+		if directory[0] == "custom-home" {
+			variables["COMPOSER_HOME"] = path
 		}
-		c := Discover(nil, env(vars), home)
-		if idx, known := c.For(Composer, "acme/billing"); idx != "https://packagist.corp" || !known {
-			t.Errorf("%s: got %s (known %v), want the machine's repository, known", filepath.Join(dir...), idx, known)
+		c := Discover(nil, environment(variables), home)
+		if index, known := c.For(Composer, "acme/billing"); index != "https://packagist.corp" || !known {
+			t.Errorf("%s: got %s (known %v), want the machine's repository, known", filepath.Join(directory...), index, known)
 		}
 	}
 }
@@ -480,20 +480,20 @@ func TestReadsComposerConfigFromTheMachine(t *testing.T) {
 func TestReadsNuGetConfigFromBothUserLocations(t *testing.T) {
 	// The credentials are read from either file, so the feeds have to be as well, or
 	// a feed kept only in the second has a password nothing ever uses.
-	for _, dir := range [][]string{{".nuget", "NuGet"}, {".config", "NuGet"}} {
+	for _, directory := range [][]string{{".nuget", "NuGet"}, {".config", "NuGet"}} {
 		home := t.TempDir()
-		path := filepath.Join(append([]string{home}, dir...)...)
+		path := filepath.Join(append([]string{home}, directory...)...)
 		if err := os.MkdirAll(path, 0o755); err != nil {
 			t.Fatal(err)
 		}
-		cfg := `<configuration><packageSources><add key="corp" value="https://nuget.corp/v3/index.json" /></packageSources></configuration>`
-		if err := os.WriteFile(filepath.Join(path, "NuGet.Config"), []byte(cfg), 0o644); err != nil {
+		config := `<configuration><packageSources><add key="corp" value="https://nuget.corp/v3/index.json" /></packageSources></configuration>`
+		if err := os.WriteFile(filepath.Join(path, "NuGet.Config"), []byte(config), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		c := Discover(nil, env(nil), home)
+		c := Discover(nil, environment(nil), home)
 		want := []string{"https://nuget.corp/v3/index.json", "https://api.nuget.org/v3/index.json"}
 		if got := order(c, NuGet, "Acme.Tools", ""); strings.Join(got, " ") != strings.Join(want, " ") {
-			t.Errorf("~/%s: asked %v, want the machine's feed (known) before nuget.org", filepath.Join(dir...), got)
+			t.Errorf("~/%s: asked %v, want the machine's feed (known) before nuget.org", filepath.Join(directory...), got)
 		}
 	}
 }
@@ -528,15 +528,15 @@ DEPENDENCIES
   vendor-kit!
 `,
 	})
-	c := Discover(files, env(nil), "")
-	for pkg, want := range map[string]string{
+	c := Discover(files, environment(nil), "")
+	for packageName, want := range map[string]string{
 		"rails":      "https://gems.corp.test",
 		"pg":         "https://gems.corp.test", // after the block: the global source again
 		"acme-auth":  "https://private.corp.test",
 		"vendor-kit": "https://vendor.corp.test",
 	} {
-		if idx, known := c.For(RubyGems, pkg); idx != want || known {
-			t.Errorf("%s: got %s (known %v), want %s, unknown", pkg, idx, known, want)
+		if index, known := c.For(RubyGems, packageName); index != want || known {
+			t.Errorf("%s: got %s (known %v), want %s, unknown", packageName, index, known, want)
 		}
 	}
 }
@@ -546,9 +546,9 @@ DEPENDENCIES
 //
 // Verifies: REQ-SUP-015
 func TestReadsRubyGemsConfigFromTheMachine(t *testing.T) {
-	c := Discover(nil, env(map[string]string{"BUNDLE_MIRROR__RUBYGEMS__ORG": "https://mirror.env.test"}), "")
-	if idx, known := c.For(RubyGems, "rack"); idx != "https://mirror.env.test" || !known {
-		t.Errorf("environment mirror: got %s (known %v)", idx, known)
+	c := Discover(nil, environment(map[string]string{"BUNDLE_MIRROR__RUBYGEMS__ORG": "https://mirror.env.test"}), "")
+	if index, known := c.For(RubyGems, "rack"); index != "https://mirror.env.test" || !known {
+		t.Errorf("environment mirror: got %s (known %v)", index, known)
 	}
 	for file, content := range map[string]string{
 		".gemrc":         "---\n:backtrace: false\n:sources:\n- https://gems.home.test/\n:update_sources: true\n",
@@ -561,9 +561,9 @@ func TestReadsRubyGemsConfigFromTheMachine(t *testing.T) {
 		if err := os.WriteFile(filepath.Join(home, file), []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		c := Discover(nil, env(nil), home)
-		if idx, known := c.For(RubyGems, "rack"); idx != "https://gems.home.test" || !known {
-			t.Errorf("%s: got %s (known %v), want the machine's source, known", file, idx, known)
+		c := Discover(nil, environment(nil), home)
+		if index, known := c.For(RubyGems, "rack"); index != "https://gems.home.test" || !known {
+			t.Errorf("%s: got %s (known %v), want the machine's source, known", file, index, known)
 		}
 	}
 }
@@ -604,22 +604,22 @@ dev_dependencies:
     version: "2.0.0"
 `,
 	})
-	c := Discover(files, env(nil), "")
-	for pkg, want := range map[string]string{
+	c := Discover(files, environment(nil), "")
+	for packageName, want := range map[string]string{
 		"acme_auth":  "https://pub.corp.test",
 		"acme_lints": "https://lints.corp.test",
 		"vendor_kit": "https://vendor.corp.test",
 	} {
-		if idx, known := c.For(Pub, pkg); idx != want || known {
-			t.Errorf("%s: got %s (known %v), want %s, unknown", pkg, idx, known, want)
+		if index, known := c.For(Pub, packageName); index != want || known {
+			t.Errorf("%s: got %s (known %v), want %s, unknown", packageName, index, known, want)
 		}
 	}
-	if idx, known := c.For(Pub, "http"); idx != "https://pub.dev" || !known {
-		t.Errorf("http: got %s (known %v), want pub.dev", idx, known)
+	if index, known := c.For(Pub, "http"); index != "https://pub.dev" || !known {
+		t.Errorf("http: got %s (known %v), want pub.dev", index, known)
 	}
-	c = Discover(nil, env(map[string]string{"PUB_HOSTED_URL": "https://pub.mirror.test"}), "")
-	if idx, known := c.For(Pub, "http"); idx != "https://pub.mirror.test" || !known {
-		t.Errorf("PUB_HOSTED_URL: got %s (known %v)", idx, known)
+	c = Discover(nil, environment(map[string]string{"PUB_HOSTED_URL": "https://pub.mirror.test"}), "")
+	if index, known := c.For(Pub, "http"); index != "https://pub.mirror.test" || !known {
+		t.Errorf("PUB_HOSTED_URL: got %s (known %v)", index, known)
 	}
 }
 
@@ -628,12 +628,12 @@ dev_dependencies:
 //
 // Verifies: REQ-SUP-015, REQ-SUP-047
 func TestDiscoverReadsHexAPI(t *testing.T) {
-	if idx, known := Discover(nil, env(nil), "").For(Hex, "plug"); idx != "https://hex.pm/api" || !known {
-		t.Errorf("default: got %s (known %v)", idx, known)
+	if index, known := Discover(nil, environment(nil), "").For(Hex, "plug"); index != "https://hex.pm/api" || !known {
+		t.Errorf("default: got %s (known %v)", index, known)
 	}
-	c := Discover(nil, env(map[string]string{"HEX_API_URL": "https://hex.corp.test/api", "HEX_MIRROR": "https://mirror.test"}), "")
-	if idx, known := c.For(Hex, "plug"); idx != "https://hex.corp.test/api" || !known {
-		t.Errorf("HEX_API_URL: got %s (known %v)", idx, known)
+	c := Discover(nil, environment(map[string]string{"HEX_API_URL": "https://hex.corp.test/api", "HEX_MIRROR": "https://mirror.test"}), "")
+	if index, known := c.For(Hex, "plug"); index != "https://hex.corp.test/api" || !known {
+		t.Errorf("HEX_API_URL: got %s (known %v)", index, known)
 	}
 }
 
@@ -655,29 +655,29 @@ func TestDiscoverReadsRRepositories(t *testing.T) {
   "acmeR": {"Package": "acmeR", "Version": "0.3.0", "Source": "Repository", "Repository": "internal"}}}`,
 		"sub/.Rprofile": `options(repos = c(CRAN = "https://cran.rstudio.com", drat = "https://acme.github.io/drat"))`,
 	})
-	c := Discover(files, env(nil), "")
-	for pkg, want := range map[string]string{
+	c := Discover(files, environment(nil), "")
+	for packageName, want := range map[string]string{
 		"acmeR": "https://cran.corp.test/latest",
 		"dplyr": "https://acme.github.io/drat",
 	} {
-		if idx, known := c.For(CRAN, pkg); idx != want || known {
-			t.Errorf("%s: got %s (known %v), want %s, unknown", pkg, idx, known, want)
+		if index, known := c.For(CRAN, packageName); index != want || known {
+			t.Errorf("%s: got %s (known %v), want %s, unknown", packageName, index, known, want)
 		}
 	}
-	if idx, known := Discover(nil, env(nil), "").For(CRAN, "dplyr"); idx != "https://cloud.r-project.org" || !known {
-		t.Errorf("default: got %s (known %v)", idx, known)
+	if index, known := Discover(nil, environment(nil), "").For(CRAN, "dplyr"); index != "https://cloud.r-project.org" || !known {
+		t.Errorf("default: got %s (known %v)", index, known)
 	}
 
 	home := t.TempDir()
 	os.WriteFile(filepath.Join(home, ".Rprofile"), []byte(`local({
   options(repos = "https://r.corp.test")
 })`), 0o644)
-	if idx, known := Discover(nil, env(nil), home).For(CRAN, "dplyr"); idx != "https://r.corp.test" || !known {
-		t.Errorf("~/.Rprofile: got %s (known %v)", idx, known)
+	if index, known := Discover(nil, environment(nil), home).For(CRAN, "dplyr"); index != "https://r.corp.test" || !known {
+		t.Errorf("~/.Rprofile: got %s (known %v)", index, known)
 	}
-	c = Discover(nil, env(map[string]string{"RENV_CONFIG_REPOS_OVERRIDE": "CRAN=https://mirror.corp.test/cran"}), "")
-	if idx, known := c.For(CRAN, "dplyr"); idx != "https://mirror.corp.test/cran" || !known {
-		t.Errorf("RENV_CONFIG_REPOS_OVERRIDE: got %s (known %v)", idx, known)
+	c = Discover(nil, environment(map[string]string{"RENV_CONFIG_REPOS_OVERRIDE": "CRAN=https://mirror.corp.test/cran"}), "")
+	if index, known := c.For(CRAN, "dplyr"); index != "https://mirror.corp.test/cran" || !known {
+		t.Errorf("RENV_CONFIG_REPOS_OVERRIDE: got %s (known %v)", index, known)
 	}
 }
 
@@ -711,22 +711,22 @@ func TestDiscoverReadsCabalRepositories(t *testing.T) {
 		"cabal.project": "packages: .\n\nrepository hackage.haskell.org\n  url: http://hackage.haskell.org/\n\n" +
 			"repository head.hackage.ghc.haskell.org\n   url: https://ghc.gitlab.haskell.org/head.hackage/\n   secure: True\n",
 	})
-	if idx, known := Discover(files, env(nil), "").For(Hackage, "aeson"); idx != "https://ghc.gitlab.haskell.org/head.hackage" || known {
-		t.Errorf("cabal.project: got %s (known %v)", idx, known)
+	if index, known := Discover(files, environment(nil), "").For(Hackage, "aeson"); index != "https://ghc.gitlab.haskell.org/head.hackage" || known {
+		t.Errorf("cabal.project: got %s (known %v)", index, known)
 	}
-	if idx, known := Discover(nil, env(nil), "").For(Hackage, "aeson"); idx != "https://hackage.haskell.org" || !known {
-		t.Errorf("default: got %s (known %v)", idx, known)
+	if index, known := Discover(nil, environment(nil), "").For(Hackage, "aeson"); index != "https://hackage.haskell.org" || !known {
+		t.Errorf("default: got %s (known %v)", index, known)
 	}
 	home := t.TempDir()
 	os.MkdirAll(filepath.Join(home, ".cabal"), 0o755)
 	os.WriteFile(filepath.Join(home, ".cabal", "config"), []byte("-- comment\nrepository hackage.haskell.org\n  url: https://hackage.mirror.corp.test/\n\nremote-repo-cache: /x\n"), 0o644)
-	if idx, known := Discover(nil, env(nil), home).For(Hackage, "aeson"); idx != "https://hackage.mirror.corp.test" || !known {
-		t.Errorf("~/.cabal/config: got %s (known %v)", idx, known)
+	if index, known := Discover(nil, environment(nil), home).For(Hackage, "aeson"); index != "https://hackage.mirror.corp.test" || !known {
+		t.Errorf("~/.cabal/config: got %s (known %v)", index, known)
 	}
-	dir := t.TempDir()
-	os.WriteFile(filepath.Join(dir, "config"), []byte("repository corp\n  url: https://hackage.corp.test\n"), 0o644)
-	if idx, known := Discover(nil, env(map[string]string{"CABAL_DIR": dir}), "").For(Hackage, "aeson"); idx != "https://hackage.corp.test" || !known {
-		t.Errorf("CABAL_DIR: got %s (known %v)", idx, known)
+	directory := t.TempDir()
+	os.WriteFile(filepath.Join(directory, "config"), []byte("repository corp\n  url: https://hackage.corp.test\n"), 0o644)
+	if index, known := Discover(nil, environment(map[string]string{"CABAL_DIR": directory}), "").For(Hackage, "aeson"); index != "https://hackage.corp.test" || !known {
+		t.Errorf("CABAL_DIR: got %s (known %v)", index, known)
 	}
 }
 
@@ -738,16 +738,16 @@ func TestDiscoverReadsCabalRepositories(t *testing.T) {
 func TestTerraformModuleRegistryFromTheName(t *testing.T) {
 	home := t.TempDir()
 	os.WriteFile(filepath.Join(home, ".terraformrc"), []byte("credentials \"tf.corp.test\" {\n  token = \"secret\"\n}\n"), 0o644)
-	c := Discover(nil, env(nil), home)
-	c.Credentials(auth.Read(home, env(nil)))
-	if idx, known := c.For(TerraformModule, "terraform-aws-modules/vpc/aws"); idx != "https://registry.terraform.io" || !known {
-		t.Errorf("public: got %s (known %v)", idx, known)
+	c := Discover(nil, environment(nil), home)
+	c.Credentials(auth.Read(home, environment(nil)))
+	if index, known := c.For(TerraformModule, "terraform-aws-modules/vpc/aws"); index != "https://registry.terraform.io" || !known {
+		t.Errorf("public: got %s (known %v)", index, known)
 	}
-	if idx, known := c.For(TerraformModule, "tf.corp.test/acme/vpc/aws//modules/x"); idx != "https://tf.corp.test" || !known {
-		t.Errorf("configured host: got %s (known %v)", idx, known)
+	if index, known := c.For(TerraformModule, "tf.corp.test/acme/vpc/aws//modules/x"); index != "https://tf.corp.test" || !known {
+		t.Errorf("configured host: got %s (known %v)", index, known)
 	}
-	if idx, known := c.For(TerraformModule, "tf.other.test/acme/vpc/aws"); idx != "https://tf.other.test" || known {
-		t.Errorf("unknown host: got %s (known %v)", idx, known)
+	if index, known := c.For(TerraformModule, "tf.other.test/acme/vpc/aws"); index != "https://tf.other.test" || known {
+		t.Errorf("unknown host: got %s (known %v)", index, known)
 	}
 	c.Trust([]string{"https://tf.other.test"})
 	if _, known := c.For(TerraformModule, "tf.other.test/acme/vpc/aws"); !known {
@@ -769,21 +769,21 @@ func TestDiscoverReadsCocoaPodsSources(t *testing.T) {
 		"ios/Podfile":      "source 'https://cdn.cocoapods.org/'\nsource 'https://github.com/CocoaPods/Specs.git'\npod 'AFNetworking'\n",
 		"ios/Podfile.lock": lock,
 	})
-	cfg := Discover(files, env(nil), "")
-	if idx, known := cfg.For(CocoaPods, "Acme"); idx != "https://github.com/acme/Specs.git" || known {
-		t.Errorf("Acme: got %s (known %v)", idx, known)
+	config := Discover(files, environment(nil), "")
+	if index, known := config.For(CocoaPods, "Acme"); index != "https://github.com/acme/Specs.git" || known {
+		t.Errorf("Acme: got %s (known %v)", index, known)
 	}
-	if idx, known := cfg.For(CocoaPods, "AFNetworking"); idx != "https://cdn.cocoapods.org" || !known {
-		t.Errorf("AFNetworking: got %s (known %v)", idx, known)
+	if index, known := config.For(CocoaPods, "AFNetworking"); index != "https://cdn.cocoapods.org" || !known {
+		t.Errorf("AFNetworking: got %s (known %v)", index, known)
 	}
 	files = write(t, map[string]string{"Podfile": "source 'https://git.corp.test/Specs.git'\nsource 'https://cdn.cocoapods.org/'\n"})
-	if idx, known := Discover(files, env(nil), "").For(CocoaPods, "AFNetworking"); idx != "https://git.corp.test/Specs.git" || known {
-		t.Errorf("Podfile source: got %s (known %v)", idx, known)
+	if index, known := Discover(files, environment(nil), "").For(CocoaPods, "AFNetworking"); index != "https://git.corp.test/Specs.git" || known {
+		t.Errorf("Podfile source: got %s (known %v)", index, known)
 	}
-	for repo, want := range map[string]bool{"trunk": true, "https://cdn.cocoapods.org/": true,
+	for repository, want := range map[string]bool{"trunk": true, "https://cdn.cocoapods.org/": true,
 		"https://github.com/CocoaPods/Specs.git": true, "https://github.com/acme/Specs.git": false} {
-		if got := CocoaPodsTrunk(repo); got != want {
-			t.Errorf("%s: got %v, want %v", repo, got, want)
+		if got := CocoaPodsTrunk(repository); got != want {
+			t.Errorf("%s: got %v, want %v", repository, got, want)
 		}
 	}
 }
@@ -797,22 +797,22 @@ func TestDiscoverReadsLuaRocksConfig(t *testing.T) {
 	files := write(t, map[string]string{
 		".luarocks/config-5.1.lua": `rocks_servers = { "https://luarocks.org", "https://rocks.corp.test/" }`,
 	})
-	if idx, known := Discover(files, env(nil), "").For(LuaRocks, "penlight"); idx != "https://rocks.corp.test" || known {
-		t.Errorf("project: got %s (known %v)", idx, known)
+	if index, known := Discover(files, environment(nil), "").For(LuaRocks, "penlight"); index != "https://rocks.corp.test" || known {
+		t.Errorf("project: got %s (known %v)", index, known)
 	}
-	if idx, known := Discover(nil, env(nil), "").For(LuaRocks, "penlight"); idx != "https://luarocks.org" || !known {
-		t.Errorf("default: got %s (known %v)", idx, known)
+	if index, known := Discover(nil, environment(nil), "").For(LuaRocks, "penlight"); index != "https://luarocks.org" || !known {
+		t.Errorf("default: got %s (known %v)", index, known)
 	}
 	home := t.TempDir()
 	os.MkdirAll(filepath.Join(home, ".luarocks"), 0o755)
 	os.WriteFile(filepath.Join(home, ".luarocks", "config-5.4.lua"), []byte("rocks_servers = {\n  { 'https://mirror.corp.test' },\n}\n"), 0o644)
-	if idx, known := Discover(nil, env(nil), home).For(LuaRocks, "penlight"); idx != "https://mirror.corp.test" || !known {
-		t.Errorf("home: got %s (known %v)", idx, known)
+	if index, known := Discover(nil, environment(nil), home).For(LuaRocks, "penlight"); index != "https://mirror.corp.test" || !known {
+		t.Errorf("home: got %s (known %v)", index, known)
 	}
-	cfg := filepath.Join(t.TempDir(), "config.lua")
-	os.WriteFile(cfg, []byte(`rocks_servers = { "https://rocks.env.test" }`), 0o644)
-	if idx, known := Discover(nil, env(map[string]string{"LUAROCKS_CONFIG": cfg}), "").For(LuaRocks, "penlight"); idx != "https://rocks.env.test" || !known {
-		t.Errorf("LUAROCKS_CONFIG: got %s (known %v)", idx, known)
+	config := filepath.Join(t.TempDir(), "config.lua")
+	os.WriteFile(config, []byte(`rocks_servers = { "https://rocks.env.test" }`), 0o644)
+	if index, known := Discover(nil, environment(map[string]string{"LUAROCKS_CONFIG": config}), "").For(LuaRocks, "penlight"); index != "https://rocks.env.test" || !known {
+		t.Errorf("LUAROCKS_CONFIG: got %s (known %v)", index, known)
 	}
 	if !LuaRocksItself("https://luarocks.org/dev") || LuaRocksItself("https://rocks.corp.test") {
 		t.Error("LuaRocksItself")
@@ -851,7 +851,7 @@ repositories {
 }`,
 		"pom.xml": `<project><repositories><repository><url>https://repo.maven.apache.org/maven2</url></repository></repositories></project>`,
 	})
-	c := Discover(files, env(nil), "")
+	c := Discover(files, environment(nil), "")
 	var got []string
 	for _, s := range c.Sources(Maven) {
 		got = append(got, s.URL)
@@ -875,7 +875,7 @@ func TestAMachineCredentialDoesNotVouchForARepositoryIndex(t *testing.T) {
 	put(t, filepath.Join(home, ".docker", "config.json"), `{"auths": {"ghcr.io": {"auth": "dXNlcjpwYXNz"}}}`)
 	put(t, filepath.Join(home, ".terraform.d", "credentials.tfrc.json"), `{"credentials": {"tf.corp": {"token": "machine-token"}}}`)
 	c := New()
-	c.Credentials(auth.Read(home, env(nil)))
+	c.Credentials(auth.Read(home, environment(nil)))
 	c.Add(NPM, Source{URL: "https://nexus.corp/repository/other-team"})
 	if _, known := c.For(NPM, "@acme/widgets"); known {
 		t.Error("a repository index was trusted because this machine holds a credential for its host")

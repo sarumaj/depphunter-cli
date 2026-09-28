@@ -25,7 +25,7 @@ The server **shall** answer a request for such a file's source with 415 and
 the file's type in `X-Depphunter-Binary`, and **shall** serve a file's bytes
 (`?as=raw`) only for files on the map, under one of the media types above or as
 `application/octet-stream`, with `Content-Security-Policy: default-src 'none';
-sandbox`, honouring byte ranges, and up to 64 MB for media and 4 MB otherwise.
+sandbox`, honoring byte ranges, and up to 64 MB for media and 4 MB otherwise.
 
 ## Rationale
 

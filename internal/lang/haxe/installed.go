@@ -14,26 +14,26 @@ import (
 // lixScope is a directory whose haxe_libraries/ pins libraries for everything
 // below it (lix and haxeshim read the nearest one).
 type lixScope struct {
-	dir   string
-	libs  map[string]*lixLib // lower-case name -> pin
-	names []string           // the keys, sorted
+	directory string
+	libraries map[string]*lixLibrary // lower-case name -> pin
+	names     []string               // the keys, sorted
 }
 
-// lixLib is one haxe_libraries/<name>.hxml.
-type lixLib struct {
+// lixLibrary is one haxe_libraries/<name>.hxml.
+type lixLibrary struct {
 	name, version    string
 	pinned, floating bool
 	origin           string
 	local            string   // a class path in the repository: the library is the repository
-	abs              []string // class paths in lix's cache on this machine
-	deps             []string // its -lib lines
+	absolute         []string // class paths in lix's cache on this machine
+	dependencies     []string // its -lib lines
 }
 
-func (l *lixLib) target() lang.Target {
+func (l *lixLibrary) target() lang.Target {
 	if l.local != "" {
 		return lang.Target{Local: l.local}
 	}
-	return lang.Target{Ecosystem: ecoHaxelib, Package: l.name, Version: l.version, Pinned: l.pinned,
+	return lang.Target{Ecosystem: ecosystemHaxelib, Package: l.name, Version: l.version, Pinned: l.pinned,
 		Floating: l.floating, Origin: l.origin}
 }
 
@@ -53,9 +53,9 @@ func (r *resolver) lixScope(file string) *lixScope {
 	}
 }
 
-// libCache is lix's download cache: HAXE_LIBCACHE, else haxe_libraries/ under
+// libraryCache is lix's download cache: HAXE_LIBCACHE, else haxe_libraries/ under
 // HAXESHIM_ROOT or ~/haxe.
-func libCache(getenv func(string) string) string {
+func libraryCache(getenv func(string) string) string {
 	if c := getenv("HAXE_LIBCACHE"); c != "" {
 		return c
 	}
@@ -74,7 +74,7 @@ func libCache(getenv func(string) string) string {
 //
 // Implements: REQ-HAXE-006
 func (r *resolver) readLix(root string, all []*scan.File, getenv func(string) string) {
-	cache := libCache(getenv)
+	cache := libraryCache(getenv)
 	shim := getenv("HAXESHIM_ROOT")
 	if shim == "" && getenv("HOME") != "" {
 		shim = filepath.Join(getenv("HOME"), "haxe")
@@ -83,51 +83,51 @@ func (r *resolver) readLix(root string, all []*scan.File, getenv func(string) st
 		if class(f.Path) != classLix || f.Binary || f.TooLarge || f.Size > lang.MaxParseSize {
 			continue
 		}
-		data, err := os.ReadFile(f.Abs)
+		data, err := os.ReadFile(f.AbsolutePath)
 		if err != nil {
 			continue
 		}
 		scope := path.Dir(path.Dir(f.Path))
 		name := strings.TrimSuffix(path.Base(f.Path), ".hxml")
 		h := readHXML(data)
-		l := &lixLib{name: name, deps: nil}
-		for _, d := range h.libs {
-			l.deps = append(l.deps, d.name)
+		l := &lixLibrary{name: name, dependencies: nil}
+		for _, d := range h.libraries {
+			l.dependencies = append(l.dependencies, d.name)
 		}
-		readInstall(l, h.install, h.defs[name])
-		for _, cp := range h.cps {
+		readInstall(l, h.install, h.defines[name])
+		for _, classPath := range h.classPaths {
 			switch {
-			case strings.HasPrefix(cp, "${SCOPE_DIR}"):
-				if rel := path.Join(scope, strings.TrimPrefix(cp, "${SCOPE_DIR}")); inside(rel) && r.dirs[rel] && l.local == "" {
-					l.local = rel
+			case strings.HasPrefix(classPath, "${SCOPE_DIR}"):
+				if relative := path.Join(scope, strings.TrimPrefix(classPath, "${SCOPE_DIR}")); inside(relative) && r.directories[relative] && l.local == "" {
+					l.local = relative
 				}
-			case strings.HasPrefix(cp, "${HAXE_LIBCACHE}"), strings.HasPrefix(cp, "${HAXESHIM_LIBCACHE}"):
-				if _, rest, _ := strings.Cut(cp, "}"); cache != "" {
-					l.abs = append(l.abs, filepath.Join(cache, rest))
+			case strings.HasPrefix(classPath, "${HAXE_LIBCACHE}"), strings.HasPrefix(classPath, "${HAXESHIM_LIBCACHE}"):
+				if _, rest, _ := strings.Cut(classPath, "}"); cache != "" {
+					l.absolute = append(l.absolute, filepath.Join(cache, rest))
 				}
-			case strings.HasPrefix(cp, "${HAXESHIM_ROOT}"):
+			case strings.HasPrefix(classPath, "${HAXESHIM_ROOT}"):
 				if shim != "" {
-					l.abs = append(l.abs, filepath.Join(shim, strings.TrimPrefix(cp, "${HAXESHIM_ROOT}")))
+					l.absolute = append(l.absolute, filepath.Join(shim, strings.TrimPrefix(classPath, "${HAXESHIM_ROOT}")))
 				}
-			case strings.Contains(cp, "$"):
-			case filepath.IsAbs(cp):
-				l.abs = append(l.abs, cp)
+			case strings.Contains(classPath, "$"):
+			case filepath.IsAbs(classPath):
+				l.absolute = append(l.absolute, classPath)
 			default:
-				if rel := path.Join(scope, cp); inside(rel) && r.dirs[rel] && l.local == "" {
-					l.local = rel
+				if relative := path.Join(scope, classPath); inside(relative) && r.directories[relative] && l.local == "" {
+					l.local = relative
 				}
 			}
 		}
 		s := r.lix[scope]
 		if s == nil {
-			s = &lixScope{dir: scope, libs: map[string]*lixLib{}}
+			s = &lixScope{directory: scope, libraries: map[string]*lixLibrary{}}
 			r.lix[scope] = s
 		}
-		s.libs[strings.ToLower(name)] = l
+		s.libraries[strings.ToLower(name)] = l
 		r.lixFile[f.Path] = l
 	}
 	for _, s := range r.lix {
-		s.names = sortedKeys(s.libs)
+		s.names = sortedKeys(s.libraries)
 	}
 }
 
@@ -135,7 +135,7 @@ func (r *resolver) readLix(root string, all []*scan.File, getenv func(string) st
 // a git reference (gh://, gl://, git:) pins a commit, shows a tag and floats
 // on a branch; no URL is a library in development (it floats), and a
 // download URL shows the version the file defines.
-func readInstall(l *lixLib, url, defined string) {
+func readInstall(l *lixLibrary, url, defined string) {
 	switch {
 	case url == "":
 		l.version, l.floating = defined, true
@@ -146,7 +146,7 @@ func readInstall(l *lixLib, url, defined string) {
 		}
 		l.version, l.pinned, l.floating = v, v != "", v == ""
 	default:
-		u, ref, _ := strings.Cut(url, "#")
+		u, reference, _ := strings.Cut(url, "#")
 		switch {
 		case strings.HasPrefix(u, "gh://"):
 			u = "https://" + strings.TrimPrefix(u, "gh://")
@@ -163,12 +163,12 @@ func readInstall(l *lixLib, url, defined string) {
 			l.origin = u
 		}
 		switch {
-		case lang.Commit(ref):
-			l.version, l.pinned = ref, true
-		case ref != "" && tagLike(ref):
-			l.version = ref
-		case ref != "":
-			l.version, l.floating = ref, true
+		case lang.Commit(reference):
+			l.version, l.pinned = reference, true
+		case reference != "" && tagLike(reference):
+			l.version = reference
+		case reference != "":
+			l.version, l.floating = reference, true
 		default:
 			l.version = defined // an archive download
 		}
@@ -178,8 +178,8 @@ func readInstall(l *lixLib, url, defined string) {
 // installed is a library as haxelib installed it.
 type installed struct {
 	name, version string
-	cps           []string // absolute class paths
-	deps          []dep
+	classPaths    []string // absolute class paths
+	dependencies  []dependency
 	local         bool // in the repository's own .haxelib/ repository
 }
 
@@ -188,16 +188,16 @@ type installed struct {
 // else the path in ~/.haxelib, else ~/haxelib.
 func (r *resolver) repositories(root string, getenv func(string) string) (local []string, global string) {
 	if root != "" {
-		dirs := []string{"."}
+		directories := []string{"."}
 		for _, m := range r.all {
-			dirs = append(dirs, path.Dir(m.file))
+			directories = append(directories, path.Dir(m.file))
 		}
 		seen := map[string]bool{}
-		for _, d := range dirs {
-			abs := filepath.Join(root, filepath.FromSlash(d), ".haxelib")
-			if !seen[abs] && isDir(abs) {
-				seen[abs] = true
-				local = append(local, abs)
+		for _, d := range directories {
+			absolute := filepath.Join(root, filepath.FromSlash(d), ".haxelib")
+			if !seen[absolute] && isDirectory(absolute) {
+				seen[absolute] = true
+				local = append(local, absolute)
 			}
 		}
 	}
@@ -206,20 +206,20 @@ func (r *resolver) repositories(root string, getenv func(string) string) (local 
 	}
 	if h := getenv("HOME"); h != "" {
 		if data, err := os.ReadFile(filepath.Join(h, ".haxelib")); err == nil {
-			if p := strings.TrimSpace(string(data)); p != "" && isDir(p) {
+			if p := strings.TrimSpace(string(data)); p != "" && isDirectory(p) {
 				return local, p
 			}
 		}
-		if p := filepath.Join(h, "haxelib"); isDir(p) {
+		if p := filepath.Join(h, "haxelib"); isDirectory(p) {
 			return local, p
 		}
 	}
 	return local, ""
 }
 
-func isDir(p string) bool {
-	st, err := os.Stat(p)
-	return err == nil && st.IsDir()
+func isDirectory(p string) bool {
+	fileInfo, err := os.Stat(p)
+	return err == nil && fileInfo.IsDir()
 }
 
 // readInstalled finds the libraries installed for the repository: every
@@ -232,7 +232,7 @@ func (r *resolver) readInstalled(root string, getenv func(string) string) {
 	wanted := map[string]string{} // lower name -> declared version
 	var names []string
 	for _, m := range r.all {
-		for _, d := range m.libs {
+		for _, d := range m.libraries {
 			k := strings.ToLower(d.name)
 			if _, ok := wanted[k]; !ok {
 				names = append(names, d.name)
@@ -242,8 +242,8 @@ func (r *resolver) readInstalled(root string, getenv func(string) string) {
 			}
 		}
 	}
-	for _, repo := range local {
-		entries, _ := os.ReadDir(repo)
+	for _, repository := range local {
+		entries, _ := os.ReadDir(repository)
 		for _, e := range entries {
 			if !e.IsDir() {
 				continue
@@ -253,7 +253,7 @@ func (r *resolver) readInstalled(root string, getenv func(string) string) {
 			if r.installed[k] != nil {
 				continue
 			}
-			if in := installedLib(filepath.Join(repo, e.Name()), name, wanted[k]); in != nil {
+			if in := installedLibrary(filepath.Join(repository, e.Name()), name, wanted[k]); in != nil {
 				in.local = true
 				r.installed[k] = in
 			}
@@ -269,62 +269,62 @@ func (r *resolver) readInstalled(root string, getenv func(string) string) {
 		if r.installed[k] != nil {
 			continue
 		}
-		dir := filepath.Join(global, strings.ReplaceAll(name, ".", ","))
-		if !isDir(dir) {
+		directory := filepath.Join(global, strings.ReplaceAll(name, ".", ","))
+		if !isDirectory(directory) {
 			// Names are case-insensitive in haxelib: look the directory up.
 			if !listed {
 				listing, _ = os.ReadDir(global)
 				listed = true
 			}
-			dir = ""
+			directory = ""
 			for _, e := range listing {
 				if e.IsDir() && strings.EqualFold(strings.ReplaceAll(e.Name(), ",", "."), name) {
-					dir = filepath.Join(global, e.Name())
+					directory = filepath.Join(global, e.Name())
 					break
 				}
 			}
-			if dir == "" {
+			if directory == "" {
 				continue
 			}
 		}
-		if in := installedLib(dir, name, wanted[k]); in != nil {
+		if in := installedLibrary(directory, name, wanted[k]); in != nil {
 			r.installed[k] = in
 		}
 	}
 }
 
-// installedLib reads a library's directory in a haxelib repository: the
+// installedLibrary reads a library's directory in a haxelib repository: the
 // development path in .dev, else the declared version when it is installed,
 // else the version .current names (1.2.3 in 1,2,3/, git in git/).
-func installedLib(libDir, name, want string) *installed {
-	dir, version := "", ""
-	if dev := readTrim(filepath.Join(libDir, ".dev")); dev != "" && isDir(dev) {
-		dir, version = dev, "dev"
+func installedLibrary(libraryDirectory, name, want string) *installed {
+	directory, version := "", ""
+	if dev := readTrim(filepath.Join(libraryDirectory, ".dev")); dev != "" && isDirectory(dev) {
+		directory, version = dev, "dev"
 	} else {
-		if want != "" && lang.Pinned(want) && isDir(filepath.Join(libDir, strings.ReplaceAll(want, ".", ","))) {
+		if want != "" && lang.Pinned(want) && isDirectory(filepath.Join(libraryDirectory, strings.ReplaceAll(want, ".", ","))) {
 			version = want
 		} else {
-			version = readTrim(filepath.Join(libDir, ".current"))
+			version = readTrim(filepath.Join(libraryDirectory, ".current"))
 		}
 		if version == "" || strings.ContainsAny(version, `/\`) || strings.Contains(version, "..") {
 			return nil
 		}
-		dir = filepath.Join(libDir, strings.ReplaceAll(version, ".", ","))
+		directory = filepath.Join(libraryDirectory, strings.ReplaceAll(version, ".", ","))
 	}
-	if !isDir(dir) {
+	if !isDirectory(directory) {
 		return nil
 	}
-	in := &installed{name: name, version: version, cps: []string{dir}}
-	if data, err := os.ReadFile(filepath.Join(dir, "haxelib.json")); err == nil {
-		if h, deps, ok := readHaxelib(data); ok {
+	in := &installed{name: name, version: version, classPaths: []string{directory}}
+	if data, err := os.ReadFile(filepath.Join(directory, "haxelib.json")); err == nil {
+		if h, dependencies, ok := readHaxelib(data); ok {
 			if h.Name != "" {
 				in.name = h.Name
 			}
-			in.cps = []string{filepath.Join(dir, filepath.FromSlash(h.ClassPath))}
-			in.deps = deps
+			in.classPaths = []string{filepath.Join(directory, filepath.FromSlash(h.ClassPath))}
+			in.dependencies = dependencies
 		}
 	}
-	sort.SliceStable(in.deps, func(i, j int) bool { return in.deps[i].line < in.deps[j].line })
+	sort.SliceStable(in.dependencies, func(i, j int) bool { return in.dependencies[i].line < in.dependencies[j].line })
 	return in
 }
 

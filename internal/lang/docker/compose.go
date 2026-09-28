@@ -21,39 +21,39 @@ import (
 // those files. Services become the file's symbols.
 //
 // Implements: REQ-DOCKER-007, REQ-DOCKER-008, REQ-DOCKER-009
-func extractCompose(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
+func extractCompose(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
 	var doc yaml.Node
-	if err := yaml.Unmarshal(src, &doc); err != nil {
-		return ex // a Compose file that does not parse has no dependencies
+	if err := yaml.Unmarshal(source, &doc); err != nil {
+		return extraction // a Compose file that does not parse has no dependencies
 	}
 	for _, item := range includes(field(&doc, "include")) {
 		if p := text(item); p != "" && !remote(p) && !path.IsAbs(p) {
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: "include: " + p, Module: p, Name: kindInclude, Line: item.Line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "include: " + p, Module: p, Name: kindInclude, Line: item.Line})
 		}
 	}
 	var symbols lang.SymbolSet
 	services := field(&doc, "services")
-	for _, svc := range pairs(services) {
-		symbols.Add(svc.key.Value, "service", svc.key.Line)
-		image, build, _, via := inherit("", services, svc.value, nil)
+	for _, service := range pairs(services) {
+		symbols.Add(service.key.Value, "service", service.key.Line)
+		image, build, _, via := inherit("", services, service.value, nil)
 		if len(via) > 0 {
 			// The service extends one of another file: the resolver reads it.
-			ex.Imports = append(ex.Imports, lang.RawImport{
-				Spec: "extends: " + via[0].written, Module: svc.key.Value, Name: kindExtends, Line: via[0].line,
+			extraction.Imports = append(extraction.Imports, lang.RawImport{
+				Spec: "extends: " + via[0].written, Module: service.key.Value, Name: kindExtends, Line: via[0].line,
 			})
 			continue
 		}
-		n := len(ex.Imports)
-		serviceImports(ex, image, build)
-		if ext := field(svc.value, "extends"); ext != nil {
-			for i := n; i < len(ex.Imports); i++ {
-				ex.Imports[i].Line = ext.Line // what the service takes, where it takes it
+		n := len(extraction.Imports)
+		serviceImports(extraction, image, build)
+		if extension := field(service.value, "extends"); extension != nil {
+			for i := n; i < len(extraction.Imports); i++ {
+				extraction.Imports[i].Line = extension.Line // what the service takes, where it takes it
 			}
 		}
 	}
-	ex.Symbols = symbols.List()
-	return ex
+	extraction.Symbols = symbols.List()
+	return extraction
 }
 
 // includes lists the paths of a top-level include:, in its short form (a path) and
@@ -97,20 +97,20 @@ const maxExtends = 8
 // file, named as written from the file whose extends: names it, and returns the
 // file's repository path; nil stops the chain at the first such file, which via
 // then lists.
-func inherit(file string, services, svc *yaml.Node, load func(from, written string) (string, *yaml.Node)) (image, build *yaml.Node, buildFile string, via []hop) {
+func inherit(file string, services, service *yaml.Node, load func(from, written string) (string, *yaml.Node)) (image, build *yaml.Node, buildFile string, via []hop) {
 	for range maxExtends {
 		if image == nil {
-			image = field(svc, "image")
+			image = field(service, "image")
 		}
 		if build == nil {
-			if build = field(svc, "build"); build != nil {
+			if build = field(service, "build"); build != nil {
 				buildFile = file
 			}
 		}
-		ext := field(svc, "extends")
-		name, other := text(ext), ""
-		if ext != nil && ext.Kind == yaml.MappingNode {
-			name, other = text(field(ext, "service")), text(field(ext, "file"))
+		extension := field(service, "extends")
+		name, other := text(extension), ""
+		if extension != nil && extension.Kind == yaml.MappingNode {
+			name, other = text(field(extension, "service")), text(field(extension, "file"))
 		}
 		if name == "" {
 			return image, build, buildFile, via
@@ -119,7 +119,7 @@ func inherit(file string, services, svc *yaml.Node, load func(from, written stri
 			if remote(other) || path.IsAbs(other) {
 				return image, build, buildFile, via
 			}
-			via = append(via, hop{written: other, line: ext.Line})
+			via = append(via, hop{written: other, line: extension.Line})
 			if load == nil {
 				return image, build, buildFile, via
 			}
@@ -129,7 +129,7 @@ func inherit(file string, services, svc *yaml.Node, load func(from, written stri
 				return image, build, buildFile, via
 			}
 		}
-		if svc = field(services, name); svc == nil {
+		if service = field(services, name); service == nil {
 			return image, build, buildFile, via
 		}
 	}
@@ -137,11 +137,11 @@ func inherit(file string, services, svc *yaml.Node, load func(from, written stri
 }
 
 // serviceImports records what a service with this image: and build: depends on.
-func serviceImports(ex *lang.Extraction, image, build *yaml.Node) {
+func serviceImports(extraction *lang.Extraction, image, build *yaml.Node) {
 	if build == nil {
-		if ref := text(image); ref != "" {
-			ex.Imports = append(ex.Imports, lang.RawImport{
-				Spec: "image: " + ref, Module: ref, Name: kindCompose, Line: image.Line,
+		if reference := text(image); reference != "" {
+			extraction.Imports = append(extraction.Imports, lang.RawImport{
+				Spec: "image: " + reference, Module: reference, Name: kindCompose, Line: image.Line,
 			})
 		}
 		return
@@ -155,18 +155,18 @@ func serviceImports(ex *lang.Extraction, image, build *yaml.Node) {
 			// Built from a Dockerfile written into this file: its images are this
 			// file's, on the lines they are written on.
 			dockerfile = ""
-			for _, im := range extractDockerfile([]byte(text(inline))).Imports {
-				im.Line += inline.Line
-				ex.Imports = append(ex.Imports, im)
+			for _, rawImport := range extractDockerfile([]byte(text(inline))).Imports {
+				rawImport.Line += inline.Line
+				extraction.Imports = append(extraction.Imports, rawImport)
 			}
 		}
 		for _, extra := range pairs(field(build, "additional_contexts")) {
-			addContext(ex, text(extra.value), extra.value.Line)
+			addContext(extraction, text(extra.value), extra.value.Line)
 		}
 		if list := field(build, "additional_contexts"); list != nil && list.Kind == yaml.SequenceNode {
 			for _, item := range list.Content {
 				_, value, _ := strings.Cut(text(item), "=")
-				addContext(ex, value, item.Line)
+				addContext(extraction, value, item.Line)
 			}
 		}
 	}
@@ -179,19 +179,19 @@ func serviceImports(ex *lang.Extraction, image, build *yaml.Node) {
 		return
 	}
 	p := path.Join(context, dockerfile)
-	ex.Imports = append(ex.Imports, lang.RawImport{
+	extraction.Imports = append(extraction.Imports, lang.RawImport{
 		Spec: "build: " + p, Module: p, Name: kindBuild, Line: build.Line,
 	})
 }
 
 // addContext records an additional build context when it is an image.
-func addContext(ex *lang.Extraction, value string, line int) {
-	ref, ok := strings.CutPrefix(value, "docker-image://")
-	if !ok || ref == "" {
+func addContext(extraction *lang.Extraction, value string, line int) {
+	reference, ok := strings.CutPrefix(value, "docker-image://")
+	if !ok || reference == "" {
 		return // a directory, a URL or another service's build
 	}
-	ex.Imports = append(ex.Imports, lang.RawImport{
-		Spec: "additional context: " + ref, Module: ref, Name: kindCompose, Line: line,
+	extraction.Imports = append(extraction.Imports, lang.RawImport{
+		Spec: "additional context: " + reference, Module: reference, Name: kindCompose, Line: line,
 	})
 }
 
@@ -243,8 +243,8 @@ func pairs(n *yaml.Node) []pair {
 			if v.Kind == yaml.SequenceNode {
 				sources = v.Content
 			}
-			for _, src := range sources {
-				merged = append(merged, pairs(src)...)
+			for _, source := range sources {
+				merged = append(merged, pairs(source)...)
 			}
 			continue
 		}

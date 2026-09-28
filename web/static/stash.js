@@ -66,12 +66,12 @@ export class Stash {
    *
    * Implements: REQ-HUNT-035
    */
-  save(id, repo) {
+  save(id, repository) {
     const it = this.items.find(x => x.id === id);
     if (!it) return null;
     const a = document.createElement('a');
     a.href = it.url;
-    a.download = `${repo}-photo-${String(it.n).padStart(2, '0')}.png`;
+    a.download = `${repository}-photo-${String(it.n).padStart(2, '0')}.png`;
     a.click();
     return a.download;
   }

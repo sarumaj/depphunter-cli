@@ -16,17 +16,17 @@ import (
 // scanner reads both from a token stream that knows comments, every string form and
 // balanced brackets, and skips function bodies whole.
 
-type tokKind int
+type tokenKind int
 
 const (
-	tIdent tokKind = iota
+	tIdentifier tokenKind = iota
 	tString
-	tPunct
+	tPunctuation
 	tNumber
 )
 
 type token struct {
-	kind tokKind
+	kind tokenKind
 	text string // an identifier, a punctuator, a number; a string's value
 	line int
 	// plain marks a string without interpolation, whose value is its text.
@@ -36,22 +36,22 @@ type token struct {
 // lexer turns Dart source into tokens. It never fails: an unterminated string or
 // comment ends at the end of the file, and bytes that start nothing are skipped.
 type lexer struct {
-	src  []byte
-	pos  int
-	line int
-	out  []token
+	source   []byte
+	position int
+	line     int
+	out      []token
 }
 
-// tokenize reads all of src.
-func tokenize(src []byte) []token {
-	src = bytes.TrimPrefix(src, []byte("\xef\xbb\xbf")) // a byte order mark
-	l := &lexer{src: src, line: 1}
-	if len(src) > 1 && src[0] == '#' && src[1] == '!' { // a script tag
-		for l.pos < len(src) && src[l.pos] != '\n' {
-			l.pos++
+// tokenize reads all of source.
+func tokenize(source []byte) []token {
+	source = bytes.TrimPrefix(source, []byte("\xef\xbb\xbf")) // a byte order mark
+	l := &lexer{source: source, line: 1}
+	if len(source) > 1 && source[0] == '#' && source[1] == '!' { // a script tag
+		for l.position < len(source) && source[l.position] != '\n' {
+			l.position++
 		}
 	}
-	for l.pos < len(l.src) {
+	for l.position < len(l.source) {
 		if t, ok := l.next(); ok {
 			l.out = append(l.out, t)
 		}
@@ -59,11 +59,11 @@ func tokenize(src []byte) []token {
 	return l.out
 }
 
-func isIdentStart(c byte) bool {
+func isIdentifierStart(c byte) bool {
 	return c == '_' || c == '$' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 0x80
 }
 
-func isIdentPart(c byte) bool { return isIdentStart(c) || c >= '0' && c <= '9' }
+func isIdentifierPart(c byte) bool { return isIdentifierStart(c) || c >= '0' && c <= '9' }
 
 // punctuators longer than one byte, longest first.
 var punctuators = func() [][]byte {
@@ -80,54 +80,54 @@ var punctuators = func() [][]byte {
 
 // next reads one token; false when what it read was not one (space, a comment).
 func (l *lexer) next() (token, bool) {
-	c := l.src[l.pos]
+	c := l.source[l.position]
 	switch {
 	case c == '\n':
 		l.line++
-		l.pos++
+		l.position++
 		return token{}, false
 	case c == ' ' || c == '\t' || c == '\r' || c == '\f':
-		l.pos++
+		l.position++
 		return token{}, false
 	case c == '/' && l.peek(1) == '/':
-		for l.pos < len(l.src) && l.src[l.pos] != '\n' {
-			l.pos++
+		for l.position < len(l.source) && l.source[l.position] != '\n' {
+			l.position++
 		}
 		return token{}, false
 	case c == '/' && l.peek(1) == '*':
 		l.blockComment()
 		return token{}, false
 	case c == 'r' && (l.peek(1) == '\'' || l.peek(1) == '"'):
-		l.pos++
-		return l.str(true), true
+		l.position++
+		return l.readString(true), true
 	case c == '\'' || c == '"':
-		return l.str(false), true
-	case isIdentStart(c):
-		start := l.pos
-		for l.pos < len(l.src) && isIdentPart(l.src[l.pos]) {
-			l.pos++
+		return l.readString(false), true
+	case isIdentifierStart(c):
+		start := l.position
+		for l.position < len(l.source) && isIdentifierPart(l.source[l.position]) {
+			l.position++
 		}
-		return token{kind: tIdent, text: string(l.src[start:l.pos]), line: l.line}, true
+		return token{kind: tIdentifier, text: string(l.source[start:l.position]), line: l.line}, true
 	case c >= '0' && c <= '9' || c == '.' && l.peek(1) >= '0' && l.peek(1) <= '9':
-		start := l.pos
-		for l.pos < len(l.src) && (isIdentPart(l.src[l.pos]) || l.src[l.pos] == '.' && l.peek(1) >= '0' && l.peek(1) <= '9') {
-			l.pos++
+		start := l.position
+		for l.position < len(l.source) && (isIdentifierPart(l.source[l.position]) || l.source[l.position] == '.' && l.peek(1) >= '0' && l.peek(1) <= '9') {
+			l.position++
 		}
-		return token{kind: tNumber, text: string(l.src[start:l.pos]), line: l.line}, true
+		return token{kind: tNumber, text: string(l.source[start:l.position]), line: l.line}, true
 	}
 	for _, p := range punctuators {
-		if bytes.HasPrefix(l.src[l.pos:], p) {
-			l.pos += len(p)
-			return token{kind: tPunct, text: string(p), line: l.line}, true
+		if bytes.HasPrefix(l.source[l.position:], p) {
+			l.position += len(p)
+			return token{kind: tPunctuation, text: string(p), line: l.line}, true
 		}
 	}
-	l.pos++
-	return token{kind: tPunct, text: string(c), line: l.line}, true
+	l.position++
+	return token{kind: tPunctuation, text: string(c), line: l.line}, true
 }
 
 func (l *lexer) peek(n int) byte {
-	if l.pos+n < len(l.src) {
-		return l.src[l.pos+n]
+	if l.position+n < len(l.source) {
+		return l.source[l.position+n]
 	}
 	return 0
 }
@@ -135,49 +135,49 @@ func (l *lexer) peek(n int) byte {
 // blockComment skips a /* */ comment; Dart's nest.
 func (l *lexer) blockComment() {
 	depth := 0
-	for l.pos < len(l.src) {
+	for l.position < len(l.source) {
 		switch {
-		case l.src[l.pos] == '/' && l.peek(1) == '*':
+		case l.source[l.position] == '/' && l.peek(1) == '*':
 			depth++
-			l.pos += 2
-		case l.src[l.pos] == '*' && l.peek(1) == '/':
+			l.position += 2
+		case l.source[l.position] == '*' && l.peek(1) == '/':
 			depth--
-			l.pos += 2
+			l.position += 2
 			if depth == 0 {
 				return
 			}
 		default:
-			if l.src[l.pos] == '\n' {
+			if l.source[l.position] == '\n' {
 				l.line++
 			}
-			l.pos++
+			l.position++
 		}
 	}
 }
 
-// str reads a string literal at l.pos (its r prefix already taken): single or triple
+// readString reads a string literal at l.position (its r prefix already taken): single or triple
 // quoted, raw or with escapes and ${...} interpolations, which are read as code so a
 // quote or brace inside one does not end anything early. A single-line string that
 // reaches a line break is ended there, which keeps a broken file from being read as
 // one long string.
-func (l *lexer) str(raw bool) token {
+func (l *lexer) readString(raw bool) token {
 	t := token{kind: tString, line: l.line, plain: true}
-	q := l.src[l.pos]
+	q := l.source[l.position]
 	triple := l.peek(1) == q && l.peek(2) == q
 	if triple {
-		l.pos += 3
+		l.position += 3
 	} else {
-		l.pos++
+		l.position++
 	}
 	var b strings.Builder
-	for l.pos < len(l.src) {
-		c := l.src[l.pos]
+	for l.position < len(l.source) {
+		c := l.source[l.position]
 		switch {
 		case c == q && (!triple || l.peek(1) == q && l.peek(2) == q):
 			if triple {
-				l.pos += 3
+				l.position += 3
 			} else {
-				l.pos++
+				l.position++
 			}
 			t.text = b.String()
 			return t
@@ -189,21 +189,21 @@ func (l *lexer) str(raw bool) token {
 				l.line++
 			}
 			b.WriteByte(l.peek(1))
-			l.pos += 2
+			l.position += 2
 		case c == '$' && !raw && l.peek(1) == '{':
 			t.plain = false
-			l.pos += 2
+			l.position += 2
 			l.interpolation()
-		case c == '$' && !raw && isIdentStart(l.peek(1)):
+		case c == '$' && !raw && isIdentifierStart(l.peek(1)):
 			t.plain = false
 			b.WriteByte(c)
-			l.pos++
+			l.position++
 		default:
 			if c == '\n' {
 				l.line++
 			}
 			b.WriteByte(c)
-			l.pos++
+			l.position++
 		}
 	}
 	t.text = b.String()
@@ -213,9 +213,9 @@ func (l *lexer) str(raw bool) token {
 // interpolation skips the code of a ${...} up to its closing brace.
 func (l *lexer) interpolation() {
 	depth := 1
-	for l.pos < len(l.src) {
+	for l.position < len(l.source) {
 		t, ok := l.next()
-		if !ok || t.kind != tPunct {
+		if !ok || t.kind != tPunctuation {
 			continue
 		}
 		switch t.text {
@@ -231,12 +231,12 @@ func (l *lexer) interpolation() {
 
 // Import kinds, carried in RawImport.Name.
 const (
-	kindImport = "import"
-	kindExport = "export"
-	kindPart   = "part"
-	kindPartOf = "partof"
-	kindDep    = "dep"    // a dependency pubspec.yaml declares; Module is its name
-	kindMember = "member" // a pub workspace member directory of pubspec.yaml
+	kindImport     = "import"
+	kindExport     = "export"
+	kindPart       = "part"
+	kindPartOf     = "partof"
+	kindDependency = "dep"    // a dependency pubspec.yaml declares; Module is its name
+	kindMember     = "member" // a pub workspace member directory of pubspec.yaml
 )
 
 // directives reads the directives at the top of a library: import and export with
@@ -250,24 +250,24 @@ func directives(tokens []token) ([]lang.RawImport, int) {
 	i := 0
 	for i < len(tokens) {
 		i = skipMetadata(tokens, i)
-		if i >= len(tokens) || tokens[i].kind != tIdent {
+		if i >= len(tokens) || tokens[i].kind != tIdentifier {
 			return out, i
 		}
-		kw := tokens[i].text
+		keyword := tokens[i].text
 		switch {
-		case kw == "library":
+		case keyword == "library":
 			i = skipTo(tokens, i, ";")
-		case kw == "import" || kw == "export":
+		case keyword == "import" || keyword == "export":
 			end := skipTo(tokens, i, ";")
-			out = append(out, uris(tokens[i:end], kw)...)
+			out = append(out, uris(tokens[i:end], keyword)...)
 			i = end
-		case kw == "part" && i+1 < len(tokens) && tokens[i+1].text == "of" && tokens[i+1].kind == tIdent:
+		case keyword == "part" && i+1 < len(tokens) && tokens[i+1].text == "of" && tokens[i+1].kind == tIdentifier:
 			end := skipTo(tokens, i, ";")
 			if s := tokens[i+2 : max(end-1, i+2)]; len(s) > 0 && s[0].kind == tString && s[0].plain {
 				out = append(out, lang.RawImport{Spec: "part of '" + s[0].text + "'", Module: s[0].text, Name: kindPartOf, Line: tokens[i].line})
 			}
 			i = end
-		case kw == "part" && i+1 < len(tokens) && tokens[i+1].kind == tString:
+		case keyword == "part" && i+1 < len(tokens) && tokens[i+1].kind == tString:
 			end := skipTo(tokens, i, ";")
 			if tokens[i+1].plain {
 				out = append(out, lang.RawImport{Spec: "part '" + tokens[i+1].text + "'", Module: tokens[i+1].text, Name: kindPart, Line: tokens[i].line})
@@ -282,29 +282,29 @@ func directives(tokens []token) ([]lang.RawImport, int) {
 
 // uris reads an import or export directive's URIs: the default one, then each
 // configuration's, spelled with the condition that selects it.
-func uris(d []token, kw string) []lang.RawImport {
+func uris(d []token, keyword string) []lang.RawImport {
 	if len(d) < 2 || d[1].kind != tString || !d[1].plain {
 		return nil
 	}
-	out := []lang.RawImport{{Spec: kw + " '" + d[1].text + "'", Module: d[1].text, Name: kw, Line: d[0].line}}
+	out := []lang.RawImport{{Spec: keyword + " '" + d[1].text + "'", Module: d[1].text, Name: keyword, Line: d[0].line}}
 	for j := 2; j < len(d); j++ {
-		if d[j].kind != tIdent || d[j].text != "if" || j+1 >= len(d) || d[j+1].text != "(" {
+		if d[j].kind != tIdentifier || d[j].text != "if" || j+1 >= len(d) || d[j+1].text != "(" {
 			continue
 		}
 		k := j + 2
-		var cond []string
+		var condition []string
 		for k < len(d) && d[k].text != ")" {
 			if d[k].kind == tString {
-				cond = append(cond, "'"+d[k].text+"'")
+				condition = append(condition, "'"+d[k].text+"'")
 			} else {
-				cond = append(cond, d[k].text)
+				condition = append(condition, d[k].text)
 			}
 			k++
 		}
 		if k+1 < len(d) && d[k+1].kind == tString && d[k+1].plain {
-			c := strings.ReplaceAll(strings.Join(cond, ""), "==", " == ")
+			c := strings.ReplaceAll(strings.Join(condition, ""), "==", " == ")
 			out = append(out, lang.RawImport{
-				Spec: kw + " '" + d[k+1].text + "' if (" + c + ")", Module: d[k+1].text, Name: kw, Line: d[k+1].line,
+				Spec: keyword + " '" + d[k+1].text + "' if (" + c + ")", Module: d[k+1].text, Name: keyword, Line: d[k+1].line,
 			})
 			j = k + 1
 		}
@@ -313,10 +313,10 @@ func uris(d []token, kw string) []lang.RawImport {
 }
 
 // skipTo returns the index after the first `sep` at bracket depth 0 from i.
-func skipTo(tokens []token, i int, sep string) int {
+func skipTo(tokens []token, i int, separator string) int {
 	depth := 0
 	for ; i < len(tokens); i++ {
-		if tokens[i].kind != tPunct {
+		if tokens[i].kind != tPunctuation {
 			continue
 		}
 		switch tokens[i].text {
@@ -325,7 +325,7 @@ func skipTo(tokens []token, i int, sep string) int {
 		case ")", "]", "}":
 			depth--
 		}
-		if depth <= 0 && tokens[i].text == sep {
+		if depth <= 0 && tokens[i].text == separator {
 			return i + 1
 		}
 		if depth < 0 {
@@ -337,9 +337,9 @@ func skipTo(tokens []token, i int, sep string) int {
 
 // skipMetadata skips annotations: @name, @a.b, @Name(args), @Name<T>(args).
 func skipMetadata(tokens []token, i int) int {
-	for i < len(tokens) && tokens[i].text == "@" && tokens[i].kind == tPunct {
+	for i < len(tokens) && tokens[i].text == "@" && tokens[i].kind == tPunctuation {
 		i++
-		for i < len(tokens) && tokens[i].kind == tIdent {
+		for i < len(tokens) && tokens[i].kind == tIdentifier {
 			i++
 			if i < len(tokens) && tokens[i].text == "." {
 				i++
@@ -361,7 +361,7 @@ func skipMetadata(tokens []token, i int) int {
 func matching(tokens []token, i int) int {
 	depth := 0
 	for j := i; j < len(tokens); j++ {
-		if tokens[j].kind != tPunct {
+		if tokens[j].kind != tPunctuation {
 			continue
 		}
 		switch tokens[j].text {

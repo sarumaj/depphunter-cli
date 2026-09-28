@@ -78,8 +78,8 @@ func ParseYarnrc(data []byte) (Settings, bool) {
 }
 
 func yarnEntry(m map[string]any) Entry {
-	str := func(k string) string { v, _ := m[k].(string); return strings.TrimSpace(v) }
-	return Entry{URL: str("npmRegistryServer"), Token: str("npmAuthToken"), Ident: str("npmAuthIdent")}
+	stringField := func(k string) string { v, _ := m[k].(string); return strings.TrimSpace(v) }
+	return Entry{URL: stringField("npmRegistryServer"), Token: stringField("npmAuthToken"), Ident: stringField("npmAuthIdent")}
 }
 
 // ParseYarnClassic reads the registries of a Yarn 1 .yarnrc: `registry "url"` and
@@ -147,8 +147,8 @@ func bunEntry(v any) Entry {
 	case string:
 		e.URL = strings.TrimSpace(v)
 	case map[string]any:
-		str := func(k string) string { s, _ := v[k].(string); return strings.TrimSpace(s) }
-		e = Entry{URL: str("url"), Token: str("token"), Username: str("username"), Password: str("password")}
+		stringField := func(k string) string { s, _ := v[k].(string); return strings.TrimSpace(s) }
+		e = Entry{URL: stringField("url"), Token: stringField("token"), Username: stringField("username"), Password: stringField("password")}
 	}
 	scheme, rest, ok := strings.Cut(e.URL, "://")
 	host, _, _ := strings.Cut(rest, "/")
@@ -169,14 +169,14 @@ func bunEntry(v any) Entry {
 }
 
 // Credentials lists the credentials a file keeps, each with the registry it is
-// sent to: the top-level one to the default registry (the file's, else def), those
+// sent to: the top-level one to the default registry (the file's, else defaultRegistry), those
 // of npmRegistries to their key, and a scope's to the scope's registry (else the
 // default). The order is the top level, then the registries, then the scopes, each
 // by name.
-func (s Settings) Credentials(def string) []Entry {
+func (s Settings) Credentials(defaultRegistry string) []Entry {
 	top := s.Registry.URL
 	if top == "" {
-		top = def
+		top = defaultRegistry
 	}
 	var out []Entry
 	add := func(e Entry, u string) {
@@ -199,19 +199,19 @@ func (s Settings) Credentials(def string) []Entry {
 	return out
 }
 
-// yarnVar is a Yarn environment reference: ${NAME}, ${NAME-fallback} or
+// yarnVariable is a Yarn environment reference: ${NAME}, ${NAME-fallback} or
 // ${NAME:-fallback}.
-var yarnVar = regexp.MustCompile(`\$\{(\w+)(:?-([^}]*))?\}`)
+var yarnVariable = regexp.MustCompile(`\$\{(\w+)(:?-([^}]*))?\}`)
 
 // Interpolate resolves the ${...} references of a Yarn value from env as Yarn
 // does. A lookup cannot tell an empty variable from an unset one, so an empty
 // one takes the fallback, and without a fallback ok is false: Yarn refuses a
 // configuration naming a variable that is not set.
-func Interpolate(v string, env func(string) string) (string, bool) {
+func Interpolate(v string, environment func(string) string) (string, bool) {
 	ok := true
-	out := yarnVar.ReplaceAllStringFunc(v, func(ref string) string {
-		m := yarnVar.FindStringSubmatch(ref)
-		if value := env(m[1]); value != "" {
+	out := yarnVariable.ReplaceAllStringFunc(v, func(reference string) string {
+		m := yarnVariable.FindStringSubmatch(reference)
+		if value := environment(m[1]); value != "" {
 			return value
 		}
 		if m[2] != "" {
@@ -228,7 +228,7 @@ func Interpolate(v string, env func(string) string) (string, bool) {
 // and "" for any other value.
 func Reference(v string) (name string, fallback bool) {
 	v = strings.TrimSpace(v)
-	if m := yarnVar.FindStringSubmatch(v); m != nil && m[0] == v {
+	if m := yarnVariable.FindStringSubmatch(v); m != nil && m[0] == v {
 		return m[1], m[2] != ""
 	}
 	if n, ok := strings.CutPrefix(v, "$"); ok && n != "" && strings.Trim(n, "_abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789") == "" {

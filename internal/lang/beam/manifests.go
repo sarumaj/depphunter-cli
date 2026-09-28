@@ -7,43 +7,43 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 )
 
-// dependency is one entry of a mix.exs deps list or a rebar.config deps list.
+// dependency is one entry of a mix.exs dependencies list or a rebar.config dependencies list.
 type dependency struct {
-	app      string // the OTP application, which is what code refers to
-	pkg      string // the Hex package, when it differs (hex: :x, {pkg, x})
-	req      string // version requirement
-	git      string
-	ref      string // a git ref, tag or branch
-	refKind  string // ref, tag or branch
-	path     string
-	umbrella bool // in_umbrella: true
-	// repo is the Hex repository the package is published to, when not hex.pm's
+	app           string // the OTP application, which is what code refers to
+	packageName   string // the Hex package, when it differs (hex: :x, {pkg, x})
+	requirement   string // version requirement
+	git           string
+	reference     string // a git reference, tag or branch
+	referenceKind string // reference, tag or branch
+	path          string
+	umbrella      bool // in_umbrella: true
+	// repository is the Hex repository the package is published to, when not hex.pm's
 	// public one: "hexpm:<organization>" for a private organization's.
-	repo string
-	line int
-	spec string
+	repository string
+	line       int
+	spec       string
 }
 
 func (d *dependency) hexName() string {
-	if d.pkg != "" {
-		return d.pkg
+	if d.packageName != "" {
+		return d.packageName
 	}
 	return d.app
 }
 
 // ---------------------------------------------------------------- mix.exs
 
-// mixDeps reads the deps of a mix.exs: the list its deps function returns (def or
+// mixDependencies reads the dependencies of a mix.exs: the list its dependencies function returns (def or
 // defp deps, with a do block or do:), or a literal `deps: [...]` in project/0.
 //
 // Implements: REQ-BEAM-009
-func mixDeps(tokens []token) []*dependency {
+func mixDependencies(tokens []token) []*dependency {
 	p := &termParser{tokens: tokens}
 	var out []*dependency
 	seen := map[string]bool{}
 	read := func(list term) {
 		for _, it := range list.items {
-			if d := mixDep(it); d != nil && !seen[d.app] {
+			if d := mixDependency(it); d != nil && !seen[d.app] {
 				seen[d.app] = true
 				out = append(out, d)
 			}
@@ -52,18 +52,18 @@ func mixDeps(tokens []token) []*dependency {
 	for i := 0; i < len(tokens); i++ {
 		t := tokens[i]
 		switch {
-		case t.kind == tKey && t.val == "deps" && i+1 < len(tokens) && tokens[i+1].kind == tPunct && tokens[i+1].val == "[":
+		case t.kind == tKey && t.value == "deps" && i+1 < len(tokens) && tokens[i+1].kind == tPunctuation && tokens[i+1].value == "[":
 			p.i = i + 1
 			read(p.value())
-		case t.kind == tIdent && (t.val == "def" || t.val == "defp") && i+1 < len(tokens) && tokens[i+1].kind == tIdent && tokens[i+1].val == "deps":
+		case t.kind == tIdentifier && (t.value == "def" || t.value == "defp") && i+1 < len(tokens) && tokens[i+1].kind == tIdentifier && tokens[i+1].value == "deps":
 			// The first list of the body; `[...] ++ other()` keeps the literal part.
 			for j := i + 2; j < len(tokens) && j < i+8; j++ {
-				if tokens[j].kind == tPunct && tokens[j].val == "[" {
+				if tokens[j].kind == tPunctuation && tokens[j].value == "[" {
 					p.i = j
 					v := p.value()
 					if v.kind != 'l' {
 						p.i = j + 1
-						v = term{kind: 'l', items: p.seq("]")}
+						v = term{kind: 'l', items: p.sequence("]")}
 					}
 					read(v)
 					break
@@ -74,55 +74,55 @@ func mixDeps(tokens []token) []*dependency {
 	return out
 }
 
-// mixDep reads {:name, requirement, opts}, {:name, opts} or {:name, requirement}.
-func mixDep(t term) *dependency {
+// mixDependency reads {:name, requirement, opts}, {:name, opts} or {:name, requirement}.
+func mixDependency(t term) *dependency {
 	if t.kind != 't' || t.at(0).kind != 'a' {
 		return nil
 	}
 	d := &dependency{app: t.at(0).s, line: t.line, spec: t.render(false)}
 	// {:name, opt: value} is {:name, [opt: value]} written without brackets.
 	items := []term{}
-	var kw term
+	var keyword term
 	for _, it := range t.items[1:] {
 		if it.kind == 'k' {
-			kw.kind = 'l'
-			kw.items = append(kw.items, it)
+			keyword.kind = 'l'
+			keyword.items = append(keyword.items, it)
 			continue
 		}
 		items = append(items, it)
 	}
-	if kw.kind == 'l' {
-		items = append(items, kw)
+	if keyword.kind == 'l' {
+		items = append(items, keyword)
 	}
 	for _, it := range items {
 		switch it.kind {
 		case 's':
-			d.req = it.s
+			d.requirement = it.s
 		case 'l':
-			if v, ok := it.opt("hex"); ok {
-				d.pkg = v.text()
+			if v, ok := it.option("hex"); ok {
+				d.packageName = v.text()
 			}
-			if v, ok := it.opt("git"); ok {
+			if v, ok := it.option("git"); ok {
 				d.git = v.text()
 			}
-			if v, ok := it.opt("github"); ok && v.text() != "" {
+			if v, ok := it.option("github"); ok && v.text() != "" {
 				d.git = "https://github.com/" + v.text() + ".git"
 			}
-			if v, ok := it.opt("path"); ok {
+			if v, ok := it.option("path"); ok {
 				d.path = v.text()
 			}
-			if v, ok := it.opt("in_umbrella"); ok && v.isAtom("true") {
+			if v, ok := it.option("in_umbrella"); ok && v.isAtom("true") {
 				d.umbrella = true
 			}
-			if v, ok := it.opt("repo"); ok {
-				d.repo = hexRepo(v.text())
+			if v, ok := it.option("repo"); ok {
+				d.repository = hexRepository(v.text())
 			}
-			if v, ok := it.opt("organization"); ok && v.text() != "" {
-				d.repo = "hexpm:" + v.text()
+			if v, ok := it.option("organization"); ok && v.text() != "" {
+				d.repository = "hexpm:" + v.text()
 			}
 			for _, k := range []string{"ref", "tag", "branch"} {
-				if v, ok := it.opt(k); ok && v.text() != "" {
-					d.ref, d.refKind = v.text(), k
+				if v, ok := it.option(k); ok && v.text() != "" {
+					d.reference, d.referenceKind = v.text(), k
 				}
 			}
 		}
@@ -130,10 +130,10 @@ func mixDep(t term) *dependency {
 	return d
 }
 
-func mixDepImports(tokens []token) []lang.RawImport {
+func mixDependencyImports(tokens []token) []lang.RawImport {
 	var out []lang.RawImport
-	for _, d := range mixDeps(tokens) {
-		out = append(out, lang.RawImport{Spec: d.spec, Module: d.app, Name: kindDep, Line: d.line})
+	for _, d := range mixDependencies(tokens) {
+		out = append(out, lang.RawImport{Spec: d.spec, Module: d.app, Name: kindDependency, Line: d.line})
 	}
 	return out
 }
@@ -144,14 +144,14 @@ func mixProjectInfo(tokens []token) (app, appsPath string) {
 		if tokens[i].kind != tKey {
 			continue
 		}
-		switch v := tokens[i+1]; tokens[i].val {
+		switch v := tokens[i+1]; tokens[i].value {
 		case "app":
 			if v.kind == tAtom && app == "" {
-				app = v.val
+				app = v.value
 			}
 		case "apps_path":
 			if v.kind == tString {
-				appsPath = v.val
+				appsPath = v.value
 			}
 		}
 	}
@@ -162,26 +162,26 @@ func mixProjectInfo(tokens []token) (app, appsPath string) {
 
 // locked is one package of mix.lock or rebar.lock.
 type locked struct {
-	app     string
-	pkg     string
-	version string
-	git     string
-	ref     string
-	repo    string      // mix.lock only: the Hex repository, "" for hex.pm's
-	deps    []lockedDep // mix.lock only
-	level   int         // rebar.lock only: 0 for a direct dependency
+	app          string
+	packageName  string
+	version      string
+	git          string
+	reference    string
+	repository   string             // mix.lock only: the Hex repository, "" for hex.pm's
+	dependencies []lockedDependency // mix.lock only
+	level        int                // rebar.lock only: 0 for a direct dependency
 }
 
-type lockedDep struct {
-	app, pkg, req, repo string
-	optional            bool
+type lockedDependency struct {
+	app, packageName, requirement, repository string
+	optional                                  bool
 }
 
-// hexRepo is a Hex repository name as a lang.Target.Registry: "" for hex.pm's
+// hexRepository is a Hex repository name as a lang.Target.Registry: "" for hex.pm's
 // public repository, which is every package's unless one is named.
 //
 // Implements: REQ-BEAM-013
-func hexRepo(name string) string {
+func hexRepository(name string) string {
 	if name = strings.TrimSpace(name); name == "hexpm" {
 		return ""
 	}
@@ -191,11 +191,11 @@ func hexRepo(name string) string {
 // readMixLock reads mix.lock: "app": {:hex, :pkg, "1.2.3", hash, managers, deps,
 // "hexpm", hash} or {:git, url, sha, opts}. The repository ("hexpm:acme" for a
 // private organization's package) is kept, for the package and for each of its
-// requirements (their repo: option).
+// requirements (their repository: option).
 //
 // Implements: REQ-BEAM-010, REQ-BEAM-013
-func readMixLock(src []byte) map[string]*locked {
-	p := &termParser{tokens: lexElixir(src)}
+func readMixLock(source []byte) map[string]*locked {
+	p := &termParser{tokens: lexElixir(source)}
 	m := p.value()
 	out := map[string]*locked{}
 	for _, e := range m.items {
@@ -206,25 +206,25 @@ func readMixLock(src []byte) map[string]*locked {
 		l := &locked{app: e.s}
 		switch {
 		case v.at(0).isAtom("hex"):
-			l.pkg, l.version, l.repo = v.at(1).text(), v.at(2).text(), hexRepo(v.at(6).text())
+			l.packageName, l.version, l.repository = v.at(1).text(), v.at(2).text(), hexRepository(v.at(6).text())
 			for _, d := range v.at(5).items {
-				opts := d.at(2)
-				ld := lockedDep{app: d.at(0).text(), req: d.at(1).text()}
-				if h, ok := opts.opt("hex"); ok {
-					ld.pkg = h.text()
+				options := d.at(2)
+				ld := lockedDependency{app: d.at(0).text(), requirement: d.at(1).text()}
+				if h, ok := options.option("hex"); ok {
+					ld.packageName = h.text()
 				}
-				if r, ok := opts.opt("repo"); ok {
-					ld.repo = hexRepo(r.text())
+				if r, ok := options.option("repo"); ok {
+					ld.repository = hexRepository(r.text())
 				}
-				if o, ok := opts.opt("optional"); ok && o.isAtom("true") {
+				if o, ok := options.option("optional"); ok && o.isAtom("true") {
 					ld.optional = true
 				}
 				if ld.app != "" {
-					l.deps = append(l.deps, ld)
+					l.dependencies = append(l.dependencies, ld)
 				}
 			}
 		case v.at(0).isAtom("git"):
-			l.git, l.ref = v.at(1).text(), v.at(2).text()
+			l.git, l.reference = v.at(1).text(), v.at(2).text()
 		default:
 			continue
 		}
@@ -238,8 +238,8 @@ func readMixLock(src []byte) map[string]*locked {
 // {<<"app">>, {git, Url, {ref, Sha}}, Level}.
 //
 // Implements: REQ-BEAM-010
-func readRebarLock(src []byte) map[string]*locked {
-	forms := erlForms(src)
+func readRebarLock(source []byte) map[string]*locked {
+	forms := erlForms(source)
 	if len(forms) == 0 {
 		return nil
 	}
@@ -256,13 +256,13 @@ func readRebarLock(src []byte) map[string]*locked {
 		if n := e.at(2); n.kind == 'n' {
 			l.level = atoi(n.s)
 		}
-		src := e.at(1)
+		source := e.at(1)
 		switch {
-		case src.at(0).isAtom("pkg"):
-			l.pkg, l.version = src.at(1).text(), src.at(2).text()
-		case src.at(0).isAtom("git") || src.at(0).isAtom("git_subdir"):
-			l.git = src.at(1).text()
-			l.ref = src.at(2).at(1).text()
+		case source.at(0).isAtom("pkg"):
+			l.packageName, l.version = source.at(1).text(), source.at(2).text()
+		case source.at(0).isAtom("git") || source.at(0).isAtom("git_subdir"):
+			l.git = source.at(1).text()
+			l.reference = source.at(2).at(1).text()
 		default:
 			continue
 		}
@@ -286,18 +286,18 @@ func atoi(s string) int {
 
 // ---------------------------------------------------------------- rebar.config
 
-// rebarDeps reads the deps of a rebar.config, its profiles' included: name,
+// rebarDependencies reads the dependencies of a rebar.config, its profiles' included: name,
 // {name, "1.0.0"}, {name, {pkg, hexname}}, {name, "1.0.0", {pkg, hexname}},
 // {name, {git, Url, {tag|branch|ref, X}}}, {name, ".*", {git, ...}} (rebar2) and
 // {name, {git_subdir, Url, Ref, Dir}}.
 //
 // Implements: REQ-BEAM-009
-func rebarDeps(forms []term) []*dependency {
+func rebarDependencies(forms []term) []*dependency {
 	var out []*dependency
 	seen := map[string]bool{}
 	read := func(list term) {
 		for _, it := range list.items {
-			if d := rebarDep(it); d != nil && !seen[d.app] {
+			if d := rebarDependency(it); d != nil && !seen[d.app] {
 				seen[d.app] = true
 				out = append(out, d)
 			}
@@ -311,9 +311,9 @@ func rebarDeps(forms []term) []*dependency {
 		case f.at(0).isAtom("deps"):
 			read(f.at(1))
 		case f.at(0).isAtom("profiles"):
-			for _, prof := range f.at(1).items {
-				if deps, ok := prof.at(1).opt("deps"); ok {
-					read(deps)
+			for _, profile := range f.at(1).items {
+				if dependencies, ok := profile.at(1).option("deps"); ok {
+					read(dependencies)
 				}
 			}
 		}
@@ -321,7 +321,7 @@ func rebarDeps(forms []term) []*dependency {
 	return out
 }
 
-func rebarDep(t term) *dependency {
+func rebarDependency(t term) *dependency {
 	if t.kind == 'a' {
 		return &dependency{app: t.s, line: t.line, spec: t.s}
 	}
@@ -332,35 +332,35 @@ func rebarDep(t term) *dependency {
 	for _, it := range t.items[1:] {
 		switch {
 		case it.kind == 's':
-			d.req = it.s
+			d.requirement = it.s
 		case it.kind == 't' && it.at(0).isAtom("pkg"):
-			d.pkg = it.at(1).text()
+			d.packageName = it.at(1).text()
 			if v := it.at(2).text(); v != "" {
-				d.req = v
+				d.requirement = v
 			}
 		case it.kind == 't' && (it.at(0).isAtom("git") || it.at(0).isAtom("git_subdir") || it.at(0).isAtom("hg")):
 			d.git = it.at(1).text()
-			ref := it.at(2)
-			switch ref.kind {
+			reference := it.at(2)
+			switch reference.kind {
 			case 't':
-				d.refKind, d.ref = ref.at(0).text(), ref.at(1).text()
+				d.referenceKind, d.reference = reference.at(0).text(), reference.at(1).text()
 			case 's':
-				d.refKind, d.ref = "branch", ref.s
+				d.referenceKind, d.reference = "branch", reference.s
 			}
-			if d.req == ".*" || d.req == "" {
-				d.req = ""
+			if d.requirement == ".*" || d.requirement == "" {
+				d.requirement = ""
 			}
 		}
 	}
 	if d.git != "" {
-		d.req = "" // rebar2's version regex beside a git source says nothing
+		d.requirement = "" // rebar2's version regex beside a git source says nothing
 	}
 	return d
 }
 
 // rebarRegistry is the lang.Target.Registry of a rebar3 project's Hex packages: the
 // Hex repositories rebar3 asks, in its order, as internal/index reads it. rebar3
-// records no repository for a package, in rebar.config's deps or in rebar.lock
+// records no repository for a package, in rebar.config's dependencies or in rebar.lock
 // ({pkg, Name, Vsn} and a hash); it asks the repositories its configuration names
 // - {hex, [{repos, [#{name => <<"hexpm:acme">>}]}]}, the project's and then the
 // global rebar.config's - and then hex.pm's public one ("hexpm"), unless the first
@@ -369,58 +369,58 @@ func rebarDep(t term) *dependency {
 //
 // Implements: REQ-BEAM-013
 func rebarRegistry(forms []term) string {
-	var repos []string
+	var repositories []string
 	replace, first := false, true
 	for _, f := range forms {
 		if f.kind != 't' || !f.at(0).isAtom("hex") {
 			continue
 		}
-		for _, opt := range f.at(1).items {
-			if opt.kind != 't' || !opt.at(0).isAtom("repos") {
+		for _, option := range f.at(1).items {
+			if option.kind != 't' || !option.at(0).isAtom("repos") {
 				continue
 			}
 			if first {
-				replace = len(opt.items) == 3 && opt.at(1).isAtom("replace")
+				replace = len(option.items) == 3 && option.at(1).isAtom("replace")
 				first = false
 			}
-			for _, r := range opt.at(len(opt.items) - 1).items {
-				if n, ok := r.opt("name"); ok && n.text() != "" && !strings.Contains(n.text(), ",") {
-					repos = append(repos, strings.TrimSpace(n.text()))
+			for _, r := range option.at(len(option.items) - 1).items {
+				if n, ok := r.option("name"); ok && n.text() != "" && !strings.Contains(n.text(), ",") {
+					repositories = append(repositories, strings.TrimSpace(n.text()))
 				}
 			}
 		}
 	}
 	switch {
 	case !replace:
-		repos = append(repos, "*")
-	case len(repos) == 0:
+		repositories = append(repositories, "*")
+	case len(repositories) == 0:
 		return "-" // replaced by none: no repository, so nothing is asked
 	}
-	if !slices.ContainsFunc(repos, func(r string) bool { return r != "hexpm" }) {
+	if !slices.ContainsFunc(repositories, func(r string) bool { return r != "hexpm" }) {
 		return ""
 	}
-	return strings.Join(repos, ",")
+	return strings.Join(repositories, ",")
 }
 
-// rebarConfigImports makes a rebar.config's deps imports of what they declare.
-func rebarConfigImports(src []byte) []lang.RawImport {
+// rebarConfigImports makes a rebar.config's dependencies imports of what they declare.
+func rebarConfigImports(source []byte) []lang.RawImport {
 	var out []lang.RawImport
-	for _, d := range rebarDeps(erlForms(src)) {
-		out = append(out, lang.RawImport{Spec: d.spec, Module: d.app, Name: kindDep, Line: d.line})
+	for _, d := range rebarDependencies(erlForms(source)) {
+		out = append(out, lang.RawImport{Spec: d.spec, Module: d.app, Name: kindDependency, Line: d.line})
 	}
 	return out
 }
 
 // ---------------------------------------------------------------- .app.src
 
-// appSrc reads {application, name, [{applications, [...]}, {included_applications,
+// appSource reads {application, name, [{applications, [...]}, {included_applications,
 // [...]}, ...]}: the application and the ones it depends on.
-func appSrc(src []byte) (name string, apps []term, line int) {
-	for _, f := range erlForms(src) {
+func appSource(source []byte) (name string, apps []term, line int) {
+	for _, f := range erlForms(source) {
 		if f.kind == 't' && f.at(0).isAtom("application") {
 			name, line = f.at(1).text(), f.line
 			for _, key := range []string{"applications", "included_applications"} {
-				if v, ok := f.at(2).opt(key); ok {
+				if v, ok := f.at(2).option(key); ok {
 					apps = append(apps, v.items...)
 				}
 			}
@@ -430,12 +430,12 @@ func appSrc(src []byte) (name string, apps []term, line int) {
 	return "", nil, 0
 }
 
-// extractAppSrc makes an application resource file's applications imports.
+// extractAppSource makes an application resource file's applications imports.
 //
 // Implements: REQ-BEAM-009
-func extractAppSrc(src []byte) *lang.Extraction {
-	name, apps, line := appSrc(src)
-	ex := &lang.Extraction{}
+func extractAppSource(source []byte) *lang.Extraction {
+	name, apps, line := appSource(source)
+	extraction := &lang.Extraction{}
 	var symbols lang.SymbolSet
 	if name != "" {
 		symbols.Add(name, "application", line)
@@ -446,23 +446,23 @@ func extractAppSrc(src []byte) *lang.Extraction {
 			continue
 		}
 		seen[a.s] = true
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: "application " + a.s, Module: a.s, Name: kindApp, Line: a.line})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "application " + a.s, Module: a.s, Name: kindApp, Line: a.line})
 	}
-	ex.Symbols = symbols.List()
-	return ex
+	extraction.Symbols = symbols.List()
+	return extraction
 }
 
 // hexPinned reads a Hex requirement: "== 1.2.3" and a bare "1.2.3" name one version
 // (returned bare, as OSV and the index name it); "~>", ">=", "or" and "and" float.
 //
 // Implements: REQ-BEAM-011
-func hexPinned(req string) (string, bool) {
-	s := strings.TrimSpace(req)
+func hexPinned(requirement string) (string, bool) {
+	s := strings.TrimSpace(requirement)
 	if rest, ok := strings.CutPrefix(s, "=="); ok {
 		s = strings.TrimSpace(rest)
 	}
 	if strings.Contains(s, " ") || !lang.Pinned(s) || lang.Commit(s) {
-		return req, false
+		return requirement, false
 	}
 	return s, true
 }
@@ -472,4 +472,4 @@ func hexPinned(req string) (string, bool) {
 // written and not pinned. The Gleam plugin shares it.
 //
 // Implements: REQ-BEAM-011
-func HexPinned(req string) (string, bool) { return hexPinned(req) }
+func HexPinned(requirement string) (string, bool) { return hexPinned(requirement) }

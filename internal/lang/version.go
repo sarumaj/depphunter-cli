@@ -22,7 +22,7 @@ func Pinned(spec string) bool {
 	if digest, ok := strings.CutPrefix(s, "sha256:"); ok {
 		return isHex(digest, 64)
 	}
-	if isHex(s, 40) || isHex(s, 64) { // a git commit, the only immutable git ref
+	if isHex(s, 40) || isHex(s, 64) { // a git commit, the only immutable git reference
 		return true
 	}
 	s = strings.TrimPrefix(s, "==") // Python and PowerShell write equality
@@ -58,13 +58,13 @@ func PinnedMaven(v string) bool {
 	return true
 }
 
-// Commit reports whether ref is a full git commit, the only git reference that cannot
+// Commit reports whether reference is a full git commit, the only git reference that cannot
 // be moved: a tag points wherever its owner last pushed it.
 //
 // Implements: REQ-CI-011
-func Commit(ref string) bool {
-	ref = strings.TrimSpace(ref)
-	return isHex(ref, 40) || isHex(ref, 64) // SHA-1 today, SHA-256 where it is enabled
+func Commit(reference string) bool {
+	reference = strings.TrimSpace(reference)
+	return isHex(reference, 40) || isHex(reference, 64) // SHA-1 today, SHA-256 where it is enabled
 }
 
 // PinnedSemver is Pinned for the ecosystems where a shortened version is itself a
@@ -92,11 +92,11 @@ func exact(s string) bool {
 	if strings.ContainsAny(s, "^~<>=*|,!()[] ") {
 		return false
 	}
-	for _, seg := range strings.Split(core(s), ".") {
-		if seg == "" {
+	for _, segment := range strings.Split(core(s), ".") {
+		if segment == "" {
 			return false
 		}
-		for _, r := range seg {
+		for _, r := range segment {
 			if r < '0' || r > '9' { // "1.2.x" and "1.2.RELEASE" are not one version
 				return false
 			}

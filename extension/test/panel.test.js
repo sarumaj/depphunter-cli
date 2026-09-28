@@ -34,21 +34,21 @@ function call(address, method, apiPath, body) {
   const url = new URL(address);
   const token = url.searchParams.get('token');
   return new Promise((resolve, reject) => {
-    const req = http.request({
+    const request = http.request({
       hostname: url.hostname, port: url.port, path: apiPath, method,
       headers: {
         'X-Depphunter-Token': token,
         'X-Depphunter-Request': '1',
         ...(body ? { 'Content-Type': 'application/json' } : {}),
       },
-    }, res => {
+    }, response => {
       const chunks = [];
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => resolve({ status: res.statusCode, body: Buffer.concat(chunks).toString() }));
+      response.on('data', c => chunks.push(c));
+      response.on('end', () => resolve({ status: response.statusCode, body: Buffer.concat(chunks).toString() }));
     });
-    req.on('error', reject);
-    if (body) req.write(JSON.stringify(body));
-    req.end();
+    request.on('error', reject);
+    if (body) request.write(JSON.stringify(body));
+    request.end();
   });
 }
 
@@ -85,9 +85,9 @@ describe('the side panel', { skip: available() ? false : 'no depphunter binary (
     assert.ok(roots.length > 0, 'the tree is empty');
 
     // The repository's own root is a directory, and it opens into what is in it.
-    const dir = roots.find(r => r.node.kind === 'dir');
-    assert.ok(dir, `no directory among the roots: ${roots.map(r => r.node.kind)}`);
-    const inside = tree.getChildren(dir);
+    const directory = roots.find(r => r.node.kind === 'dir');
+    assert.ok(directory, `no directory among the roots: ${roots.map(r => r.node.kind)}`);
+    const inside = tree.getChildren(directory);
     assert.ok(inside.length > 0, 'the root directory opened into nothing');
     // Directories before files, which is the order a file tree is read in.
     const kinds = inside.map(r => r.node.kind);
@@ -117,8 +117,8 @@ describe('the side panel', { skip: available() ? false : 'no depphunter binary (
   // Verifies: REQ-EXT-005
   it('stops a branch that leads back to where it has been', () => {
     const tree = provider('depphunter.tree');
-    const eco = tree.getChildren().find(r => r.node.kind === 'ecosystem');
-    if (!eco) return; // a repository with no external packages has no cycles either
+    const ecosystem = tree.getChildren().find(r => r.node.kind === 'ecosystem');
+    if (!ecosystem) return; // a repository with no external packages has no cycles either
     const seen = new Set();
     const walk = (row, depth) => {
       if (depth > 12) assert.fail(`the tree went ${depth} deep: a cycle was followed`);
@@ -129,7 +129,7 @@ describe('the side panel', { skip: available() ? false : 'no depphunter binary (
         else walk(child, depth + 1);
       }
     };
-    walk(eco, 0);
+    walk(ecosystem, 0);
     assert.ok(seen.size > 0, 'the ecosystem held no packages');
   });
 
@@ -138,17 +138,17 @@ describe('the side panel', { skip: available() ? false : 'no depphunter binary (
     const tree = provider('depphunter.tree');
     const row = tree.getChildren().find(r => r.node.kind === 'dir');
     await stub.commands.get('depphunter.select')(row);
-    const res = await call(address, 'GET', '/api/session');
-    assert.strictEqual(res.status, 200);
-    assert.strictEqual(JSON.parse(res.body).selected, row.node.id);
+    const response = await call(address, 'GET', '/api/session');
+    assert.strictEqual(response.status, 200);
+    assert.strictEqual(JSON.parse(response.body).selected, row.node.id);
   });
 
   // Verifies: REQ-EXT-008
   it('opens the tree to what the map selected, and catches up when it was hidden', async () => {
     const tree = provider('depphunter.tree');
     const view = stub.last('createTreeView', 'depphunter.tree')[2];
-    const dir = tree.getChildren().find(r => r.node.kind === 'dir');
-    const inside = tree.getChildren(dir).find(r => r.node.kind === 'file' || r.node.kind === 'dir');
+    const directory = tree.getChildren().find(r => r.node.kind === 'dir');
+    const inside = tree.getChildren(directory).find(r => r.node.kind === 'file' || r.node.kind === 'dir');
 
     // Hidden: nothing is revealed, because there is nothing on screen to reveal in.
     view.visible = false;
@@ -185,8 +185,8 @@ describe('the side panel', { skip: available() ? false : 'no depphunter binary (
 
     // Dropping one here takes it out of the shared backpack, which is the map's too.
     await stub.commands.get('depphunter.dropFinding')(rows[0]);
-    const res = await call(address, 'GET', '/api/session');
-    assert.deepStrictEqual(JSON.parse(res.body).backpack, []);
+    const response = await call(address, 'GET', '/api/session');
+    assert.deepStrictEqual(JSON.parse(response.body).backpack, []);
     assert.deepStrictEqual(pack.getChildren(), []);
   });
 
@@ -196,9 +196,9 @@ describe('the side panel', { skip: available() ? false : 'no depphunter binary (
       items: [{ id: 'TEST-2', severity: 'critical', title: 'a large thing', where: 'a.go' }],
       origin: 'test',
     });
-    const res = await call(address, 'GET', '/api/backpack?format=md');
-    assert.strictEqual(res.status, 200);
-    assert.match(res.body, /- \[ \] \*\*critical\*\* a large thing/);
+    const response = await call(address, 'GET', '/api/backpack?format=md');
+    assert.strictEqual(response.status, 200);
+    assert.match(response.body, /- \[ \] \*\*critical\*\* a large thing/);
   });
 
   // Verifies: REQ-EXT-015

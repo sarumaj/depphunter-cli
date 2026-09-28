@@ -2,23 +2,23 @@ package r
 
 import "strings"
 
-// basePkgs are the packages of priority "base": they ship with R itself, are
+// basePackages are the packages of priority "base": they ship with R itself, are
 // versioned with it and are on no repository.
 //
 // Implements: REQ-R-006
-var basePkgs = set("base compiler datasets grDevices graphics grid methods parallel splines stats stats4 tcltk tools utils")
+var basePackages = set("base compiler datasets grDevices graphics grid methods parallel splines stats stats4 tcltk tools utils")
 
-// recommendedPkgs ship with every binary R installation too, but are ordinary CRAN
+// recommendedPackages ship with every binary R installation too, but are ordinary CRAN
 // packages updated on their own: they are the project's dependency when it declares
 // or locks one, and part of R otherwise (REQ-R-006).
-var recommendedPkgs = set("MASS lattice Matrix nlme survival boot cluster codetools foreign KernSmooth rpart class nnet spatial mgcv")
+var recommendedPackages = set("MASS lattice Matrix nlme survival boot cluster codetools foreign KernSmooth rpart class nnet spatial mgcv")
 
-// biocPkgs are Bioconductor's infrastructure and most-used packages. Without a lock
+// biocPackages are Bioconductor's infrastructure and most-used packages. Without a lock
 // that records its source, a package is only known to come from Bioconductor rather
 // than CRAN by name.
 //
 // Implements: REQ-R-007
-var biocPkgs = set(`Biobase BiocGenerics S4Vectors IRanges GenomicRanges GenomeInfoDb
+var biocPackages = set(`Biobase BiocGenerics S4Vectors IRanges GenomicRanges GenomeInfoDb
 SummarizedExperiment SingleCellExperiment DelayedArray HDF5Array XVector Biostrings BSgenome
 GenomicFeatures GenomicAlignments Rsamtools rtracklayer AnnotationDbi AnnotationHub ExperimentHub
 BiocParallel BiocFileCache BiocIO BiocStyle BiocCheck MultiAssayExperiment DESeq2 edgeR limma

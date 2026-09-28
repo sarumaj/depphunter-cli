@@ -29,15 +29,15 @@ import (
 // Verifies: REQ-CMAKE-006, REQ-CMAKE-007, REQ-CMAKE-008, REQ-CMAKE-009, REQ-CMAKE-010
 // Verifies: REQ-CMAKE-011
 func TestBuildFilesAndPackages(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{}, "testdata/repo")
+	results := langtest.Analyze(t, Plugin{}, "testdata/repo")
 	local := func(p string) lang.Target { return lang.Target{Local: p} }
-	std := func(name string) lang.Target { return lang.Target{Ecosystem: ecoStd, Package: name} }
+	std := func(name string) lang.Target { return lang.Target{Ecosystem: ecosystemStd, Package: name} }
 	external := func(name string) lang.Target {
 		return lang.Target{Ecosystem: "c-external", Package: name, Unresolved: true}
 	}
 	vcpkg := func(name string) lang.Target { return lang.Target{Ecosystem: "vcpkg", Package: name, Floating: true} }
 	fetch := func(name, version string, pinned, floating bool) lang.Target {
-		return lang.Target{Ecosystem: ecoFetch, Package: name, Version: version, Pinned: pinned, Floating: floating}
+		return lang.Target{Ecosystem: ecosystemFetch, Package: name, Version: version, Pinned: pinned, Floating: floating}
 	}
 	gtest := fetch("github.com/google/googletest", "f8d7d77c06936315286eb55f8de22cd23c188571", true, false)
 	catch2 := fetch("github.com/catchorg/Catch2", "v3.5.2", false, false)
@@ -62,8 +62,8 @@ func TestBuildFilesAndPackages(t *testing.T) {
 			"find_package(Eigen3)":                   external("Eigen"),
 			"find_package(Catch2)":                   catch2,
 			"find_package(PkgConfig)":                std("FindPkgConfig"),
-			"pkg_check_modules(GLIB glib-2.0>=2.40)": {Ecosystem: ecoPkg, Package: "glib-2.0", Version: ">=2.40"},
-			"pkg_check_modules(GLIB gio-2.0)":        {Ecosystem: ecoPkg, Package: "gio-2.0"},
+			"pkg_check_modules(GLIB glib-2.0>=2.40)": {Ecosystem: ecosystemPackage, Package: "glib-2.0", Version: ">=2.40"},
+			"pkg_check_modules(GLIB gio-2.0)":        {Ecosystem: ecosystemPackage, Package: "gio-2.0"},
 			"add_subdirectory(src)":                  local("src/CMakeLists.txt"),
 			"add_subdirectory(${SHOP_TOOLS})":        local("tools/CMakeLists.txt"),
 			"add_subdirectory(tests)":                local("tests/CMakeLists.txt"),
@@ -128,10 +128,10 @@ func TestBuildFilesAndPackages(t *testing.T) {
 		},
 	}
 	for file, want := range imports {
-		t.Run(file, func(t *testing.T) { langtest.CheckImports(t, res[file], want) })
+		t.Run(file, func(t *testing.T) { langtest.CheckImports(t, results[file], want) })
 	}
-	if len(res) != len(imports) {
-		t.Errorf("analyzed %d files, want %d", len(res), len(imports))
+	if len(results) != len(imports) {
+		t.Errorf("analyzed %d files, want %d", len(results), len(imports))
 	}
 	symbols := map[string]map[string]string{
 		"CMakeLists.txt":       {"Shop": "project", "SHOP_TESTS": "option", "SHOP_LOG_LEVEL": "cache"},
@@ -148,7 +148,7 @@ func TestBuildFilesAndPackages(t *testing.T) {
 		"CMakePresets.json":    {"default": "preset", "vcpkg": "preset", "default@16": "preset"},
 	}
 	for file, want := range symbols {
-		if got := langtest.Symbols(t, res[file]); !reflect.DeepEqual(got, want) {
+		if got := langtest.Symbols(t, results[file]); !reflect.DeepEqual(got, want) {
 			t.Errorf("%s symbols: got %v, want %v", file, got, want)
 		}
 	}
@@ -165,7 +165,7 @@ func TestBuildFilesAndPackages(t *testing.T) {
 func TestFindPackageMeetsIncludes(t *testing.T) {
 	build := langtest.Imports(t, langtest.Analyze(t, Plugin{}, "testdata/repo")["CMakeLists.txt"])
 	build2 := langtest.Imports(t, langtest.Analyze(t, Plugin{}, "testdata/repo")["tests/CMakeLists.txt"])
-	deps := langtest.Imports(t, langtest.Analyze(t, Plugin{}, "testdata/repo")["cmake/Deps.cmake"])
+	dependencies := langtest.Imports(t, langtest.Analyze(t, Plugin{}, "testdata/repo")["cmake/Deps.cmake"])
 	sources := langtest.Imports(t, langtest.Analyze(t, cpp.Plugin{Fetches: Plugin{}}, "testdata/repo")["src/deps.cpp"])
 	for include, find := range map[string]lang.Target{
 		"#include <nlohmann/json.hpp>":            build["find_package(nlohmann_json)"],
@@ -173,9 +173,9 @@ func TestFindPackageMeetsIncludes(t *testing.T) {
 		"#include <QtWidgets/QWidget>":            build["find_package(Qt6 Widgets)"],
 		"#include <zlib.h>":                       build["find_package(ZLIB)"],
 		"#include <gtest/gtest.h>":                build2["find_package(GTest)"],
-		"#include <doctest/doctest.h>":            deps["CPMAddPackage(doctest)"],
-		"#include <magic_enum.hpp>":               deps["CPMAddPackage(magic_enum)"],
-		"#include <catch2/catch_test_macros.hpp>": deps["FetchContent_Declare(Catch2)"],
+		"#include <doctest/doctest.h>":            dependencies["CPMAddPackage(doctest)"],
+		"#include <magic_enum.hpp>":               dependencies["CPMAddPackage(magic_enum)"],
+		"#include <catch2/catch_test_macros.hpp>": dependencies["FetchContent_Declare(Catch2)"],
 		"#include <cxxopts.hpp>":                  {Ecosystem: "c-external", Package: "cxxopts", Unresolved: true},
 	} {
 		if got, ok := sources[include]; !ok {
@@ -201,7 +201,7 @@ func TestFindPackageMeetsIncludes(t *testing.T) {
 		"main.cpp":        "#include <cxxopts.hpp>\n#include <vendored/v.h>\n",
 	})
 	langtest.CheckImports(t, langtest.Analyze(t, cpp.Plugin{Fetches: Plugin{}}, root)["main.cpp"], map[string]lang.Target{
-		"#include <cxxopts.hpp>":  {Ecosystem: ecoFetch, Package: "github.com/jarro2783/cxxopts", Version: "v3.2.0"},
+		"#include <cxxopts.hpp>":  {Ecosystem: ecosystemFetch, Package: "github.com/jarro2783/cxxopts", Version: "v3.2.0"},
 		"#include <vendored/v.h>": {Ecosystem: "c-external", Package: "vendored", Unresolved: true},
 	})
 	// No CMake file, or one that is garbage, fetches nothing.
@@ -217,23 +217,23 @@ func TestFindPackageMeetsIncludes(t *testing.T) {
 
 // Verifies: REQ-CMAKE-002
 func TestLex(t *testing.T) {
-	src := "\xef\xbb\xbfset(A \"x\\\"y\\\n z\" [==[raw ]] ${B}]==] b\\;c)\n" +
+	source := "\xef\xbb\xbfset(A \"x\\\"y\\\n z\" [==[raw ]] ${B}]==] b\\;c)\n" +
 		"#[[ include(Hidden)\n]] # add_subdirectory(no)\n" +
 		"if((A AND B) OR C) # trailing\n" +
 		"Add_SubDirectory ( src ) garbage \"quoted\"\n" +
 		"list(APPEND L a;b # comment\n  c)\n"
-	got := lex([]byte(src))
+	got := lex([]byte(source))
 	want := []command{
-		{name: "set", cased: "set", line: 1, args: []arg{
+		{name: "set", cased: "set", line: 1, arguments: []argument{
 			{text: "A", line: 1}, {text: "x\"y z", quoted: true, line: 1},
 			{text: "raw ]] ${B}", raw: true, line: 2}, {text: `b\;c`, line: 2},
 		}},
-		{name: "if", cased: "if", line: 5, args: []arg{
+		{name: "if", cased: "if", line: 5, arguments: []argument{
 			{text: "(", line: 5}, {text: "A", line: 5}, {text: "AND", line: 5}, {text: "B", line: 5},
 			{text: ")", line: 5}, {text: "OR", line: 5}, {text: "C", line: 5},
 		}},
-		{name: "add_subdirectory", cased: "Add_SubDirectory", line: 6, args: []arg{{text: "src", line: 6}}},
-		{name: "list", cased: "list", line: 7, args: []arg{
+		{name: "add_subdirectory", cased: "Add_SubDirectory", line: 6, arguments: []argument{{text: "src", line: 6}}},
+		{name: "list", cased: "list", line: 7, arguments: []argument{
 			{text: "APPEND", line: 7}, {text: "L", line: 7}, {text: "a;b", line: 7}, {text: "c", line: 8},
 		}},
 	}
@@ -249,8 +249,8 @@ func TestLex(t *testing.T) {
 
 // Verifies: REQ-CMAKE-003
 func TestExpand(t *testing.T) {
-	vars := map[string]string{"P": "SHOP", "SHOP_DIR": "src", "L": "a;b"}
-	lookup := func(n string) (string, bool) { v, ok := vars[n]; return v, ok }
+	variables := map[string]string{"P": "SHOP", "SHOP_DIR": "src", "L": "a;b"}
+	lookup := func(n string) (string, bool) { v, ok := variables[n]; return v, ok }
 	for in, want := range map[string]string{
 		"${${P}_DIR}/x.cpp": "src/x.cpp",
 		"${L}":              "a;b",
@@ -279,8 +279,8 @@ func TestCPMShorthand(t *testing.T) {
 		"https://example.com/x-1.0.zip":            {"", "https://example.com/x-1.0.zip", "", ""},
 		"https://user@example.com/files/x-1.0.zip": {"", "https://user@example.com/files/x-1.0.zip", "", ""},
 	} {
-		repo, url, tag, version := cpmShorthand(in)
-		if got := [4]string{repo, url, tag, version}; got != want {
+		repository, url, tag, version := cpmShorthand(in)
+		if got := [4]string{repository, url, tag, version}; got != want {
 			t.Errorf("cpmShorthand(%q) = %q, want %q", in, got, want)
 		}
 	}
@@ -291,23 +291,23 @@ func TestFetchedNaming(t *testing.T) {
 	r := newResolver([]*scan.File{{Path: "CMakeLists.txt"}})
 	for in, want := range map[string]lang.Target{
 		"url|https://github.com/google/googletest/archive/03597a01ee50ed33e9dfd640b249b4be3799d395.zip|": {
-			Ecosystem: ecoFetch, Package: "github.com/google/googletest", Version: "03597a01ee50ed33e9dfd640b249b4be3799d395", Pinned: true,
+			Ecosystem: ecosystemFetch, Package: "github.com/google/googletest", Version: "03597a01ee50ed33e9dfd640b249b4be3799d395", Pinned: true,
 		},
 		"url|https://github.com/fmtlib/fmt/archive/refs/tags/10.2.1.tar.gz|": {
-			Ecosystem: ecoFetch, Package: "github.com/fmtlib/fmt", Version: "10.2.1",
+			Ecosystem: ecosystemFetch, Package: "github.com/fmtlib/fmt", Version: "10.2.1",
 		},
 		"url|https://github.com/a/b/archive/refs/heads/main.zip|": {
-			Ecosystem: ecoFetch, Package: "github.com/a/b", Version: "main", Floating: true,
+			Ecosystem: ecosystemFetch, Package: "github.com/a/b", Version: "main", Floating: true,
 		},
 		"url|https://gitlab.com/libeigen/eigen/-/archive/3.4.0/eigen-3.4.0.tar.gz|SHA256=abc": {
-			Ecosystem: ecoFetch, Package: "gitlab.com/libeigen/eigen", Version: "eigen-3.4.0", Pinned: true,
+			Ecosystem: ecosystemFetch, Package: "gitlab.com/libeigen/eigen", Version: "eigen-3.4.0", Pinned: true,
 		},
 		"url|https://example.com/x.tar.gz?raw=1|MD5=0123": {
-			Ecosystem: ecoFetch, Package: "example.com/x.tar.gz", Version: "MD5=0123", Pinned: true,
+			Ecosystem: ecosystemFetch, Package: "example.com/x.tar.gz", Version: "MD5=0123", Pinned: true,
 		},
-		"git|git@github.com:Org/Repo.git|v1.2.3": {Ecosystem: ecoFetch, Package: "github.com/Org/Repo", Version: "v1.2.3"},
-		"git|https://github.com/a/b|master":      {Ecosystem: ecoFetch, Package: "github.com/a/b", Version: "master", Floating: true},
-		"git|https://github.com/a/b|${UNKNOWN}":  {Ecosystem: ecoFetch, Package: "github.com/a/b"},
+		"git|git@github.com:Org/Repo.git|v1.2.3": {Ecosystem: ecosystemFetch, Package: "github.com/Org/Repo", Version: "v1.2.3"},
+		"git|https://github.com/a/b|master":      {Ecosystem: ecosystemFetch, Package: "github.com/a/b", Version: "master", Floating: true},
+		"git|https://github.com/a/b|${UNKNOWN}":  {Ecosystem: ecosystemFetch, Package: "github.com/a/b"},
 		"git|${UNKNOWN}/b|v1":                    {},
 	} {
 		kind, rest, _ := cut3(in)

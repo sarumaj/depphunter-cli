@@ -13,24 +13,24 @@ import (
 // MODULE.bazel, a WORKSPACE file or a REPO.bazel, and what those declare. The
 // project's root is one even without such a file (a sparse checkout).
 type workspace struct {
-	dir      string
-	name     string               // module(name) or workspace(name): labels @name//x are local
-	repoName string               // module(repo_name)
-	deps     map[string]*bazelDep // bazel_dep by apparent repository name
-	byModule map[string]*bazelDep // bazel_dep by module name
-	over     map[string]*override
-	repos    map[string]*repoDecl // WORKSPACE, .bzl and use_repo_rule declarations
-	extRepos map[string]string    // repository use_repo() imports -> the extension's .bzl label
-	extFile  map[string]string    // repository use_repo() imports -> the MODULE.bazel importing it
-	hubs     map[string]*hub
-	goRepos  map[string]lang.Target // Gazelle's repository names -> Go modules
-	goMods   map[string]lang.Target // Go module paths -> Go modules
-	selected map[string]string      // module -> the version MODULE.bazel.lock selected
-	graph    map[string][]string    // "name@version" -> "name@version" (older lock files)
+	directory             string
+	name                  string                      // module(name) or workspace(name): labels @name//x are local
+	repositoryName        string                      // module(repo_name)
+	dependencies          map[string]*bazelDependency // bazel_dep by apparent repository name
+	byModule              map[string]*bazelDependency // bazel_dep by module name
+	over                  map[string]*override
+	repositories          map[string]*repositoryDeclaration // WORKSPACE, .bzl and use_repo_rule declarations
+	extensionRepositories map[string]string                 // repository use_repo() imports -> the extension's .bzl label
+	extensionFile         map[string]string                 // repository use_repo() imports -> the MODULE.bazel importing it
+	hubs                  map[string]*hub
+	goRepositories        map[string]lang.Target // Gazelle's repository names -> Go modules
+	goMods                map[string]lang.Target // Go module paths -> Go modules
+	selected              map[string]string      // module -> the version MODULE.bazel.lock selected
+	graph                 map[string][]string    // "name@version" -> "name@version" (older lock files)
 }
 
-type bazelDep struct {
-	name, version, repoName string
+type bazelDependency struct {
+	name, version, repositoryName string
 }
 
 // override is a *_override() of a module.
@@ -42,9 +42,9 @@ type override struct {
 	integrity, path, stripPrefix string
 }
 
-// repoDecl is a repository rule's call: http_archive, git_repository,
+// repositoryDeclaration is a repository rule's call: http_archive, git_repository,
 // local_repository, go_repository and their kin.
-type repoDecl struct {
+type repositoryDeclaration struct {
 	rule, name                  string
 	urls                        []string
 	hash                        string // sha256 or integrity
@@ -56,24 +56,24 @@ type repoDecl struct {
 // hub is a hub repository a module extension or repository rule creates: one
 // repository whose targets are the packages of another ecosystem.
 type hub struct {
-	eco    string
-	pkgs   map[string]lang.Target // normalized name -> package
-	deps   map[string][]string    // Maven lock: group:artifact -> what it needs
-	lock   bool                   // a lock or requirements file listed the packages
-	locked map[string]bool
+	ecosystem    string
+	packages     map[string]lang.Target // normalized name -> package
+	dependencies map[string][]string    // Maven lock: group:artifact -> what it needs
+	lock         bool                   // a lock or requirements file listed the packages
+	locked       map[string]bool
 }
 
-func newWorkspace(dir string) *workspace {
-	return &workspace{dir: dir, deps: map[string]*bazelDep{}, byModule: map[string]*bazelDep{},
-		over: map[string]*override{}, repos: map[string]*repoDecl{}, extRepos: map[string]string{},
-		extFile: map[string]string{}, hubs: map[string]*hub{}, goRepos: map[string]lang.Target{},
+func newWorkspace(directory string) *workspace {
+	return &workspace{directory: directory, dependencies: map[string]*bazelDependency{}, byModule: map[string]*bazelDependency{},
+		over: map[string]*override{}, repositories: map[string]*repositoryDeclaration{}, extensionRepositories: map[string]string{},
+		extensionFile: map[string]string{}, hubs: map[string]*hub{}, goRepositories: map[string]lang.Target{},
 		goMods: map[string]lang.Target{}, selected: map[string]string{}, graph: map[string][]string{}}
 }
 
-func (w *workspace) hub(name, eco string) *hub {
+func (w *workspace) hub(name, ecosystem string) *hub {
 	h := w.hubs[name]
 	if h == nil {
-		h = &hub{eco: eco, pkgs: map[string]lang.Target{}, deps: map[string][]string{}, locked: map[string]bool{}}
+		h = &hub{ecosystem: ecosystem, packages: map[string]lang.Target{}, dependencies: map[string][]string{}, locked: map[string]bool{}}
 		w.hubs[name] = h
 	}
 	return h
@@ -86,65 +86,65 @@ func (w *workspace) labelPath(s string) string {
 		s = s[strings.Index(s, "//"):]
 	}
 	l, ok := parseLabel(s)
-	if !ok || l.hasRepo && l.repo != "" && l.repo != w.name && l.repo != w.repoName {
+	if !ok || l.hasRepository && l.repository != "" && l.repository != w.name && l.repository != w.repositoryName {
 		return ""
 	}
-	return path.Join(w.dir, l.pkg, l.target)
+	return path.Join(w.directory, l.packageName, l.target)
 }
 
 // readModule reads a MODULE.bazel (or a file it include()s).
 //
 // Implements: REQ-BAZEL-006, REQ-BAZEL-008
-func (r *resolver) readModule(w *workspace, file string, src []byte, depth int) {
-	f := starlark.Parse(src)
-	type ext struct{ label, name string }
-	exts := map[string]ext{}
+func (r *resolver) readModule(w *workspace, file string, source []byte, depth int) {
+	f := starlark.Parse(source)
+	type extension struct{ label, name string }
+	extensions := map[string]extension{}
 	rules := map[string]string{}
-	for _, st := range f.Stmts {
-		if st.Def != "" || st.X == nil || st.X.Kind != starlark.Call {
+	for _, statement := range f.Statements {
+		if statement.Definition != "" || statement.X == nil || statement.X.Kind != starlark.Call {
 			continue
 		}
-		n := st.X
+		n := statement.X
 		callee := n.Callee()
-		if st.Kind == 'a' && len(st.Targets) == 1 {
+		if statement.Kind == 'a' && len(statement.Targets) == 1 {
 			switch callee {
 			case "use_extension":
-				l, _ := n.Pos(0).Str()
-				name, _ := n.Pos(1).Str()
-				exts[st.Targets[0]] = ext{l, name}
+				l, _ := n.Position(0).StringValue()
+				name, _ := n.Position(1).StringValue()
+				extensions[statement.Targets[0]] = extension{l, name}
 			case "use_repo_rule":
-				rule, _ := n.Pos(1).Str()
-				rules[st.Targets[0]] = rule
+				rule, _ := n.Position(1).StringValue()
+				rules[statement.Targets[0]] = rule
 			}
 			continue
 		}
 		switch callee {
 		case "module":
 			if w.name == "" {
-				w.name, w.repoName = n.KwStr("name"), n.KwStr("repo_name")
+				w.name, w.repositoryName = n.KeywordString("name"), n.KeywordString("repo_name")
 			}
 		case "bazel_dep":
-			d := &bazelDep{name: n.KwStr("name"), version: n.KwStr("version"), repoName: n.KwStr("repo_name")}
+			d := &bazelDependency{name: n.KeywordString("name"), version: n.KeywordString("version"), repositoryName: n.KeywordString("repo_name")}
 			if d.name == "" {
 				continue
 			}
-			apparent := d.repoName
+			apparent := d.repositoryName
 			if apparent == "" {
 				apparent = d.name
 			}
-			w.deps[apparent] = d
+			w.dependencies[apparent] = d
 			w.byModule[d.name] = d
 		case "single_version_override", "git_override", "archive_override", "local_path_override":
-			name := n.KwStr("module_name")
+			name := n.KeywordString("module_name")
 			if name == "" {
 				continue
 			}
 			o := &override{kind: map[string]string{"single_version_override": "single", "git_override": "git",
 				"archive_override": "archive", "local_path_override": "local"}[callee],
-				version: n.KwStr("version"), remote: n.KwStr("remote"), commit: n.KwStr("commit"),
-				tag: n.KwStr("tag"), branch: n.KwStr("branch"), integrity: n.KwStr("integrity"),
-				path: n.KwStr("path"), stripPrefix: n.KwStr("strip_prefix"), urls: n.Kw("urls").Strings()}
-			if u := n.KwStr("url"); u != "" {
+				version: n.KeywordString("version"), remote: n.KeywordString("remote"), commit: n.KeywordString("commit"),
+				tag: n.KeywordString("tag"), branch: n.KeywordString("branch"), integrity: n.KeywordString("integrity"),
+				path: n.KeywordString("path"), stripPrefix: n.KeywordString("strip_prefix"), urls: n.Keyword("urls").Strings()}
+			if u := n.KeywordString("url"); u != "" {
 				o.urls = append([]string{u}, o.urls...)
 			}
 			if o.kind == "single" && o.version == "" {
@@ -152,15 +152,15 @@ func (r *resolver) readModule(w *workspace, file string, src []byte, depth int) 
 			}
 			w.over[name] = o
 		case "use_repo":
-			e, ok := exts[n.Pos(0).Name()]
+			e, ok := extensions[n.Position(0).Name()]
 			if !ok {
 				continue
 			}
-			for i, a := range n.Args {
+			for i, a := range n.Arguments {
 				if i == 0 || a.Star != "" {
 					continue
 				}
-				s, ok := a.Val.Str()
+				s, ok := a.Value.StringValue()
 				if !ok {
 					continue
 				}
@@ -168,42 +168,42 @@ func (r *resolver) readModule(w *workspace, file string, src []byte, depth int) 
 				if a.Name != "" {
 					name = a.Name
 				}
-				w.extRepos[name] = e.label
-				w.extFile[name] = file
+				w.extensionRepositories[name] = e.label
+				w.extensionFile[name] = file
 			}
 		case "include":
-			if l, ok := n.Pos(0).Str(); ok && depth < 8 {
+			if l, ok := n.Position(0).StringValue(); ok && depth < 8 {
 				if p := w.labelPath(l); p != "" {
-					if src, ok := r.read(p); ok {
-						r.readModule(w, p, src, depth+1)
+					if source, ok := r.read(p); ok {
+						r.readModule(w, p, source, depth+1)
 					}
 				}
 			}
 		default:
 			if rule, ok := rules[callee]; ok {
-				r.repoRule(w, rule, n)
+				r.repositoryRule(w, rule, n)
 				continue
 			}
-			obj, tag, ok := strings.Cut(callee, ".")
-			if e, isExt := exts[obj]; ok && isExt {
-				r.extTag(w, e.name, tag, n)
+			object, tag, ok := strings.Cut(callee, ".")
+			if e, isExtension := extensions[object]; ok && isExtension {
+				r.extensionTag(w, e.name, tag, n)
 			}
 		}
 	}
 }
 
-// extTag reads a tag of the module extensions whose hub repositories name
+// extensionTag reads a tag of the module extensions whose hub repositories name
 // packages of other ecosystems.
 //
 // Implements: REQ-BAZEL-009
-func (r *resolver) extTag(w *workspace, ext, tag string, n *starlark.Node) {
-	switch ext + "." + tag {
+func (r *resolver) extensionTag(w *workspace, extension, tag string, n *starlark.Node) {
+	switch extension + "." + tag {
 	case "maven.install", "maven.artifact":
-		name := n.KwStr("name")
+		name := n.KeywordString("name")
 		if name == "" {
 			name = "maven"
 		}
-		h := w.hub(name, ecoMaven)
+		h := w.hub(name, ecosystemMaven)
 		if tag == "artifact" {
 			if c := coordinate(n); c != "" {
 				h.addMaven(c)
@@ -212,44 +212,44 @@ func (r *resolver) extTag(w *workspace, ext, tag string, n *starlark.Node) {
 		}
 		r.mavenInstall(w, h, n, "lock_file")
 	case "pip.parse":
-		name := n.KwStr("hub_name")
+		name := n.KeywordString("hub_name")
 		if name == "" {
 			return
 		}
-		r.pipParse(w, w.hub(name, ecoPyPI), n)
+		r.pipParse(w, w.hub(name, ecosystemPyPI), n)
 	case "go_deps.from_file":
-		if p := w.labelPath(n.KwStr("go_mod")); p != "" {
-			if src, ok := r.read(p); ok {
-				for _, t := range readGoMod(src) {
+		if p := w.labelPath(n.KeywordString("go_mod")); p != "" {
+			if source, ok := r.read(p); ok {
+				for _, t := range readGoMod(source) {
 					w.addGo(t)
 				}
 			}
 		}
 	case "go_deps.module":
-		if p := n.KwStr("path"); p != "" {
-			v := n.KwStr("version")
-			w.addGo(lang.Target{Ecosystem: ecoGo, Package: p, Version: v, Pinned: lang.Pinned(v)})
+		if p := n.KeywordString("path"); p != "" {
+			v := n.KeywordString("version")
+			w.addGo(lang.Target{Ecosystem: ecosystemGo, Package: p, Version: v, Pinned: lang.Pinned(v)})
 		}
 	case "npm.npm_translate_lock":
-		name := n.KwStr("name")
+		name := n.KeywordString("name")
 		if name == "" {
 			name = "npm"
 		}
-		r.pnpm(w, w.hub(name, ecoNPM), n.KwStr("pnpm_lock"))
+		r.pnpm(w, w.hub(name, ecosystemNPM), n.KeywordString("pnpm_lock"))
 	case "crate.from_cargo", "crate.from_specs":
-		name := n.KwStr("name")
+		name := n.KeywordString("name")
 		if name == "" {
 			name = "crates"
 		}
-		r.cargo(w, w.hub(name, ecoCrates), n)
+		r.cargo(w, w.hub(name, ecosystemCrates), n)
 	case "crate.spec":
-		name := n.KwStr("repositories")
+		name := n.KeywordString("repositories")
 		if name == "" {
 			name = "crates"
 		}
-		if p := n.KwStr("package"); p != "" {
-			v := n.KwStr("version")
-			w.hub(name, ecoCrates).add(normCrate(p), lang.Target{Ecosystem: ecoCrates, Package: p, Version: v, Pinned: exactCargo(v)}, false)
+		if p := n.KeywordString("package"); p != "" {
+			v := n.KeywordString("version")
+			w.hub(name, ecosystemCrates).add(normalizeCrate(p), lang.Target{Ecosystem: ecosystemCrates, Package: p, Version: v, Pinned: exactCargo(v)}, false)
 		}
 	}
 }
@@ -260,13 +260,13 @@ func (r *resolver) extTag(w *workspace, ext, tag string, n *starlark.Node) {
 // declaration: WORKSPACE files are read before .bzl files.
 //
 // Implements: REQ-BAZEL-007
-func (r *resolver) readRules(w *workspace, src []byte, isWorkspace bool) {
-	f := starlark.Parse(src)
+func (r *resolver) readRules(w *workspace, source []byte, isWorkspace bool) {
+	f := starlark.Parse(source)
 	loads := map[string]string{}
-	for _, st := range f.Stmts {
-		if st.Def == "" && st.X.Callee() == "load" {
-			for i, a := range st.X.Args {
-				if s, ok := a.Val.Str(); ok && i > 0 {
+	for _, statement := range f.Statements {
+		if statement.Definition == "" && statement.X.Callee() == "load" {
+			for i, a := range statement.X.Arguments {
+				if s, ok := a.Value.StringValue(); ok && i > 0 {
 					local := a.Name
 					if local == "" {
 						local = s
@@ -282,73 +282,73 @@ func (r *resolver) readRules(w *workspace, src []byte, isWorkspace bool) {
 		}
 		return strings.TrimPrefix(callee, "native.")
 	}
-	for _, st := range f.Stmts {
-		if st.X == nil {
+	for _, statement := range f.Statements {
+		if statement.X == nil {
 			continue
 		}
-		if isWorkspace && st.Def == "" && st.X.Callee() == "workspace" && w.name == "" {
-			w.name = st.X.KwStr("name")
+		if isWorkspace && statement.Definition == "" && statement.X.Callee() == "workspace" && w.name == "" {
+			w.name = statement.X.KeywordString("name")
 		}
-		walk(st.X, func(n *starlark.Node) {
+		walk(statement.X, func(n *starlark.Node) {
 			if n.Kind != starlark.Call {
 				return
 			}
 			rule := original(n.Callee())
 			if rule == "maybe" {
-				rule = original(n.Pos(0).Name())
+				rule = original(n.Position(0).Name())
 			}
-			if repoRules[rule] || hubRules[rule] {
-				r.repoRule(w, rule, n)
+			if repositoryRules[rule] || hubRules[rule] {
+				r.repositoryRule(w, rule, n)
 			}
 		})
 	}
 }
 
-// repoRule records one repository rule call.
-func (r *resolver) repoRule(w *workspace, rule string, n *starlark.Node) {
-	name := n.KwStr("name")
+// repositoryRule records one repository rule call.
+func (r *resolver) repositoryRule(w *workspace, rule string, n *starlark.Node) {
+	name := n.KeywordString("name")
 	switch rule {
 	case "maven_install":
 		if name == "" {
 			name = "maven"
 		}
-		r.mavenInstall(w, w.hub(name, ecoMaven), n, "maven_install_json")
+		r.mavenInstall(w, w.hub(name, ecosystemMaven), n, "maven_install_json")
 		return
 	case "pip_parse", "pip_install":
 		if name == "" {
 			name = "pip"
 		}
-		r.pipParse(w, w.hub(name, ecoPyPI), n)
+		r.pipParse(w, w.hub(name, ecosystemPyPI), n)
 		return
 	case "npm_translate_lock":
 		if name == "" {
 			name = "npm"
 		}
-		r.pnpm(w, w.hub(name, ecoNPM), n.KwStr("pnpm_lock"))
+		r.pnpm(w, w.hub(name, ecosystemNPM), n.KeywordString("pnpm_lock"))
 		return
 	case "crates_repository":
 		if name == "" {
 			name = "crates"
 		}
-		r.cargo(w, w.hub(name, ecoCrates), n)
+		r.cargo(w, w.hub(name, ecosystemCrates), n)
 		return
 	}
-	if name == "" || w.repos[name] != nil {
+	if name == "" || w.repositories[name] != nil {
 		return
 	}
-	d := &repoDecl{rule: rule, name: name, urls: n.Kw("urls").Strings(), remote: n.KwStr("remote"),
-		commit: n.KwStr("commit"), tag: n.KwStr("tag"), branch: n.KwStr("branch"), path: n.KwStr("path"),
-		importpath: n.KwStr("importpath"), version: n.KwStr("version")}
-	if u := n.KwStr("url"); u != "" {
+	d := &repositoryDeclaration{rule: rule, name: name, urls: n.Keyword("urls").Strings(), remote: n.KeywordString("remote"),
+		commit: n.KeywordString("commit"), tag: n.KeywordString("tag"), branch: n.KeywordString("branch"), path: n.KeywordString("path"),
+		importpath: n.KeywordString("importpath"), version: n.KeywordString("version")}
+	if u := n.KeywordString("url"); u != "" {
 		d.urls = append([]string{u}, d.urls...)
 	}
-	if d.hash = n.KwStr("sha256"); d.hash == "" {
-		d.hash = n.KwStr("integrity")
+	if d.hash = n.KeywordString("sha256"); d.hash == "" {
+		d.hash = n.KeywordString("integrity")
 	}
-	w.repos[name] = d
+	w.repositories[name] = d
 	if rule == "go_repository" && d.importpath != "" {
-		t := r.repoTarget(w, d)
-		w.goRepos[name] = t
+		t := r.repositoryTarget(w, d)
+		w.goRepositories[name] = t
 		if _, ok := w.goMods[d.importpath]; !ok {
 			w.goMods[d.importpath] = t
 		}
@@ -361,14 +361,14 @@ func (w *workspace) addGo(t lang.Target) {
 	if _, ok := w.goMods[t.Package]; !ok {
 		w.goMods[t.Package] = t
 	}
-	if name := goRepoName(t.Package); w.goRepos[name].Package == "" {
-		w.goRepos[name] = t
+	if name := goRepositoryName(t.Package); w.goRepositories[name].Package == "" {
+		w.goRepositories[name] = t
 	}
 }
 
-// goRepoName is the repository name Gazelle derives from a Go import path:
+// goRepositoryName is the repository name Gazelle derives from a Go import path:
 // github.com/pkg/errors -> com_github_pkg_errors.
-func goRepoName(importpath string) string {
+func goRepositoryName(importpath string) string {
 	parts := strings.Split(strings.ToLower(importpath), "/")
 	host := strings.Split(parts[0], ".")
 	for i, j := 0, len(host)-1; i < j; i, j = i+1, j-1 {
@@ -381,7 +381,7 @@ func goRepoName(importpath string) string {
 // add records a package of the hub. What a lock file says wins over what a
 // manifest declares; the declared version then becomes Requested.
 func (h *hub) add(key string, t lang.Target, fromLock bool) {
-	old, ok := h.pkgs[key]
+	old, ok := h.packages[key]
 	switch {
 	case !ok:
 	case fromLock && !h.locked[key]:
@@ -391,7 +391,7 @@ func (h *hub) add(key string, t lang.Target, fromLock bool) {
 	case !fromLock && h.locked[key]:
 		if t.Version != "" && t.Version != old.Version && old.Requested == "" {
 			old.Requested = t.Version
-			h.pkgs[key] = old
+			h.packages[key] = old
 		}
 		return
 	default:
@@ -401,7 +401,7 @@ func (h *hub) add(key string, t lang.Target, fromLock bool) {
 		h.lock = true
 		h.locked[key] = true
 	}
-	h.pkgs[key] = t
+	h.packages[key] = t
 }
 
 // sortedKeys lists a map's keys in order.

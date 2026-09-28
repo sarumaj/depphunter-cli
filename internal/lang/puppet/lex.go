@@ -2,27 +2,27 @@ package puppet
 
 import "strings"
 
-type tokKind uint8
+type tokenKind uint8
 
 const (
-	tName   tokKind = iota // a bare word or qualified name: include, apache::vhost, ::foo
-	tRef                   // a capitalized name: File, Class, Stdlib::Port
-	tVar                   // $x, $::x, $a::b
-	tString                // '...' or "..." (heredoc bodies are skipped)
-	tRegex                 // /.../
+	tName      tokenKind = iota // a bare word or qualified name: include, apache::vhost, ::foo
+	tReference                  // a capitalized name: File, Class, Stdlib::Port
+	tVariable                   // $x, $::x, $a::b
+	tString                     // '...' or "..." (heredoc bodies are skipped)
+	tRegex                      // /.../
 	tNumber
-	tPunct
+	tPunctuation
 )
 
 type token struct {
-	kind tokKind
+	kind tokenKind
 	text string // a string's content; interpolated code is left out
 	line int
 	// interpolate marks a double-quoted string with ${...} or $var in it.
 	interpolate bool
-	// adj marks a token written right after the previous one, without
+	// adjacent marks a token written right after the previous one, without
 	// white space: `f(` is a call.
-	adj bool
+	adjacent bool
 }
 
 // lex splits a Puppet manifest into tokens. Comments (# and /* */) are
@@ -31,15 +31,15 @@ type token struct {
 // operator, `node`, `=~`) and is division after a value.
 //
 // Implements: REQ-PUPPET-009
-func lex(src []byte) []token {
-	s := string(src)
+func lex(source []byte) []token {
+	s := string(source)
 	var out []token
 	line := 1
-	adj := false
+	adjacent := false
 	var heredocs []string // tags whose bodies start on the next line
-	emit := func(kind tokKind, text string, at int) {
-		out = append(out, token{kind: kind, text: text, line: at, adj: adj})
-		adj = true
+	emit := func(kind tokenKind, text string, at int) {
+		out = append(out, token{kind: kind, text: text, line: at, adjacent: adjacent})
+		adjacent = true
 	}
 	for i := 0; i < len(s); {
 		c := s[i]
@@ -47,14 +47,14 @@ func lex(src []byte) []token {
 		case c == '\n':
 			line++
 			i++
-			adj = false
+			adjacent = false
 			if len(heredocs) > 0 {
 				i = skipHeredocs(s, i, heredocs, &line)
 				heredocs = heredocs[:0]
 			}
 		case c == ' ' || c == '\t' || c == '\r':
 			i++
-			adj = false
+			adjacent = false
 		case c == '#':
 			for i < len(s) && s[i] != '\n' {
 				i++
@@ -66,7 +66,7 @@ func lex(src []byte) []token {
 			}
 			line += strings.Count(s[i:i+2+end], "\n")
 			i = min(i+4+end, len(s))
-			adj = false
+			adjacent = false
 		case c == '\'':
 			var b strings.Builder
 			start := line
@@ -85,13 +85,13 @@ func lex(src []byte) []token {
 		case c == '"':
 			start := line
 			text, interpolate, j := dqString(s, i+1, &line)
-			out = append(out, token{kind: tString, text: text, line: start, interpolate: interpolate, adj: adj})
-			adj = true
+			out = append(out, token{kind: tString, text: text, line: start, interpolate: interpolate, adjacent: adjacent})
+			adjacent = true
 			i = j
 		case c == '@' && at(s, i+1) == '(':
 			end := strings.IndexAny(s[i:], ")\n")
 			if end < 0 || s[i+end] != ')' {
-				emit(tPunct, "@", line)
+				emit(tPunctuation, "@", line)
 				i++
 				continue
 			}
@@ -111,7 +111,7 @@ func lex(src []byte) []token {
 				}
 				j++
 			}
-			emit(tVar, s[i:j], line)
+			emit(tVariable, s[i:j], line)
 			i = j
 		case c == '/' && regexAllowed(out):
 			j := i + 1
@@ -122,7 +122,7 @@ func lex(src []byte) []token {
 				j++
 			}
 			if j >= len(s) || s[j] != '/' {
-				emit(tPunct, "/", line)
+				emit(tPunctuation, "/", line)
 				i++
 				continue
 			}
@@ -134,7 +134,7 @@ func lex(src []byte) []token {
 			i = j
 		case c >= 'A' && c <= 'Z':
 			j := name(s, i)
-			emit(tRef, s[i:j], line)
+			emit(tReference, s[i:j], line)
 			i = j
 		case c >= '0' && c <= '9':
 			j := i
@@ -144,15 +144,15 @@ func lex(src []byte) []token {
 			emit(tNumber, s[i:j], line)
 			i = j
 		default:
-			op := s[i : i+1]
+			operator := s[i : i+1]
 			for _, m := range []string{"<<|", "|>>", "=>", "+>", "->", "~>", "<-", "<~", "<|", "|>", "==", "!=", "=~", "!~", "<=", ">=", "@@"} {
 				if strings.HasPrefix(s[i:], m) {
-					op = m
+					operator = m
 					break
 				}
 			}
-			emit(tPunct, op, line)
-			i += len(op)
+			emit(tPunctuation, operator, line)
+			i += len(operator)
 		}
 	}
 	return out
@@ -282,7 +282,7 @@ func regexAllowed(out []token) bool {
 	}
 	t := out[len(out)-1]
 	switch t.kind {
-	case tVar, tString, tRegex, tNumber, tRef:
+	case tVariable, tString, tRegex, tNumber, tReference:
 		return false
 	case tName:
 		return keyword[t.text]

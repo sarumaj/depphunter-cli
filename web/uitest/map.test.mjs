@@ -23,25 +23,25 @@ const THREE = await import('../static/vendor/three.module.min.js');
 // ---------------------------------------------------------------- fixtures
 
 const ROOT = { id: 'd:.', kind: 'dir', name: '.', path: '.' };
-const dir = (path, parent = 'd:.') => ({ id: `d:${path}`, kind: 'dir', name: path.split('/').pop(), path, parent });
+const directory = (path, parent = 'd:.') => ({ id: `d:${path}`, kind: 'dir', name: path.split('/').pop(), path, parent });
 const file = (path, parent = 'd:.', extra = {}) =>
   ({ id: `f:${path}`, kind: 'file', name: path.split('/').pop(), path, parent, lang: 'go', ...extra });
-const sym = (file, name, symbolKind) =>
+const symbol = (file, name, symbolKind) =>
   ({ id: `s:${file}#${name}`, kind: 'symbol', name, symbolKind, parent: `f:${file}` });
-const eco = name => ({ id: `e:${name}`, kind: 'ecosystem', name });
-const pkg = (ecosystem, name) => ({ id: `p:${ecosystem}:${name}`, kind: 'package', name, parent: `e:${ecosystem}` });
-const imp = (from, to, kind = 'import') => ({ from, to, kind });
+const ecosystem = name => ({ id: `e:${name}`, kind: 'ecosystem', name });
+const packageNode = (ecosystem, name) => ({ id: `p:${ecosystem}:${name}`, kind: 'package', name, parent: `e:${ecosystem}` });
+const importEdge = (from, to, kind = 'import') => ({ from, to, kind });
 
 /**
  * A small repository with something of everything: a nested directory, a file with
  * symbols, one without, an empty file, two ecosystems and edges both inside src/ and
  * across its boundary in each direction.
  */
-function repo() {
+function repository() {
   return {
     nodes: [
       ROOT,
-      dir('src'), dir('src/util', 'd:src'), dir('lib'),
+      directory('src'), directory('src/util', 'd:src'), directory('lib'),
       file('main.go', 'd:.', { loc: 1000 }),
       file('empty.go', 'd:.', { loc: 0 }),
       file('src/a.go', 'd:src', { loc: 300 }),
@@ -49,21 +49,21 @@ function repo() {
       file('src/util/u.go', 'd:src/util', { loc: 50 }),
       file('lib/l1.go', 'd:lib', { loc: 80 }),
       file('lib/l2.go', 'd:lib', { loc: 90 }),
-      sym('lib/l1.go', 'Store', 'type'), sym('lib/l1.go', 'Open', 'func'),
-      sym('lib/l1.go', 'Close', 'method'), sym('lib/l1.go', 'limit', 'var'),
-      eco('npm'), pkg('npm', 'react'), pkg('npm', 'lodash'),
-      eco('pypi'), pkg('pypi', 'requests'),
+      symbol('lib/l1.go', 'Store', 'type'), symbol('lib/l1.go', 'Open', 'func'),
+      symbol('lib/l1.go', 'Close', 'method'), symbol('lib/l1.go', 'limit', 'var'),
+      ecosystem('npm'), packageNode('npm', 'react'), packageNode('npm', 'lodash'),
+      ecosystem('pypi'), packageNode('pypi', 'requests'),
     ],
     edges: [
-      imp('f:main.go', 'f:src/a.go'),
-      imp('f:src/a.go', 'f:lib/l1.go'),
-      imp('f:lib/l1.go', 'f:src/b.go'),
-      imp('f:src/a.go', 'f:src/b.go'), // inside src/
-      imp('f:src/a.go', 'p:npm:react'),
-      imp('f:src/b.go', 'p:npm:react'),
-      imp('f:src/util/u.go', 'p:npm:react'),
-      imp('f:main.go', 'p:npm:lodash'),
-      imp('f:main.go', 'p:pypi:requests'),
+      importEdge('f:main.go', 'f:src/a.go'),
+      importEdge('f:src/a.go', 'f:lib/l1.go'),
+      importEdge('f:lib/l1.go', 'f:src/b.go'),
+      importEdge('f:src/a.go', 'f:src/b.go'), // inside src/
+      importEdge('f:src/a.go', 'p:npm:react'),
+      importEdge('f:src/b.go', 'p:npm:react'),
+      importEdge('f:src/util/u.go', 'p:npm:react'),
+      importEdge('f:main.go', 'p:npm:lodash'),
+      importEdge('f:main.go', 'p:pypi:requests'),
     ],
   };
 }
@@ -90,13 +90,13 @@ const overlap = (p, q) => {
   const a = edges(p), b = edges(q);
   return a.x0 < b.x1 - EPS && b.x0 < a.x1 - EPS && a.z0 < b.z1 - EPS && b.z0 < a.z1 - EPS;
 };
-const near = (a, b, msg) => assert.ok(Math.abs(a - b) < 1e-9, `${msg}: ${a} != ${b}`);
+const near = (a, b, message) => assert.ok(Math.abs(a - b) < 1e-9, `${message}: ${a} != ${b}`);
 
 /** The land box an ecosystem or the root stands on. */
 const landOf = (L, id) => L.boxes.find(b => b.kind === 'land' && b.node.id === id);
 
 /** What focusArcs needs from the app, for a layout. */
-const focusOpts = (L, vis, extra = {}) => ({
+const focusOptions = (L, vis, extra = {}) => ({
   rep: n => representative(L.byNode, n), visible: vis.visible, outColor: 'out', inColor: 'in', ...extra,
 });
 
@@ -105,7 +105,7 @@ const focusOpts = (L, vis, extra = {}) => ({
 describe('the mainland', () => {
   // Verifies: REQ-MAP-001
   it('is one land box under the root that everything in the repository stands on', () => {
-    const { model, L } = draw(repo(), { expanded: ['d:src', 'd:src/util', 'd:lib'] });
+    const { model, L } = draw(repository(), { expanded: ['d:src', 'd:src/util', 'd:lib'] });
     const lands = L.boxes.filter(b => b.kind === 'land' && b.node === model.root);
     assert.equal(lands.length, 1);
     const [main] = lands;
@@ -126,17 +126,17 @@ describe('the mainland', () => {
 describe('directories', () => {
   // Verifies: REQ-MAP-002
   it('open into a terrace on their parent terrace, carrying their children on top', () => {
-    const { model, L } = draw(repo(), { expanded: ['d:src'] });
-    const src = L.byNode.get('d:src');
+    const { model, L } = draw(repository(), { expanded: ['d:src'] });
+    const source = L.byNode.get('d:src');
     const root = L.byNode.get('d:.');
-    assert.equal(src.kind, 'terrace');
-    near(src.y, root.y + root.h, 'the terrace does not stand on its parent');
+    assert.equal(source.kind, 'terrace');
+    near(source.y, root.y + root.h, 'the terrace does not stand on its parent');
     const children = model.byId.get('d:src').children;
     assert.equal(children.length, 3);
     for (const c of children) {
       const b = L.byNode.get(c.id);
-      assert.ok(within(b, src), `${c.id} is off its terrace`);
-      near(b.y, src.y + src.h, `${c.id} is not on top of the terrace`);
+      assert.ok(within(b, source), `${c.id} is off its terrace`);
+      near(b.y, source.y + source.h, `${c.id} is not on top of the terrace`);
     }
   });
 
@@ -144,7 +144,7 @@ describe('directories', () => {
   it('fold into one district whose side grows with the root of the file count', () => {
     const files = (d, n) => Array.from({ length: n }, (_, i) => file(`${d}/f${i}.go`, `d:${d}`, { loc: 10 }));
     const { L } = draw({
-      nodes: [ROOT, dir('one'), dir('four'), dir('sixteen'), ...files('one', 1), ...files('four', 4), ...files('sixteen', 16)],
+      nodes: [ROOT, directory('one'), directory('four'), directory('sixteen'), ...files('one', 1), ...files('four', 4), ...files('sixteen', 16)],
       edges: [],
     });
     const [one, four, sixteen] = ['d:one', 'd:four', 'd:sixteen'].map(id => L.byNode.get(id));
@@ -163,7 +163,7 @@ describe('files', () => {
   // Verifies: REQ-MAP-005
   it('stand as 1 x 1 buildings from the floor to ten units for the longest', () => {
     for (const heightScale of Object.keys(SCALES)) {
-      const { L } = draw(repo(), { expanded: ['d:src', 'd:src/util', 'd:lib'], heightScale });
+      const { L } = draw(repository(), { expanded: ['d:src', 'd:src/util', 'd:lib'], heightScale });
       const buildings = L.boxes.filter(b => b.node.kind === 'file');
       assert.equal(buildings.length, 7);
       for (const b of buildings) {
@@ -178,8 +178,8 @@ describe('files', () => {
 
   // Verifies: REQ-MAP-006
   it('open into a plateau with one block per symbol, as tall as its kind', () => {
-    const graph = repo();
-    graph.nodes.push(sym('lib/l1.go', 'View', 'component')); // a Vue, Svelte or Astro component
+    const graph = repository();
+    graph.nodes.push(symbol('lib/l1.go', 'View', 'component')); // a Vue, Svelte or Astro component
     const { model, L } = draw(graph, { expanded: ['d:lib', 'f:lib/l1.go'] });
     const plateau = L.byNode.get('f:lib/l1.go');
     assert.equal(plateau.kind, 'terrace');
@@ -199,7 +199,7 @@ describe('files', () => {
 
   // Verifies: REQ-MAP-006, REQ-MAP-022
   it('without symbols have nothing to open and stay buildings', () => {
-    const { model, L } = draw(repo(), { expanded: ['d:lib', 'f:lib/l2.go'] });
+    const { model, L } = draw(repository(), { expanded: ['d:lib', 'f:lib/l2.go'] });
     assert.equal(toggles(model.byId.get('f:lib/l2.go'), new Set(['f:lib/l2.go'])), '');
     assert.equal(L.byNode.get('f:lib/l2.go').kind, 'building');
   });
@@ -208,8 +208,8 @@ describe('files', () => {
   it('keep their heights when a binary larger than all of them arrives', () => {
     // The blob has no counted lines, only 4 MB of bytes - a hundred thousand lines'
     // worth by the bytes-per-line estimate, a hundred times the longest file.
-    const before = draw(repo(), { expanded: ['d:src', 'd:lib'] }).L;
-    const g = repo();
+    const before = draw(repository(), { expanded: ['d:src', 'd:lib'] }).L;
+    const g = repository();
     g.nodes.push(file('model.glb', 'd:.', { lang: '', bytes: 4_000_000 }));
     const after = draw(g, { expanded: ['d:src', 'd:lib'] }).L;
     for (const b of before.boxes) {
@@ -230,12 +230,12 @@ describe('height scales', () => {
     near(SCALES.linear(0.3), 0.3, 'linear');
 
     // Linear: above the floor, height is in proportion to lines.
-    const lin = draw(repo(), { expanded: ['d:src'], heightScale: 'linear' }).L;
+    const lin = draw(repository(), { expanded: ['d:src'], heightScale: 'linear' }).L;
     const above = id => lin.byNode.get(id).h - 0.2;
     near(above('f:src/a.go') / above('f:src/b.go'), 300 / 120, 'linear is not proportional');
 
     // The same file comes out differently on each, the compressed scales raising it.
-    const h = s => draw(repo(), { expanded: ['d:src'], heightScale: s }).L.byNode.get('f:src/b.go').h;
+    const h = s => draw(repository(), { expanded: ['d:src'], heightScale: s }).L.byNode.get('f:src/b.go').h;
     assert.ok(h('linear') < h('sqrt') && h('sqrt') < h('log'), `${h('linear')} ${h('sqrt')} ${h('log')}`);
     // An unknown scale is the default one.
     near(h('nonsense'), h('sqrt'), 'the default scale');
@@ -247,7 +247,7 @@ describe('height scales', () => {
 describe('islands', () => {
   // Verifies: REQ-MAP-007
   it('are one per ecosystem, off the mainland, each carrying its own packages', () => {
-    const { model, L } = draw(repo());
+    const { model, L } = draw(repository());
     const main = landOf(L, 'd:.');
     const npm = landOf(L, 'e:npm'), pypi = landOf(L, 'e:pypi');
     assert.ok(npm && pypi, 'an ecosystem has no island');
@@ -265,15 +265,15 @@ describe('islands', () => {
 
   // Verifies: REQ-MAP-008
   it('carry packages as tall as the files importing them, depends edges aside', () => {
-    const { L } = draw(repo());
+    const { L } = draw(repository());
     const react = L.byNode.get('p:npm:react').h; // three importers
     const requests = L.byNode.get('p:pypi:requests').h; // one
     assert.ok(react > requests, `react ${react} is not taller than requests ${requests}`);
     near(react, 5.3, 'the most imported package');
 
     // A package depending on another is not a file importing it.
-    const g = repo();
-    g.edges.push(imp('p:npm:react', 'p:pypi:requests', 'depends'), imp('p:npm:lodash', 'p:pypi:requests', 'depends'));
+    const g = repository();
+    g.edges.push(importEdge('p:npm:react', 'p:pypi:requests', 'depends'), importEdge('p:npm:lodash', 'p:pypi:requests', 'depends'));
     near(draw(g).L.byNode.get('p:pypi:requests').h, requests, 'a depends edge raised the package');
   });
 
@@ -285,10 +285,10 @@ describe('islands', () => {
     const nodes = [ROOT], edgesOut = [];
     uses.forEach((n, i) => {
       const name = `eco${i}`;
-      nodes.push(eco(name), pkg(name, 'p'));
+      nodes.push(ecosystem(name), packageNode(name, 'p'));
       for (let k = 0; k < n; k++) {
         nodes.push(file(`${name}-${k}.go`, 'd:.', { loc: 10 }));
-        edgesOut.push(imp(`f:${name}-${k}.go`, `p:${name}:p`));
+        edgesOut.push(importEdge(`f:${name}-${k}.go`, `p:${name}:p`));
       }
     });
     return draw({ nodes, edges: edgesOut }).L;
@@ -346,15 +346,15 @@ describe('positions', () => {
 
   // Verifies: REQ-MAP-010, REQ-MAP-043
   it('are the same for the same tree, whatever order it arrives in', () => {
-    const opts = { expanded: ['d:src', 'd:src/util', 'd:lib', 'f:lib/l1.go'] };
-    const once = draw(repo(), opts).L;
-    assert.deepEqual(where(draw(repo(), opts).L), where(once));
+    const options = { expanded: ['d:src', 'd:src/util', 'd:lib', 'f:lib/l1.go'] };
+    const once = draw(repository(), options).L;
+    assert.deepEqual(where(draw(repository(), options).L), where(once));
     // The graph document lists nodes in whatever order the analysis found them; the
     // layout orders children itself.
-    const g = repo();
+    const g = repository();
     g.nodes.reverse();
     g.edges.reverse();
-    const shuffled = draw(g, opts).L;
+    const shuffled = draw(g, options).L;
     for (const b of once.boxes) {
       if (b.kind === 'land') continue;
       const s = shuffled.byNode.get(b.node.id);
@@ -366,11 +366,11 @@ describe('positions', () => {
   it('do not follow the edges', () => {
     // An import between two files of the repository is not part of the hierarchy, so
     // nothing on the map may move for it.
-    const opts = { expanded: ['d:src', 'd:lib'] };
-    const before = draw(repo(), opts).L;
-    const g = repo();
-    g.edges.push(imp('f:lib/l2.go', 'f:main.go'), imp('f:empty.go', 'f:src/util/u.go'));
-    assert.deepEqual(where(draw(g, opts).L), where(before));
+    const options = { expanded: ['d:src', 'd:lib'] };
+    const before = draw(repository(), options).L;
+    const g = repository();
+    g.edges.push(importEdge('f:lib/l2.go', 'f:main.go'), importEdge('f:empty.go', 'f:src/util/u.go'));
+    assert.deepEqual(where(draw(g, options).L), where(before));
   });
 
   // Verifies: REQ-MAP-043
@@ -380,9 +380,9 @@ describe('positions', () => {
     const nodes = [ROOT];
     const sizes = [1, 3, 9, 2, 25, 5, 14, 7];
     sizes.forEach((n, i) => {
-      nodes.push(dir(`d${i}`));
+      nodes.push(directory(`d${i}`));
       for (let k = 0; k < n; k++) nodes.push(file(`d${i}/f${k}.go`, `d:d${i}`, { loc: 10 * (k + 1) }));
-      nodes.push(dir(`d${i}/sub`, `d:d${i}`), file(`d${i}/sub/x.go`, `d:d${i}/sub`, { loc: 5 }));
+      nodes.push(directory(`d${i}/sub`, `d:d${i}`), file(`d${i}/sub/x.go`, `d:d${i}/sub`, { loc: 5 }));
     });
     for (let k = 0; k < 6; k++) nodes.push(file(`top${k}.go`, 'd:.', { loc: 40 }));
     const expanded = sizes.flatMap((_, i) => (i % 2 ? [`d:d${i}`] : []));
@@ -407,20 +407,20 @@ describe('positions', () => {
 describe('expanding and collapsing', () => {
   // Verifies: REQ-MAP-022
   it('opens a district into its terrace and shuts it again', () => {
-    const { model } = draw(repo());
-    const src = model.byId.get('d:src');
+    const { model } = draw(repository());
+    const source = model.byId.get('d:src');
     const expanded = new Set(['d:.']);
     const vis = computeVisibility(model, noFilters);
     const at = () => layout(model, { vis, expanded, heightScale: 'sqrt' });
 
-    assert.equal(toggles(src, expanded), 'open');
+    assert.equal(toggles(source, expanded), 'open');
     assert.equal(at().byNode.get('d:src').kind, 'district');
-    expanded.add(src.id);
-    assert.equal(toggles(src, expanded), 'close');
+    expanded.add(source.id);
+    assert.equal(toggles(source, expanded), 'close');
     const open = at();
     assert.equal(open.byNode.get('d:src').kind, 'terrace');
     assert.equal(open.byNode.get('f:src/a.go').kind, 'building');
-    expanded.delete(src.id);
+    expanded.delete(source.id);
     const shut = at();
     assert.equal(shut.byNode.get('d:src').kind, 'district');
     assert.equal(shut.byNode.get('f:src/a.go'), undefined, 'a file of a shut directory is still drawn');
@@ -428,7 +428,7 @@ describe('expanding and collapsing', () => {
 
   // Verifies: REQ-MAP-022
   it('opens a file into its symbols, and a symbol toggles its file', () => {
-    const { model } = draw(repo());
+    const { model } = draw(repository());
     const l1 = model.byId.get('f:lib/l1.go');
     const expanded = new Set(['d:.', 'd:lib']);
     assert.equal(toggles(l1, expanded), 'open');
@@ -443,7 +443,7 @@ describe('expanding and collapsing', () => {
 
   // Verifies: REQ-MAP-023
   it('steps every directory to a depth, between 1 and the deepest level', () => {
-    const { model } = draw(repo());
+    const { model } = draw(repository());
     const vis = computeVisibility(model, noFilters);
     // Depths: the root 0, src/ and lib/ 1, src/util/ 2 - three levels.
     const two = expandToLevel(model, 2);
@@ -469,44 +469,44 @@ describe('expanding and collapsing', () => {
 describe('arcs', () => {
   // Verifies: REQ-MAP-012
   it('are drawn only for a selection, each with the selection at one end', () => {
-    const { model, vis, L } = draw(repo(), { expanded: ['d:src', 'd:lib'] });
-    const opts = focusOpts(L, vis);
-    assert.equal(focusArcs(model, null, opts), null, 'arcs with nothing selected');
+    const { model, vis, L } = draw(repository(), { expanded: ['d:src', 'd:lib'] });
+    const options = focusOptions(L, vis);
+    assert.equal(focusArcs(model, null, options), null, 'arcs with nothing selected');
 
     const main = model.byId.get('f:main.go');
-    const focus = focusArcs(model, main, opts);
+    const focus = focusArcs(model, main, options);
     assert.equal(focus.selBox, L.byNode.get('f:main.go'));
     // main.go imports src/a.go, lodash and requests; nothing imports it.
     assert.deepEqual(focus.arcs.map(a => a.to.node.id).sort(), ['f:src/a.go', 'p:npm:lodash', 'p:pypi:requests']);
     for (const a of focus.arcs) assert.ok(a.from === focus.selBox || a.to === focus.selBox);
 
     // Clearing the selection is selecting nothing: no arcs again.
-    assert.equal(focusArcs(model, null, opts), null);
+    assert.equal(focusArcs(model, null, options), null);
   });
 
   // Verifies: REQ-MAP-012
   it('are capped, the largest counts kept', () => {
-    const { model, vis, L } = draw(repo());
-    const src = model.byId.get('d:src');
-    const [top] = focusArcs(model, src, focusOpts(L, vis, { max: 1 })).arcs;
+    const { model, vis, L } = draw(repository());
+    const source = model.byId.get('d:src');
+    const [top] = focusArcs(model, source, focusOptions(L, vis, { max: 1 })).arcs;
     assert.equal(top.to.node.id, 'p:npm:react');
     assert.equal(top.count, 3);
   });
 
   // Verifies: REQ-MAP-009
   it('join the representatives of both ends, and nothing to itself', () => {
-    const { model, vis, L } = draw(repo()); // src/ and lib/ collapsed
-    const rep = n => representative(L.byNode, n);
-    assert.equal(rep(model.byId.get('f:src/util/u.go')), L.byNode.get('d:src'));
-    assert.equal(rep(model.byId.get('f:main.go')), L.byNode.get('f:main.go'));
+    const { model, vis, L } = draw(repository()); // src/ and lib/ collapsed
+    const representativeOf = n => representative(L.byNode, n);
+    assert.equal(representativeOf(model.byId.get('f:src/util/u.go')), L.byNode.get('d:src'));
+    assert.equal(representativeOf(model.byId.get('f:main.go')), L.byNode.get('f:main.go'));
 
     // main.go imports a file folded into src/: the arc lands on the district.
-    const main = focusArcs(model, model.byId.get('f:main.go'), focusOpts(L, vis));
+    const main = focusArcs(model, model.byId.get('f:main.go'), focusOptions(L, vis));
     assert.ok(main.arcs.some(a => a.to === L.byNode.get('d:src') && a.to.kind === 'district'));
 
     // Selecting a.go inside the shut src/: its edge to b.go joins the district to
     // itself and is not drawn, where its edge to lib/l1.go is.
-    const a = focusArcs(model, model.byId.get('f:src/a.go'), focusOpts(L, vis));
+    const a = focusArcs(model, model.byId.get('f:src/a.go'), focusOptions(L, vis));
     assert.equal(a.selBox, L.byNode.get('d:src'));
     assert.ok(a.arcs.every(x => x.from !== x.to), 'an arc from a box to itself');
     assert.ok(a.arcs.some(x => x.to === L.byNode.get('d:lib')));
@@ -514,8 +514,8 @@ describe('arcs', () => {
 
   // Verifies: REQ-MAP-009
   it('end in an arrow head at the target', () => {
-    const { model, vis, L } = draw(repo(), { expanded: ['d:src'] });
-    const { arcs } = focusArcs(model, model.byId.get('f:main.go'), focusOpts(L, vis, { outColor: '#ff0000' }));
+    const { model, vis, L } = draw(repository(), { expanded: ['d:src'] });
+    const { arcs } = focusArcs(model, model.byId.get('f:main.go'), focusOptions(L, vis, { outColor: '#ff0000' }));
     // setArcs only needs somewhere to put the meshes; the rest of MapScene is WebGL.
     const fake = { edgeGroup: new THREE.Group(), bendable: m => m, requestRender() {} };
     MapScene.prototype.setArcs.call(fake, arcs);
@@ -531,9 +531,9 @@ describe('arcs', () => {
 
   // Verifies: REQ-MAP-013
   it('from a directory aggregate its files, one per pair and direction with a count', () => {
-    const { model, vis, L } = draw(repo()); // src/ collapsed
-    const src = model.byId.get('d:src');
-    const { arcs, selBox } = focusArcs(model, src, focusOpts(L, vis));
+    const { model, vis, L } = draw(repository()); // src/ collapsed
+    const source = model.byId.get('d:src');
+    const { arcs, selBox } = focusArcs(model, source, focusOptions(L, vis));
     const key = a => `${a.from.node.id}>${a.to.node.id}:${a.color}`;
     const counts = Object.fromEntries(arcs.map(a => [key(a), a.count]));
     assert.deepEqual(counts, {
@@ -549,8 +549,8 @@ describe('arcs', () => {
     assert.ok(!arcs.some(a => a.from === a.to));
 
     // Opened, the directory is its terrace and its edges are still aggregated.
-    const open = draw(repo(), { expanded: ['d:src', 'd:src/util'] });
-    const again = focusArcs(open.model, open.model.byId.get('d:src'), focusOpts(open.L, open.vis));
+    const open = draw(repository(), { expanded: ['d:src', 'd:src/util'] });
+    const again = focusArcs(open.model, open.model.byId.get('d:src'), focusOptions(open.L, open.vis));
     assert.equal(again.selBox.kind, 'terrace');
     assert.equal(again.arcs.find(a => a.to.node.id === 'p:npm:react').count, 3);
   });
@@ -560,19 +560,19 @@ describe('arcs', () => {
 
 describe('coloring', () => {
   // A palette whose every role is its own name, so a color says where it came from.
-  const seq = ['s1', 's2', 's3', 's4', 's5', 's6', 's7'];
+  const sequence = ['s1', 's2', 's3', 's4', 's5', 's6', 's7'];
   const pal = {
-    series: ['go', 'js', 'py', 'c4', 'c5', 'c6', 'c7'], other: 'other', seq, noData: 'none',
+    series: ['go', 'js', 'py', 'c4', 'c5', 'c6', 'c7'], other: 'other', seq: sequence, noData: 'none',
     land: 'land', terraceA: 'ta', terraceB: 'tb', district: 'district',
     pkg: 'pkg', pkgUnresolved: 'pkg?', pkgFloating: 'pkg~',
   };
-  const g = repo();
+  const g = repository();
   g.nodes.push(file('web/app.js', 'd:.', { lang: 'js', loc: 200 }));
   const { model, L } = draw(g, { expanded: ['d:src', 'd:lib', 'f:lib/l1.go'] });
-  const langs = languageColors(model, pal, assignSlots(model));
+  const languages = languageColors(model, pal, assignSlots(model));
   const sizeT = loc => Math.sqrt(Math.min(1, loc / 1000));
   const color = (id, mode, extra = {}) =>
-    boxColor(L.byNode.get(id), { mode, pal, langs, sizeT, hm: false, historyT, ...extra });
+    boxColor(L.byNode.get(id), { mode, pal, langs: languages, sizeT, hm: false, historyT, ...extra });
 
   // Verifies: REQ-MAP-037
   it('by language gives each language its own color', () => {
@@ -586,11 +586,11 @@ describe('coloring', () => {
 
   // Verifies: REQ-MAP-037
   it('by size walks the sequential ramp with the drawn size', () => {
-    const at = id => seq.indexOf(color(id, 'size'));
+    const at = id => sequence.indexOf(color(id, 'size'));
     for (const id of ['f:main.go', 'f:src/a.go', 'f:empty.go', 'd:src/util', 's:lib/l1.go#Open']) {
       assert.ok(at(id) >= 0, `${id} is off the ramp`);
     }
-    assert.equal(at('f:main.go'), seq.length - 1);
+    assert.equal(at('f:main.go'), sequence.length - 1);
     assert.equal(at('f:empty.go'), 0);
     assert.ok(at('f:main.go') > at('f:src/a.go') && at('f:src/a.go') > at('f:empty.go'));
     // Structure keeps its own colors whatever the mode.
@@ -602,12 +602,12 @@ describe('coloring', () => {
     assert.equal(effectiveMode('commits', null), 'language');
     assert.equal(effectiveMode('authors', undefined), 'language');
     assert.equal(effectiveMode('size', null), 'size');
-    const hist = { files: { 'main.go': [[200, 0, 5, 1, 0], [100, 1, 3, 0, 1]], 'src/a.go': [[150, 0, 1, 1, 2]] } };
-    assert.equal(effectiveMode('commits', hist), 'commits');
-    const hm = computeMetrics(model, hist, 0);
+    const historyData = { files: { 'main.go': [[200, 0, 5, 1, 0], [100, 1, 3, 0, 1]], 'src/a.go': [[150, 0, 1, 1, 2]] } };
+    assert.equal(effectiveMode('commits', historyData), 'commits');
+    const hm = computeMetrics(model, historyData, 0);
     const busy = color('f:main.go', 'commits', { hm });
-    assert.equal(busy, seq[seq.length - 1], 'the most changed file is not at the top of the ramp');
-    assert.ok(seq.indexOf(color('f:src/a.go', 'commits', { hm })) < seq.indexOf(busy));
+    assert.equal(busy, sequence[sequence.length - 1], 'the most changed file is not at the top of the ramp');
+    assert.ok(sequence.indexOf(color('f:src/a.go', 'commits', { hm })) < sequence.indexOf(busy));
     assert.equal(color('f:empty.go', 'commits', { hm }), 'none', 'a file with no history has a color');
   });
 });

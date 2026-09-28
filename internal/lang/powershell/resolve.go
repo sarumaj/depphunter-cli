@@ -43,16 +43,16 @@ func newResolver(all []*scan.File) *resolver {
 	r := &resolver{files: map[string]bool{}, modules: map[string]string{}, declared: map[string]moduleSpec{}}
 	for _, f := range all {
 		r.files[f.Path] = true
-		ext := strings.ToLower(path.Ext(f.Path))
-		if ext != ".psd1" && ext != ".psm1" {
+		extension := strings.ToLower(path.Ext(f.Path))
+		if extension != ".psd1" && extension != ".psm1" {
 			continue
 		}
 		name := strings.ToLower(strings.TrimSuffix(path.Base(f.Path), path.Ext(f.Path)))
-		if _, seen := r.modules[name]; !seen || ext == ".psd1" { // the manifest represents a module
+		if _, seen := r.modules[name]; !seen || extension == ".psd1" { // the manifest represents a module
 			r.modules[name] = f.Path
 		}
-		if ext == ".psd1" {
-			if data, err := os.ReadFile(f.Abs); err == nil {
+		if extension == ".psd1" {
+			if data, err := os.ReadFile(f.AbsolutePath); err == nil {
 				for _, spec := range moduleSpecs(requiredValue(string(data))) {
 					r.declared[strings.ToLower(spec.name)] = spec
 				}
@@ -65,47 +65,47 @@ func newResolver(all []*scan.File) *resolver {
 // requiredValue returns the text of a manifest's RequiredModules value.
 func requiredValue(manifest string) string {
 	manifest = stripComments(manifest)
-	loc := requiredModules.FindStringIndex(manifest)
-	if loc == nil {
+	span := requiredModules.FindStringIndex(manifest)
+	if span == nil {
 		return ""
 	}
-	return valueAt(manifest[loc[1]:])
+	return valueAt(manifest[span[1]:])
 }
 
 // Implements: REQ-PS-001, REQ-PS-007, REQ-PS-008, REQ-PS-010
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	ref := imp.Module
-	if imp.Name == refPath || looksLikePath(ref) {
-		if t, ok := r.localPath(ref, file); ok {
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	reference := rawImport.Module
+	if rawImport.Name == referencePath || looksLikePath(reference) {
+		if t, ok := r.localPath(reference, file); ok {
 			return t
 		}
 		// A bare name in NestedModules may still be a module; paths that do not exist
 		// (or depend on variables) point outside what we can see.
-		if strings.ContainsAny(ref, `/\$`) || path.Ext(ref) != "" {
+		if strings.ContainsAny(reference, `/\$`) || path.Ext(reference) != "" {
 			return lang.Target{}
 		}
 	}
-	lower := strings.ToLower(ref)
+	lower := strings.ToLower(reference)
 	if p, ok := r.modules[lower]; ok {
 		return lang.Target{Local: p}
 	}
 	if builtin[lower] {
-		return lang.Target{Ecosystem: ecoBuiltin, Package: ref}
+		return lang.Target{Ecosystem: ecosystemBuiltin, Package: reference}
 	}
 	if spec, ok := r.declared[lower]; ok {
 		return lang.Target{
-			Ecosystem: ecoGallery, Package: spec.name, Version: spec.version,
+			Ecosystem: ecosystemGallery, Package: spec.name, Version: spec.version,
 			Pinned: spec.exact && lang.Pinned(spec.version),
 		}
 	}
-	if how, ok := strings.CutPrefix(imp.Name, refRequires); ok {
+	if how, ok := strings.CutPrefix(rawImport.Name, referenceRequires); ok {
 		// "=<version>" is a minimum (ModuleVersion), "==<version>" one version.
 		v := strings.TrimPrefix(how, "=")
 		exact := strings.HasPrefix(v, "=")
 		v = strings.TrimPrefix(v, "=")
-		return lang.Target{Ecosystem: ecoGallery, Package: ref, Version: v, Pinned: exact && lang.Pinned(v)}
+		return lang.Target{Ecosystem: ecosystemGallery, Package: reference, Version: v, Pinned: exact && lang.Pinned(v)}
 	}
-	return lang.Target{Ecosystem: ecoGallery, Package: ref, Unresolved: true}
+	return lang.Target{Ecosystem: ecosystemGallery, Package: reference, Unresolved: true}
 }
 
 func looksLikePath(s string) bool {
@@ -120,20 +120,20 @@ func looksLikePath(s string) bool {
 // $PSScriptRoot, to a project file.
 //
 // Implements: REQ-PS-003, REQ-PS-004
-func (r *resolver) localPath(ref, file string) (lang.Target, bool) {
-	dir := path.Dir(file)
-	p := strings.ReplaceAll(ref, `\`, "/")
+func (r *resolver) localPath(reference, file string) (lang.Target, bool) {
+	directory := path.Dir(file)
+	p := strings.ReplaceAll(reference, `\`, "/")
 	anchored := false
 	for _, v := range []string{"$($PSScriptRoot)", "${PSScriptRoot}", "$PSScriptRoot"} {
 		if strings.Contains(p, v) {
-			p, anchored = strings.ReplaceAll(p, v, dir), true
+			p, anchored = strings.ReplaceAll(p, v, directory), true
 		}
 	}
 	if strings.Contains(p, "$") || strings.HasPrefix(p, "/") || (len(p) > 1 && p[1] == ':') {
 		return lang.Target{}, false // other variables, absolute paths: outside the project
 	}
 	if !anchored {
-		p = path.Join(dir, p)
+		p = path.Join(directory, p)
 	}
 	p = path.Clean(p)
 	base := path.Base(p)

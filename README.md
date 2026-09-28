@@ -75,7 +75,7 @@ browser.
   instead. The grapple gun, fired with `F` or `C`, hooks the building the walker
   is looking at and draws them up the facade and onto the roof, from where a
   shot over the edge is the way down. Its claw closes on a parapet, not on a
-  flat wall: a hook that strikes more than two storeys below a roof's edge
+  flat wall: a hook that strikes more than two stories below a roof's edge
   glances off, tumbles down and is reeled back in, and pulls nobody anywhere;
   the jet backpack flies; the water skimmers make the bay walkable, passing
   under the bridges rather than over them and stepping back up onto a shore that
@@ -107,9 +107,9 @@ browser.
   that is the jet's tank, not the walker's chest.
 
   The walker has a **health bar**. A fall is what it would be in life, measured
-  against the walker, who is half a unit tall: nothing up to about three metres,
+  against the walker, who is half a unit tall: nothing up to about three meters,
   which a jump off a terrace wall stays under, then a share of the bar that grows
-  with the height, and the end of the walk from about seventeen metres — five or
+  with the height, and the end of the walk from about seventeen meters — five or
   six floors — however full the backpack. Being reeled down a line counts as
   falling. A bug's bite costs more the worse the finding is, and deep water with
   nothing to float on takes all of it in a couple of seconds, the walker going
@@ -439,7 +439,7 @@ knowledge.
 
 ### Opening files in an editor
 
-The **Open in editor** button in the side panel's corner — labelled with the
+The **Open in editor** button in the side panel's corner — labeled with the
 editor, "VS Code ↗", and pinned beside maximize and close however far the panel
 is scrolled — or `O`, opens the selected file at the line of the selected
 symbol. The command is taken from `--editor`,
@@ -689,7 +689,7 @@ otherwise.
 
 ### Keyboard & mouse
 
-Panning is bounded at the point where the centre of the view lies a quarter of
+Panning is bounded at the point where the center of the view lies a quarter of
 the map's extent (plus a small margin) beyond its edge, and zooming out at the
 point where the map occupies roughly a third of the view. In walk mode the
 walker may travel 3 units out over the water and 12 units above the tallest
@@ -905,7 +905,7 @@ stop reporting it, it is struck through rather than removed, so that a resolved
 finding remains visible as such.
 
 A repository is larger than it appears from within it, so the corner of the walk
-HUD carries a **tracker**: a sweep centred on the walker and rotating with them,
+HUD carries a **tracker**: a sweep centered on the walker and rotating with them,
 with one dot per bug in its severity's color, one ring per module already
 tagged with the tool, and an arrow at the rim for each bug or fire beyond its
 range. The range
@@ -940,7 +940,7 @@ fixes it at that version. Lock files, exact specifiers
 (`==1.2.3`, `RequiredVersion`), single-version ranges (`[1.2.3]`), commits and
 digests pin a dependency; ranges, wildcards, snapshots and mutable tags do not.
 A dependency that nothing pins is drawn in amber (violet under `galaxy`),
-labelled **⚠ floating** in the side panel, and marked in its tooltip. Where a
+labeled **⚠ floating** in the side panel, and marked in its tooltip. Where a
 lock file resolved a range, the panel reports both: `4.3.1`, requested as
 `^4.2.0`.
 
@@ -3163,7 +3163,7 @@ component's code - inside a Vue `<template>` or `<svelte:head>`, or an Astro
 script left inline - are not read, nor is `@import` in a `<style>`. Each
 component is a symbol named after its file, beside its functions and constants.
 A `.ts` file that opens with an XML declaration or document type is a Qt
-Linguist translation, not TypeScript: it is labelled XML and not parsed.
+Linguist translation, not TypeScript: it is labeled XML and not parsed.
 
 Kotlin and Scala share Java's resolution: the same manifests, the same Maven
 islands, the same pinning rule, and the JDK. A Kotlin or Scala file need not sit
@@ -3396,7 +3396,7 @@ file in ten.
 <!-- cSpell: words behaviour -->
 Elixir files are read for the modules they name — in `alias` (including
 `alias Foo.{A, B}` and `__MODULE__`), `import`, `require` and `use`, and in any
-other reference: a remote call, a struct, a behaviour — expanded through the
+other reference: a remote call, a struct, a behavior — expanded through the
 aliases in effect, those that the quote blocks of a used module of the project
 inject (`use MyAppWeb, :controller`) and a Phoenix router's `scope` alias; and
 for the Erlang modules they call (`:ets.new`). Erlang files are read for
@@ -3775,7 +3775,7 @@ Three consequences follow, and nothing else changes:
 
 - `frame-ancestors` names those origins rather than `'none'`, and
   `X-Frame-Options` is not sent, since it provides no means of naming an origin
-  that browsers still honour.
+  that browsers still honor.
 - The token remains in the address rather than being exchanged for a cookie. A
   cookie set by the map is a third-party cookie within another origin's frame,
   and browsers do not return those; the page reads the token from its own URL

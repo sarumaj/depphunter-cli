@@ -16,7 +16,7 @@ The F# plugin **shall** claim F# sources (`.fs`, `.fsi`), scripts
 `paket.dependencies`, `paket.lock` and `paket.references`, telling the
 project and Paket files apart from other files sharing their extensions by
 their names. A `.fs` file **shall** be claimed only when the scanner
-labelled it F#: the scanner **shall** label a `.fs` file GLSL when its
+labeled it F#: the scanner **shall** label a `.fs` file GLSL when its
 first 8000 bytes hold a `#version`, `#extension`, `#define`,
 `#include` or `#pragma` line, a `precision`, `uniform`, `varying`,
 `attribute` or `layout` declaration, `void main` or a `gl_FragColor`
@@ -35,7 +35,7 @@ Paket downloads remote files into `paket-files/` and installs packages into
 
 ## Acceptance criteria
 
-1. `shaders/blur.fs` (`#version 330`) and `forth/hello.fs` are labelled
+1. `shaders/blur.fs` (`#version 330`) and `forth/hello.fs` are labeled
    GLSL and Forth and not claimed; F# files with `#if` and a comment
    mentioning `void main()` stay F#.
 2. `build.fsx`, `Pricing.fsi`, `paket.lock`, `paket.references` and

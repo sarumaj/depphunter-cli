@@ -9,21 +9,21 @@ import (
 
 // ---------------------------------------------------------------- dub
 
-// DubUserDir is where dub keeps the user's settings.json: `DUB_HOME`; else dub
+// DubUserDirectory is where dub keeps the user's settings.json: `DUB_HOME`; else dub
 // below `DPATH`; else %APPDATA%\dub on Windows (when %APPDATA% is set); else
 // ~/.dub. A `dubHome` in the system settings, which moves it too, is not followed.
 //
 // Implements: REQ-SUP-064
-func (m Machine) DubUserDir() string {
-	if dir := m.Env("DUB_HOME"); dir != "" {
-		return dir
+func (m Machine) DubUserDirectory() string {
+	if directory := m.Environment("DUB_HOME"); directory != "" {
+		return directory
 	}
-	if dir := m.Env("DPATH"); dir != "" {
-		return filepath.Join(dir, "dub")
+	if directory := m.Environment("DPATH"); directory != "" {
+		return filepath.Join(directory, "dub")
 	}
 	if m.GOOS == "windows" {
-		if dir := m.Env("APPDATA"); dir != "" {
-			return filepath.Join(dir, "dub")
+		if directory := m.Environment("APPDATA"); directory != "" {
+			return filepath.Join(directory, "dub")
 		}
 	}
 	return join(m.Home, ".dub")
@@ -37,12 +37,12 @@ func (m Machine) DubUserDir() string {
 // Implements: REQ-SUP-064
 func (m Machine) DubSettings() []string {
 	var out []string
-	if dir := m.DubUserDir(); dir != "" {
-		out = append(out, filepath.Join(dir, "settings.json"))
+	if directory := m.DubUserDirectory(); directory != "" {
+		out = append(out, filepath.Join(directory, "settings.json"))
 	}
 	if m.GOOS == "windows" {
-		if dir := m.Env("ProgramData"); dir != "" {
-			out = append(out, filepath.Join(dir, "dub", "settings.json"))
+		if directory := m.Environment("ProgramData"); directory != "" {
+			out = append(out, filepath.Join(directory, "dub", "settings.json"))
 		}
 		return out
 	}
@@ -56,11 +56,11 @@ func (m Machine) DubSettings() []string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) QuicklispDists() []string {
-	dir := join(m.Home, "quicklisp", "dists")
-	if dir == "" {
+	directory := join(m.Home, "quicklisp", "dists")
+	if directory == "" {
 		return nil
 	}
-	files, _ := filepath.Glob(filepath.Join(dir, "*", "distinfo.txt"))
+	files, _ := filepath.Glob(filepath.Join(directory, "*", "distinfo.txt"))
 	sort.Strings(files)
 	return files
 }
@@ -73,12 +73,12 @@ func (m Machine) QuicklispDists() []string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) OpamRoot() string {
-	if dir := m.Env("OPAMROOT"); dir != "" {
-		return dir
+	if directory := m.Environment("OPAMROOT"); directory != "" {
+		return directory
 	}
 	if m.GOOS == "windows" {
-		if dir := m.Env("LOCALAPPDATA"); dir != "" {
-			return filepath.Join(dir, "opam")
+		if directory := m.Environment("LOCALAPPDATA"); directory != "" {
+			return filepath.Join(directory, "opam")
 		}
 	}
 	return join(m.Home, ".opam")
@@ -86,16 +86,16 @@ func (m Machine) OpamRoot() string {
 
 // ---------------------------------------------------------------- Alire
 
-// AlireSettingsDir is where Alire keeps its settings and its indexes:
+// AlireSettingsDirectory is where Alire keeps its settings and its indexes:
 // `ALIRE_SETTINGS_DIR` (Alire 2), else `ALR_CONFIG` (Alire 1); else
 // %USERPROFILE%\.config\alire on Windows, else $XDG_CONFIG_HOME/alire
 // (~/.config/alire).
 //
 // Implements: REQ-SUP-064
-func (m Machine) AlireSettingsDir() string {
+func (m Machine) AlireSettingsDirectory() string {
 	for _, v := range []string{"ALIRE_SETTINGS_DIR", "ALR_CONFIG"} {
-		if dir := m.Env(v); dir != "" {
-			return dir
+		if directory := m.Environment(v); directory != "" {
+			return directory
 		}
 	}
 	if m.GOOS == "windows" {
@@ -116,9 +116,9 @@ func (m Machine) AlireSettingsDir() string {
 // Implements: REQ-SUP-055, REQ-SUP-064
 func (m Machine) JuliaDepots() []string {
 	user := join(m.Home, ".julia")
-	sep := ":"
+	separator := ":"
 	if m.GOOS == "windows" {
-		sep = ";"
+		separator = ";"
 	}
 	var out []string
 	add := func(d string) {
@@ -126,12 +126,12 @@ func (m Machine) JuliaDepots() []string {
 			out = append(out, d)
 		}
 	}
-	value := m.Env("JULIA_DEPOT_PATH")
+	value := m.Environment("JULIA_DEPOT_PATH")
 	if value == "" {
 		add(user)
 		return out
 	}
-	for _, d := range strings.Split(value, sep) {
+	for _, d := range strings.Split(value, separator) {
 		switch {
 		case d == "":
 			d = user

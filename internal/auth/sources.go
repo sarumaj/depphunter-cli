@@ -41,8 +41,8 @@ func (c *Store) readDockerConfig(data []byte, lookPath func(string) (string, err
 			Password string `json:"password"`
 			Identity string `json:"identitytoken"`
 		} `json:"auths"`
-		CredsStore  string            `json:"credsStore"`
-		CredHelpers map[string]string `json:"credHelpers"`
+		CredentialsStore  string            `json:"credsStore"`
+		CredentialHelpers map[string]string `json:"credHelpers"`
 	}
 	if json.Unmarshal(data, &doc) != nil {
 		return
@@ -50,7 +50,7 @@ func (c *Store) readDockerConfig(data []byte, lookPath func(string) (string, err
 	if c.registries == nil {
 		c.registries = map[string]bool{}
 	}
-	for registry := range doc.CredHelpers {
+	for registry := range doc.CredentialHelpers {
 		if host := registryHost(registry); host != "" {
 			c.registries[host] = true
 		}
@@ -79,13 +79,13 @@ func (c *Store) readDockerConfig(data []byte, lookPath func(string) (string, err
 	// A helper is asked only for a registry the configuration actually names, so the
 	// set of programs that can run is the set the user's own file lists.
 	helpers := map[string]string{}
-	for registry, helper := range doc.CredHelpers {
+	for registry, helper := range doc.CredentialHelpers {
 		helpers[registry] = helper
 	}
-	if doc.CredsStore != "" {
+	if doc.CredentialsStore != "" {
 		for registry := range doc.Auths {
 			if _, ok := helpers[registry]; !ok {
-				helpers[registry] = doc.CredsStore
+				helpers[registry] = doc.CredentialsStore
 			}
 		}
 	}
@@ -180,9 +180,9 @@ func runHelper(name, registry string, lookPath func(string) (string, error)) (us
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), helperTimeout)
 	defer cancel()
-	cmd := exec.CommandContext(ctx, path, "get")
-	cmd.Stdin = strings.NewReader(registry)
-	out, err := cmd.Output()
+	command := exec.CommandContext(ctx, path, "get")
+	command.Stdin = strings.NewReader(registry)
+	out, err := command.Output()
 	if err != nil {
 		return "", "", false
 	}
@@ -247,7 +247,7 @@ type cargoRegistry struct {
 // config.toml, then credentials.toml, then CARGO_REGISTRIES_<NAME>_TOKEN
 // (CARGO_REGISTRY_TOKEN for crates.io), each over the one before, as Cargo takes
 // them. global is registry.global-credential-providers, nil when unset.
-func cargoRegistries(files [][]byte, indexes map[string]string, env func(string) string) (out map[string]*cargoRegistry, global []string) {
+func cargoRegistries(files [][]byte, indexes map[string]string, environment func(string) string) (out map[string]*cargoRegistry, global []string) {
 	out = map[string]*cargoRegistry{"": {}}
 	get := func(name string) *cargoRegistry {
 		if out[name] == nil {
@@ -276,37 +276,37 @@ func cargoRegistries(files [][]byte, indexes map[string]string, env func(string)
 			}
 		}
 		for name, r := range doc.Registries {
-			reg := get(userconf.CargoRegistryName(name))
+			registry := get(userconf.CargoRegistryName(name))
 			if r.Index != "" {
-				reg.index = r.Index
+				registry.index = r.Index
 			}
 			if r.Token != "" {
-				reg.token = r.Token
+				registry.token = r.Token
 			}
 			if p := cargoProvider(r.Provider); p != nil {
-				reg.provider = p
+				registry.provider = p
 			}
 		}
 	}
 	for name, index := range indexes {
 		get(name).index = index
 	}
-	if env == nil {
+	if environment == nil {
 		return out, global
 	}
-	for name, reg := range out {
+	for name, registry := range out {
 		prefix := "CARGO_REGISTRIES_" + name + "_"
 		if name == "" {
 			prefix = "CARGO_REGISTRY_"
 		}
-		if token := env(prefix + "TOKEN"); token != "" {
-			reg.token = token
+		if token := environment(prefix + "TOKEN"); token != "" {
+			registry.token = token
 		}
-		if p := strings.Fields(env(prefix + "CREDENTIAL_PROVIDER")); len(p) > 0 {
-			reg.provider = p
+		if p := strings.Fields(environment(prefix + "CREDENTIAL_PROVIDER")); len(p) > 0 {
+			registry.provider = p
 		}
 	}
-	if list := env("CARGO_REGISTRY_GLOBAL_CREDENTIAL_PROVIDERS"); list != "" {
+	if list := environment("CARGO_REGISTRY_GLOBAL_CREDENTIAL_PROVIDERS"); list != "" {
 		global = strings.Fields(list)
 	}
 	return out, global
@@ -372,17 +372,17 @@ func cargoToken(token string) bool {
 // is one, which such a registry needs and any other ignores.
 //
 // Implements: REQ-AUTH-008
-func (c *Store) readCargo(files [][]byte, indexes map[string]string, env func(string) string) {
-	registries, global := cargoRegistries(files, indexes, env)
-	for name, reg := range registries {
-		if !cargoToken(reg.token) || !reg.plaintext(global) {
+func (c *Store) readCargo(files [][]byte, indexes map[string]string, environment func(string) string) {
+	registries, global := cargoRegistries(files, indexes, environment)
+	for name, registry := range registries {
+		if !cargoToken(registry.token) || !registry.plaintext(global) {
 			continue
 		}
 		if name == "" {
-			c.file("crates.io", "/", secret{verbatim: true, value: reg.token}, true)
+			c.file("crates.io", "/", secret{verbatim: true, value: registry.token}, true)
 			continue
 		}
-		u, err := url.Parse(strings.TrimPrefix(strings.TrimPrefix(reg.index, "sparse+"), "registry+"))
+		u, err := url.Parse(strings.TrimPrefix(strings.TrimPrefix(registry.index, "sparse+"), "registry+"))
 		if err != nil || u.Host == "" {
 			continue
 		}
@@ -390,7 +390,7 @@ func (c *Store) readCargo(files [][]byte, indexes map[string]string, env func(st
 		if prefix == "" {
 			prefix = "/"
 		}
-		c.file(u.Host, prefix, secret{verbatim: true, value: reg.token}, true)
+		c.file(u.Host, prefix, secret{verbatim: true, value: registry.token}, true)
 		c.notePlain(u)
 	}
 }
@@ -438,8 +438,8 @@ func (c *Store) readMachineSources(m userconf.Machine, lookPath func(string) (st
 			cargo = append(cargo, data)
 		}
 	}
-	c.readCargo(cargo, m.CargoRegistries(), m.Env)
-	c.readTerraform(m.Home, m.Env)
+	c.readCargo(cargo, m.CargoRegistries(), m.Environment)
+	c.readTerraform(m.Home, m.Environment)
 	c.readComposer(m)
 	c.readBundler(m)
 	c.readJVM(m)

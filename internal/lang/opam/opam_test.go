@@ -11,7 +11,7 @@ import (
 //
 // Verifies: REQ-OCAML-007
 func TestRead(t *testing.T) {
-	src := `opam-version: "2.0"
+	source := `opam-version: "2.0"
 name: "shop" # the package
 version: "1.0"
 description: """A "quoted" description"""
@@ -29,11 +29,11 @@ depends: [
 url { src: "https://example.com/x.tgz" }
 pin-depends: ["cmdliner.dev" "git+https://github.com/dbuenzli/cmdliner.git#main"]
 `
-	f := Read([]byte(src))
+	f := Read([]byte(source))
 	if f.Name != "shop" || f.Version != "1.0" {
 		t.Errorf("name %q version %q", f.Name, f.Version)
 	}
-	want := []Dep{
+	want := []Dependency{
 		{Name: "ocaml", Constraint: ">= 4.14", Line: 7},
 		{Name: "dune", Constraint: ">= 3.0", Flags: []string{"build"}, Line: 8},
 		{Name: "lwt", Constraint: ">= 5.6 & < 6", Line: 9},

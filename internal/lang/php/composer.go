@@ -23,13 +23,13 @@ import (
 // mapping is one autoload rule: classes whose name starts with prefix live under
 // dirs (project-relative). psr0 marks PSR-0, where the whole class name is the path.
 type mapping struct {
-	prefix string
-	dirs   []string
-	psr0   bool
+	prefix      string
+	directories []string
+	psr0        bool
 }
 
-// pkg is one package composer.lock or installed.json records.
-type pkg struct {
+// composerPackage is one package composer.lock or installed.json records.
+type composerPackage struct {
 	name, version string
 	require       map[string]string
 	prefixes      []string // the namespaces (PSR-4, PSR-0) it autoloads
@@ -38,15 +38,15 @@ type pkg struct {
 }
 
 type project struct {
-	dir      string
-	require  map[string]string // require and require-dev, platform packages left out
-	locked   map[string]*pkg
-	byPrefix []prefixed // every locked package's namespaces, longest first
+	directory string
+	require   map[string]string // require and require-dev, platform packages left out
+	locked    map[string]*composerPackage
+	byPrefix  []prefixed // every locked package's namespaces, longest first
 }
 
 type prefixed struct {
-	prefix string
-	pkg    *pkg
+	prefix          string
+	composerPackage *composerPackage
 }
 
 // autoload is composer.json's autoload section, and the same section of a package
@@ -73,8 +73,8 @@ type lockedPackage struct {
 	} `json:"source"`
 }
 
-// strs reads a JSON string or list of strings.
-func strs(raw json.RawMessage) []string {
+// stringList reads a JSON string or list of strings.
+func stringList(raw json.RawMessage) []string {
 	var one string
 	if json.Unmarshal(raw, &one) == nil {
 		return []string{one}
@@ -109,8 +109,8 @@ func platform(name string) bool { return !strings.Contains(name, "/") }
 // project (a monorepo's packages/*) count as local too.
 //
 // Implements: REQ-PHP-005, REQ-PHP-007, REQ-PHP-008
-func readProject(root, rel, abs string) (*project, []mapping) {
-	data, err := os.ReadFile(abs)
+func readProject(root, relative, absolute string) (*project, []mapping) {
+	data, err := os.ReadFile(absolute)
 	if err != nil {
 		return nil, nil
 	}
@@ -123,43 +123,43 @@ func readProject(root, rel, abs string) (*project, []mapping) {
 	if json.Unmarshal(data, &doc) != nil {
 		return nil, nil
 	}
-	dir := path.Dir(rel)
-	p := &project{dir: dir, require: requirements(doc.Require), locked: map[string]*pkg{}}
+	directory := path.Dir(relative)
+	p := &project{directory: directory, require: requirements(doc.Require), locked: map[string]*composerPackage{}}
 	for name, v := range requirements(doc.RequireDev) {
 		if _, ok := p.require[name]; !ok {
 			p.require[name] = v
 		}
 	}
-	local := append(mappings(dir, doc.Autoload), mappings(dir, doc.AutoloadDev)...)
+	local := append(mappings(directory, doc.Autoload), mappings(directory, doc.AutoloadDev)...)
 
-	packages, installed := readLock(filepath.Join(filepath.Dir(abs), "composer.lock"))
+	packages, installed := readLock(filepath.Join(filepath.Dir(absolute), "composer.lock"))
 	if packages == nil {
-		packages, installed = readInstalled(root, dir), true
+		packages, installed = readInstalled(root, directory), true
 	}
-	for _, lp := range packages {
-		name := strings.ToLower(lp.Name)
+	for _, lockedPackage := range packages {
+		name := strings.ToLower(lockedPackage.Name)
 		if name == "" {
 			continue
 		}
-		if lp.Dist.Type == "path" && lp.Dist.URL != "" && !path.IsAbs(lp.Dist.URL) {
+		if lockedPackage.Dist.Type == "path" && lockedPackage.Dist.URL != "" && !path.IsAbs(lockedPackage.Dist.URL) {
 			// A path repository: the package's code is in this repository.
-			if pdir := path.Join(dir, filepath.ToSlash(lp.Dist.URL)); pdir != ".." && !strings.HasPrefix(pdir, "../") {
-				local = append(local, mappings(pdir, lp.Autoload)...)
+			if packageDirectory := path.Join(directory, filepath.ToSlash(lockedPackage.Dist.URL)); packageDirectory != ".." && !strings.HasPrefix(packageDirectory, "../") {
+				local = append(local, mappings(packageDirectory, lockedPackage.Autoload)...)
 				continue
 			}
 		}
-		k := &pkg{name: name, version: lp.Version, require: requirements(lp.Require), installed: installed}
+		k := &composerPackage{name: name, version: lockedPackage.Version, require: requirements(lockedPackage.Require), installed: installed}
 		// A branch's version names no release, so the commit it was locked at is the
 		// only thing the vulnerability database could be asked about.
 		// Implements: REQ-FND-026
-		if v := strings.ToLower(lp.Version); (strings.HasPrefix(v, "dev-") || strings.HasSuffix(v, "-dev")) &&
-			lp.Source.Type == "git" && lp.Source.URL != "" && lang.Commit(lp.Source.Reference) {
-			k.git = lp.Source.URL + "#" + lp.Source.Reference
+		if v := strings.ToLower(lockedPackage.Version); (strings.HasPrefix(v, "dev-") || strings.HasSuffix(v, "-dev")) &&
+			lockedPackage.Source.Type == "git" && lockedPackage.Source.URL != "" && lang.Commit(lockedPackage.Source.Reference) {
+			k.git = lockedPackage.Source.URL + "#" + lockedPackage.Source.Reference
 		}
-		for prefix := range lp.Autoload.PSR4 {
+		for prefix := range lockedPackage.Autoload.PSR4 {
 			k.prefixes = append(k.prefixes, prefix)
 		}
-		for prefix := range lp.Autoload.PSR0 {
+		for prefix := range lockedPackage.Autoload.PSR0 {
 			k.prefixes = append(k.prefixes, prefix)
 		}
 		p.locked[name] = k
@@ -174,7 +174,7 @@ func readProject(root, rel, abs string) (*project, []mapping) {
 		if len(a.prefix) != len(b.prefix) {
 			return len(a.prefix) > len(b.prefix)
 		}
-		return a.prefix+a.pkg.name < b.prefix+b.pkg.name
+		return a.prefix+a.composerPackage.name < b.prefix+b.composerPackage.name
 	})
 	return p, local
 }
@@ -182,15 +182,15 @@ func readProject(root, rel, abs string) (*project, []mapping) {
 // mappings reads an autoload section's PSR-4 and PSR-0 rules, directories made
 // project-relative. classmap and files are not rules a name can be matched to; the
 // classes they hold are found by what the files declare (resolve.go).
-func mappings(dir string, a autoload) []mapping {
+func mappings(directory string, a autoload) []mapping {
 	var out []mapping
 	add := func(rules map[string]json.RawMessage, psr0 bool) {
 		for prefix, raw := range rules {
 			m := mapping{prefix: prefix, psr0: psr0}
-			for _, d := range strs(raw) {
-				m.dirs = append(m.dirs, path.Join(dir, filepath.ToSlash(d)))
+			for _, d := range stringList(raw) {
+				m.directories = append(m.directories, path.Join(directory, filepath.ToSlash(d)))
 			}
-			if len(m.dirs) > 0 {
+			if len(m.directories) > 0 {
 				out = append(out, m)
 			}
 		}
@@ -203,8 +203,8 @@ func mappings(dir string, a autoload) []mapping {
 // readLock reads composer.lock's packages and packages-dev; nil when there is none.
 //
 // Implements: REQ-PHP-008
-func readLock(abs string) ([]lockedPackage, bool) {
-	data, err := os.ReadFile(abs)
+func readLock(absolute string) ([]lockedPackage, bool) {
+	data, err := os.ReadFile(absolute)
 	if err != nil {
 		return nil, false
 	}
@@ -223,11 +223,11 @@ func readLock(abs string) ([]lockedPackage, bool) {
 // read from disk, since the scan skips vendor/, and only inside the project.
 //
 // Implements: REQ-PHP-008
-func readInstalled(root, dir string) []lockedPackage {
-	if root == "" || dir == ".." || strings.HasPrefix(dir, "../") {
+func readInstalled(root, directory string) []lockedPackage {
+	if root == "" || directory == ".." || strings.HasPrefix(directory, "../") {
 		return nil
 	}
-	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(dir), "vendor", "composer", "installed.json"))
+	data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(directory), "vendor", "composer", "installed.json"))
 	if err != nil {
 		return nil
 	}
@@ -245,14 +245,14 @@ func readInstalled(root, dir string) []lockedPackage {
 // matchPrefix reports whether a class name falls under an autoload prefix. A PSR-4
 // prefix ends in `\`; a PSR-0 one may end in `\` or `_` (Twig_), or name a namespace
 // or class without a separator. Case is ignored, as PHP ignores it in class names.
-func matchPrefix(fqn, prefix string) bool {
-	if prefix == "" || len(fqn) < len(prefix) || !strings.EqualFold(fqn[:len(prefix)], prefix) {
+func matchPrefix(qualifiedName, prefix string) bool {
+	if prefix == "" || len(qualifiedName) < len(prefix) || !strings.EqualFold(qualifiedName[:len(prefix)], prefix) {
 		return false
 	}
-	if strings.HasSuffix(prefix, `\`) || strings.HasSuffix(prefix, "_") || len(fqn) == len(prefix) {
+	if strings.HasSuffix(prefix, `\`) || strings.HasSuffix(prefix, "_") || len(qualifiedName) == len(prefix) {
 		return true
 	}
-	return fqn[len(prefix)] == '\\' || fqn[len(prefix)] == '_'
+	return qualifiedName[len(prefix)] == '\\' || qualifiedName[len(prefix)] == '_'
 }
 
 // target is a package as a project resolves it: the lock's version pins it, and a
@@ -260,7 +260,7 @@ func matchPrefix(fqn, prefix string) bool {
 //
 // Implements: REQ-PHP-009
 func (p *project) target(name string) lang.Target {
-	t := lang.Target{Ecosystem: ecoComposer, Package: name}
+	t := lang.Target{Ecosystem: ecosystemComposer, Package: name}
 	constraint := p.require[name]
 	if k := p.locked[name]; k != nil && k.version != "" {
 		t.Version, t.Pinned, t.Git = k.version, true, k.git
@@ -288,8 +288,8 @@ func pinned(constraint string) bool {
 		c = strings.TrimSpace(before)
 	}
 	c = stability.ReplaceAllString(c, "")
-	if branch, ref, ok := strings.Cut(c, "#"); ok {
-		return strings.HasPrefix(strings.ToLower(branch), "dev-") && lang.Commit(ref) || lang.Pinned(branch)
+	if branch, reference, ok := strings.Cut(c, "#"); ok {
+		return strings.HasPrefix(strings.ToLower(branch), "dev-") && lang.Commit(reference) || lang.Pinned(branch)
 	}
 	c = strings.TrimPrefix(strings.TrimPrefix(c, "=="), "=")
 	return lang.Pinned(c)

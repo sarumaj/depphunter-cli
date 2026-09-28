@@ -17,17 +17,17 @@ import (
 type partKind int
 
 const (
-	pLit   partKind = iota // literal text, quotes removed
-	pParam                 // $name or ${...}: text is the name or the braces' content
-	pSub                   // $(...) or `...`: cmds are the commands inside
-	pOther                 // arithmetic, a process substitution, an array or glob group
+	pLiteral   partKind = iota // literal text, quotes removed
+	pParameter                 // $name or ${...}: text is the name or the braces' content
+	pSub                       // $(...) or `...`: cmds are the commands inside
+	pOther                     // arithmetic, a process substitution, an array or glob group
 )
 
 type part struct {
-	kind   partKind
-	text   string
-	quoted bool
-	cmds   []*command
+	kind     partKind
+	text     string
+	quoted   bool
+	commands []*command
 }
 
 // word is one shell word: the parts it is made of and where it starts.
@@ -37,12 +37,12 @@ type word struct {
 	line  int
 }
 
-// lit is the word's text when it is a plain unquoted literal: what reserved words and
+// literal is the word's text when it is a plain unquoted literal: what reserved words and
 // command names are compared against.
-func (w *word) lit() (string, bool) {
+func (w *word) literal() (string, bool) {
 	var b strings.Builder
 	for _, p := range w.parts {
-		if p.kind != pLit || p.quoted {
+		if p.kind != pLiteral || p.quoted {
 			return "", false
 		}
 		b.WriteString(p.text)
@@ -55,7 +55,7 @@ func (w *word) lit() (string, bool) {
 func (w *word) text() (string, bool) {
 	var b strings.Builder
 	for _, p := range w.parts {
-		if p.kind != pLit {
+		if p.kind != pLiteral {
 			return "", false
 		}
 		b.WriteString(p.text)
@@ -66,30 +66,30 @@ func (w *word) text() (string, bool) {
 // command is a simple command: its words, the assignments before them, and where it
 // runs. Redirections and their targets are not words.
 type command struct {
-	assigns []*word
-	words   []*word
-	line    int
-	inFunc  bool // inside a function body
-	sub     bool // inside a command or process substitution
+	assigns        []*word
+	words          []*word
+	line           int
+	inFunction     bool // inside a function body
+	inSubstitution bool // inside a command or process substitution
 }
 
 type frameKind int
 
 const (
-	fBrace frameKind = iota // { ... }
-	fParen                  // ( ... )
-	fCase                   // case ... esac
+	fBrace       frameKind = iota // { ... }
+	fParenthesis                  // ( ... )
+	fCase                         // case ... esac
 )
 
 type frame struct {
-	kind    frameKind
-	fn      bool // the body of a function
-	pattern bool // case: the next thing is a pattern list
+	kind     frameKind
+	function bool // the body of a function
+	pattern  bool // case: the next thing is a pattern list
 }
 
 type heredoc struct {
-	delim string
-	strip bool // <<-: leading tabs are removed from every line, the delimiter's too
+	delimiter string
+	strip     bool // <<-: leading tabs are removed from every line, the delimiter's too
 }
 
 // sink receives what the parser finds, in the order the shell would meet it: the
@@ -100,50 +100,50 @@ type sink interface {
 }
 
 type parser struct {
-	src      []byte
-	i, line  int
-	heredocs []heredoc
-	frames   []frame
-	outerFn  bool   // the substitution being parsed sits in a function body
-	sub      int    // depth of substitutions being parsed
-	pending  string // a function whose body is expected next
-	back     *token // a token put back
-	out      sink
+	source            []byte
+	i, line           int
+	heredocs          []heredoc
+	frames            []frame
+	outerFunction     bool   // the substitution being parsed sits in a function body
+	substitutionDepth int    // depth of substitutions being parsed
+	pending           string // a function whose body is expected next
+	back              *token // a token put back
+	out               sink
 }
 
-func newParser(src []byte, line int, out sink) *parser {
-	return &parser{src: src, line: line, out: out}
+func newParser(source []byte, line int, out sink) *parser {
+	return &parser{source: source, line: line, out: out}
 }
 
-type tokKind int
+type tokenKind int
 
 const (
-	tWord tokKind = iota
+	tWord tokenKind = iota
 	tOp
 	tNL
 	tEOF
 )
 
 type token struct {
-	kind tokKind
-	op   string
-	w    *word
-	line int
+	kind     tokenKind
+	operator string
+	w        *word
+	line     int
 }
 
 func (p *parser) at(off int) byte {
-	if p.i+off < len(p.src) {
-		return p.src[p.i+off]
+	if p.i+off < len(p.source) {
+		return p.source[p.i+off]
 	}
 	return 0
 }
 
-func (p *parser) inFunc() bool {
-	if p.outerFn {
+func (p *parser) inFunction() bool {
+	if p.outerFunction {
 		return true
 	}
 	for _, f := range p.frames {
-		if f.fn {
+		if f.function {
 			return true
 		}
 	}
@@ -154,9 +154,9 @@ func (p *parser) inFunc() bool {
 //
 // Implements: REQ-SHELL-002, REQ-SHELL-010
 func (p *parser) script() {
-	for p.i < len(p.src) {
+	for p.i < len(p.source) {
 		p.list(false)
-		if p.i < len(p.src) { // an unmatched ")" at the top level
+		if p.i < len(p.source) { // an unmatched ")" at the top level
 			p.i++
 		}
 	}
@@ -165,27 +165,27 @@ func (p *parser) script() {
 // list parses commands up to the end of the source or, in a substitution, the ")"
 // that closes it, which it consumes. It returns the list's own simple commands.
 func (p *parser) list(nested bool) []*command {
-	saved, savedFn, savedPending := p.frames, p.outerFn, p.pending
+	saved, savedFunction, savedPending := p.frames, p.outerFunction, p.pending
 	if nested {
-		p.outerFn = p.inFunc()
+		p.outerFunction = p.inFunction()
 		p.frames, p.pending = nil, ""
-		p.sub++
+		p.substitutionDepth++
 	}
 	defer func() {
 		if nested {
-			p.frames, p.outerFn, p.pending = saved, savedFn, savedPending
-			p.sub--
+			p.frames, p.outerFunction, p.pending = saved, savedFunction, savedPending
+			p.substitutionDepth--
 		}
 	}()
-	var cmds []*command
+	var commands []*command
 	for {
 		c, end := p.command(nested)
 		if c != nil {
-			cmds = append(cmds, c)
+			commands = append(commands, c)
 			p.out.command(c)
 		}
 		if end {
-			return cmds
+			return commands
 		}
 	}
 }
@@ -210,7 +210,7 @@ func (p *parser) popTo(k frameKind) bool {
 }
 
 func (p *parser) push(k frameKind) {
-	p.frames = append(p.frames, frame{kind: k, fn: p.pending != "" && k != fCase})
+	p.frames = append(p.frames, frame{kind: k, function: p.pending != "" && k != fCase})
 	p.pending = ""
 }
 
@@ -243,8 +243,8 @@ func (p *parser) command(nested bool) (c *command, end bool) {
 		}
 		// A bats test is a brace group whose header is "@test NAME {".
 		if len(words) > 2 {
-			first, _ := words[0].lit()
-			last, _ := words[len(words)-1].lit()
+			first, _ := words[0].literal()
+			last, _ := words[len(words)-1].literal()
 			if first == "@test" && last == "{" {
 				name, _ := words[1].text()
 				p.out.function(name, "test", words[0].line)
@@ -253,7 +253,7 @@ func (p *parser) command(nested bool) (c *command, end bool) {
 				words = words[:len(words)-1]
 			}
 		}
-		return &command{assigns: assigns, words: words, line: line, inFunc: p.inFunc(), sub: p.sub > 0}
+		return &command{assigns: assigns, words: words, line: line, inFunction: p.inFunction(), inSubstitution: p.substitutionDepth > 0}
 	}
 	for {
 		start := len(words) == 0 && len(assigns) == 0
@@ -272,7 +272,7 @@ func (p *parser) command(nested bool) (c *command, end bool) {
 			}
 			return finish(), false
 		case tOp:
-			switch t.op {
+			switch t.operator {
 			case ";", "&", "&&", "||", "|", "|&":
 				if start {
 					continue
@@ -290,7 +290,7 @@ func (p *parser) command(nested bool) (c *command, end bool) {
 				return c, false
 			case "(":
 				if start {
-					p.push(fParen)
+					p.push(fParenthesis)
 					continue
 				}
 				if len(words) == 1 && len(assigns) == 0 && p.peek() == ')' {
@@ -306,7 +306,7 @@ func (p *parser) command(nested bool) (c *command, end bool) {
 					continue
 				}
 			case ")":
-				if t := p.top(); t != nil && t.kind == fParen {
+				if t := p.top(); t != nil && t.kind == fParenthesis {
 					p.frames = p.frames[:len(p.frames)-1]
 					if start {
 						continue
@@ -322,7 +322,7 @@ func (p *parser) command(nested bool) (c *command, end bool) {
 					if d == "" {
 						d = strings.Trim(w.w.raw, `'"`)
 					}
-					p.heredocs = append(p.heredocs, heredoc{delim: d, strip: t.op == "<<-"})
+					p.heredocs = append(p.heredocs, heredoc{delimiter: d, strip: t.operator == "<<-"})
 				} else {
 					p.unread(w)
 				}
@@ -343,33 +343,33 @@ func (p *parser) command(nested bool) (c *command, end bool) {
 				words = append(words, t.w)
 				continue
 			}
-			lit, _ := t.w.lit()
+			literal, _ := t.w.literal()
 			switch {
-			case reservedSkip[lit]:
+			case reservedSkip[literal]:
 				continue
-			case lit == "{":
+			case literal == "{":
 				p.push(fBrace)
 				continue
-			case lit == "}":
+			case literal == "}":
 				p.popTo(fBrace)
 				continue
-			case lit == "esac":
+			case literal == "esac":
 				p.popTo(fCase)
 				continue
-			case lit == "case":
+			case literal == "case":
 				p.token() // the subject
 				if w := p.token(); w.kind != tWord {
 					p.unread(w)
 				}
 				p.frames = append(p.frames, frame{kind: fCase, pattern: true})
 				continue
-			case lit == "for" || lit == "select":
+			case literal == "for" || literal == "select":
 				p.skipHeader()
 				continue
-			case lit == "[[":
+			case literal == "[[":
 				p.skipTest()
 				continue
-			case lit == "function":
+			case literal == "function":
 				if w := p.token(); w.kind == tWord {
 					name, _ := w.w.text()
 					p.function(name, w.line)
@@ -409,12 +409,12 @@ func (p *parser) casePattern() bool {
 		case tNL:
 			continue
 		case tWord:
-			if lit, _ := t.w.lit(); lit == "esac" {
+			if literal, _ := t.w.literal(); literal == "esac" {
 				p.popTo(fCase)
 				return true
 			}
 		case tOp:
-			if t.op == ")" {
+			if t.operator == ")" {
 				p.top().pattern = false
 				return true
 			}
@@ -429,12 +429,12 @@ func (p *parser) skipHeader() {
 		switch {
 		case t.kind == tEOF || t.kind == tNL:
 			return
-		case t.kind == tOp && t.op == "((":
+		case t.kind == tOp && t.operator == "((":
 			p.skipArith(2)
-		case t.kind == tOp && (t.op == ";" || t.op == "&"):
+		case t.kind == tOp && (t.operator == ";" || t.operator == "&"):
 			return
 		case t.kind == tWord:
-			if lit, _ := t.w.lit(); lit == "do" {
+			if literal, _ := t.w.literal(); literal == "do" {
 				return
 			}
 		}
@@ -449,7 +449,7 @@ func (p *parser) skipTest() {
 			return
 		}
 		if t.kind == tWord {
-			if lit, _ := t.w.lit(); lit == "]]" {
+			if literal, _ := t.w.literal(); literal == "]]" {
 				return
 			}
 		}
@@ -467,18 +467,18 @@ func (p *parser) unread(t token) {
 // peek returns the next non-blank byte without consuming it.
 func (p *parser) peek() byte {
 	j := p.i
-	for j < len(p.src) && (p.src[j] == ' ' || p.src[j] == '\t') {
+	for j < len(p.source) && (p.source[j] == ' ' || p.source[j] == '\t') {
 		j++
 	}
-	if j < len(p.src) {
-		return p.src[j]
+	if j < len(p.source) {
+		return p.source[j]
 	}
 	return 0
 }
 
 func (p *parser) skipBlanks() {
-	for p.i < len(p.src) {
-		switch c := p.src[p.i]; {
+	for p.i < len(p.source) {
+		switch c := p.source[p.i]; {
 		case c == ' ' || c == '\t' || c == '\r':
 			p.i++
 		case c == '\\' && p.at(1) == '\n':
@@ -499,11 +499,11 @@ func (p *parser) token() token {
 	}
 	for {
 		p.skipBlanks()
-		if p.i >= len(p.src) {
+		if p.i >= len(p.source) {
 			return token{kind: tEOF, line: p.line}
 		}
-		if p.src[p.i] == '#' {
-			for p.i < len(p.src) && p.src[p.i] != '\n' {
+		if p.source[p.i] == '#' {
+			for p.i < len(p.source) && p.source[p.i] != '\n' {
 				p.i++
 			}
 			continue
@@ -511,12 +511,12 @@ func (p *parser) token() token {
 		break
 	}
 	line := p.line
-	c := p.src[p.i]
-	op := func(s string) token {
+	c := p.source[p.i]
+	operatorToken := func(s string) token {
 		p.i += len(s)
-		return token{kind: tOp, op: s, line: line}
+		return token{kind: tOp, operator: s, line: line}
 	}
-	has := func(s string) bool { return strings.HasPrefix(string(p.src[p.i:min(p.i+len(s), len(p.src))]), s) }
+	has := func(s string) bool { return strings.HasPrefix(string(p.source[p.i:min(p.i+len(s), len(p.source))]), s) }
 	switch c {
 	case '\n':
 		p.i++
@@ -526,42 +526,42 @@ func (p *parser) token() token {
 	case ';':
 		for _, s := range []string{";;&", ";;", ";&", ";"} {
 			if has(s) {
-				return op(s)
+				return operatorToken(s)
 			}
 		}
 	case '&':
 		for _, s := range []string{"&&", "&>>", "&>", "&"} {
 			if has(s) {
-				return op(s)
+				return operatorToken(s)
 			}
 		}
 	case '|':
 		for _, s := range []string{"||", "|&", "|"} {
 			if has(s) {
-				return op(s)
+				return operatorToken(s)
 			}
 		}
 	case '(':
 		if has("((") {
-			return op("((")
+			return operatorToken("((")
 		}
-		return op("(")
+		return operatorToken("(")
 	case ')':
-		return op(")")
+		return operatorToken(")")
 	case '<', '>':
 		if p.at(1) == '(' { // a process substitution is a word
 			break
 		}
-		return op(p.redirection())
+		return operatorToken(p.redirection())
 	}
 	if c >= '0' && c <= '9' { // 2>&1: a descriptor number starts the redirection
 		j := p.i
-		for j < len(p.src) && p.src[j] >= '0' && p.src[j] <= '9' {
+		for j < len(p.source) && p.source[j] >= '0' && p.source[j] <= '9' {
 			j++
 		}
-		if j < len(p.src) && (p.src[j] == '<' || p.src[j] == '>') && (j+1 >= len(p.src) || p.src[j+1] != '(') {
+		if j < len(p.source) && (p.source[j] == '<' || p.source[j] == '>') && (j+1 >= len(p.source) || p.source[j+1] != '(') {
 			p.i = j
-			return op(p.redirection())
+			return operatorToken(p.redirection())
 		}
 	}
 	return token{kind: tWord, w: p.word(), line: line}
@@ -569,28 +569,28 @@ func (p *parser) token() token {
 
 func (p *parser) redirection() string {
 	for _, s := range []string{"<<<", "<<-", "<<", "<>", "<&", "<", ">>", ">&", ">|", ">"} {
-		if strings.HasPrefix(string(p.src[p.i:min(p.i+len(s), len(p.src))]), s) {
+		if strings.HasPrefix(string(p.source[p.i:min(p.i+len(s), len(p.source))]), s) {
 			return s
 		}
 	}
-	return string(p.src[p.i])
+	return string(p.source[p.i])
 }
 
 // readHeredocs skips the bodies of the here-documents the line just ended opened.
 func (p *parser) readHeredocs() {
 	for _, h := range p.heredocs {
-		for p.i < len(p.src) {
+		for p.i < len(p.source) {
 			end := p.i
-			for end < len(p.src) && p.src[end] != '\n' {
+			for end < len(p.source) && p.source[end] != '\n' {
 				end++
 			}
-			l := strings.TrimSuffix(string(p.src[p.i:end]), "\r")
+			l := strings.TrimSuffix(string(p.source[p.i:end]), "\r")
 			if h.strip {
 				l = strings.TrimLeft(l, "\t")
 			}
-			p.i = min(end+1, len(p.src))
+			p.i = min(end+1, len(p.source))
 			p.line++
-			if l == h.delim {
+			if l == h.delimiter {
 				break
 			}
 		}
@@ -610,38 +610,38 @@ func isMeta(c byte) bool {
 func (p *parser) word() *word {
 	w := &word{line: p.line}
 	start := p.i
-	var lit strings.Builder
-	litQuoted := false
+	var literal strings.Builder
+	literalQuoted := false
 	flush := func() {
-		if lit.Len() > 0 {
-			w.parts = append(w.parts, part{kind: pLit, text: lit.String(), quoted: litQuoted})
-			lit.Reset()
+		if literal.Len() > 0 {
+			w.parts = append(w.parts, part{kind: pLiteral, text: literal.String(), quoted: literalQuoted})
+			literal.Reset()
 		}
 	}
-	addLit := func(s string, quoted bool) {
-		if lit.Len() > 0 && litQuoted != quoted {
+	addLiteral := func(s string, quoted bool) {
+		if literal.Len() > 0 && literalQuoted != quoted {
 			flush()
 		}
-		litQuoted = quoted
-		lit.WriteString(s)
+		literalQuoted = quoted
+		literal.WriteString(s)
 	}
-	add := func(pt part) {
+	add := func(piece part) {
 		flush()
-		w.parts = append(w.parts, pt)
+		w.parts = append(w.parts, piece)
 	}
-	for p.i < len(p.src) {
-		c := p.src[p.i]
+	for p.i < len(p.source) {
+		c := p.source[p.i]
 		if (c == '<' || c == '>') && p.at(1) == '(' { // <(cmd): a process substitution
 			if p.i > start {
 				break
 			}
 			p.i += 2
-			add(part{kind: pOther, cmds: p.list(true)})
+			add(part{kind: pOther, commands: p.list(true)})
 			continue
 		}
 		if c == '(' {
 			empty := p.i == start
-			if empty || p.peekAfter(p.i+1) == ')' && p.src[p.i-1] != '=' {
+			if empty || p.peekAfter(p.i+1) == ')' && p.source[p.i-1] != '=' {
 				break // "(" starts a subshell, or "name()" a function
 			}
 			// name=( array ), zsh glob qualifiers *(.), extglob @(a|b): one word.
@@ -659,88 +659,88 @@ func (p *parser) word() *word {
 				p.line++
 				continue
 			}
-			if p.i+1 < len(p.src) {
-				addLit(string(p.src[p.i+1]), true)
+			if p.i+1 < len(p.source) {
+				addLiteral(string(p.source[p.i+1]), true)
 			}
 			p.i += 2
 		case '\'':
 			p.i++
 			s := p.i
-			for p.i < len(p.src) && p.src[p.i] != '\'' {
-				if p.src[p.i] == '\n' {
+			for p.i < len(p.source) && p.source[p.i] != '\'' {
+				if p.source[p.i] == '\n' {
 					p.line++
 				}
 				p.i++
 			}
-			addLit(string(p.src[s:p.i]), true)
+			addLiteral(string(p.source[s:p.i]), true)
 			p.i++
 		case '"':
 			p.i++
-			p.double(addLit, add)
+			p.double(addLiteral, add)
 		case '`':
 			add(p.backtick())
 		case '$':
 			if p.at(1) == '\'' { // $'...': ANSI-C quoting
 				p.i += 2
 				var b strings.Builder
-				for p.i < len(p.src) && p.src[p.i] != '\'' {
-					if p.src[p.i] == '\\' && p.i+1 < len(p.src) {
+				for p.i < len(p.source) && p.source[p.i] != '\'' {
+					if p.source[p.i] == '\\' && p.i+1 < len(p.source) {
 						p.i++
 					}
-					if p.src[p.i] == '\n' {
+					if p.source[p.i] == '\n' {
 						p.line++
 					}
-					b.WriteByte(p.src[p.i])
+					b.WriteByte(p.source[p.i])
 					p.i++
 				}
 				p.i++
-				addLit(b.String(), true)
+				addLiteral(b.String(), true)
 				continue
 			}
 			if p.at(1) == '"' {
 				p.i += 2
-				p.double(addLit, add)
+				p.double(addLiteral, add)
 				continue
 			}
-			if pt, ok := p.dollar(); ok {
-				add(pt)
+			if part, ok := p.dollar(); ok {
+				add(part)
 			} else {
-				addLit("$", false)
+				addLiteral("$", false)
 				p.i++
 			}
 		default:
-			addLit(string(c), false)
+			addLiteral(string(c), false)
 			p.i++
 		}
 	}
 	flush()
-	p.i = min(p.i, len(p.src)) // an unterminated quote or escape at the end
-	w.raw = string(p.src[start:p.i])
+	p.i = min(p.i, len(p.source)) // an unterminated quote or escape at the end
+	w.raw = string(p.source[start:p.i])
 	return w
 }
 
 // peekAfter returns the first non-blank byte at or after j.
 func (p *parser) peekAfter(j int) byte {
-	for j < len(p.src) && (p.src[j] == ' ' || p.src[j] == '\t') {
+	for j < len(p.source) && (p.source[j] == ' ' || p.source[j] == '\t') {
 		j++
 	}
-	if j < len(p.src) {
-		return p.src[j]
+	if j < len(p.source) {
+		return p.source[j]
 	}
 	return 0
 }
 
 // double reads a double-quoted string after its opening quote.
-func (p *parser) double(addLit func(string, bool), add func(part)) {
-	for p.i < len(p.src) {
-		c := p.src[p.i]
+func (p *parser) double(addLiteral func(string, bool), add func(part)) {
+	for p.i < len(p.source) {
+		c := p.source[p.i]
 		switch c {
 		case '"':
 			p.i++
 			return
 		case '\\':
 			if n := p.at(1); n == '$' || n == '`' || n == '"' || n == '\\' {
-				addLit(string(n), true)
+				addLiteral(string(n), true)
 				p.i += 2
 				continue
 			} else if n == '\n' {
@@ -748,22 +748,22 @@ func (p *parser) double(addLit func(string, bool), add func(part)) {
 				p.line++
 				continue
 			}
-			addLit("\\", true)
+			addLiteral("\\", true)
 			p.i++
 		case '`':
 			add(p.backtick())
 		case '$':
-			if pt, ok := p.dollar(); ok {
-				add(pt)
+			if part, ok := p.dollar(); ok {
+				add(part)
 			} else {
-				addLit("$", true)
+				addLiteral("$", true)
 				p.i++
 			}
 		default:
 			if c == '\n' {
 				p.line++
 			}
-			addLit(string(c), true)
+			addLiteral(string(c), true)
 			p.i++
 		}
 	}
@@ -779,10 +779,10 @@ func (p *parser) dollar() (part, bool) {
 		return part{kind: pOther}, true
 	case n == '(':
 		p.i += 2
-		return part{kind: pSub, cmds: p.list(true)}, true
+		return part{kind: pSub, commands: p.list(true)}, true
 	case n == '[': // $[ ]: old arithmetic
 		p.i += 2
-		for p.i < len(p.src) && p.src[p.i] != ']' {
+		for p.i < len(p.source) && p.source[p.i] != ']' {
 			p.i++
 		}
 		p.i++
@@ -791,18 +791,18 @@ func (p *parser) dollar() (part, bool) {
 		p.i += 2
 		s := p.i
 		p.skipBraces()
-		p.i = min(p.i, len(p.src))
-		return part{kind: pParam, text: string(p.src[s:max(s, p.i-1)])}, true
+		p.i = min(p.i, len(p.source))
+		return part{kind: pParameter, text: string(p.source[s:max(s, p.i-1)])}, true
 	case n == '_' || n >= 'a' && n <= 'z' || n >= 'A' && n <= 'Z':
 		p.i++
 		s := p.i
-		for p.i < len(p.src) && (p.src[p.i] == '_' || isAlnum(p.src[p.i])) {
+		for p.i < len(p.source) && (p.source[p.i] == '_' || isAlnum(p.source[p.i])) {
 			p.i++
 		}
-		return part{kind: pParam, text: string(p.src[s:p.i])}, true
+		return part{kind: pParameter, text: string(p.source[s:p.i])}, true
 	case n >= '0' && n <= '9' || strings.IndexByte("@*#?$!-", n) >= 0 && n != 0:
 		p.i += 2
-		return part{kind: pParam, text: string(n)}, true
+		return part{kind: pParameter, text: string(n)}, true
 	}
 	return part{}, false
 }
@@ -814,18 +814,18 @@ func isAlnum(c byte) bool {
 // skipBraces skips a ${...} body after its "{", through the matching "}".
 func (p *parser) skipBraces() {
 	depth := 1
-	for p.i < len(p.src) && depth > 0 {
-		switch c := p.src[p.i]; c {
+	for p.i < len(p.source) && depth > 0 {
+		switch c := p.source[p.i]; c {
 		case '\\':
 			p.i++
 		case '\n':
 			p.line++
 		case '"':
 			p.i++
-			for p.i < len(p.src) && p.src[p.i] != '"' {
-				if p.src[p.i] == '\\' {
+			for p.i < len(p.source) && p.source[p.i] != '"' {
+				if p.source[p.i] == '\\' {
 					p.i++
-				} else if p.src[p.i] == '\n' {
+				} else if p.source[p.i] == '\n' {
 					p.line++
 				}
 				p.i++
@@ -841,12 +841,12 @@ func (p *parser) skipBraces() {
 
 // skipArith skips an arithmetic expression opened by n "(" at the current position.
 func (p *parser) skipArith(n int) {
-	if p.i+n <= len(p.src) && strings.Repeat("(", n) == string(p.src[p.i:p.i+n]) {
+	if p.i+n <= len(p.source) && strings.Repeat("(", n) == string(p.source[p.i:p.i+n]) {
 		p.i += n
 	}
 	depth := n
-	for p.i < len(p.src) && depth > 0 {
-		switch p.src[p.i] {
+	for p.i < len(p.source) && depth > 0 {
+		switch p.source[p.i] {
 		case '(':
 			depth++
 		case ')':
@@ -858,13 +858,13 @@ func (p *parser) skipArith(n int) {
 	}
 }
 
-// skipGroup skips a parenthesised group inside a word (an array's elements, a glob
+// skipGroup skips a parenthesized group inside a word (an array's elements, a glob
 // qualifier), quotes and comments included.
 func (p *parser) skipGroup() {
 	depth := 0
-	prev := byte(' ')
-	for p.i < len(p.src) {
-		c := p.src[p.i]
+	previous := byte(' ')
+	for p.i < len(p.source) {
+		c := p.source[p.i]
 		switch {
 		case c == '\\':
 			p.i++
@@ -872,16 +872,16 @@ func (p *parser) skipGroup() {
 			p.line++
 		case c == '\'' || c == '"':
 			p.i++
-			for p.i < len(p.src) && p.src[p.i] != c {
-				if c == '"' && p.src[p.i] == '\\' {
+			for p.i < len(p.source) && p.source[p.i] != c {
+				if c == '"' && p.source[p.i] == '\\' {
 					p.i++
-				} else if p.src[p.i] == '\n' {
+				} else if p.source[p.i] == '\n' {
 					p.line++
 				}
 				p.i++
 			}
-		case c == '#' && (prev == ' ' || prev == '\t' || prev == '\n'):
-			for p.i < len(p.src) && p.src[p.i] != '\n' {
+		case c == '#' && (previous == ' ' || previous == '\t' || previous == '\n'):
+			for p.i < len(p.source) && p.source[p.i] != '\n' {
 				p.i++
 			}
 			continue
@@ -894,7 +894,7 @@ func (p *parser) skipGroup() {
 				return
 			}
 		}
-		prev = c
+		previous = c
 		p.i++
 	}
 }
@@ -905,10 +905,10 @@ func (p *parser) backtick() part {
 	p.i++
 	line := p.line
 	var b strings.Builder
-	for p.i < len(p.src) && p.src[p.i] != '`' {
-		c := p.src[p.i]
-		if c == '\\' && p.i+1 < len(p.src) {
-			if n := p.src[p.i+1]; n == '`' || n == '\\' || n == '$' {
+	for p.i < len(p.source) && p.source[p.i] != '`' {
+		c := p.source[p.i]
+		if c == '\\' && p.i+1 < len(p.source) {
+			if n := p.source[p.i+1]; n == '`' || n == '\\' || n == '$' {
 				b.WriteByte(n)
 				p.i += 2
 				continue
@@ -922,9 +922,9 @@ func (p *parser) backtick() part {
 	}
 	p.i++
 	q := newParser([]byte(b.String()), line, p.out)
-	q.outerFn, q.sub = p.inFunc(), p.sub+1
-	cmds := q.list(false)
-	return part{kind: pSub, cmds: cmds}
+	q.outerFunction, q.substitutionDepth = p.inFunction(), p.substitutionDepth+1
+	commands := q.list(false)
+	return part{kind: pSub, commands: commands}
 }
 
 // isAssign reports whether w is NAME=value, NAME+=value or NAME[i]=value.
@@ -935,27 +935,27 @@ func isAssign(w *word) bool {
 
 // splitAssign splits an assignment word into the variable's name and its value.
 func splitAssign(w *word) (string, *word, bool) {
-	if len(w.parts) == 0 || w.parts[0].kind != pLit || w.parts[0].quoted {
+	if len(w.parts) == 0 || w.parts[0].kind != pLiteral || w.parts[0].quoted {
 		return "", nil, false
 	}
 	first := w.parts[0].text
-	eq := strings.IndexByte(first, '=')
-	if eq <= 0 {
+	equalsAt := strings.IndexByte(first, '=')
+	if equalsAt <= 0 {
 		return "", nil, false
 	}
-	name := strings.TrimSuffix(first[:eq], "+")
+	name := strings.TrimSuffix(first[:equalsAt], "+")
 	if i := strings.IndexByte(name, '['); i > 0 && strings.HasSuffix(name, "]") {
 		name = name[:i]
 	}
 	if !validName(name) {
 		return "", nil, false
 	}
-	val := &word{line: w.line, raw: w.raw[min(len(w.raw), strings.IndexByte(w.raw, '=')+1):]}
-	if rest := first[eq+1:]; rest != "" {
-		val.parts = append(val.parts, part{kind: pLit, text: rest})
+	value := &word{line: w.line, raw: w.raw[min(len(w.raw), strings.IndexByte(w.raw, '=')+1):]}
+	if rest := first[equalsAt+1:]; rest != "" {
+		value.parts = append(value.parts, part{kind: pLiteral, text: rest})
 	}
-	val.parts = append(val.parts, w.parts[1:]...)
-	return name, val, true
+	value.parts = append(value.parts, w.parts[1:]...)
+	return name, value, true
 }
 
 func validName(s string) bool {

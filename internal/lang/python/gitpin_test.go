@@ -19,8 +19,8 @@ func TestDirectReferenceToACommitPins(t *testing.T) {
 			"bar @ git+https://github.com/o/bar.git@v1.0\nbaz @ git+ssh://git@git.corp.example/o/baz.git@" + sha + " ; python_version >= '3'\n",
 		"app.py": "import foo\nimport bar\nimport baz\n",
 	})
-	res := langtest.Analyze(t, Plugin{}, root)
-	langtest.CheckImports(t, res["app.py"], map[string]lang.Target{
+	results := langtest.Analyze(t, Plugin{}, root)
+	langtest.CheckImports(t, results["app.py"], map[string]lang.Target{
 		"foo": {Ecosystem: "pypi", Package: "foo", Version: "@ git+https://github.com/o/foo@" + sha, Pinned: true,
 			Git: "https://github.com/o/foo#" + sha},
 		"bar": {Ecosystem: "pypi", Package: "bar", Version: "@ git+https://github.com/o/bar.git@v1.0"},

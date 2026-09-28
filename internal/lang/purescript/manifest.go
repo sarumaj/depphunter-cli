@@ -16,34 +16,34 @@ import (
 // dependency is one package a manifest lists: its name, the range it asks for
 // ("" for a bare name, which the package set or the lock decides) and where.
 type dependency struct {
-	name, rng string
-	line      int
-	test      bool
-	origin    string // a bower dependency installed from a git URL
+	name, versionRange string
+	line               int
+	test               bool
+	origin             string // a bower dependency installed from a git URL
 }
 
 // extraPackage is a package a workspace adds to or overrides in its package
 // set: spago.yaml extraPackages, or a packages.dhall override or addition.
 type extraPackage struct {
-	name                 string
-	version              string // a registry version (spago.yaml), or a git tag or commit (packages.dhall)
-	git, ref, subdir     string
-	path                 string // a local package, relative to the manifest's directory
-	dependencies         []string
-	line                 int
-	dir                  string // the directory of the manifest that says so
-	hasDeps, localAsRepo bool
+	name                               string
+	version                            string // a registry version (spago.yaml), or a git tag or commit (packages.dhall)
+	git, reference, subdirectory       string
+	path                               string // a local package, relative to the manifest's directory
+	dependencies                       []string
+	line                               int
+	directory                          string // the directory of the manifest that says so
+	hasDependencies, localAsRepository bool
 }
 
 // spagoYAML is what spago.yaml says: a package, a workspace, or both.
 type spagoYAML struct {
-	name      string
-	nameLine  int
-	isPackage bool
-	deps      []dependency
-	workspace bool
-	set       string // the package set: "registry 60.0.0" or a URL's name
-	extra     []*extraPackage
+	name         string
+	nameLine     int
+	isPackage    bool
+	dependencies []dependency
+	workspace    bool
+	set          string // the package set: "registry 60.0.0" or a URL's name
+	extra        []*extraPackage
 }
 
 // yamlGet is a mapping node's value for key, or nil.
@@ -60,9 +60,9 @@ func yamlGet(n *yaml.Node, key string) *yaml.Node {
 }
 
 // yamlDoc is a YAML (or JSON) document's top node, or nil.
-func yamlDoc(src []byte) *yaml.Node {
+func yamlDoc(source []byte) *yaml.Node {
 	var doc yaml.Node
-	if yaml.Unmarshal(src, &doc) != nil || doc.Kind != yaml.DocumentNode || len(doc.Content) == 0 {
+	if yaml.Unmarshal(source, &doc) != nil || doc.Kind != yaml.DocumentNode || len(doc.Content) == 0 {
 		return nil
 	}
 	return doc.Content[0]
@@ -84,49 +84,49 @@ func yamlStrings(n *yaml.Node) []string {
 // readSpagoYAML reads spago.yaml (spago 0.93 and later): package.name,
 // package.dependencies and package.test.dependencies (a name, or name: range),
 // workspace.packageSet (registry: 60.0.0 or url:) and workspace.extraPackages
-// (a registry version, or git with ref and subdir, or path, with optional
+// (a registry version, or git with reference and subdirectory, or path, with optional
 // dependencies). Anything else - not YAML, neither package nor workspace - is nil.
 //
 // Implements: REQ-PURESCRIPT-005
-func readSpagoYAML(src []byte) *spagoYAML {
-	top := yamlDoc(src)
-	pkg, ws := yamlGet(top, "package"), yamlGet(top, "workspace")
-	if pkg == nil && ws == nil {
+func readSpagoYAML(source []byte) *spagoYAML {
+	top := yamlDoc(source)
+	packageNode, workspaceNode := yamlGet(top, "package"), yamlGet(top, "workspace")
+	if packageNode == nil && workspaceNode == nil {
 		return nil
 	}
-	out := &spagoYAML{isPackage: pkg != nil, workspace: ws != nil}
-	if n := yamlGet(pkg, "name"); n != nil && n.Kind == yaml.ScalarNode {
+	out := &spagoYAML{isPackage: packageNode != nil, workspace: workspaceNode != nil}
+	if n := yamlGet(packageNode, "name"); n != nil && n.Kind == yaml.ScalarNode {
 		out.name, out.nameLine = n.Value, n.Line
 	}
-	readDeps := func(n *yaml.Node, test bool) {
+	readDependencies := func(n *yaml.Node, test bool) {
 		if n == nil || n.Kind != yaml.SequenceNode {
 			return
 		}
 		for _, e := range n.Content {
 			switch e.Kind {
 			case yaml.ScalarNode:
-				out.deps = append(out.deps, dependency{name: e.Value, line: e.Line, test: test})
+				out.dependencies = append(out.dependencies, dependency{name: e.Value, line: e.Line, test: test})
 			case yaml.MappingNode:
 				for i := 0; i+1 < len(e.Content); i += 2 {
-					rng := ""
+					versionRange := ""
 					if v := e.Content[i+1]; v.Kind == yaml.ScalarNode && v.Value != "*" {
-						rng = v.Value
+						versionRange = v.Value
 					}
-					out.deps = append(out.deps, dependency{name: e.Content[i].Value, rng: rng, line: e.Content[i].Line, test: test})
+					out.dependencies = append(out.dependencies, dependency{name: e.Content[i].Value, versionRange: versionRange, line: e.Content[i].Line, test: test})
 				}
 			}
 		}
 	}
-	readDeps(yamlGet(pkg, "dependencies"), false)
-	readDeps(yamlGet(yamlGet(pkg, "test"), "dependencies"), true)
-	if set := yamlGet(ws, "packageSet"); set != nil {
+	readDependencies(yamlGet(packageNode, "dependencies"), false)
+	readDependencies(yamlGet(yamlGet(packageNode, "test"), "dependencies"), true)
+	if set := yamlGet(workspaceNode, "packageSet"); set != nil {
 		if v := yamlGet(set, "registry"); v != nil && v.Value != "" {
 			out.set = "registry " + v.Value
 		} else if v := yamlGet(set, "url"); v != nil && v.Value != "" {
-			out.set = setName(&dhall.Value{Kind: dhall.KindImport, Loc: v.Value})
+			out.set = setName(&dhall.Value{Kind: dhall.KindImport, Location: v.Value})
 		}
 	}
-	if extra := yamlGet(ws, "extraPackages"); extra != nil && extra.Kind == yaml.MappingNode {
+	if extra := yamlGet(workspaceNode, "extraPackages"); extra != nil && extra.Kind == yaml.MappingNode {
 		for i := 0; i+1 < len(extra.Content); i += 2 {
 			k, v := extra.Content[i], extra.Content[i+1]
 			e := &extraPackage{name: k.Value, line: k.Line}
@@ -137,13 +137,13 @@ func readSpagoYAML(src []byte) *spagoYAML {
 				for _, f := range []struct {
 					key string
 					to  *string
-				}{{"git", &e.git}, {"ref", &e.ref}, {"subdir", &e.subdir}, {"path", &e.path}, {"version", &e.version}} {
+				}{{"git", &e.git}, {"ref", &e.reference}, {"subdir", &e.subdirectory}, {"path", &e.path}, {"version", &e.version}} {
 					if n := yamlGet(v, f.key); n != nil && n.Kind == yaml.ScalarNode {
 						*f.to = n.Value
 					}
 				}
 				if d := yamlGet(v, "dependencies"); d != nil {
-					e.hasDeps = true
+					e.hasDependencies = true
 					for _, n := range d.Content {
 						if n.Kind == yaml.ScalarNode {
 							e.dependencies = append(e.dependencies, n.Value)
@@ -161,13 +161,13 @@ func readSpagoYAML(src []byte) *spagoYAML {
 
 // lockPackage is one package spago.lock records.
 type lockPackage struct {
-	name         string
-	typ          string // registry, git or local
-	version      string
-	url, rev     string
-	subdir, path string
-	dependencies []string
-	line         int
+	name               string
+	typeName           string // registry, git or local
+	version            string
+	url, rev           string
+	subdirectory, path string
+	dependencies       []string
+	line               int
 }
 
 // spagoLock is spago.lock: its packages, and the workspace's own packages with
@@ -183,20 +183,20 @@ type spagoLock struct {
 // (local), and dependencies; workspace.packages.<name>.path.
 //
 // Implements: REQ-PURESCRIPT-005
-func readLock(src []byte) *spagoLock {
-	top := yamlDoc(src)
-	pkgs := yamlGet(top, "packages")
-	if pkgs == nil || pkgs.Kind != yaml.MappingNode {
+func readLock(source []byte) *spagoLock {
+	top := yamlDoc(source)
+	packages := yamlGet(top, "packages")
+	if packages == nil || packages.Kind != yaml.MappingNode {
 		return nil
 	}
 	out := &spagoLock{packages: map[string]*lockPackage{}, locals: map[string]string{}}
-	for i := 0; i+1 < len(pkgs.Content); i += 2 {
-		k, v := pkgs.Content[i], pkgs.Content[i+1]
+	for i := 0; i+1 < len(packages.Content); i += 2 {
+		k, v := packages.Content[i], packages.Content[i+1]
 		p := &lockPackage{name: k.Value, line: k.Line}
 		for _, f := range []struct {
 			key string
 			to  *string
-		}{{"type", &p.typ}, {"version", &p.version}, {"url", &p.url}, {"rev", &p.rev}, {"subdir", &p.subdir}, {"path", &p.path}} {
+		}{{"type", &p.typeName}, {"version", &p.version}, {"url", &p.url}, {"rev", &p.rev}, {"subdir", &p.subdirectory}, {"path", &p.path}} {
 			if n := yamlGet(v, f.key); n != nil && n.Kind == yaml.ScalarNode {
 				*f.to = n.Value
 			}
@@ -206,15 +206,15 @@ func readLock(src []byte) *spagoLock {
 			out.packages[p.name] = p
 		}
 	}
-	ws := yamlGet(top, "workspace")
-	if locals := yamlGet(ws, "packages"); locals != nil && locals.Kind == yaml.MappingNode {
+	workspaceNode := yamlGet(top, "workspace")
+	if locals := yamlGet(workspaceNode, "packages"); locals != nil && locals.Kind == yaml.MappingNode {
 		for i := 0; i+1 < len(locals.Content); i += 2 {
 			if p := yamlGet(locals.Content[i+1], "path"); p != nil {
 				out.locals[locals.Content[i].Value] = p.Value
 			}
 		}
 	}
-	if a := yamlGet(yamlGet(yamlGet(ws, "package_set"), "address"), "registry"); a != nil && a.Value != "" {
+	if a := yamlGet(yamlGet(yamlGet(workspaceNode, "package_set"), "address"), "registry"); a != nil && a.Value != "" {
 		out.set = "registry " + a.Value
 	}
 	return out
@@ -222,8 +222,8 @@ func readLock(src []byte) *spagoLock {
 
 // bowerManifest is what a legacy bower.json says about PureScript packages.
 type bowerManifest struct {
-	name string
-	deps []dependency
+	name         string
+	dependencies []dependency
 }
 
 // readBower reads bower.json's dependencies and devDependencies named
@@ -231,34 +231,34 @@ type bowerManifest struct {
 // range as written ("^v6.0.0"); a git URL keeps its ref after `#`.
 //
 // Implements: REQ-PURESCRIPT-005
-func readBower(src []byte) *bowerManifest {
+func readBower(source []byte) *bowerManifest {
 	var raw struct {
-		Name    string            `json:"name"`
-		Deps    map[string]string `json:"dependencies"`
-		DevDeps map[string]string `json:"devDependencies"`
+		Name            string            `json:"name"`
+		Dependencies    map[string]string `json:"dependencies"`
+		DevDependencies map[string]string `json:"devDependencies"`
 	}
-	if json.Unmarshal(src, &raw) != nil {
+	if json.Unmarshal(source, &raw) != nil {
 		return nil
 	}
 	out := &bowerManifest{name: strings.TrimPrefix(raw.Name, "purescript-")}
-	lines := stringLines(src)
-	for _, sec := range []struct {
+	lines := stringLines(source)
+	for _, section := range []struct {
 		m    map[string]string
 		test bool
-	}{{raw.Deps, false}, {raw.DevDeps, true}} {
-		for _, k := range sortedKeys(sec.m) {
+	}{{raw.Dependencies, false}, {raw.DevDependencies, true}} {
+		for _, k := range sortedKeys(section.m) {
 			name, ok := strings.CutPrefix(k, "purescript-")
 			if !ok || name == "" {
 				continue
 			}
-			d := dependency{name: name, rng: strings.TrimSpace(sec.m[k]), line: lines[k], test: sec.test}
-			if u, ref, ok := strings.Cut(d.rng, "#"); ok && (strings.Contains(u, "://") || strings.HasPrefix(u, "git@")) {
-				d.origin, d.rng = u, ref
+			d := dependency{name: name, versionRange: strings.TrimSpace(section.m[k]), line: lines[k], test: section.test}
+			if u, reference, ok := strings.Cut(d.versionRange, "#"); ok && (strings.Contains(u, "://") || strings.HasPrefix(u, "git@")) {
+				d.origin, d.versionRange = u, reference
 			}
-			out.deps = append(out.deps, d)
+			out.dependencies = append(out.dependencies, d)
 		}
 	}
-	if len(out.deps) == 0 && out.name == raw.Name {
+	if len(out.dependencies) == 0 && out.name == raw.Name {
 		return nil // not a PureScript package
 	}
 	return out
@@ -272,7 +272,7 @@ func dhallConfig(v *dhall.Value) bool {
 
 // dhallExtras are the packages a package set record adds or overrides:
 // { name = { dependencies, repo, version } }, or mkPackage's record.
-func dhallExtras(set *dhall.Value, dir string) []*extraPackage {
+func dhallExtras(set *dhall.Value, directory string) []*extraPackage {
 	if set == nil || set.Kind != dhall.KindRecord {
 		return nil
 	}
@@ -282,25 +282,25 @@ func dhallExtras(set *dhall.Value, dir string) []*extraPackage {
 		if v.Kind != dhall.KindRecord {
 			continue
 		}
-		e := &extraPackage{name: k, dir: dir, line: v.Line}
-		if deps := v.Field("dependencies"); deps.Kind == dhall.KindList {
-			e.hasDeps = true
-			for _, t := range deps.Texts() {
+		e := &extraPackage{name: k, directory: directory, line: v.Line}
+		if dependencies := v.Field("dependencies"); dependencies.Kind == dhall.KindList {
+			e.hasDependencies = true
+			for _, t := range dependencies.Texts() {
 				e.dependencies = append(e.dependencies, t.Text)
 			}
 		}
-		if repo := v.Field("repo"); repo.Kind == dhall.KindText {
-			e.line = repo.Line
-			if strings.Contains(repo.Text, "://") || strings.HasPrefix(repo.Text, "git@") {
-				e.git = repo.Text
-			} else if repo.Text != "" {
-				e.path, e.localAsRepo = repo.Text, true
+		if repository := v.Field("repo"); repository.Kind == dhall.KindText {
+			e.line = repository.Line
+			if strings.Contains(repository.Text, "://") || strings.HasPrefix(repository.Text, "git@") {
+				e.git = repository.Text
+			} else if repository.Text != "" {
+				e.path, e.localAsRepository = repository.Text, true
 			}
 		}
-		if ver := v.Field("version"); ver.Kind == dhall.KindText {
-			e.version = ver.Text
+		if version := v.Field("version"); version.Kind == dhall.KindText {
+			e.version = version.Text
 			if e.line == 0 {
-				e.line = ver.Line
+				e.line = version.Line
 			}
 		}
 		out = append(out, e)
@@ -313,44 +313,44 @@ func dhallExtras(set *dhall.Value, dir string) []*extraPackage {
 // its symbol.
 //
 // Implements: REQ-PURESCRIPT-005
-func extractSpagoYAML(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
-	m := readSpagoYAML(src)
+func extractSpagoYAML(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
+	m := readSpagoYAML(source)
 	if m == nil {
-		return ex
+		return extraction
 	}
 	seen := map[string]bool{}
-	for _, d := range m.deps {
+	for _, d := range m.dependencies {
 		if d.name != "" && !seen[d.name] {
 			seen[d.name] = true
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: d.name, Module: d.name, Name: kindDep, Line: d.line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: d.name, Module: d.name, Name: kindDependency, Line: d.line})
 		}
 	}
 	for _, e := range m.extra {
 		if e.name != "" && !seen[e.name] {
 			seen[e.name] = true
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: e.name, Module: e.name, Name: kindExtra, Line: e.line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: e.name, Module: e.name, Name: kindExtra, Line: e.line})
 		}
 	}
 	if m.name != "" {
-		ex.Symbols = []lang.Symbol{{Name: m.name, Kind: "package", Line: m.nameLine}}
+		extraction.Symbols = []lang.Symbol{{Name: m.name, Kind: "package", Line: m.nameLine}}
 	}
-	return ex
+	return extraction
 }
 
 // extractLock makes every package spago.lock records an import of it.
 //
 // Implements: REQ-PURESCRIPT-005
-func extractLock(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
-	l := readLock(src)
+func extractLock(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
+	l := readLock(source)
 	if l == nil {
-		return ex
+		return extraction
 	}
 	for _, name := range sortedKeys(l.packages) {
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: name, Module: name, Name: kindLock, Line: l.packages[name].line})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: name, Module: name, Name: kindLock, Line: l.packages[name].line})
 	}
-	return ex
+	return extraction
 }
 
 // extractDhall reads a spago.dhall configuration (its dependencies, as far as
@@ -360,52 +360,52 @@ func extractLock(src []byte) *lang.Extraction {
 // alone.
 //
 // Implements: REQ-PURESCRIPT-005
-func extractDhall(src []byte, set bool) *lang.Extraction {
-	ex := &lang.Extraction{}
-	v := dhall.Eval(src, ".", nil)
+func extractDhall(source []byte, set bool) *lang.Extraction {
+	extraction := &lang.Extraction{}
+	v := dhall.Eval(source, ".", nil)
 	if set {
 		for _, e := range dhallExtras(v, ".") {
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: e.name, Module: e.name, Name: kindExtra, Line: e.line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: e.name, Module: e.name, Name: kindExtra, Line: e.line})
 		}
-		return ex
+		return extraction
 	}
 	if !dhallConfig(v) {
-		return ex
+		return extraction
 	}
 	seen := map[string]bool{}
 	for _, t := range v.Field("dependencies").Texts() {
 		if t.Text != "" && !seen[t.Text] {
 			seen[t.Text] = true
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: t.Text, Module: t.Text, Name: kindDep, Line: t.Line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: t.Text, Module: t.Text, Name: kindDependency, Line: t.Line})
 		}
 	}
 	if n := v.Field("name"); n.Kind == dhall.KindText && n.Text != "" {
-		ex.Symbols = []lang.Symbol{{Name: n.Text, Kind: "package", Line: n.Line}}
+		extraction.Symbols = []lang.Symbol{{Name: n.Text, Kind: "package", Line: n.Line}}
 	}
-	return ex
+	return extraction
 }
 
 // extractBower makes each purescript-* dependency of bower.json an import.
 //
 // Implements: REQ-PURESCRIPT-005
-func extractBower(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
-	m := readBower(src)
+func extractBower(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
+	m := readBower(source)
 	if m == nil {
-		return ex
+		return extraction
 	}
-	for _, d := range m.deps {
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: "purescript-" + d.name, Module: d.name, Name: kindDep, Line: d.line})
+	for _, d := range m.dependencies {
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "purescript-" + d.name, Module: d.name, Name: kindDependency, Line: d.line})
 	}
-	return ex
+	return extraction
 }
 
 var jsonString = regexp.MustCompile(`"((?:[^"\\]|\\.)*)"`)
 
 // stringLines is the first line each JSON string is written on.
-func stringLines(src []byte) map[string]int {
+func stringLines(source []byte) map[string]int {
 	out := map[string]int{}
-	for i, l := range strings.Split(string(src), "\n") {
+	for i, l := range strings.Split(string(source), "\n") {
 		for _, m := range jsonString.FindAllStringSubmatch(l, -1) {
 			if _, ok := out[m[1]]; !ok {
 				out[m[1]] = i + 1
@@ -426,9 +426,9 @@ func sortedKeys[V any](m map[string]V) []string {
 
 // gitName names a package installed from git by its repository (and the
 // subdirectory it lives in), as other plugins name git dependencies.
-func gitName(url, subdir string) string {
-	n := lang.RepoName(url)
-	if s := strings.Trim(path.Clean("/"+subdir), "/"); s != "" && subdir != "" {
+func gitName(url, subdirectory string) string {
+	n := lang.RepositoryName(url)
+	if s := strings.Trim(path.Clean("/"+subdirectory), "/"); s != "" && subdirectory != "" {
 		n += "/" + s
 	}
 	return n

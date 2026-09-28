@@ -101,7 +101,7 @@ var builtinNamespaces = map[string]string{
 // builtinFunctionPrefixes attributes a global function to its extension by prefix,
 // longest first; standardFunctions are the engine's and ext/standard's own, which
 // follow no prefix.
-var builtinFunctionPrefixes = []struct{ prefix, ext string }{
+var builtinFunctionPrefixes = []struct{ prefix, extension string }{
 	// cSpell: disable
 	{"array_", "standard"}, {"str_", "standard"}, {"ob_", "standard"},
 	{"stream_", "standard"}, {"mb_", "mbstring"}, {"preg_", "pcre"}, {"json_", "json"},
@@ -123,7 +123,7 @@ var standardFunctions = map[string]string{}
 
 func init() {
 	// cSpell: disable
-	for ext, names := range map[string]string{
+	for extension, names := range map[string]string{
 		"core": `strlen strcmp strncmp strcasecmp strncasecmp define defined constant
 			class_exists interface_exists trait_exists enum_exists function_exists
 			method_exists property_exists is_subclass_of is_a error_reporting trigger_error
@@ -177,14 +177,14 @@ func init() {
 			get_html_translation_table get_browser get_cfg_var`,
 	} {
 		for _, n := range strings.Fields(names) {
-			standardFunctions[n] = ext
+			standardFunctions[n] = extension
 		}
 	}
 	// cSpell: enable
 	lowered := map[string]string{}
-	for ext, names := range builtinClasses {
+	for extension, names := range builtinClasses {
 		for _, n := range strings.Fields(names) {
-			lowered[strings.ToLower(n)] = ext
+			lowered[strings.ToLower(n)] = extension
 		}
 	}
 	builtinClassIndex = lowered
@@ -197,47 +197,47 @@ var builtinClassIndex map[string]string
 // builtin reports the extension a name PHP itself defines comes from.
 //
 // Implements: REQ-PHP-006
-func builtin(fqn, kind string) (string, bool) {
-	fqn = strings.TrimPrefix(fqn, `\`)
+func builtin(qualifiedName, kind string) (string, bool) {
+	qualifiedName = strings.TrimPrefix(qualifiedName, `\`)
 	if kind == kindClass {
-		for prefix, ext := range builtinNamespaces {
-			if len(fqn) > len(prefix) && strings.EqualFold(fqn[:len(prefix)], prefix) {
-				return ext, true
+		for prefix, extension := range builtinNamespaces {
+			if len(qualifiedName) > len(prefix) && strings.EqualFold(qualifiedName[:len(prefix)], prefix) {
+				return extension, true
 			}
 		}
-		if strings.EqualFold(fqn, "FFI") {
+		if strings.EqualFold(qualifiedName, "FFI") {
 			return "ffi", true
 		}
 	}
-	if strings.Contains(fqn, `\`) {
+	if strings.Contains(qualifiedName, `\`) {
 		return "", false
 	}
-	low := strings.ToLower(fqn)
+	low := strings.ToLower(qualifiedName)
 	switch kind {
 	case kindClass:
-		ext, ok := builtinClassIndex[low]
-		return ext, ok
+		extension, ok := builtinClassIndex[low]
+		return extension, ok
 	case kindFunction:
-		if ext, ok := standardFunctions[low]; ok {
-			return ext, true
+		if extension, ok := standardFunctions[low]; ok {
+			return extension, true
 		}
-		best, ext := 0, ""
+		best, extension := 0, ""
 		for _, p := range builtinFunctionPrefixes {
 			if strings.HasPrefix(low, p.prefix) && len(p.prefix) > best {
-				best, ext = len(p.prefix), p.ext
+				best, extension = len(p.prefix), p.extension
 			}
 		}
-		return ext, ext != ""
-	case kindConst:
+		return extension, extension != ""
+	case kindConstant:
 		switch {
-		case strings.HasPrefix(fqn, "JSON_"):
+		case strings.HasPrefix(qualifiedName, "JSON_"):
 			return "json", true
-		case strings.HasPrefix(fqn, "PREG_"):
+		case strings.HasPrefix(qualifiedName, "PREG_"):
 			return "pcre", true
-		case strings.HasPrefix(fqn, "PHP_"), strings.HasPrefix(fqn, "E_"), fqn == "DIRECTORY_SEPARATOR",
-			fqn == "PATH_SEPARATOR", fqn == "PHP_EOL":
+		case strings.HasPrefix(qualifiedName, "PHP_"), strings.HasPrefix(qualifiedName, "E_"), qualifiedName == "DIRECTORY_SEPARATOR",
+			qualifiedName == "PATH_SEPARATOR", qualifiedName == "PHP_EOL":
 			return "core", true
-		case strings.HasPrefix(fqn, "M_"), strings.HasPrefix(fqn, "SORT_"), strings.HasPrefix(fqn, "ENT_"):
+		case strings.HasPrefix(qualifiedName, "M_"), strings.HasPrefix(qualifiedName, "SORT_"), strings.HasPrefix(qualifiedName, "ENT_"):
 			return "standard", true
 		}
 	}

@@ -36,7 +36,7 @@ func (l *lexer) lines() []line {
 	for i, t := range l.tokens {
 		switch {
 		case t.first && t.depth == 0:
-			out = append(out, line{start: i, indent: t.col})
+			out = append(out, line{start: i, indent: t.column})
 		case i > 0 && l.tokens[i-1].kind == tSemi && t.depth == 0 && len(out) > 0:
 			out = append(out, line{start: i, indent: out[len(out)-1].indent})
 		default:
@@ -57,11 +57,11 @@ func (l *lexer) lines() []line {
 
 // Frame kinds: what the lines indented below a statement are.
 const (
-	fModule = iota // the module's top level
-	fWhen          // a when/elif/else branch at top level: still top level
-	fType          // a type section: definitions at its first child indentation
-	fConst         // a const/let/var section
-	fSkip          // a body, an object's fields, code: not read
+	fModule   = iota // the module's top level
+	fWhen            // a when/elif/else branch at top level: still top level
+	fType            // a type section: definitions at its first child indentation
+	fConstant        // a const/let/var section
+	fSkip            // a body, an object's fields, code: not read
 )
 
 type frame struct {
@@ -102,16 +102,16 @@ var procKinds = map[string]string{
 // top-level routines, types, constants and variables.
 //
 // Implements: REQ-NIM-002, REQ-NIM-003, REQ-NIM-010
-func scanSource(src []byte) *source {
-	l := lex(src)
+func scanSource(content []byte) *source {
+	l := lex(content)
 	s := &source{l: l, lines: l.lines(), seen: map[string]bool{}, assigns: map[string]assign{}}
 	s.frames = []frame{{indent: -1, kind: fModule}}
 	for k := 0; k < len(s.lines); k++ {
-		ln := s.lines[k]
+		line := s.lines[k]
 		var sibling *frame
-		for len(s.frames) > 1 && s.frames[len(s.frames)-1].indent >= ln.indent {
+		for len(s.frames) > 1 && s.frames[len(s.frames)-1].indent >= line.indent {
 			top := s.frames[len(s.frames)-1]
-			if top.indent == ln.indent {
+			if top.indent == line.indent {
 				sibling = &top
 			}
 			s.frames = s.frames[:len(s.frames)-1]
@@ -120,21 +120,21 @@ func scanSource(src []byte) *source {
 		switch top.kind {
 		case fSkip:
 			continue
-		case fType, fConst:
+		case fType, fConstant:
 			if top.child < 0 {
-				top.child = ln.indent
+				top.child = line.indent
 			}
-			if ln.indent == top.child {
+			if line.indent == top.child {
 				if top.kind == fType {
-					s.typeDef(ln.start, ln.end)
+					s.typeDefinition(line.start, line.end)
 				} else {
-					s.names(top.word, ln.start, ln.end)
+					s.names(top.word, line.start, line.end)
 				}
 			}
-			s.push(ln.indent, fSkip)
+			s.push(line.indent, fSkip)
 			continue
 		}
-		k = s.statement(k, ln.start, ln.end, ln.indent, sibling)
+		k = s.statement(k, line.start, line.end, line.indent, sibling)
 	}
 	return s
 }
@@ -145,8 +145,8 @@ func (s *source) push(indent, kind int) {
 	}
 }
 
-func (s *source) ident(i int) string {
-	if i < 0 || i >= len(s.l.tokens) || s.l.tokens[i].kind != tIdent {
+func (s *source) identifier(i int) string {
+	if i < 0 || i >= len(s.l.tokens) || s.l.tokens[i].kind != tIdentifier {
 		return ""
 	}
 	return s.l.text(s.l.tokens[i])
@@ -156,7 +156,7 @@ func (s *source) ident(i int) string {
 // last line it consumed.
 func (s *source) statement(k, a, b, indent int, sibling *frame) int {
 	l := s.l
-	word := s.ident(a)
+	word := s.identifier(a)
 	switch word {
 	case "import", "include":
 		end, last := s.extent(k, b, indent)
@@ -169,9 +169,9 @@ func (s *source) statement(k, a, b, indent int, sibling *frame) int {
 	case "from":
 		end, last := s.extent(k, b, indent)
 		for j := a + 1; j < end; j++ {
-			if l.tokens[j].depth == l.tokens[a].depth && s.ident(j) == "import" {
-				if mods := s.modules(a+1, j, 0); len(mods) > 0 {
-					s.addImport(kindImport, mods[0], l.tokens[a].line)
+			if l.tokens[j].depth == l.tokens[a].depth && s.identifier(j) == "import" {
+				if modules := s.modules(a+1, j, 0); len(modules) > 0 {
+					s.addImport(kindImport, modules[0], l.tokens[a].line)
 				}
 				break
 			}
@@ -181,13 +181,13 @@ func (s *source) statement(k, a, b, indent int, sibling *frame) int {
 		if a+1 >= b {
 			s.frames = append(s.frames, frame{indent: indent, kind: fType, child: -1})
 		} else {
-			s.typeDef(a+1, b)
+			s.typeDefinition(a+1, b)
 			s.push(indent, fSkip)
 		}
 		return k
 	case "const", "let", "var":
 		if a+1 >= b {
-			s.frames = append(s.frames, frame{indent: indent, kind: fConst, child: -1, word: word})
+			s.frames = append(s.frames, frame{indent: indent, kind: fConstant, child: -1, word: word})
 		} else {
 			s.names(word, a+1, b)
 			s.push(indent, fSkip)
@@ -201,7 +201,7 @@ func (s *source) statement(k, a, b, indent int, sibling *frame) int {
 		}
 	case "task":
 		// NimScript: task name, "description": body.
-		if name := s.ident(a + 1); name != "" && l.is(a+2, tComma, ",") {
+		if name := s.identifier(a + 1); name != "" && l.is(a+2, tComma, ",") {
 			s.symbols.Add(name, "task", l.tokens[a].line)
 		}
 	default:
@@ -259,7 +259,7 @@ func (s *source) importList(kind string, a, b int) {
 		if j < b {
 			t := s.l.tokens[j]
 			if t.depth != base || t.kind != tComma {
-				if t.depth == base && t.kind == tIdent && s.l.text(t) == "except" {
+				if t.depth == base && t.kind == tIdentifier && s.l.text(t) == "except" {
 					// The rest names symbols, not modules.
 					for _, m := range s.modules(start, j, 0) {
 						s.addImport(kind, m, line)
@@ -285,8 +285,8 @@ func (s *source) modules(a, b, depth int) []string {
 	for j := a; j < b; j++ {
 		t := s.l.tokens[j]
 		switch t.kind {
-		case tIdent, tString, tNumber:
-			if t.kind == tIdent && s.l.text(t) == "as" && prefix.Len() > 0 {
+		case tIdentifier, tString, tNumber:
+			if t.kind == tIdentifier && s.l.text(t) == "as" && prefix.Len() > 0 {
 				return clean([]string{prefix.String()})
 			}
 			if name {
@@ -301,7 +301,7 @@ func (s *source) modules(a, b, depth int) []string {
 			name = false
 			prefix.WriteString(s.l.text(t))
 		case tOpen:
-			if s.l.src[t.start] != '[' || depth >= maxGroups {
+			if s.l.source[t.start] != '[' || depth >= maxGroups {
 				return nil
 			}
 			close := s.closer(j, b)
@@ -311,8 +311,8 @@ func (s *source) modules(a, b, depth int) []string {
 				if m < close && (s.l.tokens[m].kind != tComma || s.l.tokens[m].depth != t.depth+1) {
 					continue
 				}
-				for _, sub := range s.modules(start, m, depth+1) {
-					out = append(out, prefix.String()+sub)
+				for _, submodule := range s.modules(start, m, depth+1) {
+					out = append(out, prefix.String()+submodule)
 				}
 				start = m + 1
 			}
@@ -335,9 +335,9 @@ func (s *source) closer(j, b int) int {
 	return b
 }
 
-func clean(mods []string) []string {
-	out := mods[:0]
-	for _, m := range mods {
+func clean(modules []string) []string {
+	out := modules[:0]
+	for _, m := range modules {
 		m = strings.TrimSuffix(strings.TrimSpace(m), ".nim")
 		if m != "" && !strings.ContainsAny(m, " \t\n\"") {
 			out = append(out, m)
@@ -360,13 +360,13 @@ func (s *source) addImport(kind, module string, line int) {
 	s.imports = append(s.imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
 }
 
-// defName reads a definition's name at i: an identifier or a `quoted` name, and
+// definitionName reads a definition's name at i: an identifier or a `quoted` name, and
 // whether an export marker `*` follows it. It returns the index after them.
-func (s *source) defName(i, b int) (name string, next int) {
-	if i >= b || s.l.tokens[i].kind != tIdent {
+func (s *source) definitionName(i, b int) (name string, next int) {
+	if i >= b || s.l.tokens[i].kind != tIdentifier {
 		return "", i
 	}
-	name, next = s.ident(i), i+1
+	name, next = s.identifier(i), i+1
 	if next < b && s.l.tokens[next].kind == tOp && strings.HasPrefix(s.l.text(s.l.tokens[next]), "*") {
 		if s.l.text(s.l.tokens[next]) == "*" {
 			next++
@@ -377,17 +377,17 @@ func (s *source) defName(i, b int) (name string, next int) {
 
 // routine reads `proc name*[T](params): R {.pragmas.} = body`.
 func (s *source) routine(kind string, a, b int) {
-	if name, _ := s.defName(a, b); name != "" {
+	if name, _ := s.definitionName(a, b); name != "" {
 		s.symbols.Add(name, kind, s.l.tokens[a].line)
 	}
 }
 
-// typeDef reads one definition of a type section, `Name*[T] {.p.} = object`,
+// typeDefinition reads one definition of a type section, `Name*[T] {.p.} = object`,
 // and names its kind by what follows `=`: an object is a class, a concept an
 // interface, an enum an enum, anything else (distinct, tuple, ref T, proc
 // types, aliases) a type.
-func (s *source) typeDef(a, b int) {
-	name, j := s.defName(a, b)
+func (s *source) typeDefinition(a, b int) {
+	name, j := s.definitionName(a, b)
 	if name == "" {
 		return
 	}
@@ -406,7 +406,7 @@ func (s *source) typeDef(a, b int) {
 // typeKind names what the tokens after a type definition's `=` define.
 func typeKind(s *source, j, b int) string {
 	for m := j; m < b && m <= j+4; m++ {
-		switch s.ident(m) {
+		switch s.identifier(m) {
 		case "ref", "ptr", "sink", "lent":
 			continue
 		case "object":
@@ -441,11 +441,11 @@ func (s *source) names(word string, a, b int) {
 			}
 			continue
 		}
-		if t.kind == tOpen && s.l.src[t.start] == '{' {
+		if t.kind == tOpen && s.l.source[t.start] == '{' {
 			j = s.closer(j, b)
 			continue
 		}
-		if t.kind == tIdent && (t.depth == base || t.depth == base+1 && s.l.src[s.l.tokens[a].start] == '(') {
+		if t.kind == tIdentifier && (t.depth == base || t.depth == base+1 && s.l.source[s.l.tokens[a].start] == '(') {
 			s.symbols.Add(s.l.text(t), kind, t.line)
 		}
 	}
@@ -473,7 +473,7 @@ func (s *source) assign(word string, a, b int) {
 	switch {
 	case j < b && s.l.tokens[j].kind == tString:
 		values = []string{s.l.text(s.l.tokens[j])}
-	case j < b && s.l.tokens[j].kind == tOpen && s.l.src[s.l.tokens[j].start] == '[':
+	case j < b && s.l.tokens[j].kind == tOpen && s.l.source[s.l.tokens[j].start] == '[':
 		for m := j + 1; m < b && s.l.tokens[m].depth > s.l.tokens[j].depth; m++ {
 			switch s.l.tokens[m].kind {
 			case tString:
@@ -506,7 +506,7 @@ func (s *source) requirements() []requirement {
 	l := s.l
 	var out []requirement
 	for i, t := range l.tokens {
-		if t.kind != tIdent {
+		if t.kind != tIdentifier {
 			continue
 		}
 		word := l.text(t)
@@ -516,14 +516,14 @@ func (s *source) requirements() []requirement {
 		if !t.first && !l.is(i-1, tOp, ":") {
 			continue
 		}
-		col := t.col
+		column := t.column
 		if !t.first {
-			col = s.lineIndent(i)
+			column = s.lineIndent(i)
 		}
 		task := ""
 		for j := i + 1; j < len(l.tokens); j++ {
 			u := l.tokens[j]
-			if u.first && u.depth <= t.depth && u.col <= col && !continued(l, j) {
+			if u.first && u.depth <= t.depth && u.column <= column && !continued(l, j) {
 				break
 			}
 			if u.kind == tSemi && u.depth == t.depth {
@@ -559,7 +559,7 @@ func continued(l *lexer, j int) bool {
 func (s *source) lineIndent(i int) int {
 	for j := i; j >= 0 && j > i-256; j-- {
 		if s.l.tokens[j].first {
-			return s.l.tokens[j].col
+			return s.l.tokens[j].column
 		}
 	}
 	return 0
@@ -582,7 +582,7 @@ func (s *source) paths() []pathSwitch {
 	for i, t := range l.tokens {
 		switch {
 		case t.kind == tOp && l.text(t) == "--" && (t.first || l.is(i-1, tOp, ":")):
-			key := s.ident(i + 1)
+			key := s.identifier(i + 1)
 			if (key != "path" && key != "p") || i+2 >= len(l.tokens) || l.tokens[i+2].kind != tOp {
 				continue
 			}
@@ -606,12 +606,12 @@ func (s *source) paths() []pathSwitch {
 			if v := b.String(); v != "" {
 				out = append(out, pathSwitch{value: v, line: t.line})
 			}
-		case t.kind == tIdent && l.text(t) == "switch" && l.is(i+1, tOpen, "(") && i+3 < len(l.tokens):
+		case t.kind == tIdentifier && l.text(t) == "switch" && l.is(i+1, tOpen, "(") && i+3 < len(l.tokens):
 			key := l.tokens[i+2]
 			if key.kind != tString || (l.text(key) != "path" && l.text(key) != "p") || !l.is(i+3, tComma, ",") {
 				continue
 			}
-			if v, ok := s.pathExpr(i+4, l.tokens[i+1].depth+1); ok {
+			if v, ok := s.pathExpression(i+4, l.tokens[i+1].depth+1); ok {
 				out = append(out, pathSwitch{value: v, line: t.line})
 			}
 		}
@@ -622,9 +622,9 @@ func (s *source) paths() []pathSwitch {
 	return out
 }
 
-// pathExpr evaluates the second argument of switch("path", ...) from token i:
+// pathExpression evaluates the second argument of switch("path", ...) from token i:
 // strings joined by `/` or `&`, thisDir() and projectDir() as $projectDir.
-func (s *source) pathExpr(i, depth int) (string, bool) {
+func (s *source) pathExpression(i, depth int) (string, bool) {
 	l := s.l
 	var b strings.Builder
 	for j := i; j < len(l.tokens) && j < i+64; j++ {
@@ -637,7 +637,7 @@ func (s *source) pathExpr(i, depth int) (string, bool) {
 		case t.kind == tOp && l.text(t) == "/":
 			b.WriteString("/")
 		case t.kind == tOp && l.text(t) == "&":
-		case t.kind == tIdent && (l.text(t) == "thisDir" || l.text(t) == "projectDir" || l.text(t) == "getCurrentDir") &&
+		case t.kind == tIdentifier && (l.text(t) == "thisDir" || l.text(t) == "projectDir" || l.text(t) == "getCurrentDir") &&
 			l.is(j+1, tOpen, "(") && l.is(j+2, tClose, ")"):
 			b.WriteString("$projectDir")
 			j += 2

@@ -11,7 +11,7 @@ verification:
 
 ## Statement
 
-The system **shall** honour `private:` in the project configuration file in
+The system **shall** honor `private:` in the project configuration file in
 addition to the user's configuration, the environment and the command line.
 
 ## Rationale

@@ -34,7 +34,7 @@ npmRegistries:
   "https://b64.corp":
     npmAuthIdent: `+base64.StdEncoding.EncodeToString([]byte("u:p"))+`
 `)
-	c := Read(home, bundlerEnv(t, map[string]string{"ACME_TOKEN": "acme-secret", "REG_PASS": "pw"}))
+	c := Read(home, bundlerEnvironment(t, map[string]string{"ACME_TOKEN": "acme-secret", "REG_PASS": "pw"}))
 	for u, want := range map[string]string{
 		"https://npm.acme.corp/@acme%2fui/1.0.0":                    bearer("acme-secret"),
 		"https://reg.corp/npm/left-pad/1.0.0":                       basicHeader("builder:pw"),
@@ -60,7 +60,7 @@ npmRegistries:
 func TestYarnEnvironmentCredentials(t *testing.T) {
 	home := t.TempDir()
 	writeFile(t, filepath.Join(home, ".ci-yarnrc.yml"), "npmRegistryServer: https://file.corp\nnpmAuthToken: from-file\n")
-	c := Read(home, bundlerEnv(t, map[string]string{
+	c := Read(home, bundlerEnvironment(t, map[string]string{
 		"YARN_RC_FILENAME":         ".ci-yarnrc.yml",
 		"YARN_NPM_REGISTRY_SERVER": "https://env.corp/npm/",
 		"YARN_NPM_AUTH_TOKEN":      "from-env",
@@ -74,7 +74,7 @@ func TestYarnEnvironmentCredentials(t *testing.T) {
 			t.Errorf("%s: %q, want %q", u, got, want)
 		}
 	}
-	c = Read(t.TempDir(), bundlerEnv(t, map[string]string{
+	c = Read(t.TempDir(), bundlerEnvironment(t, map[string]string{
 		"YARN_NPM_REGISTRY_SERVER": "https://ident.corp",
 		"YARN_NPM_AUTH_IDENT":      "ci:secret",
 	}))
@@ -99,7 +99,7 @@ acme = "https://ci:${ACME_PASS}@acme.corp/"
 "@lab" = "https://:labtoken@lab.corp/"
 table = { url = "https://table.corp", username = "u", password = "p" }
 `)
-	c := Read(home, bundlerEnv(t, map[string]string{"XDG_CONFIG_HOME": xdg, "BUN_TOKEN": "bun-secret", "ACME_PASS": "pw"}))
+	c := Read(home, bundlerEnvironment(t, map[string]string{"XDG_CONFIG_HOME": xdg, "BUN_TOKEN": "bun-secret", "ACME_PASS": "pw"}))
 	for u, want := range map[string]string{
 		"https://bun.corp/npm/react/1.0.0": bearer("bun-secret"),
 		"https://bun.corp/other":           "",
@@ -155,7 +155,7 @@ func TestNpmrcWinsOverYarnAndBun(t *testing.T) {
 	writeFile(t, filepath.Join(home, ".npmrc"), "//npm.corp/:_authToken=npm\n")
 	writeFile(t, filepath.Join(home, ".yarnrc.yml"), "npmRegistries:\n  https://npm.corp:\n    npmAuthToken: yarn\n  https://yarn.corp:\n    npmAuthToken: yarn\n")
 	writeFile(t, filepath.Join(home, ".bunfig.toml"), "[install]\nregistry = { url = \"https://yarn.corp\", token = \"bun\" }\n")
-	c := Read(home, bundlerEnv(t, nil))
+	c := Read(home, bundlerEnvironment(t, nil))
 	if got := authorization(t, c, "https://npm.corp/x"); got != bearer("npm") {
 		t.Errorf("npm.corp: %q", got)
 	}

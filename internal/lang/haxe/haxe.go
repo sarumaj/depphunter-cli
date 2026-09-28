@@ -27,8 +27,8 @@ import (
 )
 
 const (
-	ecoHaxelib = "haxelib"
-	ecoStd     = "haxe-std"
+	ecosystemHaxelib = "haxelib"
+	ecosystemStd     = "haxe-std"
 )
 
 const (
@@ -51,7 +51,7 @@ func (Plugin) Version() int { return 2 }
 //
 // Implements: REQ-HAXE-001
 func (Plugin) Claims(f *scan.File) bool {
-	if f.Binary || haxelibDir(f.Path) {
+	if f.Binary || haxelibDirectory(f.Path) {
 		return false
 	}
 	switch class(f.Path) {
@@ -93,8 +93,8 @@ func class(p string) string {
 	return ""
 }
 
-// haxelibDir reports whether a path lies in a local haxelib repository.
-func haxelibDir(p string) bool {
+// haxelibDirectory reports whether a path lies in a local haxelib repository.
+func haxelibDirectory(p string) bool {
 	return strings.HasPrefix(p, ".haxelib/") || strings.Contains(p, "/.haxelib/")
 }
 
@@ -106,12 +106,12 @@ func sniffProject(f *scan.File) bool {
 	if f.TooLarge || f.Size > lang.MaxParseSize {
 		return false
 	}
-	key := fmt.Sprintf("%s\x00%d", f.Abs, f.Size)
+	key := fmt.Sprintf("%s\x00%d", f.AbsolutePath, f.Size)
 	if v, ok := sniffed.Load(key); ok {
 		return v.(bool)
 	}
-	src, err := os.ReadFile(f.Abs)
-	ok := err == nil && limeProject(src)
+	source, err := os.ReadFile(f.AbsolutePath)
+	ok := err == nil && limeProject(source)
 	sniffed.Store(key, ok)
 	return ok
 }
@@ -119,8 +119,8 @@ func sniffProject(f *scan.File) bool {
 // Implements: REQ-HAXE-009
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoHaxelib, Name: "haxelib libraries"},
-		{ID: ecoStd, Name: "Haxe standard library", Std: true},
+		{ID: ecosystemHaxelib, Name: "haxelib libraries"},
+		{ID: ecosystemStd, Name: "Haxe standard library", Std: true},
 	}
 }
 
@@ -129,16 +129,16 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-HAXE-002, REQ-HAXE-003, REQ-HAXE-005, REQ-HAXE-006
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	switch class(f.Path) {
 	case classHXML:
-		return extractHXML(src), nil
+		return extractHXML(source), nil
 	case classLix:
-		return extractLix(strings.TrimSuffix(path.Base(f.Path), ".hxml"), src), nil
+		return extractLix(strings.TrimSuffix(path.Base(f.Path), ".hxml"), source), nil
 	case classHaxelib:
-		return extractHaxelib(src), nil
+		return extractHaxelib(source), nil
 	case classProject:
-		return extractProject(src), nil
+		return extractProject(source), nil
 	}
-	return extractSource(src), nil
+	return extractSource(source), nil
 }

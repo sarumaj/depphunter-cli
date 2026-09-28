@@ -9,9 +9,9 @@ export function escapeHTML(s) {
 }
 
 /** h('div', {class, style, onclick, …}, ...children) builds an element. */
-export function h(tag, attrs = {}, ...children) {
+export function h(tag, attributes = {}, ...children) {
   const el = document.createElement(tag);
-  for (const [k, v] of Object.entries(attrs)) {
+  for (const [k, v] of Object.entries(attributes)) {
     if (k === 'class') el.className = v;
     else if (k.startsWith('on')) el.addEventListener(k.slice(2), v);
     else if (k === 'style') el.style.cssText = v;

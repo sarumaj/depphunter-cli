@@ -39,6 +39,6 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-REGO-002, REQ-REGO-003
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
-	return extractSource(src), nil
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
+	return extractSource(source), nil
 }

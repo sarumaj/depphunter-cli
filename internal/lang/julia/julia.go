@@ -23,8 +23,8 @@ import (
 )
 
 const (
-	ecoJulia = "julia"
-	ecoStd   = "julia-std"
+	ecosystemJulia = "julia"
+	ecosystemStd   = "julia-std"
 )
 
 // Kinds of claimed files; Class names them.
@@ -86,8 +86,8 @@ func (Plugin) Class(f *scan.File) string { return fileClass(f.Path) }
 
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoJulia, Name: "Julia"},
-		{ID: ecoStd, Name: "Julia standard library", Std: true},
+		{ID: ecosystemJulia, Name: "Julia"},
+		{ID: ecosystemStd, Name: "Julia standard library", Std: true},
 	}
 }
 
@@ -98,16 +98,16 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 // Extract dispatches on the kind of file.
 //
 // Implements: REQ-JULIA-002, REQ-JULIA-003, REQ-JULIA-006, REQ-JULIA-007
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	switch fileClass(f.Path) {
 	case classProject:
-		return extractProject(src), nil
+		return extractProject(source), nil
 	case classManifest:
-		return extractManifest(src), nil
+		return extractManifest(source), nil
 	case classArtifacts:
-		return extractArtifacts(src), nil
+		return extractArtifacts(source), nil
 	}
-	s := readSource(src)
+	s := readSource(source)
 	symbols := s.symbols
 	if symbols == nil {
 		symbols = []lang.Symbol{}

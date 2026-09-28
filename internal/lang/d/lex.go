@@ -11,11 +11,11 @@ import "strings"
 type kind uint8
 
 const (
-	kIdent  kind = iota // identifiers and keywords
-	kString             // any string literal; text is the value of "..", r".." and `..` only
-	kChar
+	kIdentifier kind = iota // identifiers and keywords
+	kString                 // any string literal; text is the value of "..", r".." and `..` only
+	kCharacter
 	kNumber
-	kPunct
+	kPunctuation
 )
 
 type token struct {
@@ -30,25 +30,25 @@ type lexer struct {
 	i      int
 	line   int
 	tokens []token
-	// tokDepth is the brace depth inside a token string q{ ... }: its tokens are
+	// tokenDepth is the brace depth inside a token string q{ ... }: its tokens are
 	// counted, not emitted, and the whole is one string token.
-	tokDepth int
-	tokLine  int
+	tokenDepth int
+	tokenLine  int
 }
 
-// lex splits src into tokens.
+// lex splits source into tokens.
 //
 // Implements: REQ-DLANG-010
-func lex(src []byte) []token {
-	s := strings.TrimPrefix(string(src), "\xef\xbb\xbf")
+func lex(source []byte) []token {
+	s := strings.TrimPrefix(string(source), "\xef\xbb\xbf")
 	l := &lexer{s: s, line: 1, tokens: make([]token, 0, len(s)/6)}
 	if strings.HasPrefix(s, "#!") {
 		l.skipLine()
 	}
 	l.run()
-	if l.tokDepth > 0 {
-		l.tokDepth = 0
-		l.emitAt(kString, "", l.tokLine, false)
+	if l.tokenDepth > 0 {
+		l.tokenDepth = 0
+		l.emitAt(kString, "", l.tokenLine, false)
 	}
 	return l.tokens
 }
@@ -56,15 +56,15 @@ func lex(src []byte) []token {
 func (l *lexer) emit(k kind, text string) { l.emitAt(k, text, l.line, false) }
 
 func (l *lexer) emitAt(k kind, text string, line int, value bool) {
-	if l.tokDepth > 0 {
-		if k == kPunct {
+	if l.tokenDepth > 0 {
+		if k == kPunctuation {
 			switch text {
 			case "{":
-				l.tokDepth++
+				l.tokenDepth++
 			case "}":
-				l.tokDepth--
-				if l.tokDepth == 0 {
-					l.tokens = append(l.tokens, token{kind: kString, line: l.tokLine})
+				l.tokenDepth--
+				if l.tokenDepth == 0 {
+					l.tokens = append(l.tokens, token{kind: kString, line: l.tokenLine})
 				}
 			}
 		}
@@ -84,16 +84,16 @@ func (l *lexer) count(from, to int) {
 	l.line += strings.Count(l.s[from:min(to, len(l.s))], "\n")
 }
 
-func identStart(c byte) bool {
+func identifierStart(c byte) bool {
 	return c == '_' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= 0x80
 }
 
-func identChar(c byte) bool { return identStart(c) || c >= '0' && c <= '9' }
+func identifierCharacter(c byte) bool { return identifierStart(c) || c >= '0' && c <= '9' }
 
 func digit(c byte) bool { return c >= '0' && c <= '9' }
 
-// ops are D's operators longer than one character, longest first per start.
-var ops = []string{">>>=", "...", "<<=", ">>=", ">>>", "^^=", "..", "=>", "==", "!=", "<=", ">=", "+=", "-=", "*=",
+// operators are D's operators longer than one character, longest first per start.
+var operators = []string{">>>=", "...", "<<=", ">>=", ">>>", "^^=", "..", "=>", "==", "!=", "<=", ">=", "+=", "-=", "*=",
 	"/=", "%=", "&=", "|=", "^=", "~=", "&&", "||", "++", "--", "<<", ">>", "^^"}
 
 func (l *lexer) run() {
@@ -125,21 +125,21 @@ func (l *lexer) run() {
 		case c == '`':
 			l.wysiwyg(l.i+1, '`', true)
 		case c == '\'':
-			l.char()
+			l.character()
 		case c == '#':
 			// #line directives; `#!` only starts a file.
 			if strings.HasPrefix(s[l.i:], "#line") {
 				l.skipLine()
 			} else {
-				l.emit(kPunct, "#")
+				l.emit(kPunctuation, "#")
 				l.i++
 			}
-		case identStart(c):
-			l.ident()
+		case identifierStart(c):
+			l.identifier()
 		case digit(c) || c == '.' && l.i+1 < len(s) && digit(s[l.i+1]):
 			l.number()
 		default:
-			l.punct()
+			l.punctuation()
 		}
 	}
 }
@@ -247,9 +247,9 @@ func (l *lexer) delimited(from int) {
 				}
 			}
 		}
-	case identStart(open):
+	case identifierStart(open):
 		j := from
-		for j < len(s) && identChar(s[j]) {
+		for j < len(s) && identifierCharacter(s[j]) {
 			j++
 		}
 		id := s[from:j]
@@ -275,8 +275,8 @@ func (l *lexer) delimited(from int) {
 	l.emitAt(kString, "", line, false)
 }
 
-// char reads a character literal, or a lone quote as punctuation.
-func (l *lexer) char() {
+// character reads a character literal, or a lone quote as punctuation.
+func (l *lexer) character() {
 	s := l.s
 	j := l.i + 1
 	if j < len(s) && s[j] == '\\' {
@@ -284,7 +284,7 @@ func (l *lexer) char() {
 		for k := j + 2; k < len(s) && k < j+16 && s[k] != '\n'; k++ {
 			if s[k] == '\'' {
 				l.i = k + 1
-				l.emit(kChar, "")
+				l.emit(kCharacter, "")
 				return
 			}
 		}
@@ -295,18 +295,18 @@ func (l *lexer) char() {
 		}
 		if k < len(s) && s[k] == '\'' {
 			l.i = k + 1
-			l.emit(kChar, "")
+			l.emit(kCharacter, "")
 			return
 		}
 	}
-	l.emit(kPunct, "'")
+	l.emit(kPunctuation, "'")
 	l.i++
 }
 
-func (l *lexer) ident() {
+func (l *lexer) identifier() {
 	s := l.s
 	j := l.i
-	for j < len(s) && identChar(s[j]) {
+	for j < len(s) && identifierCharacter(s[j]) {
 		j++
 	}
 	word := s[l.i:j]
@@ -323,8 +323,8 @@ func (l *lexer) ident() {
 			return
 		}
 	}
-	if word == "q" && j < len(s) && s[j] == '{' && l.tokDepth == 0 {
-		l.tokDepth, l.tokLine = 1, l.line
+	if word == "q" && j < len(s) && s[j] == '{' && l.tokenDepth == 0 {
+		l.tokenDepth, l.tokenLine = 1, l.line
 		l.i = j + 1
 		return
 	}
@@ -333,7 +333,7 @@ func (l *lexer) ident() {
 		return
 	}
 	l.i = j
-	l.emit(kIdent, word)
+	l.emit(kIdentifier, word)
 }
 
 func (l *lexer) number() {
@@ -342,7 +342,7 @@ func (l *lexer) number() {
 	for j < len(s) {
 		c := s[j]
 		switch {
-		case identChar(c) && c < 0x80:
+		case identifierCharacter(c) && c < 0x80:
 			j++
 		case c == '.' && j+1 < len(s) && digit(s[j+1]):
 			j++
@@ -360,20 +360,20 @@ func (l *lexer) number() {
 	l.emit(kNumber, "")
 }
 
-func (l *lexer) punct() {
+func (l *lexer) punctuation() {
 	s := l.s[l.i:]
 	if len(s) < 2 || strings.IndexByte("=.>+-&|<^", s[1]) < 0 {
 		l.i++
-		l.emit(kPunct, s[:1])
+		l.emit(kPunctuation, s[:1])
 		return
 	}
-	for _, op := range ops {
-		if strings.HasPrefix(s, op) {
-			l.i += len(op)
-			l.emit(kPunct, op)
+	for _, operator := range operators {
+		if strings.HasPrefix(s, operator) {
+			l.i += len(operator)
+			l.emit(kPunctuation, operator)
 			return
 		}
 	}
 	l.i++
-	l.emit(kPunct, s[:1])
+	l.emit(kPunctuation, s[:1])
 }

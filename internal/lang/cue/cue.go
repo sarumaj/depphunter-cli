@@ -27,12 +27,12 @@ import (
 )
 
 const (
-	ecoCUE    = "cue"
-	ecoStd    = "cue-std"
-	ecoGo     = "go"     // the golang plugin's island: Go packages cue.mod/gen was generated from
-	ecoGoStd  = "go-std" // and the Go standard library's
-	classMod  = "module"
-	maxImport = 64 // files one import of a multi-file package links to
+	ecosystemCUE   = "cue"
+	ecosystemStd   = "cue-std"
+	ecosystemGo    = "go"     // the golang plugin's island: Go packages cue.mod/gen was generated from
+	ecosystemGoStd = "go-std" // and the Go standard library's
+	classModule    = "module"
+	maxImport      = 64 // files one import of a multi-file package links to
 )
 
 // Implements: REQ-CUE-001
@@ -70,7 +70,7 @@ func (Plugin) Class(f *scan.File) string { return class(f.Path) }
 
 func class(p string) string {
 	if p == "cue.mod/module.cue" || strings.HasSuffix(p, "/cue.mod/module.cue") {
-		return classMod
+		return classModule
 	}
 	return ""
 }
@@ -78,38 +78,38 @@ func class(p string) string {
 // Implements: REQ-CUE-008
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoCUE, Name: "CUE modules"},
-		{ID: ecoStd, Name: "CUE standard library", Std: true},
-		{ID: ecoGo, Name: "Go modules"},
-		{ID: ecoGoStd, Name: "Go standard library", Std: true},
+		{ID: ecosystemCUE, Name: "CUE modules"},
+		{ID: ecosystemStd, Name: "CUE standard library", Std: true},
+		{ID: ecosystemGo, Name: "Go modules"},
+		{ID: ecosystemGoStd, Name: "Go standard library", Std: true},
 	}
 }
 
 func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
-	return newResolver(root, all, cacheDir()), nil
+	return newResolver(root, all, cacheDirectory()), nil
 }
 
-// cacheDir is where cue keeps the modules it fetched: $CUE_CACHE_DIR, else cue/ in
+// cacheDirectory is where cue keeps the modules it fetched: $CUE_CACHE_DIR, else cue/ in
 // the user's cache directory.
-func cacheDir() string {
-	if dir := os.Getenv("CUE_CACHE_DIR"); dir != "" {
-		return dir
+func cacheDirectory() string {
+	if directory := os.Getenv("CUE_CACHE_DIR"); directory != "" {
+		return directory
 	}
-	if dir, err := os.UserCacheDir(); err == nil {
-		return filepath.Join(dir, "cue")
+	if directory, err := os.UserCacheDir(); err == nil {
+		return filepath.Join(directory, "cue")
 	}
 	return ""
 }
 
 // Implements: REQ-CUE-002, REQ-CUE-003, REQ-CUE-005
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
-	ex := extractSource(src)
-	if class(f.Path) == classMod {
-		for _, d := range readModule(src).deps {
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: d.key, Module: d.key, Name: kindDep, Line: d.line})
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
+	extraction := extractSource(source)
+	if class(f.Path) == classModule {
+		for _, d := range readModule(source).dependencies {
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: d.key, Module: d.key, Name: kindDependency, Line: d.line})
 		}
 	}
-	return ex, nil
+	return extraction, nil
 }
 
 // std lists CUE's standard library packages.
@@ -132,8 +132,8 @@ func sortedKeys[V any](m map[string]V) []string {
 	return keys
 }
 
-func readFile(abs string, limit int64) []byte {
-	f, err := os.Open(abs)
+func readFile(absolute string, limit int64) []byte {
+	f, err := os.Open(absolute)
 	if err != nil {
 		return nil
 	}

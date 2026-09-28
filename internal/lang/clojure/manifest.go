@@ -9,18 +9,18 @@ import (
 
 // Manifest file names.
 const (
-	depsEdn    = "deps.edn"
-	bbEdn      = "bb.edn"
-	shadowEdn  = "shadow-cljs.edn"
-	projectClj = "project.clj"
-	buildBoot  = "build.boot"
+	dependenciesEdn = "deps.edn"
+	bbEdn           = "bb.edn"
+	shadowEdn       = "shadow-cljs.edn"
+	projectClj      = "project.clj"
+	buildBoot       = "build.boot"
 )
 
-var manifestNames = map[string]bool{depsEdn: true, bbEdn: true, shadowEdn: true, projectClj: true, buildBoot: true}
+var manifestNames = map[string]bool{dependenciesEdn: true, bbEdn: true, shadowEdn: true, projectClj: true, buildBoot: true}
 
-// coord is a dependency's coordinate as a manifest writes it.
-type coord struct {
-	lib     string // group/artifact as written ("ring" for ring/ring)
+// coordinate is a dependency's coordinate as a manifest writes it.
+type coordinate struct {
+	library string // group/artifact as written ("ring" for ring/ring)
 	section string // "" for the main dependencies, else the alias or profile
 	plugin  bool   // a Leiningen plugin
 	version string // :mvn/version, or Leiningen's version string
@@ -33,25 +33,25 @@ type coord struct {
 
 // manifest is what one Clojure manifest declares.
 type manifest struct {
-	kind  string   // deps.edn, bb.edn, shadow-cljs.edn, project.clj, build.boot
-	name  string   // the project's own lib (Leiningen's defproject)
-	paths []string // source roots, relative to the manifest's directory
-	deps  []coord
-	repos []string // repository URLs (:mvn/repos, :repositories)
-	// shadowDeps marks a shadow-cljs.edn whose :deps true hands dependencies and
+	kind         string   // deps.edn, bb.edn, shadow-cljs.edn, project.clj, build.boot
+	name         string   // the project's own lib (Leiningen's defproject)
+	paths        []string // source roots, relative to the manifest's directory
+	dependencies []coordinate
+	repositories []string // repository URLs (:mvn/repos, :repositories)
+	// shadowDependencies marks a shadow-cljs.edn whose :deps true hands dependencies and
 	// source paths to deps.edn.
-	shadowDeps bool
-	requires   []*edn.Node // bb.edn task :requires
+	shadowDependencies bool
+	requires           []*edn.Node // bb.edn task :requires
 }
 
 // artifact is Maven's name for a lib: "group:artifact", where a lib without a group
 // (Leiningen's [ring "1.9.0"]) is group and artifact of the same name.
 //
 // Implements: REQ-CLOJURE-008
-func artifact(lib string) string {
-	g, a, ok := strings.Cut(lib, "/")
+func artifact(library string) string {
+	g, a, ok := strings.Cut(library, "/")
 	if !ok {
-		return lib + ":" + lib
+		return library + ":" + library
 	}
 	return g + ":" + a
 }
@@ -60,28 +60,28 @@ func artifact(lib string) string {
 // evaluated: computed values (~x, #=(...)) are unknown.
 //
 // Implements: REQ-CLOJURE-004, REQ-CLOJURE-008, REQ-CLOJURE-010
-func readManifest(kind string, src []byte) *manifest {
+func readManifest(kind string, source []byte) *manifest {
 	m := &manifest{kind: kind}
-	forms := edn.Read(src)
+	forms := edn.Read(source)
 	switch kind {
-	case depsEdn, bbEdn:
+	case dependenciesEdn, bbEdn:
 		if len(forms) > 0 {
-			m.readDeps(forms[0])
+			m.readDependencies(forms[0])
 		}
-		if len(m.paths) == 0 && kind == depsEdn {
+		if len(m.paths) == 0 && kind == dependenciesEdn {
 			m.paths = []string{"src"} // tools.deps' default
 		}
 	case shadowEdn:
 		if len(forms) > 0 {
 			top := forms[0]
 			m.paths = top.Get("source-paths").Strings()
-			m.leinDeps(top.Get("dependencies"), "")
+			m.leinDependencies(top.Get("dependencies"), "")
 			if d := top.Get("deps"); d != nil && (d.Kind == edn.Map || d.Kind == edn.Symbol && d.Text == "true") {
-				m.shadowDeps = true
+				m.shadowDependencies = true
 			}
-			m.leinRepos(top.Get("repositories"))
+			m.leinRepositories(top.Get("repositories"))
 			if mv := top.Get("maven"); mv != nil {
-				m.leinRepos(mv.Get("repositories"))
+				m.leinRepositories(mv.Get("repositories"))
 			}
 		}
 	case projectClj:
@@ -105,9 +105,9 @@ func readManifest(kind string, src []byte) *manifest {
 				case "source-paths", "resource-paths":
 					m.paths = append(m.paths, v.Strings()...)
 				case "dependencies":
-					m.leinDeps(v, "")
+					m.leinDependencies(v, "")
 				case "repositories":
-					m.leinRepos(v)
+					m.leinRepositories(v)
 				}
 			}
 		}
@@ -115,12 +115,12 @@ func readManifest(kind string, src []byte) *manifest {
 	return m
 }
 
-// readDeps reads deps.edn or bb.edn: :paths, :deps, :aliases (:extra-deps,
+// readDependencies reads deps.edn or bb.edn: :paths, :deps, :aliases (:extra-deps,
 // :replace-deps, :deps, :override-deps, :extra-paths), :mvn/repos, bb's :tasks
 // :requires.
-func (m *manifest) readDeps(top *edn.Node) {
+func (m *manifest) readDependencies(top *edn.Node) {
 	m.paths = top.Get("paths").Strings()
-	m.mapDeps(top.Get("deps"), "")
+	m.mapDependencies(top.Get("deps"), "")
 	if al := top.Get("aliases"); al != nil && al.Kind == edn.Map {
 		for i := 0; i+1 < len(al.Kids); i += 2 {
 			name, body := al.Kids[i], al.Kids[i+1]
@@ -128,15 +128,15 @@ func (m *manifest) readDeps(top *edn.Node) {
 				continue
 			}
 			for _, key := range []string{"extra-deps", "replace-deps", "deps", "override-deps", "default-deps"} {
-				m.mapDeps(body.Get(key), name.Text)
+				m.mapDependencies(body.Get(key), name.Text)
 			}
 			m.paths = append(m.paths, body.Get("extra-paths").Strings()...)
 		}
 	}
-	if repos := top.Get("mvn/repos"); repos != nil && repos.Kind == edn.Map {
-		for i := 1; i < len(repos.Kids); i += 2 {
-			if u := repos.Kids[i].Get("url"); u != nil && u.Kind == edn.String {
-				m.repos = append(m.repos, u.Text)
+	if repositories := top.Get("mvn/repos"); repositories != nil && repositories.Kind == edn.Map {
+		for i := 1; i < len(repositories.Kids); i += 2 {
+			if u := repositories.Kids[i].Get("url"); u != nil && u.Kind == edn.String {
+				m.repositories = append(m.repositories, u.Text)
 			}
 		}
 	}
@@ -152,18 +152,18 @@ func (m *manifest) readDeps(top *edn.Node) {
 	}
 }
 
-// mapDeps reads a tools.deps dependency map {lib coord}.
-func (m *manifest) mapDeps(deps *edn.Node, section string) {
-	if deps == nil || deps.Kind != edn.Map {
+// mapDependencies reads a tools.deps dependency map {lib coord}.
+func (m *manifest) mapDependencies(dependencies *edn.Node, section string) {
+	if dependencies == nil || dependencies.Kind != edn.Map {
 		return
 	}
-	for i := 0; i+1 < len(deps.Kids); i += 2 {
-		lib, c := deps.Kids[i], deps.Kids[i+1]
-		if lib.Kind != edn.Symbol {
+	for i := 0; i+1 < len(dependencies.Kids); i += 2 {
+		library, c := dependencies.Kids[i], dependencies.Kids[i+1]
+		if library.Kind != edn.Symbol {
 			continue
 		}
-		d := coord{lib: lib.Text, section: section, line: lib.Line}
-		str := func(keys ...string) string {
+		d := coordinate{library: library.Text, section: section, line: library.Line}
+		stringField := func(keys ...string) string {
 			for _, k := range keys {
 				if v := c.Get(k); v != nil && v.Kind == edn.String {
 					return v.Text
@@ -171,15 +171,15 @@ func (m *manifest) mapDeps(deps *edn.Node, section string) {
 			}
 			return ""
 		}
-		d.version = str("mvn/version")
-		d.local = str("local/root")
-		d.gitURL = str("git/url")
-		d.sha = str("git/sha", "sha")
-		d.tag = str("git/tag", "tag")
+		d.version = stringField("mvn/version")
+		d.local = stringField("local/root")
+		d.gitURL = stringField("git/url")
+		d.sha = stringField("git/sha", "sha")
+		d.tag = stringField("git/tag", "tag")
 		if d.gitURL == "" && (d.sha != "" || d.tag != "") {
-			d.gitURL = inferGitURL(lib.Text)
+			d.gitURL = inferGitURL(library.Text)
 		}
-		m.deps = append(m.deps, d)
+		m.dependencies = append(m.dependencies, d)
 	}
 }
 
@@ -188,8 +188,8 @@ func (m *manifest) mapDeps(deps *edn.Node, section string) {
 // com.gitlab, io.bitbucket, org.bitbucket, ht.sr for sourcehut).
 //
 // Implements: REQ-CLOJURE-008
-func inferGitURL(lib string) string {
-	g, r, ok := strings.Cut(lib, "/")
+func inferGitURL(library string) string {
+	g, r, ok := strings.Cut(library, "/")
 	if !ok {
 		return ""
 	}
@@ -219,48 +219,48 @@ func (m *manifest) readProject(f *edn.Node) {
 	if len(f.Kids) > 2 && f.Kids[2].Kind != edn.Keyword {
 		start = 3
 	}
-	opts := map[string]*edn.Node{}
+	options := map[string]*edn.Node{}
 	for i := start; i+1 < len(f.Kids); i += 2 {
 		if k := f.Kids[i]; k.Kind == edn.Keyword {
-			if _, dup := opts[k.Text]; !dup {
-				opts[k.Text] = f.Kids[i+1]
+			if _, duplicate := options[k.Text]; !duplicate {
+				options[k.Text] = f.Kids[i+1]
 			}
 		}
 	}
 	managed := map[string]string{}
-	for _, d := range leinVector(opts["managed-dependencies"]) {
+	for _, d := range leinVector(options["managed-dependencies"]) {
 		if v := d.Kids[1:]; len(v) > 0 && v[0].Kind == edn.String {
 			managed[artifact(d.Kids[0].Text)] = v[0].Text
 		}
 	}
-	m.paths = append(m.paths, opts["source-paths"].Strings()...)
-	m.paths = append(m.paths, opts["test-paths"].Strings()...)
-	if opts["source-paths"] == nil {
+	m.paths = append(m.paths, options["source-paths"].Strings()...)
+	m.paths = append(m.paths, options["test-paths"].Strings()...)
+	if options["source-paths"] == nil {
 		m.paths = append(m.paths, "src")
 	}
-	if opts["test-paths"] == nil {
+	if options["test-paths"] == nil {
 		m.paths = append(m.paths, "test")
 	}
-	m.leinDeps(opts["dependencies"], "")
-	m.leinPlugins(opts["plugins"], "")
-	if prof := opts["profiles"]; prof != nil && prof.Kind == edn.Map {
-		for i := 0; i+1 < len(prof.Kids); i += 2 {
-			name, body := prof.Kids[i], prof.Kids[i+1]
+	m.leinDependencies(options["dependencies"], "")
+	m.leinPlugins(options["plugins"], "")
+	if profile := options["profiles"]; profile != nil && profile.Kind == edn.Map {
+		for i := 0; i+1 < len(profile.Kids); i += 2 {
+			name, body := profile.Kids[i], profile.Kids[i+1]
 			if name.Kind != edn.Keyword || body.Kind != edn.Map {
 				continue
 			}
-			m.leinDeps(body.Get("dependencies"), name.Text)
+			m.leinDependencies(body.Get("dependencies"), name.Text)
 			m.leinPlugins(body.Get("plugins"), name.Text)
 			m.paths = append(m.paths, body.Get("source-paths").Strings()...)
 			m.paths = append(m.paths, body.Get("test-paths").Strings()...)
 		}
 	}
-	for i := range m.deps {
-		if d := &m.deps[i]; d.version == "" {
-			d.version = managed[artifact(d.lib)]
+	for i := range m.dependencies {
+		if d := &m.dependencies[i]; d.version == "" {
+			d.version = managed[artifact(d.library)]
 		}
 	}
-	m.leinRepos(opts["repositories"])
+	m.leinRepositories(options["repositories"])
 }
 
 // leinVector lists the [lib "version" & options] entries of a dependency vector.
@@ -278,27 +278,27 @@ func leinVector(n *edn.Node) []*edn.Node {
 	return out
 }
 
-func (m *manifest) leinDeps(n *edn.Node, section string) {
+func (m *manifest) leinDependencies(n *edn.Node, section string) {
 	for _, d := range leinVector(n) {
-		c := coord{lib: d.Kids[0].Text, section: section, line: d.Kids[0].Line}
+		c := coordinate{library: d.Kids[0].Text, section: section, line: d.Kids[0].Line}
 		if len(d.Kids) > 1 && d.Kids[1].Kind == edn.String {
 			c.version = d.Kids[1].Text
 		}
-		m.deps = append(m.deps, c)
+		m.dependencies = append(m.dependencies, c)
 	}
 }
 
 func (m *manifest) leinPlugins(n *edn.Node, section string) {
-	before := len(m.deps)
-	m.leinDeps(n, section)
-	for i := before; i < len(m.deps); i++ {
-		m.deps[i].plugin = true
+	before := len(m.dependencies)
+	m.leinDependencies(n, section)
+	for i := before; i < len(m.dependencies); i++ {
+		m.dependencies[i].plugin = true
 	}
 }
 
-// leinRepos reads Leiningen's :repositories: [["name" "url"]] or [["name" {:url
+// leinRepositories reads Leiningen's :repositories: [["name" "url"]] or [["name" {:url
 // "url"}]], or a map of the same.
-func (m *manifest) leinRepos(n *edn.Node) {
+func (m *manifest) leinRepositories(n *edn.Node) {
 	n = edn.Unquote(n)
 	if n == nil {
 		return
@@ -318,31 +318,31 @@ func (m *manifest) leinRepos(n *edn.Node) {
 	}
 	for _, v := range values {
 		if v.Kind == edn.String {
-			m.repos = append(m.repos, v.Text)
+			m.repositories = append(m.repositories, v.Text)
 		} else if u := v.Get("url"); u != nil && u.Kind == edn.String {
-			m.repos = append(m.repos, u.Text)
+			m.repositories = append(m.repositories, u.Text)
 		}
 	}
 }
 
-// manifestImports makes a manifest's dependencies imports: the lib as written is
-// the spec, and each lib once (the main dependencies before aliases and profiles).
+// manifestImports makes a manifest's dependencies imports: the library as written is
+// the spec, and each library once (the main dependencies before aliases and profiles).
 func manifestImports(m *manifest) []lang.RawImport {
 	var out []lang.RawImport
 	seen := map[string]bool{}
-	for _, d := range m.deps {
-		if seen[d.lib] {
+	for _, d := range m.dependencies {
+		if seen[d.library] {
 			continue
 		}
-		seen[d.lib] = true
-		kind := kindDep
+		seen[d.library] = true
+		kind := kindDependency
 		if d.plugin {
 			kind = kindPlugin
 		}
 		if d.section != "" {
 			kind += ":" + d.section
 		}
-		out = append(out, lang.RawImport{Spec: d.lib, Module: d.lib, Name: kind, Line: d.line})
+		out = append(out, lang.RawImport{Spec: d.library, Module: d.library, Name: kind, Line: d.line})
 	}
 	return out
 }

@@ -23,9 +23,9 @@ import (
 )
 
 const (
-	ecoHex    = "hex"
-	ecoElixir = "elixir-std"
-	ecoOTP    = "erlang-std"
+	ecosystemHex    = "hex"
+	ecosystemElixir = "elixir-std"
+	ecosystemOTP    = "erlang-std"
 )
 
 // Implements: REQ-BEAM-001
@@ -44,9 +44,9 @@ func (Plugin) Claims(f *scan.File) bool {
 		return false
 	}
 	segments := strings.Split(path.Dir(f.Path), "/")
-	for i, seg := range segments {
+	for i, segment := range segments {
 		// deps/<app>/..., not a lib/app/deps/helper.ex of the project's own.
-		if seg == "_build" || seg == "deps" && i+1 < len(segments) {
+		if segment == "_build" || segment == "deps" && i+1 < len(segments) {
 			return false
 		}
 	}
@@ -60,9 +60,9 @@ func (Plugin) Claims(f *scan.File) bool {
 
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoHex, Name: "Hex"},
-		{ID: ecoElixir, Name: "Elixir standard library", Std: true},
-		{ID: ecoOTP, Name: "Erlang/OTP", Std: true},
+		{ID: ecosystemHex, Name: "Hex"},
+		{ID: ecosystemElixir, Name: "Elixir standard library", Std: true},
+		{ID: ecosystemOTP, Name: "Erlang/OTP", Std: true},
 	}
 }
 
@@ -74,16 +74,16 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 // file (.src) or rebar.config (.config, the only such file claimed).
 //
 // Implements: REQ-BEAM-002, REQ-BEAM-003, REQ-BEAM-004, REQ-BEAM-005, REQ-BEAM-009
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	switch strings.ToLower(path.Ext(f.Path)) {
 	case ".ex", ".exs":
-		return extractElixir(src), nil
+		return extractElixir(source), nil
 	case ".erl", ".hrl":
-		return extractErlang(src), nil
+		return extractErlang(source), nil
 	case ".src":
-		return extractAppSrc(src), nil
+		return extractAppSource(source), nil
 	case ".config":
-		return &lang.Extraction{Imports: rebarConfigImports(src)}, nil
+		return &lang.Extraction{Imports: rebarConfigImports(source)}, nil
 	}
 	return &lang.Extraction{}, nil
 }

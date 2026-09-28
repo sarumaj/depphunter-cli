@@ -2,12 +2,12 @@ package haskell
 
 import "strings"
 
-// stdPkgs are the packages that come with GHC and cannot be chosen apart from it:
+// stdPackages are the packages that come with GHC and cannot be chosen apart from it:
 // the compiler's own library and its runtime. They make the hidden haskell-std
 // island whether or not build-depends names them. The other packages GHC bundles
 // (containers, text, bytestring, mtl, directory, ...) are released on Hackage, are
 // declared in build-depends like any other and resolved as Hackage packages.
-var stdPkgs = map[string]bool{
+var stdPackages = map[string]bool{
 	"base": true, "ghc-prim": true, "ghc": true, "template-haskell": true, "integer-gmp": true,
 	"ghc-bignum": true, "ghc-boot": true, "ghc-boot-th": true, "ghc-heap": true, "rts": true,
 	"ghc-internal": true, "ghc-experimental": true, "integer-simple": true,
@@ -21,7 +21,7 @@ var stdPkgs = map[string]bool{
 var moduleTable = map[string][]string{}
 
 func init() {
-	for pkgs, mods := range map[string]string{
+	for packages, modules := range map[string]string{
 		"base": `Prelude Control.Applicative Control.Arrow Control.Category Control.Concurrent
 			Control.Concurrent.Chan Control.Concurrent.MVar Control.Concurrent.QSem Control.Concurrent.QSemN
 			Control.Exception Control.Monad Control.Monad.Fail Control.Monad.Fix Control.Monad.Instances
@@ -376,19 +376,19 @@ func init() {
 		"optparse-simple":                   `Options.Applicative.Simple`,
 		"cmdargs":                           `System.Console.CmdArgs`,
 	} {
-		for _, m := range strings.Fields(mods) {
-			moduleTable[m] = append(moduleTable[m], strings.Fields(pkgs)...)
+		for _, m := range strings.Fields(modules) {
+			moduleTable[m] = append(moduleTable[m], strings.Fields(packages)...)
 		}
 	}
 }
 
-// tableMatch is the longest key of moduleTable that is mod or a prefix of it (on a
+// tableMatch is the longest key of moduleTable that is module or a prefix of it (on a
 // dot), and its packages; allowed, when set, limits the packages considered.
-func tableMatch(mod string, allowed func(string) bool) (string, []string) {
-	for m := mod; ; {
-		if pkgs := moduleTable[m]; len(pkgs) > 0 {
+func tableMatch(module string, allowed func(string) bool) (string, []string) {
+	for m := module; ; {
+		if packages := moduleTable[m]; len(packages) > 0 {
 			var ok []string
-			for _, p := range pkgs {
+			for _, p := range packages {
 				if allowed == nil || allowed(p) {
 					ok = append(ok, p)
 				}
@@ -427,8 +427,8 @@ func fold(s string) string {
 // segments: Test.Tasty.HUnit is tasty-hunit (or tasty), Network.HTTP.Client
 // http-client. The longest run wins; a run of only a first segment that is a subject
 // (Text, Data) does not count.
-func runMatch(mod string, names map[string]string) string {
-	segments := strings.Split(mod, ".")
+func runMatch(module string, names map[string]string) string {
+	segments := strings.Split(module, ".")
 	for n := len(segments); n >= 1; n-- {
 		for i := 0; i+n <= len(segments); i++ {
 			if n == 1 && categories[segments[i]] {
@@ -444,8 +444,8 @@ func runMatch(mod string, names map[string]string) string {
 
 // guessName names the package of a module nothing else resolved: its first segment
 // that does not name a subject, lower case (Network.Wai: wai, Hasql.Pool: hasql).
-func guessName(mod string) string {
-	segments := strings.Split(mod, ".")
+func guessName(module string) string {
+	segments := strings.Split(module, ".")
 	for i, s := range segments {
 		if !categories[s] || i == len(segments)-1 {
 			return strings.ToLower(s)

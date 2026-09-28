@@ -35,10 +35,10 @@ const juliaGeneral = "23338594-aafe-5451-b93e-139f81909106"
 // juliaRegistry is what a Registry.toml says: the registry's name, UUID and
 // repository, and each package's name and directory, keyed by UUID.
 type juliaRegistry struct {
-	Name     string `toml:"name"`
-	UUID     string `toml:"uuid"`
-	Repo     string `toml:"repo"`
-	Packages map[string]struct {
+	Name       string `toml:"name"`
+	UUID       string `toml:"uuid"`
+	Repository string `toml:"repo"`
+	Packages   map[string]struct {
 		Name string `toml:"name"`
 		Path string `toml:"path"`
 	} `toml:"packages"`
@@ -64,26 +64,26 @@ func (r juliaRegistry) general() bool {
 func machineJulia(m userconf.Machine, k sink) {
 	found, general := false, false
 	for _, depot := range m.JuliaDepots() {
-		dir := filepath.Join(depot, "registries")
-		entries, err := os.ReadDir(dir)
+		directory := filepath.Join(depot, "registries")
+		entries, err := os.ReadDir(directory)
 		if err != nil {
 			continue
 		}
 		for _, e := range entries {
-			local, reg, ok := installedJuliaRegistry(dir, e)
+			local, registry, ok := installedJuliaRegistry(directory, e)
 			if !ok {
 				continue
 			}
 			found = true
-			if reg.general() {
+			if registry.general() {
 				general = true
 				k.put(Julia, Source{URL: publicIndex(Julia), Local: local})
 				continue
 			}
-			base := juliaRegistryURL(reg.Repo, local)
+			base := juliaRegistryURL(registry.Repository, local)
 			type listed struct{ name, uuid string }
 			var packages []listed
-			for uuid, p := range reg.Packages {
+			for uuid, p := range registry.Packages {
 				if p.Name != "" {
 					packages = append(packages, listed{p.Name, strings.ToLower(uuid)})
 				}
@@ -105,57 +105,57 @@ func machineJulia(m userconf.Machine, k sink) {
 // installedJuliaRegistry reads a depot's registries/ entry: the copy it is (a
 // directory or an archive) and what its Registry.toml says. General's packages
 // are not read: nothing needs them before a question.
-func installedJuliaRegistry(dir string, e os.DirEntry) (local string, reg juliaRegistry, ok bool) {
+func installedJuliaRegistry(directory string, e os.DirEntry) (local string, registry juliaRegistry, ok bool) {
 	if e.IsDir() {
-		local = filepath.Join(dir, e.Name())
+		local = filepath.Join(directory, e.Name())
 		data, err := os.ReadFile(filepath.Join(local, "Registry.toml"))
 		if err != nil {
-			return "", reg, false
+			return "", registry, false
 		}
-		reg, ok = decodeJuliaRegistry(data)
-		return local, reg, ok
+		registry, ok = decodeJuliaRegistry(data)
+		return local, registry, ok
 	}
 	if !strings.HasSuffix(e.Name(), ".toml") {
-		return "", reg, false
+		return "", registry, false
 	}
 	var info struct {
 		UUID string `toml:"uuid"`
 		Path string `toml:"path"`
 	}
-	if _, err := toml.DecodeFile(filepath.Join(dir, e.Name()), &info); err != nil || info.Path == "" {
-		return "", reg, false
+	if _, err := toml.DecodeFile(filepath.Join(directory, e.Name()), &info); err != nil || info.Path == "" {
+		return "", registry, false
 	}
-	local = filepath.Join(dir, filepath.FromSlash(info.Path))
-	if st, err := os.Stat(local); err != nil || !st.Mode().IsRegular() {
-		return "", reg, false
+	local = filepath.Join(directory, filepath.FromSlash(info.Path))
+	if fileInfo, err := os.Stat(local); err != nil || !fileInfo.Mode().IsRegular() {
+		return "", registry, false
 	}
 	if strings.EqualFold(info.UUID, juliaGeneral) {
 		return local, juliaRegistry{Name: "General", UUID: info.UUID}, true
 	}
 	files, err := juliaTar(local, func(name string) bool { return name == "Registry.toml" }, true)
 	if err != nil || files["Registry.toml"] == nil {
-		return "", reg, false
+		return "", registry, false
 	}
-	reg, ok = decodeJuliaRegistry(files["Registry.toml"])
-	return local, reg, ok
+	registry, ok = decodeJuliaRegistry(files["Registry.toml"])
+	return local, registry, ok
 }
 
 // decodeJuliaRegistry decodes a Registry.toml; General's only as far as its
 // [packages] table, which is most of it.
 func decodeJuliaRegistry(data []byte) (juliaRegistry, bool) {
-	var reg juliaRegistry
+	var registry juliaRegistry
 	head := data
 	if i := bytes.Index(data, []byte("\n[packages]")); i >= 0 {
 		head = data[:i]
 	}
-	if _, err := toml.Decode(string(head), &reg); err != nil {
-		return reg, false
+	if _, err := toml.Decode(string(head), &registry); err != nil {
+		return registry, false
 	}
-	if reg.general() {
-		return reg, true
+	if registry.general() {
+		return registry, true
 	}
-	_, err := toml.Decode(string(data), &reg)
-	return reg, err == nil
+	_, err := toml.Decode(string(data), &registry)
+	return registry, err == nil
 }
 
 // scpLike is git's scp-like repository address, user@host:path.
@@ -165,13 +165,13 @@ var scpLike = regexp.MustCompile(`^(?:[^@/:]+@)?([^/:]+):([^/].*)$`)
 // files at raw.githubusercontent.com when its repository is on GitHub; else the
 // repository's URL, without the user an ssh address logs in as; else the copy's
 // path.
-func juliaRegistryURL(repo, local string) string {
-	repo = strings.TrimSpace(repo)
-	if m := scpLike.FindStringSubmatch(repo); m != nil && !strings.Contains(repo, "://") {
-		repo = "ssh://" + m[1] + "/" + m[2]
+func juliaRegistryURL(repository, local string) string {
+	repository = strings.TrimSpace(repository)
+	if m := scpLike.FindStringSubmatch(repository); m != nil && !strings.Contains(repository, "://") {
+		repository = "ssh://" + m[1] + "/" + m[2]
 	}
-	u, err := url.Parse(repo)
-	if err != nil || repo == "" {
+	u, err := url.Parse(repository)
+	if err != nil || repository == "" {
 		return local
 	}
 	if strings.EqualFold(u.Hostname(), "github.com") {
@@ -179,7 +179,7 @@ func juliaRegistryURL(repo, local string) string {
 			return "https://raw.githubusercontent.com/" + name + "/HEAD"
 		}
 	}
-	return sshUserless(repo)
+	return sshUserless(repository)
 }
 
 // juliaScoped lists the registries installed here that serve a Julia package, in
@@ -189,10 +189,10 @@ func juliaRegistryURL(repo, local string) string {
 // another package.
 //
 // Implements: REQ-SUP-055
-func (c *Config) juliaScoped(pkg, uuid string) []candidate {
+func (c *Config) juliaScoped(packageName, uuid string) []candidate {
 	var out []candidate
 	for _, s := range c.sources[Julia] {
-		if s.Scope != pkg || s.Registry != "" || uuid != "" && s.uuid != "" && !strings.EqualFold(s.uuid, uuid) {
+		if s.Scope != packageName || s.Registry != "" || uuid != "" && s.uuid != "" && !strings.EqualFold(s.uuid, uuid) {
 			continue
 		}
 		out = append(out, candidate{url: s.URL, primary: len(out) == 0, known: c.fetchable(Julia, s)})
@@ -211,17 +211,17 @@ func (c *Config) juliaScoped(pkg, uuid string) []candidate {
 // julia-std.
 //
 // Implements: REQ-SUP-055
-func (c *Client) juliaPackage(ctx context.Context, index string, t lang.Target) ([]dep, error) {
+func (c *Client) juliaPackage(ctx context.Context, index string, t lang.Target) ([]dependency, error) {
 	base := strings.TrimRight(index, "/")
 	read, local, err := c.juliaFiles(ctx, base)
 	if err != nil {
 		return nil, err
 	}
-	dir, err := c.juliaDir(base, local, read, t)
+	directory, err := c.juliaDirectory(base, local, read, t)
 	if err != nil {
 		return nil, err
 	}
-	body, err := read(dir + "/Versions.toml")
+	body, err := read(directory + "/Versions.toml")
 	if err != nil {
 		return nil, err
 	}
@@ -232,8 +232,8 @@ func (c *Client) juliaPackage(ctx context.Context, index string, t lang.Target) 
 		return nil, err
 	}
 	var listed []string
-	for v, meta := range versions {
-		if !meta.Yanked {
+	for v, metadata := range versions {
+		if !metadata.Yanked {
 			listed = append(listed, v)
 		}
 	}
@@ -248,28 +248,28 @@ func (c *Client) juliaPackage(ctx context.Context, index string, t lang.Target) 
 	if !ok {
 		return nil, nil
 	}
-	body, err = read(dir + "/Deps.toml")
+	body, err = read(directory + "/Deps.toml")
 	if err != nil {
 		return nil, nil // a package without dependencies has no Deps.toml
 	}
-	deps := juliaSections(body, v)
+	dependencies := juliaSections(body, v)
 	compat := map[string]string{}
-	if body, err := read(dir + "/Compat.toml"); err == nil {
+	if body, err := read(directory + "/Compat.toml"); err == nil {
 		for name, value := range juliaSections(body, v) {
 			compat[name] = juliaCompat(value)
 		}
 	}
-	var out []dep
-	for name, uuid := range deps {
+	var out []dependency
+	for name, uuid := range dependencies {
 		if name == "julia" {
 			continue
 		}
-		d := dep{Name: name, Version: compat[name]}
+		d := dependency{Name: name, Version: compat[name]}
 		if s, ok := uuid.(string); ok {
 			d.Registry = strings.ToLower(s)
 		}
 		if juliapkg.Stdlib(name) {
-			d = dep{Name: name, Eco: "julia-std"}
+			d = dependency{Name: name, Ecosystem: "julia-std"}
 		}
 		out = append(out, d)
 	}
@@ -282,12 +282,12 @@ func (c *Client) juliaPackage(ctx context.Context, index string, t lang.Target) 
 // else over HTTP. A registry that is not served over HTTP is read only from a
 // copy.
 func (c *Client) juliaFiles(ctx context.Context, base string) (read func(string) ([]byte, error), local string, err error) {
-	if local = c.cfg.localCopy(Julia, base); local != "" {
-		cp, err := c.juliaCopies.get(local, func() (*juliaCopy, error) { return readJuliaCopy(local) })
+	if local = c.config.localCopy(Julia, base); local != "" {
+		localCopy, err := c.juliaCopies.get(local, func() (*juliaCopy, error) { return readJuliaCopy(local) })
 		if err != nil {
 			return nil, "", err
 		}
-		return cp.read, local, nil
+		return localCopy.read, local, nil
 	}
 	if !strings.HasPrefix(base, "https://") && !strings.HasPrefix(base, "http://") {
 		// Implements: REQ-TRC-017
@@ -298,14 +298,14 @@ func (c *Client) juliaFiles(ctx context.Context, base string) (read func(string)
 	return func(p string) ([]byte, error) { return c.accept(ctx, base+"/"+p, "text/plain") }, "", nil
 }
 
-// juliaDir is where a registry keeps a package's files. The General registry's
+// juliaDirectory is where a registry keeps a package's files. The General registry's
 // layout is known (J/JSON) when it is read over HTTP; a copy's Registry.toml, and
 // another registry's, list each package's path, read once per registry, by UUID
 // when the target has one. A registry that does not list the package does not
 // have it.
-func (c *Client) juliaDir(base, local string, read func(string) ([]byte, error), t lang.Target) (string, error) {
-	if base == c.cfg.publicURL(Julia) && local == "" {
-		return juliapkg.RegistryDir(t.Package), nil
+func (c *Client) juliaDirectory(base, local string, read func(string) ([]byte, error), t lang.Target) (string, error) {
+	if base == c.config.publicURL(Julia) && local == "" {
+		return juliapkg.RegistryDirectory(t.Package), nil
 	}
 	paths, err := c.juliaRegistries.get(cmp.Or(local, base), func() (*juliaPaths, error) {
 		body, err := read("Registry.toml")
@@ -317,8 +317,8 @@ func (c *Client) juliaDir(base, local string, read func(string) ([]byte, error),
 	if err != nil {
 		return "", err
 	}
-	if dir := paths.dir(t.Package, t.Registry); dir != "" {
-		return dir, nil
+	if directory := paths.directory(t.Package, t.Registry); directory != "" {
+		return directory, nil
 	}
 	return "", fmt.Errorf("%w: %s does not list %s", errAbsent, base, t.Package)
 }
@@ -331,23 +331,23 @@ type juliaPaths struct{ byUUID, byName map[string]string }
 // the registry is left out.
 func parseJuliaPaths(body []byte) *juliaPaths {
 	p := &juliaPaths{byUUID: map[string]string{}, byName: map[string]string{}}
-	var reg juliaRegistry
-	if _, err := toml.Decode(string(body), &reg); err != nil {
+	var registry juliaRegistry
+	if _, err := toml.Decode(string(body), &registry); err != nil {
 		return p
 	}
-	for uuid, e := range reg.Packages {
-		dir := path.Clean(filepath.ToSlash(e.Path))
-		if e.Path == "" || path.IsAbs(dir) || dir == ".." || strings.HasPrefix(dir, "../") || strings.Contains(dir, ":") {
+	for uuid, e := range registry.Packages {
+		directory := path.Clean(filepath.ToSlash(e.Path))
+		if e.Path == "" || path.IsAbs(directory) || directory == ".." || strings.HasPrefix(directory, "../") || strings.Contains(directory, ":") {
 			continue
 		}
-		p.byUUID[strings.ToLower(uuid)] = dir
-		p.byName[e.Name] = dir
+		p.byUUID[strings.ToLower(uuid)] = directory
+		p.byName[e.Name] = directory
 	}
 	return p
 }
 
-// dir is a package's directory: the one of its UUID when it has one.
-func (p *juliaPaths) dir(name, uuid string) string {
+// directory is a package's directory: the one of its UUID when it has one.
+func (p *juliaPaths) directory(name, uuid string) string {
 	if uuid != "" {
 		return p.byUUID[strings.ToLower(uuid)]
 	}
@@ -357,8 +357,8 @@ func (p *juliaPaths) dir(name, uuid string) string {
 // juliaCopy is a registry installed in a depot: a directory, or an archive
 // whose registry files are read once into memory.
 type juliaCopy struct {
-	dir   string
-	files map[string][]byte
+	directory string
+	files     map[string][]byte
 }
 
 // juliaRegistryFile reports whether a registry's file is one the client reads.
@@ -371,12 +371,12 @@ func juliaRegistryFile(name string) bool {
 }
 
 func readJuliaCopy(local string) (*juliaCopy, error) {
-	st, err := os.Stat(local)
+	fileInfo, err := os.Stat(local)
 	if err != nil {
 		return nil, err
 	}
-	if st.IsDir() {
-		return &juliaCopy{dir: local}, nil
+	if fileInfo.IsDir() {
+		return &juliaCopy{directory: local}, nil
 	}
 	files, err := juliaTar(local, juliaRegistryFile, false)
 	if err != nil {
@@ -386,15 +386,15 @@ func readJuliaCopy(local string) (*juliaCopy, error) {
 }
 
 // read is a file of the registry, by its path there.
-func (cp *juliaCopy) read(name string) ([]byte, error) {
-	if cp.files != nil {
-		body, ok := cp.files[name]
+func (localCopy *juliaCopy) read(name string) ([]byte, error) {
+	if localCopy.files != nil {
+		body, ok := localCopy.files[name]
 		if !ok {
 			return nil, fmt.Errorf("%w: no %s in the registry", errAbsent, name)
 		}
 		return body, nil
 	}
-	body, err := os.ReadFile(filepath.Join(cp.dir, filepath.FromSlash(name)))
+	body, err := os.ReadFile(filepath.Join(localCopy.directory, filepath.FromSlash(name)))
 	if errors.Is(err, os.ErrNotExist) {
 		return nil, fmt.Errorf("%w: no %s in the registry", errAbsent, name)
 	}
@@ -415,9 +415,9 @@ func juliaTar(archive string, keep func(string) bool, first bool) (map[string][]
 		return nil, err
 	}
 	files := map[string][]byte{}
-	tr := tar.NewReader(z)
+	tarReader := tar.NewReader(z)
 	for {
-		h, err := tr.Next()
+		h, err := tarReader.Next()
 		if errors.Is(err, io.EOF) {
 			return files, nil
 		}
@@ -428,7 +428,7 @@ func juliaTar(archive string, keep func(string) bool, first bool) (map[string][]
 		if h.Typeflag != tar.TypeReg || !keep(name) {
 			continue
 		}
-		body, err := io.ReadAll(io.LimitReader(tr, maxBody))
+		body, err := io.ReadAll(io.LimitReader(tarReader, maxBody))
 		if err != nil {
 			return nil, err
 		}
@@ -473,8 +473,8 @@ func juliaCompat(value any) string {
 		}
 	}
 	for i, p := range parts {
-		if lo, hi, ok := strings.Cut(p, "-"); ok && !strings.Contains(p, " - ") {
-			parts[i] = strings.TrimSpace(lo) + " - " + strings.TrimSpace(hi)
+		if low, high, ok := strings.Cut(p, "-"); ok && !strings.Contains(p, " - ") {
+			parts[i] = strings.TrimSpace(low) + " - " + strings.TrimSpace(high)
 		}
 	}
 	return strings.Join(parts, ", ")

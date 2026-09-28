@@ -37,10 +37,10 @@ func (d *dependency) requirement() string {
 // shard is what a shard.yml says: the shard's name, its dependencies and the
 // main files of its targets.
 type shard struct {
-	name    string
-	deps    map[string]*dependency
-	targets map[string]string // target name -> main file, as written
-	lines   map[string]int    // target name -> line
+	name         string
+	dependencies map[string]*dependency
+	targets      map[string]string // target name -> main file, as written
+	lines        map[string]int    // target name -> line
 }
 
 // locked is an entry of shard.lock: the shard's source and the version shards
@@ -51,27 +51,27 @@ type locked struct {
 }
 
 // Implements: REQ-CRYSTAL-005
-func readShard(src []byte) *shard {
-	sh := &shard{deps: map[string]*dependency{}, targets: map[string]string{}, lines: map[string]int{}}
-	root := document(src)
+func readShard(source []byte) *shard {
+	sh := &shard{dependencies: map[string]*dependency{}, targets: map[string]string{}, lines: map[string]int{}}
+	root := document(source)
 	if root == nil {
 		return sh
 	}
 	for i := 0; i+1 < len(root.Content); i += 2 {
-		key, val := root.Content[i].Value, root.Content[i+1]
+		key, value := root.Content[i].Value, root.Content[i+1]
 		switch key {
 		case "name":
-			sh.name = val.Value
+			sh.name = value.Value
 		case "dependencies", "development_dependencies":
-			readDependencies(val, key != "dependencies", sh.deps)
+			readDependencies(value, key != "dependencies", sh.dependencies)
 		case "targets":
-			if val.Kind != yaml.MappingNode {
+			if value.Kind != yaml.MappingNode {
 				continue
 			}
-			for j := 0; j+1 < len(val.Content); j += 2 {
-				if main := lookup(val.Content[j+1], "main"); main != nil && main.Value != "" {
-					sh.targets[val.Content[j].Value] = main.Value
-					sh.lines[val.Content[j].Value] = main.Line
+			for j := 0; j+1 < len(value.Content); j += 2 {
+				if main := lookup(value.Content[j+1], "main"); main != nil && main.Value != "" {
+					sh.targets[value.Content[j].Value] = main.Value
+					sh.lines[value.Content[j].Value] = main.Line
 				}
 			}
 		}
@@ -83,9 +83,9 @@ func readShard(src []byte) *shard {
 // of the same name wherever the dependency graph names them.
 //
 // Implements: REQ-CRYSTAL-005
-func readOverride(src []byte) map[string]*dependency {
+func readOverride(source []byte) map[string]*dependency {
 	out := map[string]*dependency{}
-	if root := document(src); root != nil {
+	if root := document(source); root != nil {
 		readDependencies(lookup(root, "dependencies"), false, out)
 	}
 	return out
@@ -102,15 +102,15 @@ func readDependencies(n *yaml.Node, dev bool, into map[string]*dependency) {
 		}
 		d := &dependency{name: name, dev: dev, line: n.Content[j].Line}
 		if m := n.Content[j+1]; m.Kind == yaml.MappingNode {
-			str := func(k string) string {
+			stringField := func(k string) string {
 				if v := lookup(m, k); v != nil && v.Kind == yaml.ScalarNode {
 					return strings.TrimSpace(v.Value)
 				}
 				return ""
 			}
-			d.url = sourceURL(str)
-			d.path = str("path")
-			d.version, d.branch, d.tag, d.commit = str("version"), str("branch"), str("tag"), str("commit")
+			d.url = sourceURL(stringField)
+			d.path = stringField("path")
+			d.version, d.branch, d.tag, d.commit = stringField("version"), stringField("branch"), stringField("tag"), stringField("commit")
 		}
 		into[name] = d
 	}
@@ -125,22 +125,22 @@ var hosts = []struct{ key, base string }{
 	{"codeberg", "https://codeberg.org/"},
 }
 
-func sourceURL(str func(string) string) string {
+func sourceURL(stringField func(string) string) string {
 	for _, h := range hosts {
-		if v := str(h.key); v != "" {
+		if v := stringField(h.key); v != "" {
 			return h.base + v + ".git"
 		}
 	}
-	return str("git")
+	return stringField("git")
 }
 
 // readLock reads shard.lock (version 1.0 or 2.0). A version 1.0 entry pinned to a
 // commit writes it as commit:.
 //
 // Implements: REQ-CRYSTAL-006
-func readLock(src []byte) map[string]*locked {
+func readLock(source []byte) map[string]*locked {
 	out := map[string]*locked{}
-	root := document(src)
+	root := document(source)
 	shards := lookup(root, "shards")
 	if shards == nil || shards.Kind != yaml.MappingNode {
 		return out
@@ -150,14 +150,14 @@ func readLock(src []byte) map[string]*locked {
 		if name == "" || m.Kind != yaml.MappingNode {
 			continue
 		}
-		str := func(k string) string {
+		stringField := func(k string) string {
 			if v := lookup(m, k); v != nil && v.Kind == yaml.ScalarNode {
 				return strings.TrimSpace(v.Value)
 			}
 			return ""
 		}
-		l := &locked{name: name, url: sourceURL(str), path: str("path"), version: str("version"), line: shards.Content[j].Line}
-		if c := str("commit"); c != "" {
+		l := &locked{name: name, url: sourceURL(stringField), path: stringField("path"), version: stringField("version"), line: shards.Content[j].Line}
+		if c := stringField("commit"); c != "" {
 			l.version = c
 		}
 		out[name] = l
@@ -165,9 +165,9 @@ func readLock(src []byte) map[string]*locked {
 	return out
 }
 
-func document(src []byte) *yaml.Node {
+func document(source []byte) *yaml.Node {
 	var doc yaml.Node
-	if err := yaml.Unmarshal(src, &doc); err != nil || len(doc.Content) == 0 {
+	if err := yaml.Unmarshal(source, &doc); err != nil || len(doc.Content) == 0 {
 		return nil
 	}
 	if root := doc.Content[0]; root.Kind == yaml.MappingNode {
@@ -192,52 +192,52 @@ func lookup(m *yaml.Node, key string) *yaml.Node {
 // names, and each target's main file an import of that file.
 //
 // Implements: REQ-CRYSTAL-005
-func extractShard(src []byte) *lang.Extraction {
-	sh := readShard(src)
-	ex := &lang.Extraction{}
-	for _, name := range sortedKeys(sh.deps) {
-		d := sh.deps[name]
-		kind := kindDep
+func extractShard(source []byte) *lang.Extraction {
+	sh := readShard(source)
+	extraction := &lang.Extraction{}
+	for _, name := range sortedKeys(sh.dependencies) {
+		d := sh.dependencies[name]
+		kind := kindDependency
 		if d.dev {
-			kind = kindDevDep
+			kind = kindDevDependency
 		}
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: name, Module: name, Name: kind, Line: d.line})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: name, Module: name, Name: kind, Line: d.line})
 	}
 	for _, t := range sortedKeys(sh.targets) {
 		main := path.Clean(sh.targets[t])
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: "main: " + sh.targets[t], Module: main, Name: kindMain, Line: sh.lines[t]})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "main: " + sh.targets[t], Module: main, Name: kindMain, Line: sh.lines[t]})
 	}
 	if sh.name != "" {
-		ex.Symbols = []lang.Symbol{{Name: sh.name, Kind: "package", Line: nameLine(src)}}
+		extraction.Symbols = []lang.Symbol{{Name: sh.name, Kind: "package", Line: nameLine(source)}}
 	}
-	return ex
+	return extraction
 }
 
 // extractLock makes each shard of shard.lock an import, so what shards installs is
 // on the map even when no file requires it.
 //
 // Implements: REQ-CRYSTAL-006
-func extractLock(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
-	lock := readLock(src)
+func extractLock(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
+	lock := readLock(source)
 	for _, name := range sortedKeys(lock) {
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: name, Module: name, Name: kindLocked, Line: lock[name].line})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: name, Module: name, Name: kindLocked, Line: lock[name].line})
 	}
-	return ex
+	return extraction
 }
 
 // Implements: REQ-CRYSTAL-005
-func extractOverride(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
-	over := readOverride(src)
+func extractOverride(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
+	over := readOverride(source)
 	for _, name := range sortedKeys(over) {
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: name, Module: name, Name: kindOverride, Line: over[name].line})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: name, Module: name, Name: kindOverride, Line: over[name].line})
 	}
-	return ex
+	return extraction
 }
 
-func nameLine(src []byte) int {
-	for i, l := range strings.Split(string(src), "\n") {
+func nameLine(source []byte) int {
+	for i, l := range strings.Split(string(source), "\n") {
 		if strings.HasPrefix(l, "name:") {
 			return i + 1
 		}

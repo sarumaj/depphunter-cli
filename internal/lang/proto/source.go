@@ -8,19 +8,19 @@ import (
 
 // The kinds of import, as RawImport.Name carries them.
 const (
-	kindImport    = "import"    // import "a/b.proto";
-	kindPublic    = "public"    // import public "a/b.proto";
-	kindWeak      = "weak"      // import weak "a/b.proto";
-	kindDep       = "dep"       // a buf.yaml deps entry or a buf.gen.yaml module input
-	kindLock      = "lock"      // a buf.lock entry
-	kindPlugin    = "plugin"    // a buf.gen.yaml remote plugin
-	kindDirectory = "directory" // a workspace directory, a v2 module path, a directory input
+	kindImport     = "import"    // import "a/b.proto";
+	kindPublic     = "public"    // import public "a/b.proto";
+	kindWeak       = "weak"      // import weak "a/b.proto";
+	kindDependency = "dep"       // a buf.yaml deps entry or a buf.gen.yaml module input
+	kindLock       = "lock"      // a buf.lock entry
+	kindPlugin     = "plugin"    // a buf.gen.yaml remote plugin
+	kindDirectory  = "directory" // a workspace directory, a v2 module path, a directory input
 )
 
 // parser reads a .proto file's declarations from its tokens. It does not validate:
 // what it does not know it skips to the end of the statement.
 type parser struct {
-	tokens  []tok
+	tokens  []token
 	i       int
 	imports []lang.RawImport
 	symbols lang.SymbolSet
@@ -29,42 +29,42 @@ type parser struct {
 // readProto extracts a .proto file's imports and declarations.
 //
 // Implements: REQ-PROTO-002, REQ-PROTO-003, REQ-PROTO-009
-func readProto(src []byte) *lang.Extraction {
-	p := &parser{tokens: lex(src)}
+func readProto(source []byte) *lang.Extraction {
+	p := &parser{tokens: lex(source)}
 	p.body("", true)
 	return &lang.Extraction{Imports: p.imports, Symbols: p.symbols.List()}
 }
 
-func (p *parser) peek(k int) tok {
+func (p *parser) peek(k int) token {
 	if p.i+k < len(p.tokens) {
 		return p.tokens[p.i+k]
 	}
-	return tok{kind: tPunct, text: ""}
+	return token{kind: tPunctuation, text: ""}
 }
 
-func (p *parser) isPunct(k int, s string) bool {
+func (p *parser) isPunctuation(k int, s string) bool {
 	t := p.peek(k)
-	return t.kind == tPunct && t.text == s
+	return t.kind == tPunctuation && t.text == s
 }
 
-func (p *parser) isIdent(k int) bool { return p.peek(k).kind == tIdent }
+func (p *parser) isIdentifier(k int) bool { return p.peek(k).kind == tIdentifier }
 
 // dotted reads a possibly qualified name at the current position (".a.b.C", "a.b")
 // and returns it with the number of tokens it spans; 0 when there is none.
 func (p *parser) dotted(k int) (string, int) {
 	var b strings.Builder
 	n := 0
-	if p.isPunct(k, ".") {
+	if p.isPunctuation(k, ".") {
 		b.WriteByte('.')
 		n++
 	}
 	for {
-		if !p.isIdent(k + n) {
+		if !p.isIdentifier(k + n) {
 			return "", 0
 		}
 		b.WriteString(p.peek(k + n).text)
 		n++
-		if !p.isPunct(k+n, ".") || !p.isIdent(k+n+1) {
+		if !p.isPunctuation(k+n, ".") || !p.isIdentifier(k+n+1) {
 			return b.String(), n
 		}
 		b.WriteByte('.')
@@ -85,14 +85,14 @@ func qualify(scope, name string) string {
 func (p *parser) body(scope string, top bool) {
 	for p.i < len(p.tokens) {
 		t := p.peek(0)
-		if t.kind == tPunct {
+		if t.kind == tPunctuation {
 			p.i++
 			if t.text == "}" && !top {
 				return
 			}
 			continue // an empty statement, a stray brace
 		}
-		if t.kind != tIdent {
+		if t.kind != tIdentifier {
 			p.skipStatement(scope)
 			continue
 		}
@@ -102,13 +102,13 @@ func (p *parser) body(scope string, top bool) {
 				continue
 			}
 		case "package":
-			if name, n := p.dotted(1); top && n > 0 && p.isPunct(1+n, ";") {
+			if name, n := p.dotted(1); top && n > 0 && p.isPunctuation(1+n, ";") {
 				p.symbols.Add(name, "package", p.peek(1).line)
 				p.i += n + 2
 				continue
 			}
 		case "message", "enum", "service":
-			if p.isIdent(1) && p.isPunct(2, "{") {
+			if p.isIdentifier(1) && p.isPunctuation(2, "{") {
 				name := qualify(scope, p.peek(1).text)
 				p.symbols.Add(name, t.text, p.peek(1).line)
 				p.i += 3
@@ -123,14 +123,14 @@ func (p *parser) body(scope string, top bool) {
 				continue
 			}
 		case "extend":
-			if name, n := p.dotted(1); n > 0 && p.isPunct(1+n, "{") {
+			if name, n := p.dotted(1); n > 0 && p.isPunctuation(1+n, "{") {
 				p.symbols.Add(qualify(scope, name), "extend", p.peek(1).line)
 				p.i += n + 2
 				p.body(scope, false) // its fields, and groups declared in the scope around it
 				continue
 			}
 		case "oneof":
-			if p.isIdent(1) && p.isPunct(2, "{") && !top {
+			if p.isIdentifier(1) && p.isPunctuation(2, "{") && !top {
 				p.symbols.Add(qualify(scope, p.peek(1).text), "oneof", p.peek(1).line)
 				p.i += 3
 				p.body(scope, false) // a group inside a oneof belongs to the message
@@ -144,7 +144,7 @@ func (p *parser) body(scope string, top bool) {
 // importStatement reads `import [public|weak] "path";`, reporting whether it was one.
 func (p *parser) importStatement() bool {
 	k, kind, spec := 1, kindImport, "import "
-	if p.isIdent(1) && (p.peek(1).text == "public" || p.peek(1).text == "weak") {
+	if p.isIdentifier(1) && (p.peek(1).text == "public" || p.peek(1).text == "weak") {
 		kind = p.peek(1).text
 		spec += kind + " "
 		k = 2
@@ -160,7 +160,7 @@ func (p *parser) importStatement() bool {
 	}
 	p.imports = append(p.imports, lang.RawImport{Spec: spec + `"` + name.String() + `"`, Module: name.String(), Name: kind, Line: line})
 	p.i += k
-	if p.isPunct(0, ";") {
+	if p.isPunctuation(0, ";") {
 		p.i++
 	}
 	return true
@@ -169,11 +169,11 @@ func (p *parser) importStatement() bool {
 // service reads a service's rpc methods, named Service.Method.
 func (p *parser) service(name string) {
 	for p.i < len(p.tokens) {
-		if p.isPunct(0, "}") {
+		if p.isPunctuation(0, "}") {
 			p.i++
 			return
 		}
-		if p.isIdent(0) && p.peek(0).text == "rpc" && p.isIdent(1) && p.isPunct(2, "(") {
+		if p.isIdentifier(0) && p.peek(0).text == "rpc" && p.isIdentifier(1) && p.isPunctuation(2, "(") {
 			p.symbols.Add(name+"."+p.peek(1).text, "rpc", p.peek(1).line)
 		}
 		p.skipStatement("")
@@ -183,7 +183,7 @@ func (p *parser) service(name string) {
 // skipBlock skips to the brace closing the block just entered.
 func (p *parser) skipBlock() {
 	for depth := 1; p.i < len(p.tokens); p.i++ {
-		if t := p.tokens[p.i]; t.kind == tPunct {
+		if t := p.tokens[p.i]; t.kind == tPunctuation {
 			switch t.text {
 			case "{":
 				depth++
@@ -206,7 +206,7 @@ func (p *parser) skipStatement(scope string) {
 	depth := 0
 	for p.i < len(p.tokens) {
 		t := p.tokens[p.i]
-		if t.kind != tPunct {
+		if t.kind != tPunctuation {
 			p.i++
 			continue
 		}
@@ -244,7 +244,7 @@ func (p *parser) skipStatement(scope string) {
 			}
 			p.i++
 			p.skipBlock()
-			if p.tokens[start].kind == tIdent && p.tokens[start].text == "option" {
+			if p.tokens[start].kind == tIdentifier && p.tokens[start].text == "option" {
 				continue // `option (x) = {...};` goes on to its semicolon
 			}
 			return
@@ -257,7 +257,7 @@ func (p *parser) skipStatement(scope string) {
 // proto2 form declaring a nested message and a field at once.
 func (p *parser) group(start int) (string, int) {
 	for k := start; k+1 < p.i; k++ {
-		if t := p.tokens[k]; t.kind == tIdent && t.text == "group" && p.tokens[k+1].kind == tIdent {
+		if t := p.tokens[k]; t.kind == tIdentifier && t.text == "group" && p.tokens[k+1].kind == tIdentifier {
 			return p.tokens[k+1].text, p.tokens[k+1].line
 		}
 	}

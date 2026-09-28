@@ -18,8 +18,8 @@ import (
 // v3 leaves it out of the install, the npm v1 fixture does not ask for it, and
 // the others install 2.3.3.
 var lockTrees = []struct {
-	dir      string
-	fsevents bool
+	directory string
+	fsevents  bool
 }{
 	{"npm-v3", false}, {"npm-v1", false}, {"berry", true},
 	{"pnpm-v9", true}, {"pnpm-v6", true}, {"pnpm-v5", true},
@@ -32,10 +32,10 @@ var lockTrees = []struct {
 // Verifies: REQ-SUP-009, REQ-JS-007, REQ-JS-008, REQ-JS-009
 func TestLockTreeCopies(t *testing.T) {
 	for _, c := range lockTrees {
-		t.Run(c.dir, func(t *testing.T) {
-			root := "testdata/locktree/" + c.dir
-			npm := func(pkg, version, requested string) lang.Target {
-				return lang.Target{Ecosystem: "npm", Package: pkg, Version: version, Requested: requested, Pinned: true}
+		t.Run(c.directory, func(t *testing.T) {
+			root := "testdata/locktree/" + c.directory
+			npm := func(packageName, version, requested string) lang.Target {
+				return lang.Target{Ecosystem: "npm", Package: packageName, Version: version, Requested: requested, Pinned: true}
 			}
 			langtest.CheckImports(t, langtest.Analyze(t, Plugin{}, root)["index.js"], map[string]lang.Target{
 				"a":  npm("a", "1.0.0", "^1.0.0"),
@@ -46,7 +46,7 @@ func TestLockTreeCopies(t *testing.T) {
 			if err != nil {
 				t.Fatal(err)
 			}
-			tr := r.(lang.Transitive)
+			transitive := r.(lang.Transitive)
 			// Nothing of the project's own is a package: not Berry's __metadata,
 			// the root workspace, ws-lib or the portal g.
 			for _, n := range []string{"__metadata", "root", "ws-lib", "g"} {
@@ -55,23 +55,23 @@ func TestLockTreeCopies(t *testing.T) {
 				}
 			}
 			// Asked by name alone, npm's d is the hoisted copy.
-			if strings.HasPrefix(c.dir, "npm-") {
-				for _, d := range tr.Dependencies(lang.Target{Ecosystem: "npm", Package: "b"}) {
+			if strings.HasPrefix(c.directory, "npm-") {
+				for _, d := range transitive.Dependencies(lang.Target{Ecosystem: "npm", Package: "b"}) {
 					if d.Package == "d" && d.Version != "1.0.0" {
 						t.Errorf("b by name needs d %q, want the hoisted 1.0.0", d.Version)
 					}
 				}
 			}
-			bDeps := map[string]string{"d": "1.0.0", "f": "1.0.0", "h": "1.0.0"}
+			bDependencies := map[string]string{"d": "1.0.0", "f": "1.0.0", "h": "1.0.0"}
 			if c.fsevents {
-				bDeps["fsevents"] = "2.3.3"
+				bDependencies["fsevents"] = "2.3.3"
 			}
 			for _, q := range []struct {
-				pkg, version string
-				want         map[string]string
+				packageName, version string
+				want                 map[string]string
 			}{
 				{"a", "1.0.0", map[string]string{"d": "2.0.0", "e": "1.0.0"}},
-				{"b", "1.0.0", bDeps},
+				{"b", "1.0.0", bDependencies},
 				// Imported under its alias, or reached as the real package.
 				{"c2", "2.0.0", map[string]string{"d": "1.0.0"}},
 				{"c", "2.0.0", map[string]string{"d": "1.0.0"}},
@@ -82,14 +82,14 @@ func TestLockTreeCopies(t *testing.T) {
 				{"e", "1.0.0", map[string]string{}},
 			} {
 				got := map[string]string{}
-				for _, d := range tr.Dependencies(lang.Target{Ecosystem: "npm", Package: q.pkg, Version: q.version}) {
+				for _, d := range transitive.Dependencies(lang.Target{Ecosystem: "npm", Package: q.packageName, Version: q.version}) {
 					if d.Pinned != (d.Version != "") {
-						t.Errorf("%s@%s -> %s: pinned %v with version %q", q.pkg, q.version, d.Package, d.Pinned, d.Version)
+						t.Errorf("%s@%s -> %s: pinned %v with version %q", q.packageName, q.version, d.Package, d.Pinned, d.Version)
 					}
 					got[d.Package] = d.Version
 				}
 				if !reflect.DeepEqual(got, q.want) {
-					t.Errorf("%s@%s depends on %v, want %v", q.pkg, q.version, got, q.want)
+					t.Errorf("%s@%s depends on %v, want %v", q.packageName, q.version, got, q.want)
 				}
 			}
 		})
@@ -101,8 +101,8 @@ func TestLockTreeCopies(t *testing.T) {
 // Verifies: REQ-SUP-009
 func TestYarnCandidates(t *testing.T) {
 	for _, c := range []struct {
-		name, rng string
-		want      []string
+		name, versionRange string
+		want               []string
 	}{
 		{"d", "^1.0.0", []string{"d@^1.0.0", "d@npm:^1.0.0"}},
 		{"d", "npm:^1.0.0", []string{"d@npm:^1.0.0"}},
@@ -117,8 +117,8 @@ func TestYarnCandidates(t *testing.T) {
 			"@s/f@patch:@s/f@^1#~builtin<compat/f>", "@s/f@^1", "@s/f@npm:^1",
 		}},
 	} {
-		if got := yarnCandidates(c.name, c.rng); !reflect.DeepEqual(got, c.want) {
-			t.Errorf("%s %s: got %q, want %q", c.name, c.rng, got, c.want)
+		if got := yarnCandidates(c.name, c.versionRange); !reflect.DeepEqual(got, c.want) {
+			t.Errorf("%s %s: got %q, want %q", c.name, c.versionRange, got, c.want)
 		}
 	}
 }
@@ -135,8 +135,8 @@ func TestYarnDependencyLines(t *testing.T) {
 		`either "^1.0.0 || ^2.0.0"`:   {"either", "^1.0.0 || ^2.0.0"},
 		`"broken`:                     {"", ""},
 	} {
-		if name, rng := yarnDep(line); name != want[0] || rng != want[1] {
-			t.Errorf("%s: got %q %q, want %q", line, name, rng, want)
+		if name, versionRange := yarnDependency(line); name != want[0] || versionRange != want[1] {
+			t.Errorf("%s: got %q %q, want %q", line, name, versionRange, want)
 		}
 	}
 }
@@ -167,18 +167,18 @@ d@^1.0.0:
 d@^2.0.0:
   version "2.0.0"
 `
-	tr := newTree()
-	tr.addYarnTree([]byte(lock))
+	tree := newTree()
+	tree.addYarnTree([]byte(lock))
 	for key, want := range map[string]map[string]string{
 		"a@1.0.0":  {"d": "2.0.0"},
 		"c@2.0.0":  {"d": "1.0.0"},
 		"c2@2.0.0": {"d": "1.0.0"},
 	} {
-		if got := tr.exact[key]; !reflect.DeepEqual(got, want) {
+		if got := tree.exact[key]; !reflect.DeepEqual(got, want) {
 			t.Errorf("%s needs %v, want %v", key, got, want)
 		}
 	}
-	if !tr.deps["c"]["d"] || !tr.deps["c2"]["d"] || tr.deps["a"]["local"] {
-		t.Errorf("edges %v", tr.deps)
+	if !tree.dependencies["c"]["d"] || !tree.dependencies["c2"]["d"] || tree.dependencies["a"]["local"] {
+		t.Errorf("edges %v", tree.dependencies)
 	}
 }

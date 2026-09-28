@@ -23,38 +23,38 @@ var reserved = map[string]bool{
 //
 // Implements: REQ-CI-005, REQ-CI-006, REQ-CI-007, REQ-CI-010
 func extractGitLab(root *yaml.Node) *lang.Extraction {
-	ex := &lang.Extraction{}
-	for _, inc := range items(field(root, "include")) {
-		addInclude(ex, inc)
+	extraction := &lang.Extraction{}
+	for _, include := range items(field(root, "include")) {
+		addInclude(extraction, include)
 	}
-	addImages(ex, root, "")
-	addImages(ex, field(root, "default"), "default")
+	addImages(extraction, root, "")
+	addImages(extraction, field(root, "default"), "default")
 
 	for _, job := range pairs(root) {
 		name := text(job.key)
 		if name == "" || reserved[name] || mapping(job.value) == nil {
 			continue
 		}
-		ex.Symbols = append(ex.Symbols, lang.Symbol{Name: name, Kind: "job", Line: job.key.Line})
-		addImages(ex, job.value, name)
+		extraction.Symbols = append(extraction.Symbols, lang.Symbol{Name: name, Kind: "job", Line: job.key.Line})
+		addImages(extraction, job.value, name)
 		// A bridge job runs another pipeline, which is a dependency like any include.
-		for _, inc := range items(field(field(job.value, "trigger"), "include")) {
-			addInclude(ex, inc)
+		for _, include := range items(field(field(job.value, "trigger"), "include")) {
+			addInclude(extraction, include)
 		}
 	}
-	return ex
+	return extraction
 }
 
 // addInclude records one include entry in any of the forms GitLab accepts.
 //
 // Implements: REQ-CI-005, REQ-CI-006
-func addInclude(ex *lang.Extraction, n *yaml.Node) {
+func addInclude(extraction *lang.Extraction, n *yaml.Node) {
 	if n == nil {
 		return
 	}
 	add := func(spec, module, kind string, line int) {
 		if module != "" {
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
 		}
 	}
 	if s := text(n); s != "" { // include: "path" or a bare URL
@@ -71,19 +71,19 @@ func addInclude(ex *lang.Extraction, n *yaml.Node) {
 		add("include local: "+text(v), text(v), kindLocal, v.Line)
 	case field(n, "project") != nil:
 		v := field(n, "project")
-		project, ref := text(v), text(field(n, "ref"))
+		project, reference := text(v), text(field(n, "ref"))
 		files := []string{}
 		for _, f := range items(field(n, "file")) {
 			files = append(files, text(f))
 		}
 		spec := "include project: " + project
-		if ref != "" {
-			spec += "@" + ref
+		if reference != "" {
+			spec += "@" + reference
 		}
 		if len(files) > 0 {
 			spec += " " + strings.Join(files, ", ")
 		}
-		add(spec, project+"@"+ref, kindProject, v.Line)
+		add(spec, project+"@"+reference, kindProject, v.Line)
 	case field(n, "template") != nil:
 		v := field(n, "template")
 		add("include template: "+text(v), text(v), kindTemplate, v.Line)
@@ -100,7 +100,7 @@ func addInclude(ex *lang.Extraction, n *yaml.Node) {
 // the job for the import's label; "" is the pipeline-wide setting.
 //
 // Implements: REQ-CI-007
-func addImages(ex *lang.Extraction, n *yaml.Node, owner string) {
+func addImages(extraction *lang.Extraction, n *yaml.Node, owner string) {
 	if n == nil {
 		return
 	}
@@ -114,21 +114,21 @@ func addImages(ex *lang.Extraction, n *yaml.Node, owner string) {
 		if v == nil {
 			return
 		}
-		ref := text(v)
-		if ref == "" { // image: { name: …, entrypoint: … }
+		reference := text(v)
+		if reference == "" { // image: { name: …, entrypoint: … }
 			if name := field(v, "name"); name != nil {
-				ref, v = text(name), name
+				reference, v = text(name), name
 			}
 		}
-		if ref != "" && !strings.Contains(ref, "$") { // a variable we cannot expand
-			ex.Imports = append(ex.Imports, lang.RawImport{
-				Spec: label(what) + ": " + ref, Module: ref, Name: kindImage, Line: v.Line,
+		if reference != "" && !strings.Contains(reference, "$") { // a variable we cannot expand
+			extraction.Imports = append(extraction.Imports, lang.RawImport{
+				Spec: label(what) + ": " + reference, Module: reference, Name: kindImage, Line: v.Line,
 			})
 		}
 	}
 	add(field(n, "image"), "image")
-	for _, svc := range items(field(n, "services")) {
-		add(svc, "service")
+	for _, service := range items(field(n, "services")) {
+		add(service, "service")
 	}
 }
 

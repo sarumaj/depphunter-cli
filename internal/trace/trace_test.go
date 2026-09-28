@@ -20,8 +20,8 @@ func sample() *Report {
 		{Ecosystem: "npm", URL: "https://evil.test/npm", Origin: "the repository"},
 	})
 	r.Enter("javascript", 0)
-	r.Add(Lookup{Ecosystem: "npm", Package: "lodash", Version: "4.17.21", Answer: FromLock, Deps: 3})
-	r.Add(Lookup{Ecosystem: "npm", Package: "chalk", Version: "5.3.0", Answer: FromIndex, Deps: 1,
+	r.Add(Lookup{Ecosystem: "npm", Package: "lodash", Version: "4.17.21", Answer: FromLock, Dependencies: 3})
+	r.Add(Lookup{Ecosystem: "npm", Package: "chalk", Version: "5.3.0", Answer: FromIndex, Dependencies: 1,
 		Index: "https://registry.npmjs.org", Requests: []Request{{URL: "https://registry.npmjs.org/chalk/5.3.0", Status: "200 OK"}}})
 	r.Add(Lookup{Ecosystem: "npm", Package: "@acme/secret", Answer: NoAnswer, Reason: ReasonPrivate,
 		Index: "https://registry.npmjs.org"})
@@ -127,7 +127,7 @@ func TestSummarizeReadsTheMapForIndexes(t *testing.T) {
 	}{
 		{"packages", r.Totals.Packages, 4},
 		{"transitive", r.Totals.Transitive, 1},
-		{"private", r.Totals.PrivatePkg, 2},
+		{"private", r.Totals.PrivatePackage, 2},
 		{"untrusted", r.Totals.Untrusted, 1},
 	} {
 		if c.got != c.want {

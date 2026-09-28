@@ -18,25 +18,25 @@ const gitTimeout = 10 * time.Second
 // record as a submodule the answer is simply missing.
 //
 // Implements: REQ-SOLIDITY-006
-func gitlinks(dir string, paths []string) map[string]string {
+func gitlinks(directory string, paths []string) map[string]string {
 	out := map[string]string{}
 	if len(paths) == 0 {
 		return out
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), gitTimeout)
 	defer cancel()
-	args := append([]string{"-C", dir, "ls-files", "--stage", "-z", "--"}, paths...)
-	data, err := exec.CommandContext(ctx, "git", args...).Output()
+	arguments := append([]string{"-C", directory, "ls-files", "--stage", "-z", "--"}, paths...)
+	data, err := exec.CommandContext(ctx, "git", arguments...).Output()
 	if err != nil {
 		return out
 	}
-	for _, rec := range bytes.Split(data, []byte{0}) {
+	for _, record := range bytes.Split(data, []byte{0}) {
 		// "160000 <sha> <stage>\t<path>": mode 160000 is a gitlink.
-		meta, p, ok := strings.Cut(string(rec), "\t")
+		metadata, p, ok := strings.Cut(string(record), "\t")
 		if !ok {
 			continue
 		}
-		f := strings.Fields(meta)
+		f := strings.Fields(metadata)
 		if len(f) == 3 && f[0] == "160000" {
 			out[p] = f[1]
 		}

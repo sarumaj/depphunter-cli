@@ -11,13 +11,13 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
-// moduleDir is one Terraform module: a directory's configuration files read together.
-type moduleDir struct {
-	decl      map[string]string // symbol name -> first file declaring it
-	providers map[string]*required
-	calls     []string // directories of the local modules it calls
-	lock      map[string]lockEntry
-	installed []installedModule // .terraform/modules/modules.json, sorted by key
+// moduleDirectory is one Terraform module: a directory's configuration files read together.
+type moduleDirectory struct {
+	declaration map[string]string // symbol name -> first file declaring it
+	providers   map[string]*required
+	calls       []string // directories of the local modules it calls
+	lock        map[string]lockEntry
+	installed   []installedModule // .terraform/modules/modules.json, sorted by key
 }
 
 // required is what a module says about one provider local name, across its files.
@@ -27,14 +27,14 @@ type required struct {
 }
 
 type resolver struct {
-	files   map[string]bool
-	dirs    map[string]bool
-	modules map[string]*moduleDir
-	callers map[string][]string  // module directory -> directories calling it
-	tg      map[string]*tgConfig // Terragrunt configuration -> its locals and includes
+	files       map[string]bool
+	directories map[string]bool
+	modules     map[string]*moduleDirectory
+	callers     map[string][]string  // module directory -> directories calling it
+	terragrunt  map[string]*tgConfig // Terragrunt configuration -> its locals and includes
 }
 
-func dirOf(p string) string { return path.Dir(p) }
+func directoryOf(p string) string { return path.Dir(p) }
 
 // newResolver reads every configuration file of the repository once more (the
 // scanner is fast) to learn what each module declares and which providers it
@@ -43,13 +43,13 @@ func dirOf(p string) string { return path.Dir(p) }
 //
 // Implements: REQ-TERRAFORM-005, REQ-TERRAFORM-007, REQ-TERRAFORM-008
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, dirs: map[string]bool{}, modules: map[string]*moduleDir{}, callers: map[string][]string{},
-		tg: map[string]*tgConfig{}}
+	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, modules: map[string]*moduleDirectory{}, callers: map[string][]string{},
+		terragrunt: map[string]*tgConfig{}}
 	var configs []*scan.File
 	for _, f := range all {
 		r.files[f.Path] = true
-		for d := path.Dir(f.Path); !r.dirs[d]; d = path.Dir(d) {
-			r.dirs[d] = true
+		for d := path.Dir(f.Path); !r.directories[d]; d = path.Dir(d) {
+			r.directories[d] = true
 			if d == "." {
 				break
 			}
@@ -64,49 +64,49 @@ func newResolver(root string, all []*scan.File) *resolver {
 	}
 	sort.Slice(configs, func(i, j int) bool { return configs[i].Path < configs[j].Path })
 	for _, f := range configs {
-		src, err := os.ReadFile(f.Abs)
+		source, err := os.ReadFile(f.AbsolutePath)
 		if err != nil {
 			continue
 		}
 		class := fileClass(f.Path)
 		if class == classTerragrunt {
-			r.tg[f.Path] = readTerragrunt(parse(src)).tg
+			r.terragrunt[f.Path] = readTerragrunt(parse(source)).terragrunt
 			continue
 		}
-		m := r.module(dirOf(f.Path))
+		m := r.module(directoryOf(f.Path))
 		if class == classLock {
 			m.lock = map[string]lockEntry{}
-			for _, e := range lockEntries(parse(src)) {
-				m.lock[providerSource(e.addr)] = e
+			for _, e := range lockEntries(parse(source)) {
+				m.lock[providerSource(e.address)] = e
 			}
 			continue
 		}
-		fi := read(class, src)
-		for _, s := range fi.symbols.List() {
-			if _, ok := m.decl[s.Name]; !ok {
-				m.decl[s.Name] = f.Path
+		fileInfo := read(class, source)
+		for _, s := range fileInfo.symbols.List() {
+			if _, ok := m.declaration[s.Name]; !ok {
+				m.declaration[s.Name] = f.Path
 			}
 		}
-		for _, local := range sortedKeys(fi.providers) {
-			req := fi.providers[local]
+		for _, local := range sortedKeys(fileInfo.providers) {
+			requirement := fileInfo.providers[local]
 			have := m.providers[local]
 			if have == nil {
 				have = &required{}
 				m.providers[local] = have
 			}
-			if have.source == "" && req.source != "" {
-				have.source = req.source
+			if have.source == "" && requirement.source != "" {
+				have.source = requirement.source
 			}
-			if req.constraint != "" && !contains(have.constraints, req.constraint) {
-				have.constraints = append(have.constraints, req.constraint)
+			if requirement.constraint != "" && !contains(have.constraints, requirement.constraint) {
+				have.constraints = append(have.constraints, requirement.constraint)
 			}
 		}
-		for _, im := range fi.imports {
-			if strings.HasPrefix(im.Name, kindModule+"|") {
-				if s, ok := parseSource(im.Module); ok && s.local != "" {
-					callee := path.Clean(path.Join(dirOf(f.Path), s.local))
+		for _, rawImport := range fileInfo.imports {
+			if strings.HasPrefix(rawImport.Name, kindModule+"|") {
+				if s, ok := parseSource(rawImport.Module); ok && s.local != "" {
+					callee := path.Clean(path.Join(directoryOf(f.Path), s.local))
 					m.calls = append(m.calls, callee)
-					r.callers[callee] = append(r.callers[callee], dirOf(f.Path))
+					r.callers[callee] = append(r.callers[callee], directoryOf(f.Path))
 				}
 			}
 		}
@@ -126,76 +126,76 @@ func contains(list []string, s string) bool {
 	return false
 }
 
-func (r *resolver) module(dir string) *moduleDir {
-	m := r.modules[dir]
+func (r *resolver) module(directory string) *moduleDirectory {
+	m := r.modules[directory]
 	if m == nil {
-		m = &moduleDir{decl: map[string]string{}, providers: map[string]*required{}}
-		r.modules[dir] = m
+		m = &moduleDirectory{declaration: map[string]string{}, providers: map[string]*required{}}
+		r.modules[directory] = m
 	}
 	return m
 }
 
 // lookup is module for Resolve, which runs concurrently and must not add one.
-func (r *resolver) lookup(dir string) *moduleDir {
-	if m := r.modules[dir]; m != nil {
+func (r *resolver) lookup(directory string) *moduleDirectory {
+	if m := r.modules[directory]; m != nil {
 		return m
 	}
-	return &moduleDir{}
+	return &moduleDirectory{}
 }
 
 // Implements: REQ-TERRAFORM-004, REQ-TERRAFORM-005, REQ-TERRAFORM-006, REQ-TERRAFORM-007, REQ-TERRAFORM-008, REQ-TERRAFORM-009, REQ-TERRAFORM-010
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	dir := dirOf(file)
-	kind, arg, _ := strings.Cut(imp.Name, "|")
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	directory := directoryOf(file)
+	kind, argument, _ := strings.Cut(rawImport.Name, "|")
 	switch kind {
 	case kindModule:
-		return r.installedPin(dir, callName(imp.Spec), r.moduleTarget(dir, imp.Module, arg))
+		return r.installedPin(directory, callName(rawImport.Spec), r.moduleTarget(directory, rawImport.Module, argument))
 	case kindTGSource:
-		src := r.expandIncludes(file, imp.Module)
-		if strings.Contains(src, "${") {
+		source := r.expandIncludes(file, rawImport.Module)
+		if strings.Contains(source, "${") {
 			return lang.Target{}
 		}
-		return r.moduleTarget(dir, src, "")
+		return r.moduleTarget(directory, source, "")
 	case kindProvider:
-		return r.provider(dir, imp.Module)
+		return r.provider(directory, rawImport.Module)
 	case kindLock:
-		src := providerSource(imp.Module)
-		t := lang.Target{Ecosystem: ecoProvider, Package: src}
-		if e := r.lookup(dir).lock[src]; e.version != "" {
+		source := providerSource(rawImport.Module)
+		t := lang.Target{Ecosystem: ecosystemProvider, Package: source}
+		if e := r.lookup(directory).lock[source]; e.version != "" {
 			t.Version, t.Pinned, t.Requested = e.version, true, e.constraints
 		}
 		return t
-	case kindRef:
-		if f, ok := r.lookup(dir).decl[imp.Module]; ok && f != file {
+	case kindReference:
+		if f, ok := r.lookup(directory).declaration[rawImport.Module]; ok && f != file {
 			return lang.Target{Local: f}
 		}
 		return lang.Target{}
 	case kindFile:
-		return r.local(path.Join(dir, imp.Module))
-	case kindTGDep:
-		p := path.Clean(path.Join(dir, imp.Module))
+		return r.local(path.Join(directory, rawImport.Module))
+	case kindTGDependency:
+		p := path.Clean(path.Join(directory, rawImport.Module))
 		if r.files[path.Join(p, "terragrunt.hcl")] {
 			return lang.Target{Local: path.Join(p, "terragrunt.hcl")}
 		}
 		return r.local(p)
 	case kindTGParent:
-		if f := r.parentFile(dir, imp.Module); f != "" {
-			if arg == "" {
+		if f := r.parentFile(directory, rawImport.Module); f != "" {
+			if argument == "" {
 				return lang.Target{Local: f}
 			}
-			return r.local(path.Join(path.Dir(f), arg))
+			return r.local(path.Join(path.Dir(f), argument))
 		}
 	}
 	return lang.Target{}
 }
 
-// parentFile is what find_in_parent_folders(name) finds for a configuration in dir:
+// parentFile is what find_in_parent_folders(name) finds for a configuration in directory:
 // the nearest file of that name in a directory above it.
-func (r *resolver) parentFile(dir, name string) string {
-	if dir == "." {
+func (r *resolver) parentFile(directory, name string) string {
+	if directory == "." {
 		return ""
 	}
-	for d := path.Dir(dir); ; d = path.Dir(d) {
+	for d := path.Dir(directory); ; d = path.Dir(d) {
 		if f := path.Join(d, name); r.files[f] {
 			return f
 		}
@@ -213,30 +213,30 @@ var includeLocal = regexp.MustCompile(`\$\{\s*include\.([A-Za-z_][A-Za-z0-9_-]*)
 //
 // Implements: REQ-TERRAFORM-010
 func (r *resolver) expandIncludes(file, s string) string {
-	cfg := r.tg[file]
-	if cfg == nil {
+	config := r.terragrunt[file]
+	if config == nil {
 		return s
 	}
 	return includeLocal.ReplaceAllStringFunc(s, func(m string) string {
-		sub := includeLocal.FindStringSubmatch(m)
-		inc, ok := cfg.includes[sub[1]]
+		groups := includeLocal.FindStringSubmatch(m)
+		include, ok := config.includes[groups[1]]
 		if !ok {
 			return m
 		}
 		target := ""
-		if rest, ok := strings.CutPrefix(inc, "parent:"); ok {
+		if rest, ok := strings.CutPrefix(include, "parent:"); ok {
 			name, tail, _ := strings.Cut(rest, "|")
-			if f := r.parentFile(dirOf(file), name); f != "" {
+			if f := r.parentFile(directoryOf(file), name); f != "" {
 				target = path.Clean(path.Join(path.Dir(f), tail))
 				if tail == "" {
 					target = f
 				}
 			}
-		} else if inc != "" {
-			target = path.Clean(path.Join(dirOf(file), inc))
+		} else if include != "" {
+			target = path.Clean(path.Join(directoryOf(file), include))
 		}
-		if other := r.tg[target]; other != nil {
-			if v, ok := other.locals[sub[2]]; ok && !strings.Contains(v, "${") {
+		if other := r.terragrunt[target]; other != nil {
+			if v, ok := other.locals[groups[2]]; ok && !strings.Contains(v, "${") {
 				return v
 			}
 		}
@@ -250,7 +250,7 @@ func (r *resolver) local(p string) lang.Target {
 	if p == ".." || strings.HasPrefix(p, "../") || strings.HasPrefix(p, "/") {
 		return lang.Target{}
 	}
-	if r.files[p] || r.dirs[p] {
+	if r.files[p] || r.directories[p] {
 		return lang.Target{Local: p}
 	}
 	return lang.Target{}
@@ -260,31 +260,31 @@ func (r *resolver) local(p string) lang.Target {
 // module pinned by an exact version, or a remote module pinned by a commit.
 //
 // Implements: REQ-TERRAFORM-004, REQ-TERRAFORM-009
-func (r *resolver) moduleTarget(dir, source, version string) lang.Target {
+func (r *resolver) moduleTarget(directory, source, version string) lang.Target {
 	s, ok := parseSource(source)
 	switch {
 	case !ok:
 		// Terraform before 0.12 took a bare directory name ("subnets") as a path.
 		if !strings.ContainsAny(source, ":?") {
-			return r.local(path.Join(dir, source))
+			return r.local(path.Join(directory, source))
 		}
 		return lang.Target{}
 	case s.local != "":
-		return r.local(path.Join(dir, s.local))
+		return r.local(path.Join(directory, s.local))
 	case s.origin != "":
 		// A tag names a release but can be moved; only a commit pins, and without a
-		// ref the default branch floats (the rule of GitHub Actions, REQ-CI-011).
-		t := lang.Target{Ecosystem: ecoModule, Package: s.pkg, Version: s.ref, Origin: s.origin,
-			Pinned: lang.Commit(s.ref), Floating: s.ref == ""}
-		if s.archive && s.ref == "" {
+		// reference the default branch floats (the rule of GitHub Actions, REQ-CI-011).
+		t := lang.Target{Ecosystem: ecosystemModule, Package: s.packageName, Version: s.reference, Origin: s.origin,
+			Pinned: lang.Commit(s.reference), Floating: s.reference == ""}
+		if s.archive && s.reference == "" {
 			t.Floating = true
 		}
 		return t
 	}
 	if version == "" {
-		version = s.ref // tfr://...?version=
+		version = s.reference // tfr://...?version=
 	}
-	t := lang.Target{Ecosystem: ecoModule, Package: s.pkg, Version: strings.TrimSpace(version)}
+	t := lang.Target{Ecosystem: ecosystemModule, Package: s.packageName, Version: strings.TrimSpace(version)}
 	if v, ok := exactVersion(version); ok {
 		t.Version, t.Pinned = v, true
 	}
@@ -298,28 +298,28 @@ func (r *resolver) moduleTarget(dir, source, version string) lang.Target {
 // the module's constraints.
 //
 // Implements: REQ-TERRAFORM-007, REQ-TERRAFORM-008, REQ-TERRAFORM-009
-func (r *resolver) provider(dir, local string) lang.Target {
-	req := r.lookup(dir).providers[local]
-	if req == nil {
-		req = &required{}
+func (r *resolver) provider(directory, local string) lang.Target {
+	requiredProvider := r.lookup(directory).providers[local]
+	if requiredProvider == nil {
+		requiredProvider = &required{}
 	}
-	src := providerSource(local)
-	if req.source != "" {
-		src = providerSource(req.source)
+	source := providerSource(local)
+	if requiredProvider.source != "" {
+		source = providerSource(requiredProvider.source)
 	}
-	if src == "terraform.io/builtin/terraform" {
+	if source == "terraform.io/builtin/terraform" {
 		return lang.Target{}
 	}
-	constraint := strings.Join(req.constraints, ", ")
-	t := lang.Target{Ecosystem: ecoProvider, Package: src, Version: constraint}
-	if e, ok := r.lockFor(dir, src); ok {
+	constraint := strings.Join(requiredProvider.constraints, ", ")
+	t := lang.Target{Ecosystem: ecosystemProvider, Package: source, Version: constraint}
+	if e, ok := r.lockFor(directory, source); ok {
 		t.Version, t.Pinned, t.Requested = e.version, true, constraint
 		if t.Requested == "" {
 			t.Requested = e.constraints
 		}
 		return t
 	}
-	if v, ok := exactVersion(constraint); ok && len(req.constraints) == 1 {
+	if v, ok := exactVersion(constraint); ok && len(requiredProvider.constraints) == 1 {
 		t.Version, t.Pinned = v, true
 	}
 	t.Floating = t.Version == ""
@@ -330,10 +330,10 @@ func (r *resolver) provider(dir, local string) lang.Target {
 // module's own lock file, else one of a module calling it, directly or not (a root
 // module locks the providers of every module it calls). A lock file in a directory
 // above is not taken: that module need not call this one.
-func (r *resolver) lockFor(dir, src string) (e lockEntry, ok bool) {
-	r.callersOf(dir, func(d string) bool {
+func (r *resolver) lockFor(directory, source string) (e lockEntry, ok bool) {
+	r.callersOf(directory, func(d string) bool {
 		if m := r.modules[d]; m != nil && m.lock != nil {
-			if x, found := m.lock[src]; found && x.version != "" {
+			if x, found := m.lock[source]; found && x.version != "" {
 				e, ok = x, true
 			}
 		}
@@ -342,11 +342,11 @@ func (r *resolver) lockFor(dir, src string) (e lockEntry, ok bool) {
 	return e, ok
 }
 
-// callersOf visits dir, then the modules calling it, directly or not, breadth
+// callersOf visits directory, then the modules calling it, directly or not, breadth
 // first, until visit reports it is done.
-func (r *resolver) callersOf(dir string, visit func(string) bool) {
-	seen := map[string]bool{dir: true}
-	queue := []string{dir}
+func (r *resolver) callersOf(directory string, visit func(string) bool) {
+	seen := map[string]bool{directory: true}
+	queue := []string{directory}
 	for len(queue) > 0 {
 		d := queue[0]
 		queue = queue[1:]

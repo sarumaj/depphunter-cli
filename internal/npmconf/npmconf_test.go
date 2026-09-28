@@ -10,7 +10,7 @@ import (
 //
 // Verifies: REQ-AUTH-024
 func TestInterpolate(t *testing.T) {
-	env := func(k string) string { return map[string]string{"SET": "v"}[k] }
+	environment := func(k string) string { return map[string]string{"SET": "v"}[k] }
 	for in, want := range map[string]string{
 		"${SET}":             "v",
 		"user:${SET}":        "user:v",
@@ -19,11 +19,11 @@ func TestInterpolate(t *testing.T) {
 		"${SET:-fb}":         "v",
 		"plain":              "plain",
 	} {
-		if got, ok := Interpolate(in, env); !ok || got != want {
+		if got, ok := Interpolate(in, environment); !ok || got != want {
 			t.Errorf("%s: %q %v, want %q", in, got, ok, want)
 		}
 	}
-	if _, ok := Interpolate("x${UNSET}", env); ok {
+	if _, ok := Interpolate("x${UNSET}", environment); ok {
 		t.Error("an unset variable without a fallback was accepted")
 	}
 }

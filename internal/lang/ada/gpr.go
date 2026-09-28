@@ -16,15 +16,15 @@ type item struct {
 // imports and extends, its source directories, mains, aggregated projects and
 // the Naming package's explicit unit-to-file entries.
 type gpr struct {
-	name, low     string
-	line          int
-	withs         []item // with "x.gpr", including limited with
-	extends       *item
-	sourceDirs    []item
-	dirsSet       bool // Source_Dirs is set (else the project's directory)
-	mains         []item
-	projectFiles  []item // an aggregate project's Project_Files
-	specs, bodies map[string]string
+	name, low         string
+	line              int
+	withs             []item // with "x.gpr", including limited with
+	extends           *item
+	sourceDirectories []item
+	directoriesSet    bool // Source_Dirs is set (else the project's directory)
+	mains             []item
+	projectFiles      []item // an aggregate project's Project_Files
+	specs, bodies     map[string]string
 }
 
 // value is a project-file expression's value: a string or a list of strings;
@@ -36,10 +36,10 @@ type value struct {
 }
 
 type gprReader struct {
-	s    *stream
-	i    int
-	g    *gpr
-	vars map[string]value
+	s         *stream
+	i         int
+	g         *gpr
+	variables map[string]value
 	// inCase counts the case constructs being read: an assignment inside one
 	// adds to the previous value, since every alternative is taken.
 	inCase int
@@ -51,8 +51,8 @@ type gprReader struct {
 // attributes is unknown.
 //
 // Implements: REQ-ADA-005
-func readGPR(src []byte) *gpr {
-	r := &gprReader{s: newStream(src), g: &gpr{specs: map[string]string{}, bodies: map[string]string{}}, vars: map[string]value{}}
+func readGPR(source []byte) *gpr {
+	r := &gprReader{s: newStream(source), g: &gpr{specs: map[string]string{}, bodies: map[string]string{}}, variables: map[string]value{}}
 	r.run()
 	return r.g
 }
@@ -78,7 +78,7 @@ func (r *gprReader) run() {
 			r.i++
 			if t.kind == tString {
 				r.g.withs = append(r.g.withs, item{t.text, t.line})
-			} else if t.kind == tPunct && t.text == ";" {
+			} else if t.kind == tPunctuation && t.text == ";" {
 				break
 			}
 		}
@@ -119,14 +119,14 @@ func (r *gprReader) run() {
 // name reads a dotted name.
 func (r *gprReader) name(i int) (written, low string, next int) {
 	t, ok := r.s.at(i)
-	if !ok || t.kind != tIdent {
+	if !ok || t.kind != tIdentifier {
 		return "", "", i
 	}
 	written, low = t.text, t.low
 	i++
-	for n := 0; n < 64 && r.s.punct(i, "."); n++ {
+	for n := 0; n < 64 && r.s.punctuation(i, "."); n++ {
 		u, ok := r.s.at(i + 1)
-		if !ok || u.kind != tIdent {
+		if !ok || u.kind != tIdentifier {
 			break
 		}
 		written += "." + u.text
@@ -137,7 +137,7 @@ func (r *gprReader) name(i int) (written, low string, next int) {
 }
 
 // body reads declarations up to the end of the project or of package pkg.
-func (r *gprReader) body(pkg string) {
+func (r *gprReader) body(packageName string) {
 	s := r.s
 	for {
 		start := r.i
@@ -147,7 +147,7 @@ func (r *gprReader) body(pkg string) {
 			return
 		}
 		switch {
-		case t.kind != tIdent:
+		case t.kind != tIdentifier:
 			r.i++
 		case t.low == "end":
 			if s.word(r.i+1) == "case" {
@@ -160,9 +160,9 @@ func (r *gprReader) body(pkg string) {
 			r.skip()
 			return
 		case t.low == "for":
-			r.attribute(pkg)
+			r.attribute(packageName)
 		case t.low == "package":
-			r.pkg()
+			r.packageBlock()
 		case t.low == "case":
 			r.inCase++
 			for n := 0; n < maxHeader; n++ {
@@ -177,7 +177,7 @@ func (r *gprReader) body(pkg string) {
 			}
 		case t.low == "when":
 			for n := 0; n < maxHeader; n++ {
-				if s.punct(r.i, "=>") {
+				if s.punctuation(r.i, "=>") {
 					r.i++
 					break
 				}
@@ -205,15 +205,15 @@ func (r *gprReader) skip() {
 			return
 		}
 		r.i++
-		if t.kind == tPunct && t.text == ";" {
+		if t.kind == tPunctuation && t.text == ";" {
 			return
 		}
 	}
 }
 
-// pkg reads a package: renames and extends forms are skipped, the Naming
+// packageBlock reads a package: renames and extends forms are skipped, the Naming
 // package's entries kept, the rest read for its variables.
-func (r *gprReader) pkg() {
+func (r *gprReader) packageBlock() {
 	written, low, next := r.name(r.i + 1)
 	_ = written
 	r.i = next
@@ -234,23 +234,23 @@ func (r *gprReader) pkg() {
 }
 
 // attribute reads for Name [(index)] use expression;
-func (r *gprReader) attribute(pkg string) {
+func (r *gprReader) attribute(packageName string) {
 	s := r.s
 	r.i++
 	t, ok := s.at(r.i)
-	if !ok || t.kind != tIdent {
+	if !ok || t.kind != tIdentifier {
 		r.skip()
 		return
 	}
-	attr := t.low
+	attribute := t.low
 	r.i++
 	index := ""
-	if s.punct(r.i, "(") {
-		if u, ok := s.at(r.i + 1); ok && (u.kind == tString || u.kind == tIdent) {
+	if s.punctuation(r.i, "(") {
+		if u, ok := s.at(r.i + 1); ok && (u.kind == tString || u.kind == tIdentifier) {
 			index = u.text
 		}
 		for n := 0; n < 64; n++ {
-			if s.punct(r.i, ")") {
+			if s.punctuation(r.i, ")") {
 				r.i++
 				break
 			}
@@ -265,17 +265,17 @@ func (r *gprReader) attribute(pkg string) {
 		return
 	}
 	r.i++
-	v := r.expr()
+	v := r.expression()
 	r.skip()
 	if !v.known {
 		return
 	}
-	switch pkg {
+	switch packageName {
 	case "":
-		switch attr {
+		switch attribute {
 		case "source_dirs":
-			r.g.dirsSet = true
-			r.g.sourceDirs = r.assign(r.g.sourceDirs, v.items)
+			r.g.directoriesSet = true
+			r.g.sourceDirectories = r.assign(r.g.sourceDirectories, v.items)
 		case "main":
 			r.g.mains = r.assign(r.g.mains, v.items)
 		case "project_files":
@@ -285,7 +285,7 @@ func (r *gprReader) attribute(pkg string) {
 		if index == "" || len(v.items) == 0 {
 			return
 		}
-		switch attr {
+		switch attribute {
 		case "spec", "specification":
 			r.g.specs[lower(index)] = v.items[0].s
 		case "body", "implementation":
@@ -302,14 +302,14 @@ func (r *gprReader) assign(old, v []item) []item {
 	}
 	out := append([]item(nil), old...)
 	for _, x := range v {
-		dup := false
+		duplicate := false
 		for _, y := range out {
 			if y.s == x.s {
-				dup = true
+				duplicate = true
 				break
 			}
 		}
-		if !dup {
+		if !duplicate {
 			out = append(out, x)
 		}
 	}
@@ -321,34 +321,34 @@ func (r *gprReader) assignment() {
 	s := r.s
 	_, low, next := r.name(r.i)
 	r.i = next
-	if s.punct(r.i, ":") {
+	if s.punctuation(r.i, ":") {
 		r.i++
 		_, _, r.i = r.name(r.i)
 	}
-	if !s.punct(r.i, ":=") {
+	if !s.punctuation(r.i, ":=") {
 		r.skip()
 		return
 	}
 	r.i++
-	v := r.expr()
+	v := r.expression()
 	r.skip()
 	if low == "" {
 		return
 	}
 	if !v.known {
-		if _, ok := r.vars[low]; !ok || r.inCase == 0 {
-			r.vars[low] = v
+		if _, ok := r.variables[low]; !ok || r.inCase == 0 {
+			r.variables[low] = v
 		}
 		return
 	}
-	old := r.vars[low]
-	r.vars[low] = value{items: r.assign(old.items, v.items), list: v.list || old.list, known: true}
+	old := r.variables[low]
+	r.variables[low] = value{items: r.assign(old.items, v.items), list: v.list || old.list, known: true}
 }
 
-// expr reads terms joined by & up to ; (not consumed).
-func (r *gprReader) expr() value {
+// expression reads terms joined by & up to ; (not consumed).
+func (r *gprReader) expression() value {
 	v := r.term()
-	for n := 0; n < 4096 && r.s.punct(r.i, "&"); n++ {
+	for n := 0; n < 4096 && r.s.punctuation(r.i, "&"); n++ {
 		r.i++
 		w := r.term()
 		if !v.known || !w.known {
@@ -378,37 +378,37 @@ func (r *gprReader) term() value {
 	case t.kind == tString:
 		r.i++
 		return value{items: []item{{t.text, t.line}}, known: true}
-	case t.kind == tPunct && t.text == "(":
+	case t.kind == tPunctuation && t.text == "(":
 		r.i++
 		v := value{list: true, known: true}
 		for n := 0; n < 4096; n++ {
-			if s.punct(r.i, ")") {
+			if s.punctuation(r.i, ")") {
 				r.i++
 				return v
 			}
-			e := r.expr()
+			e := r.expression()
 			if e.known {
 				v.items = append(v.items, e.items...)
 			} else {
 				v.known = false
 			}
-			if s.punct(r.i, ",") {
+			if s.punctuation(r.i, ",") {
 				r.i++
 				continue
 			}
-			if s.punct(r.i, ")") {
+			if s.punctuation(r.i, ")") {
 				r.i++
 				return v
 			}
 			return value{}
 		}
 		return value{}
-	case t.kind == tIdent && (t.low == "external" || t.low == "external_as_list"):
+	case t.kind == tIdentifier && (t.low == "external" || t.low == "external_as_list"):
 		r.i++
-		if !s.punct(r.i, "(") {
+		if !s.punctuation(r.i, "(") {
 			return value{}
 		}
-		var args []tok
+		var arguments []token
 		depth := 0
 		for n := 0; n < 256; n++ {
 			u, ok := s.at(r.i)
@@ -416,7 +416,7 @@ func (r *gprReader) term() value {
 				return value{}
 			}
 			r.i++
-			if u.kind == tPunct {
+			if u.kind == tPunctuation {
 				switch u.text {
 				case "(":
 					depth++
@@ -429,22 +429,22 @@ func (r *gprReader) term() value {
 				continue
 			}
 			if depth == 1 {
-				args = append(args, u)
+				arguments = append(arguments, u)
 			}
 		}
-		if t.low == "external" && len(args) >= 2 && args[1].kind == tString {
-			return value{items: []item{{args[1].text, args[1].line}}, known: true}
+		if t.low == "external" && len(arguments) >= 2 && arguments[1].kind == tString {
+			return value{items: []item{{arguments[1].text, arguments[1].line}}, known: true}
 		}
 		return value{}
-	case t.kind == tIdent:
+	case t.kind == tIdentifier:
 		_, low, next := r.name(r.i)
 		r.i = next
-		if s.punct(r.i, "'") {
+		if s.punctuation(r.i, "'") {
 			// Project'Attribute or Pkg'Attribute ("Index")
 			r.i += 2
-			if s.punct(r.i, "(") {
+			if s.punctuation(r.i, "(") {
 				for n := 0; n < 64; n++ {
-					if s.punct(r.i, ")") {
+					if s.punctuation(r.i, ")") {
 						r.i++
 						break
 					}
@@ -456,7 +456,7 @@ func (r *gprReader) term() value {
 			}
 			return value{}
 		}
-		if v, ok := r.vars[low]; ok {
+		if v, ok := r.variables[low]; ok {
 			return v
 		}
 		return value{}
@@ -469,16 +469,16 @@ func (r *gprReader) term() value {
 // extends and aggregates, its source directories and its mains.
 //
 // Implements: REQ-ADA-005
-func extractGPR(src []byte) *lang.Extraction {
-	g := readGPR(src)
-	ex := &lang.Extraction{}
+func extractGPR(source []byte) *lang.Extraction {
+	g := readGPR(source)
+	extraction := &lang.Extraction{}
 	seen := map[string]bool{}
 	add := func(spec, module, kind string, line int) {
 		if strings.TrimSpace(module) == "" || seen[kind+"\x00"+spec] {
 			return
 		}
 		seen[kind+"\x00"+spec] = true
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
 	}
 	for _, w := range g.withs {
 		add(`with "`+w.s+`"`, w.s, kindProject, w.line)
@@ -486,8 +486,8 @@ func extractGPR(src []byte) *lang.Extraction {
 	if g.extends != nil {
 		add(`extends "`+g.extends.s+`"`, g.extends.s, kindProject, g.extends.line)
 	}
-	for _, d := range g.sourceDirs {
-		add(`Source_Dirs "`+d.s+`"`, d.s, kindDir, d.line)
+	for _, d := range g.sourceDirectories {
+		add(`Source_Dirs "`+d.s+`"`, d.s, kindDirectory, d.line)
 	}
 	for _, m := range g.mains {
 		add(`Main "`+m.s+`"`, m.s, kindMain, m.line)
@@ -498,14 +498,14 @@ func extractGPR(src []byte) *lang.Extraction {
 	if g.name != "" {
 		var symbols lang.SymbolSet
 		symbols.Add(g.name, "project", g.line)
-		ex.Symbols = symbols.List()
+		extraction.Symbols = symbols.List()
 	}
-	return ex
+	return extraction
 }
 
-// dirSpec splits a Source_Dirs entry into a directory and whether its
+// directorySpec splits a Source_Dirs entry into a directory and whether its
 // subdirectories count ("src/**").
-func dirSpec(s string) (dir string, recursive bool) {
+func directorySpec(s string) (directory string, recursive bool) {
 	s = strings.ReplaceAll(s, "\\", "/")
 	if d, ok := strings.CutSuffix(s, "**"); ok {
 		s, recursive = d, true

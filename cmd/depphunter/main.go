@@ -133,8 +133,8 @@ func main() {
 // since "analyzed …" in the middle of a JSON graph is no use to anyone.
 //
 // Implements: REQ-CLI-009, REQ-CLI-010
-func logOutput(cfg config.Config) io.Writer {
-	if cfg.Export != "" && cfg.Output == "" {
+func logOutput(settings config.Config) io.Writer {
+	if settings.Export != "" && settings.Output == "" {
 		return os.Stderr
 	}
 	return os.Stdout
@@ -145,7 +145,7 @@ func logOutput(cfg config.Config) io.Writer {
 //
 // Implements: REQ-CLI-001, REQ-CLI-002, REQ-CLI-003, REQ-CLI-005, REQ-CLI-006, REQ-CLI-007, REQ-CLI-008
 func newCommand() *cobra.Command {
-	cmd := &cobra.Command{
+	command := &cobra.Command{
 		Use:   "depphunter [path]",
 		Short: "Browse a code base as an interactive isometric map",
 		Long: `Opens an interactive map of the code base at path (default: the current
@@ -163,42 +163,42 @@ variables, and flags.`,
 		Version:       version,
 		SilenceUsage:  true, // errors are about the input, not the syntax
 		SilenceErrors: true, // main logs them
-		RunE: func(cmd *cobra.Command, args []string) error {
-			userDir := ""
+		RunE: func(command *cobra.Command, arguments []string) error {
+			userDirectory := ""
 			if d, err := os.UserConfigDir(); err == nil {
-				userDir = filepath.Join(d, "depphunter")
+				userDirectory = filepath.Join(d, "depphunter")
 			}
-			cfg, err := config.Load(cmd.Flags(), args, userDir)
+			settings, err := config.Load(command.Flags(), arguments, userDirectory)
 			if err != nil {
 				return err
 			}
-			return run(cmd.Context(), cfg)
+			return run(command.Context(), settings)
 		},
 	}
-	cmd.SetVersionTemplate("depphunter {{.Version}}\n")
-	cmd.Flags().SortFlags = false
-	config.RegisterFlags(cmd.Flags())
-	return cmd
+	command.SetVersionTemplate("depphunter {{.Version}}\n")
+	command.Flags().SortFlags = false
+	config.RegisterFlags(command.Flags())
+	return command
 }
 
-func run(ctx context.Context, cfg config.Config) error {
-	log.SetOutput(logOutput(cfg))
+func run(ctx context.Context, settings config.Config) error {
+	log.SetOutput(logOutput(settings))
 	var c *cache.Cache
-	cacheDir := "" // also holds git histories; "" disables caching
-	if cfg.Cache {
+	cacheDirectory := "" // also holds git histories; "" disables caching
+	if settings.Cache {
 		if d, err := os.UserCacheDir(); err == nil {
-			cacheDir = filepath.Join(d, "depphunter")
-			c = cache.Open(cacheDir, cfg.Root)
+			cacheDirectory = filepath.Join(d, "depphunter")
+			c = cache.Open(cacheDirectory, settings.Root)
 		}
 	}
-	opts := anal.Options{
-		Scan: scan.Options{Exclude: cfg.Exclude, MaxFileSize: cfg.MaxFileSize},
+	options := anal.Options{
+		Scan: scan.Options{Exclude: settings.Exclude, MaxFileSize: settings.MaxFileSize},
 		Plugins: []lang.Plugin{
-			golang.Plugin{}, javascript.Plugin{}, python.Plugin{Interpreter: cfg.Python, Getenv: os.Getenv}, rust.Plugin{}, java.Plugin{},
+			golang.Plugin{}, javascript.Plugin{}, python.Plugin{Interpreter: settings.Python, Getenv: os.Getenv}, rust.Plugin{}, java.Plugin{},
 			kotlin.Plugin{}, scala.Plugin{}, csharp.Plugin{}, fsharp.Plugin{}, cpp.Plugin{Fetches: cmake.Plugin{}}, cmake.Plugin{}, php.Plugin{}, ruby.Plugin{}, swift.Plugin{}, objc.Plugin{}, dart.Plugin{}, beam.Plugin{}, r.Plugin{}, haskell.Plugin{}, lua.Plugin{}, perl.Plugin{}, ocaml.Plugin{}, julia.Plugin{}, zig.Plugin{}, clojure.Plugin{}, bazel.Plugin{}, nix.Plugin{}, gleam.Plugin{}, elm.Plugin{}, purescript.Plugin{}, crystal.Plugin{}, dlang.Plugin{}, fortran.Plugin{}, haxe.Plugin{}, ada.Plugin{}, racket.Plugin{}, commonlisp.Plugin{}, solidity.Plugin{}, nim.Plugin{}, jsonnet.Plugin{}, cue.Plugin{}, dhall.Plugin{}, puppet.Plugin{}, rego.Plugin{}, shader.Plugin{}, powershell.Plugin{}, ci.Plugin{}, docker.Plugin{}, terraform.Plugin{}, proto.Plugin{}, shell.Plugin{}, markdown.Plugin{},
 		},
 		Cache:        c,
-		ResolveDepth: cfg.ResolveDepth,
+		ResolveDepth: settings.ResolveDepth,
 	}
 	home, _ := os.UserHomeDir()
 	// What this machine already holds for its registries and indexes. Read once: the
@@ -209,68 +209,68 @@ func run(ctx context.Context, cfg config.Config) error {
 	// says about private Go modules (internal/scope), in the environment or in the
 	// file `go env -w` writes, as the go command reads them.
 	// Implements: REQ-SUP-036
-	private := scope.New(append(append([]string{}, cfg.Private...), scope.FromGoEnv(userconf.New(home, os.Getenv).GoEnv)...))
+	private := scope.New(append(append([]string{}, settings.Private...), scope.FromGoEnvironment(userconf.New(home, os.Getenv).GoEnvironment)...))
 	if !private.Empty() {
 		log.Printf("private: %s", strings.Join(private.Patterns(), ", "))
 	}
-	opts.Private = private.Match
+	options.Private = private.Match
 	indexes := index.NewDiscoverer(os.Getenv, home)
 	indexes.Config().Credentials(credentials)
-	indexes.Config().Trust(cfg.TrustIndexes)
+	indexes.Config().Trust(settings.TrustIndexes)
 	indexes.Config().Private(private.Match)
-	opts.Indexes = func(files []*scan.File) anal.Indexes { return indexes.Discover(files) }
+	options.Indexes = func(files []*scan.File) anal.Indexes { return indexes.Discover(files) }
 	// Implements: REQ-DIST-003, REQ-SUP-010, REQ-SUP-020
-	if cfg.Online {
+	if settings.Online {
 		// The configuration is filled while the scan runs; the client only reads it
 		// afterwards, when the walk starts asking about packages. Without a cache
 		// directory (--no-cache) the answers are kept for this run only, rather than
 		// written to a relative path inside the analyzed project.
 		store := ""
-		if cacheDir != "" {
-			store = filepath.Join(cacheDir, "index")
+		if cacheDirectory != "" {
+			store = filepath.Join(cacheDirectory, "index")
 		}
-		opts.Registry = index.NewClient(indexes.Config(), store, indexCacheTTL, indexTimeout, credentials, private)
+		options.Registry = index.NewClient(indexes.Config(), store, indexCacheTTL, indexTimeout, credentials, private)
 	}
 	// One report per analysis: --watch analyzes again on every change, and a report
 	// that accumulated over a morning's editing describes no run in particular.
 	// Implements: REQ-TRC-001, REQ-TRC-016
 	newReport := func() *trace.Report {
-		return trace.New(cfg.ResolveDepth, opts.Registry != nil, private.Patterns(), cfg.TrustIndexes)
+		return trace.New(settings.ResolveDepth, options.Registry != nil, private.Patterns(), settings.TrustIndexes)
 	}
-	opts.Trace = newReport()
-	g, err := analyze(ctx, cfg, opts, c)
+	options.Trace = newReport()
+	g, err := analyze(ctx, settings, options, c)
 	if err != nil {
 		return err
 	}
 
 	// Implements: REQ-EXP-004, REQ-EXP-010, REQ-HIST-015
-	if cfg.Export != "" {
+	if settings.Export != "" {
 		extra := map[string]any{}
-		refs := loadReferences(ctx, cfg, cacheDir, g)
-		if cfg.Export == "html" {
-			if h := loadHistory(ctx, cfg, cacheDir, g); h != nil {
+		references := loadReferences(ctx, settings, cacheDirectory, g)
+		if settings.Export == "html" {
+			if h := loadHistory(ctx, settings, cacheDirectory, g); h != nil {
 				extra["history"] = h
 			}
-			if refs != nil {
-				extra["references"] = refs
+			if references != nil {
+				extra["references"] = references
 			}
-			if f := loadFindings(ctx, cfg, cacheDir, g, credentials, private); !f.Empty() {
+			if f := loadFindings(ctx, settings, cacheDirectory, g, credentials, private); !f.Empty() {
 				extra["findings"] = f
 			}
-		} else if refs != nil {
-			g = export.WithEdges(g, refs.Edges)
+		} else if references != nil {
+			g = export.WithEdges(g, references.Edges)
 		}
-		return writeExport(g, cfg, extra, cfg.Export, cfg.Output)
+		return writeExport(g, settings, extra, settings.Export, settings.Output)
 	}
-	return serve(ctx, cfg, g, opts, c, cacheDir, newReport, credentials, private)
+	return serve(ctx, settings, g, options, c, cacheDirectory, newReport, credentials, private)
 }
 
 // explain writes the resolution report when --explain asked for it, wherever the log
 // goes (logOutput) - which is where the VS Code extension reads it from too.
 //
 // Implements: REQ-TRC-010, REQ-TRC-013
-func explain(cfg config.Config, r *trace.Report) {
-	if !cfg.Explain || r == nil {
+func explain(settings config.Config, r *trace.Report) {
+	if !settings.Explain || r == nil {
 		return
 	}
 	w := log.Writer()
@@ -283,12 +283,12 @@ func explain(cfg config.Config, r *trace.Report) {
 
 // loadHistory reads (or loads from the cache) the git history of the graph's files;
 // nil when disabled or unavailable.
-func loadHistory(ctx context.Context, cfg config.Config, cacheDir string, g *graph.Graph) *history.History {
-	if !cfg.History {
+func loadHistory(ctx context.Context, settings config.Config, cacheDirectory string, g *graph.Graph) *history.History {
+	if !settings.History {
 		return nil
 	}
 	start := time.Now()
-	h, err := history.Cached(ctx, cacheDir, cfg.Root, cfg.HistoryCommits)
+	h, err := history.Cached(ctx, cacheDirectory, settings.Root, settings.HistoryCommits)
 	if err != nil {
 		if !errors.Is(err, history.ErrNoHistory) && ctx.Err() == nil {
 			log.Printf("git history unavailable: %v", err)
@@ -309,15 +309,15 @@ func loadHistory(ctx context.Context, cfg config.Config, cacheDir string, g *gra
 	return h.Only(files)
 }
 
-func analyze(ctx context.Context, cfg config.Config, opts anal.Options, c *cache.Cache) (*graph.Graph, error) {
+func analyze(ctx context.Context, settings config.Config, options anal.Options, c *cache.Cache) (*graph.Graph, error) {
 	start := time.Now()
-	g, st, err := anal.Run(ctx, cfg.Root, opts)
+	g, stats, err := anal.Run(ctx, settings.Root, options)
 	if err != nil {
 		return nil, err
 	}
 	log.Printf("analyzed %s: %d files (%d parsed, %d cached), %d nodes, %d edges in %s",
-		cfg.Root, st.Files, st.Parsed, st.Cached, len(g.Nodes), len(g.Edges), time.Since(start).Round(time.Millisecond))
-	explain(cfg, st.Resolution)
+		settings.Root, stats.Files, stats.Parsed, stats.Cached, len(g.Nodes), len(g.Edges), time.Since(start).Round(time.Millisecond))
+	explain(settings, stats.Resolution)
 	if err := c.Save(); err != nil {
 		log.Printf("cache not saved: %v", err)
 	}
@@ -328,12 +328,12 @@ func analyze(ctx context.Context, cfg config.Config, opts anal.Options, c *cache
 // disabled or when no server could answer.
 //
 // Implements: REQ-LSP-001, REQ-LSP-009
-func loadReferences(ctx context.Context, cfg config.Config, cacheDir string, g *graph.Graph) *server.References {
-	if !cfg.LSP {
+func loadReferences(ctx context.Context, settings config.Config, cacheDirectory string, g *graph.Graph) *server.References {
+	if !settings.LSP {
 		return nil
 	}
 	start := time.Now()
-	r, err := lsp.Cached(ctx, cacheDir, g, lsp.Options{Root: cfg.Root, Timeout: cfg.LSPTimeout, Logf: log.Printf})
+	r, err := lsp.Cached(ctx, cacheDirectory, g, lsp.Options{Root: settings.Root, Timeout: settings.LSPTimeout, Logf: log.Printf})
 	if r == nil || len(r.Servers) == 0 && len(r.Edges) == 0 {
 		if err != nil && ctx.Err() == nil {
 			log.Printf("references unavailable: %v", err)
@@ -349,39 +349,39 @@ func loadReferences(ctx context.Context, cfg config.Config, cacheDir string, g *
 // nothing was asked for or nothing was found.
 //
 // Implements: REQ-FND-014, REQ-FND-015, REQ-MD-010, REQ-MD-012, REQ-MD-016
-func loadFindings(ctx context.Context, cfg config.Config, cacheDir string, g *graph.Graph,
+func loadFindings(ctx context.Context, settings config.Config, cacheDirectory string, g *graph.Graph,
 	credentials *auth.Store, private *scope.Private) *findings.Set {
-	if !cfg.FindingsEnabled() {
+	if !settings.FindingsEnabled() {
 		return nil
 	}
 	start := time.Now()
 	// --no-vulns and --no-links turn off one source each, so each is asked for on
 	// its own: a run that wants only the link check reads no reports.
-	opts := findings.Options{Root: cfg.Root, Logf: log.Printf}
-	if cfg.Vulns {
-		opts.Reports = cfg.Findings
+	options := findings.Options{Root: settings.Root, Logf: log.Printf}
+	if settings.Vulnerabilities {
+		options.Reports = settings.Findings
 	}
-	if cfg.Links {
-		opts.Docs = documents(g)
+	if settings.Links {
+		options.Docs = documents(g)
 	}
-	if cfg.Online {
+	if settings.Online {
 		store := ""
-		if cacheDir != "" {
-			store = filepath.Join(cacheDir, "osv")
+		if cacheDirectory != "" {
+			store = filepath.Join(cacheDirectory, "osv")
 		}
-		if cfg.Vulns {
-			opts.OSV = findings.NewOSV(store, findingsCacheTTL, indexTimeout)
-			opts.Packages = pinned(g, private.Match)
+		if settings.Vulnerabilities {
+			options.OSV = findings.NewOSV(store, findingsCacheTTL, indexTimeout)
+			options.Packages = pinned(g, private.Match)
 		}
-		if cfg.Links {
+		if settings.Links {
 			links := ""
-			if cacheDir != "" {
-				links = filepath.Join(cacheDir, "links")
+			if cacheDirectory != "" {
+				links = filepath.Join(cacheDirectory, "links")
 			}
-			opts.Web = findings.NewWeb(links, linkCacheTTL, indexTimeout, credentials)
+			options.Web = findings.NewWeb(links, linkCacheTTL, indexTimeout, credentials)
 		}
 	}
-	set := findings.Collect(ctx, opts)
+	set := findings.Collect(ctx, options)
 	if set.Empty() {
 		if set.Partial && ctx.Err() == nil {
 			log.Print("findings: nothing could be read")
@@ -410,7 +410,7 @@ func loadFindings(ctx context.Context, cfg config.Config, cacheDir string, g *gr
 func documents(g *graph.Graph) []string {
 	var out []string
 	for _, n := range g.Nodes {
-		if n.Kind == graph.KindFile && n.Lang == "Markdown" && !fixed(n.Path) {
+		if n.Kind == graph.KindFile && n.Language == "Markdown" && !fixed(n.Path) {
 			out = append(out, n.Path)
 		}
 	}
@@ -443,7 +443,7 @@ func fixed(p string) bool {
 // ecosystem.
 //
 // Implements: REQ-FND-013, REQ-SUP-040, REQ-FND-026
-func pinned(g *graph.Graph, private func(eco, name string) bool) []findings.Package {
+func pinned(g *graph.Graph, private func(ecosystem, name string) bool) []findings.Package {
 	if private == nil {
 		private = func(string, string) bool { return false }
 	}
@@ -452,12 +452,12 @@ func pinned(g *graph.Graph, private func(eco, name string) bool) []findings.Pack
 		if n.Kind != graph.KindPackage || n.Version == "" || n.Floating {
 			continue
 		}
-		eco := n.Parent
-		if i := strings.LastIndex(eco, ":"); i >= 0 {
-			eco = eco[i+1:]
+		ecosystem := n.Parent
+		if i := strings.LastIndex(ecosystem, ":"); i >= 0 {
+			ecosystem = ecosystem[i+1:]
 		}
-		p := findings.Package{Ecosystem: eco, Name: n.Name, Version: n.Version}
-		commit, repo, public := lang.GitPin(eco, n.Name, n.Version, n.Origin, n.Git)
+		p := findings.Package{Ecosystem: ecosystem, Name: n.Name, Version: n.Version}
+		commit, repository, public := lang.GitPin(ecosystem, n.Name, n.Version, n.Origin, n.Git)
 		// A version that is itself a git reference (npm's github:owner/repo#<sha>, a
 		// Python "@ git+<url>@<sha>") is no release of the ecosystem's index: only
 		// the commit is a question, and the reference names the repository.
@@ -469,8 +469,8 @@ func pinned(g *graph.Graph, private func(eco, name string) bool) []findings.Pack
 		// installed from outside every index), and neither the package nor its
 		// repository matches a private pattern.
 		if commit != "" && public && !(n.Private && n.Origin == "") &&
-			!private(eco, n.Name) && (repo == "" || !private(eco, repo)) {
-			p.Commit, p.Repo = commit, repo
+			!private(ecosystem, n.Name) && (repository == "" || !private(ecosystem, repository)) {
+			p.Commit, p.Repository = commit, repository
 		}
 		// An organization's own package is not asked about: the question hands the
 		// name and version of internal code to somebody else's server.
@@ -484,7 +484,7 @@ func pinned(g *graph.Graph, private func(eco, name string) bool) []findings.Pack
 }
 
 // Implements: REQ-EXP-004
-func writeExport(g *graph.Graph, cfg config.Config, extra map[string]any, format, output string) (err error) {
+func writeExport(g *graph.Graph, settings config.Config, extra map[string]any, format, output string) (err error) {
 	var w io.Writer = os.Stdout
 	if output != "" {
 		f, err := os.Create(output)
@@ -501,110 +501,110 @@ func writeExport(g *graph.Graph, cfg config.Config, extra map[string]any, format
 		w = f
 	}
 	if format == "html" {
-		return web.WriteStatic(w, g, cfg.UI, cfg.Root, extra)
+		return web.WriteStatic(w, g, settings.UI, settings.Root, extra)
 	}
 	return export.Write(w, g, format)
 }
 
 // Implements: REQ-SRV-001
-func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Options, c *cache.Cache,
-	cacheDir string, newReport func() *trace.Report, credentials *auth.Store, private *scope.Private) error {
-	if cfg.Editor == "" {
-		cfg.Editor = editor.Detect(os.Getenv, exec.LookPath)
+func serve(ctx context.Context, settings config.Config, g *graph.Graph, options anal.Options, c *cache.Cache,
+	cacheDirectory string, newReport func() *trace.Report, credentials *auth.Store, private *scope.Private) error {
+	if settings.Editor == "" {
+		settings.Editor = editor.Detect(os.Getenv, exec.LookPath)
 	}
-	srv, err := server.New(cfg, g, web.Assets())
+	mapServer, err := server.New(settings, g, web.Assets())
 	if err != nil {
 		return err
 	}
-	srv.SetResolution(opts.Trace)
-	ln, url, err := srv.Listen(cfg.Addr)
+	mapServer.SetResolution(options.Trace)
+	line, url, err := mapServer.Listen(settings.Address)
 	if err != nil {
 		return err
 	}
-	httpSrv := &http.Server{Handler: srv.Handler(), ReadHeaderTimeout: 10 * time.Second}
+	httpServer := &http.Server{Handler: mapServer.Handler(), ReadHeaderTimeout: 10 * time.Second}
 	go func() {
 		<-ctx.Done()
-		srv.Close()
+		mapServer.Close()
 		shutdown, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 		defer cancel()
-		httpSrv.Shutdown(shutdown)
+		httpServer.Shutdown(shutdown)
 	}()
 
 	// The map is served at once; history and references follow in the background and,
 	// in watch mode, are refreshed after changes.
 	// Implements: REQ-HIST-007, REQ-LSP-005, REQ-FND-022
-	histHead, histRead := "", false
+	historyHead, historyRead := "", false
 	historyRun := newLatest(func(g *graph.Graph) {
-		head, _ := history.Head(ctx, cfg.Root) // "" without commits
-		if histRead && head == histHead {
+		head, _ := history.Head(ctx, settings.Root) // "" without commits
+		if historyRead && head == historyHead {
 			return
 		}
-		histHead, histRead = head, true
-		srv.SetHistory(loadHistory(ctx, cfg, cacheDir, g))
+		historyHead, historyRead = head, true
+		mapServer.SetHistory(loadHistory(ctx, settings, cacheDirectory, g))
 	})
 	referencesRun := newLatest(func(g *graph.Graph) {
-		srv.SetReferences(loadReferences(ctx, cfg, cacheDir, g))
+		mapServer.SetReferences(loadReferences(ctx, settings, cacheDirectory, g))
 	})
 	findingsRun := newLatest(func(g *graph.Graph) {
-		srv.SetFindings(loadFindings(ctx, cfg, cacheDir, g, credentials, private))
+		mapServer.SetFindings(loadFindings(ctx, settings, cacheDirectory, g, credentials, private))
 	})
-	if cfg.History {
+	if settings.History {
 		go historyRun.Run(g)
 	}
-	if cfg.LSP {
+	if settings.LSP {
 		go referencesRun.Run(g)
 	}
-	if cfg.FindingsEnabled() {
+	if settings.FindingsEnabled() {
 		go findingsRun.Run(g)
 	}
 
 	// Implements: REQ-WATCH-001, REQ-WATCH-003, REQ-WATCH-007, REQ-HIST-009, REQ-FND-023
-	if cfg.Watch {
+	if settings.Watch {
 		w, err := watch.New()
 		if err != nil {
 			return fmt.Errorf("watch: %w", err)
 		}
-		gitDirs := history.GitDirs(ctx, cfg.Root) // commits change only these
+		gitDirectories := history.GitDirectories(ctx, settings.Root) // commits change only these
 		// A scanner writing its report again is news too: the backpack in the UI
 		// marks a caught finding fixed when it stops being reported, and that only
 		// works if the report is re-read when it is written.
-		reportDirs, reportFiles := findingWatch(cfg)
+		reportDirectories, reportFiles := findingWatch(settings)
 		watched := func(g *graph.Graph) []string {
-			return append(append(watchDirs(cfg.Root, g), gitDirs...), reportDirs...)
+			return append(append(watchDirectories(settings.Root, g), gitDirectories...), reportDirectories...)
 		}
 		w.Sync(watched(g), reportFiles)
 		go w.Run(ctx, 300*time.Millisecond, func() {
 			start := time.Now()
 			// Implements: REQ-TRC-016
-			opts.Trace = newReport()
-			ng, st, err := anal.Run(ctx, cfg.Root, opts)
+			options.Trace = newReport()
+			ng, stats, err := anal.Run(ctx, settings.Root, options)
 			if err != nil {
 				if ctx.Err() == nil {
 					log.Printf("re-analysis failed: %v", err)
 				}
 				return
 			}
-			srv.SetResolution(st.Resolution)
+			mapServer.SetResolution(stats.Resolution)
 			if err := c.Save(); err != nil {
 				log.Printf("cache not saved: %v", err)
 			}
 			w.Sync(watched(ng), reportFiles)
-			changed, err := srv.Update(ng, st.ParsedFiles)
+			changed, err := mapServer.Update(ng, stats.ParsedFiles)
 			if err != nil {
 				log.Printf("update failed: %v", err)
 			} else if changed {
-				log.Printf("updated: %d files re-parsed in %s", st.Parsed, time.Since(start).Round(time.Millisecond))
+				log.Printf("updated: %d files re-parsed in %s", stats.Parsed, time.Since(start).Round(time.Millisecond))
 				// Only when the map moved. A report after every saved file would
 				// bury the one that belongs to the change being looked at.
-				explain(cfg, st.Resolution)
+				explain(settings, stats.Resolution)
 			}
-			if cfg.History {
+			if settings.History {
 				go historyRun.Run(ng) // a commit moves HEAD
 			}
-			if cfg.LSP && changed {
+			if settings.LSP && changed {
 				go referencesRun.Run(ng)
 			}
-			if cfg.FindingsEnabled() {
+			if settings.FindingsEnabled() {
 				// Not only when the graph changed: a linter complains about the text
 				// of a file, and fixing one changes neither its imports nor its size.
 				go findingsRun.Run(ng)
@@ -614,12 +614,12 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 
 	log.Printf("serving at %s (Ctrl+C to stop)", url)
 	// Implements: REQ-CLI-001, REQ-DIST-016
-	if cfg.Open {
+	if settings.Open {
 		if err := browser.OpenURL(url); err != nil {
 			log.Printf("could not open browser: %v", err)
 		}
 	}
-	if err := httpSrv.Serve(ln); !errors.Is(err, http.ErrServerClosed) {
+	if err := httpServer.Serve(line); !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}
 	return nil
@@ -635,52 +635,52 @@ func serve(ctx context.Context, cfg config.Config, g *graph.Graph, opts anal.Opt
 // the whole directory stays watched.
 //
 // Implements: REQ-FND-023
-func findingWatch(cfg config.Config) (dirs, files []string) {
+func findingWatch(settings config.Config) (directories, files []string) {
 	globbed := map[string]bool{}
-	for _, p := range cfg.Findings {
+	for _, p := range settings.Findings {
 		if !strings.ContainsAny(p, "*?[") {
 			continue
 		}
 		if !filepath.IsAbs(p) {
-			p = filepath.Join(cfg.Root, p)
+			p = filepath.Join(settings.Root, p)
 		}
 		d := filepath.Dir(p)
 		if !globbed[d] {
 			globbed[d] = true
-			dirs = append(dirs, d)
+			directories = append(directories, d)
 		}
 	}
-	for _, f := range findings.Files(cfg.Root, cfg.Findings) {
+	for _, f := range findings.Files(settings.Root, settings.Findings) {
 		if !globbed[filepath.Dir(f)] {
 			files = append(files, f)
 		}
 	}
-	return dirs, files
+	return directories, files
 }
 
-// watchDirs lists the directories holding analyzed files: ignored trees are not watched.
+// watchDirectories lists the directories holding analyzed files: ignored trees are not watched.
 //
 // Implements: REQ-WATCH-001
-func watchDirs(root string, g *graph.Graph) []string {
-	var dirs []string
+func watchDirectories(root string, g *graph.Graph) []string {
+	var directories []string
 	for _, n := range g.Nodes {
-		if n.Kind == graph.KindDir {
-			dirs = append(dirs, filepath.Join(root, filepath.FromSlash(n.Path)))
+		if n.Kind == graph.KindDirectory {
+			directories = append(directories, filepath.Join(root, filepath.FromSlash(n.Path)))
 		}
 	}
-	return dirs
+	return directories
 }
 
-// latest runs fn one call at a time with the newest value it was given: values that
+// latest runs function one call at a time with the newest value it was given: values that
 // arrive during a run are coalesced into a single follow-up run.
 type latest[T any] struct {
-	fn      func(T)
-	mu      sync.Mutex
-	running bool
-	next    *T
+	function func(T)
+	mu       sync.Mutex
+	running  bool
+	next     *T
 }
 
-func newLatest[T any](fn func(T)) *latest[T] { return &latest[T]{fn: fn} }
+func newLatest[T any](function func(T)) *latest[T] { return &latest[T]{function: function} }
 
 func (l *latest[T]) Run(v T) {
 	l.mu.Lock()
@@ -694,7 +694,7 @@ func (l *latest[T]) Run(v T) {
 		v := *l.next
 		l.next = nil
 		l.mu.Unlock()
-		l.fn(v)
+		l.function(v)
 		l.mu.Lock()
 	}
 	l.running = false

@@ -22,16 +22,16 @@ import (
 )
 
 const (
-	ecoComposer = "composer"
-	ecoStd      = "php-std"
+	ecosystemComposer = "composer"
+	ecosystemStd      = "php-std"
 )
 
-// exts are the extensions the plugin claims. A .inc file that is not PHP (Pascal,
+// extensions are the extensions the plugin claims. A .inc file that is not PHP (Pascal,
 // assembly, BitBake use the extension too) has no `<?php` tag, so the whole file
 // parses as inline text and yields nothing.
 //
 // Implements: REQ-PHP-001
-var exts = map[string]bool{".php": true, ".phtml": true, ".inc": true}
+var extensions = map[string]bool{".php": true, ".phtml": true, ".inc": true}
 
 // @use is a use statement (text, split in Go); @inc a require/include; @ref.<form> a
 // class or function named in code; @def.<kind> a definition; @ns.global a namespace
@@ -74,12 +74,12 @@ type Plugin struct{}
 func (Plugin) Name() string { return "php" }
 func (Plugin) Version() int { return 1 }
 func (Plugin) Claims(f *scan.File) bool {
-	return exts[strings.ToLower(path.Ext(f.Path))] && !f.Binary
+	return extensions[strings.ToLower(path.Ext(f.Path))] && !f.Binary
 }
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoComposer, Name: "Packagist"},
-		{ID: ecoStd, Name: "PHP standard library", Std: true},
+		{ID: ecosystemComposer, Name: "Packagist"},
+		{ID: ecosystemStd, Name: "PHP standard library", Std: true},
 	}
 }
 
@@ -91,13 +91,13 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 const (
 	kindClass    = "class"    // a fully qualified class, interface, trait or enum
 	kindFunction = "function" // a fully qualified function
-	kindConst    = "const"    // a fully qualified constant
+	kindConstant = "const"    // a fully qualified constant
 	kindLocal    = "local"    // a name relative to the file's namespace: a project file or nothing
 	kindInclude  = "include"  // require/include of a path
 )
 
-// ref is a name used in code, kept until the file's namespaces and aliases are known.
-type ref struct {
+// reference is a name used in code, kept until the file's namespaces and aliases are known.
+type reference struct {
 	form, text string
 	line       int
 }
@@ -114,15 +114,15 @@ var classLike = map[string]bool{
 }
 
 // Implements: REQ-PHP-002, REQ-PHP-003, REQ-PHP-004
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
-	ex := &lang.Extraction{}
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
+	extraction := &lang.Extraction{}
 	var symbols lang.SymbolSet
-	var refs []ref
+	var references []reference
 	var namespaces []namespace
 	aliases := map[string]string{} // lower-case alias -> fully qualified class
-	err := grammar.Matches(src, func(m treesitter.Match) {
-		if fn, ok := m.Get("fn"); ok {
-			if name, _ := m.Get("dstr"); strings.EqualFold(fn, "define") && validName.MatchString(name) {
+	err := grammar.Matches(source, func(m treesitter.Match) {
+		if function, ok := m.Get("fn"); ok {
+			if name, _ := m.Get("dstr"); strings.EqualFold(function, "define") && validName.MatchString(name) {
 				symbols.Add(name, "const", m[0].Line)
 			}
 			return
@@ -137,22 +137,22 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 				symbols.Add(name, "namespace", c.Line)
 			case c.Name == "use":
 				for _, u := range parseUse(c.Text) {
-					spec := "use " + u.fqn
+					spec := "use " + u.qualifiedName
 					if u.kind != kindClass {
-						spec = "use " + u.kind + " " + u.fqn
+						spec = "use " + u.kind + " " + u.qualifiedName
 					} else {
-						aliases[strings.ToLower(u.alias)] = u.fqn
+						aliases[strings.ToLower(u.alias)] = u.qualifiedName
 					}
-					ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: u.fqn, Name: u.kind, Line: c.Line})
+					extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: u.qualifiedName, Name: u.kind, Line: c.Line})
 				}
 			case c.Name == "inc":
 				if p, ok := includePath(c.Text); ok {
-					ex.Imports = append(ex.Imports, lang.RawImport{
+					extraction.Imports = append(extraction.Imports, lang.RawImport{
 						Spec: strings.Join(strings.Fields(c.Text), " "), Module: p, Name: kindInclude, Line: c.Line,
 					})
 				}
 			case strings.HasPrefix(c.Name, "ref."):
-				refs = append(refs, ref{strings.TrimPrefix(c.Name, "ref."), strings.Join(strings.Fields(c.Text), ""), c.Line})
+				references = append(references, reference{strings.TrimPrefix(c.Name, "ref."), strings.Join(strings.Fields(c.Text), ""), c.Line})
 			case c.Name == "def.method", c.Name == "def.const":
 				owner, inBody := ownerOf(c.Scopes())
 				switch {
@@ -173,25 +173,25 @@ func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
 	})
 	slices.SortFunc(namespaces, func(a, b namespace) int { return cmp.Compare(a.line, b.line) })
 	seen := map[string]bool{}
-	for _, r := range refs {
-		ns := ""
+	for _, r := range references {
+		namespace := ""
 		for _, n := range namespaces {
 			if n.line <= r.line {
-				ns = n.name
+				namespace = n.name
 			}
 		}
-		fqn, kind := qualify(r.text, r.form == "call", ns, aliases)
-		if fqn == "" || seen[kind+" "+strings.ToLower(fqn)] {
+		qualifiedName, kind := qualify(r.text, r.form == "call", namespace, aliases)
+		if qualifiedName == "" || seen[kind+" "+strings.ToLower(qualifiedName)] {
 			continue
 		}
-		seen[kind+" "+strings.ToLower(fqn)] = true
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: refSpec(r), Module: fqn, Name: kind, Line: r.line})
+		seen[kind+" "+strings.ToLower(qualifiedName)] = true
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: referenceSpec(r), Module: qualifiedName, Name: kind, Line: r.line})
 	}
-	slices.SortStableFunc(ex.Imports, func(a, b lang.RawImport) int {
+	slices.SortStableFunc(extraction.Imports, func(a, b lang.RawImport) int {
 		return cmp.Or(cmp.Compare(a.Line, b.Line), cmp.Compare(a.Spec, b.Spec))
 	})
-	ex.Symbols = symbols.List()
-	return ex, err
+	extraction.Symbols = symbols.List()
+	return extraction, err
 }
 
 var validName = regexp.MustCompile(`^[A-Za-z_][A-Za-z0-9_]*$`)
@@ -215,8 +215,8 @@ func ownerOf(scopes []treesitter.Scope) (owner string, inBody bool) {
 	return "", false
 }
 
-// refSpec is how a name used in code is shown: as the construct that uses it.
-func refSpec(r ref) string {
+// referenceSpec is how a name used in code is shown: as the construct that uses it.
+func referenceSpec(r reference) string {
 	switch r.form {
 	case "new":
 		return "new " + r.text
@@ -236,7 +236,7 @@ func refSpec(r ref) string {
 // global function for any other, so its target is not knowable from the text.
 //
 // Implements: REQ-PHP-002
-func qualify(name string, call bool, ns string, aliases map[string]string) (fqn, kind string) {
+func qualify(name string, call bool, namespace string, aliases map[string]string) (qualifiedName, kind string) {
 	kind = kindClass
 	if call {
 		kind = kindFunction
@@ -247,7 +247,7 @@ func qualify(name string, call bool, ns string, aliases map[string]string) (fqn,
 	case strings.HasPrefix(name, `\`):
 		return strings.TrimPrefix(name, `\`), kind
 	case strings.HasPrefix(low, `namespace\`):
-		return join(ns, name[len(`namespace\`):]), kindLocal
+		return join(namespace, name[len(`namespace\`):]), kindLocal
 	}
 	first, rest, qualified := strings.Cut(name, `\`)
 	if target, ok := aliases[strings.ToLower(first)]; ok {
@@ -259,22 +259,22 @@ func qualify(name string, call bool, ns string, aliases map[string]string) (fqn,
 	if call {
 		return "", ""
 	}
-	if ns == "" {
+	if namespace == "" {
 		return name, kindClass
 	}
-	return join(ns, name), kindLocal
+	return join(namespace, name), kindLocal
 }
 
-func join(ns, name string) string {
-	if ns == "" {
+func join(namespace, name string) string {
+	if namespace == "" {
 		return name
 	}
-	return ns + `\` + name
+	return namespace + `\` + name
 }
 
 // use is one name a use statement imports.
 type use struct {
-	kind, fqn, alias string
+	kind, qualifiedName, alias string
 }
 
 var useAlias = regexp.MustCompile(`(?i)\s+as\s+([A-Za-z_][A-Za-z0-9_]*)\s*$`)
@@ -295,14 +295,14 @@ func parseUse(text string) []use {
 			alias, item = item[m[2]:m[3]], item[:m[0]]
 		}
 		item = strings.Join(strings.Fields(item), "")
-		fqn := strings.TrimPrefix(join(strings.Trim(prefix, `\`), strings.TrimPrefix(item, `\`)), `\`)
-		if item == "" || fqn == "" {
+		qualifiedName := strings.TrimPrefix(join(strings.Trim(prefix, `\`), strings.TrimPrefix(item, `\`)), `\`)
+		if item == "" || qualifiedName == "" {
 			return
 		}
 		if alias == "" {
-			alias = fqn[strings.LastIndex(fqn, `\`)+1:]
+			alias = qualifiedName[strings.LastIndex(qualifiedName, `\`)+1:]
 		}
-		out = append(out, use{kind, fqn, alias})
+		out = append(out, use{kind, qualifiedName, alias})
 	}
 	if i := strings.Index(text, "{"); i >= 0 {
 		prefix := strings.Join(strings.Fields(text[:i]), "")
@@ -319,13 +319,13 @@ func parseUse(text string) []use {
 }
 
 // useKind takes a leading `function` or `const` off a use clause.
-func useKind(s, def string) (string, string) {
-	for _, k := range []string{kindFunction, kindConst} {
+func useKind(s, defaultKind string) (string, string) {
+	for _, k := range []string{kindFunction, kindConstant} {
 		if len(s) > len(k) && strings.EqualFold(s[:len(k)], k) && (s[len(k)] == ' ' || s[len(k)] == '\t' || s[len(k)] == '\n') {
 			return k, strings.TrimSpace(s[len(k):])
 		}
 	}
-	return def, s
+	return defaultKind, s
 }
 
 var comments = regexp.MustCompile(`(?s)/\*.*?\*/|//[^\n]*|#[^\n\[][^\n]*`)
@@ -340,22 +340,22 @@ func stripComments(s string) string { return comments.ReplaceAllString(s, " ") }
 //
 // Implements: REQ-PHP-004
 func includePath(text string) (string, bool) {
-	expr := strings.TrimSpace(stripComments(text))
-	for _, kw := range []string{"require_once", "include_once", "require", "include"} {
-		if len(expr) >= len(kw) && strings.EqualFold(expr[:len(kw)], kw) {
-			expr = strings.TrimSpace(expr[len(kw):])
+	expression := strings.TrimSpace(stripComments(text))
+	for _, keyword := range []string{"require_once", "include_once", "require", "include"} {
+		if len(expression) >= len(keyword) && strings.EqualFold(expression[:len(keyword)], keyword) {
+			expression = strings.TrimSpace(expression[len(keyword):])
 			break
 		}
 	}
-	for strings.HasPrefix(expr, "(") && strings.HasSuffix(expr, ")") && balanced(expr[1:len(expr)-1]) {
-		expr = strings.TrimSpace(expr[1 : len(expr)-1])
+	for strings.HasPrefix(expression, "(") && strings.HasSuffix(expression, ")") && balanced(expression[1:len(expression)-1]) {
+		expression = strings.TrimSpace(expression[1 : len(expression)-1])
 	}
 	var out strings.Builder
-	for i, part := range splitConcat(expr) {
+	for i, part := range splitConcat(expression) {
 		part = strings.TrimSpace(part)
 		if i == 0 {
-			if dir, ok := dirExpr(part); ok {
-				out.WriteString(dir)
+			if directory, ok := directoryExpression(part); ok {
+				out.WriteString(directory)
 				continue
 			}
 		}
@@ -378,8 +378,8 @@ func includePath(text string) (string, bool) {
 
 var dirname = regexp.MustCompile(`^(?i:dirname)\s*\(\s*(__DIR__|__FILE__)\s*(?:,\s*(\d+)\s*)?\)$`)
 
-// dirExpr reads an expression naming the including file's directory or one above it.
-func dirExpr(s string) (string, bool) {
+// directoryExpression reads an expression naming the including file's directory or one above it.
+func directoryExpression(s string) (string, bool) {
 	if s == "__DIR__" {
 		return "__DIR__", true
 	}

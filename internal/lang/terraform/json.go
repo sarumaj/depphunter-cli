@@ -13,62 +13,62 @@ import (
 // template, so its interpolations are references), and lines are those of the keys.
 
 type jvalue struct {
-	line  int
-	obj   []jentry
-	arr   []*jvalue
-	str   *string
-	other string // a number, true, false or null
+	line   int
+	object []jentry
+	array  []*jvalue
+	text   *string
+	other  string // a number, true, false or null
 }
 
 type jentry struct {
-	key  string
-	line int
-	val  *jvalue
+	key   string
+	line  int
+	value *jvalue
 }
 
 // readJSON decodes a JSON document keeping the line of every key and value.
-func readJSON(src []byte) *jvalue {
-	dec := json.NewDecoder(bytes.NewReader(src))
-	dec.UseNumber()
-	lines := newLineIndex(src)
+func readJSON(source []byte) *jvalue {
+	decoder := json.NewDecoder(bytes.NewReader(source))
+	decoder.UseNumber()
+	lines := newLineIndex(source)
 	var value func() *jvalue
 	value = func() *jvalue {
-		off := int(dec.InputOffset())
-		t, err := dec.Token()
+		off := int(decoder.InputOffset())
+		t, err := decoder.Token()
 		if err != nil {
 			return nil
 		}
-		v := &jvalue{line: lines.at(src, off)}
+		v := &jvalue{line: lines.at(source, off)}
 		switch x := t.(type) {
 		case json.Delim:
 			switch x {
 			case '{':
-				for dec.More() {
-					off := int(dec.InputOffset())
-					k, err := dec.Token()
+				for decoder.More() {
+					off := int(decoder.InputOffset())
+					k, err := decoder.Token()
 					if err != nil {
 						return v
 					}
 					key, _ := k.(string)
-					e := jentry{key: key, line: lines.at(src, off)}
-					if e.val = value(); e.val == nil {
+					e := jentry{key: key, line: lines.at(source, off)}
+					if e.value = value(); e.value == nil {
 						return v
 					}
-					v.obj = append(v.obj, e)
+					v.object = append(v.object, e)
 				}
-				dec.Token()
+				decoder.Token()
 			case '[':
-				for dec.More() {
+				for decoder.More() {
 					item := value()
 					if item == nil {
 						return v
 					}
-					v.arr = append(v.arr, item)
+					v.array = append(v.array, item)
 				}
-				dec.Token()
+				decoder.Token()
 			}
 		case string:
-			v.str = &x
+			v.text = &x
 		case json.Number:
 			v.other = string(x)
 		case bool:
@@ -86,67 +86,67 @@ func readJSON(src []byte) *jvalue {
 
 type lineIndex []int // offsets of line starts
 
-func newLineIndex(src []byte) lineIndex {
-	idx := lineIndex{0}
-	for i, c := range src {
+func newLineIndex(source []byte) lineIndex {
+	index := lineIndex{0}
+	for i, c := range source {
 		if c == '\n' {
-			idx = append(idx, i+1)
+			index = append(index, i+1)
 		}
 	}
-	return idx
+	return index
 }
 
 // at is the line of the first token at or after off (skipping the separators the
 // decoder has not consumed yet).
-func (idx lineIndex) at(src []byte, off int) int {
-	for off < len(src) && strings.IndexByte(" \t\r\n,:", src[off]) >= 0 {
+func (index lineIndex) at(source []byte, off int) int {
+	for off < len(source) && strings.IndexByte(" \t\r\n,:", source[off]) >= 0 {
 		off++
 	}
-	lo, hi := 0, len(idx)
-	for lo+1 < hi {
-		mid := (lo + hi) / 2
-		if idx[mid] <= off {
-			lo = mid
+	low, high := 0, len(index)
+	for low+1 < high {
+		mid := (low + high) / 2
+		if index[mid] <= off {
+			low = mid
 		} else {
-			hi = mid
+			high = mid
 		}
 	}
-	return lo + 1
+	return low + 1
 }
 
 // tokens renders a JSON value as the native-syntax expression it stands for.
-func (v *jvalue) tokens() []tok {
+func (v *jvalue) tokens() []token {
 	switch {
-	case v.str != nil:
-		l := &lexer{src: []byte(*v.str), line: v.line}
+	case v.text != nil:
+		l := &lexer{source: []byte(*v.text), line: v.line}
 		t := l.template(false)
 		t.line = v.line
-		return []tok{t}
-	case v.obj != nil:
-		out := []tok{{kind: tPunct, text: "{", line: v.line}}
-		for _, e := range v.obj {
-			out = append(out, tok{kind: tString, text: e.key, lit: true, line: e.line}, tok{kind: tPunct, text: "=", line: e.line})
-			out = append(out, e.val.tokens()...)
-			out = append(out, tok{kind: tPunct, text: ",", line: e.line})
+		return []token{t}
+	case v.object != nil:
+		out := []token{{kind: tPunctuation, text: "{", line: v.line}}
+		for _, e := range v.object {
+			out = append(out, token{kind: tString, text: e.key, literal: true, line: e.line}, token{kind: tPunctuation, text: "=", line: e.line})
+			out = append(out, e.value.tokens()...)
+			out = append(out, token{kind: tPunctuation, text: ",", line: e.line})
 		}
-		return append(out, tok{kind: tPunct, text: "}", line: v.line})
-	case v.arr != nil:
-		out := []tok{{kind: tPunct, text: "[", line: v.line}}
-		for _, item := range v.arr {
+		return append(out, token{kind: tPunctuation, text: "}", line: v.line})
+	case v.array != nil:
+		out := []token{{kind: tPunctuation, text: "[", line: v.line}}
+		for _, item := range v.array {
 			out = append(out, item.tokens()...)
-			out = append(out, tok{kind: tPunct, text: ",", line: item.line})
+			out = append(out, token{kind: tPunctuation, text: ",", line: item.line})
 		}
-		return append(out, tok{kind: tPunct, text: "]", line: v.line})
+		return append(out, token{kind: tPunctuation, text: "]", line: v.line})
 	case v.other != "":
-		return []tok{{kind: tIdent, text: v.other, line: v.line}}
+		return []token{{kind: tIdentifier, text: v.other, line: v.line}}
 	}
-	return []tok{{kind: tPunct, text: "{", line: v.line}, {kind: tPunct, text: "}", line: v.line}}
+	return []token{{kind: tPunctuation, text: "{", line: v.line}, {kind: tPunctuation, text: "}", line: v.line}}
 }
 
 // bodies are the objects a block value holds: one object, or an array of them.
 func (v *jvalue) bodies() []*jvalue {
-	if v.arr != nil {
-		return v.arr
+	if v.array != nil {
+		return v.array
 	}
 	return []*jvalue{v}
 }
@@ -154,16 +154,16 @@ func (v *jvalue) bodies() []*jvalue {
 // jsonBody turns an object into a block of attributes; the keys nested names
 // makes blocks of their own (required_providers inside terraform).
 func jsonBody(b *block, v *jvalue, nested map[string]bool) {
-	for _, e := range v.obj {
+	for _, e := range v.object {
 		if nested[e.key] {
-			for _, body := range e.val.bodies() {
-				child := &block{typ: e.key, line: e.line}
+			for _, body := range e.value.bodies() {
+				child := &block{typeName: e.key, line: e.line}
 				jsonBody(child, body, nil)
 				b.blocks = append(b.blocks, child)
 			}
 			continue
 		}
-		b.attrs = append(b.attrs, attr{name: e.key, line: e.line, expr: e.val.tokens()})
+		b.attributes = append(b.attributes, attribute{name: e.key, line: e.line, expression: e.value.tokens()})
 	}
 }
 
@@ -176,44 +176,44 @@ var jsonLabels = map[string]int{
 // parseJSON reads a .tf.json file into the blocks of the native syntax.
 //
 // Implements: REQ-TERRAFORM-001
-func parseJSON(src []byte) *block {
+func parseJSON(source []byte) *block {
 	root := &block{line: 1}
-	doc := readJSON(src)
+	doc := readJSON(source)
 	if doc == nil {
 		return root
 	}
-	var label func(typ string, v *jvalue, labels []string, line int, n int)
-	label = func(typ string, v *jvalue, labels []string, line, n int) {
+	var label func(typeName string, v *jvalue, labels []string, line int, n int)
+	label = func(typeName string, v *jvalue, labels []string, line, n int) {
 		if n == 0 {
 			for _, body := range v.bodies() {
-				b := &block{typ: typ, labels: labels, line: line}
-				jsonBody(b, body, map[string]bool{"required_providers": typ == "terraform"})
+				b := &block{typeName: typeName, labels: labels, line: line}
+				jsonBody(b, body, map[string]bool{"required_providers": typeName == "terraform"})
 				root.blocks = append(root.blocks, b)
 			}
 			return
 		}
-		for _, e := range v.obj {
-			label(typ, e.val, append(append([]string(nil), labels...), e.key), e.line, n-1)
+		for _, e := range v.object {
+			label(typeName, e.value, append(append([]string(nil), labels...), e.key), e.line, n-1)
 		}
 	}
-	for _, e := range doc.obj {
+	for _, e := range doc.object {
 		n, ok := jsonLabels[e.key]
 		if !ok {
 			continue
 		}
-		for _, body := range e.val.bodies() {
+		for _, body := range e.value.bodies() {
 			label(e.key, body, nil, e.line, n)
 		}
 	}
 	return root
 }
 
-// parseJSONVars reads a .tfvars.json file: its top-level keys.
-func parseJSONVars(src []byte) *block {
+// parseJSONVariables reads a .tfvars.json file: its top-level keys.
+func parseJSONVariables(source []byte) *block {
 	root := &block{line: 1}
-	if doc := readJSON(src); doc != nil {
-		for _, e := range doc.obj {
-			root.attrs = append(root.attrs, attr{name: e.key, line: e.line})
+	if doc := readJSON(source); doc != nil {
+		for _, e := range doc.object {
+			root.attributes = append(root.attributes, attribute{name: e.key, line: e.line})
 		}
 	}
 	return root

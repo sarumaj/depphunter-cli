@@ -58,8 +58,8 @@ export class Wind {
    * One frame of it. `running` is whether the walker is actually running - flying and
    * standing about are both worth the same, which is nothing.
    */
-  breathe(dt, running) {
-    this.set(this.share + (running ? -dt / FULL : dt / RECOVER));
+  breathe(deltaTime, running) {
+    this.set(this.share + (running ? -deltaTime / FULL : deltaTime / RECOVER));
   }
 
   /**

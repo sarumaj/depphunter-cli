@@ -89,7 +89,7 @@ func TestMavenSettingsActiveProfileRepositories(t *testing.T) {
 func basicFeed(t *testing.T, user, pass string, bodies map[string]string) (*httptest.Server, *int32) {
 	t.Helper()
 	var refused int32
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		if u, p, ok := r.BasicAuth(); !ok || u != user || p != pass {
 			atomic.AddInt32(&refused, 1)
 			w.WriteHeader(http.StatusUnauthorized)
@@ -102,8 +102,8 @@ func basicFeed(t *testing.T, user, pass string, bodies map[string]string) (*http
 		}
 		fmt.Fprint(w, body)
 	}))
-	t.Cleanup(srv.Close)
-	return srv, &refused
+	t.Cleanup(server.Close)
+	return server, &refused
 }
 
 // The repository of an active profile is asked, with the <server> of the same id's
@@ -124,8 +124,8 @@ func TestMavenProfileRepositoryWithServerCredentials(t *testing.T) {
   </profiles>
   <activeProfiles><activeProfile>corp</activeProfile></activeProfiles>
 </settings>`)
-	d := NewDiscoverer(env(nil), home)
-	c := NewClient(d.Config(), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, env(nil)), nil)
+	d := NewDiscoverer(environment(nil), home)
+	c := NewClient(d.Config(), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(nil)), nil)
 	d.Discover(nil)
 	got, l := ask(t, c, lang.Target{Ecosystem: Maven, Package: "com.acme:billing", Version: "1.0"})
 	if !slices.Equal(got, []string{"g:acme-core"}) || l.Index != nexus.URL+"/repository/corp" {
@@ -142,7 +142,7 @@ func TestMavenProfileRepositoryWithServerCredentials(t *testing.T) {
 	put(t, filepath.Join(home, ".m2", "settings.xml"), `<settings><profiles>
     <profile><id>corp</id><repositories><repository><id>corp</id><url>`+nexus.URL+`/repository/corp</url></repository></repositories></profile>
   </profiles></settings>`)
-	if got := order(Discover(nil, env(nil), home), Maven, "com.acme:billing", ""); !slices.Equal(got, []string{pub.URL}) {
+	if got := order(Discover(nil, environment(nil), home), Maven, "com.acme:billing", ""); !slices.Equal(got, []string{pub.URL}) {
 		t.Errorf("inactive profile: asked %v", got)
 	}
 }
@@ -168,7 +168,7 @@ lazy val core = project.settings(resolvers += "inner" at "https://inner.corp/mav
 `,
 		"project/plugins.sbt": `resolvers += "plugins" at "https://plugins.corp/maven"`,
 	})
-	c := Discover(files, env(nil), "")
+	c := Discover(files, environment(nil), "")
 	want := []string{
 		"https://nexus.corp/releases? 2", "https://nexus.corp/snapshots? 2", "https://plain.corp/maven? 2",
 		"https://mr.corp/maven? 2", "https://inner.corp/maven? 2",
@@ -280,22 +280,22 @@ func TestClojureUserRepositories(t *testing.T) {
         :repositories [["lein-corp" {:url "https://lein.corp/maven"}] ["plain" "https://plain.corp/maven"]]}
  :other {:repositories [["other" "https://other.corp/maven"]]}}`)
 
-	for _, tc := range []struct {
-		vars map[string]string
-		want []string
+	for _, testCase := range []struct {
+		variables map[string]string
+		want      []string
 	}{
 		{nil, []string{"https://home.corp/maven 2", "https://lein.corp/maven 2", "https://plain.corp/maven 2"}},
 		{map[string]string{"XDG_CONFIG_HOME": xdg}, []string{"https://xdg.corp/maven 2", "https://lein.corp/maven 2", "https://plain.corp/maven 2"}},
 		{map[string]string{"CLJ_CONFIG": clj, "XDG_CONFIG_HOME": xdg, "LEIN_HOME": t.TempDir()},
 			[]string{"https://central.corp/maven2 0", "https://nexus.corp/maven 2"}},
 	} {
-		c := discoverOn(home, "linux", tc.vars)
-		if got := machineMaven(c); !slices.Equal(got, tc.want) {
-			t.Errorf("%v: %v, want %v", tc.vars, got, tc.want)
+		c := discoverOn(home, "linux", testCase.variables)
+		if got := machineMaven(c); !slices.Equal(got, testCase.want) {
+			t.Errorf("%v: %v, want %v", testCase.variables, got, testCase.want)
 		}
 		for _, u := range order(c, Maven, "g:a", "") {
 			if strings.HasSuffix(u, "?") {
-				t.Errorf("%v: %s is not trusted", tc.vars, u)
+				t.Errorf("%v: %s is not trusted", testCase.variables, u)
 			}
 		}
 	}

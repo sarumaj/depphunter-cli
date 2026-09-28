@@ -34,9 +34,9 @@ export function computeVisibility(model, filters) {
       return null;
     }
     const c = { fileCount: 0, totalLoc: 0, totalBulk: 0 };
-    for (const ch of n.children) {
-      if (ch.kind !== 'dir' && ch.kind !== 'file') continue;
-      const r = walk(ch);
+    for (const child of n.children) {
+      if (child.kind !== 'dir' && child.kind !== 'file') continue;
+      const r = walk(child);
       if (r) { c.fileCount += r.fileCount; c.totalLoc += r.totalLoc; c.totalBulk += r.totalBulk; }
     }
     counts.set(n.id, c);
@@ -72,7 +72,7 @@ export function parsePathFilter(text) {
 }
 
 /**
- * gitignore-flavoured globs: `*` and `?` stay within a path segment, `**` spans
+ * gitignore-flavored globs: `*` and `?` stay within a path segment, `**` spans
  * segments; a pattern without "/" matches the file name or any directory name.
  * Implements: REQ-MAP-034
  */
@@ -86,7 +86,7 @@ export function globMatcher(glob) {
     .replace(/\?/g, '[^/]')
     .replace(/\u0000/g, '(?:.*/)?')
     .replace(/\u0001/g, '.*') + '$');
-  return anchored ? p => re.test(p) : p => p.split('/').some(seg => re.test(seg));
+  return anchored ? p => re.test(p) : p => p.split('/').some(segment => re.test(segment));
 }
 
 // ---------------------------------------------------------------- fuzzy search

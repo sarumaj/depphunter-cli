@@ -9,11 +9,11 @@ import (
 // Import kinds, carried in RawImport.Name.
 const (
 	kindImport = "import" // import data.a.b
-	// kindRef is a reference to data.a.b.c in a rule (directly or through an
+	// kindReference is a reference to data.a.b.c in a rule (directly or through an
 	// imported name). After the colon it carries the file's imports,
 	// comma-separated ("ref:a.b,c"): one of them may link its package
 	// already.
-	kindRef = "ref:"
+	kindReference = "ref:"
 )
 
 // keyword holds the words that do not start a rule.
@@ -28,9 +28,9 @@ var keyword = map[string]bool{
 // has).
 //
 // Implements: REQ-REGO-002, REQ-REGO-003
-func extractSource(src []byte) *lang.Extraction {
-	tokens := lex(src)
-	ex := &lang.Extraction{}
+func extractSource(source []byte) *lang.Extraction {
+	tokens := lex(source)
+	extraction := &lang.Extraction{}
 	var symbols lang.SymbolSet
 	defined := map[string]bool{}
 	add := func(name, kind string, line int) {
@@ -43,7 +43,7 @@ func extractSource(src []byte) *lang.Extraction {
 	emit := func(spec, module, kind string, line int) {
 		if !seen[spec] {
 			seen[spec] = true
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
 		}
 	}
 	aliases := map[string][]string{} // a name an import binds -> the data path
@@ -51,7 +51,7 @@ func extractSource(src []byte) *lang.Extraction {
 	depth := 0
 	for i := 0; i < len(tokens); i++ {
 		t := tokens[i]
-		if t.kind == tPunct {
+		if t.kind == tPunctuation {
 			switch t.text {
 			case "(", "[", "{":
 				depth++
@@ -60,27 +60,27 @@ func extractSource(src []byte) *lang.Extraction {
 			}
 			continue
 		}
-		if t.kind != tIdent {
+		if t.kind != tIdentifier {
 			continue
 		}
-		dotted := i > 0 && tokens[i-1].kind == tPunct && tokens[i-1].text == "."
+		dotted := i > 0 && tokens[i-1].kind == tPunctuation && tokens[i-1].text == "."
 		if t.first && depth == 0 && !dotted {
 			switch t.text {
 			case "package":
-				segments, end := readRef(tokens, i+1)
+				segments, end := readReference(tokens, i+1)
 				if len(segments) > 0 {
 					add(strings.Join(segments, "."), "package", t.line)
 				}
 				i = end - 1
 				continue
 			case "import":
-				segments, end := readRef(tokens, i+1)
+				segments, end := readReference(tokens, i+1)
 				alias := ""
 				if len(segments) > 0 {
 					alias = segments[len(segments)-1]
 				}
 				spec := ""
-				if end+1 < len(tokens) && tokens[end].kind == tIdent && tokens[end].text == "as" && tokens[end+1].kind == tIdent {
+				if end+1 < len(tokens) && tokens[end].kind == tIdentifier && tokens[end].text == "as" && tokens[end+1].kind == tIdentifier {
 					alias, spec = tokens[end+1].text, " as "+tokens[end+1].text
 					end += 2
 				}
@@ -94,7 +94,7 @@ func extractSource(src []byte) *lang.Extraction {
 				i = end - 1
 				continue
 			case "default":
-				if i+1 < len(tokens) && tokens[i+1].kind == tIdent {
+				if i+1 < len(tokens) && tokens[i+1].kind == tIdentifier {
 					name, _ := ruleName(tokens, i+1)
 					add(name, "rule", tokens[i+1].line)
 				}
@@ -103,7 +103,7 @@ func extractSource(src []byte) *lang.Extraction {
 			if !keyword[t.text] {
 				name, end := ruleName(tokens, i)
 				kind := "rule"
-				if end < len(tokens) && tokens[end].kind == tPunct && tokens[end].text == "(" {
+				if end < len(tokens) && tokens[end].kind == tPunctuation && tokens[end].text == "(" {
 					kind = "function"
 				}
 				add(name, kind, t.line)
@@ -114,40 +114,40 @@ func extractSource(src []byte) *lang.Extraction {
 		}
 		var full []string
 		if t.text == "data" {
-			segments, _ := readRef(tokens, i)
+			segments, _ := readReference(tokens, i)
 			full = segments
 		} else if a := aliases[t.text]; a != nil {
-			segments, _ := readRef(tokens, i)
+			segments, _ := readReference(tokens, i)
 			if len(segments) > 1 {
 				full = append(append([]string(nil), a...), segments[1:]...)
 			}
 		}
 		if len(full) >= 2 {
 			p := strings.Join(full[1:], ".")
-			emit("data."+p, p, kindRef+strings.Join(imported, ","), t.line)
+			emit("data."+p, p, kindReference+strings.Join(imported, ","), t.line)
 		}
 	}
-	ex.Symbols = symbols.List()
-	return ex
+	extraction.Symbols = symbols.List()
+	return extraction
 }
 
 // maxSegments bounds the length of a reference the reader keeps.
 const maxSegments = 32
 
-// readRef reads a reference starting at the identifier at i: a.b["c"].d.
+// readReference reads a reference starting at the identifier at i: a.b["c"].d.
 // A bracket holding anything but a string ends it.
-func readRef(tokens []token, i int) ([]string, int) {
-	if i >= len(tokens) || tokens[i].kind != tIdent {
+func readReference(tokens []token, i int) ([]string, int) {
+	if i >= len(tokens) || tokens[i].kind != tIdentifier {
 		return nil, i
 	}
 	segments := []string{tokens[i].text}
 	i++
-	for i+1 < len(tokens) && tokens[i].kind == tPunct {
+	for i+1 < len(tokens) && tokens[i].kind == tPunctuation {
 		if len(segments) >= maxSegments {
 			break
 		}
 		switch {
-		case tokens[i].text == "." && tokens[i+1].kind == tIdent:
+		case tokens[i].text == "." && tokens[i+1].kind == tIdentifier:
 			segments = append(segments, tokens[i+1].text)
 			i += 2
 			continue
@@ -166,7 +166,7 @@ func readRef(tokens []token, i int) ([]string, int) {
 func ruleName(tokens []token, i int) (string, int) {
 	segments := []string{tokens[i].text}
 	i++
-	for i+1 < len(tokens) && tokens[i].kind == tPunct && tokens[i].text == "." && tokens[i+1].kind == tIdent {
+	for i+1 < len(tokens) && tokens[i].kind == tPunctuation && tokens[i].text == "." && tokens[i+1].kind == tIdentifier {
 		if len(segments) < maxSegments {
 			segments = append(segments, tokens[i+1].text)
 		}

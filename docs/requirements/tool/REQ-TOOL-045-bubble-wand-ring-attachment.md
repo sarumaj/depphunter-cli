@@ -16,7 +16,7 @@ its own radius, with a collar over the joint.
 
 ## Rationale
 
-Centred on the tip the stick runs through the ring, which reads as a ring
+Centered on the tip the stick runs through the ring, which reads as a ring
 threaded onto a stick.
 
 ## Acceptance criteria

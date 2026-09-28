@@ -138,9 +138,9 @@ func TestClaims(t *testing.T) {
 //
 // Verifies: REQ-CI-001
 func TestTheKindOfFileIsPartOfTheCacheKey(t *testing.T) {
-	src := []byte("runs:\n  using: composite\n")
+	source := []byte("runs:\n  using: composite\n")
 	key := func(p string) string {
-		return cache.Key(Plugin{}.Name(), Plugin{}.Version(), lang.ClassOf(Plugin{}, &scan.File{Path: p}), src)
+		return cache.Key(Plugin{}.Name(), Plugin{}.Version(), lang.ClassOf(Plugin{}, &scan.File{Path: p}), source)
 	}
 	if key(".github/workflows/x.yml") == key("action.yml") || key("action.yml") == key(".gitlab-ci.yml") {
 		t.Error("files read differently share a cache entry")
@@ -150,16 +150,16 @@ func TestTheKindOfFileIsPartOfTheCacheKey(t *testing.T) {
 	}
 }
 
-// writeRepo lays out a project in a temporary directory.
-func writeRepo(t *testing.T, files map[string]string) string {
+// writeRepository lays out a project in a temporary directory.
+func writeRepository(t *testing.T, files map[string]string) string {
 	t.Helper()
 	root := t.TempDir()
 	for p, c := range files {
-		abs := filepath.Join(root, filepath.FromSlash(p))
-		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		absolute := filepath.Join(root, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(abs, []byte(c), 0o644); err != nil {
+		if err := os.WriteFile(absolute, []byte(c), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -171,7 +171,7 @@ func writeRepo(t *testing.T, files map[string]string) string {
 //
 // Verifies: REQ-CI-006
 func TestBridgeJobIncludes(t *testing.T) {
-	root := writeRepo(t, map[string]string{
+	root := writeRepository(t, map[string]string{
 		".gitlab-ci.yml": "deploy:\n  trigger:\n    include:\n      - local: child.yml\n" +
 			"      - project: infra/pipelines\n        ref: main\n        file: /child.yml\n" +
 			"downstream:\n  trigger:\n    include: other.yml\n",
@@ -193,13 +193,13 @@ func TestBridgeJobIncludes(t *testing.T) {
 //
 // Verifies: REQ-CI-015
 func TestGitHubAndEnterpriseActionsShareOneEcosystem(t *testing.T) {
-	root := writeRepo(t, map[string]string{
+	root := writeRepository(t, map[string]string{
 		".github/workflows/ci.yml": "on: push\njobs:\n  build:\n    runs-on: ubuntu-latest\n    steps:\n" +
 			"      - uses: actions/checkout@v4\n      - uses: internal-org/deploy@v1\n",
 	})
 	private := scope.New([]string{"actions:internal-org/*"})
-	res := langtest.Analyze(t, Plugin{}, root)[".github/workflows/ci.yml"]
-	got := langtest.Imports(t, res)
+	result := langtest.Analyze(t, Plugin{}, root)[".github/workflows/ci.yml"]
+	got := langtest.Imports(t, result)
 	for spec, want := range map[string]bool{
 		"uses: actions/checkout@v4":    false,
 		"uses: internal-org/deploy@v1": true,

@@ -59,7 +59,7 @@ var tinkSpecial = map[string]string{"coreapi": "tink_core", "macroapi": "tink_ma
 // tink.Json tink_json.
 //
 // Implements: REQ-HAXE-007
-func table(segments []string) (lib string, k int, std bool) {
+func table(segments []string) (library string, k int, std bool) {
 	for n := min(len(segments), 4); n >= 1; n-- {
 		if l, ok := known[strings.Join(segments[:n], ".")]; ok && l != "" {
 			return l, n, false

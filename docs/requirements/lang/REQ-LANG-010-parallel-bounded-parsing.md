@@ -24,4 +24,4 @@ depends on using every core; a bound keeps memory use predictable.
 
 1. Files are parsed concurrently by a worker pool limited to `runtime.NumCPU()`
    workers.
-2. A cancelled analysis stops scheduling further files.
+2. A canceled analysis stops scheduling further files.

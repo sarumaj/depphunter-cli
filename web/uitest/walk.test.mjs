@@ -31,16 +31,16 @@ const blind = () => new Health({ querySelector: () => null, classList: { toggle(
 describe('what the walker can take', () => {
   // Verifies: REQ-WALK-027
   it('ignores a short drop and kills on a long one', () => {
-    // The walker is half a unit tall, so a unit is about three and a half metres.
+    // The walker is half a unit tall, so a unit is about three and a half meters.
     const h = blind();
     h.reset(0);
     // A jump off a terrace wall: the wall (0.28) and the height of the jump (0.39).
     assert.equal(h.fall(0.28 + 0.39), 0, 'jumping down off a terrace wall cost something');
     assert.equal(h.hp, h.max);
     const roof = h.fall(2);
-    assert.ok(roof > 0 && !h.dead, `a drop of about seven metres cost ${roof}`);
+    assert.ok(roof > 0 && !h.dead, `a drop of about seven meters cost ${roof}`);
 
-    // Five units - about seventeen metres - is the end of the walk, and so is
+    // Five units - about seventeen meters - is the end of the walk, and so is
     // anything higher, however full the backpack.
     for (const [caught, height] of [[0, 5], [50, 5], [0, 40]]) {
       const far = blind();
@@ -400,7 +400,7 @@ describe('the two kinds of tool', () => {
   // Verifies: REQ-HUNT-043
   it('brings the camera up until the picture is nearly all you can see', () => {
     // What "held up to look at" has to come to: the screen square on to the eye,
-    // centred on the line of sight, filling most of the view - and no part of the tool
+    // centered on the line of sight, filling most of the view - and no part of the tool
     // nearer than the screen itself, or the near plane cuts a hole in the picture.
     // These follow from a position and a rotation solved once and written down, so a
     // nudge to either is worth catching here rather than in the street.
@@ -1067,7 +1067,7 @@ describe('going under', () => {
       querySelector: () => ({ style: { setProperty: (k, v) => style.set(k, +v) } }),
     };
     const w = { hud, held: null, sinking: true, sinkT: 0, sinkFrom: 90, sunk: 0 };
-    const drown = (dt, t) => WALK.Walker.prototype.drown.call(w, dt, t * 1000);
+    const drown = (deltaTime, t) => WALK.Walker.prototype.drown.call(w, deltaTime, t * 1000);
     // 90 health at 45 a second is two seconds of water.
     w.sinkT = 1;
     drown(1 / 60, 1);

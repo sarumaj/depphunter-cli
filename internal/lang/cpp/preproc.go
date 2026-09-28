@@ -28,16 +28,16 @@ type frame struct {
 // includes of the live branches and whether each line (1-based index) is dead.
 //
 // Implements: REQ-CPP-002, REQ-CPP-007
-func preprocess(src []byte) (includes []lang.RawImport, dead []bool) {
-	return scanDirectives(src, false)
+func preprocess(source []byte) (includes []lang.RawImport, dead []bool) {
+	return scanDirectives(source, false)
 }
 
 // Preprocess is preprocess for Objective-C (the objc plugin), where `#import` is an
 // include that is read once: it is returned like `#include`.
 //
 // Implements: REQ-OBJC-002
-func Preprocess(src []byte) (includes []lang.RawImport, dead []bool) {
-	return scanDirectives(src, true)
+func Preprocess(source []byte) (includes []lang.RawImport, dead []bool) {
+	return scanDirectives(source, true)
 }
 
 // Directives is preprocess for the shading languages that borrow C's preprocessor
@@ -45,16 +45,16 @@ func Preprocess(src []byte) (includes []lang.RawImport, dead []bool) {
 // lines.
 //
 // Implements: REQ-SHADER-002
-func Directives(src []byte) (includes []lang.RawImport, dead []bool) {
-	return scanDirectives(src, false)
+func Directives(source []byte) (includes []lang.RawImport, dead []bool) {
+	return scanDirectives(source, false)
 }
 
 // Quoted is the RawImport.Name of a quoted include ("x.h"); an angle include has
 // another.
 const Quoted = quoted
 
-func scanDirectives(src []byte, objc bool) (includes []lang.RawImport, dead []bool) {
-	lines := strings.Split(string(src), "\n")
+func scanDirectives(source []byte, objc bool) (includes []lang.RawImport, dead []bool) {
+	lines := strings.Split(string(source), "\n")
 	dead = make([]bool, len(lines)+2)
 	var stack []frame
 	inComment := false
@@ -87,8 +87,8 @@ func scanDirectives(src []byte, objc bool) (includes []lang.RawImport, dead []bo
 		rest := strings.TrimSpace(d[len(word):])
 		switch word {
 		case "if":
-			cond := strings.Trim(strings.Join(strings.Fields(rest), ""), "()")
-			stack = append(stack, frame{zero: cond == "0" || cond == "false", one: cond == "1" || cond == "true"})
+			condition := strings.Trim(strings.Join(strings.Fields(rest), ""), "()")
+			stack = append(stack, frame{zero: condition == "0" || condition == "false", one: condition == "1" || condition == "true"})
 			stack[len(stack)-1].dead = stack[len(stack)-1].zero
 			if stack[len(stack)-1].dead {
 				deadFrames++

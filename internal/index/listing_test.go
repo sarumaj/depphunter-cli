@@ -20,23 +20,23 @@ import (
 )
 
 // publicClient is a client whose ecosystem's public index is url, over cfg (a
-// fresh configuration when nil). The public index is replaced before cfg is read
+// fresh configuration when nil). The public index is replaced before config is read
 // by the caller when discovery must see it; see withPublic.
-func publicClient(t *testing.T, eco, url string, cfg *Config) *Client {
+func publicClient(t *testing.T, ecosystem, url string, config *Config) *Client {
 	t.Helper()
-	withPublic(t, eco, url)
-	if cfg == nil {
-		cfg = New()
+	withPublic(t, ecosystem, url)
+	if config == nil {
+		config = New()
 	}
-	return NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, nil, nil)
+	return NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil, nil)
 }
 
-// withPublic makes url the public index of eco for the rest of the test.
-func withPublic(t *testing.T, eco, url string) {
+// withPublic makes url the public index of ecosystem for the rest of the test.
+func withPublic(t *testing.T, ecosystem, url string) {
 	t.Helper()
-	was := public[eco]
-	public[eco] = url
-	t.Cleanup(func() { public[eco] = was })
+	was := public[ecosystem]
+	public[ecosystem] = url
+	t.Cleanup(func() { public[ecosystem] = was })
 }
 
 // withGitHub points GitHub's API at url for the rest of the test.
@@ -53,12 +53,12 @@ type recorder struct {
 	asked []string
 }
 
-func (r *recorder) add(req *http.Request) {
+func (r *recorder) add(request *http.Request) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	u := req.URL.Path
-	if req.URL.RawQuery != "" {
-		u += "?" + req.URL.RawQuery
+	u := request.URL.Path
+	if request.URL.RawQuery != "" {
+		u += "?" + request.URL.RawQuery
 	}
 	r.asked = append(r.asked, u)
 }
@@ -72,9 +72,9 @@ func (r *recorder) take() []string {
 }
 
 // files serves a map of paths to bodies, 404 for anything else.
-func files(rec *recorder, bodies map[string]string) *httptest.Server {
+func files(recorded *recorder, bodies map[string]string) *httptest.Server {
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		rec.add(r)
+		recorded.add(r)
 		key := r.URL.Path
 		if r.URL.RawQuery != "" {
 			key += "?" + r.URL.RawQuery
@@ -88,7 +88,7 @@ func files(rec *recorder, bodies map[string]string) *httptest.Server {
 	}))
 }
 
-func gz(t *testing.T, data string) string {
+func gzipped(t *testing.T, data string) string {
 	t.Helper()
 	var b bytes.Buffer
 	z := gzip.NewWriter(&b)
@@ -99,9 +99,9 @@ func gz(t *testing.T, data string) string {
 	return b.String()
 }
 
-func depNames(deps []lang.Target) []string {
+func dependencyNames(dependencies []lang.Target) []string {
 	out := []string{}
-	for _, d := range deps {
+	for _, d := range dependencies {
 		out = append(out, d.Package+" "+d.Version)
 	}
 	sort.Strings(out)
@@ -117,18 +117,18 @@ func depNames(deps []lang.Target) []string {
 //
 // Verifies: REQ-SUP-053, REQ-TRC-017
 func TestCPANPinnedRelease(t *testing.T) {
-	release := func(deps ...string) string {
+	release := func(dependencies ...string) string {
 		var list []string
-		for _, m := range deps {
+		for _, m := range dependencies {
 			list = append(list, `{"module": "`+m+`", "version": "0", "phase": "runtime", "relationship": "requires"}`)
 		}
 		return `{"distribution": "Plack", "dependency": [` + strings.Join(list, ",") + `]}`
 	}
-	rec := &recorder{}
+	recorded := &recorder{}
 	search := func(v string) string {
 		return "/v1/release/_search?q=distribution%3A%22Plack%22+AND+version%3A%22" + v + "%22&size=1"
 	}
-	srv := files(rec, map[string]string{
+	server := files(recorded, map[string]string{
 		"/v1/release/MIYAGAWA/Plack-1.0050": release("Try::Tiny"),
 		search("1.0047"):                    `{"hits": {"hits": [{"_source": ` + release("HTTP::Message") + `}]}}`,
 		search("0.9"):                       `{"hits": {"hits": []}}`,
@@ -137,16 +137,16 @@ func TestCPANPinnedRelease(t *testing.T) {
 		"/v1/module/HTTP::Message":          `{"distribution": "HTTP-Message"}`,
 		"/v1/module/Cookie::Baker":          `{"distribution": "Cookie-Baker"}`,
 	})
-	defer srv.Close()
-	cfg := Discover(write(t, map[string]string{"app/cpanfile.snapshot": `# carton snapshot format: version 1.0
+	defer server.Close()
+	config := Discover(write(t, map[string]string{"app/cpanfile.snapshot": `# carton snapshot format: version 1.0
 DISTRIBUTIONS
   Plack-1.0050
     pathname: M/MI/MIYAGAWA/Plack-1.0050.tar.gz
     provides:
       Plack 1.0050
-`}), env(nil), "")
-	c := publicClient(t, CPAN, srv.URL, cfg)
-	for _, tt := range []struct {
+`}), environment(nil), "")
+	c := publicClient(t, CPAN, server.URL, config)
+	for _, test := range []struct {
 		version string
 		want    []string
 		asked   []string
@@ -157,16 +157,16 @@ DISTRIBUTIONS
 		{"0.9", []string{"Cookie-Baker "}, []string{search("0.9"), "/v1/release/Plack", "/v1/module/Cookie::Baker"}, true},
 		{">= 1.0", []string{"Cookie-Baker "}, []string{"/v1/release/Plack"}, false},
 	} {
-		notes := notesOf(t, c, lang.Target{Ecosystem: CPAN, Package: "Plack", Version: tt.version})
-		got := depNames(c.Dependencies(lang.Target{Ecosystem: CPAN, Package: "Plack", Version: tt.version}))
-		if !reflect.DeepEqual(got, tt.want) {
-			t.Errorf("%s: got %v, want %v", tt.version, got, tt.want)
+		notes := notesOf(t, c, lang.Target{Ecosystem: CPAN, Package: "Plack", Version: test.version})
+		got := dependencyNames(c.Dependencies(lang.Target{Ecosystem: CPAN, Package: "Plack", Version: test.version}))
+		if !reflect.DeepEqual(got, test.want) {
+			t.Errorf("%s: got %v, want %v", test.version, got, test.want)
 		}
-		if asked := rec.take(); !reflect.DeepEqual(asked, tt.asked) {
-			t.Errorf("%s: asked %v, want %v", tt.version, asked, tt.asked)
+		if asked := recorded.take(); !reflect.DeepEqual(asked, test.asked) {
+			t.Errorf("%s: asked %v, want %v", test.version, asked, test.asked)
 		}
-		if (len(notes) == 1 && strings.HasPrefix(notes[0], "no-release: MetaCPAN has no release Plack-0.9")) != tt.note {
-			t.Errorf("%s: notes %v", tt.version, notes)
+		if (len(notes) == 1 && strings.HasPrefix(notes[0], "no-release: MetaCPAN has no release Plack-0.9")) != test.note {
+			t.Errorf("%s: notes %v", test.version, notes)
 		}
 	}
 }
@@ -177,24 +177,24 @@ DISTRIBUTIONS
 //
 // Verifies: REQ-SUP-053, REQ-SUP-064
 func TestCPANMirrorDiscovery(t *testing.T) {
-	meta := "https://fastapi.metacpan.org"
-	for _, tt := range []struct {
-		vars map[string]string
-		want []string
+	metacpan := "https://fastapi.metacpan.org"
+	for _, test := range []struct {
+		variables map[string]string
+		want      []string
 	}{
-		{nil, []string{meta}},
+		{nil, []string{metacpan}},
 		{map[string]string{"PERL_CPANM_OPT": "--mirror https://darkpan.corp/ --mirror-only"}, []string{"https://darkpan.corp"}},
 		{map[string]string{"PERL_CPANM_OPT": "--mirror-only --mirror=https://darkpan.corp --mirror https://www.cpan.org"},
-			[]string{"https://darkpan.corp", meta}},
+			[]string{"https://darkpan.corp", metacpan}},
 		{map[string]string{"PERL_CPANM_OPT": "-q --from 'https://pinto.corp:3111'"}, []string{"https://pinto.corp:3111"}},
-		{map[string]string{"PERL_CPANM_OPT": "--mirror https://downloads.corp"}, []string{meta}},
+		{map[string]string{"PERL_CPANM_OPT": "--mirror https://downloads.corp"}, []string{metacpan}},
 		{map[string]string{"PERL_CPANM_OPT": "--mirror /srv/minicpan --mirror-only"}, []string{"file:///srv/minicpan"}},
-		{map[string]string{"PERL_CARTON_MIRROR": "https://carton.corp/"}, []string{"https://carton.corp", meta}},
-		{map[string]string{"PERL_CARTON_MIRROR": "https://cpan.metacpan.org/"}, []string{meta}},
+		{map[string]string{"PERL_CARTON_MIRROR": "https://carton.corp/"}, []string{"https://carton.corp", metacpan}},
+		{map[string]string{"PERL_CARTON_MIRROR": "https://cpan.metacpan.org/"}, []string{metacpan}},
 	} {
-		c := discoverOn(t.TempDir(), "linux", tt.vars)
-		if got := order(c, CPAN, "Plack", ""); !reflect.DeepEqual(got, tt.want) {
-			t.Errorf("%v: %v, want %v", tt.vars, got, tt.want)
+		c := discoverOn(t.TempDir(), "linux", test.variables)
+		if got := order(c, CPAN, "Plack", ""); !reflect.DeepEqual(got, test.want) {
+			t.Errorf("%v: %v, want %v", test.variables, got, test.want)
 		}
 	}
 }
@@ -221,8 +221,8 @@ HTTP::Message       6.45  O/OA/OALDERS/HTTP-Message-6.45.tar.gz
 Carp                1.50  S/SH/SHAY/perl-5.38.0.tar.gz
 Secret::Thing        0.1  C/CO/CORP/Secret-Thing-0.1.tar.gz
 `
-	mirrorRec, metaRec := &recorder{}, &recorder{}
-	mirror := files(mirrorRec, map[string]string{"/modules/02packages.details.txt.gz": gz(t, packages)})
+	mirrorRecorder, metadataRecorder := &recorder{}, &recorder{}
+	mirror := files(mirrorRecorder, map[string]string{"/modules/02packages.details.txt.gz": gzipped(t, packages)})
 	defer mirror.Close()
 	release := `{"distribution": "Plack", "dependency": [
 		{"module": "HTTP::Message", "version": "5.814", "phase": "runtime", "relationship": "requires"},
@@ -230,20 +230,20 @@ Secret::Thing        0.1  C/CO/CORP/Secret-Thing-0.1.tar.gz
 		{"module": "Plack::Util", "version": "0", "phase": "runtime", "relationship": "requires"},
 		{"module": "Not::Mirrored", "version": "0", "phase": "runtime", "relationship": "requires"},
 		{"module": "Test::More", "version": "0", "phase": "test", "relationship": "requires"}]}`
-	meta := files(metaRec, map[string]string{
+	metadata := files(metadataRecorder, map[string]string{
 		"/v1/release/MIYAGAWA/Plack-1.0050": release,
 		"/v1/release/MIYAGAWA/Plack-1.0048": release,
 	})
-	defer meta.Close()
-	withPublic(t, CPAN, meta.URL)
-	cfg := discoverOn(t.TempDir(), "linux", map[string]string{"PERL_CPANM_OPT": "--mirror " + mirror.URL + " --mirror-only"})
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, nil, scope.New([]string{"cpan:Secret-*"}))
+	defer metadata.Close()
+	withPublic(t, CPAN, metadata.URL)
+	config := discoverOn(t.TempDir(), "linux", map[string]string{"PERL_CPANM_OPT": "--mirror " + mirror.URL + " --mirror-only"})
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil, scope.New([]string{"cpan:Secret-*"}))
 
 	want := []string{"HTTP-Message >= 5.814"}
-	if got := depNames(c.Dependencies(lang.Target{Ecosystem: CPAN, Package: "Plack"})); !reflect.DeepEqual(got, want) {
+	if got := dependencyNames(c.Dependencies(lang.Target{Ecosystem: CPAN, Package: "Plack"})); !reflect.DeepEqual(got, want) {
 		t.Errorf("Plack: %v", got)
 	}
-	if got := depNames(c.Dependencies(lang.Target{Ecosystem: CPAN, Package: "Plack", Version: "1.0048", Pinned: true})); !reflect.DeepEqual(got, want) {
+	if got := dependencyNames(c.Dependencies(lang.Target{Ecosystem: CPAN, Package: "Plack", Version: "1.0048", Pinned: true})); !reflect.DeepEqual(got, want) {
 		t.Errorf("Plack 1.0048: %v", got)
 	}
 	notes := notesOf(t, c, lang.Target{Ecosystem: CPAN, Package: "Corp-Billing"})
@@ -255,28 +255,28 @@ Secret::Thing        0.1  C/CO/CORP/Secret-Thing-0.1.tar.gz
 			t.Errorf("%s: %v", name, got)
 		}
 	}
-	if got := mirrorRec.take(); !reflect.DeepEqual(got, []string{"/modules/02packages.details.txt.gz"}) {
+	if got := mirrorRecorder.take(); !reflect.DeepEqual(got, []string{"/modules/02packages.details.txt.gz"}) {
 		t.Errorf("mirror asked %v", got)
 	}
 	wantMeta := []string{"/v1/release/MIYAGAWA/Plack-1.0050", "/v1/release/MIYAGAWA/Plack-1.0048", "/v1/release/CORP/Corp-Billing-1.2"}
-	if got := metaRec.take(); !reflect.DeepEqual(got, wantMeta) {
+	if got := metadataRecorder.take(); !reflect.DeepEqual(got, wantMeta) {
 		t.Errorf("MetaCPAN asked %v", got)
 	}
 
 	// A minicpan directory, its 02packages not compressed, as Carton's mirror.
-	dir := t.TempDir()
-	put(t, filepath.Join(dir, "modules", "02packages.details.txt"), packages)
-	cfg = discoverOn(t.TempDir(), "linux", map[string]string{"PERL_CARTON_MIRROR": dir})
-	if got := order(cfg, CPAN, "Plack", ""); len(got) != 2 || !strings.HasPrefix(got[0], "file://") {
+	directory := t.TempDir()
+	put(t, filepath.Join(directory, "modules", "02packages.details.txt"), packages)
+	config = discoverOn(t.TempDir(), "linux", map[string]string{"PERL_CARTON_MIRROR": directory})
+	if got := order(config, CPAN, "Plack", ""); len(got) != 2 || !strings.HasPrefix(got[0], "file://") {
 		t.Fatalf("carton mirror %v", got)
 	}
-	c = NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, nil, nil)
-	if got := depNames(c.Dependencies(lang.Target{Ecosystem: CPAN, Package: "Plack"})); !reflect.DeepEqual(got, want) {
+	c = NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil, nil)
+	if got := dependencyNames(c.Dependencies(lang.Target{Ecosystem: CPAN, Package: "Plack"})); !reflect.DeepEqual(got, want) {
 		t.Errorf("file mirror Plack: %v", got)
 	}
 	// Not on the DarkPAN: asked of MetaCPAN, after it.
 	c.Dependencies(lang.Target{Ecosystem: CPAN, Package: "Moo"})
-	if got := metaRec.take(); !reflect.DeepEqual(got, []string{"/v1/release/MIYAGAWA/Plack-1.0050", "/v1/release/Moo"}) {
+	if got := metadataRecorder.take(); !reflect.DeepEqual(got, []string{"/v1/release/MIYAGAWA/Plack-1.0050", "/v1/release/Moo"}) {
 		t.Errorf("MetaCPAN asked %v", got)
 	}
 }
@@ -297,7 +297,7 @@ func opamArchive(t *testing.T, file string, opamFiles map[string]string) {
 	t.Helper()
 	var b bytes.Buffer
 	z := gzip.NewWriter(&b)
-	tw := tar.NewWriter(z)
+	tarWriter := tar.NewWriter(z)
 	names := make([]string, 0, len(opamFiles))
 	for n := range opamFiles {
 		names = append(names, n)
@@ -305,10 +305,10 @@ func opamArchive(t *testing.T, file string, opamFiles map[string]string) {
 	sort.Strings(names)
 	for _, n := range names {
 		body := opamFiles[n]
-		tw.WriteHeader(&tar.Header{Name: n, Mode: 0o644, Size: int64(len(body)), Typeflag: tar.TypeReg})
-		tw.Write([]byte(body))
+		tarWriter.WriteHeader(&tar.Header{Name: n, Mode: 0o644, Size: int64(len(body)), Typeflag: tar.TypeReg})
+		tarWriter.Write([]byte(body))
 	}
-	if err := tw.Close(); err != nil {
+	if err := tarWriter.Close(); err != nil {
 		t.Fatal(err)
 	}
 	if err := z.Close(); err != nil {
@@ -346,10 +346,10 @@ repositories: [
 		"repo/default/packages/y/y.1/opam":   "opam-version: \"2.0\"\n",
 		"repo/extra/not-a-repository/README": "",
 	})
-	for _, tt := range []struct {
-		vars  map[string]string
-		want  []string
-		local map[string]string
+	for _, test := range []struct {
+		variables map[string]string
+		want      []string
+		local     map[string]string
 	}{
 		{nil, []string{"git+https://git.corp/opam-repo.git", pub},
 			map[string]string{"git+https://git.corp/opam-repo.git": filepath.Join(root, "repo", "corp"), pub: filepath.Join(root, "repo", "default")}},
@@ -359,13 +359,13 @@ repositories: [
 		{map[string]string{"OPAMROOT": t.TempDir()}, []string{pub}, nil},
 		{map[string]string{"OPAMSWITCH": "ssh"}, []string{"git+ssh://git.corp/opam-ssh.git"}, nil},
 	} {
-		c := discoverOn(home, "linux", tt.vars)
-		if got := order(c, Opam, "lwt", ""); !reflect.DeepEqual(got, tt.want) {
-			t.Errorf("%v: %v, want %v", tt.vars, got, tt.want)
+		c := discoverOn(home, "linux", test.variables)
+		if got := order(c, Opam, "lwt", ""); !reflect.DeepEqual(got, test.want) {
+			t.Errorf("%v: %v, want %v", test.variables, got, test.want)
 		}
-		for u, want := range tt.local {
+		for u, want := range test.local {
 			if got := c.localCopy(Opam, u); got != want {
-				t.Errorf("%v: copy of %s is %q, want %q", tt.vars, u, got, want)
+				t.Errorf("%v: copy of %s is %q, want %q", test.variables, u, got, want)
 			}
 		}
 	}
@@ -393,7 +393,7 @@ func TestDuneWorkspaceRepositories(t *testing.T) {
 	pub := "https://raw.githubusercontent.com/ocaml/opam-repository/master"
 	corp := "git+https://git.corp/opam-repo.git"
 	stanza := "(lang dune 3.16)\n(repository\n (name corp)\n (url " + corp + "))\n"
-	for _, tt := range []struct {
+	for _, test := range []struct {
 		lock string
 		want []string
 	}{
@@ -402,9 +402,9 @@ func TestDuneWorkspaceRepositories(t *testing.T) {
 		{"(lock_dir (repositories corp))", []string{corp + "?"}},
 		{"(lock_dir (repositories upstream))", []string{pub}},
 	} {
-		c := Discover(write(t, map[string]string{"dune-workspace": stanza + tt.lock + "\n"}), env(nil), "")
-		if got := order(c, Opam, "lwt", ""); !reflect.DeepEqual(got, tt.want) {
-			t.Errorf("%q: %v, want %v", tt.lock, got, tt.want)
+		c := Discover(write(t, map[string]string{"dune-workspace": stanza + test.lock + "\n"}), environment(nil), "")
+		if got := order(c, Opam, "lwt", ""); !reflect.DeepEqual(got, test.want) {
+			t.Errorf("%q: %v, want %v", test.lock, got, test.want)
 		}
 	}
 }
@@ -416,13 +416,13 @@ func TestDuneWorkspaceRepositories(t *testing.T) {
 //
 // Verifies: REQ-SUP-054
 func TestOpamListingFromCopies(t *testing.T) {
-	rec := &recorder{}
-	srv := files(rec, nil)
-	defer srv.Close()
-	withPublic(t, Opam, srv.URL)
+	recorded := &recorder{}
+	server := files(recorded, nil)
+	defer server.Close()
+	withPublic(t, Opam, server.URL)
 	home := t.TempDir()
 	root := filepath.Join(home, ".opam")
-	description := func(dep string) string { return "opam-version: \"2.0\"\ndepends: [\"" + dep + "\"]\n" }
+	description := func(dependency string) string { return "opam-version: \"2.0\"\ndepends: [\"" + dependency + "\"]\n" }
 	opamRoot(t, root, map[string]string{
 		"repo/repos-config":                          `repositories: ["corp" {"git+https://git.corp/opam-repo.git"} "default" {"https://opam.ocaml.org"}]`,
 		"repo/corp/packages/corpkg/corpkg.1.0/opam":  description("a"),
@@ -437,9 +437,9 @@ func TestOpamListingFromCopies(t *testing.T) {
 		"default/packages/lwt/lwt.5.10.0/opam.bak": "",
 	})
 	c := NewClient(discoverOn(home, "linux", nil), t.TempDir(), time.Hour, 5*time.Second, nil, nil)
-	for _, tt := range []struct {
-		pkg, version string
-		want         []string
+	for _, test := range []struct {
+		packageName, version string
+		want                 []string
 	}{
 		{"corpkg", "< 1.10", []string{"b "}},
 		{"corpkg", "", []string{"c "}},
@@ -448,14 +448,14 @@ func TestOpamListingFromCopies(t *testing.T) {
 		{"lwt", "", []string{"alpha "}},
 		{"lwt", "5.9.1", []string{"old "}},
 	} {
-		if got := depNames(c.Dependencies(lang.Target{Ecosystem: Opam, Package: tt.pkg, Version: tt.version})); !reflect.DeepEqual(got, tt.want) {
-			t.Errorf("%s %q: %v, want %v", tt.pkg, tt.version, got, tt.want)
+		if got := dependencyNames(c.Dependencies(lang.Target{Ecosystem: Opam, Package: test.packageName, Version: test.version})); !reflect.DeepEqual(got, test.want) {
+			t.Errorf("%s %q: %v, want %v", test.packageName, test.version, got, test.want)
 		}
 	}
 	if got := c.Dependencies(lang.Target{Ecosystem: Opam, Package: "lwt", Version: "> 7"}); len(got) != 0 {
 		t.Errorf("no version admitted: %v", got)
 	}
-	if got := rec.take(); len(got) != 0 {
+	if got := recorded.take(); len(got) != 0 {
 		t.Errorf("asked %v", got)
 	}
 }
@@ -467,35 +467,35 @@ func TestOpamListingFromCopies(t *testing.T) {
 //
 // Verifies: REQ-SUP-054, REQ-TRC-017
 func TestOpamListingFromGitHub(t *testing.T) {
-	rec := &recorder{}
-	srv := files(rec, map[string]string{
+	recorded := &recorder{}
+	server := files(recorded, map[string]string{
 		"/repos/ocaml/opam-repository/contents/packages/fmt?ref=master": `[{"name": "fmt.0.8.9", "type": "dir"},
 			{"name": "fmt.0.9.0", "type": "dir"}, {"name": "fmt.0.10.0", "type": "dir"}]`,
 		"/packages/fmt/fmt.0.10.0/opam": "depends: [\"ten\"]\n",
 		"/packages/fmt/fmt.0.9.0/opam":  "depends: [\"nine\"]\n",
 	})
-	defer srv.Close()
-	withPublic(t, Opam, srv.URL)
-	withGitHub(t, srv.URL)
+	defer server.Close()
+	withPublic(t, Opam, server.URL)
+	withGitHub(t, server.URL)
 	home := t.TempDir()
 	opamRoot(t, filepath.Join(home, ".opam"), map[string]string{
 		"repo/repos-config": `repositories: ["corp" {"git+https://git.corp/opam-repo.git"} "web" {"https://opam.corp"} "default" {"https://opam.ocaml.org"}]`,
 	})
-	cfg := discoverOn(home, "linux", nil)
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, nil, nil)
-	if got := depNames(c.Dependencies(lang.Target{Ecosystem: Opam, Package: "fmt", Version: ">= 0.9"})); len(got) != 0 {
+	config := discoverOn(home, "linux", nil)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil, nil)
+	if got := dependencyNames(c.Dependencies(lang.Target{Ecosystem: Opam, Package: "fmt", Version: ">= 0.9"})); len(got) != 0 {
 		t.Errorf("the HTTP repository without a listing answered %v", got)
 	}
-	cfg.sources[Opam] = append(cfg.sources[Opam][:1], cfg.sources[Opam][2:]...) // without "web"
+	config.sources[Opam] = append(config.sources[Opam][:1], config.sources[Opam][2:]...) // without "web"
 	notes := notesOf(t, c, lang.Target{Ecosystem: Opam, Package: "fmt", Version: ">= 0.9.0"})
 	if len(notes) != 1 || !strings.HasPrefix(notes[0], "no-copy: opam repository git+https://git.corp/opam-repo.git") {
 		t.Errorf("notes %v", notes)
 	}
-	if got := depNames(c.Dependencies(lang.Target{Ecosystem: Opam, Package: "fmt", Version: "< 0.10"})); !reflect.DeepEqual(got, []string{"nine "}) {
+	if got := dependencyNames(c.Dependencies(lang.Target{Ecosystem: Opam, Package: "fmt", Version: "< 0.10"})); !reflect.DeepEqual(got, []string{"nine "}) {
 		t.Errorf("fmt < 0.10: %v", got)
 	}
 	want := []string{"/repos/ocaml/opam-repository/contents/packages/fmt?ref=master", "/packages/fmt/fmt.0.10.0/opam", "/packages/fmt/fmt.0.9.0/opam"}
-	if got := rec.take(); !reflect.DeepEqual(got, want) {
+	if got := recorded.take(); !reflect.DeepEqual(got, want) {
 		t.Errorf("asked %v", got)
 	}
 }
@@ -503,12 +503,12 @@ func TestOpamListingFromGitHub(t *testing.T) {
 // ---------------------------------------------------------------- Alire
 
 // alireCheckout writes an index checkout: index.toml and release manifests.
-func alireCheckout(t *testing.T, dir string, releases map[string]string) {
+func alireCheckout(t *testing.T, directory string, releases map[string]string) {
 	t.Helper()
-	put(t, filepath.Join(dir, "index.toml"), "version = \"1.4.0\"\n")
-	for file, dep := range releases {
+	put(t, filepath.Join(directory, "index.toml"), "version = \"1.4.0\"\n")
+	for file, dependency := range releases {
 		crate := strings.SplitN(file, "-", 2)[0]
-		put(t, filepath.Join(dir, crate[:2], crate, file), "[[depends-on]]\n"+dep+" = \"*\"\n")
+		put(t, filepath.Join(directory, crate[:2], crate, file), "[[depends-on]]\n"+dependency+" = \"*\"\n")
 	}
 }
 
@@ -520,10 +520,10 @@ func alireCheckout(t *testing.T, dir string, releases map[string]string) {
 //
 // Verifies: REQ-SUP-061, REQ-SUP-064
 func TestAlireIndexes(t *testing.T) {
-	rec := &recorder{}
-	srv := files(rec, nil)
-	defer srv.Close()
-	withPublic(t, Alire, srv.URL)
+	recorded := &recorder{}
+	server := files(recorded, nil)
+	defer server.Close()
+	withPublic(t, Alire, server.URL)
 	home := t.TempDir()
 	settings := filepath.Join(home, ".config", "alire")
 	corp := "git+https://git.corp/alire-index.git"
@@ -536,18 +536,18 @@ func TestAlireIndexes(t *testing.T) {
 	alireCheckout(t, filepath.Join(settings, "indexes", "corp", "repo", "index"), map[string]string{
 		"corpcrate-1.0.0.toml": "a", "corpcrate-1.4.2.toml": "b", "corpcrate-2.0.0.toml": "c",
 	})
-	dir := t.TempDir()
-	alireCheckout(t, dir, map[string]string{"localcrate-0.1.0.toml": "l"})
+	directory := t.TempDir()
+	alireCheckout(t, directory, map[string]string{"localcrate-0.1.0.toml": "l"})
 	put(t, filepath.Join(settings, "indexes", "mine", "index.toml"),
-		"name = \"mine\"\npriority = 3\nurl = \"file:"+filepath.ToSlash(dir)+"\"\n")
+		"name = \"mine\"\npriority = 3\nurl = \"file:"+filepath.ToSlash(directory)+"\"\n")
 
-	cfg := discoverOn(home, "linux", nil)
-	mine := "file:" + filepath.ToSlash(dir)
-	if got := order(cfg, Alire, "aws", ""); !reflect.DeepEqual(got, []string{corp, srv.URL, mine}) {
+	config := discoverOn(home, "linux", nil)
+	mine := "file:" + filepath.ToSlash(directory)
+	if got := order(config, Alire, "aws", ""); !reflect.DeepEqual(got, []string{corp, server.URL, mine}) {
 		t.Errorf("order %v", got)
 	}
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, nil, nil)
-	for _, tt := range []struct {
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil, nil)
+	for _, test := range []struct {
 		crate, version string
 		want           []string
 	}{
@@ -561,11 +561,11 @@ func TestAlireIndexes(t *testing.T) {
 		{"aws", "73d99ae1ff2f5210dc41c2ea7afebe600f9e9916", []string{}},
 		{"aws", "^27", []string{}},
 	} {
-		if got := depNames(c.Dependencies(lang.Target{Ecosystem: Alire, Package: tt.crate, Version: tt.version})); !reflect.DeepEqual(got, tt.want) {
-			t.Errorf("%s %q: %v, want %v", tt.crate, tt.version, got, tt.want)
+		if got := dependencyNames(c.Dependencies(lang.Target{Ecosystem: Alire, Package: test.crate, Version: test.version})); !reflect.DeepEqual(got, test.want) {
+			t.Errorf("%s %q: %v, want %v", test.crate, test.version, got, test.want)
 		}
 	}
-	if got := rec.take(); len(got) != 0 {
+	if got := recorded.take(); len(got) != 0 {
 		t.Errorf("asked %v", got)
 	}
 	// Without the community index, the public one is off; ALIRE_SETTINGS_DIR moves
@@ -574,7 +574,7 @@ func TestAlireIndexes(t *testing.T) {
 	if got := order(discoverOn(home, "linux", nil), Alire, "aws", ""); !reflect.DeepEqual(got, []string{corp, mine}) {
 		t.Errorf("without community %v", got)
 	}
-	if got := order(discoverOn(home, "linux", map[string]string{"ALIRE_SETTINGS_DIR": t.TempDir()}), Alire, "aws", ""); !reflect.DeepEqual(got, []string{srv.URL}) {
+	if got := order(discoverOn(home, "linux", map[string]string{"ALIRE_SETTINGS_DIR": t.TempDir()}), Alire, "aws", ""); !reflect.DeepEqual(got, []string{server.URL}) {
 		t.Errorf("empty settings %v", got)
 	}
 	// Windows: %USERPROFILE%\.config\alire, whatever XDG_CONFIG_HOME says.
@@ -589,20 +589,20 @@ func TestAlireIndexes(t *testing.T) {
 //
 // Verifies: REQ-SUP-061
 func TestAlireListingFromGitHub(t *testing.T) {
-	rec := &recorder{}
-	srv := files(rec, map[string]string{
+	recorded := &recorder{}
+	server := files(recorded, map[string]string{
 		"/repos/alire-project/alire-index/contents/index/xm/xmlada?ref=stable-1.4.0": `[{"name": "xmlada-23.0.0.toml"},
 			{"name": "xmlada-24.0.0.toml"}, {"name": "xmlada-external.toml"}, {"name": "xmlada-25.0.0-rc.toml"}]`,
 		"/index/xm/xmlada/xmlada-24.0.0.toml": "[[depends-on]]\ngnat = \">=13\"\n",
 	})
-	defer srv.Close()
-	withGitHub(t, srv.URL)
-	c := publicClient(t, Alire, srv.URL, nil)
-	if got := depNames(c.Dependencies(lang.Target{Ecosystem: Alire, Package: "xmlada", Version: "^23 | ^24"})); !reflect.DeepEqual(got, []string{"gnat >=13"}) {
+	defer server.Close()
+	withGitHub(t, server.URL)
+	c := publicClient(t, Alire, server.URL, nil)
+	if got := dependencyNames(c.Dependencies(lang.Target{Ecosystem: Alire, Package: "xmlada", Version: "^23 | ^24"})); !reflect.DeepEqual(got, []string{"gnat >=13"}) {
 		t.Errorf("got %v", got)
 	}
 	want := []string{"/repos/alire-project/alire-index/contents/index/xm/xmlada?ref=stable-1.4.0", "/index/xm/xmlada/xmlada-24.0.0.toml"}
-	if got := rec.take(); !reflect.DeepEqual(got, want) {
+	if got := recorded.take(); !reflect.DeepEqual(got, want) {
 		t.Errorf("asked %v", got)
 	}
 }

@@ -24,4 +24,4 @@ off without a step.
 ## Acceptance criteria
 
 1. The deck's middle stands above the shores and its ends meet them.
-2. A bridge shows railings, piers and a centre line.
+2. A bridge shows railings, piers and a center line.

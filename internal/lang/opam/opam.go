@@ -14,13 +14,13 @@ import (
 type File struct {
 	Name    string
 	Version string
-	Depends []Dep
-	Depopts []Dep
+	Depends []Dependency
+	Depopts []Dependency
 	Pins    []Pin
 }
 
 // Dep is one package of a `depends` or `depopts` formula.
-type Dep struct {
+type Dependency struct {
 	Name string
 	// Constraint is the version part of the package's filter as written, with its
 	// connectives: `>= 5.6 & < 6`. Filters that are not about the version
@@ -66,36 +66,36 @@ func ExactVersion(v string) bool {
 	return c >= '0' && c <= '9' || c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z'
 }
 
-// SplitRef splits a pin's URL at its `#ref`.
-func SplitRef(u string) (string, string) {
+// SplitReference splits a pin's URL at its `#ref`.
+func SplitReference(u string) (string, string) {
 	if i := strings.LastIndexByte(u, '#'); i >= 0 {
 		return u[:i], u[i+1:]
 	}
 	return u, ""
 }
 
-type tokKind uint8
+type tokenKind uint8
 
 const (
-	tIdent tokKind = iota + 1
+	tIdentifier tokenKind = iota + 1
 	tString
-	tPunct
+	tPunctuation
 )
 
 type token struct {
-	k    tokKind
+	k    tokenKind
 	s    string
 	line int
 }
 
 // lex splits a description into tokens. Comments (`#` to the end of the line and
 // nested `(* *)`) are dropped; strings are kept without their quotes.
-func lex(src []byte) []token {
+func lex(source []byte) []token {
 	var out []token
 	line := 1
-	n := len(src)
+	n := len(source)
 	for i := 0; i < n; {
-		c := src[i]
+		c := source[i]
 		switch {
 		case c == '\n':
 			line++
@@ -103,18 +103,18 @@ func lex(src []byte) []token {
 		case c == ' ' || c == '\t' || c == '\r':
 			i++
 		case c == '#':
-			for i < n && src[i] != '\n' {
+			for i < n && source[i] != '\n' {
 				i++
 			}
-		case c == '(' && i+1 < n && src[i+1] == '*':
+		case c == '(' && i+1 < n && source[i+1] == '*':
 			depth := 0
 			for i < n {
-				if src[i] == '(' && i+1 < n && src[i+1] == '*' {
+				if source[i] == '(' && i+1 < n && source[i+1] == '*' {
 					depth++
 					i += 2
 					continue
 				}
-				if src[i] == '*' && i+1 < n && src[i+1] == ')' {
+				if source[i] == '*' && i+1 < n && source[i+1] == ')' {
 					depth--
 					i += 2
 					if depth == 0 {
@@ -122,81 +122,81 @@ func lex(src []byte) []token {
 					}
 					continue
 				}
-				if src[i] == '\n' {
+				if source[i] == '\n' {
 					line++
 				}
 				i++
 			}
 		case c == '"':
 			start := line
-			if i+2 < n && src[i+1] == '"' && src[i+2] == '"' {
+			if i+2 < n && source[i+1] == '"' && source[i+2] == '"' {
 				j := i + 3
-				for j < n && !(src[j] == '"' && j+2 < n && src[j+1] == '"' && src[j+2] == '"') {
-					if src[j] == '\n' {
+				for j < n && !(source[j] == '"' && j+2 < n && source[j+1] == '"' && source[j+2] == '"') {
+					if source[j] == '\n' {
 						line++
 					}
 					j++
 				}
-				out = append(out, token{tString, string(src[min(i+3, n):min(j, n)]), start})
+				out = append(out, token{tString, string(source[min(i+3, n):min(j, n)]), start})
 				i = min(j+3, n)
 				continue
 			}
 			j := i + 1
 			var b strings.Builder
-			for j < n && src[j] != '"' {
-				if src[j] == '\\' && j+1 < n {
+			for j < n && source[j] != '"' {
+				if source[j] == '\\' && j+1 < n {
 					j++
-					if src[j] == '\n' {
+					if source[j] == '\n' {
 						line++
 					}
-				} else if src[j] == '\n' {
+				} else if source[j] == '\n' {
 					line++
 				}
-				b.WriteByte(src[j])
+				b.WriteByte(source[j])
 				j++
 			}
 			out = append(out, token{tString, b.String(), start})
 			i = min(j+1, n)
-		case identByte(c):
+		case identifierByte(c):
 			j := i
 			for j < n {
-				if identByte(src[j]) {
+				if identifierByte(source[j]) {
 					j++
 					continue
 				}
 				// pkg:var is one variable; `name:` followed by a space is a field.
-				if src[j] == ':' && j+1 < n && identByte(src[j+1]) {
+				if source[j] == ':' && j+1 < n && identifierByte(source[j+1]) {
 					j++
 					continue
 				}
 				break
 			}
-			out = append(out, token{tIdent, string(src[i:j]), line})
+			out = append(out, token{tIdentifier, string(source[i:j]), line})
 			i = j
 		case strings.IndexByte("=<>!+", c) >= 0:
 			j := i
-			for j < n && strings.IndexByte("=<>!+", src[j]) >= 0 {
+			for j < n && strings.IndexByte("=<>!+", source[j]) >= 0 {
 				j++
 			}
-			out = append(out, token{tPunct, string(src[i:j]), line})
+			out = append(out, token{tPunctuation, string(source[i:j]), line})
 			i = j
 		default:
-			_, size := utf8.DecodeRune(src[i:])
-			out = append(out, token{tPunct, string(src[i : i+size]), line})
+			_, size := utf8.DecodeRune(source[i:])
+			out = append(out, token{tPunctuation, string(source[i : i+size]), line})
 			i += size
 		}
 	}
 	return out
 }
 
-func identByte(c byte) bool {
+func identifierByte(c byte) bool {
 	return c >= 'a' && c <= 'z' || c >= 'A' && c <= 'Z' || c >= '0' && c <= '9' || c == '_' || c == '-'
 }
 
 // Read reads a description. It returns a result for any input.
-func Read(src []byte) *File {
+func Read(source []byte) *File {
 	f := &File{}
-	fields(lex(src), func(name string, value []token) {
+	fields(lex(source), func(name string, value []token) {
 		switch name {
 		case "name":
 			if len(value) > 0 && value[0].k == tString {
@@ -217,13 +217,13 @@ func Read(src []byte) *File {
 	return f
 }
 
-// fields hands each top-level field of a file in opam's format to fn with its
+// fields hands each top-level field of a file in opam's format to function with its
 // value, which runs to the next field or section at the top level.
-func fields(tokens []token, fn func(name string, value []token)) {
+func fields(tokens []token, function func(name string, value []token)) {
 	depth := 0
 	for i := 0; i < len(tokens); i++ {
 		t := tokens[i]
-		if t.k == tPunct {
+		if t.k == tPunctuation {
 			switch t.s {
 			case "[", "{", "(":
 				depth++
@@ -232,17 +232,17 @@ func fields(tokens []token, fn func(name string, value []token)) {
 			}
 			continue
 		}
-		if depth != 0 || t.k != tIdent || i+1 >= len(tokens) || !punct(tokens[i+1], ":") {
+		if depth != 0 || t.k != tIdentifier || i+1 >= len(tokens) || !punctuation(tokens[i+1], ":") {
 			continue
 		}
 		j := i + 2
 		for d := 0; j < len(tokens); j++ {
 			u := tokens[j]
-			if d == 0 && u.k == tIdent && j+1 < len(tokens) && (punct(tokens[j+1], ":") || punct(tokens[j+1], "{") ||
-				tokens[j+1].k == tString && j+2 < len(tokens) && punct(tokens[j+2], "{")) {
+			if d == 0 && u.k == tIdentifier && j+1 < len(tokens) && (punctuation(tokens[j+1], ":") || punctuation(tokens[j+1], "{") ||
+				tokens[j+1].k == tString && j+2 < len(tokens) && punctuation(tokens[j+2], "{")) {
 				break
 			}
-			if u.k == tPunct {
+			if u.k == tPunctuation {
 				switch u.s {
 				case "[", "{", "(":
 					d++
@@ -254,7 +254,7 @@ func fields(tokens []token, fn func(name string, value []token)) {
 				break
 			}
 		}
-		fn(t.s, tokens[i+2:min(j, len(tokens))])
+		function(t.s, tokens[i+2:min(j, len(tokens))])
 		i = j - 1
 	}
 }
@@ -269,9 +269,9 @@ type Repository struct {
 // repo/repos-config's `"name" {"url" ...}` entries, or the names the root's
 // config and a switch's switch-config list (a single string or a list), in the
 // order written - the order of priority.
-func Repositories(src []byte) []Repository {
+func Repositories(source []byte) []Repository {
 	var out []Repository
-	fields(lex(src), func(name string, value []token) {
+	fields(lex(source), func(name string, value []token) {
 		if name != "repositories" {
 			return
 		}
@@ -280,7 +280,7 @@ func Repositories(src []byte) []Repository {
 				continue
 			}
 			r := Repository{Name: value[i].s}
-			if i+1 < len(value) && punct(value[i+1], "{") {
+			if i+1 < len(value) && punctuation(value[i+1], "{") {
 				end := closing(value, i+1)
 				for _, u := range value[i+2 : min(end, len(value))] {
 					if u.k == tString {
@@ -298,9 +298,9 @@ func Repositories(src []byte) []Repository {
 
 // String is the value of a top-level field holding one string (the root
 // config's `switch:`), or "".
-func String(src []byte, field string) string {
+func String(source []byte, field string) string {
 	out := ""
-	fields(lex(src), func(name string, value []token) {
+	fields(lex(source), func(name string, value []token) {
 		if name == field && out == "" && len(value) > 0 && value[0].k == tString {
 			out = value[0].s
 		}
@@ -310,19 +310,19 @@ func String(src []byte, field string) string {
 
 // formula reads the packages of a dependency formula: every string outside a
 // filter is a package, the `{...}` right after it its filter.
-func formula(tokens []token) []Dep {
-	var out []Dep
+func formula(tokens []token) []Dependency {
+	var out []Dependency
 	for i := 0; i < len(tokens); i++ {
 		t := tokens[i]
-		if t.k == tPunct && t.s == "{" {
+		if t.k == tPunctuation && t.s == "{" {
 			i = closing(tokens, i) // a filter of a group: (a | b) {build}
 			continue
 		}
 		if t.k != tString {
 			continue
 		}
-		d := Dep{Name: t.s, Line: t.line}
-		if i+1 < len(tokens) && tokens[i+1].k == tPunct && tokens[i+1].s == "{" {
+		d := Dependency{Name: t.s, Line: t.line}
+		if i+1 < len(tokens) && tokens[i+1].k == tPunctuation && tokens[i+1].s == "{" {
 			end := closing(tokens, i+1)
 			filter(tokens[i+2:min(end, len(tokens))], &d)
 			i = end
@@ -336,7 +336,7 @@ func formula(tokens []token) []Dep {
 func closing(tokens []token, i int) int {
 	d := 0
 	for j := i; j < len(tokens); j++ {
-		if tokens[j].k != tPunct {
+		if tokens[j].k != tPunctuation {
 			continue
 		}
 		switch tokens[j].s {
@@ -354,32 +354,32 @@ func closing(tokens []token, i int) int {
 
 // filter reads a package's filter: version constraints (an operator not preceded
 // by a variable, followed by a version) and the variables.
-func filter(tokens []token, d *Dep) {
+func filter(tokens []token, d *Dependency) {
 	var parts []string
-	ops := 0
+	operators := 0
 	exact := ""
 	for i, t := range tokens {
-		if t.k == tIdent {
+		if t.k == tIdentifier {
 			if i+1 < len(tokens) && isRelop(tokens[i+1]) {
 				continue // os = "linux": a variable compared, not the version
 			}
-			if i > 0 && isRelop(tokens[i-1]) && (i < 2 || tokens[i-2].k != tIdent && tokens[i-2].k != tString) {
+			if i > 0 && isRelop(tokens[i-1]) && (i < 2 || tokens[i-2].k != tIdentifier && tokens[i-2].k != tString) {
 				// {= version}: the version as a variable
 			} else {
 				d.Flags = append(d.Flags, t.s)
 				continue
 			}
 		}
-		if !isRelop(t) || i+1 >= len(tokens) || tokens[i+1].k == tPunct {
+		if !isRelop(t) || i+1 >= len(tokens) || tokens[i+1].k == tPunctuation {
 			continue
 		}
-		if i > 0 && (tokens[i-1].k == tIdent || tokens[i-1].k == tString) {
+		if i > 0 && (tokens[i-1].k == tIdentifier || tokens[i-1].k == tString) {
 			continue // the comparison of a variable
 		}
 		v := tokens[i+1].s
 		if len(parts) > 0 {
 			conn := "&"
-			for k := i - 1; k >= 0 && tokens[k].k == tPunct; k-- {
+			for k := i - 1; k >= 0 && tokens[k].k == tPunctuation; k-- {
 				if tokens[k].s == "|" {
 					conn = "|"
 				}
@@ -387,19 +387,19 @@ func filter(tokens []token, d *Dep) {
 			parts = append(parts, conn)
 		}
 		parts = append(parts, t.s+" "+v)
-		ops++
+		operators++
 		if t.s == "=" && tokens[i+1].k == tString {
 			exact = v
 		}
 	}
 	d.Constraint = strings.Join(parts, " ")
-	if ops == 1 {
+	if operators == 1 {
 		d.Exact = exact
 	}
 }
 
 func isRelop(t token) bool {
-	if t.k != tPunct {
+	if t.k != tPunctuation {
 		return false
 	}
 	switch t.s {
@@ -423,4 +423,4 @@ func pins(tokens []token) []Pin {
 	return out
 }
 
-func punct(t token, s string) bool { return t.k == tPunct && t.s == s }
+func punctuation(t token, s string) bool { return t.k == tPunctuation && t.s == s }

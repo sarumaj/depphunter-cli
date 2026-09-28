@@ -26,7 +26,7 @@ const maxIncludes = 8
 // nothing (its package keeps resolving as required).
 //
 // Implements: REQ-NIM-005
-func (r *resolver) readDevelop(dir string, read func(string) []byte) map[string]*project {
+func (r *resolver) readDevelop(directory string, read func(string) []byte) map[string]*project {
 	out := map[string]*project{}
 	seen := map[string]bool{}
 	var visit func(file string, depth int)
@@ -41,23 +41,23 @@ func (r *resolver) readDevelop(dir string, read func(string) []byte) map[string]
 		}
 		base := path.Dir(file)
 		for _, d := range df.Dependencies {
-			if q := r.projects[r.inRepo(base, d)]; q != nil {
+			if q := r.projects[r.inRepository(base, d)]; q != nil {
 				if key := fold(q.nimble.name); key != "" && out[key] == nil {
 					out[key] = q
 				}
 			}
 		}
-		for _, inc := range df.Includes {
-			visit(r.inRepo(base, inc), depth+1)
+		for _, include := range df.Includes {
+			visit(r.inRepository(base, include), depth+1)
 		}
 	}
-	visit(path.Join(dir, "nimble.develop"), 0)
+	visit(path.Join(directory, "nimble.develop"), 0)
 	return out
 }
 
-// inRepo is a path a develop file writes, relative to its directory base or
+// inRepository is a path a develop file writes, relative to its directory base or
 // absolute, as a cleaned path of the repository, or "" when it lies outside.
-func (r *resolver) inRepo(base, p string) string {
+func (r *resolver) inRepository(base, p string) string {
 	if p = strings.TrimSpace(p); p == "" {
 		return ""
 	}
@@ -66,11 +66,11 @@ func (r *resolver) inRepo(base, p string) string {
 		if r.root == "" || err != nil {
 			return ""
 		}
-		rel, err := filepath.Rel(root, p)
+		relative, err := filepath.Rel(root, p)
 		if err != nil {
 			return ""
 		}
-		p, base = rel, "."
+		p, base = relative, "."
 	}
 	p = path.Join(base, filepath.ToSlash(p))
 	if p == ".." || strings.HasPrefix(p, "../") || path.IsAbs(p) {
@@ -86,7 +86,7 @@ func (p *project) developed(name string) *project {
 		return q
 	}
 	if strings.Contains(name, "/") {
-		return p.develop[fold(repoBase(name))]
+		return p.develop[fold(repositoryBase(name))]
 	}
 	return nil
 }

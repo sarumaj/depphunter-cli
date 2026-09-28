@@ -15,9 +15,9 @@ import (
 // by (the name it is declared under, its repository's) and the directory of the
 // build file declaring it.
 type Fetched struct {
-	Dir    string
-	Names  []string
-	Target lang.Target
+	Directory string
+	Names     []string
+	Target    lang.Target
 }
 
 // FetchReader reads what the project's build files fetch, and names the island the
@@ -28,28 +28,28 @@ type FetchReader interface {
 }
 
 // Fetch adds the content the build fetches to what Library attributes includes to,
-// its names folded as normName folds an include's, the shallowest declaration first.
+// its names folded as normalizeName folds an include's, the shallowest declaration first.
 func (pk Packages) Fetch(list []Fetched) {
 	p := pk.p
 	for _, f := range list {
 		names := make([]string, 0, len(f.Names))
 		for _, n := range f.Names {
-			if n = normName(n); n != "" && !slices.Contains(names, n) {
+			if n = normalizeName(n); n != "" && !slices.Contains(names, n) {
 				names = append(names, n)
 			}
 		}
 		f.Names = names
 		p.fetched = append(p.fetched, f)
 	}
-	slices.SortStableFunc(p.fetched, func(a, b Fetched) int { return cmp.Compare(depth(a.Dir), depth(b.Dir)) })
+	slices.SortStableFunc(p.fetched, func(a, b Fetched) int { return cmp.Compare(depth(a.Directory), depth(b.Directory)) })
 }
 
 // depth counts a directory's levels below the project root.
-func depth(dir string) int {
-	if dir == "." {
+func depth(directory string) int {
+	if directory == "." {
 		return 0
 	}
-	return strings.Count(dir, "/") + 1
+	return strings.Count(directory, "/") + 1
 }
 
 // fetchedFor finds the fetched content an include belongs to by its candidate
@@ -68,8 +68,8 @@ func (p *packages) fetchedFor(file string, names []string) *Fetched {
 		if first == nil {
 			first = f
 		}
-		above := f.Dir == "." || strings.HasPrefix(path.Dir(file)+"/", f.Dir+"/")
-		if above && (near == nil || depth(f.Dir) > depth(near.Dir)) {
+		above := f.Directory == "." || strings.HasPrefix(path.Dir(file)+"/", f.Directory+"/")
+		if above && (near == nil || depth(f.Directory) > depth(near.Directory)) {
 			near = f
 		}
 	}

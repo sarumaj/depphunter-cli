@@ -8,17 +8,17 @@ import (
 	"testing"
 )
 
-// machine is a machine with home as its home directory, vars as its whole
+// machine is a machine with home as its home directory, variables as its whole
 // environment (listed as well as answered) and goos as its platform. The system-wide
 // paths are looked for under a directory of the test's own.
-func machine(t *testing.T, home, goos string, vars map[string]string) Machine {
+func machine(t *testing.T, home, goos string, variables map[string]string) Machine {
 	t.Helper()
 	saved := SystemRoot
 	SystemRoot = t.TempDir()
 	t.Cleanup(func() { SystemRoot = saved })
-	return Machine{Home: home, GOOS: goos, Env: func(k string) string { return vars[k] }, Environ: func() []string {
+	return Machine{Home: home, GOOS: goos, Environment: func(k string) string { return variables[k] }, Environ: func() []string {
 		var out []string
-		for k, v := range vars {
+		for k, v := range variables {
 			out = append(out, k+"="+v)
 		}
 		sort.Strings(out)
@@ -40,12 +40,12 @@ func touch(t *testing.T, path string) {
 // machine's own home and environment.
 //
 // Verifies: REQ-SUP-064
-func TestConfigDir(t *testing.T) {
+func TestConfigDirectory(t *testing.T) {
 	home, xdg := t.TempDir(), t.TempDir()
-	for _, tc := range []struct {
-		goos string
-		vars map[string]string
-		want string
+	for _, testCase := range []struct {
+		goos      string
+		variables map[string]string
+		want      string
 	}{
 		{"linux", nil, filepath.Join(home, ".config")},
 		{"linux", map[string]string{"XDG_CONFIG_HOME": xdg}, xdg},
@@ -53,8 +53,8 @@ func TestConfigDir(t *testing.T) {
 		{"darwin", map[string]string{"XDG_CONFIG_HOME": "/xdg"}, filepath.Join(home, "Library", "Application Support")},
 		{"windows", map[string]string{"APPDATA": `C:\Users\u\AppData\Roaming`}, `C:\Users\u\AppData\Roaming`},
 	} {
-		if got := machine(t, home, tc.goos, tc.vars).ConfigDir(); got != tc.want {
-			t.Errorf("%s %v: %q, want %q", tc.goos, tc.vars, got, tc.want)
+		if got := machine(t, home, testCase.goos, testCase.variables).ConfigDirectory(); got != testCase.want {
+			t.Errorf("%s %v: %q, want %q", testCase.goos, testCase.variables, got, testCase.want)
 		}
 	}
 }
@@ -110,7 +110,7 @@ func TestNpmEnvironment(t *testing.T) {
 		"npm_config_prefix":                 "/opt/node",
 		"UNRELATED_npm_config_registry":     "https://nope",
 	})
-	got := m.NpmEnv()
+	got := m.NpmEnvironment()
 	want := map[string]string{
 		"registry":               "https://lower.corp/npm",
 		"@acme:registry":         "https://acme.corp/npm",
@@ -131,7 +131,7 @@ func TestNpmEnvironment(t *testing.T) {
 
 	// Without a listing of the environment the usual spellings still answer.
 	m = machine(t, home, "linux", nil)
-	m.Env = func(k string) string {
+	m.Environment = func(k string) string {
 		return map[string]string{"NPM_CONFIG_GLOBALCONFIG": "/etc/npmrc-ci"}[k]
 	}
 	if f := m.NpmGlobalConfig(); f != "/etc/npmrc-ci" {
@@ -164,8 +164,8 @@ func TestPipConfigFiles(t *testing.T) {
 		t.Errorf("linux:\n got %v\nwant %v", files, want)
 	}
 
-	sep := string(filepath.ListSeparator)
-	m = machine(t, home, "linux", map[string]string{"XDG_CONFIG_DIRS": "/a" + sep + "/b", "XDG_CONFIG_HOME": "/xdg", "PIP_CONFIG_FILE": "/missing.conf"})
+	separator := string(filepath.ListSeparator)
+	m = machine(t, home, "linux", map[string]string{"XDG_CONFIG_DIRS": "/a" + separator + "/b", "XDG_CONFIG_HOME": "/xdg", "PIP_CONFIG_FILE": "/missing.conf"})
 	files, _ = m.PipConfigFiles()
 	want = []string{
 		filepath.Join("/a", "pip", "pip.conf"), filepath.Join("/b", "pip", "pip.conf"),
@@ -228,10 +228,10 @@ func TestPipConfigFiles(t *testing.T) {
 // Verifies: REQ-AUTH-020
 func TestContainerAuthFiles(t *testing.T) {
 	home := t.TempDir()
-	for _, tc := range []struct {
-		goos string
-		vars map[string]string
-		want []string
+	for _, testCase := range []struct {
+		goos      string
+		variables map[string]string
+		want      []string
 	}{
 		{"linux", map[string]string{"REGISTRY_AUTH_FILE": "/ci/auth.json", "DOCKER_CONFIG": "/d"}, []string{"/ci/auth.json"}},
 		{"linux", map[string]string{"XDG_RUNTIME_DIR": "/run/user/1000", "DOCKER_CONFIG": "/d"}, []string{
@@ -248,8 +248,8 @@ func TestContainerAuthFiles(t *testing.T) {
 			filepath.Join(home, ".docker", "config.json"),
 		}},
 	} {
-		if got := machine(t, home, tc.goos, tc.vars).ContainerAuthFiles(); !reflect.DeepEqual(got, tc.want) {
-			t.Errorf("%s %v:\n got %v\nwant %v", tc.goos, tc.vars, got, tc.want)
+		if got := machine(t, home, testCase.goos, testCase.variables).ContainerAuthFiles(); !reflect.DeepEqual(got, testCase.want) {
+			t.Errorf("%s %v:\n got %v\nwant %v", testCase.goos, testCase.variables, got, testCase.want)
 		}
 	}
 }
@@ -278,7 +278,7 @@ func TestNetrcLocation(t *testing.T) {
 // (GOENV, else go/env in the user config directory); GOENV=off has no file.
 //
 // Verifies: REQ-SUP-064, REQ-SUP-036
-func TestGoEnv(t *testing.T) {
+func TestGoEnvironment(t *testing.T) {
 	home := t.TempDir()
 	file := filepath.Join(home, ".config", "go", "env")
 	touch(t, file)
@@ -286,30 +286,30 @@ func TestGoEnv(t *testing.T) {
 		t.Fatal(err)
 	}
 	m := machine(t, home, "linux", nil)
-	if got := m.GoEnv("GOPROXY"); got != "https://goproxy.corp,direct" {
+	if got := m.GoEnvironment("GOPROXY"); got != "https://goproxy.corp,direct" {
 		t.Errorf("GOPROXY from the file: %q", got)
 	}
-	if got := m.GoEnv("GOPRIVATE"); got != "corp.example/*" {
+	if got := m.GoEnvironment("GOPRIVATE"); got != "corp.example/*" {
 		t.Errorf("GOPRIVATE from the file: %q", got)
 	}
-	if got := m.GoEnv("GONOSUMDB"); got != "" {
+	if got := m.GoEnvironment("GONOSUMDB"); got != "" {
 		t.Errorf("GONOSUMDB: %q", got)
 	}
 	m = machine(t, home, "linux", map[string]string{"GOPROXY": "https://env.proxy"})
-	if got := m.GoEnv("GOPROXY"); got != "https://env.proxy" {
+	if got := m.GoEnvironment("GOPROXY"); got != "https://env.proxy" {
 		t.Errorf("environment over the file: %q", got)
 	}
-	if got := machine(t, home, "linux", map[string]string{"GOENV": "off"}).GoEnv("GOPRIVATE"); got != "" {
+	if got := machine(t, home, "linux", map[string]string{"GOENV": "off"}).GoEnvironment("GOPRIVATE"); got != "" {
 		t.Errorf("GOENV=off: %q", got)
 	}
 	other := filepath.Join(t.TempDir(), "goenv")
 	if err := os.WriteFile(other, []byte("GOPRIVATE=other.example\n"), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	if got := machine(t, home, "linux", map[string]string{"GOENV": other}).GoEnv("GOPRIVATE"); got != "other.example" {
+	if got := machine(t, home, "linux", map[string]string{"GOENV": other}).GoEnvironment("GOPRIVATE"); got != "other.example" {
 		t.Errorf("GOENV: %q", got)
 	}
-	if got := machine(t, home, "windows", map[string]string{"APPDATA": `C:\AppData`}).GoEnvFile(); got != filepath.Join(`C:\AppData`, "go", "env") {
+	if got := machine(t, home, "windows", map[string]string{"APPDATA": `C:\AppData`}).GoEnvironmentFile(); got != filepath.Join(`C:\AppData`, "go", "env") {
 		t.Errorf("windows: %s", got)
 	}
 }
@@ -367,7 +367,7 @@ func TestNoHome(t *testing.T) {
 			t.Errorf("%s: %q", name, got)
 		}
 	}
-	if New("", nil).Env("HOME") != "" {
+	if New("", nil).Environment("HOME") != "" {
 		t.Error("a nil environment answered")
 	}
 }
@@ -381,7 +381,7 @@ func TestNewPlatform(t *testing.T) {
 	saved := Platform
 	t.Cleanup(func() { Platform = saved })
 	Platform = "darwin"
-	if got := New("h", nil).ConfigDir(); got != filepath.Join("h", "Library", "Application Support") {
+	if got := New("h", nil).ConfigDirectory(); got != filepath.Join("h", "Library", "Application Support") {
 		t.Errorf("pinned darwin: ConfigDir = %q", got)
 	}
 }

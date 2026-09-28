@@ -68,20 +68,20 @@ func (s Settings) Named(name string) (Index, bool) {
 	return Index{}, false
 }
 
-func (s *Settings) pin(pkg, index string) {
-	if pkg == "" || index == "" {
+func (s *Settings) pin(packageName, index string) {
+	if packageName == "" || index == "" {
 		return
 	}
 	if s.Pins == nil {
 		s.Pins = map[string]string{}
 	}
-	s.Pins[pkg] = index
+	s.Pins[packageName] = index
 }
 
-// EnvName is a name as uv's and Poetry's variables spell it: upper case, every
+// EnvironmentName is a name as uv's and Poetry's variables spell it: upper case, every
 // character other than a letter or digit as "_" (UV_INDEX_<NAME>_USERNAME,
 // POETRY_HTTP_BASIC_<NAME>_PASSWORD).
-func EnvName(name string) string {
+func EnvironmentName(name string) string {
 	return strings.Map(func(r rune) rune {
 		switch {
 		case r >= 'a' && r <= 'z':
@@ -144,9 +144,9 @@ func UV(data []byte, pyproject bool) (Settings, bool) {
 	if !pyproject {
 		return s, true
 	}
-	for _, pkg := range slices.Sorted(maps.Keys(o.Sources)) {
+	for _, packageName := range slices.Sorted(maps.Keys(o.Sources)) {
 		var specs []map[string]any
-		switch v := o.Sources[pkg].(type) {
+		switch v := o.Sources[packageName].(type) {
 		case map[string]any:
 			specs = append(specs, v)
 		case []map[string]any:
@@ -159,8 +159,8 @@ func UV(data []byte, pyproject bool) (Settings, bool) {
 			}
 		}
 		for _, spec := range specs {
-			if idx, ok := spec["index"].(string); ok {
-				s.pin(pkg, idx)
+			if index, ok := spec["index"].(string); ok {
+				s.pin(packageName, index)
 				break
 			}
 		}
@@ -168,11 +168,11 @@ func UV(data []byte, pyproject bool) (Settings, bool) {
 	return s, true
 }
 
-// UVEnv reads uv's index variables, the first to win first: UV_DEFAULT_INDEX (or
+// UVEnvironment reads uv's index variables, the first to win first: UV_DEFAULT_INDEX (or
 // the legacy UV_INDEX_URL) replacing PyPI, then the space-separated UV_INDEX (and
 // the legacy UV_EXTRA_INDEX_URL) asked beside it. An entry of either may be
 // name=url.
-func UVEnv(env func(string) string) []Index {
+func UVEnvironment(environment func(string) string) []Index {
 	var out []Index
 	add := func(v string, kind Kind) {
 		for _, e := range strings.Fields(v) {
@@ -186,10 +186,10 @@ func UVEnv(env func(string) string) []Index {
 			}
 		}
 	}
-	add(env("UV_DEFAULT_INDEX"), Default)
-	add(env("UV_INDEX_URL"), Default)
-	add(env("UV_INDEX"), Extra)
-	add(env("UV_EXTRA_INDEX_URL"), Extra)
+	add(environment("UV_DEFAULT_INDEX"), Default)
+	add(environment("UV_INDEX_URL"), Default)
+	add(environment("UV_INDEX"), Extra)
+	add(environment("UV_EXTRA_INDEX_URL"), Extra)
 	return out
 }
 
@@ -197,7 +197,7 @@ func UVEnv(env func(string) string) []Index {
 // that wins first: UV_DEFAULT_INDEX, UV_INDEX_URL, UV_INDEX and UV_EXTRA_INDEX_URL,
 // then the user's uv.toml and the system's (userconf UVConfigFiles).
 func UVMachine(m userconf.Machine) []Index {
-	out := UVEnv(m.Env)
+	out := UVEnvironment(m.Environment)
 	for _, f := range m.UVConfigFiles() {
 		if data, err := os.ReadFile(f); err == nil {
 			if s, ok := UV(data, false); ok {
@@ -210,12 +210,12 @@ func UVMachine(m userconf.Machine) []Index {
 
 // UVCredential is what UV_INDEX_<NAME>_USERNAME and UV_INDEX_<NAME>_PASSWORD hold
 // for the index of that name.
-func UVCredential(env func(string) string, name string) (user, pass string) {
-	if name == "" || env == nil {
+func UVCredential(environment func(string) string, name string) (user, pass string) {
+	if name == "" || environment == nil {
 		return "", ""
 	}
-	n := EnvName(name)
-	return env("UV_INDEX_" + n + "_USERNAME"), env("UV_INDEX_" + n + "_PASSWORD")
+	n := EnvironmentName(name)
+	return environment("UV_INDEX_" + n + "_USERNAME"), environment("UV_INDEX_" + n + "_PASSWORD")
 }
 
 // ---------------------------------------------------------------- Poetry
@@ -244,14 +244,14 @@ func Poetry(data []byte) (Settings, bool) {
 	}
 	p := doc.Tool.Poetry
 	var s, defaults Settings
-	for _, src := range p.Source {
-		i := Index{Name: src.Name, URL: src.URL, Kind: Primary}
+	for _, source := range p.Source {
+		i := Index{Name: source.Name, URL: source.URL, Kind: Primary}
 		switch {
-		case src.Priority == "default" || src.Default && src.Priority == "":
+		case source.Priority == "default" || source.Default && source.Priority == "":
 			i.Kind = Default
-		case src.Priority == "explicit":
+		case source.Priority == "explicit":
 			i.Kind = Explicit
-		case src.Priority == "supplemental" || src.Priority == "secondary" || src.Secondary && src.Priority == "":
+		case source.Priority == "supplemental" || source.Priority == "secondary" || source.Secondary && source.Priority == "":
 			i.Kind = Extra
 		}
 		if i.Kind == Default {
@@ -261,15 +261,15 @@ func Poetry(data []byte) (Settings, bool) {
 		}
 	}
 	s.Indexes = append(defaults.Indexes, s.Indexes...)
-	deps := []map[string]any{p.Dependencies}
+	dependencies := []map[string]any{p.Dependencies}
 	for _, g := range slices.Sorted(maps.Keys(p.Group)) {
-		deps = append(deps, p.Group[g].Dependencies)
+		dependencies = append(dependencies, p.Group[g].Dependencies)
 	}
-	for _, d := range deps {
+	for _, d := range dependencies {
 		for _, name := range slices.Sorted(maps.Keys(d)) {
 			if spec, ok := d[name].(map[string]any); ok {
-				if src, ok := spec["source"].(string); ok {
-					s.pin(name, src)
+				if source, ok := spec["source"].(string); ok {
+					s.pin(name, source)
 				}
 			}
 		}
@@ -288,65 +288,65 @@ type Credential struct{ Username, Password string }
 // repository config.toml and the POETRY_REPOSITORIES_<NAME>_URL variables define,
 // and the http-basic credential of each name (config.toml, auth.toml over it, the
 // POETRY_HTTP_BASIC_<NAME>_USERNAME/_PASSWORD variables over both, each half on
-// its own), all by EnvName. A password Poetry keeps in the system keyring is not
+// its own), all by EnvironmentName. A password Poetry keeps in the system keyring is not
 // read.
-func PoetryMachine(m userconf.Machine) (repos map[string]string, creds map[string]Credential) {
-	repos, creds = map[string]string{}, map[string]Credential{}
-	dir := m.PoetryConfigDir()
+func PoetryMachine(m userconf.Machine) (repositories map[string]string, credentials map[string]Credential) {
+	repositories, credentials = map[string]string{}, map[string]Credential{}
+	directory := m.PoetryConfigDirectory()
 	for _, f := range []string{"config.toml", "auth.toml"} {
-		if dir == "" {
+		if directory == "" {
 			break
 		}
 		var doc struct {
 			Repositories map[string]struct{ URL string }
 			HTTPBasic    map[string]Credential `toml:"http-basic"`
 		}
-		if _, err := toml.DecodeFile(filepath.Join(dir, f), &doc); err != nil {
+		if _, err := toml.DecodeFile(filepath.Join(directory, f), &doc); err != nil {
 			continue
 		}
 		for name, r := range doc.Repositories {
 			if r.URL != "" {
-				repos[EnvName(name)] = r.URL
+				repositories[EnvironmentName(name)] = r.URL
 			}
 		}
 		for name, c := range doc.HTTPBasic {
-			creds[EnvName(name)] = c
+			credentials[EnvironmentName(name)] = c
 		}
 	}
-	for name, u := range m.PoetryRepositoryVars() {
-		repos[EnvName(name)] = u
+	for name, u := range m.PoetryRepositoryVariables() {
+		repositories[EnvironmentName(name)] = u
 	}
-	names := slices.Collect(maps.Keys(repos))
-	for name := range creds {
+	names := slices.Collect(maps.Keys(repositories))
+	for name := range credentials {
 		names = append(names, name)
 	}
 	for _, name := range names {
-		c := creds[name]
-		if user := m.Env("POETRY_HTTP_BASIC_" + name + "_USERNAME"); user != "" {
+		c := credentials[name]
+		if user := m.Environment("POETRY_HTTP_BASIC_" + name + "_USERNAME"); user != "" {
 			c.Username = user
 		}
-		if pass := m.Env("POETRY_HTTP_BASIC_" + name + "_PASSWORD"); pass != "" {
+		if pass := m.Environment("POETRY_HTTP_BASIC_" + name + "_PASSWORD"); pass != "" {
 			c.Password = pass
 		}
 		if c.Username != "" || c.Password != "" {
-			creds[name] = c
+			credentials[name] = c
 		}
 	}
-	return repos, creds
+	return repositories, credentials
 }
 
 // PoetryCredential is this machine's credential for the Poetry source of a name:
 // the file's (see PoetryMachine) or, for a name no file mentions,
 // POETRY_HTTP_BASIC_<NAME>_USERNAME/_PASSWORD.
-func PoetryCredential(m userconf.Machine, creds map[string]Credential, name string) Credential {
-	n := EnvName(name)
-	if c, ok := creds[n]; ok {
+func PoetryCredential(m userconf.Machine, credentials map[string]Credential, name string) Credential {
+	n := EnvironmentName(name)
+	if c, ok := credentials[n]; ok {
 		return c
 	}
-	if m.Env == nil || name == "" {
+	if m.Environment == nil || name == "" {
 		return Credential{}
 	}
-	return Credential{m.Env("POETRY_HTTP_BASIC_" + n + "_USERNAME"), m.Env("POETRY_HTTP_BASIC_" + n + "_PASSWORD")}
+	return Credential{m.Environment("POETRY_HTTP_BASIC_" + n + "_USERNAME"), m.Environment("POETRY_HTTP_BASIC_" + n + "_PASSWORD")}
 }
 
 // ---------------------------------------------------------------- Pipenv
@@ -362,9 +362,9 @@ func Pipfile(data []byte) (Settings, bool) {
 	}
 	var s Settings
 	sources, _ := doc["source"].([]map[string]any)
-	for i, src := range sources {
-		name, _ := src["name"].(string)
-		u, _ := src["url"].(string)
+	for i, source := range sources {
+		name, _ := source["name"].(string)
+		u, _ := source["url"].(string)
 		kind := Extra
 		if i == 0 {
 			kind = Default
@@ -376,11 +376,11 @@ func Pipfile(data []byte) (Settings, bool) {
 		case "source", "requires", "pipenv", "scripts":
 			continue
 		}
-		pkgs, _ := doc[category].(map[string]any)
-		for _, name := range slices.Sorted(maps.Keys(pkgs)) {
-			if spec, ok := pkgs[name].(map[string]any); ok {
-				idx, _ := spec["index"].(string)
-				s.pin(name, idx)
+		packages, _ := doc[category].(map[string]any)
+		for _, name := range slices.Sorted(maps.Keys(packages)) {
+			if spec, ok := packages[name].(map[string]any); ok {
+				index, _ := spec["index"].(string)
+				s.pin(name, index)
 			}
 		}
 	}
@@ -394,30 +394,30 @@ func PipfileLock(data []byte) (Settings, bool) {
 	if json.Unmarshal(data, &doc) != nil {
 		return Settings{}, false
 	}
-	var meta struct {
+	var metadata struct {
 		Sources []struct{ Name, URL string }
 	}
-	if json.Unmarshal(doc["_meta"], &meta) != nil {
+	if json.Unmarshal(doc["_meta"], &metadata) != nil {
 		return Settings{}, false
 	}
 	var s Settings
-	for i, src := range meta.Sources {
+	for i, source := range metadata.Sources {
 		kind := Extra
 		if i == 0 {
 			kind = Default
 		}
-		s.Indexes = append(s.Indexes, Index{Name: src.Name, URL: src.URL, Kind: kind})
+		s.Indexes = append(s.Indexes, Index{Name: source.Name, URL: source.URL, Kind: kind})
 	}
 	for _, category := range slices.Sorted(maps.Keys(doc)) {
 		if category == "_meta" {
 			continue
 		}
-		var pkgs map[string]struct{ Index string }
-		if json.Unmarshal(doc[category], &pkgs) != nil {
+		var packages map[string]struct{ Index string }
+		if json.Unmarshal(doc[category], &packages) != nil {
 			continue
 		}
-		for _, name := range slices.Sorted(maps.Keys(pkgs)) {
-			s.pin(name, pkgs[name].Index)
+		for _, name := range slices.Sorted(maps.Keys(packages)) {
+			s.pin(name, packages[name].Index)
 		}
 	}
 	return s, true
@@ -448,16 +448,16 @@ func PDM(data []byte) (Settings, bool) {
 		return Settings{}, false
 	}
 	var s Settings
-	for _, src := range doc.Tool.PDM.Source {
-		if src.Type != "" && src.Type != "index" {
+	for _, source := range doc.Tool.PDM.Source {
+		if source.Type != "" && source.Type != "index" {
 			continue
 		}
 		kind := Extra
-		if src.Name == PDMPyPI {
+		if source.Name == PDMPyPI {
 			kind = Default
 		}
-		s.Indexes = append(s.Indexes, Index{Name: src.Name, URL: src.URL, Kind: kind, Include: src.Include,
-			Username: src.Username, Password: src.Password})
+		s.Indexes = append(s.Indexes, Index{Name: source.Name, URL: source.URL, Kind: kind, Include: source.Include,
+			Username: source.Username, Password: source.Password})
 	}
 	return s, true
 }
@@ -472,22 +472,22 @@ func PDMConfig(data []byte) (Settings, bool) {
 	if _, err := toml.Decode(string(data), &doc); err != nil {
 		return Settings{}, false
 	}
-	str := func(m map[string]any, k string) string { v, _ := m[k].(string); return v }
+	stringField := func(m map[string]any, k string) string { v, _ := m[k].(string); return v }
 	s := Settings{}
-	if u := str(doc.PyPI, "url"); u != "" || str(doc.PyPI, "username") != "" {
+	if u := stringField(doc.PyPI, "url"); u != "" || stringField(doc.PyPI, "username") != "" {
 		s.Indexes = append(s.Indexes, Index{Name: PDMPyPI, URL: u, Kind: Default,
-			Username: str(doc.PyPI, "username"), Password: str(doc.PyPI, "password")})
+			Username: stringField(doc.PyPI, "username"), Password: stringField(doc.PyPI, "password")})
 	}
 	for _, name := range slices.Sorted(maps.Keys(doc.PyPI)) {
 		t, ok := doc.PyPI[name].(map[string]any)
 		if !ok || name == PDMPyPI {
 			continue
 		}
-		if typ := str(t, "type"); typ != "" && typ != "index" {
+		if typeName := stringField(t, "type"); typeName != "" && typeName != "index" {
 			continue
 		}
-		s.Indexes = append(s.Indexes, Index{Name: name, URL: str(t, "url"),
-			Username: str(t, "username"), Password: str(t, "password")})
+		s.Indexes = append(s.Indexes, Index{Name: name, URL: stringField(t, "url"),
+			Username: stringField(t, "username"), Password: stringField(t, "password")})
 	}
 	return s, true
 }
@@ -502,7 +502,7 @@ func PDMMachine(m userconf.Machine) Settings {
 			s, _ = PDMConfig(data)
 		}
 	}
-	u, user, pass := m.Env("PDM_PYPI_URL"), m.Env("PDM_PYPI_USERNAME"), m.Env("PDM_PYPI_PASSWORD")
+	u, user, pass := m.Environment("PDM_PYPI_URL"), m.Environment("PDM_PYPI_USERNAME"), m.Environment("PDM_PYPI_PASSWORD")
 	if u == "" && user == "" && pass == "" {
 		return s
 	}

@@ -130,7 +130,7 @@ token = "Bearer jfrog-token"
 token = "Bearer dev-token"
 `)
 	c := &Store{bearer: map[string]string{}, basic: map[string]string{}}
-	c.readCargo([][]byte{config, credentials}, nil, env(map[string]string{"CARGO_REGISTRIES_OTHER_TOKEN": "other-token"}))
+	c.readCargo([][]byte{config, credentials}, nil, environment(map[string]string{"CARGO_REGISTRIES_OTHER_TOKEN": "other-token"}))
 	for raw, want := range map[string]string{
 		"https://crates.corp/index/3/s/serde":                                    "corp-token",
 		"https://crates.corp/api/v1/crates":                                      "",
@@ -184,9 +184,9 @@ index = "sparse+https://bad.corp/index/"
 token = "line\nbreak"
 `)
 	credentials := []byte("[registries.b]\ntoken = \"credentials-b\"\n")
-	vars := map[string]string{"CARGO_REGISTRY_TOKEN": "env-crates-io", "CARGO_REGISTRIES_A_TOKEN": "env-a"}
+	variables := map[string]string{"CARGO_REGISTRY_TOKEN": "env-crates-io", "CARGO_REGISTRIES_A_TOKEN": "env-a"}
 	c := &Store{bearer: map[string]string{}, basic: map[string]string{}}
-	c.readCargo([][]byte{config, credentials}, nil, env(vars))
+	c.readCargo([][]byte{config, credentials}, nil, environment(variables))
 	for raw, want := range map[string]string{
 		"https://crates.io/api/v1/me":     "env-crates-io",
 		"https://a.corp/index/1/a":        "env-a",
@@ -203,10 +203,10 @@ token = "line\nbreak"
 
 	// A global list without cargo:token turns the plaintext tokens off, except for a
 	// registry naming cargo:token itself; the variables override the files.
-	vars["CARGO_REGISTRY_GLOBAL_CREDENTIAL_PROVIDERS"] = "cargo:libsecret"
-	vars["CARGO_REGISTRIES_KEYCHAIN_CREDENTIAL_PROVIDER"] = "cargo:token"
+	variables["CARGO_REGISTRY_GLOBAL_CREDENTIAL_PROVIDERS"] = "cargo:libsecret"
+	variables["CARGO_REGISTRIES_KEYCHAIN_CREDENTIAL_PROVIDER"] = "cargo:token"
 	c = &Store{bearer: map[string]string{}, basic: map[string]string{}}
-	c.readCargo([][]byte{config, credentials}, nil, env(vars))
+	c.readCargo([][]byte{config, credentials}, nil, environment(variables))
 	for raw, want := range map[string]string{
 		"https://crates.io/api/v1/me":     "",
 		"https://a.corp/index/1/a":        "",
@@ -236,12 +236,12 @@ func TestACredentialInA_URL_IsTakenOutOfIt(t *testing.T) {
 
 	// The repository's own configuration may not supply one. The URL is still
 	// stripped - it is going on the map either way - but nothing is kept from it.
-	repo := &Store{bearer: map[string]string{}, basic: map[string]string{}}
-	if got := repo.FromURL("https://someone:else@npm.corp/", false); got != "https://npm.corp/" {
+	repository := &Store{bearer: map[string]string{}, basic: map[string]string{}}
+	if got := repository.FromURL("https://someone:else@npm.corp/", false); got != "https://npm.corp/" {
 		t.Errorf("URL kept as %q", got)
 	}
-	if len(repo.basic) != 0 {
-		t.Errorf("a repository supplied a credential: %v", repo.basic)
+	if len(repository.basic) != 0 {
+		t.Errorf("a repository supplied a credential: %v", repository.basic)
 	}
 
 	// A URL without one is returned as it was, not reassembled.
@@ -256,9 +256,9 @@ func TestACredentialInA_URL_IsTakenOutOfIt(t *testing.T) {
 // case for a repository of open-source dependencies.
 func TestReadWithoutAnyOfThem(t *testing.T) {
 	c := Read(t.TempDir(), func(string) string { return "" })
-	req, _ := http.NewRequest(http.MethodGet, "https://registry.npmjs.org/react", nil)
-	c.Apply(req)
-	if got := req.Header.Get("Authorization"); got != "" {
+	request, _ := http.NewRequest(http.MethodGet, "https://registry.npmjs.org/react", nil)
+	c.Apply(request)
+	if got := request.Header.Get("Authorization"); got != "" {
 		t.Errorf("an empty machine produced %q", got)
 	}
 	if Read("", nil) == nil {
@@ -275,9 +275,9 @@ func TestApplyPrefersTheMoreSpecificCredential(t *testing.T) {
 		bearer: map[string]string{"harbor.corp:5000": "port-token"},
 		basic:  map[string]string{"harbor.corp": "u:p"},
 	}
-	req, _ := http.NewRequest(http.MethodGet, "https://harbor.corp:5000/v2/x/manifests/latest", nil)
-	c.Apply(req)
-	if got := req.Header.Get("Authorization"); got != "Bearer port-token" {
+	request, _ := http.NewRequest(http.MethodGet, "https://harbor.corp:5000/v2/x/manifests/latest", nil)
+	c.Apply(request)
+	if got := request.Header.Get("Authorization"); got != "Bearer port-token" {
 		t.Errorf("got %q", got)
 	}
 }
@@ -298,13 +298,13 @@ func TestARegistryOnAPortIsReached(t *testing.T) {
 		{"https://nexus.corp/repository/npm", "build:pass"},
 		{"https://elsewhere.corp:5000/v2/", ""},
 	} {
-		req, _ := http.NewRequest(http.MethodGet, c2.url, nil)
-		c.Apply(req)
+		request, _ := http.NewRequest(http.MethodGet, c2.url, nil)
+		c.Apply(request)
 		want := ""
 		if c2.want != "" {
 			want = "Basic " + base64.StdEncoding.EncodeToString([]byte(c2.want))
 		}
-		if got := req.Header.Get("Authorization"); got != want {
+		if got := request.Header.Get("Authorization"); got != want {
 			t.Errorf("%s: %q, want %q", c2.url, got, want)
 		}
 	}
@@ -322,9 +322,9 @@ func TestDockerConfigIsReadFromDisk(t *testing.T) {
 		t.Fatal(err)
 	}
 	c := Read(home, func(string) string { return "" })
-	req, _ := http.NewRequest(http.MethodGet, "https://harbor.corp/v2/", nil)
-	c.Apply(req)
-	if got := req.Header.Get("Authorization"); got != "Basic "+auth {
+	request, _ := http.NewRequest(http.MethodGet, "https://harbor.corp/v2/", nil)
+	c.Apply(request)
+	if got := request.Header.Get("Authorization"); got != "Basic "+auth {
 		t.Errorf("got %q", got)
 	}
 }
@@ -352,9 +352,9 @@ func TestTerraformTokens(t *testing.T) {
 	if c.TerraformHost("registry.corp.test") {
 		t.Error("a host nothing names is known")
 	}
-	cfg := filepath.Join(t.TempDir(), "cli.tfrc")
-	os.WriteFile(cfg, []byte("credentials \"only.corp.test\" { token = \"cfg-token\" }\n"), 0o644)
-	c = Read(home, func(k string) string { return map[string]string{"TF_CLI_CONFIG_FILE": cfg}[k] })
+	config := filepath.Join(t.TempDir(), "cli.tfrc")
+	os.WriteFile(config, []byte("credentials \"only.corp.test\" { token = \"cfg-token\" }\n"), 0o644)
+	c = Read(home, func(k string) string { return map[string]string{"TF_CLI_CONFIG_FILE": config}[k] })
 	if c.bearer["only.corp.test"] != "cfg-token" || c.TerraformHost("tf.corp.test") {
 		t.Errorf("TF_CLI_CONFIG_FILE was not read instead of ~/.terraformrc: %v", c.bearer)
 	}
@@ -438,18 +438,18 @@ func TestApplyGoAndGOAUTH(t *testing.T) {
 	writeFile(t, filepath.Join(home, ".docker", "config.json"), `{"auths":{"both.corp":{"auth":"`+pair+`"}}}`)
 	for goauth, want := range map[string]bool{"": true, "netrc": true, "off": false, "git /src": false, " netrc ; git /src": true} {
 		c := onMachine(t, home, "linux", map[string]string{"GOAUTH": goauth})
-		req, _ := http.NewRequest(http.MethodGet, "https://proxy.corp/mod/@v/v1.0.0.mod", nil)
-		c.ApplyGo(req)
-		if got := req.Header.Get("Authorization") != ""; got != want {
+		request, _ := http.NewRequest(http.MethodGet, "https://proxy.corp/mod/@v/v1.0.0.mod", nil)
+		c.ApplyGo(request)
+		if got := request.Header.Get("Authorization") != ""; got != want {
 			t.Errorf("GOAUTH=%q: sent %v", goauth, got)
 		}
-		req, _ = http.NewRequest(http.MethodGet, "https://both.corp/mod/@v/v1.0.0.mod", nil)
-		c.ApplyGo(req)
-		if got := req.Header.Get("Authorization"); got != "Basic "+pair {
+		request, _ = http.NewRequest(http.MethodGet, "https://both.corp/mod/@v/v1.0.0.mod", nil)
+		c.ApplyGo(request)
+		if got := request.Header.Get("Authorization"); got != "Basic "+pair {
 			t.Errorf("GOAUTH=%q: both.corp got %q", goauth, got)
 		}
 	}
 	var none *Store
-	req, _ := http.NewRequest(http.MethodGet, "https://proxy.corp/", nil)
-	none.ApplyGo(req) // a nil store sends nothing and does not panic
+	request, _ := http.NewRequest(http.MethodGet, "https://proxy.corp/", nil)
+	none.ApplyGo(request) // a nil store sends nothing and does not panic
 }

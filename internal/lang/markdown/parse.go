@@ -11,17 +11,17 @@ import (
 type Link struct {
 	// Spec is the link as it appears, for the side panel to show.
 	Spec string
-	// Dest is where it points, with any fragment and query still attached and any
+	// Destination is where it points, with any fragment and query still attached and any
 	// angle brackets and title taken off.
-	Dest string
-	Line int
-	// Col is where on the line it starts, counted in bytes from 1, which is what
+	Destination string
+	Line        int
+	// Column is where on the line it starts, counted in bytes from 1, which is what
 	// tells two broken links on one line apart.
-	Col int
-	// Ref is the label of a reference link whose definition is missing; Dest is then
+	Column int
+	// Reference is the label of a reference link whose definition is missing; Destination is then
 	// empty. Such a link renders as literal text, which is a break that reading the
 	// rendered page does not reveal.
-	Ref string
+	Reference string
 }
 
 // Heading is one heading of a document.
@@ -36,14 +36,14 @@ var (
 	// balancing one level of nesting, which is as deep as destinations go.
 	inlineLink = regexp.MustCompile(`!?\[(?:[^\[\]]|\[[^\[\]]*\])*\]\(([^()\s]*(?:\([^()]*\)[^()\s]*)*)(?:\s+(?:"[^"]*"|'[^']*'|\([^()]*\)))?\s*\)`)
 	// A reference definition at the start of a line: [label]: destination "title"
-	refDefinition = regexp.MustCompile(`^ {0,3}\[([^\]]+)\]:\s*(\S+)`)
+	referenceDefinition = regexp.MustCompile(`^ {0,3}\[([^\]]+)\]:\s*(\S+)`)
 	// A full or collapsed reference use: [text][label] or [label][]. The shortcut
 	// form, [label] alone, is not read: it cannot be told from bracketed prose.
-	refUse = regexp.MustCompile(`!?\[((?:[^\[\]]|\[[^\[\]]*\])*)\]\[([^\]]*)\]`)
+	referenceUse = regexp.MustCompile(`!?\[((?:[^\[\]]|\[[^\[\]]*\])*)\]\[([^\]]*)\]`)
 	// An autolink: <https://example.test>
 	autolink = regexp.MustCompile(`<((?:https?|ftp):[^>\s]+)>`)
 	// href and src of raw HTML, which is how a README carries its badges.
-	htmlAttr = regexp.MustCompile(`(?i)<[a-z][^>]*\b(?:href|src)\s*=\s*(?:"([^"]*)"|'([^']*)')`)
+	htmlAttribute = regexp.MustCompile(`(?i)<[a-z][^>]*\b(?:href|src)\s*=\s*(?:"([^"]*)"|'([^']*)')`)
 	// An anchor a document sets itself: <a name="x">, id="x", or the {#x} that
 	// several renderers take at the end of a heading.
 	htmlAnchor   = regexp.MustCompile(`(?i)\b(?:name|id)\s*=\s*(?:"([^"]*)"|'([^']*)')`)
@@ -61,16 +61,16 @@ var (
 // printed rather than followed and checking it would report a defect in an example.
 //
 // Implements: REQ-MD-003, REQ-MD-004, REQ-MD-006, REQ-MD-009
-func Links(src []byte) []Link {
+func Links(source []byte) []Link {
 	var out []Link
 	defined := map[string]bool{}
 	type use struct {
-		label, spec string
-		line, col   int
+		label, spec  string
+		line, column int
 	}
 	var uses []use
 
-	for i, raw := range split(src) {
+	for i, raw := range split(source) {
 		if raw.code {
 			continue
 		}
@@ -78,27 +78,27 @@ func Links(src []byte) []Link {
 		// into the line as written - which is where the quoted link is taken from.
 		line, text := i+1, codeSpan.ReplaceAllStringFunc(raw.text, blank)
 
-		if m := refDefinition.FindStringSubmatch(text); m != nil {
+		if m := referenceDefinition.FindStringSubmatch(text); m != nil {
 			defined[label(m[1])] = true
-			out = append(out, Link{Spec: strings.TrimSpace(text), Dest: destination(m[2]), Line: line, Col: 1})
+			out = append(out, Link{Spec: strings.TrimSpace(text), Destination: destination(m[2]), Line: line, Column: 1})
 			continue
 		}
 		for _, at := range inlineLink.FindAllStringSubmatchIndex(text, -1) {
-			if dest := destination(group(text, at, 1)); dest != "" {
-				out = append(out, Link{Spec: group(raw.text, at, 0), Dest: dest, Line: line, Col: at[0] + 1})
+			if linkTarget := destination(group(text, at, 1)); linkTarget != "" {
+				out = append(out, Link{Spec: group(raw.text, at, 0), Destination: linkTarget, Line: line, Column: at[0] + 1})
 			}
 		}
 		for _, at := range autolink.FindAllStringSubmatchIndex(text, -1) {
-			out = append(out, Link{Spec: group(raw.text, at, 0), Dest: group(text, at, 1), Line: line, Col: at[0] + 1})
+			out = append(out, Link{Spec: group(raw.text, at, 0), Destination: group(text, at, 1), Line: line, Column: at[0] + 1})
 		}
-		for _, at := range htmlAttr.FindAllStringSubmatchIndex(text, -1) {
-			if dest := destination(group(text, at, 1) + group(text, at, 2)); dest != "" {
+		for _, at := range htmlAttribute.FindAllStringSubmatchIndex(text, -1) {
+			if linkTarget := destination(group(text, at, 1) + group(text, at, 2)); linkTarget != "" {
 				out = append(out, Link{
-					Spec: strings.TrimSpace(group(raw.text, at, 0)), Dest: dest, Line: line, Col: at[0] + 1,
+					Spec: strings.TrimSpace(group(raw.text, at, 0)), Destination: linkTarget, Line: line, Column: at[0] + 1,
 				})
 			}
 		}
-		for _, at := range refUse.FindAllStringSubmatchIndex(text, -1) {
+		for _, at := range referenceUse.FindAllStringSubmatchIndex(text, -1) {
 			name := group(text, at, 2)
 			if strings.TrimSpace(name) == "" {
 				name = group(text, at, 1) // [label][] names itself
@@ -110,7 +110,7 @@ func Links(src []byte) []Link {
 	// document has been read.
 	for _, u := range uses {
 		if u.label != "" && !defined[u.label] {
-			out = append(out, Link{Spec: u.spec, Ref: u.label, Line: u.line, Col: u.col})
+			out = append(out, Link{Spec: u.spec, Reference: u.label, Line: u.line, Column: u.column})
 		}
 	}
 	return out
@@ -120,9 +120,9 @@ func Links(src []byte) []Link {
 // Markdown file expands into on the map.
 //
 // Implements: REQ-MD-002
-func Headings(src []byte) []Heading {
+func Headings(source []byte) []Heading {
 	var out []Heading
-	all := split(src)
+	all := split(source)
 	for i, raw := range all {
 		if raw.code {
 			continue
@@ -153,10 +153,10 @@ func Headings(src []byte) []Heading {
 // document sets itself.
 //
 // Implements: REQ-MD-008
-func Anchors(src []byte) map[string]bool {
+func Anchors(source []byte) map[string]bool {
 	out := map[string]bool{}
 	seen := map[string]int{}
-	for _, h := range Headings(src) {
+	for _, h := range Headings(source) {
 		text := h.Text
 		if m := customAnchor.FindStringSubmatch(text); m != nil {
 			out[strings.ToLower(m[1])] = true
@@ -173,7 +173,7 @@ func Anchors(src []byte) map[string]bool {
 		}
 		seen[slug]++
 	}
-	for _, m := range htmlAnchor.FindAllSubmatch(src, -1) {
+	for _, m := range htmlAnchor.FindAllSubmatch(source, -1) {
 		if name := string(m[1]) + string(m[2]); name != "" {
 			out[strings.ToLower(name)] = true
 		}
@@ -248,10 +248,10 @@ type line struct {
 // that opened it, which is what lets a ```` block hold ``` lines.
 //
 // Implements: REQ-MD-004
-func split(src []byte) []line {
+func split(source []byte) []line {
 	var out []line
 	fence := ""
-	for _, text := range strings.Split(strings.ReplaceAll(string(src), "\r\n", "\n"), "\n") {
+	for _, text := range strings.Split(strings.ReplaceAll(string(source), "\r\n", "\n"), "\n") {
 		marker := fenceOn(text)
 		switch {
 		case fence == "":
@@ -271,14 +271,14 @@ func split(src []byte) []line {
 func fenceOn(text string) string {
 	trimmed := strings.TrimLeft(text, " ")
 	for _, c := range []byte{'`', '~'} {
-		if n := runLen(trimmed, c); n >= 3 {
+		if n := runLength(trimmed, c); n >= 3 {
 			return trimmed[:n]
 		}
 	}
 	return ""
 }
 
-func runLen(s string, c byte) int {
+func runLength(s string, c byte) int {
 	n := 0
 	for n < len(s) && s[n] == c {
 		n++

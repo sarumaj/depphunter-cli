@@ -151,8 +151,8 @@ var clojarsURL = Clojars
 // are public indexes, not ones the repository brings along.
 //
 // Implements: REQ-SUP-056
-func MavenPublic(repo string) bool {
-	u, err := url.Parse(strings.TrimSpace(repo))
+func MavenPublic(repository string) bool {
+	u, err := url.Parse(strings.TrimSpace(repository))
 	if err != nil {
 		return false
 	}
@@ -188,8 +188,8 @@ func HackageItself(index string) bool {
 // repository brings along.
 //
 // Implements: REQ-SUP-051
-func CocoaPodsTrunk(repo string) bool {
-	r := strings.TrimSuffix(strings.TrimRight(strings.ToLower(strings.TrimSpace(repo)), "/"), ".git")
+func CocoaPodsTrunk(repository string) bool {
+	r := strings.TrimSuffix(strings.TrimRight(strings.ToLower(strings.TrimSpace(repository)), "/"), ".git")
 	switch r {
 	case "trunk", "https://cdn.cocoapods.org", "https://github.com/cocoapods/specs", "git@github.com:cocoapods/specs":
 		return true
@@ -227,8 +227,8 @@ func CRANMirror(index string) bool {
 	case host == "packagemanager.posit.co", host == "packagemanager.rstudio.com", host == "p3m.dev":
 		// Posit Package Manager serves CRAN as /cran/<snapshot> and CRAN with
 		// Bioconductor as /all/<snapshot>.
-		seg := strings.Split(strings.Trim(u.Path, "/"), "/")[0]
-		return seg == "cran" || seg == "all"
+		segment := strings.Split(strings.Trim(u.Path, "/"), "/")[0]
+		return segment == "cran" || segment == "all"
 	}
 	return false
 }
@@ -333,7 +333,7 @@ type Config struct {
 	// private reports a package the organization owns (internal/scope). Such a
 	// package is attributed to the source that would serve it rather than to a
 	// public index it is never named to.
-	private func(eco, pkg string) bool
+	private func(ecosystem, packageName string) bool
 	// m is the machine whose configuration was read: its environment supplies the
 	// secrets a repository's feed configuration refers to (see lend).
 	m userconf.Machine
@@ -344,10 +344,10 @@ type Config struct {
 	// py is what this machine's uv, Poetry and PDM configuration names beyond its
 	// sources: indexes and credentials a repository refers to by name.
 	py pythonMachine
-	// rebar3Repos are the Hex repositories this machine's global rebar.config names,
+	// rebar3Repositories are the Hex repositories this machine's global rebar.config names,
 	// in order; rebar3Replace says they replace hex.pm's (see hexRepositories).
-	rebar3Repos   []string
-	rebar3Replace bool
+	rebar3Repositories []string
+	rebar3Replace      bool
 	// biocRelease is the Bioconductor release the repository's renv.lock was made
 	// with ("" for the current one): the release whose packages it installed.
 	biocRelease string
@@ -369,19 +369,19 @@ func New() *Config {
 
 // Private tells the configuration which packages are the organization's own (see
 // For). nil makes every package public.
-func (c *Config) Private(match func(eco, pkg string) bool) { c.private = match }
+func (c *Config) Private(match func(ecosystem, packageName string) bool) { c.private = match }
 
 // SwitchOff records that the public default of an ecosystem is not used: only the
 // sources named are. origin is where that was said, so that under --watch what the
 // repository said is forgotten with its sources.
 //
 // Implements: REQ-SUP-063
-func (c *Config) SwitchOff(eco, origin string) {
+func (c *Config) SwitchOff(ecosystem, origin string) {
 	if c.off == nil {
 		c.off = map[string]string{}
 	}
-	if _, done := c.off[eco]; !done {
-		c.off[eco] = origin
+	if _, done := c.off[ecosystem]; !done {
+		c.off[ecosystem] = origin
 	}
 }
 
@@ -406,8 +406,8 @@ func (c *Config) Trust(urls []string) {
 // whether naming a package to it would tell the world that the package exists.
 //
 // Implements: REQ-SUP-038
-func (c *Config) Public(eco, index string) bool {
-	return index != "" && (index == c.publicURL(eco) || eco == Maven && index == clojarsURL)
+func (c *Config) Public(ecosystem, index string) bool {
+	return index != "" && (index == c.publicURL(ecosystem) || ecosystem == Maven && index == clojarsURL)
 }
 
 // publicURL is an ecosystem's public default: public's, except that Bioconductor's is
@@ -415,11 +415,11 @@ func (c *Config) Public(eco, index string) bool {
 // is the same public host at another release's directory.
 //
 // Implements: REQ-SUP-048
-func (c *Config) publicURL(eco string) string {
-	if eco == Bioconductor {
+func (c *Config) publicURL(ecosystem string) string {
+	if ecosystem == Bioconductor {
 		return bioconductorPackages + "/" + cmp.Or(c.biocRelease, "release") + "/bioc"
 	}
-	return public[eco]
+	return public[ecosystem]
 }
 
 // bioconductorPackages is where every Bioconductor release's repositories are, as
@@ -438,7 +438,7 @@ var biocVersion = regexp.MustCompile(`^[0-9]+\.[0-9]+$`)
 // credential is kept only where this machine's own configuration supplied it.
 //
 // Implements: REQ-SUP-016, REQ-AUTH-013
-func (c *Config) Add(eco string, s Source) {
+func (c *Config) Add(ecosystem string, s Source) {
 	if s.URL == "" {
 		return
 	}
@@ -447,30 +447,30 @@ func (c *Config) Add(eco string, s Source) {
 		return
 	}
 	s.URL = c.credentials.FromURL(s.URL, s.Trusted)
-	for _, have := range c.sources[eco] {
+	for _, have := range c.sources[ecosystem] {
 		if have.URL == s.URL && have.Scope == s.Scope && have.Registry == s.Registry {
 			return
 		}
 	}
-	c.sources[eco] = append(c.sources[eco], s)
+	c.sources[ecosystem] = append(c.sources[ecosystem], s)
 }
 
 // forgetProject drops what the repository declared, before it is read again.
 func (c *Config) forgetProject() {
 	c.clojure, c.biocRelease, c.cpanArchives = false, "", nil
 	c.bazelHelpers = slices.DeleteFunc(c.bazelHelpers, func(h bazelHelper) bool { return h.project })
-	for eco, origin := range c.off {
+	for ecosystem, origin := range c.off {
 		if origin == OriginProject {
-			delete(c.off, eco)
+			delete(c.off, ecosystem)
 		}
 	}
-	for eco, sources := range c.sources {
-		c.sources[eco] = slices.DeleteFunc(sources, func(s Source) bool { return s.Origin == OriginProject })
+	for ecosystem, sources := range c.sources {
+		c.sources[ecosystem] = slices.DeleteFunc(sources, func(s Source) bool { return s.Origin == OriginProject })
 	}
 }
 
 // Sources lists what was found for an ecosystem, machine first.
-func (c *Config) Sources(eco string) []Source { return c.sources[eco] }
+func (c *Config) Sources(ecosystem string) []Source { return c.sources[ecosystem] }
 
 // Report lists every index this configuration holds, plus the public default of
 // each ecosystem that has one and is not already named, for internal/trace. It is
@@ -480,26 +480,26 @@ func (c *Config) Sources(eco string) []Source { return c.sources[eco] }
 // Implements: REQ-TRC-002
 func (c *Config) Report() []trace.Source {
 	ecosystems := make([]string, 0, len(c.sources))
-	for eco := range c.sources {
-		ecosystems = append(ecosystems, eco)
+	for ecosystem := range c.sources {
+		ecosystems = append(ecosystems, ecosystem)
 	}
 	if _, listed := c.sources[Maven]; !listed && c.clojure {
 		ecosystems = append(ecosystems, Maven) // Central and Clojars, which Clojure's tools search
 	}
 	sort.Strings(ecosystems)
 	var out []trace.Source
-	for _, eco := range ecosystems {
-		for _, s := range c.sources[eco] {
+	for _, ecosystem := range ecosystems {
+		for _, s := range c.sources[ecosystem] {
 			out = append(out, trace.Source{
-				Ecosystem: eco, URL: s.URL, Scope: s.Scope,
-				Origin: c.origin(s), Trusted: c.fetchable(eco, s),
+				Ecosystem: ecosystem, URL: s.URL, Scope: s.Scope,
+				Origin: c.origin(s), Trusted: c.fetchable(ecosystem, s),
 			})
 		}
-		if url := c.publicURL(eco); url != "" && !c.has(eco, url) && c.off[eco] == "" {
-			out = append(out, trace.Source{Ecosystem: eco, URL: url, Origin: OriginPublic, Trusted: true})
+		if url := c.publicURL(ecosystem); url != "" && !c.has(ecosystem, url) && c.off[ecosystem] == "" {
+			out = append(out, trace.Source{Ecosystem: ecosystem, URL: url, Origin: OriginPublic, Trusted: true})
 		}
-		if eco == Maven && c.clojure && !c.has(eco, Clojars) {
-			out = append(out, trace.Source{Ecosystem: eco, URL: Clojars, Origin: OriginPublic, Trusted: true})
+		if ecosystem == Maven && c.clojure && !c.has(ecosystem, Clojars) {
+			out = append(out, trace.Source{Ecosystem: ecosystem, URL: Clojars, Origin: OriginPublic, Trusted: true})
 		}
 	}
 	return out
@@ -507,8 +507,8 @@ func (c *Config) Report() []trace.Source {
 
 // has reports whether an ecosystem already names an index, so the public default is
 // not reported twice.
-func (c *Config) has(eco, url string) bool {
-	for _, s := range c.sources[eco] {
+func (c *Config) has(ecosystem, url string) bool {
+	for _, s := range c.sources[ecosystem] {
 		if s.URL == url {
 			return true
 		}
@@ -537,8 +537,8 @@ func (c *Config) origin(s Source) string {
 // judgment For makes, which is why it is written once.
 //
 // Implements: REQ-SUP-019, REQ-SUP-042
-func (c *Config) fetchable(eco string, s Source) bool {
-	return s.Trusted || s.URL == c.publicURL(eco) || c.trusted[s.URL]
+func (c *Config) fetchable(ecosystem string, s Source) bool {
+	return s.Trusted || s.URL == c.publicURL(ecosystem) || c.trusted[s.URL]
 }
 
 // For reports which index a package is attributed to, and whether anything here
@@ -547,8 +547,8 @@ func (c *Config) fetchable(eco string, s Source) bool {
 // that names no registry of its own.
 //
 // Implements: REQ-SUP-014, REQ-SUP-016, REQ-SUP-018, REQ-SUP-026
-func (c *Config) For(eco, pkg string) (index string, known bool) {
-	return c.ForTarget(lang.Target{Ecosystem: eco, Package: pkg})
+func (c *Config) For(ecosystem, packageName string) (index string, known bool) {
+	return c.ForTarget(lang.Target{Ecosystem: ecosystem, Package: packageName})
 }
 
 // ForTarget reports which index the map attributes a package to before anything is
@@ -633,29 +633,29 @@ type candidate struct {
 // client does not ask it, but reports it when nothing it could ask had the package.
 //
 // Implements: REQ-SUP-014, REQ-SUP-016, REQ-SUP-063
-func (c *Config) candidates(eco, pkg, registry string) []candidate {
-	if eco == OCI {
-		return c.ociCandidates(pkg, "")
+func (c *Config) candidates(ecosystem, packageName, registry string) []candidate {
+	if ecosystem == OCI {
+		return c.ociCandidates(packageName, "")
 	}
-	if eco == TerraformModule {
+	if ecosystem == TerraformModule {
 		// A module address carries its registry's host when it is not the public
 		// one (app.terraform.io/acme/vpc/aws): that host serves it, and it is known
 		// when this machine's Terraform configuration names it.
-		if host := terraformHost(pkg); host != "" {
+		if host := terraformHost(packageName); host != "" {
 			registry := "https://" + host
 			return []candidate{{url: registry, primary: true,
 				known: c.trusted[registry] || c.trusted[host] || c.credentials.TerraformHost(host)}}
 		}
 	}
 	one := func(s Source) []candidate {
-		return []candidate{{url: s.URL, primary: true, known: c.fetchable(eco, s)}}
+		return []candidate{{url: s.URL, primary: true, known: c.fetchable(ecosystem, s)}}
 	}
-	if eco == Cargo && registry != "" {
+	if ecosystem == Cargo && registry != "" {
 		// A crate from a named registry, by name (Cargo.toml) or by index URL
 		// (Cargo.lock). An index URL nothing here configures is still where the
 		// crate comes from, and is known only if the user vouched for it.
 		want := cargoRegistryURL(registry)
-		for _, s := range c.sources[eco] {
+		for _, s := range c.sources[ecosystem] {
 			if s.Registry != "" && (userconf.CargoRegistryName(s.Registry) == userconf.CargoRegistryName(registry) ||
 				cargoRegistryURL(s.URL) == want) {
 				return one(s)
@@ -666,33 +666,33 @@ func (c *Config) candidates(eco, pkg, registry string) []candidate {
 		}
 		return nil // a registry no configuration defines: Cargo itself would fail
 	}
-	if eco == Hex && registry != "" {
-		return c.hexRepositories(pkg, registry)
+	if ecosystem == Hex && registry != "" {
+		return c.hexRepositories(packageName, registry)
 	}
-	if eco == NuGet {
+	if ecosystem == NuGet {
 		// packageSourceMapping: a package a pattern covers is asked of the
 		// sources mapped to the most specific pattern alone.
-		if keys, ok := c.nuget.Route(pkg); ok {
+		if keys, ok := c.nuget.Route(packageName); ok {
 			return c.nugetRouted(keys)
 		}
 	}
-	if eco == Julia {
-		if ks := c.juliaScoped(pkg, registry); len(ks) > 0 {
+	if ecosystem == Julia {
+		if ks := c.juliaScoped(packageName, registry); len(ks) > 0 {
 			return ks
 		}
 	}
-	for _, s := range c.sources[eco] {
-		if eco != Julia && s.Scope != "" && s.Registry == "" && matches(eco, s.Scope, pkg) {
+	for _, s := range c.sources[ecosystem] {
+		if ecosystem != Julia && s.Scope != "" && s.Registry == "" && matches(ecosystem, s.Scope, packageName) {
 			return one(s)
 		}
 	}
 	var additive, primary []candidate
 	var chosen *Source
-	for i, s := range c.sources[eco] {
+	for i, s := range c.sources[ecosystem] {
 		if s.Scope != "" || s.Registry != "" {
 			continue
 		}
-		k := candidate{url: s.URL, known: c.fetchable(eco, s), onError: s.OnError}
+		k := candidate{url: s.URL, known: c.fetchable(ecosystem, s), onError: s.OnError}
 		switch s.Kind {
 		case Additive:
 			additive = append(additive, k)
@@ -700,20 +700,20 @@ func (c *Config) candidates(eco, pkg, registry string) []candidate {
 			if chosen == nil || chosen.Kind == Listed {
 				k.primary = true
 				primary = append(primary, k)
-				chosen = &c.sources[eco][i]
+				chosen = &c.sources[ecosystem][i]
 			}
 		default:
 			if chosen == nil {
 				k.primary = true
 				primary = append(primary, k)
-				chosen = &c.sources[eco][i]
+				chosen = &c.sources[ecosystem][i]
 			}
 		}
 	}
-	if chosen == nil && c.off[eco] == "" && c.publicURL(eco) != "" {
-		primary = append(primary, candidate{url: c.publicURL(eco), known: true, primary: true})
+	if chosen == nil && c.off[ecosystem] == "" && c.publicURL(ecosystem) != "" {
+		primary = append(primary, candidate{url: c.publicURL(ecosystem), known: true, primary: true})
 	}
-	if eco == Maven && c.clojure && (chosen == nil || chosen.Kind != ReplaceAll) && c.off[eco] == "" {
+	if ecosystem == Maven && c.clojure && (chosen == nil || chosen.Kind != ReplaceAll) && c.off[ecosystem] == "" {
 		// Clojure's tools search Clojars after Maven Central (or its mirror)
 		// without being told to.
 		primary = append(primary, candidate{url: clojarsURL, known: true})
@@ -750,31 +750,31 @@ func cargoRegistryURL(u string) string {
 
 // matches reports whether a scope covers a package name. npm scopes are exact, Maven
 // groups match by prefix, and everything else is a name.
-func matches(eco, scope, pkg string) bool {
-	switch eco {
+func matches(ecosystem, scope, packageName string) bool {
+	switch ecosystem {
 	case NPM:
-		return strings.HasPrefix(pkg, scope+"/")
+		return strings.HasPrefix(packageName, scope+"/")
 	case Maven:
 		// A Maven package is group:artifact; the scope is a group prefix.
-		group, _, _ := strings.Cut(pkg, ":")
+		group, _, _ := strings.Cut(packageName, ":")
 		return group == scope || strings.HasPrefix(group, scope+".")
 	case PyPI:
 		// Names compare as PEP 503 normalizes them; a PDM include_packages
 		// pattern is a glob.
 		if strings.ContainsAny(scope, "*?[") {
-			ok, _ := path.Match(pypiName(scope), pypiName(pkg))
+			ok, _ := path.Match(pypiName(scope), pypiName(packageName))
 			return ok
 		}
-		return pypiName(scope) == pypiName(pkg)
+		return pypiName(scope) == pypiName(packageName)
 	}
-	return strings.EqualFold(scope, pkg)
+	return strings.EqualFold(scope, packageName)
 }
 
 // terraformHost is the registry host a module address names ("" for the public
 // registry): the first of four segments before any //subdirectory.
-func terraformHost(pkg string) string {
-	addr, _, _ := strings.Cut(pkg, "//")
-	if parts := strings.Split(addr, "/"); len(parts) == 4 {
+func terraformHost(packageName string) string {
+	address, _, _ := strings.Cut(packageName, "//")
+	if parts := strings.Split(address, "/"); len(parts) == 4 {
 		return parts[0]
 	}
 	return ""
@@ -821,7 +821,7 @@ const rebar3Machine = "*"
 // attack publishes on hex.pm.
 //
 // Implements: REQ-SUP-047, REQ-BEAM-013
-func (c *Config) hexRepositories(pkg, registry string) []candidate {
+func (c *Config) hexRepositories(packageName, registry string) []candidate {
 	var names []string
 	seen := map[string]bool{}
 	for _, name := range strings.Split(registry, ",") {
@@ -829,9 +829,9 @@ func (c *Config) hexRepositories(pkg, registry string) []candidate {
 		if expand[0] == rebar3Machine {
 			// The project's own repositories come first; the machine's replace
 			// hex.pm's only when the project names none.
-			expand = append(slices.Clone(c.rebar3Repos), "hexpm")
+			expand = append(slices.Clone(c.rebar3Repositories), "hexpm")
 			if c.rebar3Replace && len(names) == 0 {
-				expand = c.rebar3Repos
+				expand = c.rebar3Repositories
 			}
 		}
 		for _, n := range expand {
@@ -842,7 +842,7 @@ func (c *Config) hexRepositories(pkg, registry string) []candidate {
 		}
 	}
 	if len(names) == 1 && names[0] == "hexpm" {
-		return c.candidates(Hex, pkg, "")
+		return c.candidates(Hex, packageName, "")
 	}
 	api := Source{URL: public[Hex]}
 	for _, s := range c.sources[Hex] {
@@ -854,7 +854,7 @@ func (c *Config) hexRepositories(pkg, registry string) []candidate {
 	var out []candidate
 	for _, name := range names {
 		if name == "hexpm" {
-			out = append(out, c.candidates(Hex, pkg, "")...)
+			out = append(out, c.candidates(Hex, packageName, "")...)
 			continue
 		}
 		org, ok := strings.CutPrefix(name, "hexpm:")

@@ -23,8 +23,8 @@ import (
 )
 
 const (
-	ecoDub = "dub"
-	ecoStd = "d-std"
+	ecosystemDub = "dub"
+	ecosystemStd = "d-std"
 )
 
 const (
@@ -39,18 +39,18 @@ type Plugin struct{}
 func (Plugin) Name() string { return "d" }
 func (Plugin) Version() int { return 1 }
 
-// Claims takes D modules - a .d file only when scan labelled it D, since make
+// Claims takes D modules - a .d file only when scan labeled it D, since make
 // dependency files and DTrace scripts are .d files too - and dub's recipes and
 // selections, except what lies in dub's .dub/ directory.
 //
 // Implements: REQ-DLANG-001
 func (Plugin) Claims(f *scan.File) bool {
-	if f.Binary || dubDir(f.Path) {
+	if f.Binary || dubDirectory(f.Path) {
 		return false
 	}
 	switch path.Ext(f.Path) {
 	case ".d":
-		return f.Lang == "D"
+		return f.Language == "D"
 	case ".di":
 		return true
 	}
@@ -77,8 +77,8 @@ func class(p string) string {
 // Implements: REQ-DLANG-009
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoDub, Name: "dub packages"},
-		{ID: ecoStd, Name: "D runtime and standard library", Std: true},
+		{ID: ecosystemDub, Name: "dub packages"},
+		{ID: ecosystemStd, Name: "D runtime and standard library", Std: true},
 	}
 }
 
@@ -87,14 +87,14 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-DLANG-002, REQ-DLANG-003, REQ-DLANG-005, REQ-DLANG-006
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	switch class(f.Path) {
 	case classJSON:
-		return extractRecipe(readJSONRecipe(src)), nil
+		return extractRecipe(readJSONRecipe(source)), nil
 	case classSDL:
-		return extractRecipe(readSDLRecipe(src)), nil
+		return extractRecipe(readSDLRecipe(source)), nil
 	case classSelections:
-		return extractSelections(src), nil
+		return extractSelections(source), nil
 	}
-	return extractSource(src), nil
+	return extractSource(source), nil
 }

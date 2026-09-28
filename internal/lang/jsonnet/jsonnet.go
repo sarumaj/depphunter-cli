@@ -27,7 +27,7 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
-const ecoJB = "jsonnet-bundler"
+const ecosystemJB = "jsonnet-bundler"
 
 // The manifests, told apart by name (both are .json).
 const (
@@ -77,11 +77,11 @@ func class(p string) string {
 // jsonnetfile.json.
 func ignored(f *scan.File) bool {
 	segments := strings.Split(f.Path, "/")
-	abs := filepath.ToSlash(f.Abs)
-	if f.Abs == "" || !strings.HasSuffix(abs, f.Path) {
+	absolute := filepath.ToSlash(f.AbsolutePath)
+	if f.AbsolutePath == "" || !strings.HasSuffix(absolute, f.Path) {
 		return false
 	}
-	base := abs[:len(abs)-len(f.Path)]
+	base := absolute[:len(absolute)-len(f.Path)]
 	for i, s := range segments[:len(segments)-1] {
 		if s == "vendor" && jbRoot(filepath.FromSlash(base+strings.Join(segments[:i], "/"))) {
 			return true
@@ -92,18 +92,18 @@ func ignored(f *scan.File) bool {
 
 var rootMemo sync.Map // absolute directory -> bool: it has a jsonnetfile.json
 
-func jbRoot(dir string) bool {
-	if v, ok := rootMemo.Load(dir); ok {
+func jbRoot(directory string) bool {
+	if v, ok := rootMemo.Load(directory); ok {
 		return v.(bool)
 	}
-	_, err := os.Stat(filepath.Join(dir, "jsonnetfile.json"))
-	rootMemo.Store(dir, err == nil)
+	_, err := os.Stat(filepath.Join(directory, "jsonnetfile.json"))
+	rootMemo.Store(directory, err == nil)
 	return err == nil
 }
 
 // Implements: REQ-JSONNET-008
 func (Plugin) Ecosystems() []lang.Ecosystem {
-	return []lang.Ecosystem{{ID: ecoJB, Name: "jsonnet-bundler packages"}}
+	return []lang.Ecosystem{{ID: ecosystemJB, Name: "jsonnet-bundler packages"}}
 }
 
 func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
@@ -111,28 +111,28 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-JSONNET-002, REQ-JSONNET-003, REQ-JSONNET-005
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	switch class(f.Path) {
 	case classManifest:
-		deps, _ := readJsonnetfile(src)
-		return manifestImports(deps, kindDep), nil
+		dependencies, _ := readJsonnetfile(source)
+		return manifestImports(dependencies, kindDependency), nil
 	case classLock:
-		deps, _ := readJsonnetfile(src)
-		return manifestImports(deps, kindLock), nil
+		dependencies, _ := readJsonnetfile(source)
+		return manifestImports(dependencies, kindLock), nil
 	}
-	return extractSource(src), nil
+	return extractSource(source), nil
 }
 
 // manifestImports makes each dependency an import of its manifest, so what a
 // project declares or locks is on the map even when no file imports it.
-func manifestImports(deps []*dep, kind string) *lang.Extraction {
-	ex := &lang.Extraction{}
+func manifestImports(dependencies []*dependency, kind string) *lang.Extraction {
+	extraction := &lang.Extraction{}
 	seen := map[string]bool{}
-	for _, d := range deps {
-		if p := d.pkg(); !seen[p] {
+	for _, d := range dependencies {
+		if p := d.packageName(); !seen[p] {
 			seen[p] = true
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: p, Module: p, Name: kind, Line: d.line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: p, Module: p, Name: kind, Line: d.line})
 		}
 	}
-	return ex
+	return extraction
 }

@@ -16,19 +16,19 @@ import (
 // bash, sql) are skipped.
 
 var (
-	chunkOpen = regexp.MustCompile("^(\\s*)(`{3,})\\s*\\{\\s*[rR]([\\s,}].*)?$")
-	fence     = regexp.MustCompile("^\\s*(`{3,})\\s*$")
-	childOpt  = regexp.MustCompile(`\bchild\s*=\s*(?:c\()?\s*["']([^"']+)["']`)
-	include   = regexp.MustCompile(`\{\{<\s*include\s+([^\s>]+)\s*>\}\}`)
+	chunkOpen   = regexp.MustCompile("^(\\s*)(`{3,})\\s*\\{\\s*[rR]([\\s,}].*)?$")
+	fence       = regexp.MustCompile("^\\s*(`{3,})\\s*$")
+	childOption = regexp.MustCompile(`\bchild\s*=\s*(?:c\()?\s*["']([^"']+)["']`)
+	include     = regexp.MustCompile(`\{\{<\s*include\s+([^\s>]+)\s*>\}\}`)
 )
 
 // extractDocument reads a document's R chunks, and the documents it pulls in: a
 // knitr chunk's child option and Quarto's include shortcode.
 //
 // Implements: REQ-R-001, REQ-R-004
-func extractDocument(src []byte) *lang.Extraction {
-	lines := strings.Split(string(src), "\n")
-	var tokens []tok
+func extractDocument(source []byte) *lang.Extraction {
+	lines := strings.Split(string(source), "\n")
+	var tokens []token
 	var comments []comment
 	var children []lang.RawImport
 	seen := map[string]bool{}
@@ -47,8 +47,8 @@ func extractDocument(src []byte) *lang.Extraction {
 		if m == nil {
 			// Any other fenced block is skipped whole: a chunk shown as text in
 			// a ````markdown block is not code.
-			if tr := strings.TrimSpace(lines[i]); strings.HasPrefix(tr, "```") {
-				n := len(tr) - len(strings.TrimLeft(tr, "`"))
+			if trimmed := strings.TrimSpace(lines[i]); strings.HasPrefix(trimmed, "```") {
+				n := len(trimmed) - len(strings.TrimLeft(trimmed, "`"))
 				for i++; i < len(lines); i++ {
 					if f := fence.FindStringSubmatch(lines[i]); f != nil && len(f[1]) >= n {
 						break
@@ -57,7 +57,7 @@ func extractDocument(src []byte) *lang.Extraction {
 			}
 			continue
 		}
-		for _, c := range childOpt.FindAllStringSubmatch(m[3], -1) {
+		for _, c := range childOption.FindAllStringSubmatch(m[3], -1) {
 			child(c[1], i+1)
 		}
 		start := i + 1
@@ -71,11 +71,11 @@ func extractDocument(src []byte) *lang.Extraction {
 		body := strings.Join(lines[start:min(end, len(lines))], "\n")
 		t, c := lex([]byte(body), start+1)
 		tokens = append(tokens, t...)
-		tokens = append(tokens, tok{k: tSep, line: end + 1})
+		tokens = append(tokens, token{k: tSeparator, line: end + 1})
 		comments = append(comments, c...)
 		i = end
 	}
-	ex := extractCode(newCode(tokens), comments)
-	ex.Imports = append(children, ex.Imports...)
-	return ex
+	extraction := extractCode(newCode(tokens), comments)
+	extraction.Imports = append(children, extraction.Imports...)
+	return extraction
 }

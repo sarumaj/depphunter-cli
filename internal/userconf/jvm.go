@@ -21,8 +21,8 @@ func (m Machine) MavenSettings() []string {
 		out = append(out, user)
 	}
 	for _, v := range []string{"MAVEN_HOME", "M2_HOME"} {
-		if dir := m.Env(v); dir != "" {
-			return append(out, filepath.Join(dir, "conf", "settings.xml"))
+		if directory := m.Environment(v); directory != "" {
+			return append(out, filepath.Join(directory, "conf", "settings.xml"))
 		}
 	}
 	return out
@@ -37,7 +37,7 @@ func (m Machine) MavenSettings() []string {
 func (m Machine) SbtProperty(name string) (string, bool) {
 	value, found := "", false
 	for _, v := range []string{"JAVA_OPTS", "SBT_OPTS"} {
-		for _, f := range strings.Fields(m.Env(v)) {
+		for _, f := range strings.Fields(m.Environment(v)) {
 			f = strings.TrimPrefix(strings.Trim(f, `"'`), "-J")
 			if rest, ok := strings.CutPrefix(f, "-D"+name+"="); ok {
 				value, found = strings.Trim(rest, `"'`), true
@@ -51,8 +51,8 @@ func (m Machine) SbtProperty(name string) (string, bool) {
 
 // sbtGlobalBase is sbt's global directory: `-Dsbt.global.base`, else ~/.sbt.
 func (m Machine) sbtGlobalBase() string {
-	if dir, ok := m.SbtProperty("sbt.global.base"); ok && dir != "" {
-		return dir
+	if directory, ok := m.SbtProperty("sbt.global.base"); ok && directory != "" {
+		return directory
 	}
 	return join(m.Home, ".sbt")
 }
@@ -68,9 +68,9 @@ func (m Machine) SbtRepositories() string {
 	return join(m.sbtGlobalBase(), "repositories")
 }
 
-// SbtOverrideBuildRepos reports `-Dsbt.override.build.repos=true`, with which the
+// SbtOverrideBuildRepositories reports `-Dsbt.override.build.repos=true`, with which the
 // repositories file replaces every resolver a build declares.
-func (m Machine) SbtOverrideBuildRepos() bool {
+func (m Machine) SbtOverrideBuildRepositories() bool {
 	v, ok := m.SbtProperty("sbt.override.build.repos")
 	return ok && (v == "" || strings.EqualFold(v, "true"))
 }
@@ -82,7 +82,7 @@ func (m Machine) SbtOverrideBuildRepos() bool {
 // Implements: REQ-AUTH-020
 func (m Machine) SbtCredentials() []string {
 	var out []string
-	for _, f := range []string{m.Env("SBT_CREDENTIALS"), join(m.sbtGlobalBase(), ".credentials"), join(m.Home, ".ivy2", ".credentials")} {
+	for _, f := range []string{m.Environment("SBT_CREDENTIALS"), join(m.sbtGlobalBase(), ".credentials"), join(m.Home, ".ivy2", ".credentials")} {
 		if f != "" && !contains(out, f) {
 			out = append(out, f)
 		}
@@ -92,24 +92,24 @@ func (m Machine) SbtCredentials() []string {
 
 // ---------------------------------------------------------------- Coursier
 
-// CoursierConfigDir is Coursier's configuration directory: `COURSIER_CONFIG_DIR`;
+// CoursierConfigDirectory is Coursier's configuration directory: `COURSIER_CONFIG_DIR`;
 // `%APPDATA%\Coursier\config` on Windows; `~/Library/Application Support/Coursier`
 // on macOS; else `$XDG_CONFIG_HOME/coursier` or ~/.config/coursier.
 //
 // Implements: REQ-AUTH-020
-func (m Machine) CoursierConfigDir() string {
-	if dir := m.Env("COURSIER_CONFIG_DIR"); dir != "" {
-		return dir
+func (m Machine) CoursierConfigDirectory() string {
+	if directory := m.Environment("COURSIER_CONFIG_DIR"); directory != "" {
+		return directory
 	}
 	switch m.GOOS {
 	case "windows":
-		if appData := m.Env("APPDATA"); appData != "" {
+		if appData := m.Environment("APPDATA"); appData != "" {
 			return filepath.Join(appData, "Coursier", "config")
 		}
 	case "darwin", "ios":
 		return join(m.Home, "Library", "Application Support", "Coursier")
 	}
-	if xdg := m.Env("XDG_CONFIG_HOME"); filepath.IsAbs(xdg) {
+	if xdg := m.Environment("XDG_CONFIG_HOME"); filepath.IsAbs(xdg) {
 		return filepath.Join(xdg, "coursier")
 	}
 	return join(m.Home, ".config", "coursier")
@@ -121,13 +121,13 @@ func (m Machine) CoursierConfigDir() string {
 //
 // Implements: REQ-AUTH-020
 func (m Machine) CoursierCredentials() (inline, file string) {
-	v := strings.TrimSpace(m.Env("COURSIER_CREDENTIALS"))
+	v := strings.TrimSpace(m.Environment("COURSIER_CREDENTIALS"))
 	switch {
 	case v == "":
-		return "", join(m.CoursierConfigDir(), "credentials.properties")
+		return "", join(m.CoursierConfigDirectory(), "credentials.properties")
 	case len(v) >= 5 && strings.EqualFold(v[:5], "file:"):
 		return "", fileURLPath(v, m.GOOS)
-	case filepath.IsAbs(v), strings.HasPrefix(v, "/"), m.GOOS == "windows" && windowsAbs(v):
+	case filepath.IsAbs(v), strings.HasPrefix(v, "/"), m.GOOS == "windows" && windowsAbsolute(v):
 		return "", v
 	}
 	return v, ""
@@ -175,9 +175,9 @@ func fileURLPath(v, goos string) string {
 	return strings.ReplaceAll(p, "/", `\`)
 }
 
-// windowsAbs reports whether a path is absolute on Windows whichever platform reads
+// windowsAbsolute reports whether a path is absolute on Windows whichever platform reads
 // it: a drive letter with a separator (C:\x, C:/x) or a UNC path.
-func windowsAbs(p string) bool {
+func windowsAbsolute(p string) bool {
 	if strings.HasPrefix(p, `\\`) || strings.HasPrefix(p, "//") {
 		return true
 	}
@@ -193,8 +193,8 @@ func driveLetter(c byte) bool { return 'a' <= c && c <= 'z' || 'A' <= c && c <= 
 //
 // Implements: REQ-SUP-064
 func (m Machine) GradleUserHome() string {
-	if dir := m.Env("GRADLE_USER_HOME"); dir != "" {
-		return dir
+	if directory := m.Environment("GRADLE_USER_HOME"); directory != "" {
+		return directory
 	}
 	return join(m.Home, ".gradle")
 }
@@ -205,19 +205,19 @@ func (m Machine) GradleUserHome() string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) GradleInitScripts() []string {
-	dir := m.GradleUserHome()
-	if dir == "" {
+	directory := m.GradleUserHome()
+	if directory == "" {
 		return nil
 	}
 	var out []string
 	for _, name := range []string{"init.gradle", "init.gradle.kts"} {
-		if p := filepath.Join(dir, name); isFile(p) {
+		if p := filepath.Join(directory, name); isFile(p) {
 			out = append(out, p)
 		}
 	}
 	var scripts []string
 	for _, pattern := range []string{"*.gradle", "*.gradle.kts"} {
-		found, _ := filepath.Glob(filepath.Join(dir, "init.d", pattern))
+		found, _ := filepath.Glob(filepath.Join(directory, "init.d", pattern))
 		scripts = append(scripts, found...)
 	}
 	sort.Strings(scripts)
@@ -226,15 +226,15 @@ func (m Machine) GradleInitScripts() []string {
 
 // ---------------------------------------------------------------- Clojure
 
-// ClojureConfigDir is the Clojure CLI's user configuration directory: `CLJ_CONFIG`;
+// ClojureConfigDirectory is the Clojure CLI's user configuration directory: `CLJ_CONFIG`;
 // else `$XDG_CONFIG_HOME/clojure` when XDG_CONFIG_HOME is set; else ~/.clojure.
 //
 // Implements: REQ-SUP-064
-func (m Machine) ClojureConfigDir() string {
-	if dir := m.Env("CLJ_CONFIG"); dir != "" {
-		return dir
+func (m Machine) ClojureConfigDirectory() string {
+	if directory := m.Environment("CLJ_CONFIG"); directory != "" {
+		return directory
 	}
-	if xdg := m.Env("XDG_CONFIG_HOME"); xdg != "" {
+	if xdg := m.Environment("XDG_CONFIG_HOME"); xdg != "" {
 		return filepath.Join(xdg, "clojure")
 	}
 	return join(m.Home, ".clojure")
@@ -245,8 +245,8 @@ func (m Machine) ClojureConfigDir() string {
 //
 // Implements: REQ-SUP-064
 func (m Machine) LeinProfiles() string {
-	if dir := m.Env("LEIN_HOME"); dir != "" {
-		return filepath.Join(dir, "profiles.clj")
+	if directory := m.Environment("LEIN_HOME"); directory != "" {
+		return filepath.Join(directory, "profiles.clj")
 	}
 	return join(m.Home, ".lein", "profiles.clj")
 }

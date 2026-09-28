@@ -26,9 +26,9 @@ var (
 // environment hold.
 //
 // Implements: REQ-AUTH-015
-func (c *Store) readTerraform(home string, env func(string) string) {
+func (c *Store) readTerraform(home string, environment func(string) string) {
 	var files []string
-	if f := env("TF_CLI_CONFIG_FILE"); f != "" {
+	if f := environment("TF_CLI_CONFIG_FILE"); f != "" {
 		files = append(files, f)
 	} else {
 		files = append(files, filepath.Join(home, ".terraformrc"), filepath.Join(home, ".tofurc"))
@@ -38,14 +38,14 @@ func (c *Store) readTerraform(home string, env func(string) string) {
 			c.readTerraformRC(data)
 		}
 	}
-	for _, dir := range []string{".terraform.d", filepath.Join(".config", "opentofu")} {
-		if data, err := os.ReadFile(filepath.Join(home, dir, "credentials.tfrc.json")); err == nil {
+	for _, directory := range []string{".terraform.d", filepath.Join(".config", "opentofu")} {
+		if data, err := os.ReadFile(filepath.Join(home, directory, "credentials.tfrc.json")); err == nil {
 			var doc struct {
 				Credentials map[string]struct{ Token string } `json:"credentials"`
 			}
 			if json.Unmarshal(data, &doc) == nil {
-				for host, cred := range doc.Credentials {
-					c.terraformHost(host, cred.Token)
+				for host, credential := range doc.Credentials {
+					c.terraformHost(host, credential.Token)
 				}
 			}
 		}
@@ -58,7 +58,7 @@ func (c *Store) readTerraform(home string, env func(string) string) {
 	}
 	for _, h := range hosts {
 		v := "TF_TOKEN_" + strings.ReplaceAll(strings.ReplaceAll(h, "-", "__"), ".", "_")
-		if token := env(v); token != "" {
+		if token := environment(v); token != "" {
 			c.terraformHost(h, token)
 		}
 	}
@@ -66,12 +66,12 @@ func (c *Store) readTerraform(home string, env func(string) string) {
 
 // readTerraformRC reads the credentials and host blocks of a CLI configuration.
 func (c *Store) readTerraformRC(data []byte) {
-	src := string(data)
-	for _, m := range tfBlock.FindAllStringSubmatchIndex(src, -1) {
-		kind, host := src[m[2]:m[3]], src[m[4]:m[5]]
+	source := string(data)
+	for _, m := range tfBlock.FindAllStringSubmatchIndex(source, -1) {
+		kind, host := source[m[2]:m[3]], source[m[4]:m[5]]
 		token := ""
 		if kind == "credentials" {
-			body := src[m[1]:]
+			body := source[m[1]:]
 			if end := strings.IndexByte(body, '}'); end >= 0 {
 				body = body[:end]
 			}

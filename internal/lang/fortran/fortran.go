@@ -32,29 +32,29 @@ import (
 )
 
 const (
-	ecoFpm      = "fpm"
-	ecoStd      = "fortran-std"
-	ecoExternal = "fortran-external"
+	ecosystemFpm      = "fpm"
+	ecosystemStd      = "fortran-std"
+	ecosystemExternal = "fortran-external"
 )
 
 const classManifest = "fpm"
 
-// freeExts and fixedExts are the source extensions, compared as written: .F90
+// freeExtensions and fixedExtensions are the source extensions, compared as written: .F90
 // and .F are the preprocessed spellings.
 var (
-	freeExts = map[string]bool{
+	freeExtensions = map[string]bool{
 		".f90": true, ".f95": true, ".f03": true, ".f08": true, ".f18": true,
 		".F90": true, ".F95": true, ".F03": true, ".F08": true, ".F18": true, ".fypp": true,
 	}
-	fixedExts = map[string]bool{
+	fixedExtensions = map[string]bool{
 		".f": true, ".for": true, ".ftn": true, ".f77": true, ".fpp": true,
 		".F": true, ".FOR": true, ".FTN": true, ".F77": true, ".FPP": true,
 	}
 )
 
 func source(p string) bool {
-	ext := path.Ext(p)
-	return freeExts[ext] || fixedExts[ext]
+	extension := path.Ext(p)
+	return freeExtensions[extension] || fixedExtensions[extension]
 }
 
 // Implements: REQ-FORTRAN-001
@@ -63,7 +63,7 @@ type Plugin struct{}
 func (Plugin) Name() string { return "fortran" }
 func (Plugin) Version() int { return 1 }
 
-// Claims takes Fortran sources - a .f or .for file only when scan labelled it
+// Claims takes Fortran sources - a .f or .for file only when scan labeled it
 // Fortran, since Forth uses .f too - and fpm.toml, except what fpm wrote into a
 // build/ directory beside an fpm.toml.
 //
@@ -75,7 +75,7 @@ func (Plugin) Claims(f *scan.File) bool {
 	if !source(f.Path) && path.Base(f.Path) != "fpm.toml" {
 		return false
 	}
-	if f.Lang != "" && f.Lang != "Fortran" && f.Lang != "TOML" {
+	if f.Language != "" && f.Language != "Fortran" && f.Language != "TOML" {
 		return false
 	}
 	return !generated(f)
@@ -87,8 +87,8 @@ func (Plugin) Claims(f *scan.File) bool {
 func generated(f *scan.File) bool {
 	segments := strings.Split(f.Path, "/")
 	for i, s := range segments[:len(segments)-1] {
-		if s == "build" && f.Abs != "" && strings.HasSuffix(filepath.ToSlash(f.Abs), f.Path) {
-			base := f.Abs[:len(f.Abs)-len(f.Path)]
+		if s == "build" && f.AbsolutePath != "" && strings.HasSuffix(filepath.ToSlash(f.AbsolutePath), f.Path) {
+			base := f.AbsolutePath[:len(f.AbsolutePath)-len(f.Path)]
 			if hasManifest(filepath.Join(base, filepath.FromSlash(strings.Join(segments[:i], "/")))) {
 				return true
 			}
@@ -97,14 +97,14 @@ func generated(f *scan.File) bool {
 	return false
 }
 
-var manifestDirs sync.Map // absolute directory -> bool: it has an fpm.toml
+var manifestDirectories sync.Map // absolute directory -> bool: it has an fpm.toml
 
-func hasManifest(dir string) bool {
-	if v, ok := manifestDirs.Load(dir); ok {
+func hasManifest(directory string) bool {
+	if v, ok := manifestDirectories.Load(directory); ok {
 		return v.(bool)
 	}
-	_, err := os.Stat(filepath.Join(dir, "fpm.toml"))
-	manifestDirs.Store(dir, err == nil)
+	_, err := os.Stat(filepath.Join(directory, "fpm.toml"))
+	manifestDirectories.Store(directory, err == nil)
 	return err == nil
 }
 
@@ -121,9 +121,9 @@ func (Plugin) Class(f *scan.File) string {
 // Implements: REQ-FORTRAN-009
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return append([]lang.Ecosystem{
-		{ID: ecoFpm, Name: "fpm packages"},
-		{ID: ecoExternal, Name: "Fortran external modules"},
-		{ID: ecoStd, Name: "Fortran intrinsic modules", Std: true},
+		{ID: ecosystemFpm, Name: "fpm packages"},
+		{ID: ecosystemExternal, Name: "Fortran external modules"},
+		{ID: ecosystemStd, Name: "Fortran intrinsic modules", Std: true},
 	}, cpp.PackageEcosystems()...)
 }
 
@@ -132,9 +132,9 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-FORTRAN-002, REQ-FORTRAN-003, REQ-FORTRAN-005
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	if path.Base(f.Path) == "fpm.toml" {
-		return extractManifest(src), nil
+		return extractManifest(source), nil
 	}
-	return extractSource(src, fixedExts[path.Ext(f.Path)]), nil
+	return extractSource(source, fixedExtensions[path.Ext(f.Path)]), nil
 }

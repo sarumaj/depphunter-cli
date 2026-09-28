@@ -13,13 +13,13 @@ import (
 // there (~/.config/...), whatever platform runs the tests. The tests of another
 // platform's locations pick it through onMachine.
 func TestMain(m *testing.M) {
-	dir, err := os.MkdirTemp("", "depphunter-system")
+	directory, err := os.MkdirTemp("", "depphunter-system")
 	if err != nil {
 		panic(err)
 	}
-	userconf.SystemRoot = dir
+	userconf.SystemRoot = directory
 	userconf.Platform = "linux"
 	code := m.Run()
-	os.RemoveAll(dir)
+	os.RemoveAll(directory)
 	os.Exit(code)
 }

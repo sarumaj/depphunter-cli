@@ -8,7 +8,7 @@ Three sizes out of one drawing:
   * icon.png            128x128, what vsce puts on the marketplace listing
   * web/static/favicon.png   48x48, the tab icon for browsers that want a raster
   * web/static/favicon.svg   the same mark as vectors, for those that prefer it
-  * extension/media/activitybar.svg   the mark in one colour, for VS Code's activity bar
+  * extension/media/activitybar.svg   the mark in one color, for VS Code's activity bar
   * extension/media/tree.svg, backpack.svg   the side panel's other views, drawn the same way
 
 The mark is the map itself, shortened to one thing: three towers on an isometric
@@ -127,10 +127,10 @@ def svg_polygons() -> str:
     return "\n".join(out)
 
 
-# The activity bar paints its icons itself, in the theme's foreground colour, and
-# uses the SVG only as a mask: every colour turns into the same one, and only how
+# The activity bar paints its icons itself, in the theme's foreground color, and
+# uses the SVG only as a mask: every color turns into the same one, and only how
 # opaque a pixel is survives. So the faces are told apart by opacity, the way the
-# lit drawing tells them apart by brightness. They are painted in greys into a
+# lit drawing tells them apart by brightness. They are painted in grays into a
 # luminance mask rather than as translucent shapes, because translucent shapes
 # add up where a tower stands in front of another or on the ground, and a mask
 # keeps the painter's rule: what is drawn last covers what is behind it.
@@ -153,7 +153,7 @@ FACE_OPACITY = {
 
 
 def activitybar_polygons() -> str:
-    """The vector drawing again, as greys for the mask."""
+    """The vector drawing again, as grays for the mask."""
     out: list[str] = []
 
     class Pen:

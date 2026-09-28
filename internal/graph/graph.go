@@ -15,7 +15,7 @@ import "time"
 type NodeKind string
 
 const (
-	KindDir       NodeKind = "dir"
+	KindDirectory NodeKind = "dir"
 	KindFile      NodeKind = "file"
 	KindSymbol    NodeKind = "symbol"
 	KindEcosystem NodeKind = "ecosystem"
@@ -41,13 +41,13 @@ const (
 
 // Implements: REQ-MOD-004
 type Node struct {
-	ID     string   `json:"id"`
-	Kind   NodeKind `json:"kind"`
-	Name   string   `json:"name"`
-	Path   string   `json:"path,omitempty"`
-	Parent string   `json:"parent,omitempty"`
-	Lang   string   `json:"lang,omitempty"`
-	LOC    int      `json:"loc,omitempty"`
+	ID       string   `json:"id"`
+	Kind     NodeKind `json:"kind"`
+	Name     string   `json:"name"`
+	Path     string   `json:"path,omitempty"`
+	Parent   string   `json:"parent,omitempty"`
+	Language string   `json:"lang,omitempty"`
+	LOC      int      `json:"loc,omitempty"`
 	// Bytes is what the file measured on disk. LOC is what the map is built out of,
 	// but a file can have no lines to count and still take up room: anything binary,
 	// and anything over --max-file-size, is listed without ever being read. Sized by
@@ -119,8 +119,8 @@ type Graph struct {
 }
 
 // Implements: REQ-MOD-003
-func DirID(path string) string          { return "d:" + path }
-func FileID(path string) string         { return "f:" + path }
-func SymbolID(file, name string) string { return "s:" + file + "#" + name }
-func EcosystemID(eco string) string     { return "e:" + eco }
-func PackageID(eco, name string) string { return "p:" + eco + ":" + name }
+func DirectoryID(path string) string          { return "d:" + path }
+func FileID(path string) string               { return "f:" + path }
+func SymbolID(file, name string) string       { return "s:" + file + "#" + name }
+func EcosystemID(ecosystem string) string     { return "e:" + ecosystem }
+func PackageID(ecosystem, name string) string { return "p:" + ecosystem + ":" + name }

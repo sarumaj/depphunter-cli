@@ -58,9 +58,9 @@ func (f *feed) paths() []string {
 }
 
 // askedFor reports whether any request named the package.
-func (f *feed) askedFor(pkg string) bool {
+func (f *feed) askedFor(packageName string) bool {
 	for _, p := range f.paths() {
-		if strings.Contains(p, pkg) {
+		if strings.Contains(p, packageName) {
 			return true
 		}
 	}
@@ -68,32 +68,32 @@ func (f *feed) askedFor(pkg string) bool {
 }
 
 // asPublic makes the feed the ecosystem's public default for the test.
-func asPublic(t *testing.T, eco string, f *feed) {
+func asPublic(t *testing.T, ecosystem string, f *feed) {
 	t.Helper()
-	was := public[eco]
-	public[eco] = f.URL
-	t.Cleanup(func() { public[eco] = was })
+	was := public[ecosystem]
+	public[ecosystem] = f.URL
+	t.Cleanup(func() { public[ecosystem] = was })
 }
 
 // ask puts one question to a client and returns the dependency names with the
 // lookup the report recorded for it.
 func ask(t *testing.T, c *Client, target lang.Target) ([]string, trace.Lookup) {
 	t.Helper()
-	rep := trace.New(1, true, nil, nil)
-	c.Trace(rep)
+	report := trace.New(1, true, nil, nil)
+	c.Trace(report)
 	got := names(c.Dependencies(target))
-	if len(rep.Lookups) != 1 {
-		t.Fatalf("%s: %d lookups recorded", target.Package, len(rep.Lookups))
+	if len(report.Lookups) != 1 {
+		t.Fatalf("%s: %d lookups recorded", target.Package, len(report.Lookups))
 	}
-	return got, rep.Lookups[0]
+	return got, report.Lookups[0]
 }
 
-func newClient(t *testing.T, cfg *Config, private ...string) *Client {
-	return NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, nil, scope.New(private))
+func newClient(t *testing.T, config *Config, private ...string) *Client {
+	return NewClient(config, t.TempDir(), time.Hour, 5*time.Second, nil, scope.New(private))
 }
 
-func pypiJSON(deps ...string) string {
-	return `{"info":{"requires_dist":["` + strings.Join(deps, `","`) + `"]}}`
+func pypiJSON(dependencies ...string) string {
+	return `{"info":{"requires_dist":["` + strings.Join(dependencies, `","`) + `"]}}`
 }
 
 // pip asks an extra index beside PyPI: a package that is not on the extra index is
@@ -106,9 +106,9 @@ func TestPipExtraIndexFallsBackToPyPI(t *testing.T) {
 	corp := newFeed(t, map[string]string{"/pypi/corp-billing/1.0.0/json": pypiJSON("corp-core")})
 	asPublic(t, PyPI, pypi)
 
-	d := NewDiscoverer(env(map[string]string{"PIP_EXTRA_INDEX_URL": corp.URL + "/simple"}), "")
-	cfg := d.Discover(nil)
-	c := newClient(t, cfg)
+	d := NewDiscoverer(environment(map[string]string{"PIP_EXTRA_INDEX_URL": corp.URL + "/simple"}), "")
+	config := d.Discover(nil)
+	c := newClient(t, config)
 
 	got, l := ask(t, c, lang.Target{Ecosystem: PyPI, Package: "requests", Version: "2.31.0"})
 	if len(got) != 1 || got[0] != "certifi" || l.Index != pypi.URL {
@@ -122,13 +122,13 @@ func TestPipExtraIndexFallsBackToPyPI(t *testing.T) {
 		t.Error("a package the extra index has was named to PyPI")
 	}
 	// The map is told where each was found.
-	if idx, known, ok := c.Located(PyPI, "corp-billing"); !ok || idx != corp.URL+"/simple" || !known {
-		t.Errorf("corp-billing located at %q (known %v, %v)", idx, known, ok)
+	if index, known, ok := c.Located(PyPI, "corp-billing"); !ok || index != corp.URL+"/simple" || !known {
+		t.Errorf("corp-billing located at %q (known %v, %v)", index, known, ok)
 	}
 	// Attributed before anything is asked, a package is PyPI's: the extra index
 	// serves only what it holds.
-	if idx, known := cfg.For(PyPI, "requests"); idx != pypi.URL || !known {
-		t.Errorf("requests attributed to %s (known %v)", idx, known)
+	if index, known := config.For(PyPI, "requests"); index != pypi.URL || !known {
+		t.Errorf("requests attributed to %s (known %v)", index, known)
 	}
 }
 
@@ -142,11 +142,11 @@ func TestARepositorysExtraIndexDoesNotHidePyPI(t *testing.T) {
 	corp := newFeed(t, nil)
 	asPublic(t, PyPI, pypi)
 	files := write(t, map[string]string{"requirements.txt": "--extra-index-url " + corp.URL + "/simple\nrequests==2.31.0\n"})
-	cfg := Discover(files, env(nil), "")
-	c := newClient(t, cfg)
+	config := Discover(files, environment(nil), "")
+	c := newClient(t, config)
 
-	if idx, known := cfg.For(PyPI, "requests"); idx != pypi.URL || !known {
-		t.Errorf("requests attributed to %s (known %v), want PyPI, known", idx, known)
+	if index, known := config.For(PyPI, "requests"); index != pypi.URL || !known {
+		t.Errorf("requests attributed to %s (known %v), want PyPI, known", index, known)
 	}
 	got, l := ask(t, c, lang.Target{Ecosystem: PyPI, Package: "requests", Version: "2.31.0"})
 	if len(got) != 1 || l.Answer != trace.FromIndex {
@@ -156,8 +156,8 @@ func TestARepositorysExtraIndexDoesNotHidePyPI(t *testing.T) {
 	if l.Reason != trace.ReasonUntrusted || l.Index != corp.URL+"/simple" {
 		t.Errorf("a package PyPI lacks: %q from %s, want the repository's index, untrusted", l.Reason, l.Index)
 	}
-	if idx, known, ok := c.Located(PyPI, "acme-internal"); !ok || known || idx != corp.URL+"/simple" {
-		t.Errorf("acme-internal located at %q (known %v, %v), want the repository's index, unknown", idx, known, ok)
+	if index, known, ok := c.Located(PyPI, "acme-internal"); !ok || known || index != corp.URL+"/simple" {
+		t.Errorf("acme-internal located at %q (known %v, %v), want the repository's index, unknown", index, known, ok)
 	}
 	if len(corp.paths()) != 0 {
 		t.Errorf("the repository's index was asked: %v", corp.paths())
@@ -172,8 +172,8 @@ func TestAPrivatePackageIsNotAskedOfThePublicFallback(t *testing.T) {
 	pypi := newFeed(t, nil)
 	corp := newFeed(t, nil)
 	asPublic(t, PyPI, pypi)
-	cfg := NewDiscoverer(env(map[string]string{"PIP_EXTRA_INDEX_URL": corp.URL}), "").Discover(nil)
-	c := newClient(t, cfg, "pypi:acme-*")
+	config := NewDiscoverer(environment(map[string]string{"PIP_EXTRA_INDEX_URL": corp.URL}), "").Discover(nil)
+	c := newClient(t, config, "pypi:acme-*")
 
 	_, l := ask(t, c, lang.Target{Ecosystem: PyPI, Package: "acme-billing", Version: "1.0.0"})
 	if !corp.askedFor("acme-billing") {
@@ -194,8 +194,8 @@ func TestAPrivatePackageIsNotAskedOfThePublicFallback(t *testing.T) {
 	// The map attributes the private package to the index it would come from.
 	only.Private(scope.New([]string{"pypi:acme-*"}).Match)
 	only.Add(PyPI, Source{URL: "https://pypi.corp/simple", Kind: Additive, Trusted: true})
-	if idx, _ := only.For(PyPI, "acme-billing"); idx != "https://pypi.corp/simple" {
-		t.Errorf("acme-billing attributed to %s, want the company's extra index", idx)
+	if index, _ := only.For(PyPI, "acme-billing"); index != "https://pypi.corp/simple" {
+		t.Errorf("acme-billing attributed to %s, want the company's extra index", index)
 	}
 }
 
@@ -213,8 +213,8 @@ func TestMavenRepositoryFallsBackToCentral(t *testing.T) {
 
 	// Only the repository names Nexus: Central answers what it has, Nexus is not
 	// asked, and the artifact only Nexus could have is marked as coming from it.
-	cfg := Discover(files, env(nil), "")
-	c := newClient(t, cfg)
+	config := Discover(files, environment(nil), "")
+	c := newClient(t, config)
 	if got, l := ask(t, c, lang.Target{Ecosystem: Maven, Package: "com.google.guava:guava", Version: "33.0"}); len(got) != 1 || l.Index != central.URL {
 		t.Errorf("guava: %v from %s, want Central's answer", got, l.Index)
 	}
@@ -229,9 +229,9 @@ func TestMavenRepositoryFallsBackToCentral(t *testing.T) {
 	central.mu.Lock()
 	central.asked = nil
 	central.mu.Unlock()
-	cfg = Discover(files, env(nil), "")
-	cfg.Trust([]string{nexus.URL})
-	c = newClient(t, cfg)
+	config = Discover(files, environment(nil), "")
+	config.Trust([]string{nexus.URL})
+	c = newClient(t, config)
 	if got, l := ask(t, c, lang.Target{Ecosystem: Maven, Package: "com.acme:billing", Version: "1.0"}); len(got) != 1 || got[0] != "g:acme-core" || l.Index != nexus.URL {
 		t.Errorf("billing: %v from %s, want Nexus's answer", got, l.Index)
 	}
@@ -251,7 +251,7 @@ func TestMavenRepositoryFallsBackToCentral(t *testing.T) {
 //
 // Verifies: REQ-SUP-063
 func TestMavenMirrorOfEverythingReplacesTheRepositories(t *testing.T) {
-	for _, tt := range []struct {
+	for _, test := range []struct {
 		mirrorOf string
 		want     []string
 	}{
@@ -265,14 +265,14 @@ func TestMavenMirrorOfEverythingReplacesTheRepositories(t *testing.T) {
 		if err := os.MkdirAll(filepath.Join(home, ".m2"), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		settings := `<settings><mirrors><mirror><url>https://mirror.corp/maven</url><mirrorOf>` + tt.mirrorOf + `</mirrorOf></mirror></mirrors></settings>`
+		settings := `<settings><mirrors><mirror><url>https://mirror.corp/maven</url><mirrorOf>` + test.mirrorOf + `</mirrorOf></mirror></mirrors></settings>`
 		if err := os.WriteFile(filepath.Join(home, ".m2", "settings.xml"), []byte(settings), 0o644); err != nil {
 			t.Fatal(err)
 		}
 		files := write(t, map[string]string{"pom.xml": `<project><repositories><repository><url>https://nexus.example/repo</url></repository></repositories></project>`})
-		c := Discover(files, env(nil), home)
-		if got := order(c, Maven, "g:a", ""); !slices.Equal(got, tt.want) {
-			t.Errorf("mirrorOf %q: asked %v, want %v", tt.mirrorOf, got, tt.want)
+		c := Discover(files, environment(nil), home)
+		if got := order(c, Maven, "g:a", ""); !slices.Equal(got, test.want) {
+			t.Errorf("mirrorOf %q: asked %v, want %v", test.mirrorOf, got, test.want)
 		}
 	}
 }
@@ -291,13 +291,13 @@ func TestComposerRepositoryFallsBackToPackagist(t *testing.T) {
 	})
 	asPublic(t, Composer, packagist)
 	for _, off := range []bool{false, true} {
-		repos := `[{"type":"composer","url":"` + satis.URL + `"}]`
+		repositories := `[{"type":"composer","url":"` + satis.URL + `"}]`
 		if off {
-			repos = `[{"type":"composer","url":"` + satis.URL + `"},{"packagist.org":false}]`
+			repositories = `[{"type":"composer","url":"` + satis.URL + `"},{"packagist.org":false}]`
 		}
-		cfg := Discover(write(t, map[string]string{"composer.json": `{"repositories":` + repos + `}`}), env(nil), "")
-		cfg.Trust([]string{satis.URL})
-		c := newClient(t, cfg)
+		config := Discover(write(t, map[string]string{"composer.json": `{"repositories":` + repositories + `}`}), environment(nil), "")
+		config.Trust([]string{satis.URL})
+		c := newClient(t, config)
 		got, l := ask(t, c, lang.Target{Ecosystem: Composer, Package: "acme/billing"})
 		if len(got) != 1 || got[0] != "acme/core" || l.Index != satis.URL {
 			t.Errorf("off=%v acme/billing: %v from %s, want the repository's answer", off, got, l.Index)
@@ -324,8 +324,8 @@ func TestComposerRepositoryFallsBackToPackagist(t *testing.T) {
 // Verifies: REQ-SUP-063, REQ-SUP-025
 func TestNuGetAsksEveryFeed(t *testing.T) {
 	serviceIndex := `{"resources":[{"@id":"{{self}}/flat","@type":"PackageBaseAddress/3.0.0"}]}`
-	nuspec := func(dep string) string {
-		return `<package><metadata><dependencies><dependency id="` + dep + `" version="1.0.0"/></dependencies></metadata></package>`
+	nuspec := func(dependency string) string {
+		return `<package><metadata><dependencies><dependency id="` + dependency + `" version="1.0.0"/></dependencies></metadata></package>`
 	}
 	first := newFeed(t, map[string]string{"/index.json": serviceIndex})
 	second := newFeed(t, map[string]string{
@@ -348,7 +348,7 @@ func TestNuGetAsksEveryFeed(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, ".nuget", "NuGet", "NuGet.Config"), []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	c := newClient(t, Discover(nil, env(nil), home))
+	c := newClient(t, Discover(nil, environment(nil), home))
 	got, l := ask(t, c, lang.Target{Ecosystem: NuGet, Package: "Acme.Tools", Version: "1.0.0"})
 	if len(got) != 1 || got[0] != "Acme.Core" || l.Index != second.URL+"/index.json" {
 		t.Errorf("Acme.Tools: %v from %s, want the second feed's answer", got, l.Index)
@@ -364,14 +364,14 @@ func TestNuGetAsksEveryFeed(t *testing.T) {
 		t.Error("a package a feed has was named to nuget.org")
 	}
 	// <clear/> drops nuget.org, unless the same config names it again.
-	for cfg, want := range map[string][]string{
+	for config, want := range map[string][]string{
 		`<configuration><packageSources><clear/><add key="a" value="https://feed.corp/v3/index.json"/></packageSources></configuration>`: {
 			"https://feed.corp/v3/index.json?"},
 		`<configuration><packageSources><clear/><add key="a" value="https://feed.corp/v3/index.json"/>` +
 			`<add key="nuget.org" value="https://api.nuget.org/v3/index.json"/></packageSources></configuration>`: {
 			"https://feed.corp/v3/index.json?", org.URL + "/index.json"},
 	} {
-		c := Discover(write(t, map[string]string{"nuget.config": cfg}), env(nil), "")
+		c := Discover(write(t, map[string]string{"nuget.config": config}), environment(nil), "")
 		if got := order(c, NuGet, "Acme.Tools", ""); !slices.Equal(got, want) {
 			t.Errorf("asked %v, want %v", got, want)
 		}
@@ -384,9 +384,9 @@ func TestNuGetAsksEveryFeed(t *testing.T) {
 //
 // Verifies: REQ-SUP-063, REQ-SUP-021
 func TestGoproxyListIsWalkedAsGoDoes(t *testing.T) {
-	const mod = "/example.com/mod/@v/v1.0.0.mod"
+	const module = "/example.com/mod/@v/v1.0.0.mod"
 	target := lang.Target{Ecosystem: Go, Package: "example.com/mod", Version: "v1.0.0"}
-	for _, tt := range []struct {
+	for _, test := range []struct {
 		name     string
 		goproxy  string // A, B stand for the two stub proxies
 		aStatus  int
@@ -403,23 +403,23 @@ func TestGoproxyListIsWalkedAsGoDoes(t *testing.T) {
 		{"direct alone", "direct", 0, false, false, trace.ReasonNoIndex},
 		{"off alone", "off", 0, false, false, trace.ReasonNoIndex},
 	} {
-		t.Run(tt.name, func(t *testing.T) {
-			golang := newFeed(t, map[string]string{mod: "module example.com/mod\n"})
+		t.Run(test.name, func(t *testing.T) {
+			golang := newFeed(t, map[string]string{module: "module example.com/mod\n"})
 			asPublic(t, Go, golang)
 			a := newFeed(t, nil)
-			a.status[mod] = tt.aStatus
-			b := newFeed(t, map[string]string{mod: "module example.com/mod\n\nrequire example.com/dep v1.0.0\n"})
-			goproxy := strings.NewReplacer("A", a.URL, "B", b.URL).Replace(tt.goproxy)
-			c := newClient(t, NewDiscoverer(env(map[string]string{"GOPROXY": goproxy}), "").Discover(nil))
+			a.status[module] = test.aStatus
+			b := newFeed(t, map[string]string{module: "module example.com/mod\n\nrequire example.com/dep v1.0.0\n"})
+			goproxy := strings.NewReplacer("A", a.URL, "B", b.URL).Replace(test.goproxy)
+			c := newClient(t, NewDiscoverer(environment(map[string]string{"GOPROXY": goproxy}), "").Discover(nil))
 			got, l := ask(t, c, target)
-			if tt.answered != (len(got) == 1) {
-				t.Errorf("answered %v (%+v), want answered %v", got, l, tt.answered)
+			if test.answered != (len(got) == 1) {
+				t.Errorf("answered %v (%+v), want answered %v", got, l, test.answered)
 			}
-			if tt.bAsked != (len(b.paths()) > 0) {
+			if test.bAsked != (len(b.paths()) > 0) {
 				t.Errorf("second proxy asked: %v", b.paths())
 			}
-			if tt.reason != "" && !strings.Contains(l.Reason, tt.reason) {
-				t.Errorf("reason %q, want %q", l.Reason, tt.reason)
+			if test.reason != "" && !strings.Contains(l.Reason, test.reason) {
+				t.Errorf("reason %q, want %q", l.Reason, test.reason)
 			}
 			if len(golang.paths()) != 0 {
 				t.Errorf("proxy.golang.org was asked although GOPROXY is set: %v", golang.paths())
@@ -447,11 +447,11 @@ func TestCargoRegistryServesOnlyTheCratesThatDeclareIt(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(home, ".cargo", "config.toml"), []byte(config), 0o644); err != nil {
 		t.Fatal(err)
 	}
-	cfg := Discover(nil, env(nil), home)
-	c := newClient(t, cfg)
+	discovered := Discover(nil, environment(nil), home)
+	c := newClient(t, discovered)
 
-	if idx, known := cfg.For(Cargo, "serde"); idx != crates.URL || !known {
-		t.Errorf("serde attributed to %s (known %v), want crates.io", idx, known)
+	if index, known := discovered.For(Cargo, "serde"); index != crates.URL || !known {
+		t.Errorf("serde attributed to %s (known %v), want crates.io", index, known)
 	}
 	if got, l := ask(t, c, lang.Target{Ecosystem: Cargo, Package: "serde", Version: "1.0.0"}); l.Answer != trace.FromIndex || l.Index != crates.URL || len(got) != 0 {
 		t.Errorf("serde: %v %+v, want crates.io's answer", got, l)
@@ -459,21 +459,21 @@ func TestCargoRegistryServesOnlyTheCratesThatDeclareIt(t *testing.T) {
 	if len(corp.paths()) != 0 {
 		t.Errorf("a crates.io crate was asked of the registry: %v", corp.paths())
 	}
-	for _, reg := range []string{"corp", "sparse+" + corp.URL + "/", "registry+" + corp.URL} {
-		c := newClient(t, cfg)
-		deps := c.Dependencies(lang.Target{Ecosystem: Cargo, Package: "billing", Version: "1.0.0", Registry: reg})
-		if len(deps) != 2 {
-			t.Fatalf("registry %q: billing answered %v", reg, deps)
+	for _, registrySpec := range []string{"corp", "sparse+" + corp.URL + "/", "registry+" + corp.URL} {
+		c := newClient(t, discovered)
+		dependencies := c.Dependencies(lang.Target{Ecosystem: Cargo, Package: "billing", Version: "1.0.0", Registry: registrySpec})
+		if len(dependencies) != 2 {
+			t.Fatalf("registry %q: billing answered %v", registrySpec, dependencies)
 		}
-		for _, d := range deps {
+		for _, d := range dependencies {
 			switch d.Package {
 			case "serde":
 				if d.Registry != "" {
 					t.Errorf("serde, a crates.io crate, comes from %q", d.Registry)
 				}
 			case "core":
-				if d.Registry != reg {
-					t.Errorf("core, from billing's own registry, comes from %q, want %q", d.Registry, reg)
+				if d.Registry != registrySpec {
+					t.Errorf("core, from billing's own registry, comes from %q, want %q", d.Registry, registrySpec)
 				}
 			}
 		}
@@ -482,12 +482,12 @@ func TestCargoRegistryServesOnlyTheCratesThatDeclareIt(t *testing.T) {
 		t.Error("a registry crate was named to crates.io")
 	}
 	// A registry nothing here configures is where the crate comes from, marked.
-	if idx, known := cfg.ForTarget(lang.Target{Ecosystem: Cargo, Package: "x", Registry: "registry+https://other.example/index"}); idx != "https://other.example/index" || known {
-		t.Errorf("an unknown registry: %s (known %v)", idx, known)
+	if index, known := discovered.ForTarget(lang.Target{Ecosystem: Cargo, Package: "x", Registry: "registry+https://other.example/index"}); index != "https://other.example/index" || known {
+		t.Errorf("an unknown registry: %s (known %v)", index, known)
 	}
 	// replace-with still replaces crates.io for every crate.
-	cfg.Add(Cargo, Source{URL: "https://mirror.corp/crates", Trusted: true})
-	if got := order(cfg, Cargo, "serde", ""); !slices.Equal(got, []string{"https://mirror.corp/crates"}) {
+	discovered.Add(Cargo, Source{URL: "https://mirror.corp/crates", Trusted: true})
+	if got := order(discovered, Cargo, "serde", ""); !slices.Equal(got, []string{"https://mirror.corp/crates"}) {
 		t.Errorf("with a replacement: %v", got)
 	}
 }
@@ -500,9 +500,9 @@ func TestAScopedSourceDoesNotFallBack(t *testing.T) {
 	npm := newFeed(t, map[string]string{"/@acme%2fwidgets/1.0.0": `{"dependencies":{"evil":"1"}}`})
 	acme := newFeed(t, nil)
 	asPublic(t, NPM, npm)
-	cfg := New()
-	cfg.Add(NPM, Source{URL: acme.URL, Scope: "@acme", Trusted: true})
-	c := newClient(t, cfg)
+	config := New()
+	config.Add(NPM, Source{URL: acme.URL, Scope: "@acme", Trusted: true})
+	c := newClient(t, config)
 
 	got, l := ask(t, c, lang.Target{Ecosystem: NPM, Package: "@acme/widgets", Version: "1.0.0"})
 	if len(got) != 0 || l.Index != acme.URL {
@@ -518,9 +518,9 @@ func TestAScopedSourceDoesNotFallBack(t *testing.T) {
 //
 // Verifies: REQ-SUP-015, REQ-SUP-063
 func TestPythonIndexKinds(t *testing.T) {
-	for _, tt := range []struct {
+	for _, test := range []struct {
 		name, file, body string
-		pkg              string
+		packageName      string
 		want             []string
 	}{
 		{"pip.conf extra over two lines", "pip.conf",
@@ -555,9 +555,9 @@ func TestPythonIndexKinds(t *testing.T) {
 				"url = \"https://download.pytorch.org/whl/cpu\"\nexplicit = true\n", "torch",
 			[]string{"https://download.pytorch.org/whl/cpu?"}},
 	} {
-		c := Discover(write(t, map[string]string{tt.file: tt.body}), env(nil), "")
-		if got := order(c, PyPI, tt.pkg, ""); !slices.Equal(got, tt.want) {
-			t.Errorf("%s: asked %v, want %v", tt.name, got, tt.want)
+		c := Discover(write(t, map[string]string{test.file: test.body}), environment(nil), "")
+		if got := order(c, PyPI, test.packageName, ""); !slices.Equal(got, test.want) {
+			t.Errorf("%s: asked %v, want %v", test.name, got, test.want)
 		}
 	}
 }
@@ -567,12 +567,12 @@ func TestPythonIndexKinds(t *testing.T) {
 //
 // Verifies: REQ-SUP-063, REQ-SUP-015
 func TestPackagistSwitchedOffIsForgottenWithTheRepository(t *testing.T) {
-	d := NewDiscoverer(env(nil), "")
+	d := NewDiscoverer(environment(nil), "")
 	files := write(t, map[string]string{"composer.json": `{"repositories": {"packagist.org": false}}`})
 	if got := order(d.Discover(files), Composer, "a/b", ""); len(got) != 0 {
 		t.Errorf("Packagist switched off, still asked: %v", got)
 	}
-	if err := os.WriteFile(files[0].Abs, []byte(`{}`), 0o644); err != nil {
+	if err := os.WriteFile(files[0].AbsolutePath, []byte(`{}`), 0o644); err != nil {
 		t.Fatal(err)
 	}
 	if got := order(d.Discover(files), Composer, "a/b", ""); !slices.Equal(got, []string{"https://repo.packagist.org"}) {

@@ -63,13 +63,13 @@ export class StartError extends Error {
  * Starts a server for root and resolves once it says where it is listening. home is
  * the extension's own directory, where a released build keeps the binary it ships.
  * The promise rejects if the binary is missing, if the server exits first, or if
- * token is cancelled; in every one of those cases nothing is left running.
+ * token is canceled; in every one of those cases nothing is left running.
  * Implements: REQ-EXT-017, REQ-EXT-019, REQ-EXT-023
  */
 export function start(root: string, home: string | undefined, log: vscode.OutputChannel, token: vscode.CancellationToken): Promise<Running> {
-  const cfg = vscode.workspace.getConfiguration('depphunter', vscode.Uri.file(root));
-  const bin = binaryFor(cfg.get<string>('path'), home);
-  const args = argv(cfg, root);
+  const config = vscode.workspace.getConfiguration('depphunter', vscode.Uri.file(root));
+  const bin = binaryFor(config.get<string>('path'), home);
+  const args = argv(config, root);
 
   // spawn reports a missing working directory as ENOENT too, which would read as a
   // missing binary and send the user off to download one they already have.
@@ -81,11 +81,11 @@ export function start(root: string, home: string | undefined, log: vscode.Output
 
   return new Promise<Running>((resolve, reject) => {
     let settled = false;
-    const stop = (fn: () => void) => {
+    const stop = (callback: () => void) => {
       if (settled) return;
       settled = true;
       subscription.dispose();
-      fn();
+      callback();
     };
 
     const subscription = token.onCancellationRequested(() => stop(() => {
@@ -136,25 +136,25 @@ export function start(root: string, home: string | undefined, log: vscode.Output
  * (--ui-default) rather than as flags - see below for why.
  * Implements: REQ-EXT-022, REQ-EXT-024
  */
-export function argv(cfg: vscode.WorkspaceConfiguration, root: string): string[] {
+export function argv(config: vscode.WorkspaceConfiguration, root: string): string[] {
   const args = ['--no-open', '--addr', '127.0.0.1:0'];
   for (const origin of FRAME_ORIGINS) args.push('--embed', origin);
 
   const text = (key: string, flag: string) => {
-    const v = (cfg.get<string>(key) ?? '').trim();
+    const v = (config.get<string>(key) ?? '').trim();
     if (v && v !== 'default') args.push(flag, v);
   };
   const number = (key: string, flag: string) => {
-    const v = cfg.get<number | null>(key);
+    const v = config.get<number | null>(key);
     if (typeof v === 'number' && Number.isFinite(v)) args.push(flag, String(Math.trunc(v)));
   };
   const list = (key: string, flag: string) => {
-    for (const v of cfg.get<string[]>(key) ?? []) if (v.trim()) args.push(flag, v);
+    for (const v of config.get<string[]>(key) ?? []) if (v.trim()) args.push(flag, v);
   };
   // depphunter's switches only go one way each: --watch and the like turn something
   // on that is off by default, --no-cache and the like turn off something that is on.
-  const on = (key: string, flag: string) => { if (cfg.get<boolean>(key) === true) args.push(flag); };
-  const off = (key: string, flag: string) => { if (cfg.get<boolean>(key) === false) args.push(flag); };
+  const on = (key: string, flag: string) => { if (config.get<boolean>(key) === true) args.push(flag); };
+  const off = (key: string, flag: string) => { if (config.get<boolean>(key) === false) args.push(flag); };
 
   text('config', '--config');
   on('watch', '--watch');
@@ -178,18 +178,18 @@ export function argv(cfg: vscode.WorkspaceConfiguration, root: string): string[]
   // leaving Save quietly doing nothing for whatever happens to be set in the editor.
   // Implements: REQ-EXT-018
   const seed = (key: string, name: string) => {
-    const v = (cfg.get<string>(key) ?? '').trim();
+    const v = (config.get<string>(key) ?? '').trim();
     if (v && v !== 'default') args.push('--ui-default', `${name}=${v}`);
   };
   seed('style', 'style');
   seed('theme', 'theme');
   seed('colorBy', 'color_by');
   seed('heightScale', 'height_scale');
-  const depth = cfg.get<number | null>('expandDepth');
+  const depth = config.get<number | null>('expandDepth');
   if (typeof depth === 'number' && Number.isFinite(depth)) {
     args.push('--ui-default', `expand_depth=${Math.trunc(depth)}`);
   }
-  if (cfg.get<boolean>('showStd') === true) args.push('--ui-default', 'show_std=true');
+  if (config.get<boolean>('showStd') === true) args.push('--ui-default', 'show_std=true');
 
   list('findings', '--findings');
   off('vulns', '--no-vulns');
@@ -199,10 +199,10 @@ export function argv(cfg: vscode.WorkspaceConfiguration, root: string): string[]
   on('lsp', '--lsp');
   text('lspTimeout', '--lsp-timeout');
 
-  const template = editorTemplate(cfg);
+  const template = editorTemplate(config);
   if (template) args.push('--editor', template);
 
-  args.push(...(cfg.get<string[]>('args') ?? []));
+  args.push(...(config.get<string[]>('args') ?? []));
   args.push(root);
   return args;
 }

@@ -33,8 +33,8 @@ import (
 )
 
 const (
-	ecoCrates = "crates"
-	ecoUnreal = "unreal-engine"
+	ecosystemCrates = "crates"
+	ecosystemUnreal = "unreal-engine"
 )
 
 // Dialects the scanners tell apart.
@@ -44,10 +44,10 @@ const (
 	wgsl
 )
 
-// exts maps the extensions the plugin claims to their dialect.
+// extensions maps the extensions the plugin claims to their dialect.
 //
 // Implements: REQ-SHADER-001
-var exts = map[string]int{
+var extensions = map[string]int{
 	".glsl": glsl, ".vert": glsl, ".frag": glsl, ".geom": glsl, ".tesc": glsl, ".tese": glsl,
 	".comp": glsl, ".rgen": glsl, ".rchit": glsl, ".rahit": glsl, ".rmiss": glsl, ".rint": glsl,
 	".rcall": glsl, ".vsh": glsl, ".fsh": glsl,
@@ -66,18 +66,18 @@ func (Plugin) Name() string { return "shader" }
 func (Plugin) Version() int { return 1 }
 
 // Implements: REQ-SHADER-001
-func (Plugin) Claims(f *scan.File) bool { return !f.Binary && dialect(f.Path, f.Lang) != 0 }
+func (Plugin) Claims(f *scan.File) bool { return !f.Binary && dialect(f.Path, f.Language) != 0 }
 
 // dialect is the language of a file, 0 for a file the plugin does not read.
 func dialect(p, label string) int {
-	ext := strings.ToLower(path.Ext(p))
-	if sniffed[ext] {
+	extension := strings.ToLower(path.Ext(p))
+	if sniffed[extension] {
 		if label == "GLSL" {
 			return glsl
 		}
 		return 0
 	}
-	return exts[ext]
+	return extensions[extension]
 }
 
 // Ecosystems: crates.io, the Rust crates shipping the WGSL modules a shader
@@ -86,8 +86,8 @@ func dialect(p, label string) int {
 // Implements: REQ-SHADER-004, REQ-SHADER-007
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoCrates, Name: "crates.io"},
-		{ID: ecoUnreal, Name: "Unreal Engine shaders", Std: true},
+		{ID: ecosystemCrates, Name: "crates.io"},
+		{ID: ecosystemUnreal, Name: "Unreal Engine shaders", Std: true},
 	}
 }
 
@@ -100,13 +100,13 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 // GLSL, so the cached extraction cannot differ with the label.
 //
 // Implements: REQ-SHADER-002, REQ-SHADER-003, REQ-SHADER-005, REQ-SHADER-008
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
-	d := exts[strings.ToLower(path.Ext(f.Path))]
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
+	d := extensions[strings.ToLower(path.Ext(f.Path))]
 	if d == wgsl {
-		return extractWGSL(src), nil
+		return extractWGSL(source), nil
 	}
 	if d == 0 {
 		d = glsl
 	}
-	return extractC(src, d), nil
+	return extractC(source, d), nil
 }

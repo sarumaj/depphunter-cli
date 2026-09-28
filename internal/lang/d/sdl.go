@@ -10,15 +10,15 @@ import "strings"
 // written.
 
 type sdlTag struct {
-	name     string
-	values   []string
-	attrs    map[string]string
-	children []*sdlTag
-	line     int
+	name       string
+	values     []string
+	attributes map[string]string
+	children   []*sdlTag
+	line       int
 }
 
-// attr is an attribute's value, "" when absent.
-func (t *sdlTag) attr(k string) string { return t.attrs[k] }
+// attribute is an attribute's value, "" when absent.
+func (t *sdlTag) attribute(k string) string { return t.attributes[k] }
 
 // value is the tag's first value, "" when it has none.
 func (t *sdlTag) value() string {
@@ -28,7 +28,7 @@ func (t *sdlTag) value() string {
 	return t.values[0]
 }
 
-type sdlTok struct {
+type sdlToken struct {
 	kind byte // 'w' word, 's' string, '=' '{' '}', 'e' end of tag
 	text string
 	line int
@@ -37,26 +37,26 @@ type sdlTok struct {
 // maxSDLDepth bounds how deep children nest before deeper ones are dropped.
 const maxSDLDepth = 64
 
-// readSDL parses src into its top-level tags.
+// readSDL parses source into its top-level tags.
 //
 // Implements: REQ-DLANG-005
-func readSDL(src []byte) []*sdlTag {
+func readSDL(source []byte) []*sdlTag {
 	root := &sdlTag{}
 	stack := []*sdlTag{root}
-	var cur []sdlTok
+	var current []sdlToken
 	flush := func() {
-		if len(cur) == 0 {
+		if len(current) == 0 {
 			return
 		}
 		parent := stack[len(stack)-1]
-		if t := sdlBuild(cur); t != nil && len(stack) <= maxSDLDepth {
+		if t := sdlBuild(current); t != nil && len(stack) <= maxSDLDepth {
 			parent.children = append(parent.children, t)
 		}
-		cur = cur[:0]
+		current = current[:0]
 	}
 	deep := 0 // braces opened past maxSDLDepth, or for a tag that was not built
-	for _, tk := range sdlLex(string(src)) {
-		switch tk.kind {
+	for _, token := range sdlLex(string(source)) {
+		switch token.kind {
 		case 'e':
 			flush()
 		case '{':
@@ -76,7 +76,7 @@ func readSDL(src []byte) []*sdlTag {
 				stack = stack[:len(stack)-1]
 			}
 		default:
-			cur = append(cur, tk)
+			current = append(current, token)
 		}
 	}
 	flush()
@@ -84,38 +84,38 @@ func readSDL(src []byte) []*sdlTag {
 }
 
 // sdlBuild turns one tag's tokens into a tag; nil when it has no name.
-func sdlBuild(tokens []sdlTok) *sdlTag {
+func sdlBuild(tokens []sdlToken) *sdlTag {
 	if tokens[0].kind != 'w' || len(tokens) > 1 && tokens[1].kind == '=' {
 		return nil
 	}
-	t := &sdlTag{name: tokens[0].text, attrs: map[string]string{}, line: tokens[0].line}
+	t := &sdlTag{name: tokens[0].text, attributes: map[string]string{}, line: tokens[0].line}
 	for i := 1; i < len(tokens); i++ {
-		tk := tokens[i]
-		if tk.kind == 'w' && i+2 < len(tokens) && tokens[i+1].kind == '=' {
-			t.attrs[tk.text] = tokens[i+2].text
+		token := tokens[i]
+		if token.kind == 'w' && i+2 < len(tokens) && tokens[i+1].kind == '=' {
+			t.attributes[token.text] = tokens[i+2].text
 			i += 2
 			continue
 		}
-		if tk.kind == 'w' || tk.kind == 's' {
-			t.values = append(t.values, tk.text)
+		if token.kind == 'w' || token.kind == 's' {
+			t.values = append(t.values, token.text)
 		}
 	}
 	return t
 }
 
-func sdlLex(s string) []sdlTok {
-	var out []sdlTok
+func sdlLex(s string) []sdlToken {
+	var out []sdlToken
 	line := 1
 	i := 0
 	for i < len(s) {
 		c := s[i]
 		switch {
 		case c == '\n':
-			out = append(out, sdlTok{kind: 'e', line: line})
+			out = append(out, sdlToken{kind: 'e', line: line})
 			line++
 			i++
 		case c == ';':
-			out = append(out, sdlTok{kind: 'e', line: line})
+			out = append(out, sdlToken{kind: 'e', line: line})
 			i++
 		case c == ' ' || c == '\t' || c == '\r':
 			i++
@@ -174,7 +174,7 @@ func sdlLex(s string) []sdlTok {
 				b.WriteByte(s[j])
 				j++
 			}
-			out = append(out, sdlTok{kind: 's', text: b.String(), line: start})
+			out = append(out, sdlToken{kind: 's', text: b.String(), line: start})
 			if j < len(s) && s[j] == '"' {
 				j++
 			}
@@ -185,11 +185,11 @@ func sdlLex(s string) []sdlTok {
 			if end >= 0 {
 				to = i + 1 + end
 			}
-			out = append(out, sdlTok{kind: 's', text: s[i+1 : to], line: line})
+			out = append(out, sdlToken{kind: 's', text: s[i+1 : to], line: line})
 			line += strings.Count(s[i:to], "\n")
 			i = min(to+1, len(s))
 		case c == '=' || c == '{' || c == '}':
-			out = append(out, sdlTok{kind: c, line: line})
+			out = append(out, sdlToken{kind: c, line: line})
 			i++
 		default:
 			j := i
@@ -202,7 +202,7 @@ func sdlLex(s string) []sdlTok {
 			if j == i {
 				j++
 			}
-			out = append(out, sdlTok{kind: 'w', text: s[i:j], line: line})
+			out = append(out, sdlToken{kind: 'w', text: s[i:j], line: line})
 			i = j
 		}
 	}

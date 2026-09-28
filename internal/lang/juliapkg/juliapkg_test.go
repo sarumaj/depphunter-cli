@@ -92,7 +92,7 @@ func TestNewestAndExact(t *testing.T) {
 			t.Errorf("ExactCompat(%q) = %q, want %q", spec, got, want)
 		}
 	}
-	if !Stdlib("LinearAlgebra") || Stdlib("DataFrames") || RegistryDir("libpng_jll") != "L/libpng_jll" {
+	if !Stdlib("LinearAlgebra") || Stdlib("DataFrames") || RegistryDirectory("libpng_jll") != "L/libpng_jll" {
 		t.Error("tables")
 	}
 }

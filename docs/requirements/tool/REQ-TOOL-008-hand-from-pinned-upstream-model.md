@@ -20,7 +20,7 @@ at run time.
 
 ## Rationale
 
-A hand modelled and rigged by people who model hands is better than any hand a
+A hand modeled and rigged by people who model hands is better than any hand a
 script can grow, and an earlier version of the script, which grew one from a
 joint skeleton with the Skin modifier, showed as much. What the script owns is
 what the upstream model does not provide: the axes and scale of the viewmodel,

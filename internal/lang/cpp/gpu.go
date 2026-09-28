@@ -12,13 +12,13 @@ import (
 // installed SDK rather than a package manifest, so both are standard-library
 // islands, hidden unless standard libraries are shown.
 const (
-	ecoCUDA   = "cuda"
-	ecoOpenCL = "opencl"
+	ecosystemCUDA   = "cuda"
+	ecosystemOpenCL = "opencl"
 )
 
 // cudaHeaders are the CUDA Toolkit's headers included by name (runtime and driver
 // APIs, their types, the math libraries' entry points). The libraries with many
-// headers are matched by cudaLibrary; thrust/, cub/ and the others by cudaDirs.
+// headers are matched by cudaLibrary; thrust/, cub/ and the others by cudaDirectories.
 var cudaHeaders = set(`cuda.h cudaGL.h cudaEGL.h cudaGLTypedefs.h cudaEGLTypedefs.h
 cudaTypedefs.h cudaProfiler.h cudaProfilerTypedefs.h cudaVDPAU.h cudaD3D9.h cudaD3D10.h
 cudaD3D11.h cudla.h cudaNvSci.h
@@ -44,9 +44,9 @@ cufile.h`)
 // intrinsics (sm_61_intrinsics.h).
 var cudaLibrary = regexp.MustCompile(`^(?:(?:cublas|cusparse|cusolver|cufft|curand|cudnn|cupti|npp|nvToolsExt)\w*|sm_\d+_\w+)\.h(?:pp)?$`)
 
-// cudaDirs are the toolkit's header directories: Thrust, CUB and libcu++ (cuda/,
+// cudaDirectories are the toolkit's header directories: Thrust, CUB and libcu++ (cuda/,
 // nv/), NVTX 3, cooperative groups and the compiler's crt/.
-var cudaDirs = set(`thrust cub cuda nv nvtx3 cooperative_groups crt`)
+var cudaDirectories = set(`thrust cub cuda nv nvtx3 cooperative_groups crt`)
 
 // metalHeader matches the Metal Shading Language's library headers (metal_stdlib,
 // metal_math, metal_raytracing ...).
@@ -61,18 +61,18 @@ var metalHeader = regexp.MustCompile(`^metal_\w+$`)
 //
 // Implements: REQ-CPP-016
 func sdk(name string) (lang.Target, bool) {
-	dir, _, nested := strings.Cut(name, "/")
+	directory, _, nested := strings.Cut(name, "/")
 	switch {
 	case !nested && (cudaHeaders[name] || cudaLibrary.MatchString(name)):
-		return lang.Target{Ecosystem: ecoCUDA, Package: name}, true
-	case nested && cudaDirs[dir]:
-		return lang.Target{Ecosystem: ecoCUDA, Package: dir}, true
-	case nested && dir == "CL" && !strings.HasPrefix(name, "CL/sycl"): // <CL/sycl.hpp> is SYCL's
-		return lang.Target{Ecosystem: ecoOpenCL, Package: name}, true
+		return lang.Target{Ecosystem: ecosystemCUDA, Package: name}, true
+	case nested && cudaDirectories[directory]:
+		return lang.Target{Ecosystem: ecosystemCUDA, Package: directory}, true
+	case nested && directory == "CL" && !strings.HasPrefix(name, "CL/sycl"): // <CL/sycl.hpp> is SYCL's
+		return lang.Target{Ecosystem: ecosystemOpenCL, Package: name}, true
 	case !nested && metalHeader.MatchString(name):
 		return lang.Target{Ecosystem: swift.AppleEcosystem, Package: "Metal"}, true
-	case nested && (dir == "simd" || dir == "OpenCL"):
-		return lang.Target{Ecosystem: swift.AppleEcosystem, Package: dir}, true
+	case nested && (directory == "simd" || directory == "OpenCL"):
+		return lang.Target{Ecosystem: swift.AppleEcosystem, Package: directory}, true
 	}
 	return lang.Target{}, false
 }

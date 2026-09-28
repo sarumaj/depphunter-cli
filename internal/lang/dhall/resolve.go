@@ -29,11 +29,11 @@ func newResolver(all []*scan.File) *resolver {
 // home-relative paths, environment variables and paths to missing files.
 //
 // Implements: REQ-DHALL-004, REQ-DHALL-005, REQ-DHALL-008
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	loc := imp.Module
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	loc := rawImport.Module
 	switch {
 	case strings.HasPrefix(loc, "https://") || strings.HasPrefix(loc, "http://"):
-		return remote(loc, imp.Name)
+		return remote(loc, rawImport.Name)
 	case strings.HasPrefix(loc, "./") || strings.HasPrefix(loc, "../"):
 		p := path.Join(path.Dir(file), strings.ReplaceAll(loc, `"`, "")) // ./"a b"/c.dhall
 		if r.files[p] {
@@ -68,45 +68,45 @@ func remote(url, hash string) lang.Target {
 			segments = append(segments, s)
 		}
 	}
-	var pkg, ver string
-	ref := false // ver is a repository reference, which may be a branch
+	var packageName, versionText string
+	reference := false // versionText is a repository reference, which may be a branch
 	switch {
 	case host == "prelude.dhall-lang.org":
-		pkg = prelude
+		packageName = prelude
 		if len(segments) > 1 && version(segments[0]) {
-			ver = segments[0]
+			versionText = segments[0]
 		}
 	case host == "raw.githubusercontent.com" && len(segments) >= 3:
-		pkg, ver, ref = github(segments[0], segments[1], segments[3:]), segments[2], true
+		packageName, versionText, reference = github(segments[0], segments[1], segments[3:]), segments[2], true
 	case host == "github.com" && len(segments) >= 4 && (segments[2] == "raw" || segments[2] == "blob"):
-		pkg, ver, ref = github(segments[0], segments[1], segments[4:]), segments[3], true
+		packageName, versionText, reference = github(segments[0], segments[1], segments[4:]), segments[3], true
 	case host == "cdn.jsdelivr.net" && len(segments) >= 3 && segments[0] == "gh":
-		repo, r, _ := strings.Cut(segments[2], "@")
-		pkg, ver, ref = github(segments[1], repo, segments[3:]), r, r != ""
+		repository, r, _ := strings.Cut(segments[2], "@")
+		packageName, versionText, reference = github(segments[1], repository, segments[3:]), r, r != ""
 	case host == "gitlab.com" && gitlab(segments) > 0:
 		k := gitlab(segments)
-		pkg, ver, ref = host+"/"+strings.Join(segments[:k], "/"), segments[k+2], true
+		packageName, versionText, reference = host+"/"+strings.Join(segments[:k], "/"), segments[k+2], true
 	default:
-		pkg = host
+		packageName = host
 		k := len(segments) - 1 // the file
 		for i, s := range segments[:max(k, 0)] {
 			if version(s) || lang.Commit(s) {
-				k, ver = i, s
+				k, versionText = i, s
 				break
 			}
 		}
 		if k > 0 {
-			pkg += "/" + strings.Join(segments[:k], "/")
+			packageName += "/" + strings.Join(segments[:k], "/")
 		}
 	}
-	t := lang.Target{Ecosystem: ecoDhall, Package: pkg, Version: ver}
+	t := lang.Target{Ecosystem: ecosystemDhall, Package: packageName, Version: versionText}
 	switch {
 	case hash != "":
 		t.Pinned = true
 		if t.Version == "" {
 			t.Version = hash[:min(len(hash), len("sha256:")+12)]
 		}
-	case ver == "", ref && !version(ver) && !lang.Commit(ver):
+	case versionText == "", reference && !version(versionText) && !lang.Commit(versionText):
 		t.Floating = true // no version, or a branch
 	}
 	return t
@@ -114,11 +114,11 @@ func remote(url, hash string) lang.Target {
 
 // github names a GitHub repository, or the Prelude when the path is in
 // dhall-lang's Prelude/.
-func github(org, repo string, rest []string) string {
-	if strings.EqualFold(org, "dhall-lang") && strings.EqualFold(repo, "dhall-lang") && len(rest) > 1 && rest[0] == "Prelude" {
+func github(org, repository string, rest []string) string {
+	if strings.EqualFold(org, "dhall-lang") && strings.EqualFold(repository, "dhall-lang") && len(rest) > 1 && rest[0] == "Prelude" {
 		return prelude
 	}
-	return lang.RepoName("https://github.com/" + org + "/" + repo)
+	return lang.RepositoryName("https://github.com/" + org + "/" + repository)
 }
 
 // gitlab is the length of the repository path in a GitLab raw URL

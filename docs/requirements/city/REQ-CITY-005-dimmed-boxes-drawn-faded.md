@@ -22,7 +22,7 @@ A dimmed city must still read as dimmed, yet keep its texture.
 ## Acceptance criteria
 
 1. Selecting a building leaves unrelated buildings visibly fainter than the
-   neighbourhood.
+   neighborhood.
 
 ## Notes
 

@@ -68,14 +68,14 @@ const (
 // when it is about code in this repository, a Package when it is about a dependency,
 // and both when a scanner could say which file pulls the dependency in.
 type Finding struct {
-	ID       string   `json:"id"`
-	Kind     string   `json:"kind"`
-	Source   string   `json:"source"` // the tool that reported it
-	Ref      string   `json:"ref"`    // CVE / GHSA / GO-… id, or the linter's rule
-	Severity Severity `json:"severity"`
-	Title    string   `json:"title"`
-	Detail   string   `json:"detail,omitempty"`
-	URL      string   `json:"url,omitempty"`
+	ID        string   `json:"id"`
+	Kind      string   `json:"kind"`
+	Source    string   `json:"source"` // the tool that reported it
+	Reference string   `json:"ref"`    // CVE / GHSA / GO-… id, or the linter's rule
+	Severity  Severity `json:"severity"`
+	Title     string   `json:"title"`
+	Detail    string   `json:"detail,omitempty"`
+	URL       string   `json:"url,omitempty"`
 
 	Path   string `json:"path,omitempty"` // repository-relative, slash-separated
 	Line   int    `json:"line,omitempty"`
@@ -100,7 +100,7 @@ type Finding struct {
 // tools is one entry on the map.
 func (f *Finding) key() string {
 	return strings.Join([]string{
-		f.Ref, f.Ecosystem, f.Package, f.Version, f.Path,
+		f.Reference, f.Ecosystem, f.Package, f.Version, f.Path,
 		strconv.Itoa(f.Line), strconv.Itoa(f.Column),
 	}, "|")
 }
@@ -118,7 +118,7 @@ type Set struct {
 
 // Add appends findings, keeping the first report of each. The tool a finding came from
 // is remembered even when the finding itself is a repeat, so the UI can say what ran.
-func (s *Set) Add(source string, fs []*Finding) {
+func (s *Set) Add(source string, found []*Finding) {
 	if source != "" && !contains(s.Sources, source) {
 		s.Sources = append(s.Sources, source)
 	}
@@ -126,7 +126,7 @@ func (s *Set) Add(source string, fs []*Finding) {
 	for _, f := range s.Findings {
 		seen[f.key()] = true
 	}
-	for _, f := range fs {
+	for _, f := range found {
 		if f == nil || seen[f.key()] {
 			continue
 		}
@@ -163,11 +163,11 @@ func localize(root, path string) string {
 		}
 		return filepath.ToSlash(p)
 	}
-	rel, err := filepath.Rel(root, p)
-	if err != nil || rel == "." || strings.HasPrefix(rel, "..") {
+	relative, err := filepath.Rel(root, p)
+	if err != nil || relative == "." || strings.HasPrefix(relative, "..") {
 		return ""
 	}
-	return filepath.ToSlash(rel)
+	return filepath.ToSlash(relative)
 }
 
 // Finish gives every finding a stable id and orders the set: most serious first, then
@@ -190,7 +190,7 @@ func (s *Set) Finish() {
 		if a.Line != b.Line {
 			return a.Line < b.Line
 		}
-		return a.Ref < b.Ref
+		return a.Reference < b.Reference
 	})
 	for _, f := range s.Findings {
 		sum := sha256.Sum256([]byte(f.Source + "|" + f.key()))

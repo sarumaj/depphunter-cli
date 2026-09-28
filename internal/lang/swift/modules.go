@@ -70,7 +70,7 @@ var appleModules = set(
 
 // AppleEcosystem is the island of Apple's SDK frameworks, which the objc plugin
 // shares.
-const AppleEcosystem = ecoApple
+const AppleEcosystem = ecosystemApple
 
 // AppleSDK names the Apple SDK framework a module or framework directory is, for
 // the objc plugin, in its own spelling: case is ignored, since Xcode's default file
@@ -267,7 +267,7 @@ func fold(s string) string {
 func c99name(name string) string {
 	b := []byte(name)
 	for i, c := range b {
-		if !identChar(c) {
+		if !identifierCharacter(c) {
 			b[i] = '_'
 		}
 	}

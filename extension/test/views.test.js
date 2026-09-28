@@ -59,7 +59,7 @@ class Fake {
     this.backpack = [{ id: `${this.name}-F1`, severity: 'high', title: `finding in ${this.name}`, where: 'a.go', nodeId: `${this.name}/a.go` }];
     this.requests = [];
     this.streams = [];
-    this.server = http.createServer((req, res) => this.handle(req, res));
+    this.server = http.createServer((request, response) => this.handle(request, response));
   }
 
   get etag() { return `"g${this.version}"`; }
@@ -71,7 +71,7 @@ class Fake {
   }
 
   announce(name, data) {
-    for (const res of this.streams) res.write(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
+    for (const response of this.streams) response.write(`event: ${name}\ndata: ${JSON.stringify(data)}\n\n`);
   }
 
   /** The recorded API requests, the event stream and the page itself left out. */
@@ -79,31 +79,31 @@ class Fake {
     return this.requests.filter(r => r.path.startsWith('/api/') && r.path !== '/api/events');
   }
 
-  handle(req, res) {
+  handle(request, response) {
     const chunks = [];
-    req.on('data', c => chunks.push(c));
-    req.on('end', () => {
-      const url = new URL(req.url, 'http://x');
+    request.on('data', c => chunks.push(c));
+    request.on('end', () => {
+      const url = new URL(request.url, 'http://x');
       const text = Buffer.concat(chunks).toString();
       const body = text ? JSON.parse(text) : undefined;
-      this.requests.push({ method: req.method, path: url.pathname, query: url.search, headers: req.headers, body });
-      const json = v => { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(v)); };
-      switch (`${req.method} ${url.pathname}`) {
+      this.requests.push({ method: request.method, path: url.pathname, query: url.search, headers: request.headers, body });
+      const json = v => { response.writeHead(200, { 'Content-Type': 'application/json' }); response.end(JSON.stringify(v)); };
+      switch (`${request.method} ${url.pathname}`) {
         case 'GET /':
-          res.end('<!doctype html>');
+          response.end('<!doctype html>');
           return;
         case 'GET /api/events':
-          res.writeHead(200, { 'Content-Type': 'text/event-stream' });
-          res.write(`event: hello\ndata: ${JSON.stringify({ version: this.version, etag: this.etag, seq: 0, resumed: false })}\n\n`);
-          this.streams.push(res);
+          response.writeHead(200, { 'Content-Type': 'text/event-stream' });
+          response.write(`event: hello\ndata: ${JSON.stringify({ version: this.version, etag: this.etag, seq: 0, resumed: false })}\n\n`);
+          this.streams.push(response);
           return;
         case 'GET /api/graph':
-          if (req.headers['if-none-match'] === this.etag) {
-            res.writeHead(304, { ETag: this.etag });
-            res.end();
+          if (request.headers['if-none-match'] === this.etag) {
+            response.writeHead(304, { ETag: this.etag });
+            response.end();
             return;
           }
-          res.setHeader('ETag', this.etag);
+          response.setHeader('ETag', this.etag);
           json(this.graph);
           return;
         case 'GET /api/session':
@@ -112,22 +112,22 @@ class Fake {
         case 'POST /api/selection':
           // The real server hands a selection to every client, its sender included.
           this.selected = body.id;
-          res.writeHead(204).end();
+          response.writeHead(204).end();
           this.announce('selection', body);
           return;
         case 'PUT /api/backpack':
           this.backpack = body.items;
-          res.writeHead(204).end();
+          response.writeHead(204).end();
           this.announce('backpack', { count: body.items.length, origin: body.origin });
           return;
         case 'GET /api/backpack':
-          res.end(`backpack of ${this.name} as ${url.searchParams.get('format')}`);
+          response.end(`backpack of ${this.name} as ${url.searchParams.get('format')}`);
           return;
         case 'GET /api/export':
-          res.end(`graph of ${this.name} as ${url.searchParams.get('format')}`);
+          response.end(`graph of ${this.name} as ${url.searchParams.get('format')}`);
           return;
         default:
-          res.writeHead(404).end();
+          response.writeHead(404).end();
       }
     });
   }
@@ -147,7 +147,7 @@ function fakeSpawn(bin, args) {
   child.stdout = new PassThrough();
   child.stderr = new PassThrough();
   child.kill = () => {
-    for (const res of fake.streams) res.destroy();
+    for (const response of fake.streams) response.destroy();
     fake.server.closeAllConnections?.();
     fake.server.close();
     setImmediate(() => child.emit('exit', null, 'SIGTERM'));
@@ -173,8 +173,8 @@ async function until(what, check, ms = 3000) {
 const settle = (ms = 150) => new Promise(r => setTimeout(r, ms));
 const provider = id => stub.last('registerTreeDataProvider', id)?.[2];
 const treeView = () => stub.last('createTreeView', 'depphunter.tree')[2];
-const open = dir => stub.commands.get('depphunter.open')(stub.vscode.Uri.file(dir));
-const stop = dir => stub.commands.get('depphunter.stop')(stub.vscode.Uri.file(dir));
+const open = directory => stub.commands.get('depphunter.open')(stub.vscode.Uri.file(directory));
+const stop = directory => stub.commands.get('depphunter.stop')(stub.vscode.Uri.file(directory));
 const since = (mark, kind) => stub.calls.slice(mark).filter(c => c[0] === kind);
 
 /** Every row of the tree, opened all the way down. */
@@ -199,7 +199,7 @@ describe('the panel and the commands, against a stand-in server', () => {
     first = path.join(base, 'alpha');
     second = path.join(base, 'beta');
     nested = path.join(first, 'sub');
-    for (const dir of [first, second, nested]) fs.mkdirSync(dir, { recursive: true });
+    for (const directory of [first, second, nested]) fs.mkdirSync(directory, { recursive: true });
     stub.setRoot(first);
     childProcess.spawn = fakeSpawn;
     extension.activate({ subscriptions: [] });
@@ -354,8 +354,8 @@ describe('the panel and the commands, against a stand-in server', () => {
     await settle();
     assert.strictEqual(graphReads().length, 2, 'one announcement read the graph more than once');
     assert.strictEqual(graphReads()[1].headers['if-none-match'], '"g1"', 'the read was not conditional');
-    const eco = tree.getChildren().find(r => r.node.kind === 'ecosystem');
-    assert.ok(tree.getChildren(eco).some(r => r.node.id === 'pkg:z'), 'the new graph was not drawn');
+    const ecosystem = tree.getChildren().find(r => r.node.kind === 'ecosystem');
+    assert.ok(tree.getChildren(ecosystem).some(r => r.node.id === 'pkg:z'), 'the new graph was not drawn');
 
     // Announced again without a change: the server says 304 and the tree is left be.
     const model = tree.graphModel;
@@ -375,8 +375,8 @@ describe('the panel and the commands, against a stand-in server', () => {
   it('names itself in what it sends, and does not re-apply its own selection', async () => {
     const fake = fakes.get(first);
     const tree = provider('depphunter.tree');
-    const dir = tree.getChildren().find(r => r.node.kind === 'dir');
-    const file = tree.getChildren(dir)[0];
+    const directory = tree.getChildren().find(r => r.node.kind === 'dir');
+    const file = tree.getChildren(directory)[0];
 
     const mark = stub.calls.length;
     await stub.commands.get('depphunter.select')(file);
@@ -438,7 +438,7 @@ describe('the panel and the commands, against a stand-in server', () => {
     const pick = window.showQuickPick;
     const save = window.showSaveDialog;
     try {
-      for (const [label, format, ext] of expected) {
+      for (const [label, format, fileExtension] of expected) {
         let offered;
         let suggested;
         window.showQuickPick = async items => { offered = items.map(i => i.label); return items.find(i => i.label === label); };
@@ -446,7 +446,7 @@ describe('the panel and the commands, against a stand-in server', () => {
         const mark = stub.calls.length;
         await stub.commands.get(command)();
         assert.deepStrictEqual(offered, expected.map(e => e[0]));
-        assert.strictEqual(suggested, path.join(first, `alpha${suffix}.${ext}`));
+        assert.strictEqual(suggested, path.join(first, `alpha${suffix}.${fileExtension}`));
         const read = fake.calls().filter(r => r.path === endpoint).at(-1);
         assert.strictEqual(read.query, `?format=${format}`);
         const written = since(mark, 'writeFile').at(-1);
@@ -480,21 +480,21 @@ describe('the panel and the commands, against a stand-in server', () => {
 describe('the rows worth picking out', () => {
   // The marks are drawn from the graph document alone, so a tree is enough here.
   const tree = new DependencyTree();
-  const pkg = (id, extra) => ({ id, kind: 'package', name: id, parent: 'eco', version: '1', ...extra });
+  const packageNode = (id, extra) => ({ id, kind: 'package', name: id, parent: 'eco', version: '1', ...extra });
   tree.setGraph({
     root: '.', generatedAt: '', edges: [],
     nodes: [
       { id: 'eco', kind: 'ecosystem', name: 'npm' },
-      pkg('plain'),
-      pkg('floating', { floating: true }),
-      pkg('unvouched', { indexUnknown: true, index: 'https://npm.evil.example' }),
-      pkg('undeclared', { unresolved: true }),
+      packageNode('plain'),
+      packageNode('floating', { floating: true }),
+      packageNode('unvouched', { indexUnknown: true, index: 'https://npm.evil.example' }),
+      packageNode('undeclared', { unresolved: true }),
     ],
   });
-  const [eco] = tree.getChildren();
-  const items = new Map(tree.getChildren(eco).map(r => [r.node.id, tree.getTreeItem(r)]));
+  const [ecosystem] = tree.getChildren();
+  const items = new Map(tree.getChildren(ecosystem).map(r => [r.node.id, tree.getTreeItem(r)]));
 
-  it('marks a package not pinned to one version in the row, with a warning colour', () => {
+  it('marks a package not pinned to one version in the row, with a warning color', () => {
     const item = items.get('floating');
     assert.match(item.description, /\bfloating\b/);
     assert.strictEqual(item.iconPath.color?.id, 'list.warningForeground');

@@ -24,14 +24,14 @@ type locked struct {
 
 // bufFile is what one of Buf's files says.
 type bufFile struct {
-	version string
-	names   []string // the modules it names (v1 name, v2 modules[].name), lower-cased
-	roots   []entry  // v1beta1 build.roots, buf.work.yaml directories, v2 modules[].path
-	deps    []entry  // deps, and a buf.gen.yaml's module inputs
-	locks   []locked // buf.lock deps
-	plugins []entry  // a buf.gen.yaml's remote plugins, with their versions
-	inputs  []entry  // a buf.gen.yaml's directory inputs
-	v2      bool     // a v2 buf.yaml, which is a workspace of its own
+	version      string
+	names        []string // the modules it names (v1 name, v2 modules[].name), lower-cased
+	roots        []entry  // v1beta1 build.roots, buf.work.yaml directories, v2 modules[].path
+	dependencies []entry  // deps, and a buf.gen.yaml's module inputs
+	locks        []locked // buf.lock deps
+	plugins      []entry  // a buf.gen.yaml's remote plugins, with their versions
+	inputs       []entry  // a buf.gen.yaml's directory inputs
+	v2           bool     // a v2 buf.yaml, which is a workspace of its own
 }
 
 func mapping(n *yaml.Node) *yaml.Node {
@@ -75,10 +75,10 @@ func items(n *yaml.Node) []*yaml.Node {
 // buf.lock, buf.gen.yaml). A file that is not YAML says nothing.
 //
 // Implements: REQ-PROTO-005, REQ-PROTO-007
-func readBuf(class string, src []byte) *bufFile {
+func readBuf(class string, source []byte) *bufFile {
 	b := &bufFile{}
 	var doc yaml.Node
-	if yaml.Unmarshal(src, &doc) != nil {
+	if yaml.Unmarshal(source, &doc) != nil {
 		return b
 	}
 	root := mapping(&doc)
@@ -92,12 +92,12 @@ func readBuf(class string, src []byte) *bufFile {
 			var name string
 			if n := scalar(d, "name"); n != "" { // v2
 				name = n
-			} else if owner, repo := scalar(d, "owner"), scalar(d, "repository"); owner != "" && repo != "" { // v1
+			} else if owner, repository := scalar(d, "owner"), scalar(d, "repository"); owner != "" && repository != "" { // v1
 				remote := scalar(d, "remote")
 				if remote == "" {
 					remote = "buf.build"
 				}
-				name = remote + "/" + owner + "/" + repo
+				name = remote + "/" + owner + "/" + repository
 			}
 			if name != "" {
 				b.locks = append(b.locks, locked{name: strings.ToLower(name), commit: scalar(d, "commit"), line: d.Line})
@@ -111,17 +111,17 @@ func readBuf(class string, src []byte) *bufFile {
 		}
 	case classGen:
 		for _, pl := range items(lookup(root, "plugins")) {
-			ref := scalar(pl, "remote")
-			if ref == "" {
-				ref = scalar(pl, "plugin") // v1: a remote plugin when it names a host
+			reference := scalar(pl, "remote")
+			if reference == "" {
+				reference = scalar(pl, "plugin") // v1: a remote plugin when it names a host
 			}
-			if host, _, ok := strings.Cut(ref, "/"); ok && strings.Contains(host, ".") && !strings.HasPrefix(host, ".") {
-				b.plugins = append(b.plugins, entry{ref, pl.Line})
+			if host, _, ok := strings.Cut(reference, "/"); ok && strings.Contains(host, ".") && !strings.HasPrefix(host, ".") {
+				b.plugins = append(b.plugins, entry{reference, pl.Line})
 			}
 		}
 		for _, in := range items(lookup(root, "inputs")) {
 			if m := scalar(in, "module"); m != "" {
-				b.deps = append(b.deps, entry{m, in.Line})
+				b.dependencies = append(b.dependencies, entry{m, in.Line})
 			} else if d := scalar(in, "directory"); d != "" {
 				b.inputs = append(b.inputs, entry{d, in.Line})
 			}
@@ -133,7 +133,7 @@ func readBuf(class string, src []byte) *bufFile {
 		}
 		for _, d := range items(lookup(root, "deps")) {
 			if d.Kind == yaml.ScalarNode && d.Value != "" {
-				b.deps = append(b.deps, entry{d.Value, d.Line})
+				b.dependencies = append(b.dependencies, entry{d.Value, d.Line})
 			}
 		}
 		for _, r := range items(lookup(lookup(root, "build"), "roots")) { // v1beta1
@@ -157,12 +157,12 @@ func readBuf(class string, src []byte) *bufFile {
 //
 // Implements: REQ-PROTO-005, REQ-PROTO-007
 func (b *bufFile) extraction() *lang.Extraction {
-	ex := &lang.Extraction{}
+	extraction := &lang.Extraction{}
 	add := func(spec, module, kind string, line int) {
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
 	}
-	for _, d := range b.deps {
-		add(d.value, d.value, kindDep, d.line)
+	for _, d := range b.dependencies {
+		add(d.value, d.value, kindDependency, d.line)
 	}
 	for _, l := range b.locks {
 		add(l.name, l.name, kindLock, l.line)
@@ -176,12 +176,12 @@ func (b *bufFile) extraction() *lang.Extraction {
 	for _, in := range b.inputs {
 		add(in.value+"/", in.value, kindDirectory, in.line)
 	}
-	return ex
+	return extraction
 }
 
-// moduleRef splits a BSR module or plugin reference into its lower-cased name and
+// moduleReference splits a BSR module or plugin reference into its lower-cased name and
 // its ref: "buf.build/acme/pay:v1" -> ("buf.build/acme/pay", "v1").
-func moduleRef(s string) (string, string) {
+func moduleReference(s string) (string, string) {
 	s = strings.TrimSpace(s)
 	slash := strings.LastIndex(s, "/")
 	if i := strings.LastIndex(s, ":"); i > slash && slash >= 0 {

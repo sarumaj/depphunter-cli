@@ -2,17 +2,17 @@ package rego
 
 import "strings"
 
-type tokKind uint8
+type tokenKind uint8
 
 const (
-	tIdent tokKind = iota
+	tIdentifier tokenKind = iota
 	tString
 	tNumber
-	tPunct
+	tPunctuation
 )
 
 type token struct {
-	kind  tokKind
+	kind  tokenKind
 	text  string // a string's content
 	line  int
 	first bool // the first token on its line
@@ -22,11 +22,11 @@ type token struct {
 // `...` strings are one token each.
 //
 // Implements: REQ-REGO-006
-func lex(src []byte) []token {
-	s := string(src)
+func lex(source []byte) []token {
+	s := string(source)
 	var out []token
 	line, first := 1, true
-	emit := func(kind tokKind, text string, at int) {
+	emit := func(kind tokenKind, text string, at int) {
 		out = append(out, token{kind: kind, text: text, line: at, first: first})
 		first = false
 	}
@@ -69,7 +69,7 @@ func lex(src []byte) []token {
 			for j < len(s) && isWord(s[j]) {
 				j++
 			}
-			emit(tIdent, s[i:j], line)
+			emit(tIdentifier, s[i:j], line)
 			i = j
 		case c >= '0' && c <= '9':
 			j := i
@@ -79,15 +79,15 @@ func lex(src []byte) []token {
 			emit(tNumber, s[i:j], line)
 			i = j
 		default:
-			op := s[i : i+1]
+			operator := s[i : i+1]
 			for _, m := range []string{":=", "==", "!=", "<=", ">="} {
 				if strings.HasPrefix(s[i:], m) {
-					op = m
+					operator = m
 					break
 				}
 			}
-			emit(tPunct, op, line)
-			i += len(op)
+			emit(tPunctuation, operator, line)
+			i += len(operator)
 		}
 	}
 	return out

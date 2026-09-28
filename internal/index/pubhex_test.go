@@ -70,20 +70,20 @@ func (s *hexStub) requests() []string {
 func TestHexOrganizationPackagesAskTheirOrganization(t *testing.T) {
 	stub := newHexStub(t, "user-key")
 	home := t.TempDir()
-	vars := map[string]string{"HEX_API_URL": stub.URL + "/api", "HEX_API_KEY": "user-key"}
-	cfg := Discover(nil, env(vars), home)
-	c := NewClient(cfg, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, env(vars)), nil)
+	variables := map[string]string{"HEX_API_URL": stub.URL + "/api", "HEX_API_KEY": "user-key"}
+	config := Discover(nil, environment(variables), home)
+	c := NewClient(config, t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(variables)), nil)
 	org := stub.URL + "/api/repos/acme"
 
 	billing := lang.Target{Ecosystem: Hex, Package: "billing", Version: "1.2.0", Registry: "hexpm:acme"}
-	if idx, known := cfg.ForTarget(billing); idx != org || !known {
-		t.Errorf("billing attributed to %s (known %v)", idx, known)
+	if index, known := config.ForTarget(billing); index != org || !known {
+		t.Errorf("billing attributed to %s (known %v)", index, known)
 	}
-	deps := c.Dependencies(billing)
-	if got := names(deps); !slices.Equal(got, []string{"jason", "ledger"}) {
+	dependencies := c.Dependencies(billing)
+	if got := names(dependencies); !slices.Equal(got, []string{"jason", "ledger"}) {
 		t.Fatalf("billing: %v", got)
 	}
-	for _, d := range deps {
+	for _, d := range dependencies {
 		if d.Registry != "hexpm:acme" {
 			t.Errorf("%s: registry %q", d.Package, d.Registry)
 		}
@@ -100,9 +100,9 @@ func TestHexOrganizationPackagesAskTheirOrganization(t *testing.T) {
 		t.Errorf("jason: %v", got)
 	}
 	// Another repository serves Hex's protobuf registry, not this API.
-	for _, reg := range []string{"mini_repo", "hexpm:../admin", "hexpm:"} {
-		if _, l := ask(t, c, lang.Target{Ecosystem: Hex, Package: "mini", Version: "0.1.0", Registry: reg}); l.Reason != trace.ReasonNoIndex {
-			t.Errorf("%s: %q", reg, l.Reason)
+	for _, registrySpec := range []string{"mini_repo", "hexpm:../admin", "hexpm:"} {
+		if _, l := ask(t, c, lang.Target{Ecosystem: Hex, Package: "mini", Version: "0.1.0", Registry: registrySpec}); l.Reason != trace.ReasonNoIndex {
+			t.Errorf("%s: %q", registrySpec, l.Reason)
 		}
 	}
 	for _, line := range stub.requests() {
@@ -123,7 +123,7 @@ func TestHexOrganizationPackagesAskTheirOrganization(t *testing.T) {
 	// Without a key: nothing asked, the reason reported.
 	before := len(stub.requests())
 	keyless := map[string]string{"HEX_API_URL": stub.URL + "/api"}
-	c = NewClient(Discover(nil, env(keyless), home), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, env(keyless)), nil)
+	c = NewClient(Discover(nil, environment(keyless), home), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(keyless)), nil)
 	if got, l := ask(t, c, billing); len(got) != 0 || l.Reason != trace.ReasonNoKey || l.Index != org {
 		t.Errorf("without a key: %v, %q at %s", got, l.Reason, l.Index)
 	}
@@ -143,8 +143,8 @@ func TestHexOrganizationKeyFromHexConfig(t *testing.T) {
 	if err := os.WriteFile(filepath.Join(hexHome, "hex.config"), []byte(body), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	vars := map[string]string{"HEX_HOME": hexHome}
-	c := NewClient(Discover(nil, env(vars), home), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, env(vars)), nil)
+	variables := map[string]string{"HEX_HOME": hexHome}
+	c := NewClient(Discover(nil, environment(variables), home), t.TempDir(), time.Hour, 5*time.Second, auth.Read(home, environment(variables)), nil)
 	if got := names(c.Dependencies(lang.Target{Ecosystem: Hex, Package: "billing", Version: "1.2.0", Registry: "hexpm:acme"})); !slices.Equal(got, []string{"jason", "ledger"}) {
 		t.Errorf("billing: %v (asked %v)", got, stub.requests())
 	}
@@ -157,7 +157,7 @@ func TestHexOrganizationKeyFromHexConfig(t *testing.T) {
 func TestPubTokenEndToEnd(t *testing.T) {
 	var mu sync.Mutex
 	var asked []string
-	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		mu.Lock()
 		asked = append(asked, r.URL.Path+" "+r.Header.Get("Authorization"))
 		mu.Unlock()
@@ -167,23 +167,23 @@ func TestPubTokenEndToEnd(t *testing.T) {
 		}
 		fmt.Fprint(w, `{"latest":{"version":"1.0.0","pubspec":{"dependencies":{"ledger":"^2.0.0"}}},"versions":[]}`)
 	}))
-	t.Cleanup(srv.Close)
+	t.Cleanup(server.Close)
 	home := t.TempDir()
-	tokens := fmt.Sprintf(`{"version":1,"hosted":[{"url":%q,"env":"PUB_ACME_TOKEN"}]}`, srv.URL+"/acme")
-	dir := filepath.Join(home, ".config", "dart")
-	if err := os.MkdirAll(dir, 0o755); err != nil {
+	tokens := fmt.Sprintf(`{"version":1,"hosted":[{"url":%q,"env":"PUB_ACME_TOKEN"}]}`, server.URL+"/acme")
+	directory := filepath.Join(home, ".config", "dart")
+	if err := os.MkdirAll(directory, 0o755); err != nil {
 		t.Fatal(err)
 	}
-	if err := os.WriteFile(filepath.Join(dir, "pub-tokens.json"), []byte(tokens), 0o600); err != nil {
+	if err := os.WriteFile(filepath.Join(directory, "pub-tokens.json"), []byte(tokens), 0o600); err != nil {
 		t.Fatal(err)
 	}
-	vars := map[string]string{"PUB_HOSTED_URL": srv.URL + "/acme", "PUB_ACME_TOKEN": "pub-secret"}
-	store := auth.Read(home, env(vars))
-	c := NewClient(Discover(nil, env(vars), home), t.TempDir(), time.Hour, 5*time.Second, store, nil)
+	variables := map[string]string{"PUB_HOSTED_URL": server.URL + "/acme", "PUB_ACME_TOKEN": "pub-secret"}
+	store := auth.Read(home, environment(variables))
+	c := NewClient(Discover(nil, environment(variables), home), t.TempDir(), time.Hour, 5*time.Second, store, nil)
 	if got := names(c.Dependencies(lang.Target{Ecosystem: Pub, Package: "billing", Version: "1.0.0"})); !slices.Equal(got, []string{"ledger"}) {
 		t.Errorf("billing: %v (asked %v)", got, asked)
 	}
-	if store.Authorizes(srv.URL + "/other/api/packages/billing") {
+	if store.Authorizes(server.URL + "/other/api/packages/billing") {
 		t.Error("the token covers another path")
 	}
 }

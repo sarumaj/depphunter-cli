@@ -25,7 +25,7 @@ export const SCALES = {
 /**
  * @returns {{boxes: Box[], byNode: Map<string, Box>, bounds}}
  * Heights use the unfiltered maximum so filtering never rescales what stays visible.
- * Box: {node, kind: 'land'|'terrace'|'district'|'building'|'symbol'|'package', x, z (centre), y, w, d, h}
+ * Box: {node, kind: 'land'|'terrace'|'district'|'building'|'symbol'|'package', x, z (center), y, w, d, h}
  * Implements: REQ-MAP-010
  */
 export function layout(model, state) {
@@ -34,7 +34,7 @@ export function layout(model, state) {
   const maxLoc = maxFileLoc(model.root);
   const height = loc => 0.2 + scale(Math.min(1, (loc || 0) / maxLoc)) * MAX_H;
   const maxImporters = model.ecosystems.flatMap(e => e.children).reduce((a, p) => Math.max(a, p.importers), 1);
-  const pkgHeight = n => 0.3 + scale(n.importers / maxImporters) * MAX_H * 0.5;
+  const packageHeight = n => 0.3 + scale(n.importers / maxImporters) * MAX_H * 0.5;
 
   const boxes = [];
   const sizes = new Map();
@@ -50,9 +50,9 @@ export function layout(model, state) {
     } else if (n.kind === 'file') {
       const symbols_ = symbols(n);
       if (expanded(n) && symbols_.length) {
-        const cols = Math.ceil(Math.sqrt(symbols_.length));
-        const rows = Math.ceil(symbols_.length / cols);
-        s = { w: cols * (SYM + SYM_GAP) - SYM_GAP + 2 * SYM_GAP, d: rows * (SYM + SYM_GAP) + SYM_GAP, cols };
+        const columns = Math.ceil(Math.sqrt(symbols_.length));
+        const rows = Math.ceil(symbols_.length / columns);
+        s = { w: columns * (SYM + SYM_GAP) - SYM_GAP + 2 * SYM_GAP, d: rows * (SYM + SYM_GAP) + SYM_GAP, cols: columns };
       } else {
         s = { w: FILE, d: FILE };
       }
@@ -75,12 +75,12 @@ export function layout(model, state) {
       if (s.cols) {
         boxes.push({ node: n, kind: 'terrace', x: cx, z: cz, y, w: s.w, d: s.d, h: TERRACE * 0.6 });
         const top = y + TERRACE * 0.6;
-        symbols(n).forEach((sym, i) => {
+        symbols(n).forEach((symbol, i) => {
           const c = i % s.cols, r = Math.floor(i / s.cols);
           boxes.push({
-            node: sym, kind: 'symbol',
+            node: symbol, kind: 'symbol',
             x: x0 + SYM_GAP + c * (SYM + SYM_GAP) + SYM / 2, z: z0 + SYM_GAP + r * (SYM + SYM_GAP) + SYM / 2,
-            y: top, w: SYM, d: SYM, h: symbolHeight(sym),
+            y: top, w: SYM, d: SYM, h: symbolHeight(symbol),
           });
         });
       } else {
@@ -89,7 +89,7 @@ export function layout(model, state) {
       return;
     }
     if (n.kind === 'package') {
-      boxes.push({ node: n, kind: 'package', x: cx, z: cz, y, w: s.w, d: s.d, h: pkgHeight(n) });
+      boxes.push({ node: n, kind: 'package', x: cx, z: cz, y, w: s.w, d: s.d, h: packageHeight(n) });
       return;
     }
     if (n.kind === 'dir' && !expanded(n)) {
@@ -133,7 +133,7 @@ export function layout(model, state) {
 
 /**
  * Places islands (in order) in rings around a rectangle: each goes to the side of the
- * current ring whose row would be least full, rows are centred on their side and
+ * current ring whose row would be least full, rows are centered on their side and
  * touch the ring's shore across the gap. When no side has room, the next ring starts
  * outside everything placed so far. Rows on the east and west stay within their
  * side's length, so they never reach the corners; only a northern or southern row
@@ -147,19 +147,19 @@ function ringIslands(items, rect, put) {
   let pending = items;
   while (pending.length) {
     const sides = ['n', 'e', 's', 'w'].map(side => {
-      const ns = side === 'n' || side === 's';
-      return { side, ns, cap: ns ? r.x1 - r.x0 : r.z1 - r.z0, used: 0, depth: 0, row: [] };
+      const northSouth = side === 'n' || side === 's';
+      return { side, ns: northSouth, cap: northSouth ? r.x1 - r.x0 : r.z1 - r.z0, used: 0, depth: 0, row: [] };
     });
     const rest = [];
     for (const it of pending) {
       const fw = it.s.w + 2 * LAND_MARGIN, fd = it.s.d + 2 * LAND_MARGIN;
       let best = null;
-      for (const sd of sides) {
-        const along = sd.ns ? fw : fd, away = sd.ns ? fd : fw;
-        const len = sd.used + (sd.used ? G : 0) + along;
-        if (len > sd.cap && (sd.used || !sd.ns)) continue;
-        const fill = len / sd.cap;
-        if (!best || fill < best.fill) best = { sd, along, away, len, fill };
+      for (const sideEntry of sides) {
+        const along = sideEntry.ns ? fw : fd, away = sideEntry.ns ? fd : fw;
+        const extent = sideEntry.used + (sideEntry.used ? G : 0) + along;
+        if (extent > sideEntry.cap && (sideEntry.used || !sideEntry.ns)) continue;
+        const fill = extent / sideEntry.cap;
+        if (!best || fill < best.fill) best = { sd: sideEntry, along, away, len: extent, fill };
       }
       if (!best) { rest.push(it); continue; }
       best.sd.row.push({ it, along: best.along, away: best.away });
@@ -171,18 +171,18 @@ function ringIslands(items, rect, put) {
       return;
     }
     const next = { ...r };
-    for (const sd of sides) {
-      if (!sd.row.length) continue;
-      let t = (sd.ns ? (r.x0 + r.x1) : (r.z0 + r.z1)) / 2 - sd.used / 2;
-      for (const { it, along, away } of sd.row) {
+    for (const sideEntry of sides) {
+      if (!sideEntry.row.length) continue;
+      let t = (sideEntry.ns ? (r.x0 + r.x1) : (r.z0 + r.z1)) / 2 - sideEntry.used / 2;
+      for (const { it, along, away } of sideEntry.row) {
         let x, z;
-        if (sd.side === 'n') { x = t; z = r.z0 - G - away; }
-        else if (sd.side === 's') { x = t; z = r.z1 + G; }
-        else if (sd.side === 'e') { x = r.x1 + G; z = t; }
+        if (sideEntry.side === 'n') { x = t; z = r.z0 - G - away; }
+        else if (sideEntry.side === 's') { x = t; z = r.z1 + G; }
+        else if (sideEntry.side === 'e') { x = r.x1 + G; z = t; }
         else { x = r.x0 - G - away; z = t; }
         put(it, x, z);
         next.x0 = Math.min(next.x0, x); next.z0 = Math.min(next.z0, z);
-        next.x1 = Math.max(next.x1, x + (sd.ns ? along : away)); next.z1 = Math.max(next.z1, z + (sd.ns ? away : along));
+        next.x1 = Math.max(next.x1, x + (sideEntry.ns ? along : away)); next.z1 = Math.max(next.z1, z + (sideEntry.ns ? away : along));
         t += along + G;
       }
     }
@@ -204,8 +204,8 @@ export function representative(byNode, n) {
   return null;
 }
 
-function symbolHeight(sym) {
-  switch (sym.symbolKind) {
+function symbolHeight(symbol) {
+  switch (symbol.symbolKind) {
     case 'type': case 'class': case 'interface': case 'component': return 1.1;
     case 'func': case 'method': case 'function': return 0.7;
     default: return 0.35;

@@ -19,18 +19,18 @@ import (
 
 // Verifies: REQ-LANG-012, REQ-LANG-021, REQ-LANG-022
 func TestForEachFileSkipsWhatItWouldNotParse(t *testing.T) {
-	dir := t.TempDir()
-	small := filepath.Join(dir, "small.go")
+	directory := t.TempDir()
+	small := filepath.Join(directory, "small.go")
 	os.WriteFile(small, []byte("package a\n"), 0o644)
 	// Measured as larger than MaxParseSize, but not on disk: a file that is read
 	// anyway would be found and passed to fn.
-	big := filepath.Join(dir, "big.go")
+	big := filepath.Join(directory, "big.go")
 	os.WriteFile(big, []byte("package b\n"), 0o644)
 	files := []*scan.File{
-		{Path: "small.go", Abs: small, LOC: 1, Size: 10},
-		{Path: "big.go", Abs: big, LOC: 1, Size: MaxParseSize + 1},
-		{Path: "bin.go", Abs: small, Binary: true, Size: 10},
-		{Path: "over.go", Abs: small, LOC: 1, Size: 10, TooLarge: true}, // over --max-file-size
+		{Path: "small.go", AbsolutePath: small, LOC: 1, Size: 10},
+		{Path: "big.go", AbsolutePath: big, LOC: 1, Size: MaxParseSize + 1},
+		{Path: "bin.go", AbsolutePath: small, Binary: true, Size: 10},
+		{Path: "over.go", AbsolutePath: small, LOC: 1, Size: 10, TooLarge: true}, // over --max-file-size
 	}
 	got := ForEachFile(context.Background(), files, func(f *scan.File, _ []byte) *FileResult {
 		return &FileResult{}
@@ -45,16 +45,16 @@ func TestForEachFileRunsAtMostNumCPUAtOnce(t *testing.T) {
 	// More files than workers, each held open briefly so that the pool fills up: the
 	// peak of callbacks running together must never exceed the number of CPUs, and
 	// every file must still come back.
-	dir := t.TempDir()
+	directory := t.TempDir()
 	n := 4*runtime.NumCPU() + 3
 	files := make([]*scan.File, n)
 	for i := range files {
 		name := fmt.Sprintf("f%d.go", i)
-		abs := filepath.Join(dir, name)
-		if err := os.WriteFile(abs, []byte("package a\n"), 0o644); err != nil {
+		absolute := filepath.Join(directory, name)
+		if err := os.WriteFile(absolute, []byte("package a\n"), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		files[i] = &scan.File{Path: name, Abs: abs, LOC: 1, Size: 10}
+		files[i] = &scan.File{Path: name, AbsolutePath: absolute, LOC: 1, Size: 10}
 	}
 	var running, peak atomic.Int64
 	got := ForEachFile(context.Background(), files, func(f *scan.File, _ []byte) *FileResult {
@@ -76,11 +76,11 @@ func TestForEachFileRunsAtMostNumCPUAtOnce(t *testing.T) {
 		t.Errorf("got %d results, want %d", len(got), n)
 	}
 
-	// A cancelled analysis schedules nothing more.
+	// A canceled analysis schedules nothing more.
 	ctx, cancel := context.WithCancel(context.Background())
 	cancel()
 	if got := ForEachFile(ctx, files, func(*scan.File, []byte) *FileResult { return &FileResult{} }); len(got) != 0 {
-		t.Errorf("a cancelled run still parsed %d files", len(got))
+		t.Errorf("a canceled run still parsed %d files", len(got))
 	}
 }
 
@@ -96,9 +96,9 @@ func (*recorder) Name() string             { return "rec" }
 func (*recorder) Version() int             { return 1 }
 func (*recorder) Claims(f *scan.File) bool { return path.Ext(f.Path) == ".rec" }
 func (*recorder) Ecosystems() []Ecosystem  { return []Ecosystem{{ID: "rec", Name: "Recorded"}} }
-func (r *recorder) Extract(f *scan.File, src []byte) (*Extraction, error) {
+func (r *recorder) Extract(f *scan.File, source []byte) (*Extraction, error) {
 	r.mu.Lock()
-	r.extracted[f.Path] = string(src)
+	r.extracted[f.Path] = string(source)
 	r.mu.Unlock()
 	return &Extraction{Imports: []RawImport{{Spec: "dep", Module: "dep", Line: 1}}}, nil
 }
@@ -106,14 +106,14 @@ func (r *recorder) Resolver(root string, all []*scan.File) (Resolver, error) {
 	for _, f := range all {
 		r.resolver = append(r.resolver, f.Path)
 	}
-	return resolverFunc(func(file string, imp RawImport) Target {
-		return Target{Ecosystem: "rec", Package: imp.Module}
+	return resolverFunction(func(file string, rawImport RawImport) Target {
+		return Target{Ecosystem: "rec", Package: rawImport.Module}
 	}), nil
 }
 
-type resolverFunc func(string, RawImport) Target
+type resolverFunction func(string, RawImport) Target
 
-func (f resolverFunc) Resolve(file string, imp RawImport) Target { return f(file, imp) }
+func (f resolverFunction) Resolve(file string, rawImport RawImport) Target { return f(file, rawImport) }
 
 // A plugin sees extraction one claimed file at a time, with nothing but that file and
 // its content, while its resolver is built once from every file of the project - that
@@ -121,17 +121,17 @@ func (f resolverFunc) Resolve(file string, imp RawImport) Target { return f(file
 //
 // Verifies: REQ-LANG-001, REQ-LANG-025
 func TestPluginsExtractOnlyWhatTheyClaim(t *testing.T) {
-	dir := t.TempDir()
+	directory := t.TempDir()
 	var all []*scan.File
 	for name, content := range map[string]string{"a.rec": "alpha\n", "b.rec": "beta\n", "c.txt": "gamma\n"} {
-		abs := filepath.Join(dir, name)
-		if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
+		absolute := filepath.Join(directory, name)
+		if err := os.WriteFile(absolute, []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
-		all = append(all, &scan.File{Path: name, Abs: abs, LOC: 1, Size: int64(len(content))})
+		all = append(all, &scan.File{Path: name, AbsolutePath: absolute, LOC: 1, Size: int64(len(content))})
 	}
 	p := &recorder{extracted: map[string]string{}}
-	res, err := Analyze(context.Background(), p, dir, all)
+	results, err := Analyze(context.Background(), p, directory, all)
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -139,10 +139,10 @@ func TestPluginsExtractOnlyWhatTheyClaim(t *testing.T) {
 	if !reflect.DeepEqual(p.extracted, want) {
 		t.Errorf("extracted %v, want the two claimed files with their content", p.extracted)
 	}
-	if res["c.txt"] != nil {
+	if results["c.txt"] != nil {
 		t.Error("a file the plugin does not claim has a result")
 	}
-	if got := res["a.rec"]; got == nil || len(got.Imports) != 1 || got.Imports[0].Target.Package != "dep" {
+	if got := results["a.rec"]; got == nil || len(got.Imports) != 1 || got.Imports[0].Target.Package != "dep" {
 		t.Errorf("a.rec: %+v, want its import resolved", got)
 	}
 	sort.Strings(p.resolver)

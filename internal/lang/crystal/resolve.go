@@ -15,58 +15,58 @@ import (
 // project is a directory with a shard.yml: its shard, the lock and override files
 // beside it, and the shards installed into its lib/.
 type project struct {
-	dir       string
-	name      string
-	deps      map[string]*dependency // declared, shard.override.yml applied
-	lock      map[string]*locked
-	installed map[string]*shard // lib/<name>/ -> its shard.yml (empty when it has none)
+	directory    string
+	name         string
+	dependencies map[string]*dependency // declared, shard.override.yml applied
+	lock         map[string]*locked
+	installed    map[string]*shard // lib/<name>/ -> its shard.yml (empty when it has none)
 }
 
 type resolver struct {
-	files    map[string]bool
-	dirs     map[string]bool
-	sources  []string            // every .cr file, sorted, for globs
-	projects map[string]*project // by directory
-	libC     map[string][]string // a src/ directory with lib_c/ -> its target triples
-	order    []*project          // shallowest first
-	paths    []string            // CRYSTAL_PATH's directories of the repository
+	files       map[string]bool
+	directories map[string]bool
+	sources     []string            // every .cr file, sorted, for globs
+	projects    map[string]*project // by directory
+	libC        map[string][]string // a src/ directory with lib_c/ -> its target triples
+	order       []*project          // shallowest first
+	paths       []string            // CRYSTAL_PATH's directories of the repository
 }
 
 // Implements: REQ-CRYSTAL-004, REQ-CRYSTAL-005, REQ-CRYSTAL-006, REQ-CRYSTAL-008
 func newResolver(root string, all []*scan.File, getenv func(string) string) *resolver {
-	r := &resolver{files: map[string]bool{}, dirs: map[string]bool{}, projects: map[string]*project{}}
-	abs := map[string]string{}
+	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, projects: map[string]*project{}}
+	absolute := map[string]string{}
 	for _, f := range all {
 		if installed(f) {
 			continue
 		}
 		r.files[f.Path] = true
-		abs[f.Path] = f.Abs
+		absolute[f.Path] = f.AbsolutePath
 		if path.Ext(f.Path) == ".cr" {
 			r.sources = append(r.sources, f.Path)
 		}
-		for d := path.Dir(f.Path); d != "." && !r.dirs[d]; d = path.Dir(d) {
-			r.dirs[d] = true
+		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
+			r.directories[d] = true
 		}
 	}
 	sort.Strings(r.sources)
 	r.libC = map[string][]string{}
-	for d := range r.dirs {
-		if lib := path.Dir(d); path.Base(lib) == "lib_c" {
-			r.libC[path.Dir(lib)] = append(r.libC[path.Dir(lib)], path.Base(d))
+	for d := range r.directories {
+		if library := path.Dir(d); path.Base(library) == "lib_c" {
+			r.libC[path.Dir(library)] = append(r.libC[path.Dir(library)], path.Base(d))
 		}
 	}
-	for _, ts := range r.libC {
-		sort.Slice(ts, func(i, j int) bool {
-			ri, rj := rank(ts[i]), rank(ts[j])
+	for _, triples := range r.libC {
+		sort.Slice(triples, func(i, j int) bool {
+			ri, rj := rank(triples[i]), rank(triples[j])
 			if ri != rj {
 				return ri < rj
 			}
-			return ts[i] < ts[j]
+			return triples[i] < triples[j]
 		})
 	}
-	read := func(rel string) ([]byte, bool) {
-		if a, ok := abs[rel]; ok {
+	read := func(relative string) ([]byte, bool) {
+		if a, ok := absolute[relative]; ok {
 			data, err := os.ReadFile(a)
 			return data, err == nil
 		}
@@ -74,43 +74,43 @@ func newResolver(root string, all []*scan.File, getenv func(string) string) *res
 			return nil, false
 		}
 		// shard.lock is often ignored by git in libraries, and lib/ always is.
-		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(rel)))
+		data, err := os.ReadFile(filepath.Join(root, filepath.FromSlash(relative)))
 		return data, err == nil
 	}
-	for rel := range abs {
-		if path.Base(rel) != "shard.yml" {
+	for relative := range absolute {
+		if path.Base(relative) != "shard.yml" {
 			continue
 		}
-		data, ok := read(rel)
+		data, ok := read(relative)
 		if !ok {
 			continue
 		}
-		dir := path.Dir(rel)
+		directory := path.Dir(relative)
 		sh := readShard(data)
-		p := &project{dir: dir, name: sh.name, deps: sh.deps, lock: map[string]*locked{}, installed: map[string]*shard{}}
-		if data, ok := read(path.Join(dir, "shard.lock")); ok {
+		p := &project{directory: directory, name: sh.name, dependencies: sh.dependencies, lock: map[string]*locked{}, installed: map[string]*shard{}}
+		if data, ok := read(path.Join(directory, "shard.lock")); ok {
 			p.lock = readLock(data)
 		}
-		if data, ok := read(path.Join(dir, "shard.override.yml")); ok {
+		if data, ok := read(path.Join(directory, "shard.override.yml")); ok {
 			for name, d := range readOverride(data) {
-				if old := p.deps[name]; old != nil {
+				if old := p.dependencies[name]; old != nil {
 					d.dev = old.dev
 				}
-				p.deps[name] = d
+				p.dependencies[name] = d
 			}
 		}
 		if root != "" {
-			p.readInstalled(filepath.Join(root, filepath.FromSlash(dir), "lib"))
+			p.readInstalled(filepath.Join(root, filepath.FromSlash(directory), "lib"))
 		}
-		r.projects[dir] = p
+		r.projects[directory] = p
 		r.order = append(r.order, p)
 	}
 	sort.Slice(r.order, func(i, j int) bool {
-		di, dj := depth(r.order[i].dir), depth(r.order[j].dir)
-		if di != dj {
-			return di < dj
+		depthI, depthJ := depth(r.order[i].directory), depth(r.order[j].directory)
+		if depthI != depthJ {
+			return depthI < depthJ
 		}
-		return r.order[i].dir < r.order[j].dir
+		return r.order[i].directory < r.order[j].directory
 	})
 	r.paths = r.crystalPath(root, getenv("CRYSTAL_PATH"))
 	return r
@@ -140,18 +140,18 @@ func (r *resolver) crystalPath(root, value string) []string {
 			}
 		}
 		d := path.Clean(filepath.ToSlash(e))
-		if (d == "." || r.dirs[d]) && !slices.Contains(out, d) {
+		if (d == "." || r.directories[d]) && !slices.Contains(out, d) {
 			out = append(out, d)
 		}
 	}
 	return out
 }
 
-func depth(dir string) int {
-	if dir == "." {
+func depth(directory string) int {
+	if directory == "." {
 		return 0
 	}
-	return strings.Count(dir, "/") + 1
+	return strings.Count(directory, "/") + 1
 }
 
 // readInstalled lists what shards installed into lib/: each directory (or the
@@ -162,15 +162,15 @@ func depth(dir string) int {
 // out of an older one).
 //
 // Implements: REQ-CRYSTAL-008
-func (p *project) readInstalled(lib string) {
-	if data, err := os.ReadFile(filepath.Join(lib, ".shards.info")); err == nil && len(data) <= lang.MaxParseSize {
+func (p *project) readInstalled(library string) {
+	if data, err := os.ReadFile(filepath.Join(library, ".shards.info")); err == nil && len(data) <= lang.MaxParseSize {
 		for name, l := range readLock(data) {
 			if p.lock[name] == nil {
 				p.lock[name] = l
 			}
 		}
 	}
-	entries, err := os.ReadDir(lib)
+	entries, err := os.ReadDir(library)
 	if err != nil {
 		return
 	}
@@ -179,27 +179,27 @@ func (p *project) readInstalled(lib string) {
 		if strings.HasPrefix(name, ".") {
 			continue
 		}
-		if info, err := os.Stat(filepath.Join(lib, name)); err != nil || !info.IsDir() {
+		if info, err := os.Stat(filepath.Join(library, name)); err != nil || !info.IsDir() {
 			continue
 		}
-		sh := &shard{deps: map[string]*dependency{}}
-		if data, err := os.ReadFile(filepath.Join(lib, name, "shard.yml")); err == nil {
+		sh := &shard{dependencies: map[string]*dependency{}}
+		if data, err := os.ReadFile(filepath.Join(library, name, "shard.yml")); err == nil {
 			sh = readShard(data)
 		}
 		p.installed[name] = sh
 	}
 }
 
-// projectOf is the nearest project at or above dir.
-func (r *resolver) projectOf(dir string) *project {
+// projectOf is the nearest project at or above directory.
+func (r *resolver) projectOf(directory string) *project {
 	for {
-		if p := r.projects[dir]; p != nil {
+		if p := r.projects[directory]; p != nil {
 			return p
 		}
-		if dir == "." || dir == "/" || dir == "" {
+		if directory == "." || directory == "/" || directory == "" {
 			return nil
 		}
-		dir = path.Dir(dir)
+		directory = path.Dir(directory)
 	}
 }
 
@@ -212,20 +212,20 @@ func (r *resolver) scope(file string) []*project {
 	return r.order
 }
 
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	switch imp.Name {
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	switch rawImport.Name {
 	case kindRequire:
-		return r.require(file, imp.Module)
+		return r.require(file, rawImport.Module)
 	case kindMain:
-		if p := path.Join(path.Dir(file), imp.Module); r.files[p] {
+		if p := path.Join(path.Dir(file), rawImport.Module); r.files[p] {
 			return lang.Target{Local: p}
 		}
 		return lang.Target{}
-	case kindDep, kindDevDep, kindLocked, kindOverride:
+	case kindDependency, kindDevDependency, kindLocked, kindOverride:
 		if p := r.projects[path.Dir(file)]; p != nil {
-			return r.shardTarget(p, imp.Module)
+			return r.shardTarget(p, rawImport.Module)
 		}
-		return lang.Target{Ecosystem: ecoShards, Package: imp.Module}
+		return lang.Target{Ecosystem: ecosystemShards, Package: rawImport.Module}
 	}
 	return lang.Target{}
 }
@@ -236,7 +236,7 @@ func relative(spec string) bool {
 }
 
 // glob splits `x/*` and `x/**` into the directory and whether it is recursive.
-func glob(spec string) (dir string, recursive, ok bool) {
+func glob(spec string) (directory string, recursive, ok bool) {
 	if d, ok := strings.CutSuffix(spec, "/**"); ok {
 		return d, true, true
 	}
@@ -284,7 +284,7 @@ func (r *resolver) require(file, spec string) lang.Target {
 	first, _, _ := strings.Cut(spec, "/")
 	scope := r.scope(file)
 	// lib/ first: the directory shards installed is the shard of that name.
-	for _, p := range r.libScope(file) {
+	for _, p := range r.libraryScope(file) {
 		if _, ok := p.installed[first]; ok {
 			return r.refine(r.shardTarget(p, first), spec)
 		}
@@ -292,22 +292,22 @@ func (r *resolver) require(file, spec string) lang.Target {
 	// The project itself: a shard requiring itself by name (its bin/ templates
 	// and specs do), or Crystal's standard library requiring itself from src/.
 	if p := r.projectOf(path.Dir(file)); p != nil && p.name != "" && fold(p.name) == fold(first) {
-		if f := r.inShard(p.dir, spec); f != "" {
+		if f := r.inShard(p.directory, spec); f != "" {
 			return lang.Target{Local: f}
 		}
 	}
-	for _, base := range r.srcRoots(file) {
+	for _, base := range r.sourceRoots(file) {
 		if f := r.probe(base, spec); f != "" {
 			return lang.Target{Local: f}
 		}
 	}
 	// CRYSTAL_PATH's directories, by the rules for a shard in lib/: x.cr,
 	// x/x.cr, then the shard directory x/'s own layout.
-	for _, dir := range r.paths {
-		if f := r.probe(dir, spec); f != "" {
+	for _, directory := range r.paths {
+		if f := r.probe(directory, spec); f != "" {
 			return lang.Target{Local: f}
 		}
-		if f := r.inShard(path.Join(dir, first), spec); f != "" {
+		if f := r.inShard(path.Join(directory, first), spec); f != "" {
 			return lang.Target{Local: f}
 		}
 	}
@@ -315,12 +315,12 @@ func (r *resolver) require(file, spec string) lang.Target {
 		return r.requireC(file, spec)
 	}
 	for _, p := range scope {
-		if p.deps[first] != nil || p.lock[first] != nil {
+		if p.dependencies[first] != nil || p.lock[first] != nil {
 			return r.refine(r.shardTarget(p, first), spec)
 		}
 	}
 	if stdlib[first] {
-		return lang.Target{Ecosystem: ecoStd, Package: first}
+		return lang.Target{Ecosystem: ecosystemStd, Package: first}
 	}
 	for _, p := range scope {
 		if name := p.match(first); name != "" {
@@ -332,7 +332,7 @@ func (r *resolver) require(file, spec string) lang.Target {
 			return lang.Target{} // its own file, missing
 		}
 	}
-	return lang.Target{Ecosystem: ecoShards, Package: first, Unresolved: true}
+	return lang.Target{Ecosystem: ecosystemShards, Package: first, Unresolved: true}
 }
 
 // triples are the targets whose src/lib_c/<triple>/ answers `require "c/x"` in
@@ -353,7 +353,7 @@ func rank(triple string) int {
 // src/lib_c/<target>/ of Crystal's own repository (the first target, in the
 // order of triples, that has the file), else the standard library.
 func (r *resolver) requireC(file, spec string) lang.Target {
-	for _, root := range r.srcRoots(file) {
+	for _, root := range r.sourceRoots(file) {
 		for _, t := range r.libC[root] {
 			if f := r.probe(path.Join(root, "lib_c", t), spec); f != "" {
 				return lang.Target{Local: f}
@@ -364,7 +364,7 @@ func (r *resolver) requireC(file, spec string) lang.Target {
 			return lang.Target{Local: f}
 		}
 	}
-	return lang.Target{Ecosystem: ecoStd, Package: "lib_c"}
+	return lang.Target{Ecosystem: ecosystemStd, Package: "lib_c"}
 }
 
 // refine turns a path dependency's directory into the file of it a require
@@ -379,30 +379,30 @@ func (r *resolver) refine(t lang.Target, spec string) lang.Target {
 	return t
 }
 
-// inShard finds the file a require names in a shard whose root is dir, by the
+// inShard finds the file a require names in a shard whose root is directory, by the
 // compiler's rules for a shard in lib/: "x" is src/x.cr (or x.cr), and "x/y" is
 // y.cr at the shard's root, src/y.cr or src/x/y.cr.
-func (r *resolver) inShard(dir, spec string) string {
+func (r *resolver) inShard(directory, spec string) string {
 	first, rest, ok := strings.Cut(spec, "/")
 	if !ok {
-		for _, f := range []string{path.Join(dir, "src", first+".cr"), path.Join(dir, first+".cr")} {
+		for _, f := range []string{path.Join(directory, "src", first+".cr"), path.Join(directory, first+".cr")} {
 			if r.files[f] {
 				return f
 			}
 		}
 		return ""
 	}
-	for _, base := range []string{dir, path.Join(dir, "src")} {
+	for _, base := range []string{directory, path.Join(directory, "src")} {
 		if f := r.probe(base, rest); f != "" {
 			return f
 		}
 	}
-	return r.probe(path.Join(dir, "src"), spec)
+	return r.probe(path.Join(directory, "src"), spec)
 }
 
-// libScope is the projects whose lib/ the compiler would read for file: its own
+// libraryScope is the projects whose lib/ the compiler would read for file: its own
 // and the repository's root project (the directory shards install runs in).
-func (r *resolver) libScope(file string) []*project {
+func (r *resolver) libraryScope(file string) []*project {
 	var out []*project
 	if p := r.projectOf(path.Dir(file)); p != nil {
 		out = append(out, p)
@@ -413,11 +413,11 @@ func (r *resolver) libScope(file string) []*project {
 	return out
 }
 
-// srcRoots are the src/ directories a require by name may find the project's own
+// sourceRoots are the src/ directories a require by name may find the project's own
 // files in: the file's project's, else the repository's.
-func (r *resolver) srcRoots(file string) []string {
+func (r *resolver) sourceRoots(file string) []string {
 	if p := r.projectOf(path.Dir(file)); p != nil {
-		return []string{path.Join(p.dir, "src")}
+		return []string{path.Join(p.directory, "src")}
 	}
 	return []string{"src"}
 }
@@ -426,7 +426,7 @@ func (r *resolver) srcRoots(file string) []string {
 // spelling is folded, or "".
 func (p *project) match(first string) string {
 	want := fold(first)
-	for _, names := range [][]string{sortedKeys(p.deps), sortedKeys(p.lock)} {
+	for _, names := range [][]string{sortedKeys(p.dependencies), sortedKeys(p.lock)} {
 		for _, name := range names {
 			if fold(name) == want {
 				return name
@@ -440,7 +440,7 @@ func (p *project) match(first string) string {
 //
 // Implements: REQ-CRYSTAL-006
 func (r *resolver) shardTarget(p *project, name string) lang.Target {
-	d, l := p.deps[name], p.lock[name]
+	d, l := p.dependencies[name], p.lock[name]
 	local := ""
 	if d != nil && d.path != "" {
 		local = d.path
@@ -448,12 +448,12 @@ func (r *resolver) shardTarget(p *project, name string) lang.Target {
 		local = l.path
 	}
 	if local != "" {
-		if dir := path.Join(p.dir, local); r.dirs[dir] {
-			return lang.Target{Local: dir}
+		if directory := path.Join(p.directory, local); r.directories[directory] {
+			return lang.Target{Local: directory}
 		}
 		return lang.Target{}
 	}
-	t := lang.Target{Ecosystem: ecoShards, Package: name}
+	t := lang.Target{Ecosystem: ecosystemShards, Package: name}
 	url := ""
 	if d != nil {
 		url = d.url
@@ -507,7 +507,7 @@ func public(url string) bool {
 	if url == "" {
 		return true
 	}
-	host, _, _ := strings.Cut(lang.RepoName(url), "/")
+	host, _, _ := strings.Cut(lang.RepositoryName(url), "/")
 	switch host {
 	case "github.com", "gitlab.com", "bitbucket.org", "codeberg.org", "git.sr.ht", "sr.ht":
 		return true
@@ -521,42 +521,42 @@ func public(url string) bool {
 // into an installed or declared shard is an import of the shard.
 //
 // Implements: REQ-CRYSTAL-004
-func (r *resolver) Expand(file string, imp lang.RawImport) ([]lang.Import, bool) {
-	if imp.Name != kindRequire {
+func (r *resolver) Expand(file string, rawImport lang.RawImport) ([]lang.Import, bool) {
+	if rawImport.Name != kindRequire {
 		return nil, false
 	}
-	dir, recursive, ok := glob(imp.Module)
+	directory, recursive, ok := glob(rawImport.Module)
 	if !ok {
 		return nil, false
 	}
 	var base string
 	switch {
-	case relative(imp.Module):
-		base = path.Join(path.Dir(file), dir)
-	case strings.HasPrefix(imp.Module, "/"):
-		return []lang.Import{{Spec: imp.Spec, Line: imp.Line}}, true
+	case relative(rawImport.Module):
+		base = path.Join(path.Dir(file), directory)
+	case strings.HasPrefix(rawImport.Module, "/"):
+		return []lang.Import{{Spec: rawImport.Spec, Line: rawImport.Line}}, true
 	default:
-		first, _, _ := strings.Cut(dir, "/")
-		for _, p := range r.libScope(file) {
+		first, _, _ := strings.Cut(directory, "/")
+		for _, p := range r.libraryScope(file) {
 			if _, ok := p.installed[first]; ok {
-				return []lang.Import{{Spec: imp.Spec, Line: imp.Line, Target: r.shardTarget(p, first)}}, true
+				return []lang.Import{{Spec: rawImport.Spec, Line: rawImport.Line, Target: r.shardTarget(p, first)}}, true
 			}
 		}
-		for _, root := range r.globRoots(file, dir) {
-			if r.dirs[root] {
+		for _, root := range r.globRoots(file, directory) {
+			if r.directories[root] {
 				base = root
 				break
 			}
 		}
 		if base == "" {
-			return []lang.Import{{Spec: imp.Spec, Line: imp.Line, Target: r.require(file, imp.Module)}}, true
+			return []lang.Import{{Spec: rawImport.Spec, Line: rawImport.Line, Target: r.require(file, rawImport.Module)}}, true
 		}
 	}
-	prefix := strings.TrimSuffix(imp.Module, "*")
+	prefix := strings.TrimSuffix(rawImport.Module, "*")
 	prefix = strings.TrimSuffix(prefix, "*")
 	var out []lang.Import
-	lo := sort.SearchStrings(r.sources, base+"/")
-	for _, f := range r.sources[lo:] {
+	low := sort.SearchStrings(r.sources, base+"/")
+	for _, f := range r.sources[low:] {
 		rest, ok := strings.CutPrefix(f, base+"/")
 		if !ok {
 			break
@@ -564,27 +564,27 @@ func (r *resolver) Expand(file string, imp lang.RawImport) ([]lang.Import, bool)
 		if f == file || !recursive && strings.Contains(rest, "/") {
 			continue
 		}
-		out = append(out, lang.Import{Spec: prefix + rest, Line: imp.Line, Target: lang.Target{Local: f}})
+		out = append(out, lang.Import{Spec: prefix + rest, Line: rawImport.Line, Target: lang.Target{Local: f}})
 		if len(out) >= maxGlob {
 			break
 		}
 	}
 	if len(out) == 0 {
-		return []lang.Import{{Spec: imp.Spec, Line: imp.Line}}, true
+		return []lang.Import{{Spec: rawImport.Spec, Line: rawImport.Line}}, true
 	}
 	return out, true
 }
 
 // globRoots are the directories a glob by name may list in the project itself:
 // its own shard's (as inShard reads a require) and its src/ directory's.
-func (r *resolver) globRoots(file, dir string) []string {
+func (r *resolver) globRoots(file, directory string) []string {
 	var out []string
-	first, rest, _ := strings.Cut(dir, "/")
+	first, rest, _ := strings.Cut(directory, "/")
 	if p := r.projectOf(path.Dir(file)); p != nil && p.name != "" && fold(p.name) == fold(first) && rest != "" {
-		out = append(out, path.Join(p.dir, rest), path.Join(p.dir, "src", rest))
+		out = append(out, path.Join(p.directory, rest), path.Join(p.directory, "src", rest))
 	}
-	for _, root := range r.srcRoots(file) {
-		out = append(out, path.Join(root, dir))
+	for _, root := range r.sourceRoots(file) {
+		out = append(out, path.Join(root, directory))
 	}
 	return out
 }
@@ -599,7 +599,7 @@ const maxGlob = 5000
 //
 // Implements: REQ-CRYSTAL-008
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
-	if t.Ecosystem != ecoShards {
+	if t.Ecosystem != ecosystemShards {
 		return nil
 	}
 	for _, p := range r.order {
@@ -608,24 +608,24 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 			continue
 		}
 		var out []lang.Target
-		for _, name := range sortedKeys(sh.deps) {
-			d := sh.deps[name]
+		for _, name := range sortedKeys(sh.dependencies) {
+			d := sh.dependencies[name]
 			if d.dev {
 				continue
 			}
-			if l := p.lock[name]; l != nil || p.deps[name] != nil {
-				if dt := r.shardTarget(p, name); dt.Ecosystem != "" {
-					out = append(out, dt)
+			if l := p.lock[name]; l != nil || p.dependencies[name] != nil {
+				if dependencyTarget := r.shardTarget(p, name); dependencyTarget.Ecosystem != "" {
+					out = append(out, dependencyTarget)
 				}
 				continue
 			}
-			dt := lang.Target{Ecosystem: ecoShards, Package: name}
+			dependencyTarget := lang.Target{Ecosystem: ecosystemShards, Package: name}
 			if d.path == "" {
-				pinRule(&dt, d)
+				pinRule(&dependencyTarget, d)
 				if !public(d.url) {
-					dt.Origin = d.url
+					dependencyTarget.Origin = d.url
 				}
-				out = append(out, dt)
+				out = append(out, dependencyTarget)
 			}
 		}
 		return out
@@ -637,7 +637,7 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 // installed into lib/.
 func (r *resolver) Installed(t lang.Target) bool {
 	for _, p := range r.order {
-		if _, ok := p.installed[t.Package]; ok && t.Ecosystem == ecoShards {
+		if _, ok := p.installed[t.Package]; ok && t.Ecosystem == ecosystemShards {
 			return true
 		}
 	}

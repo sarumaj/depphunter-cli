@@ -21,9 +21,9 @@ import (
 
 // instruction is one logical line of a Dockerfile, its continuations joined.
 type instruction struct {
-	keyword string // upper case: FROM, ARG, COPY, …
-	args    string
-	line    int // where it starts, 1-based
+	keyword   string // upper case: FROM, ARG, COPY, …
+	arguments string
+	line      int // where it starts, 1-based
 }
 
 var directive = regexp.MustCompile(`^#\s*([a-zA-Z][a-zA-Z0-9_-]*)\s*=\s*(\S*)\s*$`)
@@ -37,8 +37,8 @@ var heredoc = regexp.MustCompile(`(?:^|\s)<<(-?)\s*(["']?)([A-Za-z_][A-Za-z0-9_]
 // the rest of the file.
 //
 // Implements: REQ-DOCKER-002
-func instructions(src []byte) (out []instruction, syntax instruction) {
-	lines := strings.Split(strings.ReplaceAll(string(src), "\r\n", "\n"), "\n")
+func instructions(source []byte) (out []instruction, syntax instruction) {
+	lines := strings.Split(strings.ReplaceAll(string(source), "\r\n", "\n"), "\n")
 	escape := byte('\\')
 	i := 0
 	// Parser directives are comments of the form "# key=value" at the very top; the
@@ -53,18 +53,18 @@ func instructions(src []byte) (out []instruction, syntax instruction) {
 		case strings.EqualFold(m[1], "escape") && (m[2] == "`" || m[2] == `\`):
 			escape = m[2][0]
 		case strings.EqualFold(m[1], "syntax") && m[2] != "":
-			syntax = instruction{keyword: "SYNTAX", args: m[2], line: i + 1}
+			syntax = instruction{keyword: "SYNTAX", arguments: m[2], line: i + 1}
 		}
 	}
-	var cur *instruction
+	var current *instruction
 	var text strings.Builder
 	for ; i < len(lines); i++ {
 		line := strings.TrimSpace(lines[i])
 		if line == "" || line[0] == '#' {
 			continue // comments go, even between continued lines, and so do blank lines
 		}
-		if cur == nil {
-			cur = &instruction{line: i + 1}
+		if current == nil {
+			current = &instruction{line: i + 1}
 			text.Reset()
 		}
 		continued := line[len(line)-1] == escape
@@ -78,11 +78,11 @@ func instructions(src []byte) (out []instruction, syntax instruction) {
 		if continued {
 			continue
 		}
-		keyword, args, _ := strings.Cut(text.String(), " ")
-		cur.keyword, cur.args = strings.ToUpper(keyword), strings.TrimSpace(args)
-		out = append(out, *cur)
-		cur = nil
-		i = skipHeredocs(lines, i, keyword, args)
+		keyword, arguments, _ := strings.Cut(text.String(), " ")
+		current.keyword, current.arguments = strings.ToUpper(keyword), strings.TrimSpace(arguments)
+		out = append(out, *current)
+		current = nil
+		i = skipHeredocs(lines, i, keyword, arguments)
 	}
 	return out, syntax
 }
@@ -90,14 +90,14 @@ func instructions(src []byte) (out []instruction, syntax instruction) {
 // skipHeredocs returns the index of the last line of the heredoc bodies an instruction
 // opens, or at when it opens none. A marker whose terminator never comes is taken for
 // something other than a heredoc, and nothing is skipped.
-func skipHeredocs(lines []string, at int, keyword, args string) int {
+func skipHeredocs(lines []string, at int, keyword, arguments string) int {
 	switch strings.ToUpper(keyword) {
 	case "RUN", "COPY", "ADD", "ONBUILD":
 	default:
 		return at
 	}
 	end := at
-	for _, m := range heredoc.FindAllStringSubmatch(args, -1) {
+	for _, m := range heredoc.FindAllStringSubmatch(arguments, -1) {
 		if m[2] != m[4] {
 			continue // mismatched quotes
 		}
@@ -124,45 +124,45 @@ func skipHeredocs(lines []string, at int, keyword, args string) int {
 // than an earlier stage. Named stages become the file's symbols.
 //
 // Implements: REQ-DOCKER-002, REQ-DOCKER-003, REQ-DOCKER-005
-func extractDockerfile(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
+func extractDockerfile(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
 	var symbols lang.SymbolSet
 	global := map[string]string{} // ARGs declared before the first FROM, with a value
-	var stageArgs map[string]string
+	var stageArguments map[string]string
 	stages := map[string]bool{} // earlier stages, by lower-cased name and by index
 	count := 0
-	add := func(spec, ref string, line int) {
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: ref, Name: kindImage, Line: line})
+	add := func(spec, reference string, line int) {
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: reference, Name: kindImage, Line: line})
 	}
-	all, syntax := instructions(src)
-	if syntax.args != "" {
-		add("# syntax="+syntax.args, syntax.args, syntax.line)
+	all, syntax := instructions(source)
+	if syntax.arguments != "" {
+		add("# syntax="+syntax.arguments, syntax.arguments, syntax.line)
 	}
 	for _, in := range all {
-		keyword, args := in.keyword, in.args
+		keyword, arguments := in.keyword, in.arguments
 		if keyword == "ONBUILD" { // the instruction runs in a later build, from this file
-			k, a, _ := strings.Cut(args, " ")
-			keyword, args = strings.ToUpper(k), strings.TrimSpace(a)
+			k, a, _ := strings.Cut(arguments, " ")
+			keyword, arguments = strings.ToUpper(k), strings.TrimSpace(a)
 		}
 		switch keyword {
 		case "ARG":
 			if count == 0 {
-				declare(global, global, args)
+				declare(global, global, arguments)
 			} else {
-				declare(stageArgs, global, args)
+				declare(stageArguments, global, arguments)
 			}
 		case "FROM":
-			_, rest := splitFlags(args) // --platform says which variant, not which image
+			_, rest := splitFlags(arguments) // --platform says which variant, not which image
 			fields := strings.Fields(rest)
 			if len(fields) == 0 {
 				continue
 			}
 			// A FROM sees only the ARGs declared before the first FROM.
-			ref, ok := expand(fields[0], global, false)
-			if ok && !stages[strings.ToLower(ref)] && !strings.EqualFold(ref, "scratch") {
-				add("FROM "+ref, ref, in.line)
+			reference, ok := expand(fields[0], global, false)
+			if ok && !stages[strings.ToLower(reference)] && !strings.EqualFold(reference, "scratch") {
+				add("FROM "+reference, reference, in.line)
 			} else if !ok {
-				add("FROM "+fields[0], ref, in.line)
+				add("FROM "+fields[0], reference, in.line)
 			}
 			if len(fields) >= 3 && strings.EqualFold(fields[1], "AS") {
 				stages[strings.ToLower(fields[2])] = true
@@ -170,9 +170,9 @@ func extractDockerfile(src []byte) *lang.Extraction {
 			}
 			stages[strconv.Itoa(count)] = true
 			count++
-			stageArgs = map[string]string{}
+			stageArguments = map[string]string{}
 		case "COPY", "RUN":
-			flags, _ := splitFlags(args)
+			flags, _ := splitFlags(arguments)
 			for _, f := range flags {
 				name, value, _ := strings.Cut(f, "=")
 				var from string
@@ -185,49 +185,49 @@ func extractDockerfile(src []byte) *lang.Extraction {
 				if from == "" {
 					continue
 				}
-				ref, ok := expand(from, stageArgs, false)
-				if ok && stages[strings.ToLower(ref)] {
+				reference, ok := expand(from, stageArguments, false)
+				if ok && stages[strings.ToLower(reference)] {
 					continue // an earlier stage of this file
 				}
 				spec := keyword + " " + name + "=" + from
 				if keyword == "RUN" {
 					spec = "RUN --mount from=" + from
 				}
-				add(spec, ref, in.line)
+				add(spec, reference, in.line)
 			}
 		}
 	}
-	ex.Symbols = symbols.List()
-	return ex
+	extraction.Symbols = symbols.List()
+	return extraction
 }
 
 // declare records the variables an ARG instruction declares, "NAME" or "NAME=value",
 // several to a line. A default may use variables declared before it. An ARG without a
 // value inside a stage takes the value the same ARG had before the first FROM.
-func declare(vars, global map[string]string, args string) {
-	if vars == nil {
+func declare(variables, global map[string]string, arguments string) {
+	if variables == nil {
 		return
 	}
-	for _, word := range strings.Fields(args) {
+	for _, word := range strings.Fields(arguments) {
 		name, value, hasValue := strings.Cut(word, "=")
 		if !hasValue {
 			if v, ok := global[name]; ok {
-				vars[name] = v
+				variables[name] = v
 			}
 			continue
 		}
 		value = unquote(value)
-		if v, ok := expand(value, vars, false); ok {
-			vars[name] = v
+		if v, ok := expand(value, variables, false); ok {
+			variables[name] = v
 		} else {
-			delete(vars, name) // what it becomes is only known at build time
+			delete(variables, name) // what it becomes is only known at build time
 		}
 	}
 }
 
 // splitFlags separates an instruction's leading --flags from the rest.
-func splitFlags(args string) (flags []string, rest string) {
-	rest = args
+func splitFlags(arguments string) (flags []string, rest string) {
+	rest = arguments
 	for {
 		rest = strings.TrimLeft(rest, " \t")
 		if !strings.HasPrefix(rest, "--") {
@@ -264,7 +264,7 @@ func unquote(s string) string {
 // is.
 //
 // Implements: REQ-DOCKER-003
-func expand(s string, vars map[string]string, compose bool) (string, bool) {
+func expand(s string, variables map[string]string, compose bool) (string, bool) {
 	var b strings.Builder
 	ok := true
 	for i := 0; i < len(s); i++ {
@@ -288,7 +288,7 @@ func expand(s string, vars map[string]string, compose bool) (string, bool) {
 				b.WriteString(s[i:])
 				return b.String(), false
 			}
-			v, good := substitute(s[i+2:end], vars, compose)
+			v, good := substitute(s[i+2:end], variables, compose)
 			if !good {
 				v, ok = s[i:end+1], false
 			}
@@ -304,7 +304,7 @@ func expand(s string, vars map[string]string, compose bool) (string, bool) {
 			b.WriteByte(c) // a lone dollar sign
 			continue
 		}
-		if v, set := vars[s[i+1:j]]; set {
+		if v, set := variables[s[i+1:j]]; set {
 			b.WriteString(v)
 		} else {
 			b.WriteString(s[i:j])
@@ -316,40 +316,40 @@ func expand(s string, vars map[string]string, compose bool) (string, bool) {
 }
 
 // substitute evaluates the inside of a ${…}.
-func substitute(body string, vars map[string]string, compose bool) (string, bool) {
+func substitute(body string, variables map[string]string, compose bool) (string, bool) {
 	k := 0
 	for k < len(body) && (body[k] == '_' || isAlnum(body[k])) {
 		k++
 	}
 	name, rest := body[:k], body[k:]
-	op, word := "", ""
+	operator, word := "", ""
 	for _, o := range []string{":-", ":+", "-", "+"} {
 		if w, found := strings.CutPrefix(rest, o); found {
-			op, word = o, w
+			operator, word = o, w
 			break
 		}
 	}
-	if name == "" || (rest != "" && op == "") {
+	if name == "" || (rest != "" && operator == "") {
 		return "", false // ${NAME:?error}, ${NAME#pattern} and the like
 	}
-	v, set := vars[name]
-	switch op {
+	v, set := variables[name]
+	switch operator {
 	case ":-":
 		if !set || v == "" {
-			return expand(word, vars, compose)
+			return expand(word, variables, compose)
 		}
 	case "-":
 		if !set {
-			return expand(word, vars, compose)
+			return expand(word, variables, compose)
 		}
 	case ":+":
 		if set && v != "" {
-			return expand(word, vars, compose)
+			return expand(word, variables, compose)
 		}
 		return "", true
 	case "+":
 		if set {
-			return expand(word, vars, compose)
+			return expand(word, variables, compose)
 		}
 		return "", true
 	}

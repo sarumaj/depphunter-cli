@@ -130,14 +130,14 @@ const EYE = 0.45; // walk.js: eye height above the feet
 // left behind is a binary the size of this one per run.
 const cleanups = [];
 let cleaned = false;
-const onExit = fn => cleanups.push(fn);
+const onExit = callback => cleanups.push(callback);
 const cleanup = () => {
   if (cleaned) return;
   cleaned = true;
-  for (const fn of cleanups.reverse()) { try { fn(); } catch { /* leaving anyway */ } }
+  for (const callback of cleanups.reverse()) { try { callback(); } catch { /* leaving anyway */ } }
 };
 process.on('exit', cleanup);
-for (const sig of ['SIGINT', 'SIGTERM']) process.on(sig, () => { cleanup(); process.exit(130); });
+for (const signal of ['SIGINT', 'SIGTERM']) process.on(signal, () => { cleanup(); process.exit(130); });
 process.on('uncaughtException', e => { console.error(e); cleanup(); process.exit(1); });
 process.on('unhandledRejection', e => { console.error(e); cleanup(); process.exit(1); });
 
@@ -145,7 +145,7 @@ process.on('unhandledRejection', e => { console.error(e); cleanup(); process.exi
 
 let temp = null;
 /** This run's temporary directory, made on first use and removed on exit (--keep-temp). */
-function tempDir() {
+function temporaryDirectory() {
   if (temp) return temp;
   temp = fs.mkdtempSync(path.join(os.tmpdir(), 'depphunter-record-'));
   onExit(ARGS['keep-temp'] ? () => console.log(`kept ${temp}`) : () => fs.rmSync(temp, { recursive: true, force: true }));
@@ -153,15 +153,15 @@ function tempDir() {
 }
 
 /** The user cache directory's corner for these scripts, where os.UserCacheDir puts it in Go. */
-function cacheDir() {
+function cacheDirectory() {
   const home = os.homedir();
   const base = process.env.XDG_CACHE_HOME
     || (process.platform === 'darwin' ? path.join(home, 'Library', 'Caches')
       : process.platform === 'win32' ? (process.env.LOCALAPPDATA || path.join(home, 'AppData', 'Local'))
         : path.join(home, '.cache'));
-  const dir = path.join(base, 'depphunter', 'scripts');
-  fs.mkdirSync(dir, { recursive: true });
-  return dir;
+  const directory = path.join(base, 'depphunter', 'scripts');
+  fs.mkdirSync(directory, { recursive: true });
+  return directory;
 }
 
 // ------------------------------------------------------------------ findings
@@ -170,10 +170,10 @@ function cacheDir() {
 // on buildings), advisories against the Go modules nothing calls (bugs on the island),
 // and one the code reaches (a building on fire, internal/scan/scan.go, as in
 // tour-shots.mjs). They are made up; the files are not. Returns their paths.
-function writeReports(dir) {
+function writeReports(directory) {
   const files = execFileSync('git', ['ls-files', 'internal/*.go', 'cmd/*.go'], { cwd: REPO, encoding: 'utf8' })
     .split('\n').filter(f => f && !f.endsWith('_test.go') && !f.includes('/testdata/'));
-  const msgs = [
+  const messages = [
     ['errcheck', 'Error return value of `w.Write` is not checked', 'error'],
     ['govet', 'printf: fmt.Sprintf format %d has arg of wrong type', 'error'],
     ['gosec', 'G304: Potential file inclusion via variable', 'error'],
@@ -185,10 +185,10 @@ function writeReports(dir) {
   let seed = 7;
   const rnd = () => ((seed = (seed * 1103515245 + 12345) % 2 ** 31) / 2 ** 31);
   const issues = files.filter(() => rnd() < 0.6).map((f, i) => {
-    const [linter, text, severity] = msgs[i % msgs.length];
+    const [linter, text, severity] = messages[i % messages.length];
     return { FromLinter: linter, Text: text, Severity: severity, Pos: { Filename: f, Line: 10 + Math.floor(rnd() * 200), Column: 2 } };
   });
-  fs.writeFileSync(path.join(dir, 'golangci.json'), JSON.stringify({ Issues: issues, Report: { Linters: [] } }));
+  fs.writeFileSync(path.join(directory, 'golangci.json'), JSON.stringify({ Issues: issues, Report: { Linters: [] } }));
 
   const main = 'github.com/sarumaj/depphunter-cli';
   const lines = [
@@ -205,9 +205,9 @@ function writeReports(dir) {
       database_specific: { severity: ['CRITICAL', 'HIGH', 'MODERATE', 'LOW'][i % 4] } } });
     lines.push({ finding: { osv: id, fixed_version: 'v9.9.9', trace: [{ module: m, version: 'v0.0.1' }] } });
   });
-  fs.writeFileSync(path.join(dir, 'govuln.json'), lines.map(l => JSON.stringify(l)).join('\n'));
+  fs.writeFileSync(path.join(directory, 'govuln.json'), lines.map(l => JSON.stringify(l)).join('\n'));
   console.log(`reports: ${issues.length} lint issues, 8 advisories`);
-  return [path.join(dir, 'golangci.json'), path.join(dir, 'govuln.json')];
+  return [path.join(directory, 'golangci.json'), path.join(directory, 'govuln.json')];
 }
 
 // ------------------------------------------------------------------ models
@@ -219,13 +219,13 @@ async function routeModels(ctx) {
   for (const name of ['hand', 'bug', 'props']) {
     const file = path.join(REPO, 'web/static', `${name}.glb`);
     if (fs.readFileSync(file).subarray(0, 4).toString() === 'glTF') continue; // the real thing is embedded
-    const cached = path.join(cacheDir(), `${name}.glb`);
+    const cached = path.join(cacheDirectory(), `${name}.glb`);
     if (!fs.existsSync(cached)) {
       const url = `https://media.githubusercontent.com/media/sarumaj/depphunter-cli/main/web/static/${name}.glb`;
       console.log(`fetching ${name}.glb (the checkout holds an LFS pointer)`);
-      const res = await fetch(url);
-      if (!res.ok) throw new Error(`${url}: ${res.status}; run git lfs pull instead`);
-      fs.writeFileSync(`${cached}.part`, Buffer.from(await res.arrayBuffer()));
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`${url}: ${response.status}; run git lfs pull instead`);
+      fs.writeFileSync(`${cached}.part`, Buffer.from(await response.arrayBuffer()));
       fs.renameSync(`${cached}.part`, cached);
     }
     const body = fs.readFileSync(cached);
@@ -242,7 +242,7 @@ function binary() {
     if (!fs.existsSync(bin)) throw new Error(`--bin ${bin}: no such file`);
     return bin;
   }
-  const bin = path.join(tempDir(), process.platform === 'win32' ? 'depphunter.exe' : 'depphunter');
+  const bin = path.join(temporaryDirectory(), process.platform === 'win32' ? 'depphunter.exe' : 'depphunter');
   console.log('building depphunter...');
   execFileSync('go', ['build', '-o', bin, './cmd/depphunter'], { cwd: REPO, stdio: 'inherit' });
   return bin;
@@ -253,19 +253,19 @@ function binary() {
  * the server is stopped when the run ends. One that stops before it says where, or
  * says nothing for two minutes, is an error that quotes what it did say.
  */
-async function serve(bin, repo, findings) {
-  const srv = spawn(bin, [repo, '--addr', `127.0.0.1:${PORT}`, '--no-open', ...findings.flatMap(f => ['--findings', f])]);
-  onExit(() => { if (srv.exitCode === null) srv.kill(); });
+async function serve(bin, repository, findings) {
+  const server = spawn(bin, [repository, '--addr', `127.0.0.1:${PORT}`, '--no-open', ...findings.flatMap(f => ['--findings', f])]);
+  onExit(() => { if (server.exitCode === null) server.kill(); });
   let url = '', said = '', exited = null;
   const grab = d => {
     said += String(d);
     const m = /http:\/\/\S+/.exec(said);
     if (m && !url) url = m[0];
   };
-  srv.stdout.on('data', grab);
-  srv.stderr.on('data', grab);
-  srv.on('exit', code => { exited = code; });
-  srv.on('error', e => { exited = e.message; });
+  server.stdout.on('data', grab);
+  server.stderr.on('data', grab);
+  server.on('exit', code => { exited = code; });
+  server.on('error', e => { exited = e.message; });
   for (let i = 0; i < 240 && !url && exited === null; i++) await new Promise(r => setTimeout(r, 500));
   if (!url) {
     throw new Error(`depphunter ${exited === null ? 'said nothing about where it was serving in 2 minutes'
@@ -326,10 +326,10 @@ async function streetBug(from, dist) {
       if (b.caught || b.flying || b.lap.kind !== 'street') return;
       // Out from the building the bug circles, so the spot is in its street and not
       // inside the building across it; a spot that is not at the bug's level is not.
-      const ox = b.pos.x - b.box.x, oz = b.pos.z - b.box.z, len = Math.hypot(ox, oz) || 1;
-      const spot = { x: b.pos.x + (ox / len) * a.dist, z: b.pos.z + (oz / len) * a.dist };
+      const ox = b.position.x - b.box.x, oz = b.position.z - b.box.z, distance = Math.hypot(ox, oz) || 1;
+      const spot = { x: b.position.x + (ox / distance) * a.dist, z: b.position.z + (oz / distance) * a.dist };
       spot.feet = w.height(spot.x, spot.z);
-      if (Math.abs(spot.feet - (b.pos.y - 0.04)) > 0.2) return;
+      if (Math.abs(spot.feet - (b.position.y - 0.04)) > 0.2) return;
       candidates.push({ i, b, spot, far: Math.hypot(spot.x - a.x, spot.z - a.z) });
     });
     candidates.sort((u, v) => u.far - v.far);
@@ -374,11 +374,11 @@ async function streetBug(from, dist) {
  */
 const spotOf = (i, dist) => dh((d, a) => {
   const w = d.walker, b = d.bugs.bugs[a.i];
-  const ox = b.pos.x - b.box.x, oz = b.pos.z - b.box.z, len = Math.hypot(ox, oz) || 1;
-  const level = b.pos.y - 0.04;
+  const ox = b.position.x - b.box.x, oz = b.position.z - b.box.z, distance = Math.hypot(ox, oz) || 1;
+  const level = b.position.y - 0.04;
   let r = a.dist;
-  while (r > 0.8 && Math.abs(w.height(b.pos.x + (ox / len) * r, b.pos.z + (oz / len) * r) - level) > 0.2) r -= 0.2;
-  return { x: b.pos.x + (ox / len) * r, z: b.pos.z + (oz / len) * r, feet: level };
+  while (r > 0.8 && Math.abs(w.height(b.position.x + (ox / distance) * r, b.position.z + (oz / distance) * r) - level) > 0.2) r -= 0.2;
+  return { x: b.position.x + (ox / distance) * r, z: b.position.z + (oz / distance) * r, feet: level };
 }, { i, dist });
 /**
  * Turns the walker onto bug i as the game draws it (window.__sight): the crosshair
@@ -394,7 +394,7 @@ const aimOn = i => dh((d, a) => {
   w.updateAim();
   return !!got?.clear;
 }, { i, eye: EYE });
-const bugAt = i => dh((d, i) => { const b = d.bugs.bugs[i]; return { x: b.pos.x, y: b.pos.y + 0.05, z: b.pos.z, caught: b.caught }; }, i);
+const bugAt = i => dh((d, i) => { const b = d.bugs.bugs[i]; return { x: b.position.x, y: b.position.y + 0.05, z: b.position.z, caught: b.caught }; }, i);
 /**
  * The next grapple hop: from tower `from` (a box index; null picks the first tower
  * too) to one near..far away and at most `rise` higher or lower, not yet stood on,
@@ -407,7 +407,7 @@ const planHop = args => dh((d, a) => {
   const reach = w.secondary?.reach ?? 50;
   const tall = w.boxes.map((b, i) => ({ b, i })).filter(o => o.b.kind === 'building' && o.b.h > 1);
   const sight = (A, B) => {
-    const dx = B.x - A.x, dz = B.z - A.z, len = Math.hypot(dx, dz) || 1, ux = dx / len, uz = dz / len;
+    const dx = B.x - A.x, dz = B.z - A.z, distance = Math.hypot(dx, dz) || 1, ux = dx / distance, uz = dz / distance;
     const out = (box, m) => Math.max(0, Math.min((box.w / 2 - m) / (Math.abs(ux) || 1e-9), (box.d / 2 - m) / (Math.abs(uz) || 1e-9)));
     const s = out(A, 0.35), f = out(B, 0);
     const stand = { x: A.x + ux * s, z: A.z + uz * s, feet: top(A) };
@@ -421,7 +421,7 @@ const planHop = args => dh((d, a) => {
       const hit = w.lookingAt(reach);
       if (hit && hit.box === B && hit.point.y < top(B) - 0.05 && (!best || hit.point.y > best.y)) best = { pitch, y: hit.point.y };
     }
-    return best && { stand, yaw, pitch: best.pitch, dist: len, dir: { x: ux, z: uz } };
+    return best && { stand, yaw, pitch: best.pitch, dist: distance, dir: { x: ux, z: uz } };
   };
   const mid = (a.near + a.far) / 2;
   const pairs = [];
@@ -459,73 +459,73 @@ const ARRIVAL = 5; // walk.js ARRIVAL: the first walk's flight in, in the walker
 const MAX_DT = 0.05; // walk.js loop
 const arrivalFrames = () => Math.ceil(ARRIVAL / Math.min(MAX_DT, 1 / FPS));
 const actions = {
-  caption: { length: () => 0, run: st => caption(st.text ?? '', st.sub ?? '') },
-  hold: { length: st => st.s, run: st => hold(st.s) },
+  caption: { length: () => 0, run: step => caption(step.text ?? '', step.sub ?? '') },
+  hold: { length: step => step.s, run: step => hold(step.s) },
   glide: {
-    length: st => st.s ?? 0.8,
-    run: async st => { const p = await at(st.to); await glide(p.x, p.y, st.s ?? 0.8); },
+    length: step => step.s ?? 0.8,
+    run: async step => { const p = await at(step.to); await glide(p.x, p.y, step.s ?? 0.8); },
   },
-  click: { length: st => (st.s ?? CLICK) + 2 / FPS, run: st => clickAt(st.target, st.s ?? CLICK) },
-  type: { length: st => (2 * st.text.length) / FPS, run: st => typeSlowly(st.text) },
-  set: { length: () => 0, run: st => choose(st.target, st.value) },
+  click: { length: step => (step.s ?? CLICK) + 2 / FPS, run: step => clickAt(step.target, step.s ?? CLICK) },
+  type: { length: step => (2 * step.text.length) / FPS, run: step => typeSlowly(step.text) },
+  set: { length: () => 0, run: step => choose(step.target, step.value) },
   // With `fade`, the frame before stays over the page and fades out over that many
   // seconds of the page's own clock - a day turning to night rather than a cut to it -
   // while the next steps are already filmed underneath.
   choose: {
     length: () => 1 / FPS,
-    async run(st) {
-      if (st.fade && n > 0) {
+    async run(step) {
+      if (step.fade && n > 0) {
         const last = fs.readFileSync(path.join(frames, `f${String(n - 1).padStart(5, '0')}.jpg`)).toString('base64');
-        await page.evaluate(({ src, ms }) => window.__fade(src, ms), { src: `data:image/jpeg;base64,${last}`, ms: st.fade * 1000 });
+        await page.evaluate(({ src: source, ms }) => window.__fade(source, ms), { src: `data:image/jpeg;base64,${last}`, ms: step.fade * 1000 });
       }
-      await frame(() => choose(st.target, st.value));
+      await frame(() => choose(step.target, step.value));
     },
   },
-  key: { length: () => 1 / FPS, run: st => frame(() => page.keyboard.press(st.key)) },
+  key: { length: () => 1 / FPS, run: step => frame(() => page.keyboard.press(step.key)) },
   // A select, chosen the way a person does it: a click opens the list, the pointer
   // goes down it to the option, and a click there takes it. The list is drawn into
   // the page, because a native one is not in a screenshot (and, left open, would be
   // in every frame after it).
   pick: {
-    length: st => (st.s ?? CLICK) + 1 / FPS + LIST_OPEN + (st.down ?? 0.6) + 1 / FPS + LIST_READ,
-    async run(st) {
-      const c = await center(st.target);
-      await glide(c.x, c.y, st.s ?? CLICK);
-      let opt;
+    length: step => (step.s ?? CLICK) + 1 / FPS + LIST_OPEN + (step.down ?? 0.6) + 1 / FPS + LIST_READ,
+    async run(step) {
+      const c = await center(step.target);
+      await glide(c.x, c.y, step.s ?? CLICK);
+      let option;
       await frame(async () => {
         await page.evaluate(({ x, y }) => window.__ripple(x, y), c);
-        opt = await openList(st.target, st.value);
+        option = await openList(step.target, step.value);
       });
       await hold(LIST_OPEN);
-      await glide(opt.x, opt.y, st.down ?? 0.6);
+      await glide(option.x, option.y, step.down ?? 0.6);
       await frame(async () => {
-        await page.evaluate(({ x, y }) => window.__ripple(x, y), opt);
+        await page.evaluate(({ x, y }) => window.__ripple(x, y), option);
         await page.evaluate(() => document.getElementById('promo-list')?.classList.add('taken'));
       });
       await hold(LIST_READ);
       await page.evaluate(() => document.getElementById('promo-list')?.remove());
-      await choose(st.target, st.value);
+      await choose(step.target, step.value);
     },
   },
   // Overlays out of shot, for a clean picture: the walk HUD's key list, a hover card,
   // the status line. `show` brings back what `hide` took away.
-  hide: { length: () => 0, run: st => overlays(st.targets, true) },
-  show: { length: () => 0, run: st => overlays(st.targets, false) },
-  cursor: { length: () => 0, run: st => hideCursor(!!st.hidden) },
+  hide: { length: () => 0, run: step => overlays(step.targets, true) },
+  show: { length: () => 0, run: step => overlays(step.targets, false) },
+  cursor: { length: () => 0, run: step => hideCursor(!!step.hidden) },
 
   // Into walk mode, with `hide` out of shot from the first frame. The first walk on
   // the page is flown in (walk.js startArrival); it is landed in the street the story
   // goes on in, and filmed until it is down.
   walk: {
     length: () => CLICK + 2 / FPS + arrivalFrames() / FPS,
-    async run(st) {
-      if (await dh(d => d.walker.active)) { if (st.hide) await overlays(st.hide, true); return ready(); }
+    async run(step) {
+      if (await dh(d => d.walker.active)) { if (step.hide) await overlays(step.hide, true); return ready(); }
       const c = await center('#walk');
       await glide(c.x, c.y, CLICK);
       await frame(() => page.mouse.down());
       await frame(async () => {
         await page.mouse.up();
-        if (st.hide) await overlays(st.hide, true);
+        if (step.hide) await overlays(step.hide, true);
         await hideCursor(true);
         if (!stage) await findStage();
         await dh((d, spot) => {
@@ -546,16 +546,16 @@ const actions = {
   // out. A catch opens its finding and holds the walker, as the map does; after
   // `read` seconds of it the walk goes on.
   catch: {
-    length: st => APPROACH + SETTLE + AIM_WAIT + 1 / FPS + (st.held ?? 0) + TAKE + OPENS + (st.read ?? 0) + 0.4,
-    async run(st) {
+    length: step => APPROACH + SETTLE + AIM_WAIT + 1 / FPS + (step.held ?? 0) + TAKE + OPENS + (step.read ?? 0) + 0.4,
+    async run(step) {
       await ready();
       // The tool first: whether a bug is in its sight depends on what it reaches.
-      await dh((d, id) => { if (d.walker.primary.id !== id) d.walker.setTool(id); }, st.tool);
+      await dh((d, id) => { if (d.walker.primary.id !== id) d.walker.setTool(id); }, step.tool);
       let me = await state();
-      const found = await streetBug(me, st.distance);
-      if (!found) { say(`  ${st.tool}: no bug to be walked up to and seen from the street`); return; }
+      const found = await streetBug(me, step.distance);
+      if (!found) { say(`  ${step.tool}: no bug to be walked up to and seen from the street`); return; }
       const { i, spot } = found;
-      if (found.cut) say(`  ${st.tool}: no bug both walkable and in sight (${found.why}); cutting to bug ${i}`);
+      if (found.cut) say(`  ${step.tool}: no bug both walkable and in sight (${found.why}); cutting to bug ${i}`);
       if (found.cut) {
         // A cut, not a walk through the buildings in between: there, facing it.
         const want = lookAngles(spot, await bugAt(i));
@@ -569,7 +569,7 @@ const actions = {
       // that rounds a corner meanwhile would leave the walker facing a wall.
       // On the ground all the way, as walking is: the path was chosen clear of buildings.
       await hold(walkTime, async t => {
-        const e = ease(t), to = await spotOf(i, st.distance);
+        const e = ease(t), to = await spotOf(i, step.distance);
         const here = { x: lerp(from.x, to.x, e), z: lerp(from.z, to.z, e) };
         here.feet = await groundAt(here.x, here.z);
         const want = lookAngles(here, await bugAt(i));
@@ -577,7 +577,7 @@ const actions = {
       });
       // Then stays with it, a step behind so a turn at a corner is walked, not jumped.
       const track = async () => {
-        const to = await spotOf(i, st.distance);
+        const to = await spotOf(i, step.distance);
         me = await state();
         const here = { x: lerp(me.x, to.x, 0.3), z: lerp(me.z, to.z, 0.3) };
         here.feet = await groundAt(here.x, here.z);
@@ -591,7 +591,7 @@ const actions = {
       for (let k = 0; k < frames_(AIM_WAIT) && !on; k++) await frame(async () => { on = await track(); });
       if (!on) {
         // Better no shot than one into a wall after a bug nobody can see.
-        say(`  ${st.tool}: bug ${i} not fired at: it did not come into plain view`);
+        say(`  ${step.tool}: bug ${i} not fired at: it did not come into plain view`);
         await hold(0.4);
         return;
       }
@@ -599,13 +599,13 @@ const actions = {
       const aimed = () => dh((d, i) => {
         const w = d.walker, a = w.aim, b = d.bugs.bugs[i];
         return { on: a.bug ? (a.bug === b ? 'the bug' : `bug ${d.bugs.bugs.indexOf(a.bug)}`) : a.box ? `the ${a.box.kind} ${a.box.node?.name ?? ''}`.trim() : 'nothing',
-          far: a.far, away: Math.hypot(b.pos.x - w.p.x, b.pos.y - (w.p.feet + 0.45), b.pos.z - w.p.z), frozen: w.frozen, arriving: !!w.arrival };
+          far: a.far, away: Math.hypot(b.position.x - w.p.x, b.position.y - (w.p.feet + 0.45), b.position.z - w.p.z), frozen: w.frozen, arriving: !!w.arrival };
       }, i);
       let shot;
-      if (st.held) {
+      if (step.held) {
         // The first shot in a frame that aims first, as every one after it is.
         await frame(async () => { await track(); shot = await aimed(); await dh(d => { d.walker.firing = true; d.walker.fire(); }); });
-        await hold(st.held, track);
+        await hold(step.held, track);
         await dh(d => { d.walker.firing = false; });
       } else {
         await frame(async () => { await track(); shot = await aimed(); await dh(d => d.walker.fire()); });
@@ -615,14 +615,14 @@ const actions = {
         if ((await bugAt(i)).caught) break;
       }
       const caught = (await bugAt(i)).caught;
-      say(`  ${st.tool}: bug ${i} ${caught ? 'caught' : `missed: fired at ${shot.on}${shot.far ? ' (out of reach)' : ''}, ` +
+      say(`  ${step.tool}: bug ${i} ${caught ? 'caught' : `missed: fired at ${shot.on}${shot.far ? ' (out of reach)' : ''}, ` +
         `the bug ${shot.away.toFixed(2)} away${shot.frozen ? ', the walker held' : ''}${shot.arriving ? ', still arriving' : ''}`}`);
       // The finding opens once the catch has played out (TAKE_MS in bugs.js, about a
       // second), not at once: wait for it, so it is read here rather than landing on
       // whatever the next step is doing.
       for (let k = 0; caught && k < frames_(OPENS) && !(await dh(d => d.walker.frozen)); k++) await frame();
       if (await dh(d => d.walker.frozen)) {
-        await hold(st.read ?? 0);
+        await hold(step.read ?? 0);
         await resume();
       }
       await hold(0.4);
@@ -630,8 +630,8 @@ const actions = {
   },
 
   douse: {
-    length: st => (st.back != null ? 1.4 : 0) + st.s,
-    async run(st) {
+    length: step => (step.back != null ? 1.4 : 0) + step.s,
+    async run(step) {
       await ready();
       const target = await dh(d => {
         const ids = [...(d.fires?.lit?.keys() || [])];
@@ -648,7 +648,7 @@ const actions = {
       await dh(d => { if (d.walker.primary.id !== 'extinguisher') d.walker.setTool('extinguisher'); });
       // Back off the wall a little, so the building and its flames are in frame.
       const away = Math.atan2(target.spot.x - target.x, target.spot.z - target.z);
-      const r0 = Math.hypot(target.spot.x - target.x, target.spot.z - target.z) + (st.back ?? 1.4);
+      const r0 = Math.hypot(target.spot.x - target.x, target.spot.z - target.z) + (step.back ?? 1.4);
       const spot = { x: target.x + Math.sin(away) * r0, z: target.z + Math.cos(away) * r0 };
       spot.feet = await groundAt(spot.x, spot.z);
       const roof = { x: target.x, y: target.y + target.h * 0.85, z: target.z };
@@ -660,7 +660,7 @@ const actions = {
         return view({ ...here, yaw: turn(from.yaw, want.yaw, e), pitch: lerp(from.pitch, want.pitch, e) });
       });
       await dh(d => { d.walker.firing = true; });
-      for (let k = 0; k < frames_(st.s); k++) {
+      for (let k = 0; k < frames_(step.s); k++) {
         await frame();
         if (k % 5 === 0 && !(await dh((d, id) => d.fires.lit.has(id), target.id))) break;
       }
@@ -672,8 +672,8 @@ const actions = {
   // The camera on the tallest building near, then the photographs: G opens them, and
   // "show" puts one back up on the camera for `show` seconds.
   photo: {
-    length: st => 1.2 + 0.4 + 1 / FPS + 1.4 + 1 / FPS + 0.8 + 0.9 + 2 / FPS + (st.show ?? 3.2),
-    async run(st) {
+    length: step => 1.2 + 0.4 + 1 / FPS + 1.4 + 1 / FPS + 0.8 + 0.9 + 2 / FPS + (step.show ?? 3.2),
+    async run(step) {
       await ready();
       await dh(d => { if (d.walker.primary.id !== 'camera') d.walker.setTool('camera'); });
       const subject = await dh(d => {
@@ -695,7 +695,7 @@ const actions = {
       if (await page.locator(button).count()) {
         await clickAt(button, 0.9);
         await hideCursor(true);
-        await hold(st.show ?? 3.2);
+        await hold(step.show ?? 3.2);
       } else {
         say('  photo: nothing in the stash');
         await frame(() => page.keyboard.press('g'));
@@ -710,15 +710,15 @@ const actions = {
   // that roof. Every aim is checked with the gun's own sight line first, so the hook
   // bites the tower meant and not a roof or a tree in between.
   grapple: {
-    length: st => 1.8 + (st.hops ?? 2) * (HOP_AIM + 0.3 + GRAPPLE_BITE + GRAPPLE_REEL) + 1.6,
-    async run(st) {
+    length: step => 1.8 + (step.hops ?? 2) * (HOP_AIM + 0.3 + GRAPPLE_BITE + GRAPPLE_REEL) + 1.6,
+    async run(step) {
       await ready();
       await dh(d => { if (d.walker.secondary?.id !== 'grapple') d.walker.setTool('grapple'); });
-      const hops = st.hops ?? 2;
-      let from = null, dir = null;
+      const hops = step.hops ?? 2;
+      let from = null, directory = null;
       const visited = [];
       for (let h = 0; h < hops; h++) {
-        const plan = await planHop({ from, visited, dir, near: st.near ?? 6, far: st.far ?? 22, rise: st.rise ?? 3 });
+        const plan = await planHop({ from, visited, dir: directory, near: step.near ?? 6, far: step.far ?? 22, rise: step.rise ?? 3 });
         if (!plan) { say(`  grapple: no tower in reach for hop ${h + 1}`); break; }
         const aim = { yaw: plan.yaw, pitch: plan.pitch };
         if (from === null) {
@@ -743,7 +743,7 @@ const actions = {
         say(`  grapple hop ${h + 1}: ${bit ? 'bit' : 'did not bite'}, ${onto ? 'onto' : 'not on'} tower ${plan.bi} (${plan.dist.toFixed(1)} away, roof at ${plan.top.toFixed(2)}, feet at ${me.feet.toFixed(2)})`);
         if (!onto) break;
         visited.push(plan.ai);
-        dir = plan.dir;
+        directory = plan.dir;
         from = plan.bi;
       }
       // Looking back down over the edge at the way come.
@@ -754,20 +754,20 @@ const actions = {
 
   // The jet backpack: a burst of thrust, then a banking climb over the roofs.
   fly: {
-    length: st => 1 / FPS + st.s,
-    async run(st) {
+    length: step => 1 / FPS + step.s,
+    async run(step) {
       await ready();
       await dh(d => { if (d.walker.secondary?.id !== 'jetpack') d.walker.setTool('jetpack'); });
       const top = await dh(d => Math.max(...d.walker.boxes.map(b => b.y + b.h)));
       const from = await state();
-      const lift = Math.max(from.feet + 4, top + (st.above ?? 3));
+      const lift = Math.max(from.feet + 4, top + (step.above ?? 3));
       let yaw = from.yaw, here = { ...from };
       await frame(() => dh(d => d.walker.useSecondary()));
-      await hold(st.s, t => {
-        yaw += (st.turn ?? 0.35) / FPS;
+      await hold(step.s, t => {
+        yaw += (step.turn ?? 0.35) / FPS;
         here = {
-          x: here.x - Math.sin(yaw) * (st.speed ?? 5) / FPS,
-          z: here.z - Math.cos(yaw) * (st.speed ?? 5) / FPS,
+          x: here.x - Math.sin(yaw) * (step.speed ?? 5) / FPS,
+          z: here.z - Math.cos(yaw) * (step.speed ?? 5) / FPS,
           feet: lerp(from.feet, lift, ease(Math.min(1, t * 2.5))),
         };
         return view({ ...here, yaw, pitch: lerp(0.05, -0.32, ease(Math.min(1, t * 2))) });
@@ -804,10 +804,10 @@ async function encode({ frames: count, fps, scale }) {
       '-map', '[v]', '-c:v', 'libx264', '-preset', 'slow', '-crf', '18', '-pix_fmt', 'yuv420p',
       '-movflags', '+faststart', '-r', String(fps), video], { stdio: 'inherit' });
   } catch (e) {
-    const tmp = [os.tmpdir(), '/tmp'].some(t => OUT.startsWith(t + path.sep));
+    const inTemporaryDirectory = [os.tmpdir(), '/tmp'].some(t => OUT.startsWith(t + path.sep));
     throw new Error(`ffmpeg could not encode ${path.join(OUT, 'frames')}: ${e.message.split('\n')[0]}. ` +
       (e.code === 'ENOENT' ? 'ffmpeg is not installed, or not on the PATH. '
-        : tmp ? 'An ffmpeg installed as a snap cannot read files in /tmp; use --out somewhere in your home. ' : '') +
+        : inTemporaryDirectory ? 'An ffmpeg installed as a snap cannot read files in /tmp; use --out somewhere in your home. ' : '') +
       'The frames are kept, and --encode encodes them again without recording.');
   }
   console.log(`wrote ${video} (${total.toFixed(1)} s)`);
@@ -815,11 +815,11 @@ async function encode({ frames: count, fps, scale }) {
 
 // --encode: the frames of an earlier recording, encoded again without recording.
 if (ARGS.encode) {
-  const dir = path.join(OUT, 'frames');
-  const count = fs.existsSync(dir) ? fs.readdirSync(dir).filter(f => /^f\d{5}\.jpg$/.test(f)).length : 0;
-  if (!count || !fs.existsSync(path.join(dir, 'f00000.jpg'))) {
-    throw new Error(`no frames to encode in ${dir}: ${count ? 'the first one, f00000.jpg, is missing' : 'it is empty or not there'}` +
-      (fs.existsSync(`${dir}.previous`) ? `; the recording before the last one is in ${dir}.previous` : ''));
+  const directory = path.join(OUT, 'frames');
+  const count = fs.existsSync(directory) ? fs.readdirSync(directory).filter(f => /^f\d{5}\.jpg$/.test(f)).length : 0;
+  if (!count || !fs.existsSync(path.join(directory, 'f00000.jpg'))) {
+    throw new Error(`no frames to encode in ${directory}: ${count ? 'the first one, f00000.jpg, is missing' : 'it is empty or not there'}` +
+      (fs.existsSync(`${directory}.previous`) ? `; the recording before the last one is in ${directory}.previous` : ''));
   }
   const meta = path.join(OUT, 'recording.json');
   await encode(fs.existsSync(meta) ? JSON.parse(fs.readFileSync(meta, 'utf8'))
@@ -830,9 +830,9 @@ if (ARGS.encode) {
 // ------------------------------------------------------------------ the plan
 
 for (const name of SCENES) {
-  for (const st of CONFIG.scenes[name]) if (!actions[st.do]) throw new Error(`${name}: no action called ${st.do}`);
+  for (const step of CONFIG.scenes[name]) if (!actions[step.do]) throw new Error(`${name}: no action called ${step.do}`);
 }
-const lengthOf = name => CONFIG.scenes[name].reduce((s, st) => s + Math.round(actions[st.do].length(st) * FPS), 0);
+const lengthOf = name => CONFIG.scenes[name].reduce((s, step) => s + Math.round(actions[step.do].length(step) * FPS), 0);
 let planned = Math.max(1, SCENES.reduce((sum, name) => sum + lengthOf(name), 0));
 if (ARGS.plan) {
   for (const name of SCENES) console.log(`${name.padEnd(10)} ${String(lengthOf(name)).padStart(5)} frames  ${(lengthOf(name) / FPS).toFixed(1).padStart(5)} s`);
@@ -853,16 +853,16 @@ if (fs.existsSync(frames) && fs.readdirSync(frames).length) {
 }
 fs.rmSync(frames, { recursive: true, force: true });
 fs.mkdirSync(frames, { recursive: true });
-const url = await serve(BIN, SERVED, writeReports(tempDir()));
+const url = await serve(BIN, SERVED, writeReports(temporaryDirectory()));
 
 let browser = await launch();
 const ctx = await browser.newContext({ viewport: VIEW, deviceScaleFactor: SCALE });
 // The director's handle: app.js keeps the walker and the rest in module scope, so the
 // copy served to this browser also exports them. Nothing else about it changes.
 await ctx.route('**/app.js*', async route => {
-  const res = await route.fetch();
-  const body = await res.text();
-  await route.fulfill({ response: res, body: `${body}
+  const response = await route.fetch();
+  const body = await response.text();
+  await route.fulfill({ response: response, body: `${body}
 window.__dh = { get walker() { return walker; }, get bugs() { return bugs; }, get fires() { return fires; },
   get stash() { return stash; }, get scene() { return scene; } };` });
 });
@@ -924,15 +924,15 @@ await ctx.addInitScript(() => {
     // was put last.
     window.__sight = (w, b, at, eye) => {
       if (!b) return null;
-      const dx = b.pos.x - at.x, dz = b.pos.z - at.z;
-      const yaw0 = Math.atan2(-dx, -dz), pitch0 = Math.atan2(b.pos.y + 0.05 - (at.feet + eye), Math.hypot(dx, dz));
+      const dx = b.position.x - at.x, dz = b.position.z - at.z;
+      const yaw0 = Math.atan2(-dx, -dz), pitch0 = Math.atan2(b.position.y + 0.05 - (at.feet + eye), Math.hypot(dx, dz));
       let best = null;
       const look = (yaw, pitch) => {
         w.scene.setWalker(at.x, at.feet, at.z, eye, yaw, pitch);
         w.updateAim();
         if (w.aim.bug !== b) return;
         const q = w.aim.point, e = { x: at.x, y: at.feet + eye, z: at.z };
-        const r = { x: q.x - e.x, y: q.y - e.y, z: q.z - e.z }, c = { x: b.pos.x - e.x, y: b.pos.y + 0.05 - e.y, z: b.pos.z - e.z };
+        const r = { x: q.x - e.x, y: q.y - e.y, z: q.z - e.z }, c = { x: b.position.x - e.x, y: b.position.y + 0.05 - e.y, z: b.position.z - e.z };
         const rr = r.x * r.x + r.y * r.y + r.z * r.z || 1, u = (c.x * r.x + c.y * r.y + c.z * r.z) / rr;
         const miss = Math.hypot(c.x - r.x * u, c.y - r.y * u, c.z - r.z * u);
         if (!best || miss < best.miss) best = { yaw, pitch, miss };
@@ -947,15 +947,15 @@ await ctx.addInitScript(() => {
     };
     // A crossfade: a still of the frame before, over everything but the caption and
     // the pointer, fading out on the page's clock (choose with fade).
-    window.__fade = (src, ms) => {
+    window.__fade = (source, ms) => {
       document.getElementById('promo-fade')?.remove();
-      const img = document.createElement('img');
-      img.id = 'promo-fade';
-      img.src = src;
-      img.dataset.born = String(performance.now());
-      img.dataset.ms = String(ms);
-      img.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;object-fit:cover;z-index:99998;pointer-events:none';
-      document.body.appendChild(img);
+      const image = document.createElement('img');
+      image.id = 'promo-fade';
+      image.src = source;
+      image.dataset.born = String(performance.now());
+      image.dataset.ms = String(ms);
+      image.style.cssText = 'position:fixed;inset:0;width:100vw;height:100vh;object-fit:cover;z-index:99998;pointer-events:none';
+      document.body.appendChild(image);
     };
     const tick = () => {
       const fade = document.getElementById('promo-fade');
@@ -1080,7 +1080,7 @@ async function clickAt(sel, s = 0.7) {
   await frame(() => page.mouse.up());
 }
 async function typeSlowly(text) {
-  for (const ch of text) { await frame(() => page.keyboard.type(ch)); await frame(); }
+  for (const character of text) { await frame(() => page.keyboard.type(character)); await frame(); }
 }
 // selectOption and fill wait for stability in animation frames, which never come here.
 const choose = (sel, value) => page.evaluate(({ sel, value }) => {
@@ -1095,14 +1095,14 @@ const choose = (sel, value) => page.evaluate(({ sel, value }) => {
  * whose value is `value`.
  */
 const openList = (sel, value) => page.evaluate(({ sel, value }) => {
-  const el = document.querySelector(sel), r = el.getBoundingClientRect(), cs = getComputedStyle(el);
+  const el = document.querySelector(sel), r = el.getBoundingClientRect(), computedStyle = getComputedStyle(el);
   document.getElementById('promo-list')?.remove();
   const list = document.createElement('div');
   list.id = 'promo-list';
   const row = Math.max(22, r.height - 4);
-  const bg = cs.backgroundColor && cs.backgroundColor !== 'rgba(0, 0, 0, 0)' ? cs.backgroundColor : '#fff';
+  const bg = computedStyle.backgroundColor && computedStyle.backgroundColor !== 'rgba(0, 0, 0, 0)' ? computedStyle.backgroundColor : '#fff';
   list.style.cssText = `position:fixed;left:${r.left}px;top:${r.bottom + 2}px;min-width:${r.width}px;z-index:2147483600;`
-    + `background:${bg};color:${cs.color};font:${cs.font};border:1px solid rgba(127,127,127,.45);border-radius:6px;`
+    + `background:${bg};color:${computedStyle.color};font:${computedStyle.font};border:1px solid rgba(127,127,127,.45);border-radius:6px;`
     + 'box-shadow:0 8px 24px rgba(0,0,0,.28);padding:4px 0;overflow:hidden';
   const style = document.createElement('style');
   style.textContent = '#promo-list div{padding:0 12px 0 22px;white-space:nowrap;position:relative}'
@@ -1123,7 +1123,7 @@ const openList = (sel, value) => page.evaluate(({ sel, value }) => {
   const b = want.getBoundingClientRect();
   return { x: b.left + Math.min(b.width / 2, 60), y: b.top + b.height / 2 };
 }, { sel, value });
-const caption = (text, sub = '') => page.evaluate(({ text, sub }) => {
+const caption = (text, subtitle = '') => page.evaluate(({ text, subtitle }) => {
   let el = document.getElementById('promo-cap');
   if (!el) {
     el = document.createElement('div');
@@ -1134,11 +1134,11 @@ const caption = (text, sub = '') => page.evaluate(({ text, sub }) => {
   el.style.cssText = `position:fixed;left:50%;bottom:${30 * k}px;transform:translateX(-50%);z-index:99999;` +
     `background:rgba(15,23,42,.86);color:#f8fafc;font:600 ${26 * k}px/1.25 system-ui,sans-serif;padding:${13 * k}px ${26 * k}px;` +
     `border-radius:${14 * k}px;box-shadow:0 8px 30px rgba(0,0,0,.35);text-align:center;pointer-events:none;max-width:${1000 * k}px`;
-  el.innerHTML = text + (sub ? `<div style="font:400 ${17 * k}px/1.4 system-ui,sans-serif;color:#cbd5e1;margin-top:4px">${sub}</div>` : '');
+  el.innerHTML = text + (subtitle ? `<div style="font:400 ${17 * k}px/1.4 system-ui,sans-serif;color:#cbd5e1;margin-top:4px">${subtitle}</div>` : '');
   el.style.display = text ? 'block' : 'none';
-}, { text, sub });
+}, { text, subtitle });
 /** Runs fn(dh, arg) in the page, where dh holds the walker, the bugs, the fires and the stash. */
-const dh = (fn, arg = null) => page.evaluate(`(${fn})(window.__dh, ${JSON.stringify(arg)})`);
+const dh = (script, argument = null) => page.evaluate(`(${script})(window.__dh, ${JSON.stringify(argument)})`);
 const hideCursor = on => page.evaluate(on => { window.__hideCursor = on; }, on);
 const overlays = (targets, off) => page.evaluate(({ targets, off }) => {
   const hidden = (window.__hidden ??= new Set());
@@ -1186,7 +1186,7 @@ say(`recording ${SCENES.join(', ')}: about ${planned} frames, ${(planned / FPS).
 for (const name of SCENES) {
   scene = name;
   say(`scene ${name} (from frame ${n})`);
-  for (const st of CONFIG.scenes[name]) await actions[st.do].run(st);
+  for (const step of CONFIG.scenes[name]) await actions[step.do].run(step);
 }
 progress(true);
 console.log(`done: ${n} frames = ${(n / FPS).toFixed(1)} s at ${FPS} fps`);

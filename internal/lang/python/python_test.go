@@ -18,8 +18,8 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 
 // Verifies: REQ-PY-001, REQ-PY-002, REQ-PY-003, REQ-PY-005, REQ-PY-006, REQ-PY-007, REQ-PY-009, REQ-PY-010, REQ-PY-013
 func TestImportResolution(t *testing.T) {
-	res := analyze(t)
-	langtest.CheckImports(t, res["src/app/main.py"], map[string]lang.Target{
+	results := analyze(t)
+	langtest.CheckImports(t, results["src/app/main.py"], map[string]lang.Target{
 		"from __future__ import annotations": {Ecosystem: "python-std", Package: "__future__"},
 		"os":                                 {Ecosystem: "python-std", Package: "os"},
 		"os.path":                            {Ecosystem: "python-std", Package: "os"},
@@ -45,8 +45,8 @@ func TestImportResolution(t *testing.T) {
 // Verifies: REQ-PY-004
 func TestScriptDirectoryImports(t *testing.T) {
 	got := map[string]lang.Target{}
-	for _, im := range analyze(t)["scripts/tool.py"].Imports {
-		got[im.Spec] = im.Target
+	for _, imported := range analyze(t)["scripts/tool.py"].Imports {
+		got[imported.Spec] = imported.Target
 	}
 	if got["sibling"] != (lang.Target{Local: "scripts/sibling.py"}) {
 		t.Errorf("sibling: %+v", got["sibling"])
@@ -74,9 +74,9 @@ func TestSymbols(t *testing.T) {
 
 // Verifies: REQ-PY-011, REQ-PY-012
 func TestSetuptoolsManifests(t *testing.T) {
-	pypi := func(pkg, version string) lang.Target {
+	pypi := func(packageName, version string) lang.Target {
 		// "==" pins, everything else these manifests write is a lower bound.
-		return lang.Target{Ecosystem: "pypi", Package: pkg, Version: version, Pinned: lang.Pinned(version)}
+		return lang.Target{Ecosystem: "pypi", Package: packageName, Version: version, Pinned: lang.Pinned(version)}
 	}
 	langtest.CheckImports(t, langtest.Analyze(t, Plugin{}, "testdata/setuptools")["pkg/app.py"], map[string]lang.Target{
 		"requests": pypi("requests", ">=2.31"), // setup.cfg, trailing comment dropped
@@ -99,12 +99,12 @@ func TestLockTree(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	tr, ok := r.(lang.Transitive)
+	transitive, ok := r.(lang.Transitive)
 	if !ok {
 		t.Fatal("the resolver cannot answer for transitive dependencies")
 	}
 	got := map[string]lang.Target{}
-	for _, d := range tr.Dependencies(lang.Target{Ecosystem: "pypi", Package: "requests"}) {
+	for _, d := range transitive.Dependencies(lang.Target{Ecosystem: "pypi", Package: "requests"}) {
 		got[d.Package] = d
 	}
 	if len(got) != 2 {
@@ -171,12 +171,12 @@ func TestPipfile(t *testing.T) {
 // environment - a virtual environment with a distribution installed from a local
 // directory, one declared and installed editable, one from an index, and two from a
 // Git repository sharing the google namespace.
-const envInterpreter = "testdata/env/python/bin/python3.12"
+const environmentInterpreter = "testdata/env/python/bin/python3.12"
 
 // Verifies: REQ-PY-015
 func TestInstalledPackagesNoIndexHas(t *testing.T) {
-	res := langtest.Analyze(t, Plugin{Interpreter: envInterpreter}, "testdata/env/repo")
-	langtest.CheckImports(t, res["app.py"], map[string]lang.Target{
+	results := langtest.Analyze(t, Plugin{Interpreter: environmentInterpreter}, "testdata/env/repo")
+	langtest.CheckImports(t, results["app.py"], map[string]lang.Target{
 		"acme":                 {Ecosystem: "pypi", Package: "acme-core", Version: "1.4.0", Origin: "file:///home/me/src/acme-core"},
 		"acme.ledger":          {Ecosystem: "pypi", Package: "acme-core", Version: "1.4.0", Origin: "file:///home/me/src/acme-core"},
 		"billing":              {Ecosystem: "pypi", Package: "acme-billing", Version: "0.3.0", Origin: "file:///home/me/src/acme-billing"},
@@ -199,7 +199,7 @@ func TestInstalledPackagesNoIndexHas(t *testing.T) {
 
 // Verifies: REQ-PY-015
 func TestInstalledDependencies(t *testing.T) {
-	r, err := (Plugin{Interpreter: envInterpreter}).Resolver("testdata/env/repo", langtest.Files(t, "testdata/env/repo"))
+	r, err := (Plugin{Interpreter: environmentInterpreter}).Resolver("testdata/env/repo", langtest.Files(t, "testdata/env/repo"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -224,8 +224,8 @@ func TestInstalledDependencies(t *testing.T) {
 		}
 	}
 	// One installed from an index is left to the lock files and the indexes.
-	if deps := r.(lang.Transitive).Dependencies(lang.Target{Ecosystem: "pypi", Package: "six"}); deps != nil {
-		t.Errorf("six: %+v, want nothing from the environment", deps)
+	if dependencies := r.(lang.Transitive).Dependencies(lang.Target{Ecosystem: "pypi", Package: "six"}); dependencies != nil {
+		t.Errorf("six: %+v, want nothing from the environment", dependencies)
 	}
 	// ... and the report is told which answers came from the environment.
 	in := r.(lang.Installed)
@@ -242,27 +242,27 @@ func TestFindEnvironment(t *testing.T) {
 	}
 	// An activated virtual environment.
 	active, _ := filepath.Abs("testdata/env/python")
-	env := findEnvironment(root, "", func(k string) string {
+	environment := findEnvironment(root, "", func(k string) string {
 		if k == "VIRTUAL_ENV" {
 			return active
 		}
 		return ""
 	})
-	if env.get("acme-core") == nil {
-		t.Errorf("VIRTUAL_ENV was not read: %+v", env)
+	if environment.get("acme-core") == nil {
+		t.Errorf("VIRTUAL_ENV was not read: %+v", environment)
 	}
 	// The project's own .venv, which includes the system site-packages, and an
 	// editable install through a path file.
 	venv := filepath.Join(root, ".venv")
 	base := filepath.Join(root, "base")
-	src := filepath.Join(root, "widgets-src")
-	for _, dir := range []string{
+	source := filepath.Join(root, "widgets-src")
+	for _, directory := range []string{
 		filepath.Join(venv, "lib", "python3.11", "site-packages", "widgets-1.0.dist-info"),
 		filepath.Join(base, "lib", "python3.11", "site-packages", "gadgets-2.0.dist-info"),
 		filepath.Join(base, "bin"),
-		filepath.Join(src, "widgets"),
+		filepath.Join(source, "widgets"),
 	} {
-		if err := os.MkdirAll(dir, 0o755); err != nil {
+		if err := os.MkdirAll(directory, 0o755); err != nil {
 			t.Fatal(err)
 		}
 	}
@@ -271,8 +271,8 @@ func TestFindEnvironment(t *testing.T) {
 		filepath.Join(venv, "lib", "python3.11", "site-packages", "widgets-1.0.dist-info", "METADATA"):        "Name: widgets\nVersion: 1.0\n",
 		filepath.Join(venv, "lib", "python3.11", "site-packages", "widgets-1.0.dist-info", "RECORD"):          "__editable__.widgets-1.0.pth,,\n",
 		filepath.Join(venv, "lib", "python3.11", "site-packages", "widgets-1.0.dist-info", "direct_url.json"): `{"url": "file:///src/widgets", "dir_info": {"editable": true}}`,
-		filepath.Join(venv, "lib", "python3.11", "site-packages", "__editable__.widgets-1.0.pth"):             src + "\n",
-		filepath.Join(src, "widgets", "__init__.py"):                                                          "",
+		filepath.Join(venv, "lib", "python3.11", "site-packages", "__editable__.widgets-1.0.pth"):             source + "\n",
+		filepath.Join(source, "widgets", "__init__.py"):                                                       "",
 		filepath.Join(base, "lib", "python3.11", "site-packages", "gadgets-2.0.dist-info", "METADATA"):        "Name: gadgets\nVersion: 2.0\n",
 		filepath.Join(base, "lib", "python3.11", "site-packages", "gadgets-2.0.dist-info", "top_level.txt"):   "gadgets\n",
 		filepath.Join(base, "lib", "python3.11", "site-packages", "gadgets-2.0.dist-info", "direct_url.json"): `{"url": "https://files.corp.example/gadgets-2.0.whl", "archive_info": {}}`,
@@ -282,11 +282,11 @@ func TestFindEnvironment(t *testing.T) {
 			t.Fatal(err)
 		}
 	}
-	env = findEnvironment(root, "", nil)
-	if d := env.provider([]string{"widgets"}); d == nil || d.origin != "file:///src/widgets" {
+	environment = findEnvironment(root, "", nil)
+	if d := environment.provider([]string{"widgets"}); d == nil || d.origin != "file:///src/widgets" {
 		t.Errorf("the editable install through a path file: %+v", d)
 	}
-	if d := env.provider([]string{"gadgets", "sub"}); d == nil || d.version != "2.0" {
+	if d := environment.provider([]string{"gadgets", "sub"}); d == nil || d.version != "2.0" {
 		t.Errorf("the base interpreter's site-packages: %+v", d)
 	}
 }

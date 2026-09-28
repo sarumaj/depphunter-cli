@@ -80,9 +80,9 @@ func Satisfies(version, constraint string) bool {
 	if constraint == "" {
 		return true
 	}
-	for _, alt := range strings.Split(constraint, "|") {
+	for _, alternative := range strings.Split(constraint, "|") {
 		ok := true
-		for _, atom := range strings.Split(alt, "&") {
+		for _, atom := range strings.Split(alternative, "&") {
 			f := strings.Fields(atom)
 			if len(f) != 2 || !ExactVersion(f[1]) || f[1] == "version" {
 				continue

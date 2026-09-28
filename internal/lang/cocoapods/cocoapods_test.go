@@ -13,7 +13,7 @@ import (
 //
 // Verifies: REQ-OBJC-009
 func TestPinningRule(t *testing.T) {
-	for reqs, want := range map[string]lang.Target{
+	for requirements, want := range map[string]lang.Target{
 		"1.2.3":          {Version: "1.2.3", Pinned: true},
 		"= 1.2.3":        {Version: "1.2.3", Pinned: true},
 		"~> 1.2":         {Version: "~> 1.2", Floating: true},
@@ -23,9 +23,9 @@ func TestPinningRule(t *testing.T) {
 		"= 1.2, = 1.2.3": {Version: "= 1.2, = 1.2.3", Floating: true},
 	} {
 		var got lang.Target
-		requirement(&got, reqs)
+		requirement(&got, requirements)
 		if got != want {
-			t.Errorf("%q: %+v, want %+v", reqs, got, want)
+			t.Errorf("%q: %+v, want %+v", requirements, got, want)
 		}
 	}
 	for _, c := range []struct {
@@ -72,7 +72,7 @@ func TestPodMatches(t *testing.T) {
 //
 // Verifies: REQ-OBJC-007, REQ-OBJC-010, REQ-OBJC-011
 func TestManifests(t *testing.T) {
-	pf := readPodfile(`source "https://cdn.cocoapods.org/" # the CDN
+	podfile := readPodfile(`source "https://cdn.cocoapods.org/" # the CDN
 pod 'A', '~> 1.0', '< 1.5'
 pod "B/Sub", :git => "https://x/b.git", :tag => 'v2' # comment 'quoted'
 pod('C',
@@ -80,18 +80,18 @@ pod('C',
 pod "D#{suffix}"
 podspec
 `)
-	if !reflect.DeepEqual(pf.sources, []string{"https://cdn.cocoapods.org/"}) {
-		t.Errorf("sources %v", pf.sources)
+	if !reflect.DeepEqual(podfile.sources, []string{"https://cdn.cocoapods.org/"}) {
+		t.Errorf("sources %v", podfile.sources)
 	}
-	want := []*decl{
-		{name: "A", reqs: "~> 1.0, < 1.5"},
+	want := []*declaration{
+		{name: "A", requirements: "~> 1.0, < 1.5"},
 		{name: "B/Sub", git: "https://x/b.git", tag: "v2"},
 		{name: "C", path: "../c"},
 	}
-	if !reflect.DeepEqual(pf.pods, want) {
-		t.Errorf("pods %+v", pf.pods)
+	if !reflect.DeepEqual(podfile.pods, want) {
+		t.Errorf("pods %+v", podfile.pods)
 	}
-	if lines := []int{pf.deps[0].Line, pf.deps[1].Line, pf.deps[2].Line}; !reflect.DeepEqual(lines, []int{2, 3, 4}) {
+	if lines := []int{podfile.dependencies[0].Line, podfile.dependencies[1].Line, podfile.dependencies[2].Line}; !reflect.DeepEqual(lines, []int{2, 3, 4}) {
 		t.Errorf("lines %v", lines)
 	}
 	for kind, source := range map[string]string{

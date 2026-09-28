@@ -11,21 +11,21 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/lang"
 )
 
-// dep is a module a Puppetfile, a metadata.json or a .fixtures.yml names.
-type dep struct {
-	key      string // unique within its file: what the manifest's import carries
-	name     string // the module's short name: stdlib
-	pkg      string // the package: a Forge slug (puppetlabs-stdlib) or a repository
-	version  string
-	pinned   bool
-	floating bool
-	origin   string // the git URL of a module installed from git
-	forge    bool   // pkg is a Forge slug
-	line     int
+// dependency is a module a Puppetfile, a metadata.json or a .fixtures.yml names.
+type dependency struct {
+	key         string // unique within its file: what the manifest's import carries
+	name        string // the module's short name: stdlib
+	packageName string // the package: a Forge slug (puppetlabs-stdlib) or a repository
+	version     string
+	pinned      bool
+	floating    bool
+	origin      string // the git URL of a module installed from git
+	forge       bool   // packageName is a Forge slug
+	line        int
 }
 
-func (d *dep) target() lang.Target {
-	return lang.Target{Ecosystem: ecoForge, Package: d.pkg, Version: d.version, Pinned: d.pinned, Floating: d.floating, Origin: d.origin}
+func (d *dependency) target() lang.Target {
+	return lang.Target{Ecosystem: ecosystemForge, Package: d.packageName, Version: d.version, Pinned: d.pinned, Floating: d.floating, Origin: d.origin}
 }
 
 // slug is the Forge's name for a module: author-name, lower case
@@ -43,21 +43,21 @@ func short(s string) string {
 	return s
 }
 
-// gitRef pins a commit (a full or abbreviated hash), leaves a tag - a
+// gitReference pins a commit (a full or abbreviated hash), leaves a tag - a
 // version - neither pinned nor floating, and floats a branch.
-func gitRef(d *dep, ref string) {
-	d.version = ref
+func gitReference(d *dependency, reference string) {
+	d.version = reference
 	switch {
-	case ref == "":
+	case reference == "":
 		d.floating = true
-	case hexRef(ref):
+	case hexReference(reference):
 		d.pinned = true
-	case !lang.Pinned(ref):
+	case !lang.Pinned(reference):
 		d.floating = true
 	}
 }
 
-func hexRef(s string) bool {
+func hexReference(s string) bool {
 	if len(s) < 7 || len(s) > 40 {
 		return false
 	}
@@ -76,8 +76,8 @@ func hexRef(s string) bool {
 // puppetfile is what an r10k (or Code Manager, g10k, librarian-puppet)
 // Puppetfile declares.
 type puppetfile struct {
-	deps      []*dep
-	moduledir string // where the modules are installed, relative to the Puppetfile
+	dependencies    []*dependency
+	moduleDirectory string // where the modules are installed, relative to the Puppetfile
 }
 
 // readPuppetfile reads a Puppetfile's `mod` and `moduledir` statements. A
@@ -87,26 +87,26 @@ type puppetfile struct {
 // the repository.
 //
 // Implements: REQ-PUPPET-005
-func readPuppetfile(src []byte) *puppetfile {
-	pf := &puppetfile{moduledir: "modules"}
-	for _, st := range rubyStatements(src) {
-		if len(st) < 2 || st[0].kind != rIdent || st[1].kind != rString {
+func readPuppetfile(source []byte) *puppetfile {
+	parsed := &puppetfile{moduleDirectory: "modules"}
+	for _, statement := range rubyStatements(source) {
+		if len(statement) < 2 || statement[0].kind != rIdentifier || statement[1].kind != rString {
 			continue
 		}
-		switch st[0].text {
+		switch statement[0].text {
 		case "moduledir":
-			pf.moduledir = strings.Trim(st[1].text, "/")
+			parsed.moduleDirectory = strings.Trim(statement[1].text, "/")
 			continue
 		case "mod":
 		default:
 			continue
 		}
-		name := st[1].text
-		d := &dep{key: name, name: short(name), line: st[1].line}
-		opts := map[string]string{}
+		name := statement[1].text
+		d := &dependency{key: name, name: short(name), line: statement[1].line}
+		options := map[string]string{}
 		version, latest := "", false
-		for i := 2; i < len(st); i++ {
-			switch t := st[i]; {
+		for i := 2; i < len(statement); i++ {
+			switch t := statement[i]; {
 			case t.kind == rString && i == 3:
 				version = t.text
 			case t.kind == rSymbol && i == 3 && t.text == "latest":
@@ -114,63 +114,63 @@ func readPuppetfile(src []byte) *puppetfile {
 			case t.kind == rSymbol || t.kind == rLabel:
 				// :key => value or key: value
 				j := i + 1
-				if j < len(st) && st[j].kind == rArrow {
+				if j < len(statement) && statement[j].kind == rArrow {
 					j++
 				}
-				if j < len(st) && (st[j].kind == rString || st[j].kind == rSymbol || st[j].kind == rIdent) {
-					opts[t.text] = st[j].text
+				if j < len(statement) && (statement[j].kind == rString || statement[j].kind == rSymbol || statement[j].kind == rIdentifier) {
+					options[t.text] = statement[j].text
 					i = j
 				}
 			}
 		}
 		switch {
-		case opts["local"] == "true":
+		case options["local"] == "true":
 			continue
-		case opts["git"] != "" || opts["svn"] != "":
-			url := opts["git"] + opts["svn"]
-			d.pkg, d.origin = lang.RepoName(url), url
+		case options["git"] != "" || options["svn"] != "":
+			url := options["git"] + options["svn"]
+			d.packageName, d.origin = lang.RepositoryName(url), url
 			switch {
-			case opts["commit"] != "":
-				d.version, d.pinned = opts["commit"], true
-			case opts["tag"] != "":
-				d.version = opts["tag"]
-			case opts["branch"] != "":
-				d.version, d.floating = opts["branch"], true
-			case opts["rev"] != "": // svn
-				d.version, d.pinned = opts["rev"], true
+			case options["commit"] != "":
+				d.version, d.pinned = options["commit"], true
+			case options["tag"] != "":
+				d.version = options["tag"]
+			case options["branch"] != "":
+				d.version, d.floating = options["branch"], true
+			case options["rev"] != "": // svn
+				d.version, d.pinned = options["rev"], true
 			default:
-				gitRef(d, opts["ref"])
+				gitReference(d, options["ref"])
 			}
 			if d.version == "control_branch" {
 				d.pinned = false
 				d.floating = true
 			}
 		default:
-			d.pkg, d.forge = slug(name), true
+			d.packageName, d.forge = slug(name), true
 			if version == "" {
-				version = opts["version"]
+				version = options["version"]
 			}
 			d.version = version
 			d.pinned = !latest && lang.Pinned(version)
 			d.floating = !d.pinned
 		}
-		pf.deps = append(pf.deps, d)
+		parsed.dependencies = append(parsed.dependencies, d)
 	}
-	return pf
+	return parsed
 }
 
 type rKind uint8
 
 const (
-	rIdent rKind = iota
+	rIdentifier rKind = iota
 	rString
 	rSymbol // :git
 	rLabel  // git: (keyword argument)
 	rArrow  // =>
-	rPunct
+	rPunctuation
 )
 
-type rTok struct {
+type rToken struct {
 	kind rKind
 	text string
 	line int
@@ -178,15 +178,15 @@ type rTok struct {
 
 // rubyStatements splits the Ruby of a Puppetfile into statements: a line
 // ending in a comma, an arrow or an open bracket continues on the next.
-func rubyStatements(src []byte) [][]rTok {
-	s := string(src)
-	var out [][]rTok
-	var cur []rTok
+func rubyStatements(source []byte) [][]rToken {
+	s := string(source)
+	var out [][]rToken
+	var current []rToken
 	line, depth := 1, 0
 	flush := func() {
-		if len(cur) > 0 {
-			out = append(out, cur)
-			cur = nil
+		if len(current) > 0 {
+			out = append(out, current)
+			current = nil
 		}
 	}
 	for i := 0; i < len(s); {
@@ -195,7 +195,7 @@ func rubyStatements(src []byte) [][]rTok {
 		case c == '\n':
 			line++
 			i++
-			if depth <= 0 && (len(cur) == 0 || cur[len(cur)-1].kind != rArrow && (cur[len(cur)-1].kind != rPunct || cur[len(cur)-1].text != ",")) {
+			if depth <= 0 && (len(current) == 0 || current[len(current)-1].kind != rArrow && (current[len(current)-1].kind != rPunctuation || current[len(current)-1].text != ",")) {
 				flush()
 			}
 		case c == '#':
@@ -214,14 +214,14 @@ func rubyStatements(src []byte) [][]rTok {
 				}
 				b.WriteByte(s[j])
 			}
-			cur = append(cur, rTok{rString, b.String(), line})
+			current = append(current, rToken{rString, b.String(), line})
 			i = min(j+1, len(s))
 		case c == ':' && isWord(at(s, i+1)):
 			j := i + 1
 			for j < len(s) && isWord(s[j]) {
 				j++
 			}
-			cur = append(cur, rTok{rSymbol, s[i+1 : j], line})
+			current = append(current, rToken{rSymbol, s[i+1 : j], line})
 			i = j
 		case isWord(c):
 			j := i
@@ -229,14 +229,14 @@ func rubyStatements(src []byte) [][]rTok {
 				j++
 			}
 			if at(s, j) == ':' && at(s, j+1) != ':' {
-				cur = append(cur, rTok{rLabel, s[i:j], line})
+				current = append(current, rToken{rLabel, s[i:j], line})
 				i = j + 1
 				continue
 			}
-			cur = append(cur, rTok{rIdent, s[i:j], line})
+			current = append(current, rToken{rIdentifier, s[i:j], line})
 			i = j
 		case c == '=' && at(s, i+1) == '>':
-			cur = append(cur, rTok{rArrow, "=>", line})
+			current = append(current, rToken{rArrow, "=>", line})
 			i += 2
 		case c == ' ' || c == '\t' || c == '\r':
 			i++
@@ -247,7 +247,7 @@ func rubyStatements(src []byte) [][]rTok {
 			case ')', ']', '}':
 				depth--
 			}
-			cur = append(cur, rTok{rPunct, string(c), line})
+			current = append(current, rToken{rPunctuation, string(c), line})
 			i++
 		}
 	}
@@ -257,10 +257,10 @@ func rubyStatements(src []byte) [][]rTok {
 
 // metadata is what a Puppet module's metadata.json says of it.
 type metadata struct {
-	name    string // author-name
-	version string
-	deps    []*dep
-	line    int
+	name         string // author-name
+	version      string
+	dependencies []*dependency
+	line         int
 }
 
 var moduleName = regexp.MustCompile(`^[A-Za-z0-9]+[-/][a-z][a-z0-9_]*$`)
@@ -272,7 +272,7 @@ var moduleName = regexp.MustCompile(`^[A-Za-z0-9]+[-/][a-z][a-z0-9_]*$`)
 // floats; an exact version pins.
 //
 // Implements: REQ-PUPPET-005
-func readMetadata(src []byte) *metadata {
+func readMetadata(source []byte) *metadata {
 	var raw struct {
 		Name         string          `json:"name"`
 		Version      string          `json:"version"`
@@ -284,50 +284,50 @@ func readMetadata(src []byte) *metadata {
 			Version string `json:"version_requirement"`
 		} `json:"dependencies"`
 	}
-	if json.Unmarshal(src, &raw) != nil || !moduleName.MatchString(raw.Name) {
+	if json.Unmarshal(source, &raw) != nil || !moduleName.MatchString(raw.Name) {
 		return nil
 	}
 	if raw.Dependencies == nil && raw.Support == nil && raw.Source == "" && raw.Requirements == nil {
 		return nil
 	}
-	m := &metadata{name: slug(raw.Name), version: raw.Version, line: lineOf(src, raw.Name, 0)}
+	m := &metadata{name: slug(raw.Name), version: raw.Version, line: lineOf(source, raw.Name, 0)}
 	from := 0
 	for _, d := range raw.Dependencies {
 		if !moduleName.MatchString(d.Name) {
 			continue
 		}
-		line := lineOf(src, d.Name, from)
-		from = max(from, bytes.Index(src, []byte(`"`+d.Name+`"`)))
+		line := lineOf(source, d.Name, from)
+		from = max(from, bytes.Index(source, []byte(`"`+d.Name+`"`)))
 		v := strings.TrimSpace(d.Version)
 		pinned := lang.Pinned(v)
-		m.deps = append(m.deps, &dep{key: slug(d.Name), name: short(d.Name), pkg: slug(d.Name), version: v, pinned: pinned, floating: !pinned, forge: true, line: line})
+		m.dependencies = append(m.dependencies, &dependency{key: slug(d.Name), name: short(d.Name), packageName: slug(d.Name), version: v, pinned: pinned, floating: !pinned, forge: true, line: line})
 	}
 	return m
 }
 
 // lineOf is the line of the first quoted s at or after byte from.
-func lineOf(src []byte, s string, from int) int {
+func lineOf(source []byte, s string, from int) int {
 	from = max(from, 0)
-	i := bytes.Index(src[from:], []byte(`"`+s+`"`))
+	i := bytes.Index(source[from:], []byte(`"`+s+`"`))
 	if i < 0 {
 		return 1
 	}
-	return 1 + bytes.Count(src[:from+i], []byte("\n"))
+	return 1 + bytes.Count(source[:from+i], []byte("\n"))
 }
 
 // readFixtures reads puppetlabs_spec_helper's .fixtures.yml: the modules its
 // forge_modules and repositories install for the module's tests (a string,
-// or a map with repo, ref and branch). A Forge module pins by an exact ref;
+// or a map with repository, reference and branch). A Forge module pins by an exact reference;
 // a repository as a Puppetfile's git :ref does, and floats on a branch.
 //
 // Implements: REQ-PUPPET-005
-func readFixtures(src []byte) []*dep {
+func readFixtures(source []byte) []*dependency {
 	var doc yaml.Node
-	if yaml.Unmarshal(src, &doc) != nil || len(doc.Content) == 0 {
+	if yaml.Unmarshal(source, &doc) != nil || len(doc.Content) == 0 {
 		return nil
 	}
 	fixtures := mapValue(doc.Content[0], "fixtures")
-	var out []*dep
+	var out []*dependency
 	for _, section := range []string{"forge_modules", "repositories"} {
 		m := mapValue(fixtures, section)
 		if m == nil || m.Kind != yaml.MappingNode {
@@ -335,26 +335,26 @@ func readFixtures(src []byte) []*dep {
 		}
 		for i := 0; i+1 < len(m.Content); i += 2 {
 			k, v := m.Content[i], m.Content[i+1]
-			repo, ref, branch := v.Value, "", ""
+			repository, reference, branch := v.Value, "", ""
 			if v.Kind == yaml.MappingNode {
-				repo = mapValue(v, "repo").Value
-				ref = mapValue(v, "ref").Value
+				repository = mapValue(v, "repo").Value
+				reference = mapValue(v, "ref").Value
 				branch = mapValue(v, "branch").Value
 			}
-			if repo == "" {
+			if repository == "" {
 				continue
 			}
-			d := &dep{key: section + ":" + k.Value, name: strings.ToLower(k.Value), line: k.Line}
+			d := &dependency{key: section + ":" + k.Value, name: strings.ToLower(k.Value), line: k.Line}
 			if section == "forge_modules" {
-				d.pkg, d.forge, d.version = slug(repo), true, ref
-				d.pinned = lang.Pinned(ref)
+				d.packageName, d.forge, d.version = slug(repository), true, reference
+				d.pinned = lang.Pinned(reference)
 				d.floating = !d.pinned
 			} else {
-				d.pkg, d.origin = lang.RepoName(repo), repo
-				if branch != "" && ref == "" {
+				d.packageName, d.origin = lang.RepositoryName(repository), repository
+				if branch != "" && reference == "" {
 					d.version, d.floating = branch, true
 				} else {
-					gitRef(d, ref)
+					gitReference(d, reference)
 				}
 			}
 			out = append(out, d)

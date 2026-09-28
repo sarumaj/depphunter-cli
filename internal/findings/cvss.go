@@ -41,26 +41,26 @@ func scoreCVSS(vector string) (float64, bool) {
 	i, ok5 := impact[m["I"]]
 	a, ok6 := impact[m["A"]]
 	changed := m["S"] == "C"
-	pr, ok7 := privilegesUnscoped[m["PR"]]
+	privileges, ok7 := privilegesUnscoped[m["PR"]]
 	if changed {
-		pr, ok7 = privilegesScoped[m["PR"]]
+		privileges, ok7 = privilegesScoped[m["PR"]]
 	}
 	if !(ok1 && ok2 && ok3 && ok4 && ok5 && ok6 && ok7) || (m["S"] != "C" && m["S"] != "U") {
 		return 0, false
 	}
 
 	iss := 1 - (1-c)*(1-i)*(1-a)
-	var imp float64
+	var impact float64
 	if changed {
-		imp = 7.52*(iss-0.029) - 3.25*math.Pow(iss-0.02, 15)
+		impact = 7.52*(iss-0.029) - 3.25*math.Pow(iss-0.02, 15)
 	} else {
-		imp = 6.42 * iss
+		impact = 6.42 * iss
 	}
-	if imp <= 0 {
+	if impact <= 0 {
 		return 0, true
 	}
-	exp := 8.22 * av * ac * pr * ui
-	score := imp + exp
+	exp := 8.22 * av * ac * privileges * ui
+	score := impact + exp
 	if changed {
 		score *= 1.08
 	}

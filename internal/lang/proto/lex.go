@@ -5,17 +5,17 @@ package proto
 // Protocol Buffers' grammar is small and regular, so a scanner is all the plugin needs
 // (REQ-PROTO-009).
 
-type tokKind int
+type tokenKind int
 
 const (
-	tIdent tokKind = iota
+	tIdentifier tokenKind = iota
 	tString
 	tNumber
-	tPunct
+	tPunctuation
 )
 
-type tok struct {
-	kind tokKind
+type token struct {
+	kind tokenKind
 	text string // an identifier, a number, a punctuation character or a string's value
 	line int
 }
@@ -26,32 +26,32 @@ func isLetter(c byte) bool {
 
 func isDigit(c byte) bool { return c >= '0' && c <= '9' }
 
-// lex splits src into tokens. It never fails: an unterminated string or comment ends
+// lex splits source into tokens. It never fails: an unterminated string or comment ends
 // at the end of the file.
 //
 // Implements: REQ-PROTO-009
-func lex(src []byte) []tok {
-	var tokens []tok
+func lex(source []byte) []token {
+	var tokens []token
 	line := 1
-	if len(src) >= 3 && src[0] == 0xEF && src[1] == 0xBB && src[2] == 0xBF {
-		src = src[3:] // a byte order mark
+	if len(source) >= 3 && source[0] == 0xEF && source[1] == 0xBB && source[2] == 0xBF {
+		source = source[3:] // a byte order mark
 	}
-	for i := 0; i < len(src); {
-		c := src[i]
+	for i := 0; i < len(source); {
+		c := source[i]
 		switch {
 		case c == '\n':
 			line++
 			i++
 		case c == ' ' || c == '\t' || c == '\r' || c == '\f' || c == '\v':
 			i++
-		case c == '/' && i+1 < len(src) && src[i+1] == '/':
-			for i < len(src) && src[i] != '\n' {
+		case c == '/' && i+1 < len(source) && source[i+1] == '/':
+			for i < len(source) && source[i] != '\n' {
 				i++
 			}
-		case c == '/' && i+1 < len(src) && src[i+1] == '*':
+		case c == '/' && i+1 < len(source) && source[i+1] == '*':
 			i += 2
-			for i < len(src) && !(src[i] == '*' && i+1 < len(src) && src[i+1] == '/') {
-				if src[i] == '\n' {
+			for i < len(source) && !(source[i] == '*' && i+1 < len(source) && source[i+1] == '/') {
+				if source[i] == '\n' {
 					line++
 				}
 				i++
@@ -61,39 +61,39 @@ func lex(src []byte) []tok {
 			start := line
 			var b []byte
 			i++
-			for i < len(src) && src[i] != c && src[i] != '\n' {
-				if src[i] == '\\' && i+1 < len(src) {
-					switch src[i+1] {
+			for i < len(source) && source[i] != c && source[i] != '\n' {
+				if source[i] == '\\' && i+1 < len(source) {
+					switch source[i+1] {
 					case '"', '\'', '\\':
-						b = append(b, src[i+1])
+						b = append(b, source[i+1])
 					default:
-						b = append(b, src[i], src[i+1])
+						b = append(b, source[i], source[i+1])
 					}
 					i += 2
 					continue
 				}
-				b = append(b, src[i])
+				b = append(b, source[i])
 				i++
 			}
 			i++ // the closing quote
-			tokens = append(tokens, tok{kind: tString, text: string(b), line: start})
+			tokens = append(tokens, token{kind: tString, text: string(b), line: start})
 		case isLetter(c):
 			j := i
-			for j < len(src) && (isLetter(src[j]) || isDigit(src[j])) {
+			for j < len(source) && (isLetter(source[j]) || isDigit(source[j])) {
 				j++
 			}
-			tokens = append(tokens, tok{kind: tIdent, text: string(src[i:j]), line: line})
+			tokens = append(tokens, token{kind: tIdentifier, text: string(source[i:j]), line: line})
 			i = j
 		case isDigit(c):
 			j := i
-			for j < len(src) && (isLetter(src[j]) || isDigit(src[j]) || src[j] == '.' ||
-				((src[j] == '-' || src[j] == '+') && (src[j-1] == 'e' || src[j-1] == 'E'))) {
+			for j < len(source) && (isLetter(source[j]) || isDigit(source[j]) || source[j] == '.' ||
+				((source[j] == '-' || source[j] == '+') && (source[j-1] == 'e' || source[j-1] == 'E'))) {
 				j++
 			}
-			tokens = append(tokens, tok{kind: tNumber, text: string(src[i:j]), line: line})
+			tokens = append(tokens, token{kind: tNumber, text: string(source[i:j]), line: line})
 			i = j
 		default:
-			tokens = append(tokens, tok{kind: tPunct, text: string(c), line: line})
+			tokens = append(tokens, token{kind: tPunctuation, text: string(c), line: line})
 			i++
 		}
 	}

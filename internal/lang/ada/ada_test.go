@@ -31,29 +31,29 @@ import (
 // cache of Alire 2 (testdata/cache) holds two releases of utilada.
 
 var (
-	aunit     = lang.Target{Ecosystem: ecoAlire, Package: "aunit", Version: "24.0.0", Requested: "^24.0", Pinned: true}
-	gnatcoll  = lang.Target{Ecosystem: ecoAlire, Package: "gnatcoll", Version: "25.0.0", Requested: "^25", Pinned: true}
-	xmlada    = lang.Target{Ecosystem: ecoAlire, Package: "xmlada", Version: "24.0.0", Pinned: true}
-	utilada   = lang.Target{Ecosystem: ecoAlire, Package: "utilada", Version: "2.6.0", Requested: "*", Floating: true}
-	templates = lang.Target{Ecosystem: ecoAlire, Package: "templates_parser", Version: "24.0.0", Requested: "~24.0", Pinned: true}
-	adaTOML   = lang.Target{Ecosystem: ecoAlire, Package: "ada_toml", Version: "669eacabc8cad45b89b0bfc34d99b4334d66bebd", Requested: "~0.5", Pinned: true}
-	acmeLog   = lang.Target{Ecosystem: ecoAlire, Package: "acme_log", Version: "main", Floating: true, Origin: "https://git.acme.dev/acme_log.git"}
-	win32ada  = lang.Target{Ecosystem: ecoAlire, Package: "win32ada", Version: "*", Floating: true}
-	simple    = lang.Target{Ecosystem: ecoAlire, Package: "simple_components", Version: "4.62.0"}
+	aunit     = lang.Target{Ecosystem: ecosystemAlire, Package: "aunit", Version: "24.0.0", Requested: "^24.0", Pinned: true}
+	gnatcoll  = lang.Target{Ecosystem: ecosystemAlire, Package: "gnatcoll", Version: "25.0.0", Requested: "^25", Pinned: true}
+	xmlada    = lang.Target{Ecosystem: ecosystemAlire, Package: "xmlada", Version: "24.0.0", Pinned: true}
+	utilada   = lang.Target{Ecosystem: ecosystemAlire, Package: "utilada", Version: "2.6.0", Requested: "*", Floating: true}
+	templates = lang.Target{Ecosystem: ecosystemAlire, Package: "templates_parser", Version: "24.0.0", Requested: "~24.0", Pinned: true}
+	adaTOML   = lang.Target{Ecosystem: ecosystemAlire, Package: "ada_toml", Version: "669eacabc8cad45b89b0bfc34d99b4334d66bebd", Requested: "~0.5", Pinned: true}
+	acmeLog   = lang.Target{Ecosystem: ecosystemAlire, Package: "acme_log", Version: "main", Floating: true, Origin: "https://git.acme.dev/acme_log.git"}
+	win32ada  = lang.Target{Ecosystem: ecosystemAlire, Package: "win32ada", Version: "*", Floating: true}
+	simple    = lang.Target{Ecosystem: ecosystemAlire, Package: "simple_components", Version: "4.62.0"}
 )
 
 func local(p string) lang.Target { return lang.Target{Local: p} }
-func std(p string) lang.Target   { return lang.Target{Ecosystem: ecoStd, Package: p} }
+func std(p string) lang.Target   { return lang.Target{Ecosystem: ecosystemStd, Package: p} }
 
 // isolate points Alire's shared cache at testdata/cache, so what this machine
 // has fetched cannot leak into the results.
 func isolate(t *testing.T) {
-	abs, err := filepath.Abs("testdata/cache")
+	absolute, err := filepath.Abs("testdata/cache")
 	if err != nil {
 		t.Fatal(err)
 	}
 	t.Setenv("ALIRE_SETTINGS_DIR", "")
-	t.Setenv("XDG_CACHE_HOME", abs)
+	t.Setenv("XDG_CACHE_HOME", absolute)
 	t.Setenv("HOME", t.TempDir())
 }
 
@@ -64,8 +64,8 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 
 // Verifies: REQ-ADA-002, REQ-ADA-004, REQ-ADA-006, REQ-ADA-007, REQ-ADA-008, REQ-ADA-011
 func TestUnits(t *testing.T) {
-	res := analyze(t)
-	langtest.CheckImports(t, res["src/shop-main.adb"], map[string]lang.Target{
+	results := analyze(t)
+	langtest.CheckImports(t, results["src/shop-main.adb"], map[string]lang.Target{
 		"with Shop.Cart":               local("src/shop-cart.ads"),
 		"with Ada.Text_IO":             std("ada.text_io"),
 		"with AUnit.Assertions":        aunit,   // the crate Alire fetched that has it
@@ -81,13 +81,13 @@ func TestUnits(t *testing.T) {
 		"with System.Storage_Elements": std("system.storage_elements"),
 		"with Interfaces.C":            std("interfaces.c"),
 		"with GNAT.OS_Lib":             std("gnat.os_lib"),
-		"with Mystery.Thing":           {Ecosystem: ecoAlire, Package: "mystery", Unresolved: true},
+		"with Mystery.Thing":           {Ecosystem: ecosystemAlire, Package: "mystery", Unresolved: true},
 		"with Shop_Config":             {}, // what Alire generates for the crate
 		"with Tools":                   local("tools/all_units.ada"),
 		"spec Shop.Main":               {}, // a subprogram body without a spec
 		"parent Shop":                  local("src/shop.ads"),
 	})
-	langtest.CheckImports(t, res["src/shop-cart.ads"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/shop-cart.ads"], map[string]lang.Target{
 		"with Ada.Containers.Vectors": std("ada.containers"),
 		"with Ada.Strings.Unbounded":  std("ada.strings"),
 		"limited with Shop.Orders":    local("src/shop-orders.ads"),
@@ -95,32 +95,32 @@ func TestUnits(t *testing.T) {
 		"with gnatcoll.json":          gnatcoll,
 		"parent Shop":                 local("src/shop.ads"),
 	})
-	langtest.CheckImports(t, res["src/shop-cart.adb"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/shop-cart.adb"], map[string]lang.Target{
 		"with Ada.Text_IO": std("ada.text_io"),
 		"with Shop.Log":    local("src/shop-log.ads"),
 		"spec Shop.Cart":   local("src/shop-cart.ads"),
 	})
-	langtest.CheckImports(t, res["src/shop-cart-total.adb"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/shop-cart-total.adb"], map[string]lang.Target{
 		"separate (Shop.Cart)": local("src/shop-cart.adb"),
 	})
-	langtest.CheckImports(t, res["src/shop-orders.ads"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/shop-orders.ads"], map[string]lang.Target{
 		"limited private with Shop.Cart": local("src/shop-cart.ads"),
 		"parent Shop":                    local("src/shop.ads"),
 	})
-	langtest.CheckImports(t, res["src/shop-log.ads"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/shop-log.ads"], map[string]lang.Target{
 		"with Generic_Logger": local("src/generic_logger.ads"),
 		"with Ada.Text_IO":    std("ada.text_io"),
 		"parent Shop":         local("src/shop.ads"),
 	})
-	langtest.CheckImports(t, res["src/debug/debug_tool.adb"], map[string]lang.Target{
+	langtest.CheckImports(t, results["src/debug/debug_tool.adb"], map[string]lang.Target{
 		"with Win32.Winbase": win32ada, // a case(os) alternative's crate
 		"with Shop.Cart":     local("src/shop-cart.ads"),
 		"spec Debug_Tool":    {},
 	})
-	langtest.CheckImports(t, res["libs/widgets/src/controls/widgets-buttons.ads"], map[string]lang.Target{
+	langtest.CheckImports(t, results["libs/widgets/src/controls/widgets-buttons.ads"], map[string]lang.Target{
 		"parent Widgets": local("libs/widgets/src/widgets.ads"),
 	})
-	langtest.CheckImports(t, res["tools/all_units.ada"], map[string]lang.Target{
+	langtest.CheckImports(t, results["tools/all_units.ada"], map[string]lang.Target{
 		"spec Tools":      {}, // in the same file
 		"with Tools":      {},
 		"spec Tools_Main": {},
@@ -129,8 +129,8 @@ func TestUnits(t *testing.T) {
 
 // Verifies: REQ-ADA-005, REQ-ADA-006
 func TestManifests(t *testing.T) {
-	res := analyze(t)
-	langtest.CheckImports(t, res["alire.toml"], map[string]lang.Target{
+	results := analyze(t)
+	langtest.CheckImports(t, results["alire.toml"], map[string]lang.Target{
 		"shop.gpr":         local("shop.gpr"),
 		"aunit":            aunit,
 		"gnatcoll":         gnatcoll,
@@ -142,7 +142,7 @@ func TestManifests(t *testing.T) {
 		"win32ada":         win32ada,
 		"acme_log":         acmeLog, // pinned without a dependency
 	})
-	langtest.CheckImports(t, res["shop.gpr"], map[string]lang.Target{
+	langtest.CheckImports(t, results["shop.gpr"], map[string]lang.Target{
 		`with "aunit"`:                    aunit, // the project file the fetched crate ships
 		`with "gnatcoll"`:                 gnatcoll,
 		`with "xmlada"`:                   xmlada,
@@ -154,13 +154,13 @@ func TestManifests(t *testing.T) {
 		`Main "shop-main.adb"`:            local("src/shop-main.adb"),
 		`Main "debug_tool"`:               local("src/debug/debug_tool.adb"),
 	})
-	langtest.CheckImports(t, res["libs/widgets/widgets.gpr"], map[string]lang.Target{
+	langtest.CheckImports(t, results["libs/widgets/widgets.gpr"], map[string]lang.Target{
 		`Source_Dirs "src/**"`: local("libs/widgets/src"),
 	})
-	if s := langtest.Symbols(t, res["alire.toml"]); !reflect.DeepEqual(s, map[string]string{"shop": "crate"}) {
+	if s := langtest.Symbols(t, results["alire.toml"]); !reflect.DeepEqual(s, map[string]string{"shop": "crate"}) {
 		t.Errorf("alire.toml symbols %v", s)
 	}
-	if s := langtest.Symbols(t, res["shop.gpr"]); !reflect.DeepEqual(s, map[string]string{"Shop": "project"}) {
+	if s := langtest.Symbols(t, results["shop.gpr"]); !reflect.DeepEqual(s, map[string]string{"Shop": "project"}) {
 		t.Errorf("shop.gpr symbols %v", s)
 	}
 }
@@ -187,15 +187,15 @@ func TestPinRule(t *testing.T) {
 	r := newResolver(root, scanFiles(t, root))
 	c := r.crates["."]
 	for name, want := range map[string]lang.Target{
-		"lib_a": {Ecosystem: ecoAlire, Package: "lib_a", Version: "1.2.3", Pinned: true},
-		"lib_b": {Ecosystem: ecoAlire, Package: "lib_b", Version: "^1.2", Floating: true},
+		"lib_a": {Ecosystem: ecosystemAlire, Package: "lib_a", Version: "1.2.3", Pinned: true},
+		"lib_b": {Ecosystem: ecosystemAlire, Package: "lib_b", Version: "^1.2", Floating: true},
 		// a lock file beside the manifest, as Alire wrote it before 1.1
-		"lib_c": {Ecosystem: ecoAlire, Package: "lib_c", Version: "4.1.0", Requested: "*", Pinned: true},
+		"lib_c": {Ecosystem: ecosystemAlire, Package: "lib_c", Version: "4.1.0", Requested: "*", Pinned: true},
 		// a git pin without a commit follows the default branch
-		"lib_d": {Ecosystem: ecoAlire, Package: "lib_d", Floating: true},
-		"lib_e": {Ecosystem: ecoAlire, Package: "lib_e", Version: "0.3.0", Pinned: true},
+		"lib_d": {Ecosystem: ecosystemAlire, Package: "lib_d", Floating: true},
+		"lib_e": {Ecosystem: ecosystemAlire, Package: "lib_e", Version: "0.3.0", Pinned: true},
 		// a directory outside the repository
-		"lib_f": {Ecosystem: ecoAlire, Package: "lib_f", Floating: true, Origin: "/opt/lib_f"},
+		"lib_f": {Ecosystem: ecosystemAlire, Package: "lib_f", Floating: true, Origin: "/opt/lib_f"},
 	} {
 		if got := r.crate(c, name); got != want {
 			t.Errorf("%s: got %+v, want %+v", name, got, want)
@@ -205,7 +205,7 @@ func TestPinRule(t *testing.T) {
 
 // Verifies: REQ-ADA-003
 func TestSymbols(t *testing.T) {
-	res := analyze(t)
+	results := analyze(t)
 	for file, want := range map[string]map[string]string{
 		"src/shop-cart.ads": {
 			"Shop.Cart": "package", "Shop.Cart.Item": "struct", "Shop.Cart.Cart": "class",
@@ -229,7 +229,7 @@ func TestSymbols(t *testing.T) {
 			"Widgets.Buttons": "package", "Widgets.Buttons.Button": "class", "Widgets.Buttons.Click": "procedure",
 		},
 	} {
-		if got := langtest.Symbols(t, res[file]); !reflect.DeepEqual(got, want) {
+		if got := langtest.Symbols(t, results[file]); !reflect.DeepEqual(got, want) {
 			t.Errorf("%s: got %v\nwant %v", file, got, want)
 		}
 	}
@@ -240,7 +240,7 @@ func TestSymbols(t *testing.T) {
 //
 // Verifies: REQ-ADA-002, REQ-ADA-010, REQ-ADA-011
 func TestLiteralsHideCode(t *testing.T) {
-	src := []byte(`-- with Fake.A;
+	source := []byte(`-- with Fake.A;
 with Real.A; -- with Fake.B;
 with Real.B, "Fake.C";
 package P is
@@ -262,10 +262,10 @@ package Q is
    procedure Q1;
 end Q;
 `)
-	s := extractSource(src)
+	s := extractSource(source)
 	var specs []string
-	for _, im := range s.imports {
-		specs = append(specs, im.Spec)
+	for _, rawImport := range s.imports {
+		specs = append(specs, rawImport.Spec)
 	}
 	want := []string{"with Real.A", "with Real.B", "with Real.C"}
 	if !reflect.DeepEqual(specs, want) {
@@ -278,10 +278,10 @@ end Q;
 	if want := []string{"P", "P.After", "Q", "Q.Q1"}; !reflect.DeepEqual(names, want) {
 		t.Errorf("symbols %q, want %q", names, want)
 	}
-	lx := newLexer([]byte("X'First = 'a' ''' \"a\"\"b\" T'('c') 16#1F# 1.5E+3"))
+	lexer := newLexer([]byte("X'First = 'a' ''' \"a\"\"b\" T'('c') 16#1F# 1.5E+3"))
 	var tokens []string
-	for tk, ok := lx.next(); ok; tk, ok = lx.next() {
-		tokens = append(tokens, string(tk.kind)+tk.text)
+	for token, ok := lexer.next(); ok; token, ok = lexer.next() {
+		tokens = append(tokens, string(token.kind)+token.text)
 	}
 	if want := []string{"iX", "p'", "iFirst", "p=", "c'a'", "c'''", `sa"b`, "iT", "p'", "p(", "c'c'", "p)", "n16#1F#", "n1.5E+3"}; !reflect.DeepEqual(tokens, want) {
 		t.Errorf("tokens %q, want %q", tokens, want)
@@ -360,7 +360,7 @@ end Agg;
 	if got := items(g.withs); !reflect.DeepEqual(got, []string{"a", "b.gpr", "c"}) {
 		t.Errorf("withs %q", got)
 	}
-	if got := items(g.sourceDirs); !reflect.DeepEqual(got, []string{"src/a", "src", "src/b", "x", "y"}) {
+	if got := items(g.sourceDirectories); !reflect.DeepEqual(got, []string{"src/a", "src", "src/b", "x", "y"}) {
 		t.Errorf("source dirs %q", got)
 	}
 	if got := items(g.projectFiles); !reflect.DeepEqual(got, []string{"p/one.gpr", "two.gpr"}) {
@@ -372,8 +372,8 @@ end Agg;
 	if g.specs["pkg.child"] != "pkg__child.1.ada" || g.bodies["pkg.child"] != "pkg__child.2.ada" {
 		t.Errorf("naming %v %v", g.specs, g.bodies)
 	}
-	if d, rec := dirSpec(`src\**`); d != "src" || !rec {
-		t.Errorf("dirSpec: %q %v", d, rec)
+	if d, recursive := directorySpec(`src\**`); d != "src" || !recursive {
+		t.Errorf("dirSpec: %q %v", d, recursive)
 	}
 }
 
@@ -382,34 +382,34 @@ func TestInstalledCrates(t *testing.T) {
 	isolate(t)
 	root, _ := filepath.Abs("testdata/repo")
 	r := newResolver(root, langtest.Files(t, "testdata/repo"))
-	for _, tc := range []struct {
-		t         lang.Target
-		deps      []lang.Target
-		installed bool
+	for _, testCase := range []struct {
+		t            lang.Target
+		dependencies []lang.Target
+		installed    bool
 	}{
 		// the lock file's solution: libgpr at the version it chose
-		{gnatcoll, []lang.Target{{Ecosystem: ecoAlire, Package: "libgpr", Version: "25.0.1", Requested: "^25", Pinned: true}}, false},
+		{gnatcoll, []lang.Target{{Ecosystem: ecosystemAlire, Package: "libgpr", Version: "25.0.1", Requested: "^25", Pinned: true}}, false},
 		{aunit, nil, false},
 		// a crate Alire fetched that the lock does not list: its own manifest
 		{simple, []lang.Target{
-			{Ecosystem: ecoAlire, Package: "strings_edit", Version: "^4.0", Floating: true},
-			{Ecosystem: ecoAlire, Package: "tables", Version: "1.14.0", Pinned: true},
+			{Ecosystem: ecosystemAlire, Package: "strings_edit", Version: "^4.0", Floating: true},
+			{Ecosystem: ecosystemAlire, Package: "tables", Version: "1.14.0", Pinned: true},
 		}, true},
 		{utilada, nil, true},
-		{lang.Target{Ecosystem: ecoStd, Package: "ada.text_io"}, nil, false},
+		{lang.Target{Ecosystem: ecosystemStd, Package: "ada.text_io"}, nil, false},
 	} {
-		if got := r.Dependencies(tc.t); !reflect.DeepEqual(got, tc.deps) {
-			t.Errorf("%s: got %+v, want %+v", tc.t.Package, got, tc.deps)
+		if got := r.Dependencies(testCase.t); !reflect.DeepEqual(got, testCase.dependencies) {
+			t.Errorf("%s: got %+v, want %+v", testCase.t.Package, got, testCase.dependencies)
 		}
-		if got := r.Installed(tc.t); got != tc.installed {
-			t.Errorf("%s: installed %v", tc.t.Package, got)
+		if got := r.Installed(testCase.t); got != testCase.installed {
+			t.Errorf("%s: installed %v", testCase.t.Package, got)
 		}
 	}
 	// the shared cache is read only for crates the manifest names, at the
 	// locked version, else the newest
 	c := r.crates["."]
-	if ic := c.installed["utilada"]; ic == nil || ic.version != "2.6.0" {
-		t.Errorf("utilada from the shared cache: %+v", ic)
+	if installed := c.installed["utilada"]; installed == nil || installed.version != "2.6.0" {
+		t.Errorf("utilada from the shared cache: %+v", installed)
 	}
 	if _, ok := c.units["util.log"]; !ok {
 		t.Errorf("units of the shared cache not indexed: %v", c.units)
@@ -418,7 +418,7 @@ func TestInstalledCrates(t *testing.T) {
 	lock := readLock([]byte("[solution]\n[[solution.state]]\ncrate = \"lib\"\nfulfilment = \"linked\"\n" +
 		"[solution.state.link]\nurl = \"git+https://git.acme.dev/lib.git\"\ncommit = \"0123456789abcdef0123456789abcdef01234567\"\npath = \"alire/cache/pins/lib\"\n"))
 	c.lock["lib"] = lock["lib"]
-	want := lang.Target{Ecosystem: ecoAlire, Package: "lib", Version: "0123456789abcdef0123456789abcdef01234567", Pinned: true, Origin: "https://git.acme.dev/lib.git"}
+	want := lang.Target{Ecosystem: ecosystemAlire, Package: "lib", Version: "0123456789abcdef0123456789abcdef01234567", Pinned: true, Origin: "https://git.acme.dev/lib.git"}
 	if got := r.crate(c, "lib"); got != want {
 		t.Errorf("linked git pin: %+v", got)
 	}
@@ -430,13 +430,13 @@ func TestIslands(t *testing.T) {
 	for _, e := range (Plugin{}).Ecosystems() {
 		ids[e.ID] = e.Std
 	}
-	if std, ok := ids[ecoStd]; !ok || !std || len(ids) != 2 || ids[ecoAlire] {
+	if std, ok := ids[ecosystemStd]; !ok || !std || len(ids) != 2 || ids[ecosystemAlire] {
 		t.Fatalf("ecosystems: %v", ids)
 	}
 	for f, r := range analyze(t) {
-		for _, im := range r.Imports {
-			if e := im.Target.Ecosystem; e != "" && e != ecoAlire && e != ecoStd {
-				t.Errorf("%s: %s -> %s", f, im.Spec, e)
+		for _, imported := range r.Imports {
+			if e := imported.Target.Ecosystem; e != "" && e != ecosystemAlire && e != ecosystemStd {
+				t.Errorf("%s: %s -> %s", f, imported.Spec, e)
 			}
 		}
 	}
@@ -456,20 +456,20 @@ func TestTruncated(t *testing.T) {
 		return nil
 	})
 	for _, p := range files {
-		src, err := os.ReadFile(p)
+		source, err := os.ReadFile(p)
 		if err != nil {
 			t.Fatal(err)
 		}
 		f := &scan.File{Path: filepath.Base(p)}
-		for i := 0; i <= len(src); i++ {
-			if _, err := (Plugin{}).Extract(f, src[:i]); err != nil {
+		for i := 0; i <= len(source); i++ {
+			if _, err := (Plugin{}).Extract(f, source[:i]); err != nil {
 				t.Fatal(err)
 			}
-			extractSource(src[:i])
-			units(src[:i], true)
-			readGPR(src[:i])
-			readManifest(src[:i])
-			readLock(src[:i])
+			extractSource(source[:i])
+			units(source[:i], true)
+			readGPR(source[:i])
+			readManifest(source[:i])
+			readLock(source[:i])
 		}
 	}
 	for _, unit := range []string{"(", ")", "'", "''", "'''", "\"", "\"\"", "--", "#if x then\n", "#else\n", "#end if;\n",
@@ -478,13 +478,13 @@ func TestTruncated(t *testing.T) {
 		"type T is record ", "type T is ", "generic ", "task type T is ", "protected body P is ", "entry E when x is ",
 		"accept E do ", "X'", "16#", "1.0E", "[", "for Source_Dirs use (", "project P is ", "case M is when \"a\" => ",
 		"external (\"A\", ", "A & ", "package Naming is ", "é", ";", "is "} {
-		src := []byte(strings.Repeat(unit, 200_000/len(unit)+1))
+		source := []byte(strings.Repeat(unit, 200_000/len(unit)+1))
 		start := time.Now()
-		extractSource(src)
-		units(src, true)
-		readGPR(src)
+		extractSource(source)
+		units(source, true)
+		readGPR(source)
 		if d := time.Since(start); d > 5*time.Second {
-			t.Errorf("%q x %d: %v", unit, len(src)/len(unit), d)
+			t.Errorf("%q x %d: %v", unit, len(source)/len(unit), d)
 		}
 	}
 }
@@ -492,11 +492,11 @@ func TestTruncated(t *testing.T) {
 func write(t *testing.T, root string, files map[string]string) {
 	t.Helper()
 	for p, c := range files {
-		abs := filepath.Join(root, filepath.FromSlash(p))
-		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		absolute := filepath.Join(root, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(abs, []byte(c), 0o644); err != nil {
+		if err := os.WriteFile(absolute, []byte(c), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}

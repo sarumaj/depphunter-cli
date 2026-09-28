@@ -8,14 +8,14 @@ Run it with Blender, or with the `bpy` module on the same Python it was built fo
 
 The hand and the plants are models somebody else drew and this fetches (scripts/hand.py,
 scripts/props.py). There is nothing like these in either pack, and a beetle is simple
-enough to say out loud, so they are modelled here: a bmesh of spheres and cones,
+enough to say out loud, so they are modeled here: a bmesh of spheres and cones,
 welded, smoothed where it should be round and left faceted where it should catch the
 light.
 
 What they are for: a hundred and forty of these walk the map at once, at arm's length
 from a walker and as a dot from the map view, drawn unlit in one instanced mesh per
 part and tinted per instance by how serious the finding is. So a shape has to read for
-what it is from a metre away in flat paint, and cost almost nothing.
+what it is from a meter away in flat paint, and cost almost nothing.
 
 Three creatures come out, because severity is carried by shape as well as by color -
 a color says nothing in a crowd or from behind:

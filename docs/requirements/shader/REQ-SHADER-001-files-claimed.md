@@ -32,6 +32,6 @@ Apps Script, mesh data, task lists); the scan's sniff of the head decides.
 1. `shaders/glsl/pbr.frag`, `d3d/hlsl/Lighting.hlsl`, `effects/Blur.fx`,
    `Plugins/MyFX/Shaders/Private/Glow.usf`, `assets/shaders/custom.wgsl` and
    `crates/fx/src/lighting.wesl` are claimed.
-2. `shaders/glsl/basic.vs` and `shaders/glsl/basic.fs`, labelled GLSL, are
-   claimed; `src/App.fs` (F#), an unlabelled `.vs` or `.mesh` file, `.cu`,
+2. `shaders/glsl/basic.vs` and `shaders/glsl/basic.fs`, labeled GLSL, are
+   claimed; `src/App.fs` (F#), an unlabeled `.vs` or `.mesh` file, `.cu`,
    `.metal` and an OpenCL `.cl` file are not.

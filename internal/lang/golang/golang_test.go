@@ -19,8 +19,8 @@ func analyze(t *testing.T) map[string]*lang.FileResult {
 
 // Verifies: REQ-LANG-002, REQ-LANG-004, REQ-GO-003, REQ-GO-004, REQ-GO-005, REQ-GO-006
 func TestImportResolution(t *testing.T) {
-	res := analyze(t)
-	main := res["app/main.go"]
+	results := analyze(t)
+	main := results["app/main.go"]
 	if main == nil {
 		t.Fatal("app/main.go not analyzed")
 	}
@@ -71,7 +71,7 @@ func TestSymbols(t *testing.T) {
 //
 // Verifies: REQ-GO-003
 func TestAVanishedGoModIsSkipped(t *testing.T) {
-	gone := &scan.File{Path: "sub/go.mod", Abs: filepath.Join(t.TempDir(), "go.mod")}
+	gone := &scan.File{Path: "sub/go.mod", AbsolutePath: filepath.Join(t.TempDir(), "go.mod")}
 	if _, err := (Plugin{}).Resolver(t.TempDir(), []*scan.File{gone}); err != nil {
 		t.Errorf("a go.mod that could not be read failed the analysis: %v", err)
 	}
@@ -112,11 +112,11 @@ import (
 `,
 	}
 	for p, c := range files {
-		abs := filepath.Join(root, p)
-		os.WriteFile(abs, []byte(c), 0o644)
+		absolute := filepath.Join(root, p)
+		os.WriteFile(absolute, []byte(c), 0o644)
 	}
-	res := langtest.Analyze(t, Plugin{}, root)
-	langtest.CheckImports(t, res["main.go"], map[string]lang.Target{
+	results := langtest.Analyze(t, Plugin{}, root)
+	langtest.CheckImports(t, results["main.go"], map[string]lang.Target{
 		// A module replaced by another module: the replacement is what is built.
 		"example.com/forked/pkg": {Ecosystem: "go", Package: "github.com/me/forked", Version: "v1.0.1-fix", Requested: "v1.0.0", Pinned: true},
 		// A directory outside the project has no version worth looking up.

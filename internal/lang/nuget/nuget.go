@@ -40,24 +40,24 @@ func Ecosystems() []lang.Ecosystem {
 
 // entry is everything one set knows about one package id.
 type entry struct {
-	declared string // version or constraint as a manifest wrote it
-	paket    bool   // declared by paket.dependencies (Paket's pin rule applies)
-	listed   bool   // a manifest names it (not only a lock)
-	locked   string // version a lock file resolved it to
-	deps     []LockDep
+	declared     string // version or constraint as a manifest wrote it
+	paket        bool   // declared by paket.dependencies (Paket's pin rule applies)
+	listed       bool   // a manifest names it (not only a lock)
+	locked       string // version a lock file resolved it to
+	dependencies []LockDependency
 }
 
 // set is the packages of one Paket root (the directory of a paket.dependencies,
 // with its paket.lock and the paket.references below it), or of the MSBuild files
 // and packages.lock.json files of the whole repository.
 type set struct {
-	dir    string
-	pkgs   map[string]*entry            // lower-case id -> over all groups, Main first
-	groups map[string]map[string]*entry // lower-case group -> lower-case id -> entry
+	directory string
+	packages  map[string]*entry            // lower-case id -> over all groups, Main first
+	groups    map[string]map[string]*entry // lower-case group -> lower-case id -> entry
 }
 
-func newSet(dir string) *set {
-	return &set{dir: dir, pkgs: map[string]*entry{}, groups: map[string]map[string]*entry{}}
+func newSet(directory string) *set {
+	return &set{directory: directory, packages: map[string]*entry{}, groups: map[string]map[string]*entry{}}
 }
 
 func (s *set) entry(group, key string) []*entry {
@@ -66,7 +66,7 @@ func (s *set) entry(group, key string) []*entry {
 		s.groups[g] = map[string]*entry{}
 	}
 	out := make([]*entry, 0, 2)
-	for _, m := range []map[string]*entry{s.groups[g], s.pkgs} {
+	for _, m := range []map[string]*entry{s.groups[g], s.packages} {
 		e := m[key]
 		if e == nil {
 			e = &entry{}
@@ -79,11 +79,11 @@ func (s *set) entry(group, key string) []*entry {
 
 // remote is a Paket github/gist/git/http dependency.
 type remote struct {
-	name   string // RemoteName
-	ref    string // what paket.dependencies asked for
-	commit string // what paket.lock resolved
-	kind   string
-	files  []string // file names it provides (for paket.references File: lines)
+	name      string // RemoteName
+	reference string // what paket.dependencies asked for
+	commit    string // what paket.lock resolved
+	kind      string
+	files     []string // file names it provides (for paket.references File: lines)
 }
 
 // Store is the repository's NuGet knowledge.
@@ -106,18 +106,18 @@ func Read(all []*scan.File) *Store {
 	s := &Store{ids: map[string]string{}, lockSpelled: map[string]bool{}, msbuild: newSet(""), remotes: map[string]*remote{}}
 	central := map[string]string{}
 	var locks, paketLocks, references []*scan.File
-	byDir := map[string]*set{}
+	byDirectory := map[string]*set{}
 	for _, f := range all {
 		if f.Binary || f.TooLarge {
 			continue
 		}
 		if path.Base(f.Path) == "paket.dependencies" {
 			d := path.Dir(f.Path)
-			byDir[d] = newSet(d)
-			s.roots = append(s.roots, byDir[d])
+			byDirectory[d] = newSet(d)
+			s.roots = append(s.roots, byDirectory[d])
 		}
 	}
-	sort.SliceStable(s.roots, func(i, j int) bool { return depth(s.roots[i].dir) < depth(s.roots[j].dir) })
+	sort.SliceStable(s.roots, func(i, j int) bool { return depth(s.roots[i].directory) < depth(s.roots[j].directory) })
 	for _, f := range all {
 		if f.Binary || f.TooLarge {
 			continue
@@ -125,7 +125,7 @@ func Read(all []*scan.File) *Store {
 		base := path.Base(f.Path)
 		switch {
 		case IsProject(base) || base == "Directory.Packages.props" || base == "Directory.Build.props":
-			data, err := os.ReadFile(f.Abs)
+			data, err := os.ReadFile(f.AbsolutePath)
 			if err != nil {
 				continue
 			}
@@ -143,19 +143,19 @@ func Read(all []*scan.File) *Store {
 				}
 			}
 		case base == "paket.dependencies":
-			data, err := os.ReadFile(f.Abs)
+			data, err := os.ReadFile(f.AbsolutePath)
 			if err != nil {
 				continue
 			}
-			deps, _ := ParseDependencies(data)
-			for _, d := range deps {
+			dependencies, _ := ParseDependencies(data)
+			for _, d := range dependencies {
 				if d.Kind == "nuget" {
-					s.declare(byDir[path.Dir(f.Path)], d.Group, d.Name, d.Constraint, true)
+					s.declare(byDirectory[path.Dir(f.Path)], d.Group, d.Name, d.Constraint, true)
 					continue
 				}
 				if r := s.remote(d.Kind, d.Name); r != nil {
-					if r.ref == "" {
-						r.ref = d.Constraint
+					if r.reference == "" {
+						r.reference = d.Constraint
 					}
 					if d.File != "" {
 						r.files = append(r.files, path.Base(d.File))
@@ -170,20 +170,20 @@ func Read(all []*scan.File) *Store {
 			locks = append(locks, f)
 		}
 	}
-	for key, e := range s.msbuild.pkgs {
+	for key, e := range s.msbuild.packages {
 		if e.declared == "" {
 			e.declared = central[key]
 		}
 	}
 	for _, f := range paketLocks {
-		data, err := os.ReadFile(f.Abs)
+		data, err := os.ReadFile(f.AbsolutePath)
 		if err != nil {
 			continue
 		}
-		root := byDir[path.Dir(f.Path)]
+		root := byDirectory[path.Dir(f.Path)]
 		if root == nil { // a lock without its paket.dependencies still pins
 			root = newSet(path.Dir(f.Path))
-			byDir[root.dir] = root
+			byDirectory[root.directory] = root
 			s.roots = append(s.roots, root)
 		}
 		// The Main group first, so a package several groups lock takes Main's version.
@@ -193,7 +193,7 @@ func Read(all []*scan.File) *Store {
 		})
 		for _, l := range entries {
 			if l.Kind == "nuget" {
-				s.lock(root, l.Group, l.Name, l.Version, l.Deps)
+				s.lock(root, l.Group, l.Name, l.Version, l.Dependencies)
 				continue
 			}
 			if r := s.remote(l.Kind, lockRemote(l)); r != nil {
@@ -206,11 +206,11 @@ func Read(all []*scan.File) *Store {
 			}
 		}
 	}
-	sort.SliceStable(s.roots, func(i, j int) bool { return depth(s.roots[i].dir) < depth(s.roots[j].dir) })
+	sort.SliceStable(s.roots, func(i, j int) bool { return depth(s.roots[i].directory) < depth(s.roots[j].directory) })
 	// paket.references names what a project uses: a package it names is declared
 	// for the namespace rule even when only a lock lists it.
 	for _, f := range references {
-		data, err := os.ReadFile(f.Abs)
+		data, err := os.ReadFile(f.AbsolutePath)
 		if err != nil {
 			continue
 		}
@@ -218,12 +218,12 @@ func Read(all []*scan.File) *Store {
 		if root == nil {
 			continue
 		}
-		for _, ref := range ParseReferences(data) {
-			key := strings.ToLower(ref.Name)
-			if ref.File || root.pkgs[key] == nil {
+		for _, reference := range ParseReferences(data) {
+			key := strings.ToLower(reference.Name)
+			if reference.File || root.packages[key] == nil {
 				continue // a package Paket does not know stays undeclared
 			}
-			for _, e := range root.entry(ref.Group, key) {
+			for _, e := range root.entry(reference.Group, key) {
 				e.listed = true
 			}
 		}
@@ -234,11 +234,11 @@ func Read(all []*scan.File) *Store {
 	return s
 }
 
-func depth(dir string) int {
-	if dir == "." || dir == "" {
+func depth(directory string) int {
+	if directory == "." || directory == "" {
 		return 0
 	}
-	return strings.Count(dir, "/") + 1
+	return strings.Count(directory, "/") + 1
 }
 
 // root is the Paket root governing a file: the nearest directory above it with a
@@ -246,8 +246,8 @@ func depth(dir string) int {
 func (s *Store) root(file string) *set {
 	var best *set
 	for _, r := range s.roots {
-		if r.dir == "." || strings.HasPrefix(file, r.dir+"/") {
-			if best == nil || depth(r.dir) > depth(best.dir) {
+		if r.directory == "." || strings.HasPrefix(file, r.directory+"/") {
+			if best == nil || depth(r.directory) > depth(best.directory) {
 				best = r
 			}
 		}
@@ -257,8 +257,8 @@ func (s *Store) root(file string) *set {
 
 // IsProject reports whether base names an MSBuild project file of a .NET language.
 func IsProject(base string) bool {
-	for _, ext := range []string{".csproj", ".fsproj", ".vbproj"} {
-		if strings.HasSuffix(base, ext) {
+	for _, extension := range []string{".csproj", ".fsproj", ".vbproj"} {
+		if strings.HasSuffix(base, extension) {
 			return true
 		}
 	}
@@ -293,7 +293,7 @@ func (s *Store) declare(in *set, group, id, version string, paket bool) {
 	}
 }
 
-func (s *Store) lock(in *set, group, id, version string, deps []LockDep) {
+func (s *Store) lock(in *set, group, id, version string, dependencies []LockDependency) {
 	if id == "" || version == "" {
 		return
 	}
@@ -303,7 +303,7 @@ func (s *Store) lock(in *set, group, id, version string, deps []LockDep) {
 	}
 	for _, e := range in.entry(group, key) {
 		if e.locked == "" {
-			e.locked, e.deps = version, deps
+			e.locked, e.dependencies = version, dependencies
 		}
 	}
 }
@@ -335,7 +335,7 @@ type packagesLock struct {
 
 // Implements: REQ-FSHARP-008
 func readPackagesLock(s *Store, f *scan.File) {
-	data, err := os.ReadFile(f.Abs)
+	data, err := os.ReadFile(f.AbsolutePath)
 	if err != nil {
 		return
 	}
@@ -344,33 +344,33 @@ func readPackagesLock(s *Store, f *scan.File) {
 		return
 	}
 	frameworks := make([]string, 0, len(doc.Dependencies))
-	for fw := range doc.Dependencies {
-		frameworks = append(frameworks, fw)
+	for framework := range doc.Dependencies {
+		frameworks = append(frameworks, framework)
 	}
 	sort.Strings(frameworks)
-	for _, fw := range frameworks {
-		pkgs := doc.Dependencies[fw]
-		ids := make([]string, 0, len(pkgs))
-		for id := range pkgs {
+	for _, framework := range frameworks {
+		packages := doc.Dependencies[framework]
+		ids := make([]string, 0, len(packages))
+		for id := range packages {
 			ids = append(ids, id)
 		}
 		sort.Strings(ids)
 		for _, id := range ids {
-			p := pkgs[id]
+			p := packages[id]
 			if strings.EqualFold(p.Type, "Project") || p.Resolved == "" {
 				continue
 			}
-			var deps []LockDep
+			var dependencies []LockDependency
 			names := make([]string, 0, len(p.Dependencies))
 			for n := range p.Dependencies {
 				names = append(names, n)
 			}
 			sort.Strings(names)
 			for _, n := range names {
-				deps = append(deps, LockDep{Name: n, Constraint: p.Dependencies[n]})
+				dependencies = append(dependencies, LockDependency{Name: n, Constraint: p.Dependencies[n]})
 			}
-			s.lock(s.msbuild, MainGroup, id, p.Resolved, deps)
-			if e := s.msbuild.pkgs[strings.ToLower(id)]; e != nil && !e.listed && e.declared == "" && p.Requested != "" {
+			s.lock(s.msbuild, MainGroup, id, p.Resolved, dependencies)
+			if e := s.msbuild.packages[strings.ToLower(id)]; e != nil && !e.listed && e.declared == "" && p.Requested != "" {
 				e.declared = p.Requested
 			}
 		}
@@ -411,7 +411,7 @@ func (s *Store) sets(file string) []*set {
 func (s *Store) Package(file, group, id string) (lang.Target, bool) {
 	key := strings.ToLower(id)
 	for _, in := range s.sets(file) {
-		e := in.pkgs[key]
+		e := in.packages[key]
 		if group != "" {
 			if g := in.groups[strings.ToLower(group)][key]; g != nil {
 				e = g
@@ -465,36 +465,36 @@ func (s *Store) target(key string, e *entry) lang.Target {
 func (s *Store) match(file string, pick func(key string, best string) bool) (lang.Target, bool) {
 	for _, in := range s.sets(file) {
 		best := ""
-		for key, e := range in.pkgs {
+		for key, e := range in.packages {
 			if e.listed && pick(key, best) {
 				best = key
 			}
 		}
 		if best != "" {
-			return s.target(best, in.pkgs[best]), true
+			return s.target(best, in.packages[best]), true
 		}
 	}
 	return lang.Target{}, false
 }
 
 // Declared is the package whose id is the longest case-insensitive prefix of the
-// namespace ns among the packages manifests name (xunit provides Xunit.*): a lock
+// namespace among the packages manifests name (xunit provides Xunit.*): a lock
 // file's transitive packages do not count, or System.Net.Http from a lock would take
 // the base library's namespace.
 //
 // Implements: REQ-CS-002, REQ-CS-004
-func (s *Store) Declared(file, ns string) (lang.Target, bool) {
-	lower := strings.ToLower(ns)
+func (s *Store) Declared(file, namespace string) (lang.Target, bool) {
+	lower := strings.ToLower(namespace)
 	return s.match(file, func(key, best string) bool {
 		return len(key) > len(best) && (lower == key || strings.HasPrefix(lower, key+"."))
 	})
 }
 
-// Under is the declared package with the shortest id below the namespace ns: FAKE's
+// Under is the declared package with the shortest id below the namespace: FAKE's
 // modules share the namespace Fake.Core across Fake.Core.Target, Fake.Core.Process
 // and more.
-func (s *Store) Under(file, ns string) (lang.Target, bool) {
-	prefix := strings.ToLower(ns) + "."
+func (s *Store) Under(file, namespace string) (lang.Target, bool) {
+	prefix := strings.ToLower(namespace) + "."
 	return s.match(file, func(key, best string) bool {
 		return strings.HasPrefix(key, prefix) && (best == "" || len(key) < len(best) || len(key) == len(best) && key < best)
 	})
@@ -505,16 +505,16 @@ func (s *Store) Under(file, ns string) (lang.Target, bool) {
 // segments), else an unresolved NuGet package named by the first two segments.
 //
 // Implements: REQ-CS-002, REQ-CS-007
-func (s *Store) Namespace(ns string) lang.Target {
-	if t, ok := s.Declared("", ns); ok {
+func (s *Store) Namespace(namespace string) lang.Target {
+	if t, ok := s.Declared("", namespace); ok {
 		return t
 	}
-	return Undeclared(ns)
+	return Undeclared(namespace)
 }
 
 // Undeclared is Namespace without the declared packages.
-func Undeclared(ns string) lang.Target {
-	segments := strings.Split(ns, ".")
+func Undeclared(namespace string) lang.Target {
+	segments := strings.Split(namespace, ".")
 	top := strings.Join(segments[:min(2, len(segments))], ".")
 	switch segments[0] {
 	case "System", "Microsoft", "Windows":
@@ -525,30 +525,30 @@ func Undeclared(ns string) lang.Target {
 
 // Remote is the target of a Paket github/gist/git/http dependency by kind and name
 // (owner/repo or URL): pinned by paket.lock's commit, or by a commit
-// paket.dependencies names; a branch, tag or tag range is shown and floats; no ref
+// paket.dependencies names; a branch, tag or tag range is shown and floats; no reference
 // and every HTTP file float.
 //
 // Implements: REQ-FSHARP-007
-func (s *Store) Remote(kind, name, ref string) (lang.Target, bool) {
+func (s *Store) Remote(kind, name, reference string) (lang.Target, bool) {
 	n := RemoteName(kind, name)
 	if n == "" {
 		return lang.Target{}, false
 	}
 	t := lang.Target{Ecosystem: Paket, Package: n}
 	r := s.remotes[n]
-	if r != nil && ref == "" {
-		ref = r.ref
+	if r != nil && reference == "" {
+		reference = r.reference
 	}
 	switch {
 	case kind == "http":
 		t.Floating = true
 	case r != nil && r.commit != "":
 		t.Version, t.Pinned = r.commit, true
-		if ref != "" && ref != r.commit {
-			t.Requested = ref
+		if reference != "" && reference != r.commit {
+			t.Requested = reference
 		}
-	case ref != "":
-		t.Version, t.Pinned = ref, lang.Commit(ref)
+	case reference != "":
+		t.Version, t.Pinned = reference, lang.Commit(reference)
 	default:
 		t.Floating = true
 	}
@@ -572,8 +572,8 @@ func (s *Store) RemoteFile(file string) (lang.Target, bool) {
 
 // RemoteRepo is the Paket remote a path under paket-files/ comes from:
 // paket-files/<owner>/<repo>/... for GitHub, paket-files/<host>/<path>... otherwise.
-func (s *Store) RemoteRepo(rel string) (lang.Target, bool) {
-	segments := strings.Split(rel, "/")
+func (s *Store) RemoteRepository(relative string) (lang.Target, bool) {
+	segments := strings.Split(relative, "/")
 	for _, n := range s.order {
 		r := s.remotes[n]
 		parts := strings.Split(n, "/")
@@ -604,19 +604,19 @@ func (s *Store) Dependencies(t lang.Target) []lang.Target {
 	}
 	key := strings.ToLower(t.Package)
 	for _, in := range s.sets("") {
-		e := in.pkgs[key]
+		e := in.packages[key]
 		if e == nil || e.locked == "" {
 			continue
 		}
 		var out []lang.Target
 		seen := map[string]bool{}
-		for _, d := range e.deps {
+		for _, d := range e.dependencies {
 			dk := strings.ToLower(d.Name)
 			if seen[dk] {
 				continue
 			}
 			seen[dk] = true
-			if de := in.pkgs[dk]; de != nil {
+			if de := in.packages[dk]; de != nil {
 				out = append(out, s.target(dk, de))
 				continue
 			}

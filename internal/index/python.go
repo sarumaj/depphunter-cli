@@ -51,9 +51,9 @@ func (c *Config) machinePython(m userconf.Machine, k sink) {
 	for _, i := range c.py.pdm.Indexes {
 		addPython(i, false, k)
 	}
-	var repos map[string]string
-	repos, c.py.poetry = pyconf.PoetryMachine(m)
-	for _, r := range repos {
+	var repositories map[string]string
+	repositories, c.py.poetry = pyconf.PoetryMachine(m)
+	for _, r := range repositories {
 		c.py.vouch(r)
 	}
 }
@@ -109,18 +109,18 @@ type pyTool struct {
 //
 // Implements: REQ-SUP-066, REQ-AUTH-023
 func (c *Config) projectPython(files []*scan.File) func(f *scan.File, base string, data []byte, k sink) bool {
-	env := c.m.Env
-	if env == nil {
-		env = func(string) string { return "" }
+	environment := c.m.Environment
+	if environment == nil {
+		environment = func(string) string { return "" }
 	}
-	m := userconf.Machine{Env: env}
+	m := userconf.Machine{Environment: environment}
 	uvToml := map[string]pyconf.Settings{}
 	if m.UVProjectConfig() {
 		for _, f := range files {
 			if strings.ToLower(path.Base(f.Path)) != "uv.toml" {
 				continue
 			}
-			if data, err := os.ReadFile(f.Abs); err == nil {
+			if data, err := os.ReadFile(f.AbsolutePath); err == nil {
 				if s, ok := pyconf.UV(data, false); ok {
 					uvToml[path.Dir(f.Path)] = s
 				}
@@ -128,14 +128,14 @@ func (c *Config) projectPython(files []*scan.File) func(f *scan.File, base strin
 		}
 	}
 	uv := pyTool{
-		credential: func(name string) (string, string) { return pyconf.UVCredential(env, name) },
+		credential: func(name string) (string, string) { return pyconf.UVCredential(environment, name) },
 		fallback: func(name string) (pyconf.Index, bool) {
 			return pyconf.Settings{Indexes: c.py.uv}.Named(name)
 		},
 	}
 	poetry := pyTool{listed: true, credential: func(name string) (string, string) {
-		cred := pyconf.PoetryCredential(m, c.py.poetry, name)
-		return cred.Username, cred.Password
+		credential := pyconf.PoetryCredential(m, c.py.poetry, name)
+		return credential.Username, credential.Password
 	}}
 	pdm := pyTool{credential: func(name string) (string, string) {
 		i, _ := c.py.pdm.Named(name)
@@ -155,8 +155,8 @@ func (c *Config) projectPython(files []*scan.File) func(f *scan.File, base strin
 				c.pythonSettings(s, pdm, k)
 			}
 			s, ok := pyconf.UV(data, true)
-			if dir, replaced := uvToml[path.Dir(f.Path)]; ok && replaced {
-				s.Indexes = dir.Indexes // recorded with uv.toml; only the pins are read here
+			if directory, replaced := uvToml[path.Dir(f.Path)]; ok && replaced {
+				s.Indexes = directory.Indexes // recorded with uv.toml; only the pins are read here
 				c.pythonPins(s, uv, k)
 			} else if ok {
 				c.pythonSettings(s, uv, k)
@@ -184,25 +184,25 @@ func (c *Config) projectPython(files []*scan.File) func(f *scan.File, base strin
 // this machine holds for them (see lendPython), and records its pins.
 func (c *Config) pythonSettings(s pyconf.Settings, tool pyTool, k sink) {
 	for i := range s.Indexes {
-		idx := &s.Indexes[i]
-		if pyconf.PoetryPyPI(*idx) {
-			idx.URL = public[PyPI]
+		index := &s.Indexes[i]
+		if pyconf.PoetryPyPI(*index) {
+			index.URL = public[PyPI]
 		}
-		clean, user, pass := splitUserinfo(idx.URL)
+		clean, user, pass := splitUserinfo(index.URL)
 		if strings.Contains(clean, "$") {
-			idx.URL = "" // a URL made of this machine's variables is not drawn on the map
+			index.URL = "" // a URL made of this machine's variables is not drawn on the map
 			continue
 		}
-		idx.URL = clean
-		if addPython(*idx, tool.listed, k) == "" {
+		index.URL = clean
+		if addPython(*index, tool.listed, k) == "" {
 			continue
 		}
 		if u, p, ok := c.referencedCredential(user, pass); ok {
 			c.lendPython(clean, u, p)
-		} else if u, p, ok := c.referencedCredential(idx.Username, idx.Password); ok {
+		} else if u, p, ok := c.referencedCredential(index.Username, index.Password); ok {
 			c.lendPython(clean, u, p)
-		} else if tool.credential != nil && idx.Name != "" {
-			if u, p := tool.credential(idx.Name); u != "" || p != "" {
+		} else if tool.credential != nil && index.Name != "" {
+			if u, p := tool.credential(index.Name); u != "" || p != "" {
 				c.lendPython(clean, u, p)
 			}
 		}
@@ -214,14 +214,14 @@ func (c *Config) pythonSettings(s pyconf.Settings, tool pyTool, k sink) {
 // that index alone. A name the file does not define is looked up in this machine's
 // configuration (uv); an index this machine names stays trusted.
 func (c *Config) pythonPins(s pyconf.Settings, tool pyTool, k sink) {
-	for _, pkg := range slices.Sorted(maps.Keys(s.Pins)) {
-		name := s.Pins[pkg]
+	for _, packageName := range slices.Sorted(maps.Keys(s.Pins)) {
+		name := s.Pins[packageName]
 		if i, ok := s.Named(name); ok {
 			if pyconf.PoetryPyPI(i) {
 				i.URL = public[PyPI]
 			}
 			if u, _, _ := splitUserinfo(i.URL); u != "" && !strings.Contains(u, "$") {
-				k.put(PyPI, Source{URL: u, Scope: pkg})
+				k.put(PyPI, Source{URL: u, Scope: packageName})
 			}
 			continue
 		}
@@ -229,7 +229,7 @@ func (c *Config) pythonPins(s pyconf.Settings, tool pyTool, k sink) {
 			continue
 		}
 		if i, ok := tool.fallback(name); ok && i.URL != "" {
-			c.Add(PyPI, Source{URL: i.URL, Scope: pkg, Trusted: true, Origin: OriginProject})
+			c.Add(PyPI, Source{URL: i.URL, Scope: packageName, Trusted: true, Origin: OriginProject})
 		}
 	}
 }
@@ -265,7 +265,7 @@ func (c *Config) referencedCredential(user, pass string) (u, p string, ok bool) 
 			return "", "", false
 		}
 		if name, _ := npmconf.Reference(user); name != "" {
-			return c.m.Env(name), p, true
+			return c.m.Environment(name), p, true
 		}
 		if strings.Contains(user, "$") {
 			return "", "", false
@@ -300,16 +300,16 @@ func (c *Config) lendPython(index, user, pass string) {
 // run of "-", "_" and "." as one "-".
 func pypiName(name string) string {
 	var b strings.Builder
-	sep := false
+	separator := false
 	for _, r := range strings.ToLower(strings.TrimSpace(name)) {
 		if r == '-' || r == '_' || r == '.' {
-			sep = true
+			separator = true
 			continue
 		}
-		if sep && b.Len() > 0 {
+		if separator && b.Len() > 0 {
 			b.WriteByte('-')
 		}
-		sep = false
+		separator = false
 		b.WriteRune(r)
 	}
 	return b.String()

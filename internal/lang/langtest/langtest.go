@@ -21,11 +21,11 @@ func Analyze(t *testing.T, p lang.Plugin, root string) map[string]*lang.FileResu
 	if err != nil {
 		t.Fatal(err)
 	}
-	res, err := lang.Analyze(context.Background(), p, root, files)
+	results, err := lang.Analyze(context.Background(), p, root, files)
 	if err != nil {
 		t.Fatal(err)
 	}
-	return res
+	return results
 }
 
 // Files scans a fixture project, for tests that build a resolver directly.
@@ -39,22 +39,22 @@ func Files(t *testing.T, root string) []*scan.File {
 }
 
 // Imports maps each import's spec to its target.
-func Imports(t *testing.T, res *lang.FileResult) map[string]lang.Target {
+func Imports(t *testing.T, result *lang.FileResult) map[string]lang.Target {
 	t.Helper()
-	if res == nil {
+	if result == nil {
 		t.Fatal("file not analyzed")
 	}
 	out := map[string]lang.Target{}
-	for _, im := range res.Imports {
-		out[im.Spec] = im.Target
+	for _, imported := range result.Imports {
+		out[imported.Spec] = imported.Target
 	}
 	return out
 }
 
 // CheckImports asserts that res imports exactly want (spec -> target).
-func CheckImports(t *testing.T, res *lang.FileResult, want map[string]lang.Target) {
+func CheckImports(t *testing.T, result *lang.FileResult, want map[string]lang.Target) {
 	t.Helper()
-	got := Imports(t, res)
+	got := Imports(t, result)
 	for spec, w := range want {
 		if g, ok := got[spec]; !ok {
 			t.Errorf("%s: not captured", spec)
@@ -70,22 +70,22 @@ func CheckImports(t *testing.T, res *lang.FileResult, want map[string]lang.Targe
 }
 
 // Symbols maps each symbol's name to its kind.
-func Symbols(t *testing.T, res *lang.FileResult) map[string]string {
+func Symbols(t *testing.T, result *lang.FileResult) map[string]string {
 	t.Helper()
-	if res == nil {
+	if result == nil {
 		t.Fatal("file not analyzed")
 	}
 	out := map[string]string{}
-	for _, s := range res.Symbols {
+	for _, s := range result.Symbols {
 		out[s.Name] = s.Kind
 	}
 	return out
 }
 
 // CheckSymbols asserts that res defines exactly want (name -> kind).
-func CheckSymbols(t *testing.T, res *lang.FileResult, want map[string]string) {
+func CheckSymbols(t *testing.T, result *lang.FileResult, want map[string]string) {
 	t.Helper()
-	if got := Symbols(t, res); !reflect.DeepEqual(got, want) {
+	if got := Symbols(t, result); !reflect.DeepEqual(got, want) {
 		t.Errorf("symbols: got %v, want %v", got, want)
 	}
 }
@@ -95,11 +95,11 @@ func Write(t *testing.T, files map[string]string) string {
 	t.Helper()
 	root := t.TempDir()
 	for p, content := range files {
-		abs := filepath.Join(root, filepath.FromSlash(p))
-		if err := os.MkdirAll(filepath.Dir(abs), 0o755); err != nil {
+		absolute := filepath.Join(root, filepath.FromSlash(p))
+		if err := os.MkdirAll(filepath.Dir(absolute), 0o755); err != nil {
 			t.Fatal(err)
 		}
-		if err := os.WriteFile(abs, []byte(content), 0o644); err != nil {
+		if err := os.WriteFile(absolute, []byte(content), 0o644); err != nil {
 			t.Fatal(err)
 		}
 	}

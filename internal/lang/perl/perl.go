@@ -27,8 +27,8 @@ import (
 )
 
 const (
-	ecoCPAN = "cpan"
-	ecoStd  = "perl-std"
+	ecosystemCPAN = "cpan"
+	ecosystemStd  = "perl-std"
 )
 
 // Implements: REQ-PERL-001
@@ -48,7 +48,7 @@ func (Plugin) Claims(f *scan.File) bool {
 	if f.Binary || ignored(f.Path) {
 		return false
 	}
-	return manifestClass(path.Base(f.Path)) != "" || f.Lang == "Perl"
+	return manifestClass(path.Base(f.Path)) != "" || f.Language == "Perl"
 }
 
 // Class tells the manifests apart from sources and from each other.
@@ -58,8 +58,8 @@ func (Plugin) Class(f *scan.File) string { return manifestClass(path.Base(f.Path
 
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoCPAN, Name: "CPAN"},
-		{ID: ecoStd, Name: "Perl core modules", Std: true},
+		{ID: ecosystemCPAN, Name: "CPAN"},
+		{ID: ecosystemStd, Name: "Perl core modules", Std: true},
 	}
 }
 
@@ -71,16 +71,16 @@ func (p Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 // Makefile.PL and Build.PL are both.
 //
 // Implements: REQ-PERL-002, REQ-PERL-003, REQ-PERL-006
-func (p Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (p Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	base := path.Base(f.Path)
 	switch class := manifestClass(base); class {
 	case classCpanfile, classMeta, classDistIni:
-		return &lang.Extraction{Imports: readManifest(class, base, src).imports()}, nil
+		return &lang.Extraction{Imports: readManifest(class, base, source).imports()}, nil
 	case classMakefile, classBuild:
-		ex := readSource(src)
-		ex.Imports = append(ex.Imports, readManifest(class, base, src).imports()...)
-		sort.SliceStable(ex.Imports, func(i, j int) bool { return ex.Imports[i].Line < ex.Imports[j].Line })
-		return ex, nil
+		extraction := readSource(source)
+		extraction.Imports = append(extraction.Imports, readManifest(class, base, source).imports()...)
+		sort.SliceStable(extraction.Imports, func(i, j int) bool { return extraction.Imports[i].Line < extraction.Imports[j].Line })
+		return extraction, nil
 	}
-	return readSource(src), nil
+	return readSource(source), nil
 }

@@ -82,12 +82,12 @@ type Settings struct {
 func Merge(files []ConfigFile) Settings {
 	s := Settings{disabled: map[string]bool{}, mapping: map[string][]string{}, Credentials: map[string]Credential{}}
 	for layer := len(files) - 1; layer >= 0; layer-- {
-		for _, sec := range files[layer].sections {
-			switch sec.XMLName.Local {
+		for _, section := range files[layer].sections {
+			switch section.XMLName.Local {
 			case "packageSources":
-				s.readSources(sec, layer)
+				s.readSources(section, layer)
 			case "disabledPackageSources":
-				for _, e := range sec.Children {
+				for _, e := range section.Children {
 					switch e.XMLName.Local {
 					case "clear":
 						clear(s.disabled)
@@ -100,7 +100,7 @@ func Merge(files []ConfigFile) Settings {
 					}
 				}
 			case "packageSourceMapping":
-				for _, e := range sec.Children {
+				for _, e := range section.Children {
 					switch e.XMLName.Local {
 					case "clear":
 						clear(s.mapping)
@@ -115,22 +115,22 @@ func Merge(files []ConfigFile) Settings {
 					}
 				}
 			case "packageSourceCredentials":
-				for _, e := range sec.Children {
+				for _, e := range section.Children {
 					if e.XMLName.Local == "clear" {
 						clear(s.Credentials)
 						continue
 					}
 					c := Credential{Layer: layer}
-					for _, kv := range e.Children {
-						switch strings.ToLower(kv.Key) {
+					for _, keyValue := range e.Children {
+						switch strings.ToLower(keyValue.Key) {
 						case "username":
-							c.Username = kv.Value
+							c.Username = keyValue.Value
 						case "cleartextpassword":
-							c.ClearTextPassword = kv.Value
+							c.ClearTextPassword = keyValue.Value
 						case "password":
-							c.Encrypted = kv.Value != ""
+							c.Encrypted = keyValue.Value != ""
 						case "validauthenticationtypes":
-							c.Types = kv.Value
+							c.Types = keyValue.Value
 						}
 					}
 					s.Credentials[strings.ToLower(DecodeName(e.XMLName.Local))] = c
@@ -141,8 +141,8 @@ func Merge(files []ConfigFile) Settings {
 	return s
 }
 
-func (s *Settings) readSources(sec element, layer int) {
-	for _, e := range sec.Children {
+func (s *Settings) readSources(section element, layer int) {
+	for _, e := range section.Children {
 		switch e.XMLName.Local {
 		case "clear":
 			s.Feeds, s.Cleared = nil, true
@@ -261,26 +261,26 @@ func DecodeName(name string) string {
 	return b.String()
 }
 
-// EnvCredential reads the value of a NuGetPackageSourceCredentials_<source> variable:
+// EnvironmentCredential reads the value of a NuGetPackageSourceCredentials_<source> variable:
 // `Username=<user>;Password=<password>`, perhaps with
 // `ValidAuthenticationTypes=<types>`. The password is required, and when the types
 // are given they must allow basic.
 //
 // Implements: REQ-AUTH-022
-func EnvCredential(v string) (user, password string, ok bool) {
+func EnvironmentCredential(v string) (user, password string, ok bool) {
 	var types string
 	for _, part := range strings.Split(v, ";") {
-		k, val, found := strings.Cut(part, "=")
+		k, value, found := strings.Cut(part, "=")
 		if !found {
 			continue
 		}
 		switch strings.ToLower(strings.TrimSpace(k)) {
 		case "username":
-			user = val
+			user = value
 		case "password":
-			password = val
+			password = value
 		case "validauthenticationtypes":
-			types = val
+			types = value
 		}
 	}
 	return user, password, password != "" && basicAllowed(types)

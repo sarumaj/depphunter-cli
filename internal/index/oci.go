@@ -73,15 +73,15 @@ func readOCIConf(m userconf.Machine) ociConf {
 			continue
 		}
 		for _, r := range doc.Registries {
-			reg := ociRegistryConf{
+			registry := ociRegistryConf{
 				prefix:   ociLocation(r.Prefix),
 				location: ociLocation(r.Location),
 				blocked:  r.Blocked,
 			}
-			if reg.prefix == "" {
-				reg.prefix = reg.location
+			if registry.prefix == "" {
+				registry.prefix = registry.location
 			}
-			if reg.prefix == "" || strings.HasPrefix(reg.prefix, "*.") && reg.location != "" {
+			if registry.prefix == "" || strings.HasPrefix(registry.prefix, "*.") && registry.location != "" {
 				continue // no prefix at all, or a wildcard with a location: invalid
 			}
 			for _, mr := range r.Mirrors {
@@ -90,14 +90,14 @@ func readOCIConf(m userconf.Machine) ociConf {
 					pull = "digest-only"
 				}
 				if loc := ociLocation(mr.Location); loc != "" {
-					reg.mirrors = append(reg.mirrors, ociMirror{location: loc, pull: pull})
+					registry.mirrors = append(registry.mirrors, ociMirror{location: loc, pull: pull})
 				}
 			}
-			if i, ok := byPrefix[reg.prefix]; ok {
-				out.registries[i] = reg
+			if i, ok := byPrefix[registry.prefix]; ok {
+				out.registries[i] = registry
 			} else {
-				byPrefix[reg.prefix] = len(out.registries)
-				out.registries = append(out.registries, reg)
+				byPrefix[registry.prefix] = len(out.registries)
+				out.registries = append(out.registries, registry)
 			}
 		}
 	}
@@ -135,8 +135,8 @@ func ociLocation(s string) string {
 // repository there, and the URL that stands for the pair as a candidate index
 // (ociEndpointAt).
 type ociEndpoint struct {
-	url, base, repo string
-	mirror, known   bool
+	url, base, repository string
+	mirror, known         bool
 }
 
 // ociName is an image reference's repository name in full, as registries.conf
@@ -184,7 +184,7 @@ func ociMatch(name, prefix string) int {
 // registry an image names alone is known as candidates says.
 //
 // Implements: REQ-SUP-068, REQ-SUP-017
-func (c *Config) ociEndpoints(image, ref string) (out []ociEndpoint, blocked bool) {
+func (c *Config) ociEndpoints(image, reference string) (out []ociEndpoint, blocked bool) {
 	name := ociName(image)
 	best, n := -1, 0
 	for i, r := range c.oci.registries {
@@ -193,17 +193,17 @@ func (c *Config) ociEndpoints(image, ref string) (out []ociEndpoint, blocked boo
 		}
 	}
 	if best < 0 {
-		registry, repo := ociRegistry(image), ociRepository(image)
+		registry, repository := ociRegistry(image), ociRepository(image)
 		if hub, ok := strings.CutPrefix(name, "docker.io/"); ok {
 			// docker.io/library/debian, as a base image's annotation names it, is
 			// Docker Hub's as much as debian is.
-			registry, repo = public[OCI], hub
+			registry, repository = public[OCI], hub
 			for _, m := range c.oci.hubMirrors {
-				out = append(out, ociEndpoint{url: m, base: m, repo: repo, mirror: true, known: true})
+				out = append(out, ociEndpoint{url: m, base: m, repository: repository, mirror: true, known: true})
 			}
 		}
 		host := Host(registry)
-		return append(out, ociEndpoint{url: registry, base: registry, repo: repo,
+		return append(out, ociEndpoint{url: registry, base: registry, repository: repository,
 			known: registry == public[OCI] || c.trusted[registry] || c.trusted[host] || c.credentials.Registry(host)}), false
 	}
 	r := c.oci.registries[best]
@@ -211,7 +211,7 @@ func (c *Config) ociEndpoints(image, ref string) (out []ociEndpoint, blocked boo
 		return nil, true
 	}
 	rest := name[n:]
-	digest := strings.Contains(ref, ":") // sha256:..., as a tag holds no colon
+	digest := strings.Contains(reference, ":") // sha256:..., as a tag holds no colon
 	for _, m := range r.mirrors {
 		if m.pull == "digest-only" && !digest || m.pull == "tag-only" && digest {
 			continue
@@ -239,8 +239,8 @@ func (c *Config) ociEndpoints(image, ref string) (out []ociEndpoint, blocked boo
 // host alone, as it is without a registries.conf.
 func ociEndpointAt(location, rest string, mirror bool) (ociEndpoint, bool) {
 	host, path, _ := strings.Cut(location, "/")
-	repo := strings.Trim(path+rest, "/")
-	if host == "" || repo == "" {
+	repository := strings.Trim(path+rest, "/")
+	if host == "" || repository == "" {
 		return ociEndpoint{}, false
 	}
 	api := host
@@ -256,16 +256,16 @@ func ociEndpointAt(location, rest string, mirror bool) (ociEndpoint, bool) {
 	if path != "" && mirror {
 		u += "/" + path
 	}
-	return ociEndpoint{url: u, base: base, repo: repo}, true
+	return ociEndpoint{url: u, base: base, repository: repository}, true
 }
 
 // ociRoute is where a request for an image goes when it is asked of index (one of
 // its candidates): the registry API and the repository there.
-func (c *Config) ociRoute(image, ref, index string) (base, repo string) {
-	eps, _ := c.ociEndpoints(image, ref)
+func (c *Config) ociRoute(image, reference, index string) (base, repository string) {
+	eps, _ := c.ociEndpoints(image, reference)
 	for _, e := range eps {
 		if e.url == index {
-			return e.base, e.repo
+			return e.base, e.repository
 		}
 	}
 	return index, ociRepository(image)
@@ -277,12 +277,12 @@ func (c *Config) ociRoute(image, ref, index string) (base, repo string) {
 // this machine's container configuration names, or one the user vouched for. A mirror
 // is asked first and passed over on any failure, as containers/image and dockerd
 // fall back from one; it is not where the map attributes the image to (primary),
-// the registry is. ref is the reference's tag or digest: some mirrors serve digests
+// the registry is. reference is the reference's tag or digest: some mirrors serve digests
 // alone, some tags alone.
 //
 // Implements: REQ-SUP-017, REQ-SUP-026, REQ-SUP-068
-func (c *Config) ociCandidates(image, ref string) []candidate {
-	eps, _ := c.ociEndpoints(image, ref)
+func (c *Config) ociCandidates(image, reference string) []candidate {
+	eps, _ := c.ociEndpoints(image, reference)
 	out := make([]candidate, 0, len(eps))
 	for _, e := range eps {
 		out = append(out, candidate{url: e.url, known: e.known, primary: !e.mirror, onError: e.mirror})

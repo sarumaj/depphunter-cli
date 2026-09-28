@@ -1,6 +1,6 @@
 ---
 id: REQ-HUNT-021
-title: Tracker centred on and turning with the walker
+title: Tracker centered on and turning with the walker
 scope: hunt
 type: functional
 priority: must
@@ -12,7 +12,7 @@ verification:
 
 ## Statement
 
-Walk mode **shall** show a tracker: a top-down circular sweep centred on the
+Walk mode **shall** show a tracker: a top-down circular sweep centered on the
 walker, rotated so that the walker's facing direction points up, marking the
 walker's field of view.
 

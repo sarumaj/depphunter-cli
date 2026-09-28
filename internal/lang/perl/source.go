@@ -11,10 +11,10 @@ import (
 // file's `use lib` directories (for kindModule, kindIsa and kindFile) or a
 // manifest entry's version requirement and origin (kindDep).
 const (
-	kindModule = "mod"  // a module loaded by use, no, require, a parent class, a role
-	kindIsa    = "isa"  // a class named without loading it (use parent -norequire)
-	kindFile   = "file" // require/do of a file path
-	kindDep    = "dep"  // a manifest's requirement
+	kindModule     = "mod"  // a module loaded by use, no, require, a parent class, a role
+	kindIsa        = "isa"  // a class named without loading it (use parent -norequire)
+	kindFile       = "file" // require/do of a file path
+	kindDependency = "dep"  // a manifest's requirement
 )
 
 // selfMarker starts a path relative to the file itself: "\x01/../lib" is the lib
@@ -43,24 +43,24 @@ func mooseFamily(m string) bool {
 }
 
 type reader struct {
-	tokens  []token
-	imports []lang.RawImport
-	symbols lang.SymbolSet
-	seen    map[string]bool
-	pkg     string   // the current package ("" = main)
-	frames  []string // the package to restore at each open brace
-	pending string   // `package X {` / `class X {`: the package of the next block
-	hasAttr bool     // has() declares attributes (Moose family, Mojo::Base)
-	roles   bool     // with() and extends() load classes (Moose family)
-	classes bool     // class/method/field (feature 'class', Object::Pad)
-	libs    []string
+	tokens       []token
+	imports      []lang.RawImport
+	symbols      lang.SymbolSet
+	seen         map[string]bool
+	packageName  string   // the current package ("" = main)
+	frames       []string // the package to restore at each open brace
+	pending      string   // `package X {` / `class X {`: the package of the next block
+	hasAttribute bool     // has() declares attributes (Moose family, Mojo::Base)
+	roles        bool     // with() and extends() load classes (Moose family)
+	classes      bool     // class/method/field (feature 'class', Object::Pad)
+	libraries    []string
 }
 
 // readSource reads a Perl file's imports and definitions.
 //
 // Implements: REQ-PERL-002, REQ-PERL-003
-func readSource(src []byte) *lang.Extraction {
-	r := &reader{tokens: lex(src), seen: map[string]bool{}}
+func readSource(source []byte) *lang.Extraction {
+	r := &reader{tokens: lex(source), seen: map[string]bool{}}
 	r.run()
 	return r.extraction()
 }
@@ -68,10 +68,10 @@ func readSource(src []byte) *lang.Extraction {
 func (r *reader) extraction() *lang.Extraction {
 	// use lib takes effect at compile time for the whole file, so every module the
 	// file loads is looked up in its directories.
-	if len(r.libs) > 0 {
-		suffix := "\n" + strings.Join(r.libs, "\n")
-		for i, im := range r.imports {
-			if im.Name == kindModule || im.Name == kindIsa || im.Name == kindFile {
+	if len(r.libraries) > 0 {
+		suffix := "\n" + strings.Join(r.libraries, "\n")
+		for i, rawImport := range r.imports {
+			if rawImport.Name == kindModule || rawImport.Name == kindIsa || rawImport.Name == kindFile {
 				r.imports[i].Name += suffix
 			}
 		}
@@ -88,21 +88,21 @@ func (r *reader) add(spec, module, kind string, line int) {
 	r.imports = append(r.imports, lang.RawImport{Spec: spec, Module: module, Name: kind, Line: line})
 }
 
-func (r *reader) tok(i int) token {
+func (r *reader) token(i int) token {
 	if i >= 0 && i < len(r.tokens) {
 		return r.tokens[i]
 	}
 	return token{kind: -1}
 }
 
-func (r *reader) punct(i int, p string) bool {
-	t := r.tok(i)
-	return t.kind == tPunct && t.text == p
+func (r *reader) punctuation(i int, p string) bool {
+	t := r.token(i)
+	return t.kind == tPunctuation && t.text == p
 }
 
-// stmtStart reports whether token i starts a statement.
-func (r *reader) stmtStart(i int) bool {
-	return i == 0 || r.punct(i-1, ";") || r.punct(i-1, "{") || r.punct(i-1, "}")
+// statementStart reports whether token i starts a statement.
+func (r *reader) statementStart(i int) bool {
+	return i == 0 || r.punctuation(i-1, ";") || r.punctuation(i-1, "{") || r.punctuation(i-1, "}")
 }
 
 // maxStatement bounds how far a statement is read: a real one is far shorter, and
@@ -116,7 +116,7 @@ func (r *reader) end(i int) int {
 	limit := min(len(r.tokens), i+maxStatement)
 	for ; i < limit; i++ {
 		t := r.tokens[i]
-		if t.kind != tPunct {
+		if t.kind != tPunctuation {
 			continue
 		}
 		switch t.text {
@@ -142,12 +142,12 @@ func moduleName(s string) bool {
 	if s == "" {
 		return false
 	}
-	for k, seg := range strings.Split(s, "::") {
-		if seg == "" || k == 0 && !identStart(seg[0]) {
+	for k, segment := range strings.Split(s, "::") {
+		if segment == "" || k == 0 && !identifierStart(segment[0]) {
 			return false
 		}
-		for k := 0; k < len(seg); k++ {
-			if !identByte(seg[k]) {
+		for k := 0; k < len(segment); k++ {
+			if !identifierByte(segment[k]) {
 				return false
 			}
 		}
@@ -163,16 +163,16 @@ func versionWord(s string) bool {
 func (r *reader) run() {
 	for i := 0; i < len(r.tokens); i++ {
 		t := r.tokens[i]
-		if t.kind == tPunct {
+		if t.kind == tPunctuation {
 			switch t.text {
 			case "{":
-				r.frames = append(r.frames, r.pkg)
+				r.frames = append(r.frames, r.packageName)
 				if r.pending != "" {
-					r.pkg, r.pending = r.pending, ""
+					r.packageName, r.pending = r.pending, ""
 				}
 			case "}":
 				if n := len(r.frames); n > 0 {
-					r.pkg = r.frames[n-1]
+					r.packageName = r.frames[n-1]
 					r.frames = r.frames[:n-1]
 				}
 			case ";":
@@ -180,18 +180,18 @@ func (r *reader) run() {
 			}
 			continue
 		}
-		if t.kind != tWord || r.punct(i-1, "->") || r.punct(i+1, "=>") {
+		if t.kind != tWord || r.punctuation(i-1, "->") || r.punctuation(i+1, "=>") {
 			continue
 		}
-		start := r.stmtStart(i)
+		start := r.statementStart(i)
 		switch t.text {
 		case "package":
 			if start {
-				r.pkgStmt(i, "class")
+				r.packageStatement(i, "class")
 			}
 		case "class", "role":
 			if start && r.classes {
-				r.pkgStmt(i, "class")
+				r.packageStatement(i, "class")
 			}
 		case "use", "no":
 			if start {
@@ -200,19 +200,19 @@ func (r *reader) run() {
 		case "require":
 			r.require(i)
 		case "do":
-			if s := r.tok(i + 1); s.kind == tStr && !r.punct(i+2, "(") {
+			if s := r.token(i + 1); s.kind == tString && !r.punctuation(i+2, "(") {
 				if p, ok := r.pathOf([]token{s}); ok {
 					r.add("do "+quoted(s), p, kindFile, t.line)
 				}
 			}
 		case "sub":
-			r.sub(i, false)
+			r.subroutine(i, false)
 		case "method":
-			if r.classes && r.tok(i+1).kind == tWord {
-				r.sub(i, true)
+			if r.classes && r.token(i+1).kind == tWord {
+				r.subroutine(i, true)
 			}
 		case "has":
-			if start && r.hasAttr {
+			if start && r.hasAttribute {
 				r.has(i)
 			}
 		case "with", "extends":
@@ -221,10 +221,10 @@ func (r *reader) run() {
 			}
 		case "use_ok", "require_ok", "use_module", "require_module", "load_class", "try_load_class", "load_optional_class":
 			j := i + 1
-			if r.punct(j, "(") {
+			if r.punctuation(j, "(") {
 				j++
 			}
-			if s := r.tok(j); s.kind == tStr && moduleName(s.text) {
+			if s := r.token(j); s.kind == tString && moduleName(s.text) {
 				m := strings.TrimSuffix(s.text, "::")
 				r.add(t.text+" "+m, m, kindModule, t.line)
 			}
@@ -232,16 +232,16 @@ func (r *reader) run() {
 			// eval "use Foo; 1" loads an optional module; its imports count, on the
 			// eval's line.
 			j := i + 1
-			if r.punct(j, "(") {
+			if r.punctuation(j, "(") {
 				j++
 			}
-			if s := r.tok(j); s.kind == tStr && strings.Contains(s.text, "use ") || s.kind == tStr && strings.Contains(s.text, "require ") {
+			if s := r.token(j); s.kind == tString && strings.Contains(s.text, "use ") || s.kind == tString && strings.Contains(s.text, "require ") {
 				inner := &reader{tokens: lex([]byte(s.text)), seen: r.seen}
 				inner.run()
-				for _, im := range inner.imports {
-					if im.Name == kindModule {
-						im.Line = s.line
-						r.imports = append(r.imports, im)
+				for _, rawImport := range inner.imports {
+					if rawImport.Name == kindModule {
+						rawImport.Line = s.line
+						r.imports = append(r.imports, rawImport)
 					}
 				}
 			}
@@ -256,10 +256,10 @@ func quoted(t token) string {
 	return "'" + t.text + "'"
 }
 
-// pkgStmt reads `package NAME [VERSION];` or `package NAME [VERSION] {`, and the
+// packageStatement reads `package NAME [VERSION];` or `package NAME [VERSION] {`, and the
 // same for Corinna's and Object::Pad's classes and roles with their :isa and :does.
-func (r *reader) pkgStmt(i int, kind string) {
-	name := r.tok(i + 1)
+func (r *reader) packageStatement(i int, kind string) {
+	name := r.token(i + 1)
 	if name.kind != tWord || !moduleName(name.text) {
 		return
 	}
@@ -268,20 +268,20 @@ func (r *reader) pkgStmt(i int, kind string) {
 	block := false
 	for j := i + 2; j <= end && j < len(r.tokens); j++ {
 		t := r.tokens[j]
-		if t.kind == tPunct && t.text == "{" {
+		if t.kind == tPunctuation && t.text == "{" {
 			block = true
 			break
 		}
 		// :isa(Base 1.0) :does(Role, Other)
-		if t.kind == tWord && (t.text == "isa" || t.text == "does") && r.punct(j-1, ":") && r.punct(j+1, "(") {
-			for k := j + 2; k < min(len(r.tokens), j+maxHeader) && !r.punct(k, ")"); k++ {
+		if t.kind == tWord && (t.text == "isa" || t.text == "does") && r.punctuation(j-1, ":") && r.punctuation(j+1, "(") {
+			for k := j + 2; k < min(len(r.tokens), j+maxHeader) && !r.punctuation(k, ")"); k++ {
 				if w := r.tokens[k]; w.kind == tWord && moduleName(w.text) {
 					r.add(":"+t.text+"("+w.text+")", w.text, kindModule, w.line)
 				}
 			}
 		}
 		if t.kind == tWord && t.text == "extends" && r.classes {
-			if w := r.tok(j + 1); w.kind == tWord && moduleName(w.text) {
+			if w := r.token(j + 1); w.kind == tWord && moduleName(w.text) {
 				r.add("extends "+w.text, w.text, kindModule, w.line)
 			}
 		}
@@ -289,7 +289,7 @@ func (r *reader) pkgStmt(i int, kind string) {
 	if block {
 		r.pending = name.text
 	} else {
-		r.pkg = name.text
+		r.packageName = name.text
 	}
 }
 
@@ -298,17 +298,17 @@ func (r *reader) owner(name string) string {
 	if i := strings.LastIndex(name, "::"); i > 0 {
 		return name[:i] + "." + name[i+2:]
 	}
-	if r.pkg == "" || r.pkg == "main" {
+	if r.packageName == "" || r.packageName == "main" {
 		return name
 	}
-	return r.pkg + "." + name
+	return r.packageName + "." + name
 }
 
-// sub reads `sub NAME` (a forward declaration `sub NAME;` defines nothing) and
+// subroutine reads `sub NAME` (a forward declaration `sub NAME;` defines nothing) and
 // Corinna's `method NAME`. A sub whose parameters or first lines take $self or
 // $class is a method.
-func (r *reader) sub(i int, method bool) {
-	name := r.tok(i + 1)
+func (r *reader) subroutine(i int, method bool) {
+	name := r.token(i + 1)
 	name.text = strings.TrimPrefix(name.text, "::") // sub ::f is main's
 	if name.kind != tWord || !moduleName(name.text) {
 		return
@@ -319,22 +319,22 @@ func (r *reader) sub(i int, method bool) {
 	}
 	for j := i + 2; j < min(len(r.tokens), i+maxHeader); j++ {
 		t := r.tokens[j]
-		if t.kind == tPunct && t.text == ";" {
+		if t.kind == tPunctuation && t.text == ";" {
 			return // a forward declaration
 		}
-		if t.kind == tPunct && t.text == "{" {
+		if t.kind == tPunctuation && t.text == "{" {
 			for k := j + 1; k < min(j+12, len(r.tokens)); k++ {
-				if v := r.tokens[k]; v.kind == tVar && selfVar(v.text) {
+				if v := r.tokens[k]; v.kind == tVariable && selfVariable(v.text) {
 					kind = "method"
 				}
 			}
 			break
 		}
-		if t.kind == tVar && selfVar(t.text) {
+		if t.kind == tVariable && selfVariable(t.text) {
 			kind = "method" // a signature
 		}
 	}
-	if !strings.Contains(name.text, "::") && (r.pkg == "" || r.pkg == "main") && kind == "method" && !method {
+	if !strings.Contains(name.text, "::") && (r.packageName == "" || r.packageName == "main") && kind == "method" && !method {
 		kind = "function"
 	}
 	r.symbols.Add(r.owner(name.text), kind, name.line)
@@ -344,7 +344,7 @@ func (r *reader) sub(i int, method bool) {
 // read for its body.
 const maxHeader = 256
 
-func selfVar(v string) bool {
+func selfVariable(v string) bool {
 	switch v {
 	case "$self", "$class", "$this", "$proto", "$invocant", "$c":
 		return true
@@ -356,22 +356,22 @@ func selfVar(v string) bool {
 // string, a qw list, an array of them, '+name' overriding an inherited one.
 func (r *reader) has(i int) {
 	j := i + 1
-	if r.punct(j, "(") {
+	if r.punctuation(j, "(") {
 		j++
 	}
 	line := r.tokens[i].line
 	var names []string
-	switch t := r.tok(j); {
-	case t.kind == tWord && (r.punct(j+1, "=>") || r.punct(j+1, ",") || r.punct(j+1, ";")):
+	switch t := r.token(j); {
+	case t.kind == tWord && (r.punctuation(j+1, "=>") || r.punctuation(j+1, ",") || r.punctuation(j+1, ";")):
 		names = []string{t.text}
-	case t.kind == tStr:
+	case t.kind == tString:
 		names = []string{t.text}
 	case t.kind == tQW:
 		names = t.words
-	case t.kind == tPunct && t.text == "[":
-		for k := j + 1; k < min(len(r.tokens), j+maxStatement) && !r.punct(k, "]"); k++ {
+	case t.kind == tPunctuation && t.text == "[":
+		for k := j + 1; k < min(len(r.tokens), j+maxStatement) && !r.punctuation(k, "]"); k++ {
 			switch w := r.tokens[k]; w.kind {
-			case tStr, tWord:
+			case tString, tWord:
 				names = append(names, w.text)
 			case tQW:
 				names = append(names, w.words...)
@@ -388,23 +388,23 @@ func (r *reader) has(i int) {
 
 // inherit reads Moose's with and extends: the roles and classes named at the top of
 // the statement, not the parameters in braces after them.
-func (r *reader) inherit(i int, kw string) {
+func (r *reader) inherit(i int, keyword string) {
 	end := r.end(i + 1)
 	depth := 0
 	for j := i + 1; j < end; j++ {
 		t := r.tokens[j]
 		switch {
-		case t.kind == tPunct && (t.text == "{" || t.text == "["):
+		case t.kind == tPunctuation && (t.text == "{" || t.text == "["):
 			depth++
-		case t.kind == tPunct && (t.text == "}" || t.text == "]"):
+		case t.kind == tPunctuation && (t.text == "}" || t.text == "]"):
 			depth--
 		case depth > 0:
-		case t.kind == tStr && moduleName(t.text):
-			r.add(kw+" "+t.text, t.text, kindModule, t.line)
+		case t.kind == tString && moduleName(t.text):
+			r.add(keyword+" "+t.text, t.text, kindModule, t.line)
 		case t.kind == tQW:
 			for _, w := range t.words {
 				if moduleName(w) {
-					r.add(kw+" "+w, w, kindModule, t.line)
+					r.add(keyword+" "+w, w, kindModule, t.line)
 				}
 			}
 		}
@@ -415,17 +415,17 @@ func (r *reader) inherit(i int, kw string) {
 // a version (`require 5.006`) and a computed argument are not imports.
 func (r *reader) require(i int) {
 	j := i + 1
-	if r.punct(j, "(") {
+	if r.punctuation(j, "(") {
 		j++
 	}
-	t := r.tok(j)
+	t := r.token(j)
 	line := r.tokens[i].line
 	switch {
-	case t.kind == tWord && moduleName(t.text) && !versionWord(t.text) && !r.punct(j+1, "(") && !r.punct(j+1, "->"):
+	case t.kind == tWord && moduleName(t.text) && !versionWord(t.text) && !r.punctuation(j+1, "(") && !r.punctuation(j+1, "->"):
 		if m := strings.TrimSuffix(t.text, "::"); !pragmas[m] {
 			r.add("require "+m, m, kindModule, line)
 		}
-	case t.kind == tStr:
+	case t.kind == tString:
 		if p, ok := r.pathOf([]token{t}); ok {
 			r.add("require "+quoted(t), p, kindFile, line)
 		}
@@ -436,9 +436,9 @@ func (r *reader) require(i int) {
 // modules are handed - use lib's directories, use parent's and use base's classes,
 // Mojo::Base's parent, use constant's names, use if's module, use aliased's class.
 func (r *reader) use(i int) {
-	kw := r.tokens[i].text
+	keyword := r.tokens[i].text
 	line := r.tokens[i].line
-	name := r.tok(i + 1)
+	name := r.token(i + 1)
 	if name.kind != tWord || versionWord(name.text) || !moduleName(name.text) {
 		return // use 5.010, use v5.36
 	}
@@ -446,34 +446,34 @@ func (r *reader) use(i int) {
 	end := r.end(i + 2)
 	j := i + 2
 	// A version after the module is not one of its arguments.
-	if t := r.tok(j); j < end && (t.kind == tNum || t.kind == tWord && versionWord(t.text)) && !r.punct(j+1, "=>") && !r.punct(j+1, ",") {
+	if t := r.token(j); j < end && (t.kind == tNumber || t.kind == tWord && versionWord(t.text)) && !r.punctuation(j+1, "=>") && !r.punctuation(j+1, ",") {
 		j++
 	}
-	args := r.tokens[min(j, end):end]
+	arguments := r.tokens[min(j, end):end]
 	if !pragmas[m] {
-		r.add(kw+" "+m, m, kindModule, line)
+		r.add(keyword+" "+m, m, kindModule, line)
 	}
-	if kw == "no" {
+	if keyword == "no" {
 		return
 	}
 	switch {
 	case m == "lib" || m == "lib::relative":
-		for _, p := range evalList(args) {
+		for _, p := range evalList(arguments) {
 			if m == "lib::relative" && !strings.HasPrefix(p, selfMarker) {
 				p = selfMarker + "/../" + p
 			}
-			r.libs = append(r.libs, p)
+			r.libraries = append(r.libraries, p)
 		}
 	case m == "if":
 		// use if COND, MODULE => ARGS: the module after the first comma.
 		depth := 0
-		for k, t := range args {
-			if t.kind == tPunct && (t.text == "(" || t.text == "[" || t.text == "{") {
+		for k, t := range arguments {
+			if t.kind == tPunctuation && (t.text == "(" || t.text == "[" || t.text == "{") {
 				depth++
-			} else if t.kind == tPunct && (t.text == ")" || t.text == "]" || t.text == "}") {
+			} else if t.kind == tPunctuation && (t.text == ")" || t.text == "]" || t.text == "}") {
 				depth--
-			} else if depth == 0 && t.kind == tPunct && (t.text == "," || t.text == "=>") {
-				if s := argAt(args, k+1); s != "" && moduleName(s) {
+			} else if depth == 0 && t.kind == tPunctuation && (t.text == "," || t.text == "=>") {
+				if s := argumentAt(arguments, k+1); s != "" && moduleName(s) {
 					r.add("use "+s, s, kindModule, line)
 				}
 				break
@@ -481,76 +481,76 @@ func (r *reader) use(i int) {
 		}
 	case m == "parent" || m == "base":
 		kind := kindModule
-		for k, t := range args {
-			if t.kind == tWord && t.text == "norequire" && k > 0 && args[k-1].kind == tPunct && args[k-1].text == "-" {
+		for k, t := range arguments {
+			if t.kind == tWord && t.text == "norequire" && k > 0 && arguments[k-1].kind == tPunctuation && arguments[k-1].text == "-" {
 				kind = kindIsa
 			}
 		}
-		for _, c := range stringsOf(args) {
+		for _, c := range stringsOf(arguments) {
 			if moduleName(c) {
 				r.add(m+" "+c, c, kind, line)
 			}
 		}
 	case m == "Mojo::Base":
-		for k, t := range args {
-			if t.kind == tWord && k > 0 && args[k-1].kind == tPunct && args[k-1].text == "-" {
+		for k, t := range arguments {
+			if t.kind == tWord && k > 0 && arguments[k-1].kind == tPunctuation && arguments[k-1].text == "-" {
 				switch t.text {
 				case "base":
-					r.hasAttr = true
+					r.hasAttribute = true
 				case "role":
-					r.hasAttr, r.roles = true, true
+					r.hasAttribute, r.roles = true, true
 				}
 			}
 		}
-		if s := stringsOf(args); len(s) > 0 && moduleName(s[0]) {
-			r.hasAttr = true
+		if s := stringsOf(arguments); len(s) > 0 && moduleName(s[0]) {
+			r.hasAttribute = true
 			r.add("parent "+s[0], s[0], kindModule, line)
 		}
 	case m == "aliased":
-		if s := stringsOf(args); len(s) > 0 && moduleName(s[0]) {
+		if s := stringsOf(arguments); len(s) > 0 && moduleName(s[0]) {
 			r.add("use "+s[0], s[0], kindModule, line)
 		}
 	case m == "constant":
-		r.constants(args, line)
+		r.constants(arguments, line)
 	case m == "Object::Pad" || m == "Feature::Compat::Class":
 		r.classes = true
 	case m == "feature" || m == "experimental":
-		for _, s := range stringsOf(args) {
+		for _, s := range stringsOf(arguments) {
 			if s == "class" {
 				r.classes = true
 			}
 		}
 	case mooseFamily(m):
-		r.hasAttr = true
+		r.hasAttribute = true
 		r.roles = r.roles || m != "Mo"
 	}
 }
 
-// argAt is the string or word at args[k], else "".
-func argAt(args []token, k int) string {
-	if k < len(args) && (args[k].kind == tStr || args[k].kind == tWord) {
-		return args[k].text
+// argumentAt is the string or word at args[k], else "".
+func argumentAt(arguments []token, k int) string {
+	if k < len(arguments) && (arguments[k].kind == tString || arguments[k].kind == tWord) {
+		return arguments[k].text
 	}
 	return ""
 }
 
 // stringsOf lists the literal strings of an argument list: quoted strings, qw words
 // and barewords before "=>" or ",", not options like -norequire.
-func stringsOf(args []token) []string {
+func stringsOf(arguments []token) []string {
 	var out []string
-	for k, t := range args {
+	for k, t := range arguments {
 		switch t.kind {
-		case tStr:
+		case tString:
 			if !t.interpolate || !strings.ContainsAny(t.text, "$@") {
 				out = append(out, t.text)
 			}
 		case tQW:
 			out = append(out, t.words...)
 		case tWord:
-			if k > 0 && args[k-1].kind == tPunct && args[k-1].text == "-" {
+			if k > 0 && arguments[k-1].kind == tPunctuation && arguments[k-1].text == "-" {
 				continue
 			}
-			if k+1 < len(args) && args[k+1].kind == tPunct && (args[k+1].text == "=>" || args[k+1].text == ",") || k+1 == len(args) {
+			if k+1 < len(arguments) && arguments[k+1].kind == tPunctuation && (arguments[k+1].text == "=>" || arguments[k+1].text == ",") || k+1 == len(arguments) {
 				out = append(out, t.text)
 			}
 		}
@@ -559,20 +559,20 @@ func stringsOf(args []token) []string {
 }
 
 // constants reads use constant's names: `NAME => value` or `{ A => 1, B => 2 }`.
-func (r *reader) constants(args []token, line int) {
-	if len(args) == 0 {
+func (r *reader) constants(arguments []token, line int) {
+	if len(arguments) == 0 {
 		return
 	}
-	if args[0].kind == tPunct && args[0].text == "{" {
+	if arguments[0].kind == tPunctuation && arguments[0].text == "{" {
 		depth := 0
-		for k, t := range args {
+		for k, t := range arguments {
 			switch {
-			case t.kind == tPunct && (t.text == "{" || t.text == "(" || t.text == "["):
+			case t.kind == tPunctuation && (t.text == "{" || t.text == "(" || t.text == "["):
 				depth++
-			case t.kind == tPunct && (t.text == "}" || t.text == ")" || t.text == "]"):
+			case t.kind == tPunctuation && (t.text == "}" || t.text == ")" || t.text == "]"):
 				depth--
-			case depth == 1 && (t.kind == tWord || t.kind == tStr) && k+1 < len(args) && args[k+1].kind == tPunct && args[k+1].text == "=>" &&
-				(args[k-1].kind == tPunct && (args[k-1].text == "{" || args[k-1].text == ",")):
+			case depth == 1 && (t.kind == tWord || t.kind == tString) && k+1 < len(arguments) && arguments[k+1].kind == tPunctuation && arguments[k+1].text == "=>" &&
+				(arguments[k-1].kind == tPunctuation && (arguments[k-1].text == "{" || arguments[k-1].text == ",")):
 				if moduleName(t.text) {
 					r.symbols.Add(r.owner(t.text), "const", t.line)
 				}
@@ -580,7 +580,7 @@ func (r *reader) constants(args []token, line int) {
 		}
 		return
 	}
-	if t := args[0]; (t.kind == tWord || t.kind == tStr) && moduleName(t.text) && !strings.Contains(t.text, "::") {
+	if t := arguments[0]; (t.kind == tWord || t.kind == tString) && moduleName(t.text) && !strings.Contains(t.text, "::") {
 		r.symbols.Add(r.owner(t.text), "const", line)
 	}
 }

@@ -33,12 +33,12 @@ func (c *Store) readYarn(m userconf.Machine) {
 		"YARN_NPM_AUTH_TOKEN":      &s.Registry.Token,
 		"YARN_NPM_AUTH_IDENT":      &s.Registry.Ident,
 	} {
-		if value := m.Env(v); value != "" {
+		if value := m.Environment(v); value != "" {
 			*field = value
 		}
 	}
 	resolve := func(v string) string {
-		out, ok := npmconf.Interpolate(v, m.Env)
+		out, ok := npmconf.Interpolate(v, m.Environment)
 		if !ok {
 			return ""
 		}
@@ -78,7 +78,7 @@ func (c *Store) readBun(m userconf.Machine) {
 	}
 	for _, e := range s.Credentials(npmconf.BunDefault) {
 		for _, v := range []*string{&e.URL, &e.Token, &e.Username, &e.Password} {
-			*v = os.Expand(*v, m.Env)
+			*v = os.Expand(*v, m.Environment)
 		}
 		c.registry(e)
 	}

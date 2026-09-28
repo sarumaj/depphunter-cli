@@ -46,7 +46,7 @@ func newResolver(all []*scan.File) *resolver {
 		Store: nuget.Read(all), files: map[string]bool{}, index: map[string][]declared{},
 		prefixes: map[string]bool{}, places: map[string][]place{}, reach: map[string]map[string]bool{},
 	}
-	refs := map[string][]string{}
+	references := map[string][]string{}
 	var sources []*scan.File
 	for _, f := range all {
 		r.files[f.Path] = true
@@ -61,28 +61,28 @@ func newResolver(all []*scan.File) *resolver {
 		}
 		switch class(f.Path) {
 		case classProject:
-			data, err := os.ReadFile(f.Abs)
+			data, err := os.ReadFile(f.AbsolutePath)
 			if err != nil {
 				continue
 			}
-			dir := path.Dir(f.Path)
+			directory := path.Dir(f.Path)
 			n := 0
 			for _, it := range nuget.ReadProject(data).Items {
 				if it.Update {
 					continue
 				}
-				for _, inc := range strings.Split(it.Include, ";") {
-					rel, ok := nuget.ProjectPath(inc)
+				for _, include := range strings.Split(it.Include, ";") {
+					relative, ok := nuget.ProjectPath(include)
 					if !ok {
 						continue
 					}
-					target := path.Join(dir, rel)
+					target := path.Join(directory, relative)
 					switch it.Kind {
 					case "Compile":
 						r.places[target] = append(r.places[target], place{project: f.Path, index: n})
 						n++
 					case "ProjectReference":
-						refs[f.Path] = append(refs[f.Path], target)
+						references[f.Path] = append(references[f.Path], target)
 					}
 				}
 			}
@@ -92,7 +92,7 @@ func newResolver(all []*scan.File) *resolver {
 	}
 	// Declarations are read concurrently (it is a whole lexing pass) and indexed in
 	// file order.
-	decls := make([][]decl, len(sources))
+	declarations := make([][]declaration, len(sources))
 	var wg sync.WaitGroup
 	work := make(chan int)
 	for w := 0; w < runtime.GOMAXPROCS(0); w++ {
@@ -100,7 +100,7 @@ func newResolver(all []*scan.File) *resolver {
 		go func() {
 			defer wg.Done()
 			for i := range work {
-				decls[i] = fileDecls(sources[i])
+				declarations[i] = fileDeclarations(sources[i])
 			}
 		}()
 	}
@@ -110,7 +110,7 @@ func newResolver(all []*scan.File) *resolver {
 	close(work)
 	wg.Wait()
 	for i, f := range sources {
-		for _, d := range decls[i] {
+		for _, d := range declarations[i] {
 			r.index[d.name] = append(r.index[d.name], declared{file: f.Path, kind: d.kind})
 			for n := d.name; ; {
 				i := strings.LastIndexByte(n, '.')
@@ -122,13 +122,13 @@ func newResolver(all []*scan.File) *resolver {
 			}
 		}
 	}
-	for p := range refs {
+	for p := range references {
 		seen := map[string]bool{}
 		queue := []string{p}
 		for hop := 0; len(queue) > 0 && hop < maxHops; hop++ {
 			var next []string
 			for _, q := range queue {
-				for _, t := range refs[q] {
+				for _, t := range references[q] {
 					if !seen[t] {
 						seen[t] = true
 						next = append(next, t)
@@ -142,38 +142,38 @@ func newResolver(all []*scan.File) *resolver {
 	return r
 }
 
-// fileDecls is what a source declares; a file without a namespace or module
+// fileDeclarations is what a source declares; a file without a namespace or module
 // header (a script, a program's last file) is a module named after the file.
-func fileDecls(f *scan.File) []decl {
-	data, err := os.ReadFile(f.Abs)
+func fileDeclarations(f *scan.File) []declaration {
+	data, err := os.ReadFile(f.AbsolutePath)
 	if err != nil {
 		return nil
 	}
 	in := scanSource(string(data))
-	decls := in.decls
+	declarations := in.declarations
 	if !in.header {
 		stem := strings.TrimSuffix(path.Base(f.Path), path.Ext(f.Path))
 		if stem != "" {
-			decls = append(decls, decl{name: strings.ToUpper(stem[:1]) + stem[1:], kind: 'm'})
+			declarations = append(declarations, declaration{name: strings.ToUpper(stem[:1]) + stem[1:], kind: 'm'})
 		}
 	}
-	return decls
+	return declarations
 }
 
-// allowed reports whether importer may use what cand declares: an earlier file of a
+// allowed reports whether importer may use what candidate declares: an earlier file of a
 // project both are compiled in, or a file of a project the importer's project
 // references. A file compiled in no project (a script) may use anything.
 //
 // Implements: REQ-FSHARP-004
-func (r *resolver) allowed(importer, cand string) bool {
-	ip := r.places[importer]
-	if len(ip) == 0 {
+func (r *resolver) allowed(importer, candidate string) bool {
+	importerPlaces := r.places[importer]
+	if len(importerPlaces) == 0 {
 		return true
 	}
-	cp := r.places[cand]
+	candidatePlaces := r.places[candidate]
 	common := false
-	for _, a := range ip {
-		for _, b := range cp {
+	for _, a := range importerPlaces {
+		for _, b := range candidatePlaces {
 			if a.project == b.project {
 				common = true
 				if b.index < a.index {
@@ -185,8 +185,8 @@ func (r *resolver) allowed(importer, cand string) bool {
 	if common {
 		return false
 	}
-	for _, a := range ip {
-		for _, b := range cp {
+	for _, a := range importerPlaces {
+		for _, b := range candidatePlaces {
 			if r.reach[a.project][b.project] {
 				return true
 			}
@@ -237,14 +237,14 @@ func split(name string) (kind string, lines []string) {
 // declare the name (a namespace spread over files).
 //
 // Implements: REQ-FSHARP-004
-func (r *resolver) Expand(file string, imp lang.RawImport) ([]lang.Import, bool) {
-	kind, ctx := split(imp.Name)
+func (r *resolver) Expand(file string, rawImport lang.RawImport) ([]lang.Import, bool) {
+	kind, ctx := split(rawImport.Name)
 	var files []string
 	switch kind {
 	case kindOpen:
-		files, _ = r.local(file, imp.Module, ctx, openKinds(imp.Spec))
-	case kindRef:
-		files = r.refFiles(file, imp.Module, ctx)
+		files, _ = r.local(file, rawImport.Module, ctx, openKinds(rawImport.Spec))
+	case kindReference:
+		files = r.referenceFiles(file, rawImport.Module, ctx)
 	default:
 		return nil, false
 	}
@@ -253,7 +253,7 @@ func (r *resolver) Expand(file string, imp lang.RawImport) ([]lang.Import, bool)
 	}
 	out := make([]lang.Import, 0, len(files))
 	for _, f := range files {
-		out = append(out, lang.Import{Spec: imp.Spec + " (" + f + ")", Line: imp.Line, Target: lang.Target{Local: f}})
+		out = append(out, lang.Import{Spec: rawImport.Spec + " (" + f + ")", Line: rawImport.Line, Target: lang.Target{Local: f}})
 	}
 	return out, true
 }
@@ -265,9 +265,9 @@ func openKinds(spec string) string {
 	return "nm"
 }
 
-// refFiles looks a qualified name up longest prefix first: Shop.Cart.Item may be a
+// referenceFiles looks a qualified name up longest prefix first: Shop.Cart.Item may be a
 // type Item in module Shop.Cart, or module Cart in namespace Shop.
-func (r *resolver) refFiles(file, name string, ctx []string) []string {
+func (r *resolver) referenceFiles(file, name string, ctx []string) []string {
 	segments := strings.Split(name, ".")
 	for n := len(segments); n >= 1; n-- {
 		if files, _ := r.local(file, strings.Join(segments[:n], "."), ctx, "mt"); len(files) > 0 {
@@ -278,31 +278,31 @@ func (r *resolver) refFiles(file, name string, ctx []string) []string {
 }
 
 // Implements: REQ-FSHARP-004, REQ-FSHARP-005, REQ-FSHARP-006, REQ-FSHARP-007, REQ-FSHARP-008
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	kind, lines := split(imp.Name)
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	kind, lines := split(rawImport.Name)
 	switch kind {
 	case kindOpen:
-		return r.open(file, imp, lines)
-	case kindRef:
-		if files := r.refFiles(file, imp.Module, lines); len(files) > 0 {
+		return r.open(file, rawImport, lines)
+	case kindReference:
+		if files := r.referenceFiles(file, rawImport.Module, lines); len(files) > 0 {
 			return lang.Target{Local: files[0]}
 		}
 		return lang.Target{}
 	case kindLoad:
-		return r.load(file, imp.Module, lines)
+		return r.load(file, rawImport.Module, lines)
 	case kindNuGet:
 		version := ""
 		if len(lines) > 0 {
 			version = lines[0]
 		}
-		return r.Version(file, imp.Module, version)
+		return r.Version(file, rawImport.Module, version)
 	case kindDLL:
-		return r.dll(file, imp.Module, lines)
+		return r.dll(file, rawImport.Module, lines)
 	case kindCompile:
-		return r.compile(file, imp.Module)
+		return r.compile(file, rawImport.Module)
 	case kindProject:
-		if rel, ok := nuget.ProjectPath(imp.Module); ok {
-			if p := path.Join(path.Dir(file), rel); r.files[p] {
+		if relative, ok := nuget.ProjectPath(rawImport.Module); ok {
+			if p := path.Join(path.Dir(file), relative); r.files[p] {
 				return lang.Target{Local: p}
 			}
 		}
@@ -312,24 +312,24 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 		if len(lines) > 0 {
 			group = lines[0]
 		}
-		if t, ok := r.Package(file, group, imp.Module); ok {
+		if t, ok := r.Package(file, group, rawImport.Module); ok {
 			return t
 		}
-		return lang.Target{Ecosystem: nuget.Ecosystem, Package: imp.Module, Unresolved: true}
+		return lang.Target{Ecosystem: nuget.Ecosystem, Package: rawImport.Module, Unresolved: true}
 	case kindImplicit:
 		return r.fsharpCore(file)
 	case kindRemote:
 		if len(lines) < 1 {
 			return lang.Target{}
 		}
-		ref := ""
+		reference := ""
 		if len(lines) > 1 {
-			ref = lines[1]
+			reference = lines[1]
 		}
-		t, _ := r.Remote(lines[0], imp.Module, ref)
+		t, _ := r.Remote(lines[0], rawImport.Module, reference)
 		return t
 	case kindPaketFile:
-		t, _ := r.RemoteFile(imp.Module)
+		t, _ := r.RemoteFile(rawImport.Module)
 		return t
 	}
 	return lang.Target{}
@@ -343,34 +343,34 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 // an unresolved package.
 //
 // Implements: REQ-FSHARP-004, REQ-FSHARP-008
-func (r *resolver) open(file string, imp lang.RawImport, ctx []string) lang.Target {
-	ns := imp.Module
-	files, blocked := r.local(file, ns, ctx, openKinds(imp.Spec))
+func (r *resolver) open(file string, rawImport lang.RawImport, ctx []string) lang.Target {
+	namespace := rawImport.Module
+	files, blocked := r.local(file, namespace, ctx, openKinds(rawImport.Spec))
 	if len(files) > 0 {
 		return lang.Target{Local: files[0]}
 	}
-	if strings.HasPrefix(imp.Spec, "open type ") {
-		if i := strings.LastIndexByte(ns, '.'); i > 0 {
-			if f, b := r.local(file, ns[:i], ctx, "nm"); len(f) > 0 {
+	if strings.HasPrefix(rawImport.Spec, "open type ") {
+		if i := strings.LastIndexByte(namespace, '.'); i > 0 {
+			if f, b := r.local(file, namespace[:i], ctx, "nm"); len(f) > 0 {
 				return lang.Target{Local: f[0]}
 			} else if b {
 				blocked = true
 			}
 		}
 	}
-	if t, ok := r.scriptPackage(file, ns, ctx); ok {
+	if t, ok := r.scriptPackage(file, namespace, ctx); ok {
 		return t
 	}
-	for _, id := range knownNamespaces(ns) {
+	for _, id := range knownNamespaces(namespace) {
 		if t, ok := r.Package(file, "", id); ok {
 			return t
 		}
 	}
-	declared, isDeclared := r.Declared(file, ns)
+	declared, isDeclared := r.Declared(file, namespace)
 	// A namespace (or a module in it) that declared packages' ids extend, when it
 	// shares more segments with that id than a declared id prefixing it does:
 	// Fake.Core.TargetOperators is Fake.Core.Target's, not FAKE's.
-	for n := ns; !baseLibrary(ns); n = n[:strings.LastIndexByte(n, '.')] {
+	for n := namespace; !baseLibrary(namespace); n = n[:strings.LastIndexByte(n, '.')] {
 		if isDeclared && strings.Count(n, ".") <= strings.Count(declared.Package, ".") {
 			break
 		}
@@ -384,21 +384,21 @@ func (r *resolver) open(file string, imp lang.RawImport, ctx []string) lang.Targ
 	if isDeclared {
 		return declared
 	}
-	if fsharpCoreNamespace(ns) {
+	if fsharpCoreNamespace(namespace) {
 		return r.fsharpCore(file)
 	}
-	t := nuget.Undeclared(ns)
+	t := nuget.Undeclared(namespace)
 	if t.Ecosystem == nuget.Dotnet {
 		return t
 	}
-	if ids := knownNamespaces(ns); len(ids) > 0 && !blocked {
+	if ids := knownNamespaces(namespace); len(ids) > 0 && !blocked {
 		return lang.Target{Ecosystem: nuget.Ecosystem, Package: r.ID(ids[0]), Unresolved: true}
 	}
-	if blocked || r.prefixes[ns] {
+	if blocked || r.prefixes[namespace] {
 		return lang.Target{}
 	}
 	for _, c := range ctx {
-		if r.prefixes[c+"."+ns] || len(r.index[c+"."+ns]) > 0 {
+		if r.prefixes[c+"."+namespace] || len(r.index[c+"."+namespace]) > 0 {
 			return lang.Target{}
 		}
 	}
@@ -406,29 +406,29 @@ func (r *resolver) open(file string, imp lang.RawImport, ctx []string) lang.Targ
 }
 
 // scriptPackage is the package of a script's #r "nuget: ..." lines that provides
-// ns by the rules of Declared and Under.
-func (r *resolver) scriptPackage(file, ns string, ctx []string) (lang.Target, bool) {
-	type pkg struct{ id, version string }
-	var pkgs []pkg
+// namespace by the rules of Declared and Under.
+func (r *resolver) scriptPackage(file, namespace string, ctx []string) (lang.Target, bool) {
+	type nugetPackage struct{ id, version string }
+	var packages []nugetPackage
 	for _, c := range ctx {
 		if p, ok := strings.CutPrefix(c, "nuget:"); ok {
 			id, version, _ := strings.Cut(p, ",")
-			pkgs = append(pkgs, pkg{id, version})
+			packages = append(packages, nugetPackage{id, version})
 		}
 	}
-	if len(pkgs) == 0 {
+	if len(packages) == 0 {
 		return lang.Target{}, false
 	}
-	lower := strings.ToLower(ns)
+	lower := strings.ToLower(namespace)
 	best := -1
-	for i, p := range pkgs {
-		if l := strings.ToLower(p.id); (lower == l || strings.HasPrefix(lower, l+".")) && (best < 0 || len(l) > len(pkgs[best].id)) {
+	for i, p := range packages {
+		if l := strings.ToLower(p.id); (lower == l || strings.HasPrefix(lower, l+".")) && (best < 0 || len(l) > len(packages[best].id)) {
 			best = i
 		}
 	}
-	for n := lower; best < 0 && !baseLibrary(ns); n = n[:strings.LastIndexByte(n, '.')] {
-		for i, p := range pkgs {
-			if l := strings.ToLower(p.id); strings.HasPrefix(l, n+".") && (best < 0 || len(l) < len(pkgs[best].id)) {
+	for n := lower; best < 0 && !baseLibrary(namespace); n = n[:strings.LastIndexByte(n, '.')] {
+		for i, p := range packages {
+			if l := strings.ToLower(p.id); strings.HasPrefix(l, n+".") && (best < 0 || len(l) < len(packages[best].id)) {
 				best = i
 			}
 		}
@@ -439,19 +439,19 @@ func (r *resolver) scriptPackage(file, ns string, ctx []string) (lang.Target, bo
 	if best < 0 {
 		return lang.Target{}, false
 	}
-	return r.Version(file, pkgs[best].id, pkgs[best].version), true
+	return r.Version(file, packages[best].id, packages[best].version), true
 }
 
-// baseLibrary reports whether ns lies in the namespaces of the .NET base library,
+// baseLibrary reports whether namespace lies in the namespaces of the .NET base library,
 // which many packages extend (System.Text.Json, Microsoft.AspNetCore.TestHost): a
 // package id below such a namespace does not say it provides the namespace.
-func baseLibrary(ns string) bool {
-	first, _, _ := strings.Cut(ns, ".")
+func baseLibrary(namespace string) bool {
+	first, _, _ := strings.Cut(namespace, ".")
 	return first == "System" || first == "Microsoft" || first == "Windows"
 }
 
 // knownNamespaces lists the packages providing a namespace their ids do not spell.
-func knownNamespaces(ns string) []string {
+func knownNamespaces(namespace string) []string {
 	for _, k := range []struct {
 		prefix string
 		ids    []string
@@ -464,7 +464,7 @@ func knownNamespaces(ns string) []string {
 		{"Browser", []string{"Fable.Browser.Dom"}},
 		{"FSharp.Compiler", []string{"FSharp.Compiler.Service"}},
 	} {
-		if ns == k.prefix || strings.HasPrefix(ns, k.prefix+".") {
+		if namespace == k.prefix || strings.HasPrefix(namespace, k.prefix+".") {
 			return k.ids
 		}
 	}
@@ -481,18 +481,18 @@ var coreModules = map[string]bool{
 	"Event": true, "Observable": true, "Lazy": true, "Patterns": true, "DerivedPatterns": true, "ExprShape": true,
 }
 
-// fsharpCoreNamespace reports whether ns is one FSharp.Core provides:
+// fsharpCoreNamespace reports whether namespace is one FSharp.Core provides:
 // Microsoft.FSharp.*, the FSharp.* short forms F# accepts for them, and the
 // modules of the namespaces F# opens by default.
-func fsharpCoreNamespace(ns string) bool {
-	if ns == "Microsoft.FSharp" || strings.HasPrefix(ns, "Microsoft.FSharp.") {
+func fsharpCoreNamespace(namespace string) bool {
+	if namespace == "Microsoft.FSharp" || strings.HasPrefix(namespace, "Microsoft.FSharp.") {
 		return true
 	}
-	if first, _, _ := strings.Cut(ns, "."); coreModules[first] {
+	if first, _, _ := strings.Cut(namespace, "."); coreModules[first] {
 		return true
 	}
 	for _, p := range []string{"FSharp.Core", "FSharp.Collections", "FSharp.Control", "FSharp.Reflection", "FSharp.Quotations", "FSharp.Linq", "FSharp.NativeInterop", "FSharp.Text"} {
-		if ns == p || strings.HasPrefix(ns, p+".") {
+		if namespace == p || strings.HasPrefix(namespace, p+".") {
 			return true
 		}
 	}
@@ -513,16 +513,16 @@ func (r *resolver) fsharpCore(file string) lang.Target {
 // compile resolves a Compile item: a project file, or a file Paket links from
 // paket-files/.
 func (r *resolver) compile(project, include string) lang.Target {
-	rel, ok := nuget.ProjectPath(include)
+	relative, ok := nuget.ProjectPath(include)
 	if !ok {
 		return lang.Target{}
 	}
-	p := path.Join(path.Dir(project), rel)
+	p := path.Join(path.Dir(project), relative)
 	if r.files[p] {
 		return lang.Target{Local: p}
 	}
 	if i := strings.Index(p, "paket-files/"); i >= 0 {
-		if t, ok := r.RemoteRepo(p[i+len("paket-files/"):]); ok {
+		if t, ok := r.RemoteRepository(p[i+len("paket-files/"):]); ok {
 			return t
 		}
 		if t, ok := r.RemoteFile(p); ok {
@@ -534,8 +534,8 @@ func (r *resolver) compile(project, include string) lang.Target {
 
 // load resolves #load: relative to the script, then to each #I directory. A script
 // Paket installed (packages/<id>/...) is that package.
-func (r *resolver) load(file, arg string, idirs []string) lang.Target {
-	for _, p := range r.candidates(file, arg, idirs) {
+func (r *resolver) load(file, argument string, idirs []string) lang.Target {
+	for _, p := range r.candidates(file, argument, idirs) {
 		if r.files[p] {
 			return lang.Target{Local: p}
 		}
@@ -546,16 +546,16 @@ func (r *resolver) load(file, arg string, idirs []string) lang.Target {
 	return lang.Target{}
 }
 
-func (r *resolver) candidates(file, arg string, idirs []string) []string {
-	a := strings.ReplaceAll(strings.TrimSpace(arg), `\`, "/")
+func (r *resolver) candidates(file, argument string, idirs []string) []string {
+	a := strings.ReplaceAll(strings.TrimSpace(argument), `\`, "/")
 	if a == "" {
 		return nil
 	}
-	dir := path.Dir(file)
-	out := []string{path.Join(dir, a)}
+	directory := path.Dir(file)
+	out := []string{path.Join(directory, a)}
 	for _, d := range idirs {
 		d = strings.ReplaceAll(d, `\`, "/")
-		out = append(out, path.Join(dir, d, a))
+		out = append(out, path.Join(directory, d, a))
 	}
 	return out
 }
@@ -582,8 +582,8 @@ func (r *resolver) installed(file, p string) (lang.Target, bool) {
 // dll resolves #r of an assembly: a file of the repository, a package's assembly
 // under packages/, or a bare framework assembly name (System.Xml.Linq). Anything
 // else - an assembly outside the repository - is dropped.
-func (r *resolver) dll(file, arg string, idirs []string) lang.Target {
-	for _, p := range r.candidates(file, arg, idirs) {
+func (r *resolver) dll(file, argument string, idirs []string) lang.Target {
+	for _, p := range r.candidates(file, argument, idirs) {
 		if r.files[p] {
 			return lang.Target{Local: p}
 		}
@@ -591,7 +591,7 @@ func (r *resolver) dll(file, arg string, idirs []string) lang.Target {
 			return t
 		}
 	}
-	name := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSpace(arg), ".dll"), ".DLL")
+	name := strings.TrimSuffix(strings.TrimSuffix(strings.TrimSpace(argument), ".dll"), ".DLL")
 	if name == "" || strings.ContainsAny(name, `/\:`) {
 		return lang.Target{}
 	}

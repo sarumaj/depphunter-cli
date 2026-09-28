@@ -9,17 +9,17 @@ const path = require('node:path');
 const { after, before, describe, it } = require('node:test');
 
 require('./stub'); // terminal.js imports binary.js, which imports vscode
-const { binDirFor, exposeOnPath } = require('../out/terminal.js');
+const { binDirectoryFor, exposeOnPath } = require('../out/terminal.js');
 
 const NAME = process.platform === 'win32' ? 'depphunter.exe' : 'depphunter';
 
 /** The editor's environment collection, as far as the extension uses it. */
 function collection() {
-  const vars = new Map();
+  const variables = new Map();
   return {
-    vars,
-    clear() { vars.clear(); },
-    prepend(name, value) { vars.set(name, { type: 'prepend', value }); },
+    vars: variables,
+    clear() { variables.clear(); },
+    prepend(name, value) { variables.set(name, { type: 'prepend', value }); },
   };
 }
 
@@ -40,28 +40,28 @@ describe('the binary on the terminals\' PATH', () => {
   });
 
   it('puts the folder of the binary the extension runs on it', () => {
-    assert.strictEqual(binDirFor('', home), path.join(home, 'bin'), 'the bundled binary');
+    assert.strictEqual(binDirectoryFor('', home), path.join(home, 'bin'), 'the bundled binary');
     const own = path.join(empty, 'build', NAME);
-    assert.strictEqual(binDirFor(own, home), path.dirname(own), 'the one depphunter.path names');
+    assert.strictEqual(binDirectoryFor(own, home), path.dirname(own), 'the one depphunter.path names');
   });
 
   it('adds nothing where the shell finds the binary anyway, or when switched off', () => {
-    assert.strictEqual(binDirFor('', empty), undefined, 'a build without a binary falls back to PATH');
-    assert.strictEqual(binDirFor('depphunter-dev', home), undefined, 'a bare name is looked up on PATH');
-    assert.strictEqual(binDirFor('', home, false), undefined, 'depphunter.addToPath off');
+    assert.strictEqual(binDirectoryFor('', empty), undefined, 'a build without a binary falls back to PATH');
+    assert.strictEqual(binDirectoryFor('depphunter-dev', home), undefined, 'a bare name is looked up on PATH');
+    assert.strictEqual(binDirectoryFor('', home, false), undefined, 'depphunter.addToPath off');
   });
 
   it('puts it first, and replaces what it put there before', () => {
-    const env = collection();
-    exposeOnPath(env, path.join(home, 'bin'));
-    assert.deepStrictEqual(env.vars.get('PATH'), { type: 'prepend', value: path.join(home, 'bin') + path.delimiter });
-    assert.match(env.description, /depphunter/);
+    const environment = collection();
+    exposeOnPath(environment, path.join(home, 'bin'));
+    assert.deepStrictEqual(environment.vars.get('PATH'), { type: 'prepend', value: path.join(home, 'bin') + path.delimiter });
+    assert.match(environment.description, /depphunter/);
 
-    exposeOnPath(env, '/elsewhere');
-    assert.deepStrictEqual([...env.vars.keys()], ['PATH']);
-    assert.strictEqual(env.vars.get('PATH').value, '/elsewhere' + path.delimiter, 'the old folder is still there');
+    exposeOnPath(environment, '/elsewhere');
+    assert.deepStrictEqual([...environment.vars.keys()], ['PATH']);
+    assert.strictEqual(environment.vars.get('PATH').value, '/elsewhere' + path.delimiter, 'the old folder is still there');
 
-    exposeOnPath(env, undefined);
-    assert.strictEqual(env.vars.size, 0, 'switching it off left PATH changed');
+    exposeOnPath(environment, undefined);
+    assert.strictEqual(environment.vars.size, 0, 'switching it off left PATH changed');
   });
 });

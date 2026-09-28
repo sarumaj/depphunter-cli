@@ -21,8 +21,8 @@ describe('vegetation without the plant models', () => {
     // Two meshes a species, trunk then crown, before the bushes and the lamps.
     const species = group.children.slice(0, 6);
     for (const mesh of species) {
-      const pos = mesh.geometry.getAttribute('position');
-      assert.ok(pos && pos.count > 0, 'a tree species drawn with no geometry');
+      const position = mesh.geometry.getAttribute('position');
+      assert.ok(position && position.count > 0, 'a tree species drawn with no geometry');
     }
   });
 });

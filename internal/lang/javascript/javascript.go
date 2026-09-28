@@ -20,8 +20,8 @@ import (
 )
 
 const (
-	ecoNPM  = "npm"
-	ecoNode = "node"
+	ecosystemNPM  = "npm"
+	ecosystemNode = "node"
 )
 
 // Captures: @import is a module specifier; @def.<kind> the name of a top-level
@@ -92,14 +92,14 @@ func (Plugin) Name() string { return "javascript" }
 //
 // Implements: REQ-JS-001, REQ-JS-012
 func (Plugin) Claims(f *scan.File) bool {
-	return (grammarFor(f.Path) != nil || component(f.Path)) && !f.Binary && f.Lang != "XML"
+	return (grammarFor(f.Path) != nil || component(f.Path)) && !f.Binary && f.Language != "XML"
 }
 
 // Implements: REQ-JS-005
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoNPM, Name: "npm"},
-		{ID: ecoNode, Name: "Node.js built-ins", Std: true},
+		{ID: ecosystemNPM, Name: "npm"},
+		{ID: ecosystemNode, Name: "Node.js built-ins", Std: true},
 	}
 }
 
@@ -110,26 +110,26 @@ func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
 }
 
 // Implements: REQ-JS-001, REQ-JS-011, REQ-JS-012, REQ-LANG-024
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
-	ex := &lang.Extraction{}
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
+	extraction := &lang.Extraction{}
 	var symbols lang.SymbolSet
 	var err error
 	if g := grammarFor(f.Path); g != nil {
-		err = extract(g, src, ex, &symbols)
+		err = extract(g, source, extraction, &symbols)
 	} else {
-		err = extractComponent(f.Path, src, ex, &symbols)
+		err = extractComponent(f.Path, source, extraction, &symbols)
 	}
-	ex.Symbols = symbols.List()
-	return ex, err
+	extraction.Symbols = symbols.List()
+	return extraction, err
 }
 
-// extract adds the imports and top-level definitions g finds in src.
-func extract(g *treesitter.Grammar, src []byte, ex *lang.Extraction, symbols *lang.SymbolSet) error {
-	return g.Matches(src, func(m treesitter.Match) {
+// extract adds the imports and top-level definitions g finds in source.
+func extract(g *treesitter.Grammar, source []byte, extraction *lang.Extraction, symbols *lang.SymbolSet) error {
+	return g.Matches(source, func(m treesitter.Match) {
 		for _, c := range m {
 			switch {
 			case c.Name == "import":
-				ex.Imports = append(ex.Imports, lang.RawImport{Spec: c.Text, Module: c.Text, Line: c.Line})
+				extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: c.Text, Module: c.Text, Line: c.Line})
 			case c.Name == "def.method":
 				class := c.EnclosingName("class_declaration", "abstract_class_declaration", "class")
 				symbols.Add(class+"."+c.Text, "method", c.Line)

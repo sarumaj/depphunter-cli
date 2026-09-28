@@ -5,26 +5,26 @@ import (
 	"strings"
 )
 
-// dep is one entry of an info.rkt's deps or build-deps.
-type dep struct {
-	source   string // as written: a package name or a package source
-	name     string // the package name raco derives from the source
-	url      string // a git or archive source's URL without its #ref
-	ref      string // a git source's #ref (a commit, branch or tag)
-	local    string // a directory source ("../x", "file:///...")
-	version  string // #:version, a minimum
-	checksum string // #:checksum
-	build    bool   // listed in build-deps
-	line     int
+// dependency is one entry of an info.rkt's deps or build-deps.
+type dependency struct {
+	source    string // as written: a package name or a package source
+	name      string // the package name raco derives from the source
+	url       string // a git or archive source's URL without its #ref
+	reference string // a git source's #ref (a commit, branch or tag)
+	local     string // a directory source ("../x", "file:///...")
+	version   string // #:version, a minimum
+	checksum  string // #:checksum
+	build     bool   // listed in build-deps
+	line      int
 }
 
 // info is what an info.rkt says about its package.
 type info struct {
-	collection string // the collection's name, "multi", "use-pkg-name" or "" (not defined)
-	defined    bool   // collection is defined
-	pkg        bool   // it is a package's info.rkt: it defines collection, deps, build-deps or pkg-desc
-	version    string
-	deps       []dep
+	collection   string // the collection's name, "multi", "use-pkg-name" or "" (not defined)
+	defined      bool   // collection is defined
+	isPackage    bool   // it is a package's info.rkt: it defines collection, deps, build-deps or pkg-desc
+	version      string
+	dependencies []dependency
 }
 
 // readInfo reads an info.rkt (#lang info or #lang setup/infotab): its
@@ -32,16 +32,16 @@ type info struct {
 // gives what its literal parts say.
 //
 // Implements: REQ-RACKET-006
-func readInfo(src []byte) info {
+func readInfo(source []byte) info {
 	var in info
-	for _, f := range Read(src, false).Forms {
+	for _, f := range Read(source, false).Forms {
 		if f.Head() != "define" || len(f.Kids) < 3 || f.Kids[1].Kind != Symbol {
 			continue
 		}
 		v := Unquote(f.Kids[2])
 		switch name := f.Kids[1].Text; name {
 		case "collection":
-			in.defined, in.pkg = true, true
+			in.defined, in.isPackage = true, true
 			switch v.Kind {
 			case String:
 				in.collection = v.Text
@@ -53,13 +53,13 @@ func readInfo(src []byte) info {
 				in.version = v.Text
 			}
 		case "pkg-desc":
-			in.pkg = true
+			in.isPackage = true
 		case "deps", "build-deps":
-			in.pkg = true
+			in.isPackage = true
 			for _, e := range elements(v) {
-				if d, ok := readDep(e); ok {
+				if d, ok := readDependency(e); ok {
 					d.build = name == "build-deps"
-					in.deps = append(in.deps, d)
+					in.dependencies = append(in.dependencies, d)
 				}
 			}
 		}
@@ -85,10 +85,10 @@ func elements(v *Node) []*Node {
 	return v.Kids
 }
 
-// readDep reads a deps element: "source" or ("source" #:version "1.2" ...).
-func readDep(e *Node) (dep, bool) {
+// readDependency reads a deps element: "source" or ("source" #:version "1.2" ...).
+func readDependency(e *Node) (dependency, bool) {
 	e = Unquote(e)
-	var d dep
+	var d dependency
 	switch {
 	case e.Kind == String:
 		d.source = e.Text
@@ -118,7 +118,7 @@ func readDep(e *Node) (dep, bool) {
 	if d.source == "" {
 		return d, false
 	}
-	d.name, d.url, d.ref, d.local = parseSource(d.source)
+	d.name, d.url, d.reference, d.local = parseSource(d.source)
 	return d, d.name != ""
 }
 
@@ -128,8 +128,8 @@ func readDep(e *Node) (dep, bool) {
 // .git; an archive by its file name without the archive suffix.
 //
 // Implements: REQ-RACKET-006
-func parseSource(src string) (name, url, ref, local string) {
-	s := src
+func parseSource(source string) (name, url, reference, local string) {
+	s := source
 	switch {
 	case strings.HasPrefix(s, "file://"):
 		local = strings.TrimPrefix(s, "file://")
@@ -143,14 +143,14 @@ func parseSource(src string) (name, url, ref, local string) {
 		return s, "", "", ""
 	}
 	if u, r, ok := strings.Cut(s, "#"); ok {
-		s, ref = u, r
+		s, reference = u, r
 	}
-	sub := ""
+	subpath := ""
 	if u, q, ok := strings.Cut(s, "?"); ok {
 		s = u
-		for _, kv := range strings.Split(q, "&") {
-			if p, ok := strings.CutPrefix(kv, "path="); ok {
-				sub = strings.Trim(p, "/")
+		for _, keyValue := range strings.Split(q, "&") {
+			if p, ok := strings.CutPrefix(keyValue, "path="); ok {
+				subpath = strings.Trim(p, "/")
 			}
 		}
 	}
@@ -163,21 +163,21 @@ func parseSource(src string) (name, url, ref, local string) {
 			url += parts[1] + "/" + parts[2]
 			name = parts[2]
 		}
-		if len(parts) >= 4 && ref == "" {
-			ref = parts[3]
+		if len(parts) >= 4 && reference == "" {
+			reference = parts[3]
 		}
 		if len(parts) >= 5 {
-			sub = strings.Join(parts[4:], "/")
+			subpath = strings.Join(parts[4:], "/")
 		}
 	} else {
 		name = path.Base(strings.TrimRight(s, "/"))
 	}
-	if sub != "" {
-		name = path.Base(sub)
+	if subpath != "" {
+		name = path.Base(subpath)
 	}
-	for _, suf := range []string{".git", ".zip", ".tar.gz", ".tgz", ".plt"} {
-		name = strings.TrimSuffix(name, suf)
+	for _, suffix := range []string{".git", ".zip", ".tar.gz", ".tgz", ".plt"} {
+		name = strings.TrimSuffix(name, suffix)
 	}
 	url = strings.TrimPrefix(url, "git+")
-	return name, url, ref, ""
+	return name, url, reference, ""
 }

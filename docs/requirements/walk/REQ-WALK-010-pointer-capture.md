@@ -19,7 +19,7 @@ click on the map **shall** request it again.
 ## Rationale
 
 First-person-shooter habit: the mouse looks around, and a reticle fixed in the
-centre aims. `Esc` must hand the pointer back so the toolbar over the street can
+center aims. `Esc` must hand the pointer back so the toolbar over the street can
 be reached.
 
 ## Acceptance criteria

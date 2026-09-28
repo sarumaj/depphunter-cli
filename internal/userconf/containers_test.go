@@ -14,27 +14,27 @@ import (
 func TestRegistriesConf(t *testing.T) {
 	home, xdg := t.TempDir(), t.TempDir()
 	m := machine(t, home, "linux", nil)
-	sys := filepath.Join(SystemRoot, "etc", "containers")
-	touch(t, filepath.Join(sys, "registries.conf.d", "20-b.conf"))
-	touch(t, filepath.Join(sys, "registries.conf.d", "10-a.conf"))
-	touch(t, filepath.Join(sys, "registries.conf.d", "notes.txt"))
+	systemDirectory := filepath.Join(SystemRoot, "etc", "containers")
+	touch(t, filepath.Join(systemDirectory, "registries.conf.d", "20-b.conf"))
+	touch(t, filepath.Join(systemDirectory, "registries.conf.d", "10-a.conf"))
+	touch(t, filepath.Join(systemDirectory, "registries.conf.d", "notes.txt"))
 	touch(t, filepath.Join(home, ".config", "containers", "registries.conf.d", "00-user.conf"))
 	main, dropIns := m.RegistriesConf()
 	want := []string{
-		filepath.Join(sys, "registries.conf.d", "10-a.conf"),
-		filepath.Join(sys, "registries.conf.d", "20-b.conf"),
+		filepath.Join(systemDirectory, "registries.conf.d", "10-a.conf"),
+		filepath.Join(systemDirectory, "registries.conf.d", "20-b.conf"),
 		filepath.Join(home, ".config", "containers", "registries.conf.d", "00-user.conf"),
 	}
-	if main != filepath.Join(sys, "registries.conf") || !reflect.DeepEqual(dropIns, want) {
+	if main != filepath.Join(systemDirectory, "registries.conf") || !reflect.DeepEqual(dropIns, want) {
 		t.Errorf("system: %s %v", main, dropIns)
 	}
-	m.Env = func(k string) string {
+	m.Environment = func(k string) string {
 		return map[string]string{"CONTAINERS_REGISTRIES_CONF": "/ci/registries.conf"}[k]
 	}
 	if main, dropIns = m.RegistriesConf(); main != "/ci/registries.conf" || !reflect.DeepEqual(dropIns, want) {
 		t.Errorf("CONTAINERS_REGISTRIES_CONF: %s %v", main, dropIns)
 	}
-	m.Env = func(k string) string { return map[string]string{"XDG_CONFIG_HOME": xdg}[k] }
+	m.Environment = func(k string) string { return map[string]string{"XDG_CONFIG_HOME": xdg}[k] }
 	touch(t, filepath.Join(xdg, "containers", "registries.conf"))
 	touch(t, filepath.Join(xdg, "containers", "registries.conf.d", "x.conf"))
 	if main, dropIns = m.RegistriesConf(); main != filepath.Join(xdg, "containers", "registries.conf") ||

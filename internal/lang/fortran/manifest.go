@@ -12,12 +12,12 @@ import (
 
 // Manifest import kinds, carried in RawImport.Name.
 const (
-	kindDep      = "dep"      // [dependencies], [features.*.dependencies]
-	kindDevDep   = "dev"      // [dev-dependencies]
-	kindDir      = "dir"      // [library] source-dir
-	kindMain     = "main"     // [[executable]], [[test]], [[example]] main file
-	kindExternal = "external" // [build] external-modules
-	kindLink     = "link"     // [build] link
+	kindDependency    = "dep"      // [dependencies], [features.*.dependencies]
+	kindDevDependency = "dev"      // [dev-dependencies]
+	kindDirectory     = "dir"      // [library] source-dir
+	kindMain          = "main"     // [[executable]], [[test]], [[example]] main file
+	kindExternal      = "external" // [build] external-modules
+	kindLink          = "link"     // [build] link
 )
 
 // dependency is one entry of fpm.toml's dependency tables: a git repository
@@ -28,7 +28,7 @@ type dependency struct {
 	git, tag, branch, rev string
 	path                  string
 	namespace, v          string
-	meta                  string
+	metadata              string
 	metaSet               bool
 	dev                   bool
 	line                  int
@@ -36,51 +36,51 @@ type dependency struct {
 
 // program is an [[executable]], [[test]] or [[example]] entry.
 type program struct {
-	kind, name, dir, main string
-	line                  int
+	kind, name, directory, main string
+	line                        int
 }
 
 // manifest is what an fpm.toml says.
 type manifest struct {
-	name            string
-	nameLine        int
-	deps            map[string]*dependency
-	sourceDir       string // [library] source-dir as written, "" when not written
-	sourceLine      int
-	includeDirs     []string // [library] include-dir, "include" by default
-	externalModules []string // [build] external-modules, lower case
-	link            []string // [build] link
-	buildLine       int
-	programs        []program
+	name               string
+	nameLine           int
+	dependencies       map[string]*dependency
+	sourceDirectory    string // [library] source-dir as written, "" when not written
+	sourceLine         int
+	includeDirectories []string // [library] include-dir, "include" by default
+	externalModules    []string // [build] external-modules, lower case
+	link               []string // [build] link
+	buildLine          int
+	programs           []program
 }
 
 // Implements: REQ-FORTRAN-005
-func readManifest(src []byte) *manifest {
-	m := &manifest{deps: map[string]*dependency{}}
+func readManifest(source []byte) *manifest {
+	m := &manifest{dependencies: map[string]*dependency{}}
 	var raw map[string]any
-	if _, err := toml.Decode(string(src), &raw); err != nil {
+	if _, err := toml.Decode(string(source), &raw); err != nil {
 		return m
 	}
-	lines := newLines(src)
+	lines := newLines(source)
 	m.name, _ = raw["name"].(string)
 	m.nameLine = lines.key("", "name")
-	readDeps(raw["dependencies"], false, "dependencies", lines, m.deps)
+	readDependencies(raw["dependencies"], false, "dependencies", lines, m.dependencies)
 	if feats, ok := raw["features"].(map[string]any); ok {
 		for _, f := range sortedKeys(feats) {
 			if ft, ok := feats[f].(map[string]any); ok {
-				readDeps(ft["dependencies"], false, "features."+f+".dependencies", lines, m.deps)
+				readDependencies(ft["dependencies"], false, "features."+f+".dependencies", lines, m.dependencies)
 			}
 		}
 	}
-	readDeps(raw["dev-dependencies"], true, "dev-dependencies", lines, m.deps)
-	m.includeDirs = []string{"include"}
-	if lib, ok := raw["library"].(map[string]any); ok {
-		if s, ok := lib["source-dir"].(string); ok && s != "" {
-			m.sourceDir = s
+	readDependencies(raw["dev-dependencies"], true, "dev-dependencies", lines, m.dependencies)
+	m.includeDirectories = []string{"include"}
+	if library, ok := raw["library"].(map[string]any); ok {
+		if s, ok := library["source-dir"].(string); ok && s != "" {
+			m.sourceDirectory = s
 			m.sourceLine = lines.key("library", "source-dir")
 		}
-		if inc := stringList(lib["include-dir"]); len(inc) > 0 {
-			m.includeDirs = inc
+		if include := stringList(library["include-dir"]); len(include) > 0 {
+			m.includeDirectories = include
 		}
 	}
 	if b, ok := raw["build"].(map[string]any); ok {
@@ -96,10 +96,10 @@ func readManifest(src []byte) *manifest {
 	for _, kind := range []string{"executable", "test", "example"} {
 		list, _ := raw[kind].([]map[string]any)
 		for n, e := range list {
-			p := program{kind: kind, dir: map[string]string{"executable": "app", "test": "test", "example": "example"}[kind], main: "main.f90"}
+			p := program{kind: kind, directory: map[string]string{"executable": "app", "test": "test", "example": "example"}[kind], main: "main.f90"}
 			p.name, _ = e["name"].(string)
 			if s, ok := e["source-dir"].(string); ok && s != "" {
-				p.dir = s
+				p.directory = s
 			}
 			if s, ok := e["main"].(string); ok && s != "" {
 				p.main = s
@@ -113,32 +113,32 @@ func readManifest(src []byte) *manifest {
 	for _, kind := range []string{"executable", "example", "test"} {
 		list, _ := raw[kind].([]map[string]any)
 		for _, e := range list {
-			readDeps(e["dependencies"], kind != "executable", kind+".dependencies", lines, m.deps)
+			readDependencies(e["dependencies"], kind != "executable", kind+".dependencies", lines, m.dependencies)
 		}
 	}
 	return m
 }
 
-func readDeps(v any, dev bool, section string, lines *tomlLines, into map[string]*dependency) {
-	tbl, ok := v.(map[string]any)
+func readDependencies(v any, dev bool, section string, lines *tomlLines, into map[string]*dependency) {
+	table, ok := v.(map[string]any)
 	if !ok {
 		return
 	}
-	for _, name := range sortedKeys(tbl) {
+	for _, name := range sortedKeys(table) {
 		if name == "" || into[name] != nil {
 			continue
 		}
 		d := &dependency{name: name, dev: dev, line: lines.key(section, name)}
-		switch e := tbl[name].(type) {
+		switch e := table[name].(type) {
 		case string:
-			d.meta, d.metaSet = e, true
+			d.metadata, d.metaSet = e, true
 		case map[string]any:
-			str := func(k string) string {
+			stringField := func(k string) string {
 				s, _ := e[k].(string)
 				return strings.TrimSpace(s)
 			}
-			d.git, d.tag, d.branch, d.rev = str("git"), str("tag"), str("branch"), str("rev")
-			d.path, d.namespace, d.v = str("path"), str("namespace"), str("v")
+			d.git, d.tag, d.branch, d.rev = stringField("git"), stringField("tag"), stringField("branch"), stringField("rev")
+			d.path, d.namespace, d.v = stringField("path"), stringField("namespace"), stringField("v")
 		default:
 			continue
 		}
@@ -170,7 +170,9 @@ type tomlLines struct {
 	lines []string
 }
 
-func newLines(src []byte) *tomlLines { return &tomlLines{lines: strings.Split(string(src), "\n")} }
+func newLines(source []byte) *tomlLines {
+	return &tomlLines{lines: strings.Split(string(source), "\n")}
+}
 
 // header is a table header line's name: [a.b] -> a.b, [[a]] -> a.
 func header(l string) (string, bool) {
@@ -189,10 +191,10 @@ func header(l string) (string, bool) {
 // level), as `key = ...`, `key.x = ...` or its own [section.key] header; 0 when
 // not found.
 func (tl *tomlLines) key(section, key string) int {
-	cur := ""
+	current := ""
 	for i, l := range tl.lines {
 		if h, ok := header(l); ok {
-			cur = h
+			current = h
 			if section != "" && h == section+"."+key || section == "" && h == key {
 				return i + 1
 			}
@@ -204,13 +206,13 @@ func (tl *tomlLines) key(section, key string) int {
 		t := strings.TrimSpace(l)
 		t = strings.TrimPrefix(t, `"`)
 		t = strings.TrimPrefix(t, `'`)
-		if cur == section && strings.HasPrefix(t, key) {
+		if current == section && strings.HasPrefix(t, key) {
 			rest := strings.TrimLeft(strings.TrimPrefix(strings.TrimPrefix(t[len(key):], `"`), `'`), " \t")
 			if strings.HasPrefix(rest, "=") || strings.HasPrefix(rest, ".") {
 				return i + 1
 			}
 		}
-		if section != "" && cur == "" && strings.HasPrefix(t, section+".") {
+		if section != "" && current == "" && strings.HasPrefix(t, section+".") {
 			if rest := strings.TrimPrefix(t, section+"."); strings.HasPrefix(rest, key) {
 				return i + 1 // dependencies.x = { ... } at the top level
 			}
@@ -238,40 +240,40 @@ func (tl *tomlLines) array(name string, n int) int {
 // [build] imports of what provides them.
 //
 // Implements: REQ-FORTRAN-005
-func extractManifest(src []byte) *lang.Extraction {
-	m := readManifest(src)
-	ex := &lang.Extraction{}
-	for _, name := range sortedKeys(m.deps) {
-		d := m.deps[name]
-		kind := kindDep
+func extractManifest(source []byte) *lang.Extraction {
+	m := readManifest(source)
+	extraction := &lang.Extraction{}
+	for _, name := range sortedKeys(m.dependencies) {
+		d := m.dependencies[name]
+		kind := kindDependency
 		if d.dev {
-			kind = kindDevDep
+			kind = kindDevDependency
 		}
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: name, Module: name, Name: kind, Line: max(d.line, 1)})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: name, Module: name, Name: kind, Line: max(d.line, 1)})
 	}
-	if m.sourceDir != "" {
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: "library: " + m.sourceDir, Module: path.Clean(m.sourceDir), Name: kindDir, Line: max(m.sourceLine, 1)})
+	if m.sourceDirectory != "" {
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "library: " + m.sourceDirectory, Module: path.Clean(m.sourceDirectory), Name: kindDirectory, Line: max(m.sourceLine, 1)})
 	}
 	seen := map[string]bool{}
 	for _, p := range m.programs {
-		file := path.Join(p.dir, p.main)
+		file := path.Join(p.directory, p.main)
 		spec := p.kind + " " + p.name + ": " + file
 		if seen[spec] {
 			continue
 		}
 		seen[spec] = true
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: file, Name: kindMain, Line: max(p.line, 1)})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: file, Name: kindMain, Line: max(p.line, 1)})
 	}
 	for _, e := range m.externalModules {
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: "external-modules: " + e, Module: e, Name: kindExternal, Line: max(m.buildLine, 1)})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "external-modules: " + e, Module: e, Name: kindExternal, Line: max(m.buildLine, 1)})
 	}
 	for _, l := range m.link {
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: "link: " + l, Module: l, Name: kindLink, Line: max(m.buildLine, 1)})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: "link: " + l, Module: l, Name: kindLink, Line: max(m.buildLine, 1)})
 	}
 	if m.name != "" {
-		ex.Symbols = []lang.Symbol{{Name: m.name, Kind: "package", Line: max(m.nameLine, 1)}}
+		extraction.Symbols = []lang.Symbol{{Name: m.name, Kind: "package", Line: max(m.nameLine, 1)}}
 	}
-	return ex
+	return extraction
 }
 
 func sortedKeys[V any](m map[string]V) []string {

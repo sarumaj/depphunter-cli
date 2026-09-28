@@ -81,9 +81,9 @@ func sha(body string) string {
 // simpleClient asks index (a simple index URL this machine trusts) and nothing else.
 func simpleClient(t *testing.T, index, cache string, store *auth.Store) *Client {
 	t.Helper()
-	cfg := New()
-	cfg.Add(PyPI, Source{URL: index, Trusted: true})
-	return NewClient(cfg, cache, time.Hour, 5*time.Second, store, nil)
+	config := New()
+	config.Add(PyPI, Source{URL: index, Trusted: true})
+	return NewClient(config, cache, time.Hour, 5*time.Second, store, nil)
 }
 
 // An index without the JSON API is read through the Simple API: the PEP 691 page
@@ -101,26 +101,26 @@ func TestSimpleAPIFallbackJSON(t *testing.T) {
 		{"filename":"lib-2.5-py3-none-any.whl","url":"../../files/lib-2.5-py3-none-any.whl","yanked":"broken","core-metadata":true},
 		{"filename":"lib-3.0rc1-py3-none-any.whl","url":"../../files/lib-3.0rc1-py3-none-any.whl","core-metadata":true},
 		{"filename":"other-9.0-py3-none-any.whl","url":"../../files/other-9.0-py3-none-any.whl","core-metadata":true}]}`
-	idx := newSimpleIndex(t, "", map[string]served{
+	index := newSimpleIndex(t, "", map[string]served{
 		"/simple/lib/":        {"redirect", "/mirror/simple/lib/"},
 		"/mirror/simple/lib/": {simpleJSONType, page},
 		"/mirror/files/lib-2.0-py3-none-any.whl.metadata": {"application/octet-stream", metadataBody},
 	})
 	cache := t.TempDir()
-	c := simpleClient(t, idx.URL+"/simple", cache, nil)
+	c := simpleClient(t, index.URL+"/simple", cache, nil)
 	got := names(c.Dependencies(lang.Target{Ecosystem: PyPI, Package: "Lib"}))
 	if want := []string{"certifi", "colorama", "idna"}; !slices.Equal(got, want) {
-		t.Fatalf("got %v, want %v; asked %v", got, want, idx.requests())
+		t.Fatalf("got %v, want %v; asked %v", got, want, index.requests())
 	}
-	if want := []string{"/pypi/Lib/json", "/simple/lib/", "/mirror/simple/lib/", "/mirror/files/lib-2.0-py3-none-any.whl.metadata"}; !slices.Equal(idx.requests(), want) {
-		t.Errorf("asked %v, want %v", idx.requests(), want)
+	if want := []string{"/pypi/Lib/json", "/simple/lib/", "/mirror/simple/lib/", "/mirror/files/lib-2.0-py3-none-any.whl.metadata"}; !slices.Equal(index.requests(), want) {
+		t.Errorf("asked %v, want %v", index.requests(), want)
 	}
-	if got := idx.accepts["/simple/lib/"]; got != simpleAccept {
+	if got := index.accepts["/simple/lib/"]; got != simpleAccept {
 		t.Errorf("Accept %q", got)
 	}
-	again := simpleClient(t, idx.URL+"/simple", cache, nil)
-	if got := names(again.Dependencies(lang.Target{Ecosystem: PyPI, Package: "Lib"})); len(got) != 3 || len(idx.requests()) != 4 {
-		t.Errorf("not answered from the cache: %v, asked %v", got, idx.requests())
+	again := simpleClient(t, index.URL+"/simple", cache, nil)
+	if got := names(again.Dependencies(lang.Target{Ecosystem: PyPI, Package: "Lib"})); len(got) != 3 || len(index.requests()) != 4 {
+		t.Errorf("not answered from the cache: %v, asked %v", got, index.requests())
 	}
 }
 
@@ -131,24 +131,24 @@ func TestSimpleAPIFallbackJSON(t *testing.T) {
 //
 // Verifies: REQ-SUP-067
 func TestSimpleAPIFallbackHTML(t *testing.T) {
-	meta := "Name: lib\nRequires-Dist: six\n"
+	metadata := "Name: lib\nRequires-Dist: six\n"
 	page := `<!DOCTYPE html><html><body><h1>Links for lib</h1>
 <a href="/packages/lib-1.0.tar.gz#sha256=aa" data-core-metadata="true">lib-1.0.tar.gz</a><br/>
-<a href="{{self}}/packages/lib-1.0-py2.py3-none-any.whl#sha256=bb" data-dist-info-metadata="sha256=` + sha(meta) + `" data-yanked="">lib-1.0-py2.py3-none-any.whl</a>
+<a href="{{self}}/packages/lib-1.0-py2.py3-none-any.whl#sha256=bb" data-dist-info-metadata="sha256=` + sha(metadata) + `" data-yanked="">lib-1.0-py2.py3-none-any.whl</a>
 <a data-requires-python="&gt;=3.8" href="/packages/lib-1.1-py3-none-any.whl" data-dist-info-metadata="true">lib-1.1-py3-none-any.whl</a>
 </body></html>`
-	idx := newSimpleIndex(t, "", map[string]served{
+	index := newSimpleIndex(t, "", map[string]served{
 		"/pypi/lib/1.0/json": {"text/html", "<html>Nexus says hello</html>"},
 		"/simple/lib/":       {"text/html; charset=utf-8", page},
-		"/packages/lib-1.0-py2.py3-none-any.whl.metadata": {"text/plain", meta},
+		"/packages/lib-1.0-py2.py3-none-any.whl.metadata": {"text/plain", metadata},
 		"/packages/lib-1.1-py3-none-any.whl.metadata":     {"text/plain", "Name: lib\nRequires-Dist: attrs\n"},
 	})
-	c := simpleClient(t, idx.URL+"/simple/", t.TempDir(), nil)
+	c := simpleClient(t, index.URL+"/simple/", t.TempDir(), nil)
 	if got := names(c.Dependencies(lang.Target{Ecosystem: PyPI, Package: "lib", Version: "1.0"})); !slices.Equal(got, []string{"six"}) {
-		t.Errorf("pinned 1.0: %v, asked %v", got, idx.requests())
+		t.Errorf("pinned 1.0: %v, asked %v", got, index.requests())
 	}
 	if got := names(c.Dependencies(lang.Target{Ecosystem: PyPI, Package: "lib"})); !slices.Equal(got, []string{"attrs"}) {
-		t.Errorf("newest: %v, asked %v", got, idx.requests())
+		t.Errorf("newest: %v, asked %v", got, index.requests())
 	}
 }
 
@@ -158,23 +158,23 @@ func TestSimpleAPIFallbackHTML(t *testing.T) {
 //
 // Verifies: REQ-SUP-067
 func TestSimpleAPIWithoutMetadata(t *testing.T) {
-	idx := newSimpleIndex(t, "", map[string]served{
+	index := newSimpleIndex(t, "", map[string]served{
 		"/simple/lib/": {"text/html", `<a href="../../f/lib-1.0-py3-none-any.whl">lib-1.0-py3-none-any.whl</a>`},
 		// Advertised, but missing: that is no metadata either.
 		"/simple/gone/": {"text/html", `<a href="/f/gone-1.0.tar.gz" data-core-metadata="true">gone-1.0.tar.gz</a>`},
 	})
 	pypi := newFeed(t, map[string]string{"/pypi/lib/json": pypiJSON("wrong")})
 	asPublic(t, PyPI, pypi)
-	cfg := New()
-	cfg.Add(PyPI, Source{URL: idx.URL + "/simple", Trusted: true, Kind: Additive})
-	c := newClient(t, cfg)
-	for _, pkg := range []string{"lib", "gone"} {
-		got, l := ask(t, c, lang.Target{Ecosystem: PyPI, Package: pkg})
+	config := New()
+	config.Add(PyPI, Source{URL: index.URL + "/simple", Trusted: true, Kind: Additive})
+	c := newClient(t, config)
+	for _, packageName := range []string{"lib", "gone"} {
+		got, l := ask(t, c, lang.Target{Ecosystem: PyPI, Package: packageName})
 		if len(got) != 0 || !strings.Contains(l.Reason, "no metadata file") {
-			t.Errorf("%s: %v, reason %q", pkg, got, l.Reason)
+			t.Errorf("%s: %v, reason %q", packageName, got, l.Reason)
 		}
 	}
-	for _, r := range idx.requests() {
+	for _, r := range index.requests() {
 		if strings.HasSuffix(r, ".whl") || strings.HasSuffix(r, ".tar.gz") || r == "/f/lib-1.0-py3-none-any.whl.metadata" {
 			t.Errorf("downloaded %s", r)
 		}
@@ -189,18 +189,18 @@ func TestSimpleAPIWithoutMetadata(t *testing.T) {
 //
 // Verifies: REQ-SUP-067, REQ-SUP-063
 func TestSimpleAPINotFoundMovesOn(t *testing.T) {
-	idx := newSimpleIndex(t, "", map[string]served{
+	index := newSimpleIndex(t, "", map[string]served{
 		"/simple/lib/": {simpleJSONType, `{"files":[{"filename":"lib-1.0.tar.gz","url":"lib-1.0.tar.gz","core-metadata":true}]}`},
 	})
 	pypi := newFeed(t, map[string]string{"/pypi/requests/json": pypiJSON("certifi"), "/pypi/lib/2.0/json": pypiJSON("six")})
 	asPublic(t, PyPI, pypi)
-	cfg := New()
-	cfg.Add(PyPI, Source{URL: idx.URL + "/simple", Trusted: true, Kind: Additive})
-	c := newClient(t, cfg)
-	for _, tc := range []struct{ pkg, version, want string }{{"requests", "", "certifi"}, {"lib", "2.0", "six"}} {
-		got, l := ask(t, c, lang.Target{Ecosystem: PyPI, Package: tc.pkg, Version: tc.version})
-		if !slices.Equal(got, []string{tc.want}) || l.Index != pypi.URL {
-			t.Errorf("%s: %v from %s, asked %v", tc.pkg, got, l.Index, idx.requests())
+	config := New()
+	config.Add(PyPI, Source{URL: index.URL + "/simple", Trusted: true, Kind: Additive})
+	c := newClient(t, config)
+	for _, testCase := range []struct{ packageName, version, want string }{{"requests", "", "certifi"}, {"lib", "2.0", "six"}} {
+		got, l := ask(t, c, lang.Target{Ecosystem: PyPI, Package: testCase.packageName, Version: testCase.version})
+		if !slices.Equal(got, []string{testCase.want}) || l.Index != pypi.URL {
+			t.Errorf("%s: %v from %s, asked %v", testCase.packageName, got, l.Index, index.requests())
 		}
 	}
 }
@@ -214,14 +214,14 @@ func TestSimpleAPICredentials(t *testing.T) {
 	other := newSimpleIndex(t, "", map[string]served{
 		"/cdn/ext-1.0-py3-none-any.whl.metadata": {"text/plain", "Requires-Dist: wrapt\n"},
 	})
-	idx := newSimpleIndex(t, "ci:secret", map[string]served{
+	index := newSimpleIndex(t, "ci:secret", map[string]served{
 		"/team/simple/lib/":                             {simpleJSONType, `{"files":[{"filename":"lib-1.0-py3-none-any.whl","url":"../../files/lib-1.0-py3-none-any.whl","core-metadata":true}]}`},
 		"/team/simple/ext/":                             {simpleJSONType, `{"files":[{"filename":"ext-1.0-py3-none-any.whl","url":"` + other.URL + `/cdn/ext-1.0-py3-none-any.whl","core-metadata":true}]}`},
 		"/team/files/lib-1.0-py3-none-any.whl.metadata": {"text/plain", "Requires-Dist: certifi\n"},
 	})
 	asPublic(t, PyPI, newFeed(t, nil))
-	e := env(map[string]string{
-		"UV_DEFAULT_INDEX":       "corp=" + idx.URL + "/team/simple",
+	e := environment(map[string]string{
+		"UV_DEFAULT_INDEX":       "corp=" + index.URL + "/team/simple",
 		"UV_INDEX_CORP_USERNAME": "ci", "UV_INDEX_CORP_PASSWORD": "secret",
 	})
 	home := t.TempDir()
@@ -230,11 +230,11 @@ func TestSimpleAPICredentials(t *testing.T) {
 	d.Config().Credentials(store)
 	c := NewClient(d.Discover(nil), t.TempDir(), time.Hour, 5*time.Second, store, nil)
 	if got := names(c.Dependencies(lang.Target{Ecosystem: PyPI, Package: "lib"})); !slices.Equal(got, []string{"certifi"}) {
-		t.Errorf("lib: %v, asked %v", got, idx.requests())
+		t.Errorf("lib: %v, asked %v", got, index.requests())
 	}
-	cred := " " + basicHeaderOf("ci:secret")
-	if want := []string{"/team/pypi/lib/json" + cred, "/team/simple/lib/" + cred, "/team/files/lib-1.0-py3-none-any.whl.metadata" + cred}; !slices.Equal(idx.requests(), want) {
-		t.Errorf("asked %v, want %v", idx.requests(), want)
+	credential := " " + basicHeaderOf("ci:secret")
+	if want := []string{"/team/pypi/lib/json" + credential, "/team/simple/lib/" + credential, "/team/files/lib-1.0-py3-none-any.whl.metadata" + credential}; !slices.Equal(index.requests(), want) {
+		t.Errorf("asked %v, want %v", index.requests(), want)
 	}
 	if got := names(c.Dependencies(lang.Target{Ecosystem: PyPI, Package: "ext"})); !slices.Equal(got, []string{"wrapt"}) {
 		t.Errorf("ext: %v", got)
@@ -285,8 +285,8 @@ func TestPEP440Order(t *testing.T) {
 			t.Errorf("%s != %s", same[0], same[1])
 		}
 	}
-	for v, pre := range map[string]bool{"1.0": false, "1.0.post2": false, "1.0rc1": true, "1.0.dev0": true, "2.0b1.post1": true} {
-		if p, _ := parsePEP440(v); p.prerelease() != pre {
+	for v, allowPrerelease := range map[string]bool{"1.0": false, "1.0.post2": false, "1.0rc1": true, "1.0.dev0": true, "2.0b1.post1": true} {
+		if p, _ := parsePEP440(v); p.prerelease() != allowPrerelease {
 			t.Errorf("%s prerelease %v", v, p.prerelease())
 		}
 	}
@@ -325,11 +325,11 @@ func TestDistVersion(t *testing.T) {
 //
 // Verifies: REQ-SUP-067
 func TestSimpleAPIMetadataHashMismatch(t *testing.T) {
-	idx := newSimpleIndex(t, "", map[string]served{
+	index := newSimpleIndex(t, "", map[string]served{
 		"/simple/lib/":               {simpleJSONType, `{"files":[{"filename":"lib-1.0.tar.gz","url":"/f/lib-1.0.tar.gz","core-metadata":{"sha256":"` + sha("other") + `"}}]}`},
 		"/f/lib-1.0.tar.gz.metadata": {"text/plain", "Requires-Dist: evil\n"},
 	})
-	got, l := ask(t, simpleClient(t, idx.URL+"/simple", t.TempDir(), nil), lang.Target{Ecosystem: PyPI, Package: "lib"})
+	got, l := ask(t, simpleClient(t, index.URL+"/simple", t.TempDir(), nil), lang.Target{Ecosystem: PyPI, Package: "lib"})
 	if len(got) != 0 || !strings.Contains(l.Reason, "does not match") {
 		t.Errorf("%v, reason %q", got, l.Reason)
 	}

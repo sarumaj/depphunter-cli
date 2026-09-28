@@ -12,10 +12,10 @@ import (
 )
 
 type resolver struct {
-	files    map[string]bool
-	dirs     map[string]bool
-	projects []*project // shallowest first
-	local    []mapping  // every project's own autoload rules, longest prefix first
+	files       map[string]bool
+	directories map[string]bool
+	projects    []*project // shallowest first
+	local       []mapping  // every project's own autoload rules, longest prefix first
 	// declared maps a lower-case fully qualified class, function or constant name to
 	// the project file declaring it, and a namespace to the directory of its first
 	// file: the classes of a classmap, of a project without composer.json, and those
@@ -26,47 +26,47 @@ type resolver struct {
 
 // Implements: REQ-PHP-005, REQ-PHP-008
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, dirs: map[string]bool{}, declared: map[string]string{}, namespaces: map[string]string{}}
+	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, declared: map[string]string{}, namespaces: map[string]string{}}
 	sorted := append([]*scan.File(nil), all...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Path < sorted[j].Path })
 	for _, f := range sorted {
 		r.files[f.Path] = true
-		for d := path.Dir(f.Path); d != "." && !r.dirs[d]; d = path.Dir(d) {
-			r.dirs[d] = true
+		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
+			r.directories[d] = true
 		}
 		switch {
 		case path.Base(f.Path) == "composer.json":
-			if p, local := readProject(root, f.Path, f.Abs); p != nil {
+			if p, local := readProject(root, f.Path, f.AbsolutePath); p != nil {
 				r.projects = append(r.projects, p)
 				r.local = append(r.local, local...)
 			}
-		case exts[strings.ToLower(path.Ext(f.Path))] && !f.Binary && !f.TooLarge && f.Size <= lang.MaxParseSize:
+		case extensions[strings.ToLower(path.Ext(f.Path))] && !f.Binary && !f.TooLarge && f.Size <= lang.MaxParseSize:
 			r.readDeclarations(f)
 		}
 	}
-	sort.SliceStable(r.projects, func(i, j int) bool { return depth(r.projects[i].dir) < depth(r.projects[j].dir) })
+	sort.SliceStable(r.projects, func(i, j int) bool { return depth(r.projects[i].directory) < depth(r.projects[j].directory) })
 	sort.SliceStable(r.local, func(i, j int) bool {
 		a, b := r.local[i], r.local[j]
 		if len(a.prefix) != len(b.prefix) {
 			return len(a.prefix) > len(b.prefix)
 		}
-		return a.prefix+strings.Join(a.dirs, ",") < b.prefix+strings.Join(b.dirs, ",")
+		return a.prefix+strings.Join(a.directories, ",") < b.prefix+strings.Join(b.directories, ",")
 	})
 	return r
 }
 
-func depth(dir string) int {
-	if dir == "." {
+func depth(directory string) int {
+	if directory == "." {
 		return 0
 	}
-	return strings.Count(dir, "/") + 1
+	return strings.Count(directory, "/") + 1
 }
 
 var (
-	nsDecl    = regexp.MustCompile(`^\s*namespace\s+([A-Za-z_\\][A-Za-z0-9_\\]*)\s*[;{]`)
-	classDecl = regexp.MustCompile(`^\s*(?:#\[[^\]]*\]\s*)?(?:(?:abstract|final|readonly)\s+)*(?:class|interface|trait|enum)\s+([A-Za-z_][A-Za-z0-9_]*)`)
-	funcDecl  = regexp.MustCompile(`^function\s+&?\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(`)
-	constDecl = regexp.MustCompile(`^const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=`)
+	namespaceDeclaration = regexp.MustCompile(`^\s*namespace\s+([A-Za-z_\\][A-Za-z0-9_\\]*)\s*[;{]`)
+	classDeclaration     = regexp.MustCompile(`^\s*(?:#\[[^\]]*\]\s*)?(?:(?:abstract|final|readonly)\s+)*(?:class|interface|trait|enum)\s+([A-Za-z_][A-Za-z0-9_]*)`)
+	functionDeclaration  = regexp.MustCompile(`^function\s+&?\s*([A-Za-z_][A-Za-z0-9_]*)\s*\(`)
+	constantDeclaration  = regexp.MustCompile(`^const\s+([A-Za-z_][A-Za-z0-9_]*)\s*=`)
 )
 
 // readDeclarations reads the namespace and the names a PHP file declares, from its
@@ -76,18 +76,18 @@ var (
 //
 // Implements: REQ-PHP-005
 func (r *resolver) readDeclarations(f *scan.File) {
-	src, err := os.ReadFile(f.Abs)
+	source, err := os.ReadFile(f.AbsolutePath)
 	if err != nil {
 		return
 	}
-	ns, comment := "", false
+	namespace, comment := "", false
 	add := func(name string) {
-		key := strings.ToLower(join(ns, name))
+		key := strings.ToLower(join(namespace, name))
 		if _, ok := r.declared[key]; !ok {
 			r.declared[key] = f.Path
 		}
 	}
-	for _, line := range strings.Split(string(src), "\n") {
+	for _, line := range strings.Split(string(source), "\n") {
 		trimmed := strings.TrimSpace(line)
 		if comment {
 			comment = !strings.Contains(trimmed, "*/")
@@ -97,56 +97,56 @@ func (r *resolver) readDeclarations(f *scan.File) {
 			comment = !strings.Contains(trimmed[2:], "*/")
 			continue
 		}
-		if m := nsDecl.FindStringSubmatch(line); m != nil {
-			ns = strings.Trim(m[1], `\`)
-			if _, ok := r.namespaces[strings.ToLower(ns)]; !ok {
-				r.namespaces[strings.ToLower(ns)] = path.Dir(f.Path)
+		if m := namespaceDeclaration.FindStringSubmatch(line); m != nil {
+			namespace = strings.Trim(m[1], `\`)
+			if _, ok := r.namespaces[strings.ToLower(namespace)]; !ok {
+				r.namespaces[strings.ToLower(namespace)] = path.Dir(f.Path)
 			}
-		} else if m := classDecl.FindStringSubmatch(line); m != nil {
+		} else if m := classDeclaration.FindStringSubmatch(line); m != nil {
 			add(m[1])
-		} else if m := funcDecl.FindStringSubmatch(line); m != nil {
+		} else if m := functionDeclaration.FindStringSubmatch(line); m != nil {
 			add(m[1])
-		} else if m := constDecl.FindStringSubmatch(line); m != nil {
+		} else if m := constantDeclaration.FindStringSubmatch(line); m != nil {
 			add(m[1])
 		}
 	}
 }
 
 // Implements: REQ-PHP-004, REQ-PHP-005, REQ-PHP-006, REQ-PHP-007, REQ-PHP-009, REQ-PHP-010, REQ-PHP-012
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	switch imp.Name {
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	switch rawImport.Name {
 	case kindInclude:
-		return r.include(file, imp.Module)
+		return r.include(file, rawImport.Module)
 	case kindLocal:
-		t, _ := r.localFile(imp.Module, kindClass)
+		t, _ := r.localFile(rawImport.Module, kindClass)
 		return t
 	}
-	fqn, kind := strings.TrimPrefix(imp.Module, `\`), imp.Name
-	if t, ok := r.localFile(fqn, kind); ok {
+	qualifiedName, kind := strings.TrimPrefix(rawImport.Module, `\`), rawImport.Name
+	if t, ok := r.localFile(qualifiedName, kind); ok {
 		return t
 	}
-	if ext, ok := builtin(fqn, kind); ok {
-		return lang.Target{Ecosystem: ecoStd, Package: ext}
+	if extension, ok := builtin(qualifiedName, kind); ok {
+		return lang.Target{Ecosystem: ecosystemStd, Package: extension}
 	}
 	projects := r.projectsOf(file)
-	lookup := fqn
+	lookup := qualifiedName
 	if kind != kindClass { // a function or constant is found by its namespace
-		lookup = fqn[:max(0, strings.LastIndex(fqn, `\`))]
+		lookup = qualifiedName[:max(0, strings.LastIndex(qualifiedName, `\`))]
 	}
 	for _, p := range projects {
-		for _, pp := range p.byPrefix {
-			if matchPrefix(lookup+`\`, pp.prefix) || matchPrefix(lookup, pp.prefix) {
-				return p.target(pp.pkg.name)
+		for _, prefixed := range p.byPrefix {
+			if matchPrefix(lookup+`\`, prefixed.prefix) || matchPrefix(lookup, prefixed.prefix) {
+				return p.target(prefixed.composerPackage.name)
 			}
 		}
 	}
-	if !strings.Contains(fqn, `\`) {
+	if !strings.Contains(qualifiedName, `\`) {
 		return lang.Target{} // a global name neither PHP nor the project defines
 	}
 	if t, ok := r.localNamespace(lookup); ok {
 		return t
 	}
-	return r.guess(fqn, projects)
+	return r.guess(qualifiedName, projects)
 }
 
 // projectsOf lists the composer.json projects a file belongs to, nearest first; a file
@@ -154,7 +154,7 @@ func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
 func (r *resolver) projectsOf(file string) []*project {
 	var out []*project
 	for i := len(r.projects) - 1; i >= 0; i-- {
-		if p := r.projects[i]; p.dir == "." || strings.HasPrefix(file, p.dir+"/") {
+		if p := r.projects[i]; p.directory == "." || strings.HasPrefix(file, p.directory+"/") {
 			out = append(out, p)
 		}
 	}
@@ -169,28 +169,28 @@ func (r *resolver) projectsOf(file string) []*project {
 // PSR-0: the whole name, `_` in the class name read as a directory).
 //
 // Implements: REQ-PHP-005
-func (r *resolver) localFile(fqn, kind string) (lang.Target, bool) {
-	if p, ok := r.declared[strings.ToLower(fqn)]; ok {
+func (r *resolver) localFile(qualifiedName, kind string) (lang.Target, bool) {
+	if p, ok := r.declared[strings.ToLower(qualifiedName)]; ok {
 		return lang.Target{Local: p}, true
 	}
 	if kind != kindClass {
 		return lang.Target{}, false
 	}
 	for _, m := range r.local {
-		if m.prefix != "" && !matchPrefix(fqn, m.prefix) {
+		if m.prefix != "" && !matchPrefix(qualifiedName, m.prefix) {
 			continue
 		}
-		rel := fqn[len(m.prefix):]
+		relative := qualifiedName[len(m.prefix):]
 		if m.psr0 {
-			ns, class := "", fqn
-			if i := strings.LastIndex(fqn, `\`); i >= 0 {
-				ns, class = fqn[:i+1], fqn[i+1:]
+			namespace, class := "", qualifiedName
+			if i := strings.LastIndex(qualifiedName, `\`); i >= 0 {
+				namespace, class = qualifiedName[:i+1], qualifiedName[i+1:]
 			}
-			rel = ns + strings.ReplaceAll(class, "_", "/")
+			relative = namespace + strings.ReplaceAll(class, "_", "/")
 		}
-		rel = strings.ReplaceAll(strings.TrimPrefix(rel, `\`), `\`, "/") + ".php"
-		for _, d := range m.dirs {
-			if p := path.Join(d, rel); r.files[p] {
+		relative = strings.ReplaceAll(strings.TrimPrefix(relative, `\`), `\`, "/") + ".php"
+		for _, d := range m.directories {
+			if p := path.Join(d, relative); r.files[p] {
 				return lang.Target{Local: p}, true
 			}
 		}
@@ -204,24 +204,24 @@ func (r *resolver) localFile(fqn, kind string) (lang.Target, bool) {
 // empty prefix) claims nothing here.
 //
 // Implements: REQ-PHP-005
-func (r *resolver) localNamespace(fqn string) (lang.Target, bool) {
-	if dir, ok := r.namespaces[strings.ToLower(fqn)]; ok {
-		return lang.Target{Local: dir}, true
+func (r *resolver) localNamespace(qualifiedName string) (lang.Target, bool) {
+	if directory, ok := r.namespaces[strings.ToLower(qualifiedName)]; ok {
+		return lang.Target{Local: directory}, true
 	}
 	for _, m := range r.local {
-		if m.prefix == "" || !matchPrefix(fqn+`\`, m.prefix) && !matchPrefix(fqn, m.prefix) {
+		if m.prefix == "" || !matchPrefix(qualifiedName+`\`, m.prefix) && !matchPrefix(qualifiedName, m.prefix) {
 			continue
 		}
-		rel := strings.ReplaceAll(strings.Trim(fqn[min(len(fqn), len(m.prefix)):], `\`), `\`, "/")
+		relative := strings.ReplaceAll(strings.Trim(qualifiedName[min(len(qualifiedName), len(m.prefix)):], `\`), `\`, "/")
 		if m.psr0 {
-			rel = strings.ReplaceAll(fqn, `\`, "/")
+			relative = strings.ReplaceAll(qualifiedName, `\`, "/")
 		}
-		for _, d := range m.dirs {
-			if p := path.Join(d, rel); r.dirs[p] {
+		for _, d := range m.directories {
+			if p := path.Join(d, relative); r.directories[p] {
 				return lang.Target{Local: p}, true
 			}
 		}
-		if d := m.dirs[0]; d == "." || r.dirs[d] {
+		if d := m.directories[0]; d == "." || r.directories[d] {
 			return lang.Target{Local: d}, true
 		}
 	}
@@ -261,8 +261,8 @@ func fold(s string) string {
 // marked unresolved.
 //
 // Implements: REQ-PHP-010
-func (r *resolver) guess(fqn string, projects []*project) lang.Target {
-	segments := strings.Split(fqn, `\`)
+func (r *resolver) guess(qualifiedName string, projects []*project) lang.Target {
+	segments := strings.Split(qualifiedName, `\`)
 	s1, s2 := segments[0], ""
 	if len(segments) > 1 {
 		s2 = segments[1]
@@ -271,16 +271,16 @@ func (r *resolver) guess(fqn string, projects []*project) lang.Target {
 		var byVendor []string
 		names := p.names()
 		for _, name := range names {
-			vendor, pkgName, _ := strings.Cut(name, "/")
+			vendor, packageName, _ := strings.Cut(name, "/")
 			switch {
-			case fold(vendor) == fold(s1) && fold(pkgName) == fold(s2):
+			case fold(vendor) == fold(s1) && fold(packageName) == fold(s2):
 				return p.target(name)
 			case fold(vendor) == fold(s1):
 				byVendor = append(byVendor, name)
 			}
 		}
 		for _, name := range names {
-			if _, pkgName, _ := strings.Cut(name, "/"); fold(pkgName) == fold(s1) {
+			if _, packageName, _ := strings.Cut(name, "/"); fold(packageName) == fold(s1) {
 				return p.target(name)
 			}
 		}
@@ -291,7 +291,7 @@ func (r *resolver) guess(fqn string, projects []*project) lang.Target {
 		// (Psr\Http\Message is psr/http-message, not psr/http-factory).
 		for k := len(segments) - 1; k > 2; k-- {
 			for _, name := range byVendor {
-				if _, pkgName, _ := strings.Cut(name, "/"); fold(pkgName) == fold(strings.Join(segments[1:k], "")) {
+				if _, packageName, _ := strings.Cut(name, "/"); fold(packageName) == fold(strings.Join(segments[1:k], "")) {
 					return p.target(name)
 				}
 			}
@@ -311,7 +311,7 @@ func (r *resolver) guess(fqn string, projects []*project) lang.Target {
 			return p.target(name)
 		}
 	}
-	return lang.Target{Ecosystem: ecoComposer, Package: name, Unresolved: true}
+	return lang.Target{Ecosystem: ecosystemComposer, Package: name, Unresolved: true}
 }
 
 // names lists a project's packages, required and locked, sorted.
@@ -345,8 +345,8 @@ func (r *resolver) include(file, p string) lang.Target {
 		return lang.Target{}
 	}
 	bases := []string{path.Dir(file)}
-	for _, proj := range r.projectsOf(file) {
-		bases = append(bases, proj.dir)
+	for _, project := range r.projectsOf(file) {
+		bases = append(bases, project.directory)
 	}
 	for _, base := range append(bases, ".") {
 		if t := r.localPath(path.Join(base, p)); t.Local != "" {
@@ -361,7 +361,7 @@ func (r *resolver) localPath(p string) lang.Target {
 	if p == ".." || strings.HasPrefix(p, "../") {
 		return lang.Target{}
 	}
-	if r.files[p] || r.dirs[p] {
+	if r.files[p] || r.directories[p] {
 		return lang.Target{Local: p}
 	}
 	return lang.Target{}
@@ -372,7 +372,7 @@ func (r *resolver) localPath(p string) lang.Target {
 //
 // Implements: REQ-PHP-011
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
-	if t.Ecosystem != ecoComposer {
+	if t.Ecosystem != ecosystemComposer {
 		return nil
 	}
 	p, k := r.locked(t)
@@ -386,9 +386,9 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 	sort.Strings(names)
 	out := make([]lang.Target, 0, len(names))
 	for _, name := range names {
-		d := lang.Target{Ecosystem: ecoComposer, Package: name, Version: k.require[name], Pinned: pinned(k.require[name])}
-		if dep := p.locked[name]; dep != nil && dep.version != "" {
-			d.Version, d.Pinned, d.Git = dep.version, true, dep.git
+		d := lang.Target{Ecosystem: ecosystemComposer, Package: name, Version: k.require[name], Pinned: pinned(k.require[name])}
+		if dependency := p.locked[name]; dependency != nil && dependency.version != "" {
+			d.Version, d.Pinned, d.Git = dependency.version, true, dependency.git
 		}
 		out = append(out, d)
 	}
@@ -403,9 +403,9 @@ func (r *resolver) Installed(t lang.Target) bool {
 
 // locked finds a package in the projects' locks, the one with the target's version
 // first.
-func (r *resolver) locked(t lang.Target) (*project, *pkg) {
+func (r *resolver) locked(t lang.Target) (*project, *composerPackage) {
 	var fp *project
-	var fk *pkg
+	var fk *composerPackage
 	for _, p := range r.projects {
 		if k := p.locked[strings.ToLower(t.Package)]; k != nil {
 			if k.version == t.Version {

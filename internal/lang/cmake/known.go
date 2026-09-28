@@ -109,11 +109,11 @@ func representative(name, component string) (include string, extra []string) {
 		return "Qt" + name[3:] + "/", nil // find_package(Qt5Widgets)
 	}
 	bare := strings.TrimPrefix(lower, "unofficial-")
-	if inc, ok := findIncludes[lower]; ok {
-		return inc, []string{bare, name}
+	if include, ok := findIncludes[lower]; ok {
+		return include, []string{bare, name}
 	}
-	if inc, ok := findIncludes[bare]; ok {
-		return inc, []string{bare}
+	if include, ok := findIncludes[bare]; ok {
+		return include, []string{bare}
 	}
 	return bare + "/", []string{name}
 }

@@ -43,14 +43,14 @@ func newNuGetStub(t *testing.T, user, pass string, packages map[string]string) *
 			fmt.Fprintf(w, `{"resources":[{"@id":"http://%s/flat","@type":"PackageBaseAddress/3.0.0"}]}`, r.Host)
 			return
 		}
-		for id, dep := range packages {
+		for id, dependency := range packages {
 			id = strings.ToLower(id)
 			switch r.URL.Path {
 			case "/flat/" + id + "/index.json":
 				fmt.Fprint(w, `{"versions":["1.0.0"]}`)
 				return
 			case "/flat/" + id + "/1.0.0/" + id + ".nuspec":
-				fmt.Fprintf(w, `<package><metadata><dependencies><dependency id="%s" version="1.0.0"/></dependencies></metadata></package>`, dep)
+				fmt.Fprintf(w, `<package><metadata><dependencies><dependency id="%s" version="1.0.0"/></dependencies></metadata></package>`, dependency)
 				return
 			}
 		}
@@ -63,11 +63,11 @@ func newNuGetStub(t *testing.T, user, pass string, packages map[string]string) *
 func (f *nugetStub) index() string { return f.URL + "/v3/index.json" }
 
 // askedFor reports whether any request named the package (lower-cased).
-func (f *nugetStub) askedFor(pkg string) bool {
+func (f *nugetStub) askedFor(packageName string) bool {
 	f.mu.Lock()
 	defer f.mu.Unlock()
 	for _, p := range f.asked {
-		if strings.Contains(p, strings.ToLower(pkg)) {
+		if strings.Contains(p, strings.ToLower(packageName)) {
 			return true
 		}
 	}
@@ -82,9 +82,9 @@ func (f *nugetStub) requests() (asked, refused int) {
 
 // basicOf is the user:password the store sends with a GET of u, "" for none.
 func basicOf(s *auth.Store, u string) string {
-	req, _ := http.NewRequest(http.MethodGet, u, nil)
-	s.Apply(req)
-	if user, pass, ok := req.BasicAuth(); ok {
+	request, _ := http.NewRequest(http.MethodGet, u, nil)
+	s.Apply(request)
+	if user, pass, ok := request.BasicAuth(); ok {
 		return user + ":" + pass
 	}
 	return ""
@@ -96,15 +96,15 @@ func userNuGet(t *testing.T, home, body string) {
 	put(t, filepath.Join(home, ".nuget", "NuGet", "NuGet.Config"), "<configuration>"+body+"</configuration>")
 }
 
-// nugetEnv is the environment of a test that sets NuGetPackageSourceCredentials_
+// nugetEnvironment is the environment of a test that sets NuGetPackageSourceCredentials_
 // variables with t.Setenv: those are listed by the process environment, and only
 // they are answered.
-func nugetEnv(t *testing.T, vars map[string]string) func(string) string {
+func nugetEnvironment(t *testing.T, variables map[string]string) func(string) string {
 	t.Helper()
-	for k, v := range vars {
+	for k, v := range variables {
 		t.Setenv(k, v)
 	}
-	return func(k string) string { return vars[k] }
+	return func(k string) string { return variables[k] }
 }
 
 // packageSourceMapping sends a package its patterns cover to the mapped feed alone:
@@ -129,7 +129,7 @@ func TestNuGetSourceMapping(t *testing.T) {
     <packageSource key="contoso"><package pattern="Contoso.*"/><package pattern="Fabrikam.Tool"/></packageSource>
     <packageSource key="nuget.org"><package pattern="Contoso.Public.*"/><package pattern="Fabrikam.*"/></packageSource>
   </packageSourceMapping>`)
-	c := newClient(t, Discover(nil, env(nil), home))
+	c := newClient(t, Discover(nil, environment(nil), home))
 
 	got, l := ask(t, c, lang.Target{Ecosystem: NuGet, Package: "Contoso.Billing", Version: "1.0.0"})
 	if !slices.Equal(got, []string{"Contoso.Core"}) || l.Index != private.index() {
@@ -155,16 +155,16 @@ func TestNuGetSourceMapping(t *testing.T) {
 		t.Error("an unmapped package was not asked as without a mapping")
 	}
 
-	cfg := Discover(nil, env(nil), home)
-	for pkg, want := range map[string][]string{
+	config := Discover(nil, environment(nil), home)
+	for packageName, want := range map[string][]string{
 		"Fabrikam.Tool":    {private.index()}, // exact id over Fabrikam.*
 		"fabrikam.tool":    {private.index()}, // ids compare without case
 		"Fabrikam.Other":   {org.index()},
 		"Contoso.Anything": {private.index()},
 		"Other.Package":    {private.index(), org.index()},
 	} {
-		if got := order(cfg, NuGet, pkg, ""); !slices.Equal(got, want) {
-			t.Errorf("%s: asked %v, want %v", pkg, got, want)
+		if got := order(config, NuGet, packageName, ""); !slices.Equal(got, want) {
+			t.Errorf("%s: asked %v, want %v", packageName, got, want)
 		}
 	}
 
@@ -172,7 +172,7 @@ func TestNuGetSourceMapping(t *testing.T) {
 	userNuGet(t, home, `<packageSources><add key="contoso" value="`+private.index()+`"/></packageSources>
   <disabledPackageSources><add key="contoso" value="true"/></disabledPackageSources>
   <packageSourceMapping><packageSource key="contoso"><package pattern="Contoso.*"/></packageSource></packageSourceMapping>`)
-	if got := order(Discover(nil, env(nil), home), NuGet, "Contoso.Billing", ""); len(got) != 0 {
+	if got := order(Discover(nil, environment(nil), home), NuGet, "Contoso.Billing", ""); len(got) != 0 {
 		t.Errorf("mapped to a disabled source: asked %v", got)
 	}
 }
@@ -188,20 +188,20 @@ func TestNuGetDisabledSources(t *testing.T) {
 	home := t.TempDir()
 	userNuGet(t, home, `<packageSources><add key="on" value="`+on.index()+`"/><add key="off" value="`+off.index()+`"/></packageSources>
   <disabledPackageSources><add key="Off" value="true"/><add key="nuget.org" value="true"/></disabledPackageSources>`)
-	c := newClient(t, Discover(nil, env(nil), home))
+	c := newClient(t, Discover(nil, environment(nil), home))
 	if got, l := ask(t, c, lang.Target{Ecosystem: NuGet, Package: "Acme.Tools", Version: "1.0.0"}); !slices.Equal(got, []string{"Acme.Core"}) || l.Index != on.index() {
 		t.Errorf("Acme.Tools: %v from %s", got, l.Index)
 	}
 	if n, _ := off.requests(); n != 0 {
 		t.Errorf("the disabled feed was asked %d times", n)
 	}
-	if got := order(Discover(nil, env(nil), home), NuGet, "Newtonsoft.Json", ""); !slices.Equal(got, []string{on.index()}) {
+	if got := order(Discover(nil, environment(nil), home), NuGet, "Newtonsoft.Json", ""); !slices.Equal(got, []string{on.index()}) {
 		t.Errorf("nuget.org disabled: asked %v", got)
 	}
 	// The repository's nuget.config enables it again (value false), and disables the other.
-	repo := write(t, map[string]string{"nuget.config": `<configuration><disabledPackageSources>
+	repository := write(t, map[string]string{"nuget.config": `<configuration><disabledPackageSources>
     <add key="off" value="false"/><add key="on" value="true"/></disabledPackageSources></configuration>`})
-	if got := order(Discover(repo, env(nil), home), NuGet, "Acme.Tools", ""); !slices.Equal(got, []string{off.index()}) {
+	if got := order(Discover(repository, environment(nil), home), NuGet, "Acme.Tools", ""); !slices.Equal(got, []string{off.index()}) {
 		t.Errorf("re-enabled by the repository: asked %v", got)
 	}
 }
@@ -218,7 +218,7 @@ func TestNuGetConfigLayers(t *testing.T) {
 	put(t, filepath.Join(home, "etc", "NuGet", "Config", "vendor.config"),
 		`<configuration><packageSources><add key="vendor" value="https://vendor.example/v3/index.json"/>`+
 			`<add key="corp" value="https://old.corp/v3/index.json"/></packageSources></configuration>`)
-	d := NewDiscoverer(env(map[string]string{"NUGET_COMMON_APPLICATION_DATA": filepath.Join(home, "etc")}), home)
+	d := NewDiscoverer(environment(map[string]string{"NUGET_COMMON_APPLICATION_DATA": filepath.Join(home, "etc")}), home)
 	const org = "https://api.nuget.org/v3/index.json"
 	c := d.Discover(nil)
 	// The machine-wide file's sources come first; the user's corp URL wins its key.
@@ -226,11 +226,11 @@ func TestNuGetConfigLayers(t *testing.T) {
 		t.Errorf("machine layers: %v", got)
 	}
 
-	repo := write(t, map[string]string{
+	repository := write(t, map[string]string{
 		"nuget.config":     `<configuration><packageSources><clear/><add key="repo" value="https://repo.feed/v3/index.json"/></packageSources></configuration>`,
 		"src/nuget.config": `<configuration><packageSources><add key="corp" value="https://nuget.corp/v3/index.json"/></packageSources></configuration>`,
 	})
-	c = d.Discover(repo)
+	c = d.Discover(repository)
 	// The root file clears the machine's sources and nuget.org; the deeper file,
 	// closer still, names corp again - with this machine's URL, but from the
 	// repository, so it is the repository's source now.
@@ -246,10 +246,10 @@ func TestNuGetConfigLayers(t *testing.T) {
 	}
 
 	// On Windows the machine-wide files are under %ProgramFiles(x86)%.
-	pf := t.TempDir()
-	put(t, filepath.Join(pf, "NuGet", "Config", "Microsoft.VisualStudio.Offline.config"),
+	programFiles := t.TempDir()
+	put(t, filepath.Join(programFiles, "NuGet", "Config", "Microsoft.VisualStudio.Offline.config"),
 		`<configuration><packageSources><add key="offline" value="https://offline.example/v3/index.json"/></packageSources></configuration>`)
-	w := discoverOn(t.TempDir(), "windows", map[string]string{"ProgramFiles(x86)": pf})
+	w := discoverOn(t.TempDir(), "windows", map[string]string{"ProgramFiles(x86)": programFiles})
 	if got := order(w, NuGet, "Acme.Tools", ""); !slices.Equal(got, []string{"https://offline.example/v3/index.json", org}) {
 		t.Errorf("Windows machine-wide: %v", got)
 	}
@@ -267,7 +267,7 @@ func TestNuGetEnvironmentCredentials(t *testing.T) {
 	home := t.TempDir()
 	userNuGet(t, home, `<packageSources><add key="Corp Feed" value="`+corp.index()+`"/><add key="other" value="`+other.index()+`"/>`+
 		`<add key="vss" value="`+vss.index()+`"/></packageSources>`)
-	e := nugetEnv(t, map[string]string{
+	e := nugetEnvironment(t, map[string]string{
 		"NUGETPACKAGESOURCECREDENTIALS_corp feed": "Username=ci;Password=s3cr3t;ValidAuthenticationTypes=basic",
 		"VSS_NUGET_EXTERNAL_FEED_ENDPOINTS":       `{"endpointCredentials":[{"endpoint":"` + vss.index() + `","username":"vsts","password":"pat-123"}]}`,
 	})
@@ -276,19 +276,19 @@ func TestNuGetEnvironmentCredentials(t *testing.T) {
 	d.Config().Credentials(store)
 	c := NewClient(d.Config(), t.TempDir(), time.Hour, 5*time.Second, store, nil)
 	d.Discover(nil)
-	for pkg, feed := range map[string]*nugetStub{"Acme.Tools": corp, "Acme.Vss": vss} {
-		if got, l := ask(t, c, lang.Target{Ecosystem: NuGet, Package: pkg, Version: "1.0.0"}); !slices.Equal(got, []string{"Acme.Core"}) || l.Index != feed.index() {
-			t.Errorf("%s: %v from %s", pkg, got, l.Index)
+	for packageName, feed := range map[string]*nugetStub{"Acme.Tools": corp, "Acme.Vss": vss} {
+		if got, l := ask(t, c, lang.Target{Ecosystem: NuGet, Package: packageName, Version: "1.0.0"}); !slices.Equal(got, []string{"Acme.Core"}) || l.Index != feed.index() {
+			t.Errorf("%s: %v from %s", packageName, got, l.Index)
 		}
 		if _, refused := feed.requests(); refused != 0 {
-			t.Errorf("%s: %d requests went without the credential", pkg, refused)
+			t.Errorf("%s: %d requests went without the credential", packageName, refused)
 		}
 	}
 	// The variable is for "Corp Feed" (on its host and port): the other feed gets
 	// nothing.
-	req, _ := http.NewRequest(http.MethodGet, other.index(), nil)
-	store.Apply(req)
-	if h := req.Header.Get("Authorization"); h != "" {
+	request, _ := http.NewRequest(http.MethodGet, other.index(), nil)
+	store.Apply(request)
+	if h := request.Header.Get("Authorization"); h != "" {
 		t.Errorf("another source got %q", h)
 	}
 }
@@ -301,7 +301,7 @@ func TestNuGetEnvironmentCredentials(t *testing.T) {
 //
 // Verifies: REQ-AUTH-023, REQ-AUTH-012
 func TestRepositoryFeedCredentialsFromTheEnvironment(t *testing.T) {
-	vars := map[string]string{
+	variables := map[string]string{
 		"FEED_PAT":                               "from-env",
 		"NuGetPackageSourceCredentials_repofeed": "Username=ci;Password=env-var",
 	}
@@ -309,15 +309,15 @@ func TestRepositoryFeedCredentialsFromTheEnvironment(t *testing.T) {
 		"source https://literal.corp/v3/index.json username: \"ci\" password: \"written-out\"\n" +
 		"source https://ntlm.corp/v3/index.json username: \"ci\" password: \"%FEED_PAT%\" authtype: \"ntlm\"\n" +
 		"nuget Acme.Tools\n"
-	nugetCfg := `<configuration><packageSources><add key="repofeed" value="https://repo.corp/v3/index.json"/>` +
+	nugetConfig := `<configuration><packageSources><add key="repofeed" value="https://repo.corp/v3/index.json"/>` +
 		`<add key="refd" value="https://refd.corp/v3/index.json"/><add key="plain" value="https://plain.corp/v3/index.json"/></packageSources>
   <packageSourceCredentials>
     <refd><add key="Username" value="ci"/><add key="ClearTextPassword" value="%FEED_PAT%"/></refd>
     <plain><add key="Username" value="ci"/><add key="ClearTextPassword" value="written-out"/></plain>
   </packageSourceCredentials></configuration>`
-	files := write(t, map[string]string{"paket.dependencies": paket, "nuget.config": nugetCfg})
+	files := write(t, map[string]string{"paket.dependencies": paket, "nuget.config": nugetConfig})
 	run := func(home string, trust ...string) *auth.Store {
-		e := nugetEnv(t, vars)
+		e := nugetEnvironment(t, variables)
 		store := auth.Read(home, e)
 		d := NewDiscoverer(e, home)
 		d.Config().Credentials(store)
@@ -371,7 +371,7 @@ func TestRepositoryFeedCredentialsFromTheEnvironment(t *testing.T) {
 // Verifies: REQ-AUTH-023
 func TestPaketFeedWithEnvironmentPassword(t *testing.T) {
 	feed := newNuGetStub(t, "ci", "from-env", map[string]string{"Acme.Tools": "Acme.Core"})
-	e := nugetEnv(t, map[string]string{"FEED_PAT": "from-env"})
+	e := nugetEnvironment(t, map[string]string{"FEED_PAT": "from-env"})
 	home := t.TempDir()
 	store := auth.Read(home, e)
 	d := NewDiscoverer(e, home)

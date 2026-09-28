@@ -13,12 +13,12 @@ import (
 // authorization is the Authorization header Apply puts on a GET of raw.
 func authorization(t *testing.T, c *Store, raw string) string {
 	t.Helper()
-	req, err := http.NewRequest(http.MethodGet, raw, nil)
+	request, err := http.NewRequest(http.MethodGet, raw, nil)
 	if err != nil {
 		t.Fatal(err)
 	}
-	c.Apply(req)
-	return req.Header.Get("Authorization")
+	c.Apply(request)
+	return request.Header.Get("Authorization")
 }
 
 func basicHeader(pair string) string {
@@ -53,7 +53,7 @@ func TestComposerAuthJSONKinds(t *testing.T) {
 		"bitbucket-oauth": {"bitbucket.org": {"consumer-key": "k", "consumer-secret": "s"}}
 	}`)
 	c := Read(home, nil)
-	for _, tc := range []struct{ url, want string }{
+	for _, testCase := range []struct{ url, want string }{
 		{"https://repo.packagist.com/acme/packages.json", basicHeader("token:pp-secret")},
 		{"https://satis.corp:8443/packages.json", basicHeader("ci:port-secret")},
 		{"https://repman.corp/p2/acme/lib.json", "Bearer bearer-secret"},
@@ -70,8 +70,8 @@ func TestComposerAuthJSONKinds(t *testing.T) {
 		// Named, but over plain http from a link in the repository: nothing.
 		{"http://repman.corp/p2/acme/lib.json", ""},
 	} {
-		if got := authorization(t, c, tc.url); got != tc.want {
-			t.Errorf("%s: got %q, want %q", tc.url, got, tc.want)
+		if got := authorization(t, c, testCase.url); got != testCase.want {
+			t.Errorf("%s: got %q, want %q", testCase.url, got, testCase.want)
 		}
 	}
 }
@@ -89,7 +89,7 @@ func TestComposerAuthEnvironmentWins(t *testing.T) {
 		               "kept.corp": {"username": "disk", "password": "kept"}}
 	}`)
 	writeFile(t, filepath.Join(composer, "config.json"), `{"config": {"bearer": {"config.corp": "from-config"}}}`)
-	c := Read(home, env(map[string]string{
+	c := Read(home, environment(map[string]string{
 		"COMPOSER_HOME": composer,
 		"COMPOSER_AUTH": `{"http-basic": {"satis.corp": {"username": "ci", "password": "new"}}}`,
 	}))
@@ -108,7 +108,7 @@ func TestComposerAuthEnvironmentWins(t *testing.T) {
 
 	// Composer loads bearer after http-basic, so a host named under both sends the
 	// token, wherever each came from.
-	c = Read(home, env(map[string]string{
+	c = Read(home, environment(map[string]string{
 		"COMPOSER_HOME": composer,
 		"COMPOSER_AUTH": `{"bearer": {"satis.corp": "tok"}}`,
 	}))
@@ -124,7 +124,7 @@ func TestComposerHomeXDG(t *testing.T) {
 	home, xdg := t.TempDir(), t.TempDir()
 	writeFile(t, filepath.Join(xdg, "composer", "auth.json"), `{"bearer": {"xdg.corp": "a"}}`)
 	writeFile(t, filepath.Join(home, ".composer", "auth.json"), `{"bearer": {"legacy.corp": "b"}}`)
-	c := Read(home, env(map[string]string{"XDG_CONFIG_HOME": xdg}))
+	c := Read(home, environment(map[string]string{"XDG_CONFIG_HOME": xdg}))
 	if got := authorization(t, c, "https://xdg.corp/x"); got != "Bearer a" {
 		t.Errorf("xdg.corp: %q", got)
 	}
@@ -148,7 +148,7 @@ func TestComposerMalformedAuth(t *testing.T) {
 	home := t.TempDir()
 	writeFile(t, filepath.Join(home, ".composer", "auth.json"), `{"http-basic": {"satis.corp": `)
 	writeFile(t, filepath.Join(home, ".netrc"), "machine other.corp login u password p\n")
-	c := Read(home, env(map[string]string{"COMPOSER_AUTH": `{"bearer": `}))
+	c := Read(home, environment(map[string]string{"COMPOSER_AUTH": `{"bearer": `}))
 	if got := authorization(t, c, "https://satis.corp/x"); got != "" {
 		t.Errorf("satis.corp: %q", got)
 	}
@@ -156,7 +156,7 @@ func TestComposerMalformedAuth(t *testing.T) {
 		t.Error("a broken auth.json lost the netrc credentials")
 	}
 
-	c = Read(home, env(map[string]string{"COMPOSER_AUTH": `{
+	c = Read(home, environment(map[string]string{"COMPOSER_AUTH": `{
 		"http-basic": {"a.corp": "not-an-object", "b.corp": {"username": "u", "password": "p"},
 		               "https://user:pw@c.corp": {"username": "u", "password": "p"}},
 		"bearer": {"d.corp": {"token": "x"}, "e.corp": ""},
@@ -179,14 +179,14 @@ func TestComposerMalformedAuth(t *testing.T) {
 // Verifies: REQ-AUTH-017
 func TestComposerRepositoryAuthIgnored(t *testing.T) {
 	home := t.TempDir()
-	repo := filepath.Join(home, "src", "app")
-	writeFile(t, filepath.Join(repo, "composer.json"), `{
+	repository := filepath.Join(home, "src", "app")
+	writeFile(t, filepath.Join(repository, "composer.json"), `{
 		"repositories": [{"type": "composer", "url": "http://satis.corp"}],
 		"config": {"bearer": {"satis.corp": "repo-config"}}
 	}`)
-	writeFile(t, filepath.Join(repo, "auth.json"), `{"http-basic": {"satis.corp": {"username": "repo", "password": "leak"}}}`)
-	t.Chdir(repo)
-	c := Read(home, env(map[string]string{}))
+	writeFile(t, filepath.Join(repository, "auth.json"), `{"http-basic": {"satis.corp": {"username": "repo", "password": "leak"}}}`)
+	t.Chdir(repository)
+	c := Read(home, environment(map[string]string{}))
 	for _, raw := range []string{"https://satis.corp/packages.json", "http://satis.corp/packages.json"} {
 		if got := authorization(t, c, raw); got != "" {
 			t.Errorf("%s: the repository's credential was taken: %q", raw, got)
@@ -242,19 +242,19 @@ func TestCredentialDoesNotFollowARedirectElsewhere(t *testing.T) {
 	host := strings.TrimPrefix(registry.URL, "http://")
 	writeFile(t, filepath.Join(home, ".composer", "auth.json"), `{"bearer": {"`+host+`": "tok"}}`)
 	c := Read(home, nil)
-	req, _ := http.NewRequest(http.MethodGet, registry.URL+"/p2/acme/lib.json", nil)
-	c.Apply(req)
-	resp, err := http.DefaultClient.Do(req)
+	request, _ := http.NewRequest(http.MethodGet, registry.URL+"/p2/acme/lib.json", nil)
+	c.Apply(request)
+	response, err := http.DefaultClient.Do(request)
 	if err != nil {
 		t.Fatal(err)
 	}
-	resp.Body.Close()
+	response.Body.Close()
 	if seen != "" {
 		t.Errorf("the credential followed the redirect to another host: %q", seen)
 	}
 }
 
-// env serves a fixed environment.
-func env(m map[string]string) func(string) string {
+// environment serves a fixed environment.
+func environment(m map[string]string) func(string) string {
 	return func(k string) string { return m[k] }
 }

@@ -28,11 +28,11 @@ func machineYarnBun(m userconf.Machine, k sink) {
 		return data
 	}
 	berry, _ := npmconf.ParseYarnrc(read(m.YarnUserConfig()))
-	if v := m.Env("YARN_NPM_REGISTRY_SERVER"); v != "" {
+	if v := m.Environment("YARN_NPM_REGISTRY_SERVER"); v != "" {
 		berry.Registry.URL = v
 	}
 	addNpmSettings(berry, k.add, func(v string) string {
-		out, ok := npmconf.Interpolate(v, m.Env)
+		out, ok := npmconf.Interpolate(v, m.Environment)
 		if !ok {
 			return ""
 		}
@@ -42,7 +42,7 @@ func machineYarnBun(m userconf.Machine, k sink) {
 		addNpmSettings(npmconf.ParseYarnClassic(data), k.add, nil)
 	}
 	if bun, ok := npmconf.ParseBunfig(read(m.BunConfig())); ok {
-		addNpmSettings(bun, k.add, func(v string) string { return os.Expand(v, m.Env) })
+		addNpmSettings(bun, k.add, func(v string) string { return os.Expand(v, m.Environment) })
 	}
 }
 
@@ -50,7 +50,7 @@ func machineYarnBun(m userconf.Machine, k sink) {
 // Yarn or Bun file. resolve fills a value's variable references; nil leaves a
 // value that has any unused, as the repository's are: its variables are this
 // machine's, and would be drawn on the map.
-func addNpmSettings(s npmconf.Settings, add func(eco, url, scope string), resolve func(string) string) {
+func addNpmSettings(s npmconf.Settings, add func(ecosystem, url, scope string), resolve func(string) string) {
 	value := func(v string) string {
 		if resolve != nil {
 			return resolve(v)
@@ -68,7 +68,7 @@ func addNpmSettings(s npmconf.Settings, add func(eco, url, scope string), resolv
 
 // yarnRCFilename is the name of Yarn Berry's configuration files on this machine.
 func (c *Config) yarnRCFilename() string {
-	if c.m.Env == nil {
+	if c.m.Environment == nil {
 		return ".yarnrc.yml"
 	}
 	return c.m.YarnRCFilename()
@@ -77,11 +77,11 @@ func (c *Config) yarnRCFilename() string {
 // projectYarnrc records the registries of a repository's .yarnrc.yml, and lends
 // the credentials it binds to them whose secret is this machine's: an
 // npmAuthToken or npmAuthIdent that is exactly ${NAME} (or ${NAME:-fallback}
-// with NAME set) - see lendNpm. A token or ident written out, or one only its
+// with NAME set) - see lendNpm. A token or identifier written out, or one only its
 // fallback fills, is the repository's and is discarded.
 //
 // Implements: REQ-SUP-015, REQ-AUTH-023
-func (c *Config) projectYarnrc(data []byte, add func(eco, url, scope string)) {
+func (c *Config) projectYarnrc(data []byte, add func(ecosystem, url, scope string)) {
 	s, ok := npmconf.ParseYarnrc(data)
 	if !ok {
 		return
@@ -90,8 +90,8 @@ func (c *Config) projectYarnrc(data []byte, add func(eco, url, scope string)) {
 	for _, e := range s.Credentials(npmconf.YarnDefault) {
 		if token, ok := c.secretOf(e.Token); ok {
 			c.lendNpm(e.URL, true, token)
-		} else if ident, ok := c.secretOf(e.Ident); ok {
-			if pair, ok := (npmconf.Entry{Ident: ident}).Basic(); ok {
+		} else if identifier, ok := c.secretOf(e.Ident); ok {
+			if pair, ok := (npmconf.Entry{Ident: identifier}).Basic(); ok {
 				c.lendNpm(e.URL, false, pair)
 			}
 		}
@@ -104,7 +104,7 @@ func (c *Config) projectYarnrc(data []byte, add func(eco, url, scope string)) {
 // in a table or in the URL, is discarded.
 //
 // Implements: REQ-SUP-015, REQ-AUTH-023
-func (c *Config) projectBunfig(data []byte, add func(eco, url, scope string)) {
+func (c *Config) projectBunfig(data []byte, add func(ecosystem, url, scope string)) {
 	s, ok := npmconf.ParseBunfig(data)
 	if !ok {
 		return
@@ -116,7 +116,7 @@ func (c *Config) projectBunfig(data []byte, add func(eco, url, scope string)) {
 		} else if pass, ok := c.secretOf(e.Password); ok && e.Username != "" {
 			user := e.Username
 			if name, _ := npmconf.Reference(user); name != "" {
-				user = c.m.Env(name)
+				user = c.m.Environment(name)
 			}
 			if user != "" {
 				c.lendNpm(e.URL, false, user+":"+pass)
@@ -130,10 +130,10 @@ func (c *Config) projectBunfig(data []byte, add func(eco, url, scope string)) {
 // fallback.
 func (c *Config) secretOf(v string) (string, bool) {
 	name, _ := npmconf.Reference(v)
-	if name == "" || c.m.Env == nil {
+	if name == "" || c.m.Environment == nil {
 		return "", false
 	}
-	value := c.m.Env(name)
+	value := c.m.Environment(name)
 	return value, value != ""
 }
 

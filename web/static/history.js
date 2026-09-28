@@ -20,9 +20,9 @@ export const isHistoryMode = mode => mode in MODES;
 export const effectiveMode = (colorBy, history) => (isHistoryMode(colorBy) && !history ? 'language' : colorBy);
 
 /** Oldest and newest change time in the history (unix seconds). */
-export function timeRange(hist) {
+export function timeRange(fileHistory) {
   let from = Infinity, to = -Infinity;
-  for (const changes of Object.values(hist.files)) {
+  for (const changes of Object.values(fileHistory.files)) {
     if (!changes.length) continue;
     to = Math.max(to, changes[0][0]);
     from = Math.min(from, changes[changes.length - 1][0]);
@@ -39,14 +39,14 @@ export function timeRange(hist) {
  *
  * Implements: REQ-HIST-010, REQ-HIST-011
  */
-export function computeMetrics(model, hist, since) {
+export function computeMetrics(model, fileHistory, since) {
   const byId = new Map();
   const max = { commits: 0, churn: 0, authors: 0 };
-  const dirCommits = new Map(); // dir id -> Set of commit indexes
+  const directoryCommits = new Map(); // dir id -> Set of commit indexes
 
   for (const n of model.byId.values()) {
     if (n.kind !== 'file') continue;
-    const changes = hist.files[n.path];
+    const changes = fileHistory.files[n.path];
     if (!changes?.length) continue;
     const m = { commits: 0, churn: 0, authors: new Map(), last: changes[0][0], first: Infinity, fileCount: 1 };
     const ids = [];
@@ -68,19 +68,19 @@ export function computeMetrics(model, hist, since) {
       if (!dm) {
         dm = { commits: 0, churn: 0, authors: new Map(), last: 0, first: Infinity, fileCount: 0 };
         byId.set(d.id, dm);
-        dirCommits.set(d.id, new Set());
+        directoryCommits.set(d.id, new Set());
       }
       dm.fileCount++;
       dm.churn += m.churn;
       dm.last = Math.max(dm.last, m.last);
       dm.first = Math.min(dm.first, m.first);
       for (const [a, c] of m.authors) dm.authors.set(a, (dm.authors.get(a) || 0) + c);
-      const set = dirCommits.get(d.id);
+      const set = directoryCommits.get(d.id);
       for (const id of ids) set.add(id);
     }
   }
-  for (const [id, set] of dirCommits) byId.get(id).commits = set.size;
-  return { byId, max, range: timeRange(hist) };
+  for (const [id, set] of directoryCommits) byId.get(id).commits = set.size;
+  return { byId, max, range: timeRange(fileHistory) };
 }
 
 /**

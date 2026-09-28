@@ -11,12 +11,12 @@ import (
 
 // Verifies: REQ-WATCH-002
 func TestDebouncedChanges(t *testing.T) {
-	dir := t.TempDir()
+	directory := t.TempDir()
 	w, err := New()
 	if err != nil {
 		t.Fatal(err)
 	}
-	w.Sync([]string{dir}, nil)
+	w.Sync([]string{directory}, nil)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
@@ -25,7 +25,7 @@ func TestDebouncedChanges(t *testing.T) {
 
 	// A burst of writes is one change.
 	for i := range 5 {
-		os.WriteFile(filepath.Join(dir, "a.go"), []byte{byte(i)}, 0o644)
+		os.WriteFile(filepath.Join(directory, "a.go"), []byte{byte(i)}, 0o644)
 		time.Sleep(10 * time.Millisecond)
 	}
 	deadline := time.Now().Add(3 * time.Second)
@@ -39,7 +39,7 @@ func TestDebouncedChanges(t *testing.T) {
 
 	// Unwatched directories are silent.
 	w.Sync(nil, nil)
-	os.WriteFile(filepath.Join(dir, "b.go"), nil, 0o644)
+	os.WriteFile(filepath.Join(directory, "b.go"), nil, 0o644)
 	time.Sleep(300 * time.Millisecond)
 	if n := calls.Load(); n != 1 {
 		t.Fatalf("change in unwatched dir triggered onChange (%d calls)", n)
@@ -51,8 +51,8 @@ func TestDebouncedChanges(t *testing.T) {
 //
 // Verifies: REQ-WATCH-001, REQ-FND-023
 func TestOnlyTheNamedFilesInTheirDirectories(t *testing.T) {
-	dir := t.TempDir()
-	report := filepath.Join(dir, "report.json")
+	directory := t.TempDir()
+	report := filepath.Join(directory, "report.json")
 	w, err := New()
 	if err != nil {
 		t.Fatal(err)
@@ -64,7 +64,7 @@ func TestOnlyTheNamedFilesInTheirDirectories(t *testing.T) {
 	var calls atomic.Int32
 	go w.Run(ctx, 100*time.Millisecond, func() { calls.Add(1) })
 
-	os.WriteFile(filepath.Join(dir, "screenshot.png"), []byte("x"), 0o644)
+	os.WriteFile(filepath.Join(directory, "screenshot.png"), []byte("x"), 0o644)
 	time.Sleep(400 * time.Millisecond)
 	if n := calls.Load(); n != 0 {
 		t.Fatalf("a file beside the report triggered onChange (%d calls)", n)
@@ -84,12 +84,12 @@ func TestOnlyTheNamedFilesInTheirDirectories(t *testing.T) {
 //
 // Verifies: REQ-WATCH-002
 func TestChangesThatNeverGoQuiet(t *testing.T) {
-	dir := t.TempDir()
+	directory := t.TempDir()
 	w, err := New()
 	if err != nil {
 		t.Fatal(err)
 	}
-	w.Sync([]string{dir}, nil)
+	w.Sync([]string{directory}, nil)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 	var calls atomic.Int32
@@ -99,7 +99,7 @@ func TestChangesThatNeverGoQuiet(t *testing.T) {
 	// A write every 20ms for well past maxWait debounces: never quiet for one.
 	stop := time.Now().Add(3 * maxWait * debounce)
 	for i := 0; time.Now().Before(stop); i++ {
-		os.WriteFile(filepath.Join(dir, "a.go"), []byte{byte(i)}, 0o644)
+		os.WriteFile(filepath.Join(directory, "a.go"), []byte{byte(i)}, 0o644)
 		time.Sleep(20 * time.Millisecond)
 	}
 	if calls.Load() == 0 {

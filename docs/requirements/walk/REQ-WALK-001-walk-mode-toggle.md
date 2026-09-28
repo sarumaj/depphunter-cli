@@ -19,7 +19,7 @@ button, that shows the current map in first person. While walk mode is active,
 
 ## Rationale
 
-The same map seen on foot gives a sense of scale and neighbourhood that the
+The same map seen on foot gives a sense of scale and neighborhood that the
 isometric overview does not; one key in and out keeps the two views one gesture
 apart.
 

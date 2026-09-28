@@ -13,10 +13,10 @@ import (
 	"github.com/sarumaj/depphunter-cli/internal/scan"
 )
 
-// crateDir is a directory with an alire.toml: its manifest, the lock file's
+// crateDirectory is a directory with an alire.toml: its manifest, the lock file's
 // solution and what Alire fetched into alire/cache/.
-type crateDir struct {
-	dir       string
+type crateDirectory struct {
+	directory string
 	m         *manifest
 	lock      map[string]*lockState
 	installed map[string]*installedCrate
@@ -26,29 +26,29 @@ type crateDir struct {
 
 // project is a GNAT project file and the source directories it names.
 type project struct {
-	path, dir string
-	g         *gpr
-	dirs      []srcDir
-	refs      []string // the local project files it withs, extends or aggregates
+	path, directory string
+	g               *gpr
+	directories     []sourceDirectory
+	references      []string // the local project files it withs, extends or aggregates
 }
 
-type srcDir struct {
-	dir       string
+type sourceDirectory struct {
+	directory string
 	recursive bool
 }
 
 type resolver struct {
-	files   map[string]bool
-	dirs    map[string]bool
-	byBase  map[string][]string // lower-case base name -> files
-	specs   map[string][]string // unit -> spec files
-	bodies  map[string][]string // unit -> body files (and subunits' files)
-	roots   map[string]bool     // first segments of the repository's units
-	gprs    map[string]*project
-	gprBase map[string][]string // project file name without .gpr, lower case -> paths
-	crates  map[string]*crateDir
-	order   []*crateDir // shallowest first
-	own     map[string]bool
+	files       map[string]bool
+	directories map[string]bool
+	byBase      map[string][]string // lower-case base name -> files
+	specs       map[string][]string // unit -> spec files
+	bodies      map[string][]string // unit -> body files (and subunits' files)
+	roots       map[string]bool     // first segments of the repository's units
+	gprs        map[string]*project
+	gprBase     map[string][]string // project file name without .gpr, lower case -> paths
+	crates      map[string]*crateDirectory
+	order       []*crateDirectory // shallowest first
+	own         map[string]bool
 	// visible holds, per directory of an Ada source, the source directories of
 	// the projects that have it and of the projects those import.
 	visible map[string]map[*project]bool
@@ -59,9 +59,9 @@ type resolver struct {
 func newResolver(root string, all []*scan.File) *resolver {
 	_ = root
 	r := &resolver{
-		files: map[string]bool{}, dirs: map[string]bool{}, byBase: map[string][]string{},
+		files: map[string]bool{}, directories: map[string]bool{}, byBase: map[string][]string{},
 		specs: map[string][]string{}, bodies: map[string][]string{}, roots: map[string]bool{},
-		gprs: map[string]*project{}, gprBase: map[string][]string{}, crates: map[string]*crateDir{},
+		gprs: map[string]*project{}, gprBase: map[string][]string{}, crates: map[string]*crateDirectory{},
 		own: map[string]bool{}, visible: map[string]map[*project]bool{}, owners: map[string][]*project{},
 	}
 	var sources []*scan.File
@@ -72,26 +72,26 @@ func newResolver(root string, all []*scan.File) *resolver {
 		r.files[f.Path] = true
 		base := lower(path.Base(f.Path))
 		r.byBase[base] = append(r.byBase[base], f.Path)
-		for d := path.Dir(f.Path); d != "." && !r.dirs[d]; d = path.Dir(d) {
-			r.dirs[d] = true
+		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
+			r.directories[d] = true
 		}
 		readable := !f.Binary && !f.TooLarge && f.Size <= lang.MaxParseSize
 		switch {
 		case path.Base(f.Path) == "alire.toml" && readable:
-			if src, err := os.ReadFile(f.Abs); err == nil {
-				c := &crateDir{dir: path.Dir(f.Path), m: readManifest(src), lock: map[string]*lockState{}}
-				absDir := filepath.Dir(f.Abs)
+			if source, err := os.ReadFile(f.AbsolutePath); err == nil {
+				c := &crateDirectory{directory: path.Dir(f.Path), m: readManifest(source), lock: map[string]*lockState{}}
+				absoluteDirectory := filepath.Dir(f.AbsolutePath)
 				// Alire 1.1 and later keep the lock file in alire/; before, it
 				// sat beside the manifest.
-				for _, l := range []string{filepath.Join(absDir, "alire", "alire.lock"), filepath.Join(absDir, "alire.lock")} {
-					if src, err := os.ReadFile(l); err == nil {
-						c.lock = readLock(src)
+				for _, l := range []string{filepath.Join(absoluteDirectory, "alire", "alire.lock"), filepath.Join(absoluteDirectory, "alire.lock")} {
+					if source, err := os.ReadFile(l); err == nil {
+						c.lock = readLock(source)
 						break
 					}
 				}
-				c.readInstalled(absDir)
+				c.readInstalled(absoluteDirectory)
 				c.readShared(sharedReleases(os.Getenv))
-				r.crates[c.dir] = c
+				r.crates[c.directory] = c
 				r.order = append(r.order, c)
 				if c.m.name != "" {
 					r.own[c.m.name] = true
@@ -99,8 +99,8 @@ func newResolver(root string, all []*scan.File) *resolver {
 				}
 			}
 		case gprFile(f.Path) && readable:
-			if src, err := os.ReadFile(f.Abs); err == nil {
-				p := &project{path: f.Path, dir: path.Dir(f.Path), g: readGPR(src)}
+			if source, err := os.ReadFile(f.AbsolutePath); err == nil {
+				p := &project{path: f.Path, directory: path.Dir(f.Path), g: readGPR(source)}
 				r.gprs[p.path] = p
 				name := lower(strings.TrimSuffix(path.Base(f.Path), path.Ext(f.Path)))
 				r.gprBase[name] = append(r.gprBase[name], p.path)
@@ -114,11 +114,11 @@ func newResolver(root string, all []*scan.File) *resolver {
 		}
 	}
 	sort.Slice(r.order, func(i, j int) bool {
-		di, dj := depth(r.order[i].dir), depth(r.order[j].dir)
-		if di != dj {
-			return di < dj
+		depthI, depthJ := depth(r.order[i].directory), depth(r.order[j].directory)
+		if depthI != depthJ {
+			return depthI < depthJ
 		}
-		return r.order[i].dir < r.order[j].dir
+		return r.order[i].directory < r.order[j].directory
 	})
 	for _, list := range r.gprBase {
 		sort.Strings(list)
@@ -144,11 +144,11 @@ func newResolver(root string, all []*scan.File) *resolver {
 	return r
 }
 
-func depth(dir string) int {
-	if dir == "." {
+func depth(directory string) int {
+	if directory == "." {
 		return 0
 	}
-	return strings.Count(dir, "/") + 1
+	return strings.Count(directory, "/") + 1
 }
 
 type declared struct {
@@ -169,8 +169,8 @@ func declarations(files []*scan.File) []declared {
 			for i := range next {
 				f := files[i]
 				out[i].file = f.Path
-				if src, err := os.ReadFile(f.Abs); err == nil {
-					out[i].units = units(src, strings.EqualFold(path.Ext(f.Path), ".ada"))
+				if source, err := os.ReadFile(f.AbsolutePath); err == nil {
+					out[i].units = units(source, strings.EqualFold(path.Ext(f.Path), ".ada"))
 				}
 			}
 		}()
@@ -188,36 +188,36 @@ func declarations(files []*scan.File) []declared {
 // source's directory can see.
 func (r *resolver) readProjects(sources []*scan.File) {
 	paths := sortedKeys(r.gprs)
-	for _, pp := range paths {
-		p := r.gprs[pp]
-		if !p.g.dirsSet {
-			p.dirs = []srcDir{{dir: p.dir}}
+	for _, projectPath := range paths {
+		p := r.gprs[projectPath]
+		if !p.g.directoriesSet {
+			p.directories = []sourceDirectory{{directory: p.directory}}
 		}
-		for _, d := range p.g.sourceDirs {
-			dir, rec := dirSpec(d.s)
-			if path.IsAbs(dir) {
+		for _, d := range p.g.sourceDirectories {
+			directory, recursive := directorySpec(d.s)
+			if path.IsAbs(directory) {
 				continue
 			}
-			dir = path.Join(p.dir, dir)
-			if strings.HasPrefix(dir, "../") || dir == ".." {
+			directory = path.Join(p.directory, directory)
+			if strings.HasPrefix(directory, "../") || directory == ".." {
 				continue
 			}
-			p.dirs = append(p.dirs, srcDir{dir: dir, recursive: rec})
+			p.directories = append(p.directories, sourceDirectory{directory: directory, recursive: recursive})
 		}
-		var refs []item
-		refs = append(refs, p.g.withs...)
+		var references []item
+		references = append(references, p.g.withs...)
 		if p.g.extends != nil {
-			refs = append(refs, *p.g.extends)
+			references = append(references, *p.g.extends)
 		}
-		refs = append(refs, p.g.projectFiles...)
-		for _, ref := range refs {
-			if t := r.localProject(p.path, ref.s); t != "" {
-				p.refs = append(p.refs, t)
+		references = append(references, p.g.projectFiles...)
+		for _, reference := range references {
+			if t := r.localProject(p.path, reference.s); t != "" {
+				p.references = append(p.references, t)
 			}
 		}
 	}
-	for _, pp := range paths {
-		p := r.gprs[pp]
+	for _, projectPath := range paths {
+		p := r.gprs[projectPath]
 		for unit, file := range p.g.specs {
 			r.specs[unit] = append(r.specs[unit], r.inProject(p, file)...)
 		}
@@ -241,22 +241,22 @@ func (r *resolver) readProjects(sources []*scan.File) {
 	}
 }
 
-// projectsOf lists the projects whose source directories hold dir.
-func (r *resolver) projectsOf(dir string) []*project {
-	if ps, ok := r.owners[dir]; ok {
-		return ps
+// projectsOf lists the projects whose source directories hold directory.
+func (r *resolver) projectsOf(directory string) []*project {
+	if projects, ok := r.owners[directory]; ok {
+		return projects
 	}
 	var out []*project
-	for _, pp := range sortedKeys(r.gprs) {
-		p := r.gprs[pp]
-		for _, sd := range p.dirs {
-			if dir == sd.dir || sd.recursive && (sd.dir == "." || strings.HasPrefix(dir, sd.dir+"/")) {
+	for _, projectPath := range sortedKeys(r.gprs) {
+		p := r.gprs[projectPath]
+		for _, sourceDirectory := range p.directories {
+			if directory == sourceDirectory.directory || sourceDirectory.recursive && (sourceDirectory.directory == "." || strings.HasPrefix(directory, sourceDirectory.directory+"/")) {
 				out = append(out, p)
 				break
 			}
 		}
 	}
-	r.owners[dir] = out
+	r.owners[directory] = out
 	return out
 }
 
@@ -270,8 +270,8 @@ func (r *resolver) closure(p *project, vis map[*project]bool) {
 			continue
 		}
 		vis[q] = true
-		for _, ref := range q.refs {
-			if g := r.gprs[ref]; g != nil && !vis[g] {
+		for _, reference := range q.references {
+			if g := r.gprs[reference]; g != nil && !vis[g] {
 				stack = append(stack, g)
 			}
 		}
@@ -284,8 +284,8 @@ func (r *resolver) inProject(p *project, file string) []string {
 	var out []string
 	for _, f := range r.byBase[lower(path.Base(file))] {
 		d := path.Dir(f)
-		for _, sd := range p.dirs {
-			if d == sd.dir || sd.recursive && (sd.dir == "." || strings.HasPrefix(d, sd.dir+"/")) {
+		for _, sourceDirectory := range p.directories {
+			if d == sourceDirectory.directory || sourceDirectory.recursive && (sourceDirectory.directory == "." || strings.HasPrefix(d, sourceDirectory.directory+"/")) {
 				out = append(out, f)
 				break
 			}
@@ -297,39 +297,39 @@ func (r *resolver) inProject(p *project, file string) []string {
 // localProject resolves a project file reference to a project file of the
 // repository: relative to the referencing file, else the project file of that
 // name nearest to it (GPR_PROJECT_PATH is not known).
-func (r *resolver) localProject(from, ref string) string {
-	ref = strings.ReplaceAll(ref, "\\", "/")
-	if !gprFile(ref) {
-		ref += ".gpr"
+func (r *resolver) localProject(from, reference string) string {
+	reference = strings.ReplaceAll(reference, "\\", "/")
+	if !gprFile(reference) {
+		reference += ".gpr"
 	}
-	if !path.IsAbs(ref) {
-		if t := path.Join(path.Dir(from), ref); r.gprs[t] != nil {
+	if !path.IsAbs(reference) {
+		if t := path.Join(path.Dir(from), reference); r.gprs[t] != nil {
 			return t
 		}
 	}
-	name := lower(strings.TrimSuffix(path.Base(ref), path.Ext(ref)))
+	name := lower(strings.TrimSuffix(path.Base(reference), path.Ext(reference)))
 	return pick(from, r.gprBase[name])
 }
 
 // pick chooses among files the one sharing the longest directory prefix with
 // from (from itself is none); ties go to the first in order.
 func pick(from string, files []string) string {
-	best, bestLen := "", -1
+	best, bestLength := "", -1
 	for _, f := range files {
 		if f == from {
 			continue
 		}
-		if n := commonDirs(f, from); n > bestLen {
-			best, bestLen = f, n
+		if n := commonDirectories(f, from); n > bestLength {
+			best, bestLength = f, n
 		}
 	}
 	return best
 }
 
-func commonDirs(a, b string) int {
-	as, bs := strings.Split(path.Dir(a), "/"), strings.Split(path.Dir(b), "/")
+func commonDirectories(a, b string) int {
+	aParts, bParts := strings.Split(path.Dir(a), "/"), strings.Split(path.Dir(b), "/")
 	n := 0
-	for n < len(as) && n < len(bs) && as[n] == bs[n] {
+	for n < len(aParts) && n < len(bParts) && aParts[n] == bParts[n] {
 		n++
 	}
 	return n
@@ -361,10 +361,10 @@ func (r *resolver) choose(from string, files []string) string {
 
 // scope is the crates whose manifests speak for file: the nearest alire.toml
 // above it, or, for a file none governs, every one, shallowest first.
-func (r *resolver) scope(file string) []*crateDir {
+func (r *resolver) scope(file string) []*crateDirectory {
 	for d := path.Dir(file); ; d = path.Dir(d) {
 		if c, ok := r.crates[d]; ok {
-			return []*crateDir{c}
+			return []*crateDirectory{c}
 		}
 		if d == "." || d == "/" || d == "" {
 			return r.order
@@ -373,35 +373,35 @@ func (r *resolver) scope(file string) []*crateDir {
 }
 
 // Implements: REQ-ADA-004, REQ-ADA-005, REQ-ADA-006
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	switch imp.Name {
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	switch rawImport.Name {
 	case kindWith, kindParent:
-		return r.unit(file, imp.Module)
+		return r.unit(file, rawImport.Module)
 	case kindBody:
-		if f := r.choose(file, r.specs[imp.Module]); f != "" {
+		if f := r.choose(file, r.specs[rawImport.Module]); f != "" {
 			return lang.Target{Local: f}
 		}
 	case kindSeparate:
-		if f := r.choose(file, r.bodies[imp.Module]); f != "" {
+		if f := r.choose(file, r.bodies[rawImport.Module]); f != "" {
 			return lang.Target{Local: f}
 		}
 	case kindProject:
-		return r.project(file, imp.Module)
-	case kindDir:
-		dir, _ := dirSpec(imp.Module)
-		if t := path.Join(path.Dir(file), dir); t != "." && !strings.HasPrefix(t, "../") && r.dirs[t] {
+		return r.project(file, rawImport.Module)
+	case kindDirectory:
+		directory, _ := directorySpec(rawImport.Module)
+		if t := path.Join(path.Dir(file), directory); t != "." && !strings.HasPrefix(t, "../") && r.directories[t] {
 			return lang.Target{Local: t}
 		}
 	case kindMain:
-		if f := r.main(file, imp.Module); f != "" {
+		if f := r.main(file, rawImport.Module); f != "" {
 			return lang.Target{Local: f}
 		}
-	case kindDep, kindPin:
+	case kindDependency, kindPin:
 		if c := r.crates[path.Dir(file)]; c != nil {
-			return r.crate(c, imp.Module)
+			return r.crate(c, rawImport.Module)
 		}
 	case kindProjectFile:
-		if t := path.Join(path.Dir(file), imp.Module); r.files[t] {
+		if t := path.Join(path.Dir(file), rawImport.Module); r.files[t] {
 			return lang.Target{Local: t}
 		}
 	}
@@ -426,8 +426,8 @@ func (r *resolver) unit(file, u string) lang.Target {
 	if len(r.specs[u])+len(r.bodies[u]) > 0 {
 		return lang.Target{} // the file's own unit
 	}
-	if pkg, ok := stdPackage(u); ok {
-		return lang.Target{Ecosystem: ecoStd, Package: pkg}
+	if packageName, ok := stdPackage(u); ok {
+		return lang.Target{Ecosystem: ecosystemStd, Package: packageName}
 	}
 	scope := r.scope(file)
 	// the crate Alire fetched that has the unit, else its nearest parent unit
@@ -444,13 +444,13 @@ func (r *resolver) unit(file, u string) lang.Target {
 			return t
 		}
 	}
-	tc, _ := knownCrate(u)
+	testCase, _ := knownCrate(u)
 	root, _, _ := strings.Cut(u, ".")
 	switch {
-	case tc != "" && r.own[tc]:
+	case testCase != "" && r.own[testCase]:
 		return lang.Target{}
-	case tc != "":
-		return lang.Target{Ecosystem: ecoAlire, Package: tc, Unresolved: true}
+	case testCase != "":
+		return lang.Target{Ecosystem: ecosystemAlire, Package: testCase, Unresolved: true}
 	case r.roots[root] || r.own[root]:
 		return lang.Target{}
 	}
@@ -459,35 +459,35 @@ func (r *resolver) unit(file, u string) lang.Target {
 			return lang.Target{}
 		}
 	}
-	return lang.Target{Ecosystem: ecoAlire, Package: root, Unresolved: true}
+	return lang.Target{Ecosystem: ecosystemAlire, Package: root, Unresolved: true}
 }
 
 // declaredCrate is the crate c knows (declared, pinned, locked or installed)
 // that the curated table names for u or that u's name spells, the longer
 // match winning and the table on a tie.
-func (r *resolver) declaredCrate(c *crateDir, u string) (lang.Target, bool) {
-	tc, tk := knownCrate(u)
-	sc, sk := "", 0
+func (r *resolver) declaredCrate(c *crateDirectory, u string) (lang.Target, bool) {
+	testCase, token := knownCrate(u)
+	bestCrate, bestScore := "", 0
 	for _, name := range c.known() {
-		if k := spellsCrate(u, name); k > sk {
-			sc, sk = name, k
+		if k := spellsCrate(u, name); k > bestScore {
+			bestCrate, bestScore = name, k
 		}
 	}
 	switch {
-	case tc != "" && c.knows(tc) && tk >= sk:
-		return r.crate(c, tc), true
-	case sc != "":
-		return r.crate(c, sc), true
-	case tc != "" && c.knows(tc):
-		return r.crate(c, tc), true
+	case testCase != "" && c.knows(testCase) && token >= bestScore:
+		return r.crate(c, testCase), true
+	case bestCrate != "":
+		return r.crate(c, bestCrate), true
+	case testCase != "" && c.knows(testCase):
+		return r.crate(c, testCase), true
 	}
 	return lang.Target{}, false
 }
 
 // known lists the crates c knows, sorted.
-func (c *crateDir) known() []string {
+func (c *crateDirectory) known() []string {
 	set := map[string]bool{}
-	for n := range c.m.deps {
+	for n := range c.m.dependencies {
 		set[n] = true
 	}
 	for n := range c.m.pins {
@@ -503,11 +503,11 @@ func (c *crateDir) known() []string {
 	return sortedKeys(set)
 }
 
-func (c *crateDir) knows(name string) bool {
+func (c *crateDirectory) knows(name string) bool {
 	if name == c.m.name {
 		return false
 	}
-	_, a := c.m.deps[name]
+	_, a := c.m.dependencies[name]
 	_, b := c.m.pins[name]
 	_, l := c.lock[name]
 	_, i := c.installed[name]
@@ -537,14 +537,14 @@ func spellsCrate(unit, crate string) int {
 // repository's own crate is dropped.
 //
 // Implements: REQ-ADA-005
-func (r *resolver) project(file, ref string) lang.Target {
-	if t := r.localProject(file, ref); t != "" {
+func (r *resolver) project(file, reference string) lang.Target {
+	if t := r.localProject(file, reference); t != "" {
 		return lang.Target{Local: t}
 	}
-	ref = strings.ReplaceAll(ref, "\\", "/")
-	name := lower(strings.TrimSuffix(path.Base(ref), path.Ext(ref)))
-	if !gprFile(ref) {
-		name = lower(path.Base(ref))
+	reference = strings.ReplaceAll(reference, "\\", "/")
+	name := lower(strings.TrimSuffix(path.Base(reference), path.Ext(reference)))
+	if !gprFile(reference) {
+		name = lower(path.Base(reference))
 	}
 	scope := r.scope(file)
 	for _, c := range scope {
@@ -563,10 +563,10 @@ func (r *resolver) project(file, ref string) lang.Target {
 			}
 		}
 	}
-	if strings.Contains(ref, "/") || r.own[name] || r.own[crate] {
+	if strings.Contains(reference, "/") || r.own[name] || r.own[crate] {
 		return lang.Target{}
 	}
-	return lang.Target{Ecosystem: ecoAlire, Package: crate, Unresolved: true}
+	return lang.Target{Ecosystem: ecosystemAlire, Package: crate, Unresolved: true}
 }
 
 // main finds a project's main file in its source directories, else the
@@ -601,9 +601,9 @@ func (r *resolver) main(file, m string) string {
 // A git server other than the public forges is the crate's origin.
 //
 // Implements: REQ-ADA-006
-func (r *resolver) crate(c *crateDir, name string) lang.Target {
-	t := lang.Target{Ecosystem: ecoAlire, Package: name}
-	d := c.m.deps[name]
+func (r *resolver) crate(c *crateDirectory, name string) lang.Target {
+	t := lang.Target{Ecosystem: ecosystemAlire, Package: name}
+	d := c.m.dependencies[name]
 	constraint := ""
 	if d != nil {
 		constraint = d.constraint
@@ -611,26 +611,26 @@ func (r *resolver) crate(c *crateDir, name string) lang.Target {
 	if p := c.m.pins[name]; p != nil {
 		return r.pinned(c, t, constraint, p.path, p.url, p.commit, p.branch, p.version)
 	}
-	if st := c.lock[name]; st != nil {
-		if st.linkPath != "" || st.linkURL != "" {
+	if state := c.lock[name]; state != nil {
+		if state.linkPath != "" || state.linkURL != "" {
 			// a pin of a crate the lock file's solution took over from a
 			// manifest (the crate's own or a linked crate's)
-			return r.pinned(c, t, constraint, st.linkPath, st.linkURL, st.linkCommit, st.linkBranch, "")
+			return r.pinned(c, t, constraint, state.linkPath, state.linkURL, state.linkCommit, state.linkBranch, "")
 		}
-		if st.version != "" {
-			t.Version, t.Pinned = st.version, true
+		if state.version != "" {
+			t.Version, t.Pinned = state.version, true
 			if constraint == "" {
-				constraint = st.versions // a crate only the solution has
+				constraint = state.versions // a crate only the solution has
 			}
-			if constraint != "" && constraint != st.version && constraint != "="+st.version {
+			if constraint != "" && constraint != state.version && constraint != "="+state.version {
 				t.Requested = constraint
 			}
 			return t
 		}
 	}
 	installed := ""
-	if ic := c.installed[name]; ic != nil {
-		installed = ic.version
+	if crate := c.installed[name]; crate != nil {
+		installed = crate.version
 	}
 	switch {
 	case constraint != "":
@@ -657,7 +657,7 @@ func (r *resolver) crate(c *crateDir, name string) lang.Target {
 // checkout under alire/cache/pins is not a local edge); a version pins.
 //
 // Implements: REQ-ADA-006
-func (r *resolver) pinned(c *crateDir, t lang.Target, constraint, dir, url, commit, branch, version string) lang.Target {
+func (r *resolver) pinned(c *crateDirectory, t lang.Target, constraint, directory, url, commit, branch, version string) lang.Target {
 	switch {
 	case url != "":
 		url = strings.TrimPrefix(url, "git+")
@@ -672,11 +672,11 @@ func (r *resolver) pinned(c *crateDir, t lang.Target, constraint, dir, url, comm
 		if !public(url) {
 			t.Origin = url
 		}
-	case dir != "":
-		if lt := r.localCrate(c.dir, dir); lt.Local != "" {
+	case directory != "":
+		if lt := r.localCrate(c.directory, directory); lt.Local != "" {
 			return lt
 		}
-		t.Origin, t.Floating = dir, true
+		t.Origin, t.Floating = directory, true
 		return t
 	case version != "":
 		t.Version, t.Pinned = strings.TrimPrefix(version, "="), true
@@ -689,16 +689,16 @@ func (r *resolver) pinned(c *crateDir, t lang.Target, constraint, dir, url, comm
 
 // localCrate is a crate in a directory of the repository: its alire.toml, else
 // the directory; outside the repository, nothing.
-func (r *resolver) localCrate(dir, rel string) lang.Target {
-	rel = strings.ReplaceAll(rel, "\\", "/")
-	if path.IsAbs(rel) {
+func (r *resolver) localCrate(directory, relative string) lang.Target {
+	relative = strings.ReplaceAll(relative, "\\", "/")
+	if path.IsAbs(relative) {
 		return lang.Target{}
 	}
-	d := path.Join(dir, rel)
+	d := path.Join(directory, relative)
 	switch {
 	case r.files[path.Join(d, "alire.toml")]:
 		return lang.Target{Local: path.Join(d, "alire.toml")}
-	case d != "." && r.dirs[d]:
+	case d != "." && r.directories[d]:
 		return lang.Target{Local: d}
 	}
 	return lang.Target{}
@@ -710,7 +710,7 @@ func public(url string) bool {
 	if url == "" {
 		return true
 	}
-	host, _, _ := strings.Cut(lang.RepoName(url), "/")
+	host, _, _ := strings.Cut(lang.RepositoryName(url), "/")
 	switch host {
 	case "github.com", "gitlab.com", "bitbucket.org", "codeberg.org", "git.sr.ht", "sr.ht":
 		return true
@@ -724,31 +724,31 @@ func public(url string) bool {
 //
 // Implements: REQ-ADA-008
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
-	if t.Ecosystem != ecoAlire {
+	if t.Ecosystem != ecosystemAlire {
 		return nil
 	}
 	for _, c := range r.order {
-		st := c.lock[t.Package]
-		if st == nil || st.version == "" {
+		state := c.lock[t.Package]
+		if state == nil || state.version == "" {
 			continue
 		}
 		var out []lang.Target
-		for _, name := range st.deps {
-			if dt := r.dependency(c, name, st.constraints[name]); dt.Ecosystem != "" {
-				out = append(out, dt)
+		for _, name := range state.dependencies {
+			if dependencyTarget := r.dependency(c, name, state.constraints[name]); dependencyTarget.Ecosystem != "" {
+				out = append(out, dependencyTarget)
 			}
 		}
 		return out
 	}
 	for _, c := range r.order {
-		ic := c.installed[t.Package]
-		if ic == nil {
+		installed := c.installed[t.Package]
+		if installed == nil {
 			continue
 		}
 		var out []lang.Target
-		for _, name := range sortedKeys(ic.m.deps) {
-			if dt := r.dependency(c, name, ic.m.deps[name].constraint); dt.Ecosystem != "" {
-				out = append(out, dt)
+		for _, name := range sortedKeys(installed.m.dependencies) {
+			if dependencyTarget := r.dependency(c, name, installed.m.dependencies[name].constraint); dependencyTarget.Ecosystem != "" {
+				out = append(out, dependencyTarget)
 			}
 		}
 		return out
@@ -758,15 +758,15 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 
 // dependency is a crate some crate depends on with a constraint: as the
 // project's pins and lock file have it, else by the constraint.
-func (r *resolver) dependency(c *crateDir, name, constraint string) lang.Target {
-	if c.m.pins[name] != nil || c.lock[name] != nil || c.m.deps[name] != nil {
+func (r *resolver) dependency(c *crateDirectory, name, constraint string) lang.Target {
+	if c.m.pins[name] != nil || c.lock[name] != nil || c.m.dependencies[name] != nil {
 		t := r.crate(c, name)
 		if t.Pinned && t.Requested == "" && constraint != "" && constraint != t.Version {
 			t.Requested = constraint
 		}
 		return t
 	}
-	t := lang.Target{Ecosystem: ecoAlire, Package: name}
+	t := lang.Target{Ecosystem: ecosystemAlire, Package: name}
 	if v, ok := exactVersion(constraint); ok {
 		t.Version, t.Pinned = v, true
 	} else {
@@ -778,11 +778,11 @@ func (r *resolver) dependency(c *crateDir, name, constraint string) lang.Target 
 // Installed reports whether a crate's dependencies come from what Alire
 // fetched rather than from a lock file.
 func (r *resolver) Installed(t lang.Target) bool {
-	if t.Ecosystem != ecoAlire {
+	if t.Ecosystem != ecosystemAlire {
 		return false
 	}
 	for _, c := range r.order {
-		if st := c.lock[t.Package]; st != nil && st.version != "" {
+		if state := c.lock[t.Package]; state != nil && state.version != "" {
 			return false
 		}
 	}

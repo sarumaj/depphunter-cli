@@ -45,10 +45,10 @@ type bunWorkspace struct {
 
 // bunEntry is one package of bun.lock.
 type bunEntry struct {
-	name    string   // the name it is installed (and imported) under
-	parent  string   // the key before the name: "" when hoisted
-	version string   // what pins it, "" when nothing does (a workspace, link, tarball)
-	deps    []string // what it requires
+	name         string   // the name it is installed (and imported) under
+	parent       string   // the key before the name: "" when hoisted
+	version      string   // what pins it, "" when nothing does (a workspace, link, tarball)
+	dependencies []string // what it requires
 }
 
 // readBunLock decodes a bun.lock, tolerating the trailing commas Bun writes
@@ -69,23 +69,23 @@ func (lock *bunLock) entries() map[string]bunEntry {
 	out := make(map[string]bunEntry, len(lock.Packages))
 	for key, raw := range lock.Packages {
 		var tuple []json.RawMessage
-		var ident string
-		if json.Unmarshal(raw, &tuple) != nil || len(tuple) == 0 || json.Unmarshal(tuple[0], &ident) != nil {
+		var identifier string
+		if json.Unmarshal(raw, &tuple) != nil || len(tuple) == 0 || json.Unmarshal(tuple[0], &identifier) != nil {
 			continue
 		}
 		parent, name := bunKey(key)
 		if name == "" {
 			continue
 		}
-		e := bunEntry{name: name, parent: parent, version: bunVersion(bunResolution(ident))}
+		e := bunEntry{name: name, parent: parent, version: bunVersion(bunResolution(identifier))}
 		for _, el := range tuple[1:] {
 			var info struct {
 				Dependencies, OptionalDependencies map[string]string
 			}
 			if len(el) > 0 && el[0] == '{' && json.Unmarshal(el, &info) == nil {
 				for _, m := range []map[string]string{info.Dependencies, info.OptionalDependencies} {
-					for dep := range m {
-						e.deps = append(e.deps, dep)
+					for dependency := range m {
+						e.dependencies = append(e.dependencies, dependency)
 					}
 				}
 				break
@@ -115,15 +115,15 @@ func bunKey(key string) (parent, name string) {
 // of a registry package, "github:owner/repo#<commit>", "workspace:packages/x"…
 // The name is the package's real one (an alias's key names the alias) and may
 // be scoped, so the separator is the first "@" after the first character.
-func bunResolution(ident string) string {
-	if len(ident) < 2 {
+func bunResolution(identifier string) string {
+	if len(identifier) < 2 {
 		return ""
 	}
-	i := strings.IndexByte(ident[1:], '@')
+	i := strings.IndexByte(identifier[1:], '@')
 	if i < 0 {
 		return ""
 	}
-	return ident[i+2:]
+	return identifier[i+2:]
 }
 
 // bunVersion is what a resolution pins the package to, or "" when it pins
@@ -133,26 +133,26 @@ func bunResolution(ident string) string {
 // project's own; a tarball URL names no version.
 //
 // Implements: REQ-JS-016
-func bunVersion(res string) string {
+func bunVersion(resolution string) string {
 	switch {
-	case startsWithDigit(res):
-		return res
-	case strings.HasPrefix(res, "github:"), strings.HasPrefix(res, "git+"), strings.HasPrefix(res, "git@"),
-		strings.HasPrefix(res, "git://"):
-		if _, ref, ok := strings.Cut(res, "#"); ok && bunCommit(ref) {
-			return res
+	case startsWithDigit(resolution):
+		return resolution
+	case strings.HasPrefix(resolution, "github:"), strings.HasPrefix(resolution, "git+"), strings.HasPrefix(resolution, "git@"),
+		strings.HasPrefix(resolution, "git://"):
+		if _, reference, ok := strings.Cut(resolution, "#"); ok && bunCommit(reference) {
+			return resolution
 		}
 	}
 	return ""
 }
 
-// bunCommit reports whether ref is a git commit, full or abbreviated as Bun
+// bunCommit reports whether reference is a git commit, full or abbreviated as Bun
 // writes it (at least 7 hex digits).
-func bunCommit(ref string) bool {
-	if len(ref) < 7 || len(ref) > 64 {
+func bunCommit(reference string) bool {
+	if len(reference) < 7 || len(reference) > 64 {
 		return false
 	}
-	for _, c := range ref {
+	for _, c := range reference {
 		if (c < '0' || c > '9') && (c < 'a' || c > 'f') {
 			return false
 		}
@@ -175,21 +175,21 @@ func (lock *bunLock) versions(entries map[string]bunEntry) map[string]map[string
 		}
 	}
 	out := map[string]map[string]string{".": root}
-	for dir, ws := range lock.Workspaces {
-		dir = path.Clean("./" + dir)
-		m := out[dir]
+	for directory, workspace := range lock.Workspaces {
+		directory = path.Clean("./" + directory)
+		m := out[directory]
 		if m == nil {
 			m = map[string]string{}
-			out[dir] = m
+			out[directory] = m
 		}
-		for _, declared := range []map[string]string{ws.OptionalDependencies, ws.PeerDependencies, ws.DevDependencies, ws.Dependencies} {
-			for dep := range declared {
-				e, ok := entries[ws.Name+"/"+dep]
+		for _, declared := range []map[string]string{workspace.OptionalDependencies, workspace.PeerDependencies, workspace.DevDependencies, workspace.Dependencies} {
+			for dependency := range declared {
+				e, ok := entries[workspace.Name+"/"+dependency]
 				if !ok {
-					e, ok = entries[dep]
+					e, ok = entries[dependency]
 				}
 				if ok && e.version != "" {
-					m[dep] = e.version
+					m[dependency] = e.version
 				}
 			}
 		}
@@ -217,7 +217,7 @@ func (t *tree) addBunTree(entries map[string]bunEntry) {
 	sort.Strings(keys) // which nested version stands for an unhoisted name
 	for _, key := range keys {
 		e := entries[key]
-		t.add(e.name, e.deps...)
+		t.add(e.name, e.dependencies...)
 		if e.parent == "" {
 			continue
 		}

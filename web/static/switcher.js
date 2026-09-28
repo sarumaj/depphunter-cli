@@ -50,9 +50,9 @@ export const carriedRing = () => [...SECONDARY_IDS, EMPTY];
  *
  * Implements: REQ-TOOL-056, REQ-TOOL-057
  */
-export function cycle(ring, current, dir = 1) {
+export function cycle(ring, current, directory = 1) {
   const at = ring.indexOf(current);
-  return at < 0 ? ring[dir > 0 ? 0 : ring.length - 1] : ring[(at + dir + ring.length) % ring.length];
+  return at < 0 ? ring[directory > 0 ? 0 : ring.length - 1] : ring[(at + directory + ring.length) % ring.length];
 }
 
 /**
@@ -117,12 +117,12 @@ export const FACE = 320, RING = 112, HUB = 58;
  */
 export function wedges() {
   const left = carriedRing();
-  const rs = 180 / PRIMARY_IDS.length, ls = 180 / left.length;
+  const rightStep = 180 / PRIMARY_IDS.length, leftStep = 180 / left.length;
   return [
-    ...PRIMARY_IDS.map((id, i) => ({ id, from: i * rs, to: (i + 1) * rs })),
+    ...PRIMARY_IDS.map((id, i) => ({ id, from: i * rightStep, to: (i + 1) * rightStep })),
     // Counted up from the top the other way, so the first carried tool is across from
     // the first of the hunt's and the bare hand ends up at the bottom.
-    ...left.map((id, i) => ({ id, from: 360 - (i + 1) * ls, to: 360 - i * ls })),
+    ...left.map((id, i) => ({ id, from: 360 - (i + 1) * leftStep, to: 360 - i * leftStep })),
   ];
 }
 

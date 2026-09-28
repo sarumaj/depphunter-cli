@@ -25,8 +25,8 @@ var Island = lang.Ecosystem{ID: Ecosystem, Name: "Container images"}
 // republished whenever its owner likes, so only a digest pins an image.
 //
 // Implements: REQ-CI-012, REQ-CI-013, REQ-DOCKER-004
-func Image(ref string) lang.Target {
-	name, digest, hasDigest := strings.Cut(ref, "@")
+func Image(reference string) lang.Target {
+	name, digest, hasDigest := strings.Cut(reference, "@")
 	tag := ""
 	// A colon in the registry part is a port, not a tag: "localhost:5000/img".
 	if i := strings.LastIndex(name, ":"); i >= 0 && !strings.Contains(name[i:], "/") {

@@ -18,8 +18,8 @@ import (
 )
 
 const (
-	ecoModules = "go"
-	ecoStd     = "go-std"
+	ecosystemModules = "go"
+	ecosystemStd     = "go-std"
 )
 
 type Plugin struct{}
@@ -31,57 +31,57 @@ func (Plugin) Claims(f *scan.File) bool { return strings.HasSuffix(f.Path, ".go"
 // Implements: REQ-LANG-005, REQ-GO-004
 func (Plugin) Ecosystems() []lang.Ecosystem {
 	return []lang.Ecosystem{
-		{ID: ecoModules, Name: "Go modules"},
-		{ID: ecoStd, Name: "Go standard library", Std: true},
+		{ID: ecosystemModules, Name: "Go modules"},
+		{ID: ecosystemStd, Name: "Go standard library", Std: true},
 	}
 }
 
 type module struct {
-	dir      string // relative, "." for the root
-	path     string
-	requires map[string]string      // module path -> version
-	replaces map[string]replacement // module path -> what the build uses instead
+	directory string // relative, "." for the root
+	path      string
+	requires  map[string]string      // module path -> version
+	replaces  map[string]replacement // module path -> what the build uses instead
 }
 
 // replacement is the right-hand side of a replace directive: a directory (relative to
 // the project root, and possibly outside it) or another module at a version.
 type replacement struct {
-	dir     string
-	module  string
-	version string
+	directory string
+	module    string
+	version   string
 }
 
 func (Plugin) Version() int { return 1 }
 
 func (Plugin) Resolver(root string, all []*scan.File) (lang.Resolver, error) {
-	mods, err := loadModules(all)
+	modules, err := loadModules(all)
 	if err != nil {
 		return nil, err
 	}
-	r := &resolver{mods: mods, pkgDirs: map[string]bool{}}
+	r := &resolver{modules: modules, packageDirectories: map[string]bool{}}
 	for _, f := range lang.Claimed(Plugin{}, all) {
-		r.pkgDirs[path.Dir(f.Path)] = true
+		r.packageDirectories[path.Dir(f.Path)] = true
 	}
 	return r, nil
 }
 
 type resolver struct {
-	mods    []*module
-	pkgDirs map[string]bool // directories holding Go files, i.e. local packages
+	modules            []*module
+	packageDirectories map[string]bool // directories holding Go files, i.e. local packages
 }
 
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	return resolve(imp.Module, owner(r.mods, file), r.mods, r.pkgDirs)
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	return resolve(rawImport.Module, owner(r.modules, file), r.modules, r.packageDirectories)
 }
 
 // Implements: REQ-GO-003
 func loadModules(all []*scan.File) ([]*module, error) {
-	var mods []*module
+	var modules []*module
 	for _, f := range all {
 		if path.Base(f.Path) != "go.mod" {
 			continue
 		}
-		data, err := os.ReadFile(f.Abs)
+		data, err := os.ReadFile(f.AbsolutePath)
 		if err != nil {
 			// Gone since the scan - a branch switch, an editor saving by rename -
 			// and no more reason to abort the analysis than a broken one below.
@@ -90,39 +90,39 @@ func loadModules(all []*scan.File) ([]*module, error) {
 		// Parse, not ParseLax: the lax parser, meant for the go.mod of a dependency,
 		// drops replace directives, which are exactly what says where a module comes
 		// from. It stays the fallback for a go.mod the strict parser refuses.
-		mf, err := modfile.Parse(f.Path, data, nil)
+		parsed, err := modfile.Parse(f.Path, data, nil)
 		if err != nil {
-			mf, err = modfile.ParseLax(f.Path, data, nil)
+			parsed, err = modfile.ParseLax(f.Path, data, nil)
 		}
-		if err != nil || mf.Module == nil {
+		if err != nil || parsed.Module == nil {
 			continue // a broken go.mod should not abort the whole analysis
 		}
-		m := &module{dir: path.Dir(f.Path), path: mf.Module.Mod.Path, requires: map[string]string{}, replaces: map[string]replacement{}}
-		for _, r := range mf.Require {
+		m := &module{directory: path.Dir(f.Path), path: parsed.Module.Mod.Path, requires: map[string]string{}, replaces: map[string]replacement{}}
+		for _, r := range parsed.Require {
 			m.requires[r.Mod.Path] = r.Mod.Version
 		}
-		for _, r := range mf.Replace {
+		for _, r := range parsed.Replace {
 			// "old v1.2.3 => new" replaces that one version, and only applies when it
 			// is the one required.
 			if r.Old.Version != "" && m.requires[r.Old.Path] != r.Old.Version {
 				continue
 			}
 			if modfile.IsDirectoryPath(r.New.Path) {
-				m.replaces[r.Old.Path] = replacement{dir: path.Clean(path.Join(m.dir, r.New.Path))}
+				m.replaces[r.Old.Path] = replacement{directory: path.Clean(path.Join(m.directory, r.New.Path))}
 			} else {
 				m.replaces[r.Old.Path] = replacement{module: r.New.Path, version: r.New.Version}
 			}
 		}
-		mods = append(mods, m)
+		modules = append(modules, m)
 	}
 	// Deepest first, so owner() and local resolution pick the most specific module.
-	sort.Slice(mods, func(i, j int) bool { return len(mods[i].dir) > len(mods[j].dir) })
-	return mods, nil
+	sort.Slice(modules, func(i, j int) bool { return len(modules[i].directory) > len(modules[j].directory) })
+	return modules, nil
 }
 
-func owner(mods []*module, file string) *module {
-	for _, m := range mods {
-		if m.dir == "." || strings.HasPrefix(file, m.dir+"/") {
+func owner(modules []*module, file string) *module {
+	for _, m := range modules {
+		if m.directory == "." || strings.HasPrefix(file, m.directory+"/") {
 			return m
 		}
 	}
@@ -130,87 +130,87 @@ func owner(mods []*module, file string) *module {
 }
 
 // Implements: REQ-LANG-009, REQ-GO-001
-func (Plugin) Extract(f *scan.File, src []byte) (*lang.Extraction, error) {
+func (Plugin) Extract(f *scan.File, source []byte) (*lang.Extraction, error) {
 	fSet := token.NewFileSet()
 	// On syntax errors the parser still returns a partial AST, which is good enough for a map.
-	af, _ := parser.ParseFile(fSet, f.Path, src, parser.SkipObjectResolution)
+	af, _ := parser.ParseFile(fSet, f.Path, source, parser.SkipObjectResolution)
 	if af == nil {
 		return &lang.Extraction{}, nil
 	}
-	ex := &lang.Extraction{Symbols: symbols(fSet, af)}
+	extraction := &lang.Extraction{Symbols: symbols(fSet, af)}
 	for _, spec := range af.Imports {
-		ip := strings.Trim(spec.Path.Value, "`\"")
-		if ip == "C" {
+		importPath := strings.Trim(spec.Path.Value, "`\"")
+		if importPath == "C" {
 			continue // cgo pseudo-package
 		}
-		ex.Imports = append(ex.Imports, lang.RawImport{Spec: ip, Module: ip, Line: fSet.Position(spec.Pos()).Line})
+		extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: importPath, Module: importPath, Line: fSet.Position(spec.Pos()).Line})
 	}
-	return ex, nil
+	return extraction, nil
 }
 
 // Implements: REQ-GO-003, REQ-GO-004, REQ-GO-005, REQ-GO-006
-func resolve(ip string, own *module, mods []*module, pkgDirs map[string]bool) lang.Target {
+func resolve(importPath string, own *module, modules []*module, packageDirectories map[string]bool) lang.Target {
 	if own != nil {
 		// The longest match, as the go command picks it: ranging over the map and
 		// taking the first would answer differently from run to run.
 		old := ""
-		for mp := range own.replaces {
-			if _, ok := within(ip, mp); ok && len(mp) > len(old) {
-				old = mp
+		for modulePath := range own.replaces {
+			if _, ok := within(importPath, modulePath); ok && len(modulePath) > len(old) {
+				old = modulePath
 			}
 		}
 		if old != "" {
-			rest, _ := within(ip, old)
+			rest, _ := within(importPath, old)
 			switch r := own.replaces[old]; {
 			case r.module != "":
 				// The build fetches the replacement, so that is the package - and the
 				// version a vulnerability database has to be asked about.
-				return lang.Target{Ecosystem: ecoModules, Package: r.module, Version: r.version,
+				return lang.Target{Ecosystem: ecosystemModules, Package: r.module, Version: r.version,
 					Requested: own.requires[old], Pinned: lang.Pinned(r.version)}
-			case pkgDirs[path.Join(r.dir, rest)]:
-				return lang.Target{Local: path.Join(r.dir, rest)}
+			case packageDirectories[path.Join(r.directory, rest)]:
+				return lang.Target{Local: path.Join(r.directory, rest)}
 			default:
 				// A directory outside the project has no published version. The
 				// require line's version, often the v0.0.0-00010101000000-000000000000
 				// placeholder, is not what is built and must not be looked up.
-				return lang.Target{Ecosystem: ecoModules, Package: old}
+				return lang.Target{Ecosystem: ecosystemModules, Package: old}
 			}
 		}
 	}
-	for _, m := range mods {
-		if rest, ok := within(ip, m.path); ok {
-			if d := path.Join(m.dir, rest); pkgDirs[d] {
+	for _, m := range modules {
+		if rest, ok := within(importPath, m.path); ok {
+			if d := path.Join(m.directory, rest); packageDirectories[d] {
 				return lang.Target{Local: d}
 			}
 		}
 	}
-	if first, _, _ := strings.Cut(ip, "/"); !strings.Contains(first, ".") {
-		return lang.Target{Ecosystem: ecoStd, Package: ip}
+	if first, _, _ := strings.Cut(importPath, "/"); !strings.Contains(first, ".") {
+		return lang.Target{Ecosystem: ecosystemStd, Package: importPath}
 	}
 	if own != nil {
 		best := ""
-		for mp := range own.requires {
-			if _, ok := within(ip, mp); ok && len(mp) > len(best) {
-				best = mp
+		for modulePath := range own.requires {
+			if _, ok := within(importPath, modulePath); ok && len(modulePath) > len(best) {
+				best = modulePath
 			}
 		}
 		if best != "" {
 			// A require line carries the version the build selects, so a module is
 			// pinned unless go.mod was written without one.
 			v := own.requires[best]
-			return lang.Target{Ecosystem: ecoModules, Package: best, Version: v, Pinned: lang.Pinned(v)}
+			return lang.Target{Ecosystem: ecosystemModules, Package: best, Version: v, Pinned: lang.Pinned(v)}
 		}
 	}
-	return lang.Target{Ecosystem: ecoModules, Package: ip, Unresolved: true}
+	return lang.Target{Ecosystem: ecosystemModules, Package: importPath, Unresolved: true}
 }
 
-// within reports whether import path ip is prefix or a sub-package of mod, returning the remainder.
-func within(ip, mod string) (string, bool) {
-	if ip == mod {
+// within reports whether import path importPath is prefix or a sub-package of module, returning the remainder.
+func within(importPath, module string) (string, bool) {
+	if importPath == module {
 		return "", true
 	}
-	if strings.HasPrefix(ip, mod+"/") {
-		return ip[len(mod)+1:], true
+	if strings.HasPrefix(importPath, module+"/") {
+		return importPath[len(module)+1:], true
 	}
 	return "", false
 }
@@ -218,12 +218,12 @@ func within(ip, mod string) (string, bool) {
 // Implements: REQ-GO-002, REQ-LANG-024
 func symbols(fSet *token.FileSet, af *ast.File) []lang.Symbol {
 	var set lang.SymbolSet
-	add := func(name, kind string, pos token.Pos) { set.Add(name, kind, fSet.Position(pos).Line) }
-	for _, decl := range af.Decls {
-		switch d := decl.(type) {
+	add := func(name, kind string, position token.Pos) { set.Add(name, kind, fSet.Position(position).Line) }
+	for _, declaration := range af.Decls {
+		switch d := declaration.(type) {
 		case *ast.FuncDecl:
 			if d.Recv != nil && len(d.Recv.List) > 0 {
-				add(recvName(d.Recv.List[0].Type)+"."+d.Name.Name, "method", d.Pos())
+				add(receiverName(d.Recv.List[0].Type)+"."+d.Name.Name, "method", d.Pos())
 			} else {
 				add(d.Name.Name, "func", d.Pos())
 			}
@@ -247,14 +247,14 @@ func symbols(fSet *token.FileSet, af *ast.File) []lang.Symbol {
 	return set.List()
 }
 
-func recvName(e ast.Expr) string {
+func receiverName(e ast.Expr) string {
 	switch t := e.(type) {
 	case *ast.StarExpr:
-		return recvName(t.X)
+		return receiverName(t.X)
 	case *ast.IndexExpr: // generic receiver T[P]
-		return recvName(t.X)
+		return receiverName(t.X)
 	case *ast.IndexListExpr:
-		return recvName(t.X)
+		return receiverName(t.X)
 	case *ast.Ident:
 		return t.Name
 	}

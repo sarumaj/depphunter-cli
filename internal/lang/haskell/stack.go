@@ -12,9 +12,9 @@ import (
 )
 
 // yamlDoc parses a YAML file to its top mapping node; nil when it is not one.
-func yamlDoc(src []byte) *yaml.Node {
+func yamlDoc(source []byte) *yaml.Node {
 	var doc yaml.Node
-	if yaml.Unmarshal(src, &doc) != nil || len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
+	if yaml.Unmarshal(source, &doc) != nil || len(doc.Content) == 0 || doc.Content[0].Kind != yaml.MappingNode {
 		return nil
 	}
 	return doc.Content[0]
@@ -52,17 +52,17 @@ func scalars(n *yaml.Node) []*yaml.Node {
 	return nil
 }
 
-// hpackDeps reads an hpack dependencies value: a list of "name constraint" strings
+// hpackDependencies reads an hpack dependencies value: a list of "name constraint" strings
 // or of {name, version} maps, or a map of name to constraint (or to {version}).
-func hpackDeps(n *yaml.Node) []dep {
-	var out []dep
+func hpackDependencies(n *yaml.Node) []dependency {
+	var out []dependency
 	add := func(name, c string, line int) {
 		name = strings.TrimSpace(name)
 		if name == "" {
 			return
 		}
 		text := strings.TrimSpace(name + " " + strings.Join(strings.Fields(c), " "))
-		if d, ok := parseDep(cline{text: text, line: line}); ok {
+		if d, ok := parseDependency(cline{text: text, line: line}); ok {
 			out = append(out, d)
 		}
 	}
@@ -80,8 +80,8 @@ func hpackDeps(n *yaml.Node) []dep {
 			case yaml.MappingNode:
 				if name := get(c, "name"); name != nil {
 					v := ""
-					if ver := get(c, "version"); ver != nil {
-						v = ver.Value
+					if version := get(c, "version"); version != nil {
+						v = version.Value
 					}
 					add(name.Value, v, c.Line)
 				}
@@ -93,8 +93,8 @@ func hpackDeps(n *yaml.Node) []dep {
 			c := v.Value
 			if v.Kind == yaml.MappingNode {
 				c = ""
-				if ver := get(v, "version"); ver != nil {
-					c = ver.Value
+				if version := get(v, "version"); version != nil {
+					c = version.Value
 				}
 			}
 			add(k.Value, c, k.Line)
@@ -123,12 +123,12 @@ var hpackSections = []struct {
 // are in the package directory.
 //
 // Implements: REQ-HASKELL-004, REQ-HASKELL-006
-func readHpack(src []byte, file string) *cabalPkg {
-	doc := yamlDoc(src)
+func readHpack(source []byte, file string) *cabalPackage {
+	doc := yamlDoc(source)
 	if doc == nil {
 		return nil
 	}
-	p := &cabalPkg{file: file, dir: path.Dir(file)}
+	p := &cabalPackage{file: file, directory: path.Dir(file)}
 	if n := get(doc, "name"); n != nil {
 		p.name = n.Value
 	}
@@ -138,14 +138,14 @@ func readHpack(src []byte, file string) *cabalPkg {
 	var fill func(c *component, m *yaml.Node)
 	fill = func(c *component, m *yaml.Node) {
 		for _, s := range scalars(get(m, "source-dirs")) {
-			c.dirs = append(c.dirs, path.Clean(s.Value))
+			c.directories = append(c.directories, path.Clean(s.Value))
 		}
 		for _, key := range []string{"exposed-modules", "other-modules"} {
 			for _, s := range scalars(get(m, key)) {
 				c.modules = append(c.modules, s.Value)
 			}
 		}
-		c.deps = append(c.deps, hpackDeps(get(m, "dependencies"))...)
+		c.dependencies = append(c.dependencies, hpackDependencies(get(m, "dependencies"))...)
 		when := get(m, "when")
 		if when != nil && when.Kind == yaml.MappingNode {
 			fill(c, when)
@@ -161,8 +161,8 @@ func readHpack(src []byte, file string) *cabalPkg {
 			}
 		}
 	}
-	if cs := get(doc, "custom-setup"); cs != nil {
-		p.setup = &component{kind: "custom-setup", line: cs.Line, deps: hpackDeps(get(cs, "dependencies"))}
+	if customSetup := get(doc, "custom-setup"); customSetup != nil {
+		p.setup = &component{kind: "custom-setup", line: customSetup.Line, dependencies: hpackDependencies(get(customSetup, "dependencies"))}
 	}
 	common := &component{}
 	fill(common, doc)
@@ -185,17 +185,17 @@ func readHpack(src []byte, file string) *cabalPkg {
 				c.name, c.line = e[0].Value, e[0].Line
 			}
 			fill(c, e[1])
-			c.dirs = append(c.dirs, common.dirs...)
-			c.deps = append(c.deps, common.deps...)
-			if len(c.dirs) == 0 {
-				c.dirs = []string{"."}
+			c.directories = append(c.directories, common.directories...)
+			c.dependencies = append(c.dependencies, common.dependencies...)
+			if len(c.directories) == 0 {
+				c.directories = []string{"."}
 			}
 			p.comps = append(p.comps, c)
 		}
 	}
-	if len(p.comps) == 0 && (len(common.deps) > 0 || len(common.dirs) > 0) {
-		if len(common.dirs) == 0 {
-			common.dirs = []string{"."}
+	if len(p.comps) == 0 && (len(common.dependencies) > 0 || len(common.directories) > 0) {
+		if len(common.directories) == 0 {
+			common.directories = []string{"."}
 		}
 		common.kind = "library"
 		p.comps = append(p.comps, common)
@@ -206,11 +206,11 @@ func readHpack(src []byte, file string) *cabalPkg {
 // extractHpack turns every dependencies entry of package.yaml into an import.
 //
 // Implements: REQ-HASKELL-005
-func extractHpack(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
-	p := readHpack(src, "package.yaml")
+func extractHpack(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
+	p := readHpack(source, "package.yaml")
 	if p == nil {
-		return ex
+		return extraction
 	}
 	seen := map[string]bool{}
 	comps := p.comps
@@ -218,21 +218,21 @@ func extractHpack(src []byte) *lang.Extraction {
 		comps = append(comps, p.setup)
 	}
 	for _, c := range comps {
-		for _, d := range c.deps {
+		for _, d := range c.dependencies {
 			spec := "dependencies: " + d.text
 			if !seen[spec] {
 				seen[spec] = true
-				ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: d.name, Name: kindDep, Line: d.line})
+				extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: d.name, Name: kindDependency, Line: d.line})
 			}
 		}
 	}
-	sort.SliceStable(ex.Imports, func(i, j int) bool { return ex.Imports[i].Line < ex.Imports[j].Line })
-	return ex
+	sort.SliceStable(extraction.Imports, func(i, j int) bool { return extraction.Imports[i].Line < extraction.Imports[j].Line })
+	return extraction
 }
 
-// extraDep is one stack.yaml extra-deps entry: a Hackage package at a version, a
+// extraDependency is one stack.yaml extra-deps entry: a Hackage package at a version, a
 // repository at a commit, or a local directory.
-type extraDep struct {
+type extraDependency struct {
 	name, version string
 	origin        string // a repository URL; "path:<dir>" for a local one
 	line          int
@@ -243,7 +243,7 @@ type extraDep struct {
 type stackProject struct {
 	snapshot string
 	members  []cline
-	extras   []extraDep
+	extras   []extraDependency
 }
 
 var hackageID = regexp.MustCompile(`^([A-Za-z0-9][A-Za-z0-9-]*?)-([0-9]+(?:\.[0-9]+)*)(?:@.*)?$`)
@@ -262,8 +262,8 @@ func splitID(s string) (string, string, bool) {
 // path).
 //
 // Implements: REQ-HASKELL-007
-func readStack(src []byte) *stackProject {
-	doc := yamlDoc(src)
+func readStack(source []byte) *stackProject {
+	doc := yamlDoc(source)
 	if doc == nil {
 		return nil
 	}
@@ -284,24 +284,24 @@ func readStack(src []byte) *stackProject {
 		switch e.Kind {
 		case yaml.ScalarNode:
 			v := e.Value
-			if name, ver, ok := splitID(v); ok && !strings.Contains(v, "/") {
-				p.extras = append(p.extras, extraDep{name: name, version: ver, line: e.Line})
+			if name, version, ok := splitID(v); ok && !strings.Contains(v, "/") {
+				p.extras = append(p.extras, extraDependency{name: name, version: version, line: e.Line})
 			} else if strings.HasPrefix(v, ".") || strings.HasPrefix(v, "/") || !strings.Contains(v, "://") {
-				p.extras = append(p.extras, extraDep{name: path.Base(path.Clean(v)), origin: "path:" + v, line: e.Line})
+				p.extras = append(p.extras, extraDependency{name: path.Base(path.Clean(v)), origin: "path:" + v, line: e.Line})
 			} else {
-				p.extras = append(p.extras, extraDep{name: archiveName(v), origin: v, line: e.Line})
+				p.extras = append(p.extras, extraDependency{name: archiveName(v), origin: v, line: e.Line})
 			}
 		case yaml.MappingNode:
-			loc := ""
+			gitNode := ""
 			if g := get(e, "git"); g != nil {
-				loc = g.Value
+				gitNode = g.Value
 			} else if g := get(e, "github"); g != nil {
-				loc = "https://github.com/" + g.Value
+				gitNode = "https://github.com/" + g.Value
 			} else if u := get(e, "url"); u != nil {
-				p.extras = append(p.extras, extraDep{name: archiveName(u.Value), origin: u.Value, line: e.Line})
+				p.extras = append(p.extras, extraDependency{name: archiveName(u.Value), origin: u.Value, line: e.Line})
 				continue
 			}
-			if loc == "" {
+			if gitNode == "" {
 				continue
 			}
 			commit := ""
@@ -310,10 +310,10 @@ func readStack(src []byte) *stackProject {
 			}
 			subs := scalars(get(e, "subdirs"))
 			if len(subs) == 0 {
-				p.extras = append(p.extras, extraDep{name: repoName(loc, ""), version: commit, origin: loc, line: e.Line})
+				p.extras = append(p.extras, extraDependency{name: repositoryName(gitNode, ""), version: commit, origin: gitNode, line: e.Line})
 			}
 			for _, s := range subs {
-				p.extras = append(p.extras, extraDep{name: repoName(loc, s.Value), version: commit, origin: loc, line: s.Line})
+				p.extras = append(p.extras, extraDependency{name: repositoryName(gitNode, s.Value), version: commit, origin: gitNode, line: s.Line})
 			}
 		}
 	}
@@ -324,8 +324,8 @@ func readStack(src []byte) *stackProject {
 // file's name.
 func archiveName(u string) string {
 	base := path.Base(u)
-	for _, ext := range []string{".tar.gz", ".tgz", ".zip", ".tar"} {
-		base = strings.TrimSuffix(base, ext)
+	for _, extension := range []string{".tar.gz", ".tgz", ".zip", ".tar"} {
+		base = strings.TrimSuffix(base, extension)
 	}
 	if name, _, ok := splitID(base); ok {
 		return name
@@ -336,18 +336,18 @@ func archiveName(u string) string {
 // extractStack turns stack.yaml's packages and extra-deps into imports.
 //
 // Implements: REQ-HASKELL-005
-func extractStack(src []byte) *lang.Extraction {
-	ex := &lang.Extraction{}
-	p := readStack(src)
+func extractStack(source []byte) *lang.Extraction {
+	extraction := &lang.Extraction{}
+	p := readStack(source)
 	if p == nil {
-		return ex
+		return extraction
 	}
 	seen := map[string]bool{}
 	for _, m := range p.members {
 		spec := "packages: " + m.text
 		if !seen[spec] {
 			seen[spec] = true
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: m.text, Name: kindMember, Line: m.line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: m.text, Name: kindMember, Line: m.line})
 		}
 	}
 	for _, e := range p.extras {
@@ -357,57 +357,57 @@ func extractStack(src []byte) *lang.Extraction {
 		}
 		if !seen[spec] {
 			seen[spec] = true
-			ex.Imports = append(ex.Imports, lang.RawImport{Spec: spec, Module: e.name, Name: kindExtra, Line: e.line})
+			extraction.Imports = append(extraction.Imports, lang.RawImport{Spec: spec, Module: e.name, Name: kindExtra, Line: e.line})
 		}
 	}
-	return ex
+	return extraction
 }
 
 // stackLock is what stack.yaml.lock completed: each extra-dep's exact version (a
 // Hackage one) or commit (a repository), and the snapshot.
 type stackLock struct {
-	pkgs map[string]extraDep
+	packages map[string]extraDependency
 }
 
 // readStackLock reads stack.yaml.lock's packages: completed entries, "hackage:
 // name-version@sha256:...,size" or name, version, git and commit.
 //
 // Implements: REQ-HASKELL-008
-func readStackLock(src []byte) *stackLock {
-	doc := yamlDoc(src)
+func readStackLock(source []byte) *stackLock {
+	doc := yamlDoc(source)
 	if doc == nil {
 		return nil
 	}
-	l := &stackLock{pkgs: map[string]extraDep{}}
-	pkgs := get(doc, "packages")
-	if pkgs == nil || pkgs.Kind != yaml.SequenceNode {
+	l := &stackLock{packages: map[string]extraDependency{}}
+	packages := get(doc, "packages")
+	if packages == nil || packages.Kind != yaml.SequenceNode {
 		return l
 	}
-	for _, e := range pkgs.Content {
+	for _, e := range packages.Content {
 		c := get(e, "completed")
 		if c == nil {
 			continue
 		}
 		if h := get(c, "hackage"); h != nil {
-			if name, ver, ok := splitID(h.Value); ok {
-				l.pkgs[name] = extraDep{name: name, version: ver}
+			if name, version, ok := splitID(h.Value); ok {
+				l.packages[name] = extraDependency{name: name, version: version}
 			}
 			continue
 		}
-		name, ver, loc := get(c, "name"), get(c, "commit"), get(c, "git")
+		name, version, gitNode := get(c, "name"), get(c, "commit"), get(c, "git")
 		if name == nil {
 			continue
 		}
-		d := extraDep{name: name.Value}
-		if loc != nil {
-			d.origin = loc.Value
+		d := extraDependency{name: name.Value}
+		if gitNode != nil {
+			d.origin = gitNode.Value
 		}
-		if ver != nil {
-			d.version = ver.Value
+		if version != nil {
+			d.version = version.Value
 		} else if v := get(c, "version"); v != nil {
 			d.version = v.Value
 		}
-		l.pkgs[d.name] = d
+		l.packages[d.name] = d
 	}
 	return l
 }

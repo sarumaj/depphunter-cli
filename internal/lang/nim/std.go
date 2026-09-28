@@ -5,7 +5,7 @@ import "strings"
 // stdModules are the modules of Nim's standard library a bare import names
 // (`import os, strutils`): the modules of lib/pure, lib/core, lib/impure,
 // lib/wrappers, lib/posix, lib/windows, lib/js, lib/deprecated/pure and
-// lib/pure/collections and concurrency (the compiler's stdlibDirs), from Nim
+// lib/pure/collections and concurrency (the compiler's stdlibDirectories), from Nim
 // 2.2's sources, plus system and modules of older releases.
 var stdModules = func() map[string]bool {
 	m := map[string]bool{}
@@ -46,9 +46,9 @@ var movedModules = map[string]string{
 	"parsesql": "parsesql",
 }
 
-// stdlibDirs are the directories under the library root the compiler searches
+// stdlibDirectories are the directories under the library root the compiler searches
 // for a bare module name and for std/x, in its order (compiler/options.nim).
-var stdlibDirs = []string{
+var stdlibDirectories = []string{
 	"pure", "core", "arch", "pure/collections", "pure/concurrency", "pure/unidecode", "impure",
 	"wrappers", "wrappers/linenoise", "windows", "posix", "js", "deprecated/pure",
 }

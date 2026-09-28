@@ -37,9 +37,9 @@ var stdlibs = map[string]bool{
 // Stdlib reports whether a package name is one of Julia's standard libraries.
 func Stdlib(name string) bool { return stdlibs[name] }
 
-// RegistryDir is where the General registry keeps a package's files: the package's
+// RegistryDirectory is where the General registry keeps a package's files: the package's
 // first letter in upper case, then its name (J/JSON, L/libpng_jll).
-func RegistryDir(name string) string {
+func RegistryDirectory(name string) string {
 	r, n := utf8.DecodeRuneInString(name)
 	if n == 0 {
 		return ""
@@ -94,27 +94,27 @@ func Compare(a, b Version) int {
 
 // Range is the set of versions between two bounds. A bound has as many parts as were
 // written: as an upper bound "1.5" admits every 1.5.x, as Pkg reads it. An empty
-// upper bound is unbounded; hiExcl makes it exclusive (a caret's "< 2.0.0").
+// upper bound is unbounded; highExcl makes it exclusive (a caret's "< 2.0.0").
 type Range struct {
-	Lo, Hi Version
-	hiExcl bool
-	open   bool // no upper bound
+	Low, High Version
+	highExcl  bool
+	open      bool // no upper bound
 }
 
 // Contains reports whether v is in the range.
 func (r Range) Contains(v Version) bool {
-	if Compare(v, r.Lo) < 0 {
+	if Compare(v, r.Low) < 0 {
 		return false
 	}
 	if r.open {
 		return true
 	}
-	if r.hiExcl {
-		return Compare(v, r.Hi) < 0
+	if r.highExcl {
+		return Compare(v, r.High) < 0
 	}
 	// An inclusive bound compares only the parts it has.
-	for i := range r.Hi {
-		if x, y := v.At(i), r.Hi[i]; x != y {
+	for i := range r.High {
+		if x, y := v.At(i), r.High[i]; x != y {
 			return x < y
 		}
 	}
@@ -135,21 +135,21 @@ func bound(s string) (Version, bool) {
 // release), "0 - 0.20.0" and the compressed "0.1-0.3".
 func RegistryRange(s string) (Range, bool) {
 	s = strings.TrimSpace(s)
-	lo, hi, ok := strings.Cut(s, " - ")
+	low, high, ok := strings.Cut(s, " - ")
 	if !ok {
 		// "0.1-0.3": a hyphen between two versions. A pre-release suffix never
 		// appears in a range, so the first hyphen splits.
-		lo, hi, ok = strings.Cut(s, "-")
+		low, high, ok = strings.Cut(s, "-")
 	}
 	if !ok {
-		hi = lo
+		high = low
 	}
-	l, ok1 := bound(lo)
-	h, ok2 := bound(hi)
+	l, ok1 := bound(low)
+	h, ok2 := bound(high)
 	if !ok1 || !ok2 {
 		return Range{}, false
 	}
-	return Range{Lo: l, Hi: h, open: h == nil}, true
+	return Range{Low: l, High: h, open: h == nil}, true
 }
 
 // CompatRanges reads a Project.toml [compat] entry: comma-separated specifiers, each
@@ -173,11 +173,11 @@ func CompatRanges(spec string) ([]Range, bool) {
 }
 
 func compatPart(s string) (Range, bool) {
-	if lo, hi, ok := strings.Cut(s, " - "); ok {
-		return RegistryRange(lo + " - " + hi)
+	if low, high, ok := strings.Cut(s, " - "); ok {
+		return RegistryRange(low + " - " + high)
 	}
-	for _, op := range []string{">=", "≥", "<=", "≤", "<", "=", "^", "~"} {
-		rest, ok := strings.CutPrefix(s, op)
+	for _, operator := range []string{">=", "≥", "<=", "≤", "<", "=", "^", "~"} {
+		rest, ok := strings.CutPrefix(s, operator)
 		if !ok {
 			continue
 		}
@@ -185,15 +185,15 @@ func compatPart(s string) (Range, bool) {
 		if !ok {
 			return Range{}, false
 		}
-		switch op {
+		switch operator {
 		case ">=", "≥":
-			return Range{Lo: v, open: true}, true
+			return Range{Low: v, open: true}, true
 		case "<":
-			return Range{Hi: v, hiExcl: true}, true
+			return Range{High: v, highExcl: true}, true
 		case "<=", "≤":
-			return Range{Hi: pad(v), hiExcl: false}, true
+			return Range{High: pad(v), highExcl: false}, true
 		case "=":
-			return Range{Lo: v, Hi: v}, true
+			return Range{Low: v, High: v}, true
 		case "~":
 			return tilde(v), true
 		}
@@ -216,31 +216,31 @@ func pad(v Version) Version {
 // caret is Pkg's default: the leftmost non-zero part may not change ("^0.2.3" is
 // [0.2.3, 0.3.0), "^0" is [0.0.0, 1.0.0)).
 func caret(v Version) Range {
-	hi := make(Version, 3)
+	high := make(Version, 3)
 	switch {
 	case v.At(0) != 0 || len(v) == 1:
-		hi[0] = v.At(0) + 1
+		high[0] = v.At(0) + 1
 	case v.At(1) != 0 || len(v) == 2:
-		hi[1] = v.At(1) + 1
+		high[1] = v.At(1) + 1
 	default:
-		hi[1], hi[2] = v.At(1), v.At(2)+1
+		high[1], high[2] = v.At(1), v.At(2)+1
 	}
-	return Range{Lo: v, Hi: hi, hiExcl: true}
+	return Range{Low: v, High: high, highExcl: true}
 }
 
 // tilde lets only the last written part below the minor change ("~1.2.3" is [1.2.3,
 // 1.3.0), "~1" is [1.0.0, 2.0.0)).
 func tilde(v Version) Range {
-	hi := make(Version, 3)
+	high := make(Version, 3)
 	switch {
 	case len(v) == 1:
-		hi[0] = v.At(0) + 1
+		high[0] = v.At(0) + 1
 	case v.At(0) == 0 && v.At(1) == 0 && len(v) == 3:
-		hi[2] = v.At(2) + 1
+		high[2] = v.At(2) + 1
 	default:
-		hi[0], hi[1] = v.At(0), v.At(1)+1
+		high[0], high[1] = v.At(0), v.At(1)+1
 	}
-	return Range{Lo: v, Hi: hi, hiExcl: true}
+	return Range{Low: v, High: high, highExcl: true}
 }
 
 // ExactCompat is the version a [compat] entry pins: a single "=1.2.3" with all three

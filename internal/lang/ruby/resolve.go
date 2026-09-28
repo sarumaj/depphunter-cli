@@ -12,36 +12,36 @@ import (
 )
 
 type resolver struct {
-	files    map[string]bool
-	dirs     map[string]bool
-	gemspecs map[string][]string // directory -> its *.gemspec files
-	projects []*project          // shallowest first
-	loadPath []string            // every project's gem lib directories
-	rails    []*railsApp         // deepest first
-	own      map[string]string   // gems the repository builds -> gemspec (or directory)
+	files       map[string]bool
+	directories map[string]bool
+	gemspecs    map[string][]string // directory -> its *.gemspec files
+	projects    []*project          // shallowest first
+	loadPath    []string            // every project's gem lib directories
+	rails       []*railsApp         // deepest first
+	own         map[string]string   // gems the repository builds -> gemspec (or directory)
 }
 
 // railsApp is a Rails application: the directory holding config/application.rb, and
 // what Zeitwerk would autoload in it - every directory under app/ (and app/*/concerns)
 // is a root, lib/ too when the application says autoload_lib.
 type railsApp struct {
-	dir       string
-	constants map[string]string // folded constant path ("admin::userscontroller") -> file or directory
-	appDirs   []string          // app/models, app/controllers, ...: on the load path before Rails 7.1
+	directory      string
+	constants      map[string]string // folded constant path ("admin::userscontroller") -> file or directory
+	appDirectories []string          // app/models, app/controllers, ...: on the load path before Rails 7.1
 }
 
 // Implements: REQ-RUBY-005, REQ-RUBY-007, REQ-RUBY-010
 func newResolver(root string, all []*scan.File) *resolver {
-	r := &resolver{files: map[string]bool{}, dirs: map[string]bool{}, gemspecs: map[string][]string{}, own: map[string]string{}}
-	abs := map[string]string{}
+	r := &resolver{files: map[string]bool{}, directories: map[string]bool{}, gemspecs: map[string][]string{}, own: map[string]string{}}
+	absolute := map[string]string{}
 	sorted := append([]*scan.File(nil), all...)
 	sort.Slice(sorted, func(i, j int) bool { return sorted[i].Path < sorted[j].Path })
 	gemfiles := map[string]string{} // directory -> Gemfile name
 	for _, f := range sorted {
 		r.files[f.Path] = true
-		abs[f.Path] = f.Abs
-		for d := path.Dir(f.Path); d != "." && !r.dirs[d]; d = path.Dir(d) {
-			r.dirs[d] = true
+		absolute[f.Path] = f.AbsolutePath
+		for d := path.Dir(f.Path); d != "." && !r.directories[d]; d = path.Dir(d) {
+			r.directories[d] = true
 		}
 		switch base := path.Base(f.Path); {
 		case base == "Gemfile" || base == "gems.rb":
@@ -52,35 +52,35 @@ func newResolver(root string, all []*scan.File) *resolver {
 			r.gemspecs[path.Dir(f.Path)] = append(r.gemspecs[path.Dir(f.Path)], f.Path)
 		}
 	}
-	read := func(rel string) (string, bool) {
-		rel = path.Clean(rel)
-		if a, ok := abs[rel]; ok {
+	read := func(relative string) (string, bool) {
+		relative = path.Clean(relative)
+		if a, ok := absolute[relative]; ok {
 			return readFile(a)
 		}
-		if root == "" || !inside(rel) {
+		if root == "" || !inside(relative) {
 			return "", false
 		}
-		return readFile(filepath.Join(root, filepath.FromSlash(rel))) // a lock the scan left out
+		return readFile(filepath.Join(root, filepath.FromSlash(relative))) // a lock the scan left out
 	}
-	dirs := map[string]bool{}
+	directories := map[string]bool{}
 	for d := range gemfiles {
-		dirs[d] = true
+		directories[d] = true
 	}
 	for d := range r.gemspecs {
-		dirs[d] = true
+		directories[d] = true
 	}
 	// A gemspec a Gemfile takes in belongs to that Gemfile's project, not one of its own.
 	claimed := map[string]bool{}
 	for d, name := range gemfiles {
-		src, _ := read(path.Join(d, name))
-		_, specDirs := readGemfile(src, nil)
-		for _, sd := range specDirs {
-			if sd = path.Join(d, sd); sd != d {
-				claimed[sd] = true
+		source, _ := read(path.Join(d, name))
+		_, specDirectories := readGemfile(source, nil)
+		for _, specDirectory := range specDirectories {
+			if specDirectory = path.Join(d, specDirectory); specDirectory != d {
+				claimed[specDirectory] = true
 			}
 		}
 	}
-	for _, d := range sortedKeys(dirs) {
+	for _, d := range sortedKeys(directories) {
 		if gemfiles[d] == "" && claimed[d] {
 			continue
 		}
@@ -93,15 +93,15 @@ func newResolver(root string, all []*scan.File) *resolver {
 			}
 		}
 	}
-	sort.SliceStable(r.projects, func(i, j int) bool { return depth(r.projects[i].dir) < depth(r.projects[j].dir) })
+	sort.SliceStable(r.projects, func(i, j int) bool { return depth(r.projects[i].directory) < depth(r.projects[j].directory) })
 	for _, f := range sorted {
 		if strings.HasSuffix(f.Path, "config/application.rb") {
 			app := path.Dir(path.Dir(f.Path))
-			src, _ := read(f.Path)
-			r.rails = append(r.rails, r.zeitwerk(app, src))
+			source, _ := read(f.Path)
+			r.rails = append(r.rails, r.zeitwerk(app, source))
 		}
 	}
-	sort.SliceStable(r.rails, func(i, j int) bool { return depth(r.rails[i].dir) > depth(r.rails[j].dir) })
+	sort.SliceStable(r.rails, func(i, j int) bool { return depth(r.rails[i].directory) > depth(r.rails[j].directory) })
 	return r
 }
 
@@ -114,14 +114,14 @@ func sortedKeys(m map[string]bool) []string {
 	return out
 }
 
-func depth(dir string) int {
-	if dir == "." {
+func depth(directory string) int {
+	if directory == "." {
 		return 0
 	}
-	return strings.Count(dir, "/") + 1
+	return strings.Count(directory, "/") + 1
 }
 
-var autoloadLib = regexp.MustCompile(`autoload_lib\b|autoload_paths\b.*\blib\b`)
+var autoloadLibrary = regexp.MustCompile(`autoload_lib\b|autoload_paths\b.*\blib\b`)
 
 // zeitwerk indexes a Rails application's autoloaded constants the way Zeitwerk names
 // them: a file's path under its root, camelized (admin/users_controller.rb is
@@ -131,13 +131,13 @@ var autoloadLib = regexp.MustCompile(`autoload_lib\b|autoload_paths\b.*\blib\b`)
 //
 // Implements: REQ-RUBY-010
 func (r *resolver) zeitwerk(app, config string) *railsApp {
-	a := &railsApp{dir: app, constants: map[string]string{}}
+	a := &railsApp{directory: app, constants: map[string]string{}}
 	prefix := path.Join(app, "app") + "/"
 	if app == "." {
 		prefix = "app/"
 	}
 	var roots []string
-	for d := range r.dirs {
+	for d := range r.directories {
 		rest, ok := strings.CutPrefix(d, prefix)
 		if !ok {
 			continue
@@ -145,30 +145,30 @@ func (r *resolver) zeitwerk(app, config string) *railsApp {
 		if parts := strings.Split(rest, "/"); len(parts) == 1 || len(parts) == 2 && parts[1] == "concerns" {
 			roots = append(roots, d)
 			if len(parts) == 1 {
-				a.appDirs = append(a.appDirs, d)
+				a.appDirectories = append(a.appDirectories, d)
 			}
 		}
 	}
-	if autoloadLib.MatchString(config) {
+	if autoloadLibrary.MatchString(config) {
 		roots = append(roots, path.Join(app, "lib"))
 	}
 	sort.Strings(roots)
-	sort.Strings(a.appDirs)
+	sort.Strings(a.appDirectories)
 	var namespaces []string
 	for f := range r.files {
 		if !strings.HasSuffix(f, ".rb") {
 			continue
 		}
 		for _, root := range roots {
-			rel, ok := strings.CutPrefix(f, root+"/")
-			if !ok || strings.HasPrefix(rel, "tasks/") || strings.HasPrefix(rel, "assets/") {
+			relative, ok := strings.CutPrefix(f, root+"/")
+			if !ok || strings.HasPrefix(relative, "tasks/") || strings.HasPrefix(relative, "assets/") {
 				continue
 			}
-			key := constKey(strings.TrimSuffix(rel, ".rb"))
+			key := constantKey(strings.TrimSuffix(relative, ".rb"))
 			if old, ok := a.constants[key]; !ok || f < old {
 				a.constants[key] = f
 			}
-			for d := path.Dir(rel); d != "."; d = path.Dir(d) {
+			for d := path.Dir(relative); d != "."; d = path.Dir(d) {
 				namespaces = append(namespaces, root+"/"+d)
 			}
 		}
@@ -176,8 +176,8 @@ func (r *resolver) zeitwerk(app, config string) *railsApp {
 	sort.Strings(namespaces)
 	for _, d := range namespaces {
 		for _, root := range roots {
-			if rel, ok := strings.CutPrefix(d, root+"/"); ok {
-				if key := constKey(rel); a.constants[key] == "" {
+			if relative, ok := strings.CutPrefix(d, root+"/"); ok {
+				if key := constantKey(relative); a.constants[key] == "" {
 					a.constants[key] = d
 				}
 			}
@@ -186,34 +186,34 @@ func (r *resolver) zeitwerk(app, config string) *railsApp {
 	return a
 }
 
-// constKey folds a file path under an autoload root, or a constant path, to what both
+// constantKey folds a file path under an autoload root, or a constant path, to what both
 // have in common: admin/users_controller and Admin::UsersController are
 // admin::userscontroller.
-func constKey(s string) string {
+func constantKey(s string) string {
 	s = strings.ReplaceAll(strings.ToLower(s), "/", "::")
 	return strings.ReplaceAll(s, "_", "")
 }
 
 // Implements: REQ-RUBY-002, REQ-RUBY-004, REQ-RUBY-005, REQ-RUBY-006, REQ-RUBY-007, REQ-RUBY-009, REQ-RUBY-010, REQ-RUBY-012
-func (r *resolver) Resolve(file string, imp lang.RawImport) lang.Target {
-	switch kind, nest, _ := strings.Cut(imp.Name, ":"); kind {
-	case kindConst:
-		return r.constant(file, imp.Module, nest)
+func (r *resolver) Resolve(file string, rawImport lang.RawImport) lang.Target {
+	switch kind, nest, _ := strings.Cut(rawImport.Name, ":"); kind {
+	case kindConstant:
+		return r.constant(file, rawImport.Module, nest)
 	case kindRelative:
-		return r.rubyFile(r.relative(file, imp.Module))
+		return r.rubyFile(r.relative(file, rawImport.Module))
 	case kindRequire:
-		return r.require(file, imp.Module)
+		return r.require(file, rawImport.Module)
 	case kindLoad:
-		return r.load(file, imp.Module)
+		return r.load(file, rawImport.Module)
 	case kindGem:
-		return r.gem(file, imp.Module, r.projectsOf(file))
+		return r.gem(file, rawImport.Module, r.projectsOf(file))
 	case kindGemPath, kindGemspec:
-		dir := r.relative(file, imp.Module)
-		if specs := r.gemspecs[dir]; len(specs) > 0 {
+		directory := r.relative(file, rawImport.Module)
+		if specs := r.gemspecs[directory]; len(specs) > 0 {
 			return lang.Target{Local: specs[0]}
 		}
-		if imp.Name == kindGemPath {
-			return r.localPath(dir)
+		if rawImport.Name == kindGemPath {
+			return r.localPath(directory)
 		}
 	}
 	return lang.Target{}
@@ -241,7 +241,7 @@ func (r *resolver) rubyFile(p string) lang.Target {
 }
 
 func (r *resolver) localPath(p string) lang.Target {
-	if inside(p) && (r.files[p] || r.dirs[p]) {
+	if inside(p) && (r.files[p] || r.directories[p]) {
 		return lang.Target{Local: p}
 	}
 	return lang.Target{}
@@ -266,8 +266,8 @@ func (r *resolver) require(file, p string) lang.Target {
 		return lang.Target{}
 	}
 	p = strings.TrimSuffix(p, ".rb")
-	for _, dir := range r.loadPathOf(file) {
-		if t := r.rubyFile(path.Join(dir, p)); t.Local != "" && t.Local != file {
+	for _, directory := range r.loadPathOf(file) {
+		if t := r.rubyFile(path.Join(directory, p)); t.Local != "" && t.Local != file {
 			return t
 		}
 	}
@@ -275,13 +275,13 @@ func (r *resolver) require(file, p string) lang.Target {
 	if name, ok := r.gemFor(p, projects, true); ok {
 		return r.gem(file, name, projects)
 	}
-	if pkg, ok := stdLibrary(p); ok {
-		for _, proj := range projects {
-			if proj.has(pkg) { // yaml is psych, and the lock has psych
-				return r.gem(file, pkg, projects)
+	if packageName, ok := stdLibrary(p); ok {
+		for _, project := range projects {
+			if project.has(packageName) { // yaml is psych, and the lock has psych
+				return r.gem(file, packageName, projects)
 			}
 		}
-		return lang.Target{Ecosystem: ecoStd, Package: pkg}
+		return lang.Target{Ecosystem: ecosystemStd, Package: packageName}
 	}
 	name, _ := r.gemFor(p, projects, false)
 	return r.gem(file, name, projects)
@@ -305,7 +305,7 @@ func (r *resolver) gem(file, name string, projects []*project) lang.Target {
 			return p.target(name)
 		}
 	}
-	return lang.Target{Ecosystem: ecoGems, Package: name, Unresolved: true}
+	return lang.Target{Ecosystem: ecosystemGems, Package: name, Unresolved: true}
 }
 
 // loadPathOf lists the directories a require from file is looked up in.
@@ -313,14 +313,14 @@ func (r *resolver) loadPathOf(file string) []string {
 	var out []string
 	seen := map[string]bool{}
 	add := func(d string) {
-		if !seen[d] && (r.dirs[d] || d == ".") {
+		if !seen[d] && (r.directories[d] || d == ".") {
 			seen[d] = true
 			out = append(out, d)
 		}
 	}
 	for d := path.Dir(file); ; d = path.Dir(d) {
-		for _, sub := range []string{"lib", "test", "spec"} {
-			add(path.Join(d, sub))
+		for _, subdirectory := range []string{"lib", "test", "spec"} {
+			add(path.Join(d, subdirectory))
 		}
 		if d == "." {
 			break
@@ -330,8 +330,8 @@ func (r *resolver) loadPathOf(file string) []string {
 		add(d)
 	}
 	for _, app := range r.rails {
-		if app.dir == "." || strings.HasPrefix(file, app.dir+"/") {
-			for _, d := range app.appDirs {
+		if app.directory == "." || strings.HasPrefix(file, app.directory+"/") {
+			for _, d := range app.appDirectories {
 				add(d)
 			}
 		}
@@ -359,8 +359,8 @@ func (r *resolver) gemFor(p string, projects []*project, declared bool) (string,
 		}
 		if !declared {
 			for _, name := range names {
-				for _, proj := range projects {
-					if proj.has(name) {
+				for _, project := range projects {
+					if project.has(name) {
 						return name, true
 					}
 				}
@@ -368,8 +368,8 @@ func (r *resolver) gemFor(p string, projects []*project, declared bool) (string,
 			return names[0], true
 		}
 		for _, name := range names {
-			for _, proj := range projects {
-				if proj.has(name) {
+			for _, project := range projects {
+				if project.has(name) {
 					return name, true
 				}
 			}
@@ -383,8 +383,8 @@ func (r *resolver) gemFor(p string, projects []*project, declared bool) (string,
 	}
 	for k := len(segments); k >= 1; k-- {
 		want := fold(strings.Join(segments[:k], ""))
-		for _, proj := range projects {
-			for _, name := range proj.gemNames() {
+		for _, project := range projects {
+			for _, name := range project.gemNames() {
 				if f := fold(name); f == want || k == 1 && (f == want+"ruby" || f == "ruby"+want) {
 					return name, true
 				}
@@ -422,8 +422,8 @@ func (r *resolver) load(file, p string) lang.Target {
 		return lang.Target{}
 	}
 	bases := []string{path.Dir(file)}
-	for _, proj := range r.projectsOf(file) {
-		bases = append(bases, proj.dir)
+	for _, project := range r.projectsOf(file) {
+		bases = append(bases, project.directory)
 	}
 	bases = append(append(bases, r.loadPathOf(file)...), ".")
 	for _, b := range bases {
@@ -439,7 +439,7 @@ func (r *resolver) load(file, p string) lang.Target {
 func (r *resolver) projectsOf(file string) []*project {
 	var out []*project
 	for i := len(r.projects) - 1; i >= 0; i-- {
-		if p := r.projects[i]; p.dir == "." || strings.HasPrefix(file, p.dir+"/") {
+		if p := r.projects[i]; p.directory == "." || strings.HasPrefix(file, p.directory+"/") {
 			out = append(out, p)
 		}
 	}
@@ -458,7 +458,7 @@ func (r *resolver) projectsOf(file string) []*project {
 func (r *resolver) constant(file, name, nest string) lang.Target {
 	var app *railsApp
 	for _, a := range r.rails {
-		if a.dir == "." || strings.HasPrefix(file, a.dir+"/") {
+		if a.directory == "." || strings.HasPrefix(file, a.directory+"/") {
 			app = a
 			break
 		}
@@ -467,8 +467,8 @@ func (r *resolver) constant(file, name, nest string) lang.Target {
 		return lang.Target{}
 	}
 	var candidates []string
-	if abs, ok := strings.CutPrefix(name, "::"); ok {
-		candidates = []string{abs}
+	if absolute, ok := strings.CutPrefix(name, "::"); ok {
+		candidates = []string{absolute}
 	} else {
 		outer := strings.Split(nest, "::")
 		if nest == "" {
@@ -479,7 +479,7 @@ func (r *resolver) constant(file, name, nest string) lang.Target {
 		}
 	}
 	for _, c := range candidates {
-		if f := app.constants[constKey(strings.ReplaceAll(c, " ", ""))]; f != "" {
+		if f := app.constants[constantKey(strings.ReplaceAll(c, " ", ""))]; f != "" {
 			return lang.Target{Local: f}
 		}
 	}
@@ -491,15 +491,15 @@ func (r *resolver) constant(file, name, nest string) lang.Target {
 //
 // Implements: REQ-RUBY-011
 func (r *resolver) Dependencies(t lang.Target) []lang.Target {
-	if t.Ecosystem != ecoGems {
+	if t.Ecosystem != ecosystemGems {
 		return nil
 	}
 	var p *project
 	var s *spec
-	for _, proj := range r.projects {
-		if k := proj.locked[strings.ToLower(t.Package)]; k != nil {
+	for _, project := range r.projects {
+		if k := project.locked[strings.ToLower(t.Package)]; k != nil {
 			if p == nil || k.version == t.Version {
-				p, s = proj, k
+				p, s = project, k
 			}
 			if k.version == t.Version {
 				break
@@ -509,24 +509,24 @@ func (r *resolver) Dependencies(t lang.Target) []lang.Target {
 	if s == nil {
 		return nil
 	}
-	names := make([]string, 0, len(s.deps))
-	for name := range s.deps {
+	names := make([]string, 0, len(s.dependencies))
+	for name := range s.dependencies {
 		names = append(names, name)
 	}
 	sort.Strings(names)
 	out := make([]lang.Target, 0, len(names))
 	for _, name := range names {
-		if dep := p.locked[strings.ToLower(name)]; dep != nil {
+		if dependency := p.locked[strings.ToLower(name)]; dependency != nil {
 			d := p.target(name)
-			d.Requested = s.deps[name]
+			d.Requested = s.dependencies[name]
 			if d.Requested == "" || d.Requested == d.Version || d.Requested == "= "+d.Version {
 				d.Requested = ""
 			}
 			out = append(out, d)
 			continue
 		}
-		v, pin := exactVersion(s.deps[name])
-		out = append(out, lang.Target{Ecosystem: ecoGems, Package: name, Version: v, Pinned: pin})
+		v, pin := exactVersion(s.dependencies[name])
+		out = append(out, lang.Target{Ecosystem: ecosystemGems, Package: name, Version: v, Pinned: pin})
 	}
 	return out
 }

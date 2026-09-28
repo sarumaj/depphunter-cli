@@ -29,7 +29,7 @@ type Cache struct {
 	entries map[string]*lang.Extraction
 	seen    map[string]bool // keys used by the current run
 	// done says the run that filled seen finished, so seen is the whole of what the
-	// project still uses. A run that failed or was cancelled part way saw only some
+	// project still uses. A run that failed or was canceled part way saw only some
 	// of it, and pruning by that would throw away every file it did not reach.
 	done bool
 	// dirty says something was added since the last Save, which otherwise rewrites
@@ -37,14 +37,14 @@ type Cache struct {
 	dirty bool
 }
 
-// Open loads the cache for project root from dir. A missing or unreadable cache file
+// Open loads the cache for project root from directory. A missing or unreadable cache file
 // yields an empty cache: the cache is an optimization, never a reason to fail.
 //
 // Implements: REQ-LANG-028
-func Open(dir, root string) *Cache {
+func Open(directory, root string) *Cache {
 	sum := sha256.Sum256([]byte(root))
 	c := &Cache{
-		path:    filepath.Join(dir, hex.EncodeToString(sum[:12])+".gob"),
+		path:    filepath.Join(directory, hex.EncodeToString(sum[:12])+".gob"),
 		entries: map[string]*lang.Extraction{},
 		seen:    map[string]bool{},
 	}
@@ -63,8 +63,8 @@ func Open(dir, root string) *Cache {
 // the plugin reads) and the content hash.
 //
 // Implements: REQ-LANG-026
-func Key(plugin string, version int, class string, src []byte) string {
-	sum := sha256.Sum256(src)
+func Key(plugin string, version int, class string, source []byte) string {
+	sum := sha256.Sum256(source)
 	return fmt.Sprintf("%s/%d/%s/%x", plugin, version, class, sum)
 }
 
@@ -103,20 +103,20 @@ func (c *Cache) Get(key string) (*lang.Extraction, bool) {
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	ex, ok := c.entries[key]
+	extraction, ok := c.entries[key]
 	if ok {
 		c.seen[key] = true
 	}
-	return ex, ok
+	return extraction, ok
 }
 
-func (c *Cache) Put(key string, ex *lang.Extraction) {
+func (c *Cache) Put(key string, extraction *lang.Extraction) {
 	if c == nil {
 		return
 	}
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.entries[key] = ex
+	c.entries[key] = extraction
 	c.seen[key] = true
 	c.dirty = true
 }
@@ -147,19 +147,19 @@ func (c *Cache) write(data file) error {
 	if err := os.MkdirAll(filepath.Dir(c.path), 0o755); err != nil {
 		return err
 	}
-	tmp, err := os.CreateTemp(filepath.Dir(c.path), ".cache-*")
+	temporary, err := os.CreateTemp(filepath.Dir(c.path), ".cache-*")
 	if err != nil {
 		return err
 	}
-	defer os.Remove(tmp.Name())
-	if err := gob.NewEncoder(tmp).Encode(data); err != nil {
-		tmp.Close()
+	defer os.Remove(temporary.Name())
+	if err := gob.NewEncoder(temporary).Encode(data); err != nil {
+		temporary.Close()
 		return err
 	}
-	if err := tmp.Close(); err != nil {
+	if err := temporary.Close(); err != nil {
 		return err
 	}
-	return os.Rename(tmp.Name(), c.path)
+	return os.Rename(temporary.Name(), c.path)
 }
 
 // fail puts back the mark Save took, so a save that did not happen is tried again.
