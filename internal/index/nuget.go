@@ -244,3 +244,16 @@ func (c *Config) vouched(eco, feed string, u *url.URL) bool {
 	}
 	return false
 }
+
+// nugetUnmapped reports whether packageSourceMapping is in force and covers no
+// pattern of id. NuGet then refuses to restore the package (NU1100); candidates
+// asks the sources as if there were no mapping, which the report notes.
+//
+// Implements: REQ-SUP-065, REQ-TRC-017
+func (c *Config) nugetUnmapped(id string) bool {
+	if !c.nuget.Mapped() {
+		return false
+	}
+	_, ok := c.nuget.Route(id)
+	return !ok
+}

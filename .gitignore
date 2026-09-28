@@ -6,3 +6,6 @@ node_modules/
 extension/out/
 *.vsix
 /showcase/
+*.rej
+*.orig
+internal/lang/java/testdata/repo/target/
